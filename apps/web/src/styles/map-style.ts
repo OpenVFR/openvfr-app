@@ -661,13 +661,25 @@ export function getMapStyle(): StyleSpecification {
       ...(() => {
         // ICAO VFR colour conventions:
         //   farmland    → pale cream/yellow  #F2EDC8 — ICAO 1:500k chart standard
-        //   residential → light grey         rgba(230,230,230) — Protomaps urban_area
-        //   commercial  → cool grey-purple   rgba(222,220,230)
-        //   industrial  → blue-grey          rgba(209,221,225)
+        //   residential → warm light grey    rgba(221,214,204)
+        //   commercial  → dusty purple-grey  rgba(205,197,222)
+        //   industrial  → dusty blue-grey    rgba(184,206,213)
         //   forest/wood → handled by Protomaps landuse_park (#9cd3b4 / #a0d9a0)
         //
         // Yellow on aviation maps = terrain proximity WARNING (dynamic, not landuse).
         // Farmland cream is distinct from forest greens and from terrain-alert amber.
+        //
+        // residential/commercial/industrial were originally near-white greys
+        // (rgba(230,230,230)/(222,220,230)/(209,221,225)) deliberately matched to
+        // Protomaps' own urban_area grey for a seamless z10 blend -- but Protomaps
+        // drops landcover entirely past z11 (flat grey "void", see landcover
+        // fill-opacity interpolation below), and those three colors are also
+        // nearly identical to EACH OTHER. Result: toggling this whole layer
+        // visually only ever seemed to affect farmland, because residential/
+        // commercial/industrial fills were rendering exactly as coded but were
+        // indistinguishable from the void and from one another to the eye.
+        // Bumped saturation/hue-separation on all three below while keeping them
+        // pastel/subtle (aviation-chart-appropriate, not garish).
         const FARMLAND_CREAM = 'rgba(242,237,200,1)'
 
         const pm = (layers('protomaps', LIGHT, { lang: 'sv' }) as StyleSpecification['layers']).map(
@@ -729,9 +741,9 @@ export function getMapStyle(): StyleSpecification {
             'fill-color': [
               'match', ['get', 'kind'],
               'farmland',    FARMLAND_CREAM,
-              'residential', 'rgba(230,230,230,1)',
-              'commercial',  'rgba(222,220,230,1)',
-              'industrial',  'rgba(209,221,225,1)',
+              'residential', 'rgba(221,214,204,1)',
+              'commercial',  'rgba(205,197,222,1)',
+              'industrial',  'rgba(184,206,213,1)',
               'wetland',     'rgba(188,220,235,1)',  // pale blue — aviation chart convention
                              'rgba(220,220,220,0)',
             ],
