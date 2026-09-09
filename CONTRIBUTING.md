@@ -65,13 +65,31 @@ confirming their license permits redistribution in this repository (see
 [README.md § Data & attribution](./README.md#data--attribution)). When in
 doubt, ask before committing.
 
-## Secrets
+## Secrets & sensitive info
 
 Never commit API keys, tokens, or credentials. This repo runs `gitleaks`
 in pre-commit and CI — treat any flagged match as a hard stop, not a
 warning. If you accidentally commit a secret, rotate it immediately and
 open an issue — do not rely on a force-push/history rewrite alone, since
 the secret may already be cached by forks/CI/search indexes.
+
+This also covers non-secret personal/deployment-specific info that still
+shouldn't be public: real domains, local file system paths, personal email
+addresses, or details tied to any one operator's own production
+infrastructure. This repo describes a generic, self-hostable app (see
+[`docs/self-hosting.md`](./docs/self-hosting.md)) — it should never
+reference a specific real-world deployment.
+
+## No competitor attribution in code/comments
+
+Don't write comments, commit messages, or docs describing a technique or
+UI pattern as "borrowed from," "matches," or "inspired by" a named
+competitor product, even when the research was done independently and in
+good faith. Describe *what* the code does and *why*, on its own technical
+merits — not by comparison to another app. This is a hard rule, not a
+style preference: it applies to AI-assisted contributions too, where a
+model's training data or prior context can easily surface a competitor's
+name in an explanatory comment without the contributor noticing.
 
 ## Code style
 

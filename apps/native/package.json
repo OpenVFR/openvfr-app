@@ -5,6 +5,7 @@
   "license": "MIT",
   "main": "index.js",
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",

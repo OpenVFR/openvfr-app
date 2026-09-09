@@ -16,6 +16,8 @@ Contribution norms (commit style, PR expectations, licensing): [`CONTRIBUTING.md
 - **Never use commercial tile APIs or services requiring proprietary API keys.** All data sources must be open-licensed.
 - **Never reload the full MapLibre style object at runtime.** This drops aviation sources, resets all filters, and clears registered images. Use the runtime API (`map.addSource`, `map.addLayer`, etc.) for all dynamic changes.
 - **`lang: 'sv'` is required** in `layers('protomaps', LIGHT, { lang: 'sv' })`. Without it, all label layers are silently omitted.
+- **Never name a competing product** in code comments, commit messages, docs, or PR descriptions — describe a technique or behavior on its own technical merits, not by who else does it. This applies to independently-researched techniques too, not just copied ones. (Deliberately not listing examples here — doing so would put those names in this file's own text.)
+- **Never commit personal or deployment-specific identifiers** — real domains, local file system paths, personal email addresses, or any detail tied to one operator's own infrastructure/hosting setup. This repo is generic and self-hostable (see `docs/self-hosting.md`); it does not describe or reference any specific production deployment.
 - **Follow [`CONTRIBUTING.md`](CONTRIBUTING.md)** for commit message format, PR expectations, and dependency/data licensing review before any change.
 
 ---

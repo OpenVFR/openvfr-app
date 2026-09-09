@@ -1,5 +1,32 @@
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=5000']
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+        exclude: '\.(bat|cmd|ps1)$'
+
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.21.2
     hooks:
       - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: no-personal-identifiers
+        name: No personal/deployment-specific identifiers
+        description: >
+          Blocks common patterns for real local file paths and non-generic
+          domains that shouldn't appear in a public, self-hostable repo —
+          see CONTRIBUTING.md's "Secrets & sensitive info" section. This is
+          a narrow safety net (obvious patterns only), not a substitute for
+          reviewing your own diff before committing.
+        entry: '(?i)([a-z]:[\\/](Users|Projects)[\\/]|/home/[a-z0-9_-]+/(Projects|dev|code)/)'
+        language: pygrep
+        types: [text]
