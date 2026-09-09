@@ -1,0 +1,248 @@
+.panel {
+  overflow-y: auto;
+  font-family: system-ui, sans-serif;
+  color: var(--text-primary);
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.count {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--text-faint);
+  background: var(--surface-hover);
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+
+.close {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color 0.1s, background 0.1s;
+}
+
+.close:hover {
+  color: var(--text-primary);
+  background: var(--surface-active);
+}
+
+/* ── Body layout: altitude strip + rows ──────────────────────────────── */
+
+.body {
+  position: relative;
+  padding-left: 24px;
+}
+
+/* Altitude diagram — absolutely positioned so it spans the full row list height */
+.stripWrap {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0 5px;
+  box-sizing: border-box;
+  gap: 2px;
+}
+
+.stripLabel {
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  line-height: 1;
+  text-align: center;
+  flex-shrink: 0;
+  /* long labels (e.g. "FL095") need to wrap or be clipped */
+  max-width: 22px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.strip {
+  display: block;
+  width: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.rows {
+  /* block container — height drives .stripWrap via absolute positioning */
+}
+
+/* ── Gap marker: uncontrolled airspace between adjacent layers ────────── */
+
+.gapRow {
+  padding: 3px 14px 3px 10px;
+  border-left: 2px dashed var(--border-default);
+}
+
+.gapLabel {
+  font-size: 9px;
+  font-style: italic;
+  letter-spacing: 0.03em;
+  color: var(--text-faint);
+}
+
+/* ── Airspace band rows ──────────────────────────────────────────────── */
+
+.row {
+  padding: 8px 14px 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.row:last-of-type {
+  border-bottom: none;
+}
+
+.rowInner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.rowContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.polyThumb {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.03);
+}
+
+.bandTop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.typeTag {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-primary);
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.classBadge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border: 1px solid;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Compact altitude band: floor – ceiling on one line ─────────────── */
+
+.altBand {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.altVal {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-blue);
+  font-family: 'Courier New', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.altSep {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────── */
+
+.footer {
+  padding: 7px 14px;
+  font-size: 10px;
+  color: var(--text-faint);
+  border-top: 1px solid var(--border-subtle);
+  text-align: center;
+}
+
+/* ── Frequencies + remarks ───────────────────────────────────────────── */
+
+.freqList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.freqItem {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.freqItem b {
+  color: var(--accent-blue);
+  font-family: 'Courier New', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.fisHint {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.remarks {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}

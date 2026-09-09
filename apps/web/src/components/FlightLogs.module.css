@@ -1,0 +1,115 @@
+.panel {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.empty {
+  color: var(--text-faint);
+  font-size: 11px;
+  text-align: center;
+  padding: 8px 0;
+}
+
+/* ── Log list ─────────────────────────────────────────────────────────────── */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  border-radius: 4px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border-subtle);
+  transition: background 0.1s;
+}
+.item:hover { background: var(--surface-active); }
+.itemActive {
+  border-color: #a78bfa;
+  background: color-mix(in srgb, #a78bfa 12%, var(--surface-hover));
+}
+
+.itemInfo {
+  flex: 1;
+  min-width: 0;
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.itemTitle {
+  display: block;
+  color: var(--text-primary);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.itemMeta {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.itemMetaVal {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+.viewBtn {
+  background: var(--surface-hover);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 2px 8px;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s;
+  flex-shrink: 0;
+}
+.viewBtn:hover { background: var(--surface-active); color: var(--text-primary); }
+
+.viewBtnActive {
+  border-color: #a78bfa;
+  color: #a78bfa;
+}
+.viewBtnActive:hover { color: #c4b5fd; }
+
+.itemActions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.viewBtnDanger {
+  color: var(--status-danger);
+  border-color: var(--status-danger);
+}
+.viewBtnDanger:hover { color: var(--status-danger); background: color-mix(in srgb, var(--status-danger) 15%, var(--surface-hover)); }
+
+.clearRow {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.clearBtn {
+  composes: viewBtn;
+  font-size: 10px;
+  padding: 2px 7px;
+}

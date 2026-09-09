@@ -1,0 +1,256 @@
+.panel {
+  font-family: system-ui, sans-serif;
+  color: var(--text-primary);
+}
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.coords {
+  flex: 1;
+  font-size: 10px;
+  color: var(--text-faint);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.close {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: color 0.1s, background 0.1s;
+}
+.close:hover {
+  color: var(--text-primary);
+  background: var(--surface-active);
+}
+
+/* ── Feature list ─────────────────────────────────────────────────── */
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  transition: background 0.1s;
+}
+.row:hover {
+  background: var(--surface-hover);
+}
+
+.badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
+  border-radius: 3px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.kind_aerodrome    { background: #1a56db; }
+.kind_navaid       { background: #5c4ae4; }
+.kind_waypoint     { background: #0ca678; }
+.kind_obstacle     { background: #e03131; }
+.kind_landmark     { background: #8b5e3c; }
+.kind_userWaypoint { background: var(--accent-yellow); color: var(--surface-base); }
+
+.rowLabel {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.addBtn {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent-purple);
+  background: rgba(224, 64, 251, 0.10);
+  border: 1px solid rgba(224, 64, 251, 0.28);
+  border-radius: 3px;
+  padding: 2px 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+  transition: background 0.1s;
+}
+.addBtn:hover {
+  background: rgba(224, 64, 251, 0.20);
+}
+
+/* ── Airspace section ─────────────────────────────────────────────── */
+
+.airspace {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.airspaceToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 5px 12px;
+  color: var(--text-muted);
+}
+.airspaceToggle:hover { color: var(--text-primary); }
+
+.chevron { font-size: 10px; }
+
+.airspaceList {
+  list-style: none;
+  margin: 0;
+  padding: 2px 0 6px;
+}
+
+.airspaceRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px;
+}
+
+.classTag {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-primary);
+  border-radius: 3px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+  background: var(--surface-active);
+}
+.cls_C    { background: #8b2fc9; }
+.cls_D    { background: #1a6db5; }
+.cls_E    { background: #16a34a; }
+.cls_G    { background: #6b7280; }
+.cls_R    { background: #e67e22; }
+.cls_TRA  { background: #c084fc; color: #000; }
+.cls_GLDR { background: #ca8a04; }
+.cls_MODEL{ background: #ca8a04; }
+
+.airspaceName {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.airspaceAlt {
+  font-size: 10px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ── Empty notice ─────────────────────────────────────────────────── */
+
+.empty {
+  padding: 10px 12px;
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+/* ── Footer / Save ────────────────────────────────────────────────── */
+
+.footer {
+  padding: 5px 12px 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.saveBtn {
+  width: 100%;
+  background: var(--surface-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 5px 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+.saveBtn:hover {
+  background: var(--surface-active);
+  color: var(--text-primary);
+}
+
+.saveForm {
+  display: flex;
+  gap: 4px;
+  padding: 5px 12px 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.saveInput {
+  composes: formInput from '../styles/shared.module.css';
+  font-size: 11px;
+  padding: 4px 7px;
+}
+
+.saveConfirm {
+  background: var(--accent-yellow);
+  color: var(--surface-base);
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.1s;
+}
+.saveConfirm:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.saveCancel {
+  background: var(--surface-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 4px 6px;
+  cursor: pointer;
+}

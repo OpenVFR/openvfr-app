@@ -1,0 +1,30 @@
+FROM node:24-alpine
+
+WORKDIR /app
+
+# See docker/Dockerfile's CI=true comment: pnpm's dependency-status check
+# can try to interactively confirm a node_modules purge once the full
+# source (including workspace members' manifests not yet copied below)
+# lands via the bind mount at container start -- no TTY to answer that in
+# a container, so force non-interactive mode throughout.
+ENV CI=true
+
+# Enable pnpm via Corepack (bundled with Node 22+)
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# Install dependencies in a separate layer for Docker cache efficiency.
+# node_modules is populated here; the bind mount in docker-compose.yml
+# excludes it via an anonymous volume so the host never overwrites it.
+# Copy EVERY workspace member's manifest -- pnpm checks lockfile
+# consistency across the whole workspace, not just the filtered target.
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
+COPY apps/web/package.json apps/web/package.json
+COPY apps/native/package.json apps/native/package.json
+COPY apps/api/package.json apps/api/package.json
+COPY packages/shared/package.json packages/shared/package.json
+RUN pnpm install --frozen-lockfile || pnpm install
+
+EXPOSE 5173
+
+# apps/web/vite.config.ts sets server.host=true and server.watch.usePolling=true
+CMD ["pnpm", "--filter", "web", "dev"]

@@ -1,0 +1,76 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0 4px;
+}
+
+.loading {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+
+/* ── No-issues green line ─────────────────────────────────── */
+.ok {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--accent-green);
+  padding: 4px 0;
+}
+
+.okIcon {
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* ── Warning cards ───────────────────────────────────────── */
+.card {
+  border-radius: 5px;
+  padding: 7px 10px;
+  border-left: 3px solid transparent;
+}
+
+.danger {
+  background: var(--alert-bg-danger, rgba(239,68,68,0.12));
+  border-left-color: var(--status-danger, #f87171);
+}
+
+.warn {
+  background: var(--alert-bg-warn, rgba(234,179,8,0.12));
+  border-left-color: var(--status-warn, #facc15);
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.cardIcon {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.danger .cardIcon {
+  color: var(--status-danger, #f87171);
+}
+
+.warn .cardIcon {
+  color: var(--status-warn, #facc15);
+}
+
+.cardDetail {
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}

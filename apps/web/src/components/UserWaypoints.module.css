@@ -1,0 +1,246 @@
+.panel {
+  font-family: system-ui, sans-serif;
+  color: var(--text-primary);
+  padding: 0;
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 5px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.addBtn {
+  flex: 1;
+  background: rgba(250, 204, 21, 0.12);
+  border: 1px solid rgba(250, 204, 21, 0.28);
+  border-radius: 5px;
+  color: var(--accent-yellow);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+.addBtn:hover { background: rgba(250, 204, 21, 0.20); }
+
+.exportBtn {
+  background: var(--surface-hover);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s;
+}
+.exportBtn:hover { background: var(--surface-active); color: var(--text-primary); }
+
+/* ── New waypoint form ───────────────────────────────────────────── */
+
+.form {
+  padding: 8px 12px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.formRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.formLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  width: 38px;
+}
+
+.input {
+  composes: formInput from '../styles/shared.module.css';
+  font-size: 11px;
+  padding: 4px 7px;
+}
+
+.coordRow {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.inputSmall {
+  composes: formInput from '../styles/shared.module.css';
+  font-size: 11px;
+  padding: 4px 6px;
+}
+.inputError { border-color: rgba(248, 113, 113, 0.6); }
+
+.pickBtn {
+  background: var(--surface-hover);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  font-size: 13px;
+  padding: 3px 5px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.1s;
+}
+.pickBtn:hover { background: var(--surface-active); }
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+
+.saveBtn {
+  background: var(--accent-yellow);
+  color: var(--surface-base);
+  border: none;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: opacity 0.1s;
+}
+.saveBtn:disabled { opacity: 0.38; cursor: default; }
+
+/* ── Empty state ─────────────────────────────────────────────────── */
+
+.empty {
+  padding: 10px 12px 8px;
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* ── Folder group ────────────────────────────────────────────────── */
+
+.folderGroup {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.folderHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 3px;
+}
+
+.visBtn {
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  color: var(--text-faint);
+  font-size: 9px;
+  padding: 1px 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.1s, border-color 0.1s;
+}
+.visBtnOn {
+  color: var(--accent-yellow);
+  border-color: rgba(250, 204, 21, 0.45);
+}
+
+.folderName {
+  flex: 1;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.folderCount {
+  font-size: 9px;
+  color: var(--text-faint);
+}
+
+/* ── Waypoint row ────────────────────────────────────────────────── */
+
+.wpList {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px;
+}
+
+.wpRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 12px 3px 20px;
+  transition: background 0.1s;
+}
+.wpRow:hover { background: var(--surface-hover); }
+
+.wpName {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.editInput {
+  composes: formInput from '../styles/shared.module.css';
+  font-size: 11px;
+  padding: 2px 6px;
+  border-color: rgba(250, 204, 21, 0.5);
+}
+
+.wpCoord {
+  font-size: 9px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.wpActions {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.wpRouteBtn {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-purple);
+  background: rgba(224, 64, 251, 0.08);
+  border: 1px solid rgba(224, 64, 251, 0.25);
+  border-radius: 3px;
+  padding: 1px 5px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.wpRouteBtn:hover { background: rgba(224, 64, 251, 0.18); }
+
+.wpDeleteBtn {
+  font-size: 10px;
+  color: var(--text-faint);
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 1px 5px;
+  cursor: pointer;
+  transition: color 0.1s, background 0.1s;
+}
+.wpDeleteBtn:hover { color: var(--accent-red); background: rgba(248, 113, 113, 0.10); }

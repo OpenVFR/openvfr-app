@@ -1,0 +1,278 @@
+.panel {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.title {
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 2px;
+  line-height: 1;
+}
+.close:hover { color: var(--text-primary); }
+
+.section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.section:last-child { border-bottom: none; }
+
+.label {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.options {
+  display: flex;
+  gap: 4px;
+}
+
+.optionsRow {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.opt {
+  background: var(--surface-hover);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 8px;
+  transition: background 0.15s, color 0.15s;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.opt:hover { background: var(--surface-active); color: var(--text-primary); }
+
+.optActive {
+  background: rgba(147, 197, 253, 0.18);
+  border-color: rgba(147, 197, 253, 0.45);
+  color: var(--accent-blue);
+}
+
+/* ── Theme swatches ────────────────────────────────────────────────── */
+.themeOptions {
+  display: flex;
+  gap: 6px;
+}
+
+.themeSwatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
+  cursor: pointer;
+  padding: 4px 7px 3px;
+  transition: border-color 0.15s;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.themeSwatch:hover { border-color: var(--border-strong); }
+
+.themeSwatchActive {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 1px var(--accent-blue);
+}
+
+.swatchDot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--border-default);
+  background: var(--surface-base);
+}
+.swatchDot[data-swatch="light"] { background: #f1f5f9; }
+.swatchDot[data-swatch="high-contrast"] { background: #000000; }
+
+.swatchLabel {
+  font-size: 10px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.themeSwatchActive .swatchLabel { color: var(--accent-blue); }
+
+/* Shown below a locked control when in-flight */
+.lockedNote {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+/* Terrain colour section */
+.terrainHeader {
+  display:         flex;
+  align-items:     center;
+  justify-content: space-between;
+  margin-bottom:   4px;
+}
+
+.colorKey {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.ckSwatch {
+  display:       inline-block;
+  width:         12px;
+  height:        12px;
+  border-radius: 2px;
+}
+
+.ckRed    { background: var(--terrain-danger);  }
+.ckOrange { background: var(--terrain-warn);    }
+.ckYellow { background: var(--terrain-caution); }
+.ckGreen  { background: var(--terrain-safe);    }
+
+.refAltInput {
+  width:         64px;
+  background:    var(--input-bg);
+  border:        1px solid var(--input-border);
+  border-radius: 4px;
+  color:         var(--text-primary);
+  font-size:     11px;
+  padding:       2px 5px;
+  text-align:    right;
+}
+.refAltInput:focus {
+  outline:       none;
+  border-color:  var(--input-focus-border);
+}
+
+.refAltUnit {
+  font-size:  10px;
+  color:      var(--text-muted);
+  align-self: center;
+}
+
+.refAltLive {
+  font-size:  10px;
+  color:      var(--accent-green-bright);
+  align-self: center;
+  font-style: italic;
+}
+
+/* ── Data versions section ───────────────────────────────────────── */
+.sectionColumn {
+  align-items:    flex-start;
+  flex-direction: column;
+  gap:            6px;
+}
+
+.dataVersions {
+  display:        flex;
+  flex-direction: column;
+  gap:            3px;
+  width:          100%;
+}
+
+.dataVersionRow {
+  display:     flex;
+  align-items: center;
+  gap:         5px;
+}
+
+.dataVersionCountry {
+  font-size:    10px;
+  font-weight:  600;
+  color:        var(--text-secondary);
+  min-width:    22px;
+}
+
+.dataVersionBadge {
+  font-size:     10px;
+  color:         var(--accent-blue);
+  background:    color-mix(in srgb, var(--accent-blue) 12%, transparent);
+  border:        1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent);
+  border-radius: 3px;
+  padding:       0 5px;
+}
+
+.dataVersionBadgeStale {
+  color:      var(--status-warn);
+  background: color-mix(in srgb, var(--status-warn) 12%, transparent);
+  border-color: color-mix(in srgb, var(--status-warn) 30%, transparent);
+}
+
+.dataVersionDate {
+  font-size: 10px;
+  color:     var(--text-muted);
+}
+
+/* ── Data section header row (label + online chip + refresh btn) ─── */
+.dataHeader {
+  display:         flex;
+  align-items:     center;
+  justify-content: space-between;
+  width:           100%;
+}
+
+.dataHeaderRight {
+  display:     flex;
+  align-items: center;
+  gap:         5px;
+}
+
+.onlineChip {
+  font-size:     10px;
+  border-radius: 10px;
+  padding:       1px 6px;
+  border:        1px solid transparent;
+}
+.onlineChipOnline {
+  color:        var(--accent-green-bright);
+  background:   color-mix(in srgb, var(--accent-green-bright) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent-green-bright) 25%, transparent);
+}
+.onlineChipOffline {
+  color:        var(--status-warn);
+  background:   color-mix(in srgb, var(--status-warn) 12%, transparent);
+  border-color: color-mix(in srgb, var(--status-warn) 25%, transparent);
+}
+
+.refreshBtn {
+  background:    none;
+  border:        1px solid var(--border-strong);
+  border-radius: 4px;
+  color:         var(--text-muted);
+  cursor:        pointer;
+  font-size:     13px;
+  line-height:   1;
+  padding:       0 5px 1px;
+  transition:    color 0.15s, border-color 0.15s;
+}
+.refreshBtn:hover:not(:disabled) {
+  color:         var(--text-primary);
+  border-color:  var(--accent-blue);
+}
+.refreshBtn:disabled {
+  opacity: 0.4;
+  cursor:  default;
+}

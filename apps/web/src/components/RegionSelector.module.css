@@ -1,0 +1,32 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.select {
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  width: 100%;
+}
+.select:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.select option {
+  color: var(--text-primary);
+  background: var(--input-option-bg);
+}
+
+.select:focus-visible {
+  outline: 2px solid var(--accent-purple);
+  border-radius: 3px;
+}

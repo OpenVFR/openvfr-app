@@ -1,0 +1,29 @@
+# docker/Dockerfile.server
+# ─────────────────────────────────────────────────────────────────────────────
+# Builds the openvfr Hono API server (Node.js).
+#
+# Build context: project root (.)
+# ─────────────────────────────────────────────────────────────────────────────
+FROM node:24-alpine
+
+# Enable corepack so the pnpm version is taken from apps/api/package.json#packageManager.
+RUN corepack enable
+
+WORKDIR /app
+
+# Install via the root workspace — apps/api is a real pnpm workspace member.
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/package.json
+RUN pnpm install --frozen-lockfile || pnpm install
+
+# Copy source (tsx runs TypeScript directly — no build step needed)
+COPY apps/api/src apps/api/src
+
+WORKDIR /app/apps/api
+
+EXPOSE 5200
+
+# tsx's binary is linked into apps/api's own node_modules/.bin/ (pnpm's
+# strict, non-hoisted linking puts each workspace member's devDependency
+# binaries there, not in the root node_modules/.bin/).
+CMD ["node_modules/.bin/tsx", "src/index.ts"]

@@ -1,0 +1,3 @@
+# This file ensures the tiles directory is tracked by git.
+# The actual .pmtiles and .mbtiles archives are excluded via .gitignore.
+# Populate this directory by running: docker compose run --rm data-prep

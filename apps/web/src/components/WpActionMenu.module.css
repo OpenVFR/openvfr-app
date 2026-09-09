@@ -1,0 +1,68 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 490;
+  /* transparent — just catches clicks */
+}
+
+.menu {
+  position: absolute;
+  z-index: 491;
+  background:    var(--surface-elevated);
+  border:        1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow:    var(--shadow-panel);
+  min-width:     148px;
+  overflow:      hidden;
+  /* animate in */
+  animation:     menuIn 0.12s ease-out;
+}
+
+@keyframes menuIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.header {
+  padding:     5px 10px 4px;
+  font-size:   10px;
+  font-weight: 700;
+  color:       var(--text-faint);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.item {
+  display:      block;
+  width:        100%;
+  padding:      6px 10px;
+  background:   transparent;
+  border:       none;
+  border-bottom: 1px solid var(--border-subtle);
+  color:        var(--text-primary);
+  font-size:    11px;
+  text-align:   left;
+  cursor:       pointer;
+  transition:   background 0.1s;
+}
+.item:last-child {
+  border-bottom: none;
+}
+.item:hover {
+  background: var(--surface-hover);
+}
+
+.cancel {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── Touch: larger tap targets ──────────────────────────────────────────── */
+@media (pointer: coarse) {
+  .item {
+    padding:    12px 14px;
+    min-height: 48px;
+    font-size:  13px;
+  }
+}

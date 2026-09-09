@@ -1,0 +1,108 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    volumes:
+      - .:/app
+      # Anonymous volume masks the host's node_modules with the container's
+      # version (built during image build). This prevents pnpm install
+      # differences between host OS and Alpine Linux from causing issues.
+      - /app/node_modules
+    # Port 5173 not mapped — Vite runs on the host via `pnpm dev`, not in this
+    # container. The container is only used for CI/Linux parity testing.
+    environment:
+      - NODE_ENV=development
+      # Martin tile server URL — accessed by the *browser*, so use localhost (host port).
+      - VITE_MARTIN_URL=http://localhost:5100
+    # Vite runs on the host (`pnpm dev`) — only start this container when
+    # explicitly needed: docker compose --profile app up app
+    profiles:
+      - app
+
+  # ── PostGIS database ────────────────────────────────────────────────────────
+  db:
+    image: postgis/postgis:18-3.6-alpine
+    environment:
+      POSTGRES_DB: openvfr
+      POSTGRES_USER: openvfr
+      POSTGRES_PASSWORD: openvfr_dev
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    # Schema is applied via dbmate against db/migrations/, not initdb.d.
+    # Run: docker compose up -d db, then apply migrations with dbmate
+    # (see db/migrations/ and https://github.com/amacneil/dbmate).
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openvfr -d openvfr"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Martin vector tile server ───────────────────────────────────────────────
+  # Exposes PostGIS function sources as /rpc/<fn>/{z}/{x}/{y}
+  martin:
+    image: ghcr.io/maplibre/martin:1.15.0
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://openvfr:openvfr_dev@db:5432/openvfr
+    volumes:
+      - ./docker/martin.yaml:/config/martin.yaml:ro
+    command: ["--config", "/config/martin.yaml"]
+    ports:
+      - "5100:3000"
+
+  # ── Hono API server ─────────────────────────────────────────────────────────
+  # Serves POST /api/poh-extract — uploads PDF to Azure OpenAI Files API, returns JSON via SSE.
+  # Set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY to enable POH import.
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    ports:
+      - "5200:5200"
+    environment:
+      - PORT=5200
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
+      - OPENSKY_CLIENT_ID=${OPENSKY_CLIENT_ID:-}
+      - OPENSKY_CLIENT_SECRET=${OPENSKY_CLIENT_SECRET:-}
+      - OPENSKY_BBOX=${OPENSKY_BBOX:-55.0,10.0,69.5,24.5}
+      - OPENSKY_POLL_INTERVAL_S=${OPENSKY_POLL_INTERVAL_S:-65}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-dev_secret_change_in_production_32ch}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:5173}
+      - BETTER_AUTH_APP_ORIGIN=${BETTER_AUTH_APP_ORIGIN:-http://localhost:5173}
+      - BETTER_AUTH_TRUSTED_ORIGINS=${BETTER_AUTH_TRUSTED_ORIGINS:-http://localhost:5173}
+      - DATABASE_URL=postgresql://openvfr:openvfr_dev@db:5432/openvfr
+      - BREVO_API_KEY=${BREVO_API_KEY:-}
+      - BREVO_SENDER_EMAIL=${BREVO_SENDER_EMAIL:-noreply@your-domain.example}
+      - BREVO_SENDER_NAME=${BREVO_SENDER_NAME:-Open VFR}
+      - FAA_NOTAM_CLIENT_ID=${FAA_NOTAM_CLIENT_ID:-}
+      - FAA_NOTAM_CLIENT_SECRET=${FAA_NOTAM_CLIENT_SECRET:-}
+
+  # ── PostgREST — auto-generated REST API from PostgreSQL schema ─────────────
+  # Provides /rest/ API for client-side sync of user data (routes, aircraft,
+  # waypoints, settings, flight_logs). JWT-verified via BETTER_AUTH_SECRET.
+  # Not exposed on any host port in prod — proxy it behind your own reverse
+  # proxy at /rest/ if deploying publicly.
+  postgrest:
+    image: postgrest/postgrest:v16.2
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgresql://openvfr:openvfr_dev@db:5432/openvfr
+      PGRST_JWT_SECRET: ${BETTER_AUTH_SECRET:-dev_secret_change_in_production_32ch}
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_DB_SCHEMA: public
+      PGRST_SERVER_PORT: "3001"
+      PGRST_LOG_LEVEL: warn
+    ports:
+      - "5300:3001"
+
+volumes:
+  postgres_data:

@@ -1,0 +1,483 @@
+.panel {
+  padding: 6px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-family: 'Noto Sans', sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  color: var(--text-primary);
+}
+
+/* ── Top row: mode badge + core instruments + orientation + stop ─────────── */
+.topRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.badgeGps {
+  background: #16a34a;
+  color: #fff;
+}
+
+.badgeSim {
+  background: #7c3aed;
+  color: #fff;
+}
+
+.badgeExt {
+  background: #0891b2;
+  color: #fff;
+}
+
+/* ── Instrument cells ───────────────────────────────────────────────────── */
+.instruments {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+.cellLabel {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.cellValue {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.cellUnit {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 2px;
+  font-weight: 400;
+}
+
+/* Dimmed when GPS altitude is unavailable (altFt === 0) */
+.dimmed {
+  color: var(--text-faint);
+}
+
+/* Crosswind severity colours — thresholds match
+   @open-vfr/shared/windRelative.ts and native's GaugesBar.tsx exactly.
+   Headwind/tailwind is intentionally NOT colour-coded (see that module's
+   doc comment: tailwind is good enroute but dangerous on landing, so
+   colouring it universally would be misleading). */
+.xwCalm {
+  color: var(--status-ok);
+}
+
+.xwModerate {
+  color: var(--status-warn);
+}
+
+.xwStrong {
+  color: var(--status-danger);
+}
+
+.windArrow {
+  display: inline-block;
+  margin-right: 2px;
+  font-size: 9px;
+  color: var(--text-secondary);
+  transform-origin: 50% 55%;
+}
+
+/* Radio frequency */
+.radioFreq {
+  color: var(--accent-blue);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Next waypoint row ───────────────────────────────────────────────────── */
+.wpRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.wpSep {
+  width: 1px;
+  height: 28px;
+  background: var(--border-strong);
+  flex-shrink: 0;
+}
+
+.wpArrow {
+  font-size: 16px;
+  color: var(--accent-purple);
+  flex-shrink: 0;
+}
+
+.wpName {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-purple);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.wpNone {
+  font-size: 13px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.wpDist {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* ETE/ETA clickable toggle */
+.eteToggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-yellow);
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.eteToggle:hover {
+  background: rgba(250, 204, 21, 0.12);
+}
+
+/* Course correction indicator */
+.cci {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.cciArrow {
+  font-size: 15px;
+  color: var(--accent-purple);
+}
+
+.cciDeg {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* ── Orientation + control buttons ──────────────────────────────────────── */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.orientBtn {
+  background: var(--surface-hover);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 3px 7px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+
+.orientBtn:hover {
+  background: var(--surface-active);
+}
+
+.orientBtnActive {
+  background: rgba(147, 197, 253, 0.18);
+  border-color: var(--accent-blue-bright);
+  color: var(--accent-blue);
+}
+
+.followBtn {
+  background: var(--surface-hover);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 3px 7px;
+  cursor: pointer;
+  transition: background 0.12s;
+  white-space: nowrap;
+}
+
+.followBtn:hover {
+  background: var(--surface-active);
+}
+
+.followBtnActive {
+  background: rgba(74, 222, 128, 0.18);
+  border-color: var(--accent-green-bright);
+  color: var(--accent-green);
+}
+
+.followBtnOff {
+  background: rgba(251, 146, 60, 0.18);
+  border: 1px solid rgba(251, 146, 60, 0.6);
+  color: #fb923c;
+  animation: followPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes followPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.stopBtn {
+  background: rgba(239,68,68,0.15);
+  border: 1px solid rgba(239,68,68,0.35);
+  border-radius: 4px;
+  color: var(--accent-red);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+  white-space: nowrap;
+}
+
+.stopBtn:hover {
+  background: rgba(239,68,68,0.28);
+}
+
+/* ── Sim hint ────────────────────────────────────────────────────────────── */
+.simHint {
+  font-size: 9px;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+  padding-top: 1px;
+}
+
+/* ── Direct To button ────────────────────────────────────────────────────── */
+.directToBtn {
+  background: rgba(224, 64, 251, 0.12);
+  border: 1px solid rgba(224, 64, 251, 0.35);
+  border-radius: 4px;
+  color: var(--accent-purple);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+  white-space: nowrap;
+}
+
+.directToBtn:hover {
+  background: rgba(224, 64, 251, 0.25);
+}
+
+/* ── Position report row ─────────────────────────────────────────────────── */
+.posRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.posKind {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.posName {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.posSep {
+  color: var(--text-faint);
+}
+
+.posBrg {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.posDist {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Track toggle button (in position row) ───────────────────────────────── */
+.trackBtn {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 3px;
+  opacity: 0.8;
+  transition: opacity 0.15s, color 0.15s;
+}
+.trackBtn:hover { opacity: 1; }
+.trackBtnActive {
+  color: var(--accent-cyan);
+  opacity: 1;
+}
+
+/* ── Drop Waypoint button ────────────────────────────────────────────────── */
+.dropBtn {
+  background: var(--tint-yellow-low);
+  border: 1px solid var(--tint-yellow-border);
+  border-radius: 4px;
+  color: var(--accent-yellow);
+  font-size: 12px;
+  padding: 3px 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+  white-space: nowrap;
+}
+.dropBtn:hover {
+  background: var(--tint-yellow-border);
+}
+
+/* ── PLOG button (in position row) ──────────────────────────────────────── */
+.plogBtn {
+  margin-left: 4px;
+  background:    transparent;
+  border:        1px solid var(--border-default);
+  border-radius: 4px;
+  color:         var(--text-muted);
+  font-size:     9px;
+  font-weight:   700;
+  letter-spacing: 0.06em;
+  padding:       1px 5px;
+  cursor:        pointer;
+  transition:    background 0.12s, color 0.12s, border-color 0.12s;
+  white-space:   nowrap;
+}
+.plogBtn:hover {
+  background:   var(--tint-blue-low);
+  color:        var(--accent-blue);
+  border-color: var(--tint-blue-border);
+}
+.plogBtnActive {
+  background:   var(--tint-blue-mid);
+  color:        var(--accent-blue);
+  border-color: var(--input-focus-border);
+}
+
+.adjustBtn {
+  margin-left: 4px;
+  background:    transparent;
+  border:        1px solid var(--border-default);
+  border-radius: 4px;
+  color:         var(--text-muted);
+  font-size:     9px;
+  font-weight:   700;
+  letter-spacing: 0.06em;
+  padding:       1px 5px;
+  cursor:        pointer;
+  transition:    background 0.12s, color 0.12s, border-color 0.12s;
+  white-space:   nowrap;
+}
+.adjustBtn:hover {
+  background:   var(--tint-yellow-low);
+  color:        var(--accent-yellow);
+  border-color: var(--tint-yellow-border);
+}
+.adjustBtnActive {
+  background:   var(--tint-yellow-low);
+  color:        var(--accent-yellow);
+  border-color: var(--tint-yellow-border);
+}
+
+/* ── Touch (pointer: coarse) — larger tap targets ────────────────────────── */
+@media (pointer: coarse) {
+  /* Primary action buttons in the top controls row */
+  .orientBtn,
+  .followBtn,
+  .followBtnActive,
+  .followBtnOff,
+  .stopBtn,
+  .directToBtn,
+  .dropBtn {
+    min-height:     44px;
+    padding-left:   14px;
+    padding-right:  14px;
+  }
+
+  /* ETE/ETA cycle toggle in the waypoint row */
+  .eteToggle {
+    min-height:    44px;
+    padding-left:  12px;
+    padding-right: 12px;
+  }
+
+  /* Secondary row buttons: slightly smaller but still comfortably tappable */
+  .trackBtn {
+    min-height:    36px;
+    padding-left:  10px;
+    padding-right: 10px;
+  }
+
+  .plogBtn,
+  .plogBtnActive,
+  .adjustBtn,
+  .adjustBtnActive {
+    min-height:    36px;
+    padding-left:  10px;
+    padding-right: 10px;
+  }
+
+  /* Tighten control gaps so the row fits at 768 px portrait width */
+  .controls {
+    gap: 4px;
+  }
+}

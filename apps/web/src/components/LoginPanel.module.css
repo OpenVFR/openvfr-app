@@ -1,0 +1,212 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.panel {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  padding: 32px 28px 28px;
+  width: min(380px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.logo {
+  text-align: center;
+}
+
+.logo h1 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+.logo p {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 4px 0 0;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.emailRow {
+  display: flex;
+  gap: 6px;
+}
+
+.emailInput {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.emailInput:focus {
+  border-color: var(--accent-purple-dim);
+}
+
+.emailInput::placeholder {
+  color: var(--text-placeholder);
+}
+
+.btnPrimary {
+  width: 100%;
+  padding: 11px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent-purple);
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btnPrimary:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.btnPrimary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btnSecondary {
+  padding: 9px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.btnSecondary:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.btnSecondary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.status {
+  text-align: center;
+  font-size: 11px;
+  min-height: 16px;
+}
+
+.statusOk {
+  color: var(--accent-green);
+}
+
+.statusErr {
+  color: var(--accent-red);
+}
+
+.hint {
+  font-size: 10px;
+  color: var(--text-faint);
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* OTP step */
+
+.otpBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.otpHint {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.otpInput {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: var(--text-primary);
+  outline: none;
+  text-align: center;
+  font-size: 18px;
+  letter-spacing: 0.25em;
+  transition: border-color 0.15s;
+}
+
+.otpInput:focus {
+  border-color: var(--accent-purple-dim);
+}
+
+.otpInput::placeholder {
+  color: var(--text-placeholder);
+  letter-spacing: 0.15em;
+}
+
+.backLink {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
+  text-align: center;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.backLink:hover:not(:disabled) {
+  color: var(--text-secondary);
+}
+
+/* Setup step (name collection after first sign-in) */
+
+.setupBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.setupTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
+}

@@ -1,0 +1,27 @@
+{
+  // wrangler.jsonc — Cloudflare Workers (unified Pages+Workers) config for
+  // OpenVFR's own official hosted instance (app.openvfr.org). This is NOT
+  // required to self-host OpenVFR — it's how the maintainers deploy the
+  // official instance. Self-hosters can ignore this file entirely and use
+  // any static host / the Docker setup in docs/self-hosting.md instead.
+  //
+  // This project has NO custom Worker script/routing logic — this config
+  // deploys apps/web/dist as static assets only. Cloudflare serves them
+  // directly from the edge without invoking any Worker JS runtime per
+  // request.
+  //
+  // Deploy command (set in the Cloudflare dashboard's project settings,
+  // or run manually): npx wrangler deploy
+  // Build command (runs first, produces ./apps/web/dist): pnpm install && pnpm build
+  //
+  "name": "openvfr-app",
+  "compatibility_date": "2025-01-01",
+  "assets": {
+    // Build output directory.
+    "directory": "./apps/web/dist",
+    // Defensive default: this app currently has no client-side router
+    // (no react-router / deep-linked paths), so this has no effect today,
+    // but avoids a 404-on-refresh trap if routing is ever added later.
+    "not_found_handling": "single-page-application"
+  }
+}

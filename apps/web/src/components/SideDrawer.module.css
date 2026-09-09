@@ -1,0 +1,242 @@
+/* Outer wrapper — grid col 0, row 0; width drives open/close */
+.wrapper {
+  position: relative;
+  width: 0;
+  overflow-x: visible;  /* toggle tab pokes right into mapArea */
+  overflow-y: clip;     /* clip drawer at grid row boundary (unlike overflow:hidden, clip doesn't establish a BFC and allows overflow-x:visible alongside it) */
+  z-index: 16;
+  flex-shrink: 0;
+  transition: width 0.22s ease;
+}
+
+/* Drawer panel — fixed width inside collapsing wrapper */
+.drawer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--drawer-width, 272px);
+  background: var(--surface-elevated);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border-right: 1px solid var(--border-default);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: transform 0.22s ease;
+  transform: translateX(0);
+}
+
+.drawerClosed {
+  transform: translateX(-100%);
+  pointer-events: none;
+}
+
+.scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/* Search bar — pinned above the scrollable section list */
+.searchBar {
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--border-default);
+  flex-shrink: 0;
+}
+
+/* Tab column — both avatar + toggle tabs, peeks right of the drawer edge */
+.tabColumn {
+  position: absolute;
+  top: 10px;
+  right: -38px;
+  width: 38px;
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+}
+
+/* Toggle tab — styling only; position comes from .tabColumn */
+.toggle {
+  position: relative;
+  top: auto;
+  right: auto;
+  width: 38px;
+  height: 40px;
+  background: var(--surface-elevated);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--border-strong);
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  transition: color 0.15s;
+}
+.toggle:hover { color: var(--text-primary); }
+
+/* Section */
+.section {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sectionHeader {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.15s;
+  font-family: system-ui, sans-serif;
+}
+.sectionHeader:hover { color: var(--text-primary); }
+
+.chevron {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.planPill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.planPill:hover { color: var(--text-primary); }
+.planPill.planPillActive {
+  background: rgba(96, 165, 250, 0.85);
+  border-color: rgba(96, 165, 250, 0.85);
+  color: #ffffff;
+}
+
+.sectionBody {
+  padding-bottom: 4px;
+}
+
+/* Resize handle */
+.resizeHandle {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  bottom: 0;
+  cursor: col-resize;
+  z-index: 17;
+  pointer-events: auto;
+}
+.resizeHandle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 3px;
+  width: 2px;
+  bottom: 0;
+  background: transparent;
+  transition: background 0.15s;
+}
+.resizeHandle:hover::after {
+  background: rgba(125, 211, 252, 0.5);
+}
+
+/* ── Touch (pointer: coarse) — fixed overlay drawer ──────────────────────── */
+
+/* Backdrop: covers map while drawer is open; hidden on desktop */
+.backdrop {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  /* Keep wrapper zero-width always: map fills full screen width */
+  .wrapper {
+    width: 0 !important;
+  }
+
+  /* Drawer becomes a fixed-position overlay instead of pushing the grid */
+  .drawer {
+    position: fixed;
+    top:      0;
+    left:     0;
+    bottom:   0;
+    height:   100dvh;
+    width:    min(320px, 85vw);
+    z-index:  220;
+    border-right: 1px solid var(--border-default);
+    /* shadow so it lifts visually off the map */
+    box-shadow: var(--shadow-heavy);
+  }
+
+  /* Toggle tab: column becomes fixed, top-left */
+  .tabColumn {
+    position: fixed;
+    top:    10px;
+    left:   4px;
+    right:  auto;
+    width:  44px;
+    z-index: 221;
+  }
+
+  /* Hide both tabs while the drawer overlay is open — they'd sit on top of it */
+  .tabColumnOpen {
+    display: none;
+  }
+
+  /* Toggle tab: sizing/shape only; column owns position */
+  .toggle {
+    position: relative;
+    top:    auto;
+    left:   auto;
+    right:  auto;
+    width:  44px;
+    height: 52px;
+    font-size: 18px;
+    border-radius: 0 0 8px 8px;
+    border: 1px solid var(--border-strong);
+    z-index: auto;
+  }
+
+  /* Section headers: taller tap target */
+  .sectionHeader {
+    min-height: 48px;
+  }
+
+  /* Backdrop: semi-transparent scrim over the map */
+  .backdrop {
+    display:    block;
+    position:   fixed;
+    inset:      0;
+    z-index:    218;
+    background: var(--overlay-scrim);
+  }
+
+  /* Resize handle: mouse-only — hidden on touch */
+  .resizeHandle {
+    display: none;
+  }
+}

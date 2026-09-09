@@ -1,0 +1,563 @@
+.panel {
+  overflow-y: auto;
+  font-family: system-ui, sans-serif;
+  color: var(--text-primary);
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.icao {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.nameLine {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.name {
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  border-radius: 4px;
+  padding: 1px 6px;
+  background: var(--surface-active);
+  color: var(--text-secondary);
+}
+
+.badge.ppr {
+  background: rgba(220, 100, 0, 0.20);
+  color: var(--accent-orange);
+  border: 1px solid rgba(220, 100, 0, 0.40);
+}
+
+.badge.fuel {
+  background: rgba(37, 99, 235, 0.15);
+  color: var(--accent-blue);
+  border: 1px solid rgba(37, 99, 235, 0.30);
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  padding: 0;
+  flex-shrink: 0;
+  transition: color 0.1s;
+}
+
+.closeBtn:hover {
+  color: var(--text-secondary);
+}
+
+.homeBtn {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s;
+}
+
+.homeBtn:hover {
+  color: var(--accent-yellow);
+}
+
+.homeBtnActive {
+  color: var(--accent-yellow);
+}
+
+/* ── Sections ───────────────────────────────────────────────────────── */
+.section {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.section:last-child {
+  border-bottom: none;
+}
+
+.sectionTitle {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 6px;
+}
+
+/* ── Tab bar ────────────────────────────────────────────────────────── */
+.tabBar {
+  display: flex;
+  border-bottom: 1px solid var(--border-default);
+  padding: 0 6px;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  margin-bottom: -1px;
+}
+
+.tab:hover {
+  color: var(--text-secondary);
+}
+
+.tabActive {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-blue);
+}
+
+/* Flight-rule coloured dot in the Wx tab */
+.frDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.frDotVFR  { background: var(--status-ok,     #86efac); }
+.frDotMVFR { background: var(--accent-blue,   #93c5fd); }
+.frDotIFR  { background: var(--status-danger, #f87171); }
+.frDotLIFR { background: var(--status-danger, #f87171); opacity: 0.7; }
+
+/* NOTAM count badge on tab */
+.notamCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  padding: 0 4px;
+  font-size: 9px;
+  font-weight: 700;
+  background: var(--surface-active);
+  color: var(--text-secondary);
+}
+
+/* ── Sunrise / Sunset row ───────────────────────────────────────────── */
+.sunRow {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.sunLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.sunVal {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-yellow);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Frequencies ────────────────────────────────────────────────────── */
+.freqTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.freqTable td {
+  font-size: 12px;
+  padding: 2px 0;
+  vertical-align: top;
+}
+
+.freqType {
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding-right: 10px;
+  white-space: nowrap;
+  width: 60px;
+}
+
+.freqMhz {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-blue);
+  font-weight: 600;
+  padding-right: 8px;
+  white-space: nowrap;
+}
+
+.freqCallsign {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+/* ── Runways ────────────────────────────────────────────────────────── */
+.rwyRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.rwyDesig {
+  font-weight: 700;
+  color: var(--text-primary);
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.rwyBlock {
+  padding: 3px 0;
+}
+
+.rwyBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.rwyBadge {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-radius: 4px;
+  padding: 1px 6px;
+  background: var(--surface-active);
+  color: var(--text-secondary);
+}
+
+.rwyDeclared {
+  font-size: 10px;
+  color: var(--text-faint);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Hours of operation ─────────────────────────────────────────────── */
+.hoursRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 2px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.hoursRemark {
+  color: var(--text-faint);
+  font-size: 10px;
+  text-align: right;
+}
+
+/* ── Remarks ────────────────────────────────────────────────────────── */
+.remark {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Contacts ───────────────────────────────────────────────────────── */
+.contactRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.contactType {
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  width: 60px;
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+
+.contactAddress {
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.contactAddress a {
+  color: var(--accent-blue-bright);
+  text-decoration: none;
+}
+
+.contactAddress a:hover {
+  text-decoration: underline;
+}
+
+/* ── Elevation chip in header ───────────────────────────────────────── */
+.elev {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* ── Density Altitude ───────────────────────────────────────────────── */
+.daRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.daLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.daInput {
+  width: 68px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 3px 6px;
+  text-align: right;
+}
+
+.daInput:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+.daResult {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.daResultLabel {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.daPressAlt {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-faint);
+  margin-left: 4px;
+}
+
+.daHint {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* ── Weather (METAR / TAF) ─────────────────────────────────────────── */
+.wxHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.wxHeader .sectionTitle {
+  margin-bottom: 0;
+}
+
+/* Flight-rule badge */
+.frBadge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.frVFR   { background: rgba(34, 197, 94, 0.18); color: var(--accent-green); }
+.frMVFR  { background: rgba(59, 130, 246, 0.18); color: var(--accent-blue-bright); }
+.frIFR   { background: rgba(239, 68, 68, 0.18);  color: var(--status-danger); }
+.frLIFR  { background: rgba(168, 85, 247, 0.18); color: #c084fc; }
+
+.wxState {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* Decoded METAR key/value grid: 2-column */
+.wxGrid {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 2px 6px;
+  margin-bottom: 6px;
+}
+
+.wxKey {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  align-self: start;
+  padding-top: 1px;
+}
+
+.wxVal {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Raw METAR line */
+.metarRaw {
+  font-size: 9.5px;
+  font-family: monospace;
+  color: var(--text-faint);
+  word-break: break-all;
+  white-space: pre-wrap;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
+/* TAF collapsible */
+.tafBlock {
+  margin-top: 6px;
+}
+
+.tafToggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.1s;
+}
+
+.tafToggle:hover { color: var(--text-muted); }
+
+.tafRaw {
+  margin-top: 5px;
+  font-size: 9.5px;
+  font-family: monospace;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.5;
+  background: var(--surface-hover);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+/* ── NOTAMs ──────────────────────────────────────────────────────────── */
+.notamItem {
+  border-top: 1px solid var(--border-subtle);
+  padding: 4px 0;
+}
+
+.notamItem:first-of-type {
+  border-top: none;
+}
+
+.notamToggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 0;
+  text-align: left;
+}
+
+.notamId {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.notamPeriod {
+  font-size: 10px;
+  color: var(--text-faint);
+  flex: 1;
+}
+
+.notamChevron {
+  font-size: 9px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.notamText {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  margin: 4px 0 2px;
+  background: var(--surface-hover);
+  border-radius: 4px;
+  padding: 6px 8px;
+}

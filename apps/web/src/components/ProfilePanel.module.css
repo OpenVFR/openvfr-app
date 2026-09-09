@@ -1,0 +1,264 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+}
+
+.panel {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.12s;
+}
+.closeBtn:hover { color: var(--text-primary); }
+
+/* Scrollable body */
+.panel > .section,
+.panel > .sectionDivider {
+  flex-shrink: 0;
+}
+
+.panel > .section:last-child {
+  /* Push sign-out to the bottom if content is short */
+}
+
+.section {
+  padding: 14px 20px;
+}
+
+.sectionDivider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 0 16px;
+}
+
+/* Labels */
+.label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 8px;
+}
+
+.emailValue {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Name row */
+.nameRow {
+  display: flex;
+  gap: 8px;
+}
+
+.nameInput {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.nameInput:focus { border-color: var(--accent-purple-dim); }
+
+.btnSave {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.btnSave:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.btnSave:disabled { opacity: 0.4; cursor: default; }
+
+/* Passkeys */
+.passkeyHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.passkeyHeader .label { margin-bottom: 0; }
+
+.btnAdd {
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.btnAdd:hover { background: var(--surface-hover); color: var(--text-primary); }
+
+/* Register inline form */
+.registerBlock {
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pkNameInput {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.pkNameInput:focus { border-color: var(--accent-purple-dim); }
+.pkNameInput::placeholder { color: var(--text-placeholder); }
+
+.registerActions {
+  display: flex;
+  gap: 6px;
+}
+
+.btnCancel {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.btnCancel:hover { background: var(--surface-hover); }
+
+/* Passkey list */
+.passkeyList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.passkeyItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--surface-hover);
+  border-radius: 8px;
+  gap: 10px;
+}
+
+.passkeyInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.passkeyName {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.passkeyDate {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.btnRevoke {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(252, 165, 165, 0.25);
+  background: transparent;
+  color: var(--accent-red, #fca5a5);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.btnRevoke:hover { background: rgba(252, 165, 165, 0.08); }
+
+/* Status / error messages */
+.statusMsg {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.errorMsg {
+  font-size: 11px;
+  color: var(--accent-red, #fca5a5);
+  margin-top: 6px;
+}
+
+.emptyMsg {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* Sign out */
+.btnSignOut {
+  padding: 9px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(252, 165, 165, 0.3);
+  background: transparent;
+  color: var(--accent-red, #fca5a5);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.btnSignOut:hover { background: rgba(252, 165, 165, 0.08); }

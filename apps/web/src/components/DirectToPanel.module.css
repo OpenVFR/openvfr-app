@@ -1,0 +1,249 @@
+/* DirectToPanel — modal overlay */
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 48px;
+}
+
+.panel {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 160px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--border-default);
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent-purple);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.glideNote {
+  font-size: 11px;
+  color: var(--accent-green-bright);
+  font-weight: 600;
+  flex: 1;
+  text-align: center;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.closeBtn:hover {
+  background: var(--surface-active);
+  color: var(--text-primary);
+}
+
+/* ── Filters ─────────────────────────────────────────────────────────────── */
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.search {
+  composes: formInput from '../styles/shared.module.css';
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
+.search:focus {
+  border-color: rgba(224, 64, 251, 0.45);
+  background: var(--surface-active);
+}
+
+.runwayLabel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.runwayText {
+  white-space: nowrap;
+  min-width: 130px;
+}
+
+.runwaySlider {
+  flex: 1;
+  accent-color: var(--accent-purple);
+}
+
+/* ── List ────────────────────────────────────────────────────────────────── */
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+  color: var(--text-primary);
+}
+
+.row:hover {
+  background: var(--surface-hover);
+}
+
+.row:active {
+  background: rgba(224, 64, 251, 0.10);
+}
+
+/* Home airfield row */
+.rowHome {
+  border-left: 3px solid var(--accent-yellow);
+}
+
+.rowGlide {
+  background: rgba(74, 222, 128, 0.06);
+}
+
+.rowGlide:hover {
+  background: rgba(74, 222, 128, 0.12);
+}
+
+.rowIcao {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent-purple);
+  flex-shrink: 0;
+  min-width: 50px;
+}
+
+.rowName {
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowTags {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+}
+
+.tagHome {
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(250, 204, 21, 0.15);
+  border: 1px solid rgba(250, 204, 21, 0.35);
+  color: var(--accent-yellow);
+  padding: 1px 4px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+
+.tagGlide {
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(74, 222, 128, 0.12);
+  border: 1px solid rgba(74, 222, 128, 0.30);
+  color: var(--accent-green-bright);
+  padding: 1px 4px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+
+.tagFuel {
+  font-size: 9px;
+  font-weight: 600;
+  background: rgba(147, 197, 253, 0.10);
+  border: 1px solid rgba(147, 197, 253, 0.22);
+  color: var(--accent-blue);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.tagRwy {
+  font-size: 9px;
+  color: var(--text-faint);
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--border-subtle);
+}
+
+.rowNav {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  min-width: 54px;
+}
+
+.rowDist {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-yellow);
+  white-space: nowrap;
+}
+
+.rowBrg {
+  font-size: 10px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-placeholder);
+  font-size: 13px;
+  font-style: italic;
+}

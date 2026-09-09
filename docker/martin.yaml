@@ -1,0 +1,31 @@
+# docker/martin.yaml
+# Martin tile server configuration — https://martin.maplibre.org/
+#
+# Martin auto-discovers all PostGIS function sources that match the signature:
+#   fn(z int, x int, y int, query_params json DEFAULT '{}') RETURNS bytea
+#
+# Bulk/AIRAC-cadence datasets (basemap, airspace, aerodromes, navaids,
+# waypoints, runways, obstacles, landuse) are served as static PMTiles/GeoJSON
+# files instead — see docs/self-hosting.md. Martin/PostGIS here is only for
+# genuinely-dynamic data if/when you add it (NOTAM/METAR-TAF, live airspace
+# activation, user-generated content).
+#
+# Run via docker-compose:
+#   docker compose up martin
+
+listen_addresses: '0.0.0.0:3000'
+
+postgres:
+  # DATABASE_URL is injected as an environment variable from docker-compose.yml.
+  # Format: postgresql://<user>:<password>@<host>:<port>/<database>
+  connection_string: ${DATABASE_URL}
+
+  # Pool sizing — 4 workers is enough for dev; scale up for production.
+  pool_size: 4
+
+  # Restrict auto-discovery to the public schema only.
+  # Prevents Martin from publishing tiger.* tables that ship with the
+  # postgis/postgis image and have no spatial indexes.
+  auto_publish:
+    from_schemas:
+      - public

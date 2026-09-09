@@ -1,0 +1,162 @@
+/* AirfieldBriefPanel — compact aerodrome brief overlay, bottom-right of map */
+
+.panel {
+  position:        absolute;
+  bottom:          16px;
+  right:           54px;          /* clear the MapLibre attribution */
+  z-index:         420;
+  min-width:       220px;
+  max-width:       300px;
+  background:      var(--surface-elevated);
+  border:          1px solid var(--border-default);
+  border-left:     3px solid var(--accent-blue);
+  border-radius:   8px;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow:      var(--shadow-panel);
+  color:           var(--text-primary);
+  font-size:       11px;
+  animation:       slideUp 0.18s ease;
+  pointer-events:  all;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.header {
+  display:         flex;
+  align-items:     baseline;
+  gap:             6px;
+  padding:         8px 8px 5px;
+}
+
+.titleBtn {
+  flex:            1;
+  display:         flex;
+  align-items:     baseline;
+  gap:             5px;
+  background:      none;
+  border:          none;
+  padding:         0;
+  cursor:          pointer;
+  text-align:      left;
+  min-width:       0;
+}
+.titleBtn:hover .icao { text-decoration: underline; }
+
+.icao {
+  font-size:       15px;
+  font-weight:     800;
+  color:           var(--accent-blue);
+  white-space:     nowrap;
+}
+
+.name {
+  font-size:       10px;
+  color:           var(--text-secondary);
+  white-space:     nowrap;
+  overflow:        hidden;
+  text-overflow:   ellipsis;
+  max-width:       120px;
+}
+
+.meta {
+  display:         flex;
+  flex-direction:  column;
+  align-items:     flex-end;
+  gap:             1px;
+  font-size:       9px;
+  color:           var(--text-muted);
+  white-space:     nowrap;
+  flex-shrink:     0;
+}
+
+.elev { color: var(--text-faint); }
+.dist { color: var(--accent-blue); font-weight: 600; }
+
+.close {
+  background: none;
+  border:     none;
+  color:      var(--text-muted);
+  font-size:  14px;
+  line-height: 1;
+  cursor:     pointer;
+  padding:    0 2px;
+  flex-shrink: 0;
+  transition: color 0.12s;
+}
+.close:hover { color: var(--text-primary); }
+
+/* ── Frequency row ───────────────────────────────────────────────────────── */
+.freqRow {
+  display:     flex;
+  align-items: center;
+  gap:         6px;
+  padding:     0 8px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.freqLabel {
+  font-size:      8px;
+  font-weight:    700;
+  letter-spacing: 0.08em;
+  color:          var(--text-faint);
+}
+
+.freq {
+  font-size:   12px;
+  font-weight: 700;
+  color:       var(--accent-green);
+}
+
+.pprBadge {
+  font-size:      8px;
+  font-weight:    800;
+  letter-spacing: 0.06em;
+  color:          var(--accent-yellow);
+  border:         1px solid var(--tint-yellow-border);
+  border-radius:  3px;
+  padding:        1px 4px;
+}
+
+/* ── Runway rows ─────────────────────────────────────────────────────────── */
+.runways {
+  display:        flex;
+  flex-direction: column;
+  padding:        5px 8px 7px;
+  gap:            3px;
+}
+
+.rwyRow {
+  display:     flex;
+  align-items: center;
+  gap:         8px;
+}
+
+.rwyDesig {
+  font-size:   11px;
+  font-weight: 700;
+  color:       var(--text-primary);
+  min-width:   48px;
+}
+
+.rwyLen {
+  font-size:  10px;
+  color:      var(--text-secondary);
+  min-width:  44px;
+}
+
+.surf {
+  font-size:   9px;
+  font-weight: 600;
+  color:       var(--text-faint);
+  letter-spacing: 0.05em;
+}
+
+.surfGrass {
+  composes:    surf;
+  color:       var(--accent-green);
+}

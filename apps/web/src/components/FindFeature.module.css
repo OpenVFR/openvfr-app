@@ -1,0 +1,141 @@
+.wrap {
+  /* When embedded in the drawer, wrap takes full width naturally.
+     The old floating position is removed — SideDrawer owns placement. */
+  position: relative;
+  width: 100%;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  background: var(--surface-hover);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: 0 6px 0 10px;
+  gap: 4px;
+}
+
+.input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: system-ui, sans-serif;
+  padding: 8px 0;
+  caret-color: var(--accent-blue-bright);
+}
+
+.input::placeholder {
+  color: var(--text-placeholder);
+}
+
+.clear {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  line-height: 1;
+  border-radius: 3px;
+}
+
+.clear:hover { color: var(--text-primary); }
+
+.dropdown {
+  position: fixed;
+  z-index: 200;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+  max-height: 280px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  border-top: 1px solid var(--border-subtle);
+  transition: background 0.1s;
+}
+
+.item:first-child { border-top: none; }
+.item:hover, .item.active { background: rgba(125, 211, 252, 0.10); }
+
+.itemMain {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.addBtn {
+  flex-shrink: 0;
+  width: 30px;
+  align-self: stretch;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border-subtle);
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: 18px;
+  font-weight: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, color 0.1s;
+}
+.addBtn:hover {
+  background: var(--tint-blue-low);
+  color: var(--accent-blue);
+}
+
+.badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.badgeAD  { background: rgba(59,130,246,0.25);  color: var(--accent-blue); }
+.badgeVOR { background: rgba(99,102,241,0.25);  color: var(--accent-purple-dim); }
+.badgeNDB { background: rgba(234,88,12,0.25);   color: var(--accent-orange); }
+.badgeMRP { background: rgba(20,184,166,0.25);  color: var(--accent-cyan); }
+.badgeRP  { background: rgba(148,163,184,0.20); color: #94a3b8; }
+.badgeLL  { background: var(--surface-active);  color: var(--text-muted); }
+
+.name {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sub {
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.noResults {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 10px 12px;
+  text-align: center;
+}

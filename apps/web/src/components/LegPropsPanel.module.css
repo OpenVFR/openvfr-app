@@ -1,0 +1,184 @@
+.panel {
+  border-top: 1px solid var(--border-default);
+  background: var(--surface-hover);
+  border-radius: 0 0 8px 8px;
+  padding: 0;
+  font-family: system-ui, sans-serif;
+  user-select: none;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px 6px 12px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.title {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.route {
+  flex: 1;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.close {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.close:hover { color: var(--text-secondary); }
+
+/* ── Read-only info ───────────────────────────────────────────────────────── */
+.infoRow {
+  display: flex;
+  gap: 0;
+  padding: 6px 12px 5px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.infoItem {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.infoLabel {
+  color: var(--text-faint);
+  font-size: 10px;
+  margin-right: 3px;
+}
+
+/* ── Editable fields ─────────────────────────────────────────────────────── */
+.fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+  padding: 10px 12px 6px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.label {
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.input {
+  composes: formInput from '../styles/shared.module.css';
+  border-radius: 5px;
+  font-size: 12px;
+  padding: 4px 7px;
+  -moz-appearance: textfield;
+}
+.input::-webkit-inner-spin-button,
+.input::-webkit-outer-spin-button { -webkit-appearance: none; }
+.input:focus { border-color: var(--input-focus-border); }
+
+/* ── Turning-point note ─────────────────────────────────────────────────── */
+.noteSection {
+  padding: 6px 12px 8px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.noteLabel {
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.noteInput {
+  background: var(--surface-hover);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 5px 7px;
+  resize: none;
+  line-height: 1.45;
+}
+.noteInput:focus {
+  outline: none;
+  border-color: var(--accent-yellow);
+}
+.noteInput::placeholder { color: var(--text-placeholder); }
+
+/* ── Derived GS / ETE ────────────────────────────────────────────────────── */
+.derived {
+  display: flex;
+  gap: 16px;
+  padding: 4px 12px 6px;
+  font-size: 11px;
+  color: var(--accent-green);
+  font-variant-numeric: tabular-nums;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 6px 10px 8px;
+  border-top: 1px solid var(--border-default);
+}
+
+.btnClear,
+.btnSave {
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 3px 12px;
+  transition: background 0.1s, color 0.1s;
+}
+
+.btnClear {
+  background: var(--surface-hover);
+  border: 1px solid var(--border-default);
+  color: var(--text-muted);
+}
+.btnClear:hover {
+  background: var(--surface-active);
+  color: var(--text-primary);
+}
+
+.btnSave {
+  background: rgba(147, 197, 253, 0.18);
+  border: 1px solid rgba(147, 197, 253, 0.35);
+  color: var(--accent-blue);
+}
+.btnSave:hover {
+  background: rgba(147, 197, 253, 0.30);
+  color: var(--text-primary);
+}

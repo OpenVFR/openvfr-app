@@ -1,0 +1,55 @@
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow-heavy, 0 8px 32px rgba(0, 0, 0, 0.65));
+  padding: 10px 14px;
+
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.message {
+  flex: 1;
+}
+
+.updateBtn {
+  background: var(--accent-blue);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.03em;
+}
+.updateBtn:hover {
+  background: var(--accent-blue-bright);
+}
+
+.dismissBtn {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.dismissBtn:hover {
+  color: var(--text-primary);
+  background: var(--surface-active);
+}

@@ -1,0 +1,128 @@
+.panel {
+  position: relative;
+  left: 0;
+  right: 0;
+  z-index: 15;
+  background: var(--surface-elevated);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--border-default);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.55);
+  font-family: system-ui, sans-serif;
+  transition: height 0.2s ease;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.collapsed .chartWrap {
+  display: none;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px 4px;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: default;
+}
+
+.title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+}
+
+.totalDist {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-purple);
+  opacity: 0.8;
+  margin-right: auto;
+}
+
+.projToggleBtn {
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  color: var(--text-faint);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  padding: 1px 5px;
+  line-height: 1.4;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.projToggleBtn:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-default);
+}
+
+.projToggleOn {
+  color: rgba(0, 220, 255, 0.90);
+  border-color: rgba(0, 220, 255, 0.50);
+}
+
+.projToggleOn:hover {
+  color: rgba(0, 220, 255, 1);
+  border-color: rgba(0, 220, 255, 0.80);
+}
+
+.collapseBtn {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.collapseBtn:hover {
+  color: var(--text-secondary);
+}
+
+/* ── Chart area ──────────────────────────────────────────────────────── */
+.chartWrap {
+  padding: 4px 4px 0;
+  /* recharts ResponsiveContainer needs a non-zero parent height */
+  height: 180px;
+}
+
+/* ── Tooltip ─────────────────────────────────────────────────────────── */
+.tooltip {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tooltipRow {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.tooltipLabel {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  opacity: 0.85;
+  min-width: 28px;
+}
+
+.tooltipVal {
+  color: var(--text-primary);
+  font-size: 11px;
+}

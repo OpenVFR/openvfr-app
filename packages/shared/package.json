@@ -1,0 +1,48 @@
+{
+  "name": "@open-vfr/shared",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./airspaceGeometry": "./src/airspaceGeometry.ts",
+    "./airspaceGeometryCache": "./src/airspaceGeometryCache.ts",
+    "./airspaceQuery": "./src/airspaceQuery.ts",
+    "./airspaceColors":  "./src/airspaceColors.ts",
+    "./featureColors":  "./src/featureColors.ts",
+    "./fetchWx":        "./src/fetchWx.ts",
+    "./fetchNotam":     "./src/fetchNotam.ts",
+    "./types":          "./src/types.ts",
+    "./routeCalc": "./src/routeCalc.ts",
+    "./fuelCalc":  "./src/fuelCalc.ts",
+    "./units":     "./src/units.ts",
+    "./gpsTypes":  "./src/gpsTypes.ts",
+    "./sunCalc":   "./src/sunCalc.ts",
+    "./fetchWind": "./src/fetchWind.ts",
+    "./windRelative": "./src/windRelative.ts",
+    "./virtualRadarCalc": "./src/virtualRadarCalc.ts",
+    "./simFlightEngine": "./src/simFlightEngine.ts",
+    "./baroAltitude": "./src/baroAltitude.ts",
+    "./baroKalman": "./src/baroKalman.ts",
+    "./blueflyVario": "./src/blueflyVario.ts",
+    "./qnhInterpolation": "./src/qnhInterpolation.ts",
+    "./gpx": "./src/gpx.ts",
+    "./snapLabels": "./src/snapLabels.ts",
+    "./terrainColor": "./src/terrainColor.ts",
+    "./tileManifest": "./src/tileManifest.ts",
+    "./fetchWithRetry": "./src/fetchWithRetry.ts"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16"
+  },
+  "peerDependencies": {
+    "geomagnetism": "*",
+    "@turf/along": "*",
+    "@turf/boolean-intersects": "*",
+    "@turf/boolean-point-in-polygon": "*",
+    "@turf/helpers": "*",
+    "@turf/length": "*",
+    "@turf/line-intersect": "*",
+    "@turf/nearest-point-on-line": "*"
+  }
+}

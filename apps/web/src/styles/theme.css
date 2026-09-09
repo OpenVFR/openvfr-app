@@ -1,0 +1,285 @@
+/**
+ * open-vfr design tokens
+ *
+ * All UI colours live here as CSS custom properties.
+ * Add [data-theme="light"] or [data-theme="high-contrast"] blocks to
+ * introduce new themes without touching any component CSS.
+ *
+ * Token naming:
+ *   --text-*    readable text layers (contrast-safe on dark bg)
+ *   --surface-* panel/overlay backgrounds
+ *   --border-*  dividers and outlines
+ *   --accent-*  brand/data accent colours
+ *   --status-*  semantic ok/warn/danger
+ */
+
+/* ── Dark theme (default) ──────────────────────────────────────────────── */
+:root,
+:root[data-theme="dark"] {
+
+  /* Text — minimum contrast ratios against surface-base (#0a0e16):
+     --text-primary   : #e8edf5  → WCAG AA large ✓ (6.8:1)
+     --text-secondary : #b8c0cc  → ~4.9:1 ✓
+     --text-muted     : #8d98a8  → ~3.5:1 (AA large ✓)
+     --text-faint     : #6b7687  → ~2.5:1 (decorative/labels only)
+     --text-placeholder: #556070 → ~2.0:1 (placeholder only, never body copy)
+  */
+  --text-primary:      #e8edf5;
+  --text-secondary:    #b8c0cc;
+  --text-muted:        #8d98a8;
+  --text-faint:        #6b7687;
+  --text-placeholder:  #556070;
+
+  /* Surfaces */
+  --surface-base:      rgba(10, 14, 22, 0.92);
+  --surface-elevated:  rgba(12, 16, 26, 0.95);
+  --surface-overlay:   rgba(10, 14, 22, 0.85);
+  --surface-hover:     rgba(255, 255, 255, 0.05);
+  --surface-active:    rgba(255, 255, 255, 0.08);
+
+  /* Borders / dividers */
+  --border-strong:     rgba(255, 255, 255, 0.18);
+  --border-default:    rgba(255, 255, 255, 0.10);
+  --border-subtle:     rgba(255, 255, 255, 0.07);
+
+  /* Scrollbars */
+  --scrollbar-thumb:   rgba(255, 255, 255, 0.15);
+
+  /* Accent — brand */
+  --accent-purple:     #e040fb;
+  --accent-purple-dim: #c4b5fd;
+
+  /* Accent — data / navigation */
+  --accent-blue:       #93c5fd;
+  --accent-blue-bright:#7dd3fc;
+  --accent-green:      #86efac;
+  --accent-green-bright:#4ade80;
+  --accent-yellow:     #facc15;
+  --accent-orange:     #fdba74;
+  --accent-red:        #fca5a5;
+  --accent-cyan:       #22d3ee;
+
+  /* Status */
+  --status-ok:         #86efac;
+  --status-warn:       #facc15;
+  --status-danger:     #fca5a5;
+  --status-info:       #93c5fd;
+
+  /* Alert overlay cards (warning banners and toasts — shown above the map) */
+  --alert-shadow:          0 2px 10px rgba(0, 0, 0, 0.4);
+  --alert-bg-danger:       rgba(180, 30, 30, 0.88);
+  --alert-bg-warn:         rgba(160, 110, 0, 0.88);
+  --alert-bg-info:         rgba(20, 60, 140, 0.88);
+  --alert-bg-obstruct:     rgba(120, 50, 0, 0.88);
+  --alert-border-danger:   #ff4444;
+  --alert-border-warn:     #f5c518;
+  --alert-border-info:     #5a9cf5;
+  --alert-border-obstruct: #f97316;
+
+  /* Status feedback inline boxes (form errors, API status) */
+  --status-box-danger-bg:     rgba(239, 68, 68, 0.15);
+  --status-box-danger-border: rgba(239, 68, 68, 0.35);
+  --status-box-danger-text:   rgba(252, 165, 165, 0.90);
+  --status-box-warn-bg:       rgba(234, 179, 8, 0.12);
+  --status-box-warn-border:   rgba(234, 179, 8, 0.35);
+  --status-box-warn-text:     rgba(253, 224, 71, 0.90);
+  --status-box-ok-bg:         rgba(34, 197, 94, 0.14);
+  --status-box-ok-border:     rgba(34, 197, 94, 0.35);
+  --status-box-ok-text:       rgba(134, 239, 172, 0.90);
+
+  /* Form text / number inputs */
+  --input-bg:           rgba(255, 255, 255, 0.06);
+  --input-border:       rgba(255, 255, 255, 0.12);
+  --input-focus-border: rgba(147, 197, 253, 0.45);
+  --input-option-bg:    #0e1220;
+
+  /* Terrain colour-relief bands (used in SettingsPanel swatches and map legend) */
+  --terrain-safe:    rgba(74, 222, 128, 0.65);   /* > 1500 ft below ref */
+  --terrain-caution: rgba(250, 204, 21,  0.65);  /* 1000–1500 ft below  */
+  --terrain-warn:    rgba(251, 146, 60,  0.65);  /* 500–1000 ft below   */
+  --terrain-danger:  rgba(239, 68,  68,  0.65);  /* < 500 ft below ref  */
+
+  /* Elevation shadows */
+  --shadow-panel:  0 4px 16px rgba(0, 0, 0, 0.45);
+  --shadow-heavy:  0 8px 32px rgba(0, 0, 0, 0.70);
+
+  /* Modal/overlay backdrop */
+  --overlay-scrim: rgba(0, 0, 0, 0.55);
+
+  /* Accent alpha tints — interactive row states, tags, filter buttons */
+  --tint-blue-low:            rgba(147, 197, 253, 0.10);
+  --tint-blue-mid:            rgba(147, 197, 253, 0.18);
+  --tint-blue-border:         rgba(147, 197, 253, 0.22);
+  --tint-green-faint:         rgba(74,  222, 128, 0.06);
+  --tint-green-low:           rgba(74,  222, 128, 0.10);
+  --tint-green-mid:           rgba(74,  222, 128, 0.12);
+  --tint-green-border:        rgba(74,  222, 128, 0.25);
+  --tint-green-border-strong: rgba(74,  222, 128, 0.30);
+  --tint-yellow-low:          rgba(250, 204, 21,  0.15);
+  --tint-yellow-border:       rgba(250, 204, 21,  0.35);
+}
+
+/* ── High-contrast theme (future) ─────────────────────────────────────── */
+:root[data-theme="high-contrast"] {
+  --text-primary:      #ffffff;
+  --text-secondary:    #e0e8f0;
+  --text-muted:        #b8c8d8;
+  --text-faint:        #8da0b0;
+  --text-placeholder:  #708090;
+
+  --surface-base:      rgba(0, 0, 0, 0.98);
+  --surface-elevated:  rgba(8, 8, 12, 0.98);
+  --surface-overlay:   rgba(0, 0, 0, 0.95);
+  --surface-hover:     rgba(255, 255, 255, 0.08);
+  --surface-active:    rgba(255, 255, 255, 0.13);
+
+  --border-strong:     rgba(255, 255, 255, 0.40);
+  --border-default:    rgba(255, 255, 255, 0.22);
+  --border-subtle:     rgba(255, 255, 255, 0.14);
+
+  --scrollbar-thumb:   rgba(255, 255, 255, 0.25);
+
+  --accent-purple:     #f06fff;
+  --accent-purple-dim: #d8b4fe;
+  --accent-blue:       #bae0ff;
+  --accent-blue-bright:#93d4ff;
+  --accent-green:      #a7f3c0;
+  --accent-green-bright:#6ee7a0;
+  --accent-yellow:     #ffe066;
+  --accent-orange:     #ffcd80;
+  --accent-red:        #ffbbbb;
+  --accent-cyan:       #67e8f9;
+
+  --status-ok:         #a7f3c0;
+  --status-warn:       #ffe066;
+  --status-danger:     #ffbbbb;
+
+  /* Terrain colour bands (high-contrast slightly more opaque) */
+  --terrain-safe:    rgba(74, 222, 128, 0.75);
+  --terrain-caution: rgba(250, 204, 21,  0.75);
+  --terrain-warn:    rgba(251, 146, 60,  0.75);
+  --terrain-danger:  rgba(239, 68,  68,  0.75);
+  --status-info:       #bae0ff;
+
+  --alert-shadow:          0 2px 12px rgba(0, 0, 0, 0.6);
+  --alert-bg-danger:       rgba(200, 20, 20, 0.95);
+  --alert-bg-warn:         rgba(180, 120, 0, 0.95);
+  --alert-bg-info:         rgba(20, 60, 180, 0.95);
+  --alert-bg-obstruct:     rgba(140, 60, 0, 0.95);
+  --alert-border-danger:   #ff2222;
+  --alert-border-warn:     #ffdd00;
+  --alert-border-info:     #4488ff;
+  --alert-border-obstruct: #ff8800;
+
+  --status-box-danger-bg:     rgba(239, 68, 68, 0.20);
+  --status-box-danger-border: rgba(239, 68, 68, 0.55);
+  --status-box-danger-text:   #ffbbbb;
+  --status-box-warn-bg:       rgba(234, 179, 8, 0.18);
+  --status-box-warn-border:   rgba(234, 179, 8, 0.55);
+  --status-box-warn-text:     #ffe066;
+  --status-box-ok-bg:         rgba(34, 197, 94, 0.18);
+  --status-box-ok-border:     rgba(34, 197, 94, 0.55);
+  --status-box-ok-text:       #a7f3c0;
+
+  --input-bg:           rgba(255, 255, 255, 0.09);
+  --input-border:       rgba(255, 255, 255, 0.22);
+  --input-focus-border: rgba(147, 197, 253, 0.70);
+  --input-option-bg:    #060610;
+
+  /* Shadows — deeper on high-contrast */
+  --shadow-panel:  0 4px 16px rgba(0, 0, 0, 0.65);
+  --shadow-heavy:  0 8px 32px rgba(0, 0, 0, 0.85);
+  --overlay-scrim: rgba(0, 0, 0, 0.70);
+
+  /* Tints — slightly more opaque on high-contrast */
+  --tint-blue-low:            rgba(147, 197, 253, 0.15);
+  --tint-blue-mid:            rgba(147, 197, 253, 0.25);
+  --tint-blue-border:         rgba(147, 197, 253, 0.35);
+  --tint-green-faint:         rgba(74,  222, 128, 0.10);
+  --tint-green-low:           rgba(74,  222, 128, 0.15);
+  --tint-green-mid:           rgba(74,  222, 128, 0.18);
+  --tint-green-border:        rgba(74,  222, 128, 0.35);
+  --tint-green-border-strong: rgba(74,  222, 128, 0.45);
+  --tint-yellow-low:          rgba(250, 204, 21,  0.22);
+  --tint-yellow-border:       rgba(250, 204, 21,  0.50);
+}
+
+/* ── Light theme (future) ─────────────────────────────────────────────── */
+:root[data-theme="light"] {
+  --text-primary:      #0f172a;
+  --text-secondary:    #334155;
+  --text-muted:        #4e6070;  /* ~5.5:1 on white */
+  --text-faint:        #64748b;
+  --text-placeholder:  #94a3b8;
+
+  --surface-base:      rgba(241, 245, 249, 0.96);
+  --surface-elevated:  rgba(248, 250, 252, 0.98);
+  --surface-overlay:   rgba(226, 232, 240, 0.92);
+  --surface-hover:     rgba(0, 0, 0, 0.04);
+  --surface-active:    rgba(0, 0, 0, 0.07);
+
+  --border-strong:     rgba(0, 0, 0, 0.20);
+  --border-default:    rgba(0, 0, 0, 0.10);
+  --border-subtle:     rgba(0, 0, 0, 0.06);
+
+  --scrollbar-thumb:   rgba(0, 0, 0, 0.18);
+
+  --accent-purple:     #9333ea;
+  --accent-purple-dim: #7c3aed;
+  --accent-blue:       #2563eb;
+  --accent-blue-bright:#0ea5e9;
+  --accent-green:      #16a34a;
+  --accent-green-bright:#15803d;
+  --accent-yellow:     #ca8a04;
+  --accent-orange:     #c2410c;
+  --accent-red:        #dc2626;
+  --accent-cyan:       #0891b2;
+
+  --status-ok:         #16a34a;
+  --status-warn:       #ca8a04;
+  --status-danger:     #dc2626;
+  --status-info:       #2563eb;
+
+  /* Alert cards stay dark — they overlay the map regardless of UI theme */
+  --alert-shadow:          0 2px 10px rgba(0, 0, 0, 0.4);
+  --alert-bg-danger:       rgba(180, 30, 30, 0.92);
+  --alert-bg-warn:         rgba(160, 110, 0, 0.92);
+  --alert-bg-info:         rgba(20, 60, 140, 0.92);
+  --alert-bg-obstruct:     rgba(120, 50, 0, 0.92);
+  --alert-border-danger:   #ff4444;
+  --alert-border-warn:     #f5c518;
+  --alert-border-info:     #5a9cf5;
+  --alert-border-obstruct: #f97316;
+
+  --status-box-danger-bg:     rgba(220, 38, 38, 0.10);
+  --status-box-danger-border: rgba(220, 38, 38, 0.30);
+  --status-box-danger-text:   #b91c1c;
+  --status-box-warn-bg:       rgba(161, 98, 7, 0.10);
+  --status-box-warn-border:   rgba(161, 98, 7, 0.30);
+  --status-box-warn-text:     #92400e;
+  --status-box-ok-bg:         rgba(22, 163, 74, 0.10);
+  --status-box-ok-border:     rgba(22, 163, 74, 0.30);
+  --status-box-ok-text:       #166534;
+
+  --input-bg:           rgba(0, 0, 0, 0.04);
+  --input-border:       rgba(0, 0, 0, 0.15);
+  --input-focus-border: rgba(37, 99, 235, 0.50);
+  --input-option-bg:    #f8fafc;
+
+  /* Shadows — lighter on light theme */
+  --shadow-panel:  0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-heavy:  0 8px 32px rgba(0, 0, 0, 0.22);
+  --overlay-scrim: rgba(0, 0, 0, 0.40);
+
+  /* Tints use light-theme accent colours */
+  --tint-blue-low:            rgba(37,  99,  235, 0.08);
+  --tint-blue-mid:            rgba(37,  99,  235, 0.15);
+  --tint-blue-border:         rgba(37,  99,  235, 0.25);
+  --tint-green-faint:         rgba(21,  128, 61,  0.06);
+  --tint-green-low:           rgba(21,  128, 61,  0.10);
+  --tint-green-mid:           rgba(21,  128, 61,  0.12);
+  --tint-green-border:        rgba(21,  128, 61,  0.25);
+  --tint-green-border-strong: rgba(21,  128, 61,  0.35);
+  --tint-yellow-low:          rgba(202, 138, 4,   0.12);
+  --tint-yellow-border:       rgba(202, 138, 4,   0.30);
+}

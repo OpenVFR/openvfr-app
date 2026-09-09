@@ -1,0 +1,83 @@
+{
+  "expo": {
+    "platforms": [
+      "android",
+      "ios"
+    ],
+    "name": "open-vfr",
+    "slug": "open-vfr",
+    "version": "0.1.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "openvfr",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a0e16"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.openvfr.app",
+      "entitlements": {
+        "com.apple.developer.associated-domains": [
+          "webcredentials:app.your-domain.example"
+        ]
+      },
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "open-vfr needs GPS to show your position on the map and provide in-flight navigation.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "open-vfr needs background GPS access to continue tracking your flight when the screen locks.",
+        "UIBackgroundModes": [
+          "location",
+          "fetch"
+        ]
+      }
+    },
+    "android": {
+      "package": "com.openvfr.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0a0e16"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "RECEIVE_BOOT_COMPLETED",
+        "WAKE_LOCK",
+        "INTERNET",
+        "ACCESS_WIFI_STATE",
+        "CHANGE_WIFI_MULTICAST_STATE",
+        "BLUETOOTH_SCAN",
+        "BLUETOOTH_CONNECT"
+      ]
+    },
+    "plugins": [
+      "@maplibre/maplibre-react-native",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "open-vfr needs GPS for in-flight navigation.",
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": [
+            "peripheral"
+          ],
+          "bluetoothAlwaysPermission": "open-vfr uses Bluetooth to connect to a BlueFly Vario for barometric altitude and vertical speed."
+        }
+      ],
+      "expo-status-bar",
+      "expo-sharing"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "00000000-0000-0000-0000-000000000000"
+      }
+    }
+  }
+}

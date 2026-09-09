@@ -1,0 +1,212 @@
+/* LivePlogPanel — in-flight pilot log overlay */
+
+.panel {
+  position:        absolute;
+  bottom:          120px;   /* sit above the GoFlyingPanel */
+  left:            8px;
+  z-index:         320;
+  width:           min(320px, calc(100vw - 64px));
+  max-height:      50dvh;
+  display:         flex;
+  flex-direction:  column;
+  background:      var(--surface-elevated);
+  border:          1px solid var(--border-default);
+  border-radius:   8px;
+  box-shadow:      var(--shadow-heavy);
+  overflow:        hidden;
+  font-size:       11px;
+  color:           var(--text-primary);
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.header {
+  display:         flex;
+  align-items:     center;
+  justify-content: space-between;
+  padding:         6px 10px 5px;
+  border-bottom:   1px solid var(--border-default);
+  flex-shrink:     0;
+}
+
+.title {
+  font-size:       11px;
+  font-weight:     700;
+  letter-spacing:  0.08em;
+  color:           var(--accent-blue);
+}
+
+.closeBtn {
+  background:  none;
+  border:      none;
+  cursor:      pointer;
+  color:       var(--text-faint);
+  font-size:   13px;
+  padding:     0 2px;
+  line-height: 1;
+  transition:  color 0.12s;
+}
+.closeBtn:hover { color: var(--text-primary); }
+
+/* ── Route table ─────────────────────────────────────────────────────────── */
+
+.tableWrap {
+  flex:        1;
+  overflow-y:  auto;
+  min-height:  0;
+}
+
+.tableHead {
+  display:      grid;
+  grid-template-columns: 1fr 56px 56px;
+  gap:          0 4px;
+  padding:      3px 10px 3px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size:    9px;
+  font-weight:  700;
+  letter-spacing: 0.06em;
+  color:        var(--text-faint);
+  position:     sticky;
+  top:          0;
+  background:   var(--surface-elevated);
+  flex-shrink:  0;
+}
+
+.tableBody {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  position:     relative;   /* for the progress bar pseudo-layer */
+  display:      grid;
+  grid-template-columns: 1fr 56px 56px;
+  gap:          0 4px;
+  padding:      4px 10px 4px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  align-items:  center;
+  overflow:     hidden;
+}
+.row:last-child { border-bottom: none; }
+
+.rowPast { opacity: 0.5; }
+
+.rowCurrent {
+  background: var(--tint-blue-low);
+  border-color: var(--tint-blue-border);
+}
+
+.rowDep { color: var(--text-secondary); }
+
+/* Note flag shown next to waypoints that have a reminder */
+.noteFlag {
+  font-size: 10px;
+  margin-left: 4px;
+  opacity: 0.7;
+  cursor: default;
+}
+
+/* ── Progress bar (behind current row content) ───────────────────────────── */
+
+.progressBar {
+  position:   absolute;
+  inset-block: 0;
+  left:       0;
+  width:      var(--plog-progress, 0%);
+  background: var(--tint-green-mid);
+  pointer-events: none;
+  transition: width 0.5s ease;
+}
+
+/* ── Table columns ───────────────────────────────────────────────────────── */
+
+.colWp {
+  font-size:   11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow:    hidden;
+  text-overflow: ellipsis;
+  position:    relative; /* sit above ::before progress layer */
+  z-index:     1;
+}
+
+.colAta,
+.colEta {
+  font-size:   10px;
+  font-variant-numeric: tabular-nums;
+  color:       var(--text-muted);
+  white-space: nowrap;
+  text-align:  right;
+  position:    relative;
+  z-index:     1;
+}
+
+.ataActual {
+  color:       var(--accent-green-bright);
+  font-weight: 600;
+}
+
+.etaCurrent {
+  color:       var(--text-primary);
+  font-weight: 600;
+}
+
+/* ── Frequency sections ──────────────────────────────────────────────────── */
+
+.freqSection {
+  flex-shrink:   0;
+  border-top:    1px solid var(--border-default);
+  padding:       4px 10px 6px 12px;
+}
+
+.freqHeader {
+  font-size:      8px;
+  font-weight:    700;
+  letter-spacing: 0.08em;
+  color:          var(--text-faint);
+  padding-bottom: 3px;
+}
+
+.freqRow {
+  display:      grid;
+  grid-template-columns: 46px 42px 1fr 42px;
+  gap:          0 6px;
+  padding:      2px 0;
+  align-items:  center;
+}
+
+.freqIcao {
+  font-size:   10px;
+  font-weight: 700;
+  color:       var(--accent-blue);
+  white-space: nowrap;
+}
+
+.freqService {
+  font-size:   9px;
+  color:       var(--text-faint);
+  white-space: nowrap;
+}
+
+.freqValue {
+  font-size:   11px;
+  font-weight: 700;
+  color:       var(--accent-green);
+  font-variant-numeric: tabular-nums;
+}
+
+.freqDist {
+  font-size:   9px;
+  color:       var(--text-muted);
+  text-align:  right;
+  white-space: nowrap;
+}
+
+/* ── Touch: larger close button ─────────────────────────────────────────── */
+@media (pointer: coarse) {
+  .closeBtn {
+    min-width:  40px;
+    min-height: 40px;
+    font-size:  16px;
+  }
+}

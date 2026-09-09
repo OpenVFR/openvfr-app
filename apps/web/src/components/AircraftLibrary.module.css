@@ -1,0 +1,330 @@
+.panel {
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── List view ───────────────────────────────────────────────────────────── */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 7px;
+  border-radius: 4px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border-subtle);
+  transition: background 0.1s;
+}
+.item:hover { background: var(--surface-active); }
+
+.itemInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.itemName {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.categoryBadge {
+  flex-shrink: 0;
+  background: var(--surface-active);
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  color: var(--text-faint);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 0 4px;
+  line-height: 16px;
+}
+
+.itemMeta {
+  display: block;
+  color: var(--text-faint);
+  font-size: 10px;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.itemActions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.iconBtn {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  line-height: 1;
+  transition: color 0.1s, background 0.1s;
+}
+.iconBtn:hover { color: var(--text-primary); background: var(--surface-hover); }
+.iconBtnDanger:hover { color: var(--accent-red); background: rgba(252, 165, 165, 0.10); }
+.iconBtnActive { color: var(--accent-cyan); }
+
+.empty {
+  color: var(--text-faint);
+  font-size: 11px;
+  margin: 2px 0;
+}
+
+.newBtn {
+  background: none;
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 5px 10px;
+  width: 100%;
+  text-align: center;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.newBtn:hover {
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+}
+
+/* ── Form header ─────────────────────────────────────────────────────────── */
+.formHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-default);
+  margin-bottom: 2px;
+}
+
+.formHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pohBtn {
+  font-size: 13px;
+  opacity: 0.75;
+}
+.pohBtn:hover { opacity: 1; }
+.pohBtnBusy {
+  opacity: 1;
+}
+
+.pohSpinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: pohSpin 0.7s linear infinite;
+}
+
+@keyframes pohSpin {
+  to { transform: rotate(360deg); }
+}
+
+.pohError {
+  composes: statusBoxDanger from '../styles/shared.module.css';
+}
+
+.pohRetrying {
+  composes: statusBoxWarn from '../styles/shared.module.css';
+}
+
+.pohSuccess {
+  composes: statusBoxOk from '../styles/shared.module.css';
+}
+
+.pohProgress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-style: italic;
+}
+
+.pohProgressSpinner {
+  flex-shrink: 0;
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--status-info);
+  border-radius: 50%;
+  animation: pohSpin 0.7s linear infinite;
+}
+
+.hiddenInput {
+  display: none;
+}
+
+.formTitle {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+}
+
+/* ── Form fields ─────────────────────────────────────────────────────────── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sectionLabel {
+  color: var(--text-faint);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  margin-top: 6px;
+  margin-bottom: 1px;
+}
+
+.field {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  align-items: center;
+  gap: 4px 6px;
+  min-height: 24px;
+}
+
+.fieldError {
+  /* extra row for error message */
+  grid-template-rows: auto auto;
+}
+
+.fieldPohMissing .fieldLabel {
+  color: var(--status-warn);
+}
+
+.pohMissingBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--status-warn);
+  color: var(--surface-base);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+}
+
+.fieldLabel {
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.fieldUnit {
+  color: var(--text-faint);
+  font-size: 10px;
+  margin-left: 3px;
+}
+
+.fieldInput {
+  composes: formInput from '../styles/shared.module.css';
+  font-size: 11px;
+  padding: 3px 7px;
+}
+
+/* Remove number input arrows for a cleaner look */
+.fieldInput[type='number'] {
+  -moz-appearance: textfield;
+}
+.fieldInput[type='number']::-webkit-inner-spin-button,
+.fieldInput[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.fieldSelect {
+  composes: formSelect from '../styles/shared.module.css';
+  font-size: 11px;
+  padding: 3px 7px;
+}
+.fieldSelect option {
+  background: var(--input-option-bg);
+  color: var(--text-primary);
+}
+
+.fieldErrorMsg {
+  grid-column: 2;
+  color: var(--accent-red);
+  font-size: 10px;
+  margin-top: -2px;
+}
+
+/* ── Form actions ────────────────────────────────────────────────────────── */
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-default);
+}
+
+.btn {
+  background: var(--surface-hover);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 3px 11px;
+  transition: background 0.1s, color 0.1s;
+}
+.btn:hover:not(:disabled) { background: var(--surface-active); color: var(--text-primary); }
+.btn:disabled { opacity: 0.30; cursor: not-allowed; }
+
+.btnPrimary {
+  background: rgba(147, 197, 253, 0.18);
+  border-color: rgba(147, 197, 253, 0.35);
+  color: var(--accent-blue);
+}
+.btnPrimary:hover:not(:disabled) {
+  background: rgba(147, 197, 253, 0.28);
+  color: var(--accent-blue-bright);
+}

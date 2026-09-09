@@ -1,0 +1,127 @@
+.panel {
+  background: transparent;
+  padding: 10px 12px 8px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.title {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: system-ui, sans-serif;
+}
+
+.value {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: system-ui, sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.value[data-unlimited='true'] {
+  color: var(--text-muted);
+}
+
+.trackWrap {
+  position: relative;
+  padding-bottom: 6px; /* space for the default mark */
+}
+
+/* ── Range input reset ────────────────────────────────────────────── */
+.track {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--accent-blue) 0%,
+    var(--accent-blue) var(--progress, 50%),
+    var(--border-strong) var(--progress, 50%),
+    var(--border-strong) 100%
+  );
+  outline: none;
+  cursor: pointer;
+}
+
+.track::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  border: 2px solid var(--accent-blue);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.track::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  border: 2px solid var(--accent-blue);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  cursor: pointer;
+}
+
+.track:focus-visible::-webkit-slider-thumb {
+  border-color: var(--accent-blue-bright);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.35);
+}
+
+/* Default (FL095) tick mark — FL095 is the 11th of 14 snap points → ~76.9% */
+.defaultMark {
+  position: absolute;
+  bottom: 0;
+  left: 76.9%;
+  width: 2px;
+  height: 6px;
+  background: var(--scrollbar-thumb);
+  border-radius: 1px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.legend {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.30);
+  font-size: 9px;
+  font-family: system-ui, sans-serif;
+  letter-spacing: 0.04em;
+}
+
+/* ── Touch: larger thumb, thicker track ─────────────────────────────────── */
+@media (pointer: coarse) {
+  .track {
+    height: 6px;
+  }
+  .track::-webkit-slider-thumb {
+    width:  28px;
+    height: 28px;
+  }
+  .track::-moz-range-thumb {
+    width:  28px;
+    height: 28px;
+  }
+  .panel {
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+}

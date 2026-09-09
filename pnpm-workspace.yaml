@@ -1,0 +1,11 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+peerDependencyRules:
+  allowedVersions:
+    vite-plugin-pwa>vite: "8"
+
+allowBuilds:
+  esbuild: true
+  workerd: true

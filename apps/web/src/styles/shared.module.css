@@ -1,0 +1,110 @@
+/**
+ * Shared visual patterns — compose from component CSS Modules.
+ *
+ * Usage:
+ *   .myCard    { composes: alertCard    from './shared.module.css'; }
+ *   .myDismiss { composes: alertDismiss from './shared.module.css'; }
+ *   .myInput   { composes: formInput   from './shared.module.css'; }
+ */
+
+/* ── Alert overlay cards ───────────────────────────────────────────────────
+   Base structure for warning banner / toast cards shown above the map.
+   Severity colour must be applied by the composing rule:
+     background:       var(--alert-bg-danger / -warn / -info / -obstruct)
+     border-left-color: var(--alert-border-danger / -warn / -info / -obstruct)
+   ───────────────────────────────────────────────────────────────────────── */
+.alertCard {
+  border-left: 4px solid transparent;
+  border-radius: 8px;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--alert-shadow);
+  pointer-events: all;
+  color: #fff;
+}
+
+/* Dismiss / close button used inside alert cards */
+.alertDismiss {
+  background: transparent;
+  border: none;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 2px;
+  transition: opacity 0.15s;
+}
+.alertDismiss:hover { opacity: 1; }
+
+/* Touch: larger dismiss target */
+@media (pointer: coarse) {
+  .alertDismiss {
+    min-width:  36px;
+    min-height: 36px;
+    padding:    0 8px;
+    font-size:  14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* ── Status feedback boxes ─────────────────────────────────────────────────
+   Inline feedback messages (form validation errors, API status, etc.)
+   ───────────────────────────────────────────────────────────────────────── */
+.statusBox {
+  margin-bottom: 6px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1.4;
+  border: 1px solid transparent;
+}
+
+.statusBoxDanger {
+  composes: statusBox;
+  background: var(--status-box-danger-bg);
+  border-color: var(--status-box-danger-border);
+  color: var(--status-box-danger-text);
+}
+
+.statusBoxWarn {
+  composes: statusBox;
+  background: var(--status-box-warn-bg);
+  border-color: var(--status-box-warn-border);
+  color: var(--status-box-warn-text);
+}
+
+.statusBoxOk {
+  composes: statusBox;
+  background: var(--status-box-ok-bg);
+  border-color: var(--status-box-ok-border);
+  color: var(--status-box-ok-text);
+}
+
+/* ── Form text / number inputs ─────────────────────────────────────────────
+   Base styles for all <input> and <select> form controls.
+   Override padding / font-size in the composing rule as needed.
+   ───────────────────────────────────────────────────────────────────────── */
+.formInput {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 4px 8px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.1s;
+}
+.formInput:focus       { border-color: var(--input-focus-border); }
+.formInput::placeholder { color: var(--text-placeholder); }
+
+.formSelect {
+  composes: formInput;
+  cursor: pointer;
+}

@@ -1,0 +1,107 @@
+/* NotificationCenter — single consolidated alert/toast stack, top-centre.
+   Replaces 5 scattered corner-positioned components with one severity-
+   ordered column so the pilot has one glance target. */
+
+.container {
+  position:       absolute;
+  top:            56px;
+  left:           50%;
+  transform:      translateX(-50%);
+  z-index:        430;
+  display:        flex;
+  flex-direction: column;
+  align-items:    center;
+  gap:            6px;
+  width:          min(360px, calc(100vw - 24px));
+  pointer-events: none;
+}
+
+.card {
+  composes: alertCard from '../styles/shared.module.css';
+  width:            100%;
+  box-sizing:       border-box;
+  display:          grid;
+  grid-template-rows: auto auto auto;
+  gap:              2px;
+  padding:          7px 10px;
+  /* Near-opaque background — legibility over busy map, blur is secondary. */
+  animation:        slideDown 0.18s ease;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Transient items (entry/exit toasts, ceiling escalation) auto-fade. */
+.transientCard {
+  animation: slideDown 0.18s ease, fadeOut 0.4s ease 8.6s forwards;
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; transform: translateY(-10px); }
+}
+
+/* Severity colour variants */
+.red    { background: var(--alert-bg-danger); border-left-color: var(--alert-border-danger); }
+.yellow { background: var(--alert-bg-warn);   border-left-color: var(--alert-border-warn); }
+.blue   { background: var(--alert-bg-info);   border-left-color: var(--alert-border-info); }
+
+.header {
+  display:     flex;
+  align-items: center;
+  gap:         6px;
+  font-size:   10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity:     0.9;
+}
+
+.badge  { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.status {
+  font-size:   9px;
+  opacity:     0.95;
+  white-space: nowrap;
+}
+
+.dismiss {
+  composes: alertDismiss from '../styles/shared.module.css';
+}
+
+.title {
+  font-size:   13px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow:    hidden;
+  text-overflow: ellipsis;
+}
+
+.meta {
+  font-size:  11px;
+  opacity:    0.9;
+  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+.text {
+  font-size:   12px;
+  opacity:     0.95;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break:  break-word;
+  margin-top:  2px;
+}
+
+.overflow {
+  text-align:     center;
+  font-size:      11px;
+  color:          var(--text-muted);
+  background:     var(--surface-overlay, rgba(0, 0, 0, 0.6));
+  border-radius:  8px;
+  padding:        3px 10px;
+  pointer-events: none;
+}

@@ -1,0 +1,109 @@
+.panel {
+  background: transparent;
+  padding: 4px 0 8px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.section {
+  color: var(--text-faint);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  padding: 8px 12px 3px;
+  font-family: system-ui, sans-serif;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 2px;
+}
+
+.sectionFirst {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 2px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 5px 12px;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.row:hover {
+  background: var(--surface-hover);
+}
+
+/* Dim rows when toggled off */
+.row[data-active='false'] {
+  opacity: 0.42;
+}
+
+.swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  background: var(--group-color);
+  border: 2px solid var(--group-color);
+}
+
+.label {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: system-ui, sans-serif;
+  flex: 1;
+}
+
+.badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-primary);
+  border-radius: 3px;
+  padding: 1px 4px;
+  flex-shrink: 0;
+  font-family: system-ui, sans-serif;
+  background: var(--surface-active);
+}
+
+/* Badge gets group color when active */
+.row[data-active='true'] .badge {
+  background: var(--group-color);
+}
+
+/* ── Touch: larger tap targets ──────────────────────────────────────────── */
+@media (pointer: coarse) {
+  .row {
+    min-height: 44px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+}
+
+/* Per-group color tokens — match aeronautical chart conventions */
+.groupClassC    { --group-color: #8b2fc9; }  /* purple  — CTR/TMA (Class C) */
+.groupClassD    { --group-color: #1a6db5; }  /* blue    — Class D / Danger areas */
+.groupClassE    { --group-color: #16a34a; }  /* green   — Class E (ROENNE) */
+.groupClassG    { --group-color: #6b7280; }  /* grey    — Class G (RMZ/ATZ) */
+.groupRestricted { --group-color: #e67e22; } /* orange  — R / TRA */
+.groupActivity  { --group-color: #ca8a04; }  /* yellow  — Glider / Model */
+.groupNavaidsVOR { --group-color: #5c4ae4; } /* indigo  — VOR navaids */
+.groupNavaidsNDB { --group-color: #c05200; } /* brown   — NDB navaids */
+.groupWaypointsMRP { --group-color: #0ca678; } /* teal  — MRP reporting points */
+.groupWaypointsRP  { --group-color: #38d9a9; } /* light teal — RP / VFR waypoints */
+.groupAerodromes { --group-color: #1a56db; } /* blue    — airports */
+.groupRunways    { --group-color: #64748b; } /* slate   — runways / taxiways */
+.groupObstacles  { --group-color: #f59f00; } /* amber   — wind turbines / towers */
+.groupLandmarks  { --group-color: #8b5e3c; } /* brown   — OSM ground landmarks */
+.groupTerrain      { --group-color: #5a9e6f; } /* muted green — farmland/wetland fills */
+.groupHillshade    { --group-color: #8d7b5e; } /* warm taupe — relief shading (missing class caused this row to render with no swatch color, looking disabled) */
+.groupContours     { --group-color: #78502e; } /* brown — elevation isolines (same missing-class bug as groupHillshade) */
+.groupUserWaypoints { --group-color: #facc15; } /* yellow — user-defined custom waypoints */
+.groupTraffic      { --group-color: #e2e8f0; } /* white/light — ADS-B traffic symbols */
