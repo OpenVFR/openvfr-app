@@ -1149,8 +1149,13 @@ export function AviationMap({
               // engine difference, not a data or maxzoom bug (that fix
               // above was real and necessary, but didn't address this).
               // Revisit if a maplibre-react-native/MapLibre Native update
-              // changes this sensitivity.
-              'hillshade-exaggeration': 0.15,
+              // changes this sensitivity. Goal is visual parity with web's
+              // actual rendered look (near-invisible over flat terrain,
+              // subtle even over real mountains at 0.5), not just "less bad"
+              // -- 0.15 was still visibly too strong per live device testing
+              // over southern Sweden (Skåne, genuinely flat). Dropped much
+              // further to 0.02.
+              'hillshade-exaggeration': 0.02,
               // hillshade-shadow-color/highlight-color intentionally NOT
               // set (library default used instead) -- confirmed against
               // the installed @maplibre/maplibre-react-native 11.3.10

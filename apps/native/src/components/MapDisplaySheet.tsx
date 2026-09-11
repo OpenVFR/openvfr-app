@@ -92,12 +92,16 @@ const AIRSPACE_GROUPS: Group[] = [
   { key: 'activity',   label: 'Glider / Model',    color: AC.gldrBorder  },
 ]
 
+// Order matches web's map-style.ts LAYER_GROUPS 'Navigation' section
+// (navaids, waypoints, aerodromes, runways, obstacles, landmarks) --
+// native collapses VOR/NDB and MRP/RP into single combined toggles, but
+// keeps the same relative order as the two platforms' respective lists.
 const POINTS_GROUPS: Group[] = [
-  { key: 'aerodromes', label: 'Aerodromes', color: AERODROME_COLORS.default },
   { key: 'navaids',    label: 'Navaids',    color: NAVAID_COLORS.vor        },
   { key: 'waypoints',  label: 'Waypoints',  color: WAYPOINT_COLORS.mrp      },
-  { key: 'obstacles',  label: 'Obstacles',  color: OBSTACLE_COLORS.tower    },
+  { key: 'aerodromes', label: 'Aerodromes', color: AERODROME_COLORS.default },
   { key: 'runways',    label: 'Runways',    color: '#c0d0b8'                },
+  { key: 'obstacles',  label: 'Obstacles',  color: OBSTACLE_COLORS.tower    },
   { key: 'landmarks',  label: 'Landmarks',  color: '#455a64'                },
 ]
 
@@ -106,10 +110,15 @@ const TRAFFIC_GROUPS: Group[] = [
   { key: 'notamCircles', label: 'Regional NOTAMs', color: '#e64980' },
 ]
 
+// Order matches web's Terrain section (map-style.ts LAYER_GROUPS): hillshade,
+// then contours -- native has no separate 'Terrain (landuse)' toggle (its
+// landuse-fill layer is always rendered, unconditional), so hillshade is
+// first here same as web's second Terrain entry. terrainColor is native-only
+// (no web equivalent) and kept last so it doesn't interrupt the shared order.
 const TERRAIN_GROUPS: Group[] = [
   { key: 'hillshade',    label: 'Hillshade (relief)',              color: '#8d6e63' },
-  { key: 'terrainColor', label: 'Terrain Color (EXPERIMENTAL)',    color: '#ef4444' },
   { key: 'contours',     label: 'Contour Lines',                   color: '#785023' },
+  { key: 'terrainColor', label: 'Terrain Color (EXPERIMENTAL)',    color: '#ef4444' },
 ]
 
 // ---------------------------------------------------------------------------
