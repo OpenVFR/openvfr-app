@@ -231,8 +231,9 @@ let _lastPollAt: string | null = null // ISO timestamp of last successful poll s
 const PRUNE_GRACE_MS = 24 * 60 * 60 * 1000
 
 interface PersistedCache {
-  apiHost:    string // NMS_API_HOST this cache was populated from -- see loadCacheFromDisk()
-  lastPollAt: string | null
+  apiHost:      string // NMS_API_HOST this cache was populated from -- see loadCacheFromDisk()
+  trackedKeys:  string[] // _icaoAllowlist contents this cache was populated from -- see loadCacheFromDisk()
+  lastPollAt:   string | null
   entries: Array<[string, Array<[string, NmsNotam]>]> // [icaoLocation, [id, NmsNotam][]][]
 }
 
@@ -264,6 +265,29 @@ function loadCacheFromDisk(): void {
       return
     }
 
+    // Second safety check, same failure mode as the host check above but a
+    // different trigger: lastUpdatedDate is a wall-clock cursor, not tied to
+    // WHICH keys were being tracked when it was set. If the allow-list grew
+    // since this cache was written (e.g. a new FIR added to FIR_CODES, or a
+    // new aerodrome added to aerodrome-coords.json), reusing the old cursor
+    // means delta polls only return records CHANGED since then -- a
+    // long-standing NOTAM for the newly-added key that hasn't been reissued/
+    // updated recently would never appear, only a full bootstrap (no
+    // cursor) would catch it. Confirmed this actually happened in
+    // production: adding 'ESAA' to the allow-list did NOT get backfilled by
+    // subsequent delta polls, because the persisted cursor predated it --
+    // the ESAA key never appeared in the cache at all despite ~30+ real
+    // active NOTAMs existing for it. Force a fresh bootstrap whenever
+    // trackedKeys is missing any key the current allow-list has (a superset
+    // relationship is fine -- keys can be removed without needing a
+    // rebootstrap, only additions matter here).
+    const previousKeys = new Set(parsed.trackedKeys ?? [])
+    const newKeys = [..._icaoAllowlist].filter((k) => !previousKeys.has(k))
+    if (newKeys.length > 0) {
+      console.log(`[notam] Allow-list grew since this cache was written (new: ${newKeys.join(', ')}) -- discarding cursor, will bootstrap fresh`)
+      return
+    }
+
     for (const [icao, idEntries] of parsed.entries) _cache.set(icao, new Map(idEntries))
     _lastPollAt = parsed.lastPollAt
     const total = parsed.entries.reduce((n, [, idEntries]) => n + idEntries.length, 0)
@@ -277,8 +301,9 @@ function saveCacheToDisk(): void {
   try {
     mkdirSync(dirname(NMS_CACHE_FILE), { recursive: true })
     const payload: PersistedCache = {
-      apiHost:    NMS_API_HOST,
-      lastPollAt: _lastPollAt,
+      apiHost:     NMS_API_HOST,
+      trackedKeys: [..._icaoAllowlist],
+      lastPollAt:  _lastPollAt,
       entries: [..._cache.entries()].map(([icao, byId]) => [icao, [...byId.entries()]]),
     }
     writeFileSync(NMS_CACHE_FILE, JSON.stringify(payload))
