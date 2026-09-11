@@ -20,6 +20,7 @@ import { AppState } from 'react-native'
 import { routes as routeDb } from '../db'
 import type { RouteDocType } from '../types/db'
 import { API_BASE } from '../config'
+import { authHeaders } from '../utils/authClient'
 import { useAuthContext } from '../context/AuthContext'
 import { getLastSyncAt, setLastSyncAt } from './syncMeta'
 
@@ -43,8 +44,13 @@ let _jwtExpiry: number        = 0
 async function getJwt(): Promise<string | null> {
   if (_jwt && Date.now() < _jwtExpiry) return _jwt
   try {
+    // Authorization header required: this endpoint requires an existing
+    // session (auth.api.getSession() server-side), and React Native's fetch
+    // has no browser-style cookie jar to carry one implicitly -- without
+    // this, the call always 401s (silently treated as "offline" by every
+    // caller of getJwt(), indistinguishable from a real connectivity issue).
     const res = await fetch(`${API_BASE}/api/auth/token`, {
-      headers: { Origin: API_BASE },
+      headers: { Origin: API_BASE, ...(await authHeaders()) },
     })
     if (!res.ok) return null
     const body = await res.json() as { jwt: string; expiresAt: number }

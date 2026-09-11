@@ -13,6 +13,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { waypoints as waypointsDb } from '../db'
 import type { UserWaypointDocType } from '../types/db'
 import { API_BASE } from '../config'
+import { authHeaders } from '../utils/authClient'
 import { useAuthContext } from '../context/AuthContext'
 import { getLastSyncAt, setLastSyncAt } from './syncMeta'
 
@@ -33,8 +34,11 @@ let _jwtExpiry: number        = 0
 async function getJwt(): Promise<string | null> {
   if (_jwt && Date.now() < _jwtExpiry) return _jwt
   try {
+    // Authorization header required -- see useRouteSync.ts's getJwt() for
+    // the full explanation (this endpoint 401s without it, always, since RN
+    // has no cookie jar to carry a session implicitly).
     const res = await fetch(`${API_BASE}/api/auth/token`, {
-      headers: { Origin: API_BASE },
+      headers: { Origin: API_BASE, ...(await authHeaders()) },
     })
     if (!res.ok) return null
     const body = await res.json() as { jwt: string; expiresAt: number }
