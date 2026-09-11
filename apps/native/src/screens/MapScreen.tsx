@@ -18,6 +18,8 @@ import type { Feature, FeatureCollection, Point } from 'geojson'
 import { AviationMap }       from '../components/AviationMap'
 import { MapDisplaySheet, LAYER_DEFAULTS } from '../components/MapDisplaySheet'
 import { RegionalNotamsSheet } from '../components/RegionalNotamsSheet'
+import { WeatherAlongRouteSheet } from '../components/WeatherAlongRouteSheet'
+import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
 import type { LayerState }   from '../components/MapDisplaySheet'
 import { FrequencyPanel }    from '../components/FrequencyPanel'
 import { AerodromePopup }    from '../components/AerodromePopup'
@@ -333,6 +335,7 @@ export function MapScreen() {
   // military notices not tied to any single airport. Mirrors web's
   // MapView.tsx useRegionalNotams()/notam-circles source.
   const regionalNotams = useRegionalNotams(layers.notamCircles && authenticated)
+  const routeWeatherStations = useWeatherAlongRoute(waypoints)
   const notamCirclesFC = useMemo(() => ({
     type: 'FeatureCollection' as const,
     features: regionalNotams
@@ -893,6 +896,7 @@ export function MapScreen() {
           onAutoZoomChange={(on) => update({ autoZoom: on })}
         />
         <RegionalNotamsSheet notams={regionalNotams} waypoints={waypoints} />
+        <WeatherAlongRouteSheet stations={routeWeatherStations} />
       </View>
 
       {/* Re-center / orientation — also outside GL surface. Offset above the

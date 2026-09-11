@@ -1,6 +1,8 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import LayerPanel from './LayerPanel'
 import RegionalNotamsPanel from './RegionalNotamsPanel'
+import WeatherAlongRoutePanel from './WeatherAlongRoutePanel'
+import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { filterNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM } from '@open-vfr/shared/notamRouteFilter'
 import AltitudeSlider from './AltitudeSlider'
@@ -126,6 +128,7 @@ const SECTION_LABELS = {
   aircraft:      'Aircraft',
   userWaypoints: 'User Waypoints',
   notams:        'Regional NOTAMs',
+  routeWx:       'Weather Along Route',
   layers:        'Layers',
   altitude:      'Altitude Filter',
   settings:      'Settings',
@@ -188,7 +191,7 @@ export default function SideDrawer({
   const [open, setOpen]         = useState(() => lsGet(LS_OPEN, false))
   const [width, setWidth]       = useState(() => lsGet(LS_WIDTH, DEFAULT_WIDTH))
   const [expanded, setExpanded] = useState<Record<Section, boolean>>(() =>
-    lsGet(LS_EXPANDED, { info: true, route: true, preflight: true, fuel: true, ruler: true, routes: true, flightLogs: true, aircraft: false, userWaypoints: true, notams: false, layers: true, altitude: true, settings: false })
+    lsGet(LS_EXPANDED, { info: true, route: true, preflight: true, fuel: true, ruler: true, routes: true, flightLogs: true, aircraft: false, userWaypoints: true, notams: false, routeWx: false, layers: true, altitude: true, settings: false })
   )
 
   // Drag-resize handle
@@ -270,6 +273,7 @@ export default function SideDrawer({
   // list, not the badge showing the unfiltered total while the body below
   // shows a route-filtered subset.
   const displayedRegionalNotams = hasRoute ? filterNotamsNearRoute(regionalNotams, waypoints) : regionalNotams
+  const routeWeatherStations = useWeatherAlongRoute(waypoints)
 
   return (
     <div ref={wrapperRef} className={css.wrapper}>
@@ -524,6 +528,25 @@ export default function SideDrawer({
               </div>
             )}
           </div>
+
+          {hasRoute && (
+            <div className={css.section}>
+              <button className={css.sectionHeader} onClick={() => toggle('routeWx')}>
+                <span>{SECTION_LABELS.routeWx}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {routeWeatherStations.length > 0 && (
+                    <span className={css.planPill}>{routeWeatherStations.length}</span>
+                  )}
+                  <span className={css.chevron}>{expanded.routeWx ? '▾' : '▸'}</span>
+                </span>
+              </button>
+              {expanded.routeWx && (
+                <div className={css.sectionBody}>
+                  <WeatherAlongRoutePanel stations={routeWeatherStations} />
+                </div>
+              )}
+            </div>
+          )}
 
           <div className={css.section}>
             <button className={css.sectionHeader} onClick={() => toggle('layers')}>
