@@ -17,9 +17,15 @@ import css from './RegionalNotamsPanel.module.css'
 
 interface Props {
   notams: NotamItem[]
+  /** True when `notams` has already been filtered to proximity of the
+   *  planned route (see SideDrawer.tsx) -- shown as a small note so it's
+   *  clear the list isn't "everything active", mirroring SkyDemon's
+   *  "narrow route brief" transparency about scope. */
+  routeFiltered?: boolean
+  bufferNm?: number
 }
 
-export default function RegionalNotamsPanel({ notams }: Props) {
+export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
   const toggle = (id: string) => {
@@ -31,11 +37,18 @@ export default function RegionalNotamsPanel({ notams }: Props) {
   }
 
   if (notams.length === 0) {
-    return <div className={css.empty}>No active regional NOTAMs</div>
+    return (
+      <div className={css.empty}>
+        No active regional NOTAMs{routeFiltered ? ` within ${bufferNm}nm of route` : ''}
+      </div>
+    )
   }
 
   return (
     <div>
+      {routeFiltered && (
+        <div className={css.filterNote}>Filtered to within {bufferNm}nm of planned route</div>
+      )}
       {notams.map((n) => {
         const expanded = expandedIds.has(n.id)
         const eff = fmtNotamDate(n.effective)

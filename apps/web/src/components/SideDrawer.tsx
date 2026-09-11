@@ -2,6 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react
 import LayerPanel from './LayerPanel'
 import RegionalNotamsPanel from './RegionalNotamsPanel'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
+import { filterNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM } from '@open-vfr/shared/notamRouteFilter'
 import AltitudeSlider from './AltitudeSlider'
 import SettingsPanel from './SettingsPanel'
 import RoutePlan from './RoutePlan'
@@ -264,6 +265,11 @@ export default function SideDrawer({
   const toggle = (s: Section) => setExpanded(p => ({ ...p, [s]: !p[s] }))
 
   const hasRoute = waypoints.length > 0
+  // Computed once here (not inline in JSX) so the section header's count
+  // badge and the panel body agree -- both must reflect the SAME filtered
+  // list, not the badge showing the unfiltered total while the body below
+  // shows a route-filtered subset.
+  const displayedRegionalNotams = hasRoute ? filterNotamsNearRoute(regionalNotams, waypoints) : regionalNotams
 
   return (
     <div ref={wrapperRef} className={css.wrapper}>
@@ -502,15 +508,19 @@ export default function SideDrawer({
             <button className={css.sectionHeader} onClick={() => toggle('notams')}>
               <span>{SECTION_LABELS.notams}</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {regionalNotams.length > 0 && (
-                  <span className={css.planPill}>{regionalNotams.length}</span>
+                {displayedRegionalNotams.length > 0 && (
+                  <span className={css.planPill}>{displayedRegionalNotams.length}</span>
                 )}
                 <span className={css.chevron}>{expanded.notams ? '▾' : '▸'}</span>
               </span>
             </button>
             {expanded.notams && (
               <div className={css.sectionBody}>
-                <RegionalNotamsPanel notams={regionalNotams} />
+                <RegionalNotamsPanel
+                  notams={displayedRegionalNotams}
+                  routeFiltered={hasRoute}
+                  bufferNm={DEFAULT_ROUTE_NOTAM_BUFFER_NM}
+                />
               </div>
             )}
           </div>
