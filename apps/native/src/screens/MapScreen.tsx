@@ -709,6 +709,7 @@ export function MapScreen() {
           showLandmarks={layers.landmarks}
           showHillshade={layers.hillshade}
           showTerrainColor={layers.terrainColor}
+          showContours={layers.contours}
           trafficFC={trafficFC}
           notamCirclesFC={notamCirclesFC}
           notamPointsFC={notamPointsFC}

@@ -35,6 +35,7 @@ import {
   createProtomapsStyle,
   LANDUSE_PMTILES_URL,
   HILLSHADE_PMTILES_URL,
+  CONTOURS_PMTILES_URL,
   TILE_URLS,
   DEFAULT_CENTER,
   DEFAULT_ZOOM,
@@ -81,6 +82,7 @@ export type AviationMapProps = {
   showRunways?:    boolean
   showLandmarks?:  boolean
   showHillshade?:  boolean
+  showContours?:   boolean
   /** EXPERIMENTAL — color-relief has a known GPU/Adreno rendering bug on
    *  some Android devices (RGBA32F texture format not mandatory in the
    *  Vulkan spec). Off by default; exists so this can be verified on real
@@ -542,6 +544,7 @@ export function AviationMap({
   showLandmarks  = false,
   showHillshade  = false,
   showTerrainColor     = false,
+  showContours   = false,
   terrainColorRefAltFt = 2000,
   followGps = false,
   mapOrientation = 'north',
@@ -1107,7 +1110,24 @@ export function AviationMap({
           id="osm-hillshade"
           url={HILLSHADE_PMTILES_URL}
           encoding="terrarium"
-          maxzoom={12}
+          // Must match the archive's REAL base zoom (10), not a desired
+          // one -- mirrors getHillshadeSource()'s maxzoom in web's
+          // map-style.ts (see its detailed comment). dem_mosaic.sh's
+          // ~90m/px downsampled input raster's base (finest) zoom lands
+          // at z10; there is no z11/z12 data in this file, only coarser
+          // gdaladdo overview zooms below it. A declared maxzoom of 12
+          // (as this was) doesn't error -- MapLibre Native overzooms by
+          // upsampling the real z10 tile and treating it as if it were
+          // native z11/z12 resolution, which recomputes the hillshade
+          // slope algorithm's horizontal distance-per-pixel far too small
+          // for the *same* real elevation delta, producing grossly
+          // exaggerated relief ('huge mountains' rendered even over
+          // genuinely flat terrain like Skåne). Confirmed as the root
+          // cause on a real device; web's JS SDK fails differently for
+          // the identical over-declared-maxzoom mistake (tiles hang in
+          // 'loading' state forever instead of rendering wrong) which is
+          // why that fix predates this one.
+          maxzoom={10}
         >
           <Layer
             id="hillshade"
@@ -1115,7 +1135,22 @@ export function AviationMap({
             source="osm-hillshade"
             layout={{ visibility: showHillshade ? 'visible' : 'none' }}
             paint={{
-              'hillshade-exaggeration': 0.5,
+              // MUCH lower than web's 0.5 (map-style.ts) -- confirmed via a
+              // real-device A/B test that MapLibre Native's Android
+              // hillshade renderer is far more sensitive to this value
+              // than the JS SDK: web's own comment notes 0.5 was barely
+              // visible even over genuinely steep, snow-capped Kiruna
+              // fjell terrain, whereas 0.5 on native rendered dramatic,
+              // unrealistic mountain-ridge relief even over flat Skåne
+              // farmland (near-zero real elevation variation). Same
+              // underlying Terrarium-encoded DEM data on both platforms
+              // (round-trip verified at the pipeline level, see
+              // hillshade_to_pmtiles.sh) -- this is a genuine rendering-
+              // engine difference, not a data or maxzoom bug (that fix
+              // above was real and necessary, but didn't address this).
+              // Revisit if a maplibre-react-native/MapLibre Native update
+              // changes this sensitivity.
+              'hillshade-exaggeration': 0.15,
               // hillshade-shadow-color/highlight-color intentionally NOT
               // set (library default used instead) -- confirmed against
               // the installed @maplibre/maplibre-react-native 11.3.10
@@ -1159,6 +1194,61 @@ export function AviationMap({
             }}
           />
         </RasterDEMSource>
+
+        {/* ── Elevation contour lines (Copernicus GLO-30 DEM, vector) ─────
+            Web equivalent: getContoursSource() + 'contour-line'/'contour-label'
+            layers in map-style.ts. Same source-layer ('contours') and
+            elev_m numeric property. Tiled at -Z6 -z12 (scripts/contours_to_
+            pmtiles.sh) -- minzoom/maxzoom below must match the script's
+            real -z value exactly, same maxzoom-mismatch bug class as
+            hillshade above (see its comment): a vector source degrades
+            less catastrophically than raster-dem for a wrong declared
+            maxzoom (a fetch to a non-existent tile just empty-tiles rather
+            than rendering garbage), but there's no reason to leave it
+            wrong. Line width/color widened+darkened to match web's own
+            verified-live fix (the original faint styling was invisible in
+            practice over real Kiruna-fjell contour data). Off by default;
+            toggled via layout.visibility. */}
+        <VectorSource
+          id="osm-contours"
+          url={CONTOURS_PMTILES_URL}
+          minzoom={6}
+          maxzoom={12}
+        >
+          <Layer
+            id="contour-line"
+            type="line"
+            source="osm-contours"
+            {...{'source-layer': 'contours'} as any}
+            minzoom={8}
+            layout={{ visibility: showContours ? 'visible' : 'none', 'line-join': 'round' }}
+            paint={{
+              'line-color': 'rgba(120,80,35,0.85)',
+              // Index contours (multiples of 250m) drawn wider than intermediate ones.
+              'line-width': ['case', ['==', ['%', ['round', ['get', 'elev_m']], 250], 0], 2.2, 1.1],
+            }}
+          />
+          <Layer
+            id="contour-label"
+            type="symbol"
+            source="osm-contours"
+            {...{'source-layer': 'contours'} as any}
+            minzoom={10}
+            filter={['==', ['%', ['round', ['get', 'elev_m']], 250], 0] as any}
+            layout={{
+              visibility: showContours ? 'visible' : 'none',
+              'symbol-placement': 'line',
+              'text-field': ['concat', ['to-string', ['round', ['get', 'elev_m']]], 'm'] as any,
+              'text-font': ['Noto Sans Regular'],
+              'text-size': 10,
+            }}
+            paint={{
+              'text-color': 'rgba(120,85,40,0.9)',
+              'text-halo-color': 'rgba(255,255,255,0.8)',
+              'text-halo-width': 1,
+            }}
+          />
+        </VectorSource>
 
         {/* ── Airspace ──────────────────────────────────── */}
         {/* Always-mounted — visibility toggled via layout.visibility, not mount/unmount.

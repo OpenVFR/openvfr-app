@@ -52,6 +52,9 @@ export type LayerState = {
   // GPU/Adreno rendering bug on some Android devices -- off by default,
   // exists to be verified on real hardware. See AGENTS.md.
   terrainColor: boolean
+  // Elevation contour lines (Copernicus GLO-30 DEM, vector), same source
+  // as web's 'contours' layer group (map-style.ts). Off by default.
+  contours: boolean
 }
 
 export const LAYER_DEFAULTS: LayerState = {
@@ -72,6 +75,7 @@ export const LAYER_DEFAULTS: LayerState = {
   landmarks:  false,
   hillshade:  false,
   terrainColor: false,
+  contours: false,
 }
 
 // ---------------------------------------------------------------------------
@@ -105,6 +109,7 @@ const TRAFFIC_GROUPS: Group[] = [
 const TERRAIN_GROUPS: Group[] = [
   { key: 'hillshade',    label: 'Hillshade (relief)',              color: '#8d6e63' },
   { key: 'terrainColor', label: 'Terrain Color (EXPERIMENTAL)',    color: '#ef4444' },
+  { key: 'contours',     label: 'Contour Lines',                   color: '#785023' },
 ]
 
 // ---------------------------------------------------------------------------
