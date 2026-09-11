@@ -117,11 +117,23 @@ export const notamConfig = {
 // used for lat/lon) — NMS-API's classification query has no location filter
 // usable at this scale, so we pull worldwide INTERNATIONAL NOTAMs and keep
 // only the ones for airports this app actually covers. ─────────────────────
-const _icaoAllowlist = new Set<string>()
+//
+// ALSO includes ESAA (the Sweden FIR code) -- NOTAMs are not only filed per
+// airport. Restricted/danger areas, DME/navaid outages not tied to a single
+// aerodrome, AIRAC AIP amendment notices, and military exercise-hour changes
+// are all filed with icaoLocation=ESAA (the whole-country FIR), not any
+// airport ICAO. Confirmed against live staging data: 34 currently-active
+// NOTAMs (temporary restricted areas like ESR448/ESR374/ESR738/ESR525,
+// danger areas like ESD873/ESD139, DME outages, AIRAC amendments) were
+// being silently dropped entirely before ESAA was added here -- not just
+// undisplayed, actually never cached at all. See getRegionalNotams() below
+// for how these are surfaced (kept separate from per-airport results since
+// they don't belong to any single ICAO).
+const _icaoAllowlist = new Set<string>(['ESAA'])
 try {
   const coordsJson = (await import('./aerodrome-coords.json', { assert: { type: 'json' } })).default as Record<string, [number, number]>
   for (const icao of Object.keys(coordsJson)) _icaoAllowlist.add(icao)
-  console.log(`[notam] Loaded ${_icaoAllowlist.size} aerodrome ICAOs for NOTAM filtering`)
+  console.log(`[notam] Loaded ${_icaoAllowlist.size} ICAOs for NOTAM filtering (${_icaoAllowlist.size - 1} aerodromes + ESAA FIR)`)
 } catch (e) {
   console.warn('[notam] Could not load aerodrome coords:', (e as Error).message)
 }
@@ -338,9 +350,9 @@ export function stopNotamPoller(): void {
  * rate limiting needed here — the poller above is the only NMS-API client.
  * Filters to currently-active NOTAMs (not expired, not cancelled).
  */
-export function getNotamsForIcao(icao: string): NotamResponse {
+function activeNotamsFor(icao: string): NotamItem[] {
   const byId = _cache.get(icao)
-  if (!byId) return { notams: [] }
+  if (!byId) return []
 
   const now = Date.now()
   const notams: NotamItem[] = []
@@ -356,5 +368,24 @@ export function getNotamsForIcao(icao: string): NotamResponse {
       classification: n.classification ?? null,
     })
   }
-  return { notams }
+  return notams
+}
+
+export function getNotamsForIcao(icao: string): NotamResponse {
+  return { notams: activeNotamsFor(icao) }
+}
+
+/**
+ * FIR-wide/regional NOTAMs (icaoLocation=ESAA) -- restricted/danger areas,
+ * navaid outages, AIRAC amendments, military exercise notices, etc. that
+ * aren't filed against any single airport. NOT returned by
+ * getNotamsForIcao() for any airport ICAO -- these live under their own key
+ * ('ESAA') in the cache and need their own UI surface (a general "regional
+ * NOTAMs" list, and/or matching against se-airspace.geojson polygon names /
+ * rendering ad-hoc circles from each NOTAM's own coordinates+radius field --
+ * see docs/todo.md for the tracked follow-up work; this function only
+ * covers the data-availability half of that).
+ */
+export function getRegionalNotams(): NotamResponse {
+  return { notams: activeNotamsFor('ESAA') }
 }

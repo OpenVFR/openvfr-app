@@ -28,7 +28,7 @@ import { streamSSE } from 'hono/streaming'
 import OpenAI, { toFile } from 'openai'
 import { writeFileSync, createReadStream, unlinkSync } from 'node:fs'
 import { trafficConfig, registerClient, startTrafficPoller, getLatestBatch, touchActivity } from './traffic'
-import { startNotamPoller, getNotamsForIcao } from './notam'
+import { startNotamPoller, getNotamsForIcao, getRegionalNotams } from './notam'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -577,6 +577,21 @@ app.get('/api/notam', async (c) => {
   if (!/^[A-Z]{4}$/.test(icao)) return c.json({ error: 'Invalid ICAO identifier' }, 400)
 
   return c.json(getNotamsForIcao(icao))
+})
+
+// ---------------------------------------------------------------------------
+// NOTAM (regional/FIR-wide) — GET /api/notam/regional
+// Restricted/danger areas, navaid outages, AIRAC amendments, military
+// notices, etc. filed against the whole Sweden FIR (ESAA) rather than any
+// single airport ICAO — see notam.ts's getRegionalNotams() for the full
+// rationale. Client-side consumption (map layer / dedicated panel) is not
+// yet built — see docs/todo.md — this endpoint exists so the data is
+// already reachable once that UI work happens, without another server change.
+// ---------------------------------------------------------------------------
+app.get('/api/notam/regional', async (c) => {
+  const user = await requireSession(c)
+  if (!user) return c.json({ error: 'Authentication required.' }, 401)
+  return c.json(getRegionalNotams())
 })
 
 // ---------------------------------------------------------------------------
