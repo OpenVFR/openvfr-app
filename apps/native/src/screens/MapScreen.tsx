@@ -17,6 +17,7 @@ import type { Feature, FeatureCollection, Point } from 'geojson'
 
 import { AviationMap }       from '../components/AviationMap'
 import { MapDisplaySheet, LAYER_DEFAULTS } from '../components/MapDisplaySheet'
+import { RegionalNotamsSheet } from '../components/RegionalNotamsSheet'
 import type { LayerState }   from '../components/MapDisplaySheet'
 import { FrequencyPanel }    from '../components/FrequencyPanel'
 import { AerodromePopup }    from '../components/AerodromePopup'
@@ -891,6 +892,7 @@ export function MapScreen() {
           onCeilingChange={(ft) => update({ airspaceCeilingFt: ft })}
           onAutoZoomChange={(on) => update({ autoZoom: on })}
         />
+        <RegionalNotamsSheet notams={regionalNotams} waypoints={waypoints} />
       </View>
 
       {/* Re-center / orientation — also outside GL surface. Offset above the
