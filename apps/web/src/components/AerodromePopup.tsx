@@ -3,6 +3,7 @@ import css from './AerodromePopup.module.css'
 import { fetchWx, decodeMetar, type WxResult } from '../utils/fetchWx'
 import { fetchNotams, fmtNotamDate, type NotamItem } from '../utils/fetchNotam'
 import { sunriseSunset, fmtSunTime } from '../utils/sunCalc'
+import { API_BASE_URL } from '../utils/env'
 
 // ── Types matching the GeoJSON properties schema ─────────────────────────────
 
@@ -244,7 +245,7 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
       return () => ac.abort()
     }
 
-    fetchWx(p.icao, '', ac.signal)
+    fetchWx(p.icao, API_BASE_URL, ac.signal)
       .then((data) => { setWx(data); setWxLoading(false) })
       .catch((err) => {
         if ((err as Error).name !== 'AbortError') {
@@ -253,7 +254,7 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
         }
       })
 
-    fetchNotams(p.icao, '', ac.signal)
+    fetchNotams(p.icao, API_BASE_URL, ac.signal)
       .then((data) => { setNotams(data.notams); setNotamLoading(false) })
       .catch((err) => {
         if ((err as Error).name !== 'AbortError') {
