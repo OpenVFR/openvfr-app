@@ -30,7 +30,8 @@
     "./snapLabels": "./src/snapLabels.ts",
     "./terrainColor": "./src/terrainColor.ts",
     "./tileManifest": "./src/tileManifest.ts",
-    "./fetchWithRetry": "./src/fetchWithRetry.ts"
+    "./fetchWithRetry": "./src/fetchWithRetry.ts",
+    "./geoCircle": "./src/geoCircle.ts"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.16"

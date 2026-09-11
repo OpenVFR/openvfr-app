@@ -6,7 +6,7 @@ import React from 'react'
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { theme } from '../styles/theme'
 
-export type FeatureKind = 'navaid' | 'obstacle' | 'waypoint' | null
+export type FeatureKind = 'navaid' | 'obstacle' | 'waypoint' | 'notam' | null
 
 export interface FeatureInfo {
   kind:     FeatureKind
@@ -28,6 +28,7 @@ const KIND_ICON: Record<NonNullable<FeatureKind>, string> = {
   navaid:   '📡',
   obstacle: '⚠️',
   waypoint: '📍',
+  notam:    '🚧',
 }
 
 export function FeaturePopup({ feature, onClose, onAddToRoute }: Props) {

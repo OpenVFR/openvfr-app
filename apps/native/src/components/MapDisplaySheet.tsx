@@ -39,6 +39,9 @@ export type LayerState = {
   runways:    boolean
   // Live data
   traffic:    boolean
+  // FIR-wide regional NOTAM circles (restricted/danger areas, navaid
+  // outages, military notices) -- see apps/native/src/hooks/useRegionalNotams.ts
+  notamCircles: boolean
   // Basemap
   satellite:  boolean
   // VFR landmarks
@@ -64,6 +67,7 @@ export const LAYER_DEFAULTS: LayerState = {
   obstacles:  true,
   runways:    true,
   traffic:    false,
+  notamCircles: true,
   satellite:  false,
   landmarks:  false,
   hillshade:  false,
@@ -95,6 +99,7 @@ const POINTS_GROUPS: Group[] = [
 
 const TRAFFIC_GROUPS: Group[] = [
   { key: 'traffic', label: 'Air Traffic (ADS-B)', color: '#22c55e' },
+  { key: 'notamCircles', label: 'Regional NOTAMs', color: '#e64980' },
 ]
 
 const TERRAIN_GROUPS: Group[] = [

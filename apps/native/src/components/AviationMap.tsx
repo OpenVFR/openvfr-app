@@ -137,6 +137,11 @@ export type AviationMapProps = {
   /** User-saved waypoints (from UserWaypointContext) — shown as bookmark pins,
    *  independent of the planned route. */
   userWaypointsFC?: FeatureCollection
+  /** Ad-hoc circles for FIR-wide NOTAMs (restricted/danger areas, navaid
+   *  outages, military notices) built from each NOTAM's own coordinates+
+   *  radius -- see apps/native/src/hooks/useRegionalNotams.ts. Mirrors web's
+   *  MapView.tsx 'notam-circles' source. */
+  notamCirclesFC?: FeatureCollection
   /** Route planning mode — mirrors web's "Plan route" button. While true,
    *  every map tap adds a waypoint (snapped to a nearby feature within a
    *  screen-pixel radius when unambiguous) instead of opening feature popups. */
@@ -552,6 +557,7 @@ export function AviationMap({
   onLegInsertCandidates,
   trafficFC,
   userWaypointsFC,
+  notamCirclesFC,
   planningMode = false,
   onPlanTap,
   onPlanCandidates,
@@ -1615,6 +1621,19 @@ export function AviationMap({
                 'text-halo-color': theme.surfaceBase,
                 'text-halo-width': 1.5,
               }}
+            />
+          </GeoJSONSource>
+        )}
+
+        {notamCirclesFC && notamCirclesFC.features.length > 0 && (
+          <GeoJSONSource id="notam-circles-src" data={notamCirclesFC}>
+            <Layer
+              id="notam-circles-fill" type="fill"
+              paint={{ 'fill-color': '#e64980', 'fill-opacity': 0.12 }}
+            />
+            <Layer
+              id="notam-circles-border" type="line"
+              paint={{ 'line-color': '#e64980', 'line-width': 1.5, 'line-dasharray': [3, 2], 'line-opacity': 0.8 }}
             />
           </GeoJSONSource>
         )}

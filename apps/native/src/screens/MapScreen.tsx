@@ -29,6 +29,9 @@ import { useGps }            from '../hooks/useGps'
 import { useRouteContext } from '../context/RouteContext'
 import { SnapPicker, type SnapCandidate } from '../components/SnapPicker'
 import { useTraffic }        from '../hooks/useTraffic'
+import { useRegionalNotams } from '../hooks/useRegionalNotams'
+import { makeCirclePolygon } from '@open-vfr/shared/geoCircle'
+import { fmtNotamDate } from '@open-vfr/shared/fetchNotam'
 import { NotificationCenter } from '../components/NotificationCenter'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
 import { TILE_URLS } from '../config'
@@ -325,6 +328,28 @@ export function MapScreen() {
     ownLon:   activePosition?.lng   ?? null,
   })
 
+  // Regional (FIR-wide) NOTAMs -- restricted/danger areas, navaid outages,
+  // military notices not tied to any single airport. Mirrors web's
+  // MapView.tsx useRegionalNotams()/notam-circles source.
+  const regionalNotams = useRegionalNotams(layers.notamCircles && authenticated)
+  const notamCirclesFC = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: regionalNotams
+      .filter((n) => n.lat !== null && n.lon !== null && n.radiusNm !== null && n.radiusNm > 0)
+      .map((n) => {
+        const circle = makeCirclePolygon(n.lat!, n.lon!, n.radiusNm!)
+        circle.properties = {
+          notamId:        n.id,
+          text:           n.text,
+          effective:      n.effective,
+          expires:        n.expires,
+          classification: n.classification,
+          radiusNm:       n.radiusNm,
+        }
+        return circle
+      }),
+  }), [regionalNotams])
+
   const [aerodromeFeature, setAerodromeFeature] = useState<AerodromeFeatureProps | null>(null)
   const [airspaceFeatures,  setAirspaceFeatures]  = useState<AirspaceFeatureProps[]>([])
   const [featureInfo,       setFeatureInfo]        = useState<FeatureInfo | null>(null)
@@ -419,6 +444,22 @@ export function MapScreen() {
 
     if (feature) {
       const p = feature.properties ?? {}
+
+      // Regional NOTAM circle -- polygon geometry, checked before the
+      // Point-only branches below (which wouldn't otherwise catch it).
+      if (p.notamId) {
+        setFeatureInfo({
+          kind: 'notam', name: String(p.notamId ?? ''), subtitle: 'NOTAM',
+          rows: [
+            p.effective ? { label: 'Effective', value: fmtNotamDate(String(p.effective)) ?? '' } : null,
+            p.expires   ? { label: 'Expires',   value: fmtNotamDate(String(p.expires)) ?? '' }   : null,
+            { label: 'Text', value: String(p.text ?? '') },
+          ].filter(Boolean) as { label: string; value: string }[],
+          canAddToRoute: false,
+        })
+        return
+      }
+
       if (isAerodrome(p)) {
         const parse = <T,>(v: unknown): T => typeof v === 'string' ? JSON.parse(v) : v as T
         setAerodromeFeature({
@@ -645,6 +686,7 @@ export function MapScreen() {
           showHillshade={layers.hillshade}
           showTerrainColor={layers.terrainColor}
           trafficFC={trafficFC}
+          notamCirclesFC={notamCirclesFC}
           userWaypointsFC={userWaypointsFC}
           basemapMode={layers.satellite ? 'satellite' : 'vector'}
           initialCenter={homeCoord ?? undefined}
