@@ -427,15 +427,45 @@ function activeNotamsFor(icao: string): NotamItem[] {
     if (n.effectiveStart && Date.parse(n.effectiveStart) > now) continue
     const geo = parseNotamCoordinates(n.coordinates)
     const radiusNm = n.radius !== undefined ? Number(n.radius) : NaN
+    const text = (n.text ?? '').replace(/\r\n/g, '\n').trim()
+
+    // NMS-API uses radius="999" (and presumably similar round-number
+    // sentinels) as a placeholder for non-geographic administrative NOTAMs
+    // -- confirmed live in production: a "NOTAM Checklist" cross-reference
+    // (text literally starting "CHECKLIST", just a list of currently-valid
+    // NOTAM numbers for the whole FIR, not an area restriction) came back
+    // with radius=999 and a coordinate that isn't a meaningful location
+    // either, rendering as one giant circle spanning most of Scandinavia.
+    // Real Swedish restricted/danger/exercise areas topped out at 33nm in
+    // every live sample seen so far (see notam.ts's coordinate-parsing
+    // comment above) -- 100nm is a generous, conservative ceiling clear of
+    // any real area but well below any "unlimited"-style sentinel value.
+    // Drop BOTH lat/lon and radiusNm together (not just radius) when this
+    // trips -- the coordinate isn't meaningfully tied to the NOTAM's actual
+    // subject either, so a point-marker pin would be just as misleading as
+    // the giant circle. These NOTAMs still appear in the regional NOTAMs
+    // list panel (text-only), just not rendered on the map at all.
+    // Three cases:
+    //  - no radius field / not finite / <=0  -> legitimate point-only NOTAM
+    //    (obstacle lights, single-point navaid faults) -- keep lat/lon,
+    //    radiusNm null. This is the normal, common case -- do NOT drop the
+    //    coordinate here, that would silently break point-marker rendering.
+    //  - radius present, 0 < r <= 100nm       -> legitimate area -- keep all three.
+    //  - radius present but > 100nm            -> sentinel/bogus -- drop
+    //    lat/lon AND radiusNm together (see comment above).
+    const MAX_SANE_RADIUS_NM = 100
+    const radiusGiven = Number.isFinite(radiusNm) && radiusNm > 0
+    const radiusIsBogus = radiusGiven && radiusNm > MAX_SANE_RADIUS_NM
+
     notams.push({
       id:             n.number ?? n.id ?? '',
-      text:           (n.text ?? '').replace(/\r\n/g, '\n').trim(),
+      text,
       effective:      n.effectiveStart ?? null,
       expires:        n.effectiveEnd ?? null,
       classification: n.classification ?? null,
-      lat:            geo?.lat ?? null,
-      lon:            geo?.lon ?? null,
-      radiusNm:       geo && Number.isFinite(radiusNm) ? radiusNm : null,
+      lat:            geo && !radiusIsBogus ? geo.lat : null,
+      lon:            geo && !radiusIsBogus ? geo.lon : null,
+      radiusNm:       geo && radiusGiven && !radiusIsBogus ? radiusNm : null,
     })
   }
   return notams
