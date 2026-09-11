@@ -14,9 +14,22 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # gitleaks/gitleaks-action@v2 now requires a paid GITLEAKS_LICENSE for
+      # organization-owned repos (this repo is under the OpenVFR org) --
+      # only the convenience Action wrapper enforces this, the underlying
+      # OSS gitleaks CLI itself (Apache-2.0) is free regardless of account
+      # type. Run it directly instead of paying for the wrapper.
+      - name: Install gitleaks
+        # Pinned version -- verified against the GitHub API (not guessed)
+        # at the time this was written. Bump periodically; check
+        # https://api.github.com/repos/gitleaks/gitleaks/releases/latest
+        # for the current version + exact asset name before changing.
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+      - name: Run gitleaks
+        run: gitleaks detect --source . --verbose --redact
 
   build-and-test:
     name: Build, test, typecheck
@@ -24,9 +37,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # No `version:` here -- pnpm/action-setup@v4 refuses to run when a
+      # version is specified BOTH here and via package.json's
+      # `packageManager` field (even if they match), erroring
+      # "Multiple versions of pnpm specified". package.json's
+      # packageManager field is the single source of truth; this action
+      # reads it automatically when no version input is given.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11.6.0
 
       - uses: actions/setup-node@v4
         with:
