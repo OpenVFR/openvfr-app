@@ -113,9 +113,16 @@ pnpm metro:prod    # → whatever EXPO_PUBLIC_API_BASE / EXPO_PUBLIC_TILE_BASE
 
 `metro:local` tunnels `adb reverse`, restarts Metro with `--clear`, and
 injects `EXPO_PUBLIC_API_BASE=http://localhost:5200` /
-`EXPO_PUBLIC_TILE_BASE=http://localhost:5174` via `cross-env` — no `.env`
-file editing required. `metro:prod` reads whatever you've set in your own
-`.env` (see below) — set these to your own deployed API/tile host.
+`EXPO_PUBLIC_TILE_BASE=http://localhost:5174/tiles` via `cross-env` — no
+`.env` file editing required (`config.ts`'s tile URL builders append no
+path segment of their own — TILE_BASE must already include whatever path
+the host needs; local dev's Vite server serves files under `/tiles/*`,
+so the `/tiles` suffix is baked into this value here). `metro:prod` reads
+whatever you've set in your own `.env` (see below) — for real production,
+set `EXPO_PUBLIC_API_BASE=https://api.openvfr.org` and
+`EXPO_PUBLIC_TILE_BASE=https://tiles.openvfr.org` (bare domain, **no**
+`/tiles` suffix — R2 serves tile files at the bucket root, see
+docs/cloudflare-hosting.md in openvfr-infra).
 
 > **Env vars are baked in at bundle time.** Metro does not watch `.env` files.
 > Always use `metro:local` / `metro:prod` (which include `--clear`) rather
@@ -134,9 +141,40 @@ Or press `r` in the Metro terminal.
 ### Windows-specific notes
 
 - **CRLF line endings** in shell scripts: run with `tr -d '\r' < script.sh | bash`.
-- **Path length**: Windows 260-char limit can break Gradle. Enable long paths in
-  Group Policy or via registry (`HKLM\SYSTEM\...\FileSystem\LongPathsEnabled = 1`).
-  Alternatively keep the project path short (e.g. `C:\ov\`).
+- **Path length / native build failures** (`ninja: error: manifest 'build.ninja'
+  still dirty after 100 tries`, or CMake `CMAKE_OBJECT_PATH_MAX` warnings): Windows'
+  260-char path limit interacts badly with pnpm's `node_modules/.pnpm/<pkg>@<version>_<hash>/...`
+  layout on a deeply nested checkout. Things to try, in order:
+  1. Enable long paths (`HKLM\SYSTEM\...\FileSystem\LongPathsEnabled = 1`,
+     or Group Policy) -- necessary but often not sufficient on its own.
+  2. Shorten pnpm's virtual store path for your own local checkout only
+     (**do not commit this** -- it's an absolute, machine-specific path
+     that would break Linux CI and any other Windows dev without the same
+     drive letter): add `virtualStoreDir: D:/vs` (or similar, any short
+     absolute path outside the project tree) to your local
+     `pnpm-workspace.yaml`, then `pnpm install` again. Shaves ~30 chars off
+     every nested dependency path.
+  3. Point `GRADLE_USER_HOME` at the same drive as the project (e.g.
+     `D:/gradle-home`) if you see "Hard link ... failed. Doing a slower
+     copy instead." in the build log -- Gradle's cache defaulting to `C:`
+     while the project lives on `D:` means every native module's prefab
+     `.so` copy crosses volumes, which can never hardlink.
+  4. **Check your bundled ninja version**: `<Android SDK>/cmake/<version>/bin/ninja.exe --version`.
+     Anything below `1.12.0` has a confirmed long-path handling bug (see
+     [ninja#1900](https://github.com/ninja-build/ninja/issues/1900), and
+     [reanimated's own Windows build guide](https://docs.swmansion.com/react-native-reanimated/docs/guides/building-on-windows/)
+     calls this out explicitly). Download a current release from
+     [ninja-build/ninja releases](https://github.com/ninja-build/ninja/releases)
+     and replace the SDK's copy in place (back up the original first). This
+     was the actual root cause the one time all of the above still wasn't
+     enough -- the symptom was a *different* native module failing on each
+     retry with the identical error, which is the signature of a marginal
+     long-path bug rather than a deterministic config problem.
+  5. As a last resort, keep the project path itself short (e.g. `C:\ov\`) or
+     `subst` a short drive letter -- but note `subst` can itself break Kotlin's
+     incremental compiler ("this and base files have different roots") since
+     it canonicalizes symlinks back through the real path, so prefer options
+     2-4 first.
 - **Metro cache** lives at `%LOCALAPPDATA%\Temp\metro-cache`. Clear it if you see
   stale bundle errors: `npx expo start --clear`.
 

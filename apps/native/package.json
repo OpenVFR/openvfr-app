@@ -15,7 +15,7 @@
     "prebuild": "expo prebuild",
     "prebuild:clean": "expo prebuild --clean",
     "adb:reverse": "adb reverse tcp:8081 tcp:8081 && adb reverse tcp:5200 tcp:5200 && adb reverse tcp:5174 tcp:5174 && adb reverse tcp:5100 tcp:5100 && echo All ports reversed",
-    "metro:local": "adb reverse tcp:8081 tcp:8081 && adb reverse tcp:5200 tcp:5200 && adb reverse tcp:5174 tcp:5174 && adb reverse tcp:5100 tcp:5100 && cross-env EXPO_PUBLIC_API_BASE=http://localhost:5200 EXPO_PUBLIC_TILE_BASE=http://localhost:5174 expo start --port 8081 --clear",
+    "metro:local": "adb reverse tcp:8081 tcp:8081 && adb reverse tcp:5200 tcp:5200 && adb reverse tcp:5174 tcp:5174 && adb reverse tcp:5100 tcp:5100 && cross-env EXPO_PUBLIC_API_BASE=http://localhost:5200 EXPO_PUBLIC_TILE_BASE=http://localhost:5174/tiles expo start --port 8081 --clear",
     "metro:prod": "adb reverse tcp:8081 tcp:8081 && expo start --port 8081 --clear",
     "build:apk:prod": "bash scripts/build-prod-apk.sh"
   },

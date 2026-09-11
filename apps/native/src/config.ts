@@ -23,9 +23,13 @@ export const API_BASE: string =
   (process.env.EXPO_PUBLIC_API_BASE ?? '') || devBase
 
 /** Base URL for static GeoJSON tile files (served by Vite in dev, nginx in prod).
- *  Defaults to API_BASE. Override via EXPO_PUBLIC_TILE_BASE. */
+ *  Defaults to `${API_BASE}/tiles` (matches the local Docker/Vite dev
+ *  server's /tiles/* route) when unset. Production always sets
+ *  EXPO_PUBLIC_TILE_BASE explicitly to the bare tiles.openvfr.org R2
+ *  domain (no /tiles suffix -- files sit at the bucket root there).
+ *  Override via EXPO_PUBLIC_TILE_BASE. */
 export const TILE_BASE: string =
-  (process.env.EXPO_PUBLIC_TILE_BASE ?? '') || API_BASE
+  (process.env.EXPO_PUBLIC_TILE_BASE ?? '') || `${API_BASE}/tiles`
 
 /**
  * Base URL for the OpenSky traffic endpoints (/api/traffic/*).
@@ -63,17 +67,30 @@ export const MARTIN_BASE: string =
     ? TILE_BASE.replace(/:(\d{4,5})(\/|$)/, ':5100$2')
     : `${TILE_BASE.replace(/\/$/, '')}/martin`)
 
-/** GeoJSON tile URLs — same files served by the web project */
+/**
+ * GeoJSON tile URLs — same files served by the web project.
+ *
+ * TILE_BASE is expected to be the *complete* base (including any path
+ * segment the host needs), same convention as web's TILES_BASE_URL --
+ * no extra path segment is appended here. Local dev's default TILE_BASE
+ * (devBase, below) already includes the trailing /tiles it needs; in
+ * production TILE_BASE should be set to the bare tiles.openvfr.org R2
+ * domain (files live at its bucket root, no /tiles/ prefix -- see
+ * docs/cloudflare-hosting.md). A hardcoded /tiles/ segment here used to
+ * silently 404 every tile fetch against real production tiles.openvfr.org,
+ * since it only ever got exercised against local dev hosts that happen to
+ * route /tiles/* themselves.
+ */
 export const TILE_URLS = {
-  airspace:          `${TILE_BASE}/tiles/se-airspace.geojson`,
-  aerodromes:        `${TILE_BASE}/tiles/se-aerodromes.geojson`,
-  navaids:           `${TILE_BASE}/tiles/se-navaids.geojson`,
-  waypoints:         `${TILE_BASE}/tiles/se-waypoints.geojson`,
-  runways:           `${TILE_BASE}/tiles/se-runways.geojson`,
-  runwayThresholds:  `${TILE_BASE}/tiles/se-runway-thresholds.geojson`,
-  obstacles:         `${TILE_BASE}/tiles/se-obstacles.geojson`,
-  landmarks:         `${TILE_BASE}/tiles/se-landmarks.geojson`,
-  water:             `${TILE_BASE}/tiles/se-water.geojson`,
+  airspace:          `${TILE_BASE}/se-airspace.geojson`,
+  aerodromes:        `${TILE_BASE}/se-aerodromes.geojson`,
+  navaids:           `${TILE_BASE}/se-navaids.geojson`,
+  waypoints:         `${TILE_BASE}/se-waypoints.geojson`,
+  runways:           `${TILE_BASE}/se-runways.geojson`,
+  runwayThresholds:  `${TILE_BASE}/se-runway-thresholds.geojson`,
+  obstacles:         `${TILE_BASE}/se-obstacles.geojson`,
+  landmarks:         `${TILE_BASE}/se-landmarks.geojson`,
+  water:             `${TILE_BASE}/se-water.geojson`,
 } as const
 
 /**
@@ -89,7 +106,7 @@ export const TILE_URLS = {
  * separate protocol registration needed beyond what basemap.pmtiles already
  * requires.
  */
-export const LANDUSE_PMTILES_URL = `pmtiles://${TILE_BASE}/tiles/se-landuse.pmtiles`
+export const LANDUSE_PMTILES_URL = `pmtiles://${TILE_BASE}/se-landuse.pmtiles`
 
 /**
  * Relief hillshade raster-dem PMTiles (Terrarium encoding), same static file
@@ -101,7 +118,7 @@ export const LANDUSE_PMTILES_URL = `pmtiles://${TILE_BASE}/tiles/se-landuse.pmti
  * level, not just the JS type declarations — see AGENTS.md MapLibre RN
  * gotchas.
  */
-export const HILLSHADE_PMTILES_URL = `pmtiles://${TILE_BASE}/tiles/se-hillshade.pmtiles`
+export const HILLSHADE_PMTILES_URL = `pmtiles://${TILE_BASE}/se-hillshade.pmtiles`
 
 /**
  * Vector contour-line PMTiles (source-layer 'contours', `elev_m` property),
@@ -110,7 +127,7 @@ export const HILLSHADE_PMTILES_URL = `pmtiles://${TILE_BASE}/tiles/se-hillshade.
  * + <Layer type="symbol"> wiring in the native map component is NOT yet
  * done — config wired for offline caching only so far.
  */
-export const CONTOURS_PMTILES_URL = `pmtiles://${TILE_BASE}/tiles/se-contours.pmtiles`
+export const CONTOURS_PMTILES_URL = `pmtiles://${TILE_BASE}/se-contours.pmtiles`
 
 /**
  * MapLibre GL style URL for the basemap.
@@ -151,7 +168,7 @@ export const SATELLITE_STYLE = {
  * URL format: pmtiles://<http(s)-url-of-pmtiles-file>
  */
 export function createProtomapsStyle(pmtilesOverrideUrl?: string): StyleSpecification {
-  const pmtilesUrl = `pmtiles://${pmtilesOverrideUrl ?? `${TILE_BASE}/tiles/basemap.pmtiles`}`
+  const pmtilesUrl = `pmtiles://${pmtilesOverrideUrl ?? `${TILE_BASE}/basemap.pmtiles`}`
   return {
     version: 8,
     glyphs:  'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
