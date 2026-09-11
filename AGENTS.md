@@ -120,6 +120,19 @@ Every endpoint added to `apps/api/src/index.ts` MUST be checked against this lis
 
 Reference implementation: `/api/poh-extract` in `apps/api/src/index.ts`.
 
+**This checklist does NOT cover everything reachable at `api.openvfr.org`.**
+The production reverse proxy (`docker/nginx.prod.conf` — private `openvfr-infra`
+repo, sibling checkout) has its own `location` blocks that proxy directly to
+external third-party APIs (currently `/api/elevation/` → OpenTopoData,
+`/api/open-meteo/` → Open-Meteo) WITHOUT ever reaching this Hono app at all —
+none of the 5 rules above apply to them since `auth.api.getSession()` and
+`checkHourlyLimit()` never run for a request nginx proxies straight through.
+If you're adding a new external-API integration and considering an nginx-level
+proxy (to dodge browser CORS, as these two do) instead of a Hono endpoint,
+know that you're opting OUT of this entire checklist — that needs its own
+explicit auth/rate-limit review in `openvfr-infra`'s `AGENTS.md` and
+`nginx.prod.conf` instead, not silent trust that "it's just a proxy."
+
 ---
 
 ## Licensing
