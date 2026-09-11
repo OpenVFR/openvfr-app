@@ -107,3 +107,4 @@
 .groupContours     { --group-color: #78502e; } /* brown — elevation isolines (same missing-class bug as groupHillshade) */
 .groupUserWaypoints { --group-color: #facc15; } /* yellow — user-defined custom waypoints */
 .groupTraffic      { --group-color: #e2e8f0; } /* white/light — ADS-B traffic symbols */
+.groupNotamCircles { --group-color: #e64980; } /* pink — ad-hoc NOTAM restricted/danger circles */

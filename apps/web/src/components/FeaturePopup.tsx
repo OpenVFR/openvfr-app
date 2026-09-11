@@ -1,5 +1,6 @@
 import type React from 'react'
 import css from './FeaturePopup.module.css'
+import { fmtNotamDate } from '@open-vfr/shared/fetchNotam'
 
 // ── Feature type definitions ──────────────────────────────────────────────────
 // Each variant carries only the properties available in its GeoJSON source.
@@ -50,12 +51,23 @@ export interface TrafficFeature {
   onGround: boolean
 }
 
+export interface RegionalNotamFeature {
+  kind: 'regionalNotam'
+  notamId:        string       // NOTAM number, e.g. "B2671/26"
+  text:           string
+  effective:      string | null
+  expires:        string | null
+  classification: string | null
+  radiusNm:       number | null
+}
+
 export type PointFeature =
   | NavaidFeature
   | WaypointFeature
   | ObstacleFeature
   | LandmarkFeature
   | TrafficFeature
+  | RegionalNotamFeature
 
 // ── Label maps ────────────────────────────────────────────────────────────────
 
@@ -255,6 +267,43 @@ function TrafficBody({ f }: { f: TrafficFeature }) {
   )
 }
 
+function RegionalNotamHeader({ f }: { f: RegionalNotamFeature }) {
+  return (
+    <div className={css.headerContent}>
+      <span className={css.bigId}>{f.notamId}</span>
+      <span className={css.typeTag}>NOTAM</span>
+      {f.classification && <span className={css.typeTag}>{f.classification}</span>}
+    </div>
+  )
+}
+
+function RegionalNotamBody({ f }: { f: RegionalNotamFeature }) {
+  return (
+    <div className={css.body}>
+      <div className={css.name} style={{ whiteSpace: 'pre-line' }}>{f.text}</div>
+      {f.effective && (
+        <div className={css.row}>
+          <span className={css.label}>Effective</span>
+          <span className={css.value}>{fmtNotamDate(f.effective)}</span>
+        </div>
+      )}
+      {f.expires && (
+        <div className={css.row}>
+          <span className={css.label}>Expires</span>
+          <span className={css.value}>{fmtNotamDate(f.expires)}</span>
+        </div>
+      )}
+      {f.radiusNm !== null && (
+        <div className={css.row}>
+          <span className={css.label}>Radius</span>
+          <span className={css.value}>{f.radiusNm} NM</span>
+        </div>
+      )}
+      <div className={css.source}>FAA NOTAM Management Service (NMS-API)</div>
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface Props {
@@ -286,6 +335,10 @@ export default function FeaturePopup({ feature: f, onClose }: Props) {
     case 'traffic':
       header = <TrafficHeader f={f} />
       body   = <TrafficBody   f={f} />
+      break
+    case 'regionalNotam':
+      header = <RegionalNotamHeader f={f} />
+      body   = <RegionalNotamBody   f={f} />
       break
   }
 

@@ -91,6 +91,14 @@ export interface NotamItem {
   effective:      string | null
   expires:        string | null
   classification: string | null
+  // Geo fields, present only when NMS-API supplied a coordinates+radius pair
+  // (parsed from DMS strings like "5939N01756E" + radius in NM) -- used to
+  // render an ad-hoc circle for NOTAMs that don't correspond to a charted
+  // airspace polygon (e.g. temporary restricted/danger areas established
+  // mid-AIRAC-cycle). null when absent, e.g. purely textual NOTAMs.
+  lat:      number | null
+  lon:      number | null
+  radiusNm: number | null
 }
 
 export interface NotamResponse { notams: NotamItem[] }
@@ -171,6 +179,26 @@ interface NmsNotam {
   classification?:  string
   icaoLocation?:    string
   cancelationDate?: string
+  coordinates?:     string // DMS, e.g. "5939N01756E" (lat DDMM + N/S, lon DDDMM + E/W)
+  radius?:          string // nautical miles, e.g. "5"
+}
+
+// Parses NMS-API's DMS coordinate string format: 2-digit lat degrees,
+// 2-digit lat minutes, N/S, 3-digit lon degrees, 2-digit lon minutes, E/W.
+// Example: "5939N01756E" -> lat 59+39/60=59.65, lon 17+56/60=17.9333 --
+// matches the real ESSA-area geometry NMS-API returns alongside this string
+// (verified against a live sample: geometry.coordinates [17.918611,
+// 59.651944] for coordinates "5939N01756E", i.e. within DMS rounding).
+function parseNotamCoordinates(dms: string | undefined): { lat: number; lon: number } | null {
+  if (!dms) return null
+  const m = /^(\d{2})(\d{2})([NS])(\d{3})(\d{2})([EW])$/.exec(dms.trim())
+  if (!m) return null
+  const [, latDeg, latMin, latHem, lonDeg, lonMin, lonHem] = m
+  let lat = Number(latDeg) + Number(latMin) / 60
+  let lon = Number(lonDeg) + Number(lonMin) / 60
+  if (latHem === 'S') lat = -lat
+  if (lonHem === 'W') lon = -lon
+  return { lat, lon }
 }
 interface NmsGeoJsonFeature {
   properties?: { coreNOTAMData?: { notam?: NmsNotam } }
@@ -360,12 +388,17 @@ function activeNotamsFor(icao: string): NotamItem[] {
     if (n.cancelationDate && Date.parse(n.cancelationDate) <= now) continue
     if (n.effectiveEnd && Date.parse(n.effectiveEnd) < now) continue
     if (n.effectiveStart && Date.parse(n.effectiveStart) > now) continue
+    const geo = parseNotamCoordinates(n.coordinates)
+    const radiusNm = n.radius !== undefined ? Number(n.radius) : NaN
     notams.push({
       id:             n.number ?? n.id ?? '',
       text:           (n.text ?? '').replace(/\r\n/g, '\n').trim(),
       effective:      n.effectiveStart ?? null,
       expires:        n.effectiveEnd ?? null,
       classification: n.classification ?? null,
+      lat:            geo?.lat ?? null,
+      lon:            geo?.lon ?? null,
+      radiusNm:       geo && Number.isFinite(radiusNm) ? radiusNm : null,
     })
   }
   return notams

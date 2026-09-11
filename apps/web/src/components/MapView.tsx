@@ -66,6 +66,7 @@ import { useObstructionWarnings } from '../hooks/useObstructionWarnings'
 import { useAirfieldProximity } from '../hooks/useAirfieldProximity'
 import { useFlightLog } from '../hooks/useFlightLog'
 import { useTraffic } from '../hooks/useTraffic'
+import { useRegionalNotams } from '../hooks/useRegionalNotams'
 import { registerTrafficIcons, selectTrafficIcon } from '../utils/trafficIcons'
 import GoFlyingPanel from './GoFlyingPanel'
 import { NotificationCenter } from './NotificationCenter'
@@ -592,6 +593,38 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Ref so the map click handler (registered once) always sees latest targets.
   const trafficTargetsRef = useRef(trafficTargets)
   useEffect(() => { trafficTargetsRef.current = trafficTargets }, [trafficTargets])
+
+  // ── Regional NOTAMs (FIR-wide, ad-hoc circles from coordinates+radius) ──
+  const regionalNotamsEnabled = (visibility['notamCircles'] ?? true) && !!auth.user
+  const regionalNotams = useRegionalNotams(regionalNotamsEnabled && mapReady)
+  const regionalNotamsRef = useRef(regionalNotams)
+  useEffect(() => { regionalNotamsRef.current = regionalNotams }, [regionalNotams])
+
+  // Feed regional NOTAM circles into the 'notam-circles' GeoJSON source.
+  // Each NOTAM becomes its own circle Polygon feature; properties carry
+  // enough to reconstruct a RegionalNotamFeature on click without a re-fetch.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    const src = map.getSource('notam-circles') as import('maplibre-gl').GeoJSONSource | undefined
+    if (!src) return
+
+    const features = regionalNotams
+      .filter((n) => n.lat !== null && n.lon !== null && n.radiusNm !== null && n.radiusNm > 0)
+      .map((n) => {
+        const circle = makeCirclePolygon(n.lat!, n.lon!, n.radiusNm!)
+        circle.properties = {
+          notamId:        n.id,
+          text:           n.text,
+          effective:      n.effective,
+          expires:        n.expires,
+          classification: n.classification,
+          radiusNm:       n.radiusNm,
+        }
+        return circle
+      })
+    src.setData({ type: 'FeatureCollection', features })
+  }, [regionalNotams, mapReady])
 
   // Track which icao24s were already proximate (urgency=3) to avoid repeat beeps
   const proxAlertedRef = useRef(new Set<string>())
@@ -1636,6 +1669,36 @@ export default function MapView({ auth }: { auth: AuthState }) {
         },
       })
 
+      // ── Regional NOTAM circles ───────────────────────────────────────
+      // Ad-hoc circles built from each FIR-wide NOTAM's own coordinates+
+      // radius (see useRegionalNotams.ts) -- covers restricted/danger areas
+      // that don't correspond to any charted airspace polygon (e.g.
+      // temporary areas established mid-AIRAC-cycle via AIP supplement).
+      map.addSource('notam-circles', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      })
+      map.addLayer({
+        id: 'notam-circles-fill',
+        type: 'fill',
+        source: 'notam-circles',
+        paint: {
+          'fill-color': '#e64980',
+          'fill-opacity': 0.12,
+        },
+      })
+      map.addLayer({
+        id: 'notam-circles-border',
+        type: 'line',
+        source: 'notam-circles',
+        paint: {
+          'line-color': '#e64980',
+          'line-width': 1.5,
+          'line-dasharray': [3, 2],
+          'line-opacity': 0.8,
+        },
+      })
+
       // ── Profile cursor — crosshair marker driven by VirtualRadar hover ────
       // A single Point feature updated whenever the user hovers the profile chart.
       map.addSource('profile-cursor', {
@@ -1739,7 +1802,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     // Suppressed in planning mode — crosshair must stay consistent.
     const onEnter = () => { if (!planningModeRef.current) map.getCanvas().style.cursor = 'pointer' }
     const onLeave = () => { if (!planningModeRef.current) map.getCanvas().style.cursor = '' }
-    ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols'].forEach((id) => {
+    ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols', 'notam-circles-fill'].forEach((id) => {
       map.on('mouseenter', id, onEnter)
       map.on('mouseleave', id, onLeave)
     })
@@ -1846,6 +1909,31 @@ export default function MapView({ auth }: { auth: AuthState }) {
             })
             return
           }
+        }
+      }
+
+      // ── 0e. Regional NOTAM circle click ── show NOTAM text. Checked before
+      // generic point features (below) since these are polygon fills, same
+      // priority tier as the traffic-symbols check above.
+      {
+        const notamHits = map.queryRenderedFeatures(e.point, { layers: ['notam-circles-fill'] })
+        if (notamHits.length > 0) {
+          const p = notamHits[0].properties as Record<string, unknown>
+          setActivePopup({
+            kind: 'point',
+            feature: {
+              kind:           'regionalNotam',
+              notamId:        String(p.notamId ?? ''),
+              text:           String(p.text ?? ''),
+              effective:      (p.effective as string | null) ?? null,
+              expires:        (p.expires as string | null) ?? null,
+              classification: (p.classification as string | null) ?? null,
+              radiusNm:       (p.radiusNm as number | null) ?? null,
+            },
+            x: e.point.x,
+            y: e.point.y,
+          })
+          return
         }
       }
 
@@ -2152,7 +2240,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     map.on('rotatestart', disableFollow)
 
     return () => {
-      ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols'].forEach((id) => {
+      ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols', 'notam-circles-fill'].forEach((id) => {
         map.off('mouseenter', id, onEnter)
         map.off('mouseleave', id, onLeave)
       })

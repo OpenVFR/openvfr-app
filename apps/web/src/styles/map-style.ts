@@ -441,6 +441,20 @@ export const LAYER_GROUPS: LayerGroup[] = [
     defaultOn: false,
     section: 'Traffic',
   },
+  {
+    id: 'notamCircles',
+    // Ad-hoc circles for FIR-wide NOTAMs (restricted/danger areas, navaid
+    // outages, military exercise notices) that carry their own
+    // coordinates+radius but don't correspond to any charted airspace
+    // polygon in the ofm source -- e.g. temporary restricted areas
+    // established mid-AIRAC-cycle via AIP supplement. See
+    // apps/api/src/notam.ts's getRegionalNotams() and useRegionalNotams.ts.
+    label: 'Regional NOTAMs',
+    cssClass: 'groupNotamCircles',
+    layerIds: ['notam-circles-fill', 'notam-circles-border'],
+    defaultOn: true,
+    section: 'Airspace',
+  },
 ]
 
 // Tiles are served from /public/tiles/ by Vite (dev) and nginx (prod).

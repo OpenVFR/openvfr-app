@@ -11,6 +11,12 @@ export interface NotamItem {
   effective:      string | null
   expires:        string | null
   classification: string | null
+  // Geo fields (see apps/api/src/notam.ts) -- present only when NMS-API
+  // supplied a coordinates+radius pair, used to render an ad-hoc circle for
+  // NOTAMs without a corresponding charted airspace polygon.
+  lat:      number | null
+  lon:      number | null
+  radiusNm: number | null
 }
 
 export interface NotamResult {
@@ -31,6 +37,24 @@ export async function fetchNotams(
   const resp = await fetchWithRetry(url, { signal, headers })
   if (resp.status === 503) return { notams: [] }
   if (!resp.ok) throw new Error(`NOTAM fetch failed: HTTP ${resp.status}`)
+  return resp.json() as Promise<NotamResult>
+}
+
+/**
+ * FIR-wide/regional NOTAMs (restricted/danger areas, navaid outages, AIRAC
+ * amendments, military notices) -- not tied to any single airport ICAO.
+ * See apps/api/src/notam.ts's getRegionalNotams() for the server-side
+ * rationale (icaoLocation=ESAA is not in any per-airport lookup).
+ */
+export async function fetchRegionalNotams(
+  baseUrl = '',
+  signal?: AbortSignal,
+  headers?: Record<string, string>,
+): Promise<NotamResult> {
+  const url = `${baseUrl}/api/notam/regional`
+  const resp = await fetchWithRetry(url, { signal, headers })
+  if (resp.status === 503) return { notams: [] }
+  if (!resp.ok) throw new Error(`Regional NOTAM fetch failed: HTTP ${resp.status}`)
   return resp.json() as Promise<NotamResult>
 }
 
