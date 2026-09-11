@@ -19,6 +19,7 @@ import {
   type MapRef,
   type ViewAnnotationEvent,
   type ViewAnnotationRef,
+  type GeoJSONSourceRef,
 } from '@maplibre/maplibre-react-native'
 import type { NativeSyntheticEvent } from 'react-native'
 import type { PressEvent, PressEventWithFeatures } from '@maplibre/maplibre-react-native'
@@ -142,6 +143,12 @@ export type AviationMapProps = {
    *  radius -- see apps/native/src/hooks/useRegionalNotams.ts. Mirrors web's
    *  MapView.tsx 'notam-circles' source. */
   notamCirclesFC?: FeatureCollection
+  /** Point-only regional NOTAMs (coordinates present, no usable radius --
+   *  obstacle lights, single-point navaid faults). Rendered as clustered
+   *  pins, mirroring web's MapView.tsx 'notam-points' source -- see that
+   *  source's own comment for why clustering needs Point geometry and thus
+   *  a separate source from notamCirclesFC's Polygon geometry. */
+  notamPointsFC?: FeatureCollection
   /** Route planning mode — mirrors web's "Plan route" button. While true,
    *  every map tap adds a waypoint (snapped to a nearby feature within a
    *  screen-pixel radius when unambiguous) instead of opening feature popups. */
@@ -558,12 +565,14 @@ export function AviationMap({
   trafficFC,
   userWaypointsFC,
   notamCirclesFC,
+  notamPointsFC,
   planningMode = false,
   onPlanTap,
   onPlanCandidates,
   routeVisible = true,
 }: AviationMapProps) {
   const cameraRef   = useRef<CameraRef>(null)
+  const notamPointsSourceRef = useRef<GeoJSONSourceRef>(null)
   // Resolved once per mount (cheap sync fs `.exists` checks) — uses cached local
   // files when the pilot has downloaded offline data via Settings, else remote.
   const tileUrls = useMemo(() => getResolvedTileUrls(), [])
@@ -887,6 +896,19 @@ export function AviationMap({
       // Extract tap coordinates from the event
       const ll = (payload as PressEventWithFeatures).lngLat
       const tapLngLat: [number, number] = [ll[0], ll[1]]
+
+      // NOTAM point cluster -- expand zoom instead of opening a popup.
+      // Handled entirely here (not forwarded to onFeatureTap) since it needs
+      // notamPointsSourceRef + cameraRef, both local to this component.
+      if (p.cluster_id !== undefined) {
+        const clusterId = p.cluster_id as number
+        notamPointsSourceRef.current?.getClusterExpansionZoom(clusterId)
+          .then((zoom) => {
+            cameraRef.current?.easeTo({ center: tapLngLat, zoom, duration: 300 })
+          })
+          .catch(() => { /* best-effort -- leave camera where it is */ })
+        return
+      }
 
       // Leg tap — insert waypoint after this leg
       if (p.featureType === 'leg' && onLegTap) {
@@ -1634,6 +1656,51 @@ export function AviationMap({
             <Layer
               id="notam-circles-border" type="line"
               paint={{ 'line-color': '#e64980', 'line-width': 1.5, 'line-dasharray': [3, 2], 'line-opacity': 0.8 }}
+            />
+          </GeoJSONSource>
+        )}
+
+        {notamPointsFC && notamPointsFC.features.length > 0 && (
+          <GeoJSONSource
+            id="notam-points-src"
+            ref={notamPointsSourceRef}
+            data={notamPointsFC}
+            cluster
+            clusterMaxZoom={14}
+            clusterRadius={50}
+            onPress={() => {}}
+          >
+            <Layer
+              id="notam-points-cluster" type="circle"
+              filter={['has', 'point_count'] as any}
+              paint={{
+                'circle-color': '#e64980',
+                'circle-opacity': 0.85,
+                'circle-radius': ['step', ['get', 'point_count'], 12, 10, 16, 25, 20] as any,
+                'circle-stroke-width': 1.5,
+                'circle-stroke-color': '#ffffff',
+              }}
+            />
+            <Layer
+              id="notam-points-cluster-count" type="symbol"
+              filter={['has', 'point_count'] as any}
+              layout={{
+                'text-field': ['get', 'point_count_abbreviated'] as any,
+                'text-size': 11,
+                'text-font': ['Noto Sans Bold'],
+              }}
+              paint={{ 'text-color': '#ffffff' }}
+            />
+            <Layer
+              id="notam-points-unclustered" type="circle"
+              filter={['!', ['has', 'point_count']] as any}
+              paint={{
+                'circle-color': '#e64980',
+                'circle-opacity': 0.9,
+                'circle-radius': 7,
+                'circle-stroke-width': 1.5,
+                'circle-stroke-color': '#ffffff',
+              }}
             />
           </GeoJSONSource>
         )}

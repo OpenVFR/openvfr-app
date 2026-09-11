@@ -350,6 +350,26 @@ export function MapScreen() {
       }),
   }), [regionalNotams])
 
+  // Point-only regional NOTAMs (coordinates present, no usable radius --
+  // obstacle lights, single-point navaid faults). Rendered as clustered
+  // pins -- see AviationMap.tsx's notamPointsFC prop / notam-points-src.
+  const notamPointsFC = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: regionalNotams
+      .filter((n) => n.lat !== null && n.lon !== null && (n.radiusNm === null || n.radiusNm <= 0))
+      .map((n) => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [n.lon!, n.lat!] },
+        properties: {
+          notamId:        n.id,
+          text:           n.text,
+          effective:      n.effective,
+          expires:        n.expires,
+          classification: n.classification,
+        },
+      })),
+  }), [regionalNotams])
+
   const [aerodromeFeature, setAerodromeFeature] = useState<AerodromeFeatureProps | null>(null)
   const [airspaceFeatures,  setAirspaceFeatures]  = useState<AirspaceFeatureProps[]>([])
   const [featureInfo,       setFeatureInfo]        = useState<FeatureInfo | null>(null)
@@ -687,6 +707,7 @@ export function MapScreen() {
           showTerrainColor={layers.terrainColor}
           trafficFC={trafficFC}
           notamCirclesFC={notamCirclesFC}
+          notamPointsFC={notamPointsFC}
           userWaypointsFC={userWaypointsFC}
           basemapMode={layers.satellite ? 'satellite' : 'vector'}
           initialCenter={homeCoord ?? undefined}
