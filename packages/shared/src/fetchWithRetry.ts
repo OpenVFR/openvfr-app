@@ -29,6 +29,18 @@
  * Default 2 retries (3 attempts total) with 400ms base / 3s cap keeps the
  * worst case under ~4 seconds — short enough that a popup's loading spinner
  * doesn't feel broken, long enough to ride out a real brief gap.
+ *
+ * Defaults `credentials: 'include'` unless the caller explicitly overrides
+ * it. Required for the web app's split-origin production deployment
+ * (app.openvfr.org calling api.openvfr.org) -- without it, a cross-origin
+ * `fetch()` does NOT send the session cookie by default even though nginx's
+ * CORS config already allows credentialed requests for this exact origin
+ * (Access-Control-Allow-Credentials: true), causing every session-gated
+ * endpoint (weather, NOTAM) to 401 despite the user being logged in. Native
+ * callers pass an explicit Authorization header instead of relying on
+ * cookies (see @open-vfr/shared's authHeaders() usage) and are unaffected
+ * either way -- React Native's fetch has no browser-style cookie jar for
+ * this option to change the behavior of.
  */
 
 export interface RetryOptions {
@@ -74,9 +86,11 @@ export async function fetchWithRetry(
   let lastResponse: Response | undefined
   let lastError: unknown
 
+  const initWithCredentials: RequestInit = { credentials: 'include', ...init }
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const resp = await fetch(input, init)
+      const resp = await fetch(input, initWithCredentials)
       if (resp.ok || !retryStatuses.includes(resp.status) || attempt === retries) {
         return resp
       }
