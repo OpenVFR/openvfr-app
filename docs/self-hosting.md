@@ -105,22 +105,21 @@ The `api` service (Hono) needs these environment variables — see
   PDF auto-fill (`/api/poh-extract`); the app works without it
 - `OPENSKY_CLIENT_ID` / `OPENSKY_CLIENT_SECRET` — optional, enables live
   ADS-B traffic overlay
-- `FAA_NOTAM_CLIENT_ID` / `FAA_NOTAM_CLIENT_SECRET` — optional, enables
-  worldwide NOTAM lookup via the FAA's public NOTAM Search API
-  (`external-api.faa.gov`); free self-service registration at
-  [api.faa.gov](https://api.faa.gov). Without it, NOTAM lookup only works
-  for North American identifiers (K\*, P\*, T\*, M\*, C\*) via the
-  `aviationweather.gov` fallback. FAA does not publish a documented rate
-  limit for this API, so `/api/notam` self-imposes a conservative per-user
-  cap (`NOTAM_HOURLY_LIMIT`, default 30/hour) to protect your shared
-  credentials from being exhausted by one user — raise it if you hit false
-  positives, lower it if you're worried about FAA-side throttling/bans.
-  **Note:** the FAA is mid-migration to a new "NOTAM Management Service"
-  (NMS, `nms.aim.faa.gov`, cut over April 2026) whose replacement API has
-  no self-service signup (requires emailing FAA directly for credentials).
-  The endpoint used here is a separate, still-functioning self-service
-  layer with no announced retirement date, but check `apps/api/src/index.ts`
-  before assuming this integration is permanent
+- `NMS_CLIENT_ID` / `NMS_CLIENT_SECRET` — optional, enables NOTAM lookup
+  via the FAA's NOTAM Management Service (NMS-API). **No self-service
+  signup** — request credentials by emailing 7-AWA-NAIMES@faa.gov or
+  calling 866-466-1336; you'll first get staging (`api-staging.cgifederal-aim.com`)
+  credentials to validate, then must separately request production
+  onboarding once staging testing passes. Without these vars set, NOTAM
+  lookup is disabled entirely (`/api/notam` returns an empty list).
+  Optional overrides `NMS_AUTH_HOST` / `NMS_API_HOST` default to the
+  staging hosts — set both to the `api-nms.aim.faa.gov` production hosts
+  once your production onboarding is approved (see `apps/api/src/notam.ts`
+  header for exact URLs). NMS-API enforces a strict **account-wide**
+  production rate limit (1 delta pull / 3 min, 1 full pull / 24h) —
+  `notam.ts` runs a single shared background poller (not a call per user
+  request) specifically to respect this; do not add per-request calls to
+  NMS-API elsewhere.
 - `BREVO_API_KEY` — optional, enables transactional email for auth OTP
   codes; without it, OTP codes are logged to the server console (fine for
   self-hosted/single-user use)

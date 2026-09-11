@@ -69,10 +69,11 @@ Full architecture reference: [`docs/architecture.md`](docs/architecture.md).
 OpenVFR is built on the following data and map sources:
 
 * **[aviationweather.gov](https://aviationweather.gov/)** (NOAA Aviation
-  Weather Center) — METAR, TAF data, and NOTAM fallback for North American
-  identifiers. US government, public domain.
-* **[FAA NOTAM Search API](https://api.faa.gov/)** — worldwide NOTAM lookup
-  (requires a free `client_id`/`client_secret`; see `docs/self-hosting.md`).
+  Weather Center) — METAR and TAF data. US government, public domain.
+* **[FAA NOTAM Management Service (NMS-API)](https://www.faa.gov/air_traffic/publications/atpubs/notam_html/)** —
+  worldwide NOTAM lookup. Requires credentials manually issued by the FAA's
+  NOTAM Service Center (no self-service signup — email
+  `7-AWA-NAIMES@faa.gov` or call 866-466-1336; see `docs/self-hosting.md`).
   NOTAMs are exchanged internationally via ICAO's global distribution
   system and FAA's system carries international series including European
   airspace — there is no free/public equivalent on the European side

@@ -28,6 +28,7 @@ import { streamSSE } from 'hono/streaming'
 import OpenAI, { toFile } from 'openai'
 import { writeFileSync, createReadStream, unlinkSync } from 'node:fs'
 import { trafficConfig, registerClient, startTrafficPoller, getLatestBatch, touchActivity } from './traffic'
+import { startNotamPoller, getNotamsForIcao } from './notam'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -223,31 +224,6 @@ function checkPohRateLimit(userId: string): { allowed: true } | { allowed: false
 
   timestamps.push(now)
   pohUsage.set(userId, timestamps)
-  return { allowed: true }
-}
-
-// ---------------------------------------------------------------------------
-// Generic per-user hourly sliding-window limiter — reused by any endpoint
-// backed by a third-party API with no documented/discoverable rate limit of
-// its own (so we can't detect throttling from response headers and must
-// self-impose a conservative cap instead). See NOTAM_HOURLY_LIMIT below for
-// the current consumer.
-// ---------------------------------------------------------------------------
-const hourlyUsage = new Map<string, Map<string, number[]>>() // bucket -> userId -> timestamps (ms), last hour
-
-function checkHourlyLimit(bucket: string, userId: string, limit: number): { allowed: true } | { allowed: false, retryAfterSeconds: number } {
-  const now = Date.now()
-  const bucketMap = hourlyUsage.get(bucket) ?? new Map<string, number[]>()
-  const timestamps = (bucketMap.get(userId) ?? []).filter(t => now - t < HOUR_MS)
-
-  if (timestamps.length >= limit) {
-    const oldestInWindow = Math.min(...timestamps)
-    return { allowed: false, retryAfterSeconds: Math.ceil((oldestInWindow + HOUR_MS - now) / 1000) }
-  }
-
-  timestamps.push(now)
-  bucketMap.set(userId, timestamps)
-  hourlyUsage.set(bucket, bucketMap)
   return { allowed: true }
 }
 
@@ -577,175 +553,30 @@ app.get('/api/weather', async (c) => {
 
 // ---------------------------------------------------------------------------
 // NOTAM — GET /api/notam?icao=ESSA
-// Calls the FAA's own NOTAM Search API (external-api.faa.gov) directly by
-// lat/lon/radius. This is not a US-only source: NOTAMs are exchanged
-// internationally via ICAO's global NOTAM distribution system, and FAA's
-// system participates in that exchange, so this API genuinely carries
-// international NOTAM series including European airspace. There is no
-// free/public equivalent on the European side — Eurocontrol EAD (the
-// authoritative European source) only offers a demo-only "EAD Basic" tool;
-// real access requires a paid service agreement. Requires a free
-// client_id/client_secret pair from https://api.faa.gov (self-service
-// registration) — set FAA_NOTAM_CLIENT_ID / FAA_NOTAM_CLIENT_SECRET. Without
-// credentials, worldwide NOTAM lookup is skipped and only the North American
-// aviationweather.gov fallback below is used.
 //
-// FUTURE RISK: the FAA cut over its underlying NOTAM backend (legacy
-// USNS/FNS) to a new cloud-hosted "NOTAM Management Service" (NMS,
-// nms.aim.faa.gov) in April 2026. This external-api.faa.gov/notamapi/v1
-// endpoint is a separate, older API layer and is still self-service and
-// functioning as of this writing, with no announced sunset date — but its
-// long-term future is uncertain now that the backend it likely fronted has
-// already been replaced. The NMS-API replacement has NO self-service signup
-// (requires emailing notams@faa.gov for manually-issued credentials), so if
-// this endpoint is ever retired, worldwide NOTAM coverage cannot be
-// restored the same drop-in way — re-check this before assuming the current
-// integration is permanent.
-// Aerodrome coordinates are loaded from se-aerodromes.geojson at startup.
-// Fallback to aviationweather.gov for North American identifiers (K*, P*...).
+// Backed by ./notam.ts's shared NMS-API (FAA NOTAM Management Service)
+// poller/cache. This handler does NOT call NMS directly — NMS-API's
+// production rate limit (1 delta pull / 3 min, ACCOUNT-WIDE not per-user)
+// makes a live-call-per-request design unworkable. See notam.ts header for
+// full design rationale (bootstrap vs. delta polling, classification
+// filtering, why /notams/il is not used).
+//
+// Replaces the legacy external-api.faa.gov/notamapi/v1 integration (static
+// client_id/client_secret headers, live call per request, per-user rate
+// limit) — that endpoint had no documented rate limit at all, which no
+// longer applies now that NMS-API imposes an explicit, tight, account-wide
+// one. Fallback to aviationweather.gov (North American identifiers) is also
+// dropped: this app only serves Swedish aerodromes (se-aerodromes.geojson),
+// so that branch was unreachable in practice; NMS-API covers ESSA etc.
+// directly under INTERNATIONAL classification.
 // ---------------------------------------------------------------------------
-const FAA_NOTAM_CLIENT_ID     = process.env['FAA_NOTAM_CLIENT_ID']     ?? ''
-const FAA_NOTAM_CLIENT_SECRET = process.env['FAA_NOTAM_CLIENT_SECRET'] ?? ''
-const notamCache = new Map<string, { data: NotamResponse; expiresAt: number }>()
-const NOTAM_TTL_MS = 15 * 60 * 1000
-
-interface NotamItem {
-  id: string
-  text: string
-  effective: string | null
-  expires: string | null
-  classification: string | null
-}
-interface NotamResponse { notams: NotamItem[] }
-
-// Build ICAO → {lat, lon} index from se-aerodromes.geojson
-// Path is relative to where the server runs (/workspace in Docker)
-const _aeroCoords = new Map<string, { lat: number; lon: number }>()
-try {
-  // Static snapshot bundled with server source (generated by scripts/build-server-assets)
-  const coordsJson = (await import('./aerodrome-coords.json', { assert: { type: 'json' } })).default as Record<string, [number, number]>
-  for (const [icao, [lat, lon]] of Object.entries(coordsJson)) {
-    _aeroCoords.set(icao, { lat, lon })
-  }
-  console.log(`[notam] Loaded ${_aeroCoords.size} aerodrome coords`)
-} catch (e) {
-  console.warn('[notam] Could not load aerodrome coords:', (e as Error).message)
-}
-
-// ICAO prefixes served by aviationweather.gov (North America + Caribbean)
-const AWC_PREFIXES = ['K', 'P', 'T', 'M', 'C']
-const isAwcIcao = (icao: string) => AWC_PREFIXES.some(p => icao.startsWith(p))
-
-// FAA does not publish a documented rate limit or 429 semantics for the
-// NOTAM Search API, so there's no way to detect throttling from response
-// headers — self-impose a conservative per-user cap instead. This protects
-// the single shared FAA credential pair (used by every user of this
-// self-hosted instance) from being exhausted/banned by one user or client
-// bug hammering the endpoint. The 15-minute per-ICAO cache above already
-// absorbs most repeat traffic; this only limits how many distinct/uncached
-// lookups one user can trigger per hour.
-const NOTAM_HOURLY_LIMIT = Number(process.env['NOTAM_HOURLY_LIMIT'] ?? 30)
-
 app.get('/api/notam', async (c) => {
   const user = await requireSession(c)
   if (!user) return c.json({ error: 'Authentication required.' }, 401)
   const icao = (c.req.query('icao') ?? '').toUpperCase().trim()
   if (!/^[A-Z]{4}$/.test(icao)) return c.json({ error: 'Invalid ICAO identifier' }, 400)
 
-  const cached = notamCache.get(icao)
-  if (cached && Date.now() < cached.expiresAt) return c.json(cached.data)
-
-  const rateCheck = checkHourlyLimit('notam', user.id, NOTAM_HOURLY_LIMIT)
-  if (!rateCheck.allowed) {
-    return c.json(
-      { error: `NOTAM lookup rate limit reached. Retry in ${rateCheck.retryAfterSeconds} seconds.` },
-      429,
-    )
-  }
-
-  // ── FAA NOTAM Search API (worldwide, requires free client_id/client_secret) ──
-  const coords = _aeroCoords.get(icao)
-  if (coords && FAA_NOTAM_CLIENT_ID && FAA_NOTAM_CLIENT_SECRET) {
-    try {
-      const url = `https://external-api.faa.gov/notamapi/v1/notams?` +
-        `locationLongitude=${coords.lon}&locationLatitude=${coords.lat}&locationRadius=25&pageSize=100`
-      const resp = await fetch(url, {
-        headers: {
-          'User-Agent':    'open-vfr/1.0',
-          'Accept':        'application/json',
-          'client_id':     FAA_NOTAM_CLIENT_ID,
-          'client_secret': FAA_NOTAM_CLIENT_SECRET,
-        },
-      })
-      if (resp.ok) {
-        const json = await resp.json() as {
-          items: Array<{
-            properties?: {
-              coreNOTAMData?: {
-                notam?: {
-                  id?: string; number?: string; text?: string
-                  effectiveStart?: string; effectiveEnd?: string
-                  classification?: string; location?: string
-                }
-              }
-            }
-          }>
-        }
-        const notams: NotamItem[] = (json.items ?? []).flatMap((item) => {
-          const n = item.properties?.coreNOTAMData?.notam
-          if (!n?.text) return []
-          return [{
-            id:             n.number ?? n.id ?? '',
-            text:           n.text.replace(/\r\n/g, '\n').trim(),
-            effective:      n.effectiveStart ?? null,
-            expires:        n.effectiveEnd === '9999-12-31T23:59:00.000Z' ? null : (n.effectiveEnd ?? null),
-            classification: n.classification ?? null,
-          }]
-        })
-        const data: NotamResponse = { notams }
-        notamCache.set(icao, { data, expiresAt: Date.now() + NOTAM_TTL_MS })
-        console.log(`[notam] FAA API: ${notams.length} NOTAMs for ${icao}`)
-        return c.json(data)
-      }
-      console.warn(`[notam] FAA API ${resp.status} for ${icao}`)
-    } catch (e) {
-      console.warn('[notam] FAA API failed:', (e as Error).message)
-    }
-  }
-
-  // ── fallback: AWC for North American airports ──────────────────────────────
-  if (isAwcIcao(icao)) {
-    try {
-      const resp = await fetch(
-        `https://aviationweather.gov/api/data/notam?ids=${icao}&format=json`,
-        { headers: { 'User-Agent': 'open-vfr/1.0', 'Accept': 'application/json' } },
-      )
-      if (resp.ok) {
-        const arr = await resp.json() as Array<{
-          notamID?: string; issued?: string; effectiveStart?: string
-          effectiveEnd?: string; text?: string; message?: string; classification?: string
-        }>
-        const notams: NotamItem[] = arr.map((n) => ({
-          id:             n.notamID ?? '',
-          text:           n.text ?? n.message ?? '',
-          effective:      n.effectiveStart ?? n.issued ?? null,
-          expires:        n.effectiveEnd ?? null,
-          classification: n.classification ?? null,
-        })).filter((n) => n.text.length > 0)
-        const data: NotamResponse = { notams }
-        notamCache.set(icao, { data, expiresAt: Date.now() + NOTAM_TTL_MS })
-        return c.json(data)
-      }
-      console.error(`[notam] AWC API ${resp.status} for ${icao}`)
-    } catch (err) {
-      console.error('[notam] AWC fetch failed:', err)
-    }
-  }
-
-  // Unknown airport / all sources failed — return empty rather than error
-  const data: NotamResponse = { notams: [] }
-  notamCache.set(icao, { data, expiresAt: Date.now() + NOTAM_TTL_MS })
-  return c.json(data)
+  return c.json(getNotamsForIcao(icao))
 })
 
 // ---------------------------------------------------------------------------
@@ -757,4 +588,5 @@ serve({ fetch: app.fetch, port: PORT }, () => {
     console.warn('WARNING: Azure OpenAI not configured — /api/poh-extract will return 503')
   }
   startTrafficPoller()
+  startNotamPoller()
 })

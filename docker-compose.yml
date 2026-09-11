@@ -64,6 +64,11 @@ services:
       dockerfile: docker/Dockerfile.server
     ports:
       - "5200:5200"
+    volumes:
+      # Persists notam.ts's NOTAM cache (NMS_CACHE_FILE, default /data/notam-cache.json)
+      # across container restarts -- without this, every restart re-triggers
+      # the expensive worldwide NMS-API bootstrap pull instead of warm-starting.
+      - api_data:/data
     environment:
       - PORT=5200
       - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
@@ -81,8 +86,10 @@ services:
       - BREVO_API_KEY=${BREVO_API_KEY:-}
       - BREVO_SENDER_EMAIL=${BREVO_SENDER_EMAIL:-noreply@your-domain.example}
       - BREVO_SENDER_NAME=${BREVO_SENDER_NAME:-Open VFR}
-      - FAA_NOTAM_CLIENT_ID=${FAA_NOTAM_CLIENT_ID:-}
-      - FAA_NOTAM_CLIENT_SECRET=${FAA_NOTAM_CLIENT_SECRET:-}
+      - NMS_CLIENT_ID=${NMS_CLIENT_ID:-}
+      - NMS_CLIENT_SECRET=${NMS_CLIENT_SECRET:-}
+      - NMS_AUTH_HOST=${NMS_AUTH_HOST:-}
+      - NMS_API_HOST=${NMS_API_HOST:-}
 
   # ── PostgREST — auto-generated REST API from PostgreSQL schema ─────────────
   # Provides /rest/ API for client-side sync of user data (routes, aircraft,
@@ -106,3 +113,4 @@ services:
 
 volumes:
   postgres_data:
+  api_data:
