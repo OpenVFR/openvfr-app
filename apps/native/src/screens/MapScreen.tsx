@@ -707,6 +707,7 @@ export function MapScreen() {
           showObstacles={layers.obstacles}
           showRunways={layers.runways}
           showLandmarks={layers.landmarks}
+          showLanduse={layers.landuse}
           showHillshade={layers.hillshade}
           showTerrainColor={layers.terrainColor}
           showContours={layers.contours}

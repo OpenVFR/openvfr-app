@@ -46,6 +46,10 @@ export type LayerState = {
   satellite:  boolean
   // VFR landmarks
   landmarks:  boolean
+  // OSM landuse fills (farmland/residential/wetland/etc.), self-hosted
+  // PMTiles -- matches web's 'terrain' (landuse) LAYER_GROUP. On by default,
+  // same as web.
+  landuse: boolean
   // Terrain relief shading (Copernicus GLO-30 DEM, self-hosted PMTiles)
   hillshade:  boolean
   // EXPERIMENTAL -- terrain colour-relief (color-relief layer type). Known
@@ -73,6 +77,7 @@ export const LAYER_DEFAULTS: LayerState = {
   notamCircles: true,
   satellite:  false,
   landmarks:  false,
+  landuse: true,
   hillshade:  false,
   terrainColor: false,
   contours: false,
@@ -116,6 +121,7 @@ const TRAFFIC_GROUPS: Group[] = [
 // first here same as web's second Terrain entry. terrainColor is native-only
 // (no web equivalent) and kept last so it doesn't interrupt the shared order.
 const TERRAIN_GROUPS: Group[] = [
+  { key: 'landuse',      label: 'Terrain (landuse)',                color: '#c9a876' },
   { key: 'hillshade',    label: 'Hillshade (relief)',              color: '#8d6e63' },
   { key: 'contours',     label: 'Contour Lines',                   color: '#785023' },
   { key: 'terrainColor', label: 'Terrain Color (EXPERIMENTAL)',    color: '#ef4444' },

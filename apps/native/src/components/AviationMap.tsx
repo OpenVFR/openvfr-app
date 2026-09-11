@@ -82,6 +82,7 @@ export type AviationMapProps = {
   showObstacles?:  boolean
   showRunways?:    boolean
   showLandmarks?:  boolean
+  showLanduse?:    boolean
   showHillshade?:  boolean
   showContours?:   boolean
   /** EXPERIMENTAL — color-relief has a known GPU/Adreno rendering bug on
@@ -543,6 +544,7 @@ export function AviationMap({
   showObstacles  = true,
   showRunways    = true,
   showLandmarks  = false,
+  showLanduse    = true,
   showHillshade  = false,
   showTerrainColor     = false,
   showContours   = false,
@@ -1089,6 +1091,22 @@ export function AviationMap({
             type="fill"
             source="osm-landuse"
             {...{'source-layer': 'landuse'} as any}
+            // BUG FIX (found live on device): MapLibre React Native inserts
+            // JSX-declared <Layer> children ABOVE every existing style layer
+            // by default (append-only, no implicit position), unlike web's
+            // map-style.ts where landuse-fill's position in the raw style
+            // JSON array is explicitly chosen (fills before labels). Without
+            // beforeId this fill layer rendered on top of the basemap's own
+            // place/label text (city names like "Gislaved" became unreadable
+            // when landuse was on) -- confirmed NOT reproducible on web,
+            // native-only bug. 'address_label' is the FIRST symbol/label
+            // layer in protomaps-themes-base's layers() output (verified via
+            // node -e against the actual installed @protomaps/basemaps
+            // package) -- beforeId places landuse-fill immediately below it,
+            // i.e. below every text label, matching web's fill-before-labels
+            // z-order exactly.
+            beforeId="address_label"
+            layout={{ visibility: showLanduse ? 'visible' : 'none' }}
             paint={{
               'fill-color': [
                 'match', ['get', 'kind'],
