@@ -3,7 +3,7 @@
  *
  * Identical logic to the web hook (src/hooks/useAirspaceWarnings.ts).
  * Differences:
- *   - Fetches from TILE_URLS.airspace (absolute URL via adb reverse or prod)
+ *   - Fetches from getTileUrls().airspace (absolute URL via adb reverse or prod)
  *   - Module-level GeoJSON cache (shared across renders, survives hot reload)
  *   - pointInPolygon + advancePosition imported from @open-vfr/shared
  *
@@ -23,7 +23,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
 import { advancePosition } from '@open-vfr/shared/routeCalc'
-import { TILE_URLS } from '../config'
+import { getTileUrls } from '../config'
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const LOOKAHEAD_MIN_SPEED   = 60
@@ -73,7 +73,7 @@ function loadOnce(cb: (f: AirspaceFeature[]) => void) {
   _listeners.push(cb)
   if (_loading) return
   _loading = true
-  fetch(TILE_URLS.airspace)
+  fetch(getTileUrls().airspace)
     .then(r => r.json())
     .then((fc: GeoJSON.FeatureCollection) => {
       const arr: AirspaceFeature[] = []

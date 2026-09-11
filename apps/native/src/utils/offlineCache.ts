@@ -22,12 +22,12 @@
  */
 
 import { File, Directory, Paths } from 'expo-file-system'
-import { TILE_BASE, TILE_URLS } from '../config'
+import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { TILE_BASE } from '../config'
 
 export interface OfflineAsset {
   key:       string
   label:     string
-  remoteUrl: string
   fileName:  string
   /**
    * true  — flight-safety-critical aviation data. Always downloaded by
@@ -41,20 +41,38 @@ export interface OfflineAsset {
   required:  boolean
 }
 
+// BUG FIX: two separate real bugs previously here:
+//   1. basemap/landuse/hillshade/contours hardcoded a `/tiles/` URL segment
+//      (`${TILE_BASE}/tiles/basemap.pmtiles`) that 404s against real
+//      production tiles.openvfr.org (flat R2 bucket root, no /tiles/ prefix)
+//      -- the exact same bug class already fixed elsewhere in config.ts
+//      (see that file's TILE_BASE comment) but missed here.
+//   2. Every remoteUrl was a plain unversioned URL, computed once from a
+//      module-level TILE_URLS const -- no cache-busting at all, unlike web's
+//      equivalent fetches (all go through versionedTileUrl()). remoteUrl is
+//      now computed on demand (remoteUrlFor()) so it always reflects the
+//      manifest's current content hash at download time, not whatever was
+//      cached (or not yet fetched) at app-startup/module-import time.
+/** Content-hash-busted remote URL for a given tile filename -- see
+ *  @open-vfr/shared/tileManifest's own doc comment for why this matters. */
+export function remoteUrlFor(fileName: string): string {
+  return versionedTileUrl(TILE_BASE, fileName)
+}
+
 export const OFFLINE_ASSETS: OfflineAsset[] = [
-  { key: 'basemap',           label: 'Basemap (large)',      remoteUrl: `${TILE_BASE}/tiles/basemap.pmtiles`,        fileName: 'basemap.pmtiles',           required: false },
-  { key: 'landuse',           label: 'Terrain (landuse)',    remoteUrl: `${TILE_BASE}/tiles/se-landuse.pmtiles`,     fileName: 'se-landuse.pmtiles',        required: false },
-  { key: 'hillshade',         label: 'Hillshade (relief, large)', remoteUrl: `${TILE_BASE}/tiles/se-hillshade.pmtiles`, fileName: 'se-hillshade.pmtiles',   required: false },
-  { key: 'contours',          label: 'Contour lines',        remoteUrl: `${TILE_BASE}/tiles/se-contours.pmtiles`,     fileName: 'se-contours.pmtiles',       required: false },
-  { key: 'airspace',          label: 'Airspace',              remoteUrl: TILE_URLS.airspace,         fileName: 'se-airspace.geojson',       required: true },
-  { key: 'aerodromes',        label: 'Aerodromes',            remoteUrl: TILE_URLS.aerodromes,       fileName: 'se-aerodromes.geojson',     required: true },
-  { key: 'navaids',           label: 'Navaids',               remoteUrl: TILE_URLS.navaids,          fileName: 'se-navaids.geojson',        required: true },
-  { key: 'waypoints',         label: 'Waypoints',             remoteUrl: TILE_URLS.waypoints,        fileName: 'se-waypoints.geojson',      required: true },
-  { key: 'runways',           label: 'Runways',               remoteUrl: TILE_URLS.runways,          fileName: 'se-runways.geojson',        required: true },
-  { key: 'runwayThresholds',  label: 'Runway thresholds',     remoteUrl: TILE_URLS.runwayThresholds, fileName: 'se-runway-thresholds.geojson', required: true },
-  { key: 'obstacles',         label: 'Obstacles',             remoteUrl: TILE_URLS.obstacles,        fileName: 'se-obstacles.geojson',      required: true },
-  { key: 'landmarks',         label: 'Landmarks',             remoteUrl: TILE_URLS.landmarks,        fileName: 'se-landmarks.geojson',      required: true },
-  { key: 'water',             label: 'Water (Virtual Radar)', remoteUrl: TILE_URLS.water,            fileName: 'se-water.geojson',          required: false },
+  { key: 'basemap',           label: 'Basemap (large)',       fileName: 'basemap.pmtiles',              required: false },
+  { key: 'landuse',           label: 'Terrain (landuse)',     fileName: 'se-landuse.pmtiles',           required: false },
+  { key: 'hillshade',         label: 'Hillshade (relief, large)', fileName: 'se-hillshade.pmtiles',     required: false },
+  { key: 'contours',          label: 'Contour lines',         fileName: 'se-contours.pmtiles',          required: false },
+  { key: 'airspace',          label: 'Airspace',              fileName: 'se-airspace.geojson',          required: true },
+  { key: 'aerodromes',        label: 'Aerodromes',            fileName: 'se-aerodromes.geojson',        required: true },
+  { key: 'navaids',           label: 'Navaids',               fileName: 'se-navaids.geojson',           required: true },
+  { key: 'waypoints',         label: 'Waypoints',             fileName: 'se-waypoints.geojson',         required: true },
+  { key: 'runways',           label: 'Runways',               fileName: 'se-runways.geojson',           required: true },
+  { key: 'runwayThresholds',  label: 'Runway thresholds',     fileName: 'se-runway-thresholds.geojson', required: true },
+  { key: 'obstacles',         label: 'Obstacles',             fileName: 'se-obstacles.geojson',         required: true },
+  { key: 'landmarks',         label: 'Landmarks',             fileName: 'se-landmarks.geojson',         required: true },
+  { key: 'water',             label: 'Water (Virtual Radar)', fileName: 'se-water.geojson',             required: false },
 ]
 
 export const REQUIRED_ASSETS: OfflineAsset[] = OFFLINE_ASSETS.filter(a => a.required)
@@ -83,10 +101,10 @@ export function isCached(asset: OfflineAsset): boolean {
   return new File(getCacheDir(), asset.fileName).exists
 }
 
-/** Returns the cached local URI if present, else the remote URL — safe default for any consumer. */
+/** Returns the cached local URI if present, else the (versioned) remote URL — safe default for any consumer. */
 export function resolveUri(asset: OfflineAsset): string {
   const f = new File(getCacheDir(), asset.fileName)
-  return f.exists ? f.uri : asset.remoteUrl
+  return f.exists ? f.uri : remoteUrlFor(asset.fileName)
 }
 
 /** Same lookup, keyed by TILE_URLS-style name, for call sites that don't want to import OFFLINE_ASSETS directly. */
@@ -146,7 +164,7 @@ export async function downloadAssets(
     const asset = assets[i]
     const dest  = new File(dir, asset.fileName)
     if (dest.exists) dest.delete()
-    const task = File.createDownloadTask(asset.remoteUrl, dest, {
+    const task = File.createDownloadTask(remoteUrlFor(asset.fileName), dest, {
       onProgress: ({ bytesWritten, totalBytes }) => {
         onProgress?.({
           assetKey: asset.key, assetLabel: asset.label,

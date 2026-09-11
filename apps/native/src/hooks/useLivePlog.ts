@@ -2,7 +2,7 @@
  * useLivePlog — live pilot log state for the in-flight PLOG panel.
  *
  * Ported from src/hooks/useLivePlog.ts (web) — identical logic, only the
- * GeoJSON fetch URLs differ (TILE_URLS instead of same-origin /tiles/*).
+ * GeoJSON fetch URLs differ (getTileUrls() instead of same-origin /tiles/*).
  *
  * Tracks actual times of arrival (ATAs) as waypoints are passed, computes
  * live ETAs for upcoming waypoints from current ground speed, calculates
@@ -14,7 +14,7 @@ import { useState, useEffect, useRef } from 'react'
 import type { GpsPosition, FlyingMode } from '../utils/gpsTypes'
 import type { RouteWaypoint } from '../types/db'
 import { distanceNm } from '../utils/routeCalc'
-import { TILE_URLS } from '../config'
+import { getTileUrls } from '../config'
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -63,7 +63,7 @@ const COMM_PRIORITY = COMM_SERVICES
 async function loadAerodromes(): Promise<CachedAerodrome[]> {
   if (_aeroCache) return _aeroCache
   try {
-    const fc = await fetch(TILE_URLS.aerodromes).then(r => r.json()) as GeoJSON.FeatureCollection
+    const fc = await fetch(getTileUrls().aerodromes).then(r => r.json()) as GeoJSON.FeatureCollection
     _aeroCache = fc.features
       .filter(f => f.geometry.type === 'Point')
       .map(f => {
@@ -89,7 +89,7 @@ async function loadAerodromes(): Promise<CachedAerodrome[]> {
 async function loadNavaids(): Promise<CachedNavaid[]> {
   if (_navCache) return _navCache
   try {
-    const fc = await fetch(TILE_URLS.navaids).then(r => r.json()) as GeoJSON.FeatureCollection
+    const fc = await fetch(getTileUrls().navaids).then(r => r.json()) as GeoJSON.FeatureCollection
     _navCache = fc.features
       .filter(f => f.geometry.type === 'Point')
       .map(f => {

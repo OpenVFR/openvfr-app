@@ -37,7 +37,7 @@ import { makeCirclePolygon } from '@open-vfr/shared/geoCircle'
 import { fmtNotamDate } from '@open-vfr/shared/fetchNotam'
 import { NotificationCenter } from '../components/NotificationCenter'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
-import { TILE_URLS } from '../config'
+import { getTileUrls } from '../config'
 import { useAirspaceWarnings }  from '../hooks/useAirspaceWarnings'
 import { useObstructionWarnings } from '../hooks/useObstructionWarnings'
 import { useAirfieldProximity }   from '../hooks/useAirfieldProximity'
@@ -558,7 +558,7 @@ export function MapScreen() {
     // Independent of the altitude-ceiling filter and per-class layer toggles —
     // those only control what's drawn on the map, not what's reported here.
     // Always query the full dataset directly.
-    const airspaces = await queryAirspaceAtPoint(tapLng, tapLat, TILE_URLS.airspace)
+    const airspaces = await queryAirspaceAtPoint(tapLng, tapLat, getTileUrls().airspace)
     if (airspaces.length > 0) {
       setAirspaceFeatures(airspaces)
     }

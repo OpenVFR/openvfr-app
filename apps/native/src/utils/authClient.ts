@@ -40,6 +40,25 @@ export const authClient = createAuthClient({
       // it matches the server's trustedOrigins list.
       Origin: API_BASE,
     },
+    // BUG FIX (found live: /api/traffic/latest silently returning nothing on
+    // device — Air Traffic toggle showed zero aircraft with no error). The
+    // server's bearer() plugin returns the session token in a 'set-auth-token'
+    // response header on every request (per better-auth's own bearer docs),
+    // but nothing was ever capturing it and writing it into AsyncStorage under
+    // the 'better-auth-token' key that authHeaders() (below) reads from —
+    // that function has always returned {} in practice, silently downgrading
+    // every authHeaders()-based fetch (traffic, regional NOTAMs, weather-
+    // along-route) to an unauthenticated request. Some of those happened to
+    // still work because getSession()'s own internal $fetch calls run through
+    // this same onSuccess hook and DO refresh the token on session-restore/
+    // sign-in calls specifically -- but authHeaders() itself had no source of
+    // truth to read from until this global hook exists. Global onSuccess is
+    // the officially documented pattern (better-auth.com/docs/plugins/bearer)
+    // for exactly this: capture + persist on every response, not just sign-in.
+    onSuccess: (ctx) => {
+      const token = ctx.response.headers.get('set-auth-token')
+      if (token) AsyncStorage.setItem('better-auth-token', token).catch(() => {})
+    },
   },
   plugins: [
     emailOTPClient(),

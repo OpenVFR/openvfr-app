@@ -33,10 +33,10 @@ import {
   BASEMAP_STYLE_URL,
   SATELLITE_STYLE,
   createProtomapsStyle,
-  LANDUSE_PMTILES_URL,
-  HILLSHADE_PMTILES_URL,
-  CONTOURS_PMTILES_URL,
-  TILE_URLS,
+  getLandusePmtilesUrl,
+  getHillshadePmtilesUrl,
+  getContoursPmtilesUrl,
+  getTileUrls,
   DEFAULT_CENTER,
   DEFAULT_ZOOM,
 } from '../config'
@@ -47,14 +47,15 @@ import { theme } from '../styles/theme'
 import { OFFLINE_ASSETS, resolveUri } from '../utils/offlineCache'
 import { buildTerrainColorExpr } from '@open-vfr/shared/terrainColor'
 
-/** Resolves each TILE_URLS key to its cached local file:// URI if downloaded, else the remote URL. */
+/** Resolves each tile key to its cached local file:// URI if downloaded, else the (versioned) remote URL. */
 function getResolvedTileUrls() {
+  const tileUrls = getTileUrls()
   const resolved: Record<string, string> = {}
-  for (const key of Object.keys(TILE_URLS)) {
+  for (const key of Object.keys(tileUrls)) {
     const asset = OFFLINE_ASSETS.find(a => a.key === key)
-    resolved[key] = asset ? resolveUri(asset) : (TILE_URLS as Record<string, string>)[key]
+    resolved[key] = asset ? resolveUri(asset) : (tileUrls as Record<string, string>)[key]
   }
-  return resolved as typeof TILE_URLS
+  return resolved as typeof tileUrls
 }
 
 // ---------------------------------------------------------------------------
@@ -579,6 +580,13 @@ export function AviationMap({
   // Resolved once per mount (cheap sync fs `.exists` checks) — uses cached local
   // files when the pilot has downloaded offline data via Settings, else remote.
   const tileUrls = useMemo(() => getResolvedTileUrls(), [])
+  // Computed once per mount, same as tileUrls above -- avoids a fresh string
+  // (and thus a changed prop) on every render, which risked tripping the
+  // 'id cannot be changed' MapLibre Native restriction seen elsewhere in
+  // this file if it ever raced with a Fast Refresh reconciliation.
+  const landusePmtilesUrl   = useMemo(() => getLandusePmtilesUrl(), [])
+  const hillshadePmtilesUrl = useMemo(() => getHillshadePmtilesUrl(), [])
+  const contoursPmtilesUrl  = useMemo(() => getContoursPmtilesUrl(), [])
   const mapRef      = useRef<MapRef>(null)
 
   // Track camera state — read by nav-needle/other features elsewhere below.
@@ -1073,7 +1081,7 @@ export function AviationMap({
             below all aviation overlays. */}
         <VectorSource
           id="osm-landuse"
-          url={LANDUSE_PMTILES_URL}
+          url={landusePmtilesUrl}
           maxzoom={12}
         >
           <Layer
@@ -1108,7 +1116,7 @@ export function AviationMap({
             aviation overlays. */}
         <RasterDEMSource
           id="osm-hillshade"
-          url={HILLSHADE_PMTILES_URL}
+          url={hillshadePmtilesUrl}
           encoding="terrarium"
           // Must match the archive's REAL base zoom (10), not a desired
           // one -- mirrors getHillshadeSource()'s maxzoom in web's
@@ -1216,7 +1224,7 @@ export function AviationMap({
             toggled via layout.visibility. */}
         <VectorSource
           id="osm-contours"
-          url={CONTOURS_PMTILES_URL}
+          url={contoursPmtilesUrl}
           minzoom={6}
           maxzoom={12}
         >

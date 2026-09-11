@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { TILE_URLS } from '../config'
+import { getTileUrls } from '../config'
 import { distanceNm } from '../utils/routeCalc'
 import type { GpsPosition } from '../utils/gpsTypes'
 
@@ -26,7 +26,7 @@ function loadOnce(cb: (d: CachedAerodrome[]) => void) {
   _listeners.push(cb)
   if (_loading) return
   _loading = true
-  fetch(TILE_URLS.aerodromes)
+  fetch(getTileUrls().aerodromes)
     .then(r => r.json())
     .then((fc: GeoJSON.FeatureCollection) => {
       const arr: CachedAerodrome[] = []

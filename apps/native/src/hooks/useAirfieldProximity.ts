@@ -2,7 +2,7 @@
  * useAirfieldProximity (native) — warn when approaching an unplanned aerodrome.
  *
  * Identical logic to the web hook (src/hooks/useAirfieldProximity.ts).
- * Only difference: fetches from TILE_URLS.aerodromes instead of the
+ * Only difference: fetches from getTileUrls().aerodromes instead of the
  * relative web path. RouteWaypoint shape (`lat`/`lng`/`name`/`note`) is
  * shared via @open-vfr/shared/types — no field mapping needed.
  *
@@ -20,7 +20,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
-import { TILE_URLS } from '../config'
+import { getTileUrls } from '../config'
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const LATERAL_NM   = 1.0
@@ -73,7 +73,7 @@ export function useAirfieldProximity(
 
   // ── Load aerodromes GeoJSON once ──────────────────────────────────────────
   useEffect(() => {
-    fetch(TILE_URLS.aerodromes)
+    fetch(getTileUrls().aerodromes)
       .then(r => r.json())
       .then((fc: GeoJSON.FeatureCollection) => {
         const arr: AerodromeFeature[] = []

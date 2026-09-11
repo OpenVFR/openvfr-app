@@ -8,7 +8,7 @@ import { useState, useEffect } from 'react'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import { distanceToRouteNm } from '@open-vfr/shared/notamRouteFilter'
 import { fetchWx, decodeMetar, type MetarDecoded } from '@open-vfr/shared/fetchWx'
-import { API_BASE, TILE_URLS } from '../config'
+import { API_BASE, getTileUrls } from '../config'
 import { authHeaders } from '../utils/authClient'
 
 const BUFFER_NM    = 15
@@ -30,7 +30,7 @@ export function useWeatherAlongRoute(waypoints: RouteWaypoint[]): RouteWeatherSt
   const [stations, setStations] = useState<RouteWeatherStation[]>([])
 
   useEffect(() => {
-    fetch(TILE_URLS.aerodromes)
+    fetch(getTileUrls().aerodromes)
       .then((r) => r.json())
       .then((fc: GeoJSON.FeatureCollection) => {
         const arr: AerodromeRecord[] = []

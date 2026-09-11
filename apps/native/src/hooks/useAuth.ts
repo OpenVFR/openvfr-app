@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authClient } from '../utils/authClient'
 
 export type AuthUser = {
@@ -108,6 +109,11 @@ export function useAuth() {
   const signOut = useCallback(async () => {
     console.log('[auth] signOut')
     await authClient.signOut()
+    // Clear the manually-captured bearer token too (see authClient.ts's
+    // onSuccess hook) -- otherwise a stale token from the just-ended session
+    // would keep being sent by authHeaders()-based fetches (traffic, regional
+    // NOTAMs, weather-along-route) until overwritten by a future sign-in.
+    await AsyncStorage.removeItem('better-auth-token').catch(() => {})
     setState({ status: 'unauthenticated' })
   }, [])
 

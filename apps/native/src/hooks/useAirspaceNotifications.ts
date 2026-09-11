@@ -3,7 +3,7 @@
  *
  * Identical logic to the web hook (src/hooks/useAirspaceNotifications.ts).
  * Differences:
- *   - Fetches from TILE_URLS.airspace (absolute URL via adb reverse or prod)
+ *   - Fetches from getTileUrls().airspace (absolute URL via adb reverse or prod)
  *   - Uses @open-vfr/shared/airspaceGeometry's pointInPolygon (same one
  *     useAirspaceWarnings already uses) instead of a local duplicate
  *
@@ -18,7 +18,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
-import { TILE_URLS } from '../config'
+import { getTileUrls } from '../config'
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const NOTIFICATION_TTL_MS = 9_000   // visible for 9 s then fades
@@ -77,7 +77,7 @@ export function useAirspaceNotifications(position: GpsPosition | null): {
 
   // ── Load airspace GeoJSON once ────────────────────────────────────────────
   useEffect(() => {
-    fetch(TILE_URLS.airspace)
+    fetch(getTileUrls().airspace)
       .then(r => r.json())
       .then((fc: GeoJSON.FeatureCollection) => {
         const arr: AirspaceFeature[] = []

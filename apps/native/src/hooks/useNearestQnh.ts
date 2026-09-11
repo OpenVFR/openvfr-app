@@ -19,7 +19,7 @@ import { useEffect, useRef, useState } from 'react'
 import { fetchWx, decodeMetar } from '@open-vfr/shared/fetchWx'
 import { interpolateQnh, type QnhReading } from '@open-vfr/shared/qnhInterpolation'
 import { distanceNm } from '../utils/routeCalc'
-import { TILE_URLS, API_BASE } from '../config'
+import { getTileUrls, API_BASE } from '../config'
 import { authHeaders } from '../utils/authClient'
 import type { GpsPosition } from '../utils/gpsTypes'
 
@@ -53,7 +53,7 @@ function loadOnce(onLoad: (data: CachedAerodrome[]) => void) {
   _listeners.push(onLoad)
   if (_loading) return
   _loading = true
-  fetch(TILE_URLS.aerodromes)
+  fetch(getTileUrls().aerodromes)
     .then(r => r.json())
     .then((fc: GeoJSON.FeatureCollection) => {
       const arr: CachedAerodrome[] = []

@@ -5,11 +5,11 @@
  */
 
 import { getFullRing as sharedGetFullRing } from '@open-vfr/shared/airspaceGeometryCache'
-import { TILE_URLS } from '../config'
+import { getTileUrls } from '../config'
 
 export async function getFullRing(
   props: { name?: string; lower_ft?: number; upper_ft?: number },
   clippedCoords?: number[][],
 ): Promise<number[][] | undefined> {
-  return sharedGetFullRing(props, TILE_URLS.airspace, clippedCoords)
+  return sharedGetFullRing(props, getTileUrls().airspace, clippedCoords)
 }

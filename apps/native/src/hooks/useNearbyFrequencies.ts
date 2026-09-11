@@ -12,7 +12,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { distanceNm } from '../utils/routeCalc'
-import { TILE_URLS } from '../config'
+import { getTileUrls } from '../config'
 
 export interface NearbyFreq {
   service:  string   // TWR, AFIS, APP, GND, ATIS, FIS, INFO, RDO…
@@ -111,7 +111,7 @@ function loadOnce(onLoad: (data: CachedAerodrome[]) => void) {
   // (adb install -r keeps app data) and would otherwise keep honouring a
   // long max-age from whatever the server sent on the FIRST ever fetch on
   // that device, potentially predating a data fix by days.
-  fetch(TILE_URLS.aerodromes, { cache: 'no-store' })
+  fetch(getTileUrls().aerodromes, { cache: 'no-store' })
     .then(r => r.json())
     .then((fc: GeoJSON.FeatureCollection) => {
       _cache = parseAerodromesFC(fc)
@@ -132,7 +132,7 @@ function refreshIfStale(onUpdate: (data: CachedAerodrome[]) => void) {
   if (_loading) return
   if (_cache && Date.now() - _lastFetchedAt < REFRESH_MS) return
   _loading = true
-  fetch(TILE_URLS.aerodromes, { cache: 'no-store' })
+  fetch(getTileUrls().aerodromes, { cache: 'no-store' })
     .then(r => r.json())
     .then((fc: GeoJSON.FeatureCollection) => {
       _cache = parseAerodromesFC(fc)

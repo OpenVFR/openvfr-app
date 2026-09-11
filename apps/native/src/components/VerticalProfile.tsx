@@ -41,7 +41,7 @@ import {
   type MsaPoint,
   type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
-import { TILE_URLS, TILE_BASE } from '../config'
+import { getTileUrls, TILE_BASE } from '../config'
 import { theme } from '../styles/theme'
 
 // ---------------------------------------------------------------------------
@@ -211,10 +211,10 @@ export function VerticalProfile({
 
   // Load GeoJSON once
   useEffect(() => {
-    fetch(TILE_URLS.airspace).then(r => r.json()).then(setAirspaceGeo).catch(() => {})
-    fetch(TILE_URLS.obstacles).then(r => r.json()).then(setObstacleGeo).catch(() => {})
-    fetch(TILE_URLS.water).then(r => r.json()).then(setWaterGeo).catch(() => { /* optional layer — offline-safe no-op */ })
-    fetch(TILE_URLS.landmarks).then(r => r.json()).then(setLandmarkGeo).catch(() => { /* optional layer — offline-safe no-op */ })
+    fetch(getTileUrls().airspace).then(r => r.json()).then(setAirspaceGeo).catch(() => {})
+    fetch(getTileUrls().obstacles).then(r => r.json()).then(setObstacleGeo).catch(() => {})
+    fetch(getTileUrls().water).then(r => r.json()).then(setWaterGeo).catch(() => { /* optional layer — offline-safe no-op */ })
+    fetch(getTileUrls().landmarks).then(r => r.json()).then(setLandmarkGeo).catch(() => { /* optional layer — offline-safe no-op */ })
   }, [])
 
   // Fetch terrain profile whenever the route changes

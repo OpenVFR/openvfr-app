@@ -2,7 +2,7 @@
  * useObstructionWarnings (native) — proximity alerts for fixed obstacles.
  *
  * Identical logic to the web hook (src/hooks/useObstructionWarnings.ts).
- * Only difference: fetches from TILE_URLS.obstacles (absolute URL via
+ * Only difference: fetches from getTileUrls().obstacles (absolute URL via
  * adb reverse or prod) instead of the relative web path.
  *
  * An alert fires when:
@@ -15,7 +15,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
-import { TILE_URLS } from '../config'
+import { getTileUrls } from '../config'
 
 // ── Config ───────────────────────────────────────────────────────────────────
 const WARN_RADIUS_NM      = 1.0    // horizontal warning radius
@@ -63,7 +63,7 @@ export function useObstructionWarnings(position: GpsPosition | null): {
 
   // ── Load once ───────────────────────────────────────────────────────────────
   useEffect(() => {
-    fetch(TILE_URLS.obstacles)
+    fetch(getTileUrls().obstacles)
       .then(r => r.json())
       .then((fc: GeoJSON.FeatureCollection) => {
         const pts: ObstaclePoint[] = []

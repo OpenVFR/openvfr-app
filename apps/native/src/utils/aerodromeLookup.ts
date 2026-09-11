@@ -5,7 +5,7 @@
  * aerodromes only (that's all the Alternate field needs).
  */
 
-import { TILE_URLS } from '../config'
+import { getTileUrls } from '../config'
 
 export type AerodromeLookupEntry = { name: string; lng: number; lat: number }
 
@@ -16,7 +16,7 @@ export function getAerodromeLookup(): Promise<Map<string, AerodromeLookupEntry>>
   if (_cache) return Promise.resolve(_cache)
   if (_inFlight) return _inFlight
 
-  _inFlight = fetch(TILE_URLS.aerodromes)
+  _inFlight = fetch(getTileUrls().aerodromes)
     .then(r => r.json())
     .then((fc: { features: { geometry: { coordinates: [number, number] }; properties: Record<string, unknown> }[] }) => {
       const map = new Map<string, AerodromeLookupEntry>()

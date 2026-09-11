@@ -464,12 +464,21 @@ export const LAYER_GROUPS: LayerGroup[] = [
 export function getMapStyle(): StyleSpecification {
   return ({
     version: 8,
-    // Hosted glyphs/sprites from Protomaps CDN.
-    // TODO: bundle offline copies for Phase 3 (offline-first PWA).
+    // Hosted glyphs/sprites -- via jsDelivr's GitHub CDN mirror rather than
+    // raw protomaps.github.io (GitHub Pages) directly. BUG FIX: confirmed
+    // live on native (MapLibre Native console error: "Unable to resolve host
+    // protomaps.github.io: No address associated with hostname") that raw
+    // GitHub Pages hit a transient DNS failure, breaking glyph loading mid-
+    // session (garbled/missing map text). jsDelivr serves the identical files
+    // from the same open-license repo over a proper global CDN with better
+    // DNS/edge reliability. Kept in sync with native's config.ts.
+    // TODO: bundle offline copies for Phase 3 (offline-first PWA), and/or
+    // fully self-host on tiles.<domain> matching basemap.pmtiles/landuse/
+    // hillshade/contours' existing no-external-runtime-dependency pattern.
     glyphs:
-      'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
+      'https://cdn.jsdelivr.net/gh/protomaps/basemaps-assets@main/fonts/{fontstack}/{range}.pbf',
     sprite:
-      'https://protomaps.github.io/basemaps-assets/sprites/v4/light',
+      'https://cdn.jsdelivr.net/gh/protomaps/basemaps-assets@main/sprites/v4/light',
     sources: {
       // Layer 1 — Protomaps OSM basemap (terrain, roads, water, cities)
       protomaps: {

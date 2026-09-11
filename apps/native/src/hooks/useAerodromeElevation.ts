@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { TILE_URLS } from '../config'
+import { getTileUrls } from '../config'
 
 let _cache: Array<{ icao: string; elevationFt: number }> | null = null
 let _loading = false
@@ -20,7 +20,7 @@ function loadOnce(cb: (d: typeof _cache) => void) {
   _listeners.push(cb)
   if (_loading) return
   _loading = true
-  fetch(TILE_URLS.aerodromes)
+  fetch(getTileUrls().aerodromes)
     .then(r => r.json())
     .then((fc: GeoJSON.FeatureCollection) => {
       _cache = []

@@ -8,6 +8,7 @@ import { layers, LIGHT } from '@protomaps/basemaps'
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 
 import { Platform } from 'react-native'
+import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
 
 const devBase =
   Platform.OS === 'android'
@@ -81,17 +82,54 @@ export const MARTIN_BASE: string =
  * since it only ever got exercised against local dev hosts that happen to
  * route /tiles/* themselves.
  */
-export const TILE_URLS = {
-  airspace:          `${TILE_BASE}/se-airspace.geojson`,
-  aerodromes:        `${TILE_BASE}/se-aerodromes.geojson`,
-  navaids:           `${TILE_BASE}/se-navaids.geojson`,
-  waypoints:         `${TILE_BASE}/se-waypoints.geojson`,
-  runways:           `${TILE_BASE}/se-runways.geojson`,
-  runwayThresholds:  `${TILE_BASE}/se-runway-thresholds.geojson`,
-  obstacles:         `${TILE_BASE}/se-obstacles.geojson`,
-  landmarks:         `${TILE_BASE}/se-landmarks.geojson`,
-  water:             `${TILE_BASE}/se-water.geojson`,
+const TILE_FILENAMES = {
+  airspace:          'se-airspace.geojson',
+  aerodromes:        'se-aerodromes.geojson',
+  navaids:           'se-navaids.geojson',
+  waypoints:         'se-waypoints.geojson',
+  runways:           'se-runways.geojson',
+  runwayThresholds:  'se-runway-thresholds.geojson',
+  obstacles:         'se-obstacles.geojson',
+  landmarks:         'se-landmarks.geojson',
+  water:             'se-water.geojson',
 } as const
+
+/**
+ * BUG FIX: this used to be a plain top-level const object of unversioned
+ * URLs, computed once at module import time -- meaning even after adding
+ * loadTileManifest()/versionedTileUrl() support below, a const object would
+ * have permanently frozen in whatever it resolved to at first import
+ * (almost always before the manifest fetch in index.js resolves). Web's
+ * equivalent (map-style.ts) avoids this because getMapStyle() is already a
+ * function called lazily at map-mount time, well after main.tsx kicks off
+ * loadTileManifest(). TILE_URLS is now a function for the same reason --
+ * call sites (AviationMap.tsx's getResolvedTileUrls(), offlineCache.ts)
+ * call it at component-mount/download time instead of import time, by
+ * which point the manifest has almost always already resolved. Falls back
+ * to a plain unversioned URL gracefully if it hasn't (see versionedTileUrl's
+ * own doc comment) -- never breaks a fetch, just risks a stale CDN cache
+ * entry in that narrow first-launch window, exactly like web.
+ *
+ * BUG FOUND LIVE (device): with no versioning at all, a stale CDN/OkHttp
+ * cache entry for se-obstacles.geojson kept serving pre-fix obstacle
+ * classification data indefinitely after openvfr-infra's classifier was
+ * fixed and the file was re-uploaded to R2 -- web (already versioned)
+ * picked up the fix immediately, native did not, despite fetching the exact
+ * same underlying R2 object.
+ */
+export function getTileUrls(): Record<keyof typeof TILE_FILENAMES, string> {
+  const out = {} as Record<keyof typeof TILE_FILENAMES, string>
+  for (const k of Object.keys(TILE_FILENAMES) as (keyof typeof TILE_FILENAMES)[]) {
+    out[k] = versionedTileUrl(TILE_BASE, TILE_FILENAMES[k])
+  }
+  return out
+}
+
+/** @deprecated use getTileUrls() -- kept only so TILE_FILENAMES' plain keys
+ *  are still usable for code that only needs the filename, not a full URL
+ *  (offlineCache.ts's fileName field). Do NOT reintroduce a top-level const
+ *  URL map here -- see getTileUrls()'s doc comment for why. */
+export { TILE_FILENAMES }
 
 /**
  * Landuse PMTiles URL — retired from Postgres/Martin (was
@@ -106,7 +144,9 @@ export const TILE_URLS = {
  * separate protocol registration needed beyond what basemap.pmtiles already
  * requires.
  */
-export const LANDUSE_PMTILES_URL = `pmtiles://${TILE_BASE}/se-landuse.pmtiles`
+export function getLandusePmtilesUrl(): string {
+  return `pmtiles://${versionedTileUrl(TILE_BASE, 'se-landuse.pmtiles')}`
+}
 
 /**
  * Relief hillshade raster-dem PMTiles (Terrarium encoding), same static file
@@ -118,7 +158,9 @@ export const LANDUSE_PMTILES_URL = `pmtiles://${TILE_BASE}/se-landuse.pmtiles`
  * level, not just the JS type declarations — see AGENTS.md MapLibre RN
  * gotchas.
  */
-export const HILLSHADE_PMTILES_URL = `pmtiles://${TILE_BASE}/se-hillshade.pmtiles`
+export function getHillshadePmtilesUrl(): string {
+  return `pmtiles://${versionedTileUrl(TILE_BASE, 'se-hillshade.pmtiles')}`
+}
 
 /**
  * Vector contour-line PMTiles (source-layer 'contours', `elev_m` property),
@@ -127,7 +169,9 @@ export const HILLSHADE_PMTILES_URL = `pmtiles://${TILE_BASE}/se-hillshade.pmtile
  * + <Layer type="symbol"> wiring in the native map component is NOT yet
  * done — config wired for offline caching only so far.
  */
-export const CONTOURS_PMTILES_URL = `pmtiles://${TILE_BASE}/se-contours.pmtiles`
+export function getContoursPmtilesUrl(): string {
+  return `pmtiles://${versionedTileUrl(TILE_BASE, 'se-contours.pmtiles')}`
+}
 
 /**
  * MapLibre GL style URL for the basemap.
@@ -168,11 +212,25 @@ export const SATELLITE_STYLE = {
  * URL format: pmtiles://<http(s)-url-of-pmtiles-file>
  */
 export function createProtomapsStyle(pmtilesOverrideUrl?: string): StyleSpecification {
-  const pmtilesUrl = `pmtiles://${pmtilesOverrideUrl ?? `${TILE_BASE}/basemap.pmtiles`}`
+  const pmtilesUrl = `pmtiles://${pmtilesOverrideUrl ?? versionedTileUrl(TILE_BASE, 'basemap.pmtiles')}`
   return {
     version: 8,
-    glyphs:  'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
-    sprite:  'https://protomaps.github.io/basemaps-assets/sprites/v4/light',
+    // BUG FIX (found live on device): raw protomaps.github.io (GitHub Pages)
+    // hit a transient DNS resolution failure ("Unable to resolve host
+    // protomaps.github.io: No address associated with hostname", confirmed
+    // via MapLibre Native's own console error), causing glyph ranges to fail
+    // loading mid-session -- symbol text with missing glyphs renders garbled/
+    // partially blank, which looked like something drawing over map labels.
+    // jsDelivr's GitHub CDN mirror serves the identical files (same repo,
+    // verified byte-identical response) over a proper global CDN with much
+    // better DNS/edge reliability than GitHub Pages directly. Same content,
+    // same license (protomaps/basemaps-assets is open). Matches web's
+    // map-style.ts (kept in sync -- see that file's own comment).
+    // TODO(openvfr-infra): fully self-host fonts+sprites on tiles.openvfr.org
+    // instead, matching basemap.pmtiles/landuse/hillshade/contours' existing
+    // no-external-runtime-dependency pattern -- this mirror swap is a stopgap.
+    glyphs:  'https://cdn.jsdelivr.net/gh/protomaps/basemaps-assets@main/fonts/{fontstack}/{range}.pbf',
+    sprite:  'https://cdn.jsdelivr.net/gh/protomaps/basemaps-assets@main/sprites/v4/light',
     sources: {
       protomaps: {
         type:        'vector',
