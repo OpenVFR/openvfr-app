@@ -180,15 +180,30 @@ export function useTraffic(opts: UseTrafficOptions = {}): TrafficTarget[] {
     }
 
     // Check availability before opening SSE
-    fetch(`${API_BASE_URL}/api/traffic/config`)
+    // credentials:'include' required for the split-origin production
+    // deployment (app.openvfr.org -> api.openvfr.org) -- this endpoint is
+    // session-gated (requireSession() in apps/api/src/index.ts), and a
+    // cross-origin fetch() does not send the session cookie by default.
+    // Without this, the request 401s and the whole traffic layer silently
+    // never appears -- indistinguishable from "server has no OpenSky
+    // credentials configured" because of the graceful .catch() below.
+    fetch(`${API_BASE_URL}/api/traffic/config`, { credentials: 'include' })
       .then(r => r.json())
       .then((cfg: { available: boolean }) => {
         if (destroyed) return
         availableRef.current = cfg.available
         if (!cfg.available) return  // graceful silence — no OpenSky credentials configured
 
-        // Open SSE stream
-        evtSource = new EventSource(`${API_BASE_URL}/api/traffic/stream`)
+        // Open SSE stream. withCredentials:true is EventSource's OWN,
+        // separate cross-origin credentials flag -- NOT the same mechanism
+        // as fetch()'s credentials:'include' above, and easy to miss since
+        // it doesn't share the same option name. Same requirement, same
+        // reason: /api/traffic/stream is session-gated, and without this
+        // the session cookie is never sent cross-origin, so the stream
+        // 401s (silently, same as above -- EventSource surfaces this via
+        // onerror, which this code already treats as "stay silent" for the
+        // CONNECTING-state auto-reconnect case).
+        evtSource = new EventSource(`${API_BASE_URL}/api/traffic/stream`, { withCredentials: true })
         resetWatchdog()
 
         evtSource.onmessage = (ev) => {
