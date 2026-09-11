@@ -1116,9 +1116,24 @@ export function AviationMap({
             layout={{ visibility: showHillshade ? 'visible' : 'none' }}
             paint={{
               'hillshade-exaggeration': 0.5,
-              'hillshade-shadow-color': 'rgba(60,50,40,0.6)',
-              'hillshade-highlight-color': 'rgba(255,255,255,0.5)',
-              'hillshade-accent-color': 'rgba(60,50,40,0.3)',
+              // hillshade-shadow-color/highlight-color intentionally NOT
+              // set (library default used instead) -- confirmed against
+              // the installed @maplibre/maplibre-react-native 11.3.10
+              // Android source (MLRNStyleFactory.kt):
+              // setHillshadeShadowColor/HighlightColor's literal-string
+              // branch calls getStringArray() on a plain color string and
+              // throws UnexpectedNativeTypeException (Double cannot be
+              // cast to ReadableArray), crashing on every map mount
+              // regardless of whether hillshade is visible. Passing an
+              // ['rgba', r, g, b, a] expression instead avoids the crash
+              // (routes into the isExpression() branch) but Mbgl's JNI
+              // layer then logs "Expected array<color> but found color
+              // instead" and silently doesn't apply it for these two
+              // properties specifically -- accent-color (below) is the
+              // only one of the three that actually accepts the same
+              // expression form correctly on this library version. Revisit
+              // if a maplibre-react-native update fixes the Android bridge.
+              'hillshade-accent-color': ['rgba', 60, 50, 40, 0.3],
             }}
           />
 
