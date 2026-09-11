@@ -451,7 +451,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     // apps/api/src/notam.ts's getRegionalNotams() and useRegionalNotams.ts.
     label: 'Regional NOTAMs',
     cssClass: 'groupNotamCircles',
-    layerIds: ['notam-circles-fill', 'notam-circles-border', 'notam-matched-airspace-fill', 'notam-matched-airspace-border'],
+    layerIds: ['notam-circles-fill', 'notam-circles-border', 'notam-matched-airspace-fill', 'notam-matched-airspace-border', 'notam-points-cluster', 'notam-points-cluster-count', 'notam-points-unclustered', 'notam-points-label'],
     defaultOn: true,
     section: 'Airspace',
   },

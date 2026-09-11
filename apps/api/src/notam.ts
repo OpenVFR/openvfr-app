@@ -137,11 +137,23 @@ export const notamConfig = {
 // undisplayed, actually never cached at all. See getRegionalNotams() below
 // for how these are surfaced (kept separate from per-airport results since
 // they don't belong to any single ICAO).
-const _icaoAllowlist = new Set<string>(['ESAA'])
+// Per-country FIR codes for regional (non-airport) NOTAMs. One country can
+// have MULTIPLE FIRs (e.g. Germany: EDMM/EDWW/EDUU/EDVV) -- deliberately a
+// country -> string[] map, not one flat list, so adding a country later is
+// "add an entry", not "restructure this". Add a country's FIR(s) here ONLY
+// once its aerodromes/airspace actually exist in the tile pipeline
+// (openvfr-infra's scripts/prepare-tiles.sh is currently Sweden-only -- see
+// its own "TODO (Phase 2)" comments).
+const FIR_CODES: Record<string, string[]> = {
+  SE: ['ESAA'], // Sweden -- single FIR
+}
+const _regionalKeys = Object.values(FIR_CODES).flat()
+
+const _icaoAllowlist = new Set<string>(_regionalKeys)
 try {
   const coordsJson = (await import('./aerodrome-coords.json', { assert: { type: 'json' } })).default as Record<string, [number, number]>
   for (const icao of Object.keys(coordsJson)) _icaoAllowlist.add(icao)
-  console.log(`[notam] Loaded ${_icaoAllowlist.size} ICAOs for NOTAM filtering (${_icaoAllowlist.size - 1} aerodromes + ESAA FIR)`)
+  console.log(`[notam] Loaded ${_icaoAllowlist.size} ICAOs for NOTAM filtering (${_icaoAllowlist.size - _regionalKeys.length} aerodromes + FIRs: ${_regionalKeys.join(', ')})`)
 } catch (e) {
   console.warn('[notam] Could not load aerodrome coords:', (e as Error).message)
 }
@@ -413,12 +425,20 @@ export function getNotamsForIcao(icao: string): NotamResponse {
  * navaid outages, AIRAC amendments, military exercise notices, etc. that
  * aren't filed against any single airport. NOT returned by
  * getNotamsForIcao() for any airport ICAO -- these live under their own key
- * ('ESAA') in the cache and need their own UI surface (a general "regional
- * NOTAMs" list, and/or matching against se-airspace.geojson polygon names /
- * rendering ad-hoc circles from each NOTAM's own coordinates+radius field --
- * see docs/todo.md for the tracked follow-up work; this function only
- * covers the data-availability half of that).
+ * (their FIR code, e.g. 'ESAA') in the cache, separate from per-airport
+ * results. Aggregates across every FIR in FIR_CODES -- currently just
+ * Sweden's, but scales to however many countries/FIRs are configured there
+ * without further changes here.
  */
 export function getRegionalNotams(): NotamResponse {
-  return { notams: activeNotamsFor('ESAA') }
+  const notams: NotamItem[] = []
+  const seen = new Set<string>()
+  for (const fir of _regionalKeys) {
+    for (const n of activeNotamsFor(fir)) {
+      if (seen.has(n.id)) continue // a NOTAM could in principle appear under >1 FIR key
+      seen.add(n.id)
+      notams.push(n)
+    }
+  }
+  return { notams }
 }

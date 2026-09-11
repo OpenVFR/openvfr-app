@@ -631,6 +631,33 @@ export default function MapView({ auth }: { auth: AuthState }) {
     src.setData({ type: 'FeatureCollection', features })
   }, [regionalNotams, matchedNotamIds, mapReady])
 
+  // Feed point-only regional NOTAMs (coordinates but no usable radius) into
+  // the clustered 'notam-points' source -- see that source's own setup
+  // comment for why these need a separate, Point-geometry source from
+  // notam-circles' Polygon geometry.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    const src = map.getSource('notam-points') as import('maplibre-gl').GeoJSONSource | undefined
+    if (!src) return
+
+    const features: GeoJSON.Feature[] = regionalNotams
+      .filter((n) => n.lat !== null && n.lon !== null && (n.radiusNm === null || n.radiusNm <= 0))
+      .map((n) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [n.lon!, n.lat!] },
+        properties: {
+          notamId:        n.id,
+          text:           n.text,
+          effective:      n.effective,
+          expires:        n.expires,
+          classification: n.classification,
+          radiusNm:       null,
+        },
+      }))
+    src.setData({ type: 'FeatureCollection', features })
+  }, [regionalNotams, mapReady])
+
   // Feed matched (charted, permanent) restricted/danger areas into the
   // 'notam-matched-airspace' highlight source -- visually distinguishes
   // "this charted area has an active NOTAM right now" from the plain
@@ -1757,6 +1784,70 @@ export default function MapView({ auth }: { auth: AuthState }) {
         },
       })
 
+      // ── Point-only NOTAM markers (clustered) ─────────────────────
+      // Regional NOTAMs with coordinates but NO radius (obstacle lights,
+      // single-point navaid faults, etc.) have nothing meaningful to draw as
+      // a circle -- they were previously only visible in the RegionalNotamsPanel
+      // list, invisible on the map entirely. Rendered as clustered points here
+      // (MapLibre's built-in cluster support, only applies to Point geometry --
+      // this is why these are handled as a separate source from notam-circles,
+      // which is all Polygon geometry and can't use the same mechanism).
+      // Matches the density pattern seen on EasyVFR's notambriefing.com
+      // reference (small numbered pins collapsing at low zoom).
+      map.addSource('notam-points', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+        cluster: true,
+        clusterMaxZoom: 14,
+        clusterRadius: 50,
+      })
+      map.addLayer({
+        id: 'notam-points-cluster',
+        type: 'circle',
+        source: 'notam-points',
+        filter: ['has', 'point_count'],
+        paint: {
+          'circle-color': '#e64980',
+          'circle-opacity': 0.85,
+          'circle-radius': ['step', ['get', 'point_count'], 12, 10, 16, 25, 20],
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#ffffff',
+        },
+      })
+      map.addLayer({
+        id: 'notam-points-cluster-count',
+        type: 'symbol',
+        source: 'notam-points',
+        filter: ['has', 'point_count'],
+        layout: {
+          'text-field': ['get', 'point_count_abbreviated'],
+          'text-size': 11,
+          'text-font': ['Noto Sans Bold'],
+        },
+        paint: { 'text-color': '#ffffff' },
+      })
+      map.addLayer({
+        id: 'notam-points-unclustered',
+        type: 'circle',
+        source: 'notam-points',
+        filter: ['!', ['has', 'point_count']],
+        paint: {
+          'circle-color': '#e64980',
+          'circle-opacity': 0.9,
+          'circle-radius': 7,
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#ffffff',
+        },
+      })
+      map.addLayer({
+        id: 'notam-points-label',
+        type: 'symbol',
+        source: 'notam-points',
+        filter: ['!', ['has', 'point_count']],
+        layout: { 'text-field': 'N', 'text-size': 9, 'text-font': ['Noto Sans Bold'] },
+        paint: { 'text-color': '#ffffff' },
+      })
+
       // ── Profile cursor — crosshair marker driven by VirtualRadar hover ────
       // A single Point feature updated whenever the user hovers the profile chart.
       map.addSource('profile-cursor', {
@@ -1860,7 +1951,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     // Suppressed in planning mode — crosshair must stay consistent.
     const onEnter = () => { if (!planningModeRef.current) map.getCanvas().style.cursor = 'pointer' }
     const onLeave = () => { if (!planningModeRef.current) map.getCanvas().style.cursor = '' }
-    ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols', 'notam-circles-fill'].forEach((id) => {
+    ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols', 'notam-circles-fill', 'notam-points-cluster', 'notam-points-unclustered'].forEach((id) => {
       map.on('mouseenter', id, onEnter)
       map.on('mouseleave', id, onLeave)
     })
@@ -1987,6 +2078,43 @@ export default function MapView({ auth }: { auth: AuthState }) {
               expires:        (p.expires as string | null) ?? null,
               classification: (p.classification as string | null) ?? null,
               radiusNm:       (p.radiusNm as number | null) ?? null,
+            },
+            x: e.point.x,
+            y: e.point.y,
+          })
+          return
+        }
+      }
+
+      // ── 0f. Point-only NOTAM marker click ── cluster expands zoom, individual
+      // point shows the same NOTAM popup as circles (radiusNm always null here).
+      {
+        const pad = 10
+        const box: [maplibregl.PointLike, maplibregl.PointLike] = [
+          [e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad],
+        ]
+        const clusterHits = map.queryRenderedFeatures(box, { layers: ['notam-points-cluster'] })
+        if (clusterHits.length > 0) {
+          const clusterId = clusterHits[0].properties?.cluster_id as number
+          const src = map.getSource('notam-points') as import('maplibre-gl').GeoJSONSource
+          const zoom = await src.getClusterExpansionZoom(clusterId)
+          const coords = (clusterHits[0].geometry as GeoJSON.Point).coordinates as [number, number]
+          map.easeTo({ center: coords, zoom })
+          return
+        }
+        const pointHits = map.queryRenderedFeatures(box, { layers: ['notam-points-unclustered'] })
+        if (pointHits.length > 0) {
+          const p = pointHits[0].properties as Record<string, unknown>
+          setActivePopup({
+            kind: 'point',
+            feature: {
+              kind:           'regionalNotam',
+              notamId:        String(p.notamId ?? ''),
+              text:           String(p.text ?? ''),
+              effective:      (p.effective as string | null) ?? null,
+              expires:        (p.expires as string | null) ?? null,
+              classification: (p.classification as string | null) ?? null,
+              radiusNm:       null,
             },
             x: e.point.x,
             y: e.point.y,
@@ -2305,7 +2433,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     map.on('rotatestart', disableFollow)
 
     return () => {
-      ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols', 'notam-circles-fill'].forEach((id) => {
+      ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols', 'notam-circles-fill', 'notam-points-cluster', 'notam-points-unclustered'].forEach((id) => {
         map.off('mouseenter', id, onEnter)
         map.off('mouseleave', id, onLeave)
       })
