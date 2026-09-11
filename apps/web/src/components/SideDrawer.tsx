@@ -1,5 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import LayerPanel from './LayerPanel'
+import RegionalNotamsPanel from './RegionalNotamsPanel'
+import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import AltitudeSlider from './AltitudeSlider'
 import SettingsPanel from './SettingsPanel'
 import RoutePlan from './RoutePlan'
@@ -97,6 +99,7 @@ interface Props {
   onClearLog: () => void
   // User waypoints
   userWaypoints: UserWaypointDocType[]
+  regionalNotams: NotamItem[]
   pendingUserWpCoords: { lng: number; lat: number } | null
   folderVisibility: Record<string, boolean>
   onUserWpCoordsConsumed: () => void
@@ -121,6 +124,7 @@ const SECTION_LABELS = {
   flightLogs:    'Flight Logs',
   aircraft:      'Aircraft',
   userWaypoints: 'User Waypoints',
+  notams:        'Regional NOTAMs',
   layers:        'Layers',
   altitude:      'Altitude Filter',
   settings:      'Settings',
@@ -173,7 +177,7 @@ export default function SideDrawer({
   isHome, onSetHome,
   rulerActive, rulerPoints, onClearRuler,
   selectedLogId, onSelectLog, onClearLog,
-  userWaypoints, pendingUserWpCoords, folderVisibility,
+  userWaypoints, regionalNotams, pendingUserWpCoords, folderVisibility,
   onUserWpCoordsConsumed, onStartPlaceUserWp,
   onSaveUserWaypoint, onDeleteUserWaypoint, onRenameUserWaypoint, onMoveUserWpFolder,
   onFolderVisChange, onSaveHereUserWaypoint,
@@ -183,7 +187,7 @@ export default function SideDrawer({
   const [open, setOpen]         = useState(() => lsGet(LS_OPEN, false))
   const [width, setWidth]       = useState(() => lsGet(LS_WIDTH, DEFAULT_WIDTH))
   const [expanded, setExpanded] = useState<Record<Section, boolean>>(() =>
-    lsGet(LS_EXPANDED, { info: true, route: true, preflight: true, fuel: true, ruler: true, routes: true, flightLogs: true, aircraft: false, userWaypoints: true, layers: true, altitude: true, settings: false })
+    lsGet(LS_EXPANDED, { info: true, route: true, preflight: true, fuel: true, ruler: true, routes: true, flightLogs: true, aircraft: false, userWaypoints: true, notams: false, layers: true, altitude: true, settings: false })
   )
 
   // Drag-resize handle
@@ -494,6 +498,23 @@ export default function SideDrawer({
           </div>
 
           {/* ── Layers ─────────────────────────────────────────── */}
+          <div className={css.section}>
+            <button className={css.sectionHeader} onClick={() => toggle('notams')}>
+              <span>{SECTION_LABELS.notams}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {regionalNotams.length > 0 && (
+                  <span className={css.planPill}>{regionalNotams.length}</span>
+                )}
+                <span className={css.chevron}>{expanded.notams ? '▾' : '▸'}</span>
+              </span>
+            </button>
+            {expanded.notams && (
+              <div className={css.sectionBody}>
+                <RegionalNotamsPanel notams={regionalNotams} />
+              </div>
+            )}
+          </div>
+
           <div className={css.section}>
             <button className={css.sectionHeader} onClick={() => toggle('layers')}>
               <span>{SECTION_LABELS.layers}</span>

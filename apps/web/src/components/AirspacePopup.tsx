@@ -1,5 +1,6 @@
 import css from './AirspacePopup.module.css'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
+import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,11 @@ export interface AirspaceFeature {
    *  (resolved via @open-vfr/shared/airspaceGeometryCache), used for the
    *  per-row shape thumbnail. */
   coords?: number[][]
+  /** Active regional NOTAM(s) matched to this area by designator code --
+   *  see useNotamAirspaceMatch.ts. Undefined/empty = no active NOTAM found
+   *  (does NOT mean none exists -- only permanent charted areas can match;
+   *  see that hook's own caveat about temporary areas). */
+  notams?: NotamItem[]
 }
 
 type RowItem =
@@ -312,6 +318,20 @@ export default function AirspacePopup({ features, onClose }: Props) {
                 {!f.frequencies && f.class === 'G' && (
                   <div className={css.fisHint}>
                     FIS frequency — see nearest aerodrome or AIP ENR 2.2
+                  </div>
+                )}
+
+                {/* Active NOTAM(s), matched by designator code */}
+                {f.notams && f.notams.length > 0 && (
+                  <div className={css.remarks} style={{ borderColor: '#e64980', background: 'rgba(230,73,128,0.1)' }}>
+                    {f.notams.map((n, ni) => (
+                      <div key={ni} style={{ marginBottom: ni < f.notams!.length - 1 ? 6 : 0 }}>
+                        <strong>NOTAM {n.id}</strong>
+                        {n.effective && <span> · {fmtNotamDate(n.effective)}</span>}
+                        {n.expires && <span> – {fmtNotamDate(n.expires)}</span>}
+                        <div style={{ whiteSpace: 'pre-line' }}>{n.text}</div>
+                      </div>
+                    ))}
                   </div>
                 )}
 

@@ -67,6 +67,10 @@ import { useAirfieldProximity } from '../hooks/useAirfieldProximity'
 import { useFlightLog } from '../hooks/useFlightLog'
 import { useTraffic } from '../hooks/useTraffic'
 import { useRegionalNotams } from '../hooks/useRegionalNotams'
+import { useNotamWarnings } from '../hooks/useNotamWarnings'
+import { useNotamNotifications } from '../hooks/useNotamNotifications'
+import { useNotamAirspaceMatch } from '../hooks/useNotamAirspaceMatch'
+import { makeCirclePolygon } from '@open-vfr/shared/geoCircle'
 import { registerTrafficIcons, selectTrafficIcon } from '../utils/trafficIcons'
 import GoFlyingPanel from './GoFlyingPanel'
 import { NotificationCenter } from './NotificationCenter'
@@ -89,20 +93,9 @@ const AERODROME_LAYERS = ['aerodromes-icon', 'aerodromes-label']
 // ── Glide range circle helper ─────────────────────────────────────────────
 // Returns a GeoJSON Polygon approximating a circle of `radiusNm` NM centered
 // at `lat/lng`.  Used for the glide-range ring layer.
-function makeCirclePolygon(lat: number, lng: number, radiusNm: number, steps = 72): GeoJSON.Feature<GeoJSON.Polygon> {
-  const R = 3440.065  // Earth radius NM
-  const d = radiusNm / R
-  const coords: [number, number][] = []
-  for (let i = 0; i <= steps; i++) {
-    const bearing = (i / steps) * 2 * Math.PI
-    const lat1    = lat * Math.PI / 180
-    const lng1    = lng * Math.PI / 180
-    const lat2    = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(bearing))
-    const lng2    = lng1 + Math.atan2(Math.sin(bearing) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2))
-    coords.push([lng2 * 180 / Math.PI, lat2 * 180 / Math.PI])
-  }
-  return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [coords] }, properties: {} }
-}
+// makeCirclePolygon now lives in @open-vfr/shared/geoCircle -- promoted
+// there once native needed the identical math for its own NOTAM circle
+// layer, rather than duplicating it a second time.
 
 // ── Extended centreline helper ────────────────────────────────────────────
 // A runway threshold has a `mag_brg` (bearing FROM threshold toward the runway).
@@ -600,9 +593,20 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const regionalNotamsRef = useRef(regionalNotams)
   useEffect(() => { regionalNotamsRef.current = regionalNotams }, [regionalNotams])
 
+  // Match regional NOTAMs to charted restricted/danger area polygons by
+  // designator code (e.g. "ESD873") -- see useNotamAirspaceMatch.ts. Powers
+  // both the polygon highlight layer below and AirspacePopup's inline NOTAM
+  // display (matchedAirspaceRef, used in the click handler further down).
+  const { matches: notamAirspaceMatches, matchedNotamIds } = useNotamAirspaceMatch(regionalNotams)
+  const matchedAirspaceRef = useRef(notamAirspaceMatches)
+  useEffect(() => { matchedAirspaceRef.current = notamAirspaceMatches }, [notamAirspaceMatches])
+
   // Feed regional NOTAM circles into the 'notam-circles' GeoJSON source.
   // Each NOTAM becomes its own circle Polygon feature; properties carry
   // enough to reconstruct a RegionalNotamFeature on click without a re-fetch.
+  // Matched-to-a-charted-polygon NOTAMs are excluded here -- they're shown
+  // via the highlighted polygon + AirspacePopup instead, not a redundant
+  // second circle roughly on top of the same real-world area.
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady) return
@@ -611,6 +615,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
 
     const features = regionalNotams
       .filter((n) => n.lat !== null && n.lon !== null && n.radiusNm !== null && n.radiusNm > 0)
+      .filter((n) => !matchedNotamIds.has(n.id))
       .map((n) => {
         const circle = makeCirclePolygon(n.lat!, n.lon!, n.radiusNm!)
         circle.properties = {
@@ -624,7 +629,32 @@ export default function MapView({ auth }: { auth: AuthState }) {
         return circle
       })
     src.setData({ type: 'FeatureCollection', features })
-  }, [regionalNotams, mapReady])
+  }, [regionalNotams, matchedNotamIds, mapReady])
+
+  // Feed matched (charted, permanent) restricted/danger areas into the
+  // 'notam-matched-airspace' highlight source -- visually distinguishes
+  // "this charted area has an active NOTAM right now" from the plain
+  // airspace-fill-* layers underneath, without altering their own paint.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    const src = map.getSource('notam-matched-airspace') as import('maplibre-gl').GeoJSONSource | undefined
+    if (!src) return
+
+    const features: GeoJSON.Feature[] = notamAirspaceMatches.map((m) => ({
+      type: 'Feature',
+      geometry: m.geometry,
+      properties: { name: m.airspaceName },
+    }))
+    src.setData({ type: 'FeatureCollection', features })
+  }, [notamAirspaceMatches, mapReady])
+
+  // Proactive lookahead alerts + silent entry/exit toasts for NOTAM circles --
+  // same treatment as se-airspace.geojson polygons (useAirspaceWarnings/
+  // useAirspaceNotifications above), fed from the same regionalNotams data
+  // already being polled for the map circles (no duplicate fetch).
+  const { alerts: notamAlerts, dismiss: dismissNotam } = useNotamWarnings(flyingMode !== 'off' ? gpsPosition : null, regionalNotams)
+  const { notifications: notamNotifications } = useNotamNotifications(flyingMode !== 'off' ? gpsPosition : null, regionalNotams)
 
   // Track which icao24s were already proximate (urgency=3) to avoid repeat beeps
   const proxAlertedRef = useRef(new Set<string>())
@@ -1699,6 +1729,34 @@ export default function MapView({ auth }: { auth: AuthState }) {
         },
       })
 
+      // ── Matched restricted/danger area highlight ──────────────────────────
+      // Drawn ABOVE the plain ofm airspace-fill-* layers so a charted area
+      // with an active NOTAM stands out from the same-class areas without
+      // one, without needing to mutate those layers' own paint expressions.
+      map.addSource('notam-matched-airspace', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      })
+      map.addLayer({
+        id: 'notam-matched-airspace-fill',
+        type: 'fill',
+        source: 'notam-matched-airspace',
+        paint: {
+          'fill-color': '#e64980',
+          'fill-opacity': 0.18,
+        },
+      })
+      map.addLayer({
+        id: 'notam-matched-airspace-border',
+        type: 'line',
+        source: 'notam-matched-airspace',
+        paint: {
+          'line-color': '#e64980',
+          'line-width': 2.5,
+          'line-opacity': 0.9,
+        },
+      })
+
       // ── Profile cursor — crosshair marker driven by VirtualRadar hover ────
       // A single Point feature updated whenever the user hovers the profile chart.
       map.addSource('profile-cursor', {
@@ -2060,7 +2118,14 @@ export default function MapView({ auth }: { auth: AuthState }) {
       const airspaceHits = await queryAirspaceAtPoint(e.lngLat.lng, e.lngLat.lat, versionedTileUrl(TILES_BASE_URL, 'se-airspace.geojson'))
 
       if (airspaceHits.length > 0) {
-        setActivePopup({ kind: 'airspace', features: airspaceHits as AirspaceFeature[], x: e.point.x, y: e.point.y })
+        // Attach matched active NOTAM(s) to each clicked feature by name --
+        // see useNotamAirspaceMatch.ts. Uses the ref (not the hook value
+        // directly) since this click handler closure is registered once.
+        const withNotams = (airspaceHits as AirspaceFeature[]).map((f) => {
+          const match = matchedAirspaceRef.current.find((m) => m.airspaceName === f.name)
+          return match ? { ...f, notams: match.notams } : f
+        })
+        setActivePopup({ kind: 'airspace', features: withNotams, x: e.point.x, y: e.point.y })
         return
       }
 
@@ -2968,6 +3033,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         onSelectLog={setSelectedLogId}
         onClearLog={() => setSelectedLogId(null)}
         userWaypoints={userWaypoints}
+        regionalNotams={regionalNotams}
         pendingUserWpCoords={pendingUserWpCoords}
         folderVisibility={folderVisibility}
         onUserWpCoordsConsumed={() => setPendingUserWpCoords(null)}
@@ -3127,6 +3193,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
           airfieldAlerts={airfieldAlerts}
           onDismissAirfield={dismissAirfield}
           airspaceNotifications={airspaceNotifications}
+          notamAlerts={notamAlerts}
+          onDismissNotam={dismissNotam}
+          notamNotifications={notamNotifications}
           ceilingMsg={ceilingEscalatedMsg}
           reminderNote={reminderNote}
           onDismissReminder={() => setReminderNote(null)}

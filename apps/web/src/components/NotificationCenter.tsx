@@ -18,6 +18,8 @@ import type { AirspaceAlert } from '../hooks/useAirspaceWarnings'
 import type { AirspaceNotification } from '../hooks/useAirspaceNotifications'
 import type { ObstructionAlert } from '../hooks/useObstructionWarnings'
 import type { AirfieldProximityAlert } from '../hooks/useAirfieldProximity'
+import type { NotamAlert } from '../hooks/useNotamWarnings'
+import type { NotamNotification } from '../hooks/useNotamNotifications'
 import css from './NotificationCenter.module.css'
 
 type Severity = 'red' | 'yellow' | 'blue'
@@ -86,6 +88,9 @@ interface Props {
   airfieldAlerts:        AirfieldProximityAlert[]
   onDismissAirfield:     (key: string) => void
   airspaceNotifications: AirspaceNotification[]
+  notamAlerts?:          NotamAlert[]
+  onDismissNotam?:       (key: string) => void
+  notamNotifications?:   NotamNotification[]
   ceilingMsg?:           string | null
   reminderNote?:         { wpName: string; text: string } | null
   onDismissReminder?:    () => void
@@ -95,7 +100,10 @@ export function NotificationCenter({
   airspaceAlerts, onDismissAirspace,
   obstructionAlerts, onDismissObstruction,
   airfieldAlerts, onDismissAirfield,
-  airspaceNotifications, ceilingMsg,
+  airspaceNotifications,
+  notamAlerts = [], onDismissNotam,
+  notamNotifications = [],
+  ceilingMsg,
   reminderNote, onDismissReminder,
 }: Props) {
   // Waypoint reminder auto-dismisses after 30s.
@@ -163,6 +171,35 @@ export function NotificationCenter({
       status: n.direction === 'entered' ? '▶ ENTERED' : '◀ LEFT',
       title: n.name,
       meta: `${n.lower} – ${n.upper}`,
+      dismissible: false,
+      transient: true,
+    })
+  }
+
+  // NOTAM circles are always treated as 'red' severity -- restricted/danger
+  // areas by nature, and we don't currently have a vertical band to soften
+  // that (see useNotamWarnings.ts's simplification note).
+  for (const a of notamAlerts) {
+    items.push({
+      key: `nm-${a.key}`,
+      severity: 'red',
+      badge: 'NOTAM',
+      status: a.inside ? '▲ INSIDE' : '⚠ AHEAD',
+      title: a.notamId,
+      meta: `${a.text.slice(0, 80)}${a.text.length > 80 ? '…' : ''}`,
+      dismissible: true,
+      onDismiss: onDismissNotam ? () => onDismissNotam(a.key) : undefined,
+    })
+  }
+
+  for (const n of notamNotifications) {
+    items.push({
+      key: `nmn-${n.id}`,
+      severity: 'red',
+      badge: 'NOTAM',
+      status: n.direction === 'entered' ? '▶ ENTERED' : '◀ LEFT',
+      title: n.notamId,
+      meta: `${n.text.slice(0, 80)}${n.text.length > 80 ? '…' : ''}`,
       dismissible: false,
       transient: true,
     })
