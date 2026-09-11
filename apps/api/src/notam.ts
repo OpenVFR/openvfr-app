@@ -55,7 +55,13 @@
  *    every container restart. The cache is persisted to NMS_CACHE_FILE
  *    after every successful poll and reloaded on startup -- bootstrap only
  *    re-runs on a genuinely first-ever start (no cache file yet) or if that
- *    file/volume is lost, not on routine redeploys/restarts.
+ *    file/volume is lost, not on routine redeploys/restarts. The persisted
+ *    file also records which NMS_API_HOST it came from; if that doesn't
+ *    match the currently configured host (e.g. switching staging ->
+ *    production), the stale cursor/entries are discarded automatically and
+ *    a fresh bootstrap runs against the new host -- staging and production
+ *    are separate NOTAM datasets, and reusing a cursor across them would
+ *    silently under-populate the cache instead of properly bootstrapping.
  *
  * Required env vars (optional — NOTAM lookups disabled if unset, matching
  * the graceful-degradation pattern used elsewhere in this server):
@@ -172,6 +178,7 @@ let _lastPollAt: string | null = null // ISO timestamp of last successful poll s
 const PRUNE_GRACE_MS = 24 * 60 * 60 * 1000
 
 interface PersistedCache {
+  apiHost:    string // NMS_API_HOST this cache was populated from -- see loadCacheFromDisk()
   lastPollAt: string | null
   entries: Array<[string, Array<[string, NmsNotam]>]> // [icaoLocation, [id, NmsNotam][]][]
 }
@@ -188,6 +195,22 @@ function loadCacheFromDisk(): void {
   }
   try {
     const parsed = JSON.parse(raw) as PersistedCache
+
+    // Safety check: staging and production are separate NOTAM datasets, but
+    // lastUpdatedDate is just a wall-clock timestamp, not tied to which
+    // host's data it was measured against. If the cache was populated from
+    // a *different* NMS_API_HOST than the one currently configured (e.g.
+    // switching staging -> production after onboarding), reusing that
+    // cursor would send a stale-but-recent lastUpdatedDate to the new host
+    // and get back only a narrow delta -- silently leaving the cache mostly
+    // empty instead of properly bootstrapped from the new host. Discard the
+    // cursor (and the entries, which are equally host-specific) and force a
+    // full bootstrap against the newly configured host instead.
+    if (parsed.apiHost !== NMS_API_HOST) {
+      console.log(`[notam] Disk cache was for a different host (${parsed.apiHost ?? 'unknown'}), not ${NMS_API_HOST} -- discarding, will bootstrap fresh`)
+      return
+    }
+
     for (const [icao, idEntries] of parsed.entries) _cache.set(icao, new Map(idEntries))
     _lastPollAt = parsed.lastPollAt
     const total = parsed.entries.reduce((n, [, idEntries]) => n + idEntries.length, 0)
@@ -201,6 +224,7 @@ function saveCacheToDisk(): void {
   try {
     mkdirSync(dirname(NMS_CACHE_FILE), { recursive: true })
     const payload: PersistedCache = {
+      apiHost:    NMS_API_HOST,
       lastPollAt: _lastPollAt,
       entries: [..._cache.entries()].map(([icao, byId]) => [icao, [...byId.entries()]]),
     }
