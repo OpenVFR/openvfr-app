@@ -83,6 +83,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { gunzipSync } from 'node:zlib'
 
 export interface NotamItem {
   id:             string
@@ -271,8 +272,19 @@ async function pollOnce(): Promise<void> {
       return
     }
 
-    const json = await resp.json() as NmsNotamsResponse
-    const features = json.data?.geojson ?? []
+    // Small/filtered queries return inline JSON: {"status":...,"data":{"geojson":[...]}}.
+    // Large/unfiltered ones (like our classification-only bootstrap query)
+    // 307-redirect to /v1/content/{token}, which serves a raw gzip file with
+    // NO Content-Encoding header (just Content-Disposition: attachment;
+    // filename=...gz) -- fetch's automatic decompression never triggers, so
+    // we must sniff the gzip magic bytes and decompress manually. That
+    // content is ALSO a bare JSON array of features, not the {status,data}
+    // envelope the inline responses use -- both must be handled here.
+    const buf = Buffer.from(await resp.arrayBuffer())
+    const isGzip = buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b
+    const text = isGzip ? gunzipSync(buf).toString('utf8') : buf.toString('utf8')
+    const parsed = JSON.parse(text) as NmsGeoJsonFeature[] | NmsNotamsResponse
+    const features = Array.isArray(parsed) ? parsed : (parsed.data?.geojson ?? [])
     let kept = 0
     for (const feature of features) {
       const n = feature.properties?.coreNOTAMData?.notam
