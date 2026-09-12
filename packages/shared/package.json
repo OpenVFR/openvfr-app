@@ -21,6 +21,7 @@
     "./fetchWind": "./src/fetchWind.ts",
     "./windRelative": "./src/windRelative.ts",
     "./virtualRadarCalc": "./src/virtualRadarCalc.ts",
+    "./aircraftSilhouette": "./src/aircraftSilhouette.ts",
     "./simFlightEngine": "./src/simFlightEngine.ts",
     "./baroAltitude": "./src/baroAltitude.ts",
     "./baroKalman": "./src/baroKalman.ts",

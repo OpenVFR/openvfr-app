@@ -45,3 +45,21 @@ export function registerObstacleImages(map: maplibregl.Map): void {
     registerColoredSvgIcon(map, id, url, color, SZ2).catch(() => { /* non-fatal */ })
   }
 }
+
+/**
+ * Same {url, color} pairs as ICONS above, keyed by the raw obstacle `kind`
+ * string (see @open-vfr/shared/virtualRadarCalc's ObstacleMark.kind) instead
+ * of the map's registered image id — lets VirtualRadar.tsx render the exact
+ * same pictograms in the vertical-profile chart without a second, drifting
+ * copy of these URL/colour pairs. `water_tower` isn't currently present in
+ * the live obstacle data (see obstacleIcons.ts header) but is included here
+ * for the same forward-compat reason it's registered above.
+ */
+export const OBSTACLE_ICON_DEFS: Record<string, { url: string; color: string }> = {
+  wind_turbine: { url: '/poi_icons/obs-wind-turbine.svg', color: OBSTACLE_COLORS.windTurbine },
+  tower:        { url: '/poi_icons/obs-tower.svg',        color: OBSTACLE_COLORS.tower },
+  chimney:      { url: '/poi_icons/obs-chimney.svg',      color: OBSTACLE_COLORS.chimney },
+  building:     { url: '/poi_icons/obs-building.svg',     color: OBSTACLE_COLORS.building },
+  water_tower:  { url: '/poi_icons/lmk-water-tower.svg',  color: OBSTACLE_COLORS.waterTower },
+}
+export const OBSTACLE_ICON_FALLBACK_DEF = { url: '/poi_icons/obs-other.svg', color: OBSTACLE_COLORS.default }

@@ -28,6 +28,13 @@ export interface RouteWeatherStation {
   icao:    string
   name:    string
   distNm:  number
+  /** Station coordinates — carried through so callers needing the
+   *  along-route (not just lateral) distance, e.g. VirtualRadar placing
+   *  wind/cloud markers on its distance axis, can project it themselves via
+   *  @open-vfr/shared/virtualRadarCalc's projectWeatherMarks. Mirrors
+   *  native's identical addition to its own useWeatherAlongRoute. */
+  lat:     number
+  lng:     number
   metar:   string | null
   taf:     string | null
   decoded: MetarDecoded | null
@@ -75,11 +82,12 @@ export function useWeatherAlongRoute(waypoints: RouteWaypoint[]): RouteWeatherSt
         const wx = await fetchWx(a.icao, API_BASE_URL, ac.signal)
         return {
           icao: a.icao, name: a.name, distNm: Math.round(a.distNm * 10) / 10,
+          lat: a.lat, lng: a.lng,
           metar: wx.metar, taf: wx.taf,
           decoded: wx.metar ? decodeMetar(wx.metar) : null,
         }
       } catch {
-        return { icao: a.icao, name: a.name, distNm: Math.round(a.distNm * 10) / 10, metar: null, taf: null, decoded: null }
+        return { icao: a.icao, name: a.name, distNm: Math.round(a.distNm * 10) / 10, lat: a.lat, lng: a.lng, metar: null, taf: null, decoded: null }
       }
     })).then((results) => { if (!cancelled) setStations(results) })
 

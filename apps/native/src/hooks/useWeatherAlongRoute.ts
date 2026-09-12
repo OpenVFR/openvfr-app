@@ -18,6 +18,12 @@ export interface RouteWeatherStation {
   icao:    string
   name:    string
   distNm:  number
+  /** Station coordinates — carried through so callers that need the
+   *  along-route (not just lateral) distance, e.g. VerticalProfile placing
+   *  wind/cloud markers on its distance axis, can project it themselves via
+   *  distanceAlongRouteNm without a second round trip. */
+  lat:     number
+  lng:     number
   metar:   string | null
   taf:     string | null
   decoded: MetarDecoded | null
@@ -65,11 +71,12 @@ export function useWeatherAlongRoute(waypoints: RouteWaypoint[]): RouteWeatherSt
           const wx = await fetchWx(a.icao, API_BASE, undefined, headers)
           return {
             icao: a.icao, name: a.name, distNm: Math.round(a.distNm * 10) / 10,
+            lat: a.lat, lng: a.lng,
             metar: wx.metar, taf: wx.taf,
             decoded: wx.metar ? decodeMetar(wx.metar) : null,
           }
         } catch {
-          return { icao: a.icao, name: a.name, distNm: Math.round(a.distNm * 10) / 10, metar: null, taf: null, decoded: null }
+          return { icao: a.icao, name: a.name, distNm: Math.round(a.distNm * 10) / 10, lat: a.lat, lng: a.lng, metar: null, taf: null, decoded: null }
         }
       }))
       if (!cancelled) setStations(results)

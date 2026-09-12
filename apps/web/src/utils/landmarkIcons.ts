@@ -38,3 +38,15 @@ export function registerLandmarkImages(map: MapLike): void {
     registerColoredSvgIcon(map as maplibregl.Map, id, url, color, SZ2).catch(() => { /* non-fatal */ })
   }
 }
+
+/**
+ * Same {url, color} pairs as ICONS above, keyed by the raw landmark `kind`
+ * string (see @open-vfr/shared/virtualRadarCalc's LandmarkMark.kind) instead
+ * of the map's registered image id — lets VirtualRadar.tsx render the exact
+ * same pictograms in the vertical-profile chart. Single source of truth:
+ * VirtualRadar.tsx previously carried its own independent LANDMARK_COLOURS
+ * copy of these same five hex values (drift risk if this ICONS array ever
+ * changed without someone remembering the second copy existed).
+ */
+export const LANDMARK_ICON_DEFS: Record<string, { url: string; color: string }> =
+  Object.fromEntries(ICONS.map(([id, url, color]) => [id.replace(/^lmk-/, '').replace(/-/g, '_'), { url, color }]))

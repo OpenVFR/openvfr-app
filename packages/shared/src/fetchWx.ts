@@ -84,3 +84,55 @@ export function decodeMetar(raw: string): MetarDecoded {
 
   return { time, wind, vis, clouds, temp, qnh, wx, flightRule }
 }
+
+// ── Chart-oriented structured parses of the same raw METAR groups ──────────
+// decodeMetar() above deliberately keeps .wind/.clouds as raw METAR token
+// strings (e.g. "27015G25KT", "BKN025 SCT100 OVC250") because that raw form
+// is also displayed as plain text elsewhere (e.g. WeatherAlongRouteSheet).
+// VerticalProfile/VirtualRadar's wind-arrow and cloud-layer rendering needs a
+// structured shape instead — shared here (not duplicated per-platform) since
+// it's pure parsing with zero UI/RN/DOM dependency, same as decodeMetar itself.
+
+export interface ParsedWind {
+  /** True heading the wind is blowing FROM, degrees. Null for VRB/CALM. */
+  dirDeg: number | null
+  speedKt: number
+  gustKt: number | null
+  variable: boolean
+  calm: boolean
+}
+
+export function parseMetarWind(raw: string | null): ParsedWind | null {
+  if (!raw) return null
+  if (raw === 'CALM') return { dirDeg: null, speedKt: 0, gustKt: null, variable: false, calm: true }
+  const m = /^(\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?(KT|MPS)$/i.exec(raw)
+  if (!m) return null
+  const [, dirTok, spdTok, gustTok, unit] = m
+  const toKt = (v: number) => unit.toUpperCase() === 'MPS' ? Math.round(v * 1.94384) : v
+  return {
+    dirDeg:   dirTok === 'VRB' ? null : parseInt(dirTok, 10),
+    speedKt:  toKt(parseInt(spdTok, 10)),
+    gustKt:   gustTok ? toKt(parseInt(gustTok, 10)) : null,
+    variable: dirTok === 'VRB',
+    calm:     false,
+  }
+}
+
+export interface ParsedCloudLayer {
+  cover: 'FEW' | 'SCT' | 'BKN' | 'OVC'
+  baseFt: number
+}
+
+/** Returns [] for CAVOK/clear (correctly means "draw no layers"), not null,
+ *  so call sites can .map() without an extra null-check. */
+export function parseMetarClouds(raw: string | null): ParsedCloudLayer[] {
+  if (!raw || raw === 'CAVOK') return []
+  const groups = raw.split(/\s+/)
+  const layers: ParsedCloudLayer[] = []
+  for (const g of groups) {
+    const m = /^(FEW|SCT|BKN|OVC)(\d{3})(CB|TCU)?$/i.exec(g)
+    if (!m) continue
+    layers.push({ cover: m[1].toUpperCase() as ParsedCloudLayer['cover'], baseFt: parseInt(m[2], 10) * 100 })
+  }
+  return layers
+}

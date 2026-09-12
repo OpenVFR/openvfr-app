@@ -713,6 +713,30 @@ export function distanceAlongRouteNm(
 }
 
 /**
+ * Perpendicular (lateral) distance in nautical miles from `pos` to the
+ * nearest point on the planned route polyline — the cross-track error.
+ * Used to flag the VirtualRadar/VerticalProfile chart as showing a route
+ * the aircraft is no longer actually on: the chart's terrain/airspace/MSA
+ * data is always sampled along the *planned* corridor (see module header),
+ * so once the aircraft has meaningfully diverged from that line, what's
+ * drawn ahead of the "you are here" marker no longer reflects the terrain
+ * the aircraft will actually overfly. Cheap early-warning companion to
+ * distanceAlongRouteNm above — a separate turf call rather than folding into
+ * that function's return value, so existing call sites (which only need the
+ * along-route distance) don't have to change shape.
+ */
+export function routeCrossTrackNm(
+  waypoints: RouteWaypoint[],
+  pos: { lat: number; lng: number },
+): number {
+  if (waypoints.length < 2) return 0
+  const routeLine = lineString(waypoints.map((w) => [w.lng, w.lat]))
+  const snapped = nearestPointOnLine(routeLine, point([pos.lng, pos.lat]), { units: 'kilometers' })
+  const km = snapped.properties.dist ?? 0
+  return km / 1.852 // km → NM
+}
+
+/**
  * Inverse of distanceAlongRouteNm — given a cumulative NM distance along the
  * route, return the corresponding geographic coordinate.
  * Uses @turf/along which interpolates along the LineString.
@@ -800,4 +824,136 @@ export function terrainAt(terrainPts: TerrainPoint[], distNm: number): number {
     }
   }
   return terrainPts[terrainPts.length - 1].elevFt
+}
+
+// ---------------------------------------------------------------------------
+// Chart domain math shared between native's react-native-svg VerticalProfile
+// and web's Recharts VirtualRadar — anything below here operates purely in
+// distNm/altFt/msaFt terms, never pixels. Each platform maps the results
+// through its own xOf()/yOf() (or Recharts dataKey) to actually draw them;
+// that pixel-mapping step is the only part that has to stay per-platform.
+// Before this was pulled out here, getMsa() and the trajectory-tick math
+// were independently re-implemented, byte-for-byte identical, in both
+// apps/native/src/components/VerticalProfile.tsx and
+// apps/web/src/components/VirtualRadar.tsx — exactly the kind of drift risk
+// (e.g. one platform's MSA corridor logic silently diverging from the
+// other's over time) this consolidation exists to prevent.
+// ---------------------------------------------------------------------------
+
+/** Returns a distNm -> MSA(ft) step-lookup closure over a precomputed MsaPoint[]
+ *  profile (see computeMsaProfile above). */
+export function getMsaLookup(msaPts: MsaPoint[]): (distNm: number) => number {
+  if (msaPts.length === 0) return () => 0
+  return (distNm: number): number => {
+    let msa = msaPts[0]?.msaFt ?? 0
+    for (const p of msaPts) {
+      if (p.distNm <= distNm) msa = p.msaFt
+      else break
+    }
+    return msa
+  }
+}
+
+export interface TrajectoryTick {
+  distNm:  number
+  /** Minutes elapsed (at the given ground speed) to reach this tick —
+   *  needed for vertical-speed altitude extrapolation, not just x-position. */
+  timeMin: number
+}
+
+/**
+ * Forward trajectory tick distances ("1 min/3 min/N min ahead" or the NM
+ * equivalent) ahead of the aircraft's current position — mirrors the map's
+ * own on-map trajectory line marks. `timeMode=true` treats `marks` as
+ * minutes (converted to distance via currentSpeedKts); `timeMode=false`
+ * treats them as NM directly (still returns elapsed time for each, needed
+ * by computeVspeedTrajectory below). Ticks beyond `totalNm` are dropped.
+ */
+export function computeTrajectoryTicks(opts: {
+  currentDistNm: number | undefined
+  currentSpeedKts: number | undefined
+  timeMode: boolean
+  marks: number[]
+  totalNm: number
+}): TrajectoryTick[] {
+  const { currentDistNm, currentSpeedKts, timeMode, marks, totalNm } = opts
+  if (currentDistNm == null || (currentSpeedKts ?? 0) < 5 || totalNm === 0) return []
+  const pairs: TrajectoryTick[] = timeMode
+    ? marks.map((min) => ({ distNm: currentDistNm + (min / 60) * currentSpeedKts!, timeMin: min }))
+    : marks.map((nm)  => ({ distNm: currentDistNm + nm, timeMin: (nm / currentSpeedKts!) * 60 }))
+  return pairs.filter((p) => p.distNm <= totalNm)
+}
+
+export interface VspeedTrajectoryPoint {
+  distNm: number
+  altFt:  number
+  /** True if this point's projected altitude is below MSA there (and MSA
+   *  data was actually available — msaFt of 0 means "unknown", not "safe"). */
+  below: boolean
+}
+
+/**
+ * Linear vertical-speed trajectory (constant-rate extrapolation from the
+ * *current instantaneous* vspeed) through each trajectory tick — SkyDemon's
+ * Virtual Radar draws exactly this: "a line denoting vertical trajectory...
+ * gives idea of current vertical speed and where ascent/descent leave you".
+ * Deliberately not the full performance-model projection (that needs an
+ * aircraft profile and models level-offs at cruise altitude — see
+ * projectFlightPath below); this one only needs live GPS/baro data and vspeed.
+ * Points are flagged `below` MSA the same way the performance-model
+ * projection's safe/danger split works, just checked per sparse tick point
+ * rather than at dense terrain resolution (these ticks are inherently sparse
+ * — typically 3 points — same granularity SkyDemon's own "2/5/10 min" dots use).
+ */
+export function computeVspeedTrajectory(opts: {
+  currentDistNm: number | undefined
+  currentAltFt: number | undefined
+  currentVSpeedFpm: number | undefined
+  ticks: TrajectoryTick[]
+  getMsa: (distNm: number) => number
+}): { points: VspeedTrajectoryPoint[]; attitude: 'climb' | 'descent' | 'level' } {
+  const { currentDistNm, currentAltFt, currentVSpeedFpm, ticks, getMsa } = opts
+  const LEVEL_VSPEED_FPM = 100
+  const attitude: 'climb' | 'descent' | 'level' =
+    currentVSpeedFpm == null ? 'level' :
+    currentVSpeedFpm > LEVEL_VSPEED_FPM ? 'climb' :
+    currentVSpeedFpm < -LEVEL_VSPEED_FPM ? 'descent' : 'level'
+  if (currentDistNm == null || currentAltFt == null || currentVSpeedFpm == null || ticks.length === 0) {
+    return { points: [], attitude }
+  }
+  const raw = [
+    { distNm: currentDistNm, altFt: currentAltFt },
+    ...ticks.map((t) => ({ distNm: t.distNm, altFt: currentAltFt + currentVSpeedFpm * t.timeMin })),
+  ]
+  const points = raw.map((p) => {
+    const msa = getMsa(p.distNm)
+    return { ...p, below: msa > 0 && p.altFt < msa }
+  })
+  return { points, attitude }
+}
+
+export interface WeatherMark<S> {
+  station: S
+  distNm:  number
+}
+
+/**
+ * Projects METAR/TAF stations (from useWeatherAlongRoute) onto the route's
+ * distance axis via distanceAlongRouteNm, and drops any that land outside
+ * [0, totalNm] — useWeatherAlongRoute's BUFFER_NM only limits candidates by
+ * *lateral* distance to the route, so a station abeam the departure or
+ * destination can still project outside the plotted span. Generic over the
+ * station shape `S` (native and web each have their own RouteWeatherStation
+ * type with the same lat/lng fields) so this doesn't need to import either
+ * platform's hook types.
+ */
+export function projectWeatherMarks<S extends { lat: number; lng: number }>(
+  waypoints: RouteWaypoint[],
+  stations: S[],
+  totalNm: number,
+): WeatherMark<S>[] {
+  if (stations.length === 0 || waypoints.length < 2) return []
+  return stations
+    .map((s) => ({ station: s, distNm: distanceAlongRouteNm(waypoints, { lat: s.lat, lng: s.lng }) }))
+    .filter((m) => m.distNm >= 0 && m.distNm <= totalNm)
 }

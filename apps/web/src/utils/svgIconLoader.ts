@@ -67,3 +67,42 @@ export async function registerColoredSvgIcon(
     inFlight.delete(id)
   }
 }
+
+// ---------------------------------------------------------------------------
+// DOM-agnostic variant — no MapLibre dependency, no canvas rasterisation.
+// Used by VirtualRadar.tsx to render the exact same recoloured pictograms
+// (obstacles/landmarks) inline in the chart's own SVG, where a plain nested
+// <svg>...</svg> (valid SVG-in-SVG) renders the vector directly — no need
+// for MapLibre's raster-sprite requirement that the canvas step above exists
+// for. Cached in-memory by url|color since the chart re-renders far more
+// often than the map re-registers its sprite images.
+// ---------------------------------------------------------------------------
+
+const markupCache = new Map<string, string>()
+const markupInFlight = new Map<string, Promise<string>>()
+
+/**
+ * Fetches a source SVG, injects the same fill/color recolouring
+ * registerColoredSvgIcon uses above, and returns the raw (still-vector)
+ * markup string — ready to embed via dangerouslySetInnerHTML inside a
+ * wrapping <g> at whatever position/size the caller needs.
+ */
+export async function loadColoredSvgMarkup(svgUrl: string, color: string): Promise<string> {
+  const key = `${svgUrl}|${color}`
+  const cached = markupCache.get(key)
+  if (cached) return cached
+  const pending = markupInFlight.get(key)
+  if (pending) return pending
+
+  const promise = (async () => {
+    const res = await fetch(svgUrl)
+    if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${svgUrl}`)
+    let svgText = await res.text()
+    svgText = svgText.replace(/(<svg\b)/, `$1 fill="${color}" color="${color}"`)
+    markupCache.set(key, svgText)
+    markupInFlight.delete(key)
+    return svgText
+  })()
+  markupInFlight.set(key, promise)
+  return promise
+}
