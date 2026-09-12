@@ -22,10 +22,10 @@
   "packageManager": "pnpm@11.6.0",
   "dependencies": {
     "@better-auth/passkey": "1.7.3",
-    "@open-vfr/shared": "workspace:*",
     "@expo/vector-icons": "^15.1.1",
     "@maplibre/maplibre-gl-style-spec": "26.2.1",
     "@maplibre/maplibre-react-native": "^11.3.9",
+    "@open-vfr/shared": "workspace:*",
     "@protomaps/basemaps": "^5.7.2",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/slider": "^5.2.1",
@@ -68,6 +68,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.29.7",
+    "@expo/config-plugins": "~57.0.9",
     "@resvg/resvg-js": "^2.6.2",
     "@types/geojson": "^7946.0.16",
     "@types/node": "26.4.1",
