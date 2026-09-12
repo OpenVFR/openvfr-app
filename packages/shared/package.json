@@ -11,6 +11,7 @@
     "./airspaceColors":  "./src/airspaceColors.ts",
     "./featureColors":  "./src/featureColors.ts",
     "./fetchWx":        "./src/fetchWx.ts",
+    "./parseTaf":       "./src/parseTaf.ts",
     "./fetchNotam":     "./src/fetchNotam.ts",
     "./types":          "./src/types.ts",
     "./routeCalc": "./src/routeCalc.ts",

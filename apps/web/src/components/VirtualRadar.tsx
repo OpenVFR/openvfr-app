@@ -20,7 +20,7 @@ import {
   getMsaLookup, computeTrajectoryTicks, computeVspeedTrajectory, projectWeatherMarks,
   type TerrainPoint, type MsaPoint, type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
-import { parseMetarWind, parseMetarClouds } from '@open-vfr/shared/fetchWx'
+import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
 import type { AircraftProfileDocType } from '../db/index'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 import css from './VirtualRadar.module.css'
@@ -300,13 +300,22 @@ export default function VirtualRadar({
 
   // Weather stations projected onto the route's distance axis — same shared
   // projection native uses for its wind-arrow/cloud-layer overlay.
+  // TAF only fills in wind/clouds when a station has no current METAR (see
+  // resolveStationWeather / parseTaf.ts header for the full scope note —
+  // this is NOT a route-position-vs-forecast-time overlay, that needs an
+  // ETD field this app doesn't have). tafChangeSoon flags a real trend
+  // change (FM/BECMG) in the next 3h, same spirit as SkyDemon's "check the
+  // bulletin" yellow-triangle warning. Mirrors native's identical change.
   const weatherMarks = useMemo(() => {
     if (!weatherStations || !profile) return []
-    return projectWeatherMarks(waypoints, weatherStations, profile.totalNm).map((m) => ({
-      distNm: m.distNm,
-      wind:   parseMetarWind(m.station.decoded?.wind ?? null),
-      clouds: parseMetarClouds(m.station.decoded?.clouds ?? null),
-    }))
+    return projectWeatherMarks(waypoints, weatherStations, profile.totalNm).map((m) => {
+      const resolved = resolveStationWeather({
+        metarWind: m.station.decoded?.wind ?? null,
+        metarClouds: m.station.decoded?.clouds ?? null,
+        taf: m.station.taf,
+      })
+      return { distNm: m.distNm, wind: resolved.wind, clouds: resolved.clouds, tafChangeSoon: resolved.tafChangeSoon }
+    })
   }, [weatherStations, waypoints, profile])
 
   // Measure the chart wrap's width — needed to decide whether the route is
@@ -682,6 +691,33 @@ export default function VirtualRadar({
                   />
                 )
               })}
+
+              {/* TAF "check the bulletin" warning — small yellow triangle
+                  when a real trend change (FM/BECMG) lands within the next
+                  3h, same spirit as SkyDemon's Virtual Radar yellow triangle
+                  (see resolveStationWeather/parseTaf.ts). Not a rendered
+                  forecast column — just a nudge to go read the TAF text,
+                  which is exactly what SkyDemon's own doc describes this
+                  indicator doing. Mirrors native's identical marker. */}
+              {weatherMarks.map((m, i) => m.tafChangeSoon ? (
+                <ReferenceDot
+                  key={`tafwarn-${i}`}
+                  x={nmToDisplay(m.distNm, units.distance)}
+                  y={yMax * 0.90}
+                  r={0} fill="transparent" stroke="none"
+                  ifOverflow="visible"
+                  shape={(dotProps) => {
+                    const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
+                    return (
+                      <path
+                        transform={`translate(${cx},${cy})`}
+                        d="M0,-5 L4.5,4 L-4.5,4 Z"
+                        fill="rgba(250,204,21,0.9)" stroke="rgba(0,0,0,0.4)" strokeWidth={0.5}
+                      />
+                    )
+                  }}
+                />
+              ) : null)}
 
               {/* ── Landmark markers, floored at terrain, real map pictograms
                   Same lmk-*.svg icons (recoloured via LANDMARK_ICON_DEFS) the

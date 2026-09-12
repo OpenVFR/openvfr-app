@@ -46,7 +46,7 @@ import {
   type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
-import { parseMetarWind, parseMetarClouds } from '@open-vfr/shared/fetchWx'
+import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
 import { getTileUrls, TILE_BASE } from '../config'
 import { theme } from '../styles/theme'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
@@ -421,14 +421,22 @@ export function VerticalProfile({
   // with web's VirtualRadar.tsx (projectWeatherMarks handles the along-route
   // projection + [0,totalNm] filtering; only the METAR string parsing and
   // xOf/yOf pixel mapping stay local to each platform's renderer).
+  // TAF only fills in wind/clouds when a station has no current METAR (see
+  // resolveStationWeather / parseTaf.ts header for the full scope note —
+  // this is NOT a route-position-vs-forecast-time overlay, that needs an
+  // ETD field this app doesn't have). tafChangeSoon flags a real trend
+  // change (FM/BECMG) in the next 3h, same spirit as SkyDemon's "check the
+  // bulletin" yellow-triangle warning.
   const weatherMarks = useMemo(() => {
     if (!weatherStations) return []
-    return projectWeatherMarks(waypoints, weatherStations, totalNm).map((m) => ({
-      station: m.station,
-      distNm:  m.distNm,
-      wind:    parseMetarWind(m.station.decoded?.wind ?? null),
-      clouds:  parseMetarClouds(m.station.decoded?.clouds ?? null),
-    }))
+    return projectWeatherMarks(waypoints, weatherStations, totalNm).map((m) => {
+      const resolved = resolveStationWeather({
+        metarWind: m.station.decoded?.wind ?? null,
+        metarClouds: m.station.decoded?.clouds ?? null,
+        taf: m.station.taf,
+      })
+      return { station: m.station, distNm: m.distNm, wind: resolved.wind, clouds: resolved.clouds, tafChangeSoon: resolved.tafChangeSoon }
+    })
   }, [weatherStations, waypoints, totalNm])
 
   // Projected flight path — split into safe (cyan) / below-MSA (red) segments
@@ -702,6 +710,21 @@ export function VerticalProfile({
                     </G>
                   )
                 })}
+
+                {/* TAF "check the bulletin" warning — small yellow triangle
+                     when a real trend change (FM/BECMG) lands within the
+                     next 3h, same spirit as SkyDemon's Virtual Radar yellow
+                     triangle (see resolveStationWeather/parseTaf.ts). Not a
+                     rendered forecast column — just a nudge to go read the
+                     TAF text, which is exactly what SkyDemon's own doc
+                     describes this indicator doing. */}
+                {weatherMarks.map((m, i) => m.tafChangeSoon ? (
+                  <Path key={`tafwarn-${i}`}
+                    d="M0,-5 L4.5,4 L-4.5,4 Z"
+                    transform={`translate(${xOf(m.distNm)},${MARGIN_T - 8})`}
+                    fill="rgba(250,204,21,0.9)" stroke="rgba(0,0,0,0.4)" strokeWidth={0.5}
+                  />
+                ) : null)}
 
                 {/* ── Waypoint ticks ──────────────────────────────────── */}
                 {profile.waypointTicks.map((tick, i) => i === 0 ? null : (
