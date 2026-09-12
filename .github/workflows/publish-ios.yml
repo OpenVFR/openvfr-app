@@ -1,0 +1,76 @@
+name: Publish iOS
+
+# Submits a previously-built artifact to TestFlight, decoupled from the
+# build step. See publish-android.yml for why this downloads a GitHub
+# Actions artifact by run ID instead of referencing an EAS-hosted build
+# by `--id`/`--latest` -- build-ios.yml builds with `eas build --local`,
+# so the artifact never lands in EAS's own build list.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        required: true
+        type: string
+        description: Run ID of the "Build iOS" workflow run to publish (from its URL or `gh run list`).
+      profile:
+        required: false
+        default: production
+        type: choice
+        description: Build profile the artifact was built with (selects which artifact to download).
+        options:
+          - preview
+          - production
+
+jobs:
+  publish_ios:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/native
+
+    steps:
+      - name: Checking out branch
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-${{ inputs.profile }}
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: apps/native/
+
+      - name: Write App Store Connect API key
+        run: echo "${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}" > app-store-connect-api-key.p8
+
+      - name: Submit to TestFlight
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          artifact=$(ls build-*.ipa 2>/dev/null | head -n1)
+          if [ -z "$artifact" ]; then
+            echo "No build-*.ipa artifact found in downloaded run." >&2
+            exit 1
+          fi
+          npx eas-cli submit --platform ios --profile production --non-interactive --path "$artifact"
+
+      - name: Delete App Store Connect API key
+        if: always()
+        run: rm -f app-store-connect-api-key.p8
+
+      - name: summary
+        run: echo "Build status report=${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"

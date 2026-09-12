@@ -1,0 +1,88 @@
+name: Publish Android
+
+# Submits a previously-built artifact to Google Play, decoupled from the
+# build step. Because build-android.yml builds with `eas build --local`
+# (see that file for why -- unlimited free GH Actions minutes on this
+# public repo vs. EAS cloud's quota-limited build queue), the artifact
+# never lands in EAS's own build list, so unlike a cloud-build setup
+# there's no `--id`/`--latest` EAS build to submit by ID. Instead this
+# downloads the GitHub Actions artifact that build-android.yml uploaded
+# from a specific workflow run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        required: true
+        type: string
+        description: Run ID of the "Build Android" workflow run to publish (from its URL or `gh run list`).
+      profile:
+        required: false
+        default: production
+        type: choice
+        description: Build profile the artifact was built with (selects which artifact to download).
+        options:
+          - preview
+          - production
+      track:
+        default: internal
+        required: true
+        type: choice
+        description: Play Store track.
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
+
+jobs:
+  publish_android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/native
+
+    steps:
+      - name: Checking out branch
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-${{ inputs.profile }}
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: apps/native/
+
+      - name: Write Play Store service account key
+        run: echo '${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}' > google-service-account.json
+
+      - name: Submit to Play Store
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          artifact=$(ls build-*.apk build-*.aab 2>/dev/null | head -n1)
+          if [ -z "$artifact" ]; then
+            echo "No build-*.apk/.aab artifact found in downloaded run." >&2
+            exit 1
+          fi
+          npx eas-cli submit --platform android --profile production --non-interactive \
+            --path "$artifact" --track "${{ inputs.track }}"
+
+      - name: Delete service account key
+        if: always()
+        run: rm -f google-service-account.json
+
+      - name: summary
+        run: echo "Build status report=${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
