@@ -53,6 +53,7 @@ import { useUserWaypointContext } from '../context/UserWaypointContext'
 import { useHomeAirfield }      from '../hooks/useHomeAirfield'
 import { useSettingsContext } from '../context/SettingsContext'
 import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
+import { RulerStatsBadge } from '../components/RulerStatsBadge'
 import { PastTrackChart } from '../components/PastTrackChart'
 import { Ionicons } from '@expo/vector-icons'
 import * as Crypto from 'expo-crypto'
@@ -126,6 +127,14 @@ export function MapScreen() {
     if (!settings.selectedAircraftId) { setAircraftProfile(undefined); return }
     aircraftDb.get(settings.selectedAircraftId).then(setAircraftProfile)
   }, [settings.selectedAircraftId])
+
+  // Map Ruler — mirrors web's MapView.tsx ruler tool. Each tap while active
+  // sets/rolls the two measurement points (A, then B, then each further tap
+  // replaces A with the old B and sets a new B) — handled in AviationMap's
+  // handleMapPress, this screen just owns the resulting state. Declared
+  // before showRulerProfile below, which reads it.
+  const [rulerMode, setRulerMode] = useState(false)
+  const [rulerPoints, setRulerPoints] = useState<RouteWaypoint[]>([])
 
   const currentDistNm = waypoints.length >= 2 && activePosition
     ? distanceAlongRouteNm(waypoints, activePosition)
@@ -234,9 +243,14 @@ export function MapScreen() {
   // takes priority over the live/lookahead profile: reviewing a past flight
   // is a distinct mode from planning/flying the current route.
   const { selectedLog, selectedTrack, clearView } = useFlightLogViewContext()
-  const showPastTrackChart  = !!selectedLog && selectedTrack.length >= 2
-  const showPlannedProfile   = !showPastTrackChart && waypoints.length >= 2
-  const showLookaheadProfile = !showPastTrackChart && !showPlannedProfile && lookaheadWaypoints.length >= 2
+  // Ruler cross-section takes priority over everything else (mirrors web's
+  // MapView.tsx priority order: ruler -> past-log -> planned -> look-ahead)
+  // -- an active ad-hoc measurement is a more deliberate, momentary action
+  // than reviewing a log or the standing planned route.
+  const showRulerProfile    = rulerMode && rulerPoints.length === 2
+  const showPastTrackChart  = !showRulerProfile && !!selectedLog && selectedTrack.length >= 2
+  const showPlannedProfile   = !showRulerProfile && !showPastTrackChart && waypoints.length >= 2
+  const showLookaheadProfile = !showRulerProfile && !showPastTrackChart && !showPlannedProfile && lookaheadWaypoints.length >= 2
 
   // Aircraft's live progress along the synthesised look-ahead route.
   // Previously hardcoded to 0 when passed to VerticalProfile, which pinned
@@ -278,7 +292,7 @@ export function MapScreen() {
   const PROFILE_CHROME_H = 22 + 34  // drag handle + header row
   const bottomStackH = GAUGES_BAR_H
     + (simFlight.active ? SIM_PANEL_H : 0)
-    + ((showPlannedProfile || showLookaheadProfile || showPastTrackChart) ? PROFILE_CHROME_H + profileHeight : 0)
+    + ((showRulerProfile || showPlannedProfile || showLookaheadProfile || showPastTrackChart) ? PROFILE_CHROME_H + profileHeight : 0)
 
   const nearbyFreqs   = useNearbyFrequencies(activePosition)
   const homeCoord     = useHomeAirfield(settings.homeAirfield)
@@ -645,6 +659,10 @@ export function MapScreen() {
   // look-ahead, then the planned route.
   const profileCursorCoord = useMemo<[number, number] | null>(() => {
     if (profileCursorNm == null) return null
+    if (showRulerProfile) {
+      const c = coordinateAlongRouteNm(rulerPoints, profileCursorNm)
+      return [c.lng, c.lat]
+    }
     if (showPastTrackChart) {
       const c = coordAlongTrack(selectedTrack, profileCursorNm)
       return [c.lng, c.lat]
@@ -658,7 +676,7 @@ export function MapScreen() {
       return [c.lng, c.lat]
     }
     return null
-  }, [profileCursorNm, showPastTrackChart, selectedTrack, showLookaheadProfile, lookaheadWaypoints, showPlannedProfile, waypoints])
+  }, [profileCursorNm, showRulerProfile, rulerPoints, showPastTrackChart, selectedTrack, showLookaheadProfile, lookaheadWaypoints, showPlannedProfile, waypoints])
 
   // Long-press menu — offers "Save Waypoint" for any long-pressed map point
   // (bare point or existing route waypoint alike; a tap on an existing
@@ -746,6 +764,9 @@ export function MapScreen() {
           routeVisible={routeVisible}
           pastTrack={pastTrack}
           profileCursor={profileCursorCoord}
+          rulerMode={rulerMode}
+          rulerPoints={rulerPoints}
+          onRulerTap={setRulerPoints}
         />
 
         {snapPicker && (
@@ -878,6 +899,12 @@ export function MapScreen() {
           >
             <Ionicons name="navigate" size={18} color={planningMode ? '#ffffff' : theme.textPrimary} />
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.iconBtn, rulerMode && styles.iconBtnActive]}
+            onPress={() => { setRulerMode(m => !m); setRulerPoints([]) }}
+          >
+            <Ionicons name="resize-outline" size={18} color={rulerMode ? '#ffffff' : theme.textPrimary} />
+          </TouchableOpacity>
           {waypoints.length > 0 && (
             <TouchableOpacity
               style={[styles.iconBtn, !routeVisible && styles.iconBtnHidden]}
@@ -920,6 +947,22 @@ export function MapScreen() {
       {/* FLY button replaced by FlightModeSheet, stacked in topRight with the
           layers/frequency buttons instead of its own large pill — was taking
           up too much dedicated screen space for a single toggle. */}
+
+      {showRulerProfile && (
+        <>
+          <RulerStatsBadge from={rulerPoints[0]} to={rulerPoints[1]} units={settings.units} aircraftProfile={aircraftProfile}
+            bottom={PROFILE_CHROME_H + profileHeight} />
+          <VerticalProfile
+            waypoints={rulerPoints}
+            legOverrides={[]}
+            units={settings.units}
+            aircraftProfile={aircraftProfile}
+            height={profileHeight}
+            onHeightChange={setProfileHeight}
+            onHoverDistNm={setProfileCursorNm}
+          />
+        </>
+      )}
 
       {showPlannedProfile && (
         <VerticalProfile
@@ -973,7 +1016,7 @@ export function MapScreen() {
       {/* Convenience "show profile" arrow — only visible when the panel is
           collapsed, since dragging back up from a fully-collapsed 0px handle
           can be fiddly to grab precisely. */}
-      {(showPlannedProfile || showLookaheadProfile || showPastTrackChart) && profileHeight <= COLLAPSE_THRESHOLD && (
+      {(showRulerProfile || showPlannedProfile || showLookaheadProfile || showPastTrackChart) && profileHeight <= COLLAPSE_THRESHOLD && (
         <TouchableOpacity
           style={[styles.showProfileBtn, { bottom: GAUGES_BAR_H + (simFlight.active ? SIM_PANEL_H : 0) + theme.space1 }]}
           onPress={() => setProfileHeight(DEFAULT_CHART_H)}

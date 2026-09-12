@@ -167,6 +167,16 @@ export type AviationMapProps = {
    *  false to hide an existing route without clearing its waypoints
    *  (route activate/deactivate). */
   routeVisible?: boolean
+  /** Map Ruler mode — mirrors web's MapView.tsx ruler tool. While true,
+   *  every map tap sets/rolls the two measurement points (A, then B, then
+   *  each further tap replaces A with the old B and sets a new B) instead
+   *  of opening feature popups or adding a route waypoint. */
+  rulerMode?: boolean
+  /** Current ruler points (0-2), used to draw the measurement line + point
+   *  markers. Owned by the caller (MapScreen), not this component. */
+  rulerPoints?: RouteWaypoint[]
+  /** Fired with the new rulerPoints array after a ruler-mode tap. */
+  onRulerTap?: (points: RouteWaypoint[]) => void
 }
 
 /** A route-planning snap candidate — a nearby feature the user might mean
@@ -576,6 +586,9 @@ export function AviationMap({
   onPlanTap,
   onPlanCandidates,
   routeVisible = true,
+  rulerMode = false,
+  rulerPoints,
+  onRulerTap,
 }: AviationMapProps) {
   const cameraRef   = useRef<CameraRef>(null)
   const notamPointsSourceRef = useRef<GeoJSONSourceRef>(null)
@@ -861,6 +874,16 @@ export function AviationMap({
       // ── Planning mode — every tap adds a waypoint, snapped to a nearby
       // feature within a screen-pixel radius when unambiguous (mirrors web's
       // MapView.tsx planning-mode click handler). ─────────────────────────
+      if (rulerMode) {
+        const lngLat = (payload as PressEvent).lngLat
+        if (!lngLat) return
+        const pt: RouteWaypoint = { lng: lngLat[0], lat: lngLat[1] }
+        const prev = rulerPoints ?? []
+        const next = prev.length < 2 ? [...prev, pt] : [prev[1], pt]
+        onRulerTap?.(next)
+        return
+      }
+
       if (planningMode) {
         const lngLat = (payload as PressEvent).lngLat
         const point  = (payload as PressEvent).point
@@ -948,7 +971,7 @@ export function AviationMap({
 
       onFeatureTap?.(fs, tapLngLat)
     },
-    [onFeatureTap, onLegTap, planningMode, onPlanTap, onPlanCandidates, onWaypointMove, onWaypointRemove],
+    [onFeatureTap, onLegTap, planningMode, onPlanTap, onPlanCandidates, onWaypointMove, onWaypointRemove, rulerMode, rulerPoints, onRulerTap],
   )
 
   const handleMapLongPress = useCallback(
@@ -1653,6 +1676,51 @@ export function AviationMap({
               type="line"
               filter={['==', ['get', 'type'], 'tick']}
               paint={{ 'line-color': '#facc15', 'line-width': 3, 'line-opacity': 0.9 }}
+            />
+          </GeoJSONSource>
+        )}
+
+        {/* Map Ruler — mirrors web's MapView.tsx ruler line + endpoint dots */}
+        {rulerPoints && rulerPoints.length >= 1 && (
+          <GeoJSONSource
+            id="ruler-pts-src"
+            data={{
+              type: 'FeatureCollection',
+              features: rulerPoints.map((p, i) => ({
+                type: 'Feature' as const,
+                geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
+                properties: { label: i === 0 ? 'A' : 'B' },
+              })),
+            }}
+          >
+            <Layer
+              id="ruler-pts-circle"
+              type="circle"
+              paint={{
+                'circle-radius': 6,
+                'circle-color': '#facc15',
+                'circle-stroke-width': 2,
+                'circle-stroke-color': '#000000',
+              }}
+            />
+          </GeoJSONSource>
+        )}
+        {rulerPoints && rulerPoints.length === 2 && (
+          <GeoJSONSource
+            id="ruler-line-src"
+            data={{
+              type: 'FeatureCollection',
+              features: [{
+                type: 'Feature',
+                geometry: { type: 'LineString', coordinates: rulerPoints.map((p) => [p.lng, p.lat]) },
+                properties: {},
+              }],
+            }}
+          >
+            <Layer
+              id="ruler-line"
+              type="line"
+              paint={{ 'line-color': '#facc15', 'line-width': 2, 'line-dasharray': [2, 2], 'line-opacity': 0.9 }}
             />
           </GeoJSONSource>
         )}
