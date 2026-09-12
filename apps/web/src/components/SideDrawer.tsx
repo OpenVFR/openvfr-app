@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react
 import LayerPanel from './LayerPanel'
 import RegionalNotamsPanel from './RegionalNotamsPanel'
 import WeatherAlongRoutePanel from './WeatherAlongRoutePanel'
-import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
+import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { filterNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM } from '@open-vfr/shared/notamRouteFilter'
 import AltitudeSlider from './AltitudeSlider'
@@ -115,6 +115,10 @@ interface Props {
   onSaveHereUserWaypoint: (name: string, lng: number, lat: number) => void
   auth: AuthState
   onOpenProfile: () => void
+  // Weather along route — lifted up to MapView (also feeds VirtualRadar's
+  // wind-arrow/cloud-layer overlay, so it's computed once and shared rather
+  // than fetched separately here and in VirtualRadar).
+  routeWeatherStations: RouteWeatherStation[]
 }
 
 const SECTION_LABELS = {
@@ -187,6 +191,7 @@ export default function SideDrawer({
   onFolderVisChange, onSaveHereUserWaypoint,
   auth,
   onOpenProfile,
+  routeWeatherStations,
 }: Props) {
   const [open, setOpen]         = useState(() => lsGet(LS_OPEN, false))
   const [width, setWidth]       = useState(() => lsGet(LS_WIDTH, DEFAULT_WIDTH))
@@ -273,7 +278,6 @@ export default function SideDrawer({
   // list, not the badge showing the unfiltered total while the body below
   // shows a route-filtered subset.
   const displayedRegionalNotams = hasRoute ? filterNotamsNearRoute(regionalNotams, waypoints) : regionalNotams
-  const routeWeatherStations = useWeatherAlongRoute(waypoints)
 
   return (
     <div ref={wrapperRef} className={css.wrapper}>

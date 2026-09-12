@@ -37,12 +37,19 @@ import {
   projectFlightPath,
   computeMsaProfile,
   terrainAt,
+  getMsaLookup,
+  computeTrajectoryTicks,
+  computeVspeedTrajectory,
+  projectWeatherMarks,
   type TerrainPoint,
   type MsaPoint,
   type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
+import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
+import { parseMetarWind, parseMetarClouds } from '@open-vfr/shared/fetchWx'
 import { getTileUrls, TILE_BASE } from '../config'
 import { theme } from '../styles/theme'
+import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -67,6 +74,20 @@ interface Props {
    *  trajectory ticks and the chart's trajectory ticks land at different
    *  distances for the same aircraft. */
   trajectoryNm?: number
+  /** Lateral (cross-track) distance in NM between the aircraft and the
+   *  planned route line — see routeCrossTrackNm in virtualRadarCalc. When
+   *  this exceeds OFF_TRACK_BADGE_NM the chart badges itself: terrain/
+   *  airspace/MSA here are only ever sampled along the *planned* corridor,
+   *  so once the aircraft has meaningfully diverged, what's drawn ahead of
+   *  the "you are here" marker is no longer what's actually ahead of the
+   *  aircraft. Omit (or pass undefined) to suppress the badge entirely —
+   *  e.g. for the synthesised look-ahead profile, which is built from the
+   *  aircraft's own current track and therefore can't be "off" itself. */
+  crossTrackNm?: number
+  /** METAR/TAF stations along the route (from useWeatherAlongRoute) — wind
+   *  arrows and cloud-base layers are drawn at each station's projected
+   *  along-route position, EasyVFR-style. Omit to hide entirely. */
+  weatherStations?: RouteWeatherStation[]
   /** Chart area height in px — controlled by the parent (draggable via the
    *  handle rendered at the top of this panel). Defaults to DEFAULT_CHART_H. */
   height?: number
@@ -93,6 +114,15 @@ const MARGIN_L  = 34   // room for FL/alt ticks
 const MARGIN_R  = 10
 const MARGIN_T  = 10
 const MARGIN_B  = 18
+
+// EasyVFR-style: never compress a long route down to fit the panel width —
+// below this pixel-per-NM density the chart becomes horizontally scrollable
+// instead of squeezing the whole route in, so short legs stay legible. Only
+// kicks in once totalNm * MIN_PX_PER_NM exceeds the panel's actual width.
+const MIN_PX_PER_NM = 18
+// Cross-track deviation beyond which the chart badges itself as showing a
+// route the aircraft is no longer actually on (see crossTrackNm prop doc).
+const OFF_TRACK_BADGE_NM = 3
 
 // Obstacle icon PNGs — same assets as the map (native/assets/poi_icons/)
 const OBSTACLE_ICONS: Record<string, ReturnType<typeof require>> = {
@@ -159,6 +189,7 @@ function getPlannedAlt(altProfile: { distNm: number; altFt: number }[], distNm: 
 export function VerticalProfile({
   waypoints, legOverrides, units = DEFAULT_UNITS, title, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
+  crossTrackNm, weatherStations,
   height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm,
 }: Props) {
   const [hoverNm, setHoverNm] = useState<number | null>(null)
@@ -170,6 +201,9 @@ export function VerticalProfile({
   const [msaPts,     setMsaPts]       = useState<MsaPoint[]>([])
   const [showProjection, setShowProjection] = useState(false)
   const [chartW,      setChartW]      = useState(0)
+  // Horizontal scroll offset into the (possibly wider-than-panel) chart
+  // content — see MIN_PX_PER_NM above. 0 when the route fits the panel.
+  const [scrollX,     setScrollX]     = useState(0)
 
   const chartH    = Math.max(0, height)
   const collapsed = chartH <= COLLAPSE_THRESHOLD
@@ -246,17 +280,9 @@ export function VerticalProfile({
     return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo ?? undefined, landmarkGeo ?? undefined)
   }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo, landmarkGeo])
 
-  const getMsa = useMemo(() => {
-    if (msaPts.length === 0) return (_d: number) => 0
-    return (distNm: number): number => {
-      let msa = msaPts[0]?.msaFt ?? 0
-      for (const p of msaPts) {
-        if (p.distNm <= distNm) msa = p.msaFt
-        else break
-      }
-      return msa
-    }
-  }, [msaPts])
+  // Shared with web's VirtualRadar.tsx (getMsaLookup) — this used to be a
+  // byte-for-byte duplicate independently maintained in both files.
+  const getMsa = useMemo(() => getMsaLookup(msaPts), [msaPts])
 
   const yMax = useMemo(() => {
     if (!profile) return 10000
@@ -267,23 +293,69 @@ export function VerticalProfile({
   }, [profile, terrainPts])
 
   const totalNm = profile?.totalNm ?? 0
-  const plotW = Math.max(0, chartW - MARGIN_L - MARGIN_R)
-  const plotH = chartH - MARGIN_T - MARGIN_B
+  // Content (not panel) plot width: never below what the panel offers, but
+  // grows past it once the route needs more than MIN_PX_PER_NM per NM to
+  // stay legible (EasyVFR-style — see MIN_PX_PER_NM comment above). contentW
+  // is what actually gets drawn into the Svg; chartW is just the visible
+  // clipping window.
+  const availablePlotW = Math.max(0, chartW - MARGIN_L - MARGIN_R)
+  const desiredPlotW   = totalNm * MIN_PX_PER_NM
+  const plotW    = Math.max(availablePlotW, desiredPlotW)
+  const plotH    = chartH - MARGIN_T - MARGIN_B
+  const contentW = plotW + MARGIN_L + MARGIN_R
+  const scrollable = contentW > chartW + 0.5
+  const maxScrollX  = Math.max(0, contentW - chartW)
 
   const xOf = useCallback((distNm: number) => MARGIN_L + (totalNm > 0 ? (distNm / totalNm) * plotW : 0), [totalNm, plotW])
   const yOf = useCallback((altFt: number) => MARGIN_T + plotH - (yMax > 0 ? (altFt / yMax) * plotH : 0), [yMax, plotH])
 
-  // Touch-drag scrub over the chart plot area — lets the parent screen sync
-  // a crosshair marker on the map (native equivalent of web's Recharts
-  // onMouseMove/onMouseLeave). Singleton PanResponder for the same reason as
-  // the resize-drag one above: must not be recreated mid-gesture.
+  // Clamp scrollX whenever the scrollable range shrinks (panel resized wider,
+  // or a shorter route replaces a longer one) — functional update so this
+  // doesn't need to be a PanResponder dependency.
+  useEffect(() => {
+    setScrollX((x) => Math.min(x, maxScrollX))
+  }, [maxScrollX])
+
+  // Auto-follow the aircraft while flying: if its marker has scrolled out of
+  // (or near) the visible window, re-center the view on it. Skipped while
+  // the pilot is mid-drag (hoverNm != null) so this doesn't fight a manual
+  // pan/scrub in progress.
+  useEffect(() => {
+    if (currentDistNm == null || !scrollable || hoverNm != null) return
+    const markerX = xOf(currentDistNm)
+    const EDGE = 40
+    setScrollX((x) => {
+      if (markerX < x + EDGE || markerX > x + chartW - EDGE) {
+        return Math.max(0, Math.min(maxScrollX, markerX - chartW / 2))
+      }
+      return x
+    })
+  }, [currentDistNm, scrollable, hoverNm, chartW, maxScrollX, xOf])
+
+  // Touch-drag over the chart plot area does double duty:
+  //  1. Scrub — lets the parent screen sync a crosshair marker on the map
+  //     (native equivalent of web's Recharts onMouseMove/onMouseLeave).
+  //  2. Pan — when the route is wider than the panel (MIN_PX_PER_NM,
+  //     above), the same one-finger drag scrolls the content instead of a
+  //     separate ScrollView, which would otherwise fight this same gesture
+  //     for the same horizontal touch-move (RN's ScrollView claims the
+  //     responder natively; a second JS PanResponder on the same axis can't
+  //     reliably out-race it). One responder driving both an internal
+  //     scrollX state AND the hover crosshair keeps the two forms of
+  //     horizontal drag unambiguous instead of racing two gesture systems.
+  // Singleton PanResponder for the same reason as the resize-drag one above:
+  // must not be recreated mid-gesture.
   const totalNmRef = useRef(totalNm); totalNmRef.current = totalNm
   const plotWRef = useRef(plotW); plotWRef.current = plotW
+  const scrollXRef = useRef(scrollX); scrollXRef.current = scrollX
+  const maxScrollXRef = useRef(maxScrollX); maxScrollXRef.current = maxScrollX
+  const dragStartScrollXRef = useRef(0)
   const onHoverDistNmRef = useRef(onHoverDistNm); onHoverDistNmRef.current = onHoverDistNm
-  const updateHover = useCallback((locationX: number) => {
+  const updateHover = useCallback((viewportX: number) => {
     const tNm = totalNmRef.current, pW = plotWRef.current
     if (tNm <= 0 || pW <= 0) return
-    const nm = Math.max(0, Math.min(tNm, ((locationX - MARGIN_L) / pW) * tNm))
+    const contentX = viewportX + scrollXRef.current
+    const nm = Math.max(0, Math.min(tNm, ((contentX - MARGIN_L) / pW) * tNm))
     setHoverNm(nm)
     onHoverDistNmRef.current?.(nm)
   }, [])
@@ -291,8 +363,15 @@ export function VerticalProfile({
   const scrubResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: (e) => updateHover(e.nativeEvent.locationX),
-    onPanResponderMove: (e) => updateHover(e.nativeEvent.locationX),
+    onPanResponderGrant: (e) => {
+      dragStartScrollXRef.current = scrollXRef.current
+      updateHover(e.nativeEvent.locationX)
+    },
+    onPanResponderMove: (e, gs) => {
+      const next = Math.max(0, Math.min(maxScrollXRef.current, dragStartScrollXRef.current - gs.dx))
+      setScrollX(next)
+      updateHover(e.nativeEvent.locationX)
+    },
     onPanResponderRelease: () => clearHover(),
     onPanResponderTerminate: () => clearHover(),
   }), [updateHover, clearHover])
@@ -336,6 +415,22 @@ export function VerticalProfile({
     return `M${profile.altitudeProfile.map(p => `${xOf(p.distNm).toFixed(1)},${yOf(p.altFt).toFixed(1)}`).join(' L')}`
   }, [profile, xOf, yOf])
 
+  // Weather stations projected onto the route's distance axis — EasyVFR-
+  // style wind arrows + cloud-base layers drawn directly in the vertical
+  // profile, not just listed in the separate WeatherAlongRouteSheet. Shared
+  // with web's VirtualRadar.tsx (projectWeatherMarks handles the along-route
+  // projection + [0,totalNm] filtering; only the METAR string parsing and
+  // xOf/yOf pixel mapping stay local to each platform's renderer).
+  const weatherMarks = useMemo(() => {
+    if (!weatherStations) return []
+    return projectWeatherMarks(waypoints, weatherStations, totalNm).map((m) => ({
+      station: m.station,
+      distNm:  m.distNm,
+      wind:    parseMetarWind(m.station.decoded?.wind ?? null),
+      clouds:  parseMetarClouds(m.station.decoded?.clouds ?? null),
+    }))
+  }, [weatherStations, waypoints, totalNm])
+
   // Projected flight path — split into safe (cyan) / below-MSA (red) segments
   const { projSafePath, projDangerPath } = useMemo(() => {
     if (!projAlts || terrainPts.length === 0) return { projSafePath: '', projDangerPath: '' }
@@ -370,23 +465,62 @@ export function VerticalProfile({
 
   // Trajectory ticks ahead of current position — near ticks fixed at 1/3,
   // far tick uses trajectoryNm (mirrors AviationMap's on-map trajectory line
-  // so map and chart always agree on where the far tick lands).
-  const trajectoryTickNms = useMemo((): number[] => {
-    if (currentDistNm == null || (currentSpeedKts ?? 0) < 5 || totalNm === 0) return []
-    const marks = trajectoryMode === 'time'
-      ? [1, 3, trajectoryNm].map(min => currentDistNm + (min / 60) * currentSpeedKts!)
-      : [1, 3, trajectoryNm].map(nm  => currentDistNm + nm)
-    return marks.filter(d => d <= totalNm)
-  }, [currentDistNm, currentSpeedKts, trajectoryMode, trajectoryNm, totalNm])
+  // so map and chart always agree on where the far tick lands). Shared with
+  // web's VirtualRadar.tsx (computeTrajectoryTicks); web's own trajectoryMode
+  // uses 'time'|'dist' naming, native uses 'time'|'nm' — both translate to
+  // the shared function's timeMode boolean rather than either renaming its
+  // own prop.
+  const trajectoryTicks = useMemo(() => computeTrajectoryTicks({
+    currentDistNm, currentSpeedKts, timeMode: trajectoryMode === 'time',
+    marks: [1, 3, trajectoryNm], totalNm,
+  }), [currentDistNm, currentSpeedKts, trajectoryMode, trajectoryNm, totalNm])
+  const trajectoryTickNms = useMemo(() => trajectoryTicks.map((t) => t.distNm), [trajectoryTicks])
   const trajectoryTickLabels = trajectoryMode === 'time'
     ? ['1m', '3m', `${trajectoryNm}m`]
     : ['1nm', '3nm', `${trajectoryNm}nm`]
+
+  // Vertical-speed-aware trajectory line — SkyDemon's Virtual Radar draws
+  // "a line denoting vertical trajectory... with dots representing 2, 5 and
+  // 10 minutes ahead" so a climb/descent/level attitude is visually obvious
+  // ahead of the aircraft, not just distance markers. Domain math (constant-
+  // rate extrapolation + below-MSA flagging) lives in the shared
+  // computeVspeedTrajectory, used identically by web's VirtualRadar.tsx —
+  // only the xOf/yOf pixel mapping and SVG path-string building stay local.
+  const vspeedTrajectory = useMemo(() => computeVspeedTrajectory({
+    currentDistNm, currentAltFt, currentVSpeedFpm, ticks: trajectoryTicks, getMsa,
+  }), [currentDistNm, currentAltFt, currentVSpeedFpm, trajectoryTicks, getMsa])
+  const trajectoryLine = useMemo(() => {
+    const pts = vspeedTrajectory.points
+    if (pts.length < 2) return { segments: [] as { path: string; below: boolean }[], dots: [] as { x: number; y: number; below: boolean }[], attitude: vspeedTrajectory.attitude }
+    const withXY = pts.map((p) => ({ ...p, x: xOf(p.distNm), y: yOf(p.altFt) }))
+    const segments = withXY.slice(1).map((p, i) => {
+      const prev = withXY[i]
+      return {
+        path: `M${prev.x.toFixed(1)},${prev.y.toFixed(1)} L${p.x.toFixed(1)},${p.y.toFixed(1)}`,
+        below: prev.below || p.below,
+      }
+    })
+    return { segments, dots: withXY.slice(1).map((p) => ({ x: p.x, y: p.y, below: p.below })), attitude: vspeedTrajectory.attitude }
+  }, [vspeedTrajectory, xOf, yOf])
+  const trajectoryAttitudeColor =
+    trajectoryLine.attitude === 'climb'   ? 'rgba(34,197,94,0.85)'  :
+    trajectoryLine.attitude === 'descent' ? 'rgba(248,113,113,0.85)' :
+                                             'rgba(255,255,255,0.55)'
+  const DANGER_COLOR = 'rgba(239,68,68,0.95)'
 
   // Aircraft pitch tilt — nose up on climb, nose down on descent (visual flourish)
   const pitchDeg = useMemo(() => {
     if (currentVSpeedFpm == null) return 0
     return Math.max(-20, Math.min(20, currentVSpeedFpm / 100))
   }, [currentVSpeedFpm])
+
+  // Category-shaped marker (fixed-wing/glider/helicopter/gyrocopter) instead
+  // of always the same generic single-engine-airplane silhouette — see
+  // aircraftSilhouette.ts header for why only these four groups exist.
+  const silhouette = useMemo(
+    () => getAircraftSilhouette(aircraftProfile?.category),
+    [aircraftProfile?.category],
+  )
 
   const onChartLayout = useCallback((e: LayoutChangeEvent) => {
     setChartW(e.nativeEvent.layout.width)
@@ -419,10 +553,39 @@ export function VerticalProfile({
       </View>
       {/* ── Chart ──────────────────────────────────────────────────── */}
       {!collapsed && (
-        <View style={[styles.chartWrap, { height: chartH }]} onLayout={onChartLayout} {...scrubResponder.panHandlers}>
+        <View style={[styles.chartWrap, { height: chartH }]} onLayout={onChartLayout}>
           {chartW > 0 && (
             <>
-              <Svg width={chartW} height={chartH}>
+              {/* Cross-track deviation badge — the chart's terrain/airspace/
+                  MSA data is only ever sampled along the *planned* route
+                  (see AGENTS.md / virtualRadarCalc header), so once the
+                  aircraft has meaningfully diverged from that line, what's
+                  drawn ahead of the "you are here" marker no longer reflects
+                  what's actually ahead of the aircraft. SkyDemon's flying-
+                  mode addresses this by re-deriving the whole chart from the
+                  live GPS track instead; this is the cheaper stopgap — just
+                  surface the fact plainly rather than silently keep drawing
+                  planned-route terrain under a marker no longer really on it. */}
+              {crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM && (
+                <View style={styles.offTrackBadge} pointerEvents="none">
+                  <Text style={styles.offTrackTxt}>⚠ {Math.abs(crossTrackNm).toFixed(1)}nm off planned track</Text>
+                </View>
+              )}
+              {/* EasyVFR-style scroll hint — only shown once the route is
+                  wider than the panel (MIN_PX_PER_NM above). */}
+              {scrollable && (
+                <View style={[styles.scrollHintWrap, (crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM) && { top: 20 }]} pointerEvents="none">
+                  <Text style={styles.scrollHintTxt}>↔ scroll</Text>
+                </View>
+              )}
+              {/* Scrollable clip window — width pinned to the panel (chartW);
+                  the wider content view inside is translated by -scrollX.
+                  Touch handling lives here (fixed viewport), not on the
+                  translated inner view, so scrubResponder's locationX stays
+                  in stable viewport coordinates regardless of scroll. */}
+              <View style={{ width: chartW, height: chartH, overflow: 'hidden' }} {...scrubResponder.panHandlers}>
+              <View style={{ width: contentW, height: chartH, transform: [{ translateX: -scrollX }] }}>
+              <Svg width={contentW} height={chartH}>
                 <Defs>
                   <LinearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
                     <Stop offset="0%"  stopColor="#0d1424" stopOpacity={1} />
@@ -440,11 +603,11 @@ export function VerticalProfile({
                 </Defs>
 
                 {/* Sky background */}
-                <Path d={`M0,0 L${chartW},0 L${chartW},${chartH} L0,${chartH} Z`} fill="url(#sky)" />
+                <Path d={`M0,0 L${contentW},0 L${contentW},${chartH} L0,${chartH} Z`} fill="url(#sky)" />
 
                 {/* Y-axis grid lines */}
                 {yTicks.map((ft, i) => (
-                  <SvgLine key={`yg-${i}`} x1={MARGIN_L} y1={yOf(ft)} x2={chartW - MARGIN_R} y2={yOf(ft)}
+                  <SvgLine key={`yg-${i}`} x1={MARGIN_L} y1={yOf(ft)} x2={contentW - MARGIN_R} y2={yOf(ft)}
                     stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
                 ))}
 
@@ -479,6 +642,27 @@ export function VerticalProfile({
                 <Path d={terrainPath.fill} fill="url(#terrainGrad)" />
                 <Path d={terrainPath.outline} fill="none" stroke="rgba(160,130,90,0.55)" strokeWidth={1} />
 
+                {/* Weather: cloud-base layers (EasyVFR-style) — translucent
+                     bands from each METAR cloud group's base up to the top
+                     of the plot; opacity increases FEW/SCT/BKN/OVC so a
+                     ceiling reads visibly denser than scattered cloud. Drawn
+                     as a fixed-width band straddling the station (a point
+                     observation) rather than interpolated between stations
+                     miles apart, which would imply false precision. */}
+                {weatherMarks.map((m, i) => {
+                  const halfWidthNm = Math.min(totalNm * 0.06, 4)
+                  const x1 = xOf(Math.max(0, m.distNm - halfWidthNm))
+                  const x2 = xOf(Math.min(totalNm, m.distNm + halfWidthNm))
+                  const cloudOpacity: Record<string, number> = { FEW: 0.10, SCT: 0.18, BKN: 0.30, OVC: 0.42 }
+                  return m.clouds.map((c, j) => (
+                    <Path
+                      key={`cloud-${i}-${j}`}
+                      d={`M${x1},${MARGIN_T} L${x2},${MARGIN_T} L${x2},${yOf(c.baseFt)} L${x1},${yOf(c.baseFt)} Z`}
+                      fill={`rgba(205,215,230,${cloudOpacity[c.cover]})`}
+                    />
+                  ))
+                })}
+
                 {/* ── MSA dashed line ─────────────────────────────────── */}
                 {msaPath && (
                   <Path d={msaPath} fill="none" stroke="rgba(251,146,60,0.65)" strokeWidth={1} strokeDasharray="5,3" />
@@ -500,6 +684,25 @@ export function VerticalProfile({
                   <Path d={projDangerPath} fill="none" stroke="rgba(239,68,68,0.95)" strokeWidth={2.5} />
                 )}
 
+                {weatherMarks.map((m, i) => {
+                  if (!m.wind) return null
+                  const x = xOf(m.distNm), y = MARGIN_T + 9
+                  if (m.wind.calm) {
+                    return <Circle key={`wind-${i}`} cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
+                  }
+                  if (m.wind.dirDeg == null) {
+                    return <Circle key={`wind-${i}`} cx={x} cy={y} r={3} fill="none" stroke="rgba(250,204,21,0.7)" strokeWidth={1} strokeDasharray="1.5,1.5" />
+                  }
+                  const len = Math.min(18, 6 + m.wind.speedKt * 0.5)
+                  const rot = m.wind.dirDeg + 180
+                  return (
+                    <G key={`wind-${i}`} transform={`translate(${x},${y}) rotate(${rot})`}>
+                      <SvgLine x1={0} y1={-len / 2} x2={0} y2={len / 2} stroke="rgba(148,197,255,0.85)" strokeWidth={1.5} />
+                      <Path d={`M0,${len / 2} L-2.5,${len / 2 - 4} L2.5,${len / 2 - 4} Z`} fill="rgba(148,197,255,0.9)" />
+                    </G>
+                  )
+                })}
+
                 {/* ── Waypoint ticks ──────────────────────────────────── */}
                 {profile.waypointTicks.map((tick, i) => i === 0 ? null : (
                   <SvgLine key={`wp-${i}`} x1={xOf(tick.distNm)} y1={MARGIN_T} x2={xOf(tick.distNm)} y2={MARGIN_T + plotH}
@@ -510,6 +713,24 @@ export function VerticalProfile({
                 {trajectoryTickNms.map((d, i) => (
                   <SvgLine key={`traj-${i}`} x1={xOf(d)} y1={MARGIN_T} x2={xOf(d)} y2={MARGIN_T + plotH}
                     stroke="rgba(250,204,21,0.70)" strokeWidth={1} strokeDasharray="3,3" />
+                ))}
+
+                {/* ── Vertical-speed-aware trajectory line ────────────────
+                     Climb/descent/level colour follows the *current* vspeed,
+                     linearly extrapolated to each distance tick above —
+                     distinct from the yellow dashed distance/time ticks
+                     (which stay purely horizontal reference marks) and from
+                     the PROJ toggle's full performance-model path (which
+                     needs an aircraft profile and models level-off/climb
+                     schedule; this one is always available). */}
+                {trajectoryLine.segments.map((seg, i) => (
+                  <Path key={`trajseg-${i}`} d={seg.path} fill="none"
+                    stroke={seg.below ? DANGER_COLOR : trajectoryAttitudeColor}
+                    strokeWidth={seg.below ? 2.25 : 1.75} strokeDasharray="1,2" />
+                ))}
+                {trajectoryLine.dots.map((p, i) => (
+                  <Circle key={`trajdot-${i}`} cx={p.x} cy={p.y} r={p.below ? 3 : 2.5}
+                    fill={p.below ? DANGER_COLOR : trajectoryAttitudeColor} />
                 ))}
 
                 {/* ── Scrub crosshair (touch-drag on the chart) ───── */}
@@ -526,10 +747,9 @@ export function VerticalProfile({
                 {currentDistNm != null && currentAltFt != null && (
                   <G transform={`translate(${xOf(currentDistNm)}, ${yOf(currentAltFt)}) rotate(${-pitchDeg})`}>
                     <Circle r={9} fill="rgba(34,197,94,0.18)" />
-                    <Path d="M12,0 C8,-2 0,-2.5 -8,-1.5 L-12,-0.5 L-12,1 L-8,2 C0,2.5 8,2 12,0Z" fill="#ffffff" fillOpacity={0.97} />
-                    <Path d="M0,2 L5,2 L9,10 L7,10Z" fill="#ffffff" fillOpacity={0.95} />
-                    <Path d="M-10,-1.5 L-8,-1.5 L-7,-7 L-9,-7 L-12,-0.5Z" fill="#ffffff" fillOpacity={0.9} />
-                    <Path d="M-12,0.5 L-9,1.5 L-8,5 L-10,5Z" fill="#ffffff" fillOpacity={0.85} />
+                    {silhouette.map((part, i) => (
+                      <Path key={`ac-part-${i}`} d={part.d} fill="#ffffff" fillOpacity={part.opacity} />
+                    ))}
                   </G>
                 )}
 
@@ -548,8 +768,14 @@ export function VerticalProfile({
                   FL095" chips scrolling past as the live look-ahead window
                   moved. Y-position + band colour already encode
                   altitude/class; revisit with a floor–ceiling format + dedup
-                  instead of re-adding as-is. */}
-              <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                  instead of re-adding as-is.
+
+                  Sized to contentW (not chartW) and left inside the
+                  translated content view below — it scrolls together with
+                  the Svg. Only the Y-axis tick labels are pinned outside
+                  this, in a separate non-scrolling overlay after the clip
+                  window closes. */}
+              <View style={{ position: 'absolute', left: 0, top: 0, width: contentW, height: chartH }} pointerEvents="none">
                 {profile.obstacles.map((obs, i) => {
                   const baseFt = Math.max(obs.elevationFt, terrainAt(terrainPts, obs.distNm))
                   const tipFt  = obs.heightM > 0 ? Math.round(baseFt + obs.heightM * 3.28084) : baseFt
@@ -581,11 +807,12 @@ export function VerticalProfile({
 
                 {profile.waypointTicks.map((tick, i) => i === 0 ? null : (
                   // Clamp so the destination's label (sitting exactly at the
-                  // right edge of the plot) doesn't overflow past chartW and
-                  // get clipped to just its first letter.
+                  // right edge of the *content* — not the panel, since this
+                  // whole overlay scrolls with the Svg — doesn't overflow
+                  // past contentW and get clipped to just its first letter.
                   <Text
                     key={`wpl-${i}`}
-                    style={[styles.wpLabel, { left: Math.min(chartW - 44, xOf(tick.distNm) + 2), top: MARGIN_T }]}
+                    style={[styles.wpLabel, { left: Math.min(contentW - 44, xOf(tick.distNm) + 2), top: MARGIN_T }]}
                     numberOfLines={1}
                   >
                     {tick.name}
@@ -598,18 +825,31 @@ export function VerticalProfile({
                   </Text>
                 ))}
 
-                {yTicks.map((ft, i) => (
-                  <Text key={`yl-${i}`} style={[styles.axisLabel, { left: 2, top: yOf(ft) - 6 }]}>
-                    {ft >= 1000 ? `FL${Math.round(ft / 100).toString().padStart(3, '0')}` : `${ft}`}
+                {weatherMarks.map((m, i) => (
+                  <Text key={`windl-${i}`} style={[styles.windLabel, { left: xOf(m.distNm) - 12, top: MARGIN_T + 16 }]} numberOfLines={1}>
+                    {m.wind?.calm ? 'CALM' : m.wind?.dirDeg != null ? `${m.wind.dirDeg}°/${m.wind.speedKt}` : ''}
                   </Text>
                 ))}
 
                 {xTicks.map((d, i) => (
                   <Text key={`xl-${i}`} style={[
                     styles.axisLabelX,
-                    { left: Math.min(chartW - 20, Math.max(0, xOf(d) - 8)), top: MARGIN_T + plotH + 4 },
+                    { left: Math.min(contentW - 20, Math.max(0, xOf(d) - 8)), top: MARGIN_T + plotH + 4 },
                   ]}>
                     {nmToDisplay(d, units.distance).toFixed(0)}
+                  </Text>
+                ))}
+              </View>
+              </View>
+              </View>
+              {/* Pinned Y-axis tick labels — rendered outside the scrollable
+                  clip window (above) so they stay fixed at the left edge
+                  regardless of scrollX, instead of scrolling away with the
+                  route content like everything else in this chart does. */}
+              <View style={styles.yAxisPinned} pointerEvents="none">
+                {yTicks.map((ft, i) => (
+                  <Text key={`yl-${i}`} style={[styles.axisLabel, { left: 2, top: yOf(ft) - 6 }]}>
+                    {ft >= 1000 ? `FL${Math.round(ft / 100).toString().padStart(3, '0')}` : `${ft}`}
                   </Text>
                 ))}
               </View>
@@ -681,6 +921,51 @@ const styles = StyleSheet.create({
   axisLabelX: {
     position: 'absolute',
     color:    'rgba(255,255,255,0.45)',
+    fontSize: 8,
+  },
+  windLabel: {
+    position: 'absolute',
+    color:    'rgba(148,197,255,0.85)',
+    fontSize: 7,
+    maxWidth: 32,
+  },
+  // Pinned left-edge Y-axis label column — sits above the scrollable clip
+  // window (rendered after it in JSX = higher z-order) so it never scrolls
+  // away with the route content. No background fill: same translucent-
+  // text-over-terrain look the chart already used before scrolling existed.
+  yAxisPinned: {
+    position: 'absolute',
+    left:     0,
+    top:      0,
+    width:    MARGIN_L,
+    height:   '100%',
+  },
+  offTrackBadge: {
+    position:          'absolute',
+    top:               2,
+    left:              MARGIN_L + 2,
+    backgroundColor:   'rgba(120,53,15,0.85)',
+    borderRadius:      theme.radiusSm,
+    paddingHorizontal: 6,
+    paddingVertical:   2,
+    zIndex:            5,
+  },
+  offTrackTxt: {
+    color:      '#fde68a',
+    fontSize:   9,
+    fontWeight: '700',
+  },
+  scrollHintWrap: {
+    position:          'absolute',
+    top:               2,
+    right:             MARGIN_R + 2,
+    backgroundColor:   'rgba(15,23,42,0.65)',
+    borderRadius:      theme.radiusSm,
+    paddingHorizontal: 5,
+    paddingVertical:   1,
+  },
+  scrollHintTxt: {
+    color:    'rgba(255,255,255,0.55)',
     fontSize: 8,
   },
 })

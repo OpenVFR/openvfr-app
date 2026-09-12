@@ -57,7 +57,7 @@ import { PastTrackChart } from '../components/PastTrackChart'
 import { Ionicons } from '@expo/vector-icons'
 import * as Crypto from 'expo-crypto'
 import { GaugesBar }         from '../components/GaugesBar'
-import { distanceAlongRouteNm, coordinateAlongRouteNm } from '@open-vfr/shared/virtualRadarCalc'
+import { distanceAlongRouteNm, coordinateAlongRouteNm, routeCrossTrackNm } from '@open-vfr/shared/virtualRadarCalc'
 import { aircraft as aircraftDb, flightLogs as flightLogsDb } from '../db'
 import type { AircraftProfileDocType } from '../types/db'
 import { useTerrainElevation } from '../hooks/useTerrainElevation'
@@ -129,6 +129,14 @@ export function MapScreen() {
 
   const currentDistNm = waypoints.length >= 2 && activePosition
     ? distanceAlongRouteNm(waypoints, activePosition)
+    : undefined
+  // Lateral deviation from the planned line — VerticalProfile's terrain/
+  // airspace/MSA data is only ever sampled along the planned route (see
+  // AGENTS.md discussion), so once this grows large the chart is no longer
+  // showing what's actually ahead of the aircraft. Passed through so the
+  // chart can badge itself rather than silently keep pretending alignment.
+  const crossTrackNm = waypoints.length >= 2 && activePosition
+    ? routeCrossTrackNm(waypoints, activePosition)
     : undefined
 
   const [flying, setFlying]           = useState(false)
@@ -922,6 +930,9 @@ export function MapScreen() {
           currentDistNm={currentDistNm}
           currentAltFt={bestAltFt ?? undefined}
           currentSpeedKts={activePosition?.speedKts}
+          currentVSpeedFpm={altitudeSource.vsFtMin ?? undefined}
+          crossTrackNm={crossTrackNm}
+          weatherStations={routeWeatherStations}
           trajectoryMode={settings.trajectoryMode ?? 'time'}
           trajectoryNm={settings.trajectoryNm}
           height={profileHeight}
@@ -940,6 +951,8 @@ export function MapScreen() {
           currentDistNm={lookaheadDistNm}
           currentAltFt={bestAltFt ?? undefined}
           currentSpeedKts={activePosition?.speedKts}
+          currentVSpeedFpm={altitudeSource.vsFtMin ?? undefined}
+          weatherStations={routeWeatherStations}
           trajectoryMode={settings.trajectoryMode ?? 'time'}
           trajectoryNm={settings.trajectoryNm}
           height={profileHeight}

@@ -15,22 +15,31 @@ import {
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel } from '../utils/units'
-import { buildVirtualRadarProfile, fetchTerrainProfile, projectFlightPath, computeMsaProfile, terrainAt, type TerrainPoint, type MsaPoint, type AircraftPerfModel } from '@open-vfr/shared/virtualRadarCalc'
+import {
+  buildVirtualRadarProfile, fetchTerrainProfile, projectFlightPath, computeMsaProfile, terrainAt,
+  getMsaLookup, computeTrajectoryTicks, computeVspeedTrajectory, projectWeatherMarks,
+  type TerrainPoint, type MsaPoint, type AircraftPerfModel,
+} from '@open-vfr/shared/virtualRadarCalc'
+import { parseMetarWind, parseMetarClouds } from '@open-vfr/shared/fetchWx'
 import type { AircraftProfileDocType } from '../db/index'
+import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 import css from './VirtualRadar.module.css'
 import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { OBSTACLE_ICON_DEFS, OBSTACLE_ICON_FALLBACK_DEF } from '../utils/obstacleIcons'
+import { LANDMARK_ICON_DEFS } from '../utils/landmarkIcons'
+import { loadColoredSvgMarkup } from '../utils/svgIconLoader'
+import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
 
-// ---------------------------------------------------------------------------
-// Landmark kind → display colour (mirrors src/utils/landmarkIcons.ts tints)
-// ---------------------------------------------------------------------------
-const LANDMARK_COLOURS: Record<string, string> = {
-  church:       '#455a64',
-  mast:         '#e65100',
-  windmill:     '#5d4037',
-  water_tower:  '#00695c',
-  chimney:      '#bf360c',
-}
+// EasyVFR-style: don't compress a long route down to fit the panel width —
+// below this pixel-per-NM density the chart becomes horizontally scrollable
+// instead (see chartWrap/scroll wiring below), matching native's identical
+// MIN_PX_PER_NM constant in VerticalProfile.tsx.
+const MIN_PX_PER_NM = 18
+// Cross-track deviation beyond which the chart badges itself as showing a
+// route the aircraft is no longer actually on — matches native's constant.
+const OFF_TRACK_BADGE_NM = 3
+
 
 // ---------------------------------------------------------------------------
 // Types
@@ -52,10 +61,24 @@ interface Props {
   currentAltFt?: number
   /** Current GPS ground speed in kts — used to compute time-mode trajectory tick distances */
   currentSpeedKts?: number
+  /** Current vertical speed in ft/min — drives the climb/descent-aware
+   *  trajectory line (see computeVspeedTrajectory). Web has no baro/vario
+   *  sensor access, so this is typically a GPS-altitude-derived estimate
+   *  (see useGpsVerticalSpeed) rather than native's baro/vario-tiered value
+   *  — treat as indicative only. */
+  currentVSpeedFpm?: number
   /** Matches the map trajectory mode: 'time' = marks at 1/3/5 min ahead, 'dist' = 1/3/5 NM ahead */
   trajectoryMode?: 'time' | 'dist'
   /** NM along the route for a map-driven crosshair cursor (null = hidden) */
   crosshairDistNm?: number | null
+  /** Lateral (cross-track) distance in NM between the aircraft and the
+   *  planned route line — see routeCrossTrackNm in virtualRadarCalc. Mirrors
+   *  native's identical prop; omit to suppress the badge entirely. */
+  crossTrackNm?: number
+  /** METAR/TAF stations along the route (from useWeatherAlongRoute) — wind
+   *  arrows and cloud-base layers drawn at each station's projected
+   *  along-route position, EasyVFR-style. Omit to hide entirely. */
+  weatherStations?: RouteWeatherStation[]
 }
 
 // ---------------------------------------------------------------------------
@@ -122,7 +145,19 @@ function ProfileTooltip({ active, payload }: { active?: boolean; payload?: Toolt
 // Component
 // ---------------------------------------------------------------------------
 
-export default function VirtualRadar({ waypoints, legOverrides, units = DEFAULT_UNITS, title, onHoverDistNm, aircraftProfile, currentDistNm, currentAltFt, currentSpeedKts, trajectoryMode, crosshairDistNm }: Props) {
+export default function VirtualRadar({
+  waypoints, legOverrides, units = DEFAULT_UNITS, title, onHoverDistNm, aircraftProfile,
+  currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, crosshairDistNm,
+  crossTrackNm, weatherStations,
+}: Props) {
+
+  const chartWrapRef = useRef<HTMLDivElement | null>(null)
+  const [wrapW, setWrapW] = useState(0)
+  // Recoloured obstacle/landmark SVG markup, keyed by "kind" — same
+  // pictograms the map uses (OBSTACLE_ICON_DEFS/LANDMARK_ICON_DEFS), loaded
+  // once per kind actually present on this route and cached across renders
+  // by loadColoredSvgMarkup itself (module-level cache, url|colour keyed).
+  const [iconMarkup, setIconMarkup] = useState<Record<string, string>>({})
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [waterGeo,    setWaterGeo]    = useState<GeoJSON.FeatureCollection | null>(null)
@@ -141,6 +176,15 @@ export default function VirtualRadar({ waypoints, legOverrides, units = DEFAULT_
     if (rocSlFpm <= 0 || climbIas <= 0 || descentFpm <= 0 || descentIas <= 0) return null
     return { rocSlFpm, rocCeilingFpm: rocCeilingFpm ?? 50, serviceCeilingFt: serviceCeilingFt || 15000, climbIas, descentFpm, descentIas }
   }, [aircraftProfile])
+
+  // Category-shaped marker (fixed-wing/glider/helicopter/gyrocopter) instead
+  // of always the same generic single-engine-airplane silhouette — see
+  // @open-vfr/shared/aircraftSilhouette's header for why only these four
+  // groups exist. Mirrors native's identical change to VerticalProfile.tsx.
+  const silhouette = useMemo(
+    () => getAircraftSilhouette(aircraftProfile?.category),
+    [aircraftProfile?.category],
+  )
 
   // Load GeoJSON once
   useEffect(() => {
@@ -198,33 +242,86 @@ export default function VirtualRadar({ waypoints, legOverrides, units = DEFAULT_
     )
   }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo, landmarkGeo])
 
-  // MSA lookup at a given distNm
-  const getMsa = useMemo(() => {
-    if (msaPts.length === 0) return (_d: number) => 0
-    return (distNm: number): number => {
-      let msa = msaPts[0]?.msaFt ?? 0
-      for (const p of msaPts) {
-        if (p.distNm <= distNm) msa = p.msaFt
-        else break
-      }
-      return msa
+  // Load (and cache) the recoloured SVG markup for every obstacle/landmark
+  // kind actually present on this route — same pictograms as the main map
+  // (OBSTACLE_ICON_DEFS/LANDMARK_ICON_DEFS), rendered inline below via a
+  // nested <svg> (valid SVG-in-SVG) instead of the generic glyph/dot labels
+  // this chart used before.
+  useEffect(() => {
+    if (!profile) return
+    const wanted = new Set<string>()
+    for (const obs of profile.obstacles) wanted.add(`obs:${obs.kind}`)
+    for (const lmk of profile.landmarks) wanted.add(`lmk:${lmk.kind}`)
+    let cancelled = false
+    for (const key of wanted) {
+      if (iconMarkup[key]) continue
+      const [kindGroup, kind] = key.split(':')
+      const def = kindGroup === 'obs'
+        ? (OBSTACLE_ICON_DEFS[kind] ?? OBSTACLE_ICON_FALLBACK_DEF)
+        : LANDMARK_ICON_DEFS[kind]
+      if (!def) continue
+      loadColoredSvgMarkup(def.url, def.color)
+        .then((markup) => { if (!cancelled) setIconMarkup((prev) => ({ ...prev, [key]: markup })) })
+        .catch(() => { /* non-fatal — falls back to a plain dot below */ })
     }
-  }, [msaPts])
+    return () => { cancelled = true }
+  }, [profile, iconMarkup])
 
-  // Trajectory tick distances (NM along route) — mirrors the map trajectory line marks.
-  // Only computed when we have a live position and a meaningful speed (>= 5 kts).
-  const trajectoryTickNms = useMemo((): number[] => {
-    if (currentDistNm == null || (currentSpeedKts ?? 0) < 5 || !profile) return []
-    const totalNm = profile.totalNm
-    const marks = trajectoryMode === 'time'
-      ? [1, 3, 5].map(min => currentDistNm + (min / 60) * currentSpeedKts!)
-      : [1, 3, 5].map(nm  => currentDistNm + nm)
-    return marks.filter(d => d <= totalNm)
-  }, [currentDistNm, currentSpeedKts, trajectoryMode, profile])
+  // MSA lookup at a given distNm — shared with native (getMsaLookup) rather
+  // than reimplemented here; this used to be a byte-for-byte duplicate.
+  const getMsa = useMemo(() => getMsaLookup(msaPts), [msaPts])
+
+  // Trajectory tick distances (NM along route) — mirrors the map trajectory
+  // line marks. computeTrajectoryTicks is the same shared function native
+  // uses; web's trajectoryMode is named 'time'|'dist' (native: 'time'|'nm')
+  // so it's translated to the shared function's timeMode boolean here rather
+  // than renaming this prop and touching every other trajectoryMode call site.
+  const trajectoryTicks = useMemo(() => computeTrajectoryTicks({
+    currentDistNm, currentSpeedKts, timeMode: trajectoryMode === 'time',
+    marks: [1, 3, 5], totalNm: profile?.totalNm ?? 0,
+  }), [currentDistNm, currentSpeedKts, trajectoryMode, profile])
+  const trajectoryTickNms = useMemo(() => trajectoryTicks.map((t) => t.distNm), [trajectoryTicks])
 
   const trajectoryTickLabels = trajectoryMode === 'time'
     ? ['1m', '3m', '5m']
     : ['1nm', '3nm', '5nm']
+
+  // Climb/descent-aware trajectory line (SkyDemon-style) — same shared
+  // domain math as native's VerticalProfile, just rendered via Recharts
+  // ReferenceLine segments/ReferenceDot below instead of react-native-svg Path.
+  const vspeedTrajectory = useMemo(() => computeVspeedTrajectory({
+    currentDistNm, currentAltFt, currentVSpeedFpm, ticks: trajectoryTicks, getMsa,
+  }), [currentDistNm, currentAltFt, currentVSpeedFpm, trajectoryTicks, getMsa])
+  const vspeedAttitudeColor =
+    vspeedTrajectory.attitude === 'climb'   ? 'rgba(34,197,94,0.85)'   :
+    vspeedTrajectory.attitude === 'descent' ? 'rgba(248,113,113,0.85)' :
+                                               'rgba(255,255,255,0.55)'
+  const VSPEED_DANGER_COLOR = 'rgba(239,68,68,0.95)'
+
+  // Weather stations projected onto the route's distance axis — same shared
+  // projection native uses for its wind-arrow/cloud-layer overlay.
+  const weatherMarks = useMemo(() => {
+    if (!weatherStations || !profile) return []
+    return projectWeatherMarks(waypoints, weatherStations, profile.totalNm).map((m) => ({
+      distNm: m.distNm,
+      wind:   parseMetarWind(m.station.decoded?.wind ?? null),
+      clouds: parseMetarClouds(m.station.decoded?.clouds ?? null),
+    }))
+  }, [weatherStations, waypoints, profile])
+
+  // Measure the chart wrap's width — needed to decide whether the route is
+  // wider than the panel (MIN_PX_PER_NM) and therefore should scroll instead
+  // of Recharts' ResponsiveContainer squeezing the whole route into 100%.
+  useEffect(() => {
+    const el = chartWrapRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width
+      if (w != null) setWrapW(w)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   // Build chart data: terrain points as the primary series (evenly spaced),
   // with planned altitude step-function interpolated at each distance.
@@ -316,6 +413,32 @@ export default function VirtualRadar({ waypoints, legOverrides, units = DEFAULT_
     color,
   })), [yMax])
 
+  // EasyVFR-style scrollable chart: content width grows past the measured
+  // panel width (wrapW) once the route needs more than MIN_PX_PER_NM per NM
+  // to stay legible, instead of Recharts' ResponsiveContainer always
+  // squeezing the whole route down to 100%. Native's identical constant/
+  // behaviour is in VerticalProfile.tsx; the mechanism differs (native drives
+  // a manual PanResponder + translateX, since RN has no scroll-view-over-SVG
+  // story that plays nicely with a competing pan gesture; web just uses a
+  // plain scrollable div, since the browser's native horizontal scroll
+  // doesn't have that gesture-conflict problem).
+  const totalNmDisplay = profile ? nmToDisplay(profile.totalNm, units.distance) : 0
+  const contentPxWidth = Math.max(wrapW, totalNmDisplay * MIN_PX_PER_NM)
+  const scrollable = contentPxWidth > wrapW + 0.5
+
+  // Auto-follow the aircraft while flying, mirroring native: if its marker
+  // has scrolled near/out of the visible window, re-center on it. Skipped
+  // while a map-driven crosshair is active so it doesn't fight that.
+  useEffect(() => {
+    const el = chartWrapRef.current
+    if (!el || !scrollable || currentDistNm == null || !profile || crosshairDistNm != null) return
+    const markerX = (currentDistNm / profile.totalNm) * contentPxWidth
+    const EDGE = 40
+    if (markerX < el.scrollLeft + EDGE || markerX > el.scrollLeft + wrapW - EDGE) {
+      el.scrollTo({ left: Math.max(0, Math.min(contentPxWidth - wrapW, markerX - wrapW / 2)), behavior: 'smooth' })
+    }
+  }, [currentDistNm, scrollable, profile, contentPxWidth, wrapW, crosshairDistNm])
+
   if (!profile || chartData.length === 0) return null
 
   return (
@@ -326,6 +449,14 @@ export default function VirtualRadar({ waypoints, legOverrides, units = DEFAULT_
         <span className={css.totalDist}>
           {nmToDisplay(profile.totalNm, units.distance).toFixed(1)} {distLabel(units.distance)}
         </span>
+        {/* Cross-track deviation badge — same reasoning as native's identical
+            badge: this chart's terrain/airspace/MSA data is only ever sampled
+            along the *planned* route, so once the aircraft has meaningfully
+            diverged from it, what's drawn ahead of the "you are here" marker
+            no longer reflects what's actually ahead of the aircraft. */}
+        {crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM && (
+          <span className={css.offTrackBadge}>⚠ {Math.abs(crossTrackNm).toFixed(1)}nm off track</span>
+        )}
         {perf && (
           <button
             className={`${css.projToggleBtn} ${showProjection ? css.projToggleOn : ''}`}
@@ -346,7 +477,9 @@ export default function VirtualRadar({ waypoints, legOverrides, units = DEFAULT_
 
       {/* ── Chart ──────────────────────────────────────────────────── */}
       {!collapsed && (
-        <div className={css.chartWrap}>
+        <div className={css.chartWrap} ref={chartWrapRef}>
+          {scrollable && <span className={css.scrollHint}>↔ scroll</span>}
+          <div style={{ width: wrapW > 0 ? contentPxWidth : '100%', height: '100%' }}>
           <ResponsiveContainer width="100%" height={160}>
             <ComposedChart
               data={chartData}
@@ -421,6 +554,29 @@ export default function VirtualRadar({ waypoints, legOverrides, units = DEFAULT_
                 />
               ))}
 
+              {/* Weather: cloud-base layers (EasyVFR-style) — translucent
+                  bands from each METAR cloud groups base up to the top of
+                  the plot; opacity increases FEW/SCT/BKN/OVC so a ceiling
+                  reads visibly denser than scattered cloud. Drawn as a
+                  fixed-width band straddling the station (a point
+                  observation) rather than interpolated between stations
+                  miles apart, which would imply false precision — same
+                  reasoning/rendering as natives identical overlay. */}
+              {weatherMarks.map((m, i) => {
+                const halfWidthNm = Math.min(profile!.totalNm * 0.06, 4)
+                const x1 = nmToDisplay(Math.max(0, m.distNm - halfWidthNm), units.distance)
+                const x2 = nmToDisplay(Math.min(profile!.totalNm, m.distNm + halfWidthNm), units.distance)
+                const cloudOpacity: Record<string, number> = { FEW: 0.10, SCT: 0.18, BKN: 0.30, OVC: 0.42 }
+                return m.clouds.map((c, j) => (
+                  <ReferenceArea
+                    key={`cloud-${i}-${j}`}
+                    x1={x1} x2={x2} y1={c.baseFt} y2={yMax}
+                    fill={`rgba(205,215,230,${cloudOpacity[c.cover]})`}
+                    stroke="none"
+                  />
+                ))
+              })}
+
               {/* ── Water (lake/reservoir) crossings ──────────────── */}
               {/* Thin blue band along the ground baseline wherever the route
                   crosses a lake/reservoir — marks that OpenTopoData's terrain
@@ -444,51 +600,117 @@ export default function VirtualRadar({ waypoints, legOverrides, units = DEFAULT_
                 )
               })}
 
-              {/* ── Obstacle markers at tip elevation ──────────────── */}
+              {/* ── Obstacle markers at tip elevation, real map pictograms ──
+                  Same obs-*.svg icons (recoloured via OBSTACLE_ICON_DEFS) the
+                  main map and native's VerticalProfile both use — this used
+                  to render a generic triangle/square glyph instead of the
+                  actual per-kind symbols. */}
               {profile.obstacles.map((obs, i) => {
                 const baseFt = Math.max(obs.elevationFt, terrainAt(terrainPts, obs.distNm))
                 const tipFt = obs.heightM > 0
                   ? Math.round(baseFt + obs.heightM * 3.28084)
                   : baseFt
-                const isWind = obs.kind === 'wind_turbine'
-                const colour = isWind ? 'rgba(251,191,36,0.95)' : 'rgba(220,80,60,0.95)'
+                const markup = iconMarkup[`obs:${obs.kind}`]
+                const size = 16
                 return (
                   <ReferenceDot
                     key={`obs-${i}`}
                     x={nmToDisplay(obs.distNm, units.distance)}
                     y={tipFt}
-                    r={3}
-                    fill={colour}
-                    stroke="rgba(0,0,0,0.4)"
-                    strokeWidth={1}
-                    label={{
-                      value: isWind ? '\u25b2' : '\u2b1b',
-                      position: 'top',
-                      fill: colour,
-                      fontSize: 8,
+                    r={0}
+                    fill="transparent"
+                    stroke="none"
+                    ifOverflow="visible"
+                    shape={(dotProps) => {
+                      const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
+                      if (markup) {
+                        return (
+                          <g
+                            transform={`translate(${cx - size / 2},${cy - size / 2})`}
+                            dangerouslySetInnerHTML={{ __html: markup.replace('<svg', `<svg width="${size}" height="${size}"`) }}
+                          />
+                        )
+                      }
+                      // Loading fallback — plain dot, same style this chart used
+                      // for every marker before the pictogram fetch existed.
+                      return <circle cx={cx} cy={cy} r={3} fill="rgba(220,80,60,0.85)" stroke="rgba(0,0,0,0.4)" strokeWidth={1} />
                     }}
                   />
                 )
               })}
 
-              {/* ── Landmark markers, floored at terrain ─────────────── */}
+              {/* Weather: wind arrows — one per station near the top
+                  margin, rotated to point the direction the wind is blowing
+                  TOWARD (METAR wind direction is FROM, hence +180) — same
+                  convention as native and the main map. Length/opacity scale
+                  with speed; calm/variable draw a small ring instead of a
+                  directional arrow, since there is no single direction to
+                  show. Rendered via ReferenceDots custom shape callback,
+                  the same technique already used above for obstacle/landmark
+                  markers and below for the aircraft silhouette. */}
+              {weatherMarks.map((m, i) => {
+                if (!m.wind) return null
+                const x = nmToDisplay(m.distNm, units.distance)
+                const y = yMax * 0.97
+                return (
+                  <ReferenceDot
+                    key={`wind-${i}`}
+                    x={x} y={y} r={0} fill="transparent" stroke="none"
+                    shape={(dotProps) => {
+                      const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
+                      if (m.wind!.calm) {
+                        return <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
+                      }
+                      if (m.wind!.dirDeg == null) {
+                        return <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(250,204,21,0.7)" strokeWidth={1} strokeDasharray="1.5,1.5" />
+                      }
+                      const len = Math.min(18, 6 + m.wind!.speedKt * 0.5)
+                      const rot = m.wind!.dirDeg + 180
+                      return (
+                        <g transform={`translate(${cx},${cy}) rotate(${rot})`} aria-hidden="true">
+                          <line x1={0} y1={-len / 2} x2={0} y2={len / 2} stroke="rgba(148,197,255,0.85)" strokeWidth={1.5} />
+                          <path d={`M0,${len / 2} L-2.5,${len / 2 - 4} L2.5,${len / 2 - 4} Z`} fill="rgba(148,197,255,0.9)" />
+                        </g>
+                      )
+                    }}
+                    label={{
+                      value: m.wind.calm ? "CALM" : m.wind.dirDeg != null ? `${m.wind.dirDeg}°/${m.wind.speedKt}` : "",
+                      position: "bottom",
+                      fill: "rgba(148,197,255,0.85)",
+                      fontSize: 7,
+                    }}
+                  />
+                )
+              })}
+
+              {/* ── Landmark markers, floored at terrain, real map pictograms
+                  Same lmk-*.svg icons (recoloured via LANDMARK_ICON_DEFS) the
+                  main map and native's VerticalProfile both use — this used
+                  to render a generic dot glyph instead of the actual symbols. */}
               {profile.landmarks.map((lmk, i) => {
                 const baseFt = terrainAt(terrainPts, lmk.distNm)
-                const colour = LANDMARK_COLOURS[lmk.kind] ?? 'rgba(150,150,150,0.9)'
+                const markup = iconMarkup[`lmk:${lmk.kind}`]
+                const size = 14
                 return (
                   <ReferenceDot
                     key={`lmk-${i}`}
                     x={nmToDisplay(lmk.distNm, units.distance)}
                     y={baseFt}
-                    r={2.5}
-                    fill={colour}
-                    stroke="rgba(0,0,0,0.4)"
-                    strokeWidth={1}
-                    label={{
-                      value: '\u25cf',
-                      position: 'top',
-                      fill: colour,
-                      fontSize: 7,
+                    r={0}
+                    fill="transparent"
+                    stroke="none"
+                    ifOverflow="visible"
+                    shape={(dotProps) => {
+                      const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
+                      if (markup) {
+                        return (
+                          <g
+                            transform={`translate(${cx - size / 2},${cy - size / 2})`}
+                            dangerouslySetInnerHTML={{ __html: markup.replace('<svg', `<svg width="${size}" height="${size}"`) }}
+                          />
+                        )
+                      }
+                      return <circle cx={cx} cy={cy} r={2.5} fill="rgba(150,150,150,0.9)" stroke="rgba(0,0,0,0.4)" strokeWidth={1} />
                     }}
                   />
                 )
@@ -601,26 +823,9 @@ export default function VirtualRadar({ waypoints, legOverrides, units = DEFAULT_
                     const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
                     return (
                       <g transform={`translate(${cx},${cy})`} aria-hidden="true">
-                        {/* Fuselage: nose right, tail left */}
-                        <path
-                          d="M12,0 C8,-2 0,-2.5 -8,-1.5 L-12,-0.5 L-12,1 L-8,2 C0,2.5 8,2 12,0Z"
-                          fill="white" opacity="0.95"
-                        />
-                        {/* Main wing: low-wing, swept back, extends below */}
-                        <path
-                          d="M0,2 L5,2 L9,10 L7,10Z"
-                          fill="white" opacity="0.95"
-                        />
-                        {/* Vertical stabiliser: extends up at tail */}
-                        <path
-                          d="M-10,-1.5 L-8,-1.5 L-7,-7 L-9,-7 L-12,-0.5Z"
-                          fill="white" opacity="0.90"
-                        />
-                        {/* Horizontal stabiliser: small, hangs below at tail */}
-                        <path
-                          d="M-12,0.5 L-9,1.5 L-8,5 L-10,5Z"
-                          fill="white" opacity="0.85"
-                        />
+                        {silhouette.map((part, i) => (
+                          <path key={`ac-part-${i}`} d={part.d} fill="white" opacity={part.opacity} />
+                        ))}
                       </g>
                     )
                   }}
@@ -643,6 +848,35 @@ export default function VirtualRadar({ waypoints, legOverrides, units = DEFAULT_
                 />
               ))}
 
+              {vspeedTrajectory.points.slice(1).map((p, i) => {
+                const prev = vspeedTrajectory.points[i]
+                const below = prev.below || p.below
+                return (
+                  <ReferenceLine
+                    key={`vspeed-seg-${i}`}
+                    segment={[
+                      { x: nmToDisplay(prev.distNm, units.distance), y: prev.altFt },
+                      { x: nmToDisplay(p.distNm, units.distance),    y: p.altFt },
+                    ]}
+                    stroke={below ? VSPEED_DANGER_COLOR : vspeedAttitudeColor}
+                    strokeWidth={below ? 2.25 : 1.75}
+                    strokeDasharray="1 2"
+                    ifOverflow="visible"
+                  />
+                )
+              })}
+              {vspeedTrajectory.points.slice(1).map((p, i) => (
+                <ReferenceDot
+                  key={`vspeed-dot-${i}`}
+                  x={nmToDisplay(p.distNm, units.distance)}
+                  y={p.altFt}
+                  r={p.below ? 3 : 2.5}
+                  fill={p.below ? VSPEED_DANGER_COLOR : vspeedAttitudeColor}
+                  stroke="none"
+                  ifOverflow="visible"
+                />
+              ))}
+
               {/* ── Map-driven crosshair (profile cursor from map hover/click) ── */}
               {crosshairDistNm != null && (
                 <ReferenceLine
@@ -656,6 +890,7 @@ export default function VirtualRadar({ waypoints, legOverrides, units = DEFAULT_
 
             </ComposedChart>
           </ResponsiveContainer>
+          </div>
         </div>
       )}
     </div>

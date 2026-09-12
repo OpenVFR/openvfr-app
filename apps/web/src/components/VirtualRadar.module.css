@@ -89,9 +89,38 @@
 
 /* ── Chart area ──────────────────────────────────────────────────────── */
 .chartWrap {
+  position: relative;
   padding: 4px 4px 0;
   /* recharts ResponsiveContainer needs a non-zero parent height */
   height: 180px;
+  /* EasyVFR-style: scroll instead of squeezing a long route to fit — the
+     inner div (set inline in VirtualRadar.tsx) is only ever wider than this
+     wrap when totalNm * MIN_PX_PER_NM exceeds the measured wrap width. */
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.scrollHint {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  z-index: 2;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(15, 23, 42, 0.65);
+  border-radius: 3px;
+  padding: 1px 5px;
+  pointer-events: none;
+}
+
+.offTrackBadge {
+  font-size: 9px;
+  font-weight: 700;
+  color: #fde68a;
+  background: rgba(120, 53, 15, 0.85);
+  border-radius: 3px;
+  padding: 1px 6px;
+  white-space: nowrap;
 }
 
 /* ── Tooltip ─────────────────────────────────────────────────────────── */

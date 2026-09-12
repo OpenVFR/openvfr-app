@@ -39,6 +39,8 @@ import { type PointFeature } from './FeaturePopup'
 import type { WhatsHereItem } from './WhatsHerePopup'
 import SnapPicker, { type SnapCandidate } from './SnapPicker'
 import VirtualRadar from './VirtualRadar'
+import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
+import { useGpsVerticalSpeed } from '../hooks/useGpsVerticalSpeed'
 import LiveTrackChart from './LiveTrackChart'
 import LivePlogPanel from './LivePlogPanel'
 import WpActionMenu from './WpActionMenu'
@@ -53,7 +55,7 @@ import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import { useUserWaypoints } from '../db/useUserWaypoints'
 import { getDb, type TrackPoint, type LegOverride } from '../db'
 import { distanceNm } from '../utils/routeCalc'
-import { distanceAlongRouteNm, coordinateAlongRouteNm } from '@open-vfr/shared/virtualRadarCalc'
+import { distanceAlongRouteNm, coordinateAlongRouteNm, routeCrossTrackNm } from '@open-vfr/shared/virtualRadarCalc'
 import { fetchWind, type WindAloft } from '@open-vfr/shared/fetchWind'
 import { aircraftIconUrl, registerAircraftImageFromSvg } from '../utils/aircraftIcon'
 import { buildTerrainColorExpr } from '../utils/terrainColor'
@@ -345,6 +347,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const [parkTimeout, setParkTimeout] = useParkTimeout()
   const [alternate, _setAlternate] = useAlternate()
   const [routeWaypoints, setRouteWaypoints, legOverrides, setLegOverrides, loadRouteIntoMap, routeAircraftId, setRouteAircraftId] = usePersistedRoute()
+  // Computed once here (not inside SideDrawer) so VirtualRadar's wind-arrow/
+  // cloud-layer overlay and SideDrawer's Weather-Along-Route panel share the
+  // same fetched station list instead of each independently hitting
+  // /api/weather for the same route.
+  const routeWeatherStations = useWeatherAlongRoute(routeWaypoints)
   const { waypoints: userWaypoints, saveWaypoint: saveUserWaypoint, deleteWaypoint: deleteUserWaypoint, renameWaypoint: renameUserWaypoint, moveToFolder: moveUserWpFolder } = useUserWaypoints()
   const [snapPicker, setSnapPicker] = useState<{
     candidates: SnapCandidate[]
@@ -381,6 +388,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
     teleport,
     setSimTarget,
   } = useGoFlying(routeWaypoints)
+  // GPS-derived vertical speed — see useGpsVerticalSpeed's header for why
+  // this is explicitly a lower-quality fallback vs. native's baro/vario
+  // tiering, kept only active while actually flying (mirrors gpsPosition's
+  // own flyingMode gating used everywhere else in this file).
+  const gpsVSpeedFpm = useGpsVerticalSpeed(flyingMode !== 'off' ? gpsPosition : null)
   const [mapOrientation, setMapOrientation] = useState<MapOrientation>('north')
   const [followAircraft, setFollowAircraft] = useState(false)
   const [showModePicker, setShowModePicker] = useState(false)
@@ -452,6 +464,14 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const aircraftDistNm = useMemo(() => {
     if (flyingMode === 'off' || !gpsPosition || routeWaypoints.length < 2) return undefined
     return distanceAlongRouteNm(routeWaypoints, gpsPosition)
+  }, [flyingMode, gpsPosition, routeWaypoints])
+  // Lateral deviation from the planned line — mirrors native's identical
+  // crossTrackNm wiring. VirtualRadar's terrain/airspace/MSA data is only
+  // ever sampled along the *planned* route, so this drives an in-chart badge
+  // once the aircraft has meaningfully diverged from it.
+  const crossTrackNm = useMemo(() => {
+    if (flyingMode === 'off' || !gpsPosition || routeWaypoints.length < 2) return undefined
+    return routeCrossTrackNm(routeWaypoints, gpsPosition)
   }, [flyingMode, gpsPosition, routeWaypoints])
 
   // Aircraft's live progress along the synthesised look-ahead route.
@@ -3176,6 +3196,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         }}
         auth={auth}
         onOpenProfile={() => setProfileOpen(true)}
+        routeWeatherStations={routeWeatherStations}
       />
       <div className={css.mapArea}>
         <div ref={containerRef} className={css.map} />
@@ -3568,6 +3589,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             units={units}
             aircraftProfile={selectedAircraftProfile}
             onHoverDistNm={setProfileCursorNm}
+            weatherStations={routeWeatherStations}
           />
         </div>
       ) : selectedLogId && selectedLogTrack.length > 0 ? (
@@ -3586,6 +3608,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
             currentDistNm={aircraftDistNm}
             currentAltFt={flyingMode !== 'off' ? gpsPosition?.altFt : undefined}
             currentSpeedKts={flyingMode !== 'off' ? gpsPosition?.speedKts : undefined}
+            currentVSpeedFpm={flyingMode !== 'off' ? gpsVSpeedFpm ?? undefined : undefined}
+            crossTrackNm={crossTrackNm}
+            weatherStations={routeWeatherStations}
             trajectoryMode={trajectoryMode}
             onHoverDistNm={setProfileCursorNm}
             crosshairDistNm={profileCursorNm}
@@ -3605,6 +3630,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
               currentDistNm={lookaheadDistNm}
               currentAltFt={gpsPosition?.altFt}
               currentSpeedKts={gpsPosition?.speedKts}
+              currentVSpeedFpm={gpsVSpeedFpm ?? undefined}
+              weatherStations={routeWeatherStations}
               trajectoryMode={trajectoryMode}
               onHoverDistNm={setProfileCursorNm}
               crosshairDistNm={profileCursorNm}
