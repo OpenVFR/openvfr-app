@@ -762,6 +762,7 @@ export function MapScreen() {
           trajectoryNm={settings.trajectoryNm}
           trajectoryMode={settings.trajectoryMode ?? 'time'}
           followGps={followGps}
+          onUserPan={() => setFollowGps(false)}
           mapOrientation={mapOrientation}
           onFeatureTap={handleFeatureTap as (features: Feature[], lngLat: [number,number]) => void}
           onLongPress={handleLongPress}
@@ -1052,19 +1053,21 @@ export function MapScreen() {
         />
       )}
 
-      <GaugesBar
-        position={activePosition}
-        agl={agl}
-        wind={wind}
-        showAgl={settings.showAltitudeAgl}
-        onToggleAgl={() => update({ showAltitudeAgl: !settings.showAltitudeAgl })}
-        altitudeSource={altitudeSource}
-        showQnh={settings.showQnhOnPaltGauge}
-        onToggleQnh={() => update({ showQnhOnPaltGauge: !settings.showQnhOnPaltGauge })}
-        showLocalTime={settings.showLocalTime}
-        onToggleLocalTime={() => update({ showLocalTime: !settings.showLocalTime })}
-        varioBatteryLow={varioBatteryLow}
-      />
+      {flightModeStatus !== 'off' && (
+        <GaugesBar
+          position={activePosition}
+          agl={agl}
+          wind={wind}
+          showAgl={settings.showAltitudeAgl}
+          onToggleAgl={() => update({ showAltitudeAgl: !settings.showAltitudeAgl })}
+          altitudeSource={altitudeSource}
+          showQnh={settings.showQnhOnPaltGauge}
+          onToggleQnh={() => update({ showQnhOnPaltGauge: !settings.showQnhOnPaltGauge })}
+          showLocalTime={settings.showLocalTime}
+          onToggleLocalTime={() => update({ showLocalTime: !settings.showLocalTime })}
+          varioBatteryLow={varioBatteryLow}
+        />
+      )}
 
       <AerodromePopup feature={aerodromeFeature} onClose={() => setAerodromeFeature(null)} onRunwayWind={handleRunwayWind} />
       <AirspacePopup  features={airspaceFeatures}  onClose={() => setAirspaceFeatures([])}  />

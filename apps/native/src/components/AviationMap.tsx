@@ -130,6 +130,15 @@ export type AviationMapProps = {
    *  bucketed icon-id expression, dirDeg rotation, bottom anchor). */
   showWind?: boolean
   followGps?: boolean
+  /** Called when the pilot manually pans/zooms/rotates the map while
+   *  followGps is on -- lets the parent drop out of follow mode instead of
+   *  fighting the gesture (see onRegionIsChanging's userInteraction check
+   *  below). Without this, followGps's own recenter effect re-issues an
+   *  easeTo back to the GPS position on every position tick, which both
+   *  visibly snaps the map back mid-drag and, in a burst, can retrigger
+   *  React's synchronous update-depth guard (see camForWind throttle
+   *  below for the other half of that same race). */
+  onUserPan?: () => void
   mapOrientation?: 'north' | 'track'
   autoZoom?: boolean
   /** Optional initial center — fly to this on first load (home airfield) */
@@ -598,6 +607,7 @@ export function AviationMap({
   showWind       = false,
   terrainColorRefAltFt = 2000,
   followGps = false,
+  onUserPan,
   mapOrientation = 'north',
   autoZoom = true,
   initialCenter,
@@ -695,19 +705,39 @@ export function AviationMap({
   // frames collapses to at most one actual setState.
   const [camForWind, setCamForWind] = useState<{ lat: number; lng: number; zoom: number } | null>(null)
   const lastCamForWindKeyRef = useRef<string>('')
+  // Time floor on top of the spatial-key dedupe above: a fast native drag
+  // (or followGps's easeTo fighting one -- see onUserPan doc comment) can
+  // deliver onRegionIsChanging at up to display refresh rate, and each
+  // frame's center/zoom rounds to a *different* 2-decimal key. That's still
+  // one real setState per distinct key, but enough of them land in the same
+  // JS macrotask (queued while a previous re-render/effect pass was still
+  // flushing) to trip React's synchronous update-depth guard. Capping to
+  // one commit per 100ms is coarser than the wind grid needs anyway (it
+  // already debounces its own fetch by 800ms).
+  const lastCamForWindAtRef = useRef(0)
+  // Set just before onUserPan disables followGps, consumed by the
+  // "restore north-up" effect further below so it can skip its own
+  // bearing-reset easeTo when followGps drops out mid-gesture.
+  const disabledByPanRef = useRef(false)
 
   const handleRegionChange = useCallback((e: NativeSyntheticEvent<ViewStateChangeEvent>) => {
-    const { center, zoom, bearing } = e.nativeEvent
+    const { center, zoom, bearing, userInteraction } = e.nativeEvent
     if (center) {
       camStateRef.current = { lat: center[1], lng: center[0], zoom: zoom ?? 5, heading: bearing ?? 0 }
+      // Pilot took manual control of the map -- stop fighting the gesture
+      // with followGps's own recenter effect (which re-issues an easeTo
+      // back to the GPS position on every position tick otherwise).
+      if (userInteraction) { disabledByPanRef.current = true; onUserPan?.() }
       const z = zoom ?? 5
       const key = `${center[1].toFixed(2)},${center[0].toFixed(2)},${z.toFixed(1)}`
-      if (key !== lastCamForWindKeyRef.current) {
+      const now = Date.now()
+      if (key !== lastCamForWindKeyRef.current && now - lastCamForWindAtRef.current >= 100) {
         lastCamForWindKeyRef.current = key
+        lastCamForWindAtRef.current = now
         setCamForWind({ lat: center[1], lng: center[0], zoom: z })
       }
     }
-  }, [])
+  }, [onUserPan])
 
   const windGridFC = useWindGrid(camForWind, showWind, gpsPosition?.altFt ?? null)
 
@@ -916,16 +946,33 @@ export function AviationMap({
   useEffect(() => {
     if (!followGps || !gpsPosition) return
     const heading = mapOrientation === 'track' ? gpsPosition.trackDeg : 0
+    // duration MUST be <= the position-source's own update cadence (sim's
+    // SimFlightEngine ticks at 5 Hz / TICK_MS=200 -- see that file). This
+    // effect re-issues easeTo on every single gpsPosition change, so a
+    // duration longer than the tick interval (previously 300ms) meant each
+    // new easeTo restarted/interrupted the still-animating previous one
+    // before it finished -- a self-fighting camera stutter that, under a
+    // JS-thread hiccup (GC pause, awaited fetch resolving, etc.) backlogs a
+    // burst of onRegionIsChanging callbacks into a single flush and can trip
+    // React's synchronous update-depth guard (reproduced in practice: fires
+    // every ~15s during hands-off sim flight, no user panning involved).
+    // 200ms lets each animation fully settle right as the next tick's data
+    // arrives -- smooth follow with no overlapping/self-interrupting easeTo.
     cameraRef.current?.easeTo({
       center:   [gpsPosition.lng, gpsPosition.lat],
       bearing:  heading,
-      duration: 300,
+      duration: 200,
     })
   }, [followGps, gpsPosition, mapOrientation])
 
-  // Restore north-up when stopping
+  // Restore north-up when stopping -- but not when followGps just dropped
+  // out because the pilot manually panned/rotated the map (onUserPan): in
+  // that case they're actively dragging and mid-gesture, so snapping
+  // bearing back to 0 here would fight their own touch instead of just
+  // leaving the camera exactly where they put it.
   useEffect(() => {
     if (!followGps) {
+      if (disabledByPanRef.current) { disabledByPanRef.current = false; return }
       const { lng, lat } = camStateRef.current
       cameraRef.current?.easeTo({ center: [lng, lat], bearing: 0, duration: 500 })
     }
@@ -938,14 +985,22 @@ export function AviationMap({
     if (!autoZoom || !followGps || !gpsPosition) return
     const spd   = gpsPosition.speedKts
     const phase = autoZoomPhaseRef.current
+    // Center on gpsPosition (the aircraft), NOT camStateRef.current -- this
+    // effect runs in the same commit as the plain followGps recenter effect
+    // above whenever the pilot re-enables follow (e.g. the recenter button)
+    // after having panned away. camStateRef is only updated asynchronously
+    // by the native map's own onRegionDidChange/onRegionIsChanging events,
+    // so right after re-enabling it's still the stale panned-to location --
+    // using it here fought the recenter effect's aircraft-centered easeTo
+    // with a second, longer (1500/2000ms) one back toward where the pilot
+    // had panned, at a new zoom. Symptom: recenter looked like it needed a
+    // second press to actually land on the aircraft.
     if (phase === 'idle' && spd >= 30) {
       autoZoomPhaseRef.current = 'takeoff'
-      const { lng: lng1, lat: lat1 } = camStateRef.current
-      cameraRef.current?.easeTo({ center: [lng1, lat1], zoom: 13, duration: 1500 })
+      cameraRef.current?.easeTo({ center: [gpsPosition.lng, gpsPosition.lat], zoom: 13, duration: 1500 })
     } else if (phase === 'takeoff' && spd >= 60) {
       autoZoomPhaseRef.current = 'cruise'
-      const { lng: lng2, lat: lat2 } = camStateRef.current
-      cameraRef.current?.easeTo({ center: [lng2, lat2], zoom: 11, duration: 2000 })
+      cameraRef.current?.easeTo({ center: [gpsPosition.lng, gpsPosition.lat], zoom: 11, duration: 2000 })
     }
   }, [autoZoom, followGps, gpsPosition])
 
