@@ -804,11 +804,9 @@ export function AviationMap({
   useEffect(() => {
     const simJustActivated = simActive && !prevSimActiveRef.current
     prevSimActiveRef.current = simActive
-    console.log('[map] fly-to-position effect: gpsPosition=', gpsPosition, 'simActive=', simActive, 'simJustActivated=', simJustActivated, 'posCenteredRef=', posCenteredRef.current, 'cameraRef=', !!cameraRef.current)
     if (!gpsPosition) return
     if (posCenteredRef.current && !simJustActivated) return
     posCenteredRef.current = true
-    console.log('[map] flying to', gpsPosition.lng, gpsPosition.lat)
     cameraRef.current?.flyTo({
       center:   [gpsPosition.lng, gpsPosition.lat],
       zoom:     11,
