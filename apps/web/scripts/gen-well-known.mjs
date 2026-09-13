@@ -16,8 +16,8 @@ import { join } from 'node:path'
 const OUT_DIR = join(process.cwd(), 'public', '.well-known')
 
 const teamId      = process.env['APPLE_TEAM_ID']              ?? 'XXXXXXXXXX'
-const iosBundle   = process.env['IOS_BUNDLE_ID']               ?? 'com.openvfr.app'
-const androidPkg  = process.env['ANDROID_PACKAGE']             ?? 'com.openvfr.app'
+const iosBundle   = process.env['IOS_BUNDLE_ID']               ?? 'org.openvfr.app'
+const androidPkg  = process.env['ANDROID_PACKAGE']             ?? 'org.openvfr.app'
 const fingerprint = process.env['ANDROID_SHA256_FINGERPRINT']  ?? 'AA:BB:CC:DD'
 
 const appleAppSiteAssociation = {

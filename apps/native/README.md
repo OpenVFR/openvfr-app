@@ -284,7 +284,7 @@ adb logcat -s ReactNativeJS
 
 # Clear logcat then restart app and capture everything
 adb logcat -c
-adb shell am force-stop com.openvfr.app && am start -n com.openvfr.app/.MainActivity
+adb shell am force-stop org.openvfr.app && am start -n org.openvfr.app/.MainActivity
 sleep 10 && adb logcat -d | grep ReactNativeJS
 ```
 
@@ -297,7 +297,7 @@ npx expo start --port 8081 --clear
 ### Force reinstall APK
 
 ```bash
-adb uninstall com.openvfr.app
+adb uninstall org.openvfr.app
 pnpm build:android:device
 ```
 

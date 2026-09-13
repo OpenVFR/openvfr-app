@@ -34,7 +34,7 @@
       }
     },
     "android": {
-      "package": "com.openvfr.app",
+      "package": "org.openvfr.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0a0e16"

@@ -121,7 +121,7 @@ app.get('/health', (c) => c.json({ ok: true }))
 // ---------------------------------------------------------------------------
 app.get('/.well-known/apple-app-site-association', (c) => {
   const teamId = process.env['APPLE_TEAM_ID'] ?? 'XXXXXXXXXX'
-  const bundle = process.env['IOS_BUNDLE_ID']  ?? 'com.openvfr.app'
+  const bundle = process.env['IOS_BUNDLE_ID']  ?? 'org.openvfr.app'
   return c.json({
     webcredentials: {
       apps: [`${teamId}.${bundle}`],
@@ -130,7 +130,7 @@ app.get('/.well-known/apple-app-site-association', (c) => {
 })
 
 app.get('/.well-known/assetlinks.json', (c) => {
-  const pkg         = process.env['ANDROID_PACKAGE']            ?? 'com.openvfr.app'
+  const pkg         = process.env['ANDROID_PACKAGE']            ?? 'org.openvfr.app'
   const fingerprint = process.env['ANDROID_SHA256_FINGERPRINT'] ?? 'AA:BB:CC:DD'
   return c.json([{
     relation: [
