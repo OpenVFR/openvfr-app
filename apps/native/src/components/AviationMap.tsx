@@ -602,6 +602,36 @@ export function AviationMap({
   const landusePmtilesUrl   = useMemo(() => getLandusePmtilesUrl(), [])
   const hillshadePmtilesUrl = useMemo(() => getHillshadePmtilesUrl(), [])
   const contoursPmtilesUrl  = useMemo(() => getContoursPmtilesUrl(), [])
+
+  // Lazy-mount, sticky-on: each of these PMTiles sources is genuinely heavy
+  // (landuse 87MB, hillshade 681MB, contours 234MB -- all fetched header-first
+  // by MapLibre Native the instant the <VectorSource>/<RasterDEMSource> JSX
+  // mounts, regardless of layout.visibility, which only hides the *layer* at
+  // paint time, not the source's own loading). Mounting all three
+  // unconditionally from app launch (previous behaviour: "always-mounted,
+  // toggled via layout.visibility, never unmounted") meant every session paid
+  // the full memory cost of every heavy layer whether or not the pilot ever
+  // turned it on -- confirmed via `adb logcat` as a genuine OutOfMemoryError
+  // in the OkHttp networking thread even with android:largeHeap="true"
+  // raising the ceiling to 512MB (see plugins/withAndroidLargeHeap.js),
+  // manifesting downstream as "pmtiles magic number exception" (a truncated
+  // mid-read response under memory pressure, not a corrupt file -- both
+  // R2/tiles.openvfr.org range-request responses verified byte-correct).
+  //
+  // Fix: only mount a heavy source once its layer is actually turned on
+  // (sticky -- stays mounted once true, MapLibre Native throws "id cannot be
+  // changed" if a source is unmounted then re-added, so this can only ever
+  // turn on, never off, for the rest of the session). landuse defaults on
+  // (showLanduse=true) so this doesn't change its behaviour for the common
+  // case; hillshade/terrain-color/contours default OFF, so most sessions now
+  // never pay their memory cost at all.
+  const [landuseMounted,   setLanduseMounted]   = useState(showLanduse)
+  const [hillshadeMounted, setHillshadeMounted] = useState(showHillshade || showTerrainColor)
+  const [contoursMounted,  setContoursMounted]  = useState(showContours)
+  useEffect(() => { if (showLanduse) setLanduseMounted(true) }, [showLanduse])
+  useEffect(() => { if (showHillshade || showTerrainColor) setHillshadeMounted(true) }, [showHillshade, showTerrainColor])
+  useEffect(() => { if (showContours) setContoursMounted(true) }, [showContours])
+
   const mapRef      = useRef<MapRef>(null)
 
   // Track camera state — read by nav-needle/other features elsewhere below.
@@ -1101,7 +1131,10 @@ export function AviationMap({
         {/* Retired from Postgres/Martin, same pattern as basemap.pmtiles — see
             apps/web/src/styles/map-style.ts getLanduseSource() and
             docs/self-hosting.md. Matches web landuse-fill layer. Renders
-            below all aviation overlays. */}
+            below all aviation overlays. Lazy-mounted -- see landuseMounted
+            comment above; only pays its ~87MB source cost once showLanduse
+            has been true at least once this session (true by default). */}
+        {landuseMounted && (
         <VectorSource
           id="osm-landuse"
           url={landusePmtilesUrl}
@@ -1142,6 +1175,7 @@ export function AviationMap({
             }}
           />
         </VectorSource>
+        )}
 
         {/* Hillshade (relief shading) -- self-hosted Copernicus GLO-30 DEM,
             Terrarium-encoded raster-dem PMTiles from R2, same source
@@ -1152,7 +1186,10 @@ export function AviationMap({
             by default; toggled via layout.visibility like every other layer
             here, never unmounted (MapLibre Native throws 'id cannot be
             changed' otherwise). Rendered below landuse-fill and all
-            aviation overlays. */}
+            aviation overlays. Lazy-mounted -- see hillshadeMounted comment
+            above; ~681MB source, only pays that cost once hillshade or
+            terrain-color has actually been turned on this session. */}
+        {hillshadeMounted && (
         <RasterDEMSource
           id="osm-hillshade"
           url={hillshadePmtilesUrl}
@@ -1246,6 +1283,7 @@ export function AviationMap({
             }}
           />
         </RasterDEMSource>
+        )}
 
         {/* ── Elevation contour lines (Copernicus GLO-30 DEM, vector) ─────
             Web equivalent: getContoursSource() + 'contour-line'/'contour-label'
@@ -1260,7 +1298,10 @@ export function AviationMap({
             wrong. Line width/color widened+darkened to match web's own
             verified-live fix (the original faint styling was invisible in
             practice over real Kiruna-fjell contour data). Off by default;
-            toggled via layout.visibility. */}
+            toggled via layout.visibility. Lazy-mounted -- see contoursMounted
+            comment above; ~234MB source, only pays that cost once contours
+            has actually been turned on this session. */}
+        {contoursMounted && (
         <VectorSource
           id="osm-contours"
           url={contoursPmtilesUrl}
@@ -1301,6 +1342,7 @@ export function AviationMap({
             }}
           />
         </VectorSource>
+        )}
 
         {/* ── Airspace ──────────────────────────────────── */}
         {/* Always-mounted — visibility toggled via layout.visibility, not mount/unmount.
