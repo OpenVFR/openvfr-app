@@ -2103,11 +2103,16 @@ export function AviationMap({
               'icon-rotate': ['get', 'dirDeg'] as any,
               'icon-rotation-alignment': 'map',
               'icon-anchor': 'bottom',
-              'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.7, 10, 1.15, 14, 1.5] as any,
+              // Scaled down (was 0.7/1.15/1.5) and opacity reduced (was 0.9)
+              // to read as a subtle ambient overlay -- matches web's
+              // identical map-style.ts change (2026-09-13 UX feedback: wind
+              // arrows were dominating the map over other icon layers,
+              // which use 0.22-0.6 icon-size elsewhere in this file).
+              'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.4, 10, 0.6, 14, 0.8] as any,
               'icon-allow-overlap': true,
               'icon-ignore-placement': true,
             }}
-            paint={{ 'icon-opacity': 0.9 }}
+            paint={{ 'icon-opacity': 0.55 }}
           />
           <Layer
             id="wind-arrows-label"
@@ -2117,13 +2122,13 @@ export function AviationMap({
               visibility: showWind ? 'visible' : 'none',
               'text-field': ['concat', ['to-string', ['get', 'speedKts']], 'kt'] as any,
               'text-font': ['Noto Sans Regular'],
-              'text-size': 9,
+              'text-size': 8,
               'text-anchor': 'top',
               'text-offset': [0, 0.3],
               'text-allow-overlap': false,
               'text-optional': true,
             }}
-            paint={{ 'text-color': '#38bdf8', 'text-halo-color': 'rgba(10,14,22,0.85)', 'text-halo-width': 1 }}
+            paint={{ 'text-color': '#38bdf8', 'text-halo-color': 'rgba(10,14,22,0.85)', 'text-halo-width': 1, 'text-opacity': 0.75 }}
           />
         </GeoJSONSource>
 

@@ -46,13 +46,18 @@ function drawWindBarb(ctx: CanvasRenderingContext2D, bucket: number, color: stri
   const stationY = CANVAS_H - 6 // anchor point (icon-anchor: 'bottom' in the style)
   const tipY = 10
 
+  // Thinner stroke + lighter shadow than the original (3.4 / 0.55 alpha)
+  // -- at the old weight the icon still looked bold/heavy even after the
+  // icon-size/opacity reduction in map-style.ts (2026-09-13 UX feedback:
+  // wind arrows were "way too large and in-focus" against the rest of the
+  // map's much lighter POI icons).
   ctx.strokeStyle = color
   ctx.fillStyle = color
-  ctx.lineWidth = 3.4
+  ctx.lineWidth = 2.4
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
-  ctx.shadowColor = 'rgba(0,0,0,0.55)'
-  ctx.shadowBlur = 2
+  ctx.shadowColor = 'rgba(0,0,0,0.35)'
+  ctx.shadowBlur = 1
 
   if (bucket < 3) {
     // Calm: WMO convention draws an open circle around the station point, no shaft.

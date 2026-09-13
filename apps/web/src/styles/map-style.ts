@@ -1921,12 +1921,17 @@ export function getMapStyle(): StyleSpecification {
           'icon-rotate': ['get', 'dirDeg'],
           'icon-rotation-alignment': 'map',
           'icon-anchor': 'bottom',
-          'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.7, 10, 1.15, 14, 1.5],
+          // Scaled down (was 0.7/1.15/1.5) and opacity reduced (was 0.9) to
+          // read as a subtle ambient overlay, in line with every other POI
+          // icon layer's scale (aerodromes 0.3-0.6, navaids 0.22-0.5) --
+          // wind barbs were visually dominating the map over actual
+          // aviation data at every zoom level (2026-09-13 UX feedback).
+          'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.4, 10, 0.6, 14, 0.8],
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
         },
         paint: {
-          'icon-opacity': 0.9,
+          'icon-opacity': 0.55,
         },
       },
       {
@@ -1938,7 +1943,7 @@ export function getMapStyle(): StyleSpecification {
           visibility: 'none',
           'text-field': ['concat', ['to-string', ['get', 'speedKts']], 'kt'],
           'text-font': ['Noto Sans Regular'],
-          'text-size': 9,
+          'text-size': 8,
           'text-anchor': 'top',
           'text-offset': [0, 0.3],
           'text-allow-overlap': false,
@@ -1947,7 +1952,8 @@ export function getMapStyle(): StyleSpecification {
         paint: {
           'text-color': WIND_BARB_COLOR,
           'text-halo-color': '#ffffff',
-          'text-halo-width': 1.5,
+          'text-halo-width': 1.2,
+          'text-opacity': 0.75,
         },
       },
     ],
