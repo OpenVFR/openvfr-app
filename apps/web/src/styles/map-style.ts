@@ -2,6 +2,12 @@ import type { StyleSpecification, FilterSpecification, ExpressionSpecification }
 import { layers, LIGHT } from '@protomaps/basemaps'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
 import { AERODROME_COLORS, NAVAID_COLORS, WAYPOINT_COLORS, OBSTACLE_COLORS, RUNWAY_COLORS } from '@open-vfr/shared/featureColors'
+import {
+  RUNWAY_LABEL_DEFAULT_SIZE,
+  RUNWAY_LABEL_DEFAULT_OPACITY,
+  RUNWAY_LABEL_DEFAULT_COLOR,
+  RUNWAY_LABEL_DEFAULT_HALO,
+} from '@open-vfr/shared/runwayWind'
 import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
 
@@ -173,6 +179,11 @@ export const AVIATION_LABEL_LAYERS = [
   'airspace-label-restricted',
   'airspace-label-activity',
 ] as const
+
+// Runway wind-highlight defaults/builder now live in
+// @open-vfr/shared/runwayWind (buildRunwayWindHighlight, RUNWAY_LABEL_DEFAULT_*,
+// RUNWAY_FAVORED_*) so native's AviationMap.tsx can share the exact same
+// favored-end styling instead of maintaining a second copy.
 
 // ── Layer group definitions ─────────────────────────────────────────────────
 // Each entry maps one toggle in the UI to one or more MapLibre layer IDs.
@@ -1534,7 +1545,7 @@ export function getMapStyle(): StyleSpecification {
         layout: {
           'text-field': ['get', 'id'],
           'text-font': ['Noto Sans Medium'],
-          'text-size': ['interpolate', ['linear'], ['zoom'], 12, 8, 16, 14],
+          'text-size': RUNWAY_LABEL_DEFAULT_SIZE as ExpressionSpecification,
           'text-rotate': ['coalesce', ['get', 'mag_brg'], 0],
           'text-rotation-alignment': 'map',
           'text-pitch-alignment': 'map',
@@ -1542,10 +1553,10 @@ export function getMapStyle(): StyleSpecification {
           'text-ignore-placement': true,
         },
         paint: {
-          'text-color': '#ffffff',
-          'text-halo-color': '#333840',
+          'text-color': RUNWAY_LABEL_DEFAULT_COLOR,
+          'text-halo-color': RUNWAY_LABEL_DEFAULT_HALO,
           'text-halo-width': 1.5,
-          'text-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0, 13, 1],
+          'text-opacity': RUNWAY_LABEL_DEFAULT_OPACITY as ExpressionSpecification,
         },
       },
 
