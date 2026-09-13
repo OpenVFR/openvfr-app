@@ -965,7 +965,7 @@ export function MapScreen() {
       {showRulerProfile && (
         <>
           <RulerStatsBadge from={rulerPoints[0]} to={rulerPoints[1]} units={settings.units} aircraftProfile={aircraftProfile}
-            bottom={PROFILE_CHROME_H + profileHeight} />
+            bottom={bottomStackH} />
           <VerticalProfile
             waypoints={rulerPoints}
             legOverrides={[]}

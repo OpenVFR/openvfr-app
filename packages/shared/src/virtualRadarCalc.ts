@@ -179,6 +179,69 @@ const DEFAULT_ALT_FT = 3500
 const OBSTACLE_CORRIDOR_NM = 1.0
 
 // ---------------------------------------------------------------------------
+// Cheap bounding-box pre-filter for the per-feature loops below.
+//
+// airspace/obstacles/landmarks/water GeoJSON are nationwide datasets (Sweden:
+// hundreds of airspace polygons, ~3,700 obstacles, thousands of landmarks) --
+// but any single route/ruler measurement only ever spans a small local area.
+// Without this, every one of those loops ran a real turf geometry op
+// (nearestPointOnLine, booleanIntersects, lineIntersect, booleanPointInPolygon
+// -- each itself O(route segments)) against EVERY nationwide feature, on the
+// JS thread, synchronously, with no yielding. On a mid-range device that took
+// long enough (several seconds) to stall the JS thread and make every
+// touchable on screen appear unresponsive for that whole window (native map
+// pan/zoom kept working since it doesn't depend on the JS thread) -- see
+// AGENTS.md-adjacent bug notes for the native ruler freeze this was chasing.
+// A plain axis-aligned rectangle overlap check is orders of magnitude cheaper
+// than any of the turf calls it guards, and is a safe superset test (it can
+// only ever admit MORE features than the exact check needs, never fewer) as
+// long as the corridor margin below is generous enough.
+// ---------------------------------------------------------------------------
+type Bbox = [number, number, number, number]   // [minLng, minLat, maxLng, maxLat]
+
+// Manual coordinate scan rather than pulling in @turf/bbox as a new
+// dependency — this file already has every coordinate array it needs
+// in-hand at each call site, and it's a plain min/max reduce (cheaper
+// than a whole extra package + its own recursive geometry walk).
+function bboxOfCoords(coordSets: [number, number][][]): Bbox {
+  let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity
+  for (const coords of coordSets) {
+    for (const [lng, lat] of coords) {
+      if (lng < minLng) minLng = lng
+      if (lng > maxLng) maxLng = lng
+      if (lat < minLat) minLat = lat
+      if (lat > maxLat) maxLat = lat
+    }
+  }
+  return [minLng, minLat, maxLng, maxLat]
+}
+
+// Flattens a Polygon/MultiPolygon's rings down to a flat list of [lng,lat]
+// pairs for bboxOfCoords above — geometry.coordinates nesting depth differs
+// (Polygon: rings[point], MultiPolygon: polygons[rings[point]]).
+function polygonCoords(geom: Geometry): [number, number][] {
+  if (geom.type === 'Polygon') return (geom.coordinates as [number, number][][]).flat()
+  if (geom.type === 'MultiPolygon') return (geom.coordinates as [number, number][][][]).flat(2)
+  return []
+}
+
+function expandBbox(box: Bbox, marginNm: number): Bbox {
+  const [minLng, minLat, maxLng, maxLat] = box
+  const latMargin = marginNm / 60                                    // 1 NM ≈ 1/60° latitude
+  const midLatRad = ((minLat + maxLat) / 2) * (Math.PI / 180)
+  const lngMargin = marginNm / (60 * Math.max(0.2, Math.cos(midLatRad)))  // widen near the poles guard
+  return [minLng - lngMargin, minLat - latMargin, maxLng + lngMargin, maxLat + latMargin]
+}
+
+function bboxesOverlap(a: Bbox, b: Bbox): boolean {
+  return a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]
+}
+
+function pointInBbox(lng: number, lat: number, box: Bbox): boolean {
+  return lng >= box[0] && lng <= box[2] && lat >= box[1] && lat <= box[3]
+}
+
+// ---------------------------------------------------------------------------
 // GeoJSON feature types for airspace + obstacle data
 // ---------------------------------------------------------------------------
 interface AirspaceProps {
@@ -248,6 +311,13 @@ export function buildVirtualRadarProfile(
   const totalKm = length(routeLine, { units: 'kilometers' })
   const totalNm = totalKm * 0.539957
 
+  // Cheap reject-boxes for the per-feature loops below (see bboxesOverlap
+  // comment above) — a tight one for exact polygon-intersect tests
+  // (airspace/water), and a corridor-widened one for the point-in-corridor
+  // tests (obstacles/landmarks).
+  const routeBbox         = bboxOfCoords([coords])
+  const routeBboxCorridor = expandBbox(routeBbox, OBSTACLE_CORRIDOR_NM)
+
   // ── 2. Cumulative distance to each waypoint ────────────────────────────────
   const legDistancesNm: number[] = []
   let cumNm = 0
@@ -303,6 +373,7 @@ export function buildVirtualRadarProfile(
   for (const feature of airspaceGeoJson.features) {
     const geom = feature.geometry as Geometry
     if (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon') continue
+    if (!bboxesOverlap(routeBbox, bboxOfCoords([polygonCoords(geom)]))) continue   // cheap nationwide-dataset reject
     if (!booleanIntersects(routeLine, feature as Feature)) continue
 
     const p = feature.properties as AirspaceProps
@@ -380,6 +451,8 @@ export function buildVirtualRadarProfile(
 
   for (const feature of obstacleGeoJson.features) {
     if (feature.geometry?.type !== 'Point') continue
+    const [ptLng, ptLat] = (feature.geometry as GeoJSON.Point).coordinates
+    if (!pointInBbox(ptLng, ptLat, routeBboxCorridor)) continue   // cheap nationwide-dataset reject
     const p = feature.properties as ObstacleProps
     const snapped = nearestPointOnLine(routeLine, feature as Feature<GeoJSON.Point>, { units: 'kilometers' })
     const lateralKm = snapped.properties.dist ?? Infinity
@@ -404,6 +477,8 @@ export function buildVirtualRadarProfile(
 
   for (const feature of landmarkGeoJson?.features ?? []) {
     if (feature.geometry?.type !== 'Point') continue
+    const [ptLng, ptLat] = (feature.geometry as GeoJSON.Point).coordinates
+    if (!pointInBbox(ptLng, ptLat, routeBboxCorridor)) continue   // cheap nationwide-dataset reject
     const p = feature.properties as LandmarkProps
     const snapped = nearestPointOnLine(routeLine, feature as Feature<GeoJSON.Point>, { units: 'kilometers' })
     const lateralKm = snapped.properties.dist ?? Infinity
@@ -428,6 +503,7 @@ export function buildVirtualRadarProfile(
   for (const feature of waterGeoJson?.features ?? []) {
     const geom = feature.geometry as Geometry
     if (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon') continue
+    if (!bboxesOverlap(routeBbox, bboxOfCoords([polygonCoords(geom)]))) continue   // cheap nationwide-dataset reject
     if (!booleanIntersects(routeLine, feature as Feature)) continue
 
     const crossingDistsNm: number[] = []

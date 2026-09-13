@@ -42,6 +42,7 @@ import { type PointFeature } from './FeaturePopup'
 import type { WhatsHereItem } from './WhatsHerePopup'
 import SnapPicker, { type SnapCandidate } from './SnapPicker'
 import VirtualRadar from './VirtualRadar'
+import RulerSummaryStrip from './RulerSummaryStrip'
 import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
 import { useGpsVerticalSpeed } from '../hooks/useGpsVerticalSpeed'
 import LiveTrackChart from './LiveTrackChart'
@@ -3643,6 +3644,12 @@ export default function MapView({ auth }: { auth: AuthState }) {
       {/* VirtualRadar: ruler profile → past-log review → planned route → look-ahead (unplanned flight) */}
       {(rulerMode && rulerPoints.length === 2) ? (
         <div className={css.vrRow}>
+          <RulerSummaryStrip
+            from={rulerPoints[0]}
+            to={rulerPoints[1]}
+            units={units}
+            onClear={() => { setRulerPoints([]); setRulerMode(false) }}
+          />
           <VirtualRadar
             waypoints={rulerPoints}
             legOverrides={[]}

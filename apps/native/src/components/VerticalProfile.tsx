@@ -52,6 +52,35 @@ import { theme } from '../styles/theme'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 
 // ---------------------------------------------------------------------------
+// Module-level GeoJSON cache — fetch + JSON.parse each of these exactly once
+// per app lifetime, not once per VerticalProfile *mount*.
+//
+// Without this, every fresh mount (ruler mode turned on, route planned,
+// look-ahead engaged after a route is cleared, etc. — each is a distinct
+// branch in MapScreen's render ternary, so switching between them unmounts
+// and remounts this component) re-fetched and re-JSON.parsed all four files
+// (airspace, obstacles, water, landmarks) from scratch. `JSON.parse` of a
+// several-hundred-KB-to-multi-MB payload runs synchronously on the JS
+// thread — with 4 of them in flight together, this stalled the JS thread
+// for several seconds, during which every touchable on screen (map controls,
+// sheets, etc.) silently ate taps while MapLibre's own native pan/zoom kept
+// working fine (it doesn't depend on the JS thread), making the app look
+// frozen right after e.g. placing the ruler's second point. Mirrors the
+// same load-once module cache pattern already used by
+// useAirspaceWarnings.ts / useAirspaceNotifications.ts / useObstructionWarnings.ts.
+// ---------------------------------------------------------------------------
+const _geoJsonCache = new Map<string, Promise<GeoJSON.FeatureCollection>>()
+function loadGeoJsonOnce(url: string): Promise<GeoJSON.FeatureCollection> {
+  let p = _geoJsonCache.get(url)
+  if (!p) {
+    p = fetch(url).then(r => r.json())
+    p.catch(() => { _geoJsonCache.delete(url) })   // allow retry on next mount if it failed
+    _geoJsonCache.set(url, p)
+  }
+  return p
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -243,12 +272,14 @@ export function VerticalProfile({
     return { rocSlFpm, rocCeilingFpm: rocCeilingFpm ?? 50, serviceCeilingFt: serviceCeilingFt || 15000, climbIas, descentFpm, descentIas }
   }, [aircraftProfile])
 
-  // Load GeoJSON once
+  // Load GeoJSON once per app lifetime (module-level cache above) — cheap on
+  // every mount after the first, since repeat calls just resolve an
+  // already-settled promise instead of re-fetching/re-parsing.
   useEffect(() => {
-    fetch(getTileUrls().airspace).then(r => r.json()).then(setAirspaceGeo).catch(() => {})
-    fetch(getTileUrls().obstacles).then(r => r.json()).then(setObstacleGeo).catch(() => {})
-    fetch(getTileUrls().water).then(r => r.json()).then(setWaterGeo).catch(() => { /* optional layer — offline-safe no-op */ })
-    fetch(getTileUrls().landmarks).then(r => r.json()).then(setLandmarkGeo).catch(() => { /* optional layer — offline-safe no-op */ })
+    loadGeoJsonOnce(getTileUrls().airspace).then(setAirspaceGeo).catch(() => {})
+    loadGeoJsonOnce(getTileUrls().obstacles).then(setObstacleGeo).catch(() => {})
+    loadGeoJsonOnce(getTileUrls().water).then(setWaterGeo).catch(() => { /* optional layer — offline-safe no-op */ })
+    loadGeoJsonOnce(getTileUrls().landmarks).then(setLandmarkGeo).catch(() => { /* optional layer — offline-safe no-op */ })
   }, [])
 
   // Fetch terrain profile whenever the route changes
