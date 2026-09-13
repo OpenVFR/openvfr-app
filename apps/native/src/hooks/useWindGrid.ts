@@ -78,7 +78,16 @@ export function useWindGrid(cam: CamState | null, enabled: boolean, altFt: numbe
             })),
           })
         })
-        .catch(() => { /* transient network hiccup -- leave last-good arrows in place */ })
+        .catch((err: unknown) => {
+          if (cancelled) return
+          // Logged (unlike a bare no-op) because a *persistently* broken
+          // fetch here (e.g. a backend proxy regression) otherwise looks
+          // identical to "no wind data available for this area" from the
+          // UI alone -- see docker/nginx.prod.conf's /api/open-meteo/
+          // location comments for the exact regression this masked on
+          // 2026-09-13. Mirrors web's useWindGrid.ts.
+          console.warn('[useWindGrid] wind fetch failed:', err)
+        })
     }, DEBOUNCE_MS)
 
     return () => {

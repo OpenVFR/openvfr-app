@@ -53,9 +53,16 @@ export function useWindGrid(
             properties: { dirDeg: p.dirDeg, speedKts: p.speedKts },
           })),
         })
-      } catch {
-        // Network hiccup — leave the last-good arrows in place rather than
-        // clearing the overlay for a transient failure.
+      } catch (err) {
+        if (cancelled || (err as { name?: string }).name === 'AbortError') return
+        // Network hiccup -- leave the last-good arrows in place rather than
+        // clearing the overlay for a transient failure. Logged (unlike a
+        // bare no-op) because a *persistently* broken fetch here (e.g. a
+        // backend proxy regression) otherwise looks identical to "no wind
+        // data available for this area" from the UI alone -- see
+        // docker/nginx.prod.conf's /api/open-meteo/ location comments for
+        // the exact regression this masked on 2026-09-13.
+        console.warn('[useWindGrid] wind fetch failed:', err)
       }
     }
 
