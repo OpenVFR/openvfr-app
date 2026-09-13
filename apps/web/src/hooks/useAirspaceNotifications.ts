@@ -204,7 +204,13 @@ export function useAirspaceNotifications(position: GpsPosition | null): {
     insideRef.current = current
 
     if (fresh.length > 0) {
-      setNotifications(prev => [...fresh, ...prev].slice(0, MAX_QUEUE))
+      setNotifications(prev => {
+        // Dedup by airspace key: update-in-place (new direction/expiry) rather than
+        // stacking a second banner for the same airspace (e.g. boundary jitter).
+        const freshKeys = new Set(fresh.map(n => n.name + '::' + n.cls))
+        const kept = prev.filter(n => !freshKeys.has(n.name + '::' + n.cls))
+        return [...fresh, ...kept].slice(0, MAX_QUEUE)
+      })
     }
   }, [position, features])
 
