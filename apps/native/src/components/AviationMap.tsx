@@ -51,6 +51,25 @@ import { theme } from '../styles/theme'
 import { OFFLINE_ASSETS, resolveUri } from '../utils/offlineCache'
 import { buildTerrainColorExpr } from '@open-vfr/shared/terrainColor'
 import { useWindGrid } from '../hooks/useWindGrid'
+import { LogManager } from '@maplibre/maplibre-react-native'
+
+// Suppress the PMTiles header-race transient error at cold start -- same
+// benign race web's MapView.tsx suppresses in its map.on('error', ...)
+// handler: the pmtiles archive header read races the initial response
+// (dev-server/CDN warm-up, connection still establishing); the library
+// retries internally and the map loads fine right after (confirmed via
+// on-device logcat + screenshot -- map renders correctly a moment later).
+// Native's own logger reports it as an 'error'-level 'Style' log before
+// that retry resolves it, with different wording ('...magic number
+// exception' vs web's 'Wrong magic number') but the same underlying race.
+// MapLibre Native's MapView already calls LogManager.start()/stop() itself
+// on mount/unmount, so registering the filter here at module scope (not
+// per-mount) is enough -- onLog only ever holds one handler, so this must
+// not be duplicated elsewhere.
+LogManager.onLog(({ level, message }) => {
+  if (level === 'error' && message.includes('magic number exception')) return true
+  return false
+})
 
 /** Resolves each tile key to its cached local file:// URI if downloaded, else the (versioned) remote URL. */
 function getResolvedTileUrls() {
