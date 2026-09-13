@@ -662,15 +662,31 @@ export function AviationMap({
   const camStateRef = useRef({ lat: 62, lng: 17, zoom: 5, heading: 0 })
 
   // Coarse camera snapshot for useWindGrid below -- only needs to be "close
-  // enough", not frame-perfect (the hook itself debounces/dedupes further),
-  // so updating this bit of state on every onRegionIsChanging frame is fine.
+  // enough", not frame-perfect (the hook itself debounces/dedupes further
+  // via its own rounded-key check). That downstream dedupe doesn't help
+  // here though: onRegionDidChange/onRegionIsChanging can fire a whole
+  // burst of callbacks synchronously within a single JS tick (e.g. the
+  // sim's camera easeTo re-issued every 200ms tick, each one restarting/
+  // fighting the previous still-animating easeTo) -- calling setCamForWind
+  // unconditionally on every one of those queued up enough synchronous
+  // re-renders in one go to trip React's "Maximum update depth exceeded"
+  // safety limit, even though every individual setState was harmless and
+  // the useWindGrid effect itself no-ops on the repeat. Round + compare
+  // against the last committed value first so a burst of near-identical
+  // frames collapses to at most one actual setState.
   const [camForWind, setCamForWind] = useState<{ lat: number; lng: number; zoom: number } | null>(null)
+  const lastCamForWindKeyRef = useRef<string>('')
 
   const handleRegionChange = useCallback((e: NativeSyntheticEvent<ViewStateChangeEvent>) => {
     const { center, zoom, bearing } = e.nativeEvent
     if (center) {
       camStateRef.current = { lat: center[1], lng: center[0], zoom: zoom ?? 5, heading: bearing ?? 0 }
-      setCamForWind({ lat: center[1], lng: center[0], zoom: zoom ?? 5 })
+      const z = zoom ?? 5
+      const key = `${center[1].toFixed(2)},${center[0].toFixed(2)},${z.toFixed(1)}`
+      if (key !== lastCamForWindKeyRef.current) {
+        lastCamForWindKeyRef.current = key
+        setCamForWind({ lat: center[1], lng: center[0], zoom: z })
+      }
     }
   }, [])
 
