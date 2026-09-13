@@ -39,6 +39,7 @@ import { fmtNotamDate } from '@open-vfr/shared/fetchNotam'
 import { NotificationCenter } from '../components/NotificationCenter'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
 import { getTileUrls } from '../config'
+import { settings as settingsDb } from '../db'
 import { useAirspaceWarnings }  from '../hooks/useAirspaceWarnings'
 import { useObstructionWarnings } from '../hooks/useObstructionWarnings'
 import { useAirfieldProximity }   from '../hooks/useAirfieldProximity'
@@ -152,7 +153,23 @@ export function MapScreen() {
   const [flying, setFlying]           = useState(false)
   const [followGps, setFollowGps]     = useState(false)
   const [mapOrientation, setMapOrientation] = useState<'north' | 'track'>('north')
+  // Map-layer toggle visibility. Persisted to AsyncStorage under the same
+  // 'ovfr:layerVisibility' key web's useLayerVisibility (src/db/useSettings.ts)
+  // uses -- previously a plain useState(LAYER_DEFAULTS) with NO persistence
+  // at all, so every toggle silently reverted to LAYER_DEFAULTS on next app
+  // launch. Went unnoticed for toggles whose default is already `true`
+  // (aerodromes, obstacles, etc.) and was only visibly reported for Wind
+  // Arrows (default `false`) -- but the gap affects every single layer here
+  // (hillshade, contours, traffic, satellite, activity/glider, terrainColor
+  // included), not just wind (2026-09-13).
   const [layers, setLayers]           = useState<LayerState>(LAYER_DEFAULTS)
+  const layersLoadedRef = React.useRef(false)
+  useEffect(() => {
+    settingsDb.get<Partial<LayerState>>('ovfr:layerVisibility').then((stored) => {
+      layersLoadedRef.current = true
+      if (stored) setLayers(l => ({ ...l, ...stored }))
+    }).catch(() => { layersLoadedRef.current = true })
+  }, [])
 
   const agl  = useTerrainElevation(activePosition)
   const altitudeSource = useAltitudeSource(activePosition)
@@ -737,7 +754,19 @@ export function MapScreen() {
   }, [savingWpAt, wpSaveName, saveWaypoint])
 
   const handleLayerChange = useCallback((key: keyof LayerState, on: boolean) => {
-    setLayers(l => ({ ...l, [key]: on }))
+    setLayers(l => {
+      const next = { ...l, [key]: on }
+      // Fire-and-forget persist -- mirrors useSettings.ts's update() pattern.
+      // Only meaningful once the initial load above has resolved (or failed);
+      // writing before that could race the load and get clobbered the same
+      // way web's useLayerVisibility guards against (see its hasUserEditedRef
+      // comment) -- not adding that same guard here since the load above sets
+      // layersLoadedRef synchronously in the .then/.catch before any UI could
+      // plausibly fire a toggle, but kept as an explicit signal for future
+      // readers rather than a silent assumption.
+      settingsDb.set('ovfr:layerVisibility', next).catch(() => {})
+      return next
+    })
   }, [])
 
   return (
