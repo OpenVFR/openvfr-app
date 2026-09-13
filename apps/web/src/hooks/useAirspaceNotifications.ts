@@ -133,7 +133,14 @@ export function useAirspaceNotifications(position: GpsPosition | null): {
   useEffect(() => {
     const timer = setInterval(() => {
       const now = Date.now()
-      setNotifications(prev => prev.filter(n => n.expiresAt > now))
+      // .filter() always returns a new array reference even when nothing
+      // was actually removed -- skip the setState entirely in that case.
+      // Mirrors native's identical fix (2026-09-13, "Maximum update depth
+      // exceeded" mitigation).
+      setNotifications(prev => {
+        const next = prev.filter(n => n.expiresAt > now)
+        return next.length === prev.length ? prev : next
+      })
     }, 1_000)
     return () => clearInterval(timer)
   }, [])

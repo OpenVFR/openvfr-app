@@ -108,7 +108,18 @@ export function useAirspaceNotifications(position: GpsPosition | null): {
   useEffect(() => {
     const timer = setInterval(() => {
       const now = Date.now()
-      setNotifications(prev => prev.filter(n => n.expiresAt > now))
+      // .filter() always returns a new array reference even when nothing
+      // was actually removed -- skip the setState entirely in that case.
+      // Without this, the notifications array (and everything downstream
+      // that receives it as a prop) got a fresh reference every single
+      // second regardless of whether anything expired, adding to the
+      // render-pressure class of bug documented in
+      // simFlightEngine.ts's own comments ("Maximum update depth exceeded",
+      // 2026-09-13).
+      setNotifications(prev => {
+        const next = prev.filter(n => n.expiresAt > now)
+        return next.length === prev.length ? prev : next
+      })
     }, 1_000)
     return () => clearInterval(timer)
   }, [])

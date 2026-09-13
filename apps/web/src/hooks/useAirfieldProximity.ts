@@ -66,6 +66,16 @@ export function useAirfieldProximity(
   const [alerts,     setAlerts]     = useState<AirfieldProximityAlert[]>([])
 
   const dismissedRef = useRef<Map<string, number>>(new Map())
+  // Last-committed result signature -- skip setAlerts() when the computed
+  // set is identical to what's already in state. Without this, every
+  // position tick called setAlerts(found) unconditionally with a brand-new
+  // array/object literal even when nothing actually changed, forcing
+  // NotificationCenter (and everything upstream of it) to re-render on
+  // every tick regardless -- unnecessary render pressure that contributed
+  // to a "Maximum update depth exceeded" warning observed on native during
+  // Simulate mode right at an airspace-transition moment (2026-09-13), when
+  // this churn coincided with other hooks' own genuine state changes.
+  const lastSigRef = useRef<string>('')
 
   // ── Load aerodromes GeoJSON once ──────────────────────────────────────────
   useEffect(() => {
@@ -117,7 +127,10 @@ export function useAirfieldProximity(
   // ── Evaluate on each position + route change ───────────────────────────────
   useEffect(() => {
     if (!position || aerodromes.length === 0) {
-      setAlerts([])
+      if (lastSigRef.current !== '') {
+        lastSigRef.current = ''
+        setAlerts([])
+      }
       return
     }
 
@@ -168,7 +181,11 @@ export function useAirfieldProximity(
     // Sort by distance
     found.sort((a, b) => a.distNm - b.distNm)
 
-    setAlerts(found)
+    const sig = found.map(a => `${a.key}:${a.distNm}`).join('|')
+    if (sig !== lastSigRef.current) {
+      lastSigRef.current = sig
+      setAlerts(found)
+    }
   }, [position, aerodromes, routeWaypoints])
 
   const dismiss = useCallback((key: string) => {

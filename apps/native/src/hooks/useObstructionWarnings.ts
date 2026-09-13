@@ -60,6 +60,10 @@ export function useObstructionWarnings(position: GpsPosition | null): {
   const [obstacles, setObstacles] = useState<ObstaclePoint[]>([])
   const [alerts,    setAlerts]    = useState<ObstructionAlert[]>([])
   const dismissedRef = useRef<Map<string, number>>(new Map())
+  // Last-committed result signature -- skip setAlerts() when the computed
+  // set is unchanged. See useAirfieldProximity.ts's identical fix for the
+  // full rationale (2026-09-13, "Maximum update depth exceeded" mitigation).
+  const lastSigRef = useRef<string>('')
 
   // ── Load once ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -86,7 +90,10 @@ export function useObstructionWarnings(position: GpsPosition | null): {
   // ── Evaluate on every position update ───────────────────────────────────────
   useEffect(() => {
     if (!position || obstacles.length === 0) {
-      setAlerts([])
+      if (lastSigRef.current !== '') {
+        lastSigRef.current = ''
+        setAlerts([])
+      }
       return
     }
 
@@ -121,7 +128,11 @@ export function useObstructionWarnings(position: GpsPosition | null): {
     }
 
     found.sort((a, b) => a.distNm - b.distNm)
-    setAlerts(found)
+    const sig = found.map(a => `${a.key}:${a.distNm}`).join('|')
+    if (sig !== lastSigRef.current) {
+      lastSigRef.current = sig
+      setAlerts(found)
+    }
   }, [position, obstacles])
 
   const dismiss = useCallback((key: string) => {
