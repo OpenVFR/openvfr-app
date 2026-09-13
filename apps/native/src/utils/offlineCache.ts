@@ -22,7 +22,7 @@
  */
 
 import { File, Directory, Paths } from 'expo-file-system'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { versionedTileUrl, getCachedTileManifest } from '@open-vfr/shared/tileManifest'
 import { TILE_BASE } from '../config'
 
 export interface OfflineAsset {
@@ -128,6 +128,9 @@ export interface CacheStatus {
   label:    string
   cached:   boolean
   sizeMb:   number | null
+  /** true = a newer version of this file exists on the server than what's
+   *  cached on disk (see isStale() doc comment). Only meaningful when cached. */
+  stale:    boolean
 }
 
 export function getCacheStatus(): CacheStatus[] {
@@ -139,6 +142,7 @@ export function getCacheStatus(): CacheStatus[] {
       label:  a.label,
       cached,
       sizeMb: cached && f.size != null ? Math.round((f.size / (1024 * 1024)) * 10) / 10 : null,
+      stale:  cached && isStale(a),
     }
   })
 }
@@ -194,6 +198,18 @@ export async function downloadAssets(
         if (dest.exists) dest.delete()
         throw new Error(`offlineCache: download of "${asset.fileName}" produced an empty/missing file`)
       }
+      // Record the server-side content hash this download fetched, so a
+      // later isStale() check has something to compare against once the
+      // manifest moves on. Best-effort: if the manifest wasn't loaded yet
+      // (offline first launch, race with index.js's bootstrap fetch), this
+      // asset just isn't tracked for staleness until the next successful
+      // download -- never blocks or fails the download itself.
+      const serverHash = getCachedTileManifest()?.files?.[asset.fileName]?.sha256
+      if (serverHash) {
+        const sidecar = readSidecar()
+        sidecar[asset.fileName] = serverHash
+        writeSidecar(sidecar)
+      }
     } catch (err) {
       if (dest.exists) dest.delete()
       throw err
@@ -218,6 +234,61 @@ export async function downloadSelected(
 ): Promise<void> {
   const selected = OFFLINE_ASSETS.filter(a => keys.includes(a.key))
   await downloadAssets(selected, onProgress)
+}
+
+// ── Offline-copy staleness ───────────────────────────────────────────────
+// downloadAssets() overwrites files in place with no record of WHICH
+// server content (sha256) is now sitting on disk. Without that, a pilot
+// who downloaded required (flight-safety-critical) data before a flight has
+// no way to know a newer AIRAC cycle / obstacle update has since shipped to
+// R2 while they were offline -- the Settings screen's cache list only shows
+// "downloaded, N MB", never "outdated". Fixed by writing a small sidecar
+// JSON of {fileName: sha256} next to the cached files at download time, and
+// comparing it against the in-memory manifest (index.js's loadTileManifest()
+// bootstrap fetch, or a Settings-triggered refreshTileManifest()) whenever
+// asked.
+const MANIFEST_SIDECAR_NAME = 'downloaded-manifest.json'
+
+function readSidecar(): Record<string, string> {
+  const f = new File(getCacheDir(), MANIFEST_SIDECAR_NAME)
+  if (!f.exists) return {}
+  try {
+    return JSON.parse(f.textSync()) as Record<string, string>
+  } catch {
+    return {}
+  }
+}
+
+function writeSidecar(hashes: Record<string, string>): void {
+  const f = new File(getCacheDir(), MANIFEST_SIDECAR_NAME)
+  if (f.exists) f.delete()
+  f.write(JSON.stringify(hashes))
+}
+
+/**
+ * True if this cached asset's on-disk content hash no longer matches the
+ * server manifest's current sha256 for that filename -- i.e. a newer
+ * version has been uploaded to R2 since this asset was last downloaded.
+ * Returns false (not stale) whenever either side is unavailable (manifest
+ * not loaded yet / offline, or this asset was downloaded before this
+ * sidecar existed) -- never claims staleness without evidence.
+ */
+export function isStale(asset: OfflineAsset): boolean {
+  if (!isCached(asset)) return false
+  const manifest = getCachedTileManifest()
+  const serverHash = manifest?.files?.[asset.fileName]?.sha256
+  if (!serverHash) return false
+  const sidecar = readSidecar()
+  const localHash = sidecar[asset.fileName]
+  if (!localHash) return false
+  return localHash !== serverHash
+}
+
+/** Any required (flight-safety-critical) offline asset whose cached content
+ *  is behind the current server manifest. Empty array = fully up to date
+ *  (or manifest/sidecar unavailable to compare -- see isStale doc comment). */
+export function getStaleRequiredAssets(): OfflineAsset[] {
+  return REQUIRED_ASSETS.filter(a => isCached(a) && isStale(a))
 }
 
 export function clearCache(): void {

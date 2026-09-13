@@ -23,6 +23,7 @@ import { useNearestAerodrome } from '../hooks/useNearestAerodrome'
 import { qnhFromStationPressure } from '@open-vfr/shared/baroAltitude'
 import * as Location from 'expo-location'
 import { API_BASE, TILE_BASE } from '../config'
+import { refreshTileManifest } from '@open-vfr/shared/tileManifest'
 import { theme } from '../styles/theme'
 import {
   getCacheStatus, getTotalCacheSizeMb, downloadSelected, clearCache,
@@ -588,8 +589,18 @@ function OfflineDataSection() {
     setTotalMb(getTotalCacheSizeMb())
   }, [])
 
+  // Re-fetch manifest.json on focus (not just app-launch bootstrap) so the
+  // stale/outdated badges above reflect the server's CURRENT state, not
+  // whatever was current whenever the app process last started -- a pilot
+  // could open Settings hours/days into a long-running session.
+  useFocusEffect(useCallback(() => {
+    refreshTileManifest(TILE_BASE).then(refresh)
+  }, [refresh]))
+
   const allCached = statuses.length > 0 && statuses.every(s => s.cached)
   const anyCached = statuses.some(s => s.cached)
+  const requiredKeys = new Set(REQUIRED_ASSETS.map(a => a.key))
+  const anyRequiredStale = statuses.some(s => s.cached && s.stale && requiredKeys.has(s.key))
 
   const handleDownload = useCallback(async () => {
     setConfirmDownload(false)
@@ -619,10 +630,23 @@ function OfflineDataSection() {
         <Text style={styles.infoValue}>{anyCached ? `${totalMb} MB` : 'None'}</Text>
       </View>
 
+      {anyRequiredStale && (
+        <View style={styles.warningBox}>
+          <Text style={styles.warningTitle}>⚠️ Offline data outdated</Text>
+          <Text style={styles.warningText}>
+            Required aviation data has a newer version on the server than what's
+            downloaded on this device. Reconnect and "Update offline data" below
+            before relying on it in flight.
+          </Text>
+        </View>
+      )}
+
       {statuses.map(s => (
         <View key={s.key} style={styles.row}>
           <Text style={[styles.rowLabel, { color: theme.textMuted }]}>{s.label}</Text>
-          <Text style={styles.infoValue}>{s.cached ? `✓ ${s.sizeMb} MB` : '—'}</Text>
+          <Text style={[styles.infoValue, s.cached && s.stale ? { color: theme.statusDanger } : undefined]}>
+            {s.cached ? `${s.stale ? '⚠️ outdated · ' : '✓ '}${s.sizeMb} MB` : '—'}
+          </Text>
         </View>
       ))}
 

@@ -33,7 +33,7 @@ export default function UpdatePrompt() {
 
   return (
     <div className={css.toast} role="status" aria-live="polite">
-      <span className={css.message}>Update available</span>
+      <span className={css.message}>App update available</span>
       <button
         className={css.updateBtn}
         onClick={() => updateServiceWorker(true)}

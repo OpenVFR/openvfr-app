@@ -60,7 +60,13 @@ export function useDataManifest(): UseDataManifestResult {
       // banner only appears when data is updated after the user's first load.
       localStorage.setItem(LS_KEY, data.generated_at)
       seenRef.current = data.generated_at
-    } else if (data.generated_at !== seen) {
+    } else if (new Date(data.generated_at).getTime() > new Date(seen).getTime()) {
+      // Strictly-newer, not just not-equal -- manifest.json is served with
+      // Cache-Control: no-cache but that only forces revalidation, it does
+      // not guarantee a client always sees the globally-latest edge copy
+      // (propagation race across Cloudflare PoPs). A stale/out-of-order
+      // fetch that's OLDER than what's already marked seen must not flip
+      // the banner on -- only a genuinely newer generated_at should.
       setHasUpdate(true)
     }
   }
