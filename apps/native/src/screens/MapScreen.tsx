@@ -750,6 +750,7 @@ export function MapScreen() {
           showHillshade={layers.hillshade}
           showTerrainColor={layers.terrainColor}
           showContours={layers.contours}
+          showWind={layers.wind}
           trafficFC={trafficFC}
           notamCirclesFC={notamCirclesFC}
           notamPointsFC={notamPointsFC}

@@ -8,6 +8,7 @@ import {
   RUNWAY_LABEL_DEFAULT_COLOR,
   RUNWAY_LABEL_DEFAULT_HALO,
 } from '@open-vfr/shared/runwayWind'
+import { WIND_BARB_COLOR } from '../utils/windBarbIcons'
 import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
 
@@ -453,6 +454,20 @@ export const LAYER_GROUPS: LayerGroup[] = [
     section: 'Traffic',
   },
   {
+    id: 'wind',
+    // Ambient wind-direction/strength arrows sampled across the viewport via
+    // Open-Meteo (see @open-vfr/shared/windGrid + useWindGrid.ts) -- a
+    // SkyDemon/EasyVFR-style overlay, distinct from AerodromePopup's
+    // per-runway favored-end highlight (that one is METAR-driven, single
+    // airport; this one is a live grid sample, whole viewport). Off by
+    // default: opts the user into extra live fetches on every pan/zoom.
+    label: 'Wind Arrows',
+    cssClass: 'groupWind',
+    layerIds: ['wind-arrows-icon', 'wind-arrows-label'],
+    defaultOn: false,
+    section: 'Weather',
+  },
+  {
     id: 'notamCircles',
     // Ad-hoc circles for FIR-wide NOTAMs (restricted/danger areas, navaid
     // outages, military exercise notices) that carry their own
@@ -640,6 +655,16 @@ export function getMapStyle(): StyleSpecification {
       // Empty FeatureCollection on init; MapView updates it via setData() every 1 s.
       // Each feature: Point, properties: { icao24, callsign, altFt, speedKts, trackDeg, vertFpm, onGround }
       'traffic': {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      },
+
+      // Layer 11b — Ambient wind-arrows overlay (updated via useWindGrid hook).
+      // Empty FeatureCollection on init; MapView pushes a coarse grid of
+      // Open-Meteo wind samples (see @open-vfr/shared/windGrid) via setData()
+      // on moveend while the 'wind' layer group is enabled. Each feature:
+      // Point, properties: { dirDeg, speedKts }.
+      'wind-grid': {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
       },
@@ -1862,6 +1887,66 @@ export function getMapStyle(): StyleSpecification {
           'icon-opacity': 0.9,
           'text-color': '#ffffff',
           'text-halo-color': '#1e293b',
+          'text-halo-width': 1.5,
+        },
+      },
+
+      // ── Ambient wind-arrows overlay ────────────────────────────────
+      // SkyDemon/EasyVFR/synoptic-chart-style wind barbs sampled across the
+      // viewport (see useWindGrid.ts). Off by default (LAYER_GROUPS 'wind') --
+      // opt-in since it drives extra live Open-Meteo fetches on every pan/zoom.
+      // Icons 'wind-barb-{0,5,10,...,100}' registered on demand by
+      // registerWindBarbIcon() (MapView styleimagemissing handler); the id
+      // expression below rounds speedKts to the nearest 5kt bucket that
+      // registration function knows about (@open-vfr/shared/windBarb).
+      //
+      // Rotation: dirDeg is the meteorological "wind FROM" bearing. Unlike
+      // the in-flight wind gauge's arrow (which rotates by dirDeg+180 to
+      // point where the air is going), a wind barb's shaft points in the
+      // FROM direction by international convention -- pilots already read
+      // synoptic-chart barbs this way, so rotating by dirDeg directly (no
+      // +180) keeps map barbs consistent with that standard, not the gauge.
+      {
+        id: 'wind-arrows-icon',
+        type: 'symbol',
+        source: 'wind-grid',
+        layout: {
+          visibility: 'none',
+          'icon-image': [
+            'concat', 'wind-barb-',
+            ['to-string', ['max', 0, ['min', 100,
+              ['*', ['round', ['/', ['get', 'speedKts'], 5]], 5],
+            ]]],
+          ],
+          'icon-rotate': ['get', 'dirDeg'],
+          'icon-rotation-alignment': 'map',
+          'icon-anchor': 'bottom',
+          'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.7, 10, 1.15, 14, 1.5],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+        paint: {
+          'icon-opacity': 0.9,
+        },
+      },
+      {
+        id: 'wind-arrows-label',
+        type: 'symbol',
+        source: 'wind-grid',
+        minzoom: 7,
+        layout: {
+          visibility: 'none',
+          'text-field': ['concat', ['to-string', ['get', 'speedKts']], 'kt'],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 9,
+          'text-anchor': 'top',
+          'text-offset': [0, 0.3],
+          'text-allow-overlap': false,
+          'text-optional': true,
+        },
+        paint: {
+          'text-color': WIND_BARB_COLOR,
+          'text-halo-color': '#ffffff',
           'text-halo-width': 1.5,
         },
       },

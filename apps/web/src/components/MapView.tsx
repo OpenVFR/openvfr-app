@@ -33,6 +33,8 @@ import { registerObstacleImages } from '../utils/obstacleIcons'
 import { registerLandmarkImages } from '../utils/landmarkIcons'
 import { registerAerodromeImages } from '../utils/aerodromeIcons'
 import { registerNavaidImages } from '../utils/navaidIcons'
+import { registerWindBarbIcon, registerAllWindBarbIcons } from '../utils/windBarbIcons'
+import { useWindGrid } from '../hooks/useWindGrid'
 import { type AirspaceFeature } from './AirspacePopup'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
 import { formatObstacleName, formatLandmarkName } from '@open-vfr/shared/snapLabels'
@@ -639,6 +641,22 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const regionalNotamsRef = useRef(regionalNotams)
   useEffect(() => { regionalNotamsRef.current = regionalNotams }, [regionalNotams])
 
+  // ── Ambient wind arrows (SkyDemon/EasyVFR-style grid overlay) ────────
+  // Surface wind while on the ground/unknown altitude, live GPS altitude
+  // once flying — same convention fetchWind itself documents.
+  const windEnabled = visibility['wind'] ?? false
+  const windGridFC = useWindGrid(
+    mapReady ? mapRef.current : null,
+    windEnabled,
+    flyingMode !== 'off' ? (gpsPosition?.altFt ?? null) : null,
+  )
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    const src = map.getSource('wind-grid') as import('maplibre-gl').GeoJSONSource | undefined
+    src?.setData(windGridFC)
+  }, [windGridFC, mapReady])
+
   // Match regional NOTAMs to charted restricted/danger area polygons by
   // designator code (e.g. "ESD873") -- see useNotamAirspaceMatch.ts. Powers
   // both the polygon highlight layer below and AirspacePopup's inline NOTAM
@@ -1042,6 +1060,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       registerNavaidImages(map)
       registerObstacleImages(map)
       registerLandmarkImages(map)
+      registerAllWindBarbIcons(map)
       registerTrafficIcons(map).catch(console.warn)  // async fire-and-forget
       // Register the SVG aircraft icon — category-specific if a profile is selected,
       // otherwise the default cessna icon.
@@ -1049,7 +1068,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
       const url = (profile ? aircraftIconUrl(profile.category) : null) ?? '/aircraft_icons/cessna.svg'
       registerAircraftImageFromSvg(map, url).catch(console.warn)
     }
-    map.on('styleimagemissing', registerAllImages)
+    const handleStyleImageMissing = (ev: { id: string }) => {
+      registerAllImages()
+      registerWindBarbIcon(map, ev.id)
+    }
+    map.on('styleimagemissing', handleStyleImageMissing)
 
     // Suppress the PMTiles "Wrong magic number" transient error that fires on
     // first startup when the pmtiles library reads the archive header before the
@@ -2492,7 +2515,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         map.off('mouseenter', id, onEnter)
         map.off('mouseleave', id, onLeave)
       })
-      map.off('styleimagemissing', registerAllImages)
+      map.off('styleimagemissing', handleStyleImageMissing)
       map.off('dragstart', onDragStart)
       map.off('dragend',   onDragEnd)
       map.off('movestart', onMoveStart)

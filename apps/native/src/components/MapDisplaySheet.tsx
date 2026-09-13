@@ -59,6 +59,10 @@ export type LayerState = {
   // Elevation contour lines (Copernicus GLO-30 DEM, vector), same source
   // as web's 'contours' layer group (map-style.ts). Off by default.
   contours: boolean
+  // Ambient wind-barb overlay (grid-sampled Open-Meteo wind, WMO-style
+  // barb icons) -- matches web's 'wind' LAYER_GROUPS entry. Off by default,
+  // same as web.
+  wind: boolean
 }
 
 export const LAYER_DEFAULTS: LayerState = {
@@ -81,6 +85,7 @@ export const LAYER_DEFAULTS: LayerState = {
   hillshade:  false,
   terrainColor: false,
   contours: false,
+  wind: false,
 }
 
 // ---------------------------------------------------------------------------
@@ -113,6 +118,12 @@ const POINTS_GROUPS: Group[] = [
 const TRAFFIC_GROUPS: Group[] = [
   { key: 'traffic', label: 'Air Traffic (ADS-B)', color: '#22c55e' },
   { key: 'notamCircles', label: 'Regional NOTAMs', color: '#e64980' },
+]
+
+// Matches web's LAYER_GROUPS 'Weather' section ('Wind Arrows' entry) --
+// same sky-blue swatch as WIND_BARB_COLOR (apps/web/src/utils/windBarbIcons.ts).
+const WEATHER_GROUPS: Group[] = [
+  { key: 'wind', label: 'Wind Arrows', color: '#38bdf8' },
 ]
 
 // Order matches web's Terrain section (map-style.ts LAYER_GROUPS): hillshade,
@@ -232,6 +243,12 @@ export function MapDisplaySheet({ layers, ceilingFt, autoZoom, onLayerChange, on
                 relying on this.
               </Text>
             )}
+
+            <SectionHeader title="Weather" />
+            {WEATHER_GROUPS.map(g => (
+              <LayerRow key={g.key} label={g.label} color={g.color}
+                on={layers[g.key]} onToggle={() => onLayerChange(g.key, !layers[g.key])} />
+            ))}
 
             <SectionHeader title="Live" />
             {TRAFFIC_GROUPS.map(g => (

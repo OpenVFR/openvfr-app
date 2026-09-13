@@ -20,6 +20,8 @@
     "./gpsTypes":  "./src/gpsTypes.ts",
     "./sunCalc":   "./src/sunCalc.ts",
     "./fetchWind": "./src/fetchWind.ts",
+    "./windBarb": "./src/windBarb.ts",
+    "./windGrid": "./src/windGrid.ts",
     "./windRelative": "./src/windRelative.ts",
     "./runwayWind": "./src/runwayWind.ts",
     "./virtualRadarCalc": "./src/virtualRadarCalc.ts",
