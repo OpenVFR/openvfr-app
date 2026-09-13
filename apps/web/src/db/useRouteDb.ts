@@ -158,9 +158,18 @@ export function useRouteLibrary(): RouteLibraryHook {
     aircraftId?: string,
   ): Promise<void> => {
     const db = await getDb()
-    // Must be a real UUID — user_routes.id is a Postgres UUID column; any other
-    // string format 400s on every cloud push, silently keeping the route local-only.
-    const id = crypto.randomUUID()
+    // Reuse the existing row's id when a route with this exact name already
+    // exists (case-sensitive, matches the Route Library's own display name) —
+    // otherwise every click of Save with an unchanged name inserted a brand
+    // new UUID-keyed row instead of updating the one the user is looking at.
+    // Confirmed live 2026-09-13: 3 clicks of Save on "AGENT-SYNC-TEST" created
+    // 3 separate synced rows on both web and native. Must be a real UUID for
+    // new rows — user_routes.id is a Postgres UUID column; any other string
+    // format 400s on every cloud push, silently keeping the route local-only.
+    const existing = await db.routes.findOne({
+      selector: { name, id: { $ne: ROUTE_ID } },
+    }).exec()
+    const id = existing?.id ?? crypto.randomUUID()
     await db.routes.upsert({ id, name, waypoints, legOverrides, aircraftId: aircraftId ?? '', updatedAt: Date.now() })
   }, [])
 

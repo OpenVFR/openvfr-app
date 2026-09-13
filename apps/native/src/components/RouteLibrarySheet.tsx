@@ -88,8 +88,15 @@ export function RouteLibrarySheet({ waypoints, legOverrides, aircraftId, syncSta
 
   const handleSave = async () => {
     const name = saveName.trim() || `Route ${new Date().toLocaleDateString()}`
+    // Reuse an existing row's id when a route with this exact name is
+    // already in the library (mirrors web's useRouteDb.saveRoute fix) --
+    // otherwise every Save with an unchanged name inserted a brand new
+    // UUID-keyed row instead of updating the one the user is looking at.
+    // Confirmed live 2026-09-13: repeated Save clicks created multiple
+    // synced duplicates visible on both native and web.
+    const existing = routes.find((r) => r.name === name)
     const doc: RouteDocType = {
-      id:           Crypto.randomUUID(),
+      id:           existing?.id ?? Crypto.randomUUID(),
       name,
       waypoints:    waypoints,
       legOverrides: legOverrides,
