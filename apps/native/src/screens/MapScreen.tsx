@@ -341,7 +341,22 @@ export function MapScreen() {
     if (!flyingActive || !activePosition) return
     const ceilingFt = settings.airspaceCeilingFt
     if (activePosition.altFt < ceilingFt - 500) return
-    const newCeiling = Math.min(ceilingFt + 2000, 66000)
+    // Jump directly to a ceiling that clears the current altitude (+500 ft
+    // margin) in ONE step, not a fixed +2000 per effect run. The old fixed
+    // +2000 step re-triggered this same effect (its own dependency,
+    // settings.airspaceCeilingFt, changes on every update() call) once per
+    // render, and when the persisted ceiling was far below current altitude
+    // (e.g. a stale low value from earlier manual slider testing), a single
+    // climb could need a dozen+ consecutive +2000 escalations before
+    // clearing -- all firing in a rapid synchronous chain that exceeded
+    // React's re-render safety limit ("Maximum update depth exceeded",
+    // reproduced 2026-09-13 during a Simulate-mode climb through a Class C
+    // floor). Still raises by at least 2000 ft even when less would clear
+    // the altitude, matching the original "round step" behaviour.
+    const newCeiling = Math.min(
+      Math.max(ceilingFt + 2000, Math.ceil((activePosition.altFt + 500) / 2000) * 2000),
+      66000,
+    )
     if (newCeiling === ceilingFt) return
     update({ airspaceCeilingFt: newCeiling })
     setCeilingEscalatedMsg(`Ceiling raised to ${newCeiling.toLocaleString()} ft`)

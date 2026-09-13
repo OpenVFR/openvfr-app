@@ -104,6 +104,17 @@ export function useAirspaceWarnings(
   // Previous altitude sample — used to derive climb/descent rate.
   const prevAltRef = useRef<{ altFt: number; ts: number } | null>(null)
 
+  // Last-committed result signature -- skip setAlerts() when the computed
+  // set is identical to what's already in state. This hook (not to be
+  // confused with the similarly-named useAirspaceNotifications.ts) drives
+  // the "CLASS C ... AHEAD"-style banner directly, and was missed in the
+  // 2026-09-13 change-detection pass applied to useAirfieldProximity/
+  // useObstructionWarnings/useAirspaceNotifications -- it was firing a
+  // fresh setAlerts(found) array every single position tick right at the
+  // exact airspace-transition moment that reproduced "Maximum update depth
+  // exceeded" during Simulate mode. Mirrors native's identical fix.
+  const lastSigRef = useRef<string>('')
+
   // ── Load airspace GeoJSON once ────────────────────────────────────────────
   useEffect(() => {
     fetch(versionedTileUrl(TILES_BASE_URL, 'se-airspace.geojson'))
@@ -133,7 +144,10 @@ export function useAirspaceWarnings(
   // ── Evaluate alerts on each position change ───────────────────────────────
   useEffect(() => {
     if (!position || features.length === 0) {
-      setAlerts([])
+      if (lastSigRef.current !== '') {
+        lastSigRef.current = ''
+        setAlerts([])
+      }
       return
     }
 
@@ -266,7 +280,11 @@ export function useAirspaceWarnings(
       return a.lower_ft - b.lower_ft
     })
 
-    setAlerts(found)
+    const sig = found.map(a => `${a.key}:${a.inside}:${a.verticalClosure ?? ''}:${a.gapFt ?? ''}`).join('|')
+    if (sig !== lastSigRef.current) {
+      lastSigRef.current = sig
+      setAlerts(found)
+    }
   }, [position, features, lookaheadMin, verticalFt])
 
   const dismiss = useCallback((key: string) => {

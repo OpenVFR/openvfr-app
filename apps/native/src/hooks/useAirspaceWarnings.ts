@@ -110,11 +110,29 @@ export function useAirspaceWarnings(
   const [alerts,   setAlerts]   = useState<AirspaceAlert[]>([])
   const dismissedRef  = useRef<Map<string, number>>(new Map())
   const prevAltRef    = useRef<{ altFt: number; ts: number } | null>(null)
+  // Last-committed result signature -- skip setAlerts() when the computed
+  // set is identical to what's already in state. This hook (not to be
+  // confused with the similarly-named useAirspaceNotifications.ts) drives
+  // the "CLASS C ... AHEAD"-style banner directly, and was missed in the
+  // 2026-09-13 change-detection pass applied to useAirfieldProximity/
+  // useObstructionWarnings/useAirspaceNotifications -- this hook is the
+  // one that was actually firing a fresh setAlerts(found) array every
+  // single 5 Hz position tick right at the exact airspace-transition
+  // moment that reproduced "Maximum update depth exceeded" during
+  // Simulate mode. Re-verified live: the bug persisted after the other
+  // three hooks' fixes and only stopped once this one also got the guard.
+  const lastSigRef = useRef<string>('')
 
   useEffect(() => { loadOnce(setFeatures) }, [])
 
   useEffect(() => {
-    if (!position || features.length === 0) { setAlerts([]); return }
+    if (!position || features.length === 0) {
+      if (lastSigRef.current !== '') {
+        lastSigRef.current = ''
+        setAlerts([])
+      }
+      return
+    }
 
     const { lat, lng, altFt, speedKts, trackDeg } = position
     const now = Date.now()
@@ -198,7 +216,11 @@ export function useAirspaceWarnings(
       return a.lower_ft - b.lower_ft
     })
 
-    setAlerts(found)
+    const sig = found.map(a => `${a.key}:${a.inside}:${a.verticalClosure ?? ''}:${a.gapFt ?? ''}`).join('|')
+    if (sig !== lastSigRef.current) {
+      lastSigRef.current = sig
+      setAlerts(found)
+    }
   }, [position, features, lookaheadMin])
 
   const dismiss = useCallback((key: string) => {

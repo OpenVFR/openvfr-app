@@ -920,7 +920,17 @@ export default function MapView({ auth }: { auth: AuthState }) {
   useEffect(() => {
     if (flyingMode === 'off' || !gpsPosition) return
     if (gpsPosition.altFt < ceilingFt - 500) return
-    const newCeiling = Math.min(ceilingFt + 2000, 66000)
+    // Jump directly to a ceiling that clears the current altitude (+500 ft
+    // margin) in ONE step -- see native MapScreen.tsx's identical fix for
+    // the full rationale (2026-09-13, "Maximum update depth exceeded"
+    // reproduced during a Simulate-mode climb). The old fixed +2000-per-
+    // effect-run step could take a dozen+ consecutive escalations to catch
+    // up when the persisted ceiling was far below current altitude, all
+    // firing in one rapid synchronous chain.
+    const newCeiling = Math.min(
+      Math.max(ceilingFt + 2000, Math.ceil((gpsPosition.altFt + 500) / 2000) * 2000),
+      66000,
+    )
     if (newCeiling === ceilingFt) return
     setCeilingFt(newCeiling)
     setCeilingEscalatedMsg(`Ceiling raised to ${newCeiling.toLocaleString()} ft`)
