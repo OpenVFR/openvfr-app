@@ -25,6 +25,7 @@
         ]
       },
       "infoPlist": {
+        "LSApplicationQueriesSchemes": ["itms-apps"],
         "NSLocationWhenInUseUsageDescription": "open-vfr needs GPS to show your position on the map and provide in-flight navigation.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "open-vfr needs background GPS access to continue tracking your flight when the screen locks.",
         "UIBackgroundModes": [

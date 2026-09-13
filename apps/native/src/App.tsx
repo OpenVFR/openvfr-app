@@ -28,6 +28,7 @@ import { VarioProvider }               from './context/VarioContext'
 import { AppNavigator }  from './navigation'
 import { LoginScreen }   from './screens/LoginScreen'
 import { theme }         from './styles/theme'
+import { useForceUpdate } from './hooks/useForceUpdate'
 
 function AppShell() {
   const { state } = useAuthContext()
@@ -49,6 +50,11 @@ function AppShell() {
 }
 
 export default function App() {
+  // Fires on every cold launch, before anything else renders -- if the
+  // running build is below the backend's supported floor, this triggers a
+  // blocking platform update flow (see useForceUpdate.ts's header comment).
+  useForceUpdate()
+
   return (
     <ErrorBoundary>
       <KeyboardProvider>

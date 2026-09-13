@@ -101,6 +101,14 @@ The `api` service (Hono) needs these environment variables — see
 
 - `BETTER_AUTH_SECRET` — 32+ character random secret
 - `BETTER_AUTH_URL` / `BETTER_AUTH_APP_ORIGIN` — your deployed origin(s)
+- `APP_MIN_VERSION` — optional, defaults to `0.0.0` (always satisfied, i.e.
+  a no-op). Backs `GET /api/version`, which the native app's force-update
+  gate (`apps/native/src/hooks/useForceUpdate.ts`) checks on every launch.
+  Bump this in the same deploy that ships a backend change old app
+  binaries can no longer talk to; the app then triggers a *blocking*
+  platform update flow (Play Core immediate update on Android, a
+  non-cancellable App Store alert on iOS) rather than a custom modal —
+  both platforms have their own accepted mechanism for this.
 - `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_KEY` — optional, enables POH
   PDF auto-fill (`/api/poh-extract`); the app works without it
 - `OPENSKY_CLIENT_ID` / `OPENSKY_CLIENT_SECRET` — optional, enables live
