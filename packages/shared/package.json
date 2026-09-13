@@ -21,6 +21,7 @@
     "./sunCalc":   "./src/sunCalc.ts",
     "./fetchWind": "./src/fetchWind.ts",
     "./windRelative": "./src/windRelative.ts",
+    "./runwayWind": "./src/runwayWind.ts",
     "./virtualRadarCalc": "./src/virtualRadarCalc.ts",
     "./aircraftSilhouette": "./src/aircraftSilhouette.ts",
     "./simFlightEngine": "./src/simFlightEngine.ts",

@@ -240,11 +240,48 @@
   padding: 2px 0;
 }
 
+.rwyDesigGroup {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .rwyDesig {
   font-weight: 700;
-  color: var(--text-primary);
   color: var(--text-faint);
   font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+
+/* Coloured border reflects that end's crosswind severity (calm/moderate/strong) —
+   same tiers/colours as GoFlyingPanel's in-flight crosswind gauge, see runwayWind.ts. */
+.rwyDesigCalm     { border-color: var(--status-ok, #86efac); color: var(--text-primary); }
+.rwyDesigModerate { border-color: var(--status-warn, #fbbf24); color: var(--text-primary); }
+.rwyDesigStrong   { border-color: var(--status-danger, #f87171); color: var(--text-primary); }
+
+/* Favoured end (best headwind of the pair): solid fill, not just an outline,
+   so "which runway to use" reads at a glance without hovering for the tooltip. */
+.rwyDesigFavored {
+  background: var(--accent-green);
+  color: #08210f;
+  border-color: var(--accent-green);
+}
+
+.rwySlash {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.rwyWindRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
 }
 
 .rwyBlock {

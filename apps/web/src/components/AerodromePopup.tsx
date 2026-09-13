@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import css from './AerodromePopup.module.css'
-import { fetchWx, decodeMetar, type WxResult } from '../utils/fetchWx'
+import { fetchWx, decodeMetar, parseMetarWind, type WxResult } from '../utils/fetchWx'
+import { computeRunwayWind, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import { fetchNotams, fmtNotamDate, type NotamItem } from '../utils/fetchNotam'
 import { sunriseSunset, fmtSunTime } from '../utils/sunCalc'
 import { API_BASE_URL } from '../utils/env'
@@ -82,6 +83,15 @@ interface Props {
   authed: boolean
   onSetHome: (icao: string, name: string, lng: number, lat: number) => void
   onClose: () => void
+  /**
+   * Reports the current wind-derived per-end favored/severity state so the
+   * map's 'runway-threshold-label' layer can highlight the same favored
+   * runway end shown here (see MapView's runwayWindHighlight state) — not
+   * just inside this popup. Called with an empty array to clear whenever
+   * there's no usable wind (no METAR yet, CALM, VRB) so the map never shows
+   * a stale highlight from a previous METAR fetch.
+   */
+  onRunwayWind?: (icao: string, ends: RunwayWindEnd[]) => void
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -200,7 +210,7 @@ function uniqueContacts(contacts: Contact[]): Contact[] {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onSetHome, onClose }: Props) {
+export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onSetHome, onClose, onRunwayWind }: Props) {
   const fuelList = p.fuel ?? []
   const hasFuel = fuelList.length > 0
   const contacts = uniqueContacts(p.contacts ?? [])
@@ -267,6 +277,24 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
   }, [p.icao, authed])
 
   const metar = wx?.metar ? decodeMetar(wx.metar) : null
+  const surfaceWind = metar ? parseMetarWind(metar.wind) : null
+
+  // Flattened across all runways at this aerodrome, computed once here (not
+  // inside the JSX .map() below) so it can also be reported to the map via
+  // onRunwayWind without recomputing computeRunwayWind() a second time.
+  const allRunwayWindEnds = runways.flatMap((rwy) => computeRunwayWind(rwy.thresholds, surfaceWind))
+
+  // Push the favored/severity state up to MapView so 'runway-threshold-label'
+  // can highlight the same favored end on the map itself, not just here.
+  // Cleanup clears the highlight on unmount (popup closed / different
+  // aerodrome selected) so it never lingers after this popup goes away.
+  useEffect(() => {
+    if (!onRunwayWind) return
+    const withWind = allRunwayWindEnds.filter((e) => e.headwindKt != null)
+    onRunwayWind(p.icao, withWind)
+    return () => onRunwayWind(p.icao, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.icao, JSON.stringify(allRunwayWindEnds)])
 
   function toggleNotam(id: string) {
     setExpandedNotams((prev) => {
@@ -417,10 +445,28 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
                   const lighting = rwy.lighting ?? []
                   const vasi = rwy.visual_approach_aids ?? []
                   const declared = fmtDeclaredDistances(rwy.declared_distances)
+                  const windEnds = computeRunwayWind(rwy.thresholds, surfaceWind)
+                  const hasWind = windEnds.some((e) => e.headwindKt != null)
                   return (
                     <div key={rwy.designator} className={css.rwyBlock}>
                       <div className={css.rwyRow}>
-                        <span className={css.rwyDesig}>{rwy.designator}</span>
+                        <span className={css.rwyDesigGroup}>
+                          {windEnds.map((e, i) => (
+                            <span key={e.designator} style={{ display: 'flex', alignItems: 'center' }}>
+                              {i > 0 && <span className={css.rwySlash}>/</span>}
+                              <span
+                                className={`${css.rwyDesig} ${e.crosswindSeverity ? css[`rwyDesig${e.crosswindSeverity === 'strong' ? 'Strong' : e.crosswindSeverity === 'moderate' ? 'Moderate' : 'Calm'}`] : ''} ${e.favored ? css.rwyDesigFavored : ''}`}
+                                title={
+                                  e.headwindKt != null
+                                    ? `${e.headwindKt >= 0 ? `${e.headwindKt}kt headwind` : `${-e.headwindKt}kt tailwind`} · ${e.crosswindKt}kt crosswind`
+                                    : undefined
+                                }
+                              >
+                                {e.designator}
+                              </span>
+                            </span>
+                          ))}
+                        </span>
                         <span className={css.rwyDetail}>
                           {dims}
                           {dims && surfaceLabel(rwy.surface) ? ' · ' : ''}
@@ -428,6 +474,15 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
                           {magBrgs ? ` · ${magBrgs}` : ''}
                         </span>
                       </div>
+                      {hasWind && (
+                        <div className={css.rwyWindRow}>
+                          {windEnds.map((e) => e.headwindKt != null && (
+                            <span key={e.designator}>
+                              {e.designator}: {e.headwindKt >= 0 ? `${e.headwindKt}kt HW` : `${-e.headwindKt}kt TW`} · {e.crosswindKt}kt XW
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       {(lighting.length > 0 || vasi.length > 0) && (
                         <div className={css.rwyBadges}>
                           {vasi.map((v) => (

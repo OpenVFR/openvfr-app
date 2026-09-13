@@ -24,6 +24,7 @@ import type { LayerState }   from '../components/MapDisplaySheet'
 import { FrequencyPanel }    from '../components/FrequencyPanel'
 import { AerodromePopup }    from '../components/AerodromePopup'
 import type { AerodromeFeatureProps } from '../components/AerodromePopup'
+import type { RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import { AirspacePopup }     from '../components/AirspacePopup'
 import type { AirspaceFeatureProps } from '../components/AirspacePopup'
 import { FeaturePopup }      from '../components/FeaturePopup'
@@ -397,6 +398,17 @@ export function MapScreen() {
   }), [regionalNotams])
 
   const [aerodromeFeature, setAerodromeFeature] = useState<AerodromeFeatureProps | null>(null)
+
+  // Wind-derived favored/severity state for whichever aerodrome's popup is
+  // currently open, reported up by AerodromePopup (onRunwayWind) so
+  // AviationMap's own 'runway-threshold-label' layer can highlight the same
+  // favored runway end, not just inside the modal panel. Mirrors web's
+  // MapView.runwayWindHighlight.
+  const [runwayWindHighlight, setRunwayWindHighlight] =
+    useState<{ icao: string; ends: RunwayWindEnd[] } | null>(null)
+  const handleRunwayWind = useCallback((icao: string, ends: RunwayWindEnd[]) => {
+    setRunwayWindHighlight(ends.length > 0 ? { icao, ends } : null)
+  }, [])
   const [airspaceFeatures,  setAirspaceFeatures]  = useState<AirspaceFeatureProps[]>([])
   const [featureInfo,       setFeatureInfo]        = useState<FeatureInfo | null>(null)
 
@@ -732,6 +744,7 @@ export function MapScreen() {
           showWaypoints={layers.waypoints}
           showObstacles={layers.obstacles}
           showRunways={layers.runways}
+          runwayWindHighlight={runwayWindHighlight}
           showLandmarks={layers.landmarks}
           showLanduse={layers.landuse}
           showHillshade={layers.hillshade}
@@ -1052,7 +1065,7 @@ export function MapScreen() {
         varioBatteryLow={varioBatteryLow}
       />
 
-      <AerodromePopup feature={aerodromeFeature} onClose={() => setAerodromeFeature(null)} />
+      <AerodromePopup feature={aerodromeFeature} onClose={() => setAerodromeFeature(null)} onRunwayWind={handleRunwayWind} />
       <AirspacePopup  features={airspaceFeatures}  onClose={() => setAirspaceFeatures([])}  />
       <FeaturePopup
         feature={featureInfo}

@@ -8,8 +8,9 @@ import {
   Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator,
 } from 'react-native'
 import { theme } from '../styles/theme'
-import { fetchWx, decodeMetar } from '@open-vfr/shared/fetchWx'
+import { fetchWx, decodeMetar, parseMetarWind } from '@open-vfr/shared/fetchWx'
 import { fetchNotams, fmtNotamDate } from '@open-vfr/shared/fetchNotam'
+import { computeRunwayWind, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import type { WxResult, MetarDecoded } from '@open-vfr/shared/fetchWx'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { API_BASE } from '../config'
@@ -27,11 +28,20 @@ const SERVICE_LABEL: Record<string, string> = {
   ACS: 'ACC', RDO: 'RADIO', INFO: 'INFO', MET: 'MET',
 }
 
+interface Threshold {
+  designator: string
+  lat: number
+  lon: number
+  true_brg: number | null
+  mag_brg: number | null
+}
+
 interface Runway {
   designator: string
   length_m?: number
   surface?: string
   mag_brg?: number
+  thresholds?: Threshold[]
   lighting?: string[]
   visual_approach_aids?: string[]
   declared_distances?: { tora?: number; toda?: number; asda?: number; lda?: number } | null
@@ -85,6 +95,14 @@ function fmtHoursEntry(h: HoursEntry): string {
   return `${day}  ${time}`
 }
 
+/** Same severity-tier colours as GaugesBar's in-flight crosswind gauge (theme.statusOk/Warn/Danger). */
+function xwindColor(sev: RunwayWindEnd['crosswindSeverity']): string {
+  if (sev === 'strong') return theme.statusDanger
+  if (sev === 'moderate') return theme.statusWarn
+  if (sev === 'calm') return theme.statusOk
+  return theme.textFaint
+}
+
 function fmtDeclaredDistances(dd: Runway['declared_distances']): string {
   if (!dd) return ''
   const parts: string[] = []
@@ -113,9 +131,19 @@ export interface AerodromeFeatureProps {
 interface Props {
   feature: AerodromeFeatureProps | null
   onClose: () => void
+  /**
+   * Reports the current wind-derived per-end favored/severity state so
+   * AviationMap's 'runway-threshold-label' layer can highlight the same
+   * favored runway end shown here (see MapScreen's runwayWindHighlight
+   * state) — not just inside this modal. Called with an empty array to
+   * clear whenever there's no usable wind, and on every icao change (this
+   * modal is reused across selections, not remounted, so the clear can't
+   * rely on unmount alone — see the effect below).
+   */
+  onRunwayWind?: (icao: string, ends: RunwayWindEnd[]) => void
 }
 
-export function AerodromePopup({ feature, onClose }: Props) {
+export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
   // Hooks must be declared before any conditional return (Rules of Hooks)
   const [wx,          setWx]          = useState<WxResult | null>(null)
   const [wxLoading,   setWxLoading]   = useState(true)
@@ -143,6 +171,26 @@ export function AerodromePopup({ feature, onClose }: Props) {
     return () => ac.abort()
   }, [feature?.icao])
 
+  // Flattened across all runways, computed with null-safe guards so this can
+  // run as a hook before the early return below (Rules of Hooks). Reports
+  // up to MapScreen -> AviationMap; cleanup clears the PREVIOUS icao's
+  // highlight before every re-run (icao change, wind change, or unmount) --
+  // this modal persists across selections rather than remounting, so a
+  // plain unmount-only cleanup (like web's key-forced-remount AerodromePopup)
+  // would leave a stale highlight from the last-viewed aerodrome.
+  const wxMetarForWind = wx?.metar ? decodeMetar(wx.metar) : null
+  const surfaceWindForWind = wxMetarForWind ? parseMetarWind(wxMetarForWind.wind) : null
+  const allRunwayWindEnds = (feature?.runways ?? [])
+    .flatMap((rwy) => computeRunwayWind(rwy.thresholds ?? [], surfaceWindForWind))
+
+  useEffect(() => {
+    if (!onRunwayWind || !feature) return
+    const withWind = allRunwayWindEnds.filter((e) => e.headwindKt != null)
+    onRunwayWind(feature.icao, withWind)
+    return () => onRunwayWind(feature.icao, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feature?.icao, JSON.stringify(allRunwayWindEnds)])
+
   if (!feature) return null
 
   const freqs   = feature.frequencies ?? []
@@ -153,6 +201,7 @@ export function AerodromePopup({ feature, onClose }: Props) {
   const passenger = feature.passenger_facilities ?? []
 
   const metar = wx?.metar ? decodeMetar(wx.metar) : null
+  const surfaceWind = metar ? parseMetarWind(metar.wind) : null
   const frColor = metar?.flightRule
     ? { VFR: '#22c55e', MVFR: '#3b82f6', IFR: '#ef4444', LIFR: '#a855f7' }[metar.flightRule]
     : undefined
@@ -266,27 +315,63 @@ export function AerodromePopup({ feature, onClose }: Props) {
           {/* Runways */}
           {runways.length > 0 && (
             <Section title="Runways">
-              {runways.map((r, i) => (
-                <View key={i} style={{ marginBottom: theme.space1 }}>
-                  <Row
-                    label={r.designator}
-                    value={[
-                      r.length_m ? `${r.length_m} m` : null,
-                      r.surface ?? null,
-                      r.mag_brg != null ? `${Math.round(r.mag_brg)}°` : null,
-                    ].filter(Boolean).join(' · ')}
-                  />
-                  {((r.visual_approach_aids?.length ?? 0) > 0 || (r.lighting?.length ?? 0) > 0) && (
-                    <Text style={styles.muted}>
-                      {[...(r.visual_approach_aids ?? []).map(v => VASI_LABEL[v] ?? v),
-                        ...(r.lighting ?? []).map(l => LIGHTING_LABEL[l] ?? l)].join(', ')}
-                    </Text>
-                  )}
-                  {fmtDeclaredDistances(r.declared_distances) && (
-                    <Text style={styles.muted}>{fmtDeclaredDistances(r.declared_distances)}</Text>
-                  )}
-                </View>
-              ))}
+              {runways.map((r, i) => {
+                const windEnds = r.thresholds ? computeRunwayWind(r.thresholds, surfaceWind) : []
+                const hasWind = windEnds.some((e) => e.headwindKt != null)
+                return (
+                  <View key={i} style={{ marginBottom: theme.space1 }}>
+                    {windEnds.length > 0 ? (
+                      <View style={runwayStyles.desigRow}>
+                        {windEnds.map((e, j) => (
+                          <React.Fragment key={e.designator}>
+                            {j > 0 && <Text style={runwayStyles.slash}>/</Text>}
+                            <View style={[
+                              runwayStyles.desigPill,
+                              { borderColor: xwindColor(e.crosswindSeverity) },
+                              e.favored ? { backgroundColor: theme.accentGreen, borderColor: theme.accentGreen } : null,
+                            ]}>
+                              <Text style={[runwayStyles.desigTxt, e.favored ? { color: '#08210f' } : null]}>{e.designator}</Text>
+                            </View>
+                          </React.Fragment>
+                        ))}
+                        <Text style={runwayStyles.detail}>
+                          {[
+                            r.length_m ? `${r.length_m} m` : null,
+                            r.surface ?? null,
+                          ].filter(Boolean).join(' · ')}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Row
+                        label={r.designator}
+                        value={[
+                          r.length_m ? `${r.length_m} m` : null,
+                          r.surface ?? null,
+                          r.mag_brg != null ? `${Math.round(r.mag_brg)}°` : null,
+                        ].filter(Boolean).join(' · ')}
+                      />
+                    )}
+                    {hasWind && (
+                      <View style={runwayStyles.windRow}>
+                        {windEnds.map((e) => e.headwindKt != null && (
+                          <Text key={e.designator} style={[runwayStyles.windTxt, { color: xwindColor(e.crosswindSeverity) }]}>
+                            {e.designator}: {e.headwindKt >= 0 ? `${e.headwindKt}kt HW` : `${-e.headwindKt}kt TW`} · {e.crosswindKt}kt XW
+                          </Text>
+                        ))}
+                      </View>
+                    )}
+                    {((r.visual_approach_aids?.length ?? 0) > 0 || (r.lighting?.length ?? 0) > 0) && (
+                      <Text style={styles.muted}>
+                        {[...(r.visual_approach_aids ?? []).map(v => VASI_LABEL[v] ?? v),
+                          ...(r.lighting ?? []).map(l => LIGHTING_LABEL[l] ?? l)].join(', ')}
+                      </Text>
+                    )}
+                    {fmtDeclaredDistances(r.declared_distances) && (
+                      <Text style={styles.muted}>{fmtDeclaredDistances(r.declared_distances)}</Text>
+                    )}
+                  </View>
+                )
+              })}
             </Section>
           )}
 
@@ -471,6 +556,44 @@ const sectionStyles = StyleSheet.create({
     fontWeight:    '600',
     letterSpacing: 0.8,
     marginBottom:  theme.space1,
+  },
+})
+
+const runwayStyles = StyleSheet.create({
+  desigRow: {
+    flexDirection: 'row',
+    alignItems:    'center',
+    gap:           4,
+    flexWrap:      'wrap',
+  },
+  desigPill: {
+    borderWidth:   1,
+    borderRadius:  4,
+    paddingHorizontal: 5,
+    paddingVertical:   1,
+  },
+  desigTxt: {
+    color:      theme.textPrimary,
+    fontSize:   theme.textXs,
+    fontWeight: '700',
+  },
+  slash: {
+    color:    theme.textFaint,
+    fontSize: theme.textXs,
+  },
+  detail: {
+    color:    theme.textMuted,
+    fontSize: theme.textSm,
+    marginLeft: theme.space2,
+  },
+  windRow: {
+    flexDirection: 'row',
+    flexWrap:      'wrap',
+    gap:           10,
+    marginTop:     2,
+  },
+  windTxt: {
+    fontSize: 9,
   },
 })
 

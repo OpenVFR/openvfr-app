@@ -16,6 +16,7 @@ import FindFeature, { type FindResult } from './FindFeature'
 import AccountBadge from './AccountBadge'
 import type { AuthState } from '../hooks/useAuth'
 import AerodromePopup, { type AerodromeFeatureProps } from './AerodromePopup'
+import type { RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import AirspacePopup, { type AirspaceFeature } from './AirspacePopup'
 import FeaturePopup, { type PointFeature } from './FeaturePopup'
 import WhatsHerePopup, { type WhatsHereItem } from './WhatsHerePopup'
@@ -92,6 +93,8 @@ interface Props {
   onCloseInfo: () => void
   isHome: (icao: string) => boolean
   onSetHome: (icao: string, name: string, lng: number, lat: number) => void
+  /** Forwarded to AerodromePopup so the map's runway threshold labels can mirror its favored-end highlight. */
+  onRunwayWind?: (icao: string, ends: RunwayWindEnd[]) => void
   // Map ruler
   rulerActive: boolean
   rulerPoints: RouteWaypoint[]
@@ -182,7 +185,7 @@ export default function SideDrawer({
   selectedAircraftId, selectedAircraftProfile, onSelectAircraft,
   onFlyTo,
   activeInfo, onCloseInfo,
-  isHome, onSetHome,
+  isHome, onSetHome, onRunwayWind,
   rulerActive, rulerPoints, onClearRuler,
   selectedLogId, onSelectLog, onClearLog,
   userWaypoints, regionalNotams, pendingUserWpCoords, folderVisibility,
@@ -302,6 +305,7 @@ export default function SideDrawer({
                 <div className={css.sectionBody}>
                   {activeInfo.kind === 'aerodrome' && (
                     <AerodromePopup
+                      key={activeInfo.props.icao}
                       props={activeInfo.props}
                       lng={activeInfo.lng}
                       lat={activeInfo.lat}
@@ -309,6 +313,7 @@ export default function SideDrawer({
                       authed={!!auth.user}
                       onSetHome={onSetHome}
                       onClose={onCloseInfo}
+                      onRunwayWind={onRunwayWind}
                     />
                   )}
                   {activeInfo.kind === 'airspace' && (

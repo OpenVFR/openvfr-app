@@ -34,9 +34,24 @@ import type { WindAloft } from './fetchWind'
 
 export type CrosswindSeverity = 'calm' | 'moderate' | 'strong'
 
-/** Crosswind magnitude thresholds, knots — rough light-aircraft demonstrated-crosswind-limit bands. */
-const CROSSWIND_MODERATE_KTS = 8
-const CROSSWIND_STRONG_KTS   = 15
+/**
+ * Crosswind magnitude thresholds, knots — rough light-aircraft
+ * demonstrated-crosswind-limit bands. Exported (not just used internally)
+ * so other crosswind-relative UI — e.g. AerodromePopup's per-runway wind
+ * highlight — classifies severity identically instead of hardcoding a
+ * second copy of these numbers (see AGENTS.md's shared-colour-palette rule;
+ * same principle applies to the thresholds that pick the colour, not just
+ * the colour itself).
+ */
+export const CROSSWIND_MODERATE_KTS = 8
+export const CROSSWIND_STRONG_KTS   = 15
+
+/** Classifies a crosswind magnitude (knots, always ≥ 0) into a severity tier. */
+export function classifyCrosswindSeverity(xwAbsKts: number): CrosswindSeverity {
+  if (xwAbsKts >= CROSSWIND_STRONG_KTS)   return 'strong'
+  if (xwAbsKts >= CROSSWIND_MODERATE_KTS) return 'moderate'
+  return 'calm'
+}
 
 export interface WindRelative {
   /** Headwind component, knots. Positive = headwind, negative = tailwind. */
@@ -74,10 +89,7 @@ export function computeWindRelative(
   const xw = wind.speedKts * Math.sin(angleRad)
   const xwAbs = Math.abs(xw)
 
-  const crosswindSeverity: CrosswindSeverity =
-    xwAbs >= CROSSWIND_STRONG_KTS   ? 'strong' :
-    xwAbs >= CROSSWIND_MODERATE_KTS ? 'moderate' :
-    'calm'
+  const crosswindSeverity = classifyCrosswindSeverity(xwAbs)
 
   // "Blowing toward" bearing (reciprocal of the "from" direction), relative
   // to the aircraft's nose (track). 0° = dead ahead = pure tailwind.

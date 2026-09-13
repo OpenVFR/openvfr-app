@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as maplibregl from 'maplibre-gl'
-import type { GeoJSONSource } from 'maplibre-gl'
+import type { GeoJSONSource, ExpressionSpecification } from 'maplibre-gl'
 // MapLibre v6 is ESM-only and locates its worker via a computed
 // `new URL('./maplibre-gl-worker.mjs', import.meta.url)` inside its own
 // source — Rollup/Vite can't statically analyze that, so the worker chunk
@@ -27,6 +27,7 @@ import {
   AVIATION_LABEL_LAYERS,
   AIRSPACE_BORDER_WIDTHS,
 } from '../styles/map-style'
+import { buildRunwayWindHighlight, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import { type AerodromeFeatureProps } from './AerodromePopup'
 import { registerObstacleImages } from '../utils/obstacleIcons'
 import { registerLandmarkImages } from '../utils/landmarkIcons'
@@ -315,6 +316,31 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const [visibility, setVisibilityGroup] = useLayerVisibility()
   const [ceilingFt, setCeilingFt] = useAirspaceCeiling()
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
+
+  // Wind-derived favored/severity state for whichever aerodrome's popup is
+  // currently open, reported up by AerodromePopup (see onRunwayWind prop) so
+  // the map's own 'runway-threshold-label' layer can highlight the same
+  // favored runway end, not just inside the popup panel.
+  const [runwayWindHighlight, setRunwayWindHighlight] =
+    useState<{ icao: string; ends: RunwayWindEnd[] } | null>(null)
+
+  const handleRunwayWind = useCallback((icao: string, ends: RunwayWindEnd[]) => {
+    setRunwayWindHighlight(ends.length > 0 ? { icao, ends } : null)
+  }, [])
+
+  // Apply/clear the highlight expressions on the map whenever it changes.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !map.getLayer('runway-threshold-label')) return
+    const expr = buildRunwayWindHighlight(
+      runwayWindHighlight?.icao ?? '',
+      runwayWindHighlight?.ends ?? [],
+    )
+    map.setPaintProperty('runway-threshold-label', 'text-color', expr.color as ExpressionSpecification | string)
+    map.setPaintProperty('runway-threshold-label', 'text-halo-color', expr.haloColor as ExpressionSpecification | string)
+    map.setLayoutProperty('runway-threshold-label', 'text-size', expr.size as ExpressionSpecification)
+    map.setPaintProperty('runway-threshold-label', 'text-opacity', expr.opacity as ExpressionSpecification)
+  }, [runwayWindHighlight])
   const [region, setRegion] = useState(DEFAULT_REGION)
   const [basemapMode, setBasemapMode] = useState<'vector' | 'satellite'>('vector')
   const [planningMode, setPlanningMode] = useState(false)
@@ -3159,6 +3185,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           if (aircraftId) setSelectedAircraftId(aircraftId)
           setPlanningMode(true)
         }}
+        onRunwayWind={handleRunwayWind}
         onSetLegOverride={(idx, ovr) =>
           setLegOverrides((prev) => {
             const next = [...prev]

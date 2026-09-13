@@ -26,6 +26,10 @@ import type { PressEvent, PressEventWithFeatures } from '@maplibre/maplibre-reac
 import type { Feature, FeatureCollection } from 'geojson'
 import type { ViewStateChangeEvent } from '@maplibre/maplibre-react-native'
 import { WAYPOINT_COLORS, RUNWAY_COLORS } from '@open-vfr/shared/featureColors'
+import {
+  buildRunwayWindHighlight,
+  type RunwayWindHighlightEnd,
+} from '@open-vfr/shared/runwayWind'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
 import { formatObstacleName, formatLandmarkName, CURRENT_POSITION_LABEL } from '@open-vfr/shared/snapLabels'
 
@@ -81,6 +85,11 @@ export type AviationMapProps = {
   showWaypoints?:  boolean
   showObstacles?:  boolean
   showRunways?:    boolean
+  /** Wind-favored runway end for whichever aerodrome's popup is currently
+   * open (reported by AerodromePopup's onRunwayWind → MapScreen state) --
+   * mirrors web's MapView.runwayWindHighlight. Null/undefined = no highlight,
+   * i.e. plain default runway-threshold-label styling everywhere. */
+  runwayWindHighlight?: { icao: string; ends: RunwayWindHighlightEnd[] } | null
   showLandmarks?:  boolean
   showLanduse?:    boolean
   showHillshade?:  boolean
@@ -553,6 +562,7 @@ export function AviationMap({
   showWaypoints  = true,
   showObstacles  = true,
   showRunways    = true,
+  runwayWindHighlight = null,
   showLandmarks  = false,
   showLanduse    = true,
   showHillshade  = false,
@@ -594,6 +604,11 @@ export function AviationMap({
   const notamPointsSourceRef = useRef<GeoJSONSourceRef>(null)
   // Resolved once per mount (cheap sync fs `.exists` checks) — uses cached local
   // files when the pilot has downloaded offline data via Settings, else remote.
+  const runwayWindExpr = useMemo(
+    () => buildRunwayWindHighlight(runwayWindHighlight?.icao ?? '', runwayWindHighlight?.ends ?? []),
+    [runwayWindHighlight],
+  )
+
   const tileUrls = useMemo(() => getResolvedTileUrls(), [])
   // Computed once per mount, same as tileUrls above -- avoids a fresh string
   // (and thus a changed prop) on every render, which risked tripping the
@@ -1661,16 +1676,21 @@ export function AviationMap({
               visibility: showRunways ? 'visible' : 'none',
               'text-field': ['get', 'id'],
               'text-font': ['Noto Sans Medium'],
-              'text-size': ['interpolate', ['linear'], ['zoom'], 12, 9, 16, 14],
+              // Bumped for the wind-favored end (bigger draws the eye) --
+              // same expression/logic web's map-style.ts applies via
+              // setPaintProperty, shared via buildRunwayWindHighlight so
+              // "favored" means exactly the same thing on both platforms.
+              'text-size': runwayWindExpr.size as any,
               'text-rotate': ['coalesce', ['get', 'mag_brg'], 0],
               'text-rotation-alignment': 'map',
               'text-allow-overlap': true,
               'text-ignore-placement': true,
             }}
             paint={{
-              'text-color': '#ffffff',
-              'text-halo-color': '#333840',
+              'text-color': runwayWindExpr.color as any,
+              'text-halo-color': runwayWindExpr.haloColor as any,
               'text-halo-width': 1.5,
+              'text-opacity': runwayWindExpr.opacity as any,
             }}
           />
         </GeoJSONSource>
