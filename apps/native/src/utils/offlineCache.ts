@@ -96,15 +96,24 @@ export function localUriFor(asset: OfflineAsset): string {
   return new File(getCacheDir(), asset.fileName).uri
 }
 
-/** True if this asset has already been downloaded and is on disk. */
+/** True if this asset has already been downloaded, is on disk, and is non-empty.
+ *  A 0-byte/partial file (interrupted download, backgrounded app, network
+ *  drop mid-transfer) must NOT count as cached -- MapLibre Native throws a
+ *  "pmtiles magic number exception" trying to parse an empty/truncated
+ *  pmtiles file, and a corrupt GeoJSON fails to parse. `.exists` alone can't
+ *  tell a good file from a wrecked one. */
 export function isCached(asset: OfflineAsset): boolean {
-  return new File(getCacheDir(), asset.fileName).exists
+  const f = new File(getCacheDir(), asset.fileName)
+  return f.exists && (f.size ?? 0) > 0
 }
 
-/** Returns the cached local URI if present, else the (versioned) remote URL — safe default for any consumer. */
+/** Returns the cached local URI if present and non-empty, else the (versioned)
+ *  remote URL — safe default for any consumer. A stale 0-byte/partial local
+ *  file must fall through to the remote URL, not be handed to the map
+ *  renderer as-is (see isCached doc comment). */
 export function resolveUri(asset: OfflineAsset): string {
   const f = new File(getCacheDir(), asset.fileName)
-  return f.exists ? f.uri : remoteUrlFor(asset.fileName)
+  return f.exists && (f.size ?? 0) > 0 ? f.uri : remoteUrlFor(asset.fileName)
 }
 
 /** Same lookup, keyed by TILE_URLS-style name, for call sites that don't want to import OFFLINE_ASSETS directly. */
@@ -124,11 +133,12 @@ export interface CacheStatus {
 export function getCacheStatus(): CacheStatus[] {
   return OFFLINE_ASSETS.map(a => {
     const f = new File(getCacheDir(), a.fileName)
+    const cached = f.exists && (f.size ?? 0) > 0
     return {
       key:    a.key,
       label:  a.label,
-      cached: f.exists,
-      sizeMb: f.exists && f.size != null ? Math.round((f.size / (1024 * 1024)) * 10) / 10 : null,
+      cached,
+      sizeMb: cached && f.size != null ? Math.round((f.size / (1024 * 1024)) * 10) / 10 : null,
     }
   })
 }
@@ -173,7 +183,21 @@ export async function downloadAssets(
         })
       },
     })
-    await task.downloadAsync()
+    try {
+      await task.downloadAsync()
+      // Interrupted/failed downloads (network drop, app backgrounded, disk
+      // full) can still leave a 0-byte or truncated file on disk even though
+      // downloadAsync() didn't throw. Never leave that behind as a fake
+      // "cached" asset -- delete it so isCached()/resolveUri() correctly
+      // fall back to the remote URL (or the next retry starts clean).
+      if (!dest.exists || (dest.size ?? 0) === 0) {
+        if (dest.exists) dest.delete()
+        throw new Error(`offlineCache: download of "${asset.fileName}" produced an empty/missing file`)
+      }
+    } catch (err) {
+      if (dest.exists) dest.delete()
+      throw err
+    }
   }
 }
 
