@@ -2447,8 +2447,17 @@ export default function MapView({ auth }: { auth: AuthState }) {
       clearTimeout(dragEndTimer)
       dragEndTimer = window.setTimeout(() => { suppressNextClickRef.current = false }, 0)
     }
+    // Catches every user-originated map movement — trackpad two-finger pan and
+    // scroll-wheel pan/zoom fire as 'movestart' (with originalEvent set) rather
+    // than 'dragstart', so relying on dragstart/pitchstart/rotatestart alone let
+    // those gestures leave followAircraft=true and the next GPS tick's easeTo
+    // snapped the map straight back mid-pan.
+    const onMoveStart = (e: { originalEvent?: unknown }) => {
+      if (e.originalEvent) disableFollow()
+    }
     map.on('dragstart', onDragStart)
     map.on('dragend',   onDragEnd)
+    map.on('movestart', onMoveStart)
     map.on('pitchstart', disableFollow)
     map.on('rotatestart', disableFollow)
 
@@ -2460,6 +2469,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       map.off('styleimagemissing', registerAllImages)
       map.off('dragstart', onDragStart)
       map.off('dragend',   onDragEnd)
+      map.off('movestart', onMoveStart)
       map.off('pitchstart', disableFollow)
       map.off('rotatestart', disableFollow)
       clearTimeout(dragEndTimer)
