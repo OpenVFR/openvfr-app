@@ -117,6 +117,25 @@ export function useAuth() {
     setState({ status: 'unauthenticated' })
   }, [])
 
+  // Request permanent account deletion, required by Apple App Review Guideline
+  // 5.1.1(v) and Google Play's account-deletion requirement (see apps/api/src
+  // /auth.ts deleteUser config). Sends a one-time confirmation link to the
+  // user's email -- nothing is deleted until that link is clicked, so this
+  // resolves without a passkey/re-auth step even though native has no
+  // passkey sign-in of its own.
+  const requestAccountDeletion = useCallback(async (): Promise<boolean> => {
+    setError(null)
+    console.log('[auth] requestAccountDeletion')
+    const { error: err } = await authClient.deleteUser()
+    if (err) {
+      console.warn('[auth] requestAccountDeletion error', err)
+      setError(err.message ?? 'Failed to request account deletion')
+      return false
+    }
+    console.log('[auth] account deletion email sent')
+    return true
+  }, [])
+
   const registerPasskey = useCallback(async (): Promise<boolean> => {
     setError(null)
     console.log('[auth] registerPasskey')
@@ -130,5 +149,5 @@ export function useAuth() {
     return true
   }, [])
 
-  return { state, error, sendOtp, verifyOtp, signInWithPasskey, registerPasskey, signOut }
+  return { state, error, sendOtp, verifyOtp, signInWithPasskey, registerPasskey, requestAccountDeletion, signOut }
 }

@@ -30,6 +30,11 @@ export default function ProfilePanel({ auth, onClose }: Props) {
   const [pkBusy,      setPkBusy]      = useState(false)
   const pkNameRef = useRef<HTMLInputElement>(null)
 
+  const [deleteConfirming, setDeleteConfirming] = useState(false)
+  const [deleteBusy,       setDeleteBusy]       = useState(false)
+  const [deleteError,      setDeleteError]      = useState<string | null>(null)
+  const [deleteSent,       setDeleteSent]       = useState(false)
+
   // Load passkeys on mount.
   useEffect(() => {
     void auth.listPasskeys()
@@ -82,6 +87,20 @@ export default function ProfilePanel({ auth, onClose }: Props) {
       setPkError(err instanceof Error ? err.message : 'Registration failed')
     } finally {
       setPkBusy(false)
+    }
+  }
+
+  const handleRequestDeletion = async () => {
+    setDeleteBusy(true)
+    setDeleteError(null)
+    try {
+      await auth.requestAccountDeletion()
+      setDeleteConfirming(false)
+      setDeleteSent(true)
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to request account deletion')
+    } finally {
+      setDeleteBusy(false)
     }
   }
 
@@ -224,6 +243,56 @@ export default function ProfilePanel({ auth, onClose }: Props) {
           >
             Sign out
           </button>
+        </div>
+
+        <div className={styles.sectionDivider} />
+
+        {/* Delete account */}
+        <div className={styles.section}>
+          {deleteSent ? (
+            <p className={styles.deleteSentMsg}>
+              Check your email ({auth.user?.email}) for a link to confirm deletion.
+              Your account and all associated data (routes, aircraft profiles,
+              waypoints, settings, flight logs) will be permanently deleted once
+              you click it. The link expires in 24 hours.
+            </p>
+          ) : deleteConfirming ? (
+            <div className={styles.deleteConfirm}>
+              <p className={styles.deleteConfirmText}>
+                This permanently deletes your account and all associated data
+                (routes, aircraft profiles, waypoints, settings, flight logs).
+                We'll email a confirmation link — nothing is deleted until you
+                click it.
+              </p>
+              {deleteError && <p className={styles.errorMsg}>{deleteError}</p>}
+              <div className={styles.deleteConfirmActions}>
+                <button
+                  className={styles.btnDeleteConfirm}
+                  onClick={() => void handleRequestDeletion()}
+                  disabled={deleteBusy}
+                  type="button"
+                >
+                  {deleteBusy ? 'Sending…' : 'Send deletion email'}
+                </button>
+                <button
+                  className={styles.btnCancel}
+                  onClick={() => { setDeleteConfirming(false); setDeleteError(null) }}
+                  disabled={deleteBusy}
+                  type="button"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              className={styles.deleteLink}
+              onClick={() => setDeleteConfirming(true)}
+              type="button"
+            >
+              Delete account and all data
+            </button>
+          )}
         </div>
       </div>
     </div>

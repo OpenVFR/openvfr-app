@@ -65,6 +65,13 @@ export interface AuthState {
   deletePasskey:   (id: string) => Promise<void>
   /** Update the current user's profile (e.g. name on first sign-in). */
   updateUser: (data: { name: string }) => Promise<void>
+  /**
+   * Request permanent account deletion. Sends a one-time confirmation link
+   * to the user's email (see auth.ts sendDeleteAccountVerification) —
+   * the account and all associated data are only deleted once that link
+   * is clicked, not immediately on this call.
+   */
+  requestAccountDeletion: () => Promise<void>
   signOut:    () => Promise<void>
 }
 
@@ -161,11 +168,18 @@ export function useAuth(): AuthState {
     if (result?.error) throw new Error(result.error.message ?? 'Failed to delete passkey')
   }, [])
 
+  const requestAccountDeletion = useCallback(async () => {
+    const result = await authClient.deleteUser({
+      callbackURL: `${window.location.origin}/`,
+    })
+    if (result?.error) throw new Error(result.error.message ?? 'Failed to request account deletion')
+  }, [])
+
   const signOut = useCallback(async () => {
     await authClient.signOut()
     setUser(null)
     setJwt(null)
   }, [])
 
-  return { user, jwt, loading, sendOtp, signInOtp, signInPasskey, registerPasskey, listPasskeys, deletePasskey, updateUser, signOut }
+  return { user, jwt, loading, sendOtp, signInOtp, signInPasskey, registerPasskey, listPasskeys, deletePasskey, updateUser, requestAccountDeletion, signOut }
 }

@@ -6,7 +6,7 @@ import React, { useState, useCallback, useEffect } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import {
   View, Text, Switch, ScrollView, TextInput, StyleSheet,
-  TouchableOpacity,
+  TouchableOpacity, Alert,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -35,7 +35,29 @@ import { clearProtomapsStyleCache } from '../components/AviationMap'
 export function SettingsScreen() {
   const insets               = useSafeAreaInsets()
   const { settings, update } = useSettingsContext()
-  const { state, signOut, registerPasskey } = useAuthContext()
+  const { state, signOut, registerPasskey, requestAccountDeletion } = useAuthContext()
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteSent, setDeleteSent] = useState(false)
+
+  const handleDeleteAccount = useCallback(() => {
+    Alert.alert(
+      'Delete account?',
+      "This permanently deletes your account and all associated data (routes, aircraft profiles, waypoints, settings, flight logs). We'll email a confirmation link \u2014 nothing is deleted until you click it.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send deletion email',
+          style: 'destructive',
+          onPress: () => {
+            setDeleteBusy(true)
+            requestAccountDeletion()
+              .then((ok: boolean) => { if (ok) setDeleteSent(true) })
+              .finally(() => setDeleteBusy(false))
+          },
+        },
+      ],
+    )
+  }, [requestAccountDeletion])
   const { simStatus, simPosition, startUdp, startWs, stopSim } = useSimContext()
   const internalBaro = useInternalBarometer(settings.useInternalBarometer)
   const vario = useVarioContext()
@@ -413,6 +435,23 @@ export function SettingsScreen() {
           <TouchableOpacity style={[styles.row, styles.pressable]} onPress={signOut}>
             <Text style={[styles.rowLabel, { color: theme.statusDanger }]}>Sign out</Text>
           </TouchableOpacity>
+          {deleteSent ? (
+            <View style={styles.row}>
+              <Text style={[styles.rowLabel, { color: theme.textMuted, flex: 1 }]}>
+                Check {state.user.email} for a link to confirm deletion. Expires in 24 hours.
+              </Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[styles.row, styles.pressable]}
+              onPress={handleDeleteAccount}
+              disabled={deleteBusy}
+            >
+              <Text style={[styles.rowLabel, { color: theme.statusDanger }]}>
+                {deleteBusy ? 'Sending\u2026' : 'Delete account and all data'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </Section>
       )}
     </ScrollView>

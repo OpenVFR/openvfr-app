@@ -97,7 +97,34 @@ export const auth = betterAuth({
   database: pool,
 
   // Map better-auth model names → our ba_-prefixed table names from init.sql.
-  user:         { modelName: 'ba_user' },
+  user: {
+    modelName: 'ba_user',
+    // Self-service account deletion, required by Apple App Review Guideline
+    // 5.1.1(v) and Google Play's Data Safety "account deletion" requirement:
+    // an app that lets users create an account must let them request
+    // deletion of the account and its data. Flow:
+    //   1. Signed-in user clicks "Delete account" in the app (ProfilePanel).
+    //   2. authClient.deleteUser() hits POST /delete-user below, which
+    //      emails a one-time confirmation link (sendDeleteAccountVerification)
+    //      instead of deleting immediately — prevents a stolen/left-open
+    //      session from nuking the account with one misclick.
+    //   3. Clicking the emailed link hits GET /delete-user/callback, which
+    //      deletes the ba_user row. Every owned table (sessions, accounts,
+    //      passkeys, routes, aircraft profiles, waypoints, settings, flight
+    //      logs — see db/migrations) has `ON DELETE CASCADE` on its
+    //      `user_id`/`userId` FK, so this one delete removes all associated
+    //      data in the same transaction. No app-level cascade code needed.
+    deleteUser: {
+      enabled: true,
+      sendDeleteAccountVerification: async ({ user, url }) => {
+        await sendEmail({
+          to: user.email,
+          subject: 'Confirm OpenVFR account deletion',
+          text: `We received a request to permanently delete your OpenVFR account (${user.email}) and all associated data (routes, aircraft profiles, waypoints, settings, flight logs).\n\nTo confirm, open this link within 24 hours:\n${url}\n\nIf you didn't request this, ignore this email — your account will not be affected.`,
+        })
+      },
+    },
+  },
   session:      { modelName: 'ba_session' },
   account:      { modelName: 'ba_account' },
   verification: { modelName: 'ba_verification' },

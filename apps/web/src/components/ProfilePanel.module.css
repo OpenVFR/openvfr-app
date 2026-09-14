@@ -250,6 +250,54 @@
   color: var(--text-faint);
 }
 
+/* Delete account */
+.deleteLink {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.deleteLink:hover { color: var(--accent-red, #fca5a5); }
+
+.deleteConfirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.deleteConfirmText {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.deleteConfirmActions {
+  display: flex;
+  gap: 6px;
+}
+
+.btnDeleteConfirm {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(252, 165, 165, 0.4);
+  background: rgba(252, 165, 165, 0.08);
+  color: var(--accent-red, #fca5a5);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.btnDeleteConfirm:hover:not(:disabled) { background: rgba(252, 165, 165, 0.16); }
+.btnDeleteConfirm:disabled { opacity: 0.5; cursor: default; }
+
+.deleteSentMsg {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
 /* Sign out */
 .btnSignOut {
   padding: 9px 16px;
