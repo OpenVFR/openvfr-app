@@ -78,7 +78,18 @@ export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: C
           )
         })}
 
-        {/* Runway bar, drawn as a diameter line at the active runway's heading */}
+        {/* Runway bar, drawn as a diameter line at the active runway's heading.
+            headingDeg is threshold[0]'s OWN bearing field, which per the
+            data's convention (see MapView.tsx's buildCentrelines comment
+            and @open-vfr/shared/runwayWind) points AWAY from threshold[0]
+            itself, along the strip, toward the OTHER end -- e.g. threshold
+            "12"'s own field is ~120-129° (the direction of travel USING
+            runway 12), not where the 12 end physically sits. So threshold
+            [0]'s own label goes at the RECIPROCAL of headingDeg (that's
+            its own geographic position), and designators[1] goes at
+            headingDeg itself. Placing them the other way round (as an
+            earlier version of this file did) draws "12" where "30"
+            actually is. */}
         {runway && (
           <>
             <line
@@ -89,16 +100,16 @@ export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: C
               className={css.rwyBar}
             />
             <text
-              x={pt(CX, CY, R_RWY + 6, runway.headingDeg).x}
-              y={pt(CX, CY, R_RWY + 6, runway.headingDeg).y}
+              x={pt(CX, CY, R_RWY + 6, runway.headingDeg + 180).x}
+              y={pt(CX, CY, R_RWY + 6, runway.headingDeg + 180).y}
               className={`${css.rwyLabel} ${favoredEndDesignator === runway.designators[0] ? css.rwyLabelFavored : ''}`}
               textAnchor="middle" dominantBaseline="middle"
             >
               {runway.designators[0]}
             </text>
             <text
-              x={pt(CX, CY, R_RWY + 6, runway.headingDeg + 180).x}
-              y={pt(CX, CY, R_RWY + 6, runway.headingDeg + 180).y}
+              x={pt(CX, CY, R_RWY + 6, runway.headingDeg).x}
+              y={pt(CX, CY, R_RWY + 6, runway.headingDeg).y}
               className={`${css.rwyLabel} ${favoredEndDesignator === runway.designators[1] ? css.rwyLabelFavored : ''}`}
               textAnchor="middle" dominantBaseline="middle"
             >

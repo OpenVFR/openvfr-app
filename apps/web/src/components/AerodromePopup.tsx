@@ -892,9 +892,12 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
                       <span className={css.wxTileLabel}>Visibility</span>
                       <span className={css.wxTileValue}>{fmtVis(metar.visM)}</span>
                     </div>
-                    <div className={`${css.wxTile} ${css[`wxTile${ceilingTone(metar.ceilingFt)}`]}`}>
+                    <div
+                      className={`${css.wxTile} ${css[`wxTile${ceilingTone(metar.ceilingFt)}`]}`}
+                      title={metar.ceilingFt == null && metar.clouds && metar.clouds !== 'CAVOK' ? 'No BKN/OVC layer reported — FEW/SCT clouds don’t count as a ceiling' : undefined}
+                    >
                       <span className={css.wxTileLabel}>Ceiling</span>
-                      <span className={css.wxTileValue}>{metar.ceilingFt != null ? `${metar.ceilingFt.toLocaleString()} ft` : metar.clouds === 'CAVOK' ? 'CAVOK' : 'None'}</span>
+                      <span className={css.wxTileValue}>{metar.ceilingFt != null ? `${metar.ceilingFt.toLocaleString()} ft` : metar.clouds === 'CAVOK' ? 'CAVOK' : 'No ceiling'}</span>
                     </div>
                     <div className={`${css.wxTile} ${css.wxTileinfo}`}>
                       <span className={css.wxTileLabel}>QNH</span>
