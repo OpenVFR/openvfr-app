@@ -84,6 +84,28 @@ describe('fetchWxResolved', () => {
     expect(calls.some((u) => u.includes('open-meteo'))).toBe(false)
   })
 
+  it('keeps the station\'s own wind (no model fallback) when the fallback candidate is within WIND_LOCAL_MAX_NM', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('ESTAGA')) return mockResponse(400, { error: 'Invalid ICAO identifier' })
+      return mockResponse(200, { metar: 'ESMS 140820Z 26008KT 9999 SCT012 14/13 Q1021', taf: null })
+    }))
+    const result = await fetchWxResolved('ESTAGA', 55.52, 13.36, [{ icao: 'ESMS', distNm: 12 }])
+    expect(result.sourceIcao).toBe('ESMS')
+    expect(result.modelWind).toBeNull() // 12 NM is well within WIND_LOCAL_MAX_NM -- station's own wind is trusted
+  })
+
+  it('swaps to model wind even though a real METAR WAS found, when that station is farther than WIND_LOCAL_MAX_NM', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('ESTAGA'))          return mockResponse(400, { error: 'Invalid ICAO identifier' })
+      if (url.includes('/api/open-meteo')) return mockResponse(200, { current: { wind_speed_10m: 8, wind_direction_10m: 190 } })
+      return mockResponse(200, { metar: 'ESGG 140820Z 27015KT 9999 BKN020 12/09 Q1010', taf: null })
+    }))
+    const result = await fetchWxResolved('ESTAGA', 56.9, 12.1, [{ icao: 'ESGG', distNm: 62 }])
+    expect(result.sourceIcao).toBe('ESGG')       // vis/ceiling/QNH/temp/cloud still come from the real station
+    expect(result.metar).toContain('ESGG')
+    expect(result.modelWind).toEqual({ dirDeg: 190, speedKts: 8 }) // but wind is modelled -- 62 NM > WIND_LOCAL_MAX_NM
+  })
+
   it('degrades to modelWind: null (not a thrown error) when the model fetch itself fails', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url.includes('/api/weather')) return mockResponse(200, { metar: null, taf: null })

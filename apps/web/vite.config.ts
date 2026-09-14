@@ -204,7 +204,11 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/rest': {
-        target: 'http://localhost:5300',
+        // Overridable via VITE_DEV_API_TARGET, same as '/api/auth' below — the
+        // PostgREST JWT is signed with whichever auth server issued it, so
+        // it must be sent to that SAME origin's PostgREST (shared JWT secret)
+        // or every request 401s with a valid-looking but wrong-audience token.
+        target: process.env.VITE_DEV_API_TARGET || 'http://localhost:5300',
         changeOrigin: true,
         // Rewrite /rest/table → /table (PostgREST serves at root, not /rest/)
         rewrite: (path: string) => path.replace(/^\/rest/, ''),

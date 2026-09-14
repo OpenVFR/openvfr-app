@@ -91,24 +91,43 @@ export async function fetchWxNearest(
 }
 
 // ── Model-wind fallback (tier below the nearest-station search) ───────────
-// A METAR station (own or nearby) is a real OBSERVATION and always wins when
-// one exists, however far away it is -- fetchWxNearest above never changes.
-// But when there is truly no station report anywhere within the search
-// radius, @open-vfr/shared/fetchWind's Open-Meteo model wind gives GLOBAL
-// coverage at the exact requested coordinates (the same source already
-// powering the ambient wind-arrows map layer and GoFlyingPanel), which is a
-// meaningfully better estimate of local wind than an actual station's real
-// observation from potentially 60+ NM away would be. Model data has no
-// opinion on visibility/ceiling/cloud/QNH/temperature, so this only ever
-// fills in wind -- callers must still show "no weather data" for everything
-// else when metar/taf are both null.
+// A METAR station's OWN wind observation stops being locally representative
+// well before its vis/ceiling/QNH/temperature do -- surface wind can differ
+// meaningfully over just 20-30 NM (local terrain, sea breeze, a front
+// passing between the two points), whereas a station 60-100 NM away is
+// often still a perfectly reasonable stand-in for "is it VFR here" on
+// vis/ceiling. So this fallback is deliberately split in two:
+//
+//  1. No real METAR/TAF anywhere within fetchWxNearest's search radius at
+//     all -- everything (vis/ceiling/wind/QNH/temp) is missing, so
+//     @open-vfr/shared/fetchWind's Open-Meteo model wind (GLOBAL coverage,
+//     same source already powering the ambient wind-arrows map layer and
+//     GoFlyingPanel) fills in wind only, at the exact requested coordinates.
+//  2. A real METAR/TAF WAS found, but the station is farther than
+//     WIND_LOCAL_MAX_NM -- vis/ceiling/QNH/temp/cloud from that station are
+//     still shown (nothing better exists for those), but the WIND is
+//     replaced by the same model estimate, since a same-instant observation
+//     from that far away is not obviously better than -- and is often worse
+//     than -- a model value AT the actual requested coordinates.
+//
+// Either way this only ever fills in wind. modelWind is never used to
+// override vis/ceiling/cloud/QNH/temperature, which stay whatever the real
+// station (if any) reported.
+
+/** Beyond this distance a station's own wind observation is no longer
+ *  treated as representative of the requested aerodrome -- a rough
+ *  "local surface wind" radius, not a hard aviation standard. Deliberately
+ *  much tighter than WX_FALLBACK_MAX_NM (the vis/ceiling/etc. search
+ *  radius in AerodromePopup.tsx), since wind degrades with distance faster
+ *  than the rest of a METAR does. */
+export const WIND_LOCAL_MAX_NM = 25
 
 export interface WxResolved extends WxWithSource {
   /** Open-Meteo model-based surface wind at the requested aerodrome's own
-   *  coordinates. Populated ONLY when no real METAR/TAF was found anywhere
-   *  in the fetchWxNearest search (own icao or any nearby candidate) --
-   *  never used to override or blend with a real observation. Null if the
-   *  model fetch itself failed too (offline, Open-Meteo outage). */
+   *  coordinates. Populated when either (a) no real METAR/TAF was found
+   *  anywhere, or (b) one was found but `distNm` exceeds WIND_LOCAL_MAX_NM
+   *  -- never used to override or blend with vis/ceiling/cloud/QNH/temp.
+   *  Null if the model fetch itself failed too (offline, Open-Meteo outage). */
   modelWind: WindAloft | null
 }
 
@@ -123,7 +142,9 @@ export async function fetchWxResolved(
   maxCandidates = 6,
 ): Promise<WxResolved> {
   const wx = await fetchWxNearest(icao, nearby, baseUrl, signal, headers, maxCandidates)
-  if (wx.metar || wx.taf) return { ...wx, modelWind: null }
+  const stationTooFarForWind = wx.distNm != null && wx.distNm > WIND_LOCAL_MAX_NM
+  const needsModelWind = (!wx.metar && !wx.taf) || stationTooFarForWind
+  if (!needsModelWind) return { ...wx, modelWind: null }
 
   try {
     const modelWind = await fetchWind(lat, lng, null, baseUrl, signal)

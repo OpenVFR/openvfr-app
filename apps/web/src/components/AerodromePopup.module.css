@@ -522,6 +522,21 @@
   font-weight: 700;
 }
 
+/* Modelled-wind note — shown under the compass/speed dial when a real
+   METAR/TAF was found and shown (vis/ceiling/QNH/temp all come from it),
+   but that station is too far away for its OWN wind to be trusted, so
+   wind specifically was swapped for Open-Meteo's model estimate instead
+   (see fetchWxResolved's WIND_LOCAL_MAX_NM). Muted/italic — informational,
+   not a warning like .wxFallback. */
+.wxModelledNote {
+  font-size: 9.5px;
+  font-style: italic;
+  line-height: 1.4;
+  color: var(--text-faint);
+  text-align: center;
+  margin-bottom: 8px;
+}
+
 /* Runway picker — shown above the compass when an airport has more than
    one runway (e.g. ESMS 17/35 + 11/29). */
 .rwyPicker {

@@ -393,18 +393,30 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
   const surfaceWind = metar ? parseMetarWind(metar.wind) : null
   // Open-Meteo model wind (fetchWxResolved's modelWind), reshaped into the
   // same ParsedWind the compass/speed gauge/windTone/fmtWind already know
-  // how to render -- only ever populated when there's no real METAR/TAF
-  // anywhere (see fetchWxResolved's own doc comment).
+  // how to render. Populated in two cases (see fetchWxResolved): no real
+  // METAR/TAF anywhere, OR one WAS found but the station is farther than
+  // WIND_LOCAL_MAX_NM -- a station's own wind stops being locally
+  // representative well before its vis/ceiling/QNH do.
   const modelWind: ParsedWind | null = wx?.modelWind
     ? { dirDeg: wx.modelWind.dirDeg, speedKt: wx.modelWind.speedKts, gustKt: null, variable: false, calm: wx.modelWind.speedKts === 0 }
     : null
+  // The wind actually used everywhere a runway/wind-relative computation
+  // needs "the wind for this aerodrome" -- compass, speed dial, Wind tile,
+  // AND the favoured-runway-end highlight (both here and on the map via
+  // onRunwayWind below). Prefers modelWind whenever fetchWxResolved
+  // populated it (i.e. whenever the real station's own wind isn't close
+  // enough to trust), falling back to the real station's surfaceWind
+  // otherwise -- vis/ceiling/cloud/QNH/temperature below still always come
+  // from the real METAR regardless, only wind itself swaps sources.
+  const effectiveWind = modelWind ?? surfaceWind
+  const windIsModelled = !!modelWind
   const tafPeriods: TafPeriod[] | null = wx?.taf ? parseTaf(wx.taf) : null
   const usingFallbackWx = !!wx && wx.sourceIcao !== p.icao
 
   // Flattened across all runways at this aerodrome, computed once here (not
   // inside the JSX .map() below) so it can also be reported to the map via
   // onRunwayWind without recomputing computeRunwayWind() a second time.
-  const allRunwayWindEnds = runways.flatMap((rwy) => computeRunwayWind(rwy.thresholds, surfaceWind))
+  const allRunwayWindEnds = runways.flatMap((rwy) => computeRunwayWind(rwy.thresholds, effectiveWind))
 
   // Runway shown on the Wx-tab compass — user-selected via selectedRunwayDesig
   // (see the picker rendered in the Wx tab below), otherwise the longest
@@ -427,7 +439,7 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
   // Favoured end of whichever runway is currently shown on the compass --
   // scoped to that one runway's own two ends (computeRunwayWind's normal
   // behaviour), not compared against any other runway at this airport.
-  const compassRunwayWindEnds = compassRunway ? computeRunwayWind(compassRunway.thresholds, surfaceWind) : []
+  const compassRunwayWindEnds = compassRunway ? computeRunwayWind(compassRunway.thresholds, effectiveWind) : []
   const compassFavoredEnd = compassRunwayWindEnds.find((e) => e.favored) ?? null
 
   const primaryRunwayHeading: RunwayHeading | null = (() => {
@@ -617,7 +629,7 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
                   const lighting = rwy.lighting ?? []
                   const vasi = rwy.visual_approach_aids ?? []
                   const declared = fmtDeclaredDistances(rwy.declared_distances)
-                  const windEnds = computeRunwayWind(rwy.thresholds, surfaceWind)
+                  const windEnds = computeRunwayWind(rwy.thresholds, effectiveWind)
                   const hasWind = windEnds.some((e) => e.headwindKt != null)
                   return (
                     <div key={rwy.designator} className={css.rwyBlock}>
@@ -837,8 +849,8 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
                     modelled wind (Open-Meteo forecast, not an observation)
                   </div>
                   <div className={css.gaugeRow}>
-                    <WindCompassGauge wind={modelWind} runway={primaryRunwayHeading} tone={windTone(modelWind)} />
-                    <WindSpeedGauge wind={modelWind} tone={windTone(modelWind)} />
+                    <WindCompassGauge wind={effectiveWind} runway={primaryRunwayHeading} tone={windTone(effectiveWind)} />
+                    <WindSpeedGauge wind={effectiveWind} tone={windTone(effectiveWind)} />
                   </div>
                 </>
               )}
@@ -873,31 +885,44 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
                     </div>
                   )}
 
-                  {/* Graphical wind-direction/runway compass + speed dial */}
+                  {/* Graphical wind-direction/runway compass + speed dial.
+                      Uses effectiveWind, not the raw METAR wind directly --
+                      when the shown METAR came from a station farther than
+                      WIND_LOCAL_MAX_NM, effectiveWind is the model estimate
+                      instead (see fetchWxResolved) since that station's own
+                      wind isn't trusted as locally representative at that
+                      distance, even though its vis/ceiling/QNH/temp below
+                      still are. */}
                   <div className={css.gaugeRow}>
                     <WindCompassGauge
-                      wind={surfaceWind}
+                      wind={effectiveWind}
                       runway={primaryRunwayHeading}
-                      tone={windTone(surfaceWind)}
+                      tone={windTone(effectiveWind)}
                       favoredEndDesignator={compassFavoredEnd?.designator ?? null}
                     />
-                    <WindSpeedGauge wind={surfaceWind} tone={windTone(surfaceWind)} />
+                    <WindSpeedGauge wind={effectiveWind} tone={windTone(effectiveWind)} />
                   </div>
+                  {windIsModelled && (
+                    <div className={css.wxModelledNote}>
+                      Wind is modelled (Open-Meteo), not from {wx?.sourceIcao}'s own observation —
+                      that station is too far away for its wind to be locally representative here.
+                    </div>
+                  )}
 
                   {/* Colour-coded metric tiles — mirrors a public METAR/TAF
                       site's at-a-glance tile grid, but each tile's colour is
                       driven by its own metric threshold (not one shared
                       flight-rule colour for the whole card). */}
                   <div className={css.wxTileGrid}>
-                    <div className={`${css.wxTile} ${css[`wxTile${windTone(surfaceWind)}`]}`}>
-                      <span className={css.wxTileLabel}>Wind</span>
+                    <div className={`${css.wxTile} ${css[`wxTile${windTone(effectiveWind)}`]}`}>
+                      <span className={css.wxTileLabel}>Wind{windIsModelled ? ' (modelled)' : ''}</span>
                       <span className={css.wxTileValue}>
-                        {surfaceWind && !surfaceWind.calm && surfaceWind.dirDeg != null && (
-                          <svg className={css.windArrow} viewBox="0 0 24 24" style={{ transform: `rotate(${surfaceWind.dirDeg + 180}deg)` }}>
+                        {effectiveWind && !effectiveWind.calm && effectiveWind.dirDeg != null && (
+                          <svg className={css.windArrow} viewBox="0 0 24 24" style={{ transform: `rotate(${effectiveWind.dirDeg + 180}deg)` }}>
                             <path d="M12 2 L18 14 L12 10.5 L6 14 Z" />
                           </svg>
                         )}
-                        {fmtWind(surfaceWind)}
+                        {fmtWind(effectiveWind)}
                       </span>
                     </div>
                     <div className={`${css.wxTile} ${css[`wxTile${visTone(metar.visM)}`]}`}>
