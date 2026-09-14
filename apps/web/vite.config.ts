@@ -1,6 +1,14 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+
+// Vite only exposes .env.local as import.meta.env (client-side) — it does NOT
+// populate process.env for this config file itself. Without loadEnv() here,
+// every `process.env['VITE_DEV_API_TARGET']` below silently evaluates to
+// undefined and each proxy falls back to its localhost:5200/5300 default,
+// even with VITE_DEV_API_TARGET correctly set in .env.local.
+const env = loadEnv('development', process.cwd(), '')
+const DEV_API_TARGET = env['VITE_DEV_API_TARGET']
 
 export default defineConfig({
   plugins: [
@@ -192,15 +200,15 @@ export default defineConfig({
         // stack (db/martin/api/postgrest) just to verify a frontend-only
         // change -- same reasoning as '/api/traffic' above, opt-in via env
         // rather than changing the default for everyone else.
-        target: process.env.VITE_DEV_API_TARGET || 'http://localhost:5200',
+        target: DEV_API_TARGET || 'http://localhost:5200',
         changeOrigin: true,
       },
       '/api/notam': {
-        target: process.env.VITE_DEV_API_TARGET || 'http://localhost:5200',
+        target: DEV_API_TARGET || 'http://localhost:5200',
         changeOrigin: true,
       },
       '/api/auth': {
-        target: process.env.VITE_DEV_API_TARGET || 'http://localhost:5200',
+        target: DEV_API_TARGET || 'http://localhost:5200',
         changeOrigin: true,
       },
       '/rest': {
@@ -208,10 +216,16 @@ export default defineConfig({
         // PostgREST JWT is signed with whichever auth server issued it, so
         // it must be sent to that SAME origin's PostgREST (shared JWT secret)
         // or every request 401s with a valid-looking but wrong-audience token.
-        target: process.env.VITE_DEV_API_TARGET || 'http://localhost:5300',
+        target: DEV_API_TARGET || 'http://localhost:5300',
         changeOrigin: true,
-        // Rewrite /rest/table → /table (PostgREST serves at root, not /rest/)
-        rewrite: (path: string) => path.replace(/^\/rest/, ''),
+        // Rewrite /rest/table → /table only for the LOCAL PostgREST fallback,
+        // which is root-mounted (no nginx in front). When targeting prod
+        // (DEV_API_TARGET set), prod's own nginx already strips /rest before
+        // forwarding to its PostgREST — also root-mounted there. Stripping it
+        // again here double-strips the path down to just /user_routes, which
+        // prod's nginx doesn't recognize and falls through to the Hono app's
+        // 404 catch-all instead of PostgREST.
+        rewrite: DEV_API_TARGET ? undefined : (path: string) => path.replace(/^\/rest/, ''),
       },
     },
   },

@@ -32,8 +32,13 @@ export interface BriefAerodrome {
   props:   AerodromeFeatureProps
 }
 
-// Internal full-data aerodrome record (superset of BriefAerodrome)
-interface FullAerodrome {
+// Full-data aerodrome record (superset of BriefAerodrome). Exported --
+// useAerodromeWxHighlight.ts reuses this exact cached loader (and its
+// already-parsed runways/props) for its own bigger-radius geofence match,
+// rather than adding a fifth near-duplicate se-aerodromes.geojson loader
+// to the four (useAirfieldProximity, useWeatherAlongRoute, AerodromePopup's
+// station index, and this one) that already exist in this codebase.
+export interface FullAerodrome {
   key:     string
   lat:     number
   lng:     number
@@ -44,7 +49,7 @@ interface FullAerodrome {
 let cachedAerodromes: FullAerodrome[] | null = null
 let loadPromise: Promise<FullAerodrome[]> | null = null
 
-function loadAerodromes(): Promise<FullAerodrome[]> {
+export function loadAerodromes(): Promise<FullAerodrome[]> {
   if (cachedAerodromes) return Promise.resolve(cachedAerodromes)
   if (loadPromise) return loadPromise
   loadPromise = fetch(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'))

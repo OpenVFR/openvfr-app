@@ -89,6 +89,7 @@ import AirfieldBriefPanel from './AirfieldBriefPanel'
 import DirectToPanel from './DirectToPanel'
 import FindDestPanel from './FindDestPanel'
 import { useAirfieldBrief } from '../hooks/useAirfieldBrief'
+import { useAerodromeWxHighlight } from '../hooks/useAerodromeWxHighlight'
 import { useDataManifest } from '../hooks/useDataManifest'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import type { AuthState } from '../hooks/useAuth'
@@ -594,6 +595,28 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const { alerts: obstructionAlerts,  dismiss: dismissObstruction } = useObstructionWarnings(flyingMode !== 'off' ? gpsPosition : null)
   const { alerts: airfieldAlerts,     dismiss: dismissAirfield }    = useAirfieldProximity(flyingMode !== 'off' ? gpsPosition : null, routeWaypoints)
   const airfieldBrief = useAirfieldBrief(flyingMode !== 'off' ? gpsPosition : null, routeWaypoints, activeWpIdx)
+
+  // Geofenced, automatic favoured-runway-end highlight -- same map paint
+  // (runwayWindHighlight/buildRunwayWindHighlight above) as an open
+  // AerodromePopup already drives, but triggered by GPS/Simulate position
+  // alone (bigger radius than airfieldBrief's own 3/8 NM -- see
+  // useAerodromeWxHighlight's header) so it works with no popup open at
+  // all. Disabled while an aerodrome popup IS open -- that popup's own
+  // onRunwayWind effect is the sole driver of runwayWindHighlight then, so
+  // the two never race to write it; closing the popup hands control back
+  // (this hook re-asserts from its own per-ICAO cache with no new fetch
+  // needed if the cache already has that aerodrome).
+  const aerodromePopupOpen = activePopup?.kind === 'aerodrome'
+  const geofenceWxHighlight = useAerodromeWxHighlight(
+    flyingMode !== 'off' ? gpsPosition : null,
+    routeWaypoints,
+    activeWpIdx,
+    !aerodromePopupOpen,
+  )
+  useEffect(() => {
+    if (aerodromePopupOpen) return
+    setRunwayWindHighlight(geofenceWxHighlight)
+  }, [geofenceWxHighlight, aerodromePopupOpen])
   const { manifest, hasUpdate, checking, markSeen, refresh: refreshManifest } = useDataManifest()
   const isOnline = useOnlineStatus()
   const plogData = useLivePlog(flyingMode !== 'off' ? gpsPosition : null, flyingMode, routeWaypoints, activeWpIdx)
