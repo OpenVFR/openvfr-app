@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { fetchWxNearest, decodeMetar } from './fetchWx'
+import { fetchWxNearest, fetchWxResolved, decodeMetar } from './fetchWx'
 
 function mockResponse(status: number, body: unknown): Response {
   return {
@@ -53,6 +53,50 @@ describe('fetchWxNearest', () => {
     expect(result.sourceIcao).toBe('ESTAGA')
     expect(result.metar).toBeNull()
     expect(result.distNm).toBeNull()
+  })
+})
+
+describe('fetchWxResolved', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('falls back to Open-Meteo model wind when no METAR/TAF exists anywhere nearby', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/api/weather'))    return mockResponse(200, { metar: null, taf: null })
+      if (url.includes('/api/open-meteo')) return mockResponse(200, { current: { wind_speed_10m: 12, wind_direction_10m: 250 } })
+      throw new Error(`unexpected fetch: ${url}`)
+    }))
+    const result = await fetchWxResolved('ESTAGA', 55.4, 13.2, [{ icao: 'ESMS', distNm: 12 }])
+    expect(result.metar).toBeNull()
+    expect(result.taf).toBeNull()
+    expect(result.modelWind).toEqual({ dirDeg: 250, speedKts: 12 })
+  })
+
+  it('never touches Open-Meteo when a real METAR/TAF was found', async () => {
+    const calls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url)
+      return mockResponse(200, { metar: 'ESSA 140820Z 27010KT 9999 FEW030 15/10 Q1015', taf: null })
+    }))
+    const result = await fetchWxResolved('ESSA', 59.6, 17.9, [])
+    expect(result.modelWind).toBeNull()
+    expect(calls.some((u) => u.includes('open-meteo'))).toBe(false)
+  })
+
+  it('degrades to modelWind: null (not a thrown error) when the model fetch itself fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/api/weather')) return mockResponse(200, { metar: null, taf: null })
+      return mockResponse(500, {})
+    }))
+    // Distinct coordinates from the other fetchWxResolved tests --
+    // fetchWind has its own 30-min in-memory cache keyed by rounded
+    // lat/lng, and reusing the same point as the success-case test above
+    // would silently serve its cached result instead of exercising this
+    // failure path.
+    const result = await fetchWxResolved('ESTAGA', 61.1, 21.7, [])
+    expect(result.metar).toBeNull()
+    expect(result.modelWind).toBeNull()
   })
 })
 

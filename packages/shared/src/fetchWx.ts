@@ -5,6 +5,7 @@
  */
 
 import { fetchWithRetry } from './fetchWithRetry'
+import { fetchWind, type WindAloft } from './fetchWind'
 
 export interface WxResult {
   metar: string | null
@@ -87,6 +88,50 @@ export async function fetchWxNearest(
   // Nothing found anywhere nearby -- report against the originally-requested
   // ICAO so callers show "no data" for the right identifier.
   return { metar: null, taf: null, sourceIcao: icao, distNm: null }
+}
+
+// ── Model-wind fallback (tier below the nearest-station search) ───────────
+// A METAR station (own or nearby) is a real OBSERVATION and always wins when
+// one exists, however far away it is -- fetchWxNearest above never changes.
+// But when there is truly no station report anywhere within the search
+// radius, @open-vfr/shared/fetchWind's Open-Meteo model wind gives GLOBAL
+// coverage at the exact requested coordinates (the same source already
+// powering the ambient wind-arrows map layer and GoFlyingPanel), which is a
+// meaningfully better estimate of local wind than an actual station's real
+// observation from potentially 60+ NM away would be. Model data has no
+// opinion on visibility/ceiling/cloud/QNH/temperature, so this only ever
+// fills in wind -- callers must still show "no weather data" for everything
+// else when metar/taf are both null.
+
+export interface WxResolved extends WxWithSource {
+  /** Open-Meteo model-based surface wind at the requested aerodrome's own
+   *  coordinates. Populated ONLY when no real METAR/TAF was found anywhere
+   *  in the fetchWxNearest search (own icao or any nearby candidate) --
+   *  never used to override or blend with a real observation. Null if the
+   *  model fetch itself failed too (offline, Open-Meteo outage). */
+  modelWind: WindAloft | null
+}
+
+export async function fetchWxResolved(
+  icao: string,
+  lat: number,
+  lng: number,
+  nearby: WxStationCandidate[],
+  baseUrl = '',
+  signal?: AbortSignal,
+  headers?: Record<string, string>,
+  maxCandidates = 6,
+): Promise<WxResolved> {
+  const wx = await fetchWxNearest(icao, nearby, baseUrl, signal, headers, maxCandidates)
+  if (wx.metar || wx.taf) return { ...wx, modelWind: null }
+
+  try {
+    const modelWind = await fetchWind(lat, lng, null, baseUrl, signal)
+    return { ...wx, modelWind }
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') throw err
+    return { ...wx, modelWind: null } // offline/Open-Meteo outage -- no wind at all, not fatal
+  }
 }
 
 // ── METAR decoder ─────────────────────────────────────────────────────────────

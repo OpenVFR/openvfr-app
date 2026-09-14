@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import css from './AerodromePopup.module.css'
-import { fetchWxNearest, decodeMetar, parseMetarWind, parseMetarClouds, type WxWithSource, type WxStationCandidate } from '../utils/fetchWx'
+import { fetchWxResolved, decodeMetar, parseMetarWind, parseMetarClouds, type WxResolved, type WxStationCandidate, type ParsedWind } from '../utils/fetchWx'
 import { parseTaf, type TafPeriod } from '@open-vfr/shared/parseTaf'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import { computeRunwayWind, effectiveMagBrg, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
@@ -305,7 +305,7 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
   const [qnhStr, setQnhStr] = useState('')
 
   // ── Weather (METAR / TAF) ─────────────────────────────────────────────────
-  const [wx, setWx] = useState<WxWithSource | null>(null)
+  const [wx, setWx] = useState<WxResolved | null>(null)
   const [wxLoading, setWxLoading] = useState(true)
   const [wxError, setWxError] = useState<string | null>(null)
   const [tafExpanded, setTafExpanded] = useState(false)
@@ -363,7 +363,7 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
         .sort((a, b) => a.distNm - b.distNm)
       const nameByIcao = new Map(stations.map((s) => [s.icao, s.name]))
 
-      fetchWxNearest(p.icao, candidates, API_BASE_URL, ac.signal)
+      fetchWxResolved(p.icao, lat, lng, candidates, API_BASE_URL, ac.signal)
         .then((data) => {
           setWx(data)
           setWxSourceName(data.sourceIcao !== p.icao ? (nameByIcao.get(data.sourceIcao) ?? null) : null)
@@ -391,6 +391,13 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
 
   const metar = wx?.metar ? decodeMetar(wx.metar) : null
   const surfaceWind = metar ? parseMetarWind(metar.wind) : null
+  // Open-Meteo model wind (fetchWxResolved's modelWind), reshaped into the
+  // same ParsedWind the compass/speed gauge/windTone/fmtWind already know
+  // how to render -- only ever populated when there's no real METAR/TAF
+  // anywhere (see fetchWxResolved's own doc comment).
+  const modelWind: ParsedWind | null = wx?.modelWind
+    ? { dirDeg: wx.modelWind.dirDeg, speedKt: wx.modelWind.speedKts, gustKt: null, variable: false, calm: wx.modelWind.speedKts === 0 }
+    : null
   const tafPeriods: TafPeriod[] | null = wx?.taf ? parseTaf(wx.taf) : null
   const usingFallbackWx = !!wx && wx.sourceIcao !== p.icao
 
@@ -801,7 +808,7 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
 
               {wxLoading && <div className={css.wxState}>Loading…</div>}
               {wxError && <div className={css.wxState}>{wxError}</div>}
-              {!wxLoading && !wxError && !wx?.metar && !wx?.taf && (
+              {!wxLoading && !wxError && !wx?.metar && !wx?.taf && !wx?.modelWind && (
                 <div className={css.wxState}>No weather data at {p.icao} or any nearby station</div>
               )}
 
@@ -814,6 +821,26 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
                   <strong>{wx.sourceIcao}</strong>{wxSourceName ? ` (${wxSourceName})` : ''}
                   {wx.distNm != null ? `, ${Math.round(wx.distNm)} NM away` : ''}
                 </div>
+              )}
+
+              {/* No real METAR/TAF anywhere within the search radius --
+                  fall back to Open-Meteo's model wind at this aerodrome's
+                  own coordinates (see fetchWxResolved) instead of showing
+                  nothing. Clearly labelled as modelled, not observed --
+                  never presented as if it were a real station report, and
+                  no vis/ceiling/cloud/QNH/temperature tiles since the model
+                  has no opinion on those (wind only). */}
+              {!wxLoading && !wxError && !wx?.metar && !wx?.taf && wx?.modelWind && (
+                <>
+                  <div className={css.wxFallback}>
+                    No METAR/TAF at <strong>{p.icao}</strong> or any nearby station — showing
+                    modelled wind (Open-Meteo forecast, not an observation)
+                  </div>
+                  <div className={css.gaugeRow}>
+                    <WindCompassGauge wind={modelWind} runway={primaryRunwayHeading} tone={windTone(modelWind)} />
+                    <WindSpeedGauge wind={modelWind} tone={windTone(modelWind)} />
+                  </div>
+                </>
               )}
 
               {metar && (
