@@ -28,6 +28,11 @@ import {
   AIRSPACE_BORDER_WIDTHS,
 } from '../styles/map-style'
 import { buildRunwayWindHighlight, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
+import { computeAtcStatus, isNotamAtcRelated, isNotamHoursChangeRelated, type HoursEntry as AtcHoursEntry } from '@open-vfr/shared/atcStatus'
+import { sunriseSunset } from '@open-vfr/shared/sunCalc'
+import { AERODROME_COLORS } from '@open-vfr/shared/featureColors'
+import { fetchAerodromeNotamTexts } from '@open-vfr/shared/fetchNotam'
+import { API_BASE_URL } from '../utils/env'
 import { type AerodromeFeatureProps } from './AerodromePopup'
 import { registerObstacleImages } from '../utils/obstacleIcons'
 import { registerLandmarkImages } from '../utils/landmarkIcons'
@@ -564,6 +569,12 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const findDestBtnRef   = useRef<HTMLButtonElement | null>(null)
   // Cache of all runway threshold entries, loaded once from se-runway-thresholds.geojson
   const runwayThresholdsRef = useRef<ThresholdEntry[]>([])
+  // Cache of every towered aerodrome's coords + hours, loaded once from
+  // se-aerodromes.geojson -- used to periodically recolor 'aerodromes-atc-ring'
+  // (see the effect below). Cached independently of the ofm-aerodromes map
+  // source so the ring color is correct even for airports currently outside
+  // the viewport, not just whatever's been tile-loaded.
+  const toweredAerodromesRef = useRef<{ icao: string; lat: number; lng: number; hours: AtcHoursEntry[] }[]>([])
   const stopFlyingRef   = useRef(stopFlying)
   const teleportRef     = useRef(teleport)
   const setSimTargetRef = useRef(setSimTarget)
@@ -3014,6 +3025,105 @@ export default function MapView({ auth }: { auth: AuthState }) {
       })
       .catch(() => { /* non-fatal */ })
   }, [mapReady])
+
+  // Load towered-aerodrome hours once (used to periodically recolor the
+  // 'aerodromes-atc-ring' layer -- see the effect below). Same fetch-once-
+  // separately-from-the-map-source pattern as runway thresholds above.
+  const [toweredAerodromesLoaded, setToweredAerodromesLoaded] = useState(false)
+  useEffect(() => {
+    if (!mapReady) return
+    if (toweredAerodromesRef.current.length > 0) return  // already loaded
+    fetch(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'))
+      .then(r => r.json())
+      .then((fc: GeoJSON.FeatureCollection) => {
+        toweredAerodromesRef.current = fc.features
+          .filter(f => f.geometry.type === 'Point' && (f.properties as Record<string, unknown>).towered === true)
+          .map(f => ({
+            icao:  (f.properties as Record<string, unknown>).icao as string,
+            lat:   (f.geometry as GeoJSON.Point).coordinates[1],
+            lng:   (f.geometry as GeoJSON.Point).coordinates[0],
+            hours: ((f.properties as Record<string, unknown>).hours_of_operation as AtcHoursEntry[] | undefined) ?? [],
+          }))
+      })
+      .catch(() => { /* non-fatal -- ring just stays 'unknown' grey for everyone */ })
+      .finally(() => setToweredAerodromesLoaded(true))
+  }, [mapReady])
+
+  // Recolor 'aerodromes-atc-ring' every 60s from the cached towered-aerodrome
+  // list above. AIP-schedule-derived only (see @open-vfr/shared/atcStatus) --
+  // deliberately never NOTAM-driven, matching AerodromePopup's same-source
+  // badge. A per-ICAO 'match' expression is small (a few dozen towered fields
+  // in Sweden today) so this is cheap even every tick.
+  useEffect(() => {
+    if (!mapReady) return
+    const map = mapRef.current
+    if (!map) return
+
+    function applyAtcRingColors() {
+      if (!map!.getLayer('aerodromes-atc-ring')) return
+      const entries = toweredAerodromesRef.current
+      if (entries.length === 0) return
+      const now = new Date()
+      const matchArgs: (string | number)[] = []
+      for (const e of entries) {
+        const sun = sunriseSunset(e.lat, e.lng, now)
+        const { status } = computeAtcStatus(e.hours, sun, now)
+        const color =
+          status === 'open'   ? AERODROME_COLORS.atcOpen :
+          status === 'closed' ? AERODROME_COLORS.atcClosed :
+                                 AERODROME_COLORS.atcUnknown
+        matchArgs.push(e.icao, color)
+      }
+      const expr: ExpressionSpecification =
+        ['match', ['get', 'icao'], ...matchArgs, AERODROME_COLORS.atcUnknown] as unknown as ExpressionSpecification
+      map!.setPaintProperty('aerodromes-atc-ring', 'circle-stroke-color', expr)
+    }
+
+    // Same-tick NOTAM keyword hint badge ('aerodromes-notam-hint' layer) --
+    // one bulk request for every towered airport's active NOTAM texts (see
+    // getAerodromeNotamTexts()/GET /api/notam/aerodrome-texts), then applies
+    // isNotamAtcRelated/isNotamHoursChangeRelated client-side, same keyword
+    // heuristics as AerodromePopup's text-only hint lines. Skipped entirely
+    // while signed out (endpoint requires auth, matching /api/notam and
+    // /api/notam/regional's own gating) -- badge layer just stays empty.
+    async function applyNotamHints() {
+      if (!map!.getLayer('aerodromes-notam-hint')) return
+      if (!auth.user) {
+        map!.setFilter('aerodromes-notam-hint', ['in', ['get', 'icao'], ['literal', []]])
+        return
+      }
+      const towered = new Set(toweredAerodromesRef.current.map((e) => e.icao))
+      if (towered.size === 0) return
+      let texts: Record<string, string[]>
+      try {
+        texts = await fetchAerodromeNotamTexts(API_BASE_URL)
+      } catch {
+        return  // transient failure -- leave the previous hint state in place
+      }
+      const icaos: string[] = []
+      const glyphArgs: (string | number)[] = []
+      for (const [icao, icaoTexts] of Object.entries(texts)) {
+        if (!towered.has(icao)) continue
+        const atcHit   = icaoTexts.some((t) => isNotamAtcRelated(t))
+        const hoursHit = icaoTexts.some((t) => isNotamHoursChangeRelated(t))
+        if (!atcHit && !hoursHit) continue
+        icaos.push(icao)
+        glyphArgs.push(icao, atcHit && hoursHit ? '⚠⏰' : atcHit ? '⚠' : '⏰')
+      }
+      map!.setFilter('aerodromes-notam-hint', ['in', ['get', 'icao'], ['literal', icaos]])
+      map!.setLayoutProperty(
+        'aerodromes-notam-hint', 'text-field',
+        icaos.length > 0
+          ? (['match', ['get', 'icao'], ...glyphArgs, ''] as unknown as ExpressionSpecification)
+          : '',
+      )
+    }
+
+    applyAtcRingColors()
+    void applyNotamHints()
+    const interval = setInterval(() => { applyAtcRingColors(); void applyNotamHints() }, 60_000)
+    return () => clearInterval(interval)
+  }, [mapReady, toweredAerodromesLoaded, auth.user])
 
   // Sync gpsPosition → aircraft layer on map + optional centering.
   useEffect(() => {

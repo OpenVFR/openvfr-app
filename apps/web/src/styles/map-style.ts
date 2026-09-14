@@ -351,7 +351,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     id: 'aerodromes',
     label: 'Aerodromes',
     cssClass: 'groupAerodromes',
-    layerIds: ['aerodromes-icon', 'aerodromes-label'],
+    layerIds: ['aerodromes-icon', 'aerodromes-label', 'aerodromes-atc-ring', 'aerodromes-notam-hint'],
     defaultOn: true,
     section: 'Navigation',
   },
@@ -538,7 +538,9 @@ export function getMapStyle(): StyleSpecification {
 
       // Layer 3 — OFM aerodrome / heliport points
       // Properties: icao, name, type (AD/HP/AH), elevation_ft, frequencies,
-      //             fuel, ppr, ppr_remarks, contacts, runways (JSONB as text)
+      //             fuel, ppr, ppr_remarks, contacts, runways, towered,
+      //             hours_of_operation, handling_facilities,
+      //             passenger_facilities (JSONB as text)
       'ofm-aerodromes': {
         type: 'geojson',
         data: versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'),
@@ -1613,6 +1615,34 @@ export function getMapStyle(): StyleSpecification {
         },
       },
 
+      // ── Layer 11b: Towered-airport ATC status ring ────────────────────────
+      // Drawn UNDER the icon symbol layer (declared before it) so the icon
+      // paints on top and the ring reads as a halo around it. Only towered
+      // airports get a ring at all (filter below) — untowered/AFIS fields are
+      // unaffected. Color is a per-ICAO 'match' expression kept in sync by
+      // MapView's 60s-interval effect (recomputed from
+      // AIP-schedule hours_of_operation, see @open-vfr/shared/atcStatus) via
+      // setPaintProperty — never baked in statically here, since open/closed
+      // is time-varying and this static style object is not. Starts as the
+      // 'unknown' (grey) color for everyone until the first computation runs.
+      {
+        id: 'aerodromes-atc-ring',
+        type: 'circle',
+        source: 'ofm-aerodromes',
+        filter: ['==', ['get', 'towered'], true],
+        paint: {
+          'circle-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            6, 7,
+            10, 10,
+            13, 13,
+          ],
+          'circle-color': 'rgba(0,0,0,0)',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': AERODROME_COLORS.atcUnknown,
+        },
+      },
+
       // ── Layer 12: Aerodrome symbols ───────────────────────────────────────
       // Symbol layer using canvas-drawn icons registered by registerAerodromeImages()
       // in MapView's styledata handler.  Icons drawn at 2× for HiDPI.
@@ -1662,6 +1692,37 @@ export function getMapStyle(): StyleSpecification {
         paint: {
           'text-color': AERODROME_COLORS.label,
           'text-halo-color': AERODROME_COLORS.halo,
+          'text-halo-width': 1.5,
+        },
+      },
+
+      // ── Layer 12c: Towered-airport NOTAM hint badge ────────────────────────
+      // Small glyph badge (⚠ ATC/tower-related, ⏰ hours-changed, or both)
+      // next to a towered airport's icon when an active NOTAM's free text
+      // matches a conservative keyword heuristic (see
+      // @open-vfr/shared/atcStatus's isNotamAtcRelated/
+      // isNotamHoursChangeRelated). Text-only signal, same as the popup's
+      // equivalent hint lines -- NEVER affects 'aerodromes-atc-ring's color.
+      // filter/text-field kept empty until MapView's periodic effect
+      // populates them from GET /api/notam/aerodrome-texts (auth-gated,
+      // skipped entirely while signed out).
+      {
+        id: 'aerodromes-notam-hint',
+        type: 'symbol',
+        source: 'ofm-aerodromes',
+        minzoom: 7,
+        filter: ['in', ['get', 'icao'], ['literal', []]],
+        layout: {
+          'text-field': '',
+          'text-font': ['Noto Sans Medium'],
+          'text-size': 13,
+          'text-anchor': 'bottom-left',
+          'text-offset': [0.6, -0.6],
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: {
+          'text-halo-color': '#ffffff',
           'text-halo-width': 1.5,
         },
       },

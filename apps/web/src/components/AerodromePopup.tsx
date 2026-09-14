@@ -4,6 +4,7 @@ import { fetchWx, decodeMetar, parseMetarWind, type WxResult } from '../utils/fe
 import { computeRunwayWind, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import { fetchNotams, fmtNotamDate, type NotamItem } from '../utils/fetchNotam'
 import { sunriseSunset, fmtSunTime } from '../utils/sunCalc'
+import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from '@open-vfr/shared/atcStatus'
 import { API_BASE_URL } from '../utils/env'
 
 // ── Types matching the GeoJSON properties schema ─────────────────────────────
@@ -67,6 +68,8 @@ export interface AerodromeFeatureProps {
   ppr_remarks: string[]
   contacts: Contact[]
   runways: Runway[]
+  /** Derived at data-prep time: true if any frequency has service === 'TWR'. */
+  towered?: boolean
   hours_of_operation?: HoursEntry[]
   handling_facilities?: string[]
   passenger_facilities?: string[]
@@ -243,6 +246,24 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
   const [notamError, setNotamError] = useState<string | null>(null)
   const [expandedNotams, setExpandedNotams] = useState<Set<string>>(new Set())
 
+  // ── ATC status (towered airports only) ───────────────────────────────────
+  // AIP-schedule-derived only (see @open-vfr/shared/atcStatus) — NOTAM text
+  // is checked separately below and only ever surfaces as a plain-text hint,
+  // never flips this badge's color/status.
+  const atc = p.towered ? computeAtcStatus(hours, sunTimes) : null
+  const activeNotamTexts = notams
+    .filter((n) => {
+      const now = Date.now()
+      const eff = n.effective ? Date.parse(n.effective) : null
+      const exp = n.expires ? Date.parse(n.expires) : null
+      if (eff != null && now < eff) return false
+      if (exp != null && now > exp) return false
+      return true
+    })
+    .map((n) => n.text)
+  const notamAtcHint = p.towered && anyNotamAtcRelated(activeNotamTexts)
+  const notamHoursHint = p.towered && anyNotamHoursChangeRelated(activeNotamTexts)
+
   useEffect(() => {
     const ac = new AbortController()
     setWx(null); setWxLoading(true); setWxError(null)
@@ -344,6 +365,14 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
             )}
             <div className={css.badges}>
               {p.type === 'HP' && <span className={css.badge}>Heliport</span>}
+              {atc && (
+                <span
+                  className={`${css.badge} ${css[atc.status === 'open' ? 'atcOpen' : atc.status === 'closed' ? 'atcClosed' : 'atcUnknown']}`}
+                  title={atc.status === 'unknown' ? 'No usable schedule data' : 'Based on published AIP hours (UTC)'}
+                >
+                  ATC {atc.status === 'open' ? 'Open' : atc.status === 'closed' ? 'Closed' : '?'}
+                </span>
+              )}
               {p.ppr && <span className={`${css.badge} ${css.ppr}`}>PPR</span>}
               {hasFuel &&
                 fuelList.map((f) => (
@@ -352,6 +381,12 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
                   </span>
                 ))}
             </div>
+            {notamAtcHint && (
+              <div className={css.notamHint}>⚠ Active NOTAM may affect ATC/tower — check NOTAMs tab</div>
+            )}
+            {notamHoursHint && (
+              <div className={css.notamHint}>⏰ Active NOTAM may have changed opening hours — check NOTAMs tab</div>
+            )}
           </div>
           <button
             className={`${css.homeBtn} ${isHome ? css.homeBtnActive : ''}`}

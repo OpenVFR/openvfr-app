@@ -25,7 +25,12 @@ import type { NativeSyntheticEvent } from 'react-native'
 import type { PressEvent, PressEventWithFeatures } from '@maplibre/maplibre-react-native'
 import type { Feature, FeatureCollection } from 'geojson'
 import type { ViewStateChangeEvent } from '@maplibre/maplibre-react-native'
-import { WAYPOINT_COLORS, RUNWAY_COLORS } from '@open-vfr/shared/featureColors'
+import { WAYPOINT_COLORS, RUNWAY_COLORS, AERODROME_COLORS } from '@open-vfr/shared/featureColors'
+import { computeAtcStatus, isNotamAtcRelated, isNotamHoursChangeRelated, type HoursEntry as AtcHoursEntry } from '@open-vfr/shared/atcStatus'
+import { sunriseSunset } from '@open-vfr/shared/sunCalc'
+import { fetchAerodromeNotamTexts } from '@open-vfr/shared/fetchNotam'
+import { API_BASE } from '../config'
+import { authHeaders } from '../utils/authClient'
 import {
   buildRunwayWindHighlight,
   type RunwayWindHighlightEnd,
@@ -648,6 +653,106 @@ export function AviationMap({
   )
 
   const tileUrls = useMemo(() => getResolvedTileUrls(), [])
+
+  // ── Towered-airport ATC status ring (aerodromes-atc-ring layer) ─────────
+  // Cached once from tileUrls.aerodromes, independent of GeoJSONSource's own
+  // internal loaded-feature set (which is viewport/rendering-dependent) --
+  // same fetch-once-separately pattern as web's MapView.tsx equivalent.
+  // Recomputed on a 60s interval, AIP-schedule-derived only (see
+  // @open-vfr/shared/atcStatus) -- deliberately never NOTAM-driven, matching
+  // AerodromePopup's badge. State (not a ref) since this drives a declarative
+  // <Layer paint> prop here, unlike web's imperative setPaintProperty.
+  const toweredAerodromesRef = useRef<{ icao: string; lat: number; lng: number; hours: AtcHoursEntry[] }[]>([])
+  const [atcRingMatchExpr, setAtcRingMatchExpr] = useState<unknown[]>(['match', ['get', 'icao'], AERODROME_COLORS.atcUnknown])
+  // NOTAM keyword hint badge (⚠/⏰) -- mirrors web MapView's equivalent.
+  // Text-only signal (see @open-vfr/shared/atcStatus), never affects
+  // atcRingMatchExpr's color. Cleared (empty filter) whenever the bulk fetch
+  // fails/is unauthenticated -- badge layer just shows nothing, same as
+  // being logged out on web.
+  const [notamHintFilter, setNotamHintFilter] = useState<unknown[]>(['in', ['get', 'icao'], ['literal', []]])
+  const [notamHintTextExpr, setNotamHintTextExpr] = useState<unknown>('')
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(tileUrls.aerodromes)
+      .then((r) => r.json())
+      .then((fc: FeatureCollection) => {
+        if (cancelled) return
+        toweredAerodromesRef.current = fc.features
+          .filter((f) => f.geometry.type === 'Point' && (f.properties as Record<string, unknown>)?.towered === true)
+          .map((f) => ({
+            icao:  (f.properties as Record<string, unknown>).icao as string,
+            lat:   (f.geometry as GeoJSON.Point).coordinates[1],
+            lng:   (f.geometry as GeoJSON.Point).coordinates[0],
+            hours: ((f.properties as Record<string, unknown>).hours_of_operation as AtcHoursEntry[] | undefined) ?? [],
+          }))
+        recomputeAtcRing()
+      })
+      .catch(() => { /* non-fatal -- ring just stays 'unknown' grey for everyone */ })
+
+    function recomputeAtcRing() {
+      const entries = toweredAerodromesRef.current
+      if (entries.length === 0) return
+      const now = new Date()
+      const args: (string)[] = []
+      for (const e of entries) {
+        const sun = sunriseSunset(e.lat, e.lng, now)
+        const { status } = computeAtcStatus(e.hours, sun, now)
+        const color =
+          status === 'open'   ? AERODROME_COLORS.atcOpen :
+          status === 'closed' ? AERODROME_COLORS.atcClosed :
+                                 AERODROME_COLORS.atcUnknown
+        args.push(e.icao, color)
+      }
+      setAtcRingMatchExpr(['match', ['get', 'icao'], ...args, AERODROME_COLORS.atcUnknown])
+    }
+
+    const interval = setInterval(recomputeAtcRing, 60_000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [tileUrls.aerodromes])
+
+  // Same NOTAM-keyword hint fetch as web's MapView -- one bulk request for
+  // every towered airport's active NOTAM texts (GET /api/notam/aerodrome-
+  // texts), then applies isNotamAtcRelated/isNotamHoursChangeRelated
+  // client-side. Runs on the same 60s cadence as the ring recompute above
+  // but as its own effect (independent failure domain -- a NOTAM fetch
+  // hiccup shouldn't touch the AIP-schedule ring at all).
+  useEffect(() => {
+    let cancelled = false
+
+    async function applyNotamHints() {
+      const towered = toweredAerodromesRef.current
+      if (towered.length === 0) return
+      const toweredIcaos = new Set(towered.map((e) => e.icao))
+      let texts: Record<string, string[]>
+      try {
+        const headers = await authHeaders()
+        texts = await fetchAerodromeNotamTexts(API_BASE, undefined, headers)
+      } catch {
+        return  // transient/unauthenticated -- leave previous hint state in place
+      }
+      if (cancelled) return
+      const icaos: string[] = []
+      const glyphArgs: string[] = []
+      for (const [icao, icaoTexts] of Object.entries(texts)) {
+        if (!toweredIcaos.has(icao)) continue
+        const atcHit   = icaoTexts.some((t) => isNotamAtcRelated(t))
+        const hoursHit = icaoTexts.some((t) => isNotamHoursChangeRelated(t))
+        if (!atcHit && !hoursHit) continue
+        icaos.push(icao)
+        glyphArgs.push(icao, atcHit && hoursHit ? '⚠⏰' : atcHit ? '⚠' : '⏰')
+      }
+      setNotamHintFilter(['in', ['get', 'icao'], ['literal', icaos]])
+      setNotamHintTextExpr(icaos.length > 0 ? ['match', ['get', 'icao'], ...glyphArgs, ''] : '')
+    }
+
+    // Towered-aerodrome cache (from the effect above) may not be populated
+    // yet on the very first tick -- harmless, just means the very first
+    // hint application is a no-op until the next 60s tick after it loads.
+    void applyNotamHints()
+    const interval = setInterval(applyNotamHints, 60_000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [tileUrls.aerodromes])
   // Computed once per mount, same as tileUrls above -- avoids a fresh string
   // (and thus a changed prop) on every render, which risked tripping the
   // 'id cannot be changed' MapLibre Native restriction seen elsewhere in
@@ -1554,6 +1659,23 @@ export function AviationMap({
 
         {/* ── Aerodromes ───────────────────────────────────── */}
         <GeoJSONSource id="ofm-aerodromes" onPress={() => {}} data={tileUrls.aerodromes}>
+            {/* Towered-airport ATC status ring -- mirrors web map-style.ts
+                aerodromes-atc-ring. Filtered to towered===true only; color
+                driven by atcRingMatchExpr state (60s-interval recompute, see
+                effect above). Declared before aerodromes-circle so the icon
+                symbol paints on top / reads as a halo around it. */}
+            <Layer
+              id="aerodromes-atc-ring"
+              type="circle"
+              filter={['==', ['get', 'towered'], true] as any}
+              layout={{ visibility: showAerodromes ? 'visible' : 'none' }}
+              paint={{
+                'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 5, 10, 7.5, 13, 10],
+                'circle-color': 'rgba(0,0,0,0)',
+                'circle-stroke-width': 2,
+                'circle-stroke-color': atcRingMatchExpr as any,
+              }}
+            />
             <Layer
               id="aerodromes-circle"
               layout={{
@@ -1580,6 +1702,29 @@ export function AviationMap({
               paint={{
                 'text-color': theme.textPrimary,
                 'text-halo-color': theme.surfaceBase,
+                'text-halo-width': 1.5,
+              }}
+            />
+            {/* NOTAM keyword hint badge (warning/clock emoji) -- mirrors
+                web's map-style.ts 'aerodromes-notam-hint'. filter/text-field
+                driven by notamHintFilter/notamHintTextExpr state (60s-
+                interval bulk fetch, see effect above). Text-only signal,
+                never affects aerodromes-atc-ring's color. */}
+            <Layer
+              id="aerodromes-notam-hint"
+              type="symbol"
+              minzoom={7}
+              filter={notamHintFilter as any}
+              layout={{
+                'text-field': notamHintTextExpr as any,
+                'text-size': 13,
+                'text-anchor': 'bottom-left',
+                'text-offset': [0.6, -0.6],
+                'text-allow-overlap': true,
+                'text-ignore-placement': true,
+              }}
+              paint={{
+                'text-halo-color': '#ffffff',
                 'text-halo-width': 1.5,
               }}
             />

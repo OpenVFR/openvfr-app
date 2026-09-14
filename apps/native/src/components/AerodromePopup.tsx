@@ -11,6 +11,8 @@ import { theme } from '../styles/theme'
 import { fetchWx, decodeMetar, parseMetarWind } from '@open-vfr/shared/fetchWx'
 import { fetchNotams, fmtNotamDate } from '@open-vfr/shared/fetchNotam'
 import { computeRunwayWind, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
+import { sunriseSunset } from '@open-vfr/shared/sunCalc'
+import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from '@open-vfr/shared/atcStatus'
 import type { WxResult, MetarDecoded } from '@open-vfr/shared/fetchWx'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { API_BASE } from '../config'
@@ -123,9 +125,14 @@ export interface AerodromeFeatureProps {
   ppr?:         boolean
   ppr_remarks?: string[]
   runways?:     Runway[]
+  /** Derived at data-prep time: true if any frequency has service === 'TWR'. */
+  towered?:     boolean
   hours_of_operation?:   HoursEntry[]
   handling_facilities?:  string[]
   passenger_facilities?: string[]
+  /** WGS84 coordinates, needed for the sunrise/sunset-based ATC status calc. */
+  lng?: number
+  lat?: number
 }
 
 interface Props {
@@ -206,6 +213,27 @@ export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
     ? { VFR: '#22c55e', MVFR: '#3b82f6', IFR: '#ef4444', LIFR: '#a855f7' }[metar.flightRule]
     : undefined
 
+  // ATC status: AIP-schedule-derived only (see @open-vfr/shared/atcStatus).
+  // NOTAM text is checked separately and only ever renders as a plain-text
+  // hint below, never flips this badge's color/status.
+  const sunTimes = feature.lat != null && feature.lng != null
+    ? sunriseSunset(feature.lat, feature.lng)
+    : { rise: null, set: null }
+  const atc = feature.towered ? computeAtcStatus(hours, sunTimes) : null
+  const activeNotamTexts = notams
+    .filter((n) => {
+      const now = Date.now()
+      const eff = n.effective ? Date.parse(n.effective) : null
+      const exp = n.expires ? Date.parse(n.expires) : null
+      if (eff != null && now < eff) return false
+      if (exp != null && now > exp) return false
+      return true
+    })
+    .map((n) => n.text)
+  const notamAtcHint = feature.towered && anyNotamAtcRelated(activeNotamTexts)
+  const notamHoursHint = feature.towered && anyNotamHoursChangeRelated(activeNotamTexts)
+  const atcColor = atc?.status === 'open' ? theme.statusOk : atc?.status === 'closed' ? theme.statusDanger : theme.textFaint
+
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
@@ -215,6 +243,19 @@ export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
           <View>
             <Text style={styles.icao}>{feature.icao}</Text>
             <Text style={styles.name}>{feature.name}</Text>
+            {atc && (
+              <View style={[styles.atcBadge, { borderColor: atcColor }]}>
+                <Text style={[styles.atcBadgeTxt, { color: atcColor }]}>
+                  ATC {atc.status === 'open' ? 'Open' : atc.status === 'closed' ? 'Closed' : '?'}
+                </Text>
+              </View>
+            )}
+            {notamAtcHint && (
+              <Text style={styles.notamHint}>⚠ Active NOTAM may affect ATC/tower — see NOTAMs</Text>
+            )}
+            {notamHoursHint && (
+              <Text style={styles.notamHint}>⏰ Active NOTAM may have changed opening hours — see NOTAMs</Text>
+            )}
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
             <Text style={styles.closeTxt}>✕</Text>
@@ -451,6 +492,24 @@ const styles = StyleSheet.create({
   },
   closeBtn: {
     padding: theme.space2,
+  },
+  atcBadge: {
+    alignSelf:       'flex-start',
+    borderWidth:     1,
+    borderRadius:    theme.radiusSm,
+    paddingHorizontal: theme.space2,
+    paddingVertical:   1,
+    marginTop:       4,
+  },
+  atcBadgeTxt: {
+    fontSize:   theme.textXs,
+    fontWeight: '700',
+  },
+  notamHint: {
+    color:    theme.statusWarn,
+    fontSize: 9,
+    marginTop: 2,
+    maxWidth: 220,
   },
   closeTxt: {
     color:    theme.textMuted,

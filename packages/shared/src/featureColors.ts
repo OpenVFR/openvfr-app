@@ -16,6 +16,11 @@ export const AERODROME_COLORS = {
   /** Text label */
   label:   '#1a3a8f',   // dark blue (matches web symbol label)
   halo:    '#ffffff',
+  /** ATC status ring (towered airports only) — AIP-schedule-derived,
+   *  see @open-vfr/shared/atcStatus. Never NOTAM-driven. */
+  atcOpen:    '#22c55e',  // green
+  atcClosed:  '#ef4444',  // red
+  atcUnknown: '#9ca3af',  // grey — towered but no usable schedule data
 } as const
 
 // ── Navaids ──────────────────────────────────────────────────────────────────

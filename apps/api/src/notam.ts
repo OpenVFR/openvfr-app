@@ -476,6 +476,31 @@ export function getNotamsForIcao(icao: string): NotamResponse {
 }
 
 /**
+ * Bulk per-aerodrome NOTAM texts (active only), one lookup for EVERY airport
+ * ICAO in the allow-list at once -- purely an in-memory cache read (same
+ * cost profile as getNotamsForIcao/getRegionalNotams above, no NMS-API call
+ * at request time), so no per-user rate limit is needed here either. Built
+ * for the map's "towered airport ATC status ring" feature: rather than the
+ * client looping one /api/notam?icao=X request per towered airport on its
+ * own refresh interval (unnecessary request fan-out for data this endpoint
+ * can return in one shot), it fetches this once and applies its own
+ * keyword-based ATC-closed / hours-changed heuristics client-side (see
+ * @open-vfr/shared/atcStatus) -- text only, never a definitive status here.
+ * FIR-wide (regional) keys are deliberately excluded -- those aren't tied
+ * to a single airport ICAO and are already served separately via
+ * getRegionalNotams()/`/api/notam/regional`.
+ */
+export function getAerodromeNotamTexts(): Record<string, string[]> {
+  const out: Record<string, string[]> = {}
+  for (const icao of _icaoAllowlist) {
+    if (_regionalKeys.includes(icao)) continue
+    const texts = activeNotamsFor(icao).map((n) => n.text).filter(Boolean)
+    if (texts.length > 0) out[icao] = texts
+  }
+  return out
+}
+
+/**
  * FIR-wide/regional NOTAMs (icaoLocation=ESAA) -- restricted/danger areas,
  * navaid outages, AIRAC amendments, military exercise notices, etc. that
  * aren't filed against any single airport. NOT returned by

@@ -58,6 +58,25 @@ export async function fetchRegionalNotams(
   return resp.json() as Promise<NotamResult>
 }
 
+/**
+ * Bulk per-aerodrome active NOTAM texts -- { [icao]: string[] }, one request
+ * for every allow-listed airport at once (see apps/api/src/notam.ts's
+ * getAerodromeNotamTexts()). Used by the map's ATC status ring to apply
+ * keyword-based ATC-closed / hours-changed heuristics (see ./atcStatus)
+ * without one /api/notam request per towered airport.
+ */
+export async function fetchAerodromeNotamTexts(
+  baseUrl = '',
+  signal?: AbortSignal,
+  headers?: Record<string, string>,
+): Promise<Record<string, string[]>> {
+  const url = `${baseUrl}/api/notam/aerodrome-texts`
+  const resp = await fetchWithRetry(url, { signal, headers })
+  if (resp.status === 503) return {}
+  if (!resp.ok) throw new Error(`Aerodrome NOTAM texts fetch failed: HTTP ${resp.status}`)
+  return resp.json() as Promise<Record<string, string[]>>
+}
+
 export function fmtNotamDate(iso: string | null): string | null {
   if (!iso) return null
   try {

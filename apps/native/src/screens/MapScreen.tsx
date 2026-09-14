@@ -552,6 +552,9 @@ export function MapScreen() {
 
       if (isAerodrome(p)) {
         const parse = <T,>(v: unknown): T => typeof v === 'string' ? JSON.parse(v) : v as T
+        const aeroCoords = feature.geometry.type === 'Point'
+          ? (feature.geometry as Point).coordinates as [number, number]
+          : null
         setAerodromeFeature({
           icao:         p.icao as string,
           name:         p.name as string ?? '',
@@ -562,9 +565,12 @@ export function MapScreen() {
           ppr:          p.ppr as boolean | undefined,
           ppr_remarks:  p.ppr_remarks ? parse(p.ppr_remarks) : [],
           runways:      p.runways     ? parse(p.runways)     : [],
+          towered:      p.towered as boolean | undefined,
           hours_of_operation:   p.hours_of_operation   ? parse(p.hours_of_operation)   : [],
           handling_facilities:  p.handling_facilities  ? parse(p.handling_facilities)  : [],
           passenger_facilities: p.passenger_facilities ? parse(p.passenger_facilities) : [],
+          lng: aeroCoords ? aeroCoords[0] : undefined,
+          lat: aeroCoords ? aeroCoords[1] : undefined,
         })
         return
       }

@@ -37,7 +37,8 @@
     "./tileManifest": "./src/tileManifest.ts",
     "./fetchWithRetry": "./src/fetchWithRetry.ts",
     "./geoCircle": "./src/geoCircle.ts",
-    "./notamRouteFilter": "./src/notamRouteFilter.ts"
+    "./notamRouteFilter": "./src/notamRouteFilter.ts",
+    "./atcStatus": "./src/atcStatus.ts"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.16"

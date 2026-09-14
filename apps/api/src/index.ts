@@ -28,7 +28,7 @@ import { streamSSE } from 'hono/streaming'
 import OpenAI, { toFile } from 'openai'
 import { writeFileSync, createReadStream, unlinkSync } from 'node:fs'
 import { trafficConfig, registerClient, startTrafficPoller, getLatestBatch, touchActivity } from './traffic'
-import { startNotamPoller, getNotamsForIcao, getRegionalNotams } from './notam'
+import { startNotamPoller, getNotamsForIcao, getRegionalNotams, getAerodromeNotamTexts } from './notam'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -611,6 +611,23 @@ app.get('/api/notam/regional', async (c) => {
   const user = await requireSession(c)
   if (!user) return c.json({ error: 'Authentication required.' }, 401)
   return c.json(getRegionalNotams())
+})
+
+// ---------------------------------------------------------------------------
+// NOTAM (bulk per-aerodrome texts) — GET /api/notam/aerodrome-texts
+// { [icao]: string[] } for every allow-listed airport with at least one
+// currently-active NOTAM. Pure in-memory cache read (see notam.ts's
+// getAerodromeNotamTexts() doc comment) — no external NMS-API call at
+// request time, so no additional per-user rate limit beyond auth, same as
+// its /api/notam and /api/notam/regional siblings above. Powers the map's
+// towered-airport ATC status ring: client applies its own keyword-based
+// ATC-closed / hours-changed heuristics (@open-vfr/shared/atcStatus) against
+// this in one shot instead of one /api/notam request per towered airport.
+// ---------------------------------------------------------------------------
+app.get('/api/notam/aerodrome-texts', async (c) => {
+  const user = await requireSession(c)
+  if (!user) return c.json({ error: 'Authentication required.' }, 401)
+  return c.json(getAerodromeNotamTexts())
 })
 
 // ---------------------------------------------------------------------------
