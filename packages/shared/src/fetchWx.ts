@@ -56,8 +56,23 @@ export async function fetchWxNearest(
   headers?: Record<string, string>,
   maxCandidates = 6,
 ): Promise<WxWithSource> {
-  const own = await fetchWx(icao, baseUrl, signal, headers)
-  if (own.metar || own.taf) return { ...own, sourceIcao: icao, distNm: null }
+  // Wrapped in try/catch same as each candidate below -- some aerodromes in
+  // the dataset carry a non-standard, longer-than-4-letter pseudo-ICAO for
+  // small private strips without a real ICAO code (e.g. "ESTAGA" for
+  // Trelleborg/Tågarp). The backend validates /^[A-Z]{4}$/ and 400s those,
+  // which fetchWx() turns into a thrown Error -- previously that threw
+  // straight out of fetchWxNearest entirely, skipping the fallback search
+  // altogether and surfacing a bare "Weather unavailable" instead of the
+  // nearest real station's actual METAR/TAF. A malformed/unfetchable OWN
+  // icao should fall through to candidates exactly like a malformed/
+  // unfetchable CANDIDATE icao already does, not abort the whole search.
+  let own: WxResult | null = null
+  try {
+    own = await fetchWx(icao, baseUrl, signal, headers)
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') throw err
+  }
+  if (own && (own.metar || own.taf)) return { ...own, sourceIcao: icao, distNm: null }
 
   for (const cand of nearby.slice(0, maxCandidates)) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')

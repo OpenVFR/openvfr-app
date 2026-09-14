@@ -612,20 +612,14 @@
   flex-shrink: 0;
 }
 
-/* Plain-English METAR narrative */
+/* Plain-English METAR narrative — one flowing paragraph (not one <p> per
+   fact) so it wraps to fill the panel's full width like normal prose,
+   rather than several short, independently-wrapped lines. */
 .wxNarrative {
   font-size: 10.5px;
   line-height: 1.5;
   color: var(--text-secondary);
   margin-bottom: 8px;
-}
-
-.wxNarrative p {
-  margin-bottom: 2px;
-}
-
-.wxNarrative p:last-child {
-  margin-bottom: 0;
 }
 
 /* Decoded TAF period cards, shown above the raw TAF text */

@@ -909,9 +909,9 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
 
                   {/* Plain-English narrative — same purpose as a public
                       METAR/TAF site's translated-to-prose summary. */}
-                  <div className={css.wxNarrative}>
-                    {metarNarrative(metar).map((line, i) => <p key={i}>{line}</p>)}
-                  </div>
+                  <p className={css.wxNarrative}>
+                    {metarNarrative(metar).join(' ')}
+                  </p>
                 </>
               )}
 
