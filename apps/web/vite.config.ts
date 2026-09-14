@@ -187,15 +187,20 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/api/weather': {
-        target: 'http://localhost:5200',
+        // Overridable via VITE_DEV_API_TARGET so local dev can point at prod
+        // (api.openvfr.org) instead of requiring the full docker-compose
+        // stack (db/martin/api/postgrest) just to verify a frontend-only
+        // change -- same reasoning as '/api/traffic' above, opt-in via env
+        // rather than changing the default for everyone else.
+        target: process.env.VITE_DEV_API_TARGET || 'http://localhost:5200',
         changeOrigin: true,
       },
       '/api/notam': {
-        target: 'http://localhost:5200',
+        target: process.env.VITE_DEV_API_TARGET || 'http://localhost:5200',
         changeOrigin: true,
       },
       '/api/auth': {
-        target: 'http://localhost:5200',
+        target: process.env.VITE_DEV_API_TARGET || 'http://localhost:5200',
         changeOrigin: true,
       },
       '/rest': {

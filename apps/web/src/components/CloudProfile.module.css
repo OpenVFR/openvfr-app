@@ -1,0 +1,57 @@
+.chart {
+  margin-bottom: 8px;
+}
+
+.plot {
+  position: relative;
+  height: 110px;
+  margin-left: 30px;
+  border-left: 1px solid var(--border-default);
+}
+
+.gridline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.gridLabel {
+  position: absolute;
+  left: -30px;
+  top: -6px;
+  width: 26px;
+  text-align: right;
+  font-size: 8.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.layer {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transform: translateY(50%);
+}
+
+.layerIcon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.coverFEW { fill: var(--text-faint); opacity: 0.6; }
+.coverSCT { fill: var(--text-muted); opacity: 0.75; }
+.coverBKN { fill: var(--text-secondary); }
+.coverOVC { fill: var(--text-primary); }
+
+.layerLabel {
+  font-size: 9.5px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  background: var(--surface-base);
+  padding: 0 3px;
+}

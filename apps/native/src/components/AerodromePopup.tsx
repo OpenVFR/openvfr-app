@@ -42,7 +42,6 @@ interface Runway {
   designator: string
   length_m?: number
   surface?: string
-  mag_brg?: number
   thresholds?: Threshold[]
   lighting?: string[]
   visual_approach_aids?: string[]
@@ -383,12 +382,15 @@ export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
                         </Text>
                       </View>
                     ) : (
+                      // No thresholds at all for this runway (source data
+                      // gap) -- no bearing to show either way, since a
+                      // runway-level mag_brg field doesn't exist in the
+                      // schema (only thresholds[].mag_brg / true_brg do).
                       <Row
                         label={r.designator}
                         value={[
                           r.length_m ? `${r.length_m} m` : null,
                           r.surface ?? null,
-                          r.mag_brg != null ? `${Math.round(r.mag_brg)}°` : null,
                         ].filter(Boolean).join(' · ')}
                       />
                     )}

@@ -497,6 +497,220 @@
   font-style: italic;
 }
 
+/* Time-of-observation, next to the flight-rule badge in the Wx header */
+.wxTime {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
+/* Nearest-station fallback banner — shown when p.icao itself has no
+   METAR/TAF and a nearby station's report is being displayed instead. */
+.wxFallback {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--status-box-info-text);
+  background: var(--status-box-info-bg);
+  border: 1px solid var(--status-box-info-border);
+  border-radius: 5px;
+  padding: 5px 8px;
+  margin-bottom: 8px;
+}
+
+.wxFallback strong {
+  font-weight: 700;
+}
+
+/* Runway picker — shown above the compass when an airport has more than
+   one runway (e.g. ESMS 17/35 + 11/29). */
+.rwyPicker {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.rwyPickerBtn {
+  background: var(--surface-hover);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+
+.rwyPickerBtn:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+}
+
+.rwyPickerBtnActive {
+  background: var(--tint-blue-mid);
+  border-color: var(--accent-blue);
+  color: var(--accent-blue-bright);
+}
+
+/* The runway with the overall-best headwind (bestOverall) — unmistakable
+   even when it isn't the currently-selected one, so the recommendation
+   never depends on the pilot noticing a subtle colour difference. */
+.rwyPickerBtnBest {
+  border-color: var(--accent-green);
+  color: var(--text-primary);
+}
+
+.rwyPickerBtnBest.rwyPickerBtnActive {
+  background: var(--tint-green-mid);
+  border-color: var(--accent-green);
+}
+
+.rwyPickerBestTag {
+  display: block;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--accent-green);
+  line-height: 1.3;
+}
+
+.rwyPickerDesigBest {
+  font-weight: 800;
+  color: var(--accent-green);
+}
+
+.rwyPickerSlash {
+  color: var(--text-faint);
+  margin: 0 1px;
+}
+
+/* Graphical wind-direction/runway compass + speed dial, side by side */
+.gaugeRow {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  margin-bottom: 10px;
+}
+
+/* Colour-coded metric tile grid (Wind / Vis / Ceiling / QNH / T-Td / Wx) */
+.wxTileGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.wxTile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: 6px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+}
+
+.wxTileok      { background: var(--status-box-ok-bg);     border-color: var(--status-box-ok-border);     color: var(--status-box-ok-text); }
+.wxTilewarn    { background: var(--status-box-warn-bg);    border-color: var(--status-box-warn-border);   color: var(--status-box-warn-text); }
+.wxTiledanger  { background: var(--status-box-danger-bg);  border-color: var(--status-box-danger-border); color: var(--status-box-danger-text); }
+.wxTileinfo    { background: var(--status-box-info-bg);    border-color: var(--status-box-info-border);   color: var(--status-box-info-text); }
+
+.wxTileLabel {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.wxTileValue {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Small wind-direction arrow inside the Wind tile — rotated inline via
+   style={{transform}} since the angle is a genuinely dynamic value (see
+   docs/styling.md — inline style is only for computed values like this). */
+.windArrow {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+  flex-shrink: 0;
+}
+
+/* Plain-English METAR narrative */
+.wxNarrative {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.wxNarrative p {
+  margin-bottom: 2px;
+}
+
+.wxNarrative p:last-child {
+  margin-bottom: 0;
+}
+
+/* Decoded TAF period cards, shown above the raw TAF text */
+.tafPeriods {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.tafPeriodsLabel {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 2px;
+}
+
+.tafPeriod {
+  background: var(--surface-hover);
+  border-radius: 5px;
+  padding: 5px 8px;
+}
+
+.tafPeriodHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.tafPeriodKind {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--accent-blue-bright);
+}
+
+.tafPeriodTime {
+  font-size: 9.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.tafPeriodBody {
+  display: flex;
+  gap: 10px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Decoded METAR key/value grid: 2-column */
 .wxGrid {
   display: grid;

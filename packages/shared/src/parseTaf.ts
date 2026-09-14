@@ -32,7 +32,10 @@
  * matches parseMetarWind/parseMetarClouds' existing scope).
  */
 
-import { parseMetarWind, parseMetarClouds, type ParsedWind, type ParsedCloudLayer } from './fetchWx'
+import {
+  parseMetarWind, parseMetarClouds, ceilingFromClouds, flightRuleFromCeilingVis,
+  type ParsedWind, type ParsedCloudLayer,
+} from './fetchWx'
 
 export type TafPeriodKind = 'BASE' | 'FM' | 'BECMG' | 'TEMPO' | 'PROB30' | 'PROB40'
 
@@ -44,6 +47,10 @@ export interface TafPeriod {
   toMs: number
   wind: ParsedWind | null
   clouds: ParsedCloudLayer[]
+  /** Numeric visibility in metres for this segment (9999 for CAVOK/10km+),
+   *  null if this segment's body carries no visibility group of its own
+   *  (common for TEMPO/BECMG groups that only restate wind or clouds). */
+  visM: number | null
 }
 
 /**
@@ -168,10 +175,19 @@ export function parseTaf(raw: string | null, referenceMs = Date.now()): TafPerio
     const bodyStr = body.join(' ')
     const windTok = body.find((t) => /^(\d{3}|VRB)\d{2,3}(G\d{2,3})?(KT|MPS)$/i.test(t))
     const cloudToks = body.filter((t) => /^(FEW|SCT|BKN|OVC)\d{3}(CB|TCU)?$/i.test(t) || t === 'CAVOK' || t === 'SKC' || t === 'NSC')
+    const cavok = bodyStr.includes('CAVOK')
+    // Visibility group: 4-digit metres (9999 = 10km+) or NNNSM (statute miles,
+    // rare in TAF but same token shape decodeMetar already recognises in
+    // METAR). CAVOK implies 10km+ without a separate group.
+    const visTok = body.find((t) => /^\d{4}$/.test(t) || /^\d+SM$/i.test(t))
+    const visM = cavok ? 9999 : visTok
+      ? visTok.toUpperCase().endsWith('SM') ? Math.round(parseFloat(visTok) * 1609) : parseInt(visTok, 10)
+      : null
     return {
       kind, fromMs, toMs,
       wind:   windTok ? parseMetarWind(windTok) : null,
-      clouds: cloudToks.length > 0 ? parseMetarClouds(cloudToks.join(' ')) : (bodyStr.includes('CAVOK') ? [] : []),
+      clouds: cloudToks.length > 0 ? parseMetarClouds(cloudToks.join(' ')) : [],
+      visM,
     }
   })
 }
@@ -179,6 +195,7 @@ export function parseTaf(raw: string | null, referenceMs = Date.now()): TafPerio
 export interface ActiveTafConditions {
   wind: ParsedWind | null
   clouds: ParsedCloudLayer[]
+  visM: number | null
   source: TafPeriodKind
   /** Start of the next real prevailing-conditions change (FM/BECMG) after
    *  `atMs`, or null if none remain in the TAF's validity window. Not
@@ -214,9 +231,70 @@ export function getActiveTafConditions(periods: TafPeriod[], atMs: number): Acti
   return {
     wind:   active.wind ?? prevailing.wind,
     clouds: active.clouds.length > 0 ? active.clouds : prevailing.clouds,
+    visM:   active.visM ?? prevailing.visM,
     source: active.kind,
     nextChangeMs,
   }
+}
+
+// ── Hourly timeline (for a metar-taf.com-style hour-by-hour forecast table) ──
+
+export interface TafHourSlice {
+  atMs:       number
+  wind:       ParsedWind | null
+  clouds:     ParsedCloudLayer[]
+  visM:       number | null
+  ceilingFt:  number | null
+  flightRule: 'VFR' | 'MVFR' | 'IFR' | 'LIFR'
+  /** Which period kind is driving this hour — lets the UI badge e.g. a
+   *  TEMPO-covered hour differently from a plain prevailing hour. */
+  source:     TafPeriodKind
+}
+
+/**
+ * Slices a parsed TAF into one row per hour across its full validity window
+ * (BASE/FM/BECMG span), each resolved via getActiveTafConditions the same
+ * way the chart's "current instant" resolution works — just repeated at
+ * `stepHours` intervals instead of evaluated once "now". This is what
+ * powers an hour-by-hour forecast table (time / flight-rule / wind / vis /
+ * ceiling per column), mirroring how public METAR/TAF sites present a TAF
+ * as a timeline instead of raw period groups.
+ */
+export function buildTafTimeline(
+  periods: TafPeriod[] | null,
+  opts?: { stepHours?: number; maxSlices?: number },
+): TafHourSlice[] {
+  if (!periods || periods.length === 0) return []
+  const stepMs    = (opts?.stepHours ?? 1) * 60 * 60 * 1000
+  const maxSlices = opts?.maxSlices ?? 30
+
+  const prevailing = periods.filter((p) => p.kind === 'BASE' || p.kind === 'FM' || p.kind === 'BECMG')
+  if (prevailing.length === 0) return []
+  const startMs = Math.min(...prevailing.map((p) => p.fromMs))
+  const endMs   = Math.max(...prevailing.map((p) => p.toMs))
+
+  const out: TafHourSlice[] = []
+  // Align the first column to the next whole hour at/after the TAF's own
+  // start (TAF validity almost always starts on the hour already, but this
+  // keeps it correct if a real-world message ever doesn't).
+  let t = Math.ceil(startMs / stepMs) * stepMs
+  while (t < endMs && out.length < maxSlices) {
+    const active = getActiveTafConditions(periods, t)
+    if (active) {
+      const ceilingFt = ceilingFromClouds(active.clouds)
+      out.push({
+        atMs: t,
+        wind: active.wind,
+        clouds: active.clouds,
+        visM: active.visM,
+        ceilingFt,
+        flightRule: flightRuleFromCeilingVis(ceilingFt, active.visM),
+        source: active.source,
+      })
+    }
+    t += stepMs
+  }
+  return out
 }
 
 const DEFAULT_WARNING_WINDOW_MS = 3 * 60 * 60 * 1000 // 3h — arbitrary but matches typical pre-flight brief horizon

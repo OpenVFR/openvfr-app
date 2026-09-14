@@ -1573,7 +1573,18 @@ export function getMapStyle(): StyleSpecification {
           'text-field': ['get', 'id'],
           'text-font': ['Noto Sans Medium'],
           'text-size': RUNWAY_LABEL_DEFAULT_SIZE as ExpressionSpecification,
-          'text-rotate': ['coalesce', ['get', 'mag_brg'], 0],
+          // mag_brg is a "not yet computed" placeholder `0` for a large
+          // fraction of thresholds in the source data (true_brg is always
+          // populated) -- coalesce alone doesn't catch that (only null/undefined
+          // substitute), so this falls back to true_brg whenever mag_brg is
+          // exactly 0. See @open-vfr/shared/runwayWind's effectiveMagBrg,
+          // which every JS-side reader of this same field goes through.
+          'text-rotate': [
+            'case',
+            ['==', ['coalesce', ['get', 'mag_brg'], 0], 0],
+            ['coalesce', ['get', 'true_brg'], 0],
+            ['get', 'mag_brg'],
+          ] as unknown as ExpressionSpecification,
           'text-rotation-alignment': 'map',
           'text-pitch-alignment': 'map',
           'text-allow-overlap': true,

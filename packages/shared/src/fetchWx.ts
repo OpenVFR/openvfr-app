@@ -24,6 +24,56 @@ export async function fetchWx(
   return resp.json() as Promise<WxResult>
 }
 
+// ── Nearest-station fallback ─────────────────────────────────────────────────
+// Mirrors the "nearest available report" behaviour of public METAR/TAF sites:
+// small/uncontrolled aerodromes rarely have their own AWOS/ATIS station, so
+// when the requested ICAO has neither a METAR nor a TAF, fall through to the
+// closest candidate that does. Sequential (not parallel) by design -- this
+// only ever fires for the minority of airports with no local report, and
+// sequential keeps it to one extra request at a time instead of a burst of
+// N parallel /api/weather calls per popup open.
+
+export interface WxStationCandidate {
+  icao:   string
+  /** Great-circle distance from the originally-requested aerodrome, NM. */
+  distNm: number
+}
+
+export interface WxWithSource extends WxResult {
+  /** ICAO the returned metar/taf actually came from -- equals the
+   *  requested `icao` unless a fallback candidate had to be used. */
+  sourceIcao: string
+  /** Distance from the requested aerodrome to `sourceIcao`, NM -- null when
+   *  the requested aerodrome's own report was used (no fallback needed). */
+  distNm: number | null
+}
+
+export async function fetchWxNearest(
+  icao: string,
+  nearby: WxStationCandidate[],
+  baseUrl = '',
+  signal?: AbortSignal,
+  headers?: Record<string, string>,
+  maxCandidates = 6,
+): Promise<WxWithSource> {
+  const own = await fetchWx(icao, baseUrl, signal, headers)
+  if (own.metar || own.taf) return { ...own, sourceIcao: icao, distNm: null }
+
+  for (const cand of nearby.slice(0, maxCandidates)) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    try {
+      const wx = await fetchWx(cand.icao, baseUrl, signal, headers)
+      if (wx.metar || wx.taf) return { ...wx, sourceIcao: cand.icao, distNm: cand.distNm }
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') throw err
+      // Candidate fetch failed (network/HTTP) -- try the next-nearest one.
+    }
+  }
+  // Nothing found anywhere nearby -- report against the originally-requested
+  // ICAO so callers show "no data" for the right identifier.
+  return { metar: null, taf: null, sourceIcao: icao, distNm: null }
+}
+
 // ── METAR decoder ─────────────────────────────────────────────────────────────
 
 export interface MetarDecoded {
@@ -35,13 +85,53 @@ export interface MetarDecoded {
   qnh:        string | null
   wx:         string | null
   flightRule: 'VFR' | 'MVFR' | 'IFR' | 'LIFR' | null
+  /** Numeric visibility in metres (9999 for CAVOK/10km+), null if unparseable.
+   *  Exposed alongside the raw `.vis` token so callers doing per-metric
+   *  colour-coding (e.g. a metar-taf.com-style tile grid) don't have to
+   *  re-derive it from the raw token themselves. */
+  visM:       number | null
+  /** Numeric ceiling in feet (lowest BKN/OVC base), null if no ceiling
+   *  (CAVOK/clear or only FEW/SCT reported) — same reasoning as `.visM`. */
+  ceilingFt:  number | null
+  /** Observation time resolved to an epoch ms against `referenceMs` (day-of-
+   *  month + HH:MM from the DDHHMMZ group has no year/month of its own) --
+   *  null if the raw METAR carried no recognisable time group. Powers an
+   *  "Xm ago" freshness readout the way public METAR/TAF sites show next to
+   *  the raw observation time. */
+  obsMs:      number | null
 }
 
-export function decodeMetar(raw: string): MetarDecoded {
+/**
+ * Resolves a METAR/TAF DDHHMMZ group (day-of-month + hour + minute, no
+ * year/month of its own) against a reference timestamp, rolling into the
+ * previous month if the day would otherwise land more than a few days in
+ * the future -- mirrors parseTaf.ts's own resolveDayHour, duplicated here
+ * (not imported) since parseTaf already depends on this file and importing
+ * back would create a cycle for a ~10-line date calc.
+ */
+function resolveObsDayHourMin(day: number, hour: number, minute: number, referenceMs: number): number {
+  const ref = new Date(referenceMs)
+  let year = ref.getUTCFullYear()
+  let month = ref.getUTCMonth()
+  const candidate = Date.UTC(year, month, day, hour, minute)
+  const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
+  if (candidate > referenceMs + THREE_DAYS_MS) {
+    // e.g. observation day "28" evaluated on the 2nd of the next month.
+    month -= 1
+    if (month < 0) { month = 11; year -= 1 }
+    return Date.UTC(year, month, day, hour, minute)
+  }
+  return candidate
+}
+
+export function decodeMetar(raw: string, referenceMs = Date.now()): MetarDecoded {
   const tokens = raw.split(/\s+/)
 
   const timeTok = tokens.find((t) => /^\d{6}Z$/.test(t))
   const time = timeTok ? timeTok.slice(2, 6).replace(/(\d{2})(\d{2})/, '$1:$2') + 'Z' : null
+  const obsMs = timeTok
+    ? resolveObsDayHourMin(parseInt(timeTok.slice(0, 2), 10), parseInt(timeTok.slice(2, 4), 10), parseInt(timeTok.slice(4, 6), 10), referenceMs)
+    : null
 
   const windTok = tokens.find((t) => /^(\d{3}|VRB)\d{2}(G\d{2})?(KT|MPS)$/i.test(t))
   let wind: string | null = null
@@ -68,21 +158,23 @@ export function decodeMetar(raw: string): MetarDecoded {
   const wx = wxCodes.length > 0 ? wxCodes.join(' ') : null
 
   let flightRule: MetarDecoded['flightRule'] = null
+  const ceilingGroup  = cloudGroups.find((g) => /^(BKN|OVC)/.test(g))
+  const ceilingFt     = ceilingGroup ? parseInt(ceilingGroup.slice(3, 6), 10) * 100 : null
+  const visM          = cavok ? 9999 : visTok
+    ? visTok.endsWith('SM') ? Math.round(parseFloat(visTok) * 1609) : parseInt(visTok, 10)
+    : null
   if (cavok) {
     flightRule = 'VFR'
   } else {
-    const ceilingGroup = cloudGroups.find((g) => /^(BKN|OVC)/.test(g))
-    const ceilingHft   = ceilingGroup ? parseInt(ceilingGroup.slice(3, 6), 10) * 100 : 99999
-    const visM         = visTok
-      ? visTok.endsWith('SM') ? parseFloat(visTok) * 1609 : parseInt(visTok, 10)
-      : 99999
-    if (ceilingHft < 500  || visM < 1600) flightRule = 'LIFR'
-    else if (ceilingHft < 1000 || visM < 4800) flightRule = 'IFR'
-    else if (ceilingHft < 3000 || visM < 8000) flightRule = 'MVFR'
+    const ceilingHft = ceilingFt ?? 99999
+    const visMForRule = visM ?? 99999
+    if (ceilingHft < 500  || visMForRule < 1600) flightRule = 'LIFR'
+    else if (ceilingHft < 1000 || visMForRule < 4800) flightRule = 'IFR'
+    else if (ceilingHft < 3000 || visMForRule < 8000) flightRule = 'MVFR'
     else flightRule = 'VFR'
   }
 
-  return { time, wind, vis, clouds, temp, qnh, wx, flightRule }
+  return { time, wind, vis, clouds, temp, qnh, wx, flightRule, visM, ceilingFt, obsMs }
 }
 
 // ── Chart-oriented structured parses of the same raw METAR groups ──────────
@@ -121,6 +213,30 @@ export function parseMetarWind(raw: string | null): ParsedWind | null {
 export interface ParsedCloudLayer {
   cover: 'FEW' | 'SCT' | 'BKN' | 'OVC'
   baseFt: number
+}
+
+/** Lowest BKN/OVC layer base, or null if there isn't one (FEW/SCT-only or
+ *  clear skies don't constitute a "ceiling" by definition). Factored out so
+ *  parseTaf's hourly timeline builder can derive a ceiling from its own
+ *  per-segment ParsedCloudLayer[] the same way decodeMetar does inline. */
+export function ceilingFromClouds(clouds: ParsedCloudLayer[]): number | null {
+  const layer = clouds.find((l) => l.cover === 'BKN' || l.cover === 'OVC')
+  return layer ? layer.baseFt : null
+}
+
+/** Same VFR/MVFR/IFR/LIFR thresholds as decodeMetar's inline flight-rule
+ *  logic, factored out for reuse by parseTaf's hourly timeline (each hour
+ *  slice needs its own bucket, not just the current METAR's). */
+export function flightRuleFromCeilingVis(
+  ceilingFt: number | null,
+  visM: number | null,
+): 'VFR' | 'MVFR' | 'IFR' | 'LIFR' {
+  const ceilingHft = ceilingFt ?? 99999
+  const visMForRule = visM ?? 99999
+  if (ceilingHft < 500 || visMForRule < 1600) return 'LIFR'
+  if (ceilingHft < 1000 || visMForRule < 4800) return 'IFR'
+  if (ceilingHft < 3000 || visMForRule < 8000) return 'MVFR'
+  return 'VFR'
 }
 
 /** Returns [] for CAVOK/clear (correctly means "draw no layers"), not null,

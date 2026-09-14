@@ -1,0 +1,116 @@
+/* ── Shared gauge wrapper ───────────────────────────────────────────── */
+.compassWrap,
+.dialWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.compassSvg {
+  width: 100%;
+  max-width: 108px;
+  aspect-ratio: 1;
+}
+
+.compassCaption {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* ── Compass dial ───────────────────────────────────────────────────── */
+.dialBg {
+  fill: var(--surface-hover);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.tick {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.cardinalLabel {
+  font-size: 7px;
+  font-weight: 700;
+  fill: var(--text-faint);
+}
+
+.centerLabel {
+  font-size: 8px;
+  font-weight: 700;
+  fill: var(--text-faint);
+}
+
+/* Runway bar drawn across the compass at its magnetic heading */
+.rwyBar {
+  stroke: var(--text-secondary);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.rwyLabel {
+  font-size: 7px;
+  font-weight: 700;
+  fill: var(--text-primary);
+}
+
+/* The end with the best headwind — bolder + green, matches the runway
+   picker's own "BEST" emphasis so the same recommendation reads
+   consistently in both places. */
+.rwyLabelFavored {
+  font-size: 8px;
+  fill: var(--accent-green);
+}
+
+/* Wind arrow — colour matches the Wind tile's own tone (ok/warn/danger) */
+.windShaft {
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.windHead {
+  stroke: none;
+}
+
+.windArrowok     { color: var(--accent-green); }
+.windArrowwarn   { color: var(--status-warn); }
+.windArrowdanger { color: var(--status-danger); }
+.windArrowGroup .windShaft,
+.windArrowGroup .windHead { stroke: currentColor; fill: currentColor; }
+
+/* ── Speed dial ─────────────────────────────────────────────────────── */
+.speedTrack {
+  fill: none;
+  stroke: var(--surface-active);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.speedProgress {
+  fill: none;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.speedProgressok     { stroke: var(--accent-green); }
+.speedProgresswarn   { stroke: var(--status-warn); }
+.speedProgressdanger { stroke: var(--status-danger); }
+
+.speedTickLabel {
+  font-size: 6.5px;
+  fill: var(--text-faint);
+}
+
+.needle {
+  stroke: var(--text-primary);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.needleHub {
+  fill: var(--text-primary);
+}

@@ -1935,7 +1935,20 @@ export function AviationMap({
               // setPaintProperty, shared via buildRunwayWindHighlight so
               // "favored" means exactly the same thing on both platforms.
               'text-size': runwayWindExpr.size as any,
-              'text-rotate': ['coalesce', ['get', 'mag_brg'], 0],
+              // mag_brg is a "not yet computed" placeholder `0` for a large
+              // fraction of thresholds in the source data (true_brg is
+              // always populated) -- coalesce alone doesn't catch that (only
+              // null/undefined substitute), so this falls back to true_brg
+              // whenever mag_brg is exactly 0. Same fix as web's
+              // map-style.ts 'runway-threshold-label' layer, and matches
+              // @open-vfr/shared/runwayWind's effectiveMagBrg used by every
+              // JS-side reader of this same field.
+              'text-rotate': [
+                'case',
+                ['==', ['coalesce', ['get', 'mag_brg'], 0], 0],
+                ['coalesce', ['get', 'true_brg'], 0],
+                ['get', 'mag_brg'],
+              ] as any,
               'text-rotation-alignment': 'map',
               'text-allow-overlap': true,
               'text-ignore-placement': true,

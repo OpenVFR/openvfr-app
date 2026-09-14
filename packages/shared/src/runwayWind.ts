@@ -22,6 +22,26 @@ import type { ParsedWind } from './fetchWx'
 export interface RunwayThresholdInput {
   designator: string
   mag_brg: number | null
+  /** True bearing, degrees -- used as a fallback when `mag_brg` is the data
+   *  pipeline's "not yet computed" placeholder (see effectiveMagBrg below). */
+  true_brg?: number | null
+}
+
+/**
+ * `mag_brg` is `0` (not `null`) for a still-substantial fraction of
+ * thresholds in the underlying aerodrome dataset -- a "not yet computed"
+ * placeholder from the data pipeline, not a real magnetic bearing (confirmed
+ * against the source data: `true_brg` is always populated and a genuine `0`
+ * true bearing essentially never coincides with a `0` mag_brg placeholder in
+ * practice, since Sweden's magnetic declination is a few degrees, never
+ * exactly zero). Treating that `0` as real would badly corrupt every
+ * downstream consumer -- headwind/crosswind direction, which runway end is
+ * "favoured", and any compass/heading display -- so every read of a
+ * threshold's bearing must go through this, never `t.mag_brg` directly.
+ */
+export function effectiveMagBrg(mag_brg: number | null | undefined, true_brg?: number | null): number | null {
+  if (mag_brg != null && mag_brg !== 0) return mag_brg
+  return true_brg ?? null
 }
 
 export interface RunwayWindEnd {
@@ -48,7 +68,7 @@ export function computeRunwayWind(
   if (!wind || wind.calm || wind.dirDeg == null) {
     return thresholds.map((t) => ({
       designator: t.designator,
-      magBrgDeg: t.mag_brg,
+      magBrgDeg: effectiveMagBrg(t.mag_brg, t.true_brg),
       headwindKt: null,
       crosswindKt: null,
       crosswindSeverity: null,
@@ -57,7 +77,8 @@ export function computeRunwayWind(
   }
 
   const ends: RunwayWindEnd[] = thresholds.map((t) => {
-    if (t.mag_brg == null) {
+    const brg = effectiveMagBrg(t.mag_brg, t.true_brg)
+    if (brg == null) {
       return {
         designator: t.designator,
         magBrgDeg: null,
@@ -67,12 +88,12 @@ export function computeRunwayWind(
         favored: false,
       }
     }
-    const diffRad = (wind.dirDeg! - t.mag_brg) * Math.PI / 180
+    const diffRad = (wind.dirDeg! - brg) * Math.PI / 180
     const headwindKt = Math.round(wind.speedKt * Math.cos(diffRad))
     const crosswindKt = Math.round(Math.abs(wind.speedKt * Math.sin(diffRad)))
     return {
       designator: t.designator,
-      magBrgDeg: t.mag_brg,
+      magBrgDeg: brg,
       headwindKt,
       crosswindKt,
       crosswindSeverity: classifyCrosswindSeverity(crosswindKt),

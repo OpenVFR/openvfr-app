@@ -27,7 +27,7 @@ import {
   AVIATION_LABEL_LAYERS,
   AIRSPACE_BORDER_WIDTHS,
 } from '../styles/map-style'
-import { buildRunwayWindHighlight, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
+import { buildRunwayWindHighlight, effectiveMagBrg, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import { computeAtcStatus, isNotamAtcRelated, isNotamHoursChangeRelated, type HoursEntry as AtcHoursEntry } from '@open-vfr/shared/atcStatus'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
 import { AERODROME_COLORS } from '@open-vfr/shared/featureColors'
@@ -111,8 +111,12 @@ const AERODROME_LAYERS = ['aerodromes-icon', 'aerodromes-label']
 // ── Extended centreline helper ────────────────────────────────────────────
 // A runway threshold has a `mag_brg` (bearing FROM threshold toward the runway).
 // The extended centreline is projected AWAY from the runway — i.e. the inbound
-// approach direction is the RECIPROCAL of mag_brg.
-interface ThresholdEntry { icao: string; lat: number; lng: number; mag_brg: number }
+// approach direction is the RECIPROCAL of mag_brg. mag_brg is a "not yet
+// computed" placeholder `0` for a large fraction of thresholds in the
+// underlying dataset -- true_brg is carried alongside it and always
+// populated, so every read goes through effectiveMagBrg (see runwayWind.ts)
+// rather than trusting mag_brg directly.
+interface ThresholdEntry { icao: string; lat: number; lng: number; mag_brg: number; true_brg: number | null }
 
 function buildCentrelines(
   thresholds: ThresholdEntry[],
@@ -131,8 +135,9 @@ function buildCentrelines(
   }
   if (nearbyIcaos.size === 0) return { type: 'FeatureCollection', features: [] }
 
-  // Inbound bearing = reciprocal of mag_brg
-  const inboundBrg = (t: ThresholdEntry) => (t.mag_brg + 180) % 360
+  // Inbound bearing = reciprocal of the effective (mag_brg-or-true_brg-
+  // fallback) bearing.
+  const inboundBrg = (t: ThresholdEntry) => ((effectiveMagBrg(t.mag_brg, t.true_brg) ?? 0) + 180) % 360
   // Angular difference between two bearings
   const angleDiff = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180)
 
@@ -146,7 +151,7 @@ function buildCentrelines(
     features.push({
       type: 'Feature',
       geometry: { type: 'LineString', coordinates: [[t.lng, t.lat], [end.lng, end.lat]] },
-      properties: { icao: t.icao, mag_brg: t.mag_brg, highlight: diff <= 30 },
+      properties: { icao: t.icao, mag_brg: effectiveMagBrg(t.mag_brg, t.true_brg), highlight: diff <= 30 },
     })
   }
   return { type: 'FeatureCollection', features }
@@ -3017,10 +3022,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
         runwayThresholdsRef.current = fc.features
           .filter(f => f.geometry.type === 'Point')
           .map(f => ({
-            icao:    (f.properties as Record<string, unknown>).icao as string,
-            lat:     (f.geometry as GeoJSON.Point).coordinates[1],
-            lng:     (f.geometry as GeoJSON.Point).coordinates[0],
-            mag_brg: (f.properties as Record<string, unknown>).mag_brg as number,
+            icao:     (f.properties as Record<string, unknown>).icao as string,
+            lat:      (f.geometry as GeoJSON.Point).coordinates[1],
+            lng:      (f.geometry as GeoJSON.Point).coordinates[0],
+            mag_brg:  (f.properties as Record<string, unknown>).mag_brg as number,
+            true_brg: ((f.properties as Record<string, unknown>).true_brg as number | undefined) ?? null,
           }))
       })
       .catch(() => { /* non-fatal */ })
