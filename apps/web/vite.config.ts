@@ -63,8 +63,8 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: 'Open VFR',
-        short_name: 'Open VFR',
+        name: 'OpenVFR',
+        short_name: 'OpenVFR',
         description: 'Open source European VFR Electronic Flight Bag',
         theme_color: '#1a1a2e',
         background_color: '#1a1a2e',

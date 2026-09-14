@@ -83,7 +83,7 @@ export const auth = betterAuth({
     bearer(),   // enables Authorization: Bearer <token> for native/API clients
     passkey({
       rpID:   new URL(APP_ORIGIN).hostname,
-      rpName: 'Open VFR',
+      rpName: 'OpenVFR',
       // Accept both the web origin (e.g. https://app.your-domain.example) and the Android
       // APK key hash origin. iOS uses the same origin as the web app via
       // Associated Domains, so no separate entry is needed for it.
@@ -103,7 +103,7 @@ export const auth = betterAuth({
       sendVerificationOTP: async ({ email, otp, type }) => {
         await sendEmail({
           to: email,
-          subject: 'Your Open VFR sign-in code',
+          subject: 'Your OpenVFR sign-in code',
           text: `Your verification code is: ${otp}\n\nThis code expires in 10 minutes. If you didn't request this (${type}), you can ignore this email.`,
         })
       },

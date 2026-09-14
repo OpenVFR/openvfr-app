@@ -122,7 +122,8 @@ export default function LoginPanel({ auth }: Props) {
       <div className={styles.panel}>
         {/* Logo / title */}
         <div className={styles.logo}>
-          <h1>Open VFR</h1>
+          <img src="/pwa-192x192.png" alt="" className={styles.logoImg} width={72} height={72} />
+          <h1>OpenVFR</h1>
           <p>European VFR Electronic Flight Bag</p>
         </div>
 

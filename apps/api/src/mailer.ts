@@ -4,7 +4,7 @@
  * Required env vars:
  *   BREVO_API_KEY          Brevo API key (Settings → SMTP & API → API Keys)
  *   BREVO_SENDER_EMAIL     Verified sender address (Settings → Senders)
- *   BREVO_SENDER_NAME      Optional display name, defaults to "Open VFR"
+ *   BREVO_SENDER_NAME      Optional display name, defaults to "OpenVFR"
  *
  * When BREVO_API_KEY is unset, sendEmail() logs to the console instead of
  * calling the API — this keeps local dev working without credentials.
@@ -12,7 +12,7 @@
 
 const BREVO_API_KEY      = process.env['BREVO_API_KEY'] ?? ''
 const BREVO_SENDER_EMAIL = process.env['BREVO_SENDER_EMAIL'] ?? 'noreply@your-domain.example'
-const BREVO_SENDER_NAME  = process.env['BREVO_SENDER_NAME'] ?? 'Open VFR'
+const BREVO_SENDER_NAME  = process.env['BREVO_SENDER_NAME'] ?? 'OpenVFR'
 const BREVO_API_URL      = 'https://api.brevo.com/v3/smtp/email'
 
 export interface SendEmailOptions {

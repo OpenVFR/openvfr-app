@@ -12,7 +12,7 @@
 
 import React, { useState } from 'react'
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, Image,
   ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -54,7 +54,8 @@ export function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.card}>
-        <Text style={styles.logo}>✈ open-vfr</Text>
+        <Image source={require('../../assets/icon.png')} style={styles.logoImg} />
+        <Text style={styles.logo}>OpenVFR</Text>
         <Text style={styles.subtitle}>European VFR Electronic Flight Bag</Text>
 
         {step === 'choose' && (
@@ -162,6 +163,13 @@ const styles = StyleSheet.create({
     borderColor:     theme.borderDefault,
     padding:         theme.space5,
     gap:             theme.space3,
+  },
+  logoImg: {
+    width:        72,
+    height:       72,
+    borderRadius: 36,
+    alignSelf:    'center',
+    marginBottom: theme.space2,
   },
   logo: {
     color:      theme.textPrimary,

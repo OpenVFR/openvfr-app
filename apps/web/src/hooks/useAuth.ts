@@ -136,7 +136,7 @@ export function useAuth(): AuthState {
   }, [refreshSession])
 
   const registerPasskey = useCallback(async (name?: string) => {
-    const result = await authClient.passkey.addPasskey({ name: name?.trim() || 'Open VFR passkey' })
+    const result = await authClient.passkey.addPasskey({ name: name?.trim() || 'OpenVFR passkey' })
     if (result?.error) throw new Error(result.error.message ?? 'Passkey registration failed')
   }, [])
 

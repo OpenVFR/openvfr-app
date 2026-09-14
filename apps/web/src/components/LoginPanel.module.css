@@ -24,6 +24,14 @@
   text-align: center;
 }
 
+.logoImg {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 10px;
+  display: block;
+  border-radius: 50%;
+}
+
 .logo h1 {
   font-size: 22px;
   font-weight: 700;
