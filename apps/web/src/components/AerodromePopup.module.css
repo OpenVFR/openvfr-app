@@ -555,38 +555,6 @@
   color: var(--accent-blue-bright);
 }
 
-/* The runway with the overall-best headwind (bestOverall) — unmistakable
-   even when it isn't the currently-selected one, so the recommendation
-   never depends on the pilot noticing a subtle colour difference. */
-.rwyPickerBtnBest {
-  border-color: var(--accent-green);
-  color: var(--text-primary);
-}
-
-.rwyPickerBtnBest.rwyPickerBtnActive {
-  background: var(--tint-green-mid);
-  border-color: var(--accent-green);
-}
-
-.rwyPickerBestTag {
-  display: block;
-  font-size: 7px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  color: var(--accent-green);
-  line-height: 1.3;
-}
-
-.rwyPickerDesigBest {
-  font-weight: 800;
-  color: var(--accent-green);
-}
-
-.rwyPickerSlash {
-  color: var(--text-faint);
-  margin: 0 1px;
-}
-
 /* Graphical wind-direction/runway compass + speed dial, side by side */
 .gaugeRow {
   display: flex;

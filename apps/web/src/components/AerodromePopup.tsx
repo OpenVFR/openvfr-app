@@ -397,38 +397,31 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
   // Flattened across all runways at this aerodrome, computed once here (not
   // inside the JSX .map() below) so it can also be reported to the map via
   // onRunwayWind without recomputing computeRunwayWind() a second time.
-  // Each end also carries which runway it belongs to (runwayDesignator),
-  // needed below to find the single best RUNWAY, not just best end-within-
-  // its-own-runway (see bestOverall's comment).
-  const allRunwayWindEndsByRwy = runways.map((rwy) => ({
-    runwayDesignator: rwy.designator,
-    ends: computeRunwayWind(rwy.thresholds, surfaceWind),
-  }))
-  const allRunwayWindEnds = allRunwayWindEndsByRwy.flatMap((r) => r.ends)
-
-  // computeRunwayWind()'s own `favored` flag is scoped to a single runway's
-  // two ends against each other ("which end of THIS runway faces the
-  // wind") -- it says nothing about which RUNWAY is best at a multi-runway
-  // airport (e.g. ESMS: 17/35 vs. 11/29). This picks the single best end
-  // across every runway (max headwind, ties broken by lower crosswind) so
-  // the picker can make that unambiguous instead of just marking one end
-  // green on every runway independently.
-  const bestOverall = allRunwayWindEndsByRwy
-    .flatMap((r) => r.ends.map((end) => ({ runwayDesignator: r.runwayDesignator, end })))
-    .filter((x) => x.end.headwindKt != null)
-    .sort((a, b) => (b.end.headwindKt! - a.end.headwindKt!) || (a.end.crosswindKt! - b.end.crosswindKt!))[0] ?? null
+  const allRunwayWindEnds = runways.flatMap((rwy) => computeRunwayWind(rwy.thresholds, surfaceWind))
 
   // Runway shown on the Wx-tab compass — user-selected via selectedRunwayDesig
-  // when set (see the selector rendered in the Wx tab below); otherwise the
-  // runway with the best overall wind (bestOverall above) if wind data is
-  // available, falling back to the longest runway when it isn't (calm/
-  // variable/no METAR). Needs a resolvable bearing on at least one
-  // threshold to be drawable at all -- see effectiveMagBrg's doc comment
-  // for why mag_brg can't be read directly (0 placeholder).
+  // (see the picker rendered in the Wx tab below), otherwise the longest
+  // runway (most likely to be in active use). Deliberately NOT auto-picking
+  // whichever runway has the better wind component across the whole
+  // airport: which runway to actually use depends on more than wind alone
+  // (surface, length, lighting, NOTAMs, traffic pattern, etc.) -- that's a
+  // pilot judgement call, not something to imply via auto-selection. The
+  // favoured-END highlight below stays scoped to whichever runway is
+  // currently shown (computeRunwayWind's own within-runway comparison),
+  // which is unambiguous regardless of which runway that is. Needs a
+  // resolvable bearing on at least one threshold to be drawable at all --
+  // see effectiveMagBrg's doc comment for why mag_brg can't be read
+  // directly (0 placeholder).
   const longestRunway = [...runways].sort((a, b) => (b.length_m ?? 0) - (a.length_m ?? 0))[0]
   const compassRunway = selectedRunwayDesig != null
     ? runways.find((r) => r.designator === selectedRunwayDesig) ?? longestRunway
-    : (bestOverall ? runways.find((r) => r.designator === bestOverall.runwayDesignator) : undefined) ?? longestRunway
+    : longestRunway
+
+  // Favoured end of whichever runway is currently shown on the compass --
+  // scoped to that one runway's own two ends (computeRunwayWind's normal
+  // behaviour), not compared against any other runway at this airport.
+  const compassRunwayWindEnds = compassRunway ? computeRunwayWind(compassRunway.thresholds, surfaceWind) : []
+  const compassFavoredEnd = compassRunwayWindEnds.find((e) => e.favored) ?? null
 
   const primaryRunwayHeading: RunwayHeading | null = (() => {
     if (!compassRunway) return null
@@ -828,33 +821,25 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
                   {/* Runway picker — only shown when there's an actual choice
                       to make (multi-runway airports, e.g. ESMS 17/35 + 11/29).
                       Single-runway airports keep the compass always showing
-                      their one runway with no selector clutter. The runway
-                      holding the overall-best headwind end (bestOverall) is
-                      marked unmistakably — bold recommended end, "Best"
-                      label, green accent — distinct from just "selected"
-                      (blue), so which runway to actually use never depends
-                      on the pilot doing the wind-vs-heading maths themselves. */}
+                      their one runway with no selector clutter.
+                      Deliberately doesn't recommend one RUNWAY over another
+                      — that depends on more than wind alone (surface, length,
+                      lighting, NOTAMs, traffic pattern), a pilot judgement
+                      call this picker shouldn't imply an answer to. Only the
+                      favoured END of whichever runway is currently shown
+                      gets highlighted (on the compass below), scoped to that
+                      one runway's own two ends. */}
                   {runways.length > 1 && (
                     <div className={css.rwyPicker}>
                       {[...runways].sort((a, b) => (b.length_m ?? 0) - (a.length_m ?? 0)).map((rwy) => {
                         const isSelected = compassRunway?.designator === rwy.designator
-                        const isBest = bestOverall?.runwayDesignator === rwy.designator
-                        const [d0, d1] = rwy.designator.split('/')
                         return (
                           <button
                             key={rwy.designator}
-                            className={`${css.rwyPickerBtn} ${isSelected ? css.rwyPickerBtnActive : ''} ${isBest ? css.rwyPickerBtnBest : ''}`}
+                            className={`${css.rwyPickerBtn} ${isSelected ? css.rwyPickerBtnActive : ''}`}
                             onClick={() => setSelectedRunwayDesig(rwy.designator)}
-                            title={isBest ? `Best headwind: runway ${bestOverall!.end.designator} — ${bestOverall!.end.headwindKt}kt HW, ${bestOverall!.end.crosswindKt}kt XW` : undefined}
                           >
-                            {isBest && <span className={css.rwyPickerBestTag}>BEST</span>}
-                            {d1 != null ? (
-                              <>
-                                <span className={isBest && bestOverall!.end.designator === d0 ? css.rwyPickerDesigBest : undefined}>{d0}</span>
-                                <span className={css.rwyPickerSlash}>/</span>
-                                <span className={isBest && bestOverall!.end.designator === d1 ? css.rwyPickerDesigBest : undefined}>{d1}</span>
-                              </>
-                            ) : rwy.designator}
+                            {rwy.designator}
                           </button>
                         )
                       })}
@@ -867,7 +852,7 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
                       wind={surfaceWind}
                       runway={primaryRunwayHeading}
                       tone={windTone(surfaceWind)}
-                      favoredEndDesignator={compassRunway?.designator === bestOverall?.runwayDesignator ? bestOverall?.end.designator : null}
+                      favoredEndDesignator={compassFavoredEnd?.designator ?? null}
                     />
                     <WindSpeedGauge wind={surfaceWind} tone={windTone(surfaceWind)} />
                   </div>
