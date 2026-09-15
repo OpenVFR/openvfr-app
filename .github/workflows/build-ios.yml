@@ -104,6 +104,8 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           npx eas-cli build --platform ios --profile ${{ inputs.profile }} --local --non-interactive
+          artifact=$(ls build-*.ipa 2>/dev/null | head -n1)
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
 
       # Verifies whether ccache actually engaged (CC/CXX env may be ignored
       # by xcodebuild depending on target toolchain resolution) -- check
@@ -111,8 +113,6 @@ jobs:
       - name: ccache stats
         if: always()
         run: ccache -s
-          artifact=$(ls build-*.ipa 2>/dev/null | head -n1)
-          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

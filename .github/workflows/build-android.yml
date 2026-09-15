@@ -62,6 +62,7 @@ jobs:
 
     steps:
       - name: Free up disk space (ubuntu-latest ships ~14GB free; native Android build needs it)
+        working-directory: .
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk-bundle /opt/ghc "$AGENT_TOOLSDIRECTORY"
           sudo rm -rf /usr/local/share/boost /usr/local/lib/android/sdk/cmake
@@ -138,7 +139,8 @@ jobs:
 
       - name: Delete service account key
         if: always()
-        run: rm -f google-service-account.json
+        working-directory: .
+        run: rm -f apps/native/google-service-account.json
 
       - name: summary
         run: |
