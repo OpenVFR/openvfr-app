@@ -90,13 +90,20 @@ jobs:
           restore-keys: |
             ccache-ios-
 
+      # CC/CXX must name one real executable -- xcodebuild/CocoaPods spawn
+      # processes directly (no shell word-splitting), so "ccache clang" as a
+      # single string fails with "unable to spawn process". Homebrew's ccache
+      # instead ships clang/clang++ symlink shims in opt/ccache/libexec that
+      # forward to the real ccache binary -- prepend that dir to PATH so
+      # every "clang"/"clang++" invocation (including ones we don't control,
+      # like Pods build phases) is transparently cached without setting
+      # CC/CXX at all.
       - name: Install ccache
         run: |
           brew install ccache
           echo "CCACHE_DIR=$HOME/Library/Caches/ccache" >> "$GITHUB_ENV"
           echo "CCACHE_MAXSIZE=2G" >> "$GITHUB_ENV"
-          echo "CC=ccache clang" >> "$GITHUB_ENV"
-          echo "CXX=ccache clang++" >> "$GITHUB_ENV"
+          echo "$(brew --prefix)/opt/ccache/libexec" >> "$GITHUB_PATH"
 
       - name: Build (local -- see header comment for why not EAS cloud)
         id: build
