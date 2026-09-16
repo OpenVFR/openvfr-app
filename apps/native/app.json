@@ -4,7 +4,7 @@
       "android",
       "ios"
     ],
-    "name": "open-vfr",
+    "name": "OpenVFR",
     "slug": "open-vfr",
     "version": "0.1.0",
     "orientation": "default",
@@ -38,6 +38,7 @@
       "package": "org.openvfr.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundImage": "./assets/adaptive-icon-background.png",
         "backgroundColor": "#0a0e16"
       },
       "permissions": [
