@@ -3,8 +3,8 @@
  */
 
 import React from 'react'
-import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native'
-import { theme } from '../styles/theme'
+import { Modal, View, Text, TouchableOpacity } from 'react-native'
+import { useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 export type FeatureKind = 'navaid' | 'obstacle' | 'waypoint' | 'notam' | null
 
@@ -32,6 +32,7 @@ const KIND_ICON: Record<NonNullable<FeatureKind>, string> = {
 }
 
 export function FeaturePopup({ feature, onClose, onAddToRoute }: Props) {
+  const styles = useThemedStyles(makeStyles)
   if (!feature) return null
 
   const icon = feature.kind ? KIND_ICON[feature.kind] : '📌'
@@ -75,7 +76,8 @@ export function FeaturePopup({ feature, onClose, onAddToRoute }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   backdrop:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {
     backgroundColor: theme.surfacePanel,
@@ -83,24 +85,25 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderColor: theme.borderDefault,
   },
   header: {
-    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
+    flexDirection: 'row' as const, alignItems: 'flex-start' as const, justifyContent: 'space-between' as const,
     padding: theme.space4, borderBottomWidth: 1, borderBottomColor: theme.borderSubtle,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: theme.space2, flex: 1 },
-  icon:     { fontSize: 20 },
-  name:     { color: theme.textPrimary, fontSize: theme.textMd, fontWeight: '700' },
-  subtitle: { color: theme.textMuted, fontSize: theme.textXs, marginTop: 2 },
+  headerLeft: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: theme.space2, flex: 1 },
+  icon:     { fontSize: theme.scale(20) },
+  name:     { color: theme.textPrimary, fontSize: theme.textMd, fontWeight: '700' as const },
+  subtitle: { color: theme.textMuted, fontSize: theme.textXs, marginTop: theme.scale(2) },
   closeBtn: { padding: theme.space2 },
   closeTxt: { color: theme.textMuted, fontSize: theme.textMd },
   body:     { padding: theme.space4, gap: theme.space1 },
   row: {
-    flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3,
+    flexDirection: 'row' as const, justifyContent: 'space-between' as const, paddingVertical: theme.scale(3),
   },
   rowLabel: { color: theme.textMuted, fontSize: theme.textSm },
-  rowValue: { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '500' },
+  rowValue: { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '500' as const },
   addBtn: {
     marginTop: theme.space2, backgroundColor: theme.accentBlue,
-    borderRadius: theme.radiusSm, padding: theme.space2, alignItems: 'center',
+    borderRadius: theme.radiusSm, padding: theme.space2, alignItems: 'center' as const,
   },
-  addBtnTxt: { color: '#fff', fontSize: theme.textSm, fontWeight: '600' },
-})
+  addBtnTxt: { color: '#fff', fontSize: theme.textSm, fontWeight: '600' as const },
+ }
+}

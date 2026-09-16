@@ -5,7 +5,7 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import {
-  View, Text, Switch, ScrollView, TextInput, StyleSheet,
+  View, Text, Switch, ScrollView, TextInput,
   TouchableOpacity, Alert,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -24,7 +24,7 @@ import { qnhFromStationPressure } from '@open-vfr/shared/baroAltitude'
 import * as Location from 'expo-location'
 import { API_BASE, TILE_BASE } from '../config'
 import { refreshTileManifest } from '@open-vfr/shared/tileManifest'
-import { theme } from '../styles/theme'
+import { theme, useThemedStyles, useScaledTheme, type ScaledTheme } from '../styles/theme'
 import {
   getCacheStatus, getTotalCacheSizeMb, downloadSelected, clearCache,
   REQUIRED_ASSETS, OPTIONAL_ASSETS,
@@ -32,7 +32,11 @@ import {
 } from '../utils/offlineCache'
 import { clearProtomapsStyleCache } from '../components/AviationMap'
 
+const UI_SCALE_OPTIONS = [0.85, 0.9, 1.0, 1.1, 1.2, 1.3, 1.45, 1.6]
+
 export function SettingsScreen() {
+  const scaledTheme          = useScaledTheme()
+  const styles                = useThemedStyles(makeStyles)
   const insets               = useSafeAreaInsets()
   const { settings, update } = useSettingsContext()
   const { state, signOut, registerPasskey, requestAccountDeletion } = useAuthContext()
@@ -148,7 +152,7 @@ export function SettingsScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + theme.space4 }]}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + scaledTheme.space4 }]}
     >
       <Text style={styles.screenTitle}>Settings</Text>
 
@@ -167,6 +171,17 @@ export function SettingsScreen() {
           right="km/h"
           value={settings.units.speed === 'kmh'}
           onToggle={v => update({ units: { ...settings.units, speed: v ? 'kmh' : 'kts' } })}
+        />
+      </Section>
+
+      {/* ── Display ───────────────────────────────────────────────── */}
+      <Section title="Display">
+        <RowStep
+          label="UI scale"
+          value={settings.uiScale}
+          options={UI_SCALE_OPTIONS}
+          format={(v) => `${Math.round(v * 100)}%`}
+          onChange={(v) => update({ uiScale: v })}
         />
       </Section>
 
@@ -323,7 +338,7 @@ export function SettingsScreen() {
               </TouchableOpacity>
             ))}
             <TouchableOpacity onPress={() => { vario.stopScan(); setShowBleScan(false) }}>
-              <Text style={[styles.warningBtnText, { textAlign: 'center', marginTop: theme.space1 }]}>Close</Text>
+              <Text style={[styles.warningBtnText, { textAlign: 'center', marginTop: scaledTheme.space1 }]}>Close</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -486,6 +501,7 @@ function formatVarioDeviceStatus(state: VarioState): string {
 // ---------------------------------------------------------------------------
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const sectionStyles = useThemedStyles(makeSectionStyles)
   return (
     <View style={sectionStyles.container}>
       <Text style={sectionStyles.title}>{title.toUpperCase()}</Text>
@@ -497,6 +513,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function RowToggle({
   label, left, right, value, onToggle,
 }: { label: string; left: string; right: string; value: boolean; onToggle: (v: boolean) => void }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -528,6 +545,8 @@ function RowStep<T extends number>({
   onChange: (v: T) => void
   disabled?: boolean
 }) {
+  const styles     = useThemedStyles(makeStyles)
+  const stepStyles = useThemedStyles(makeStepStyles)
   // Find the nearest option rather than assuming `value` is exactly present
   // in `options` (e.g. qnhHpa's non-integer 1013.25 default isn't in the
   // integer 950–1050 QNH_OPTIONS list) — indexOf(-1) previously made the
@@ -560,38 +579,41 @@ function RowStep<T extends number>({
   )
 }
 
-const stepStyles = StyleSheet.create({
-  rowDisabled: { opacity: 0.5 },
-  control: {
-    flexDirection: 'row',
-    alignItems:    'center',
-    gap:           theme.space1,
-    borderWidth:   1,
-    borderColor:   theme.borderDefault,
-    borderRadius:  theme.radiusSm,
-    overflow:      'hidden',
-  },
-  btn: {
-    paddingHorizontal: theme.space2,
-    paddingVertical:   theme.space1,
-    backgroundColor:   theme.surfaceOverlay,
-  },
-  btnDisabled: { opacity: 0.35 },
-  arrow: {
-    color:      theme.textSecondary,
-    fontWeight: '700',
-    fontSize:   theme.textSm,
-  },
-  value: {
-    color:      theme.textPrimary,
-    fontSize:   theme.textXs,
-    fontWeight: '600',
-    minWidth:   52,
-    textAlign:  'center',
-  },
-})
+function makeStepStyles(theme: ScaledTheme) {
+  return {
+    rowDisabled: { opacity: 0.5 },
+    control: {
+      flexDirection: 'row' as const,
+      alignItems:    'center' as const,
+      gap:           theme.space1,
+      borderWidth:   1,
+      borderColor:   theme.borderDefault,
+      borderRadius:  theme.radiusSm,
+      overflow:      'hidden' as const,
+    },
+    btn: {
+      paddingHorizontal: theme.space2,
+      paddingVertical:   theme.space1,
+      backgroundColor:   theme.surfaceOverlay,
+    },
+    btnDisabled: { opacity: 0.35 },
+    arrow: {
+      color:      theme.textSecondary,
+      fontWeight: '700' as const,
+      fontSize:   theme.textSm,
+    },
+    value: {
+      color:      theme.textPrimary,
+      fontSize:   theme.textXs,
+      fontWeight: '600' as const,
+      minWidth:   52,
+      textAlign:  'center' as const,
+    },
+  }
+}
 
 function InfoRow({ label, value }: { label: string; value: string }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -604,6 +626,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 // Offline Data
 // ---------------------------------------------------------------------------
 function OfflineDataSection() {
+  const styles = useThemedStyles(makeStyles)
   const [statuses, setStatuses] = useState(() => getCacheStatus())
   const [totalMb, setTotalMb]   = useState(() => getTotalCacheSizeMb())
   const [downloading, setDownloading] = useState(false)
@@ -762,7 +785,8 @@ function OfflineDataSection() {
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   container: {
     flex:            1,
     backgroundColor: theme.surfaceBase,
@@ -907,16 +931,18 @@ const styles = StyleSheet.create({
   segTextActive: {
     color: '#fff',
   },
-})
+ } as const
+}
 
-const sectionStyles = StyleSheet.create({
+function makeSectionStyles(theme: ScaledTheme) {
+ return {
   container: {
     gap: theme.space1,
   },
   title: {
     color:     theme.textFaint,
     fontSize:  theme.textXs,
-    fontWeight: '600',
+    fontWeight: '600' as const,
     letterSpacing: 0.8,
     paddingHorizontal: theme.space1,
     marginBottom: theme.space1,
@@ -926,6 +952,7 @@ const sectionStyles = StyleSheet.create({
     borderRadius:    theme.radiusMd,
     borderWidth:     1,
     borderColor:     theme.borderSubtle,
-    overflow:        'hidden',
+    overflow:        'hidden' as const,
   },
-})
+ }
+}

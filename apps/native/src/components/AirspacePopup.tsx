@@ -10,7 +10,7 @@ import {
   Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet,
 } from 'react-native'
 import Svg, { Path, Rect, Line } from 'react-native-svg'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
 
 export interface AirspaceFeatureProps {
@@ -119,6 +119,7 @@ function PolygonThumb({ coords, strokeColor, fillColor, active }: {
   fillColor:   string
   active:      boolean
 }) {
+  const thumbStyles = useThemedStyles(makeThumbStyles)
   const d = coords ? coordsToPath(coords) : ''
   return (
     <View style={[thumbStyles.wrap, active && thumbStyles.active]}>
@@ -145,7 +146,8 @@ function PolygonThumb({ coords, strokeColor, fillColor, active }: {
   )
 }
 
-const thumbStyles = StyleSheet.create({
+function makeThumbStyles(theme: ScaledTheme) {
+ return {
   wrap: {
     width: 44, height: 44,
     borderRadius: theme.radiusSm,
@@ -156,7 +158,8 @@ const thumbStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
   },
-})
+} as const
+}
 
 // ── Shared altitude-relationship strip ───────────────────────────
 // Ported from web's AirspacePopup.tsx — shows how ALL zones at this point
@@ -179,6 +182,7 @@ function diagramY(ft: number, maxFt: number): number {
 }
 
 function AltitudeStrip({ list, height }: { list: AirspaceFeatureProps[]; height: number }) {
+  const stripStyles = useThemedStyles(makeStripStyles)
   const withAlt = list.filter(f => f.upper_ft != null && f.lower_ft != null)
   if (withAlt.length === 0 || height <= 0) return null
   const maxFt  = diagramMaxFt(withAlt)
@@ -215,7 +219,8 @@ function AltitudeStrip({ list, height }: { list: AirspaceFeatureProps[]; height:
   )
 }
 
-const stripStyles = StyleSheet.create({
+function makeStripStyles(theme: ScaledTheme) {
+ return {
   wrap: {
     width: 28,
     alignItems: 'center',
@@ -227,9 +232,11 @@ const stripStyles = StyleSheet.create({
     color: theme.textFaint,
     fontSize: 8,
   },
-})
+} as const
+}
 
 function DetailRow({ label, value }: { label: string; value: string }) {
+  const detailStyles = useThemedStyles(makeDetailStyles)
   return (
     <View style={detailStyles.row}>
       <Text style={detailStyles.label}>{label}</Text>
@@ -237,11 +244,13 @@ function DetailRow({ label, value }: { label: string; value: string }) {
     </View>
   )
 }
-const detailStyles = StyleSheet.create({
+function makeDetailStyles(theme: ScaledTheme) {
+ return {
   row:   { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
   label: { color: theme.textMuted,   fontSize: theme.textXs },
   value: { color: theme.textPrimary, fontSize: theme.textXs, fontWeight: '600' },
-})
+} as const
+}
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function altBadge(f: AirspaceFeatureProps): string {
@@ -263,6 +272,7 @@ function sortByLower(list: AirspaceFeatureProps[]) {
 
 // ── main component ────────────────────────────────────────────────────────────
 export function AirspacePopup({ features, onClose }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [expanded, setExpanded] = useState<number | null>(null)
   const [rowsHeight, setRowsHeight] = useState(0)
   if (features.length === 0) return null
@@ -388,7 +398,8 @@ export function AirspacePopup({ features, onClose }: Props) {
 }
 
 // ── styles ────────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
     backgroundColor:      theme.surfacePanel,
@@ -490,4 +501,5 @@ const styles = StyleSheet.create({
     fontStyle:  'italic',
     lineHeight: 16,
   },
-})
+} as const
+}

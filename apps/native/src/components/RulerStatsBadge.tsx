@@ -14,7 +14,7 @@ import { bearingDeg, distanceNm, magneticBearingDeg } from '@open-vfr/shared/rou
 import type { RouteWaypoint } from '../types/db'
 import type { AircraftProfileDocType } from '../types/db'
 import { type Units, nmToDisplay, distLabel } from '../utils/units'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 interface Props {
   from: RouteWaypoint
@@ -38,6 +38,7 @@ function fmtTime(hours: number): string {
 }
 
 export function RulerStatsBadge({ from, to, units, aircraftProfile, bottom }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const distNmVal   = distanceNm(from, to)
   const distDisplay = nmToDisplay(distNmVal, units.distance)
   const trueBrg     = bearingDeg(from, to)
@@ -57,7 +58,8 @@ export function RulerStatsBadge({ from, to, units, aircraftProfile, bottom }: Pr
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   badge: {
     position:          'absolute',
     left:               theme.space3,
@@ -75,4 +77,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign:  'center',
   },
-})
+} as const
+}

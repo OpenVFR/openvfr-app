@@ -20,7 +20,7 @@ import { routes as routeDb } from '../db'
 import type { RouteDocType, LegOverride } from '../types/db'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { SyncState } from '../hooks/useRouteSync'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { distanceNm } from '../utils/routeCalc'
 
 interface Props {
@@ -50,6 +50,8 @@ function fmtDate(ts: number): string {
 }
 
 export function RouteLibrarySheet({ waypoints, legOverrides, aircraftId, syncState, onLoad, onPush, onDelete, onRefreshCloud }: Props) {
+  const scaledTheme = useScaledTheme()
+  const styles = useThemedStyles(makeStyles)
   const [open,     setOpen]     = useState(false)
   const [routes,   setRoutes]   = useState<RouteDocType[]>([])
   const [saving,   setSaving]   = useState(false)
@@ -194,7 +196,7 @@ export function RouteLibrarySheet({ waypoints, legOverrides, aircraftId, syncSta
 
           <View style={styles.header}>
             <Text style={styles.title}>Route Library</Text>
-            <TouchableOpacity onPress={handleImportGpx} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginRight: theme.space2 }}>
+            <TouchableOpacity onPress={handleImportGpx} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginRight: scaledTheme.space2 }}>
               <Ionicons name="download-outline" size={16} color={theme.textSecondary} />
             </TouchableOpacity>
             <View style={styles.syncBadge}>
@@ -317,7 +319,8 @@ export function RouteLibrarySheet({ waypoints, legOverrides, aircraftId, syncSta
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   trigger: {
     width:           36,
     height:          36,
@@ -387,4 +390,5 @@ const styles = StyleSheet.create({
     color: theme.textPrimary, fontSize: theme.textSm,
   },
   renameSave: { color: theme.accentBlue, fontSize: theme.textXs, fontWeight: '600' },
-})
+} as const
+}

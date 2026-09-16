@@ -3,9 +3,9 @@
  * near 2+ candidate snap targets. Mirrors web's SnapPicker.tsx.
  */
 import React from 'react'
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Pressable } from 'react-native'
+import { Modal, View, Text, TouchableOpacity, Pressable } from 'react-native'
 import type { RouteWaypoint } from '../utils/routeCalc'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { CURRENT_POSITION_LABEL } from '@open-vfr/shared/snapLabels'
 
 export type SnapCandidate = {
@@ -32,6 +32,7 @@ interface Props {
 }
 
 export function SnapPicker({ candidates, onPick, onClose }: Props) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
@@ -57,7 +58,8 @@ export function SnapPicker({ candidates, onPick, onClose }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   panel: { backgroundColor: theme.surfacePanel ?? '#12161f', borderRadius: 10, padding: 8, minWidth: 220, maxWidth: 300 },
   header: { color: theme.textMuted ?? '#9ca3af', fontSize: 11, paddingHorizontal: 8, paddingVertical: 6 },
@@ -65,4 +67,5 @@ const styles = StyleSheet.create({
   badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, minWidth: 34, alignItems: 'center' },
   badgeText: { color: '#0a0e16', fontSize: 10, fontWeight: '700' },
   name: { color: theme.textPrimary ?? '#f5f5f5', fontSize: 13, flexShrink: 1 },
-})
+} as const
+}

@@ -4,9 +4,9 @@
  */
 
 import React from 'react'
-import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet } from 'react-native'
+import { View, Text, TouchableOpacity, Modal, ScrollView } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 
 interface Props {
@@ -21,6 +21,7 @@ const FR_COLOR: Record<string, string> = {
 }
 
 export function WeatherAlongRouteSheet({ stations }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [open, setOpen] = React.useState(false)
   if (stations.length === 0) return null
 
@@ -69,7 +70,8 @@ export function WeatherAlongRouteSheet({ stations }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   trigger: {
     width: 40, height: 40, borderRadius: theme.radiusMd,
     backgroundColor: 'rgba(19,24,36,0.90)', borderWidth: 1, borderColor: theme.borderDefault,
@@ -100,4 +102,5 @@ const styles = StyleSheet.create({
   frBadge: { borderWidth: 1, borderRadius: 3, paddingHorizontal: 5, paddingVertical: 1 },
   frBadgeTxt: { fontSize: 9, fontWeight: '700' },
   raw: { fontSize: 10, color: theme.textSecondary, marginTop: 4, lineHeight: 15 },
-})
+} as const
+}

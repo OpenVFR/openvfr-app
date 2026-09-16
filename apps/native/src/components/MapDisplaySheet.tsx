@@ -16,7 +16,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { AltitudeSlider } from './AltitudeSlider'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
 import { AERODROME_COLORS, NAVAID_COLORS, WAYPOINT_COLORS, OBSTACLE_COLORS } from '@open-vfr/shared/featureColors'
 
@@ -151,6 +151,8 @@ interface Props {
 }
 
 export function MapDisplaySheet({ layers, ceilingFt, autoZoom, onLayerChange, onCeilingChange, onAutoZoomChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
+  const captionStyles = useThemedStyles(makeCaptionStyles)
   const [open, setOpen] = React.useState(false)
 
   return (
@@ -276,6 +278,7 @@ export function MapDisplaySheet({ layers, ceilingFt, autoZoom, onLayerChange, on
 // Sub-components
 // ---------------------------------------------------------------------------
 function SectionHeader({ title }: { title: string }) {
+  const sectionStyles = useThemedStyles(makeSectionStyles)
   return (
     <View style={sectionStyles.container}>
       <Text style={sectionStyles.title}>{title.toUpperCase()}</Text>
@@ -287,6 +290,7 @@ function SectionHeader({ title }: { title: string }) {
 function LayerRow({ label, color, on, onToggle }: {
   label: string; color: string; on: boolean; onToggle: () => void
 }) {
+  const rowStyles = useThemedStyles(makeRowStyles)
   return (
     <TouchableOpacity
       style={[rowStyles.row, !on && rowStyles.rowOff]}
@@ -307,7 +311,8 @@ function LayerRow({ label, color, on, onToggle }: {
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   trigger: {
     width:           40,
     height:          40,
@@ -385,9 +390,11 @@ const styles = StyleSheet.create({
   basemapTxtActive: {
     color: theme.accentBlue,
   },
-})
+} as const
+}
 
-const sectionStyles = StyleSheet.create({
+function makeSectionStyles(theme: ScaledTheme) {
+ return {
   container: {
     flexDirection:     'row',
     alignItems:        'center',
@@ -407,9 +414,11 @@ const sectionStyles = StyleSheet.create({
     height:          1,
     backgroundColor: theme.borderSubtle,
   },
-})
+} as const
+}
 
-const captionStyles = StyleSheet.create({
+function makeCaptionStyles(theme: ScaledTheme) {
+ return {
   warning: {
     color:             theme.accentYellow,
     fontSize:          11,
@@ -417,9 +426,11 @@ const captionStyles = StyleSheet.create({
     paddingHorizontal: theme.space4,
     paddingBottom:     theme.space2,
   },
-})
+} as const
+}
 
-const rowStyles = StyleSheet.create({
+function makeRowStyles(theme: ScaledTheme) {
+ return {
   row: {
     flexDirection:     'row',
     alignItems:        'center',
@@ -464,4 +475,5 @@ const rowStyles = StyleSheet.create({
   pillTxtOn: {
     color: theme.accentBlue,
   },
-})
+} as const
+}

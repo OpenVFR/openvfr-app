@@ -15,9 +15,9 @@
  */
 
 import React, { useMemo } from 'react'
-import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet } from 'react-native'
+import { View, Text, TouchableOpacity, Modal, ScrollView } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { fmtNotamDate } from '@open-vfr/shared/fetchNotam'
 import { filterNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM } from '@open-vfr/shared/notamRouteFilter'
@@ -29,6 +29,8 @@ interface Props {
 }
 
 export function RegionalNotamsSheet({ notams, waypoints }: Props) {
+  const scaledTheme = useScaledTheme()
+  const styles = useThemedStyles(makeStyles)
   const [open, setOpen] = React.useState(false)
   const [expandedIds, setExpandedIds] = React.useState<Set<string>>(new Set())
 
@@ -49,7 +51,7 @@ export function RegionalNotamsSheet({ notams, waypoints }: Props) {
   return (
     <>
       <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)}>
-        <Ionicons name="warning-outline" size={20} color={theme.textSecondary} />
+        <Ionicons name="warning-outline" size={scaledTheme.scale(20)} color={theme.textSecondary} />
         {displayed.length > 0 && (
           <View style={styles.badge}>
             <Text style={styles.badgeTxt}>{displayed.length}</Text>
@@ -64,7 +66,7 @@ export function RegionalNotamsSheet({ notams, waypoints }: Props) {
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Regional NOTAMs</Text>
             <TouchableOpacity onPress={() => setOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close" size={18} color={theme.textMuted} />
+              <Ionicons name="close" size={scaledTheme.scale(18)} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -97,13 +99,13 @@ export function RegionalNotamsSheet({ notams, waypoints }: Props) {
                     <Text style={styles.itemPeriod} numberOfLines={1}>
                       {eff}{exp ? ` \u2013 ${exp}` : ''}
                     </Text>
-                    <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.textFaint} />
+                    <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={scaledTheme.scale(14)} color={theme.textFaint} />
                   </TouchableOpacity>
                   {expanded && <Text style={styles.itemText}>{n.text}</Text>}
                 </View>
               )
             })}
-            <View style={{ height: 16 }} />
+            <View style={{ height: scaledTheme.scale(16) }} />
           </ScrollView>
         </View>
       </Modal>
@@ -111,46 +113,48 @@ export function RegionalNotamsSheet({ notams, waypoints }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   trigger: {
-    width: 40, height: 40, borderRadius: theme.radiusMd,
+    width: theme.scale(40), height: theme.scale(40), borderRadius: theme.radiusMd,
     backgroundColor: 'rgba(19,24,36,0.90)', borderWidth: 1, borderColor: theme.borderDefault,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center' as const, justifyContent: 'center' as const,
   },
   badge: {
-    position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8,
-    backgroundColor: '#e64980', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
+    position: 'absolute' as const, top: theme.scale(-4), right: theme.scale(-4), minWidth: theme.scale(16), height: theme.scale(16), borderRadius: theme.scale(8),
+    backgroundColor: '#e64980', alignItems: 'center' as const, justifyContent: 'center' as const, paddingHorizontal: theme.scale(3),
   },
-  badgeTxt: { color: '#ffffff', fontSize: 9, fontWeight: '700' },
+  badgeTxt: { color: '#ffffff', fontSize: theme.scale(9), fontWeight: '700' as const },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
-    backgroundColor: theme.surfacePanel, borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    borderTopWidth: 1, borderColor: theme.borderDefault, maxHeight: '75%', paddingBottom: 8,
+    backgroundColor: theme.surfacePanel, borderTopLeftRadius: theme.scale(20), borderTopRightRadius: theme.scale(20),
+    borderTopWidth: 1, borderColor: theme.borderDefault, maxHeight: '75%' as const, paddingBottom: theme.scale(8),
   },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.borderDefault, alignSelf: 'center', marginTop: 10, marginBottom: 4 },
+  handle: { width: theme.scale(40), height: theme.scale(4), borderRadius: theme.scale(2), backgroundColor: theme.borderDefault, alignSelf: 'center' as const, marginTop: theme.scale(10), marginBottom: theme.scale(4) },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const,
     paddingHorizontal: theme.space4, paddingVertical: theme.space2,
     borderBottomWidth: 1, borderBottomColor: theme.borderSubtle,
   },
-  headerTitle: { color: theme.textPrimary, fontSize: theme.textMd, fontWeight: '700' },
+  headerTitle: { color: theme.textPrimary, fontSize: theme.textMd, fontWeight: '700' as const },
   filterNote: {
-    color: theme.textFaint, fontSize: 10, fontStyle: 'italic',
+    color: theme.textFaint, fontSize: theme.scale(10), fontStyle: 'italic' as const,
     paddingHorizontal: theme.space4, paddingTop: theme.space2,
   },
   scroll: { paddingHorizontal: theme.space4 },
-  empty: { color: theme.textFaint, fontSize: 11, paddingVertical: theme.space3 },
-  item: { borderTopWidth: 1, borderTopColor: theme.borderSubtle, paddingVertical: 6 },
-  itemHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 },
-  itemId: { fontSize: 11, fontWeight: '700', color: theme.textPrimary },
-  itemPeriod: { fontSize: 10, color: theme.textFaint, flex: 1 },
+  empty: { color: theme.textFaint, fontSize: theme.scale(11), paddingVertical: theme.space3 },
+  item: { borderTopWidth: 1, borderTopColor: theme.borderSubtle, paddingVertical: theme.scale(6) },
+  itemHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: theme.scale(6), paddingVertical: theme.scale(2) },
+  itemId: { fontSize: theme.scale(11), fontWeight: '700' as const, color: theme.textPrimary },
+  itemPeriod: { fontSize: theme.scale(10), color: theme.textFaint, flex: 1 },
   mapBadge: {
     borderWidth: 1, borderColor: 'rgba(230,73,128,0.4)', backgroundColor: 'rgba(230,73,128,0.1)',
-    borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1,
+    borderRadius: theme.scale(3), paddingHorizontal: theme.scale(4), paddingVertical: theme.scale(1),
   },
-  mapBadgeTxt: { fontSize: 9, fontWeight: '700', color: '#e64980' },
+  mapBadgeTxt: { fontSize: theme.scale(9), fontWeight: '700' as const, color: '#e64980' },
   itemText: {
-    fontSize: 11, color: theme.textSecondary, marginTop: 4, lineHeight: 16,
-    backgroundColor: theme.surfaceOverlay, borderRadius: 6, padding: 8,
+    fontSize: theme.scale(11), color: theme.textSecondary, marginTop: theme.scale(4), lineHeight: theme.scale(16),
+    backgroundColor: theme.surfaceOverlay, borderRadius: theme.scale(6), padding: theme.scale(8),
   },
-})
+ }
+}

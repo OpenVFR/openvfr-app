@@ -7,7 +7,7 @@
 import React from 'react'
 import { View, Text, StyleSheet } from 'react-native'
 import Slider from '@react-native-community/slider'
-import { theme } from '../styles/theme'
+import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 const SNAP_POINTS: { ft: number; label: string }[] = [
   { ft: 500,   label: '500 ft'    },
@@ -47,6 +47,7 @@ interface Props {
 }
 
 export function AltitudeSlider({ ceilingFt, onChange }: Props) {
+  const styles    = useThemedStyles(makeStyles)
   const idx       = ftToIdx(ceilingFt)
   const label     = ftToLabel(ceilingFt)
   const unlimited = ceilingFt >= 66000
@@ -81,42 +82,44 @@ export function AltitudeSlider({ ceilingFt, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   container: {
     paddingHorizontal: theme.space3,
     paddingVertical:   theme.space3,
     gap:               theme.space1,
   },
   header: {
-    flexDirection:  'row',
-    justifyContent: 'space-between',
-    alignItems:     'center',
+    flexDirection:  'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems:     'center' as const,
     marginBottom:   theme.space1,
   },
   title: {
     color:      theme.textSecondary,
     fontSize:   theme.textSm,
-    fontWeight: '500',
+    fontWeight: '500' as const,
   },
   value: {
     color:      theme.accentBlue,
     fontSize:   theme.textSm,
-    fontWeight: '700',
+    fontWeight: '700' as const,
   },
   valueUnlimited: {
     color: theme.textMuted,
   },
   slider: {
-    width:  '100%',
-    height: 36,
+    width:  '100%' as const,
+    height: theme.scale(36),
   },
   legend: {
-    flexDirection:  'row',
-    justifyContent: 'space-between',
+    flexDirection:  'row' as const,
+    justifyContent: 'space-between' as const,
     marginTop:      theme.space1,
   },
   legendText: {
     color:    theme.textFaint,
     fontSize: theme.textXs,
   },
-})
+ }
+}

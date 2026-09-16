@@ -10,11 +10,11 @@
  */
 
 import React, { useState } from 'react'
-import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet } from 'react-native'
+import { View, Text, TouchableOpacity, Modal, ScrollView } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import type { RouteWaypoint } from '../types/db'
 import type { LivePlogData } from '../hooks/useLivePlog'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 function fmtUtcTime(d: Date): string {
   return `${d.getUTCHours().toString().padStart(2, '0')}:${d.getUTCMinutes().toString().padStart(2, '0')}z`
@@ -27,6 +27,7 @@ interface Props {
 }
 
 export function LivePlogPanel({ waypoints, activeWpIdx, plogData }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [open, setOpen] = useState(false)
   const { atas, liveEtas, legProgressPct, upcomingFreqs, nearbyNavaids } = plogData
 
@@ -123,7 +124,8 @@ export function LivePlogPanel({ waypoints, activeWpIdx, plogData }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   trigger: {
     width: 40, height: 40, borderRadius: theme.radiusMd,
     backgroundColor: 'rgba(19,24,36,0.92)',
@@ -171,4 +173,5 @@ const styles = StyleSheet.create({
   freqService: { width: 48, color: theme.textMuted, fontSize: theme.textXs },
   freqValue:   { flex: 1, color: theme.textPrimary, fontSize: theme.textSm },
   freqDist:    { color: theme.textFaint, fontSize: theme.textXs },
-})
+} as const
+}

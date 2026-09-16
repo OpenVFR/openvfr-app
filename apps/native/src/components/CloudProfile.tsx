@@ -6,9 +6,9 @@
  * of div/svg) differ.
  */
 
-import { View, Text, StyleSheet } from 'react-native'
+import { View, Text } from 'react-native'
 import Svg, { Path } from 'react-native-svg'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import type { ParsedCloudLayer } from '@open-vfr/shared/fetchWx'
 
 interface Props {
@@ -30,6 +30,8 @@ const CLOUD_ICON_PATH = 'M6 18 a3.5 3.5 0 0 1 0.3 -6.98 A4.5 4.5 0 0 1 15 10.2 A
 const PLOT_HEIGHT = 110
 
 export default function CloudProfile({ clouds }: Props) {
+  const scaledTheme = useScaledTheme()
+  const styles = useThemedStyles(makeStyles)
   if (clouds.length === 0) return null
 
   const maxFt = Math.max(...clouds.map((l) => l.baseFt))
@@ -49,7 +51,7 @@ export default function CloudProfile({ clouds }: Props) {
         ))}
         {sorted.map((layer, i) => (
           <View key={i} style={[styles.layer, { bottom: `${(layer.baseFt / topFt) * 100}%` as unknown as number }]}>
-            <Svg viewBox="0 0 24 24" width={20} height={20}>
+            <Svg viewBox="0 0 24 24" width={scaledTheme.scale(20)} height={scaledTheme.scale(20)}>
               <Path d={CLOUD_ICON_PATH} fill={COVER_COLOR[layer.cover]} opacity={layer.cover === 'FEW' ? 0.75 : layer.cover === 'SCT' ? 0.9 : 1} />
             </Svg>
             <Text style={styles.layerLabel}>{COVER_LABEL[layer.cover]} {layer.baseFt.toLocaleString()} ft</Text>
@@ -60,49 +62,51 @@ export default function CloudProfile({ clouds }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   chart: {
     marginBottom: theme.space2,
   },
   plot: {
-    position: 'relative',
-    height: PLOT_HEIGHT,
-    marginLeft: 36,
+    position: 'relative' as const,
+    height: theme.scale(PLOT_HEIGHT),
+    marginLeft: theme.scale(36),
     borderLeftWidth: 1.5,
     borderLeftColor: theme.textMuted,
   },
   gridline: {
-    position: 'absolute',
+    position: 'absolute' as const,
     left: 0,
     right: 0,
     borderTopWidth: 1,
     borderTopColor: theme.borderSubtle,
-    borderStyle: 'dashed',
+    borderStyle: 'dashed' as const,
   },
   gridLabel: {
-    position: 'absolute',
-    left: -34,
-    top: -7,
-    width: 30,
-    textAlign: 'right',
-    fontSize: 11,
-    fontWeight: '600',
+    position: 'absolute' as const,
+    left: theme.scale(-34),
+    top: theme.scale(-7),
+    width: theme.scale(30),
+    textAlign: 'right' as const,
+    fontSize: theme.scale(11),
+    fontWeight: '600' as const,
     color: theme.textSecondary,
   },
   layer: {
-    position: 'absolute',
-    left: 6,
-    right: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    transform: [{ translateY: 8 }],
+    position: 'absolute' as const,
+    left: theme.scale(6),
+    right: theme.scale(6),
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: theme.scale(5),
+    transform: [{ translateY: theme.scale(8) }],
   },
   layerLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: theme.scale(12),
+    fontWeight: '600' as const,
     color: theme.textPrimary,
     backgroundColor: theme.surfaceBase,
-    paddingHorizontal: 3,
+    paddingHorizontal: theme.scale(3),
   },
-})
+ }
+}

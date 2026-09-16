@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { MapScreen }      from '../screens/MapScreen'
 import { PlanScreen }     from '../screens/PlanScreen'
 import { SettingsScreen } from '../screens/SettingsScreen'
-import { theme }          from '../styles/theme'
+import { theme, useScaledTheme } from '../styles/theme'
 
 type TabParamList = {
   Map:      undefined
@@ -29,6 +29,12 @@ const TAB_ICONS: Record<keyof TabParamList, { active: IoniconName; inactive: Ion
 }
 
 export function AppNavigator() {
+  const scaledTheme = useScaledTheme()
+  // React Navigation's own default icon `size` doesn't know about our uiScale
+  // setting -- override it explicitly so the tab bar scales with everything
+  // else (this is the one screen visible in every flight phase, worth
+  // reading correctly from a kneeboard/dashboard mount).
+  const iconSize = scaledTheme.scale(24)
   return (
     <NavigationContainer>
       <Tab.Navigator
@@ -38,19 +44,22 @@ export function AppNavigator() {
             backgroundColor: theme.surfacePanel,
             borderTopColor:  theme.borderDefault,
             borderTopWidth:  1,
+            height: scaledTheme.scale(56),
+            paddingBottom: scaledTheme.space1,
+            paddingTop: scaledTheme.space1,
           },
           tabBarActiveTintColor:   theme.accentBlue,
           tabBarInactiveTintColor: theme.textMuted,
           tabBarLabelStyle: {
-            fontSize:   10,
+            fontSize:   scaledTheme.textXs,
             fontWeight: '600',
           },
-          tabBarIcon: ({ focused, color, size }) => {
+          tabBarIcon: ({ focused, color }) => {
             const icons = TAB_ICONS[route.name as keyof TabParamList]
             return (
               <Ionicons
                 name={focused ? icons.active : icons.inactive}
-                size={size}
+                size={iconSize}
                 color={color}
               />
             )

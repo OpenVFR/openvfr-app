@@ -12,8 +12,8 @@
  */
 
 import Svg, { Circle, Line, Text as SvgText, Path, Polygon, Rect, G } from 'react-native-svg'
-import { View, Text, StyleSheet } from 'react-native'
-import { theme } from '../styles/theme'
+import { View, Text } from 'react-native'
+import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import type { ParsedWind } from '@open-vfr/shared/fetchWx'
 
 // ── Geometry helpers (identical to web's WindGauges.tsx) ──────────────────
@@ -63,6 +63,7 @@ const RWY_WIDTH = 9
 const RWY_LABEL_R = R_RWY - 7
 
 export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: CompassProps) {
+  const styles = useThemedStyles(makeStyles)
   const ticks = []
   for (let a = 0; a < 360; a += 30) {
     const p1 = pt(CX, CY, R_TICK_OUT, a)
@@ -174,7 +175,7 @@ export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: C
           word in its place ("CALM"/"VRB") -- when there's no direction to
           show (calm/variable/no data), this is simply blank; the arrow's
           own absence already communicates that. */}
-      <Text style={styles.caption}>
+      <Text style={styles.caption} allowFontScaling={false}>
         {wind && !wind.calm && !wind.variable && wind.dirDeg != null
           ? `${String(wind.dirDeg).padStart(3, '0')}°`
           : ''}
@@ -207,6 +208,7 @@ function arcPath(cx: number, cy: number, r: number, a0: number, a1: number): str
 }
 
 export function WindSpeedGauge({ wind, tone, maxKt = 45 }: SpeedDialProps) {
+  const styles = useThemedStyles(makeStyles)
   const speedKt = wind && !wind.calm ? wind.speedKt : 0
   const gustKt  = wind?.gustKt ?? null
   const needleAngle = speedAngle(speedKt, maxKt)
@@ -237,26 +239,31 @@ export function WindSpeedGauge({ wind, tone, maxKt = 45 }: SpeedDialProps) {
         />
         <Circle cx={CX} cy={CY} r={3} fill={theme.textPrimary} />
       </Svg>
-      <Text style={styles.caption}>
+      <Text style={styles.caption} allowFontScaling={false}>
         {speedKt}kt{gustKt ? ` gust ${gustKt}kt` : ''}
       </Text>
     </View>
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   compassWrap: {
-    alignItems: 'center',
+    alignItems: 'center' as const,
     gap: 4,
   },
   compassSvg: {
-    width: 160,
-    height: 160,
+    // Fixed viewBox="0 0 100 100" internally -- scaling width/height scales
+    // every SVG-space value (ticks, arrow, runway strip, in-SVG fontSize=)
+    // proportionally for free. Only the outer pixel footprint needs scaling.
+    width: theme.scale(160),
+    height: theme.scale(160),
   },
   caption: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: theme.textMd,
+    fontWeight: '700' as const,
     color: theme.textPrimary,
-    textAlign: 'center',
+    textAlign: 'center' as const,
   },
-})
+ }
+}

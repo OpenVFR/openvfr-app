@@ -13,7 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import * as Crypto from 'expo-crypto'
 import type { AircraftProfileDocType, AircraftCategory } from '../types/db'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 const CATEGORIES: { value: AircraftCategory; label: string }[] = [
   { value: 'SEP',    label: 'SEP'    },
@@ -80,6 +80,7 @@ interface Props {
 }
 
 export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [form, setForm]     = useState<FormState>(EMPTY)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -228,6 +229,7 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
 }
 
 function SectionLabel({ text }: { text: string }) {
+  const styles = useThemedStyles(makeStyles)
   return <Text style={styles.sectionLabel}>{text}</Text>
 }
 
@@ -236,6 +238,7 @@ function FieldRow({ label, unit, value, error, numeric, autoCap, placeholder, on
   numeric?: boolean; autoCap?: boolean; placeholder?: string
   onChange: (v: string) => void
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.fieldWrap}>
       <View style={styles.fieldLabelRow}>
@@ -255,7 +258,8 @@ function FieldRow({ label, unit, value, error, numeric, autoCap, placeholder, on
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
     backgroundColor: theme.surfacePanel,
@@ -306,4 +310,5 @@ const styles = StyleSheet.create({
   btnTxt: { color: theme.textSecondary, fontSize: theme.textSm, fontWeight: '600' },
   btnPrimary: { backgroundColor: theme.accentBlue, borderColor: theme.accentBlue },
   btnPrimaryTxt: { color: '#fff', fontSize: theme.textSm, fontWeight: '700' },
-})
+} as const
+}

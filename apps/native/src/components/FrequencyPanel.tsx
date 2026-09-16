@@ -17,7 +17,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import type { NearbyAerodrome } from '../hooks/useNearbyFrequencies'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 // Service label colours
 const SVC_COLOR: Record<string, string> = {
@@ -44,6 +44,7 @@ interface Props {
 }
 
 export function FrequencyPanel({ nearby }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [open, setOpen] = useState(false)
 
   const nearest = nearby[0] ?? null
@@ -116,7 +117,8 @@ export function FrequencyPanel({ nearby }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   // ── Compact trigger ───────────────────────────────────────────────────────
   trigger: {
     width:           40,
@@ -245,7 +247,7 @@ const styles = StyleSheet.create({
     color:       theme.textPrimary,
     fontSize:    theme.textSm,
     fontWeight:  '600',
-    fontVariant: ['tabular-nums'],
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
     minWidth:    60,
   },
   freqCallsign: {
@@ -258,4 +260,5 @@ const styles = StyleSheet.create({
     fontSize:  theme.textXs,
     fontStyle: 'italic',
   },
-})
+} as const
+}

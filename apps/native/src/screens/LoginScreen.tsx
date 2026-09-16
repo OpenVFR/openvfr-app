@@ -17,9 +17,10 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuthContext } from '../context/AuthContext'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 export function LoginScreen() {
+  const styles = useThemedStyles(makeStyles)
   const insets                           = useSafeAreaInsets()
   const { sendOtp, verifyOtp, signInWithPasskey, error } = useAuthContext()
   const [email, setEmail]                = useState('')
@@ -149,7 +150,8 @@ export function LoginScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   container: {
     flex:            1,
     backgroundColor: theme.surfaceBase,
@@ -255,4 +257,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: theme.space1,
   },
-})
+} as const
+}

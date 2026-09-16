@@ -22,7 +22,7 @@ import {
 import Svg, { Path, Line as SvgLine, Defs, LinearGradient, Stop } from 'react-native-svg'
 
 import type { TrackPoint } from '../types/db'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { DEFAULT_CHART_H, MIN_CHART_H, MAX_CHART_H, COLLAPSE_THRESHOLD } from './VerticalProfile'
 
 const NM_PER_DEG_LAT = 60.0
@@ -75,6 +75,7 @@ function niceYTicks(yMax: number, targetTicks = 4): number[] {
 }
 
 export function PastTrackChart({ track, height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [chartW, setChartW] = useState(0)
   const [hoverNm, setHoverNm] = useState<number | null>(null)
   const chartH    = Math.max(0, height)
@@ -203,7 +204,8 @@ export function PastTrackChart({ track, height = DEFAULT_CHART_H, onHeightChange
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   panel: {
     backgroundColor: theme.surfacePanel,
     borderTopWidth:  1,
@@ -224,4 +226,5 @@ const styles = StyleSheet.create({
     backgroundColor: theme.textMuted,
   },
   chartWrap: {},
-})
+} as const
+}

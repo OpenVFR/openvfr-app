@@ -15,7 +15,7 @@
  */
 
 import React, { useEffect } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { View, Text, TouchableOpacity } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
@@ -28,7 +28,7 @@ import type { AirspaceAlert } from '../hooks/useAirspaceWarnings'
 import type { AirspaceNotification } from '../hooks/useAirspaceNotifications'
 import type { ObstructionAlert } from '../hooks/useObstructionWarnings'
 import type { AirfieldProximityAlert } from '../hooks/useAirfieldProximity'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 type Severity = 'red' | 'yellow' | 'blue'
 
@@ -127,6 +127,7 @@ export function NotificationCenter({
   airspaceNotifications, ceilingMsg,
   reminderNote, onDismissReminder,
 }: Props) {
+  const styles = useThemedStyles(makeStyles)
   useEffect(() => {
     if (!reminderNote || !onDismissReminder) return
     const id = setTimeout(onDismissReminder, AUTO_DISMISS_MS)
@@ -300,7 +301,8 @@ function SwipeableCard({
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   container: {
     position:       'absolute',
     top:            theme.space2,
@@ -363,4 +365,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 3,
   },
-})
+} as const
+}

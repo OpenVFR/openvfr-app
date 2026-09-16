@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
-import { View, StyleSheet, TouchableOpacity, Text, Alert, TextInput, Modal } from 'react-native'
+import { View, TouchableOpacity, Text, Alert, TextInput, Modal } from 'react-native'
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as KeepAwake from 'expo-keep-awake'
@@ -74,7 +74,7 @@ import { FlightModeSheet, type FlightModeStatus } from '../components/FlightMode
 import { SimControlPanel }   from '../components/SimControlPanel'
 import { advancePosition, distanceNm, bearingDeg } from '../utils/routeCalc'
 import type { RouteWaypoint } from '../types/db'
-import { theme }             from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 function isAerodrome(p: Record<string, unknown>) {
   // `icao` alone isn't a safe discriminator -- a real minority of aerodromes
@@ -121,6 +121,8 @@ function coordAlongTrack(track: TrackPoint[], targetNm: number): { lng: number; 
 }
 
 export function MapScreen() {
+  const scaledTheme = useScaledTheme()
+  const styles = useThemedStyles(makeStyles)
   const insets                                = useSafeAreaInsets()
   const { position, status, start, stop }     = useGps()
   const { simStatus, simPosition, startUdp, startWs, stopSim } = useSimContext()
@@ -910,7 +912,7 @@ export function MapScreen() {
                 returnKeyType="done"
                 onSubmitEditing={handleConfirmSaveWaypoint}
               />
-              <View style={{ flexDirection: 'row', gap: theme.space2 }}>
+              <View style={{ flexDirection: 'row', gap: scaledTheme.space2 }}>
                 <TouchableOpacity style={styles.longPressMenuBtn} onPress={handleConfirmSaveWaypoint}>
                   <Text style={styles.longPressMenuBtnTxt}>Save</Text>
                 </TouchableOpacity>
@@ -939,7 +941,7 @@ export function MapScreen() {
 
         {/* Viewed flight log banner — Logs segment "View" action on PlanScreen */}
         {selectedLog && (
-          <View style={[styles.pastTrackBanner, { top: theme.space2 }]}>
+          <View style={[styles.pastTrackBanner, { top: scaledTheme.space2 }]}>
             <Ionicons name="navigate-outline" size={13} color="#c4b5fd" />
             <Text style={styles.pastTrackBannerTxt} numberOfLines={1}>
               {selectedLog.departureIcao || '?'} → {selectedLog.arrivalIcao || '?'} · {selectedLog.distanceNm.toFixed(0)} NM
@@ -956,13 +958,13 @@ export function MapScreen() {
           reflow with the flex layout below). Frequency trigger stacked above
           the layers button — was previously an always-visible full-width strip
           that ate vertical screen space; now a compact icon button like its neighbours. */}
-      <View style={[styles.topRight, { bottom: bottomStackH + 8 + 24 + theme.space2 }]} pointerEvents="box-none">
+      <View style={[styles.topRight, { bottom: bottomStackH + 8 + 24 + scaledTheme.space2 }]} pointerEvents="box-none">
         {nearbyFreqs.length > 0 && (
-          <View style={{ marginBottom: theme.space2 }}>
+          <View style={{ marginBottom: scaledTheme.space2 }}>
             <FrequencyPanel nearby={nearbyFreqs} />
           </View>
         )}
-        <View style={{ marginBottom: theme.space2 }}>
+        <View style={{ marginBottom: scaledTheme.space2 }}>
           <FlightModeSheet
             status={flightModeStatus}
             onStartGps={handleStartGpsFly}
@@ -971,7 +973,7 @@ export function MapScreen() {
           />
         </View>
         {flightModeStatus !== 'off' && waypoints.length >= 2 && (
-          <View style={{ marginBottom: theme.space2 }}>
+          <View style={{ marginBottom: scaledTheme.space2 }}>
             <LivePlogPanel waypoints={waypoints} activeWpIdx={activeWpIdx} plogData={plogData} />
           </View>
         )}
@@ -981,7 +983,7 @@ export function MapScreen() {
             attribution/info icon (mirrors web's toolbar). Previously an
             inline 3-across row, which stuck out past the single-button
             column above it and looked misaligned. */}
-        <View style={[styles.planRow, { marginBottom: theme.space2 }]}>
+        <View style={[styles.planRow, { marginBottom: scaledTheme.space2 }]}>
           <TouchableOpacity
             style={[styles.iconBtn, planningMode && styles.iconBtnActive]}
             onPress={() => setPlanningMode(m => !m)}
@@ -1029,7 +1031,7 @@ export function MapScreen() {
           VerticalProfile + GaugesBar stack, which now occupies the true
           screen bottom (these buttons used a fixed bottom before that stack existed). */}
       {flightModeStatus !== 'off' && !followGps && (
-        <TouchableOpacity style={[styles.recenterBtn, { bottom: theme.space3 + bottomStackH }]} onPress={() => setFollowGps(true)}>
+        <TouchableOpacity style={[styles.recenterBtn, { bottom: scaledTheme.space3 + bottomStackH }]} onPress={() => setFollowGps(true)}>
           <Text style={styles.recenterText}>⊕ Re-center</Text>
         </TouchableOpacity>
       )}
@@ -1107,7 +1109,7 @@ export function MapScreen() {
           can be fiddly to grab precisely. */}
       {(showRulerProfile || showPlannedProfile || showLookaheadProfile || showPastTrackChart) && profileHeight <= COLLAPSE_THRESHOLD && (
         <TouchableOpacity
-          style={[styles.showProfileBtn, { bottom: GAUGES_BAR_H + (simFlight.active ? SIM_PANEL_H : 0) + theme.space1 }]}
+          style={[styles.showProfileBtn, { bottom: GAUGES_BAR_H + (simFlight.active ? SIM_PANEL_H : 0) + scaledTheme.space1 }]}
           onPress={() => setProfileHeight(DEFAULT_CHART_H)}
         >
           <Ionicons name="chevron-up" size={18} color={theme.textPrimary} />
@@ -1154,7 +1156,8 @@ export function MapScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   container:    { flex: 1, backgroundColor: theme.surfaceBase },
   mapContainer: { flex: 1 },
   longPressMenu: {
@@ -1263,4 +1266,5 @@ const styles = StyleSheet.create({
     justifyContent:  'center',
     zIndex:          40,
   },
-})
+} as const
+}

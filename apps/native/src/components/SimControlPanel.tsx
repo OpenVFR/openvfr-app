@@ -18,7 +18,7 @@
 import React, { useCallback, useEffect, useRef } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 type Props = {
   speedKts: number
@@ -69,6 +69,7 @@ function StepperButton({ onPressIn, onPressOut, children }: {
   onPressOut: () => void
   children:   React.ReactNode
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <TouchableOpacity
       style={styles.stepBtn}
@@ -82,6 +83,7 @@ function StepperButton({ onPressIn, onPressOut, children }: {
 }
 
 export function SimControlPanel({ speedKts, altFt, trackDeg, onAdjustHeading, onAdjustSpeed, onAdjustAlt, onAdvance, onStop }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const hdg   = useHoldRepeat(onAdjustHeading)
   const speed = useHoldRepeat(onAdjustSpeed)
   const alt   = useHoldRepeat(onAdjustAlt)
@@ -145,7 +147,8 @@ export function SimControlPanel({ speedKts, altFt, trackDeg, onAdjustHeading, on
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   panel: {
     backgroundColor: theme.surfacePanel,
     borderTopWidth:  1,
@@ -222,4 +225,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop:  1,
   },
-})
+} as const
+}

@@ -7,7 +7,7 @@ import React from 'react'
 import {
   View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet,
 } from 'react-native'
-import { theme } from '../styles/theme'
+import { useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
 import { AERODROME_COLORS, NAVAID_COLORS, WAYPOINT_COLORS, OBSTACLE_COLORS } from '@open-vfr/shared/featureColors'
 
@@ -57,6 +57,7 @@ interface Props {
 }
 
 export function LayerPanel({ layers, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [open, setOpen] = React.useState(false)
 
   let lastSection = ''
@@ -121,42 +122,43 @@ export function LayerPanel({ layers, onChange }: Props) {
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   trigger: {
-    width:           36,
-    height:          36,
+    width:           theme.scale(36),
+    height:          theme.scale(36),
     borderRadius:    theme.radiusMd,
     backgroundColor: 'rgba(19,24,36,0.90)',
     borderWidth:     1,
     borderColor:     theme.borderDefault,
-    alignItems:      'center',
-    justifyContent:  'center',
+    alignItems:      'center' as const,
+    justifyContent:  'center' as const,
   },
   triggerText: {
     color:    theme.textSecondary,
-    fontSize: 18,
-    lineHeight: 20,
+    fontSize: theme.scale(18),
+    lineHeight: theme.scale(20),
   },
   backdrop: {
     ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   panel: {
-    position:        'absolute',
-    top:             60,
+    position:        'absolute' as const,
+    top:             theme.scale(60),
     right:           theme.space2,
-    width:           220,
-    maxHeight:       420,
+    width:           theme.scale(220),
+    maxHeight:       theme.scale(420),
     backgroundColor: theme.surfacePanel,
     borderRadius:    theme.radiusMd,
     borderWidth:     1,
     borderColor:     theme.borderDefault,
-    overflow:        'hidden',
+    overflow:        'hidden' as const,
   },
   panelHeader: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    justifyContent:  'space-between',
+    flexDirection:   'row' as const,
+    alignItems:      'center' as const,
+    justifyContent:  'space-between' as const,
     paddingHorizontal: theme.space3,
     paddingVertical:   theme.space2,
     borderBottomWidth: 1,
@@ -165,7 +167,7 @@ const styles = StyleSheet.create({
   panelTitle: {
     color:      theme.textPrimary,
     fontSize:   theme.textSm,
-    fontWeight: '700',
+    fontWeight: '700' as const,
   },
   closeBtn: {
     color:    theme.textMuted,
@@ -175,15 +177,15 @@ const styles = StyleSheet.create({
   section: {
     color:         theme.textFaint,
     fontSize:      theme.textXs,
-    fontWeight:    '600',
+    fontWeight:    '600' as const,
     letterSpacing: 0.8,
     paddingHorizontal: theme.space3,
     paddingTop:    theme.space2,
     paddingBottom: theme.space1,
   },
   row: {
-    flexDirection:     'row',
-    alignItems:        'center',
+    flexDirection:     'row' as const,
+    alignItems:        'center' as const,
     paddingHorizontal: theme.space3,
     paddingVertical:   theme.space2,
     gap:               theme.space2,
@@ -192,8 +194,8 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   swatch: {
-    width:        10,
-    height:       10,
+    width:        theme.scale(10),
+    height:       theme.scale(10),
     borderRadius: 2,
   },
   label: {
@@ -206,9 +208,9 @@ const styles = StyleSheet.create({
   },
   badge: {
     fontSize:  theme.textXs,
-    fontWeight: '700',
-    minWidth:  28,
-    textAlign: 'right',
+    fontWeight: '700' as const,
+    minWidth:  theme.scale(28),
+    textAlign: 'right' as const,
   },
   badgeOn: {
     color: theme.accentBlue,
@@ -216,4 +218,5 @@ const styles = StyleSheet.create({
   badgeOff: {
     color: theme.textFaint,
   },
-})
+ }
+}

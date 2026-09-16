@@ -40,7 +40,7 @@ import type { LegOverride } from '../types/db'
 import { distanceNm, magneticBearingDeg, bearingDeg } from '../utils/routeCalc'
 import { nmToDisplay, distLabel, ktsToDisplay, displayToKts, speedLabel } from '../utils/units'
 import { computeFuelPlan } from '../utils/fuelCalc'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 type Segment = 'route' | 'aircraft' | 'waypoints' | 'logs'
 const SEGMENTS: { key: Segment; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
@@ -85,6 +85,8 @@ function fmtEta(baseMins: number, offsetMins: number): string {
 
 // ── Component ─────────────────────────────────────────────────────────────
 export function PlanScreen() {
+  const scaledTheme = useScaledTheme()
+  const styles = useThemedStyles(makeStyles)
   const insets = useSafeAreaInsets()
   const { waypoints, legOverrides, removeWaypoint, clearRoute, setWaypoints, moveWaypoint, reverseRoute, undoLast, setLegOverride } = useRouteContext()
   const { settings, update } = useSettingsContext()
@@ -581,14 +583,14 @@ export function PlanScreen() {
       {segment === 'aircraft' && (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ padding: theme.space3 }}
+          contentContainerStyle={{ padding: scaledTheme.space3 }}
           refreshControl={<RefreshControl refreshing={aircraftRefreshing} onRefresh={handleAircraftRefresh} tintColor={theme.accentBlue} />}
         >
           <TouchableOpacity style={styles.saveBtn} onPress={openNewAircraft}>
             <Ionicons name="add-circle-outline" size={14} color={theme.accentBlue} />
             <Text style={styles.saveBtnTxt}>Add Aircraft…</Text>
           </TouchableOpacity>
-          <View style={{ height: theme.space2 }} />
+          <View style={{ height: scaledTheme.space2 }} />
           {profiles.length === 0 ? (
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>No aircraft profiles</Text>
@@ -651,11 +653,11 @@ export function PlanScreen() {
       {segment === 'waypoints' && (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ padding: theme.space3 }}
+          contentContainerStyle={{ padding: scaledTheme.space3 }}
           refreshControl={<RefreshControl refreshing={waypointsRefreshing} onRefresh={handleWaypointsRefresh} tintColor={theme.accentBlue} />}
         >
           <View style={styles.saveSection}>
-            <View style={{ flexDirection: 'row', gap: theme.space2, marginBottom: theme.space2 }}>
+            <View style={{ flexDirection: 'row', gap: scaledTheme.space2, marginBottom: scaledTheme.space2 }}>
               <TouchableOpacity onPress={handleImportWaypointsGpx} style={styles.headerBtn}>
                 <Text style={styles.headerBtnTxt}>GPX ↑ Import</Text>
               </TouchableOpacity>
@@ -666,7 +668,7 @@ export function PlanScreen() {
               )}
             </View>
             {!savingWp ? (
-              <View style={{ gap: theme.space2 }}>
+              <View style={{ gap: scaledTheme.space2 }}>
                 <Text style={styles.emptyBody}>
                   Tip: long-press anywhere on the Map tab to save that point as a waypoint directly.
                 </Text>
@@ -676,7 +678,7 @@ export function PlanScreen() {
                 </TouchableOpacity>
               </View>
             ) : (
-              <View style={{ gap: theme.space2 }}>
+              <View style={{ gap: scaledTheme.space2 }}>
                 <TextInput
                   style={styles.numberInput}
                   value={wpName}
@@ -751,7 +753,7 @@ export function PlanScreen() {
       {segment === 'logs' && (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ padding: theme.space3 }}
+          contentContainerStyle={{ padding: scaledTheme.space3 }}
           refreshControl={<RefreshControl refreshing={logsRefreshing} onRefresh={handleLogsRefresh} tintColor={theme.accentBlue} />}
         >
           {logs.length === 0 ? (
@@ -813,6 +815,7 @@ export function PlanScreen() {
 function Row({ label, value, accent, warn, bold }: {
   label: string; value: string; accent?: boolean; warn?: boolean; bold?: boolean
 }) {
+  const rowStyles = useThemedStyles(makeRowStyles)
   return (
     <View style={rowStyles.row}>
       <Text style={rowStyles.label}>{label}</Text>
@@ -826,17 +829,20 @@ function Row({ label, value, accent, warn, bold }: {
   )
 }
 
-const rowStyles = StyleSheet.create({
+function makeRowStyles(theme: ScaledTheme) {
+ return {
   row:         { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
   label:       { color: theme.textMuted, fontSize: theme.textSm },
   value:       { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '500' },
   valueAccent: { color: theme.accentBlue },
   valueWarn:   { color: theme.statusDanger },
   valueBold:   { fontWeight: '700' },
-})
+} as const
+}
 
 // ── Styles ──────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   container:   { flex: 1, backgroundColor: theme.surfaceBase },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -967,4 +973,5 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8, marginBottom: theme.space2,
   },
   fuelDivider: { height: 1, backgroundColor: theme.borderSubtle, marginVertical: theme.space1 },
-})
+} as const
+}

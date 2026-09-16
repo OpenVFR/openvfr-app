@@ -40,6 +40,10 @@ export type AppSettings = {
   useInternalBarometer: boolean
   /** Last-connected BlueFly Vario BLE device ID, empty = none/manual reconnect. */
   varioAutoConnectId: string
+  /** Manual UI scale multiplier (1.0 = default) applied on top of the automatic
+   *  device-size factor — see hooks/useUiScale.ts. For kneeboard/dashboard
+   *  mounts viewed from across the cockpit. */
+  uiScale: number
 }
 
 const DEFAULTS: AppSettings = {
@@ -59,6 +63,7 @@ const DEFAULTS: AppSettings = {
   qnhAuto:                  true,
   useInternalBarometer:     false,
   varioAutoConnectId:       '',
+  uiScale:                  1.0,
 }
 
 export function useSettings() {

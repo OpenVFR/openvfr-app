@@ -6,6 +6,10 @@
  * @deprecated Replaced by GaugesBar.tsx (GS/T.ALT/TT/UTC/WIND bar) in
  * MapScreen. Kept here unused in case the old design is preferred after
  * testing — not currently rendered anywhere.
+ *
+ * NOT migrated to useScaledTheme()/useThemedStyles() (see styles/theme.ts) —
+ * still uses the static, unscaled `theme` export. If this is ever revived,
+ * migrate it first (see GaugesBar.tsx for the pattern).
  */
 
 import React, { useState } from 'react'

@@ -7,7 +7,7 @@ import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { KeyboardProvider } from 'react-native-keyboard-controller'
-import { StyleSheet, View, ActivityIndicator, Text } from 'react-native'
+import { View, ActivityIndicator, Text } from 'react-native'
 
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {error: string|null}> {
   state = { error: null }
@@ -27,10 +27,11 @@ import { SimProvider }                 from './context/SimContext'
 import { VarioProvider }               from './context/VarioContext'
 import { AppNavigator }  from './navigation'
 import { LoginScreen }   from './screens/LoginScreen'
-import { theme }         from './styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from './styles/theme'
 import { useForceUpdate } from './hooks/useForceUpdate'
 
 function AppShell() {
+  const styles = useThemedStyles(makeStyles)
   const { state } = useAuthContext()
 
   return (
@@ -78,7 +79,8 @@ export default function App() {
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   root: {
     flex:            1,
     backgroundColor: theme.surfaceBase,
@@ -89,4 +91,5 @@ const styles = StyleSheet.create({
     alignItems:      'center',
     backgroundColor: theme.surfaceBase,
   },
-})
+} as const
+}

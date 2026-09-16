@@ -16,7 +16,7 @@ import React, { useEffect, useState } from 'react'
 import {
   Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, TextInput,
 } from 'react-native'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import {
   fetchWxResolved, decodeMetar, parseMetarWind, parseMetarClouds,
   type WxResolved, type WxStationCandidate, type ParsedWind,
@@ -197,6 +197,11 @@ interface Props {
 }
 
 export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
+  const scaledTheme = useScaledTheme()
+  const styles = useThemedStyles(makeStyles)
+  const runwayStyles = useThemedStyles(makeRunwayStyles)
+  const daStyles = useThemedStyles(makeDaStyles)
+  const wxStyles = useThemedStyles(makeWxStyles)
   // Hooks must be declared before any conditional return (Rules of Hooks)
   const [activeTab, setActiveTab] = useState<'info' | 'wx' | 'notam'>('info')
   const [selectedRunwayDesig, setSelectedRunwayDesig] = useState<string | null>(null)
@@ -440,7 +445,7 @@ export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
                     const windEnds = r.thresholds ? computeRunwayWind(r.thresholds, effectiveWind) : []
                     const hasWind = windEnds.some((e) => e.headwindKt != null)
                     return (
-                      <View key={i} style={{ marginBottom: theme.space1 }}>
+                      <View key={i} style={{ marginBottom: scaledTheme.space1 }}>
                         {windEnds.length > 0 ? (
                           <View style={runwayStyles.desigRow}>
                             {windEnds.map((e, j) => (
@@ -697,6 +702,7 @@ export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
 function TabBtn({ label, active, onPress, dotColor, count }: {
   label: string; active: boolean; onPress: () => void; dotColor?: string; count?: number
 }) {
+  const tabStyles = useThemedStyles(makeTabStyles)
   return (
     <TouchableOpacity style={[tabStyles.tab, active ? tabStyles.tabActive : null]} onPress={onPress}>
       <View style={tabStyles.tabInner}>
@@ -713,6 +719,7 @@ function TabBtn({ label, active, onPress, dotColor, count }: {
 }
 
 function WxTile({ label, value, color }: { label: string; value: string; color: string }) {
+  const wxStyles = useThemedStyles(makeWxStyles)
   return (
     <View style={wxStyles.tile}>
       <Text style={wxStyles.tileLabel}>{label}</Text>
@@ -722,6 +729,7 @@ function WxTile({ label, value, color }: { label: string; value: string; color: 
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const sectionStyles = useThemedStyles(makeSectionStyles)
   return (
     <View style={sectionStyles.container}>
       <Text style={sectionStyles.title}>{title.toUpperCase()}</Text>
@@ -731,6 +739,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function Row({ label, value }: { label: string; value: string }) {
+  const rowStyles = useThemedStyles(makeRowStyles)
   return (
     <View style={rowStyles.row}>
       <Text style={rowStyles.label}>{label}</Text>
@@ -739,7 +748,8 @@ function Row({ label, value }: { label: string; value: string }) {
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   backdrop: {
     flex:            1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -892,9 +902,11 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginTop: 2,
   },
-})
+} as const
+}
 
-const tabStyles = StyleSheet.create({
+function makeTabStyles(theme: ScaledTheme) {
+ return {
   tab: {
     flex: 1,
     paddingVertical: theme.space2,
@@ -935,9 +947,11 @@ const tabStyles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
   },
-})
+} as const
+}
 
-const wxStyles = StyleSheet.create({
+function makeWxStyles(theme: ScaledTheme) {
+ return {
   fallback: {
     color:    theme.accentBlue,
     fontSize: theme.textSm,
@@ -1047,9 +1061,11 @@ const wxStyles = StyleSheet.create({
     fontSize: theme.textSm,
     marginTop: 3,
   },
-})
+} as const
+}
 
-const daStyles = StyleSheet.create({
+function makeDaStyles(theme: ScaledTheme) {
+ return {
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1080,9 +1096,11 @@ const daStyles = StyleSheet.create({
     fontSize: theme.textSm,
     marginTop: theme.space2,
   },
-})
+} as const
+}
 
-const sectionStyles = StyleSheet.create({
+function makeSectionStyles(theme: ScaledTheme) {
+ return {
   container: {
     marginTop: theme.space2,
     gap:       2,
@@ -1094,9 +1112,11 @@ const sectionStyles = StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom:  theme.space2,
   },
-})
+} as const
+}
 
-const runwayStyles = StyleSheet.create({
+function makeRunwayStyles(theme: ScaledTheme) {
+ return {
   desigRow: {
     flexDirection: 'row',
     alignItems:    'center',
@@ -1133,9 +1153,11 @@ const runwayStyles = StyleSheet.create({
     fontSize: theme.textXs,
     fontWeight: '600',
   },
-})
+} as const
+}
 
-const rowStyles = StyleSheet.create({
+function makeRowStyles(theme: ScaledTheme) {
+ return {
   row: {
     flexDirection:  'row',
     justifyContent: 'space-between',
@@ -1154,4 +1176,5 @@ const rowStyles = StyleSheet.create({
     textAlign:  'right',
     flexShrink: 1,
   },
-})
+} as const
+}

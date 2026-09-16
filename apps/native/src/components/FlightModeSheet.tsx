@@ -18,9 +18,9 @@
  */
 
 import React, { useState } from 'react'
-import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { Modal, View, Text, TouchableOpacity } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 export type FlightModeStatus = 'off' | 'gps' | 'sim'
 
@@ -32,6 +32,8 @@ interface Props {
 }
 
 export function FlightModeSheet({ status, onStartGps, onStartSim, onStop }: Props) {
+  const scaledTheme = useScaledTheme()
+  const styles = useThemedStyles(makeStyles)
   const [open, setOpen] = useState(false)
   const active = status !== 'off'
 
@@ -43,7 +45,7 @@ export function FlightModeSheet({ status, onStartGps, onStartSim, onStop }: Prop
       >
         <Ionicons
           name={status === 'sim' ? 'game-controller-outline' : 'airplane-outline'}
-          size={19}
+          size={scaledTheme.scale(19)}
           color={active ? theme.accentBlue : theme.textSecondary}
         />
       </TouchableOpacity>
@@ -56,7 +58,7 @@ export function FlightModeSheet({ status, onStartGps, onStartSim, onStop }: Prop
           <View style={styles.header}>
             <Text style={styles.title}>Flight Mode</Text>
             <TouchableOpacity onPress={() => setOpen(false)} hitSlop={8}>
-              <Ionicons name="close" size={18} color={theme.textMuted} />
+              <Ionicons name="close" size={scaledTheme.scale(18)} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -77,7 +79,7 @@ export function FlightModeSheet({ status, onStartGps, onStartSim, onStop }: Prop
               onPress={() => { onStartGps(); setOpen(false) }}
               disabled={status === 'gps'}
             >
-              <Ionicons name="airplane-outline" size={20} color={theme.accentBlue} />
+              <Ionicons name="airplane-outline" size={scaledTheme.scale(20)} color={theme.accentBlue} />
               <View style={styles.cardText}>
                 <Text style={styles.cardTitle}>Fly</Text>
                 <Text style={styles.cardDesc}>Use real GPS position. Keeps the screen awake and follows your aircraft.</Text>
@@ -89,7 +91,7 @@ export function FlightModeSheet({ status, onStartGps, onStartSim, onStop }: Prop
               onPress={() => { onStartSim(); setOpen(false) }}
               disabled={status === 'sim'}
             >
-              <Ionicons name="game-controller-outline" size={20} color={theme.accentPurple} />
+              <Ionicons name="game-controller-outline" size={scaledTheme.scale(20)} color={theme.accentPurple} />
               <View style={styles.cardText}>
                 <Text style={styles.cardTitle}>Simulate</Text>
                 <Text style={styles.cardDesc}>
@@ -109,16 +111,17 @@ export function FlightModeSheet({ status, onStartGps, onStartSim, onStop }: Prop
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   trigger: {
-    width:           40,
-    height:          40,
+    width:           theme.scale(40),
+    height:          theme.scale(40),
     borderRadius:    theme.radiusMd,
     backgroundColor: 'rgba(19,24,36,0.90)',
     borderWidth:     1,
     borderColor:     theme.borderDefault,
-    alignItems:      'center',
-    justifyContent:  'center',
+    alignItems:      'center' as const,
+    justifyContent:  'center' as const,
   },
   triggerActive: { borderColor: theme.accentBlue },
   backdrop: {
@@ -127,25 +130,25 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor:      theme.surfacePanel,
-    borderTopLeftRadius:  20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius:  theme.scale(20),
+    borderTopRightRadius: theme.scale(20),
     borderTopWidth:       1,
     borderColor:          theme.borderDefault,
-    maxHeight:            '80%',
+    maxHeight:            '80%' as const,
   },
   handle: {
-    width:           40,
-    height:          4,
-    borderRadius:    2,
+    width:           theme.scale(40),
+    height:          theme.scale(4),
+    borderRadius:    theme.scale(2),
     backgroundColor: theme.borderDefault,
-    alignSelf:       'center',
-    marginTop:       10,
-    marginBottom:    4,
+    alignSelf:       'center' as const,
+    marginTop:       theme.scale(10),
+    marginBottom:    theme.scale(4),
   },
   header: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    justifyContent:    'space-between',
+    flexDirection:     'row' as const,
+    alignItems:        'center' as const,
+    justifyContent:    'space-between' as const,
     paddingHorizontal: theme.space4,
     paddingVertical:   theme.space2,
     borderBottomWidth: 1,
@@ -154,12 +157,12 @@ const styles = StyleSheet.create({
   title: {
     color:      theme.textPrimary,
     fontSize:   theme.textMd,
-    fontWeight: '700',
+    fontWeight: '700' as const,
   },
   statusBanner: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    justifyContent:    'space-between',
+    flexDirection:     'row' as const,
+    alignItems:        'center' as const,
+    justifyContent:    'space-between' as const,
     paddingHorizontal: theme.space4,
     paddingVertical:   theme.space2,
     backgroundColor:   'rgba(59,130,246,0.08)',
@@ -173,14 +176,14 @@ const styles = StyleSheet.create({
   stopTxt: {
     color:      theme.statusDanger,
     fontSize:   theme.textXs,
-    fontWeight: '600',
+    fontWeight: '600' as const,
   },
   body: {
     padding: theme.space4,
     gap:     theme.space3,
   },
   card: {
-    flexDirection:   'row',
+    flexDirection:   'row' as const,
     gap:             theme.space3,
     backgroundColor: theme.surfaceOverlay,
     borderRadius:    theme.radiusMd,
@@ -194,22 +197,23 @@ const styles = StyleSheet.create({
   },
   cardText: {
     flex: 1,
-    gap:  2,
+    gap:  theme.scale(2),
   },
   cardTitle: {
     color:      theme.textPrimary,
     fontSize:   theme.textSm,
-    fontWeight: '700',
+    fontWeight: '700' as const,
   },
   cardDesc: {
     color:      theme.textMuted,
     fontSize:   theme.textXs,
-    lineHeight: 16,
+    lineHeight: theme.scale(16),
   },
   hint: {
     color:      theme.textFaint,
     fontSize:   theme.textXs,
-    textAlign:  'center',
-    lineHeight: 16,
+    textAlign:  'center' as const,
+    lineHeight: theme.scale(16),
   },
-})
+ }
+}

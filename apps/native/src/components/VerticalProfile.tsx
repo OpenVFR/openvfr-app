@@ -49,7 +49,7 @@ import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
 import { windBarbColorForSpeed, windArrowStrokeWidth } from '@open-vfr/shared/windBarb'
 import { getTileUrls, TILE_BASE } from '../config'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 
 // ---------------------------------------------------------------------------
@@ -222,6 +222,7 @@ export function VerticalProfile({
   crossTrackNm, weatherStations,
   height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm,
 }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [hoverNm, setHoverNm] = useState<number | null>(null)
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(null)
@@ -920,7 +921,8 @@ export function VerticalProfile({
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   panel: {
     backgroundColor: theme.surfacePanel,
     borderTopWidth:  1,
@@ -1027,4 +1029,5 @@ const styles = StyleSheet.create({
     color:    'rgba(255,255,255,0.55)',
     fontSize: 8,
   },
-})
+} as const
+}

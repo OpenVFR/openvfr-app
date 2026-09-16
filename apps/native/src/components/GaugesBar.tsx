@@ -11,7 +11,7 @@ import type { GpsPosition } from '../utils/gpsTypes'
 import type { WindAloft } from '@open-vfr/shared/fetchWind'
 import { computeWindRelative } from '@open-vfr/shared/windRelative'
 import type { AltitudeSourceResult } from '@open-vfr/shared/baroAltitude'
-import { theme } from '../styles/theme'
+import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 type Props = {
   position: GpsPosition | null
@@ -48,10 +48,11 @@ function useClock(local: boolean): string {
 }
 
 function Gauge({ value, label, onPress, valueColor }: { value: string; label: string; onPress?: () => void; valueColor?: string }) {
+  const styles = useThemedStyles(makeStyles)
   const Wrapper = onPress ? TouchableOpacity : View
   return (
     <Wrapper style={styles.gauge} onPress={onPress} activeOpacity={0.6}>
-      <Text style={[styles.gaugeValue, valueColor ? { color: valueColor } : null]} numberOfLines={1}>{value}</Text>
+      <Text style={[styles.gaugeValue, valueColor ? { color: valueColor } : null]} allowFontScaling={false} numberOfLines={1}>{value}</Text>
       <Text style={styles.gaugeLabel} numberOfLines={1}>{label}</Text>
     </Wrapper>
   )
@@ -78,6 +79,7 @@ function crosswindColor(severity: 'calm' | 'moderate' | 'strong'): string {
  * unfavourable regardless of flight phase.
  */
 function WindGauge({ wind, position }: { wind: WindAloft | null; position: GpsPosition | null }) {
+  const styles = useThemedStyles(makeStyles)
   const windTxt = wind ? `${wind.dirDeg.toString().padStart(3, '0')}\u00b0/${Math.round(wind.speedKts)}` : '\u2013'
   const rel = position ? computeWindRelative(wind, position.trackDeg, position.speedKts) : null
   const xwColor = rel ? crosswindColor(rel.crosswindSeverity) : undefined
@@ -89,7 +91,7 @@ function WindGauge({ wind, position }: { wind: WindAloft | null; position: GpsPo
             {'\u25b2'}
           </Text>
         )}
-        <Text style={styles.gaugeValue} numberOfLines={1}>{windTxt}</Text>
+        <Text style={styles.gaugeValue} allowFontScaling={false} numberOfLines={1}>{windTxt}</Text>
       </View>
       <Text style={[styles.gaugeLabel, xwColor ? { color: xwColor } : null]} numberOfLines={1}>
         {rel ? (rel.hw >= 0 ? `HW${rel.hw}` : `TW${Math.abs(rel.hw)}`) + ` \u00b7 XW${rel.xw}` : 'WIND'}
@@ -99,6 +101,7 @@ function WindGauge({ wind, position }: { wind: WindAloft | null; position: GpsPo
 }
 
 export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeSource, showQnh, onToggleQnh, showLocalTime, onToggleLocalTime, varioBatteryLow }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const clock = useClock(!!showLocalTime)
 
   const gs = position ? `${Math.round(position.speedKts)}` : '\u2013'
@@ -166,11 +169,12 @@ export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeS
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   bar: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    justifyContent:  'space-evenly',
+    flexDirection:   'row' as const,
+    alignItems:      'center' as const,
+    justifyContent:  'space-evenly' as const,
     backgroundColor: theme.surfacePanel,
     borderTopWidth:  1,
     borderColor:     theme.borderDefault,
@@ -178,30 +182,31 @@ const styles = StyleSheet.create({
   },
   gauge: {
     flex:       1,
-    alignItems: 'center',
+    alignItems: 'center' as const,
   },
   gaugeValue: {
     color:      theme.textPrimary,
     fontSize:   theme.textLg,
-    fontWeight: '700',
+    fontWeight: '700' as const,
   },
   gaugeLabel: {
     color:    theme.textMuted,
-    fontSize: 9,
+    fontSize: theme.scale(9),
     marginTop: 1,
   },
   windValueRow: {
-    flexDirection: 'row',
-    alignItems:    'center',
+    flexDirection: 'row' as const,
+    alignItems:    'center' as const,
   },
   windArrow: {
-    fontSize:    9,
+    fontSize:    theme.scale(9),
     marginRight: 2,
     color:       theme.textSecondary,
   },
   divider: {
     width:            1,
-    height:           '60%',
+    height:           '60%' as const,
     backgroundColor:  theme.borderSubtle,
   },
-})
+ }
+}

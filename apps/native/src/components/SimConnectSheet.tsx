@@ -20,7 +20,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import type { SimStatus } from '../hooks/useSimInput'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 interface Props {
   simStatus:  SimStatus
@@ -30,6 +30,7 @@ interface Props {
 }
 
 export function SimConnectSheet({ simStatus, onStartUdp, onStartWs, onStop }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [open,   setOpen]   = useState(false)
   const [wsUrl,  setWsUrl]  = useState('ws://192.168.1.')
 
@@ -151,7 +152,8 @@ export function SimConnectSheet({ simStatus, onStartUdp, onStartWs, onStop }: Pr
   )
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   trigger: {
     width:           40,
     height:          40,
@@ -296,4 +298,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 16,
   },
-})
+} as const
+}

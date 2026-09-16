@@ -7,12 +7,12 @@
  * only the hour axis scrolls horizontally).
  */
 
-import { View, Text, StyleSheet, ScrollView } from 'react-native'
+import { View, Text, ScrollView } from 'react-native'
 import Svg, { Path, Circle, Line } from 'react-native-svg'
 import { buildTafTimeline, type TafPeriod } from '@open-vfr/shared/parseTaf'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
 import { fmtVis, fmtWind, visTone, ceilingTone, windTone, skyLabel, type TileTone } from '@open-vfr/shared/wxFormat'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 interface Props {
   periods: TafPeriod[] | null
@@ -84,6 +84,7 @@ const TONE_COLOR: Record<TileTone, string> = {
 const COL_WIDTH = 68
 
 export default function TafTimeline({ periods, lat, lng, maxHours = 24 }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const slices = buildTafTimeline(periods, { stepHours: 1, maxSlices: maxHours })
   if (slices.length === 0) return null
 
@@ -155,14 +156,17 @@ export default function TafTimeline({ periods, lat, lng, maxHours = 24 }: Props)
 }
 
 function Row({ children, last }: { children: React.ReactNode; last?: boolean }) {
+  const styles = useThemedStyles(makeStyles)
   return <View style={[styles.row, !last && styles.rowBorder]}>{children}</View>
 }
 
 function Cell({ children, bg }: { children: React.ReactNode; bg?: string }) {
+  const styles = useThemedStyles(makeStyles)
   return <View style={[styles.cell, bg ? { backgroundColor: bg } : null]}>{children}</View>
 }
 
-const styles = StyleSheet.create({
+function makeStyles(theme: ScaledTheme) {
+ return {
   scrollWrap: {
     marginTop: theme.space1,
     borderRadius: theme.radiusSm,
@@ -218,4 +222,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 3,
   },
-})
+} as const
+}
