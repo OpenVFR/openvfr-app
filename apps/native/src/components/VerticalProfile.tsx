@@ -47,6 +47,7 @@ import {
 } from '@open-vfr/shared/virtualRadarCalc'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
+import { windBarbColorForSpeed, windArrowStrokeWidth } from '@open-vfr/shared/windBarb'
 import { getTileUrls, TILE_BASE } from '../config'
 import { theme } from '../styles/theme'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
@@ -734,10 +735,14 @@ export function VerticalProfile({
                   }
                   const len = Math.min(18, 6 + m.wind.speedKt * 0.5)
                   const rot = m.wind.dirDeg + 180
+                  // Speed-tiered colour + thickness (see @open-vfr/shared/windBarb) --
+                  // mirrors web's VirtualRadar.tsx identical change.
+                  const strokeW = windArrowStrokeWidth(m.wind.speedKt)
+                  const color = windBarbColorForSpeed(m.wind.speedKt)
                   return (
                     <G key={`wind-${i}`} transform={`translate(${x},${y}) rotate(${rot})`}>
-                      <SvgLine x1={0} y1={-len / 2} x2={0} y2={len / 2} stroke="rgba(148,197,255,0.85)" strokeWidth={1.5} />
-                      <Path d={`M0,${len / 2} L-2.5,${len / 2 - 4} L2.5,${len / 2 - 4} Z`} fill="rgba(148,197,255,0.9)" />
+                      <SvgLine x1={0} y1={-len / 2} x2={0} y2={len / 2} stroke={color} strokeWidth={strokeW} strokeLinecap="round" />
+                      <Path d={`M0,${len / 2} L-2.5,${len / 2 - 4} L2.5,${len / 2 - 4} Z`} fill={color} />
                     </G>
                   )
                 })}

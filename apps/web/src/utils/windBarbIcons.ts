@@ -24,11 +24,14 @@
  */
 
 import type * as maplibregl from 'maplibre-gl'
-import { windBarbBucket, allWindBarbBuckets } from '@open-vfr/shared/windBarb'
+import { windBarbBucket, allWindBarbBuckets, windBarbColorForSpeed } from '@open-vfr/shared/windBarb'
 
 export const WIND_BARB_ID_PREFIX = 'wind-barb-'
-// Sky blue — distinct from every other icon's colour on the map (aerodromes
-// blue-dark, obstacles amber/red, navaids purple).
+// Legend/label swatch only — the barb icons themselves are now speed-
+// tiered (windBarbColorForSpeed: blue/green/amber, SkyDemon's "wind
+// feather" convention) rather than this single flat colour. Kept as the
+// representative sky-blue swatch since MapDisplaySheet's legend shows one
+// colour per layer group, not a gradient.
 export const WIND_BARB_COLOR = '#38bdf8'
 
 // Raster canvas size (2× logical for HiDPI, matching every other icon's
@@ -46,18 +49,21 @@ function drawWindBarb(ctx: CanvasRenderingContext2D, bucket: number, color: stri
   const stationY = CANVAS_H - 6 // anchor point (icon-anchor: 'bottom' in the style)
   const tipY = 10
 
-  // Thinner stroke + lighter shadow than the original (3.4 / 0.55 alpha)
-  // -- at the old weight the icon still looked bold/heavy even after the
-  // icon-size/opacity reduction in map-style.ts (2026-09-13 UX feedback:
-  // wind arrows were "way too large and in-focus" against the rest of the
-  // map's much lighter POI icons).
+  // The 2026-09-13 UX pass that shrunk this (icon-size 0.4-0.8, opacity
+  // 0.55, lineWidth 2.4, faint shadow) overcorrected -- barbs ended up
+  // barely visible against the basemap, leaving only the numeric label
+  // (which keeps its own white halo) readable. Restored to a bolder stroke
+  // + stronger shadow here; map-style.ts/AviationMap.tsx restore the
+  // icon-size/opacity side. Speed-tiered colour (blue/green/amber, see
+  // windBarbColorForSpeed) now does the "don't dominate the map" work that
+  // the old flat-colour version tried to do purely via size/opacity.
   ctx.strokeStyle = color
   ctx.fillStyle = color
-  ctx.lineWidth = 2.4
+  ctx.lineWidth = 3
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
-  ctx.shadowColor = 'rgba(0,0,0,0.35)'
-  ctx.shadowBlur = 1
+  ctx.shadowColor = 'rgba(0,0,0,0.55)'
+  ctx.shadowBlur = 1.5
 
   if (bucket < 3) {
     // Calm: WMO convention draws an open circle around the station point, no shaft.
@@ -130,7 +136,7 @@ export function registerWindBarbIcon(map: maplibregl.Map, id: string): void {
   canvas.height = CANVAS_H
   const ctx = canvas.getContext('2d')
   if (!ctx) return
-  drawWindBarb(ctx, bucket, WIND_BARB_COLOR)
+  drawWindBarb(ctx, bucket, windBarbColorForSpeed(bucket))
   const imageData = ctx.getImageData(0, 0, CANVAS_W, CANVAS_H)
   map.addImage(canvasId, imageData, { pixelRatio: 2 })
   // Also register under the exact requested id if rounding changed it, so

@@ -1993,17 +1993,19 @@ export function getMapStyle(): StyleSpecification {
           'icon-rotate': ['get', 'dirDeg'],
           'icon-rotation-alignment': 'map',
           'icon-anchor': 'bottom',
-          // Scaled down (was 0.7/1.15/1.5) and opacity reduced (was 0.9) to
-          // read as a subtle ambient overlay, in line with every other POI
-          // icon layer's scale (aerodromes 0.3-0.6, navaids 0.22-0.5) --
-          // wind barbs were visually dominating the map over actual
-          // aviation data at every zoom level (2026-09-13 UX feedback).
-          'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.4, 10, 0.6, 14, 0.8],
+          // 2026-09-13 UX feedback shrunk this to 0.4-0.8/opacity 0.55 to
+          // stop barbs dominating the map -- overcorrected, they became
+          // nearly invisible (only the numeric label, with its own white
+          // halo, stayed legible). Restored to a readable size; the "don't
+          // dominate" goal is now handled by speed-tiered colour
+          // (windBarbColorForSpeed: blue/green/amber) rather than by
+          // making every barb equally hard to see regardless of strength.
+          'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.55, 10, 0.85, 14, 1.1],
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
         },
         paint: {
-          'icon-opacity': 0.55,
+          'icon-opacity': 0.9,
         },
       },
       {

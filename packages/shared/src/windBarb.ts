@@ -34,3 +34,31 @@ export function allWindBarbBuckets(): number[] {
   for (let b = WIND_BARB_MIN_KTS; b <= WIND_BARB_MAX_KTS; b += WIND_BARB_STEP_KTS) out.push(b)
   return out
 }
+
+/**
+ * Speed-tiered barb colour — SkyDemon's "wind feather" convention (see
+ * skydemon.md's Winds Aloft section): blue (light) → green (moderate) →
+ * amber (strong), so intensity reads from colour alone, not just barb
+ * notch-count/text. Single source of truth for both web (canvas draw,
+ * apps/web/src/utils/windBarbIcons.ts) and native (baked into the
+ * pre-rendered PNGs by apps/native/scripts/gen-wind-barb-icons.mjs, which
+ * must be re-run if these thresholds/colours change since native can't
+ * recolor at runtime).
+ */
+export function windBarbColorForSpeed(speedKts: number): string {
+  if (speedKts < 10) return '#38bdf8' // light — sky blue
+  if (speedKts < 25) return '#4ade80' // moderate — green
+  return '#fbbf24' // strong — amber
+}
+
+/**
+ * Shared stroke-width-by-speed rule for the plain directional wind arrows
+ * used outside the barb overlay (Virtual Radar / Vertical Profile station
+ * markers, web + native) — SkyDemon's virtual radar wind arrows get
+ * visibly thicker with wind strength, not just longer; this mirrors that
+ * so strength reads at a glance there too, not just from the numeric label
+ * beside it.
+ */
+export function windArrowStrokeWidth(speedKt: number): number {
+  return Math.min(4, 1.5 + speedKt / 12)
+}

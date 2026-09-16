@@ -2390,16 +2390,17 @@ export function AviationMap({
               'icon-rotate': ['get', 'dirDeg'] as any,
               'icon-rotation-alignment': 'map',
               'icon-anchor': 'bottom',
-              // Scaled down (was 0.7/1.15/1.5) and opacity reduced (was 0.9)
-              // to read as a subtle ambient overlay -- matches web's
-              // identical map-style.ts change (2026-09-13 UX feedback: wind
-              // arrows were dominating the map over other icon layers,
-              // which use 0.22-0.6 icon-size elsewhere in this file).
-              'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.4, 10, 0.6, 14, 0.8] as any,
+              // 2026-09-13 UX pass shrunk this (0.4-0.8/opacity 0.55) to stop
+              // barbs dominating the map -- overcorrected into near-invisible.
+              // Restored to match web's map-style.ts; the icons themselves are
+              // now speed-tiered blue/green/amber (baked into the PNGs by
+              // gen-wind-barb-icons.mjs) so strength -- not just size/opacity
+              // -- carries the "don't overwhelm the map" signal.
+              'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.55, 10, 0.85, 14, 1.1] as any,
               'icon-allow-overlap': true,
               'icon-ignore-placement': true,
             }}
-            paint={{ 'icon-opacity': 0.55 }}
+            paint={{ 'icon-opacity': 0.9 }}
           />
           <Layer
             id="wind-arrows-label"

@@ -21,6 +21,7 @@ import {
   type TerrainPoint, type MsaPoint, type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
+import { windBarbColorForSpeed, windArrowStrokeWidth } from '@open-vfr/shared/windBarb'
 import type { AircraftProfileDocType } from '../db/index'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 import css from './VirtualRadar.module.css'
@@ -675,10 +676,16 @@ export default function VirtualRadar({
                       }
                       const len = Math.min(18, 6 + m.wind!.speedKt * 0.5)
                       const rot = m.wind!.dirDeg + 180
+                      // Speed-tiered colour + thickness (see @open-vfr/shared/windBarb) --
+                      // SkyDemon's Virtual Radar wind arrows get visibly bolder/brighter
+                      // with wind strength, not just longer, so strength reads at a
+                      // glance without needing the numeric label beside it.
+                      const strokeW = windArrowStrokeWidth(m.wind!.speedKt)
+                      const color = windBarbColorForSpeed(m.wind!.speedKt)
                       return (
                         <g transform={`translate(${cx},${cy}) rotate(${rot})`} aria-hidden="true">
-                          <line x1={0} y1={-len / 2} x2={0} y2={len / 2} stroke="rgba(148,197,255,0.85)" strokeWidth={1.5} />
-                          <path d={`M0,${len / 2} L-2.5,${len / 2 - 4} L2.5,${len / 2 - 4} Z`} fill="rgba(148,197,255,0.9)" />
+                          <line x1={0} y1={-len / 2} x2={0} y2={len / 2} stroke={color} strokeWidth={strokeW} strokeLinecap="round" />
+                          <path d={`M0,${len / 2} L-2.5,${len / 2 - 4} L2.5,${len / 2 - 4} Z`} fill={color} />
                         </g>
                       )
                     }}

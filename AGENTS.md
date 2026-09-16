@@ -84,6 +84,8 @@ files worth knowing up front:
 
 **Never hardcode a copy of a shared colour palette.** Any aviation-domain colour (airspace class, navaid type, obstacle kind) belongs only in `@open-vfr/shared/{airspaceColors,featureColors}`. When class alone is ambiguous (CTR vs TMA, both class `C`), pass `type` through too. Values are `rgba(...)` strings, not hex — use a `withAlpha()` helper for translucent variants, not a hex-suffix trick.
 
+**Wind-barb icon colours are baked into native's PNGs — regenerate on change.** Web draws `wind-barb-*` map icons on a canvas at runtime (`apps/web/src/utils/windBarbIcons.ts`), so it always reflects `@open-vfr/shared/windBarb`'s `windBarbColorForSpeed`/`windArrowStrokeWidth` live. Native can't recolor at runtime — its 21 `wind-barb-{0,5,...,100}.png` assets (`apps/native/assets/poi_icons/`) are pre-rasterized by `apps/native/scripts/gen-wind-barb-icons.mjs`, a manual one-off script (not wired into any `package.json` script, same as its `gen-poi-icons.mjs`/`gen-aircraft-icons.mjs` siblings). Any change to `windBarb.ts`'s speed-tier colours or the barb geometry itself needs `node scripts/gen-wind-barb-icons.mjs` re-run from `apps/native/`, or native silently falls out of sync with web.
+
 **Shared-package `peerDependencies`:** `@open-vfr/shared` declares heavy libs (`geomagnetism`, `@turf/*`) as peer deps — each consumer (`apps/web`, `apps/native`) must list the real version itself. Check this before assuming a new shared util "just works" in native.
 
 **JSX comment injection — never double-close.** A doubled `*/}` leaves a bare string as a View child; React Native Fabric throws an unhelpful "Text strings must be rendered within a <Text> component" with no useful stack trace.
