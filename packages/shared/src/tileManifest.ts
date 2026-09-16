@@ -86,6 +86,45 @@ export function refreshTileManifest(tilesBaseUrl: string): Promise<void> {
 }
 
 /**
+ * Waits for the manifest to resolve (reusing loadTileManifest()'s own
+ * dedup'd promise) OR a bounded timeout, whichever comes first. Never
+ * rejects -- a timeout or fetch failure just means callers proceed with
+ * whatever cachedManifest already is (null, or a previous value), exactly
+ * matching versionedTileUrl()'s existing graceful degrade-to-unversioned
+ * behavior. Never blocks forever even fully offline.
+ *
+ * WHY THIS EXISTS: `loadTileManifest()` is fire-and-forget by design (see
+ * this module's header comment) so it never blocks the app shell/login
+ * check from rendering -- correct for most consumers, which re-render
+ * naturally and pick up a freshly-resolved manifest on their next render.
+ * It is NOT correct for a consumer that builds a URL exactly ONCE into an
+ * object that can't be cheaply recomputed later -- which is exactly what
+ * `getMapStyle()` does for EVERY tile source (aerodromes, navaids, airspace,
+ * hillshade, contours, landuse, basemap, ...): it's called synchronously
+ * inside `new maplibregl.Map({ style: getMapStyle() })`, and MapLibre
+ * sources generally can't have their URL changed after creation without a
+ * full remove/re-add (see MapView.tsx's region-swap pattern, only exercised
+ * for actual region changes today). Since React mounts and this effect run
+ * essentially immediately while `manifest.json` is a real network round
+ * trip, `getMapStyle()` was LOSING this race on every single page load in
+ * production -- confirmed live via a real browser's Network tab: every
+ * tile fetch (not just hillshade) came back with NO `?v=` query string at
+ * all, and Cloudflare's edge cache showed `cf-cache-status: HIT` with
+ * `age` in the hundreds of thousands of seconds (multiple DAYS stale) for
+ * an unversioned `se-aerodromes.geojson` URL that should have been
+ * impossible to ever see -- the entire cache-busting system this module
+ * exists for was silently defeated for every file, not just hillshade,
+ * this whole time. Callers that build a style/source object once (like
+ * MapView.tsx's map-init effect) must await this before doing so.
+ */
+export function waitForTileManifest(tilesBaseUrl: string, timeoutMs = 3000): Promise<void> {
+  return Promise.race([
+    loadTileManifest(tilesBaseUrl),
+    new Promise<void>(resolve => setTimeout(resolve, timeoutMs)),
+  ])
+}
+
+/**
  * Subscribes to "the manifest actually changed content" events (any file's
  * sha256 differs from what was cached before, not just "a refetch happened" --
  * a refetch that returns byte-identical content, the common case, must NOT

@@ -95,7 +95,7 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import type { AuthState } from '../hooks/useAuth'
 import type { FlyingMode, MapOrientation, GpsPosition } from '../utils/gpsTypes'
 import { TILES_BASE_URL } from '../utils/env'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { versionedTileUrl, waitForTileManifest } from '@open-vfr/shared/tileManifest'
 import css from './MapView.module.css'
 
 // MapLibre layer IDs we listen to for aerodrome clicks.
@@ -975,9 +975,39 @@ export default function MapView({ auth }: { auth: AuthState }) {
     setCeilingEscalatedMsg(`Ceiling raised to ${newCeiling.toLocaleString()} ft`)
   }, [gpsPosition, ceilingFt, flyingMode])
 
+  // BUG FIX (found live, real production impact): getMapStyle() bakes a
+  // versionedTileUrl() call into EVERY tile source (aerodromes, navaids,
+  // airspace, hillshade, contours, landuse, basemap, ...) exactly once,
+  // synchronously, right here at map construction -- and MapLibre sources
+  // generally can't have their URL changed after creation (see the region-
+  // swap pattern elsewhere in this file, only exercised for actual region
+  // changes). React mounts and this effect runs essentially immediately,
+  // while manifest.json is a real network round trip -- this effect was
+  // LOSING that race on every single page load, permanently baking in
+  // unversioned URLs for the entire session. Confirmed live via a real
+  // browser's Network tab: every tile fetch, not just hillshade, came back
+  // with NO ?v= query string, and Cloudflare's edge cache showed a HIT with
+  // `age` in the hundreds of thousands of seconds (multiple DAYS stale) for
+  // an unversioned se-aerodromes.geojson URL that should never have existed
+  // -- the entire cache-busting system @open-vfr/shared/tileManifest exists
+  // for was silently defeated for every file, this whole time. Fixed with a
+  // small gating state flag (manifestReady, set by the separate effect
+  // below) added to this effect's own dependency array -- the FIRST run (on
+  // mount, manifest not ready yet) bails out via the guard below without
+  // creating a map or registering a cleanup function; once manifestReady
+  // flips true, this effect re-runs (no stale cleanup to worry about, since
+  // the bailed-out first run returned none) and proceeds exactly as before.
+  // Bounded by waitForTileManifest()'s own timeout, so a slow/offline first
+  // launch still degrades gracefully to unversioned URLs after ~3s rather
+  // than blocking the map forever.
+  const [manifestReady, setManifestReady] = useState(false)
+  useEffect(() => {
+    waitForTileManifest(TILES_BASE_URL).then(() => setManifestReady(true))
+  }, [])
+
   // Initialise map once
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return
+    if (!containerRef.current || mapRef.current || !manifestReady) return
 
     const map = new maplibregl.Map({
       container: containerRef.current,
@@ -2578,7 +2608,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       flyingBtnRef.current  = null
       findDestBtnRef.current = null
     }
-  }, [])
+  }, [manifestReady])
 
   // Sync homeAirfield → home button appearance and its _home data ref.
   useEffect(() => {

@@ -29,7 +29,8 @@ import { WAYPOINT_COLORS, RUNWAY_COLORS, AERODROME_COLORS } from '@open-vfr/shar
 import { computeAtcStatus, isNotamAtcRelated, isNotamHoursChangeRelated, type HoursEntry as AtcHoursEntry } from '@open-vfr/shared/atcStatus'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
 import { fetchAerodromeNotamTexts } from '@open-vfr/shared/fetchNotam'
-import { API_BASE } from '../config'
+import { API_BASE, TILE_BASE } from '../config'
+import { waitForTileManifest } from '@open-vfr/shared/tileManifest'
 import { authHeaders } from '../utils/authClient'
 import {
   buildRunwayWindHighlight,
@@ -46,8 +47,6 @@ import {
   getHillshadePmtilesUrl,
   getContoursPmtilesUrl,
   getTileUrls,
-  DEFAULT_CENTER,
-  DEFAULT_ZOOM,
 } from '../config'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { RouteWaypoint } from '../utils/routeCalc'
@@ -56,6 +55,7 @@ import { theme } from '../styles/theme'
 import { OFFLINE_ASSETS, resolveUri } from '../utils/offlineCache'
 import { buildTerrainColorExpr } from '@open-vfr/shared/terrainColor'
 import { useWindGrid } from '../hooks/useWindGrid'
+import { useResilientTileData } from '../hooks/useResilientTileData'
 import { LogManager } from '@maplibre/maplibre-react-native'
 
 // Suppress the PMTiles header-race transient error at cold start -- same
@@ -227,6 +227,19 @@ export type AviationMapProps = {
   rulerPoints?: RouteWaypoint[]
   /** Fired with the new rulerPoints array after a ruler-mode tap. */
   onRulerTap?: (points: RouteWaypoint[]) => void
+  /** Fired once, the moment the basemap style finishes its own initial load
+   *  (mirrors the internal styleLoaded/onDidFinishLoadingStyle gate this
+   *  component already uses to stagger landuse/hillshade/contours mounting
+   *  -- see the readyStage comment below). The parent screen (MapScreen)
+   *  uses this to delay its OWN first-mount network bursts (traffic SSE,
+   *  regional NOTAMs, weather-along-route, wind) so they don't stack on top
+   *  of the PMTiles basemap load during the same cold-start memory spike
+   *  that caused the OOM crashes this gate exists for -- see
+   *  HANDOFF_oom_investigation.md next-steps #1. Not the same signal as
+   *  onDidFinishLoadingMap (full map, incl. all sources/layers) -- style-
+   *  loaded is deliberately the EARLIEST safe point, so the map itself still
+   *  gets first claim on bandwidth/memory ahead of these secondary fetches. */
+  onMapReady?: () => void
 }
 
 /** A route-planning snap candidate — a nearby feature the user might mean
@@ -642,6 +655,7 @@ export function AviationMap({
   rulerMode = false,
   rulerPoints,
   onRulerTap,
+  onMapReady,
 }: AviationMapProps) {
   const cameraRef   = useRef<CameraRef>(null)
   const notamPointsSourceRef = useRef<GeoJSONSourceRef>(null)
@@ -652,7 +666,40 @@ export function AviationMap({
     [runwayWindHighlight],
   )
 
-  const tileUrls = useMemo(() => getResolvedTileUrls(), [])
+  // BUG FIX (same class as web MapView.tsx's identical fix, found live in
+  // the same investigation): getResolvedTileUrls()/get*PmtilesUrl() each
+  // call versionedTileUrl() internally, but were memoized with an EMPTY
+  // dependency array below -- computed once on first render and never
+  // recomputed, permanently baking in whatever cachedManifest was (usually
+  // still null/not-yet-resolved, since index.js's loadTileManifest() is a
+  // real network round trip and this component can mount before it settles)
+  // for the entire session. manifestReady (set once waitForTileManifest()
+  // resolves, bounded by its own ~3s timeout so a slow/offline launch still
+  // degrades gracefully) is added to every affected useMemo's deps below so
+  // each recomputes exactly once more, correctly versioned, the moment the
+  // manifest is actually available -- cheap synchronous work either way
+  // (getResolvedTileUrls doc-commented above as "cheap sync fs .exists
+  // checks"), safe to rerun.
+  const [manifestReady, setManifestReady] = useState(false)
+  useEffect(() => {
+    waitForTileManifest(TILE_BASE).then(() => setManifestReady(true))
+  }, [])
+
+  const tileUrls = useMemo(() => getResolvedTileUrls(), [manifestReady])
+
+  // Retry-backed data for the static per-country GeoJSON overlay files --
+  // see useResilientTileData's doc comment for why this exists (MapLibre
+  // Native's own source-URL fetch has no retry, so a single transient
+  // network gap otherwise leaves a layer's features permanently missing
+  // for the rest of the app session).
+  const airspaceData         = useResilientTileData(tileUrls.airspace)
+  const aerodromesData       = useResilientTileData(tileUrls.aerodromes)
+  const navaidsData          = useResilientTileData(tileUrls.navaids)
+  const waypointsData        = useResilientTileData(tileUrls.waypoints)
+  const runwaysData          = useResilientTileData(tileUrls.runways)
+  const runwayThresholdsData = useResilientTileData(tileUrls.runwayThresholds)
+  const obstaclesData        = useResilientTileData(tileUrls.obstacles)
+  const landmarksData        = useResilientTileData(tileUrls.landmarks)
 
   // ── Towered-airport ATC status ring (aerodromes-atc-ring layer) ─────────
   // Cached once from tileUrls.aerodromes, independent of GeoJSONSource's own
@@ -663,7 +710,7 @@ export function AviationMap({
   // AerodromePopup's badge. State (not a ref) since this drives a declarative
   // <Layer paint> prop here, unlike web's imperative setPaintProperty.
   const toweredAerodromesRef = useRef<{ icao: string; lat: number; lng: number; hours: AtcHoursEntry[] }[]>([])
-  const [atcRingMatchExpr, setAtcRingMatchExpr] = useState<unknown[]>(['match', ['get', 'icao'], AERODROME_COLORS.atcUnknown])
+  const [atcRingMatchExpr, setAtcRingMatchExpr] = useState<unknown>(AERODROME_COLORS.atcUnknown)
   // NOTAM keyword hint badge (⚠/⏰) -- mirrors web MapView's equivalent.
   // Text-only signal (see @open-vfr/shared/atcStatus), never affects
   // atcRingMatchExpr's color. Cleared (empty filter) whenever the bulk fetch
@@ -757,9 +804,9 @@ export function AviationMap({
   // (and thus a changed prop) on every render, which risked tripping the
   // 'id cannot be changed' MapLibre Native restriction seen elsewhere in
   // this file if it ever raced with a Fast Refresh reconciliation.
-  const landusePmtilesUrl   = useMemo(() => getLandusePmtilesUrl(), [])
-  const hillshadePmtilesUrl = useMemo(() => getHillshadePmtilesUrl(), [])
-  const contoursPmtilesUrl  = useMemo(() => getContoursPmtilesUrl(), [])
+  const landusePmtilesUrl   = useMemo(() => getLandusePmtilesUrl(), [manifestReady])
+  const hillshadePmtilesUrl = useMemo(() => getHillshadePmtilesUrl(), [manifestReady])
+  const contoursPmtilesUrl  = useMemo(() => getContoursPmtilesUrl(), [manifestReady])
 
   // Lazy-mount, sticky-on: each of these PMTiles sources is genuinely heavy
   // (landuse 87MB, hillshade 681MB, contours 234MB -- all fetched header-first
@@ -779,16 +826,86 @@ export function AviationMap({
   // Fix: only mount a heavy source once its layer is actually turned on
   // (sticky -- stays mounted once true, MapLibre Native throws "id cannot be
   // changed" if a source is unmounted then re-added, so this can only ever
-  // turn on, never off, for the rest of the session). landuse defaults on
-  // (showLanduse=true) so this doesn't change its behaviour for the common
-  // case; hillshade/terrain-color/contours default OFF, so most sessions now
-  // never pay their memory cost at all.
-  const [landuseMounted,   setLanduseMounted]   = useState(showLanduse)
-  const [hillshadeMounted, setHillshadeMounted] = useState(showHillshade || showTerrainColor)
-  const [contoursMounted,  setContoursMounted]  = useState(showContours)
-  useEffect(() => { if (showLanduse) setLanduseMounted(true) }, [showLanduse])
-  useEffect(() => { if (showHillshade || showTerrainColor) setHillshadeMounted(true) }, [showHillshade, showTerrainColor])
-  useEffect(() => { if (showContours) setContoursMounted(true) }, [showContours])
+  // turn on, never off, for the rest of the session). hillshade/terrain-color/
+  // contours default OFF, so most sessions never pay their memory cost at
+  // all. landuse defaults on (showLanduse=true) -- see the follow-up bug fix
+  // below for why its mount is ALSO gated on styleLoaded, not just showLanduse.
+  // BUG FIX (found live on device, real OutOfMemoryError confirmed via
+  // adb logcat): landuse used to mount immediately on first render because
+  // showLanduse defaults true -- right at the exact moment basemap.pmtiles
+  // (670MB archive, though only its header + accessed tile ranges are ever
+  // actually read into memory) is ALSO doing its first PMTiles header fetch,
+  // plus auth/session-restore + initial route/aircraft/waypoint sync +
+  // weather/NOTAM/wind fetches all firing at once on a fresh sign-in or cold
+  // app restart. That concurrent memory burst hit Android's 512MB largeHeap
+  // ceiling (confirmed via adb logcat: "OutOfMemoryError ... target footprint
+  // 536870912" inside an OkHttp TaskRunner thread), which then killed the
+  // in-flight basemap.pmtiles header fetch mid-stream ("Error fetching
+  // PMTiles header: stream was reset: INTERNAL_ERROR") -- surfacing as a
+  // completely blank basemap, reproducible specifically on first sign-in and
+  // on a fresh app restart (both = the very first Map mount in the process),
+  // never on a warm remount later once the startup burst had already settled.
+  //
+  // Fix, two parts:
+  //  1. Don't mount landuse until the basemap style has actually finished
+  //     its own initial load (onDidFinishLoadingStyle below) -- staggers the
+  //     two heavy PMTiles header fetches instead of racing them at the exact
+  //     same moment. hillshade/contours already default off so aren't part
+  //     of this startup race in the common case.
+  //  2. Auto-retry: onDidFailLoadingMap force-remounts the whole <Map> (key
+  //     bump) up to MAP_MAX_AUTO_RETRIES times -- this class of failure is a
+  //     transient memory-pressure race, not a permanent config error, and by
+  //     the time of a retry the startup burst has typically already settled
+  //     (matches what was observed manually: any later remount/relaunch
+  //     always succeeded). Camera position is preserved across the remount
+  //     via camStateRef (below) instead of resetting to DEFAULT_CENTER.
+  const [styleLoaded, setStyleLoaded] = useState(false)
+  const [mapRetryKey, setMapRetryKey] = useState(0)
+  const mapRetryCountRef = useRef(0)
+  const MAP_MAX_AUTO_RETRIES = 3
+  const handleMapLoadFailure = useCallback(() => {
+    if (mapRetryCountRef.current >= MAP_MAX_AUTO_RETRIES) return
+    mapRetryCountRef.current += 1
+    setStyleLoaded(false)
+    setMapRetryKey(k => k + 1)
+  }, [])
+
+  // NOTE: all three gates below wait on readyStage (derived from
+  // styleLoaded), not just landuse. showHillshade/showTerrainColor/
+  // showContours are persisted to AsyncStorage (see
+  // docs/pre-release-checklist.md "Native: map-layer visibility toggles ...
+  // persisted") -- so a pilot who has ever turned hillshade or contours on
+  // will have them come back true immediately on the NEXT cold restart too,
+  // hitting the exact same startup-burst OOM race that hit landuse (worse,
+  // even: hillshade alone is ~231MB, contours ~117MB, both bigger than
+  // landuse's 87MB). Gating on styleLoaded alone isn't enough by itself
+  // either though: if a pilot has landuse+hillshade+contours all enabled,
+  // one shared boolean would just move the OOM race from "vs. basemap" to
+  // "three heavy PMTiles header fetches firing in the same tick vs. each
+  // other" (87+231+117MB = ~435MB concurrently, still enough to threaten the
+  // 512MB ceiling). Fixed 300ms steps (readyStage 1/2/3) spread their header
+  // fetches out in time regardless of which subset is actually enabled --
+  // landuse readiness doesn't gate hillshade's timer or vice versa, so a
+  // layer that's off doesn't block/delay a later-staged layer that IS on.
+  const [readyStage, setReadyStage] = useState(0)
+  useEffect(() => {
+    if (!styleLoaded) return
+    onMapReady?.()
+    setReadyStage(1)
+    const t1 = setTimeout(() => setReadyStage(2), 300)
+    const t2 = setTimeout(() => setReadyStage(3), 600)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  // onMapReady intentionally excluded -- fire exactly once per real
+  // styleLoaded transition (incl. auto-retry remounts), not on every render
+  // where the caller happens to pass a fresh callback reference.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [styleLoaded])
+  const [landuseMounted,   setLanduseMounted]   = useState(false)
+  const [hillshadeMounted, setHillshadeMounted] = useState(false)
+  const [contoursMounted,  setContoursMounted]  = useState(false)
+  useEffect(() => { if (showLanduse && readyStage >= 1) setLanduseMounted(true) }, [showLanduse, readyStage])
+  useEffect(() => { if ((showHillshade || showTerrainColor) && readyStage >= 2) setHillshadeMounted(true) }, [showHillshade, showTerrainColor, readyStage])
+  useEffect(() => { if (showContours && readyStage >= 3) setContoursMounted(true) }, [showContours, readyStage])
 
   const mapRef      = useRef<MapRef>(null)
 
@@ -1335,6 +1452,7 @@ export function AviationMap({
       style={StyleSheet.absoluteFill}
     >
       <Map
+        key={mapRetryKey}
         ref={mapRef}
         style={StyleSheet.absoluteFill}
         onRegionDidChange={handleRegionChange}
@@ -1342,6 +1460,10 @@ export function AviationMap({
         mapStyle={basemapMode === 'satellite' ? SATELLITE_STYLE as any : getProtomapsStyle() as any}
         onPress={handleMapPress}
         onLongPress={handleMapLongPress}
+        // See handleMapLoadFailure / styleLoaded doc comment above (landuse
+        // mount-timing + OOM-triggered blank-basemap fix).
+        onDidFinishLoadingStyle={() => setStyleLoaded(true)}
+        onDidFailLoadingMap={handleMapLoadFailure}
         // Only needs to guard against the (now rare) case where the touch
         // grab in the overlay above didn't win the arena in time.
         dragPan={!dragging}
@@ -1353,7 +1475,14 @@ export function AviationMap({
       >
         <Camera
           ref={cameraRef}
-          initialViewState={{ center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM }}
+          // Preserve camera position across an auto-retry remount (key bump
+          // above) instead of snapping back to DEFAULT_CENTER -- camStateRef
+          // holds the last known position/zoom from onRegionDidChange, still
+          // at its init default (Sweden-wide view) on a genuine first mount.
+          initialViewState={{
+            center: [camStateRef.current.lng, camStateRef.current.lat],
+            zoom: camStateRef.current.zoom,
+          }}
         />
 
         {/* ── Landuse (farmland/residential/wetland) — static PMTiles ──────── */}
@@ -1576,7 +1705,7 @@ export function AviationMap({
         {/* ── Airspace ──────────────────────────────────── */}
         {/* Always-mounted — visibility toggled via layout.visibility, not mount/unmount.
             MapLibre Native throws 'id cannot be changed' when same id is removed then re-added. */}
-        <GeoJSONSource id="ofm-airspace" onPress={() => {}} data={tileUrls.airspace}>
+        <GeoJSONSource id="ofm-airspace" onPress={() => {}} data={airspaceData}>
           <Layer id="as-fill-c"   type="fill" filter={filterC as any}          paint={{ 'fill-color': AIRSPACE_FILL_COLOR, 'fill-opacity': 1 }} layout={{ visibility: showClassC     ? 'visible' : 'none' }} />
           <Layer id="as-fill-d"   type="fill" filter={filterD as any}          paint={{ 'fill-color': AIRSPACE_FILL_COLOR, 'fill-opacity': 1 }} layout={{ visibility: showClassD     ? 'visible' : 'none' }} />
           <Layer id="as-fill-e"   type="fill" filter={filterE as any}          paint={{ 'fill-color': AIRSPACE_FILL_COLOR, 'fill-opacity': 1 }} layout={{ visibility: showClassE     ? 'visible' : 'none' }} />
@@ -1617,7 +1746,7 @@ export function AviationMap({
 
 
         {/* ── Runways ──────────────────────────────────────── */}
-        <GeoJSONSource id="ofm-runways" data={tileUrls.runways}>
+        <GeoJSONSource id="ofm-runways" data={runwaysData}>
             <Layer
               id="runways-outline"
               type="line"
@@ -1658,7 +1787,7 @@ export function AviationMap({
           </GeoJSONSource>
 
         {/* ── Aerodromes ───────────────────────────────────── */}
-        <GeoJSONSource id="ofm-aerodromes" onPress={() => {}} data={tileUrls.aerodromes}>
+        <GeoJSONSource id="ofm-aerodromes" onPress={() => {}} data={aerodromesData}>
             {/* Towered-airport ATC status ring -- mirrors web map-style.ts
                 aerodromes-atc-ring. Filtered to towered===true only; color
                 driven by atcRingMatchExpr state (60s-interval recompute, see
@@ -1731,7 +1860,7 @@ export function AviationMap({
           </GeoJSONSource>
 
         {/* ── Navaids ──────────────────────────────────────── */}
-        <GeoJSONSource id="ofm-navaids" onPress={() => {}} data={tileUrls.navaids}>
+        <GeoJSONSource id="ofm-navaids" onPress={() => {}} data={navaidsData}>
             <Layer
               id="navaids-circle"
               layout={{
@@ -1764,7 +1893,7 @@ export function AviationMap({
           </GeoJSONSource>
 
         {/* ── Waypoints (MRP) ──────────────────────────────── */}
-        <GeoJSONSource id="ofm-waypoints" onPress={() => {}} data={tileUrls.waypoints}>
+        <GeoJSONSource id="ofm-waypoints" onPress={() => {}} data={waypointsData}>
             <Layer
               id="waypoints-mrp-circle"
               layout={{
@@ -1830,7 +1959,7 @@ export function AviationMap({
           </GeoJSONSource>
 
         {/* ── Obstacles ────────────────────────────────────── */}
-        <GeoJSONSource id="openaip-obstacles" onPress={() => {}} data={tileUrls.obstacles}>
+        <GeoJSONSource id="openaip-obstacles" onPress={() => {}} data={obstaclesData}>
             <Layer
               id="obstacles-circle"
               layout={{
@@ -1869,7 +1998,7 @@ export function AviationMap({
             />
           </GeoJSONSource>
         {/* ── OSM Landmarks ─────────────────────────────────── */}
-        <GeoJSONSource id="osm-landmarks" data={tileUrls.landmarks}>
+        <GeoJSONSource id="osm-landmarks" data={landmarksData}>
           <Layer
             id="landmarks-circle"
             type="symbol"
@@ -1921,7 +2050,7 @@ export function AviationMap({
         </GeoJSONSource>
 
         {/* ── Runway threshold designators ─────────────────── */}
-        <GeoJSONSource id="ofm-runway-thresholds" data={tileUrls.runwayThresholds}>
+        <GeoJSONSource id="ofm-runway-thresholds" data={runwayThresholdsData}>
           <Layer
             id="runway-threshold-label"
             type="symbol"
