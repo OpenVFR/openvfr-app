@@ -921,10 +921,24 @@ export function getMapStyle(): StyleSpecification {
       // scripts/country_mask.sh, Natural Earth boundaries, keyed off the
       // same COUNTRY_CODE the pipeline already has) before hillshade/contours
       // are ever generated -- no style-side masking layer needed at all.
+      // BUG FIX (overzoom blockiness at the border, reported live): source
+      // real maxzoom is 10 (~90m/px, see getHillshadeSource()'s comment) --
+      // MapLibre correctly overzooms (upscales) the z10 tile above that, but
+      // each real data pixel then covers more and more screen pixels the
+      // further in you zoom, most visible as a hard, blocky/stairstepped
+      // dark band tracing the country-border alpha cutoff (fine, smooth
+      // real coastline in the source data -- see country_mask.sh's 10m
+      // admin-0 dataset -- rendered as a chunky staircase once magnified
+      // several zoom levels past the archive's real resolution, not a data
+      // bug). A layer-level `maxzoom` stops MapLibre from *rendering* this
+      // layer at all beyond that zoom (distinct from the source `maxzoom`
+      // above, which only bounds which tile is fetched/overzoomed) -- low-
+      // res 90m/px relief isn't meaningfully useful this close in anyway.
       {
         id: 'hillshade',
         type: 'hillshade',
         source: 'osm-hillshade',
+        maxzoom: 11,
         layout: { visibility: 'none' },
         paint: {
           'hillshade-exaggeration': 0.5,

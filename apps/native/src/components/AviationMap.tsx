@@ -1593,6 +1593,16 @@ export function AviationMap({
             id="hillshade"
             type="hillshade"
             source="osm-hillshade"
+            // BUG FIX (overzoom blockiness at the border, mirrors web's
+            // map-style.ts fix): the source above is already capped at its
+            // real maxzoom=10 (~90m/px), but MapLibre Native still overzooms
+            // (upscales) that tile above z10 for rendering -- each real data
+            // pixel then covers more screen pixels the further in you zoom,
+            // most visible as a blocky/stairstepped dark band tracing the
+            // country-border alpha cutoff. This layer-level maxzoom stops
+            // the LAYER from rendering at all beyond z11 (distinct from the
+            // source maxzoom above, which only bounds tile fetch/overzoom).
+            maxzoom={11}
             layout={{ visibility: showHillshade ? 'visible' : 'none' }}
             paint={{
               // MUCH lower than web's 0.5 (map-style.ts) -- confirmed via a
