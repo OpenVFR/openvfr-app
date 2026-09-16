@@ -31,11 +31,18 @@ export interface RouteWeatherStation {
 
 interface AerodromeRecord { icao: string; name: string; lat: number; lng: number }
 
-export function useWeatherAlongRoute(waypoints: RouteWaypoint[]): RouteWeatherStation[] {
+// `enabled` defaults true (matches every existing call site) -- MapScreen
+// passes mapReady here so this hook's own aerodromes.json fetch doesn't fire
+// in the same first-mount burst as the basemap's PMTiles loads (see
+// HANDOFF_oom_investigation.md next-steps #1). The per-station wx fetches
+// below are already naturally gated behind `waypoints.length > 0`, which is
+// rarely true at cold start, but the top-level aerodromes fetch was not.
+export function useWeatherAlongRoute(waypoints: RouteWaypoint[], enabled = true): RouteWeatherStation[] {
   const [aerodromes, setAerodromes] = useState<AerodromeRecord[]>([])
   const [stations, setStations] = useState<RouteWeatherStation[]>([])
 
   useEffect(() => {
+    if (!enabled) return
     fetch(getTileUrls().aerodromes)
       .then((r) => r.json())
       .then((fc: GeoJSON.FeatureCollection) => {
@@ -51,10 +58,10 @@ export function useWeatherAlongRoute(waypoints: RouteWaypoint[]): RouteWeatherSt
         setAerodromes(arr)
       })
       .catch(() => { /* offline-safe */ })
-  }, [])
+  }, [enabled])
 
   useEffect(() => {
-    if (waypoints.length === 0 || aerodromes.length === 0) { setStations([]); return }
+    if (!enabled || waypoints.length === 0 || aerodromes.length === 0) { setStations([]); return }
 
     const nearby = aerodromes
       .map((a) => ({ ...a, distNm: distanceToRouteNm({ lat: a.lat, lng: a.lng }, waypoints) }))
@@ -84,7 +91,7 @@ export function useWeatherAlongRoute(waypoints: RouteWaypoint[]): RouteWeatherSt
     void run()
 
     return () => { cancelled = true }
-  }, [waypoints, aerodromes])
+  }, [waypoints, aerodromes, enabled])
 
   return stations
 }

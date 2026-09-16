@@ -187,7 +187,18 @@ export function MapScreen() {
   const altitudeSource = useAltitudeSource(activePosition)
   const vario = useVarioContext()
   const varioBatteryLow = vario.status === 'connected' && vario.state != null && vario.state.batteryPercent < 20
-  const wind = useWind(activePosition, true)
+  // mapReady flips true once (AviationMap's onMapReady, fired the moment its
+  // basemap style finishes its own initial load) -- gates the first-mount
+  // network fetches below (traffic, regional NOTAMs, weather-along-route,
+  // wind) so they don't stack on top of the basemap's PMTiles header fetches
+  // in the same cold-start burst. See HANDOFF_oom_investigation.md next-
+  // steps #1 and AviationMap.tsx's onMapReady prop doc comment. Deliberately
+  // never reset to false afterwards -- this only ever delays the FIRST fetch
+  // of each of these session, not gate them on every subsequent re-render.
+  const [mapReady, setMapReady] = useState(false)
+  const handleMapReady = useCallback(() => setMapReady(true), [])
+
+  const wind = useWind(activePosition, mapReady)
 
   // Airspace vertical-proximity warnings and traffic altitude comparisons
   // must use the best available altitude (BlueFly baro > internal baro >
@@ -392,7 +403,7 @@ export function MapScreen() {
   }, [activePosition, settings.airspaceCeilingFt, flyingActive])
 
   const trafficFC = useTraffic({
-    enabled:  layers.traffic,
+    enabled:  layers.traffic && mapReady,
     ownAltFt: positionForAlerts?.altFt ?? null,
     ownLat:   activePosition?.lat   ?? null,
     ownLon:   activePosition?.lng   ?? null,
@@ -401,8 +412,8 @@ export function MapScreen() {
   // Regional (FIR-wide) NOTAMs -- restricted/danger areas, navaid outages,
   // military notices not tied to any single airport. Mirrors web's
   // MapView.tsx useRegionalNotams()/notam-circles source.
-  const regionalNotams = useRegionalNotams(layers.notamCircles && authenticated)
-  const routeWeatherStations = useWeatherAlongRoute(waypoints)
+  const regionalNotams = useRegionalNotams(layers.notamCircles && authenticated && mapReady)
+  const routeWeatherStations = useWeatherAlongRoute(waypoints, mapReady)
   const notamCirclesFC = useMemo(() => ({
     type: 'FeatureCollection' as const,
     features: regionalNotams
@@ -844,6 +855,7 @@ export function MapScreen() {
           rulerMode={rulerMode}
           rulerPoints={rulerPoints}
           onRulerTap={setRulerPoints}
+          onMapReady={handleMapReady}
         />
 
         {snapPicker && (
