@@ -5,7 +5,7 @@ import { parseTaf, type TafPeriod } from '@open-vfr/shared/parseTaf'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import { computeRunwayWind, effectiveMagBrg, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import { WindCompassGauge, WindSpeedGauge, type RunwayHeading } from './WindGauges'
-import { visTone, ceilingTone, windTone, fmtVis, fmtWind, fmtObsAge, metarNarrative } from '../utils/wxFormat'
+import { visTone, ceilingTone, windTone, fmtVis, fmtWind, fmtObsAge, metarNarrative } from '@open-vfr/shared/wxFormat'
 import TafTimeline from './TafTimeline'
 import CloudProfile from './CloudProfile'
 import { fetchNotams, fmtNotamDate, type NotamItem } from '../utils/fetchNotam'
@@ -13,6 +13,7 @@ import { sunriseSunset, fmtSunTime } from '../utils/sunCalc'
 import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from '@open-vfr/shared/atcStatus'
 import { API_BASE_URL, TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { loadStations as loadStationsShared, type StationRecord } from '@open-vfr/shared/wxStations'
 
 // ── Types matching the GeoJSON properties schema ─────────────────────────────
 
@@ -105,36 +106,12 @@ interface Props {
 }
 
 // ── Nearby-station cache (for METAR/TAF fallback) ─────────────────────────────
-// Minimal {icao,name,lat,lng} index of every aerodrome, loaded once and
-// shared across all AerodromePopup instances -- same module-level-cache
-// pattern as useAirfieldBrief.ts's loadAerodromes(), kept separate here
-// since this only needs three fields (not the full AerodromeFeatureProps).
-
-interface StationRecord { icao: string; name: string; lat: number; lng: number }
-
-let cachedStations: StationRecord[] | null = null
-let stationsLoadPromise: Promise<StationRecord[]> | null = null
+// Minimal {icao,name,lat,lng} index of every aerodrome, loaded once via
+// @open-vfr/shared/wxStations (shared with native's own AerodromePopup) and
+// cached by URL -- see that module's doc comment.
 
 function loadStations(): Promise<StationRecord[]> {
-  if (cachedStations) return Promise.resolve(cachedStations)
-  if (stationsLoadPromise) return stationsLoadPromise
-  stationsLoadPromise = fetch(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'))
-    .then((r) => r.json())
-    .then((fc: GeoJSON.FeatureCollection) => {
-      const arr: StationRecord[] = []
-      for (const f of fc.features) {
-        if (f.geometry.type !== 'Point') continue
-        const p = f.properties as Record<string, unknown>
-        const icao = String(p['icao'] ?? '')
-        if (!icao) continue
-        const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
-        arr.push({ icao, name: String(p['name'] ?? ''), lat, lng })
-      }
-      cachedStations = arr
-      return arr
-    })
-    .catch(() => { stationsLoadPromise = null; return [] })
-  return stationsLoadPromise
+  return loadStationsShared(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson')).catch(() => [])
 }
 
 // Fallback search radius -- wide enough to reach a towered/AWOS-equipped

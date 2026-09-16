@@ -12,7 +12,7 @@
 
 import { buildTafTimeline, type TafPeriod } from '@open-vfr/shared/parseTaf'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
-import { fmtVis, fmtWind, visTone, ceilingTone, windTone, skyLabel } from '../utils/wxFormat'
+import { fmtVis, fmtWind, visTone, ceilingTone, windTone, skyLabel } from '@open-vfr/shared/wxFormat'
 import css from './TafTimeline.module.css'
 
 interface Props {
