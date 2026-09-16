@@ -77,7 +77,19 @@ import type { RouteWaypoint } from '../types/db'
 import { theme }             from '../styles/theme'
 
 function isAerodrome(p: Record<string, unknown>) {
-  return typeof p.icao === 'string' && p.icao.length === 4
+  // `icao` alone isn't a safe discriminator -- a real minority of aerodromes
+  // in the dataset (small private strips with no genuine ICAO code, e.g.
+  // "ESTAGA", "ESBJAL") carry a longer-than-4-char pseudo-ICAO (see
+  // fetchWx.ts's fetchWxNearest doc comment for the same data quirk on the
+  // weather side). A former `p.icao.length === 4` check silently treated
+  // every one of those as "not an aerodrome" -- tapping one fell through to
+  // the generic point-feature branch below and added it to the route
+  // instead of opening AerodromePopup, with no visible error. `runways` is
+  // a property only the aerodromes source ever carries (navaids/waypoints
+  // features have neither `icao` nor `runways` at all -- confirmed against
+  // the actual tile schemas), so it's a safe discriminator regardless of
+  // ICAO length.
+  return typeof p.icao === 'string' && Array.isArray(p.runways)
 }
 
 function isAirspace(p: Record<string, unknown>) {
