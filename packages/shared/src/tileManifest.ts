@@ -56,6 +56,8 @@ export interface TileManifest {
 
 let cachedManifest: TileManifest | null = null
 let loadPromise: Promise<void> | null = null
+type ManifestChangeListener = () => void
+const changeListeners = new Set<ManifestChangeListener>()
 
 /**
  * Fetches manifest.json from `${tilesBaseUrl}/manifest.json` and caches it
@@ -81,6 +83,73 @@ export function loadTileManifest(tilesBaseUrl: string): Promise<void> {
 export function refreshTileManifest(tilesBaseUrl: string): Promise<void> {
   loadPromise = null
   return loadTileManifest(tilesBaseUrl)
+}
+
+/**
+ * Subscribes to "the manifest actually changed content" events (any file's
+ * sha256 differs from what was cached before, not just "a refetch happened" --
+ * a refetch that returns byte-identical content, the common case, must NOT
+ * fire this). Returns an unsubscribe function.
+ *
+ * Why this exists: `loadTileManifest()` is fetched ONCE per page session
+ * (fire-and-forget at app bootstrap, see main.tsx) and cached in the
+ * `cachedManifest` module variable for the rest of that session's lifetime.
+ * `versionedTileUrl()`'s whole cache-busting scheme depends on the manifest
+ * actually being current -- but nothing previously ever re-fetched it after
+ * that first load. A browser tab left open across a real data update (which
+ * routinely happens -- this is a long-session flight-planning app, not a
+ * page users reload constantly) would keep building `?v=<oldHash>` URLs
+ * forever, and since those versioned URLs are served with a one-year
+ * `immutable` Cache-Control by design, the tab would NEVER see the new data
+ * without an unrelated full reload. Confirmed live during a hillshade fix
+ * verification: a real, already-deployed, already-corrected R2 upload still
+ * looked completely broken in an already-open tab, and only appeared correct
+ * in a fresh/incognito session -- indistinguishable from an actual server-
+ * side regression without knowing this mechanism, which is a real production
+ * usability problem regardless of that specific bug's data pipeline outcome.
+ *
+ * This module does not decide WHAT to do about a change (reload immediately,
+ * hot-swap sources, prompt the user) -- callers do that (see
+ * `TileUpdatePrompt.tsx`'s simple "reload on user tap" choice, the safest
+ * option given re-adding already-mounted PMTiles sources mid-session risks
+ * partial/inconsistent map state).
+ */
+export function onTileManifestChanged(listener: ManifestChangeListener): () => void {
+  changeListeners.add(listener)
+  return () => changeListeners.delete(listener)
+}
+
+function notifyIfChanged(previous: TileManifest | null, next: TileManifest | null): void {
+  if (!next) return // fetch failed -- never treat "couldn't reach the server" as a data change
+  if (!previous) return // first load this session -- nothing to compare against yet
+  const prevFiles = previous.files ?? {}
+  const nextFiles = next.files ?? {}
+  const changed = Object.keys(nextFiles).some(name => prevFiles[name]?.sha256 !== nextFiles[name]?.sha256)
+  if (changed) changeListeners.forEach(listener => listener())
+}
+
+// Default: 15 minutes. Tile data updates on a cron schedule (see
+// openvfr-infra's docker/crontab), not in response to user action -- this
+// only needs to be frequent enough that a long-lived open tab eventually
+// notices a real update within a reasonable window, not near-realtime.
+const DEFAULT_POLL_INTERVAL_MS = 15 * 60 * 1000
+
+/**
+ * Starts periodic background polling for manifest changes (see
+ * `onTileManifestChanged`'s header comment for why this exists). Safe to
+ * call once at app bootstrap alongside `loadTileManifest()`; returns a
+ * cleanup function, though in practice this is meant to run for the app's
+ * entire lifetime (same pattern as `UpdatePrompt.tsx`'s service-worker poll).
+ */
+export function startTileManifestPolling(
+  tilesBaseUrl: string,
+  intervalMs: number = DEFAULT_POLL_INTERVAL_MS,
+): () => void {
+  const id = setInterval(() => {
+    const previous = cachedManifest
+    void refreshTileManifest(tilesBaseUrl).then(() => notifyIfChanged(previous, cachedManifest))
+  }, intervalMs)
+  return () => clearInterval(id)
 }
 
 /** Currently cached manifest, or null if not loaded yet / fetch failed. */

@@ -2,6 +2,7 @@ import { Component, type ReactNode } from 'react'
 import MapView from './components/MapView'
 import LoginPanel from './components/LoginPanel'
 import UpdatePrompt from './components/UpdatePrompt'
+import TileUpdatePrompt from './components/TileUpdatePrompt'
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
 
@@ -36,6 +37,7 @@ function AppInner() {
       {(!auth.user || !auth.user.name) && <LoginPanel auth={auth} />}
       <MapView auth={auth} />
       <UpdatePrompt />
+      <TileUpdatePrompt />
     </>
   )
 }

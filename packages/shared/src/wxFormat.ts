@@ -7,7 +7,7 @@
  * second copy (see docs/styling.md — avoid duplicating logic).
  */
 
-import type { ParsedWind, ParsedCloudLayer, MetarDecoded } from '@open-vfr/shared/fetchWx'
+import type { ParsedWind, ParsedCloudLayer, MetarDecoded } from './fetchWx'
 
 export type TileTone = 'ok' | 'warn' | 'danger' | 'info'
 
