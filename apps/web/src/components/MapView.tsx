@@ -2676,9 +2676,28 @@ export default function MapView({ auth }: { auth: AuthState }) {
     // Calling apply() unconditionally on every run fixes it outright; the
     // 'styledata' listener below remains only as a fallback for the genuinely
     // too-early case (style not parsed at all yet, no layers exist).
+    //
+    // BUG FIX (2nd, related bug, found live -- same symptom, different root
+    // cause): mapReady added to this effect's own dependency array below.
+    // On initial mount, mapRef.current is still null (map construction is
+    // now gated behind waitForTileManifest() -- see the map-init effect's
+    // own comment -- so this is measurably later than before, not just
+    // instant). Without mapReady as a dependency, THIS effect's initial run
+    // hits the `if (!map) return` guard and does nothing -- and since
+    // `visibility`/`basemapMode` don't change on their own afterward (a
+    // pilot who doesn't touch any toggle never changes either), the effect
+    // never runs again once the map actually finishes loading. Every layer
+    // group (not just hillshade) would then show correctly "on" in the
+    // Settings panel while never actually being visible on the map, until
+    // manually toggled off/on once (which DOES change `visibility` state,
+    // triggering a fresh, now-successful run). mapReady already exists and
+    // flips true from the map's own 'load' handler -- adding it here means
+    // this effect gets a guaranteed second chance to apply the real,
+    // already-correct persisted state at the moment the map is genuinely
+    // ready, with no dependency on any toggle actually changing.
     apply()
     if (!map.isStyleLoaded()) map.once('styledata', apply)
-  }, [visibility, basemapMode])
+  }, [visibility, basemapMode, mapReady])
 
   // Switch between vector (Protomaps) and satellite (ESRI) basemap.
   // Uses MapLibre runtime API — no full style reload, all aviation layers preserved.
@@ -2731,7 +2750,14 @@ export default function MapView({ auth }: { auth: AuthState }) {
       basemapBtnRef.current.title = isSat ? 'Switch to vector map' : 'Switch to satellite imagery'
       basemapBtnRef.current.innerHTML = isSat ? MAP_ICON_SVG : SAT_ICON_SVG
     }
-  }, [basemapMode])
+    // BUG FIX: mapReady added -- same class of bug as the layer-visibility
+    // effect above (see its comment for the full explanation). If a pilot
+    // previously chose satellite mode (persisted basemapMode) and refreshes,
+    // mapRef.current is null on this effect's initial run (map construction
+    // gated behind waitForTileManifest()), so it does nothing; basemapMode
+    // doesn't change again on its own, so the map stays stuck in vector mode
+    // (with the button showing satellite-selected) until manually toggled.
+  }, [basemapMode, mapReady])
 
   // Sync scale control unit with chosen distance unit.
   useEffect(() => {
@@ -2895,6 +2921,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
   }, [alternate, routeWaypoints, mapReady])
 
   // Sync altitude slider → MapLibre filters
+  // BUG FIX: mapReady added -- same class of bug as the layer-visibility
+  // effect further above (see its comment for the full explanation). A
+  // persisted non-default ceilingFt otherwise silently fails to apply on
+  // refresh (mapRef.current is null on this effect's initial run; ceilingFt
+  // doesn't change again on its own until the pilot moves the slider),
+  // leaving every altitude-filtered layer showing as if no filter were
+  // active until the slider is touched once.
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -2904,7 +2937,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     } else {
       map.once('styledata', () => applyAltitudeCeiling(map, ceilingFt))
     }
-  }, [ceilingFt])
+  }, [ceilingFt, mapReady])
 
   // Sync region selector → osm-landuse PMTiles source.
   // PMTiles vector sources are url-based, not tiles[]-based, so there's no
