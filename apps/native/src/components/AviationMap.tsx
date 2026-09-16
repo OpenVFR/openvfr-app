@@ -51,7 +51,7 @@ import {
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { advancePosition } from '../utils/routeCalc'
-import { theme } from '../styles/theme'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { OFFLINE_ASSETS, resolveUri } from '../utils/offlineCache'
 import { buildTerrainColorExpr } from '@open-vfr/shared/terrainColor'
 import { useWindGrid } from '../hooks/useWindGrid'
@@ -657,6 +657,7 @@ export function AviationMap({
   onRulerTap,
   onMapReady,
 }: AviationMapProps) {
+  const dragStyles = useThemedStyles(makeDragStyles)
   const cameraRef   = useRef<CameraRef>(null)
   const notamPointsSourceRef = useRef<GeoJSONSourceRef>(null)
   // Resolved once per mount (cheap sync fs `.exists` checks) — uses cached local
@@ -883,17 +884,34 @@ export function AviationMap({
   // one shared boolean would just move the OOM race from "vs. basemap" to
   // "three heavy PMTiles header fetches firing in the same tick vs. each
   // other" (87+231+117MB = ~435MB concurrently, still enough to threaten the
-  // 512MB ceiling). Fixed 300ms steps (readyStage 1/2/3) spread their header
-  // fetches out in time regardless of which subset is actually enabled --
-  // landuse readiness doesn't gate hillshade's timer or vice versa, so a
-  // layer that's off doesn't block/delay a later-staged layer that IS on.
+  // 512MB ceiling). Steps (readyStage 1/2/3) spread their header fetches
+  // out in time regardless of which subset is actually enabled -- landuse
+  // readiness doesn't gate hillshade's timer or vice versa, so a layer
+  // that's off doesn't block/delay a later-staged layer that IS on.
+  //
+  // Retest on a real device (2026-09-16, Samsung SM_S918B, fresh OTP
+  // sign-in, full adb logcat) with the ORIGINAL 300ms/600ms steps still
+  // reproduced the OOM crash: heap climbed 175MB -> 511MB in ~9s and the
+  // process died in a binder thread (`Throwing OutOfMemoryError ... target
+  // footprint 536870912`). 300ms/600ms is negligible next to how long a
+  // 100-200MB+ PMTiles archive actually takes to fetch over a real network
+  // -- by the time landuse's download is still in flight, hillshade's timer
+  // has already fired too, so their transfers overlap anyway and peak
+  // memory is barely changed from firing all three at once. (One genuine
+  // improvement was observed: only 11 canceled Mbgl-HttpRequest entries at
+  // crash time vs. the original investigation's "many" -- so the stagger
+  // does reduce request *concurrency* somewhat, just not enough to avoid
+  // the memory peak.) Bumped to seconds-scale gaps below as a stronger stall
+  // -- still a fixed timer, not an event-driven "wait for prior source's
+  // tiles to actually finish" gate, so treat this as a bigger safety
+  // margin, not a structural fix; see HANDOFF_oom_investigation.md.
   const [readyStage, setReadyStage] = useState(0)
   useEffect(() => {
     if (!styleLoaded) return
     onMapReady?.()
     setReadyStage(1)
-    const t1 = setTimeout(() => setReadyStage(2), 300)
-    const t2 = setTimeout(() => setReadyStage(3), 600)
+    const t1 = setTimeout(() => setReadyStage(2), 4000)
+    const t2 = setTimeout(() => setReadyStage(3), 8000)
     return () => { clearTimeout(t1); clearTimeout(t2) }
   // onMapReady intentionally excluded -- fire exactly once per real
   // styleLoaded transition (incl. auto-retry remounts), not on every render
@@ -2536,7 +2554,8 @@ export function AviationMap({
   )
 }
 
-const dragStyles = StyleSheet.create({
+function makeDragStyles(theme: ScaledTheme) {
+ return {
   hint: {
     position:       'absolute',
     bottom:         80,
@@ -2562,4 +2581,5 @@ const dragStyles = StyleSheet.create({
   labelText: {
     // placeholder — actual text omitted since we can't use dynamic hooks here
   },
-})
+} as const
+}
