@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouteLibrary } from '../db/useRouteDb'
+import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
 import css from './RouteLibrary.module.css'
@@ -42,12 +43,33 @@ interface Props {
   onClear:             () => void
 }
 
+/** Short label for a route's aircraft badge: registration if set, else name. */
+function aircraftLabel(p: { name: string; registration: string }): string {
+  return p.registration.trim() || p.name
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export default function RouteLibrary({ currentWaypoints, currentLegOverrides, currentAircraftId, onLoad, onClear }: Props) {
   const { routes, saveRoute, loadRoute, deleteRoute, renameRoute } = useRouteLibrary()
+  // Self-fetched (same pattern as AircraftLibrary) — used only to resolve
+  // each saved route's stored aircraftId into a display badge, and to detect
+  // when loading a route switches the active aircraft (see doLoad below).
+  const { profiles: aircraftProfiles } = useAircraftProfiles()
+
+  // Transient "switched aircraft" confirmation — set right after a route load
+  // changes the active aircraft, auto-clears itself. Loading a route whose
+  // stored aircraft differs from the one currently in use silently swaps
+  // the active profile and recalculates fuel/W&B; this one-line confirmation
+  // makes that swap visible instead of leaving it to happen unannounced.
+  const [switchMsg, setSwitchMsg] = useState<string | null>(null)
+  useEffect(() => {
+    if (!switchMsg) return
+    const id = setTimeout(() => setSwitchMsg(null), 5000)
+    return () => clearTimeout(id)
+  }, [switchMsg])
 
   // Save state
   const [saveName, setSaveName]   = useState('')
@@ -111,7 +133,13 @@ export default function RouteLibrary({ currentWaypoints, currentLegOverrides, cu
 
   async function doLoad(id: string) {
     const result = await loadRoute(id)
-    if (result) onLoad(result.waypoints, result.legOverrides, result.aircraftId)
+    if (result) {
+      onLoad(result.waypoints, result.legOverrides, result.aircraftId)
+      if (result.aircraftId && result.aircraftId !== currentAircraftId) {
+        const p = aircraftProfiles.find(p => p.id === result.aircraftId)
+        setSwitchMsg(p ? `Switched to ${aircraftLabel(p)}` : null)
+      }
+    }
     setPendingAction(null)
     setPendingLoadId(null)
   }
@@ -212,6 +240,14 @@ export default function RouteLibrary({ currentWaypoints, currentLegOverrides, cu
                   <span className={css.itemName}>{r.name}</span>
                   <span className={css.itemMeta}>
                     {r.waypoints.length} wpt · {timeAgo(r.updatedAt)}
+                    {r.aircraftId && (() => {
+                      const p = aircraftProfiles.find(p => p.id === r.aircraftId)
+                      return p ? (
+                        <span className={css.itemAircraft}> · {aircraftLabel(p)}</span>
+                      ) : (
+                        <span className={`${css.itemAircraft} ${css.itemAircraftMissing}`} title="Aircraft profile was deleted"> · ⚠ missing aircraft</span>
+                      )
+                    })()}
                   </span>
                 </div>
               )}
@@ -236,6 +272,9 @@ export default function RouteLibrary({ currentWaypoints, currentLegOverrides, cu
       ) : (
         <p className={css.empty}>No matches</p>
       )}
+
+      {/* ── Transient "switched aircraft" confirmation ──────────────── */}
+      {switchMsg && <p className={css.switchNote}>✓ {switchMsg}</p>}
 
       {/* ── New Route button ────────────────────────────────────────── */}
       <div className={css.footer}>

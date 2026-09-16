@@ -396,6 +396,7 @@ export default function SideDrawer({
                     waypoints={waypoints}
                     legOverrides={legOverrides}
                     aircraft={selectedAircraftProfile}
+                    aircraftId={selectedAircraftId}
                   />
                 </div>
               )}

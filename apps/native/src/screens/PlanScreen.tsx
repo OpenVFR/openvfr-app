@@ -331,8 +331,16 @@ export function PlanScreen() {
               waypoints={waypoints}
               legOverrides={legOverrides}
               aircraftId={selectedId ?? ''}
+              aircraftProfiles={profiles}
               syncState={syncState}
-              onLoad={(route) => { setWaypoints(route.waypoints, route.legOverrides); setSelectedId(route.aircraftId || null) }}
+              onLoad={(route) => {
+                setWaypoints(route.waypoints, route.legOverrides)
+                // Only switch the active aircraft when the loaded route actually
+                // has one stored — an empty aircraftId means "not recorded", not
+                // "explicitly none", so keep whatever's currently selected
+                // (mirrors web's MapView.tsx onLoadRoute behaviour).
+                if (route.aircraftId) setSelectedId(route.aircraftId)
+              }}
               onPush={pushRoute}
               onDelete={deleteRoute}
               onRefreshCloud={pullRoutes}

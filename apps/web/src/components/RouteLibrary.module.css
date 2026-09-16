@@ -109,6 +109,26 @@
   margin-top: 1px;
 }
 
+.itemAircraft {
+  color: var(--text-faint);
+}
+
+.itemAircraftMissing {
+  color: var(--accent-red);
+}
+
+.switchNote {
+  color: var(--accent-blue);
+  font-size: 11px;
+  margin: 2px 0 0 2px;
+  animation: fadeOut 5s forwards;
+}
+
+@keyframes fadeOut {
+  0%, 70% { opacity: 1; }
+  100%    { opacity: 0; }
+}
+
 .renameInput {
   composes: formInput from '../styles/shared.module.css';
   font-size: 11px;

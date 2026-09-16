@@ -97,8 +97,21 @@ function computeWarnings(
   aircraft: AircraftProfileDocType | undefined,
   waypoints: RouteWaypoint[],
   legOverrides: LegOverride[],
+  aircraftId?: string,
 ): PreflightWarning[] {
   const warnings: PreflightWarning[] = []
+
+  // ── 0. Aircraft profile referenced by this route no longer exists ──────
+  // (route.aircraftId set, but no matching aircraft_profiles doc — e.g. the
+  // profile was deleted on another device after this route was saved with it)
+  if (aircraftId && !aircraft) {
+    warnings.push({
+      level:  'warn',
+      code:   'aircraft-profile-missing',
+      title:  'Aircraft profile no longer exists',
+      detail: 'This route was planned with an aircraft profile that has since been deleted. Fuel and weight & balance calculations are unavailable until you pick a different aircraft.',
+    })
+  }
 
   // ── 1. Airspace penetration ─────────────────────────────────────────────
   for (const band of profile.airspaceBands) {
@@ -179,9 +192,12 @@ interface Props {
   waypoints:    RouteWaypoint[]
   legOverrides: LegOverride[]
   aircraft?:    AircraftProfileDocType
+  /** aircraft_profile id stored on the current route, if any — used only to
+   *  detect the orphaned-reference case (id set, but `aircraft` undefined). */
+  aircraftId?:  string
 }
 
-export default function PreflightWarnings({ waypoints, legOverrides, aircraft }: Props) {
+export default function PreflightWarnings({ waypoints, legOverrides, aircraft, aircraftId }: Props) {
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(_airspaceGeo)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(_obstacleGeo)
   const [msaPts,      setMsaPts]      = useState<MsaPoint[]>([])
@@ -234,8 +250,8 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft }:
 
   const warnings = useMemo<PreflightWarning[]>(() => {
     if (!profile) return []
-    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides)
-  }, [profile, msaPts, aircraft, waypoints, legOverrides])
+    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId)
+  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId])
 
   const loading = !terrainDone && waypoints.length >= 2
 

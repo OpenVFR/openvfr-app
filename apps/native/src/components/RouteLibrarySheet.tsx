@@ -17,7 +17,7 @@ import * as DocumentPicker from 'expo-document-picker'
 import * as Sharing from 'expo-sharing'
 import { routeToGpx, gpxToRoute } from '@open-vfr/shared/gpx'
 import { routes as routeDb } from '../db'
-import type { RouteDocType, LegOverride } from '../types/db'
+import type { RouteDocType, LegOverride, AircraftProfileDocType } from '../types/db'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { SyncState } from '../hooks/useRouteSync'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -29,6 +29,10 @@ interface Props {
   legOverrides: LegOverride[]
   /** aircraft_profile id currently selected — saved with the route */
   aircraftId:   string
+  /** All saved aircraft profiles — used only to resolve each saved route's
+   *  stored aircraftId into a display badge (name/registration or
+   *  "missing" if the profile has since been deleted). */
+  aircraftProfiles?: AircraftProfileDocType[]
   syncState:    SyncState
   onLoad:       (route: RouteDocType) => void
   onPush:       (route: RouteDocType) => void
@@ -49,7 +53,7 @@ function fmtDate(ts: number): string {
   return `${d.getDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]} ${d.getFullYear()}`
 }
 
-export function RouteLibrarySheet({ waypoints, legOverrides, aircraftId, syncState, onLoad, onPush, onDelete, onRefreshCloud }: Props) {
+export function RouteLibrarySheet({ waypoints, legOverrides, aircraftId, aircraftProfiles = [], syncState, onLoad, onPush, onDelete, onRefreshCloud }: Props) {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const [open,     setOpen]     = useState(false)
@@ -59,6 +63,18 @@ export function RouteLibrarySheet({ waypoints, legOverrides, aircraftId, syncSta
   const [renaming, setRenaming] = useState<string | null>(null)  // route id
   const [renameTxt, setRenameTxt] = useState('')
   const [refreshing, setRefreshing] = useState(false)
+
+  // Transient "switched aircraft" confirmation — mirrors web's
+  // RouteLibrary.tsx. Loading a route whose stored aircraft differs from
+  // the one currently in use silently swaps the active profile and
+  // recalculates fuel/W&B; this one-line confirmation makes that swap
+  // visible instead of leaving it to happen unannounced.
+  const [switchMsg, setSwitchMsg] = useState<string | null>(null)
+  useEffect(() => {
+    if (!switchMsg) return
+    const id = setTimeout(() => setSwitchMsg(null), 5000)
+    return () => clearTimeout(id)
+  }, [switchMsg])
 
   const handleRefresh = useCallback(async () => {
     if (!onRefreshCloud) return
@@ -114,6 +130,10 @@ export function RouteLibrarySheet({ waypoints, legOverrides, aircraftId, syncSta
 
   const handleLoad = (route: RouteDocType) => {
     onLoad(route)
+    if (route.aircraftId && route.aircraftId !== aircraftId) {
+      const p = aircraftProfiles.find(p => p.id === route.aircraftId)
+      setSwitchMsg(p ? `Switched to ${p.registration.trim() || p.name}` : null)
+    }
     setOpen(false)
   }
 
@@ -244,6 +264,14 @@ export function RouteLibrarySheet({ waypoints, legOverrides, aircraftId, syncSta
             </View>
           )}
 
+          {/* Transient "switched aircraft" confirmation */}
+          {switchMsg && (
+            <View style={styles.switchNote}>
+              <Ionicons name="checkmark-circle-outline" size={13} color={theme.accentBlue} />
+              <Text style={styles.switchNoteTxt}>{switchMsg}</Text>
+            </View>
+          )}
+
           {/* Route list */}
           {routes.length === 0 ? (
             <View style={styles.empty}>
@@ -283,6 +311,12 @@ export function RouteLibrarySheet({ waypoints, legOverrides, aircraftId, syncSta
                           <Text style={styles.routeName} numberOfLines={1}>{route.name}</Text>
                           <Text style={styles.routeMeta}>
                             {route.waypoints.length} WP · {dist.toFixed(0)} NM · {fmtDate(route.updatedAt)}
+                            {route.aircraftId ? (() => {
+                              const p = aircraftProfiles.find(p => p.id === route.aircraftId)
+                              return p
+                                ? ` · ${p.registration.trim() || p.name}`
+                                : ' · ⚠ missing aircraft'
+                            })() : ''}
                           </Text>
                         </>
                       )}
@@ -379,6 +413,11 @@ function makeStyles(theme: ScaledTheme) {
   routeInfo: { flex: 1 },
   routeName: { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '500' },
   routeMeta: { color: theme.textFaint, fontSize: theme.textXs, marginTop: 1 },
+  switchNote: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: theme.space4, paddingVertical: 5,
+  },
+  switchNoteTxt: { color: theme.accentBlue, fontSize: theme.textXs },
   routeActions: { flexDirection: 'row', gap: theme.space1 },
   actionBtn: { padding: theme.space2 },
   sep: { height: 1, backgroundColor: theme.borderSubtle, marginHorizontal: theme.space4 },
