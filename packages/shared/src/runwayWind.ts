@@ -172,12 +172,35 @@ export function buildRunwayWindHighlight(
     }
   }
 
+  // `size`/`opacity` must each stay a single TOP-LEVEL ['interpolate', ...,
+  // ['zoom'], ...] expression -- the style spec only allows a zoom
+  // expression to be the outermost expression for a property (or an
+  // interpolate's own stop inputs), never nested as an argument to another
+  // operator like `+`/`*`. An earlier version built
+  // ['+', RUNWAY_LABEL_DEFAULT_SIZE, 3] (RUNWAY_LABEL_DEFAULT_SIZE already
+  // being an ['interpolate', ['zoom'], ...] array) and
+  // ['*', RUNWAY_LABEL_DEFAULT_OPACITY, matchExpr] the same way -- both
+  // nest a zoom expression inside another operator, which MapLibre Native's
+  // stricter validator (unlike the JS/web renderer, which silently
+  // tolerated it) rejects at runtime with "zoom expression may only be
+  // used as input to a top-level step/interpolate expression" /
+  // "Only one zoom-based step/interpolate subexpression may be used".
+  // Fix: keep ['interpolate', ['zoom'], ...] as the sole outermost
+  // expression and put the favored/other branching in each stop's OUTPUT
+  // value instead (a plain ['match', ...] there is fine -- it doesn't
+  // itself reference zoom).
+  const otherFactor: unknown = otherKeys.length > 0 ? ['match', key, otherKeys, 0.4, 1] : 1
+
   return {
     color:     ['match', key, favoredKeys, RUNWAY_FAVORED_COLOR, RUNWAY_LABEL_DEFAULT_COLOR],
     haloColor: ['match', key, favoredKeys, RUNWAY_FAVORED_HALO,  RUNWAY_LABEL_DEFAULT_HALO],
-    size:      ['match', key, favoredKeys, ['+', RUNWAY_LABEL_DEFAULT_SIZE, 3], RUNWAY_LABEL_DEFAULT_SIZE],
-    opacity: otherKeys.length > 0
-      ? ['*', RUNWAY_LABEL_DEFAULT_OPACITY, ['match', key, otherKeys, 0.4, 1]]
-      : RUNWAY_LABEL_DEFAULT_OPACITY,
+    size: ['interpolate', ['linear'], ['zoom'],
+      12, ['match', key, favoredKeys, 8 + 3, 8],
+      16, ['match', key, favoredKeys, 14 + 3, 14],
+    ],
+    opacity: ['interpolate', ['linear'], ['zoom'],
+      12, ['*', 0, otherFactor],
+      13, ['*', 1, otherFactor],
+    ],
   }
 }
