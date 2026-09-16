@@ -46,7 +46,18 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
 let started = false
 
 export async function startBackgroundLocation(): Promise<'ok' | 'foreground-denied' | 'background-denied'> {
-  const fg = await Location.requestForegroundPermissionsAsync()
+  // Check current status before requesting — expo-location's Android
+  // requestForegroundPermissionsAsync()/requestBackgroundPermissionsAsync()
+  // only show the real in-app OS dialog on the FIRST-ever ask for a given
+  // permission. Every call after that (once the status is already settled,
+  // whether granted or denied) redirects straight to the OS's "Location
+  // permission" Settings screen instead of a dialog — jarring if it happens
+  // on every app launch, since this used to be called unconditionally from
+  // MapScreen's mount effect every single time. Gate each request on
+  // getX...PermissionsAsync() first so we only ever call the request
+  // variant while status is genuinely 'undetermined'.
+  let fg = await Location.getForegroundPermissionsAsync()
+  if (fg.status === 'undetermined') fg = await Location.requestForegroundPermissionsAsync()
   if (fg.status !== 'granted') return 'foreground-denied'
 
   // Background permission is only meaningful on Android/iOS when the app is
@@ -54,8 +65,13 @@ export async function startBackgroundLocation(): Promise<'ok' | 'foreground-deni
   // builds and iOS "While Using" restrictions mean this can come back denied
   // even though foreground tracking still works fine. We still proceed with
   // startLocationUpdatesAsync (foreground use continues to work either way);
-  // only truly suspends in background without it.
-  await Location.requestBackgroundPermissionsAsync().catch(() => null)
+  // only truly suspends in background without it. Same undetermined-only
+  // gate as above — do NOT re-request once the pilot has already answered
+  // (granted OR denied), or Android bounces them to Settings every launch.
+  const bg = await Location.getBackgroundPermissionsAsync().catch(() => null)
+  if (bg?.status === 'undetermined') {
+    await Location.requestBackgroundPermissionsAsync().catch(() => null)
+  }
 
   const alreadyStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false)
   if (!alreadyStarted) {
