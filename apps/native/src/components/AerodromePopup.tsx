@@ -1,22 +1,46 @@
 /**
  * AerodromePopup — modal popup for aerodrome features tapped on the map.
- * Shows ICAO, name, elevation, frequencies, fuel, PPR notes.
+ *
+ * Native port of web's metar-taf.com-style redesign (see web's
+ * AerodromePopup.tsx doc comment / commit 375e2de): Info / Wx / NOTAMs tabs,
+ * graphical wind compass + speed dial (WindGauges.tsx), cloud-layer altitude
+ * chart (CloudProfile.tsx), hour-by-hour decoded TAF table (TafTimeline.tsx),
+ * plain-English METAR narrative, nearest-station METAR/TAF fallback, and a
+ * multi-runway picker for which runway the compass shows. All formatting/
+ * tone/fallback logic (@open-vfr/shared/{wxFormat,wxStations,fetchWx,
+ * parseTaf,runwayWind}) is shared verbatim with web -- only the rendering
+ * primitives (View/Text/Svg instead of div/svg/CSS modules) differ.
  */
 
 import React, { useEffect, useState } from 'react'
 import {
-  Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator,
+  Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, TextInput,
 } from 'react-native'
 import { theme } from '../styles/theme'
-import { fetchWx, decodeMetar, parseMetarWind } from '@open-vfr/shared/fetchWx'
+import {
+  fetchWxResolved, decodeMetar, parseMetarWind, parseMetarClouds,
+  type WxResolved, type WxStationCandidate, type ParsedWind,
+} from '@open-vfr/shared/fetchWx'
 import { fetchNotams, fmtNotamDate } from '@open-vfr/shared/fetchNotam'
-import { computeRunwayWind, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
-import { sunriseSunset } from '@open-vfr/shared/sunCalc'
+import { computeRunwayWind, effectiveMagBrg, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
+import { sunriseSunset, fmtSunTime } from '@open-vfr/shared/sunCalc'
 import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from '@open-vfr/shared/atcStatus'
-import type { WxResult, MetarDecoded } from '@open-vfr/shared/fetchWx'
+import { distanceNm } from '@open-vfr/shared/routeCalc'
+import { parseTaf, type TafPeriod } from '@open-vfr/shared/parseTaf'
+import { loadStations, type StationRecord } from '@open-vfr/shared/wxStations'
+import {
+  visTone, ceilingTone, windTone, fmtVis, fmtWind, fmtObsAge, metarNarrative, type TileTone,
+} from '@open-vfr/shared/wxFormat'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
-import { API_BASE } from '../config'
+import { API_BASE, getTileUrls } from '../config'
 import { authHeaders } from '../utils/authClient'
+import { WindCompassGauge, WindSpeedGauge, type RunwayHeading } from './WindGauges'
+import CloudProfile from './CloudProfile'
+import TafTimeline from './TafTimeline'
+
+// Fallback search radius -- same as web's, wide enough to reach a
+// towered/AWOS-equipped aerodrome from a small grass strip.
+const WX_FALLBACK_MAX_NM = 100
 
 interface Frequency {
   service:  string
@@ -84,6 +108,10 @@ const DAY_LABEL: Record<string, string> = {
   MON: 'Mon', TUE: 'Tue', WED: 'Wed', THU: 'Thu', FRI: 'Fri', SAT: 'Sat', SUN: 'Sun',
 }
 
+const TAF_PERIOD_LABEL: Record<string, string> = {
+  BASE: 'FCST', FM: 'FROM', BECMG: 'BECMG', TEMPO: 'TEMPO', PROB30: 'PROB30', PROB40: 'PROB40',
+}
+
 function fmtHoursEntry(h: HoursEntry): string {
   const day = h.day ? DAY_LABEL[h.day] ?? h.day : 'Daily'
   let time: string
@@ -114,6 +142,24 @@ function fmtDeclaredDistances(dd: Runway['declared_distances']): string {
   return parts.length > 0 ? `${parts.join(' · ')} m` : ''
 }
 
+function fmtTafTime(ms: number): string {
+  const d = new Date(ms)
+  return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}Z`
+}
+
+function fmtTafClouds(clouds: { cover: string; baseFt: number }[]): string {
+  if (clouds.length === 0) return 'CAVOK/NSC'
+  return clouds.map((c) => `${c.cover}${String(Math.round(c.baseFt / 100)).padStart(3, '0')}`).join(' ')
+}
+
+const TONE_COLOR: Record<TileTone, string> = {
+  ok: theme.accentGreen, warn: theme.statusWarn, danger: theme.statusDanger, info: theme.textSecondary,
+}
+
+const FR_COLOR: Record<string, string> = {
+  VFR: '#22c55e', MVFR: '#3b82f6', IFR: '#ef4444', LIFR: '#a855f7',
+}
+
 export interface AerodromeFeatureProps {
   icao:         string
   name:         string
@@ -129,7 +175,8 @@ export interface AerodromeFeatureProps {
   hours_of_operation?:   HoursEntry[]
   handling_facilities?:  string[]
   passenger_facilities?: string[]
-  /** WGS84 coordinates, needed for the sunrise/sunset-based ATC status calc. */
+  /** WGS84 coordinates, needed for the sunrise/sunset-based ATC status calc
+   *  and the METAR/TAF nearest-station fallback distance search. */
   lng?: number
   lat?: number
 }
@@ -151,23 +198,58 @@ interface Props {
 
 export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
   // Hooks must be declared before any conditional return (Rules of Hooks)
-  const [wx,          setWx]          = useState<WxResult | null>(null)
+  const [activeTab, setActiveTab] = useState<'info' | 'wx' | 'notam'>('info')
+  const [selectedRunwayDesig, setSelectedRunwayDesig] = useState<string | null>(null)
+  const [oatStr, setOatStr] = useState('')
+  const [qnhStr, setQnhStr] = useState('')
+
+  const [wx,          setWx]          = useState<WxResolved | null>(null)
   const [wxLoading,   setWxLoading]   = useState(true)
+  const [wxSourceName, setWxSourceName] = useState<string | null>(null)
   const [notams,      setNotams]      = useState<NotamItem[]>([])
   const [notamLoading,setNotamLoading]= useState(true)
   const [tafExpanded, setTafExpanded] = useState(false)
+  const [expandedNotams, setExpandedNotams] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    setSelectedRunwayDesig(null)
+    setActiveTab('info')
+  }, [feature?.icao])
 
   useEffect(() => {
     if (!feature) return
     const ac = new AbortController()
-    setWx(null); setWxLoading(true)
+    setWx(null); setWxLoading(true); setWxSourceName(null)
     setNotams([]); setNotamLoading(true)
-    setTafExpanded(false)
+    setTafExpanded(false); setExpandedNotams(new Set())
 
+    const lat = feature.lat, lng = feature.lng
     authHeaders().then((headers) => {
-      fetchWx(feature.icao, API_BASE, ac.signal, headers)
-        .then((d) => { setWx(d); setWxLoading(false) })
-        .catch(() => setWxLoading(false))
+      const aerodromesUrl = getTileUrls().aerodromes
+      const wxPromise = lat != null && lng != null
+        ? loadStations(aerodromesUrl)
+            .catch(() => [] as StationRecord[])
+            .then((stations) => {
+              const candidates: WxStationCandidate[] = stations
+                .filter((s) => s.icao !== feature.icao)
+                .map((s) => ({ icao: s.icao, distNm: distanceNm({ lat, lng }, { lat: s.lat, lng: s.lng }) }))
+                .filter((c) => c.distNm <= WX_FALLBACK_MAX_NM)
+                .sort((a, b) => a.distNm - b.distNm)
+              const nameByIcao = new Map(stations.map((s) => [s.icao, s.name]))
+              return fetchWxResolved(feature.icao, lat, lng, candidates, API_BASE, ac.signal, headers)
+                .then((data) => {
+                  setWx(data)
+                  setWxSourceName(data.sourceIcao !== feature.icao ? (nameByIcao.get(data.sourceIcao) ?? null) : null)
+                })
+            })
+        // No coordinates on this feature -- can't do a nearest-station
+        // search or model-wind fallback, just fetch the aerodrome's own report.
+        : fetchWxResolved(feature.icao, 0, 0, [], API_BASE, ac.signal, headers)
+            .then((data) => { setWx(data) })
+
+      wxPromise
+        .catch((err) => { if ((err as Error).name !== 'AbortError') { /* leave wx null -- "no data" state */ } })
+        .finally(() => setWxLoading(false))
 
       fetchNotams(feature.icao, API_BASE, ac.signal, headers)
         .then((d) => { setNotams(d.notams); setNotamLoading(false) })
@@ -175,19 +257,36 @@ export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
     })
 
     return () => ac.abort()
-  }, [feature?.icao])
+  }, [feature?.icao, feature?.lat, feature?.lng])
 
-  // Flattened across all runways, computed with null-safe guards so this can
-  // run as a hook before the early return below (Rules of Hooks). Reports
-  // up to MapScreen -> AviationMap; cleanup clears the PREVIOUS icao's
-  // highlight before every re-run (icao change, wind change, or unmount) --
-  // this modal persists across selections rather than remounting, so a
-  // plain unmount-only cleanup (like web's key-forced-remount AerodromePopup)
-  // would leave a stale highlight from the last-viewed aerodrome.
-  const wxMetarForWind = wx?.metar ? decodeMetar(wx.metar) : null
-  const surfaceWindForWind = wxMetarForWind ? parseMetarWind(wxMetarForWind.wind) : null
-  const allRunwayWindEnds = (feature?.runways ?? [])
-    .flatMap((rwy) => computeRunwayWind(rwy.thresholds ?? [], surfaceWindForWind))
+  const metar = wx?.metar ? decodeMetar(wx.metar) : null
+  const surfaceWind = metar ? parseMetarWind(metar.wind) : null
+  const modelWind: ParsedWind | null = wx?.modelWind
+    ? { dirDeg: wx.modelWind.dirDeg, speedKt: wx.modelWind.speedKts, gustKt: null, variable: false, calm: wx.modelWind.speedKts === 0 }
+    : null
+  const effectiveWind = modelWind ?? surfaceWind
+  const windIsModelled = !!modelWind
+  const tafPeriods: TafPeriod[] | null = wx?.taf ? parseTaf(wx.taf) : null
+  const usingFallbackWx = !!wx && feature && wx.sourceIcao !== feature.icao
+
+  const runways = feature?.runways ?? []
+  const allRunwayWindEnds = runways.flatMap((rwy) => computeRunwayWind(rwy.thresholds ?? [], effectiveWind))
+
+  const longestRunway = [...runways].sort((a, b) => (b.length_m ?? 0) - (a.length_m ?? 0))[0]
+  const compassRunway = selectedRunwayDesig != null
+    ? runways.find((r) => r.designator === selectedRunwayDesig) ?? longestRunway
+    : longestRunway
+  const compassRunwayWindEnds = compassRunway ? computeRunwayWind(compassRunway.thresholds ?? [], effectiveWind) : []
+  const compassFavoredEnd = compassRunwayWindEnds.find((e) => e.favored) ?? null
+
+  const primaryRunwayHeading: RunwayHeading | null = (() => {
+    if (!compassRunway?.thresholds || compassRunway.thresholds.length === 0) return null
+    const [t0, t1] = compassRunway.thresholds
+    if (!t0) return null
+    const brg = effectiveMagBrg(t0.mag_brg, t0.true_brg)
+    if (brg == null) return null
+    return { designators: [t0.designator, t1?.designator ?? '—'], headingDeg: brg }
+  })()
 
   useEffect(() => {
     if (!onRunwayWind || !feature) return
@@ -201,20 +300,10 @@ export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
 
   const freqs   = feature.frequencies ?? []
   const fuel    = feature.fuel ?? []
-  const runways = feature.runways ?? []
   const hours     = feature.hours_of_operation ?? []
   const handling  = feature.handling_facilities ?? []
   const passenger = feature.passenger_facilities ?? []
 
-  const metar = wx?.metar ? decodeMetar(wx.metar) : null
-  const surfaceWind = metar ? parseMetarWind(metar.wind) : null
-  const frColor = metar?.flightRule
-    ? { VFR: '#22c55e', MVFR: '#3b82f6', IFR: '#ef4444', LIFR: '#a855f7' }[metar.flightRule]
-    : undefined
-
-  // ATC status: AIP-schedule-derived only (see @open-vfr/shared/atcStatus).
-  // NOTAM text is checked separately and only ever renders as a plain-text
-  // hint below, never flips this badge's color/status.
   const sunTimes = feature.lat != null && feature.lng != null
     ? sunriseSunset(feature.lat, feature.lng)
     : { rise: null, set: null }
@@ -233,13 +322,38 @@ export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
   const notamHoursHint = feature.towered && anyNotamHoursChangeRelated(activeNotamTexts)
   const atcColor = atc?.status === 'open' ? theme.statusOk : atc?.status === 'closed' ? theme.statusDanger : theme.textFaint
 
+  // ── Density altitude ──────────────────────────────────────────────────────
+  const elevFt = feature.elevation_ft ?? 0
+  const oat = parseFloat(oatStr)
+  const qnh = parseFloat(qnhStr)
+  const pressAltFt = !isNaN(qnh) && qnh > 0 ? elevFt + 30 * (1013.25 - qnh) : null
+  const isaTempC = pressAltFt != null ? 15 - 1.98 * (pressAltFt / 1000) : null
+  const densityAltFt = pressAltFt != null && !isNaN(oat) && isaTempC != null
+    ? Math.round(pressAltFt + 120 * (oat - isaTempC))
+    : null
+  function daColor(da: number): string {
+    const delta = da - elevFt
+    if (delta >= 1000) return theme.statusDanger
+    if (delta >= 500) return theme.statusWarn
+    return theme.accentGreen
+  }
+
+  function toggleNotam(id: string) {
+    setExpandedNotams((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
       <View style={styles.sheet}>
         {/* Header */}
         <View style={styles.header}>
-          <View>
+          <View style={styles.headerLeft}>
             <Text style={styles.icao}>{feature.icao}</Text>
             <Text style={styles.name}>{feature.name}</Text>
             {atc && (
@@ -261,184 +375,349 @@ export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
           </TouchableOpacity>
         </View>
 
+        {/* Tab bar */}
+        <View style={styles.tabBar}>
+          <TabBtn label="Info" active={activeTab === 'info'} onPress={() => setActiveTab('info')} />
+          <TabBtn
+            label="Wx"
+            active={activeTab === 'wx'}
+            onPress={() => setActiveTab('wx')}
+            dotColor={metar?.flightRule ? FR_COLOR[metar.flightRule] : undefined}
+          />
+          <TabBtn
+            label="NOTAMs"
+            active={activeTab === 'notam'}
+            onPress={() => setActiveTab('notam')}
+            count={!notamLoading && notams.length > 0 ? notams.length : undefined}
+          />
+        </View>
+
         <ScrollView contentContainerStyle={styles.body}>
-          {/* Elevation */}
-          {feature.elevation_ft !== undefined && (
-            <Row label="Elevation" value={`${feature.elevation_ft} ft AMSL`} />
-          )}
-
-          {/* Type */}
-          {feature.type && (
-            <Row label="Type" value={feature.type} />
-          )}
-
-          {/* PPR */}
-          {feature.ppr && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeTxt}>PPR required</Text>
-            </View>
-          )}
-          {(feature.ppr_remarks ?? []).map((r, i) => (
-            <Text key={i} style={styles.remark}>{r}</Text>
-          ))}
-
-          {/* Weather */}
-          <Section title="Weather">
-            {wxLoading && <ActivityIndicator size="small" color={theme.accentBlue} />}
-            {!wxLoading && !wx?.metar && <Text style={styles.muted}>No METAR available</Text>}
-            {metar && (
-              <View style={styles.wxBlock}>
-                {metar.flightRule && (
-                  <View style={[styles.frBadge, { borderColor: frColor }]}>
-                    <Text style={[styles.frTxt, { color: frColor }]}>{metar.flightRule}</Text>
-                  </View>
-                )}
-                {metar.wind   && <Row label="Wind"       value={metar.wind} />}
-                {metar.vis    && <Row label="Visibility" value={metar.vis} />}
-                {metar.clouds && <Row label="Clouds"     value={metar.clouds} />}
-                {metar.temp   && <Row label="Temp / Dew" value={metar.temp} />}
-                {metar.qnh    && <Row label="QNH"        value={metar.qnh} />}
-                {metar.wx     && <Row label="Present wx" value={metar.wx} />}
-                <Text style={styles.rawMetar}>{wx!.metar}</Text>
-              </View>
-            )}
-            {!wxLoading && wx?.taf && (
-              <TouchableOpacity onPress={() => setTafExpanded(e => !e)} style={styles.tafToggle}>
-                <Text style={styles.tafToggleTxt}>{tafExpanded ? '▾ Hide TAF' : '▸ Show TAF'}</Text>
-              </TouchableOpacity>
-            )}
-            {tafExpanded && wx?.taf && (
-              <Text style={styles.tafText}>{wx.taf}</Text>
-            )}
-          </Section>
-
-          {/* NOTAMs */}
-          <Section title={`NOTAMs${notams.length > 0 ? ` (${notams.length})` : ''}`}>
-            {notamLoading && <ActivityIndicator size="small" color={theme.accentBlue} />}
-            {!notamLoading && notams.length === 0 && (
-              <Text style={styles.muted}>No NOTAMs</Text>
-            )}
-            {notams.slice(0, 5).map((n) => (
-              <View key={n.id} style={styles.notamRow}>
-                <Text style={styles.notamId}>{n.id}</Text>
-                {n.effective && (
-                  <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}</Text>
-                )}
-                <Text style={styles.notamText}>{n.text}</Text>
-              </View>
-            ))}
-            {notams.length > 5 && (
-              <Text style={styles.muted}>+{notams.length - 5} more</Text>
-            )}
-          </Section>
-
-          {/* Frequencies */}
-          {freqs.length > 0 && (
-            <Section title="Frequencies">
-              {freqs.map((f, i) => (
-                <Row
-                  key={i}
-                  label={`${SERVICE_LABEL[f.service] ?? f.service}${f.callsign ? ` — ${f.callsign}` : ''}`}
-                  value={f.freq_mhz.toFixed(3)}
-                />
+          {/* ── Info tab ─────────────────────────────────────────────── */}
+          {activeTab === 'info' && (
+            <>
+              {feature.elevation_ft !== undefined && (
+                <Row label="Elevation" value={`${feature.elevation_ft} ft AMSL`} />
+              )}
+              {feature.type && <Row label="Type" value={feature.type} />}
+              {feature.ppr && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeTxt}>PPR required</Text>
+                </View>
+              )}
+              {(feature.ppr_remarks ?? []).map((r, i) => (
+                <Text key={i} style={styles.remark}>{r}</Text>
               ))}
-            </Section>
+
+              {/* Sunrise / Sunset */}
+              <Section title="Sun (UTC)">
+                <View style={runwayStyles.desigRow}>
+                  <Text style={styles.value}>Sunrise {fmtSunTime(sunTimes.rise)}   Sunset {fmtSunTime(sunTimes.set)}</Text>
+                </View>
+              </Section>
+
+              {freqs.length > 0 && (
+                <Section title="Frequencies">
+                  {freqs.map((f, i) => (
+                    <Row
+                      key={i}
+                      label={`${SERVICE_LABEL[f.service] ?? f.service}${f.callsign ? ` — ${f.callsign}` : ''}`}
+                      value={f.freq_mhz.toFixed(3)}
+                    />
+                  ))}
+                </Section>
+              )}
+
+              {fuel.length > 0 && (
+                <Section title="Fuel">
+                  <Text style={styles.value}>{fuel.join(', ')}</Text>
+                </Section>
+              )}
+
+              {runways.length > 0 && (
+                <Section title="Runways">
+                  {runways.map((r, i) => {
+                    const windEnds = r.thresholds ? computeRunwayWind(r.thresholds, effectiveWind) : []
+                    const hasWind = windEnds.some((e) => e.headwindKt != null)
+                    return (
+                      <View key={i} style={{ marginBottom: theme.space1 }}>
+                        {windEnds.length > 0 ? (
+                          <View style={runwayStyles.desigRow}>
+                            {windEnds.map((e, j) => (
+                              <React.Fragment key={e.designator}>
+                                {j > 0 && <Text style={runwayStyles.slash}>/</Text>}
+                                <View style={[
+                                  runwayStyles.desigPill,
+                                  { borderColor: xwindColor(e.crosswindSeverity) },
+                                  e.favored ? { backgroundColor: theme.accentGreen, borderColor: theme.accentGreen } : null,
+                                ]}>
+                                  <Text style={[runwayStyles.desigTxt, e.favored ? { color: '#08210f' } : null]}>{e.designator}</Text>
+                                </View>
+                              </React.Fragment>
+                            ))}
+                            <Text style={runwayStyles.detail}>
+                              {[r.length_m ? `${r.length_m} m` : null, r.surface ?? null].filter(Boolean).join(' · ')}
+                            </Text>
+                          </View>
+                        ) : (
+                          <Row
+                            label={r.designator}
+                            value={[r.length_m ? `${r.length_m} m` : null, r.surface ?? null].filter(Boolean).join(' · ')}
+                          />
+                        )}
+                        {hasWind && (
+                          <View style={runwayStyles.windRow}>
+                            {windEnds.map((e) => e.headwindKt != null && (
+                              <Text key={e.designator} style={[runwayStyles.windTxt, { color: xwindColor(e.crosswindSeverity) }]}>
+                                {e.designator}: {e.headwindKt >= 0 ? `${e.headwindKt}kt HW` : `${-e.headwindKt}kt TW`} · {e.crosswindKt}kt XW
+                              </Text>
+                            ))}
+                          </View>
+                        )}
+                        {((r.visual_approach_aids?.length ?? 0) > 0 || (r.lighting?.length ?? 0) > 0) && (
+                          <Text style={styles.muted}>
+                            {[...(r.visual_approach_aids ?? []).map(v => VASI_LABEL[v] ?? v),
+                              ...(r.lighting ?? []).map(l => LIGHTING_LABEL[l] ?? l)].join(', ')}
+                          </Text>
+                        )}
+                        {fmtDeclaredDistances(r.declared_distances) && (
+                          <Text style={styles.muted}>{fmtDeclaredDistances(r.declared_distances)}</Text>
+                        )}
+                      </View>
+                    )
+                  })}
+                </Section>
+              )}
+
+              {hours.length > 0 && (
+                <Section title="Hours of Operation">
+                  {hours.map((h, i) => (
+                    <Row key={i} label={fmtHoursEntry(h)} value={h.remarks ?? ''} />
+                  ))}
+                </Section>
+              )}
+
+              {(handling.length > 0 || passenger.length > 0) && (
+                <Section title="Facilities">
+                  <Text style={styles.value}>
+                    {[...handling.map(h => HANDLING_LABEL[h] ?? h),
+                      ...passenger.map(p2 => PASSENGER_LABEL[p2] ?? p2)].join(', ')}
+                  </Text>
+                </Section>
+              )}
+            </>
           )}
 
-          {/* Fuel */}
-          {fuel.length > 0 && (
-            <Section title="Fuel">
-              <Text style={styles.value}>{fuel.join(', ')}</Text>
-            </Section>
-          )}
+          {/* ── Wx tab ───────────────────────────────────────────────── */}
+          {activeTab === 'wx' && (
+            <>
+              {/* Density altitude */}
+              <Section title="Density Altitude">
+                <View style={daStyles.row}>
+                  <Text style={daStyles.label}>OAT</Text>
+                  <TextInput
+                    style={daStyles.input}
+                    value={oatStr}
+                    onChangeText={setOatStr}
+                    placeholder="°C"
+                    placeholderTextColor={theme.textFaint}
+                    keyboardType="numbers-and-punctuation"
+                  />
+                  <Text style={daStyles.label}>QNH</Text>
+                  <TextInput
+                    style={daStyles.input}
+                    value={qnhStr}
+                    onChangeText={setQnhStr}
+                    placeholder={metar?.qnh ? metar.qnh.slice(1) : 'hPa'}
+                    placeholderTextColor={theme.textFaint}
+                    keyboardType="numeric"
+                  />
+                </View>
+                {densityAltFt != null ? (
+                  <Text style={[daStyles.result, { color: daColor(densityAltFt) }]}>
+                    {densityAltFt.toLocaleString()} ft density alt
+                    {pressAltFt != null ? `  ·  PA ${Math.round(pressAltFt).toLocaleString()} ft` : ''}
+                  </Text>
+                ) : pressAltFt != null ? (
+                  <Text style={daStyles.hint}>PA {Math.round(pressAltFt).toLocaleString()} ft — enter OAT for density alt</Text>
+                ) : (
+                  <Text style={daStyles.hint}>Enter QNH and OAT</Text>
+                )}
+              </Section>
 
-          {/* Runways */}
-          {runways.length > 0 && (
-            <Section title="Runways">
-              {runways.map((r, i) => {
-                const windEnds = r.thresholds ? computeRunwayWind(r.thresholds, surfaceWind) : []
-                const hasWind = windEnds.some((e) => e.headwindKt != null)
-                return (
-                  <View key={i} style={{ marginBottom: theme.space1 }}>
-                    {windEnds.length > 0 ? (
-                      <View style={runwayStyles.desigRow}>
-                        {windEnds.map((e, j) => (
-                          <React.Fragment key={e.designator}>
-                            {j > 0 && <Text style={runwayStyles.slash}>/</Text>}
-                            <View style={[
-                              runwayStyles.desigPill,
-                              { borderColor: xwindColor(e.crosswindSeverity) },
-                              e.favored ? { backgroundColor: theme.accentGreen, borderColor: theme.accentGreen } : null,
-                            ]}>
-                              <Text style={[runwayStyles.desigTxt, e.favored ? { color: '#08210f' } : null]}>{e.designator}</Text>
-                            </View>
-                          </React.Fragment>
-                        ))}
-                        <Text style={runwayStyles.detail}>
-                          {[
-                            r.length_m ? `${r.length_m} m` : null,
-                            r.surface ?? null,
-                          ].filter(Boolean).join(' · ')}
+              {/* Weather */}
+              <Section title="Weather">
+                {wxLoading && <ActivityIndicator size="small" color={theme.accentBlue} />}
+                {!wxLoading && !wx?.metar && !wx?.taf && !wx?.modelWind && (
+                  <Text style={styles.muted}>No weather data at {feature.icao} or any nearby station</Text>
+                )}
+
+                {usingFallbackWx && wx && (
+                  <Text style={wxStyles.fallback}>
+                    No local report for {feature.icao} — showing {wx.sourceIcao}{wxSourceName ? ` (${wxSourceName})` : ''}
+                    {wx.distNm != null ? `, ${Math.round(wx.distNm)} NM away` : ''}
+                  </Text>
+                )}
+
+                {!wxLoading && !wx?.metar && !wx?.taf && wx?.modelWind && (
+                  <>
+                    <Text style={wxStyles.fallback}>
+                      No METAR/TAF at {feature.icao} or any nearby station — showing modelled wind (Open-Meteo forecast, not an observation)
+                    </Text>
+                    <View style={wxStyles.gaugeRow}>
+                      <WindCompassGauge wind={effectiveWind} runway={primaryRunwayHeading} tone={windTone(effectiveWind)} />
+                      <WindSpeedGauge wind={effectiveWind} tone={windTone(effectiveWind)} />
+                    </View>
+                  </>
+                )}
+
+                {metar && (
+                  <>
+                    {metar.flightRule && (
+                      <View style={[styles.frBadge, { borderColor: FR_COLOR[metar.flightRule] }]}>
+                        <Text style={[styles.frTxt, { color: FR_COLOR[metar.flightRule] }]}>
+                          {metar.flightRule}{metar.time ? `  ${metar.time}` : ''}{fmtObsAge(metar.obsMs) ? `  ·  ${fmtObsAge(metar.obsMs)}` : ''}
                         </Text>
                       </View>
-                    ) : (
-                      // No thresholds at all for this runway (source data
-                      // gap) -- no bearing to show either way, since a
-                      // runway-level mag_brg field doesn't exist in the
-                      // schema (only thresholds[].mag_brg / true_brg do).
-                      <Row
-                        label={r.designator}
-                        value={[
-                          r.length_m ? `${r.length_m} m` : null,
-                          r.surface ?? null,
-                        ].filter(Boolean).join(' · ')}
-                      />
                     )}
-                    {hasWind && (
-                      <View style={runwayStyles.windRow}>
-                        {windEnds.map((e) => e.headwindKt != null && (
-                          <Text key={e.designator} style={[runwayStyles.windTxt, { color: xwindColor(e.crosswindSeverity) }]}>
-                            {e.designator}: {e.headwindKt >= 0 ? `${e.headwindKt}kt HW` : `${-e.headwindKt}kt TW`} · {e.crosswindKt}kt XW
-                          </Text>
-                        ))}
+
+                    {runways.length > 1 && (
+                      <View style={wxStyles.rwyPicker}>
+                        {[...runways].sort((a, b) => (b.length_m ?? 0) - (a.length_m ?? 0)).map((rwy) => {
+                          const isSelected = compassRunway?.designator === rwy.designator
+                          return (
+                            <TouchableOpacity
+                              key={rwy.designator}
+                              style={[wxStyles.rwyPickerBtn, isSelected ? wxStyles.rwyPickerBtnActive : null]}
+                              onPress={() => setSelectedRunwayDesig(rwy.designator)}
+                            >
+                              <Text style={[wxStyles.rwyPickerTxt, isSelected ? wxStyles.rwyPickerTxtActive : null]}>{rwy.designator}</Text>
+                            </TouchableOpacity>
+                          )
+                        })}
                       </View>
                     )}
-                    {((r.visual_approach_aids?.length ?? 0) > 0 || (r.lighting?.length ?? 0) > 0) && (
-                      <Text style={styles.muted}>
-                        {[...(r.visual_approach_aids ?? []).map(v => VASI_LABEL[v] ?? v),
-                          ...(r.lighting ?? []).map(l => LIGHTING_LABEL[l] ?? l)].join(', ')}
+
+                    <View style={wxStyles.gaugeRow}>
+                      <WindCompassGauge
+                        wind={effectiveWind}
+                        runway={primaryRunwayHeading}
+                        tone={windTone(effectiveWind)}
+                        favoredEndDesignator={compassFavoredEnd?.designator ?? null}
+                      />
+                      <WindSpeedGauge wind={effectiveWind} tone={windTone(effectiveWind)} />
+                    </View>
+                    {windIsModelled && (
+                      <Text style={wxStyles.modelledNote}>
+                        Wind is modelled (Open-Meteo), not from {wx?.sourceIcao}'s own observation — that station is too far away for its wind to be locally representative here.
                       </Text>
                     )}
-                    {fmtDeclaredDistances(r.declared_distances) && (
-                      <Text style={styles.muted}>{fmtDeclaredDistances(r.declared_distances)}</Text>
+
+                    <View style={wxStyles.tileGrid}>
+                      <WxTile label={`Wind${windIsModelled ? ' (modelled)' : ''}`} value={fmtWind(effectiveWind)} color={TONE_COLOR[windTone(effectiveWind)]} />
+                      <WxTile label="Visibility" value={fmtVis(metar.visM)} color={TONE_COLOR[visTone(metar.visM)]} />
+                      <WxTile label="Ceiling" value={metar.ceilingFt != null ? `${metar.ceilingFt.toLocaleString()} ft` : metar.clouds === 'CAVOK' ? 'CAVOK' : 'No ceiling'} color={TONE_COLOR[ceilingTone(metar.ceilingFt)]} />
+                      <WxTile label="QNH" value={metar.qnh ? metar.qnh.slice(1) : '—'} color={theme.textSecondary} />
+                      {metar.temp && <WxTile label="T / Td" value={`${metar.temp.replace('/', ' / ')}°C`} color={theme.textSecondary} />}
+                      {metar.wx && <WxTile label="Wx" value={metar.wx} color={theme.statusWarn} />}
+                    </View>
+
+                    {metar.clouds && metar.clouds !== 'CAVOK' && (
+                      <CloudProfile clouds={parseMetarClouds(metar.clouds)} />
+                    )}
+
+                    <Text style={wxStyles.narrative}>{metarNarrative(metar).join(' ')}</Text>
+                  </>
+                )}
+
+                {wx?.metar && <Text style={styles.rawMetar}>{wx.metar}</Text>}
+
+                {wx?.taf && (
+                  <View style={wxStyles.tafBlock}>
+                    <TouchableOpacity onPress={() => setTafExpanded(e => !e)} style={styles.tafToggle}>
+                      <Text style={styles.tafToggleTxt}>{tafExpanded ? '▴ Hide TAF' : '▾ Show TAF'}</Text>
+                    </TouchableOpacity>
+                    {tafExpanded && (
+                      <>
+                        {tafPeriods && tafPeriods.length > 0 && (
+                          <TafTimeline periods={tafPeriods} lat={feature.lat ?? 0} lng={feature.lng ?? 0} />
+                        )}
+                        {tafPeriods && tafPeriods.length > 0 && (
+                          <View style={wxStyles.tafPeriods}>
+                            <Text style={wxStyles.tafPeriodsLabel}>Change groups</Text>
+                            {tafPeriods.map((period, i) => (
+                              <View key={i} style={wxStyles.tafPeriod}>
+                                <View style={wxStyles.tafPeriodHead}>
+                                  <Text style={wxStyles.tafPeriodKind}>{TAF_PERIOD_LABEL[period.kind] ?? period.kind}</Text>
+                                  <Text style={wxStyles.tafPeriodTime}>{fmtTafTime(period.fromMs)} – {fmtTafTime(period.toMs)}</Text>
+                                </View>
+                                <Text style={wxStyles.tafPeriodBody}>
+                                  {period.wind ? `${fmtWind(period.wind)}  ` : ''}{fmtTafClouds(period.clouds)}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                        <Text style={styles.tafText}>{wx.taf}</Text>
+                      </>
                     )}
                   </View>
+                )}
+              </Section>
+            </>
+          )}
+
+          {/* ── NOTAMs tab ───────────────────────────────────────────── */}
+          {activeTab === 'notam' && (
+            <Section title={`NOTAMs${notams.length > 0 ? ` (${notams.length})` : ''}`}>
+              {notamLoading && <ActivityIndicator size="small" color={theme.accentBlue} />}
+              {!notamLoading && notams.length === 0 && (
+                <Text style={styles.muted}>No NOTAMs</Text>
+              )}
+              {notams.map((n) => {
+                const expanded = expandedNotams.has(n.id)
+                return (
+                  <TouchableOpacity key={n.id} style={styles.notamRow} onPress={() => toggleNotam(n.id)}>
+                    <Text style={styles.notamId}>{n.id} {expanded ? '▴' : '▾'}</Text>
+                    {n.effective && (
+                      <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}</Text>
+                    )}
+                    {expanded && <Text style={styles.notamText}>{n.text}</Text>}
+                  </TouchableOpacity>
                 )
               })}
-            </Section>
-          )}
-
-          {/* Hours of operation */}
-          {hours.length > 0 && (
-            <Section title="Hours of Operation">
-              {hours.map((h, i) => (
-                <Row key={i} label={fmtHoursEntry(h)} value={h.remarks ?? ''} />
-              ))}
-            </Section>
-          )}
-
-          {/* Facilities */}
-          {(handling.length > 0 || passenger.length > 0) && (
-            <Section title="Facilities">
-              <Text style={styles.value}>
-                {[...handling.map(h => HANDLING_LABEL[h] ?? h),
-                  ...passenger.map(p => PASSENGER_LABEL[p] ?? p)].join(', ')}
-              </Text>
             </Section>
           )}
         </ScrollView>
       </View>
     </Modal>
+  )
+}
+
+function TabBtn({ label, active, onPress, dotColor, count }: {
+  label: string; active: boolean; onPress: () => void; dotColor?: string; count?: number
+}) {
+  return (
+    <TouchableOpacity style={[tabStyles.tab, active ? tabStyles.tabActive : null]} onPress={onPress}>
+      <View style={tabStyles.tabInner}>
+        {dotColor && <View style={[tabStyles.dot, { backgroundColor: dotColor }]} />}
+        <Text style={[tabStyles.tabTxt, active ? tabStyles.tabTxtActive : null]}>{label}</Text>
+        {count != null && (
+          <View style={tabStyles.count}>
+            <Text style={tabStyles.countTxt}>{count}</Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  )
+}
+
+function WxTile({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <View style={wxStyles.tile}>
+      <Text style={wxStyles.tileLabel}>{label}</Text>
+      <Text style={[wxStyles.tileValue, { color }]}>{value}</Text>
+    </View>
   )
 }
 
@@ -471,7 +750,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: theme.radiusLg,
     borderTopWidth:  1,
     borderColor:     theme.borderDefault,
-    maxHeight:       '70%',
+    maxHeight:       '80%',
   },
   header: {
     flexDirection:   'row',
@@ -480,6 +759,9 @@ const styles = StyleSheet.create({
     padding:         theme.space4,
     borderBottomWidth: 1,
     borderBottomColor: theme.borderSubtle,
+  },
+  headerLeft: {
+    flex: 1,
   },
   icao: {
     color:      theme.textPrimary,
@@ -495,6 +777,11 @@ const styles = StyleSheet.create({
   closeBtn: {
     padding: theme.space2,
   },
+  tabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: theme.borderSubtle,
+  },
   atcBadge: {
     alignSelf:       'flex-start',
     borderWidth:     1,
@@ -509,9 +796,10 @@ const styles = StyleSheet.create({
   },
   notamHint: {
     color:    theme.statusWarn,
-    fontSize: 9,
-    marginTop: 2,
-    maxWidth: 220,
+    fontSize: theme.textXs,
+    fontWeight: '600',
+    marginTop: 3,
+    maxWidth: 260,
   },
   closeTxt: {
     color:    theme.textMuted,
@@ -544,65 +832,253 @@ const styles = StyleSheet.create({
     fontSize: theme.textSm,
   },
   muted: {
-    color:    theme.textFaint,
-    fontSize: theme.textXs,
+    color:    theme.textSecondary,
+    fontSize: theme.textSm,
     fontStyle: 'italic',
-  },
-  wxBlock: {
-    gap: 2,
   },
   frBadge: {
     alignSelf:       'flex-start',
-    borderWidth:     1,
+    borderWidth:     1.5,
     borderRadius:    theme.radiusSm,
-    paddingHorizontal: theme.space2,
-    paddingVertical:   2,
-    marginBottom:    theme.space1,
+    paddingHorizontal: theme.space3,
+    paddingVertical:   4,
+    marginBottom:    theme.space2,
   },
   frTxt: {
-    fontSize:   theme.textXs,
+    fontSize:   theme.textMd,
     fontWeight: '800',
     letterSpacing: 1,
   },
   rawMetar: {
-    color:      theme.textFaint,
-    fontSize:   9,
-    marginTop:  theme.space1,
+    color:      theme.textSecondary,
+    fontSize:   12,
+    marginTop:  theme.space2,
     fontFamily: 'monospace',
+    lineHeight: 17,
   },
   tafToggle: {
-    marginTop: theme.space1,
+    marginTop: theme.space2,
   },
   tafToggleTxt: {
     color:    theme.accentBlue,
-    fontSize: theme.textXs,
+    fontSize: theme.textMd,
+    fontWeight: '700',
   },
   tafText: {
-    color:      theme.textMuted,
-    fontSize:   9,
+    color:      theme.textSecondary,
+    fontSize:   12,
     marginTop:  theme.space1,
     fontFamily: 'monospace',
-    lineHeight: 13,
+    lineHeight: 17,
   },
   notamRow: {
-    gap:          2,
-    paddingVertical: theme.space1,
+    gap:          3,
+    paddingVertical: theme.space2,
     borderBottomWidth: 1,
     borderBottomColor: theme.borderSubtle,
   },
   notamId: {
     color:      theme.accentBlue,
-    fontSize:   theme.textXs,
+    fontSize:   theme.textMd,
     fontWeight: '700',
   },
   notamDate: {
-    color:    theme.textFaint,
-    fontSize: 9,
+    color:    theme.textSecondary,
+    fontSize: theme.textXs,
   },
   notamText: {
-    color:    theme.textMuted,
+    color:    theme.textSecondary,
+    fontSize: theme.textSm,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+})
+
+const tabStyles = StyleSheet.create({
+  tab: {
+    flex: 1,
+    paddingVertical: theme.space2,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: theme.accentBlue,
+  },
+  tabInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  tabTxt: {
+    color:    theme.textSecondary,
+    fontSize: theme.textMd,
+    fontWeight: '700',
+  },
+  tabTxtActive: {
+    color: theme.textPrimary,
+  },
+  count: {
+    backgroundColor: theme.surfaceHover,
+    borderRadius: theme.radiusFull,
+    paddingHorizontal: 6,
+    minWidth: 18,
+    alignItems: 'center',
+  },
+  countTxt: {
+    color: theme.textPrimary,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+})
+
+const wxStyles = StyleSheet.create({
+  fallback: {
+    color:    theme.accentBlue,
+    fontSize: theme.textSm,
+    fontWeight: '600',
+    marginBottom: theme.space2,
+  },
+  gaugeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginVertical: theme.space2,
+  },
+  modelledNote: {
+    color:    theme.textSecondary,
     fontSize: theme.textXs,
-    lineHeight: 14,
+    fontStyle: 'italic',
+    marginBottom: theme.space2,
+  },
+  rwyPicker: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: theme.space2,
+  },
+  rwyPickerBtn: {
+    borderWidth: 1.5,
+    borderColor: theme.borderStrong,
+    borderRadius: theme.radiusSm,
+    paddingHorizontal: theme.space3,
+    paddingVertical: 5,
+  },
+  rwyPickerBtnActive: {
+    backgroundColor: theme.accentBlue,
+    borderColor: theme.accentBlue,
+  },
+  rwyPickerTxt: {
+    color: theme.textSecondary,
+    fontSize: theme.textMd,
+    fontWeight: '700',
+  },
+  rwyPickerTxtActive: {
+    color: '#fff',
+  },
+  tileGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: theme.space2,
+  },
+  tile: {
+    minWidth: 92,
+    backgroundColor: theme.surfaceHover,
+    borderRadius: theme.radiusSm,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  tileLabel: {
+    color: theme.textSecondary,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  tileValue: {
+    fontSize: theme.textLg,
+    fontWeight: '800',
+    marginTop: 3,
+  },
+  narrative: {
+    color: theme.textSecondary,
+    fontSize: theme.textSm,
+    lineHeight: 19,
+    marginTop: theme.space2,
+  },
+  tafBlock: {
+    marginTop: theme.space2,
+  },
+  tafPeriods: {
+    marginTop: theme.space2,
+    gap: 6,
+  },
+  tafPeriodsLabel: {
+    color: theme.textSecondary,
+    fontSize: theme.textXs,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  tafPeriod: {
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.borderSubtle,
+  },
+  tafPeriodHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  tafPeriodKind: {
+    color: theme.accentBlue,
+    fontSize: theme.textSm,
+    fontWeight: '700',
+  },
+  tafPeriodTime: {
+    color: theme.textSecondary,
+    fontSize: theme.textXs,
+  },
+  tafPeriodBody: {
+    color: theme.textPrimary,
+    fontSize: theme.textSm,
+    marginTop: 3,
+  },
+})
+
+const daStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  label: {
+    color: theme.textSecondary,
+    fontSize: theme.textSm,
+    fontWeight: '600',
+  },
+  input: {
+    borderWidth: 1.5,
+    borderColor: theme.borderStrong,
+    borderRadius: theme.radiusSm,
+    paddingHorizontal: theme.space2,
+    paddingVertical: 6,
+    color: theme.textPrimary,
+    fontSize: theme.textMd,
+    minWidth: 66,
+  },
+  result: {
+    fontSize: theme.textMd,
+    fontWeight: '800',
+    marginTop: theme.space2,
+  },
+  hint: {
+    color: theme.textSecondary,
+    fontSize: theme.textSm,
+    marginTop: theme.space2,
   },
 })
 
@@ -612,11 +1088,11 @@ const sectionStyles = StyleSheet.create({
     gap:       2,
   },
   title: {
-    color:         theme.textFaint,
-    fontSize:      theme.textXs,
-    fontWeight:    '600',
+    color:         theme.textSecondary,
+    fontSize:      theme.textSm,
+    fontWeight:    '700',
     letterSpacing: 0.8,
-    marginBottom:  theme.space1,
+    marginBottom:  theme.space2,
   },
 })
 
@@ -635,15 +1111,15 @@ const runwayStyles = StyleSheet.create({
   },
   desigTxt: {
     color:      theme.textPrimary,
-    fontSize:   theme.textXs,
+    fontSize:   theme.textSm,
     fontWeight: '700',
   },
   slash: {
-    color:    theme.textFaint,
-    fontSize: theme.textXs,
+    color:    theme.textSecondary,
+    fontSize: theme.textSm,
   },
   detail: {
-    color:    theme.textMuted,
+    color:    theme.textSecondary,
     fontSize: theme.textSm,
     marginLeft: theme.space2,
   },
@@ -651,10 +1127,11 @@ const runwayStyles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap:      'wrap',
     gap:           10,
-    marginTop:     2,
+    marginTop:     3,
   },
   windTxt: {
-    fontSize: 9,
+    fontSize: theme.textXs,
+    fontWeight: '600',
   },
 })
 
@@ -666,14 +1143,14 @@ const rowStyles = StyleSheet.create({
     gap:            theme.space2,
   },
   label: {
-    color:    theme.textMuted,
+    color:    theme.textSecondary,
     fontSize: theme.textSm,
     flex:     1,
   },
   value: {
     color:      theme.textPrimary,
     fontSize:   theme.textSm,
-    fontWeight: '500',
+    fontWeight: '600',
     textAlign:  'right',
     flexShrink: 1,
   },
