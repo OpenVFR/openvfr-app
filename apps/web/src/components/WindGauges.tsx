@@ -50,6 +50,15 @@ const R_TICK_OUT = 42
 const R_TICK_IN = 37
 const R_LABEL = 31
 const R_RWY = 33
+// Runway strip footprint, drawn as an actual rounded rectangle rather than
+// a bare line (see WindCompassGauge's runway block below).
+const RWY_LEN = 2 * R_RWY
+const RWY_WIDTH = 9
+// Designator labels sit INSIDE the strip near each end (like a real runway's
+// painted threshold numbers), not out past it -- far enough in from the tip
+// that the text box fits fully within RWY_WIDTH without poking past the
+// dial's own rim (R_DIAL), which R_RWY+7 previously did.
+const RWY_LABEL_R = R_RWY - 7
 
 export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: CompassProps) {
   const ticks = []
@@ -63,6 +72,12 @@ export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: C
   const showArrow = wind && !wind.calm && !wind.variable && wind.dirDeg != null
   const arrowFrom = showArrow ? pt(CX, CY, R_DIAL - 3, wind!.dirDeg!) : null
   const arrowTo   = showArrow ? pt(CX, CY, 9, wind!.dirDeg!) : null
+
+  // Runway designator label positions -- [0] sits at the reciprocal of
+  // headingDeg (its own geographic position, see the runway block's doc
+  // comment below), [1] at headingDeg itself.
+  const rwyLabel0Pos = runway ? pt(CX, CY, RWY_LABEL_R, runway.headingDeg + 180) : null
+  const rwyLabel1Pos = runway ? pt(CX, CY, RWY_LABEL_R, runway.headingDeg) : null
 
   return (
     <div className={css.compassWrap}>
@@ -78,10 +93,14 @@ export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: C
           )
         })}
 
-        {/* Runway bar, drawn as a diameter line at the active runway's heading.
-            headingDeg is threshold[0]'s OWN bearing field, which per the
-            data's convention (see MapView.tsx's buildCentrelines comment
-            and @open-vfr/shared/runwayWind) points AWAY from threshold[0]
+        {/* Runway -- drawn as an actual strip (filled rounded rectangle +
+            dashed centerline + threshold caps), not just a bare line, so it
+            reads as a runway at a glance the way a public METAR/TAF site's
+            own runway diagram does (own from-scratch shape, not a copy --
+            see file doc comment / AGENTS.md). headingDeg is threshold[0]'s
+            OWN bearing field, which per the data's convention (see
+            MapView.tsx's buildCentrelines comment and
+            @open-vfr/shared/runwayWind) points AWAY from threshold[0]
             itself, along the strip, toward the OTHER end -- e.g. threshold
             "12"'s own field is ~120-129° (the direction of travel USING
             runway 12), not where the 12 end physically sits. So threshold
@@ -92,24 +111,48 @@ export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: C
             actually is. */}
         {runway && (
           <>
-            <line
-              x1={pt(CX, CY, R_RWY, runway.headingDeg).x}
-              y1={pt(CX, CY, R_RWY, runway.headingDeg).y}
-              x2={pt(CX, CY, R_RWY, runway.headingDeg + 180).x}
-              y2={pt(CX, CY, R_RWY, runway.headingDeg + 180).y}
-              className={css.rwyBar}
-            />
+            {/* The rect/centerline are drawn horizontal (pointing along
+                compass bearing 90°/270°, i.e. east-west) before any
+                rotation -- unlike pt() (which bakes in a -90° offset so
+                angleDeg=0 means "up"/north), a plain SVG rotate() has no such
+                offset, so headingDeg itself would over-rotate by 90°
+                (leaving the strip 90° off from its own designator labels
+                below, which DO use pt()). Subtracting 90 here aligns it. */}
+            <g transform={`rotate(${runway.headingDeg - 90} ${CX} ${CY})`}>
+              <rect
+                x={CX - RWY_LEN / 2} y={CY - RWY_WIDTH / 2}
+                width={RWY_LEN} height={RWY_WIDTH} rx={1.5}
+                className={css.rwyBody}
+              />
+              <line
+                x1={CX - RWY_LEN / 2 + 4} y1={CY}
+                x2={CX + RWY_LEN / 2 - 4} y2={CY}
+                className={css.rwyCenterline}
+              />
+            </g>
+            {/* Rotated to match each designator's OWN landing/approach
+                heading -- i.e. exactly as it's painted on a real runway,
+                upright to a pilot flying that heading toward it (a
+                north-up viewer sees e.g. "18"'s digits upside-down, which
+                is correct -- that's how it looks from directly overhead
+                too). designators[0]'s own approach heading IS headingDeg
+                itself (see the doc comment above -- threshold[0]'s own
+                field already means "the direction of travel using that
+                runway"); designators[1]'s is the reciprocal. No -90°
+                correction needed here (unlike the rect above) -- SVG text
+                is already "upright"/north at zero rotation, matching this
+                file's angleDeg convention directly. */}
             <text
-              x={pt(CX, CY, R_RWY + 6, runway.headingDeg + 180).x}
-              y={pt(CX, CY, R_RWY + 6, runway.headingDeg + 180).y}
+              x={rwyLabel0Pos!.x} y={rwyLabel0Pos!.y}
+              transform={`rotate(${runway.headingDeg} ${rwyLabel0Pos!.x} ${rwyLabel0Pos!.y})`}
               className={`${css.rwyLabel} ${favoredEndDesignator === runway.designators[0] ? css.rwyLabelFavored : ''}`}
               textAnchor="middle" dominantBaseline="middle"
             >
               {runway.designators[0]}
             </text>
             <text
-              x={pt(CX, CY, R_RWY + 6, runway.headingDeg).x}
-              y={pt(CX, CY, R_RWY + 6, runway.headingDeg).y}
+              x={rwyLabel1Pos!.x} y={rwyLabel1Pos!.y}
+              transform={`rotate(${runway.headingDeg + 180} ${rwyLabel1Pos!.x} ${rwyLabel1Pos!.y})`}
               className={`${css.rwyLabel} ${favoredEndDesignator === runway.designators[1] ? css.rwyLabelFavored : ''}`}
               textAnchor="middle" dominantBaseline="middle"
             >
@@ -131,20 +174,16 @@ export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: C
           </g>
         )}
 
-        {wind?.calm && (
-          <text x={CX} y={CY} className={css.centerLabel} textAnchor="middle" dominantBaseline="middle">CALM</text>
-        )}
-        {wind?.variable && (
-          <text x={CX} y={CY} className={css.centerLabel} textAnchor="middle" dominantBaseline="middle">VRB</text>
-        )}
-        {!wind && (
-          <text x={CX} y={CY} className={css.centerLabel} textAnchor="middle" dominantBaseline="middle">—</text>
-        )}
       </svg>
+      {/* Direction only -- speed lives under the speed dial (WindSpeedGauge)
+          so the two captions don't both repeat the same number. Never a
+          word in its place ("CALM"/"VRB") -- when there's no direction to
+          show (calm/variable/no data), this is simply blank; the arrow's
+          own absence already communicates that. */}
       <div className={css.compassCaption}>
         {wind && !wind.calm && !wind.variable && wind.dirDeg != null
-          ? `${String(wind.dirDeg).padStart(3, '0')}° / ${wind.speedKt}kt${wind.gustKt ? ` G${wind.gustKt}` : ''}`
-          : wind?.calm ? 'Calm' : wind?.variable ? `Variable / ${wind.speedKt}kt` : 'No wind data'}
+          ? `${String(wind.dirDeg).padStart(3, '0')}°`
+          : ''}
       </div>
     </div>
   )

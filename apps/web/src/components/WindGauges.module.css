@@ -39,16 +39,19 @@
   fill: var(--text-faint);
 }
 
-.centerLabel {
-  font-size: 8px;
-  font-weight: 700;
-  fill: var(--text-faint);
+/* Runway strip drawn across the compass at its magnetic heading --
+   asphalt-grey rounded rectangle + dashed centerline, reads as an actual
+   runway rather than a bare direction line. */
+.rwyBody {
+  fill: #454b57;
+  stroke: #23262e;
+  stroke-width: 0.6;
 }
 
-/* Runway bar drawn across the compass at its magnetic heading */
-.rwyBar {
-  stroke: var(--text-secondary);
-  stroke-width: 4;
+.rwyCenterline {
+  stroke: #e8eaf0;
+  stroke-width: 0.8;
+  stroke-dasharray: 2.4 2;
   stroke-linecap: round;
 }
 
