@@ -1,2 +1,21 @@
 /*
   X-Robots-Tag: noindex, nofollow
+
+# BUG FIX: sw.js, index.html, and manifest.webmanifest must never be
+# edge/browser-cached, or the browser's own byte-comparison update check
+# (registration.update(), see UpdatePrompt.tsx) can be fooled into thinking
+# no update exists when one actually does -- a stale cached sw.js looks
+# byte-identical to what the browser last saw, so it never learns a new
+# version was deployed at all, and UpdatePrompt.tsx's toast silently never
+# fires (same class of bug as this whole session's tile-manifest caching
+# issue, just one layer up: the vehicle for shipping fixes, not the fixes'
+# own data). Cloudflare Pages' default asset-caching behavior isn't
+# guaranteed to leave these three files uncached without an explicit rule
+# (unlike hashed-filename JS/CSS chunks, which SHOULD be cached forever --
+# left alone here on purpose, not covered by this rule).
+/sw.js
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache

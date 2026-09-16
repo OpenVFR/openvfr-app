@@ -24,8 +24,18 @@ export default function UpdatePrompt() {
       // Then poll periodically so long-lived sessions and resumed PWAs catch
       // new deployments without requiring a manual reload.
       const id = setInterval(() => registration.update(), SW_POLL_INTERVAL_MS)
+      // BUG FIX: also check on tab visibility change, not just mount + the
+      // hourly poll. Found live: a real deploy went out, but the toast never
+      // appeared across several attempts -- the most common real-world
+      // trigger for "did something change while I wasn't looking" is
+      // switching back to an already-open tab (backgrounded during a
+      // deploy, or the exact repeated-refresh case that can each interrupt
+      // the previous check before it completes), and that had no explicit
+      // trigger here at all before now.
+      const onVisible = () => { if (document.visibilityState === 'visible') registration.update() }
+      document.addEventListener('visibilitychange', onVisible)
       // No cleanup needed — this component lives for the app lifetime.
-      return () => clearInterval(id)
+      return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible) }
     },
   })
 
