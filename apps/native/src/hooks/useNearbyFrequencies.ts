@@ -148,6 +148,16 @@ export function useNearbyFrequencies(position: GpsPosition | null): NearbyAerodr
   const [nearby,     setNearby]     = useState<NearbyAerodrome[]>([])
   const posRef = useRef(position)
   posRef.current = position
+  // Last-committed result signature -- skip setNearby() when the computed
+  // list is identical to what's already in state. Without this, every
+  // position tick (5 Hz while flying/simulating -- including alt/speed/hdg-
+  // only sim-stepper taps, which still emit a fresh position object with
+  // unchanged lat/lng) called setNearby(results) unconditionally with a
+  // brand-new array reference even when nothing actually changed, adding to
+  // the render-pressure class of "Maximum update depth exceeded" bug fixed
+  // for the four position-driven alert hooks (see usePositionAlerts.ts) but
+  // missed here -- found live via rapid sim-stepper taps, 2026-09-20.
+  const lastSigRef = useRef<string>('')
 
   useEffect(() => {
     loadOnce(setAerodromes)
@@ -156,7 +166,10 @@ export function useNearbyFrequencies(position: GpsPosition | null): NearbyAerodr
   }, [])
 
   useEffect(() => {
-    if (!position || aerodromes.length === 0) { setNearby([]); return }
+    if (!position || aerodromes.length === 0) {
+      if (lastSigRef.current !== '') { lastSigRef.current = ''; setNearby([]) }
+      return
+    }
     const pos = { lat: position.lat, lng: position.lng }
     const results: NearbyAerodrome[] = []
     for (const a of aerodromes) {
@@ -171,7 +184,11 @@ export function useNearbyFrequencies(position: GpsPosition | null): NearbyAerodr
       })
     }
     results.sort((a, b) => a.distNm - b.distNm)
-    setNearby(results)
+    const sig = results.map(r => `${r.icao}:${r.distNm.toFixed(2)}`).join('|')
+    if (sig !== lastSigRef.current) {
+      lastSigRef.current = sig
+      setNearby(results)
+    }
   }, [position, aerodromes])
 
   return nearby
