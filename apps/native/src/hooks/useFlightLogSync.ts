@@ -15,7 +15,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { flightLogs as flightLogsDb } from '../db'
 import type { FlightLogDocType } from '../types/db'
 import { API_BASE } from '../config'
-import { authHeaders } from '../utils/authClient'
+import { getSyncJwt } from '../utils/syncJwt'
 import { useAuthContext } from '../context/AuthContext'
 import { getLastSyncAt, setLastSyncAt } from './syncMeta'
 
@@ -35,27 +35,7 @@ interface ServerFlightLog {
   updated_at:     string
 }
 
-let _jwt:       string | null = null
-let _jwtExpiry: number        = 0
-
-async function getJwt(): Promise<string | null> {
-  if (_jwt && Date.now() < _jwtExpiry) return _jwt
-  try {
-    // Authorization header required -- see useRouteSync.ts's getJwt() for
-    // the full explanation (this endpoint 401s without it, always, since RN
-    // has no cookie jar to carry a session implicitly).
-    const res = await fetch(`${API_BASE}/api/auth/token`, {
-      headers: { Origin: API_BASE, ...(await authHeaders()) },
-    })
-    if (!res.ok) return null
-    const body = await res.json() as { jwt: string; expiresAt: number }
-    _jwt       = body.jwt
-    _jwtExpiry = (body.expiresAt - 60) * 1000
-    return _jwt
-  } catch {
-    return null
-  }
-}
+// JWT fetching moved to ../utils/syncJwt.ts (getSyncJwt) — shared across all sync hooks.
 
 async function restFetch(jwt: string): Promise<ServerFlightLog[]> {
   const res = await fetch(`${REST}/user_flight_logs?select=*&order=updated_at.desc`, {
@@ -67,7 +47,7 @@ async function restFetch(jwt: string): Promise<ServerFlightLog[]> {
 
 // user_id is required — RLS WITH CHECK (auth_user_id() = user_id) plus the
 // NOT NULL column with no default reject any insert missing it.
-async function restUpsert(jwt: string, userId: string, doc: FlightLogDocType): Promise<void> {
+async function restUpsert(jwt: string, userId: string, doc: FlightLogDocType): Promise<boolean> {
   const res = await fetch(`${REST}/user_flight_logs`, {
     method: 'POST',
     headers: {
@@ -90,14 +70,23 @@ async function restUpsert(jwt: string, userId: string, doc: FlightLogDocType): P
       updated_at:     new Date(doc.updatedAt).toISOString(),
     }),
   })
-  if (!res.ok) console.warn('[useFlightLogSync] restUpsert failed', res.status, await res.text().catch(() => ''))
+  if (!res.ok) {
+    console.warn('[useFlightLogSync] restUpsert failed', res.status, await res.text().catch(() => ''))
+    return false
+  }
+  return true
 }
 
-async function restDelete(jwt: string, id: string): Promise<void> {
-  await fetch(`${REST}/user_flight_logs?id=eq.${encodeURIComponent(id)}`, {
+async function restDelete(jwt: string, id: string): Promise<boolean> {
+  const res = await fetch(`${REST}/user_flight_logs?id=eq.${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${jwt}` },
   })
+  if (!res.ok) {
+    console.warn('[useFlightLogSync] restDelete failed', res.status, await res.text().catch(() => ''))
+    return false
+  }
+  return true
 }
 
 export type SyncState = 'idle' | 'syncing' | 'error' | 'offline'
@@ -122,7 +111,7 @@ export function useFlightLogSync(authenticated: boolean) {
   const pull = useCallback(async () => {
     if (!authenticated) { await refresh(); return }
     setSyncState('syncing')
-    const jwt = await getJwt()
+    const jwt = await getSyncJwt()
     if (!jwt) { setSyncState('offline'); await refresh(); return }
 
     try {
@@ -186,9 +175,14 @@ export function useFlightLogSync(authenticated: boolean) {
     pushedRef.current.add(doc.id)
     await refresh()
     if (!authenticated || !userId) return
-    const jwt = await getJwt()
-    if (!jwt) return
-    try { await restUpsert(jwt, userId, doc) } catch { /* offline-safe; will retry next login pull */ }
+    const jwt = await getSyncJwt()
+    if (!jwt) { setSyncState('error'); return }
+    try {
+      const ok = await restUpsert(jwt, userId, doc)
+      setSyncState(ok ? 'idle' : 'error')
+    } catch {
+      setSyncState('offline')  // offline-safe; will retry next login pull
+    }
   }, [authenticated, refresh, userId])
 
   // Delete a completed log locally + (best-effort) on the server. Local
@@ -203,9 +197,14 @@ export function useFlightLogSync(authenticated: boolean) {
     await flightLogsDb.delete(id)
     await refresh()
     if (!authenticated) return
-    const jwt = await getJwt()
-    if (!jwt) return
-    try { await restDelete(jwt, id) } catch { /* offline-safe; reconciled on next pull */ }
+    const jwt = await getSyncJwt()
+    if (!jwt) { setSyncState('error'); return }
+    try {
+      const ok = await restDelete(jwt, id)
+      setSyncState(ok ? 'idle' : 'error')
+    } catch {
+      setSyncState('offline')  // offline-safe; reconciled on next pull
+    }
   }, [authenticated, refresh])
 
   return { syncState, logs, refresh, pull, pushLog, deleteLog }

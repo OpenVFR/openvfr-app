@@ -17,7 +17,7 @@
  * PostgREST requests use `Authorization: Bearer <jwt>` from useAuth.
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AuthState } from './useAuth'
 import { getDb } from '../db'
 import { API_BASE_URL } from '../utils/env'
@@ -33,6 +33,38 @@ import type {
 // PostgREST base URL (served at /rest/ via nginx)
 // ---------------------------------------------------------------------------
 const REST = `${API_BASE_URL}/rest`
+
+// ---------------------------------------------------------------------------
+// Push-result pub/sub — restUpsert/restDelete report their own success/
+// failure here so useSyncState() can expose it to the UI without threading
+// a callback through every one of their ~16 call sites below (each already
+// fire-and-forget `void restUpsert(...)`, several with multi-line object-
+// literal arguments — safer to have the two shared helpers self-report than
+// to touch every call site individually).
+//
+// Fixes the same silent-push-failure class already found and fixed on
+// native (see apps/native/src/utils/syncJwt.ts's doc comment): previously a
+// failed restUpsert/restDelete only ever hit console.warn, with no visible
+// UI signal anywhere on web that a save didn't actually reach the server.
+// ---------------------------------------------------------------------------
+export type SyncPushState = 'idle' | 'error' | 'offline'
+const _syncListeners = new Set<(s: SyncPushState) => void>()
+function reportSyncResult(ok: boolean): void {
+  const s: SyncPushState = ok ? 'idle' : 'error'
+  for (const l of _syncListeners) l(s)
+}
+
+/** Reactive last-push-result indicator — 'error' after any restUpsert/restDelete
+ *  failure, back to 'idle' once a subsequent push succeeds. Independent of
+ *  useSync(auth)'s own pull lifecycle; safe to call from any component. */
+export function useSyncState(): SyncPushState {
+  const [state, setState] = useState<SyncPushState>('idle')
+  useEffect(() => {
+    _syncListeners.add(setState)
+    return () => { _syncListeners.delete(setState) }
+  }, [])
+  return state
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -54,30 +86,50 @@ async function restUpsert(
   const url = onConflict
     ? `${REST}/${table}?on_conflict=${encodeURIComponent(onConflict)}`
     : `${REST}/${table}`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization:  `Bearer ${jwt}`,
-      'Content-Type': 'application/json',
-      Prefer: prefer,
-    },
-    body: JSON.stringify(row),
-  })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    console.warn(`[useSync] upsert ${table} failed ${res.status}:`, text)
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization:  `Bearer ${jwt}`,
+        'Content-Type': 'application/json',
+        Prefer: prefer,
+      },
+      body: JSON.stringify(row),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      console.warn(`[useSync] upsert ${table} failed ${res.status}:`, text)
+      reportSyncResult(false)
+      return
+    }
+    reportSyncResult(true)
+  } catch (err) {
+    // Network-level failure (offline, DNS, etc.) -- every existing call site
+    // is fire-and-forget (`void restUpsert(...)`), so without this try/catch
+    // a thrown fetch() surfaces only as an unhandled promise rejection, not
+    // a push-result signal useSyncState() can show.
+    console.warn(`[useSync] upsert ${table} threw:`, err instanceof Error ? err.message : String(err))
+    for (const l of _syncListeners) l('offline')
   }
 }
 
 /** DELETE a row from a PostgREST table, filtered by an arbitrary column (defaults to 'id'). */
 async function restDelete(jwt: string, table: string, value: string, column = 'id'): Promise<void> {
-  const res = await fetch(`${REST}/${table}?${column}=eq.${encodeURIComponent(value)}`, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${jwt}` },
-  })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    console.warn(`[useSync] delete ${table} failed ${res.status}:`, text)
+  try {
+    const res = await fetch(`${REST}/${table}?${column}=eq.${encodeURIComponent(value)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${jwt}` },
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      console.warn(`[useSync] delete ${table} failed ${res.status}:`, text)
+      reportSyncResult(false)
+      return
+    }
+    reportSyncResult(true)
+  } catch (err) {
+    console.warn(`[useSync] delete ${table} threw:`, err instanceof Error ? err.message : String(err))
+    for (const l of _syncListeners) l('offline')
   }
 }
 

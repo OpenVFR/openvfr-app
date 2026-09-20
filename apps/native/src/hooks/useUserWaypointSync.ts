@@ -13,7 +13,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { waypoints as waypointsDb } from '../db'
 import type { UserWaypointDocType } from '../types/db'
 import { API_BASE } from '../config'
-import { authHeaders } from '../utils/authClient'
+import { getSyncJwt } from '../utils/syncJwt'
 import { useAuthContext } from '../context/AuthContext'
 import { getLastSyncAt, setLastSyncAt } from './syncMeta'
 
@@ -28,27 +28,7 @@ interface ServerWaypoint {
   updated_at: string
 }
 
-let _jwt:       string | null = null
-let _jwtExpiry: number        = 0
-
-async function getJwt(): Promise<string | null> {
-  if (_jwt && Date.now() < _jwtExpiry) return _jwt
-  try {
-    // Authorization header required -- see useRouteSync.ts's getJwt() for
-    // the full explanation (this endpoint 401s without it, always, since RN
-    // has no cookie jar to carry a session implicitly).
-    const res = await fetch(`${API_BASE}/api/auth/token`, {
-      headers: { Origin: API_BASE, ...(await authHeaders()) },
-    })
-    if (!res.ok) return null
-    const body = await res.json() as { jwt: string; expiresAt: number }
-    _jwt       = body.jwt
-    _jwtExpiry = (body.expiresAt - 60) * 1000
-    return _jwt
-  } catch {
-    return null
-  }
-}
+// JWT fetching moved to ../utils/syncJwt.ts (getSyncJwt) — shared across all sync hooks.
 
 async function restFetch(jwt: string): Promise<ServerWaypoint[]> {
   const res = await fetch(`${REST}/user_waypoints?select=*&order=updated_at.desc`, {
@@ -63,7 +43,7 @@ async function restFetch(jwt: string): Promise<ServerWaypoint[]> {
 // user_id is required — the table's RLS WITH CHECK (auth_user_id() = user_id)
 // rejects (silently, since we swallow errors) any insert missing it, and the
 // column itself is NOT NULL with no default, so omitting it always 400s.
-async function restUpsert(jwt: string, userId: string, doc: UserWaypointDocType): Promise<void> {
+async function restUpsert(jwt: string, userId: string, doc: UserWaypointDocType): Promise<boolean> {
   const res = await fetch(`${REST}/user_waypoints?on_conflict=id`, {
     method: 'POST',
     headers: {
@@ -81,14 +61,23 @@ async function restUpsert(jwt: string, userId: string, doc: UserWaypointDocType)
       updated_at: new Date(doc.updatedAt).toISOString(),
     }),
   })
-  if (!res.ok) console.warn('[useUserWaypointSync] restUpsert failed', res.status, await res.text().catch(() => ''))
+  if (!res.ok) {
+    console.warn('[useUserWaypointSync] restUpsert failed', res.status, await res.text().catch(() => ''))
+    return false
+  }
+  return true
 }
 
-async function restDelete(jwt: string, id: string): Promise<void> {
-  await fetch(`${REST}/user_waypoints?id=eq.${encodeURIComponent(id)}`, {
+async function restDelete(jwt: string, id: string): Promise<boolean> {
+  const res = await fetch(`${REST}/user_waypoints?id=eq.${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${jwt}` },
   })
+  if (!res.ok) {
+    console.warn('[useUserWaypointSync] restDelete failed', res.status, await res.text().catch(() => ''))
+    return false
+  }
+  return true
 }
 
 export type SyncState = 'idle' | 'syncing' | 'error' | 'offline'
@@ -106,7 +95,7 @@ export function useUserWaypointSync(authenticated: boolean) {
 
   const pull = useCallback(async () => {
     setSyncState('syncing')
-    const jwt = await getJwt()
+    const jwt = await getSyncJwt()
     if (!jwt) { setSyncState('offline'); await refresh(); return }
 
     try {
@@ -162,18 +151,28 @@ export function useUserWaypointSync(authenticated: boolean) {
     await waypointsDb.upsert(doc)
     await refresh()
     if (!authenticated || !userId) return
-    const jwt = await getJwt()
-    if (!jwt) return
-    try { await restUpsert(jwt, userId, doc) } catch { /* offline-safe */ }
+    const jwt = await getSyncJwt()
+    if (!jwt) { setSyncState('error'); return }
+    try {
+      const ok = await restUpsert(jwt, userId, doc)
+      setSyncState(ok ? 'idle' : 'error')
+    } catch {
+      setSyncState('offline')
+    }
   }, [authenticated, refresh, userId])
 
   const deleteWaypoint = useCallback(async (id: string) => {
     await waypointsDb.delete(id)
     await refresh()
     if (!authenticated) return
-    const jwt = await getJwt()
-    if (!jwt) return
-    try { await restDelete(jwt, id) } catch { /* offline-safe */ }
+    const jwt = await getSyncJwt()
+    if (!jwt) { setSyncState('error'); return }
+    try {
+      const ok = await restDelete(jwt, id)
+      setSyncState(ok ? 'idle' : 'error')
+    } catch {
+      setSyncState('offline')
+    }
   }, [authenticated, refresh])
 
   return { syncState, waypoints, pull, saveWaypoint, deleteWaypoint }

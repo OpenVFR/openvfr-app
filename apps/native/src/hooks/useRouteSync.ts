@@ -9,7 +9,10 @@
  *   2. Push: after every local route change (save/rename/delete), upsert PostgREST
  *
  * JWT:  GET /api/auth/token (our Hono endpoint) returns a short-lived PostgREST
- *       JWT signed with BETTER_AUTH_SECRET. Cached for 55 min.
+ *       JWT signed with BETTER_AUTH_SECRET. Fetched via the shared, cached
+ *       getSyncJwt() (see ../utils/syncJwt.ts) -- shared across all sync
+ *       hooks, with a session-refresh retry baked in (see that file's doc
+ *       comment for the silent-failure bug this fixes).
  *
  * PostgREST table: user_routes
  *   id, user_id, name, waypoints (jsonb), leg_overrides (jsonb), updated_at
@@ -20,7 +23,7 @@ import { AppState } from 'react-native'
 import { routes as routeDb } from '../db'
 import type { RouteDocType } from '../types/db'
 import { API_BASE } from '../config'
-import { authHeaders } from '../utils/authClient'
+import { getSyncJwt } from '../utils/syncJwt'
 import { useAuthContext } from '../context/AuthContext'
 import { getLastSyncAt, setLastSyncAt } from './syncMeta'
 
@@ -37,30 +40,7 @@ interface ServerRoute {
   updated_at:    string
 }
 
-// JWT cache — avoid re-fetching on every operation
-let _jwt:       string | null = null
-let _jwtExpiry: number        = 0
-
-async function getJwt(): Promise<string | null> {
-  if (_jwt && Date.now() < _jwtExpiry) return _jwt
-  try {
-    // Authorization header required: this endpoint requires an existing
-    // session (auth.api.getSession() server-side), and React Native's fetch
-    // has no browser-style cookie jar to carry one implicitly -- without
-    // this, the call always 401s (silently treated as "offline" by every
-    // caller of getJwt(), indistinguishable from a real connectivity issue).
-    const res = await fetch(`${API_BASE}/api/auth/token`, {
-      headers: { Origin: API_BASE, ...(await authHeaders()) },
-    })
-    if (!res.ok) return null
-    const body = await res.json() as { jwt: string; expiresAt: number }
-    _jwt       = body.jwt
-    _jwtExpiry = (body.expiresAt - 60) * 1000  // expire 60 s before actual expiry
-    return _jwt
-  } catch {
-    return null
-  }
-}
+// JWT fetching moved to ../utils/syncJwt.ts (getSyncJwt) — shared across all sync hooks.
 
 async function restFetch(jwt: string): Promise<ServerRoute[]> {
   const res = await fetch(`${REST}/user_routes?select=*&order=updated_at.desc`, {
@@ -72,7 +52,7 @@ async function restFetch(jwt: string): Promise<ServerRoute[]> {
 
 // user_id is required — RLS WITH CHECK (auth_user_id() = user_id) plus the
 // NOT NULL column with no default reject any insert missing it.
-async function restUpsert(jwt: string, userId: string, route: RouteDocType): Promise<void> {
+async function restUpsert(jwt: string, userId: string, route: RouteDocType): Promise<boolean> {
   const res = await fetch(`${REST}/user_routes?on_conflict=id`, {
     method: 'POST',
     headers: {
@@ -90,14 +70,23 @@ async function restUpsert(jwt: string, userId: string, route: RouteDocType): Pro
       updated_at:   new Date(route.updatedAt).toISOString(),
     }),
   })
-  if (!res.ok) console.warn('[useRouteSync] restUpsert failed', res.status, await res.text().catch(() => ''))
+  if (!res.ok) {
+    console.warn('[useRouteSync] restUpsert failed', res.status, await res.text().catch(() => ''))
+    return false
+  }
+  return true
 }
 
-async function restDelete(jwt: string, id: string): Promise<void> {
-  await fetch(`${REST}/user_routes?id=eq.${encodeURIComponent(id)}`, {
+async function restDelete(jwt: string, id: string): Promise<boolean> {
+  const res = await fetch(`${REST}/user_routes?id=eq.${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${jwt}` },
   })
+  if (!res.ok) {
+    console.warn('[useRouteSync] restDelete failed', res.status, await res.text().catch(() => ''))
+    return false
+  }
+  return true
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -117,7 +106,7 @@ export function useRouteSync(authenticated: boolean) {
   const pull = useCallback(async () => {
     if (!authenticated) return
     setSyncState('syncing')
-    const jwt = await getJwt()
+    const jwt = await getSyncJwt()
     if (!jwt) { setSyncState('offline'); return }
 
     try {
@@ -186,16 +175,26 @@ export function useRouteSync(authenticated: boolean) {
 
   const pushRoute = useCallback(async (route: RouteDocType) => {
     if (!authenticated || !userId) return
-    const jwt = await getJwt()
-    if (!jwt) return
-    try { await restUpsert(jwt, userId, route) } catch { /* offline-safe */ }
+    const jwt = await getSyncJwt()
+    if (!jwt) { setSyncState('error'); return }
+    try {
+      const ok = await restUpsert(jwt, userId, route)
+      setSyncState(ok ? 'idle' : 'error')
+    } catch {
+      setSyncState('offline')  // network-level failure, not an auth/server error
+    }
   }, [authenticated, userId])
 
   const deleteRoute = useCallback(async (id: string) => {
     if (!authenticated) return
-    const jwt = await getJwt()
-    if (!jwt) return
-    try { await restDelete(jwt, id) } catch { /* offline-safe */ }
+    const jwt = await getSyncJwt()
+    if (!jwt) { setSyncState('error'); return }
+    try {
+      const ok = await restDelete(jwt, id)
+      setSyncState(ok ? 'idle' : 'error')
+    } catch {
+      setSyncState('offline')
+    }
   }, [authenticated])
 
   return { syncState, pull, pushRoute, deleteRoute }
