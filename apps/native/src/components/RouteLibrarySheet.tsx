@@ -16,6 +16,8 @@ import * as FileSystem from 'expo-file-system'
 import * as DocumentPicker from 'expo-document-picker'
 import * as Sharing from 'expo-sharing'
 import { routeToGpx, gpxToRoute } from '@open-vfr/shared/gpx'
+import { isRouteDirty } from '@open-vfr/shared/routeDirty'
+import { resolveSaveRouteId } from '@open-vfr/shared/resolveSaveRouteId'
 import { routes as routeDb } from '../db'
 import type { RouteDocType, LegOverride, AircraftProfileDocType } from '../types/db'
 import type { RouteWaypoint } from '../utils/routeCalc'
@@ -33,6 +35,9 @@ interface Props {
    *  stored aircraftId into a display badge (name/registration or
    *  "missing" if the profile has since been deleted). */
   aircraftProfiles?: AircraftProfileDocType[]
+  /** Id of the saved route the working route was loaded from, or '' if untitled. */
+  activeRouteId: string
+  onActiveRouteIdChange: (id: string) => void
   syncState:    SyncState
   onLoad:       (route: RouteDocType) => void
   onPush:       (route: RouteDocType) => void
@@ -53,16 +58,30 @@ function fmtDate(ts: number): string {
   return `${d.getDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]} ${d.getFullYear()}`
 }
 
-export function RouteLibrarySheet({ waypoints, legOverrides, aircraftId, aircraftProfiles = [], syncState, onLoad, onPush, onDelete, onRefreshCloud }: Props) {
+export function RouteLibrarySheet({
+  waypoints, legOverrides, aircraftId, aircraftProfiles = [],
+  activeRouteId, onActiveRouteIdChange,
+  syncState, onLoad, onPush, onDelete, onRefreshCloud,
+}: Props) {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const [open,     setOpen]     = useState(false)
   const [routes,   setRoutes]   = useState<RouteDocType[]>([])
   const [saving,   setSaving]   = useState(false)
   const [saveName, setSaveName] = useState('')
+  const [saveAsOpen, setSaveAsOpen] = useState(false)
   const [renaming, setRenaming] = useState<string | null>(null)  // route id
   const [renameTxt, setRenameTxt] = useState('')
   const [refreshing, setRefreshing] = useState(false)
+
+  // The saved-route row the working route is currently linked to, if any —
+  // undefined both for "never linked" and for "was linked but that row is
+  // gone" (e.g. deleted from another device). Mirrors web's RouteLibrary.tsx.
+  const linkedRoute = activeRouteId ? routes.find(r => r.id === activeRouteId) : undefined
+  const dirty = isRouteDirty(
+    { waypoints, legOverrides, aircraftId },
+    linkedRoute ? { waypoints: linkedRoute.waypoints, legOverrides: linkedRoute.legOverrides ?? [], aircraftId: linkedRoute.aircraftId ?? '' } : undefined,
+  )
 
   // Transient "switched aircraft" confirmation — mirrors web's
   // RouteLibrary.tsx. Loading a route whose stored aircraft differs from
@@ -104,18 +123,18 @@ export function RouteLibrarySheet({ waypoints, legOverrides, aircraftId, aircraf
     if (syncState === 'idle' && open) loadRoutes()
   }, [syncState, open, loadRoutes])
 
+  // ── Save current route (untitled route — creates or overwrites by name) ──
   const handleSave = async () => {
     const name = saveName.trim() || `Route ${new Date().toLocaleDateString()}`
-    // Reuse an existing row's id when a route with this exact name is
-    // already in the library (mirrors web's useRouteDb.saveRoute fix) --
-    // otherwise every Save with an unchanged name inserted a brand new
+    // Id-resolution decision shared with web (see @open-vfr/shared/resolveSaveRouteId)
+    // -- matches an existing row by exact name, otherwise a fresh uuid.
+    // Without this, every Save with an unchanged name inserted a brand new
     // UUID-keyed row instead of updating the one the user is looking at.
     // Confirmed live 2026-09-13: repeated Save clicks created multiple
     // synced duplicates visible on both native and web.
-    const existing = routes.find((r) => r.name === name)
+    const id = resolveSaveRouteId(undefined, name, routes, 'current') ?? Crypto.randomUUID()
     const doc: RouteDocType = {
-      id:           existing?.id ?? Crypto.randomUUID(),
-      name,
+      id, name,
       waypoints:    waypoints,
       legOverrides: legOverrides,
       aircraftId,
@@ -123,13 +142,50 @@ export function RouteLibrarySheet({ waypoints, legOverrides, aircraftId, aircraf
     }
     await routeDb.upsert(doc)
     onPush(doc)
+    onActiveRouteIdChange(id)
     setSaveName('')
     setSaving(false)
     loadRoutes()
   }
 
+  // ── Save current route in place (linked route — updates the same row) ────
+  const handleSaveInPlace = async () => {
+    if (!linkedRoute) return
+    const doc: RouteDocType = {
+      id: linkedRoute.id,
+      name: linkedRoute.name,
+      waypoints, legOverrides, aircraftId,
+      updatedAt: Date.now(),
+    }
+    await routeDb.upsert(doc)
+    onPush(doc)
+    loadRoutes()
+  }
+
+  // ── Save As… (linked route — always creates a distinct new row, even if
+  // the typed name happens to match the one being copied from) ─────────────
+  const openSaveAs = () => {
+    setSaveName(linkedRoute ? `${linkedRoute.name} (copy)` : `Route ${new Date().toLocaleDateString()}`)
+    setSaveAsOpen(true)
+  }
+
+  const handleSaveAs = async () => {
+    const name = saveName.trim() || `Route ${new Date().toLocaleDateString()}`
+    const id = Crypto.randomUUID()
+    const doc: RouteDocType = {
+      id, name, waypoints, legOverrides, aircraftId,
+      updatedAt: Date.now(),
+    }
+    await routeDb.upsert(doc)
+    onPush(doc)
+    onActiveRouteIdChange(id)
+    setSaveAsOpen(false)
+    loadRoutes()
+  }
+
   const handleLoad = (route: RouteDocType) => {
     onLoad(route)
+    onActiveRouteIdChange(route.id)
     if (route.aircraftId && route.aircraftId !== aircraftId) {
       const p = aircraftProfiles.find(p => p.id === route.aircraftId)
       setSwitchMsg(p ? `Switched to ${p.registration.trim() || p.name}` : null)
@@ -152,6 +208,10 @@ export function RouteLibrarySheet({ waypoints, legOverrides, aircraftId, aircraf
   const handleDelete = async (route: RouteDocType) => {
     await routeDb.delete(route.id)
     onDelete(route.id)
+    // Unlink the working route if it was pointing at the row just deleted —
+    // otherwise "Editing: <name>" would keep showing a name that no longer
+    // resolves to anything, with no way to Save in place.
+    if (route.id === activeRouteId) onActiveRouteIdChange('')
     loadRoutes()
   }
 
@@ -236,7 +296,48 @@ export function RouteLibrarySheet({ waypoints, legOverrides, aircraftId, aircraf
           {/* Save current route */}
           {waypoints.length >= 2 && (
             <View style={styles.saveSection}>
-              {!saving ? (
+              {linkedRoute ? (
+                <>
+                  <View style={styles.editingRow}>
+                    <Text style={styles.editingLabel} numberOfLines={1}>
+                      Editing: <Text style={styles.editingName}>{linkedRoute.name}</Text>
+                      {dirty ? <Text style={styles.dirtyDot}> ●</Text> : null}
+                    </Text>
+                    <View style={styles.editingActions}>
+                      <TouchableOpacity
+                        style={[styles.editBtn, !dirty && styles.editBtnDisabled]}
+                        onPress={handleSaveInPlace}
+                        disabled={!dirty}
+                      >
+                        <Text style={[styles.editBtnTxt, !dirty && styles.editBtnTxtDisabled]}>Save</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.editBtn} onPress={openSaveAs}>
+                        <Text style={styles.editBtnTxt}>Save As…</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  {saveAsOpen && (
+                    <View style={styles.saveRow}>
+                      <TextInput
+                        style={styles.saveInput}
+                        value={saveName}
+                        onChangeText={setSaveName}
+                        placeholder="New route name"
+                        placeholderTextColor={theme.textFaint}
+                        autoFocus
+                        returnKeyType="done"
+                        onSubmitEditing={handleSaveAs}
+                      />
+                      <TouchableOpacity style={styles.saveConfirm} onPress={handleSaveAs}>
+                        <Text style={styles.saveConfirmTxt}>Save</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => setSaveAsOpen(false)}>
+                        <Ionicons name="close" size={16} color={theme.textMuted} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
+              ) : !saving ? (
                 <TouchableOpacity style={styles.saveBtn} onPress={() => setSaving(true)}>
                   <Ionicons name="save-outline" size={14} color={theme.accentBlue} />
                   <Text style={styles.saveBtnTxt}>Save current route…</Text>
@@ -391,6 +492,20 @@ function makeStyles(theme: ScaledTheme) {
   },
   saveBtn: { flexDirection: 'row', alignItems: 'center', gap: theme.space1, paddingVertical: 4 },
   saveBtnTxt: { color: theme.accentBlue, fontSize: theme.textSm },
+  editingRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space2,
+  },
+  editingLabel: { flex: 1, color: theme.textFaint, fontSize: theme.textXs },
+  editingName: { color: theme.textPrimary, fontWeight: '500' },
+  dirtyDot: { color: theme.accentBlue },
+  editingActions: { flexDirection: 'row', gap: theme.space2, flexShrink: 0 },
+  editBtn: {
+    backgroundColor: theme.surfaceOverlay, borderWidth: 1, borderColor: theme.borderDefault,
+    borderRadius: theme.radiusSm, paddingHorizontal: theme.space2, paddingVertical: 4,
+  },
+  editBtnDisabled: { opacity: 0.4 },
+  editBtnTxt: { color: theme.accentBlue, fontSize: theme.textXs, fontWeight: '600' },
+  editBtnTxtDisabled: { color: theme.textMuted },
   saveRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space2 },
   saveInput: {
     flex: 1, backgroundColor: theme.surfaceOverlay, borderWidth: 1,

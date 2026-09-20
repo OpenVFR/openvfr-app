@@ -78,6 +78,9 @@ interface Props {
   onClear: () => void
   onReplace: (wps: RouteWaypoint[]) => void
   onLoadRoute: (wps: RouteWaypoint[], legOverrides: LegOverride[], aircraftId: string) => void
+  /** Id of the saved route the working route was loaded from, or '' if untitled. */
+  activeRouteId: string
+  onActiveRouteIdChange: (id: string) => void
   onSetLegOverride: (idx: number, override: LegOverride) => void
   onSetWaypointNote: (wpIdx: number, note: string) => void
   // Add to route (used by WhatsHere + UserWaypoints)
@@ -180,7 +183,7 @@ export default function SideDrawer({
   checking,
   onRefresh,
   waypoints, legOverrides, planningMode, onTogglePlanningMode,
-  onUndo, onClear, onReplace, onLoadRoute, onSetLegOverride, onSetWaypointNote,
+  onUndo, onClear, onReplace, onLoadRoute, activeRouteId, onActiveRouteIdChange, onSetLegOverride, onSetWaypointNote,
   onAddToRoute,
   selectedAircraftId, selectedAircraftProfile, onSelectAircraft,
   onFlyTo,
@@ -457,6 +460,8 @@ export default function SideDrawer({
                   currentAircraftId={selectedAircraftId ?? ''}
                   onLoad={onLoadRoute}
                   onClear={onClear}
+                  activeRouteId={activeRouteId}
+                  onActiveRouteIdChange={onActiveRouteIdChange}
                 />
               </div>
             )}

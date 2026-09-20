@@ -8,6 +8,51 @@
   gap: 6px;
 }
 
+/* ── Cloud sync push-failure warning ─────────────────────────────────── */
+.syncWarning {
+  color: var(--accent-red);
+  background: rgba(252, 165, 165, 0.10);
+  border: 1px solid rgba(252, 165, 165, 0.25);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 11px;
+  margin: 0;
+}
+
+/* ── Editing indicator (linked route) ────────────────────────────────────── */
+.editingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.editingLabel {
+  color: var(--text-faint);
+  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editingName {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.dirtyDot {
+  color: var(--accent-blue);
+  font-size: 9px;
+  margin-left: 5px;
+}
+
+.editingActions {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
 /* ── Save row ─────────────────────────────────────────────────────────────── */
 .saveRow {
   display: flex;

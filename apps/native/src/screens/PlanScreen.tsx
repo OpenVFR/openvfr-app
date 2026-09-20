@@ -88,7 +88,7 @@ export function PlanScreen() {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const insets = useSafeAreaInsets()
-  const { waypoints, legOverrides, removeWaypoint, clearRoute, setWaypoints, moveWaypoint, reverseRoute, undoLast, setLegOverride } = useRouteContext()
+  const { waypoints, legOverrides, removeWaypoint, clearRoute, setWaypoints, moveWaypoint, reverseRoute, undoLast, setLegOverride, activeRouteId, setActiveRouteId } = useRouteContext()
   const { settings, update } = useSettingsContext()
   const { state: authState } = useAuthContext()
   const authenticated = authState.status === 'authenticated'
@@ -332,6 +332,8 @@ export function PlanScreen() {
               legOverrides={legOverrides}
               aircraftId={selectedId ?? ''}
               aircraftProfiles={profiles}
+              activeRouteId={activeRouteId}
+              onActiveRouteIdChange={setActiveRouteId}
               syncState={syncState}
               onLoad={(route) => {
                 setWaypoints(route.waypoints, route.legOverrides)

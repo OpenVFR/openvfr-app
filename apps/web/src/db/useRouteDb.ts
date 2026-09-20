@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride, RouteDocType } from './index'
 import { getDb } from './index'
+import { resolveSaveRouteId } from '@open-vfr/shared/resolveSaveRouteId'
 
 const ROUTE_ID = 'current'
 const LS_KEY   = 'openvfr.route'
@@ -11,21 +12,34 @@ type OverrideSetter = (updater: LegOverride[]  | ((prev: LegOverride[])  => LegO
 
 /**
  * Persistent route hook backed by RxDB/IndexedDB.
- * Returns [waypoints, setWaypoints, legOverrides, setLegOverrides].
+ * Returns [waypoints, setWaypoints, legOverrides, setLegOverrides, loadRoute,
+ * aircraftId, setAircraftId, activeRouteId, setActiveRouteId].
  * Drops in as a replacement for useState; migrates from localStorage on first use.
  */
-export function usePersistedRoute(): [RouteWaypoint[], WaypointSetter, LegOverride[], OverrideSetter, (wps: RouteWaypoint[], ovr: LegOverride[], aircraftId?: string) => void, string, (id: string) => void] {
+export function usePersistedRoute(): [
+  RouteWaypoint[], WaypointSetter, LegOverride[], OverrideSetter,
+  (wps: RouteWaypoint[], ovr: LegOverride[], aircraftId?: string, routeId?: string) => void,
+  string, (id: string) => void,
+  string, (id: string) => void,
+] {
   const [waypoints, setWaypointsState]       = useState<RouteWaypoint[]>([])
   const [legOverrides, setLegOverridesState] = useState<LegOverride[]>([])
   const [aircraftId, setAircraftIdState]     = useState<string>('')
+  // Id of the saved route (routes collection row) the working route was
+  // loaded from, or '' if untitled/not linked to any saved row. Lets the
+  // Route Library's "Save" button update that same row instead of matching
+  // by name — see RouteLibrary.tsx's Save/Save As split.
+  const [activeRouteId, setActiveRouteIdState] = useState<string>('')
 
   // Refs always mirror the latest state so persist callbacks never close over stale values.
-  const waypointsRef    = useRef<RouteWaypoint[]>([])
-  const legOverridesRef = useRef<LegOverride[]>([])
-  const aircraftIdRef   = useRef<string>('')
-  waypointsRef.current    = waypoints
-  legOverridesRef.current = legOverrides
-  aircraftIdRef.current   = aircraftId
+  const waypointsRef     = useRef<RouteWaypoint[]>([])
+  const legOverridesRef  = useRef<LegOverride[]>([])
+  const aircraftIdRef    = useRef<string>('')
+  const activeRouteIdRef = useRef<string>('')
+  waypointsRef.current     = waypoints
+  legOverridesRef.current  = legOverrides
+  aircraftIdRef.current    = aircraftId
+  activeRouteIdRef.current = activeRouteId
 
   // Load once on mount; migrate from localStorage if RxDB has no saved route yet.
   useEffect(() => {
@@ -35,6 +49,7 @@ export function usePersistedRoute(): [RouteWaypoint[], WaypointSetter, LegOverri
         setWaypointsState([...doc.waypoints] as RouteWaypoint[])
         setLegOverridesState([...(doc.legOverrides ?? [])] as LegOverride[])
         setAircraftIdState(doc.aircraftId ?? '')
+        setActiveRouteIdState(doc.linkedRouteId ?? '')
         localStorage.removeItem(LS_KEY)
       } else {
         // Migrate existing localStorage route to RxDB.
@@ -63,11 +78,13 @@ export function usePersistedRoute(): [RouteWaypoint[], WaypointSetter, LegOverri
     })
   }, [])
 
-  const persist = useCallback((wps: RouteWaypoint[], ovr: LegOverride[], acId?: string) => {
+  const persist = useCallback((wps: RouteWaypoint[], ovr: LegOverride[], acId?: string, routeId?: string) => {
     getDb().then((db) =>
       db.routes.upsert({
         id: ROUTE_ID, name: 'Current Route', waypoints: wps, legOverrides: ovr,
-        aircraftId: acId ?? aircraftIdRef.current, updatedAt: Date.now(),
+        aircraftId: acId ?? aircraftIdRef.current,
+        linkedRouteId: routeId ?? activeRouteIdRef.current,
+        updatedAt: Date.now(),
       })
     ).catch(console.error)
   }, [])
@@ -99,17 +116,24 @@ export function usePersistedRoute(): [RouteWaypoint[], WaypointSetter, LegOverri
     })
   }, [persist])
 
-  /** Atomically replace both waypoints and leg overrides (used by Route Library load). */
-  const loadRoute = useCallback((wps: RouteWaypoint[], ovr: LegOverride[], acId?: string) => {
+  /**
+   * Atomically replace both waypoints and leg overrides (used by Route
+   * Library load). `routeId` links the working route to the saved row it
+   * came from — omit (or pass '') for an untitled/new route.
+   */
+  const loadRoute = useCallback((wps: RouteWaypoint[], ovr: LegOverride[], acId?: string, routeId?: string) => {
     const safeOvr = ovr.slice(0, Math.max(0, wps.length - 1))
     const nextAcId = acId ?? ''
-    waypointsRef.current    = wps
-    legOverridesRef.current = safeOvr
-    aircraftIdRef.current   = nextAcId
+    const nextRouteId = routeId ?? ''
+    waypointsRef.current     = wps
+    legOverridesRef.current  = safeOvr
+    aircraftIdRef.current    = nextAcId
+    activeRouteIdRef.current = nextRouteId
     setWaypointsState(wps)
     setLegOverridesState(safeOvr)
     setAircraftIdState(nextAcId)
-    persist(wps, safeOvr, nextAcId)
+    setActiveRouteIdState(nextRouteId)
+    persist(wps, safeOvr, nextAcId, nextRouteId)
   }, [persist])
 
   /** Set the aircraft profile associated with the current working route. */
@@ -119,7 +143,17 @@ export function usePersistedRoute(): [RouteWaypoint[], WaypointSetter, LegOverri
     persist(waypointsRef.current, legOverridesRef.current, id)
   }, [persist])
 
-  return [waypoints, setWaypoints, legOverrides, setLegOverrides, loadRoute, aircraftId, setAircraftId] as const
+  /** Link (or unlink, with '') the working route to a saved routes-collection row. */
+  const setActiveRouteId = useCallback((id: string) => {
+    activeRouteIdRef.current = id
+    setActiveRouteIdState(id)
+    persist(waypointsRef.current, legOverridesRef.current, aircraftIdRef.current, id)
+  }, [persist])
+
+  return [
+    waypoints, setWaypoints, legOverrides, setLegOverrides, loadRoute,
+    aircraftId, setAircraftId, activeRouteId, setActiveRouteId,
+  ] as const
 }
 
 // ---------------------------------------------------------------------------
@@ -128,7 +162,15 @@ export function usePersistedRoute(): [RouteWaypoint[], WaypointSetter, LegOverri
 
 export interface RouteLibraryHook {
   routes:      RouteDocType[]
-  saveRoute:   (name: string, waypoints: RouteWaypoint[], legOverrides: LegOverride[], aircraftId?: string) => Promise<void>
+  /**
+   * Saves the given route data. If `routeId` is passed, updates that exact
+   * row (the "Save" path — used when the working route is linked to an
+   * existing saved route). If omitted, falls back to matching by exact
+   * `name` against an existing row (overwrite-if-name-matches, otherwise
+   * insert new) — the "Save As" path for an untitled/new route. Returns the
+   * id of the row that was written, so the caller can link to it.
+   */
+  saveRoute:   (name: string, waypoints: RouteWaypoint[], legOverrides: LegOverride[], aircraftId?: string, routeId?: string) => Promise<string>
   loadRoute:   (id: string) => Promise<{ waypoints: RouteWaypoint[]; legOverrides: LegOverride[]; aircraftId: string } | null>
   deleteRoute: (id: string) => Promise<void>
   renameRoute: (id: string, name: string) => Promise<void>
@@ -156,22 +198,25 @@ export function useRouteLibrary(): RouteLibraryHook {
     waypoints: RouteWaypoint[],
     legOverrides: LegOverride[],
     aircraftId?: string,
-  ): Promise<void> => {
+    routeId?: string,
+  ): Promise<string> => {
     const db = await getDb()
-    // Reuse the existing row's id when a route with this exact name already
-    // exists (case-sensitive, matches the Route Library's own display name) —
-    // otherwise every click of Save with an unchanged name inserted a brand
-    // new UUID-keyed row instead of updating the one the user is looking at.
-    // Confirmed live 2026-09-13: 3 clicks of Save on "AGENT-SYNC-TEST" created
-    // 3 separate synced rows on both web and native. Must be a real UUID for
-    // new rows — user_routes.id is a Postgres UUID column; any other string
-    // format 400s on every cloud push, silently keeping the route local-only.
-    const existing = await db.routes.findOne({
-      selector: { name, id: { $ne: ROUTE_ID } },
-    }).exec()
-    const id = existing?.id ?? crypto.randomUUID()
+    // Id-resolution decision extracted into a pure, unit-tested helper (see
+    // resolveSaveRouteId.test.ts) — `routeId` given → "Save" path, updates
+    // that exact row. Not given → "Save As"/untitled path, reuses an
+    // existing row's id only on an exact `name` match (excluding the live
+    // 'current' working-route row), otherwise a fresh uuid is generated.
+    // Must be a real UUID for new rows — user_routes.id is a Postgres UUID
+    // column; any other string format 400s on every cloud push, silently
+    // keeping the route local-only. Without the name-match reuse, every Save
+    // with an unchanged name inserted a brand new row instead of updating
+    // the one the user is looking at — confirmed live 2026-09-13: 3 clicks
+    // of Save on "AGENT-SYNC-TEST" created 3 separate synced rows on both
+    // web and native.
+    const id = resolveSaveRouteId(routeId, name, routes, ROUTE_ID) ?? crypto.randomUUID()
     await db.routes.upsert({ id, name, waypoints, legOverrides, aircraftId: aircraftId ?? '', updatedAt: Date.now() })
-  }, [])
+    return id
+  }, [routes])
 
   const loadRoute = useCallback(async (
     id: string,

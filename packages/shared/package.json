@@ -40,7 +40,9 @@
     "./notamRouteFilter": "./src/notamRouteFilter.ts",
     "./atcStatus": "./src/atcStatus.ts",
     "./wxFormat": "./src/wxFormat.ts",
-    "./wxStations": "./src/wxStations.ts"
+    "./wxStations": "./src/wxStations.ts",
+    "./routeDirty": "./src/routeDirty.ts",
+    "./resolveSaveRouteId": "./src/resolveSaveRouteId.ts"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.16"

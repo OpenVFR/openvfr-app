@@ -56,6 +56,12 @@ export type RouteDocType = {
   legOverrides: LegOverride[]
   /** aircraft_profile id chosen for this route ('' or undefined = none) — same convention as web's src/db/index.ts RouteDocType.aircraftId */
   aircraftId?: string
+  /** Only meaningful on the id='current' working-route doc: the id of the
+   *  saved route (routes collection row) this working copy was loaded from,
+   *  or '' if the working route is untitled / not linked to any saved row.
+   *  Lets "Save" update that same row instead of guessing by name — same
+   *  convention as web's src/db/index.ts RouteDocType.linkedRouteId. */
+  linkedRouteId?: string
   updatedAt: number
 }
 

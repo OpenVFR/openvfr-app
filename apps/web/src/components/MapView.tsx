@@ -386,7 +386,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const [trafficVertFilter, setTrafficVertFilter] = useTrafficVertFilter()
   const [parkTimeout, setParkTimeout] = useParkTimeout()
   const [alternate, _setAlternate] = useAlternate()
-  const [routeWaypoints, setRouteWaypoints, legOverrides, setLegOverrides, loadRouteIntoMap, routeAircraftId, setRouteAircraftId] = usePersistedRoute()
+  const [routeWaypoints, setRouteWaypoints, legOverrides, setLegOverrides, loadRouteIntoMap, routeAircraftId, setRouteAircraftId, activeRouteId, setActiveRouteId] = usePersistedRoute()
   // Computed once here (not inside SideDrawer) so VirtualRadar's wind-arrow/
   // cloud-layer overlay and SideDrawer's Weather-Along-Route panel share the
   // same fetched station list instead of each independently hitting
@@ -681,7 +681,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const regionalNotamsRef = useRef(regionalNotams)
   useEffect(() => { regionalNotamsRef.current = regionalNotams }, [regionalNotams])
 
-  // ── Ambient wind arrows (SkyDemon/EasyVFR-style grid overlay) ────────
+  // ── Ambient wind arrows (grid overlay of speed/direction wind barbs) ────────
   // Surface wind while on the ground/unknown altitude, live GPS altitude
   // once flying — same convention fetchWind itself documents.
   const windEnabled = visibility['wind'] ?? false
@@ -1941,8 +1941,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
       // (MapLibre's built-in cluster support, only applies to Point geometry --
       // this is why these are handled as a separate source from notam-circles,
       // which is all Polygon geometry and can't use the same mechanism).
-      // Matches the density pattern seen on EasyVFR's notambriefing.com
-      // reference (small numbered pins collapsing at low zoom).
+      // Small numbered pins that collapse into a cluster count at low zoom
+      // keeps a dense NOTAM area readable instead of a wall of overlapping pins.
       map.addSource('notam-points', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
@@ -3421,6 +3421,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
           if (aircraftId) setSelectedAircraftId(aircraftId)
           setPlanningMode(true)
         }}
+        activeRouteId={activeRouteId}
+        onActiveRouteIdChange={setActiveRouteId}
         onRunwayWind={handleRunwayWind}
         onSetLegOverride={(idx, ovr) =>
           setLegOverrides((prev) => {

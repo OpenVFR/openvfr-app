@@ -30,6 +30,13 @@ export function useRoute() {
     await db.upsert(next)
   }, [])
 
+  /** Link (or unlink, with '') the working route to a saved routes-collection
+   *  row. Persisted on the 'current' doc itself — same convention as web's
+   *  useRouteDb.ts activeRouteId. */
+  const setActiveRouteId = useCallback((id: string) => {
+    persist({ ...route, linkedRouteId: id, updatedAt: Date.now() })
+  }, [route, persist])
+
   const addWaypoint = useCallback((wp: RouteWaypoint) => {
     persist({ ...route, waypoints: [...route.waypoints, wp], updatedAt: Date.now() })
   }, [route, persist])
@@ -43,6 +50,8 @@ export function useRoute() {
   }, [route, persist])
 
   const clearRoute = useCallback(() => {
+    // New Route — also unlinks from whatever saved route was active, same as
+    // web's requestNew()/onActiveRouteIdChange('') pairing.
     persist({ ...blank(), updatedAt: Date.now() })
   }, [persist])
 
@@ -110,5 +119,8 @@ export function useRoute() {
            clearRoute, setWaypoints, loaded,
            // Route activate/deactivate — hides the drawn route on the map without
            // touching stored waypoints. Purely a display toggle, not persisted.
-           routeVisible, setRouteVisible }
+           routeVisible, setRouteVisible,
+           // Saved-route link — id of the routes-collection row the working
+           // route was loaded from ('' = untitled/unlinked). See setActiveRouteId above.
+           activeRouteId: route.linkedRouteId ?? '', setActiveRouteId }
 }

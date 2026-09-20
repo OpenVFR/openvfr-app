@@ -39,12 +39,18 @@ export type RouteDocType = {
   waypoints: RouteWaypoint[]
   legOverrides: LegOverride[]
   aircraftId?: string  // optional aircraft_profile id chosen for this route
+  /** Only meaningful on the id='current' working-route doc: the id of the
+   *  saved route (routes collection row) this working copy was loaded from,
+   *  or '' if the working route is untitled / not linked to any saved row.
+   *  Lets "Save" update that same row instead of guessing by name — see
+   *  useRouteDb.ts's usePersistedRoute() activeRouteId. */
+  linkedRouteId?: string
   updatedAt: number
 }
 
 const routeSchema: RxJsonSchema<RouteDocType> = {
   title: 'route',
-  version: 3,
+  version: 4,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -76,6 +82,7 @@ const routeSchema: RxJsonSchema<RouteDocType> = {
       },
     },
     aircraftId: { type: 'string', maxLength: 64 },
+    linkedRouteId: { type: 'string', maxLength: 64 },
     updatedAt: { type: 'number' },
   },
   required: ['id', 'name', 'waypoints', 'legOverrides', 'updatedAt'],
@@ -328,6 +335,8 @@ export function getDb(): Promise<OpenVfrDb> {
             2: (oldDoc) => ({ ...oldDoc }),
             // v2 → v3: add optional aircraftId field (unset for existing routes)
             3: (oldDoc) => ({ ...oldDoc, aircraftId: oldDoc.aircraftId ?? '' }),
+            // v3 → v4: add optional linkedRouteId field (unset for existing routes)
+            4: (oldDoc) => ({ ...oldDoc, linkedRouteId: oldDoc.linkedRouteId ?? '' }),
           },
         },
         aircraft_profiles: {
