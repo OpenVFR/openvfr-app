@@ -93,9 +93,9 @@
   padding: 4px 4px 0;
   /* recharts ResponsiveContainer needs a non-zero parent height */
   height: 180px;
-  /* EasyVFR-style: scroll instead of squeezing a long route to fit — the
-     inner div (set inline in VirtualRadar.tsx) is only ever wider than this
-     wrap when totalNm * MIN_PX_PER_NM exceeds the measured wrap width. */
+  /* Scroll instead of squeezing a long route to fit — the inner div (set
+     inline in VirtualRadar.tsx) is only ever wider than this wrap when
+     totalNm * MIN_PX_PER_NM exceeds the measured wrap width. */
   overflow-x: auto;
   overflow-y: hidden;
 }

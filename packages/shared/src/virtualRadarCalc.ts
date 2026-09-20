@@ -970,16 +970,15 @@ export interface VspeedTrajectoryPoint {
 
 /**
  * Linear vertical-speed trajectory (constant-rate extrapolation from the
- * *current instantaneous* vspeed) through each trajectory tick — SkyDemon's
- * Virtual Radar draws exactly this: "a line denoting vertical trajectory...
- * gives idea of current vertical speed and where ascent/descent leave you".
- * Deliberately not the full performance-model projection (that needs an
+ * *current instantaneous* vspeed) through each trajectory tick — a quick
+ * read of current vertical speed and where continuing at that rate would
+ * leave you. Deliberately not the full performance-model projection (that needs an
  * aircraft profile and models level-offs at cruise altitude — see
  * projectFlightPath below); this one only needs live GPS/baro data and vspeed.
  * Points are flagged `below` MSA the same way the performance-model
  * projection's safe/danger split works, just checked per sparse tick point
  * rather than at dense terrain resolution (these ticks are inherently sparse
- * — typically 3 points — same granularity SkyDemon's own "2/5/10 min" dots use).
+ * — typically 3 points at 2/5/10 min out).
  */
 export function computeVspeedTrajectory(opts: {
   currentDistNm: number | undefined

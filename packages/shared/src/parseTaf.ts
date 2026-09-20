@@ -18,10 +18,9 @@
  *      used elsewhere in this app, e.g. baroAltitude.ts's altitude tiering).
  *   2. A "check the bulletin" warning flag when a real trend change
  *      (FM/BECMG — not TEMPO/PROB, which are temporary/probabilistic, not a
- *      prevailing-conditions change) is coming up soon — mirrors SkyDemon's
- *      own documented behaviour: "A yellow triangle... indicates a warning
- *      to check the full weather bulletin for changes to the forecast
- *      conditions" (skydemon.md), not a fully time-sliced overlay either.
+ *      prevailing-conditions change) is coming up soon — a nudge to check
+ *      the full weather bulletin for changes to the forecast conditions,
+ *      not a fully time-sliced overlay.
  *
  * ICAO Annex 3 TAF format handled: header (ICAO, issue DDHHMMZ, validity
  * DDHH/DDHH), base forecast group, then zero or more change groups
@@ -209,7 +208,7 @@ export interface ActiveTafConditions {
  * prevailing conditions (latest BASE/FM/BECMG whose window contains atMs),
  * overridden by a TEMPO/PROB period if one's window also contains atMs
  * (temporary conditions are the more operationally relevant thing to show
- * when active, same reasoning SkyDemon's translucent cloud column uses).
+ * when active).
  */
 export function getActiveTafConditions(periods: TafPeriod[], atMs: number): ActiveTafConditions | null {
   if (periods.length === 0) return null
@@ -304,8 +303,8 @@ const DEFAULT_WARNING_WINDOW_MS = 3 * 60 * 60 * 1000 // 3h — arbitrary but mat
  * present (observed beats forecast); TAF only fills in when there's no
  * METAR at all. Always also reports whether a real trend change (FM/BECMG)
  * is coming up soon, regardless of which source is being shown, so the
- * chart can raise SkyDemon's "go check the bulletin" triangle even when the
- * current METAR looks fine right now.
+ * chart can raise a "go check the bulletin" warning even when the current
+ * METAR looks fine right now.
  */
 export function resolveStationWeather(opts: {
   metarWind: string | null

@@ -5,8 +5,8 @@
  *
  * Mode A — UDP auto-detect (primary, zero config):
  *   Tap "Listen on UDP 49002". App waits for X-Plane / MSFS broadcast.
- *   X-Plane: Settings → Network → "Broadcast to ForeFlight/WingX on ALL devices"
- *   MSFS:    Install FS2FF or FSConny (free) — broadcasts automatically.
+ *   X-Plane: Settings → Network → enable UDP broadcast "on ALL devices"
+ *   MSFS:    Install a free EFB-broadcast bridge add-on — broadcasts automatically.
  *
  * Mode B — WebSocket bridge (fallback):
  *   Run scripts/nmea-ws-bridge.mjs on the sim PC.
@@ -98,8 +98,8 @@ export function SimConnectSheet({ simStatus, onStartUdp, onStartWs, onStop }: Pr
                 <View style={styles.badge}><Text style={styles.badgeTxt}>Recommended</Text></View>
               </View>
               <Text style={styles.cardDesc}>
-                X-Plane: Settings → Network → "Broadcast to ForeFlight / WingX on ALL devices"{'\n'}
-                MSFS: Install FS2FF or FSConny (free) — broadcasts automatically.{'\n'}
+                X-Plane: Settings → Network → enable UDP broadcast "on ALL devices"{'\n'}
+                MSFS: Install a free EFB-broadcast bridge add-on — broadcasts automatically.{'\n'}
                 Both send XGPS packets on UDP 49002 to all devices on the LAN.
               </Text>
               <TouchableOpacity

@@ -1,7 +1,7 @@
 /**
  * windGrid — samples wind (via fetchWind, Open-Meteo, keyless) across a
  * coarse lat/lng grid spanning a map viewport, for an ambient "wind arrows"
- * overlay (SkyDemon/EasyVFR-style winds-aloft arrows) — as opposed to the
+ * overlay (winds-aloft arrows) — as opposed to the
  * single-point wind used by VirtualRadar/GaugesBar or the surface METAR wind
  * used by AerodromePopup's runway highlight.
  *

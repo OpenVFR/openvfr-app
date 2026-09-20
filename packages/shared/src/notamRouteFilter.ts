@@ -1,11 +1,10 @@
 /**
  * notamRouteFilter — proximity filtering for the regional NOTAMs briefing
- * list, mirroring SkyDemon's "narrow route brief" concept (their manual:
- * NOTAMs within a configurable horizontal buffer of the planned route, 5nm
- * by default). Deliberately does NOT filter the map circle/point layers
- * themselves -- those stay showing everything currently active while
- * panning/exploring the map, same as SkyDemon's own map depiction; only the
- * list/panel view gets narrowed to what's actually relevant to your route.
+ * list: NOTAMs within a configurable horizontal buffer of the planned
+ * route, 5nm by default. Deliberately does NOT filter the map circle/point
+ * layers themselves -- those stay showing everything currently active
+ * while panning/exploring the map; only the list/panel view gets narrowed
+ * to what's actually relevant to your route.
  *
  * Uses a flat-earth (equirectangular) approximation for point-to-route-
  * segment distance -- adequate for VFR-scale proximity triage ("is this

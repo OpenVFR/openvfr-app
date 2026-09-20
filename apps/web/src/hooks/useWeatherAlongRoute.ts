@@ -1,11 +1,9 @@
 /**
  * useWeatherAlongRoute — collects METAR/TAF for aerodromes near the planned
- * route into one list, mirroring SkyDemon's Weather tab ("TAF and METAR are
- * automatically retrieved for your route as you plot it, and are shown
- * decoded in the Weather window"). Complements per-airport weather already
- * shown in AerodromePopup -- this is the "along the whole route at a
- * glance" view, same relationship as RegionalNotamsPanel vs. per-airport
- * NOTAM tab.
+ * route into one list, automatically refreshed as the route is plotted.
+ * Complements per-airport weather already shown in AerodromePopup -- this
+ * is the "along the whole route at a glance" view, same relationship as
+ * RegionalNotamsPanel vs. per-airport NOTAM tab.
  *
  * Buffer is wider than the NOTAM route filter (15nm vs 5nm) -- METAR
  * stations are much sparser than NOTAM-affected areas, and pilots

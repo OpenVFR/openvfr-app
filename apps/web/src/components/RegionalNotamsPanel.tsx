@@ -19,8 +19,7 @@ interface Props {
   notams: NotamItem[]
   /** True when `notams` has already been filtered to proximity of the
    *  planned route (see SideDrawer.tsx) -- shown as a small note so it's
-   *  clear the list isn't "everything active", mirroring SkyDemon's
-   *  "narrow route brief" transparency about scope. */
+   *  clear the list isn't "everything active" but a narrowed-down brief. */
   routeFiltered?: boolean
   bufferNm?: number
 }

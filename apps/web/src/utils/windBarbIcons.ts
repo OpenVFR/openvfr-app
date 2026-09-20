@@ -4,8 +4,8 @@
  * WMO-style wind-barb icon for the ambient "wind arrows" map overlay (see
  * useWindGrid.ts / LAYER_GROUPS 'wind') — replaces the earlier single
  * scaled-arrow icon (which turned out visually imperceptible at any
- * reasonable icon-size) with the SkyDemon/EasyVFR/synoptic-chart convention:
- * a shaft with "feathers" whose count/shape encode speed directly, so
+ * reasonable icon-size) with the standard synoptic-chart convention: a
+ * shaft with "feathers" whose count/shape encode speed directly, so
  * strength reads at a glance without needing the numeric label.
  *
  * Bucketed to the nearest 5kt (@open-vfr/shared/windBarb) since barb count
@@ -28,10 +28,10 @@ import { windBarbBucket, allWindBarbBuckets, windBarbColorForSpeed } from '@open
 
 export const WIND_BARB_ID_PREFIX = 'wind-barb-'
 // Legend/label swatch only — the barb icons themselves are now speed-
-// tiered (windBarbColorForSpeed: blue/green/amber, SkyDemon's "wind
-// feather" convention) rather than this single flat colour. Kept as the
-// representative sky-blue swatch since MapDisplaySheet's legend shows one
-// colour per layer group, not a gradient.
+// tiered (windBarbColorForSpeed: blue/green/amber by strength) rather than
+// this single flat colour. Kept as the representative sky-blue swatch
+// since MapDisplaySheet's legend shows one colour per layer group, not a
+// gradient.
 export const WIND_BARB_COLOR = '#38bdf8'
 
 // Raster canvas size (2× logical for HiDPI, matching every other icon's

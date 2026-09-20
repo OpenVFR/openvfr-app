@@ -456,9 +456,8 @@ export const LAYER_GROUPS: LayerGroup[] = [
   {
     id: 'wind',
     // Ambient wind-direction/strength arrows sampled across the viewport via
-    // Open-Meteo (see @open-vfr/shared/windGrid + useWindGrid.ts) -- a
-    // SkyDemon/EasyVFR-style overlay, distinct from AerodromePopup's
-    // per-runway favored-end highlight (that one is METAR-driven, single
+    // Open-Meteo (see @open-vfr/shared/windGrid + useWindGrid.ts), distinct
+    // from AerodromePopup's per-runway favored-end highlight (that one is METAR-driven, single
     // airport; this one is a live grid sample, whole viewport). Off by
     // default: opts the user into extra live fetches on every pan/zoom.
     label: 'Wind Arrows',
@@ -1978,7 +1977,7 @@ export function getMapStyle(): StyleSpecification {
       },
 
       // ── Ambient wind-arrows overlay ────────────────────────────────
-      // SkyDemon/EasyVFR/synoptic-chart-style wind barbs sampled across the
+      // Synoptic-chart-style wind barbs sampled across the
       // viewport (see useWindGrid.ts). Off by default (LAYER_GROUPS 'wind') --
       // opt-in since it drives extra live Open-Meteo fetches on every pan/zoom.
       // Icons 'wind-barb-{0,5,10,...,100}' registered on demand by

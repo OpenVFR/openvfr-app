@@ -116,7 +116,7 @@ interface Props {
   crossTrackNm?: number
   /** METAR/TAF stations along the route (from useWeatherAlongRoute) — wind
    *  arrows and cloud-base layers are drawn at each station's projected
-   *  along-route position, EasyVFR-style. Omit to hide entirely. */
+   *  along-route position. Omit to hide entirely. */
   weatherStations?: RouteWeatherStation[]
   /** Chart area height in px — controlled by the parent (draggable via the
    *  handle rendered at the top of this panel). Defaults to DEFAULT_CHART_H. */
@@ -145,7 +145,7 @@ const MARGIN_R  = 10
 const MARGIN_T  = 10
 const MARGIN_B  = 18
 
-// EasyVFR-style: never compress a long route down to fit the panel width —
+// Never compress a long route down to fit the panel width —
 // below this pixel-per-NM density the chart becomes horizontally scrollable
 // instead of squeezing the whole route in, so short legs stay legible. Only
 // kicks in once totalNm * MIN_PX_PER_NM exceeds the panel's actual width.
@@ -328,7 +328,7 @@ export function VerticalProfile({
   const totalNm = profile?.totalNm ?? 0
   // Content (not panel) plot width: never below what the panel offers, but
   // grows past it once the route needs more than MIN_PX_PER_NM per NM to
-  // stay legible (EasyVFR-style — see MIN_PX_PER_NM comment above). contentW
+  // stay legible (see MIN_PX_PER_NM comment above). contentW
   // is what actually gets drawn into the Svg; chartW is just the visible
   // clipping window.
   const availablePlotW = Math.max(0, chartW - MARGIN_L - MARGIN_R)
@@ -448,9 +448,9 @@ export function VerticalProfile({
     return `M${profile.altitudeProfile.map(p => `${xOf(p.distNm).toFixed(1)},${yOf(p.altFt).toFixed(1)}`).join(' L')}`
   }, [profile, xOf, yOf])
 
-  // Weather stations projected onto the route's distance axis — EasyVFR-
-  // style wind arrows + cloud-base layers drawn directly in the vertical
-  // profile, not just listed in the separate WeatherAlongRouteSheet. Shared
+  // Weather stations projected onto the route's distance axis — wind
+  // arrows + cloud-base layers drawn directly in the vertical profile, not
+  // just listed in the separate WeatherAlongRouteSheet. Shared
   // with web's VirtualRadar.tsx (projectWeatherMarks handles the along-route
   // projection + [0,totalNm] filtering; only the METAR string parsing and
   // xOf/yOf pixel mapping stay local to each platform's renderer).
@@ -458,8 +458,8 @@ export function VerticalProfile({
   // resolveStationWeather / parseTaf.ts header for the full scope note —
   // this is NOT a route-position-vs-forecast-time overlay, that needs an
   // ETD field this app doesn't have). tafChangeSoon flags a real trend
-  // change (FM/BECMG) in the next 3h, same spirit as SkyDemon's "check the
-  // bulletin" yellow-triangle warning.
+  // change (FM/BECMG) in the next 3h — a nudge to go check the bulletin
+  // rather than a rendered forecast.
   const weatherMarks = useMemo(() => {
     if (!weatherStations) return []
     return projectWeatherMarks(waypoints, weatherStations, totalNm).map((m) => {
@@ -520,10 +520,9 @@ export function VerticalProfile({
     ? ['1m', '3m', `${trajectoryNm}m`]
     : ['1nm', '3nm', `${trajectoryNm}nm`]
 
-  // Vertical-speed-aware trajectory line — SkyDemon's Virtual Radar draws
-  // "a line denoting vertical trajectory... with dots representing 2, 5 and
-  // 10 minutes ahead" so a climb/descent/level attitude is visually obvious
-  // ahead of the aircraft, not just distance markers. Domain math (constant-
+  // Vertical-speed-aware trajectory line — dots at 2, 5 and 10 minutes
+  // ahead show a climb/descent/level attitude visually, not just distance
+  // markers. Domain math (constant-
   // rate extrapolation + below-MSA flagging) lives in the shared
   // computeVspeedTrajectory, used identically by web's VirtualRadar.tsx —
   // only the xOf/yOf pixel mapping and SVG path-string building stay local.
@@ -602,17 +601,17 @@ export function VerticalProfile({
                   (see AGENTS.md / virtualRadarCalc header), so once the
                   aircraft has meaningfully diverged from that line, what's
                   drawn ahead of the "you are here" marker no longer reflects
-                  what's actually ahead of the aircraft. SkyDemon's flying-
-                  mode addresses this by re-deriving the whole chart from the
-                  live GPS track instead; this is the cheaper stopgap — just
-                  surface the fact plainly rather than silently keep drawing
-                  planned-route terrain under a marker no longer really on it. */}
+                  what's actually ahead of the aircraft. Re-deriving the
+                  whole chart from the live GPS track would fix this properly;
+                  this is the cheaper stopgap — just surface the fact plainly
+                  rather than silently keep drawing planned-route terrain
+                  under a marker no longer really on it. */}
               {crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM && (
                 <View style={styles.offTrackBadge} pointerEvents="none">
                   <Text style={styles.offTrackTxt}>⚠ {Math.abs(crossTrackNm).toFixed(1)}nm off planned track</Text>
                 </View>
               )}
-              {/* EasyVFR-style scroll hint — only shown once the route is
+              {/* Scroll hint — only shown once the route is
                   wider than the panel (MIN_PX_PER_NM above). */}
               {scrollable && (
                 <View style={[styles.scrollHintWrap, (crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM) && { top: 20 }]} pointerEvents="none">
@@ -683,7 +682,7 @@ export function VerticalProfile({
                 <Path d={terrainPath.fill} fill="url(#terrainGrad)" />
                 <Path d={terrainPath.outline} fill="none" stroke="rgba(160,130,90,0.55)" strokeWidth={1} />
 
-                {/* Weather: cloud-base layers (EasyVFR-style) — translucent
+                {/* Weather: cloud-base layers — translucent
                      bands from each METAR cloud group's base up to the top
                      of the plot; opacity increases FEW/SCT/BKN/OVC so a
                      ceiling reads visibly denser than scattered cloud. Drawn
@@ -750,11 +749,9 @@ export function VerticalProfile({
 
                 {/* TAF "check the bulletin" warning — small yellow triangle
                      when a real trend change (FM/BECMG) lands within the
-                     next 3h, same spirit as SkyDemon's Virtual Radar yellow
-                     triangle (see resolveStationWeather/parseTaf.ts). Not a
+                     next 3h (see resolveStationWeather/parseTaf.ts). Not a
                      rendered forecast column — just a nudge to go read the
-                     TAF text, which is exactly what SkyDemon's own doc
-                     describes this indicator doing. */}
+                     TAF text. */}
                 {weatherMarks.map((m, i) => m.tafChangeSoon ? (
                   <Path key={`tafwarn-${i}`}
                     d="M0,-5 L4.5,4 L-4.5,4 Z"

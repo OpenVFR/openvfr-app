@@ -9,9 +9,8 @@
  * including ones with no useful map geometry to render as a circle/pin at
  * all (a "MAP" badge marks entries that do have one). Route-proximity
  * filtered when a route is planned (see @open-vfr/shared/notamRouteFilter),
- * same "narrow route brief" concept as web -- SkyDemon's manual describes
- * the same idea (NOTAMs within a configurable buffer of the planned route,
- * not the whole area's active count).
+ * same "narrow route brief" concept as web -- NOTAMs within a configurable
+ * buffer of the planned route, not the whole area's active count.
  */
 
 import React, { useMemo } from 'react'

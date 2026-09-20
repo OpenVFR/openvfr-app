@@ -32,7 +32,7 @@ import { LANDMARK_ICON_DEFS } from '../utils/landmarkIcons'
 import { loadColoredSvgMarkup } from '../utils/svgIconLoader'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
 
-// EasyVFR-style: don't compress a long route down to fit the panel width —
+// Don't compress a long route down to fit the panel width —
 // below this pixel-per-NM density the chart becomes horizontally scrollable
 // instead (see chartWrap/scroll wiring below), matching native's identical
 // MIN_PX_PER_NM constant in VerticalProfile.tsx.
@@ -78,7 +78,7 @@ interface Props {
   crossTrackNm?: number
   /** METAR/TAF stations along the route (from useWeatherAlongRoute) — wind
    *  arrows and cloud-base layers drawn at each station's projected
-   *  along-route position, EasyVFR-style. Omit to hide entirely. */
+   *  along-route position. Omit to hide entirely. */
   weatherStations?: RouteWeatherStation[]
 }
 
@@ -287,7 +287,7 @@ export default function VirtualRadar({
     ? ['1m', '3m', '5m']
     : ['1nm', '3nm', '5nm']
 
-  // Climb/descent-aware trajectory line (SkyDemon-style) — same shared
+  // Climb/descent-aware trajectory line — same shared
   // domain math as native's VerticalProfile, just rendered via Recharts
   // ReferenceLine segments/ReferenceDot below instead of react-native-svg Path.
   const vspeedTrajectory = useMemo(() => computeVspeedTrajectory({
@@ -305,8 +305,8 @@ export default function VirtualRadar({
   // resolveStationWeather / parseTaf.ts header for the full scope note —
   // this is NOT a route-position-vs-forecast-time overlay, that needs an
   // ETD field this app doesn't have). tafChangeSoon flags a real trend
-  // change (FM/BECMG) in the next 3h, same spirit as SkyDemon's "check the
-  // bulletin" yellow-triangle warning. Mirrors native's identical change.
+  // change (FM/BECMG) in the next 3h — a nudge to go check the bulletin
+  // rather than a rendered forecast. Mirrors native's identical change.
   const weatherMarks = useMemo(() => {
     if (!weatherStations || !profile) return []
     return projectWeatherMarks(waypoints, weatherStations, profile.totalNm).map((m) => {
@@ -423,7 +423,7 @@ export default function VirtualRadar({
     color,
   })), [yMax])
 
-  // EasyVFR-style scrollable chart: content width grows past the measured
+  // Scrollable chart: content width grows past the measured
   // panel width (wrapW) once the route needs more than MIN_PX_PER_NM per NM
   // to stay legible, instead of Recharts' ResponsiveContainer always
   // squeezing the whole route down to 100%. Native's identical constant/
@@ -564,7 +564,7 @@ export default function VirtualRadar({
                 />
               ))}
 
-              {/* Weather: cloud-base layers (EasyVFR-style) — translucent
+              {/* Weather: cloud-base layers — translucent
                   bands from each METAR cloud groups base up to the top of
                   the plot; opacity increases FEW/SCT/BKN/OVC so a ceiling
                   reads visibly denser than scattered cloud. Drawn as a
@@ -677,9 +677,9 @@ export default function VirtualRadar({
                       const len = Math.min(18, 6 + m.wind!.speedKt * 0.5)
                       const rot = m.wind!.dirDeg + 180
                       // Speed-tiered colour + thickness (see @open-vfr/shared/windBarb) --
-                      // SkyDemon's Virtual Radar wind arrows get visibly bolder/brighter
-                      // with wind strength, not just longer, so strength reads at a
-                      // glance without needing the numeric label beside it.
+                      // arrows get visibly bolder/brighter with wind strength, not just
+                      // longer, so strength reads at a glance without needing the
+                      // numeric label beside it.
                       const strokeW = windArrowStrokeWidth(m.wind!.speedKt)
                       const color = windBarbColorForSpeed(m.wind!.speedKt)
                       return (
@@ -701,11 +701,9 @@ export default function VirtualRadar({
 
               {/* TAF "check the bulletin" warning — small yellow triangle
                   when a real trend change (FM/BECMG) lands within the next
-                  3h, same spirit as SkyDemon's Virtual Radar yellow triangle
-                  (see resolveStationWeather/parseTaf.ts). Not a rendered
-                  forecast column — just a nudge to go read the TAF text,
-                  which is exactly what SkyDemon's own doc describes this
-                  indicator doing. Mirrors native's identical marker. */}
+                  3h (see resolveStationWeather/parseTaf.ts). Not a rendered
+                  forecast column — just a nudge to go read the TAF text.
+                  Mirrors native's identical marker. */}
               {weatherMarks.map((m, i) => m.tafChangeSoon ? (
                 <ReferenceDot
                   key={`tafwarn-${i}`}

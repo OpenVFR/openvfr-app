@@ -11,17 +11,17 @@
  * Mode A — UDP broadcast (PRIMARY, no setup on PC required):
  *   X-Plane 11/12:   Settings → Network → "Broadcast to all mapping apps"
  *                    Broadcasts XGPS packets on UDP 49002 to the whole LAN.
- *   MSFS 2024:       Install FS2FF (free, fs2ff.com) or FSConny (free).
- *                    Both broadcast XGPS on UDP 49002 automatically.
+ *   MSFS 2024:       Install a free XGPS-broadcast bridge add-on.
+ *                    Broadcasts XGPS on UDP 49002 automatically.
  *   Packet format:   XGPSXPlane,<lon>,<lat>,<alt_m_msl>,<track_true_deg>,<speed_mps>
  *   Just start the sim and tap "Connect via UDP" — no IP, no config.
  *
- * Mode B — WebSocket bridge (FALLBACK, for TCP NMEA / Little Navmap):
+ * Mode B — WebSocket bridge (FALLBACK, for TCP NMEA sources):
  *   Run scripts/nmea-ws-bridge.mjs on the simulator PC.
  *   Enter the PC's LAN IP in the app: ws://192.168.1.xxx:5104
  *   Accepts both XGPS and NMEA ($GPRMC/$GPGGA) sentences.
- *   Use this when UDP broadcast is blocked by the router or when using
- *   Little Navmap's TCP NMEA output with the bridge as a relay.
+ *   Use this when UDP broadcast is blocked by the router or when the
+ *   only available source outputs TCP NMEA and needs the bridge as a relay.
  *
  * ── Future improvements ────────────────────────────────────────────────────
  * 1. SSE/WebSocket: see traffic polling note in useTraffic.ts.
@@ -39,8 +39,9 @@
  *
  * 4. Direct TCP NMEA (no bridge):
  *    react-native-tcp-socket can connect directly to X-Plane 12's built-in
- *    GPS TCP output or Little Navmap's NMEA port without any bridge script.
- *    Zero-setup alternative to Mode B for users who prefer TCP over WebSocket.
+ *    GPS TCP output or any other app exposing a TCP NMEA port, without any
+ *    bridge script. Zero-setup alternative to Mode B for users who prefer
+ *    TCP over WebSocket.
  *
  * 5. Dynon SkyView / Avidyne IFD:
  *    Both expose a Wi-Fi network and accept TCP connections for GPS + route sync.
@@ -116,7 +117,7 @@ export function useSimInput(): UseSimInputResult {
 
   useEffect(() => () => { stopSim() }, [stopSim])
 
-  // ── XGPS packet parser (X-Plane + MSFS via FS2FF/FSConny) ─────────────────
+  // ── XGPS packet parser (X-Plane + MSFS via a broadcast bridge add-on) ───────
   const parseXgps = useCallback((line: string): GpsPosition | null => {
     // XGPSXPlane,lon,lat,alt_m_msl,track_true_deg,speed_mps
     if (!line.startsWith('XGPS')) return null
