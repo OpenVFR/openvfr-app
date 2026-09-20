@@ -671,6 +671,20 @@ export function MapScreen() {
   const [planningMode, setPlanningMode] = useState(false)
   const [snapPicker, setSnapPicker] = useState<{ candidates: SnapCandidate[]; onPick: (wp: RouteWaypoint) => void } | null>(null)
 
+  // ── In-flight route-edit lock — waypoint/leg drag is disabled by default
+  // once airborne (touchscreens can be knocked while flying, and an
+  // accidental drag while panning around the map should never silently move
+  // a leg). Tapping "Adjust Route" explicitly re-enables dragging for as long
+  // as it stays toggled on; it always resets to locked the next time a
+  // flight starts, so a forgotten toggle from a previous flight can't carry
+  // over. Mirrors web's MapView.tsx routeAdjustMode gating on
+  // planningMode/routeAdjustMode around the route-line drag handlers. ─────
+  const [routeAdjustMode, setRouteAdjustMode] = useState(false)
+  useEffect(() => {
+    if (!flyingActive) setRouteAdjustMode(false)
+  }, [flyingActive])
+  const routeEditLocked = flyingActive && !routeAdjustMode
+
   const handlePlanTap = useCallback((wp: RouteWaypoint) => {
     addWaypoint(wp)
   }, [addWaypoint])
@@ -848,6 +862,7 @@ export function MapScreen() {
           onLegTap={handleLegTap}
           onLegInsert={handleLegInsert}
           onLegInsertCandidates={handleLegInsertCandidates}
+          editLocked={routeEditLocked}
           planningMode={planningMode}
           onPlanTap={handlePlanTap}
           onPlanCandidates={handlePlanCandidates}
@@ -1002,6 +1017,18 @@ export function MapScreen() {
               onPress={() => setRouteVisible(v => !v)}
             >
               <Ionicons name={routeVisible ? 'eye' : 'eye-off'} size={18} color={routeVisible ? theme.textPrimary : '#ffffff'} />
+            </TouchableOpacity>
+          )}
+          {flightModeStatus !== 'off' && (
+            <TouchableOpacity
+              style={[styles.iconBtn, routeAdjustMode && styles.iconBtnActive]}
+              onPress={() => setRouteAdjustMode(v => !v)}
+            >
+              <Ionicons
+                name={routeAdjustMode ? 'lock-open-outline' : 'lock-closed-outline'}
+                size={18}
+                color={routeAdjustMode ? '#ffffff' : theme.textPrimary}
+              />
             </TouchableOpacity>
           )}
           {flightModeStatus !== 'off' && (

@@ -207,6 +207,13 @@ export type AviationMapProps = {
    *  every map tap adds a waypoint (snapped to a nearby feature within a
    *  screen-pixel radius when unambiguous) instead of opening feature popups. */
   planningMode?: boolean
+  /** Disables waypoint/leg-midpoint drag entirely regardless of
+   *  onWaypointMove/onLegInsert being set — used while flying so an
+   *  accidental touch while panning the map can never move a leg. The
+   *  caller (MapScreen.tsx) sets this true whenever airborne and gates it
+   *  off only via an explicit "Adjust Route" toggle, mirroring web's
+   *  MapView.tsx routeAdjustMode gating on the route-line drag handlers. */
+  editLocked?: boolean
   /** Fired when a plan-mode tap resolves to exactly one waypoint (raw
    *  coordinate or a single unambiguous snap target). */
   onPlanTap?: (wp: RouteWaypoint) => void
@@ -649,6 +656,7 @@ export function AviationMap({
   notamCirclesFC,
   notamPointsFC,
   planningMode = false,
+  editLocked = false,
   onPlanTap,
   onPlanCandidates,
   routeVisible = true,
@@ -2517,7 +2525,7 @@ export function AviationMap({
             sibling views (see AGENTS.md "MapLibre RN — touch interception").
             Long-press-for-popup and normal map pan continue to work
             everywhere except exactly on a waypoint's small drag handle. */}
-        {onWaypointMove && waypoints.map((wp, i) => (
+        {onWaypointMove && !editLocked && waypoints.map((wp, i) => (
           <WaypointDragAnnotation
             key={i}
             wpIndex={i}
@@ -2535,7 +2543,7 @@ export function AviationMap({
             above) — the native SDK owns the visual position while a drag is
             in progress regardless of the lngLat prop we pass on re-render,
             so there's no need to hide/swap the active one. */}
-        {onLegInsert && routeVisible && waypoints.length >= 2 && legMidpointWps.slice(0, -1).map((from, i) => {
+        {onLegInsert && !editLocked && routeVisible && waypoints.length >= 2 && legMidpointWps.slice(0, -1).map((from, i) => {
           const to = legMidpointWps[i + 1]
           return (
             <LegMidpointAnnotation
