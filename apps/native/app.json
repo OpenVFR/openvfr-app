@@ -25,7 +25,9 @@
         ]
       },
       "infoPlist": {
-        "LSApplicationQueriesSchemes": ["itms-apps"],
+        "LSApplicationQueriesSchemes": [
+          "itms-apps"
+        ],
         "NSLocationWhenInUseUsageDescription": "open-vfr needs GPS to show your position on the map and provide in-flight navigation.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "open-vfr needs background GPS access to continue tracking your flight when the screen locks.",
         "UIBackgroundModes": [
@@ -81,7 +83,8 @@
       ],
       "expo-status-bar",
       "expo-sharing",
-      "./plugins/withAndroidLargeHeap"
+      "./plugins/withAndroidLargeHeap",
+      "expo-splash-screen"
     ],
     "extra": {
       "eas": {
