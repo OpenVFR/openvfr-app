@@ -68,7 +68,7 @@ import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 // working fine (it doesn't depend on the JS thread), making the app look
 // frozen right after e.g. placing the ruler's second point. Mirrors the
 // same load-once module cache pattern already used by
-// useAirspaceWarnings.ts / useAirspaceNotifications.ts / useObstructionWarnings.ts.
+// usePositionAlerts.ts (combined airspace/obstruction/airfield/notification hook).
 // ---------------------------------------------------------------------------
 const _geoJsonCache = new Map<string, Promise<GeoJSON.FeatureCollection>>()
 function loadGeoJsonOnce(url: string): Promise<GeoJSON.FeatureCollection> {

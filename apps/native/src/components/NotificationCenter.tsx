@@ -3,11 +3,13 @@
  *
  * RN port of web's src/components/NotificationCenter.tsx. Replaces the old
  * native AirspaceWarningBanner (which was the only alert UI native had) with
- * the same 5-source consolidated, severity-ordered stack the web app uses:
- *   - useAirspaceWarnings        (persistent while airspace conflict active)
- *   - useObstructionWarnings     (persistent while obstacle proximity active)
- *   - useAirfieldProximity       (persistent while near unplanned aerodrome)
- *   - useAirspaceNotifications   (transient entry/exit toasts)
+ * the same 5-source consolidated, severity-ordered stack the web app uses --
+ * all four position-driven sources now come from the single combined
+ * usePositionAlerts hook (see its doc comment for why they were merged):
+ *   - airspaceAlerts        (persistent while airspace conflict active)
+ *   - obstructionAlerts     (persistent while obstacle proximity active)
+ *   - airfieldAlerts        (persistent while near unplanned aerodrome)
+ *   - airspaceNotifications (transient entry/exit toasts)
  *   - ceiling-escalation msg + waypoint-reminder note (transient / dismissible)
  *
  * Positioned top-centre, absolute, inside mapContainer (parent already has
@@ -24,10 +26,7 @@ import Animated, {
   withTiming,
   runOnJS,
 } from 'react-native-reanimated'
-import type { AirspaceAlert } from '../hooks/useAirspaceWarnings'
-import type { AirspaceNotification } from '../hooks/useAirspaceNotifications'
-import type { ObstructionAlert } from '../hooks/useObstructionWarnings'
-import type { AirfieldProximityAlert } from '../hooks/useAirfieldProximity'
+import type { AirspaceAlert, AirspaceNotification, ObstructionAlert, AirfieldProximityAlert } from '../hooks/usePositionAlerts'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 type Severity = 'red' | 'yellow' | 'blue'

@@ -40,10 +40,7 @@ import { NotificationCenter } from '../components/NotificationCenter'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
 import { getTileUrls } from '../config'
 import { settings as settingsDb } from '../db'
-import { useAirspaceWarnings }  from '../hooks/useAirspaceWarnings'
-import { useObstructionWarnings } from '../hooks/useObstructionWarnings'
-import { useAirfieldProximity }   from '../hooks/useAirfieldProximity'
-import { useAirspaceNotifications } from '../hooks/useAirspaceNotifications'
+import { usePositionAlerts } from '../hooks/usePositionAlerts'
 import { useSimContext }     from '../context/SimContext'
 import { useNearbyFrequencies } from '../hooks/useNearbyFrequencies'
 import { useLivePlog } from '../hooks/useLivePlog'
@@ -339,14 +336,15 @@ export function MapScreen() {
 
   const nearbyFreqs   = useNearbyFrequencies(activePosition)
   const homeCoord     = useHomeAirfield(settings.homeAirfield)
-  const { alerts: airspaceAlerts, dismiss: dismissAirspace } =
-    useAirspaceWarnings(positionForAlerts, settings.airspaceWarnLookaheadMin, settings.airspaceWarnVerticalFt)
-  const { alerts: obstructionAlerts, dismiss: dismissObstruction } =
-    useObstructionWarnings(positionForAlerts)
-  const { alerts: airfieldAlerts, dismiss: dismissAirfield } =
-    useAirfieldProximity(positionForAlerts, waypoints)
-  const { notifications: airspaceNotifications } =
-    useAirspaceNotifications(positionForAlerts)
+  // Combined into one hook/effect/setState pass -- see usePositionAlerts.ts
+  // doc comment for why (React "Maximum update depth exceeded" under two
+  // simultaneous Class C transitions, 2026-09-20).
+  const {
+    airspaceAlerts, dismissAirspace,
+    obstructionAlerts, dismissObstruction,
+    airfieldAlerts, dismissAirfield,
+    airspaceNotifications,
+  } = usePositionAlerts(positionForAlerts, waypoints, settings.airspaceWarnLookaheadMin, settings.airspaceWarnVerticalFt)
 
   // Active route-leg index (mirrors web MapView.tsx's activeWpIdx). Auto-
   // advances when within 0.3 NM of the current destination waypoint.
