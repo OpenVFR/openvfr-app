@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { TILE_BASE } from '../config'
+import { API_BASE } from '../config'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { fetchWithRetry } from '@open-vfr/shared/fetchWithRetry'
 
@@ -43,7 +43,12 @@ export function useTerrainElevation(position: GpsPosition | null): number | null
     // Also self-heals via the next GPS-driven effect run (MIN_INTERVAL_MS)
     // even if a request exhausts its retries, so a brief gap never leaves
     // AGL stuck stale for long.
-    fetchWithRetry(`${TILE_BASE}/api/elevation/eudem25m?${params.toString()}`)
+    // API_BASE, not TILE_BASE -- /api/elevation/ is proxied by the api
+    // server's nginx, a different host from TILE_BASE (which in production
+    // points at the R2 tiles bucket domain). Using TILE_BASE here hit the
+    // R2 bucket with a bogus path and came back with a 401 misreported as
+    // "OpenTopoData HTTP 401" (found 2026-09-20).
+    fetchWithRetry(`${API_BASE}/api/elevation/eudem25m?${params.toString()}`)
       .then(r => r.json())
       .then((data: { results?: { elevation: number | null }[]; status?: string }) => {
         if (data.status !== 'OK' || !data.results?.[0]) return

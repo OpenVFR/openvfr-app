@@ -48,7 +48,7 @@ import {
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
 import { windBarbColorForSpeed, windArrowStrokeWidth } from '@open-vfr/shared/windBarb'
-import { getTileUrls, TILE_BASE } from '../config'
+import { getTileUrls, API_BASE } from '../config'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 
@@ -294,7 +294,12 @@ export function VerticalProfile({
     }
     const controller = new AbortController()
     setTerrainPts([])
-    fetchTerrainProfile(waypoints, TILE_BASE, controller.signal)
+    // API_BASE, not TILE_BASE -- /api/elevation/ is proxied by the api
+    // server's nginx, a different host from TILE_BASE (which in production
+    // points at the R2 tiles bucket domain, tiles.openvfr.org). Using
+    // TILE_BASE here hit the R2 bucket with a bogus path and came back with
+    // a 401 misreported as "OpenTopoData HTTP 401" (found 2026-09-20).
+    fetchTerrainProfile(waypoints, API_BASE, controller.signal)
       .then((pts) => {
         setTerrainPts(pts)
         setMsaPts(computeMsaProfile(pts))

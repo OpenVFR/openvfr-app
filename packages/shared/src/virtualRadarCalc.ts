@@ -712,8 +712,10 @@ const TERRAIN_MAX_PTS = 100   // single request; API limit is 100 per call
  *
  * @param waypoints route waypoints (≥2 required)
  * @param baseUrl   pass '' for web (relative URL via Vite proxy / nginx same-origin);
- *                  pass TILE_BASE for native (absolute URL to the server's nginx
- *                  proxy at /api/elevation/eudem25m)
+ *                  pass API_BASE for native (absolute URL to the api server's
+ *                  nginx proxy at /api/elevation/eudem25m) -- NOT TILE_BASE,
+ *                  which in production points at a different host (the R2
+ *                  tiles bucket domain) and 401s on this path
  */
 export async function fetchTerrainProfile(
   waypoints: RouteWaypoint[],
