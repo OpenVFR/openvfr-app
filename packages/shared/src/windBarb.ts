@@ -61,3 +61,73 @@ export function windBarbColorForSpeed(speedKts: number): string {
 export function windArrowStrokeWidth(speedKt: number): number {
   return Math.min(4, 1.5 + speedKt / 12)
 }
+
+/** Feather breakdown for a raw speed -- pennant (50kt triangle), full barb
+ * (10kt line), half barb (5kt line, at most one). Single source of truth
+ * for the map's canvas/PNG barb icons AND the small Virtual Radar/Vertical
+ * Profile chart barbs, so both read the same discrete feather count for a
+ * given speed. */
+export function windBarbFeathers(speedKts: number): { pennants: number; fulls: number; half: number } {
+  const bucket = windBarbBucket(speedKts)
+  let remaining = bucket
+  const pennants = Math.floor(remaining / 50); remaining -= pennants * 50
+  const fulls = Math.floor(remaining / 10); remaining -= fulls * 10
+  const half = remaining >= 5 ? 1 : 0
+  return { pennants, fulls, half }
+}
+
+export interface WindBarbLineSeg { kind: 'line'; x1: number; y1: number; x2: number; y2: number }
+export interface WindBarbTri { kind: 'tri'; points: [[number, number], [number, number], [number, number]] }
+export type WindBarbShape = WindBarbLineSeg | WindBarbTri
+
+/**
+ * Barb geometry in a small, caller-scaled local space: shaft runs from
+ * (0,0) (station point) to (0,-shaftLen) (tip, pointing "up" / north
+ * before the caller's own dirDeg rotation), matching the same convention
+ * already used by the map's drawWindBarb (web canvas) and
+ * gen-wind-barb-icons.mjs (native PNGs) -- feathers nearest the tip are
+ * the largest (pennants), then full barbs, then a single half barb
+ * closest to the station. Returns feathers: [] for calm (bucket < 3) --
+ * callers already draw a distinct calm-circle marker instead of a shaft.
+ */
+export function windBarbGeometry(
+  speedKts: number,
+  opts: { shaftLen?: number; barbLen?: number; halfLen?: number; barbGap?: number } = {},
+): { shaft: WindBarbLineSeg | null; feathers: WindBarbShape[] } {
+  const bucket = windBarbBucket(speedKts)
+  const shaftLen = opts.shaftLen ?? 14
+  const barbLen = opts.barbLen ?? 7
+  const halfLen = opts.halfLen ?? 4
+  const barbGap = opts.barbGap ?? 4
+  const rad = Math.PI / 3 // barb angle off the shaft, matches map icon
+
+  if (bucket < 3) return { shaft: null, feathers: [] }
+
+  const tipY = -shaftLen
+  const shaft: WindBarbLineSeg = { kind: 'line', x1: 0, y1: 0, x2: 0, y2: tipY }
+  const { pennants, fulls, half } = windBarbFeathers(bucket)
+
+  const feathers: WindBarbShape[] = []
+  let y = tipY
+  for (let i = 0; i < pennants; i++) {
+    const y2 = y + barbGap
+    feathers.push({
+      kind: 'tri',
+      points: [
+        [0, y],
+        [barbLen * Math.sin(rad), y + barbLen * Math.cos(rad) * 0.5],
+        [0, y2],
+      ],
+    })
+    y = y2
+  }
+  for (let i = 0; i < fulls; i++) {
+    feathers.push({ kind: 'line', x1: 0, y1: y, x2: barbLen * Math.sin(rad), y2: y + barbLen * Math.cos(rad) })
+    y += barbGap
+  }
+  if (half) {
+    feathers.push({ kind: 'line', x1: 0, y1: y, x2: halfLen * Math.sin(rad), y2: y + halfLen * Math.cos(rad) })
+  }
+
+  return { shaft, feathers }
+}

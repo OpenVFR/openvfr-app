@@ -49,71 +49,80 @@ function drawWindBarb(ctx: CanvasRenderingContext2D, bucket: number, color: stri
   const stationY = CANVAS_H - 6 // anchor point (icon-anchor: 'bottom' in the style)
   const tipY = 10
 
-  // The 2026-09-13 UX pass that shrunk this (icon-size 0.4-0.8, opacity
-  // 0.55, lineWidth 2.4, faint shadow) overcorrected -- barbs ended up
-  // barely visible against the basemap, leaving only the numeric label
-  // (which keeps its own white halo) readable. Restored to a bolder stroke
-  // + stronger shadow here; map-style.ts/AviationMap.tsx restore the
-  // icon-size/opacity side. Speed-tiered colour (blue/green/amber, see
-  // windBarbColorForSpeed) now does the "don't dominate the map" work that
-  // the old flat-colour version tried to do purely via size/opacity.
-  ctx.strokeStyle = color
-  ctx.fillStyle = color
-  ctx.lineWidth = 3
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  ctx.shadowColor = 'rgba(0,0,0,0.55)'
-  ctx.shadowBlur = 1.5
+  // Contrast fix (found during a pre-release pass comparing web vs native
+  // side by side): a Canvas 2D `shadowBlur` halo is a soft, diffuse glow --
+  // at blur 1.5 it barely extends past the stroke itself and reads as
+  // near-invisible against Protomaps' light basemap fills (tan/beige
+  // landuse). Native's PNG generator (gen-wind-barb-icons.mjs) never had
+  // this problem because it draws an explicit second pass instead: every
+  // shape stroked/filled once, wider, in a solid dark colour underneath,
+  // then again at the real width in the speed-tiered colour on top -- a
+  // crisp outline that reads on any basemap, not a blur. Mirrored here so
+  // web and native are visually identical again.
+  const outlineColor = 'rgba(0,0,0,0.7)'
+  const strokeW = 3
+  const outlineW = strokeW + 1.5
 
-  if (bucket < 3) {
-    // Calm: WMO convention draws an open circle around the station point, no shaft.
+  function drawPass(strokeColor: string, fillColor: string, width: number) {
+    ctx.strokeStyle = strokeColor
+    ctx.fillStyle = fillColor
+    ctx.lineWidth = width
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+
+    if (bucket < 3) {
+      // Calm: WMO convention draws an open circle around the station point, no shaft.
+      ctx.beginPath()
+      ctx.arc(originX, stationY - 10, 7, 0, Math.PI * 2)
+      ctx.stroke()
+      return
+    }
+
+    // Shaft: station point to tip.
     ctx.beginPath()
-    ctx.arc(originX, stationY - 10, 7, 0, Math.PI * 2)
+    ctx.moveTo(originX, stationY)
+    ctx.lineTo(originX, tipY)
     ctx.stroke()
-    return
+
+    let remaining = bucket
+    const pennants = Math.floor(remaining / 50); remaining -= pennants * 50
+    const fulls = Math.floor(remaining / 10); remaining -= fulls * 10
+    const half = remaining >= 5 ? 1 : 0
+
+    const barbGap = 8, barbLen = 15, halfLen = 8
+    const rad = Math.PI / 3 // barb angle off the shaft
+
+    let y = tipY
+    // Pennants (50kt triangle flags) drawn nearest the tip, then full barbs
+    // (10kt), then a single half barb (5kt) closest to the station -- matches
+    // the standard reading order (biggest feathers farthest from the station).
+    for (let i = 0; i < pennants; i++) {
+      const y2 = y + barbGap
+      ctx.beginPath()
+      ctx.moveTo(originX, y)
+      ctx.lineTo(originX + barbLen * Math.sin(rad), y + barbLen * Math.cos(rad) * 0.5)
+      ctx.lineTo(originX, y2)
+      ctx.closePath()
+      ctx.fill()
+      y = y2
+    }
+    for (let i = 0; i < fulls; i++) {
+      ctx.beginPath()
+      ctx.moveTo(originX, y)
+      ctx.lineTo(originX + barbLen * Math.sin(rad), y + barbLen * Math.cos(rad))
+      ctx.stroke()
+      y += barbGap
+    }
+    if (half) {
+      ctx.beginPath()
+      ctx.moveTo(originX, y)
+      ctx.lineTo(originX + halfLen * Math.sin(rad), y + halfLen * Math.cos(rad))
+      ctx.stroke()
+    }
   }
 
-  // Shaft: station point to tip.
-  ctx.beginPath()
-  ctx.moveTo(originX, stationY)
-  ctx.lineTo(originX, tipY)
-  ctx.stroke()
-
-  let remaining = bucket
-  const pennants = Math.floor(remaining / 50); remaining -= pennants * 50
-  const fulls = Math.floor(remaining / 10); remaining -= fulls * 10
-  const half = remaining >= 5 ? 1 : 0
-
-  const barbGap = 8, barbLen = 15, halfLen = 8
-  const rad = Math.PI / 3 // barb angle off the shaft
-
-  let y = tipY
-  // Pennants (50kt triangle flags) drawn nearest the tip, then full barbs
-  // (10kt), then a single half barb (5kt) closest to the station — matches
-  // the standard reading order (biggest feathers farthest from the station).
-  for (let i = 0; i < pennants; i++) {
-    const y2 = y + barbGap
-    ctx.beginPath()
-    ctx.moveTo(originX, y)
-    ctx.lineTo(originX + barbLen * Math.sin(rad), y + barbLen * Math.cos(rad) * 0.5)
-    ctx.lineTo(originX, y2)
-    ctx.closePath()
-    ctx.fill()
-    y = y2
-  }
-  for (let i = 0; i < fulls; i++) {
-    ctx.beginPath()
-    ctx.moveTo(originX, y)
-    ctx.lineTo(originX + barbLen * Math.sin(rad), y + barbLen * Math.cos(rad))
-    ctx.stroke()
-    y += barbGap
-  }
-  if (half) {
-    ctx.beginPath()
-    ctx.moveTo(originX, y)
-    ctx.lineTo(originX + halfLen * Math.sin(rad), y + halfLen * Math.cos(rad))
-    ctx.stroke()
-  }
+  drawPass(outlineColor, outlineColor, outlineW)
+  drawPass(color, color, strokeW)
 }
 
 /**

@@ -21,7 +21,7 @@ import {
   type TerrainPoint, type MsaPoint, type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
-import { windBarbColorForSpeed, windArrowStrokeWidth } from '@open-vfr/shared/windBarb'
+import { windBarbColorForSpeed, windBarbGeometry } from '@open-vfr/shared/windBarb'
 import type { AircraftProfileDocType } from '../db/index'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 import type { WindSample } from '../hooks/useWindAlongRoute'
@@ -156,6 +156,53 @@ function ProfileTooltip({ active, payload }: { active?: boolean; payload?: Toolt
         </div>
       ))}
     </div>
+  )
+}
+
+/**
+ * Renders a small WMO-style wind barb (shaft + pennant/full/half-barb
+ * feathers) at the origin, pointing "up" before the caller's own rotate()
+ * -- same geometry/reading convention as the map's wind-barb icons (see
+ * @open-vfr/shared/windBarb's windBarbGeometry), just scaled down for this
+ * chart. Replaces a plain arrow+triangle-head that only encoded speed via
+ * colour/thickness -- found during a pre-release pass to be too subtle to
+ * read strength from at a glance, unlike the map's actual barbs. Draws a
+ * dark outline pass underneath the coloured pass first, same contrast fix
+ * as the map icon, so it stays legible on both apps' basemaps.
+ */
+function renderWindBarbShape(
+  speedKts: number,
+  color: string,
+  opts: { strokeW?: number; shaftLen?: number; barbLen?: number; halfLen?: number; barbGap?: number; outlineOpacity?: number } = {},
+) {
+  const { shaft, feathers } = windBarbGeometry(speedKts, opts)
+  if (!shaft) return null
+  const strokeW = opts.strokeW ?? 1.6
+  const outlineColor = `rgba(0,0,0,${opts.outlineOpacity ?? 0.65})`
+  const outlineW = strokeW + 1.2
+
+  const renderPass = (stroke: string, fill: string, width: number, key: string) => (
+    <g key={key}>
+      <line x1={shaft.x1} y1={shaft.y1} x2={shaft.x2} y2={shaft.y2} stroke={stroke} strokeWidth={width} strokeLinecap="round" />
+      {feathers.map((f, idx) =>
+        f.kind === 'line' ? (
+          <line key={idx} x1={f.x1} y1={f.y1} x2={f.x2} y2={f.y2} stroke={stroke} strokeWidth={width} strokeLinecap="round" />
+        ) : (
+          <path
+            key={idx}
+            d={`M${f.points[0][0]},${f.points[0][1]} L${f.points[1][0]},${f.points[1][1]} L${f.points[2][0]},${f.points[2][1]} Z`}
+            fill={fill}
+          />
+        ),
+      )}
+    </g>
+  )
+
+  return (
+    <>
+      {renderPass(outlineColor, outlineColor, outlineW, 'outline')}
+      {renderPass(color, color, strokeW, 'main')}
+    </>
   )
 }
 
@@ -829,21 +876,17 @@ export default function VirtualRadar({
                       if (m.wind!.dirDeg == null) {
                         return <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(250,204,21,0.7)" strokeWidth={1} strokeDasharray="1.5,1.5" />
                       }
-                      const len = Math.min(18, 6 + m.wind!.speedKt * 0.5)
                       const rot = m.wind!.dirDeg + 180
-                      // Speed-tiered colour + thickness (see @open-vfr/shared/windBarb) --
-                      // arrows get visibly bolder/brighter with wind strength, not just
-                      // longer, so strength reads at a glance without needing the
-                      // numeric label beside it.
-                      const strokeW = windArrowStrokeWidth(m.wind!.speedKt)
+                      // Real WMO barb (shaft + feathers) instead of a plain
+                      // arrow -- see renderWindBarbShape above.
                       const color = windBarbColorForSpeed(m.wind!.speedKt)
+                      const shaftLen = 18
                       return (
                         <g aria-hidden="true">
                           <g transform={`translate(${cx},${cy}) rotate(${rot})`}>
-                            <line x1={0} y1={-len / 2} x2={0} y2={len / 2} stroke={color} strokeWidth={strokeW} strokeLinecap="round" />
-                            <path d={`M0,${len / 2} L-2.5,${len / 2 - 4} L2.5,${len / 2 - 4} Z`} fill={color} />
+                            {renderWindBarbShape(m.wind!.speedKt, color, { shaftLen, barbLen: 8, halfLen: 5, barbGap: 5, strokeW: 1.8 })}
                           </g>
-                          {renderLabel(`${m.wind!.dirDeg}°/${m.wind!.speedKt}`, len / 2)}
+                          {renderLabel(`${m.wind!.dirDeg}°/${m.wind!.speedKt}`, shaftLen / 2 + 4)}
                         </g>
                       )
                     }}
@@ -889,21 +932,19 @@ export default function VirtualRadar({
                         )
                       }
                       if (s.wind.dirDeg == null) return <g />
-                      const len = Math.min(14, 5 + s.wind.speedKt * 0.4)
                       const rot = s.wind.dirDeg + 180
-                      // Same speed-tiered colour as a real station's arrow,
-                      // just at reduced opacity -- keeps the strength read
+                      // Same real-barb geometry as a real station's arrow,
+                      // just smaller/dimmer -- keeps the strength read
                       // consistent while still visibly distinct from a real
                       // observation.
-                      const strokeW = Math.max(1, windArrowStrokeWidth(s.wind.speedKt) - 0.5)
                       const color = windBarbColorForSpeed(s.wind.speedKt)
+                      const shaftLen = 13
                       return (
                         <g aria-hidden="true">
-                          <g transform={`translate(${cx},${cy}) rotate(${rot})`} opacity={0.55}>
-                            <line x1={0} y1={-len / 2} x2={0} y2={len / 2} stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeDasharray="3,2" />
-                            <path d={`M0,${len / 2} L-2,${len / 2 - 3} L2,${len / 2 - 3} Z`} fill={color} />
+                          <g transform={`translate(${cx},${cy}) rotate(${rot})`} opacity={0.6}>
+                            {renderWindBarbShape(s.wind.speedKt, color, { shaftLen, barbLen: 6, halfLen: 3.5, barbGap: 3.5, strokeW: 1.4 })}
                           </g>
-                          {renderLabel(`~${s.wind.dirDeg}°/${s.wind.speedKt}`, len / 2)}
+                          {renderLabel(`~${s.wind.dirDeg}°/${s.wind.speedKt}`, shaftLen / 2 + 3)}
                         </g>
                       )
                     }}

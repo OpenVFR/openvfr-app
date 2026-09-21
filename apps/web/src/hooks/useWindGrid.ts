@@ -33,10 +33,22 @@ export function useWindGrid(
     let cancelled = false
     let ac: AbortController | null = null
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    // Bumped on every run() call, captured per-run below -- guards against
+    // a superseded run's *result* still landing after a newer one already
+    // committed. `ac?.abort()` only cancels the underlying fetches; it does
+    // NOT stop an in-flight run's own `.then` from executing with whatever
+    // subset of points happened to fulfil before the abort took effect (a
+    // rapid pan/zoom fires several debounced runs in quick succession).
+    // Without this, that stale partial result would still call setFc and
+    // briefly replace a full grid with a sparse one, self-correcting only
+    // once the latest run finishes -- exactly the "barb count looks random
+    // while zooming" bug reported in a pre-release pass.
+    let generation = 0
 
     async function run() {
       ac?.abort()
       ac = new AbortController()
+      const myGeneration = ++generation
       const b = map!.getBounds()
       try {
         const points = await fetchWindGrid(
@@ -44,7 +56,7 @@ export function useWindGrid(
           altFt,
           { baseUrl: API_BASE_URL, signal: ac.signal },
         )
-        if (cancelled) return
+        if (cancelled || myGeneration !== generation) return
         setFc({
           type: 'FeatureCollection',
           features: points.map((p) => ({

@@ -47,7 +47,7 @@ import {
 } from '@open-vfr/shared/virtualRadarCalc'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
-import { windBarbColorForSpeed, windArrowStrokeWidth } from '@open-vfr/shared/windBarb'
+import { windBarbColorForSpeed, windBarbGeometry } from '@open-vfr/shared/windBarb'
 import { getTileUrls, API_BASE } from '../config'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
@@ -240,6 +240,52 @@ function getPlannedAlt(altProfile: { distNm: number; altFt: number }[], distNm: 
   return alt
 }
 
+
+/**
+ * Renders a small WMO-style wind barb (shaft + pennant/full/half-barb
+ * feathers) at the origin, mirroring web's VirtualRadar.tsx identical
+ * helper -- see @open-vfr/shared/windBarb's windBarbGeometry for the
+ * shared geometry/reading convention. Replaces a plain arrow+triangle-
+ * head that only encoded speed via colour/thickness, found during a
+ * pre-release pass to be too subtle to read strength from at a glance.
+ * Draws a dark outline pass underneath the coloured pass first, same
+ * contrast fix as the map's wind-barb icons.
+ */
+function renderWindBarbShape(
+  speedKts: number,
+  color: string,
+  opts: { strokeW?: number; shaftLen?: number; barbLen?: number; halfLen?: number; barbGap?: number; outlineOpacity?: number } = {},
+) {
+  const { shaft, feathers } = windBarbGeometry(speedKts, opts)
+  if (!shaft) return null
+  const strokeW = opts.strokeW ?? 1.6
+  const outlineColor = `rgba(0,0,0,${opts.outlineOpacity ?? 0.65})`
+  const outlineW = strokeW + 1.2
+
+  const renderPass = (stroke: string, fill: string, width: number, key: string) => (
+    <G key={key}>
+      <SvgLine x1={shaft.x1} y1={shaft.y1} x2={shaft.x2} y2={shaft.y2} stroke={stroke} strokeWidth={width} strokeLinecap="round" />
+      {feathers.map((f, idx) =>
+        f.kind === 'line' ? (
+          <SvgLine key={idx} x1={f.x1} y1={f.y1} x2={f.x2} y2={f.y2} stroke={stroke} strokeWidth={width} strokeLinecap="round" />
+        ) : (
+          <Path
+            key={idx}
+            d={`M${f.points[0][0]},${f.points[0][1]} L${f.points[1][0]},${f.points[1][1]} L${f.points[2][0]},${f.points[2][1]} Z`}
+            fill={fill}
+          />
+        ),
+      )}
+    </G>
+  )
+
+  return (
+    <>
+      {renderPass(outlineColor, outlineColor, outlineW, 'outline')}
+      {renderPass(color, color, strokeW, 'main')}
+    </>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -856,16 +902,13 @@ export function VerticalProfile({
                   if (m.wind.dirDeg == null) {
                     return <Circle key={`wind-${i}`} cx={x} cy={y} r={3} fill="none" stroke="rgba(250,204,21,0.7)" strokeWidth={1} strokeDasharray="1.5,1.5" />
                   }
-                  const len = Math.min(18, 6 + m.wind.speedKt * 0.5)
                   const rot = m.wind.dirDeg + 180
-                  // Speed-tiered colour + thickness (see @open-vfr/shared/windBarb) --
-                  // mirrors web's VirtualRadar.tsx identical change.
-                  const strokeW = windArrowStrokeWidth(m.wind.speedKt)
+                  // Real WMO barb (shaft + feathers) instead of a plain
+                  // arrow -- mirrors web's VirtualRadar.tsx identical change.
                   const color = windBarbColorForSpeed(m.wind.speedKt)
                   return (
                     <G key={`wind-${i}`} transform={`translate(${x},${y}) rotate(${rot})`}>
-                      <SvgLine x1={0} y1={-len / 2} x2={0} y2={len / 2} stroke={color} strokeWidth={strokeW} strokeLinecap="round" />
-                      <Path d={`M0,${len / 2} L-2.5,${len / 2 - 4} L2.5,${len / 2 - 4} Z`} fill={color} />
+                      {renderWindBarbShape(m.wind.speedKt, color, { shaftLen: 18, barbLen: 8, halfLen: 5, barbGap: 5, strokeW: 1.8 })}
                     </G>
                   )
                 })}
@@ -880,14 +923,11 @@ export function VerticalProfile({
                     return <Circle key={`windsample-${i}`} cx={x} cy={y} r={2.5} fill="none" stroke="rgba(148,163,184,0.4)" strokeWidth={1} strokeDasharray="1.5,1.5" />
                   }
                   if (s.wind.dirDeg == null) return null
-                  const len = Math.min(14, 5 + s.wind.speedKt * 0.4)
                   const rot = s.wind.dirDeg + 180
-                  const strokeW = Math.max(1, windArrowStrokeWidth(s.wind.speedKt) - 0.5)
                   const color = windBarbColorForSpeed(s.wind.speedKt)
                   return (
-                    <G key={`windsample-${i}`} transform={`translate(${x},${y}) rotate(${rot})`} opacity={0.55}>
-                      <SvgLine x1={0} y1={-len / 2} x2={0} y2={len / 2} stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeDasharray="3,2" />
-                      <Path d={`M0,${len / 2} L-2,${len / 2 - 3} L2,${len / 2 - 3} Z`} fill={color} />
+                    <G key={`windsample-${i}`} transform={`translate(${x},${y}) rotate(${rot})`} opacity={0.6}>
+                      {renderWindBarbShape(s.wind.speedKt, color, { shaftLen: 13, barbLen: 6, halfLen: 3.5, barbGap: 3.5, strokeW: 1.4 })}
                     </G>
                   )
                 })}
@@ -1058,7 +1098,7 @@ export function VerticalProfile({
                   if (!m.wind) return null
                   const text = m.wind.calm ? 'CALM' : m.wind.dirDeg != null ? `${m.wind.dirDeg}°/${m.wind.speedKt}` : ''
                   if (!text) return null
-                  const halfW = m.wind.calm ? 3 : Math.min(18, 6 + m.wind.speedKt * 0.5) / 2
+                  const halfW = m.wind.calm ? 3 : 18 / 2 + 4
                   const left = windXOf(m.distNm) + halfW + 4
                   if (left + text.length * 7 * 0.62 > contentW - MARGIN_R) return null
                   return (
@@ -1071,7 +1111,7 @@ export function VerticalProfile({
                 {visibleWindSamples.map((s, i) => {
                   const text = s.wind.calm ? '~CALM' : s.wind.dirDeg != null ? `~${s.wind.dirDeg}°/${s.wind.speedKt}` : ''
                   if (!text) return null
-                  const halfW = s.wind.calm ? 2.5 : Math.min(14, 5 + s.wind.speedKt * 0.4) / 2
+                  const halfW = s.wind.calm ? 2.5 : 13 / 2 + 3
                   const left = windXOf(s.distNm) + halfW + 4
                   if (left + text.length * 7 * 0.62 > contentW - MARGIN_R) return null
                   return (
