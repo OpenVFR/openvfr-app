@@ -37,7 +37,7 @@ import {
   type RunwayWindHighlightEnd,
 } from '@open-vfr/shared/runwayWind'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
-import { formatObstacleName, formatLandmarkName, CURRENT_POSITION_LABEL } from '@open-vfr/shared/snapLabels'
+import { formatObstacleName, formatLandmarkName, obstacleWaypointName, CURRENT_POSITION_LABEL } from '@open-vfr/shared/snapLabels'
 
 import {
   BASEMAP_STYLE_URL,
@@ -157,6 +157,18 @@ export type AviationMapProps = {
    *  changes from null → a track (or to a different track). Pass null/empty
    *  to hide and stop fitting. */
   pastTrack?: [number, number][]
+  /** Id of the saved-route row the working route is currently linked to
+   *  ('' = untitled/unlinked) -- RouteContext's activeRouteId, changed by
+   *  RouteLibrarySheet's handleLoad/Save As, GPX import, and New Route.
+   *  Used purely as a change-signal to fit the camera to the route's
+   *  bounds right after a *load* (or Save As / GPX import), without
+   *  re-fitting on every incremental tap-to-add-a-waypoint edit during
+   *  planning (which wouldn't touch this id) or on the initial mount's
+   *  cold-start restore of the last session's route (guarded separately,
+   *  see the effect below -- that already gets its own flyTo via
+   *  initialCenter/home-airfield centering, and fighting it with a second
+   *  competing camera move on the very first render would be jarring). */
+  activeRouteId?: string
   /** Map-side crosshair marker driven by a chart hover/scrub (VerticalProfile
    *  or PastTrackChart touch-drag) — [lng, lat], or null/undefined to hide. */
   profileCursor?: [number, number] | null
@@ -254,6 +266,8 @@ export type AviationMapProps = {
 export type SnapCandidate = {
   kind: string
   waypoint: RouteWaypoint
+  /** Verbose picker-only label -- see extractSnapDisplayName below. */
+  displayName?: string
 }
 
 // Layers that are valid snap targets during route planning (mirrors web's
@@ -268,20 +282,23 @@ const SNAP_LAYERS = [
   'user-waypoints-circle',
 ]
 
-/** Extract a short identifier from a snapped route-planning feature. */
+/** Extract the short identifier STORED as a snapped route-planning
+ *  feature's `waypoint.name` -- persists into the route (leg list,
+ *  VirtualRadar waypoint-tick label, saved-route storage), so obstacles
+ *  deliberately use the kind-only `obstacleWaypointName` here rather than
+ *  formatObstacleName's elevation-suffixed fallback -- see
+ *  extractSnapDisplayName below for the picker-only verbose form. */
 function extractSnapName(feat: Feature): string {
   const p = (feat.properties ?? {}) as Record<string, unknown>
   if (typeof p.icao === 'string' && p.icao) return String(p.icao)
   // Obstacles/landmarks: most have no `name` at all (OpenAIP leaves it as an
   // empty string, not null/undefined, so a plain `p.name ?? ...` fallback
-  // never triggers) — fall back to a readable kind + height/elevation label
-  // instead of showing a blank row in the disambiguation picker.
+  // never triggers) — fall back to a readable kind label instead of showing
+  // a blank row in the disambiguation picker.
   if (extractSnapKind(feat) === 'OBS') {
-    return formatObstacleName({
+    return obstacleWaypointName({
       name: typeof p.name === 'string' ? p.name : undefined,
       kind: typeof p.kind === 'string' ? p.kind : undefined,
-      height_m: typeof p.height_m === 'number' ? p.height_m : undefined,
-      elevation_ft: typeof p.elevation_ft === 'number' ? p.elevation_ft : undefined,
     })
   }
   if (extractSnapKind(feat) === 'LMK') {
@@ -299,6 +316,25 @@ function extractSnapName(feat: Feature): string {
   const id = p.id
   const name = p.name
   return String((typeof id === 'string' && id) || (typeof name === 'string' && name) || p.kind || 'WP')
+}
+
+/** Verbose form of the same feature's name, for the disambiguation picker's
+ *  candidate list only -- NOT stored anywhere. Only obstacles differ from
+ *  extractSnapName (elevation suffix helps tell apart two unnamed
+ *  obstacles near the same tap point, a one-off disambiguation need that
+ *  extractSnapName's persisted short name deliberately drops). Every other
+ *  feature type's display name is identical to its stored name. */
+function extractSnapDisplayName(feat: Feature): string {
+  const p = (feat.properties ?? {}) as Record<string, unknown>
+  if (extractSnapKind(feat) === 'OBS') {
+    return formatObstacleName({
+      name: typeof p.name === 'string' ? p.name : undefined,
+      kind: typeof p.kind === 'string' ? p.kind : undefined,
+      height_m: typeof p.height_m === 'number' ? p.height_m : undefined,
+      elevation_ft: typeof p.elevation_ft === 'number' ? p.elevation_ft : undefined,
+    })
+  }
+  return extractSnapName(feat)
 }
 
 /** Short kind badge for the disambiguation picker. */
@@ -341,7 +377,7 @@ function buildSnapCandidates(hits: Feature[], custom?: RouteWaypoint): SnapCandi
     const key  = `${kind}:${name}:${lat.toFixed(5)}:${lng.toFixed(5)}`
     if (seen.has(key)) continue
     seen.add(key)
-    out.push({ kind, waypoint: { lng, lat, name } })
+    out.push({ kind, displayName: extractSnapDisplayName(feat), waypoint: { lng, lat, name } })
   }
   // Always offer the exact drop/tap location too — mirrors web's picker
   // (user should be able to reject every nearby suggestion and keep a plain
@@ -641,6 +677,7 @@ export function AviationMap({
   trajectoryNm   = 5,
   trajectoryMode = 'time' as const,
   pastTrack,
+  activeRouteId,
   profileCursor,
   onFeatureTap,
   onLongPress,
@@ -1184,6 +1221,29 @@ export function AviationMap({
       { padding: { top: 60, bottom: 60, left: 60, right: 60 }, duration: 600 },
     )
   }, [pastTrack])
+
+  // Fit camera to the route's bounds right after it's loaded/activated —
+  // RouteLibrarySheet's handleLoad (Flight Plan tab) changes activeRouteId,
+  // which this screen doesn't otherwise have a map-camera reaction to since
+  // the library sheet lives on a separate tab from the map. Skips the very
+  // first invocation (component mount / cold-start restore of the last
+  // session's linked route) via routeFitMountedRef — that case already gets
+  // its own flyTo from the home-airfield/initialCenter effect above, and
+  // firing this one too would be two competing camera moves on first paint.
+  // Deliberately keyed on activeRouteId, not `waypoints` itself, so this
+  // does NOT re-fit on every incremental tap-to-add-a-waypoint edit during
+  // ordinary planning (which leaves activeRouteId untouched).
+  const routeFitMountedRef = useRef(false)
+  useEffect(() => {
+    if (!routeFitMountedRef.current) { routeFitMountedRef.current = true; return }
+    if (!waypoints || waypoints.length < 2) return
+    const lngs = waypoints.map(w => w.lng)
+    const lats = waypoints.map(w => w.lat)
+    cameraRef.current?.fitBounds(
+      [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)],
+      { padding: { top: 80, bottom: 80, left: 80, right: 80 }, duration: 800 },
+    )
+  }, [activeRouteId])
 
   // Fly to the first live position fix (GPS or simulator) — independent of
   // home-airfield centering. A fresh sim/GPS fix can be anywhere on Earth
@@ -1902,6 +1962,7 @@ export function AviationMap({
               filter={notamHintFilter as any}
               layout={{
                 'text-field': notamHintTextExpr as any,
+                'text-font': ['Noto Sans Regular'],
                 'text-size': 13,
                 'text-anchor': 'bottom-left',
                 'text-offset': [0.6, -0.6],
@@ -2261,6 +2322,7 @@ export function AviationMap({
               type="symbol"
               layout={{
                 'text-field': ['coalesce', ['get', 'callsign'], ['get', 'icao24']],
+                'text-font': ['Noto Sans Regular'],
                 'text-size': 9,
                 'text-anchor': 'top',
                 'text-offset': [0, 0.8],
