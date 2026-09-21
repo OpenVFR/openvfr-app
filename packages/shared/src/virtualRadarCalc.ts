@@ -289,6 +289,15 @@ export function buildVirtualRadarProfile(
   obstacleGeoJson: GeoJSON.FeatureCollection,
   waterGeoJson?:   GeoJSON.FeatureCollection,
   landmarkGeoJson?: GeoJSON.FeatureCollection,
+  /** Same ceiling filter as the map's airspace layers (AviationMap.tsx's
+   *  ceilingFilter / MapView.tsx equivalent, both `lower_ft <= ceilingFt`)
+   *  -- previously never threaded through to VerticalProfile at all, so
+   *  the chart always drew every airspace band the route geometrically
+   *  crossed regardless of the map's ceiling setting, e.g. still showing a
+   *  band up at FL065 with the map ceiling dialed down to 5000ft. Optional
+   *  and unfiltered (Infinity) by default so existing callers/tests that
+   *  don't pass it are unaffected. */
+  ceilingFt: number = Infinity,
 ): VirtualRadarProfile {
   if (waypoints.length < 2) {
     return {
@@ -382,6 +391,7 @@ export function buildVirtualRadarProfile(
     const lowerFt = Number(p.lower_ft ?? 0)
     const upperFt = Number(p.upper_ft ?? 0)
     if (upperFt <= 0) continue
+    if (lowerFt > ceilingFt) continue
 
     // Distances (NM along the route) of every point where the route crosses
     // the polygon's boundary.
