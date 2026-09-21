@@ -20,6 +20,7 @@ import { MapDisplaySheet, LAYER_DEFAULTS } from '../components/MapDisplaySheet'
 import { RegionalNotamsSheet } from '../components/RegionalNotamsSheet'
 import { WeatherAlongRouteSheet } from '../components/WeatherAlongRouteSheet'
 import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
+import { useWindAlongRoute } from '../hooks/useWindAlongRoute'
 import type { LayerState }   from '../components/MapDisplaySheet'
 import { FrequencyPanel }    from '../components/FrequencyPanel'
 import { AerodromePopup }    from '../components/AerodromePopup'
@@ -414,6 +415,11 @@ export function MapScreen() {
   // MapView.tsx useRegionalNotams()/notam-circles source.
   const regionalNotams = useRegionalNotams(layers.notamCircles && authenticated && mapReady)
   const routeWeatherStations = useWeatherAlongRoute(waypoints, mapReady)
+  // Regular-interval wind samples -- fills the gaps between
+  // routeWeatherStations' real-station markers, which only ever exist
+  // wherever an aerodrome happens to sit. Mirrors web's identical addition.
+  const routeTotalNm = waypoints.length >= 2 ? distanceAlongRouteNm(waypoints, waypoints[waypoints.length - 1]) : 0
+  const routeWindSamples = useWindAlongRoute(waypoints, routeTotalNm, mapReady)
   const notamCirclesFC = useMemo(() => ({
     type: 'FeatureCollection' as const,
     features: regionalNotams
@@ -1092,6 +1098,7 @@ export function MapScreen() {
           currentVSpeedFpm={altitudeSource.vsFtMin ?? undefined}
           crossTrackNm={crossTrackNm}
           weatherStations={routeWeatherStations}
+          windSamples={routeWindSamples}
           trajectoryMode={settings.trajectoryMode ?? 'time'}
           trajectoryNm={settings.trajectoryNm}
           height={profileHeight}

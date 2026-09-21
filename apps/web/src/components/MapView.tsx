@@ -49,6 +49,7 @@ import SnapPicker, { type SnapCandidate } from './SnapPicker'
 import VirtualRadar from './VirtualRadar'
 import RulerSummaryStrip from './RulerSummaryStrip'
 import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
+import { useWindAlongRoute } from '../hooks/useWindAlongRoute'
 import { useGpsVerticalSpeed } from '../hooks/useGpsVerticalSpeed'
 import LiveTrackChart from './LiveTrackChart'
 import LivePlogPanel from './LivePlogPanel'
@@ -392,6 +393,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // same fetched station list instead of each independently hitting
   // /api/weather for the same route.
   const routeWeatherStations = useWeatherAlongRoute(routeWaypoints)
+  // Regular-interval wind samples (nearest METAR-or-model-wind, independent
+  // of aerodrome positions) -- fills the gaps between routeWeatherStations'
+  // real-station markers, which only ever exist wherever an aerodrome
+  // happens to sit. Same lift-to-MapView reasoning as routeWeatherStations
+  // above: one fetch shared by every VirtualRadar instance.
+  const routeTotalNm = routeWaypoints.length >= 2 ? distanceAlongRouteNm(routeWaypoints, routeWaypoints[routeWaypoints.length - 1]) : 0
+  const routeWindSamples = useWindAlongRoute(routeWaypoints, routeTotalNm)
   const { waypoints: userWaypoints, saveWaypoint: saveUserWaypoint, deleteWaypoint: deleteUserWaypoint, renameWaypoint: renameUserWaypoint, moveToFolder: moveUserWpFolder } = useUserWaypoints()
   const [snapPicker, setSnapPicker] = useState<{
     candidates: SnapCandidate[]
@@ -3892,6 +3900,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             currentVSpeedFpm={flyingMode !== 'off' ? gpsVSpeedFpm ?? undefined : undefined}
             crossTrackNm={crossTrackNm}
             weatherStations={routeWeatherStations}
+            windSamples={routeWindSamples}
             trajectoryMode={trajectoryMode}
             onHoverDistNm={setProfileCursorNm}
             crosshairDistNm={profileCursorNm}

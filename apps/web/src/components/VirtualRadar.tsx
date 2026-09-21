@@ -24,6 +24,7 @@ import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
 import { windBarbColorForSpeed, windArrowStrokeWidth } from '@open-vfr/shared/windBarb'
 import type { AircraftProfileDocType } from '../db/index'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
+import type { WindSample } from '../hooks/useWindAlongRoute'
 import css from './VirtualRadar.module.css'
 import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
@@ -36,7 +37,13 @@ import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
 // below this pixel-per-NM density the chart becomes horizontally scrollable
 // instead (see chartWrap/scroll wiring below), matching native's identical
 // MIN_PX_PER_NM constant in VerticalProfile.tsx.
-const MIN_PX_PER_NM = 18
+// Bumped 18->30 -- at 18, almost any panel wide enough to show the
+// sidebar comfortably fits a 40-50nm route without ever needing to scroll
+// (900px/18 = 50nm), so the scroll path effectively never activated for
+// realistic route lengths even though waypoint/wind labels were visibly
+// cramped well before that. 30 matches the density already showing label
+// crowding in testing.
+const MIN_PX_PER_NM = 30
 // Cross-track deviation beyond which the chart badges itself as showing a
 // route the aircraft is no longer actually on — matches native's constant.
 const OFF_TRACK_BADGE_NM = 3
@@ -80,6 +87,12 @@ interface Props {
    *  arrows and cloud-base layers drawn at each station's projected
    *  along-route position. Omit to hide entirely. */
   weatherStations?: RouteWeatherStation[]
+  /** Regular-interval wind samples (from useWindAlongRoute), independent of
+   *  aerodrome positions -- fills the gaps between weatherStations' arrows,
+   *  which only ever exist wherever an aerodrome happens to sit. Rendered
+   *  visibly lighter/dashed since these can be model-wind estimates, not
+   *  observed reports. Omit to hide entirely. */
+  windSamples?: WindSample[]
 }
 
 // ---------------------------------------------------------------------------
@@ -149,7 +162,7 @@ function ProfileTooltip({ active, payload }: { active?: boolean; payload?: Toolt
 export default function VirtualRadar({
   waypoints, legOverrides, units = DEFAULT_UNITS, title, onHoverDistNm, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, crosshairDistNm,
-  crossTrackNm, weatherStations,
+  crossTrackNm, weatherStations, windSamples,
 }: Props) {
 
   const chartWrapRef = useRef<HTMLDivElement | null>(null)
@@ -319,6 +332,20 @@ export default function VirtualRadar({
     })
   }, [weatherStations, waypoints, profile])
 
+  // Regular-interval wind samples, filtered against weatherMarks above so a
+  // sample doesn't draw a second, visibly-different (dashed/model) arrow
+  // right next to a real station's arrow that already covers roughly the
+  // same stretch of route. MIN_SAMPLE_SEPARATION_NM is deliberately smaller
+  // than useWindAlongRoute's own SAMPLE_INTERVAL_NM spacing -- it only needs
+  // to suppress the specific case of a sample landing very close to an
+  // existing real marker, not to re-implement that spacing itself.
+  const MIN_SAMPLE_SEPARATION_NM = 5
+  const visibleWindSamples = useMemo(() => {
+    if (!windSamples || windSamples.length === 0) return []
+    const markDists = weatherMarks.filter((m) => m.wind).map((m) => m.distNm)
+    return windSamples.filter((s) => !markDists.some((d) => Math.abs(d - s.distNm) < MIN_SAMPLE_SEPARATION_NM))
+  }, [windSamples, weatherMarks])
+
   // Measure the chart wrap's width — needed to decide whether the route is
   // wider than the panel (MIN_PX_PER_NM) and therefore should scroll instead
   // of Recharts' ResponsiveContainer squeezing the whole route into 100%.
@@ -435,6 +462,35 @@ export default function VirtualRadar({
   const totalNmDisplay = profile ? nmToDisplay(profile.totalNm, units.distance) : 0
   const contentPxWidth = Math.max(wrapW, totalNmDisplay * MIN_PX_PER_NM)
   const scrollable = contentPxWidth > wrapW + 0.5
+  // Right edge of the actual plot area in px -- used by the wind-arrow
+  // blocks below to decide whether the dir/speed text fits to the right of
+  // the arrow (12 = ComposedChart's margin.right).
+  const plotRightPx = contentPxWidth - 12
+
+  // Waypoint-name label collision avoidance — closely-spaced waypoints
+  // (e.g. a short leg to a named landmark waypoint) previously rendered
+  // every ReferenceLine label regardless of pixel spacing, so adjacent
+  // names ran into each other and became unreadable ("Kulla…Church"
+  // mashed together). Skip a label if it would land within
+  // MIN_WP_LABEL_GAP_PX of the last one actually KEPT (not just the last
+  // one considered) — a rough fixed budget rather than measuring each
+  // name's real text width, same tradeoff already made elsewhere in this
+  // chart (e.g. the wind-arrow edge clamp above).
+  const MIN_WP_LABEL_GAP_PX = 46
+  const visibleWaypointTicks = useMemo(() => {
+    if (!profile) return []
+    const pxPerUnit = totalNmDisplay > 0 ? contentPxWidth / totalNmDisplay : 0
+    let lastX = -Infinity
+    const out: typeof profile.waypointTicks = []
+    profile.waypointTicks.forEach((tick, i) => {
+      if (i === 0) return // departure skipped, same as before -- sits on Y-axis
+      const x = nmToDisplay(tick.distNm, units.distance) * pxPerUnit
+      if (x - lastX < MIN_WP_LABEL_GAP_PX) return
+      out.push(tick)
+      lastX = x
+    })
+    return out
+  }, [profile, totalNmDisplay, contentPxWidth, units.distance])
 
   // Auto-follow the aircraft while flying, mirroring native: if its marker
   // has scrolled near/out of the visible window, re-center on it. Skipped
@@ -490,10 +546,15 @@ export default function VirtualRadar({
         <div className={css.chartWrap} ref={chartWrapRef}>
           {scrollable && <span className={css.scrollHint}>↔ scroll</span>}
           <div style={{ width: wrapW > 0 ? contentPxWidth : '100%', height: '100%' }}>
-          <ResponsiveContainer width="100%" height={160}>
+          <ResponsiveContainer width="100%" height={180}>
             <ComposedChart
               data={chartData}
-              margin={{ top: 8, right: 12, bottom: 2, left: 4 }}
+              // top bumped 8->26px (chartWrap grew by the same 20px, see
+              // VirtualRadar.module.css) to reserve real headroom above the
+              // plot for wind arrows, which previously sat inside the plot's
+              // own top strip fighting waypoint-name labels for the same
+              // few pixels -- see the wind-arrow y comment below.
+              margin={{ top: 26, right: 12, bottom: 2, left: 4 }}
               onMouseMove={(e) => {
                 const anyE = e as Record<string, unknown>
                 if (anyE['activePayload'] && Array.isArray(anyE['activePayload']) && anyE['activePayload'][0]) {
@@ -634,9 +695,19 @@ export default function VirtualRadar({
                     shape={(dotProps) => {
                       const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
                       if (markup) {
+                        // Anchor by the icon's BOTTOM edge at the tip point,
+                        // growing UPWARD from it -- a top-anchor's fixed
+                        // pixel height extends DOWNWARD from tipFt instead,
+                        // which for a short/zero-height obstacle (tipFt near
+                        // baseFt, itself near the chart floor) has nowhere
+                        // to go but below true 0ft/ground -- same failure
+                        // mode as the original center-anchor bug, just via a
+                        // different path. Bottom-anchoring can only ever
+                        // grow toward higher altitude, so it never renders
+                        // below its own data point.
                         return (
                           <g
-                            transform={`translate(${cx - size / 2},${cy - size / 2})`}
+                            transform={`translate(${cx - size / 2},${cy - size})`}
                             dangerouslySetInnerHTML={{ __html: markup.replace('<svg', `<svg width="${size}" height="${size}"`) }}
                           />
                         )
@@ -660,16 +731,57 @@ export default function VirtualRadar({
                   markers and below for the aircraft silhouette. */}
               {weatherMarks.map((m, i) => {
                 if (!m.wind) return null
-                const x = nmToDisplay(m.distNm, units.distance)
-                const y = yMax * 0.97
+                // Clamp inward from both chart edges — a station near the
+                // route's start/end otherwise lands the arrow (and its
+                // dirDeg/speed label) right on top of the y-axis line and
+                // FL tick labels, or off the right edge past the last NM
+                // tick. Margin is in the same display-distance units as the
+                // x-axis domain, derived from the actual px-per-unit scale
+                // (contentPxWidth/totalNmDisplay, from the scroll-width calc
+                // above) so it stays a constant ~24px regardless of route
+                // length/zoom, not a fixed NM offset that shrinks to nothing
+                // on a long route or overshoots on a short one.
+                const pxPerUnit = totalNmDisplay > 0 ? contentPxWidth / totalNmDisplay : 0
+                const edgeMargin = Math.min(pxPerUnit > 0 ? 24 / pxPerUnit : 0, totalNmDisplay / 2)
+                const xRaw = nmToDisplay(m.distNm, units.distance)
+                const x = Math.min(Math.max(xRaw, edgeMargin), totalNmDisplay - edgeMargin)
+                // Above the y-domain (not just near its top) so the arrow
+                // lands in the reserved top margin (margin.top=26, see
+                // ComposedChart above) instead of the plot's own top strip,
+                // where waypoint-name ReferenceLine labels also live --
+                // requires ifOverflow="visible" since y > yMax is otherwise
+                // clipped to the plot bounds.
+                const y = yMax * 1.1
                 return (
                   <ReferenceDot
                     key={`wind-${i}`}
-                    x={x} y={y} r={0} fill="transparent" stroke="none"
+                    x={x} y={y} r={0} fill="transparent" stroke="none" ifOverflow="visible"
                     shape={(dotProps) => {
                       const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
+                      // Dir/speed text drawn to the RIGHT of the arrow (not
+                      // below it, and outside the rotated arrow group so the
+                      // text itself never rotates) -- only when it fits
+                      // before the plot's right edge, using a rough
+                      // char-width*fontSize estimate rather than measuring
+                      // real text width, same fixed-budget tradeoff already
+                      // used elsewhere in this chart (e.g. MIN_WP_LABEL_GAP_PX).
+                      // Skipped entirely (not wrapped/shrunk) when it doesn't
+                      // fit, since a station near the route's end otherwise
+                      // has nowhere else uncluttered to put it.
+                      const fontSize = 7
+                      const renderLabel = (text: string, halfW: number) => {
+                        if (!text) return null
+                        const labelW = text.length * fontSize * 0.62
+                        if (cx + halfW + 4 + labelW > plotRightPx) return null
+                        return <text x={cx + halfW + 4} y={cy + fontSize * 0.35} fontSize={fontSize} fill="rgba(148,197,255,0.85)">{text}</text>
+                      }
                       if (m.wind!.calm) {
-                        return <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
+                        return (
+                          <g aria-hidden="true">
+                            <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
+                            {renderLabel('CALM', 3)}
+                          </g>
+                        )
                       }
                       if (m.wind!.dirDeg == null) {
                         return <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(250,204,21,0.7)" strokeWidth={1} strokeDasharray="1.5,1.5" />
@@ -683,17 +795,74 @@ export default function VirtualRadar({
                       const strokeW = windArrowStrokeWidth(m.wind!.speedKt)
                       const color = windBarbColorForSpeed(m.wind!.speedKt)
                       return (
-                        <g transform={`translate(${cx},${cy}) rotate(${rot})`} aria-hidden="true">
-                          <line x1={0} y1={-len / 2} x2={0} y2={len / 2} stroke={color} strokeWidth={strokeW} strokeLinecap="round" />
-                          <path d={`M0,${len / 2} L-2.5,${len / 2 - 4} L2.5,${len / 2 - 4} Z`} fill={color} />
+                        <g aria-hidden="true">
+                          <g transform={`translate(${cx},${cy}) rotate(${rot})`}>
+                            <line x1={0} y1={-len / 2} x2={0} y2={len / 2} stroke={color} strokeWidth={strokeW} strokeLinecap="round" />
+                            <path d={`M0,${len / 2} L-2.5,${len / 2 - 4} L2.5,${len / 2 - 4} Z`} fill={color} />
+                          </g>
+                          {renderLabel(`${m.wind!.dirDeg}°/${m.wind!.speedKt}`, len / 2)}
                         </g>
                       )
                     }}
-                    label={{
-                      value: m.wind.calm ? "CALM" : m.wind.dirDeg != null ? `${m.wind.dirDeg}°/${m.wind.speedKt}` : "",
-                      position: "bottom",
-                      fill: "rgba(148,197,255,0.85)",
-                      fontSize: 7,
+                  />
+                )
+              })}
+
+              {/* Weather: regular-interval wind samples (useWindAlongRoute)
+                  — fills the gaps between real-station arrows above, which
+                  only ever exist wherever an aerodrome happens to sit.
+                  Deliberately drawn thinner/dashed/dimmer than a real
+                  station's arrow so a model-wind estimate (or a distant
+                  METAR borrowed via fetchWxResolvedForPoint) is never
+                  mistaken for an actual local observation. Already filtered
+                  against weatherMarks in visibleWindSamples above. */}
+              {visibleWindSamples.map((s, i) => {
+                const pxPerUnit = totalNmDisplay > 0 ? contentPxWidth / totalNmDisplay : 0
+                const edgeMargin = Math.min(pxPerUnit > 0 ? 24 / pxPerUnit : 0, totalNmDisplay / 2)
+                const xRaw = nmToDisplay(s.distNm, units.distance)
+                const x = Math.min(Math.max(xRaw, edgeMargin), totalNmDisplay - edgeMargin)
+                const y = yMax * 1.1 // reserved top margin, same as the real wind-arrow block above
+                return (
+                  <ReferenceDot
+                    key={`windsample-${i}`}
+                    x={x} y={y} r={0} fill="transparent" stroke="none" ifOverflow="visible"
+                    shape={(dotProps) => {
+                      const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
+                      // Same right-of-arrow, skip-if-no-room text placement
+                      // as the real wind-arrow block above.
+                      const fontSize = 6
+                      const renderLabel = (text: string, halfW: number) => {
+                        if (!text) return null
+                        const labelW = text.length * fontSize * 0.62
+                        if (cx + halfW + 4 + labelW > plotRightPx) return null
+                        return <text x={cx + halfW + 4} y={cy + fontSize * 0.35} fontSize={fontSize} fill="rgba(148,197,255,0.5)">{text}</text>
+                      }
+                      if (s.wind.calm) {
+                        return (
+                          <g aria-hidden="true">
+                            <circle cx={cx} cy={cy} r={2.5} fill="none" stroke="rgba(148,163,184,0.4)" strokeWidth={1} strokeDasharray="1.5,1.5" />
+                            {renderLabel('~CALM', 2.5)}
+                          </g>
+                        )
+                      }
+                      if (s.wind.dirDeg == null) return <g />
+                      const len = Math.min(14, 5 + s.wind.speedKt * 0.4)
+                      const rot = s.wind.dirDeg + 180
+                      // Same speed-tiered colour as a real station's arrow,
+                      // just at reduced opacity -- keeps the strength read
+                      // consistent while still visibly distinct from a real
+                      // observation.
+                      const strokeW = Math.max(1, windArrowStrokeWidth(s.wind.speedKt) - 0.5)
+                      const color = windBarbColorForSpeed(s.wind.speedKt)
+                      return (
+                        <g aria-hidden="true">
+                          <g transform={`translate(${cx},${cy}) rotate(${rot})`} opacity={0.55}>
+                            <line x1={0} y1={-len / 2} x2={0} y2={len / 2} stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeDasharray="3,2" />
+                            <path d={`M0,${len / 2} L-2,${len / 2 - 3} L2,${len / 2 - 3} Z`} fill={color} />
+                          </g>
+                          {renderLabel(`~${s.wind.dirDeg}°/${s.wind.speedKt}`, len / 2)}
+                        </g>
+                      )
                     }}
                   />
                 )
@@ -744,9 +913,15 @@ export default function VirtualRadar({
                     shape={(dotProps) => {
                       const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
                       if (markup) {
+                        // Anchor by the icon's BOTTOM edge, not its center —
+                        // the lmk-*.svg viewBox draws the landmark top-down
+                        // (roof/top at viewBox y=0, ground base at y=15), and
+                        // (cx,cy) here is baseFt (ground). Centering split the
+                        // glyph across the ground point, rendering half of it
+                        // below true ground/0ft.
                         return (
                           <g
-                            transform={`translate(${cx - size / 2},${cy - size / 2})`}
+                            transform={`translate(${cx - size / 2},${cy - size})`}
                             dangerouslySetInnerHTML={{ __html: markup.replace('<svg', `<svg width="${size}" height="${size}"`) }}
                           />
                         )
@@ -760,16 +935,18 @@ export default function VirtualRadar({
               {/* ── Waypoint ticks ─────────────────────────────────── */}
               {/* Skip the departure tick (i=0) — it sits on the Y-axis and
                   the label overlaps the FL scale. The departure name is
-                  implicit (leftmost edge of the chart). */}
-              {profile.waypointTicks.map((tick, i) => i === 0 ? null : (
+                  implicit (leftmost edge of the chart). Renders
+                  visibleWaypointTicks (collision-filtered above), not the
+                  raw profile.waypointTicks list. */}
+              {visibleWaypointTicks.map((tick) => (
                 <ReferenceLine
-                  key={`wp-${i}`}
+                  key={`wp-${tick.distNm}-${tick.name}`}
                   x={nmToDisplay(tick.distNm, units.distance)}
                   stroke="rgba(255,255,255,0.18)"
                   strokeWidth={1}
                   label={{
                     value: tick.name,
-                    position: i === profile.waypointTicks.length - 1 ? 'insideTopRight' : 'insideTopLeft',
+                    position: tick === profile!.waypointTicks[profile!.waypointTicks.length - 1] ? 'insideTopRight' : 'insideTopLeft',
                     fill: 'rgba(255,255,255,0.50)',
                     fontSize: 8,
                   }}

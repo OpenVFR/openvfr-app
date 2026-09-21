@@ -51,6 +51,7 @@ import { windBarbColorForSpeed, windArrowStrokeWidth } from '@open-vfr/shared/wi
 import { getTileUrls, API_BASE } from '../config'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
+import type { WindSample } from '../hooks/useWindAlongRoute'
 
 // ---------------------------------------------------------------------------
 // Module-level GeoJSON cache — fetch + JSON.parse each of these exactly once
@@ -118,6 +119,10 @@ interface Props {
    *  arrows and cloud-base layers are drawn at each station's projected
    *  along-route position. Omit to hide entirely. */
   weatherStations?: RouteWeatherStation[]
+  /** Regular-interval wind samples (from useWindAlongRoute), independent of
+   *  aerodrome positions -- fills the gaps between weatherStations' arrows.
+   *  Mirrors web's identical prop. Omit to hide entirely. */
+  windSamples?: WindSample[]
   /** Chart area height in px — controlled by the parent (draggable via the
    *  handle rendered at the top of this panel). Defaults to DEFAULT_CHART_H. */
   height?: number
@@ -136,20 +141,40 @@ interface Props {
 // Layout constants
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_CHART_H  = 190
+// DEFAULT_CHART_H bumped 190->206 (+16px) in lockstep with MARGIN_T's
+// 10->26 (+16px) below -- reserves real headroom above the plot for wind
+// arrows (see WIND_ARROW_Y) without shrinking the plot itself (plotH stays
+// chartH - MARGIN_T - MARGIN_B = same value either way). Mirrors web's
+// identical VirtualRadar.tsx chartWrap/margin.top change.
+export const DEFAULT_CHART_H  = 206
 export const MIN_CHART_H      = 0
 export const MAX_CHART_H      = 340
 export const COLLAPSE_THRESHOLD = 24   // below this, treat as "collapsed"
 const MARGIN_L  = 34   // room for FL/alt ticks
 const MARGIN_R  = 10
-const MARGIN_T  = 10
+const MARGIN_T  = 26
 const MARGIN_B  = 18
+// Wind arrow vertical position, within the reserved top margin ABOVE the
+// waypoint-name label row (which sits at top: MARGIN_T, i.e. pixel 26) --
+// previously arrows sat at MARGIN_T+9 (pixel 19 with the old MARGIN_T=10),
+// fighting the waypoint-name row for the same few pixels.
+const WIND_ARROW_Y   = 12
+const WIND_LABEL_TOP = 20
 
 // Never compress a long route down to fit the panel width —
 // below this pixel-per-NM density the chart becomes horizontally scrollable
 // instead of squeezing the whole route in, so short legs stay legible. Only
 // kicks in once totalNm * MIN_PX_PER_NM exceeds the panel's actual width.
-const MIN_PX_PER_NM = 18
+// Bumped 18->30 -- mirrors web's identical fix (see VirtualRadar.tsx):
+// at 18, almost any panel width fits a 40-50nm route without ever needing
+// to scroll, so the scroll path effectively never activated for realistic
+// route lengths even though labels were visibly cramped well before that.
+const MIN_PX_PER_NM = 30
+// Wind arrow/label horizontal clamp margin (px) from either plot edge —
+// mirrors web's VirtualRadar.tsx identical fix. Without it, a station near
+// the route's start/end lands the arrow (and its dirDeg/speed label) right
+// on top of the y-axis/plot edge instead of just inside it.
+const WIND_EDGE_MARGIN_PX = 22
 // Cross-track deviation beyond which the chart badges itself as showing a
 // route the aircraft is no longer actually on (see crossTrackNm prop doc).
 const OFF_TRACK_BADGE_NM = 3
@@ -219,7 +244,7 @@ function getPlannedAlt(altProfile: { distNm: number; altFt: number }[], distNm: 
 export function VerticalProfile({
   waypoints, legOverrides, units = DEFAULT_UNITS, title, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
-  crossTrackNm, weatherStations,
+  crossTrackNm, weatherStations, windSamples,
   height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
@@ -346,6 +371,33 @@ export function VerticalProfile({
 
   const xOf = useCallback((distNm: number) => MARGIN_L + (totalNm > 0 ? (distNm / totalNm) * plotW : 0), [totalNm, plotW])
   const yOf = useCallback((altFt: number) => MARGIN_T + plotH - (yMax > 0 ? (altFt / yMax) * plotH : 0), [yMax, plotH])
+  // Clamped x for wind arrows/labels only -- keeps the marker inside the
+  // plot area by WIND_EDGE_MARGIN_PX regardless of route length, falling
+  // back to plotW/2 on a route too short for the full margin on both sides.
+  const windXOf = useCallback((distNm: number) => {
+    const margin = Math.min(WIND_EDGE_MARGIN_PX, plotW / 2)
+    return Math.min(MARGIN_L + plotW - margin, Math.max(MARGIN_L + margin, xOf(distNm)))
+  }, [xOf, plotW])
+
+  // Waypoint-name label collision avoidance -- mirrors web's identical fix.
+  // Skip a label if it would land within MIN_WP_LABEL_GAP_PX of the last
+  // one actually kept (not just the last one considered), using the real
+  // px scale (xOf) directly since native already tracks true pixel
+  // positions, unlike web's Recharts-domain approximation.
+  const MIN_WP_LABEL_GAP_PX = 46
+  const visibleWaypointTicks = useMemo(() => {
+    if (!profile) return []
+    let lastX = -Infinity
+    const out: typeof profile.waypointTicks = []
+    profile.waypointTicks.forEach((tick, i) => {
+      if (i === 0) return // departure skipped, same as before -- sits on Y-axis
+      const x = xOf(tick.distNm)
+      if (x - lastX < MIN_WP_LABEL_GAP_PX) return
+      out.push(tick)
+      lastX = x
+    })
+    return out
+  }, [profile, xOf])
 
   // Clamp scrollX whenever the scrollable range shrinks (panel resized wider,
   // or a shorter route replaces a longer one) — functional update so this
@@ -476,6 +528,16 @@ export function VerticalProfile({
       return { station: m.station, distNm: m.distNm, wind: resolved.wind, clouds: resolved.clouds, tafChangeSoon: resolved.tafChangeSoon }
     })
   }, [weatherStations, waypoints, totalNm])
+
+  // Regular-interval wind samples, filtered against weatherMarks above so a
+  // sample doesn't draw a second, visibly-different (dashed/model) arrow
+  // right next to a real station's arrow. Mirrors web's identical filter.
+  const visibleWindSamples = useMemo(() => {
+    if (!windSamples || windSamples.length === 0) return []
+    const MIN_SAMPLE_SEPARATION_NM = 5
+    const markDists = weatherMarks.filter((m) => m.wind).map((m) => m.distNm)
+    return windSamples.filter((s) => !markDists.some((d) => Math.abs(d - s.distNm) < MIN_SAMPLE_SEPARATION_NM))
+  }, [windSamples, weatherMarks])
 
   // Projected flight path — split into safe (cyan) / below-MSA (red) segments
   const { projSafePath, projDangerPath } = useMemo(() => {
@@ -731,7 +793,7 @@ export function VerticalProfile({
 
                 {weatherMarks.map((m, i) => {
                   if (!m.wind) return null
-                  const x = xOf(m.distNm), y = MARGIN_T + 9
+                  const x = windXOf(m.distNm), y = WIND_ARROW_Y
                   if (m.wind.calm) {
                     return <Circle key={`wind-${i}`} cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
                   }
@@ -752,6 +814,28 @@ export function VerticalProfile({
                   )
                 })}
 
+                {/* Regular-interval wind samples (useWindAlongRoute) --
+                    thinner/dashed/dimmer than a real station's arrow, same
+                    reasoning as web's identical block. Already filtered
+                    against weatherMarks in visibleWindSamples above. */}
+                {visibleWindSamples.map((s, i) => {
+                  const x = windXOf(s.distNm), y = WIND_ARROW_Y
+                  if (s.wind.calm) {
+                    return <Circle key={`windsample-${i}`} cx={x} cy={y} r={2.5} fill="none" stroke="rgba(148,163,184,0.4)" strokeWidth={1} strokeDasharray="1.5,1.5" />
+                  }
+                  if (s.wind.dirDeg == null) return null
+                  const len = Math.min(14, 5 + s.wind.speedKt * 0.4)
+                  const rot = s.wind.dirDeg + 180
+                  const strokeW = Math.max(1, windArrowStrokeWidth(s.wind.speedKt) - 0.5)
+                  const color = windBarbColorForSpeed(s.wind.speedKt)
+                  return (
+                    <G key={`windsample-${i}`} transform={`translate(${x},${y}) rotate(${rot})`} opacity={0.55}>
+                      <SvgLine x1={0} y1={-len / 2} x2={0} y2={len / 2} stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeDasharray="3,2" />
+                      <Path d={`M0,${len / 2} L-2,${len / 2 - 3} L2,${len / 2 - 3} Z`} fill={color} />
+                    </G>
+                  )
+                })}
+
                 {/* TAF "check the bulletin" warning — small yellow triangle
                      when a real trend change (FM/BECMG) lands within the
                      next 3h (see resolveStationWeather/parseTaf.ts). Not a
@@ -760,7 +844,12 @@ export function VerticalProfile({
                 {weatherMarks.map((m, i) => m.tafChangeSoon ? (
                   <Path key={`tafwarn-${i}`}
                     d="M0,-5 L4.5,4 L-4.5,4 Z"
-                    transform={`translate(${xOf(m.distNm)},${MARGIN_T - 8})`}
+                    // Fixed near the true top (y=0), above WIND_ARROW_Y's
+                    // span (~3-21px) at the same x -- was MARGIN_T-8 (pixel
+                    // 2 with the old MARGIN_T=10), which would now land
+                    // right inside the wind arrow's own span after
+                    // MARGIN_T grew to 26.
+                    transform={`translate(${xOf(m.distNm)},0)`}
                     fill="rgba(250,204,21,0.9)" stroke="rgba(0,0,0,0.4)" strokeWidth={0.5}
                   />
                 ) : null)}
@@ -844,10 +933,18 @@ export function VerticalProfile({
                   const icon = OBSTACLE_ICONS[obs.kind] ?? OBSTACLE_ICON_FALLBACK
                   const size = 16
                   return (
+                    // Anchor by BOTTOM edge at the tip point, growing
+                    // UPWARD from it -- a top-anchor's fixed pixel height
+                    // extends DOWNWARD from tipFt instead, which for a
+                    // short/zero-height obstacle (tipFt near baseFt, itself
+                    // near the chart floor) has nowhere to go but below true
+                    // 0ft/ground -- same failure mode as the original
+                    // center-anchor bug, just via a different path. Mirrors
+                    // web's identical fix.
                     <Image
                       key={`obs-${i}`}
                       source={icon}
-                      style={{ position: 'absolute', width: size, height: size, left: xOf(obs.distNm) - size / 2, top: yOf(tipFt) - size / 2 }}
+                      style={{ position: 'absolute', width: size, height: size, left: xOf(obs.distNm) - size / 2, top: yOf(tipFt) - size }}
                       resizeMode="contain"
                     />
                   )
@@ -858,22 +955,27 @@ export function VerticalProfile({
                   const icon = LANDMARK_ICONS[lmk.kind] ?? LANDMARK_ICON_FALLBACK
                   const size = 14
                   return (
+                    // Anchor by BOTTOM edge, not center -- yOf(baseFt) here
+                    // is ground; mirrors web's identical fix.
                     <Image
                       key={`lmk-${i}`}
                       source={icon}
-                      style={{ position: 'absolute', width: size, height: size, left: xOf(lmk.distNm) - size / 2, top: yOf(baseFt) - size / 2 }}
+                      style={{ position: 'absolute', width: size, height: size, left: xOf(lmk.distNm) - size / 2, top: yOf(baseFt) - size }}
                       resizeMode="contain"
                     />
                   )
                 })}
 
-                {profile.waypointTicks.map((tick, i) => i === 0 ? null : (
+                {/* Renders visibleWaypointTicks (collision-filtered above),
+                    not the raw profile.waypointTicks list -- see the memo
+                    comment near windXOf. */}
+                {visibleWaypointTicks.map((tick) => (
                   // Clamp so the destination's label (sitting exactly at the
                   // right edge of the *content* — not the panel, since this
                   // whole overlay scrolls with the Svg — doesn't overflow
                   // past contentW and get clipped to just its first letter.
                   <Text
-                    key={`wpl-${i}`}
+                    key={`wpl-${tick.distNm}-${tick.name}`}
                     style={[styles.wpLabel, { left: Math.min(contentW - 44, xOf(tick.distNm) + 2), top: MARGIN_T }]}
                     numberOfLines={1}
                   >
@@ -887,11 +989,36 @@ export function VerticalProfile({
                   </Text>
                 ))}
 
-                {weatherMarks.map((m, i) => (
-                  <Text key={`windl-${i}`} style={[styles.windLabel, { left: xOf(m.distNm) - 12, top: MARGIN_T + 16 }]} numberOfLines={1}>
-                    {m.wind?.calm ? 'CALM' : m.wind?.dirDeg != null ? `${m.wind.dirDeg}°/${m.wind.speedKt}` : ''}
-                  </Text>
-                ))}
+                {/* Text drawn to the RIGHT of the arrow, not below it, and
+                    only when it fits before the content's right edge --
+                    mirrors web's identical fix. Skipped entirely (not
+                    truncated) when it doesn't fit. */}
+                {weatherMarks.map((m, i) => {
+                  if (!m.wind) return null
+                  const text = m.wind.calm ? 'CALM' : m.wind.dirDeg != null ? `${m.wind.dirDeg}°/${m.wind.speedKt}` : ''
+                  if (!text) return null
+                  const halfW = m.wind.calm ? 3 : Math.min(18, 6 + m.wind.speedKt * 0.5) / 2
+                  const left = windXOf(m.distNm) + halfW + 4
+                  if (left + text.length * 7 * 0.62 > contentW - MARGIN_R) return null
+                  return (
+                    <Text key={`windl-${i}`} style={[styles.windLabel, { left, top: WIND_ARROW_Y - 4 }]} numberOfLines={1}>
+                      {text}
+                    </Text>
+                  )
+                })}
+
+                {visibleWindSamples.map((s, i) => {
+                  const text = s.wind.calm ? '~CALM' : s.wind.dirDeg != null ? `~${s.wind.dirDeg}°/${s.wind.speedKt}` : ''
+                  if (!text) return null
+                  const halfW = s.wind.calm ? 2.5 : Math.min(14, 5 + s.wind.speedKt * 0.4) / 2
+                  const left = windXOf(s.distNm) + halfW + 4
+                  if (left + text.length * 7 * 0.62 > contentW - MARGIN_R) return null
+                  return (
+                    <Text key={`windsamplel-${i}`} style={[styles.windLabel, { left, top: WIND_ARROW_Y - 4, opacity: 0.55 }]} numberOfLines={1}>
+                      {text}
+                    </Text>
+                  )
+                })}
 
                 {xTicks.map((d, i) => (
                   <Text key={`xl-${i}`} style={[

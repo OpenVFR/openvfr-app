@@ -91,8 +91,11 @@
 .chartWrap {
   position: relative;
   padding: 4px 4px 0;
-  /* recharts ResponsiveContainer needs a non-zero parent height */
-  height: 180px;
+  /* recharts ResponsiveContainer needs a non-zero parent height. 20px
+     taller than the ResponsiveContainer below (160→180) so the extra top
+     margin (see ComposedChart's margin.top) has real reserved headroom
+     above the plot for wind arrows, instead of shrinking the plot itself. */
+  height: 200px;
   /* Scroll instead of squeezing a long route to fit — the inner div (set
      inline in VirtualRadar.tsx) is only ever wider than this wrap when
      totalNm * MIN_PX_PER_NM exceeds the measured wrap width. */
