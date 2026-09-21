@@ -526,6 +526,10 @@ export default function VirtualRadar({
   const totalNmDisplay = profile ? nmToDisplay(profile.totalNm, units.distance) : 0
   const contentPxWidth = Math.max(wrapW, totalNmDisplay * MIN_PX_PER_NM)
   const scrollable = contentPxWidth > wrapW + 0.5
+  // Right edge of the actual plot area in px -- used by the wind-arrow
+  // blocks below to decide whether the dir/speed text fits to the right of
+  // the arrow (12 = ComposedChart's margin.right).
+  const plotRightPx = contentPxWidth - 12
   // X-axis tick/unit-label collision avoidance \u2014 XAxis's `label` prop
   // ("NM"/"km", position: 'insideRight') is pinned to the axis's right
   // edge regardless of where the highest auto-generated tick (previously
@@ -843,15 +847,40 @@ export default function VirtualRadar({
                     x={x} y={y} r={0} fill="transparent" stroke="none" ifOverflow="visible"
                     shape={(dotProps) => {
                       const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
-                      // No dir/speed text label alongside the barb -- see
-                      // the map's identical fix (map-style.ts's removed
-                      // 'wind-arrows-label' layer): the barb shape itself
-                      // (feather count + speed-tiered colour) already
-                      // carries the at-a-glance strength read, and a tiny
-                      // permanent text label at this chart's scale was
-                      // flagged as illegible in a pre-release pass.
+                      // Dir/speed text drawn to the RIGHT of the arrow (not
+                      // below it, and outside the rotated arrow group so the
+                      // text itself never rotates) -- only when it fits
+                      // before the plot's right edge, using a rough
+                      // char-width*fontSize estimate rather than measuring
+                      // real text width, same fixed-budget tradeoff already
+                      // used elsewhere in this chart (e.g. MIN_WP_LABEL_GAP_PX).
+                      // Skipped entirely (not wrapped/shrunk) when it doesn't
+                      // fit, since a station near the route's end otherwise
+                      // has nowhere else uncluttered to put it. paintOrder=
+                      // "stroke" + a wide dark strokeWidth draws an outline
+                      // BEHIND the fill (same double-stroke-pass contrast fix
+                      // used on the barb icons) instead of the old plain fill
+                      // text, which was flagged as illegible against the
+                      // chart background in a pre-release pass.
+                      const fontSize = 9
+                      const renderLabel = (text: string, halfW: number, fill: string) => {
+                        if (!text) return null
+                        const labelW = text.length * fontSize * 0.62
+                        if (cx + halfW + 4 + labelW > plotRightPx) return null
+                        return (
+                          <text
+                            x={cx + halfW + 4} y={cy + fontSize * 0.35} fontSize={fontSize}
+                            fill={fill} stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke"
+                          >{text}</text>
+                        )
+                      }
                       if (m.wind!.calm) {
-                        return <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
+                        return (
+                          <g aria-hidden="true">
+                            <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
+                            {renderLabel('CALM', 3, 'rgba(203,213,225,0.95)')}
+                          </g>
+                        )
                       }
                       if (m.wind!.dirDeg == null) {
                         return <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(250,204,21,0.7)" strokeWidth={1} strokeDasharray="1.5,1.5" />
@@ -890,6 +919,7 @@ export default function VirtualRadar({
                           <g transform={`translate(${cx},${cy}) rotate(${rot}) translate(0, ${shaftLen / 2})`}>
                             {renderWindBarbShape(m.wind!.speedKt, color, { shaftLen, barbLen: 8, halfLen: 5, barbGap: 5, strokeW: 1.8 })}
                           </g>
+                          {renderLabel(`${m.wind!.dirDeg}\u00b0/${m.wind!.speedKt}`, shaftLen / 2 + 4, color)}
                         </g>
                       )
                     }}
@@ -917,9 +947,27 @@ export default function VirtualRadar({
                     x={x} y={y} r={0} fill="transparent" stroke="none" ifOverflow="visible"
                     shape={(dotProps) => {
                       const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
-                      // No text label -- see the real-station block above.
+                      // Same right-of-arrow, skip-if-no-room, stroke-outline
+                      // text placement as the real wind-arrow block above.
+                      const fontSize = 8
+                      const renderLabel = (text: string, halfW: number, fill: string) => {
+                        if (!text) return null
+                        const labelW = text.length * fontSize * 0.62
+                        if (cx + halfW + 4 + labelW > plotRightPx) return null
+                        return (
+                          <text
+                            x={cx + halfW + 4} y={cy + fontSize * 0.35} fontSize={fontSize}
+                            fill={fill} stroke="rgba(0,0,0,0.7)" strokeWidth={2.5} strokeLinejoin="round" paintOrder="stroke" opacity={0.85}
+                          >{text}</text>
+                        )
+                      }
                       if (s.wind.calm) {
-                        return <circle cx={cx} cy={cy} r={2.5} fill="none" stroke="rgba(148,163,184,0.4)" strokeWidth={1} strokeDasharray="1.5,1.5" />
+                        return (
+                          <g aria-hidden="true">
+                            <circle cx={cx} cy={cy} r={2.5} fill="none" stroke="rgba(148,163,184,0.4)" strokeWidth={1} strokeDasharray="1.5,1.5" />
+                            {renderLabel('~CALM', 2.5, 'rgba(203,213,225,0.9)')}
+                          </g>
+                        )
                       }
                       if (s.wind.dirDeg == null) return <g />
                       const rot = s.wind.dirDeg // see FROM-direction comment above
@@ -937,6 +985,7 @@ export default function VirtualRadar({
                           <g transform={`translate(${cx},${cy}) rotate(${rot}) translate(0, ${shaftLen / 2})`} opacity={0.6}>
                             {renderWindBarbShape(s.wind.speedKt, color, { shaftLen, barbLen: 6, halfLen: 3.5, barbGap: 3.5, strokeW: 1.4 })}
                           </g>
+                          {renderLabel(`~${s.wind.dirDeg}\u00b0/${s.wind.speedKt}`, shaftLen / 2 + 3, color)}
                         </g>
                       )
                     }}

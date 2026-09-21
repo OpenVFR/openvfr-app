@@ -27,7 +27,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, Image, PanResponder, type LayoutChangeEvent,
 } from 'react-native'
-import Svg, { Path, Line as SvgLine, Circle, Defs, LinearGradient, Stop, G } from 'react-native-svg'
+import Svg, { Path, Line as SvgLine, Circle, Defs, LinearGradient, Stop, G, Text as SvgText } from 'react-native-svg'
 
 import type { RouteWaypoint, LegOverride, AircraftProfileDocType } from '../types/db'
 import { type Units, DEFAULT_UNITS, nmToDisplay } from '../utils/units'
@@ -284,6 +284,27 @@ function renderWindBarbShape(
       {renderPass(outlineColor, outlineColor, outlineW, 'outline')}
       {renderPass(color, color, strokeW, 'main')}
     </>
+  )
+}
+
+/**
+ * Renders SVG text with a dark outline halo -- two stacked <Text>s (a
+ * stroke-only pass underneath, a fill-only pass on top) rather than a
+ * single Text with `paintOrder="stroke"`, since paint-order support isn't
+ * guaranteed across react-native-svg's Android/iOS backends the way it is
+ * in real browser SVG (used directly in web's identical VirtualRadar.tsx
+ * fix). Mirrors the map barb icons' own double-pass contrast technique.
+ * Restored after an earlier pass removed these chart labels entirely --
+ * the barb shape alone was judged sufficient, but the actual complaint was
+ * illegibility, not wanting the number gone, so this fixes contrast
+ * instead of removing the label.
+ */
+function renderHaloText(x: number, y: number, text: string, fill: string, fontSize: number, opacity = 1) {
+  return (
+    <G key={`${x}-${y}-${text}`} opacity={opacity}>
+      <SvgText x={x} y={y} fontSize={fontSize} fill="none" stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round">{text}</SvgText>
+      <SvgText x={x} y={y} fontSize={fontSize} fill={fill}>{text}</SvgText>
+    </G>
   )
 }
 
@@ -897,7 +918,12 @@ export function VerticalProfile({
                   if (!m.wind) return null
                   const x = windXOf(m.distNm), y = WIND_ARROW_Y
                   if (m.wind.calm) {
-                    return <Circle key={`wind-${i}`} cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
+                    return (
+                      <G key={`wind-${i}`}>
+                        <Circle cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
+                        {renderHaloText(x + 7, y + 3, 'CALM', 'rgba(203,213,225,0.95)', 9)}
+                      </G>
+                    )
                   }
                   if (m.wind.dirDeg == null) {
                     return <Circle key={`wind-${i}`} cx={x} cy={y} r={3} fill="none" stroke="rgba(250,204,21,0.7)" strokeWidth={1} strokeDasharray="1.5,1.5" />
@@ -923,8 +949,11 @@ export function VerticalProfile({
                   // shaft's midpoint instead, keeping the footprint
                   // balanced above/below y for any direction.
                   return (
-                    <G key={`wind-${i}`} transform={`translate(${x},${y}) rotate(${rot}) translate(0, 9)`}>
-                      {renderWindBarbShape(m.wind.speedKt, color, { shaftLen: 18, barbLen: 8, halfLen: 5, barbGap: 5, strokeW: 1.8 })}
+                    <G key={`wind-${i}`}>
+                      <G transform={`translate(${x},${y}) rotate(${rot}) translate(0, 9)`}>
+                        {renderWindBarbShape(m.wind.speedKt, color, { shaftLen: 18, barbLen: 8, halfLen: 5, barbGap: 5, strokeW: 1.8 })}
+                      </G>
+                      {renderHaloText(x + 13, y + 3, `${m.wind.dirDeg}\u00b0/${m.wind.speedKt}`, color, 9)}
                     </G>
                   )
                 })}
@@ -936,7 +965,12 @@ export function VerticalProfile({
                 {visibleWindSamples.map((s, i) => {
                   const x = windXOf(s.distNm), y = WIND_ARROW_Y
                   if (s.wind.calm) {
-                    return <Circle key={`windsample-${i}`} cx={x} cy={y} r={2.5} fill="none" stroke="rgba(148,163,184,0.4)" strokeWidth={1} strokeDasharray="1.5,1.5" />
+                    return (
+                      <G key={`windsample-${i}`}>
+                        <Circle cx={x} cy={y} r={2.5} fill="none" stroke="rgba(148,163,184,0.4)" strokeWidth={1} strokeDasharray="1.5,1.5" />
+                        {renderHaloText(x + 6.5, y + 3, '~CALM', 'rgba(203,213,225,0.9)', 8, 0.85)}
+                      </G>
+                    )
                   }
                   if (s.wind.dirDeg == null) return null
                   const rot = s.wind.dirDeg // see FROM-direction comment above
@@ -945,8 +979,11 @@ export function VerticalProfile({
                   // its tail -- see the identical comment on the
                   // real-station barb above for why.
                   return (
-                    <G key={`windsample-${i}`} transform={`translate(${x},${y}) rotate(${rot}) translate(0, 6.5)`} opacity={0.6}>
-                      {renderWindBarbShape(s.wind.speedKt, color, { shaftLen: 13, barbLen: 6, halfLen: 3.5, barbGap: 3.5, strokeW: 1.4 })}
+                    <G key={`windsample-${i}`}>
+                      <G transform={`translate(${x},${y}) rotate(${rot}) translate(0, 6.5)`} opacity={0.6}>
+                        {renderWindBarbShape(s.wind.speedKt, color, { shaftLen: 13, barbLen: 6, halfLen: 3.5, barbGap: 3.5, strokeW: 1.4 })}
+                      </G>
+                      {renderHaloText(x + 9.5, y + 3, `~${s.wind.dirDeg}\u00b0/${s.wind.speedKt}`, color, 8, 0.85)}
                     </G>
                   )
                 })}
