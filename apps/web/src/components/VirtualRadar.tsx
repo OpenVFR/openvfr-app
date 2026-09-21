@@ -876,7 +876,14 @@ export default function VirtualRadar({
                       if (m.wind!.dirDeg == null) {
                         return <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(250,204,21,0.7)" strokeWidth={1} strokeDasharray="1.5,1.5" />
                       }
-                      const rot = m.wind!.dirDeg + 180
+                      // Rotation: dirDeg is the meteorological "wind FROM"
+                      // bearing. A barb's shaft points in the FROM direction
+                      // by international convention (unlike the old plain
+                      // arrow this replaced, which rotated by dirDeg+180 to
+                      // point where the air is going) -- matches the map's
+                      // own wind-barb icons, see map-style.ts's identical
+                      // comment on wind-arrows-icon's icon-rotate.
+                      const rot = m.wind!.dirDeg
                       // Real WMO barb (shaft + feathers) instead of a plain
                       // arrow -- see renderWindBarbShape above.
                       const color = windBarbColorForSpeed(m.wind!.speedKt)
@@ -932,7 +939,7 @@ export default function VirtualRadar({
                         )
                       }
                       if (s.wind.dirDeg == null) return <g />
-                      const rot = s.wind.dirDeg + 180
+                      const rot = s.wind.dirDeg // see FROM-direction comment above
                       // Same real-barb geometry as a real station's arrow,
                       // just smaller/dimmer -- keeps the strength read
                       // consistent while still visibly distinct from a real
