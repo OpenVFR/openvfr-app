@@ -125,8 +125,8 @@ export function LayerPanel({ layers, onChange }: Props) {
 function makeStyles(theme: ScaledTheme) {
  return {
   trigger: {
-    width:           theme.scale(36),
-    height:          theme.scale(36),
+    width:           36,
+    height:          36,
     borderRadius:    theme.radiusMd,
     backgroundColor: 'rgba(19,24,36,0.90)',
     borderWidth:     1,
@@ -136,8 +136,8 @@ function makeStyles(theme: ScaledTheme) {
   },
   triggerText: {
     color:    theme.textSecondary,
-    fontSize: theme.scale(18),
-    lineHeight: theme.scale(20),
+    fontSize: 18,
+    lineHeight: 20,
   },
   backdrop: {
     ...StyleSheet.absoluteFill,

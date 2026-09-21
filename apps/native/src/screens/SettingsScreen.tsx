@@ -600,7 +600,7 @@ function makeStepStyles(theme: ScaledTheme) {
     arrow: {
       color:      theme.textSecondary,
       fontWeight: '700' as const,
-      fontSize:   theme.textSm,
+      fontSize:   theme.textXs,
     },
     value: {
       color:      theme.textPrimary,
@@ -798,7 +798,7 @@ function makeStyles(theme: ScaledTheme) {
   },
   screenTitle: {
     color:      theme.textPrimary,
-    fontSize:   theme.text2xl,
+    fontSize:   theme.textXl,
     fontWeight: '700',
     marginBottom: theme.space2,
   },
@@ -815,12 +815,12 @@ function makeStyles(theme: ScaledTheme) {
   },
   rowLabel: {
     color:    theme.textSecondary,
-    fontSize: theme.textSm,
+    fontSize: theme.textXs,
     flex:     1,
   },
   rowValue: {
     color:    theme.textPrimary,
-    fontSize: theme.textSm,
+    fontSize: theme.textXs,
     fontWeight: '500',
   },
   infoValue: {
@@ -845,7 +845,7 @@ function makeStyles(theme: ScaledTheme) {
   },
   warningTitle: {
     color:      theme.statusWarn,
-    fontSize:   theme.textSm,
+    fontSize:   theme.textXs,
     fontWeight: '700',
   },
   warningText: {
@@ -894,11 +894,11 @@ function makeStyles(theme: ScaledTheme) {
   },
   checkmark: {
     color:    theme.accentGreen,
-    fontSize: theme.textMd,
+    fontSize: theme.textSm,
   },
   textInput: {
     color:           theme.textPrimary,
-    fontSize:        theme.textSm,
+    fontSize:        theme.textXs,
     borderWidth:     1,
     borderColor:     theme.borderDefault,
     borderRadius:    theme.radiusSm,

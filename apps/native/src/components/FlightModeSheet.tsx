@@ -45,7 +45,7 @@ export function FlightModeSheet({ status, onStartGps, onStartSim, onStop }: Prop
       >
         <Ionicons
           name={status === 'sim' ? 'game-controller-outline' : 'airplane-outline'}
-          size={scaledTheme.scale(19)}
+          size={19}
           color={active ? theme.accentBlue : theme.textSecondary}
         />
       </TouchableOpacity>
@@ -58,7 +58,7 @@ export function FlightModeSheet({ status, onStartGps, onStartSim, onStop }: Prop
           <View style={styles.header}>
             <Text style={styles.title}>Flight Mode</Text>
             <TouchableOpacity onPress={() => setOpen(false)} hitSlop={8}>
-              <Ionicons name="close" size={scaledTheme.scale(18)} color={theme.textMuted} />
+              <Ionicons name="close" size={18} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -114,8 +114,8 @@ export function FlightModeSheet({ status, onStartGps, onStartSim, onStop }: Prop
 function makeStyles(theme: ScaledTheme) {
  return {
   trigger: {
-    width:           theme.scale(40),
-    height:          theme.scale(40),
+    width:           40,
+    height:          40,
     borderRadius:    theme.radiusMd,
     backgroundColor: 'rgba(19,24,36,0.90)',
     borderWidth:     1,

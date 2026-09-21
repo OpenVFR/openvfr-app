@@ -34,7 +34,7 @@ export function AppNavigator() {
   // setting -- override it explicitly so the tab bar scales with everything
   // else (this is the one screen visible in every flight phase, worth
   // reading correctly from a kneeboard/dashboard mount).
-  const iconSize = scaledTheme.scale(24)
+  const iconSize = scaledTheme.scale(20)
   return (
     <NavigationContainer>
       <Tab.Navigator
@@ -44,9 +44,9 @@ export function AppNavigator() {
             backgroundColor: theme.surfacePanel,
             borderTopColor:  theme.borderDefault,
             borderTopWidth:  1,
-            height: scaledTheme.scale(56),
-            paddingBottom: scaledTheme.space1,
-            paddingTop: scaledTheme.space1,
+            height: scaledTheme.scale(46),
+            paddingBottom: scaledTheme.space0,
+            paddingTop: scaledTheme.space0,
           },
           tabBarActiveTintColor:   theme.accentBlue,
           tabBarInactiveTintColor: theme.textMuted,
