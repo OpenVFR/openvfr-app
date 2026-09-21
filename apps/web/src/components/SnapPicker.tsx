@@ -7,6 +7,14 @@ export type SnapCandidate = {
   waypoint: RouteWaypoint
   /** Feature type for display (e.g. 'AD', 'VOR', 'NDB', 'MRP', 'RP') */
   kind: string
+  /** Verbose picker-only label (e.g. "Wind Turbine \u00b7 184 ft elev") when it
+   *  differs from `waypoint.name` -- the SHORT name that actually gets
+   *  persisted once picked. Only obstacles currently differ (elevation
+   *  helps disambiguate two unnamed obstacles near the same click point
+   *  here, but has no ongoing value baked permanently into a route -- see
+   *  MapView.tsx's extractSnapName/extractSnapDisplayName split). Falls
+   *  back to `waypoint.name` when absent. */
+  displayName?: string
 }
 
 interface Props {
@@ -60,7 +68,7 @@ export default function SnapPicker({ candidates, x, y, onPick, onClose }: Props)
                 <span className={`${css.badge} ${KIND_CSS[c.kind] ?? css.kindDefault}`}>
                   {c.kind}
                 </span>
-                <span className={css.name}>{c.waypoint.name ?? (c.kind === 'PT' ? CURRENT_POSITION_LABEL : '—')}</span>
+                <span className={css.name}>{c.displayName ?? c.waypoint.name ?? (c.kind === 'PT' ? CURRENT_POSITION_LABEL : '—')}</span>
               </button>
             </li>
           ))}

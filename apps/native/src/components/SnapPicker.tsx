@@ -11,6 +11,9 @@ import { CURRENT_POSITION_LABEL } from '@open-vfr/shared/snapLabels'
 export type SnapCandidate = {
   kind: string
   waypoint: RouteWaypoint
+  /** Verbose picker-only label -- falls back to waypoint.name when absent.
+   *  See AviationMap.tsx's extractSnapName/extractSnapDisplayName split. */
+  displayName?: string
 }
 
 const KIND_COLOR: Record<string, string> = {
@@ -43,7 +46,7 @@ export function SnapPicker({ candidates, onPick, onClose }: Props) {
               <View style={[styles.badge, { backgroundColor: KIND_COLOR[c.kind] ?? theme.textMuted }]}>
                 <Text style={styles.badgeText}>{c.kind === 'PT' ? '•' : c.kind}</Text>
               </View>
-              <Text style={styles.name}>{c.kind === 'PT' ? CURRENT_POSITION_LABEL : (c.waypoint.name ?? '—')}</Text>
+              <Text style={styles.name}>{c.kind === 'PT' ? CURRENT_POSITION_LABEL : (c.displayName ?? c.waypoint.name ?? '—')}</Text>
             </TouchableOpacity>
           ))}
           <TouchableOpacity style={styles.item} onPress={onClose}>

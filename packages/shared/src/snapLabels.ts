@@ -51,6 +51,26 @@ export function formatObstacleName(props: {
   return kindLabel
 }
 
+/**
+ * Short display name for an obstacle when used as a persisted ROUTE
+ * WAYPOINT name (VirtualRadar's on-chart waypoint-tick label, the route
+ * leg table, saved-route storage) rather than a one-off disambiguation
+ * picker entry. Unlike formatObstacleName's "<kind> · <height>" fallback
+ * (genuinely useful in SnapPicker's candidate list, where two unnamed
+ * obstacles near the same click point need a way to tell them apart), the
+ * height suffix has no ongoing value once baked into a route -- it just
+ * clutters chart/table space that's already tight, permanently, for every
+ * future view of that route. Falls back to the plain kind label with no
+ * height/elevation appended. Use formatObstacleName for the picker's own
+ * candidate list (kept as the caller's `displayName`), and this for the
+ * `waypoint.name` that actually gets stored once a candidate is picked.
+ */
+export function obstacleWaypointName(props: { name?: string | null; kind?: string | null }): string {
+  const name = props.name?.trim()
+  if (name) return name
+  return OBSTACLE_KIND_LABEL[props.kind ?? ''] ?? 'Obstacle'
+}
+
 /** Same idea as formatObstacleName but for landmarks (no height data available). */
 export function formatLandmarkName(props: { name?: string | null; kind?: string | null }): string {
   const name = props.name?.trim()
