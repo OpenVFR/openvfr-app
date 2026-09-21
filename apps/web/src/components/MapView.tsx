@@ -42,7 +42,7 @@ import { registerWindBarbIcon, registerAllWindBarbIcons } from '../utils/windBar
 import { useWindGrid } from '../hooks/useWindGrid'
 import { type AirspaceFeature } from './AirspacePopup'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
-import { formatObstacleName, formatLandmarkName } from '@open-vfr/shared/snapLabels'
+import { formatObstacleName, formatLandmarkName, obstacleWaypointName } from '@open-vfr/shared/snapLabels'
 import { type PointFeature } from './FeaturePopup'
 import type { WhatsHereItem } from './WhatsHerePopup'
 import SnapPicker, { type SnapCandidate } from './SnapPicker'
@@ -250,16 +250,36 @@ function applyAltitudeCeiling(map: maplibregl.Map, ceilingFt: number) {
   }
 }
 
-/** Extract a short identifier from a snapped route-planning feature. */
+/** Extract the short identifier STORED as a snapped route-planning
+ *  feature's `waypoint.name` -- this persists into the route (leg table,
+ *  VirtualRadar waypoint-tick label, saved-route storage), so obstacles
+ *  deliberately use the kind-only `obstacleWaypointName` here rather than
+ *  formatObstacleName's elevation-suffixed fallback -- see
+ *  extractSnapDisplayName below for the picker-only verbose form. */
 function extractSnapName(feat: maplibregl.MapGeoJSONFeature): string {
   const p = feat.properties as Record<string, unknown>
   const id = feat.layer.id
   if (id.startsWith('aerodromes'))        return String(p.icao ?? p.name ?? 'AD')
   if (id.startsWith('navaids'))           return String(p.id   ?? p.name ?? 'NAV')
-  if (id === 'obstacles-circle')          return formatObstacleName(p as { name?: string; kind?: string; height_m?: number; elevation_ft?: number })
+  if (id === 'obstacles-circle')          return obstacleWaypointName(p as { name?: string; kind?: string })
   if (id === 'landmarks-icon')            return formatLandmarkName(p as { name?: string; kind?: string })
   if (id === 'user-waypoints-circle')     return String(p.name ?? 'UWP')
   return String(p.id ?? p.name ?? 'WP')
+}
+
+/** Verbose form of the same feature's name, for SnapPicker's candidate list
+ *  only -- NOT stored anywhere. Only obstacles differ from extractSnapName
+ *  (elevation suffix helps tell apart two unnamed obstacles near the same
+ *  click point, a one-off disambiguation need that extractSnapName's
+ *  persisted short name deliberately drops). Every other feature type's
+ *  display name is identical to its stored name, so this just delegates. */
+function extractSnapDisplayName(feat: maplibregl.MapGeoJSONFeature): string {
+  const id = feat.layer.id
+  if (id === 'obstacles-circle') {
+    const p = feat.properties as Record<string, unknown>
+    return formatObstacleName(p as { name?: string; kind?: string; height_m?: number; elevation_ft?: number })
+  }
+  return extractSnapName(feat)
 }
 
 /** Interpolate a lat/lng at `targetNm` cumulative distance along a recorded track. */
@@ -1483,7 +1503,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           const key  = `${name}|${geom.coordinates[0].toFixed(4)}|${geom.coordinates[1].toFixed(4)}`
           if (seen.has(key)) continue
           seen.add(key)
-          out.push({ kind: extractSnapKind(feat), waypoint: { lng: geom.coordinates[0], lat: geom.coordinates[1], name } })
+          out.push({ kind: extractSnapKind(feat), displayName: extractSnapDisplayName(feat), waypoint: { lng: geom.coordinates[0], lat: geom.coordinates[1], name } })
         }
         return out
       }
@@ -2175,7 +2195,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             const key = `${kind}:${name}:${geom.coordinates[1].toFixed(5)}:${geom.coordinates[0].toFixed(5)}`
             if (!seen.has(key)) {
               seen.add(key)
-              candidates.push({ kind, waypoint: { lng: geom.coordinates[0], lat: geom.coordinates[1], name } })
+              candidates.push({ kind, displayName: extractSnapDisplayName(feat), waypoint: { lng: geom.coordinates[0], lat: geom.coordinates[1], name } })
             }
           }
           candidates.push({ kind: 'PT', waypoint: { lng: e.lngLat.lng, lat: e.lngLat.lat } })
@@ -3428,6 +3448,21 @@ export default function MapView({ auth }: { auth: AuthState }) {
           loadRouteIntoMap(wps, ovr, aircraftId)
           if (aircraftId) setSelectedAircraftId(aircraftId)
           setPlanningMode(true)
+          // Fit the camera to the newly-loaded route's extent -- mirrors
+          // native's identical activeRouteId-keyed AviationMap effect.
+          // Fired directly here (not from a separate effect watching
+          // activeRouteId, unlike native) since this handler already runs
+          // exactly once per load/Save-As/GPX-import and already has
+          // mapRef in scope -- no cross-screen signal needed the way
+          // native's separate Map/Flight-Plan tabs require.
+          if (wps.length >= 2 && mapRef.current) {
+            const lngs = wps.map((w) => w.lng)
+            const lats = wps.map((w) => w.lat)
+            mapRef.current.fitBounds(
+              [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+              { padding: 80, maxZoom: 13, duration: 800 },
+            )
+          }
         }}
         activeRouteId={activeRouteId}
         onActiveRouteIdChange={setActiveRouteId}
@@ -3876,6 +3911,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             waypoints={rulerPoints}
             legOverrides={[]}
             units={units}
+            airspaceCeilingFt={ceilingFt}
             aircraftProfile={selectedAircraftProfile}
             onHoverDistNm={setProfileCursorNm}
             weatherStations={routeWeatherStations}
@@ -3893,6 +3929,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             waypoints={routeWaypoints}
             legOverrides={legOverrides}
             units={units}
+            airspaceCeilingFt={ceilingFt}
             aircraftProfile={selectedAircraftProfile}
             currentDistNm={aircraftDistNm}
             currentAltFt={flyingMode !== 'off' ? gpsPosition?.altFt : undefined}
@@ -3916,6 +3953,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
               waypoints={lookaheadWaypoints}
               legOverrides={[{ altFt: gpsPosition?.altFt ?? 1000, speedKts: gpsPosition?.speedKts || selectedAircraftProfile?.cruiseIas || 90 }] as LegOverride[]}
               units={units}
+              airspaceCeilingFt={ceilingFt}
               aircraftProfile={selectedAircraftProfile}
               currentDistNm={lookaheadDistNm}
               currentAltFt={gpsPosition?.altFt}

@@ -75,6 +75,10 @@ interface Props {
    *  (see useGpsVerticalSpeed) rather than native's baro/vario-tiered value
    *  — treat as indicative only. */
   currentVSpeedFpm?: number
+  /** Same ceiling filter as the map's airspace layers (settings.airspaceCeilingFt)
+   *  -- airspace bands whose floor is above this are hidden from the chart,
+   *  matching what's already hidden on the map. Unfiltered if omitted. */
+  airspaceCeilingFt?: number
   /** Matches the map trajectory mode: 'time' = marks at 1/3/5 min ahead, 'dist' = 1/3/5 NM ahead */
   trajectoryMode?: 'time' | 'dist'
   /** NM along the route for a map-driven crosshair cursor (null = hidden) */
@@ -162,7 +166,7 @@ function ProfileTooltip({ active, payload }: { active?: boolean; payload?: Toolt
 export default function VirtualRadar({
   waypoints, legOverrides, units = DEFAULT_UNITS, title, onHoverDistNm, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, crosshairDistNm,
-  crossTrackNm, weatherStations, windSamples,
+  crossTrackNm, weatherStations, windSamples, airspaceCeilingFt,
 }: Props) {
 
   const chartWrapRef = useRef<HTMLDivElement | null>(null)
@@ -253,8 +257,9 @@ export default function VirtualRadar({
       obstacleGeo,
       waterGeo ?? undefined,
       landmarkGeo ?? undefined,
+      airspaceCeilingFt ?? Infinity,
     )
-  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo, landmarkGeo])
+  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo, landmarkGeo, airspaceCeilingFt])
 
   // Load (and cache) the recoloured SVG markup for every obstacle/landmark
   // kind actually present on this route — same pictograms as the main map
@@ -349,6 +354,18 @@ export default function VirtualRadar({
   // Measure the chart wrap's width — needed to decide whether the route is
   // wider than the panel (MIN_PX_PER_NM) and therefore should scroll instead
   // of Recharts' ResponsiveContainer squeezing the whole route into 100%.
+  // Deps deliberately NOT [] -- chartWrapRef.current is null on this
+  // component's very first commit (profile/chartData aren't ready yet, so
+  // the early `if (!profile...) return null` below skips rendering the div
+  // entirely that first time). An empty-deps effect only ever runs once,
+  // right after that first (contentless) commit, sees el=null, and bails
+  // forever -- wrapW then stays stuck at its initial 0 for the component's
+  // whole lifetime, silently forcing the width:100% fallback below even
+  // though `scrollable` (computed from wrapW too) can still evaluate true
+  // and show the "scroll" hint span: the hint renders but nothing actually
+  // overflows to scroll. Re-running whenever collapsed or chartData's
+  // readiness changes re-attempts the el lookup at each point the div
+  // could newly exist (profile arriving, or expanding after a collapse).
   useEffect(() => {
     const el = chartWrapRef.current
     if (!el) return
@@ -358,7 +375,7 @@ export default function VirtualRadar({
     })
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [collapsed, profile])
 
   // Build chart data: terrain points as the primary series (evenly spaced),
   // with planned altitude step-function interpolated at each distance.
@@ -466,6 +483,32 @@ export default function VirtualRadar({
   // blocks below to decide whether the dir/speed text fits to the right of
   // the arrow (12 = ComposedChart's margin.right).
   const plotRightPx = contentPxWidth - 12
+
+  // X-axis tick/unit-label collision avoidance \u2014 XAxis's `label` prop
+  // ("NM"/"km", position: 'insideRight') is pinned to the axis's right
+  // edge regardless of where the highest auto-generated tick (previously
+  // tickCount=8, evenly spaced across [0, domainMax]) happens to land.
+  // domainMax is Math.ceil(totalNm) so it essentially never lands exactly
+  // on a "nice" tick boundary -- Recharts' auto ticks routinely place one
+  // within a couple px of the right edge, painting that number's text
+  // directly under/through the unit label (e.g. "36" smeared into "NM").
+  // Generate our own evenly-spaced ticks instead and drop any that land in
+  // the last ~8% of the domain, reserving that strip for the unit label --
+  // same fixed-budget edge-clamp tradeoff already used above for the wind-
+  // arrow x position and below for waypoint-label collision avoidance.
+  const xAxisTicks = useMemo(() => {
+    const domainMax = Math.max(1, Math.ceil(totalNmDisplay))
+    const TICK_COUNT = 8
+    const EDGE_RESERVE_FRAC = 0.08
+    const step = domainMax / (TICK_COUNT - 1)
+    const out: number[] = []
+    for (let i = 0; i < TICK_COUNT; i++) {
+      const v = Math.round(i * step)
+      if (v > domainMax * (1 - EDGE_RESERVE_FRAC)) break
+      if (out[out.length - 1] !== v) out.push(v)
+    }
+    return out
+  }, [totalNmDisplay])
 
   // Waypoint-name label collision avoidance — closely-spaced waypoints
   // (e.g. a short leg to a named landmark waypoint) previously rendered
@@ -584,7 +627,7 @@ export default function VirtualRadar({
                 dataKey="dist"
                 type="number"
                 domain={[0, Math.ceil(nmToDisplay(profile.totalNm, units.distance))]}
-                tickCount={8}
+                ticks={xAxisTicks}
                 tickFormatter={(v: number) => `${v.toFixed(0)}`}
                 tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 9 }}
                 tickLine={false}
@@ -898,7 +941,15 @@ export default function VirtualRadar({
                   main map and native's VerticalProfile both use — this used
                   to render a generic dot glyph instead of the actual symbols. */}
               {profile.landmarks.map((lmk, i) => {
-                const baseFt = terrainAt(terrainPts, lmk.distNm)
+                // Floor at 0 -- unlike obstacles (floored via Math.max
+                // against their own surveyed elevationFt), landmarks have
+                // no elevation of their own and rely purely on terrainAt(),
+                // which can go negative from real DEM noise over/near water
+                // (OpenTopoData EU-DEM, documented water-surface artifact --
+                // see openvfr-infra/docs/todo.md). Unfloored, that rendered
+                // the landmark's bottom-anchored icon below the chart's 0ft
+                // baseline entirely.
+                const baseFt = Math.max(0, terrainAt(terrainPts, lmk.distNm))
                 const markup = iconMarkup[`lmk:${lmk.kind}`]
                 const size = 14
                 return (
