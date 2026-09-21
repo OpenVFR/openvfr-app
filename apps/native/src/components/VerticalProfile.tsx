@@ -949,11 +949,11 @@ export function VerticalProfile({
                   if (!m.wind) return null
                   const x = windXOf(m.distNm), y = WIND_ARROW_Y
                   if (m.wind.calm) {
-                    const p = windLabelPlacement(x, 3, 'CALM', 9, contentW - MARGIN_R, MARGIN_L)
+                    const p = windLabelPlacement(x, 3, 'CALM', 10, contentW - MARGIN_R, MARGIN_L)
                     return (
                       <G key={`wind-${i}`}>
                         <Circle cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
-                        {p && renderHaloText(p.x, y + 3, 'CALM', 'rgba(203,213,225,0.95)', 9, 1, p.anchor)}
+                        {p && renderHaloText(p.x, y + 3, 'CALM', 'rgba(203,213,225,0.95)', 10, 1, p.anchor)}
                       </G>
                     )
                   }
@@ -982,13 +982,13 @@ export function VerticalProfile({
                   // balanced above/below y for any direction.
                   {
                     const label = `${m.wind.dirDeg}\u00b0/${m.wind.speedKt}`
-                    const p = windLabelPlacement(x, WIND_BARB_SHAFT_LEN / 2, label, 9, contentW - MARGIN_R, MARGIN_L)
+                    const p = windLabelPlacement(x, WIND_BARB_SHAFT_LEN / 2, label, 10, contentW - MARGIN_R, MARGIN_L)
                     return (
                       <G key={`wind-${i}`}>
                         <G transform={`translate(${x},${y}) rotate(${rot}) translate(0, ${WIND_BARB_SHAFT_LEN / 2})`}>
                           {renderWindBarbShape(m.wind.speedKt, color, { shaftLen: WIND_BARB_SHAFT_LEN, barbLen: WIND_BARB_BARB_LEN, halfLen: WIND_BARB_HALF_LEN, barbGap: WIND_BARB_BARB_GAP, strokeW: WIND_BARB_STROKE_W })}
                         </G>
-                        {p && renderHaloText(p.x, y + 3, label, color, 9, 1, p.anchor)}
+                        {p && renderHaloText(p.x, y + 3, label, color, 10, 1, p.anchor)}
                       </G>
                     )
                   }
@@ -1001,11 +1001,11 @@ export function VerticalProfile({
                 {visibleWindSamples.map((s, i) => {
                   const x = windXOf(s.distNm), y = WIND_ARROW_Y
                   if (s.wind.calm) {
-                    const p = windLabelPlacement(x, 3, '~CALM', 9, contentW - MARGIN_R, MARGIN_L)
+                    const p = windLabelPlacement(x, 3, '~CALM', 10, contentW - MARGIN_R, MARGIN_L)
                     return (
                       <G key={`windsample-${i}`}>
                         <Circle cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
-                        {p && renderHaloText(p.x, y + 3, '~CALM', 'rgba(203,213,225,0.95)', 9, 1, p.anchor)}
+                        {p && renderHaloText(p.x, y + 3, '~CALM', 'rgba(203,213,225,0.95)', 10, 1, p.anchor)}
                       </G>
                     )
                   }
@@ -1022,13 +1022,13 @@ export function VerticalProfile({
                   // comment on the real-station barb above for why.
                   {
                     const label = `~${s.wind.dirDeg}\u00b0/${s.wind.speedKt}`
-                    const p = windLabelPlacement(x, WIND_BARB_SHAFT_LEN / 2, label, 9, contentW - MARGIN_R, MARGIN_L)
+                    const p = windLabelPlacement(x, WIND_BARB_SHAFT_LEN / 2, label, 10, contentW - MARGIN_R, MARGIN_L)
                     return (
                       <G key={`windsample-${i}`}>
                         <G transform={`translate(${x},${y}) rotate(${rot}) translate(0, ${WIND_BARB_SHAFT_LEN / 2})`}>
                           {renderWindBarbShape(s.wind.speedKt, color, { shaftLen: WIND_BARB_SHAFT_LEN, barbLen: WIND_BARB_BARB_LEN, halfLen: WIND_BARB_HALF_LEN, barbGap: WIND_BARB_BARB_GAP, strokeW: WIND_BARB_STROKE_W })}
                         </G>
-                        {p && renderHaloText(p.x, y + 3, label, color, 9, 1, p.anchor)}
+                        {p && renderHaloText(p.x, y + 3, label, color, 10, 1, p.anchor)}
                       </G>
                     )
                   }
@@ -1283,24 +1283,24 @@ function makeStyles(theme: ScaledTheme) {
   wpLabel: {
     position: 'absolute',
     color:    'rgba(255,255,255,0.55)',
-    fontSize: 8,
+    fontSize: 9,
     maxWidth: 60,
   },
   trajLabel: {
     position: 'absolute',
     color:    'rgba(250,204,21,0.90)',
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: '600',
   },
   axisLabel: {
     position: 'absolute',
     color:    'rgba(255,255,255,0.45)',
-    fontSize: 8,
+    fontSize: 9,
   },
   axisLabelX: {
     position: 'absolute',
     color:    'rgba(255,255,255,0.45)',
-    fontSize: 8,
+    fontSize: 9,
   },
   // Pinned left-edge Y-axis label column — sits above the scrollable clip
   // window (rendered after it in JSX = higher z-order) so it never scrolls

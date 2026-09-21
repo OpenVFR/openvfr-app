@@ -686,17 +686,17 @@ export default function VirtualRadar({
                 domain={[0, Math.ceil(nmToDisplay(profile.totalNm, units.distance))]}
                 ticks={xAxisTicks}
                 tickFormatter={(v: number) => `${v.toFixed(0)}`}
-                tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 9 }}
+                tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }}
                 tickLine={false}
                 axisLine={{ stroke: 'rgba(255,255,255,0.15)' }}
-                label={{ value: distLabel(units.distance), position: 'insideRight', offset: -2, fill: 'rgba(255,255,255,0.3)', fontSize: 9 }}
+                label={{ value: distLabel(units.distance), position: 'insideRight', offset: -2, fill: 'rgba(255,255,255,0.3)', fontSize: 10 }}
               />
 
               <YAxis
                 domain={[0, yMax]}
                 tickCount={5}
                 tickFormatter={(v: number) => v >= 1000 ? `FL${Math.round(v / 100).toString().padStart(3,'0')}` : `${v}`}
-                tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 9 }}
+                tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }}
                 tickLine={false}
                 axisLine={{ stroke: 'rgba(255,255,255,0.15)' }}
                 width={36}
@@ -884,7 +884,7 @@ export default function VirtualRadar({
                       // -- caught in a device review). Falls back to
                       // skipping entirely only if NEITHER side has room,
                       // which should be rare at this chart's minimum width.
-                      const fontSize = 9
+                      const fontSize = 10
                       const renderLabel = (text: string, halfW: number, fill: string) => {
                         if (!text) return null
                         const labelW = text.length * fontSize * 0.62
@@ -993,7 +993,7 @@ export default function VirtualRadar({
                       // real wind-arrow block above -- identical size/
                       // weight too (see WIND_BARB_* constants); the "~"
                       // prefix is the only visual differentiator now.
-                      const fontSize = 9
+                      const fontSize = 10
                       const renderLabel = (text: string, halfW: number, fill: string) => {
                         if (!text) return null
                         const labelW = text.length * fontSize * 0.62
@@ -1140,7 +1140,7 @@ export default function VirtualRadar({
                     value: tick.name,
                     position: tick === profile!.waypointTicks[profile!.waypointTicks.length - 1] ? 'insideTopRight' : 'insideTopLeft',
                     fill: 'rgba(255,255,255,0.50)',
-                    fontSize: 8,
+                    fontSize: 9,
                   }}
                 />
               ))}
@@ -1253,7 +1253,7 @@ export default function VirtualRadar({
                     value: trajectoryTickLabels[i],
                     position: 'top',
                     fill: 'rgba(250,204,21,0.90)',
-                    fontSize: 8,
+                    fontSize: 9,
                   }}
                 />
               ))}
