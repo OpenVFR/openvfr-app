@@ -159,6 +159,17 @@ function ProfileTooltip({ active, payload }: { active?: boolean; payload?: Toolt
   )
 }
 
+// Shared size for BOTH the real-station and wind-sample barbs -- they used
+// to differ (real bigger/bolder, sample smaller/dimmed) to visually flag
+// "observed vs. estimated", but that read as one being broken/lower-
+// quality rather than intentional. The "~" text prefix on samples is
+// already the differentiator, so both now share identical geometry.
+const WIND_BARB_SHAFT_LEN = 18
+const WIND_BARB_BARB_LEN  = 8
+const WIND_BARB_HALF_LEN  = 5
+const WIND_BARB_BARB_GAP  = 5
+const WIND_BARB_STROKE_W  = 1.8
+
 /**
  * Renders a small WMO-style wind barb (shaft + pennant/full/half-barb
  * feathers) at the origin, pointing "up" before the caller's own rotate()
@@ -862,17 +873,40 @@ export default function VirtualRadar({
                       // used on the barb icons) instead of the old plain fill
                       // text, which was flagged as illegible against the
                       // chart background in a pre-release pass.
+                      // Flips to the LEFT of the arrow when the route's
+                      // final station sits close enough to the chart's
+                      // right edge that a right-side label would run past
+                      // it and get clipped by the chart wrapper's own
+                      // boundary (not caught by this fits-check before --
+                      // a station right at the route's end could render a
+                      // right-side label that passed this check yet still
+                      // got visually cut off, dropping its "/NNkt" suffix
+                      // -- caught in a device review). Falls back to
+                      // skipping entirely only if NEITHER side has room,
+                      // which should be rare at this chart's minimum width.
                       const fontSize = 9
                       const renderLabel = (text: string, halfW: number, fill: string) => {
                         if (!text) return null
                         const labelW = text.length * fontSize * 0.62
-                        if (cx + halfW + 4 + labelW > plotRightPx) return null
-                        return (
-                          <text
-                            x={cx + halfW + 4} y={cy + fontSize * 0.35} fontSize={fontSize}
-                            fill={fill} stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke"
-                          >{text}</text>
-                        )
+                        const rightX = cx + halfW + 4
+                        if (rightX + labelW <= plotRightPx) {
+                          return (
+                            <text
+                              x={rightX} y={cy + fontSize * 0.35} fontSize={fontSize}
+                              fill={fill} stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke"
+                            >{text}</text>
+                          )
+                        }
+                        const leftX = cx - halfW - 4
+                        if (leftX - labelW >= 4) {
+                          return (
+                            <text
+                              x={leftX} y={cy + fontSize * 0.35} fontSize={fontSize} textAnchor="end"
+                              fill={fill} stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke"
+                            >{text}</text>
+                          )
+                        }
+                        return null
                       }
                       if (m.wind!.calm) {
                         return (
@@ -896,7 +930,14 @@ export default function VirtualRadar({
                       // Real WMO barb (shaft + feathers) instead of a plain
                       // arrow -- see renderWindBarbShape above.
                       const color = windBarbColorForSpeed(m.wind!.speedKt)
-                      const shaftLen = 18
+                      // Same size/opacity/weight as the wind-sample barb
+                      // below -- the two used to look visibly different
+                      // (bigger/bolder real-station vs. smaller/dimmed
+                      // sample), which read as one being broken/lower-
+                      // quality rather than intentional; the "~" text
+                      // prefix on samples is already the differentiator,
+                      // so both barbs now share identical geometry.
+                      const shaftLen = WIND_BARB_SHAFT_LEN
                       // windBarbGeometry anchors its local origin at the
                       // station/"tail" end (shaft runs 0 to -shaftLen, tip
                       // pointing away from station) -- correct for the
@@ -917,7 +958,7 @@ export default function VirtualRadar({
                       return (
                         <g aria-hidden="true">
                           <g transform={`translate(${cx},${cy}) rotate(${rot}) translate(0, ${shaftLen / 2})`}>
-                            {renderWindBarbShape(m.wind!.speedKt, color, { shaftLen, barbLen: 8, halfLen: 5, barbGap: 5, strokeW: 1.8 })}
+                            {renderWindBarbShape(m.wind!.speedKt, color, { shaftLen, barbLen: WIND_BARB_BARB_LEN, halfLen: WIND_BARB_HALF_LEN, barbGap: WIND_BARB_BARB_GAP, strokeW: WIND_BARB_STROKE_W })}
                           </g>
                           {renderLabel(`${m.wind!.dirDeg}\u00b0/${m.wind!.speedKt}`, shaftLen / 2 + 4, color)}
                         </g>
@@ -947,45 +988,56 @@ export default function VirtualRadar({
                     x={x} y={y} r={0} fill="transparent" stroke="none" ifOverflow="visible"
                     shape={(dotProps) => {
                       const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
-                      // Same right-of-arrow, skip-if-no-room, stroke-outline
-                      // text placement as the real wind-arrow block above.
-                      const fontSize = 8
+                      // Same right-of-arrow (flipping left near the
+                      // chart's end), stroke-outline text placement as the
+                      // real wind-arrow block above -- identical size/
+                      // weight too (see WIND_BARB_* constants); the "~"
+                      // prefix is the only visual differentiator now.
+                      const fontSize = 9
                       const renderLabel = (text: string, halfW: number, fill: string) => {
                         if (!text) return null
                         const labelW = text.length * fontSize * 0.62
-                        if (cx + halfW + 4 + labelW > plotRightPx) return null
-                        return (
-                          <text
-                            x={cx + halfW + 4} y={cy + fontSize * 0.35} fontSize={fontSize}
-                            fill={fill} stroke="rgba(0,0,0,0.7)" strokeWidth={2.5} strokeLinejoin="round" paintOrder="stroke" opacity={0.85}
-                          >{text}</text>
-                        )
+                        const rightX = cx + halfW + 4
+                        if (rightX + labelW <= plotRightPx) {
+                          return (
+                            <text
+                              x={rightX} y={cy + fontSize * 0.35} fontSize={fontSize}
+                              fill={fill} stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke"
+                            >{text}</text>
+                          )
+                        }
+                        const leftX = cx - halfW - 4
+                        if (leftX - labelW >= 4) {
+                          return (
+                            <text
+                              x={leftX} y={cy + fontSize * 0.35} fontSize={fontSize} textAnchor="end"
+                              fill={fill} stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke"
+                            >{text}</text>
+                          )
+                        }
+                        return null
                       }
                       if (s.wind.calm) {
                         return (
                           <g aria-hidden="true">
-                            <circle cx={cx} cy={cy} r={2.5} fill="none" stroke="rgba(148,163,184,0.4)" strokeWidth={1} strokeDasharray="1.5,1.5" />
-                            {renderLabel('~CALM', 2.5, 'rgba(203,213,225,0.9)')}
+                            <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
+                            {renderLabel('~CALM', 3, 'rgba(203,213,225,0.95)')}
                           </g>
                         )
                       }
                       if (s.wind.dirDeg == null) return <g />
                       const rot = s.wind.dirDeg // see FROM-direction comment above
-                      // Same real-barb geometry as a real station's arrow,
-                      // just smaller/dimmer -- keeps the strength read
-                      // consistent while still visibly distinct from a real
-                      // observation.
                       const color = windBarbColorForSpeed(s.wind.speedKt)
-                      const shaftLen = 13
+                      const shaftLen = WIND_BARB_SHAFT_LEN
                       // Re-centres rotation on the shaft's midpoint instead
                       // of its tail -- see the identical comment on the
                       // real-station barb above for why.
                       return (
                         <g aria-hidden="true">
-                          <g transform={`translate(${cx},${cy}) rotate(${rot}) translate(0, ${shaftLen / 2})`} opacity={0.6}>
-                            {renderWindBarbShape(s.wind.speedKt, color, { shaftLen, barbLen: 6, halfLen: 3.5, barbGap: 3.5, strokeW: 1.4 })}
+                          <g transform={`translate(${cx},${cy}) rotate(${rot}) translate(0, ${shaftLen / 2})`}>
+                            {renderWindBarbShape(s.wind.speedKt, color, { shaftLen, barbLen: WIND_BARB_BARB_LEN, halfLen: WIND_BARB_HALF_LEN, barbGap: WIND_BARB_BARB_GAP, strokeW: WIND_BARB_STROKE_W })}
                           </g>
-                          {renderLabel(`~${s.wind.dirDeg}\u00b0/${s.wind.speedKt}`, shaftLen / 2 + 3, color)}
+                          {renderLabel(`~${s.wind.dirDeg}\u00b0/${s.wind.speedKt}`, shaftLen / 2 + 4, color)}
                         </g>
                       )
                     }}
@@ -993,11 +1045,16 @@ export default function VirtualRadar({
                 )
               })}
 
-              {/* TAF "check the bulletin" warning — small yellow triangle
+              {/* TAF "check the bulletin" warning -- amber triangle+"!"
                   when a real trend change (FM/BECMG) lands within the next
                   3h (see resolveStationWeather/parseTaf.ts). Not a rendered
-                  forecast column — just a nudge to go read the TAF text.
-                  Mirrors native's identical marker. */}
+                  forecast column -- just a nudge to go read the TAF text.
+                  Mirrors native's identical marker. The original was a bare
+                  filled triangle with no interior mark -- at this chart's
+                  scale it just read as an unrecognisable smudge, not a
+                  warning symbol, per user feedback. Sized up and given a
+                  bold "!" glyph, matching the universal hazard-triangle
+                  convention instead of relying on shape/colour alone. */}
               {weatherMarks.map((m, i) => m.tafChangeSoon ? (
                 <ReferenceDot
                   key={`tafwarn-${i}`}
@@ -1008,11 +1065,13 @@ export default function VirtualRadar({
                   shape={(dotProps) => {
                     const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
                     return (
-                      <path
-                        transform={`translate(${cx},${cy})`}
-                        d="M0,-5 L4.5,4 L-4.5,4 Z"
-                        fill="rgba(250,204,21,0.9)" stroke="rgba(0,0,0,0.4)" strokeWidth={0.5}
-                      />
+                      <g transform={`translate(${cx},${cy})`}>
+                        <path
+                          d="M0,-8 L7,7 L-7,7 Z"
+                          fill="rgba(250,204,21,0.95)" stroke="rgba(0,0,0,0.7)" strokeWidth={1} strokeLinejoin="round"
+                        />
+                        <text x={0} y={5.5} fontSize={8} fontWeight="bold" fill="rgba(0,0,0,0.85)" textAnchor="middle">!</text>
+                      </g>
                     )
                   }}
                 />

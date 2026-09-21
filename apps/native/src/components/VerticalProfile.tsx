@@ -241,6 +241,17 @@ function getPlannedAlt(altProfile: { distNm: number; altFt: number }[], distNm: 
 }
 
 
+// Shared size for BOTH the real-station and wind-sample barbs -- mirrors
+// web's identical VirtualRadar.tsx constants. They used to differ (real
+// bigger/bolder, sample smaller/dimmed) to visually flag "observed vs.
+// estimated", but that read as one being broken/lower-quality rather than
+// intentional. The "~" text prefix is already the differentiator.
+const WIND_BARB_SHAFT_LEN = 18
+const WIND_BARB_BARB_LEN  = 8
+const WIND_BARB_HALF_LEN  = 5
+const WIND_BARB_BARB_GAP  = 5
+const WIND_BARB_STROKE_W  = 1.8
+
 /**
  * Renders a small WMO-style wind barb (shaft + pennant/full/half-barb
  * feathers) at the origin, mirroring web's VirtualRadar.tsx identical
@@ -299,13 +310,33 @@ function renderWindBarbShape(
  * illegibility, not wanting the number gone, so this fixes contrast
  * instead of removing the label.
  */
-function renderHaloText(x: number, y: number, text: string, fill: string, fontSize: number, opacity = 1) {
+function renderHaloText(x: number, y: number, text: string, fill: string, fontSize: number, opacity = 1, anchor: 'start' | 'end' = 'start') {
   return (
     <G key={`${x}-${y}-${text}`} opacity={opacity}>
-      <SvgText x={x} y={y} fontSize={fontSize} fill="none" stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round">{text}</SvgText>
-      <SvgText x={x} y={y} fontSize={fontSize} fill={fill}>{text}</SvgText>
+      <SvgText x={x} y={y} fontSize={fontSize} textAnchor={anchor} fill="none" stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round">{text}</SvgText>
+      <SvgText x={x} y={y} fontSize={fontSize} textAnchor={anchor} fill={fill}>{text}</SvgText>
     </G>
   )
+}
+
+/**
+ * Picks right-of-arrow or left-of-arrow placement for a wind label,
+ * flipping to the left when the route's final station sits close enough
+ * to the chart's right edge that a right-side label would run past it and
+ * get clipped by the chart's own width -- a station right at the route's
+ * end could otherwise render a right-side label that looked like it
+ * should fit, yet still got visually cut off, dropping its "/NNkt" suffix
+ * (caught in a device review). Mirrors web's identical VirtualRadar.tsx
+ * fix. Returns null only if NEITHER side has room, which should be rare
+ * at this chart's minimum width.
+ */
+function windLabelPlacement(cx: number, halfW: number, text: string, fontSize: number, rightBound: number, leftBound: number): { x: number; anchor: 'start' | 'end' } | null {
+  const labelW = text.length * fontSize * 0.62
+  const rightX = cx + halfW + 4
+  if (rightX + labelW <= rightBound) return { x: rightX, anchor: 'start' }
+  const leftX = cx - halfW - 4
+  if (leftX - labelW >= leftBound) return { x: leftX, anchor: 'end' }
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -918,10 +949,11 @@ export function VerticalProfile({
                   if (!m.wind) return null
                   const x = windXOf(m.distNm), y = WIND_ARROW_Y
                   if (m.wind.calm) {
+                    const p = windLabelPlacement(x, 3, 'CALM', 9, contentW - MARGIN_R, MARGIN_L)
                     return (
                       <G key={`wind-${i}`}>
                         <Circle cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
-                        {renderHaloText(x + 7, y + 3, 'CALM', 'rgba(203,213,225,0.95)', 9)}
+                        {p && renderHaloText(p.x, y + 3, 'CALM', 'rgba(203,213,225,0.95)', 9, 1, p.anchor)}
                       </G>
                     )
                   }
@@ -948,14 +980,18 @@ export function VerticalProfile({
                   // translate(0, shaftLen/2) re-centres rotation on the
                   // shaft's midpoint instead, keeping the footprint
                   // balanced above/below y for any direction.
-                  return (
-                    <G key={`wind-${i}`}>
-                      <G transform={`translate(${x},${y}) rotate(${rot}) translate(0, 9)`}>
-                        {renderWindBarbShape(m.wind.speedKt, color, { shaftLen: 18, barbLen: 8, halfLen: 5, barbGap: 5, strokeW: 1.8 })}
+                  {
+                    const label = `${m.wind.dirDeg}\u00b0/${m.wind.speedKt}`
+                    const p = windLabelPlacement(x, WIND_BARB_SHAFT_LEN / 2, label, 9, contentW - MARGIN_R, MARGIN_L)
+                    return (
+                      <G key={`wind-${i}`}>
+                        <G transform={`translate(${x},${y}) rotate(${rot}) translate(0, ${WIND_BARB_SHAFT_LEN / 2})`}>
+                          {renderWindBarbShape(m.wind.speedKt, color, { shaftLen: WIND_BARB_SHAFT_LEN, barbLen: WIND_BARB_BARB_LEN, halfLen: WIND_BARB_HALF_LEN, barbGap: WIND_BARB_BARB_GAP, strokeW: WIND_BARB_STROKE_W })}
+                        </G>
+                        {p && renderHaloText(p.x, y + 3, label, color, 9, 1, p.anchor)}
                       </G>
-                      {renderHaloText(x + 13, y + 3, `${m.wind.dirDeg}\u00b0/${m.wind.speedKt}`, color, 9)}
-                    </G>
-                  )
+                    )
+                  }
                 })}
 
                 {/* Regular-interval wind samples (useWindAlongRoute) --
@@ -965,45 +1001,63 @@ export function VerticalProfile({
                 {visibleWindSamples.map((s, i) => {
                   const x = windXOf(s.distNm), y = WIND_ARROW_Y
                   if (s.wind.calm) {
+                    const p = windLabelPlacement(x, 3, '~CALM', 9, contentW - MARGIN_R, MARGIN_L)
                     return (
                       <G key={`windsample-${i}`}>
-                        <Circle cx={x} cy={y} r={2.5} fill="none" stroke="rgba(148,163,184,0.4)" strokeWidth={1} strokeDasharray="1.5,1.5" />
-                        {renderHaloText(x + 6.5, y + 3, '~CALM', 'rgba(203,213,225,0.9)', 8, 0.85)}
+                        <Circle cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
+                        {p && renderHaloText(p.x, y + 3, '~CALM', 'rgba(203,213,225,0.95)', 9, 1, p.anchor)}
                       </G>
                     )
                   }
                   if (s.wind.dirDeg == null) return null
                   const rot = s.wind.dirDeg // see FROM-direction comment above
                   const color = windBarbColorForSpeed(s.wind.speedKt)
-                  // Re-centres rotation on the shaft's midpoint instead of
-                  // its tail -- see the identical comment on the
-                  // real-station barb above for why.
-                  return (
-                    <G key={`windsample-${i}`}>
-                      <G transform={`translate(${x},${y}) rotate(${rot}) translate(0, 6.5)`} opacity={0.6}>
-                        {renderWindBarbShape(s.wind.speedKt, color, { shaftLen: 13, barbLen: 6, halfLen: 3.5, barbGap: 3.5, strokeW: 1.4 })}
+                  // Same size/opacity/weight as the real-station barb above
+                  // -- the two used to look visibly different (bigger/
+                  // bolder real-station vs. smaller/dimmed sample), which
+                  // read as one being broken/lower-quality rather than
+                  // intentional; the "~" text prefix is already the
+                  // differentiator. Re-centres rotation on the shaft's
+                  // midpoint instead of its tail -- see the identical
+                  // comment on the real-station barb above for why.
+                  {
+                    const label = `~${s.wind.dirDeg}\u00b0/${s.wind.speedKt}`
+                    const p = windLabelPlacement(x, WIND_BARB_SHAFT_LEN / 2, label, 9, contentW - MARGIN_R, MARGIN_L)
+                    return (
+                      <G key={`windsample-${i}`}>
+                        <G transform={`translate(${x},${y}) rotate(${rot}) translate(0, ${WIND_BARB_SHAFT_LEN / 2})`}>
+                          {renderWindBarbShape(s.wind.speedKt, color, { shaftLen: WIND_BARB_SHAFT_LEN, barbLen: WIND_BARB_BARB_LEN, halfLen: WIND_BARB_HALF_LEN, barbGap: WIND_BARB_BARB_GAP, strokeW: WIND_BARB_STROKE_W })}
+                        </G>
+                        {p && renderHaloText(p.x, y + 3, label, color, 9, 1, p.anchor)}
                       </G>
-                      {renderHaloText(x + 9.5, y + 3, `~${s.wind.dirDeg}\u00b0/${s.wind.speedKt}`, color, 8, 0.85)}
-                    </G>
-                  )
+                    )
+                  }
                 })}
 
-                {/* TAF "check the bulletin" warning — small yellow triangle
+                {/* TAF "check the bulletin" warning -- amber triangle+"!"
                      when a real trend change (FM/BECMG) lands within the
                      next 3h (see resolveStationWeather/parseTaf.ts). Not a
-                     rendered forecast column — just a nudge to go read the
-                     TAF text. */}
+                     rendered forecast column -- just a nudge to go read the
+                     TAF text. The original was a bare filled triangle with
+                     no interior mark -- at this chart's scale it just read
+                     as an unrecognisable smudge, not a warning symbol, per
+                     user feedback. Sized up and given a bold "!" glyph,
+                     matching the universal hazard-triangle convention
+                     instead of relying on shape/colour alone. Mirrors
+                     web's identical VirtualRadar.tsx fix. */}
                 {weatherMarks.map((m, i) => m.tafChangeSoon ? (
-                  <Path key={`tafwarn-${i}`}
-                    d="M0,-5 L4.5,4 L-4.5,4 Z"
-                    // Fixed near the true top (y=0), above WIND_ARROW_Y's
-                    // span (~3-21px) at the same x -- was MARGIN_T-8 (pixel
-                    // 2 with the old MARGIN_T=10), which would now land
-                    // right inside the wind arrow's own span after
-                    // MARGIN_T grew to 26.
-                    transform={`translate(${xOf(m.distNm)},0)`}
-                    fill="rgba(250,204,21,0.9)" stroke="rgba(0,0,0,0.4)" strokeWidth={0.5}
-                  />
+                  <G key={`tafwarn-${i}`} transform={`translate(${xOf(m.distNm)},0)`}>
+                    <Path
+                      d="M0,-8 L7,7 L-7,7 Z"
+                      // Fixed near the true top (y=0), above WIND_ARROW_Y's
+                      // span (~3-21px) at the same x -- was MARGIN_T-8 (pixel
+                      // 2 with the old MARGIN_T=10), which would now land
+                      // right inside the wind arrow's own span after
+                      // MARGIN_T grew to 26.
+                      fill="rgba(250,204,21,0.95)" stroke="rgba(0,0,0,0.7)" strokeWidth={1} strokeLinejoin="round"
+                    />
+                    <SvgText x={0} y={5.5} fontSize={8} fontWeight="bold" fill="rgba(0,0,0,0.85)" textAnchor="middle">!</SvgText>
+                  </G>
                 ) : null)}
 
                 {/* ── Waypoint ticks ──────────────────────────────────── */}
