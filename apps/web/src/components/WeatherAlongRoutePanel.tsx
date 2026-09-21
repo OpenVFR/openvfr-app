@@ -28,6 +28,17 @@ export default function WeatherAlongRoutePanel({ stations }: Props) {
               </span>
             )}
           </div>
+          {/* Flags when the shown report isn't actually this aerodrome's
+              own -- fetchWxNearest substitutes the closest reporting
+              neighbor for fields with no local AWOS/ATIS (see
+              useWeatherAlongRoute.ts's sourceIcao doc). Without this, a
+              borrowed report from miles away reads as if it were local.
+              Same disclosure pattern as AerodromePopup's ", X NM away". */}
+          {s.sourceIcao !== s.icao && (
+            <div className={css.viaNote}>
+              via {s.sourceIcao}{s.sourceDistNm != null ? `, ${Math.round(s.sourceDistNm)} NM away` : ''}
+            </div>
+          )}
           {s.metar && <div className={css.raw}>{s.metar}</div>}
           {!s.metar && <div className={css.raw}>No METAR available</div>}
         </div>

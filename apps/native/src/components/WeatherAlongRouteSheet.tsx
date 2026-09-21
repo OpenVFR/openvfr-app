@@ -59,6 +59,13 @@ export function WeatherAlongRouteSheet({ stations }: Props) {
                     </View>
                   )}
                 </View>
+                {/* Flags when the shown report isn't actually this
+                    aerodrome's own -- mirrors web's identical addition. */}
+                {s.sourceIcao !== s.icao && (
+                  <Text style={styles.viaNote}>
+                    via {s.sourceIcao}{s.sourceDistNm != null ? `, ${Math.round(s.sourceDistNm)} NM away` : ''}
+                  </Text>
+                )}
                 <Text style={styles.raw}>{s.metar ?? 'No METAR available'}</Text>
               </View>
             ))}
@@ -102,5 +109,6 @@ function makeStyles(theme: ScaledTheme) {
   frBadge: { borderWidth: 1, borderRadius: 3, paddingHorizontal: 5, paddingVertical: 1 },
   frBadgeTxt: { fontSize: 9, fontWeight: '700' },
   raw: { fontSize: 10, color: theme.textSecondary, marginTop: 4, lineHeight: 15 },
+  viaNote: { fontSize: 9, color: theme.textMuted, fontStyle: 'italic', marginTop: 2 },
 } as const
 }

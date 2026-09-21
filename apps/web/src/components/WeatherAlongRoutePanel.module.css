@@ -42,6 +42,13 @@
 .frIFR   { background: rgba(239, 68, 68, 0.18);  color: #f87171; }
 .frLIFR  { background: rgba(168, 85, 247, 0.18); color: #c084fc; }
 
+.viaNote {
+  font-size: 9px;
+  color: var(--text-faint);
+  font-style: italic;
+  margin: 0 0 2px;
+}
+
 .raw {
   font-size: 10px;
   font-family: monospace;
