@@ -14,33 +14,17 @@
 
 import React, { useEffect, useState } from 'react'
 import {
-  Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, TextInput,
+  Modal, View, Text, ScrollView, TouchableOpacity,
 } from 'react-native'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
-import {
-  fetchWxResolved, decodeMetar, parseMetarWind, parseMetarClouds,
-  type WxResolved, type WxStationCandidate, type ParsedWind,
-} from '@open-vfr/shared/fetchWx'
-import { fetchNotams, fmtNotamDate } from '@open-vfr/shared/fetchNotam'
-import { computeRunwayWind, effectiveMagBrg, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
+import { computeRunwayWind, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import { sunriseSunset, fmtSunTime } from '@open-vfr/shared/sunCalc'
 import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from '@open-vfr/shared/atcStatus'
-import { distanceNm } from '@open-vfr/shared/routeCalc'
-import { parseTaf, type TafPeriod } from '@open-vfr/shared/parseTaf'
-import { loadStations, type StationRecord } from '@open-vfr/shared/wxStations'
-import {
-  visTone, ceilingTone, windTone, fmtVis, fmtWind, fmtObsAge, metarNarrative, type TileTone,
-} from '@open-vfr/shared/wxFormat'
-import type { NotamItem } from '@open-vfr/shared/fetchNotam'
-import { API_BASE, getTileUrls } from '../config'
-import { authHeaders } from '../utils/authClient'
-import { WindCompassGauge, WindSpeedGauge, type RunwayHeading } from './WindGauges'
-import CloudProfile from './CloudProfile'
-import TafTimeline from './TafTimeline'
-
-// Fallback search radius -- same as web's, wide enough to reach a
-// towered/AWOS-equipped aerodrome from a small grass strip.
-const WX_FALLBACK_MAX_NM = 100
+import { useAerodromeBriefing } from '../hooks/useAerodromeBriefing'
+import { deriveWxDisplay } from '../utils/deriveWxDisplay'
+import { Section, FR_COLOR } from './AerodromeBriefShared'
+import AerodromeWxSection from './AerodromeWxSection'
+import AerodromeNotamSection from './AerodromeNotamSection'
 
 interface Frequency {
   service:  string
@@ -108,10 +92,6 @@ const DAY_LABEL: Record<string, string> = {
   MON: 'Mon', TUE: 'Tue', WED: 'Wed', THU: 'Thu', FRI: 'Fri', SAT: 'Sat', SUN: 'Sun',
 }
 
-const TAF_PERIOD_LABEL: Record<string, string> = {
-  BASE: 'FCST', FM: 'FROM', BECMG: 'BECMG', TEMPO: 'TEMPO', PROB30: 'PROB30', PROB40: 'PROB40',
-}
-
 function fmtHoursEntry(h: HoursEntry): string {
   const day = h.day ? DAY_LABEL[h.day] ?? h.day : 'Daily'
   let time: string
@@ -140,24 +120,6 @@ function fmtDeclaredDistances(dd: Runway['declared_distances']): string {
   if (dd.asda != null) parts.push(`ASDA ${dd.asda}`)
   if (dd.lda  != null) parts.push(`LDA ${dd.lda}`)
   return parts.length > 0 ? `${parts.join(' · ')} m` : ''
-}
-
-function fmtTafTime(ms: number): string {
-  const d = new Date(ms)
-  return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}Z`
-}
-
-function fmtTafClouds(clouds: { cover: string; baseFt: number }[]): string {
-  if (clouds.length === 0) return 'CAVOK/NSC'
-  return clouds.map((c) => `${c.cover}${String(Math.round(c.baseFt / 100)).padStart(3, '0')}`).join(' ')
-}
-
-const TONE_COLOR: Record<TileTone, string> = {
-  ok: theme.accentGreen, warn: theme.statusWarn, danger: theme.statusDanger, info: theme.textSecondary,
-}
-
-const FR_COLOR: Record<string, string> = {
-  VFR: '#22c55e', MVFR: '#3b82f6', IFR: '#ef4444', LIFR: '#a855f7',
 }
 
 export interface AerodromeFeatureProps {
@@ -200,98 +162,18 @@ export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const runwayStyles = useThemedStyles(makeRunwayStyles)
-  const daStyles = useThemedStyles(makeDaStyles)
-  const wxStyles = useThemedStyles(makeWxStyles)
   // Hooks must be declared before any conditional return (Rules of Hooks)
   const [activeTab, setActiveTab] = useState<'info' | 'wx' | 'notam'>('info')
-  const [selectedRunwayDesig, setSelectedRunwayDesig] = useState<string | null>(null)
-  const [oatStr, setOatStr] = useState('')
-  const [qnhStr, setQnhStr] = useState('')
 
-  const [wx,          setWx]          = useState<WxResolved | null>(null)
-  const [wxLoading,   setWxLoading]   = useState(true)
-  const [wxSourceName, setWxSourceName] = useState<string | null>(null)
-  const [notams,      setNotams]      = useState<NotamItem[]>([])
-  const [notamLoading,setNotamLoading]= useState(true)
-  const [tafExpanded, setTafExpanded] = useState(false)
-  const [expandedNotams, setExpandedNotams] = useState<Set<string>>(new Set())
+  const { wx, wxLoading, wxSourceName, notams, notamLoading } =
+    useAerodromeBriefing(feature?.icao ?? null, feature?.lat, feature?.lng)
 
   useEffect(() => {
-    setSelectedRunwayDesig(null)
     setActiveTab('info')
   }, [feature?.icao])
 
-  useEffect(() => {
-    if (!feature) return
-    const ac = new AbortController()
-    setWx(null); setWxLoading(true); setWxSourceName(null)
-    setNotams([]); setNotamLoading(true)
-    setTafExpanded(false); setExpandedNotams(new Set())
-
-    const lat = feature.lat, lng = feature.lng
-    authHeaders().then((headers) => {
-      const aerodromesUrl = getTileUrls().aerodromes
-      const wxPromise = lat != null && lng != null
-        ? loadStations(aerodromesUrl)
-            .catch(() => [] as StationRecord[])
-            .then((stations) => {
-              const candidates: WxStationCandidate[] = stations
-                .filter((s) => s.icao !== feature.icao)
-                .map((s) => ({ icao: s.icao, distNm: distanceNm({ lat, lng }, { lat: s.lat, lng: s.lng }) }))
-                .filter((c) => c.distNm <= WX_FALLBACK_MAX_NM)
-                .sort((a, b) => a.distNm - b.distNm)
-              const nameByIcao = new Map(stations.map((s) => [s.icao, s.name]))
-              return fetchWxResolved(feature.icao, lat, lng, candidates, API_BASE, ac.signal, headers)
-                .then((data) => {
-                  setWx(data)
-                  setWxSourceName(data.sourceIcao !== feature.icao ? (nameByIcao.get(data.sourceIcao) ?? null) : null)
-                })
-            })
-        // No coordinates on this feature -- can't do a nearest-station
-        // search or model-wind fallback, just fetch the aerodrome's own report.
-        : fetchWxResolved(feature.icao, 0, 0, [], API_BASE, ac.signal, headers)
-            .then((data) => { setWx(data) })
-
-      wxPromise
-        .catch((err) => { if ((err as Error).name !== 'AbortError') { /* leave wx null -- "no data" state */ } })
-        .finally(() => setWxLoading(false))
-
-      fetchNotams(feature.icao, API_BASE, ac.signal, headers)
-        .then((d) => { setNotams(d.notams); setNotamLoading(false) })
-        .catch(() => setNotamLoading(false))
-    })
-
-    return () => ac.abort()
-  }, [feature?.icao, feature?.lat, feature?.lng])
-
-  const metar = wx?.metar ? decodeMetar(wx.metar) : null
-  const surfaceWind = metar ? parseMetarWind(metar.wind) : null
-  const modelWind: ParsedWind | null = wx?.modelWind
-    ? { dirDeg: wx.modelWind.dirDeg, speedKt: wx.modelWind.speedKts, gustKt: null, variable: false, calm: wx.modelWind.speedKts === 0 }
-    : null
-  const effectiveWind = modelWind ?? surfaceWind
-  const windIsModelled = !!modelWind
-  const tafPeriods: TafPeriod[] | null = wx?.taf ? parseTaf(wx.taf) : null
-  const usingFallbackWx = !!wx && feature && wx.sourceIcao !== feature.icao
-
   const runways = feature?.runways ?? []
-  const allRunwayWindEnds = runways.flatMap((rwy) => computeRunwayWind(rwy.thresholds ?? [], effectiveWind))
-
-  const longestRunway = [...runways].sort((a, b) => (b.length_m ?? 0) - (a.length_m ?? 0))[0]
-  const compassRunway = selectedRunwayDesig != null
-    ? runways.find((r) => r.designator === selectedRunwayDesig) ?? longestRunway
-    : longestRunway
-  const compassRunwayWindEnds = compassRunway ? computeRunwayWind(compassRunway.thresholds ?? [], effectiveWind) : []
-  const compassFavoredEnd = compassRunwayWindEnds.find((e) => e.favored) ?? null
-
-  const primaryRunwayHeading: RunwayHeading | null = (() => {
-    if (!compassRunway?.thresholds || compassRunway.thresholds.length === 0) return null
-    const [t0, t1] = compassRunway.thresholds
-    if (!t0) return null
-    const brg = effectiveMagBrg(t0.mag_brg, t0.true_brg)
-    if (brg == null) return null
-    return { designators: [t0.designator, t1?.designator ?? '—'], headingDeg: brg }
-  })()
+  const { metar, effectiveWind, allRunwayWindEnds } = deriveWxDisplay(wx, runways, feature?.icao)
 
   useEffect(() => {
     if (!onRunwayWind || !feature) return
@@ -327,31 +209,6 @@ export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
   const notamHoursHint = feature.towered && anyNotamHoursChangeRelated(activeNotamTexts)
   const atcColor = atc?.status === 'open' ? theme.statusOk : atc?.status === 'closed' ? theme.statusDanger : theme.textFaint
 
-  // ── Density altitude ──────────────────────────────────────────────────────
-  const elevFt = feature.elevation_ft ?? 0
-  const oat = parseFloat(oatStr)
-  const qnh = parseFloat(qnhStr)
-  const pressAltFt = !isNaN(qnh) && qnh > 0 ? elevFt + 30 * (1013.25 - qnh) : null
-  const isaTempC = pressAltFt != null ? 15 - 1.98 * (pressAltFt / 1000) : null
-  const densityAltFt = pressAltFt != null && !isNaN(oat) && isaTempC != null
-    ? Math.round(pressAltFt + 120 * (oat - isaTempC))
-    : null
-  function daColor(da: number): string {
-    const delta = da - elevFt
-    if (delta >= 1000) return theme.statusDanger
-    if (delta >= 500) return theme.statusWarn
-    return theme.accentGreen
-  }
-
-  function toggleNotam(id: string) {
-    setExpandedNotams((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
@@ -384,7 +241,7 @@ export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
         <View style={styles.tabBar}>
           <TabBtn label="Info" active={activeTab === 'info'} onPress={() => setActiveTab('info')} />
           <TabBtn
-            label="Wx"
+            label="Weather"
             active={activeTab === 'wx'}
             onPress={() => setActiveTab('wx')}
             dotColor={metar?.flightRule ? FR_COLOR[metar.flightRule] : undefined}
@@ -515,183 +372,21 @@ export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
 
           {/* ── Wx tab ───────────────────────────────────────────────── */}
           {activeTab === 'wx' && (
-            <>
-              {/* Density altitude */}
-              <Section title="Density Altitude">
-                <View style={daStyles.row}>
-                  <Text style={daStyles.label}>OAT</Text>
-                  <TextInput
-                    style={daStyles.input}
-                    value={oatStr}
-                    onChangeText={setOatStr}
-                    placeholder="°C"
-                    placeholderTextColor={theme.textFaint}
-                    keyboardType="numbers-and-punctuation"
-                  />
-                  <Text style={daStyles.label}>QNH</Text>
-                  <TextInput
-                    style={daStyles.input}
-                    value={qnhStr}
-                    onChangeText={setQnhStr}
-                    placeholder={metar?.qnh ? metar.qnh.slice(1) : 'hPa'}
-                    placeholderTextColor={theme.textFaint}
-                    keyboardType="numeric"
-                  />
-                </View>
-                {densityAltFt != null ? (
-                  <Text style={[daStyles.result, { color: daColor(densityAltFt) }]}>
-                    {densityAltFt.toLocaleString()} ft density alt
-                    {pressAltFt != null ? `  ·  PA ${Math.round(pressAltFt).toLocaleString()} ft` : ''}
-                  </Text>
-                ) : pressAltFt != null ? (
-                  <Text style={daStyles.hint}>PA {Math.round(pressAltFt).toLocaleString()} ft — enter OAT for density alt</Text>
-                ) : (
-                  <Text style={daStyles.hint}>Enter QNH and OAT</Text>
-                )}
-              </Section>
-
-              {/* Weather */}
-              <Section title="Weather">
-                {wxLoading && <ActivityIndicator size="small" color={theme.accentBlue} />}
-                {!wxLoading && !wx?.metar && !wx?.taf && !wx?.modelWind && (
-                  <Text style={styles.muted}>No weather data at {feature.icao} or any nearby station</Text>
-                )}
-
-                {usingFallbackWx && wx && (
-                  <Text style={wxStyles.fallback}>
-                    No local report for {feature.icao} — showing {wx.sourceIcao}{wxSourceName ? ` (${wxSourceName})` : ''}
-                    {wx.distNm != null ? `, ${Math.round(wx.distNm)} NM away` : ''}
-                  </Text>
-                )}
-
-                {!wxLoading && !wx?.metar && !wx?.taf && wx?.modelWind && (
-                  <>
-                    <Text style={wxStyles.fallback}>
-                      No METAR/TAF at {feature.icao} or any nearby station — showing modelled wind (Open-Meteo forecast, not an observation)
-                    </Text>
-                    <View style={wxStyles.gaugeRow}>
-                      <WindCompassGauge wind={effectiveWind} runway={primaryRunwayHeading} tone={windTone(effectiveWind)} />
-                      <WindSpeedGauge wind={effectiveWind} tone={windTone(effectiveWind)} />
-                    </View>
-                  </>
-                )}
-
-                {metar && (
-                  <>
-                    {metar.flightRule && (
-                      <View style={[styles.frBadge, { borderColor: FR_COLOR[metar.flightRule] }]}>
-                        <Text style={[styles.frTxt, { color: FR_COLOR[metar.flightRule] }]}>
-                          {metar.flightRule}{metar.time ? `  ${metar.time}` : ''}{fmtObsAge(metar.obsMs) ? `  ·  ${fmtObsAge(metar.obsMs)}` : ''}
-                        </Text>
-                      </View>
-                    )}
-
-                    {runways.length > 1 && (
-                      <View style={wxStyles.rwyPicker}>
-                        {[...runways].sort((a, b) => (b.length_m ?? 0) - (a.length_m ?? 0)).map((rwy) => {
-                          const isSelected = compassRunway?.designator === rwy.designator
-                          return (
-                            <TouchableOpacity
-                              key={rwy.designator}
-                              style={[wxStyles.rwyPickerBtn, isSelected ? wxStyles.rwyPickerBtnActive : null]}
-                              onPress={() => setSelectedRunwayDesig(rwy.designator)}
-                            >
-                              <Text style={[wxStyles.rwyPickerTxt, isSelected ? wxStyles.rwyPickerTxtActive : null]}>{rwy.designator}</Text>
-                            </TouchableOpacity>
-                          )
-                        })}
-                      </View>
-                    )}
-
-                    <View style={wxStyles.gaugeRow}>
-                      <WindCompassGauge
-                        wind={effectiveWind}
-                        runway={primaryRunwayHeading}
-                        tone={windTone(effectiveWind)}
-                        favoredEndDesignator={compassFavoredEnd?.designator ?? null}
-                      />
-                      <WindSpeedGauge wind={effectiveWind} tone={windTone(effectiveWind)} />
-                    </View>
-                    {windIsModelled && (
-                      <Text style={wxStyles.modelledNote}>
-                        Wind is modelled (Open-Meteo), not from {wx?.sourceIcao}'s own observation — that station is too far away for its wind to be locally representative here.
-                      </Text>
-                    )}
-
-                    <View style={wxStyles.tileGrid}>
-                      <WxTile label={`Wind${windIsModelled ? ' (modelled)' : ''}`} value={fmtWind(effectiveWind)} color={TONE_COLOR[windTone(effectiveWind)]} />
-                      <WxTile label="Visibility" value={fmtVis(metar.visM)} color={TONE_COLOR[visTone(metar.visM)]} />
-                      <WxTile label="Ceiling" value={metar.ceilingFt != null ? `${metar.ceilingFt.toLocaleString()} ft` : metar.clouds === 'CAVOK' ? 'CAVOK' : 'No ceiling'} color={TONE_COLOR[ceilingTone(metar.ceilingFt)]} />
-                      <WxTile label="QNH" value={metar.qnh ? metar.qnh.slice(1) : '—'} color={theme.textSecondary} />
-                      {metar.temp && <WxTile label="T / Td" value={`${metar.temp.replace('/', ' / ')}°C`} color={theme.textSecondary} />}
-                      {metar.wx && <WxTile label="Wx" value={metar.wx} color={theme.statusWarn} />}
-                    </View>
-
-                    {metar.clouds && metar.clouds !== 'CAVOK' && (
-                      <CloudProfile clouds={parseMetarClouds(metar.clouds)} />
-                    )}
-
-                    <Text style={wxStyles.narrative}>{metarNarrative(metar).join(' ')}</Text>
-                  </>
-                )}
-
-                {wx?.metar && <Text style={styles.rawMetar}>{wx.metar}</Text>}
-
-                {wx?.taf && (
-                  <View style={wxStyles.tafBlock}>
-                    <TouchableOpacity onPress={() => setTafExpanded(e => !e)} style={styles.tafToggle}>
-                      <Text style={styles.tafToggleTxt}>{tafExpanded ? '▴ Hide TAF' : '▾ Show TAF'}</Text>
-                    </TouchableOpacity>
-                    {tafExpanded && (
-                      <>
-                        {tafPeriods && tafPeriods.length > 0 && (
-                          <TafTimeline periods={tafPeriods} lat={feature.lat ?? 0} lng={feature.lng ?? 0} />
-                        )}
-                        {tafPeriods && tafPeriods.length > 0 && (
-                          <View style={wxStyles.tafPeriods}>
-                            <Text style={wxStyles.tafPeriodsLabel}>Change groups</Text>
-                            {tafPeriods.map((period, i) => (
-                              <View key={i} style={wxStyles.tafPeriod}>
-                                <View style={wxStyles.tafPeriodHead}>
-                                  <Text style={wxStyles.tafPeriodKind}>{TAF_PERIOD_LABEL[period.kind] ?? period.kind}</Text>
-                                  <Text style={wxStyles.tafPeriodTime}>{fmtTafTime(period.fromMs)} – {fmtTafTime(period.toMs)}</Text>
-                                </View>
-                                <Text style={wxStyles.tafPeriodBody}>
-                                  {period.wind ? `${fmtWind(period.wind)}  ` : ''}{fmtTafClouds(period.clouds)}
-                                </Text>
-                              </View>
-                            ))}
-                          </View>
-                        )}
-                        <Text style={styles.tafText}>{wx.taf}</Text>
-                      </>
-                    )}
-                  </View>
-                )}
-              </Section>
-            </>
+            <AerodromeWxSection
+              icao={feature.icao}
+              lat={feature.lat}
+              lng={feature.lng}
+              elevationFt={feature.elevation_ft}
+              runways={runways}
+              wx={wx}
+              wxLoading={wxLoading}
+              wxSourceName={wxSourceName}
+            />
           )}
 
           {/* ── NOTAMs tab ───────────────────────────────────────────── */}
           {activeTab === 'notam' && (
-            <Section title={`NOTAMs${notams.length > 0 ? ` (${notams.length})` : ''}`}>
-              {notamLoading && <ActivityIndicator size="small" color={theme.accentBlue} />}
-              {!notamLoading && notams.length === 0 && (
-                <Text style={styles.muted}>No NOTAMs</Text>
-              )}
-              {notams.map((n) => {
-                const expanded = expandedNotams.has(n.id)
-                return (
-                  <TouchableOpacity key={n.id} style={styles.notamRow} onPress={() => toggleNotam(n.id)}>
-                    <Text style={styles.notamId}>{n.id} {expanded ? '▴' : '▾'}</Text>
-                    {n.effective && (
-                      <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}</Text>
-                    )}
-                    {expanded && <Text style={styles.notamText}>{n.text}</Text>}
-                  </TouchableOpacity>
-                )
-              })}
-            </Section>
+            <AerodromeNotamSection notams={notams} notamLoading={notamLoading} />
           )}
         </ScrollView>
       </View>
@@ -715,26 +410,6 @@ function TabBtn({ label, active, onPress, dotColor, count }: {
         )}
       </View>
     </TouchableOpacity>
-  )
-}
-
-function WxTile({ label, value, color }: { label: string; value: string; color: string }) {
-  const wxStyles = useThemedStyles(makeWxStyles)
-  return (
-    <View style={wxStyles.tile}>
-      <Text style={wxStyles.tileLabel}>{label}</Text>
-      <Text style={[wxStyles.tileValue, { color }]}>{value}</Text>
-    </View>
-  )
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  const sectionStyles = useThemedStyles(makeSectionStyles)
-  return (
-    <View style={sectionStyles.container}>
-      <Text style={sectionStyles.title}>{title.toUpperCase()}</Text>
-      {children}
-    </View>
   )
 }
 
@@ -775,7 +450,7 @@ function makeStyles(theme: ScaledTheme) {
   },
   icao: {
     color:      theme.textPrimary,
-    fontSize:   theme.textXl,
+    fontSize:   theme.textLg,
     fontWeight: '800',
     letterSpacing: 1,
   },
@@ -929,7 +604,7 @@ function makeTabStyles(theme: ScaledTheme) {
   },
   tabTxt: {
     color:    theme.textSecondary,
-    fontSize: theme.textMd,
+    fontSize: theme.textSm,
     fontWeight: '700',
   },
   tabTxtActive: {
@@ -946,171 +621,6 @@ function makeTabStyles(theme: ScaledTheme) {
     color: theme.textPrimary,
     fontSize: 11,
     fontWeight: '800',
-  },
-} as const
-}
-
-function makeWxStyles(theme: ScaledTheme) {
- return {
-  fallback: {
-    color:    theme.accentBlue,
-    fontSize: theme.textSm,
-    fontWeight: '600',
-    marginBottom: theme.space2,
-  },
-  gaugeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginVertical: theme.space2,
-  },
-  modelledNote: {
-    color:    theme.textSecondary,
-    fontSize: theme.textXs,
-    fontStyle: 'italic',
-    marginBottom: theme.space2,
-  },
-  rwyPicker: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: theme.space2,
-  },
-  rwyPickerBtn: {
-    borderWidth: 1.5,
-    borderColor: theme.borderStrong,
-    borderRadius: theme.radiusSm,
-    paddingHorizontal: theme.space3,
-    paddingVertical: 5,
-  },
-  rwyPickerBtnActive: {
-    backgroundColor: theme.accentBlue,
-    borderColor: theme.accentBlue,
-  },
-  rwyPickerTxt: {
-    color: theme.textSecondary,
-    fontSize: theme.textMd,
-    fontWeight: '700',
-  },
-  rwyPickerTxtActive: {
-    color: '#fff',
-  },
-  tileGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: theme.space2,
-  },
-  tile: {
-    minWidth: 92,
-    backgroundColor: theme.surfaceHover,
-    borderRadius: theme.radiusSm,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-  },
-  tileLabel: {
-    color: theme.textSecondary,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  tileValue: {
-    fontSize: theme.textLg,
-    fontWeight: '800',
-    marginTop: 3,
-  },
-  narrative: {
-    color: theme.textSecondary,
-    fontSize: theme.textSm,
-    lineHeight: 19,
-    marginTop: theme.space2,
-  },
-  tafBlock: {
-    marginTop: theme.space2,
-  },
-  tafPeriods: {
-    marginTop: theme.space2,
-    gap: 6,
-  },
-  tafPeriodsLabel: {
-    color: theme.textSecondary,
-    fontSize: theme.textXs,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  tafPeriod: {
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.borderSubtle,
-  },
-  tafPeriodHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  tafPeriodKind: {
-    color: theme.accentBlue,
-    fontSize: theme.textSm,
-    fontWeight: '700',
-  },
-  tafPeriodTime: {
-    color: theme.textSecondary,
-    fontSize: theme.textXs,
-  },
-  tafPeriodBody: {
-    color: theme.textPrimary,
-    fontSize: theme.textSm,
-    marginTop: 3,
-  },
-} as const
-}
-
-function makeDaStyles(theme: ScaledTheme) {
- return {
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  label: {
-    color: theme.textSecondary,
-    fontSize: theme.textSm,
-    fontWeight: '600',
-  },
-  input: {
-    borderWidth: 1.5,
-    borderColor: theme.borderStrong,
-    borderRadius: theme.radiusSm,
-    paddingHorizontal: theme.space2,
-    paddingVertical: 6,
-    color: theme.textPrimary,
-    fontSize: theme.textMd,
-    minWidth: 66,
-  },
-  result: {
-    fontSize: theme.textMd,
-    fontWeight: '800',
-    marginTop: theme.space2,
-  },
-  hint: {
-    color: theme.textSecondary,
-    fontSize: theme.textSm,
-    marginTop: theme.space2,
-  },
-} as const
-}
-
-function makeSectionStyles(theme: ScaledTheme) {
- return {
-  container: {
-    marginTop: theme.space2,
-    gap:       2,
-  },
-  title: {
-    color:         theme.textSecondary,
-    fontSize:      theme.textSm,
-    fontWeight:    '700',
-    letterSpacing: 0.8,
-    marginBottom:  theme.space2,
   },
 } as const
 }

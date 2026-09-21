@@ -17,13 +17,12 @@ import type { Feature, FeatureCollection, Point } from 'geojson'
 
 import { AviationMap }       from '../components/AviationMap'
 import { MapDisplaySheet, LAYER_DEFAULTS } from '../components/MapDisplaySheet'
-import { RegionalNotamsSheet } from '../components/RegionalNotamsSheet'
-import { WeatherAlongRouteSheet } from '../components/WeatherAlongRouteSheet'
+import { VicinityBriefSheet } from '../components/VicinityBriefSheet'
 import { FindDestinationSheet } from '../components/FindDestinationSheet'
 import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
 import { useWindAlongRoute } from '../hooks/useWindAlongRoute'
 import type { LayerState }   from '../components/MapDisplaySheet'
-import { FrequencyPanel }    from '../components/FrequencyPanel'
+
 import { AerodromePopup }    from '../components/AerodromePopup'
 import type { AerodromeFeatureProps } from '../components/AerodromePopup'
 import type { RunwayWindEnd } from '@open-vfr/shared/runwayWind'
@@ -56,7 +55,7 @@ import { useSettingsContext } from '../context/SettingsContext'
 import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
 import { RulerStatsBadge } from '../components/RulerStatsBadge'
 import { PastTrackChart } from '../components/PastTrackChart'
-import { Ionicons } from '@expo/vector-icons'
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import * as Crypto from 'expo-crypto'
 import { GaugesBar }         from '../components/GaugesBar'
 import { distanceAlongRouteNm, coordinateAlongRouteNm, routeCrossTrackNm } from '@open-vfr/shared/virtualRadarCalc'
@@ -132,7 +131,7 @@ export function MapScreen() {
   const simFlight = useSimFlight()
   const activePosition = simPosition ?? simFlight.position ?? position
   const { waypoints, legOverrides, addWaypoint, insertWaypoint, updateWaypoint, removeWaypoint,
-           routeVisible, setRouteVisible, activeRouteId } = useRouteContext()
+           routeVisible, activeRouteId } = useRouteContext()
   const { settings, update }                  = useSettingsContext()
   const { state: authState } = useAuthContext()
   const authenticated = authState.status === 'authenticated'
@@ -995,15 +994,21 @@ export function MapScreen() {
 
       {/* Map controls — lower right, outside MapLibre GL surface. Offset above
           the VerticalProfile + GaugesBar stack (position:absolute buttons don't
-          reflow with the flex layout below). Frequency trigger stacked above
-          the layers button — was previously an always-visible full-width strip
-          that ate vertical screen space; now a compact icon button like its neighbours. */}
+          reflow with the flex layout below). VicinityBriefSheet trigger stacked
+          above the layers button — replaces the former separate Frequency /
+          Regional NOTAMs / Weather Along Route buttons (three stacked icons
+          eating vertical space and, on small screens, pushing the column off
+          the top of the screen) with one consolidated Freq/Wx/NOTAM sheet. */}
       <View style={[styles.topRight, { bottom: bottomStackH + 8 + 24 + scaledTheme.space2 }]} pointerEvents="box-none">
-        {nearbyFreqs.length > 0 && (
-          <View style={{ marginBottom: scaledTheme.space2 }}>
-            <FrequencyPanel nearby={nearbyFreqs} />
-          </View>
-        )}
+        <View style={{ marginBottom: scaledTheme.space2 }}>
+          <VicinityBriefSheet
+            nearby={nearbyFreqs}
+            regionalNotams={regionalNotams}
+            waypoints={waypoints}
+            position={activePosition}
+            flying={flightModeStatus !== 'off'}
+          />
+        </View>
         <View style={{ marginBottom: scaledTheme.space2 }}>
           <FlightModeSheet
             status={flightModeStatus}
@@ -1028,22 +1033,14 @@ export function MapScreen() {
             style={[styles.iconBtn, planningMode && styles.iconBtnActive]}
             onPress={() => setPlanningMode(m => !m)}
           >
-            <Ionicons name="navigate" size={18} color={planningMode ? '#ffffff' : theme.textPrimary} />
+            <MaterialCommunityIcons name="map-marker-path" size={18} color={planningMode ? '#ffffff' : theme.textPrimary} />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.iconBtn, rulerMode && styles.iconBtnActive]}
             onPress={() => { setRulerMode(m => !m); setRulerPoints([]) }}
           >
-            <Ionicons name="resize-outline" size={18} color={rulerMode ? '#ffffff' : theme.textPrimary} />
+            <MaterialCommunityIcons name="ruler" size={18} color={rulerMode ? '#ffffff' : theme.textPrimary} />
           </TouchableOpacity>
-          {waypoints.length > 0 && (
-            <TouchableOpacity
-              style={[styles.iconBtn, !routeVisible && styles.iconBtnHidden]}
-              onPress={() => setRouteVisible(v => !v)}
-            >
-              <Ionicons name={routeVisible ? 'eye' : 'eye-off'} size={18} color={routeVisible ? theme.textPrimary : '#ffffff'} />
-            </TouchableOpacity>
-          )}
           {flightModeStatus !== 'off' && (
             <TouchableOpacity
               style={[styles.iconBtn, routeAdjustMode && styles.iconBtnActive]}
@@ -1075,8 +1072,6 @@ export function MapScreen() {
           onCeilingChange={(ft) => update({ airspaceCeilingFt: ft })}
           onAutoZoomChange={(on) => update({ autoZoom: on })}
         />
-        <RegionalNotamsSheet notams={regionalNotams} waypoints={waypoints} />
-        <WeatherAlongRouteSheet stations={routeWeatherStations} />
         <View style={{ marginTop: scaledTheme.space2 }}>
           <FindDestinationSheet
             center={activePosition ? { lat: activePosition.lat, lng: activePosition.lng, altFt: activePosition.altFt } : mapCentreForFindDest}
@@ -1306,10 +1301,6 @@ function makeStyles(theme: ScaledTheme) {
   iconBtnActive: {
     backgroundColor: theme.accentBlue,
     borderColor:     theme.accentBlue,
-  },
-  iconBtnHidden: {
-    backgroundColor: theme.statusDanger,
-    borderColor:     theme.statusDanger,
   },
   orientTxt: {
     color:      theme.textSecondary,

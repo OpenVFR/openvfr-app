@@ -1,0 +1,363 @@
+/**
+ * VicinityBriefSheet — single consolidated trigger replacing the three
+ * separate top-right buttons FrequencyPanel / RegionalNotamsSheet /
+ * WeatherAlongRouteSheet used to be (see MapScreen.tsx wiring). One 40×40
+ * icon opens one bottom sheet with a Freq / Wx / NOTAM tab bar, mirroring
+ * AerodromePopup's own tab bar minus its Info tab (no single aerodrome has
+ * been tapped here).
+ *
+ * - Freq tab: unchanged from FrequencyPanel — full list, every aerodrome
+ *   within useNearbyFrequencies.ts's 25NM radius, no picker.
+ * - Wx / NOTAM tabs: share one aerodrome picker (useVicinityAerodromes.ts),
+ *   defaulting to the closest aerodrome -- along the route when flying
+ *   with one planned, otherwise nearest by GPS radius. Switching tabs
+ *   keeps the same picked aerodrome; switching aerodrome refetches via
+ *   useAerodromeBriefing.ts (one fetch at a time, for whichever aerodrome
+ *   is currently picked — not one per aerodrome in range).
+ * - NOTAM tab also lists FIR-wide "Other NOTAMs" with no aerodrome tie
+ *   (military notices, navaid outages, etc.), reusing the same
+ *   route-proximity filter RegionalNotamsSheet used.
+ */
+
+import React, { useEffect, useState } from 'react'
+import { View, Text, TouchableOpacity, Modal, ScrollView } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
+import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
+import type { RouteWaypoint } from '@open-vfr/shared/types'
+import type { GpsPosition } from '../utils/gpsTypes'
+import type { NotamItem } from '@open-vfr/shared/fetchNotam'
+import { fmtNotamDate } from '@open-vfr/shared/fetchNotam'
+import { filterNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM } from '@open-vfr/shared/notamRouteFilter'
+import type { NearbyAerodrome } from '../hooks/useNearbyFrequencies'
+import { useVicinityAerodromes } from '../hooks/useVicinityAerodromes'
+import { useAerodromeBriefing } from '../hooks/useAerodromeBriefing'
+import { FR_COLOR } from './AerodromeBriefShared'
+import AerodromeWxSection from './AerodromeWxSection'
+import AerodromeNotamSection from './AerodromeNotamSection'
+import { decodeMetar } from '@open-vfr/shared/fetchWx'
+
+const SVC_COLOR: Record<string, string> = {
+  TWR: '#3b82f6', AFIS: '#3b82f6', APP: '#8b5cf6', DEP: '#8b5cf6',
+  GND: '#10b981', SMC: '#10b981', ATIS: '#f59e0b', FIS: '#06b6d4',
+  INFO: '#06b6d4', RDO: '#94a3b8', RADIO: '#94a3b8', UNICOM: '#94a3b8',
+}
+function svcColor(svc: string) { return SVC_COLOR[svc] ?? theme.textMuted }
+
+type Tab = 'freq' | 'wx' | 'notam'
+
+interface Props {
+  nearby:         NearbyAerodrome[]
+  regionalNotams: NotamItem[]
+  waypoints:      RouteWaypoint[]
+  position:       GpsPosition | null
+  flying:         boolean
+}
+
+export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position, flying }: Props) {
+  const scaledTheme = useScaledTheme()
+  const styles = useThemedStyles(makeStyles)
+  const [open, setOpen] = useState(false)
+  const [tab, setTab] = useState<Tab>('freq')
+  const [expandedNotamIds, setExpandedNotamIds] = useState<Set<string>>(new Set())
+
+  const vicinity = useVicinityAerodromes({ waypoints, position, flying })
+  const [selectedIcao, setSelectedIcao] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (vicinity.length === 0) { setSelectedIcao(null); return }
+    setSelectedIcao((prev) => (prev && vicinity.some((a) => a.icao === prev)) ? prev : vicinity[0].icao)
+  }, [vicinity])
+
+  const selected = vicinity.find((a) => a.icao === selectedIcao) ?? null
+  const { wx, wxLoading, wxSourceName, notams, notamLoading } =
+    useAerodromeBriefing(selected?.icao ?? null, selected?.lat, selected?.lng)
+
+  const hasRoute = waypoints.length > 0
+  const otherNotams = hasRoute
+    ? filterNotamsNearRoute(regionalNotams, waypoints, DEFAULT_ROUTE_NOTAM_BUFFER_NM)
+    : regionalNotams
+
+  const metarFlightRule = wx?.metar ? decodeMetar(wx.metar).flightRule : null
+
+  const badgeCount = tab === 'freq' ? nearby.length : vicinity.length
+
+  function toggleOtherNotam(id: string) {
+    setExpandedNotamIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  return (
+    <>
+      <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)} activeOpacity={0.8}>
+        <Ionicons name="newspaper-outline" size={19} color={theme.accentBlue} />
+        {badgeCount > 0 && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeTxt}>{badgeCount}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+
+      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
+        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setOpen(false)} />
+        <View style={styles.sheet}>
+          <View style={styles.handle} />
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Vicinity Briefing</Text>
+            <TouchableOpacity onPress={() => setOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close" size={18} color={theme.textMuted} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Tab bar */}
+          <View style={styles.tabBar}>
+            <TabBtn label="Frequencies" active={tab === 'freq'} onPress={() => setTab('freq')} />
+            <TabBtn
+              label="Weather" active={tab === 'wx'} onPress={() => setTab('wx')}
+              dotColor={metarFlightRule ? FR_COLOR[metarFlightRule] : undefined}
+            />
+            <TabBtn
+              label="NOTAMs" active={tab === 'notam'} onPress={() => setTab('notam')}
+              count={notams.length + otherNotams.length > 0 ? notams.length + otherNotams.length : undefined}
+            />
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body}>
+            {/* ── Freq tab — unchanged from FrequencyPanel, no picker ──── */}
+            {tab === 'freq' && (
+              nearby.length === 0 ? (
+                <Text style={styles.muted}>No aerodromes with published frequencies nearby</Text>
+              ) : nearby.map((ad, i) => (
+                <View key={ad.icao || ad.name} style={[styles.adCard, i > 0 && styles.adCardBorder]}>
+                  <View style={styles.adHeader}>
+                    <Text style={styles.adIcao}>{ad.icao}</Text>
+                    <Text style={styles.adName} numberOfLines={1}>{ad.name}</Text>
+                    <Text style={styles.adDist}>{ad.distNm.toFixed(1)} NM</Text>
+                  </View>
+                  {ad.frequencies.length === 0 ? (
+                    <Text style={styles.noFreq}>No frequencies on record</Text>
+                  ) : (
+                    <View style={styles.freqList}>
+                      {ad.frequencies.map((f, j) => (
+                        <View key={j} style={styles.freqRow}>
+                          <View style={[styles.svcBadge, { backgroundColor: svcColor(f.service) + '22', borderColor: svcColor(f.service) + '55' }]}>
+                            <Text style={[styles.svcTxt, { color: svcColor(f.service) }]}>{f.service}</Text>
+                          </View>
+                          <Text style={styles.freqMhz}>{f.mhz.toFixed(3)}</Text>
+                          {f.callsign && <Text style={styles.freqCallsign} numberOfLines={1}>{f.callsign}</Text>}
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              ))
+            )}
+
+            {/* ── Wx / NOTAM tabs — shared aerodrome picker ────────────── */}
+            {(tab === 'wx' || tab === 'notam') && (
+              <>
+                {vicinity.length === 0 ? (
+                  <Text style={styles.muted}>
+                    {flying && hasRoute ? 'No aerodromes within range of the planned route' : 'No aerodromes nearby'}
+                  </Text>
+                ) : (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.picker}>
+                    {vicinity.map((a) => {
+                      const isSelected = a.icao === selectedIcao
+                      return (
+                        <TouchableOpacity
+                          key={a.icao}
+                          style={[styles.pickerChip, isSelected && styles.pickerChipActive]}
+                          onPress={() => setSelectedIcao(a.icao)}
+                        >
+                          <Text style={[styles.pickerChipTxt, isSelected && styles.pickerChipTxtActive]}>
+                            {a.icao}
+                          </Text>
+                          <Text style={[styles.pickerChipDist, isSelected && styles.pickerChipTxtActive]}>
+                            {a.distNm.toFixed(1)} NM
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </ScrollView>
+                )}
+
+                {selected && tab === 'wx' && (
+                  <AerodromeWxSection
+                    icao={selected.icao}
+                    lat={selected.lat}
+                    lng={selected.lng}
+                    elevationFt={selected.elevationFt}
+                    runways={selected.runways}
+                    wx={wx}
+                    wxLoading={wxLoading}
+                    wxSourceName={wxSourceName}
+                  />
+                )}
+
+                {selected && tab === 'notam' && (
+                  <AerodromeNotamSection notams={notams} notamLoading={notamLoading} />
+                )}
+
+                {/* Non-aerodrome FIR-wide NOTAMs -- military notices, navaid
+                    outages, AIRAC amendments -- no single airport to pick. */}
+                {tab === 'notam' && (
+                  <View style={styles.otherNotams}>
+                    <Text style={styles.otherNotamsTitle}>
+                      OTHER NOTAMS{otherNotams.length > 0 ? ` (${otherNotams.length})` : ''}
+                    </Text>
+                    {hasRoute && (
+                      <Text style={styles.filterNote}>
+                        Filtered to within {DEFAULT_ROUTE_NOTAM_BUFFER_NM}nm of planned route
+                      </Text>
+                    )}
+                    {otherNotams.length === 0 && (
+                      <Text style={styles.muted}>No other active regional NOTAMs</Text>
+                    )}
+                    {otherNotams.map((n) => {
+                      const expanded = expandedNotamIds.has(n.id)
+                      const hasGeo = n.lat !== null && n.lon !== null
+                      return (
+                        <TouchableOpacity key={n.id} style={styles.otherNotamRow} onPress={() => toggleOtherNotam(n.id)}>
+                          <View style={styles.otherNotamHeader}>
+                            <Text style={styles.otherNotamId}>{n.id}</Text>
+                            {hasGeo && (
+                              <View style={styles.mapBadge}>
+                                <Text style={styles.mapBadgeTxt}>MAP</Text>
+                              </View>
+                            )}
+                            <Text style={styles.otherNotamPeriod} numberOfLines={1}>
+                              {fmtNotamDate(n.effective)}{n.expires ? ` \u2013 ${fmtNotamDate(n.expires)}` : ''}
+                            </Text>
+                            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.textFaint} />
+                          </View>
+                          {expanded && <Text style={styles.otherNotamText}>{n.text}</Text>}
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                )}
+              </>
+            )}
+
+            <View style={{ height: scaledTheme.space4 }} />
+          </ScrollView>
+        </View>
+      </Modal>
+    </>
+  )
+}
+
+function TabBtn({ label, active, onPress, dotColor, count }: {
+  label: string; active: boolean; onPress: () => void; dotColor?: string; count?: number
+}) {
+  const tabStyles = useThemedStyles(makeTabStyles)
+  return (
+    <TouchableOpacity style={[tabStyles.tab, active ? tabStyles.tabActive : null]} onPress={onPress}>
+      <View style={tabStyles.tabInner}>
+        {dotColor && <View style={[tabStyles.dot, { backgroundColor: dotColor }]} />}
+        <Text style={[tabStyles.tabTxt, active ? tabStyles.tabTxtActive : null]}>{label}</Text>
+        {count != null && (
+          <View style={tabStyles.count}>
+            <Text style={tabStyles.countTxt}>{count}</Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  )
+}
+
+function makeTabStyles(theme: ScaledTheme) {
+ return {
+  tab: {
+    flex: 1, paddingVertical: theme.space2, alignItems: 'center' as const,
+    borderBottomWidth: 2, borderBottomColor: 'transparent',
+  },
+  tabActive: { borderBottomColor: theme.accentBlue },
+  tabInner: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 4 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  tabTxt: { color: theme.textSecondary, fontSize: theme.textSm, fontWeight: '700' as const },
+  tabTxtActive: { color: theme.textPrimary },
+  count: {
+    backgroundColor: theme.surfaceHover, borderRadius: theme.radiusFull,
+    paddingHorizontal: 6, minWidth: 18, alignItems: 'center' as const,
+  },
+  countTxt: { color: theme.textPrimary, fontSize: 11, fontWeight: '800' as const },
+ }
+}
+
+function makeStyles(theme: ScaledTheme) {
+ return {
+  trigger: {
+    width: 40, height: 40, borderRadius: theme.radiusMd,
+    backgroundColor: 'rgba(19,24,36,0.90)', borderWidth: 1, borderColor: theme.borderDefault,
+    alignItems: 'center' as const, justifyContent: 'center' as const,
+  },
+  badge: {
+    position: 'absolute' as const, top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8,
+    backgroundColor: theme.accentBlue, alignItems: 'center' as const, justifyContent: 'center' as const, paddingHorizontal: 3,
+  },
+  badgeTxt: { color: '#fff', fontSize: 9, fontWeight: '700' as const },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
+  sheet: {
+    backgroundColor: theme.surfacePanel, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    borderTopWidth: 1, borderColor: theme.borderDefault, maxHeight: '80%' as const,
+  },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.borderDefault, alignSelf: 'center' as const, marginTop: 10, marginBottom: 4 },
+  header: {
+    flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const,
+    paddingHorizontal: theme.space4, paddingVertical: theme.space2,
+    borderBottomWidth: 1, borderBottomColor: theme.borderSubtle,
+  },
+  headerTitle: { color: theme.textPrimary, fontSize: theme.textMd, fontWeight: '700' as const },
+  tabBar: { flexDirection: 'row' as const, borderBottomWidth: 1, borderBottomColor: theme.borderSubtle },
+  body: { padding: theme.space4, gap: theme.space2 },
+  muted: { color: theme.textSecondary, fontSize: theme.textSm, fontStyle: 'italic' as const, paddingVertical: theme.space2 },
+
+  // Freq tab (verbatim from FrequencyPanel)
+  adCard: { paddingVertical: theme.space3, gap: theme.space2 },
+  adCardBorder: { borderTopWidth: 1, borderTopColor: theme.borderSubtle },
+  adHeader: { flexDirection: 'row' as const, alignItems: 'baseline' as const, gap: theme.space2 },
+  adIcao: { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '800' as const, letterSpacing: 1, minWidth: 44 },
+  adName: { flex: 1, color: theme.textSecondary, fontSize: theme.textXs },
+  adDist: { color: theme.accentBlue, fontSize: theme.textXs, fontWeight: '600' as const },
+  noFreq: { color: theme.textFaint, fontSize: theme.textXs, fontStyle: 'italic' as const },
+  freqList: { gap: 4 },
+  freqRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: theme.space2 },
+  svcBadge: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1, minWidth: 40, alignItems: 'center' as const },
+  svcTxt: { fontSize: 10, fontWeight: '700' as const },
+  freqMhz: { color: theme.textPrimary, fontSize: theme.textXs, fontWeight: '700' as const, minWidth: 56 },
+  freqCallsign: { color: theme.textSecondary, fontSize: theme.textXs, flex: 1 },
+
+  // Wx/NOTAM picker
+  picker: { flexGrow: 0, marginBottom: theme.space2 },
+  pickerChip: {
+    borderWidth: 1.5, borderColor: theme.borderStrong, borderRadius: theme.radiusSm,
+    paddingHorizontal: theme.space3, paddingVertical: 5, marginRight: 8, alignItems: 'center' as const,
+  },
+  pickerChipActive: { backgroundColor: theme.accentBlue, borderColor: theme.accentBlue },
+  pickerChipTxt: { color: theme.textPrimary, fontSize: theme.textXs, fontWeight: '800' as const, letterSpacing: 0.5 },
+  pickerChipDist: { color: theme.textFaint, fontSize: 10 },
+  pickerChipTxtActive: { color: '#fff' },
+
+  // Other (non-aerodrome) NOTAMs
+  otherNotams: { marginTop: theme.space3, gap: 2 },
+  otherNotamsTitle: { color: theme.textSecondary, fontSize: theme.textSm, fontWeight: '700' as const, letterSpacing: 0.8, marginBottom: theme.space2 },
+  filterNote: { color: theme.textFaint, fontSize: 10, fontStyle: 'italic' as const, marginBottom: theme.space2 },
+  otherNotamRow: { paddingVertical: theme.space2, borderTopWidth: 1, borderTopColor: theme.borderSubtle },
+  otherNotamHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 },
+  otherNotamId: { fontSize: theme.textSm, fontWeight: '700' as const, color: theme.textPrimary },
+  otherNotamPeriod: { fontSize: 10, color: theme.textFaint, flex: 1 },
+  mapBadge: {
+    borderWidth: 1, borderColor: 'rgba(230,73,128,0.4)', backgroundColor: 'rgba(230,73,128,0.1)',
+    borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1,
+  },
+  mapBadgeTxt: { fontSize: 9, fontWeight: '700' as const, color: '#e64980' },
+  otherNotamText: {
+    fontSize: theme.textSm, color: theme.textSecondary, marginTop: 4, lineHeight: 16,
+    backgroundColor: theme.surfaceOverlay ?? theme.surfaceHover, borderRadius: 6, padding: 8,
+  },
+ }
+}
