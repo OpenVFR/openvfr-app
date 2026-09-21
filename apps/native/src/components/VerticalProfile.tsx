@@ -1283,7 +1283,7 @@ function makeStyles(theme: ScaledTheme) {
   wpLabel: {
     position: 'absolute',
     color:    'rgba(255,255,255,0.55)',
-    fontSize: 9,
+    fontSize: 10,
     maxWidth: 60,
   },
   trajLabel: {

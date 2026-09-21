@@ -1140,7 +1140,7 @@ export default function VirtualRadar({
                     value: tick.name,
                     position: tick === profile!.waypointTicks[profile!.waypointTicks.length - 1] ? 'insideTopRight' : 'insideTopLeft',
                     fill: 'rgba(255,255,255,0.50)',
-                    fontSize: 9,
+                    fontSize: 10,
                   }}
                 />
               ))}
