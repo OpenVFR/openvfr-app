@@ -987,6 +987,26 @@ export function AviationMap({
     }
   }, [onUserPan])
 
+  // Seed camForWind from the last-known camera state as soon as Wind
+  // Arrows is enabled, instead of waiting for the first real pan/zoom to
+  // fire onRegionDidChange/onRegionIsChanging -- MapLibre RN does NOT fire
+  // either event on initial mount, so without this, enabling the layer on
+  // a completely untouched fresh map left useWindGrid's `cam` argument
+  // null indefinitely and no barbs ever rendered until the user happened
+  // to touch the map. camStateRef.current already holds a usable center/
+  // zoom at this point (either the real last-known position from a prior
+  // region-change, or the initialViewState default from Camera's own
+  // props) -- good enough for the wind grid's coarse 4x4 sample, which
+  // will self-correct via a real region-change on the next actual pan
+  // anyway. Web's equivalent hook doesn't need this because it calls
+  // `map.getBounds()` directly inside its own effect instead of depending
+  // on a move-event-driven camera snapshot.
+  useEffect(() => {
+    if (!showWind || camForWind) return
+    const { lat, lng, zoom } = camStateRef.current
+    setCamForWind({ lat, lng, zoom })
+  }, [showWind, camForWind])
+
   const windGridFC = useWindGrid(camForWind, showWind, gpsPosition?.altFt ?? null)
 
   // Drag state — driven by WaypointDragAnnotation's native ViewAnnotation
