@@ -49,6 +49,31 @@ export interface WxWithSource extends WxResult {
   distNm: number | null
 }
 
+// Sequential (not parallel) candidate search shared by fetchWxNearest (which
+// tries an "own" ICAO first) and fetchWxNearestForPoint (an arbitrary point
+// along a route with no ICAO of its own to try) -- factored out so both
+// stay in lockstep on the abort/error-tolerance behaviour below instead of
+// two independently-maintained copies of the same loop.
+async function fetchFirstAvailable(
+  candidates: WxStationCandidate[],
+  baseUrl: string,
+  signal: AbortSignal | undefined,
+  headers: Record<string, string> | undefined,
+  maxCandidates: number,
+): Promise<{ wx: WxResult; icao: string; distNm: number } | null> {
+  for (const cand of candidates.slice(0, maxCandidates)) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    try {
+      const wx = await fetchWx(cand.icao, baseUrl, signal, headers)
+      if (wx.metar || wx.taf) return { wx, icao: cand.icao, distNm: cand.distNm }
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') throw err
+      // Candidate fetch failed (network/HTTP) -- try the next-nearest one.
+    }
+  }
+  return null
+}
+
 export async function fetchWxNearest(
   icao: string,
   nearby: WxStationCandidate[],
@@ -75,19 +100,31 @@ export async function fetchWxNearest(
   }
   if (own && (own.metar || own.taf)) return { ...own, sourceIcao: icao, distNm: null }
 
-  for (const cand of nearby.slice(0, maxCandidates)) {
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-    try {
-      const wx = await fetchWx(cand.icao, baseUrl, signal, headers)
-      if (wx.metar || wx.taf) return { ...wx, sourceIcao: cand.icao, distNm: cand.distNm }
-    } catch (err) {
-      if ((err as Error).name === 'AbortError') throw err
-      // Candidate fetch failed (network/HTTP) -- try the next-nearest one.
-    }
-  }
+  const found = await fetchFirstAvailable(nearby, baseUrl, signal, headers, maxCandidates)
+  if (found) return { ...found.wx, sourceIcao: found.icao, distNm: found.distNm }
   // Nothing found anywhere nearby -- report against the originally-requested
   // ICAO so callers show "no data" for the right identifier.
   return { metar: null, taf: null, sourceIcao: icao, distNm: null }
+}
+
+/**
+ * Same nearest-report search as fetchWxNearest, but for an arbitrary point
+ * along a route (e.g. a regular-interval wind sample) that has no ICAO of
+ * its own to try first -- goes straight to the candidate list. Returns null
+ * (not a "no data" sentinel object) when nothing is found, since callers
+ * here (fetchWxResolvedForPoint) need to distinguish "no real station" from
+ * "found one, empty report" to decide whether to fall through to model wind.
+ */
+export async function fetchWxNearestForPoint(
+  nearby: WxStationCandidate[],
+  baseUrl = '',
+  signal?: AbortSignal,
+  headers?: Record<string, string>,
+  maxCandidates = 6,
+): Promise<WxWithSource | null> {
+  const found = await fetchFirstAvailable(nearby, baseUrl, signal, headers, maxCandidates)
+  if (!found) return null
+  return { ...found.wx, sourceIcao: found.icao, distNm: found.distNm }
 }
 
 // ── Model-wind fallback (tier below the nearest-station search) ───────────
@@ -152,6 +189,55 @@ export async function fetchWxResolved(
   } catch (err) {
     if ((err as Error).name === 'AbortError') throw err
     return { ...wx, modelWind: null } // offline/Open-Meteo outage -- no wind at all, not fatal
+  }
+}
+
+export interface WxPointResolved {
+  metar:        string | null
+  taf:          string | null
+  /** null when no real station was found anywhere nearby -- distinguishes
+   *  "model wind, no station at all" from fetchWxResolved's icao-echo
+   *  behaviour, since a bare point has no icao of its own to echo. */
+  sourceIcao:   string | null
+  sourceDistNm: number | null
+  modelWind:    WindAloft | null
+}
+
+/**
+ * Same nearest-station-or-model-wind tiering as fetchWxResolved, but for an
+ * arbitrary point along a route (e.g. a regular-interval wind sample
+ * between aerodromes) instead of a specific aerodrome's own coordinates --
+ * skips the "try my own icao first" step since a bare point has none.
+ */
+export async function fetchWxResolvedForPoint(
+  lat: number,
+  lng: number,
+  nearby: WxStationCandidate[],
+  baseUrl = '',
+  signal?: AbortSignal,
+  headers?: Record<string, string>,
+  maxCandidates = 6,
+): Promise<WxPointResolved> {
+  const found = await fetchWxNearestForPoint(nearby, baseUrl, signal, headers, maxCandidates)
+  const stationTooFarForWind = found != null && found.distNm != null && found.distNm > WIND_LOCAL_MAX_NM
+  const needsModelWind = found == null || stationTooFarForWind
+
+  if (!needsModelWind && found) {
+    return { metar: found.metar, taf: found.taf, sourceIcao: found.sourceIcao, sourceDistNm: found.distNm, modelWind: null }
+  }
+
+  const base = {
+    metar:        found?.metar ?? null,
+    taf:          found?.taf ?? null,
+    sourceIcao:   found?.sourceIcao ?? null,
+    sourceDistNm: found?.distNm ?? null,
+  }
+  try {
+    const modelWind = await fetchWind(lat, lng, null, baseUrl, signal)
+    return { ...base, modelWind }
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') throw err
+    return { ...base, modelWind: null } // offline/Open-Meteo outage -- no wind at all, not fatal
   }
 }
 

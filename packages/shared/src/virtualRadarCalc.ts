@@ -1024,6 +1024,24 @@ export interface WeatherMark<S> {
  * type with the same lat/lng fields) so this doesn't need to import either
  * platform's hook types.
  */
+/**
+ * Evenly-spaced distances (NM) along the route for regular-interval wind
+ * sampling, independent of aerodrome positions -- distinct from
+ * projectWeatherMarks below, which only ever produces a mark wherever a
+ * real reporting station happens to sit. Starts at intervalNm/2 (not 0) so
+ * a sample doesn't sit right on top of the departure marker; capped at
+ * maxSamples regardless of route length so a long route doesn't fire an
+ * unbounded burst of /api/weather + /api/open-meteo requests.
+ */
+export function regularIntervalDistances(totalNm: number, intervalNm: number, maxSamples: number): number[] {
+  if (totalNm <= 0 || intervalNm <= 0) return []
+  const out: number[] = []
+  for (let d = intervalNm / 2; d < totalNm && out.length < maxSamples; d += intervalNm) {
+    out.push(Math.round(d * 10) / 10)
+  }
+  return out
+}
+
 export function projectWeatherMarks<S extends { lat: number; lng: number }>(
   waypoints: RouteWaypoint[],
   stations: S[],
