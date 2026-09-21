@@ -7,7 +7,7 @@ import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const SRC_DIR = join(__dirname, '..', '..', 'public', 'aircraft_icons')
+const SRC_DIR = join(__dirname, '..', '..', 'web', 'public', 'aircraft_icons')
 const OUT_DIR = join(__dirname, '..', 'assets', 'aircraft_icons')
 mkdirSync(OUT_DIR, { recursive: true })
 
