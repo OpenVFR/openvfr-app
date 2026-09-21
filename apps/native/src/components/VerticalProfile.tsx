@@ -489,7 +489,14 @@ export function VerticalProfile({
   const MIN_WP_LABEL_GAP_PX = 46
   const visibleWaypointTicks = useMemo(() => {
     if (!profile) return []
-    let lastX = -Infinity
+    // Seeded at xOf(0) (the Y-axis's own pixel position), not -Infinity --
+    // see web's identical VirtualRadar.tsx fix for why: a second waypoint
+    // genuinely very close to departure (e.g. a VRP named after a literal
+    // landmark right by the airfield -- "Church", "Tol\u00e5nga kyrka") had
+    // nothing before it to collide against, so it always rendered
+    // regardless of proximity to x=0, overlapping the Y-axis/FL-scale
+    // margin -- reported as the label rendering "outside the chart".
+    let lastX = xOf(0)
     const out: typeof profile.waypointTicks = []
     profile.waypointTicks.forEach((tick, i) => {
       if (i === 0) return // departure skipped, same as before -- sits on Y-axis

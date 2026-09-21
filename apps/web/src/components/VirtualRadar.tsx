@@ -580,7 +580,17 @@ export default function VirtualRadar({
   const visibleWaypointTicks = useMemo(() => {
     if (!profile) return []
     const pxPerUnit = totalNmDisplay > 0 ? contentPxWidth / totalNmDisplay : 0
-    let lastX = -Infinity
+    // Seeded at 0 (the Y-axis's own pixel position), not -Infinity --
+    // treats the axis/departure edge as an already-kept label competing
+    // for the same MIN_WP_LABEL_GAP_PX budget. Without this, a SECOND
+    // waypoint that's genuinely very close to departure (e.g. a VRP named
+    // after a literal landmark right by the airfield, common on Swedish
+    // VFR charts -- "Church", "Tolånga kyrka") had nothing before it to
+    // collide against, so it always rendered regardless of how close to
+    // x=0 it was, overlapping the Y-axis/FL-scale margin instead of
+    // sitting cleanly inside the plot -- reported as the label rendering
+    // "outside the chart" on both platforms.
+    let lastX = 0
     const out: typeof profile.waypointTicks = []
     profile.waypointTicks.forEach((tick, i) => {
       if (i === 0) return // departure skipped, same as before -- sits on Y-axis
