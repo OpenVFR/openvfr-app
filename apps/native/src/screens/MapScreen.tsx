@@ -693,19 +693,20 @@ export function MapScreen() {
   const [planningMode, setPlanningMode] = useState(false)
   const [snapPicker, setSnapPicker] = useState<{ candidates: SnapCandidate[]; onPick: (wp: RouteWaypoint) => void } | null>(null)
 
-  // ── In-flight route-edit lock — waypoint/leg drag is disabled by default
-  // once airborne (touchscreens can be knocked while flying, and an
-  // accidental drag while panning around the map should never silently move
-  // a leg). Tapping "Adjust Route" explicitly re-enables dragging for as long
-  // as it stays toggled on; it always resets to locked the next time a
-  // flight starts, so a forgotten toggle from a previous flight can't carry
-  // over. Mirrors web's MapView.tsx routeAdjustMode gating on
-  // planningMode/routeAdjustMode around the route-line drag handlers. ─────
+  // ── Route-edit lock — waypoint/leg drag is disabled by default, both on
+  // the ground and airborne (touchscreens can be knocked while flying, and
+  // an accidental drag while panning around the map should never silently
+  // move a leg). On the ground, toggling "planningMode" re-enables dragging;
+  // in flight, "Adjust Route" (routeAdjustMode) does, for as long as it
+  // stays toggled on — it always resets to locked the next time a flight
+  // starts, so a forgotten toggle from a previous flight can't carry over.
+  // Mirrors web's MapView.tsx planningMode/routeAdjustMode gating around the
+  // route-line drag handlers. ─────
   const [routeAdjustMode, setRouteAdjustMode] = useState(false)
   useEffect(() => {
     if (!flyingActive) setRouteAdjustMode(false)
   }, [flyingActive])
-  const routeEditLocked = flyingActive && !routeAdjustMode
+  const routeEditLocked = flyingActive ? !routeAdjustMode : !planningMode
 
   const handlePlanTap = useCallback((wp: RouteWaypoint) => {
     addWaypoint(wp)
@@ -738,13 +739,16 @@ export function MapScreen() {
     setSnapPicker({ candidates, onPick: (wp) => insertWaypoint(afterIndex, wp) })
   }, [insertWaypoint])
 
-  // Long-hold-in-place on a route waypoint's drag handle — reuses the same
-  // longPressMenu UI as a bare-point long-press (see state comment above).
-  // routeIndex is currently unused by the menu itself (Add-to-Route was
-  // removed — Save Waypoint is the only action either way) but is kept in
-  // case a route-specific action is added back later.
+  // Long-hold-in-place on a route waypoint's drag handle — mirrors web's
+  // stationary-tap-in-adjust-mode → WpActionMenu (Direct To / Remove /
+  // Cancel), NOT the generic bare-point Save Waypoint popup. Previously this
+  // routed into longPressMenu (Save Waypoint only, no Remove) — indistinguishable
+  // from long-pressing empty map, so grabbing a route waypoint and releasing
+  // without noticeable movement (a very easy accidental gesture) surfaced a
+  // confusing "Save Waypoint" prompt instead of a route-waypoint action.
+  const [wpActionMenu, setWpActionMenu] = useState<{ lat: number; lng: number; wpIdx: number } | null>(null)
   const handleWaypointLongPress = useCallback((index: number, lat: number, lng: number) => {
-    setLongPressMenu({ lat, lng, routeIndex: index })
+    setWpActionMenu({ lat, lng, wpIdx: index })
   }, [])
 
   const { waypoints: userWaypoints, saveWaypoint } = useUserWaypointContext()
@@ -796,7 +800,7 @@ export function MapScreen() {
   // removed from here entirely — planning mode / feature-tap already cover
   // adding to the route, and it doesn't make sense at all for an existing
   // route waypoint.
-  const [longPressMenu, setLongPressMenu] = useState<{ lat: number; lng: number; routeIndex?: number } | null>(null)
+  const [longPressMenu, setLongPressMenu] = useState<{ lat: number; lng: number } | null>(null)
   const [savingWpAt,    setSavingWpAt]    = useState<{ lat: number; lng: number } | null>(null)
   const [wpSaveName,    setWpSaveName]    = useState('')
 
@@ -923,6 +927,35 @@ export function MapScreen() {
               <Text style={styles.longPressMenuBtnTxt}>Save Waypoint</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.longPressMenuCancel} onPress={() => setLongPressMenu(null)}>
+              <Text style={styles.longPressMenuCancelTxt}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Route-waypoint action menu \u2014 stationary grab-and-release on an
+            existing route waypoint (mirrors web's WpActionMenu). */}
+        {wpActionMenu && (
+          <View style={styles.longPressMenu}>
+            <Text style={styles.longPressMenuCoord}>
+              WP {wpActionMenu.wpIdx + 1}
+            </Text>
+            {wpActionMenu.wpIdx > activeWpIdx && (
+              <TouchableOpacity
+                style={styles.longPressMenuBtn}
+                onPress={() => { setActiveWpIdx(wpActionMenu.wpIdx); setWpActionMenu(null) }}
+              >
+                <Ionicons name="airplane-outline" size={16} color={theme.accentBlue} />
+                <Text style={styles.longPressMenuBtnTxt}>Direct To</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.longPressMenuBtn}
+              onPress={() => { removeWaypoint(wpActionMenu.wpIdx); setWpActionMenu(null) }}
+            >
+              <Ionicons name="close-outline" size={16} color={theme.accentBlue} />
+              <Text style={styles.longPressMenuBtnTxt}>Remove</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.longPressMenuCancel} onPress={() => setWpActionMenu(null)}>
               <Text style={styles.longPressMenuCancelTxt}>Cancel</Text>
             </TouchableOpacity>
           </View>
