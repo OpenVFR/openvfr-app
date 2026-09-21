@@ -8,7 +8,6 @@ import {
   RUNWAY_LABEL_DEFAULT_COLOR,
   RUNWAY_LABEL_DEFAULT_HALO,
 } from '@open-vfr/shared/runwayWind'
-import { WIND_BARB_COLOR } from '../utils/windBarbIcons'
 import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
 
@@ -462,7 +461,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     // default: opts the user into extra live fetches on every pan/zoom.
     label: 'Wind Arrows',
     cssClass: 'groupWind',
-    layerIds: ['wind-arrows-icon', 'wind-arrows-label'],
+    layerIds: ['wind-arrows-icon'],
     defaultOn: false,
     section: 'Weather',
   },
@@ -2021,28 +2020,15 @@ export function getMapStyle(): StyleSpecification {
           'icon-opacity': 0.9,
         },
       },
-      {
-        id: 'wind-arrows-label',
-        type: 'symbol',
-        source: 'wind-grid',
-        minzoom: 7,
-        layout: {
-          visibility: 'none',
-          'text-field': ['concat', ['to-string', ['get', 'speedKts']], 'kt'],
-          'text-font': ['Noto Sans Regular'],
-          'text-size': 8,
-          'text-anchor': 'top',
-          'text-offset': [0, 0.3],
-          'text-allow-overlap': false,
-          'text-optional': true,
-        },
-        paint: {
-          'text-color': WIND_BARB_COLOR,
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1.2,
-          'text-opacity': 0.75,
-        },
-      },
+      // Deliberately no permanent "Nkt" text layer alongside the barb icon
+      // (there used to be one, 'wind-arrows-label') -- the barb shape itself
+      // (notch count + speed-tiered colour) already carries the at-a-glance
+      // strength read, and a permanent small text label was flagged as hard
+      // to read against a varying basemap in a pre-release pass. Exact
+      // dir/speed is available on demand instead (tap the icon), not always
+      // rendered -- matches the researched convention of a mature
+      // synoptic-style wind overlay (feather encodes everything at a
+      // glance, exact number is opt-in), not a homegrown choice.
     ],
   }) as unknown as StyleSpecification
 }

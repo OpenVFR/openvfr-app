@@ -131,8 +131,8 @@ export type AviationMapProps = {
    *  this component's own camera-state-derived useWindGrid call (no
    *  map.getBounds() escape hatch on native the way web's maplibre-gl JS
    *  Map has -- see hooks/useWindGrid.ts). Matches web's 'wind-grid'
-   *  source/'wind-arrows-icon'+'wind-arrows-label' layers exactly (same
-   *  bucketed icon-id expression, dirDeg rotation, bottom anchor). */
+   *  source/'wind-arrows-icon' layer exactly (same bucketed icon-id
+   *  expression, dirDeg rotation, bottom anchor). */
   showWind?: boolean
   followGps?: boolean
   /** Called when the pilot manually pans/zooms/rotates the map while
@@ -2500,7 +2500,7 @@ export function AviationMap({
 
         {/* ── Ambient wind-arrows overlay ──────────────────────────
             Mirrors web's map-style.ts 'wind-grid' source + 'wind-arrows-
-            icon'/'wind-arrows-label' layers exactly: same bucketed icon-id
+            icon' layer exactly: same bucketed icon-id
             expression (@open-vfr/shared/windBarb), dirDeg rotation (wind-
             FROM convention, no +180 -- see web's comment), bottom anchor.
             Native can't canvas-draw icons at runtime like web's
@@ -2535,22 +2535,12 @@ export function AviationMap({
             }}
             paint={{ 'icon-opacity': 0.9 }}
           />
-          <Layer
-            id="wind-arrows-label"
-            type="symbol"
-            minzoom={7}
-            layout={{
-              visibility: showWind ? 'visible' : 'none',
-              'text-field': ['concat', ['to-string', ['get', 'speedKts']], 'kt'] as any,
-              'text-font': ['Noto Sans Regular'],
-              'text-size': 8,
-              'text-anchor': 'top',
-              'text-offset': [0, 0.3],
-              'text-allow-overlap': false,
-              'text-optional': true,
-            }}
-            paint={{ 'text-color': '#38bdf8', 'text-halo-color': 'rgba(10,14,22,0.85)', 'text-halo-width': 1, 'text-opacity': 0.75 }}
-          />
+          {/* Deliberately no permanent "Nkt" text layer alongside the barb
+              icon (there used to be one, 'wind-arrows-label') -- see web's
+              identical comment in map-style.ts for why: the barb shape
+              itself already carries the at-a-glance strength read, and a
+              permanent small text label was flagged as hard to read in a
+              pre-release pass. */}
         </GeoJSONSource>
 
         {/* ── Aircraft position ──────────────────────────── */}

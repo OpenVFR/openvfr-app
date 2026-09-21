@@ -912,8 +912,18 @@ export function VerticalProfile({
                   // Real WMO barb (shaft + feathers) instead of a plain
                   // arrow -- mirrors web's VirtualRadar.tsx identical change.
                   const color = windBarbColorForSpeed(m.wind.speedKt)
+                  // windBarbGeometry anchors its local origin at the
+                  // station/"tail" end -- correct for the map's real icons
+                  // (the anchor is a literal geographic point). Here `y` is
+                  // just a reserved chart row, not real data, so a
+                  // tail-anchored rotation made the glyph sit visibly
+                  // higher/lower within that row depending on wind
+                  // direction -- caught in a device review. The extra
+                  // translate(0, shaftLen/2) re-centres rotation on the
+                  // shaft's midpoint instead, keeping the footprint
+                  // balanced above/below y for any direction.
                   return (
-                    <G key={`wind-${i}`} transform={`translate(${x},${y}) rotate(${rot})`}>
+                    <G key={`wind-${i}`} transform={`translate(${x},${y}) rotate(${rot}) translate(0, 9)`}>
                       {renderWindBarbShape(m.wind.speedKt, color, { shaftLen: 18, barbLen: 8, halfLen: 5, barbGap: 5, strokeW: 1.8 })}
                     </G>
                   )
@@ -931,8 +941,11 @@ export function VerticalProfile({
                   if (s.wind.dirDeg == null) return null
                   const rot = s.wind.dirDeg // see FROM-direction comment above
                   const color = windBarbColorForSpeed(s.wind.speedKt)
+                  // Re-centres rotation on the shaft's midpoint instead of
+                  // its tail -- see the identical comment on the
+                  // real-station barb above for why.
                   return (
-                    <G key={`windsample-${i}`} transform={`translate(${x},${y}) rotate(${rot})`} opacity={0.6}>
+                    <G key={`windsample-${i}`} transform={`translate(${x},${y}) rotate(${rot}) translate(0, 6.5)`} opacity={0.6}>
                       {renderWindBarbShape(s.wind.speedKt, color, { shaftLen: 13, barbLen: 6, halfLen: 3.5, barbGap: 3.5, strokeW: 1.4 })}
                     </G>
                   )
@@ -1096,36 +1109,14 @@ export function VerticalProfile({
                   </Text>
                 ))}
 
-                {/* Text drawn to the RIGHT of the arrow, not below it, and
-                    only when it fits before the content's right edge --
-                    mirrors web's identical fix. Skipped entirely (not
-                    truncated) when it doesn't fit. */}
-                {weatherMarks.map((m, i) => {
-                  if (!m.wind) return null
-                  const text = m.wind.calm ? 'CALM' : m.wind.dirDeg != null ? `${m.wind.dirDeg}°/${m.wind.speedKt}` : ''
-                  if (!text) return null
-                  const halfW = m.wind.calm ? 3 : 18 / 2 + 4
-                  const left = windXOf(m.distNm) + halfW + 4
-                  if (left + text.length * 7 * 0.62 > contentW - MARGIN_R) return null
-                  return (
-                    <Text key={`windl-${i}`} style={[styles.windLabel, { left, top: WIND_ARROW_Y - 4 }]} numberOfLines={1}>
-                      {text}
-                    </Text>
-                  )
-                })}
+                {/* No dir/speed text label alongside the barb -- see the
+                    map's identical fix (AviationMap.tsx's removed
+                    'wind-arrows-label' layer): the barb shape itself
+                    (feather count + speed-tiered colour) already carries
+                    the at-a-glance strength read, and a tiny permanent
+                    text label at this chart's scale was flagged as
+                    illegible in a pre-release pass. */}
 
-                {visibleWindSamples.map((s, i) => {
-                  const text = s.wind.calm ? '~CALM' : s.wind.dirDeg != null ? `~${s.wind.dirDeg}°/${s.wind.speedKt}` : ''
-                  if (!text) return null
-                  const halfW = s.wind.calm ? 2.5 : 13 / 2 + 3
-                  const left = windXOf(s.distNm) + halfW + 4
-                  if (left + text.length * 7 * 0.62 > contentW - MARGIN_R) return null
-                  return (
-                    <Text key={`windsamplel-${i}`} style={[styles.windLabel, { left, top: WIND_ARROW_Y - 4, opacity: 0.55 }]} numberOfLines={1}>
-                      {text}
-                    </Text>
-                  )
-                })}
 
                 {xTicks.map((d, i) => (
                   <Text key={`xl-${i}`} style={[
@@ -1219,12 +1210,6 @@ function makeStyles(theme: ScaledTheme) {
     position: 'absolute',
     color:    'rgba(255,255,255,0.45)',
     fontSize: 8,
-  },
-  windLabel: {
-    position: 'absolute',
-    color:    'rgba(148,197,255,0.85)',
-    fontSize: 7,
-    maxWidth: 32,
   },
   // Pinned left-edge Y-axis label column — sits above the scrollable clip
   // window (rendered after it in JSX = higher z-order) so it never scrolls
