@@ -131,7 +131,7 @@ export function MapScreen() {
   const simFlight = useSimFlight()
   const activePosition = simPosition ?? simFlight.position ?? position
   const { waypoints, legOverrides, addWaypoint, insertWaypoint, updateWaypoint, removeWaypoint,
-           routeVisible, setRouteVisible } = useRouteContext()
+           routeVisible, setRouteVisible, activeRouteId } = useRouteContext()
   const { settings, update }                  = useSettingsContext()
   const { state: authState } = useAuthContext()
   const authenticated = authState.status === 'authenticated'
@@ -149,18 +149,6 @@ export function MapScreen() {
   // before showRulerProfile below, which reads it.
   const [rulerMode, setRulerMode] = useState(false)
   const [rulerPoints, setRulerPoints] = useState<RouteWaypoint[]>([])
-
-  const currentDistNm = waypoints.length >= 2 && activePosition
-    ? distanceAlongRouteNm(waypoints, activePosition)
-    : undefined
-  // Lateral deviation from the planned line — VerticalProfile's terrain/
-  // airspace/MSA data is only ever sampled along the planned route (see
-  // AGENTS.md discussion), so once this grows large the chart is no longer
-  // showing what's actually ahead of the aircraft. Passed through so the
-  // chart can badge itself rather than silently keep pretending alignment.
-  const crossTrackNm = waypoints.length >= 2 && activePosition
-    ? routeCrossTrackNm(waypoints, activePosition)
-    : undefined
 
   const [flying, setFlying]           = useState(false)
   const [followGps, setFollowGps]     = useState(false)
@@ -229,6 +217,27 @@ export function MapScreen() {
   // real GPS-tracked flight.
   const bestAltFt = simFlight.active ? (simFlight.position?.altFt ?? null) : altitudeSource.altFt
   const flyingActive = flying || simFlight.active || simPosition != null
+
+  // NM along the planned route where the aircraft currently is, and its
+  // lateral deviation from that planned line — both mirror web's MapView.tsx
+  // (aircraftDistNm / crossTrackNm), gated to flyingActive there too. Only
+  // meaningful mid-flight: computing these from a stationary/planning-mode
+  // GPS fix near the route (e.g. testing on the ground, nowhere near where
+  // the route is drawn) previously badged VerticalProfile with a spurious
+  // "Xnm off planned track" warning that had nothing to do with an actual
+  // flight in progress.
+  const currentDistNm = flyingActive && waypoints.length >= 2 && activePosition
+    ? distanceAlongRouteNm(waypoints, activePosition)
+    : undefined
+  // Lateral deviation from the planned line — VerticalProfile's terrain/
+  // airspace/MSA data is only ever sampled along the planned route (see
+  // AGENTS.md discussion), so once this grows large the chart is no longer
+  // showing what's actually ahead of the aircraft. Passed through so the
+  // chart can badge itself rather than silently keep pretending alignment.
+  const crossTrackNm = flyingActive && waypoints.length >= 2 && activePosition
+    ? routeCrossTrackNm(waypoints, activePosition)
+    : undefined
+
   const positionForAlerts = React.useMemo(() => (
     flyingActive && activePosition && bestAltFt != null
       ? { ...activePosition, altFt: bestAltFt }
@@ -825,6 +834,7 @@ export function MapScreen() {
           gpsPosition={activePosition}
           simActive={simPosition != null}
           waypoints={waypoints}
+          activeRouteId={activeRouteId}
           airspaceCeilingFt={settings.airspaceCeilingFt}
           showClassC={layers.classC}
           showClassD={layers.classD}
@@ -1091,6 +1101,7 @@ export function MapScreen() {
           waypoints={waypoints}
           legOverrides={legOverrides}
           units={settings.units}
+          airspaceCeilingFt={settings.airspaceCeilingFt}
           aircraftProfile={aircraftProfile}
           currentDistNm={currentDistNm}
           currentAltFt={bestAltFt ?? undefined}
@@ -1113,6 +1124,7 @@ export function MapScreen() {
           waypoints={lookaheadWaypoints}
           legOverrides={lookaheadLegOverrides}
           units={settings.units}
+          airspaceCeilingFt={settings.airspaceCeilingFt}
           aircraftProfile={aircraftProfile}
           currentDistNm={lookaheadDistNm}
           currentAltFt={bestAltFt ?? undefined}

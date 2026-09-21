@@ -90,6 +90,10 @@ interface Props {
   waypoints:    RouteWaypoint[]
   legOverrides: LegOverride[]
   units?:       Units
+  /** Same ceiling filter as the map's airspace layers (settings.airspaceCeilingFt)
+   *  -- airspace bands whose floor is above this are hidden from the chart,
+   *  matching what's already hidden on the map. Unfiltered if omitted. */
+  airspaceCeilingFt?: number
   title?: string
   aircraftProfile?: AircraftProfileDocType
   currentDistNm?: number
@@ -242,7 +246,7 @@ function getPlannedAlt(altProfile: { distNm: number; altFt: number }[], distNm: 
 // ---------------------------------------------------------------------------
 
 export function VerticalProfile({
-  waypoints, legOverrides, units = DEFAULT_UNITS, title, aircraftProfile,
+  waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, title, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
   crossTrackNm, weatherStations, windSamples,
   height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm,
@@ -340,8 +344,8 @@ export function VerticalProfile({
 
   const profile = useMemo(() => {
     if (waypoints.length < 2 || !airspaceGeo || !obstacleGeo) return null
-    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo ?? undefined, landmarkGeo ?? undefined)
-  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo, landmarkGeo])
+    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo ?? undefined, landmarkGeo ?? undefined, airspaceCeilingFt ?? Infinity)
+  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo, landmarkGeo, airspaceCeilingFt])
 
   // Shared with web's VirtualRadar.tsx (getMsaLookup) — this used to be a
   // byte-for-byte duplicate independently maintained in both files.
@@ -406,12 +410,30 @@ export function VerticalProfile({
     setScrollX((x) => Math.min(x, maxScrollX))
   }, [maxScrollX])
 
+  // Manual-pan grace period -- see scrubResponder's onPanResponderRelease
+  // below, which sets this. Without it, the auto-follow effect's hoverNm
+  // guard reopens the INSTANT a finger lifts (clearHover() sets hoverNm
+  // back to null immediately on release), so this effect re-fires on the
+  // very next render and snaps straight back to the aircraft before the
+  // pilot ever gets to look at wherever they just panned to -- especially
+  // bad off-track, where the aircraft marker can sit right at the route's
+  // end, making every pan feel like it does nothing. Web has no equivalent
+  // bug: its pan uses real DOM scrollLeft, which release never touches, so
+  // nothing re-triggers its version of this effect. currentDistNm updates
+  // on every GPS tick during flight, so this effect naturally re-runs and
+  // re-checks the grace deadline again soon after it expires -- no separate
+  // timer needed to "wake" it back up.
+  const MANUAL_PAN_GRACE_MS = 4000
+  const manualPanUntilRef = useRef(0)
+
   // Auto-follow the aircraft while flying: if its marker has scrolled out of
   // (or near) the visible window, re-center the view on it. Skipped while
-  // the pilot is mid-drag (hoverNm != null) so this doesn't fight a manual
-  // pan/scrub in progress.
+  // the pilot is mid-drag (hoverNm != null) or shortly after releasing a
+  // manual pan (manualPanUntilRef) so this doesn't fight a pan/scrub either
+  // during or immediately after the gesture.
   useEffect(() => {
     if (currentDistNm == null || !scrollable || hoverNm != null) return
+    if (Date.now() < manualPanUntilRef.current) return
     const markerX = xOf(currentDistNm)
     const EDGE = 40
     setScrollX((x) => {
@@ -462,8 +484,22 @@ export function VerticalProfile({
       setScrollX(next)
       updateHover(e.nativeEvent.locationX)
     },
-    onPanResponderRelease: () => clearHover(),
-    onPanResponderTerminate: () => clearHover(),
+    onPanResponderRelease: () => {
+      // Only arm the grace period for an actual pan (content moved) --
+      // a stationary tap/scrub that never dragged the content shouldn't
+      // delay auto-follow from a real position change that happens to
+      // land moments later.
+      if (scrollXRef.current !== dragStartScrollXRef.current) {
+        manualPanUntilRef.current = Date.now() + MANUAL_PAN_GRACE_MS
+      }
+      clearHover()
+    },
+    onPanResponderTerminate: () => {
+      if (scrollXRef.current !== dragStartScrollXRef.current) {
+        manualPanUntilRef.current = Date.now() + MANUAL_PAN_GRACE_MS
+      }
+      clearHover()
+    },
   }), [updateHover, clearHover])
 
   // Departure/arrival elevation from first/last terrain sample (aerodrome elevation proxy)
@@ -674,14 +710,23 @@ export function VerticalProfile({
                   rather than silently keep drawing planned-route terrain
                   under a marker no longer really on it. */}
               {crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM && (
+                // top sits just below the waypoint-name label row (MARGIN_T=26
+                // + its own text height) rather than at top:2 alongside it —
+                // that used to land directly on top of the wind-arrow/
+                // wind-label row (WIND_ARROW_Y=12 / windLabel top=8) and the
+                // waypoint-name row (MARGIN_T), overlapping their text with
+                // this badge's own (a long, wide string) instead of just
+                // sharing empty chart background the way the scroll hint does.
                 <View style={styles.offTrackBadge} pointerEvents="none">
                   <Text style={styles.offTrackTxt}>⚠ {Math.abs(crossTrackNm).toFixed(1)}nm off planned track</Text>
                 </View>
               )}
               {/* Scroll hint — only shown once the route is
-                  wider than the panel (MIN_PX_PER_NM above). */}
+                  wider than the panel (MIN_PX_PER_NM above). No longer needs
+                  to dodge the off-track badge — that now sits on its own row
+                  well below this one instead of sharing top:2. */}
               {scrollable && (
-                <View style={[styles.scrollHintWrap, (crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM) && { top: 20 }]} pointerEvents="none">
+                <View style={styles.scrollHintWrap} pointerEvents="none">
                   <Text style={styles.scrollHintTxt}>↔ scroll</Text>
                 </View>
               )}
@@ -721,7 +766,18 @@ export function VerticalProfile({
                 {/* ── Airspace bands (glow halo + fill + border + chip) ── */}
                 {profile.airspaceBands.map((band, i) => {
                   const x1 = xOf(band.entryNm), x2 = xOf(band.exitNm)
-                  const yTop = yOf(band.upper_ft), yBot = yOf(band.lower_ft)
+                  // Clamp to the plot's own top edge -- yMax only scales to
+                  // planned altitude/terrain (see yMax above), NOT to
+                  // airspace ceilings, so a band whose upper_ft exceeds yMax
+                  // (e.g. a low-level route crossing under a TMA capped at
+                  // FL065) would otherwise compute a yOf() above MARGIN_T,
+                  // drawing its top edge through the wind-arrow/waypoint-
+                  // name row instead of stopping at the chart's visible top.
+                  // Growing yMax to always fit every crossed band's ceiling
+                  // isn't the fix either -- one FL660 CTA crossing would
+                  // blow the whole y-scale out and squash the low-altitude
+                  // terrain/obstacle detail that matters far more day to day.
+                  const yTop = Math.max(MARGIN_T, yOf(band.upper_ft)), yBot = yOf(band.lower_ft)
                   const d = `M${x1},${yTop} L${x2},${yTop} L${x2},${yBot} L${x1},${yBot} Z`
                   return (
                     <G key={`band-${i}`}>
@@ -951,7 +1007,12 @@ export function VerticalProfile({
                 })}
 
                 {profile.landmarks.map((lmk, i) => {
-                  const baseFt = terrainAt(terrainPts, lmk.distNm)
+                  // Floor at 0 -- see web VirtualRadar.tsx's identical fix
+                  // for the full rationale: unlike obstacles (floored via
+                  // Math.max against their own surveyed elevationFt),
+                  // landmarks rely purely on terrainAt(), which can go
+                  // negative from real DEM noise over/near water.
+                  const baseFt = Math.max(0, terrainAt(terrainPts, lmk.distNm))
                   const icon = LANDMARK_ICONS[lmk.kind] ?? LANDMARK_ICON_FALLBACK
                   const size = 14
                   return (
@@ -1132,7 +1193,7 @@ function makeStyles(theme: ScaledTheme) {
   },
   offTrackBadge: {
     position:          'absolute',
-    top:               2,
+    top:               MARGIN_T + 14,
     left:              MARGIN_L + 2,
     backgroundColor:   'rgba(120,53,15,0.85)',
     borderRadius:      theme.radiusSm,
