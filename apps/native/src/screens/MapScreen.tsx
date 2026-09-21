@@ -19,6 +19,7 @@ import { AviationMap }       from '../components/AviationMap'
 import { MapDisplaySheet, LAYER_DEFAULTS } from '../components/MapDisplaySheet'
 import { RegionalNotamsSheet } from '../components/RegionalNotamsSheet'
 import { WeatherAlongRouteSheet } from '../components/WeatherAlongRouteSheet'
+import { FindDestinationSheet } from '../components/FindDestinationSheet'
 import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
 import { useWindAlongRoute } from '../hooks/useWindAlongRoute'
 import type { LayerState }   from '../components/MapDisplaySheet'
@@ -681,6 +682,15 @@ export function MapScreen() {
   // ── Route planning mode — button-activated, mirrors web's "Plan route"
   // toggle. While active, every map tap adds a waypoint instead of opening
   // feature popups; ambiguous taps show a SnapPicker. ────────────────────
+  // Find-a-Destination row tap "fly to" request -- AviationMap consumes
+  // this via flyToTarget; nonce forces the effect even on a repeat tap of
+  // the same aerodrome (identical lat/lng wouldn't otherwise re-trigger it).
+  const [findDestFlyTarget, setFindDestFlyTarget] = useState<{ lat: number; lng: number; nonce: number } | null>(null)
+  // Fallback centre when no GPS/sim fix yet: home airfield, else Stockholm
+  // -- mirrors web's FindDestPanel wiring in MapView.tsx.
+  const mapCentreForFindDest = homeCoord
+    ? { lat: homeCoord[1], lng: homeCoord[0] }
+    : { lat: 59.33, lng: 18.07 }
   const [planningMode, setPlanningMode] = useState(false)
   const [snapPicker, setSnapPicker] = useState<{ candidates: SnapCandidate[]; onPick: (wp: RouteWaypoint) => void } | null>(null)
 
@@ -859,6 +869,7 @@ export function MapScreen() {
           notamPointsFC={notamPointsFC}
           userWaypointsFC={userWaypointsFC}
           basemapMode={layers.satellite ? 'satellite' : 'vector'}
+          flyToTarget={findDestFlyTarget}
           initialCenter={homeCoord ?? undefined}
           initialZoom={homeCoord ? 11 : undefined}
           autoZoom={settings.autoZoom}
@@ -1066,6 +1077,15 @@ export function MapScreen() {
         />
         <RegionalNotamsSheet notams={regionalNotams} waypoints={waypoints} />
         <WeatherAlongRouteSheet stations={routeWeatherStations} />
+        <View style={{ marginTop: scaledTheme.space2 }}>
+          <FindDestinationSheet
+            center={activePosition ? { lat: activePosition.lat, lng: activePosition.lng, altFt: activePosition.altFt } : mapCentreForFindDest}
+            homeIcao={settings.homeAirfield || null}
+            aircraftProfile={aircraftProfile}
+            onFlyTo={(lat, lng) => setFindDestFlyTarget({ lat, lng, nonce: Date.now() })}
+            onAddToRoute={(wp) => { addWaypoint(wp); setPlanningMode(true) }}
+          />
+        </View>
       </View>
 
       {/* Re-center / orientation — also outside GL surface. Offset above the

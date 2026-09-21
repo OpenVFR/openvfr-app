@@ -19,24 +19,14 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import type { AircraftProfileDocType } from '../db/index'
 import type { RouteWaypoint } from '../utils/routeCalc'
-import { distanceNm, bearingDeg } from '../utils/routeCalc'
 import css from './FindDestPanel.module.css'
 import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface AerodromeEntry {
-  icao:        string
-  name:        string
-  lat:         number
-  lng:         number
-  elevationFt: number
-  maxRunwayM:  number
-  surfaces:    string[]   // unique surface codes: ASPH, GRASS, CONC, SAND
-  fuel:        string[]
-  type:        string
-}
+import {
+  parseAerodromesGeoJson, filterAndSortAerodromes, computeGlideRangeNm,
+  aerodromeToWaypoint, hasAvgas, hasJet, isHard, isGrass, fmtBrg, fmtDist,
+  type AerodromeEntry, type FuelFilter, type SurfaceFilter,
+} from '@open-vfr/shared/findDestination'
 
 interface Centre {
   lat: number
@@ -57,31 +47,6 @@ interface Props {
   onClose:         () => void
 }
 
-type FuelFilter    = 'any' | 'avgas' | 'jet'
-type SurfaceFilter = 'any' | 'hard'  | 'grass'
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function parseMaybeJsonArray<T>(val: unknown): T[] {
-  if (Array.isArray(val))          return val as T[]
-  if (typeof val === 'string') {
-    try { return JSON.parse(val) as T[] } catch { return [] }
-  }
-  return []
-}
-
-function fmtBrg(d: number): string {
-  return Math.round(d).toString().padStart(3, '0') + '°'
-}
-function fmtDist(nm: number): string {
-  return nm < 10 ? `${nm.toFixed(1)} NM` : `${nm.toFixed(0)} NM`
-}
-
-function isHard(surfaces: string[])  { return surfaces.some(s => s === 'ASPH' || s === 'CONC') }
-function isGrass(surfaces: string[]) { return surfaces.some(s => s === 'GRASS' || s === 'SAND') }
-function hasAvgas(fuel: string[])    { return fuel.some(f => f === 'AVGAS' || f.startsWith('100')) }
-function hasJet(fuel: string[])      { return fuel.some(f => f === 'A1' || f.startsWith('JET')) }
-
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export default function FindDestPanel({
@@ -97,35 +62,8 @@ export default function FindDestPanel({
   // ── Load once ──────────────────────────────────────────────────────────────
   useEffect(() => {
     fetch(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'))
-      .then(r => r.json() as Promise<GeoJSON.FeatureCollection>)
-      .then(fc => {
-        const entries: AerodromeEntry[] = []
-        for (const f of fc.features) {
-          const g = f.geometry as GeoJSON.Point
-          const p = f.properties as Record<string, unknown>
-          const runways = parseMaybeJsonArray<Record<string, unknown>>(p.runways)
-          let maxRunwayM = 0
-          const surfSet = new Set<string>()
-          for (const rwy of runways) {
-            const len = Number(rwy.length_m ?? 0)
-            if (len > maxRunwayM) maxRunwayM = len
-            const surf = String(rwy.surface ?? '').toUpperCase()
-            if (surf) surfSet.add(surf)
-          }
-          entries.push({
-            icao:        String(p.icao  ?? ''),
-            name:        String(p.name  ?? ''),
-            lat:         g.coordinates[1],
-            lng:         g.coordinates[0],
-            elevationFt: Number(p.elevation_ft ?? 0),
-            maxRunwayM,
-            surfaces:    [...surfSet],
-            fuel:        parseMaybeJsonArray<string>(p.fuel),
-            type:        String(p.type ?? 'AD'),
-          })
-        }
-        setAerodromes(entries)
-      })
+      .then(r => r.json())
+      .then(fc => setAerodromes(parseAerodromesGeoJson(fc)))
       .catch(console.error)
 
     const t = setTimeout(() => searchRef.current?.focus(), 60)
@@ -133,42 +71,20 @@ export default function FindDestPanel({
   }, [])
 
   // ── Glide range ────────────────────────────────────────────────────────────
-  const glideRangeNm = useMemo(() => {
-    const altFt = center.altFt ?? 0
-    if (!aircraftProfile || aircraftProfile.glideRatio <= 0 || altFt <= 200) return null
-    return (altFt * aircraftProfile.glideRatio) / 6076.12
-  }, [center.altFt, aircraftProfile])
+  const glideRangeNm = useMemo(
+    () => computeGlideRangeNm(center, aircraftProfile),
+    [center.altFt, aircraftProfile],
+  )
 
   // ── Sort + filter ─────────────────────────────────────────────────────────
-  const sorted = useMemo(() => {
-    const q = search.trim().toUpperCase()
-    return aerodromes
-      .filter(a => {
-        if (q && !a.icao.includes(q) && !a.name.toUpperCase().includes(q)) return false
-        if (minRunwayM > 0 && a.maxRunwayM > 0 && a.maxRunwayM < minRunwayM) return false
-        if (fuelFilter === 'avgas' && !hasAvgas(a.fuel)) return false
-        if (fuelFilter === 'jet'   && !hasJet(a.fuel))   return false
-        if (surfFilter === 'hard'  && !isHard(a.surfaces))  return false
-        if (surfFilter === 'grass' && !isGrass(a.surfaces)) return false
-        return true
-      })
-      .map(a => {
-        const dist    = distanceNm(center, a)
-        const bearing = bearingDeg(center, a)
-        const withinGlide =
-          glideRangeNm !== null &&
-          dist <= glideRangeNm &&
-          (center.altFt ?? 0) > a.elevationFt + 200
-        return { ...a, dist, bearing, withinGlide }
-      })
-      .sort((a, b) => {
-        if (a.icao === homeIcao && b.icao !== homeIcao) return -1
-        if (b.icao === homeIcao && a.icao !== homeIcao) return  1
-        if (a.withinGlide && !b.withinGlide) return -1
-        if (!a.withinGlide && b.withinGlide) return  1
-        return a.dist - b.dist
-      })
-  }, [aerodromes, center, homeIcao, minRunwayM, fuelFilter, surfFilter, search, glideRangeNm])
+  const sorted = useMemo(
+    () => filterAndSortAerodromes(
+      aerodromes, center, homeIcao,
+      { search, minRunwayM, fuelFilter, surfFilter },
+      glideRangeNm,
+    ),
+    [aerodromes, center, homeIcao, minRunwayM, fuelFilter, surfFilter, search, glideRangeNm],
+  )
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -270,7 +186,7 @@ export default function FindDestPanel({
               {/* Add to route */}
               <button
                 className={css.addBtn}
-                onClick={() => onAddToRoute({ lat: a.lat, lng: a.lng, name: a.icao })}
+                onClick={() => onAddToRoute(aerodromeToWaypoint(a))}
                 title="Add to route"
               >+</button>
             </div>

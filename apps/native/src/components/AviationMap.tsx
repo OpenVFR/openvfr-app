@@ -259,6 +259,10 @@ export type AviationMapProps = {
    *  loaded is deliberately the EARLIEST safe point, so the map itself still
    *  gets first claim on bandwidth/memory ahead of these secondary fetches. */
   onMapReady?: () => void
+  /** Pan/zoom the camera to a point — e.g. Find-a-Destination panel's row
+   *  tap. `nonce` must change on every request (even repeat taps on the
+   *  same aerodrome) since [lat,lng] alone wouldn't re-trigger the effect. */
+  flyToTarget?: { lat: number; lng: number; nonce: number } | null
 }
 
 /** A route-planning snap candidate — a nearby feature the user might mean
@@ -701,6 +705,7 @@ export function AviationMap({
   rulerPoints,
   onRulerTap,
   onMapReady,
+  flyToTarget,
 }: AviationMapProps) {
   const dragStyles = useThemedStyles(makeDragStyles)
   const cameraRef   = useRef<CameraRef>(null)
@@ -1209,6 +1214,16 @@ export function AviationMap({
       duration: 800,
     })
   }, [initialCenter, initialZoom])
+
+  // Fly to a Find-a-Destination row tap.
+  useEffect(() => {
+    if (!flyToTarget) return
+    cameraRef.current?.flyTo({
+      center: [flyToTarget.lng, flyToTarget.lat],
+      zoom:   13,
+      duration: 1400,
+    })
+  }, [flyToTarget])
 
   // Fit camera to a viewed flight log's track bounds whenever it's selected
   // (or changes) — Logs segment "View" action on PlanScreen.
