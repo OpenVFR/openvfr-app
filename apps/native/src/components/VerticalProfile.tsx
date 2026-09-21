@@ -1209,14 +1209,26 @@ export function VerticalProfile({
                     illegible in a pre-release pass. */}
 
 
-                {xTicks.map((d, i) => (
-                  <Text key={`xl-${i}`} style={[
-                    styles.axisLabelX,
-                    { left: Math.min(contentW - 20, Math.max(0, xOf(d) - 8)), top: MARGIN_T + plotH + 4 },
-                  ]}>
-                    {nmToDisplay(d, units.distance).toFixed(0)}
-                  </Text>
-                ))}
+                {xTicks.map((d, i) => {
+                  // Centres the label under its tick mark by actual text
+                  // width instead of a fixed -8px offset -- that assumed
+                  // every number was ~2 digits wide, so single-digit ticks
+                  // ("0", "6") sat visibly off-centre from the tick line
+                  // above them, more so after the fontSize bump widened
+                  // the fixed-offset error further. Same char-width*
+                  // fontSize*0.62 estimate used elsewhere in this chart
+                  // (e.g. the wind labels), halved for a center offset.
+                  const label = nmToDisplay(d, units.distance).toFixed(0)
+                  const halfW = label.length * 9 * 0.31
+                  return (
+                    <Text key={`xl-${i}`} style={[
+                      styles.axisLabelX,
+                      { left: Math.min(contentW - 20, Math.max(0, xOf(d) - halfW)), top: MARGIN_T + plotH + 4 },
+                    ]}>
+                      {label}
+                    </Text>
+                  )
+                })}
               </View>
               </View>
               </View>
