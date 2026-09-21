@@ -47,6 +47,17 @@ interface Props {
    *  reloads the local list. Optional — sheet still works standalone/offline
    *  without it. */
   onRefreshCloud?: () => Promise<void>
+  /**
+   * Controlled open state — when supplied (with onOpenChange), an external
+   * trigger (e.g. PlanScreen's "⋯" overflow menu) drives visibility instead
+   * of the sheet's own built-in folder-icon button. Falls back to internal
+   * state when omitted, so existing standalone usage is unaffected.
+   */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Hide the built-in folder-icon trigger — set when an external trigger
+   *  (overflow menu row) opens this sheet instead. */
+  hideTrigger?: boolean
 }
 
 function totalNm(wps: RouteWaypoint[]): number {
@@ -62,10 +73,13 @@ export function RouteLibrarySheet({
   waypoints, legOverrides, aircraftId, aircraftProfiles = [],
   activeRouteId, onActiveRouteIdChange,
   syncState, onLoad, onPush, onDelete, onRefreshCloud,
+  open: controlledOpen, onOpenChange, hideTrigger,
 }: Props) {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
-  const [open,     setOpen]     = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open    = controlledOpen ?? internalOpen
+  const setOpen = onOpenChange ?? setInternalOpen
   const [routes,   setRoutes]   = useState<RouteDocType[]>([])
   const [saving,   setSaving]   = useState(false)
   const [saveName, setSaveName] = useState('')
@@ -264,9 +278,11 @@ export function RouteLibrarySheet({
 
   return (
     <>
-      <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)}>
-        <Ionicons name="folder-outline" size={18} color={theme.textSecondary} />
-      </TouchableOpacity>
+      {!hideTrigger && (
+        <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)}>
+          <Ionicons name="folder-outline" size={18} color={theme.textSecondary} />
+        </TouchableOpacity>
+      )}
 
       <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setOpen(false)} />

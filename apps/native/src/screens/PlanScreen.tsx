@@ -15,11 +15,11 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  ScrollView, TextInput, Share, RefreshControl,
+  ScrollView, TextInput, Share, RefreshControl, Modal,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
-import { Ionicons } from '@expo/vector-icons'
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import * as Crypto from 'expo-crypto'
 
 import { useRouteContext } from '../context/RouteContext'
@@ -88,13 +88,18 @@ export function PlanScreen() {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const insets = useSafeAreaInsets()
-  const { waypoints, legOverrides, removeWaypoint, clearRoute, setWaypoints, moveWaypoint, reverseRoute, undoLast, setLegOverride, activeRouteId, setActiveRouteId } = useRouteContext()
+  const { waypoints, legOverrides, removeWaypoint, clearRoute, setWaypoints, moveWaypoint, reverseRoute, undoLast, setLegOverride, activeRouteId, setActiveRouteId, routeVisible, setRouteVisible } = useRouteContext()
   const { settings, update } = useSettingsContext()
   const { state: authState } = useAuthContext()
   const authenticated = authState.status === 'authenticated'
   const { syncState, pull: pullRoutes, pushRoute, deleteRoute } = useRouteSync(authenticated)
   const units = settings.units
   const [segment, setSegment] = useState<Segment>('route')
+  // Overflow menu -- consolidates Open (Route Library) / GPX Import / GPX
+  // Export / Undo, previously four separate always-visible header buttons
+  // crowding the row alongside Active/Inactive, Rev, and Clear.
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
 
   // Aircraft profiles — synced with cloud (user_aircraft_profiles) when authenticated
   const { profiles, pull: pullAircraft, pushAircraft, deleteAircraft } = useAircraftSync(authenticated)
@@ -346,33 +351,90 @@ export function PlanScreen() {
               onPush={pushRoute}
               onDelete={deleteRoute}
               onRefreshCloud={pullRoutes}
+              open={libraryOpen}
+              onOpenChange={setLibraryOpen}
+              hideTrigger
             />
-            {waypoints.length >= 2 && (
-              <TouchableOpacity onPress={reverseRoute} style={styles.headerBtn}>
-                <Text style={styles.headerBtnTxt}>⇄ Rev</Text>
-              </TouchableOpacity>
-            )}
             {waypoints.length > 0 && (
-              <TouchableOpacity onPress={undoLast} style={styles.headerBtn}>
-                <Text style={styles.headerBtnTxt}>↶ Undo</Text>
+              <TouchableOpacity
+                onPress={() => setRouteVisible(v => !v)}
+                style={[styles.headerBtn, !routeVisible && styles.headerBtnInactive]}
+              >
+                <MaterialCommunityIcons
+                  name="map-marker-path"
+                  size={14}
+                  color={routeVisible ? theme.textPrimary : '#ffffff'}
+                />
+                <Text style={[styles.headerBtnTxt, !routeVisible && styles.headerBtnTxtInactive]}>
+                  {routeVisible ? ' Active' : ' Inactive'}
+                </Text>
               </TouchableOpacity>
             )}
-            {waypoints.length >= 2 && (
-              <TouchableOpacity onPress={handleExportGpx} style={styles.headerBtn}>
-                <Text style={styles.headerBtnTxt}>GPX ↓</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity onPress={handleImportRouteGpx} style={styles.headerBtn}>
-              <Text style={styles.headerBtnTxt}>GPX ↑</Text>
+            {/* Overflow menu -- Open (Route Library) / Undo / Export / Import /
+                Reverse / Clear, previously six separate always-visible buttons here. */}
+            <TouchableOpacity onPress={() => setMoreMenuOpen(true)} style={styles.moreBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="ellipsis-horizontal" size={14} color={theme.accentBlue} />
             </TouchableOpacity>
-            {waypoints.length > 0 && (
-              <TouchableOpacity onPress={handleClear}>
-                <Text style={styles.clearBtn}>Clear</Text>
-              </TouchableOpacity>
-            )}
           </View>
         )}
       </View>
+
+      <Modal visible={moreMenuOpen} transparent animationType="fade" onRequestClose={() => setMoreMenuOpen(false)}>
+        <TouchableOpacity style={styles.moreMenuBackdrop} activeOpacity={1} onPress={() => setMoreMenuOpen(false)}>
+          <View style={[styles.moreMenu, { top: insets.top + scaledTheme.scale(52) }]}>
+            <TouchableOpacity
+              style={styles.moreMenuItem}
+              onPress={() => { setMoreMenuOpen(false); setLibraryOpen(true) }}
+            >
+              <Ionicons name="folder-outline" size={16} color={theme.textSecondary} />
+              <Text style={styles.moreMenuItemTxt}>Open Route Library</Text>
+            </TouchableOpacity>
+            {waypoints.length > 0 && (
+              <TouchableOpacity
+                style={styles.moreMenuItem}
+                onPress={() => { setMoreMenuOpen(false); undoLast() }}
+              >
+                <Ionicons name="arrow-undo-outline" size={16} color={theme.textSecondary} />
+                <Text style={styles.moreMenuItemTxt}>Undo</Text>
+              </TouchableOpacity>
+            )}
+            {waypoints.length >= 2 && (
+              <TouchableOpacity
+                style={styles.moreMenuItem}
+                onPress={() => { setMoreMenuOpen(false); handleExportGpx() }}
+              >
+                <Ionicons name="download-outline" size={16} color={theme.textSecondary} />
+                <Text style={styles.moreMenuItemTxt}>Export GPX</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.moreMenuItem}
+              onPress={() => { setMoreMenuOpen(false); handleImportRouteGpx() }}
+            >
+              <Ionicons name="cloud-upload-outline" size={16} color={theme.textSecondary} />
+              <Text style={styles.moreMenuItemTxt}>Import GPX</Text>
+            </TouchableOpacity>
+            {waypoints.length >= 2 && (
+              <TouchableOpacity
+                style={styles.moreMenuItem}
+                onPress={() => { setMoreMenuOpen(false); reverseRoute() }}
+              >
+                <Ionicons name="swap-vertical-outline" size={16} color={theme.textSecondary} />
+                <Text style={styles.moreMenuItemTxt}>Reverse Route</Text>
+              </TouchableOpacity>
+            )}
+            {waypoints.length > 0 && (
+              <TouchableOpacity
+                style={styles.moreMenuItem}
+                onPress={() => { setMoreMenuOpen(false); handleClear() }}
+              >
+                <Ionicons name="trash-outline" size={16} color={theme.accentRed} />
+                <Text style={[styles.moreMenuItemTxt, { color: theme.accentRed }]}>Clear Route</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Segmented sub-nav */}
       <View style={styles.segmentRow}>
@@ -382,7 +444,11 @@ export function PlanScreen() {
             style={[styles.segmentBtn, segment === s.key && styles.segmentBtnActive]}
             onPress={() => setSegment(s.key)}
           >
-            <Ionicons name={s.icon} size={14} color={segment === s.key ? theme.accentBlue : theme.textMuted} />
+            {s.key === 'route' ? (
+              <MaterialCommunityIcons name="map-marker-path" size={18} color={segment === s.key ? theme.accentBlue : theme.textMuted} />
+            ) : (
+              <Ionicons name={s.icon} size={18} color={segment === s.key ? theme.accentBlue : theme.textMuted} />
+            )}
             <Text style={[styles.segmentTxt, segment === s.key && styles.segmentTxtActive]}>{s.label}</Text>
           </TouchableOpacity>
         ))}
@@ -507,10 +573,12 @@ export function PlanScreen() {
                     <Text style={styles.legDist}>
                       {nmToDisplay(leg.distNm, units.distance).toFixed(1)} {distLabel(units.distance)}
                     </Text>
-                    <Text style={[styles.legHdg, hasOverride && styles.legHdgSet]}>{Math.round(leg.magHdg).toString().padStart(3, '0')}°M</Text>
-                    {leg.eteMins != null && (
-                      <Text style={styles.legEte}>{fmtTime(leg.eteMins)}</Text>
-                    )}
+                    <View style={styles.legHdgEteRow}>
+                      <Text style={[styles.legHdg, hasOverride && styles.legHdgSet]}>{Math.round(leg.magHdg).toString().padStart(3, '0')}°M</Text>
+                      {leg.eteMins != null && (
+                        <Text style={styles.legEte}>{fmtTime(leg.eteMins)}</Text>
+                      )}
+                    </View>
                     {leg.altFt != null && (
                       <Text style={styles.legWca}>{Math.round(leg.altFt)} ft</Text>
                     )}
@@ -862,11 +930,32 @@ function makeStyles(theme: ScaledTheme) {
   headerTitle: { color: theme.textPrimary, fontSize: theme.textLg, fontWeight: '600' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: theme.space3 },
   headerBtn: {
-    paddingHorizontal: theme.space2, paddingVertical: 3,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    height: theme.scale(26), paddingHorizontal: theme.space2,
+    borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.accentBlue,
+  },
+  headerBtnInactive: { borderColor: 'rgba(248, 113, 113, 0.85)', backgroundColor: 'rgba(248, 113, 113, 0.85)' },
+  moreBtn: {
+    width: theme.scale(26), height: theme.scale(26),
+    alignItems: 'center', justifyContent: 'center',
     borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.accentBlue,
   },
   headerBtnTxt: { color: theme.accentBlue, fontSize: theme.textXs, fontWeight: '700' },
+  headerBtnTxtInactive: { color: '#ffffff' },
   clearBtn:    { color: theme.accentRed, fontSize: theme.textSm },
+
+  // Overflow ("...") menu -- Open Route Library / Undo / Export / Import
+  moreMenuBackdrop: { flex: 1 },
+  moreMenu: {
+    position: 'absolute', right: theme.space4, minWidth: theme.scale(180),
+    backgroundColor: theme.surfacePanel, borderRadius: theme.radiusMd,
+    borderWidth: 1, borderColor: theme.borderDefault, paddingVertical: theme.space1,
+  },
+  moreMenuItem: {
+    flexDirection: 'row', alignItems: 'center', gap: theme.space2,
+    paddingHorizontal: theme.space3, paddingVertical: theme.space2,
+  },
+  moreMenuItemTxt: { color: theme.textPrimary, fontSize: theme.textSm },
 
   inputsCard: {
     margin: theme.space3, padding: theme.space3,
@@ -874,7 +963,7 @@ function makeStyles(theme: ScaledTheme) {
     borderWidth: 1, borderColor: theme.borderSubtle, gap: theme.space2,
   },
   inputRow:    { flexDirection: 'row', alignItems: 'center', gap: theme.space2 },
-  inputLabel:  { color: theme.textMuted, fontSize: theme.textXs, minWidth: 80 },
+  inputLabel:  { color: theme.textMuted, fontSize: theme.textXs, width: theme.scale(96) },
   inputHint:   { color: theme.textFaint, fontSize: theme.textXs, fontStyle: 'italic' },
   windInputs:  { flexDirection: 'row', alignItems: 'center', gap: 4 },
   inputSep:    { color: theme.textFaint, fontSize: theme.textSm },
@@ -896,11 +985,11 @@ function makeStyles(theme: ScaledTheme) {
     flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: theme.borderSubtle,
   },
   segmentBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    paddingVertical: theme.space2, borderBottomWidth: 2, borderBottomColor: 'transparent',
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: theme.space3, borderBottomWidth: 2, borderBottomColor: 'transparent',
   },
   segmentBtnActive: { borderBottomColor: theme.accentBlue },
-  segmentTxt:       { color: theme.textMuted, fontSize: theme.textXs, fontWeight: '600' },
+  segmentTxt:       { color: theme.textMuted, fontSize: theme.textSm, fontWeight: '600' },
   segmentTxtActive: { color: theme.accentBlue },
 
   aircraftRow: {
@@ -954,6 +1043,7 @@ function makeStyles(theme: ScaledTheme) {
   wpNote:      { color: theme.textMuted, fontSize: theme.textXs, marginTop: 1, fontStyle: 'italic' },
   legCol:      { alignItems: 'flex-end', gap: 1, minWidth: 70 },
   legDist:     { color: theme.textSecondary, fontSize: theme.textSm, fontWeight: '500' },
+  legHdgEteRow: { flexDirection: 'row', alignItems: 'baseline', gap: theme.space1 },
   legHdg:      { color: theme.accentBlue, fontSize: theme.textXs },
   legHdgSet:   { color: theme.accentYellow, fontWeight: '700' },
   legEte:      { color: theme.textMuted, fontSize: theme.textXs },
