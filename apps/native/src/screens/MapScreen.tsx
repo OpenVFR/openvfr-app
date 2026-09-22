@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
-import { View, TouchableOpacity, Text, Alert, TextInput, Modal } from 'react-native'
+import { View, TouchableOpacity, Text, Alert, TextInput, Modal, ScrollView, useWindowDimensions } from 'react-native'
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as KeepAwake from 'expo-keep-awake'
@@ -122,6 +122,7 @@ export function MapScreen() {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const insets                                = useSafeAreaInsets()
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions()
   const { position, status, start, stop }     = useGps()
   const { simStatus, simPosition, startUdp, startWs, stopSim } = useSimContext()
   // Internal touch-controlled flight simulation (useSimFlight) — distinct
@@ -343,6 +344,26 @@ export function MapScreen() {
   const bottomStackH = GAUGES_BAR_H
     + (simFlight.active ? SIM_PANEL_H : 0)
     + ((showRulerProfile || showPlannedProfile || showLookaheadProfile || showPastTrackChart) ? PROFILE_CHROME_H + profileHeight : 0)
+  // Right-side button column/row anchored from the TOP (below the status
+  // bar / notch), stacking down in portrait or leftward in landscape from
+  // that fixed upper-right point -- rather than bottom-anchored and growing
+  // upward, which put the topmost (first) button at a height that shifted
+  // whenever the bottom stack (profile/gauges) changed size.
+  const topRightTopOffset = insets.top + scaledTheme.space2
+  // Portrait: cap how far the column can grow down so it never reaches the
+  // profile/gauges stack at the true screen bottom; scrolls if it would.
+  const topRightBottomOffset = bottomStackH + 8 + 24 + scaledTheme.space2
+  const topRightMaxHeight = Math.max(
+    120,
+    windowHeight - topRightTopOffset - topRightBottomOffset,
+  )
+  // Landscape has width to spare but not height -- lay the same controls
+  // out as a row instead of a tall column that would need to scroll to stay
+  // clear of the profile chart / off the top of the screen. Capped to the
+  // screen width (minus margins) so it never runs off the left edge either.
+  const isLandscape = windowWidth > windowHeight
+  const topRightMaxWidth = Math.max(160, windowWidth - scaledTheme.space2 * 2)
+  const stackGap = isLandscape ? { marginLeft: scaledTheme.space2 } : { marginBottom: scaledTheme.space2 }
 
   const nearbyFreqs   = useNearbyFrequencies(activePosition)
   const homeCoord     = useHomeAirfield(settings.homeAirfield)
@@ -1032,8 +1053,27 @@ export function MapScreen() {
           Regional NOTAMs / Weather Along Route buttons (three stacked icons
           eating vertical space and, on small screens, pushing the column off
           the top of the screen) with one consolidated Freq/Wx/NOTAM sheet. */}
-      <View style={[styles.topRight, { bottom: bottomStackH + 8 + 24 + scaledTheme.space2 }]} pointerEvents="box-none">
-        <View style={{ marginBottom: scaledTheme.space2 }}>
+      <View
+        style={[
+          styles.topRight,
+          isLandscape
+            ? { top: topRightTopOffset, maxWidth: topRightMaxWidth }
+            : { top: topRightTopOffset, maxHeight: topRightMaxHeight },
+        ]}
+        pointerEvents="box-none"
+      >
+      <ScrollView
+        horizontal={isLandscape}
+        style={isLandscape ? { maxWidth: topRightMaxWidth } : { maxHeight: topRightMaxHeight }}
+        contentContainerStyle={{
+          flexDirection: isLandscape ? 'row-reverse' : 'column',
+          alignItems: isLandscape ? 'center' : 'flex-end',
+        }}
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
+        pointerEvents="box-none"
+      >
+        <View style={stackGap}>
           <VicinityBriefSheet
             nearby={nearbyFreqs}
             regionalNotams={regionalNotams}
@@ -1042,7 +1082,7 @@ export function MapScreen() {
             flying={flightModeStatus !== 'off'}
           />
         </View>
-        <View style={{ marginBottom: scaledTheme.space2 }}>
+        <View style={stackGap}>
           <FlightModeSheet
             status={flightModeStatus}
             onStartGps={handleStartGpsFly}
@@ -1051,7 +1091,7 @@ export function MapScreen() {
           />
         </View>
         {flightModeStatus !== 'off' && waypoints.length >= 2 && (
-          <View style={{ marginBottom: scaledTheme.space2 }}>
+          <View style={stackGap}>
             <LivePlogPanel waypoints={waypoints} activeWpIdx={activeWpIdx} plogData={plogData} />
           </View>
         )}
@@ -1061,7 +1101,11 @@ export function MapScreen() {
             attribution/info icon (mirrors web's toolbar). Previously an
             inline 3-across row, which stuck out past the single-button
             column above it and looked misaligned. */}
-        <View style={[styles.planRow, { marginBottom: scaledTheme.space2 }]}>
+        {/* Nested route-tools group (planning/ruler/lock/orientation) --
+            direction must follow the outer stack's orientation too, or it
+            renders as its own little vertical pair even while every other
+            item in the row sits on one horizontal line in landscape. */}
+        <View style={[styles.planRow, { flexDirection: isLandscape ? 'row' : 'column', alignItems: isLandscape ? 'center' : 'flex-end' }, stackGap]}>
           <TouchableOpacity
             style={[styles.iconBtn, planningMode && styles.iconBtnActive]}
             onPress={() => setPlanningMode(m => !m)}
@@ -1097,23 +1141,24 @@ export function MapScreen() {
             </TouchableOpacity>
           )}
         </View>
-        <MapDisplaySheet
-          layers={layers}
-          ceilingFt={settings.airspaceCeilingFt}
-          autoZoom={settings.autoZoom}
-          onLayerChange={handleLayerChange}
-          onCeilingChange={(ft) => update({ airspaceCeilingFt: ft })}
-          onAutoZoomChange={(on) => update({ autoZoom: on })}
-        />
-        <View style={{ marginTop: scaledTheme.space2 }}>
-          <FindDestinationSheet
-            center={activePosition ? { lat: activePosition.lat, lng: activePosition.lng, altFt: activePosition.altFt } : mapCentreForFindDest}
-            homeIcao={settings.homeAirfield || null}
-            aircraftProfile={aircraftProfile}
-            onFlyTo={(lat, lng) => setFindDestFlyTarget({ lat, lng, nonce: Date.now() })}
-            onAddToRoute={(wp) => { addWaypoint(wp); setPlanningMode(true) }}
+        <View style={stackGap}>
+          <MapDisplaySheet
+            layers={layers}
+            ceilingFt={settings.airspaceCeilingFt}
+            autoZoom={settings.autoZoom}
+            onLayerChange={handleLayerChange}
+            onCeilingChange={(ft) => update({ airspaceCeilingFt: ft })}
+            onAutoZoomChange={(on) => update({ autoZoom: on })}
           />
         </View>
+        <FindDestinationSheet
+          center={activePosition ? { lat: activePosition.lat, lng: activePosition.lng, altFt: activePosition.altFt } : mapCentreForFindDest}
+          homeIcao={settings.homeAirfield || null}
+          aircraftProfile={aircraftProfile}
+          onFlyTo={(lat, lng) => setFindDestFlyTarget({ lat, lng, nonce: Date.now() })}
+          onAddToRoute={(wp) => { addWaypoint(wp); setPlanningMode(true) }}
+        />
+      </ScrollView>
       </View>
 
       {/* Re-center / orientation — also outside GL surface. Offset above the
