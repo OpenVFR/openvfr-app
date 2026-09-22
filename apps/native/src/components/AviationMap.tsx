@@ -4,7 +4,7 @@
  */
 
 import React, { useRef, useCallback, useMemo, useEffect, useState } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet, View, Modal, Text, TouchableOpacity, ScrollView, Linking } from 'react-native'
 import {
   Map,
   Camera,
@@ -647,6 +647,39 @@ const LegMidpointAnnotation = React.memo(function LegMidpointAnnotation({
   )
 })
 
+// Mirrors README.md's "Data & attribution" section -- keep in sync with it.
+// Only the sources actually rendered as visible map layers here (weather/
+// NOTAM/traffic API sources are cited in the README but aren't map "credits").
+const ATTRIBUTION_SOURCES: { name: string; note: string; url: string }[] = [
+  { name: 'Protomaps', note: 'Vector basemap tiles, fonts, sprites (BSD-3-Clause)', url: 'https://protomaps.com/' },
+  { name: 'OpenStreetMap', note: 'Basemap + landuse data (\u00a9 OpenStreetMap contributors, ODbL)', url: 'https://www.openstreetmap.org/copyright' },
+  { name: 'OpenFlightMaps', note: 'VFR chart / airspace layers (ODbL)', url: 'https://www.openflightmaps.org/' },
+  { name: 'OpenAIP', note: 'Airspace and obstacle data (CC BY-NC 4.0 \u2014 non-commercial use only)', url: 'https://www.openaip.net/' },
+  { name: 'Copernicus DEM GLO-30', note: '\u00a9 ESA / European Union \u2014 hillshade & contour lines, doi:10.5270/ESA-c5d3d65', url: 'https://doi.org/10.5270/ESA-c5d3d65' },
+  { name: 'ESRI', note: 'Satellite imagery basemap toggle (proprietary, ESRI terms apply)', url: 'https://www.esri.com/en-us/legal/terms/full-master-agreement' },
+]
+
+const attributionStyles = StyleSheet.create({
+  button: {
+    position: 'absolute', bottom: 8, right: 8, zIndex: 20,
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  buttonText: { color: '#3b3b3b', fontSize: 13, fontWeight: '700', fontStyle: 'italic' },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  card: {
+    backgroundColor: '#1e2530', borderTopLeftRadius: 16, borderTopRightRadius: 16,
+    paddingTop: 20, paddingHorizontal: 20, paddingBottom: 32, maxHeight: '70%',
+  },
+  title: { color: '#fff', fontSize: 17, fontWeight: '700', marginBottom: 12 },
+  row: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
+  rowName: { color: '#7dd3fc', fontSize: 14, fontWeight: '600' },
+  rowNote: { color: '#b5bdc9', fontSize: 12, marginTop: 2 },
+  closeBtn: { marginTop: 16, alignSelf: 'center', paddingHorizontal: 24, paddingVertical: 10 },
+  closeBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+})
+
 export function AviationMap({
   gpsPosition,
   simActive = false,
@@ -912,6 +945,18 @@ export function AviationMap({
   //     via camStateRef (below) instead of resetting to DEFAULT_CENTER.
   const [styleLoaded, setStyleLoaded] = useState(false)
   const [mapRetryKey, setMapRetryKey] = useState(0)
+  // Custom attribution dialog — MapLibre Native Android's own attribution
+  // dialog (attribution={true}/showAttribution()) silently collapses
+  // multiple sources' credits into a single link (confirmed live on device:
+  // Protomaps' and Copernicus DEM's attribution strings, both correctly
+  // declared on their sources below/in config.ts's createProtomapsStyle,
+  // never appeared — only one merged OpenStreetMap entry did, with no way
+  // to scroll to the rest). Rather than fight/trust that native dialog,
+  // attribution={false} below disables it entirely and this custom button
+  // + Modal renders the same curated list README.md's "Data & attribution"
+  // section already documents, so it's just kept in sync with that section
+  // rather than depending on the SDK to aggregate per-source strings correctly.
+  const [showAttribution, setShowAttribution] = useState(false)
   const mapRetryCountRef = useRef(0)
   const MAP_MAX_AUTO_RETRIES = 3
   const handleMapLoadFailure = useCallback(() => {
@@ -1589,8 +1634,9 @@ export function AviationMap({
         // grab in the overlay above didn't win the arena in time.
         dragPan={!dragging}
         logo={false}
-        attribution={true}
-        attributionPosition={{ bottom: 8, right: 8 }}
+        // Native attribution dialog disabled -- replaced by the custom
+        // button/Modal below. See showAttribution state doc comment above.
+        attribution={false}
         compass={true}
         compassPosition={{ top: 8, right: 8 }}
       >
@@ -1618,6 +1664,11 @@ export function AviationMap({
           id="osm-landuse"
           url={landusePmtilesUrl}
           maxzoom={12}
+          // Attribution parity with web's getLanduseSource() (map-style.ts) —
+          // MapLibre Native's (i) attribution dialog only lists what each
+          // mounted source declares; without this the dialog was silently
+          // missing the OSM/ODbL credit that's required and shown on web.
+          attribution='© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors (ODbL)'
         >
           <Layer
             id="landuse-fill"
@@ -1673,6 +1724,10 @@ export function AviationMap({
           id="osm-hillshade"
           url={hillshadePmtilesUrl}
           encoding="terrarium"
+          // Attribution parity with web's getHillshadeSource() — Copernicus
+          // DEM license requires citing the dataset DOI. See osm-landuse's
+          // attribution comment above for why this must be set here too.
+          attribution="Copernicus DEM GLO-30 \u2014 \u00a9 ESA / European Union, doi:10.5270/ESA-c5d3d65"
           // Must match the archive's REAL base zoom (10), not a desired
           // one -- mirrors getHillshadeSource()'s maxzoom in web's
           // map-style.ts (see its detailed comment). dem_mosaic.sh's
@@ -1796,6 +1851,9 @@ export function AviationMap({
           url={contoursPmtilesUrl}
           minzoom={6}
           maxzoom={12}
+          // Attribution parity with web's getContoursSource() — same
+          // Copernicus DEM source as osm-hillshade above.
+          attribution="Copernicus DEM GLO-30 \u2014 \u00a9 ESA / European Union, doi:10.5270/ESA-c5d3d65"
         >
           <Layer
             id="contour-line"
@@ -2645,6 +2703,49 @@ export function AviationMap({
           )
         })}
       </Map>
+
+      {/* Custom attribution button + dialog -- replaces MapLibre Native's own
+          (i) button/dialog, which drops all but one source's credit on
+          Android. Same bottom-right position the native one used
+          (bottom:8, right:8, matches attributionPosition it had). */}
+      <TouchableOpacity
+        style={attributionStyles.button}
+        onPress={() => setShowAttribution(true)}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Text style={attributionStyles.buttonText}>i</Text>
+      </TouchableOpacity>
+      <Modal
+        visible={showAttribution}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAttribution(false)}
+      >
+        <TouchableOpacity
+          style={attributionStyles.backdrop}
+          activeOpacity={1}
+          onPress={() => setShowAttribution(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={attributionStyles.card}>
+            <Text style={attributionStyles.title}>Map data & attribution</Text>
+            <ScrollView>
+              {ATTRIBUTION_SOURCES.map((s) => (
+                <TouchableOpacity
+                  key={s.name}
+                  style={attributionStyles.row}
+                  onPress={() => Linking.openURL(s.url)}
+                >
+                  <Text style={attributionStyles.rowName}>{s.name}</Text>
+                  <Text style={attributionStyles.rowNote}>{s.note}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={attributionStyles.closeBtn} onPress={() => setShowAttribution(false)}>
+              <Text style={attributionStyles.closeBtnText}>Close</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Drag indicator overlay */}
       {dragging && (
