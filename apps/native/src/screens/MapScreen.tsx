@@ -1079,7 +1079,7 @@ export function MapScreen() {
             regionalNotams={regionalNotams}
             waypoints={waypoints}
             position={activePosition}
-            flying={flightModeStatus !== 'off'}
+            routeVisible={routeVisible}
           />
         </View>
         <View style={stackGap}>

@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react'
 import {
   fetchWxResolved, type WxResolved, type WxStationCandidate,
 } from '@open-vfr/shared/fetchWx'
+import { fetchAmbientWx, type AmbientWx } from '@open-vfr/shared/fetchWind'
 import { fetchNotams, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import { loadStations, type StationRecord } from '@open-vfr/shared/wxStations'
@@ -25,10 +26,18 @@ import { authHeaders } from '../utils/authClient'
 const WX_FALLBACK_MAX_NM = 100
 
 export interface AerodromeBriefing {
+  /** METAR/TAF, own icao auto-falling back to the nearest reporting
+   *  station -- null while loading. */
   wx:           WxResolved | null
   wxLoading:    boolean
-  /** Human name of the fallback station (wx.sourceIcao), when different from the requested icao. */
+  /** Human name of the fallback station (wx.sourceIcao), when different
+   *  from the requested icao. */
   wxSourceName: string | null
+  /** Open-Meteo ambient reading (wind/temp/cloud/pressure/precip) at this
+   *  aerodrome's own coordinates -- always fetched regardless of METAR
+   *  availability, so the Weather station tab is ready the instant it's
+   *  selected. Null while loading, no coordinates, or on fetch failure. */
+  ambientWx:    AmbientWx | null
   notams:       NotamItem[]
   notamLoading: boolean
 }
@@ -37,14 +46,25 @@ export function useAerodromeBriefing(icao: string | null, lat?: number, lng?: nu
   const [wx, setWx] = useState<WxResolved | null>(null)
   const [wxLoading, setWxLoading] = useState(true)
   const [wxSourceName, setWxSourceName] = useState<string | null>(null)
+  const [ambientWx, setAmbientWx] = useState<AmbientWx | null>(null)
   const [notams, setNotams] = useState<NotamItem[]>([])
   const [notamLoading, setNotamLoading] = useState(true)
 
   useEffect(() => {
     if (!icao) return
     const ac = new AbortController()
-    setWx(null); setWxLoading(true); setWxSourceName(null)
+    setWx(null); setWxLoading(true); setWxSourceName(null); setAmbientWx(null)
     setNotams([]); setNotamLoading(true)
+
+    // Weather station (Open-Meteo) tier -- proxied directly at the nginx
+    // level (see AGENTS.md's Server API Security Baseline note), no auth
+    // needed, fetched independently of the METAR/NOTAM auth-gated calls
+    // below so it's ready the instant it's selected.
+    if (lat != null && lng != null) {
+      fetchAmbientWx(lat, lng, API_BASE, ac.signal)
+        .then((data) => { if (!ac.signal.aborted) setAmbientWx(data) })
+        .catch((err) => { if ((err as Error).name !== 'AbortError') { /* leave ambientWx null -- "no data" state */ } })
+    }
 
     authHeaders().then((headers) => {
       const aerodromesUrl = getTileUrls().aerodromes
@@ -64,8 +84,8 @@ export function useAerodromeBriefing(icao: string | null, lat?: number, lng?: nu
                   setWxSourceName(data.sourceIcao !== icao ? (nameByIcao.get(data.sourceIcao) ?? null) : null)
                 })
             })
-        // No coordinates -- can't do a nearest-station search or model-wind
-        // fallback, just fetch the aerodrome's own report.
+        // No coordinates -- can't do a nearest-station search, just fetch
+        // the aerodrome's own report.
         : fetchWxResolved(icao, 0, 0, [], API_BASE, ac.signal, headers)
             .then((data) => { setWx(data) })
 
@@ -81,5 +101,5 @@ export function useAerodromeBriefing(icao: string | null, lat?: number, lng?: nu
     return () => ac.abort()
   }, [icao, lat, lng])
 
-  return { wx, wxLoading, wxSourceName, notams, notamLoading }
+  return { wx, wxLoading, wxSourceName, ambientWx, notams, notamLoading }
 }

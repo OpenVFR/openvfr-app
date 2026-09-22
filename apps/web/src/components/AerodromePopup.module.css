@@ -570,6 +570,31 @@
   color: var(--accent-blue-bright);
 }
 
+/* Wind-only "suitable" cue -- colours just that specific END's own
+   designator digits (e.g. only "17" within the "17/35" pill), not the
+   whole pill/border, since a runway has two ends and only one of them is
+   ever the one to actually use (see the picker's own doc comment). Wins
+   over .rwyPickerBtnActive's inherited blue text colour on its own
+   specificity (a rule on the element itself beats an inherited value from
+   an ancestor, regardless of source order) so it stays green even when
+   that pill is also the selected/active one. */
+.rwyPickerDesigSuitable {
+  color: var(--accent-green);
+}
+
+/* .rwyPicker/.rwyPickerBtn/.rwyPickerBtnActive are also reused by the
+   Wx-tab METAR/Weather-station toggle -- both pills are always enabled
+   (no disabled state needed, unlike the runway picker's own designator
+   buttons which are always real runways). .wxSourceBtn is an additional
+   modifier on top of .rwyPickerBtn for this toggle only -- "Weather
+   station" is much longer than a 2-3 char runway designator, so it needs
+   a smaller font/tighter padding than the runway picker's own buttons to
+   avoid an oversized pill. */
+.wxSourceBtn {
+  font-size: 9px;
+  padding: 2px 7px;
+}
+
 /* Graphical wind-direction/runway compass + speed dial, side by side */
 .gaugeRow {
   display: flex;

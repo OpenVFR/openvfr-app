@@ -164,16 +164,30 @@ export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
   const runwayStyles = useThemedStyles(makeRunwayStyles)
   // Hooks must be declared before any conditional return (Rules of Hooks)
   const [activeTab, setActiveTab] = useState<'info' | 'wx' | 'notam'>('info')
+  // Which wx tab is displayed -- see AerodromeWxSection.tsx's doc comment.
+  // Reset alongside activeTab on every feature change (this modal is
+  // reused across selections, not remounted).
+  const [wxSource, setWxSource] = useState<'metar' | 'station'>('metar')
 
-  const { wx, wxLoading, wxSourceName, notams, notamLoading } =
+  const { wx, wxLoading, wxSourceName, ambientWx, notams, notamLoading } =
     useAerodromeBriefing(feature?.icao ?? null, feature?.lat, feature?.lng)
 
   useEffect(() => {
     setActiveTab('info')
+    setWxSource('metar')
   }, [feature?.icao])
 
+  // No METAR/TAF anywhere -- default to the Weather station tab instead of
+  // an empty METAR panel, without overriding a manual pick the user already
+  // made for this aerodrome.
+  useEffect(() => {
+    if (wxLoading) return
+    if (!wx?.metar && !wx?.taf) setWxSource('station')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wxLoading, feature?.icao])
+
   const runways = feature?.runways ?? []
-  const { metar, effectiveWind, allRunwayWindEnds } = deriveWxDisplay(wx, runways, feature?.icao)
+  const { metar, effectiveWind, allRunwayWindEnds } = deriveWxDisplay(wx, runways, feature?.icao, null, wxSource, ambientWx)
 
   useEffect(() => {
     if (!onRunwayWind || !feature) return
@@ -379,6 +393,9 @@ export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
               elevationFt={feature.elevation_ft}
               runways={runways}
               wx={wx}
+              ambientWx={ambientWx}
+              wxSource={wxSource}
+              onSourceChange={setWxSource}
               wxLoading={wxLoading}
               wxSourceName={wxSourceName}
             />

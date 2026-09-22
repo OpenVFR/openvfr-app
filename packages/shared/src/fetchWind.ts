@@ -123,3 +123,80 @@ export async function fetchWind(
   cache.set(key, { result, expiresAt: Date.now() + CACHE_TTL_MS })
   return result
 }
+
+// \u2500\u2500 Ambient (non-aviation) weather-station tier \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// Powers the Wx tab's "Weather station" toggle option (AerodromePopup.tsx /
+// AerodromeWxSection.tsx) -- a second, always-available source distinct
+// from METAR, explicitly modelled (Open-Meteo forecast "current" block),
+// not an observed report. Surface-only (no altitude bands, unlike
+// fetchWind above -- this always represents "weather at this spot right
+// now", the ground-level non-aviation reading a pilot would otherwise get
+// from a generic weather app). Deliberately separate from fetchWind's own
+// cache/function: fetchWind's WindAloft is altitude-band-aware and reused
+// by several altitude-dependent callers (VirtualRadar, wind-arrows layer,
+// GoFlyingPanel); this is a simpler, always-surface, wider-variable-set
+// reading with its own purpose and cache key.
+
+export interface AmbientWx {
+  /** Wind FROM direction in degrees true. Null when calm (speed 0). */
+  dirDeg:      number | null
+  speedKts:    number
+  gustKts:     number | null
+  tempC:       number | null
+  cloudPct:    number | null
+  /** Station-level surface pressure, hPa -- NOT a sea-level-reduced QNH
+   *  (Open-Meteo's current block has no QNH-equivalent field). Labelled
+   *  as "surface pressure" wherever rendered, never presented as QNH. */
+  pressureHpa: number | null
+  precipMm:    number | null
+}
+
+const ambientCache = new Map<string, { result: AmbientWx; expiresAt: number }>()
+
+function ambientCacheKey(lat: number, lng: number): string {
+  return `${lat.toFixed(2)}_${lng.toFixed(2)}`
+}
+
+export async function fetchAmbientWx(
+  lat: number,
+  lng: number,
+  baseUrl = '',
+  signal?: AbortSignal,
+): Promise<AmbientWx> {
+  const key    = ambientCacheKey(lat, lng)
+  const cached = ambientCache.get(key)
+  if (cached && Date.now() < cached.expiresAt) return cached.result
+
+  const vars = ['wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m', 'temperature_2m', 'cloud_cover', 'surface_pressure', 'precipitation']
+  const params = new URLSearchParams()
+  params.set('latitude',  lat.toFixed(4))
+  params.set('longitude', lng.toFixed(4))
+  params.set('current', vars.join(','))
+  params.set('wind_speed_unit', 'kn')
+  params.set('forecast_days',   '1')
+  params.set('timeformat',      'unixtime')
+
+  const url = `${baseUrl}/api/open-meteo/forecast?${params.toString()}`
+
+  const res = await fetchWithRetry(url, { signal })
+  if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`)
+
+  const json = await res.json() as { current: Record<string, number> }
+  const speedKts = json.current['wind_speed_10m']
+  const dirDegRaw = json.current['wind_direction_10m']
+  if (speedKts == null || dirDegRaw == null) {
+    throw new Error('Open-Meteo: missing wind fields in response')
+  }
+
+  const result: AmbientWx = {
+    dirDeg:      speedKts === 0 ? null : Math.round(dirDegRaw),
+    speedKts:    Math.round(speedKts),
+    gustKts:     json.current['wind_gusts_10m']  != null ? Math.round(json.current['wind_gusts_10m'])  : null,
+    tempC:       json.current['temperature_2m']  != null ? Math.round(json.current['temperature_2m'])  : null,
+    cloudPct:    json.current['cloud_cover']      != null ? Math.round(json.current['cloud_cover'])      : null,
+    pressureHpa: json.current['surface_pressure'] != null ? Math.round(json.current['surface_pressure']) : null,
+    precipMm:    json.current['precipitation']    != null ? json.current['precipitation']                : null,
+  }
+  ambientCache.set(key, { result, expiresAt: Date.now() + CACHE_TTL_MS })
+  return result
+}

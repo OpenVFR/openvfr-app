@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import css from './AerodromePopup.module.css'
 import { fetchWxResolved, decodeMetar, parseMetarWind, parseMetarClouds, type WxResolved, type WxStationCandidate, type ParsedWind } from '../utils/fetchWx'
+import { fetchAmbientWx, type AmbientWx } from '@open-vfr/shared/fetchWind'
 import { parseTaf, type TafPeriod } from '@open-vfr/shared/parseTaf'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import { computeRunwayWind, effectiveMagBrg, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
@@ -281,15 +282,27 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
   const [oatStr, setOatStr] = useState('')
   const [qnhStr, setQnhStr] = useState('')
 
-  // ── Weather (METAR / TAF) ─────────────────────────────────────────────────
+  // ── Weather: METAR (own icao, auto-falls back to nearest station) vs
+  //    Weather station (Open-Meteo, non-aviation, always available) ─────
+  // Two independent sources fetched in parallel, toggled between rather
+  // than blended -- see AGENTS.md's "Wx tab METAR/weather-station toggle"
+  // gotcha for why they're never merged into one derived object.
   const [wx, setWx] = useState<WxResolved | null>(null)
   const [wxLoading, setWxLoading] = useState(true)
   const [wxError, setWxError] = useState<string | null>(null)
   const [tafExpanded, setTafExpanded] = useState(false)
-  // Name of the fallback station (wx.sourceIcao), resolved from the same
-  // station index used to find fallback candidates -- kept separate from
-  // `wx` so the banner can show a human name, not just the ICAO.
+  // Name of the fallback station (wx.sourceIcao), when different from p.icao.
   const [wxSourceName, setWxSourceName] = useState<string | null>(null)
+  // Open-Meteo ambient reading at this aerodrome's own coordinates --
+  // always fetched regardless of METAR availability/auth, so the Weather
+  // station tab is ready the instant it's selected. Null while loading or
+  // if the Open-Meteo request itself failed (offline/outage).
+  const [ambientWx, setAmbientWx] = useState<AmbientWx | null>(null)
+  // Which tab is displayed. Auto-defaults to 'metar'; auto-switches to
+  // 'station' once the METAR search comes back completely empty (see fetch
+  // effect below). User clicks override and persist until the aerodrome
+  // changes (p.icao effect resets to 'metar').
+  const [wxSource, setWxSource] = useState<'metar' | 'station'>('metar')
 
   // ── NOTAMs ────────────────────────────────────────────────────────────────
   const [notams, setNotams] = useState<NotamItem[]>([])
@@ -318,11 +331,20 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
   useEffect(() => {
     const ac = new AbortController()
     setWx(null); setWxLoading(true); setWxError(null); setWxSourceName(null)
+    setAmbientWx(null); setWxSource('metar')
     setNotams([]); setNotamLoading(true); setNotamError(null)
     setTafExpanded(false); setExpandedNotams(new Set())
 
+    // Weather station (Open-Meteo) tier -- always fetched, independent of
+    // sign-in/METAR search below, so it's ready the instant the user
+    // toggles to it even when a real METAR/TAF also exists.
+    fetchAmbientWx(lat, lng, API_BASE_URL, ac.signal)
+      .then((data) => { if (!ac.signal.aborted) setAmbientWx(data) })
+      .catch((err) => { if ((err as Error).name !== 'AbortError') { /* leave ambientWx null -- "no data" state */ } })
+
     if (!authed) {
-      // Not signed in — server requires auth for these, skip the guaranteed 401.
+      // Not signed in — server requires auth for METAR/NOTAM, skip the
+      // guaranteed 401 (Weather station above doesn't need auth).
       setWxLoading(false); setNotamLoading(false)
       return () => ac.abort()
     }
@@ -344,6 +366,10 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
         .then((data) => {
           setWx(data)
           setWxSourceName(data.sourceIcao !== p.icao ? (nameByIcao.get(data.sourceIcao) ?? null) : null)
+          // No METAR/TAF anywhere -- default to the Weather station tab
+          // instead of an empty METAR panel. A user click before this
+          // resolves can still be overridden here (rare race, low stakes).
+          if (!data.metar && !data.taf) setWxSource('station')
           setWxLoading(false)
         })
         .catch((err) => {
@@ -366,27 +392,27 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
     return () => ac.abort()
   }, [p.icao, authed, lat, lng])
 
+  // Selected tab's decoded METAR -- everything metar-tile-grid/TAF/cloud-
+  // profile-related below derives from this, null when the Weather station
+  // tab is selected (that tab renders from ambientWx instead, further down).
   const metar = wx?.metar ? decodeMetar(wx.metar) : null
   const surfaceWind = metar ? parseMetarWind(metar.wind) : null
-  // Open-Meteo model wind (fetchWxResolved's modelWind), reshaped into the
-  // same ParsedWind the compass/speed gauge/windTone/fmtWind already know
-  // how to render. Populated in two cases (see fetchWxResolved): no real
-  // METAR/TAF anywhere, OR one WAS found but the station is farther than
-  // WIND_LOCAL_MAX_NM -- a station's own wind stops being locally
-  // representative well before its vis/ceiling/QNH do.
-  const modelWind: ParsedWind | null = wx?.modelWind
-    ? { dirDeg: wx.modelWind.dirDeg, speedKt: wx.modelWind.speedKts, gustKt: null, variable: false, calm: wx.modelWind.speedKts === 0 }
+  // Open-Meteo ambient reading (fetchAmbientWx), reshaped into the same
+  // ParsedWind the compass/speed gauge/windTone/fmtWind already know how to
+  // render. Always modelled/forecast, never an observation.
+  const ambientWind: ParsedWind | null = ambientWx
+    ? { dirDeg: ambientWx.dirDeg, speedKt: ambientWx.speedKts, gustKt: ambientWx.gustKts, variable: false, calm: ambientWx.speedKts === 0 }
     : null
   // The wind actually used everywhere a runway/wind-relative computation
   // needs "the wind for this aerodrome" -- compass, speed dial, Wind tile,
   // AND the favoured-runway-end highlight (both here and on the map via
-  // onRunwayWind below). Prefers modelWind whenever fetchWxResolved
-  // populated it (i.e. whenever the real station's own wind isn't close
-  // enough to trust), falling back to the real station's surfaceWind
-  // otherwise -- vis/ceiling/cloud/QNH/temperature below still always come
-  // from the real METAR regardless, only wind itself swaps sources.
-  const effectiveWind = modelWind ?? surfaceWind
-  const windIsModelled = !!modelWind
+  // onRunwayWind below). Whichever tab is selected supplies it: the real
+  // METAR's own wind for 'metar' (however far away that station is -- the
+  // fallback-distance banner tells the pilot to judge staleness themselves,
+  // no silent auto-swap to modelled wind), Open-Meteo's ambient wind for
+  // 'station'.
+  const effectiveWind = wxSource === 'station' ? ambientWind : surfaceWind
+  const windIsModelled = wxSource === 'station'
   const tafPeriods: TafPeriod[] | null = wx?.taf ? parseTaf(wx.taf) : null
   const usingFallbackWx = !!wx && wx.sourceIcao !== p.icao
 
@@ -779,210 +805,322 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
               )}
             </div>
 
-            {/* METAR / TAF */}
+            {/* METAR / Weather station */}
             <div className={css.section}>
               <div className={css.wxHeader}>
                 <div className={css.sectionTitle}>Weather</div>
-                {metar?.flightRule && (
+                {wxSource === 'metar' && metar?.flightRule && (
                   <span className={`${css.frBadge} ${css[`fr${metar.flightRule}`]}`}>
                     {metar.flightRule}
                   </span>
                 )}
-                {metar?.time && (
+                {wxSource === 'metar' && metar?.time && (
                   <span className={css.wxTime}>
                     {metar.time}{fmtObsAge(metar.obsMs) ? ` · ${fmtObsAge(metar.obsMs)}` : ''}
                   </span>
+                )}
+                {wxSource === 'station' && (
+                  <span className={css.wxTime}>Modelled · now</span>
                 )}
               </div>
 
               {wxLoading && <div className={css.wxState}>Loading…</div>}
               {wxError && <div className={css.wxState}>{wxError}</div>}
-              {!wxLoading && !wxError && !wx?.metar && !wx?.taf && !wx?.modelWind && (
-                <div className={css.wxState}>No weather data at {p.icao} or any nearby station</div>
-              )}
 
-              {/* Nearest-station fallback banner -- shown whenever the data
-                  displayed came from a different aerodrome than this one
-                  (p.icao has no METAR/TAF of its own). */}
-              {usingFallbackWx && wx && (
-                <div className={css.wxFallback}>
-                  No local report for <strong>{p.icao}</strong> — showing{' '}
-                  <strong>{wx.sourceIcao}</strong>{wxSourceName ? ` (${wxSourceName})` : ''}
-                  {wx.distNm != null ? `, ${Math.round(wx.distNm)} NM away` : ''}
-                </div>
-              )}
+              {/* METAR / Weather station toggle -- always both offered.
+                  METAR is p.icao's own report, auto-falling back to the
+                  nearest reporting station when p.icao has none (see
+                  fetchWxResolved, unchanged automatic behaviour). Weather
+                  station is Open-Meteo's non-aviation ambient reading at
+                  p.icao's own coordinates, always available regardless of
+                  whether a real METAR exists anywhere. Picking either
+                  drives everything below (metar/ambientWx, effectiveWind,
+                  runway favoured-end, MapView's runway highlight) as one
+                  unit -- see the derivations above this component's JSX. */}
+              <div className={css.rwyPicker}>
+                <button
+                  className={`${css.rwyPickerBtn} ${css.wxSourceBtn} ${wxSource === 'metar' ? css.rwyPickerBtnActive : ''}`}
+                  onClick={() => setWxSource('metar')}
+                >
+                  METAR
+                </button>
+                <button
+                  className={`${css.rwyPickerBtn} ${css.wxSourceBtn} ${wxSource === 'station' ? css.rwyPickerBtnActive : ''}`}
+                  onClick={() => setWxSource('station')}
+                >
+                  Weather station
+                </button>
+              </div>
 
-              {/* No real METAR/TAF anywhere within the search radius --
-                  fall back to Open-Meteo's model wind at this aerodrome's
-                  own coordinates (see fetchWxResolved) instead of showing
-                  nothing. Clearly labelled as modelled, not observed --
-                  never presented as if it were a real station report, and
-                  no vis/ceiling/cloud/QNH/temperature tiles since the model
-                  has no opinion on those (wind only). */}
-              {!wxLoading && !wxError && !wx?.metar && !wx?.taf && wx?.modelWind && (
+              {wxSource === 'metar' && (
                 <>
-                  <div className={css.wxFallback}>
-                    No METAR/TAF at <strong>{p.icao}</strong> or any nearby station — showing
-                    modelled wind (Open-Meteo forecast, not an observation)
-                  </div>
-                  <div className={css.gaugeRow}>
-                    <WindCompassGauge wind={effectiveWind} runway={primaryRunwayHeading} tone={windTone(effectiveWind)} />
-                    <WindSpeedGauge wind={effectiveWind} tone={windTone(effectiveWind)} />
-                  </div>
-                </>
-              )}
+                  {!wxLoading && !wxError && !wx?.metar && !wx?.taf && (
+                    <div className={css.wxState}>No METAR/TAF at {p.icao} or any nearby station — try Weather station above</div>
+                  )}
 
-              {metar && (
-                <>
-                  {/* Runway picker — only shown when there's an actual choice
-                      to make (multi-runway airports, e.g. ESMS 17/35 + 11/29).
-                      Single-runway airports keep the compass always showing
-                      their one runway with no selector clutter.
-                      Deliberately doesn't recommend one RUNWAY over another
-                      — that depends on more than wind alone (surface, length,
-                      lighting, NOTAMs, traffic pattern), a pilot judgement
-                      call this picker shouldn't imply an answer to. Only the
-                      favoured END of whichever runway is currently shown
-                      gets highlighted (on the compass below), scoped to that
-                      one runway's own two ends. */}
-                  {runways.length > 1 && (
-                    <div className={css.rwyPicker}>
-                      {[...runways].sort((a, b) => (b.length_m ?? 0) - (a.length_m ?? 0)).map((rwy) => {
-                        const isSelected = compassRunway?.designator === rwy.designator
-                        return (
-                          <button
-                            key={rwy.designator}
-                            className={`${css.rwyPickerBtn} ${isSelected ? css.rwyPickerBtnActive : ''}`}
-                            onClick={() => setSelectedRunwayDesig(rwy.designator)}
-                          >
-                            {rwy.designator}
-                          </button>
-                        )
-                      })}
+                  {/* Fallback banner -- shown whenever the METAR/TAF shown
+                      came from a different aerodrome than this one (p.icao
+                      has no report of its own). Deliberately no silent
+                      wind-only swap to modelled data at any distance
+                      anymore -- that's what the Weather station tab is for;
+                      this banner just tells the pilot how far away the
+                      shown report actually is so they can judge relevance
+                      themselves. */}
+                  {usingFallbackWx && wx && (
+                    <div className={css.wxFallback}>
+                      Showing <strong>{wx.sourceIcao}</strong>{wxSourceName ? ` (${wxSourceName})` : ''}
+                      {wx.distNm != null ? `, ${Math.round(wx.distNm)} NM away` : ''} — not {p.icao}'s own report
                     </div>
                   )}
 
-                  {/* Graphical wind-direction/runway compass + speed dial.
-                      Uses effectiveWind, not the raw METAR wind directly --
-                      when the shown METAR came from a station farther than
-                      WIND_LOCAL_MAX_NM, effectiveWind is the model estimate
-                      instead (see fetchWxResolved) since that station's own
-                      wind isn't trusted as locally representative at that
-                      distance, even though its vis/ceiling/QNH/temp below
-                      still are. */}
-                  <div className={css.gaugeRow}>
-                    <WindCompassGauge
-                      wind={effectiveWind}
-                      runway={primaryRunwayHeading}
-                      tone={windTone(effectiveWind)}
-                      favoredEndDesignator={compassFavoredEnd?.designator ?? null}
-                    />
-                    <WindSpeedGauge wind={effectiveWind} tone={windTone(effectiveWind)} />
-                  </div>
-                  {windIsModelled && (
-                    <div className={css.wxModelledNote}>
-                      Wind is modelled (Open-Meteo), not from {wx?.sourceIcao}'s own observation —
-                      that station is too far away for its wind to be locally representative here.
-                    </div>
-                  )}
-
-                  {/* Colour-coded metric tiles — mirrors a public METAR/TAF
-                      site's at-a-glance tile grid, but each tile's colour is
-                      driven by its own metric threshold (not one shared
-                      flight-rule colour for the whole card). */}
-                  <div className={css.wxTileGrid}>
-                    <div className={`${css.wxTile} ${css[`wxTile${windTone(effectiveWind)}`]}`}>
-                      <span className={css.wxTileLabel}>Wind{windIsModelled ? ' (modelled)' : ''}</span>
-                      <span className={css.wxTileValue}>
-                        {effectiveWind && !effectiveWind.calm && effectiveWind.dirDeg != null && (
-                          <svg className={css.windArrow} viewBox="0 0 24 24" style={{ transform: `rotate(${effectiveWind.dirDeg + 180}deg)` }}>
-                            <path d="M12 2 L18 14 L12 10.5 L6 14 Z" />
-                          </svg>
-                        )}
-                        {fmtWind(effectiveWind)}
-                      </span>
-                    </div>
-                    <div className={`${css.wxTile} ${css[`wxTile${visTone(metar.visM)}`]}`}>
-                      <span className={css.wxTileLabel}>Visibility</span>
-                      <span className={css.wxTileValue}>{fmtVis(metar.visM)}</span>
-                    </div>
-                    <div
-                      className={`${css.wxTile} ${css[`wxTile${ceilingTone(metar.ceilingFt)}`]}`}
-                      title={metar.ceilingFt == null && metar.clouds && metar.clouds !== 'CAVOK' ? 'No BKN/OVC layer reported — FEW/SCT clouds don’t count as a ceiling' : undefined}
-                    >
-                      <span className={css.wxTileLabel}>Ceiling</span>
-                      <span className={css.wxTileValue}>{metar.ceilingFt != null ? `${metar.ceilingFt.toLocaleString()} ft` : metar.clouds === 'CAVOK' ? 'CAVOK' : 'No ceiling'}</span>
-                    </div>
-                    <div className={`${css.wxTile} ${css.wxTileinfo}`}>
-                      <span className={css.wxTileLabel}>QNH</span>
-                      <span className={css.wxTileValue}>{metar.qnh ? metar.qnh.slice(1) : '—'}</span>
-                    </div>
-                    {metar.temp && (
-                      <div className={`${css.wxTile} ${css.wxTileinfo}`}>
-                        <span className={css.wxTileLabel}>T / Td</span>
-                        <span className={css.wxTileValue}>{metar.temp.replace('/', ' / ')}°C</span>
-                      </div>
-                    )}
-                    {metar.wx && (
-                      <div className={`${css.wxTile} ${css.wxTilewarn}`}>
-                        <span className={css.wxTileLabel}>Wx</span>
-                        <span className={css.wxTileValue}>{metar.wx}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Cloud layers plotted on an altitude scale, lowest first */}
-                  {metar.clouds && metar.clouds !== 'CAVOK' && (
-                    <CloudProfile clouds={parseMetarClouds(metar.clouds)} />
-                  )}
-
-                  {/* Plain-English narrative — same purpose as a public
-                      METAR/TAF site's translated-to-prose summary. */}
-                  <p className={css.wxNarrative}>
-                    {metarNarrative(metar).join(' ')}
-                  </p>
-                </>
-              )}
-
-              {wx?.metar && (
-                <div className={css.metarRaw} title="Raw METAR">{wx.metar}</div>
-              )}
-
-              {wx?.taf && (
-                <div className={css.tafBlock}>
-                  <button
-                    className={css.tafToggle}
-                    onClick={() => setTafExpanded((v) => !v)}
-                    aria-expanded={String(tafExpanded) as 'true' | 'false'}
-                  >
-                    TAF {tafExpanded ? '▴' : '▾'}
-                  </button>
-                  {tafExpanded && (
+                  {metar && (
                     <>
-                      {tafPeriods && tafPeriods.length > 0 && (
-                        <TafTimeline periods={tafPeriods} lat={lat} lng={lng} />
-                      )}
-                      {tafPeriods && tafPeriods.length > 0 && (
-                        <div className={css.tafPeriods}>
-                          <div className={css.tafPeriodsLabel}>Change groups</div>
-                          {tafPeriods.map((period, i) => (
-                            <div key={i} className={css.tafPeriod}>
-                              <div className={css.tafPeriodHead}>
-                                <span className={css.tafPeriodKind}>{TAF_PERIOD_LABEL[period.kind] ?? period.kind}</span>
-                                <span className={css.tafPeriodTime}>{fmtTafTime(period.fromMs)} – {fmtTafTime(period.toMs)}</span>
-                              </div>
-                              <div className={css.tafPeriodBody}>
-                                {period.wind && <span>{fmtWind(period.wind)}</span>}
-                                <span>{fmtTafClouds(period.clouds)}</span>
-                              </div>
-                            </div>
-                          ))}
+                      {/* Runway picker — only shown when there's an actual choice
+                          to make (multi-runway airports, e.g. ESMS 17/35 + 11/29).
+                          Single-runway airports keep the compass always showing
+                          their one runway with no selector clutter.
+                          Still doesn't recommend one RUNWAY over another outright
+                          — that depends on more than wind alone (surface, length,
+                          lighting, NOTAMs, traffic pattern), a pilot judgement
+                          call this picker shouldn't make for them. It DOES give a
+                          wind-only "suitable" cue though: just the specific END
+                          digits (e.g. only "17" in "17/35", not the whole pill)
+                          turn green when THAT end has a positive headwind and a
+                          calm crosswind -- a runway has two ends and only one of
+                          them is ever the one to actually use, so colouring the
+                          whole pill would be misleading (implies both ends, or
+                          the runway as a whole, are equally suitable). The
+                          favoured END of whichever runway is currently shown is
+                          separately highlighted on the compass below too. */}
+                      {runways.length > 1 && (
+                        <div className={css.rwyPicker}>
+                          {[...runways].sort((a, b) => (b.length_m ?? 0) - (a.length_m ?? 0)).map((rwy) => {
+                            const isSelected = compassRunway?.designator === rwy.designator
+                            const windEnds = computeRunwayWind(rwy.thresholds, effectiveWind)
+                            return (
+                              <button
+                                key={rwy.designator}
+                                className={`${css.rwyPickerBtn} ${isSelected ? css.rwyPickerBtnActive : ''}`}
+                                onClick={() => setSelectedRunwayDesig(rwy.designator)}
+                              >
+                                {rwy.thresholds.map((t, i) => {
+                                  const end = windEnds.find((e) => e.designator === t.designator)
+                                  const isSuitable = !!end?.favored && end.headwindKt != null && end.headwindKt >= 0 && end.crosswindSeverity === 'calm'
+                                  return (
+                                    <span key={t.designator}>
+                                      {i > 0 && '/'}
+                                      <span className={isSuitable ? css.rwyPickerDesigSuitable : undefined}>{t.designator}</span>
+                                    </span>
+                                  )
+                                })}
+                              </button>
+                            )
+                          })}
                         </div>
                       )}
-                      <pre className={css.tafRaw}>{wx.taf}</pre>
+
+                      {/* Graphical wind-direction/runway compass + speed dial,
+                          driven by this METAR's own wind (see effectiveWind). */}
+                      <div className={css.gaugeRow}>
+                        <WindCompassGauge
+                          wind={effectiveWind}
+                          runway={primaryRunwayHeading}
+                          tone={windTone(effectiveWind)}
+                          favoredEndDesignator={compassFavoredEnd?.designator ?? null}
+                        />
+                        <WindSpeedGauge wind={effectiveWind} tone={windTone(effectiveWind)} />
+                      </div>
+
+                      {/* Colour-coded metric tiles — mirrors a public METAR/TAF
+                          site's at-a-glance tile grid, but each tile's colour is
+                          driven by its own metric threshold (not one shared
+                          flight-rule colour for the whole card). */}
+                      <div className={css.wxTileGrid}>
+                        <div className={`${css.wxTile} ${css[`wxTile${windTone(effectiveWind)}`]}`}>
+                          <span className={css.wxTileLabel}>Wind{windIsModelled ? ' (modelled)' : ''}</span>
+                          <span className={css.wxTileValue}>
+                            {effectiveWind && !effectiveWind.calm && effectiveWind.dirDeg != null && (
+                              <svg className={css.windArrow} viewBox="0 0 24 24" style={{ transform: `rotate(${effectiveWind.dirDeg + 180}deg)` }}>
+                                <path d="M12 2 L18 14 L12 10.5 L6 14 Z" />
+                              </svg>
+                            )}
+                            {fmtWind(effectiveWind)}
+                          </span>
+                        </div>
+                        <div className={`${css.wxTile} ${css[`wxTile${visTone(metar.visM)}`]}`}>
+                          <span className={css.wxTileLabel}>Visibility</span>
+                          <span className={css.wxTileValue}>{fmtVis(metar.visM)}</span>
+                        </div>
+                        <div
+                          className={`${css.wxTile} ${css[`wxTile${ceilingTone(metar.ceilingFt)}`]}`}
+                          title={metar.ceilingFt == null && metar.clouds && metar.clouds !== 'CAVOK' ? 'No BKN/OVC layer reported — FEW/SCT clouds don’t count as a ceiling' : undefined}
+                        >
+                          <span className={css.wxTileLabel}>Ceiling</span>
+                          <span className={css.wxTileValue}>{metar.ceilingFt != null ? `${metar.ceilingFt.toLocaleString()} ft` : metar.clouds === 'CAVOK' ? 'CAVOK' : 'No ceiling'}</span>
+                        </div>
+                        <div className={`${css.wxTile} ${css.wxTileinfo}`}>
+                          <span className={css.wxTileLabel}>QNH</span>
+                          <span className={css.wxTileValue}>{metar.qnh ? metar.qnh.slice(1) : '—'}</span>
+                        </div>
+                        {metar.temp && (
+                          <div className={`${css.wxTile} ${css.wxTileinfo}`}>
+                            <span className={css.wxTileLabel}>T / Td</span>
+                            <span className={css.wxTileValue}>{metar.temp.replace('/', ' / ')}°C</span>
+                          </div>
+                        )}
+                        {metar.wx && (
+                          <div className={`${css.wxTile} ${css.wxTilewarn}`}>
+                            <span className={css.wxTileLabel}>Wx</span>
+                            <span className={css.wxTileValue}>{metar.wx}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Cloud layers plotted on an altitude scale, lowest first */}
+                      {metar.clouds && metar.clouds !== 'CAVOK' && (
+                        <CloudProfile clouds={parseMetarClouds(metar.clouds)} />
+                      )}
+
+                      {/* Plain-English narrative — same purpose as a public
+                          METAR/TAF site's translated-to-prose summary. */}
+                      <p className={css.wxNarrative}>
+                        {metarNarrative(metar).join(' ')}
+                      </p>
                     </>
                   )}
-                </div>
+
+                  {wx?.metar && (
+                    <div className={css.metarRaw} title="Raw METAR">{wx.metar}</div>
+                  )}
+
+                  {wx?.taf && (
+                    <div className={css.tafBlock}>
+                      <button
+                        className={css.tafToggle}
+                        onClick={() => setTafExpanded((v) => !v)}
+                        aria-expanded={String(tafExpanded) as 'true' | 'false'}
+                      >
+                        TAF {tafExpanded ? '▴' : '▾'}
+                      </button>
+                      {tafExpanded && (
+                        <>
+                          {tafPeriods && tafPeriods.length > 0 && (
+                            <TafTimeline periods={tafPeriods} lat={lat} lng={lng} />
+                          )}
+                          {tafPeriods && tafPeriods.length > 0 && (
+                            <div className={css.tafPeriods}>
+                              <div className={css.tafPeriodsLabel}>Change groups</div>
+                              {tafPeriods.map((period, i) => (
+                                <div key={i} className={css.tafPeriod}>
+                                  <div className={css.tafPeriodHead}>
+                                    <span className={css.tafPeriodKind}>{TAF_PERIOD_LABEL[period.kind] ?? period.kind}</span>
+                                    <span className={css.tafPeriodTime}>{fmtTafTime(period.fromMs)} – {fmtTafTime(period.toMs)}</span>
+                                  </div>
+                                  <div className={css.tafPeriodBody}>
+                                    {period.wind && <span>{fmtWind(period.wind)}</span>}
+                                    <span>{fmtTafClouds(period.clouds)}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <pre className={css.tafRaw}>{wx.taf}</pre>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {wxSource === 'station' && (
+                <>
+                  {!ambientWx && (
+                    <div className={css.wxState}>Weather station data unavailable (offline, or Open-Meteo outage)</div>
+                  )}
+
+                  {ambientWx && (
+                    <>
+                      <div className={css.wxFallback}>
+                        Modelled (Open-Meteo forecast) at {p.icao}'s own coordinates — not an observed report.
+                      </div>
+
+                      {runways.length > 1 && (
+                        <div className={css.rwyPicker}>
+                          {[...runways].sort((a, b) => (b.length_m ?? 0) - (a.length_m ?? 0)).map((rwy) => {
+                            const isSelected = compassRunway?.designator === rwy.designator
+                            const windEnds = computeRunwayWind(rwy.thresholds, effectiveWind)
+                            return (
+                              <button
+                                key={rwy.designator}
+                                className={`${css.rwyPickerBtn} ${isSelected ? css.rwyPickerBtnActive : ''}`}
+                                onClick={() => setSelectedRunwayDesig(rwy.designator)}
+                              >
+                                {rwy.thresholds.map((t, i) => {
+                                  const end = windEnds.find((e) => e.designator === t.designator)
+                                  const isSuitable = !!end?.favored && end.headwindKt != null && end.headwindKt >= 0 && end.crosswindSeverity === 'calm'
+                                  return (
+                                    <span key={t.designator}>
+                                      {i > 0 && '/'}
+                                      <span className={isSuitable ? css.rwyPickerDesigSuitable : undefined}>{t.designator}</span>
+                                    </span>
+                                  )
+                                })}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      <div className={css.gaugeRow}>
+                        <WindCompassGauge
+                          wind={effectiveWind}
+                          runway={primaryRunwayHeading}
+                          tone={windTone(effectiveWind)}
+                          favoredEndDesignator={compassFavoredEnd?.designator ?? null}
+                        />
+                        <WindSpeedGauge wind={effectiveWind} tone={windTone(effectiveWind)} />
+                      </div>
+
+                      <div className={css.wxTileGrid}>
+                        <div className={`${css.wxTile} ${css[`wxTile${windTone(effectiveWind)}`]}`}>
+                          <span className={css.wxTileLabel}>Wind{windIsModelled ? ' (modelled)' : ''}</span>
+                          <span className={css.wxTileValue}>
+                            {effectiveWind && !effectiveWind.calm && effectiveWind.dirDeg != null && (
+                              <svg className={css.windArrow} viewBox="0 0 24 24" style={{ transform: `rotate(${effectiveWind.dirDeg + 180}deg)` }}>
+                                <path d="M12 2 L18 14 L12 10.5 L6 14 Z" />
+                              </svg>
+                            )}
+                            {fmtWind(effectiveWind)}
+                          </span>
+                        </div>
+                        {ambientWx.tempC != null && (
+                          <div className={`${css.wxTile} ${css.wxTileinfo}`}>
+                            <span className={css.wxTileLabel}>Temp</span>
+                            <span className={css.wxTileValue}>{ambientWx.tempC}°C</span>
+                          </div>
+                        )}
+                        {ambientWx.cloudPct != null && (
+                          <div className={`${css.wxTile} ${css.wxTileinfo}`}>
+                            <span className={css.wxTileLabel}>Cloud cover</span>
+                            <span className={css.wxTileValue}>{ambientWx.cloudPct}%</span>
+                          </div>
+                        )}
+                        {ambientWx.pressureHpa != null && (
+                          <div className={`${css.wxTile} ${css.wxTileinfo}`} title="Station-level surface pressure -- not a sea-level-reduced QNH">
+                            <span className={css.wxTileLabel}>Surface pressure</span>
+                            <span className={css.wxTileValue}>{ambientWx.pressureHpa} hPa</span>
+                          </div>
+                        )}
+                        {ambientWx.precipMm != null && ambientWx.precipMm > 0 && (
+                          <div className={`${css.wxTile} ${css.wxTilewarn}`}>
+                            <span className={css.wxTileLabel}>Precip</span>
+                            <span className={css.wxTileValue}>{ambientWx.precipMm} mm</span>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </>
               )}
             </div>
           </>

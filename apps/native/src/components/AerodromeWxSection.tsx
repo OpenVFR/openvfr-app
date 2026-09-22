@@ -6,11 +6,18 @@
  * display without a full aerodrome tap — e.g. VicinityBriefSheet.tsx's
  * Wx tab, driven by its own aerodrome picker instead of a map selection.
  *
+ * Two independent, toggled (never blended) wx sources: METAR (`wx`, own
+ * icao auto-falling back to the nearest reporting station -- see
+ * useAerodromeBriefing.ts / fetchWxResolved) vs Weather station (`ambientWx`,
+ * Open-Meteo's non-aviation ambient reading, always available regardless
+ * of whether a real METAR exists). See AGENTS.md's "Wx tab METAR/weather-
+ * station toggle" gotcha.
+ *
  * Fully self-contained: owns its own OAT/QNH inputs, runway-picker
  * selection, and TAF-expanded toggle. Callers just supply the aerodrome's
  * static feature data (name/elevation/runways) plus the already-fetched
- * wx/loading/source-name state (see useAerodromeBriefing.ts) -- this
- * component does not fetch anything itself, so callers can share one
+ * wx/ambientWx/loading/source-name state (see useAerodromeBriefing.ts) --
+ * this component does not fetch anything itself, so callers can share one
  * fetch across Wx + NOTAM tabs the same way AerodromePopup does.
  */
 
@@ -18,9 +25,11 @@ import React, { useState } from 'react'
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import type { WxResolved } from '@open-vfr/shared/fetchWx'
+import type { AmbientWx } from '@open-vfr/shared/fetchWind'
 import { visTone, ceilingTone, windTone, fmtVis, fmtWind, fmtObsAge, metarNarrative } from '@open-vfr/shared/wxFormat'
 import { parseMetarClouds } from '@open-vfr/shared/fetchWx'
 import { deriveWxDisplay } from '../utils/deriveWxDisplay'
+import { computeRunwayWind } from '@open-vfr/shared/runwayWind'
 import { Section, TONE_COLOR, FR_COLOR } from './AerodromeBriefShared'
 import { WindCompassGauge, WindSpeedGauge } from './WindGauges'
 import CloudProfile from './CloudProfile'
@@ -52,12 +61,23 @@ interface Props {
   lng?:         number
   elevationFt?: number
   runways:      RunwayLite[]
+  /** METAR/TAF -- own icao, auto-falling back to the nearest reporting
+   *  station. Possibly empty (no metar/taf anywhere). */
   wx:           WxResolved | null
+  /** Open-Meteo ambient reading at this aerodrome's own coordinates --
+   *  always available regardless of METAR. Null while loading or on
+   *  fetch failure. */
+  ambientWx:    AmbientWx | null
+  /** Which tab is displayed. Caller owns this (reset when the aerodrome
+   *  changes) so it can also drive its own tab-dot flight-rule colour /
+   *  map runway highlight off the same selection. */
+  wxSource:     'metar' | 'station'
+  onSourceChange: (source: 'metar' | 'station') => void
   wxLoading:    boolean
   wxSourceName: string | null
 }
 
-export default function AerodromeWxSection({ icao, lat, lng, elevationFt, runways, wx, wxLoading, wxSourceName }: Props) {
+export default function AerodromeWxSection({ icao, lat, lng, elevationFt, runways, wx, ambientWx, wxSource, onSourceChange, wxLoading, wxSourceName }: Props) {
   const styles = useThemedStyles(makeStyles)
   const daStyles = useThemedStyles(makeDaStyles)
   const wxStyles = useThemedStyles(makeWxStyles)
@@ -70,7 +90,7 @@ export default function AerodromeWxSection({ icao, lat, lng, elevationFt, runway
   const {
     metar, effectiveWind, windIsModelled, tafPeriods, usingFallbackWx,
     compassRunway, compassFavoredEnd, primaryRunwayHeading,
-  } = deriveWxDisplay(wx, runways, icao, selectedRunwayDesig)
+  } = deriveWxDisplay(wx, runways, icao, selectedRunwayDesig, wxSource, ambientWx)
 
   // ── Density altitude ──────────────────────────────────────────────────
   const elevFt = elevationFt ?? 0
@@ -88,130 +108,209 @@ export default function AerodromeWxSection({ icao, lat, lng, elevationFt, runway
     return theme.accentGreen
   }
 
+  // Wind-only "suitable" cue -- colours just that specific END's own
+  // designator digits (e.g. only "17" within the "17/35" pill), not the
+  // whole pill/border, since a runway has two ends and only one of them is
+  // ever the one to actually use. NOT a full recommendation (surface,
+  // length, lighting, NOTAMs, traffic pattern still matter, a pilot
+  // judgement call this picker shouldn't make for them). Scoped to
+  // whichever wx source tab is active via effectiveWind (metar's own wind
+  // vs ambientWx). The nested <Text>'s own style always applies on top of
+  // the outer <Text>'s inherited colour (RN Text nesting, not a merged
+  // style array), so a suitable end stays green even when the whole pill
+  // is also selected/active (white).
+  const runwayPicker = runways.length > 1 && (
+    <View style={wxStyles.rwyPicker}>
+      {[...runways].sort((a, b) => (b.length_m ?? 0) - (a.length_m ?? 0)).map((rwy) => {
+        const isSelected = compassRunway?.designator === rwy.designator
+        const windEnds = computeRunwayWind(rwy.thresholds ?? [], effectiveWind)
+        return (
+          <TouchableOpacity
+            key={rwy.designator}
+            style={[wxStyles.rwyPickerBtn, isSelected ? wxStyles.rwyPickerBtnActive : null]}
+            onPress={() => setSelectedRunwayDesig(rwy.designator)}
+          >
+            <Text style={[wxStyles.rwyPickerTxt, isSelected ? wxStyles.rwyPickerTxtActive : null]}>
+              {(rwy.thresholds ?? []).map((t, i) => {
+                const end = windEnds.find((e) => e.designator === t.designator)
+                const isSuitable = !!end?.favored && end.headwindKt != null && end.headwindKt >= 0 && end.crosswindSeverity === 'calm'
+                // Slash is its own untinted Text sibling, never inside the
+                // conditionally-green one -- a single Text node here would
+                // colour the "/" green too whenever the SECOND end (i > 0)
+                // happens to be the suitable one.
+                return (
+                  <Text key={t.designator}>
+                    {i > 0 && <Text>/</Text>}
+                    <Text style={isSuitable ? wxStyles.rwyPickerTxtSuitable : undefined}>{t.designator}</Text>
+                  </Text>
+                )
+              })}
+            </Text>
+          </TouchableOpacity>
+        )
+      })}
+    </View>
+  )
+
   return (
     <>
       {/* Weather */}
       <Section title="Weather">
         {wxLoading && <ActivityIndicator size="small" color={theme.accentBlue} />}
-        {!wxLoading && !wx?.metar && !wx?.taf && !wx?.modelWind && (
-          <Text style={styles.muted}>No weather data at {icao} or any nearby station</Text>
-        )}
 
-        {usingFallbackWx && wx && (
-          <Text style={wxStyles.fallback}>
-            No local report for {icao} — showing {wx.sourceIcao}{wxSourceName ? ` (${wxSourceName})` : ''}
-            {wx.distNm != null ? `, ${Math.round(wx.distNm)} NM away` : ''}
-          </Text>
-        )}
+        {/* METAR / Weather station toggle -- always both offered. METAR is
+            icao's own report, auto-falling back to the nearest reporting
+            station when icao has none. Weather station is Open-Meteo's
+            non-aviation ambient reading, always available regardless of
+            whether a real METAR exists anywhere. */}
+        <View style={wxStyles.rwyPicker}>
+          <TouchableOpacity
+            style={[wxStyles.rwyPickerBtn, wxStyles.wxSourceBtn, wxSource === 'metar' ? wxStyles.rwyPickerBtnActive : null]}
+            onPress={() => onSourceChange('metar')}
+          >
+            <Text style={[wxStyles.wxSourceTxt, wxSource === 'metar' ? wxStyles.rwyPickerTxtActive : null]}>METAR</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[wxStyles.rwyPickerBtn, wxStyles.wxSourceBtn, wxSource === 'station' ? wxStyles.rwyPickerBtnActive : null]}
+            onPress={() => onSourceChange('station')}
+          >
+            <Text style={[wxStyles.wxSourceTxt, wxSource === 'station' ? wxStyles.rwyPickerTxtActive : null]}>Weather station</Text>
+          </TouchableOpacity>
+        </View>
 
-        {!wxLoading && !wx?.metar && !wx?.taf && wx?.modelWind && (
+        {wxSource === 'metar' && (
           <>
-            <Text style={wxStyles.fallback}>
-              No METAR/TAF at {icao} or any nearby station — showing modelled wind (Open-Meteo forecast, not an observation)
-            </Text>
-            <View style={wxStyles.gaugeRow}>
-              <WindCompassGauge wind={effectiveWind} runway={primaryRunwayHeading} tone={windTone(effectiveWind)} />
-              <WindSpeedGauge wind={effectiveWind} tone={windTone(effectiveWind)} />
-            </View>
-          </>
-        )}
-
-        {metar && (
-          <>
-            {metar.flightRule && (
-              <View style={[styles.frBadge, { borderColor: FR_COLOR[metar.flightRule] }]}>
-                <Text style={[styles.frTxt, { color: FR_COLOR[metar.flightRule] }]}>
-                  {metar.flightRule}
-                  {(metar.time || fmtObsAge(metar.obsMs)) && (
-                    <Text style={styles.frUpdated}>
-                      {metar.time ? `  ${metar.time}` : ''}{fmtObsAge(metar.obsMs) ? `  ·  ${fmtObsAge(metar.obsMs)}` : ''}
-                    </Text>
-                  )}
-                </Text>
-              </View>
+            {!wxLoading && !wx?.metar && !wx?.taf && (
+              <Text style={styles.muted}>No METAR/TAF at {icao} or any nearby station — try Weather station above</Text>
             )}
 
-            {runways.length > 1 && (
-              <View style={wxStyles.rwyPicker}>
-                {[...runways].sort((a, b) => (b.length_m ?? 0) - (a.length_m ?? 0)).map((rwy) => {
-                  const isSelected = compassRunway?.designator === rwy.designator
-                  return (
-                    <TouchableOpacity
-                      key={rwy.designator}
-                      style={[wxStyles.rwyPickerBtn, isSelected ? wxStyles.rwyPickerBtnActive : null]}
-                      onPress={() => setSelectedRunwayDesig(rwy.designator)}
-                    >
-                      <Text style={[wxStyles.rwyPickerTxt, isSelected ? wxStyles.rwyPickerTxtActive : null]}>{rwy.designator}</Text>
-                    </TouchableOpacity>
-                  )
-                })}
-              </View>
-            )}
-
-            <View style={wxStyles.gaugeRow}>
-              <WindCompassGauge
-                wind={effectiveWind}
-                runway={primaryRunwayHeading}
-                tone={windTone(effectiveWind)}
-                favoredEndDesignator={compassFavoredEnd?.designator ?? null}
-              />
-              <WindSpeedGauge wind={effectiveWind} tone={windTone(effectiveWind)} />
-            </View>
-            {windIsModelled && (
-              <Text style={wxStyles.modelledNote}>
-                Wind is modelled (Open-Meteo), not from {wx?.sourceIcao}'s own observation — that station is too far away for its wind to be locally representative here.
+            {/* Fallback banner -- shown whenever the METAR/TAF shown came
+                from a different aerodrome than this one (icao has no
+                report of its own). No silent wind-only swap to modelled
+                data at any distance anymore -- that's what the Weather
+                station tab is for; this banner just tells the pilot how
+                far away the shown report actually is. */}
+            {usingFallbackWx && wx && (
+              <Text style={wxStyles.fallback}>
+                Showing {wx.sourceIcao}{wxSourceName ? ` (${wxSourceName})` : ''}
+                {wx.distNm != null ? `, ${Math.round(wx.distNm)} NM away` : ''} — not {icao}'s own report
               </Text>
             )}
 
-            <View style={wxStyles.tileGrid}>
-              <WxTile label={`Wind${windIsModelled ? ' (modelled)' : ''}`} value={fmtWind(effectiveWind)} color={TONE_COLOR[windTone(effectiveWind)]} />
-              <WxTile label="Visibility" value={fmtVis(metar.visM)} color={TONE_COLOR[visTone(metar.visM)]} />
-              <WxTile label="Ceiling" value={metar.ceilingFt != null ? `${metar.ceilingFt.toLocaleString()} ft` : metar.clouds === 'CAVOK' ? 'CAVOK' : 'No ceiling'} color={TONE_COLOR[ceilingTone(metar.ceilingFt)]} />
-              <WxTile label="QNH" value={metar.qnh ? metar.qnh.slice(1) : '—'} color={theme.textSecondary} />
-              {metar.temp && <WxTile label="T / Td" value={`${metar.temp.replace('/', ' / ')}°C`} color={theme.textSecondary} />}
-              {metar.wx && <WxTile label="Wx" value={metar.wx} color={theme.statusWarn} />}
-            </View>
+            {metar && (
+              <>
+                {metar.flightRule && (
+                  <View style={[styles.frBadge, { borderColor: FR_COLOR[metar.flightRule] }]}>
+                    <Text style={[styles.frTxt, { color: FR_COLOR[metar.flightRule] }]}>
+                      {metar.flightRule}
+                      {(metar.time || fmtObsAge(metar.obsMs)) && (
+                        <Text style={styles.frUpdated}>
+                          {metar.time ? `  ${metar.time}` : ''}{fmtObsAge(metar.obsMs) ? `  ·  ${fmtObsAge(metar.obsMs)}` : ''}
+                        </Text>
+                      )}
+                    </Text>
+                  </View>
+                )}
 
-            {metar.clouds && metar.clouds !== 'CAVOK' && (
-              <CloudProfile clouds={parseMetarClouds(metar.clouds)} />
+                {runwayPicker}
+
+                <View style={wxStyles.gaugeRow}>
+                  <WindCompassGauge
+                    wind={effectiveWind}
+                    runway={primaryRunwayHeading}
+                    tone={windTone(effectiveWind)}
+                    favoredEndDesignator={compassFavoredEnd?.designator ?? null}
+                  />
+                  <WindSpeedGauge wind={effectiveWind} tone={windTone(effectiveWind)} />
+                </View>
+
+                <View style={wxStyles.tileGrid}>
+                  <WxTile label="Wind" value={fmtWind(effectiveWind)} color={TONE_COLOR[windTone(effectiveWind)]} />
+                  <WxTile label="Visibility" value={fmtVis(metar.visM)} color={TONE_COLOR[visTone(metar.visM)]} />
+                  <WxTile label="Ceiling" value={metar.ceilingFt != null ? `${metar.ceilingFt.toLocaleString()} ft` : metar.clouds === 'CAVOK' ? 'CAVOK' : 'No ceiling'} color={TONE_COLOR[ceilingTone(metar.ceilingFt)]} />
+                  <WxTile label="QNH" value={metar.qnh ? metar.qnh.slice(1) : '—'} color={theme.textSecondary} />
+                  {metar.temp && <WxTile label="T / Td" value={`${metar.temp.replace('/', ' / ')}°C`} color={theme.textSecondary} />}
+                  {metar.wx && <WxTile label="Wx" value={metar.wx} color={theme.statusWarn} />}
+                </View>
+
+                {metar.clouds && metar.clouds !== 'CAVOK' && (
+                  <CloudProfile clouds={parseMetarClouds(metar.clouds)} />
+                )}
+
+                <Text style={wxStyles.narrative}>{metarNarrative(metar).join(' ')}</Text>
+              </>
             )}
 
-            <Text style={wxStyles.narrative}>{metarNarrative(metar).join(' ')}</Text>
+            {wx?.metar && <Text style={styles.rawMetar}>{wx.metar}</Text>}
+
+            {wx?.taf && (
+              <View style={wxStyles.tafBlock}>
+                <TouchableOpacity onPress={() => setTafExpanded(e => !e)} style={styles.tafToggle}>
+                  <Text style={styles.tafToggleTxt}>{tafExpanded ? '▴ Hide TAF' : '▾ Show TAF'}</Text>
+                </TouchableOpacity>
+                {tafExpanded && (
+                  <>
+                    {tafPeriods && tafPeriods.length > 0 && (
+                      <TafTimeline periods={tafPeriods} lat={lat ?? 0} lng={lng ?? 0} />
+                    )}
+                    {tafPeriods && tafPeriods.length > 0 && (
+                      <View style={wxStyles.tafPeriods}>
+                        <Text style={wxStyles.tafPeriodsLabel}>Change groups</Text>
+                        {tafPeriods.map((period, i) => (
+                          <View key={i} style={wxStyles.tafPeriod}>
+                            <View style={wxStyles.tafPeriodHead}>
+                              <Text style={wxStyles.tafPeriodKind}>{TAF_PERIOD_LABEL[period.kind] ?? period.kind}</Text>
+                              <Text style={wxStyles.tafPeriodTime}>{fmtTafTime(period.fromMs)} – {fmtTafTime(period.toMs)}</Text>
+                            </View>
+                            <Text style={wxStyles.tafPeriodBody}>
+                              {period.wind ? `${fmtWind(period.wind)}  ` : ''}{fmtTafClouds(period.clouds)}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                    <Text style={styles.tafText}>{wx.taf}</Text>
+                  </>
+                )}
+              </View>
+            )}
           </>
         )}
 
-        {wx?.metar && <Text style={styles.rawMetar}>{wx.metar}</Text>}
+        {wxSource === 'station' && (
+          <>
+            {!ambientWx && (
+              <Text style={styles.muted}>Weather station data unavailable (offline, or Open-Meteo outage)</Text>
+            )}
 
-        {wx?.taf && (
-          <View style={wxStyles.tafBlock}>
-            <TouchableOpacity onPress={() => setTafExpanded(e => !e)} style={styles.tafToggle}>
-              <Text style={styles.tafToggleTxt}>{tafExpanded ? '▴ Hide TAF' : '▾ Show TAF'}</Text>
-            </TouchableOpacity>
-            {tafExpanded && (
+            {ambientWx && (
               <>
-                {tafPeriods && tafPeriods.length > 0 && (
-                  <TafTimeline periods={tafPeriods} lat={lat ?? 0} lng={lng ?? 0} />
-                )}
-                {tafPeriods && tafPeriods.length > 0 && (
-                  <View style={wxStyles.tafPeriods}>
-                    <Text style={wxStyles.tafPeriodsLabel}>Change groups</Text>
-                    {tafPeriods.map((period, i) => (
-                      <View key={i} style={wxStyles.tafPeriod}>
-                        <View style={wxStyles.tafPeriodHead}>
-                          <Text style={wxStyles.tafPeriodKind}>{TAF_PERIOD_LABEL[period.kind] ?? period.kind}</Text>
-                          <Text style={wxStyles.tafPeriodTime}>{fmtTafTime(period.fromMs)} – {fmtTafTime(period.toMs)}</Text>
-                        </View>
-                        <Text style={wxStyles.tafPeriodBody}>
-                          {period.wind ? `${fmtWind(period.wind)}  ` : ''}{fmtTafClouds(period.clouds)}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-                <Text style={styles.tafText}>{wx.taf}</Text>
+                <Text style={wxStyles.fallback}>
+                  Modelled (Open-Meteo forecast) at {icao}'s own coordinates — not an observed report.
+                </Text>
+
+                {runwayPicker}
+
+                <View style={wxStyles.gaugeRow}>
+                  <WindCompassGauge
+                    wind={effectiveWind}
+                    runway={primaryRunwayHeading}
+                    tone={windTone(effectiveWind)}
+                    favoredEndDesignator={compassFavoredEnd?.designator ?? null}
+                  />
+                  <WindSpeedGauge wind={effectiveWind} tone={windTone(effectiveWind)} />
+                </View>
+
+                <View style={wxStyles.tileGrid}>
+                  <WxTile label={`Wind${windIsModelled ? ' (modelled)' : ''}`} value={fmtWind(effectiveWind)} color={TONE_COLOR[windTone(effectiveWind)]} />
+                  {ambientWx.tempC != null && <WxTile label="Temp" value={`${ambientWx.tempC}°C`} color={theme.textSecondary} />}
+                  {ambientWx.cloudPct != null && <WxTile label="Cloud cover" value={`${ambientWx.cloudPct}%`} color={theme.textSecondary} />}
+                  {ambientWx.pressureHpa != null && <WxTile label="Surface pressure" value={`${ambientWx.pressureHpa} hPa`} color={theme.textSecondary} />}
+                  {ambientWx.precipMm != null && ambientWx.precipMm > 0 && <WxTile label="Precip" value={`${ambientWx.precipMm} mm`} color={theme.statusWarn} />}
+                </View>
               </>
             )}
-          </View>
+          </>
         )}
       </Section>
 
@@ -354,8 +453,26 @@ function makeWxStyles(theme: ScaledTheme) {
     fontSize: theme.textMd,
     fontWeight: '700',
   },
+  // Wind-only "suitable" cue -- applied to the nested per-end <Text> only
+  // (see runwayPicker's own doc comment), never the whole pill/border.
+  rwyPickerTxtSuitable: {
+    color: theme.accentGreen,
+  },
   rwyPickerTxtActive: {
     color: '#fff',
+  },
+  // METAR/Weather-station toggle modifiers -- "Weather station" is much
+  // longer than a 2-3 char runway designator, so it needs a smaller font
+  // and tighter padding than the runway picker's own buttons (rwyPickerBtn/
+  // rwyPickerTxt) to avoid an oversized pill.
+  wxSourceBtn: {
+    paddingHorizontal: theme.space2,
+    paddingVertical: 4,
+  },
+  wxSourceTxt: {
+    color: theme.textSecondary,
+    fontSize: theme.textSm,
+    fontWeight: '700',
   },
   tileGrid: {
     flexDirection: 'row',

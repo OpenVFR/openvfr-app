@@ -9,8 +9,9 @@
  * - Freq tab: unchanged from FrequencyPanel — full list, every aerodrome
  *   within useNearbyFrequencies.ts's 25NM radius, no picker.
  * - Wx / NOTAM tabs: share one aerodrome picker (useVicinityAerodromes.ts),
- *   defaulting to the closest aerodrome -- along the route when flying
- *   with one planned, otherwise nearest by GPS radius. Switching tabs
+ *   defaulting to the closest aerodrome -- along the route when one is
+ *   loaded AND marked Active (routeVisible), otherwise nearest by GPS
+ *   radius. Switching tabs
  *   keeps the same picked aerodrome; switching aerodrome refetches via
  *   useAerodromeBriefing.ts (one fetch at a time, for whichever aerodrome
  *   is currently picked — not one per aerodrome in range).
@@ -50,17 +51,18 @@ interface Props {
   regionalNotams: NotamItem[]
   waypoints:      RouteWaypoint[]
   position:       GpsPosition | null
-  flying:         boolean
+  /** RouteContext's own Active/Inactive toggle -- see useVicinityAerodromes.ts. */
+  routeVisible:   boolean
 }
 
-export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position, flying }: Props) {
+export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position, routeVisible }: Props) {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<Tab>('freq')
   const [expandedNotamIds, setExpandedNotamIds] = useState<Set<string>>(new Set())
 
-  const vicinity = useVicinityAerodromes({ waypoints, position, flying })
+  const vicinity = useVicinityAerodromes({ waypoints, position, routeVisible })
   const [selectedIcao, setSelectedIcao] = useState<string | null>(null)
 
   useEffect(() => {
@@ -69,14 +71,30 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
   }, [vicinity])
 
   const selected = vicinity.find((a) => a.icao === selectedIcao) ?? null
-  const { wx, wxLoading, wxSourceName, notams, notamLoading } =
+  const { wx, wxLoading, wxSourceName, ambientWx, notams, notamLoading } =
     useAerodromeBriefing(selected?.icao ?? null, selected?.lat, selected?.lng)
+
+  // Which wx tab is displayed -- see AerodromeWxSection.tsx's doc comment.
+  // Reset whenever the picked aerodrome changes.
+  const [wxSource, setWxSource] = useState<'metar' | 'station'>('metar')
+  useEffect(() => { setWxSource('metar') }, [selected?.icao])
+  // No METAR/TAF anywhere -- default to the Weather station tab instead of
+  // an empty METAR panel, without overriding a manual pick already made
+  // for this aerodrome.
+  useEffect(() => {
+    if (wxLoading) return
+    if (!wx?.metar && !wx?.taf) setWxSource('station')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wxLoading, selected?.icao])
 
   const hasRoute = waypoints.length > 0
   const otherNotams = hasRoute
     ? filterNotamsNearRoute(regionalNotams, waypoints, DEFAULT_ROUTE_NOTAM_BUFFER_NM)
     : regionalNotams
 
+  // Tab-dot colour always reflects the real METAR's flight rule when one
+  // exists, regardless of which Wx tab (METAR vs Weather station) happens
+  // to be currently selected -- Weather station has no flight-rule concept.
   const metarFlightRule = wx?.metar ? decodeMetar(wx.metar).flightRule : null
 
   const badgeCount = tab === 'freq' ? nearby.length : vicinity.length
@@ -160,7 +178,7 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
               <>
                 {vicinity.length === 0 ? (
                   <Text style={styles.muted}>
-                    {flying && hasRoute ? 'No aerodromes within range of the planned route' : 'No aerodromes nearby'}
+                    {routeVisible && hasRoute ? 'No aerodromes within range of the active route' : 'No aerodromes nearby'}
                   </Text>
                 ) : (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.picker}>
@@ -192,6 +210,9 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
                     elevationFt={selected.elevationFt}
                     runways={selected.runways}
                     wx={wx}
+                    ambientWx={ambientWx}
+                    wxSource={wxSource}
+                    onSourceChange={setWxSource}
                     wxLoading={wxLoading}
                     wxSourceName={wxSourceName}
                   />
