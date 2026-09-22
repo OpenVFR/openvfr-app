@@ -49,7 +49,11 @@ const R_DIAL = 42
 const R_TICK_OUT = 42
 const R_TICK_IN = 37
 const R_LABEL = 31
-const R_RWY = 33
+// Shorter than the dial radius (42) so the runway strip's corners keep
+// real clearance from the rim/ticks/cardinal labels instead of nearly
+// touching them -- R_RWY=33 (corner distance ~33.3) previously left almost
+// no margin.
+const R_RWY = 27
 // Runway strip footprint, drawn as an actual rounded rectangle rather than
 // a bare line (see WindCompassGauge's runway block below).
 const RWY_LEN = 2 * R_RWY
@@ -58,7 +62,12 @@ const RWY_WIDTH = 9
 // painted threshold numbers), not out past it -- far enough in from the tip
 // that the text box fits fully within RWY_WIDTH without poking past the
 // dial's own rim (R_DIAL), which R_RWY+7 previously did.
-const RWY_LABEL_R = R_RWY - 7
+const RWY_LABEL_R = R_RWY - 6
+// Centerline inset as a FRACTION of RWY_LEN (not a fixed absolute unit
+// count) so it stays proportionally inset from each end regardless of how
+// long/short the runway strip itself is -- a fixed inset looked fine at
+// the old longer RWY_LEN but would eat an outsized share of a shorter one.
+const RWY_CENTERLINE_INSET = RWY_LEN * 0.18
 
 export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: CompassProps) {
   const ticks = []
@@ -124,9 +133,13 @@ export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: C
                 width={RWY_LEN} height={RWY_WIDTH} rx={1.5}
                 className={css.rwyBody}
               />
+              {/* Inset by RWY_CENTERLINE_INSET (a fraction of RWY_LEN, not
+                  a fixed unit count -- see its own doc comment) so the
+                  dashed line stays clearly inside the solid runway body
+                  instead of nearly reaching the rounded end caps. */}
               <line
-                x1={CX - RWY_LEN / 2 + 4} y1={CY}
-                x2={CX + RWY_LEN / 2 - 4} y2={CY}
+                x1={CX - RWY_LEN / 2 + RWY_CENTERLINE_INSET} y1={CY}
+                x2={CX + RWY_LEN / 2 - RWY_CENTERLINE_INSET} y2={CY}
                 className={css.rwyCenterline}
               />
             </g>
@@ -215,20 +228,69 @@ function arcPath(cx: number, cy: number, r: number, a0: number, a1: number): str
   return `M ${p0.x} ${p0.y} A ${r} ${r} 0 ${large} 1 ${p1.x} ${p1.y}`
 }
 
+// Speed-dial tick radii -- inward from the rim like the compass gauge's
+// own ticks, but stopping just INSIDE the coloured arc's inner edge
+// (arc sits at R_DIAL with a 5px stroke, i.e. spans ~39.5..44.5) rather
+// than crossing through it -- ticks cutting across the coloured band read
+// as the gauge painting over its own progress indicator, unlike the
+// compass's ticks which only ever cross a plain background. Major ticks
+// (labeled values) reach further in than the unlabeled 5kt minor ticks.
+// SPEED_LABEL_R sits further in again (below R_LABEL, which the compass's
+// cardinal labels still use) so the tick/label pair has real clearance
+// instead of nearly touching.
+const SPEED_TICK_OUT       = 39.5
+const SPEED_TICK_IN_MAJOR  = 34.5
+const SPEED_TICK_IN_MINOR  = 36
+const SPEED_LABEL_R        = 25
+// Gust indicator -- a dashed, lighter-opacity extension of the coloured
+// progress arc from the sustained-speed angle out to the gust angle. No
+// separate marker line (an earlier version added one; at this dial's small
+// size a short solid tone-coloured line right at the arc's own rounded end
+// just read as an extra chunky tick, not a distinguishable "gust" cue) and
+// deliberately not a second full needle -- two full hands on a ~90px dial
+// compete for attention; a lighter "progress extends to here" reads as
+// "gusting out to X" without implying gust is an equally-weighted reading.
+
 export function WindSpeedGauge({ wind, tone, maxKt = 45 }: SpeedDialProps) {
   const speedKt = wind && !wind.calm ? wind.speedKt : 0
   const gustKt  = wind?.gustKt ?? null
   const needleAngle = speedAngle(speedKt, maxKt)
-  const ticks = [0, 10, 20, 30, 40].filter((v) => v <= maxKt)
+  const majorTicks = [0, 10, 20, 30, 40].filter((v) => v <= maxKt)
+  // Unlabeled 5kt ticks between the major ones (5, 15, 25, 35, ...) --
+  // never coincides with a major tick's own angle since majors are all
+  // multiples of 10.
+  const minorTicks: number[] = []
+  for (let v = 5; v <= maxKt; v += 10) minorTicks.push(v)
+
+  // Gust angle, capped at the dial's own full-scale so an outsized gust
+  // (rare, but Open-Meteo's modelled gust can exceed the 45kt default
+  // scale) never draws past the dial's edge -- same clamping speedAngle()
+  // already does for the primary needle.
+  const gustAngle = gustKt != null && gustKt > speedKt ? speedAngle(gustKt, maxKt) : null
 
   return (
     <div className={css.dialWrap}>
       <svg viewBox="0 0 100 100" className={css.compassSvg}>
         <path d={arcPath(CX, CY, R_DIAL, SWEEP_START, SWEEP_START + SWEEP_DEG)} className={css.speedTrack} />
         <path d={arcPath(CX, CY, R_DIAL, SWEEP_START, needleAngle)} className={`${css.speedProgress} ${css[`speedProgress${tone}`]}`} />
-        {ticks.map((v) => {
+        {gustAngle != null && (
+          <path d={arcPath(CX, CY, R_DIAL, needleAngle, gustAngle)} className={`${css.speedGustArc} ${css[`speedGustArc${tone}`]}`} />
+        )}
+        {majorTicks.map((v) => {
           const a = speedAngle(v, maxKt)
-          const p = pt(CX, CY, R_LABEL, a)
+          const p1 = pt(CX, CY, SPEED_TICK_OUT, a)
+          const p2 = pt(CX, CY, SPEED_TICK_IN_MAJOR, a)
+          return <line key={`major-${v}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} className={css.speedTickMajor} />
+        })}
+        {minorTicks.map((v) => {
+          const a = speedAngle(v, maxKt)
+          const p1 = pt(CX, CY, SPEED_TICK_OUT, a)
+          const p2 = pt(CX, CY, SPEED_TICK_IN_MINOR, a)
+          return <line key={`minor-${v}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} className={css.speedTickMinor} />
+        })}
+        {majorTicks.map((v) => {
+          const a = speedAngle(v, maxKt)
+          const p = pt(CX, CY, SPEED_LABEL_R, a)
           return (
             <text key={v} x={p.x} y={p.y} className={css.speedTickLabel} textAnchor="middle" dominantBaseline="middle">
               {v}

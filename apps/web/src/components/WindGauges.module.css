@@ -56,7 +56,7 @@
 }
 
 .rwyLabel {
-  font-size: 7px;
+  font-size: 5.5px;
   font-weight: 700;
   fill: var(--text-primary);
 }
@@ -65,7 +65,7 @@
    picker's own "BEST" emphasis so the same recommendation reads
    consistently in both places. */
 .rwyLabelFavored {
-  font-size: 8px;
+  font-size: 6.5px;
   fill: var(--accent-green);
 }
 
@@ -107,6 +107,34 @@
   font-size: 6.5px;
   fill: var(--text-faint);
 }
+
+.speedTickMajor {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.speedTickMinor {
+  stroke: var(--border-strong);
+  stroke-width: 0.9;
+  opacity: 0.9;
+}
+
+/* Gust extension -- a lighter/dashed continuation of the coloured progress
+   arc from the sustained-speed angle out to the gust angle (see
+   WindSpeedGauge's doc comment for why this isn't a second full needle or
+   a separate marker line). Same per-tone colour as .speedProgress* so it
+   reads as "the same reading, extended", not an unrelated second metric. */
+.speedGustArc {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 2 2;
+  opacity: 0.55;
+}
+
+.speedGustArcok     { stroke: var(--accent-green); }
+.speedGustArcwarn   { stroke: var(--status-warn); }
+.speedGustArcdanger { stroke: var(--status-danger); }
 
 .needle {
   stroke: var(--text-primary);

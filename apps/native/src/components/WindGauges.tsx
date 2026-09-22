@@ -50,7 +50,10 @@ const R_DIAL = 42
 const R_TICK_OUT = 42
 const R_TICK_IN = 37
 const R_LABEL = 31
-const R_RWY = 33
+// Shorter than the dial radius (42) so the runway strip's corners keep
+// real clearance from the rim/ticks/cardinal labels -- see web's
+// WindGauges.tsx doc comment.
+const R_RWY = 27
 // Runway strip footprint, drawn as an actual rounded rectangle rather than
 // a bare line -- matches web's WindGauges.tsx (see its runway block for
 // the full rationale).
@@ -60,7 +63,10 @@ const RWY_WIDTH = 9
 // painted threshold numbers), not out past it -- far enough in from the tip
 // that the text box fits fully within RWY_WIDTH without poking past the
 // dial's own rim (R_DIAL), which R_RWY+7 previously did.
-const RWY_LABEL_R = R_RWY - 7
+const RWY_LABEL_R = R_RWY - 6
+// Centerline inset as a FRACTION of RWY_LEN, not a fixed unit count -- see
+// web's WindGauges.tsx doc comment.
+const RWY_CENTERLINE_INSET = RWY_LEN * 0.18
 
 export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: CompassProps) {
   const styles = useThemedStyles(makeStyles)
@@ -117,9 +123,12 @@ export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: C
                 width={RWY_LEN} height={RWY_WIDTH} rx={1.5}
                 fill="#454b57" stroke="#23262e" strokeWidth={0.6}
               />
+              {/* Inset by RWY_CENTERLINE_INSET (a fraction of RWY_LEN) so
+                  the dashed line stays clearly inside the solid runway body
+                  instead of nearly reaching the rounded end caps. */}
               <Line
-                x1={CX - RWY_LEN / 2 + 4} y1={CY}
-                x2={CX + RWY_LEN / 2 - 4} y2={CY}
+                x1={CX - RWY_LEN / 2 + RWY_CENTERLINE_INSET} y1={CY}
+                x2={CX + RWY_LEN / 2 - RWY_CENTERLINE_INSET} y2={CY}
                 stroke={theme.textPrimary} strokeWidth={0.8} strokeDasharray="2.4 2" strokeLinecap="round"
               />
             </G>
@@ -138,7 +147,7 @@ export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: C
             <SvgText
               x={rwyLabel0Pos!.x} y={rwyLabel0Pos!.y}
               transform={`rotate(${runway.headingDeg} ${rwyLabel0Pos!.x} ${rwyLabel0Pos!.y})`}
-              fontSize={favoredEndDesignator === runway.designators[0] ? 8 : 7}
+              fontSize={favoredEndDesignator === runway.designators[0] ? 6.5 : 5.5}
               fontWeight="800"
               fill={favoredEndDesignator === runway.designators[0] ? theme.accentGreen : theme.textPrimary}
               textAnchor="middle" alignmentBaseline="middle"
@@ -148,7 +157,7 @@ export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: C
             <SvgText
               x={rwyLabel1Pos!.x} y={rwyLabel1Pos!.y}
               transform={`rotate(${runway.headingDeg + 180} ${rwyLabel1Pos!.x} ${rwyLabel1Pos!.y})`}
-              fontSize={favoredEndDesignator === runway.designators[1] ? 8 : 7}
+              fontSize={favoredEndDesignator === runway.designators[1] ? 6.5 : 5.5}
               fontWeight="800"
               fill={favoredEndDesignator === runway.designators[1] ? theme.accentGreen : theme.textPrimary}
               textAnchor="middle" alignmentBaseline="middle"
@@ -207,22 +216,54 @@ function arcPath(cx: number, cy: number, r: number, a0: number, a1: number): str
   return `M ${p0.x} ${p0.y} A ${r} ${r} 0 ${large} 1 ${p1.x} ${p1.y}`
 }
 
+// Speed-dial tick radii -- inward from the rim, stopping just INSIDE the
+// coloured arc's inner edge (arc stroke width 7, i.e. spans ~38.5..45.5)
+// rather than crossing through it. See web's WindGauges.tsx doc comment.
+const SPEED_TICK_OUT      = 38.5
+const SPEED_TICK_IN_MAJOR = 33.5
+const SPEED_TICK_IN_MINOR = 35
+const SPEED_LABEL_R       = 25
+// Gust indicator -- dashed arc extension only, no separate marker line
+// (see web's WindGauges.tsx doc comment for why one was dropped: at this
+// dial's size it just read as an extra chunky tick).
+
 export function WindSpeedGauge({ wind, tone, maxKt = 45 }: SpeedDialProps) {
   const styles = useThemedStyles(makeStyles)
   const speedKt = wind && !wind.calm ? wind.speedKt : 0
   const gustKt  = wind?.gustKt ?? null
   const needleAngle = speedAngle(speedKt, maxKt)
-  const ticks = [0, 10, 20, 30, 40].filter((v) => v <= maxKt)
+  const majorTicks = [0, 10, 20, 30, 40].filter((v) => v <= maxKt)
+  const minorTicks: number[] = []
+  for (let v = 5; v <= maxKt; v += 10) minorTicks.push(v)
   const progressColor = toneColor(tone)
+  const gustAngle = gustKt != null && gustKt > speedKt ? speedAngle(gustKt, maxKt) : null
 
   return (
     <View style={styles.compassWrap}>
       <Svg viewBox="0 0 100 100" style={styles.compassSvg}>
         <Path d={arcPath(CX, CY, R_DIAL, SWEEP_START, SWEEP_START + SWEEP_DEG)} stroke={theme.borderStrong} strokeWidth={7} strokeLinecap="round" fill="none" />
         <Path d={arcPath(CX, CY, R_DIAL, SWEEP_START, needleAngle)} stroke={progressColor} strokeWidth={7} strokeLinecap="round" fill="none" />
-        {ticks.map((v) => {
+        {gustAngle != null && (
+          <Path
+            d={arcPath(CX, CY, R_DIAL, needleAngle, gustAngle)}
+            stroke={progressColor} strokeWidth={4} strokeLinecap="round" strokeDasharray="2 2" strokeOpacity={0.55} fill="none"
+          />
+        )}
+        {majorTicks.map((v) => {
           const a = speedAngle(v, maxKt)
-          const p = pt(CX, CY, R_LABEL, a)
+          const p1 = pt(CX, CY, SPEED_TICK_OUT, a)
+          const p2 = pt(CX, CY, SPEED_TICK_IN_MAJOR, a)
+          return <Line key={`major-${v}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={theme.borderStrong} strokeWidth={1.2} />
+        })}
+        {minorTicks.map((v) => {
+          const a = speedAngle(v, maxKt)
+          const p1 = pt(CX, CY, SPEED_TICK_OUT, a)
+          const p2 = pt(CX, CY, SPEED_TICK_IN_MINOR, a)
+          return <Line key={`minor-${v}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={theme.borderStrong} strokeWidth={1} strokeOpacity={0.9} />
+        })}
+        {majorTicks.map((v) => {
+          const a = speedAngle(v, maxKt)
+          const p = pt(CX, CY, SPEED_LABEL_R, a)
           return (
             <SvgText key={v} x={p.x} y={p.y} fontSize={9} fontWeight="700" fill={theme.textSecondary} textAnchor="middle" alignmentBaseline="middle">
               {v}
