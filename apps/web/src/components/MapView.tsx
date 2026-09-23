@@ -1372,7 +1372,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       })
       map.on('mouseleave', 'route-midpoints-layer', () => {
         if (!dragInsertRef.current && !dragMoveRef.current) {
-          map.getCanvas().style.cursor = planningModeRef.current ? 'crosshair' : ''
+          map.getCanvas().style.cursor = ''
         }
       })
 
@@ -1393,7 +1393,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       })
       map.on('mouseleave', 'route-waypoints-circle', () => {
         if (!dragInsertRef.current && !dragMoveRef.current) {
-          map.getCanvas().style.cursor = planningModeRef.current ? 'crosshair' : ''
+          map.getCanvas().style.cursor = ''
         }
       })
       map.on('mousedown', 'route-waypoints-circle', (e) => {
@@ -1539,7 +1539,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           dragMoveRef.current = null
           map.dragPan.enable()
           clearPreview()
-          map.getCanvas().style.cursor = planningModeRef.current ? 'crosshair' : ''
+          map.getCanvas().style.cursor = ''
           if (!dragM.moved) {
             // Stationary tap in adjust mode → show WP context menu
             if (routeAdjustModeRef.current) {
@@ -1573,7 +1573,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         dragInsertRef.current = null
         map.dragPan.enable()
         clearPreview()
-        map.getCanvas().style.cursor = planningModeRef.current || routeAdjustModeRef.current ? 'crosshair' : ''
+        map.getCanvas().style.cursor = ''
 
         const { legIndex } = dragI
         const insertWp = (wp: RouteWaypoint) => {
@@ -1732,7 +1732,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           dragMoveRef.current   = null
           map.dragPan.enable()
           clearPreview()
-          map.getCanvas().style.cursor = planningModeRef.current || routeAdjustModeRef.current ? 'crosshair' : ''
+          map.getCanvas().style.cursor = ''
         }
       }
       window.addEventListener('keydown', onKeyDown)
@@ -2116,10 +2116,15 @@ export default function MapView({ auth }: { auth: AuthState }) {
     })
 
     // ── Click → popup ─────────────────────────────────────────────────────
-    // Show pointer cursor over all clickable layers (point features + airspace).
-    // Suppressed in planning mode — crosshair must stay consistent.
-    const onEnter = () => { if (!planningModeRef.current) map.getCanvas().style.cursor = 'pointer' }
-    const onLeave = () => { if (!planningModeRef.current) map.getCanvas().style.cursor = '' }
+    // Show pointer cursor (hand-with-pointing-finger) over all clickable
+    // layers (point features + airspace) — unconditionally, including while
+    // planning/ruler/route-adjust mode is on. Base cursor is the map's own
+    // default 'grab' hand ('' clears any inline override so it inherits
+    // maplibre-gl.css's `.maplibregl-canvas-container.maplibregl-interactive`
+    // rule); a bare crosshair here gave no hover affordance at all over an
+    // actionable feature while adding/editing a route.
+    const onEnter = () => { map.getCanvas().style.cursor = 'pointer' }
+    const onLeave = () => { map.getCanvas().style.cursor = '' }
     ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols', 'notam-circles-fill', 'notam-points-cluster', 'notam-points-unclustered'].forEach((id) => {
       map.on('mouseenter', id, onEnter)
       map.on('mouseleave', id, onLeave)
@@ -2833,10 +2838,12 @@ export default function MapView({ auth }: { auth: AuthState }) {
     })
   }, [routeVisible, planningMode, routeAdjustMode, mapReady])
 
-  // Planning mode: crosshair cursor + toggle button highlight + line style.
+  // Planning mode: toggle button highlight + line style. Cursor stays the
+  // map's default grab hand regardless of mode — see onEnter/onLeave's doc
+  // comment above for why a crosshair default was dropped.
   useEffect(() => {
     const map = mapRef.current
-    if (map) map.getCanvas().style.cursor = (planningMode || rulerMode || placingUserWp || routeAdjustMode) ? 'crosshair' : ''
+    if (map) map.getCanvas().style.cursor = ''
     if (map && mapReady) {
       const editMode = planningMode || routeAdjustMode
       // Dashed while editing, solid when viewing the finished route.
