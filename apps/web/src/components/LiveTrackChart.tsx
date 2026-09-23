@@ -113,13 +113,13 @@ export default function LiveTrackChart({ track, onHoverDistNm }: Props) {
                 }}
                 onMouseLeave={() => onHoverDistNm?.(null)}
               >
-                <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.06)" />
+                <CartesianGrid strokeDasharray="2 4" stroke="var(--border-subtle)" />
                 <XAxis
                   dataKey="distNm"
                   type="number"
                   domain={[0, 'dataMax']}
                   tickFormatter={v => `${v}`}
-                  tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 9 }}
+                  tick={{ fill: 'var(--text-faint)', fontSize: 9 }}
                   tickLine={false}
                   axisLine={false}
                 />
@@ -127,7 +127,7 @@ export default function LiveTrackChart({ track, onHoverDistNm }: Props) {
                   yAxisId="alt"
                   domain={[0, Math.ceil(maxAlt / 500) * 500]}
                   tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : `${v}`}
-                  tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 9 }}
+                  tick={{ fill: 'var(--text-faint)', fontSize: 9 }}
                   tickLine={false}
                   axisLine={false}
                   width={32}

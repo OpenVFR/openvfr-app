@@ -237,7 +237,7 @@ export default function AirspacePopup({ features, onClose }: Props) {
             aria-hidden="true"
           >
             {/* Background rail */}
-            <rect x="4" y="0" width="4" height="100" fill="rgba(255,255,255,0.07)" rx="1.5" />
+            <rect x="4" y="0" width="4" height="100" fill="var(--border-subtle)" rx="1.5" />
             {/* Airspace bands */}
             {sorted.map((f, i) => {
               const topY = svgY(f.upper_ft, maxFt)
@@ -255,7 +255,7 @@ export default function AirspacePopup({ features, onClose }: Props) {
               )
             })}
             {/* SFC tick */}
-            <line x1="2" y1="100" x2="10" y2="100" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+            <line x1="2" y1="100" x2="10" y2="100" stroke="var(--border-default)" strokeWidth="1" />
           </svg>
           <span className={css.stripLabel}>SFC</span>
         </div>

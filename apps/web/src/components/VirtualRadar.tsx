@@ -143,7 +143,7 @@ function ProfileTooltip({ active, payload }: { active?: boolean; payload?: Toolt
     const dedupeKey = label  // collapse projSafe/projDanger → 'Proj'
     if (seen.has(dedupeKey)) continue
     seen.add(dedupeKey)
-    rows.push({ label, ft: p.value, color: (p.color as string) ?? 'rgba(255,255,255,0.7)' })
+    rows.push({ label, ft: p.value, color: (p.color as string) ?? 'var(--text-secondary)' })
   }
   if (rows.length === 0) return null
   rows.sort((a, b) => b.ft - a.ft)
@@ -372,7 +372,7 @@ export default function VirtualRadar({
   const vspeedAttitudeColor =
     vspeedTrajectory.attitude === 'climb'   ? 'rgba(34,197,94,0.85)'   :
     vspeedTrajectory.attitude === 'descent' ? 'rgba(248,113,113,0.85)' :
-                                               'rgba(255,255,255,0.55)'
+                                               'var(--text-secondary)'
   const VSPEED_DANGER_COLOR = 'rgba(239,68,68,0.95)'
 
   // Weather stations projected onto the route's distance axis — same shared
@@ -688,7 +688,7 @@ export default function VirtualRadar({
                   ))}
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.07)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
 
               <XAxis
                 dataKey="dist"
@@ -696,19 +696,19 @@ export default function VirtualRadar({
                 domain={[0, Math.ceil(nmToDisplay(profile.totalNm, units.distance))]}
                 ticks={xAxisTicks}
                 tickFormatter={(v: number) => `${v.toFixed(0)}`}
-                tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }}
+                tick={{ fill: 'var(--text-muted)', fontSize: 10 }}
                 tickLine={false}
-                axisLine={{ stroke: 'rgba(255,255,255,0.15)' }}
-                label={{ value: distLabel(units.distance), position: 'insideRight', offset: -2, fill: 'rgba(255,255,255,0.3)', fontSize: 10 }}
+                axisLine={{ stroke: 'var(--border-default)' }}
+                label={{ value: distLabel(units.distance), position: 'insideRight', offset: -2, fill: 'var(--text-faint)', fontSize: 10 }}
               />
 
               <YAxis
                 domain={[0, yMax]}
                 tickCount={5}
                 tickFormatter={(v: number) => v >= 1000 ? `FL${Math.round(v / 100).toString().padStart(3,'0')}` : `${v}`}
-                tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }}
+                tick={{ fill: 'var(--text-muted)', fontSize: 10 }}
                 tickLine={false}
-                axisLine={{ stroke: 'rgba(255,255,255,0.15)' }}
+                axisLine={{ stroke: 'var(--border-default)' }}
                 width={36}
               />
 
@@ -1144,12 +1144,12 @@ export default function VirtualRadar({
                 <ReferenceLine
                   key={`wp-${tick.distNm}-${tick.name}`}
                   x={nmToDisplay(tick.distNm, units.distance)}
-                  stroke="rgba(255,255,255,0.18)"
+                  stroke="var(--border-default)"
                   strokeWidth={1}
                   label={{
                     value: tick.name,
                     position: tick === profile!.waypointTicks[profile!.waypointTicks.length - 1] ? 'insideTopRight' : 'insideTopLeft',
-                    fill: 'rgba(255,255,255,0.50)',
+                    fill: 'var(--text-secondary)',
                     fontSize: 10,
                   }}
                 />
@@ -1227,7 +1227,7 @@ export default function VirtualRadar({
               {currentDistNm != null && (
                 <ReferenceLine
                   x={nmToDisplay(currentDistNm, units.distance)}
-                  stroke="rgba(255,255,255,0.40)"
+                  stroke="var(--text-faint)"
                   strokeWidth={1}
                   strokeDasharray="3 3"
                 />
