@@ -569,10 +569,16 @@ export function PlanScreen() {
                   {wp.note ? <Text style={styles.wpNote} numberOfLines={1}>📌 {wp.note}</Text> : null}
                 </View>
                 {leg && (
-                  <TouchableOpacity style={styles.legCol} onPress={() => openLegProps(index)}>
-                    <Text style={styles.legDist}>
-                      {nmToDisplay(leg.distNm, units.distance).toFixed(1)} {distLabel(units.distance)}
-                    </Text>
+                  <TouchableOpacity
+                    style={[styles.legCol, hasOverride && styles.legColSet]}
+                    onPress={() => openLegProps(index)}
+                  >
+                    <View style={styles.legColHeader}>
+                      <Text style={styles.legDist}>
+                        {nmToDisplay(leg.distNm, units.distance).toFixed(1)} {distLabel(units.distance)}
+                      </Text>
+                      <Ionicons name="create-outline" size={11} color={hasOverride ? theme.accentBlue : theme.textFaint} />
+                    </View>
                     <View style={styles.legHdgEteRow}>
                       <Text style={[styles.legHdg, hasOverride && styles.legHdgSet]}>{Math.round(leg.magHdg).toString().padStart(3, '0')}°M</Text>
                       {leg.eteMins != null && (
@@ -1041,7 +1047,19 @@ function makeStyles(theme: ScaledTheme) {
   wpName:      { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '500' },
   wpEta:       { color: theme.accentBlue, fontSize: theme.textXs, marginTop: 1 },
   wpNote:      { color: theme.textMuted, fontSize: theme.textXs, marginTop: 1, fontStyle: 'italic' },
-  legCol:      { alignItems: 'flex-end', gap: 1, minWidth: 70 },
+  // Bordered chip "button" affordance so the leg-properties tap target reads
+  // as an action, not inert stats text - mirrors web's RoutePlan.module.css
+  // .arrow chip fix (same discoverability bug, ported here for parity).
+  legCol: {
+    alignItems: 'flex-end', gap: 1, minWidth: 74,
+    paddingHorizontal: theme.space2, paddingVertical: theme.space1,
+    borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.borderDefault,
+    backgroundColor: theme.surfaceOverlay,
+  },
+  legColSet: {
+    borderColor: theme.accentBlue, backgroundColor: theme.surfaceHover,
+  },
+  legColHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.space1 },
   legDist:     { color: theme.textSecondary, fontSize: theme.textSm, fontWeight: '500' },
   legHdgEteRow: { flexDirection: 'row', alignItems: 'baseline', gap: theme.space1 },
   legHdg:      { color: theme.accentBlue, fontSize: theme.textXs },
