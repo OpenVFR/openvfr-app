@@ -230,6 +230,7 @@ const FIND_DEST_ICON_SVG =
 const ROUTE_DISPLAY_LAYERS = [
   'route-line-layer',
   'route-waypoints-circle',
+  'route-waypoints-label',
   'route-midpoints-layer',
   'route-leg-labels-layer',
   'alternate-line-layer',
