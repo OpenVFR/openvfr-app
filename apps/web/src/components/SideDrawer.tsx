@@ -72,6 +72,9 @@ interface Props {
   // Route plan
   waypoints: RouteWaypoint[]
   legOverrides: LegOverride[]
+  /** Route activate/deactivate -- shows/hides the drawn route on the map without clearing its waypoints, mirrors native's PlanScreen Active/Inactive toggle. */
+  routeVisible: boolean
+  onToggleRouteVisible: () => void
   planningMode: boolean
   onTogglePlanningMode: () => void
   onUndo: () => void
@@ -182,7 +185,7 @@ export default function SideDrawer({
   isOnline,
   checking,
   onRefresh,
-  waypoints, legOverrides, planningMode, onTogglePlanningMode,
+  waypoints, legOverrides, routeVisible, onToggleRouteVisible, planningMode, onTogglePlanningMode,
   onUndo, onClear, onReplace, onLoadRoute, activeRouteId, onActiveRouteIdChange, onSetLegOverride, onSetWaypointNote,
   onAddToRoute,
   selectedAircraftId, selectedAircraftProfile, onSelectAircraft,
@@ -367,6 +370,8 @@ export default function SideDrawer({
                   <RoutePlan
                     waypoints={waypoints}
                     legOverrides={legOverrides}
+                    routeVisible={routeVisible}
+                    onToggleRouteVisible={onToggleRouteVisible}
                     units={units}
                     onUndo={onUndo}
                     onClear={onClear}

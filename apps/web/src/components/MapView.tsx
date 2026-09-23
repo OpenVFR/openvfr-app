@@ -197,33 +197,35 @@ const SNAP_LAYERS = [
 const HOME_ICON_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>'
 
-// Basemap toggle button SVG icons (Lucide-style).
+// Basemap toggle button SVG icons -- real Lucide "satellite"/"map" glyphs
+// (the previous satellite path was a hand-made approximation, not the actual
+// Lucide icon). Native has no dedicated satellite glyph to match here --
+// its basemap switch is a Vector/Satellite text segmented control inside the
+// Map Display sheet (behind a generic "layers-outline" trigger), not a
+// single-purpose icon button like this one, so this stays its own dedicated
+// icon pair rather than forcing cross-platform icon parity.
 // Convention: icon shows the mode you'll switch TO when clicking.
 const SAT_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l4.5 4.5"/><path d="m17.5 2-5.5 5.5 4 4 5.5-5.5a4 4 0 0 0-4-4"/><path d="M2 17.5 7.5 12l4 4L6 22a4 4 0 0 1-4-4.5"/><circle cx="11.5" cy="12.5" r="1"/></svg>'
+  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m13.5 6.5-3.148-3.148a1.205 1.205 0 0 0-1.704 0L6.352 5.648a1.205 1.205 0 0 0 0 1.704L9.5 10.5"/><path d="M16.5 7.5 19 5"/><path d="m17.5 10.5 3.148 3.148a1.205 1.205 0 0 1 0 1.704l-2.296 2.296a1.205 1.205 0 0 1-1.704 0L13.5 14.5"/><path d="M9 21a6 6 0 0 0-6-6"/><path d="m9.352 10.648a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l4.296-4.296a1.205 1.205 0 0 0 0-1.704l-2.296-2.296a1.205 1.205 0 0 0-1.704 0z"/></svg>'
 const MAP_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>'
+  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/></svg>'
 
-// Go Flying toggle button icon (Lucide-style "plane").
+// Go Flying toggle button icon — same Ionicons "airplane-outline" glyph the
+// native app's FlightModeSheet trigger uses, for icon parity across platforms.
 const FLYING_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21 4 19 4c-2 0-4 2-3.5 3.5L12 11 3.8 6.2l-1 .7 3.5 6.7-2 2 1.7 1.8L10 15l6.7 3.5z"/></svg>'
+  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"><path d="M407.72,224c-3.4,0-14.79.1-18,.3l-64.9,1.7a1.83,1.83,0,0,1-1.69-.9L193.55,67.56A9,9,0,0,0,186.89,64H160l73,161a2.35,2.35,0,0,1-2.26,3.35l-121.69,1.8a8.06,8.06,0,0,1-6.6-3.1l-37-45c-3-3.9-8.62-6-13.51-6H33.08c-1.29,0-1.1,1.21-.75,2.43L52.17,249.9a16.3,16.3,0,0,1,0,11.9L32.31,333c-.59,1.95-.52,3,1.77,3H52c8.14,0,9.25-1.06,13.41-6.3l37.7-45.7a8.19,8.19,0,0,1,6.6-3.1l120.68,2.7a2.7,2.7,0,0,1,2.43,3.74L160,448h26.64a9,9,0,0,0,6.65-3.55L323.14,287c.39-.6,2-.9,2.69-.9l63.9,1.7c3.3.2,14.59.3,18,.3C452,288.1,480,275.93,480,256S452.12,224,407.72,224Z"/></svg>'
 
 // Ruler tool button icon (Lucide "ruler").
 const RULER_ICON_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.3 8.7 8.7 21.3c-1 1-2.5 1-3.4 0l-2.6-2.6c-1-1-1-2.5 0-3.4L15.3 2.7c1-1 2.5-1 3.4 0l2.6 2.6c1 1 1 2.5 0 3.4Z"/><path d="m7.5 10.5 2 2"/><path d="m10.5 7.5 2 2"/><path d="m13.5 4.5 2 2"/><path d="m4.5 13.5 2 2"/></svg>'
 
-// Find a Destination button icon (Lucide "map-pin-plus").
+// Find a Destination button icon -- same Ionicons "search-outline" glyph the
+// native app's FindDestinationSheet trigger uses, for icon parity across platforms.
 const FIND_DEST_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.914 11.105A7.298 7.298 0 0 0 20 10a8 8 0 0 0-16 0c0 4.993 5.539 10.193 7.399 11.799a1 1 0 0 0 1.202 0 32.197 32.197 0 0 0 .614-.561"/><circle cx="12" cy="10" r="3"/><path d="M19 15v6"/><path d="M16 18h6"/></svg>'
+  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round" stroke-miterlimit="10"><path d="M221.09,64A157.09,157.09,0,1,0,378.18,221.09,157.1,157.1,0,0,0,221.09,64Z"/><line x1="338.29" y1="338.29" x2="448" y2="448"/></svg>'
 
-// Route visibility toggle icons (Lucide "eye" / "eye-off") — activate/deactivate
-// the drawn route without clearing its waypoints.
-const ROUTE_VISIBLE_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>'
-const ROUTE_HIDDEN_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.5 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 11s3.5 7 10 7a9.606 9.606 0 0 0 5.39-1.61"/><path d="M2 2l20 20"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/></svg>'
-
-// Route layer IDs toggled by the show/hide route button. Waypoint data is
+// Route layer IDs toggled by the route Active/Inactive toggle (in RoutePlan's
+// header, not a map button — see routeVisible below). Waypoint data is
 // untouched — only display is affected.
 const ROUTE_DISPLAY_LAYERS = [
   'route-line-layer',
@@ -333,7 +335,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const rulerBtnRef = useRef<HTMLButtonElement | null>(null)
   const scaleControlRef = useRef<maplibregl.ScaleControl | null>(null)
   const homeBtnRef = useRef<HTMLButtonElement | null>(null)
-  const routeVisBtnRef = useRef<HTMLButtonElement | null>(null)
   const planningModeRef = useRef(false)
   const routeWaypointsRef = useRef<RouteWaypoint[]>([])
   const rulerModeRef = useRef(false)
@@ -1067,8 +1068,10 @@ export default function MapView({ auth }: { auth: AuthState }) {
       }
     })
 
-    // Basemap toggle — registered as a MapLibre IControl so it stacks correctly
-    // above the attribution button in the bottom-right corner without overlapping.
+    // Basemap toggle — registered as a MapLibre IControl, stacked at the top
+    // of the top-right button column (right below NavigationControl), same
+    // relative priority as native's Map Display trigger sitting near the top
+    // of its own button cluster.
     const basemapBtn = document.createElement('button')
     basemapBtn.title = 'Switch to satellite imagery'
     basemapBtn.innerHTML = SAT_ICON_SVG
@@ -1080,9 +1083,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const basemapCtrlDiv = document.createElement('div')
     basemapCtrlDiv.className = 'maplibregl-ctrl maplibregl-ctrl-group'
     basemapCtrlDiv.appendChild(basemapBtn)
-    map.addControl({ onAdd: () => basemapCtrlDiv, onRemove: () => {} }, 'bottom-right')
+    map.addControl({ onAdd: () => basemapCtrlDiv, onRemove: () => {} }, 'top-right')
 
-    // Home airfield button — stacks below NavigationControl in the top-right corner.
+    // Home airfield button — stacks below the basemap toggle in the top-right corner.
     const homeBtn = document.createElement('button')
     homeBtn.title = 'Fly to home airfield'
     homeBtn.innerHTML = HOME_ICON_SVG
@@ -1099,18 +1102,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
     homeCtrlDiv.className = 'maplibregl-ctrl maplibregl-ctrl-group'
     homeCtrlDiv.appendChild(homeBtn)
     map.addControl({ onAdd: () => homeCtrlDiv, onRemove: () => {} }, 'top-right')
-
-    // Route activate/deactivate toggle — shows/hides the drawn route without clearing it.
-    const routeVisBtn = document.createElement('button')
-    routeVisBtn.title = 'Hide route'
-    routeVisBtn.innerHTML = ROUTE_VISIBLE_ICON_SVG
-    routeVisBtn.style.cssText = 'display:flex;align-items:center;justify-content:center;'
-    routeVisBtn.addEventListener('click', () => { setRouteVisible((v) => !v) })
-    routeVisBtnRef.current = routeVisBtn
-    const routeVisCtrlDiv = document.createElement('div')
-    routeVisCtrlDiv.className = 'maplibregl-ctrl maplibregl-ctrl-group'
-    routeVisCtrlDiv.appendChild(routeVisBtn)
-    map.addControl({ onAdd: () => routeVisCtrlDiv, onRemove: () => {} }, 'top-right')
 
     // Map ruler toggle — stacks below the route planning button.
     const rulerBtn = document.createElement('button')
@@ -2821,18 +2812,15 @@ export default function MapView({ auth }: { auth: AuthState }) {
     try { localStorage.setItem('ovfr:uwp:folderVis', JSON.stringify(folderVisibility)) } catch { /* quota */ }
   }, [folderVisibility])
 
-  // Route activate/deactivate: toggle button visual state + display layer visibility.
+  // Route activate/deactivate: display layer visibility only — the toggle
+  // itself now lives in the side pane's RoutePlan header (Active/Inactive
+  // button), mirroring native's PlanScreen header toggle, instead of a
+  // floating map-corner icon button.
   // Independent of planningMode's dashed/midpoint styling — applied after that effect
   // so a hidden route stays hidden even while planning mode is on.
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady) return
-    if (routeVisBtnRef.current) {
-      routeVisBtnRef.current.title = routeVisible ? 'Hide route' : 'Show route'
-      routeVisBtnRef.current.innerHTML = routeVisible ? ROUTE_VISIBLE_ICON_SVG : ROUTE_HIDDEN_ICON_SVG
-      routeVisBtnRef.current.style.backgroundColor = routeVisible ? '' : 'rgba(248, 113, 113, 0.85)'
-      routeVisBtnRef.current.style.color = routeVisible ? '' : '#ffffff'
-    }
     const editMode = planningMode || routeAdjustMode
     ROUTE_DISPLAY_LAYERS.forEach((id) => {
       if (!map.getLayer(id)) return
@@ -3439,6 +3427,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
         onRefresh={refreshManifest}
         waypoints={routeWaypoints}
         legOverrides={legOverrides}
+        routeVisible={routeVisible}
+        onToggleRouteVisible={() => setRouteVisible((v) => !v)}
         planningMode={planningMode}
         onTogglePlanningMode={() => setPlanningMode((m) => !m)}
         onUndo={() => setRouteWaypoints((p) => p.slice(0, -1))}
