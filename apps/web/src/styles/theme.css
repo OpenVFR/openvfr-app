@@ -5,6 +5,13 @@
  * Add [data-theme="light"] or [data-theme="high-contrast"] blocks to
  * introduce new themes without touching any component CSS.
  *
+ * Core surface/text/border/accent/status values for each theme are mirrored
+ * in packages/shared/src/uiTheme.ts (UI_THEME_TOKENS) so the native app's
+ * theme.ts derives identical colours per theme name. When changing a value
+ * here that also exists there, update both — CSS custom properties can't
+ * be generated from the shared TS module at build time, so this is a
+ * manually-kept mirror (same pattern as the wind-barb icon gotcha).
+ *
  * Token naming:
  *   --text-*    readable text layers (contrast-safe on dark bg)
  *   --surface-* panel/overlay backgrounds

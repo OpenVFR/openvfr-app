@@ -24,7 +24,7 @@ import { qnhFromStationPressure } from '@open-vfr/shared/baroAltitude'
 import * as Location from 'expo-location'
 import { API_BASE, TILE_BASE } from '../config'
 import { refreshTileManifest } from '@open-vfr/shared/tileManifest'
-import { theme, useThemedStyles, useScaledTheme, type ScaledTheme } from '../styles/theme'
+import { theme, useThemedStyles, useScaledTheme, type ScaledTheme, type ThemeName } from '../styles/theme'
 import {
   getCacheStatus, getTotalCacheSizeMb, downloadSelected, clearCache,
   REQUIRED_ASSETS, OPTIONAL_ASSETS,
@@ -182,6 +182,10 @@ export function SettingsScreen() {
           options={UI_SCALE_OPTIONS}
           format={(v) => `${Math.round(v * 100)}%`}
           onChange={(v) => update({ uiScale: v })}
+        />
+        <RowTheme
+          value={settings.theme}
+          onChange={(v) => update({ theme: v })}
         />
       </Section>
 
@@ -530,6 +534,34 @@ function RowToggle({
         >
           <Text style={[styles.segText, value && styles.segTextActive]}>{right}</Text>
         </TouchableOpacity>
+      </View>
+    </View>
+  )
+}
+
+const THEME_OPTIONS: { value: ThemeName; label: string }[] = [
+  { value: 'dark',          label: 'Dark'   },
+  { value: 'light',         label: 'Light'  },
+  { value: 'high-contrast', label: 'Hi-Con' },
+]
+
+function RowTheme({
+  value, onChange,
+}: { value: ThemeName; onChange: (v: ThemeName) => void }) {
+  const styles = useThemedStyles(makeStyles)
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>Theme</Text>
+      <View style={styles.segmented}>
+        {THEME_OPTIONS.map(({ value: v, label }) => (
+          <TouchableOpacity
+            key={v}
+            style={[styles.seg, value === v && styles.segActive]}
+            onPress={() => onChange(v)}
+          >
+            <Text style={[styles.segText, value === v && styles.segTextActive]}>{label}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
     </View>
   )

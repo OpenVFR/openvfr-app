@@ -7,6 +7,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { settings as db } from '../db'
 import type { Units } from '../utils/units'
 import { DEFAULT_UNITS } from '../utils/units'
+import type { ThemeName } from '../styles/theme'
 
 export type AppSettings = {
   units:        Units
@@ -44,6 +45,9 @@ export type AppSettings = {
    *  device-size factor — see hooks/useUiScale.ts. For kneeboard/dashboard
    *  mounts viewed from across the cockpit. */
   uiScale: number
+  /** UI colour theme, same three options as web ('dark' | 'light' |
+   *  'high-contrast'), see styles/theme.ts. */
+  theme: ThemeName
 }
 
 const DEFAULTS: AppSettings = {
@@ -64,6 +68,7 @@ const DEFAULTS: AppSettings = {
   useInternalBarometer:     false,
   varioAutoConnectId:       '',
   uiScale:                  1.0,
+  theme:                    'dark',
 }
 
 export function useSettings() {

@@ -2,53 +2,39 @@
  * Design tokens — mirrors src/styles/theme.css from the web project.
  * In React Native there is no CSS; tokens are plain TypeScript constants.
  *
- * Colours are fixed and exported directly as `theme`. Size tokens (spacing,
- * font size, radius) are scaled at render time via `useScaledTheme()` — see
- * below for why a plain static object doesn't work for those.
+ * Colour tokens (surface/text/border/accent/status) come from
+ * @open-vfr/shared/uiTheme's UI_THEME_TOKENS, keyed by ThemeName
+ * ('dark' | 'light' | 'high-contrast') — same three themes as web, same
+ * per-theme colour values. `theme` is a MUTABLE singleton object (not
+ * `as const`): setActiveThemeName() mutates its colour properties in place
+ * rather than reassigning the export, so every existing `theme.accentBlue`
+ * style read (module-scope or inline JSX prop) picks up the new theme on
+ * its next render without needing to be rewritten to consume a hook. What
+ * *does* need a hook is triggering that next render in the first place —
+ * useScaledTheme()/useThemedStyles() subscribe to the active theme name via
+ * useSyncExternalStore, so any component already using either (nearly every
+ * component that reads `theme.*` also builds its stylesheet with one of
+ * these) re-renders on theme change for free.
+ *
+ * Size tokens (spacing, font size, radius) are scaled at render time via
+ * `useScaledTheme()` — see below for why a plain static object doesn't work
+ * for those either.
  */
-import { useMemo } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import { StyleSheet } from 'react-native'
 import type { ImageStyle, TextStyle, ViewStyle } from 'react-native'
 import { useUiScale } from '../hooks/useUiScale'
+import { UI_THEME_TOKENS, type ThemeName } from '@open-vfr/shared/uiTheme'
 
-export const theme = {
-  // Surfaces
-  surfaceBase:    '#0a0e16',
-  surfacePanel:   '#131824',
-  surfaceOverlay: '#1b2236',
-  surfaceHover:   '#1f2940',
+export type { ThemeName }
 
-  // Text
-  textPrimary:   '#e8eaf0',
-  textSecondary: '#a0a8be',
-  textMuted:     '#6b7491',
-  textFaint:     '#4a5070',
-
-  // Borders
-  borderSubtle:  '#1e2640',
-  borderDefault: '#2a3354',
-  borderStrong:  '#3a4570',
-
-  // Accent
-  accentBlue:    '#3b82f6',
-  accentPurple:  '#a855f7',
-  accentMagenta: '#e040fb',
-  accentYellow:  '#f59e0b',
-  accentGreen:   '#22c55e',
-  accentCyan:    '#06b6d4',
-  accentOrange:  '#f97316',
-  accentRed:     '#ef4444',
-
-  // Status
-  statusOk:     '#22c55e',
-  statusWarn:   '#f59e0b',
-  statusDanger: '#ef4444',
-  statusInfo:   '#3b82f6',
-
+const FIXED_TOKENS = {
   // Airspace class colours live ONLY in @open-vfr/shared/airspaceColors (AC.*),
   // used directly in AviationMap.tsx's AIRSPACE_FILL_COLOR/AIRSPACE_BORDER_COLOR
   // expressions. Do not duplicate them here — a hardcoded copy previously
   // drifted out of sync with web (was missing the CTR-vs-TMA distinction).
+  // Airspace colours are also NOT themed — they're the same across dark/
+  // light/high-contrast so the map reads consistently regardless of UI theme.
 
   // Border radii — not scaled (radius is a shape detail, not a legibility
   // concern at distance; scaling it looks wrong on tight controls at high
@@ -76,9 +62,51 @@ export const theme = {
   textLg:  16,
   textXl:  20,
   text2xl: 24,
-} as const
+}
+
+/** Mutable singleton — see file header. Starts on 'dark'; setActiveThemeName()
+ *  mutates the colour keys in place. */
+export const theme = {
+  ...UI_THEME_TOKENS.dark,
+  ...FIXED_TOKENS,
+}
 
 export type Theme = typeof theme
+
+// ---------------------------------------------------------------------------
+// Active theme store — plain module-level pub/sub, read via
+// useSyncExternalStore so components re-render on change without a Context
+// provider (theme.* stays a flat static import everywhere else).
+// ---------------------------------------------------------------------------
+let activeThemeName: ThemeName = 'dark'
+const listeners = new Set<() => void>()
+
+export function getActiveThemeName(): ThemeName {
+  return activeThemeName
+}
+
+/** Call once from SettingsProvider when the persisted theme setting loads or
+ *  changes. Mutates the `theme` singleton's colour keys in place and notifies
+ *  subscribers (useScaledTheme/useThemedStyles consumers) to re-render. */
+export function setActiveThemeName(name: ThemeName): void {
+  if (name === activeThemeName) return
+  activeThemeName = name
+  Object.assign(theme, UI_THEME_TOKENS[name])
+  listeners.forEach((l) => l())
+}
+
+function subscribeActiveTheme(cb: () => void) {
+  listeners.add(cb)
+  return () => listeners.delete(cb)
+}
+
+function getActiveThemeSnapshot() {
+  return activeThemeName
+}
+
+export function useActiveThemeName(): ThemeName {
+  return useSyncExternalStore(subscribeActiveTheme, getActiveThemeSnapshot)
+}
 
 const SIZE_KEYS = [
   'space0', 'space1', 'space2', 'space3', 'space4', 'space5', 'space6',
@@ -102,13 +130,17 @@ export type ScaledTheme = Theme & {
  * unlike the plain `theme` export above).
  */
 export function useScaledTheme(): ScaledTheme {
-  const factor = useUiScale()
+  const factor    = useUiScale()
+  const themeName = useActiveThemeName()
   return useMemo(() => {
     const scale = (px: number) => Math.round(px * factor)
     const scaled = { ...theme } as Record<string, unknown>
     for (const key of SIZE_KEYS) scaled[key] = scale(theme[key])
     return { ...scaled, scale } as ScaledTheme
-  }, [factor])
+    // themeName is read only for its reactive dependency - theme's colour
+    // keys are already mutated in place by setActiveThemeName() by the time
+    // this recomputes, so themeName itself isn't used in the body.
+  }, [factor, themeName])
 }
 
 type NamedStyles<T> = { [P in keyof T]: ViewStyle | TextStyle | ImageStyle }
