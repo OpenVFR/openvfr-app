@@ -32,6 +32,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import type { FeatureCollection, Feature, Point } from 'geojson'
 import { TRAFFIC_BASE } from '../config'
 import { authHeaders } from '../utils/authClient'
+import { selectTrafficIcon } from '../utils/trafficIcons'
 
 // ── Types (mirrors server TrafficState) ───────────────────────────────────────
 
@@ -47,6 +48,7 @@ interface RawState {
   onGround:    boolean
   lastContact: number | null
   category:    number | null
+  source:      'opensky' | 'ogn'
 }
 
 interface TrafficBatch {
@@ -171,6 +173,13 @@ export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: 
             onGround:  s.onGround,
             relAltFt:  relAltFt != null ? Math.round(relAltFt) : null,
             urgency:   urg,
+            category:  s.category,
+            source:    s.source,
+            // iconId pre-computed here (not in AviationMap) so the symbol
+            // layer's icon-image expression stays a plain ['get','iconId']
+            // -- mirrors web's MapView.tsx doing the same selectTrafficIcon()
+            // call before handing features to the GeoJSON source.
+            iconId:    selectTrafficIcon(s.category, s.velocityMs != null ? Math.round(s.velocityMs * 1.944) : 0),
           },
         })
       }

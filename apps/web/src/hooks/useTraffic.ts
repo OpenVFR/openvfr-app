@@ -39,6 +39,8 @@ export interface TrafficTarget {
   relAltFt:  number | null
   /** ICAO ADS-B emitter category (0–19). Null if not reported. */
   category:  number | null
+  /** Which upstream feed this target came from — 'opensky' (ADS-B) or 'ogn' (FLARM/glider network). */
+  source:    'opensky' | 'ogn'
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -66,6 +68,7 @@ interface RawState {
   onGround:    boolean
   lastContact: number | null
   category:    number | null
+  source:      'opensky' | 'ogn'
 }
 
 interface StoredTarget {
@@ -133,6 +136,7 @@ function deadReckon(stored: StoredTarget, nowS: number, ownAltFt: number | null)
     onGround: effectivelyOnGround,
     relAltFt,
     category: raw.category,
+    source:   raw.source,
   }
 }
 

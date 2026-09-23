@@ -28,6 +28,7 @@ import { streamSSE } from 'hono/streaming'
 import OpenAI, { toFile } from 'openai'
 import { writeFileSync, createReadStream, unlinkSync } from 'node:fs'
 import { trafficConfig, registerClient, startTrafficPoller, getLatestBatch, touchActivity } from './traffic'
+import { startOgnRelay } from './ognTraffic'
 import { startNotamPoller, getNotamsForIcao, getRegionalNotams, getAerodromeNotamTexts } from './notam'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -639,5 +640,6 @@ serve({ fetch: app.fetch, port: PORT }, () => {
     console.warn('WARNING: Azure OpenAI not configured — /api/poh-extract will return 503')
   }
   startTrafficPoller()
+  startOgnRelay()
   startNotamPoller()
 })

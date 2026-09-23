@@ -2371,29 +2371,50 @@ export function AviationMap({
           </GeoJSONSource>
         )}
 
-        {/* ── Traffic (ADS-B) ───────────────────── */}
+        {/* -- Traffic (ADS-B / OpenSky + FLARM / OGN) --------------------- */}
+        {/* Two-layer design mirrors web's map-style.ts 'traffic-urgency-ring' +
+            'traffic-symbols': a coloured proximity backdrop behind a
+            category-specific aircraft silhouette (iconId pre-computed in
+            useTraffic.ts via selectTrafficIcon()), replacing the earlier
+            plain-circle-only rendering -- gliders, helicopters, balloons,
+            parachutists, UAVs, and airliners now render distinctly instead
+            of all being the same dot. */}
         {trafficFC && trafficFC.features.length > 0 && (
           <GeoJSONSource id="traffic-src" data={trafficFC}>
             <Layer
-              id="traffic-circle"
+              id="traffic-urgency-ring"
               type="circle"
               paint={{
-                'circle-radius': 6,
+                'circle-radius': 11,
                 'circle-color': [
                   'match', ['get', 'urgency'],
-                  3, '#ef4444',
-                  2, '#eab308',
                   1, '#22c55e',
-                  '#ffffff',
+                  2, '#eab308',
+                  3, '#ef4444',
+                  'transparent',
+                ],
+                'circle-opacity': ['match', ['get', 'urgency'], 0, 0, 0.35],
+                'circle-stroke-color': [
+                  'match', ['get', 'urgency'],
+                  1, '#22c55e',
+                  2, '#eab308',
+                  3, '#ef4444',
+                  'transparent',
                 ],
                 'circle-stroke-width': 1.5,
-                'circle-stroke-color': 'rgba(0,0,0,0.6)',
+                'circle-stroke-opacity': ['match', ['get', 'urgency'], 0, 0, 0.8],
               }}
             />
             <Layer
-              id="traffic-label"
+              id="traffic-symbols"
               type="symbol"
               layout={{
+                'icon-image': ['coalesce', ['get', 'iconId'], 'traffic-icon-a0'],
+                'icon-size': 0.5,
+                'icon-rotate': ['get', 'trackDeg'],
+                'icon-rotation-alignment': 'map',
+                'icon-allow-overlap': true,
+                'icon-ignore-placement': true,
                 'text-field': ['coalesce', ['get', 'callsign'], ['get', 'icao24']],
                 'text-font': ['Noto Sans Regular'],
                 'text-size': 9,
@@ -2402,6 +2423,7 @@ export function AviationMap({
                 'text-allow-overlap': false,
               }}
               paint={{
+                'icon-opacity': 0.9,
                 'text-color': '#ffffff',
                 'text-halo-color': 'rgba(0,0,0,0.7)',
                 'text-halo-width': 1,
@@ -2641,6 +2663,27 @@ export function AviationMap({
           'wp-rp':            require('../../assets/poi_icons/wp-rp.png'),
           'ad-airport':       require('../../assets/poi_icons/ad-airport.png'),
           'ad-heliport':      require('../../assets/poi_icons/ad-heliport.png'),
+          // Traffic silhouettes -- id-for-id parity with web's TRAFFIC_ICON_ENTRIES
+          // (apps/web/src/utils/trafficIcons.ts), pre-rasterized by
+          // scripts/gen-aircraft-icons.mjs since native can't recolor SVGs
+          // at runtime. Selection logic (category+speed -> id) lives in
+          // src/utils/trafficIcons.ts, applied in useTraffic.ts.
+          'traffic-icon-a0':      require('../../assets/aircraft_icons/traffic-icon-a0.png'),
+          'traffic-icon-a7':      require('../../assets/aircraft_icons/traffic-icon-a7.png'),
+          'traffic-icon-b1':      require('../../assets/aircraft_icons/traffic-icon-b1.png'),
+          'traffic-icon-b2':      require('../../assets/aircraft_icons/traffic-icon-b2.png'),
+          'traffic-icon-b3':      require('../../assets/aircraft_icons/traffic-icon-b3.png'),
+          'traffic-icon-b4':      require('../../assets/aircraft_icons/traffic-icon-b4.png'),
+          'traffic-icon-c0':      require('../../assets/aircraft_icons/traffic-icon-c0.png'),
+          'traffic-icon-cessna':  require('../../assets/aircraft_icons/traffic-icon-cessna.png'),
+          'traffic-icon-learjet': require('../../assets/aircraft_icons/traffic-icon-learjet.png'),
+          'traffic-icon-dh8a':    require('../../assets/aircraft_icons/traffic-icon-dh8a.png'),
+          'traffic-icon-crjx':    require('../../assets/aircraft_icons/traffic-icon-crjx.png'),
+          'traffic-icon-a320':    require('../../assets/aircraft_icons/traffic-icon-a320.png'),
+          'traffic-icon-b737':    require('../../assets/aircraft_icons/traffic-icon-b737.png'),
+          'traffic-icon-b747':    require('../../assets/aircraft_icons/traffic-icon-b747.png'),
+          'traffic-icon-a380':    require('../../assets/aircraft_icons/traffic-icon-a380.png'),
+          'traffic-icon-f15':     require('../../assets/aircraft_icons/traffic-icon-f15.png'),
         }} />
 
         {aircraftFC && (

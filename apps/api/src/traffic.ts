@@ -92,8 +92,15 @@ export interface TrafficState {
    * 0=no info  1=light  2=small  3=large  4=HVL/B757  5=heavy
    * 6=high-perf  7=rotorcraft  8=glider  9=LTA  10=parachutist
    * 11=ultralight  12=reserved  13=UAV  14=space  15-19=surface/obstacle
+   *
+   * OGN targets are mapped onto this same enum from FLARM's own aircraft-type
+   * nibble (see ognTraffic.ts) so client icon/UI code needs zero source-aware
+   * branching — a glider is category 8 whether it came from an ADS-B
+   * transponder or a FLARM/OGN tracker.
    */
   category:     number | null
+  /** Which upstream feed this target came from. See docs/architecture.md — combined, never one-replaces-the-other. */
+  source:       'opensky' | 'ogn'
 }
 
 export interface TrafficBatch {
@@ -103,9 +110,11 @@ export interface TrafficBatch {
 }
 
 export interface TrafficConfig {
-  available: boolean
-  bbox:      [number, number, number, number] | null   // [latMin, lonMin, latMax, lonMax]
-  intervalS: number
+  available:    boolean
+  bbox:         [number, number, number, number] | null   // [latMin, lonMin, latMax, lonMax]
+  intervalS:    number
+  /** Whether the OGN (Open Glider Network) APRS-IS feed is enabled (see ognTraffic.ts). Always free/unmetered -- no credential gate like OpenSky. */
+  ognAvailable: boolean
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -123,7 +132,10 @@ function parseBbox(raw: string): [number, number, number, number] {
   return [55.0, 10.0, 69.5, 24.5]
 }
 
-const BBOX          = parseBbox(process.env['OPENSKY_BBOX'] ?? '')
+// Exported: ognTraffic.ts derives its default APRS-IS filter centre/radius
+// from this same region instead of duplicating a second bbox config -- one
+// area covers both feeds unless OGN_FILTER_LAT/LON/RADIUS_KM overrides it.
+export const BBOX   = parseBbox(process.env['OPENSKY_BBOX'] ?? '')
 
 /** Credits per /states/all call: area(sq deg) <= 25 -> 1, <= 100 -> 2, <= 400 -> 3, else 4. */
 function bboxCreditCost(bbox: [number, number, number, number]): number {
@@ -239,7 +251,10 @@ export function touchActivity(): void {
   ensurePolling()
 }
 
-function hasActiveConsumers(): boolean {
+/** Exported: ognTraffic.ts's own idle watcher gates its persistent APRS-IS
+ *  socket on the same signal, so OGN connects/disconnects in step with
+ *  whether anyone is actually looking at the traffic layer. */
+export function hasActiveConsumers(): boolean {
   if (_clients.size > 0) return true
   return Date.now() - _lastActivityAt < IDLE_TIMEOUT_MS
 }
@@ -253,6 +268,55 @@ export function getLatestBatch(): TrafficBatch | null {
 let _lastBatch: TrafficBatch | null = null
 let _pollTimer: ReturnType<typeof setTimeout> | null = null
 let _polling = false
+
+/** Latest OpenSky states from the most recent poll (source of truth for the ADS-B half of the merge). */
+let _openskyStates: TrafficState[] = []
+
+/**
+ * Latest per-target OGN state, keyed by TrafficState.icao24. Updated
+ * per-packet by ognTraffic.ts (updateOgnState()) as APRS-IS messages arrive —
+ * cheap map writes, no broadcast on every packet. A separate ticker
+ * (pruneAndBroadcastOgn(), driven by ognTraffic.ts) periodically prunes stale
+ * entries and triggers a merged rebroadcast, decoupling OGN's much higher
+ * message rate from the SSE fan-out cadence.
+ */
+const _ognStates = new Map<string, TrafficState>()
+
+/**
+ * Union OpenSky + OGN into one broadcast batch, deduped by icao24.
+ *
+ * Dedup rule: if the SAME icao24 is reported by both feeds (this only
+ * happens for OGN targets whose FLARM/OGN-tracker "id" field carries
+ * address-type=ICAO — see ognTraffic.ts), prefer OpenSky's own state. Both
+ * ultimately describe the same aircraft's ADS-B-derived position; OpenSky's
+ * feed is the canonical one for anything transponder-equipped. Targets only
+ * OGN can see (gliders, tow planes, many ultralights without ADS-B) pass
+ * through union'd in, tagged source:'ogn'.
+ */
+function recomputeAndBroadcast(): void {
+  const openskyIcaos = new Set(_openskyStates.map(s => s.icao24.toLowerCase()))
+  const merged: TrafficState[] = [..._openskyStates]
+  for (const s of _ognStates.values()) {
+    if (openskyIcaos.has(s.icao24.toLowerCase())) continue
+    merged.push(s)
+  }
+  _lastBatch = { polledAt: Math.floor(Date.now() / 1000), states: merged }
+  broadcast(_lastBatch)
+}
+
+/** Called by ognTraffic.ts on every parsed APRS-IS aircraft beacon. Map write only — no broadcast per packet. */
+export function updateOgnState(state: TrafficState): void {
+  _ognStates.set(state.icao24, state)
+}
+
+/** Called periodically by ognTraffic.ts (independent of OpenSky's ~65 s poll cycle) to prune stale OGN targets and push a merged rebroadcast at OGN's own, much faster, cadence. */
+export function pruneAndBroadcastOgn(staleS: number): void {
+  const nowS = Date.now() / 1000
+  for (const [k, v] of _ognStates) {
+    if (v.lastContact != null && nowS - v.lastContact > staleS) _ognStates.delete(k)
+  }
+  recomputeAndBroadcast()
+}
 
 // ── Poller ────────────────────────────────────────────────────────────────────
 
@@ -296,11 +360,12 @@ async function poll(): Promise<number> {
         onGround:    Boolean(s[8]),
         lastContact: typeof s[4] === 'number' ? s[4] : null,
         category:    typeof s[17] === 'number' ? s[17] : null,
+        source:      'opensky' as const,
       }))
 
-    _lastBatch = { polledAt, states }
-    broadcast(_lastBatch)
-    console.log(`[traffic] Polled ${states.length} targets, broadcast to ${_clients.size} clients`)
+    _openskyStates = states
+    recomputeAndBroadcast()
+    console.log(`[traffic] Polled ${states.length} OpenSky targets (+${_ognStates.size} OGN), broadcast to ${_clients.size} clients`)
     return INTERVAL_S * 1000
 
   } catch (err) {
@@ -338,9 +403,13 @@ function ensurePolling(): void {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export const trafficConfig: TrafficConfig = {
-  available: Boolean(CLIENT_ID && CLIENT_SECRET),
-  bbox:      Boolean(CLIENT_ID && CLIENT_SECRET) ? BBOX : null,
-  intervalS: INTERVAL_S,
+  available:    Boolean(CLIENT_ID && CLIENT_SECRET),
+  bbox:         Boolean(CLIENT_ID && CLIENT_SECRET) ? BBOX : null,
+  intervalS:    INTERVAL_S,
+  // No credential gate -- OGN's APRS-IS feed is free/unmetered by design.
+  // Only an explicit opt-out disables it (self-hosters without outbound
+  // access to aprs.glidernet.org:14580, or who simply don't want it).
+  ognAvailable: process.env['OGN_ENABLED'] !== 'false',
 }
 
 /**

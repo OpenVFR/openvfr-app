@@ -82,6 +82,21 @@ OpenVFR is built on the following data and map sources:
   sources.
 * **[OpenSky Network](https://opensky-network.org/)** — live ADS-B air
   traffic data, via a registered OpenSky account (rate/credit limited).
+* **[Open Glider Network (OGN)](https://www.glidernet.org/)** — live
+  FLARM/glider-network traffic (gliders, tow planes, many ultralights
+  without ADS-B), via an unauthenticated read-only APRS-IS connection to
+  `aprs.glidernet.org:14580` — no account, credentials, or credit limit,
+  unioned with OpenSky rather than replacing it (see
+  `apps/api/src/ognTraffic.ts`). Data licensed
+  **[ODbL](https://opendatacommons.org/licenses/odbl/summary/)**; usage
+  requires honoring [OGN's data usage rules](https://www.glidernet.org/ogn-data-usage/) —
+  no redistribution of data older than 24 h (this app only ever shows a
+  live feed, positions pruned after 120 s of silence) and respecting each
+  device's tracking opt-out choice recorded in the
+  [OGN Devices Database](https://ddb.glidernet.org) (`apps/api/src/ognDdbPrivacy.ts`
+  periodically fetches the DDB's `tracked=N` list and filters those
+  devices out of the live feed, on top of APRS-IS's own network-level
+  no-tracking-flag rejection).
 * **[OpenAIP](https://www.openaip.net/)** — airspace and obstacle data.
   Licensed **CC BY-NC 4.0 — non-commercial use only.** This restricts
   commercial use of the combined app; see § License note below.
