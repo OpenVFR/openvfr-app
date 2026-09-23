@@ -581,14 +581,29 @@ export function MapScreen() {
   }, [status])
 
   const handleFeatureTap = useCallback(async (features: Feature[], tapLngLat: [number, number]) => {
-    // First non-airspace feature — checked BEFORE the airspace point-in-polygon
-    // query below. Aerodromes/navaids/waypoints/obstacles very often sit
-    // physically inside their own ATZ/CTR polygon, so querying airspace first
-    // and returning early on any hit meant tapping an airport almost always
-    // opened the airspace popup instead of the aerodrome one — airport radio/
-    // fuel/runway info was unreachable. Point features rendered directly under
-    // the tap take priority; airspace is only the fallback.
-    const feature = features.find(f => !isAirspace(f.properties ?? {}))
+    // First non-airspace, non-route feature — checked BEFORE the airspace
+    // point-in-polygon query below. Aerodromes/navaids/waypoints/obstacles
+    // very often sit physically inside their own ATZ/CTR polygon, so querying
+    // airspace first and returning early on any hit meant tapping an airport
+    // almost always opened the airspace popup instead of the aerodrome one —
+    // airport radio/fuel/runway info was unreachable. Point features rendered
+    // directly under the tap take priority; airspace is only the fallback.
+    //
+    // The route's own synthetic hit features (`route-pts-circle` /
+    // `route-legs-hit`, tagged `featureType: 'wp'`/`'leg'` by
+    // AviationMap.tsx's routePointsGeoJSON/routeLegsGeoJSON) render on top of
+    // whatever real feature they were snapped to. When a route waypoint sits
+    // on an aerodrome/navaid/waypoint, that synthetic feature was always
+    // first in the tap's feature array — `isAerodrome`/etc. all fail on it
+    // (no `icao`/`runways`/etc.), so it fell into the generic "unknown point"
+    // branch below (Add to Route) and the real aerodrome underneath was never
+    // reached. AviationMap.tsx's handleMapPress already special-cases 'wp'
+    // for double-tap-remove before forwarding here, so it's safe to skip past
+    // it here too and let the real feature underneath open its popup.
+    const feature = features.find(f => {
+      const p = f.properties ?? {}
+      return !isAirspace(p) && p.featureType !== 'wp' && p.featureType !== 'leg'
+    })
     const [tapLng, tapLat] = tapLngLat
 
     if (feature) {
