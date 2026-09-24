@@ -986,17 +986,38 @@ export function getMapStyle(): StyleSpecification {
         // strong, near-uniform dark ring around every skerry/coastline (real
         // terrain, but right at the resolution limit of a 90m/px product).
         // hillshade_to_pmtiles.sh now also softens the small-scale elevation
-        // transition itself (see smooth_elevation_for_shading.py); shadow
-        // opacity/exaggeration lowered here too so the remaining real slope
-        // reads as a soft, low-contrast tone rather than a hard black edge --
-        // matches the calmer, low-contrast look of professional hillshade
-        // products (lower exaggeration + lighter shadow color, not a style-
-        // spec feature difference).
+        // transition itself (see smooth_elevation_for_shading.py).
+        // BUG FIX (regression, caught live by user review after the coastal-
+        // rim fix above shipped): the first attempt at taming the coastal
+        // ring ALSO dropped exaggeration/shadow-accent opacity uniformly
+        // (0.5->0.3, 0.75/0.5->0.45/0.3) -- this crushed ordinary, non-
+        // mountainous Swedish relief to near-invisibility (confirmed live:
+        // toggling the layer on/off over rolling Sveg/Harjedalen terrain
+        // showed almost no visible difference, only steep real elevation
+        // near the Norway border still read as shaded) while the sharp
+        // country-border data-edge gradient -- already disproportionately
+        // large before any scaling -- survived the uniform scale-down
+        // relatively better, so the border edge became MORE dominant
+        // relative to everything else, not less. A flat opacity/exaggeration
+        // cut doesn't fix relative contrast, it just crushes the weak signal
+        // (gentle real relief) along with the strong one (the border cliff)
+        // this was never meant to touch. Checked against a mature reference
+        // hillshade dataset at the exact same Skane coordinates used to
+        // report this regression: real, clearly-visible textured relief
+        // exists there (Linderodsasen ridge terrain) and its coastline/water
+        // edge fades smoothly with no dark rim -- proof that visible general
+        // relief and a clean coastal edge are not actually in tension, so
+        // the uniform-scale-down approach was solving the coastal-rim
+        // problem with the wrong lever. Exaggeration raised back up and
+        // shadow/accent opacity increased to restore real terrain
+        // visibility; the actual coastal/border cliff fix stays in the data
+        // pipeline (masked elevation smoothing + border-buffer width, not a
+        // style-side opacity knob) -- see hillshade_to_pmtiles.sh.
         paint: {
-          'hillshade-exaggeration': 0.3,
-          'hillshade-shadow-color': 'rgba(60,45,30,0.45)',
-          'hillshade-highlight-color': 'rgba(255,255,255,0.8)',
-          'hillshade-accent-color': 'rgba(60,45,30,0.3)',
+          'hillshade-exaggeration': 0.7,
+          'hillshade-shadow-color': 'rgba(60,45,30,0.6)',
+          'hillshade-highlight-color': 'rgba(255,255,255,0.85)',
+          'hillshade-accent-color': 'rgba(60,45,30,0.4)',
         },
       },
 
