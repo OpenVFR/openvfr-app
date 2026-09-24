@@ -12,12 +12,29 @@ RUN corepack enable
 WORKDIR /app
 
 # Install via the root workspace — apps/api is a real pnpm workspace member.
+# @open-vfr/shared (packages/shared) must be copied here too, BEFORE
+# `pnpm install` -- pnpm resolves pnpm-workspace.yaml's `packages/*` glob
+# against whatever package.json files actually exist in the build context
+# at install time; omitting packages/shared/package.json here means pnpm
+# can't see it as a workspace member at all, so apps/api's
+# `@open-vfr/shared: workspace:*` dependency silently fails to link even
+# though `pnpm install` itself exits 0 (no error, no warning) -- confirmed
+# live: ERR_MODULE_NOT_FOUND at runtime, well after a successful build,
+# the first time apps/api/src actually imported something from
+# @open-vfr/shared (previously zero runtime dependency existed on it, so
+# this gap in the Dockerfile never mattered before).
 COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/package.json
+COPY packages/shared/package.json packages/shared/package.json
 RUN pnpm install --frozen-lockfile || pnpm install
 
-# Copy source (tsx runs TypeScript directly — no build step needed)
+# Copy source (tsx runs TypeScript directly — no build step needed).
+# packages/shared's exports map points at ./src/*.ts directly (no dist/
+# build step for this package either) -- the actual .ts source must be
+# present in the image, not just its package.json (which only satisfies
+# pnpm's workspace-resolution/symlink step above, not the real import).
 COPY apps/api/src apps/api/src
+COPY packages/shared/src packages/shared/src
 
 WORKDIR /app/apps/api
 
