@@ -290,7 +290,20 @@ function sortByLower(list: AirspaceFeatureProps[]) {
 // ── main component ────────────────────────────────────────────────────────────
 export function AirspacePopup({ features, regionalNotams = [], onClose }: Props) {
   const styles = useThemedStyles(makeStyles)
-  const [expanded, setExpanded] = useState<number | null>(null)
+  // Independently-collapsible rows -- keyed by string so NOTAM and charted
+  // airspace rows (each own index space) never collide, and multiple rows
+  // can be expanded at once (not a single-open accordion). Collapsed
+  // (default) shows only the header line -- name/badges/altitude; expanded
+  // reveals remarks, frequencies, and NOTAM detail. Mirrors web's
+  // AirspacePopup.tsx `expanded` Set exactly.
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
+  const toggleRow = (key: string) => {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }
   const [rowsHeight, setRowsHeight] = useState(0)
 
   // Dedup regional NOTAMs by nmsId (NOT the display id -- different issuing
@@ -335,31 +348,44 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
           <AltitudeStrip list={sorted} height={rowsHeight} />
           <View style={styles.rowsCol} onLayout={(e) => setRowsHeight(e.nativeEvent.layout.height)}>
           {dedupedNotams.map((hit, i) => {
-            const n = hit.notam
+            const n     = hit.notam
+            const key   = `notam-${i}`
+            const isOpen = expandedKeys.has(key)
             return (
-              <View key={`notam-${i}`} style={styles.item}>
-                <View style={styles.row}>
+              <View key={key} style={styles.item}>
+                <TouchableOpacity
+                  style={styles.row}
+                  onPress={() => toggleRow(key)}
+                  activeOpacity={0.7}
+                >
                   <PolygonThumb
                     coords={hit.coords}
                     strokeColor={NOTAM_COLOR}
                     fillColor="rgba(230,73,128,0.13)"
-                    active={false}
+                    active={isOpen}
                   />
                   <View style={styles.info}>
                     <View style={styles.badges}>
                       <View style={[styles.badge, { borderColor: NOTAM_COLOR }]}>
                         <Text style={[styles.badgeTxt, { color: NOTAM_COLOR }]}>NOTAM</Text>
                       </View>
+                      {(n.effective || n.expires) && (
+                        <View style={styles.altBadge}>
+                          <Text style={styles.altTxt} numberOfLines={1}>
+                            {fmtNotamDate(n.effective) ?? '—'} – {fmtNotamDate(n.expires) ?? '—'}
+                          </Text>
+                        </View>
+                      )}
                     </View>
                     <Text style={styles.name} numberOfLines={1}>{n.id}</Text>
-                    {(n.effective || n.expires) && (
-                      <Text style={styles.timeTxt} numberOfLines={1}>
-                        {fmtNotamDate(n.effective) ?? '—'} – {fmtNotamDate(n.expires) ?? '—'}
-                      </Text>
-                    )}
+                  </View>
+                  <Text style={[styles.chevron, isOpen && styles.chevronOpen]}>›</Text>
+                </TouchableOpacity>
+                {isOpen && (
+                  <View style={styles.expandedContent}>
                     <Text style={styles.notamText}>{n.text}</Text>
                   </View>
-                </View>
+                )}
               </View>
             )
           })}
@@ -367,13 +393,14 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
             const cls    = f.class ?? ''
             const color  = classBorderColor(cls, f.type)
             const fill   = classFillColor(cls, f.type)
-            const isOpen = expanded === i
+            const key    = `feature-${i}`
+            const isOpen = expandedKeys.has(key)
 
             return (
               <View key={i} style={styles.item}>
                 <TouchableOpacity
                   style={styles.row}
-                  onPress={() => setExpanded(isOpen ? null : i)}
+                  onPress={() => toggleRow(key)}
                   activeOpacity={0.7}
                 >
                   <PolygonThumb

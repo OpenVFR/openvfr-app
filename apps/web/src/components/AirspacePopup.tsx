@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import css from './AirspacePopup.module.css'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
@@ -204,6 +205,19 @@ interface Props {
 }
 
 export default function AirspacePopup({ features, regionalNotams = [], onClose }: Props) {
+  // Independently-collapsible rows -- collapsed (default) shows only the
+  // header line (icon, name, type/class/altitude badges); expanded reveals
+  // remarks, frequencies, and matched NOTAM detail. Keyed by row index into
+  // `items` (built below), so toggling one row never affects any other.
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const toggleRow = (i: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(i)) next.delete(i); else next.add(i)
+      return next
+    })
+  }
+
   // Deduplicate (same polygon may render from multiple tile edges) then sort
   // ceiling-first so the list reads top-down = high → low altitude.
   const seen = new Set<string>()
@@ -318,28 +332,45 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
             if (item.kind === 'notam') {
               const n = item.hit.notam
               const notamColor = '#e64980'
+              const isOpen = expanded.has(i)
               return (
-                <div key={i} className={css.row}>
+                <div
+                  key={i}
+                  className={css.row}
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isOpen}
+                  onClick={() => toggleRow(i)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleRow(i) } }}
+                >
                   <div className={css.rowInner}>
                     <PolygonThumb coords={item.hit.coords} strokeColor={notamColor} fillColor={withAlpha(notamColor, 0.13)} />
                     <div className={css.rowContent}>
                       <div className={css.bandTop}>
                         <span className={css.typeTag} style={{ color: '#e64980', borderColor: 'rgba(230,73,128,0.4)' }}>NOTAM</span>
+                        {(n.effective || n.expires) && (
+                          <span className={css.altBadge}>
+                            {fmtNotamDate(n.effective) ?? '—'} – {fmtNotamDate(n.expires) ?? '—'}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          className={css.chevron}
+                          aria-label={isOpen ? 'Collapse' : 'Expand'}
+                          onClick={(e) => { e.stopPropagation(); toggleRow(i) }}
+                        >
+                          {isOpen ? '▲' : '▼'}
+                        </button>
                       </div>
                       <div className={css.name}>{n.id}</div>
-                      {(n.effective || n.expires) && (
-                        <div className={css.altBand}>
-                          <span className={css.altVal}>{fmtNotamDate(n.effective) ?? '—'}</span>
-                          <span className={css.altSep}>–</span>
-                          <span className={css.altVal}>{fmtNotamDate(n.expires) ?? '—'}</span>
+                      {isOpen && (
+                        <div
+                          className={css.remarks}
+                          style={{ borderColor: '#e64980', background: 'rgba(230,73,128,0.1)', whiteSpace: 'pre-line' }}
+                        >
+                          {n.text}
                         </div>
                       )}
-                      <div
-                        className={css.remarks}
-                        style={{ borderColor: '#e64980', background: 'rgba(230,73,128,0.1)', whiteSpace: 'pre-line' }}
-                      >
-                        {n.text}
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -350,13 +381,24 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
             const c        = bandColor(f.class, f.type)
             const typeText = TYPE_LABEL[f.type] ?? f.type ?? f.class
             const isUnl    = f.upper_ft >= UNL_THRESHOLD_FT
+            const isOpen    = expanded.has(i)
+            const hasDetail = !!(f.frequencies?.length || (!f.frequencies && f.class === 'G') || f.notams?.length || f.remarks)
 
             return (
-              <div key={i} className={css.row}>
+              <div
+                key={i}
+                className={css.row}
+                role="button"
+                tabIndex={0}
+                aria-expanded={isOpen}
+                onClick={() => toggleRow(i)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleRow(i) } }}
+              >
               <div className={css.rowInner}>
                 <PolygonThumb coords={f.coords} strokeColor={c} fillColor={withAlpha(c, 0.13)} />
                 <div className={css.rowContent}>
-                {/* Type tag + class badge */}
+                {/* Type tag + class badge + altitude badge -- always visible,
+                    even collapsed: this is the "only important info" line. */}
                 <div className={css.bandTop}>
                   <span className={css.typeTag}>{typeText}</span>
                   <span
@@ -365,18 +407,27 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
                   >
                     {CLASS_LABEL[f.class] ?? f.class}
                   </span>
+                  <span className={css.altBadge}>{f.lower} \u2013 {isUnl ? 'UNL' : f.upper}</span>
+                  {hasDetail && (
+                    <button
+                      type="button"
+                      className={css.chevron}
+                      aria-label={isOpen ? 'Collapse' : 'Expand'}
+                      onClick={(e) => { e.stopPropagation(); toggleRow(i) }}
+                    >
+                      {isOpen ? '\u25b2' : '\u25bc'}
+                    </button>
+                  )}
                 </div>
 
                 {/* Name */}
                 <div className={css.name}>{f.name}</div>
 
-                {/* Compact floor – ceiling on one line */}
-                <div className={css.altBand}>
-                  <span className={css.altVal}>{f.lower}</span>
-                  <span className={css.altSep}>–</span>
-                  <span className={css.altVal}>{isUnl ? 'UNL' : f.upper}</span>
-                </div>
-
+                {/* Detail: frequencies / FIS hint / matched NOTAMs / remarks --
+                    hidden until this row is expanded (altitude already shown
+                    in the always-visible header badge). */}
+                {isOpen && (
+                <>
                 {/* Frequencies */}
                 {f.frequencies && f.frequencies.length > 0 && (
                   <div className={css.freqList}>
@@ -411,6 +462,8 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
                 {/* Remarks */}
                 {f.remarks && (
                   <div className={css.remarks}>{f.remarks}</div>
+                )}
+                </>
                 )}
                 </div>
               </div>

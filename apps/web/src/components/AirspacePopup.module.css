@@ -171,6 +171,41 @@
   padding: 1px 6px;
 }
 
+/* Compact floor-ceiling pill, always visible (collapsed + expanded) --
+   the "only important info" companion to typeTag/classBadge. */
+.altBadge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-family: 'Courier New', monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+/* Per-row expand/collapse toggle, pushed to the end of the badge row. */
+.chevron {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 9px;
+  line-height: 1;
+  padding: 3px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: color 0.1s, background 0.1s;
+}
+
+.chevron:hover {
+  color: var(--text-primary);
+  background: var(--surface-active);
+}
+
 .name {
   font-size: 13px;
   font-weight: 600;
