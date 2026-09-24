@@ -540,6 +540,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const [extWsError,     setExtWsError]     = useState<string | null>(null)
   const [showDirectTo,   setShowDirectTo]   = useState(false)
   const [showFindDest,   setShowFindDest]   = useState(false)
+  const [showVicinityBrief, setShowVicinityBrief] = useState(false)
   // ICAO dismissed by the user; resets when a different aerodrome enters range
   const [briefDismissed, setBriefDismissed] = useState<string | null>(null)
   const [showPlog, setShowPlog] = useState(false)
@@ -3656,7 +3657,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
         activeRouteId={activeRouteId}
         onActiveRouteIdChange={setActiveRouteId}
         onRunwayWind={handleRunwayWind}
-        vicinityAerodromes={vicinityAerodromes}
         onShowNotamOnMap={handleShowNotamOnMap}
         onSetLegOverride={(idx, ovr) =>
           setLegOverrides((prev) => {
