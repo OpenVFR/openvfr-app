@@ -51,6 +51,7 @@ import RulerSummaryStrip from './RulerSummaryStrip'
 import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
 import { useWindAlongRoute } from '../hooks/useWindAlongRoute'
 import { useVicinityAerodromes } from '../hooks/useVicinityAerodromes'
+import { useNearbyFrequencies } from '../hooks/useNearbyFrequencies'
 import VicinityBriefPanel from './VicinityBriefPanel'
 import { useGpsVerticalSpeed } from '../hooks/useGpsVerticalSpeed'
 import LiveTrackChart from './LiveTrackChart'
@@ -532,6 +533,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     routeVisible,
     homeIcao: homeAirfield?.icao ?? null,
   })
+  const nearbyFreqs = useNearbyFrequencies(gpsPosition)
   // GPS-derived vertical speed — see useGpsVerticalSpeed's header for why
   // this is explicitly a lower-quality fallback vs. native's baro/vario
   // tiering, kept only active while actually flying (mirrors gpsPosition's
@@ -4029,6 +4031,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       {/* \u2500\u2500 Airfield Brief panel \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
       {showVicinityBrief && (
         <VicinityBriefPanel
+          nearbyFreqs={nearbyFreqs}
           aerodromes={vicinityAerodromes}
           isHome={(icao) => homeAirfield?.icao === icao}
           authed={!!auth.user}

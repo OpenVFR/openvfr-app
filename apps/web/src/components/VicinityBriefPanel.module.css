@@ -64,6 +64,110 @@
   color: var(--text-faint);
 }
 
+.tabBar {
+  display: flex;
+  border-bottom: 1px solid var(--border-default);
+  flex-shrink: 0;
+}
+
+.tab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.tabActive {
+  color: var(--accent-blue);
+  border-bottom-color: var(--accent-blue);
+}
+
+.freqList {
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.adCard {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+.adCard:first-child {
+  border-top: none;
+}
+
+.adHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.adIcao {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.adName {
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adDist {
+  font-size: 10px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.noFreq {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.freqRows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.freqRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--surface-active);
+  border-radius: 5px;
+  padding: 3px 7px;
+}
+
+.svcBadge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid;
+}
+
+.freqMhz {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.freqCallsign {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
 .picker {
   display: flex;
   flex-wrap: wrap;
