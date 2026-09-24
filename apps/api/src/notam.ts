@@ -92,6 +92,14 @@ export type NotamPolygonGeometry =
 
 export interface NotamItem {
   id:             string
+  // NMS-API's own globally-unique internal id, NOT the human-readable
+  // published NOTAM number (that's `id` above). Different issuing
+  // authorities reuse the same series+number+year (confirmed live: a
+  // German EDWW NOTAM and an unrelated Italian one were both published as
+  // "M3011/26") -- callers needing to dedupe a NOTAM list MUST use nmsId,
+  // not id, or a same-numbered NOTAM from a different country silently
+  // vanishes. Not meant for display.
+  nmsId:          string
   text:           string
   effective:      string | null
   expires:        string | null
@@ -130,6 +138,16 @@ const NMS_CACHE_FILE = process.env['NMS_CACHE_FILE'] || '/data/notam-cache.json'
 // FAA states "1 request every 3 minutes" as the production ceiling. Pad it
 // so clock drift / slow requests never trip the account-wide throttle.
 const POLL_INTERVAL_MS = 3 * 60 * 1000 + 20_000 // 3m20s
+
+// Second, independent poller cadence for classification=MILITARY -- see
+// pollMilitaryOnce()'s own header comment for the full design rationale.
+// Padded well past 24h so clock drift never trips the FAA's "1 bulk pull
+// every 24 hours at most" allowance -- this is a genuinely separate budget
+// from POLL_INTERVAL_MS's 3-minute delta cadence above, not competing with
+// it (confirmed against the production onboarding doc's own wording: "1
+// data pull every 3 minutes" vs "1 bulk pull every 24 hours ... using
+// either /IL functionality or full classification pulls of GeoJSON data").
+const MILITARY_POLL_INTERVAL_MS = 24 * 60 * 60 * 1000 + 10 * 60 * 1000 // 24h10m
 
 export const notamConfig = {
   available: Boolean(NMS_CLIENT_ID && NMS_CLIENT_SECRET),
@@ -206,6 +224,25 @@ const COUNTRY_COVERAGE_BBOX = { south: 55.3, west: 10.9, north: 69.1, east: 24.2
 const BORDER_MARGIN_DEG = 0.75
 
 const CROSS_BORDER_KEY = '_CROSSBORDER' // synthetic cache key -- never collides with a real 4-letter ICAO/FIR code
+const MILITARY_EU_KEY  = '_MILITARY_EU' // synthetic cache key for the classification=MILITARY pull, see pollMilitaryOnce()
+
+// ICAO location-indicator region prefixes for Europe: 'E' (Northern/Central
+// -- Scandinavia, UK, Ireland, Benelux, Germany, Poland, Baltics) and 'L'
+// (Southern -- France, Spain, Italy, Greece, etc.). Chosen over a
+// geometry/bbox test (unlike isNearCoverageArea() above) because this
+// project's actual scope is "Europe", not just Sweden's own tile-pipeline
+// bbox -- a country-specific bbox would be the wrong tool here even before
+// considering that classification=MILITARY's worldwide dataset is small
+// enough (~5,600 features measured on staging) to just filter by region
+// rather than needing precise geometry matching. Verified empirically
+// against real MILITARY-classification data before choosing this: E/L
+// prefixes covered 336 of 685 unique icaoLocations in a live sample, with
+// the remainder cleanly explained by other ICAO regions (K=USA at the
+// largest non-European share, plus R/P/O/etc. worldwide) -- not a guess.
+function isEuropeanIcaoLocation(icaoLocation: string): boolean {
+  const first = icaoLocation.charAt(0)
+  return first === 'E' || first === 'L'
+}
 
 // Geometric primitives (circleIntersectsBbox/pointNearBbox/polygonNearBbox)
 // live in @open-vfr/shared/notamCoverageArea, not here -- promoted per
@@ -573,7 +610,84 @@ async function pollOnce(): Promise<void> {
   }
 }
 
+/**
+ * Second, independent poller for classification=MILITARY -- catches real
+ * military exercise/training NOTAMs that classification=INTERNATIONAL
+ * never includes. Motivating live example: a German Baltic-Sea NVG-
+ * training NOTAM (M3011/26, icaoLocation=EDWW) was confirmed present in
+ * NMS-API's data with classification="MIL", but pollOnce() above never
+ * sees it -- classification=INTERNATIONAL and classification=MILITARY are
+ * disjoint buckets from NMS-API's own perspective, not an overlap
+ * pollOnce()'s existing query could be widened to cover.
+ *
+ * Deliberately NOT a delta/cursor design like pollOnce() -- the whole
+ * classification=MILITARY worldwide dataset is small (~970KB gzipped /
+ * 5,600 features measured on staging, ~8.5x smaller than the
+ * classification=INTERNATIONAL pull), so a full re-fetch once per day is
+ * cheap enough that tracking a lastUpdatedDate cursor would add complexity
+ * for no real benefit. Each successful poll REPLACES the MILITARY_EU_KEY
+ * bucket wholesale (not an incremental upsert) so cancelled/superseded
+ * NOTAMs are naturally dropped without needing pruneCache()'s
+ * effectiveEnd/cancelationDate logic to catch them first.
+ *
+ * Filtered to European ICAO location-indicator prefixes (see
+ * isEuropeanIcaoLocation()) rather than run through isNearCoverageArea()'s
+ * Sweden-bbox geometry test -- this project's actual scope is Europe, not
+ * just Sweden's own tile-pipeline bbox, and the dataset is small enough
+ * that a per-country geometry test would be solving a problem that doesn't
+ * exist here (unlike pollOnce()'s classification=INTERNATIONAL pull, whose
+ * scale genuinely requires bbox-based filtering to stay useful).
+ */
+async function pollMilitaryOnce(): Promise<void> {
+  if (!notamConfig.available) return
+
+  try {
+    const token = await getNmsToken()
+    const resp = await fetch(`${NMS_API_HOST}/v1/notams?classification=MILITARY`, {
+      headers: {
+        'Authorization':     `Bearer ${token}`,
+        'nmsResponseFormat': 'GEOJSON',
+      },
+    })
+    if (!resp.ok) {
+      console.warn(`[notam] NMS MILITARY poll HTTP ${resp.status}`)
+      return
+    }
+
+    // Same inline-JSON-vs-redirected-gzip handling as pollOnce() -- see its
+    // own comment for why both shapes must be handled.
+    const buf = Buffer.from(await resp.arrayBuffer())
+    const isGzip = buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b
+    const text = isGzip ? gunzipSync(buf).toString('utf8') : buf.toString('utf8')
+    const parsed = JSON.parse(text) as NmsGeoJsonFeature[] | NmsNotamsResponse
+    const features = Array.isArray(parsed) ? parsed : (parsed.data?.geojson ?? [])
+
+    const byId = new Map<string, NmsNotam>()
+    for (const feature of features) {
+      const n = feature.properties?.coreNOTAMData?.notam
+      if (!n?.icaoLocation || !n.id) continue
+      if (!isEuropeanIcaoLocation(n.icaoLocation)) continue
+      n.geometry = feature.geometry ?? null
+      byId.set(n.id, n)
+    }
+
+    // Wholesale replace, not merge -- see this function's own header for why.
+    if (byId.size > 0) {
+      _cache.set(MILITARY_EU_KEY, byId)
+    } else {
+      _cache.delete(MILITARY_EU_KEY)
+    }
+
+    pruneCache()
+    saveCacheToDisk()
+    console.log(`[notam] NMS MILITARY poll OK: ${features.length} received worldwide, ${byId.size} kept (European ICAO prefixes)`)
+  } catch (e) {
+    console.warn('[notam] NMS MILITARY poll failed:', (e as Error).message)
+  }
+}
+
 let _pollTimer: ReturnType<typeof setInterval> | null = null
+let _militaryPollTimer: ReturnType<typeof setInterval> | null = null
 
 /**
  * Called once at server boot. Starts the shared poller immediately if
@@ -591,11 +705,18 @@ export function startNotamPoller(): void {
   void pollOnce()
   _pollTimer = setInterval(() => { void pollOnce() }, POLL_INTERVAL_MS)
   _pollTimer.unref?.() // never keep the process alive solely for this timer
+
+  console.log(`[notam] NMS-API MILITARY poller starting (interval=${MILITARY_POLL_INTERVAL_MS}ms)`)
+  void pollMilitaryOnce()
+  _militaryPollTimer = setInterval(() => { void pollMilitaryOnce() }, MILITARY_POLL_INTERVAL_MS)
+  _militaryPollTimer.unref?.()
 }
 
 export function stopNotamPoller(): void {
   if (_pollTimer) clearInterval(_pollTimer)
   _pollTimer = null
+  if (_militaryPollTimer) clearInterval(_militaryPollTimer)
+  _militaryPollTimer = null
 }
 
 /**
@@ -651,6 +772,17 @@ function activeNotamsFor(icao: string): NotamItem[] {
 
     notams.push({
       id:             n.number ?? n.id ?? '',
+      // NMS-API's own globally-unique internal id -- NOT the same as `id`
+      // above, which is the human-readable published NOTAM number
+      // ("M3011/26"-style). Confirmed live and real, not hypothetical:
+      // different issuing authorities reuse the same series+number+year --
+      // a German (EDWW) and an Italian (Amendola CTR) NOTAM both published
+      // as "M3011/26" coexisted in the same poll. Dedup keyed on the
+      // display `id` alone (as getRegionalNotams() used to do) silently
+      // drops one of them, believing it's a duplicate. `nmsId` exists
+      // purely so callers can dedupe correctly without that collision --
+      // not meant for display.
+      nmsId:          n.id ?? '',
       text,
       effective:      n.effectiveStart ?? null,
       expires:        n.effectiveEnd ?? null,
@@ -712,11 +844,19 @@ export function getAerodromeNotamTexts(): Record<string, string[]> {
  */
 export function getRegionalNotams(): NotamResponse {
   const notams: NotamItem[] = []
+  // Dedup on nmsId (NMS-API's own globally-unique internal id), NOT the
+  // display `id` (published NOTAM number) -- confirmed live and real that
+  // different issuing authorities reuse the same series+number+year (a
+  // German EDWW NOTAM and an unrelated Italian one were both "M3011/26").
+  // Deduping on the display id alone silently drops one of them. This
+  // fixed a real bug found via verification: before this fix, exactly that
+  // collision made getRegionalNotams() return only 1 of 2 real, unrelated
+  // NOTAMs sharing that number.
   const seen = new Set<string>()
   for (const fir of _regionalKeys) {
     for (const n of activeNotamsFor(fir)) {
-      if (seen.has(n.id)) continue // a NOTAM could in principle appear under >1 FIR key
-      seen.add(n.id)
+      if (seen.has(n.nmsId)) continue // a NOTAM could in principle appear under >1 FIR key
+      seen.add(n.nmsId)
       notams.push(n)
     }
   }
@@ -727,8 +867,15 @@ export function getRegionalNotams(): NotamResponse {
   // and RegionalNotamsPanel.tsx pick these up automatically, no changes
   // needed on either platform.
   for (const n of activeNotamsFor(CROSS_BORDER_KEY)) {
-    if (seen.has(n.id)) continue
-    seen.add(n.id)
+    if (seen.has(n.nmsId)) continue
+    seen.add(n.nmsId)
+    notams.push(n)
+  }
+  // European classification=MILITARY NOTAMs (see pollMilitaryOnce()) --
+  // same dedup/flat-list treatment as the cross-border bucket above.
+  for (const n of activeNotamsFor(MILITARY_EU_KEY)) {
+    if (seen.has(n.nmsId)) continue
+    seen.add(n.nmsId)
     notams.push(n)
   }
   return { notams }

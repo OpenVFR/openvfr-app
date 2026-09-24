@@ -49,15 +49,20 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm }:
         <div className={css.filterNote}>Filtered to within {bufferNm}nm of planned route</div>
       )}
       {notams.map((n) => {
-        const expanded = expandedIds.has(n.id)
+        // Tracked by nmsId, not the display id -- different issuing
+        // authorities reuse the same published NOTAM number (confirmed
+        // live: a German and an unrelated Italian NOTAM both "M3011/26"),
+        // so expand/collapse state and the React key must use the
+        // guaranteed-unique nmsId, not the number shown to the pilot.
+        const expanded = expandedIds.has(n.nmsId)
         const eff = fmtNotamDate(n.effective)
         const exp = fmtNotamDate(n.expires)
         const hasGeo = n.lat !== null && n.lon !== null && n.radiusNm !== null
         return (
-          <div key={n.id} className={css.item}>
+          <div key={n.nmsId} className={css.item}>
             <button
               className={css.toggle}
-              onClick={() => toggle(n.id)}
+              onClick={() => toggle(n.nmsId)}
               aria-expanded={String(expanded) as 'true' | 'false'}
             >
               <span className={css.id}>{n.id}</span>

@@ -238,10 +238,12 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
                       <Text style={styles.muted}>No other active regional NOTAMs</Text>
                     )}
                     {otherNotams.map((n) => {
-                      const expanded = expandedNotamIds.has(n.id)
+                      // nmsId, not display id, for expand-state/React key --
+                      // see apps/api/src/notam.ts's NotamItem.nmsId comment.
+                      const expanded = expandedNotamIds.has(n.nmsId)
                       const hasGeo = n.lat !== null && n.lon !== null
                       return (
-                        <TouchableOpacity key={n.id} style={styles.otherNotamRow} onPress={() => toggleOtherNotam(n.id)}>
+                        <TouchableOpacity key={n.nmsId} style={styles.otherNotamRow} onPress={() => toggleOtherNotam(n.nmsId)}>
                           <View style={styles.otherNotamHeader}>
                             <Text style={styles.otherNotamId}>{n.id}</Text>
                             {hasGeo && (

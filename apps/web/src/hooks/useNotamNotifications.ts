@@ -49,10 +49,15 @@ export function useNotamNotifications(
     const { lat, lng } = position
     const now = Date.now()
 
+    // Tracked by nmsId (NMS-API's own globally-unique internal id), not the
+    // display id -- confirmed live that different issuing authorities reuse
+    // the same published NOTAM number (a German and an unrelated Italian
+    // NOTAM both "M3011/26"), so tracking by display id risks conflating
+    // two unrelated NOTAMs' entry/exit state and showing the wrong text.
     const current = new Set<string>()
     for (const n of regionalNotams) {
       if (n.lat === null || n.lon === null || n.radiusNm === null || n.radiusNm <= 0) continue
-      if (distanceNm({ lat, lng }, { lat: n.lat, lng: n.lon }) <= n.radiusNm) current.add(n.id)
+      if (distanceNm({ lat, lng }, { lat: n.lat, lng: n.lon }) <= n.radiusNm) current.add(n.nmsId)
     }
 
     const prev = insideRef.current
@@ -67,15 +72,15 @@ export function useNotamNotifications(
 
     for (const id of current) {
       if (!prev.has(id)) {
-        const n = regionalNotams.find(x => x.id === id)
+        const n = regionalNotams.find(x => x.nmsId === id)
         if (!n) continue
-        fresh.push({ id: `${id}::${now}::entered`, notamId: id, text: n.text, direction: 'entered', expiresAt: now + NOTIFICATION_TTL_MS })
+        fresh.push({ id: `${id}::${now}::entered`, notamId: n.id, text: n.text, direction: 'entered', expiresAt: now + NOTIFICATION_TTL_MS })
       }
     }
     for (const id of prev) {
       if (!current.has(id)) {
-        const n = regionalNotams.find(x => x.id === id)
-        fresh.push({ id: `${id}::${now}::left`, notamId: id, text: n?.text ?? '', direction: 'left', expiresAt: now + NOTIFICATION_TTL_MS })
+        const n = regionalNotams.find(x => x.nmsId === id)
+        fresh.push({ id: `${id}::${now}::left`, notamId: n?.id ?? '', text: n?.text ?? '', direction: 'left', expiresAt: now + NOTIFICATION_TTL_MS })
       }
     }
 

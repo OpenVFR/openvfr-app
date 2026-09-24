@@ -11,6 +11,15 @@ export type NotamPolygonGeometry =
 
 export interface NotamItem {
   id:             string
+  // NMS-API's own globally-unique internal id, NOT the human-readable
+  // published NOTAM number (that's `id` above). Different issuing
+  // authorities reuse the same series+number+year (confirmed live: a
+  // German EDWW NOTAM and an unrelated Italian one were both published as
+  // "M3011/26") -- use nmsId for React keys / Set membership / dedup /
+  // dismiss-state tracking, never `id` for that purpose, or a same-numbered
+  // NOTAM from a different country silently collides with/shadows another.
+  // `id` stays correct for DISPLAY (the number a pilot actually recognizes).
+  nmsId:          string
   text:           string
   effective:      string | null
   expires:        string | null

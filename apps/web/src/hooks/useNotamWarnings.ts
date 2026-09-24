@@ -37,7 +37,11 @@ const DISMISS_REARM_MS    = 5 * 60_000
 export const DEFAULT_NOTAM_LOOKAHEAD_MIN = 5
 
 export type NotamAlert = {
-  /** Stable identifier: NOTAM id (used as React key + dismiss token). */
+  /** Stable identifier: NOTAM's nmsId, NOT its display id (used as React
+   *  key + dismiss token) -- different issuing authorities reuse the same
+   *  published NOTAM number, confirmed live (a German and an unrelated
+   *  Italian NOTAM both published as "M3011/26"), so the display id alone
+   *  isn't unique enough for dismiss-state tracking. */
   key:      string
   notamId:  string
   text:     string
@@ -77,7 +81,7 @@ export function useNotamWarnings(
     for (const n of regionalNotams) {
       if (n.lat === null || n.lon === null || n.radiusNm === null || n.radiusNm <= 0) continue
 
-      const key = n.id
+      const key = n.nmsId
       const dismissedAt = dismissedRef.current.get(key)
       if (dismissedAt !== undefined && now - dismissedAt < DISMISS_REARM_MS) continue
 

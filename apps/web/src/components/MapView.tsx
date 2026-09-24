@@ -750,7 +750,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const features = regionalNotams
       .filter((n) => !n.polygon) // real polygon geometry (below) takes priority over the synthesized circle
       .filter((n) => n.lat !== null && n.lon !== null && n.radiusNm !== null && n.radiusNm > 0)
-      .filter((n) => !matchedNotamIds.has(n.id))
+      .filter((n) => !matchedNotamIds.has(n.nmsId)) // nmsId, not display id -- see useNotamAirspaceMatch.ts's own comment
       .map((n) => {
         const circle = makeCirclePolygon(n.lat!, n.lon!, n.radiusNm!)
         circle.properties = {

@@ -38,9 +38,11 @@ export default function AerodromeNotamSection({ notams, notamLoading }: Props) {
         <Text style={styles.muted}>No NOTAMs</Text>
       )}
       {notams.map((n) => {
-        const expanded = expandedNotams.has(n.id)
+        // nmsId, not display id, for expand-state/React key -- see
+        // apps/api/src/notam.ts's NotamItem.nmsId comment.
+        const expanded = expandedNotams.has(n.nmsId)
         return (
-          <TouchableOpacity key={n.id} style={styles.notamRow} onPress={() => toggleNotam(n.id)}>
+          <TouchableOpacity key={n.nmsId} style={styles.notamRow} onPress={() => toggleNotam(n.nmsId)}>
             <Text style={styles.notamId}>{n.id} {expanded ? '▴' : '▾'}</Text>
             {n.effective && (
               <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}</Text>

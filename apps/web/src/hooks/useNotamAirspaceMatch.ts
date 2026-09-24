@@ -86,13 +86,18 @@ export function useNotamAirspaceMatch(regionalNotams: NotamItem[]): {
       for (const d of extractDesignators(n.text)) {
         const airspace = byDesignator.get(d)
         if (!airspace) continue
-        matchedNotamIds.add(n.id)
+        // Tracked/deduped by nmsId, not the display id -- different issuing
+        // authorities reuse the same published NOTAM number (confirmed
+        // live: a German and an unrelated Italian NOTAM both "M3011/26").
+        // MapView.tsx's own matchedNotamIds.has(n.nmsId) check must stay in
+        // sync with this.
+        matchedNotamIds.add(n.nmsId)
         let entry = grouped.get(airspace.name)
         if (!entry) {
           entry = { airspaceName: airspace.name, geometry: airspace.geometry, notams: [] }
           grouped.set(airspace.name, entry)
         }
-        if (!entry.notams.some(x => x.id === n.id)) entry.notams.push(n)
+        if (!entry.notams.some(x => x.nmsId === n.nmsId)) entry.notams.push(n)
       }
     }
 

@@ -1136,14 +1136,16 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
               <div className={css.wxState}>No active NOTAMs</div>
             )}
             {notams.map((n) => {
-              const expanded = expandedNotams.has(n.id)
+              // nmsId, not display id, for expand-state/React key -- see
+              // apps/api/src/notam.ts's NotamItem.nmsId comment.
+              const expanded = expandedNotams.has(n.nmsId)
               const eff  = fmtNotamDate(n.effective)
               const exp  = fmtNotamDate(n.expires)
               return (
-                <div key={n.id} className={css.notamItem}>
+                <div key={n.nmsId} className={css.notamItem}>
                   <button
                     className={css.notamToggle}
-                    onClick={() => toggleNotam(n.id)}
+                    onClick={() => toggleNotam(n.nmsId)}
                     aria-expanded={String(expanded) as 'true' | 'false'}
                   >
                     <span className={css.notamId}>{n.id}</span>
