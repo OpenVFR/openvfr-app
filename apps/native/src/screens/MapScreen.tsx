@@ -453,6 +453,7 @@ export function MapScreen() {
   const notamCirclesFC = useMemo(() => ({
     type: 'FeatureCollection' as const,
     features: regionalNotams
+      .filter((n) => !n.polygon) // real polygon geometry (below) takes priority over the synthesized circle
       .filter((n) => n.lat !== null && n.lon !== null && n.radiusNm !== null && n.radiusNm > 0)
       .map((n) => {
         const circle = makeCirclePolygon(n.lat!, n.lon!, n.radiusNm!)
@@ -474,10 +475,35 @@ export function MapScreen() {
   const notamPointsFC = useMemo(() => ({
     type: 'FeatureCollection' as const,
     features: regionalNotams
+      .filter((n) => !n.polygon)
       .filter((n) => n.lat !== null && n.lon !== null && (n.radiusNm === null || n.radiusNm <= 0))
       .map((n) => ({
         type: 'Feature' as const,
         geometry: { type: 'Point' as const, coordinates: [n.lon!, n.lat!] },
+        properties: {
+          notamId:        n.id,
+          text:           n.text,
+          effective:      n.effective,
+          expires:        n.expires,
+          classification: n.classification,
+        },
+      })),
+  }), [regionalNotams])
+
+  // Real-geometry regional NOTAM polygons -- see AviationMap.tsx's
+  // notamPolygonsFC prop / notam-polygons-src, mirrors web's MapView.tsx
+  // 'notam-polygons' source exactly. Distinct from notamCirclesFC above:
+  // these are NOTAMs where NMS-API itself resolved the NOTAM text's area
+  // description into actual multi-vertex Polygon/MultiPolygon geometry
+  // (see apps/api/src/notam.ts's extractNotamPolygon()), e.g. a
+  // cross-border military exercise box, not a single point+radius circle.
+  const notamPolygonsFC = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: regionalNotams
+      .filter((n) => n.polygon !== null)
+      .map((n) => ({
+        type: 'Feature' as const,
+        geometry: n.polygon as GeoJSON.Polygon | GeoJSON.MultiPolygon,
         properties: {
           notamId:        n.id,
           text:           n.text,
@@ -906,6 +932,7 @@ export function MapScreen() {
           trafficFC={trafficFC}
           notamCirclesFC={notamCirclesFC}
           notamPointsFC={notamPointsFC}
+          notamPolygonsFC={notamPolygonsFC}
           userWaypointsFC={userWaypointsFC}
           basemapMode={layers.satellite ? 'satellite' : 'vector'}
           flyToTarget={findDestFlyTarget}

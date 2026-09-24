@@ -215,6 +215,12 @@ export type AviationMapProps = {
    *  source's own comment for why clustering needs Point geometry and thus
    *  a separate source from notamCirclesFC's Polygon geometry. */
   notamPointsFC?: FeatureCollection
+  /** Real multi-vertex area geometry for regional NOTAMs, straight from
+   *  NMS-API's own GeoJSON feature.geometry -- see apps/api/src/notam.ts's
+   *  extractNotamPolygon(). Distinct from notamCirclesFC above: takes
+   *  priority over the synthesized circle when a NOTAM has both. Mirrors
+   *  web's MapView.tsx 'notam-polygons' source. */
+  notamPolygonsFC?: FeatureCollection
   /** Route planning mode — mirrors web's "Plan route" button. While true,
    *  every map tap adds a waypoint (snapped to a nearby feature within a
    *  screen-pixel radius when unambiguous) instead of opening feature popups. */
@@ -729,6 +735,7 @@ export function AviationMap({
   userWaypointsFC,
   notamCirclesFC,
   notamPointsFC,
+  notamPolygonsFC,
   planningMode = false,
   editLocked = false,
   onPlanTap,
@@ -2529,6 +2536,19 @@ export function AviationMap({
             <Layer
               id="notam-circles-border" type="line"
               paint={{ 'line-color': '#e64980', 'line-width': 1.5, 'line-dasharray': [3, 2], 'line-opacity': 0.8 }}
+            />
+          </GeoJSONSource>
+        )}
+
+        {notamPolygonsFC && notamPolygonsFC.features.length > 0 && (
+          <GeoJSONSource id="notam-polygons-src" data={notamPolygonsFC}>
+            <Layer
+              id="notam-polygons-fill" type="fill"
+              paint={{ 'fill-color': '#e64980', 'fill-opacity': 0.12 }}
+            />
+            <Layer
+              id="notam-polygons-border" type="line"
+              paint={{ 'line-color': '#e64980', 'line-width': 1.5, 'line-opacity': 0.85 }}
             />
           </GeoJSONSource>
         )}

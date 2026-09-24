@@ -23,6 +23,9 @@ importers:
       '@hono/node-server':
         specifier: 2.1.1
         version: 2.1.1(hono@4.13.7)
+      '@open-vfr/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       better-auth:
         specifier: 1.7.3
         version: 1.7.3(pg@8.23.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@5.0.0(@types/node@26.4.1)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)))

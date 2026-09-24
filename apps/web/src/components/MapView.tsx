@@ -748,6 +748,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     if (!src) return
 
     const features = regionalNotams
+      .filter((n) => !n.polygon) // real polygon geometry (below) takes priority over the synthesized circle
       .filter((n) => n.lat !== null && n.lon !== null && n.radiusNm !== null && n.radiusNm > 0)
       .filter((n) => !matchedNotamIds.has(n.id))
       .map((n) => {
@@ -776,10 +777,41 @@ export default function MapView({ auth }: { auth: AuthState }) {
     if (!src) return
 
     const features: GeoJSON.Feature[] = regionalNotams
+      .filter((n) => !n.polygon)
       .filter((n) => n.lat !== null && n.lon !== null && (n.radiusNm === null || n.radiusNm <= 0))
       .map((n) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [n.lon!, n.lat!] },
+        properties: {
+          notamId:        n.id,
+          text:           n.text,
+          effective:      n.effective,
+          expires:        n.expires,
+          classification: n.classification,
+          radiusNm:       null,
+        },
+      }))
+    src.setData({ type: 'FeatureCollection', features })
+  }, [regionalNotams, mapReady])
+
+  // Feed real-geometry regional NOTAM polygons into the 'notam-polygons'
+  // GeoJSON source -- see that source's setup comment. Not filtered against
+  // matchedNotamIds like notam-circles above: a NOTAM with real polygon
+  // geometry from NMS-API is never a designator-based match against a
+  // charted airspace (useNotamAirspaceMatch.ts only matches circle/point
+  // NOTAMs' text against airspace designators), so there's no matched-
+  // airspace highlight this would otherwise duplicate.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    const src = map.getSource('notam-polygons') as import('maplibre-gl').GeoJSONSource | undefined
+    if (!src) return
+
+    const features: GeoJSON.Feature[] = regionalNotams
+      .filter((n) => n.polygon !== null)
+      .map((n) => ({
+        type: 'Feature',
+        geometry: n.polygon as GeoJSON.Polygon | GeoJSON.MultiPolygon,
         properties: {
           notamId:        n.id,
           text:           n.text,
@@ -1925,6 +1957,39 @@ export default function MapView({ auth }: { auth: AuthState }) {
         },
       })
 
+      // ── Regional NOTAM polygons (real area geometry) ──────────────────
+      // Distinct from notam-circles above: these are NOTAMs where NMS-API
+      // itself resolved the NOTAM text's area description into actual
+      // multi-vertex Polygon/MultiPolygon geometry (see apps/api/src/
+      // notam.ts's extractNotamPolygon()) -- e.g. a cross-border military
+      // exercise box defined by a list of lat/lon vertices in the NOTAM
+      // text, not a single point+radius. A solid (non-dashed) border
+      // distinguishes a real charted shape from notam-circles' approximated
+      // circle at a glance.
+      map.addSource('notam-polygons', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      })
+      map.addLayer({
+        id: 'notam-polygons-fill',
+        type: 'fill',
+        source: 'notam-polygons',
+        paint: {
+          'fill-color': '#e64980',
+          'fill-opacity': 0.12,
+        },
+      })
+      map.addLayer({
+        id: 'notam-polygons-border',
+        type: 'line',
+        source: 'notam-polygons',
+        paint: {
+          'line-color': '#e64980',
+          'line-width': 1.5,
+          'line-opacity': 0.85,
+        },
+      })
+
       // ── Matched restricted/danger area highlight ──────────────────────────
       // Drawn ABOVE the plain ofm airspace-fill-* layers so a charted area
       // with an active NOTAM stands out from the same-class areas without
@@ -2125,7 +2190,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     // actionable feature while adding/editing a route.
     const onEnter = () => { map.getCanvas().style.cursor = 'pointer' }
     const onLeave = () => { map.getCanvas().style.cursor = '' }
-    ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols', 'notam-circles-fill', 'notam-points-cluster', 'notam-points-unclustered'].forEach((id) => {
+    ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols', 'notam-circles-fill', 'notam-polygons-fill', 'notam-points-cluster', 'notam-points-unclustered'].forEach((id) => {
       map.on('mouseenter', id, onEnter)
       map.on('mouseleave', id, onLeave)
     })
@@ -2239,7 +2304,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       // generic point features (below) since these are polygon fills, same
       // priority tier as the traffic-symbols check above.
       {
-        const notamHits = map.queryRenderedFeatures(e.point, { layers: ['notam-circles-fill'] })
+        const notamHits = map.queryRenderedFeatures(e.point, { layers: ['notam-circles-fill', 'notam-polygons-fill'] })
         if (notamHits.length > 0) {
           const p = notamHits[0].properties as Record<string, unknown>
           setActivePopup({
@@ -2616,7 +2681,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     map.on('rotatestart', disableFollow)
 
     return () => {
-      ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols', 'notam-circles-fill', 'notam-points-cluster', 'notam-points-unclustered'].forEach((id) => {
+      ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols', 'notam-circles-fill', 'notam-polygons-fill', 'notam-points-cluster', 'notam-points-unclustered'].forEach((id) => {
         map.off('mouseenter', id, onEnter)
         map.off('mouseleave', id, onLeave)
       })

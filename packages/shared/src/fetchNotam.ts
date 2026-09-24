@@ -5,12 +5,22 @@
 
 import { fetchWithRetry } from './fetchWithRetry'
 
+export type NotamPolygonGeometry =
+  | { type: 'Polygon'; coordinates: number[][][] }
+  | { type: 'MultiPolygon'; coordinates: number[][][][] }
+
 export interface NotamItem {
   id:             string
   text:           string
   effective:      string | null
   expires:        string | null
   classification: string | null
+  // Real multi-vertex area geometry straight from NMS-API's own GeoJSON
+  // feature.geometry (see apps/api/src/notam.ts's extractNotamPolygon()) --
+  // present only for NOTAMs whose subject area is an actual polygon, e.g.
+  // cross-border military exercise areas. Takes priority over lat/lon/
+  // radiusNm below when both would otherwise apply.
+  polygon: NotamPolygonGeometry | null
   // Geo fields (see apps/api/src/notam.ts) -- present only when NMS-API
   // supplied a coordinates+radius pair, used to render an ad-hoc circle for
   // NOTAMs without a corresponding charted airspace polygon.

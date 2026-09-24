@@ -84,6 +84,11 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { gunzipSync } from 'node:zlib'
+import { circleIntersectsBbox, pointNearBbox, polygonNearBbox } from '@open-vfr/shared/notamCoverageArea'
+
+export type NotamPolygonGeometry =
+  | { type: 'Polygon'; coordinates: number[][][] }
+  | { type: 'MultiPolygon'; coordinates: number[][][][] }
 
 export interface NotamItem {
   id:             string
@@ -91,6 +96,15 @@ export interface NotamItem {
   effective:      string | null
   expires:        string | null
   classification: string | null
+  // Real multi-vertex area geometry, straight from NMS-API's own GeoJSON
+  // feature.geometry (never synthesized) -- present only for NOTAMs whose
+  // subject area is an actual polygon/multipolygon (e.g. cross-border
+  // military exercise areas defined by a list of lat/lon vertices in the
+  // NOTAM text, which NMS-API itself resolves into real geometry). Mutually
+  // exclusive in practice with the lat/lon/radiusNm circle fields below --
+  // when both would apply, this takes priority (see activeNotamsFor()).
+  // null for the common point/circle/textual-only cases.
+  polygon: NotamPolygonGeometry | null
   // Geo fields, present only when NMS-API supplied a coordinates+radius pair
   // (parsed from DMS strings like "5939N01756E" + radius in NM) -- used to
   // render an ad-hoc circle for NOTAMs that don't correspond to a charted
@@ -149,6 +163,81 @@ const FIR_CODES: Record<string, string[]> = {
 }
 const _regionalKeys = Object.values(FIR_CODES).flat()
 
+// NMS-API uses radius="999" (and presumably similar round-number sentinels)
+// as a placeholder for non-geographic administrative NOTAMs -- see
+// activeNotamsFor()'s own comment for the confirmed live example. Hoisted
+// to module scope (was local to activeNotamsFor()) so isNearCoverageArea()
+// below can share the exact same ceiling -- a NOTAM using the sentinel
+// value must not be treated as a legitimate 999nm-radius circle that would
+// trivially "intersect" every country's coverage area on Earth.
+const MAX_SANE_RADIUS_NM = 100
+
+// ── Cross-border geometry-based inclusion ───────────────────────────────────
+// The _icaoAllowlist check above only keeps NOTAMs FILED under a tracked
+// ICAO/FIR. That misses NOTAMs filed under a neighboring country's FIR whose
+// actual geographic area still reaches into tracked airspace -- confirmed
+// live and real, not hypothetical: a German military NVG-training NOTAM
+// (icaoLocation=EDWW, Bremen FIR) with Q-line "5418N01211E085" (center
+// 54.30N/12.1833E, radius 85nm) -- 60nm from this bbox's southern edge at
+// the same longitude, well inside its 85nm radius -- never surfaced despite
+// being squarely relevant to southern Sweden. Extending FIR_CODES doesn't
+// fix this class of gap: the NOTAM is correctly filed under EDWW, not ESAA,
+// there's nothing wrong with NMS-API's own classification, our allow-list
+// is just geometry-blind. This is a SEPARATE, independent inclusion path,
+// additive to (never a replacement for) the ICAO/FIR allow-list above --
+// see isNearCoverageArea()'s call site in pollOnce() for how the two combine.
+//
+// Bbox is COUNTRY_BBOX from openvfr-infra's scripts/prepare-tiles.sh
+// (south,west,north,east) -- the same single-source-of-truth extent already
+// used for obstacle/hillshade/contour extraction, duplicated here since
+// there's no cross-repo shared-config mechanism. If that constant changes,
+// this must be updated too -- CROSS_BORDER_BBOX_KEY below forces a fresh
+// bootstrap on mismatch so a stale duplicate can't silently under- or
+// over-match forever.
+const COUNTRY_COVERAGE_BBOX = { south: 55.3, west: 10.9, north: 69.1, east: 24.2 }
+
+// Generic safety margin for geometry shapes with no declared radius to work
+// from (Polygon vertices, point-only NOTAMs) -- NOT used for circles, which
+// get an exact geometric intersection test against their own real radius
+// instead (more precise, and it's what actually catches the EDWW example
+// above with zero slop). ~0.75 degrees =~ 45nm -- generous enough to catch
+// a near-border polygon/point without pulling in every NOTAM on the
+// European mainland.
+const BORDER_MARGIN_DEG = 0.75
+
+const CROSS_BORDER_KEY = '_CROSSBORDER' // synthetic cache key -- never collides with a real 4-letter ICAO/FIR code
+
+// Geometric primitives (circleIntersectsBbox/pointNearBbox/polygonNearBbox)
+// live in @open-vfr/shared/notamCoverageArea, not here -- promoted per
+// CONTRIBUTING.md's flight-critical test-coverage rule ("Airspace
+// intersection / containment logic"). apps/api has no test runner
+// configured; packages/shared already does (vitest) -- see
+// notamCoverageArea.test.ts for the EDWW/Sweden-bbox test cases.
+
+// Called for every NOTAM that failed the _icaoAllowlist check -- decides
+// whether its own geometry earns it a place in the CROSS_BORDER_KEY cache
+// bucket anyway. Deliberately conservative: false negative (skip a
+// genuinely-relevant foreign NOTAM) just means it's missing until next
+// poll's judgment call; false positive (include an unrelated one) pollutes
+// the regional NOTAM list/map with noise -- the exact geometric radius test
+// for circles and the real-vertex test for polygons both bias toward
+// "don't guess", unlike a single generic buffer applied everywhere.
+function isNearCoverageArea(n: NmsNotam): boolean {
+  const polygon = extractNotamPolygon(n.geometry)
+  if (polygon) return polygonNearBbox(polygon, BORDER_MARGIN_DEG, COUNTRY_COVERAGE_BBOX)
+
+  const geo = parseNotamCoordinates(n.coordinates)
+  if (!geo) return false
+
+  const radiusNm = n.radius !== undefined ? Number(n.radius) : NaN
+  if (Number.isFinite(radiusNm) && radiusNm > 0 && radiusNm <= MAX_SANE_RADIUS_NM) {
+    return circleIntersectsBbox(geo.lat, geo.lon, radiusNm, COUNTRY_COVERAGE_BBOX)
+  }
+  // No usable radius (absent, zero, or the sentinel-bogus case) -- point-only
+  // fallback with the generic margin.
+  return pointNearBbox(geo.lat, geo.lon, BORDER_MARGIN_DEG, COUNTRY_COVERAGE_BBOX)
+}
+
 const _icaoAllowlist = new Set<string>(_regionalKeys)
 try {
   const coordsJson = (await import('./aerodrome-coords.json', { assert: { type: 'json' } })).default as Record<string, [number, number]>
@@ -193,6 +282,16 @@ interface NmsNotam {
   cancelationDate?: string
   coordinates?:     string // DMS, e.g. "5939N01756E" (lat DDMM + N/S, lon DDDMM + E/W)
   radius?:          string // nautical miles, e.g. "5"
+  // Raw feature.geometry from the NMS-API GeoJSON response (sibling of
+  // properties.coreNOTAMData.notam, not part of it -- attached onto this
+  // record at capture time in pollOnce() since that's the only place both
+  // are in scope together). Real Polygon/MultiPolygon here means NMS-API
+  // itself resolved the NOTAM text's area description into structured
+  // geometry -- e.g. a multi-vertex military exercise box -- rather than
+  // us only having a single DMS point + radius to go on. Point geometry is
+  // ignored (the DMS coordinates+radius fields above already cover that
+  // case and are more reliably present).
+  geometry?: { type?: string; coordinates?: unknown } | null
 }
 
 // Parses NMS-API's DMS coordinate string format: 2-digit lat degrees,
@@ -212,8 +311,47 @@ function parseNotamCoordinates(dms: string | undefined): { lat: number; lon: num
   if (lonHem === 'W') lon = -lon
   return { lat, lon }
 }
+// Validates + narrows a raw feature.geometry down to a real Polygon/
+// MultiPolygon we're willing to render -- Point geometry is deliberately
+// ignored here (the DMS coordinates+radius fields already cover that case
+// and are more reliably populated), and any other type (LineString etc.,
+// not expected from NMS-API but not contractually guaranteed absent either)
+// is dropped rather than trusted blindly. Structural validation only
+// (finite lon/lat pairs, right nesting depth) -- NOT a ring-closure or
+// self-intersection check, that's MapLibre/GeoJSON-consumer territory.
+function isFiniteLonLat(p: unknown): p is [number, number] {
+  return Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1])
+}
+function isValidRing(ring: unknown): ring is number[][] {
+  return Array.isArray(ring) && ring.length >= 4 && ring.every(isFiniteLonLat)
+}
+function extractNotamPolygon(
+  geometry: { type?: string; coordinates?: unknown } | null | undefined,
+): NotamPolygonGeometry | null {
+  if (!geometry) return null
+  if (geometry.type === 'Polygon') {
+    const rings = geometry.coordinates
+    if (Array.isArray(rings) && rings.length > 0 && rings.every(isValidRing)) {
+      return { type: 'Polygon', coordinates: rings as number[][][] }
+    }
+    return null
+  }
+  if (geometry.type === 'MultiPolygon') {
+    const polys = geometry.coordinates
+    if (
+      Array.isArray(polys) && polys.length > 0 &&
+      polys.every((rings) => Array.isArray(rings) && rings.length > 0 && rings.every(isValidRing))
+    ) {
+      return { type: 'MultiPolygon', coordinates: polys as number[][][][] }
+    }
+    return null
+  }
+  return null
+}
+
 interface NmsGeoJsonFeature {
   properties?: { coreNOTAMData?: { notam?: NmsNotam } }
+  geometry?:   { type?: string; coordinates?: unknown } | null
 }
 interface NmsNotamsResponse {
   data?: { geojson?: NmsGeoJsonFeature[] }
@@ -230,9 +368,17 @@ let _lastPollAt: string | null = null // ISO timestamp of last successful poll s
 // tolerant of minor clock skew vs. NMS's own timestamps.
 const PRUNE_GRACE_MS = 24 * 60 * 60 * 1000
 
+// Fingerprint of the cross-border coverage-area config (bbox + margin) this
+// cache was populated against -- see loadCacheFromDisk()'s bboxKey check.
+// Recomputed here rather than stored as separate fields so ANY future
+// change to COUNTRY_COVERAGE_BBOX or BORDER_MARGIN_DEG is automatically
+// caught, without needing to remember to bump a version number by hand.
+const CROSS_BORDER_BBOX_KEY = JSON.stringify({ bbox: COUNTRY_COVERAGE_BBOX, marginDeg: BORDER_MARGIN_DEG })
+
 interface PersistedCache {
   apiHost:      string // NMS_API_HOST this cache was populated from -- see loadCacheFromDisk()
   trackedKeys:  string[] // _icaoAllowlist contents this cache was populated from -- see loadCacheFromDisk()
+  bboxKey?:     string // CROSS_BORDER_BBOX_KEY this cache was populated with -- optional for back-compat with caches predating this field, see loadCacheFromDisk()
   lastPollAt:   string | null
   entries: Array<[string, Array<[string, NmsNotam]>]> // [icaoLocation, [id, NmsNotam][]][]
 }
@@ -288,6 +434,24 @@ function loadCacheFromDisk(): void {
       return
     }
 
+    // Third safety check, same failure mode class as the two above: the
+    // CROSS_BORDER_KEY bucket's contents depend on COUNTRY_COVERAGE_BBOX/
+    // BORDER_MARGIN_DEG at the time each poll ran, not just on
+    // _icaoAllowlist (which this bucket is deliberately independent of --
+    // see its own definition). If that config changes (a wider bbox, a
+    // different margin), reusing the old cursor means only CHANGED foreign
+    // NOTAMs since then get re-evaluated against the new config -- a
+    // long-standing foreign NOTAM that newly qualifies under a widened bbox
+    // would never appear without a full bootstrap, same blind spot as the
+    // trackedKeys case above. Missing bboxKey (cache predates this field)
+    // is treated as "different" -- one-time self-healing rebootstrap on
+    // first restart after this feature ships, no manual cache-file deletion
+    // needed, same pattern as trackedKeys' own rollout.
+    if (parsed.bboxKey !== CROSS_BORDER_BBOX_KEY) {
+      console.log('[notam] Cross-border coverage-area config changed (or cache predates it) -- discarding cursor, will bootstrap fresh')
+      return
+    }
+
     for (const [icao, idEntries] of parsed.entries) _cache.set(icao, new Map(idEntries))
     _lastPollAt = parsed.lastPollAt
     const total = parsed.entries.reduce((n, [, idEntries]) => n + idEntries.length, 0)
@@ -303,6 +467,7 @@ function saveCacheToDisk(): void {
     const payload: PersistedCache = {
       apiHost:     NMS_API_HOST,
       trackedKeys: [..._icaoAllowlist],
+      bboxKey:     CROSS_BORDER_BBOX_KEY,
       lastPollAt:  _lastPollAt,
       entries: [..._cache.entries()].map(([icao, byId]) => [icao, [...byId.entries()]]),
     }
@@ -363,21 +528,44 @@ async function pollOnce(): Promise<void> {
     const parsed = JSON.parse(text) as NmsGeoJsonFeature[] | NmsNotamsResponse
     const features = Array.isArray(parsed) ? parsed : (parsed.data?.geojson ?? [])
     let kept = 0
+    let crossBorderKept = 0
     for (const feature of features) {
       const n = feature.properties?.coreNOTAMData?.notam
       if (!n?.icaoLocation || !n.id) continue
-      if (!_icaoAllowlist.has(n.icaoLocation)) continue
 
-      let byId = _cache.get(n.icaoLocation)
-      if (!byId) { byId = new Map(); _cache.set(n.icaoLocation, byId) }
+      // Attach the sibling feature.geometry here -- it lives one level up
+      // from properties.coreNOTAMData.notam in the raw response, so this is
+      // the only point where both are in scope together. See NotamPolygon
+      // handling in activeNotamsFor() for how Polygon/MultiPolygon geometry
+      // gets surfaced; Point geometry is dropped (DMS coordinates+radius
+      // fields already cover that case). Attached before either inclusion
+      // check below since isNearCoverageArea() also needs it.
+      n.geometry = feature.geometry ?? null
+
+      const inAllowlist = _icaoAllowlist.has(n.icaoLocation)
+      let crossBorderMatch = false
+      if (!inAllowlist) {
+        // Not filed under a tracked ICAO/FIR -- still worth keeping if its
+        // own geometry reaches into tracked coverage (see
+        // isNearCoverageArea()'s header comment for the real EDWW/Bremen
+        // example this exists for). Falls through to the next feature if
+        // neither check passes.
+        crossBorderMatch = isNearCoverageArea(n)
+        if (!crossBorderMatch) continue
+      }
+
+      const cacheKey = inAllowlist ? n.icaoLocation : CROSS_BORDER_KEY
+      let byId = _cache.get(cacheKey)
+      if (!byId) { byId = new Map(); _cache.set(cacheKey, byId) }
       byId.set(n.id, n)
       kept++
+      if (crossBorderMatch) crossBorderKept++
     }
 
     pruneCache()
     _lastPollAt = pollStartedAt
     saveCacheToDisk()
-    console.log(`[notam] NMS poll OK (${wasBootstrap ? 'bootstrap' : 'delta'}): ${features.length} received, ${kept} kept for tracked ICAOs`)
+    console.log(`[notam] NMS poll OK (${wasBootstrap ? 'bootstrap' : 'delta'}): ${features.length} received, ${kept} kept for tracked ICAOs (${crossBorderKept} cross-border)`)
   } catch (e) {
     // Do not advance _lastPollAt on failure — next cycle retries the same
     // (or wider) window rather than silently skipping missed updates.
@@ -453,9 +641,13 @@ function activeNotamsFor(icao: string): NotamItem[] {
     //  - radius present, 0 < r <= 100nm       -> legitimate area -- keep all three.
     //  - radius present but > 100nm            -> sentinel/bogus -- drop
     //    lat/lon AND radiusNm together (see comment above).
-    const MAX_SANE_RADIUS_NM = 100
+    // MAX_SANE_RADIUS_NM is module-scoped (see top of file) -- shared with
+    // isNearCoverageArea()'s cross-border check so the sentinel-radius
+    // guard applies identically in both places.
     const radiusGiven = Number.isFinite(radiusNm) && radiusNm > 0
     const radiusIsBogus = radiusGiven && radiusNm > MAX_SANE_RADIUS_NM
+
+    const polygon = extractNotamPolygon(n.geometry)
 
     notams.push({
       id:             n.number ?? n.id ?? '',
@@ -463,9 +655,17 @@ function activeNotamsFor(icao: string): NotamItem[] {
       effective:      n.effectiveStart ?? null,
       expires:        n.effectiveEnd ?? null,
       classification: n.classification ?? null,
-      lat:            geo && !radiusIsBogus ? geo.lat : null,
-      lon:            geo && !radiusIsBogus ? geo.lon : null,
-      radiusNm:       geo && radiusGiven && !radiusIsBogus ? radiusNm : null,
+      polygon,
+      // Polygon geometry (real, structured, from NMS-API itself) takes
+      // priority over the synthesized DMS point/circle fields when both
+      // would otherwise apply -- an actual multi-vertex area shape is
+      // strictly more accurate than a single-point circle approximation of
+      // the same NOTAM. The radius=999-style sentinel/bogus check above only
+      // ever applied to the circle path; a real Polygon is never subject to
+      // it since it isn't derived from a radius field at all.
+      lat:            polygon ? null : (geo && !radiusIsBogus ? geo.lat : null),
+      lon:            polygon ? null : (geo && !radiusIsBogus ? geo.lon : null),
+      radiusNm:       polygon ? null : (geo && radiusGiven && !radiusIsBogus ? radiusNm : null),
     })
   }
   return notams
@@ -519,6 +719,17 @@ export function getRegionalNotams(): NotamResponse {
       seen.add(n.id)
       notams.push(n)
     }
+  }
+  // Cross-border NOTAMs (filed under an untracked FIR/ICAO, kept only
+  // because their own geometry reaches into tracked coverage -- see
+  // isNearCoverageArea()) -- same dedup, same flat list, no client-visible
+  // distinction from a same-country regional NOTAM. Web/native map layers
+  // and RegionalNotamsPanel.tsx pick these up automatically, no changes
+  // needed on either platform.
+  for (const n of activeNotamsFor(CROSS_BORDER_KEY)) {
+    if (seen.has(n.id)) continue
+    seen.add(n.id)
+    notams.push(n)
   }
   return { notams }
 }

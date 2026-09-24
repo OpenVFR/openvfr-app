@@ -44,7 +44,8 @@
     "./wxStations": "./src/wxStations.ts",
     "./routeDirty": "./src/routeDirty.ts",
     "./resolveSaveRouteId": "./src/resolveSaveRouteId.ts",
-    "./findDestination": "./src/findDestination.ts"
+    "./findDestination": "./src/findDestination.ts",
+    "./notamCoverageArea": "./src/notamCoverageArea.ts"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.16"
