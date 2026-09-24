@@ -2,8 +2,6 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react
 import LayerPanel from './LayerPanel'
 import RegionalNotamsPanel from './RegionalNotamsPanel'
 import WeatherAlongRoutePanel from './WeatherAlongRoutePanel'
-import VicinityBriefPanel from './VicinityBriefPanel'
-import type { VicinityAerodrome } from '../hooks/useVicinityAerodromes'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { filterNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM } from '@open-vfr/shared/notamRouteFilter'
@@ -132,9 +130,6 @@ interface Props {
   // wind-arrow/cloud-layer overlay, so it's computed once and shared rather
   // than fetched separately here and in VirtualRadar).
   routeWeatherStations: RouteWeatherStation[]
-  // Airfield Brief panel's aerodrome picker candidates -- see
-  // useVicinityAerodromes.ts (route-buffer > GPS-radius > home fallback).
-  vicinityAerodromes: VicinityAerodrome[]
 }
 
 const SECTION_LABELS = {
@@ -149,7 +144,6 @@ const SECTION_LABELS = {
   userWaypoints: 'User Waypoints',
   notams:        'Regional NOTAMs',
   routeWx:       'Weather Along Route',
-  vicinity:      'Airfield Brief',
   layers:        'Layers',
   altitude:      'Altitude Filter',
   settings:      'Settings',
@@ -209,12 +203,11 @@ export default function SideDrawer({
   auth,
   onOpenProfile,
   routeWeatherStations,
-  vicinityAerodromes,
 }: Props) {
   const [open, setOpen]         = useState(() => lsGet(LS_OPEN, false))
   const [width, setWidth]       = useState(() => lsGet(LS_WIDTH, DEFAULT_WIDTH))
   const [expanded, setExpanded] = useState<Record<Section, boolean>>(() =>
-    lsGet(LS_EXPANDED, { info: true, route: true, preflight: true, fuel: true, ruler: true, routes: true, flightLogs: true, aircraft: false, userWaypoints: true, notams: false, routeWx: false, vicinity: false, layers: true, altitude: true, settings: false })
+    lsGet(LS_EXPANDED, { info: true, route: true, preflight: true, fuel: true, ruler: true, routes: true, flightLogs: true, aircraft: false, userWaypoints: true, notams: false, routeWx: false, layers: true, altitude: true, settings: false })
   )
 
   // Drag-resize handle
@@ -538,29 +531,6 @@ export default function SideDrawer({
           </div>
 
           {/* ── Layers ─────────────────────────────────────────── */}
-          <div className={css.section}>
-            <button className={css.sectionHeader} onClick={() => toggle('vicinity')}>
-              <span>{SECTION_LABELS.vicinity}</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {vicinityAerodromes.length > 0 && (
-                  <span className={css.planPill}>{vicinityAerodromes.length}</span>
-                )}
-                <span className={css.chevron}>{expanded.vicinity ? '\u25be' : '\u25b8'}</span>
-              </span>
-            </button>
-            {expanded.vicinity && (
-              <div className={css.sectionBody}>
-                <VicinityBriefPanel
-                  aerodromes={vicinityAerodromes}
-                  isHome={isHome}
-                  authed={!!auth.user}
-                  onSetHome={onSetHome}
-                  onRunwayWind={onRunwayWind}
-                />
-              </div>
-            )}
-          </div>
-
           <div className={css.section}>
             <button className={css.sectionHeader} onClick={() => toggle('notams')}>
               <span>{SECTION_LABELS.notams}</span>

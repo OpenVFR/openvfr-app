@@ -1,12 +1,66 @@
+/* VicinityBriefPanel — Airfield Brief modal overlay, mirrors FindDestPanel's
+   backdrop/panel/header structure for consistency between the two top-right
+   map-button-triggered pickers. */
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: var(--overlay-scrim);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 48px;
+}
+
 .panel {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100dvh - 160px);
   display: flex;
   flex-direction: column;
+  box-shadow: var(--shadow-heavy);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
   gap: 8px;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--border-default);
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent-blue);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  flex: 1;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.closeBtn:hover {
+  background: var(--surface-active);
+  color: var(--text-primary);
 }
 
 .empty {
-  padding: 8px 12px;
-  font-size: 11px;
+  padding: 16px 14px;
+  font-size: 12px;
   color: var(--text-faint);
 }
 
@@ -14,7 +68,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 0 4px;
+  padding: 10px 14px 0;
+  flex-shrink: 0;
 }
 
 .pill {
@@ -50,6 +105,6 @@
 }
 
 .embedded {
-  border-top: 1px solid var(--border-subtle);
-  padding-top: 4px;
+  overflow-y: auto;
+  padding: 4px 0 8px;
 }

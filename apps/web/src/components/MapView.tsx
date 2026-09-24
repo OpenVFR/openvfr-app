@@ -51,6 +51,7 @@ import RulerSummaryStrip from './RulerSummaryStrip'
 import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
 import { useWindAlongRoute } from '../hooks/useWindAlongRoute'
 import { useVicinityAerodromes } from '../hooks/useVicinityAerodromes'
+import VicinityBriefPanel from './VicinityBriefPanel'
 import { useGpsVerticalSpeed } from '../hooks/useGpsVerticalSpeed'
 import LiveTrackChart from './LiveTrackChart'
 import LivePlogPanel from './LivePlogPanel'
@@ -258,6 +259,11 @@ const RULER_ICON_SVG =
 // native app's FindDestinationSheet trigger uses, for icon parity across platforms.
 const FIND_DEST_ICON_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round" stroke-miterlimit="10"><path d="M221.09,64A157.09,157.09,0,1,0,378.18,221.09,157.1,157.1,0,0,0,221.09,64Z"/><line x1="338.29" y1="338.29" x2="448" y2="448"/></svg>'
+
+// Airfield Brief button icon -- same Ionicons "newspaper-outline" glyph
+// native's VicinityBriefSheet trigger uses, for icon parity across platforms.
+const VICINITY_BRIEF_ICON_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-width="32"><path d="M368,415.86V72a24.07,24.07,0,0,0-24-24H72A24.07,24.07,0,0,0,48,72V424a40.12,40.12,0,0,0,40,40H416" stroke-linejoin="round"/><path d="M416,464h0a48,48,0,0,1-48-48V128h72a24,24,0,0,1,24,24V416A48,48,0,0,1,416,464Z" stroke-linejoin="round"/><line x1="240" y1="128" x2="304" y2="128" stroke-linecap="round" stroke-linejoin="round"/><line x1="240" y1="192" x2="304" y2="192" stroke-linecap="round" stroke-linejoin="round"/><line x1="112" y1="256" x2="304" y2="256" stroke-linecap="round" stroke-linejoin="round"/><line x1="112" y1="320" x2="304" y2="320" stroke-linecap="round" stroke-linejoin="round"/><line x1="112" y1="384" x2="304" y2="384" stroke-linecap="round" stroke-linejoin="round"/><path d="M176,208H112a16,16,0,0,1-16-16V128a16,16,0,0,1,16-16h64a16,16,0,0,1,16,16v64A16,16,0,0,1,176,208Z" fill="currentColor" stroke="none"/></svg>'
 
 // Route layer IDs toggled by the route Active/Inactive toggle (in RoutePlan's
 // header, not a map button — see routeVisible below). Waypoint data is
@@ -1258,6 +1264,17 @@ export default function MapView({ auth }: { auth: AuthState }) {
     findDestCtrlDiv.className = 'maplibregl-ctrl maplibregl-ctrl-group'
     findDestCtrlDiv.appendChild(findDestBtn)
     map.addControl({ onAdd: () => findDestCtrlDiv, onRemove: () => {} }, 'top-right')
+
+    // Airfield Brief button — stacks below Find a Destination.
+    const vicinityBriefBtn = document.createElement('button')
+    vicinityBriefBtn.title = 'Airfield Brief'
+    vicinityBriefBtn.innerHTML = VICINITY_BRIEF_ICON_SVG
+    vicinityBriefBtn.style.cssText = 'display:flex;align-items:center;justify-content:center;'
+    vicinityBriefBtn.addEventListener('click', () => setShowVicinityBrief(m => !m))
+    const vicinityBriefCtrlDiv = document.createElement('div')
+    vicinityBriefCtrlDiv.className = 'maplibregl-ctrl maplibregl-ctrl-group'
+    vicinityBriefCtrlDiv.appendChild(vicinityBriefBtn)
+    map.addControl({ onAdd: () => vicinityBriefCtrlDiv, onRemove: () => {} }, 'top-right')
 
     // Register canvas-drawn icons on demand — fires for each missing image ID
     // before the layer renders. This handles the init race where symbol layers
@@ -4008,6 +4025,20 @@ export default function MapView({ auth }: { auth: AuthState }) {
           />
         )
       })()}
+
+      {/* \u2500\u2500 Airfield Brief panel \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+      {showVicinityBrief && (
+        <VicinityBriefPanel
+          aerodromes={vicinityAerodromes}
+          isHome={(icao) => homeAirfield?.icao === icao}
+          authed={!!auth.user}
+          onSetHome={(icao, name, lng, lat) =>
+            setHomeAirfield(homeAirfield?.icao === icao ? null : { icao, name, lng, lat })
+          }
+          onRunwayWind={handleRunwayWind}
+          onClose={() => setShowVicinityBrief(false)}
+        />
+      )}
       </div>
 
       {/* ── In-flight instruments (GoFlyingPanel) — own grid row ──────── */}
