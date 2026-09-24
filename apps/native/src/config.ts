@@ -211,8 +211,17 @@ export const SATELLITE_STYLE = {
  * MapLibre Native 11+ supports pmtiles:// natively.
  * URL format: pmtiles://<http(s)-url-of-pmtiles-file>
  */
-export function createProtomapsStyle(pmtilesOverrideUrl?: string): StyleSpecification {
+export function createProtomapsStyle(pmtilesOverrideUrl?: string, overviewOverrideUrl?: string): StyleSpecification {
   const pmtilesUrl = `pmtiles://${pmtilesOverrideUrl ?? versionedTileUrl(TILE_BASE, 'basemap.pmtiles')}`
+  // Shared low-zoom (z0-6) Europe-wide overview -- single file, built once,
+  // NOT country-specific (unlike basemap.pmtiles, now country-bbox z7-12
+  // detail only -- see openvfr-infra prepare-tiles.sh). Never affected by
+  // pmtilesOverrideUrl (dev-server local-file override applies only to the
+  // detail archive). Kept in sync with apps/web/src/styles/map-style.ts's
+  // identical split -- see that file's own comment for the full rationale
+  // (previously bare gray canvas past the country bbox edge, with regional
+  // NOTAM pins still rendering there independent of basemap coverage).
+  const overviewUrl = `pmtiles://${overviewOverrideUrl ?? versionedTileUrl(TILE_BASE, 'europe-overview.pmtiles')}`
   return {
     version: 8,
     // BUG FIX (found live on device): raw protomaps.github.io (GitHub Pages)
@@ -237,8 +246,22 @@ export function createProtomapsStyle(pmtilesOverrideUrl?: string): StyleSpecific
         url:         pmtilesUrl,
         attribution: '<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
       } as StyleSpecification['sources'][string],
+      'protomaps-overview': {
+        type:        'vector',
+        url:         overviewUrl,
+        maxzoom:     6,
+        attribution: '<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
+      } as StyleSpecification['sources'][string],
     },
-    layers: layers('protomaps', LIGHT, { lang: 'sv' }) as StyleSpecification['layers'],
+    layers: [
+      // Painted first (bottom) so it only shows through past the detail
+      // source's country bbox / below its z7 floor. 'ov-' id prefix avoids
+      // collisions -- two vector sources can't share layer ids in one style.
+      ...(layers('protomaps-overview', LIGHT, { lang: 'sv' }) as StyleSpecification['layers']).map(
+        (l) => ({ ...l, id: `ov-${l.id}`, maxzoom: 7 }),
+      ),
+      ...(layers('protomaps', LIGHT, { lang: 'sv' }) as StyleSpecification['layers']),
+    ],
   }
 }
 

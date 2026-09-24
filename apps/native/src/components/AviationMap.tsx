@@ -530,7 +530,16 @@ function getProtomapsStyle() {
     // local file:// URI, so createProtomapsStyle's own TILE_BASE default path
     // still applies otherwise.
     const isLocal = localUrl?.startsWith('file://')
-    _protomapsStyle = createProtomapsStyle(isLocal ? localUrl : undefined)
+    // Same local-file-override treatment for the shared low-zoom overview --
+    // without this it would silently keep hitting the network even in
+    // offline mode despite being cached, unlike the detail basemap above.
+    const overviewAsset = OFFLINE_ASSETS.find(a => a.key === 'basemapOverview')
+    const overviewLocalUrl = overviewAsset ? resolveUri(overviewAsset) : undefined
+    const overviewIsLocal = overviewLocalUrl?.startsWith('file://')
+    _protomapsStyle = createProtomapsStyle(
+      isLocal ? localUrl : undefined,
+      overviewIsLocal ? overviewLocalUrl : undefined,
+    )
   }
   return _protomapsStyle
 }

@@ -145,11 +145,19 @@ export const SATELLITE_TILES = [
 
 // Layer IDs from the @protomaps/basemaps LIGHT theme — used by MapView to
 // hide the vector basemap when switching to satellite mode without a style reload.
-export const PROTOMAPS_LAYER_IDS: readonly string[] = (
-  layers('protomaps', LIGHT, { lang: 'sv' }) as StyleSpecification['layers']
-)
-  .map((l) => l.id)
-  .filter((id): id is string => typeof id === 'string')
+export const PROTOMAPS_LAYER_IDS: readonly string[] = [
+  ...(layers('protomaps', LIGHT, { lang: 'sv' }) as StyleSpecification['layers'])
+    .map((l) => l.id)
+    .filter((id): id is string => typeof id === 'string'),
+  // 'protomaps-overview' (shared Europe-wide low-zoom layer, see the
+  // 'protomaps-overview' source/layers in the main style below) uses an
+  // 'ov-' id prefix on the identical layer list -- must also be hidden in
+  // satellite mode or it shows through past the country-detail source's
+  // bbox/zoom range.
+  ...(layers('protomaps-overview', LIGHT, { lang: 'sv' }) as StyleSpecification['layers'])
+    .map((l) => (typeof l.id === 'string' ? `ov-${l.id}` : undefined))
+    .filter((id): id is string => typeof id === 'string'),
+]
 
 // Airspace border layers with default (vector) and boosted (satellite) line-widths.
 // In satellite mode widths are increased so class boundaries remain legible over imagery.
@@ -508,9 +516,28 @@ export function getMapStyle(): StyleSpecification {
       protomaps: {
         type: 'vector',
         url: `pmtiles://${versionedTileUrl(TILES_BASE_URL, 'basemap.pmtiles')}`,
-        // Tiles extracted at maxzoom=12. MapLibre overzooms vector data
-        // automatically so roads/labels stay visible at any zoom level.
+        // Tiles extracted at minzoom=7/maxzoom=12 (country-bbox detail only
+        // — see openvfr-infra prepare-tiles.sh). z0-6 is deliberately NOT in
+        // this archive; that range is covered by 'protomaps-overview' below
+        // so every per-country detail file doesn't re-embed an identical
+        // copy of the whole-continent low-zoom data (wasteful for native
+        // offline multi-country sync). MapLibre overzooms vector data
+        // automatically so roads/labels stay visible past z12.
         maxzoom: 12,
+        attribution:
+          '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors (ODbL)',
+      },
+
+      // Shared low-zoom (z0-6) Europe-wide overview — single file, built
+      // once, NOT country-specific. Fills the gap outside 'protomaps'
+      // detail source's country bbox (previously bare gray canvas past the
+      // Sweden extract's edge — regional NOTAM pins render at any distance,
+      // independent of basemap coverage, so this closes a real visible gap,
+      // not just a cosmetic one). Always mounted, never swapped per-country.
+      'protomaps-overview': {
+        type: 'vector',
+        url: `pmtiles://${versionedTileUrl(TILES_BASE_URL, 'europe-overview.pmtiles')}`,
+        maxzoom: 6,
         attribution:
           '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors (ODbL)',
       },
@@ -694,6 +721,19 @@ export function getMapStyle(): StyleSpecification {
         source: 'satellite-basemap',
         layout: { visibility: 'none' },
       },
+
+      // Layer 0: shared Europe-wide low-zoom overview (z0-6).
+      // Painted BELOW the country-detail Protomaps layers below (array order
+      // = paint order, earlier = bottom) so it only ever shows through where
+      // the detail source has no data (past the country bbox) or below the
+      // detail source's own z7 floor.
+      // 'ov-' id prefix avoids collisions with the detail layer ids below --
+      // two vector sources can't share layer ids in one MapLibre style.
+      // maxzoom:7 on every layer here stops MapLibre painting this set once
+      // the detail source's z7+ tiles take over (avoids double-paint/blur).
+      ...(layers('protomaps-overview', LIGHT, { lang: 'sv' }) as StyleSpecification['layers']).map(
+        (l) => ({ ...l, id: `ov-${l.id}`, maxzoom: 7 }),
+      ),
 
       // ── Layer 1: Protomaps basemap ───────────────────────────────────────
       // Pass lang:'sv' so the label layers (places_locality, roads_labels_major,

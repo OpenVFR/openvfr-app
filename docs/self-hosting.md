@@ -31,7 +31,8 @@ native reads the same files over HTTP from wherever you serve them (see
 
 | File | Format | Contents |
 |---|---|---|
-| `basemap.pmtiles` | PMTiles | OSM-derived vector basemap |
+| `basemap.pmtiles` | PMTiles | OSM-derived vector basemap, country-bbox detail only (z7-12) |
+| `europe-overview.pmtiles` | PMTiles | Shared low-zoom (z0-6) continent-wide overview, NOT country-specific -- built once, fills the gap outside `basemap.pmtiles`'s bbox so pan/zoom-out doesn't show bare gray past the detail archive's edge |
 | `se-airspace.geojson` | GeoJSON | Airspace polygons (class, type, altitudes) |
 | `se-aerodromes.geojson` | GeoJSON | Aerodrome points + runway/frequency data |
 | `se-navaids.geojson` | GeoJSON | VOR/NDB points |

@@ -216,7 +216,7 @@ In dev, the fallback in `apps/web/src/styles/map-style.ts` defaults to `http://l
 ### A. Basemap — Protomaps PMTiles
 
 - **Source:** `https://build.protomaps.com/{YYYYMMDD}.pmtiles` — daily OSM planet builds.
-- **Action:** `pmtiles extract` clips the Sweden bbox (10.9,55.3,24.2,69.1) at `--maxzoom=12` → `apps/web/public/tiles/basemap.pmtiles` (~663 MB).
+- **Action:** `pmtiles extract` clips the Sweden bbox (10.9,55.3,24.2,69.1) at `--minzoom=7 --maxzoom=12` → `apps/web/public/tiles/basemap.pmtiles` (~637 MB), plus a separate unclipped continent-wide extract at `--maxzoom=6` → `europe-overview.pmtiles` (~10 MB, built once, shared across countries — fixes a real bug where the old single z0-12 Sweden-only archive left bare gray canvas outside its bbox at ANY zoom, which regional NOTAM markers rendered over since NOTAM fetch radius is independent of basemap coverage).
 - **Serving:** MapLibre fetches only tiles needed for the current viewport via HTTP Range Requests. Full file never downloaded unless doing an offline pre-cache.
 - **Why PMTiles:** Single-file archive, no tile server required. Works with HTTP Range Requests in browsers and direct file reads on native.
 

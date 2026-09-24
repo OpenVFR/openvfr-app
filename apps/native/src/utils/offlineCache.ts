@@ -61,6 +61,13 @@ export function remoteUrlFor(fileName: string): string {
 
 export const OFFLINE_ASSETS: OfflineAsset[] = [
   { key: 'basemap',           label: 'Basemap (large)',       fileName: 'basemap.pmtiles',              required: false },
+  // Shared Europe-wide low-zoom overview (z0-6) -- small (generalization
+  // dominates over area at low zoom, unlike the country-detail basemap
+  // above), same file regardless of which country's detail basemap is
+  // active. Marked required: without it, offline users see bare gray past
+  // the detail basemap's own country bbox/zoom range -- the same visible
+  // gap this whole split was built to close, now also true offline.
+  { key: 'basemapOverview',   label: 'Basemap overview',      fileName: 'europe-overview.pmtiles',      required: true },
   { key: 'landuse',           label: 'Terrain (landuse)',     fileName: 'se-landuse.pmtiles',           required: false },
   { key: 'hillshade',         label: 'Hillshade (relief, large)', fileName: 'se-hillshade.pmtiles',     required: false },
   { key: 'contours',          label: 'Contour lines',         fileName: 'se-contours.pmtiles',          required: false },
