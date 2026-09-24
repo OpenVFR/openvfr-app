@@ -938,11 +938,25 @@ export function getMapStyle(): StyleSpecification {
         source: 'osm-hillshade',
         maxzoom: 11,
         layout: { visibility: 'none' },
+        // BUG FIX (confirmed live + against the raw Copernicus source, not
+        // assumed): Sweden's granite skerries genuinely rise near-vertically
+        // out of the sea, and Copernicus GLO-30 flattens all water to a near-
+        // constant plane -- real elevation drops from land height to that
+        // plane within 1-2 raw pixels along most of the coast, rendering as a
+        // strong, near-uniform dark ring around every skerry/coastline (real
+        // terrain, but right at the resolution limit of a 90m/px product).
+        // hillshade_to_pmtiles.sh now also softens the small-scale elevation
+        // transition itself (see smooth_elevation_for_shading.py); shadow
+        // opacity/exaggeration lowered here too so the remaining real slope
+        // reads as a soft, low-contrast tone rather than a hard black edge --
+        // matches the calmer, low-contrast look of professional hillshade
+        // products (lower exaggeration + lighter shadow color, not a style-
+        // spec feature difference).
         paint: {
-          'hillshade-exaggeration': 0.5,
-          'hillshade-shadow-color': 'rgba(50,35,20,0.75)',
+          'hillshade-exaggeration': 0.3,
+          'hillshade-shadow-color': 'rgba(60,45,30,0.45)',
           'hillshade-highlight-color': 'rgba(255,255,255,0.8)',
-          'hillshade-accent-color': 'rgba(50,35,20,0.5)',
+          'hillshade-accent-color': 'rgba(60,45,30,0.3)',
         },
       },
 
