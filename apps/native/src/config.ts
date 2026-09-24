@@ -260,7 +260,18 @@ export function createProtomapsStyle(pmtilesOverrideUrl?: string, overviewOverri
       ...(layers('protomaps-overview', LIGHT, { lang: 'sv' }) as StyleSpecification['layers']).map(
         (l) => ({ ...l, id: `ov-${l.id}`, maxzoom: 7 }),
       ),
-      ...(layers('protomaps', LIGHT, { lang: 'sv' }) as StyleSpecification['layers']),
+      // BUG FIX: the detail layer set's own unprefixed 'background' layer
+      // (type:'background', no zoom restriction by default) paints a flat
+      // opaque colour across the ENTIRE viewport unconditionally at every
+      // zoom -- confirmed live on web (identical style construction) that
+      // it silently painted solid grey over all correctly-rendering 'ov-'
+      // overview layers underneath it, despite those genuinely having real
+      // features (queryRenderedFeatures confirmed non-empty). minzoom:7
+      // matches the detail source's own real data floor -- 'ov-background'
+      // (maxzoom:7) already covers the base background role below that.
+      ...(layers('protomaps', LIGHT, { lang: 'sv' }) as StyleSpecification['layers']).map(
+        (l) => (l.id === 'background' ? { ...l, minzoom: 7 } : l),
+      ),
     ],
   }
 }

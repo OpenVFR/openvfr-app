@@ -783,6 +783,22 @@ export function getMapStyle(): StyleSpecification {
 
         const pm = (layers('protomaps', LIGHT, { lang: 'sv' }) as StyleSpecification['layers']).map(
           (layer) => {
+            if (layer.id === 'background') {
+              // BUG FIX: this layer has type:'background' with NO zoom
+              // restriction by default -- background-type layers paint a
+              // flat opaque colour across the ENTIRE viewport unconditionally
+              // at every zoom, regardless of whether the source actually has
+              // tile data there. Confirmed live: it was silently painting
+              // solid grey over all 71 correctly-rendering 'ov-'-prefixed
+              // overview layers underneath it (which sit earlier/below in
+              // paint order) -- queryRenderedFeatures showed real overview
+              // features present, but totally invisible under this one
+              // layer. minzoom:7 matches the detail source's own real data
+              // floor (see 'protomaps' source's own minzoom=7 comment above)
+              // -- 'ov-background' (maxzoom:7) already covers the base
+              // background role below that.
+              return { ...layer, minzoom: 7 }
+            }
             if (layer.id === 'landcover') {
               // Override opacity so landcover stays visible at VFR planning zooms,
               // AND override the farmland fill-color to ICAO cream so the z10→z11
