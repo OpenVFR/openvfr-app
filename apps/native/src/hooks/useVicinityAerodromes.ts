@@ -19,8 +19,12 @@
  *  - Otherwise (route Inactive, or no route loaded) -> nearest aerodromes
  *    to the current/last-known GPS position within RADIUS_NM, same radius
  *    as FrequencyPanel's useNearbyFrequencies.ts (unchanged, Freq tab
- *    still uses that hook directly). No GPS fix and no active route ->
- *    empty list; there's no home-aerodrome fallback wired into this hook.
+ *    still uses that hook directly).
+ *  - No GPS fix and no active route -> falls back to the settings-page
+ *    `homeAirfield`, resolved to a single-entry list at distNm:0, so the
+ *    picker still opens on a real aerodrome instead of an empty state.
+ *    Wired via the optional `homeIcao` param -- callers not passing one
+ *    keep the old empty-list behaviour.
  * In both cases the list is sorted closest-first, so `aerodromes[0]?.icao`
  * is always the correct default picker selection.
  *
@@ -120,9 +124,11 @@ interface Opts {
   position:      GpsPosition | null
   /** RouteContext's own Active/Inactive toggle -- see doc comment above. */
   routeVisible:  boolean
+  /** Settings-page home airfield ICAO -- last-resort fallback, see doc comment above. */
+  homeIcao?:     string
 }
 
-export function useVicinityAerodromes({ waypoints, position, routeVisible }: Opts): VicinityAerodrome[] {
+export function useVicinityAerodromes({ waypoints, position, routeVisible, homeIcao }: Opts): VicinityAerodrome[] {
   const [all, setAll] = useState<FullVicinityAerodrome[]>([])
 
   useEffect(() => { loadFullVicinityAerodromes(setAll) }, [])
@@ -139,11 +145,19 @@ export function useVicinityAerodromes({ waypoints, position, routeVisible }: Opt
       .slice(0, MAX_AERODROMES)
   }
 
-  if (!position) return []
+  if (position) {
+    const nearby = all
+      .map((a) => ({ ...a, distNm: distanceNm({ lat: position.lat, lng: position.lng }, { lat: a.lat, lng: a.lng }) }))
+      .filter((a) => a.distNm <= RADIUS_NM)
+      .sort((a, b) => a.distNm - b.distNm)
+      .slice(0, MAX_AERODROMES)
+    if (nearby.length > 0) return nearby
+  }
 
-  return all
-    .map((a) => ({ ...a, distNm: distanceNm({ lat: position.lat, lng: position.lng }, { lat: a.lat, lng: a.lng }) }))
-    .filter((a) => a.distNm <= RADIUS_NM)
-    .sort((a, b) => a.distNm - b.distNm)
-    .slice(0, MAX_AERODROMES)
+  if (homeIcao) {
+    const home = all.find((a) => a.icao === homeIcao)
+    if (home) return [{ ...home, distNm: 0 }]
+  }
+
+  return []
 }

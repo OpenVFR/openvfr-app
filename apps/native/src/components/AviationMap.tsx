@@ -30,6 +30,7 @@ import { computeAtcStatus, isNotamAtcRelated, isNotamHoursChangeRelated, type Ho
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
 import { fetchAerodromeNotamTexts } from '@open-vfr/shared/fetchNotam'
 import { API_BASE, TILE_BASE } from '../config'
+import { LIGHT } from '@protomaps/basemaps'
 import { waitForTileManifest } from '@open-vfr/shared/tileManifest'
 import { authHeaders } from '../utils/authClient'
 import {
@@ -1843,6 +1844,30 @@ export function AviationMap({
             }}
           />
         </RasterDEMSource>
+        )}
+        {/* Water cover for hillshade -- mirrors web's 'hillshade-water-cover'
+            in map-style.ts. The DEM ships with no alpha/NoData (MapLibre
+            Native decodes DEM tiles premultiplied and the hillshade shader
+            discards alpha, so any transparent pixel is a -32768 m cliff at
+            the coast); the pipeline continues terrain smoothly out to sea
+            instead, and this fill paints basemap water back over it. Same
+            source-layer/filter/colour as the Protomaps 'water' layer.
+            References the style's own 'protomaps' source, so it lives
+            outside the RasterDEMSource above. Gated on the same sticky
+            hillshadeMounted flag (never unmount a layer once added -- 'id
+            cannot be changed'); visibility tied to showHillshade. Vector
+            basemap only (satellite style has no 'protomaps' source). */}
+        {hillshadeMounted && basemapMode !== 'satellite' && (
+          <Layer
+            id="hillshade-water-cover"
+            type="fill"
+            source="protomaps"
+            {...{'source-layer': 'water'} as any}
+            filter={['==', '$type', 'Polygon'] as any}
+            maxzoom={11}
+            layout={{ visibility: showHillshade ? 'visible' : 'none' }}
+            paint={{ 'fill-color': LIGHT.water }}
+          />
         )}
 
         {/* ── Elevation contour lines (Copernicus GLO-30 DEM, vector) ─────

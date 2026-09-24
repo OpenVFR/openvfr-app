@@ -50,6 +50,7 @@ import VirtualRadar from './VirtualRadar'
 import RulerSummaryStrip from './RulerSummaryStrip'
 import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
 import { useWindAlongRoute } from '../hooks/useWindAlongRoute'
+import { useVicinityAerodromes } from '../hooks/useVicinityAerodromes'
 import { useGpsVerticalSpeed } from '../hooks/useGpsVerticalSpeed'
 import LiveTrackChart from './LiveTrackChart'
 import LivePlogPanel from './LivePlogPanel'
@@ -517,6 +518,14 @@ export default function MapView({ auth }: { auth: AuthState }) {
     teleport,
     setSimTarget,
   } = useGoFlying(routeWaypoints)
+  // Airfield Brief panel's aerodrome picker -- route-buffer > GPS-radius >
+  // home-airfield fallback, see useVicinityAerodromes.ts doc comment.
+  const vicinityAerodromes = useVicinityAerodromes({
+    waypoints: routeWaypoints,
+    position: gpsPosition,
+    routeVisible,
+    homeIcao: homeAirfield?.icao ?? null,
+  })
   // GPS-derived vertical speed — see useGpsVerticalSpeed's header for why
   // this is explicitly a lower-quality fallback vs. native's baro/vario
   // tiering, kept only active while actually flying (mirrors gpsPosition's
@@ -2855,10 +2864,12 @@ export default function MapView({ auth }: { auth: AuthState }) {
 
     const apply = () => {
       LAYER_GROUPS.forEach((group) => {
-        // Landuse terrain fill is suppressed in satellite mode — imagery replaces it.
+        // Landuse terrain fill and hillshade (incl. its water-cover fill,
+        // which would paint opaque water over imagery) are suppressed in
+        // satellite mode — imagery replaces them.
         const on =
           (visibility[group.id] ?? group.defaultOn) &&
-          !(basemapMode === 'satellite' && group.id === 'terrain')
+          !(basemapMode === 'satellite' && (group.id === 'terrain' || group.id === 'hillshade'))
         group.layerIds.forEach((layerId) => {
           if (map.getLayer(layerId)) {
             map.setLayoutProperty(layerId, 'visibility', on ? 'visible' : 'none')
@@ -3645,6 +3656,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         activeRouteId={activeRouteId}
         onActiveRouteIdChange={setActiveRouteId}
         onRunwayWind={handleRunwayWind}
+        vicinityAerodromes={vicinityAerodromes}
         onShowNotamOnMap={handleShowNotamOnMap}
         onSetLegOverride={(idx, ovr) =>
           setLegOverrides((prev) => {

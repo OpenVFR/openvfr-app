@@ -432,7 +432,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     // (see MapView.tsx basemapMode effect).
     label: 'Hillshade (relief)',
     cssClass: 'groupHillshade',
-    layerIds: ['hillshade'],
+    layerIds: ['hillshade', 'hillshade-water-cover'],
     defaultOn: false,
     section: 'Terrain',
   },
@@ -1035,6 +1035,27 @@ export function getMapStyle(): StyleSpecification {
           'hillshade-highlight-color': 'rgba(255,255,255,0.85)',
           'hillshade-accent-color': 'rgba(60,45,30,0.4)',
         },
+      },
+      // Water cover for hillshade. The DEM shipped to the client has NO
+      // alpha and NO NoData: both maplibre-gl and maplibre-native discard
+      // DEM alpha in the hillshade shader (`data.a = -1.0`) and decode any
+      // transparent pixel as -32768 m, so every alpha/NoData edge became a
+      // cliff traced along the coast/border. The pipeline now continues
+      // real terrain smoothly out across the sea instead (see infra's
+      // extend_elevation_for_shading.py) -- so a coastal hill shades right
+      // up to and across the shoreline with no rim. This fill simply paints
+      // basemap water back on top so that continuation is never visible on
+      // the water itself. Same source-layer/filter/colour as the Protomaps
+      // 'water' layer; toggled together with 'hillshade' (LAYER_GROUPS).
+      {
+        id: 'hillshade-water-cover',
+        type: 'fill',
+        source: 'protomaps',
+        'source-layer': 'water',
+        filter: ['==', '$type', 'Polygon'],
+        maxzoom: 11,
+        layout: { visibility: 'none' },
+        paint: { 'fill-color': LIGHT.water },
       },
 
       // ── Elevation contour lines (Copernicus GLO-30 DEM, vector) ────────

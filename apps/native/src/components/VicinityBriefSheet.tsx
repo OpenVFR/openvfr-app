@@ -62,16 +62,18 @@ interface Props {
   position:       GpsPosition | null
   /** RouteContext's own Active/Inactive toggle -- see useVicinityAerodromes.ts. */
   routeVisible:   boolean
+  /** Settings-page home airfield ICAO -- last-resort picker fallback. */
+  homeIcao?:      string
 }
 
-export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position, routeVisible }: Props) {
+export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position, routeVisible, homeIcao }: Props) {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<Tab>('freq')
   const [expandedNotamIds, setExpandedNotamIds] = useState<Set<string>>(new Set())
 
-  const vicinity = useVicinityAerodromes({ waypoints, position, routeVisible })
+  const vicinity = useVicinityAerodromes({ waypoints, position, routeVisible, homeIcao })
   const [selectedIcao, setSelectedIcao] = useState<string | null>(null)
 
   useEffect(() => {

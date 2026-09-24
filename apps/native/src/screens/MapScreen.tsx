@@ -1163,6 +1163,7 @@ export function MapScreen() {
             waypoints={waypoints}
             position={activePosition}
             routeVisible={routeVisible}
+            homeIcao={settings.homeAirfield || undefined}
           />
         </View>
         <View style={stackGap}>
