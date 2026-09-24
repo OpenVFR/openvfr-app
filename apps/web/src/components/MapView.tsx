@@ -819,6 +819,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           effective:      n.effective,
           expires:        n.expires,
           classification: n.classification,
+          icaoLocation:   n.icaoLocation,
           radiusNm:       n.radiusNm,
         }
         return circle
@@ -849,6 +850,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           effective:      n.effective,
           expires:        n.expires,
           classification: n.classification,
+          icaoLocation:   n.icaoLocation,
           radiusNm:       null,
         },
       }))
@@ -880,6 +882,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           effective:      n.effective,
           expires:        n.expires,
           classification: n.classification,
+          icaoLocation:   n.icaoLocation,
           radiusNm:       null,
         },
       }))
@@ -2412,6 +2415,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
                 effective:      (p.effective as string | null) ?? null,
                 expires:        (p.expires as string | null) ?? null,
                 classification: (p.classification as string | null) ?? null,
+                icaoLocation:   (p.icaoLocation as string | null) ?? null,
                 polygon:        null,
                 lat:            null,
                 lon:            null,
@@ -2574,6 +2578,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             effective:      (p.effective as string | null) ?? null,
             expires:        (p.expires as string | null) ?? null,
             classification: (p.classification as string | null) ?? null,
+            icaoLocation:   (p.icaoLocation as string | null) ?? null,
             polygon:        null,
             lat:            null,
             lon:            null,

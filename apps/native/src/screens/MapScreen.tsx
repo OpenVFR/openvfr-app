@@ -469,10 +469,12 @@ export function MapScreen() {
         const circle = makeCirclePolygon(n.lat!, n.lon!, n.radiusNm!)
         circle.properties = {
           notamId:        n.id,
+          nmsId:          n.nmsId,
           text:           n.text,
           effective:      n.effective,
           expires:        n.expires,
           classification: n.classification,
+          icaoLocation:   n.icaoLocation,
           radiusNm:       n.radiusNm,
         }
         return circle
@@ -492,10 +494,12 @@ export function MapScreen() {
         geometry: { type: 'Point' as const, coordinates: [n.lon!, n.lat!] },
         properties: {
           notamId:        n.id,
+          nmsId:          n.nmsId,
           text:           n.text,
           effective:      n.effective,
           expires:        n.expires,
           classification: n.classification,
+          icaoLocation:   n.icaoLocation,
         },
       })),
   }), [regionalNotams])
@@ -516,10 +520,12 @@ export function MapScreen() {
         geometry: n.polygon as GeoJSON.Polygon | GeoJSON.MultiPolygon,
         properties: {
           notamId:        n.id,
+          nmsId:          n.nmsId,
           text:           n.text,
           effective:      n.effective,
           expires:        n.expires,
           classification: n.classification,
+          icaoLocation:   n.icaoLocation,
         },
       })),
   }), [regionalNotams])
@@ -662,6 +668,7 @@ export function MapScreen() {
             effective:      (p.effective as string | null | undefined) ?? null,
             expires:        (p.expires as string | null | undefined) ?? null,
             classification: (p.classification as string | null | undefined) ?? null,
+            icaoLocation:   (p.icaoLocation as string | null | undefined) ?? null,
             polygon:        null,
             lat:            null,
             lon:            null,

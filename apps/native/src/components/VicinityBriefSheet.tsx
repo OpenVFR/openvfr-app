@@ -29,6 +29,15 @@ import type { GpsPosition } from '../utils/gpsTypes'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { fmtNotamDate } from '@open-vfr/shared/fetchNotam'
 import { filterNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM } from '@open-vfr/shared/notamRouteFilter'
+
+// Single-line truncated preview, mirrors web's RegionalNotamsPanel.tsx --
+// NMS-API's `text` is already plain English prose, so a plain character-
+// count truncation is meaningfully informative, not just codes.
+const PREVIEW_LEN = 70
+function previewNotamText(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length > PREVIEW_LEN ? `${flat.slice(0, PREVIEW_LEN)}\u2026` : flat
+}
 import type { NearbyAerodrome } from '../hooks/useNearbyFrequencies'
 import { useVicinityAerodromes } from '../hooks/useVicinityAerodromes'
 import { useAerodromeBriefing } from '../hooks/useAerodromeBriefing'
@@ -242,9 +251,20 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
                       // see apps/api/src/notam.ts's NotamItem.nmsId comment.
                       const expanded = expandedNotamIds.has(n.nmsId)
                       const hasGeo = n.lat !== null && n.lon !== null
+                      const isMilitary = n.classification === 'MILITARY'
                       return (
                         <TouchableOpacity key={n.nmsId} style={styles.otherNotamRow} onPress={() => toggleOtherNotam(n.nmsId)}>
                           <View style={styles.otherNotamHeader}>
+                            {n.icaoLocation && (
+                              <View style={styles.locBadge}>
+                                <Text style={styles.locBadgeTxt}>{n.icaoLocation}</Text>
+                              </View>
+                            )}
+                            {isMilitary && (
+                              <View style={styles.milBadge}>
+                                <Text style={styles.milBadgeTxt}>MIL</Text>
+                              </View>
+                            )}
                             <Text style={styles.otherNotamId}>{n.id}</Text>
                             {hasGeo && (
                               <View style={styles.mapBadge}>
@@ -256,6 +276,9 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
                             </Text>
                             <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.textFaint} />
                           </View>
+                          {!expanded && (
+                            <Text style={styles.otherNotamPreview} numberOfLines={1}>{previewNotamText(n.text)}</Text>
+                          )}
                           {expanded && <Text style={styles.otherNotamText}>{n.text}</Text>}
                         </TouchableOpacity>
                       )
@@ -378,6 +401,17 @@ function makeStyles(theme: ScaledTheme) {
     borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1,
   },
   mapBadgeTxt: { fontSize: 9, fontWeight: '700' as const, color: '#e64980' },
+  locBadge: {
+    borderWidth: 1, borderColor: theme.borderSubtle, backgroundColor: theme.surfaceHover,
+    borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1,
+  },
+  locBadgeTxt: { fontSize: 9, fontWeight: '700' as const, color: theme.textSecondary },
+  milBadge: {
+    borderWidth: 1, borderColor: 'rgba(240,140,0,0.4)', backgroundColor: 'rgba(240,140,0,0.12)',
+    borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1,
+  },
+  milBadgeTxt: { fontSize: 9, fontWeight: '700' as const, color: '#f08c00' },
+  otherNotamPreview: { fontSize: 10, color: theme.textFaint, marginTop: 2 },
   otherNotamText: {
     fontSize: theme.textSm, color: theme.textSecondary, marginTop: 4, lineHeight: 16,
     backgroundColor: theme.surfaceOverlay ?? theme.surfaceHover, borderRadius: 6, padding: 8,

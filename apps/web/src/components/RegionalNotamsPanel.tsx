@@ -29,6 +29,18 @@ interface Props {
   onShowOnMap?: (notam: NotamItem) => void
 }
 
+// Single-line, meaningfully-truncated preview of the NOTAM's free-text body
+// -- NMS-API's `text` is already plain English prose (confirmed via
+// useNotamAirspaceMatch.ts's quoted real samples, e.g. "DANGER AREA ESD873
+// OPTAND COMPLETELY WITHDRAWN"), not raw ICAO Q)/A)/E) telex where the
+// first line is usually just codes -- so a plain character-count truncation
+// is actually informative here, unlike it would be for classic telex format.
+const PREVIEW_LEN = 90
+function previewText(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length > PREVIEW_LEN ? `${flat.slice(0, PREVIEW_LEN)}\u2026` : flat
+}
+
 export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, onShowOnMap }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
@@ -39,6 +51,16 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, o
       return next
     })
   }
+
+  // Group same-location NOTAMs together (previously unsorted -- whatever
+  // order the API happened to return, making a long list impossible to scan
+  // even with the new location/preview text below), tie-broken by soonest-
+  // expiring first within the same location.
+  const sortedNotams = [...notams].sort((a, b) => {
+    const locCmp = (a.icaoLocation ?? '').localeCompare(b.icaoLocation ?? '')
+    if (locCmp !== 0) return locCmp
+    return (a.expires ?? '').localeCompare(b.expires ?? '')
+  })
 
   if (notams.length === 0) {
     return (
@@ -53,7 +75,7 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, o
       {routeFiltered && (
         <div className={css.filterNote}>Filtered to within {bufferNm}nm of planned route</div>
       )}
-      {notams.map((n) => {
+      {sortedNotams.map((n) => {
         // Tracked by nmsId, not the display id -- different issuing
         // authorities reuse the same published NOTAM number (confirmed
         // live: a German and an unrelated Italian NOTAM both "M3011/26"),
@@ -63,6 +85,7 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, o
         const eff = fmtNotamDate(n.effective)
         const exp = fmtNotamDate(n.expires)
         const hasGeo = n.polygon !== null || (n.lat !== null && n.lon !== null && n.radiusNm !== null)
+        const isMilitary = n.classification === 'MILITARY'
         return (
           <div key={n.nmsId} className={css.item}>
             <div className={css.toggle}>
@@ -71,6 +94,8 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, o
                 onClick={() => toggle(n.nmsId)}
                 aria-expanded={String(expanded) as 'true' | 'false'}
               >
+                {n.icaoLocation && <span className={css.locBadge}>{n.icaoLocation}</span>}
+                {isMilitary && <span className={css.milBadge}>MIL</span>}
                 <span className={css.id}>{n.id}</span>
                 <span className={css.period}>{eff}{exp ? ` – ${exp}` : ''}</span>
                 <span className={css.chevron}>{expanded ? '▴' : '▾'}</span>
@@ -86,6 +111,11 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, o
                 </button>
               )}
             </div>
+            {!expanded && (
+              <button className={css.preview} onClick={() => toggle(n.nmsId)}>
+                {previewText(n.text)}
+              </button>
+            )}
             {expanded && <pre className={css.text}>{n.text}</pre>}
           </div>
         )

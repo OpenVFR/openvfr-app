@@ -18,6 +18,15 @@ interface Props {
   notamLoading: boolean
 }
 
+// Single-line truncated preview, mirrors web's RegionalNotamsPanel.tsx --
+// NMS-API's `text` is already plain English prose, so a plain character-
+// count truncation is meaningfully informative, not just codes.
+const PREVIEW_LEN = 80
+function previewText(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length > PREVIEW_LEN ? `${flat.slice(0, PREVIEW_LEN)}\u2026` : flat
+}
+
 export default function AerodromeNotamSection({ notams, notamLoading }: Props) {
   const styles = useThemedStyles(makeStyles)
   const [expandedNotams, setExpandedNotams] = useState<Set<string>>(new Set())
@@ -47,6 +56,7 @@ export default function AerodromeNotamSection({ notams, notamLoading }: Props) {
             {n.effective && (
               <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}</Text>
             )}
+            {!expanded && <Text style={styles.notamPreview} numberOfLines={1}>{previewText(n.text)}</Text>}
             {expanded && <Text style={styles.notamText}>{n.text}</Text>}
           </TouchableOpacity>
         )
@@ -82,6 +92,11 @@ function makeStyles(theme: ScaledTheme) {
     fontSize: theme.textSm,
     lineHeight: 17,
     marginTop: 2,
+  },
+  notamPreview: {
+    color:    theme.textFaint,
+    fontSize: theme.textXs,
+    marginTop: 1,
   },
 } as const
 }

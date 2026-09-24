@@ -104,6 +104,13 @@ export interface NotamItem {
   effective:      string | null
   expires:        string | null
   classification: string | null
+  // ICAO location/FIR code this NOTAM is filed under (e.g. "ESD873",
+  // "ESAA" for a whole-FIR notice) -- present on every NmsNotam record but
+  // previously dropped before reaching either client (kept mirrored with
+  // @open-vfr/shared/fetchNotam's own NotamItem, which apps/api does NOT
+  // import -- deliberately kept as its own separate copy here, matching
+  // the existing duplication for every other field on this interface).
+  icaoLocation:   string | null
   // Real multi-vertex area geometry, straight from NMS-API's own GeoJSON
   // feature.geometry (never synthesized) -- present only for NOTAMs whose
   // subject area is an actual polygon/multipolygon (e.g. cross-border
@@ -787,6 +794,11 @@ function activeNotamsFor(icao: string): NotamItem[] {
       effective:      n.effectiveStart ?? null,
       expires:        n.effectiveEnd ?? null,
       classification: n.classification ?? null,
+      // Already used extensively server-side (cache keying, allowlist/
+      // cross-border filtering) but previously dropped at this exact
+      // construction site -- clients had no "where" for a NOTAM at all
+      // short of parsing it out of the free-text `text` field themselves.
+      icaoLocation:   n.icaoLocation ?? null,
       polygon,
       // Polygon geometry (real, structured, from NMS-API itself) takes
       // priority over the synthesized DMS point/circle fields when both

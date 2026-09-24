@@ -1,6 +1,5 @@
 import type React from 'react'
 import css from './FeaturePopup.module.css'
-import { fmtNotamDate } from '@open-vfr/shared/fetchNotam'
 
 // ── Feature type definitions ──────────────────────────────────────────────────
 // Each variant carries only the properties available in its GeoJSON source.

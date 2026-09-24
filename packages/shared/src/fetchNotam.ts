@@ -24,6 +24,11 @@ export interface NotamItem {
   effective:      string | null
   expires:        string | null
   classification: string | null
+  // The ICAO location/FIR code this NOTAM is filed under (e.g. "ESD873",
+  // "ESAA" for a whole-FIR notice) -- present upstream on every NMS-API
+  // record but previously dropped before reaching either client. Used to
+  // give a regional-NOTAM list row a real "where" without opening it.
+  icaoLocation:   string | null
   // Real multi-vertex area geometry straight from NMS-API's own GeoJSON
   // feature.geometry (see apps/api/src/notam.ts's extractNotamPolygon()) --
   // present only for NOTAMs whose subject area is an actual polygon, e.g.

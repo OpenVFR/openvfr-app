@@ -94,3 +94,45 @@
   cursor: default;
   opacity: 0.6;
 }
+
+.locBadge {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--surface-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 1px 4px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.milBadge {
+  font-size: 9px;
+  font-weight: 700;
+  color: #f08c00;
+  border: 1px solid rgba(240, 140, 0, 0.4);
+  background: rgba(240, 140, 0, 0.12);
+  border-radius: 3px;
+  padding: 1px 4px;
+  flex-shrink: 0;
+}
+
+.preview {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 10px;
+  color: var(--text-faint);
+  padding: 0 0 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview:hover {
+  color: var(--text-secondary);
+}
