@@ -2537,7 +2537,7 @@ export function AviationMap({
         )}
 
         {notamCirclesFC && notamCirclesFC.features.length > 0 && (
-          <GeoJSONSource id="notam-circles-src" data={notamCirclesFC}>
+          <GeoJSONSource id="notam-circles-src" data={notamCirclesFC} onPress={() => {}}>
             <Layer
               id="notam-circles-fill" type="fill"
               paint={{ 'fill-color': '#e64980', 'fill-opacity': 0.12 }}
@@ -2550,7 +2550,7 @@ export function AviationMap({
         )}
 
         {notamPolygonsFC && notamPolygonsFC.features.length > 0 && (
-          <GeoJSONSource id="notam-polygons-src" data={notamPolygonsFC}>
+          <GeoJSONSource id="notam-polygons-src" data={notamPolygonsFC} onPress={() => {}}>
             <Layer
               id="notam-polygons-fill" type="fill"
               paint={{ 'fill-color': '#e64980', 'fill-opacity': 0.12 }}

@@ -6,7 +6,11 @@ import React from 'react'
 import { Modal, View, Text, TouchableOpacity } from 'react-native'
 import { useThemedStyles, type ScaledTheme } from '../styles/theme'
 
-export type FeatureKind = 'navaid' | 'obstacle' | 'waypoint' | 'notam' | null
+// 'notam' kind removed -- all NOTAM point/circle/polygon taps now render
+// through AirspacePopup's regionalNotams rows instead (see MapScreen.tsx's
+// handleFeatureTap notamHits collection), matching web's fef381a commit
+// which removed the equivalent parallel path in FeaturePopup.tsx there.
+export type FeatureKind = 'navaid' | 'obstacle' | 'waypoint' | null
 
 export interface FeatureInfo {
   kind:     FeatureKind
@@ -28,7 +32,6 @@ const KIND_ICON: Record<NonNullable<FeatureKind>, string> = {
   navaid:   '📡',
   obstacle: '⚠️',
   waypoint: '📍',
-  notam:    '🚧',
 }
 
 export function FeaturePopup({ feature, onClose, onAddToRoute }: Props) {

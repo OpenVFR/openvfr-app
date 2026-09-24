@@ -12,6 +12,7 @@ import {
 import Svg, { Path, Rect, Line } from 'react-native-svg'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
+import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
 
 export interface AirspaceFeatureProps {
   name:       string
@@ -27,10 +28,26 @@ export interface AirspaceFeatureProps {
   coords?:    number[][]
 }
 
+/** An ad-hoc regional NOTAM hit (circle/polygon/point) geometrically
+ *  covering the tapped point, plus its rendered shape -- mirrors web's
+ *  AirspacePopup.tsx RegionalNotamHit exactly (see that file's own doc
+ *  comment). Undefined coords (point-only NOTAMs) falls back to
+ *  PolygonThumb's plain-square placeholder. */
+export interface RegionalNotamHit {
+  notam:   NotamItem
+  coords?: number[][]
+}
+
 interface Props {
   features: AirspaceFeatureProps[]
+  // Ad-hoc regional NOTAM circles/polygons/points geometrically covering the
+  // tapped point -- rendered as their own sibling cards ahead of charted
+  // airspace rows, same ordering/merge rationale as web's AirspacePopup.tsx.
+  regionalNotams?: RegionalNotamHit[]
   onClose:  () => void
 }
+
+const NOTAM_COLOR = '#e64980'
 
 // ── colour map ────────────────────────────────────────────────────────────────
 // class C needs the type (CTR vs TMA) to pick the right shade — a flat
@@ -271,12 +288,24 @@ function sortByLower(list: AirspaceFeatureProps[]) {
 }
 
 // ── main component ────────────────────────────────────────────────────────────
-export function AirspacePopup({ features, onClose }: Props) {
+export function AirspacePopup({ features, regionalNotams = [], onClose }: Props) {
   const styles = useThemedStyles(makeStyles)
   const [expanded, setExpanded] = useState<number | null>(null)
   const [rowsHeight, setRowsHeight] = useState(0)
-  if (features.length === 0) return null
+
+  // Dedup regional NOTAMs by nmsId (NOT the display id -- different issuing
+  // authorities reuse the same published NOTAM number, see
+  // apps/api/src/notam.ts's NotamItem.nmsId comment), mirrors web exactly.
+  const seenNotamIds = new Set<string>()
+  const dedupedNotams = regionalNotams.filter((h) => {
+    if (seenNotamIds.has(h.notam.nmsId)) return false
+    seenNotamIds.add(h.notam.nmsId)
+    return true
+  })
+
+  if (features.length === 0 && dedupedNotams.length === 0) return null
   const sorted = sortByLower(features)
+  const totalCount = sorted.length + dedupedNotams.length
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -287,7 +316,7 @@ export function AirspacePopup({ features, onClose }: Props) {
         <View style={styles.sheetHeader}>
           <View>
             <Text style={styles.countTxt}>
-              {sorted.length} airspace zone{sorted.length !== 1 ? 's' : ''}
+              {totalCount} layer{totalCount !== 1 ? 's' : ''}
             </Text>
             <Text style={styles.timeTxt}>Now: {utcNow()}</Text>
           </View>
@@ -298,11 +327,42 @@ export function AirspacePopup({ features, onClose }: Props) {
 
         {/* accordion + altitude-relationship strip — the strip spans the full
             measured height of the row list, acting as a persistent ruler
-            alongside it (mirrors web's absolutely-positioned stripWrap). */}
+            alongside it (mirrors web's absolutely-positioned stripWrap).
+            Only reflects charted airspace (regional NOTAMs carry no
+            comparable vertical-extent shape), same as web. */}
         <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
         <View style={styles.listRow}>
           <AltitudeStrip list={sorted} height={rowsHeight} />
           <View style={styles.rowsCol} onLayout={(e) => setRowsHeight(e.nativeEvent.layout.height)}>
+          {dedupedNotams.map((hit, i) => {
+            const n = hit.notam
+            return (
+              <View key={`notam-${i}`} style={styles.item}>
+                <View style={styles.row}>
+                  <PolygonThumb
+                    coords={hit.coords}
+                    strokeColor={NOTAM_COLOR}
+                    fillColor="rgba(230,73,128,0.13)"
+                    active={false}
+                  />
+                  <View style={styles.info}>
+                    <View style={styles.badges}>
+                      <View style={[styles.badge, { borderColor: NOTAM_COLOR }]}>
+                        <Text style={[styles.badgeTxt, { color: NOTAM_COLOR }]}>NOTAM</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.name} numberOfLines={1}>{n.id}</Text>
+                    {(n.effective || n.expires) && (
+                      <Text style={styles.timeTxt} numberOfLines={1}>
+                        {fmtNotamDate(n.effective) ?? '—'} – {fmtNotamDate(n.expires) ?? '—'}
+                      </Text>
+                    )}
+                    <Text style={styles.notamText}>{n.text}</Text>
+                  </View>
+                </View>
+              </View>
+            )
+          })}
           {sorted.map((f, i) => {
             const cls    = f.class ?? ''
             const color  = classBorderColor(cls, f.type)
@@ -500,6 +560,12 @@ function makeStyles(theme: ScaledTheme) {
     fontSize:   theme.textXs,
     fontStyle:  'italic',
     lineHeight: 16,
+  },
+  notamText: {
+    color:      theme.textSecondary,
+    fontSize:   theme.textXs,
+    lineHeight: 16,
+    marginTop:  2,
   },
 } as const
 }

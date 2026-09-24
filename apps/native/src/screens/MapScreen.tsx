@@ -27,7 +27,7 @@ import { AerodromePopup }    from '../components/AerodromePopup'
 import type { AerodromeFeatureProps } from '../components/AerodromePopup'
 import type { RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import { AirspacePopup }     from '../components/AirspacePopup'
-import type { AirspaceFeatureProps } from '../components/AirspacePopup'
+import type { AirspaceFeatureProps, RegionalNotamHit } from '../components/AirspacePopup'
 import { FeaturePopup }      from '../components/FeaturePopup'
 import type { FeatureInfo }  from '../components/FeaturePopup'
 import { useGps }            from '../hooks/useGps'
@@ -36,7 +36,6 @@ import { SnapPicker, type SnapCandidate } from '../components/SnapPicker'
 import { useTraffic }        from '../hooks/useTraffic'
 import { useRegionalNotams } from '../hooks/useRegionalNotams'
 import { makeCirclePolygon } from '@open-vfr/shared/geoCircle'
-import { fmtNotamDate } from '@open-vfr/shared/fetchNotam'
 import { NotificationCenter } from '../components/NotificationCenter'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
 import { getTileUrls } from '../config'
@@ -92,6 +91,17 @@ function isAerodrome(p: Record<string, unknown>) {
 
 function isAirspace(p: Record<string, unknown>) {
   return typeof p.class === 'string' && p.lower_ft !== undefined
+}
+
+// Same ring extraction as web's MapView.tsx notamGeometryRing -- circle-fill
+// features are a synthesized Polygon already matching makeCirclePolygon's
+// output, real-geometry polygon-fill features are the NOTAM's true shape;
+// both need no separate re-derivation. Point-only markers (no area extent)
+// return undefined so PolygonThumb falls back to its plain-square placeholder.
+function notamGeometryRing(geom: Feature['geometry']): number[][] | undefined {
+  if (geom.type === 'Polygon') return geom.coordinates[0]
+  if (geom.type === 'MultiPolygon') return geom.coordinates[0]?.[0]
+  return undefined
 }
 
 /** Interpolate a lat/lng at a given cumulative distance (NM) along a raw GPS
@@ -527,6 +537,10 @@ export function MapScreen() {
     setRunwayWindHighlight(ends.length > 0 ? { icao, ends } : null)
   }, [])
   const [airspaceFeatures,  setAirspaceFeatures]  = useState<AirspaceFeatureProps[]>([])
+  // Ad-hoc regional NOTAM circles/polygons/points merged into the same
+  // AirspacePopup as airspaceFeatures above -- see handleFeatureTap's
+  // notamHits collection. Cleared together, same popup close action.
+  const [regionalNotamHits, setRegionalNotamHits]  = useState<RegionalNotamHit[]>([])
   const [featureInfo,       setFeatureInfo]        = useState<FeatureInfo | null>(null)
 
   // GPS itself is auto-started on mount (see effect below) — position
@@ -626,29 +640,45 @@ export function MapScreen() {
     // reached. AviationMap.tsx's handleMapPress already special-cases 'wp'
     // for double-tap-remove before forwarding here, so it's safe to skip past
     // it here too and let the real feature underneath open its popup.
+    // Ad-hoc regional NOTAM circles/polygons/points geometrically covering
+    // the tapped point -- collected up front (not treated as "the" feature
+    // for priority purposes) so they can be MERGED into the same airspace
+    // popup as sibling entries below, instead of shadowing/blocking a tap on
+    // charted airspace or another point feature underneath them (mirrors
+    // web's MapView.tsx fix, commit e1abca0 -- a large ad-hoc NOTAM area,
+    // routinely tens of nm across, previously intercepted every tap within
+    // its extent via an early-return here). Deduped by nmsId (NOT the
+    // display id -- different issuing authorities reuse the same published
+    // NOTAM number) at AirspacePopup's own render step, not here.
+    const notamHits: RegionalNotamHit[] = features
+      .filter(f => (f.properties ?? {}).notamId)
+      .map(f => {
+        const p = f.properties ?? {}
+        return {
+          notam: {
+            id:             String(p.notamId ?? ''),
+            nmsId:          String(p.nmsId ?? p.notamId ?? ''),
+            text:           String(p.text ?? ''),
+            effective:      (p.effective as string | null | undefined) ?? null,
+            expires:        (p.expires as string | null | undefined) ?? null,
+            classification: (p.classification as string | null | undefined) ?? null,
+            polygon:        null,
+            lat:            null,
+            lon:            null,
+            radiusNm:       (p.radiusNm as number | null | undefined) ?? null,
+          },
+          coords: notamGeometryRing(f.geometry),
+        }
+      })
+
     const feature = features.find(f => {
       const p = f.properties ?? {}
-      return !isAirspace(p) && p.featureType !== 'wp' && p.featureType !== 'leg'
+      return !isAirspace(p) && !p.notamId && p.featureType !== 'wp' && p.featureType !== 'leg'
     })
     const [tapLng, tapLat] = tapLngLat
 
     if (feature) {
       const p = feature.properties ?? {}
-
-      // Regional NOTAM circle -- polygon geometry, checked before the
-      // Point-only branches below (which wouldn't otherwise catch it).
-      if (p.notamId) {
-        setFeatureInfo({
-          kind: 'notam', name: String(p.notamId ?? ''), subtitle: 'NOTAM',
-          rows: [
-            p.effective ? { label: 'Effective', value: fmtNotamDate(String(p.effective)) ?? '' } : null,
-            p.expires   ? { label: 'Expires',   value: fmtNotamDate(String(p.expires)) ?? '' }   : null,
-            { label: 'Text', value: String(p.text ?? '') },
-          ].filter(Boolean) as { label: string; value: string }[],
-          canAddToRoute: false,
-        })
-        return
-      }
 
       if (isAerodrome(p)) {
         const parse = <T,>(v: unknown): T => typeof v === 'string' ? JSON.parse(v) : v as T
@@ -726,13 +756,17 @@ export function MapScreen() {
       }
     }
 
-    // No point feature under the tap — fall back to airspace lookup.
+    // No point feature under the tap — fall back to airspace lookup, merged
+    // with any ad-hoc regional NOTAM hits collected above (mirrors web's
+    // MapView.tsx step 2 exactly -- neither is an independent click-priority
+    // layer over the other, both render as sibling cards in the same popup).
     // Independent of the altitude-ceiling filter and per-class layer toggles —
     // those only control what's drawn on the map, not what's reported here.
     // Always query the full dataset directly.
     const airspaces = await queryAirspaceAtPoint(tapLng, tapLat, getTileUrls().airspace)
-    if (airspaces.length > 0) {
+    if (airspaces.length > 0 || notamHits.length > 0) {
       setAirspaceFeatures(airspaces)
+      setRegionalNotamHits(notamHits)
     }
   }, [addWaypoint])
 
@@ -1325,7 +1359,11 @@ export function MapScreen() {
       )}
 
       <AerodromePopup feature={aerodromeFeature} onClose={() => setAerodromeFeature(null)} onRunwayWind={handleRunwayWind} />
-      <AirspacePopup  features={airspaceFeatures}  onClose={() => setAirspaceFeatures([])}  />
+      <AirspacePopup
+        features={airspaceFeatures}
+        regionalNotams={regionalNotamHits}
+        onClose={() => { setAirspaceFeatures([]); setRegionalNotamHits([]) }}
+      />
       <FeaturePopup
         feature={featureInfo}
         onClose={() => setFeatureInfo(null)}
