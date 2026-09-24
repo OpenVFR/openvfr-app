@@ -17,7 +17,7 @@ import AccountBadge from './AccountBadge'
 import type { AuthState } from '../hooks/useAuth'
 import AerodromePopup, { type AerodromeFeatureProps } from './AerodromePopup'
 import type { RunwayWindEnd } from '@open-vfr/shared/runwayWind'
-import AirspacePopup, { type AirspaceFeature } from './AirspacePopup'
+import AirspacePopup, { type AirspaceFeature, type RegionalNotamHit } from './AirspacePopup'
 import FeaturePopup, { type PointFeature } from './FeaturePopup'
 import WhatsHerePopup, { type WhatsHereItem } from './WhatsHerePopup'
 import RulerPanel from './RulerPanel'
@@ -32,7 +32,7 @@ import css from './SideDrawer.module.css'
 
 export type ActiveInfo =
   | { kind: 'aerodrome'; props: AerodromeFeatureProps; lng: number; lat: number }
-  | { kind: 'airspace';  features: AirspaceFeature[]; regionalNotams?: NotamItem[] }
+  | { kind: 'airspace';  features: AirspaceFeature[]; regionalNotams?: RegionalNotamHit[] }
   | { kind: 'point';     feature: PointFeature }
   | { kind: 'whatshere'; items: WhatsHereItem[]; airspaceFeatures: AirspaceFeature[]; lng: number; lat: number }
   | null
@@ -101,6 +101,8 @@ interface Props {
   onSetHome: (icao: string, name: string, lng: number, lat: number) => void
   /** Forwarded to AerodromePopup so the map's runway threshold labels can mirror its favored-end highlight. */
   onRunwayWind?: (icao: string, ends: RunwayWindEnd[]) => void
+  /** RegionalNotamsPanel's "MAP" jump-to action -- flies to the NOTAM's own geometry and opens it in the shared airspace-style popup. */
+  onShowNotamOnMap?: (notam: NotamItem) => void
   // Map ruler
   rulerActive: boolean
   rulerPoints: RouteWaypoint[]
@@ -191,7 +193,7 @@ export default function SideDrawer({
   selectedAircraftId, selectedAircraftProfile, onSelectAircraft,
   onFlyTo,
   activeInfo, onCloseInfo,
-  isHome, onSetHome, onRunwayWind,
+  isHome, onSetHome, onRunwayWind, onShowNotamOnMap,
   rulerActive, rulerPoints, onClearRuler,
   selectedLogId, onSelectLog, onClearLog,
   userWaypoints, regionalNotams, pendingUserWpCoords, folderVisibility,
@@ -545,6 +547,7 @@ export default function SideDrawer({
                   notams={displayedRegionalNotams}
                   routeFiltered={hasRoute}
                   bufferNm={DEFAULT_ROUTE_NOTAM_BUFFER_NM}
+                  onShowOnMap={onShowNotamOnMap}
                 />
               </div>
             )}

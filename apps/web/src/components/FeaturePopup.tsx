@@ -267,42 +267,7 @@ function TrafficBody({ f }: { f: TrafficFeature }) {
   )
 }
 
-function RegionalNotamHeader({ f }: { f: RegionalNotamFeature }) {
-  return (
-    <div className={css.headerContent}>
-      <span className={css.bigId}>{f.notamId}</span>
-      <span className={css.typeTag}>NOTAM</span>
-      {f.classification && <span className={css.typeTag}>{f.classification}</span>}
-    </div>
-  )
-}
-
-function RegionalNotamBody({ f }: { f: RegionalNotamFeature }) {
-  return (
-    <div className={css.body}>
-      <div className={css.name} style={{ whiteSpace: 'pre-line' }}>{f.text}</div>
-      {f.effective && (
-        <div className={css.row}>
-          <span className={css.label}>Effective</span>
-          <span className={css.value}>{fmtNotamDate(f.effective)}</span>
-        </div>
-      )}
-      {f.expires && (
-        <div className={css.row}>
-          <span className={css.label}>Expires</span>
-          <span className={css.value}>{fmtNotamDate(f.expires)}</span>
-        </div>
-      )}
-      {f.radiusNm !== null && (
-        <div className={css.row}>
-          <span className={css.label}>Radius</span>
-          <span className={css.value}>{f.radiusNm} NM</span>
-        </div>
-      )}
-      <div className={css.source}>FAA NOTAM Management Service (NMS-API)</div>
-    </div>
-  )
-}
+// (former RegionalNotamHeader/RegionalNotamBody removed -- see PointFeature comment above)
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -335,10 +300,6 @@ export default function FeaturePopup({ feature: f, onClose }: Props) {
     case 'traffic':
       header = <TrafficHeader f={f} />
       body   = <TrafficBody   f={f} />
-      break
-    case 'regionalNotam':
-      header = <RegionalNotamHeader f={f} />
-      body   = <RegionalNotamBody   f={f} />
       break
   }
 

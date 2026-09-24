@@ -40,7 +40,7 @@ import { registerAerodromeImages } from '../utils/aerodromeIcons'
 import { registerNavaidImages } from '../utils/navaidIcons'
 import { registerWindBarbIcon, registerAllWindBarbIcons } from '../utils/windBarbIcons'
 import { useWindGrid } from '../hooks/useWindGrid'
-import { type AirspaceFeature } from './AirspacePopup'
+import { type AirspaceFeature, type RegionalNotamHit } from './AirspacePopup'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
 import { formatObstacleName, formatLandmarkName, obstacleWaypointName } from '@open-vfr/shared/snapLabels'
 import { type PointFeature } from './FeaturePopup'
@@ -109,6 +109,40 @@ const AERODROME_LAYERS = ['aerodromes-icon', 'aerodromes-label']
 // makeCirclePolygon now lives in @open-vfr/shared/geoCircle -- promoted
 // there once native needed the identical math for its own NOTAM circle
 // layer, rather than duplicating it a second time.
+
+// Extracts the outer ring [[lng,lat]…] from a queried NOTAM feature's own
+// geometry, for the AirspacePopup shape thumbnail — works for both the
+// synthesized circle Polygon and a real-geometry Polygon/MultiPolygon;
+// Point geometry (individual marker, no area) returns undefined so
+// PolygonThumb falls back to its plain-square placeholder.
+function notamGeometryRing(geom: GeoJSON.Geometry): number[][] | undefined {
+  if (geom.type === 'Polygon') return geom.coordinates[0]
+  if (geom.type === 'MultiPolygon') return geom.coordinates[0]?.[0]
+  return undefined
+}
+
+// Same ring extraction as notamGeometryRing above, but from a NotamItem's
+// OWN stored geometry (real polygon, or synthesized from lat/lon/radiusNm)
+// rather than a queried map feature -- used by the sidebar's "MAP" jump-to
+// action, which has no click event / queried feature to read from.
+function notamItemRing(n: NotamItem): number[][] | undefined {
+  if (n.polygon) {
+    return n.polygon.type === 'Polygon' ? n.polygon.coordinates[0] : n.polygon.coordinates[0]?.[0]
+  }
+  if (n.lat !== null && n.lon !== null && n.radiusNm !== null && n.radiusNm > 0) {
+    return makeCirclePolygon(n.lat, n.lon, n.radiusNm).geometry.coordinates[0]
+  }
+  return undefined
+}
+
+function ringBounds(ring: number[][]): [[number, number], [number, number]] {
+  let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity
+  for (const [lng, lat] of ring) {
+    if (lng < minLng) minLng = lng; if (lng > maxLng) maxLng = lng
+    if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat
+  }
+  return [[minLng, minLat], [maxLng, maxLat]]
+}
 
 // ── Extended centreline helper ────────────────────────────────────────────
 // A runway threshold has a `mag_brg` (bearing FROM threshold toward the runway).
@@ -240,7 +274,7 @@ const ROUTE_DISPLAY_LAYERS = [
 // Popup state — discriminated union covering every interactive feature type.
 type ActivePopup =
   | { kind: 'aerodrome'; props: AerodromeFeatureProps; lng: number; lat: number; x: number; y: number }
-  | { kind: 'airspace';  features: AirspaceFeature[]; regionalNotams?: NotamItem[]; x: number; y: number }
+  | { kind: 'airspace';  features: AirspaceFeature[]; regionalNotams?: RegionalNotamHit[]; x: number; y: number }
   | { kind: 'point';     feature: PointFeature;        x: number; y: number }
   | { kind: 'whatshere'; items: WhatsHereItem[]; airspaceFeatures: AirspaceFeature[]; lng: number; lat: number; x: number; y: number }
 
@@ -363,6 +397,31 @@ export default function MapView({ auth }: { auth: AuthState }) {
 
   const handleRunwayWind = useCallback((icao: string, ends: RunwayWindEnd[]) => {
     setRunwayWindHighlight(ends.length > 0 ? { icao, ends } : null)
+  }, [])
+
+  // Sidebar "MAP" jump-to action (RegionalNotamsPanel) -- flies to the
+  // NOTAM's own geometry and opens it in the same rich airspace-style
+  // popup a map click on its circle/polygon produces (shape thumbnail +
+  // details), rather than a plain text-only popup with no visual context.
+  const handleShowNotamOnMap = useCallback((notam: NotamItem) => {
+    const map = mapRef.current
+    if (!map) return
+    const ring = notamItemRing(notam)
+    const openPopupAt = (lng: number, lat: number) => {
+      map.once('moveend', () => {
+        const pt = map.project([lng, lat])
+        setActivePopup({ kind: 'airspace', features: [], regionalNotams: [{ notam, coords: ring }], x: pt.x, y: pt.y })
+      })
+    }
+    if (ring) {
+      const bounds = ringBounds(ring)
+      map.fitBounds(bounds, { padding: 100, maxZoom: 12, duration: 1000 })
+      const [[minLng, minLat], [maxLng, maxLat]] = bounds
+      openPopupAt((minLng + maxLng) / 2, (minLat + maxLat) / 2)
+    } else if (notam.lat !== null && notam.lon !== null) {
+      map.flyTo({ center: [notam.lon, notam.lat], zoom: 10, speed: 1.4 })
+      openPopupAt(notam.lon, notam.lat)
+    }
   }, [])
 
   // Apply/clear the highlight expressions on the map whenever it changes.
@@ -2330,20 +2389,36 @@ export default function MapView({ auth }: { auth: AuthState }) {
           map.easeTo({ center: coords, zoom })
           return
         }
+        // Same rich airspace-style popup as a circle/polygon click (step 2
+        // below) -- point-only markers just never resolve a `coords` ring
+        // (no area extent to draw), so PolygonThumb falls back to its
+        // plain-square placeholder. Kept as its own priority-checked step
+        // (not folded into step 2's queryRenderedFeatures list) only
+        // because of the padded hit box below vs step 2's exact-point query
+        // -- these markers are small enough that padding is needed to hit
+        // them reliably, unlike circles/polygons.
         const pointHits = map.queryRenderedFeatures(box, { layers: ['notam-points-unclustered'] })
         if (pointHits.length > 0) {
           const p = pointHits[0].properties as Record<string, unknown>
+          const nmsId = String(p.nmsId ?? '')
           setActivePopup({
-            kind: 'point',
-            feature: {
-              kind:           'regionalNotam',
-              notamId:        String(p.notamId ?? ''),
-              text:           String(p.text ?? ''),
-              effective:      (p.effective as string | null) ?? null,
-              expires:        (p.expires as string | null) ?? null,
-              classification: (p.classification as string | null) ?? null,
-              radiusNm:       null,
-            },
+            kind: 'airspace',
+            features: [],
+            regionalNotams: [{
+              notam: {
+                id:             String(p.notamId ?? ''),
+                nmsId,
+                text:           String(p.text ?? ''),
+                effective:      (p.effective as string | null) ?? null,
+                expires:        (p.expires as string | null) ?? null,
+                classification: (p.classification as string | null) ?? null,
+                polygon:        null,
+                lat:            null,
+                lon:            null,
+                radiusNm:       null,
+              },
+              coords: undefined,
+            }],
             x: e.point.x,
             y: e.point.y,
           })
@@ -2485,23 +2560,31 @@ export default function MapView({ auth }: { auth: AuthState }) {
         layers: ['notam-circles-fill', 'notam-polygons-fill', 'notam-points-unclustered'],
       })
       const seenNotamHitIds = new Set<string>()
-      const regionalNotamHits: NotamItem[] = []
+      const regionalNotamHits: RegionalNotamHit[] = []
       for (const hit of notamGeomHits) {
         const p = hit.properties as Record<string, unknown>
         const nmsId = String(p.nmsId ?? '')
         if (!nmsId || seenNotamHitIds.has(nmsId)) continue
         seenNotamHitIds.add(nmsId)
         regionalNotamHits.push({
-          id:             String(p.notamId ?? ''),
-          nmsId,
-          text:           String(p.text ?? ''),
-          effective:      (p.effective as string | null) ?? null,
-          expires:        (p.expires as string | null) ?? null,
-          classification: (p.classification as string | null) ?? null,
-          polygon:        null,
-          lat:            null,
-          lon:            null,
-          radiusNm:       (p.radiusNm as number | null) ?? null,
+          notam: {
+            id:             String(p.notamId ?? ''),
+            nmsId,
+            text:           String(p.text ?? ''),
+            effective:      (p.effective as string | null) ?? null,
+            expires:        (p.expires as string | null) ?? null,
+            classification: (p.classification as string | null) ?? null,
+            polygon:        null,
+            lat:            null,
+            lon:            null,
+            radiusNm:       (p.radiusNm as number | null) ?? null,
+          },
+          // Extract the actual rendered ring straight from the queried
+          // feature's own geometry -- circle-fill features are a synthesized
+          // Polygon already matching makeCirclePolygon's output, real-geometry
+          // polygon-fill features are the NOTAM's true shape; both cases need
+          // no separate re-derivation. Point-only markers have no ring.
+          coords: notamGeometryRing(hit.geometry),
         })
       }
 
@@ -3557,6 +3640,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         activeRouteId={activeRouteId}
         onActiveRouteIdChange={setActiveRouteId}
         onRunwayWind={handleRunwayWind}
+        onShowNotamOnMap={handleShowNotamOnMap}
         onSetLegOverride={(idx, ovr) =>
           setLegOverrides((prev) => {
             const next = [...prev]

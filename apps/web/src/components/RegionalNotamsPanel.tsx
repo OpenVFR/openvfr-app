@@ -22,9 +22,14 @@ interface Props {
    *  clear the list isn't "everything active" but a narrowed-down brief. */
   routeFiltered?: boolean
   bufferNm?: number
+  /** "MAP" badge action -- flies the map to this NOTAM's own geometry and
+   *  opens it in the shared airspace-style popup (shape thumbnail + text).
+   *  Undefined badge click is a no-op (still shown as a plain, non-
+   *  interactive indicator) so this panel keeps working standalone. */
+  onShowOnMap?: (notam: NotamItem) => void
 }
 
-export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm }: Props) {
+export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, onShowOnMap }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
   const toggle = (id: string) => {
@@ -57,19 +62,30 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm }:
         const expanded = expandedIds.has(n.nmsId)
         const eff = fmtNotamDate(n.effective)
         const exp = fmtNotamDate(n.expires)
-        const hasGeo = n.lat !== null && n.lon !== null && n.radiusNm !== null
+        const hasGeo = n.polygon !== null || (n.lat !== null && n.lon !== null && n.radiusNm !== null)
         return (
           <div key={n.nmsId} className={css.item}>
-            <button
-              className={css.toggle}
-              onClick={() => toggle(n.nmsId)}
-              aria-expanded={String(expanded) as 'true' | 'false'}
-            >
-              <span className={css.id}>{n.id}</span>
-              {hasGeo && <span className={css.badge}>MAP</span>}
-              <span className={css.period}>{eff}{exp ? ` – ${exp}` : ''}</span>
-              <span className={css.chevron}>{expanded ? '▴' : '▾'}</span>
-            </button>
+            <div className={css.toggle}>
+              <button
+                className={css.toggleMain}
+                onClick={() => toggle(n.nmsId)}
+                aria-expanded={String(expanded) as 'true' | 'false'}
+              >
+                <span className={css.id}>{n.id}</span>
+                <span className={css.period}>{eff}{exp ? ` – ${exp}` : ''}</span>
+                <span className={css.chevron}>{expanded ? '▴' : '▾'}</span>
+              </button>
+              {hasGeo && (
+                <button
+                  className={css.badge}
+                  onClick={() => onShowOnMap?.(n)}
+                  title="Show on map"
+                  disabled={!onShowOnMap}
+                >
+                  MAP
+                </button>
+              )}
+            </div>
             {expanded && <pre className={css.text}>{n.text}</pre>}
           </div>
         )

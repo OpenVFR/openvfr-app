@@ -25,10 +25,22 @@ export interface AirspaceFeature {
   notams?: NotamItem[]
 }
 
+/** An ad-hoc regional NOTAM hit at the click point, plus its actual
+ *  rendered shape (extracted straight from the queried map feature's own
+ *  geometry -- circle/polygon fill layers both produce Polygon geometry
+ *  already matching what's drawn on the map, so this is never a separate
+ *  re-derivation). Undefined coords (point-only NOTAMs, no area extent)
+ *  falls back to PolygonThumb's plain-square placeholder, same as an
+ *  airspace feature with no resolved geometry. */
+export interface RegionalNotamHit {
+  notam:  NotamItem
+  coords?: number[][]
+}
+
 type RowItem =
   | { kind: 'airspace'; feature: AirspaceFeature }
   | { kind: 'gap'; lowerFt: number; upperFt: number }
-  | { kind: 'notam'; notam: NotamItem }
+  | { kind: 'notam'; hit: RegionalNotamHit }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -187,7 +199,7 @@ interface Props {
   // a temporary/ad-hoc NOTAM area often doesn't correspond to any single
   // charted layer at all (e.g. a cross-border exercise area with no
   // charted Swedish airspace underneath it whatsoever).
-  regionalNotams?: NotamItem[]
+  regionalNotams?: RegionalNotamHit[]
   onClose: () => void
 }
 
@@ -210,9 +222,9 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
   // ad-hoc area was somehow queried twice (e.g. a circle spanning a tile
   // boundary).
   const seenNotamIds = new Set<string>()
-  const dedupedNotams = regionalNotams.filter((n) => {
-    if (seenNotamIds.has(n.nmsId)) return false
-    seenNotamIds.add(n.nmsId)
+  const dedupedNotams = regionalNotams.filter((h) => {
+    if (seenNotamIds.has(h.notam.nmsId)) return false
+    seenNotamIds.add(h.notam.nmsId)
     return true
   })
 
@@ -220,7 +232,7 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
   // Regional NOTAMs shown first, matching a reference NOTAM app's own
   // ordering (its own "Activity NOTAM" entries lead a multi-select list,
   // charted airspace layers follow).
-  const items: RowItem[] = dedupedNotams.map((n) => ({ kind: 'notam' as const, notam: n }))
+  const items: RowItem[] = dedupedNotams.map((h) => ({ kind: 'notam' as const, hit: h }))
   sorted.forEach((f, i) => {
     items.push({ kind: 'airspace', feature: f })
     if (i < sorted.length - 1) {
@@ -304,10 +316,12 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
             }
 
             if (item.kind === 'notam') {
-              const n = item.notam
+              const n = item.hit.notam
+              const notamColor = '#e64980'
               return (
                 <div key={i} className={css.row}>
                   <div className={css.rowInner}>
+                    <PolygonThumb coords={item.hit.coords} strokeColor={notamColor} fillColor={withAlpha(notamColor, 0.13)} />
                     <div className={css.rowContent}>
                       <div className={css.bandTop}>
                         <span className={css.typeTag} style={{ color: '#e64980', borderColor: 'rgba(230,73,128,0.4)' }}>NOTAM</span>
