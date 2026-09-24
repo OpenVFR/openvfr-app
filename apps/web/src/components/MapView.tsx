@@ -31,7 +31,7 @@ import { buildRunwayWindHighlight, effectiveMagBrg, type RunwayWindEnd } from '@
 import { computeAtcStatus, isNotamAtcRelated, isNotamHoursChangeRelated, type HoursEntry as AtcHoursEntry } from '@open-vfr/shared/atcStatus'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
 import { AERODROME_COLORS } from '@open-vfr/shared/featureColors'
-import { fetchAerodromeNotamTexts } from '@open-vfr/shared/fetchNotam'
+import { fetchAerodromeNotamTexts, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { API_BASE_URL } from '../utils/env'
 import { type AerodromeFeatureProps } from './AerodromePopup'
 import { registerObstacleImages } from '../utils/obstacleIcons'
@@ -240,7 +240,7 @@ const ROUTE_DISPLAY_LAYERS = [
 // Popup state — discriminated union covering every interactive feature type.
 type ActivePopup =
   | { kind: 'aerodrome'; props: AerodromeFeatureProps; lng: number; lat: number; x: number; y: number }
-  | { kind: 'airspace';  features: AirspaceFeature[];  x: number; y: number }
+  | { kind: 'airspace';  features: AirspaceFeature[]; regionalNotams?: NotamItem[]; x: number; y: number }
   | { kind: 'point';     feature: PointFeature;        x: number; y: number }
   | { kind: 'whatshere'; items: WhatsHereItem[]; airspaceFeatures: AirspaceFeature[]; lng: number; lat: number; x: number; y: number }
 
@@ -755,6 +755,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         const circle = makeCirclePolygon(n.lat!, n.lon!, n.radiusNm!)
         circle.properties = {
           notamId:        n.id,
+          nmsId:          n.nmsId,
           text:           n.text,
           effective:      n.effective,
           expires:        n.expires,
@@ -784,6 +785,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         geometry: { type: 'Point', coordinates: [n.lon!, n.lat!] },
         properties: {
           notamId:        n.id,
+          nmsId:          n.nmsId,
           text:           n.text,
           effective:      n.effective,
           expires:        n.expires,
@@ -814,6 +816,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         geometry: n.polygon as GeoJSON.Polygon | GeoJSON.MultiPolygon,
         properties: {
           notamId:        n.id,
+          nmsId:          n.nmsId,
           text:           n.text,
           effective:      n.effective,
           expires:        n.expires,
@@ -2300,30 +2303,16 @@ export default function MapView({ auth }: { auth: AuthState }) {
         }
       }
 
-      // ── 0e. Regional NOTAM circle click ── show NOTAM text. Checked before
-      // generic point features (below) since these are polygon fills, same
-      // priority tier as the traffic-symbols check above.
-      {
-        const notamHits = map.queryRenderedFeatures(e.point, { layers: ['notam-circles-fill', 'notam-polygons-fill'] })
-        if (notamHits.length > 0) {
-          const p = notamHits[0].properties as Record<string, unknown>
-          setActivePopup({
-            kind: 'point',
-            feature: {
-              kind:           'regionalNotam',
-              notamId:        String(p.notamId ?? ''),
-              text:           String(p.text ?? ''),
-              effective:      (p.effective as string | null) ?? null,
-              expires:        (p.expires as string | null) ?? null,
-              classification: (p.classification as string | null) ?? null,
-              radiusNm:       (p.radiusNm as number | null) ?? null,
-            },
-            x: e.point.x,
-            y: e.point.y,
-          })
-          return
-        }
-      }
+      // ── 0e. (formerly) Regional NOTAM circle/polygon click — REMOVED as an
+      // exclusive, click-blocking layer. Large ad-hoc NOTAM areas used to
+      // intercept every click within their (often huge, cross-border-scale)
+      // extent, making anything charted underneath them unreachable. Ad-hoc
+      // NOTAM circles/polygons are now queried alongside charted airspace at
+      // step 2 below and merged into the SAME popup as sibling entries
+      // (mirroring a reference NOTAM app's own "click selects everything
+      // here, each shown as its own list card" pattern) instead of being an
+      // independently click-priority layer that shadows everything else.
+
 
       // ── 0f. Point-only NOTAM marker click ── cluster expands zoom, individual
       // point shows the same NOTAM popup as circles (radiusNm always null here).
@@ -2479,12 +2468,44 @@ export default function MapView({ auth }: { auth: AuthState }) {
         return
       }
 
-      // ── 2. Airspace polygons (exact click point, no padding) ──────────────
+      // ── 2. Airspace polygons + ad-hoc regional NOTAMs (exact click point,
+      // no padding) ──────────────────────────────────────────────────────
       // Independent of the altitude-ceiling filter and per-class layer
       // toggles — those only control what's drawn, not what's queried here.
       const airspaceHits = await queryAirspaceAtPoint(e.lngLat.lng, e.lngLat.lat, versionedTileUrl(TILES_BASE_URL, 'se-airspace.geojson'))
 
-      if (airspaceHits.length > 0) {
+      // Ad-hoc NOTAM circles/polygons geometrically covering the exact click
+      // point -- queried alongside airspace (not as an independent click-
+      // priority layer, see the removed step 0e above) so a large NOTAM
+      // area never blocks clicking whatever's charted underneath it.
+      // Individual point-only markers included too (harmless, small hit
+      // area); the cluster-expand-zoom interaction (step 0f) already
+      // short-circuits before reaching here.
+      const notamGeomHits = map.queryRenderedFeatures(e.point, {
+        layers: ['notam-circles-fill', 'notam-polygons-fill', 'notam-points-unclustered'],
+      })
+      const seenNotamHitIds = new Set<string>()
+      const regionalNotamHits: NotamItem[] = []
+      for (const hit of notamGeomHits) {
+        const p = hit.properties as Record<string, unknown>
+        const nmsId = String(p.nmsId ?? '')
+        if (!nmsId || seenNotamHitIds.has(nmsId)) continue
+        seenNotamHitIds.add(nmsId)
+        regionalNotamHits.push({
+          id:             String(p.notamId ?? ''),
+          nmsId,
+          text:           String(p.text ?? ''),
+          effective:      (p.effective as string | null) ?? null,
+          expires:        (p.expires as string | null) ?? null,
+          classification: (p.classification as string | null) ?? null,
+          polygon:        null,
+          lat:            null,
+          lon:            null,
+          radiusNm:       (p.radiusNm as number | null) ?? null,
+        })
+      }
+
+      if (airspaceHits.length > 0 || regionalNotamHits.length > 0) {
         // Attach matched active NOTAM(s) to each clicked feature by name --
         // see useNotamAirspaceMatch.ts. Uses the ref (not the hook value
         // directly) since this click handler closure is registered once.
@@ -2492,7 +2513,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
           const match = matchedAirspaceRef.current.find((m) => m.airspaceName === f.name)
           return match ? { ...f, notams: match.notams } : f
         })
-        setActivePopup({ kind: 'airspace', features: withNotams, x: e.point.x, y: e.point.y })
+        setActivePopup({
+          kind: 'airspace',
+          features: withNotams,
+          regionalNotams: regionalNotamHits,
+          x: e.point.x,
+          y: e.point.y,
+        })
         return
       }
 
@@ -3458,7 +3485,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     if (activePopup.kind === 'aerodrome')
       return { kind: 'aerodrome' as const, props: activePopup.props, lng: activePopup.lng, lat: activePopup.lat }
     if (activePopup.kind === 'airspace')
-      return { kind: 'airspace' as const, features: activePopup.features }
+      return { kind: 'airspace' as const, features: activePopup.features, regionalNotams: activePopup.regionalNotams }
     if (activePopup.kind === 'point')
       return { kind: 'point' as const, feature: activePopup.feature }
     if (activePopup.kind === 'whatshere')

@@ -28,6 +28,7 @@ export interface AirspaceFeature {
 type RowItem =
   | { kind: 'airspace'; feature: AirspaceFeature }
   | { kind: 'gap'; lowerFt: number; upperFt: number }
+  | { kind: 'notam'; notam: NotamItem }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -177,10 +178,20 @@ function PolygonThumb({ coords, strokeColor, fillColor }: {
 
 interface Props {
   features: AirspaceFeature[]
+  // Ad-hoc regional NOTAM circles/polygons/points geometrically covering
+  // the clicked point -- distinct from each AirspaceFeature's own
+  // `notams` (designator-text-matched to THAT specific charted area).
+  // Rendered as their own sibling cards, matching a reference NOTAM app's
+  // own "click selects everything here, each as its own list entry"
+  // pattern -- deliberately NOT nested under any one airspace card, since
+  // a temporary/ad-hoc NOTAM area often doesn't correspond to any single
+  // charted layer at all (e.g. a cross-border exercise area with no
+  // charted Swedish airspace underneath it whatsoever).
+  regionalNotams?: NotamItem[]
   onClose: () => void
 }
 
-export default function AirspacePopup({ features, onClose }: Props) {
+export default function AirspacePopup({ features, regionalNotams = [], onClose }: Props) {
   // Deduplicate (same polygon may render from multiple tile edges) then sort
   // ceiling-first so the list reads top-down = high → low altitude.
   const seen = new Set<string>()
@@ -193,8 +204,23 @@ export default function AirspacePopup({ features, onClose }: Props) {
     })
     .sort((a, b) => b.upper_ft - a.upper_ft)
 
+  // Dedup regional NOTAMs by nmsId (NOT the display id -- different issuing
+  // authorities reuse the same published NOTAM number, see
+  // apps/api/src/notam.ts's NotamItem.nmsId comment) in case the same
+  // ad-hoc area was somehow queried twice (e.g. a circle spanning a tile
+  // boundary).
+  const seenNotamIds = new Set<string>()
+  const dedupedNotams = regionalNotams.filter((n) => {
+    if (seenNotamIds.has(n.nmsId)) return false
+    seenNotamIds.add(n.nmsId)
+    return true
+  })
+
   // Insert gap markers where uncontrolled airspace exists between adjacent layers.
-  const items: RowItem[] = []
+  // Regional NOTAMs shown first, matching a reference NOTAM app's own
+  // ordering (its own "Activity NOTAM" entries lead a multi-select list,
+  // charted airspace layers follow).
+  const items: RowItem[] = dedupedNotams.map((n) => ({ kind: 'notam' as const, notam: n }))
   sorted.forEach((f, i) => {
     items.push({ kind: 'airspace', feature: f })
     if (i < sorted.length - 1) {
@@ -215,8 +241,8 @@ export default function AirspacePopup({ features, onClose }: Props) {
       <div className={css.header}>
         <span className={css.title}>
           Airspace
-          {sorted.length > 1 && (
-            <span className={css.count}>{sorted.length} layers</span>
+          {(sorted.length + dedupedNotams.length) > 1 && (
+            <span className={css.count}>{sorted.length + dedupedNotams.length} layers</span>
           )}
         </span>
         <button className={css.close} onClick={onClose} aria-label="Close">✕</button>
@@ -225,7 +251,10 @@ export default function AirspacePopup({ features, onClose }: Props) {
       {/* ── Body: altitude strip + rows ────────────────────────────────── */}
       <div className={css.body}>
 
-        {/* Proportional vertical altitude diagram */}
+        {/* Proportional vertical altitude diagram -- skipped entirely when
+            only ad-hoc regional NOTAMs matched (no charted airspace at this
+            point), since those carry no comparable vertical-extent shape. */}
+        {sorted.length > 0 && (
         <div className={css.stripWrap}>
           <span className={css.stripLabel}>
             {hasUnl ? 'UNL' : (sorted[0]?.upper ?? '')}
@@ -259,6 +288,7 @@ export default function AirspacePopup({ features, onClose }: Props) {
           </svg>
           <span className={css.stripLabel}>SFC</span>
         </div>
+        )}
 
         {/* Airspace rows + gap markers */}
         <div className={css.rows}>
@@ -269,6 +299,35 @@ export default function AirspacePopup({ features, onClose }: Props) {
               return (
                 <div key={i} className={css.gapRow}>
                   <span className={css.gapLabel}>uncontrolled · {lo} – {hi}</span>
+                </div>
+              )
+            }
+
+            if (item.kind === 'notam') {
+              const n = item.notam
+              return (
+                <div key={i} className={css.row}>
+                  <div className={css.rowInner}>
+                    <div className={css.rowContent}>
+                      <div className={css.bandTop}>
+                        <span className={css.typeTag} style={{ color: '#e64980', borderColor: 'rgba(230,73,128,0.4)' }}>NOTAM</span>
+                      </div>
+                      <div className={css.name}>{n.id}</div>
+                      {(n.effective || n.expires) && (
+                        <div className={css.altBand}>
+                          <span className={css.altVal}>{fmtNotamDate(n.effective) ?? '—'}</span>
+                          <span className={css.altSep}>–</span>
+                          <span className={css.altVal}>{fmtNotamDate(n.expires) ?? '—'}</span>
+                        </div>
+                      )}
+                      <div
+                        className={css.remarks}
+                        style={{ borderColor: '#e64980', background: 'rgba(230,73,128,0.1)', whiteSpace: 'pre-line' }}
+                      >
+                        {n.text}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )
             }

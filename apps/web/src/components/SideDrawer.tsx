@@ -32,7 +32,7 @@ import css from './SideDrawer.module.css'
 
 export type ActiveInfo =
   | { kind: 'aerodrome'; props: AerodromeFeatureProps; lng: number; lat: number }
-  | { kind: 'airspace';  features: AirspaceFeature[] }
+  | { kind: 'airspace';  features: AirspaceFeature[]; regionalNotams?: NotamItem[] }
   | { kind: 'point';     feature: PointFeature }
   | { kind: 'whatshere'; items: WhatsHereItem[]; airspaceFeatures: AirspaceFeature[]; lng: number; lat: number }
   | null
@@ -325,6 +325,7 @@ export default function SideDrawer({
                   {activeInfo.kind === 'airspace' && (
                     <AirspacePopup
                       features={activeInfo.features}
+                      regionalNotams={activeInfo.regionalNotams}
                       onClose={onCloseInfo}
                     />
                   )}
