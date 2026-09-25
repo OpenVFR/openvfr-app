@@ -22,7 +22,7 @@
 
 import { useEffect, useState } from 'react'
 import type { RouteWaypoint } from '../utils/routeCalc'
-import { distanceToRouteNm } from '@open-vfr/shared/notamRouteFilter'
+import { nearestRoutePoint } from '@open-vfr/shared/notamRouteFilter'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { loadAerodromes, type FullAerodrome } from './useAirfieldBrief'
@@ -64,10 +64,21 @@ export function useVicinityAerodromes({ waypoints, position, routeVisible, homeI
   if (all.length === 0) return []
 
   if (useRoute) {
+    // Sorted by along-route position (flight sequence, departure ->
+    // destination), NOT by lateral/cross-track distance -- two aerodromes
+    // can sit equally close to the route line while being at opposite
+    // ends of it, and "closest first" then reads as a scrambled, seemingly
+    // random order to a pilot expecting "in the order I'll pass them".
+    // `distNm` itself keeps its existing lateral-distance meaning (still
+    // shown in the picker pill as "how close to the route"), only the sort
+    // key changes.
     return all
-      .map((a) => toVicinity(a, distanceToRouteNm({ lat: a.lat, lng: a.lng }, waypoints)))
+      .map((a) => {
+        const pos = nearestRoutePoint({ lat: a.lat, lng: a.lng }, waypoints)
+        return { ...toVicinity(a, pos.lateralNm), alongNm: pos.alongNm }
+      })
       .filter((a) => a.distNm <= ROUTE_BUFFER_NM)
-      .sort((a, b) => a.distNm - b.distNm)
+      .sort((a, b) => a.alongNm - b.alongNm)
       .slice(0, MAX_AERODROMES)
   }
 

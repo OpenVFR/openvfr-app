@@ -1,10 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import LayerPanel from './LayerPanel'
-import RegionalNotamsPanel from './RegionalNotamsPanel'
-import WeatherAlongRoutePanel from './WeatherAlongRoutePanel'
-import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
-import { filterNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM } from '@open-vfr/shared/notamRouteFilter'
 import AltitudeSlider from './AltitudeSlider'
 import SettingsPanel from './SettingsPanel'
 import RoutePlan from './RoutePlan'
@@ -101,7 +97,11 @@ interface Props {
   onSetHome: (icao: string, name: string, lng: number, lat: number) => void
   /** Forwarded to AerodromePopup so the map's runway threshold labels can mirror its favored-end highlight. */
   onRunwayWind?: (icao: string, ends: RunwayWindEnd[]) => void
-  /** RegionalNotamsPanel's "MAP" jump-to action -- flies to the NOTAM's own geometry and opens it in the shared airspace-style popup. */
+  // FIR-wide regional NOTAMs (unfiltered), forwarded to AerodromePopup's own
+  // "Other NOTAMs" section (see that component's regionalNotams Props doc
+  // comment) when activeInfo.kind === 'aerodrome' -- filtering to the
+  // planned route (waypoints, above) happens inside AerodromePopup itself.
+  regionalNotams?: NotamItem[]
   onShowNotamOnMap?: (notam: NotamItem) => void
   // Map ruler
   rulerActive: boolean
@@ -113,7 +113,6 @@ interface Props {
   onClearLog: () => void
   // User waypoints
   userWaypoints: UserWaypointDocType[]
-  regionalNotams: NotamItem[]
   pendingUserWpCoords: { lng: number; lat: number } | null
   folderVisibility: Record<string, boolean>
   onUserWpCoordsConsumed: () => void
@@ -126,10 +125,6 @@ interface Props {
   onSaveHereUserWaypoint: (name: string, lng: number, lat: number) => void
   auth: AuthState
   onOpenProfile: () => void
-  // Weather along route — lifted up to MapView (also feeds VirtualRadar's
-  // wind-arrow/cloud-layer overlay, so it's computed once and shared rather
-  // than fetched separately here and in VirtualRadar).
-  routeWeatherStations: RouteWeatherStation[]
 }
 
 const SECTION_LABELS = {
@@ -142,8 +137,6 @@ const SECTION_LABELS = {
   flightLogs:    'Flight Logs',
   aircraft:      'Aircraft',
   userWaypoints: 'User Waypoints',
-  notams:        'Regional NOTAMs',
-  routeWx:       'Weather Along Route',
   layers:        'Layers',
   altitude:      'Altitude Filter',
   settings:      'Settings',
@@ -193,21 +186,20 @@ export default function SideDrawer({
   selectedAircraftId, selectedAircraftProfile, onSelectAircraft,
   onFlyTo,
   activeInfo, onCloseInfo,
-  isHome, onSetHome, onRunwayWind, onShowNotamOnMap,
+  isHome, onSetHome, onRunwayWind, regionalNotams, onShowNotamOnMap,
   rulerActive, rulerPoints, onClearRuler,
   selectedLogId, onSelectLog, onClearLog,
-  userWaypoints, regionalNotams, pendingUserWpCoords, folderVisibility,
+  userWaypoints, pendingUserWpCoords, folderVisibility,
   onUserWpCoordsConsumed, onStartPlaceUserWp,
   onSaveUserWaypoint, onDeleteUserWaypoint, onRenameUserWaypoint, onMoveUserWpFolder,
   onFolderVisChange, onSaveHereUserWaypoint,
   auth,
   onOpenProfile,
-  routeWeatherStations,
 }: Props) {
   const [open, setOpen]         = useState(() => lsGet(LS_OPEN, false))
   const [width, setWidth]       = useState(() => lsGet(LS_WIDTH, DEFAULT_WIDTH))
   const [expanded, setExpanded] = useState<Record<Section, boolean>>(() =>
-    lsGet(LS_EXPANDED, { info: true, route: true, preflight: true, fuel: true, ruler: true, routes: true, flightLogs: true, aircraft: false, userWaypoints: true, notams: false, routeWx: false, layers: true, altitude: true, settings: false })
+    lsGet(LS_EXPANDED, { info: true, route: true, preflight: true, fuel: true, ruler: true, routes: true, flightLogs: true, aircraft: false, userWaypoints: true, layers: true, altitude: true, settings: false })
   )
 
   // Drag-resize handle
@@ -288,7 +280,6 @@ export default function SideDrawer({
   // badge and the panel body agree -- both must reflect the SAME filtered
   // list, not the badge showing the unfiltered total while the body below
   // shows a route-filtered subset.
-  const displayedRegionalNotams = hasRoute ? filterNotamsNearRoute(regionalNotams, waypoints) : regionalNotams
 
   return (
     <div ref={wrapperRef} className={css.wrapper}>
@@ -322,6 +313,9 @@ export default function SideDrawer({
                       onSetHome={onSetHome}
                       onClose={onCloseInfo}
                       onRunwayWind={onRunwayWind}
+                      regionalNotams={regionalNotams}
+                      routeWaypoints={waypoints}
+                      onShowNotamOnMap={onShowNotamOnMap}
                     />
                   )}
                   {activeInfo.kind === 'airspace' && (
@@ -529,48 +523,6 @@ export default function SideDrawer({
               </div>
             )}
           </div>
-
-          {/* ── Layers ─────────────────────────────────────────── */}
-          <div className={css.section}>
-            <button className={css.sectionHeader} onClick={() => toggle('notams')}>
-              <span>{SECTION_LABELS.notams}</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {displayedRegionalNotams.length > 0 && (
-                  <span className={css.planPill}>{displayedRegionalNotams.length}</span>
-                )}
-                <span className={css.chevron}>{expanded.notams ? '▾' : '▸'}</span>
-              </span>
-            </button>
-            {expanded.notams && (
-              <div className={css.sectionBody}>
-                <RegionalNotamsPanel
-                  notams={displayedRegionalNotams}
-                  routeFiltered={hasRoute}
-                  bufferNm={DEFAULT_ROUTE_NOTAM_BUFFER_NM}
-                  onShowOnMap={onShowNotamOnMap}
-                />
-              </div>
-            )}
-          </div>
-
-          {hasRoute && (
-            <div className={css.section}>
-              <button className={css.sectionHeader} onClick={() => toggle('routeWx')}>
-                <span>{SECTION_LABELS.routeWx}</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {routeWeatherStations.length > 0 && (
-                    <span className={css.planPill}>{routeWeatherStations.length}</span>
-                  )}
-                  <span className={css.chevron}>{expanded.routeWx ? '▾' : '▸'}</span>
-                </span>
-              </button>
-              {expanded.routeWx && (
-                <div className={css.sectionBody}>
-                  <WeatherAlongRoutePanel stations={routeWeatherStations} />
-                </div>
-              )}
-            </div>
-          )}
 
           <div className={css.section}>
             <button className={css.sectionHeader} onClick={() => toggle('layers')}>

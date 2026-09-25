@@ -13,15 +13,25 @@
 
 import { useState } from 'react'
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
+import { filterAndSortNotamsNearRoute, type RoutePoint } from '@open-vfr/shared/notamRouteFilter'
 import css from './RegionalNotamsPanel.module.css'
 
 interface Props {
   notams: NotamItem[]
   /** True when `notams` has already been filtered to proximity of the
-   *  planned route (see SideDrawer.tsx) -- shown as a small note so it's
-   *  clear the list isn't "everything active" but a narrowed-down brief. */
+   *  planned route (see VicinityBriefPanel.tsx) -- shown as a small note so
+   *  it's clear the list isn't "everything active" but a narrowed-down
+   *  brief. */
   routeFiltered?: boolean
   bufferNm?: number
+  /** When given (route active), sorts by along-route position (flight
+   *  sequence, departure -> destination) instead of the icaoLocation-
+   *  alphabetical fallback below -- "first NOTAM you'll fly past" is a far
+   *  more useful order than alphabetical once the list is already narrowed
+   *  to "near this specific route". NOTAMs with no computable position
+   *  (text-only administrative entries) sort last, same entries
+   *  filterNotamsNearRoute always keeps regardless of proximity. */
+  routeWaypoints?: RoutePoint[]
   /** "MAP" badge action -- flies the map to this NOTAM's own geometry and
    *  opens it in the shared airspace-style popup (shape thumbnail + text).
    *  Undefined badge click is a no-op (still shown as a plain, non-
@@ -41,7 +51,7 @@ function previewText(text: string): string {
   return flat.length > PREVIEW_LEN ? `${flat.slice(0, PREVIEW_LEN)}\u2026` : flat
 }
 
-export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, onShowOnMap }: Props) {
+export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, routeWaypoints, onShowOnMap }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
   const toggle = (id: string) => {
@@ -52,15 +62,19 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, o
     })
   }
 
-  // Group same-location NOTAMs together (previously unsorted -- whatever
-  // order the API happened to return, making a long list impossible to scan
-  // even with the new location/preview text below), tie-broken by soonest-
-  // expiring first within the same location.
-  const sortedNotams = [...notams].sort((a, b) => {
-    const locCmp = (a.icaoLocation ?? '').localeCompare(b.icaoLocation ?? '')
-    if (locCmp !== 0) return locCmp
-    return (a.expires ?? '').localeCompare(b.expires ?? '')
-  })
+  // With a route active, sort by along-route position (departure ->
+  // destination) instead -- see routeWaypoints' own doc comment. Falls
+  // back to the previous icaoLocation-grouped/soonest-expiring sort when
+  // there's no route (e.g. the map's standalone "MAP" jump-to view, or no
+  // route loaded at all), same rationale as before: whatever order the API
+  // happened to return made a long list impossible to scan.
+  const sortedNotams = routeWaypoints && routeWaypoints.length > 0
+    ? filterAndSortNotamsNearRoute(notams, routeWaypoints, Infinity) // already filtered upstream -- sort only
+    : [...notams].sort((a, b) => {
+        const locCmp = (a.icaoLocation ?? '').localeCompare(b.icaoLocation ?? '')
+        if (locCmp !== 0) return locCmp
+        return (a.expires ?? '').localeCompare(b.expires ?? '')
+      })
 
   if (notams.length === 0) {
     return (

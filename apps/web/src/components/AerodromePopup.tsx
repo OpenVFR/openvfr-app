@@ -10,6 +10,8 @@ import { visTone, ceilingTone, windTone, fmtVis, fmtWind, fmtObsAge, metarNarrat
 import TafTimeline from './TafTimeline'
 import CloudProfile from './CloudProfile'
 import { fetchNotams, fmtNotamDate, type NotamItem } from '../utils/fetchNotam'
+import { filterNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM, type RoutePoint } from '@open-vfr/shared/notamRouteFilter'
+import RegionalNotamsPanel from './RegionalNotamsPanel'
 import { sunriseSunset, fmtSunTime } from '../utils/sunCalc'
 import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from '@open-vfr/shared/atcStatus'
 import { API_BASE_URL, TILES_BASE_URL } from '../utils/env'
@@ -104,6 +106,28 @@ interface Props {
    * a stale highlight from a previous METAR fetch.
    */
   onRunwayWind?: (icao: string, ends: RunwayWindEnd[]) => void
+  /**
+   * Embeds just one tab's content, no header/tab-bar/Info tab -- mirrors
+   * native's AerodromeWxSection/AerodromeNotamSection extraction, reused
+   * by VicinityBriefPanel.tsx's own Weather/NOTAMs tabs (which already show
+   * the ICAO + distance via their own aerodrome-picker chip, and have their
+   * own outer close button) instead of duplicating this component's Wx/
+   * NOTAM rendering into separate files the way native did. Undefined =
+   * normal standalone popup (map click / feature info panel), unchanged.
+   */
+  forcedTab?: 'wx' | 'notam'
+  /**
+   * FIR-wide NOTAMs (unfiltered -- filtering to the planned route, when one
+   * exists, happens in here) + the route itself, rendered as an "Other
+   * NOTAMs" section below this aerodrome's own NOTAM list (same
+   * RegionalNotamsPanel used by VicinityBriefPanel.tsx's own NOTAMs tab --
+   * single shared implementation, not two). Undefined = section omitted
+   * (e.g. a context with no regional-NOTAM feed wired up), matching the
+   * pre-existing behaviour.
+   */
+  regionalNotams?: NotamItem[]
+  routeWaypoints?: RoutePoint[]
+  onShowNotamOnMap?: (notam: NotamItem) => void
 }
 
 // ── Nearby-station cache (for METAR/TAF fallback) ─────────────────────────────
@@ -254,7 +278,10 @@ function uniqueContacts(contacts: Contact[]): Contact[] {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onSetHome, onClose, onRunwayWind }: Props) {
+export default function AerodromePopup({
+  props: p, lng, lat, isHome, authed, onSetHome, onClose, onRunwayWind, forcedTab,
+  regionalNotams, routeWaypoints, onShowNotamOnMap,
+}: Props) {
   const fuelList = p.fuel ?? []
   const hasFuel = fuelList.length > 0
   const contacts = uniqueContacts(p.contacts ?? [])
@@ -267,6 +294,23 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
 
   // ── Tab state ─────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'info' | 'wx' | 'notam'>('info')
+  // `forcedTab` (Vicinity Brief embed) always overrides internal tab state --
+  // that embed's own outer tab bar drives which section shows, this
+  // component's own tab bar/Info tab don't render there at all (see
+  // `forcedTab`'s own doc comment on Props).
+  const effectiveTab = forcedTab ?? activeTab
+
+  // "Other NOTAMs" (FIR-wide, not tied to this aerodrome) -- see
+  // regionalNotams' own Props doc comment. Filtered to route proximity
+  // exactly like VicinityBriefPanel.tsx used to do for its own now-removed
+  // separate RegionalNotamsPanel call; RegionalNotamsPanel itself handles
+  // the along-route sort via routeWaypoints.
+  const hasRegionalNotamRoute = !!routeWaypoints && routeWaypoints.length > 0
+  const displayedRegionalNotams = regionalNotams === undefined
+    ? undefined
+    : hasRegionalNotamRoute
+      ? filterNotamsNearRoute(regionalNotams, routeWaypoints!, DEFAULT_ROUTE_NOTAM_BUFFER_NM)
+      : regionalNotams
 
   // ── Wx-tab compass runway selector ────────────────────────────
   // null = auto (longest runway, previous default behaviour). Airports with
@@ -504,6 +548,8 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
 
   return (
     <div className={css.panel}>
+      {!forcedTab && (
+      <>
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className={css.header}>
           <div className={css.icao}>{p.icao || '—'}</div>
@@ -566,8 +612,8 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
             onClick={() => setActiveTab('wx')}
           >
             {metar?.flightRule
-              ? <><span className={`${css.frDot} ${css[`frDot${metar.flightRule}`]}`} />Wx</>
-              : 'Wx'
+              ? <><span className={`${css.frDot} ${css[`frDot${metar.flightRule}`]}`} />Weather</>
+              : 'Weather'
             }
           </button>
           <button
@@ -580,9 +626,11 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
             )}
           </button>
         </div>
+        </>
+      )}
 
         {/* ── Info tab ────────────────────────────────────────────────── */}
-        {activeTab === 'info' && (
+        {!forcedTab && activeTab === 'info' && (
           <>
             {/* Sunrise / Sunset */}
             <div className={css.section}>
@@ -765,46 +813,8 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
         )}
 
         {/* ── Wx tab ──────────────────────────────────────────────────── */}
-        {activeTab === 'wx' && (
+        {effectiveTab === 'wx' && (
           <>
-            {/* Density Altitude */}
-            <div className={css.section}>
-              <div className={css.sectionTitle}>Density Altitude</div>
-              <div className={css.daRow}>
-                <label className={css.daLabel}>OAT</label>
-                <input
-                  className={css.daInput}
-                  type="number"
-                  placeholder="°C"
-                  value={oatStr}
-                  onChange={e => setOatStr(e.target.value)}
-                />
-                <label className={css.daLabel}>QNH</label>
-                <input
-                  className={css.daInput}
-                  type="number"
-                  placeholder={metar?.qnh ? metar.qnh.slice(1) : 'hPa'}
-                  value={qnhStr}
-                  onChange={e => setQnhStr(e.target.value)}
-                />
-              </div>
-              {densityAltFt != null ? (
-                <div className={css.daResult} style={{ color: daColour(densityAltFt) }}>
-                  {densityAltFt.toLocaleString()} ft
-                  <span className={css.daResultLabel}>density alt</span>
-                  {pressAltFt != null && (
-                    <span className={css.daPressAlt}>PA {Math.round(pressAltFt).toLocaleString()} ft</span>
-                  )}
-                </div>
-              ) : pressAltFt != null ? (
-                <div className={css.daHint}>
-                  PA {Math.round(pressAltFt).toLocaleString()} ft — enter OAT for density alt
-                </div>
-              ) : (
-                <div className={css.daHint}>Enter QNH and OAT</div>
-              )}
-            </div>
-
             {/* METAR / Weather station */}
             <div className={css.section}>
               <div className={css.wxHeader}>
@@ -1123,11 +1133,51 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
                 </>
               )}
             </div>
+            {/* Density altitude -- moved below Weather; niche calc, not the
+                reason most pilots open this tab, and its two inputs
+                shouldn't push the actual METAR/TAF below the fold (mirrors
+                native AerodromeWxSection.tsx's identical repositioning). */}
+            <div className={css.section}>
+              <div className={css.sectionTitle}>Density Altitude</div>
+              <div className={css.daRow}>
+                <label className={css.daLabel}>OAT</label>
+                <input
+                  className={css.daInput}
+                  type="number"
+                  placeholder="°C"
+                  value={oatStr}
+                  onChange={e => setOatStr(e.target.value)}
+                />
+                <label className={css.daLabel}>QNH</label>
+                <input
+                  className={css.daInput}
+                  type="number"
+                  placeholder={metar?.qnh ? metar.qnh.slice(1) : 'hPa'}
+                  value={qnhStr}
+                  onChange={e => setQnhStr(e.target.value)}
+                />
+              </div>
+              {densityAltFt != null ? (
+                <div className={css.daResult} style={{ color: daColour(densityAltFt) }}>
+                  {densityAltFt.toLocaleString()} ft
+                  <span className={css.daResultLabel}>density alt</span>
+                  {pressAltFt != null && (
+                    <span className={css.daPressAlt}>PA {Math.round(pressAltFt).toLocaleString()} ft</span>
+                  )}
+                </div>
+              ) : pressAltFt != null ? (
+                <div className={css.daHint}>
+                  PA {Math.round(pressAltFt).toLocaleString()} ft — enter OAT for density alt
+                </div>
+              ) : (
+                <div className={css.daHint}>Enter QNH and OAT</div>
+              )}
+            </div>
           </>
         )}
 
         {/* ── NOTAMs tab ──────────────────────────────────────────────── */}
-        {activeTab === 'notam' && (
+        {effectiveTab === 'notam' && (
           <div className={css.section}>
             <div className={css.sectionTitle}>NOTAMs</div>
             {notamLoading && <div className={css.wxState}>Loading…</div>}
@@ -1158,6 +1208,22 @@ export default function AerodromePopup({ props: p, lng, lat, isHome, authed, onS
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {/* "Other NOTAMs" -- FIR-wide, not tied to this aerodrome. Omitted
+            entirely when regionalNotams isn't wired up (see Props' own doc
+            comment). */}
+        {effectiveTab === 'notam' && displayedRegionalNotams !== undefined && (
+          <div className={css.section}>
+            <div className={css.sectionTitle}>Other NOTAMs</div>
+            <RegionalNotamsPanel
+              notams={displayedRegionalNotams}
+              routeFiltered={hasRegionalNotamRoute}
+              bufferNm={DEFAULT_ROUTE_NOTAM_BUFFER_NM}
+              routeWaypoints={routeWaypoints}
+              onShowOnMap={onShowNotamOnMap}
+            />
           </div>
         )}
       </div>

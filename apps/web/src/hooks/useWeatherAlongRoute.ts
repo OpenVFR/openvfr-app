@@ -85,8 +85,8 @@ export function useWeatherAlongRoute(waypoints: RouteWaypoint[]): RouteWeatherSt
     if (waypoints.length === 0 || aerodromes.length === 0) { setStations([]); return }
 
     // distNm here is LATERAL (cross-track) distance to the route -- kept
-    // as-is, other callers (WeatherAlongRoutePanel etc.) display it as
-    // "distance from route". alongNm (along-route position) is only used
+    // as-is, other callers display it as "distance from route". alongNm
+    // (along-route position) is only used
     // below to pick which candidates survive the MAX_STATIONS cap; it is
     // NOT carried into the returned station shape.
     const candidates = aerodromes
@@ -111,9 +111,15 @@ export function useWeatherAlongRoute(waypoints: RouteWaypoint[]): RouteWeatherSt
     const totalNm = waypoints.length >= 2
       ? distanceAlongRouteNm(waypoints, waypoints[waypoints.length - 1])
       : 0
+    // Both branches sort by alongNm (along-route position, flight sequence)
+    // -- the cap-selection logic below still uses lateral distNm ("pick the
+    // laterally-nearest per bucket/overall"), but the final order shown to
+    // the pilot is always departure -> destination, never "nearest first"
+    // (previously this short-route branch diverged from the bucketed one
+    // below and sorted by lateral distance instead, inconsistently).
     let nearby: typeof candidates
     if (candidates.length <= MAX_STATIONS || totalNm <= 0) {
-      nearby = candidates.sort((a, b) => a.distNm - b.distNm).slice(0, MAX_STATIONS)
+      nearby = candidates.sort((a, b) => a.alongNm - b.alongNm).slice(0, MAX_STATIONS)
     } else {
       const bucketSize = totalNm / MAX_STATIONS
       const bestPerBucket = new Map<number, typeof candidates[number]>()

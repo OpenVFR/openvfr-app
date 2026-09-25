@@ -5,25 +5,44 @@
  * discoverable floating-button pattern as native's bottom-sheet trigger --
  * not tucked into the collapsible sidebar.
  *
- * Two outer tabs, matching native's own tab bar:
- *  - Frequencies: unchanged from native's own Freq tab -- flat list, every
- *    aerodrome within useNearbyFrequencies.ts's 25NM GPS radius, no picker.
- *  - Aerodrome: the useVicinityAerodromes.ts picker (route-buffer >
- *    GPS-radius > home-airfield fallback) with the selected aerodrome's
- *    full Info/Wx/NOTAM tabs embedded below via the SAME AerodromePopup
- *    component the map's click-to-open popup uses -- no parallel Wx/NOTAM
- *    fetch-and-render logic, just a different lat/lng/props source.
- *    (Native keeps Wx/NOTAM as two separate outer tabs sharing one picker;
- *    web folds them into this one tab since AerodromePopup already has its
- *    own Info/Wx/NOTAM sub-tabs -- same data, one fewer tab level.)
+ * Three outer tabs, flat structure now matching native's VicinityBriefSheet.tsx
+ * exactly (previously web folded Wx/NOTAM into a nested "Aerodrome" tab that
+ * embedded AerodromePopup's own Info/Wx/NOTAM sub-tabs -- diverged from
+ * native's shape and dropped native's "Info tab" comment intent):
+ *  - Frequencies: primarily useNearbyFrequencies.ts's flat GPS-radius list
+ *    (no picker), same as native -- but that hook is GPS-only, no route-
+ *    buffer/home-airfield fallback tier at all, so it goes empty with no
+ *    live GPS fix even with a route loaded (e.g. planning at a desk, not
+ *    simulating flight) while Weather/NOTAMs below still work fine via
+ *    useVicinityAerodromes.ts's route-buffer tier. Falls back to deriving
+ *    the same NearbyFreq shape from `aerodromes` (useVicinityAerodromes.ts,
+ *    already route/GPS/home-prioritized and along-route sorted) whenever
+ *    the GPS-only list is empty, instead of leaving the tab looking broken.
+ *  - Weather / NOTAMs: share one aerodrome picker (useVicinityAerodromes.ts,
+ *    route-buffer > GPS-radius > home-airfield fallback), same as native.
+ *    Both render via AerodromePopup's `forcedTab` prop (its Wx/NOTAM tab
+ *    content with no header/tab-bar/Info tab around it) instead of
+ *    duplicating that rendering into standalone files the way native's
+ *    AerodromeWxSection/AerodromeNotamSection extraction did -- same
+ *    content, no parallel fetch-and-render logic to keep in sync.
+ *  - NOTAMs tab: AerodromePopup itself appends the FIR-wide regional list
+ *    below the selected aerodrome's own NOTAMs (restricted/danger areas,
+ *    navaid outages, military notices not tied to any single aerodrome) --
+ *    see its own `regionalNotams`/`routeWaypoints` Props doc comment. Not
+ *    duplicated here: passing those two props through to AerodromePopup is
+ *    the whole job, mirrors native's "OTHER NOTAMS" block under its own
+ *    NOTAM tab (also owned by the single shared AerodromeNotamSection now).
  */
 
 import { useEffect, useState } from 'react'
 import css from './VicinityBriefPanel.module.css'
 import AerodromePopup from './AerodromePopup'
 import type { VicinityAerodrome } from '../hooks/useVicinityAerodromes'
-import type { NearbyAerodrome } from '../hooks/useNearbyFrequencies'
+import { toNearbyFreqs, type NearbyAerodrome } from '../hooks/useNearbyFrequencies'
 import type { RunwayWindEnd } from '@open-vfr/shared/runwayWind'
+import type { NotamItem } from '@open-vfr/shared/fetchNotam'
+import { filterNotamsNearRoute } from '@open-vfr/shared/notamRouteFilter'
+import type { RouteWaypoint } from '../utils/routeCalc'
 
 const SVC_COLOR: Record<string, string> = {
   TWR: '#3b82f6', AFIS: '#3b82f6', APP: '#8b5cf6', DEP: '#8b5cf6',
@@ -32,7 +51,7 @@ const SVC_COLOR: Record<string, string> = {
 }
 function svcColor(svc: string) { return SVC_COLOR[svc] ?? '#94a3b8' }
 
-type Tab = 'freq' | 'aerodrome'
+type Tab = 'freq' | 'wx' | 'notam'
 
 interface Props {
   nearbyFreqs: NearbyAerodrome[]
@@ -41,10 +60,22 @@ interface Props {
   authed:      boolean
   onSetHome:   (icao: string, name: string, lng: number, lat: number) => void
   onRunwayWind?: (icao: string, ends: RunwayWindEnd[]) => void
+  // FIR-wide regional NOTAMs (unfiltered -- filtering to the planned route,
+  // when one exists, happens in here) + the route itself, for the NOTAMs
+  // tab. Both optional so this panel keeps working standalone (e.g. in a
+  // context with no regional-NOTAM feed wired up) -- the tab just shows an
+  // empty list rather than never rendering.
+  regionalNotams?: NotamItem[]
+  routeWaypoints?: RouteWaypoint[]
+  onShowNotamOnMap?: (notam: NotamItem) => void
   onClose:     () => void
 }
 
-export default function VicinityBriefPanel({ nearbyFreqs, aerodromes, isHome, authed, onSetHome, onRunwayWind, onClose }: Props) {
+export default function VicinityBriefPanel({
+  nearbyFreqs, aerodromes, isHome, authed, onSetHome, onRunwayWind,
+  regionalNotams = [], routeWaypoints = [], onShowNotamOnMap,
+  onClose,
+}: Props) {
   const [tab, setTab] = useState<Tab>('freq')
   const [selectedIcao, setSelectedIcao] = useState<string | null>(null)
 
@@ -54,6 +85,26 @@ export default function VicinityBriefPanel({ nearbyFreqs, aerodromes, isHome, au
   }, [aerodromes])
 
   const selected = aerodromes.find((a) => a.icao === selectedIcao) ?? aerodromes[0] ?? null
+
+  const hasRoute = routeWaypoints.length > 0
+  const displayedRegionalNotams = hasRoute
+    ? filterNotamsNearRoute(regionalNotams, routeWaypoints)
+    : regionalNotams
+
+  // GPS-only nearbyFreqs going empty doesn't necessarily mean "nothing
+  // relevant" -- it means "no live GPS fix", which is routine while just
+  // planning a route. Fall back to the same route/GPS/home-prioritized,
+  // already along-route-sorted `aerodromes` list Weather/NOTAMs use, rather
+  // than showing an empty tab whenever GPS is unavailable. Left untouched
+  // (GPS list wins) whenever it actually has entries, matching native's
+  // "Freq tab: unchanged" GPS-radius behaviour for the case that still
+  // works.
+  const displayedFreqs: NearbyAerodrome[] = nearbyFreqs.length > 0
+    ? nearbyFreqs
+    : aerodromes.map((a) => ({
+        icao: a.icao, name: a.name, distNm: a.distNm,
+        frequencies: toNearbyFreqs(a.props.frequencies ?? []),
+      }))
 
   return (
     <div className={css.backdrop} onClick={onClose}>
@@ -65,18 +116,21 @@ export default function VicinityBriefPanel({ nearbyFreqs, aerodromes, isHome, au
 
         <div className={css.tabBar}>
           <button className={`${css.tab} ${tab === 'freq' ? css.tabActive : ''}`} onClick={() => setTab('freq')}>
-            Frequencies{nearbyFreqs.length > 0 ? ` (${nearbyFreqs.length})` : ''}
+            Frequencies{displayedFreqs.length > 0 ? ` (${displayedFreqs.length})` : ''}
           </button>
-          <button className={`${css.tab} ${tab === 'aerodrome' ? css.tabActive : ''}`} onClick={() => setTab('aerodrome')}>
-            Aerodrome{aerodromes.length > 0 ? ` (${aerodromes.length})` : ''}
+          <button className={`${css.tab} ${tab === 'wx' ? css.tabActive : ''}`} onClick={() => setTab('wx')}>
+            Weather
+          </button>
+          <button className={`${css.tab} ${tab === 'notam' ? css.tabActive : ''}`} onClick={() => setTab('notam')}>
+            NOTAMs{displayedRegionalNotams.length > 0 ? ` (${displayedRegionalNotams.length})` : ''}
           </button>
         </div>
 
         {tab === 'freq' && (
           <div className={css.freqList}>
-            {nearbyFreqs.length === 0 ? (
-              <div className={css.empty}>No aerodromes with published frequencies nearby. Enable GPS to see nearby frequencies.</div>
-            ) : nearbyFreqs.map((ad) => (
+            {displayedFreqs.length === 0 ? (
+              <div className={css.empty}>No aerodromes with published frequencies nearby. Enable GPS, load a route, or set a home airfield in Settings.</div>
+            ) : displayedFreqs.map((ad) => (
               <div key={ad.icao || ad.name} className={css.adCard}>
                 <div className={css.adHeader}>
                   <span className={css.adIcao}>{ad.icao}</span>
@@ -106,7 +160,7 @@ export default function VicinityBriefPanel({ nearbyFreqs, aerodromes, isHome, au
           </div>
         )}
 
-        {tab === 'aerodrome' && (
+        {(tab === 'wx' || tab === 'notam') && (
           aerodromes.length === 0 ? (
             <div className={css.empty}>No aerodromes nearby. Set a home airfield in Settings, load a route, or enable GPS.</div>
           ) : selected && (
@@ -124,19 +178,40 @@ export default function VicinityBriefPanel({ nearbyFreqs, aerodromes, isHome, au
                   </button>
                 ))}
               </div>
-              <div className={css.embedded}>
-                <AerodromePopup
-                  key={selected.icao}
-                  props={selected.props}
-                  lng={selected.lng}
-                  lat={selected.lat}
-                  isHome={isHome(selected.icao)}
-                  authed={authed}
-                  onSetHome={onSetHome}
-                  onClose={onClose}
-                  onRunwayWind={onRunwayWind}
-                />
-              </div>
+              {tab === 'wx' && (
+                <div className={css.embedded}>
+                  <AerodromePopup
+                    key={selected.icao}
+                    props={selected.props}
+                    lng={selected.lng}
+                    lat={selected.lat}
+                    isHome={isHome(selected.icao)}
+                    authed={authed}
+                    onSetHome={onSetHome}
+                    onClose={onClose}
+                    onRunwayWind={onRunwayWind}
+                    forcedTab="wx"
+                  />
+                </div>
+              )}
+              {tab === 'notam' && (
+                <div className={css.embedded}>
+                  <AerodromePopup
+                    key={selected.icao}
+                    props={selected.props}
+                    lng={selected.lng}
+                    lat={selected.lat}
+                    isHome={isHome(selected.icao)}
+                    authed={authed}
+                    onSetHome={onSetHome}
+                    onClose={onClose}
+                    forcedTab="notam"
+                    regionalNotams={regionalNotams}
+                    routeWaypoints={routeWaypoints}
+                    onShowNotamOnMap={onShowNotamOnMap}
+                  />
+                </div>
+              )}
             </>
           )
         )}

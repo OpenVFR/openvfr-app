@@ -407,10 +407,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
     setRunwayWindHighlight(ends.length > 0 ? { icao, ends } : null)
   }, [])
 
-  // Sidebar "MAP" jump-to action (RegionalNotamsPanel) -- flies to the
-  // NOTAM's own geometry and opens it in the same rich airspace-style
-  // popup a map click on its circle/polygon produces (shape thumbnail +
-  // details), rather than a plain text-only popup with no visual context.
+  // Airfield Brief's NOTAMs tab "MAP" jump-to action (RegionalNotamsPanel,
+  // embedded in VicinityBriefPanel) -- flies to the NOTAM's own geometry
+  // and opens it in the same rich airspace-style popup a map click on its
+  // circle/polygon produces (shape thumbnail + details), rather than a
+  // plain text-only popup with no visual context.
   const handleShowNotamOnMap = useCallback((notam: NotamItem) => {
     const map = mapRef.current
     if (!map) return
@@ -783,7 +784,17 @@ export default function MapView({ auth }: { auth: AuthState }) {
   useEffect(() => { trafficTargetsRef.current = trafficTargets }, [trafficTargets])
 
   // ── Regional NOTAMs (FIR-wide, ad-hoc circles from coordinates+radius) ──
-  const regionalNotamsEnabled = (visibility['notamCircles'] ?? true) && !!auth.user
+  // Fetched independent of the 'notamCircles' layer-visibility toggle --
+  // that toggle only controls whether notam-circles/notam-polygons/
+  // notam-points *draw* on the map (via LAYER_GROUPS' generic layerIds
+  // visibility application), same as any other layer group. The underlying
+  // data must keep flowing regardless, since AirspacePopup's inline NOTAM
+  // match, the airspace-vs-NOTAM designator match (notamAirspaceMatches
+  // below), useNotamWarnings, and RegionalNotamsPanel all depend on it --
+  // none of those are the map layer itself, and a user hiding the on-map
+  // circles to declutter shouldn't also go blind to the same NOTAMs
+  // everywhere else.
+  const regionalNotamsEnabled = !!auth.user
   const regionalNotams = useRegionalNotams(regionalNotamsEnabled && mapReady)
   const regionalNotamsRef = useRef(regionalNotams)
   useEffect(() => { regionalNotamsRef.current = regionalNotams }, [regionalNotams])
@@ -2599,26 +2610,35 @@ export default function MapView({ auth }: { auth: AuthState }) {
         const nmsId = String(p.nmsId ?? '')
         if (!nmsId || seenNotamHitIds.has(nmsId)) continue
         seenNotamHitIds.add(nmsId)
+
+        // Prefer the FULL, un-clipped NotamItem already held in
+        // regionalNotamsRef (same data useRegionalNotams() polls, same
+        // source handleShowNotamOnMap's notamItemRing() reads from) over
+        // the queried map feature's own geometry. MapLibre tiles GeoJSON
+        // sources internally (geojson-vt) even for a single feature spanning
+        // multiple internal tiles at the current zoom -- queryRenderedFeatures
+        // returns that tile-local, boundary-clipped geometry, not the full
+        // source feature, so a wide NOTAM circle/polygon rendered this way
+        // came back as a partial wedge/arc instead of the whole shape. Only
+        // fall back to the queried (possibly clipped) geometry if this NOTAM
+        // isn't in the currently-loaded regional list for some reason.
+        const fullItem = regionalNotamsRef.current.find((n) => n.nmsId === nmsId)
+        const notam: NotamItem = fullItem ?? {
+          id:             String(p.notamId ?? ''),
+          nmsId,
+          text:           String(p.text ?? ''),
+          effective:      (p.effective as string | null) ?? null,
+          expires:        (p.expires as string | null) ?? null,
+          classification: (p.classification as string | null) ?? null,
+          icaoLocation:   (p.icaoLocation as string | null) ?? null,
+          polygon:        null,
+          lat:            null,
+          lon:            null,
+          radiusNm:       (p.radiusNm as number | null) ?? null,
+        }
         regionalNotamHits.push({
-          notam: {
-            id:             String(p.notamId ?? ''),
-            nmsId,
-            text:           String(p.text ?? ''),
-            effective:      (p.effective as string | null) ?? null,
-            expires:        (p.expires as string | null) ?? null,
-            classification: (p.classification as string | null) ?? null,
-            icaoLocation:   (p.icaoLocation as string | null) ?? null,
-            polygon:        null,
-            lat:            null,
-            lon:            null,
-            radiusNm:       (p.radiusNm as number | null) ?? null,
-          },
-          // Extract the actual rendered ring straight from the queried
-          // feature's own geometry -- circle-fill features are a synthesized
-          // Polygon already matching makeCirclePolygon's output, real-geometry
-          // polygon-fill features are the NOTAM's true shape; both cases need
-          // no separate re-derivation. Point-only markers have no ring.
-          coords: notamGeometryRing(hit.geometry),
+          notam,
+          coords: fullItem ? notamItemRing(fullItem) : notamGeometryRing(hit.geometry),
         })
       }
 
@@ -3676,6 +3696,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         activeRouteId={activeRouteId}
         onActiveRouteIdChange={setActiveRouteId}
         onRunwayWind={handleRunwayWind}
+        regionalNotams={regionalNotams}
         onShowNotamOnMap={handleShowNotamOnMap}
         onSetLegOverride={(idx, ovr) =>
           setLegOverrides((prev) => {
@@ -3709,7 +3730,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
         onSelectLog={setSelectedLogId}
         onClearLog={() => setSelectedLogId(null)}
         userWaypoints={userWaypoints}
-        regionalNotams={regionalNotams}
         pendingUserWpCoords={pendingUserWpCoords}
         folderVisibility={folderVisibility}
         onUserWpCoordsConsumed={() => setPendingUserWpCoords(null)}
@@ -3724,7 +3744,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
         }}
         auth={auth}
         onOpenProfile={() => setProfileOpen(true)}
-        routeWeatherStations={routeWeatherStations}
       />
       <div className={css.mapArea}>
         <div ref={containerRef} className={css.map} />
@@ -4039,6 +4058,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
             setHomeAirfield(homeAirfield?.icao === icao ? null : { icao, name, lng, lat })
           }
           onRunwayWind={handleRunwayWind}
+          regionalNotams={regionalNotams}
+          routeWaypoints={routeWaypoints}
+          onShowNotamOnMap={handleShowNotamOnMap}
           onClose={() => setShowVicinityBrief(false)}
         />
       )}
