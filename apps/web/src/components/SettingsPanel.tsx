@@ -1,5 +1,5 @@
 import type { Units } from '../utils/units'
-import type { Theme, TrajectoryMode, AirspaceWarnLookahead, TerrainColoringSettings, TrafficVertFilter, ParkTimeoutOption } from '../db/useSettings'
+import type { Theme, TrajectoryMode, AirspaceWarnLookahead, TrafficVertFilter, ParkTimeoutOption } from '../db/useSettings'
 import { AIRSPACE_WARN_LOOKAHEAD_OPTIONS, AIRSPACE_WARN_VERTICAL_OPTIONS, TRAFFIC_VERT_FILTER_OPTIONS, PARK_TIMEOUT_OPTIONS } from '../db/useSettings'
 import type { DataManifest } from '../hooks/useDataManifest'
 import RegionSelector from './RegionSelector'
@@ -37,8 +37,6 @@ interface Props {
   onAirspaceWarnLookaheadChange: (v: AirspaceWarnLookahead) => void
   airspaceWarnVerticalFt:       number
   onAirspaceWarnVerticalFtChange: (v: number) => void
-  terrainColoring:             TerrainColoringSettings
-  onTerrainColoringChange:     (v: TerrainColoringSettings) => void
   trafficVertFilter:           TrafficVertFilter
   onTrafficVertFilterChange:   (v: TrafficVertFilter) => void
   parkTimeout:                 ParkTimeoutOption
@@ -61,7 +59,7 @@ const THEMES: { value: Theme; label: string }[] = [
   { value: 'high-contrast', label: 'Hi-Con' },
 ]
 
-export default function SettingsPanel({ units, onUnitsChange, region, onRegionChange, theme, onThemeChange, autoZoom, onAutoZoomChange, trajectoryMode, onTrajectoryModeChange, airspaceWarnLookahead, onAirspaceWarnLookaheadChange, airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange, terrainColoring, onTerrainColoringChange, trafficVertFilter, onTrafficVertFilterChange, parkTimeout, onParkTimeoutChange, inFlight, onClose, manifest, isOnline = true, checking = false, onRefresh }: Props) {
+export default function SettingsPanel({ units, onUnitsChange, region, onRegionChange, theme, onThemeChange, autoZoom, onAutoZoomChange, trajectoryMode, onTrajectoryModeChange, airspaceWarnLookahead, onAirspaceWarnLookaheadChange, airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange, trafficVertFilter, onTrafficVertFilterChange, parkTimeout, onParkTimeoutChange, inFlight, onClose, manifest, isOnline = true, checking = false, onRefresh }: Props) {
   const expectedCycle = currentAiracCycle()
   return (
     <div className={css.panel}>
@@ -175,50 +173,6 @@ export default function SettingsPanel({ units, onUnitsChange, region, onRegionCh
               title={v === 0 ? 'Only warn based on climb/descent rate projection' : `Warn when within ${v} ft of an airspace floor/ceiling, regardless of climb rate`}
             >{v === 0 ? 'Off' : `${v} ft`}</button>
           ))}
-        </div>
-      </div>
-
-      <div className={css.section}>
-        <div className={css.terrainHeader}>
-          <span className={css.label}>Terrain colour</span>
-          <span className={css.colorKey}>
-            <span className={css.ckRed}    title="< 500 ft below ref" />
-            <span className={css.ckOrange} title="500–1000 ft below" />
-            <span className={css.ckYellow} title="1000–1500 ft below" />
-            <span className={css.ckGreen}  title="> 1500 ft below" />
-          </span>
-        </div>
-        <div className={css.optionsRow}>
-          <button
-            className={`${css.opt}${terrainColoring.enabled ? ` ${css.optActive}` : ''}`}
-            onClick={() => onTerrainColoringChange({ ...terrainColoring, enabled: !terrainColoring.enabled })}
-            title="Overlay terrain colour bands relative to reference altitude"
-          >{terrainColoring.enabled ? 'ON' : 'OFF'}</button>
-          {terrainColoring.enabled && (
-            <>
-              {inFlight
-                ? <span className={css.refAltLive}>using GPS alt</span>
-                : (
-                  <>
-                    <input
-                      type="number"
-                      className={css.refAltInput}
-                      value={terrainColoring.refAltFt}
-                      min={100}
-                      max={30000}
-                      step={100}
-                      title="Reference altitude in feet MSL"
-                      onChange={e => {
-                        const v = parseInt(e.target.value, 10)
-                        if (!isNaN(v) && v > 0) onTerrainColoringChange({ ...terrainColoring, refAltFt: v })
-                      }}
-                    />
-                    <span className={css.refAltUnit}>ft</span>
-                  </>
-                )
-              }
-            </>
-          )}
         </div>
       </div>
 

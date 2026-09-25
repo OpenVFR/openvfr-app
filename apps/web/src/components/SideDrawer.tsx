@@ -531,7 +531,7 @@ export default function SideDrawer({
             </button>
             {expanded.layers && (
               <div className={css.sectionBody}>
-                <LayerPanel visibility={visibility} onChange={onVisibilityChange} />
+                <LayerPanel visibility={visibility} onChange={onVisibilityChange} terrainColoring={terrainColoring} onTerrainColoringChange={onTerrainColoringChange} inFlight={inFlight} />
               </div>
             )}
           </div>
@@ -557,7 +557,7 @@ export default function SideDrawer({
             </button>
             {expanded.settings && (
               <div className={css.sectionBody}>
-                <SettingsPanel units={units} onUnitsChange={onUnitsChange} region={region} onRegionChange={onRegionChange} theme={theme} onThemeChange={onThemeChange} autoZoom={autoZoom} onAutoZoomChange={onAutoZoomChange} trajectoryMode={trajectoryMode} onTrajectoryModeChange={onTrajectoryModeChange} airspaceWarnLookahead={airspaceWarnLookahead} onAirspaceWarnLookaheadChange={onAirspaceWarnLookaheadChange} airspaceWarnVerticalFt={airspaceWarnVerticalFt} onAirspaceWarnVerticalFtChange={onAirspaceWarnVerticalFtChange} terrainColoring={terrainColoring} onTerrainColoringChange={onTerrainColoringChange} trafficVertFilter={trafficVertFilter} onTrafficVertFilterChange={onTrafficVertFilterChange} parkTimeout={parkTimeout} onParkTimeoutChange={onParkTimeoutChange} inFlight={inFlight} manifest={manifest} isOnline={isOnline} checking={checking} onRefresh={onRefresh} />
+                <SettingsPanel units={units} onUnitsChange={onUnitsChange} region={region} onRegionChange={onRegionChange} theme={theme} onThemeChange={onThemeChange} autoZoom={autoZoom} onAutoZoomChange={onAutoZoomChange} trajectoryMode={trajectoryMode} onTrajectoryModeChange={onTrajectoryModeChange} airspaceWarnLookahead={airspaceWarnLookahead} onAirspaceWarnLookaheadChange={onAirspaceWarnLookaheadChange} airspaceWarnVerticalFt={airspaceWarnVerticalFt} onAirspaceWarnVerticalFtChange={onAirspaceWarnVerticalFtChange} trafficVertFilter={trafficVertFilter} onTrafficVertFilterChange={onTrafficVertFilterChange} parkTimeout={parkTimeout} onParkTimeoutChange={onParkTimeoutChange} inFlight={inFlight} manifest={manifest} isOnline={isOnline} checking={checking} onRefresh={onRefresh} />
               </div>
             )}
           </div>

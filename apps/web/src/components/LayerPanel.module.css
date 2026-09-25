@@ -109,3 +109,51 @@
 .groupTraffic      { --group-color: #e2e8f0; } /* white/light — ADS-B traffic symbols */
 .groupWind         { --group-color: #38bdf8; } /* sky blue — matches windBarbIcons.ts's WIND_BARB_COLOR */
 .groupNotamCircles { --group-color: #e64980; } /* pink — ad-hoc NOTAM restricted/danger circles */
+.groupTerrainColor { --group-color: #d4a13d; } /* gold — terrain colour bands overlay */
+
+/* ── Terrain colour bands (relative to reference altitude) ───────────────── */
+.terrainColorDetail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 12px 8px 32px;
+}
+
+.colorKey {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.ckRed    { background: var(--terrain-danger);  width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+.ckOrange { background: var(--terrain-warn);    width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+.ckYellow { background: var(--terrain-caution); width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+.ckGreen  { background: var(--terrain-safe);    width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+
+.refAltInput {
+  width:         64px;
+  background:    var(--input-bg);
+  border:        1px solid var(--input-border);
+  border-radius: 4px;
+  color:         var(--text-primary);
+  font-size:     11px;
+  padding:       2px 5px;
+  text-align:    right;
+}
+.refAltInput:focus {
+  outline:       none;
+  border-color:  var(--input-focus-border);
+}
+
+.refAltUnit {
+  font-size:  10px;
+  color:      var(--text-muted);
+  align-self: center;
+}
+
+.refAltLive {
+  font-size:  10px;
+  color:      var(--accent-green-bright);
+  align-self: center;
+  font-style: italic;
+}

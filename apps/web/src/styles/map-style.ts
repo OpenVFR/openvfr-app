@@ -317,6 +317,20 @@ export const LAYER_GROUPS: LayerGroup[] = [
     section: 'Airspace',
   },
   {
+    id: 'notamCircles',
+    // Ad-hoc circles for FIR-wide NOTAMs (restricted/danger areas, navaid
+    // outages, military exercise notices) that carry their own
+    // coordinates+radius but don't correspond to any charted airspace
+    // polygon in the ofm source -- e.g. temporary restricted areas
+    // established mid-AIRAC-cycle via AIP supplement. See
+    // apps/api/src/notam.ts's getRegionalNotams() and useRegionalNotams.ts.
+    label: 'Regional NOTAMs',
+    cssClass: 'groupNotamCircles',
+    layerIds: ['notam-circles-fill', 'notam-circles-border', 'notam-polygons-fill', 'notam-polygons-border', 'notam-matched-airspace-fill', 'notam-matched-airspace-border', 'notam-points-cluster', 'notam-points-cluster-count', 'notam-points-unclustered', 'notam-points-label'],
+    defaultOn: true,
+    section: 'Airspace',
+  },
+  {
     id: 'navaidsVOR',
     // VOR (and DVOR) navaids — OFM OFMX source. 24 points across Sweden.
     // Shows the 3-letter identifier + frequency from zoom 8+.
@@ -472,20 +486,6 @@ export const LAYER_GROUPS: LayerGroup[] = [
     layerIds: ['wind-arrows-icon'],
     defaultOn: false,
     section: 'Weather',
-  },
-  {
-    id: 'notamCircles',
-    // Ad-hoc circles for FIR-wide NOTAMs (restricted/danger areas, navaid
-    // outages, military exercise notices) that carry their own
-    // coordinates+radius but don't correspond to any charted airspace
-    // polygon in the ofm source -- e.g. temporary restricted areas
-    // established mid-AIRAC-cycle via AIP supplement. See
-    // apps/api/src/notam.ts's getRegionalNotams() and useRegionalNotams.ts.
-    label: 'Regional NOTAMs',
-    cssClass: 'groupNotamCircles',
-    layerIds: ['notam-circles-fill', 'notam-circles-border', 'notam-polygons-fill', 'notam-polygons-border', 'notam-matched-airspace-fill', 'notam-matched-airspace-border', 'notam-points-cluster', 'notam-points-cluster-count', 'notam-points-unclustered', 'notam-points-label'],
-    defaultOn: true,
-    section: 'Airspace',
   },
 ]
 
