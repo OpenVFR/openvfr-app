@@ -3,7 +3,10 @@
 .backdrop {
   position: absolute;
   inset: 0;
-  z-index: 50;
+  /* Above SideDrawer's mobile/touch fixed-overlay stack (z-index 218-221) --
+     see VicinityBriefPanel.module.css's identical fix for the full
+     rationale (same shared bug, same modal pattern). */
+  z-index: 250;
   background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: flex-start;

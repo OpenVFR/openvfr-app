@@ -5,7 +5,13 @@
 .backdrop {
   position: absolute;
   inset: 0;
-  z-index: 50;
+  /* Above SideDrawer's mobile/touch fixed-overlay stack (z-index 218-221,
+     see SideDrawer.module.css's `@media (pointer: coarse)` block) -- at the
+     old z-index:50 this backdrop+panel rendered visually BEHIND the drawer
+     on a touch device whenever both were open at once (e.g. opening
+     Airfield Brief while the sidepane's Weather Along Route section is
+     showing), making the modal look broken/unreachable under the drawer. */
+  z-index: 250;
   background: var(--overlay-scrim);
   display: flex;
   align-items: flex-start;
