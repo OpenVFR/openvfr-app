@@ -1007,6 +1007,7 @@ export function MapScreen() {
           showLanduse={layers.landuse}
           showHillshade={layers.hillshade}
           showTerrainColor={layers.terrainColor}
+          terrainColorRefAltFt={settings.terrainColorRefAltFt}
           showContours={layers.contours}
           showWind={layers.wind}
           trafficFC={trafficFC}
@@ -1272,6 +1273,9 @@ export function MapScreen() {
             onLayerChange={handleLayerChange}
             onCeilingChange={(ft) => update({ airspaceCeilingFt: ft })}
             onAutoZoomChange={(on) => update({ autoZoom: on })}
+            terrainColorRefAltFt={settings.terrainColorRefAltFt}
+            onTerrainColorRefAltFtChange={(ft) => update({ terrainColorRefAltFt: ft })}
+            inFlight={!!activePosition && activePosition.altFt > 0}
           />
         </View>
         <FindDestinationSheet

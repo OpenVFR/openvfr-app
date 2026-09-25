@@ -12,7 +12,7 @@
 import React, { useRef } from 'react'
 import {
   View, Text, TouchableOpacity, Modal, ScrollView,
-  StyleSheet, Animated, PanResponder,
+  StyleSheet, Animated, PanResponder, TextInput,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { AltitudeSlider } from './AltitudeSlider'
@@ -100,6 +100,9 @@ const AIRSPACE_GROUPS: Group[] = [
   { key: 'classG',     label: 'RMZ / ATZ',         color: AC.gBorder     },
   { key: 'restricted', label: 'Restricted / TRA',  color: AC.rBorder     },
   { key: 'activity',   label: 'Glider / Model',    color: AC.gldrBorder  },
+  // FIR-wide regional NOTAM circles -- grouped with airspace filters (matches
+  // web's map-style.ts LAYER_GROUPS placement), not with live traffic below.
+  { key: 'notamCircles', label: 'Regional NOTAMs', color: '#e64980' },
 ]
 
 // Order matches web's map-style.ts LAYER_GROUPS 'Navigation' section
@@ -117,7 +120,6 @@ const POINTS_GROUPS: Group[] = [
 
 const TRAFFIC_GROUPS: Group[] = [
   { key: 'traffic', label: 'Air Traffic (ADS-B)', color: '#22c55e' },
-  { key: 'notamCircles', label: 'Regional NOTAMs', color: '#e64980' },
 ]
 
 // Matches web's LAYER_GROUPS 'Weather' section ('Wind Arrows' entry) --
@@ -148,12 +150,27 @@ interface Props {
   onLayerChange:    (key: keyof LayerState, on: boolean) => void
   onCeilingChange:  (ft: number) => void
   onAutoZoomChange: (on: boolean) => void
+  /** Reference altitude (ft MSL) for the terrain colour-relief bands --
+   *  same concept as web's SettingsPanel terrainColoring.refAltFt, now
+   *  living alongside the toggle itself instead of a separate settings
+   *  screen (matches web's LayerPanel placement). */
+  terrainColorRefAltFt:          number
+  onTerrainColorRefAltFtChange:  (ft: number) => void
+  /** True once airborne -- ref-alt input is replaced by a "using GPS alt"
+   *  note, same as web's `inFlight` gate in SettingsPanel/LayerPanel. */
+  inFlight?: boolean
 }
 
-export function MapDisplaySheet({ layers, ceilingFt, autoZoom, onLayerChange, onCeilingChange, onAutoZoomChange }: Props) {
+export function MapDisplaySheet({
+  layers, ceilingFt, autoZoom, onLayerChange, onCeilingChange, onAutoZoomChange,
+  terrainColorRefAltFt, onTerrainColorRefAltFtChange, inFlight,
+}: Props) {
   const styles = useThemedStyles(makeStyles)
   const captionStyles = useThemedStyles(makeCaptionStyles)
+  const refAltStyles = useThemedStyles(makeRefAltStyles)
   const [open, setOpen] = React.useState(false)
+  const [refAltText, setRefAltText] = React.useState(String(terrainColorRefAltFt))
+  React.useEffect(() => { setRefAltText(String(terrainColorRefAltFt)) }, [terrainColorRefAltFt])
 
   return (
     <>
@@ -238,12 +255,35 @@ export function MapDisplaySheet({ layers, ceilingFt, autoZoom, onLayerChange, on
                 on={layers[g.key]} onToggle={() => onLayerChange(g.key, !layers[g.key])} />
             ))}
             {layers.terrainColor && (
-              <Text style={captionStyles.warning}>
-                ⚠ Experimental: known GPU rendering bug on some Android devices
-                (Adreno chipsets). Check colours render correctly (green/yellow/
-                orange/red bands, not all-brown or a single flat colour) before
-                relying on this.
-              </Text>
+              <>
+                <Text style={captionStyles.warning}>
+                  ⚠ Experimental: known GPU rendering bug on some Android devices
+                  (Adreno chipsets). Check colours render correctly (green/yellow/
+                  orange/red bands, not all-brown or a single flat colour) before
+                  relying on this.
+                </Text>
+                <View style={refAltStyles.row}>
+                  <Text style={refAltStyles.label}>Reference altitude</Text>
+                  {inFlight ? (
+                    <Text style={refAltStyles.live}>using GPS alt</Text>
+                  ) : (
+                    <View style={refAltStyles.inputWrap}>
+                      <TextInput
+                        style={refAltStyles.input}
+                        value={refAltText}
+                        keyboardType="number-pad"
+                        onChangeText={setRefAltText}
+                        onEndEditing={() => {
+                          const v = parseInt(refAltText, 10)
+                          if (!isNaN(v) && v > 0) onTerrainColorRefAltFtChange(v)
+                          else setRefAltText(String(terrainColorRefAltFt))
+                        }}
+                      />
+                      <Text style={refAltStyles.unit}>ft</Text>
+                    </View>
+                  )}
+                </View>
+              </>
             )}
 
             <SectionHeader title="Weather" />
@@ -425,6 +465,48 @@ function makeCaptionStyles(theme: ScaledTheme) {
     lineHeight:        15,
     paddingHorizontal: theme.space4,
     paddingBottom:     theme.space2,
+  },
+} as const
+}
+
+function makeRefAltStyles(theme: ScaledTheme) {
+ return {
+  row: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    justifyContent:    'space-between',
+    paddingHorizontal: theme.space4,
+    paddingBottom:     theme.space2,
+  },
+  label: {
+    color:    theme.textMuted,
+    fontSize: theme.textSm,
+  },
+  live: {
+    color:      theme.accentGreen,
+    fontSize:   theme.textXs,
+    fontStyle:  'italic',
+  },
+  inputWrap: {
+    flexDirection: 'row',
+    alignItems:    'center',
+    gap:           4,
+  },
+  input: {
+    width:           64,
+    backgroundColor: theme.surfaceOverlay,
+    borderWidth:     1,
+    borderColor:     theme.borderDefault,
+    borderRadius:    theme.radiusSm,
+    color:           theme.textPrimary,
+    fontSize:        theme.textSm,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    textAlign:       'right',
+  },
+  unit: {
+    color:    theme.textFaint,
+    fontSize: theme.textXs,
   },
 } as const
 }

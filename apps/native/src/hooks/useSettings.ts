@@ -48,6 +48,12 @@ export type AppSettings = {
   /** UI colour theme, same three options as web ('dark' | 'light' |
    *  'high-contrast'), see styles/theme.ts. */
   theme: ThemeName
+  /** Reference altitude (ft MSL) for the terrain colour-relief overlay's
+   *  colour bands, same concept as web's terrainColoring.refAltFt (see
+   *  apps/web/src/db/useSettings.ts) -- overridden live by GPS altitude
+   *  once airborne, same as web. Only used while MapDisplaySheet's
+   *  'Terrain Color (EXPERIMENTAL)' toggle is on. */
+  terrainColorRefAltFt: number
 }
 
 const DEFAULTS: AppSettings = {
@@ -69,6 +75,7 @@ const DEFAULTS: AppSettings = {
   varioAutoConnectId:       '',
   uiScale:                  1.0,
   theme:                    'dark',
+  terrainColorRefAltFt:     2000,
 }
 
 export function useSettings() {
