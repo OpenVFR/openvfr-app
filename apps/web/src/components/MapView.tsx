@@ -1906,7 +1906,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         source: 'ruler-points',
         layout: {
           'text-field': ['get', 'label'],
-          'text-font': ['Noto Sans Bold'],
+          'text-font': ['Noto Sans Medium'],
           'text-size': 11,
           'text-anchor': 'bottom',
           'text-offset': [0, -0.9],
@@ -2161,7 +2161,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         layout: {
           'text-field': ['get', 'point_count_abbreviated'],
           'text-size': 11,
-          'text-font': ['Noto Sans Bold'],
+          'text-font': ['Noto Sans Medium'],
         },
         paint: { 'text-color': '#ffffff' },
       })
@@ -2183,7 +2183,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         type: 'symbol',
         source: 'notam-points',
         filter: ['!', ['has', 'point_count']],
-        layout: { 'text-field': 'N', 'text-size': 9, 'text-font': ['Noto Sans Bold'] },
+        layout: { 'text-field': 'N', 'text-size': 9, 'text-font': ['Noto Sans Medium'] },
         paint: { 'text-color': '#ffffff' },
       })
 

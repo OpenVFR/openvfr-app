@@ -2614,7 +2614,7 @@ export function AviationMap({
               layout={{
                 'text-field': ['get', 'point_count_abbreviated'] as any,
                 'text-size': 11,
-                'text-font': ['Noto Sans Bold'],
+                'text-font': ['Noto Sans Medium'],
               }}
               paint={{ 'text-color': '#ffffff' }}
             />
