@@ -103,9 +103,16 @@ export function useWeatherAlongRoute(waypoints: RouteWaypoint[], enabled = true)
     const totalNm = waypoints.length >= 2
       ? distanceAlongRouteNm(waypoints, waypoints[waypoints.length - 1])
       : 0
+    // Both branches sort by alongNm (along-route position, flight sequence)
+    // -- the cap-selection logic below still uses lateral distNm ("pick the
+    // laterally-nearest per bucket/overall"), but the final order shown to
+    // the pilot is always departure -> destination, never "nearest first"
+    // (previously this short-route branch diverged from the bucketed one
+    // below and sorted by lateral distance instead, inconsistently -- see
+    // web's identical fix in its own useWeatherAlongRoute.ts).
     let nearby: typeof candidates
     if (candidates.length <= MAX_STATIONS || totalNm <= 0) {
-      nearby = candidates.sort((a, b) => a.distNm - b.distNm).slice(0, MAX_STATIONS)
+      nearby = candidates.sort((a, b) => a.alongNm - b.alongNm).slice(0, MAX_STATIONS)
     } else {
       const bucketSize = totalNm / MAX_STATIONS
       const bestPerBucket = new Map<number, typeof candidates[number]>()

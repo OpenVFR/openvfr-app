@@ -35,7 +35,11 @@ const RADIUS_NM = 25
 const FREQ_ORDER = ['TWR', 'AFIS', 'APP', 'DEP', 'ATIS', 'GND', 'SMC', 'INFO', 'FIS', 'RDO', 'RADIO', 'UNICOM']
 const PRIMARY_ORDER = ['TWR', 'AFIS', 'INFO', 'UNICOM', 'RDO', 'RADIO']
 
-function parseFreqs(raw: unknown): NearbyFreq[] {
+// Exported so useVicinityAerodromes.ts can parse the same raw frequencies
+// field for its own route/GPS/home-prioritized list -- used as a fallback
+// source for VicinityBriefSheet's Freq tab when this hook's GPS-only list
+// is empty (see that file's own doc comment). One parser, not two copies.
+export function parseFreqs(raw: unknown): NearbyFreq[] {
   const arr: Array<{ service?: string; freq_mhz?: number; callsign?: string }> =
     Array.isArray(raw) ? raw
     : typeof raw === 'string' ? JSON.parse(raw)
@@ -55,7 +59,7 @@ function parseFreqs(raw: unknown): NearbyFreq[] {
     })
 }
 
-function pickPrimary(freqs: NearbyFreq[]): string | null {
+export function pickPrimary(freqs: NearbyFreq[]): string | null {
   for (const svc of PRIMARY_ORDER) {
     const f = freqs.find(x => x.service === svc)
     if (f) return f.mhz.toFixed(3)

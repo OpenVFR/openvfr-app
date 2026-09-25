@@ -41,9 +41,10 @@
 
 import { useEffect, useState } from 'react'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
-import { distanceToRouteNm } from '@open-vfr/shared/notamRouteFilter'
+import { nearestRoutePoint } from '@open-vfr/shared/notamRouteFilter'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import { getTileUrls } from '../config'
+import { parseFreqs, type NearbyFreq } from './useNearbyFrequencies'
 import type { GpsPosition } from '../utils/gpsTypes'
 
 const RADIUS_NM      = 25   // matches useNearbyFrequencies.ts
@@ -72,6 +73,11 @@ export interface FullVicinityAerodrome {
   lng:         number
   elevationFt: number | undefined
   runways:     VicinityRunway[]
+  // Parsed via useNearbyFrequencies.ts's own parseFreqs -- lets
+  // VicinityBriefSheet's Freq tab fall back to this route/GPS/home-
+  // prioritized list when that hook's GPS-only list is empty (see its own
+  // doc comment), without a second raw-JSON parser for the same field.
+  frequencies: NearbyFreq[]
 }
 
 export interface VicinityAerodrome extends FullVicinityAerodrome {
@@ -109,6 +115,7 @@ export function loadFullVicinityAerodromes(cb: (d: FullVicinityAerodrome[]) => v
           lat, lng,
           elevationFt: typeof p.elevation_ft === 'number' ? p.elevation_ft : Number(p.elevation_ft) || undefined,
           runways:     parseJson<VicinityRunway[]>(p.runways, []),
+          frequencies: parseFreqs(p.frequencies),
         })
       }
       _cache = arr
@@ -138,10 +145,22 @@ export function useVicinityAerodromes({ waypoints, position, routeVisible, homeI
   if (all.length === 0) return []
 
   if (useRoute) {
+    // Sorted by along-route position (flight sequence, departure ->
+    // destination), NOT by lateral/cross-track distance -- two aerodromes
+    // can sit equally close to the route line while being at opposite
+    // ends of it, and "closest first" then reads as a scrambled, seemingly
+    // random order to a pilot expecting "in the order I'll pass them".
+    // `distNm` itself keeps its existing lateral-distance meaning (still
+    // shown in the picker chip as "how close to the route"), only the sort
+    // key changes. Mirrors web's identical fix in its own
+    // useVicinityAerodromes.ts.
     return all
-      .map((a) => ({ ...a, distNm: distanceToRouteNm({ lat: a.lat, lng: a.lng }, waypoints) }))
+      .map((a) => {
+        const pos = nearestRoutePoint({ lat: a.lat, lng: a.lng }, waypoints)
+        return { ...a, distNm: pos.lateralNm, alongNm: pos.alongNm }
+      })
       .filter((a) => a.distNm <= ROUTE_BUFFER_NM)
-      .sort((a, b) => a.distNm - b.distNm)
+      .sort((a, b) => a.alongNm - b.alongNm)
       .slice(0, MAX_AERODROMES)
   }
 

@@ -6,8 +6,15 @@
  * AerodromePopup's own tab bar minus its Info tab (no single aerodrome has
  * been tapped here).
  *
- * - Freq tab: unchanged from FrequencyPanel — full list, every aerodrome
- *   within useNearbyFrequencies.ts's 25NM radius, no picker.
+ * - Freq tab: primarily FrequencyPanel's flat GPS-radius list (no picker)
+ *   -- but that hook is GPS-only, no route-buffer/home-airfield fallback
+ *   tier at all, so it goes empty with no live GPS fix even with a route
+ *   loaded (e.g. planning at a desk, not simulating flight) while Wx/NOTAM
+ *   below still work fine via useVicinityAerodromes.ts's route-buffer tier.
+ *   Falls back to deriving the same NearbyAerodrome shape from `vicinity`
+ *   (already route/GPS/home-prioritized and along-route sorted) whenever
+ *   the GPS-only list is empty, instead of leaving the tab looking broken.
+ *   See useVicinityAerodromes.ts's own `frequencies` field doc comment.
  * - Wx / NOTAM tabs: share one aerodrome picker (useVicinityAerodromes.ts),
  *   defaulting to the closest aerodrome -- along the route when one is
  *   loaded AND marked Active (routeVisible), otherwise nearest by GPS
@@ -27,18 +34,9 @@ import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../sty
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
-import { fmtNotamDate } from '@open-vfr/shared/fetchNotam'
-import { filterNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM } from '@open-vfr/shared/notamRouteFilter'
-
-// Single-line truncated preview, mirrors web's RegionalNotamsPanel.tsx --
-// NMS-API's `text` is already plain English prose, so a plain character-
-// count truncation is meaningfully informative, not just codes.
-const PREVIEW_LEN = 70
-function previewNotamText(text: string): string {
-  const flat = text.replace(/\s+/g, ' ').trim()
-  return flat.length > PREVIEW_LEN ? `${flat.slice(0, PREVIEW_LEN)}\u2026` : flat
-}
+import { filterAndSortNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM } from '@open-vfr/shared/notamRouteFilter'
 import type { NearbyAerodrome } from '../hooks/useNearbyFrequencies'
+import { pickPrimary } from '../hooks/useNearbyFrequencies'
 import { useVicinityAerodromes } from '../hooks/useVicinityAerodromes'
 import { useAerodromeBriefing } from '../hooks/useAerodromeBriefing'
 import { FR_COLOR } from './AerodromeBriefShared'
@@ -71,7 +69,6 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
   const styles = useThemedStyles(makeStyles)
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<Tab>('freq')
-  const [expandedNotamIds, setExpandedNotamIds] = useState<Set<string>>(new Set())
 
   const vicinity = useVicinityAerodromes({ waypoints, position, routeVisible, homeIcao })
   const [selectedIcao, setSelectedIcao] = useState<string | null>(null)
@@ -99,8 +96,13 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
   }, [wxLoading, selected?.icao])
 
   const hasRoute = waypoints.length > 0
+  // Filtered + sorted by along-route position (flight sequence, departure
+  // -> destination) once a route exists -- previously unsorted (whatever
+  // order the API happened to return). Shared with web's RegionalNotamsPanel/
+  // AerodromePopup.tsx/AerodromeNotamSection.tsx rather than each
+  // re-deriving the same comparator.
   const otherNotams = hasRoute
-    ? filterNotamsNearRoute(regionalNotams, waypoints, DEFAULT_ROUTE_NOTAM_BUFFER_NM)
+    ? filterAndSortNotamsNearRoute(regionalNotams, waypoints, DEFAULT_ROUTE_NOTAM_BUFFER_NM)
     : regionalNotams
 
   // Tab-dot colour always reflects the real METAR's flight rule when one
@@ -108,15 +110,15 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
   // to be currently selected -- Weather station has no flight-rule concept.
   const metarFlightRule = wx?.metar ? decodeMetar(wx.metar).flightRule : null
 
-  const badgeCount = tab === 'freq' ? nearby.length : vicinity.length
+  // See this file's own doc comment on the Freq tab's route/home fallback.
+  const displayedFreqs: NearbyAerodrome[] = nearby.length > 0
+    ? nearby
+    : vicinity.map((a) => ({
+        icao: a.icao, name: a.name, distNm: a.distNm,
+        primaryFreq: pickPrimary(a.frequencies), frequencies: a.frequencies,
+      }))
 
-  function toggleOtherNotam(id: string) {
-    setExpandedNotamIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
-      return next
-    })
-  }
+  const badgeCount = tab === 'freq' ? displayedFreqs.length : vicinity.length
 
   return (
     <>
@@ -156,9 +158,9 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body}>
             {/* ── Freq tab — unchanged from FrequencyPanel, no picker ──── */}
             {tab === 'freq' && (
-              nearby.length === 0 ? (
+              displayedFreqs.length === 0 ? (
                 <Text style={styles.muted}>No aerodromes with published frequencies nearby</Text>
-              ) : nearby.map((ad, i) => (
+              ) : displayedFreqs.map((ad, i) => (
                 <View key={ad.icao || ad.name} style={[styles.adCard, i > 0 && styles.adCardBorder]}>
                   <View style={styles.adHeader}>
                     <Text style={styles.adIcao}>{ad.icao}</Text>
@@ -230,62 +232,12 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
                 )}
 
                 {selected && tab === 'notam' && (
-                  <AerodromeNotamSection notams={notams} notamLoading={notamLoading} />
-                )}
-
-                {/* Non-aerodrome FIR-wide NOTAMs -- military notices, navaid
-                    outages, AIRAC amendments -- no single airport to pick. */}
-                {tab === 'notam' && (
-                  <View style={styles.otherNotams}>
-                    <Text style={styles.otherNotamsTitle}>
-                      OTHER NOTAMS{otherNotams.length > 0 ? ` (${otherNotams.length})` : ''}
-                    </Text>
-                    {hasRoute && (
-                      <Text style={styles.filterNote}>
-                        Filtered to within {DEFAULT_ROUTE_NOTAM_BUFFER_NM}nm of planned route
-                      </Text>
-                    )}
-                    {otherNotams.length === 0 && (
-                      <Text style={styles.muted}>No other active regional NOTAMs</Text>
-                    )}
-                    {otherNotams.map((n) => {
-                      // nmsId, not display id, for expand-state/React key --
-                      // see apps/api/src/notam.ts's NotamItem.nmsId comment.
-                      const expanded = expandedNotamIds.has(n.nmsId)
-                      const hasGeo = n.lat !== null && n.lon !== null
-                      const isMilitary = n.classification === 'MILITARY'
-                      return (
-                        <TouchableOpacity key={n.nmsId} style={styles.otherNotamRow} onPress={() => toggleOtherNotam(n.nmsId)}>
-                          <View style={styles.otherNotamHeader}>
-                            {n.icaoLocation && (
-                              <View style={styles.locBadge}>
-                                <Text style={styles.locBadgeTxt}>{n.icaoLocation}</Text>
-                              </View>
-                            )}
-                            {isMilitary && (
-                              <View style={styles.milBadge}>
-                                <Text style={styles.milBadgeTxt}>MIL</Text>
-                              </View>
-                            )}
-                            <Text style={styles.otherNotamId}>{n.id}</Text>
-                            {hasGeo && (
-                              <View style={styles.mapBadge}>
-                                <Text style={styles.mapBadgeTxt}>MAP</Text>
-                              </View>
-                            )}
-                            <Text style={styles.otherNotamPeriod} numberOfLines={1}>
-                              {fmtNotamDate(n.effective)}{n.expires ? ` \u2013 ${fmtNotamDate(n.expires)}` : ''}
-                            </Text>
-                            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.textFaint} />
-                          </View>
-                          {!expanded && (
-                            <Text style={styles.otherNotamPreview} numberOfLines={1}>{previewNotamText(n.text)}</Text>
-                          )}
-                          {expanded && <Text style={styles.otherNotamText}>{n.text}</Text>}
-                        </TouchableOpacity>
-                      )
-                    })}
-                  </View>
+                  <AerodromeNotamSection
+                    notams={notams}
+                    notamLoading={notamLoading}
+                    regionalNotams={regionalNotams}
+                    routeWaypoints={waypoints}
+                  />
                 )}
               </>
             )}
@@ -389,34 +341,5 @@ function makeStyles(theme: ScaledTheme) {
   pickerChipTxt: { color: theme.textPrimary, fontSize: theme.textXs, fontWeight: '800' as const, letterSpacing: 0.5 },
   pickerChipDist: { color: theme.textFaint, fontSize: 10 },
   pickerChipTxtActive: { color: '#fff' },
-
-  // Other (non-aerodrome) NOTAMs
-  otherNotams: { marginTop: theme.space3, gap: 2 },
-  otherNotamsTitle: { color: theme.textSecondary, fontSize: theme.textSm, fontWeight: '700' as const, letterSpacing: 0.8, marginBottom: theme.space2 },
-  filterNote: { color: theme.textFaint, fontSize: 10, fontStyle: 'italic' as const, marginBottom: theme.space2 },
-  otherNotamRow: { paddingVertical: theme.space2, borderTopWidth: 1, borderTopColor: theme.borderSubtle },
-  otherNotamHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 },
-  otherNotamId: { fontSize: theme.textSm, fontWeight: '700' as const, color: theme.textPrimary },
-  otherNotamPeriod: { fontSize: 10, color: theme.textFaint, flex: 1 },
-  mapBadge: {
-    borderWidth: 1, borderColor: 'rgba(230,73,128,0.4)', backgroundColor: 'rgba(230,73,128,0.1)',
-    borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1,
-  },
-  mapBadgeTxt: { fontSize: 9, fontWeight: '700' as const, color: '#e64980' },
-  locBadge: {
-    borderWidth: 1, borderColor: theme.borderSubtle, backgroundColor: theme.surfaceHover,
-    borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1,
-  },
-  locBadgeTxt: { fontSize: 9, fontWeight: '700' as const, color: theme.textSecondary },
-  milBadge: {
-    borderWidth: 1, borderColor: 'rgba(240,140,0,0.4)', backgroundColor: 'rgba(240,140,0,0.12)',
-    borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1,
-  },
-  milBadgeTxt: { fontSize: 9, fontWeight: '700' as const, color: '#f08c00' },
-  otherNotamPreview: { fontSize: 10, color: theme.textFaint, marginTop: 2 },
-  otherNotamText: {
-    fontSize: theme.textSm, color: theme.textSecondary, marginTop: 4, lineHeight: 16,
-    backgroundColor: theme.surfaceOverlay ?? theme.surfaceHover, borderRadius: 6, padding: 8,
-  },
  }
 }

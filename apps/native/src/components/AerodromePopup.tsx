@@ -20,6 +20,8 @@ import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../sty
 import { computeRunwayWind, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import { sunriseSunset, fmtSunTime } from '@open-vfr/shared/sunCalc'
 import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from '@open-vfr/shared/atcStatus'
+import type { NotamItem } from '@open-vfr/shared/fetchNotam'
+import type { RoutePoint } from '@open-vfr/shared/notamRouteFilter'
 import { useAerodromeBriefing } from '../hooks/useAerodromeBriefing'
 import { deriveWxDisplay } from '../utils/deriveWxDisplay'
 import { Section, FR_COLOR } from './AerodromeBriefShared'
@@ -156,9 +158,15 @@ interface Props {
    * rely on unmount alone — see the effect below).
    */
   onRunwayWind?: (icao: string, ends: RunwayWindEnd[]) => void
+  /** FIR-wide NOTAMs (unfiltered) + the planned route -- forwarded straight
+   *  to AerodromeNotamSection's own "Other NOTAMs" section (see its doc
+   *  comment). Undefined = section omitted, same as before this capability
+   *  existed. */
+  regionalNotams?: NotamItem[]
+  routeWaypoints?: RoutePoint[]
 }
 
-export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
+export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams, routeWaypoints }: Props) {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const runwayStyles = useThemedStyles(makeRunwayStyles)
@@ -403,7 +411,12 @@ export function AerodromePopup({ feature, onClose, onRunwayWind }: Props) {
 
           {/* ── NOTAMs tab ───────────────────────────────────────────── */}
           {activeTab === 'notam' && (
-            <AerodromeNotamSection notams={notams} notamLoading={notamLoading} />
+            <AerodromeNotamSection
+              notams={notams}
+              notamLoading={notamLoading}
+              regionalNotams={regionalNotams}
+              routeWaypoints={routeWaypoints}
+            />
           )}
         </ScrollView>
       </View>

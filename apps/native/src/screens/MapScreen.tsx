@@ -35,6 +35,7 @@ import { useRouteContext } from '../context/RouteContext'
 import { SnapPicker, type SnapCandidate } from '../components/SnapPicker'
 import { useTraffic }        from '../hooks/useTraffic'
 import { useRegionalNotams } from '../hooks/useRegionalNotams'
+import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { makeCirclePolygon } from '@open-vfr/shared/geoCircle'
 import { NotificationCenter } from '../components/NotificationCenter'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
@@ -101,6 +102,24 @@ function isAirspace(p: Record<string, unknown>) {
 function notamGeometryRing(geom: Feature['geometry']): number[][] | undefined {
   if (geom.type === 'Polygon') return geom.coordinates[0]
   if (geom.type === 'MultiPolygon') return geom.coordinates[0]?.[0]
+  return undefined
+}
+
+// Same ring extraction as web's MapView.tsx notamItemRing, but from a
+// NotamItem's OWN stored geometry (real polygon, or synthesized from
+// lat/lon/radiusNm) rather than a tapped map feature's queried geometry.
+// Needed because MapLibre Native, like web, tiles GeoJSON sources internally
+// even for a single feature spanning multiple internal tiles at the current
+// zoom -- a tap-query on notamGeometryRing(feature.geometry) above returns
+// that tile-local, boundary-clipped geometry (a partial wedge/arc instead of
+// the whole circle/polygon), not the full source feature.
+function notamItemRing(n: NotamItem): number[][] | undefined {
+  if (n.polygon) {
+    return n.polygon.type === 'Polygon' ? n.polygon.coordinates[0] : n.polygon.coordinates[0]?.[0]
+  }
+  if (n.lat !== null && n.lon !== null && n.radiusNm !== null && n.radiusNm > 0) {
+    return makeCirclePolygon(n.lat, n.lon, n.radiusNm).geometry.coordinates[0]
+  }
   return undefined
 }
 
@@ -453,7 +472,15 @@ export function MapScreen() {
   // Regional (FIR-wide) NOTAMs -- restricted/danger areas, navaid outages,
   // military notices not tied to any single airport. Mirrors web's
   // MapView.tsx useRegionalNotams()/notam-circles source.
-  const regionalNotams = useRegionalNotams(layers.notamCircles && authenticated && mapReady)
+  // Fetched independent of the 'notamCircles' layer-visibility toggle --
+  // that toggle only controls whether the on-map circles/polygons/points
+  // *draw* (gated below, on the three FeatureCollection memos fed to
+  // AviationMap's sources). The underlying data must keep flowing
+  // regardless, since AirspacePopup's inline NOTAM match, useNotamWarnings,
+  // and RegionalNotamsPanel/VicinityBriefSheet all depend on it -- none of
+  // those are the map layer itself, and hiding the on-map circles to
+  // declutter shouldn't also go blind to the same NOTAMs everywhere else.
+  const regionalNotams = useRegionalNotams(authenticated && mapReady)
   const routeWeatherStations = useWeatherAlongRoute(waypoints, mapReady)
   // Regular-interval wind samples -- fills the gaps between
   // routeWeatherStations' real-station markers, which only ever exist
@@ -462,7 +489,8 @@ export function MapScreen() {
   const routeWindSamples = useWindAlongRoute(waypoints, routeTotalNm, mapReady)
   const notamCirclesFC = useMemo(() => ({
     type: 'FeatureCollection' as const,
-    features: regionalNotams
+    // Map-drawing gate only -- see regionalNotams' own comment above.
+    features: !layers.notamCircles ? [] : regionalNotams
       .filter((n) => !n.polygon) // real polygon geometry (below) takes priority over the synthesized circle
       .filter((n) => n.lat !== null && n.lon !== null && n.radiusNm !== null && n.radiusNm > 0)
       .map((n) => {
@@ -479,14 +507,15 @@ export function MapScreen() {
         }
         return circle
       }),
-  }), [regionalNotams])
+  }), [regionalNotams, layers.notamCircles])
 
   // Point-only regional NOTAMs (coordinates present, no usable radius --
   // obstacle lights, single-point navaid faults). Rendered as clustered
   // pins -- see AviationMap.tsx's notamPointsFC prop / notam-points-src.
   const notamPointsFC = useMemo(() => ({
     type: 'FeatureCollection' as const,
-    features: regionalNotams
+    // Map-drawing gate only -- see regionalNotams' own comment above.
+    features: !layers.notamCircles ? [] : regionalNotams
       .filter((n) => !n.polygon)
       .filter((n) => n.lat !== null && n.lon !== null && (n.radiusNm === null || n.radiusNm <= 0))
       .map((n) => ({
@@ -502,7 +531,7 @@ export function MapScreen() {
           icaoLocation:   n.icaoLocation,
         },
       })),
-  }), [regionalNotams])
+  }), [regionalNotams, layers.notamCircles])
 
   // Real-geometry regional NOTAM polygons -- see AviationMap.tsx's
   // notamPolygonsFC prop / notam-polygons-src, mirrors web's MapView.tsx
@@ -513,7 +542,8 @@ export function MapScreen() {
   // cross-border military exercise box, not a single point+radius circle.
   const notamPolygonsFC = useMemo(() => ({
     type: 'FeatureCollection' as const,
-    features: regionalNotams
+    // Map-drawing gate only -- see regionalNotams' own comment above.
+    features: !layers.notamCircles ? [] : regionalNotams
       .filter((n) => n.polygon !== null)
       .map((n) => ({
         type: 'Feature' as const,
@@ -528,7 +558,7 @@ export function MapScreen() {
           icaoLocation:   n.icaoLocation,
         },
       })),
-  }), [regionalNotams])
+  }), [regionalNotams, layers.notamCircles])
 
   const [aerodromeFeature, setAerodromeFeature] = useState<AerodromeFeatureProps | null>(null)
 
@@ -660,10 +690,19 @@ export function MapScreen() {
       .filter(f => (f.properties ?? {}).notamId)
       .map(f => {
         const p = f.properties ?? {}
+        const nmsId = String(p.nmsId ?? p.notamId ?? '')
+        // Prefer the FULL, un-clipped NotamItem already held in
+        // `regionalNotams` (same list useRegionalNotams() polls) over the
+        // tapped feature's own queried geometry -- see notamItemRing's doc
+        // comment above for why the queried geometry can be a partial
+        // tile-clipped wedge/arc instead of the whole shape. Only fall back
+        // to the queried geometry if this NOTAM isn't in the currently-
+        // loaded regional list for some reason.
+        const fullItem = regionalNotams.find(n => n.nmsId === nmsId)
         return {
-          notam: {
+          notam: fullItem ?? {
             id:             String(p.notamId ?? ''),
-            nmsId:          String(p.nmsId ?? p.notamId ?? ''),
+            nmsId,
             text:           String(p.text ?? ''),
             effective:      (p.effective as string | null | undefined) ?? null,
             expires:        (p.expires as string | null | undefined) ?? null,
@@ -674,7 +713,7 @@ export function MapScreen() {
             lon:            null,
             radiusNm:       (p.radiusNm as number | null | undefined) ?? null,
           },
-          coords: notamGeometryRing(f.geometry),
+          coords: fullItem ? notamItemRing(fullItem) : notamGeometryRing(f.geometry),
         }
       })
 
@@ -775,7 +814,7 @@ export function MapScreen() {
       setAirspaceFeatures(airspaces)
       setRegionalNotamHits(notamHits)
     }
-  }, [addWaypoint])
+  }, [addWaypoint, regionalNotams])
 
   const handleLegTap = useCallback((afterIndex: number, pos: { lat: number; lng: number }) => {
     insertWaypoint(afterIndex, { lat: pos.lat, lng: pos.lng })
@@ -1366,7 +1405,13 @@ export function MapScreen() {
         />
       )}
 
-      <AerodromePopup feature={aerodromeFeature} onClose={() => setAerodromeFeature(null)} onRunwayWind={handleRunwayWind} />
+      <AerodromePopup
+        feature={aerodromeFeature}
+        onClose={() => setAerodromeFeature(null)}
+        onRunwayWind={handleRunwayWind}
+        regionalNotams={regionalNotams}
+        routeWaypoints={waypoints}
+      />
       <AirspacePopup
         features={airspaceFeatures}
         regionalNotams={regionalNotamHits}
