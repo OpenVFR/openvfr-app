@@ -700,7 +700,7 @@ export function MapScreen() {
         // loaded regional list for some reason.
         const fullItem = regionalNotams.find(n => n.nmsId === nmsId)
         return {
-          notam: fullItem ?? {
+          notams: [fullItem ?? {
             id:             String(p.notamId ?? ''),
             nmsId,
             text:           String(p.text ?? ''),
@@ -712,7 +712,7 @@ export function MapScreen() {
             lat:            null,
             lon:            null,
             radiusNm:       (p.radiusNm as number | null | undefined) ?? null,
-          },
+          }],
           coords: fullItem ? notamItemRing(fullItem) : notamGeometryRing(f.geometry),
         }
       })

@@ -13,6 +13,7 @@ import Svg, { Path, Rect, Line } from 'react-native-svg'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
+import { extractDesignators } from '@open-vfr/shared/notamDesignator'
 
 export interface AirspaceFeatureProps {
   name:       string
@@ -33,9 +34,45 @@ export interface AirspaceFeatureProps {
  *  AirspacePopup.tsx RegionalNotamHit exactly (see that file's own doc
  *  comment). Undefined coords (point-only NOTAMs) falls back to
  *  PolygonThumb's plain-square placeholder. */
+// `notams` is a group, not always a single NOTAM -- mirrors web's
+// RegionalNotamHit exactly (see that file's own comment): a temporary area
+// with no charted polygon yet commonly gets re-published as several NOTAM
+// numbers (recurring daily activation, amendments), all referencing the
+// same designator and landing on the same ad-hoc circle.
 export interface RegionalNotamHit {
-  notam:   NotamItem
+  notams:  NotamItem[]
   coords?: number[][]
+}
+
+// Groups ad-hoc hits sharing a designator code into one card -- mirrors
+// web's AirspacePopup.tsx groupRegionalNotamHits() exactly, see that
+// function's own comment for the full rationale.
+function groupRegionalNotamHits(hits: RegionalNotamHit[]): RegionalNotamHit[] {
+  const byKey = new Map<string, RegionalNotamHit>()
+  const order: string[] = []
+  for (const hit of hits) {
+    for (const notam of hit.notams) {
+      // Designator match first, else the NOTAM's own lat/lon/radiusNm
+      // (rounded) -- mirrors web's AirspacePopup.tsx exactly, see that
+      // file's own comment: confirmed live, several distinct single-
+      // airport NOTAMs for the SAME foreign aerodrome (pulled in via the
+      // cross-border geometry-inclusion path) share exact ARP coordinates
+      // but reference no designator and have a null icaoLocation upstream.
+      const designators = extractDesignators(notam.text)
+      const geoKey = (notam.lat !== null && notam.lon !== null)
+        ? `geo:${notam.lat.toFixed(3)}|${notam.lon.toFixed(3)}|${notam.radiusNm ?? ''}`
+        : null
+      const key = designators[0] ?? geoKey ?? `nmsId:${notam.nmsId}`
+      let group = byKey.get(key)
+      if (!group) {
+        group = { notams: [], coords: hit.coords }
+        byKey.set(key, group)
+        order.push(key)
+      }
+      if (!group.notams.some((n) => n.nmsId === notam.nmsId)) group.notams.push(notam)
+    }
+  }
+  return order.map((key) => byKey.get(key)!)
 }
 
 interface Props {
@@ -308,13 +345,18 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
 
   // Dedup regional NOTAMs by nmsId (NOT the display id -- different issuing
   // authorities reuse the same published NOTAM number, see
-  // apps/api/src/notam.ts's NotamItem.nmsId comment), mirrors web exactly.
+  // apps/api/src/notam.ts's NotamItem.nmsId comment), THEN group same-
+  // designator hits into one card -- mirrors web exactly, see
+  // groupRegionalNotamHits()'s own comment.
   const seenNotamIds = new Set<string>()
-  const dedupedNotams = regionalNotams.filter((h) => {
-    if (seenNotamIds.has(h.notam.nmsId)) return false
-    seenNotamIds.add(h.notam.nmsId)
-    return true
-  })
+  const dedupedNotams = groupRegionalNotamHits(regionalNotams).map((h) => ({
+    ...h,
+    notams: h.notams.filter((n) => {
+      if (seenNotamIds.has(n.nmsId)) return false
+      seenNotamIds.add(n.nmsId)
+      return true
+    }),
+  })).filter((h) => h.notams.length > 0)
 
   if (features.length === 0 && dedupedNotams.length === 0) return null
   const sorted = sortByLower(features)
@@ -348,7 +390,8 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
           <AltitudeStrip list={sorted} height={rowsHeight} />
           <View style={styles.rowsCol} onLayout={(e) => setRowsHeight(e.nativeEvent.layout.height)}>
           {dedupedNotams.map((hit, i) => {
-            const n     = hit.notam
+            const group = hit.notams
+            const n     = group[0]
             const key   = `notam-${i}`
             const isOpen = expandedKeys.has(key)
             return (
@@ -369,6 +412,11 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
                       <View style={[styles.badge, { borderColor: NOTAM_COLOR }]}>
                         <Text style={[styles.badgeTxt, { color: NOTAM_COLOR }]}>NOTAM</Text>
                       </View>
+                      {group.length > 1 && (
+                        <View style={[styles.badge, { borderColor: NOTAM_COLOR }]}>
+                          <Text style={[styles.badgeTxt, { color: NOTAM_COLOR }]}>{group.length}</Text>
+                        </View>
+                      )}
                       {(n.effective || n.expires) && (
                         <View style={styles.altBadge}>
                           <Text style={styles.altTxt} numberOfLines={1}>
@@ -377,13 +425,24 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
                         </View>
                       )}
                     </View>
-                    <Text style={styles.name} numberOfLines={1}>{n.id}</Text>
+                    <Text style={styles.name} numberOfLines={1}>
+                      {n.id}{group.length > 1 ? ` +${group.length - 1} more` : ''}
+                    </Text>
                   </View>
                   <Text style={[styles.chevron, isOpen && styles.chevronOpen]}>›</Text>
                 </TouchableOpacity>
                 {isOpen && (
                   <View style={styles.expandedContent}>
-                    <Text style={styles.notamText}>{n.text}</Text>
+                    {group.map((gn) => (
+                      <View key={gn.nmsId} style={{ marginBottom: 6 }}>
+                        {group.length > 1 && (
+                          <Text style={[styles.notamText, { fontWeight: '700' }]}>
+                            NOTAM {gn.id}{gn.effective ? ` · ${fmtNotamDate(gn.effective)}` : ''}{gn.expires ? ` – ${fmtNotamDate(gn.expires)}` : ''}
+                          </Text>
+                        )}
+                        <Text style={styles.notamText}>{gn.text}</Text>
+                      </View>
+                    ))}
                   </View>
                 )}
               </View>

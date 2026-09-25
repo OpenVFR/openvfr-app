@@ -39,6 +39,7 @@
     "./fetchWithRetry": "./src/fetchWithRetry.ts",
     "./geoCircle": "./src/geoCircle.ts",
     "./notamRouteFilter": "./src/notamRouteFilter.ts",
+    "./notamDesignator": "./src/notamDesignator.ts",
     "./atcStatus": "./src/atcStatus.ts",
     "./wxFormat": "./src/wxFormat.ts",
     "./wxStations": "./src/wxStations.ts",

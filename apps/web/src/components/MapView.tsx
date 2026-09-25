@@ -419,7 +419,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const openPopupAt = (lng: number, lat: number) => {
       map.once('moveend', () => {
         const pt = map.project([lng, lat])
-        setActivePopup({ kind: 'airspace', features: [], regionalNotams: [{ notam, coords: ring }], x: pt.x, y: pt.y })
+        setActivePopup({ kind: 'airspace', features: [], regionalNotams: [{ notams: [notam], coords: ring }], x: pt.x, y: pt.y })
       })
     }
     if (ring) {
@@ -2448,7 +2448,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             kind: 'airspace',
             features: [],
             regionalNotams: [{
-              notam: {
+              notams: [{
                 id:             String(p.notamId ?? ''),
                 nmsId,
                 text:           String(p.text ?? ''),
@@ -2460,7 +2460,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
                 lat:            null,
                 lon:            null,
                 radiusNm:       null,
-              },
+              }],
               coords: undefined,
             }],
             x: e.point.x,
@@ -2637,7 +2637,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           radiusNm:       (p.radiusNm as number | null) ?? null,
         }
         regionalNotamHits.push({
-          notam,
+          notams: [notam],
           coords: fullItem ? notamItemRing(fullItem) : notamGeometryRing(hit.geometry),
         })
       }

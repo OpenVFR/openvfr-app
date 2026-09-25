@@ -2,6 +2,7 @@ import { useState } from 'react'
 import css from './AirspacePopup.module.css'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
+import { extractDesignators } from '@open-vfr/shared/notamDesignator'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -32,10 +33,69 @@ export interface AirspaceFeature {
  *  already matching what's drawn on the map, so this is never a separate
  *  re-derivation). Undefined coords (point-only NOTAMs, no area extent)
  *  falls back to PolygonThumb's plain-square placeholder, same as an
- *  airspace feature with no resolved geometry. */
+ *  airspace feature with no resolved geometry.
+ *
+ *  `notams` is a group, not always a single NOTAM: a temporary area with
+ *  no charted polygon yet (see useNotamAirspaceMatch.ts's own caveat --
+ *  that hook only groups matches against STATIC charted areas) commonly
+ *  gets re-published as several NOTAM numbers over its lifetime (e.g. one
+ *  per day of a recurring military exercise, or an amendment superseding
+ *  the previous number) that all reference the same designator and land
+ *  on the exact same ad-hoc circle. groupRegionalNotamHits() below merges
+ *  those into one card instead of one per NOTAM number -- see that
+ *  function's own comment. */
 export interface RegionalNotamHit {
-  notam:  NotamItem
+  notams: NotamItem[]
   coords?: number[][]
+}
+
+/** Groups ad-hoc regional-NOTAM hits that share a designator code (e.g.
+ *  "ESR374", extracted from free text -- same regex as
+ *  useNotamAirspaceMatch.ts, shared via notamDesignator.ts) into a single
+ *  card. Unlike that hook, this runs on EVERY ad-hoc hit reaching this
+ *  popup (not just ones matching a charted polygon) -- these are exactly
+ *  the temporary-area NOTAMs that hook's own doc comment says won't have
+ *  a charted polygon to match against, which is why they piled up here
+ *  one-card-per-NOTAM-number instead of being deduplicated already.
+ *  Hits with no extractable designator (free-text administrative notices,
+ *  genuinely distinct areas) stay one card each, keyed by nmsId so they
+ *  never accidentally merge with each other. First-seen shape (`coords`)
+ *  wins for the group's thumbnail -- they're the same real-world area, so
+ *  any one of the group's shapes is representative. */
+function groupRegionalNotamHits(hits: RegionalNotamHit[]): RegionalNotamHit[] {
+  const byKey = new Map<string, RegionalNotamHit>()
+  const order: string[] = []
+  for (const hit of hits) {
+    for (const notam of hit.notams) {
+      // Designator match first (temporary restricted/danger areas -- see
+      // this function's own doc comment). Falls back to the NOTAM's own
+      // lat/lon/radiusNm (rounded -- floating-point round-trip through the
+      // API, not real position variance) when no designator is found:
+      // confirmed live, several distinct single-airport NOTAMs (e.g.
+      // different runway-closure notices, a docking-guidance-system caveat)
+      // for the SAME foreign aerodrome -- pulled in via the cross-border
+      // geometry-inclusion path, see notam.ts's isNearCoverageArea() -- all
+      // share the exact same ARP coordinates+radius but reference no
+      // designator at all in free text, and NMS-API's icaoLocation was null
+      // for every one of them (an upstream data gap, not something this
+      // client can fix) so that can't be the grouping key either. Last
+      // resort is nmsId (never merges with anything) for genuinely
+      // positionless administrative text-only NOTAMs.
+      const designators = extractDesignators(notam.text)
+      const geoKey = (notam.lat !== null && notam.lon !== null)
+        ? `geo:${notam.lat.toFixed(3)}|${notam.lon.toFixed(3)}|${notam.radiusNm ?? ''}`
+        : null
+      const key = designators[0] ?? geoKey ?? `nmsId:${notam.nmsId}`
+      let group = byKey.get(key)
+      if (!group) {
+        group = { notams: [], coords: hit.coords }
+        byKey.set(key, group)
+        order.push(key)
+      }
+      if (!group.notams.some((n) => n.nmsId === notam.nmsId)) group.notams.push(notam)
+    }
+  }
+  return order.map((key) => byKey.get(key)!)
 }
 
 type RowItem =
@@ -234,13 +294,19 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
   // authorities reuse the same published NOTAM number, see
   // apps/api/src/notam.ts's NotamItem.nmsId comment) in case the same
   // ad-hoc area was somehow queried twice (e.g. a circle spanning a tile
-  // boundary).
+  // boundary), THEN group same-designator hits into one card -- see
+  // groupRegionalNotamHits()'s own comment for why this is necessary
+  // (recurring/amended NOTAM numbers for one temporary area with no
+  // charted polygon yet, otherwise one card each).
   const seenNotamIds = new Set<string>()
-  const dedupedNotams = regionalNotams.filter((h) => {
-    if (seenNotamIds.has(h.notam.nmsId)) return false
-    seenNotamIds.add(h.notam.nmsId)
-    return true
-  })
+  const dedupedNotams = groupRegionalNotamHits(regionalNotams).map((h) => ({
+    ...h,
+    notams: h.notams.filter((n) => {
+      if (seenNotamIds.has(n.nmsId)) return false
+      seenNotamIds.add(n.nmsId)
+      return true
+    }),
+  })).filter((h) => h.notams.length > 0)
 
   // Insert gap markers where uncontrolled airspace exists between adjacent layers.
   // Regional NOTAMs shown first, matching a reference NOTAM app's own
@@ -330,7 +396,13 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
             }
 
             if (item.kind === 'notam') {
-              const n = item.hit.notam
+              // First (soonest-published) NOTAM in the group drives the
+              // header id/dates -- see groupRegionalNotamHits(). A group of
+              // >1 shows every member's own dates+text when expanded, most-
+              // recent id last, matching how a pilot reads an amendment
+              // chain (superseded -> current).
+              const group = item.hit.notams
+              const n = group[0]
               const notamColor = '#e64980'
               const isOpen = expanded.has(i)
               return (
@@ -348,6 +420,11 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
                     <div className={css.rowContent}>
                       <div className={css.bandTop}>
                         <span className={css.typeTag} style={{ color: '#e64980', borderColor: 'rgba(230,73,128,0.4)' }}>NOTAM</span>
+                        {group.length > 1 && (
+                          <span className={css.classBadge} style={{ color: notamColor, background: withAlpha(notamColor, 0.13), borderColor: withAlpha(notamColor, 0.33) }}>
+                            {group.length}
+                          </span>
+                        )}
                         {(n.effective || n.expires) && (
                           <span className={css.altBadge}>
                             {fmtNotamDate(n.effective) ?? '—'} – {fmtNotamDate(n.expires) ?? '—'}
@@ -362,13 +439,22 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
                           {isOpen ? '▲' : '▼'}
                         </button>
                       </div>
-                      <div className={css.name}>{n.id}</div>
+                      <div className={css.name}>
+                        {n.id}{group.length > 1 ? ` +${group.length - 1} more` : ''}
+                      </div>
                       {isOpen && (
                         <div
                           className={css.remarks}
-                          style={{ borderColor: '#e64980', background: 'rgba(230,73,128,0.1)', whiteSpace: 'pre-line' }}
+                          style={{ borderColor: '#e64980', background: 'rgba(230,73,128,0.1)' }}
                         >
-                          {n.text}
+                          {group.map((gn, gi) => (
+                            <div key={gn.nmsId} style={{ marginBottom: gi < group.length - 1 ? 6 : 0, whiteSpace: 'pre-line' }}>
+                              {group.length > 1 && (
+                                <div><strong>NOTAM {gn.id}</strong>{gn.effective && <span> · {fmtNotamDate(gn.effective)}</span>}{gn.expires && <span> – {fmtNotamDate(gn.expires)}</span>}</div>
+                              )}
+                              {gn.text}
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>

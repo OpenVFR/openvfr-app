@@ -22,16 +22,9 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
+import { extractDesignators } from '@open-vfr/shared/notamDesignator'
 import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
-
-// Matches designators like ESD873, ESR448, ESR5 (1-4 digits) -- Swedish OFMX
-// naming convention: 2-letter country prefix + R(estricted)/D(anger) + number.
-const DESIGNATOR_RE = /\b([A-Z]{2}[RD]\d{1,4})\b/g
-
-function extractDesignators(text: string): string[] {
-  return [...new Set(text.match(DESIGNATOR_RE) ?? [])]
-}
 
 interface AirspaceIndexEntry {
   name:       string   // full properties.name, e.g. "ESD873 OPTAND"
