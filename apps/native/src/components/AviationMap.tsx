@@ -149,6 +149,11 @@ export type AviationMapProps = {
    *  circle, heading arrow) without moving the camera. Location permission
    *  must already be granted by the parent. */
   showOwnPosition?: boolean
+  /** Draw the aircraft (ownship) icon at gpsPosition. False while on the
+   *  ground with location Off -- GPS may still be running for proximity
+   *  features, but the map shouldn't show a position the pilot turned off.
+   *  gpsPosition still drives camera follow either way. */
+  showAircraft?: boolean
   mapOrientation?: 'north' | 'track'
   autoZoom?: boolean
   /** Optional initial center — fly to this on first load (home airfield) */
@@ -726,6 +731,7 @@ export function AviationMap({
   terrainColorRefAltFt = 2000,
   followGps = false,
   showOwnPosition = false,
+  showAircraft = true,
   onUserPan,
   mapOrientation = 'north',
   autoZoom = true,
@@ -1595,7 +1601,7 @@ export function AviationMap({
   // stays planted at the stale pre-drag midpoint, showing as a stray extra
   // marker near (not on) the actively-dragged waypoint.
   const legMidpointWps = withPreview(waypoints, dragPreview)
-  const aircraftFC  = gpsPosition ? aircraftGeoJSON(gpsPosition) : null
+  const aircraftFC  = gpsPosition && showAircraft ? aircraftGeoJSON(gpsPosition) : null
 
   // Trajectory: main line + 3 perpendicular tick marks (matches web)
   const trajectoryFC: FeatureCollection = useMemo(() => {

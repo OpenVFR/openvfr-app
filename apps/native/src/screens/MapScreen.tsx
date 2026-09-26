@@ -1143,7 +1143,11 @@ export function MapScreen() {
           trajectoryMode={settings.trajectoryMode ?? 'time'}
           followGps={followGps}
           onUserPan={() => { setFollowGps(false); setUserPanNonce(n => n + 1) }}
-          showOwnPosition={locMode === 'passive' && flightModeStatus === 'off'}
+          showOwnPosition={locMode === 'passive' && !flyingActive}
+          // Aircraft icon only in flight (or with a sim/external feed); on
+          // the ground the locate button's Passive dot is the one position
+          // marker, and Off shows none.
+          showAircraft={flyingActive}
           mapOrientation={mapOrientation}
           onFeatureTap={handleFeatureTap as (features: Feature[], lngLat: [number,number]) => void}
           onLongPress={handleLongPress}

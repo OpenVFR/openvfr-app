@@ -34,14 +34,13 @@ import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../sty
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
-import { filterAndSortNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM } from '@open-vfr/shared/notamRouteFilter'
 import type { NearbyAerodrome } from '../hooks/useNearbyFrequencies'
 import { pickPrimary } from '../hooks/useNearbyFrequencies'
 import { useVicinityAerodromes } from '../hooks/useVicinityAerodromes'
 import { useAerodromeBriefing } from '../hooks/useAerodromeBriefing'
 import { FR_COLOR } from './AerodromeBriefShared'
 import AerodromeWxSection from './AerodromeWxSection'
-import AerodromeNotamSection from './AerodromeNotamSection'
+import AerodromeNotamSection, { useNotamLists } from './AerodromeNotamSection'
 import { decodeMetar } from '@open-vfr/shared/fetchWx'
 
 const SVC_COLOR: Record<string, string> = {
@@ -95,15 +94,14 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wxLoading, selected?.icao])
 
+  // Same lists the NOTAMs tab renders (route/vicinity scope, VFR-only, FIR
+  // relevance) so the tab badge counts what the tab actually shows.
   const hasRoute = waypoints.length > 0
-  // Filtered + sorted by along-route position (flight sequence, departure
-  // -> destination) once a route exists -- previously unsorted (whatever
-  // order the API happened to return). Shared with web's RegionalNotamsPanel/
-  // AerodromePopup.tsx/AerodromeNotamSection.tsx rather than each
-  // re-deriving the same comparator.
-  const otherNotams = hasRoute
-    ? filterAndSortNotamsNearRoute(regionalNotams, waypoints, DEFAULT_ROUTE_NOTAM_BUFFER_NM)
-    : regionalNotams
+  const notamLists = useNotamLists({
+    notams, regionalNotams, routeWaypoints: waypoints,
+    centre: selected ? { lat: selected.lat, lng: selected.lng } : undefined,
+    icao: selected?.icao,
+  })
 
   // Tab-dot colour always reflects the real METAR's flight rule when one
   // exists, regardless of which Wx tab (METAR vs Weather station) happens
@@ -151,7 +149,7 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
             />
             <TabBtn
               label="NOTAMs" active={tab === 'notam'} onPress={() => setTab('notam')}
-              count={notams.length + otherNotams.length > 0 ? notams.length + otherNotams.length : undefined}
+              count={notamLists.visibleCount > 0 ? notamLists.visibleCount : undefined}
             />
           </View>
 

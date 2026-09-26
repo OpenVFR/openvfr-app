@@ -26,7 +26,7 @@ import { useAerodromeBriefing } from '../hooks/useAerodromeBriefing'
 import { deriveWxDisplay } from '../utils/deriveWxDisplay'
 import { Section, FR_COLOR } from './AerodromeBriefShared'
 import AerodromeWxSection from './AerodromeWxSection'
-import AerodromeNotamSection from './AerodromeNotamSection'
+import AerodromeNotamSection, { useNotamLists } from './AerodromeNotamSection'
 import { buildAerodromeLink } from '@open-vfr/shared/deepLink'
 import { WEB_BASE } from '../config'
 
@@ -187,6 +187,8 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
 
   const { wx, wxLoading, wxSourceName, ambientWx, notams, notamLoading } =
     useAerodromeBriefing(feature?.icao ?? null, feature?.lat, feature?.lng)
+  // Badge counts what the NOTAMs tab lists (after the VFR-only filter).
+  const ownNotamCount = useNotamLists({ notams }).notams.length
 
   useEffect(() => {
     setActiveTab('info')
@@ -293,7 +295,7 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
             label="NOTAMs"
             active={activeTab === 'notam'}
             onPress={() => setActiveTab('notam')}
-            count={!notamLoading && notams.length > 0 ? notams.length : undefined}
+            count={!notamLoading && ownNotamCount > 0 ? ownNotamCount : undefined}
           />
         </View>
 

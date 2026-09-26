@@ -682,8 +682,10 @@ export default function AerodromePopup({
             onClick={() => setActiveTab('notam')}
           >
             NOTAMs
-            {!notamLoading && notams.length > 0 && (
-              <span className={css.notamCount}>{notams.length}</span>
+            {/* Counts what the tab will actually list (after the VFR-only
+                filter), so the badge never promises NOTAMs the tab hides. */}
+            {!notamLoading && ownRel.kept.length > 0 && (
+              <span className={css.notamCount}>{ownRel.kept.length}</span>
             )}
           </button>
         </div>

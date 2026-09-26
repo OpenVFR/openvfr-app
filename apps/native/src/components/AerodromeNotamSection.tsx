@@ -58,6 +58,31 @@ function previewText(text: string): string {
   return flat.length > PREVIEW_LEN ? `${flat.slice(0, PREVIEW_LEN)}\u2026` : flat
 }
 
+/** The exact lists this section renders (route/vicinity scope + VFR-only +
+ *  FIR relevance). Exported so a tab badge can count what the tab will
+ *  actually show instead of the raw, unfiltered totals. */
+export function useNotamLists({ notams: allNotams, regionalNotams, routeWaypoints, centre, icao }: Pick<Props, 'notams' | 'regionalNotams' | 'routeWaypoints' | 'centre' | 'icao'>) {
+  const hasRoute = !!routeWaypoints && routeWaypoints.length > 0
+  const otherNotamsAll = regionalNotams === undefined
+    ? null
+    : hasRoute
+      ? filterAndSortNotamsNearRoute(regionalNotams, routeWaypoints!, DEFAULT_ROUTE_NOTAM_BUFFER_NM)
+      // No route: the aerodrome's vicinity rather than the whole FIR-wide
+      // list (same scope as web). Without a known centre, unchanged.
+      : centre
+        ? filterAndSortNotamsNearRoute(regionalNotams, [centre], DEFAULT_VICINITY_NOTAM_NM)
+        : regionalNotams
+
+  const { vfrOnly } = useNotamPrefs()
+  const firPrefixes = relevantFirPrefixes([...(centre ? [centre] : []), ...(routeWaypoints ?? [])], icao ? [icao] : [])
+  const ownRel = applyNotamRelevance(allNotams, { vfrOnly, firPrefixes: new Set() })
+  const notams = ownRel.kept
+  const otherRel = otherNotamsAll === null ? null : applyNotamRelevance(otherNotamsAll, { vfrOnly, firPrefixes })
+  const otherNotams = otherRel ? otherRel.kept : null
+  const visibleCount = notams.length + (otherNotams?.length ?? 0)
+  return { ownRel, otherRel, notams, otherNotams, visibleCount }
+}
+
 export default function AerodromeNotamSection({ notams: allNotams, notamLoading, regionalNotams, routeWaypoints, centre, icao }: Props) {
   const styles = useThemedStyles(makeStyles)
   const [expandedNotams, setExpandedNotams] = useState<Set<string>>(new Set())
@@ -71,23 +96,9 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
     })
   }
 
+  const { ownRel, otherRel, notams, otherNotams } = useNotamLists({ notams: allNotams, regionalNotams, routeWaypoints, centre, icao })
+  const { textView, setVfrOnly } = useNotamPrefs()
   const hasRoute = !!routeWaypoints && routeWaypoints.length > 0
-  const otherNotamsAll = regionalNotams === undefined
-    ? null
-    : hasRoute
-      ? filterAndSortNotamsNearRoute(regionalNotams, routeWaypoints!, DEFAULT_ROUTE_NOTAM_BUFFER_NM)
-      // No route: the aerodrome's vicinity rather than the whole FIR-wide
-      // list (same scope as web). Without a known centre, unchanged.
-      : centre
-        ? filterAndSortNotamsNearRoute(regionalNotams, [centre], DEFAULT_VICINITY_NOTAM_NM)
-        : regionalNotams
-
-  const { textView, vfrOnly, setVfrOnly } = useNotamPrefs()
-  const firPrefixes = relevantFirPrefixes([...(centre ? [centre] : []), ...(routeWaypoints ?? [])], icao ? [icao] : [])
-  const ownRel = applyNotamRelevance(allNotams, { vfrOnly, firPrefixes: new Set() })
-  const notams = ownRel.kept
-  const otherRel = otherNotamsAll === null ? null : applyNotamRelevance(otherNotamsAll, { vfrOnly, firPrefixes })
-  const otherNotams = otherRel ? otherRel.kept : null
   const ownHidden = relevanceHiddenNote(ownRel)
   const otherHidden = otherRel ? relevanceHiddenNote(otherRel) : null
   const hiddenRow = (note: string | null, ifr: number) => note && (
@@ -116,7 +127,7 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
                 <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}</Text>
               )}
               {!expanded && <Text style={styles.notamPreview} numberOfLines={1}>{previewText(n.text)}</Text>}
-              {expanded && <Text style={styles.notamText}>{notamText(n, textView)}</Text>}
+              {expanded && <Text style={[styles.notamText, textView === 'raw' && styles.rawText]}>{notamText(n, textView)}</Text>}
             </TouchableOpacity>
           )
         })}
@@ -177,7 +188,7 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
                 {!expanded && (
                   <Text style={styles.otherNotamPreview} numberOfLines={1}>{previewText(n.text)}</Text>
                 )}
-                {expanded && <Text style={styles.otherNotamText}>{notamText(n, textView)}</Text>}
+                {expanded && <Text style={[styles.otherNotamText, textView === 'raw' && styles.rawText]}>{notamText(n, textView)}</Text>}
               </TouchableOpacity>
             )
           })}
@@ -210,6 +221,8 @@ function makeStyles(theme: ScaledTheme) {
     color:    theme.textSecondary,
     fontSize: theme.textXs,
   },
+  // Raw ICAO layout lines up field letters -- needs a fixed-width face.
+  rawText: { fontFamily: 'monospace' },
   notamText: {
     color:    theme.textSecondary,
     fontSize: theme.textSm,

@@ -469,7 +469,7 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
                             {notamTitle(gn)}{gn.effective ? ` · ${fmtNotamDate(gn.effective)}` : ''}{gn.expires ? ` – ${fmtNotamDate(gn.expires)}` : ''}
                           </Text>
                         )}
-                        <Text style={styles.notamText}>{notamText(gn, textView)}</Text>
+                        <Text style={[styles.notamText, textView === 'raw' && { fontFamily: 'monospace' }]}>{notamText(gn, textView)}</Text>
                       </View>
                     ))}
                   </View>
