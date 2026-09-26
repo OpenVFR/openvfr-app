@@ -95,6 +95,12 @@ interface Props {
    *  matching what's already hidden on the map. Unfiltered if omitted. */
   airspaceCeilingFt?: number
   title?: string
+  /** Optional content for the drag-handle row, left / right of the grip
+   *  (right slot sits before the PROJ toggle). Lets a caller show a compact
+   *  readout (e.g. Map Ruler distance/track) inside the panel's own chrome
+   *  instead of as a separate floating overlay. */
+  headerStart?: React.ReactNode
+  headerEnd?: React.ReactNode
   aircraftProfile?: AircraftProfileDocType
   currentDistNm?: number
   currentAltFt?: number
@@ -344,7 +350,7 @@ function windLabelPlacement(cx: number, halfW: number, text: string, fontSize: n
 // ---------------------------------------------------------------------------
 
 export function VerticalProfile({
-  waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, title, aircraftProfile,
+  waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, title, headerStart, headerEnd, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
   crossTrackNm, weatherStations, windSamples,
   height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm,
@@ -789,15 +795,19 @@ export function VerticalProfile({
           is absolutely centred so the PROJ toggle can sit at the right edge
           of the same row without fighting it for layout space. */}
       <View style={styles.dragHandle} {...panResponder.panHandlers}>
+        <View style={styles.headerSide}>{headerStart}</View>
         <View style={styles.dragGrip} />
-        {perf && (
-          <TouchableOpacity
-            style={[styles.projBtn, showProjection && styles.projBtnOn]}
-            onPress={() => setShowProjection(v => !v)}
-          >
-            <Text style={[styles.projBtnTxt, showProjection && styles.projBtnTxtOn]}>PROJ</Text>
-          </TouchableOpacity>
-        )}
+        <View style={[styles.headerSide, styles.headerSideEnd]}>
+          {headerEnd}
+          {perf && (
+            <TouchableOpacity
+              style={[styles.projBtn, showProjection && styles.projBtnOn]}
+              onPress={() => setShowProjection(v => !v)}
+            >
+              <Text style={[styles.projBtnTxt, showProjection && styles.projBtnTxtOn]}>PROJ</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
       {/* ── Chart ──────────────────────────────────────────────────── */}
       {!collapsed && (
@@ -1273,6 +1283,19 @@ function makeStyles(theme: ScaledTheme) {
     justifyContent:  'center',
     backgroundColor: theme.surfaceOverlay,
   },
+  // Equal flex on both sides keeps the grip centred regardless of how much
+  // content either slot holds.
+  headerSide: {
+    flex:              1,
+    flexDirection:     'row',
+    alignItems:        'center',
+    paddingHorizontal: theme.space2,
+    gap:               theme.space2,
+    overflow:          'hidden',
+  },
+  headerSideEnd: {
+    justifyContent: 'flex-end',
+  },
   dragGrip: {
     width:           48,
     height:          5,
@@ -1280,8 +1303,6 @@ function makeStyles(theme: ScaledTheme) {
     backgroundColor: theme.textMuted,
   },
   projBtn: {
-    position:          'absolute',
-    right:             theme.space2,
     borderWidth:       1,
     borderColor:       theme.borderDefault,
     borderRadius:      theme.radiusSm,

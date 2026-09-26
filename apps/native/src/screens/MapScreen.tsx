@@ -53,7 +53,7 @@ import { useUserWaypointContext } from '../context/UserWaypointContext'
 import { useHomeAirfield }      from '../hooks/useHomeAirfield'
 import { useSettingsContext } from '../context/SettingsContext'
 import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
-import { RulerStatsBadge } from '../components/RulerStatsBadge'
+import { RulerHeaderStart, RulerHeaderEnd } from '../components/RulerHeaderStats'
 import { PastTrackChart } from '../components/PastTrackChart'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import * as Crypto from 'expo-crypto'
@@ -146,6 +146,10 @@ function coordAlongTrack(track: TrackPoint[], targetNm: number): { lng: number; 
   }
   return { lat: track[track.length - 1].lat, lng: track[track.length - 1].lng }
 }
+
+// Stable empty input for the ruler's useWeatherAlongRoute instance while the
+// ruler profile is hidden -- a fresh [] per render would re-run its effect.
+const NO_WAYPOINTS: RouteWaypoint[] = []
 
 export function MapScreen() {
   const scaledTheme = useScaledTheme()
@@ -482,6 +486,14 @@ export function MapScreen() {
   // declutter shouldn't also go blind to the same NOTAMs everywhere else.
   const regionalNotams = useRegionalNotams(authenticated && mapReady)
   const routeWeatherStations = useWeatherAlongRoute(waypoints, mapReady)
+  // Separate lookup along the Map Ruler line -- the planned route's stations
+  // would otherwise be projected onto an unrelated line. Only enabled while
+  // the ruler profile is showing; the aerodrome list itself is shared with
+  // the instance above (module-level cache in the hook).
+  const rulerWeatherStations = useWeatherAlongRoute(
+    showRulerProfile ? rulerPoints : NO_WAYPOINTS,
+    mapReady && showRulerProfile,
+  )
   // Regular-interval wind samples -- fills the gaps between
   // routeWeatherStations' real-station markers, which only ever exist
   // wherever an aerodrome happens to sit. Mirrors web's identical addition.
@@ -1302,13 +1314,18 @@ export function MapScreen() {
 
       {showRulerProfile && (
         <>
-          <RulerStatsBadge from={rulerPoints[0]} to={rulerPoints[1]} units={settings.units} aircraftProfile={aircraftProfile}
-            bottom={bottomStackH} />
           <VerticalProfile
             waypoints={rulerPoints}
             legOverrides={[]}
             units={settings.units}
+            airspaceCeilingFt={settings.airspaceCeilingFt}
             aircraftProfile={aircraftProfile}
+            weatherStations={rulerWeatherStations}
+            headerStart={<RulerHeaderStart from={rulerPoints[0]} to={rulerPoints[1]} units={settings.units} />}
+            headerEnd={
+              <RulerHeaderEnd from={rulerPoints[0]} to={rulerPoints[1]} aircraftProfile={aircraftProfile}
+                onClear={() => { setRulerPoints([]); setRulerMode(false) }} />
+            }
             height={profileHeight}
             onHeightChange={setProfileHeight}
             onHoverDistNm={setProfileCursorNm}

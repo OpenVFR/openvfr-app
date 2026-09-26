@@ -58,31 +58,52 @@ export interface RouteWeatherStation {
 
 interface AerodromeRecord { icao: string; name: string; lat: number; lng: number }
 
-export function useWeatherAlongRoute(waypoints: RouteWaypoint[]): RouteWeatherStation[] {
+// Module-level cache of the parsed aerodrome list, keyed by URL, shared by
+// every hook instance -- MapView runs this hook twice (planned route + Map
+// Ruler line), and the nationwide aerodromes GeoJSON shouldn't be fetched
+// and parsed once per instance. Cleared on failure so a later mount can
+// retry after a connectivity gap. Mirrors native's identical cache.
+let aerodromesCache: { url: string; promise: Promise<AerodromeRecord[]> } | null = null
+
+function loadAerodromes(url: string): Promise<AerodromeRecord[]> {
+  if (aerodromesCache?.url === url) return aerodromesCache.promise
+  const promise = fetch(url)
+    .then(r => r.json())
+    .then((fc: GeoJSON.FeatureCollection) => {
+      const arr: AerodromeRecord[] = []
+      for (const f of fc.features) {
+        if (f.geometry.type !== 'Point') continue
+        const p = f.properties as Record<string, unknown>
+        const icao = String(p['icao'] ?? '')
+        if (!icao) continue
+        const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
+        arr.push({ icao, name: String(p['name'] ?? ''), lat, lng })
+      }
+      return arr
+    })
+  promise.catch(() => { if (aerodromesCache?.promise === promise) aerodromesCache = null })
+  aerodromesCache = { url, promise }
+  return promise
+}
+
+// `enabled` defaults true (every existing call site) -- MapView's Map Ruler
+// instance passes false until the ruler profile is actually showing.
+export function useWeatherAlongRoute(waypoints: RouteWaypoint[], enabled = true): RouteWeatherStation[] {
   const [aerodromes, setAerodromes] = useState<AerodromeRecord[]>([])
   const [stations, setStations] = useState<RouteWeatherStation[]>([])
 
   // Load aerodrome list once -- same static-file pattern as useAirfieldProximity.ts.
   useEffect(() => {
-    fetch(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'))
-      .then(r => r.json())
-      .then((fc: GeoJSON.FeatureCollection) => {
-        const arr: AerodromeRecord[] = []
-        for (const f of fc.features) {
-          if (f.geometry.type !== 'Point') continue
-          const p = f.properties as Record<string, unknown>
-          const icao = String(p['icao'] ?? '')
-          if (!icao) continue
-          const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
-          arr.push({ icao, name: String(p['name'] ?? ''), lat, lng })
-        }
-        setAerodromes(arr)
-      })
+    if (!enabled) return
+    let cancelled = false
+    loadAerodromes(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'))
+      .then((arr) => { if (!cancelled) setAerodromes(arr) })
       .catch(() => { /* offline-safe */ })
-  }, [])
+    return () => { cancelled = true }
+  }, [enabled])
 
   useEffect(() => {
-    if (waypoints.length === 0 || aerodromes.length === 0) { setStations([]); return }
+    if (!enabled || waypoints.length === 0 || aerodromes.length === 0) { setStations([]); return }
 
     // distNm here is LATERAL (cross-track) distance to the route -- kept
     // as-is, other callers display it as "distance from route". alongNm
@@ -187,7 +208,7 @@ export function useWeatherAlongRoute(waypoints: RouteWaypoint[]): RouteWeatherSt
     })
 
     return () => { cancelled = true; ac.abort() }
-  }, [waypoints, aerodromes])
+  }, [waypoints, aerodromes, enabled])
 
   return stations
 }

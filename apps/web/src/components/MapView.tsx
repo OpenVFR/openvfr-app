@@ -371,6 +371,10 @@ function parseJsonProp<T>(val: unknown, fallback: T): T {
   return (val as T) ?? fallback
 }
 
+// Stable empty input for the ruler's useWeatherAlongRoute instance while the
+// ruler profile is hidden -- a fresh [] per render would re-run its effect.
+const NO_WAYPOINTS: RouteWaypoint[] = []
+
 export default function MapView({ auth }: { auth: AuthState }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -483,6 +487,15 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // same fetched station list instead of each independently hitting
   // /api/weather for the same route.
   const routeWeatherStations = useWeatherAlongRoute(routeWaypoints)
+  // Separate lookup along the Map Ruler line -- passing the planned route's
+  // stations to the ruler's VirtualRadar projected them onto an unrelated
+  // line. Only enabled while the ruler profile is showing; the aerodrome
+  // list itself is shared with the instance above (module-level cache).
+  const showRulerProfile = rulerMode && rulerPoints.length === 2
+  const rulerWeatherStations = useWeatherAlongRoute(
+    showRulerProfile ? rulerPoints : NO_WAYPOINTS,
+    showRulerProfile,
+  )
   // Regular-interval wind samples (nearest METAR-or-model-wind, independent
   // of aerodrome positions) -- fills the gaps between routeWeatherStations'
   // real-station markers, which only ever exist wherever an aerodrome
@@ -4146,7 +4159,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       )}
 
       {/* VirtualRadar: ruler profile → past-log review → planned route → look-ahead (unplanned flight) */}
-      {(rulerMode && rulerPoints.length === 2) ? (
+      {showRulerProfile ? (
         <div className={css.vrRow}>
           <RulerSummaryStrip
             from={rulerPoints[0]}
@@ -4161,7 +4174,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             airspaceCeilingFt={ceilingFt}
             aircraftProfile={selectedAircraftProfile}
             onHoverDistNm={setProfileCursorNm}
-            weatherStations={routeWeatherStations}
+            weatherStations={rulerWeatherStations}
           />
         </div>
       ) : selectedLogId && selectedLogTrack.length > 0 ? (

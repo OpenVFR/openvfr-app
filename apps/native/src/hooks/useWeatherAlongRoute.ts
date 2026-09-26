@@ -44,6 +44,34 @@ export interface RouteWeatherStation {
 
 interface AerodromeRecord { icao: string; name: string; lat: number; lng: number }
 
+// Module-level cache of the parsed aerodrome list, keyed by URL, shared by
+// every hook instance -- MapScreen runs this hook twice (planned route +
+// Map Ruler line), and the nationwide aerodromes GeoJSON shouldn't be
+// fetched and parsed once per instance on a memory-constrained device.
+// Cleared on failure so a later mount can retry after a connectivity gap.
+let aerodromesCache: { url: string; promise: Promise<AerodromeRecord[]> } | null = null
+
+function loadAerodromes(url: string): Promise<AerodromeRecord[]> {
+  if (aerodromesCache?.url === url) return aerodromesCache.promise
+  const promise = fetch(url)
+    .then((r) => r.json())
+    .then((fc: GeoJSON.FeatureCollection) => {
+      const arr: AerodromeRecord[] = []
+      for (const f of fc.features) {
+        if (f.geometry.type !== 'Point') continue
+        const p = f.properties as Record<string, unknown>
+        const icao = String(p['icao'] ?? '')
+        if (!icao) continue
+        const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
+        arr.push({ icao, name: String(p['name'] ?? ''), lat, lng })
+      }
+      return arr
+    })
+  promise.catch(() => { if (aerodromesCache?.promise === promise) aerodromesCache = null })
+  aerodromesCache = { url, promise }
+  return promise
+}
+
 // `enabled` defaults true (matches every existing call site) -- MapScreen
 // passes mapReady here so this hook's own aerodromes.json fetch doesn't fire
 // in the same first-mount burst as the basemap's PMTiles loads (see
@@ -56,21 +84,11 @@ export function useWeatherAlongRoute(waypoints: RouteWaypoint[], enabled = true)
 
   useEffect(() => {
     if (!enabled) return
-    fetch(getTileUrls().aerodromes)
-      .then((r) => r.json())
-      .then((fc: GeoJSON.FeatureCollection) => {
-        const arr: AerodromeRecord[] = []
-        for (const f of fc.features) {
-          if (f.geometry.type !== 'Point') continue
-          const p = f.properties as Record<string, unknown>
-          const icao = String(p['icao'] ?? '')
-          if (!icao) continue
-          const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
-          arr.push({ icao, name: String(p['name'] ?? ''), lat, lng })
-        }
-        setAerodromes(arr)
-      })
+    let cancelled = false
+    loadAerodromes(getTileUrls().aerodromes)
+      .then((arr) => { if (!cancelled) setAerodromes(arr) })
       .catch(() => { /* offline-safe */ })
+    return () => { cancelled = true }
   }, [enabled])
 
   useEffect(() => {
