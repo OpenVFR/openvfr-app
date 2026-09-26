@@ -111,6 +111,20 @@ export interface NotamItem {
   // import -- deliberately kept as its own separate copy here, matching
   // the existing duplication for every other field on this interface).
   icaoLocation:   string | null
+  // ICAO NOTAM Code ("QMRLC"), see qCodeFor(). Mirrors shared NotamItem.qCode.
+  qCode:          string | null
+  // FIR the NOTAM is filed in (Q-line first item, e.g. "ESAA"). Mirrors
+  // shared NotamItem.affectedFir -- lets clients scope NOTAMs that have no
+  // usable position (whole-FIR notices) to the FIR(s) actually relevant.
+  affectedFir:    string | null
+  // True when the NOTAM covers its entire FIR (Q-line radius 999 NM, the
+  // ICAO "whole FIR" convention). Its position is dropped as meaningless
+  // (see radiusIsBogus below), so this is the only geographic hint left.
+  firWide:        boolean
+  // Structured ICAO fields for rebuilding the standard message layout
+  // (Q/A/B/C/D/E/F/G items) -- see @open-vfr/shared/notamIcaoFormat.
+  // Mirrors shared NotamIcaoFields. null when upstream supplied none.
+  icao:           NotamIcaoFields | null
   // Real multi-vertex area geometry, straight from NMS-API's own GeoJSON
   // feature.geometry (never synthesized) -- present only for NOTAMs whose
   // subject area is an actual polygon/multipolygon (e.g. cross-border
@@ -128,6 +142,26 @@ export interface NotamItem {
   lat:      number | null
   lon:      number | null
   radiusNm: number | null
+}
+
+/** Mirrors @open-vfr/shared/fetchNotam's NotamIcaoFields (apps/api keeps its
+ *  own copy of the wire types, same as NotamItem above). All raw upstream
+ *  strings, trimmed; null when absent. */
+export interface NotamIcaoFields {
+  type:        string | null  // N (new) / R (replace) / C (cancel)
+  issued:      string | null  // ISO timestamp
+  traffic:     string | null  // I / V / IV / K
+  purpose:     string | null  // e.g. "BO", "NBO", "M", "K"
+  scope:       string | null  // A (aerodrome) / E (en-route) / W (nav warning) / AE / AW / K
+  lowerFl:     string | null  // Q-line lower limit, 3-digit FL ("000")
+  upperFl:     string | null  // Q-line upper limit, 3-digit FL ("999")
+  coordinates: string | null  // Q-line DDMMNDDDMME
+  radius:      string | null  // Q-line radius NM, as given ("005", "999")
+  location:    string | null  // A) item
+  schedule:    string | null  // D) item
+  lowerLimit:  string | null  // F) item
+  upperLimit:  string | null  // G) item
+  estimated:   boolean        // C) end marked EST
 }
 
 export interface NotamResponse { notams: NotamItem[] }
@@ -323,6 +357,23 @@ interface NmsNotam {
   effectiveEnd?:    string
   classification?:  string
   icaoLocation?:    string
+  // ICAO NOTAM Code / Q-code, e.g. "QMRLC" (sometimes without the leading Q).
+  selectionCode?:   string
+  // Remaining ICAO message fields (all confirmed present on live records;
+  // values are raw strings, some with trailing spaces, e.g. purpose "BO ").
+  type?:            string
+  issued?:          string
+  affectedFir?:     string
+  traffic?:         string
+  purpose?:         string
+  scope?:           string
+  minimumFl?:       string
+  maximumFl?:       string
+  location?:        string
+  schedule?:        string
+  lowerLimit?:      string
+  upperLimit?:      string
+  estimated?:       string | boolean
   cancelationDate?: string
   coordinates?:     string // DMS, e.g. "5939N01756E" (lat DDMM + N/S, lon DDDMM + E/W)
   radius?:          string // nautical miles, e.g. "5"
@@ -336,6 +387,53 @@ interface NmsNotam {
   // ignored (the DMS coordinates+radius fields above already cover that
   // case and are more reliably present).
   geometry?: { type?: string; coordinates?: unknown } | null
+}
+
+const str = (v: unknown): string | null => {
+  if (typeof v !== 'string') return null
+  const t = v.trim()
+  return t ? t : null
+}
+
+function icaoFieldsFor(n: NmsNotam): NotamIcaoFields | null {
+  const f: NotamIcaoFields = {
+    type:        str(n.type),
+    issued:      str(n.issued),
+    traffic:     str(n.traffic),
+    purpose:     str(n.purpose),
+    scope:       str(n.scope),
+    lowerFl:     str(n.minimumFl),
+    upperFl:     str(n.maximumFl),
+    coordinates: str(n.coordinates),
+    radius:      str(n.radius),
+    location:    str(n.location) ?? str(n.icaoLocation),
+    schedule:    str(n.schedule),
+    lowerLimit:  str(n.lowerLimit),
+    upperLimit:  str(n.upperLimit),
+    estimated:   n.estimated === true || (typeof n.estimated === 'string' && /^(true|y|yes|est)$/i.test(n.estimated.trim())),
+  }
+  const any = Object.entries(f).some(([k, v]) => k !== 'estimated' && v !== null)
+  return any ? f : null
+}
+
+// Checklist NOTAMs (Q-code QKKKK) only list which NOTAM numbers are
+// currently valid in a FIR -- bookkeeping for briefing offices, no
+// operational content for a pilot, and "whole FIR" sized. Excluded at the
+// source so no client list, map layer or printout ever shows them.
+function isChecklist(n: NmsNotam, qCode: string | null): boolean {
+  return qCode === 'QKKKK' || /^\s*CHECKLIST\b/i.test(n.text ?? '')
+}
+
+// Q-code for a NOTAM: NMS-API's structured selectionCode when present,
+// else the Q) line of ICAO-formatted text. Validated to exactly Q + 4
+// letters so a malformed upstream value never reaches clients.
+function qCodeFor(n: NmsNotam): string | null {
+  const sel = n.selectionCode?.trim().toUpperCase() ?? ''
+  if (/^Q[A-Z]{4}$/.test(sel)) return sel
+  // Bare 4-letter form; no subject starts with Q, so "QXXX" is truncated.
+  if (/^[A-PR-Z][A-Z]{3}$/.test(sel)) return `Q${sel}`
+  const m = n.text ? /Q\)\s*[A-Z]{4}\s*\/\s*(Q[A-Z]{4})\s*\//.exec(n.text) : null
+  return m?.[1] ?? null
 }
 
 // Parses NMS-API's DMS coordinate string format: 2-digit lat degrees,
@@ -744,6 +842,13 @@ function activeNotamsFor(icao: string): NotamItem[] {
     const geo = parseNotamCoordinates(n.coordinates)
     const radiusNm = n.radius !== undefined ? Number(n.radius) : NaN
     const text = (n.text ?? '').replace(/\r\n/g, '\n').trim()
+    const qCode = qCodeFor(n)
+    if (isChecklist(n, qCode)) continue
+    // Cancellation messages (NOTAMC) carry no operational content of their
+    // own -- they only announce that another NOTAM is gone, which the
+    // cancelled NOTAM's own cancelationDate already reflects. Shown as a list
+    // entry they read like an active notice ("V0828/26 NOTAMC V0818/26").
+    if (str(n.type) === 'C' || /^\s*\S+\s+NOTAMC\b/.test(text)) continue
 
     // NMS-API uses radius="999" (and presumably similar round-number
     // sentinels) as a placeholder for non-geographic administrative NOTAMs
@@ -799,6 +904,11 @@ function activeNotamsFor(icao: string): NotamItem[] {
       // construction site -- clients had no "where" for a NOTAM at all
       // short of parsing it out of the free-text `text` field themselves.
       icaoLocation:   n.icaoLocation ?? null,
+      qCode,
+      affectedFir:    str(n.affectedFir),
+      // ICAO convention: Q-line radius 999 = the entire FIR.
+      firWide:        !polygon && radiusGiven && radiusNm >= 999,
+      icao:           icaoFieldsFor(n),
       polygon,
       // Polygon geometry (real, structured, from NMS-API itself) takes
       // priority over the synthesized DMS point/circle fields when both
