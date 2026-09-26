@@ -958,12 +958,33 @@ export function MapScreen() {
   // alone for FOLLOW_RETURN_MS after a pan -- a forgotten Re-center
   // otherwise leaves the map parked away from the aircraft. Not while
   // deliberately adjusting the route.
-  const [userPanNonce, setUserPanNonce] = useState(0)
+  //
+  // Timer lives in a ref, re-armed straight from onUserPan: AviationMap
+  // calls onUserPan on EVERY onRegionIsChanging frame of a drag, so a
+  // per-pan state bump (the obvious "nonce" approach) commits dozens of
+  // times per gesture in one macrotask and trips React's "Maximum update
+  // depth exceeded". setFollowGps(false) is a no-op once already false.
+  const followReturnTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const followReturnArmableRef = React.useRef(false)
+  followReturnArmableRef.current = flightModeStatus !== 'off' && !routeAdjustMode
+  const clearFollowReturn = useCallback(() => {
+    if (followReturnTimerRef.current) { clearTimeout(followReturnTimerRef.current); followReturnTimerRef.current = null }
+  }, [])
+  const handleUserPan = useCallback(() => {
+    setFollowGps(false)
+    clearFollowReturn()
+    if (!followReturnArmableRef.current) return
+    followReturnTimerRef.current = setTimeout(() => {
+      followReturnTimerRef.current = null
+      if (followReturnArmableRef.current) setFollowGps(true)
+    }, FOLLOW_RETURN_MS)
+  }, [clearFollowReturn])
+  // Cancel a pending return when following resumes some other way, the
+  // flight ends, route-adjust starts, or the screen unmounts.
   useEffect(() => {
-    if (flightModeStatus === 'off' || followGps || routeAdjustMode) return
-    const t = setTimeout(() => setFollowGps(true), FOLLOW_RETURN_MS)
-    return () => clearTimeout(t)
-  }, [userPanNonce, followGps, flightModeStatus, routeAdjustMode])
+    if (followGps || flightModeStatus === 'off' || routeAdjustMode) clearFollowReturn()
+  }, [followGps, flightModeStatus, routeAdjustMode, clearFollowReturn])
+  useEffect(() => clearFollowReturn, [clearFollowReturn])
   useEffect(() => {
     if (!flyingActive) setRouteAdjustMode(false)
   }, [flyingActive])
@@ -1142,7 +1163,7 @@ export function MapScreen() {
           trajectoryNm={settings.trajectoryNm}
           trajectoryMode={settings.trajectoryMode ?? 'time'}
           followGps={followGps}
-          onUserPan={() => { setFollowGps(false); setUserPanNonce(n => n + 1) }}
+          onUserPan={handleUserPan}
           showOwnPosition={locMode === 'passive' && !flyingActive}
           // Aircraft icon only in flight (or with a sim/external feed); on
           // the ground the locate button's Passive dot is the one position
