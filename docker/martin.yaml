@@ -16,12 +16,22 @@
 listen_addresses: '0.0.0.0:3000'
 
 postgres:
-  # DATABASE_URL is injected as an environment variable from docker-compose.yml.
+  # MARTIN_PG_URL is injected as an environment variable from docker-compose.yml.
+  # (Not DATABASE_URL: Martin ≥ 1.16 also auto-reads that name and logs a
+  # deprecation warning for it.)
   # Format: postgresql://<user>:<password>@<host>:<port>/<database>
-  connection_string: ${DATABASE_URL}
+  connection_string: ${MARTIN_PG_URL}
 
   # Pool sizing — 4 workers is enough for dev; scale up for production.
   pool_size: 4
+
+  # Martin ≥ 1.16 retries the first DB connection instead of exiting while
+  # PostGIS is still starting (`depends_on: service_healthy` covers compose;
+  # this also covers restarts / other orchestrators). Wrong credentials
+  # still fail immediately. 30s is the default -- stated explicitly so it's
+  # discoverable. (Key verified against the 1.16.1 binary: the release
+  # notes' `connection_retries` name is rejected as unrecognized.)
+  retry_timeout: 30s
 
   # Restrict auto-discovery to the public schema only.
   # Prevents Martin from publishing tiger.* tables that ship with the

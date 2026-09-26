@@ -4,24 +4,25 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "packageManager": "pnpm@11.6.0",
+  "packageManager": "pnpm@11.27.1",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts"
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc"
   },
   "dependencies": {
-    "@better-auth/passkey": "1.7.3",
+    "@better-auth/passkey": "1.7.6",
     "@hono/node-server": "2.1.1",
     "@open-vfr/shared": "workspace:*",
-    "better-auth": "1.7.3",
-    "hono": "4.13.7",
-    "openai": "6.48.0",
+    "better-auth": "1.7.6",
+    "hono": "4.13.9",
+    "openai": "7.23.0",
     "pg": "8.23.0"
   },
   "devDependencies": {
-    "@types/node": "26.4.1",
+    "@types/node": "26.6.2",
     "@types/pg": "8.23.1",
-    "tsx": "4.23.13",
+    "tsx": "4.23.15",
     "typescript": "7.0.2"
   }
 }

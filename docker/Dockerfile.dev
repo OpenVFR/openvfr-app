@@ -9,8 +9,11 @@ WORKDIR /app
 # a container, so force non-interactive mode throughout.
 ENV CI=true
 
-# Enable pnpm via Corepack (bundled with Node 22+)
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Corepack picks the exact pnpm version pinned in the root package.json's
+# `packageManager` field. Never `corepack prepare pnpm@latest` here: that
+# floats to whatever npm's `latest` tag is (a new major can land there
+# at any time) instead of the version the lockfile was written with.
+RUN corepack enable
 
 # Install dependencies in a separate layer for Docker cache efficiency.
 # node_modules is populated here; the bind mount in docker-compose.yml

@@ -9,3 +9,11 @@ peerDependencyRules:
 allowBuilds:
   esbuild: true
   workerd: true
+
+# apps/native stays on react 19.2.x (RN 0.86's bundled renderer is 19.2.3;
+# react 19.3 is only adopted by apps/web). Expo's optional react-dom peer
+# (@expo/router-server, web-only, never bundled into the native app) would
+# otherwise auto-install react-dom 19.3, whose own peer then mismatches
+# native's react 19.2.x.
+overrides:
+  "@expo/router-server>react-dom": "19.2.8"

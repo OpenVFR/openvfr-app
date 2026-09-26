@@ -43,12 +43,12 @@ services:
   # ── Martin vector tile server ───────────────────────────────────────────────
   # Exposes PostGIS function sources as /rpc/<fn>/{z}/{x}/{y}
   martin:
-    image: ghcr.io/maplibre/martin:1.15.0
+    image: ghcr.io/maplibre/martin:1.16.1
     depends_on:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://openvfr:openvfr_dev@db:5432/openvfr
+      MARTIN_PG_URL: postgresql://openvfr:openvfr_dev@db:5432/openvfr
     volumes:
       - ./docker/martin.yaml:/config/martin.yaml:ro
     command: ["--config", "/config/martin.yaml"]
@@ -106,7 +106,7 @@ services:
   # Not exposed on any host port in prod — proxy it behind your own reverse
   # proxy at /rest/ if deploying publicly.
   postgrest:
-    image: postgrest/postgrest:v16.2
+    image: postgrest/postgrest:v16.4
     depends_on:
       db:
         condition: service_healthy

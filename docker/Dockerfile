@@ -11,7 +11,11 @@ WORKDIR /app
 # non-interactively throughout.
 ENV CI=true
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Corepack picks the exact pnpm version pinned in the root package.json's
+# `packageManager` field. Never `corepack prepare pnpm@latest` here: that
+# floats to whatever npm's `latest` tag is (a new major can land there
+# at any time) instead of the version the lockfile was written with.
+RUN corepack enable
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # Copy EVERY workspace member's manifest before installing -- pnpm computes
@@ -25,7 +29,7 @@ COPY apps/web/package.json ./apps/web/
 COPY apps/native/package.json ./apps/native/
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
-# pnpm v10 blocks all install scripts by default; --ignore-scripts bypasses the
+# pnpm (v10+) blocks all install scripts by default; --ignore-scripts bypasses the
 # check, then we rebuild only esbuild so its platform binary is downloaded.
 RUN pnpm install --frozen-lockfile --ignore-scripts || pnpm install --ignore-scripts
 RUN pnpm rebuild esbuild

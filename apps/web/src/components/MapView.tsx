@@ -2872,8 +2872,28 @@ export default function MapView({ auth }: { auth: AuthState }) {
         [e.point.x + SNAP_PX, e.point.y + SNAP_PX],
       ]
 
-      // Route waypoint removal takes priority.
-      const wpHits = map.queryRenderedFeatures(hitBox, { layers: ['route-waypoints-circle'] })
+      // maplibre-gl ≥ 6.11 also fires `contextmenu` on a touch long-press,
+      // as a synthesized (untrusted) MouseEvent — a real right-click is
+      // always trusted. Touch long-press must respect the in-flight
+      // route-edit lock (see AGENTS.md) and must not fight our own touch
+      // handlers, which already own long-press on route features while
+      // editing (waypoint drag, leg long-press menu).
+      const fromTouch = !e.originalEvent.isTrusted
+      const editing = planningModeRef.current || routeAdjustModeRef.current
+      if (fromTouch && editing) {
+        const routeLayers = ['route-waypoints-circle', 'route-midpoints-layer', 'route-line-layer']
+          .filter(id => map.getLayer(id))
+        if (routeLayers.length > 0 && map.queryRenderedFeatures(hitBox, { layers: routeLayers }).length > 0) {
+          e.preventDefault()
+          return
+        }
+      }
+
+      // Route waypoint removal takes priority (never from a touch long-press
+      // while route editing is locked — falls through to "What's Here?").
+      const wpHits = (fromTouch && !editing)
+        ? []
+        : map.queryRenderedFeatures(hitBox, { layers: ['route-waypoints-circle'] })
       if (wpHits.length > 0) {
         const seq = (wpHits[0].properties as { seq: number }).seq
         setRouteWaypoints(routeWaypointsRef.current.filter((_, i) => i !== seq - 1))

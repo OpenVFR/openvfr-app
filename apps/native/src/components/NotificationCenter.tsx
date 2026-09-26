@@ -19,13 +19,13 @@
 import React, { useEffect } from 'react'
 import { View, Text, TouchableOpacity } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
-  runOnJS,
 } from 'react-native-reanimated'
+import { scheduleOnRN } from 'react-native-worklets'
 import type { AirspaceAlert, AirspaceNotification, ObstructionAlert, AirfieldProximityAlert } from '../hooks/usePositionAlerts'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
@@ -267,21 +267,28 @@ function SwipeableCard({
     'worklet'
     translateX.value = withTiming(direction * (width.value + 40), { duration: 180 })
     opacity.value = withTiming(0, { duration: 180 }, finished => {
-      if (finished && onDismiss) runOnJS(onDismiss)()
+      if (finished && onDismiss) scheduleOnRN(onDismiss)
     })
   }
 
-  const pan = Gesture.Pan()
-    .enabled(dismissible && !!onDismiss)
-    .onUpdate(e => { translateX.value = e.translationX })
-    .onEnd(e => {
+  // Gesture Handler 3 hook API (the Gesture.Pan() builder is deprecated).
+  // onDeactivate replaces v2's onEnd; callbacks run on the UI thread.
+  const pan = usePanGesture({
+    enabled: dismissible && !!onDismiss,
+    onUpdate: e => {
+      'worklet'
+      translateX.value = e.translationX
+    },
+    onDeactivate: e => {
+      'worklet'
       const ratio = Math.abs(e.translationX) / Math.max(width.value, 1)
       if (ratio > SWIPE_DISMISS_RATIO || Math.abs(e.velocityX) > SWIPE_VELOCITY_THRESHOLD) {
         triggerDismiss(e.translationX < 0 ? -1 : 1)
       } else {
         translateX.value = withTiming(0, { duration: 150 })
       }
-    })
+    },
+  })
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
