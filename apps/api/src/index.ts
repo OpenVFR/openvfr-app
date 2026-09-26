@@ -181,6 +181,9 @@ app.get('/api/auth/token', async (c) => {
   const header  = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url')
   const payload = Buffer.from(JSON.stringify({
     sub:  session.user.id,
+    // Must match PostgREST's PGRST_JWT_AUD so a token minted here can't be
+    // replayed against anything else that happens to share the HS256 secret.
+    aud:  'postgrest',
     role: 'authenticated',
     email: session.user.email,
     iat:  now,
@@ -419,7 +422,7 @@ app.post('/api/poh-extract', async (c) => {
       }
       if (msg.includes('429') || msg.includes('TooManyRequests') || msg.includes('RateLimitReached')) {
         const retryMatch = /retry.?after[:\s]+(\d+)/i.exec(msg)
-        const retrySecs = retryMatch ? parseInt(retryMatch[1], 10) + 5 : 65
+        const retrySecs = retryMatch?.[1] ? parseInt(retryMatch[1], 10) + 5 : 65
         console.error('[poh-extract] Rate limit (retrySecs=%d):', retrySecs, msg)
         await stream.writeSSE({ data: JSON.stringify({
           error: `Azure OpenAI rate limit reached. Retry in ${retrySecs} seconds.`,

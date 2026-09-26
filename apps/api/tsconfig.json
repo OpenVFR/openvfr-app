@@ -1,11 +1,20 @@
 {
+  // Typecheck-only config: tsx runs src/*.ts directly (no emit step), so
+  // module resolution mirrors a bundler-style loader -- extensionless
+  // relative imports, as tsx resolves them -- rather than NodeNext's
+  // mandatory `.js` suffixes.
   "compilerOptions": {
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
+    "resolveJsonModule": true,
+    // better-auth's .d.mts reference optional adapters (bun:sqlite, ...)
+    // this server never installs.
+    "skipLibCheck": true,
     "rootDir": "src",
     "types": ["node"]
   },

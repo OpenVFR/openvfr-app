@@ -318,7 +318,7 @@ function isNearCoverageArea(n: NmsNotam): boolean {
 
 const _icaoAllowlist = new Set<string>(_regionalKeys)
 try {
-  const coordsJson = (await import('./aerodrome-coords.json', { assert: { type: 'json' } })).default as Record<string, [number, number]>
+  const coordsJson = (await import('./aerodrome-coords.json', { with: { type: 'json' } })).default as unknown as Record<string, [number, number]>
   for (const icao of Object.keys(coordsJson)) _icaoAllowlist.add(icao)
   console.log(`[notam] Loaded ${_icaoAllowlist.size} ICAOs for NOTAM filtering (${_icaoAllowlist.size - _regionalKeys.length} aerodromes + FIRs: ${_regionalKeys.join(', ')})`)
 } catch (e) {

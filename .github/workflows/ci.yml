@@ -11,7 +11,7 @@ jobs:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       # gitleaks/gitleaks-action@v2 now requires a paid GITLEAKS_LICENSE for
@@ -35,17 +35,17 @@ jobs:
     name: Build, test, typecheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      # No `version:` here -- pnpm/action-setup@v4 refuses to run when a
+      # No `version:` here -- pnpm/action-setup@v6 refuses to run when a
       # version is specified BOTH here and via package.json's
       # `packageManager` field (even if they match), erroring
       # "Multiple versions of pnpm specified". package.json's
       # packageManager field is the single source of truth; this action
       # reads it automatically when no version input is given.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -61,3 +61,6 @@ jobs:
 
       - name: Typecheck native app
         run: pnpm --filter native typecheck
+
+      - name: Typecheck API server
+        run: pnpm --filter api typecheck

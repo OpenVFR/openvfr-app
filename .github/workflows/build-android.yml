@@ -70,11 +70,11 @@ jobs:
           df -h /
 
       - name: Checking out branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -84,7 +84,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -95,7 +95,7 @@ jobs:
       # share across runs; ~/.gradle/wrapper just avoids redownloading the
       # wrapper zip.
       - name: Cache Gradle + NDK build outputs
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.gradle/caches
@@ -121,7 +121,7 @@ jobs:
           echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-${{ inputs.profile }}
           path: apps/native/${{ steps.build.outputs.artifact }}
