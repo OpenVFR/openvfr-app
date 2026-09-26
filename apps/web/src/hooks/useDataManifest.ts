@@ -8,6 +8,7 @@ import {
   type TileManifestDataset,
   type TileManifestFileEntry,
 } from '@open-vfr/shared/tileManifest'
+import { findOutdatedAirac, currentAiracCycle } from '@open-vfr/shared/airac'
 
 const LS_KEY = 'ovfr:manifest:seen_at'
 
@@ -28,6 +29,11 @@ export interface UseDataManifestResult {
   markSeen: () => void
   /** Re-fetch manifest.json immediately (e.g. after user taps "Check for updates"). */
   refresh: () => void
+  /** Countries whose airspace dataset is from an AIRAC cycle older than the
+   *  one currently in force (empty when current, unknown, or no manifest). */
+  outdatedAirac: { country: string; cycle: string }[]
+  /** AIRAC cycle currently in force, e.g. "2506". */
+  currentAirac: string
 }
 
 /**
@@ -99,5 +105,9 @@ export function useDataManifest(): UseDataManifestResult {
       .finally(() => setChecking(false))
   }
 
-  return { manifest, hasUpdate, checking, markSeen, refresh }
+  return {
+    manifest, hasUpdate, checking, markSeen, refresh,
+    outdatedAirac: findOutdatedAirac(manifest),
+    currentAirac: currentAiracCycle(),
+  }
 }

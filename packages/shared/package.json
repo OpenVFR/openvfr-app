@@ -46,7 +46,16 @@
     "./routeDirty": "./src/routeDirty.ts",
     "./resolveSaveRouteId": "./src/resolveSaveRouteId.ts",
     "./findDestination": "./src/findDestination.ts",
-    "./notamCoverageArea": "./src/notamCoverageArea.ts"
+    "./notamCoverageArea": "./src/notamCoverageArea.ts",
+    "./coordinateParse": "./src/coordinateParse.ts",
+    "./airac": "./src/airac.ts",
+    "./notamQCode": "./src/notamQCode.ts",
+    "./notamValidity": "./src/notamValidity.ts",
+    "./deepLink": "./src/deepLink.ts",
+    "./undoHistory": "./src/undoHistory.ts",
+    "./regions": "./src/regions.ts",
+    "./notamIcaoFormat": "./src/notamIcaoFormat.ts",
+    "./notamRelevance": "./src/notamRelevance.ts"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.16"

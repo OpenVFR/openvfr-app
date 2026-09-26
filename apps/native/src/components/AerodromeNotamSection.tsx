@@ -28,8 +28,13 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
-import { filterAndSortNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM, type RoutePoint } from '@open-vfr/shared/notamRouteFilter'
+import { notamTitle } from '@open-vfr/shared/notamQCode'
+import { filterAndSortNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM, DEFAULT_VICINITY_NOTAM_NM, type RoutePoint } from '@open-vfr/shared/notamRouteFilter'
 import { Section } from './AerodromeBriefShared'
+import { notamText } from '@open-vfr/shared/notamIcaoFormat'
+import { applyNotamRelevance, relevantFirPrefixes, relevanceHiddenNote } from '@open-vfr/shared/notamRelevance'
+import { useNotamPrefs } from '../hooks/useNotamPrefs'
+import NotamViewControls from './NotamViewControls'
 
 interface Props {
   notams:       NotamItem[]
@@ -38,6 +43,10 @@ interface Props {
    *  see this file's own doc comment. Omit both to skip the section. */
   regionalNotams?:  NotamItem[]
   routeWaypoints?:  RoutePoint[]
+  /** Aerodrome position + ICAO -- scope NOTAMs without a usable position to
+   *  the FIRs actually relevant here (see @open-vfr/shared/notamRelevance). */
+  centre?:          { lat: number; lng: number }
+  icao?:            string
 }
 
 // Single-line truncated preview, mirrors web's RegionalNotamsPanel.tsx --
@@ -49,7 +58,7 @@ function previewText(text: string): string {
   return flat.length > PREVIEW_LEN ? `${flat.slice(0, PREVIEW_LEN)}\u2026` : flat
 }
 
-export default function AerodromeNotamSection({ notams, notamLoading, regionalNotams, routeWaypoints }: Props) {
+export default function AerodromeNotamSection({ notams: allNotams, notamLoading, regionalNotams, routeWaypoints, centre, icao }: Props) {
   const styles = useThemedStyles(makeStyles)
   const [expandedNotams, setExpandedNotams] = useState<Set<string>>(new Set())
 
@@ -63,15 +72,35 @@ export default function AerodromeNotamSection({ notams, notamLoading, regionalNo
   }
 
   const hasRoute = !!routeWaypoints && routeWaypoints.length > 0
-  const otherNotams = regionalNotams === undefined
+  const otherNotamsAll = regionalNotams === undefined
     ? null
     : hasRoute
       ? filterAndSortNotamsNearRoute(regionalNotams, routeWaypoints!, DEFAULT_ROUTE_NOTAM_BUFFER_NM)
-      : regionalNotams
+      // No route: the aerodrome's vicinity rather than the whole FIR-wide
+      // list (same scope as web). Without a known centre, unchanged.
+      : centre
+        ? filterAndSortNotamsNearRoute(regionalNotams, [centre], DEFAULT_VICINITY_NOTAM_NM)
+        : regionalNotams
+
+  const { textView, vfrOnly, setVfrOnly } = useNotamPrefs()
+  const firPrefixes = relevantFirPrefixes([...(centre ? [centre] : []), ...(routeWaypoints ?? [])], icao ? [icao] : [])
+  const ownRel = applyNotamRelevance(allNotams, { vfrOnly, firPrefixes: new Set() })
+  const notams = ownRel.kept
+  const otherRel = otherNotamsAll === null ? null : applyNotamRelevance(otherNotamsAll, { vfrOnly, firPrefixes })
+  const otherNotams = otherRel ? otherRel.kept : null
+  const ownHidden = relevanceHiddenNote(ownRel)
+  const otherHidden = otherRel ? relevanceHiddenNote(otherRel) : null
+  const hiddenRow = (note: string | null, ifr: number) => note && (
+    <Text style={styles.muted}>
+      {note}
+      {ifr > 0 && <Text style={{ color: theme.accentBlue }} onPress={() => setVfrOnly(false)}>  Show IFR-only</Text>}
+    </Text>
+  )
 
   return (
     <>
       <Section title={`NOTAMs${notams.length > 0 ? ` (${notams.length})` : ''}`}>
+        <NotamViewControls />
         {notamLoading && <ActivityIndicator size="small" color={theme.accentBlue} />}
         {!notamLoading && notams.length === 0 && (
           <Text style={styles.muted}>No NOTAMs</Text>
@@ -82,15 +111,16 @@ export default function AerodromeNotamSection({ notams, notamLoading, regionalNo
           const expanded = expandedNotams.has(n.nmsId)
           return (
             <TouchableOpacity key={n.nmsId} style={styles.notamRow} onPress={() => toggleNotam(n.nmsId)}>
-              <Text style={styles.notamId}>{n.id} {expanded ? '▴' : '▾'}</Text>
+              <Text style={styles.notamId}>{notamTitle(n)} {expanded ? '▴' : '▾'}</Text>
               {n.effective && (
                 <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}</Text>
               )}
               {!expanded && <Text style={styles.notamPreview} numberOfLines={1}>{previewText(n.text)}</Text>}
-              {expanded && <Text style={styles.notamText}>{n.text}</Text>}
+              {expanded && <Text style={styles.notamText}>{notamText(n, textView)}</Text>}
             </TouchableOpacity>
           )
         })}
+        {hiddenRow(ownHidden, ownRel.hiddenIfrOnly)}
       </Section>
 
       {/* Non-aerodrome FIR-wide NOTAMs -- military notices, navaid outages,
@@ -104,6 +134,11 @@ export default function AerodromeNotamSection({ notams, notamLoading, regionalNo
           {hasRoute && (
             <Text style={styles.filterNote}>
               Filtered to within {DEFAULT_ROUTE_NOTAM_BUFFER_NM}nm of planned route
+            </Text>
+          )}
+          {!hasRoute && centre && (
+            <Text style={styles.filterNote}>
+              Within {DEFAULT_VICINITY_NOTAM_NM} NM{icao ? ` of ${icao}` : ''} (no route loaded)
             </Text>
           )}
           {otherNotams.length === 0 && (
@@ -128,7 +163,7 @@ export default function AerodromeNotamSection({ notams, notamLoading, regionalNo
                       <Text style={styles.milBadgeTxt}>MIL</Text>
                     </View>
                   )}
-                  <Text style={styles.otherNotamId}>{n.id}</Text>
+                  <Text style={styles.otherNotamId}>{notamTitle(n)}</Text>
                   {hasGeo && (
                     <View style={styles.mapBadge}>
                       <Text style={styles.mapBadgeTxt}>MAP</Text>
@@ -142,10 +177,11 @@ export default function AerodromeNotamSection({ notams, notamLoading, regionalNo
                 {!expanded && (
                   <Text style={styles.otherNotamPreview} numberOfLines={1}>{previewText(n.text)}</Text>
                 )}
-                {expanded && <Text style={styles.otherNotamText}>{n.text}</Text>}
+                {expanded && <Text style={styles.otherNotamText}>{notamText(n, textView)}</Text>}
               </TouchableOpacity>
             )
           })}
+          {hiddenRow(otherHidden, otherRel?.hiddenIfrOnly ?? 0)}
         </View>
       )}
     </>

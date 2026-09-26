@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import css from './FindFeature.module.css'
 import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { parseCoordinate, formatCoordinate } from '@open-vfr/shared/coordinateParse'
 
 export type FindResult = {
   kind: 'AD' | 'VOR' | 'NDB' | 'MRP' | 'RP' | 'LL'
@@ -19,23 +20,15 @@ interface Props {
 }
 
 // ---------------------------------------------------------------------------
-// Parse a lat/lon string in common VFR formats:
-//   59.123,18.456  |  59.123 18.456  |  N59.123 E18.456
-// Returns null if not recognised.
+// Parse a coordinate string (DD / DDM / DMS / compact NOTAM form, leading or
+// trailing hemisphere letters, lon-first) -- see shared coordinateParse.ts.
+// The result is echoed back in the style the user typed.
 // ---------------------------------------------------------------------------
 function parseLatLon(q: string): FindResult | null {
-  const clean = q.trim().replace(/[°,]/g, ' ').replace(/\s+/g, ' ')
-  const m = clean.match(
-    /^([NS]?\s*-?\d+(?:\.\d+)?)\s+([EW]?\s*-?\d+(?:\.\d+)?)$/i
-  )
-  if (!m) return null
-  let lat = parseFloat(m[1].replace(/[NS]/i, '').trim())
-  let lng = parseFloat(m[2].replace(/[EW]/i, '').trim())
-  if (/S/i.test(m[1])) lat = -lat
-  if (/W/i.test(m[2])) lng = -lng
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
-  const sub = `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`
-  return { kind: 'LL', id: sub, name: sub, sub: 'Coordinates', lng, lat }
+  const p = parseCoordinate(q)
+  if (!p) return null
+  const label = formatCoordinate(p.lat, p.lng, p.format)
+  return { kind: 'LL', id: label, name: label, sub: 'Coordinates', lng: p.lng, lat: p.lat }
 }
 
 // ---------------------------------------------------------------------------
@@ -166,9 +159,14 @@ export default function FindFeature({ onResult, onAddToRoute }: Props) {
     }
   }, [index])
 
-  // Update results reactively when index loads mid-typing
+  // Update results reactively when index loads mid-typing. Must honour the
+  // coordinate parse first, same as handleChange -- otherwise this effect
+  // (which also fires on every query change once the index is loaded)
+  // overwrites a parsed-coordinate result with an empty index search.
   useEffect(() => {
-    if (index && query) setResults(search(query, index))
+    if (!index || !query) return
+    const ll = parseLatLon(query)
+    setResults(ll ? [ll] : search(query, index))
   }, [index, query])
 
   const pick = useCallback((r: FindResult) => {

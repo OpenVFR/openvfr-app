@@ -3,12 +3,25 @@ import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride, RouteDocType } from './index'
 import { getDb } from './index'
 import { resolveSaveRouteId } from '@open-vfr/shared/resolveSaveRouteId'
+import { emptyHistory, recordChange, undo as undoStep, redo as redoStep, type UndoHistory } from '@open-vfr/shared/undoHistory'
 
 const ROUTE_ID = 'current'
 const LS_KEY   = 'openvfr.route'
 
 type WaypointSetter = (updater: RouteWaypoint[] | ((prev: RouteWaypoint[]) => RouteWaypoint[])) => void
 type OverrideSetter = (updater: LegOverride[]  | ((prev: LegOverride[])  => LegOverride[]))  => void
+
+interface RouteSnapshot { waypoints: RouteWaypoint[]; legOverrides: LegOverride[] }
+
+/** Undo/redo for edits to the working route. History is cleared whenever a
+ *  different route is loaded, so undo never crosses into another route
+ *  (which would also desync the saved-route id link). */
+export interface RouteUndo {
+  undo: () => void
+  redo: () => void
+  canUndo: boolean
+  canRedo: boolean
+}
 
 /**
  * Persistent route hook backed by RxDB/IndexedDB.
@@ -21,6 +34,7 @@ export function usePersistedRoute(): [
   (wps: RouteWaypoint[], ovr: LegOverride[], aircraftId?: string, routeId?: string) => void,
   string, (id: string) => void,
   string, (id: string) => void,
+  RouteUndo,
 ] {
   const [waypoints, setWaypointsState]       = useState<RouteWaypoint[]>([])
   const [legOverrides, setLegOverridesState] = useState<LegOverride[]>([])
@@ -40,6 +54,16 @@ export function usePersistedRoute(): [
   legOverridesRef.current  = legOverrides
   aircraftIdRef.current    = aircraftId
   activeRouteIdRef.current = activeRouteId
+
+  // Undo history lives in a ref (updated synchronously alongside the route
+  // refs); `historyVersion` only exists to re-render canUndo/canRedo.
+  const historyRef = useRef<UndoHistory<RouteSnapshot>>(emptyHistory())
+  const [, setHistoryVersion] = useState(0)
+  const recordHistory = useCallback(() => {
+    historyRef.current = recordChange(historyRef.current,
+      { waypoints: waypointsRef.current, legOverrides: legOverridesRef.current }, Date.now())
+    setHistoryVersion(v => v + 1)
+  }, [])
 
   // Load once on mount; migrate from localStorage if RxDB has no saved route yet.
   useEffect(() => {
@@ -89,32 +113,61 @@ export function usePersistedRoute(): [
     ).catch(console.error)
   }, [])
 
+  // The updater is applied eagerly against the refs (always the latest
+  // value -- they're updated synchronously below), not inside a React state
+  // updater: those run twice under StrictMode, which would double-record
+  // undo history and double-persist.
   const setWaypoints = useCallback<WaypointSetter>((updater) => {
-    setWaypointsState((prev) => {
-      const next = typeof updater === 'function' ? updater(prev) : updater
-      // Trim overrides to at most (next.length - 1) entries when waypoints shrink.
-      const trimmed = legOverridesRef.current.slice(0, Math.max(0, next.length - 1))
-      // Update refs synchronously so a setLegOverrides call in the same event
-      // handler (e.g. delete-waypoint handlers that call both setters back to
-      // back) doesn't persist() with a stale pre-update value — refs otherwise
-      // only update on next render, causing the later persist() to overwrite
-      // IndexedDB with the old array.
-      waypointsRef.current    = next
-      legOverridesRef.current = trimmed
-      setLegOverridesState(trimmed)
-      persist(next, trimmed)
-      return next
-    })
-  }, [persist])
+    const prev = waypointsRef.current
+    const next = typeof updater === 'function' ? updater(prev) : updater
+    if (next === prev) return
+    recordHistory()
+    // Trim overrides to at most (next.length - 1) entries when waypoints shrink.
+    const trimmed = legOverridesRef.current.slice(0, Math.max(0, next.length - 1))
+    // Update refs synchronously so a setLegOverrides call in the same event
+    // handler (e.g. delete-waypoint handlers that call both setters back to
+    // back) doesn't persist() with a stale pre-update value — refs otherwise
+    // only update on next render, causing the later persist() to overwrite
+    // IndexedDB with the old array.
+    waypointsRef.current    = next
+    legOverridesRef.current = trimmed
+    setWaypointsState(next)
+    setLegOverridesState(trimmed)
+    persist(next, trimmed)
+  }, [persist, recordHistory])
 
   const setLegOverrides = useCallback<OverrideSetter>((updater) => {
-    setLegOverridesState((prev) => {
-      const next = typeof updater === 'function' ? updater(prev) : updater
-      legOverridesRef.current = next
-      persist(waypointsRef.current, next)
-      return next
-    })
+    const prev = legOverridesRef.current
+    const next = typeof updater === 'function' ? updater(prev) : updater
+    if (next === prev) return
+    recordHistory()
+    legOverridesRef.current = next
+    setLegOverridesState(next)
+    persist(waypointsRef.current, next)
+  }, [persist, recordHistory])
+
+  const applySnapshot = useCallback((snap: RouteSnapshot) => {
+    waypointsRef.current    = snap.waypoints
+    legOverridesRef.current = snap.legOverrides
+    setWaypointsState(snap.waypoints)
+    setLegOverridesState(snap.legOverrides)
+    persist(snap.waypoints, snap.legOverrides)
+    setHistoryVersion(v => v + 1)
   }, [persist])
+
+  const undo = useCallback(() => {
+    const r = undoStep(historyRef.current, { waypoints: waypointsRef.current, legOverrides: legOverridesRef.current })
+    if (!r) return
+    historyRef.current = r.history
+    applySnapshot(r.state)
+  }, [applySnapshot])
+
+  const redo = useCallback(() => {
+    const r = redoStep(historyRef.current, { waypoints: waypointsRef.current, legOverrides: legOverridesRef.current })
+    if (!r) return
+    historyRef.current = r.history
+    applySnapshot(r.state)
+  }, [applySnapshot])
 
   /**
    * Atomically replace both waypoints and leg overrides (used by Route
@@ -134,6 +187,8 @@ export function usePersistedRoute(): [
     setAircraftIdState(nextAcId)
     setActiveRouteIdState(nextRouteId)
     persist(wps, safeOvr, nextAcId, nextRouteId)
+    historyRef.current = emptyHistory()
+    setHistoryVersion(v => v + 1)
   }, [persist])
 
   /** Set the aircraft profile associated with the current working route. */
@@ -153,6 +208,7 @@ export function usePersistedRoute(): [
   return [
     waypoints, setWaypoints, legOverrides, setLegOverrides, loadRoute,
     aircraftId, setAircraftId, activeRouteId, setActiveRouteId,
+    { undo, redo, canUndo: historyRef.current.past.length > 0, canRedo: historyRef.current.future.length > 0 },
   ] as const
 }
 

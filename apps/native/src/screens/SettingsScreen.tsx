@@ -24,6 +24,7 @@ import { qnhFromStationPressure } from '@open-vfr/shared/baroAltitude'
 import * as Location from 'expo-location'
 import { API_BASE, TILE_BASE } from '../config'
 import { refreshTileManifest } from '@open-vfr/shared/tileManifest'
+import { isAiracOutdated } from '@open-vfr/shared/airac'
 import { theme, useThemedStyles, useScaledTheme, type ScaledTheme, type ThemeName } from '../styles/theme'
 import {
   getCacheStatus, getTotalCacheSizeMb, downloadSelected, clearCache,
@@ -136,18 +137,7 @@ export function SettingsScreen() {
       .catch(() => {})
   }, []))
 
-  // AIRAC cycle logic — epoch 2501 = 2025-01-02
-  const AIRAC_EPOCH_MS = Date.UTC(2025, 0, 2)
-  const AIRAC_DAYS     = 28
-  const expectedAirac  = (() => {
-    const elapsed    = Math.max(0, Date.now() - AIRAC_EPOCH_MS)
-    const cycleIndex = Math.floor(elapsed / (AIRAC_DAYS * 86_400_000))
-    const total      = cycleIndex
-    const year       = 2025 + Math.floor(total / 13)
-    const inYear     = (total % 13) + 1
-    return `${String(year).slice(-2)}${String(inYear).padStart(2, '0')}`
-  })()
-  const airacStale = dataAirac !== null && dataAirac !== expectedAirac
+  const airacStale = dataAirac !== null && isAiracOutdated(dataAirac)
 
   return (
     <ScrollView

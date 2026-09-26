@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import css from './AerodromePopup.module.css'
+import { notamTitle } from '@open-vfr/shared/notamQCode'
+import { buildAerodromeLink } from '@open-vfr/shared/deepLink'
 import { fetchWxResolved, decodeMetar, parseMetarWind, parseMetarClouds, type WxResolved, type WxStationCandidate, type ParsedWind } from '../utils/fetchWx'
 import { fetchAmbientWx, type AmbientWx } from '@open-vfr/shared/fetchWind'
 import { parseTaf, type TafPeriod } from '@open-vfr/shared/parseTaf'
@@ -10,7 +12,13 @@ import { visTone, ceilingTone, windTone, fmtVis, fmtWind, fmtObsAge, metarNarrat
 import TafTimeline from './TafTimeline'
 import CloudProfile from './CloudProfile'
 import { fetchNotams, fmtNotamDate, type NotamItem } from '../utils/fetchNotam'
-import { filterNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM, type RoutePoint } from '@open-vfr/shared/notamRouteFilter'
+import { filterNotamsNearRoute, filterAndSortNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM, DEFAULT_VICINITY_NOTAM_NM, type RoutePoint } from '@open-vfr/shared/notamRouteFilter'
+import { printBriefingDoc } from '../utils/printBriefing'
+import { notamText } from '@open-vfr/shared/notamIcaoFormat'
+import { applyNotamRelevance, relevantFirPrefixes, relevanceHiddenNote } from '@open-vfr/shared/notamRelevance'
+import { useNotamPrefs } from '../hooks/useNotamPrefs'
+import NotamViewControls from './NotamViewControls'
+import ctlCss from './NotamViewControls.module.css'
 import RegionalNotamsPanel from './RegionalNotamsPanel'
 import { sunriseSunset, fmtSunTime } from '../utils/sunCalc'
 import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from '@open-vfr/shared/atcStatus'
@@ -84,6 +92,41 @@ export interface AerodromeFeatureProps {
   hours_of_operation?: HoursEntry[]
   handling_facilities?: string[]
   passenger_facilities?: string[]
+}
+
+/** Share (native share sheet) or copy a link that opens this aerodrome.
+ *  navigator.share rejects with AbortError when the user cancels the sheet
+ *  -- that's not a failure, so no clipboard fallback in that case. */
+function ShareAerodromeButton({ icao, name }: { icao: string; name: string }) {
+  const [copied, setCopied] = useState(false)
+  if (!icao) return null
+  const onShare = async () => {
+    const url = buildAerodromeLink(`${window.location.origin}${window.location.pathname}`, icao)
+    if (typeof navigator.share === 'function') {
+      try { await navigator.share({ title: `${icao} ${name}`.trim(), url }); return }
+      catch (e) { if ((e as DOMException)?.name === 'AbortError') return }
+    }
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { /* clipboard blocked (insecure context / permissions) */ }
+  }
+  return (
+    <button
+      className={css.homeBtn}
+      onClick={onShare}
+      title={copied ? 'Link copied' : 'Share link to this aerodrome'}
+      aria-label="Share link to this aerodrome"
+    >
+      {copied ? '✓' : (
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+          <line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/>
+        </svg>
+      )}
+    </button>
+  )
 }
 
 interface Props {
@@ -310,7 +353,12 @@ export default function AerodromePopup({
     ? undefined
     : hasRegionalNotamRoute
       ? filterNotamsNearRoute(regionalNotams, routeWaypoints!, DEFAULT_ROUTE_NOTAM_BUFFER_NM)
-      : regionalNotams
+      // No route: this aerodrome's vicinity, not the whole FIR-wide list
+      // (thousands of entries from across Europe) -- same scope as the
+      // printed briefing. NOTAMs without a position pass this distance
+      // filter and are scoped by FIR in the relevance step below.
+      : filterAndSortNotamsNearRoute(regionalNotams, [{ lat, lng }], DEFAULT_VICINITY_NOTAM_NM)
+
 
   // ── Wx-tab compass runway selector ────────────────────────────
   // null = auto (longest runway, previous default behaviour). Airports with
@@ -546,6 +594,18 @@ export default function AerodromePopup({
     return 'var(--accent-green)'
   }
 
+  // Relevance filters (VFR-only preference; FIR scope for NOTAMs without a
+  // usable position -- only FIRs this aerodrome / the route touch). See
+  // @open-vfr/shared/notamRelevance. Own-aerodrome NOTAMs need no FIR scope.
+  const { textView, vfrOnly, setVfrOnly } = useNotamPrefs()
+  const firPrefixes = relevantFirPrefixes([{ lat, lng }, ...(routeWaypoints ?? [])], [p.icao])
+  const ownRel = applyNotamRelevance(notams, { vfrOnly, firPrefixes: new Set() })
+  const regRel = displayedRegionalNotams === undefined
+    ? undefined
+    : applyNotamRelevance(displayedRegionalNotams, { vfrOnly, firPrefixes })
+  const ownHiddenNote = relevanceHiddenNote(ownRel)
+  const regHiddenNote = regRel ? relevanceHiddenNote(regRel) : null
+
   return (
     <div className={css.panel}>
       {!forcedTab && (
@@ -583,6 +643,7 @@ export default function AerodromePopup({
               <div className={css.notamHint}>⏰ Active NOTAM may have changed opening hours — check NOTAMs tab</div>
             )}
           </div>
+          <ShareAerodromeButton icao={p.icao} name={p.name} />
           <button
             className={`${css.homeBtn} ${isHome ? css.homeBtnActive : ''}`}
             onClick={() => onSetHome(p.icao, p.name, lng, lat)}
@@ -1179,13 +1240,56 @@ export default function AerodromePopup({
         {/* ── NOTAMs tab ──────────────────────────────────────────────── */}
         {effectiveTab === 'notam' && (
           <div className={css.section}>
-            <div className={css.sectionTitle}>NOTAMs</div>
+            <div className={`${css.sectionTitle} ${css.sectionTitleRow}`}>
+              <span>NOTAMs</span>
+              {!notamLoading && !notamError && (
+                <button
+                  type="button"
+                  className={css.printBtn}
+                  title="Print or save a NOTAM briefing (PDF) for this aerodrome"
+                  onClick={() => {
+                    const regional = regRel?.kept ?? []
+                    const hiddenNotes = [ownHiddenNote && `Aerodrome: ${ownHiddenNote}`, regHiddenNote && `Other: ${regHiddenNote}`].filter(Boolean)
+                    const ok = printBriefingDoc({
+                      title: `${p.icao} ${p.name}`.trim(),
+                      textView,
+                      note: [
+                        vfrOnly ? 'Filter: VFR-relevant NOTAMs only.' : 'Filter: all NOTAMs including IFR-only.',
+                        'NOTAMs without a position are limited to the FIRs this briefing covers.',
+                        ...hiddenNotes,
+                      ].join(' '),
+                      sections: [
+                        { heading: `${p.icao || 'Aerodrome'} NOTAMs`, notams: ownRel.kept },
+                        ...(regRel !== undefined ? [
+                          hasRegionalNotamRoute && routeWaypoints
+                            ? {
+                                heading: 'Other NOTAMs',
+                                note: `Within ${DEFAULT_ROUTE_NOTAM_BUFFER_NM} NM of the planned route, in along-route order.`,
+                                // already route-filtered upstream -- sort only
+                                notams: filterAndSortNotamsNearRoute(regional, routeWaypoints, Infinity),
+                              }
+                            : {
+                                heading: 'Other NOTAMs',
+                                note: `Within ${DEFAULT_VICINITY_NOTAM_NM} NM of ${p.icao || 'the aerodrome'} (no route loaded).`,
+                                notams: regional, // already vicinity-filtered and distance-sorted above
+                              },
+                        ] : []),
+                      ],
+                    })
+                    if (!ok) window.alert('Allow pop-ups for this site to print the briefing.')
+                  }}
+                >
+                  Print
+                </button>
+              )}
+            </div>
+            <div style={{ margin: '0 0 6px' }}><NotamViewControls /></div>
             {notamLoading && <div className={css.wxState}>Loading…</div>}
             {notamError && <div className={css.wxState}>{notamError}</div>}
-            {!notamLoading && !notamError && notams.length === 0 && (
+            {!notamLoading && !notamError && ownRel.kept.length === 0 && (
               <div className={css.wxState}>No active NOTAMs</div>
             )}
-            {notams.map((n) => {
+            {ownRel.kept.map((n) => {
               // nmsId, not display id, for expand-state/React key -- see
               // apps/api/src/notam.ts's NotamItem.nmsId comment.
               const expanded = expandedNotams.has(n.nmsId)
@@ -1198,16 +1302,22 @@ export default function AerodromePopup({
                     onClick={() => toggleNotam(n.nmsId)}
                     aria-expanded={String(expanded) as 'true' | 'false'}
                   >
-                    <span className={css.notamId}>{n.id}</span>
+                    <span className={css.notamId}>{notamTitle(n)}</span>
                     {eff && <span className={css.notamPeriod}>{eff}{exp ? ` – ${exp}` : ''}</span>}
                     <span className={css.notamChevron}>{expanded ? '▴' : '▾'}</span>
                   </button>
                   {expanded && (
-                    <pre className={css.notamText}>{n.text}</pre>
+                    <pre className={css.notamText}>{notamText(n, textView)}</pre>
                   )}
                 </div>
               )
             })}
+            {ownHiddenNote && (
+              <div className={ctlCss.hiddenNote}>
+                {ownHiddenNote}
+                {ownRel.hiddenIfrOnly > 0 && <button onClick={() => setVfrOnly(false)}>Show IFR-only</button>}
+              </div>
+            )}
           </div>
         )}
 
@@ -1217,13 +1327,22 @@ export default function AerodromePopup({
         {effectiveTab === 'notam' && displayedRegionalNotams !== undefined && (
           <div className={css.section}>
             <div className={css.sectionTitle}>Other NOTAMs</div>
+            {!hasRegionalNotamRoute && (
+              <div className={ctlCss.hiddenNote}>Within {DEFAULT_VICINITY_NOTAM_NM} NM of {p.icao || 'this aerodrome'} (no route loaded)</div>
+            )}
             <RegionalNotamsPanel
-              notams={displayedRegionalNotams}
+              notams={regRel?.kept ?? displayedRegionalNotams}
               routeFiltered={hasRegionalNotamRoute}
               bufferNm={DEFAULT_ROUTE_NOTAM_BUFFER_NM}
               routeWaypoints={routeWaypoints}
               onShowOnMap={onShowNotamOnMap}
             />
+            {regHiddenNote && (
+              <div className={ctlCss.hiddenNote}>
+                {regHiddenNote}
+                {(regRel?.hiddenIfrOnly ?? 0) > 0 && <button onClick={() => setVfrOnly(false)}>Show IFR-only</button>}
+              </div>
+            )}
           </div>
         )}
       </div>

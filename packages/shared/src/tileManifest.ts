@@ -184,11 +184,31 @@ export function startTileManifestPolling(
   tilesBaseUrl: string,
   intervalMs: number = DEFAULT_POLL_INTERVAL_MS,
 ): () => void {
-  const id = setInterval(() => {
+  let lastCheck = Date.now()
+  const check = () => {
+    lastCheck = Date.now()
     const previous = cachedManifest
     void refreshTileManifest(tilesBaseUrl).then(() => notifyIfChanged(previous, cachedManifest))
-  }, intervalMs)
-  return () => clearInterval(id)
+  }
+  const id = setInterval(check, intervalMs)
+
+  // Re-check as soon as a backgrounded tab / installed PWA comes back to the
+  // foreground instead of waiting out the rest of the interval: browsers
+  // throttle or freeze timers in hidden tabs, so a device woken up at the
+  // aircraft after days in a bag would otherwise show old data for up to
+  // one full interval. Throttled so rapid tab switching doesn't refetch on
+  // every flip. Guarded for non-DOM runtimes (native uses AppState instead).
+  const MIN_FOREGROUND_RECHECK_MS = 5 * 60 * 1000
+  const doc = (globalThis as { document?: Document }).document
+  const onVisible = () => {
+    if (doc?.visibilityState === 'visible' && Date.now() - lastCheck >= MIN_FOREGROUND_RECHECK_MS) check()
+  }
+  doc?.addEventListener('visibilitychange', onVisible)
+
+  return () => {
+    clearInterval(id)
+    doc?.removeEventListener('visibilitychange', onVisible)
+  }
 }
 
 /** Currently cached manifest, or null if not loaded yet / fetch failed. */

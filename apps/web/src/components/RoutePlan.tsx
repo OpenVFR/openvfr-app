@@ -168,6 +168,9 @@ interface Props {
   onToggleRouteVisible: () => void
   units?:       Units
   onUndo:       () => void
+  onRedo?:      () => void
+  canUndo?:     boolean
+  canRedo?:     boolean
   onClear:      () => void
   onReplace:    (wps: RouteWaypoint[]) => void
   onAddToRoute?: (wp: { lng: number; lat: number; name: string }) => void
@@ -175,7 +178,7 @@ interface Props {
   onSetWaypointNote: (wpIdx: number, note: string) => void
 }
 
-export default function RoutePlan({ waypoints, legOverrides, routeVisible, onToggleRouteVisible, units = DEFAULT_UNITS, onUndo, onClear, onReplace, onAddToRoute, onSetLegOverride, onSetWaypointNote }: Props) {
+export default function RoutePlan({ waypoints, legOverrides, routeVisible, onToggleRouteVisible, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onAddToRoute, onSetLegOverride, onSetWaypointNote }: Props) {
   const [kbInput, setKbInput] = useState('')
   const [kbError, setKbError] = useState('')
   const [kbLoading, setKbLoading] = useState(false)
@@ -359,7 +362,8 @@ export default function RoutePlan({ waypoints, legOverrides, routeVisible, onTog
           )}
           <button className={css.btn} title="Add waypoint" onClick={() => { setShowAdd(s => !s); setShowKb(false) }}>+</button>
           <button className={css.btn} title="Keyboard route entry" onClick={() => { setShowKb(s => !s); setShowAdd(false); setTimeout(() => kbRef.current?.focus(), 50) }}>⌨</button>
-          <button className={css.btn} onClick={onUndo} disabled={waypoints.length === 0}>Undo</button>
+          <button className={css.btn} onClick={onUndo} disabled={!canUndo} title="Undo last route change (Ctrl+Z)">↶</button>
+          {onRedo && <button className={css.btn} onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">↷</button>}
           <div className={css.menuWrap} ref={menuRef}>
             <button className={css.btn} title="More actions" onClick={() => setShowMenu(s => !s)}>⋯</button>
             {showMenu && (

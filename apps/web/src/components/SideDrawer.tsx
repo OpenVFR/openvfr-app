@@ -74,6 +74,9 @@ interface Props {
   planningMode: boolean
   onTogglePlanningMode: () => void
   onUndo: () => void
+  onRedo?: () => void
+  canUndo?: boolean
+  canRedo?: boolean
   onClear: () => void
   onReplace: (wps: RouteWaypoint[]) => void
   onLoadRoute: (wps: RouteWaypoint[], legOverrides: LegOverride[], aircraftId: string) => void
@@ -181,7 +184,7 @@ export default function SideDrawer({
   checking,
   onRefresh,
   waypoints, legOverrides, routeVisible, onToggleRouteVisible, planningMode, onTogglePlanningMode,
-  onUndo, onClear, onReplace, onLoadRoute, activeRouteId, onActiveRouteIdChange, onSetLegOverride, onSetWaypointNote,
+  onUndo, onRedo, canUndo, canRedo, onClear, onReplace, onLoadRoute, activeRouteId, onActiveRouteIdChange, onSetLegOverride, onSetWaypointNote,
   onAddToRoute,
   selectedAircraftId, selectedAircraftProfile, onSelectAircraft,
   onFlyTo,
@@ -371,6 +374,9 @@ export default function SideDrawer({
                     onToggleRouteVisible={onToggleRouteVisible}
                     units={units}
                     onUndo={onUndo}
+                    onRedo={onRedo}
+                    canUndo={canUndo}
+                    canRedo={canRedo}
                     onClear={onClear}
                     onReplace={onReplace}
                     onAddToRoute={onAddToRoute}
@@ -384,6 +390,9 @@ export default function SideDrawer({
                 <p style={{ padding: '4px 12px', color: 'var(--text-muted)', fontSize: 11 }}>
                   No route yet. Tap "Locked" above to start planning, then click the map to add waypoints.
                 </p>
+                {canUndo && (
+                  <button style={{ margin: '0 12px 6px', fontSize: 11 }} onClick={onUndo} title="Undo last route change (Ctrl+Z)">↶ Undo</button>
+                )}
               </div>
             )}
           </div>

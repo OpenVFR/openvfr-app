@@ -1,8 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import css from './AirspacePopup.module.css'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { extractDesignators } from '@open-vfr/shared/notamDesignator'
+import { notamTitle } from '@open-vfr/shared/notamQCode'
+import { notamValidity, fmtUtcClock } from '@open-vfr/shared/notamValidity'
+import { notamText } from '@open-vfr/shared/notamIcaoFormat'
+import { useNotamPrefs } from '../hooks/useNotamPrefs'
+import NotamViewControls from './NotamViewControls'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -264,7 +269,26 @@ interface Props {
   onClose: () => void
 }
 
+/** Current time, re-rendered every 30 s -- drives the UTC clock and the
+ *  NOTAM validity countdowns while the popup stays open. */
+function useNow(intervalMs = 30_000): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs)
+    return () => clearInterval(id)
+  }, [intervalMs])
+  return now
+}
+
+const VALIDITY_CLASS = {
+  active:   css.validityActive,
+  upcoming: css.validityUpcoming,
+  ended:    css.validityEnded,
+} as const
+
 export default function AirspacePopup({ features, regionalNotams = [], onClose }: Props) {
+  const now = useNow()
+  const { textView } = useNotamPrefs()
   // Independently-collapsible rows -- collapsed (default) shows only the
   // header line (icon, name, type/class/altitude badges); expanded reveals
   // remarks, frequencies, and matched NOTAM detail. Keyed by row index into
@@ -337,6 +361,7 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
             <span className={css.count}>{sorted.length + dedupedNotams.length} layers</span>
           )}
         </span>
+        <span className={css.utcClock} title="Current time (UTC)">{fmtUtcClock(now)}</span>
         <button className={css.close} onClick={onClose} aria-label="Close">✕</button>
       </div>
 
@@ -403,6 +428,7 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
               // chain (superseded -> current).
               const group = item.hit.notams
               const n = group[0]
+              const validity = notamValidity(n.effective, n.expires, now)
               const notamColor = '#e64980'
               const isOpen = expanded.has(i)
               return (
@@ -425,6 +451,9 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
                             {group.length}
                           </span>
                         )}
+                        {validity.state !== 'unknown' && (
+                          <span className={`${css.validity} ${VALIDITY_CLASS[validity.state]}`}>{validity.label}</span>
+                        )}
                         {(n.effective || n.expires) && (
                           <span className={css.altBadge}>
                             {fmtNotamDate(n.effective) ?? '—'} – {fmtNotamDate(n.expires) ?? '—'}
@@ -440,19 +469,20 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
                         </button>
                       </div>
                       <div className={css.name}>
-                        {n.id}{group.length > 1 ? ` +${group.length - 1} more` : ''}
+                        {notamTitle(n)}{group.length > 1 ? ` +${group.length - 1} more` : ''}
                       </div>
                       {isOpen && (
                         <div
                           className={css.remarks}
                           style={{ borderColor: '#e64980', background: 'rgba(230,73,128,0.1)' }}
                         >
+                          <div style={{ marginBottom: 6 }}><NotamViewControls showVfr={false} /></div>
                           {group.map((gn, gi) => (
                             <div key={gn.nmsId} style={{ marginBottom: gi < group.length - 1 ? 6 : 0, whiteSpace: 'pre-line' }}>
                               {group.length > 1 && (
-                                <div><strong>NOTAM {gn.id}</strong>{gn.effective && <span> · {fmtNotamDate(gn.effective)}</span>}{gn.expires && <span> – {fmtNotamDate(gn.expires)}</span>}</div>
+                                <div><strong>{notamTitle(gn)}</strong>{gn.effective && <span> · {fmtNotamDate(gn.effective)}</span>}{gn.expires && <span> – {fmtNotamDate(gn.expires)}</span>}</div>
                               )}
-                              {gn.text}
+                              {notamText(gn, textView)}
                             </div>
                           ))}
                         </div>
@@ -536,10 +566,10 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
                   <div className={css.remarks} style={{ borderColor: '#e64980', background: 'rgba(230,73,128,0.1)' }}>
                     {f.notams.map((n, ni) => (
                       <div key={ni} style={{ marginBottom: ni < f.notams!.length - 1 ? 6 : 0 }}>
-                        <strong>NOTAM {n.id}</strong>
+                        <strong>{notamTitle(n)}</strong>
                         {n.effective && <span> · {fmtNotamDate(n.effective)}</span>}
                         {n.expires && <span> – {fmtNotamDate(n.expires)}</span>}
-                        <div style={{ whiteSpace: 'pre-line' }}>{n.text}</div>
+                        <div style={{ whiteSpace: 'pre-line' }}>{notamText(n, textView)}</div>
                       </div>
                     ))}
                   </div>

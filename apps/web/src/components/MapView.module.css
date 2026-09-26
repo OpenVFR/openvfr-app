@@ -83,6 +83,14 @@
   color:       var(--text-primary);
 }
 
+/* Outdated-AIRAC variant of the update banner: amber edge, wraps on narrow
+   screens instead of overflowing (text is longer than the reload prompt). */
+.staleBanner {
+  border-color:  var(--accent-yellow);
+  white-space:   normal;
+  max-width:     min(92vw, 560px);
+}
+
 /* ── Go Flying mode picker popup ──────────────────────────────────────────── */
 .modePicker {  position: absolute;
   top: 8px;

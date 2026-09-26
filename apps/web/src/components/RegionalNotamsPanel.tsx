@@ -15,6 +15,9 @@ import { useState } from 'react'
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { filterAndSortNotamsNearRoute, type RoutePoint } from '@open-vfr/shared/notamRouteFilter'
 import css from './RegionalNotamsPanel.module.css'
+import { notamText } from '@open-vfr/shared/notamIcaoFormat'
+import { useNotamPrefs } from '../hooks/useNotamPrefs'
+import { notamTitle } from '@open-vfr/shared/notamQCode'
 
 interface Props {
   notams: NotamItem[]
@@ -53,6 +56,7 @@ function previewText(text: string): string {
 
 export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, routeWaypoints, onShowOnMap }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const { textView } = useNotamPrefs()
 
   const toggle = (id: string) => {
     setExpandedIds(prev => {
@@ -110,7 +114,7 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, r
               >
                 {n.icaoLocation && <span className={css.locBadge}>{n.icaoLocation}</span>}
                 {isMilitary && <span className={css.milBadge}>MIL</span>}
-                <span className={css.id}>{n.id}</span>
+                <span className={css.id}>{notamTitle(n)}</span>
                 <span className={css.period}>{eff}{exp ? ` – ${exp}` : ''}</span>
                 <span className={css.chevron}>{expanded ? '▴' : '▾'}</span>
               </button>
@@ -130,7 +134,7 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, r
                 {previewText(n.text)}
               </button>
             )}
-            {expanded && <pre className={css.text}>{n.text}</pre>}
+            {expanded && <pre className={css.text}>{notamText(n, textView)}</pre>}
           </div>
         )
       })}

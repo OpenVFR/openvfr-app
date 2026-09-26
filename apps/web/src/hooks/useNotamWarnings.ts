@@ -29,6 +29,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
+import { notamTitle } from '@open-vfr/shared/notamQCode'
 import { distanceNm, advancePosition } from '@open-vfr/shared/routeCalc'
 
 const LOOKAHEAD_MIN_SPEED = 60
@@ -93,7 +94,7 @@ export function useNotamWarnings(
       if (insideCurrent || insideAhead) {
         found.push({
           key,
-          notamId:  n.id,
+          notamId:  notamTitle(n),
           text:     n.text,
           radiusNm: n.radiusNm,
           inside:   insideCurrent,

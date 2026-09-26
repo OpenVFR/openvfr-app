@@ -9,6 +9,24 @@ export type NotamPolygonGeometry =
   | { type: 'Polygon'; coordinates: number[][][] }
   | { type: 'MultiPolygon'; coordinates: number[][][][] }
 
+/** Structured ICAO NOTAM message fields (raw upstream strings, trimmed). */
+export interface NotamIcaoFields {
+  type:        string | null  // N (new) / R (replace) / C (cancel)
+  issued:      string | null
+  traffic:     string | null  // I / V / IV / K
+  purpose:     string | null
+  scope:       string | null  // A / E / W / AE / AW / K
+  lowerFl:     string | null  // Q-line lower FL, "000"
+  upperFl:     string | null  // Q-line upper FL, "999"
+  coordinates: string | null  // DDMMNDDDMME
+  radius:      string | null  // NM as given, "005"
+  location:    string | null  // A)
+  schedule:    string | null  // D)
+  lowerLimit:  string | null  // F)
+  upperLimit:  string | null  // G)
+  estimated:   boolean        // C) marked EST
+}
+
 export interface NotamItem {
   id:             string
   // NMS-API's own globally-unique internal id, NOT the human-readable
@@ -29,6 +47,19 @@ export interface NotamItem {
   // record but previously dropped before reaching either client. Used to
   // give a regional-NOTAM list row a real "where" without opening it.
   icaoLocation:   string | null
+  // ICAO NOTAM Code, e.g. "QMRLC" (runway closed) -- decode with
+  // @open-vfr/shared/notamQCode's notamTitle(). Optional: older API
+  // deployments/cached responses predate it; null when upstream had none.
+  qCode?:         string | null
+  // FIR the NOTAM is filed in (e.g. "ESAA"), and whether it covers that
+  // whole FIR (Q-line radius 999) -- the only geographic scope a
+  // positionless NOTAM has. See notamRelevance.ts. Optional: older API
+  // deployments predate them.
+  affectedFir?:   string | null
+  firWide?:       boolean
+  // Structured ICAO message fields for the Raw/Full text views -- see
+  // notamIcaoFormat.ts. Optional for the same reason.
+  icao?:          NotamIcaoFields | null
   // Real multi-vertex area geometry straight from NMS-API's own GeoJSON
   // feature.geometry (see apps/api/src/notam.ts's extractNotamPolygon()) --
   // present only for NOTAMs whose subject area is an actual polygon, e.g.

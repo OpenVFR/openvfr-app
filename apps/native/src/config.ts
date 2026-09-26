@@ -32,6 +32,13 @@ export const API_BASE: string =
 export const TILE_BASE: string =
   (process.env.EXPO_PUBLIC_TILE_BASE ?? '') || `${API_BASE}/tiles`
 
+/** Optional public web-app URL (e.g. `https://example.org/`). When set,
+ *  shared aerodrome links point at the web app -- openable by anyone, and
+ *  the web app understands the same `?ad=` params. When unset, links use
+ *  the app's own `openvfr://` scheme (only openable where the app is
+ *  installed). Override via EXPO_PUBLIC_WEB_BASE. */
+export const WEB_BASE: string = process.env.EXPO_PUBLIC_WEB_BASE ?? ''
+
 /**
  * Base URL for the OpenSky traffic endpoints (/api/traffic/*).
  *

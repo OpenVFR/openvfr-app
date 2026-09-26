@@ -5,7 +5,7 @@
  * Tap any row to expand for detail.
  */
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet,
 } from 'react-native'
@@ -14,6 +14,11 @@ import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../sty
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { extractDesignators } from '@open-vfr/shared/notamDesignator'
+import { notamTitle } from '@open-vfr/shared/notamQCode'
+import { notamValidity } from '@open-vfr/shared/notamValidity'
+import { notamText } from '@open-vfr/shared/notamIcaoFormat'
+import { useNotamPrefs } from '../hooks/useNotamPrefs'
+import NotamViewControls from './NotamViewControls'
 
 export interface AirspaceFeatureProps {
   name:       string
@@ -326,6 +331,19 @@ function sortByLower(list: AirspaceFeatureProps[]) {
 
 // ── main component ────────────────────────────────────────────────────────────
 export function AirspacePopup({ features, regionalNotams = [], onClose }: Props) {
+  // Re-render every 30 s while open so the UTC clock and NOTAM validity
+  // countdowns ("Starts in 12m") stay current.
+  // Only ticks while open: this component stays mounted and renders null
+  // when there's nothing to show.
+  const isOpen = features.length > 0 || regionalNotams.length > 0
+  const { textView } = useNotamPrefs()
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!isOpen) return
+    setNow(Date.now())
+    const id = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [isOpen])
   const styles = useThemedStyles(makeStyles)
   // Independently-collapsible rows -- keyed by string so NOTAM and charted
   // airspace rows (each own index space) never collide, and multiple rows
@@ -392,6 +410,11 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
           {dedupedNotams.map((hit, i) => {
             const group = hit.notams
             const n     = group[0]
+            const validity = notamValidity(n.effective, n.expires, now)
+            const validityColor =
+              validity.state === 'active'   ? NOTAM_COLOR
+              : validity.state === 'upcoming' ? theme.textPrimary
+              : theme.textFaint
             const key   = `notam-${i}`
             const isOpen = expandedKeys.has(key)
             return (
@@ -417,6 +440,11 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
                           <Text style={[styles.badgeTxt, { color: NOTAM_COLOR }]}>{group.length}</Text>
                         </View>
                       )}
+                      {validity.state !== 'unknown' && (
+                        <View style={[styles.badge, { borderColor: validityColor }]}>
+                          <Text style={[styles.badgeTxt, { color: validityColor }]}>{validity.label.toUpperCase()}</Text>
+                        </View>
+                      )}
                       {(n.effective || n.expires) && (
                         <View style={styles.altBadge}>
                           <Text style={styles.altTxt} numberOfLines={1}>
@@ -426,21 +454,22 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
                       )}
                     </View>
                     <Text style={styles.name} numberOfLines={1}>
-                      {n.id}{group.length > 1 ? ` +${group.length - 1} more` : ''}
+                      {notamTitle(n)}{group.length > 1 ? ` +${group.length - 1} more` : ''}
                     </Text>
                   </View>
                   <Text style={[styles.chevron, isOpen && styles.chevronOpen]}>›</Text>
                 </TouchableOpacity>
                 {isOpen && (
                   <View style={styles.expandedContent}>
+                    <NotamViewControls showVfr={false} />
                     {group.map((gn) => (
                       <View key={gn.nmsId} style={{ marginBottom: 6 }}>
                         {group.length > 1 && (
                           <Text style={[styles.notamText, { fontWeight: '700' }]}>
-                            NOTAM {gn.id}{gn.effective ? ` · ${fmtNotamDate(gn.effective)}` : ''}{gn.expires ? ` – ${fmtNotamDate(gn.expires)}` : ''}
+                            {notamTitle(gn)}{gn.effective ? ` · ${fmtNotamDate(gn.effective)}` : ''}{gn.expires ? ` – ${fmtNotamDate(gn.expires)}` : ''}
                           </Text>
                         )}
-                        <Text style={styles.notamText}>{gn.text}</Text>
+                        <Text style={styles.notamText}>{notamText(gn, textView)}</Text>
                       </View>
                     ))}
                   </View>

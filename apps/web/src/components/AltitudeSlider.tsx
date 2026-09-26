@@ -20,7 +20,7 @@ const SNAP_POINTS: { ft: number; label: string }[] = [
   { ft: 66000, label: 'Unlimited' },
 ]
 
-const MAX_FT = SNAP_POINTS[SNAP_POINTS.length - 1].ft
+export const MAX_FT = SNAP_POINTS[SNAP_POINTS.length - 1].ft
 
 /** Convert a slider 0–100 position to a ft value (log-ish via snap points). */
 function posToFt(pos: number): number {
@@ -35,7 +35,7 @@ function ftToPos(ft: number): number {
   return Math.round((idx / (SNAP_POINTS.length - 1)) * 100)
 }
 
-function ftToLabel(ft: number): string {
+export function ftToLabel(ft: number): string {
   const snap = SNAP_POINTS.find((p) => p.ft === ft)
   return snap?.label ?? `${ft.toLocaleString()} ft`
 }

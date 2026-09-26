@@ -3,7 +3,8 @@
  * Persists to AsyncStorage as 'current' route (same ID convention as web).
  */
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { emptyHistory, recordChange, undo as undoStep, redo as redoStep, type UndoHistory } from '@open-vfr/shared/undoHistory'
 import { routes as db } from '../db'
 import type { RouteDocType } from '../types/db'
 import type { RouteWaypoint, LegOverride } from '../types/db'
@@ -14,13 +15,30 @@ function blank(): RouteDocType {
   return { id: CURRENT_ID, name: 'Route', waypoints: [], legOverrides: [], updatedAt: Date.now() }
 }
 
+/** What undo/redo restores. Includes the saved-route link: loading a
+ *  library route is two back-to-back calls (setWaypoints + setActiveRouteId,
+ *  coalesced into one undo step), so undoing it must restore the previous
+ *  route *and* its own link -- never leave restored waypoints linked to the
+ *  wrong saved row (id-first save rule). */
+interface RouteSnapshot {
+  waypoints: RouteWaypoint[]
+  legOverrides: LegOverride[]
+  linkedRouteId: string | undefined
+}
+const snap = (r: RouteDocType): RouteSnapshot =>
+  ({ waypoints: r.waypoints, legOverrides: r.legOverrides, linkedRouteId: r.linkedRouteId })
+
 export function useRoute() {
   const [route, setRouteState] = useState<RouteDocType>(blank())
   const [loaded, setLoaded]    = useState(false)
+  // Always the latest route, updated synchronously in persist() -- see below.
+  const routeRef = useRef<RouteDocType>(route)
+  const historyRef = useRef<UndoHistory<RouteSnapshot>>(emptyHistory())
+  const [, setHistoryVersion] = useState(0)
 
   useEffect(() => {
     db.get(CURRENT_ID).then((stored) => {
-      if (stored) setRouteState(stored)
+      if (stored) { routeRef.current = stored; setRouteState(stored) }
       setLoaded(true)
     })
   }, [])
@@ -36,13 +54,43 @@ export function useRoute() {
   // (e.g. a freshly-loaded 9-waypoint route reverted to 0 waypoints because
   // setActiveRouteId's closure still saw the old blank route). Functional
   // setRouteState always applies against React's latest queued state.
-  const persist = useCallback((updater: (prev: RouteDocType) => RouteDocType) => {
-    setRouteState(prev => {
-      const next = updater(prev)
-      void db.upsert(next)
-      return next
-    })
+  // Now evaluated eagerly against routeRef (kept in sync synchronously here,
+  // so back-to-back calls still see each other's changes) instead of inside
+  // a setState updater -- those may run twice (StrictMode), which would
+  // double-record undo history and double-upsert.
+  const persist = useCallback((updater: (prev: RouteDocType) => RouteDocType, recordUndo = true) => {
+    const prev = routeRef.current
+    const next = updater(prev)
+    if (next === prev) return
+    const edited = next.waypoints !== prev.waypoints || next.legOverrides !== prev.legOverrides
+      || next.linkedRouteId !== prev.linkedRouteId
+    if (recordUndo && edited) {
+      historyRef.current = recordChange(historyRef.current, snap(prev), Date.now())
+      setHistoryVersion(v => v + 1)
+    }
+    routeRef.current = next
+    void db.upsert(next)
+    setRouteState(next)
   }, [])
+
+  const applySnapshot = useCallback((s: RouteSnapshot) => {
+    persist(prev => ({ ...prev, ...s, updatedAt: Date.now() }), false)
+    setHistoryVersion(v => v + 1)
+  }, [persist])
+
+  const undo = useCallback(() => {
+    const r = undoStep(historyRef.current, snap(routeRef.current))
+    if (!r) return
+    historyRef.current = r.history
+    applySnapshot(r.state)
+  }, [applySnapshot])
+
+  const redo = useCallback(() => {
+    const r = redoStep(historyRef.current, snap(routeRef.current))
+    if (!r) return
+    historyRef.current = r.history
+    applySnapshot(r.state)
+  }, [applySnapshot])
 
   /** Link (or unlink, with '') the working route to a saved routes-collection
    *  row. Persisted on the 'current' doc itself — same convention as web's
@@ -113,19 +161,6 @@ export function useRoute() {
     persist(prev => ({ ...prev, waypoints: [...prev.waypoints].reverse(), legOverrides: [], updatedAt: Date.now() }))
   }, [persist])
 
-  /** Remove the last waypoint — mirrors web's Undo button. */
-  const undoLast = useCallback(() => {
-    persist(prev => {
-      if (prev.waypoints.length === 0) return prev
-      return {
-        ...prev,
-        waypoints: prev.waypoints.slice(0, -1),
-        legOverrides: prev.legOverrides.slice(0, -1),
-        updatedAt: Date.now(),
-      }
-    })
-  }, [persist])
-
   const setLegOverride = useCallback((idx: number, override: LegOverride) => {
     persist(prev => {
       const ovr = [...prev.legOverrides]
@@ -144,7 +179,10 @@ export function useRoute() {
 
   return { route, waypoints: route.waypoints, legOverrides: route.legOverrides,
            addWaypoint, removeWaypoint, insertWaypoint, updateWaypoint,
-           moveWaypoint, reverseRoute, undoLast, setLegOverride, setWaypointNote,
+           moveWaypoint, reverseRoute, setLegOverride, setWaypointNote,
+           undo, redo,
+           canUndo: historyRef.current.past.length > 0,
+           canRedo: historyRef.current.future.length > 0,
            clearRoute, setWaypoints, loaded,
            // Route activate/deactivate — hides the drawn route on the map without
            // touching stored waypoints. Purely a display toggle, not persisted.

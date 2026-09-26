@@ -1,0 +1,60 @@
+.row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.segBtn {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.segBtn + .segBtn { border-left: 1px solid var(--border-strong); }
+.segBtnOn {
+  background: var(--surface-active);
+  color: var(--text-primary);
+}
+
+.chip {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.chipOn {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+/* "N NOTAMs hidden (…)" line under a list */
+.hiddenNote {
+  font-size: 10px;
+  font-style: italic;
+  color: var(--text-faint);
+  padding: 4px 0 2px;
+}
+.hiddenNote button {
+  font: inherit;
+  background: none;
+  border: none;
+  color: var(--accent-blue);
+  cursor: pointer;
+  padding: 0 0 0 4px;
+}

@@ -3,24 +3,9 @@ import type { Theme, TrajectoryMode, AirspaceWarnLookahead, TrafficVertFilter, P
 import { AIRSPACE_WARN_LOOKAHEAD_OPTIONS, AIRSPACE_WARN_VERTICAL_OPTIONS, TRAFFIC_VERT_FILTER_OPTIONS, PARK_TIMEOUT_OPTIONS } from '../db/useSettings'
 import type { DataManifest } from '../hooks/useDataManifest'
 import RegionSelector from './RegionSelector'
+import { isAiracOutdated } from '@open-vfr/shared/airac'
+import { repairAppFiles } from '../utils/repairApp'
 import css from './SettingsPanel.module.css'
-
-// AIRAC epoch: cycle 2501 started 2025-01-02.
-const AIRAC_EPOCH_MS = Date.UTC(2025, 0, 2)
-const AIRAC_DAYS     = 28
-
-/** Return the expected current AIRAC cycle identifier, e.g. "2506". */
-function currentAiracCycle(now = Date.now()): string {
-  const elapsed = Math.max(0, now - AIRAC_EPOCH_MS)
-  const cycleIndex = Math.floor(elapsed / (AIRAC_DAYS * 86_400_000))  // 0-based from 2501
-  // 2501 = year 2025, cycle 1
-  const baseYear = 2025
-  const baseCycle = 1
-  const totalCycles = baseCycle - 1 + cycleIndex
-  const year = baseYear + Math.floor(totalCycles / 13)
-  const cycleInYear = (totalCycles % 13) + 1
-  return `${String(year).slice(-2)}${String(cycleInYear).padStart(2, '0')}`
-}
 
 interface Props {
   units:             Units
@@ -60,7 +45,6 @@ const THEMES: { value: Theme; label: string }[] = [
 ]
 
 export default function SettingsPanel({ units, onUnitsChange, region, onRegionChange, theme, onThemeChange, autoZoom, onAutoZoomChange, trajectoryMode, onTrajectoryModeChange, airspaceWarnLookahead, onAirspaceWarnLookaheadChange, airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange, trafficVertFilter, onTrafficVertFilterChange, parkTimeout, onParkTimeoutChange, inFlight, onClose, manifest, isOnline = true, checking = false, onRefresh }: Props) {
-  const expectedCycle = currentAiracCycle()
   return (
     <div className={css.panel}>
       <div className={css.header}>
@@ -235,7 +219,7 @@ export default function SettingsPanel({ units, onUnitsChange, region, onRegionCh
                   ? new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' })
                   : null
                 const cycle = airspace?.airac_cycle ?? null
-                const stale = cycle !== null && cycle !== expectedCycle
+                const stale = cycle !== null && isAiracOutdated(cycle)
                 return (
                   <div key={country} className={css.dataVersionRow}>
                     <span className={css.dataVersionCountry}>{country.toUpperCase()}</span>
@@ -251,6 +235,25 @@ export default function SettingsPanel({ units, onUnitsChange, region, onRegionCh
           </div>
         </div>
       )}
+
+      <div className={css.section}>
+        <span className={css.label}>App files</span>
+        <button
+          className={css.opt}
+          disabled={inFlight || !isOnline}
+          title={inFlight ? 'Not available during flight'
+            : !isOnline ? 'Needs a connection to re-download the app'
+            : 'Re-download app files and cached map data. Routes, aircraft and settings are kept.'}
+          onClick={() => {
+            if (window.confirm(
+              'Repair app files?\n\nThis clears the cached app and map data and reloads. ' +
+              'Your routes, aircraft, waypoints, logs and settings are kept. Needs a connection to re-download.',
+            )) {
+              void repairAppFiles()
+            }
+          }}
+        >Repair &amp; reload</button>
+      </div>
     </div>
   )
 }

@@ -83,6 +83,11 @@ export function distanceToRouteNm(point: RoutePoint, route: RoutePoint[]): numbe
 
 export const DEFAULT_ROUTE_NOTAM_BUFFER_NM = 5
 
+/** Radius for an aerodrome's "other NOTAMs" when no route is loaded -- the
+ *  FIR-wide list otherwise runs to thousands of entries from across Europe.
+ *  Used on screen and in the printed briefing alike. */
+export const DEFAULT_VICINITY_NOTAM_NM = 25
+
 // Minimal structural shape of NotamItem's `polygon` field (see
 // fetchNotam.ts's NotamPolygonGeometry) -- kept local rather than imported
 // to avoid a cross-file type dependency for two field names.

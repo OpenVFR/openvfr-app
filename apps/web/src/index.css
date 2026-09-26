@@ -32,6 +32,30 @@ body,
   font-family: system-ui, sans-serif;
 }
 
+/* Installed-PWA / mobile-browser hardening:
+   - overscroll-behavior: no pull-to-refresh or rubber-band bounce -- an
+     accidental downward swipe must never reload the app mid-flight.
+   - touch-action on the page shell: pan only, so a pinch on UI chrome
+     (drawers, popups) doesn't zoom the whole page and leave the layout
+     stuck scaled. The map canvas sets its own touch-action, so map
+     pinch-zoom is unaffected. */
+html,
+body {
+  overscroll-behavior: none;
+  touch-action: pan-x pan-y;
+}
+
+/* iOS Safari zooms the page when focusing a text field whose font-size is
+   under 16px (and doesn't zoom back out). Touch devices only, so desktop
+   keeps the compact 12px look. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 /* MapLibre compact attribution — keep collapsed until user clicks.
    After idle, we remove compact-show/open; MapLibre then never re-adds them
    (compact branch only runs once per lifecycle). This CSS handles the brief
@@ -39,4 +63,45 @@ body,
 .maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show)
   .maplibregl-ctrl-attrib-inner {
   display: none;
+}
+
+/* Altitude-filter chip stacked above the MapLibre scale bar (see
+   MapView.tsx CeilingChipControl). Global: lives in MapLibre's control DOM. */
+.ovfr-ceiling-chip {
+  font: 600 11px/1.4 system-ui, sans-serif;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface-elevated);
+  color: var(--accent-yellow);
+  border: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+
+/* Own-position dot for the Passive location mode (MapView.tsx). Global:
+   rendered as a MapLibre DOM marker. Blue, deliberately unlike the yellow
+   aircraft symbol used while flying. */
+.ovfr-own-position {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  pointer-events: none;
+}
+.ovfr-own-position-dot {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: #3b82f6;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.25);
+}
+.ovfr-own-position-heading {
+  position: absolute;
+  left: 50%;
+  top: -9px;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 10px solid #3b82f6;
 }

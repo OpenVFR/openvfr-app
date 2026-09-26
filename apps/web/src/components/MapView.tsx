@@ -82,6 +82,9 @@ import { useAirfieldProximity } from '../hooks/useAirfieldProximity'
 import { useFlightLog } from '../hooks/useFlightLog'
 import { useTraffic } from '../hooks/useTraffic'
 import { useRegionalNotams } from '../hooks/useRegionalNotams'
+import { usePassivePosition, readLastPosition, geolocationAlreadyGranted } from '../hooks/usePassivePosition'
+import { useNotamVfrOnly } from '../hooks/useNotamPrefs'
+import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
 import { useNotamWarnings } from '../hooks/useNotamWarnings'
 import { useNotamNotifications } from '../hooks/useNotamNotifications'
 import { useNotamAirspaceMatch } from '../hooks/useNotamAirspaceMatch'
@@ -100,7 +103,9 @@ import type { AuthState } from '../hooks/useAuth'
 import type { FlyingMode, MapOrientation, GpsPosition } from '../utils/gpsTypes'
 import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl, waitForTileManifest } from '@open-vfr/shared/tileManifest'
+import { parseMapLink, hasMapLink, stripMapLinkParams } from '@open-vfr/shared/deepLink'
 import css from './MapView.module.css'
+import { MAX_FT, ftToLabel } from './AltitudeSlider'
 
 // MapLibre layer IDs we listen to for aerodrome clicks.
 // All layers that reference the ofm-aerodromes source.
@@ -231,6 +236,14 @@ const SNAP_LAYERS = [
 ]
 
 // Home airfield button icon (Lucide "home").
+const LOCATE_ICON_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>'
+
+/** In flight: after the pilot pans away, return to following the aircraft
+ *  once the map has been left alone this long. A forgotten Re-center in
+ *  flight otherwise leaves the map parked away from the aircraft. */
+const FOLLOW_RETURN_MS = 15_000
+
 const HOME_ICON_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>'
 
@@ -285,6 +298,22 @@ type ActivePopup =
   | { kind: 'airspace';  features: AirspaceFeature[]; regionalNotams?: RegionalNotamHit[]; x: number; y: number }
   | { kind: 'point';     feature: PointFeature;        x: number; y: number }
   | { kind: 'whatshere'; items: WhatsHereItem[]; airspaceFeatures: AirspaceFeature[]; lng: number; lat: number; x: number; y: number }
+
+/** Tiny MapLibre control: "Airspace ≤ FL095" chip, hidden when unfiltered. */
+class CeilingChipControl implements maplibregl.IControl {
+  private el = document.createElement('div')
+  onAdd(): HTMLElement {
+    this.el.className = 'maplibregl-ctrl ovfr-ceiling-chip'
+    this.el.title = 'Airspace altitude filter — airspace starting above this is hidden. Change in Altitude Filter.'
+    return this.el
+  }
+  onRemove(): void { this.el.remove() }
+  set(ceilingFt: number): void {
+    const filtered = ceilingFt < MAX_FT
+    this.el.textContent = filtered ? `Airspace ≤ ${ftToLabel(ceilingFt)}` : ''
+    this.el.style.display = filtered ? '' : 'none'
+  }
+}
 
 // Apply altitude ceiling filter to all airspace layers on a ready map.
 function applyAltitudeCeiling(map: maplibregl.Map, ceilingFt: number) {
@@ -381,7 +410,18 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const basemapBtnRef = useRef<HTMLButtonElement | null>(null)
   const rulerBtnRef = useRef<HTMLButtonElement | null>(null)
   const scaleControlRef = useRef<maplibregl.ScaleControl | null>(null)
+  // Active altitude-filter range, shown beside the scale bar so it's always
+  // visible that airspace above the ceiling is hidden (the slider itself
+  // lives in a collapsible drawer section).
+  const [ceilingChip] = useState(() => new CeilingChipControl())
   const homeBtnRef = useRef<HTMLButtonElement | null>(null)
+  // ── Location button: 'off' | 'passive' outside Go Flying (Follow is the
+  // flying-mode followAircraft state). Passive = own-position dot, camera
+  // only moves on an explicit tap. See usePassivePosition.
+  const [locMode, setLocMode] = useState<'off' | 'passive'>('off')
+  const locateBtnRef = useRef<HTMLButtonElement | null>(null)
+  const locateClickRef = useRef<() => void>(() => {})
+  const pendingLocateCenterRef = useRef(false)
   const planningModeRef = useRef(false)
   const routeWaypointsRef = useRef<RouteWaypoint[]>([])
   const rulerModeRef = useRef(false)
@@ -398,7 +438,22 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const suppressNextClickRef = useRef(false)
   const [visibility, setVisibilityGroup] = useLayerVisibility()
   const [ceilingFt, setCeilingFt] = useAirspaceCeiling()
+  useEffect(() => { ceilingChip.set(ceilingFt) }, [ceilingChip, ceilingFt])
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
+  // Escape closes the open feature popup. Skipped while typing (Escape in a
+  // search field clears/closes that field instead) and when another handler
+  // already consumed it (e.g. the drag-cancel handler in the map-init effect).
+  useEffect(() => {
+    if (!activePopup) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+      setActivePopup(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [activePopup])
 
   // Wind-derived favored/severity state for whichever aerodrome's popup is
   // currently open, reported up by AerodromePopup (see onRunwayWind prop) so
@@ -481,7 +536,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const [trafficVertFilter, setTrafficVertFilter] = useTrafficVertFilter()
   const [parkTimeout, setParkTimeout] = useParkTimeout()
   const [alternate, _setAlternate] = useAlternate()
-  const [routeWaypoints, setRouteWaypoints, legOverrides, setLegOverrides, loadRouteIntoMap, routeAircraftId, setRouteAircraftId, activeRouteId, setActiveRouteId] = usePersistedRoute()
+  const [routeWaypoints, setRouteWaypoints, legOverrides, setLegOverrides, loadRouteIntoMap, routeAircraftId, setRouteAircraftId, activeRouteId, setActiveRouteId, routeUndo] = usePersistedRoute()
   // Computed once here (not inside SideDrawer) so VirtualRadar's wind-arrow/
   // cloud-layer overlay and SideDrawer's Weather-Along-Route panel share the
   // same fetched station list instead of each independently hitting
@@ -568,6 +623,24 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const [showPlog, setShowPlog] = useState(false)
   // In-flight route adjustment mode: unlocks drag-move/insert without full planning mode
   const [routeAdjustMode, setRouteAdjustMode] = useState(false)
+  // Same lock as the waypoint-drag handlers: while flying, route edits
+  // (including undo/redo) need the explicit in-flight adjust unlock.
+  const routeEditLocked = flyingMode !== 'off' && !routeAdjustMode
+  // Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z or Ctrl+Y = redo -- ignored while
+  // typing so text fields keep their native undo.
+  useEffect(() => {
+    if (routeEditLocked) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+      const k = e.key.toLowerCase()
+      if (k === 'z' && !e.shiftKey) { e.preventDefault(); routeUndo.undo() }
+      else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); routeUndo.redo() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [routeEditLocked, routeUndo.undo, routeUndo.redo])
   const routeAdjustModeRef = useRef(false)
   useEffect(() => { routeAdjustModeRef.current = routeAdjustMode }, [routeAdjustMode])
   // Small context menu shown when tapping a waypoint in adjust mode
@@ -690,6 +763,86 @@ export default function MapView({ auth }: { auth: AuthState }) {
   }, [selectedAircraftProfile, mapReady])
   const [activeWpIdx,    setActiveWpIdx]    = useState(1)
   const flyingModeRef   = useRef<FlyingMode>('off')
+
+  // ── Location button behaviour (see locMode above) ─────────────────────
+  const { position: passivePos, denied: locDenied } = usePassivePosition(locMode === 'passive' && flyingMode === 'off')
+  // Startup: if permission was already granted, show the dot straight away
+  // (no prompt, camera untouched). Otherwise nothing until the user taps.
+  useEffect(() => {
+    let cancelled = false
+    geolocationAlreadyGranted().then(ok => { if (ok && !cancelled) setLocMode(m => (m === 'off' ? 'passive' : m)) })
+    return () => { cancelled = true }
+  }, [])
+  useEffect(() => { if (locDenied) setLocMode('off') }, [locDenied])
+
+  locateClickRef.current = () => {
+    const map = mapRef.current
+    if (flyingModeRef.current !== 'off') {
+      // Flying: the button is the Follow toggle's re-centre.
+      setFollowAircraft(true)
+      const pos = gpsPositionRef.current
+      if (pos && map) map.flyTo({ center: [pos.lng, pos.lat], speed: 2 })
+      return
+    }
+    if (locMode === 'off') {
+      setLocMode('passive')
+      pendingLocateCenterRef.current = true   // centre once on first fix
+      return
+    }
+    if (!map || !passivePos) { pendingLocateCenterRef.current = true; return }
+    // Already centred on the dot -> a further tap turns location off.
+    const c = map.getCenter()
+    if (distanceNm({ lat: c.lat, lng: c.lng }, passivePos) * 1852 < 50) {
+      setLocMode('off')
+    } else {
+      map.flyTo({ center: [passivePos.lng, passivePos.lat], zoom: Math.max(map.getZoom(), 11), speed: 1.6 })
+    }
+  }
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !passivePos || !pendingLocateCenterRef.current) return
+    pendingLocateCenterRef.current = false
+    map.flyTo({ center: [passivePos.lng, passivePos.lat], zoom: Math.max(map.getZoom(), 11), speed: 1.6 })
+  }, [passivePos])
+
+  // Own-position dot (DOM marker: independent of the style, so it survives
+  // basemap swaps without touching sources/layers). Hidden while flying --
+  // the aircraft symbol takes over then.
+  const posMarkerRef = useRef<maplibregl.Marker | null>(null)
+  useEffect(() => {
+    const map = mapRef.current
+    const show = mapReady && map && passivePos && flyingMode === 'off'
+    if (!show) { posMarkerRef.current?.remove(); posMarkerRef.current = null; return }
+    if (!posMarkerRef.current) {
+      const el = document.createElement('div')
+      el.className = 'ovfr-own-position'
+      el.innerHTML = '<div class="ovfr-own-position-heading"></div><div class="ovfr-own-position-dot"></div>'
+      el.title = 'Your position'
+      posMarkerRef.current = new maplibregl.Marker({ element: el, rotationAlignment: 'map' }).setLngLat([passivePos.lng, passivePos.lat]).addTo(map)
+    }
+    const m = posMarkerRef.current
+    m.setLngLat([passivePos.lng, passivePos.lat])
+    const heading = m.getElement().querySelector<HTMLElement>('.ovfr-own-position-heading')
+    if (heading) heading.style.display = passivePos.headingDeg === null ? 'none' : ''
+    m.setRotation(passivePos.headingDeg ?? 0)
+  }, [passivePos, mapReady, flyingMode])
+
+  // Button appearance per state.
+  useEffect(() => {
+    const btn = locateBtnRef.current
+    if (!btn) return
+    const flying = flyingMode !== 'off'
+    const on = flying ? followAircraft : locMode === 'passive'
+    btn.title = flying
+      ? (followAircraft ? 'Following aircraft' : 'Re-centre on aircraft (returns automatically after 15 s)')
+      : locMode === 'off'
+        ? (locDenied ? 'Location permission denied' : 'Show my position')
+        : 'Showing my position — tap to centre, tap again when centred to turn off'
+    btn.style.color = on ? 'var(--accent-blue)' : ''
+    btn.setAttribute('aria-pressed', String(on))
+    btn.setAttribute('aria-label', btn.title)
+  }, [locMode, locDenied, followAircraft, flyingMode, mapReady])
   const gpsPositionRef  = useRef<GpsPosition | null>(null)
   const aircraftDragRef = useRef(false)
   const flyingBtnRef     = useRef<HTMLButtonElement | null>(null)
@@ -738,7 +891,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
     if (aerodromePopupOpen) return
     setRunwayWindHighlight(geofenceWxHighlight)
   }, [geofenceWxHighlight, aerodromePopupOpen])
-  const { manifest, hasUpdate, checking, markSeen, refresh: refreshManifest } = useDataManifest()
+  const { manifest, hasUpdate, checking, markSeen, refresh: refreshManifest, outdatedAirac, currentAirac } = useDataManifest()
+  // Session-only dismissal, keyed on the exact outdated set: a newly
+  // superseded cycle (or another country going stale) re-shows the banner.
+  const outdatedAiracKey = outdatedAirac.map(o => `${o.country}:${o.cycle}`).join(',')
+  const [dismissedAiracKey, setDismissedAiracKey] = useState<string | null>(null)
   const isOnline = useOnlineStatus()
   const plogData = useLivePlog(flyingMode !== 'off' ? gpsPosition : null, flyingMode, routeWaypoints, activeWpIdx)
   // Reset the dismiss when a different aerodrome becomes active
@@ -808,7 +965,15 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // circles to declutter shouldn't also go blind to the same NOTAMs
   // everywhere else.
   const regionalNotamsEnabled = !!auth.user
-  const regionalNotams = useRegionalNotams(regionalNotamsEnabled && mapReady)
+  // Full list (lists/popups apply their own relevance filtering so they can
+  // say what they hid); map layers + in-flight warnings use the VFR-filtered
+  // one per the shared "VFR only" preference.
+  const regionalNotamsAll = useRegionalNotams(regionalNotamsEnabled && mapReady)
+  const notamVfrOnly = useNotamVfrOnly()
+  const regionalNotams = useMemo(
+    () => (notamVfrOnly ? regionalNotamsAll.filter(n => !isIfrOnly(n)) : regionalNotamsAll),
+    [regionalNotamsAll, notamVfrOnly],
+  )
   const regionalNotamsRef = useRef(regionalNotams)
   useEffect(() => { regionalNotamsRef.current = regionalNotams }, [regionalNotams])
 
@@ -856,6 +1021,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         const circle = makeCirclePolygon(n.lat!, n.lon!, n.radiusNm!)
         circle.properties = {
           notamId:        n.id,
+          qCode:          n.qCode ?? null,
           nmsId:          n.nmsId,
           text:           n.text,
           effective:      n.effective,
@@ -887,6 +1053,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         geometry: { type: 'Point', coordinates: [n.lon!, n.lat!] },
         properties: {
           notamId:        n.id,
+          qCode:          n.qCode ?? null,
           nmsId:          n.nmsId,
           text:           n.text,
           effective:      n.effective,
@@ -919,6 +1086,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         geometry: n.polygon as GeoJSON.Polygon | GeoJSON.MultiPolygon,
         properties: {
           notamId:        n.id,
+          qCode:          n.qCode ?? null,
           nmsId:          n.nmsId,
           text:           n.text,
           effective:      n.effective,
@@ -1181,7 +1349,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: getMapStyle(),
-      center: [18.07, 59.33],
+      // Last known own position (Passive location mode) when there is one;
+      // the home-airfield fly-to below still takes over when set.
+      center: (() => { const lp = readLastPosition(); return lp ? [lp.lng, lp.lat] as [number, number] : [18.07, 59.33] as [number, number] })(),
       zoom: 8,
       minZoom: 4,
       maxZoom: 17,
@@ -1196,6 +1366,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const scaleCtrl = new maplibregl.ScaleControl({ unit: 'metric' })
     scaleControlRef.current = scaleCtrl
     map.addControl(scaleCtrl, 'bottom-right')
+    // Added after the scale bar so it stacks directly above it (MapLibre
+    // prepends bottom-* controls).
+    map.addControl(ceilingChip, 'bottom-right')
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
     // Attribution expands async once sources load (first _updateCompact with non-empty
     // attributions). Collapse it after idle — at that point maplibregl-compact is
@@ -1242,6 +1415,18 @@ export default function MapView({ auth }: { auth: AuthState }) {
     homeCtrlDiv.className = 'maplibregl-ctrl maplibregl-ctrl-group'
     homeCtrlDiv.appendChild(homeBtn)
     map.addControl({ onAdd: () => homeCtrlDiv, onRemove: () => {} }, 'top-right')
+
+    // Locate button (Off / Passive; Follow while flying) -- behaviour lives
+    // in locateClickRef so the click always sees current React state.
+    const locateBtn = document.createElement('button')
+    locateBtn.innerHTML = LOCATE_ICON_SVG
+    locateBtn.style.cssText = 'display:flex;align-items:center;justify-content:center;'
+    locateBtn.addEventListener('click', () => locateClickRef.current())
+    locateBtnRef.current = locateBtn
+    const locateCtrlDiv = document.createElement('div')
+    locateCtrlDiv.className = 'maplibregl-ctrl maplibregl-ctrl-group'
+    locateCtrlDiv.appendChild(locateBtn)
+    map.addControl({ onAdd: () => locateCtrlDiv, onRemove: () => {} }, 'top-right')
 
     // Map ruler toggle — stacks below the route planning button.
     const rulerBtn = document.createElement('button')
@@ -1877,6 +2062,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       // Cancel drag on Escape key.
       const onKeyDown = (ev: KeyboardEvent) => {
         if (ev.key === 'Escape' && (dragInsertRef.current || dragMoveRef.current || legLongPressRef.current !== null)) {
+          ev.preventDefault() // consumed: don't also close the open popup
           clearLegLongPress()
           dragInsertRef.current = null
           dragMoveRef.current   = null
@@ -2469,6 +2655,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
                 expires:        (p.expires as string | null) ?? null,
                 classification: (p.classification as string | null) ?? null,
                 icaoLocation:   (p.icaoLocation as string | null) ?? null,
+                qCode:          (p.qCode as string | null) ?? null,
                 polygon:        null,
                 lat:            null,
                 lon:            null,
@@ -2644,6 +2831,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           expires:        (p.expires as string | null) ?? null,
           classification: (p.classification as string | null) ?? null,
           icaoLocation:   (p.icaoLocation as string | null) ?? null,
+          qCode:          (p.qCode as string | null) ?? null,
           polygon:        null,
           lat:            null,
           lon:            null,
@@ -2827,8 +3015,19 @@ export default function MapView({ auth }: { auth: AuthState }) {
     })
 
     // Stop auto-following when the user manually pans or pitches the map.
+    let followReturnTimer = 0
+    const armFollowReturn = () => {
+      clearTimeout(followReturnTimer)
+      followReturnTimer = window.setTimeout(() => {
+        // Not while deliberately adjusting the route in flight.
+        if (flyingModeRef.current !== 'off' && !routeAdjustModeRef.current) setFollowAircraft(true)
+      }, FOLLOW_RETURN_MS)
+    }
     const disableFollow = () => {
-      if (flyingModeRef.current !== 'off') setFollowAircraft(false)
+      if (flyingModeRef.current !== 'off') {
+        setFollowAircraft(false)
+        armFollowReturn()
+      }
     }
     // Suppress the synthetic click that touch/pointer devices fire after a pan drag.
     // Set the flag at dragstart; clear it on dragend after a 0ms timeout so any
@@ -2842,6 +3041,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const onDragEnd = () => {
       clearTimeout(dragEndTimer)
       dragEndTimer = window.setTimeout(() => { suppressNextClickRef.current = false }, 0)
+      // Count the idle period from the end of the gesture, not its start.
+      if (flyingModeRef.current !== 'off') armFollowReturn()
     }
     // Catches every user-originated map movement — trackpad two-finger pan and
     // scroll-wheel pan/zoom fire as 'movestart' (with originalEvent set) rather
@@ -2869,6 +3070,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       map.off('pitchstart', disableFollow)
       map.off('rotatestart', disableFollow)
       clearTimeout(dragEndTimer)
+      clearTimeout(followReturnTimer)
       map.remove()
       mapRef.current = null
       basemapBtnRef.current = null
@@ -3330,6 +3532,62 @@ export default function MapView({ auth }: { auth: AuthState }) {
 
   // ── Go Flying effects ────────────────────────────────────────────────────
 
+  // ── Shareable link (?ad=ICAO / ?c=<coord>&z=) — applied once, then the
+  // params are stripped via replaceState so a later reload doesn't yank the
+  // map back over whatever the user has done since. Never applied while
+  // flying (follow mode owns the camera then).
+  const mapLinkAppliedRef = useRef(false)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!mapReady || !map || mapLinkAppliedRef.current) return
+    mapLinkAppliedRef.current = true
+    const link = parseMapLink(window.location.search)
+    if (!hasMapLink(link) || flyingModeRef.current !== 'off') return
+    // A link is an explicit destination: suppress the one-shot "fly to home
+    // airfield on first load" effect, which otherwise races this one (home
+    // settings often resolve after mapReady) and yanks the camera away.
+    hasInitialCenteredRef.current = true
+    window.history.replaceState(window.history.state, '', stripMapLinkParams(window.location.href))
+
+    if (link.center) {
+      map.jumpTo({ center: [link.center.lng, link.center.lat], zoom: link.zoom ?? 11 })
+    }
+    if (link.ad) {
+      const icao = link.ad
+      fetch(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'))
+        .then(r => (r.ok ? r.json() : null))
+        .then((fc: { features?: { geometry: { coordinates: [number, number] }; properties: Record<string, unknown> }[] } | null) => {
+          const feat = fc?.features?.find(f => String(f.properties.icao ?? '').toUpperCase() === icao)
+          const m = mapRef.current
+          if (!feat || !m) return
+          const [lng, lat] = feat.geometry.coordinates
+          m.jumpTo({ center: [lng, lat], zoom: link.zoom ?? 12 })
+          const el = containerRef.current
+          const props = feat.properties as unknown as AerodromeFeatureProps
+          setActivePopup({
+            kind: 'aerodrome',
+            // Raw GeoJSON carries real arrays; parseJsonProp also accepts
+            // those, matching the map-click path's normalisation.
+            props: {
+              ...props,
+              frequencies: parseJsonProp(props.frequencies, []),
+              fuel:         parseJsonProp(props.fuel, []),
+              ppr_remarks:  parseJsonProp(props.ppr_remarks, []),
+              contacts:     parseJsonProp(props.contacts, []),
+              runways:      parseJsonProp(props.runways, []),
+              hours_of_operation:   parseJsonProp(props.hours_of_operation, []),
+              handling_facilities:  parseJsonProp(props.handling_facilities, []),
+              passenger_facilities: parseJsonProp(props.passenger_facilities, []),
+            },
+            lng, lat,
+            x: el ? el.clientWidth / 2 : 300,
+            y: el ? el.clientHeight / 2 : 300,
+          })
+        })
+        .catch(() => { /* offline / missing data: link silently does nothing */ })
+    }
+  }, [mapReady])
+
   // Keep stopFlyingRef / teleportRef pointing at the current callbacks.
   useEffect(() => { stopFlyingRef.current    = stopFlying },    [stopFlying])
   useEffect(() => { teleportRef.current      = teleport },      [teleport])
@@ -3683,7 +3941,10 @@ export default function MapView({ auth }: { auth: AuthState }) {
         onToggleRouteVisible={() => setRouteVisible((v) => !v)}
         planningMode={planningMode}
         onTogglePlanningMode={() => setPlanningMode((m) => !m)}
-        onUndo={() => setRouteWaypoints((p) => p.slice(0, -1))}
+        onUndo={routeUndo.undo}
+        onRedo={routeUndo.redo}
+        canUndo={routeUndo.canUndo && !routeEditLocked}
+        canRedo={routeUndo.canRedo && !routeEditLocked}
         onClear={() => { setRouteWaypoints([]); setPlanningMode(false) }}
         onReplace={(wps) => setRouteWaypoints(wps)}
         onLoadRoute={(wps, ovr, aircraftId) => {
@@ -3709,7 +3970,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         activeRouteId={activeRouteId}
         onActiveRouteIdChange={setActiveRouteId}
         onRunwayWind={handleRunwayWind}
-        regionalNotams={regionalNotams}
+        regionalNotams={regionalNotamsAll}
         onShowNotamOnMap={handleShowNotamOnMap}
         onSetLegOverride={(idx, ovr) =>
           setLegOverrides((prev) => {
@@ -3787,6 +4048,25 @@ export default function MapView({ auth }: { auth: AuthState }) {
             Reload
           </button>
           <button className={css.updateBannerDismiss} onClick={markSeen} aria-label="Dismiss">✕</button>
+        </div>
+      )}
+
+      {/* ── Outdated-AIRAC warning (non-blocking; shown in every mode) ── */}
+      {!hasUpdate && outdatedAirac.length > 0 && dismissedAiracKey !== outdatedAiracKey && (
+        <div className={`${css.updateBanner} ${css.staleBanner}`} role="status">
+          <span className={css.updateBannerText}>
+            ⚠ Airspace data outdated —{' '}
+            {outdatedAirac.map(o => `${o.country.toUpperCase()} AIRAC ${o.cycle}`).join(', ')}
+            {' '}(current {currentAirac}). Verify against official AIP.
+          </span>
+          <button
+            className={css.updateBannerReload}
+            onClick={refreshManifest}
+            disabled={checking}
+          >
+            {checking ? 'Checking…' : 'Check for update'}
+          </button>
+          <button className={css.updateBannerDismiss} onClick={() => setDismissedAiracKey(outdatedAiracKey)} aria-label="Dismiss">✕</button>
         </div>
       )}
 
@@ -4071,7 +4351,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             setHomeAirfield(homeAirfield?.icao === icao ? null : { icao, name, lng, lat })
           }
           onRunwayWind={handleRunwayWind}
-          regionalNotams={regionalNotams}
+          regionalNotams={regionalNotamsAll}
           routeWaypoints={routeWaypoints}
           onShowNotamOnMap={handleShowNotamOnMap}
           onClose={() => setShowVicinityBrief(false)}

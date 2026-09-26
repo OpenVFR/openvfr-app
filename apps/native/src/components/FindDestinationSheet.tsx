@@ -18,6 +18,7 @@ import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { getTileUrls } from '../config'
 import type { AircraftProfileDocType } from '../db'
 import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
+import { parseCoordinate, formatCoordinate } from '@open-vfr/shared/coordinateParse'
 import {
   parseAerodromesGeoJson, filterAndSortAerodromes, computeGlideRangeNm,
   aerodromeToWaypoint, hasAvgas, hasJet, isHard, isGrass, fmtBrg, fmtDist,
@@ -54,6 +55,9 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
   const [open, setOpen] = React.useState(false)
   const [aerodromes, setAerodromes] = React.useState<AerodromeEntry[]>([])
   const [search, setSearch] = React.useState('')
+  // A typed coordinate (any format coordinateParse accepts, e.g. a NOTAM's
+  // "5939N01756E") offers a "Go to" row above the aerodrome list.
+  const coord = React.useMemo(() => parseCoordinate(search), [search])
   const [minRunwayM, setMinRunway] = React.useState(0)
   const [fuelFilter, setFuelFilter] = React.useState<FuelFilter>('any')
   const [surfFilter, setSurfFilter] = React.useState<SurfaceFilter>('any')
@@ -184,6 +188,18 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
               />
             </View>
           </View>
+
+          {coord && (
+            <TouchableOpacity
+              style={[styles.row, styles.rowMain]}
+              onPress={() => { onFlyTo(coord.lat, coord.lng); setOpen(false) }}
+            >
+              <View style={styles.rowTop}>
+                <Text style={styles.rowIcao}>Go to</Text>
+                <Text style={styles.rowName} numberOfLines={1}>{formatCoordinate(coord.lat, coord.lng, coord.format)}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
 
           <FlatList
             data={sorted}

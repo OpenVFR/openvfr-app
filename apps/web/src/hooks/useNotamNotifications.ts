@@ -9,6 +9,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
+import { notamTitle } from '@open-vfr/shared/notamQCode'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 
 const NOTIFICATION_TTL_MS = 9_000
@@ -74,13 +75,13 @@ export function useNotamNotifications(
       if (!prev.has(id)) {
         const n = regionalNotams.find(x => x.nmsId === id)
         if (!n) continue
-        fresh.push({ id: `${id}::${now}::entered`, notamId: n.id, text: n.text, direction: 'entered', expiresAt: now + NOTIFICATION_TTL_MS })
+        fresh.push({ id: `${id}::${now}::entered`, notamId: notamTitle(n), text: n.text, direction: 'entered', expiresAt: now + NOTIFICATION_TTL_MS })
       }
     }
     for (const id of prev) {
       if (!current.has(id)) {
         const n = regionalNotams.find(x => x.nmsId === id)
-        fresh.push({ id: `${id}::${now}::left`, notamId: n?.id ?? '', text: n?.text ?? '', direction: 'left', expiresAt: now + NOTIFICATION_TTL_MS })
+        fresh.push({ id: `${id}::${now}::left`, notamId: n ? notamTitle(n) : '', text: n?.text ?? '', direction: 'left', expiresAt: now + NOTIFICATION_TTL_MS })
       }
     }
 

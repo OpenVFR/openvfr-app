@@ -237,6 +237,8 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
                     notamLoading={notamLoading}
                     regionalNotams={regionalNotams}
                     routeWaypoints={waypoints}
+                    centre={selected ? { lat: selected.lat, lng: selected.lng } : undefined}
+                    icao={selected?.icao}
                   />
                 )}
               </>

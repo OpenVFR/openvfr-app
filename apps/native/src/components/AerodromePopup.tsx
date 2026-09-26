@@ -14,7 +14,7 @@
 
 import React, { useEffect, useState } from 'react'
 import {
-  Modal, View, Text, ScrollView, TouchableOpacity,
+  Modal, View, Text, ScrollView, TouchableOpacity, Share,
 } from 'react-native'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { computeRunwayWind, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
@@ -27,6 +27,14 @@ import { deriveWxDisplay } from '../utils/deriveWxDisplay'
 import { Section, FR_COLOR } from './AerodromeBriefShared'
 import AerodromeWxSection from './AerodromeWxSection'
 import AerodromeNotamSection from './AerodromeNotamSection'
+import { buildAerodromeLink } from '@open-vfr/shared/deepLink'
+import { WEB_BASE } from '../config'
+
+/** Link that opens this aerodrome: the web app when WEB_BASE is configured
+ *  (openable by anyone), else the app's own scheme. */
+function aerodromeShareUrl(icao: string): string {
+  return buildAerodromeLink(WEB_BASE || 'openvfr://map', icao)
+}
 
 interface Frequency {
   service:  string
@@ -254,6 +262,19 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
               <Text style={styles.notamHint}>⏰ Active NOTAM may have changed opening hours — see NOTAMs</Text>
             )}
           </View>
+          {!!feature.icao && (
+            <TouchableOpacity
+              onPress={() => {
+                const url = aerodromeShareUrl(feature.icao)
+                // `message` carries the URL too: Android ignores `url`.
+                Share.share({ title: `${feature.icao} ${feature.name}`.trim(), message: [`${feature.icao} ${feature.name}`.trim(), url].join('\n'), url }).catch(() => {})
+              }}
+              style={styles.closeBtn}
+              accessibilityLabel="Share link to this aerodrome"
+            >
+              <Text style={styles.closeTxt}>⇪</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
             <Text style={styles.closeTxt}>✕</Text>
           </TouchableOpacity>
@@ -416,6 +437,8 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
               notamLoading={notamLoading}
               regionalNotams={regionalNotams}
               routeWaypoints={routeWaypoints}
+              centre={feature.lat !== undefined && feature.lng !== undefined ? { lat: feature.lat, lng: feature.lng } : undefined}
+              icao={feature.icao}
             />
           )}
         </ScrollView>

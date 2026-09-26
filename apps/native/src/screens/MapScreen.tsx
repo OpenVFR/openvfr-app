@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
-import { View, TouchableOpacity, Text, Alert, TextInput, Modal, ScrollView, useWindowDimensions } from 'react-native'
+import { View, TouchableOpacity, Text, Alert, TextInput, Modal, ScrollView, useWindowDimensions, Linking } from 'react-native'
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as KeepAwake from 'expo-keep-awake'
@@ -35,11 +35,43 @@ import { useRouteContext } from '../context/RouteContext'
 import { SnapPicker, type SnapCandidate } from '../components/SnapPicker'
 import { useTraffic }        from '../hooks/useTraffic'
 import { useRegionalNotams } from '../hooks/useRegionalNotams'
+import { useNotamPrefs } from '../hooks/useNotamPrefs'
+import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { makeCirclePolygon } from '@open-vfr/shared/geoCircle'
 import { NotificationCenter } from '../components/NotificationCenter'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
 import { getTileUrls } from '../config'
+import { parseMapLink, hasMapLink } from '@open-vfr/shared/deepLink'
+import { useDataFreshness } from '../hooks/useDataFreshness'
+
+/** In flight: auto-return to follow this long after the last user pan. */
+const FOLLOW_RETURN_MS = 15_000
+
+/** GeoJSON aerodrome feature properties -> AerodromePopup props. Nested
+ *  arrays arrive JSON-stringified from MapLibre feature queries but as real
+ *  arrays from a raw GeoJSON fetch -- `parse` accepts both. Shared by the
+ *  map-tap path and the shareable-link path. */
+function aerodromePropsFromFeature(p: Record<string, unknown>, coords: [number, number] | null): AerodromeFeatureProps {
+  const parse = <T,>(v: unknown): T => typeof v === 'string' ? JSON.parse(v) : v as T
+  return {
+    icao:         p.icao as string,
+    name:         p.name as string ?? '',
+    type:         p.type as string | undefined,
+    elevation_ft: p.elevation_ft as number | undefined,
+    frequencies:  p.frequencies ? parse(p.frequencies) : [],
+    fuel:         p.fuel        ? parse(p.fuel)        : [],
+    ppr:          p.ppr as boolean | undefined,
+    ppr_remarks:  p.ppr_remarks ? parse(p.ppr_remarks) : [],
+    runways:      p.runways     ? parse(p.runways)     : [],
+    towered:      p.towered as boolean | undefined,
+    hours_of_operation:   p.hours_of_operation   ? parse(p.hours_of_operation)   : [],
+    handling_facilities:  p.handling_facilities  ? parse(p.handling_facilities)  : [],
+    passenger_facilities: p.passenger_facilities ? parse(p.passenger_facilities) : [],
+    lng: coords ? coords[0] : undefined,
+    lat: coords ? coords[1] : undefined,
+  }
+}
 import { settings as settingsDb } from '../db'
 import { usePositionAlerts } from '../hooks/usePositionAlerts'
 import { useSimContext }     from '../context/SimContext'
@@ -56,6 +88,7 @@ import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../compone
 import { RulerHeaderStart, RulerHeaderEnd } from '../components/RulerHeaderStats'
 import { PastTrackChart } from '../components/PastTrackChart'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
+import * as Location from 'expo-location'
 import * as Crypto from 'expo-crypto'
 import { GaugesBar }         from '../components/GaugesBar'
 import { distanceAlongRouteNm, coordinateAlongRouteNm, routeCrossTrackNm } from '@open-vfr/shared/virtualRadarCalc'
@@ -484,7 +517,15 @@ export function MapScreen() {
   // and RegionalNotamsPanel/VicinityBriefSheet all depend on it -- none of
   // those are the map layer itself, and hiding the on-map circles to
   // declutter shouldn't also go blind to the same NOTAMs everywhere else.
-  const regionalNotams = useRegionalNotams(authenticated && mapReady)
+  // Full list for the NOTAM lists (they apply their own relevance filtering
+  // so they can say what they hid); map layers, tap lookups and alerts use
+  // the VFR-filtered list per the shared "VFR only" preference.
+  const regionalNotamsAll = useRegionalNotams(authenticated && mapReady)
+  const { vfrOnly: notamVfrOnly } = useNotamPrefs()
+  const regionalNotams = React.useMemo(
+    () => (notamVfrOnly ? regionalNotamsAll.filter(n => !isIfrOnly(n)) : regionalNotamsAll),
+    [regionalNotamsAll, notamVfrOnly],
+  )
   const routeWeatherStations = useWeatherAlongRoute(waypoints, mapReady)
   // Separate lookup along the Map Ruler line -- the planned route's stations
   // would otherwise be projected onto an unrelated line. Only enabled while
@@ -509,6 +550,7 @@ export function MapScreen() {
         const circle = makeCirclePolygon(n.lat!, n.lon!, n.radiusNm!)
         circle.properties = {
           notamId:        n.id,
+          qCode:          n.qCode ?? null,
           nmsId:          n.nmsId,
           text:           n.text,
           effective:      n.effective,
@@ -535,6 +577,7 @@ export function MapScreen() {
         geometry: { type: 'Point' as const, coordinates: [n.lon!, n.lat!] },
         properties: {
           notamId:        n.id,
+          qCode:          n.qCode ?? null,
           nmsId:          n.nmsId,
           text:           n.text,
           effective:      n.effective,
@@ -562,6 +605,7 @@ export function MapScreen() {
         geometry: n.polygon as GeoJSON.Polygon | GeoJSON.MultiPolygon,
         properties: {
           notamId:        n.id,
+          qCode:          n.qCode ?? null,
           nmsId:          n.nmsId,
           text:           n.text,
           effective:      n.effective,
@@ -720,6 +764,7 @@ export function MapScreen() {
             expires:        (p.expires as string | null | undefined) ?? null,
             classification: (p.classification as string | null | undefined) ?? null,
             icaoLocation:   (p.icaoLocation as string | null | undefined) ?? null,
+            qCode:          (p.qCode as string | null | undefined) ?? null,
             polygon:        null,
             lat:            null,
             lon:            null,
@@ -739,27 +784,10 @@ export function MapScreen() {
       const p = feature.properties ?? {}
 
       if (isAerodrome(p)) {
-        const parse = <T,>(v: unknown): T => typeof v === 'string' ? JSON.parse(v) : v as T
         const aeroCoords = feature.geometry.type === 'Point'
           ? (feature.geometry as Point).coordinates as [number, number]
           : null
-        setAerodromeFeature({
-          icao:         p.icao as string,
-          name:         p.name as string ?? '',
-          type:         p.type as string | undefined,
-          elevation_ft: p.elevation_ft as number | undefined,
-          frequencies:  p.frequencies ? parse(p.frequencies) : [],
-          fuel:         p.fuel        ? parse(p.fuel)        : [],
-          ppr:          p.ppr as boolean | undefined,
-          ppr_remarks:  p.ppr_remarks ? parse(p.ppr_remarks) : [],
-          runways:      p.runways     ? parse(p.runways)     : [],
-          towered:      p.towered as boolean | undefined,
-          hours_of_operation:   p.hours_of_operation   ? parse(p.hours_of_operation)   : [],
-          handling_facilities:  p.handling_facilities  ? parse(p.handling_facilities)  : [],
-          passenger_facilities: p.passenger_facilities ? parse(p.passenger_facilities) : [],
-          lng: aeroCoords ? aeroCoords[0] : undefined,
-          lat: aeroCoords ? aeroCoords[1] : undefined,
-        })
+        setAerodromeFeature(aerodromePropsFromFeature(p, aeroCoords))
         return
       }
       if (feature.geometry.type === 'Point') {
@@ -845,6 +873,45 @@ export function MapScreen() {
     ? { lat: homeCoord[1], lng: homeCoord[0] }
     : { lat: 59.33, lng: 18.07 }
   const [planningMode, setPlanningMode] = useState(false)
+
+  // ── Shareable links: openvfr://map?ad=ESSB or ?c=<coordinate> (same
+  // params as web, parsed by @open-vfr/shared/deepLink). Handles both the
+  // launch URL and links opened while the app is running. Ignored while
+  // flying -- follow mode owns the camera then.
+  const flyingRef = React.useRef(false)
+  useEffect(() => { flyingRef.current = flightModeStatus !== 'off' }, [flightModeStatus])
+  useEffect(() => {
+    const handle = (url: string | null) => {
+      if (!url || flyingRef.current) return
+      const q = url.indexOf('?')
+      const link = parseMapLink(q >= 0 ? url.slice(q) : '')
+      if (!hasMapLink(link)) return
+      if (link.center) setFindDestFlyTarget({ lat: link.center.lat, lng: link.center.lng, nonce: Date.now() })
+      if (link.ad) {
+        const icao = link.ad
+        fetch(getTileUrls().aerodromes)
+          .then(r => (r.ok ? r.json() : null))
+          .then((fc: GeoJSON.FeatureCollection | null) => {
+            const f = fc?.features.find(x => String((x.properties ?? {}).icao ?? '').toUpperCase() === icao)
+            if (!f || f.geometry.type !== 'Point') return
+            const [lng, lat] = (f.geometry as Point).coordinates
+            setFindDestFlyTarget({ lat, lng, nonce: Date.now() })
+            setAerodromeFeature(aerodromePropsFromFeature((f.properties ?? {}) as Record<string, unknown>, [lng, lat]))
+          })
+          .catch(() => { /* offline / missing data: link does nothing */ })
+      }
+    }
+    Linking.getInitialURL().then(handle).catch(() => {})
+    const sub = Linking.addEventListener('url', (e) => handle(e.url))
+    return () => sub.remove()
+  }, [])
+
+  // Outdated-AIRAC warning (re-checked on app foreground). Session-only
+  // dismissal keyed on the exact outdated set so a newly superseded cycle
+  // re-shows it.
+  const { outdatedAirac, currentAirac, checking: airacChecking, recheck: recheckAirac } = useDataFreshness()
+  const outdatedAiracKey = outdatedAirac.map(o => `${o.country}:${o.cycle}`).join(',')
+  const [dismissedAiracKey, setDismissedAiracKey] = useState<string | null>(null)
   const [snapPicker, setSnapPicker] = useState<{ candidates: SnapCandidate[]; onPick: (wp: RouteWaypoint) => void } | null>(null)
 
   // ── Route-edit lock — waypoint/leg drag is disabled by default, both on
@@ -857,6 +924,46 @@ export function MapScreen() {
   // Mirrors web's MapView.tsx planningMode/routeAdjustMode gating around the
   // route-line drag handlers. ─────
   const [routeAdjustMode, setRouteAdjustMode] = useState(false)
+
+  // ── Location button: 'off' | 'passive' outside flight (Follow is the
+  // flight-mode followGps state). Passive draws the own-position dot via
+  // AviationMap's showOwnPosition; the camera only moves on an explicit
+  // tap. Never starts logging, alerts or keep-awake (flight-only).
+  const [locMode, setLocMode] = useState<'off' | 'passive'>('off')
+  useEffect(() => {
+    // Permission already granted -> show the dot at startup (no prompt,
+    // camera untouched). Otherwise nothing until the user taps.
+    Location.getForegroundPermissionsAsync()
+      .then(p => { if (p.status === 'granted') setLocMode(m => (m === 'off' ? 'passive' : m)) })
+      .catch(() => {})
+  }, [])
+  const handleLocate = useCallback(async () => {
+    if (flightModeStatus !== 'off') { setFollowGps(true); return }
+    let perm = await Location.getForegroundPermissionsAsync()
+    if (perm.status !== 'granted' && perm.canAskAgain) perm = await Location.requestForegroundPermissionsAsync()
+    if (perm.status !== 'granted') {
+      setLocMode('off')
+      Alert.alert('Location unavailable', 'Allow location access for OpenVFR in system settings to show your position.')
+      return
+    }
+    setLocMode('passive')
+    try {
+      const pos = (await Location.getLastKnownPositionAsync({ maxAge: 60_000 }))
+        ?? (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }))
+      if (pos) setFindDestFlyTarget({ lat: pos.coords.latitude, lng: pos.coords.longitude, nonce: Date.now() })
+    } catch { /* no fix yet -- the dot appears once one arrives */ }
+  }, [flightModeStatus])
+
+  // In flight: return to following the aircraft once the map has been left
+  // alone for FOLLOW_RETURN_MS after a pan -- a forgotten Re-center
+  // otherwise leaves the map parked away from the aircraft. Not while
+  // deliberately adjusting the route.
+  const [userPanNonce, setUserPanNonce] = useState(0)
+  useEffect(() => {
+    if (flightModeStatus === 'off' || followGps || routeAdjustMode) return
+    const t = setTimeout(() => setFollowGps(true), FOLLOW_RETURN_MS)
+    return () => clearTimeout(t)
+  }, [userPanNonce, followGps, flightModeStatus, routeAdjustMode])
   useEffect(() => {
     if (!flyingActive) setRouteAdjustMode(false)
   }, [flyingActive])
@@ -1035,7 +1142,8 @@ export function MapScreen() {
           trajectoryNm={settings.trajectoryNm}
           trajectoryMode={settings.trajectoryMode ?? 'time'}
           followGps={followGps}
-          onUserPan={() => setFollowGps(false)}
+          onUserPan={() => { setFollowGps(false); setUserPanNonce(n => n + 1) }}
+          showOwnPosition={locMode === 'passive' && flightModeStatus === 'off'}
           mapOrientation={mapOrientation}
           onFeatureTap={handleFeatureTap as (features: Feature[], lngLat: [number,number]) => void}
           onLongPress={handleLongPress}
@@ -1179,6 +1287,22 @@ export function MapScreen() {
             </TouchableOpacity>
           </View>
         )}
+
+        {/* Outdated-AIRAC warning -- non-blocking, stacked under the log banner */}
+        {outdatedAirac.length > 0 && dismissedAiracKey !== outdatedAiracKey && (
+          <View style={[styles.pastTrackBanner, styles.airacBanner, { top: scaledTheme.space2 + (selectedLog ? 44 : 0) }]}>
+            <Ionicons name="warning-outline" size={13} color={theme.statusWarn} />
+            <Text style={styles.pastTrackBannerTxt} numberOfLines={2}>
+              Airspace data outdated — {outdatedAirac.map(o => `${o.country.toUpperCase()} AIRAC ${o.cycle}`).join(', ')} (current {currentAirac}). Verify against official AIP.
+            </Text>
+            <TouchableOpacity onPress={recheckAirac} disabled={airacChecking} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="refresh" size={15} color={airacChecking ? theme.textFaint : theme.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setDismissedAiracKey(outdatedAiracKey)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close" size={15} color={theme.textMuted} />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {/* Map controls — lower right, outside MapLibre GL surface. Offset above
@@ -1211,12 +1335,26 @@ export function MapScreen() {
         <View style={stackGap}>
           <VicinityBriefSheet
             nearby={nearbyFreqs}
-            regionalNotams={regionalNotams}
+            regionalNotams={regionalNotamsAll}
             waypoints={waypoints}
             position={activePosition}
             routeVisible={routeVisible}
             homeIcao={settings.homeAirfield || undefined}
           />
+        </View>
+        <View style={stackGap}>
+          <TouchableOpacity
+            style={[styles.iconBtn, (flightModeStatus !== 'off' ? followGps : locMode === 'passive') && styles.iconBtnActive]}
+            onPress={handleLocate}
+            onLongPress={() => { if (flightModeStatus === 'off') setLocMode('off') }}
+            accessibilityLabel={flightModeStatus !== 'off' ? 'Re-centre on aircraft' : locMode === 'passive' ? 'Centre on my position. Long-press to turn location off.' : 'Show my position'}
+          >
+            <Ionicons
+              name={locMode === 'passive' || flightModeStatus !== 'off' ? 'locate' : 'locate-outline'}
+              size={18}
+              color={(flightModeStatus !== 'off' ? followGps : locMode === 'passive') ? '#ffffff' : theme.textPrimary}
+            />
+          </TouchableOpacity>
         </View>
         <View style={stackGap}>
           <FlightModeSheet
@@ -1430,7 +1568,7 @@ export function MapScreen() {
         feature={aerodromeFeature}
         onClose={() => setAerodromeFeature(null)}
         onRunwayWind={handleRunwayWind}
-        regionalNotams={regionalNotams}
+        regionalNotams={regionalNotamsAll}
         routeWaypoints={waypoints}
       />
       <AirspacePopup
@@ -1507,6 +1645,7 @@ function makeStyles(theme: ScaledTheme) {
     borderWidth: 1, borderColor: '#a78bfa',
     paddingHorizontal: theme.space3, paddingVertical: theme.space2,
   },
+  airacBanner: { borderColor: theme.statusWarn },
   pastTrackBannerTxt: { flex: 1, color: theme.textPrimary, fontSize: theme.textXs, fontWeight: '600' },
   recenterBtn: {
     position: 'absolute', bottom: theme.space3, alignSelf: 'center',

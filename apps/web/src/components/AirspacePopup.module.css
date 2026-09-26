@@ -186,6 +186,32 @@
   white-space: nowrap;
 }
 
+/* NOTAM validity-window status (Active / Starts in … / Ended). */
+.validity {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.validityActive   { color: var(--accent-red); }
+.validityUpcoming { color: var(--accent-yellow); }
+.validityEnded    { color: var(--text-faint); }
+
+/* Live UTC clock in the popup header, next to the close button. */
+.utcClock {
+  margin-left: auto;
+  margin-right: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
 /* Per-row expand/collapse toggle, pushed to the end of the badge row. */
 .chevron {
   margin-left: auto;

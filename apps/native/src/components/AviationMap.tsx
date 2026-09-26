@@ -145,6 +145,10 @@ export type AviationMapProps = {
    *  React's synchronous update-depth guard (see camForWind throttle
    *  below for the other half of that same race). */
   onUserPan?: () => void
+  /** Passive location mode: draw the device's own position (dot, accuracy
+   *  circle, heading arrow) without moving the camera. Location permission
+   *  must already be granted by the parent. */
+  showOwnPosition?: boolean
   mapOrientation?: 'north' | 'track'
   autoZoom?: boolean
   /** Optional initial center — fly to this on first load (home airfield) */
@@ -721,6 +725,7 @@ export function AviationMap({
   showWind       = false,
   terrainColorRefAltFt = 2000,
   followGps = false,
+  showOwnPosition = false,
   onUserPan,
   mapOrientation = 'north',
   autoZoom = true,
@@ -1657,6 +1662,7 @@ export function AviationMap({
         compass={true}
         compassPosition={{ top: 8, right: 8 }}
       >
+        {showOwnPosition && <UserLocation accuracy heading minDisplacement={5} />}
         <Camera
           ref={cameraRef}
           // Preserve camera position across an auto-retry remount (key bump
