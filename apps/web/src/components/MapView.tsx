@@ -244,6 +244,10 @@ const LOCATE_ICON_SVG =
  *  flight otherwise leaves the map parked away from the aircraft. */
 const FOLLOW_RETURN_MS = 15_000
 
+/** Track-/course-up follow: aircraft sits this fraction of the map height
+ *  below centre (0.25 × height = aircraft at 75% down the screen). */
+const FOLLOW_LOOKAHEAD_RATIO = 0.25
+
 const HOME_ICON_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>'
 
@@ -860,6 +864,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const setSimTargetRef = useRef(setSimTarget)
   // Auto-zoom: tracks whether we've applied the takeoff zoom so we don't re-apply.
   const autoZoomPhaseRef = useRef<'idle' | 'takeoff' | 'cruise'>('idle')
+  const autoZoomTargetRef = useRef<{ zoom: number; until: number } | null>(null)
 
   // Position report — nearest aviation feature to current GPS position
   const [trackedPoint, setTrackedPoint] = useState<TrackedPoint | null>(null)
@@ -3620,6 +3625,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       setFollowAircraft(true)
       setActiveWpIdx(1)
       autoZoomPhaseRef.current = 'idle'  // ready to detect takeoff
+      autoZoomTargetRef.current = null
       setTrackedPoint(null)
     } else {
       setFollowAircraft(false)
@@ -3850,16 +3856,26 @@ export default function MapView({ auth }: { auth: AuthState }) {
         ))
       }
     }
+    // Folded into the follow easeTo below (not a separate easeTo call): a
+    // second easeTo in the same tick interrupts the first, so a standalone
+    // zoom animation was cancelled immediately by the follow pan.
+    // The target is kept until its animation window elapses, so the next
+    // GPS tick's follow easeTo (which interrupts the running one) carries
+    // the zoom on instead of freezing it part-way.
     if (followAircraft && autoZoomRef.current) {
       const phase = autoZoomPhaseRef.current
       if (phase === 'idle' && gpsPosition.speedKts >= 30) {
         autoZoomPhaseRef.current = 'takeoff'
-        map.easeTo({ zoom: 13, duration: 1500 })
+        autoZoomTargetRef.current = { zoom: 13, until: performance.now() + 1500 }
       } else if (phase === 'takeoff' && gpsPosition.speedKts >= 60) {
         autoZoomPhaseRef.current = 'cruise'
-        map.easeTo({ zoom: 11, duration: 2000 })
+        autoZoomTargetRef.current = { zoom: 11, until: performance.now() + 2000 }
       }
     }
+    const zt = autoZoomTargetRef.current
+    const zoomLeftMs = zt ? zt.until - performance.now() : 0
+    if (zt && zoomLeftMs <= 0) autoZoomTargetRef.current = null
+    const autoZoom = zt && zoomLeftMs > 0 ? { zoom: zt.zoom, duration: Math.max(250, zoomLeftMs) } : null
 
     // Optionally pan / rotate to follow.
     if (followAircraft) {
@@ -3871,7 +3887,15 @@ export default function MapView({ auth }: { auth: AuthState }) {
         mapOrientation === 'track'  ? gpsPosition.trackDeg
         : mapOrientation === 'course' ? legBearing
         : 0
-      map.easeTo({ center: [gpsPosition.lng, gpsPosition.lat], bearing, duration: 250 })
+      // Track-/course-up: place the aircraft in the lower part of the screen
+      // so most of the map shows what lies ahead rather than behind. easeTo's
+      // `offset` is resolved against the *target* bearing, so it stays
+      // correct while the map rotates. (maplibre's calculateAnchoredCameraOptions
+      // was considered but holds bearing fixed, so it doesn't fit here.)
+      // North-up keeps the aircraft centred -- "ahead" isn't a screen
+      // direction there.
+      const lookAheadPx = mapOrientation === 'north' ? 0 : Math.round(map.getContainer().clientHeight * FOLLOW_LOOKAHEAD_RATIO)
+      map.easeTo({ center: [gpsPosition.lng, gpsPosition.lat], bearing, offset: [0, lookAheadPx], duration: 250, ...autoZoom })
     }
   }, [gpsPosition, mapReady, followAircraft, mapOrientation, routeWaypoints, activeWpIdx, selectedAircraftProfile])
 
