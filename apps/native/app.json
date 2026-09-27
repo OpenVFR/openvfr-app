@@ -21,7 +21,7 @@
       "bundleIdentifier": "org.openvfr.app",
       "entitlements": {
         "com.apple.developer.associated-domains": [
-          "webcredentials:app.your-domain.example"
+          "webcredentials:openvfr.org"
         ]
       },
       "infoPlist": {

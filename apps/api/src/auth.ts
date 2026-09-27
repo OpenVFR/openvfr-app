@@ -32,6 +32,30 @@ const DB_URL   = process.env['DATABASE_URL']
 // use `||` (falls through on '' too), not `??` (only falls through on
 // null/undefined), or `new URL('')` throws ERR_INVALID_URL below.
 const APP_ORIGIN = process.env['BETTER_AUTH_APP_ORIGIN'] || BASE_URL || 'http://localhost:5173'
+const IS_PROD = process.env['NODE_ENV'] === 'production'
+
+// WebAuthn Relying Party ID. Must be the registrable apex (e.g. openvfr.org)
+// when the API and app live on different subdomains, so a passkey registered
+// while talking to api.<domain> is valid when asserted from app.<domain>.
+// Falls back to the app origin's hostname (correct for single-origin/dev).
+const RP_ID = process.env['BETTER_AUTH_RP_ID'] || new URL(APP_ORIGIN).hostname
+
+// Shared parent domain for the session cookie (".openvfr.org") so the cookie
+// set by api.<domain> is also sent to app.<domain>. Unset = same-origin only.
+const COOKIE_DOMAIN = process.env['BETTER_AUTH_COOKIE_DOMAIN'] || ''
+
+// Local-dev origins (Vite dev server, Android emulator loopback, LAN device
+// testing). NEVER trusted in production -- an attacker page on any of these
+// literal origins is unlikely, but there's no reason to widen the CSRF/origin
+// allowlist beyond what prod actually serves.
+const DEV_TRUSTED_ORIGINS = IS_PROD ? [] : [
+  'http://localhost:5200',
+  'http://localhost:5174',
+  'http://localhost:5173',
+  'http://10.0.2.2:5200',
+  'http://10.0.2.2:5173',
+  ...(process.env['BETTER_AUTH_DEV_LAN_ORIGINS']?.split(',').map(o => o.trim()).filter(Boolean) ?? []),
+]
 
 // ---------------------------------------------------------------------------
 // App-store / Play-store review test account.
@@ -78,19 +102,54 @@ export const auth = betterAuth({
   secret:  SECRET,
   baseURL: BASE_URL,
 
-  // Allow requests from the Vite dev server (port 5173) in addition to the
-  // API origin. BETTER_AUTH_TRUSTED_ORIGINS can add more origins in production.
+  // API origin + (prod) BETTER_AUTH_TRUSTED_ORIGINS (must include the app's
+  // own origin, e.g. https://app.<domain>) + (dev only) local origins.
   trustedOrigins: [
     BASE_URL,
-    'http://localhost:5200',
-    'http://localhost:5174',
-    'http://localhost:5173',
-    'http://10.0.2.2:5200',
-    'http://10.0.2.2:5173',
-    'http://192.168.1.243:5200',
-    'http://192.168.1.243:5173',
+    ...DEV_TRUSTED_ORIGINS,
     ...(process.env['BETTER_AUTH_TRUSTED_ORIGINS']?.split(',').map(o => o.trim()).filter(Boolean) ?? []),
   ],
+
+  // ── Rate limiting ────────────────────────────────────────────────────────
+  // better-auth only enables this by default when NODE_ENV=production, which
+  // the prod container never set -- so OTP send/verify had NO per-IP limit at
+  // all in production until this was made explicit. Keep enabled regardless
+  // of NODE_ENV; dev can raise limits via customRules if it ever gets in the way.
+  // Default sign-in/OTP special rules in better-auth are stricter than this
+  // baseline (they apply on top). In-memory store is fine for one instance.
+  rateLimit: {
+    enabled: true,
+    window:  60,
+    max:     60,
+    customRules: {
+      // Every send = one Brevo email on our account. 3/min/IP is plenty for
+      // a human retrying a typo; stops an IP from using us as a mail cannon.
+      '/email-otp/send-verification-otp': { window: 60, max: 3 },
+      // 6-digit code, 10-minute life: better-auth caps attempts per code
+      // (allowedAttempts), this caps attempts per IP across codes.
+      '/sign-in/email-otp':               { window: 60, max: 10 },
+      '/email-otp/verify-email':          { window: 60, max: 10 },
+      '/email-otp/check-verification-otp': { window: 60, max: 10 },
+      '/passkey/verify-authentication':   { window: 60, max: 20 },
+      '/delete-user':                     { window: 3600, max: 3 },
+    },
+  },
+
+  advanced: {
+    // Only trust the edge-asserted client IP. nginx forwards CF-Connecting-IP
+    // as X-Real-IP / X-Forwarded-For (replacing, not appending) -- reading
+    // any other header here would let a client choose its own rate-limit
+    // bucket. See docker/nginx.prod.conf ($client_ip map) in the infra repo.
+    ipAddress: {
+      ipAddressHeaders: ['cf-connecting-ip', 'x-real-ip'],
+    },
+    ...(COOKIE_DOMAIN ? {
+      crossSubDomainCookies: { enabled: true, domain: COOKIE_DOMAIN },
+    } : {}),
+    // Cookie flags for the cross-subdomain (app.<d> -> api.<d>) fetches with
+    // credentials: 'include'. Only meaningful over https, i.e. prod.
+    ...(IS_PROD ? { defaultCookieAttributes: { secure: true, httpOnly: true, sameSite: 'lax' as const } } : {}),
+  },
 
   // Pass the pg Pool directly — the Kysely adapter detects it via Pool.connect.
   // init.sql pre-creates all ba_-prefixed tables; model names below map to them.
@@ -132,19 +191,23 @@ export const auth = betterAuth({
   plugins: [
     bearer(),   // enables Authorization: Bearer <token> for native/API clients
     passkey({
-      rpID:   new URL(APP_ORIGIN).hostname,
+      rpID:   RP_ID,
       rpName: 'OpenVFR',
-      // Accept both the web origin (e.g. https://app.your-domain.example) and the Android
-      // APK key hash origin. iOS uses the same origin as the web app via
-      // Associated Domains, so no separate entry is needed for it.
-      // Set ANDROID_PASSKEY_ORIGIN in .env.prod once you have the SHA-256
-      // fingerprint of your signing certificate (see docker/env.prod.example).
-      origin: [
+      // Every origin a WebAuthn client may present in clientDataJSON:
+      //   - web:     the app origin (https://app.<domain>)
+      //   - iOS:     native ASAuthorization reports `https://<rpID>` -- the
+      //              associated (apex) domain, NOT the web app's subdomain
+      //   - Android: android:apk-key-hash:<b64url sha256 of signing cert>,
+      //              one per signing cert (Play App Signing key, upload key,
+      //              debug/dev-build key) -- comma-separated in
+      //              ANDROID_PASSKEY_ORIGIN. Must mirror the fingerprint list
+      //              in assetlinks.json (see docker/env.prod.example).
+      origin: Array.from(new Set([
         APP_ORIGIN,
-        ...(process.env['ANDROID_PASSKEY_ORIGIN']
-          ? [process.env['ANDROID_PASSKEY_ORIGIN']]
-          : []),
-      ],
+        `https://${RP_ID}`,
+        ...(process.env['ANDROID_PASSKEY_ORIGIN'] ?? '')
+          .split(',').map(o => o.trim()).filter(Boolean),
+      ])),
       schema: { passkey: { modelName: 'ba_passkey' } },
     }),
     emailOTP({
@@ -162,7 +225,7 @@ export const auth = betterAuth({
       },
       // Sent via Brevo (see mailer.ts). Falls back to a console log when
       // BREVO_API_KEY / BREVO_SENDER_EMAIL are unset, e.g. in local dev.
-      sendVerificationOTP: async ({ email, otp, type }) => {
+      sendVerificationOTP: async ({ email, otp }) => {
         // Skip sending for the review account — reviewer never sees this
         // email, they type the fixed code straight from review notes.
         if (APP_REVIEW_TEST_EMAIL && email.toLowerCase() === APP_REVIEW_TEST_EMAIL) {
@@ -171,7 +234,7 @@ export const auth = betterAuth({
         await sendEmail({
           to: email,
           subject: 'Your OpenVFR sign-in code',
-          text: `Your verification code is: ${otp}\n\nThis code expires in 10 minutes. If you didn't request this (${type}), you can ignore this email.`,
+          text: `Your verification code is: ${otp}\n\nThis code expires in 10 minutes. If you didn't request this, you can ignore this email.`,
         })
       },
       otpLength:  6,

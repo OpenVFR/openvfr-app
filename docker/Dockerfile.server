@@ -26,7 +26,9 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/package.json
 COPY packages/shared/package.json packages/shared/package.json
-RUN pnpm install --frozen-lockfile || pnpm install
+# Frozen only: a lockfile/manifest mismatch must fail the build loudly, not
+# silently re-resolve to whatever versions happen to be current at build time.
+RUN pnpm install --frozen-lockfile
 
 # Copy source (tsx runs TypeScript directly — no build step needed).
 # packages/shared's exports map points at ./src/*.ts directly (no dist/
@@ -37,6 +39,19 @@ COPY apps/api/src apps/api/src
 COPY packages/shared/src packages/shared/src
 
 WORKDIR /app/apps/api
+
+# better-auth only turns on its per-IP rate limiter (and a few other
+# production-only safety defaults) when NODE_ENV=production. apps/api/src/
+# auth.ts also sets rateLimit.enabled explicitly, but keep the env correct
+# so any other library's prod/dev switch lands on the right side too.
+ENV NODE_ENV=production
+
+# Drop root. The image's built-in unprivileged `node` user owns /app so pnpm's
+# node_modules symlinks stay resolvable; /tmp (POH upload staging) and /data
+# (NOTAM cache bind mount) must be writable by uid 1000 -- see the compose
+# file's tmpfs/volume config in the infra repo.
+RUN chown -R node:node /app
+USER node
 
 EXPOSE 5200
 

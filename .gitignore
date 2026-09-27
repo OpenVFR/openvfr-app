@@ -9,10 +9,6 @@ apps/web/public/tiles/*.mbtiles
 apps/web/public/tiles/*.geojson
 apps/web/public/tiles/manifest.json
 
-# Generated at build time by apps/web/scripts/gen-well-known.mjs — contains
-# deployment-specific values (team ID, package name, cert fingerprint)
-apps/web/public/.well-known/
-
 # Environment
 .env
 .env.*

@@ -121,13 +121,14 @@ app.get('/api/version', (c) => c.json({
 // ---------------------------------------------------------------------------
 // /.well-known — required for native passkeys
 //
-// SUPERSEDED when the frontend is deployed as static hosting on its own
-// origin (see apps/web/scripts/gen-well-known.mjs): in that topology these
-// paths are generated as static files at build time instead, since the
-// passkey associated domain no longer proxies to this API at all. These
-// handlers are left in place harmlessly as a reference implementation /
-// fallback for any deployment that serves this API and the frontend from
-// the same origin instead.
+// SUPERSEDED when the WebAuthn RP ID is a domain this API doesn't serve
+// (the usual multi-subdomain layout: RP ID = registrable apex, API on
+// api.<apex>, app on app.<apex>). iOS/Android fetch these two files from
+// https://<rpID>/.well-known/ and never from this API; whatever static
+// site sits on the apex must serve them instead (build-time generation
+// from the same env vars). These handlers are left in place harmlessly as
+// a reference implementation / fallback for a deployment that serves this
+// API on the RP ID host itself.
 //
 // iOS: apple-app-site-association tells the OS that this domain is associated
 //   with the app's bundle ID so the platform authenticator accepts passkey
@@ -417,7 +418,7 @@ app.post('/api/poh-extract', async (c) => {
 
       if (msg.includes('401') || msg.includes('AuthenticationFailed') || msg.includes('InvalidApiKey')) {
         console.error('[poh-extract] Auth error:', msg)
-        await stream.writeSSE({ data: JSON.stringify({ error: 'Azure OpenAI API key is invalid. Check server configuration.' }) })
+        await stream.writeSSE({ data: JSON.stringify({ error: 'POH extraction service is misconfigured on the server.' }) })
         return
       }
       if (msg.includes('429') || msg.includes('TooManyRequests') || msg.includes('RateLimitReached')) {
@@ -425,14 +426,21 @@ app.post('/api/poh-extract', async (c) => {
         const retrySecs = retryMatch?.[1] ? parseInt(retryMatch[1], 10) + 5 : 65
         console.error('[poh-extract] Rate limit (retrySecs=%d):', retrySecs, msg)
         await stream.writeSSE({ data: JSON.stringify({
-          error: `Azure OpenAI rate limit reached. Retry in ${retrySecs} seconds.`,
+          error: `POH extraction service is busy. Retry in ${retrySecs} seconds.`,
           retryAfterSeconds: retrySecs,
         }) })
         return
       }
 
+      // Generic text only -- the raw SDK message can carry the deployment
+      // name, endpoint host, request ids, or upstream validation detail.
+      // Full detail is already logged above. The one client-safe message we
+      // produce ourselves (unparseable model output) is passed through.
+      const clientMsg = msg.startsWith('Model returned a response')
+        ? msg
+        : 'POH extraction failed. Try again later.'
       console.error('[poh-extract] Error:', msg)
-      await stream.writeSSE({ data: JSON.stringify({ error: msg }) })
+      await stream.writeSSE({ data: JSON.stringify({ error: clientMsg }) })
 
     } finally {
       try { unlinkSync(tmpPath) } catch { /* ignore */ }
@@ -474,10 +482,32 @@ app.get('/api/traffic/latest', async (c) => {
 // The connection is kept alive by a 30-second "heartbeat" comment so proxies
 // (nginx, Cloudflare) don't close idle SSE connections.
 // ---------------------------------------------------------------------------
+// Per-user cap on concurrent SSE connections. Each open stream holds a
+// writer + heartbeat timer for as long as the client keeps it open; without
+// a ceiling one authenticated account could pin thousands of them and
+// exhaust file descriptors/memory. A real user has a handful of tabs/devices
+// at most.
+const SSE_MAX_PER_USER = Number(process.env['SSE_MAX_PER_USER'] ?? 5)
+const sseConnections = new Map<string, number>()
+
 app.get('/api/traffic/stream', async (c) => {
-  if (!(await requireSession(c))) return c.json({ error: 'Authentication required.' }, 401)
+  const user = await requireSession(c)
+  if (!user) return c.json({ error: 'Authentication required.' }, 401)
   if (!trafficConfig.available) {
     return c.json({ error: 'OpenSky credentials not configured on this server.' }, 503)
+  }
+
+  const open = sseConnections.get(user.id) ?? 0
+  if (open >= SSE_MAX_PER_USER) {
+    return c.json({ error: 'Too many open traffic streams for this account.' }, 429)
+  }
+  sseConnections.set(user.id, open + 1)
+  let released = false
+  const release = (): void => {
+    if (released) return
+    released = true
+    const n = (sseConnections.get(user.id) ?? 1) - 1
+    if (n <= 0) sseConnections.delete(user.id); else sseConnections.set(user.id, n)
   }
 
   const { readable, writable } = new TransformStream()
@@ -498,6 +528,7 @@ app.get('/api/traffic/stream', async (c) => {
   function cleanup(): void {
     clearInterval(heartbeatInterval)
     unregister()
+    release()
     writer.close().catch(() => {})
   }
 

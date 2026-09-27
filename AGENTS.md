@@ -134,6 +134,19 @@ Every endpoint added to `apps/api/src/index.ts` MUST be checked against this lis
 
 Reference implementation: `/api/poh-extract` in `apps/api/src/index.ts`.
 
+6. **The api does NOT connect as a superuser.** Production runs it as the
+   `api_app` role (`db/migrations/20260913000000_least_privilege_roles.sql`),
+   which only has CRUD on the `ba_*` auth tables. PostgREST connects as
+   `authenticator` (NOINHERIT) and can only `SET ROLE anon|authenticated`.
+   Any new table the api reads/writes directly needs an explicit `GRANT`
+   to `api_app` in the same migration that creates it, or prod fails with
+   `permission denied` while dev (superuser `openvfr_dev`) keeps working.
+   User data still goes through PostgREST + RLS, not the api.
+7. **Client IP:** better-auth is configured (`auth.ts`) to trust only
+   `cf-connecting-ip` / `x-real-ip`, which the infra nginx sets from
+   Cloudflare's edge header. Never read `x-forwarded-for` for anything
+   security-relevant -- the client controls its first entry.
+
 **This checklist does NOT cover everything reachable at `api.openvfr.org`.**
 The production reverse proxy (`docker/nginx.prod.conf` — private `openvfr-infra`
 repo, sibling checkout) has its own `location` blocks that proxy directly to
