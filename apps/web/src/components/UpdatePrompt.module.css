@@ -1,6 +1,9 @@
 .toast {
   position: fixed;
-  bottom: 24px;
+  /* Top of the viewport: the bottom edge is where the map info pill,
+     vertical profile and mobile drawer live -- a toast there is easy to
+     miss or gets covered. safe-area inset keeps it below a notch. */
+  top: calc(12px + env(safe-area-inset-top, 0px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 9999;
