@@ -502,6 +502,7 @@ interface NmsNotamsResponse {
 // ── Shared cache: icaoLocation -> (notam id -> raw NMS record) ─────────────
 const _cache = new Map<string, Map<string, NmsNotam>>()
 let _lastPollAt: string | null = null // ISO timestamp of last successful poll start
+let _lastMilitaryPullAt: string | null = null // ISO timestamp of last successful MILITARY bulk pull (persisted; gates the 1/24h limit across restarts)
 
 // Grace period past effectiveEnd/cancelationDate before an entry is pruned
 // from the cache entirely (not just excluded from getNotamsForIcao's active-
@@ -522,6 +523,7 @@ interface PersistedCache {
   trackedKeys:  string[] // _icaoAllowlist contents this cache was populated from -- see loadCacheFromDisk()
   bboxKey?:     string // CROSS_BORDER_BBOX_KEY this cache was populated with -- optional for back-compat with caches predating this field, see loadCacheFromDisk()
   lastPollAt:   string | null
+  lastMilitaryPullAt?: string | null // ISO time of the last SUCCESSFUL classification=MILITARY bulk pull -- see pollMilitaryOnce()
   entries: Array<[string, Array<[string, NmsNotam]>]> // [icaoLocation, [id, NmsNotam][]][]
 }
 
@@ -596,6 +598,7 @@ function loadCacheFromDisk(): void {
 
     for (const [icao, idEntries] of parsed.entries) _cache.set(icao, new Map(idEntries))
     _lastPollAt = parsed.lastPollAt
+    _lastMilitaryPullAt = parsed.lastMilitaryPullAt ?? null
     const total = parsed.entries.reduce((n, [, idEntries]) => n + idEntries.length, 0)
     console.log(`[notam] Loaded ${total} cached NOTAMs from disk (${NMS_CACHE_FILE}), last poll: ${_lastPollAt ?? 'never'}`)
   } catch (e) {
@@ -611,6 +614,7 @@ function saveCacheToDisk(): void {
       trackedKeys: [..._icaoAllowlist],
       bboxKey:     CROSS_BORDER_BBOX_KEY,
       lastPollAt:  _lastPollAt,
+      lastMilitaryPullAt: _lastMilitaryPullAt,
       entries: [..._cache.entries()].map(([icao, byId]) => [icao, [...byId.entries()]]),
     }
     writeFileSync(NMS_CACHE_FILE, JSON.stringify(payload))
@@ -755,11 +759,14 @@ async function pollMilitaryOnce(): Promise<void> {
       },
     })
     if (!resp.ok) {
-      console.warn(`[notam] NMS MILITARY poll HTTP ${resp.status}`)
-      scheduleMilitaryRetry()
+      // A 429 here almost always means the 1-bulk-pull-per-24h cap (e.g.
+      // a restart after a successful pull earlier today, before this
+      // timestamp was persisted). Do NOT retry soon -- that is exactly the
+      // "more frequent use" the FAA says requires approval. The daily
+      // timer (or next restart, now gated by _lastMilitaryPullAt) retries.
+      console.warn(`[notam] NMS MILITARY poll HTTP ${resp.status} -- not retrying (1 bulk pull / 24h limit)`)
       return
     }
-    _militaryRetries = 0
 
     // Same inline-JSON-vs-redirected-gzip handling as pollOnce() -- see its
     // own comment for why both shapes must be handled.
@@ -781,6 +788,7 @@ async function pollMilitaryOnce(): Promise<void> {
     // Wholesale replace, not merge -- see this function's own header for why.
     if (byId.size > 0) {
       _cache.set(MILITARY_EU_KEY, byId)
+    _lastMilitaryPullAt = new Date().toISOString()
     } else {
       _cache.delete(MILITARY_EU_KEY)
     }
@@ -790,35 +798,12 @@ async function pollMilitaryOnce(): Promise<void> {
     console.log(`[notam] NMS MILITARY poll OK: ${features.length} received worldwide, ${byId.size} kept (European ICAO prefixes)`)
   } catch (e) {
     console.warn('[notam] NMS MILITARY poll failed:', (e as Error).message)
-    scheduleMilitaryRetry()
   }
 }
 
 let _pollTimer: ReturnType<typeof setInterval> | null = null
 let _militaryPollTimer: ReturnType<typeof setInterval> | null = null
 
-/**
- * A failed MILITARY poll (typically a 429 right after a restart, when the
- * INTERNATIONAL delta and this full pull land inside NMS-API's account-wide
- * 3-minute window) would otherwise not be retried for a whole day. Retry a
- * few times at 15 min spacing -- well outside the rate limit, but bounded
- * so a genuinely broken upstream doesn't turn into a permanent loop.
- */
-const MILITARY_RETRY_DELAY_MS = 15 * 60 * 1000
-const MILITARY_MAX_RETRIES    = 4
-let _militaryRetries = 0
-let _militaryRetryTimer: ReturnType<typeof setTimeout> | null = null
-
-function scheduleMilitaryRetry(): void {
-  if (_militaryRetryTimer || _militaryRetries >= MILITARY_MAX_RETRIES) return
-  _militaryRetries++
-  console.warn(`[notam] MILITARY retry ${_militaryRetries}/${MILITARY_MAX_RETRIES} in ${MILITARY_RETRY_DELAY_MS / 60000} min`)
-  _militaryRetryTimer = setTimeout(() => {
-    _militaryRetryTimer = null
-    void pollMilitaryOnce()
-  }, MILITARY_RETRY_DELAY_MS)
-  _militaryRetryTimer.unref?.()
-}
 
 /**
  * Called once at server boot. Starts the shared poller immediately if
@@ -837,10 +822,24 @@ export function startNotamPoller(): void {
   _pollTimer = setInterval(() => { void pollOnce() }, POLL_INTERVAL_MS)
   _pollTimer.unref?.() // never keep the process alive solely for this timer
 
-  console.log(`[notam] NMS-API MILITARY poller starting (interval=${MILITARY_POLL_INTERVAL_MS}ms)`)
-  void pollMilitaryOnce()
-  _militaryPollTimer = setInterval(() => { void pollMilitaryOnce() }, MILITARY_POLL_INTERVAL_MS)
-  _militaryPollTimer.unref?.()
+  // classification=MILITARY with no other filter is a FULL classification
+  // pull, which NMS-API's production terms cap at ONE per 24 hours
+  // account-wide ("1 bulk pull every 24 hours at most ... full
+  // classification pulls of GeoJSON data"). That cap does not reset on
+  // restart, so the last successful pull time is persisted with the cache
+  // and the boot-time pull is deferred until the window has elapsed.
+  // Confirmed live: a redeploy a few minutes after a successful pull
+  // produced 429s on every subsequent restart that day.
+  const sinceLastMs = _lastMilitaryPullAt ? Date.now() - Date.parse(_lastMilitaryPullAt) : Infinity
+  const firstDelayMs = Math.max(0, MILITARY_POLL_INTERVAL_MS - sinceLastMs)
+  console.log(`[notam] NMS-API MILITARY poller starting (interval=${MILITARY_POLL_INTERVAL_MS}ms, first pull in ${Math.round(firstDelayMs / 60000)} min -- last successful pull ${_lastMilitaryPullAt ?? 'never'})`)
+  const kick = (): void => {
+    void pollMilitaryOnce()
+    _militaryPollTimer = setInterval(() => { void pollMilitaryOnce() }, MILITARY_POLL_INTERVAL_MS)
+    _militaryPollTimer.unref?.()
+  }
+  if (firstDelayMs === 0) kick()
+  else setTimeout(kick, firstDelayMs).unref?.()
 }
 
 export function stopNotamPoller(): void {
