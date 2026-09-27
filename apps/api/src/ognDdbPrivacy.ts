@@ -27,7 +27,22 @@
  * underscore-prefixed daily callsign) for any non-opted-in device.
  */
 
-const DDB_DOWNLOAD_URL = 'http://ddb.glidernet.org/download'
+import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs'
+import { dirname } from 'node:path'
+
+// Canonical URL WITH trailing slash: the non-slash form 301s to this, and
+// the DDB's per-IP rate limiter counts both hops -- every attempt cost two
+// requests and tripped its burst limit after a couple of container restarts
+// (confirmed live: persistent 429s for 10+ minutes after a deploy).
+const DDB_DOWNLOAD_URL = 'https://ddb.glidernet.org/download/'
+
+/**
+ * On-disk copy of the last successfully fetched opt-out set, so a restart
+ * is privacy-correct immediately without a network round-trip (and without
+ * spending DDB rate-limit budget at all). Same /data mount as the NOTAM
+ * cache; default matches docker-compose.prod.yml's api volume.
+ */
+const DDB_CACHE_FILE = process.env['DDB_CACHE_FILE'] || '/data/ogn-ddb-optout.json'
 
 /** Refresh the opt-out list once a day — device opt-out status changes rarely, no need to poll more often. */
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000
@@ -38,10 +53,11 @@ const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000
  * failed boot fetch -- e.g. a 429 from the DDB after two container starts
  * in quick succession, seen live on a deploy -- must NOT wait a full day
  * to retry: that would show opted-out gliders for up to 24h. Backs off
- * from 1 min up to 30 min, then stays there until it succeeds.
+ * from 5 min up to 1 h (the DDB's limiter is strict; hammering it only
+ * extends the ban). Only reached when there is no on-disk cache either.
  */
-const RETRY_MIN_MS = 60 * 1000
-const RETRY_MAX_MS = 30 * 60 * 1000
+const RETRY_MIN_MS = 5 * 60 * 1000
+const RETRY_MAX_MS = 60 * 60 * 1000
 
 /** Set of uppercase 6-hex device IDs with tracked=N in the DDB. Empty until the first successful fetch. */
 let _optedOut = new Set<string>()
@@ -79,9 +95,35 @@ async function refresh(): Promise<boolean> {
     _optedOut = optedOut
     _fetchedOnce = true
     console.log(`[ogn-ddb] Loaded ${optedOut.size} tracking-opt-out device IDs`)
+    saveCache(optedOut)
     return true
   } catch (err) {
     console.error('[ogn-ddb] Fetch error:', err instanceof Error ? err.message : String(err))
+    return false
+  }
+}
+
+function saveCache(optedOut: Set<string>): void {
+  try {
+    mkdirSync(dirname(DDB_CACHE_FILE), { recursive: true })
+    const tmp = `${DDB_CACHE_FILE}.tmp`
+    writeFileSync(tmp, JSON.stringify({ savedAt: new Date().toISOString(), optedOut: [...optedOut] }))
+    renameSync(tmp, DDB_CACHE_FILE)  // atomic: never leave a half-written cache
+  } catch (err) {
+    console.warn('[ogn-ddb] Could not persist cache:', err instanceof Error ? err.message : String(err))
+  }
+}
+
+/** Returns true if a previously saved list was loaded. Any parse/read failure is treated as "no cache". */
+function loadCache(): boolean {
+  try {
+    const raw = JSON.parse(readFileSync(DDB_CACHE_FILE, 'utf8')) as { savedAt?: string; optedOut?: unknown }
+    if (!Array.isArray(raw.optedOut)) return false
+    _optedOut = new Set(raw.optedOut.filter((x): x is string => typeof x === 'string'))
+    _fetchedOnce = true
+    console.log(`[ogn-ddb] Loaded ${_optedOut.size} tracking-opt-out device IDs from disk (saved ${raw.savedAt ?? 'unknown'})`)
+    return true
+  } catch {
     return false
   }
 }
@@ -101,9 +143,15 @@ async function refreshUntilFirstSuccess(): Promise<void> {
  */
 export function startDdbPrivacyRefresh(): void {
   if (_refreshTimer) return
-  void refreshUntilFirstSuccess()
+  if (loadCache()) {
+    // Privacy-correct from the cached list already; a plain refresh (no
+    // retry loop) is enough -- if it 429s, the daily timer tries again.
+    void refresh()
+  } else {
+    void refreshUntilFirstSuccess()
+  }
   // A daily refresh that fails just keeps the previous (still valid) list;
-  // only the very first fetch needs the aggressive retry above.
+  // only a cold start with no cache needs the retry loop above.
   _refreshTimer = setInterval(() => { void refresh() }, REFRESH_INTERVAL_MS)
 }
 

@@ -756,8 +756,10 @@ async function pollMilitaryOnce(): Promise<void> {
     })
     if (!resp.ok) {
       console.warn(`[notam] NMS MILITARY poll HTTP ${resp.status}`)
+      scheduleMilitaryRetry()
       return
     }
+    _militaryRetries = 0
 
     // Same inline-JSON-vs-redirected-gzip handling as pollOnce() -- see its
     // own comment for why both shapes must be handled.
@@ -788,11 +790,35 @@ async function pollMilitaryOnce(): Promise<void> {
     console.log(`[notam] NMS MILITARY poll OK: ${features.length} received worldwide, ${byId.size} kept (European ICAO prefixes)`)
   } catch (e) {
     console.warn('[notam] NMS MILITARY poll failed:', (e as Error).message)
+    scheduleMilitaryRetry()
   }
 }
 
 let _pollTimer: ReturnType<typeof setInterval> | null = null
 let _militaryPollTimer: ReturnType<typeof setInterval> | null = null
+
+/**
+ * A failed MILITARY poll (typically a 429 right after a restart, when the
+ * INTERNATIONAL delta and this full pull land inside NMS-API's account-wide
+ * 3-minute window) would otherwise not be retried for a whole day. Retry a
+ * few times at 15 min spacing -- well outside the rate limit, but bounded
+ * so a genuinely broken upstream doesn't turn into a permanent loop.
+ */
+const MILITARY_RETRY_DELAY_MS = 15 * 60 * 1000
+const MILITARY_MAX_RETRIES    = 4
+let _militaryRetries = 0
+let _militaryRetryTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleMilitaryRetry(): void {
+  if (_militaryRetryTimer || _militaryRetries >= MILITARY_MAX_RETRIES) return
+  _militaryRetries++
+  console.warn(`[notam] MILITARY retry ${_militaryRetries}/${MILITARY_MAX_RETRIES} in ${MILITARY_RETRY_DELAY_MS / 60000} min`)
+  _militaryRetryTimer = setTimeout(() => {
+    _militaryRetryTimer = null
+    void pollMilitaryOnce()
+  }, MILITARY_RETRY_DELAY_MS)
+  _militaryRetryTimer.unref?.()
+}
 
 /**
  * Called once at server boot. Starts the shared poller immediately if
