@@ -9,6 +9,7 @@
     "./airspaceGeometryCache": "./src/airspaceGeometryCache.ts",
     "./airspaceQuery": "./src/airspaceQuery.ts",
     "./airspaceColors":  "./src/airspaceColors.ts",
+    "./attributionSources": "./src/attributionSources.ts",
     "./uiTheme":         "./src/uiTheme.ts",
     "./featureColors":  "./src/featureColors.ts",
     "./fetchWx":        "./src/fetchWx.ts",

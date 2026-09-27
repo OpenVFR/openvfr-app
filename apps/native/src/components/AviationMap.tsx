@@ -28,6 +28,7 @@ import type { ViewStateChangeEvent } from '@maplibre/maplibre-react-native'
 import { WAYPOINT_COLORS, RUNWAY_COLORS, AERODROME_COLORS } from '@open-vfr/shared/featureColors'
 import { computeAtcStatus, isNotamAtcRelated, isNotamHoursChangeRelated, type HoursEntry as AtcHoursEntry } from '@open-vfr/shared/atcStatus'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
+import { ATTRIBUTION_SOURCES } from '@open-vfr/shared/attributionSources'
 import { fetchAerodromeNotamTexts } from '@open-vfr/shared/fetchNotam'
 import { API_BASE, TILE_BASE } from '../config'
 import { LIGHT } from '@protomaps/basemaps'
@@ -672,18 +673,7 @@ const LegMidpointAnnotation = React.memo(function LegMidpointAnnotation({
   )
 })
 
-// Mirrors README.md's "Data & attribution" section -- keep in sync with it.
-// Only the sources actually rendered as visible map layers here (weather/
-// NOTAM/traffic API sources are cited in the README but aren't map "credits").
-const ATTRIBUTION_SOURCES: { name: string; note: string; url: string }[] = [
-  { name: 'Protomaps', note: 'Vector basemap tiles, fonts, sprites (BSD-3-Clause)', url: 'https://protomaps.com/' },
-  { name: 'OpenStreetMap', note: 'Basemap + landuse data (\u00a9 OpenStreetMap contributors, ODbL)', url: 'https://www.openstreetmap.org/copyright' },
-  { name: 'OpenFlightMaps', note: 'VFR chart / airspace layers (ODbL)', url: 'https://www.openflightmaps.org/' },
-  { name: 'OpenAIP', note: 'Airspace and obstacle data (CC BY-NC 4.0 \u2014 non-commercial use only)', url: 'https://www.openaip.net/' },
-  { name: 'Copernicus DEM GLO-30', note: '\u00a9 ESA / European Union \u2014 hillshade & contour lines, doi:10.5270/ESA-c5d3d65', url: 'https://doi.org/10.5270/ESA-c5d3d65' },
-  { name: 'ESRI', note: 'Satellite imagery basemap toggle (proprietary, ESRI terms apply)', url: 'https://www.esri.com/en-us/legal/terms/full-master-agreement' },
-]
-
+// Credits list shared with web's MapInfoBar -- see @open-vfr/shared/attributionSources.
 const attributionStyles = StyleSheet.create({
   button: {
     position: 'absolute', bottom: 8, right: 8, zIndex: 20,
