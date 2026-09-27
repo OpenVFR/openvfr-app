@@ -1,0 +1,67 @@
+# Store-listing screenshot flow, shared by iOS simulator + Android emulator.
+# Driven by .github/workflows/screenshots.yml via capture-{ios,android}.sh.
+#
+# Env (Maestro auto-imports MAESTRO_* from the process env, so secrets never
+# land on a command line):
+#   OUT                  output directory (passed with -e by the capture script)
+#   MAESTRO_TEST_EMAIL   app-review test account (APP_REVIEW_TEST_EMAIL on the API)
+#   MAESTRO_TEST_OTP     its fixed OTP        (APP_REVIEW_TEST_OTP on the API)
+#
+# Add screens by appending tapOn/takeScreenshot pairs. Keep file names
+# numbered -- store consoles order uploads by name.
+appId: org.openvfr.app
+---
+# Stockholm-Bromma area: dense Swedish aviation data around the start position.
+- setLocation:
+    latitude: 59.354
+    longitude: 17.941
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+
+# Update nudge can appear right at launch too (see below).
+- tapOn:
+    text: "(Next time|Skip this version|Not now|Later)"
+    optional: true
+
+- runFlow:
+    when:
+      visible:
+        id: login-email
+    file: login.yaml
+
+# Tab bar only renders once authenticated.
+- extendedWaitUntil:
+    visible: Flight Plan
+    timeout: 60000
+
+# Soft "update available" nudge (useForceUpdate.ts) fires when the store
+# already lists a newer version than this build -- keep it out of shots.
+- tapOn:
+    text: "(Next time|Skip this version|Not now|Later)"
+    optional: true
+
+# Any permission prompt `permissions: all: allow` could not pre-grant.
+- tapOn:
+    text: "(Allow|Allow while using the app|While using the app)"
+    optional: true
+
+- tapOn:
+    text: Show my position
+    optional: true
+# Map tiles + aviation GeoJSON load over the network and aren't in the
+# accessibility tree, so there's nothing to assert on -- give them time.
+- waitForAnimationToEnd:
+    timeout: 20000
+- takeScreenshot: ${OUT}/01-map
+
+- tapOn: Flight Plan
+- waitForAnimationToEnd:
+    timeout: 10000
+- takeScreenshot: ${OUT}/02-flight-plan
+
+- tapOn: Settings
+- waitForAnimationToEnd:
+    timeout: 10000
+- takeScreenshot: ${OUT}/03-settings

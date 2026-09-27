@@ -1,0 +1,18 @@
+# Signs in with the app-review test account (fixed OTP, never emailed --
+# see APP_REVIEW_TEST_EMAIL / APP_REVIEW_TEST_OTP in apps/api/src/auth.ts).
+appId: org.openvfr.app
+---
+- tapOn:
+    id: login-email
+- inputText: ${MAESTRO_TEST_EMAIL}
+- tapOn:
+    id: login-send-otp
+- extendedWaitUntil:
+    visible:
+      id: login-otp
+    timeout: 30000
+- tapOn:
+    id: login-otp
+- inputText: ${MAESTRO_TEST_OTP}
+- tapOn:
+    id: login-verify-otp

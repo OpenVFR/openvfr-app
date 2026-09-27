@@ -70,11 +70,13 @@ Both are already the default path here, not a separate flow:
 
 | Secret | Used by | Purpose |
 |---|---|---|
-| `EXPO_TOKEN` | all four workflows | [Expo access token](https://docs.expo.dev/accounts/programmatic-access/) authenticating `eas-cli` non-interactively (also used by `--local` to fetch managed credentials) |
+| `EXPO_TOKEN` | all workflows | [Expo access token](https://docs.expo.dev/accounts/programmatic-access/) authenticating `eas-cli` non-interactively (also used by `--local` to fetch managed credentials) |
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | build-android (submit), publish-android | Play Console service account JSON key ([setup](https://docs.expo.dev/submit/android/#creating-a-google-service-account)) |
 | `APP_STORE_CONNECT_PRIVATE_KEY` | build-ios (submit), publish-ios | App Store Connect API key (`.p8` contents) |
 | `APP_STORE_CONNECT_KEY_ID` | build-ios (submit), publish-ios | Key ID for the above |
 | `APP_STORE_CONNECT_ISSUER_ID` | build-ios (submit), publish-ios | Issuer ID for the above |
+| `APP_REVIEW_TEST_EMAIL` | screenshots | App-review test account email -- must match the API's `APP_REVIEW_TEST_EMAIL` |
+| `APP_REVIEW_TEST_OTP` | screenshots | Its fixed OTP -- must match the API's `APP_REVIEW_TEST_OTP` (digits only, 10-32 long) |
 
 Use an App Store Connect **API key**, not an Apple ID + 2FA — the latter
 can't run unattended in CI.
@@ -86,4 +88,56 @@ cd apps/native
 npx eas-cli login
 npx eas-cli build:configure   # links this app to an EAS project, replaces the placeholder extra.eas.projectId in app.json
 npx eas-cli credentials       # generate/upload the release keystore (Android) and signing certificate + provisioning profile (iOS)
+```
+
+## Store screenshots
+
+`screenshots.yml` (manual `workflow_dispatch`) produces store-listing
+screenshots without a Mac or physical device:
+
+| Artifact | Runner | Size (px) | Store slot |
+|---|---|---|---|
+| `screenshots-ios/iphone-6.9` | macos-latest simulator, newest `iPhone * Pro Max` | 1320x2868 | App Store iPhone 6.9" (only required iPhone size) |
+| `screenshots-ios/ipad-13` | macos-latest simulator, newest `iPad Pro 13-inch` | 2064x2752 | App Store iPad 13" (required: `supportsTablet: true`) |
+| `screenshots-android-phone` | ubuntu emulator | 1080x1920 | Play phone |
+| `screenshots-android-tablet-7` | ubuntu emulator | 1200x1920 | Play 7" tablet |
+| `screenshots-android-tablet-10` | ubuntu emulator | 1600x2560 | Play 10" tablet |
+
+How it works:
+
+- `preflight` pulls the `production` EAS environment and curls the API
+  (`/health`), tile and basemap hosts from the runner
+  (`apps/native/.maestro/check-data-hosts.sh`). Fails on unset URLs,
+  connection errors, or edge bot-protection responses. Datacenter runner
+  IPs are often challenged, and a challenged host would only produce
+  blank-map screenshots after ~30 min of builds. The iOS job repeats the
+  check because macOS runners egress from different IP ranges.
+- Builds use the `screenshots` EAS profile (`apps/native/eas.json`): iOS
+  simulator `.app` (no signing credentials used) and Android APK, both
+  `--local`, both on the `production` environment.
+- The same Maestro flow (`apps/native/.maestro/screenshots.yaml`) runs on
+  every form factor: set a GPS position, launch with permissions granted,
+  sign in through the real login UI with the app-review test account
+  (`login.yaml`), then capture each tab. Status bars are pinned (9:41,
+  full battery) via `simctl status_bar` / SystemUI demo mode.
+- Android waits for Android's own `VALIDATED` network state before
+  capturing (`ping` never works in the emulator, and there's no `curl` on
+  the image). Every PNG is checked against the expected pixel size.
+- Only PNGs are uploaded. Maestro's debug output logs typed text,
+  including the test OTP, so it stays on the runner.
+
+Map tiles and aviation overlays are drawn by the GL surface and aren't in
+the accessibility tree, so the flow can't assert they loaded. It waits for
+the map to settle. Review the images before uploading them to the stores.
+
+Add screens by appending `tapOn` / `takeScreenshot` steps to
+`screenshots.yaml`. Keep file names numbered: the store consoles order
+uploads by name. Captions or device frames are a separate step on top of
+these raw captures.
+
+Run the flow locally against any booted simulator or emulator:
+
+```sh
+cd apps/native
+MAESTRO_TEST_EMAIL=... MAESTRO_TEST_OTP=... maestro test -e OUT=/tmp/shots .maestro/screenshots.yaml
 ```

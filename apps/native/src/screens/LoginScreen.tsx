@@ -83,6 +83,7 @@ export function LoginScreen() {
             <Text style={styles.label}>Email address</Text>
             <TextInput
               style={styles.input}
+              testID="login-email"
               value={email}
               onChangeText={setEmail}
               placeholder="pilot@example.com"
@@ -95,6 +96,7 @@ export function LoginScreen() {
             />
             <TouchableOpacity
               style={[styles.btn, busy && styles.btnDisabled]}
+              testID="login-send-otp"
               onPress={handleSendOtp}
               disabled={busy || !email.trim()}
             >
@@ -111,6 +113,7 @@ export function LoginScreen() {
             <Text style={styles.label}>6-digit code sent to {email}</Text>
             <TextInput
               style={[styles.input, styles.otpInput]}
+              testID="login-otp"
               value={otp}
               onChangeText={setOtp}
               placeholder="000000"
@@ -126,6 +129,7 @@ export function LoginScreen() {
             />
             <TouchableOpacity
               style={[styles.btn, busy && styles.btnDisabled]}
+              testID="login-verify-otp"
               onPress={handleVerifyOtp}
               disabled={busy}
             >
