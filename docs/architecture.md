@@ -154,6 +154,7 @@ Altitude filter: `AltitudeSlider` → `buildAltitudeFilter()` → `map.setFilter
 The map supports swappable basemaps without reloading the MapLibre instance, preserving pan/zoom/rotation.
 
 - **Default:** Protomaps vector tiles (`pmtiles://…`). **Alternative:** satellite raster tile provider.
+- **Web UI:** Vector/Satellite segmented control at the top of the side pane's Layers section (`LayerPanel.tsx`), followed by the Altitude Filter slider — no separate map button or side-pane section for either.
 - **Swap mechanism:** MapLibre runtime API (`map.addSource`, `map.addLayer`, `map.removeLayer`, `map.removeSource`, layer ordering). **Never reload the full style object** — this drops aviation sources, resets all filters, and clears registered images.
 - **Offline fallback:** If basemap tiles fail, aviation layers continue rendering on a blank background.
 - **Dynamic contrast:** `basemapMode: 'vector' | 'satellite'` React state triggers `map.setPaintProperty()` sweep in the `useEffect` that watches `basemapMode`. Two passes:

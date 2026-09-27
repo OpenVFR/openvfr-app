@@ -1,7 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
-import LayerPanel from './LayerPanel'
+import LayerPanel, { type BasemapMode } from './LayerPanel'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
-import AltitudeSlider from './AltitudeSlider'
 import SettingsPanel from './SettingsPanel'
 import RoutePlan from './RoutePlan'
 import PreflightWarnings from './PreflightWarnings'
@@ -24,11 +23,12 @@ import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride, AircraftProfileDocType, UserWaypointDocType } from '../db/index'
 import type { Theme, TrajectoryMode, AirspaceWarnLookahead, TerrainColoringSettings, TrafficVertFilter, ParkTimeoutOption } from '../db/useSettings'
 import type { DataManifest } from '../hooks/useDataManifest'
+import { scrollIntoContainer } from '../utils/scrollIntoContainer'
 import css from './SideDrawer.module.css'
 
 export type ActiveInfo =
   | { kind: 'aerodrome'; props: AerodromeFeatureProps; lng: number; lat: number }
-  | { kind: 'airspace';  features: AirspaceFeature[]; regionalNotams?: RegionalNotamHit[] }
+  | { kind: 'airspace';  features: AirspaceFeature[]; regionalNotams?: RegionalNotamHit[]; focusKey?: string }
   | { kind: 'point';     feature: PointFeature }
   | { kind: 'whatshere'; items: WhatsHereItem[]; airspaceFeatures: AirspaceFeature[]; lng: number; lat: number }
   | null
@@ -39,6 +39,8 @@ interface Props {
   onVisibilityChange: (groupId: string, on: boolean) => void
   ceilingFt: number
   onCeilingChange: (ft: number) => void
+  basemapMode: BasemapMode
+  onBasemapModeChange: (m: BasemapMode) => void
   units: Units
   onUnitsChange: (u: Units) => void
   region: string
@@ -141,7 +143,6 @@ const SECTION_LABELS = {
   aircraft:      'Aircraft',
   userWaypoints: 'User Waypoints',
   layers:        'Layers',
-  altitude:      'Altitude Filter',
   settings:      'Settings',
 } as const
 
@@ -168,6 +169,7 @@ function lsSet(key: string, value: unknown) {
 export default function SideDrawer({
   visibility, onVisibilityChange,
   ceilingFt, onCeilingChange,
+  basemapMode, onBasemapModeChange,
   units, onUnitsChange,
   region, onRegionChange,
   theme, onThemeChange,
@@ -202,7 +204,7 @@ export default function SideDrawer({
   const [open, setOpen]         = useState(() => lsGet(LS_OPEN, false))
   const [width, setWidth]       = useState(() => lsGet(LS_WIDTH, DEFAULT_WIDTH))
   const [expanded, setExpanded] = useState<Record<Section, boolean>>(() =>
-    lsGet(LS_EXPANDED, { info: true, route: true, preflight: true, fuel: true, ruler: true, routes: true, flightLogs: true, aircraft: false, userWaypoints: true, layers: true, altitude: true, settings: false })
+    lsGet(LS_EXPANDED, { info: true, route: true, preflight: true, fuel: true, ruler: true, routes: true, flightLogs: true, aircraft: false, userWaypoints: true, layers: true, settings: false })
   )
 
   // Drag-resize handle
@@ -230,8 +232,24 @@ export default function SideDrawer({
   }, [width])
 
   // Auto-open the drawer when a feature is tapped, route exists, ruler is set, or user WP coords arrive.
+  // Also force the Selected Feature section open (it may have been
+  // collapsed and persisted that way) and bring it into view with a brief
+  // highlight, so a map click always visibly lands on its feature. An
+  // airspace stack with a focused row scrolls to that row itself instead
+  // (AirspacePopup) -- two competing smooth scrolls would fight.
+  const infoRef = useRef<HTMLDivElement>(null)
+  const [infoFlash, setInfoFlash] = useState(false)
   useEffect(() => {
-    if (activeInfo) { setOpen(true) }
+    if (!activeInfo) return
+    setOpen(true)
+    setExpanded(e => (e.info ? e : { ...e, info: true }))
+    setInfoFlash(true)
+    const rowFocused = activeInfo.kind === 'airspace' && !!activeInfo.focusKey
+    const raf = rowFocused ? 0 : requestAnimationFrame(() => {
+      if (infoRef.current) scrollIntoContainer(infoRef.current, { block: 'start', margin: 0 })
+    })
+    const t = setTimeout(() => setInfoFlash(false), 1600)
+    return () => { cancelAnimationFrame(raf); clearTimeout(t) }
   }, [activeInfo])
 
   useEffect(() => {
@@ -298,7 +316,7 @@ export default function SideDrawer({
 
           {/* ── Selected Feature ───────────────────────────────── */}
           {activeInfo && (
-            <div className={css.section}>
+            <div ref={infoRef} className={`${css.section} ${infoFlash ? css.sectionFlash : ''}`}>
               <button className={css.sectionHeader} onClick={() => toggle('info')}>
                 <span>{SECTION_LABELS.info}</span>
                 <span className={css.chevron}>{expanded.info ? '▾' : '▸'}</span>
@@ -325,6 +343,7 @@ export default function SideDrawer({
                     <AirspacePopup
                       features={activeInfo.features}
                       regionalNotams={activeInfo.regionalNotams}
+                      focusKey={activeInfo.focusKey}
                       onClose={onCloseInfo}
                     />
                   )}
@@ -540,20 +559,7 @@ export default function SideDrawer({
             </button>
             {expanded.layers && (
               <div className={css.sectionBody}>
-                <LayerPanel visibility={visibility} onChange={onVisibilityChange} terrainColoring={terrainColoring} onTerrainColoringChange={onTerrainColoringChange} inFlight={inFlight} />
-              </div>
-            )}
-          </div>
-
-          {/* ── Altitude Filter ─────────────────────────────────── */}
-          <div className={css.section}>
-            <button className={css.sectionHeader} onClick={() => toggle('altitude')}>
-              <span>{SECTION_LABELS.altitude}</span>
-              <span className={css.chevron}>{expanded.altitude ? '▾' : '▸'}</span>
-            </button>
-            {expanded.altitude && (
-              <div className={css.sectionBody}>
-                <AltitudeSlider ceilingFt={ceilingFt} onChange={onCeilingChange} />
+                <LayerPanel visibility={visibility} onChange={onVisibilityChange} terrainColoring={terrainColoring} onTerrainColoringChange={onTerrainColoringChange} inFlight={inFlight} basemapMode={basemapMode} onBasemapModeChange={onBasemapModeChange} ceilingFt={ceilingFt} onCeilingChange={onCeilingChange} />
               </div>
             )}
           </div>

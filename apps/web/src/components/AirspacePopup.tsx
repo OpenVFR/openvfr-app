@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { scrollIntoContainer } from '../utils/scrollIntoContainer'
 import css from './AirspacePopup.module.css'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
@@ -101,6 +102,17 @@ function groupRegionalNotamHits(hits: RegionalNotamHit[]): RegionalNotamHit[] {
     }
   }
   return order.map((key) => byKey.get(key)!)
+}
+
+/** Stable identity of one popup row, used to focus the row matching what
+ *  was actually clicked on the map (see MapView's click handler). Airspace
+ *  rows use the same name|lower|upper tuple as this popup's own dedup key;
+ *  NOTAM rows key by nmsId (a grouped card matches ANY of its members). */
+export function airspaceRowKey(f: { name: string; lower_ft: number; upper_ft: number }): string {
+  return `a:${f.name}|${Number(f.lower_ft)}|${Number(f.upper_ft)}`
+}
+export function notamRowKey(nmsId: string): string {
+  return `n:${nmsId}`
 }
 
 type RowItem =
@@ -266,6 +278,9 @@ interface Props {
   // charted layer at all (e.g. a cross-border exercise area with no
   // charted Swedish airspace underneath it whatsoever).
   regionalNotams?: RegionalNotamHit[]
+  /** Row to auto-expand, scroll to, and highlight -- the specific layer the
+   *  pilot clicked (see airspaceRowKey/notamRowKey). Undefined = none. */
+  focusKey?: string
   onClose: () => void
 }
 
@@ -286,7 +301,9 @@ const VALIDITY_CLASS = {
   ended:    css.validityEnded,
 } as const
 
-export default function AirspacePopup({ features, regionalNotams = [], onClose }: Props) {
+const NO_NOTAM_HITS: RegionalNotamHit[] = []
+
+export default function AirspacePopup({ features, regionalNotams = NO_NOTAM_HITS, focusKey, onClose }: Props) {
   const now = useNow()
   const { textView } = useNotamPrefs()
   // Independently-collapsible rows -- collapsed (default) shows only the
@@ -346,6 +363,38 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
       }
     }
   })
+
+  const focusIdx = focusKey
+    ? items.findIndex((it) =>
+        (it.kind === 'airspace' && airspaceRowKey(it.feature) === focusKey) ||
+        (it.kind === 'notam' && it.hit.notams.some((n) => notamRowKey(n.nmsId) === focusKey)))
+    : -1
+
+  // New click (new features/regionalNotams arrays from MapView) -> collapse
+  // everything except the clicked row, which is expanded, scrolled into view
+  // and briefly highlighted. Row indices from a previous click's stack are
+  // meaningless for the new one, so the old expand set is dropped, not kept.
+  const rowRefs = useRef(new Map<number, HTMLDivElement>())
+  const [flashIdx, setFlashIdx] = useState(-1)
+  useLayoutEffect(() => {
+    setExpanded(focusIdx >= 0 ? new Set([focusIdx]) : new Set())
+    setFlashIdx(focusIdx)
+    if (focusIdx < 0) return
+    // rAF: wait for the expanded row (and a freshly-opened drawer section)
+    // to lay out before measuring.
+    const raf = requestAnimationFrame(() => {
+      const el = rowRefs.current.get(focusIdx)
+      if (el) scrollIntoContainer(el)
+    })
+    const t = setTimeout(() => setFlashIdx(-1), 1600)
+    return () => { cancelAnimationFrame(raf); clearTimeout(t) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [features, regionalNotams, focusKey])
+  const rowRef = (i: number) => (el: HTMLDivElement | null) => {
+    if (el) rowRefs.current.set(i, el); else rowRefs.current.delete(i)
+  }
+  const rowClass = (i: number) =>
+    `${css.row}${i === focusIdx ? ` ${css.rowFocused}` : ''}${i === flashIdx ? ` ${css.rowFlash}` : ''}`
 
   const maxFt  = diagramMaxFt(sorted)
   const hasUnl = sorted.some((f) => f.upper_ft >= UNL_THRESHOLD_FT)
@@ -434,7 +483,8 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
               return (
                 <div
                   key={i}
-                  className={css.row}
+                  ref={rowRef(i)}
+                  className={rowClass(i)}
                   role="button"
                   tabIndex={0}
                   aria-expanded={isOpen}
@@ -503,7 +553,8 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
             return (
               <div
                 key={i}
-                className={css.row}
+                ref={rowRef(i)}
+                className={rowClass(i)}
                 role="button"
                 tabIndex={0}
                 aria-expanded={isOpen}
@@ -523,7 +574,7 @@ export default function AirspacePopup({ features, regionalNotams = [], onClose }
                   >
                     {CLASS_LABEL[f.class] ?? f.class}
                   </span>
-                  <span className={css.altBadge}>{f.lower} \u2013 {isUnl ? 'UNL' : f.upper}</span>
+                  <span className={css.altBadge}>{f.lower} – {isUnl ? 'UNL' : f.upper}</span>
                   {hasDetail && (
                     <button
                       type="button"

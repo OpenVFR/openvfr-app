@@ -56,27 +56,6 @@ body {
   }
 }
 
-/* MapLibre compact attribution — keep collapsed until user clicks.
-   After idle, we remove compact-show/open; MapLibre then never re-adds them
-   (compact branch only runs once per lifecycle). This CSS handles the brief
-   flash before idle fires by hiding inner text until user explicitly expands. */
-.maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show)
-  .maplibregl-ctrl-attrib-inner {
-  display: none;
-}
-
-/* Altitude-filter chip stacked above the MapLibre scale bar (see
-   MapView.tsx CeilingChipControl). Global: lives in MapLibre's control DOM. */
-.ovfr-ceiling-chip {
-  font: 600 11px/1.4 system-ui, sans-serif;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--surface-elevated);
-  color: var(--accent-yellow);
-  border: 1px solid var(--border-strong);
-  white-space: nowrap;
-}
-
 /* Own-position dot for the Passive location mode (MapView.tsx). Global:
    rendered as a MapLibre DOM marker. Blue, deliberately unlike the yellow
    aircraft symbol used while flying. */

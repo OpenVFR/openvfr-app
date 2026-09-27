@@ -157,3 +157,30 @@
   align-self: center;
   font-style: italic;
 }
+
+/* Basemap Vector/Satellite segmented control */
+.segmented {
+  display: flex;
+  gap: 4px;
+  padding: 4px 12px 6px;
+}
+
+.segment {
+  flex: 1;
+  background: var(--surface-hover);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: system-ui, sans-serif;
+  padding: 4px 8px;
+  transition: background 0.15s, color 0.15s;
+}
+.segment:hover { background: var(--surface-active); color: var(--text-primary); }
+
+.segmentActive {
+  background: rgba(147, 197, 253, 0.18);
+  border-color: rgba(147, 197, 253, 0.45);
+  color: var(--accent-blue);
+}

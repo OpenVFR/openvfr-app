@@ -1,0 +1,138 @@
+/* Bottom-right map status pill -- see MapInfoBar.tsx. */
+.bar {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 12px 4px 6px;
+  border-radius: 8px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+  font: 600 11px/1.2 system-ui, sans-serif;
+  white-space: nowrap;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.infoBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.infoBtn:hover { color: var(--text-primary); background: var(--surface-hover); }
+
+.alt { color: var(--text-secondary); }
+/* Ceiling actively hiding airspace -- same yellow the old ceiling chip used. */
+.altFiltered { color: var(--accent-yellow); }
+
+.scale {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+/* Two-tone segmented bar: dark/light alternating quarters. */
+.scaleBar {
+  height: 4px;
+  border: 1px solid var(--text-primary);
+  background: repeating-linear-gradient(
+    90deg,
+    var(--text-primary) 0 25%,
+    transparent 25% 50%
+  );
+  transition: width 0.1s;
+}
+
+.scaleLabel {
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.ratio { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* ── Attribution dialog ──────────────────────────────────────────────── */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 250; /* same tier as the other floating modals -- above the mobile sidepane overlay */
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.card {
+  width: min(480px, 100%);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 20px 12px;
+  border-radius: 16px 16px 0 0;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-bottom: none;
+  color: var(--text-primary);
+  font-family: system-ui, sans-serif;
+}
+
+.title {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.list {
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-default);
+  text-decoration: none;
+}
+.row:last-child { border-bottom: none; }
+.row:hover .rowName { text-decoration: underline; }
+
+.rowName {
+  color: var(--accent-blue-bright);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.rowNote {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.closeBtn {
+  align-self: center;
+  margin-top: 8px;
+  padding: 10px 24px;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.closeBtn:hover { color: var(--accent-blue-bright); }

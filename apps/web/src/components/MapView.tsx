@@ -40,7 +40,7 @@ import { registerAerodromeImages } from '../utils/aerodromeIcons'
 import { registerNavaidImages } from '../utils/navaidIcons'
 import { registerWindBarbIcon, registerAllWindBarbIcons } from '../utils/windBarbIcons'
 import { useWindGrid } from '../hooks/useWindGrid'
-import { type AirspaceFeature, type RegionalNotamHit } from './AirspacePopup'
+import { type AirspaceFeature, type RegionalNotamHit, airspaceRowKey, notamRowKey } from './AirspacePopup'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
 import { formatObstacleName, formatLandmarkName, obstacleWaypointName } from '@open-vfr/shared/snapLabels'
 import { type PointFeature } from './FeaturePopup'
@@ -105,7 +105,7 @@ import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl, waitForTileManifest } from '@open-vfr/shared/tileManifest'
 import { parseMapLink, hasMapLink, stripMapLinkParams } from '@open-vfr/shared/deepLink'
 import css from './MapView.module.css'
-import { MAX_FT, ftToLabel } from './AltitudeSlider'
+import MapInfoBar from './MapInfoBar'
 
 // MapLibre layer IDs we listen to for aerodrome clicks.
 // All layers that reference the ofm-aerodromes source.
@@ -224,6 +224,77 @@ const AIRSPACE_FILL_LAYERS = [
   'airspace-fill-activity',
 ]
 
+// Airspace edge layers (inset band, border, boundary label) -- a click
+// within EDGE_HIT_PX of one of these picks that specific airspace out of
+// the stacked popup. Derived from AIRSPACE_BASE_FILTERS so a new class
+// only needs registering there.
+const AIRSPACE_EDGE_LAYERS = Object.keys(AIRSPACE_BASE_FILTERS).filter((id) => !id.startsWith('airspace-fill-'))
+const EDGE_HIT_PX = 8
+
+/** Rough planar area of a lng/lat ring (cos-lat corrected), only used to
+ *  rank shapes against each other -- smaller = more specific. */
+function ringArea(ring: number[][] | undefined): number {
+  if (!ring || ring.length < 3) return Infinity
+  const cosLat = Math.cos((ring[0][1] * Math.PI) / 180)
+  let a = 0
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    a += (ring[j][0] * cosLat) * ring[i][1] - (ring[i][0] * cosLat) * ring[j][1]
+  }
+  return Math.abs(a / 2)
+}
+
+/** Which single row of the airspace/NOTAM stack popup the pilot actually
+ *  clicked (AirspacePopup's focusKey). The stack lists EVERY layer
+ *  containing the point, so "the one clicked" is inferred:
+ *   1. a rendered airspace edge (inset band/border/label) near the click --
+ *      the inset band is drawn on the inside, so it's checked first -- or a
+ *      point-only NOTAM marker under the cursor;
+ *   2. otherwise the smallest shape containing the point (a CTR inside its
+ *      TMA, a small NOTAM circle inside a big restricted area).
+ *  Only candidates actually present in the popup's lists count, so a
+ *  neighbouring airspace's border just outside the click never wins. */
+function pickClickedAirspaceRow(
+  map: maplibregl.Map,
+  pt: maplibregl.Point,
+  features: AirspaceFeature[],
+  notamHits: RegionalNotamHit[],
+): string | undefined {
+  const airspaceKeys = new Set(features.map(airspaceRowKey))
+  const notamKeys = new Set(notamHits.flatMap((h) => h.notams.map((n) => notamRowKey(n.nmsId))))
+
+  const edgeLayers = AIRSPACE_EDGE_LAYERS.filter((id) => map.getLayer(id))
+  if (edgeLayers.length > 0) {
+    const box: [maplibregl.PointLike, maplibregl.PointLike] = [
+      [pt.x - EDGE_HIT_PX, pt.y - EDGE_HIT_PX], [pt.x + EDGE_HIT_PX, pt.y + EDGE_HIT_PX],
+    ]
+    const hits = map.queryRenderedFeatures(box, { layers: edgeLayers })
+    // Inset hits first, then border/label, each in MapLibre's topmost-first order.
+    const ordered = [
+      ...hits.filter((h) => h.layer.id.startsWith('airspace-inset-')),
+      ...hits.filter((h) => !h.layer.id.startsWith('airspace-inset-')),
+    ]
+    for (const h of ordered) {
+      const p = h.properties as Record<string, unknown>
+      const key = airspaceRowKey({ name: String(p.name ?? ''), lower_ft: Number(p.lower_ft ?? 0), upper_ft: Number(p.upper_ft ?? 0) })
+      if (airspaceKeys.has(key)) return key
+    }
+  }
+  if (map.getLayer('notam-points-unclustered')) {
+    for (const h of map.queryRenderedFeatures(pt, { layers: ['notam-points-unclustered'] })) {
+      const key = notamRowKey(String((h.properties as Record<string, unknown>).nmsId ?? ''))
+      if (notamKeys.has(key)) return key
+    }
+  }
+
+  let best: { key: string; area: number } | undefined
+  const consider = (key: string, area: number) => {
+    if (!best || area < best.area) best = { key, area }
+  }
+  for (const f of features) consider(airspaceRowKey(f), ringArea(f.coords))
+  for (const h of notamHits) if (h.notams[0]) consider(notamRowKey(h.notams[0].nmsId), ringArea(h.coords))
+  return best?.key
+}
+
 // Layers that are valid snap targets during route planning.
 // Obstacles and landmarks are not useful as route turning points.
 const SNAP_LAYERS = [
@@ -250,19 +321,6 @@ const FOLLOW_LOOKAHEAD_RATIO = 0.25
 
 const HOME_ICON_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>'
-
-// Basemap toggle button SVG icons -- real Lucide "satellite"/"map" glyphs
-// (the previous satellite path was a hand-made approximation, not the actual
-// Lucide icon). Native has no dedicated satellite glyph to match here --
-// its basemap switch is a Vector/Satellite text segmented control inside the
-// Map Display sheet (behind a generic "layers-outline" trigger), not a
-// single-purpose icon button like this one, so this stays its own dedicated
-// icon pair rather than forcing cross-platform icon parity.
-// Convention: icon shows the mode you'll switch TO when clicking.
-const SAT_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m13.5 6.5-3.148-3.148a1.205 1.205 0 0 0-1.704 0L6.352 5.648a1.205 1.205 0 0 0 0 1.704L9.5 10.5"/><path d="M16.5 7.5 19 5"/><path d="m17.5 10.5 3.148 3.148a1.205 1.205 0 0 1 0 1.704l-2.296 2.296a1.205 1.205 0 0 1-1.704 0L13.5 14.5"/><path d="M9 21a6 6 0 0 0-6-6"/><path d="m9.352 10.648a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l4.296-4.296a1.205 1.205 0 0 0 0-1.704l-2.296-2.296a1.205 1.205 0 0 0-1.704 0z"/></svg>'
-const MAP_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/></svg>'
 
 // Go Flying toggle button icon — same Ionicons "airplane-outline" glyph the
 // native app's FlightModeSheet trigger uses, for icon parity across platforms.
@@ -299,25 +357,9 @@ const ROUTE_DISPLAY_LAYERS = [
 // Popup state — discriminated union covering every interactive feature type.
 type ActivePopup =
   | { kind: 'aerodrome'; props: AerodromeFeatureProps; lng: number; lat: number; x: number; y: number }
-  | { kind: 'airspace';  features: AirspaceFeature[]; regionalNotams?: RegionalNotamHit[]; x: number; y: number }
+  | { kind: 'airspace';  features: AirspaceFeature[]; regionalNotams?: RegionalNotamHit[]; focusKey?: string; x: number; y: number }
   | { kind: 'point';     feature: PointFeature;        x: number; y: number }
   | { kind: 'whatshere'; items: WhatsHereItem[]; airspaceFeatures: AirspaceFeature[]; lng: number; lat: number; x: number; y: number }
-
-/** Tiny MapLibre control: "Airspace ≤ FL095" chip, hidden when unfiltered. */
-class CeilingChipControl implements maplibregl.IControl {
-  private el = document.createElement('div')
-  onAdd(): HTMLElement {
-    this.el.className = 'maplibregl-ctrl ovfr-ceiling-chip'
-    this.el.title = 'Airspace altitude filter — airspace starting above this is hidden. Change in Altitude Filter.'
-    return this.el
-  }
-  onRemove(): void { this.el.remove() }
-  set(ceilingFt: number): void {
-    const filtered = ceilingFt < MAX_FT
-    this.el.textContent = filtered ? `Airspace ≤ ${ftToLabel(ceilingFt)}` : ''
-    this.el.style.display = filtered ? '' : 'none'
-  }
-}
 
 // Apply altitude ceiling filter to all airspace layers on a ready map.
 function applyAltitudeCeiling(map: maplibregl.Map, ceilingFt: number) {
@@ -411,13 +453,10 @@ const NO_WAYPOINTS: RouteWaypoint[] = []
 export default function MapView({ auth }: { auth: AuthState }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
-  const basemapBtnRef = useRef<HTMLButtonElement | null>(null)
   const rulerBtnRef = useRef<HTMLButtonElement | null>(null)
-  const scaleControlRef = useRef<maplibregl.ScaleControl | null>(null)
   // Active altitude-filter range, shown beside the scale bar so it's always
   // visible that airspace above the ceiling is hidden (the slider itself
   // lives in a collapsible drawer section).
-  const [ceilingChip] = useState(() => new CeilingChipControl())
   const homeBtnRef = useRef<HTMLButtonElement | null>(null)
   // ── Location button: 'off' | 'passive' outside Go Flying (Follow is the
   // flying-mode followAircraft state). Passive = own-position dot, camera
@@ -442,7 +481,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const suppressNextClickRef = useRef(false)
   const [visibility, setVisibilityGroup] = useLayerVisibility()
   const [ceilingFt, setCeilingFt] = useAirspaceCeiling()
-  useEffect(() => { ceilingChip.set(ceilingFt) }, [ceilingChip, ceilingFt])
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
   // Escape closes the open feature popup. Skipped while typing (Escape in a
   // search field clears/closes that field instead) and when another handler
@@ -482,7 +520,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const openPopupAt = (lng: number, lat: number) => {
       map.once('moveend', () => {
         const pt = map.project([lng, lat])
-        setActivePopup({ kind: 'airspace', features: [], regionalNotams: [{ notams: [notam], coords: ring }], x: pt.x, y: pt.y })
+        setActivePopup({ kind: 'airspace', features: [], regionalNotams: [{ notams: [notam], coords: ring }], focusKey: notamRowKey(notam.nmsId), x: pt.x, y: pt.y })
       })
     }
     if (ring) {
@@ -1363,47 +1401,16 @@ export default function MapView({ auth }: { auth: AuthState }) {
       maxPitch: 0,
       pitchWithRotate: false,
       attributionControl: false,
-      locale: { 'ScaleControl.NauticalMiles': 'NM' },
     })
     mapRef.current = map
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right')
-    const scaleCtrl = new maplibregl.ScaleControl({ unit: 'metric' })
-    scaleControlRef.current = scaleCtrl
-    map.addControl(scaleCtrl, 'bottom-right')
-    // Added after the scale bar so it stacks directly above it (MapLibre
-    // prepends bottom-* controls).
-    map.addControl(ceilingChip, 'bottom-right')
-    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
-    // Attribution expands async once sources load (first _updateCompact with non-empty
-    // attributions). Collapse it after idle — at that point maplibregl-compact is
-    // already on the element so subsequent _updateCompact calls won't re-expand it.
-    map.once('idle', () => {
-      const attrEl = map.getContainer().querySelector('.maplibregl-ctrl-attrib')
-      if (attrEl) {
-        attrEl.classList.remove('maplibregl-compact-show')
-        attrEl.removeAttribute('open')
-      }
-    })
+    // Scale, altitude-filter band and data attribution live in MapInfoBar
+    // (React overlay, bottom-right) -- MapLibre's own ScaleControl and
+    // AttributionControl are deliberately not added. attributionControl:
+    // false above; credits are listed in MapInfoBar's (i) dialog instead.
 
-    // Basemap toggle — registered as a MapLibre IControl, stacked at the top
-    // of the top-right button column (right below NavigationControl), same
-    // relative priority as native's Map Display trigger sitting near the top
-    // of its own button cluster.
-    const basemapBtn = document.createElement('button')
-    basemapBtn.title = 'Switch to satellite imagery'
-    basemapBtn.innerHTML = SAT_ICON_SVG
-    basemapBtn.style.cssText = 'display:flex;align-items:center;justify-content:center;'
-    basemapBtn.addEventListener('click', () => {
-      setBasemapMode((m) => (m === 'vector' ? 'satellite' : 'vector'))
-    })
-    basemapBtnRef.current = basemapBtn
-    const basemapCtrlDiv = document.createElement('div')
-    basemapCtrlDiv.className = 'maplibregl-ctrl maplibregl-ctrl-group'
-    basemapCtrlDiv.appendChild(basemapBtn)
-    map.addControl({ onAdd: () => basemapCtrlDiv, onRemove: () => {} }, 'top-right')
-
-    // Home airfield button — stacks below the basemap toggle in the top-right corner.
+    // Home airfield button — stacks below the navigation control in the top-right corner.
     const homeBtn = document.createElement('button')
     homeBtn.title = 'Fly to home airfield'
     homeBtn.innerHTML = HOME_ICON_SVG
@@ -2668,6 +2675,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
               }],
               coords: undefined,
             }],
+            focusKey: notamRowKey(nmsId),
             x: e.point.x,
             y: e.point.y,
           })
@@ -2860,6 +2868,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           kind: 'airspace',
           features: withNotams,
           regionalNotams: regionalNotamHits,
+          focusKey: pickClickedAirspaceRow(map, e.point, withNotams, regionalNotamHits),
           x: e.point.x,
           y: e.point.y,
         })
@@ -3098,7 +3107,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
       clearTimeout(followReturnTimer)
       map.remove()
       mapRef.current = null
-      basemapBtnRef.current = null
       flyingBtnRef.current  = null
       findDestBtnRef.current = null
     }
@@ -3240,25 +3248,14 @@ export default function MapView({ auth }: { auth: AuthState }) {
     if (map.isStyleLoaded()) apply()
     else map.once('styledata', apply)
 
-    // Sync the MapLibre control button icon + tooltip
-    if (basemapBtnRef.current) {
-      const isSat = basemapMode === 'satellite'
-      basemapBtnRef.current.title = isSat ? 'Switch to vector map' : 'Switch to satellite imagery'
-      basemapBtnRef.current.innerHTML = isSat ? MAP_ICON_SVG : SAT_ICON_SVG
-    }
     // BUG FIX: mapReady added -- same class of bug as the layer-visibility
     // effect above (see its comment for the full explanation). If a pilot
     // previously chose satellite mode (persisted basemapMode) and refreshes,
     // mapRef.current is null on this effect's initial run (map construction
     // gated behind waitForTileManifest()), so it does nothing; basemapMode
     // doesn't change again on its own, so the map stays stuck in vector mode
-    // (with the button showing satellite-selected) until manually toggled.
+    // (with the Layers panel showing satellite selected) until manually toggled.
   }, [basemapMode, mapReady])
-
-  // Sync scale control unit with chosen distance unit.
-  useEffect(() => {
-    scaleControlRef.current?.setUnit(units.distance === 'nm' ? 'nautical' : 'metric')
-  }, [units.distance])
 
   // Sync planningMode → ref so the click handler closure always reads current value.
   useEffect(() => {
@@ -3939,7 +3936,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     if (activePopup.kind === 'aerodrome')
       return { kind: 'aerodrome' as const, props: activePopup.props, lng: activePopup.lng, lat: activePopup.lat }
     if (activePopup.kind === 'airspace')
-      return { kind: 'airspace' as const, features: activePopup.features, regionalNotams: activePopup.regionalNotams }
+      return { kind: 'airspace' as const, features: activePopup.features, regionalNotams: activePopup.regionalNotams, focusKey: activePopup.focusKey }
     if (activePopup.kind === 'point')
       return { kind: 'point' as const, feature: activePopup.feature }
     if (activePopup.kind === 'whatshere')
@@ -3954,6 +3951,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
         onVisibilityChange={setVisibilityGroup}
         ceilingFt={ceilingFt}
         onCeilingChange={setCeilingFt}
+        basemapMode={basemapMode}
+        onBasemapModeChange={setBasemapMode}
         units={units}
         onUnitsChange={setUnits}
         region={region}
@@ -4065,6 +4064,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       />
       <div className={css.mapArea}>
         <div ref={containerRef} className={css.map} />
+        <MapInfoBar map={mapReady ? mapRef.current : null} ceilingFt={ceilingFt} units={units} />
 
       {/* ── Data-update notification banner ──────────────────────────── */}
       {hasUpdate && (

@@ -1,6 +1,9 @@
 import { LAYER_GROUPS } from '../styles/map-style'
 import type { TerrainColoringSettings } from '../db/useSettings'
+import AltitudeSlider from './AltitudeSlider'
 import css from './LayerPanel.module.css'
+
+export type BasemapMode = 'vector' | 'satellite'
 
 interface Props {
   visibility: Record<string, boolean>
@@ -9,23 +12,46 @@ interface Props {
   onTerrainColoringChange: (v: TerrainColoringSettings) => void
   /** True when aircraft is airborne (GS ≥ 30 kts); ref-alt input is locked. */
   inFlight?: boolean
+  basemapMode: BasemapMode
+  onBasemapModeChange: (m: BasemapMode) => void
+  ceilingFt: number
+  onCeilingChange: (ft: number) => void
 }
 
-export default function LayerPanel({ visibility, onChange, terrainColoring, onTerrainColoringChange, inFlight }: Props) {
+export default function LayerPanel({ visibility, onChange, terrainColoring, onTerrainColoringChange, inFlight, basemapMode, onBasemapModeChange, ceilingFt, onCeilingChange }: Props) {
   let lastSection = ''
-  let isFirstSection = true
   return (
     <div className={css.panel}>
+      {/* Basemap first, then the airspace altitude ceiling -- the two
+          map-wide settings every per-layer toggle below depends on. */}
+      <div className={`${css.section} ${css.sectionFirst}`}>Basemap</div>
+      <div className={css.segmented} role="radiogroup" aria-label="Basemap">
+        {(['vector', 'satellite'] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            role="radio"
+            aria-checked={basemapMode === m}
+            className={`${css.segment}${basemapMode === m ? ` ${css.segmentActive}` : ''}`}
+            onClick={() => onBasemapModeChange(m)}
+          >
+            {m === 'vector' ? 'Vector' : 'Satellite'}
+          </button>
+        ))}
+      </div>
+
+      <div className={css.section}>Altitude Filter</div>
+      <AltitudeSlider ceilingFt={ceilingFt} onChange={onCeilingChange} />
+
       {LAYER_GROUPS.map((group) => {
         const on = visibility[group.id] ?? group.defaultOn
         const groupColorClass = css[group.cssClass as keyof typeof css]
         const showSection = group.section !== lastSection
-        const firstSection = showSection && isFirstSection
-        if (showSection) { lastSection = group.section; isFirstSection = false }
+        if (showSection) lastSection = group.section
         return (
           <div key={group.id}>
             {showSection && (
-              <div className={`${css.section}${firstSection ? ` ${css.sectionFirst}` : ''}`}>{group.section}</div>
+              <div className={css.section}>{group.section}</div>
             )}
             <button
               type="button"
