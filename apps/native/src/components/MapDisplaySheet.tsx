@@ -148,6 +148,9 @@ interface Props {
   ceilingFt:   number
   autoZoom:    boolean
   onLayerChange:    (key: keyof LayerState, on: boolean) => void
+  /** Flight mode is on: the Satellite basemap option is disabled (see
+   *  MapScreen's satellite-in-flight lock). */
+  satelliteLocked?: boolean
   onCeilingChange:  (ft: number) => void
   onAutoZoomChange: (on: boolean) => void
   /** Reference altitude (ft MSL) for the terrain colour-relief bands --
@@ -163,7 +166,7 @@ interface Props {
 
 export function MapDisplaySheet({
   layers, ceilingFt, autoZoom, onLayerChange, onCeilingChange, onAutoZoomChange,
-  terrainColorRefAltFt, onTerrainColorRefAltFtChange, inFlight,
+  terrainColorRefAltFt, onTerrainColorRefAltFtChange, inFlight, satelliteLocked,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const captionStyles = useThemedStyles(makeCaptionStyles)
@@ -216,12 +219,17 @@ export function MapDisplaySheet({
                 <Text style={[styles.basemapTxt, !layers.satellite && styles.basemapTxtActive]}>Vector</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.basemapBtn, layers.satellite && styles.basemapBtnActive]}
+                style={[styles.basemapBtn, layers.satellite && styles.basemapBtnActive, satelliteLocked && styles.basemapBtnDisabled]}
                 onPress={() => onLayerChange('satellite', true)}
+                disabled={!!satelliteLocked}
+                accessibilityState={{ disabled: !!satelliteLocked, selected: layers.satellite }}
               >
                 <Text style={[styles.basemapTxt, layers.satellite && styles.basemapTxtActive]}>Satellite</Text>
               </TouchableOpacity>
             </View>
+            {satelliteLocked && (
+              <Text style={styles.basemapNote}>Satellite imagery is planning-only and switches off in flight.</Text>
+            )}
 
             {/* ── Airspace Ceiling ───────────────────────── */}
             <SectionHeader title="Airspace Ceiling" />
@@ -408,6 +416,12 @@ function makeStyles(theme: ScaledTheme) {
     paddingHorizontal: theme.space4,
     paddingVertical:   theme.space2,
     gap:               theme.space2,
+  },
+  basemapBtnDisabled: { opacity: 0.4 },
+  basemapNote: {
+    fontSize:   11,
+    color:      theme.textFaint,
+    paddingTop: 4,
   },
   basemapBtn: {
     flex:              1,

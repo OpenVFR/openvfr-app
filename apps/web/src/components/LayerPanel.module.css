@@ -178,6 +178,14 @@
   transition: background 0.15s, color 0.15s;
 }
 .segment:hover { background: var(--surface-active); color: var(--text-primary); }
+.segment:disabled { opacity: 0.45; cursor: not-allowed; }
+.segment:disabled:hover { background: none; color: inherit; }
+
+.sectionNote {
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 4px 2px 0;
+}
 
 .segmentActive {
   background: rgba(147, 197, 253, 0.18);

@@ -1121,6 +1121,16 @@ export function MapScreen() {
       return next
     })
   }, [])
+  // Satellite imagery is a planning-only basemap: its provider's terms class
+  // aircraft navigation as a "High Risk Activity" the imagery is not intended
+  // for, and it's the wrong basemap for reading airspace in flight anyway.
+  // Entering any flight mode (real GPS or Simulate) forces vector; the
+  // Satellite option in MapDisplaySheet is disabled until the flight ends.
+  // handleLayerChange persists the change, so the app also comes back up in
+  // vector mode after a mid-flight restart. Mirrors web's MapView.
+  useEffect(() => {
+    if (flyingActive && layers.satellite) handleLayerChange('satellite', false)
+  }, [flyingActive, layers.satellite, handleLayerChange])
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -1451,6 +1461,7 @@ export function MapScreen() {
             terrainColorRefAltFt={settings.terrainColorRefAltFt}
             onTerrainColorRefAltFtChange={(ft) => update({ terrainColorRefAltFt: ft })}
             inFlight={!!activePosition && activePosition.altFt > 0}
+            satelliteLocked={flyingActive}
           />
         </View>
         <FindDestinationSheet

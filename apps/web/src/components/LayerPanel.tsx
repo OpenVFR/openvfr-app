@@ -14,11 +14,14 @@ interface Props {
   inFlight?: boolean
   basemapMode: BasemapMode
   onBasemapModeChange: (m: BasemapMode) => void
+  /** Flight mode is on: the satellite basemap is unavailable (see MapView's
+   *  satellite-in-flight lock). Disables the Satellite option with a note. */
+  satelliteLocked?: boolean
   ceilingFt: number
   onCeilingChange: (ft: number) => void
 }
 
-export default function LayerPanel({ visibility, onChange, terrainColoring, onTerrainColoringChange, inFlight, basemapMode, onBasemapModeChange, ceilingFt, onCeilingChange }: Props) {
+export default function LayerPanel({ visibility, onChange, terrainColoring, onTerrainColoringChange, inFlight, basemapMode, onBasemapModeChange, satelliteLocked, ceilingFt, onCeilingChange }: Props) {
   let lastSection = ''
   return (
     <div className={css.panel}>
@@ -26,19 +29,27 @@ export default function LayerPanel({ visibility, onChange, terrainColoring, onTe
           map-wide settings every per-layer toggle below depends on. */}
       <div className={`${css.section} ${css.sectionFirst}`}>Basemap</div>
       <div className={css.segmented} role="radiogroup" aria-label="Basemap">
-        {(['vector', 'satellite'] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            role="radio"
-            aria-checked={basemapMode === m}
-            className={`${css.segment}${basemapMode === m ? ` ${css.segmentActive}` : ''}`}
-            onClick={() => onBasemapModeChange(m)}
-          >
-            {m === 'vector' ? 'Vector' : 'Satellite'}
-          </button>
-        ))}
+        {(['vector', 'satellite'] as const).map((m) => {
+          const locked = m === 'satellite' && !!satelliteLocked
+          return (
+            <button
+              key={m}
+              type="button"
+              role="radio"
+              aria-checked={basemapMode === m}
+              disabled={locked}
+              title={locked ? 'Satellite imagery is not available while flying' : undefined}
+              className={`${css.segment}${basemapMode === m ? ` ${css.segmentActive}` : ''}`}
+              onClick={() => onBasemapModeChange(m)}
+            >
+              {m === 'vector' ? 'Vector' : 'Satellite'}
+            </button>
+          )
+        })}
       </div>
+      {satelliteLocked && (
+        <div className={css.sectionNote}>Satellite imagery is planning-only and switches off in flight.</div>
+      )}
 
       <div className={css.section}>Altitude Filter</div>
       <AltitudeSlider ceilingFt={ceilingFt} onChange={onCeilingChange} />

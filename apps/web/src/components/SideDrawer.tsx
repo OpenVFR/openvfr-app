@@ -41,6 +41,7 @@ interface Props {
   onCeilingChange: (ft: number) => void
   basemapMode: BasemapMode
   onBasemapModeChange: (m: BasemapMode) => void
+  satelliteLocked?: boolean
   units: Units
   onUnitsChange: (u: Units) => void
   region: string
@@ -169,7 +170,7 @@ function lsSet(key: string, value: unknown) {
 export default function SideDrawer({
   visibility, onVisibilityChange,
   ceilingFt, onCeilingChange,
-  basemapMode, onBasemapModeChange,
+  basemapMode, onBasemapModeChange, satelliteLocked,
   units, onUnitsChange,
   region, onRegionChange,
   theme, onThemeChange,
@@ -559,7 +560,7 @@ export default function SideDrawer({
             </button>
             {expanded.layers && (
               <div className={css.sectionBody}>
-                <LayerPanel visibility={visibility} onChange={onVisibilityChange} terrainColoring={terrainColoring} onTerrainColoringChange={onTerrainColoringChange} inFlight={inFlight} basemapMode={basemapMode} onBasemapModeChange={onBasemapModeChange} ceilingFt={ceilingFt} onCeilingChange={onCeilingChange} />
+                <LayerPanel visibility={visibility} onChange={onVisibilityChange} terrainColoring={terrainColoring} onTerrainColoringChange={onTerrainColoringChange} inFlight={inFlight} basemapMode={basemapMode} onBasemapModeChange={onBasemapModeChange} satelliteLocked={satelliteLocked} ceilingFt={ceilingFt} onCeilingChange={onCeilingChange} />
               </div>
             )}
           </div>

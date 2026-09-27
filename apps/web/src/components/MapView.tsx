@@ -636,6 +636,16 @@ export default function MapView({ auth }: { auth: AuthState }) {
     teleport,
     setSimTarget,
   } = useGoFlying(routeWaypoints)
+
+  // Satellite imagery is a planning-only basemap. Its provider's terms class
+  // aircraft navigation as a "High Risk Activity" the imagery is not intended
+  // for, and it's the wrong basemap for reading airspace in flight anyway --
+  // so entering any flight mode forces vector and LayerPanel greys the
+  // option out until the flight ends. Mirrored in native's MapScreen.
+  const satelliteLocked = flyingMode !== 'off'
+  useEffect(() => {
+    if (satelliteLocked && basemapMode === 'satellite') setBasemapMode('vector')
+  }, [satelliteLocked, basemapMode])
   // Airfield Brief panel's aerodrome picker -- route-buffer > GPS-radius >
   // home-airfield fallback, see useVicinityAerodromes.ts doc comment.
   const vicinityAerodromes = useVicinityAerodromes({
@@ -3953,6 +3963,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         onCeilingChange={setCeilingFt}
         basemapMode={basemapMode}
         onBasemapModeChange={setBasemapMode}
+        satelliteLocked={satelliteLocked}
         units={units}
         onUnitsChange={setUnits}
         region={region}
