@@ -19,7 +19,7 @@
     "metro:prod": "adb reverse tcp:8081 tcp:8081 && expo start --port 8081 --clear",
     "build:apk:prod": "bash scripts/build-prod-apk.sh"
   },
-  "packageManager": "pnpm@11.27.1",
+  "packageManager": "pnpm@12.6.0",
   "expo": {
     "install": {
       "exclude": [
@@ -93,7 +93,7 @@
     "@resvg/resvg-js": "^2.6.2",
     "@types/geojson": "^7946.0.16",
     "@types/node": "26.6.2",
-    "@types/react": "^19.2.18",
+    "@types/react": "~19.2.18",
     "babel-plugin-module-resolver": "^5.0.3",
     "babel-preset-expo": "~57.0.13",
     "cross-env": "^10.1.0",
