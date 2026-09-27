@@ -13,9 +13,16 @@
 # guaranteed to leave these three files uncached without an explicit rule
 # (unlike hashed-filename JS/CSS chunks, which SHOULD be cached forever --
 # left alone here on purpose, not covered by this rule).
-/sw.js
+# NOTE: Pages serves the SPA shell at "/" (and any deep link via the SPA
+# fallback), never at the literal path /index.html -- a rule on /index.html
+# alone matches nothing a browser actually requests. Cover the root too.
+/
   Cache-Control: no-cache
 /index.html
+  Cache-Control: no-cache
+/sw.js
+  Cache-Control: no-cache
+/registerSW.js
   Cache-Control: no-cache
 /manifest.webmanifest
   Cache-Control: no-cache
