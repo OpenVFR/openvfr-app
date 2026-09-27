@@ -32,9 +32,21 @@ const DDB_DOWNLOAD_URL = 'http://ddb.glidernet.org/download'
 /** Refresh the opt-out list once a day — device opt-out status changes rarely, no need to poll more often. */
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000
 
+/**
+ * Retry schedule while we have NO successful fetch yet. Until the first
+ * success, isTrackingOptedOut() fails open (every device shown), so a
+ * failed boot fetch -- e.g. a 429 from the DDB after two container starts
+ * in quick succession, seen live on a deploy -- must NOT wait a full day
+ * to retry: that would show opted-out gliders for up to 24h. Backs off
+ * from 1 min up to 30 min, then stays there until it succeeds.
+ */
+const RETRY_MIN_MS = 60 * 1000
+const RETRY_MAX_MS = 30 * 60 * 1000
+
 /** Set of uppercase 6-hex device IDs with tracked=N in the DDB. Empty until the first successful fetch. */
 let _optedOut = new Set<string>()
 let _refreshTimer: ReturnType<typeof setInterval> | null = null
+let _retryDelayMs = RETRY_MIN_MS
 let _fetchedOnce = false
 
 /**
@@ -55,21 +67,31 @@ function parseDdbCsv(text: string): Set<string> {
   return optedOut
 }
 
-async function refresh(): Promise<void> {
+async function refresh(): Promise<boolean> {
   try {
     const res = await fetch(DDB_DOWNLOAD_URL)
     if (!res.ok) {
       console.error(`[ogn-ddb] Download failed: ${res.status}`)
-      return
+      return false
     }
     const text = await res.text()
     const optedOut = parseDdbCsv(text)
     _optedOut = optedOut
     _fetchedOnce = true
     console.log(`[ogn-ddb] Loaded ${optedOut.size} tracking-opt-out device IDs`)
+    return true
   } catch (err) {
     console.error('[ogn-ddb] Fetch error:', err instanceof Error ? err.message : String(err))
+    return false
   }
+}
+
+/** Boot-time fetch with backoff until the first success; the daily refresh takes over after that. */
+async function refreshUntilFirstSuccess(): Promise<void> {
+  if (await refresh()) return
+  console.warn(`[ogn-ddb] No opt-out list yet (failing open) -- retrying in ${Math.round(_retryDelayMs / 1000)}s`)
+  setTimeout(() => { void refreshUntilFirstSuccess() }, _retryDelayMs)
+  _retryDelayMs = Math.min(_retryDelayMs * 2, RETRY_MAX_MS)
 }
 
 /**
@@ -78,9 +100,11 @@ async function refresh(): Promise<void> {
  * refresh) and schedules a daily refresh.
  */
 export function startDdbPrivacyRefresh(): void {
-  refresh()
   if (_refreshTimer) return
-  _refreshTimer = setInterval(refresh, REFRESH_INTERVAL_MS)
+  void refreshUntilFirstSuccess()
+  // A daily refresh that fails just keeps the previous (still valid) list;
+  // only the very first fetch needs the aggressive retry above.
+  _refreshTimer = setInterval(() => { void refresh() }, REFRESH_INTERVAL_MS)
 }
 
 /**
