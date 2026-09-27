@@ -116,7 +116,10 @@ export function LoginScreen() {
               placeholder="000000"
               placeholderTextColor={theme.textFaint}
               keyboardType="number-pad"
-              maxLength={6}
+              // Not 6: the fixed app-review test OTP (apps/api/src/auth.ts,
+              // APP_REVIEW_TEST_OTP) is >= 10 digits and would be truncated,
+              // locking store reviewers (and the screenshot CI) out.
+              maxLength={32}
               autoFocus
               returnKeyType="done"
               onSubmitEditing={handleVerifyOtp}

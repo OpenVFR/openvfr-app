@@ -199,7 +199,9 @@ export default function LoginPanel({ auth }: Props) {
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
-                maxLength={6}
+                // Not 6: the fixed app-review test OTP (apps/api/src/auth.ts,
+                // APP_REVIEW_TEST_OTP) is >= 10 digits and would be truncated.
+                maxLength={32}
                 placeholder="123456"
                 autoComplete="one-time-code"
                 value={otp}

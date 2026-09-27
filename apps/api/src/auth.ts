@@ -79,6 +79,16 @@ if ((APP_REVIEW_TEST_EMAIL && !APP_REVIEW_TEST_OTP) || (!APP_REVIEW_TEST_EMAIL &
 if (APP_REVIEW_TEST_OTP && APP_REVIEW_TEST_OTP.length < 10) {
   throw new Error('APP_REVIEW_TEST_OTP must be at least 10 characters — it never expires/rotates, unlike normal OTPs')
 }
+// Warn, don't throw: both login UIs only accept digits (numeric keypad on
+// native, non-digits stripped on web), so a non-numeric code would boot fine
+// but be impossible to type. Failing startup over it would take the whole
+// API down for a review-account typo.
+if (APP_REVIEW_TEST_OTP && !/^\d+$/.test(APP_REVIEW_TEST_OTP)) {
+  console.warn('[auth] APP_REVIEW_TEST_OTP contains non-digits — the login UIs only accept digits, so reviewers cannot enter it')
+}
+if (APP_REVIEW_TEST_OTP && APP_REVIEW_TEST_OTP.length > 32) {
+  console.warn('[auth] APP_REVIEW_TEST_OTP is longer than 32 digits — the login UIs cap input at 32')
+}
 
 if (!SECRET || SECRET.length < 32) {
   throw new Error('BETTER_AUTH_SECRET must be set and at least 32 characters long')
