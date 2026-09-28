@@ -9,10 +9,16 @@ updates:
       minor-and-patch:
         update-types: [minor, patch]
     ignore:
-      # Expo SDK / React Native majors are coordinated upgrades, not bot PRs.
+      # Expo SDK pins these; bump them only via `expo install --fix` as part
+      # of a coordinated SDK upgrade, not as bot PRs. react-native 0.x minors
+      # are breaking and each SDK expects one exact version, so ignore minors
+      # too. Babel majors must match what babel-preset-expo supports; CI
+      # never runs Metro, so a green check would not catch a break.
       - dependency-name: expo
         update-types: [version-update:semver-major]
       - dependency-name: react-native
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: "@babel/core"
         update-types: [version-update:semver-major]
       - dependency-name: "@maplibre/maplibre-react-native"
         update-types: [version-update:semver-major]
