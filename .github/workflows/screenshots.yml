@@ -118,6 +118,40 @@ jobs:
           # Metaspace-heavy tasks (Kotlin/NDK compilation) under
           # org.gradle.parallel.
           printf 'org.gradle.caching=true\norg.gradle.parallel=true\norg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=1024m\n' >> ~/.gradle/gradle.properties
+          # The screenshot APK only runs on the x86_64 emulators (plus
+          # arm64-v8a so the same APK can be sideloaded onto a phone to
+          # check). User-home gradle.properties overrides the project's,
+          # which lists all four ABIs -- halves native compile time.
+          echo 'reactNativeArchitectures=x86_64,arm64-v8a' >> ~/.gradle/gradle.properties
+      # C/C++ (CMake/NDK) output is NOT covered by the Gradle build cache
+      # above -- without ccache every run recompiled React Native, Hermes,
+      # Reanimated, MapLibre etc. from scratch for every ABI (~20 min).
+      # React Native's own CMake files use ccache when it's on PATH; the
+      # CMAKE_*_COMPILER_LAUNCHER env vars (CMake >= 3.17) extend that to
+      # every library's CMake project. EAS local builds otherwise use a new
+      # random working dir per run, and absolute paths are part of the
+      # ccache hash, so pin it (EAS_LOCAL_BUILD_WORKINGDIR) and set
+      # CCACHE_BASEDIR to it.
+      - name: Cache ccache (NDK compile cache)
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ccache
+          key: ccache-android-screenshots-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}
+          restore-keys: |
+            ccache-android-screenshots-
+      - name: Install ccache
+        run: |
+          sudo apt-get install -y --no-install-recommends ccache >/dev/null
+          {
+            echo "CCACHE_DIR=$HOME/.cache/ccache"
+            echo "CCACHE_MAXSIZE=3G"
+            echo "CCACHE_BASEDIR=$RUNNER_TEMP/eas-build"
+            echo "CCACHE_NOHASHDIR=true"
+            echo "EAS_LOCAL_BUILD_WORKINGDIR=$RUNNER_TEMP/eas-build"
+            echo "CMAKE_C_COMPILER_LAUNCHER=ccache"
+            echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          } >> "$GITHUB_ENV"
+          ccache --zero-stats
       - name: Build APK
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -127,6 +161,7 @@ jobs:
           npx eas-cli build --platform android --profile screenshots --local --non-interactive
           apks=(build-*.apk)
           mv "${apks[0]}" openvfr-screenshots.apk
+          ccache --show-stats
       - uses: actions/upload-artifact@v7
         with:
           name: android-screenshots-apk
@@ -244,6 +279,12 @@ jobs:
         run: |
           brew install ccache
           echo "CCACHE_DIR=$HOME/Library/Caches/ccache" >> "$GITHUB_ENV"
+          # EAS local builds use a new random working dir per run; absolute
+          # paths are part of the ccache hash, so without pinning it every
+          # compile misses. Pin it and make paths under it relative.
+          echo "EAS_LOCAL_BUILD_WORKINGDIR=$RUNNER_TEMP/eas-build" >> "$GITHUB_ENV"
+          echo "CCACHE_BASEDIR=$RUNNER_TEMP/eas-build" >> "$GITHUB_ENV"
+          echo "CCACHE_NOHASHDIR=true" >> "$GITHUB_ENV"
           echo "CCACHE_MAXSIZE=2G" >> "$GITHUB_ENV"
           echo "$(brew --prefix)/opt/ccache/libexec" >> "$GITHUB_PATH"
       - name: Build simulator app
@@ -253,6 +294,7 @@ jobs:
           EAS_OWNER: ${{ vars.EAS_OWNER }}
         run: |
           npx eas-cli build --platform ios --profile screenshots --local --non-interactive
+          ccache --show-stats
           mkdir -p "$RUNNER_TEMP/app"
           archives=(build-*.tar.gz)
           tar -xzf "${archives[0]}" -C "$RUNNER_TEMP/app"

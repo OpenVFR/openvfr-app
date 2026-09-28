@@ -78,6 +78,24 @@ Both are already the default path here, not a separate flow:
   `eas.json`, no caching — you own the toolchain versions on the runner
   image).
 
+### Build caching
+
+`--local` has no built-in caching, so the workflows add their own:
+
+- Gradle build cache (`~/.gradle/caches`) for Kotlin/Java tasks. It does
+  not cover C/C++ (CMake/NDK) output.
+- ccache for all C/C++ compilation, on both platforms. Android sets
+  `CMAKE_C_COMPILER_LAUNCHER` / `CMAKE_CXX_COMPILER_LAUNCHER=ccache` so
+  every library's CMake project uses it, not only React Native's.
+- `EAS_LOCAL_BUILD_WORKINGDIR` pins EAS's working directory, otherwise a
+  new random path per run. Absolute paths are part of ccache's hash, so
+  without it (and `CCACHE_BASEDIR` pointing at it) every compile misses.
+- The screenshots APK builds only `x86_64,arm64-v8a` (emulator + phone
+  sideload) instead of all four ABIs. Store builds keep all four.
+
+Each build step ends with `ccache --show-stats`; a hit rate near zero on
+a repeat build means one of the above stopped working.
+
 ## Required secrets
 
 | Secret | Used by | Purpose |

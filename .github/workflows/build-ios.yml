@@ -103,6 +103,12 @@ jobs:
         run: |
           brew install ccache
           echo "CCACHE_DIR=$HOME/Library/Caches/ccache" >> "$GITHUB_ENV"
+          # EAS local builds use a new random working dir per run; absolute
+          # paths are part of the ccache hash, so without pinning it every
+          # compile misses. Pin it and make paths under it relative.
+          echo "EAS_LOCAL_BUILD_WORKINGDIR=$RUNNER_TEMP/eas-build" >> "$GITHUB_ENV"
+          echo "CCACHE_BASEDIR=$RUNNER_TEMP/eas-build" >> "$GITHUB_ENV"
+          echo "CCACHE_NOHASHDIR=true" >> "$GITHUB_ENV"
           echo "CCACHE_MAXSIZE=2G" >> "$GITHUB_ENV"
           echo "$(brew --prefix)/opt/ccache/libexec" >> "$GITHUB_PATH"
 
@@ -114,6 +120,7 @@ jobs:
           EAS_OWNER: ${{ vars.EAS_OWNER }}
         run: |
           npx eas-cli build --platform ios --profile ${{ inputs.profile }} --local --non-interactive
+          ccache --show-stats
           artifact=$(ls build-*.ipa 2>/dev/null | head -n1)
           echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
 

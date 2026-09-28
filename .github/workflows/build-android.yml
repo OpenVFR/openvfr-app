@@ -98,7 +98,7 @@ jobs:
       # only that task's cache entry, never serves stale output. Safe to
       # share across runs; ~/.gradle/wrapper just avoids redownloading the
       # wrapper zip.
-      - name: Cache Gradle + NDK build outputs
+      - name: Cache Gradle (JVM build outputs)
         uses: actions/cache@v6
         with:
           path: |
@@ -119,6 +119,35 @@ jobs:
           # compilation) under org.gradle.parallel.
           printf 'org.gradle.caching=true\norg.gradle.parallel=true\norg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=1024m\n' >> ~/.gradle/gradle.properties
 
+      # C/C++ (CMake/NDK) output is NOT covered by the Gradle build cache
+      # above -- without ccache every run recompiled React Native, Hermes,
+      # Reanimated, MapLibre etc. from scratch for every ABI (~20 min).
+      # React Native's own CMake files use ccache when it's on PATH; the
+      # CMAKE_*_COMPILER_LAUNCHER env vars (CMake >= 3.17) extend that to
+      # every library's CMake project. EAS local builds otherwise use a new
+      # random working dir per run, and absolute paths are part of the
+      # ccache hash, so pin it (EAS_LOCAL_BUILD_WORKINGDIR) and set
+      # CCACHE_BASEDIR to it.
+      - name: Cache ccache (NDK compile cache)
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ccache
+          key: ccache-android-${{ inputs.profile }}-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}
+          restore-keys: |
+            ccache-android-${{ inputs.profile }}-
+      - name: Install ccache
+        run: |
+          sudo apt-get install -y --no-install-recommends ccache >/dev/null
+          {
+            echo "CCACHE_DIR=$HOME/.cache/ccache"
+            echo "CCACHE_MAXSIZE=3G"
+            echo "CCACHE_BASEDIR=$RUNNER_TEMP/eas-build"
+            echo "CCACHE_NOHASHDIR=true"
+            echo "EAS_LOCAL_BUILD_WORKINGDIR=$RUNNER_TEMP/eas-build"
+            echo "CMAKE_C_COMPILER_LAUNCHER=ccache"
+            echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          } >> "$GITHUB_ENV"
+          ccache --zero-stats
       - name: Build (local -- see header comment for why not EAS cloud)
         id: build
         env:
@@ -129,6 +158,7 @@ jobs:
           # No --output: profile decides .apk (preview) vs .aab (production);
           # eas-cli names the file itself -- capture whichever it produced.
           npx eas-cli build --platform android --profile ${{ inputs.profile }} --local --non-interactive
+          ccache --show-stats
           artifact=$(ls build-*.apk build-*.aab 2>/dev/null | head -n1)
           echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
 
