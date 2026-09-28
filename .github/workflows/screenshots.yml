@@ -268,6 +268,9 @@ jobs:
         env:
           MAESTRO_TEST_EMAIL: ${{ secrets.APP_REVIEW_TEST_EMAIL }}
           MAESTRO_TEST_OTP: ${{ secrets.APP_REVIEW_TEST_OTP }}
+          # The XCTest driver install/launch on a cold simulator regularly
+          # outlasts Maestro's default wait on hosted macOS runners (ms).
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: '300000'
         run: |
           app=$(find "$RUNNER_TEMP/app" -maxdepth 2 -name '*.app' -type d | head -n1)
           bash .maestro/capture-ios.sh "$app" "$RUNNER_TEMP/shots"

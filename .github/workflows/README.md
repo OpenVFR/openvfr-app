@@ -140,23 +140,31 @@ How it works:
 - Android waits for Android's own `VALIDATED` network state before
   capturing (`ping` never works in the emulator, and there's no `curl` on
   the image). Every PNG is checked against the expected pixel size.
-- Only PNGs (plus a crash report, if the app crashed) are uploaded.
-  Maestro confines `takeScreenshot` output to its
-  own per-run artifact folder, so `apps/native/.maestro/run-flow.sh` runs
-  the flow with `--test-output-dir` pointed at a temp dir and copies the
-  PNGs out. The rest of that folder logs typed text, including the test
-  OTP, so it stays on the runner and is deleted afterwards. The one
-  exception is Maestro's `crash-report.txt` (no typed text), copied to
-  `debug/` and echoed into the job log. Android also saves
-  `debug/maplibre-logcat.txt` (logcat filtered to MapLibre/PMTiles lines
-  only) to diagnose map sources that failed to load.
-- `login.yaml` captures `debug/_debug-post-login.png` right after submitting the
-  OTP, before asserting sign-in actually happened. If auth fails (wrong/
-  stale `APP_REVIEW_TEST_EMAIL`/`APP_REVIEW_TEST_OTP` on whichever server
-  is actually running `apps/api` in production -- a deployment config
-  mismatch, not something fixable in this repo), the flow fails fast on
-  that screen instead of a 60s timeout on an unrelated later assertion,
-  and the artifact shows the exact on-screen error message.
+- Store shots go to the artifact root, diagnostics to `debug/`. Maestro
+  confines `takeScreenshot` output to its own per-run artifact folder, so
+  `apps/native/.maestro/run-flow.sh` runs the flow with
+  `--test-output-dir` pointed at a temp dir and copies selected files out.
+  The rest of that folder logs typed text, including the test OTP, so it
+  stays on the runner and is deleted afterwards. Copied to `debug/`:
+  - Maestro's screenshot of the failing step, **unless** the failure was
+    in the login flow. From the OTP step on, the screen shows the test OTP
+    in clear text, and artifacts are downloadable by anyone who can see
+    the run.
+  - Maestro's `crash-report.txt` if the app crashed (also echoed into the
+    job log).
+  - Android only: `app-logcat.txt`, logcat filtered by pattern to
+    MapLibre/PMTiles lines and app-process deaths (crash, low-memory
+    kill, OOM). The full logcat is never uploaded.
+- `login.yaml` fails fast if sign-in didn't succeed, instead of a 60s
+  timeout on an unrelated later assertion. It re-types the OTP once if
+  "Invalid OTP" shows (Maestro's `inputText` sometimes garbles long
+  strings on a slow emulator). If sign-in still fails it saves
+  `debug/_login-error.png`, cropped to the error message only, never the
+  full screen. A persistent failure usually means `APP_REVIEW_TEST_EMAIL` /
+  `APP_REVIEW_TEST_OTP` don't match the server running `apps/api`, a
+  deployment config issue rather than an app bug.
+- iOS sets `MAESTRO_DRIVER_STARTUP_TIMEOUT` to 5 minutes: installing the
+  XCTest driver on a cold simulator often outlasts Maestro's default.
 
 Map tiles and aviation overlays are drawn by the GL surface and aren't in
 the accessibility tree, so the flow can't assert they loaded. It waits for

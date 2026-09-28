@@ -32,9 +32,37 @@ appId: org.openvfr.app
       id: login-verify-otp
     timeout: 15000
     optional: true
-# Unconditional and instant either way -- if verifyOtp() did set an error,
-# LoginScreen.tsx (testID login-error) is still rendering it here, giving a
-# readable artifact instead of a blank timeout.
-- takeScreenshot: _debug-post-login
+# Maestro's inputText occasionally garbles long strings on a slow emulator
+# (repeated/dropped characters -> "Invalid OTP"). Re-type the code once if
+# the error is showing.
+- runFlow:
+    when:
+      visible:
+        id: login-error
+    commands:
+      - tapOn:
+          id: login-otp
+      - eraseText: 40
+      - inputText: ${MAESTRO_TEST_OTP}
+      - tapOn:
+          id: login-verify-otp
+      - extendedWaitUntil:
+          notVisible:
+            id: login-verify-otp
+          timeout: 15000
+          optional: true
+# If sign-in still failed, capture ONLY the error message (cropOn), never
+# the whole screen: the OTP field above it holds the test OTP in clear
+# text, and screenshot artifacts are downloadable by anyone who can see the
+# workflow run.
+- runFlow:
+    when:
+      visible:
+        id: login-error
+    commands:
+      - takeScreenshot:
+          path: _login-error
+          cropOn:
+            id: login-error
 - assertNotVisible:
     id: login-verify-otp

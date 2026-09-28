@@ -85,14 +85,16 @@ appId: org.openvfr.app
 # Build a sample route ESMI -> ESMS through Find a Destination, so the
 # Flight Plan tab shows a real route instead of its empty state. clearState
 # at launch means the route always starts empty. Aerodromes load on the
-# sheet's first open, hence the wait on the first add button. The keyboard
-# is hidden before each tap so it can't cover the result row.
+# sheet's first open, hence the wait on the first add button. Enter
+# submits the search field, which dismisses the keyboard so it can't cover
+# the result row. Not hideKeyboard: on Android that sends Back, which closes
+# the sheet (Modal onRequestClose).
 - tapOn:
     id: find-destination-open
 - tapOn:
     id: find-destination-search
 - inputText: ESMI
-- hideKeyboard
+- pressKey: Enter
 - extendedWaitUntil:
     visible:
       id: find-destination-add-ESMI
@@ -104,7 +106,7 @@ appId: org.openvfr.app
     id: find-destination-search
 - eraseText
 - inputText: ESMS
-- hideKeyboard
+- pressKey: Enter
 - extendedWaitUntil:
     visible:
       id: find-destination-add-ESMS
