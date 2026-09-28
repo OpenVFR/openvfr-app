@@ -9,12 +9,13 @@
  * Replaces the old LayerPanel component.
  */
 
-import React, { useRef } from 'react'
+import React from 'react'
 import {
-  View, Text, TouchableOpacity, Modal, ScrollView,
-  StyleSheet, Animated, PanResponder, TextInput,
+  View, Text, TouchableOpacity, ScrollView,
+  useWindowDimensions, TextInput,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { BottomSheet, RNHostView } from '@expo/ui'
 import { AltitudeSlider } from './AltitudeSlider'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
@@ -151,6 +152,11 @@ interface Props {
   /** Flight mode is on: the Satellite basemap option is disabled (see
    *  MapScreen's satellite-in-flight lock). */
   satelliteLocked?: boolean
+  /** True on devices below the RAM tier deemed safe for hillshade/contours/
+   *  terrainColor (see utils/deviceMemory.ts) -- those three rows are
+   *  disabled and their persisted state is forced off (MapScreen effect),
+   *  same pattern as satelliteLocked above. */
+  terrainMemoryLocked?: boolean
   onCeilingChange:  (ft: number) => void
   onAutoZoomChange: (on: boolean) => void
   /** Reference altitude (ft MSL) for the terrain colour-relief bands --
@@ -167,6 +173,7 @@ interface Props {
 export function MapDisplaySheet({
   layers, ceilingFt, autoZoom, onLayerChange, onCeilingChange, onAutoZoomChange,
   terrainColorRefAltFt, onTerrainColorRefAltFtChange, inFlight, satelliteLocked,
+  terrainMemoryLocked,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const captionStyles = useThemedStyles(makeCaptionStyles)
@@ -174,6 +181,12 @@ export function MapDisplaySheet({
   const [open, setOpen] = React.useState(false)
   const [refAltText, setRefAltText] = React.useState(String(terrainColorRefAltFt))
   React.useEffect(() => { setRefAltText(String(terrainColorRefAltFt)) }, [terrainColorRefAltFt])
+  // Sizing hint for RNHostView, not a hard cap -- the native sheet's own
+  // drag-to-expand can grow past this (confirmed live: a shorter hint here
+  // still let the sheet expand to near-full on drag, same as the risk-test
+  // spike). 85% leaves a sliver of the map visible above the sheet, same
+  // as the previous custom sheet's maxHeight: '80%'.
+  const { height: winH } = useWindowDimensions()
 
   return (
     <>
@@ -182,24 +195,21 @@ export function MapDisplaySheet({
         <Ionicons name="layers-outline" size={20} color={theme.textSecondary} />
       </TouchableOpacity>
 
-      {/* Bottom sheet */}
-      <Modal
-        visible={open}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setOpen(false)}
+      {/* Native bottom sheet (Compose ModalBottomSheet / SwiftUI sheet) --
+          dimming, corners, drag-to-dismiss and safe areas all come from the
+          platform, not hand-built. containerColor matches the app's active
+          theme since the native default wouldn't. */}
+      <BottomSheet
+        isPresented={open}
+        onDismiss={() => setOpen(false)}
+        testID="map-display-sheet"
+        containerColor={theme.surfaceSheet}
       >
-        <TouchableOpacity
-          style={styles.backdrop}
-          activeOpacity={1}
-          onPress={() => setOpen(false)}
-        />
-
-        <View style={styles.sheet}>
-          {/* Handle */}
-          <View style={styles.handle} />
-
-          {/* Header */}
+        <RNHostView style={{ height: winH * 0.85 }}>
+        <View style={styles.sheetInner}>
+          {/* Header -- the native sheet has no title bar of its own, and
+              the X gives an explicit close action alongside swipe-down/tap-
+              outside (BottomSheet's own defaults). */}
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Map Display</Text>
             <TouchableOpacity onPress={() => setOpen(false)} testID="map-display-close" accessibilityLabel="Close" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -207,7 +217,7 @@ export function MapDisplaySheet({
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
             {/* ── Ceiling ─────────────────────────────────────── */}
             {/* ── Basemap ──────────────────────────────── */}
             <SectionHeader title="Basemap" />
@@ -265,11 +275,20 @@ export function MapDisplaySheet({
             {layers.satellite && (
               <Text style={styles.basemapNote}>Terrain layers are hidden in satellite view.</Text>
             )}
-            {TERRAIN_GROUPS.map(g => (
-              <LayerRow key={g.key} label={g.label} color={g.color}
-                on={layers[g.key]} onToggle={() => onLayerChange(g.key, !layers[g.key])}
-                disabled={layers.satellite} />
-            ))}
+            {terrainMemoryLocked && (
+              <Text style={styles.basemapNote}>
+                Hillshade, Contour Lines and Terrain Color are disabled on this device to
+                avoid running out of memory. Terrain (landuse) is unaffected.
+              </Text>
+            )}
+            {TERRAIN_GROUPS.map(g => {
+              const heavyLocked = terrainMemoryLocked && g.key !== 'landuse'
+              return (
+                <LayerRow key={g.key} label={g.label} color={g.color}
+                  on={layers[g.key]} onToggle={() => onLayerChange(g.key, !layers[g.key])}
+                  disabled={layers.satellite || heavyLocked} />
+              )
+            })}
             {layers.terrainColor && !layers.satellite && (
               <>
                 <Text style={captionStyles.warning}>
@@ -325,7 +344,8 @@ export function MapDisplaySheet({
             <View style={{ height: 16 }} />
           </ScrollView>
         </View>
-      </Modal>
+        </RNHostView>
+      </BottomSheet>
     </>
   )
 }
@@ -381,27 +401,9 @@ function makeStyles(theme: ScaledTheme) {
     alignItems:      'center',
     justifyContent:  'center',
   },
-  backdrop: {
-    flex:            1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  sheet: {
-    backgroundColor:    theme.surfaceSheet,
-    borderTopLeftRadius:  20,
-    borderTopRightRadius: 20,
-    borderTopWidth:     1,
-    borderColor:        theme.borderDefault,
-    maxHeight:          '80%',
-    paddingBottom:      8,
-  },
-  handle: {
-    width:           40,
-    height:          4,
-    borderRadius:    2,
-    backgroundColor: theme.borderDefault,
-    alignSelf:       'center',
-    marginTop:       10,
-    marginBottom:    4,
+  sheetInner: {
+    flex: 1,
+    paddingBottom: 8,
   },
   header: {
     flexDirection:     'row',

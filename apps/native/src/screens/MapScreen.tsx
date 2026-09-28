@@ -106,6 +106,7 @@ import { SimControlPanel }   from '../components/SimControlPanel'
 import { advancePosition, distanceNm, bearingDeg } from '../utils/routeCalc'
 import type { RouteWaypoint } from '../types/db'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
+import { isLowMemoryDevice } from '../utils/deviceMemory'
 
 function isAerodrome(p: Record<string, unknown>) {
   // `icao` alone isn't a safe discriminator -- a real minority of aerodromes
@@ -1132,6 +1133,29 @@ export function MapScreen() {
     if (flyingActive && layers.satellite) handleLayerChange('satellite', false)
   }, [flyingActive, layers.satellite, handleLayerChange])
 
+  // Terrain-layer memory lock: hillshade (~231MB) + contours (~117MB) PMTiles
+  // sources are sticky-mounted in AviationMap (MapLibre Native throws "id
+  // cannot be changed" if unmounted/re-added) and their visibility persists
+  // to AsyncStorage, so a pilot who ever enables them gets them back on at
+  // the very next cold restart -- the highest memory-pressure moment, when
+  // auth/session restore and initial data sync are also competing for RAM.
+  // A real OutOfMemoryError from this exact combination was already caught
+  // on-device (see AviationMap.tsx's readyStage doc comment and
+  // apps/native/.scratch/oom-investigation.md) even with staggered mount
+  // timing. Locking them off by device RAM tier (see deviceMemory.ts) is the
+  // same adaptive-feature-gating technique as the satellite lock above,
+  // applied to the heaviest optional map layers instead of a flight-mode
+  // gate. landuse (~87MB, default-on) is excluded from this lock -- much
+  // lighter, and locking a default-on layer would be a bigger UX regression
+  // for comparatively little memory saved.
+  const terrainMemoryLocked = useMemo(() => isLowMemoryDevice(), [])
+  useEffect(() => {
+    if (!terrainMemoryLocked) return
+    if (layers.hillshade) handleLayerChange('hillshade', false)
+    if (layers.contours) handleLayerChange('contours', false)
+    if (layers.terrainColor) handleLayerChange('terrainColor', false)
+  }, [terrainMemoryLocked, layers.hillshade, layers.contours, layers.terrainColor, handleLayerChange])
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.mapContainer}>
@@ -1464,6 +1488,7 @@ export function MapScreen() {
             onTerrainColorRefAltFtChange={(ft) => update({ terrainColorRefAltFt: ft })}
             inFlight={!!activePosition && activePosition.altFt > 0}
             satelliteLocked={flyingActive}
+            terrainMemoryLocked={terrainMemoryLocked}
           />
         </View>
         <FindDestinationSheet

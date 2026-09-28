@@ -1014,23 +1014,59 @@ export function AviationMap({
   // improvement was observed: only 11 canceled Mbgl-HttpRequest entries at
   // crash time vs. the original investigation's "many" -- so the stagger
   // does reduce request *concurrency* somewhat, just not enough to avoid
-  // the memory peak.) Bumped to seconds-scale gaps below as a stronger stall
-  // -- still a fixed timer, not an event-driven "wait for prior source's
-  // tiles to actually finish" gate, so treat this as a bigger safety
-  // margin, not a structural fix; see HANDOFF_oom_investigation.md.
+  // the memory peak.)
+  //
+  // STRUCTURAL FIX (superseding the fixed-timer version above): stage
+  // transitions now wait for the map to actually report a settled frame
+  // (`onDidFinishRenderingMapFully`, wired on <Map> below) instead of a
+  // guessed delay -- the same "wait for idle before doing the next expensive
+  // thing" pattern as MapLibre GL JS's `map.once('idle', cb)`, adapted to
+  // the events this RN wrapper actually exposes (no per-source "tiles
+  // loaded" event is exposed here, so a settled full-map frame is the
+  // closest available proxy: a vector/DEM source can't finish rendering its
+  // visible tiles without its header + those tile ranges having already
+  // arrived, so this frame event reliably lags the PMTiles fetch it's
+  // gating on). STAGE_MIN_MS is a floor so a frame that was already mid-
+  // render from the *previous* stage can't count as this stage's signal;
+  // STAGE_FALLBACK_MS is a ceiling so a stall (source disabled, no frames
+  // due to backgrounding, event never firing on some MapLibre Native
+  // version) still can't block forever -- same backstop role the old fixed
+  // timer played, just no longer the primary mechanism. This bounds
+  // concurrency by an actual readiness signal on any network speed instead
+  // of a constant that was already shown not to hold on a slow network.
+  const STAGE_MIN_MS = 500
+  const STAGE_FALLBACK_MS = 8000
   const [readyStage, setReadyStage] = useState(0)
+  const renderTickRef = useRef(0)
+  const handleDidFinishRenderingMapFully = useCallback(() => {
+    renderTickRef.current += 1
+  }, [])
   useEffect(() => {
     if (!styleLoaded) return
     onMapReady?.()
     setReadyStage(1)
-    const t1 = setTimeout(() => setReadyStage(2), 4000)
-    const t2 = setTimeout(() => setReadyStage(3), 8000)
-    return () => { clearTimeout(t1); clearTimeout(t2) }
   // onMapReady intentionally excluded -- fire exactly once per real
   // styleLoaded transition (incl. auto-retry remounts), not on every render
   // where the caller happens to pass a fresh callback reference.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [styleLoaded])
+  useEffect(() => {
+    if (readyStage === 0 || readyStage >= 3) return
+    const tickAtStart = renderTickRef.current
+    const startedAt = Date.now()
+    let cancelled = false
+    const poll = setInterval(() => {
+      if (cancelled) return
+      const elapsed = Date.now() - startedAt
+      const settled = elapsed >= STAGE_MIN_MS && renderTickRef.current > tickAtStart
+      if (settled || elapsed >= STAGE_FALLBACK_MS) {
+        cancelled = true
+        clearInterval(poll)
+        setReadyStage(s => (s < 3 ? s + 1 : s))
+      }
+    }, 200)
+    return () => { cancelled = true; clearInterval(poll) }
+  }, [readyStage])
   const [landuseMounted,   setLanduseMounted]   = useState(false)
   const [hillshadeMounted, setHillshadeMounted] = useState(false)
   const [contoursMounted,  setContoursMounted]  = useState(false)
@@ -1648,6 +1684,10 @@ export function AviationMap({
         // mount-timing + OOM-triggered blank-basemap fix).
         onDidFinishLoadingStyle={() => setStyleLoaded(true)}
         onDidFailLoadingMap={handleMapLoadFailure}
+        // Drives the readyStage settle-detection above -- see that state's
+        // doc comment (structural fix for the landuse/hillshade/contours
+        // startup-mount race).
+        onDidFinishRenderingMapFully={handleDidFinishRenderingMapFully}
         // Only needs to guard against the (now rare) case where the touch
         // grab in the overlay above didn't win the arena in time.
         dragPan={!dragging}
