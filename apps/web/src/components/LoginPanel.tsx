@@ -79,7 +79,13 @@ export default function LoginPanel({ auth }: Props) {
 
   const handleSignInOtp = async () => {
     const code = otp.trim()
-    if (code.length !== 6) {
+    // >= 6, not === 6: real OTPs are always exactly 6 digits, but the fixed
+    // app-review test OTP (apps/api/src/auth.ts, APP_REVIEW_TEST_OTP) is
+    // >= 10 digits by design (see that file's comment) -- an exact-6 check
+    // here would silently block the test account from ever signing in,
+    // same bug class the input's maxLength={32} below was already raised
+    // to avoid, just left unfixed on this guard.
+    if (code.length < 6) {
       setStatus('Enter the 6-digit code from your email', false)
       return
     }
@@ -212,7 +218,7 @@ export default function LoginPanel({ auth }: Props) {
               <button
                 className={styles.btnSecondary}
                 onClick={() => void handleSignInOtp()}
-                disabled={busy || otp.trim().length !== 6}
+                disabled={busy || otp.trim().length < 6}
               >
                 Sign in
               </button>
