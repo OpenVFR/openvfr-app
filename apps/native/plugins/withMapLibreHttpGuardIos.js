@@ -80,7 +80,7 @@ final class MapLibreHttpGuardProtocol: URLProtocol {
     return URLSession(configuration: c, delegate: delegate, delegateQueue: nil)
   }()
 
-  private var task: URLSessionDataTask?
+  private var innerTask: URLSessionDataTask?
   fileprivate var failed = false
   fileprivate var received: Int64 = 0
 
@@ -89,14 +89,14 @@ final class MapLibreHttpGuardProtocol: URLProtocol {
 
   override func startLoading() {
     let t = Self.inner.dataTask(with: request)
-    task = t
+    innerTask = t
     Self.delegate.register(t, self)
     t.resume()
   }
 
   override func stopLoading() {
-    if let t = task { Self.delegate.unregister(t); t.cancel() }
-    task = nil
+    if let t = innerTask { Self.delegate.unregister(t); t.cancel() }
+    innerTask = nil
   }
 
   fileprivate func fail(_ message: String) {
@@ -106,7 +106,7 @@ final class MapLibreHttpGuardProtocol: URLProtocol {
       domain: NSURLErrorDomain, code: NSURLErrorCannotParseResponse,
       userInfo: [NSLocalizedDescriptionKey: "MapLibreHttpGuard: " + message + ": " + (request.url?.absoluteString ?? "?")]
     )
-    task?.cancel()
+    innerTask?.cancel()
     client?.urlProtocol(self, didFailWithError: err)
   }
 
