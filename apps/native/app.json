@@ -84,6 +84,7 @@
       "expo-status-bar",
       "expo-sharing",
       "./plugins/withAndroidLargeHeap",
+      "./plugins/withAndroidDisableLintVital",
       "expo-splash-screen"
     ]
   }

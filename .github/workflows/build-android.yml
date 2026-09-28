@@ -56,6 +56,10 @@ on:
 jobs:
   build_android:
     runs-on: ubuntu-latest
+    # Bounded so a stuck build (e.g. the lintVitalAnalyzeRelease Metaspace
+    # hang this once hit -- see withAndroidDisableLintVital.js) fails within
+    # the hour instead of running to GitHub's default 360-minute ceiling.
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: apps/native
@@ -107,7 +111,13 @@ jobs:
       - name: Enable Gradle build cache
         run: |
           mkdir -p ~/.gradle
-          printf 'org.gradle.caching=true\norg.gradle.parallel=true\n' >> ~/.gradle/gradle.properties
+          # -XX:MaxMetaspaceSize= is a defensive floor, not the primary fix --
+          # withAndroidDisableLintVital.js (apps/native/plugins) removes the
+          # actual OOM cause (parallel lintVitalAnalyzeRelease across every RN
+          # library subproject -- see that file for the full story). Kept as
+          # cheap insurance against other Metaspace-heavy tasks (Kotlin/NDK
+          # compilation) under org.gradle.parallel.
+          printf 'org.gradle.caching=true\norg.gradle.parallel=true\norg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=1024m\n' >> ~/.gradle/gradle.properties
 
       - name: Build (local -- see header comment for why not EAS cloud)
         id: build
