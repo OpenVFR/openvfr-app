@@ -119,7 +119,7 @@ const TILE_FILENAMES = {
  *
  * BUG FOUND LIVE (device): with no versioning at all, a stale CDN/OkHttp
  * cache entry for se-obstacles.geojson kept serving pre-fix obstacle
- * classification data indefinitely after openvfr-infra's classifier was
+ * classification data indefinitely after the pipeline's classifier was
  * fixed and the file was re-uploaded to R2 -- web (already versioned)
  * picked up the fix immediately, native did not, despite fetching the exact
  * same underlying R2 object.
@@ -222,7 +222,7 @@ export function createProtomapsStyle(pmtilesOverrideUrl?: string, overviewOverri
   const pmtilesUrl = `pmtiles://${pmtilesOverrideUrl ?? versionedTileUrl(TILE_BASE, 'basemap.pmtiles')}`
   // Shared low-zoom (z0-6) Europe-wide overview -- single file, built once,
   // NOT country-specific (unlike basemap.pmtiles, now country-bbox z7-12
-  // detail only -- see openvfr-infra prepare-tiles.sh). Never affected by
+  // detail only -- see docs/self-hosting.md). Never affected by
   // pmtilesOverrideUrl (dev-server local-file override applies only to the
   // detail archive). Kept in sync with apps/web/src/styles/map-style.ts's
   // identical split -- see that file's own comment for the full rationale
@@ -242,7 +242,7 @@ export function createProtomapsStyle(pmtilesOverrideUrl?: string, overviewOverri
     // better DNS/edge reliability than GitHub Pages directly. Same content,
     // same license (protomaps/basemaps-assets is open). Matches web's
     // map-style.ts (kept in sync -- see that file's own comment).
-    // TODO(openvfr-infra): fully self-host fonts+sprites on tiles.openvfr.org
+    // TODO(pipeline): fully self-host fonts+sprites on the tile host
     // instead, matching basemap.pmtiles/landuse/hillshade/contours' existing
     // no-external-runtime-dependency pattern -- this mirror swap is a stopgap.
     glyphs:  'https://cdn.jsdelivr.net/gh/protomaps/basemaps-assets@main/fonts/{fontstack}/{range}.pbf',

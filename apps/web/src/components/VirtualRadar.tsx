@@ -1096,8 +1096,8 @@ export default function VirtualRadar({
                 // against their own surveyed elevationFt), landmarks have
                 // no elevation of their own and rely purely on terrainAt(),
                 // which can go negative from real DEM noise over/near water
-                // (OpenTopoData EU-DEM, documented water-surface artifact --
-                // see openvfr-infra/docs/todo.md). Unfloored, that rendered
+                // (OpenTopoData EU-DEM, known water-surface artifact).
+                // Unfloored, that rendered
                 // the landmark's bottom-anchored icon below the chart's 0ft
                 // baseline entirely.
                 const baseFt = Math.max(0, terrainAt(terrainPts, lmk.distNm))

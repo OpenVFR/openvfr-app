@@ -63,7 +63,7 @@ const DEV_TRUSTED_ORIGINS = IS_PROD ? [] : [
 // Reviewers can't receive live OTP emails, so a single allowlisted address
 // gets a fixed, long OTP instead of the normal random 6-digit code. Both
 // vars must be set explicitly per-deployment (never committed, unset by
-// default in docker/env.prod.example) — leaving either unset disables this
+// default in .env.example) — leaving either unset disables this
 // path entirely and every account uses the normal random OTP.
 //
 // Deliberately longer than the default otpLength: this code has no
@@ -211,7 +211,7 @@ export const auth = betterAuth({
       //              one per signing cert (Play App Signing key, upload key,
       //              debug/dev-build key) -- comma-separated in
       //              ANDROID_PASSKEY_ORIGIN. Must mirror the fingerprint list
-      //              in assetlinks.json (see docker/env.prod.example).
+      //              in assetlinks.json (see .env.example).
       origin: Array.from(new Set([
         APP_ORIGIN,
         `https://${RP_ID}`,

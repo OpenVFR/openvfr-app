@@ -8,8 +8,8 @@
  * definitive status from NOTAM text alone — NOTAM free text is unstructured
  * and a keyword match is only ever a "go check the NOTAM tab" hint, shown
  * as plain text next to the AIP-schedule-derived badge, never overriding
- * it. See openvfr-infra AGENTS.md's data table for where `hours_of_operation`
- * and `towered` come from (OFMX + OpenAIP gap-fill).
+ * it. `hours_of_operation` and `towered` come from the tile pipeline
+ * (OFMX + OpenAIP gap-fill) -- see docs/self-hosting.md.
  */
 
 export type AtcStatus = 'open' | 'closed' | 'unknown'

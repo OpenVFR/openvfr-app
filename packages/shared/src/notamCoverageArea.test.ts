@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { circleIntersectsBbox, pointNearBbox, polygonNearBbox, type CoverageBbox, type NotamPolygonGeometry } from './notamCoverageArea'
 
-// Sweden's own bbox (openvfr-infra's scripts/prepare-tiles.sh COUNTRY_BBOX,
+// Sweden's own bbox (the tile pipeline's COUNTRY_BBOX,
 // south/west/north/east) -- see apps/api/src/notam.ts's
 // COUNTRY_COVERAGE_BBOX, duplicated there for the same reason as here.
 const SWEDEN_BBOX: CoverageBbox = { south: 55.3, west: 10.9, north: 69.1, east: 24.2 }

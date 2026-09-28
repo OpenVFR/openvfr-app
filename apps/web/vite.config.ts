@@ -9,6 +9,11 @@ import { VitePWA } from 'vite-plugin-pwa'
 // even with VITE_DEV_API_TARGET correctly set in .env.local.
 const env = loadEnv('development', process.cwd(), '')
 const DEV_API_TARGET = env['VITE_DEV_API_TARGET']
+// Hosted instance the dev server proxies /tiles and /api/traffic to when no
+// local copy exists. Self-hosters / forks: set these in .env.local to your
+// own tile host + API origin (see docs/self-hosting.md).
+const DEV_TILES_TARGET   = env['VITE_DEV_TILES_TARGET']   || 'https://tiles.openvfr.org'
+const DEV_TRAFFIC_TARGET = env['VITE_DEV_TRAFFIC_TARGET'] || DEV_API_TARGET || 'https://api.openvfr.org'
 
 export default defineConfig({
   plugins: [
@@ -145,7 +150,7 @@ export default defineConfig({
       // this proxy is transparent to app code -- no VITE_TILES_BASE_URL
       // override needed for local dev.
       '/tiles': {
-        target: 'https://tiles.openvfr.org',
+        target: DEV_TILES_TARGET,
         changeOrigin: true,
         rewrite: (path: string) => path.replace(/^\/tiles/, ''),
         // Strip If-Range before forwarding. Every tile URL here is content-
@@ -191,7 +196,7 @@ export default defineConfig({
         // the SAME OpenSky credentials, since both share the same .env values.
         // Local dev reads live traffic from the already-running prod poller
         // instead of starting its own.
-        target: 'https://api.openvfr.org', // set this to your own prod API origin
+        target: DEV_TRAFFIC_TARGET,
         changeOrigin: true,
       },
       '/api/weather': {

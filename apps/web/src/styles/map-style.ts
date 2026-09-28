@@ -517,7 +517,7 @@ export function getMapStyle(): StyleSpecification {
         type: 'vector',
         url: `pmtiles://${versionedTileUrl(TILES_BASE_URL, 'basemap.pmtiles')}`,
         // Tiles extracted at minzoom=7/maxzoom=12 (country-bbox detail only
-        // — see openvfr-infra prepare-tiles.sh). z0-6 is deliberately NOT in
+        // — see docs/self-hosting.md). z0-6 is deliberately NOT in
         // this archive; that range is covered by 'protomaps-overview' below
         // so every per-country detail file doesn't re-embed an identical
         // copy of the whole-continent low-zoom data (wasteful for native

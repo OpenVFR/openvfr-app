@@ -119,10 +119,10 @@ path segment of their own — TILE_BASE must already include whatever path
 the host needs; local dev's Vite server serves files under `/tiles/*`,
 so the `/tiles` suffix is baked into this value here). `metro:prod` reads
 whatever you've set in your own `.env` (see below) — for real production,
-set `EXPO_PUBLIC_API_BASE=https://api.openvfr.org` and
-`EXPO_PUBLIC_TILE_BASE=https://tiles.openvfr.org` (bare domain, **no**
-`/tiles` suffix — R2 serves tile files at the bucket root, see
-docs/cloudflare-hosting.md in openvfr-infra).
+set `EXPO_PUBLIC_API_BASE=https://api.example.org` and
+`EXPO_PUBLIC_TILE_BASE=https://tiles.example.org` (bare domain, **no**
+`/tiles` suffix if your tile host serves files at its root — see
+docs/self-hosting.md).
 
 > **Env vars are baked in at bundle time.** Metro does not watch `.env` files.
 > Always use `metro:local` / `metro:prod` (which include `--clear`) rather
@@ -195,7 +195,7 @@ from environment variables.
 `native/.env.local` (created automatically — edit if your LAN IP changes):
 
 ```dotenv
-EXPO_PUBLIC_API_BASE=http://192.168.1.243:5173
+EXPO_PUBLIC_API_BASE=http://<your-lan-ip>:5173
 ```
 
 Find your LAN IP: `ipconfig` → Wi-Fi adapter → IPv4 Address.
@@ -213,8 +213,8 @@ The server needs these env vars in the root `.env`:
 
 ```dotenv
 BETTER_AUTH_SECRET=<32+ char secret>
-BETTER_AUTH_URL=http://192.168.1.243:5173
-BETTER_AUTH_APP_ORIGIN=http://192.168.1.243:5173
+BETTER_AUTH_URL=http://<your-lan-ip>:5173
+BETTER_AUTH_APP_ORIGIN=http://<your-lan-ip>:5173
 ```
 
 In dev, OTP codes are printed to the **server console** — no email is sent.
@@ -244,8 +244,8 @@ Metro restarts with `--clear` on every switch to flush the module cache.
 ```
 EXPO_PUBLIC_API_BASE env var (from .env / .env.local)
   → EXPO_PUBLIC_API_BASE_ANDROID env var (Android-specific override)
-    → http://192.168.1.243:5173  (hardcoded LAN fallback for Android)
-    → http://localhost:5173      (iOS simulator / web)
+    → http://localhost:5200      (Android: via `adb reverse tcp:5200 tcp:5200`)
+    → http://localhost:5200      (iOS simulator / web)
 ```
 
 ## Auth
@@ -259,12 +259,12 @@ Auth uses `better-auth` with email OTP (primary) and passkeys (secondary).
 - React Native `fetch` omits the `Origin` header; `authClient.ts` injects it via
   `fetchOptions.headers.Origin` so better-auth's CSRF check passes.
 
-The server's `trustedOrigins` (in `server/src/auth.ts`) includes:
-- `http://localhost:5173`
-- `http://10.0.2.2:5173` (emulator)
-- `http://192.168.1.243:5173` (physical device — LAN)
-- `BASE_URL` env var (production)
-- Any additional origins via `BETTER_AUTH_TRUSTED_ORIGINS` comma-separated env var
+The server's `trustedOrigins` (in `apps/api/src/auth.ts`) includes (dev only):
+- `http://localhost:5200` / `:5174` / `:5173`
+- `http://10.0.2.2:5200` / `:5173` (Android emulator loopback)
+- Any LAN origins via `BETTER_AUTH_DEV_LAN_ORIGINS` (comma-separated, e.g. `http://<your-lan-ip>:5173`)
+
+In production only `BETTER_AUTH_APP_ORIGIN` + `BETTER_AUTH_TRUSTED_ORIGINS` are trusted.
 
 ## Debugging
 
@@ -306,6 +306,8 @@ pnpm build:android:device
 ```
 native/
 ├── app.json              Expo config (bundle ID, permissions, plugins)
+├── app.config.js         Layers EAS_PROJECT_ID / EAS_OWNER env vars onto app.json
+│                         (run `eas init`, then export both — see file header)
 ├── package.json          Dependencies + scripts
 ├── pnpm-workspace.yaml   nodeLinker: hoisted (required for Metro on Windows)
 ├── tsconfig.json         TypeScript config

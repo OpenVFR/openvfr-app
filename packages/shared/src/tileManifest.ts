@@ -167,8 +167,8 @@ function notifyIfChanged(previous: TileManifest | null, next: TileManifest | nul
   if (changed) changeListeners.forEach(listener => listener())
 }
 
-// Default: 15 minutes. Tile data updates on a cron schedule (see
-// openvfr-infra's docker/crontab), not in response to user action -- this
+// Default: 15 minutes. Tile data updates on a server-side cron schedule,
+// not in response to user action -- this
 // only needs to be frequent enough that a long-lived open tab eventually
 // notices a real update within a reasonable window, not near-realtime.
 const DEFAULT_POLL_INTERVAL_MS = 15 * 60 * 1000

@@ -15,7 +15,8 @@
  *   - More frequent use requires FAA approval and will otherwise 429/error.
  *
  * (Pre-Prod/staging is looser — 1 req/s — but production is the above; see
- * docs/nms/FAQ NMS-API.pdf in openvfr-infra, "What is the rate limit?".)
+ * the NMS API FAQ document supplied with your NMS credentials, "What is
+ * the rate limit?".)
  *
  * Design:
  *  - ONE background poller, shared across all users, owns all NMS-API
@@ -215,8 +216,8 @@ export const notamConfig = {
 // country -> string[] map, not one flat list, so adding a country later is
 // "add an entry", not "restructure this". Add a country's FIR(s) here ONLY
 // once its aerodromes/airspace actually exist in the tile pipeline
-// (openvfr-infra's scripts/prepare-tiles.sh is currently Sweden-only -- see
-// its own "TODO (Phase 2)" comments).
+// (the tile-preparation pipeline is currently Sweden-only -- see
+// docs/self-hosting.md).
 const FIR_CODES: Record<string, string[]> = {
   SE: ['ESAA'], // Sweden -- single FIR
 }
@@ -246,8 +247,7 @@ const MAX_SANE_RADIUS_NM = 100
 // additive to (never a replacement for) the ICAO/FIR allow-list above --
 // see isNearCoverageArea()'s call site in pollOnce() for how the two combine.
 //
-// Bbox is COUNTRY_BBOX from openvfr-infra's scripts/prepare-tiles.sh
-// (south,west,north,east) -- the same single-source-of-truth extent already
+// Bbox is the tile pipeline's COUNTRY_BBOX (south,west,north,east) -- the same single-source-of-truth extent already
 // used for obstacle/hillshade/contour extraction, duplicated here since
 // there's no cross-repo shared-config mechanism. If that constant changes,
 // this must be updated too -- CROSS_BORDER_BBOX_KEY below forces a fresh
