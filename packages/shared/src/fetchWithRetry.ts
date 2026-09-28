@@ -32,7 +32,7 @@
  *
  * Defaults `credentials: 'include'` unless the caller explicitly overrides
  * it. Required for the web app's split-origin production deployment
- * (app.openvfr.org calling api.openvfr.org) -- without it, a cross-origin
+ * (the web app's origin calling a separate API origin) -- without it, a cross-origin
  * `fetch()` does NOT send the session cookie by default even though nginx's
  * CORS config already allows credentialed requests for this exact origin
  * (Access-Control-Allow-Credentials: true), causing every session-gated

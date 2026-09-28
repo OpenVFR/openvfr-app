@@ -26,8 +26,8 @@ export const API_BASE: string =
 /** Base URL for static GeoJSON tile files (served by Vite in dev, nginx in prod).
  *  Defaults to `${API_BASE}/tiles` (matches the local Docker/Vite dev
  *  server's /tiles/* route) when unset. Production always sets
- *  EXPO_PUBLIC_TILE_BASE explicitly to the bare tiles.openvfr.org R2
- *  domain (no /tiles suffix -- files sit at the bucket root there).
+ *  EXPO_PUBLIC_TILE_BASE explicitly to the bare object-storage tile
+ *  bucket domain (no /tiles suffix -- files sit at the bucket root there).
  *  Override via EXPO_PUBLIC_TILE_BASE. */
 export const TILE_BASE: string =
   (process.env.EXPO_PUBLIC_TILE_BASE ?? '') || `${API_BASE}/tiles`
@@ -82,10 +82,10 @@ export const MARTIN_BASE: string =
  * segment the host needs), same convention as web's TILES_BASE_URL --
  * no extra path segment is appended here. Local dev's default TILE_BASE
  * (devBase, below) already includes the trailing /tiles it needs; in
- * production TILE_BASE should be set to the bare tiles.openvfr.org R2
- * domain (files live at its bucket root, no /tiles/ prefix -- see
- * docs/cloudflare-hosting.md). A hardcoded /tiles/ segment here used to
- * silently 404 every tile fetch against real production tiles.openvfr.org,
+ * production TILE_BASE should be set to the bare object-storage tile
+ * bucket domain (files live at its bucket root, no /tiles/ prefix -- see
+ * docs/self-hosting.md). A hardcoded /tiles/ segment here used to
+ * silently 404 every tile fetch against a real production tile bucket,
  * since it only ever got exercised against local dev hosts that happen to
  * route /tiles/* themselves.
  */

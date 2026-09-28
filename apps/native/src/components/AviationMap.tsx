@@ -923,7 +923,7 @@ export function AviationMap({
   // raising the ceiling to 512MB (see plugins/withAndroidLargeHeap.js),
   // manifesting downstream as "pmtiles magic number exception" (a truncated
   // mid-read response under memory pressure, not a corrupt file -- both
-  // R2/tiles.openvfr.org range-request responses verified byte-correct).
+  // the tile host's range-request responses verified byte-correct).
   //
   // Fix: only mount a heavy source once its layer is actually turned on
   // (sticky -- stays mounted once true, MapLibre Native throws "id cannot be

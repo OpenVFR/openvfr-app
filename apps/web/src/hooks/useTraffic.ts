@@ -185,7 +185,7 @@ export function useTraffic(opts: UseTrafficOptions = {}): TrafficTarget[] {
 
     // Check availability before opening SSE
     // credentials:'include' required for the split-origin production
-    // deployment (app.openvfr.org -> api.openvfr.org) -- this endpoint is
+    // deployment (web app origin calling a separate API origin) -- this endpoint is
     // session-gated (requireSession() in apps/api/src/index.ts), and a
     // cross-origin fetch() does not send the session cookie by default.
     // Without this, the request 401s and the whole traffic layer silently

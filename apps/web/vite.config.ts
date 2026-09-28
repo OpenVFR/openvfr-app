@@ -9,11 +9,15 @@ import { VitePWA } from 'vite-plugin-pwa'
 // even with VITE_DEV_API_TARGET correctly set in .env.local.
 const env = loadEnv('development', process.cwd(), '')
 const DEV_API_TARGET = env['VITE_DEV_API_TARGET']
-// Hosted instance the dev server proxies /tiles and /api/traffic to when no
-// local copy exists. Self-hosters / forks: set these in .env.local to your
-// own tile host + API origin (see docs/self-hosting.md).
-const DEV_TILES_TARGET   = env['VITE_DEV_TILES_TARGET']   || 'https://tiles.openvfr.org'
-const DEV_TRAFFIC_TARGET = env['VITE_DEV_TRAFFIC_TARGET'] || DEV_API_TARGET || 'https://api.openvfr.org'
+// /tiles and /api/traffic have no localhost fallback, unlike the other
+// /api/* proxies below: there's no local tile mirror or traffic poller to
+// fall back to by default. Set these in .env.local to a running instance
+// (yours, or one you have access to) to exercise these two locally; see
+// docs/self-hosting.md. Left unset, these two proxy entries aren't
+// registered at all (dev server 404s /tiles/* unless public/tiles/ is
+// populated locally, per dev.sh).
+const DEV_TILES_TARGET   = env['VITE_DEV_TILES_TARGET']   || ''
+const DEV_TRAFFIC_TARGET = env['VITE_DEV_TRAFFIC_TARGET'] || DEV_API_TARGET || ''
 
 export default defineConfig({
   plugins: [
@@ -137,19 +141,19 @@ export default defineConfig({
     // native FS events (ReadDirectoryChangesW on Windows) and makes HMR
     // poll every file every 100 ms. Only enable inside Docker bind mounts.
     proxy: {
-      // Proxy tile requests to prod object storage instead of requiring a full
+      // Proxy tile requests to a real tile host instead of requiring a full
       // local public/tiles/ mirror. Local public/tiles/ commonly lags behind
       // the real pipeline output (missing files like se-aeroways.geojson,
       // se-water.geojson, or a stale se-landuse.geojson instead of the
       // current tiled se-landuse.pmtiles, plus multi-hundred-MB files like
       // se-hillshade.pmtiles/se-contours.pmtiles nobody wants to keep synced
-      // locally). Always points at prod, same rationale as '/api/traffic'
-      // below -- there's no separate 'dev' tile dataset, it's the same
-      // AIRAC-cadence static data regardless of which frontend build fetches
-      // it. TILES_BASE_URL still defaults to '/tiles' (src/utils/env.ts) so
-      // this proxy is transparent to app code -- no VITE_TILES_BASE_URL
-      // override needed for local dev.
-      '/tiles': {
+      // locally). Same rationale as '/api/traffic' below -- there's no
+      // separate 'dev' tile dataset, it's the same AIRAC-cadence static data
+      // regardless of which frontend build fetches it. TILES_BASE_URL still
+      // defaults to '/tiles' (src/utils/env.ts) so this proxy is transparent
+      // to app code -- no VITE_TILES_BASE_URL override needed for local dev.
+      // Only registered when VITE_DEV_TILES_TARGET is set (see above).
+      ...(DEV_TILES_TARGET ? { '/tiles': {
         target: DEV_TILES_TARGET,
         changeOrigin: true,
         rewrite: (path: string) => path.replace(/^\/tiles/, ''),
@@ -158,9 +162,9 @@ export default defineConfig({
         // points at changed content, so conditional Range revalidation is
         // unnecessary. More importantly, Node's http-proxy appears to mangle
         // the If-Range header value in transit (confirmed: identical
-        // If-Range request against tiles.openvfr.org directly correctly
-        // returns 206, but through this proxy returns a full 200 with the
-        // whole file's Content-Length) -- pmtiles.js then throws "Server
+        // If-Range request against the tile host directly correctly returns
+        // 206, but through this proxy returns a full 200 with the whole
+        // file's Content-Length) -- pmtiles.js then throws "Server
         // returned no content-length header or content-length exceeding
         // request" because the response body is way bigger than the
         // requested range. The browser's own HTTP cache auto-adds If-Range
@@ -173,7 +177,7 @@ export default defineConfig({
             proxyReq.removeHeader('if-range')
           })
         },
-      },
+      } } : {}),
       '/api/elevation': {
         target: 'https://api.opentopodata.org',
         changeOrigin: true,
@@ -188,20 +192,21 @@ export default defineConfig({
         target: 'http://localhost:5200',
         changeOrigin: true,
       },
-      '/api/traffic': {
-        // Always proxy to production, regardless of dev mode. The OpenSky traffic
-        // poller runs against a single account with a tight daily credit quota
-        // (server/src/traffic.ts) — a second independent poller from local dev
-        // (pointed at localhost:5200) would silently double-burn that quota using
-        // the SAME OpenSky credentials, since both share the same .env values.
-        // Local dev reads live traffic from the already-running prod poller
-        // instead of starting its own.
+      // Only registered when a traffic target is configured (see
+      // DEV_TRAFFIC_TARGET above) -- unlike the other /api/* proxies, there's
+      // no localhost fallback: the OpenSky traffic poller runs against a
+      // single account with a tight daily credit quota (server/src/traffic.ts)
+      // -- a second independent poller from local dev would silently
+      // double-burn that quota using the SAME OpenSky credentials, since both
+      // would share the same .env values. Point this at an already-running
+      // instance's poller instead of starting a second one.
+      ...(DEV_TRAFFIC_TARGET ? { '/api/traffic': {
         target: DEV_TRAFFIC_TARGET,
         changeOrigin: true,
-      },
+      } } : {}),
       '/api/weather': {
-        // Overridable via VITE_DEV_API_TARGET so local dev can point at prod
-        // (api.openvfr.org) instead of requiring the full docker-compose
+        // Overridable via VITE_DEV_API_TARGET so local dev can point at a
+        // running API instance instead of requiring the full docker-compose
         // stack (db/martin/api/postgrest) just to verify a frontend-only
         // change -- same reasoning as '/api/traffic' above, opt-in via env
         // rather than changing the default for everyone else.

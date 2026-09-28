@@ -44,7 +44,7 @@ export interface OfflineAsset {
 // BUG FIX: two separate real bugs previously here:
 //   1. basemap/landuse/hillshade/contours hardcoded a `/tiles/` URL segment
 //      (`${TILE_BASE}/tiles/basemap.pmtiles`) that 404s against real
-//      production tiles.openvfr.org (flat R2 bucket root, no /tiles/ prefix)
+//      production object storage (flat bucket root, no /tiles/ prefix)
 //      -- the exact same bug class already fixed elsewhere in config.ts
 //      (see that file's TILE_BASE comment) but missed here.
 //   2. Every remoteUrl was a plain unversioned URL, computed once from a
