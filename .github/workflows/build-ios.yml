@@ -109,6 +109,8 @@ jobs:
         id: build
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+          EAS_OWNER: ${{ vars.EAS_OWNER }}
         run: |
           npx eas-cli build --platform ios --profile ${{ inputs.profile }} --local --non-interactive
           artifact=$(ls build-*.ipa 2>/dev/null | head -n1)
@@ -136,6 +138,8 @@ jobs:
         if: ${{ inputs.submit == true }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+          EAS_OWNER: ${{ vars.EAS_OWNER }}
           EXPO_ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           EXPO_ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
         run: npx eas-cli submit --platform ios --profile production --non-interactive --path "${{ steps.build.outputs.artifact }}"

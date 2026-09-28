@@ -71,6 +71,8 @@ jobs:
       - name: Submit to Play Store
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+          EAS_OWNER: ${{ vars.EAS_OWNER }}
         run: |
           artifact=$(ls build-*.apk build-*.aab 2>/dev/null | head -n1)
           if [ -z "$artifact" ]; then

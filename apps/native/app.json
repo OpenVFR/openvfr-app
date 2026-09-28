@@ -85,12 +85,6 @@
       "expo-sharing",
       "./plugins/withAndroidLargeHeap",
       "expo-splash-screen"
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "303f49e2-991a-41ba-8c47-b0c1b0668515"
-      }
-    },
-    "owner": "joel-fjordens-team"
+    ]
   }
 }

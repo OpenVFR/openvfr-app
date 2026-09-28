@@ -8,6 +8,18 @@ TestFlight.
 `publish-android.yml` / `publish-ios.yml` — submit an artifact from a
 previous build run (by `run_id`) without rebuilding.
 
+## Required repository configuration
+
+Secrets: `EXPO_TOKEN` (plus the store-submission secrets referenced in each
+workflow). Repository **variables** (not secrets — they're not sensitive):
+
+- `EAS_PROJECT_ID` — EAS project UUID (`eas project:info`).
+- `EAS_OWNER` — Expo account/org owning the project (optional if it matches
+  the `EXPO_TOKEN` account).
+
+Both are read by `apps/native/app.config.js`; the repo itself carries no
+account-specific EAS identifiers.
+
 ## Why `eas build --local` instead of EAS's cloud build queue
 
 This is a public repo, so GitHub Actions minutes are unlimited/free on

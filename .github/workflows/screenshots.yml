@@ -55,6 +55,8 @@ jobs:
       - name: Check data hosts reachable from runner
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+          EAS_OWNER: ${{ vars.EAS_OWNER }}
         run: |
           npx eas-cli env:pull --environment production --non-interactive --path "$RUNNER_TEMP/eas.env"
           bash .maestro/check-data-hosts.sh "$RUNNER_TEMP/eas.env"
@@ -101,6 +103,8 @@ jobs:
       - name: Build APK
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+          EAS_OWNER: ${{ vars.EAS_OWNER }}
         run: |
           npx eas-cli build --platform android --profile screenshots --local --non-interactive
           apks=(build-*.apk)
@@ -196,6 +200,8 @@ jobs:
       - name: Check data hosts reachable from runner
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+          EAS_OWNER: ${{ vars.EAS_OWNER }}
         run: |
           npx eas-cli env:pull --environment production --non-interactive --path "$RUNNER_TEMP/eas.env"
           bash .maestro/check-data-hosts.sh "$RUNNER_TEMP/eas.env"
@@ -222,6 +228,8 @@ jobs:
       - name: Build simulator app
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+          EAS_OWNER: ${{ vars.EAS_OWNER }}
         run: |
           npx eas-cli build --platform ios --profile screenshots --local --non-interactive
           mkdir -p "$RUNNER_TEMP/app"
