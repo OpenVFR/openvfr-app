@@ -5,7 +5,11 @@ real-time airspace awareness, terrain and obstacle profiles, and aviation
 charts, built entirely on open data. No account required, no paywalls, no
 lock-in.
 
-Released under the [MIT License](./LICENSE).
+[![CI](https://github.com/OpenVFR/openvfr-app/actions/workflows/ci.yml/badge.svg)](https://github.com/OpenVFR/openvfr-app/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
+**Status: alpha.** Sweden-first data coverage; APIs, data formats, and UI
+are still changing. Released under the [MIT License](./LICENSE).
 
 ## ⚠️ Situational awareness only
 
@@ -169,6 +173,9 @@ attribution.
 See [CONTRIBUTING.md](./CONTRIBUTING.md) — changes affecting flight-critical
 calculations (fuel burn, weight & balance, true airspeed, magnetic
 variation, great-circle/geodesic math) require test coverage before merge.
+Community norms: [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md). Security or
+safety-relevant defects: [SECURITY.md](./SECURITY.md) (private reporting,
+please).
 
 ## License
 

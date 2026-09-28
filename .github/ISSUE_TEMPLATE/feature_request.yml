@@ -1,0 +1,28 @@
+name: Feature request
+description: Propose a change or new capability. Larger features should be discussed here before a PR.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't you do today, or what is awkward? Describe the pilot's need, not a product comparison.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options: [Web (PWA), Android, iOS, API/server, Data pipeline / self-hosting]
+  - type: textarea
+    id: data
+    attributes:
+      label: Data / licensing
+      description: If this needs a new data source, name it and its license (see OSS-POLICY.md §5).

@@ -1,0 +1,36 @@
+name: Bug report
+description: Something behaves incorrectly (non-safety). For wrong airspace/terrain/NOTAM/weather data shown as current, use the private security report instead.
+labels: [bug]
+body:
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [Web (PWA), Android, iOS, API/server, Self-hosted instance]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: e.g. 0.1.0 (build 12) or commit sha
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: 1. … 2. … 3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Logs, screenshots, device/browser
+      description: Redact anything personal (positions, account emails).

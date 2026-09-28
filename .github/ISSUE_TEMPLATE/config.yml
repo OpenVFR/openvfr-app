@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability or safety-critical data defect
+    url: https://github.com/OpenVFR/openvfr-app/security/advisories/new
+    about: Report privately. Do not open a public issue — see SECURITY.md.
+  - name: Self-hosting questions
+    url: https://github.com/OpenVFR/openvfr-app/blob/main/docs/self-hosting.md
+    about: Read the self-hosting guide first; open a Discussion/issue if it's incomplete.
