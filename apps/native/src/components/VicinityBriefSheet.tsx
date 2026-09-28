@@ -302,7 +302,7 @@ function makeStyles(theme: ScaledTheme) {
   badgeTxt: { color: '#fff', fontSize: 9, fontWeight: '700' as const },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
-    backgroundColor: theme.surfacePanel, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    backgroundColor: theme.surfaceSheet, borderTopLeftRadius: 20, borderTopRightRadius: 20,
     borderTopWidth: 1, borderColor: theme.borderDefault, maxHeight: '80%' as const,
   },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.borderDefault, alignSelf: 'center' as const, marginTop: 10, marginBottom: 4 },

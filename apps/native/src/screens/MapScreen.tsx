@@ -1154,11 +1154,13 @@ export function MapScreen() {
           showRunways={layers.runways}
           runwayWindHighlight={runwayWindHighlight}
           showLandmarks={layers.landmarks}
-          showLanduse={layers.landuse}
-          showHillshade={layers.hillshade}
-          showTerrainColor={layers.terrainColor}
+          // Terrain layers are never drawn over satellite imagery (see
+          // MapDisplaySheet's Terrain section).
+          showLanduse={layers.landuse && !layers.satellite}
+          showHillshade={layers.hillshade && !layers.satellite}
+          showTerrainColor={layers.terrainColor && !layers.satellite}
           terrainColorRefAltFt={settings.terrainColorRefAltFt}
-          showContours={layers.contours}
+          showContours={layers.contours && !layers.satellite}
           showWind={layers.wind}
           trafficFC={trafficFC}
           notamCirclesFC={notamCirclesFC}
@@ -1627,7 +1629,7 @@ function makeStyles(theme: ScaledTheme) {
   mapContainer: { flex: 1 },
   longPressMenu: {
     position: 'absolute', left: 16, right: 16, bottom: 24,
-    backgroundColor: theme.surfacePanel, borderRadius: theme.radiusMd,
+    backgroundColor: theme.surfaceSheet, borderRadius: theme.radiusMd,
     borderWidth: 1, borderColor: theme.borderSubtle,
     padding: theme.space3, gap: theme.space2,
     overflow: 'hidden',
@@ -1643,7 +1645,7 @@ function makeStyles(theme: ScaledTheme) {
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
   modalBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' },
   modalSheet: {
-    backgroundColor: theme.surfacePanel,
+    backgroundColor: theme.surfaceSheet,
     borderTopLeftRadius: 20, borderTopRightRadius: 20,
     borderBottomLeftRadius: 0, borderBottomRightRadius: 0,
     borderTopWidth: 1, borderColor: theme.borderDefault,

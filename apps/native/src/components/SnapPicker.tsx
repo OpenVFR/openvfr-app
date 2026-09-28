@@ -64,7 +64,7 @@ export function SnapPicker({ candidates, onPick, onClose }: Props) {
 function makeStyles(theme: ScaledTheme) {
  return {
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-  panel: { backgroundColor: theme.surfacePanel ?? '#12161f', borderRadius: 10, padding: 8, minWidth: 220, maxWidth: 300 },
+  panel: { backgroundColor: theme.surfaceSheet, borderRadius: 10, padding: 8, minWidth: 220, maxWidth: 300 },
   header: { color: theme.textMuted ?? '#9ca3af', fontSize: 11, paddingHorizontal: 8, paddingVertical: 6 },
   item: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10, gap: 8 },
   badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, minWidth: 34, alignItems: 'center' },

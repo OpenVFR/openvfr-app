@@ -129,7 +129,7 @@ function makeStyles(theme: ScaledTheme) {
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   sheet: {
-    backgroundColor:      theme.surfacePanel,
+    backgroundColor:      theme.surfaceSheet,
     borderTopLeftRadius:  theme.scale(20),
     borderTopRightRadius: theme.scale(20),
     borderTopWidth:       1,

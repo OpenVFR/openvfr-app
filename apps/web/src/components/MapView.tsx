@@ -974,7 +974,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady) return
-    if (!terrainColoring.enabled) {
+    if (!terrainColoring.enabled || basemapMode === 'satellite') {
       map.setLayoutProperty('terrain-color', 'visibility', 'none')
       return
     }
@@ -984,7 +984,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       : terrainColoring.refAltFt
     map.setPaintProperty('terrain-color', 'color-relief-color', buildTerrainColorExpr(refAltFt))
     map.setLayoutProperty('terrain-color', 'visibility', 'visible')
-  }, [terrainColoring, mapReady, flyingMode, gpsPosition?.altFt])
+  }, [terrainColoring, mapReady, flyingMode, gpsPosition?.altFt, basemapMode])
 
   // Flight log — live in-flight track
   const { liveTrack } = useFlightLog(
@@ -3162,12 +3162,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
 
     const apply = () => {
       LAYER_GROUPS.forEach((group) => {
-        // Landuse terrain fill and hillshade (incl. its water-cover fill,
-        // which would paint opaque water over imagery) are suppressed in
-        // satellite mode — imagery replaces them.
+        // Every Terrain-section layer (landuse fill, hillshade incl. its
+        // water-cover fill, contours) is suppressed in satellite mode --
+        // the imagery already shows the ground, and the fills would paint
+        // over it. Terrain colour is gated the same way in its own effect.
         const on =
           (visibility[group.id] ?? group.defaultOn) &&
-          !(basemapMode === 'satellite' && (group.id === 'terrain' || group.id === 'hillshade'))
+          !(basemapMode === 'satellite' && group.section === 'Terrain')
         group.layerIds.forEach((layerId) => {
           if (map.getLayer(layerId)) {
             map.setLayoutProperty(layerId, 'visibility', on ? 'visible' : 'none')

@@ -56,6 +56,9 @@ export default function LayerPanel({ visibility, onChange, terrainColoring, onTe
 
       {LAYER_GROUPS.map((group) => {
         const on = visibility[group.id] ?? group.defaultOn
+        // Terrain layers never draw over satellite imagery (MapView), so
+        // their rows are disabled there; saved state returns with vector.
+        const terrainOff = basemapMode === 'satellite' && group.section === 'Terrain'
         const groupColorClass = css[group.cssClass as keyof typeof css]
         const showSection = group.section !== lastSection
         if (showSection) lastSection = group.section
@@ -64,8 +67,12 @@ export default function LayerPanel({ visibility, onChange, terrainColoring, onTe
             {showSection && (
               <div className={css.section}>{group.section}</div>
             )}
+            {showSection && terrainOff && (
+              <div className={css.sectionNote}>Terrain layers are hidden in satellite view.</div>
+            )}
             <button
               type="button"
+              disabled={terrainOff}
               onClick={() => onChange(group.id, !on)}
               className={`${css.row} ${groupColorClass}`}
               data-active={on ? 'true' : 'false'}
@@ -82,6 +89,7 @@ export default function LayerPanel({ visibility, onChange, terrainColoring, onTe
               <div>
                 <button
                   type="button"
+                  disabled={terrainOff}
                   onClick={() => onTerrainColoringChange({ ...terrainColoring, enabled: !terrainColoring.enabled })}
                   className={`${css.row} ${css.groupTerrainColor}`}
                   data-active={terrainColoring.enabled ? 'true' : 'false'}
@@ -91,7 +99,7 @@ export default function LayerPanel({ visibility, onChange, terrainColoring, onTe
                   <span className={css.label}>Terrain colour</span>
                   <span className={css.badge}>{terrainColoring.enabled ? 'ON' : 'OFF'}</span>
                 </button>
-                {terrainColoring.enabled && (
+                {terrainColoring.enabled && !terrainOff && (
                 <div className={css.terrainColorDetail}>
                   <span className={css.colorKey}>
                     <span className={css.ckRed}    title="< 500 ft below ref" />

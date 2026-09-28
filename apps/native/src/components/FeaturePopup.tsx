@@ -83,7 +83,7 @@ function makeStyles(theme: ScaledTheme) {
  return {
   backdrop:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {
-    backgroundColor: theme.surfacePanel,
+    backgroundColor: theme.surfaceSheet,
     borderTopLeftRadius: theme.radiusLg, borderTopRightRadius: theme.radiusLg,
     borderTopWidth: 1, borderColor: theme.borderDefault,
   },

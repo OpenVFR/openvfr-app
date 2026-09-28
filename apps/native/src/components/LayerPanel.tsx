@@ -149,7 +149,7 @@ function makeStyles(theme: ScaledTheme) {
     right:           theme.space2,
     width:           theme.scale(220),
     maxHeight:       theme.scale(420),
-    backgroundColor: theme.surfacePanel,
+    backgroundColor: theme.surfaceSheet,
     borderRadius:    theme.radiusMd,
     borderWidth:     1,
     borderColor:     theme.borderDefault,

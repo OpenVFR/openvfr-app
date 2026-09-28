@@ -408,11 +408,11 @@ export const LAYER_GROUPS: LayerGroup[] = [
     // VFR ground landmarks for dead-reckoning: churches, masts, windmills,
     // water towers, chimneys. Source: OpenStreetMap (ODbL) via Overpass API.
     // Deduplicated against OpenAIP obstacles at data-prep time.
-    // Off by default — pilots enable when planning low-level routes.
+    // On by default: visual reporting aids a VFR pilot navigates by.
     label: 'Landmarks (OSM)',
     cssClass: 'groupLandmarks',
     layerIds: ['landmarks-icon', 'landmarks-label'],
-    defaultOn: false,
+    defaultOn: true,
     section: 'Navigation',
   },
   {

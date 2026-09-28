@@ -484,7 +484,7 @@ function makeStyles(theme: ScaledTheme) {
   },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
-    backgroundColor:    theme.surfacePanel,
+    backgroundColor:    theme.surfaceSheet,
     borderTopLeftRadius: 20, borderTopRightRadius: 20,
     borderTopWidth: 1, borderColor: theme.borderDefault,
     maxHeight: '75%',

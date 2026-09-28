@@ -963,7 +963,7 @@ function makeStyles(theme: ScaledTheme) {
   moreMenuBackdrop: { flex: 1 },
   moreMenu: {
     position: 'absolute', right: theme.space4, minWidth: theme.scale(180),
-    backgroundColor: theme.surfacePanel, borderRadius: theme.radiusMd,
+    backgroundColor: theme.surfaceSheet, borderRadius: theme.radiusMd,
     borderWidth: 1, borderColor: theme.borderDefault, paddingVertical: theme.space1,
   },
   moreMenuItem: {

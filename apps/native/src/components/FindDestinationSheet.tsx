@@ -230,7 +230,7 @@ function makeStyles(theme: ScaledTheme) {
   },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
-    backgroundColor: theme.surfacePanel, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    backgroundColor: theme.surfaceSheet, borderTopLeftRadius: 20, borderTopRightRadius: 20,
     borderTopWidth: 1, borderColor: theme.borderDefault, maxHeight: '80%', paddingBottom: 8,
   },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.borderDefault, alignSelf: 'center', marginTop: 10, marginBottom: 4 },

@@ -80,7 +80,7 @@ export const LAYER_DEFAULTS: LayerState = {
   traffic:    false,
   notamCircles: true,
   satellite:  false,
-  landmarks:  false,
+  landmarks:  true,
   landuse: true,
   hillshade:  false,
   terrainColor: false,
@@ -258,11 +258,19 @@ export function MapDisplaySheet({
 
             {/* ── Live ───────────────────────────────── */}
             <SectionHeader title="Terrain" />
+            {/* Terrain layers never draw over satellite imagery (MapScreen
+                gates them on !layers.satellite): the imagery already shows
+                the ground, and landuse/hillshade fills would paint over it.
+                The rows keep their saved state and come back with vector. */}
+            {layers.satellite && (
+              <Text style={styles.basemapNote}>Terrain layers are hidden in satellite view.</Text>
+            )}
             {TERRAIN_GROUPS.map(g => (
               <LayerRow key={g.key} label={g.label} color={g.color}
-                on={layers[g.key]} onToggle={() => onLayerChange(g.key, !layers[g.key])} />
+                on={layers[g.key]} onToggle={() => onLayerChange(g.key, !layers[g.key])}
+                disabled={layers.satellite} />
             ))}
-            {layers.terrainColor && (
+            {layers.terrainColor && !layers.satellite && (
               <>
                 <Text style={captionStyles.warning}>
                   ⚠ Experimental: known GPU rendering bug on some Android devices
@@ -335,14 +343,16 @@ function SectionHeader({ title }: { title: string }) {
   )
 }
 
-function LayerRow({ label, color, on, onToggle }: {
-  label: string; color: string; on: boolean; onToggle: () => void
+function LayerRow({ label, color, on, onToggle, disabled }: {
+  label: string; color: string; on: boolean; onToggle: () => void; disabled?: boolean
 }) {
   const rowStyles = useThemedStyles(makeRowStyles)
   return (
     <TouchableOpacity
-      style={[rowStyles.row, !on && rowStyles.rowOff]}
+      style={[rowStyles.row, !on && rowStyles.rowOff, disabled && { opacity: 0.4 }]}
       onPress={onToggle}
+      disabled={disabled}
+      accessibilityState={{ disabled: !!disabled, checked: on }}
       activeOpacity={0.7}
     >
       <View style={[rowStyles.swatch, { backgroundColor: color }]} />
@@ -376,7 +386,7 @@ function makeStyles(theme: ScaledTheme) {
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   sheet: {
-    backgroundColor:    theme.surfacePanel,
+    backgroundColor:    theme.surfaceSheet,
     borderTopLeftRadius:  20,
     borderTopRightRadius: 20,
     borderTopWidth:     1,

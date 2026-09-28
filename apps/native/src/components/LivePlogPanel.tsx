@@ -136,7 +136,7 @@ function makeStyles(theme: ScaledTheme) {
   backdrop:  { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
     maxHeight: '75%',
-    backgroundColor: theme.surfacePanel,
+    backgroundColor: theme.surfaceSheet,
     borderTopLeftRadius: 20, borderTopRightRadius: 20,
     borderTopWidth: 1, borderColor: theme.borderDefault,
     padding: theme.space3,

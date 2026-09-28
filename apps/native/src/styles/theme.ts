@@ -66,8 +66,25 @@ const FIXED_TOKENS = {
 
 /** Mutable singleton — see file header. Starts on 'dark'; setActiveThemeName()
  *  mutates the colour keys in place. */
+/** `rgba(r, g, b, a)` -> `rgb(r, g, b)`. Colours without an alpha channel
+ *  are returned unchanged. */
+function opaque(color: string): string {
+  const m = /^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,[^)]*\)$/.exec(color)
+  return m ? `rgb(${m[1]}, ${m[2]}, ${m[3]})` : color
+}
+
+/** Native-only colour tokens derived from the shared palette.
+ *  surfaceSheet: fully opaque surfacePanel, for modal sheets, popups and
+ *  menus. surfacePanel is slightly translucent (fine for chrome drawn over
+ *  the map), but under a sheet that lets the map buttons show through,
+ *  which reads as the buttons being drawn on top of the sheet. */
+function derivedTokens(name: ThemeName) {
+  return { surfaceSheet: opaque(UI_THEME_TOKENS[name].surfacePanel) }
+}
+
 export const theme = {
   ...UI_THEME_TOKENS.dark,
+  ...derivedTokens('dark'),
   ...FIXED_TOKENS,
 }
 
@@ -91,7 +108,7 @@ export function getActiveThemeName(): ThemeName {
 export function setActiveThemeName(name: ThemeName): void {
   if (name === activeThemeName) return
   activeThemeName = name
-  Object.assign(theme, UI_THEME_TOKENS[name])
+  Object.assign(theme, UI_THEME_TOKENS[name], derivedTokens(name))
   listeners.forEach((l) => l())
 }
 
