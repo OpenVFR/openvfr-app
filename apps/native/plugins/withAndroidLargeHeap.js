@@ -20,6 +20,15 @@
  * dependent, commonly 512MB-1GB+) -- doesn't eliminate memory pressure
  * outright, but gives real headroom for this app's actual working set
  * instead of crashing at the default ceiling.
+ *
+ * UPDATE (heap-dump root cause): that 256 MB OOM was NOT the working set.
+ * It was a single HTTP response -- the origin occasionally answering a
+ * PMTiles Range request with the whole 668 MB basemap archive instead of
+ * a 206 slice, which MapLibre's HTTP layer buffers whole into the Java
+ * heap. Raising the ceiling here just moved the crash to 512 MB. The real
+ * fix is withMapLibreHttpGuard (refuses such responses before the body is
+ * read). largeHeap is still worth keeping as genuine headroom for the
+ * legitimate working set, but is no longer load-bearing for that crash.
  */
 const { withAndroidManifest } = require('@expo/config-plugins')
 

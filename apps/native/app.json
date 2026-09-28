@@ -85,6 +85,8 @@
       ],
       "expo-status-bar",
       "expo-sharing",
+      "./plugins/withMapLibreHttpGuard",
+      "./plugins/withMapLibreHttpGuardIos",
       "./plugins/withAndroidLargeHeap",
       "./plugins/withAndroidDisableLintVital",
       "expo-splash-screen"

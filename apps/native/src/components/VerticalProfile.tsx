@@ -60,8 +60,8 @@ import type { WindSample } from '../hooks/useWindAlongRoute'
 // Without this, every fresh mount (ruler mode turned on, route planned,
 // look-ahead engaged after a route is cleared, etc. — each is a distinct
 // branch in MapScreen's render ternary, so switching between them unmounts
-// and remounts this component) re-fetched and re-JSON.parsed all four files
-// (airspace, obstacles, water, landmarks) from scratch. `JSON.parse` of a
+// and remounts this component) re-fetched and re-JSON.parsed all the files
+// (airspace, obstacles, landmarks) from scratch. `JSON.parse` of a
 // several-hundred-KB-to-multi-MB payload runs synchronously on the JS
 // thread — with 4 of them in flight together, this stalled the JS thread
 // for several seconds, during which every touchable on screen (map controls,
@@ -359,7 +359,6 @@ export function VerticalProfile({
   const [hoverNm, setHoverNm] = useState<number | null>(null)
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(null)
-  const [waterGeo,    setWaterGeo]    = useState<GeoJSON.FeatureCollection | null>(null)
   const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [terrainPts, setTerrainPts]   = useState<TerrainPoint[]>([])
   const [msaPts,     setMsaPts]       = useState<MsaPoint[]>([])
@@ -410,10 +409,21 @@ export function VerticalProfile({
   // Load GeoJSON once per app lifetime (module-level cache above) — cheap on
   // every mount after the first, since repeat calls just resolve an
   // already-settled promise instead of re-fetching/re-parsing.
+  // Deliberately NOT loading se-water.geojson here (the lake/reservoir
+  // crossings overlay). It is ~24 MB -- every lake and reservoir in Sweden
+  // -- and React Native's Android fetch() cannot handle a response that
+  // size: the body is held in the Java heap as raw bytes, then as a UTF-16
+  // string (~48 MB), then streamed to JS in JSON-encoded chunks, with every
+  // intermediate copy alive at once. Measured live on a Galaxy S23 Ultra:
+  // the Java heap climbed from ~30 MB to the 512 MB largeHeap ceiling in
+  // ~16 s of constant GC churn and threw OutOfMemoryError on the OkHttp
+  // thread, the moment a route was planned (this component's mount). The
+  // other three files are 0.5-3 MB and fine. buildVirtualRadarProfile
+  // accepts water as undefined, so the chart just omits lake crossings. See
+  // AGENTS.md ("Large GeoJSON must never go through fetch() on native").
   useEffect(() => {
     loadGeoJsonOnce(getTileUrls().airspace).then(setAirspaceGeo).catch(() => {})
     loadGeoJsonOnce(getTileUrls().obstacles).then(setObstacleGeo).catch(() => {})
-    loadGeoJsonOnce(getTileUrls().water).then(setWaterGeo).catch(() => { /* optional layer — offline-safe no-op */ })
     loadGeoJsonOnce(getTileUrls().landmarks).then(setLandmarkGeo).catch(() => { /* optional layer — offline-safe no-op */ })
   }, [])
 
@@ -448,8 +458,9 @@ export function VerticalProfile({
 
   const profile = useMemo(() => {
     if (waypoints.length < 2 || !airspaceGeo || !obstacleGeo) return null
-    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo ?? undefined, landmarkGeo ?? undefined, airspaceCeilingFt ?? Infinity)
-  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo, landmarkGeo, airspaceCeilingFt])
+    // water: undefined on native -- see the loader comment above.
+    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, undefined, landmarkGeo ?? undefined, airspaceCeilingFt ?? Infinity)
+  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, landmarkGeo, airspaceCeilingFt])
 
   // Shared with web's VirtualRadar.tsx (getMsaLookup) — this used to be a
   // byte-for-byte duplicate independently maintained in both files.

@@ -140,6 +140,24 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
 - Serve the web app's `dist/` output (or the `docker/Dockerfile` image)
   behind any static host or reverse proxy that supports HTTP Range
   requests (required for PMTiles).
+- **The tile host must honour HTTP Range on `.pmtiles` on every request,
+  answering `206 Partial Content` with exactly the bytes asked for.** A
+  PMTiles archive is one large file that clients read in small slices
+  (typically 16-64 KB per tile); if the host ever answers a Range request
+  with `200 OK` and the whole file, every map tile fetch downloads the
+  entire archive -- several hundred MB -- and the native app's HTTP layer
+  buffers it into memory, crashing with `OutOfMemoryError`. This has
+  been observed happening *intermittently* on a large multipart-uploaded
+  object fronted by a CDN whose per-object cache limit was smaller than
+  the archive (every request went to origin uncached). Verify with:
+  `curl -sI -H 'Range: bytes=100000000-100016383' https://<tiles>/basemap.pmtiles`
+  -- expect `HTTP/1.1 206` and `Content-Length: 16384`, never `200`. Repeat
+  a few times; a single `200` is a failure. Object-storage backends and
+  CDNs generally honour Range, but check yours, and keep single archives
+  under your CDN's per-object cache limit where possible so they can be
+  served from cache at all. The native app also guards against this
+  (`apps/native/plugins/withMapLibreHttpGuard.js` refuses non-206 answers
+  to Range requests), but that only turns a crash into a missing tile.
 - You can deploy the frontend, API, and tile storage as one origin
   (simplest) or three separate origins (see `apps/web/src/utils/env.ts`'s
   `VITE_API_BASE_URL`/`VITE_TILES_BASE_URL`) — both are supported.
