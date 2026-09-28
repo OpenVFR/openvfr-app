@@ -31,4 +31,15 @@ while IFS= read -r -d '' f; do
   esac
 done < <(find "$raw" -path '*/takeScreenshot/*' -name '*.png' -print0)
 
+# Maestro writes logs/crash-report.txt only when the app under test crashed:
+# a logcat stack trace (Android) or the simulator's .ips report (iOS). It
+# holds no typed text, unlike the rest of the folder, so keep it and print
+# its head so the job log shows the crash without downloading the artifact.
+while IFS= read -r -d '' f; do
+  mkdir -p "$out/debug"
+  cp "$f" "$out/debug/crash-report.txt"
+  echo "::error::app crashed during the flow -- $out/debug/crash-report.txt"
+  head -c 4000 "$f"; echo
+done < <(find "$raw" -path '*/logs/*' -name 'crash-report.txt' -print0)
+
 exit "$status"

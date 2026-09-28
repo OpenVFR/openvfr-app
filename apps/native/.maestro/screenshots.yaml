@@ -13,10 +13,11 @@
 # numbered -- store consoles order uploads by name.
 appId: org.openvfr.app
 ---
-# Stockholm-Bromma area: dense Swedish aviation data around the start position.
+# ESMI (Sjöbo/Sövde), the start of the sample ESMI -> ESMS route built
+# below, so the map shot shows the same area as the route.
 - setLocation:
-    latitude: 59.354
-    longitude: 17.941
+    latitude: 55.598
+    longitude: 13.677
 - launchApp:
     clearState: true
     permissions:
@@ -30,9 +31,12 @@ appId: org.openvfr.app
 # App.tsx shows a bare spinner while restoring the session. runFlow's `when`
 # is checked once, without waiting, so on a slow emulator it would see only
 # the spinner, skip login, and leave the login screen up. Wait for either
-# the login screen ("Email address" label) or the tab bar first.
+# the login screen or the tab bar first.
+# Tabs are matched by testID (navigation/index.tsx), not label text: on iOS
+# their accessibility label is "<label>, tab, N of M".
 - extendedWaitUntil:
-    visible: "(Email address|Flight Plan)"
+    visible:
+      id: "(login-email|tab-plan)"
     timeout: 60000
 
 - runFlow:
@@ -43,7 +47,8 @@ appId: org.openvfr.app
 
 # Tab bar only renders once authenticated.
 - extendedWaitUntil:
-    visible: Flight Plan
+    visible:
+      id: tab-plan
     timeout: 60000
 
 # Soft "update available" nudge (useForceUpdate.ts) fires when the store
@@ -66,12 +71,53 @@ appId: org.openvfr.app
     timeout: 20000
 - takeScreenshot: 01-map
 
-- tapOn: Flight Plan
+# Map Display (layers) sheet.
+- tapOn:
+    id: map-display-open
 - waitForAnimationToEnd:
-    timeout: 10000
-- takeScreenshot: 02-flight-plan
+    timeout: 5000
+- takeScreenshot: 02-map-display
+- tapOn:
+    id: map-display-close
+- waitForAnimationToEnd:
+    timeout: 5000
 
-- tapOn: Settings
+# Build a sample route ESMI -> ESMS through Find a Destination, so the
+# Flight Plan tab shows a real route instead of its empty state. clearState
+# at launch means the route always starts empty. Aerodromes load on the
+# sheet's first open, hence the wait on the first add button. The keyboard
+# is hidden before each tap so it can't cover the result row.
+- tapOn:
+    id: find-destination-open
+- tapOn:
+    id: find-destination-search
+- inputText: ESMI
+- hideKeyboard
+- extendedWaitUntil:
+    visible:
+      id: find-destination-add-ESMI
+    timeout: 30000
+- takeScreenshot: 03-find-destination
+- tapOn:
+    id: find-destination-add-ESMI
+- tapOn:
+    id: find-destination-search
+- eraseText
+- inputText: ESMS
+- hideKeyboard
+- extendedWaitUntil:
+    visible:
+      id: find-destination-add-ESMS
+    timeout: 10000
+- tapOn:
+    id: find-destination-add-ESMS
+- tapOn:
+    id: find-destination-close
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- tapOn:
+    id: tab-plan
 - waitForAnimationToEnd:
     timeout: 10000
-- takeScreenshot: 03-settings
+- takeScreenshot: 04-flight-plan

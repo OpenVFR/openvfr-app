@@ -178,7 +178,7 @@ export function MapDisplaySheet({
   return (
     <>
       {/* Trigger button */}
-      <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)}>
+      <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)} testID="map-display-open" accessibilityLabel="Map display">
         <Ionicons name="layers-outline" size={20} color={theme.textSecondary} />
       </TouchableOpacity>
 
@@ -202,7 +202,7 @@ export function MapDisplaySheet({
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Map Display</Text>
-            <TouchableOpacity onPress={() => setOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={() => setOpen(false)} testID="map-display-close" accessibilityLabel="Close" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="close" size={18} color={theme.textMuted} />
             </TouchableOpacity>
           </View>

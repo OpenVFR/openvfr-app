@@ -111,6 +111,8 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
       <TouchableOpacity
         style={styles.addBtn}
         onPress={() => onAddToRoute(aerodromeToWaypoint(a))}
+        testID={`find-destination-add-${a.icao}`}
+        accessibilityLabel={`Add ${a.icao} to route`}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
         <Ionicons name="add" size={18} color={theme.textPrimary} />
@@ -120,7 +122,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
 
   return (
     <>
-      <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)}>
+      <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)} testID="find-destination-open" accessibilityLabel="Find a destination">
         <Ionicons name="search-outline" size={20} color={theme.textSecondary} />
       </TouchableOpacity>
 
@@ -133,7 +135,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
             {glideRangeNm !== null && (
               <Text style={styles.glideNote}>⬡ Glide {glideRangeNm.toFixed(0)} NM</Text>
             )}
-            <TouchableOpacity onPress={() => setOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={() => setOpen(false)} testID="find-destination-close" accessibilityLabel="Close" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="close" size={18} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
@@ -143,6 +145,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
               style={styles.search}
               value={search}
               onChangeText={setSearch}
+              testID="find-destination-search"
               placeholder="Search ICAO or name…"
               placeholderTextColor={theme.textFaint}
               autoCapitalize="characters"

@@ -6,6 +6,7 @@ import React from 'react'
 import { NavigationContainer } from '@react-navigation/native'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { Ionicons } from '@expo/vector-icons'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { MapScreen }      from '../screens/MapScreen'
 import { PlanScreen }     from '../screens/PlanScreen'
@@ -35,6 +36,12 @@ export function AppNavigator() {
   // else (this is the one screen visible in every flight phase, worth
   // reading correctly from a kneeboard/dashboard mount).
   const iconSize = scaledTheme.scale(20)
+  // Setting height/paddingBottom below replaces React Navigation's own
+  // safe-area handling, so the bottom inset has to be added back by hand.
+  // Without it the tab bar sits under the home indicator (iOS) or the
+  // navigation bar / tablet taskbar (Android is always edge-to-edge), and
+  // on tablets the taskbar covers it entirely.
+  const insets = useSafeAreaInsets()
   return (
     <NavigationContainer>
       <Tab.Navigator
@@ -44,8 +51,8 @@ export function AppNavigator() {
             backgroundColor: theme.surfacePanel,
             borderTopColor:  theme.borderDefault,
             borderTopWidth:  1,
-            height: scaledTheme.scale(46),
-            paddingBottom: scaledTheme.space0,
+            height: scaledTheme.scale(46) + insets.bottom,
+            paddingBottom: scaledTheme.space0 + insets.bottom,
             paddingTop: scaledTheme.space0,
           },
           tabBarActiveTintColor:   theme.accentBlue,
@@ -66,9 +73,12 @@ export function AppNavigator() {
           },
         })}
       >
-        <Tab.Screen name="Map"      component={MapScreen}      />
-        <Tab.Screen name="Plan"     component={PlanScreen}     options={{ tabBarLabel: 'Flight Plan' }} />
-        <Tab.Screen name="Settings" component={SettingsScreen} />
+        {/* Test IDs for UI automation (.maestro/screenshots.yaml): on iOS the
+            tab's accessibility label is "<label>, tab, N of M", so matching
+            by visible label text only works on Android. */}
+        <Tab.Screen name="Map"      component={MapScreen}      options={{ tabBarButtonTestID: 'tab-map' }} />
+        <Tab.Screen name="Plan"     component={PlanScreen}     options={{ tabBarLabel: 'Flight Plan', tabBarButtonTestID: 'tab-plan' }} />
+        <Tab.Screen name="Settings" component={SettingsScreen} options={{ tabBarButtonTestID: 'tab-settings' }} />
       </Tab.Navigator>
     </NavigationContainer>
   )

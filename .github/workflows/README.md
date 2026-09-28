@@ -132,16 +132,24 @@ How it works:
 - The same Maestro flow (`apps/native/.maestro/screenshots.yaml`) runs on
   every form factor: set a GPS position, launch with permissions granted,
   sign in through the real login UI with the app-review test account
-  (`login.yaml`), then capture each tab. Status bars are pinned (9:41,
+  (`login.yaml`), then capture the map, the Map Display sheet, Find a
+  Destination searching `ESMI`, and the Flight Plan tab with a sample
+  ESMI → ESMS route built through Find a Destination. The GPS position
+  is set to ESMI so the map shows the route area. Status bars are pinned (9:41,
   full battery) via `simctl status_bar` / SystemUI demo mode.
 - Android waits for Android's own `VALIDATED` network state before
   capturing (`ping` never works in the emulator, and there's no `curl` on
   the image). Every PNG is checked against the expected pixel size.
-- Only PNGs are uploaded. Maestro confines `takeScreenshot` output to its
+- Only PNGs (plus a crash report, if the app crashed) are uploaded.
+  Maestro confines `takeScreenshot` output to its
   own per-run artifact folder, so `apps/native/.maestro/run-flow.sh` runs
   the flow with `--test-output-dir` pointed at a temp dir and copies the
   PNGs out. The rest of that folder logs typed text, including the test
-  OTP, so it stays on the runner and is deleted afterwards.
+  OTP, so it stays on the runner and is deleted afterwards. The one
+  exception is Maestro's `crash-report.txt` (no typed text), copied to
+  `debug/` and echoed into the job log. Android also saves
+  `debug/maplibre-logcat.txt` (logcat filtered to MapLibre/PMTiles lines
+  only) to diagnose map sources that failed to load.
 - `login.yaml` captures `debug/_debug-post-login.png` right after submitting the
   OTP, before asserting sign-in actually happened. If auth fails (wrong/
   stale `APP_REVIEW_TEST_EMAIL`/`APP_REVIEW_TEST_OTP` on whichever server

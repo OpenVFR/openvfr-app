@@ -40,7 +40,18 @@ demo notifications -e visible false
 
 adb install -r "$apk"
 
-bash "$here/run-flow.sh" "$out"
+adb logcat -c
+status=0
+bash "$here/run-flow.sh" "$out" || status=$?
+
+# Map tiles/sources that fail to load leave no trace in the screenshots
+# (just missing detail), so keep MapLibre's own log lines for diagnosis.
+# Filtered to MapLibre tags only -- the full logcat is not uploaded.
+mkdir -p "$out/debug"
+adb logcat -d -v time 2>/dev/null | grep -iE 'mbgl|maplibre|pmtiles' > "$out/debug/maplibre-logcat.txt" || true
+echo "MapLibre log lines: $(wc -l < "$out/debug/maplibre-logcat.txt")"
+grep -iE ' [EW]/' "$out/debug/maplibre-logcat.txt" | head -40 || true
+[ "$status" = 0 ] || exit "$status"
 
 # Fail loudly on a wrong-size capture rather than upload unusable images.
 want="${size/x/ x }"
