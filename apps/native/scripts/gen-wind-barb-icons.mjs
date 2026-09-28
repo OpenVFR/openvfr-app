@@ -7,7 +7,7 @@
 // gen-poi-icons.mjs) instead of node-canvas, since this workspace doesn't
 // depend on node-canvas.
 //
-// Colour is now speed-tiered (blue/green/amber -- SkyDemon's "wind
+// Colour is now speed-tiered (blue/green/amber -- the common "wind
 // feather" convention, see @open-vfr/shared/windBarb's windBarbColorForSpeed,
 // the single source of truth for the thresholds used here) rather than a
 // flat colour, and the stroke is bolder than the first cut of this icon

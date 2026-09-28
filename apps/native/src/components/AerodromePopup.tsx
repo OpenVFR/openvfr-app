@@ -1,7 +1,7 @@
 /**
  * AerodromePopup — modal popup for aerodrome features tapped on the map.
  *
- * Native port of web's metar-taf.com-style redesign (see web's
+ * Native port of web's weather-dashboard-style redesign (see web's
  * AerodromePopup.tsx doc comment / commit 375e2de): Info / Wx / NOTAMs tabs,
  * graphical wind compass + speed dial (WindGauges.tsx), cloud-layer altitude
  * chart (CloudProfile.tsx), hour-by-hour decoded TAF table (TafTimeline.tsx),

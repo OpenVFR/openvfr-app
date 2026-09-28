@@ -236,7 +236,7 @@ export function getActiveTafConditions(periods: TafPeriod[], atMs: number): Acti
   }
 }
 
-// ── Hourly timeline (for a metar-taf.com-style hour-by-hour forecast table) ──
+// ── Hourly timeline (for an hour-by-hour decoded forecast table) ──
 
 export interface TafHourSlice {
   atMs:       number

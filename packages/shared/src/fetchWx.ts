@@ -254,7 +254,7 @@ export interface MetarDecoded {
   flightRule: 'VFR' | 'MVFR' | 'IFR' | 'LIFR' | null
   /** Numeric visibility in metres (9999 for CAVOK/10km+), null if unparseable.
    *  Exposed alongside the raw `.vis` token so callers doing per-metric
-   *  colour-coding (e.g. a metar-taf.com-style tile grid) don't have to
+   *  colour-coding (e.g. a per-metric tile grid) don't have to
    *  re-derive it from the raw token themselves. */
   visM:       number | null
   /** Numeric ceiling in feet (lowest BKN/OVC base), null if no ceiling

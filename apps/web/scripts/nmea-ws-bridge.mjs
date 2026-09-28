@@ -50,7 +50,7 @@ import { createHash } from 'node:crypto'
 
 const TCP_PORT = Number(process.argv[2] ?? 5103)
 const WS_PORT  = Number(process.argv[3] ?? 5104)
-const UDP_PORT = 49002   // X-Plane ForeFlight / mapping-apps broadcast port (fixed)
+const UDP_PORT = 49002   // X-Plane "broadcast to mapping apps" UDP port (fixed)
 const WS_MAGIC = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 
 // ── Active WebSocket client sockets ─────────────────────────────────────────
