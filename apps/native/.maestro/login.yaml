@@ -16,3 +16,25 @@ appId: org.openvfr.app
 - inputText: ${MAESTRO_TEST_OTP}
 - tapOn:
     id: login-verify-otp
+# Fail fast and legibly instead of the caller's tab-bar assertion timing out
+# 60s later with no clue why. login-verify-otp only ever stops being visible
+# once LoginScreen unmounts on a successful sign-in -- on failure (wrong/
+# expired code, or the server-side APP_REVIEW_TEST_EMAIL/OTP env vars not
+# matching these secrets, a deployment config issue rather than an app bug)
+# the button just re-enables and the screen stays put, so this becomes the
+# real "did auth actually succeed" signal instead of guessing from a
+# downstream screen. optional: true means a slow-but-eventual success still
+# proceeds normally -- only the assertNotVisible below decides pass/fail.
+# Costs ~0 extra time on the happy path (returns as soon as satisfied);
+# only the failure path pays the 15s.
+- extendedWaitUntil:
+    notVisible:
+      id: login-verify-otp
+    timeout: 15000
+    optional: true
+# Unconditional and instant either way -- if verifyOtp() did set an error,
+# LoginScreen.tsx (testID login-error) is still rendering it here, giving a
+# readable artifact instead of a blank timeout.
+- takeScreenshot: ${OUT}/_debug-post-login
+- assertNotVisible:
+    id: login-verify-otp

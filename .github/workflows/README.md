@@ -137,6 +137,13 @@ How it works:
   the image). Every PNG is checked against the expected pixel size.
 - Only PNGs are uploaded. Maestro's debug output logs typed text,
   including the test OTP, so it stays on the runner.
+- `login.yaml` captures `_debug-post-login.png` right after submitting the
+  OTP, before asserting sign-in actually happened. If auth fails (wrong/
+  stale `APP_REVIEW_TEST_EMAIL`/`APP_REVIEW_TEST_OTP` on whichever server
+  is actually running `apps/api` in production -- a deployment config
+  mismatch, not something fixable in this repo), the flow fails fast on
+  that screen instead of a 60s timeout on an unrelated later assertion,
+  and the artifact shows the exact on-screen error message.
 
 Map tiles and aviation overlays are drawn by the GL surface and aren't in
 the accessibility tree, so the flow can't assert they loaded. It waits for

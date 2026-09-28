@@ -147,7 +147,7 @@ export function LoginScreen() {
           </>
         )}
 
-        {error && <Text style={styles.error}>{error}</Text>}
+        {error && <Text style={styles.error} testID="login-error">{error}</Text>}
 
         <Text style={styles.note}>
           Passkey uses your device biometrics or PIN — no password needed.
