@@ -39,6 +39,7 @@
   },
   "dependencies": {
     "@better-auth/passkey": "1.7.6",
+    "@expo/ui": "~57.0.20",
     "@expo/vector-icons": "^15.1.1",
     "@maplibre/maplibre-gl-style-spec": "26.4.4",
     "@maplibre/maplibre-react-native": "^11.4.0",
