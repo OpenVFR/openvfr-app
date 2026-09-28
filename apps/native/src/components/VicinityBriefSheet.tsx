@@ -28,7 +28,7 @@
  */
 
 import React, { useEffect, useState } from 'react'
-import { View, Text, TouchableOpacity, Modal, ScrollView } from 'react-native'
+import { View, Text, TouchableOpacity, ScrollView } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
@@ -41,6 +41,7 @@ import { useAerodromeBriefing } from '../hooks/useAerodromeBriefing'
 import { FR_COLOR } from './AerodromeBriefShared'
 import AerodromeWxSection from './AerodromeWxSection'
 import AerodromeNotamSection, { useNotamLists } from './AerodromeNotamSection'
+import { NativeSheet } from './NativeSheet'
 import { decodeMetar } from '@open-vfr/shared/fetchWx'
 
 const SVC_COLOR: Record<string, string> = {
@@ -129,123 +130,116 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
         )}
       </TouchableOpacity>
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setOpen(false)} />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Vicinity Briefing</Text>
-            <TouchableOpacity onPress={() => setOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close" size={18} color={theme.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Tab bar */}
-          <View style={styles.tabBar}>
-            <TabBtn label="Frequencies" active={tab === 'freq'} onPress={() => setTab('freq')} />
-            <TabBtn
-              label="Weather" active={tab === 'wx'} onPress={() => setTab('wx')}
-              dotColor={metarFlightRule ? FR_COLOR[metarFlightRule] : undefined}
-            />
-            <TabBtn
-              label="NOTAMs" active={tab === 'notam'} onPress={() => setTab('notam')}
-              count={notamLists.visibleCount > 0 ? notamLists.visibleCount : undefined}
-            />
-          </View>
-
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body}>
-            {/* ── Freq tab — unchanged from FrequencyPanel, no picker ──── */}
-            {tab === 'freq' && (
-              displayedFreqs.length === 0 ? (
-                <Text style={styles.muted}>No aerodromes with published frequencies nearby</Text>
-              ) : displayedFreqs.map((ad, i) => (
-                <View key={ad.icao || ad.name} style={[styles.adCard, i > 0 && styles.adCardBorder]}>
-                  <View style={styles.adHeader}>
-                    <Text style={styles.adIcao}>{ad.icao}</Text>
-                    <Text style={styles.adName} numberOfLines={1}>{ad.name}</Text>
-                    <Text style={styles.adDist}>{ad.distNm.toFixed(1)} NM</Text>
-                  </View>
-                  {ad.frequencies.length === 0 ? (
-                    <Text style={styles.noFreq}>No frequencies on record</Text>
-                  ) : (
-                    <View style={styles.freqList}>
-                      {ad.frequencies.map((f, j) => (
-                        <View key={j} style={styles.freqRow}>
-                          <View style={[styles.svcBadge, { backgroundColor: svcColor(f.service) + '22', borderColor: svcColor(f.service) + '55' }]}>
-                            <Text style={[styles.svcTxt, { color: svcColor(f.service) }]}>{f.service}</Text>
-                          </View>
-                          <Text style={styles.freqMhz}>{f.mhz.toFixed(3)}</Text>
-                          {f.callsign && <Text style={styles.freqCallsign} numberOfLines={1}>{f.callsign}</Text>}
-                        </View>
-                      ))}
+      <NativeSheet
+        isPresented={open}
+        onDismiss={() => setOpen(false)}
+        title="Vicinity Briefing"
+        testID="vicinity-sheet"
+        contentContainerStyle={styles.body}
+        fixedTop={(
+      <View style={styles.tabBar}>
+        <TabBtn label="Frequencies" active={tab === 'freq'} onPress={() => setTab('freq')} />
+        <TabBtn
+          label="Weather" active={tab === 'wx'} onPress={() => setTab('wx')}
+          dotColor={metarFlightRule ? FR_COLOR[metarFlightRule] : undefined}
+        />
+        <TabBtn
+          label="NOTAMs" active={tab === 'notam'} onPress={() => setTab('notam')}
+          count={notamLists.visibleCount > 0 ? notamLists.visibleCount : undefined}
+        />
+      </View>
+        )}
+      >
+        {/* ── Freq tab — unchanged from FrequencyPanel, no picker ──── */}
+        {tab === 'freq' && (
+          displayedFreqs.length === 0 ? (
+            <Text style={styles.muted}>No aerodromes with published frequencies nearby</Text>
+          ) : displayedFreqs.map((ad, i) => (
+            <View key={ad.icao || ad.name} style={[styles.adCard, i > 0 && styles.adCardBorder]}>
+              <View style={styles.adHeader}>
+                <Text style={styles.adIcao}>{ad.icao}</Text>
+                <Text style={styles.adName} numberOfLines={1}>{ad.name}</Text>
+                <Text style={styles.adDist}>{ad.distNm.toFixed(1)} NM</Text>
+              </View>
+              {ad.frequencies.length === 0 ? (
+                <Text style={styles.noFreq}>No frequencies on record</Text>
+              ) : (
+                <View style={styles.freqList}>
+                  {ad.frequencies.map((f, j) => (
+                    <View key={j} style={styles.freqRow}>
+                      <View style={[styles.svcBadge, { backgroundColor: svcColor(f.service) + '22', borderColor: svcColor(f.service) + '55' }]}>
+                        <Text style={[styles.svcTxt, { color: svcColor(f.service) }]}>{f.service}</Text>
+                      </View>
+                      <Text style={styles.freqMhz}>{f.mhz.toFixed(3)}</Text>
+                      {f.callsign && <Text style={styles.freqCallsign} numberOfLines={1}>{f.callsign}</Text>}
                     </View>
-                  )}
+                  ))}
                 </View>
-              ))
+              )}
+            </View>
+          ))
+        )}
+
+        {/* ── Wx / NOTAM tabs — shared aerodrome picker ────────────── */}
+        {(tab === 'wx' || tab === 'notam') && (
+          <>
+            {vicinity.length === 0 ? (
+              <Text style={styles.muted}>
+                {routeVisible && hasRoute ? 'No aerodromes within range of the active route' : 'No aerodromes nearby'}
+              </Text>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.picker}>
+                {vicinity.map((a) => {
+                  const isSelected = a.icao === selectedIcao
+                  return (
+                    <TouchableOpacity
+                      key={a.icao}
+                      style={[styles.pickerChip, isSelected && styles.pickerChipActive]}
+                      onPress={() => setSelectedIcao(a.icao)}
+                    >
+                      <Text style={[styles.pickerChipTxt, isSelected && styles.pickerChipTxtActive]}>
+                        {a.icao}
+                      </Text>
+                      <Text style={[styles.pickerChipDist, isSelected && styles.pickerChipTxtActive]}>
+                        {a.distNm.toFixed(1)} NM
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </ScrollView>
             )}
 
-            {/* ── Wx / NOTAM tabs — shared aerodrome picker ────────────── */}
-            {(tab === 'wx' || tab === 'notam') && (
-              <>
-                {vicinity.length === 0 ? (
-                  <Text style={styles.muted}>
-                    {routeVisible && hasRoute ? 'No aerodromes within range of the active route' : 'No aerodromes nearby'}
-                  </Text>
-                ) : (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.picker}>
-                    {vicinity.map((a) => {
-                      const isSelected = a.icao === selectedIcao
-                      return (
-                        <TouchableOpacity
-                          key={a.icao}
-                          style={[styles.pickerChip, isSelected && styles.pickerChipActive]}
-                          onPress={() => setSelectedIcao(a.icao)}
-                        >
-                          <Text style={[styles.pickerChipTxt, isSelected && styles.pickerChipTxtActive]}>
-                            {a.icao}
-                          </Text>
-                          <Text style={[styles.pickerChipDist, isSelected && styles.pickerChipTxtActive]}>
-                            {a.distNm.toFixed(1)} NM
-                          </Text>
-                        </TouchableOpacity>
-                      )
-                    })}
-                  </ScrollView>
-                )}
-
-                {selected && tab === 'wx' && (
-                  <AerodromeWxSection
-                    icao={selected.icao}
-                    lat={selected.lat}
-                    lng={selected.lng}
-                    elevationFt={selected.elevationFt}
-                    runways={selected.runways}
-                    wx={wx}
-                    ambientWx={ambientWx}
-                    wxSource={wxSource}
-                    onSourceChange={setWxSource}
-                    wxLoading={wxLoading}
-                    wxSourceName={wxSourceName}
-                  />
-                )}
-
-                {selected && tab === 'notam' && (
-                  <AerodromeNotamSection
-                    notams={notams}
-                    notamLoading={notamLoading}
-                    regionalNotams={regionalNotams}
-                    routeWaypoints={waypoints}
-                    centre={selected ? { lat: selected.lat, lng: selected.lng } : undefined}
-                    icao={selected?.icao}
-                  />
-                )}
-              </>
+            {selected && tab === 'wx' && (
+              <AerodromeWxSection
+                icao={selected.icao}
+                lat={selected.lat}
+                lng={selected.lng}
+                elevationFt={selected.elevationFt}
+                runways={selected.runways}
+                wx={wx}
+                ambientWx={ambientWx}
+                wxSource={wxSource}
+                onSourceChange={setWxSource}
+                wxLoading={wxLoading}
+                wxSourceName={wxSourceName}
+              />
             )}
 
-            <View style={{ height: scaledTheme.space4 }} />
-          </ScrollView>
-        </View>
-      </Modal>
+            {selected && tab === 'notam' && (
+              <AerodromeNotamSection
+                notams={notams}
+                notamLoading={notamLoading}
+                regionalNotams={regionalNotams}
+                routeWaypoints={waypoints}
+                centre={selected ? { lat: selected.lat, lng: selected.lng } : undefined}
+                icao={selected?.icao}
+              />
+            )}
+          </>
+        )}
+
+        <View style={{ height: scaledTheme.space4 }} />
+      </NativeSheet>
     </>
   )
 }

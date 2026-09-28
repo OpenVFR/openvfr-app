@@ -8,11 +8,12 @@
 
 import React, { useEffect, useState } from 'react'
 import {
-  Modal, View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView,
+  View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import * as Crypto from 'expo-crypto'
 import type { AircraftProfileDocType, AircraftCategory } from '../types/db'
+import { NativeSheet } from './NativeSheet'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 const CATEGORIES: { value: AircraftCategory; label: string }[] = [
@@ -141,90 +142,83 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-      <View style={styles.sheet}>
-        <View style={styles.handle} />
-        <View style={styles.header}>
-          <Text style={styles.title}>{profile ? 'Edit Aircraft' : 'New Aircraft'}</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="close" size={18} color={theme.textMuted} />
+    <NativeSheet
+      isPresented={visible}
+      onDismiss={onClose}
+      title={profile ? 'Edit Aircraft' : 'New Aircraft'}
+      testID="aircraft-edit-sheet"
+      contentContainerStyle={styles.body}
+    >
+      <SectionLabel text="Identity" />
+      <FieldRow label="Name" value={form.name} error={errors.name} onChange={v => set('name', v)} placeholder="e.g. My Cessna 172" />
+      <FieldRow label="Registration" value={form.registration} error={errors.registration} onChange={v => set('registration', v)} placeholder="SE-ABC" autoCap />
+      <FieldRow label="ICAO Type" value={form.icaoType} onChange={v => set('icaoType', v)} placeholder="C172" autoCap />
+
+      <Text style={styles.fieldLabel}>Category</Text>
+      <View style={styles.catRow}>
+        {CATEGORIES.map(c => (
+          <TouchableOpacity
+            key={c.value}
+            style={[styles.catChip, form.category === c.value && styles.catChipActive]}
+            onPress={() => set('category', c.value)}
+          >
+            <Text style={[styles.catChipTxt, form.category === c.value && styles.catChipTxtActive]}>{c.label}</Text>
           </TouchableOpacity>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-          <SectionLabel text="Identity" />
-          <FieldRow label="Name" value={form.name} error={errors.name} onChange={v => set('name', v)} placeholder="e.g. My Cessna 172" />
-          <FieldRow label="Registration" value={form.registration} error={errors.registration} onChange={v => set('registration', v)} placeholder="SE-ABC" autoCap />
-          <FieldRow label="ICAO Type" value={form.icaoType} onChange={v => set('icaoType', v)} placeholder="C172" autoCap />
-
-          <Text style={styles.fieldLabel}>Category</Text>
-          <View style={styles.catRow}>
-            {CATEGORIES.map(c => (
-              <TouchableOpacity
-                key={c.value}
-                style={[styles.catChip, form.category === c.value && styles.catChipActive]}
-                onPress={() => set('category', c.value)}
-              >
-                <Text style={[styles.catChipTxt, form.category === c.value && styles.catChipTxtActive]}>{c.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <SectionLabel text="Performance" />
-          <FieldRow label="Cruise Alt" unit="ft" value={form.cruiseAltFt} error={errors.cruiseAltFt} numeric onChange={v => set('cruiseAltFt', v)} />
-          <FieldRow label="Cruise IAS" unit="kts" value={form.cruiseIas} error={errors.cruiseIas} numeric onChange={v => set('cruiseIas', v)} />
-
-          {HAS_FUEL(form.category) && (
-            <>
-              <SectionLabel text="Fuel" />
-              <FieldRow label="Burn" unit="L/h" value={form.fuelBurnLhr} error={errors.fuelBurnLhr} numeric onChange={v => set('fuelBurnLhr', v)} />
-              <FieldRow label="Max capacity" unit="L" value={form.maxFuelL} error={errors.maxFuelL} numeric onChange={v => set('maxFuelL', v)} />
-              <FieldRow label="Taxi / T/O" unit="L" value={form.taxiFuelL} numeric onChange={v => set('taxiFuelL', v)} />
-              <FieldRow label="Reserve LDG" unit="L" value={form.landingFuelL} numeric onChange={v => set('landingFuelL', v)} />
-              <FieldRow label="Holding" unit="min" value={form.holdingMin} numeric onChange={v => set('holdingMin', v)} />
-              <FieldRow label="Contingency" unit="%" value={form.contingencyPct} numeric onChange={v => set('contingencyPct', v)} />
-            </>
-          )}
-
-          {HAS_ENGINE(form.category) && (
-            <>
-              <SectionLabel text="Climb / Descent" />
-              <FieldRow label="Service ceiling" unit="ft" value={form.serviceCeilingFt} numeric onChange={v => set('serviceCeilingFt', v)} />
-              <FieldRow label="RoC at SL" unit="fpm" value={form.rocSlFpm} numeric onChange={v => set('rocSlFpm', v)} />
-              <FieldRow label="RoC at ceiling" unit="fpm" value={form.rocCeilingFpm} numeric onChange={v => set('rocCeilingFpm', v)} />
-              <FieldRow label="Climb IAS" unit="kts" value={form.climbIas} numeric onChange={v => set('climbIas', v)} />
-              {HAS_FUEL(form.category) && (
-                <FieldRow label="Climb fuel burn" unit="L/h" value={form.climbFuelLhr} numeric onChange={v => set('climbFuelLhr', v)} />
-              )}
-              <FieldRow label="Descent rate" unit="fpm" value={form.descentFpm} numeric onChange={v => set('descentFpm', v)} />
-              <FieldRow label="Descent IAS" unit="kts" value={form.descentIas} numeric onChange={v => set('descentIas', v)} />
-              {HAS_FUEL(form.category) && (
-                <FieldRow label="Descent fuel burn" unit="L/h" value={form.descentFuelLhr} numeric onChange={v => set('descentFuelLhr', v)} />
-              )}
-            </>
-          )}
-
-          {HAS_GLIDE(form.category) && (
-            <>
-              <SectionLabel text="Glide" />
-              <FieldRow label="Best glide IAS" unit="kts" value={form.bestGlideIas} numeric onChange={v => set('bestGlideIas', v)} />
-              <FieldRow label="Glide ratio" unit=":1" value={form.glideRatio} numeric onChange={v => set('glideRatio', v)} />
-            </>
-          )}
-
-          <View style={styles.actions}>
-            <TouchableOpacity style={styles.btn} onPress={onClose}>
-              <Text style={styles.btnTxt}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={handleSave}>
-              <Text style={styles.btnPrimaryTxt}>{profile ? 'Save' : 'Add'}</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={{ height: 24 }} />
-        </ScrollView>
+        ))}
       </View>
-    </Modal>
+
+      <SectionLabel text="Performance" />
+      <FieldRow label="Cruise Alt" unit="ft" value={form.cruiseAltFt} error={errors.cruiseAltFt} numeric onChange={v => set('cruiseAltFt', v)} />
+      <FieldRow label="Cruise IAS" unit="kts" value={form.cruiseIas} error={errors.cruiseIas} numeric onChange={v => set('cruiseIas', v)} />
+
+      {HAS_FUEL(form.category) && (
+        <>
+          <SectionLabel text="Fuel" />
+          <FieldRow label="Burn" unit="L/h" value={form.fuelBurnLhr} error={errors.fuelBurnLhr} numeric onChange={v => set('fuelBurnLhr', v)} />
+          <FieldRow label="Max capacity" unit="L" value={form.maxFuelL} error={errors.maxFuelL} numeric onChange={v => set('maxFuelL', v)} />
+          <FieldRow label="Taxi / T/O" unit="L" value={form.taxiFuelL} numeric onChange={v => set('taxiFuelL', v)} />
+          <FieldRow label="Reserve LDG" unit="L" value={form.landingFuelL} numeric onChange={v => set('landingFuelL', v)} />
+          <FieldRow label="Holding" unit="min" value={form.holdingMin} numeric onChange={v => set('holdingMin', v)} />
+          <FieldRow label="Contingency" unit="%" value={form.contingencyPct} numeric onChange={v => set('contingencyPct', v)} />
+        </>
+      )}
+
+      {HAS_ENGINE(form.category) && (
+        <>
+          <SectionLabel text="Climb / Descent" />
+          <FieldRow label="Service ceiling" unit="ft" value={form.serviceCeilingFt} numeric onChange={v => set('serviceCeilingFt', v)} />
+          <FieldRow label="RoC at SL" unit="fpm" value={form.rocSlFpm} numeric onChange={v => set('rocSlFpm', v)} />
+          <FieldRow label="RoC at ceiling" unit="fpm" value={form.rocCeilingFpm} numeric onChange={v => set('rocCeilingFpm', v)} />
+          <FieldRow label="Climb IAS" unit="kts" value={form.climbIas} numeric onChange={v => set('climbIas', v)} />
+          {HAS_FUEL(form.category) && (
+            <FieldRow label="Climb fuel burn" unit="L/h" value={form.climbFuelLhr} numeric onChange={v => set('climbFuelLhr', v)} />
+          )}
+          <FieldRow label="Descent rate" unit="fpm" value={form.descentFpm} numeric onChange={v => set('descentFpm', v)} />
+          <FieldRow label="Descent IAS" unit="kts" value={form.descentIas} numeric onChange={v => set('descentIas', v)} />
+          {HAS_FUEL(form.category) && (
+            <FieldRow label="Descent fuel burn" unit="L/h" value={form.descentFuelLhr} numeric onChange={v => set('descentFuelLhr', v)} />
+          )}
+        </>
+      )}
+
+      {HAS_GLIDE(form.category) && (
+        <>
+          <SectionLabel text="Glide" />
+          <FieldRow label="Best glide IAS" unit="kts" value={form.bestGlideIas} numeric onChange={v => set('bestGlideIas', v)} />
+          <FieldRow label="Glide ratio" unit=":1" value={form.glideRatio} numeric onChange={v => set('glideRatio', v)} />
+        </>
+      )}
+
+      <View style={styles.actions}>
+        <TouchableOpacity style={styles.btn} onPress={onClose}>
+          <Text style={styles.btnTxt}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={handleSave}>
+          <Text style={styles.btnPrimaryTxt}>{profile ? 'Save' : 'Add'}</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={{ height: 24 }} />
+    </NativeSheet>
   )
 }
 

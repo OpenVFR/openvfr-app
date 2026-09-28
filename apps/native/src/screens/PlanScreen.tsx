@@ -15,7 +15,7 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  ScrollView, TextInput, Share, RefreshControl, Modal,
+  ScrollView, TextInput, Share, RefreshControl,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
@@ -29,6 +29,7 @@ import { useAuthContext }      from '../context/AuthContext'
 import { useUserWaypointContext } from '../context/UserWaypointContext'
 import { RouteLibrarySheet }  from '../components/RouteLibrarySheet'
 import { AircraftEditSheet }  from '../components/AircraftEditSheet'
+import { NativeSheet }        from '../components/NativeSheet'
 import { useAircraftSync }    from '../hooks/useAircraftSync'
 import type { AircraftProfileDocType } from '../types/db'
 import { useFlightLogSync } from '../hooks/useFlightLogSync'
@@ -379,71 +380,72 @@ export function PlanScreen() {
         )}
       </View>
 
-      <Modal visible={moreMenuOpen} transparent animationType="fade" onRequestClose={() => setMoreMenuOpen(false)}>
-        <TouchableOpacity style={styles.moreMenuBackdrop} activeOpacity={1} onPress={() => setMoreMenuOpen(false)}>
-          <View style={[styles.moreMenu, { top: insets.top + scaledTheme.scale(52) }]}>
-            <TouchableOpacity
-              style={styles.moreMenuItem}
-              onPress={() => { setMoreMenuOpen(false); setLibraryOpen(true) }}
-            >
-              <Ionicons name="folder-outline" size={16} color={theme.textSecondary} />
-              <Text style={styles.moreMenuItemTxt}>Open Route Library</Text>
-            </TouchableOpacity>
-            {canUndo && (
-              <TouchableOpacity
-                style={styles.moreMenuItem}
-                onPress={() => { setMoreMenuOpen(false); undo() }}
-              >
-                <Ionicons name="arrow-undo-outline" size={16} color={theme.textSecondary} />
-                <Text style={styles.moreMenuItemTxt}>Undo</Text>
-              </TouchableOpacity>
-            )}
-            {canRedo && (
-              <TouchableOpacity
-                style={styles.moreMenuItem}
-                onPress={() => { setMoreMenuOpen(false); redo() }}
-              >
-                <Ionicons name="arrow-redo-outline" size={16} color={theme.textSecondary} />
-                <Text style={styles.moreMenuItemTxt}>Redo</Text>
-              </TouchableOpacity>
-            )}
-            {waypoints.length >= 2 && (
-              <TouchableOpacity
-                style={styles.moreMenuItem}
-                onPress={() => { setMoreMenuOpen(false); handleExportGpx() }}
-              >
-                <Ionicons name="download-outline" size={16} color={theme.textSecondary} />
-                <Text style={styles.moreMenuItemTxt}>Export GPX</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={styles.moreMenuItem}
-              onPress={() => { setMoreMenuOpen(false); handleImportRouteGpx() }}
-            >
-              <Ionicons name="cloud-upload-outline" size={16} color={theme.textSecondary} />
-              <Text style={styles.moreMenuItemTxt}>Import GPX</Text>
-            </TouchableOpacity>
-            {waypoints.length >= 2 && (
-              <TouchableOpacity
-                style={styles.moreMenuItem}
-                onPress={() => { setMoreMenuOpen(false); reverseRoute() }}
-              >
-                <Ionicons name="swap-vertical-outline" size={16} color={theme.textSecondary} />
-                <Text style={styles.moreMenuItemTxt}>Reverse Route</Text>
-              </TouchableOpacity>
-            )}
-            {waypoints.length > 0 && (
-              <TouchableOpacity
-                style={styles.moreMenuItem}
-                onPress={() => { setMoreMenuOpen(false); handleClear() }}
-              >
-                <Ionicons name="trash-outline" size={16} color={theme.accentRed} />
-                <Text style={[styles.moreMenuItemTxt, { color: theme.accentRed }]}>Clear Route</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+      <NativeSheet
+        isPresented={moreMenuOpen}
+        onDismiss={() => setMoreMenuOpen(false)}
+        title="Route actions"
+        testID="plan-more-sheet"
+      >
+        <TouchableOpacity
+          style={styles.moreMenuItem}
+          onPress={() => { setMoreMenuOpen(false); setLibraryOpen(true) }}
+        >
+          <Ionicons name="folder-outline" size={16} color={theme.textSecondary} />
+          <Text style={styles.moreMenuItemTxt}>Open Route Library</Text>
         </TouchableOpacity>
-      </Modal>
+        {canUndo && (
+          <TouchableOpacity
+            style={styles.moreMenuItem}
+            onPress={() => { setMoreMenuOpen(false); undo() }}
+          >
+            <Ionicons name="arrow-undo-outline" size={16} color={theme.textSecondary} />
+            <Text style={styles.moreMenuItemTxt}>Undo</Text>
+          </TouchableOpacity>
+        )}
+        {canRedo && (
+          <TouchableOpacity
+            style={styles.moreMenuItem}
+            onPress={() => { setMoreMenuOpen(false); redo() }}
+          >
+            <Ionicons name="arrow-redo-outline" size={16} color={theme.textSecondary} />
+            <Text style={styles.moreMenuItemTxt}>Redo</Text>
+          </TouchableOpacity>
+        )}
+        {waypoints.length >= 2 && (
+          <TouchableOpacity
+            style={styles.moreMenuItem}
+            onPress={() => { setMoreMenuOpen(false); handleExportGpx() }}
+          >
+            <Ionicons name="download-outline" size={16} color={theme.textSecondary} />
+            <Text style={styles.moreMenuItemTxt}>Export GPX</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={styles.moreMenuItem}
+          onPress={() => { setMoreMenuOpen(false); handleImportRouteGpx() }}
+        >
+          <Ionicons name="cloud-upload-outline" size={16} color={theme.textSecondary} />
+          <Text style={styles.moreMenuItemTxt}>Import GPX</Text>
+        </TouchableOpacity>
+        {waypoints.length >= 2 && (
+          <TouchableOpacity
+            style={styles.moreMenuItem}
+            onPress={() => { setMoreMenuOpen(false); reverseRoute() }}
+          >
+            <Ionicons name="swap-vertical-outline" size={16} color={theme.textSecondary} />
+            <Text style={styles.moreMenuItemTxt}>Reverse Route</Text>
+          </TouchableOpacity>
+        )}
+        {waypoints.length > 0 && (
+          <TouchableOpacity
+            style={styles.moreMenuItem}
+            onPress={() => { setMoreMenuOpen(false); handleClear() }}
+          >
+            <Ionicons name="trash-outline" size={16} color={theme.accentRed} />
+            <Text style={[styles.moreMenuItemTxt, { color: theme.accentRed }]}>Clear Route</Text>
+          </TouchableOpacity>
+        )}
+      </NativeSheet>
 
       {/* Segmented sub-nav */}
       <View style={styles.segmentRow}>

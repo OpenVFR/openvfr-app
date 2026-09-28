@@ -15,11 +15,12 @@
 
 import React, { useState } from 'react'
 import {
-  Modal, View, Text, TextInput, TouchableOpacity,
+  View, Text, TextInput, TouchableOpacity,
   StyleSheet, ActivityIndicator,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import type { SimStatus } from '../hooks/useSimInput'
+import { NativeSheet } from './NativeSheet'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 interface Props {
@@ -52,102 +53,102 @@ export function SimConnectSheet({ simStatus, onStartUdp, onStartWs, onStop }: Pr
         />
       </TouchableOpacity>
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setOpen(false)} />
-
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-
+      <NativeSheet
+        isPresented={open}
+        onDismiss={() => setOpen(false)}
+        testID="simconnect-sheet"
+        header={(
           <View style={styles.header}>
             <Text style={styles.title}>Simulator / External GPS</Text>
             <TouchableOpacity onPress={() => setOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="close" size={18} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
+        )}
+      >
 
-          {/* Status banner */}
-          {simStatus.mode !== 'off' && (
-            <View style={[
-              styles.statusBanner,
-              simStatus.mode === 'error' && styles.statusError,
-              (simStatus.mode === 'udp' || simStatus.mode === 'ws') && styles.statusOk,
-            ]}>
-              <ActivityIndicator
-                size="small"
-                color={simStatus.mode === 'error' ? theme.statusDanger : theme.accentBlue}
-                animating={simStatus.mode === 'udp' && !simStatus.receiving}
-              />
-              <Text style={[styles.statusTxt, simStatus.mode === 'error' && styles.statusTxtError]}>
-                {simStatus.mode === 'udp' && simStatus.receiving && `Receiving data on UDP ${simStatus.port}`}
-                {simStatus.mode === 'udp' && !simStatus.receiving && `Listening on UDP ${simStatus.port} — waiting for simulator…`}
-                {simStatus.mode === 'ws'    && `Connected: ${simStatus.url}`}
-                {simStatus.mode === 'error' && simStatus.message}
-              </Text>
-              <TouchableOpacity onPress={onStop}>
-                <Text style={styles.disconnectBtn}>Disconnect</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          <View style={styles.body}>
-            {/* Mode A — UDP */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Ionicons name="wifi-outline" size={16} color={theme.accentBlue} />
-                <Text style={styles.cardTitle}>UDP Auto-detect</Text>
-                <View style={styles.badge}><Text style={styles.badgeTxt}>Recommended</Text></View>
-              </View>
-              <Text style={styles.cardDesc}>
-                X-Plane: Settings → Network → enable UDP broadcast "on ALL devices"{'\n'}
-                MSFS: Install a free EFB-broadcast bridge add-on — broadcasts automatically.{'\n'}
-                Both send XGPS packets on UDP 49002 to all devices on the LAN.
-              </Text>
-              <TouchableOpacity
-                style={[styles.btn, connected && styles.btnDisabled]}
-                onPress={onStartUdp}
-                disabled={connected}
-              >
-                <Text style={styles.btnTxt}>Listen on UDP 49002</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Mode B — WebSocket bridge */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Ionicons name="link-outline" size={16} color={theme.textMuted} />
-                <Text style={styles.cardTitle}>WebSocket Bridge</Text>
-                <View style={[styles.badge, styles.badgeFallback]}><Text style={styles.badgeTxt}>Fallback</Text></View>
-              </View>
-              <Text style={styles.cardDesc}>
-                Run scripts/nmea-ws-bridge.mjs on your sim PC.{'\n'}
-                Enter the PC's LAN IP below. Supports XGPS and NMEA sentences.
-              </Text>
-              <TextInput
-                style={styles.input}
-                value={wsUrl}
-                onChangeText={setWsUrl}
-                placeholder="ws://192.168.1.x:5104"
-                placeholderTextColor={theme.textFaint}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-              />
-              <TouchableOpacity
-                style={[styles.btn, styles.btnSecondary, connected && styles.btnDisabled]}
-                onPress={() => onStartWs(wsUrl.trim())}
-                disabled={connected || !wsUrl.trim().startsWith('ws')}
-              >
-                <Text style={[styles.btnTxt, styles.btnTxtSecondary]}>Connect via WebSocket</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.note}>
-              Once connected the app uses the simulator's position instead of device GPS.
-              Tap "Disconnect" in the status banner or reopen this panel to stop.
+        {/* Status banner */}
+        {simStatus.mode !== 'off' && (
+          <View style={[
+            styles.statusBanner,
+            simStatus.mode === 'error' && styles.statusError,
+            (simStatus.mode === 'udp' || simStatus.mode === 'ws') && styles.statusOk,
+          ]}>
+            <ActivityIndicator
+              size="small"
+              color={simStatus.mode === 'error' ? theme.statusDanger : theme.accentBlue}
+              animating={simStatus.mode === 'udp' && !simStatus.receiving}
+            />
+            <Text style={[styles.statusTxt, simStatus.mode === 'error' && styles.statusTxtError]}>
+              {simStatus.mode === 'udp' && simStatus.receiving && `Receiving data on UDP ${simStatus.port}`}
+              {simStatus.mode === 'udp' && !simStatus.receiving && `Listening on UDP ${simStatus.port} — waiting for simulator…`}
+              {simStatus.mode === 'ws'    && `Connected: ${simStatus.url}`}
+              {simStatus.mode === 'error' && simStatus.message}
             </Text>
+            <TouchableOpacity onPress={onStop}>
+              <Text style={styles.disconnectBtn}>Disconnect</Text>
+            </TouchableOpacity>
           </View>
+        )}
+
+        <View style={styles.body}>
+          {/* Mode A — UDP */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="wifi-outline" size={16} color={theme.accentBlue} />
+              <Text style={styles.cardTitle}>UDP Auto-detect</Text>
+              <View style={styles.badge}><Text style={styles.badgeTxt}>Recommended</Text></View>
+            </View>
+            <Text style={styles.cardDesc}>
+              X-Plane: Settings → Network → enable UDP broadcast "on ALL devices"{'\n'}
+              MSFS: Install a free EFB-broadcast bridge add-on — broadcasts automatically.{'\n'}
+              Both send XGPS packets on UDP 49002 to all devices on the LAN.
+            </Text>
+            <TouchableOpacity
+              style={[styles.btn, connected && styles.btnDisabled]}
+              onPress={onStartUdp}
+              disabled={connected}
+            >
+              <Text style={styles.btnTxt}>Listen on UDP 49002</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Mode B — WebSocket bridge */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="link-outline" size={16} color={theme.textMuted} />
+              <Text style={styles.cardTitle}>WebSocket Bridge</Text>
+              <View style={[styles.badge, styles.badgeFallback]}><Text style={styles.badgeTxt}>Fallback</Text></View>
+            </View>
+            <Text style={styles.cardDesc}>
+              Run scripts/nmea-ws-bridge.mjs on your sim PC.{'\n'}
+              Enter the PC's LAN IP below. Supports XGPS and NMEA sentences.
+            </Text>
+            <TextInput
+              style={styles.input}
+              value={wsUrl}
+              onChangeText={setWsUrl}
+              placeholder="ws://192.168.1.x:5104"
+              placeholderTextColor={theme.textFaint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+            />
+            <TouchableOpacity
+              style={[styles.btn, styles.btnSecondary, connected && styles.btnDisabled]}
+              onPress={() => onStartWs(wsUrl.trim())}
+              disabled={connected || !wsUrl.trim().startsWith('ws')}
+            >
+              <Text style={[styles.btnTxt, styles.btnTxtSecondary]}>Connect via WebSocket</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.note}>
+            Once connected the app uses the simulator's position instead of device GPS.
+            Tap "Disconnect" in the status banner or reopen this panel to stop.
+          </Text>
         </View>
-      </Modal>
+      </NativeSheet>
     </>
   )
 }

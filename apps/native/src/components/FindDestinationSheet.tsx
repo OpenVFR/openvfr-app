@@ -11,7 +11,7 @@
  */
 
 import React from 'react'
-import { View, Text, TouchableOpacity, Modal, TextInput, FlatList } from 'react-native'
+import { View, Text, TouchableOpacity, TextInput, FlatList } from 'react-native'
 import Slider from '@react-native-community/slider'
 import { Ionicons } from '@expo/vector-icons'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -19,6 +19,7 @@ import { getTileUrls } from '../config'
 import type { AircraftProfileDocType } from '../db'
 import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
 import { parseCoordinate, formatCoordinate } from '@open-vfr/shared/coordinateParse'
+import { NativeSheet, useSheetMaxHeight } from './NativeSheet'
 import {
   parseAerodromesGeoJson, filterAndSortAerodromes, computeGlideRangeNm,
   aerodromeToWaypoint, hasAvgas, hasJet, isHard, isGrass, fmtBrg, fmtDist,
@@ -52,6 +53,7 @@ const SURF_OPTS: { v: SurfaceFilter; label: string }[] = [
 
 export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyTo, onAddToRoute }: Props) {
   const styles = useThemedStyles(makeStyles)
+  const sheetMaxH = useSheetMaxHeight()
   const [open, setOpen] = React.useState(false)
   const [aerodromes, setAerodromes] = React.useState<AerodromeEntry[]>([])
   const [search, setSearch] = React.useState('')
@@ -126,10 +128,12 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
         <Ionicons name="search-outline" size={20} color={theme.textSecondary} />
       </TouchableOpacity>
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setOpen(false)} />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+      <NativeSheet
+        isPresented={open}
+        onDismiss={() => setOpen(false)}
+        testID="find-destination-sheet"
+        scroll={false}
+        header={(
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Find a Destination</Text>
             {glideRangeNm !== null && (
@@ -139,84 +143,85 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
               <Ionicons name="close" size={18} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
+        )}
+      >
 
-          <View style={styles.filters}>
-            <TextInput
-              style={styles.search}
-              value={search}
-              onChangeText={setSearch}
-              testID="find-destination-search"
-              placeholder="Search ICAO or name…"
-              placeholderTextColor={theme.textFaint}
-              autoCapitalize="characters"
-            />
+        <View style={styles.filters}>
+          <TextInput
+            style={styles.search}
+            value={search}
+            onChangeText={setSearch}
+            testID="find-destination-search"
+            placeholder="Search ICAO or name…"
+            placeholderTextColor={theme.textFaint}
+            autoCapitalize="characters"
+          />
 
-            <View style={styles.filterRow}>
-              <Text style={styles.filterLabel}>Fuel</Text>
-              {FUEL_OPTS.map(({ v, label }) => (
-                <TouchableOpacity
-                  key={v}
-                  style={[styles.filterBtn, fuelFilter === v && styles.filterBtnActive]}
-                  onPress={() => setFuelFilter(v)}
-                >
-                  <Text style={[styles.filterBtnTxt, fuelFilter === v && styles.filterBtnTxtActive]}>{label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <View style={styles.filterRow}>
-              <Text style={styles.filterLabel}>Surface</Text>
-              {SURF_OPTS.map(({ v, label }) => (
-                <TouchableOpacity
-                  key={v}
-                  style={[styles.filterBtn, surfFilter === v && styles.filterBtnActive]}
-                  onPress={() => setSurfFilter(v)}
-                >
-                  <Text style={[styles.filterBtnTxt, surfFilter === v && styles.filterBtnTxtActive]}>{label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.runwayRow}>
-              <Text style={styles.runwayTxt}>Min runway: {minRunwayM > 0 ? `${minRunwayM} m` : 'Any'}</Text>
-              <Slider
-                style={{ flex: 1 }}
-                minimumValue={0}
-                maximumValue={2000}
-                step={100}
-                value={minRunwayM}
-                onValueChange={setMinRunway}
-                minimumTrackTintColor={theme.accentBlue}
-                maximumTrackTintColor={theme.borderDefault}
-                thumbTintColor={theme.accentBlue}
-              />
-            </View>
+          <View style={styles.filterRow}>
+            <Text style={styles.filterLabel}>Fuel</Text>
+            {FUEL_OPTS.map(({ v, label }) => (
+              <TouchableOpacity
+                key={v}
+                style={[styles.filterBtn, fuelFilter === v && styles.filterBtnActive]}
+                onPress={() => setFuelFilter(v)}
+              >
+                <Text style={[styles.filterBtnTxt, fuelFilter === v && styles.filterBtnTxtActive]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={styles.filterRow}>
+            <Text style={styles.filterLabel}>Surface</Text>
+            {SURF_OPTS.map(({ v, label }) => (
+              <TouchableOpacity
+                key={v}
+                style={[styles.filterBtn, surfFilter === v && styles.filterBtnActive]}
+                onPress={() => setSurfFilter(v)}
+              >
+                <Text style={[styles.filterBtnTxt, surfFilter === v && styles.filterBtnTxtActive]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
-          {coord && (
-            <TouchableOpacity
-              style={[styles.row, styles.rowMain]}
-              onPress={() => { onFlyTo(coord.lat, coord.lng); setOpen(false) }}
-            >
-              <View style={styles.rowTop}>
-                <Text style={styles.rowIcao}>Go to</Text>
-                <Text style={styles.rowName} numberOfLines={1}>{formatCoordinate(coord.lat, coord.lng, coord.format)}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-
-          <FlatList
-            data={sorted}
-            keyExtractor={a => a.icao}
-            renderItem={renderRow}
-            style={styles.list}
-            ListEmptyComponent={
-              <Text style={styles.empty}>
-                {aerodromes.length === 0 ? 'Loading…' : 'No aerodromes match your filters'}
-              </Text>
-            }
-          />
+          <View style={styles.runwayRow}>
+            <Text style={styles.runwayTxt}>Min runway: {minRunwayM > 0 ? `${minRunwayM} m` : 'Any'}</Text>
+            <Slider
+              style={{ flex: 1 }}
+              minimumValue={0}
+              maximumValue={2000}
+              step={100}
+              value={minRunwayM}
+              onValueChange={setMinRunway}
+              minimumTrackTintColor={theme.accentBlue}
+              maximumTrackTintColor={theme.borderDefault}
+              thumbTintColor={theme.accentBlue}
+            />
+          </View>
         </View>
-      </Modal>
+
+        {coord && (
+          <TouchableOpacity
+            style={[styles.row, styles.rowMain]}
+            onPress={() => { onFlyTo(coord.lat, coord.lng); setOpen(false) }}
+          >
+            <View style={styles.rowTop}>
+              <Text style={styles.rowIcao}>Go to</Text>
+              <Text style={styles.rowName} numberOfLines={1}>{formatCoordinate(coord.lat, coord.lng, coord.format)}</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
+        <FlatList
+          data={sorted}
+          keyExtractor={a => a.icao}
+          renderItem={renderRow}
+          style={[styles.list, { maxHeight: sheetMaxH - 200 }]}
+          ListEmptyComponent={
+            <Text style={styles.empty}>
+              {aerodromes.length === 0 ? 'Loading…' : 'No aerodromes match your filters'}
+            </Text>
+          }
+        />
+      </NativeSheet>
     </>
   )
 }

@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import {
-  Modal, View, Text, TouchableOpacity, StyleSheet, TextInput,
+  View, Text, TouchableOpacity, StyleSheet, TextInput,
   FlatList, ActivityIndicator, RefreshControl, Alert,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
@@ -23,6 +23,7 @@ import type { RouteDocType, LegOverride, AircraftProfileDocType } from '../types
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { SyncState } from '../hooks/useRouteSync'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
+import { NativeSheet, useSheetMaxHeight } from './NativeSheet'
 import { distanceNm } from '../utils/routeCalc'
 
 interface Props {
@@ -77,6 +78,7 @@ export function RouteLibrarySheet({
 }: Props) {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
+  const sheetMaxH = useSheetMaxHeight()
   const [internalOpen, setInternalOpen] = useState(false)
   const open    = controlledOpen ?? internalOpen
   const setOpen = onOpenChange ?? setInternalOpen
@@ -284,12 +286,12 @@ export function RouteLibrarySheet({
         </TouchableOpacity>
       )}
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setOpen(false)} />
-
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-
+      <NativeSheet
+        isPresented={open}
+        onDismiss={() => setOpen(false)}
+        testID="route-library-sheet"
+        scroll={false}
+        header={(
           <View style={styles.header}>
             <Text style={styles.title}>Route Library</Text>
             <TouchableOpacity onPress={handleImportGpx} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginRight: scaledTheme.space2 }}>
@@ -308,164 +310,166 @@ export function RouteLibrarySheet({
               <Ionicons name="close" size={18} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
+        )}
+      >
 
-          {/* Save current route */}
-          {waypoints.length >= 2 && (
-            <View style={styles.saveSection}>
-              {linkedRoute ? (
-                <>
-                  <View style={styles.editingRow}>
-                    <Text style={styles.editingLabel} numberOfLines={1}>
-                      Editing: <Text style={styles.editingName}>{linkedRoute.name}</Text>
-                      {dirty ? <Text style={styles.dirtyDot}> ●</Text> : null}
-                    </Text>
-                    <View style={styles.editingActions}>
-                      <TouchableOpacity
-                        style={[styles.editBtn, !dirty && styles.editBtnDisabled]}
-                        onPress={handleSaveInPlace}
-                        disabled={!dirty}
-                      >
-                        <Text style={[styles.editBtnTxt, !dirty && styles.editBtnTxtDisabled]}>Save</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.editBtn} onPress={openSaveAs}>
-                        <Text style={styles.editBtnTxt}>Save As…</Text>
-                      </TouchableOpacity>
-                    </View>
+        {/* Save current route */}
+        {waypoints.length >= 2 && (
+          <View style={styles.saveSection}>
+            {linkedRoute ? (
+              <>
+                <View style={styles.editingRow}>
+                  <Text style={styles.editingLabel} numberOfLines={1}>
+                    Editing: <Text style={styles.editingName}>{linkedRoute.name}</Text>
+                    {dirty ? <Text style={styles.dirtyDot}> ●</Text> : null}
+                  </Text>
+                  <View style={styles.editingActions}>
+                    <TouchableOpacity
+                      style={[styles.editBtn, !dirty && styles.editBtnDisabled]}
+                      onPress={handleSaveInPlace}
+                      disabled={!dirty}
+                    >
+                      <Text style={[styles.editBtnTxt, !dirty && styles.editBtnTxtDisabled]}>Save</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.editBtn} onPress={openSaveAs}>
+                      <Text style={styles.editBtnTxt}>Save As…</Text>
+                    </TouchableOpacity>
                   </View>
-                  {saveAsOpen && (
-                    <View style={styles.saveRow}>
-                      <TextInput
-                        style={styles.saveInput}
-                        value={saveName}
-                        onChangeText={setSaveName}
-                        placeholder="New route name"
-                        placeholderTextColor={theme.textFaint}
-                        autoFocus
-                        returnKeyType="done"
-                        onSubmitEditing={handleSaveAs}
-                      />
-                      <TouchableOpacity style={styles.saveConfirm} onPress={handleSaveAs}>
-                        <Text style={styles.saveConfirmTxt}>Save</Text>
+                </View>
+                {saveAsOpen && (
+                  <View style={styles.saveRow}>
+                    <TextInput
+                      style={styles.saveInput}
+                      value={saveName}
+                      onChangeText={setSaveName}
+                      placeholder="New route name"
+                      placeholderTextColor={theme.textFaint}
+                      autoFocus
+                      returnKeyType="done"
+                      onSubmitEditing={handleSaveAs}
+                    />
+                    <TouchableOpacity style={styles.saveConfirm} onPress={handleSaveAs}>
+                      <Text style={styles.saveConfirmTxt}>Save</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setSaveAsOpen(false)}>
+                      <Ionicons name="close" size={16} color={theme.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
+            ) : !saving ? (
+              <TouchableOpacity style={styles.saveBtn} onPress={() => setSaving(true)}>
+                <Ionicons name="save-outline" size={14} color={theme.accentBlue} />
+                <Text style={styles.saveBtnTxt}>Save current route…</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.saveRow}>
+                <TextInput
+                  style={styles.saveInput}
+                  value={saveName}
+                  onChangeText={setSaveName}
+                  placeholder="Route name"
+                  placeholderTextColor={theme.textFaint}
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={handleSave}
+                />
+                <TouchableOpacity style={styles.saveConfirm} onPress={handleSave}>
+                  <Text style={styles.saveConfirmTxt}>Save</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setSaving(false)}>
+                  <Ionicons name="close" size={16} color={theme.textMuted} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Transient "switched aircraft" confirmation */}
+        {switchMsg && (
+          <View style={styles.switchNote}>
+            <Ionicons name="checkmark-circle-outline" size={13} color={theme.accentBlue} />
+            <Text style={styles.switchNoteTxt}>{switchMsg}</Text>
+          </View>
+        )}
+
+        {/* Route list */}
+        {routes.length === 0 ? (
+          <View style={styles.empty}>
+            <Ionicons name="map-outline" size={32} color={theme.textFaint} />
+            <Text style={styles.emptyTxt}>No saved routes</Text>
+            <Text style={styles.emptyHint}>Save the current route to build your library.</Text>
+          </View>
+        ) : (
+          <FlatList
+            style={{ maxHeight: sheetMaxH - 260 }}
+            data={routes}
+            keyExtractor={r => r.id}
+            renderItem={({ item: route }) => {
+              const dist = totalNm(route.waypoints)
+              const isRenaming = renaming === route.id
+              return (
+                <View style={styles.routeRow}>
+                  <TouchableOpacity style={styles.routeInfo} onPress={() => handleLoad(route)}>
+                    {isRenaming ? (
+                      <View style={styles.renameRow}>
+                        <TextInput
+                          style={styles.renameInput}
+                          value={renameTxt}
+                          onChangeText={setRenameTxt}
+                          autoFocus
+                          returnKeyType="done"
+                          onSubmitEditing={() => handleRename(route.id)}
+                        />
+                        <TouchableOpacity onPress={() => handleRename(route.id)}>
+                          <Text style={styles.renameSave}>Save</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => setRenaming(null)}>
+                          <Ionicons name="close" size={14} color={theme.textMuted} />
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <>
+                        <Text style={styles.routeName} numberOfLines={1}>{route.name}</Text>
+                        <Text style={styles.routeMeta}>
+                          {route.waypoints.length} WP · {dist.toFixed(0)} NM · {fmtDate(route.updatedAt)}
+                          {route.aircraftId ? (() => {
+                            const p = aircraftProfiles.find(p => p.id === route.aircraftId)
+                            return p
+                              ? ` · ${p.registration.trim() || p.name}`
+                              : ' · ⚠ missing aircraft'
+                          })() : ''}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                  {!isRenaming && (
+                    <View style={styles.routeActions}>
+                      <TouchableOpacity style={styles.actionBtn} onPress={() => handleExportGpx(route)}>
+                        <Ionicons name="share-outline" size={14} color={theme.textMuted} />
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => setSaveAsOpen(false)}>
-                        <Ionicons name="close" size={16} color={theme.textMuted} />
+                      <TouchableOpacity
+                        style={styles.actionBtn}
+                        onPress={() => { setRenaming(route.id); setRenameTxt(route.name) }}
+                      >
+                        <Ionicons name="pencil-outline" size={14} color={theme.textMuted} />
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.actionBtn} onPress={() => handleDelete(route)}>
+                        <Ionicons name="trash-outline" size={14} color={theme.statusDanger} />
                       </TouchableOpacity>
                     </View>
                   )}
-                </>
-              ) : !saving ? (
-                <TouchableOpacity style={styles.saveBtn} onPress={() => setSaving(true)}>
-                  <Ionicons name="save-outline" size={14} color={theme.accentBlue} />
-                  <Text style={styles.saveBtnTxt}>Save current route…</Text>
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.saveRow}>
-                  <TextInput
-                    style={styles.saveInput}
-                    value={saveName}
-                    onChangeText={setSaveName}
-                    placeholder="Route name"
-                    placeholderTextColor={theme.textFaint}
-                    autoFocus
-                    returnKeyType="done"
-                    onSubmitEditing={handleSave}
-                  />
-                  <TouchableOpacity style={styles.saveConfirm} onPress={handleSave}>
-                    <Text style={styles.saveConfirmTxt}>Save</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => setSaving(false)}>
-                    <Ionicons name="close" size={16} color={theme.textMuted} />
-                  </TouchableOpacity>
                 </View>
-              )}
-            </View>
-          )}
-
-          {/* Transient "switched aircraft" confirmation */}
-          {switchMsg && (
-            <View style={styles.switchNote}>
-              <Ionicons name="checkmark-circle-outline" size={13} color={theme.accentBlue} />
-              <Text style={styles.switchNoteTxt}>{switchMsg}</Text>
-            </View>
-          )}
-
-          {/* Route list */}
-          {routes.length === 0 ? (
-            <View style={styles.empty}>
-              <Ionicons name="map-outline" size={32} color={theme.textFaint} />
-              <Text style={styles.emptyTxt}>No saved routes</Text>
-              <Text style={styles.emptyHint}>Save the current route to build your library.</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={routes}
-              keyExtractor={r => r.id}
-              renderItem={({ item: route }) => {
-                const dist = totalNm(route.waypoints)
-                const isRenaming = renaming === route.id
-                return (
-                  <View style={styles.routeRow}>
-                    <TouchableOpacity style={styles.routeInfo} onPress={() => handleLoad(route)}>
-                      {isRenaming ? (
-                        <View style={styles.renameRow}>
-                          <TextInput
-                            style={styles.renameInput}
-                            value={renameTxt}
-                            onChangeText={setRenameTxt}
-                            autoFocus
-                            returnKeyType="done"
-                            onSubmitEditing={() => handleRename(route.id)}
-                          />
-                          <TouchableOpacity onPress={() => handleRename(route.id)}>
-                            <Text style={styles.renameSave}>Save</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => setRenaming(null)}>
-                            <Ionicons name="close" size={14} color={theme.textMuted} />
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <>
-                          <Text style={styles.routeName} numberOfLines={1}>{route.name}</Text>
-                          <Text style={styles.routeMeta}>
-                            {route.waypoints.length} WP · {dist.toFixed(0)} NM · {fmtDate(route.updatedAt)}
-                            {route.aircraftId ? (() => {
-                              const p = aircraftProfiles.find(p => p.id === route.aircraftId)
-                              return p
-                                ? ` · ${p.registration.trim() || p.name}`
-                                : ' · ⚠ missing aircraft'
-                            })() : ''}
-                          </Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                    {!isRenaming && (
-                      <View style={styles.routeActions}>
-                        <TouchableOpacity style={styles.actionBtn} onPress={() => handleExportGpx(route)}>
-                          <Ionicons name="share-outline" size={14} color={theme.textMuted} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.actionBtn}
-                          onPress={() => { setRenaming(route.id); setRenameTxt(route.name) }}
-                        >
-                          <Ionicons name="pencil-outline" size={14} color={theme.textMuted} />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionBtn} onPress={() => handleDelete(route)}>
-                          <Ionicons name="trash-outline" size={14} color={theme.statusDanger} />
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                )
-              }}
-              ItemSeparatorComponent={() => <View style={styles.sep} />}
-              contentContainerStyle={{ paddingBottom: 24 }}
-              refreshControl={onRefreshCloud ? (
-                <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accentBlue} />
-              ) : undefined}
-            />
-          )}
-        </View>
-      </Modal>
+              )
+            }}
+            ItemSeparatorComponent={() => <View style={styles.sep} />}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            refreshControl={onRefreshCloud ? (
+              <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accentBlue} />
+            ) : undefined}
+          />
+        )}
+      </NativeSheet>
     </>
   )
 }

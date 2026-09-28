@@ -9,8 +9,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
-import { View, TouchableOpacity, Text, Alert, TextInput, Modal, ScrollView, useWindowDimensions, Linking } from 'react-native'
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
+import { View, TouchableOpacity, Text, Alert, TextInput, ScrollView, useWindowDimensions, Linking } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as KeepAwake from 'expo-keep-awake'
 import type { Feature, FeatureCollection, Point } from 'geojson'
@@ -107,6 +106,7 @@ import { advancePosition, distanceNm, bearingDeg } from '../utils/routeCalc'
 import type { RouteWaypoint } from '../types/db'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { isLowMemoryDevice } from '../utils/deviceMemory'
+import { NativeSheet } from '../components/NativeSheet'
 
 function isAerodrome(p: Record<string, unknown>) {
   // `icao` alone isn't a safe discriminator -- a real minority of aerodromes
@@ -1290,37 +1290,36 @@ export function MapScreen() {
             absolute overlay on top of the MapLibre surface) so Android's
             adjustResize keyboard handling actually applies — matches
             RouteLibrarySheet/UserWaypointLibrarySheet's Modal pattern. */}
-        <Modal visible={!!savingWpAt} transparent animationType="slide" onRequestClose={() => { setSavingWpAt(null); setWpSaveName('') }}>
-          <View style={styles.modalRoot}>
-          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => { setSavingWpAt(null); setWpSaveName('') }} />
-          <KeyboardAvoidingView behavior="padding" style={{ width: '100%' }}>
-            <View style={styles.modalSheet}>
-              <View style={styles.handle} />
-              <Text style={styles.longPressMenuCoord}>
-                Save waypoint at {savingWpAt?.lat.toFixed(5)}, {savingWpAt?.lng.toFixed(5)}
-              </Text>
-              <TextInput
-                style={styles.wpNameInput}
-                value={wpSaveName}
-                onChangeText={setWpSaveName}
-                placeholder="Name"
-                placeholderTextColor={theme.textFaint}
-                autoFocus
-                returnKeyType="done"
-                onSubmitEditing={handleConfirmSaveWaypoint}
-              />
-              <View style={{ flexDirection: 'row', gap: scaledTheme.space2 }}>
-                <TouchableOpacity style={styles.longPressMenuBtn} onPress={handleConfirmSaveWaypoint}>
-                  <Text style={styles.longPressMenuBtnTxt}>Save</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.longPressMenuCancel} onPress={() => { setSavingWpAt(null); setWpSaveName('') }}>
-                  <Text style={styles.longPressMenuCancelTxt}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </KeyboardAvoidingView>
+        <NativeSheet
+          isPresented={!!savingWpAt}
+          onDismiss={() => { setSavingWpAt(null); setWpSaveName('') }}
+          title="Save waypoint"
+          testID="save-waypoint-sheet"
+        >
+          <View style={{ paddingHorizontal: scaledTheme.space4, paddingTop: scaledTheme.space3, gap: scaledTheme.space2 }}>
+          <Text style={styles.longPressMenuCoord}>
+            Save waypoint at {savingWpAt?.lat.toFixed(5)}, {savingWpAt?.lng.toFixed(5)}
+          </Text>
+          <TextInput
+            style={styles.wpNameInput}
+            value={wpSaveName}
+            onChangeText={setWpSaveName}
+            placeholder="Name"
+            placeholderTextColor={theme.textFaint}
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={handleConfirmSaveWaypoint}
+          />
+          <View style={{ flexDirection: 'row', gap: scaledTheme.space2 }}>
+            <TouchableOpacity style={styles.longPressMenuBtn} onPress={handleConfirmSaveWaypoint}>
+              <Text style={styles.longPressMenuBtnTxt}>Save</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.longPressMenuCancel} onPress={() => { setSavingWpAt(null); setWpSaveName('') }}>
+              <Text style={styles.longPressMenuCancelTxt}>Cancel</Text>
+            </TouchableOpacity>
           </View>
-        </Modal>
+          </View>
+        </NativeSheet>
 
         {/* Consolidated notification stack — top-centre, severity-ordered */}
         <NotificationCenter

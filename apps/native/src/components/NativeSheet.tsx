@@ -19,9 +19,9 @@
  *    the close button all end in `onClose`, which the caller maps to
  *    `setOpen(false)`.
  */
-import React, { useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
-  View, Text, TouchableOpacity, ScrollView, useWindowDimensions,
+  View, Text, TouchableOpacity, ScrollView, useWindowDimensions, Keyboard,
   type StyleProp, type ViewStyle,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
@@ -32,6 +32,24 @@ import { theme, useThemedStyles } from '../styles/theme'
 const MAX_FRACTION = 0.85
 /** Header height guess used until the real chrome height is measured. */
 const CHROME_GUESS = 64
+
+/**
+ * Height a sheet may occupy: MAX_FRACTION of the window minus any visible
+ * keyboard. The native sheet moves up above the keyboard but does not shrink
+ * its content, so without this a tall sheet gets its header pushed off the
+ * top of the screen while typing. Sheets with their own inner lists should
+ * derive that list's maxHeight from this too.
+ */
+export function useSheetMaxHeight(): number {
+  const { height: winH } = useWindowDimensions()
+  const [kbH, setKbH] = useState(0)
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => setKbH(e.endCoordinates.height))
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKbH(0))
+    return () => { show.remove(); hide.remove() }
+  }, [])
+  return (winH - kbH) * MAX_FRACTION
+}
 
 interface Props {
   isPresented: boolean
@@ -59,13 +77,13 @@ export function NativeSheet({
   testID, closeTestID, scroll = true, headerRight,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
-  const { height: winH } = useWindowDimensions()
+  const sheetMaxH = useSheetMaxHeight()
   const sheetRef = useRef<BottomSheetMethods>(null)
   const [chromeH, setChromeH] = React.useState(CHROME_GUESS)
   if (!isPresented) return null
 
   const close = () => sheetRef.current?.close()
-  const maxScrollH = winH * MAX_FRACTION - chromeH
+  const maxScrollH = sheetMaxH - chromeH
 
   return (
     <BottomSheet

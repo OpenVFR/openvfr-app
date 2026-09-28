@@ -4,7 +4,7 @@
  */
 
 import React, { useRef, useCallback, useMemo, useEffect, useState } from 'react'
-import { StyleSheet, View, Modal, Text, TouchableOpacity, ScrollView, Linking } from 'react-native'
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Linking } from 'react-native'
 import {
   Map,
   Camera,
@@ -32,6 +32,7 @@ import { ATTRIBUTION_SOURCES } from '@open-vfr/shared/attributionSources'
 import { fetchAerodromeNotamTexts } from '@open-vfr/shared/fetchNotam'
 import { API_BASE, TILE_BASE } from '../config'
 import { LIGHT } from '@protomaps/basemaps'
+import { NativeSheet } from './NativeSheet'
 import { waitForTileManifest } from '@open-vfr/shared/tileManifest'
 import { authHeaders } from '../utils/authClient'
 import {
@@ -2854,37 +2855,23 @@ export function AviationMap({
       >
         <Text style={attributionStyles.buttonText}>i</Text>
       </TouchableOpacity>
-      <Modal
-        visible={showAttribution}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowAttribution(false)}
+      <NativeSheet
+        isPresented={showAttribution}
+        onDismiss={() => setShowAttribution(false)}
+        title="Map data & attribution"
+        testID="attribution-sheet"
       >
-        <TouchableOpacity
-          style={attributionStyles.backdrop}
-          activeOpacity={1}
-          onPress={() => setShowAttribution(false)}
-        >
-          <TouchableOpacity activeOpacity={1} style={attributionStyles.card}>
-            <Text style={attributionStyles.title}>Map data & attribution</Text>
-            <ScrollView>
-              {ATTRIBUTION_SOURCES.map((s) => (
-                <TouchableOpacity
-                  key={s.name}
-                  style={attributionStyles.row}
-                  onPress={() => Linking.openURL(s.url)}
-                >
-                  <Text style={attributionStyles.rowName}>{s.name}</Text>
-                  <Text style={attributionStyles.rowNote}>{s.note}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <TouchableOpacity style={attributionStyles.closeBtn} onPress={() => setShowAttribution(false)}>
-              <Text style={attributionStyles.closeBtnText}>Close</Text>
-            </TouchableOpacity>
+        {ATTRIBUTION_SOURCES.map((s) => (
+          <TouchableOpacity
+            key={s.name}
+            style={attributionStyles.row}
+            onPress={() => Linking.openURL(s.url)}
+          >
+            <Text style={attributionStyles.rowName}>{s.name}</Text>
+            <Text style={attributionStyles.rowNote}>{s.note}</Text>
           </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+        ))}
+      </NativeSheet>
 
       {/* Drag indicator overlay */}
       {dragging && (
