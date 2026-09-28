@@ -97,7 +97,9 @@ schemas documented in `docs/architecture.md`.
 
 ## 3. Auth / API configuration
 
-The `api` service (Hono) needs these environment variables — see
+The `api` service (Hono) needs these environment variables — copy the
+root `.env.example` to `.env` (and `apps/native/.env.example` /
+`apps/web/.env.example` for the clients) and fill in; see
 `docker-compose.yml` for the full list and defaults:
 
 - `BETTER_AUTH_SECRET` — 32+ character random secret

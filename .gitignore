@@ -49,6 +49,9 @@ Thumbs.db
 *.p12
 *.mobileprovision
 *.p8
+# written transiently by the build/publish workflows (eas.json submit paths)
+google-service-account.json
+app-store-connect-api-key.p8
 
 # logs
 npm-debug.log*
@@ -68,3 +71,6 @@ apps/native/node_modules/
 apps/native/.env
 phone_screen.png
 device.png
+
+# Local scratch / agent handoff notes (see AGENTS.md)
+.scratch/
