@@ -3,7 +3,8 @@
  */
 
 import React from 'react'
-import { Modal, View, Text, TouchableOpacity } from 'react-native'
+import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native'
+import { NativeSheet } from './NativeSheet'
 import { useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 // 'notam' kind removed -- all NOTAM point/circle/polygon taps now render
@@ -36,46 +37,39 @@ const KIND_ICON: Record<NonNullable<FeatureKind>, string> = {
 
 export function FeaturePopup({ feature, onClose, onAddToRoute }: Props) {
   const styles = useThemedStyles(makeStyles)
+  const { height: winH } = useWindowDimensions()
   if (!feature) return null
 
   const icon = feature.kind ? KIND_ICON[feature.kind] : '📌'
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-      <View style={styles.sheet}>
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.icon}>{icon}</Text>
-            <View>
-              <Text style={styles.name}>{feature.name}</Text>
-              <Text style={styles.subtitle}>{feature.subtitle}</Text>
-            </View>
+    <NativeSheet
+      isPresented
+      onDismiss={onClose}
+      title={`${icon} ${feature.name}`}
+      testID="feature-sheet"
+      height={Math.min(150 + feature.rows.length * 30 + (feature.canAddToRoute && feature.lngLat && onAddToRoute ? 64 : 0), winH * 0.5)}
+    >
+      <Text style={[styles.subtitle, { paddingHorizontal: 16, paddingTop: 8 }]}>{feature.subtitle}</Text>
+      <View style={styles.body}>
+        {feature.rows.map((r, i) => (
+          <View key={i} style={styles.row}>
+            <Text style={styles.rowLabel}>{r.label}</Text>
+            <Text style={styles.rowValue}>{r.value}</Text>
           </View>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Text style={styles.closeTxt}>✕</Text>
+        ))}
+
+        {feature.canAddToRoute && feature.lngLat && onAddToRoute && (
+          <TouchableOpacity
+            style={styles.addBtn}
+            onPress={() => { onAddToRoute(feature.lngLat!, feature.name); onClose() }}
+          >
+            <Text style={styles.addBtnTxt}>+ Add to route</Text>
           </TouchableOpacity>
-        </View>
-
-        <View style={styles.body}>
-          {feature.rows.map((r, i) => (
-            <View key={i} style={styles.row}>
-              <Text style={styles.rowLabel}>{r.label}</Text>
-              <Text style={styles.rowValue}>{r.value}</Text>
-            </View>
-          ))}
-
-          {feature.canAddToRoute && feature.lngLat && onAddToRoute && (
-            <TouchableOpacity
-              style={styles.addBtn}
-              onPress={() => { onAddToRoute(feature.lngLat!, feature.name); onClose() }}
-            >
-              <Text style={styles.addBtnTxt}>+ Add to route</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        )}
       </View>
-    </Modal>
+
+    </NativeSheet>
   )
 }
 

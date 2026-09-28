@@ -3,7 +3,8 @@
  * near 2+ candidate snap targets. Mirrors web's SnapPicker.tsx.
  */
 import React from 'react'
-import { Modal, View, Text, TouchableOpacity, Pressable } from 'react-native'
+import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native'
+import { NativeSheet } from './NativeSheet'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { CURRENT_POSITION_LABEL } from '@open-vfr/shared/snapLabels'
@@ -36,28 +37,30 @@ interface Props {
 
 export function SnapPicker({ candidates, onPick, onClose }: Props) {
   const styles = useThemedStyles(makeStyles)
+  const { height: winH } = useWindowDimensions()
   return (
-    <Modal transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={styles.panel} onPress={(e) => e.stopPropagation()}>
-          <Text style={styles.header}>Add waypoint</Text>
-          {candidates.map((c, i) => (
-            <TouchableOpacity key={i} style={styles.item} onPress={() => { onPick(c.waypoint); onClose() }}>
-              <View style={[styles.badge, { backgroundColor: KIND_COLOR[c.kind] ?? theme.textMuted }]}>
-                <Text style={styles.badgeText}>{c.kind === 'PT' ? '•' : c.kind}</Text>
-              </View>
-              <Text style={styles.name}>{c.kind === 'PT' ? CURRENT_POSITION_LABEL : (c.displayName ?? c.waypoint.name ?? '—')}</Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity style={styles.item} onPress={onClose}>
-            <View style={[styles.badge, { backgroundColor: theme.statusDanger ?? '#f87171' }]}>
-              <Text style={styles.badgeText}>✕</Text>
-            </View>
-            <Text style={styles.name}>Cancel</Text>
-          </TouchableOpacity>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <NativeSheet
+      isPresented
+      onDismiss={onClose}
+      title="Add waypoint"
+      testID="snap-picker-sheet"
+      height={Math.min(90 + (candidates.length + 1) * 52, winH * 0.6)}
+    >
+      {candidates.map((c, i) => (
+        <TouchableOpacity key={i} style={styles.item} onPress={() => { onPick(c.waypoint); onClose() }}>
+          <View style={[styles.badge, { backgroundColor: KIND_COLOR[c.kind] ?? theme.textMuted }]}>
+            <Text style={styles.badgeText}>{c.kind === 'PT' ? '•' : c.kind}</Text>
+          </View>
+          <Text style={styles.name}>{c.kind === 'PT' ? CURRENT_POSITION_LABEL : (c.displayName ?? c.waypoint.name ?? '—')}</Text>
+        </TouchableOpacity>
+      ))}
+      <TouchableOpacity style={styles.item} onPress={onClose}>
+        <View style={[styles.badge, { backgroundColor: theme.statusDanger ?? '#f87171' }]}>
+          <Text style={styles.badgeText}>✕</Text>
+        </View>
+        <Text style={styles.name}>Cancel</Text>
+      </TouchableOpacity>
+    </NativeSheet>
   )
 }
 
