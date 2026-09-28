@@ -16,8 +16,14 @@ Contribution norms (commit style, PR expectations, licensing): [`CONTRIBUTING.md
 - **Never use commercial tile APIs or services requiring proprietary API keys.** All data sources must be open-licensed.
 - **Never reload the full MapLibre style object at runtime.** This drops aviation sources, resets all filters, and clears registered images. Use the runtime API (`map.addSource`, `map.addLayer`, etc.) for all dynamic changes.
 - **`lang: 'sv'` is required** in `layers('protomaps', LIGHT, { lang: 'sv' })`. Without it, all label layers are silently omitted.
-- **Never name a competing product** in code comments, commit messages, docs, or PR descriptions — describe a technique or behavior on its own technical merits, not by who else does it. This applies to independently-researched techniques too, not just copied ones. (Deliberately not listing examples here — doing so would put those names in this file's own text.)
-- **Never commit personal or deployment-specific identifiers** — real domains, local file system paths, personal email addresses, or any detail tied to one operator's own infrastructure/hosting setup. This repo is generic and self-hostable (see `docs/self-hosting.md`); it does not describe or reference any specific production deployment.
+- **Never name a third-party product, brand, app, or website as a design reference** in code comments, commit messages, docs, or PR descriptions — describe a technique or behavior on its own technical merits, not by who else does it. "Third-party" is broad on purpose: not only competing EFBs, but also weather sites, sim-connect tools, chart providers, any "X-style" / "like X" / "X's convention" phrasing. Also never adopt another product's *feature name* as the name of ours. This applies to independently-researched techniques too, not just copied ones. Naming a data source, library, or protocol we actually consume (OpenAIP, Open-Meteo, MapLibre, X-Plane's UDP port) is fine — that's attribution, not comparison. (Deliberately not listing bad examples here — doing so would put those names in this file's own text.)
+- **Never commit personal or deployment-specific identifiers** — personal domains, LAN IPs, local file system paths, personal email addresses, account/org names, or any detail tied to one operator's own infrastructure/hosting setup. This repo is generic and self-hostable (see `docs/self-hosting.md`); it does not describe or reference any specific production deployment. Two carve-outs, both narrow:
+  - The project's own `*.openvfr.org` hosts may appear only as *documented, env-overridable defaults* (`vite.config.ts` dev proxies, `wrangler.jsonc`) explicitly labelled as the maintainers' instance. Never as the only option, never in code paths a self-hoster can't redirect.
+  - Build-account identifiers (EAS project ID/owner, Apple team ID, Android signing fingerprints) go through env vars — `apps/native/app.config.js` for Expo, `.env.example` placeholders for the rest. `app.json` and `eas.json` stay account-agnostic.
+- **Never reference files or paths in private repositories** (the sibling infra repo or any other). Public readers can't follow them, and the reference rots silently. State the relevant fact inline (a bbox, a rate limit, a schedule) or point at `docs/self-hosting.md` / `docs/architecture.md`. The one exception is this file's own maintainer note in the Server API Security Baseline below, which exists precisely to warn that the private repo has its own review rules.
+- **Scratch/handoff notes are not repo files.** Investigation logs, agent handoff documents, TODO dumps, etc. live in a gitignored `.scratch/` directory, never at the repo root. If a finding is worth keeping, it becomes a gotcha in this file or a section in `docs/`, reviewed like code.
+- **Docs follow code in the same change.** Any change to an env var, config default, trusted-origin list, script name, or CLI flag updates every README/`docs/` mention and the relevant `.env.example` in the same PR. Stale docs describing behavior that no longer exists have already happened here once.
+- **Everything is public.** Comments, commit messages, PR text, and workflow logs are read by strangers. Write for them: no internal shorthand, no "as discussed", no references to private conversations or chats.
 - **Follow [`CONTRIBUTING.md`](CONTRIBUTING.md)** for commit message format, PR expectations, and dependency/data licensing review before any change.
 
 ---
@@ -149,9 +155,10 @@ Reference implementation: `/api/poh-extract` in `apps/api/src/index.ts`.
    Cloudflare's edge header. Never read `x-forwarded-for` for anything
    security-relevant -- the client controls its first entry.
 
-**This checklist does NOT cover everything reachable at `api.openvfr.org`.**
-The production reverse proxy (`docker/nginx.prod.conf` — private `openvfr-infra`
-repo, sibling checkout) has its own `location` blocks that proxy directly to
+**Maintainer note — this checklist does NOT cover everything reachable on the
+maintainers' hosted API.** The production reverse proxy (`nginx.prod.conf` in
+the private `openvfr-infra` repo, which self-hosters replace with their own
+`docker/nginx.conf`-derived config) has its own `location` blocks that proxy directly to
 external third-party APIs (currently `/api/elevation/` → OpenTopoData,
 `/api/open-meteo/` → Open-Meteo) WITHOUT ever reaching this Hono app at all —
 none of the 5 rules above apply to them since `auth.api.getSession()` and
