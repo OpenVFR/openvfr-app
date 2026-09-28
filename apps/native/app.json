@@ -43,10 +43,12 @@
         "backgroundImage": "./assets/adaptive-icon-background.png",
         "backgroundColor": "#0a0e16"
       },
+      "blockedPermissions": [
+        "android.permission.ACCESS_BACKGROUND_LOCATION"
+      ],
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
         "RECEIVE_BOOT_COMPLETED",
         "WAKE_LOCK",
         "INTERNET",
@@ -56,7 +58,6 @@
         "BLUETOOTH_CONNECT",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.BLUETOOTH_CONNECT"
@@ -68,7 +69,8 @@
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "open-vfr needs GPS for in-flight navigation.",
-          "isAndroidBackgroundLocationEnabled": true
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       [

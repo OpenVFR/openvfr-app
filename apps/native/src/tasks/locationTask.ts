@@ -45,33 +45,25 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
 
 let started = false
 
-export async function startBackgroundLocation(): Promise<'ok' | 'foreground-denied' | 'background-denied'> {
-  // Check current status before requesting — expo-location's Android
-  // requestForegroundPermissionsAsync()/requestBackgroundPermissionsAsync()
-  // only show the real in-app OS dialog on the FIRST-ever ask for a given
-  // permission. Every call after that (once the status is already settled,
-  // whether granted or denied) redirects straight to the OS's "Location
-  // permission" Settings screen instead of a dialog — jarring if it happens
-  // on every app launch, since this used to be called unconditionally from
-  // MapScreen's mount effect every single time. Gate each request on
-  // getX...PermissionsAsync() first so we only ever call the request
-  // variant while status is genuinely 'undetermined'.
+export async function startBackgroundLocation(): Promise<'ok' | 'foreground-denied'> {
+  // Foreground ("while using the app") permission only. Gate the request on
+  // the current status: once answered, a repeat request can't show a dialog
+  // and only returns the settled status (or, on some Android versions,
+  // redirects to the Settings screen), which is jarring on every launch.
   let fg = await Location.getForegroundPermissionsAsync()
   if (fg.status === 'undetermined') fg = await Location.requestForegroundPermissionsAsync()
   if (fg.status !== 'granted') return 'foreground-denied'
 
-  // Background permission is only meaningful on Android/iOS when the app is
-  // actually backgrounded; requesting it is best-effort — some OEM Android
-  // builds and iOS "While Using" restrictions mean this can come back denied
-  // even though foreground tracking still works fine. We still proceed with
-  // startLocationUpdatesAsync (foreground use continues to work either way);
-  // only truly suspends in background without it. Same undetermined-only
-  // gate as above — do NOT re-request once the pilot has already answered
-  // (granted OR denied), or Android bounces them to Settings every launch.
-  const bg = await Location.getBackgroundPermissionsAsync().catch(() => null)
-  if (bg?.status === 'undetermined') {
-    await Location.requestBackgroundPermissionsAsync().catch(() => null)
-  }
+  // Background ("all the time") permission is deliberately NOT requested.
+  // Continuous tracking with the screen locked or the app in the background
+  // comes from the foreground service below on Android (expo-location only
+  // requires background permission when no foreground service is used) and
+  // from UIBackgroundModes: location on iOS, both started while the app is
+  // in use. Since Android 11 a background request can't show a dialog at
+  // all -- it sends the pilot to the system Location permission screen,
+  // right after they approved the normal dialog. app.json also blocks
+  // ACCESS_BACKGROUND_LOCATION from the manifest, which Google Play would
+  // otherwise require a separate background-location declaration for.
 
   const alreadyStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false)
   if (!alreadyStarted) {
