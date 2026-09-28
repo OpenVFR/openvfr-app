@@ -40,7 +40,7 @@ demo notifications -e visible false
 
 adb install -r "$apk"
 
-maestro test -e OUT="$out" "$here/screenshots.yaml"
+bash "$here/run-flow.sh" "$out"
 
 # Fail loudly on a wrong-size capture rather than upload unusable images.
 want="${size/x/ x }"

@@ -180,13 +180,13 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin ${{ matrix.size }}
           disable-animations: true
           script: bash apps/native/.maestro/capture-android.sh "${{ runner.temp }}/apk/openvfr-screenshots.apk" "${{ runner.temp }}/shots" ${{ matrix.size }} ${{ matrix.density }}
-      # Only the PNGs -- Maestro's own debug output (~/.maestro/tests) logs
-      # typed text, including the test OTP.
+      # Only PNGs land in shots/ (run-flow.sh keeps Maestro's own artifact
+      # folder, which logs typed text including the test OTP, in a temp dir).
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: screenshots-android-${{ matrix.name }}
-          path: ${{ runner.temp }}/shots/*.png
+          path: ${{ runner.temp }}/shots/
           if-no-files-found: error
           retention-days: 30
 

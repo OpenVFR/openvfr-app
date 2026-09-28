@@ -35,6 +35,6 @@ appId: org.openvfr.app
 # Unconditional and instant either way -- if verifyOtp() did set an error,
 # LoginScreen.tsx (testID login-error) is still rendering it here, giving a
 # readable artifact instead of a blank timeout.
-- takeScreenshot: ${OUT}/_debug-post-login
+- takeScreenshot: _debug-post-login
 - assertNotVisible:
     id: login-verify-otp

@@ -36,7 +36,7 @@ while IFS='|' read -r name re size <&3; do
 
   out="$out_root/$name"
   mkdir -p "$out"
-  maestro --device "$udid" test -e OUT="$out" "$here/screenshots.yaml"
+  bash "$here/run-flow.sh" "$out" --device "$udid"
 
   want="${size/x/ x }"
   for f in "$out"/*.png; do

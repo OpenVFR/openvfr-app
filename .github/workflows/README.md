@@ -135,9 +135,12 @@ How it works:
 - Android waits for Android's own `VALIDATED` network state before
   capturing (`ping` never works in the emulator, and there's no `curl` on
   the image). Every PNG is checked against the expected pixel size.
-- Only PNGs are uploaded. Maestro's debug output logs typed text,
-  including the test OTP, so it stays on the runner.
-- `login.yaml` captures `_debug-post-login.png` right after submitting the
+- Only PNGs are uploaded. Maestro confines `takeScreenshot` output to its
+  own per-run artifact folder, so `apps/native/.maestro/run-flow.sh` runs
+  the flow with `--test-output-dir` pointed at a temp dir and copies the
+  PNGs out. The rest of that folder logs typed text, including the test
+  OTP, so it stays on the runner and is deleted afterwards.
+- `login.yaml` captures `debug/_debug-post-login.png` right after submitting the
   OTP, before asserting sign-in actually happened. If auth fails (wrong/
   stale `APP_REVIEW_TEST_EMAIL`/`APP_REVIEW_TEST_OTP` on whichever server
   is actually running `apps/api` in production -- a deployment config
@@ -158,5 +161,5 @@ Run the flow locally against any booted simulator or emulator:
 
 ```sh
 cd apps/native
-MAESTRO_TEST_EMAIL=... MAESTRO_TEST_OTP=... maestro test -e OUT=/tmp/shots .maestro/screenshots.yaml
+MAESTRO_TEST_EMAIL=... MAESTRO_TEST_OTP=... bash .maestro/run-flow.sh /tmp/shots
 ```

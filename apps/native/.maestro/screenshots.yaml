@@ -3,9 +3,11 @@
 #
 # Env (Maestro auto-imports MAESTRO_* from the process env, so secrets never
 # land on a command line):
-#   OUT                  output directory (passed with -e by the capture script)
 #   MAESTRO_TEST_EMAIL   app-review test account (APP_REVIEW_TEST_EMAIL on the API)
 #   MAESTRO_TEST_OTP     its fixed OTP        (APP_REVIEW_TEST_OTP on the API)
+#
+# takeScreenshot paths are bare file names: Maestro writes them into its own
+# artifact folder, and run-flow.sh copies them out to the capture directory.
 #
 # Add screens by appending tapOn/takeScreenshot pairs. Keep file names
 # numbered -- store consoles order uploads by name.
@@ -54,14 +56,14 @@ appId: org.openvfr.app
 # accessibility tree, so there's nothing to assert on -- give them time.
 - waitForAnimationToEnd:
     timeout: 20000
-- takeScreenshot: ${OUT}/01-map
+- takeScreenshot: 01-map
 
 - tapOn: Flight Plan
 - waitForAnimationToEnd:
     timeout: 10000
-- takeScreenshot: ${OUT}/02-flight-plan
+- takeScreenshot: 02-flight-plan
 
 - tapOn: Settings
 - waitForAnimationToEnd:
     timeout: 10000
-- takeScreenshot: ${OUT}/03-settings
+- takeScreenshot: 03-settings
