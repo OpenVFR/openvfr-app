@@ -20,6 +20,17 @@ updates:
         update-types: [version-update:semver-major, version-update:semver-minor]
       - dependency-name: "@babel/core"
         update-types: [version-update:semver-major]
+      # React Native's bundled renderer requires the exact same `react`
+      # version, so apps/native's react can only move with react-native.
+      # A pnpm workspace can't be split into per-directory Dependabot
+      # entries (the root lockfile only updates from `/`), so these are
+      # ignored repo-wide and bumped by hand (web and native separately).
+      - dependency-name: react
+      - dependency-name: react-dom
+      - dependency-name: "@types/react"
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: "@types/react-dom"
+        update-types: [version-update:semver-major, version-update:semver-minor]
       - dependency-name: "@maplibre/maplibre-react-native"
         update-types: [version-update:semver-major]
   - package-ecosystem: github-actions

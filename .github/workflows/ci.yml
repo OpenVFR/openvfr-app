@@ -59,6 +59,15 @@ jobs:
       - name: Test (web + shared)
         run: pnpm --filter web test
 
+      # Fails when an Expo-managed dependency (expo-*, react-native, ...)
+      # drifts from the versions the installed Expo SDK expects -- e.g. a
+      # dependency-bot bump that typechecks fine but breaks native builds.
+      # Packages in apps/native package.json `expo.install.exclude` are
+      # deliberately skipped.
+      - name: Check native deps match Expo SDK
+        working-directory: apps/native
+        run: pnpm exec expo install --check
+
       - name: Typecheck native app
         run: pnpm --filter native typecheck
 
