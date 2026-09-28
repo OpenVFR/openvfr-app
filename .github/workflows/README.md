@@ -105,7 +105,9 @@ npx eas-cli credentials       # generate/upload the release keystore (Android) a
 ## Store screenshots
 
 `screenshots.yml` (manual `workflow_dispatch`) produces store-listing
-screenshots without a Mac or physical device:
+screenshots without a Mac or physical device. The `platform` input
+(`all` / `ios` / `android`, default `all`) limits the run to one store, so
+a single platform can be tested without building both:
 
 | Artifact | Runner | Size (px) | Store slot |
 |---|---|---|---|

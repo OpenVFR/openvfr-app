@@ -16,12 +16,19 @@ name: Store screenshots
 
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platforms to build and capture
+        type: choice
+        options: [all, ios, android]
+        default: all
 
 permissions:
   contents: read
 
 concurrency:
-  group: screenshots
+  # Per platform, so an ios run and an android run don't cancel each other.
+  group: screenshots-${{ inputs.platform }}
   cancel-in-progress: true
 
 env:
@@ -63,6 +70,7 @@ jobs:
 
   build_android:
     needs: preflight
+    if: inputs.platform != 'ios'
     runs-on: ubuntu-latest
     # Bounded so a repeat of the lintVitalAnalyzeRelease Metaspace hang (or
     # any other future stuck build) fails within the hour instead of running
@@ -192,6 +200,7 @@ jobs:
 
   ios:
     needs: preflight
+    if: inputs.platform != 'android'
     runs-on: macos-latest
     timeout-minutes: 60
     defaults:
