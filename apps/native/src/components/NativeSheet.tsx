@@ -40,14 +40,19 @@ const CHROME_GUESS = 64
  * top of the screen while typing. Sheets with their own inner lists should
  * derive that list's maxHeight from this too.
  */
-export function useSheetMaxHeight(): number {
-  const { height: winH } = useWindowDimensions()
+export function useKeyboardHeight(): number {
   const [kbH, setKbH] = useState(0)
   useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', (e) => setKbH(e.endCoordinates.height))
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKbH(0))
+    const show = Keyboard.addListener("keyboardDidShow", (e) => setKbH(e.endCoordinates.height))
+    const hide = Keyboard.addListener("keyboardDidHide", () => setKbH(0))
     return () => { show.remove(); hide.remove() }
   }, [])
+  return kbH
+}
+
+export function useSheetMaxHeight(): number {
+  const { height: winH } = useWindowDimensions()
+  const kbH = useKeyboardHeight()
   return (winH - kbH) * MAX_FRACTION
 }
 
@@ -78,6 +83,7 @@ export function NativeSheet({
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const sheetMaxH = useSheetMaxHeight()
+  const kbH = useKeyboardHeight()
   const sheetRef = useRef<BottomSheetMethods>(null)
   const [chromeH, setChromeH] = React.useState(CHROME_GUESS)
   if (!isPresented) return null
@@ -123,7 +129,8 @@ export function NativeSheet({
             contentContainerStyle={contentContainerStyle}
           >
             {children}
-            <View style={{ height: 24 }} />
+            {/* Extra room while typing so the last fields can scroll above the keyboard. */}
+            <View style={{ height: 24 + kbH }} />
           </ScrollView>
         ) : (
           children

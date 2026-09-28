@@ -14,7 +14,6 @@ import { useSettingsContext } from '../context/SettingsContext'
 import { useAuthContext }     from '../context/AuthContext'
 import { useSimContext }      from '../context/SimContext'
 import { SimConnectSheet }    from '../components/SimConnectSheet'
-import { SheetRiskTestScreen } from './SheetRiskTestScreen' // TEMPORARY -- see that file's header
 import { useInternalBarometer } from '../hooks/useInternalBarometer'
 import { useVarioContext } from '../context/VarioContext'
 import type { VarioState } from '@open-vfr/shared/blueflyVario'
@@ -139,10 +138,6 @@ export function SettingsScreen() {
   }, []))
 
   const airacStale = dataAirac !== null && isAiracOutdated(dataAirac)
-  // TEMPORARY -- native-sheet risk spike (SheetRiskTestScreen.tsx). Remove
-  // this state and the "Dev" section below once the migration decision is
-  // made either way.
-  const [showSheetTest, setShowSheetTest] = useState(false)
 
   return (
     <>
@@ -470,14 +465,7 @@ export function SettingsScreen() {
         </Section>
       )}
 
-      {/* TEMPORARY -- native-sheet risk spike, see SheetRiskTestScreen.tsx */}
-      <Section title="Dev">
-        <TouchableOpacity style={[styles.row, styles.pressable]} onPress={() => setShowSheetTest(true)}>
-          <Text style={styles.rowLabel}>Native sheet risk test</Text>
-        </TouchableOpacity>
-      </Section>
     </ScrollView>
-    {showSheetTest && <SheetRiskTestScreen onClose={() => setShowSheetTest(false)} />}
     </>
   )
 }
