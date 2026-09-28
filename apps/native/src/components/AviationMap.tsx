@@ -32,6 +32,7 @@ import { ATTRIBUTION_SOURCES } from '@open-vfr/shared/attributionSources'
 import { fetchAerodromeNotamTexts } from '@open-vfr/shared/fetchNotam'
 import { API_BASE, TILE_BASE } from '../config'
 import { LIGHT } from '@protomaps/basemaps'
+import { colorExpr } from '../utils/colorExpr'
 import { NativeSheet } from './NativeSheet'
 import { waitForTileManifest } from '@open-vfr/shared/tileManifest'
 import { authHeaders } from '../utils/authClient'
@@ -422,7 +423,7 @@ const SNAP_PX = 20
 // colours since nothing enforced they stay identical. 'case' is used instead
 // of 'match' because the CTR/TMA split needs a compound condition (class AND
 // type), which a flat match on a single property can't express.
-const AIRSPACE_FILL_COLOR: any = [
+const AIRSPACE_FILL_COLOR: any = colorExpr([
   'case',
   ['all', ['==', ['get', 'class'], 'C'], ['==', ['get', 'type'], 'CTR']], AC.cCtrFill,
   ['==', ['get', 'class'], 'C'],     AC.cTmaFill,
@@ -434,9 +435,9 @@ const AIRSPACE_FILL_COLOR: any = [
   ['==', ['get', 'class'], 'GLDR'],  AC.gldrFill,
   ['==', ['get', 'class'], 'MODEL'], AC.modelFill,
   AC.transparent,
-]
+])
 
-const AIRSPACE_BORDER_COLOR: any = [
+const AIRSPACE_BORDER_COLOR: any = colorExpr([
   'case',
   ['all', ['==', ['get', 'class'], 'C'], ['==', ['get', 'type'], 'CTR']], AC.cCtrBorder,
   ['==', ['get', 'class'], 'C'],     AC.cTmaBorder,
@@ -448,7 +449,7 @@ const AIRSPACE_BORDER_COLOR: any = [
   ['==', ['get', 'class'], 'GLDR'],  AC.gldrBorder,
   ['==', ['get', 'class'], 'MODEL'], AC.modelBorder,
   AC.transparent,
-]
+])
 
 // Airspace on-map label text — class/type short code + altitude range, placed
 // along the boundary line (symbol-placement: 'line'). Same technique + text
@@ -854,7 +855,7 @@ export function AviationMap({
                                  AERODROME_COLORS.atcUnknown
         args.push(e.icao, color)
       }
-      setAtcRingMatchExpr(['match', ['get', 'icao'], ...args, AERODROME_COLORS.atcUnknown])
+      setAtcRingMatchExpr(colorExpr(['match', ['get', 'icao'], ...args, AERODROME_COLORS.atcUnknown]))
     }
 
     const interval = setInterval(recomputeAtcRing, 60_000)
@@ -1752,7 +1753,7 @@ export function AviationMap({
             beforeId="address_label"
             layout={{ visibility: showLanduse ? 'visible' : 'none' }}
             paint={{
-              'fill-color': [
+              'fill-color': colorExpr([
                 'match', ['get', 'kind'],
                 'farmland',    FARMLAND_CREAM,
                 'residential', 'rgba(230,230,230,0.8)',
@@ -1760,7 +1761,7 @@ export function AviationMap({
                 'industrial',  'rgba(209,221,225,0.8)',
                 'wetland',     'rgba(188,220,235,0.8)',
                                'rgba(220,220,220,0)',
-              ],
+              ]),
               'fill-opacity': 0.85,
             }}
           />
@@ -2042,12 +2043,12 @@ export function AviationMap({
               layout={{ visibility: showRunways ? 'visible' : 'none', 'line-cap': 'butt' }}
               minzoom={11}
               paint={{
-                'line-color': [
+                'line-color': colorExpr([
                   'match', ['get', 'surface'],
                   'ASPH', RUNWAY_COLORS.asphalt,
                   'CONC', RUNWAY_COLORS.concrete,
                   RUNWAY_COLORS.grass,
-                ],
+                ]),
                 'line-width': [
                   'interpolate', ['exponential', 2], ['zoom'],
                   11, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 1],
@@ -2308,7 +2309,7 @@ export function AviationMap({
               'text-optional': true,
             }}
             paint={{
-              'text-color': [
+              'text-color': colorExpr([
                 'match', ['get', 'kind'],
                 'church',      '#455a64',
                 'mast',        '#e65100',
@@ -2316,7 +2317,7 @@ export function AviationMap({
                 'water_tower', '#00695c',
                 'chimney',     '#bf360c',
                                '#455a64',
-              ],
+              ]),
               'text-halo-color': 'rgba(255,255,255,0.9)',
               'text-halo-width': 1.5,
             }}
