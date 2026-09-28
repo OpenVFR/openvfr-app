@@ -56,7 +56,6 @@ export function FlightModeSheet({ status, onStartGps, onStartSim, onStop }: Prop
         onDismiss={() => setOpen(false)}
         title="Flight Mode"
         testID="flight-mode-sheet"
-        height={460}
       >
         {active && (
           <View style={styles.statusBanner}>

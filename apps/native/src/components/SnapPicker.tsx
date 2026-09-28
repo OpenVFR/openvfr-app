@@ -3,7 +3,7 @@
  * near 2+ candidate snap targets. Mirrors web's SnapPicker.tsx.
  */
 import React from 'react'
-import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native'
+import { View, Text, TouchableOpacity } from 'react-native'
 import { NativeSheet } from './NativeSheet'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -37,14 +37,12 @@ interface Props {
 
 export function SnapPicker({ candidates, onPick, onClose }: Props) {
   const styles = useThemedStyles(makeStyles)
-  const { height: winH } = useWindowDimensions()
   return (
     <NativeSheet
       isPresented
       onDismiss={onClose}
       title="Add waypoint"
       testID="snap-picker-sheet"
-      height={Math.min(90 + (candidates.length + 1) * 52, winH * 0.6)}
     >
       {candidates.map((c, i) => (
         <TouchableOpacity key={i} style={styles.item} onPress={() => { onPick(c.waypoint); onClose() }}>

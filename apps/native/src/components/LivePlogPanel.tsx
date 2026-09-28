@@ -10,7 +10,8 @@
  */
 
 import React, { useState } from 'react'
-import { View, Text, TouchableOpacity, Modal, ScrollView } from 'react-native'
+import { View, Text, TouchableOpacity } from 'react-native'
+import { NativeSheet } from './NativeSheet'
 import { Ionicons } from '@expo/vector-icons'
 import type { RouteWaypoint } from '../types/db'
 import type { LivePlogData } from '../hooks/useLivePlog'
@@ -39,19 +40,8 @@ export function LivePlogPanel({ waypoints, activeWpIdx, plogData }: Props) {
         <Ionicons name="list-outline" size={19} color={theme.accentBlue} />
       </TouchableOpacity>
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <View style={styles.modalRoot}>
-          <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setOpen(false)} />
-          <View style={styles.sheet}>
-            <View style={styles.handle} />
-            <View style={styles.header}>
-              <Text style={styles.title}>PILOT LOG</Text>
-              <TouchableOpacity onPress={() => setOpen(false)}>
-                <Ionicons name="close" size={20} color={theme.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.scroll}>
+      <NativeSheet isPresented={open} onDismiss={() => setOpen(false)} title="PILOT LOG" testID="plog-sheet">
+            <View>
               {/* Route table */}
               <View style={styles.tableHead}>
                 <Text style={[styles.colWp, styles.headTxt]}>Waypoint</Text>
@@ -116,10 +106,8 @@ export function LivePlogPanel({ waypoints, activeWpIdx, plogData }: Props) {
                   ))}
                 </View>
               )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+            </View>
+      </NativeSheet>
     </>
   )
 }

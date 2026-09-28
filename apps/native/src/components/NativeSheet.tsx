@@ -1,99 +1,121 @@
 /**
- * NativeSheet -- shared wrapper around @expo/ui's BottomSheet (Compose
- * ModalBottomSheet on Android, SwiftUI sheet on iOS) for every bottom sheet
- * in the app. Centralises the rules learned the hard way so each sheet does
- * not have to rediscover them:
+ * NativeSheet -- the app's single bottom-sheet component. Thin wrapper over
+ * `@expo/ui/community/bottom-sheet` (a gorhom-compatible API on top of the
+ * platform sheets: SwiftUI sheet on iOS, Material 3 ModalBottomSheet on
+ * Android).
  *
- *  - The React content is hosted in a native view (RNHostView) that does
- *    NOT inherit a bounded height from the sheet. A `flex: 1` ScrollView
- *    inside it is measured at full content height, so it never scrolls and
- *    the sheet clips the bottom. Content therefore always gets an explicit
- *    pixel height here.
- *  - With no `snapPoints`, Android opens the sheet half-height. Tall
- *    scrolling content must use `snapPoints={['full']}` (the default here);
- *    short fixed content passes `height` instead and stays at its own size.
- *  - Sheet colour must be passed explicitly to match the active theme.
+ * Sizing follows the standard "dynamic sizing" pattern: no snap points, the
+ * sheet is exactly as tall as its content, and tall content scrolls inside a
+ * ScrollView whose `maxHeight` caps the sheet at MAX_FRACTION of the window.
+ * Short sheets stay short; long ones (filters, lists) grow to the cap and
+ * scroll. No fixed pixel heights, no measuring state.
  *
- * Modes:
- *  - default: full-height sheet, header + scrolling body.
- *  - `height={n}`: compact sheet of exactly n dp (must be <= about half the
- *    screen, or Android will clip it in the partial state).
+ * Lessons this wrapper encodes (each cost a debugging round):
+ *  - Content hosted in the native sheet gets no bounded height, so a
+ *    `flex: 1` ScrollView never scrolls. Use `maxHeight` on the scroller.
+ *  - Sheet colour must be passed explicitly (backgroundStyle) to match the
+ *    active theme.
+ *  - The sheet is mounted only while presented. Pan-down / back / scrim /
+ *    the close button all end in `onClose`, which the caller maps to
+ *    `setOpen(false)`.
  */
-import React from 'react'
-import { View, Text, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native'
+import React, { useRef } from 'react'
+import {
+  View, Text, TouchableOpacity, ScrollView, useWindowDimensions,
+  type StyleProp, type ViewStyle,
+} from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { BottomSheet, RNHostView } from '@expo/ui'
+import BottomSheet, { type BottomSheetMethods } from '@expo/ui/community/bottom-sheet'
 import { theme, useThemedStyles } from '../styles/theme'
+
+/** Tallest a sheet may grow, as a fraction of the window height. */
+const MAX_FRACTION = 0.85
+/** Header height guess used until the real chrome height is measured. */
+const CHROME_GUESS = 64
 
 interface Props {
   isPresented: boolean
   onDismiss: () => void
-  title: string
+  /** Default header title. Ignored when `header` is provided. */
+  title?: string
+  /** Fully custom header (must include its own close control). */
+  header?: React.ReactNode
+  /** Fixed content between header and scroll area (e.g. a tab bar). */
+  fixedTop?: React.ReactNode
+  contentContainerStyle?: StyleProp<ViewStyle>
   children: React.ReactNode
   testID?: string
   /** Overrides the default `${testID}-close` id of the close button. */
   closeTestID?: string
-  /** Compact fixed-height sheet (dp). Omit for the full-height sheet. */
-  height?: number
   /** Wrap children in a ScrollView (default true). Pass false when children
-   *  bring their own scroller (e.g. a FlatList) or need no scrolling. */
+   *  bring their own bounded scroller. */
   scroll?: boolean
   /** Extra header content rendered left of the close button. */
   headerRight?: React.ReactNode
 }
 
 export function NativeSheet({
-  isPresented, onDismiss, title, children, testID, closeTestID, height, scroll = true, headerRight,
+  isPresented, onDismiss, title, header, fixedTop, contentContainerStyle, children,
+  testID, closeTestID, scroll = true, headerRight,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const { height: winH } = useWindowDimensions()
-  const compact = height != null
-  const hostHeight = compact ? height : winH * 0.85
+  const sheetRef = useRef<BottomSheetMethods>(null)
+  const [chromeH, setChromeH] = React.useState(CHROME_GUESS)
+  if (!isPresented) return null
+
+  const close = () => sheetRef.current?.close()
+  const maxScrollH = winH * MAX_FRACTION - chromeH
 
   return (
     <BottomSheet
-      isPresented={isPresented}
-      onDismiss={onDismiss}
-      testID={testID}
-      snapPoints={compact ? undefined : ['full']}
-      containerColor={theme.surfaceSheet}
+      ref={sheetRef}
+      index={0}
+      enableDynamicSizing
+      enablePanDownToClose
+      onClose={onDismiss}
+      backgroundStyle={{ backgroundColor: theme.surfaceSheet }}
     >
-      <RNHostView style={{ height: hostHeight }}>
-        <View style={[styles.inner, { height: hostHeight }]}>
-          <View style={styles.header}>
-            <Text style={styles.title}>{title}</Text>
-            <View style={styles.headerActions}>
-              {headerRight}
-              <TouchableOpacity
-                onPress={onDismiss}
-                accessibilityLabel="Close"
-                testID={closeTestID ?? (testID ? `${testID}-close` : undefined)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="close" size={18} color={theme.textMuted} />
-              </TouchableOpacity>
+      <View testID={testID}>
+        <View onLayout={(e) => setChromeH(e.nativeEvent.layout.height)}>
+          {header ?? (
+            <View style={styles.header}>
+              <Text style={styles.title}>{title}</Text>
+              <View style={styles.headerActions}>
+                {headerRight}
+                <TouchableOpacity
+                  onPress={close}
+                  accessibilityLabel="Close"
+                  testID={closeTestID ?? (testID ? `${testID}-close` : undefined)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close" size={18} color={theme.textMuted} />
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-          {scroll ? (
-            <ScrollView
-              nestedScrollEnabled
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              {children}
-              <View style={{ height: 16 }} />
-            </ScrollView>
-          ) : (
-            children
           )}
+          {fixedTop}
         </View>
-      </RNHostView>
+        {scroll ? (
+          <ScrollView
+            style={{ maxHeight: maxScrollH }}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={contentContainerStyle}
+          >
+            {children}
+            <View style={{ height: 24 }} />
+          </ScrollView>
+        ) : (
+          children
+        )}
+      </View>
     </BottomSheet>
   )
 }
 
 const makeStyles = () => ({
-  inner: { flex: 1, paddingBottom: 8 },
   header: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,

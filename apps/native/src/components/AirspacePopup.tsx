@@ -7,7 +7,7 @@
 
 import React, { useEffect, useState } from 'react'
 import {
-  Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet,
+  View, Text, TouchableOpacity, StyleSheet,
 } from 'react-native'
 import Svg, { Path, Rect, Line } from 'react-native-svg'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -18,6 +18,7 @@ import { notamTitle } from '@open-vfr/shared/notamQCode'
 import { notamValidity } from '@open-vfr/shared/notamValidity'
 import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
+import { NativeSheet } from './NativeSheet'
 import NotamViewControls from './NotamViewControls'
 
 export interface AirspaceFeatureProps {
@@ -381,11 +382,11 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
   const totalCount = sorted.length + dedupedNotams.length
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-      <View style={styles.sheet}>
-
-        {/* header */}
+    <NativeSheet
+      isPresented
+      onDismiss={onClose}
+      testID="airspace-sheet"
+      header={(
         <View style={styles.sheetHeader}>
           <View>
             <Text style={styles.countTxt}>
@@ -397,13 +398,13 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
             <Text style={styles.closeTxt}>✕</Text>
           </TouchableOpacity>
         </View>
-
+      )}
+    >
         {/* accordion + altitude-relationship strip — the strip spans the full
             measured height of the row list, acting as a persistent ruler
             alongside it (mirrors web's absolutely-positioned stripWrap).
             Only reflects charted airspace (regional NOTAMs carry no
             comparable vertical-extent shape), same as web. */}
-        <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
         <View style={styles.listRow}>
           <AltitudeStrip list={sorted} height={rowsHeight} />
           <View style={styles.rowsCol} onLayout={(e) => setRowsHeight(e.nativeEvent.layout.height)}>
@@ -566,9 +567,7 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
           })}
           </View>
         </View>
-        </ScrollView>
-      </View>
-    </Modal>
+    </NativeSheet>
   )
 }
 
@@ -599,7 +598,10 @@ function makeStyles(theme: ScaledTheme) {
   closeTxt: { color: theme.textMuted, fontSize: theme.textMd },
   list:     { paddingBottom: theme.space4 },
   listRow:  { flexDirection: 'row' },
-  rowsCol:  { flex: 1 },
+  // alignSelf: flex-start -- the rows column must keep its natural height;
+  // stretching to the strip (whose height is measured from this column)
+  // creates a feedback loop that grows the content until something caps it.
+  rowsCol:  { flex: 1, alignSelf: 'flex-start' as const },
 
   item: { borderBottomWidth: 1, borderBottomColor: theme.borderSubtle },
   row: {

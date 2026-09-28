@@ -14,7 +14,7 @@
 
 import React, { useEffect, useState } from 'react'
 import {
-  Modal, View, Text, ScrollView, TouchableOpacity, Share,
+  View, Text, ScrollView, TouchableOpacity, Share,
 } from 'react-native'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { computeRunwayWind, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
@@ -28,6 +28,7 @@ import { Section, FR_COLOR } from './AerodromeBriefShared'
 import AerodromeWxSection from './AerodromeWxSection'
 import AerodromeNotamSection, { useNotamLists } from './AerodromeNotamSection'
 import { buildAerodromeLink } from '@open-vfr/shared/deepLink'
+import { NativeSheet } from './NativeSheet'
 import { WEB_BASE } from '../config'
 
 /** Link that opens this aerodrome: the web app when WEB_BASE is configured
@@ -242,10 +243,12 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
   const atcColor = atc?.status === 'open' ? theme.statusOk : atc?.status === 'closed' ? theme.statusDanger : theme.textFaint
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-      <View style={styles.sheet}>
-        {/* Header */}
+    <NativeSheet
+      isPresented
+      onDismiss={onClose}
+      testID="aerodrome-sheet"
+      contentContainerStyle={styles.body}
+      header={(
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Text style={styles.icao}>{feature.icao}</Text>
@@ -281,8 +284,8 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
             <Text style={styles.closeTxt}>✕</Text>
           </TouchableOpacity>
         </View>
-
-        {/* Tab bar */}
+      )}
+      fixedTop={(
         <View style={styles.tabBar}>
           <TabBtn label="Info" active={activeTab === 'info'} onPress={() => setActiveTab('info')} />
           <TabBtn
@@ -298,8 +301,8 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
             count={!notamLoading && ownNotamCount > 0 ? ownNotamCount : undefined}
           />
         </View>
-
-        <ScrollView contentContainerStyle={styles.body}>
+      )}
+    >
           {/* ── Info tab ─────────────────────────────────────────────── */}
           {activeTab === 'info' && (
             <>
@@ -443,9 +446,7 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
               icao={feature.icao}
             />
           )}
-        </ScrollView>
-      </View>
-    </Modal>
+    </NativeSheet>
   )
 }
 

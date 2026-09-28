@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native'
+import { View, Text, TouchableOpacity } from 'react-native'
 import { NativeSheet } from './NativeSheet'
 import { useThemedStyles, type ScaledTheme } from '../styles/theme'
 
@@ -37,7 +37,6 @@ const KIND_ICON: Record<NonNullable<FeatureKind>, string> = {
 
 export function FeaturePopup({ feature, onClose, onAddToRoute }: Props) {
   const styles = useThemedStyles(makeStyles)
-  const { height: winH } = useWindowDimensions()
   if (!feature) return null
 
   const icon = feature.kind ? KIND_ICON[feature.kind] : '📌'
@@ -48,7 +47,6 @@ export function FeaturePopup({ feature, onClose, onAddToRoute }: Props) {
       onDismiss={onClose}
       title={`${icon} ${feature.name}`}
       testID="feature-sheet"
-      height={Math.min(150 + feature.rows.length * 30 + (feature.canAddToRoute && feature.lngLat && onAddToRoute ? 64 : 0), winH * 0.5)}
     >
       <Text style={[styles.subtitle, { paddingHorizontal: 16, paddingTop: 8 }]}>{feature.subtitle}</Text>
       <View style={styles.body}>
