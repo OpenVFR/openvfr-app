@@ -18,7 +18,8 @@
  */
 
 import React, { useState } from 'react'
-import { Modal, View, Text, TouchableOpacity } from 'react-native'
+import { View, Text, TouchableOpacity } from 'react-native'
+import { NativeSheet } from './NativeSheet'
 import { Ionicons } from '@expo/vector-icons'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
@@ -50,63 +51,57 @@ export function FlightModeSheet({ status, onStartGps, onStartSim, onStop }: Prop
         />
       </TouchableOpacity>
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setOpen(false)} />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-
-          <View style={styles.header}>
-            <Text style={styles.title}>Flight Mode</Text>
-            <TouchableOpacity onPress={() => setOpen(false)} hitSlop={8}>
-              <Ionicons name="close" size={18} color={theme.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          {active && (
-            <View style={styles.statusBanner}>
-              <Text style={styles.statusTxt}>
-                {status === 'gps' ? 'Flying \u2014 GPS active' : 'Simulating \u2014 touch controls active'}
-              </Text>
-              <TouchableOpacity onPress={() => { onStop(); setOpen(false) }}>
-                <Text style={styles.stopTxt}>Stop</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          <View style={styles.body}>
-            <TouchableOpacity
-              style={[styles.card, status === 'gps' && styles.cardActive]}
-              onPress={() => { onStartGps(); setOpen(false) }}
-              disabled={status === 'gps'}
-            >
-              <Ionicons name="airplane-outline" size={scaledTheme.scale(20)} color={theme.accentBlue} />
-              <View style={styles.cardText}>
-                <Text style={styles.cardTitle}>Fly</Text>
-                <Text style={styles.cardDesc}>Use real GPS position. Keeps the screen awake and follows your aircraft.</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.card, status === 'sim' && styles.cardActive]}
-              onPress={() => { onStartSim(); setOpen(false) }}
-              disabled={status === 'sim'}
-            >
-              <Ionicons name="game-controller-outline" size={scaledTheme.scale(20)} color={theme.accentPurple} />
-              <View style={styles.cardText}>
-                <Text style={styles.cardTitle}>Simulate</Text>
-                <Text style={styles.cardDesc}>
-                  Fly a virtual aircraft with touch controls — no GPS or flight sim required.
-                  Hold +/− to adjust heading, speed, and altitude.
-                </Text>
-              </View>
-            </TouchableOpacity>
-
-            <Text style={styles.hint}>
-              Connecting a real flight simulator (X-Plane, MSFS)? See Settings → Simulator / External GPS.
+      <NativeSheet
+        isPresented={open}
+        onDismiss={() => setOpen(false)}
+        title="Flight Mode"
+        testID="flight-mode-sheet"
+        height={460}
+      >
+        {active && (
+          <View style={styles.statusBanner}>
+            <Text style={styles.statusTxt}>
+              {status === 'gps' ? 'Flying \u2014 GPS active' : 'Simulating \u2014 touch controls active'}
             </Text>
+            <TouchableOpacity onPress={() => { onStop(); setOpen(false) }}>
+              <Text style={styles.stopTxt}>Stop</Text>
+            </TouchableOpacity>
           </View>
+        )}
+
+        <View style={styles.body}>
+          <TouchableOpacity
+            style={[styles.card, status === 'gps' && styles.cardActive]}
+            onPress={() => { onStartGps(); setOpen(false) }}
+            disabled={status === 'gps'}
+          >
+            <Ionicons name="airplane-outline" size={scaledTheme.scale(20)} color={theme.accentBlue} />
+            <View style={styles.cardText}>
+              <Text style={styles.cardTitle}>Fly</Text>
+              <Text style={styles.cardDesc}>Use real GPS position. Keeps the screen awake and follows your aircraft.</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.card, status === 'sim' && styles.cardActive]}
+            onPress={() => { onStartSim(); setOpen(false) }}
+            disabled={status === 'sim'}
+          >
+            <Ionicons name="game-controller-outline" size={scaledTheme.scale(20)} color={theme.accentPurple} />
+            <View style={styles.cardText}>
+              <Text style={styles.cardTitle}>Simulate</Text>
+              <Text style={styles.cardDesc}>
+                Fly a virtual aircraft with touch controls — no GPS or flight sim required.
+                Hold +/− to adjust heading, speed, and altitude.
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <Text style={styles.hint}>
+            Connecting a real flight simulator (X-Plane, MSFS)? See Settings → Simulator / External GPS.
+          </Text>
         </View>
-      </Modal>
+      </NativeSheet>
     </>
   )
 }

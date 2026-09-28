@@ -11,13 +11,12 @@
 
 import React from 'react'
 import {
-  View, Text, TouchableOpacity, ScrollView,
-  useWindowDimensions, TextInput,
+  View, Text, TouchableOpacity, TextInput,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { BottomSheet, RNHostView } from '@expo/ui'
+import { NativeSheet } from './NativeSheet'
 import { AltitudeSlider } from './AltitudeSlider'
-import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
+import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
 import { AERODROME_COLORS, NAVAID_COLORS, WAYPOINT_COLORS, OBSTACLE_COLORS } from '@open-vfr/shared/featureColors'
 
@@ -181,12 +180,6 @@ export function MapDisplaySheet({
   const [open, setOpen] = React.useState(false)
   const [refAltText, setRefAltText] = React.useState(String(terrainColorRefAltFt))
   React.useEffect(() => { setRefAltText(String(terrainColorRefAltFt)) }, [terrainColorRefAltFt])
-  // Sizing hint for RNHostView, not a hard cap -- the native sheet's own
-  // drag-to-expand can grow past this (confirmed live: a shorter hint here
-  // still let the sheet expand to near-full on drag, same as the risk-test
-  // spike). 85% leaves a sliver of the map visible above the sheet, same
-  // as the previous custom sheet's maxHeight: '80%'.
-  const { height: winH } = useWindowDimensions()
 
   return (
     <>
@@ -199,26 +192,14 @@ export function MapDisplaySheet({
           dimming, corners, drag-to-dismiss and safe areas all come from the
           platform, not hand-built. containerColor matches the app's active
           theme since the native default wouldn't. */}
-      <BottomSheet
+      <NativeSheet
         isPresented={open}
         onDismiss={() => setOpen(false)}
+        title="Map Display"
         testID="map-display-sheet"
-        snapPoints={['full']}
-        containerColor={theme.surfaceSheet}
+        closeTestID="map-display-close"
       >
-        <RNHostView style={{ height: winH * 0.85 }}>
-        <View style={[styles.sheetInner, { height: winH * 0.85 }]}>
-          {/* Header -- the native sheet has no title bar of its own, and
-              the X gives an explicit close action alongside swipe-down/tap-
-              outside (BottomSheet's own defaults). */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Map Display</Text>
-            <TouchableOpacity onPress={() => setOpen(false)} testID="map-display-close" accessibilityLabel="Close" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close" size={18} color={theme.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+        <View>
             {/* ── Ceiling ─────────────────────────────────────── */}
             {/* ── Basemap ──────────────────────────────── */}
             <SectionHeader title="Basemap" />
@@ -343,10 +324,8 @@ export function MapDisplaySheet({
               onToggle={() => onAutoZoomChange(!autoZoom)}
             />
             <View style={{ height: 16 }} />
-          </ScrollView>
-        </View>
-        </RNHostView>
-      </BottomSheet>
+          </View>
+      </NativeSheet>
     </>
   )
 }
