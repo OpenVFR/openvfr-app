@@ -27,6 +27,14 @@ appId: org.openvfr.app
     text: "(Next time|Skip this version|Not now|Later)"
     optional: true
 
+# App.tsx shows a bare spinner while restoring the session. runFlow's `when`
+# is checked once, without waiting, so on a slow emulator it would see only
+# the spinner, skip login, and leave the login screen up. Wait for either
+# the login screen ("Email address" label) or the tab bar first.
+- extendedWaitUntil:
+    visible: "(Email address|Flight Plan)"
+    timeout: 60000
+
 - runFlow:
     when:
       visible:
