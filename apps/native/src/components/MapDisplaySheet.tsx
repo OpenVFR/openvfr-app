@@ -203,10 +203,11 @@ export function MapDisplaySheet({
         isPresented={open}
         onDismiss={() => setOpen(false)}
         testID="map-display-sheet"
+        snapPoints={['full']}
         containerColor={theme.surfaceSheet}
       >
         <RNHostView style={{ height: winH * 0.85 }}>
-        <View style={styles.sheetInner}>
+        <View style={[styles.sheetInner, { height: winH * 0.85 }]}>
           {/* Header -- the native sheet has no title bar of its own, and
               the X gives an explicit close action alongside swipe-down/tap-
               outside (BottomSheet's own defaults). */}
