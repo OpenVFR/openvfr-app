@@ -46,6 +46,7 @@ import { formatObstacleName, formatLandmarkName, obstacleWaypointName } from '@o
 import { type PointFeature } from './FeaturePopup'
 import type { WhatsHereItem } from './WhatsHerePopup'
 import SnapPicker, { type SnapCandidate } from './SnapPicker'
+import RouteEditBanner from './RouteEditBanner'
 import VirtualRadar from './VirtualRadar'
 import RulerSummaryStrip from './RulerSummaryStrip'
 import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
@@ -688,6 +689,14 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const [showPlog, setShowPlog] = useState(false)
   // In-flight route adjustment mode: unlocks drag-move/insert without full planning mode
   const [routeAdjustMode, setRouteAdjustMode] = useState(false)
+  // Edit sessions run while route editing is possible; leaving planning /
+  // adjust mode applies pending changes (nothing is discarded silently).
+  const { setEditSessionArmed, applyEditSession } = routeUndo
+  useEffect(() => {
+    const armed = planningMode || routeAdjustMode
+    setEditSessionArmed(armed)
+    if (!armed) applyEditSession()
+  }, [planningMode, routeAdjustMode, setEditSessionArmed, applyEditSession])
   // Same lock as the waypoint-drag handlers: while flying, route edits
   // (including undo/redo) need the explicit in-flight adjust unlock.
   const routeEditLocked = flyingMode !== 'off' && !routeAdjustMode
@@ -3970,6 +3979,16 @@ export default function MapView({ auth }: { auth: AuthState }) {
 
   return (
     <div className={css.wrapper}>
+      {routeUndo.editSessionActive && (
+        <RouteEditBanner
+          canUndo={routeUndo.canUndo}
+          canRedo={routeUndo.canRedo}
+          onUndo={routeUndo.undo}
+          onRedo={routeUndo.redo}
+          onCancel={routeUndo.cancelEditSession}
+          onApply={routeUndo.applyEditSession}
+        />
+      )}
       <SideDrawer
         visibility={visibility}
         onVisibilityChange={setVisibilityGroup}

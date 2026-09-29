@@ -21,6 +21,13 @@ export interface RouteUndo {
   redo: () => void
   canUndo: boolean
   canRedo: boolean
+  /** Edit session: opens on the first edit while armed (planning / adjust mode),
+   *  stays open for every later edit, ends on apply (keep, unsaved) or cancel
+   *  (restore the route and history from before the first edit). */
+  editSessionActive: boolean
+  setEditSessionArmed: (armed: boolean) => void
+  applyEditSession: () => void
+  cancelEditSession: () => void
 }
 
 /**
@@ -59,7 +66,21 @@ export function usePersistedRoute(): [
   // refs); `historyVersion` only exists to re-render canUndo/canRedo.
   const historyRef = useRef<UndoHistory<RouteSnapshot>>(emptyHistory())
   const [, setHistoryVersion] = useState(0)
+
+  // Edit session (see RouteUndo): snapshot of the route + history at the
+  // first armed edit.
+  const sessionRef = useRef<{ snap: RouteSnapshot; history: UndoHistory<RouteSnapshot> } | null>(null)
+  const sessionArmedRef = useRef(false)
+  const [editSessionActive, setEditSessionActive] = useState(false)
+
   const recordHistory = useCallback(() => {
+    if (sessionArmedRef.current && !sessionRef.current) {
+      sessionRef.current = {
+        snap: { waypoints: waypointsRef.current, legOverrides: legOverridesRef.current },
+        history: historyRef.current,
+      }
+      setEditSessionActive(true)
+    }
     historyRef.current = recordChange(historyRef.current,
       { waypoints: waypointsRef.current, legOverrides: legOverridesRef.current }, Date.now())
     setHistoryVersion(v => v + 1)
@@ -187,6 +208,8 @@ export function usePersistedRoute(): [
     setAircraftIdState(nextAcId)
     setActiveRouteIdState(nextRouteId)
     persist(wps, safeOvr, nextAcId, nextRouteId)
+    sessionRef.current = null
+    setEditSessionActive(false)
     historyRef.current = emptyHistory()
     setHistoryVersion(v => v + 1)
   }, [persist])
@@ -205,10 +228,28 @@ export function usePersistedRoute(): [
     persist(waypointsRef.current, legOverridesRef.current, aircraftIdRef.current, id)
   }, [persist])
 
+  const setEditSessionArmed = useCallback((armed: boolean) => { sessionArmedRef.current = armed }, [])
+  const applyEditSession = useCallback(() => {
+    sessionRef.current = null
+    setEditSessionActive(false)
+  }, [])
+  const cancelEditSession = useCallback(() => {
+    const s = sessionRef.current
+    if (!s) return
+    sessionRef.current = null
+    setEditSessionActive(false)
+    historyRef.current = s.history
+    applySnapshot(s.snap)
+  }, [applySnapshot])
+
   return [
     waypoints, setWaypoints, legOverrides, setLegOverrides, loadRoute,
     aircraftId, setAircraftId, activeRouteId, setActiveRouteId,
-    { undo, redo, canUndo: historyRef.current.past.length > 0, canRedo: historyRef.current.future.length > 0 },
+    {
+      undo, redo,
+      canUndo: historyRef.current.past.length > 0, canRedo: historyRef.current.future.length > 0,
+      editSessionActive, setEditSessionArmed, applyEditSession, cancelEditSession,
+    },
   ] as const
 }
 

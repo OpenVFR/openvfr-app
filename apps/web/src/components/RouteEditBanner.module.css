@@ -1,0 +1,50 @@
+.banner {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 900;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  background: var(--surface-elevated);
+  border: 1px solid #22d3ee;
+  border-radius: 999px;
+  box-shadow: var(--shadow-heavy, 0 8px 32px rgba(0, 0, 0, 0.65));
+  padding: 6px 8px 6px 14px;
+
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.label {
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.iconBtn,
+.cancelBtn,
+.applyBtn {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-primary);
+  padding: 4px 10px;
+}
+
+.iconBtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.applyBtn {
+  background: #22d3ee;
+  border-color: #22d3ee;
+  color: #0b1220;
+  font-weight: 700;
+}
