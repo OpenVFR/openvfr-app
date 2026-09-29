@@ -471,6 +471,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const rulerModeRef = useRef(false)
   const rulerPointsRef = useRef<RouteWaypoint[]>([])
   const placingUserWpRef = useRef(false)
+  // Idle map cursor by active tool. '' inherits the map's own grab hand;
+  // tools that turn a click into an action (measure, add waypoint, place a
+  // user waypoint) show a crosshair. Hover cursors over handles/features are
+  // set by their own handlers and fall back to this. While the map is being
+  // panned the cursor is 'grabbing' whichever tool is active (dragstart/end).
+  const baseCursor = (): string =>
+    (rulerModeRef.current || planningModeRef.current || placingUserWpRef.current) ? 'crosshair' : ''
   const hasInitialCenteredRef = useRef(false)
   // Non-null while a midpoint drag-insert is in progress.
   const dragInsertRef = useRef<{ legIndex: number; cur: maplibregl.LngLat } | null>(null)
@@ -1745,13 +1752,17 @@ export default function MapView({ auth }: { auth: AuthState }) {
         paint: { 'line-color': '#a78bfa', 'line-width': 2.5, 'line-opacity': 0.9 },
       })
 
+      // Panning: 'grabbing' regardless of the tool cursor, restored on release.
+      map.on('dragstart', () => { map.getCanvas().style.cursor = 'grabbing' })
+      map.on('dragend', () => { map.getCanvas().style.cursor = baseCursor() })
+
       // ── Drag-insert interaction ────────────────────────────────────────────
       map.on('mouseenter', 'route-midpoints-layer', () => {
         map.getCanvas().style.cursor = 'grab'
       })
       map.on('mouseleave', 'route-midpoints-layer', () => {
         if (!dragInsertRef.current && !dragMoveRef.current) {
-          map.getCanvas().style.cursor = ''
+          map.getCanvas().style.cursor = baseCursor()
         }
       })
 
@@ -1772,7 +1783,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       })
       map.on('mouseleave', 'route-waypoints-circle', () => {
         if (!dragInsertRef.current && !dragMoveRef.current) {
-          map.getCanvas().style.cursor = ''
+          map.getCanvas().style.cursor = baseCursor()
         }
       })
       map.on('mousedown', 'route-waypoints-circle', (e) => {
@@ -1918,7 +1929,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           dragMoveRef.current = null
           map.dragPan.enable()
           clearPreview()
-          map.getCanvas().style.cursor = ''
+          map.getCanvas().style.cursor = baseCursor()
           if (!dragM.moved) {
             // Stationary tap in adjust mode → show WP context menu
             if (routeAdjustModeRef.current) {
@@ -1952,7 +1963,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         dragInsertRef.current = null
         map.dragPan.enable()
         clearPreview()
-        map.getCanvas().style.cursor = ''
+        map.getCanvas().style.cursor = baseCursor()
 
         const { legIndex } = dragI
         const insertWp = (wp: RouteWaypoint) => {
@@ -1986,7 +1997,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         if (!aircraftDragRef.current) return
         aircraftDragRef.current = false
         map.dragPan.enable()
-        map.getCanvas().style.cursor = ''
+        map.getCanvas().style.cursor = baseCursor()
         teleportRef.current(e.lngLat.lat, e.lngLat.lng)
       })
 
@@ -2112,7 +2123,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           dragMoveRef.current   = null
           map.dragPan.enable()
           clearPreview()
-          map.getCanvas().style.cursor = ''
+          map.getCanvas().style.cursor = baseCursor()
         }
       }
       window.addEventListener('keydown', onKeyDown)
@@ -2512,7 +2523,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         if (flyingModeRef.current === 'sim') map.getCanvas().style.cursor = 'grab'
       })
       map.on('mouseleave', 'aircraft-symbol', () => {
-        if (!aircraftDragRef.current) map.getCanvas().style.cursor = ''
+        if (!aircraftDragRef.current) map.getCanvas().style.cursor = baseCursor()
       })
       map.on('mousedown', 'aircraft-symbol', (e) => {
         if (flyingModeRef.current !== 'sim') return
@@ -2529,15 +2540,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
     })
 
     // ── Click → popup ─────────────────────────────────────────────────────
-    // Show pointer cursor (hand-with-pointing-finger) over all clickable
-    // layers (point features + airspace) — unconditionally, including while
-    // planning/ruler/route-adjust mode is on. Base cursor is the map's own
-    // default 'grab' hand ('' clears any inline override so it inherits
-    // maplibre-gl.css's `.maplibregl-canvas-container.maplibregl-interactive`
-    // rule); a bare crosshair here gave no hover affordance at all over an
-    // actionable feature while adding/editing a route.
+    // Show pointer cursor over all clickable layers (point features +
+    // airspace) — unconditionally, including while a tool is active — so an
+    // actionable feature always has a hover affordance. Leaving restores the
+    // idle cursor for the active tool (baseCursor: crosshair for measure /
+    // add-waypoint tools, else the map's own grab hand).
     const onEnter = () => { map.getCanvas().style.cursor = 'pointer' }
-    const onLeave = () => { map.getCanvas().style.cursor = '' }
+    const onLeave = () => { map.getCanvas().style.cursor = baseCursor() }
     ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols', 'notam-circles-fill', 'notam-polygons-fill', 'notam-points-cluster', 'notam-points-unclustered'].forEach((id) => {
       map.on('mouseenter', id, onEnter)
       map.on('mouseleave', id, onLeave)
@@ -3339,12 +3348,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
     })
   }, [routeVisible, planningMode, routeAdjustMode, mapReady])
 
-  // Planning mode: toggle button highlight + line style. Cursor stays the
-  // map's default grab hand regardless of mode — see onEnter/onLeave's doc
-  // comment above for why a crosshair default was dropped.
+  // Planning mode: toggle button highlight + line style; also re-applies the
+  // idle cursor for the active tool (see baseCursor).
   useEffect(() => {
     const map = mapRef.current
-    if (map) map.getCanvas().style.cursor = ''
+    if (map) map.getCanvas().style.cursor = baseCursor()
     if (map && mapReady) {
       const editMode = planningMode || routeAdjustMode
       // Dashed while editing, solid when viewing the finished route.
