@@ -423,20 +423,6 @@ const SNAP_PX = 20
 // colours since nothing enforced they stay identical. 'case' is used instead
 // of 'match' because the CTR/TMA split needs a compound condition (class AND
 // type), which a flat match on a single property can't express.
-const AIRSPACE_FILL_COLOR: any = colorExpr([
-  'case',
-  ['all', ['==', ['get', 'class'], 'C'], ['==', ['get', 'type'], 'CTR']], AC.cCtrFill,
-  ['==', ['get', 'class'], 'C'],     AC.cTmaFill,
-  ['==', ['get', 'class'], 'D'],     AC.dFill,
-  ['==', ['get', 'class'], 'E'],     AC.eFill,
-  ['==', ['get', 'class'], 'G'],     AC.gFill,
-  ['==', ['get', 'class'], 'R'],     AC.rFill,
-  ['==', ['get', 'class'], 'TRA'],   AC.traFill,
-  ['==', ['get', 'class'], 'GLDR'],  AC.gldrFill,
-  ['==', ['get', 'class'], 'MODEL'], AC.modelFill,
-  AC.transparent,
-])
-
 const AIRSPACE_BORDER_COLOR: any = colorExpr([
   'case',
   ['all', ['==', ['get', 'class'], 'C'], ['==', ['get', 'type'], 'CTR']], AC.cCtrBorder,
@@ -1980,12 +1966,18 @@ export function AviationMap({
         {/* Always-mounted — visibility toggled via layout.visibility, not mount/unmount.
             MapLibre Native throws 'id cannot be changed' when same id is removed then re-added. */}
         <GeoJSONSource id="ofm-airspace" onPress={() => {}} data={airspaceData}>
-          <Layer id="as-fill-c"   type="fill" filter={filterC as any}          paint={{ 'fill-color': AIRSPACE_FILL_COLOR, 'fill-opacity': 1 }} layout={{ visibility: showClassC     ? 'visible' : 'none' }} />
-          <Layer id="as-fill-d"   type="fill" filter={filterD as any}          paint={{ 'fill-color': AIRSPACE_FILL_COLOR, 'fill-opacity': 1 }} layout={{ visibility: showClassD     ? 'visible' : 'none' }} />
-          <Layer id="as-fill-e"   type="fill" filter={filterE as any}          paint={{ 'fill-color': AIRSPACE_FILL_COLOR, 'fill-opacity': 1 }} layout={{ visibility: showClassE     ? 'visible' : 'none' }} />
-          <Layer id="as-fill-g"   type="fill" filter={filterG as any}          paint={{ 'fill-color': AIRSPACE_FILL_COLOR, 'fill-opacity': 1 }} layout={{ visibility: showClassG     ? 'visible' : 'none' }} />
-          <Layer id="as-fill-r"   type="fill" filter={filterRestricted as any} paint={{ 'fill-color': AIRSPACE_FILL_COLOR, 'fill-opacity': 1 }} layout={{ visibility: showRestricted ? 'visible' : 'none' }} />
-          <Layer id="as-fill-act" type="fill" filter={filterActivity as any}   paint={{ 'fill-color': AIRSPACE_FILL_COLOR, 'fill-opacity': 1 }} layout={{ visibility: showActivity   ? 'visible' : 'none' }} />
+          {/* Static per-class fill colours: no data-driven colour expression on a
+              GeoJSON fill layer. An expression-valued fill-color aborted the app on
+              iOS at style load (uncaught exception in MLRNStyle setFillColor). */}
+          <Layer id="as-fill-c-ctr" type="fill" filter={['all', filterC, ['==', ['get', 'type'], 'CTR']] as any} paint={{ 'fill-color': AC.cCtrFill, 'fill-opacity': 1 }} layout={{ visibility: showClassC ? 'visible' : 'none' }} />
+          <Layer id="as-fill-c-tma" type="fill" filter={['all', filterC, ['!=', ['get', 'type'], 'CTR']] as any} paint={{ 'fill-color': AC.cTmaFill, 'fill-opacity': 1 }} layout={{ visibility: showClassC ? 'visible' : 'none' }} />
+          <Layer id="as-fill-d" type="fill" filter={filterD as any} paint={{ 'fill-color': AC.dFill, 'fill-opacity': 1 }} layout={{ visibility: showClassD ? 'visible' : 'none' }} />
+          <Layer id="as-fill-e" type="fill" filter={filterE as any} paint={{ 'fill-color': AC.eFill, 'fill-opacity': 1 }} layout={{ visibility: showClassE ? 'visible' : 'none' }} />
+          <Layer id="as-fill-g" type="fill" filter={filterG as any} paint={{ 'fill-color': AC.gFill, 'fill-opacity': 1 }} layout={{ visibility: showClassG ? 'visible' : 'none' }} />
+          <Layer id="as-fill-r" type="fill" filter={['all', filterRestricted, ['==', ['get', 'class'], 'R']] as any} paint={{ 'fill-color': AC.rFill, 'fill-opacity': 1 }} layout={{ visibility: showRestricted ? 'visible' : 'none' }} />
+          <Layer id="as-fill-tra" type="fill" filter={['all', filterRestricted, ['==', ['get', 'class'], 'TRA']] as any} paint={{ 'fill-color': AC.traFill, 'fill-opacity': 1 }} layout={{ visibility: showRestricted ? 'visible' : 'none' }} />
+          <Layer id="as-fill-gldr" type="fill" filter={['all', filterActivity, ['==', ['get', 'class'], 'GLDR']] as any} paint={{ 'fill-color': AC.gldrFill, 'fill-opacity': 1 }} layout={{ visibility: showActivity ? 'visible' : 'none' }} />
+          <Layer id="as-fill-model" type="fill" filter={['all', filterActivity, ['==', ['get', 'class'], 'MODEL']] as any} paint={{ 'fill-color': AC.modelFill, 'fill-opacity': 1 }} layout={{ visibility: showActivity ? 'visible' : 'none' }} />
           {/* Inset shading bands — wide translucent line offset INTO the polygon
               interior via positive line-offset. Source geometry is Polygon, so
               MapLibre's polygon-aware line-offset inset/outset is winding-order
