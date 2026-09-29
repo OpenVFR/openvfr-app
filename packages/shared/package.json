@@ -28,6 +28,7 @@
     "./windRelative": "./src/windRelative.ts",
     "./runwayWind": "./src/runwayWind.ts",
     "./virtualRadarCalc": "./src/virtualRadarCalc.ts",
+    "./airspaceOutline": "./src/airspaceOutline.ts",
     "./aircraftSilhouette": "./src/aircraftSilhouette.ts",
     "./simFlightEngine": "./src/simFlightEngine.ts",
     "./baroAltitude": "./src/baroAltitude.ts",

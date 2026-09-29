@@ -11,7 +11,10 @@ import {
   ReferenceArea,
   Tooltip,
   ResponsiveContainer,
+  useXAxisScale,
+  useYAxisScale,
 } from 'recharts'
+import { airspaceOutlines, type OutlineShape } from '@open-vfr/shared/airspaceOutline'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel } from '../utils/units'
@@ -220,6 +223,26 @@ function renderWindBarbShape(
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
+
+/** Airspace bands as one merged outline per style (see @open-vfr/shared/airspaceOutline):
+ *  overlapping sectors of the same kind form a single stepped shape, so a higher
+ *  floor inside a lower one draws no line. Rendered inside the chart's SVG using
+ *  the axis scales. */
+function AirspaceOutlines({ shapes, xFactor }: { shapes: OutlineShape[]; xFactor: (nm: number) => number }) {
+  const xScale = useXAxisScale()
+  const yScale = useYAxisScale()
+  if (!xScale || !yScale) return null
+  return (
+    <g>
+      {shapes.map((shape, i) => {
+        const d = shape.loops
+          .map((loop) => 'M' + loop.map(([nm, ft]) => `${xScale(xFactor(nm))},${yScale(ft)}`).join('L') + 'Z')
+          .join(' ')
+        return <path key={i} d={d} fill={shape.fill} fillRule="evenodd" stroke={shape.border} strokeWidth={1} strokeLinejoin="round" />
+      })}
+    </g>
+  )
+}
 
 export default function VirtualRadar({
   waypoints, legOverrides, units = DEFAULT_UNITS, title, onHoverDistNm, aircraftProfile,
@@ -722,24 +745,13 @@ export default function VirtualRadar({
                   FL095" tags. Y-position + band colour already encode
                   altitude/class; revisit with a floor–ceiling format + dedup
                   instead of re-adding as-is. */}
-              {/* Recharts drops a ReferenceArea that extends past the axis domain
-                  (default ifOverflow="discard"), and yMax only scales to the
-                  planned altitude/terrain -- so any band topping above it (a
-                  TMA capped at FL065 over a low-level route) vanished. Clamp
-                  the top to the plot edge, like native; a band whose floor is
-                  above the plot is simply out of view. */}
-              {profile.airspaceBands.filter(band => band.lower_ft < yMax).map((band, i) => (
-                <ReferenceArea
-                  key={i}
-                  x1={nmToDisplay(band.entryNm, units.distance)}
-                  x2={nmToDisplay(band.exitNm,  units.distance)}
-                  y1={band.lower_ft}
-                  y2={Math.min(band.upper_ft, yMax)}
-                  fill={band.fill}
-                  stroke={band.border}
-                  strokeWidth={1}
-                />
-              ))}
+              {/* Airspace bands: merged outline per style, clamped to the plot's
+                  top edge (a band topping above yMax, e.g. a TMA capped at
+                  FL065 over a low route, must still draw). */}
+              <AirspaceOutlines
+                shapes={airspaceOutlines(profile.airspaceBands, yMax)}
+                xFactor={(nm) => nmToDisplay(nm, units.distance)}
+              />
 
               {/* Weather: cloud-base layers — translucent
                   bands from each METAR cloud groups base up to the top of

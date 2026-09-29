@@ -46,6 +46,7 @@ import {
   type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
+import { airspaceOutlines } from '@open-vfr/shared/airspaceOutline'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
 import { windBarbColorForSpeed, windBarbGeometry } from '@open-vfr/shared/windBarb'
 import { getTileUrls, API_BASE } from '../config'
@@ -889,28 +890,23 @@ export function VerticalProfile({
                     stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
                 ))}
 
-                {/* ── Airspace bands (glow halo + fill + border + chip) ── */}
-                {profile.airspaceBands.map((band, i) => {
-                  const x1 = xOf(band.entryNm), x2 = xOf(band.exitNm)
-                  // Clamp to the plot's own top edge -- yMax only scales to
-                  // planned altitude/terrain (see yMax above), NOT to
-                  // airspace ceilings, so a band whose upper_ft exceeds yMax
-                  // (e.g. a low-level route crossing under a TMA capped at
-                  // FL065) would otherwise compute a yOf() above MARGIN_T,
-                  // drawing its top edge through the wind-arrow/waypoint-
-                  // name row instead of stopping at the chart's visible top.
-                  // Growing yMax to always fit every crossed band's ceiling
-                  // isn't the fix either -- one FL660 CTA crossing would
-                  // blow the whole y-scale out and squash the low-altitude
-                  // terrain/obstacle detail that matters far more day to day.
-                  const yTop = Math.max(MARGIN_T, yOf(band.upper_ft)), yBot = yOf(band.lower_ft)
-                  const d = `M${x1},${yTop} L${x2},${yTop} L${x2},${yBot} L${x1},${yBot} Z`
+                {/* ── Airspace (glow halo + fill + border) ── */}
+                {/* One merged outline per style (@open-vfr/shared/airspaceOutline):
+                    overlapping sectors of the same kind form a single stepped shape,
+                    so a 2500 ft floor inside a 1500 ft sector draws no line. Band
+                    tops are clamped to yMax -- it only scales to planned altitude and
+                    terrain, not airspace ceilings, and one FL660 CTA must not blow the
+                    scale out or draw through the wind-arrow/waypoint-name row. */}
+                {airspaceOutlines(profile.airspaceBands, yMax).map((shape, i) => {
+                  const d = shape.loops
+                    .map((loop) => 'M' + loop.map(([nm, ft]) => `${xOf(nm)},${yOf(ft)}`).join(' L') + ' Z')
+                    .join(' ')
                   return (
                     <G key={`band-${i}`}>
-                      <Path d={d} fill={band.fill} />
+                      <Path d={d} fill={shape.fill} fillRule="evenodd" />
                       {/* Glow halo — wide low-opacity stroke behind the crisp border */}
-                      <Path d={d} fill="none" stroke={band.border} strokeOpacity={0.25} strokeWidth={5} />
-                      <Path d={d} fill="none" stroke={band.border} strokeWidth={1.25} />
+                      <Path d={d} fill="none" stroke={shape.border} strokeOpacity={0.25} strokeWidth={5} strokeLinejoin="round" />
+                      <Path d={d} fill="none" stroke={shape.border} strokeWidth={1.25} strokeLinejoin="round" />
                     </G>
                   )
                 })}
