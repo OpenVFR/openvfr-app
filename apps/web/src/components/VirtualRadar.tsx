@@ -722,13 +722,19 @@ export default function VirtualRadar({
                   FL095" tags. Y-position + band colour already encode
                   altitude/class; revisit with a floor–ceiling format + dedup
                   instead of re-adding as-is. */}
-              {profile.airspaceBands.map((band, i) => (
+              {/* Recharts drops a ReferenceArea that extends past the axis domain
+                  (default ifOverflow="discard"), and yMax only scales to the
+                  planned altitude/terrain -- so any band topping above it (a
+                  TMA capped at FL065 over a low-level route) vanished. Clamp
+                  the top to the plot edge, like native; a band whose floor is
+                  above the plot is simply out of view. */}
+              {profile.airspaceBands.filter(band => band.lower_ft < yMax).map((band, i) => (
                 <ReferenceArea
                   key={i}
                   x1={nmToDisplay(band.entryNm, units.distance)}
                   x2={nmToDisplay(band.exitNm,  units.distance)}
                   y1={band.lower_ft}
-                  y2={band.upper_ft}
+                  y2={Math.min(band.upper_ft, yMax)}
                   fill={band.fill}
                   stroke={band.border}
                   strokeWidth={1}
