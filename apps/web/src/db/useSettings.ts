@@ -456,6 +456,13 @@ export function useLayerVisibility(): [Record<string, boolean>, (groupId: string
       if (doc) {
         try {
           const stored = JSON.parse(doc.value) as Record<string, boolean>
+          // 'classC' was one toggle for CTR + TMA; it is now two. Carry the old
+          // choice over so nobody's layers change on upgrade.
+          if ('classC' in stored) {
+            stored.classCtr ??= stored.classC
+            stored.classCtma ??= stored.classC
+            delete stored.classC
+          }
           setVisibilityState({ ...defaultLayerVisibility(), ...stored })
         } catch { /* ignore */ }
       }

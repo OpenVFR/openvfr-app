@@ -97,7 +97,8 @@
 }
 
 /* Per-group color tokens — match aeronautical chart conventions */
-.groupClassC    { --group-color: #8b2fc9; }  /* purple  — CTR/TMA (Class C) */
+.groupClassCtr  { --group-color: #b432b4; }  /* magenta — CTR (Class C control zone) */
+.groupClassTma  { --group-color: #1e5ac8; }  /* blue    — TMA / CTA (Class C) */
 .groupClassD    { --group-color: #1a6db5; }  /* blue    — Class D / Danger areas */
 .groupClassE    { --group-color: #16a34a; }  /* green   — Class E (ROENNE) */
 .groupClassG    { --group-color: #6b7280; }  /* grey    — Class G (RMZ/ATZ) */

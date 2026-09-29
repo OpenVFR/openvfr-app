@@ -102,7 +102,8 @@ export type AviationMapProps = {
   simActive?: boolean
   waypoints?: RouteWaypoint[]
   airspaceCeilingFt?: number
-  showClassC?:     boolean
+  showClassCtr?:   boolean
+  showClassCtma?:  boolean
   showClassD?:     boolean
   showClassE?:     boolean
   showClassG?:     boolean
@@ -718,7 +719,8 @@ export function AviationMap({
   simActive = false,
   waypoints = [],
   airspaceCeilingFt = 9_500,
-  showClassC     = true,
+  showClassCtr   = true,
+  showClassCtma  = true,
   showClassD     = true,
   showClassE     = true,
   showClassG     = true,
@@ -1550,8 +1552,8 @@ export function AviationMap({
     act: { inset: { w: 5, off: 2.5, op: 0.16 }, bdr: { w: 1.0, dash: [3, 2] }, label: { size: 9,  field: AIRSPACE_LABEL_TEXT_FIELD } },
   }
   const asVariants = [
-    { k: 'c-ctr', f: ['all', filterC, ['==', ['get', 'type'], 'CTR']], col: AC.cCtrBorder,  show: showClassC,     p: AS_PARAMS.c },
-    { k: 'c-tma', f: ['all', filterC, ['!=', ['get', 'type'], 'CTR']], col: AC.cTmaBorder,  show: showClassC,     p: AS_PARAMS.c },
+    { k: 'c-ctr', f: ['all', filterC, ['==', ['get', 'type'], 'CTR']], col: AC.cCtrBorder,  show: showClassCtr,   p: AS_PARAMS.c },
+    { k: 'c-tma', f: ['all', filterC, ['!=', ['get', 'type'], 'CTR']], col: AC.cTmaBorder,  show: showClassCtma,  p: AS_PARAMS.c },
     { k: 'd',     f: filterD,                                           col: AC.dBorder,     show: showClassD,     p: AS_PARAMS.d },
     { k: 'e',     f: filterE,                                           col: AC.eBorder,     show: showClassE,     p: AS_PARAMS.e },
     { k: 'g',     f: filterG,                                           col: AC.gBorder,     show: showClassG,     p: AS_PARAMS.g },
@@ -2089,8 +2091,8 @@ export function AviationMap({
           {/* Static per-class fill colours: no data-driven colour expression on a
               GeoJSON fill layer. An expression-valued fill-color aborted the app on
               iOS at style load (uncaught exception in MLRNStyle setFillColor). */}
-          <Layer id="as-fill-c-ctr" type="fill" filter={['all', filterC, ['==', ['get', 'type'], 'CTR']] as any} paint={{ 'fill-color': AC.cCtrFill, 'fill-opacity': 1 }} layout={{ visibility: showClassC ? 'visible' : 'none' }} />
-          <Layer id="as-fill-c-tma" type="fill" filter={['all', filterC, ['!=', ['get', 'type'], 'CTR']] as any} paint={{ 'fill-color': AC.cTmaFill, 'fill-opacity': 1 }} layout={{ visibility: showClassC ? 'visible' : 'none' }} />
+          <Layer id="as-fill-c-ctr" type="fill" filter={['all', filterC, ['==', ['get', 'type'], 'CTR']] as any} paint={{ 'fill-color': AC.cCtrFill, 'fill-opacity': 1 }} layout={{ visibility: showClassCtr ? 'visible' : 'none' }} />
+          <Layer id="as-fill-c-tma" type="fill" filter={['all', filterC, ['!=', ['get', 'type'], 'CTR']] as any} paint={{ 'fill-color': AC.cTmaFill, 'fill-opacity': 1 }} layout={{ visibility: showClassCtma ? 'visible' : 'none' }} />
           <Layer id="as-fill-d" type="fill" filter={filterD as any} paint={{ 'fill-color': AC.dFill, 'fill-opacity': 1 }} layout={{ visibility: showClassD ? 'visible' : 'none' }} />
           <Layer id="as-fill-e" type="fill" filter={filterE as any} paint={{ 'fill-color': AC.eFill, 'fill-opacity': 1 }} layout={{ visibility: showClassE ? 'visible' : 'none' }} />
           <Layer id="as-fill-g" type="fill" filter={filterG as any} paint={{ 'fill-color': AC.gFill, 'fill-opacity': 1 }} layout={{ visibility: showClassG ? 'visible' : 'none' }} />

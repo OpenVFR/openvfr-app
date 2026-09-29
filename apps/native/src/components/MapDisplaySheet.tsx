@@ -25,7 +25,8 @@ import { AERODROME_COLORS, NAVAID_COLORS, WAYPOINT_COLORS, OBSTACLE_COLORS } fro
 // ---------------------------------------------------------------------------
 export type LayerState = {
   // Airspace per-class
-  classC:     boolean   // CTR + TMA
+  classCtr:   boolean   // CTR (Class C control zones)
+  classCtma:  boolean   // TMA / CTA (other Class C polygons)
   classD:     boolean   // Class D / Danger
   classE:     boolean   // Class E
   classG:     boolean   // RMZ / ATZ
@@ -66,7 +67,8 @@ export type LayerState = {
 }
 
 export const LAYER_DEFAULTS: LayerState = {
-  classC:     true,
+  classCtr:   true,
+  classCtma:  true,
   classD:     true,
   classE:     true,
   classG:     true,
@@ -94,7 +96,8 @@ export const LAYER_DEFAULTS: LayerState = {
 type Group = { key: keyof LayerState; label: string; color: string }
 
 const AIRSPACE_GROUPS: Group[] = [
-  { key: 'classC',     label: 'CTR / TMA',        color: AC.cCtrBorder  },
+  { key: 'classCtr',   label: 'CTR',              color: AC.cCtrBorder  },
+  { key: 'classCtma',  label: 'TMA / CTA',        color: AC.cTmaBorder  },
   { key: 'classD',     label: 'Class D',           color: AC.dBorder     },
   { key: 'classE',     label: 'Class E',           color: AC.eBorder     },
   { key: 'classG',     label: 'RMZ / ATZ',         color: AC.gBorder     },

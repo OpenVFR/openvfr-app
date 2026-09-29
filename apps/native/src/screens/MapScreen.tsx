@@ -239,7 +239,18 @@ export function MapScreen() {
   useEffect(() => {
     settingsDb.get<Partial<LayerState>>('ovfr:layerVisibility').then((stored) => {
       layersLoadedRef.current = true
-      if (stored) setLayers(l => ({ ...l, ...stored }))
+      if (stored) {
+        // 'classC' was one toggle for CTR + TMA; it is now two. Carry the old
+        // choice over so nobody's layers change on upgrade.
+        const legacy = (stored as { classC?: boolean }).classC
+        const { classC: _drop, ...rest } = stored as Partial<LayerState> & { classC?: boolean }
+        void _drop
+        setLayers(l => ({
+          ...l,
+          ...(legacy !== undefined ? { classCtr: legacy, classCtma: legacy } : {}),
+          ...rest,
+        }))
+      }
     }).catch(() => { layersLoadedRef.current = true })
   }, [])
 
@@ -1196,7 +1207,8 @@ export function MapScreen() {
           activeRouteId={activeRouteId}
           routeFitNonce={routeFitNonce}
           airspaceCeilingFt={settings.airspaceCeilingFt}
-          showClassC={layers.classC}
+          showClassCtr={layers.classCtr}
+          showClassCtma={layers.classCtma}
           showClassD={layers.classD}
           showClassE={layers.classE}
           showClassG={layers.classG}

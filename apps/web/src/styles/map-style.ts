@@ -159,10 +159,55 @@ export const PROTOMAPS_LAYER_IDS: readonly string[] = [
     .filter((id): id is string => typeof id === 'string'),
 ]
 
+// Class C airspace layers, one set per type: 'ctr' = CTR, 'tma' = every other
+// class C polygon (TMA, CTA, ...). Ids: airspace-{fill,inset,border,label}-c-<kind>.
+const C_KINDS = {
+  ctr: { filter: ['==', ['get', 'type'], 'CTR'] as FilterSpecification, fill: AC.cCtrFill, border: AC.cCtrBorder, width: 2.0 },
+  tma: { filter: ['!=', ['get', 'type'], 'CTR'] as FilterSpecification, fill: AC.cTmaFill, border: AC.cTmaBorder, width: 1.4 },
+} as const
+type CKind = keyof typeof C_KINDS
+const cFilter = (k: CKind): FilterSpecification =>
+  ['all', ['==', ['get', 'class'], 'C'], C_KINDS[k].filter] as FilterSpecification
+
+function classCLayers(k: CKind): StyleSpecification['layers'] {
+  const c = C_KINDS[k]
+  return [
+    {
+      id: `airspace-fill-c-${k}`, type: 'fill', source: 'ofm', filter: cFilter(k),
+      paint: { 'fill-color': c.fill, 'fill-outline-color': AC.transparent },
+    },
+    // Inset shading band — wide, translucent, offset INTO the polygon via a
+    // positive line-offset (winding-order-independent for Polygon geometry, per
+    // the style spec), showing which side of the boundary the airspace is on.
+    {
+      id: `airspace-inset-c-${k}`, type: 'line', source: 'ofm', filter: cFilter(k),
+      paint: { 'line-color': c.border, 'line-width': 6, 'line-offset': 3, 'line-opacity': 0.22 },
+    },
+    {
+      id: `airspace-border-c-${k}`, type: 'line', source: 'ofm', filter: cFilter(k),
+      paint: { 'line-color': c.border, 'line-width': c.width },
+    },
+    {
+      id: `airspace-label-c-${k}`, type: 'symbol', source: 'ofm', filter: cFilter(k),
+      layout: {
+        'symbol-placement': 'line',
+        'text-offset': [0, 1],
+        'text-field': AIRSPACE_LABEL_TEXT_FIELD,
+        'text-size': 10,
+        'text-justify': 'center',
+        'symbol-spacing': 200,
+        'text-font': ['Noto Sans Regular'],
+      },
+      paint: { 'text-color': c.border, 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 },
+    },
+  ] as StyleSpecification['layers']
+}
+
 // Airspace border layers with default (vector) and boosted (satellite) line-widths.
 // In satellite mode widths are increased so class boundaries remain legible over imagery.
 export const AIRSPACE_BORDER_WIDTHS: { id: string; vector: number | ExpressionSpecification; sat: number }[] = [
-  { id: 'airspace-border-c',          vector: ['match', ['get', 'type'], 'CTR', 2.0, 1.4], sat: 2.5 },
+  { id: 'airspace-border-c-ctr',      vector: 2.0,  sat: 2.5 },
+  { id: 'airspace-border-c-tma',      vector: 1.4,  sat: 2.5 },
   { id: 'airspace-border-d',          vector: 1.2,  sat: 2.0 },
   { id: 'airspace-border-e',          vector: 1.5,  sat: 2.0 },
   { id: 'airspace-border-g',          vector: 1.0,  sat: 1.5 },
@@ -180,7 +225,8 @@ export const AVIATION_LABEL_LAYERS = [
   'obstacles-label',
   'landmarks-label',
   'user-waypoints-label',
-  'airspace-label-c',
+  'airspace-label-c-ctr',
+  'airspace-label-c-tma',
   'airspace-label-d',
   'airspace-label-e',
   'airspace-label-g',
@@ -211,10 +257,14 @@ export interface LayerGroup {
 // Stored here so MapView can rebuild combined filters without relying on
 // map.getFilter() timing (which varies with styledata/load event ordering).
 export const AIRSPACE_BASE_FILTERS: Readonly<Record<string, FilterSpecification>> = {
-  'airspace-fill-c':            ['==', ['get', 'class'], 'C'],
-  'airspace-inset-c':           ['==', ['get', 'class'], 'C'],
-  'airspace-border-c':          ['==', ['get', 'class'], 'C'],
-  'airspace-label-c':           ['==', ['get', 'class'], 'C'],
+  'airspace-fill-c-ctr':        cFilter('ctr'),
+  'airspace-inset-c-ctr':       cFilter('ctr'),
+  'airspace-border-c-ctr':      cFilter('ctr'),
+  'airspace-label-c-ctr':       cFilter('ctr'),
+  'airspace-fill-c-tma':        cFilter('tma'),
+  'airspace-inset-c-tma':       cFilter('tma'),
+  'airspace-border-c-tma':      cFilter('tma'),
+  'airspace-label-c-tma':       cFilter('tma'),
   'airspace-fill-d':            ['==', ['get', 'class'], 'D'],
   'airspace-inset-d':           ['==', ['get', 'class'], 'D'],
   'airspace-border-d':          ['==', ['get', 'class'], 'D'],
@@ -259,12 +309,20 @@ export function buildAltitudeFilter(
 
 export const LAYER_GROUPS: LayerGroup[] = [
   {
-    id: 'classC',
-    // Controlled airspace zones — CTR (Control Zone) and TMA (Terminal Area).
-    // These are the ICAO Class C designated polygons in the OFM data.
-    label: 'CTR / TMA',
-    cssClass: 'groupClassC',
-    layerIds: ['airspace-fill-c', 'airspace-inset-c', 'airspace-border-c', 'airspace-label-c'],
+    id: 'classCtr',
+    // Control zones — the ICAO Class C polygons of type CTR in the OFM data.
+    label: 'CTR',
+    cssClass: 'groupClassCtr',
+    layerIds: ['airspace-fill-c-ctr', 'airspace-inset-c-ctr', 'airspace-border-c-ctr', 'airspace-label-c-ctr'],
+    defaultOn: true,
+    section: 'Airspace',
+  },
+  {
+    id: 'classCtma',
+    // Terminal / control areas — every other Class C polygon (TMA, CTA, ...).
+    label: 'TMA / CTA',
+    cssClass: 'groupClassTma',
+    layerIds: ['airspace-fill-c-tma', 'airspace-inset-c-tma', 'airspace-border-c-tma', 'airspace-label-c-tma'],
     defaultOn: true,
     section: 'Airspace',
   },
@@ -1105,89 +1163,11 @@ export function getMapStyle(): StyleSpecification {
         },
       },
 
-      // ── Layer 2: Class C — CTR + TMA ──────────────────────────────────────
-      // Both CTR and TMA are Class C in Sweden. The 'type' property is used
-      // in paint expressions to give CTRs stronger styling than TMAs.
-      {
-        id: 'airspace-fill-c',
-        type: 'fill',
-        source: 'ofm',
-        filter: ['==', ['get', 'class'], 'C'],
-        paint: {
-          'fill-color': [
-            'match', ['get', 'type'],
-            'CTR', AC.cCtrFill,
-                   AC.cTmaFill,
-          ],
-          'fill-outline-color': AC.transparent,
-        },
-      },
-      // Inset shading band — wide, translucent, offset INTO the polygon interior
-      // via positive line-offset. Since the source geometry is Polygon (not
-      // LineString), MapLibre's line-offset is winding-order-independent for
-      // polygon features: positive = inset (inward), negative = outset
-      // (outward) — per the style-spec doc, this is guaranteed regardless of
-      // exterior-ring vertex order. This unambiguously shows which side of the
-      // boundary the airspace occupies (line-width 7, line-offset 3.5,
-      // line-opacity 0.2 using the same colour as the crisp border).
-      {
-        id: 'airspace-inset-c',
-        type: 'line',
-        source: 'ofm',
-        filter: ['==', ['get', 'class'], 'C'],
-        paint: {
-          'line-color': [
-            'match', ['get', 'type'],
-            'CTR', AC.cCtrBorder,
-                   AC.cTmaBorder,
-          ],
-          'line-width': 6,
-          'line-offset': 3,
-          'line-opacity': 0.22,
-        },
-      },
-      {
-        id: 'airspace-border-c',
-        type: 'line',
-        source: 'ofm',
-        filter: ['==', ['get', 'class'], 'C'],
-        paint: {
-          'line-color': [
-            'match', ['get', 'type'],
-            'CTR', AC.cCtrBorder,
-                   AC.cTmaBorder,
-          ],
-          'line-width': [
-            'match', ['get', 'type'],
-            'CTR', 2.0,
-            1.4,
-          ],
-        },
-      },
-      {
-        id: 'airspace-label-c',
-        type: 'symbol',
-        source: 'ofm',
-        filter: ['==', ['get', 'class'], 'C'],
-        layout: {
-          'symbol-placement': 'line',
-          'text-offset': [0, 1],
-          'text-field': AIRSPACE_LABEL_TEXT_FIELD,
-          'text-size': 10,
-          'text-justify': 'center',
-          'symbol-spacing': 200,
-          'text-font': ['Noto Sans Regular'],
-        },
-        paint: {
-          'text-color': [
-            'match', ['get', 'type'],
-            'CTR', AC.cCtrBorder,
-                   AC.cTmaBorder,
-          ],
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1.2,
-        },
-      },
+      // ── Layer 2: Class C — CTR and TMA/CTA ──────────────────────────────────
+      // Both are Class C in Sweden. Separate layer sets per type so each has
+      // its own toggle (LAYER_GROUPS classCtr / classTma) and colour.
+      ...classCLayers('ctr'),
+      ...classCLayers('tma'),
 
       // ── Layer 3: Class D ───────────────────────────────────────────────
       // Includes: Danger areas (type=D), Class D CTRs, Class D TMAs
