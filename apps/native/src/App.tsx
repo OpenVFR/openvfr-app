@@ -61,6 +61,14 @@ function AppShell() {
   )
 }
 
+/** Remounts the data providers per account so nothing from the previous
+ *  account's in-memory state (route, waypoints, ...) survives a switch. */
+function UserScoped({ children }: { children: React.ReactNode }) {
+  const { state } = useAuthContext()
+  const id = state.status === 'authenticated' ? state.user.id : 'anonymous'
+  return <React.Fragment key={id}>{children}</React.Fragment>
+}
+
 export default function App() {
   // Fires on every cold launch, before anything else renders -- if the
   // running build is below the backend's supported floor, this triggers a
@@ -72,6 +80,7 @@ export default function App() {
       <KeyboardProvider>
       <AuthProvider>
         <SettingsProvider>
+          <UserScoped>
           <RouteProvider>
             <UserWaypointProvider>
             <FlightLogViewProvider>
@@ -83,6 +92,7 @@ export default function App() {
             </FlightLogViewProvider>
             </UserWaypointProvider>
           </RouteProvider>
+          </UserScoped>
         </SettingsProvider>
       </AuthProvider>
       </KeyboardProvider>

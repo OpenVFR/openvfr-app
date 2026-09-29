@@ -13,6 +13,7 @@ import { createAuthClient } from 'better-auth/client'
 import { emailOTPClient }   from 'better-auth/client/plugins'
 import { passkeyClient }    from '@better-auth/passkey/client'
 import { API_BASE_URL } from '../utils/env'
+import { flagWipeOnSignOut } from '../db/userScope'
 
 // ---------------------------------------------------------------------------
 // Client singleton — created once per app lifecycle.
@@ -184,6 +185,9 @@ export function useAuth(): AuthState {
 
   const signOut = useCallback(async () => {
     await authClient.signOut()
+    // The local copy of this account's data must not survive into the next
+    // sign-in; useSync wipes it once its push subscriptions are torn down.
+    flagWipeOnSignOut()
     setUser(null)
     setJwt(null)
   }, [])

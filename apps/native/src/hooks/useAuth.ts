@@ -13,6 +13,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authClient } from '../utils/authClient'
+import { claimLocalData, wipePrivateLocalData } from '../utils/userScope'
 
 export type AuthUser = {
   id:    string
@@ -54,6 +55,7 @@ export function useAuth() {
       const cached = await readCachedUser()
       if (cached) {
         console.log('[auth] offline, using cached user', cached.email)
+        await claimLocalData(cached.id)
         setState({ status: 'authenticated', user: cached })
       } else {
         setState({ status: 'unauthenticated' })
@@ -65,6 +67,7 @@ export function useAuth() {
           console.log('[auth] restored session for', data.user.email)
           const user = { id: data.user.id, email: data.user.email, name: data.user.name ?? null }
           AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(user)).catch(() => {})
+          await claimLocalData(user.id)
           setState({ status: 'authenticated', user })
         } else if (err && (!err.status || err.status >= 500)) {
           await fallbackOffline()
@@ -109,6 +112,7 @@ export function useAuth() {
     }
     if (data?.user) {
       console.log('[auth] signed in as', data.user.email)
+      await claimLocalData(data.user.id)
       setState({
         status: 'authenticated',
         user: { id: data.user.id, email: data.user.email, name: data.user.name ?? null },
@@ -128,6 +132,7 @@ export function useAuth() {
     }
     if (data?.user) {
       console.log('[auth] signed in via passkey as', data.user.email)
+      await claimLocalData(data.user.id)
       setState({
         status: 'authenticated',
         user: { id: data.user.id, email: data.user.email, name: data.user.name ?? null },
@@ -145,6 +150,8 @@ export function useAuth() {
     // NOTAMs, weather-along-route) until overwritten by a future sign-in.
     await AsyncStorage.removeItem('better-auth-token').catch(() => {})
     await AsyncStorage.removeItem(CACHED_USER_KEY).catch(() => {})
+    // This account's private local data must not survive into the next sign-in.
+    await wipePrivateLocalData()
     setState({ status: 'unauthenticated' })
   }, [])
 

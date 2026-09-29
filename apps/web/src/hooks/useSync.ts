@@ -20,6 +20,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AuthState } from './useAuth'
 import { getDb } from '../db'
+import { getSyncOwner, setSyncOwner, isWipePending, clearPrivateLocalData } from '../db/userScope'
 import { API_BASE_URL } from '../utils/env'
 import type {
   RouteDocType,
@@ -273,6 +274,25 @@ export function useSync(auth: AuthState): void {
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [jwt, userId])
 
+  // After an explicit sign-out: wipe the previous account's local data. This
+  // effect's body runs after the sync effect's cleanup has scheduled the
+  // unsubscribe; the short wait lets it land before any document is removed
+  // (removal while subscribed would push DELETEs to the cloud copy).
+  useEffect(() => {
+    if (jwt || !isWipePending()) return
+    let cancelled = false
+    void (async () => {
+      await new Promise((r) => setTimeout(r, 100))
+      if (!cancelled && isWipePending()) {
+        await clearPrivateLocalData()
+        // Route/aircraft state is also held in memory by the UI; a reload is
+        // the reliable way to drop the previous account's copy.
+        window.location.reload()
+      }
+    })()
+    return () => { cancelled = true }
+  }, [jwt])
+
   useEffect(() => {
     if (!jwt || !userId) return
     if (syncedRef.current) return
@@ -281,6 +301,15 @@ export function useSync(auth: AuthState): void {
     let cancelled = false
 
     const run = async () => {
+      // Local data left by a different account must never reach this one.
+      const owner = getSyncOwner()
+      if ((owner && owner !== userId) || isWipePending()) {
+        await clearPrivateLocalData()
+        setSyncOwner(userId)
+        window.location.reload()   // drop the other account's in-memory state
+        return
+      }
+      setSyncOwner(userId)
       const db = await getDb()
 
       // ── Pull phase ─────────────────────────────────────────────────────
