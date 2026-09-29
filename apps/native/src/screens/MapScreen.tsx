@@ -288,12 +288,13 @@ export function MapScreen() {
   const flyingActive = flying || simFlight.active || simPosition != null
 
   // Entering any flight mode (real GPS or Simulate) collapses the tab bar so
-  // the map gets the full height in the air. Rising edge only: the pilot can
-  // still pull it back up with a swipe/tap and it is not forced closed again.
+  // the map gets the full height in the air; leaving it expands the bar again.
+  // Edge-triggered only: in between, the pilot can pull it up or push it down
+  // manually and it is not forced back.  The bar animates both transitions.
   const { setCollapsed: setTabBarCollapsed } = useTabBarCollapsed()
   const wasFlyingRef = React.useRef(false)
   useEffect(() => {
-    if (flyingActive && !wasFlyingRef.current) setTabBarCollapsed(true)
+    if (flyingActive !== wasFlyingRef.current) setTabBarCollapsed(flyingActive)
     wasFlyingRef.current = flyingActive
   }, [flyingActive, setTabBarCollapsed])
 
