@@ -1693,12 +1693,17 @@ export default function MapView({ auth }: { auth: AuthState }) {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
       })
+      // While dragging, the route as it will be after the drop is drawn in a
+      // distinct colour and the original route stays in place, faded.
       map.addLayer({
         id: 'route-drag-preview-layer',
         type: 'line',
         source: 'route-drag-preview',
-        paint: { 'line-color': '#e040fb', 'line-width': 2, 'line-dasharray': [4, 2], 'line-opacity': 0.6 },
+        paint: { 'line-color': '#22d3ee', 'line-width': 3, 'line-dasharray': [4, 2] },
       })
+      const fadeRoute = (on: boolean) => {
+        if (map.getLayer('route-line-layer')) map.setPaintProperty('route-line-layer', 'line-opacity', on ? 0.35 : 1)
+      }
       map.addLayer({
         id: 'route-midpoints-layer',
         type: 'circle',
@@ -1827,6 +1832,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             const from = wps[legIndex]
             const to   = wps[legIndex + 1]
             const mid  = [e.lngLat.lng, e.lngLat.lat]
+            fadeRoute(true)
             ;(map.getSource('route-drag-preview') as GeoJSONSource | undefined)?.setData({
               type: 'FeatureCollection',
               features: [{ type: 'Feature', geometry: { type: 'MultiLineString', coordinates: [
@@ -1849,6 +1855,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           const segs: [number, number][][] = []
           if (wpIndex > 0)              segs.push([[wps[wpIndex - 1].lng, wps[wpIndex - 1].lat], cur])
           if (wpIndex < wps.length - 1) segs.push([cur, [wps[wpIndex + 1].lng, wps[wpIndex + 1].lat]])
+          fadeRoute(true)
           ;(map.getSource('route-drag-preview') as GeoJSONSource | undefined)?.setData({
             type: 'FeatureCollection',
             features: segs.length > 0 ? [{ type: 'Feature', geometry: { type: 'MultiLineString', coordinates: segs }, properties: {} }] : [],
@@ -1891,6 +1898,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       }
 
       const clearPreview = () => {
+        fadeRoute(false)
         ;(map.getSource('route-drag-preview') as GeoJSONSource | undefined)?.setData(
           { type: 'FeatureCollection', features: [] },
         )
@@ -2076,6 +2084,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             const from = wps[legIndex]
             const to   = wps[legIndex + 1]
             const mid  = [e.lngLat.lng, e.lngLat.lat]
+            fadeRoute(true)
             ;(map.getSource('route-drag-preview') as GeoJSONSource | undefined)?.setData({
               type: 'FeatureCollection',
               features: [{ type: 'Feature', geometry: { type: 'MultiLineString', coordinates: [
@@ -2096,6 +2105,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           const segs: [number, number][][] = []
           if (wpIndex > 0)              segs.push([[wps[wpIndex - 1].lng, wps[wpIndex - 1].lat], cur])
           if (wpIndex < wps.length - 1) segs.push([cur, [wps[wpIndex + 1].lng, wps[wpIndex + 1].lat]])
+          fadeRoute(true)
           ;(map.getSource('route-drag-preview') as GeoJSONSource | undefined)?.setData({
             type: 'FeatureCollection',
             features: segs.length > 0 ? [{ type: 'Feature', geometry: { type: 'MultiLineString', coordinates: segs }, properties: {} }] : [],
