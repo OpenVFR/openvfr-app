@@ -93,7 +93,7 @@ export function SimControlPanel({ speedKts, altFt, trackDeg, onAdjustHeading, on
       <View style={styles.header}>
         <Ionicons name="game-controller-outline" size={14} color={theme.accentBlue} />
         <Text style={styles.headerTxt}>SIMULATION</Text>
-        <TouchableOpacity onPress={onStop} hitSlop={8}>
+        <TouchableOpacity onPress={onStop} hitSlop={8} testID="sim-stop">
           <Ionicons name="close-circle" size={18} color={theme.statusDanger} />
         </TouchableOpacity>
       </View>

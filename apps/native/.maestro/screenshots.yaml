@@ -126,3 +126,22 @@ appId: org.openvfr.app
 - waitForAnimationToEnd:
     timeout: 10000
 - takeScreenshot: 04-flight-plan
+
+# Simulate from the route's departure (ESMI): with a route loaded and a flight
+# mode active the map shows the vertical profile ("vertical radar") along the
+# route. No hardware needed. Last on purpose: flight mode collapses the tab bar.
+- tapOn:
+    id: tab-map
+- tapOn:
+    id: flight-mode-open
+- tapOn:
+    id: flight-mode-start-sim
+# The simulator's first position arrives on its first tick; the profile chart
+# and terrain sampling render a moment later.
+- waitForAnimationToEnd:
+    timeout: 10000
+- extendedWaitUntil:
+    visible:
+      id: sim-stop
+    timeout: 15000
+- takeScreenshot: 05-simulator

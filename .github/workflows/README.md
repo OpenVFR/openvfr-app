@@ -151,8 +151,9 @@ How it works:
   every form factor: set a GPS position, launch with permissions granted,
   sign in through the real login UI with the app-review test account
   (`login.yaml`), load the account's stored route from the Route Library,
-  then capture the map, the Map Display sheet, Find a Destination, and the
-  Flight Plan tab. The flow never creates or edits routes: the test account
+  then capture the map, the Map Display sheet, Find a Destination, the
+  Flight Plan tab, and Simulate started from the route's departure (shows
+  the vertical profile). The flow never creates or edits routes: the test account
   must be prepared by hand with a saved ESMI → ESMS route (plus a few
   waypoints); the most recently saved route is the one loaded. The GPS
   position is set to ESMI so the map shows the route area. Status bars are pinned (9:41,

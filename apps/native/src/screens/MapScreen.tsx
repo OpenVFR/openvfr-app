@@ -694,11 +694,20 @@ export function MapScreen() {
   // the selected aircraft profile's cruise IAS, else 90 kts.
   const handleStartSim = useCallback(() => {
     if (flying) { setFlying(false); setFollowGps(false); KeepAwake.deactivateKeepAwake() }
+    // With a planned route, start at its departure and head along the first
+    // leg (starting anywhere else would begin off-route, and at the departure
+    // itself the bearing to waypoint 0 is undefined). Without one, fall back
+    // to the home airfield, then the GPS fix.
     // homeCoord is a [lng, lat] tuple (see useHomeAirfield.ts), not {lat,lng}
-    const startPos = homeCoord
-      ? { lng: homeCoord[0], lat: homeCoord[1] }
-      : position ? { lat: position.lat, lng: position.lng } : { lat: 59.33, lng: 18.07 }
-    const startTrack = waypoints.length >= 1 ? bearingDeg(startPos, waypoints[0]) : 0
+    const hasRoute = waypoints.length >= 2
+    const startPos = hasRoute
+      ? { lat: waypoints[0].lat, lng: waypoints[0].lng }
+      : homeCoord
+        ? { lng: homeCoord[0], lat: homeCoord[1] }
+        : position ? { lat: position.lat, lng: position.lng } : { lat: 59.33, lng: 18.07 }
+    const startTrack = hasRoute
+      ? bearingDeg(startPos, waypoints[1])
+      : waypoints.length >= 1 ? bearingDeg(startPos, waypoints[0]) : 0
     const startSpeed = aircraftProfile?.cruiseIas || 90
     simFlight.start(startPos, startSpeed, startTrack, 1000)
     setFollowGps(true)

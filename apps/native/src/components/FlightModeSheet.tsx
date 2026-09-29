@@ -43,6 +43,7 @@ export function FlightModeSheet({ status, onStartGps, onStartSim, onStop }: Prop
       <TouchableOpacity
         style={[styles.trigger, active && styles.triggerActive]}
         onPress={() => setOpen(true)}
+        testID="flight-mode-open"
       >
         <Ionicons
           name={status === 'sim' ? 'game-controller-outline' : 'airplane-outline'}
@@ -85,6 +86,7 @@ export function FlightModeSheet({ status, onStartGps, onStartSim, onStop }: Prop
             style={[styles.card, status === 'sim' && styles.cardActive]}
             onPress={() => { onStartSim(); setOpen(false) }}
             disabled={status === 'sim'}
+            testID="flight-mode-start-sim"
           >
             <Ionicons name="game-controller-outline" size={scaledTheme.scale(20)} color={theme.accentPurple} />
             <View style={styles.cardText}>
