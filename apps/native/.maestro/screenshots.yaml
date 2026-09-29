@@ -45,6 +45,9 @@ appId: org.openvfr.app
 - tapOn:
     text: "Wait"
     optional: true
+- tapOn:
+    text: "Got it"
+    optional: true
 
 - extendedWaitUntil:
     visible:

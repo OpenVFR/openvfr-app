@@ -31,6 +31,9 @@ done
 # times out at the first assertion. Suppress those dialogs, and dismiss any
 # that is already showing.
 adb shell settings put global hide_error_dialogs 1
+# The screenshot build hides the system bars (immersive mode); pre-confirm
+# Android's "Viewing full screen" explainer so it never covers the app.
+adb shell settings put secure immersive_mode_confirmations confirmed
 adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
 
 adb shell wm size "$size"
