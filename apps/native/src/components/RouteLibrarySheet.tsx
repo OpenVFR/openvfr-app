@@ -140,8 +140,15 @@ export function RouteLibrarySheet({
   }, [syncState, open, loadRoutes])
 
   // ── Save current route (untitled route — creates or overwrites by name) ──
+  // Suggested name: "<first waypoint> - <last waypoint>" (ICAO / waypoint name).
+  const suggestedName = (() => {
+    const first = waypoints[0]?.name?.trim()
+    const last = waypoints[waypoints.length - 1]?.name?.trim()
+    return first && last ? `${first} - ${last}` : ''
+  })()
+
   const handleSave = async () => {
-    const name = saveName.trim() || `Route ${new Date().toLocaleDateString()}`
+    const name = saveName.trim() || suggestedName || `Route ${new Date().toLocaleDateString()}`
     // Id-resolution decision shared with web (see @open-vfr/shared/resolveSaveRouteId)
     // -- matches an existing row by exact name, otherwise a fresh uuid.
     // Without this, every Save with an unchanged name inserted a brand new
@@ -186,7 +193,7 @@ export function RouteLibrarySheet({
   }
 
   const handleSaveAs = async () => {
-    const name = saveName.trim() || `Route ${new Date().toLocaleDateString()}`
+    const name = saveName.trim() || suggestedName || `Route ${new Date().toLocaleDateString()}`
     const id = Crypto.randomUUID()
     const doc: RouteDocType = {
       id, name, waypoints, legOverrides, aircraftId,
@@ -358,7 +365,7 @@ export function RouteLibrarySheet({
                 )}
               </>
             ) : !saving ? (
-              <TouchableOpacity style={styles.saveBtn} onPress={() => setSaving(true)}>
+              <TouchableOpacity style={styles.saveBtn} onPress={() => { setSaveName(suggestedName); setSaving(true) }}>
                 <Ionicons name="save-outline" size={14} color={theme.accentBlue} />
                 <Text style={styles.saveBtnTxt}>Save current route…</Text>
               </TouchableOpacity>

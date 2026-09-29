@@ -392,7 +392,7 @@ export function PlanScreen() {
           testID="plan-open-library"
         >
           <Ionicons name="folder-outline" size={16} color={theme.textSecondary} />
-          <Text style={styles.moreMenuItemTxt}>Open Route Library</Text>
+          <Text style={styles.moreMenuItemTxt}>Route Library…</Text>
         </TouchableOpacity>
         {canUndo && (
           <TouchableOpacity
