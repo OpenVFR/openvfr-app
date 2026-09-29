@@ -158,6 +158,19 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   served from cache at all. The native app also guards against this
   (`apps/native/plugins/withMapLibreHttpGuard.js` refuses non-206 answers
   to Range requests), but that only turns a crash into a missing tile.
+- **Cloudflare (R2 behind a custom domain):** the CDN cache cannot store
+  objects over 512 MB on the Free, Pro and Business plans (Enterprise:
+  5 GB by default). If a cache rule marks such an archive as cache-eligible
+  (for example "eligible for cache" on the whole hostname), Cloudflare may
+  intermittently ignore `Range` and stream the entire object. Add a Cache
+  Rule placed *after* any broader cache rule (later rules override earlier
+  ones) that matches `ends_with(http.request.uri.path, ".pmtiles")` on the
+  tile hostname with **Cache eligibility: Bypass cache**. Requests then go
+  straight to R2, which serves correct `206` responses for any archive
+  size, so no per-file size list needs maintaining. Confirm with
+  `curl -sI https://<tiles>/basemap.pmtiles | grep -i cf-cache-status`
+  (expect `BYPASS` or `DYNAMIC`, not `HIT`/`MISS`) and repeat the Range
+  check above several hundred times, since the failure is intermittent.
 - You can deploy the frontend, API, and tile storage as one origin
   (simplest) or three separate origins (see `apps/web/src/utils/env.ts`'s
   `VITE_API_BASE_URL`/`VITE_TILES_BASE_URL`) — both are supported.
