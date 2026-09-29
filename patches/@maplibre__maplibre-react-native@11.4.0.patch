@@ -1,0 +1,85 @@
+diff --git a/android/src/main/java/org/maplibre/reactnative/components/annotations/pointannotation/MLRNPointAnnotation.kt b/android/src/main/java/org/maplibre/reactnative/components/annotations/pointannotation/MLRNPointAnnotation.kt
+index b38e97a9b0b00fc33be626a93c1e9eab20b3089f..275018eac41d5478191c3c890c52c6829d47d014 100644
+--- a/android/src/main/java/org/maplibre/reactnative/components/annotations/pointannotation/MLRNPointAnnotation.kt
++++ b/android/src/main/java/org/maplibre/reactnative/components/annotations/pointannotation/MLRNPointAnnotation.kt
+@@ -153,6 +153,11 @@ class MLRNPointAnnotation(
+ 
+         if (mAnnotation != null) {
+             map.getSymbolManager().delete(mAnnotation)
++            // Drop the reference: later callbacks (removeView's deferred style
++            // callback, layout changes, setLngLat) call updateOptions() /
++            // SymbolManager.update(mAnnotation), which logs "Can't update
++            // annotation ... isn't active annotation" for a deleted symbol.
++            mAnnotation = null
+         }
+         if (mChildView != null) {
+             map.offscreenAnnotationViewContainer()?.removeView(mChildView)
+@@ -220,11 +225,11 @@ class MLRNPointAnnotation(
+ 
+         if (mAnnotation != null) {
+             mAnnotation!!.latLng = GeoJSONUtils.toLatLng(point)!!
+-            mMapView?.getSymbolManager()?.update(mAnnotation)
++            updateSymbol(mAnnotation)
+         }
+         if (mCalloutSymbol != null) {
+             mCalloutSymbol!!.latLng = GeoJSONUtils.toLatLng(point)!!
+-            mMapView?.getSymbolManager()?.update(mCalloutSymbol)
++            updateSymbol(mCalloutSymbol)
+         }
+     }
+ 
+@@ -236,7 +241,7 @@ class MLRNPointAnnotation(
+ 
+         if (mAnnotation != null) {
+             updateAnchor()
+-            mMapView?.getSymbolManager()?.update(mAnnotation)
++            updateSymbol(mAnnotation)
+         }
+     }
+ 
+@@ -248,7 +253,7 @@ class MLRNPointAnnotation(
+ 
+         if (mAnnotation != null) {
+             updateAnchor()
+-            mMapView?.getSymbolManager()?.update(mAnnotation)
++            updateSymbol(mAnnotation)
+         }
+     }
+ 
+@@ -256,7 +261,7 @@ class MLRNPointAnnotation(
+         mDraggable = draggable
+         if (mAnnotation != null) {
+             mAnnotation!!.isDraggable = draggable
+-            mMapView?.getSymbolManager()?.update(mAnnotation)
++            updateSymbol(mAnnotation)
+         }
+     }
+ 
+@@ -336,11 +341,26 @@ class MLRNPointAnnotation(
+         }
+     }
+ 
++    /**
++     * SymbolManager.update() logs "Can't update annotation ... the annotation
++     * isn't active annotation" for a symbol it no longer tracks. That happens
++     * when a callback (deferred style callback, layout change, prop setter)
++     * runs after removeFromMap() deleted the symbol, once per annotation on
++     * every unmount. Only update symbols the manager still holds.
++     */
++    private fun updateSymbol(symbol: Symbol?) {
++        if (symbol == null) return
++        val manager = mMapView?.getSymbolManager() ?: return
++        if (manager.annotations.indexOfValue(symbol) >= 0) {
++            manager.update(symbol)
++        }
++    }
++
+     private fun updateOptions() {
+         if (mAnnotation != null) {
+             updateIconImage()
+             updateAnchor()
+-            mMapView?.getSymbolManager()?.update(mAnnotation)
++            updateSymbol(mAnnotation)
+         }
+     }
+ 

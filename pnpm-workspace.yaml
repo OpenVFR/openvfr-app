@@ -17,3 +17,6 @@ allowBuilds:
 # native's react 19.2.x.
 overrides:
   "@expo/router-server>react-dom": "19.2.8"
+
+patchedDependencies:
+  '@maplibre/maplibre-react-native@11.4.0': patches/@maplibre__maplibre-react-native@11.4.0.patch
