@@ -32,7 +32,6 @@ import { ATTRIBUTION_SOURCES } from '@open-vfr/shared/attributionSources'
 import { fetchAerodromeNotamTexts } from '@open-vfr/shared/fetchNotam'
 import { API_BASE, TILE_BASE } from '../config'
 import { LIGHT } from '@protomaps/basemaps'
-import { colorExpr } from '../utils/colorExpr'
 import { NativeSheet } from './NativeSheet'
 import { waitForTileManifest } from '@open-vfr/shared/tileManifest'
 import { authHeaders } from '../utils/authClient'
@@ -423,23 +422,24 @@ const SNAP_PX = 20
 // colours since nothing enforced they stay identical. 'case' is used instead
 // of 'match' because the CTR/TMA split needs a compound condition (class AND
 // type), which a flat match on a single property can't express.
-const AIRSPACE_BORDER_COLOR: any = colorExpr([
-  'case',
-  ['all', ['==', ['get', 'class'], 'C'], ['==', ['get', 'type'], 'CTR']], AC.cCtrBorder,
-  ['==', ['get', 'class'], 'C'],     AC.cTmaBorder,
-  ['==', ['get', 'class'], 'D'],     AC.dBorder,
-  ['==', ['get', 'class'], 'E'],     AC.eBorder,
-  ['==', ['get', 'class'], 'G'],     AC.gBorder,
-  ['==', ['get', 'class'], 'R'],     AC.rBorder,
-  ['==', ['get', 'class'], 'TRA'],   AC.traBorder,
-  ['==', ['get', 'class'], 'GLDR'],  AC.gldrBorder,
-  ['==', ['get', 'class'], 'MODEL'], AC.modelBorder,
-  AC.transparent,
-])
-
 // Airspace on-map label text — class/type short code + altitude range, placed
 // along the boundary line (symbol-placement: 'line'). Same technique + text
 // content as web's map-style.ts AIRSPACE_LABEL_TEXT_FIELD.
+// Runway line colour per surface; one static-colour layer each (see asVariants).
+const RUNWAY_SURFACES = [
+  { k: 'asph',  f: ['==', ['get', 'surface'], 'ASPH'], col: RUNWAY_COLORS.asphalt },
+  { k: 'conc',  f: ['==', ['get', 'surface'], 'CONC'], col: RUNWAY_COLORS.concrete },
+  { k: 'grass', f: ['!', ['in', ['get', 'surface'], ['literal', ['ASPH', 'CONC']]]], col: RUNWAY_COLORS.grass },
+]
+
+const LANDMARK_LABEL_COLORS = [
+  { k: 'mast',        f: ['==', ['get', 'kind'], 'mast'],        col: '#e65100' },
+  { k: 'windmill',    f: ['==', ['get', 'kind'], 'windmill'],    col: '#5d4037' },
+  { k: 'water-tower', f: ['==', ['get', 'kind'], 'water_tower'], col: '#00695c' },
+  { k: 'chimney',     f: ['==', ['get', 'kind'], 'chimney'],     col: '#bf360c' },
+  { k: 'other',       f: ['!', ['in', ['get', 'kind'], ['literal', ['mast', 'windmill', 'water_tower', 'chimney']]]], col: '#455a64' },
+]
+
 const AIRSPACE_LABEL_TEXT_FIELD: any = [
   'concat',
   ['match', ['get', 'type'], 'CTR', 'CTR', ['get', 'class']],
@@ -514,6 +514,14 @@ function aircraftGeoJSON(pos: GpsPosition): FeatureCollection {
 // Component
 // ---------------------------------------------------------------------------
 const FARMLAND_CREAM = 'rgba(232, 240, 218, 0.85)'
+
+const LANDUSE_FILLS = [
+  { k: 'farmland',    kind: 'farmland',    col: FARMLAND_CREAM },
+  { k: 'residential', kind: 'residential', col: 'rgba(230,230,230,0.8)' },
+  { k: 'commercial',  kind: 'commercial',  col: 'rgba(222,220,230,0.8)' },
+  { k: 'industrial',  kind: 'industrial',  col: 'rgba(209,221,225,0.8)' },
+  { k: 'wetland',     kind: 'wetland',     col: 'rgba(188,220,235,0.8)' },
+]
 
 /** Lazy singleton — stable reference prevents MapLibre style reloads on every re-render.
  *  Recomputed (module-level cache cleared) only via clearProtomapsStyleCache(), called
@@ -800,7 +808,11 @@ export function AviationMap({
   // AerodromePopup's badge. State (not a ref) since this drives a declarative
   // <Layer paint> prop here, unlike web's imperative setPaintProperty.
   const toweredAerodromesRef = useRef<{ icao: string; lat: number; lng: number; hours: AtcHoursEntry[] }[]>([])
-  const [atcRingMatchExpr, setAtcRingMatchExpr] = useState<unknown>(AERODROME_COLORS.atcUnknown)
+  // ICAO lists per status; the ring layers filter on these (static colour per
+  // layer) instead of one data-driven colour expression. Anything in neither
+  // list renders with the 'unknown' colour.
+  const [atcOpenIcaos, setAtcOpenIcaos]     = useState<string[]>([])
+  const [atcClosedIcaos, setAtcClosedIcaos] = useState<string[]>([])
   // NOTAM keyword hint badge (⚠/⏰) -- mirrors web MapView's equivalent.
   // Text-only signal (see @open-vfr/shared/atcStatus), never affects
   // atcRingMatchExpr's color. Cleared (empty filter) whenever the bulk fetch
@@ -831,17 +843,16 @@ export function AviationMap({
       const entries = toweredAerodromesRef.current
       if (entries.length === 0) return
       const now = new Date()
-      const args: (string)[] = []
+      const open: string[] = []
+      const closed: string[] = []
       for (const e of entries) {
         const sun = sunriseSunset(e.lat, e.lng, now)
         const { status } = computeAtcStatus(e.hours, sun, now)
-        const color =
-          status === 'open'   ? AERODROME_COLORS.atcOpen :
-          status === 'closed' ? AERODROME_COLORS.atcClosed :
-                                 AERODROME_COLORS.atcUnknown
-        args.push(e.icao, color)
+        if (status === 'open') open.push(e.icao)
+        else if (status === 'closed') closed.push(e.icao)
       }
-      setAtcRingMatchExpr(colorExpr(['match', ['get', 'icao'], ...args, AERODROME_COLORS.atcUnknown]))
+      setAtcOpenIcaos(open)
+      setAtcClosedIcaos(closed)
     }
 
     const interval = setInterval(recomputeAtcRing, 60_000)
@@ -1445,6 +1456,32 @@ export function AviationMap({
   const filterRestricted = mkFilter(['in', ['get', 'class'], ['literal', ['R', 'TRA']]])
   const filterActivity   = mkFilter(['in', ['get', 'class'], ['literal', ['GLDR', 'MODEL']]])
 
+  // One static-colour layer set per airspace sub-class. iOS aborts at style
+  // load when a colour property carries a data-driven expression on a GeoJSON
+  // layer (uncaught exception in MLRNStyle set*Color), so colours are never
+  // computed from feature properties here; the filter picks the sub-class.
+  const subClass = (f: unknown[], c: string) => ['all', f, ['==', ['get', 'class'], c]]
+  type AsParams = { inset: { w: number; off: number; op: number }; bdr: { w: number; dash?: number[] }; label: { size: number; field: unknown } }
+  const AS_PARAMS: Record<'c' | 'd' | 'e' | 'g' | 'r' | 'act', AsParams> = {
+    c:   { inset: { w: 6, off: 3,   op: 0.22 }, bdr: { w: 1.5, dash: [4, 3] }, label: { size: 10, field: AIRSPACE_LABEL_TEXT_FIELD } },
+    d:   { inset: { w: 6, off: 3,   op: 0.20 }, bdr: { w: 1.2, dash: [4, 2] }, label: { size: 10, field: AIRSPACE_LABEL_TEXT_FIELD } },
+    e:   { inset: { w: 6, off: 3,   op: 0.20 }, bdr: { w: 1.5, dash: [4, 2] }, label: { size: 10, field: AIRSPACE_LABEL_TEXT_FIELD } },
+    g:   { inset: { w: 5, off: 2.5, op: 0.18 }, bdr: { w: 1.0, dash: [2, 2] }, label: { size: 9,  field: AIRSPACE_LABEL_TEXT_FIELD } },
+    r:   { inset: { w: 6, off: 3,   op: 0.24 }, bdr: { w: 1.8 },               label: { size: 10, field: AIRSPACE_RESTRICTED_LABEL_TEXT_FIELD } },
+    act: { inset: { w: 5, off: 2.5, op: 0.16 }, bdr: { w: 1.0, dash: [3, 2] }, label: { size: 9,  field: AIRSPACE_LABEL_TEXT_FIELD } },
+  }
+  const asVariants = [
+    { k: 'c-ctr', f: ['all', filterC, ['==', ['get', 'type'], 'CTR']], col: AC.cCtrBorder,  show: showClassC,     p: AS_PARAMS.c },
+    { k: 'c-tma', f: ['all', filterC, ['!=', ['get', 'type'], 'CTR']], col: AC.cTmaBorder,  show: showClassC,     p: AS_PARAMS.c },
+    { k: 'd',     f: filterD,                                           col: AC.dBorder,     show: showClassD,     p: AS_PARAMS.d },
+    { k: 'e',     f: filterE,                                           col: AC.eBorder,     show: showClassE,     p: AS_PARAMS.e },
+    { k: 'g',     f: filterG,                                           col: AC.gBorder,     show: showClassG,     p: AS_PARAMS.g },
+    { k: 'r',     f: subClass(filterRestricted, 'R'),                   col: AC.rBorder,     show: showRestricted, p: AS_PARAMS.r },
+    { k: 'tra',   f: subClass(filterRestricted, 'TRA'),                 col: AC.traBorder,   show: showRestricted, p: AS_PARAMS.r },
+    { k: 'gldr',  f: subClass(filterActivity, 'GLDR'),                  col: AC.gldrBorder,  show: showActivity,   p: AS_PARAMS.act },
+    { k: 'model', f: subClass(filterActivity, 'MODEL'),                 col: AC.modelBorder, show: showActivity,   p: AS_PARAMS.act },
+  ]
+
   const handleMapPress = useCallback(
     (e: NativeSyntheticEvent<PressEvent | PressEventWithFeatures>) => {
       if (suppressNextPressRef.current) {
@@ -1717,40 +1754,36 @@ export function AviationMap({
           // missing the OSM/ODbL credit that's required and shown on web.
           attribution='© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors (ODbL)'
         >
-          <Layer
-            id="landuse-fill"
-            type="fill"
-            source="osm-landuse"
-            {...{'source-layer': 'landuse'} as any}
-            // BUG FIX (found live on device): MapLibre React Native inserts
-            // JSX-declared <Layer> children ABOVE every existing style layer
-            // by default (append-only, no implicit position), unlike web's
-            // map-style.ts where landuse-fill's position in the raw style
-            // JSON array is explicitly chosen (fills before labels). Without
-            // beforeId this fill layer rendered on top of the basemap's own
-            // place/label text (city names like "Gislaved" became unreadable
-            // when landuse was on) -- confirmed NOT reproducible on web,
-            // native-only bug. 'address_label' is the FIRST symbol/label
-            // layer in protomaps-themes-base's layers() output (verified via
-            // node -e against the actual installed @protomaps/basemaps
-            // package) -- beforeId places landuse-fill immediately below it,
-            // i.e. below every text label, matching web's fill-before-labels
-            // z-order exactly.
-            beforeId="address_label"
-            layout={{ visibility: showLanduse ? 'visible' : 'none' }}
-            paint={{
-              'fill-color': colorExpr([
-                'match', ['get', 'kind'],
-                'farmland',    FARMLAND_CREAM,
-                'residential', 'rgba(230,230,230,0.8)',
-                'commercial',  'rgba(222,220,230,0.8)',
-                'industrial',  'rgba(209,221,225,0.8)',
-                'wetland',     'rgba(188,220,235,0.8)',
-                               'rgba(220,220,220,0)',
-              ]),
-              'fill-opacity': 0.85,
-            }}
-          />
+          {LANDUSE_FILLS.map(lu => (
+            <Layer
+              key={lu.k}
+              id={`landuse-fill-${lu.k}`}
+              filter={['==', ['get', 'kind'], lu.kind] as any}
+              type="fill"
+              source="osm-landuse"
+              {...{'source-layer': 'landuse'} as any}
+              // BUG FIX (found live on device): MapLibre React Native inserts
+              // JSX-declared <Layer> children ABOVE every existing style layer
+              // by default (append-only, no implicit position), unlike web's
+              // map-style.ts where landuse-fill's position in the raw style
+              // JSON array is explicitly chosen (fills before labels). Without
+              // beforeId this fill layer rendered on top of the basemap's own
+              // place/label text (city names like "Gislaved" became unreadable
+              // when landuse was on) -- confirmed NOT reproducible on web,
+              // native-only bug. 'address_label' is the FIRST symbol/label
+              // layer in protomaps-themes-base's layers() output (verified via
+              // node -e against the actual installed @protomaps/basemaps
+              // package) -- beforeId places landuse-fill immediately below it,
+              // i.e. below every text label, matching web's fill-before-labels
+              // z-order exactly.
+              beforeId="address_label"
+              layout={{ visibility: showLanduse ? 'visible' : 'none' }}
+              paint={{
+                'fill-color': lu.col,
+                'fill-opacity': 0.85,
+              }}
+            />
+          ))}
         </VectorSource>
         )}
 
@@ -1984,30 +2017,21 @@ export function AviationMap({
               independent (see AGENTS.md / docs/architecture.md for the style-spec
               citation). Shows unambiguously which side of the boundary the
               airspace occupies. */}
-          <Layer id="as-inset-c"   type="line" filter={['all', filterC,          ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showClassC     ? 'visible' : 'none' }} paint={{ 'line-color': AIRSPACE_BORDER_COLOR, 'line-width': 6, 'line-offset': 3,   'line-opacity': 0.22 }} />
-          <Layer id="as-inset-d"   type="line" filter={['all', filterD,          ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showClassD     ? 'visible' : 'none' }} paint={{ 'line-color': AIRSPACE_BORDER_COLOR, 'line-width': 6, 'line-offset': 3,   'line-opacity': 0.20 }} />
-          <Layer id="as-inset-e"   type="line" filter={['all', filterE,          ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showClassE     ? 'visible' : 'none' }} paint={{ 'line-color': AIRSPACE_BORDER_COLOR, 'line-width': 6, 'line-offset': 3,   'line-opacity': 0.20 }} />
-          <Layer id="as-inset-g"   type="line" filter={['all', filterG,          ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showClassG     ? 'visible' : 'none' }} paint={{ 'line-color': AIRSPACE_BORDER_COLOR, 'line-width': 5, 'line-offset': 2.5, 'line-opacity': 0.18 }} />
-          <Layer id="as-inset-r"   type="line" filter={['all', filterRestricted, ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showRestricted ? 'visible' : 'none' }} paint={{ 'line-color': AIRSPACE_BORDER_COLOR, 'line-width': 6, 'line-offset': 3,   'line-opacity': 0.24 }} />
-          <Layer id="as-inset-act" type="line" filter={['all', filterActivity,   ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showActivity   ? 'visible' : 'none' }} paint={{ 'line-color': AIRSPACE_BORDER_COLOR, 'line-width': 5, 'line-offset': 2.5, 'line-opacity': 0.16 }} />
+          {asVariants.map(v => (
+            <Layer key={`as-inset-${v.k}`} id={`as-inset-${v.k}`} type="line" filter={['all', v.f, ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: v.show ? 'visible' : 'none' }} paint={{ 'line-color': v.col, 'line-width': v.p.inset.w, 'line-offset': v.p.inset.off, 'line-opacity': v.p.inset.op }} />
+          ))}
 
-          <Layer id="as-bdr-c"   type="line" filter={['all', filterC,          ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showClassC     ? 'visible' : 'none' }} paint={{ 'line-color': AIRSPACE_BORDER_COLOR, 'line-width': 1.5, 'line-dasharray': [4, 3] }} />
-          <Layer id="as-bdr-d"   type="line" filter={['all', filterD,          ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showClassD     ? 'visible' : 'none' }} paint={{ 'line-color': AIRSPACE_BORDER_COLOR, 'line-width': 1.2, 'line-dasharray': [4, 2] }} />
-          <Layer id="as-bdr-e"   type="line" filter={['all', filterE,          ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showClassE     ? 'visible' : 'none' }} paint={{ 'line-color': AIRSPACE_BORDER_COLOR, 'line-width': 1.5, 'line-dasharray': [4, 2] }} />
-          <Layer id="as-bdr-g"   type="line" filter={['all', filterG,          ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showClassG     ? 'visible' : 'none' }} paint={{ 'line-color': AIRSPACE_BORDER_COLOR, 'line-width': 1.0, 'line-dasharray': [2, 2] }} />
-          <Layer id="as-bdr-r"   type="line" filter={['all', filterRestricted, ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showRestricted ? 'visible' : 'none' }} paint={{ 'line-color': AIRSPACE_BORDER_COLOR, 'line-width': 1.8 }} />
-          <Layer id="as-bdr-act" type="line" filter={['all', filterActivity,   ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showActivity   ? 'visible' : 'none' }} paint={{ 'line-color': AIRSPACE_BORDER_COLOR, 'line-width': 1.0, 'line-dasharray': [3, 2] }} />
+          {asVariants.map(v => (
+            <Layer key={`as-bdr-${v.k}`} id={`as-bdr-${v.k}`} type="line" filter={['all', v.f, ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: v.show ? 'visible' : 'none' }} paint={{ 'line-color': v.col, 'line-width': v.p.bdr.w, ...(v.p.bdr.dash ? { 'line-dasharray': v.p.bdr.dash } : {}) }} />
+          ))}
 
           {/* On-map class + altitude-range labels, placed along the boundary line
               (repeats around the perimeter, stays visible even off-centre).
               text-font is required — MapLibre Native silently drops the whole
               layer without it. */}
-          <Layer id="as-label-c"   type="symbol" filter={['all', filterC,          ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showClassC     ? 'visible' : 'none', 'symbol-placement': 'line', 'text-offset': [0, 1], 'text-field': AIRSPACE_LABEL_TEXT_FIELD as any, 'text-size': 10, 'symbol-spacing': 200, 'text-font': ['Noto Sans Regular'] }} paint={{ 'text-color': AIRSPACE_BORDER_COLOR, 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 }} />
-          <Layer id="as-label-d"   type="symbol" filter={['all', filterD,          ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showClassD     ? 'visible' : 'none', 'symbol-placement': 'line', 'text-offset': [0, 1], 'text-field': AIRSPACE_LABEL_TEXT_FIELD as any, 'text-size': 10, 'symbol-spacing': 200, 'text-font': ['Noto Sans Regular'] }} paint={{ 'text-color': AIRSPACE_BORDER_COLOR, 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 }} />
-          <Layer id="as-label-e"   type="symbol" filter={['all', filterE,          ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showClassE     ? 'visible' : 'none', 'symbol-placement': 'line', 'text-offset': [0, 1], 'text-field': AIRSPACE_LABEL_TEXT_FIELD as any, 'text-size': 10, 'symbol-spacing': 200, 'text-font': ['Noto Sans Regular'] }} paint={{ 'text-color': AIRSPACE_BORDER_COLOR, 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 }} />
-          <Layer id="as-label-g"   type="symbol" filter={['all', filterG,          ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showClassG     ? 'visible' : 'none', 'symbol-placement': 'line', 'text-offset': [0, 1], 'text-field': AIRSPACE_LABEL_TEXT_FIELD as any, 'text-size': 9,  'symbol-spacing': 200, 'text-font': ['Noto Sans Regular'] }} paint={{ 'text-color': AIRSPACE_BORDER_COLOR, 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 }} />
-          <Layer id="as-label-r"   type="symbol" filter={['all', filterRestricted, ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showRestricted ? 'visible' : 'none', 'symbol-placement': 'line', 'text-offset': [0, 1], 'text-field': AIRSPACE_RESTRICTED_LABEL_TEXT_FIELD as any, 'text-size': 10, 'symbol-spacing': 200, 'text-font': ['Noto Sans Regular'] }} paint={{ 'text-color': AIRSPACE_BORDER_COLOR, 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 }} />
-          <Layer id="as-label-act" type="symbol" filter={['all', filterActivity,   ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: showActivity   ? 'visible' : 'none', 'symbol-placement': 'line', 'text-offset': [0, 1], 'text-field': AIRSPACE_LABEL_TEXT_FIELD as any, 'text-size': 9,  'symbol-spacing': 200, 'text-font': ['Noto Sans Regular'] }} paint={{ 'text-color': AIRSPACE_BORDER_COLOR, 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 }} />
+          {asVariants.map(v => (
+            <Layer key={`as-label-${v.k}`} id={`as-label-${v.k}`} type="symbol" filter={['all', v.f, ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: v.show ? 'visible' : 'none', 'symbol-placement': 'line', 'text-offset': [0, 1], 'text-field': v.p.label.field as any, 'text-size': v.p.label.size, 'symbol-spacing': 200, 'text-font': ['Noto Sans Regular'] }} paint={{ 'text-color': v.col, 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 }} />
+          ))}
         </GeoJSONSource>
 
 
@@ -2029,27 +2053,26 @@ export function AviationMap({
                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 0.9],
               }}
             />
-            <Layer
-              id="runways-line"
-              type="line"
-              layout={{ visibility: showRunways ? 'visible' : 'none', 'line-cap': 'butt' }}
-              minzoom={11}
-              paint={{
-                'line-color': colorExpr([
-                  'match', ['get', 'surface'],
-                  'ASPH', RUNWAY_COLORS.asphalt,
-                  'CONC', RUNWAY_COLORS.concrete,
-                  RUNWAY_COLORS.grass,
-                ]),
-                'line-width': [
-                  'interpolate', ['exponential', 2], ['zoom'],
-                  11, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 1],
-                  14, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 5],
-                  17, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 24],
-                ],
-                'line-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
-              }}
-            />
+            {RUNWAY_SURFACES.map(rs => (
+              <Layer
+                key={rs.k}
+                id={`runways-line-${rs.k}`}
+                filter={rs.f as any}
+                type="line"
+                layout={{ visibility: showRunways ? 'visible' : 'none', 'line-cap': 'butt' }}
+                minzoom={11}
+                paint={{
+                  'line-color': rs.col,
+                  'line-width': [
+                    'interpolate', ['exponential', 2], ['zoom'],
+                    11, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 1],
+                    14, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 5],
+                    17, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 24],
+                  ],
+                  'line-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
+                }}
+              />
+            ))}
           </GeoJSONSource>
 
         {/* ── Aerodromes ───────────────────────────────────── */}
@@ -2059,18 +2082,25 @@ export function AviationMap({
                 driven by atcRingMatchExpr state (60s-interval recompute, see
                 effect above). Declared before aerodromes-circle so the icon
                 symbol paints on top / reads as a halo around it. */}
-            <Layer
-              id="aerodromes-atc-ring"
-              type="circle"
-              filter={['==', ['get', 'towered'], true] as any}
-              layout={{ visibility: showAerodromes ? 'visible' : 'none' }}
-              paint={{
-                'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 5, 10, 7.5, 13, 10],
-                'circle-color': 'rgba(0,0,0,0)',
-                'circle-stroke-width': 2,
-                'circle-stroke-color': atcRingMatchExpr as any,
-              }}
-            />
+            {[
+              { k: 'unknown', col: AERODROME_COLORS.atcUnknown, f: ['!', ['in', ['get', 'icao'], ['literal', [...atcOpenIcaos, ...atcClosedIcaos]]]] },
+              { k: 'open',    col: AERODROME_COLORS.atcOpen,    f: ['in', ['get', 'icao'], ['literal', atcOpenIcaos]] },
+              { k: 'closed',  col: AERODROME_COLORS.atcClosed,  f: ['in', ['get', 'icao'], ['literal', atcClosedIcaos]] },
+            ].map(r => (
+              <Layer
+                key={r.k}
+                id={r.k === 'unknown' ? 'aerodromes-atc-ring' : `aerodromes-atc-ring-${r.k}`}
+                type="circle"
+                filter={['all', ['==', ['get', 'towered'], true], r.f] as any}
+                layout={{ visibility: showAerodromes ? 'visible' : 'none' }}
+                paint={{
+                  'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 5, 10, 7.5, 13, 10],
+                  'circle-color': 'rgba(0,0,0,0)',
+                  'circle-stroke-width': 2,
+                  'circle-stroke-color': r.col,
+                }}
+              />
+            ))}
             <Layer
               id="aerodromes-circle"
               layout={{
@@ -2286,34 +2316,29 @@ export function AviationMap({
               'icon-ignore-placement': true,
             }}
           />
-          <Layer
-            id="landmarks-label"
-            type="symbol"
-            minzoom={13}
-            filter={['!=', ['get', 'name'], '']}
-            layout={{
-              visibility: showLandmarks ? 'visible' : 'none',
-              'text-field': ['get', 'name'],
-              'text-font': ['Noto Sans Regular'],
-              'text-size': ['interpolate', ['linear'], ['zoom'], 13, 9, 16, 11],
-              'text-anchor': 'top',
-              'text-offset': [0, 0.6],
-              'text-optional': true,
-            }}
-            paint={{
-              'text-color': colorExpr([
-                'match', ['get', 'kind'],
-                'church',      '#455a64',
-                'mast',        '#e65100',
-                'windmill',    '#5d4037',
-                'water_tower', '#00695c',
-                'chimney',     '#bf360c',
-                               '#455a64',
-              ]),
-              'text-halo-color': 'rgba(255,255,255,0.9)',
-              'text-halo-width': 1.5,
-            }}
-          />
+          {LANDMARK_LABEL_COLORS.map(lk => (
+            <Layer
+              key={lk.k}
+              id={`landmarks-label-${lk.k}`}
+              type="symbol"
+              minzoom={13}
+              filter={['all', ['!=', ['get', 'name'], ''], lk.f] as any}
+              layout={{
+                visibility: showLandmarks ? 'visible' : 'none',
+                'text-field': ['get', 'name'],
+                'text-font': ['Noto Sans Regular'],
+                'text-size': ['interpolate', ['linear'], ['zoom'], 13, 9, 16, 11],
+                'text-anchor': 'top',
+                'text-offset': [0, 0.6],
+                'text-optional': true,
+              }}
+              paint={{
+                'text-color': lk.col,
+                'text-halo-color': 'rgba(255,255,255,0.9)',
+                'text-halo-width': 1.5,
+              }}
+            />
+          ))}
         </GeoJSONSource>
 
         {/* ── Runway threshold designators ─────────────────── */}
@@ -2458,30 +2483,22 @@ export function AviationMap({
             of all being the same dot. */}
         {trafficFC && trafficFC.features.length > 0 && (
           <GeoJSONSource id="traffic-src" data={trafficFC}>
-            <Layer
-              id="traffic-urgency-ring"
-              type="circle"
-              paint={{
-                'circle-radius': 11,
-                'circle-color': [
-                  'match', ['get', 'urgency'],
-                  1, '#22c55e',
-                  2, '#eab308',
-                  3, '#ef4444',
-                  'transparent',
-                ],
-                'circle-opacity': ['match', ['get', 'urgency'], 0, 0, 0.35],
-                'circle-stroke-color': [
-                  'match', ['get', 'urgency'],
-                  1, '#22c55e',
-                  2, '#eab308',
-                  3, '#ef4444',
-                  'transparent',
-                ],
-                'circle-stroke-width': 1.5,
-                'circle-stroke-opacity': ['match', ['get', 'urgency'], 0, 0, 0.8],
-              }}
-            />
+            {([[1, '#22c55e'], [2, '#eab308'], [3, '#ef4444']] as const).map(([u, c]) => (
+              <Layer
+                key={u}
+                id={`traffic-urgency-ring-${u}`}
+                type="circle"
+                filter={['==', ['get', 'urgency'], u] as any}
+                paint={{
+                  'circle-radius': 11,
+                  'circle-color': c,
+                  'circle-opacity': 0.35,
+                  'circle-stroke-color': c,
+                  'circle-stroke-width': 1.5,
+                  'circle-stroke-opacity': 0.8,
+                }}
+              />
+            ))}
             <Layer
               id="traffic-symbols"
               type="symbol"
