@@ -107,6 +107,7 @@ import type { RouteWaypoint } from '../types/db'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { isLowMemoryDevice } from '../utils/deviceMemory'
 import { NativeSheet } from '../components/NativeSheet'
+import { useTabBarCollapsed } from '../context/TabBarContext'
 
 function isAerodrome(p: Record<string, unknown>) {
   // `icao` alone isn't a safe discriminator -- a real minority of aerodromes
@@ -285,6 +286,16 @@ export function MapScreen() {
   // real GPS-tracked flight.
   const bestAltFt = simFlight.active ? (simFlight.position?.altFt ?? null) : altitudeSource.altFt
   const flyingActive = flying || simFlight.active || simPosition != null
+
+  // Entering any flight mode (real GPS or Simulate) collapses the tab bar so
+  // the map gets the full height in the air. Rising edge only: the pilot can
+  // still pull it back up with a swipe/tap and it is not forced closed again.
+  const { setCollapsed: setTabBarCollapsed } = useTabBarCollapsed()
+  const wasFlyingRef = React.useRef(false)
+  useEffect(() => {
+    if (flyingActive && !wasFlyingRef.current) setTabBarCollapsed(true)
+    wasFlyingRef.current = flyingActive
+  }, [flyingActive, setTabBarCollapsed])
 
   // NM along the planned route where the aircraft currently is, and its
   // lateral deviation from that planned line — both mirror web's MapView.tsx
