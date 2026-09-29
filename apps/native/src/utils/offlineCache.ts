@@ -185,8 +185,10 @@ export async function downloadAssets(
     const asset = assets[i]
     const dest  = new File(dir, asset.fileName)
     if (dest.exists) dest.delete()
+    let announcedBytes = 0
     const task = File.createDownloadTask(remoteUrlFor(asset.fileName), dest, {
       onProgress: ({ bytesWritten, totalBytes }) => {
+        if (totalBytes > 0) announcedBytes = totalBytes
         onProgress?.({
           assetKey: asset.key, assetLabel: asset.label,
           assetIndex: i + 1, assetCount: assets.length,
@@ -204,6 +206,17 @@ export async function downloadAssets(
       if (!dest.exists || (dest.size ?? 0) === 0) {
         if (dest.exists) dest.delete()
         throw new Error(`offlineCache: download of "${asset.fileName}" produced an empty/missing file`)
+      }
+      // A truncated file (connection dropped after some bytes) is non-empty
+      // and would pass isCached(), then fail inside MapLibre with a "pmtiles
+      // magic number exception". When the manifest publishes the expected
+      // size, require an exact match; otherwise fall back to the size the
+      // server announced for this transfer.
+      const expectedBytes = getCachedTileManifest()?.files?.[asset.fileName]?.bytes ?? announcedBytes
+      if (expectedBytes && dest.size !== expectedBytes) {
+        const got = dest.size
+        dest.delete()
+        throw new Error(`offlineCache: "${asset.fileName}" is incomplete (${got} of ${expectedBytes} bytes)`)
       }
       // Record the server-side content hash this download fetched, so a
       // later isStale() check has something to compare against once the
