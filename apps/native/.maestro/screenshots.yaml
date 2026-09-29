@@ -40,6 +40,12 @@ appId: org.openvfr.app
 # the login screen or the tab bar first.
 # Tabs are matched by testID (navigation/index.tsx), not label text: on iOS
 # their accessibility label is "<label>, tab, N of M".
+# Belt and braces next to hide_error_dialogs (capture-android.sh): a system
+# "isn't responding" dialog would hide every element of the app.
+- tapOn:
+    text: "Wait"
+    optional: true
+
 - extendedWaitUntil:
     visible:
       id: "(login-email|tab-plan)"

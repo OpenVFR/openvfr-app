@@ -25,6 +25,14 @@ for i in $(seq 1 60); do
   sleep 2
 done
 
+# Hosted emulators are slow enough that system apps (launcher, gms) regularly
+# trip an ANR. The "<app> isn't responding" dialog is a system window on top
+# of our app: Maestro then cannot see any of our elements and every flow
+# times out at the first assertion. Suppress those dialogs, and dismiss any
+# that is already showing.
+adb shell settings put global hide_error_dialogs 1
+adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
+
 adb shell wm size "$size"
 adb shell wm density "$density"
 
