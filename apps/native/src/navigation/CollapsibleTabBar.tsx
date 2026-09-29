@@ -34,7 +34,8 @@ const TAB_ICONS: Record<string, { active: IoniconName; inactive: IoniconName }> 
   Settings: { active: 'settings', inactive: 'settings-outline' },
 }
 
-const HANDLE_ZONE    = 26   // dp: height of the bar when collapsed (grab handle only; generous touch target above the system gesture zone)
+const HANDLE_ZONE    = 16   // dp: handle touch target when collapsed; drawn inside the bottom inset so it adds no height
+const COLLAPSED_EXTRA = 4   // dp: bar height above the bottom inset when collapsed
 const HANDLE_TOUCH_EXPANDED = 10 // dp: handle touch strip while expanded (must not cover the icons)
 const ICON_ZONE      = 32   // dp: height of the bar when expanded (icons; handle overlays the top edge)
 const ANIM_MS        = 220
@@ -47,6 +48,7 @@ export function CollapsibleTabBar({ state, descriptors, navigation }: BottomTabB
 
   const handleZone = scaledTheme.scale(HANDLE_ZONE)
   const iconZone   = scaledTheme.scale(ICON_ZONE)
+  const collapsedExtra = scaledTheme.scale(COLLAPSED_EXTRA)
   // Scaled values must be computed here: scaledTheme.scale is a JS function
   // and cannot be called from inside an animated-style worklet.
   const handleTouchExpanded = scaledTheme.scale(HANDLE_TOUCH_EXPANDED)
@@ -72,7 +74,7 @@ export function CollapsibleTabBar({ state, descriptors, navigation }: BottomTabB
   })
 
   const containerStyle = useAnimatedStyle(() => ({
-    height: insets.bottom + handleZone + (iconZone - handleZone) * progress.value,
+    height: insets.bottom + collapsedExtra + (iconZone - collapsedExtra) * progress.value,
   }))
   const iconsStyle = useAnimatedStyle(() => ({
     opacity: progress.value,
