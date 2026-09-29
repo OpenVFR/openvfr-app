@@ -4,10 +4,15 @@
 
 import React from 'react'
 import { StatusBar } from 'expo-status-bar'
+import * as NavigationBar from 'expo-navigation-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { KeyboardProvider } from 'react-native-keyboard-controller'
-import { View, ActivityIndicator, Text } from 'react-native'
+import { View, ActivityIndicator, Text, Platform } from 'react-native'
+
+// Only the store-screenshot build (eas.json "screenshots" profile) sets this:
+// hide the system status and navigation bars so captures show just the app.
+const SCREENSHOT_MODE = process.env.EXPO_PUBLIC_SCREENSHOT_MODE === '1'
 
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {error: string|null}> {
   state = { error: null }
@@ -34,10 +39,16 @@ function AppShell() {
   const styles = useThemedStyles(makeStyles)
   const { state } = useAuthContext()
 
+  React.useEffect(() => {
+    if (SCREENSHOT_MODE && Platform.OS === 'android') {
+      void NavigationBar.setVisibilityAsync('hidden').catch(() => {})
+    }
+  }, [])
+
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
-        <StatusBar style="light" />
+        <StatusBar style="light" hidden={SCREENSHOT_MODE} />
         {state.status === 'loading' && (
           <View style={styles.splash}>
             <ActivityIndicator color={theme.accentBlue} size="large" />

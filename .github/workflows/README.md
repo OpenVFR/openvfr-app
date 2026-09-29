@@ -202,3 +202,10 @@ Run the flow locally against any booted simulator or emulator:
 cd apps/native
 MAESTRO_TEST_EMAIL=... MAESTRO_TEST_OTP=... bash .maestro/run-flow.sh /tmp/shots
 ```
+
+### Screenshot mode
+
+The `screenshots` EAS profile sets `EXPO_PUBLIC_SCREENSHOT_MODE=1`, which hides
+the Android status and navigation bars and the iOS status bar (`App.tsx`), so
+store images show only the app. Regular builds are unaffected. The iOS home
+indicator cannot be hidden by an app.
