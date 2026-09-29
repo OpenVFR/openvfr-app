@@ -418,7 +418,7 @@ const SNAP_PX = 20
 const DRAG_LIFT_PX = 72
 // Colour of the route as it would be after the drop (the original route is
 // left in place, faded, while dragging).
-const DRAG_ROUTE_COLOR = '#22d3ee'
+const DRAG_ROUTE_COLOR = '#ff9800'
 
 // ---------------------------------------------------------------------------
 // Airspace expressions
@@ -2645,7 +2645,7 @@ export function AviationMap({
           <GeoJSONSource id="route-drop-src" data={dropPointFC}>
             <Layer
               id="route-drop-ring" type="circle"
-              paint={{ 'circle-radius': 12, 'circle-color': 'rgba(34,211,238,0.15)', 'circle-stroke-width': 2, 'circle-stroke-color': DRAG_ROUTE_COLOR }}
+              paint={{ 'circle-radius': 12, 'circle-color': 'rgba(255,152,0,0.18)', 'circle-stroke-width': 2, 'circle-stroke-color': DRAG_ROUTE_COLOR }}
             />
           </GeoJSONSource>
         )}

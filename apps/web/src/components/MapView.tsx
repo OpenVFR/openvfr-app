@@ -1699,7 +1699,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         id: 'route-drag-preview-layer',
         type: 'line',
         source: 'route-drag-preview',
-        paint: { 'line-color': '#22d3ee', 'line-width': 3, 'line-dasharray': [4, 2] },
+        paint: { 'line-color': '#ff9800', 'line-width': 3, 'line-dasharray': [4, 2] },
       })
       const fadeRoute = (on: boolean) => {
         if (map.getLayer('route-line-layer')) map.setPaintProperty('route-line-layer', 'line-opacity', on ? 0.35 : 1)
