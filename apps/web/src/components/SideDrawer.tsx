@@ -15,7 +15,6 @@ import type { RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import AirspacePopup, { type AirspaceFeature, type RegionalNotamHit } from './AirspacePopup'
 import FeaturePopup, { type PointFeature } from './FeaturePopup'
 import WhatsHerePopup, { type WhatsHereItem } from './WhatsHerePopup'
-import RulerPanel from './RulerPanel'
 import UserWaypoints from './UserWaypoints'
 import FlightLogs from './FlightLogs'
 import type { Units } from '../utils/units'
@@ -109,10 +108,6 @@ interface Props {
   // planned route (waypoints, above) happens inside AerodromePopup itself.
   regionalNotams?: NotamItem[]
   onShowNotamOnMap?: (notam: NotamItem) => void
-  // Map ruler
-  rulerActive: boolean
-  rulerPoints: RouteWaypoint[]
-  onClearRuler: () => void
   // Flight logs
   selectedLogId: string | null
   onSelectLog: (id: string) => void
@@ -138,7 +133,6 @@ const SECTION_LABELS = {
   route:         'Route Plan',
   preflight:     'Pre-flight Check',
   fuel:          'Fuel Plan',
-  ruler:         'Map Ruler',
   routes:        'Routes',
   flightLogs:    'Flight Logs',
   aircraft:      'Aircraft',
@@ -193,7 +187,6 @@ export default function SideDrawer({
   onFlyTo,
   activeInfo, onCloseInfo,
   isHome, onSetHome, onRunwayWind, regionalNotams, onShowNotamOnMap,
-  rulerActive, rulerPoints, onClearRuler,
   selectedLogId, onSelectLog, onClearLog,
   userWaypoints, pendingUserWpCoords, folderVisibility,
   onUserWpCoordsConsumed, onStartPlaceUserWp,
@@ -205,7 +198,7 @@ export default function SideDrawer({
   const [open, setOpen]         = useState(() => lsGet(LS_OPEN, false))
   const [width, setWidth]       = useState(() => lsGet(LS_WIDTH, DEFAULT_WIDTH))
   const [expanded, setExpanded] = useState<Record<Section, boolean>>(() =>
-    lsGet(LS_EXPANDED, { info: true, route: true, preflight: true, fuel: true, ruler: true, routes: true, flightLogs: true, aircraft: false, userWaypoints: true, layers: true, settings: false })
+    lsGet(LS_EXPANDED, { info: true, route: true, preflight: true, fuel: true, routes: true, flightLogs: true, aircraft: false, userWaypoints: true, layers: true, settings: false })
   )
 
   // Drag-resize handle
@@ -232,7 +225,7 @@ export default function SideDrawer({
     window.addEventListener('mouseup', onUp)
   }, [width])
 
-  // Auto-open the drawer when a feature is tapped, route exists, ruler is set, or user WP coords arrive.
+  // Auto-open the drawer when a feature is tapped, route exists, or user WP coords arrive.
   // Also force the Selected Feature section open (it may have been
   // collapsed and persisted that way) and bring it into view with a brief
   // highlight, so a map click always visibly lands on its feature. An
@@ -256,13 +249,6 @@ export default function SideDrawer({
   useEffect(() => {
     if (waypoints.length > 0) { setOpen(true) }
   }, [waypoints.length > 0]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (rulerActive && rulerPoints.length === 2) {
-      setOpen(true)
-      setExpanded(e => ({ ...e, ruler: true }))
-    }
-  }, [rulerActive, rulerPoints.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (pendingUserWpCoords) {
@@ -450,27 +436,6 @@ export default function SideDrawer({
                     waypoints={waypoints}
                     legOverrides={legOverrides}
                     aircraft={selectedAircraftProfile}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Map Ruler ──────────────────────────────────────── */}
-          {rulerActive && rulerPoints.length === 2 && (
-            <div className={css.section}>
-              <button className={css.sectionHeader} onClick={() => toggle('ruler')}>
-                <span>{SECTION_LABELS.ruler}</span>
-                <span className={css.chevron}>{expanded.ruler ? '▾' : '▸'}</span>
-              </button>
-              {expanded.ruler && (
-                <div className={css.sectionBody}>
-                  <RulerPanel
-                    from={rulerPoints[0]}
-                    to={rulerPoints[1]}
-                    units={units}
-                    aircraftProfile={selectedAircraftProfile}
-                    onClear={onClearRuler}
                   />
                 </div>
               )}

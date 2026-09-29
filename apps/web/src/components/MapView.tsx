@@ -4092,9 +4092,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
         selectedAircraftProfile={selectedAircraftProfile}
         onSelectAircraft={setSelectedAircraftId}
         onFlyTo={(r) => mapRef.current?.flyTo({ center: [r.lng, r.lat], zoom: r.kind === 'LL' ? 12 : 13, speed: 1.4 })}
-        rulerActive={rulerMode}
-        rulerPoints={rulerPoints}
-        onClearRuler={() => { setRulerPoints([]); setRulerMode(false) }}
         selectedLogId={selectedLogId}
         onSelectLog={setSelectedLogId}
         onClearLog={() => setSelectedLogId(null)}
@@ -4541,6 +4538,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             from={rulerPoints[0]}
             to={rulerPoints[1]}
             units={units}
+            aircraftProfile={selectedAircraftProfile}
             onClear={() => { setRulerPoints([]); setRulerMode(false) }}
           />
           <VirtualRadar

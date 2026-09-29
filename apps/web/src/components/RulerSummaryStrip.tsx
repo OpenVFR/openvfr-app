@@ -3,12 +3,21 @@ import type { RouteWaypoint } from '../utils/routeCalc'
 import { bearingDeg, distanceNm, magneticBearingDeg } from '../utils/routeCalc'
 import type { Units } from '../utils/units'
 import { nmToDisplay, distLabel } from '../utils/units'
+import type { AircraftProfileDocType } from '../db/index'
 
 interface Props {
   from: RouteWaypoint
   to: RouteWaypoint
   units: Units
+  aircraftProfile?: AircraftProfileDocType
   onClear: () => void
+}
+
+function fmtTime(hours: number): string {
+  const totalMin = Math.round(hours * 60)
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  return h === 0 ? `${m}min` : `${h}h${m.toString().padStart(2, '0')}`
 }
 
 function fmtBrg(deg: number): string {
@@ -16,20 +25,20 @@ function fmtBrg(deg: number): string {
 }
 
 /**
- * Compact distance/track readout shown directly above the VirtualRadar
- * elevation profile while ruler mode is active. Exists because the full
- * RulerPanel lives buried in a SideDrawer section list — on-device, once
- * VirtualRadar mounts (same rulerMode + 2-point trigger), the drawer's
- * scroll position often leaves that readout off-screen, making it look
- * like the measurement info "disappeared" the moment the profile chart
- * shows up. This strip sits in the same place the user is already
- * looking (right above the chart) so it can't get scrolled out of view.
+ * Map Ruler readout, shown directly above the VirtualRadar elevation profile
+ * while ruler mode is active: DIST, TRUE and MAG, plus ETE and FUEL when an
+ * aircraft with a cruise speed is selected (no wind applied). It is the only
+ * place the measurement is shown, so it cannot be scrolled out of view.
  */
-export default function RulerSummaryStrip({ from, to, units, onClear }: Props) {
+export default function RulerSummaryStrip({ from, to, units, aircraftProfile, onClear }: Props) {
   const distNm      = distanceNm(from, to)
   const distDisplay = nmToDisplay(distNm, units.distance)
   const trueBrg     = bearingDeg(from, to)
   const magBrg      = magneticBearingDeg(from, to)
+  // ETE and fuel need an aircraft with a cruise speed (no wind applied).
+  const cruiseKts = aircraftProfile?.cruiseIas ?? null
+  const eteHours  = cruiseKts && cruiseKts > 0 ? distNm / cruiseKts : null
+  const fuelL     = eteHours != null && aircraftProfile ? eteHours * aircraftProfile.fuelBurnLhr : null
 
   return (
     <div className={css.strip}>
@@ -45,6 +54,18 @@ export default function RulerSummaryStrip({ from, to, units, onClear }: Props) {
         <span className={css.label}>MAG</span>
         <span className={css.value}>{fmtBrg(magBrg)}</span>
       </span>
+      {eteHours != null && (
+        <span className={css.item}>
+          <span className={css.label}>ETE</span>
+          <span className={css.value}>{fmtTime(eteHours)}</span>
+        </span>
+      )}
+      {fuelL != null && (
+        <span className={css.item}>
+          <span className={css.label}>FUEL</span>
+          <span className={css.value}>{Math.round(fuelL)} L</span>
+        </span>
+      )}
       <button className={css.clearBtn} onClick={onClear}>Clear</button>
     </div>
   )
