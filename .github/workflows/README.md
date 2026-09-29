@@ -150,10 +150,12 @@ How it works:
 - The same Maestro flow (`apps/native/.maestro/screenshots.yaml`) runs on
   every form factor: set a GPS position, launch with permissions granted,
   sign in through the real login UI with the app-review test account
-  (`login.yaml`), then capture the map, the Map Display sheet, Find a
-  Destination searching `ESMI`, and the Flight Plan tab with a sample
-  ESMI → ESMS route built through Find a Destination. The GPS position
-  is set to ESMI so the map shows the route area. Status bars are pinned (9:41,
+  (`login.yaml`), load the account's stored route from the Route Library,
+  then capture the map, the Map Display sheet, Find a Destination, and the
+  Flight Plan tab. The flow never creates or edits routes: the test account
+  must be prepared by hand with a saved ESMI → ESMS route (plus a few
+  waypoints); the most recently saved route is the one loaded. The GPS
+  position is set to ESMI so the map shows the route area. Status bars are pinned (9:41,
   full battery) via `simctl status_bar` / SystemUI demo mode.
 - Android waits for Android's own `VALIDATED` network state before
   capturing (`ping` never works in the emulator, and there's no `curl` on

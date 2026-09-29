@@ -410,7 +410,7 @@ export function RouteLibrarySheet({
               const isRenaming = renaming === route.id
               return (
                 <View style={styles.routeRow}>
-                  <TouchableOpacity style={styles.routeInfo} onPress={() => handleLoad(route)}>
+                  <TouchableOpacity style={styles.routeInfo} onPress={() => handleLoad(route)} testID="route-library-item">
                     {isRenaming ? (
                       <View style={styles.renameRow}>
                         <TextInput

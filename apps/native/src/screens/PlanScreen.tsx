@@ -373,7 +373,7 @@ export function PlanScreen() {
             )}
             {/* Overflow menu -- Open (Route Library) / Undo / Export / Import /
                 Reverse / Clear, previously six separate always-visible buttons here. */}
-            <TouchableOpacity onPress={() => setMoreMenuOpen(true)} style={styles.moreBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={() => setMoreMenuOpen(true)} testID="plan-more-open" style={styles.moreBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="ellipsis-horizontal" size={14} color={theme.accentBlue} />
             </TouchableOpacity>
           </View>
@@ -389,6 +389,7 @@ export function PlanScreen() {
         <TouchableOpacity
           style={styles.moreMenuItem}
           onPress={() => { setMoreMenuOpen(false); setLibraryOpen(true) }}
+          testID="plan-open-library"
         >
           <Ionicons name="folder-outline" size={16} color={theme.textSecondary} />
           <Text style={styles.moreMenuItemTxt}>Open Route Library</Text>

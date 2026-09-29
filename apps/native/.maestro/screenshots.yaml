@@ -9,12 +9,18 @@
 # takeScreenshot paths are bare file names: Maestro writes them into its own
 # artifact folder, and run-flow.sh copies them out to the capture directory.
 #
+# The test account is prepared by hand: it must already have a saved route
+# (ESMI -> ESMS with a few waypoints) in its Route Library. The flow only
+# LOADS it (the most recently saved one is listed first) -- it never creates
+# or edits routes. clearState at launch means the app starts with an empty
+# working route, and the account's saved routes sync down after sign-in.
+#
 # Add screens by appending tapOn/takeScreenshot pairs. Keep file names
 # numbered -- store consoles order uploads by name.
 appId: org.openvfr.app
 ---
-# ESMI (Sjöbo/Sövde), the start of the sample ESMI -> ESMS route built
-# below, so the map shot shows the same area as the route.
+# ESMI (Sjöbo/Sövde), the start of the account's stored ESMI -> ESMS route,
+# so the map shot shows the same area as the route.
 - setLocation:
     latitude: 55.598
     longitude: 13.677
@@ -62,6 +68,27 @@ appId: org.openvfr.app
     text: "(Allow|Allow while using the app|While using the app)"
     optional: true
 
+# Load the account's saved route into the working route, so the map and
+# Flight Plan shots show it. Saved routes sync down after sign-in, hence the
+# generous wait for the first library row.
+- tapOn:
+    id: tab-plan
+- tapOn:
+    id: plan-more-open
+- tapOn:
+    id: plan-open-library
+- extendedWaitUntil:
+    visible:
+      id: route-library-item
+    timeout: 60000
+- tapOn:
+    id: route-library-item
+    index: 0
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- tapOn:
+    id: tab-map
 - tapOn:
     text: Show my position
     optional: true
@@ -82,37 +109,13 @@ appId: org.openvfr.app
 - waitForAnimationToEnd:
     timeout: 5000
 
-# Build a sample route ESMI -> ESMS through Find a Destination, so the
-# Flight Plan tab shows a real route instead of its empty state. clearState
-# at launch means the route always starts empty. Aerodromes load on the
-# sheet's first open, hence the wait on the first add button. Enter
-# submits the search field, which dismisses the keyboard so it can't cover
-# the result row. Not hideKeyboard: on Android that sends Back, which closes
-# the sheet (Modal onRequestClose).
+# Find a Destination sheet, view only: nothing is added to the route. Aerodromes
+# load on the sheet's first open, so give them a moment before the shot.
 - tapOn:
     id: find-destination-open
-- tapOn:
-    id: find-destination-search
-- inputText: ESMI
-- pressKey: Enter
-- extendedWaitUntil:
-    visible:
-      id: find-destination-add-ESMI
-    timeout: 30000
-- takeScreenshot: 03-find-destination
-- tapOn:
-    id: find-destination-add-ESMI
-- tapOn:
-    id: find-destination-search
-- eraseText
-- inputText: ESMS
-- pressKey: Enter
-- extendedWaitUntil:
-    visible:
-      id: find-destination-add-ESMS
+- waitForAnimationToEnd:
     timeout: 10000
-- tapOn:
-    id: find-destination-add-ESMS
+- takeScreenshot: 03-find-destination
 - tapOn:
     id: find-destination-close
 - waitForAnimationToEnd:
