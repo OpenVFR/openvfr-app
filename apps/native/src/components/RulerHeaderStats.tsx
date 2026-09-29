@@ -13,7 +13,7 @@ import React from 'react'
 import { Text, TouchableOpacity, type TextStyle } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { bearingDeg, distanceNm, magneticBearingDeg } from '@open-vfr/shared/routeCalc'
-import type { RouteWaypoint, AircraftProfileDocType } from '../types/db'
+import type { RouteWaypoint, LegOverride, AircraftProfileDocType } from '../types/db'
 import { type Units, nmToDisplay, distLabel } from '../utils/units'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
@@ -45,6 +45,32 @@ export function RulerHeaderStart({ from, to, units }: { from: RouteWaypoint; to:
       <Item label="DIST" value={`${distDisplay.toFixed(1)} ${distLabel(units.distance)}`} />
       <Item label="MAG" value={fmtBrg(magneticBearingDeg(from, to))} />
       <Item label="TRUE" value={fmtBrg(bearingDeg(from, to))} />
+    </>
+  )
+}
+
+/** Loaded/edited route: total DIST and ETE (per-leg speed overrides, else the
+ *  aircraft's cruise speed; ETE is omitted without either). No wind applied. */
+export function RouteHeaderStart({ waypoints, legOverrides, units, cruiseKts }: {
+  waypoints: RouteWaypoint[]
+  legOverrides: LegOverride[]
+  units: Units
+  cruiseKts?: number
+}) {
+  let nm = 0
+  let hours = 0
+  let haveSpeed = true
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const d = distanceNm(waypoints[i], waypoints[i + 1])
+    nm += d
+    const tas = legOverrides[i]?.speedKts ?? cruiseKts
+    if (tas && tas > 0) hours += d / tas
+    else haveSpeed = false
+  }
+  return (
+    <>
+      <Item label="DIST" value={`${nmToDisplay(nm, units.distance).toFixed(1)} ${distLabel(units.distance)}`} />
+      {haveSpeed && waypoints.length >= 2 && <Item label="ETE" value={fmtTime(hours)} />}
     </>
   )
 }

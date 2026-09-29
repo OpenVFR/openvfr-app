@@ -89,7 +89,7 @@ export function PlanScreen() {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const insets = useSafeAreaInsets()
-  const { waypoints, legOverrides, removeWaypoint, clearRoute, setWaypoints, moveWaypoint, reverseRoute, undo, redo, canUndo, canRedo, setLegOverride, activeRouteId, setActiveRouteId, routeVisible, setRouteVisible } = useRouteContext()
+  const { waypoints, legOverrides, removeWaypoint, clearRoute, setWaypoints, moveWaypoint, reverseRoute, setLegOverride, activeRouteId, setActiveRouteId, routeVisible, setRouteVisible } = useRouteContext()
   const { settings, update } = useSettingsContext()
   const { state: authState } = useAuthContext()
   const authenticated = authState.status === 'authenticated'
@@ -394,24 +394,6 @@ export function PlanScreen() {
           <Ionicons name="folder-outline" size={16} color={theme.textSecondary} />
           <Text style={styles.moreMenuItemTxt}>Route Library…</Text>
         </TouchableOpacity>
-        {canUndo && (
-          <TouchableOpacity
-            style={styles.moreMenuItem}
-            onPress={() => { setMoreMenuOpen(false); undo() }}
-          >
-            <Ionicons name="arrow-undo-outline" size={16} color={theme.textSecondary} />
-            <Text style={styles.moreMenuItemTxt}>Undo</Text>
-          </TouchableOpacity>
-        )}
-        {canRedo && (
-          <TouchableOpacity
-            style={styles.moreMenuItem}
-            onPress={() => { setMoreMenuOpen(false); redo() }}
-          >
-            <Ionicons name="arrow-redo-outline" size={16} color={theme.textSecondary} />
-            <Text style={styles.moreMenuItemTxt}>Redo</Text>
-          </TouchableOpacity>
-        )}
         {waypoints.length >= 2 && (
           <TouchableOpacity
             style={styles.moreMenuItem}

@@ -36,6 +36,15 @@ export function useRoute() {
   const historyRef = useRef<UndoHistory<RouteSnapshot>>(emptyHistory())
   const [, setHistoryVersion] = useState(0)
 
+  // ── Edit session ──────────────────────────────────────────────────────────
+  // While armed (map planning mode), the first edit snapshots the route and
+  // undo history; every later edit belongs to the same session until it is
+  // applied (kept, as an unsaved working copy) or cancelled (snapshot
+  // restored). Whole-route loads (library load, import) end a session.
+  const sessionRef = useRef<{ snap: RouteSnapshot; history: UndoHistory<RouteSnapshot> } | null>(null)
+  const sessionArmedRef = useRef(false)
+  const [editSessionActive, setEditSessionActive] = useState(false)
+
   useEffect(() => {
     db.get(CURRENT_ID).then((stored) => {
       if (stored) { routeRef.current = stored; setRouteState(stored) }
@@ -58,12 +67,20 @@ export function useRoute() {
   // so back-to-back calls still see each other's changes) instead of inside
   // a setState updater -- those may run twice (StrictMode), which would
   // double-record undo history and double-upsert.
-  const persist = useCallback((updater: (prev: RouteDocType) => RouteDocType, recordUndo = true) => {
+  const persist = useCallback((updater: (prev: RouteDocType) => RouteDocType, recordUndo = true, wholeRoute = false) => {
     const prev = routeRef.current
     const next = updater(prev)
     if (next === prev) return
     const edited = next.waypoints !== prev.waypoints || next.legOverrides !== prev.legOverrides
       || next.linkedRouteId !== prev.linkedRouteId
+    if (edited && recordUndo) {
+      if (wholeRoute) {
+        if (sessionRef.current) { sessionRef.current = null; setEditSessionActive(false) }
+      } else if (sessionArmedRef.current && !sessionRef.current) {
+        sessionRef.current = { snap: snap(prev), history: historyRef.current }
+        setEditSessionActive(true)
+      }
+    }
     if (recordUndo && edited) {
       historyRef.current = recordChange(historyRef.current, snap(prev), Date.now())
       setHistoryVersion(v => v + 1)
@@ -96,7 +113,25 @@ export function useRoute() {
    *  row. Persisted on the 'current' doc itself — same convention as web's
    *  useRouteDb.ts activeRouteId. */
   const setActiveRouteId = useCallback((id: string) => {
-    persist(prev => ({ ...prev, linkedRouteId: id, updatedAt: Date.now() }))
+    persist(prev => ({ ...prev, linkedRouteId: id, updatedAt: Date.now() }), true, true)
+  }, [persist])
+
+  /** Arm/disarm automatic session start (map planning mode on/off). */
+  const setEditSessionArmed = useCallback((armed: boolean) => { sessionArmedRef.current = armed }, [])
+  /** Keep the session's changes. They stay an unsaved working copy. */
+  const applyEditSession = useCallback(() => {
+    sessionRef.current = null
+    setEditSessionActive(false)
+  }, [])
+  /** Discard the session's changes: restore the route (and its undo history) as it was. */
+  const cancelEditSession = useCallback(() => {
+    const s = sessionRef.current
+    if (!s) return
+    sessionRef.current = null
+    setEditSessionActive(false)
+    historyRef.current = s.history
+    persist(prev => ({ ...prev, ...s.snap, updatedAt: Date.now() }), false)
+    setHistoryVersion(v => v + 1)
   }, [persist])
 
   const addWaypoint = useCallback((wp: RouteWaypoint) => {
@@ -132,7 +167,7 @@ export function useRoute() {
   const [routeFitNonce, setRouteFitNonce] = useState(0)
   const setWaypoints = useCallback((wps: RouteWaypoint[], overrides?: LegOverride[]) => {
     setRouteFitNonce(n => n + 1)
-    persist(prev => ({ ...prev, waypoints: wps, legOverrides: overrides ?? prev.legOverrides, updatedAt: Date.now() }))
+    persist(prev => ({ ...prev, waypoints: wps, legOverrides: overrides ?? prev.legOverrides, updatedAt: Date.now() }), true, true)
   }, [persist])
 
   const insertWaypoint = useCallback((afterIndex: number, wp: RouteWaypoint) => {
@@ -200,5 +235,6 @@ export function useRoute() {
            routeVisible, setRouteVisible,
            // Saved-route link — id of the routes-collection row the working
            // route was loaded from ('' = untitled/unlinked). See setActiveRouteId above.
-           activeRouteId: route.linkedRouteId ?? '', setActiveRouteId, routeFitNonce }
+           activeRouteId: route.linkedRouteId ?? '', setActiveRouteId, routeFitNonce,
+           editSessionActive, setEditSessionArmed, applyEditSession, cancelEditSession }
 }

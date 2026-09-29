@@ -83,8 +83,9 @@ import { useAuthContext } from '../context/AuthContext'
 import { useUserWaypointContext } from '../context/UserWaypointContext'
 import { useHomeAirfield }      from '../hooks/useHomeAirfield'
 import { useSettingsContext } from '../context/SettingsContext'
+import { RouteEditBanner } from '../components/RouteEditBanner'
 import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
-import { RulerHeaderStart, RulerHeaderEnd } from '../components/RulerHeaderStats'
+import { RulerHeaderStart, RulerHeaderEnd, RouteHeaderStart } from '../components/RulerHeaderStats'
 import { PastTrackChart } from '../components/PastTrackChart'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import * as Location from 'expo-location'
@@ -200,7 +201,9 @@ export function MapScreen() {
   const simFlight = useSimFlight()
   const activePosition = simPosition ?? simFlight.position ?? position
   const { waypoints, legOverrides, addWaypoint, insertWaypoint, updateWaypoint, removeWaypoint,
-           routeVisible, activeRouteId, routeFitNonce } = useRouteContext()
+           routeVisible, activeRouteId, routeFitNonce,
+           editSessionActive, setEditSessionArmed, applyEditSession, cancelEditSession,
+           undo: undoRoute, redo: redoRoute, canUndo, canRedo } = useRouteContext()
   const { settings, update }                  = useSettingsContext()
   const { state: authState } = useAuthContext()
   const authenticated = authState.status === 'authenticated'
@@ -1011,6 +1014,12 @@ export function MapScreen() {
     if (!flyingActive) setRouteAdjustMode(false)
   }, [flyingActive])
   const routeEditLocked = flyingActive ? !routeAdjustMode : !planningMode
+  // Edit sessions run while route editing is unlocked; leaving it applies the
+  // pending changes (nothing is discarded silently).
+  useEffect(() => {
+    setEditSessionArmed(!routeEditLocked)
+    if (routeEditLocked) applyEditSession()
+  }, [routeEditLocked, setEditSessionArmed, applyEditSession])
 
   const handlePlanTap = useCallback((wp: RouteWaypoint) => {
     addWaypoint(wp)
@@ -1522,6 +1531,17 @@ export function MapScreen() {
       </ScrollView>
       </View>
 
+      {/* Route edit session: opens on the first edit in planning mode, stays
+          for every change, then Apply keeps them (unsaved) or Cancel restores. */}
+      {editSessionActive && (
+        <RouteEditBanner
+          bottom={scaledTheme.space3 + bottomStackH}
+          canUndo={canUndo} canRedo={canRedo}
+          onUndo={undoRoute} onRedo={redoRoute}
+          onCancel={cancelEditSession} onApply={applyEditSession}
+        />
+      )}
+
       {/* Re-center / orientation — also outside GL surface. Offset above the
           VerticalProfile + GaugesBar stack, which now occupies the true
           screen bottom (these buttons used a fixed bottom before that stack existed). */}
@@ -1562,6 +1582,7 @@ export function MapScreen() {
           units={settings.units}
           airspaceCeilingFt={settings.airspaceCeilingFt}
           aircraftProfile={aircraftProfile}
+          headerStart={<RouteHeaderStart waypoints={waypoints} legOverrides={legOverrides} units={settings.units} cruiseKts={aircraftProfile?.cruiseIas} />}
           currentDistNm={currentDistNm}
           currentAltFt={bestAltFt ?? undefined}
           currentSpeedKts={activePosition?.speedKts}
