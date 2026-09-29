@@ -5,6 +5,7 @@ import { useSyncState } from '../hooks/useSync'
 import { isRouteDirty } from '@open-vfr/shared/routeDirty'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
+import { suggestRouteName } from '@open-vfr/shared/suggestRouteName'
 import css from './RouteLibrary.module.css'
 
 // ---------------------------------------------------------------------------
@@ -26,12 +27,7 @@ function timeAgo(ts: number): string {
 }
 
 /** Default save name: "DEP – DEST" from first/last waypoint names. */
-function defaultRouteName(waypoints: RouteWaypoint[]): string {
-  if (waypoints.length === 0) return 'New Route'
-  const dep  = waypoints[0].name  ?? 'DEP'
-  const dest = waypoints.length > 1 ? (waypoints[waypoints.length - 1].name ?? 'DEST') : ''
-  return dest ? `${dep} – ${dest}` : dep
-}
+const defaultRouteName = suggestRouteName
 
 // ---------------------------------------------------------------------------
 // Props

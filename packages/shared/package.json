@@ -5,6 +5,7 @@
   "license": "MIT",
   "type": "module",
   "exports": {
+    "./suggestRouteName": "./src/suggestRouteName.ts",
     "./airspaceGeometry": "./src/airspaceGeometry.ts",
     "./airspaceGeometryCache": "./src/airspaceGeometryCache.ts",
     "./airspaceQuery": "./src/airspaceQuery.ts",

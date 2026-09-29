@@ -624,6 +624,19 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Set to true after INIT_CALLBACK finishes adding all route/alternate sources+layers.
   // More reliable than isStyleLoaded() for syncing route data after RxDB loads.
   const [mapReady, setMapReady] = useState(false)
+  // Map opened with a route already restored from storage: fit it into view once.
+  const initialRouteFitRef = useRef(false)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!mapReady || !map || initialRouteFitRef.current || routeWaypoints.length < 2) return
+    initialRouteFitRef.current = true
+    const lngs = routeWaypoints.map((w) => w.lng)
+    const lats = routeWaypoints.map((w) => w.lat)
+    map.fitBounds(
+      [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+      { padding: 80, maxZoom: 13, duration: 800 },
+    )
+  }, [mapReady, routeWaypoints])
 
   // ── Go Flying (GPS / simulation) ─────────────────────────────────────────
   const {

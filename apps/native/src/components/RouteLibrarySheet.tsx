@@ -5,6 +5,7 @@
  * Local-first: all operations work offline; sync happens in background.
  */
 
+import { suggestRouteName } from '@open-vfr/shared/suggestRouteName'
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, TextInput,
@@ -140,12 +141,8 @@ export function RouteLibrarySheet({
   }, [syncState, open, loadRoutes])
 
   // ── Save current route (untitled route — creates or overwrites by name) ──
-  // Suggested name: "<first waypoint> - <last waypoint>" (ICAO / waypoint name).
-  const suggestedName = (() => {
-    const first = waypoints[0]?.name?.trim()
-    const last = waypoints[waypoints.length - 1]?.name?.trim()
-    return first && last ? `${first} - ${last}` : ''
-  })()
+  // Suggested name: "<first waypoint> – <last waypoint>" (shared with web).
+  const suggestedName = suggestRouteName(waypoints)
 
   const handleSave = async () => {
     const name = saveName.trim() || suggestedName || `Route ${new Date().toLocaleDateString()}`
