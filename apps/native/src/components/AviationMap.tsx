@@ -410,6 +410,13 @@ function buildSnapCandidates(hits: Feature[], custom?: RouteWaypoint): SnapCandi
 }
 
 const SNAP_PX = 20
+// While a route point is being dragged the effective drop position is the
+// finger position shifted UP by this many screen points, so the point being
+// placed stays visible above the fingertip instead of under it.
+const DRAG_LIFT_PX = 72
+// Colour of the route as it would be after the drop (the original route is
+// left in place, faded, while dragging).
+const DRAG_ROUTE_COLOR = '#22d3ee'
 
 // ---------------------------------------------------------------------------
 // Airspace expressions
@@ -466,7 +473,20 @@ const AIRSPACE_RESTRICTED_LABEL_TEXT_FIELD: any = [
 // ---------------------------------------------------------------------------
 
 /** One LineString per leg, each with { featureType:'leg', legIndex:i } */
-type DragPreview = { wpIndex: number; lat: number; lng: number } | null
+// lat/lng: lifted drop position used for rendering and the commit.
+// fingerLat/fingerLng: the raw position the native drag reports (where the
+// invisible hit-target symbol actually is); fed back to that annotation so
+// React and the native side agree on where it is.
+type DragPreview = { wpIndex: number; lat: number; lng: number; fingerLat?: number; fingerLng?: number } | null
+type LegDragPreviewT = { legIndex: number; lat: number; lng: number } | null
+
+/** Waypoints with the leg-insert preview point spliced in after legIndex. */
+function withInserted(wps: RouteWaypoint[], p: LegDragPreviewT): RouteWaypoint[] {
+  if (!p) return wps
+  const next = wps.slice()
+  next.splice(p.legIndex + 1, 0, { lat: p.lat, lng: p.lng })
+  return next
+}
 
 function withPreview(wps: RouteWaypoint[], preview: DragPreview): RouteWaypoint[] {
   if (!preview) return wps
@@ -569,7 +589,7 @@ const WaypointDragAnnotation = React.memo(function WaypointDragAnnotation({
   lat: number
   lng: number
   onGrab: (wpIndex: number) => void
-  onMove: (lat: number, lng: number) => void
+  onMove: (lat: number, lng: number, point: [number, number]) => void
   onRelease: (point: [number, number]) => void
 }) {
   const HALF = 22
@@ -577,7 +597,7 @@ const WaypointDragAnnotation = React.memo(function WaypointDragAnnotation({
   const handleDragStart = useCallback(() => onGrab(wpIndex), [wpIndex, onGrab])
   const handleDrag = useCallback((e: NativeSyntheticEvent<ViewAnnotationEvent>) => {
     const [dLng, dLat] = e.nativeEvent.lngLat
-    onMove(dLat, dLng)
+    onMove(dLat, dLng, e.nativeEvent.point)
   }, [onMove])
   // ViewAnnotationEvent (extends PressEvent) already carries the touch's
   // screen-pixel `point` directly — use it as-is for the release snap query
@@ -632,7 +652,7 @@ const LegMidpointAnnotation = React.memo(function LegMidpointAnnotation({
   lat: number
   lng: number
   onGrab: (legIndex: number) => void
-  onMove: (lat: number, lng: number) => void
+  onMove: (lat: number, lng: number, point: [number, number]) => void
   onRelease: (point: [number, number]) => void
 }) {
   const RADIUS = 6
@@ -641,7 +661,7 @@ const LegMidpointAnnotation = React.memo(function LegMidpointAnnotation({
   const handleDragStart = useCallback(() => onGrab(legIndex), [legIndex, onGrab])
   const handleDrag = useCallback((e: NativeSyntheticEvent<ViewAnnotationEvent>) => {
     const [dLng, dLat] = e.nativeEvent.lngLat
-    onMove(dLat, dLng)
+    onMove(dLat, dLng, e.nativeEvent.point)
   }, [onMove])
   // See WaypointDragAnnotation's handleDragEnd comment — uses the event's own
   // screen-pixel `point`, not mapRef.project().
@@ -1161,10 +1181,10 @@ export function AviationMap({
   // every pointer-move frame to onWaypointMove (which persists to AsyncStorage
   // and re-renders the full route) made drags laggy and feel disconnected
   // from the finger. Now onWaypointMove/persistence only fires once on release.
-  const [dragPreview, setDragPreview] = useState<{ wpIndex: number; lat: number; lng: number } | null>(null)
+  const [dragPreview, setDragPreview] = useState<DragPreview>(null)
   // Mirrors dragPreview so onPanResponderRelease can read the latest value
   // without closing over the state (see panResponder useMemo note below).
-  const dragPreviewRef = useRef<{ wpIndex: number; lat: number; lng: number } | null>(null)
+  const dragPreviewRef = useRef<DragPreview>(null)
 
   // Committing a drag move / release — used by each WaypointDragAnnotation's
   // own onDragStart/onDrag/onDragEnd callbacks below.
@@ -1175,13 +1195,31 @@ export function AviationMap({
   // Set true by releaseDrag, consumed (and cleared) by the very next
   // handleMapPress call — see releaseDrag comment.
   const suppressNextPressRef = useRef(false)
-  const moveDrag = useCallback((lat: number, lng: number) => {
+  // Screen point -> map position of the lifted drop point (finger point moved
+  // up by DRAG_LIFT_PX). Falls back to the raw position if the conversion fails.
+  const liftedLngLat = useCallback(async (
+    point: [number, number], fallbackLat: number, fallbackLng: number,
+  ): Promise<{ lat: number; lng: number }> => {
+    try {
+      const ll = await mapRef.current?.unproject([point[0], point[1] - DRAG_LIFT_PX])
+      if (ll) return { lat: ll[1], lng: ll[0] }
+    } catch { /* fall through */ }
+    return { lat: fallbackLat, lng: fallbackLng }
+  }, [])
+  // Latest-wins guard: unproject is async, and a slow answer for an older
+  // move must not overwrite a newer one.
+  const dragSeqRef = useRef(0)
+  const moveDrag = useCallback((lat: number, lng: number, point: [number, number]) => {
     const d = dragRef.current
     if (!d) return
-    const next = { wpIndex: d.wpIndex, lat, lng }
-    dragPreviewRef.current = next
-    setDragPreview(next)
-  }, [])
+    const seq = ++dragSeqRef.current
+    liftedLngLat(point, lat, lng).then((lifted) => {
+      if (seq !== dragSeqRef.current || dragRef.current !== d) return
+      const next = { wpIndex: d.wpIndex, lat: lifted.lat, lng: lifted.lng, fingerLat: lat, fingerLng: lng }
+      dragPreviewRef.current = next
+      setDragPreview(next)
+    })
+  }, [liftedLngLat])
   const releaseDrag = useCallback((point: [number, number]) => {
     const d = dragRef.current
     const preview = dragPreviewRef.current
@@ -1208,7 +1246,9 @@ export function AviationMap({
       return
     }
     const wpIndex = d.wpIndex
-    const raw: RouteWaypoint = { lat: preview.lat, lng: preview.lng }
+    dragSeqRef.current++ // drop any in-flight move answers
+    // The drop position is the lifted point, not where the finger lifted.
+    const liftedPoint: [number, number] = [point[0], point[1] - DRAG_LIFT_PX]
     // dragPreview is intentionally NOT cleared yet — it keeps the route line
     // rendered at the drop point while the snap query below resolves
     // asynchronously. Clearing it here would flip the waypoint back to its
@@ -1221,18 +1261,21 @@ export function AviationMap({
       setDragPreview(null)
       onWaypointMove?.(wpIndex, wp)
     }
-    if (!mapRef.current) { commit(raw); return }
+    if (!mapRef.current) { commit({ lat: preview.lat, lng: preview.lng }); return }
     // Snap-on-release — mirrors web's commitDrag: query nearby snap targets
-    // around the drop point's own screen-pixel `point` (supplied directly by
-    // the native drag-end event — see WaypointDragAnnotation's handleDragEnd)
-    // and resolve to an exact feature when unambiguous, or hand candidates to
-    // the caller for a disambiguation picker (position stays at the OLD
-    // waypoint location until the user picks, same as web).
-    mapRef.current.queryRenderedFeatures(
-      [[point[0] - SNAP_PX, point[1] - SNAP_PX], [point[0] + SNAP_PX, point[1] + SNAP_PX]],
-      { layers: SNAP_LAYERS },
-    )
-      .then((hits) => {
+    // around the (lifted) drop point and resolve to an exact feature when
+    // unambiguous, or hand candidates to the caller for a disambiguation
+    // picker (position stays at the OLD waypoint location until the user
+    // picks, same as web).
+    const map = mapRef.current
+    liftedLngLat(point, preview.lat, preview.lng).then(async (raw) => {
+      const hits = await map.queryRenderedFeatures(
+        [[liftedPoint[0] - SNAP_PX, liftedPoint[1] - SNAP_PX], [liftedPoint[0] + SNAP_PX, liftedPoint[1] + SNAP_PX]],
+        { layers: SNAP_LAYERS },
+      )
+      return { raw, hits }
+    })
+      .then(({ raw, hits }) => {
         if (hits.length === 0) { commit(raw); return }
         // Always let the user choose — even a single nearby match shouldn't
         // auto-snap silently. buildSnapCandidates always appends a "drop at
@@ -1247,8 +1290,8 @@ export function AviationMap({
         setDragPreview(null)
         onWaypointMoveCandidates(wpIndex, candidates)
       })
-      .catch(() => commit(raw))
-  }, [onWaypointMove, onWaypointMoveCandidates, onWaypointLongPress])
+      .catch(() => commit({ lat: preview.lat, lng: preview.lng }))
+  }, [onWaypointMove, onWaypointMoveCandidates, onWaypointLongPress, liftedLngLat])
 
   // Leg-midpoint drag-insert state — same native-ViewAnnotation-drag pattern
   // as waypoint move above, but commits via onLegInsert(Candidates) instead
@@ -1266,13 +1309,18 @@ export function AviationMap({
     legDragRef.current = { legIndex }
     setLegDragging(true)
   }, [])
-  const moveLegDrag = useCallback((lat: number, lng: number) => {
+  const legDragSeqRef = useRef(0)
+  const moveLegDrag = useCallback((lat: number, lng: number, point: [number, number]) => {
     const d = legDragRef.current
     if (!d) return
-    const next = { legIndex: d.legIndex, lat, lng }
-    legDragPreviewRef.current = next
-    setLegDragPreview(next)
-  }, [])
+    const seq = ++legDragSeqRef.current
+    liftedLngLat(point, lat, lng).then((lifted) => {
+      if (seq !== legDragSeqRef.current || legDragRef.current !== d) return
+      const next = { legIndex: d.legIndex, lat: lifted.lat, lng: lifted.lng }
+      legDragPreviewRef.current = next
+      setLegDragPreview(next)
+    })
+  }, [liftedLngLat])
   const releaseLegDrag = useCallback((point: [number, number]) => {
     const d = legDragRef.current
     const preview = legDragPreviewRef.current
@@ -1283,23 +1331,28 @@ export function AviationMap({
     suppressNextPressRef.current = true
     if (!d || !preview) return
     const legIndex = d.legIndex
-    const raw: RouteWaypoint = { lat: preview.lat, lng: preview.lng }
-    if (!mapRef.current) { onLegInsert?.(legIndex, raw); return }
-    // Uses the drag-end event's own screen-pixel point directly — see
-    // WaypointDragAnnotation's handleDragEnd comment on why mapRef.project()
-    // was dropped here.
-    mapRef.current.queryRenderedFeatures(
-      [[point[0] - SNAP_PX, point[1] - SNAP_PX], [point[0] + SNAP_PX, point[1] + SNAP_PX]],
-      { layers: SNAP_LAYERS },
-    )
-      .then((hits) => {
+    legDragSeqRef.current++
+    const fallbackRaw: RouteWaypoint = { lat: preview.lat, lng: preview.lng }
+    if (!mapRef.current) { onLegInsert?.(legIndex, fallbackRaw); return }
+    // Snap around the lifted drop point (see DRAG_LIFT_PX), from the drag-end
+    // event's own screen-pixel point.
+    const map = mapRef.current
+    const liftedPoint: [number, number] = [point[0], point[1] - DRAG_LIFT_PX]
+    liftedLngLat(point, preview.lat, preview.lng).then(async (raw) => {
+      const hits = await map.queryRenderedFeatures(
+        [[liftedPoint[0] - SNAP_PX, liftedPoint[1] - SNAP_PX], [liftedPoint[0] + SNAP_PX, liftedPoint[1] + SNAP_PX]],
+        { layers: SNAP_LAYERS },
+      )
+      return { raw, hits }
+    })
+      .then(({ raw, hits }) => {
         if (hits.length === 0) { onLegInsert?.(legIndex, raw); return }
         const candidates = buildSnapCandidates(hits, raw)
         if (!onLegInsertCandidates) { onLegInsert?.(legIndex, candidates[0]?.waypoint ?? raw); return }
         onLegInsertCandidates(legIndex, candidates)
       })
-      .catch(() => onLegInsert?.(legIndex, raw))
-  }, [onLegInsert, onLegInsertCandidates])
+      .catch(() => onLegInsert?.(legIndex, fallbackRaw))
+  }, [onLegInsert, onLegInsertCandidates, liftedLngLat])
 
   // Fly to home airfield once when initialCenter first resolves (async ICAO lookup)
   const homeCenteredRef = useRef(false)
@@ -1645,7 +1698,15 @@ export function AviationMap({
     [onLongPress, onWaypointMove, onWaypointLongPress, onLegTap],
   )
 
-  const routeLegs   = routeLegsGeoJSON(waypoints, dragPreview)
+  // While a point is being dragged the route is drawn twice: the original
+  // (faded ghost) and the route as it would be after the drop (new colour).
+  const routeDragActive = (dragging && !!dragPreview) || (legDragging && !!legDragPreview)
+  const routeLegs   = routeLegsGeoJSON(legDragging ? withInserted(waypoints, legDragPreview) : waypoints, dragPreview)
+  const ghostLegs   = routeDragActive ? routeLegsGeoJSON(waypoints) : null
+  const dropPoint   = dragPreview ?? legDragPreview
+  const dropPointFC: FeatureCollection | null = routeDragActive && dropPoint
+    ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [dropPoint.lng, dropPoint.lat] }, properties: {} }] }
+    : null
   const routePoints = routePointsGeoJSON(waypoints, dragPreview)
   // Leg-midpoint drag handles must track a waypoint's live drag position too
   // — otherwise the handle for a leg touching the waypoint being dragged
@@ -2528,10 +2589,20 @@ export function AviationMap({
 
         {/* ── Planned Route ──────────────────────────────── */}
         {waypoints.length >= 2 && routeVisible && (
+          <>
+          {/* Original route, left untouched (faded) while a point is dragged. */}
+          {ghostLegs && (
+            <GeoJSONSource id="route-ghost-src" data={ghostLegs}>
+              <Layer
+                id="route-ghost-line" type="line"
+                paint={{ 'line-color': theme.accentMagenta, 'line-width': 2.5, 'line-dasharray': [6, 3], 'line-opacity': 0.3 }}
+              />
+            </GeoJSONSource>
+          )}
           <GeoJSONSource id="route-legs-src" data={routeLegs} onPress={onLegTap ? () => {} : undefined}>
             <Layer
               id="route-legs-line" type="line"
-              paint={{ 'line-color': theme.accentMagenta, 'line-width': 2.5, 'line-dasharray': [6, 3] }}
+              paint={{ 'line-color': routeDragActive ? DRAG_ROUTE_COLOR : theme.accentMagenta, 'line-width': 2.5, 'line-dasharray': [6, 3] }}
             />
             {onLegTap && (
               <Layer
@@ -2540,36 +2611,18 @@ export function AviationMap({
               />
             )}
           </GeoJSONSource>
+          </>
         )}
 
-        {/* Rubber-band preview while a leg-midpoint is being drag-inserted -
-            two dashed segments from both adjacent waypoints to the current
-            drag point, mirrors web's 'route-drag-preview' source. */}
-        {legDragging && legDragPreview && routeVisible && (() => {
-          const from = waypoints[legDragPreview.legIndex]
-          const to   = waypoints[legDragPreview.legIndex + 1]
-          if (!from || !to) return null
-          const mid: [number, number] = [legDragPreview.lng, legDragPreview.lat]
-          const data: FeatureCollection = {
-            type: 'FeatureCollection',
-            features: [{
-              type: 'Feature',
-              geometry: {
-                type: 'MultiLineString',
-                coordinates: [[[from.lng, from.lat], mid], [mid, [to.lng, to.lat]]],
-              },
-              properties: {},
-            }],
-          }
-          return (
-            <GeoJSONSource id="leg-insert-preview-src" data={data}>
-              <Layer
-                id="leg-insert-preview-line" type="line"
-                paint={{ 'line-color': theme.accentMagenta, 'line-width': 2, 'line-dasharray': [2, 2], 'line-opacity': 0.85 }}
-              />
-            </GeoJSONSource>
-          )
-        })()}
+        {/* Ring at the exact position the point will land, above the finger. */}
+        {dropPointFC && (
+          <GeoJSONSource id="route-drop-src" data={dropPointFC}>
+            <Layer
+              id="route-drop-ring" type="circle"
+              paint={{ 'circle-radius': 12, 'circle-color': 'rgba(34,211,238,0.15)', 'circle-stroke-width': 2, 'circle-stroke-color': DRAG_ROUTE_COLOR }}
+            />
+          </GeoJSONSource>
+        )}
 
         {waypoints.length >= 1 && routeVisible && (
           <GeoJSONSource id="route-pts-src" data={routePoints} onPress={onWaypointMove ? () => {} : undefined}>
@@ -2824,8 +2877,8 @@ export function AviationMap({
           <WaypointDragAnnotation
             key={i}
             wpIndex={i}
-            lat={dragPreview?.wpIndex === i ? dragPreview.lat : wp.lat}
-            lng={dragPreview?.wpIndex === i ? dragPreview.lng : wp.lng}
+            lat={dragPreview?.wpIndex === i ? (dragPreview.fingerLat ?? dragPreview.lat) : wp.lat}
+            lng={dragPreview?.wpIndex === i ? (dragPreview.fingerLng ?? dragPreview.lng) : wp.lng}
             onGrab={() => startDrag(i, wp.lat, wp.lng)}
             onMove={moveDrag}
             onRelease={releaseDrag}
