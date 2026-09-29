@@ -147,6 +147,8 @@ function refreshIfStale(onUpdate: (data: CachedAerodrome[]) => void) {
     .catch(() => { _loading = false })
 }
 
+const RECOMPUTE_MIN_MS = 1000
+
 export function useNearbyFrequencies(position: GpsPosition | null): NearbyAerodrome[] {
   const [aerodromes, setAerodromes] = useState<CachedAerodrome[]>([])
   const [nearby,     setNearby]     = useState<NearbyAerodrome[]>([])
@@ -162,6 +164,13 @@ export function useNearbyFrequencies(position: GpsPosition | null): NearbyAerodr
   // for the four position-driven alert hooks (see usePositionAlerts.ts) but
   // missed here -- found live via rapid sim-stepper taps, 2026-09-20.
   const lastSigRef = useRef<string>('')
+  // Recompute at most once per second. The signature includes distances, so
+  // while moving it differs on every 5 Hz tick; committing a state update from
+  // an effect on *every* tick makes React's consecutive-passive-update counter
+  // climb past 50 ("Maximum update depth exceeded") after ~10 s of flight.
+  // Skipped ticks let that counter reset. A second of movement (~0.025 NM per
+  // tick at 90 kt) is far below what the distance readout can show.
+  const lastRunRef = useRef(0)
 
   useEffect(() => {
     loadOnce(setAerodromes)
@@ -174,6 +183,9 @@ export function useNearbyFrequencies(position: GpsPosition | null): NearbyAerodr
       if (lastSigRef.current !== '') { lastSigRef.current = ''; setNearby([]) }
       return
     }
+    const nowMs = Date.now()
+    if (lastSigRef.current !== '' && nowMs - lastRunRef.current < RECOMPUTE_MIN_MS) return
+    lastRunRef.current = nowMs
     const pos = { lat: position.lat, lng: position.lng }
     const results: NearbyAerodrome[] = []
     for (const a of aerodromes) {
