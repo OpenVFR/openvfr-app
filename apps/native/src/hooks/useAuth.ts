@@ -25,28 +25,58 @@ export type AuthState =
   | { status: 'unauthenticated' }
   | { status: 'authenticated'; user: AuthUser }
 
+const CACHED_USER_KEY = 'openvfr-cached-user'
+
+async function readCachedUser(): Promise<AuthUser | null> {
+  try {
+    const raw = await AsyncStorage.getItem(CACHED_USER_KEY)
+    // A cached user is only useful together with the bearer token that
+    // authHeaders() sends once back online; without one it's stale.
+    if (!raw || !(await AsyncStorage.getItem('better-auth-token'))) return null
+    const u = JSON.parse(raw) as AuthUser
+    return u?.id && u?.email ? u : null
+  } catch {
+    return null
+  }
+}
+
 export function useAuth() {
   const [state, setState] = useState<AuthState>({ status: 'loading' })
   const [error, setError] = useState<string | null>(null)
 
   // Restore session on mount
   useEffect(() => {
+    // Offline start (no signal in flight) must still open the app: when the
+    // session check fails for a *network* reason (thrown, or no HTTP status /
+    // 5xx), fall back to the last signed-in user. An explicit "no session"
+    // or 4xx answer from the server still signs the user out.
+    const fallbackOffline = async () => {
+      const cached = await readCachedUser()
+      if (cached) {
+        console.log('[auth] offline, using cached user', cached.email)
+        setState({ status: 'authenticated', user: cached })
+      } else {
+        setState({ status: 'unauthenticated' })
+      }
+    }
     authClient.getSession()
-      .then(({ data }) => {
+      .then(async ({ data, error: err }) => {
         if (data?.user) {
           console.log('[auth] restored session for', data.user.email)
-          setState({
-            status: 'authenticated',
-            user: { id: data.user.id, email: data.user.email, name: data.user.name ?? null },
-          })
+          const user = { id: data.user.id, email: data.user.email, name: data.user.name ?? null }
+          AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(user)).catch(() => {})
+          setState({ status: 'authenticated', user })
+        } else if (err && (!err.status || err.status >= 500)) {
+          await fallbackOffline()
         } else {
           console.log('[auth] no session')
+          AsyncStorage.removeItem(CACHED_USER_KEY).catch(() => {})
           setState({ status: 'unauthenticated' })
         }
       })
-      .catch((e) => {
+      .catch(async (e) => {
         console.warn('[auth] getSession failed', e)
-        setState({ status: 'unauthenticated' })
+        await fallbackOffline()
       })
   }, [])
 
@@ -114,6 +144,7 @@ export function useAuth() {
     // would keep being sent by authHeaders()-based fetches (traffic, regional
     // NOTAMs, weather-along-route) until overwritten by a future sign-in.
     await AsyncStorage.removeItem('better-auth-token').catch(() => {})
+    await AsyncStorage.removeItem(CACHED_USER_KEY).catch(() => {})
     setState({ status: 'unauthenticated' })
   }, [])
 
