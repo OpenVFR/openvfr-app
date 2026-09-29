@@ -84,8 +84,11 @@ export function useAuth(): AuthState {
   const [loading, setLoading] = useState(true)
 
   // Fetch the current session and (if authed) a fresh PostgREST JWT.
-  const refreshSession = useCallback(async () => {
-    setLoading(true)
+  // `silent` (after an explicit sign-in) skips the loading flag: App.tsx renders
+  // nothing while `loading`, which unmounted the login panel mid sign-in and
+  // reset it to the email step. Returns whether a session exists.
+  const refreshSession = useCallback(async (silent = false): Promise<boolean> => {
+    if (!silent) setLoading(true)
     try {
       const session = await authClient.getSession()
       if (session?.data?.user) {
@@ -97,14 +100,16 @@ export function useAuth(): AuthState {
           const { jwt: newJwt } = await res.json() as { jwt: string }
           setJwt(newJwt)
         }
-      } else {
-        setUser(null)
-        setJwt(null)
+        return true
       }
+      setUser(null)
+      setJwt(null)
+      return false
     } catch (err) {
       console.warn('[useAuth] session refresh failed:', err)
       setUser(null)
       setJwt(null)
+      return false
     } finally {
       setLoading(false)
     }
@@ -121,7 +126,9 @@ export function useAuth(): AuthState {
   const signInOtp = useCallback(async (email: string, otp: string) => {
     const result = await authClient.signIn.emailOtp({ email, otp })
     if (result.error) throw new Error(result.error.message ?? 'Invalid code')
-    await refreshSession()
+    if (!(await refreshSession(true))) {
+      throw new Error('Code accepted, but the browser did not keep the session. Check that cookies are allowed for the API host and that the app and API share a domain.')
+    }
   }, [refreshSession])
 
   const signInPasskey = useCallback(async () => {
@@ -139,7 +146,7 @@ export function useAuth(): AuthState {
       if (code === 'AUTH_CANCELLED') throw new Error('NO_PASSKEY')
       throw new Error(result.error.message ?? 'Passkey sign-in failed')
     }
-    await refreshSession()
+    await refreshSession(true)
   }, [refreshSession])
 
   const registerPasskey = useCallback(async (name?: string) => {
@@ -150,7 +157,7 @@ export function useAuth(): AuthState {
   const updateUser = useCallback(async (data: { name: string }) => {
     const result = await authClient.updateUser(data)
     if (result?.error) throw new Error(result.error.message ?? 'Failed to update profile')
-    await refreshSession()
+    await refreshSession(true)
   }, [refreshSession])
 
   const listPasskeys = useCallback(async (): Promise<PasskeyInfo[]> => {
