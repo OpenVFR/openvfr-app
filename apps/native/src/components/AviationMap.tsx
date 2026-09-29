@@ -181,6 +181,8 @@ export type AviationMapProps = {
    *  initialCenter/home-airfield centering, and fighting it with a second
    *  competing camera move on the very first render would be jarring). */
   activeRouteId?: string
+  /** Changes whenever a whole route is loaded or re-shown: fit the camera to it. */
+  routeFitNonce?: number
   /** Map-side crosshair marker driven by a chart hover/scrub (VerticalProfile
    *  or PastTrackChart touch-drag) — [lng, lat], or null/undefined to hide. */
   profileCursor?: [number, number] | null
@@ -748,6 +750,7 @@ export function AviationMap({
   trajectoryMode = 'time' as const,
   pastTrack,
   activeRouteId,
+  routeFitNonce = 0,
   profileCursor,
   onFeatureTap,
   onLongPress,
@@ -1399,17 +1402,37 @@ export function AviationMap({
   // Deliberately keyed on activeRouteId, not `waypoints` itself, so this
   // does NOT re-fit on every incremental tap-to-add-a-waypoint edit during
   // ordinary planning (which leaves activeRouteId untouched).
-  const routeFitMountedRef = useRef(false)
-  useEffect(() => {
-    if (!routeFitMountedRef.current) { routeFitMountedRef.current = true; return }
-    if (!waypoints || waypoints.length < 2) return
-    const lngs = waypoints.map(w => w.lng)
-    const lats = waypoints.map(w => w.lat)
+  const fitRoute = useCallback((wps: RouteWaypoint[]) => {
+    if (wps.length < 2) return
+    const lngs = wps.map(w => w.lng)
+    const lats = wps.map(w => w.lat)
     cameraRef.current?.fitBounds(
       [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)],
-      { padding: { top: 80, bottom: 80, left: 80, right: 80 }, duration: 800 },
+      { padding: { top: 100, bottom: 100, left: 80, right: 120 }, duration: 800 },
     )
-  }, [activeRouteId])
+  }, [])
+  // Route loaded / re-activated (nonce) or linked route changed.
+  const waypointsRef = useRef(waypoints)
+  waypointsRef.current = waypoints
+  const fitSeenRef = useRef({ nonce: routeFitNonce, id: activeRouteId })
+  useEffect(() => {
+    const seen = fitSeenRef.current
+    if (seen.nonce === routeFitNonce && seen.id === activeRouteId) return
+    fitSeenRef.current = { nonce: routeFitNonce, id: activeRouteId }
+    homeCenteredRef.current = true
+    fitRoute(waypointsRef.current ?? [])
+  }, [routeFitNonce, activeRouteId, fitRoute])
+  // Map opened with a route already in place (cold start restore, or the map
+  // mounted after the route was loaded): fit once as soon as it has 2+ points.
+  const initialFitDoneRef = useRef(false)
+  useEffect(() => {
+    // Wait for the first full render: fitBounds before the map has a size
+    // computes a wrong (far too wide) zoom.
+    if (readyStage < 1 || initialFitDoneRef.current || !waypoints || waypoints.length < 2) return
+    initialFitDoneRef.current = true
+    homeCenteredRef.current = true
+    fitRoute(waypoints)
+  }, [waypoints, fitRoute, readyStage])
 
   // Fly to the first live position fix (GPS or simulator) — independent of
   // home-airfield centering. A fresh sim/GPS fix can be anywhere on Earth
@@ -1430,6 +1453,9 @@ export function AviationMap({
     if (!gpsPosition) return
     if (posCenteredRef.current && !simJustActivated) return
     posCenteredRef.current = true
+    // A route already in view (fitted on open/load) takes priority over the
+    // first passive fix; the sim/live flight modes still centre on the aircraft.
+    if (!simJustActivated && !followGps && (waypointsRef.current?.length ?? 0) >= 2) return
     cameraRef.current?.flyTo({
       center:   [gpsPosition.lng, gpsPosition.lat],
       zoom:     11,

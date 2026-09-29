@@ -200,7 +200,7 @@ export function MapScreen() {
   const simFlight = useSimFlight()
   const activePosition = simPosition ?? simFlight.position ?? position
   const { waypoints, legOverrides, addWaypoint, insertWaypoint, updateWaypoint, removeWaypoint,
-           routeVisible, activeRouteId } = useRouteContext()
+           routeVisible, activeRouteId, routeFitNonce } = useRouteContext()
   const { settings, update }                  = useSettingsContext()
   const { state: authState } = useAuthContext()
   const authenticated = authState.status === 'authenticated'
@@ -1185,6 +1185,7 @@ export function MapScreen() {
           simActive={simPosition != null}
           waypoints={waypoints}
           activeRouteId={activeRouteId}
+          routeFitNonce={routeFitNonce}
           airspaceCeilingFt={settings.airspaceCeilingFt}
           showClassC={layers.classC}
           showClassD={layers.classD}

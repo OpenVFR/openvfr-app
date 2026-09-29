@@ -103,7 +103,14 @@ export function useRoute() {
     persist(prev => ({ ...prev, waypoints: [...prev.waypoints, wp], updatedAt: Date.now() }))
   }, [persist])
 
-  const [routeVisible, setRouteVisible] = useState(true)
+  const [routeVisible, setRouteVisibleRaw] = useState(true)
+  const routeVisibleRef = useRef(true)
+  const setRouteVisible = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof v === 'function' ? v(routeVisibleRef.current) : v
+    routeVisibleRef.current = next
+    setRouteVisibleRaw(next)
+    if (next) setRouteFitNonce(n => n + 1)
+  }, [])
 
   const removeWaypoint = useCallback((index: number) => {
     persist(prev => ({
@@ -120,7 +127,11 @@ export function useRoute() {
     persist(() => ({ ...blank(), updatedAt: Date.now() }))
   }, [persist])
 
+  // Bumped whenever a whole route is loaded or re-shown; the map fits its
+  // camera to the route on each change (see AviationMap).
+  const [routeFitNonce, setRouteFitNonce] = useState(0)
   const setWaypoints = useCallback((wps: RouteWaypoint[], overrides?: LegOverride[]) => {
+    setRouteFitNonce(n => n + 1)
     persist(prev => ({ ...prev, waypoints: wps, legOverrides: overrides ?? prev.legOverrides, updatedAt: Date.now() }))
   }, [persist])
 
@@ -189,5 +200,5 @@ export function useRoute() {
            routeVisible, setRouteVisible,
            // Saved-route link — id of the routes-collection row the working
            // route was loaded from ('' = untitled/unlinked). See setActiveRouteId above.
-           activeRouteId: route.linkedRouteId ?? '', setActiveRouteId }
+           activeRouteId: route.linkedRouteId ?? '', setActiveRouteId, routeFitNonce }
 }
