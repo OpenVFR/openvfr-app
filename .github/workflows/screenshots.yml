@@ -214,6 +214,30 @@ jobs:
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      # The emulator action installs its SDK packages with single, un-retried
+      # sdkmanager calls. Google's SDK repo intermittently serves a truncated
+      # package, sdkmanager aborts with "Error on ZipFile unknown archive",
+      # and the job dies before the emulator exists (seen here; also
+      # ReactiveCircus/android-emulator-runner#192). Install the same
+      # packages first, with retries, wiping sdkmanager's partial downloads
+      # between attempts so a wedged file isn't reused. The action's own
+      # install then finds everything current and no-ops.
+      # Package names must match the action's (src/sdk-installer.ts):
+      # build-tools 37.0.0, platform-tools, the platform, emulator, and the
+      # system image for our api-level/target/arch.
+      - name: Install emulator SDK packages (with retries)
+        run: |
+          sdk="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdk" --licenses > /dev/null || true
+          pkgs=('build-tools;37.0.0' platform-tools 'platforms;android-34' emulator
+                'system-images;android-34;google_apis;x86_64')
+          for attempt in 1 2 3 4; do
+            if "$sdk" --install "${pkgs[@]}" > /dev/null; then exit 0; fi
+            echo "::warning::sdkmanager attempt $attempt failed; retrying"
+            rm -rf "$ANDROID_HOME/.temp" "$ANDROID_HOME"/*.tmp "$ANDROID_HOME/.downloadIntermediates" 2>/dev/null || true
+            sleep $((attempt * 20))
+          done
+          echo "::error::sdkmanager failed after 4 attempts"; exit 1
       - name: Capture
         uses: reactivecircus/android-emulator-runner@v2
         env:

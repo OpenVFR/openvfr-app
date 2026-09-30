@@ -169,6 +169,11 @@ How it works:
   waypoints); the most recently saved route is the one loaded. The GPS
   position is set to ESMI so the map shows the route area. Status bars are pinned (9:41,
   full battery) via `simctl status_bar` / SystemUI demo mode.
+- Android installs the emulator SDK packages itself, with retries, before
+  the emulator action runs. Google's SDK repo now and then serves a
+  truncated package and `sdkmanager` dies with "Error on ZipFile unknown
+  archive"; the action's own single un-retried install would then sink
+  the job before an emulator exists.
 - Android waits for Android's own `VALIDATED` network state before
   capturing (`ping` never works in the emulator, and there's no `curl` on
   the image). Every PNG is checked against the expected pixel size.
