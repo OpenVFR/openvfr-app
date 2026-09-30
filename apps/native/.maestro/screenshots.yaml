@@ -96,8 +96,29 @@ appId: org.openvfr.app
 - waitForAnimationToEnd:
     timeout: 5000
 
-- tapOn:
-    id: tab-map
+# The iPad simulator once reported "Element not found: tab-map" here even
+# though the icon was on screen (accessibility tree lagging right after the
+# route loads). Wait for the id; if it still never shows, fall back to the Map
+# icon's fixed spot (first of three equal tabs, bottom edge).
+- extendedWaitUntil:
+    visible:
+      id: tab-map
+    timeout: 30000
+    optional: true
+- runFlow:
+    when:
+      visible:
+        id: tab-map
+    commands:
+      - tapOn:
+          id: tab-map
+- runFlow:
+    when:
+      notVisible:
+        id: tab-map
+    commands:
+      - tapOn:
+          point: "16%,97%"
 - tapOn:
     text: Show my position
     optional: true

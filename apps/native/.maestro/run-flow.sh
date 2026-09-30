@@ -60,6 +60,14 @@ if [ "$status" != 0 ]; then
   fi
 fi
 
+# On a non-login failure, dump the live accessibility tree so an "Element not
+# found" can be diagnosed (missing element, or just mis-identified?). Skipped
+# for login failures: the OTP is on screen then.
+if [ "$status" != 0 ] && ! login_failed; then
+  mkdir -p "$out/debug"
+  maestro "$@" hierarchy > "$out/debug/hierarchy.json" 2>&1 || true
+fi
+
 # Maestro writes logs/crash-report.txt only when the app under test crashed:
 # a logcat stack trace (Android) or the simulator's .ips report (iOS). It
 # holds no typed text, unlike the rest of the folder, so keep it and print

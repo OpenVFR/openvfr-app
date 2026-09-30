@@ -173,6 +173,8 @@ How it works:
     the run.
   - Maestro's `crash-report.txt` if the app crashed (also echoed into the
     job log).
+  - `hierarchy.json`: the accessibility tree at failure time (non-login
+    failures only), to tell a missing element from a mis-identified one.
   - Android only: `app-logcat.txt`, logcat filtered by pattern to
     MapLibre/PMTiles lines and app-process deaths (crash, low-memory
     kill, OOM). The full logcat is never uploaded.
