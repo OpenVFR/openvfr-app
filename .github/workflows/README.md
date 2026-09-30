@@ -87,6 +87,17 @@ Both are already the default path here, not a separate flow:
 - ccache for all C/C++ compilation, on both platforms. Android sets
   `CMAKE_C_COMPILER_LAUNCHER` / `CMAKE_CXX_COMPILER_LAUNCHER=ccache` so
   every library's CMake project uses it, not only React Native's.
+- iOS goes through React Native's own ccache integration, since Xcode
+  calls clang by absolute path and ignores a shim dir on `PATH`:
+  `USE_CCACHE=1` makes `pod install` set `CC`/`CXX`/`LD` to RN's
+  `ccache-clang{,++}.sh` launchers. Those run `exec $CCACHE_BINARY clang`,
+  and `pod install` only stores `CCACHE_BINARY` as an Xcode build setting,
+  which compile tasks never see in their environment -- so on its own the
+  launcher silently runs plain clang (RN PR #58066). The workflows export
+  `CCACHE_BINARY` as a real environment variable to close that gap.
+  Prebuilt React Native core (`RCT_USE_PREBUILT_RNCORE`, the SDK default)
+  isn't compiled at all; ccache covers the rest (Expo modules, MapLibre
+  Native, Reanimated, Hermes glue, ...).
 - `EAS_LOCAL_BUILD_WORKINGDIR` pins EAS's working directory, otherwise a
   new random path per run. Absolute paths are part of ccache's hash, so
   without it (and `CCACHE_BASEDIR` pointing at it) every compile misses.

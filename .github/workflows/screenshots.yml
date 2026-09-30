@@ -286,18 +286,34 @@ jobs:
           key: ccache-ios-sim-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}
           restore-keys: |
             ccache-ios-sim-
+      # Xcode invokes clang by absolute path, so a ccache shim dir on PATH
+      # does nothing for xcodebuild. React Native's own integration is the
+      # only way in: USE_CCACHE=1 at `pod install` sets CC/CXX/LD to
+      # scripts/xcode/ccache-clang{,++}.sh, and those launchers run
+      # `exec $CCACHE_BINARY clang "$@"`. pod install stores CCACHE_BINARY
+      # as an Xcode *build setting*, but Xcode doesn't export build settings
+      # into a compile task's environment, so the variable is empty and the
+      # launcher silently runs plain clang (0 cacheable calls; RN PR #58066
+      # is open for it). Exporting CCACHE_BINARY as a real environment
+      # variable here reaches the launcher through eas-cli -> fastlane ->
+      # xcodebuild and makes the integration work.
       - name: Install ccache
         run: |
           brew install ccache
-          echo "CCACHE_DIR=$HOME/Library/Caches/ccache" >> "$GITHUB_ENV"
-          # EAS local builds use a new random working dir per run; absolute
-          # paths are part of the ccache hash, so without pinning it every
-          # compile misses. Pin it and make paths under it relative.
-          echo "EAS_LOCAL_BUILD_WORKINGDIR=$RUNNER_TEMP/eas-build" >> "$GITHUB_ENV"
-          echo "CCACHE_BASEDIR=$RUNNER_TEMP/eas-build" >> "$GITHUB_ENV"
-          echo "CCACHE_NOHASHDIR=true" >> "$GITHUB_ENV"
-          echo "CCACHE_MAXSIZE=2G" >> "$GITHUB_ENV"
-          echo "$(brew --prefix)/opt/ccache/libexec" >> "$GITHUB_PATH"
+          {
+            echo "CCACHE_DIR=$HOME/Library/Caches/ccache"
+            # EAS local builds use a new random working dir per run;
+            # absolute paths are part of the ccache hash, so without
+            # pinning it every compile misses. Pin it and make paths under
+            # it relative.
+            echo "EAS_LOCAL_BUILD_WORKINGDIR=$RUNNER_TEMP/eas-build"
+            echo "CCACHE_BASEDIR=$RUNNER_TEMP/eas-build"
+            echo "CCACHE_NOHASHDIR=true"
+            echo "CCACHE_MAXSIZE=2G"
+            echo "USE_CCACHE=1"
+            echo "CCACHE_BINARY=$(brew --prefix)/bin/ccache"
+          } >> "$GITHUB_ENV"
+          ccache --zero-stats
       - name: Build simulator app
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -306,6 +322,12 @@ jobs:
         run: |
           npx eas-cli build --platform ios --profile screenshots --local --non-interactive
           ccache --show-stats
+          # A build that compiles the native modules makes hundreds of
+          # cacheable calls; a handful means the launcher fell back to plain
+          # clang again (see the Install ccache step). Warn, don't fail --
+          # the build itself is fine, just slow.
+          calls=$(ccache --print-stats | awk -F'\t' '$1=="cacheable_calls"{print $2}')
+          [ "${calls:-0}" -ge 100 ] || echo "::warning::ccache saw only ${calls:-0} cacheable compiler calls; iOS ccache integration is not working"
           mkdir -p "$RUNNER_TEMP/app"
           archives=(build-*.tar.gz)
           tar -xzf "${archives[0]}" -C "$RUNNER_TEMP/app"
