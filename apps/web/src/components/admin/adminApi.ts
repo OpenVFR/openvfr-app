@@ -4,7 +4,8 @@ import { API_BASE_URL } from '../../utils/env'
 
 export class AdminApiError extends Error {
   status: number
-  constructor(status: number, message: string) { super(message); this.status = status }
+  code?: string
+  constructor(status: number, message: string, code?: string) { super(message); this.status = status; this.code = code }
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
@@ -14,8 +15,8 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
   })
   if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as { error?: string }
-    throw new AdminApiError(res.status, body.error ?? `HTTP ${res.status}`)
+    const body = await res.json().catch(() => ({})) as { error?: string; code?: string }
+    throw new AdminApiError(res.status, body.error ?? `HTTP ${res.status}`, body.code)
   }
   return res.json() as Promise<T>
 }

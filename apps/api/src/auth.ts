@@ -14,6 +14,7 @@ import { betterAuth } from 'better-auth'
 import { emailOTP, admin } from 'better-auth/plugins'
 import { passkey }    from '@better-auth/passkey'
 import { bearer }     from 'better-auth/plugins'
+import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { sendEmail }  from './mailer.js'
 import { pool }        from './db.js'
 
@@ -111,6 +112,23 @@ export const auth = betterAuth({
   baseURL: BASE_URL,
 
   trustedOrigins: TRUSTED_ORIGINS,
+
+  // Admin accounts are passkey-only: a compromised mailbox (email OTP) must
+  // not be enough to become admin. Rejects the OTP sign-in route for any user
+  // whose role is 'admin'. Same message as a bad code, so it doesn't reveal
+  // which emails are admins. Lost passkey? See docs/self-hosting.md "Admin UI".
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== '/sign-in/email-otp') return
+      const email = (ctx.body as { email?: unknown } | undefined)?.email
+      if (typeof email !== 'string') return
+      const { rows } = await pool.query<{ role: string | null }>(
+        'SELECT role FROM ba_user WHERE lower(email) = lower($1)', [email.trim()])
+      if (rows[0]?.role === 'admin') {
+        throw APIError.from('BAD_REQUEST', { message: 'Invalid OTP', code: 'INVALID_OTP' })
+      }
+    }),
+  },
 
   // ── Rate limiting ────────────────────────────────────────────────────────
   // better-auth only enables this by default when NODE_ENV=production, which

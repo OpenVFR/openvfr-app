@@ -139,12 +139,19 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
 
 The web admin UI at `/admin` (user list, sign-up/activity stats, banning)
 and `/api/admin/*` are available to users whose `ba_user.role` is `admin`.
-There is no signup path for it -- grant it by hand, after that person has
-signed in once:
+There is no signup path for it -- grant it by hand. Admins are **passkey-only**:
+the account needs a registered passkey before `/api/admin/*` works, and the
+email-OTP sign-in is refused for admin accounts, so a compromised mailbox is
+not enough. Admin sessions also expire after `ADMIN_MAX_SESSION_HOURS`
+(default 12) and require signing in again with the passkey. So: sign in
+once (OTP), register a passkey in the app, then grant the role:
 
 ```sql
 UPDATE ba_user SET role = 'admin' WHERE email = 'you@example.org';
 ```
+
+Lost the passkey? Demote (`SET role = 'user'`), sign in by OTP, register a
+new passkey, promote again.
 
 Admins see account metadata and aggregate counts only -- never routes,
 positions or flight logs. Banning uses better-auth's admin plugin: it

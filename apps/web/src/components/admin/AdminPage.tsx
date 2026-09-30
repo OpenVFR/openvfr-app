@@ -23,7 +23,7 @@ function Kpi({ label, value }: { label: string; value: number }) {
 
 export default function AdminPage() {
   // 'checking' -> 'ok' | 'signin' (401) | 'denied' (403/404 -- indistinguishable on purpose)
-  const [gate, setGate] = useState<'checking' | 'ok' | 'signin' | 'denied'>('checking')
+  const [gate, setGate] = useState<'checking' | 'ok' | 'signin' | 'denied' | 'reauth' | 'passkey'>('checking')
   const [adminEmail, setAdminEmail] = useState('')
   const [overview, setOverview] = useState<Overview | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -49,7 +49,10 @@ export default function AdminPage() {
   useEffect(() => {
     adminApi.me()
       .then(m => { setAdminEmail(m.email); setGate('ok') })
-      .catch((e: unknown) => setGate(e instanceof AdminApiError && e.status === 401 ? 'signin' : 'denied'))
+      .catch((e: unknown) => {
+        if (!(e instanceof AdminApiError)) return setGate('denied')
+        setGate(e.status === 401 ? 'signin' : e.code === 'reauth_required' ? 'reauth' : e.code === 'passkey_required' ? 'passkey' : 'denied')
+      })
   }, [])
 
   useEffect(() => {
@@ -79,6 +82,12 @@ Reason (optional):`)
   if (gate === 'checking') return <div className={`${s.page} ${s.center}`}>Loading…</div>
   if (gate === 'signin') {
     return <div className={`${s.page} ${s.center}`}><span>Sign in first: <a className={s.link} href="/">open the app</a>, then reload this page.</span></div>
+  }
+  if (gate === 'reauth') {
+    return <div className={`${s.page} ${s.center}`}><span>Admin session expired. Sign out and sign in again <b>with your passkey</b> (email codes are not accepted for admins): <a className={s.link} href="/">open the app</a>.</span></div>
+  }
+  if (gate === 'passkey') {
+    return <div className={`${s.page} ${s.center}`}><span>Register a passkey on this account first (profile panel in the app), then reload: <a className={s.link} href="/">open the app</a>.</span></div>
   }
   if (gate === 'denied') return <div className={`${s.page} ${s.center}`}>Not found</div>
 

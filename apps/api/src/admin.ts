@@ -5,6 +5,10 @@
  *   - AUTH: every route requires a valid session whose user has
  *     ba_user.role = 'admin' (set by hand in the DB; nothing here can grant
  *     it). Non-admins get 403.
+ *   - PASSKEY-ONLY: admins must have >=1 registered passkey, and OTP sign-in is
+ *     refused for admin accounts (auth.ts hooks), so a mailbox takeover alone
+ *     is not enough. The session must also be younger than
+ *     ADMIN_MAX_SESSION_HOURS (default 12); older ones must sign in again.
  *   - RATE LIMIT: per-admin sliding window (ADMIN_RATE_PER_MIN, default 120).
  *   - CSRF: state-changing methods additionally require an `Origin` header in
  *     the trusted-origins list (same list better-auth uses).
@@ -20,6 +24,7 @@ import { Hono, type MiddlewareHandler } from 'hono'
 import { auth, TRUSTED_ORIGINS } from './auth.js'
 import { pool } from './db.js'
 
+const MAX_SESSION_MS = Number(process.env['ADMIN_MAX_SESSION_HOURS'] ?? 12) * 3_600_000
 const RATE_PER_MIN = Number(process.env['ADMIN_RATE_PER_MIN'] ?? 120)
 
 const hits = new Map<string, number[]>() // admin user id -> request timestamps (last 60 s)
@@ -41,6 +46,17 @@ const requireAdmin: MiddlewareHandler<AdminEnv> = async (c, next) => {
   if (!session?.user) return c.json({ error: 'Unauthenticated' }, 401)
   const { id, email, role } = session.user as { id: string; email: string; role?: string | null }
   if (role !== 'admin') return c.json({ error: 'Forbidden' }, 403)
+
+  // Past this point the caller is a confirmed admin, so specific codes are
+  // safe to return (the UI uses them to explain what to do).
+  const created = new Date(session.session.createdAt).getTime()
+  if (!(Date.now() - created < MAX_SESSION_MS)) {
+    return c.json({ error: 'Admin session expired; sign in again with your passkey', code: 'reauth_required' }, 403)
+  }
+  const pk = await pool.query('SELECT 1 FROM ba_passkey WHERE "userId" = $1 LIMIT 1', [id])
+  if (!pk.rowCount) {
+    return c.json({ error: 'Register a passkey on this account first', code: 'passkey_required' }, 403)
+  }
 
   if (c.req.method !== 'GET' && c.req.method !== 'HEAD') {
     const origin = c.req.header('origin')
