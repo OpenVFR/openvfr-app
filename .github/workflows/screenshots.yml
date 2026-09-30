@@ -244,7 +244,11 @@ jobs:
     needs: [preflight, android]
     if: ${{ !cancelled() && inputs.platform != 'android' }}
     runs-on: macos-latest
-    timeout-minutes: 60
+    # ~28 min simulator build + ~30 min capture (two simulators; the iPad
+    # one takes ~5 min to boot and ~14 min to run the flow). A 60-minute
+    # ceiling once cancelled the job during the artifact upload, after every
+    # screenshot had already been taken.
+    timeout-minutes: 90
     defaults:
       run:
         working-directory: apps/native

@@ -19,5 +19,5 @@ overrides:
   "@expo/router-server>react-dom": "19.2.8"
 
 patchedDependencies:
-  '@expo/ui@57.0.20': patches/@expo__ui@57.0.20.patch
+  '@expo/ui@57.0.21': patches/@expo__ui@57.0.21.patch
   '@maplibre/maplibre-react-native@11.4.0': patches/@maplibre__maplibre-react-native@11.4.0.patch
