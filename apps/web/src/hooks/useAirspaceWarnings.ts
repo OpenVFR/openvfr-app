@@ -29,6 +29,7 @@ import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
 import { advancePosition } from '@open-vfr/shared/routeCalc'
 import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { airspaceDisplayClass } from '@open-vfr/shared/airspaceColors'
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const LOOKAHEAD_MIN_SPEED   = 60     // assume at least 60 kts when projecting ahead
@@ -42,8 +43,10 @@ export type WarningSeverity = 'red' | 'yellow' | 'blue'
 const SEVERITY_ORDER: Record<WarningSeverity, number> = { red: 0, yellow: 1, blue: 2 }
 
 function getSeverity(cls: string): WarningSeverity {
-  if (cls === 'R' || cls === 'TRA')            return 'red'
-  if (cls === 'C' || cls === 'D')              return 'yellow'
+  // Follows the usual chart-warning convention: prohibited/restricted/danger and
+  // class A red; class B, C, D yellow. E/F are advisory and stay informational (blue).
+  if (cls === 'R' || cls === 'TRA' || cls === 'A') return 'red'
+  if (cls === 'B' || cls === 'C' || cls === 'D')   return 'yellow'
   return 'blue'  // E, G, RMZ, ATZ, GLDR, MODEL, CTR…
 }
 
@@ -125,8 +128,8 @@ export function useAirspaceWarnings(
           const g = f.geometry
           if (g.type !== 'Polygon' && g.type !== 'MultiPolygon') continue
           const p = f.properties as Record<string, unknown>
-          const cls      = String(p['class'] ?? '')
           const type     = String(p['type']  ?? '')
+          const cls      = airspaceDisplayClass(String(p['class'] ?? ''), type)
           const name     = String(p['name']  ?? '')
           const lower    = String(p['lower'] ?? '')
           const upper    = String(p['upper'] ?? '')

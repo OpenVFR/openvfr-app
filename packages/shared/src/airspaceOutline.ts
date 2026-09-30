@@ -26,9 +26,13 @@ export interface OutlineBand {
 export interface OutlineShape {
   fill:   string
   border: string
-  /** Closed loops in (distNm, altFt); several loops = outer boundary + holes
-   *  or separate islands. Fill with the even-odd rule. */
+  /** Closed loops in (distNm, altFt) of the merged area; several loops = outer
+   *  boundary + holes or separate islands. Fill with the even-odd rule. */
   loops:  [number, number][][]
+  /** Border pieces [x1, y1, x2, y2]: every sector's own edges, except pieces
+   *  lying strictly inside another sector of the same style. Sectors that only
+   *  touch keep the line between them. */
+  segments: [number, number, number, number][]
 }
 
 type Rect = { x1: number; x2: number; y1: number; y2: number }
@@ -95,6 +99,51 @@ export function unionRectLoops(rects: Rect[]): [number, number][][] {
   return loops
 }
 
+/** Edges of every rectangle. Floor/ceiling pieces strictly inside another
+ *  rectangle are dropped (a higher floor drawn through a lower sector); side
+ *  edges are always kept so each sector's extent stays readable. Duplicates
+ *  are drawn once. */
+export function visibleEdges(rects: Rect[]): [number, number, number, number][] {
+  const inside = (x: number, y: number) =>
+    rects.some((r) => x > r.x1 && x < r.x2 && y > r.y1 && y < r.y2)
+  const seen = new Set<string>()
+  const h: [number, number, number][] = []   // [y, xa, xb]
+  const v: [number, number, number][] = []   // [x, ya, yb]
+  for (const r of rects) {
+    const xs = [...new Set([r.x1, r.x2, ...rects.flatMap((o) => [o.x1, o.x2]).filter((x) => x > r.x1 && x < r.x2)])].sort((a, b) => a - b)
+    const ys = [...new Set([r.y1, r.y2, ...rects.flatMap((o) => [o.y1, o.y2]).filter((y) => y > r.y1 && y < r.y2)])].sort((a, b) => a - b)
+    for (const y of [r.y1, r.y2]) {
+      for (let i = 0; i < xs.length - 1; i++) {
+        const key = `h|${y}|${xs[i]}|${xs[i + 1]}`
+        if (seen.has(key) || inside((xs[i] + xs[i + 1]) / 2, y)) continue
+        seen.add(key); h.push([y, xs[i], xs[i + 1]])
+      }
+    }
+    for (const x of [r.x1, r.x2]) {
+      for (let j = 0; j < ys.length - 1; j++) {
+        const key = `v|${x}|${ys[j]}|${ys[j + 1]}`
+        if (seen.has(key)) continue   // side edges are always kept, even inside another sector
+        seen.add(key); v.push([x, ys[j], ys[j + 1]])
+      }
+    }
+  }
+  // Join collinear pieces that touch end to end.
+  const join = (list: [number, number, number][]) => {
+    list.sort((a, b) => a[0] - b[0] || a[1] - b[1])
+    const out: [number, number, number][] = []
+    for (const seg of list) {
+      const last = out[out.length - 1]
+      if (last && last[0] === seg[0] && last[2] >= seg[1]) last[2] = Math.max(last[2], seg[2])
+      else out.push([...seg])
+    }
+    return out
+  }
+  return [
+    ...join(h).map(([y, xa, xb]) => [xa, y, xb, y] as [number, number, number, number]),
+    ...join(v).map(([x, ya, yb]) => [x, ya, x, yb] as [number, number, number, number]),
+  ]
+}
+
 /** One merged outline per distinct fill/border style. `maxAltFt` clamps band
  *  tops to the chart's top edge; bands entirely above it are dropped. */
 export function airspaceOutlines(bands: OutlineBand[], maxAltFt = Infinity): OutlineShape[] {
@@ -108,5 +157,36 @@ export function airspaceOutlines(bands: OutlineBand[], maxAltFt = Infinity): Out
     if (!g) { g = { fill: b.fill, border: b.border, rects: [] }; groups.set(key, g) }
     g.rects.push({ x1: b.entryNm, x2: b.exitNm, y1: b.lower_ft, y2 })
   }
-  return [...groups.values()].map((g) => ({ fill: g.fill, border: g.border, loops: unionRectLoops(g.rects) }))
+  return [...groups.values()].map((g) => ({
+    fill: g.fill, border: g.border,
+    loops: unionRectLoops(g.rects),
+    segments: visibleEdges(g.rects),
+  }))
+}
+
+export interface OutlineChip {
+  x: number      // distance along route (NM) of the band's start
+  y: number      // altitude (ft) of the band's visible top
+  tag: string
+  freq?: string
+  border: string
+}
+
+/** One label chip per band, at its top-left corner. Bands of the same class and
+ *  frequency starting at the same place (stacked sub-sectors) share one chip. */
+export function airspaceChips(
+  bands: (OutlineBand & { tag: string; freq?: string })[],
+  maxAltFt = Infinity,
+): OutlineChip[] {
+  const seen = new Set<string>()
+  const out: OutlineChip[] = []
+  for (const b of bands) {
+    if (b.lower_ft >= maxAltFt || !(b.exitNm > b.entryNm)) continue
+    const y = Math.min(b.upper_ft, maxAltFt)
+    const key = `${b.tag}|${b.freq ?? ''}|${b.entryNm}|${y}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ x: b.entryNm, y, tag: b.tag, freq: b.freq, border: b.border })
+  }
+  return out
 }

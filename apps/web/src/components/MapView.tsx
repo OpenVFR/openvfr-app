@@ -217,10 +217,8 @@ const POINT_LAYERS = [
 
 // Airspace fill layers — queried for polygon click after point features.
 const AIRSPACE_FILL_LAYERS = [
-  'airspace-fill-c-ctr',
-  'airspace-fill-c-tma',
-  'airspace-fill-d',
-  'airspace-fill-e',
+  'airspace-fill-ctr',
+  'airspace-fill-tma',
   'airspace-fill-g',
   'airspace-fill-restricted',
   'airspace-fill-activity',

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { scrollIntoContainer } from '../utils/scrollIntoContainer'
 import css from './AirspacePopup.module.css'
-import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
+import { AIRSPACE_COLORS as AC, CONTROLLED_CLASSES, controlledStyle } from '@open-vfr/shared/airspaceColors'
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { extractDesignators } from '@open-vfr/shared/notamDesignator'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
@@ -153,9 +153,12 @@ const TYPE_LABEL: Record<string, string> = {
 }
 
 const CLASS_LABEL: Record<string, string> = {
+  A:     'Class A',
+  B:     'Class B',
   C:     'Class C',
-  D:     'Danger',
+  D:     'Class D',
   E:     'Class E',
+  F:     'Class F',
   G:     'Class G',
   R:     'Restricted',
   TRA:   'TRA',
@@ -173,7 +176,7 @@ function withAlpha(color: string, alpha: number): string {
 }
 
 function bandColor(cls: string, type?: string): string {
-  if (cls === 'C') return type === 'CTR' ? AC.cCtrBorder : AC.cTmaBorder
+  if ((CONTROLLED_CLASSES as readonly string[]).includes(cls)) return controlledStyle(cls, type ?? '').border
   switch (cls) {
     case 'D':     return AC.dBorder
     case 'E':     return AC.eBorder

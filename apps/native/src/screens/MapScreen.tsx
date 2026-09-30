@@ -1209,8 +1209,6 @@ export function MapScreen() {
           airspaceCeilingFt={settings.airspaceCeilingFt}
           showClassCtr={layers.classCtr}
           showClassCtma={layers.classCtma}
-          showClassD={layers.classD}
-          showClassE={layers.classE}
           showClassG={layers.classG}
           showRestricted={layers.restricted}
           showActivity={layers.activity}

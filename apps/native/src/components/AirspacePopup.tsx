@@ -11,7 +11,7 @@ import {
 } from 'react-native'
 import Svg, { Path, Rect, Line } from 'react-native-svg'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
-import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
+import { AIRSPACE_COLORS as AC, CONTROLLED_CLASSES, controlledStyle } from '@open-vfr/shared/airspaceColors'
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { extractDesignators } from '@open-vfr/shared/notamDesignator'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
@@ -97,7 +97,7 @@ const NOTAM_COLOR = '#e64980'
 // class-only lookup previously always showed the CTR colour for TMA too,
 // same bug class as the web popup and the native map layer fixed earlier.
 function classBorderColor(cls: string, type?: string): string {
-  if (cls === 'C') return type === 'CTR' ? AC.cCtrBorder : AC.cTmaBorder
+  if ((CONTROLLED_CLASSES as readonly string[]).includes(cls)) return controlledStyle(cls, type ?? '').border
   switch (cls) {
     case 'D':     return AC.dBorder
     case 'E':     return AC.eBorder
@@ -110,7 +110,7 @@ function classBorderColor(cls: string, type?: string): string {
   }
 }
 function classFillColor(cls: string, type?: string): string {
-  if (cls === 'C') return type === 'CTR' ? AC.cCtrFill : AC.cTmaFill
+  if ((CONTROLLED_CLASSES as readonly string[]).includes(cls)) return controlledStyle(cls, type ?? '').fill
   switch (cls) {
     case 'D':     return AC.dFill
     case 'E':     return AC.eFill
@@ -123,7 +123,7 @@ function classFillColor(cls: string, type?: string): string {
   }
 }
 const CLASS_LABEL: Record<string, string> = {
-  C: 'Class C', D: 'Class D', E: 'Class E', G: 'Class G',
+  A: 'Class A', B: 'Class B', C: 'Class C', D: 'Class D', E: 'Class E', F: 'Class F', G: 'Class G',
   R: 'Restricted', TRA: 'TRA', GLDR: 'Glider', MODEL: 'Model',
 }
 const TYPE_LABEL: Record<string, string> = {

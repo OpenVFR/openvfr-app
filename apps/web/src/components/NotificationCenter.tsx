@@ -49,14 +49,12 @@ function clsLabel(cls: string, type: string): string {
 }
 
 function airspaceSeverityLabel(a: AirspaceAlert): string {
-  if (a.cls === 'R')   return 'RESTRICTED'
+  if (a.cls === 'R')   return a.type === 'D' ? 'DANGER' : a.type === 'P' ? 'PROHIBITED' : 'RESTRICTED'
   if (a.cls === 'TRA') return 'TEMP RESERVED'
-  if (a.cls === 'C')   return 'CLASS C'
-  if (a.cls === 'D')   return 'DANGER'
+  if (/^[A-F]$/.test(a.cls) && a.type !== 'CTR') return `CLASS ${a.cls}`
   if (a.type === 'ATZ') return 'ATZ'
   if (a.type === 'RMZ') return 'RMZ'
-  if (a.type === 'CTR') return 'CTR'
-  if (a.cls === 'E')   return 'CLASS E'
+  if (a.type === 'CTR') return `CTR ${a.cls}`
   if (a.cls === 'GLDR') return 'GLIDER AREA'
   if (a.cls === 'MODEL') return 'MODEL FLYING'
   return a.cls || a.type

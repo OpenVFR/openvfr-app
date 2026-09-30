@@ -91,16 +91,17 @@ MapLibre GL JS renders all layers. Style is defined in `apps/web/src/styles/map-
 
 ### Airspace Layers
 
-Each airspace class has a fill layer + a border layer. Layer IDs follow `airspace-fill-{class}` / `airspace-border-{class}`:
+Layers are grouped by *kind*, not by class. Layer IDs follow `airspace-{fill,inset,border,label}-{kind}`:
 
-| Class value | Layer suffix | Visual style | Airspace types |
+| Kind | Layer suffix | Contents | Colour |
 |---|---|---|---|
-| `C` | `-c` | Purple fill, solid border | CTR, TMA |
-| `D` | `-d` | Blue fill, dashed border | Danger areas |
-| `E` | `-e` | Green fill, dashed border | Class E |
-| `G` | `-g` | Grey fill, dashed border | RMZ, ATZ |
-| `restricted` | `-restricted` | Orange fill, solid border | R, TRA |
-| `activity` | `-activity` | Yellow fill, dashed border | GLDR, MODEL (default off) |
+| CTR | `-ctr` | `type == CTR`, any ICAO class A–F | per class (`controlledStyle()`); class C CTR is magenta; fill fades out above zoom 10–12 |
+| TMA / CTA | `-tma` | every other class A–F polygon (TMA, CTA, …) | A dark magenta; B/C/D blue with inset band; E same blue as a thicker line only (no band/fill); F thin lighter line; near-clear map fill |
+| RMZ / ATZ / TMZ | `-g` | `type` in RMZ/ATZ/TMZ (filed under class G in the data) | thin dashed grey outline |
+| Restricted | `-restricted`, `-border-danger` | class `R`, `TRA`, and danger areas (`class D` + `type D`) | red (R, danger dashed), paler orange (TRA) |
+| Activity | `-activity` | GLDR, MODEL (default off) | yellow/green |
+
+Class G (the default airspace) is never drawn. The data's class `D` mixes ICAO Class D (type CTR/TMA) with danger areas (type `D`); `airspaceDisplayClass()` in `@open-vfr/shared/airspaceColors` maps the latter to `R`. Every polygon keeps its class in its on-map boundary label (e.g. `C 1500ft MSL-FL065`, `CTR D SFC-2000ft MSL`).
 
 Altitude filter: `AltitudeSlider` → `buildAltitudeFilter()` → `map.setFilter()` per layer. Uses `lower_ft` GeoJSON property. Default ceiling FL095 (9,500 ft). `AIRSPACE_BASE_FILTERS` constant in `map-style.ts` mirrors initial filter state — do not read filters back from the map object after `styledata`.
 

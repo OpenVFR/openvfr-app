@@ -27,7 +27,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, Image, PanResponder, type LayoutChangeEvent,
 } from 'react-native'
-import Svg, { Path, Line as SvgLine, Circle, Defs, LinearGradient, Stop, G, Text as SvgText } from 'react-native-svg'
+import Svg, { ClipPath, Rect, Path, Line as SvgLine, Circle, Defs, LinearGradient, Stop, G, Text as SvgText } from 'react-native-svg'
 
 import type { RouteWaypoint, LegOverride, AircraftProfileDocType } from '../types/db'
 import { type Units, DEFAULT_UNITS, nmToDisplay } from '../utils/units'
@@ -46,7 +46,7 @@ import {
   type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
-import { airspaceOutlines } from '@open-vfr/shared/airspaceOutline'
+import { airspaceOutlines, airspaceChips } from '@open-vfr/shared/airspaceOutline'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
 import { windBarbColorForSpeed, windBarbGeometry } from '@open-vfr/shared/windBarb'
 import { getTileUrls, API_BASE } from '../config'
@@ -891,22 +891,42 @@ export function VerticalProfile({
                 ))}
 
                 {/* ── Airspace (glow halo + fill + border) ── */}
-                {/* One merged outline per style (@open-vfr/shared/airspaceOutline):
-                    overlapping sectors of the same kind form a single stepped shape,
-                    so a 2500 ft floor inside a 1500 ft sector draws no line. Band
+                {/* Per style (@open-vfr/shared/airspaceOutline): the area is filled once and
+                    every sector keeps its own border except pieces inside another sector
+                    of the same kind, so a 2500 ft floor inside a 1500 ft sector draws no
+                    line while the line between touching sectors stays. Band
                     tops are clamped to yMax -- it only scales to planned altitude and
                     terrain, not airspace ceilings, and one FL660 CTA must not blow the
                     scale out or draw through the wind-arrow/waypoint-name row. */}
                 {airspaceOutlines(profile.airspaceBands, yMax).map((shape, i) => {
-                  const d = shape.loops
+                  const fillD = shape.loops
                     .map((loop) => 'M' + loop.map(([nm, ft]) => `${xOf(nm)},${yOf(ft)}`).join(' L') + ' Z')
+                    .join(' ')
+                  const lineD = shape.segments
+                    .map(([x1, y1, x2, y2]) => `M${xOf(x1)},${yOf(y1)} L${xOf(x2)},${yOf(y2)}`)
                     .join(' ')
                   return (
                     <G key={`band-${i}`}>
-                      <Path d={d} fill={shape.fill} fillRule="evenodd" />
-                      {/* Glow halo — wide low-opacity stroke behind the crisp border */}
-                      <Path d={d} fill="none" stroke={shape.border} strokeOpacity={0.25} strokeWidth={5} strokeLinejoin="round" />
-                      <Path d={d} fill="none" stroke={shape.border} strokeWidth={1.25} strokeLinejoin="round" />
+                      <Path d={fillD} fill={shape.fill} fillRule="evenodd" />
+                      {/* Inset band: wide translucent stroke clipped to the inside of the area */}
+                      <Defs><ClipPath id={`airspace-clip-${i}`}><Path d={fillD} fillRule="evenodd" /></ClipPath></Defs>
+                      <Path d={lineD} fill="none" stroke={shape.border} strokeOpacity={0.3} strokeWidth={10} clipPath={`url(#airspace-clip-${i})`} />
+                      <Path d={lineD} fill="none" stroke={shape.border} strokeWidth={1.25} strokeLinecap="square" />
+                    </G>
+                  )
+                })}
+
+                {/* Label chips: class letter (or designator) + first radio frequency */}
+                {airspaceChips(profile.airspaceBands, yMax).map((c, i) => {
+                  const x = xOf(c.x) + 3, y = yOf(c.y) + 3
+                  const tagW = c.tag.length * 6.4 + 6
+                  const freqW = c.freq ? c.freq.length * 6.1 + 6 : 0
+                  return (
+                    <G key={`chip-${i}`}>
+                      <Rect x={x} y={y} width={tagW + freqW} height={13} fill="#fff" stroke={c.border} strokeWidth={1} rx={1.5} />
+                      <Rect x={x} y={y} width={tagW} height={13} fill={c.border} rx={1.5} />
+                      <SvgText x={x + tagW / 2} y={y + 10} textAnchor="middle" fontSize={9.5} fontWeight="700" fill="#fff">{c.tag}</SvgText>
+                      {c.freq ? <SvgText x={x + tagW + freqW / 2} y={y + 10} textAnchor="middle" fontSize={9.5} fontWeight="600" fill="#111">{c.freq}</SvgText> : null}
                     </G>
                   )
                 })}

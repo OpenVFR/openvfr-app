@@ -1,6 +1,6 @@
 import type { StyleSpecification, FilterSpecification, ExpressionSpecification } from 'maplibre-gl'
 import { layers, LIGHT } from '@protomaps/basemaps'
-import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
+import { AIRSPACE_COLORS as AC, CONTROLLED_CLASSES, ZONE_TYPES, controlledStyle } from '@open-vfr/shared/airspaceColors'
 import { AERODROME_COLORS, NAVAID_COLORS, WAYPOINT_COLORS, OBSTACLE_COLORS, RUNWAY_COLORS } from '@open-vfr/shared/featureColors'
 import {
   RUNWAY_LABEL_DEFAULT_SIZE,
@@ -18,10 +18,20 @@ import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
 // expression, rather than a precomputed label property.
 const AIRSPACE_LABEL_TEXT_FIELD = [
   'concat',
-  ['match', ['get', 'type'], 'CTR', 'CTR', ['get', 'class']],
-  '  ·  ',
+  ['match', ['get', 'type'], 'CTR', ['concat', 'CTR ', ['get', 'class']], ['get', 'class']],
+  ' ',
   ['get', 'lower'],
-  ' – ',
+  '-',
+  ['get', 'upper'],
+] as unknown as ExpressionSpecification
+
+// RMZ / ATZ / TMZ zones are named by their type (the data files them under class G).
+const AIRSPACE_ZONE_LABEL_TEXT_FIELD = [
+  'concat',
+  ['get', 'type'],
+  ' ',
+  ['get', 'lower'],
+  '-',
   ['get', 'upper'],
 ] as unknown as ExpressionSpecification
 
@@ -159,36 +169,61 @@ export const PROTOMAPS_LAYER_IDS: readonly string[] = [
     .filter((id): id is string => typeof id === 'string'),
 ]
 
-// Class C airspace layers, one set per type: 'ctr' = CTR, 'tma' = every other
-// class C polygon (TMA, CTA, ...). Ids: airspace-{fill,inset,border,label}-c-<kind>.
-const C_KINDS = {
-  ctr: { filter: ['==', ['get', 'type'], 'CTR'] as FilterSpecification, fill: AC.cCtrFill, border: AC.cCtrBorder, width: 2.0 },
-  tma: { filter: ['!=', ['get', 'type'], 'CTR'] as FilterSpecification, fill: AC.cTmaFill, border: AC.cTmaBorder, width: 1.4 },
-} as const
-type CKind = keyof typeof C_KINDS
-const cFilter = (k: CKind): FilterSpecification =>
-  ['all', ['==', ['get', 'class'], 'C'], C_KINDS[k].filter] as FilterSpecification
+// The data's class 'D' mixes ICAO Class D with danger areas (type 'D'); danger
+// areas are drawn with the red restricted layers instead.
+const DANGER = ['all', ['==', ['get', 'class'], 'D'], ['==', ['get', 'type'], 'D']]
+const RED_STYLE = ['any', ['==', ['get', 'class'], 'R'], DANGER] as unknown as ExpressionSpecification
+const RESTRICTED_ONLY_FILTER = ['in', ['get', 'class'], ['literal', ['R', 'TRA']]] as unknown as FilterSpecification
+const DANGER_FILTER = DANGER as unknown as FilterSpecification
+const RESTRICTED_FILTER = ['any', ['in', ['get', 'class'], ['literal', ['R', 'TRA']]], DANGER] as unknown as FilterSpecification
 
-function classCLayers(k: CKind): StyleSpecification['layers'] {
-  const c = C_KINDS[k]
+// Controlled airspace (ICAO classes A-F): one layer set per KIND, whatever the
+// class. 'ctr' = CTR, 'tma' = every other polygon (TMA, CTA, ...). Colours are
+// picked per class from the shared palette (controlledStyle). Class G is the
+// default airspace everywhere and is never drawn; RMZ/ATZ/TMZ have their own
+// zone layers, danger areas the restricted layers. Ids:
+// airspace-{fill,inset,border,label}-<kind>.
+const NON_CONTROLLED_TYPES = [...ZONE_TYPES, 'FIR', 'UIR', 'D']
+const controlledFilter = (k: CKind): FilterSpecification => ['all',
+  ['in', ['get', 'class'], ['literal', [...CONTROLLED_CLASSES]]],
+  k === 'ctr'
+    ? ['==', ['get', 'type'], 'CTR']
+    : ['all', ['!=', ['get', 'type'], 'CTR'], ['!', ['in', ['get', 'type'], ['literal', NON_CONTROLLED_TYPES]]]],
+] as unknown as FilterSpecification
+type CKind = 'ctr' | 'tma'
+const ZONE_FILTER = ['in', ['get', 'type'], ['literal', [...ZONE_TYPES]]] as unknown as FilterSpecification
+
+/** data-driven colour: one value per class, resolved for this kind */
+function byClass(k: CKind, field: 'border' | 'fill' | 'mapFill' | 'band' | 'width'): ExpressionSpecification {
+  const type = k === 'ctr' ? 'CTR' : 'TMA'
+  const out: unknown[] = ['match', ['get', 'class']]
+  for (const c of CONTROLLED_CLASSES) out.push(c, controlledStyle(c, type)[field])
+  out.push(field === 'band' ? 0 : field === 'width' ? 1 : AC.transparent)
+  return out as unknown as ExpressionSpecification
+}
+
+function controlledLayers(k: CKind): StyleSpecification['layers'] {
+  const f = controlledFilter(k)
+  const tma = k === 'tma'
   return [
     {
-      id: `airspace-fill-c-${k}`, type: 'fill', source: 'ofm', filter: cFilter(k),
-      paint: { 'fill-color': c.fill, 'fill-outline-color': AC.transparent },
+      id: `airspace-fill-${k}`, type: 'fill', source: 'ofm', filter: f,
+      // CTR fill fades out when zoomed in (you are navigating inside it); the outline stays.
+      paint: { 'fill-color': byClass(k, 'mapFill'), 'fill-outline-color': AC.transparent, ...(tma ? {} : { 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 10, 1, 12, 0.15] as unknown as ExpressionSpecification }) },
     },
     // Inset shading band — wide, translucent, offset INTO the polygon via a
     // positive line-offset (winding-order-independent for Polygon geometry, per
     // the style spec), showing which side of the boundary the airspace is on.
     {
-      id: `airspace-inset-c-${k}`, type: 'line', source: 'ofm', filter: cFilter(k),
-      paint: { 'line-color': c.border, 'line-width': 6, 'line-offset': 3, 'line-opacity': 0.22 },
+      id: `airspace-inset-${k}`, type: 'line', source: 'ofm', filter: f,
+      paint: { 'line-color': byClass(k, 'border'), 'line-width': tma ? 10 : 6, 'line-offset': tma ? 5 : 3, 'line-opacity': ['*', tma ? 0.28 : 0.22, byClass(k, 'band')] as unknown as ExpressionSpecification },
     },
     {
-      id: `airspace-border-c-${k}`, type: 'line', source: 'ofm', filter: cFilter(k),
-      paint: { 'line-color': c.border, 'line-width': c.width },
+      id: `airspace-border-${k}`, type: 'line', source: 'ofm', filter: f,
+      paint: { 'line-color': byClass(k, 'border'), 'line-width': ['*', tma ? 1.4 : 2.0, byClass(k, 'width')] as unknown as ExpressionSpecification },
     },
     {
-      id: `airspace-label-c-${k}`, type: 'symbol', source: 'ofm', filter: cFilter(k),
+      id: `airspace-label-${k}`, type: 'symbol', source: 'ofm', filter: f,
       layout: {
         'symbol-placement': 'line',
         'text-offset': [0, 1],
@@ -198,7 +233,7 @@ function classCLayers(k: CKind): StyleSpecification['layers'] {
         'symbol-spacing': 200,
         'text-font': ['Noto Sans Regular'],
       },
-      paint: { 'text-color': c.border, 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 },
+      paint: { 'text-color': byClass(k, 'border'), 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 },
     },
   ] as StyleSpecification['layers']
 }
@@ -206,12 +241,11 @@ function classCLayers(k: CKind): StyleSpecification['layers'] {
 // Airspace border layers with default (vector) and boosted (satellite) line-widths.
 // In satellite mode widths are increased so class boundaries remain legible over imagery.
 export const AIRSPACE_BORDER_WIDTHS: { id: string; vector: number | ExpressionSpecification; sat: number }[] = [
-  { id: 'airspace-border-c-ctr',      vector: 2.0,  sat: 2.5 },
-  { id: 'airspace-border-c-tma',      vector: 1.4,  sat: 2.5 },
-  { id: 'airspace-border-d',          vector: 1.2,  sat: 2.0 },
-  { id: 'airspace-border-e',          vector: 1.5,  sat: 2.0 },
+  { id: 'airspace-border-ctr',        vector: 2.0,  sat: 2.5 },
+  { id: 'airspace-border-tma',        vector: 1.4,  sat: 2.5 },
   { id: 'airspace-border-g',          vector: 1.0,  sat: 1.5 },
-  { id: 'airspace-border-restricted', vector: ['match', ['get', 'class'], 'R', 1.8, 1.2], sat: 2.5 },
+  { id: 'airspace-border-restricted', vector: ['case', RED_STYLE, 1.8, 1.2], sat: 2.5 },
+  { id: 'airspace-border-danger',     vector: 1.8,  sat: 2.5 },
   { id: 'airspace-border-activity',   vector: 1.0,  sat: 1.5 },
 ]
 
@@ -225,10 +259,8 @@ export const AVIATION_LABEL_LAYERS = [
   'obstacles-label',
   'landmarks-label',
   'user-waypoints-label',
-  'airspace-label-c-ctr',
-  'airspace-label-c-tma',
-  'airspace-label-d',
-  'airspace-label-e',
+  'airspace-label-ctr',
+  'airspace-label-tma',
   'airspace-label-g',
   'airspace-label-restricted',
   'airspace-label-activity',
@@ -257,30 +289,22 @@ export interface LayerGroup {
 // Stored here so MapView can rebuild combined filters without relying on
 // map.getFilter() timing (which varies with styledata/load event ordering).
 export const AIRSPACE_BASE_FILTERS: Readonly<Record<string, FilterSpecification>> = {
-  'airspace-fill-c-ctr':        cFilter('ctr'),
-  'airspace-inset-c-ctr':       cFilter('ctr'),
-  'airspace-border-c-ctr':      cFilter('ctr'),
-  'airspace-label-c-ctr':       cFilter('ctr'),
-  'airspace-fill-c-tma':        cFilter('tma'),
-  'airspace-inset-c-tma':       cFilter('tma'),
-  'airspace-border-c-tma':      cFilter('tma'),
-  'airspace-label-c-tma':       cFilter('tma'),
-  'airspace-fill-d':            ['==', ['get', 'class'], 'D'],
-  'airspace-inset-d':           ['==', ['get', 'class'], 'D'],
-  'airspace-border-d':          ['==', ['get', 'class'], 'D'],
-  'airspace-label-d':           ['==', ['get', 'class'], 'D'],
-  'airspace-fill-e':            ['==', ['get', 'class'], 'E'],
-  'airspace-inset-e':           ['==', ['get', 'class'], 'E'],
-  'airspace-border-e':          ['==', ['get', 'class'], 'E'],
-  'airspace-label-e':           ['==', ['get', 'class'], 'E'],
-  'airspace-fill-g':            ['==', ['get', 'class'], 'G'],
-  'airspace-inset-g':           ['==', ['get', 'class'], 'G'],
-  'airspace-border-g':          ['==', ['get', 'class'], 'G'],
-  'airspace-label-g':           ['==', ['get', 'class'], 'G'],
-  'airspace-fill-restricted':   ['in', ['get', 'class'], ['literal', ['R', 'TRA']]],
-  'airspace-inset-restricted':  ['in', ['get', 'class'], ['literal', ['R', 'TRA']]],
-  'airspace-border-restricted': ['in', ['get', 'class'], ['literal', ['R', 'TRA']]],
-  'airspace-label-restricted':  ['in', ['get', 'class'], ['literal', ['R', 'TRA']]],
+  'airspace-fill-ctr':          controlledFilter('ctr'),
+  'airspace-inset-ctr':         controlledFilter('ctr'),
+  'airspace-border-ctr':        controlledFilter('ctr'),
+  'airspace-label-ctr':         controlledFilter('ctr'),
+  'airspace-fill-tma':          controlledFilter('tma'),
+  'airspace-inset-tma':         controlledFilter('tma'),
+  'airspace-border-tma':        controlledFilter('tma'),
+  'airspace-label-tma':         controlledFilter('tma'),
+  'airspace-fill-g':            ZONE_FILTER,
+  'airspace-border-g':          ZONE_FILTER,
+  'airspace-label-g':           ZONE_FILTER,
+  'airspace-fill-restricted':   RESTRICTED_FILTER,
+  'airspace-inset-restricted':  RESTRICTED_FILTER,
+  'airspace-border-restricted': RESTRICTED_ONLY_FILTER,
+  'airspace-border-danger':     DANGER_FILTER,
+  'airspace-label-restricted':  RESTRICTED_FILTER,
   'airspace-fill-activity':     ['in', ['get', 'class'], ['literal', ['GLDR', 'MODEL']]],
   'airspace-inset-activity':    ['in', ['get', 'class'], ['literal', ['GLDR', 'MODEL']]],
   'airspace-border-activity':   ['in', ['get', 'class'], ['literal', ['GLDR', 'MODEL']]],
@@ -310,58 +334,38 @@ export function buildAltitudeFilter(
 export const LAYER_GROUPS: LayerGroup[] = [
   {
     id: 'classCtr',
-    // Control zones — the ICAO Class C polygons of type CTR in the OFM data.
+    // Control zones (type CTR), every ICAO class.
     label: 'CTR',
     cssClass: 'groupClassCtr',
-    layerIds: ['airspace-fill-c-ctr', 'airspace-inset-c-ctr', 'airspace-border-c-ctr', 'airspace-label-c-ctr'],
+    layerIds: ['airspace-fill-ctr', 'airspace-inset-ctr', 'airspace-border-ctr', 'airspace-label-ctr'],
     defaultOn: true,
     section: 'Airspace',
   },
   {
     id: 'classCtma',
-    // Terminal / control areas — every other Class C polygon (TMA, CTA, ...).
+    // Terminal / control areas — every other controlled polygon (TMA, CTA, ...), every ICAO class.
     label: 'TMA / CTA',
     cssClass: 'groupClassTma',
-    layerIds: ['airspace-fill-c-tma', 'airspace-inset-c-tma', 'airspace-border-c-tma', 'airspace-label-c-tma'],
-    defaultOn: true,
-    section: 'Airspace',
-  },
-  {
-    id: 'classD',
-    // Danger areas — military/hazardous activity zones (OFM type=D).
-    // Stored as class=D in GeoJSON; distinct from ICAO Class D airspace.
-    label: 'Danger Areas',
-    cssClass: 'groupClassD',
-    layerIds: ['airspace-fill-d', 'airspace-inset-d', 'airspace-border-d', 'airspace-label-d'],
-    defaultOn: true,
-    section: 'Airspace',
-  },
-  {
-    id: 'classE',
-    // Class E designated airspace polygons (e.g. cross-border TMAs).
-    label: 'Class E',
-    cssClass: 'groupClassE',
-    layerIds: ['airspace-fill-e', 'airspace-inset-e', 'airspace-border-e', 'airspace-label-e'],
+    layerIds: ['airspace-fill-tma', 'airspace-inset-tma', 'airspace-border-tma', 'airspace-label-tma'],
     defaultOn: true,
     section: 'Airspace',
   },
   {
     id: 'classG',
-    // Designated zones within uncontrolled airspace:
-    // RMZ (Radio Mandatory Zone) and ATZ (Aerodrome Traffic Zone).
-    // Note: does NOT toggle all Class G airspace — only these specific zones.
-    label: 'RMZ / ATZ',
+    // RMZ (Radio Mandatory Zone), ATZ (Aerodrome Traffic Zone) and TMZ inside
+    // uncontrolled airspace. Class G itself (the default airspace) is never drawn.
+    label: 'RMZ / ATZ / TMZ',
     cssClass: 'groupClassG',
-    layerIds: ['airspace-fill-g', 'airspace-inset-g', 'airspace-border-g', 'airspace-label-g'],
+    layerIds: ['airspace-fill-g', 'airspace-border-g', 'airspace-label-g'],
     defaultOn: true,
     section: 'Airspace',
   },
   {
     id: 'restricted',
-    // R = Restricted / Prohibited areas, TRA = Temporary Reserved Areas
-    label: 'Restricted / TRA',
+    // R = Restricted / Danger / Prohibited areas, TRA = Temporary Reserved Areas
+    label: 'Restricted / Danger / TRA',
     cssClass: 'groupRestricted',
-    layerIds: ['airspace-fill-restricted', 'airspace-inset-restricted', 'airspace-border-restricted', 'airspace-label-restricted'],
+    layerIds: ['airspace-fill-restricted', 'airspace-inset-restricted', 'airspace-border-restricted', 'airspace-border-danger', 'airspace-label-restricted'],
     defaultOn: true,
     section: 'Airspace',
   },
@@ -1163,178 +1167,28 @@ export function getMapStyle(): StyleSpecification {
         },
       },
 
-      // ── Layer 2: Class C — CTR and TMA/CTA ──────────────────────────────────
-      // Both are Class C in Sweden. Separate layer sets per type so each has
-      // its own toggle (LAYER_GROUPS classCtr / classTma) and colour.
-      ...classCLayers('ctr'),
-      ...classCLayers('tma'),
-
-      // ── Layer 3: Class D ───────────────────────────────────────────────
-      // Includes: Danger areas (type=D), Class D CTRs, Class D TMAs
+      // ── Layers 2-5: controlled airspace (CTR, TMA/CTA) and RMZ/ATZ/TMZ zones ──
+      // Separate layer sets per kind so each has its own toggle
+      // (LAYER_GROUPS classCtr / classCtma) and per-class colour.
+      ...controlledLayers('ctr'),
+      ...controlledLayers('tma'),
+      // RMZ / ATZ / TMZ: zones inside uncontrolled airspace. Near-clear fill
+      // (hit-testable for tap-to-inspect), thin dashed grey outline.
       {
-        id: 'airspace-fill-d',
-        type: 'fill',
-        source: 'ofm',
-        filter: ['==', ['get', 'class'], 'D'],
-        paint: {
-          'fill-color': AC.dFill,
-          'fill-outline-color': AC.transparent,
-        },
+        id: 'airspace-fill-g', type: 'fill', source: 'ofm', filter: ZONE_FILTER,
+        paint: { 'fill-color': 'rgba(120, 120, 120, 0.01)', 'fill-outline-color': AC.transparent },
       },
       {
-        id: 'airspace-inset-d',
-        type: 'line',
-        source: 'ofm',
-        filter: ['==', ['get', 'class'], 'D'],
-        paint: {
-          'line-color': AC.dBorder,
-          'line-width': 6,
-          'line-offset': 3,
-          'line-opacity': 0.20,
-        },
+        id: 'airspace-border-g', type: 'line', source: 'ofm', filter: ZONE_FILTER,
+        paint: { 'line-color': AC.gBorder, 'line-width': 1.0, 'line-dasharray': [2, 2] },
       },
       {
-        id: 'airspace-border-d',
-        type: 'line',
-        source: 'ofm',
-        filter: ['==', ['get', 'class'], 'D'],
-        paint: {
-          'line-color': AC.dBorder,
-          'line-width': 1.2,
-          'line-dasharray': [4, 2],
-        },
-      },
-      {
-        id: 'airspace-label-d',
-        type: 'symbol',
-        source: 'ofm',
-        filter: ['==', ['get', 'class'], 'D'],
+        id: 'airspace-label-g', type: 'symbol', source: 'ofm', filter: ZONE_FILTER,
         layout: {
-          'symbol-placement': 'line',
-          'text-offset': [0, 1],
-          'text-field': AIRSPACE_LABEL_TEXT_FIELD,
-          'text-size': 10,
-          'text-justify': 'center',
-          'symbol-spacing': 200,
-          'text-font': ['Noto Sans Regular'],
+          'symbol-placement': 'line', 'text-offset': [0, 1], 'text-field': AIRSPACE_ZONE_LABEL_TEXT_FIELD,
+          'text-size': 9, 'text-justify': 'center', 'symbol-spacing': 200, 'text-font': ['Noto Sans Regular'],
         },
-        paint: {
-          'text-color': AC.dBorder,
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1.2,
-        },
-      },
-
-      // ── Layer 4: Class E ────────────────────────────────────────────────
-      {
-        id: 'airspace-fill-e',
-        type: 'fill',
-        source: 'ofm',
-        filter: ['==', ['get', 'class'], 'E'],
-        paint: {
-          'fill-color': AC.eFill,
-          'fill-outline-color': AC.transparent,
-        },
-      },
-      {
-        id: 'airspace-inset-e',
-        type: 'line',
-        source: 'ofm',
-        filter: ['==', ['get', 'class'], 'E'],
-        paint: {
-          'line-color': AC.eBorder,
-          'line-width': 6,
-          'line-offset': 3,
-          'line-opacity': 0.20,
-        },
-      },
-      {
-        id: 'airspace-border-e',
-        type: 'line',
-        source: 'ofm',
-        filter: ['==', ['get', 'class'], 'E'],
-        paint: {
-          'line-color': AC.eBorder,
-          'line-width': 1.5,
-          'line-dasharray': [4, 2],
-        },
-      },
-      {
-        id: 'airspace-label-e',
-        type: 'symbol',
-        source: 'ofm',
-        filter: ['==', ['get', 'class'], 'E'],
-        layout: {
-          'symbol-placement': 'line',
-          'text-offset': [0, 1],
-          'text-field': AIRSPACE_LABEL_TEXT_FIELD,
-          'text-size': 10,
-          'text-justify': 'center',
-          'symbol-spacing': 200,
-          'text-font': ['Noto Sans Regular'],
-        },
-        paint: {
-          'text-color': AC.eBorder,
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1.2,
-        },
-      },
-
-      // ── Layer 5: Class G (RMZ / ATZ zones) ────────────────────────────
-      // Class G in OFM = RMZ (radio mandatory) + ATZ (aerodrome traffic zone)
-      // These are specific zones, NOT a country-wide overlay. 28 features.
-      {
-        id: 'airspace-fill-g',
-        type: 'fill',
-        source: 'ofm',
-        filter: ['==', ['get', 'class'], 'G'],
-        paint: {
-          'fill-color': AC.gFill,
-          'fill-outline-color': AC.transparent,
-        },
-      },
-      {
-        id: 'airspace-inset-g',
-        type: 'line',
-        source: 'ofm',
-        filter: ['==', ['get', 'class'], 'G'],
-        paint: {
-          'line-color': AC.gBorder,
-          'line-width': 5,
-          'line-offset': 2.5,
-          'line-opacity': 0.18,
-        },
-      },
-      {
-        id: 'airspace-border-g',
-        type: 'line',
-        source: 'ofm',
-        filter: ['==', ['get', 'class'], 'G'],
-        paint: {
-          'line-color': AC.gBorder,
-          'line-width': 1.0,
-          'line-dasharray': [2, 2],
-        },
-      },
-      {
-        id: 'airspace-label-g',
-        type: 'symbol',
-        source: 'ofm',
-        filter: ['==', ['get', 'class'], 'G'],
-        layout: {
-          'symbol-placement': 'line',
-          'text-offset': [0, 1],
-          'text-field': AIRSPACE_LABEL_TEXT_FIELD,
-          'text-size': 9,
-          'text-justify': 'center',
-          'symbol-spacing': 200,
-          'text-font': ['Noto Sans Regular'],
-        },
-        paint: {
-          'text-color': AC.gBorder,
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1.2,
-        },
+        paint: { 'text-color': AC.gBorder, 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 },
       },
 
       // ── Layer 6: Restricted (R / TRA) ──────────────────────────────────
@@ -1342,14 +1196,9 @@ export function getMapStyle(): StyleSpecification {
         id: 'airspace-fill-restricted',
         type: 'fill',
         source: 'ofm',
-        filter: ['in', ['get', 'class'], ['literal', ['R', 'TRA']]],
+        filter: RESTRICTED_FILTER,
         paint: {
-          'fill-color': [
-            'match', ['get', 'class'],
-            'R',   AC.rFill,
-            'TRA', AC.traFill,
-                   AC.transparent,
-          ],
+          'fill-color': ['case', RED_STYLE, AC.rFill, ['==', ['get', 'class'], 'TRA'], AC.traFill, AC.transparent],
           'fill-outline-color': AC.transparent,
         },
       },
@@ -1357,14 +1206,9 @@ export function getMapStyle(): StyleSpecification {
         id: 'airspace-inset-restricted',
         type: 'line',
         source: 'ofm',
-        filter: ['in', ['get', 'class'], ['literal', ['R', 'TRA']]],
+        filter: RESTRICTED_FILTER,
         paint: {
-          'line-color': [
-            'match', ['get', 'class'],
-            'R',   AC.rBorder,
-            'TRA', AC.traBorder,
-                   AC.traBorder,
-          ],
+          'line-color': ['case', RED_STYLE, AC.rBorder, ['==', ['get', 'class'], 'TRA'], AC.traBorder, AC.traBorder],
           'line-width': 6,
           'line-offset': 3,
           'line-opacity': 0.24,
@@ -1374,26 +1218,26 @@ export function getMapStyle(): StyleSpecification {
         id: 'airspace-border-restricted',
         type: 'line',
         source: 'ofm',
-        filter: ['in', ['get', 'class'], ['literal', ['R', 'TRA']]],
+        filter: RESTRICTED_ONLY_FILTER,
         paint: {
-          'line-color': [
-            'match', ['get', 'class'],
-            'R',   AC.rBorder,
-            'TRA', AC.traBorder,
-                   AC.traBorder,
-          ],
-          'line-width': [
-            'match', ['get', 'class'],
-            'R', 1.8,
-            1.2,
-          ],
+          'line-color': ['case', RED_STYLE, AC.rBorder, ['==', ['get', 'class'], 'TRA'], AC.traBorder, AC.traBorder],
+          'line-width': ['case', RED_STYLE, 1.8, 1.2],
         },
+      },
+      {
+        // Danger areas: same red as restricted, dashed border (line-dasharray is not
+        // data-driven, so they need their own layer).
+        id: 'airspace-border-danger',
+        type: 'line',
+        source: 'ofm',
+        filter: DANGER_FILTER,
+        paint: { 'line-color': AC.rBorder, 'line-width': 1.8, 'line-dasharray': [4, 3] },
       },
       {
         id: 'airspace-label-restricted',
         type: 'symbol',
         source: 'ofm',
-        filter: ['in', ['get', 'class'], ['literal', ['R', 'TRA']]],
+        filter: RESTRICTED_FILTER,
         layout: {
           'symbol-placement': 'line',
           'text-offset': [0, 1],
@@ -1404,12 +1248,7 @@ export function getMapStyle(): StyleSpecification {
           'text-font': ['Noto Sans Regular'],
         },
         paint: {
-          'text-color': [
-            'match', ['get', 'class'],
-            'R',   AC.rBorder,
-            'TRA', AC.traBorder,
-                   AC.traBorder,
-          ],
+          'text-color': ['case', RED_STYLE, AC.rBorder, ['==', ['get', 'class'], 'TRA'], AC.traBorder, AC.traBorder],
           'text-halo-color': '#ffffff',
           'text-halo-width': 1.2,
         },

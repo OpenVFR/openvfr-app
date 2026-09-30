@@ -51,7 +51,7 @@ import {
 } from '@turf/helpers'
 import type { Feature, Geometry, Polygon, MultiPolygon } from 'geojson'
 import type { RouteWaypoint, LegOverride } from './types'
-import { AIRSPACE_COLORS } from './airspaceColors'
+import { AIRSPACE_COLORS, CONTROLLED_CLASSES, airspaceDisplayClass, controlledStyle } from './airspaceColors'
 import { fetchWithRetry } from './fetchWithRetry'
 
 // ---------------------------------------------------------------------------
@@ -74,6 +74,9 @@ export type AirspaceCrossSection = {
   exitNm:   number   // distance along route where airspace ends
   fill:     string   // colour for the band fill
   border:   string   // colour for the band border
+  /** Label chip: class letter (or designator for restricted areas) + first radio frequency. */
+  tag:      string
+  freq?:    string
 }
 
 /** A stretch of the route that crosses a water polygon (lake/reservoir). */
@@ -164,8 +167,25 @@ const AIRSPACE_COLOURS: Record<string, ClassColours> = {
 }
 
 function airspaceColours(cls: string, type: string): ClassColours {
-  if (cls === 'C' && type === 'CTR') return AIRSPACE_COLOURS.C_CTR
+  if ((CONTROLLED_CLASSES as readonly string[]).includes(cls)) {
+    const c = controlledStyle(cls, type)
+    return { fill: c.fill, border: c.border }
+  }
   return AIRSPACE_COLOURS[cls] ?? { fill: 'rgba(128,128,128,0.15)', border: 'rgba(128,128,128,0.6)' }
+}
+
+/** Short chip tag: ICAO class letter for controlled airspace, the designator
+ *  (first word of the name) for restricted/danger/TRA, else the type. */
+function bandTag(cls: string, type: string, name: string): string {
+  if ((CONTROLLED_CLASSES as readonly string[]).includes(cls)) return cls
+  if (cls === 'R' || cls === 'TRA') return name.split(/s+/)[0] || cls
+  return type || cls
+}
+
+function firstFrequency(f: unknown): string | undefined {
+  if (!Array.isArray(f) || f.length === 0) return undefined
+  const mhz = Number((f[0] as { freq_mhz?: unknown })?.freq_mhz)
+  return Number.isFinite(mhz) && mhz > 0 ? mhz.toFixed(3) : undefined
 }
 
 // ---------------------------------------------------------------------------
@@ -250,6 +270,7 @@ interface AirspaceProps {
   name:     string
   upper_ft: number
   lower_ft: number
+  frequencies?: { freq_mhz: number }[]
 }
 
 interface ObstacleProps {
@@ -437,10 +458,11 @@ export function buildVirtualRadarProfile(
     maxDistNm = Math.min(totalNm, maxDistNm)
     if (maxDistNm <= minDistNm) continue
 
-    const colours = airspaceColours(String(p.class ?? ''), String(p.type ?? ''))
+    const bandClass = airspaceDisplayClass(String(p.class ?? ''), String(p.type ?? ''))
+    const colours = airspaceColours(bandClass, String(p.type ?? ''))
 
     airspaceBands.push({
-      class:    String(p.class    ?? ''),
+      class:    bandClass,
       type:     String(p.type     ?? ''),
       name:     String(p.name     ?? ''),
       lower_ft: lowerFt,
@@ -449,6 +471,8 @@ export function buildVirtualRadarProfile(
       exitNm:   Math.round(maxDistNm * 10) / 10,
       fill:     colours.fill,
       border:   colours.border,
+      tag:      bandTag(bandClass, String(p.type ?? ''), String(p.name ?? '')),
+      freq:     firstFrequency(p.frequencies),
     })
   }
 

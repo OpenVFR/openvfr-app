@@ -39,7 +39,7 @@ import {
   buildRunwayWindHighlight,
   type RunwayWindHighlightEnd,
 } from '@open-vfr/shared/runwayWind'
-import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
+import { AIRSPACE_COLORS as AC, CONTROLLED_CLASSES, ZONE_TYPES, controlledStyle } from '@open-vfr/shared/airspaceColors'
 import { formatObstacleName, formatLandmarkName, obstacleWaypointName, CURRENT_POSITION_LABEL } from '@open-vfr/shared/snapLabels'
 
 import {
@@ -104,8 +104,6 @@ export type AviationMapProps = {
   airspaceCeilingFt?: number
   showClassCtr?:   boolean
   showClassCtma?:  boolean
-  showClassD?:     boolean
-  showClassE?:     boolean
   showClassG?:     boolean
   showRestricted?: boolean
   showActivity?:   boolean
@@ -452,16 +450,18 @@ const LANDMARK_LABEL_COLORS = [
 
 const AIRSPACE_LABEL_TEXT_FIELD: any = [
   'concat',
-  ['match', ['get', 'type'], 'CTR', 'CTR', ['get', 'class']],
-  '  ·  ',
+  ['match', ['get', 'type'], 'CTR', ['concat', 'CTR ', ['get', 'class']], ['get', 'class']],
+  ' ',
   ['get', 'lower'],
-  ' – ',
+  '-',
   ['get', 'upper'],
 ]
 
 // Restricted areas (R) and TRAs already have a unique, self-describing
 // designator in their 'name' property (e.g. 'ESR1 ESRANGE', 'ESTRA80') —
 // showing that is far more useful than the generic 'R'/'TRA' class code.
+const AIRSPACE_ZONE_LABEL_TEXT_FIELD: any = ['concat', ['get', 'type'], ' ', ['get', 'lower'], '-', ['get', 'upper']]
+
 const AIRSPACE_RESTRICTED_LABEL_TEXT_FIELD: any = [
   'concat',
   ['get', 'name'],
@@ -721,8 +721,6 @@ export function AviationMap({
   airspaceCeilingFt = 9_500,
   showClassCtr   = true,
   showClassCtma  = true,
-  showClassD     = true,
-  showClassE     = true,
   showClassG     = true,
   showRestricted = true,
   showActivity   = false,
@@ -1530,11 +1528,10 @@ export function AviationMap({
 
   // Per-class filters combined with ceiling
   const mkFilter = (classExpr: unknown[]) => ['all', ceilingFilter, classExpr] as unknown[]
-  const filterC          = mkFilter(['==', ['get', 'class'], 'C'])
-  const filterD          = mkFilter(['==', ['get', 'class'], 'D'])
-  const filterE          = mkFilter(['==', ['get', 'class'], 'E'])
-  const filterG          = mkFilter(['==', ['get', 'class'], 'G'])
-  const filterRestricted = mkFilter(['in', ['get', 'class'], ['literal', ['R', 'TRA']]])
+  const isDanger         = ['all', ['==', ['get', 'class'], 'D'], ['==', ['get', 'type'], 'D']]
+  const filterZones      = mkFilter(['in', ['get', 'type'], ['literal', [...ZONE_TYPES]]])
+  const filterRestricted = mkFilter(['any', ['in', ['get', 'class'], ['literal', ['R', 'TRA']]], isDanger])
+  const filterRed        = mkFilter(['any', ['==', ['get', 'class'], 'R'], isDanger])
   const filterActivity   = mkFilter(['in', ['get', 'class'], ['literal', ['GLDR', 'MODEL']]])
 
   // One static-colour layer set per airspace sub-class. iOS aborts at style
@@ -1543,21 +1540,36 @@ export function AviationMap({
   // computed from feature properties here; the filter picks the sub-class.
   const subClass = (f: unknown[], c: string) => ['all', f, ['==', ['get', 'class'], c]]
   type AsParams = { inset: { w: number; off: number; op: number }; bdr: { w: number; dash?: number[] }; label: { size: number; field: unknown } }
-  const AS_PARAMS: Record<'c' | 'd' | 'e' | 'g' | 'r' | 'act', AsParams> = {
-    c:   { inset: { w: 6, off: 3,   op: 0.22 }, bdr: { w: 1.5, dash: [4, 3] }, label: { size: 10, field: AIRSPACE_LABEL_TEXT_FIELD } },
-    d:   { inset: { w: 6, off: 3,   op: 0.20 }, bdr: { w: 1.2, dash: [4, 2] }, label: { size: 10, field: AIRSPACE_LABEL_TEXT_FIELD } },
-    e:   { inset: { w: 6, off: 3,   op: 0.20 }, bdr: { w: 1.5, dash: [4, 2] }, label: { size: 10, field: AIRSPACE_LABEL_TEXT_FIELD } },
-    g:   { inset: { w: 5, off: 2.5, op: 0.18 }, bdr: { w: 1.0, dash: [2, 2] }, label: { size: 9,  field: AIRSPACE_LABEL_TEXT_FIELD } },
+  const AS_PARAMS: Record<'ctr' | 'tma' | 'g' | 'r' | 'dng' | 'act', AsParams> = {
+    ctr: { inset: { w: 6, off: 3,   op: 0.22 }, bdr: { w: 1.5, dash: [4, 3] }, label: { size: 10, field: AIRSPACE_LABEL_TEXT_FIELD } },
+    tma: { inset: { w: 10, off: 5,  op: 0.28 }, bdr: { w: 1.5, dash: [4, 3] }, label: { size: 10, field: AIRSPACE_LABEL_TEXT_FIELD } },
+    g:   { inset: { w: 0, off: 0,   op: 0 },    bdr: { w: 1.0, dash: [2, 2] }, label: { size: 9,  field: AIRSPACE_ZONE_LABEL_TEXT_FIELD } },
     r:   { inset: { w: 6, off: 3,   op: 0.24 }, bdr: { w: 1.8 },               label: { size: 10, field: AIRSPACE_RESTRICTED_LABEL_TEXT_FIELD } },
+    dng: { inset: { w: 6, off: 3,   op: 0.24 }, bdr: { w: 1.8, dash: [4, 3] }, label: { size: 10, field: AIRSPACE_RESTRICTED_LABEL_TEXT_FIELD } },
     act: { inset: { w: 5, off: 2.5, op: 0.16 }, bdr: { w: 1.0, dash: [3, 2] }, label: { size: 9,  field: AIRSPACE_LABEL_TEXT_FIELD } },
   }
-  const asVariants = [
-    { k: 'c-ctr', f: ['all', filterC, ['==', ['get', 'type'], 'CTR']], col: AC.cCtrBorder,  show: showClassCtr,   p: AS_PARAMS.c },
-    { k: 'c-tma', f: ['all', filterC, ['!=', ['get', 'type'], 'CTR']], col: AC.cTmaBorder,  show: showClassCtma,  p: AS_PARAMS.c },
-    { k: 'd',     f: filterD,                                           col: AC.dBorder,     show: showClassD,     p: AS_PARAMS.d },
-    { k: 'e',     f: filterE,                                           col: AC.eBorder,     show: showClassE,     p: AS_PARAMS.e },
-    { k: 'g',     f: filterG,                                           col: AC.gBorder,     show: showClassG,     p: AS_PARAMS.g },
+  // Controlled airspace (ICAO classes A-F) x kind (CTR / TMA+CTA): one static-colour
+  // layer set each. Class G is never drawn; RMZ/ATZ/TMZ have the 'g' zone variant,
+  // danger areas the red restricted variants.
+  const NON_CONTROLLED_TYPES = [...ZONE_TYPES, 'FIR', 'UIR', 'D']
+  const controlledVariants = CONTROLLED_CLASSES.flatMap((cls) =>
+    (['ctr', 'tma'] as const).map((kind) => {
+      const st = controlledStyle(cls, kind === 'ctr' ? 'CTR' : 'TMA')
+      return {
+        k: `${cls.toLowerCase()}-${kind}`,
+        f: ['all', mkFilter(['==', ['get', 'class'], cls]), kind === 'ctr'
+          ? ['==', ['get', 'type'], 'CTR']
+          : ['all', ['!=', ['get', 'type'], 'CTR'], ['!', ['in', ['get', 'type'], ['literal', NON_CONTROLLED_TYPES]]]]] as unknown[],
+        col: st.border, fill: st.mapFill, kind, band: st.band, width: st.width,
+        show: kind === 'ctr' ? showClassCtr : showClassCtma,
+        p: AS_PARAMS[kind],
+      }
+    }))
+  const asVariants: { k: string; f: unknown[]; col: string; fill?: string; kind?: 'ctr' | 'tma'; band?: number; width?: number; show: boolean; p: AsParams }[] = [
+    ...controlledVariants,
+    { k: 'g', f: filterZones, col: AC.gBorder, fill: 'rgba(120, 120, 120, 0.01)', show: showClassG, p: AS_PARAMS.g },
     { k: 'r',     f: subClass(filterRestricted, 'R'),                   col: AC.rBorder,     show: showRestricted, p: AS_PARAMS.r },
+    { k: 'dng',   f: mkFilter(isDanger),                                col: AC.rBorder,     show: showRestricted, p: AS_PARAMS.dng },
     { k: 'tra',   f: subClass(filterRestricted, 'TRA'),                 col: AC.traBorder,   show: showRestricted, p: AS_PARAMS.r },
     { k: 'gldr',  f: subClass(filterActivity, 'GLDR'),                  col: AC.gldrBorder,  show: showActivity,   p: AS_PARAMS.act },
     { k: 'model', f: subClass(filterActivity, 'MODEL'),                 col: AC.modelBorder, show: showActivity,   p: AS_PARAMS.act },
@@ -2091,12 +2103,10 @@ export function AviationMap({
           {/* Static per-class fill colours: no data-driven colour expression on a
               GeoJSON fill layer. An expression-valued fill-color aborted the app on
               iOS at style load (uncaught exception in MLRNStyle setFillColor). */}
-          <Layer id="as-fill-c-ctr" type="fill" filter={['all', filterC, ['==', ['get', 'type'], 'CTR']] as any} paint={{ 'fill-color': AC.cCtrFill, 'fill-opacity': 1 }} layout={{ visibility: showClassCtr ? 'visible' : 'none' }} />
-          <Layer id="as-fill-c-tma" type="fill" filter={['all', filterC, ['!=', ['get', 'type'], 'CTR']] as any} paint={{ 'fill-color': AC.cTmaFill, 'fill-opacity': 1 }} layout={{ visibility: showClassCtma ? 'visible' : 'none' }} />
-          <Layer id="as-fill-d" type="fill" filter={filterD as any} paint={{ 'fill-color': AC.dFill, 'fill-opacity': 1 }} layout={{ visibility: showClassD ? 'visible' : 'none' }} />
-          <Layer id="as-fill-e" type="fill" filter={filterE as any} paint={{ 'fill-color': AC.eFill, 'fill-opacity': 1 }} layout={{ visibility: showClassE ? 'visible' : 'none' }} />
-          <Layer id="as-fill-g" type="fill" filter={filterG as any} paint={{ 'fill-color': AC.gFill, 'fill-opacity': 1 }} layout={{ visibility: showClassG ? 'visible' : 'none' }} />
-          <Layer id="as-fill-r" type="fill" filter={['all', filterRestricted, ['==', ['get', 'class'], 'R']] as any} paint={{ 'fill-color': AC.rFill, 'fill-opacity': 1 }} layout={{ visibility: showRestricted ? 'visible' : 'none' }} />
+          {asVariants.filter(v => v.fill).map(v => (
+            <Layer key={`as-fill-${v.k}`} id={`as-fill-${v.k}`} type="fill" filter={v.f as any} paint={{ 'fill-color': v.fill as string, 'fill-opacity': v.kind === 'ctr' ? ['interpolate', ['linear'], ['zoom'], 10, 1, 12, 0.15] as any : 1 }} layout={{ visibility: v.show ? 'visible' : 'none' }} />
+          ))}
+          <Layer id="as-fill-r" type="fill" filter={filterRed as any} paint={{ 'fill-color': AC.rFill, 'fill-opacity': 1 }} layout={{ visibility: showRestricted ? 'visible' : 'none' }} />
           <Layer id="as-fill-tra" type="fill" filter={['all', filterRestricted, ['==', ['get', 'class'], 'TRA']] as any} paint={{ 'fill-color': AC.traFill, 'fill-opacity': 1 }} layout={{ visibility: showRestricted ? 'visible' : 'none' }} />
           <Layer id="as-fill-gldr" type="fill" filter={['all', filterActivity, ['==', ['get', 'class'], 'GLDR']] as any} paint={{ 'fill-color': AC.gldrFill, 'fill-opacity': 1 }} layout={{ visibility: showActivity ? 'visible' : 'none' }} />
           <Layer id="as-fill-model" type="fill" filter={['all', filterActivity, ['==', ['get', 'class'], 'MODEL']] as any} paint={{ 'fill-color': AC.modelFill, 'fill-opacity': 1 }} layout={{ visibility: showActivity ? 'visible' : 'none' }} />
@@ -2107,11 +2117,11 @@ export function AviationMap({
               citation). Shows unambiguously which side of the boundary the
               airspace occupies. */}
           {asVariants.map(v => (
-            <Layer key={`as-inset-${v.k}`} id={`as-inset-${v.k}`} type="line" filter={['all', v.f, ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: v.show ? 'visible' : 'none' }} paint={{ 'line-color': v.col, 'line-width': v.p.inset.w, 'line-offset': v.p.inset.off, 'line-opacity': v.p.inset.op }} />
+            <Layer key={`as-inset-${v.k}`} id={`as-inset-${v.k}`} type="line" filter={['all', v.f, ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: v.show ? 'visible' : 'none' }} paint={{ 'line-color': v.col, 'line-width': v.p.inset.w, 'line-offset': v.p.inset.off, 'line-opacity': v.p.inset.op * (v.band ?? 1) }} />
           ))}
 
           {asVariants.map(v => (
-            <Layer key={`as-bdr-${v.k}`} id={`as-bdr-${v.k}`} type="line" filter={['all', v.f, ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: v.show ? 'visible' : 'none' }} paint={{ 'line-color': v.col, 'line-width': v.p.bdr.w, ...(v.p.bdr.dash ? { 'line-dasharray': v.p.bdr.dash } : {}) }} />
+            <Layer key={`as-bdr-${v.k}`} id={`as-bdr-${v.k}`} type="line" filter={['all', v.f, ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: v.show ? 'visible' : 'none' }} paint={{ 'line-color': v.col, 'line-width': v.p.bdr.w * (v.width ?? 1), ...(v.p.bdr.dash ? { 'line-dasharray': v.p.bdr.dash } : {}) }} />
           ))}
 
           {/* On-map class + altitude-range labels, placed along the boundary line

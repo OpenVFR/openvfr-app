@@ -40,6 +40,7 @@ import type { GpsPosition } from '../utils/gpsTypes'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
 import { advancePosition } from '@open-vfr/shared/routeCalc'
+import { airspaceDisplayClass } from '@open-vfr/shared/airspaceColors'
 import { getTileUrls } from '../config'
 
 // ── Airspace warnings config (useAirspaceWarnings) ─────────────────────────
@@ -94,8 +95,10 @@ export type AirspaceNotification = {
 }
 
 function getSeverity(cls: string): WarningSeverity {
-  if (cls === 'R' || cls === 'TRA') return 'red'
-  if (cls === 'C' || cls === 'D')   return 'yellow'
+  // Follows the usual chart-warning convention: prohibited/restricted/danger and
+  // class A red; class B, C, D yellow. E/F are advisory and stay informational (blue).
+  if (cls === 'R' || cls === 'TRA' || cls === 'A') return 'red'
+  if (cls === 'B' || cls === 'C' || cls === 'D')   return 'yellow'
   return 'blue'
 }
 
@@ -134,7 +137,7 @@ function loadAirspaceOnce(cb: (f: AirspaceFeature[]) => void) {
         const g = f.geometry
         if (g.type !== 'Polygon' && g.type !== 'MultiPolygon') continue
         const p = f.properties as Record<string, unknown>
-        const cls = String(p.class ?? ''); const type = String(p.type ?? '')
+        const type = String(p.type ?? ''); const cls = airspaceDisplayClass(String(p.class ?? ''), type)
         if (!cls && !type) continue
         const name = String(p.name ?? '')
         arr.push({

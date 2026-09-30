@@ -27,8 +27,6 @@ export type LayerState = {
   // Airspace per-class
   classCtr:   boolean   // CTR (Class C control zones)
   classCtma:  boolean   // TMA / CTA (other Class C polygons)
-  classD:     boolean   // Class D / Danger
-  classE:     boolean   // Class E
   classG:     boolean   // RMZ / ATZ
   restricted: boolean   // R + TRA
   activity:   boolean   // Glider / Model (off by default)
@@ -69,8 +67,6 @@ export type LayerState = {
 export const LAYER_DEFAULTS: LayerState = {
   classCtr:   true,
   classCtma:  true,
-  classD:     true,
-  classE:     true,
   classG:     true,
   restricted: true,
   activity:   false,
@@ -98,10 +94,8 @@ type Group = { key: keyof LayerState; label: string; color: string }
 const AIRSPACE_GROUPS: Group[] = [
   { key: 'classCtr',   label: 'CTR',              color: AC.cCtrBorder  },
   { key: 'classCtma',  label: 'TMA / CTA',        color: AC.cTmaBorder  },
-  { key: 'classD',     label: 'Class D',           color: AC.dBorder     },
-  { key: 'classE',     label: 'Class E',           color: AC.eBorder     },
-  { key: 'classG',     label: 'RMZ / ATZ',         color: AC.gBorder     },
-  { key: 'restricted', label: 'Restricted / TRA',  color: AC.rBorder     },
+  { key: 'classG',     label: 'RMZ / ATZ / TMZ',        color: AC.gBorder     },
+  { key: 'restricted', label: 'Restricted / Danger / TRA', color: AC.rBorder     },
   { key: 'activity',   label: 'Glider / Model',    color: AC.gldrBorder  },
   // FIR-wide regional NOTAM circles -- grouped with airspace filters (matches
   // web's map-style.ts LAYER_GROUPS placement), not with live traffic below.

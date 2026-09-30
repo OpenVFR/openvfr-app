@@ -61,3 +61,43 @@ describe('airspaceOutlines', () => {
     expect(Math.max(...ys)).toBe(6000)
   })
 })
+
+import { visibleEdges } from './airspaceOutline'
+
+describe('visibleEdges', () => {
+  const has = (segs: number[][], s: number[]) => segs.some((x) => x.every((v, i) => v === s[i]))
+
+  it('hides the higher floor (not the side edges) of a sector nested in a lower one', () => {
+    const segs = visibleEdges([
+      { x1: 0, x2: 30, y1: 1500, y2: 6500 },
+      { x1: 5, x2: 20, y1: 2500, y2: 6500 },
+    ])
+    expect(has(segs, [5, 2500, 20, 2500])).toBe(false)   // 2500 floor inside the 1500 sector
+    expect(has(segs, [5, 1500, 5, 6500])).toBe(false)
+    expect(has(segs, [5, 2500, 5, 6500])).toBe(true)     // side edge stays
+    expect(has(segs, [0, 1500, 30, 1500])).toBe(true)    // outer floor stays
+  })
+
+  it('keeps the line between two sectors that only touch', () => {
+    const segs = visibleEdges([
+      { x1: 0, x2: 10, y1: 2500, y2: 6500 },
+      { x1: 10, x2: 20, y1: 1500, y2: 6500 },
+    ])
+    // shared boundary (2500-6500) plus the step down (1500-2500), joined into one line
+    expect(has(segs, [10, 1500, 10, 6500])).toBe(true)
+  })
+
+  it('draws a stepped floor when one sector overlaps a higher-floored one', () => {
+    // C: floor 2500 over 0-30. A: floor 1500 over 5-20. A's floor and the part of its
+    // sides below 2500 show; C's floor inside A is hidden.
+    const segs = visibleEdges([
+      { x1: 0, x2: 30, y1: 2500, y2: 6500 },
+      { x1: 5, x2: 20, y1: 1500, y2: 6500 },
+    ])
+    expect(has(segs, [5, 1500, 20, 1500])).toBe(true)
+    expect(has(segs, [5, 1500, 5, 6500])).toBe(true)     // side edge stays, also inside C
+    expect(has(segs, [5, 2500, 20, 2500])).toBe(false)   // C's floor inside A
+    expect(has(segs, [0, 2500, 5, 2500])).toBe(true)     // C's floor outside A
+    expect(has(segs, [20, 2500, 30, 2500])).toBe(true)
+  })
+})

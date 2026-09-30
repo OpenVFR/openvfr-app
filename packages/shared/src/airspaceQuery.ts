@@ -17,6 +17,7 @@
 
 import type { Polygon, MultiPolygon, Feature, FeatureCollection } from 'geojson'
 import { pointInPolygon } from './airspaceGeometry'
+import { airspaceDisplayClass } from './airspaceColors'
 
 export interface AirspaceQueryFeature {
   class: string
@@ -70,7 +71,7 @@ export async function queryAirspaceAtPoint(
     const p    = (f.properties ?? {}) as Record<string, unknown>
     const ring = geom.type === 'Polygon' ? geom.coordinates[0] : geom.coordinates[0][0]
     out.push({
-      class:       String(p.class    ?? ''),
+      class:       airspaceDisplayClass(String(p.class ?? ''), String(p.type ?? '')),
       type:        String(p.type     ?? ''),
       name:        String(p.name     ?? ''),
       upper:       String(p.upper    ?? ''),

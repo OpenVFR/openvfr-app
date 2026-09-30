@@ -13,6 +13,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { airspaceDisplayClass } from '@open-vfr/shared/airspaceColors'
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const NOTIFICATION_TTL_MS = 9_000   // visible for 9 s then fades
@@ -37,8 +38,10 @@ export type AirspaceNotification = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getSeverity(cls: string): NotificationSeverity {
-  if (cls === 'R' || cls === 'TRA') return 'red'
-  if (cls === 'C' || cls === 'D')   return 'yellow'
+  // Follows the usual chart-warning convention: prohibited/restricted/danger and
+  // class A red; class B, C, D yellow. E/F are advisory and stay informational (blue).
+  if (cls === 'R' || cls === 'TRA' || cls === 'A') return 'red'
+  if (cls === 'B' || cls === 'C' || cls === 'D')   return 'yellow'
   return 'blue'
 }
 
@@ -110,8 +113,8 @@ export function useAirspaceNotifications(position: GpsPosition | null): {
           const g = f.geometry
           if (g.type !== 'Polygon' && g.type !== 'MultiPolygon') continue
           const p        = f.properties as Record<string, unknown>
-          const cls      = String(p['class'] ?? '')
           const type     = String(p['type']  ?? '')
+          const cls      = airspaceDisplayClass(String(p['class'] ?? ''), type)
           const name     = String(p['name']  ?? '')
           const lower    = String(p['lower'] ?? '')
           const upper    = String(p['upper'] ?? '')

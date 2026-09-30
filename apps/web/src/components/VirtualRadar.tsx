@@ -14,7 +14,7 @@ import {
   useXAxisScale,
   useYAxisScale,
 } from 'recharts'
-import { airspaceOutlines, type OutlineShape } from '@open-vfr/shared/airspaceOutline'
+import { airspaceOutlines, airspaceChips, type OutlineShape, type OutlineChip } from '@open-vfr/shared/airspaceOutline'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel } from '../utils/units'
@@ -224,10 +224,10 @@ function renderWindBarbShape(
 // Component
 // ---------------------------------------------------------------------------
 
-/** Airspace bands as one merged outline per style (see @open-vfr/shared/airspaceOutline):
- *  overlapping sectors of the same kind form a single stepped shape, so a higher
- *  floor inside a lower one draws no line. Rendered inside the chart's SVG using
- *  the axis scales. */
+/** Airspace bands per style (see @open-vfr/shared/airspaceOutline): the area is
+ *  filled once, and every sector keeps its own border except pieces lying inside
+ *  another sector of the same kind (a higher floor drawn through a lower one).
+ *  Rendered inside the chart's SVG using the axis scales. */
 function AirspaceOutlines({ shapes, xFactor }: { shapes: OutlineShape[]; xFactor: (nm: number) => number }) {
   const xScale = useXAxisScale()
   const yScale = useYAxisScale()
@@ -235,10 +235,48 @@ function AirspaceOutlines({ shapes, xFactor }: { shapes: OutlineShape[]; xFactor
   return (
     <g>
       {shapes.map((shape, i) => {
-        const d = shape.loops
+        const fillD = shape.loops
           .map((loop) => 'M' + loop.map(([nm, ft]) => `${xScale(xFactor(nm))},${yScale(ft)}`).join('L') + 'Z')
           .join(' ')
-        return <path key={i} d={d} fill={shape.fill} fillRule="evenodd" stroke={shape.border} strokeWidth={1} strokeLinejoin="round" />
+        const lineD = shape.segments
+          .map(([x1, y1, x2, y2]) => `M${xScale(xFactor(x1))},${yScale(y1)}L${xScale(xFactor(x2))},${yScale(y2)}`)
+          .join(' ')
+        return (
+          <g key={i}>
+            <path d={fillD} fill={shape.fill} fillRule="evenodd" />
+            {/* Thick translucent band hugging the inside of the edges (line clipped to the area). */}
+            <clipPath id={`airspace-clip-${i}`}><path d={fillD} fillRule="evenodd" /></clipPath>
+            <path d={lineD} fill="none" stroke={shape.border} strokeWidth={10} strokeOpacity={0.3} clipPath={`url(#airspace-clip-${i})`} />
+            <path d={lineD} fill="none" stroke={shape.border} strokeWidth={1} strokeLinecap="square" />
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+/** Label chips at the top-left corner of each airspace band: class letter (or
+ *  designator) in a coloured cell, then the first radio frequency. */
+function AirspaceChips({ chips, xFactor }: { chips: OutlineChip[]; xFactor: (nm: number) => number }) {
+  const xScale = useXAxisScale()
+  const yScale = useYAxisScale()
+  if (!xScale || !yScale) return null
+  const H = 13
+  return (
+    <g pointerEvents="none">
+      {chips.map((c, i) => {
+        const x = xScale(xFactor(c.x)) + 3
+        const y = yScale(c.y) + 3
+        const tagW = c.tag.length * 6.4 + 6
+        const freqW = c.freq ? c.freq.length * 6.1 + 6 : 0
+        return (
+          <g key={i}>
+            <rect x={x} y={y} width={tagW + freqW} height={H} fill="#fff" stroke={c.border} strokeWidth={1} rx={1.5} />
+            <rect x={x} y={y} width={tagW} height={H} fill={c.border} rx={1.5} />
+            <text x={x + tagW / 2} y={y + 10} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="#fff">{c.tag}</text>
+            {c.freq && <text x={x + tagW + freqW / 2} y={y + 10} textAnchor="middle" fontSize={9.5} fontWeight={600} fill="#111">{c.freq}</text>}
+          </g>
+        )
       })}
     </g>
   )
@@ -750,6 +788,10 @@ export default function VirtualRadar({
                   FL065 over a low route, must still draw). */}
               <AirspaceOutlines
                 shapes={airspaceOutlines(profile.airspaceBands, yMax)}
+                xFactor={(nm) => nmToDisplay(nm, units.distance)}
+              />
+              <AirspaceChips
+                chips={airspaceChips(profile.airspaceBands, yMax)}
                 xFactor={(nm) => nmToDisplay(nm, units.distance)}
               />
 
