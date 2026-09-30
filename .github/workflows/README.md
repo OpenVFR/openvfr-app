@@ -211,3 +211,12 @@ The `screenshots` EAS profile sets `EXPO_PUBLIC_SCREENSHOT_MODE=1`, which hides
 the Android status and navigation bars and the iOS status bar (`App.tsx`), so
 store images show only the app. Regular builds are unaffected. The iOS home
 indicator cannot be hidden by an app.
+
+On Android, system-bar visibility is per window. Every bottom sheet
+(`NativeSheet`, on `@expo/ui`'s Material 3 `ModalBottomSheet`) opens in its
+own dialog window, which brought the status bar, navigation bar and the
+tablet taskbar back for the duration of the sheet -- so sheet screenshots
+had system chrome while the others didn't. `patches/@expo__ui@*.patch`
+makes the sheet's dialog window copy the activity's system-bar state when
+it opens, so an immersive activity stays immersive. Outside screenshot mode
+the activity shows its bars and the patch is a no-op.

@@ -1,0 +1,59 @@
+diff --git a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
+index e90edd3fd682f1a53a0950526ae63fe20f3efd24..0092d9d0709e7e9de16f5272d0e298e8a8cbc095 100644
+--- a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
++++ b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
+@@ -20,6 +20,10 @@ import androidx.compose.runtime.LaunchedEffect
+ import androidx.compose.runtime.rememberCoroutineScope
+ import androidx.compose.ui.platform.LocalView
+ import androidx.compose.ui.window.DialogWindowProvider
++import androidx.core.view.ViewCompat
++import androidx.core.view.WindowCompat
++import androidx.core.view.WindowInsetsCompat
++import androidx.core.view.WindowInsetsControllerCompat
+ import expo.modules.kotlin.records.Field
+ import expo.modules.kotlin.records.Record
+ import expo.modules.kotlin.types.OptimizedRecord
+@@ -90,6 +94,35 @@ private fun ForwardKeyEventsToActivity(activity: Activity?) {
+   }
+ }
+ 
++/**
++ * [ModalBottomSheet] opens in its own dialog window, and system-bar visibility is per window: an
++ * activity in immersive mode (system bars hidden via WindowInsetsController) gets the status bar,
++ * navigation bar and (on large screens) the taskbar back the moment a sheet opens. Mirror the
++ * activity's state onto the dialog window so a fullscreen app stays fullscreen while a sheet is
++ * up. No-op when the activity shows its bars.
++ */
++@Composable
++private fun MatchActivitySystemBars(activity: Activity?) {
++  val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
++  val activityWindow = activity?.window
++  if (dialogWindow == null || activityWindow == null) {
++    return
++  }
++
++  DisposableEffect(dialogWindow, activityWindow) {
++    val activityInsets = ViewCompat.getRootWindowInsets(activityWindow.decorView)
++    val barsHidden = activityInsets != null && !activityInsets.isVisible(WindowInsetsCompat.Type.systemBars())
++    if (barsHidden) {
++      WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
++      WindowCompat.getInsetsController(dialogWindow, dialogWindow.decorView).apply {
++        systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
++        hide(WindowInsetsCompat.Type.systemBars())
++      }
++    }
++    onDispose { }
++  }
++}
++
+ @Composable
+ fun FunctionalComposableScope.ModalBottomSheetContent(
+   props: ModalBottomSheetViewProps,
+@@ -162,6 +195,7 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
+     modifier = ModifierRegistry.applyModifiers(props.modifiers, appContext, composableScope, globalEventDispatcher)
+   ) {
+     ForwardKeyEventsToActivity(appContext.currentActivity)
++    MatchActivitySystemBars(appContext.currentActivity)
+     Children(UIComposableScope(), filter = { !isSlotView(it) })
+   }
+ 
