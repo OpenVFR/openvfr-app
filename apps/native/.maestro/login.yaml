@@ -11,6 +11,26 @@ appId: org.openvfr.app
     visible:
       id: login-otp
     timeout: 30000
+    optional: true
+# Maestro's inputText drops characters on a slow simulator (seen on the
+# iPad: the field held a mangled address and the server said "Invalid
+# email"). If the code field hasn't appeared, clear the field, type the
+# address again and resend -- same recovery the OTP step has below.
+- runFlow:
+    when:
+      notVisible:
+        id: login-otp
+    commands:
+      - tapOn:
+          id: login-email
+      - eraseText: 80
+      - inputText: ${MAESTRO_TEST_EMAIL}
+      - tapOn:
+          id: login-send-otp
+      - extendedWaitUntil:
+          visible:
+            id: login-otp
+          timeout: 30000
 - tapOn:
     id: login-otp
 - inputText: ${MAESTRO_TEST_OTP}
