@@ -21,7 +21,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react'
 import {
-  View, Text, TouchableOpacity, ScrollView, useWindowDimensions, Keyboard,
+  View, Text, TouchableOpacity, ScrollView, useWindowDimensions, Keyboard, Platform,
   type StyleProp, type ViewStyle,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
@@ -30,6 +30,12 @@ import { theme, useThemedStyles } from '../styles/theme'
 
 /** Tallest a sheet may grow, as a fraction of the window height. */
 const MAX_FRACTION = 0.85
+/** Material 3's ModalBottomSheet caps its width at 640dp (wider windows, i.e.
+ *  tablets, get a centred sheet). The library lays our content out at full
+ *  window width regardless, so on tablets it overflows and is clipped on both
+ *  sides unless we cap it to the sheet's width ourselves. iOS sheets fill the
+ *  window and are unaffected. */
+const ANDROID_SHEET_MAX_WIDTH = 640
 /** Header height guess used until the real chrome height is measured. */
 const CHROME_GUESS = 64
 
@@ -83,6 +89,8 @@ export function NativeSheet({
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const sheetMaxH = useSheetMaxHeight()
+  const { width: winW } = useWindowDimensions()
+  const contentWidth = Platform.OS === 'android' ? Math.min(winW, ANDROID_SHEET_MAX_WIDTH) : undefined
   const kbH = useKeyboardHeight()
   const sheetRef = useRef<BottomSheetMethods>(null)
   const [chromeH, setChromeH] = React.useState(CHROME_GUESS)
@@ -100,7 +108,7 @@ export function NativeSheet({
       onClose={onDismiss}
       backgroundStyle={{ backgroundColor: theme.surfaceSheet }}
     >
-      <View testID={testID}>
+      <View testID={testID} style={contentWidth ? { width: contentWidth, alignSelf: 'center' } : undefined}>
         <View onLayout={(e) => setChromeH(e.nativeEvent.layout.height)}>
           {header ?? (
             <View style={styles.header}>
