@@ -135,6 +135,23 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   codes; without it, OTP codes are logged to the server console (fine for
   self-hosted/single-user use)
 
+### Admin UI
+
+The web admin UI at `/admin` (user list, sign-up/activity stats, banning)
+and `/api/admin/*` are available to users whose `ba_user.role` is `admin`.
+There is no signup path for it -- grant it by hand, after that person has
+signed in once:
+
+```sql
+UPDATE ba_user SET role = 'admin' WHERE email = 'you@example.org';
+```
+
+Admins see account metadata and aggregate counts only -- never routes,
+positions or flight logs. Banning uses better-auth's admin plugin: it
+revokes the user's sessions and blocks sign-in while `banned` is set
+(optional expiry). A ban is stored on the user row, so deleting the account
+removes it. An already-issued PostgREST JWT stays valid until its 1 h expiry.
+
 ## 4. Production deployment notes
 
 - Serve the web app's `dist/` output (or the `docker/Dockerfile` image)

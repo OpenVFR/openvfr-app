@@ -151,6 +151,8 @@ Every endpoint added to `apps/api/src/index.ts` MUST be checked against this lis
 
 Reference implementation: `/api/poh-extract` in `apps/api/src/index.ts`.
 
+**Admin API (`/api/admin/*`, `apps/api/src/admin.ts`).** Auth = verified session whose `ba_user.role = 'admin'` (set by hand in the DB; no endpoint grants it), per-admin rate limit, `Origin` check on non-GET, `no-store`. Reads only `ba_*` tables -- keep it aggregate/metadata-only (no IPs, no route/position/flight-log content). Bans use better-auth's `admin` plugin (`banUser`/`unbanUser` called server-side; the plugin's own HTTP endpoints, incl. impersonation, are 404'd at `/api/auth/admin/*`). Any new admin route must be added to that router so it inherits the guard.
+
 6. **The api does NOT connect as a superuser.** Production runs it as the
    `api_app` role (`db/migrations/20260913000000_least_privilege_roles.sql`),
    which only has CRUD on the `ba_*` auth tables. PostgREST connects as

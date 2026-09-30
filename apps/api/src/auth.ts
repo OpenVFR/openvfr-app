@@ -11,20 +11,17 @@
  */
 
 import { betterAuth } from 'better-auth'
-import { emailOTP }   from 'better-auth/plugins'
+import { emailOTP, admin } from 'better-auth/plugins'
 import { passkey }    from '@better-auth/passkey'
 import { bearer }     from 'better-auth/plugins'
-import pg             from 'pg'
 import { sendEmail }  from './mailer.js'
-
-const { Pool } = pg
+import { pool }        from './db.js'
 
 // ---------------------------------------------------------------------------
 // Validate required env vars at startup (fail fast, not on first request).
 // ---------------------------------------------------------------------------
 const SECRET   = process.env['BETTER_AUTH_SECRET']
 const BASE_URL = process.env['BETTER_AUTH_URL']
-const DB_URL   = process.env['DATABASE_URL']
 // Origin seen by the browser — for passkey RP validation.
 // In dev this is the Vite dev server; in prod it's the app domain.
 // Compose passes unset optional vars through as an empty string (e.g.
@@ -96,29 +93,24 @@ if (!SECRET || SECRET.length < 32) {
 if (!BASE_URL) {
   throw new Error('BETTER_AUTH_URL must be set (e.g. https://api.your-domain.example)')
 }
-if (!DB_URL) {
-  throw new Error('DATABASE_URL must be set for better-auth PostgreSQL adapter')
-}
-
-// ---------------------------------------------------------------------------
-// PostgreSQL pool — reused by the auth adapter.
-// ---------------------------------------------------------------------------
-const pool = new Pool({ connectionString: DB_URL })
 
 // ---------------------------------------------------------------------------
 // better-auth instance
 // ---------------------------------------------------------------------------
+// API origin + (prod) BETTER_AUTH_TRUSTED_ORIGINS (must include the app's
+// own origin, e.g. https://app.<domain>) + (dev only) local origins.
+// Exported so /api/admin/* can apply the same Origin check to its writes.
+export const TRUSTED_ORIGINS: string[] = [
+  BASE_URL,
+  ...DEV_TRUSTED_ORIGINS,
+  ...(process.env['BETTER_AUTH_TRUSTED_ORIGINS']?.split(',').map(o => o.trim()).filter(Boolean) ?? []),
+]
+
 export const auth = betterAuth({
   secret:  SECRET,
   baseURL: BASE_URL,
 
-  // API origin + (prod) BETTER_AUTH_TRUSTED_ORIGINS (must include the app's
-  // own origin, e.g. https://app.<domain>) + (dev only) local origins.
-  trustedOrigins: [
-    BASE_URL,
-    ...DEV_TRUSTED_ORIGINS,
-    ...(process.env['BETTER_AUTH_TRUSTED_ORIGINS']?.split(',').map(o => o.trim()).filter(Boolean) ?? []),
-  ],
+  trustedOrigins: TRUSTED_ORIGINS,
 
   // ── Rate limiting ────────────────────────────────────────────────────────
   // better-auth only enables this by default when NODE_ENV=production, which
@@ -200,6 +192,13 @@ export const auth = betterAuth({
 
   plugins: [
     bearer(),   // enables Authorization: Bearer <token> for native/API clients
+    // Adds ba_user.role/banned/banReason/banExpires + ba_session.impersonatedBy
+    // (db/migrations/20260930000000_admin_plugin.sql). Enforces bans on every
+    // session creation (OTP + passkey). Its HTTP endpoints are NOT exposed
+    // (index.ts 404s /api/auth/admin/*); only our /api/admin router calls
+    // auth.api.* server-side, after its own admin check. Admin = role 'admin',
+    // set by hand in the DB (see docs/self-hosting.md).
+    admin(),
     passkey({
       rpID:   RP_ID,
       rpName: 'OpenVFR',

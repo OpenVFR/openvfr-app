@@ -36,6 +36,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createHmac } from 'node:crypto'
 import { auth } from './auth'
+import { admin } from './admin'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -204,7 +205,15 @@ app.get('/api/auth/token', async (c) => {
 // better-auth — catch-all for all /api/auth/* routes.
 // Registered after /api/auth/token so that endpoint takes priority.
 // ---------------------------------------------------------------------------
+// better-auth's admin-plugin endpoints (incl. user impersonation) are never
+// exposed over HTTP; /api/admin calls them server-side. Must precede the catch-all.
+app.all('/api/auth/admin/*', (c) => c.json({ error: 'Not found' }, 404))
+
 app.all('/api/auth/*', (c) => auth.handler(c.req.raw))
+
+// Admin API (/api/admin/*) -- own auth (role 'admin'), rate limit and Origin
+// check; see admin.ts.
+app.route('/api/admin', admin)
 
 // ---------------------------------------------------------------------------
 // Shared auth guard — the native app requires login, so every /api/* data
