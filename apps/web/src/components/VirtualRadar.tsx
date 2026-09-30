@@ -265,8 +265,8 @@ function AirspaceChips({ chips, xFactor }: { chips: OutlineChip[]; xFactor: (nm:
   return (
     <g pointerEvents="none">
       {chips.map((c, i) => {
-        const x = xScale(xFactor(c.x)) + 3
-        const y = yScale(c.y) + 3
+        const x = (xScale(xFactor(c.x)) ?? 0) + 3
+        const y = (yScale(c.y) ?? 0) + 3
         const tagW = c.tag.length * 6.4 + 6
         const freqW = c.freq ? c.freq.length * 6.1 + 6 : 0
         return (
