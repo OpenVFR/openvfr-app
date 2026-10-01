@@ -156,17 +156,19 @@ jobs:
         if: ${{ inputs.submit == true }}
         run: echo "${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}" > app-store-connect-api-key.p8
 
-      - name: Inject App Store Connect key IDs into eas.json (runtime only, not committed)
+      - name: Inject App Store Connect IDs into eas.json (runtime only, not committed)
         if: ${{ inputs.submit == true }}
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_APP_ID: ${{ vars.APP_STORE_CONNECT_APP_ID }}
         run: |
           node -e "
             const fs = require('fs');
             const c = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
             c.submit.production.ios.ascApiKeyId = process.env.ASC_KEY_ID;
             c.submit.production.ios.ascApiKeyIssuerId = process.env.ASC_ISSUER_ID;
+            c.submit.production.ios.ascAppId = process.env.ASC_APP_ID;
             fs.writeFileSync('eas.json', JSON.stringify(c, null, 2));
           "
 
