@@ -3,7 +3,8 @@
 # the shared Maestro flow on each.
 #
 # Usage: capture-ios.sh <path/to/App.app> <out-root>
-#   Writes <out-root>/iphone-6.9/*.png (1320x2868) and
+#   Writes <out-root>/iphone-6.9/*.png (1320x2868),
+#          <out-root>/iphone-6.5/*.png (1284x2778; iPhone 14 Plus) and
 #          <out-root>/ipad-13/*.png    (2064x2752)
 set -euo pipefail
 
@@ -48,5 +49,6 @@ while IFS='|' read -r name re size <&3; do
   xcrun simctl delete "$udid"
 done 3<<'EOF'
 iphone-6.9|^iPhone [0-9]+ Pro Max$|1320x2868
+iphone-6.5|^iPhone 14 Plus$|1284x2778
 ipad-13|^iPad Pro 13-inch|2064x2752
 EOF

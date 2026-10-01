@@ -141,6 +141,7 @@ a single platform can be tested without building both:
 | Artifact | Runner | Size (px) | Store slot |
 |---|---|---|---|
 | `screenshots-ios/iphone-6.9` | macos-latest simulator, newest `iPhone * Pro Max` | 1320x2868 | App Store iPhone 6.9" (only required iPhone size) |
+| `screenshots-ios/iphone-6.5` | macos-latest simulator, `iPhone 14 Plus` | 1284x2778 | App Store iPhone 6.5" slot (rejects 6.9" sizes) |
 | `screenshots-ios/ipad-13` | macos-latest simulator, newest `iPad Pro 13-inch` | 2064x2752 | App Store iPad 13" (required: `supportsTablet: true`) |
 | `screenshots-android-phone` | ubuntu emulator | 1080x1920 | Play phone |
 | `screenshots-android-tablet-7` | ubuntu emulator | 1200x1920 | Play 7" tablet |
