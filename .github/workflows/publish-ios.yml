@@ -55,13 +55,24 @@ jobs:
       - name: Write App Store Connect API key
         run: echo "${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}" > app-store-connect-api-key.p8
 
+      - name: Inject App Store Connect key IDs into eas.json (runtime only, not committed)
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          node -e "
+            const fs = require('fs');
+            const c = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+            c.submit.production.ios.ascApiKeyId = process.env.ASC_KEY_ID;
+            c.submit.production.ios.ascApiKeyIssuerId = process.env.ASC_ISSUER_ID;
+            fs.writeFileSync('eas.json', JSON.stringify(c, null, 2));
+          "
+
       - name: Submit to TestFlight
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
           EAS_OWNER: ${{ vars.EAS_OWNER }}
-          EXPO_ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          EXPO_ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
         run: |
           artifact=$(ls build-*.ipa 2>/dev/null | head -n1)
           if [ -z "$artifact" ]; then
