@@ -38,8 +38,7 @@
         "track": "internal"
       },
       "ios": {
-        "ascApiKeyPath": "./app-store-connect-api-key.p8",
-        "appleTeamId": "REPLACE_WITH_YOUR_TEAM_ID"
+        "ascApiKeyPath": "./app-store-connect-api-key.p8"
       }
     }
   }
