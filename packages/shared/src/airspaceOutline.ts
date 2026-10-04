@@ -238,6 +238,10 @@ const CHIP_MAX_ROWS = 3
  * Chips that don't collide always keep their frequency, even when a
  * neighbour shows the same one: a horizontally scrolled chart may show only
  * one of them. The tag (class letter or designator) is never hidden.
+ * A chip identical (same tag and frequency) to one already placed within
+ * about a chip's width and two rows of it is dropped: stacked sub-sectors
+ * starting a fraction of a mile apart otherwise draw near-duplicates that
+ * read as a rendering glitch.
  */
 export function layoutAirspaceChips(
   chips: OutlineChip[],
@@ -282,6 +286,11 @@ export function layoutAirspaceChips(
       if (py + h <= bottom - 1) rows.push(py)
     }
     const wantFreq = !!c.freq
+    const { w: cw } = airspaceChipSize(c)
+    const duplicate = placed.some((p) =>
+      p.chip.tag === c.tag && p.chip.freq === c.freq &&
+      Math.abs(p.px - px) < cw && Math.abs(p.py - py0) < 2 * (h + CHIP_ROW_GAP))
+    if (duplicate) continue
 
     let result: PlacedChip | null = null
     const first = make(c, px, py0, wantFreq)

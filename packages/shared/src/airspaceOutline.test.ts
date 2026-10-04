@@ -185,6 +185,32 @@ describe('layoutAirspaceChips', () => {
     expect(byTag(placed, 'ESR121B REVINGE').showFreq).toBe(true)
   })
 
+  it('draws one chip when an identical one sits right next to it', () => {
+    // Two class C sectors, tops 300 ft apart, starting 0.6 NM apart: two
+    // "C 134.980" chips 6 px and 15 px apart read as a rendering glitch.
+    const placed = layoutAirspaceChips([
+      chip({ x: 0,   y: 6000, floorFt: 1500, tag: 'C', freq: '134.980' }),
+      chip({ x: 0.6, y: 5700, floorFt: 1500, tag: 'C', freq: '134.980' }),
+    ], xOf, yOf)
+    expect(placed).toHaveLength(1)
+  })
+
+  it('keeps identical chips that are far apart', () => {
+    const placed = layoutAirspaceChips([
+      chip({ x: 0,  tag: 'C', freq: '134.980' }),
+      chip({ x: 30, tag: 'C', freq: '134.980' }),
+    ], xOf, yOf)
+    expect(placed).toHaveLength(2)
+  })
+
+  it('keeps nearby chips that differ in tag or frequency', () => {
+    const placed = layoutAirspaceChips([
+      chip({ x: 0,   y: 6000, floorFt: 1500, tag: 'C', freq: '134.980' }),
+      chip({ x: 0.6, y: 5700, floorFt: 1500, tag: 'C', freq: '119.000' }),
+    ], xOf, yOf)
+    expect(placed).toHaveLength(2)
+  })
+
   it('keeps a crowded cluster overlap-free', () => {
     const placed = layoutAirspaceChips([
       chip({ x: 0,  tag: 'ESR123 SANDBY',   freq: '126.155' }),
