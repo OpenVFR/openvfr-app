@@ -170,6 +170,9 @@ const MARGIN_L  = 34   // room for FL/alt ticks
 const MARGIN_R  = 10
 const MARGIN_T  = 26
 const MARGIN_B  = 18
+/** Top of the pinned Y-axis column's opaque backing: just above the top
+ *  tick label (drawn at yOf(yMax) - 6 = MARGIN_T - 6). */
+const AXIS_COVER_TOP = MARGIN_T - 8
 // Wind arrow vertical position, within the reserved top margin ABOVE the
 // waypoint-name label row (which sits at top: MARGIN_T, i.e. pixel 26) --
 // previously arrows sat at MARGIN_T+9 (pixel 19 with the old MARGIN_T=10),
@@ -1309,7 +1312,9 @@ export function VerticalProfile({
                   return (
                     <Text key={`xl-${i}`} style={[
                       styles.axisLabelX,
-                      { left: Math.min(contentW - 20, Math.max(0, xOf(d) - halfW)), top: MARGIN_T + plotH + 4 },
+                      // Floor at MARGIN_L, not 0: left of it is the pinned
+                      // axis column, which would cover part of the "0" label.
+                      { left: Math.min(contentW - 20, Math.max(MARGIN_L, xOf(d) - halfW)), top: MARGIN_T + plotH + 4 },
                     ]}>
                       {label}
                     </Text>
@@ -1321,8 +1326,25 @@ export function VerticalProfile({
               {/* Pinned Y-axis tick labels — rendered outside the scrollable
                   clip window (above) so they stay fixed at the left edge
                   regardless of scrollX, instead of scrolling away with the
-                  route content like everything else in this chart does. */}
+                  route content like everything else in this chart does.
+                  Opaque sky-coloured backing from just above the top tick
+                  down: scrolled content (airspace, chips, clouds, terrain,
+                  x-axis labels) disappears at the axis line instead of
+                  sliding underneath the FL labels. The wind/waypoint row
+                  above stays uncovered -- nothing pinned sits there. */}
               <View style={styles.yAxisPinned} pointerEvents="none">
+                <Svg style={StyleSheet.absoluteFill} width={MARGIN_L} height={chartH}>
+                  <Defs>
+                    <LinearGradient id="skyAxis" x1="0" y1="0" x2="0" y2={chartH} gradientUnits="userSpaceOnUse">
+                      <Stop offset="0%"   stopColor="#0d1424" stopOpacity={1} />
+                      <Stop offset="70%"  stopColor="#141b30" stopOpacity={1} />
+                      <Stop offset="100%" stopColor="#1a2338" stopOpacity={1} />
+                    </LinearGradient>
+                  </Defs>
+                  <Rect x={0} y={AXIS_COVER_TOP} width={MARGIN_L} height={chartH - AXIS_COVER_TOP} fill="url(#skyAxis)" />
+                  <SvgLine x1={MARGIN_L - 0.5} y1={AXIS_COVER_TOP} x2={MARGIN_L - 0.5} y2={MARGIN_T + plotH}
+                    stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+                </Svg>
                 {yTicks.map((ft, i) => (
                   <Text key={`yl-${i}`} style={[styles.axisLabel, { left: 2, top: yOf(ft) - 6 }]}>
                     {ft >= 1000 ? `FL${Math.round(ft / 100).toString().padStart(3, '0')}` : `${ft}`}
