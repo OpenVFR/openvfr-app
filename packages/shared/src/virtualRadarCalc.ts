@@ -1046,6 +1046,8 @@ export function computeVspeedTrajectory(opts: {
 export interface WeatherMark<S> {
   station: S
   distNm:  number
+  /** Cross-track distance (NM) from the station to the route line. */
+  offRouteNm: number
 }
 
 /**
@@ -1083,6 +1085,10 @@ export function projectWeatherMarks<S extends { lat: number; lng: number }>(
 ): WeatherMark<S>[] {
   if (stations.length === 0 || waypoints.length < 2) return []
   return stations
-    .map((s) => ({ station: s, distNm: distanceAlongRouteNm(waypoints, { lat: s.lat, lng: s.lng }) }))
+    .map((s) => ({
+      station: s,
+      distNm: distanceAlongRouteNm(waypoints, { lat: s.lat, lng: s.lng }),
+      offRouteNm: routeCrossTrackNm(waypoints, { lat: s.lat, lng: s.lng }),
+    }))
     .filter((m) => m.distNm >= 0 && m.distNm <= totalNm)
 }

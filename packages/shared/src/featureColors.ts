@@ -70,3 +70,19 @@ export const RUNWAY_COLORS = {
   /** Runway outline / border */
   outline: '#6a7080',
 } as const
+
+// ── Clouds (vertical profile) ─────────────────────────────────────────────────
+export const CLOUD_COLORS = {
+  /** Glyph fill gradient, top → bottom (lit tops, shaded base) */
+  fillTop:     '#f1f5f9',
+  fillBottom:  '#94a3b8',
+  fillTopOpacity:    0.60,
+  fillBottomOpacity: 0.40,
+  stroke:      'rgba(255,255,255,0.55)',
+  label:       'rgba(226,232,240,0.95)',
+  /** Convective cloud: darker body, warning outline + label */
+  convectiveFillTop:    '#cbd5e1',
+  convectiveFillBottom: '#475569',
+  tcu:         'rgba(250,204,21,0.95)',   // amber — towering cumulus
+  cb:          'rgba(239,68,68,0.95)',    // red — cumulonimbus
+} as const

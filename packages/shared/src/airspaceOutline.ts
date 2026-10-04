@@ -172,6 +172,15 @@ export interface OutlineChip {
   border: string
 }
 
+/** Pixel size of a rendered chip (9.5px bold tag cell + frequency cell).
+ *  Shared so both charts draw chips the same size and other labels (cloud
+ *  layers) can avoid them. */
+export function airspaceChipSize(chip: Pick<OutlineChip, 'tag' | 'freq'>): { tagW: number; freqW: number; w: number; h: number } {
+  const tagW = chip.tag.length * 6.4 + 6
+  const freqW = chip.freq ? chip.freq.length * 6.1 + 6 : 0
+  return { tagW, freqW, w: tagW + freqW, h: 13 }
+}
+
 /** One label chip per band, at its top-left corner. Bands of the same class and
  *  frequency starting at the same place (stacked sub-sectors) share one chip. */
 export function airspaceChips(

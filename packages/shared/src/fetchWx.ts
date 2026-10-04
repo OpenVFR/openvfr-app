@@ -380,6 +380,9 @@ export function parseMetarWind(raw: string | null): ParsedWind | null {
 export interface ParsedCloudLayer {
   cover: 'FEW' | 'SCT' | 'BKN' | 'OVC'
   baseFt: number
+  /** Convective cloud reported in this group (e.g. `BKN030CB`). Absent for
+   *  ordinary layers, so existing equality checks on plain layers hold. */
+  type?: 'CB' | 'TCU'
 }
 
 /** Lowest BKN/OVC layer base, or null if there isn't one (FEW/SCT-only or
@@ -415,7 +418,9 @@ export function parseMetarClouds(raw: string | null): ParsedCloudLayer[] {
   for (const g of groups) {
     const m = /^(FEW|SCT|BKN|OVC)(\d{3})(CB|TCU)?$/i.exec(g)
     if (!m) continue
-    layers.push({ cover: m[1].toUpperCase() as ParsedCloudLayer['cover'], baseFt: parseInt(m[2], 10) * 100 })
+    const layer: ParsedCloudLayer = { cover: m[1].toUpperCase() as ParsedCloudLayer['cover'], baseFt: parseInt(m[2], 10) * 100 }
+    if (m[3]) layer.type = m[3].toUpperCase() as 'CB' | 'TCU'
+    layers.push(layer)
   }
   return layers
 }

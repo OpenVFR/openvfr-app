@@ -46,7 +46,12 @@ import {
   type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
-import { airspaceOutlines, airspaceChips } from '@open-vfr/shared/airspaceOutline'
+import { airspaceOutlines, airspaceChips, airspaceChipSize } from '@open-vfr/shared/airspaceOutline'
+import {
+  cloudLayerPaths, cloudLayerLabel, cloudGlyphHeight, cloudOpacityForOffset, cloudReportOffRouteNm,
+  cloudReportIcao, cloudStripHalfWidthNm, placeCloudLabel, type LabelRect,
+} from '@open-vfr/shared/cloudGlyph'
+import { CLOUD_COLORS } from '@open-vfr/shared/featureColors'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
 import { windBarbColorForSpeed, windBarbGeometry } from '@open-vfr/shared/windBarb'
 import { getTileUrls, API_BASE } from '../config'
@@ -317,7 +322,7 @@ function renderWindBarbShape(
  * illegibility, not wanting the number gone, so this fixes contrast
  * instead of removing the label.
  */
-function renderHaloText(x: number, y: number, text: string, fill: string, fontSize: number, opacity = 1, anchor: 'start' | 'end' = 'start') {
+function renderHaloText(x: number, y: number, text: string, fill: string, fontSize: number, opacity = 1, anchor: 'start' | 'middle' | 'end' = 'start') {
   return (
     <G key={`${x}-${y}-${text}`} opacity={opacity}>
       <SvgText x={x} y={y} fontSize={fontSize} textAnchor={anchor} fill="none" stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round">{text}</SvgText>
@@ -684,7 +689,7 @@ export function VerticalProfile({
         metarClouds: m.station.decoded?.clouds ?? null,
         taf: m.station.taf,
       })
-      return { station: m.station, distNm: m.distNm, wind: resolved.wind, clouds: resolved.clouds, tafChangeSoon: resolved.tafChangeSoon }
+      return { station: m.station, distNm: m.distNm, offRouteNm: m.offRouteNm, wind: resolved.wind, clouds: resolved.clouds, tafChangeSoon: resolved.tafChangeSoon }
     })
   }, [weatherStations, waypoints, totalNm])
 
@@ -879,6 +884,14 @@ export function VerticalProfile({
                     <Stop offset="93%"  stopColor="#26552a" stopOpacity={0.62} />
                     <Stop offset="100%" stopColor="#1e508c" stopOpacity={0.68} />
                   </LinearGradient>
+                  <LinearGradient id="cloudGrad" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0%"   stopColor={CLOUD_COLORS.fillTop}    stopOpacity={CLOUD_COLORS.fillTopOpacity} />
+                    <Stop offset="100%" stopColor={CLOUD_COLORS.fillBottom} stopOpacity={CLOUD_COLORS.fillBottomOpacity} />
+                  </LinearGradient>
+                  <LinearGradient id="cloudGradConvective" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0%"   stopColor={CLOUD_COLORS.convectiveFillTop}    stopOpacity={CLOUD_COLORS.fillTopOpacity} />
+                    <Stop offset="100%" stopColor={CLOUD_COLORS.convectiveFillBottom} stopOpacity={CLOUD_COLORS.fillBottomOpacity} />
+                  </LinearGradient>
                 </Defs>
 
                 {/* Sky background */}
@@ -919,8 +932,7 @@ export function VerticalProfile({
                 {/* Label chips: class letter (or designator) + first radio frequency */}
                 {airspaceChips(profile.airspaceBands, yMax).map((c, i) => {
                   const x = xOf(c.x) + 3, y = yOf(c.y) + 3
-                  const tagW = c.tag.length * 6.4 + 6
-                  const freqW = c.freq ? c.freq.length * 6.1 + 6 : 0
+                  const { tagW, freqW } = airspaceChipSize(c)
                   return (
                     <G key={`chip-${i}`}>
                       <Rect x={x} y={y} width={tagW + freqW} height={13} fill="#fff" stroke={c.border} strokeWidth={1} rx={1.5} />
@@ -947,26 +959,53 @@ export function VerticalProfile({
                 <Path d={terrainPath.fill} fill="url(#terrainGrad)" />
                 <Path d={terrainPath.outline} fill="none" stroke="rgba(160,130,90,0.55)" strokeWidth={1} />
 
-                {/* Weather: cloud-base layers — translucent
-                     bands from each METAR cloud group's base up to the top
-                     of the plot; opacity increases FEW/SCT/BKN/OVC so a
-                     ceiling reads visibly denser than scattered cloud. Drawn
-                     as a fixed-width band straddling the station (a point
-                     observation) rather than interpolated between stations
-                     miles apart, which would imply false precision. */}
-                {weatherMarks.map((m, i) => {
-                  const halfWidthNm = Math.min(totalNm * 0.06, 4)
-                  const x1 = xOf(Math.max(0, m.distNm - halfWidthNm))
-                  const x2 = xOf(Math.min(totalNm, m.distNm + halfWidthNm))
-                  const cloudOpacity: Record<string, number> = { FEW: 0.10, SCT: 0.18, BKN: 0.30, OVC: 0.42 }
-                  return m.clouds.map((c, j) => (
-                    <Path
-                      key={`cloud-${i}-${j}`}
-                      d={`M${x1},${MARGIN_T} L${x2},${MARGIN_T} L${x2},${yOf(c.baseFt)} L${x1},${yOf(c.baseFt)} Z`}
-                      fill={`rgba(205,215,230,${cloudOpacity[c.cover]})`}
-                    />
-                  ))
-                })}
+                {/* Weather: one cloud glyph per METAR/TAF cloud group
+                     (@open-vfr/shared/cloudGlyph): flat bottom at the
+                     reported base, lumpy tops of fixed pixel height (tops
+                     aren't reported, so they mean no altitude), cover shown
+                     as how much of the station's strip holds cloud, CB/TCU
+                     as a tower/anvil in a warning colour. Drawn across a
+                     fixed-width strip around the station (a point
+                     observation) rather than interpolated between stations.
+                     Reports taken far off the route fade out, then drop. */}
+                {(() => {
+                  // Label slots already claimed: airspace chips first, then
+                  // each cloud label as it's placed.
+                  const taken: LabelRect[] = airspaceChips(profile.airspaceBands, yMax).map((c) => {
+                    const { w, h } = airspaceChipSize(c)
+                    return { x: xOf(c.x) + 3, y: yOf(c.y) + 3, w, h }
+                  })
+                  const plotTop = MARGIN_T, plotBottom = MARGIN_T + plotH
+                  const halfWidthNm = cloudStripHalfWidthNm(totalNm)
+                  const shapes: React.ReactNode[] = []
+                  const labels: React.ReactNode[] = []
+                  weatherMarks.forEach((m, i) => {
+                    const opacity = cloudOpacityForOffset(cloudReportOffRouteNm(m.offRouteNm, m.station))
+                    if (opacity === 0) return
+                    const x1 = xOf(Math.max(0, m.distNm - halfWidthNm))
+                    const x2 = xOf(Math.min(totalNm, m.distNm + halfWidthNm))
+                    const cx = (x1 + x2) / 2
+                    m.clouds.forEach((c, j) => {
+                      const yb = yOf(c.baseFt)
+                      if (yb < plotTop + 4) return  // base above the plotted range
+                      const accent = c.type === 'CB' ? CLOUD_COLORS.cb : c.type === 'TCU' ? CLOUD_COLORS.tcu : null
+                      cloudLayerPaths(x1, x2, yb, c, i * 7 + j, yb - plotTop).forEach((d, k) => shapes.push(
+                        <Path key={`cloud-${i}-${j}-${k}`} d={d} opacity={opacity}
+                          fill={accent ? 'url(#cloudGradConvective)' : 'url(#cloudGrad)'}
+                          stroke={accent ?? CLOUD_COLORS.stroke} strokeWidth={accent ? 1.25 : 0.75} />,
+                      ))
+                      const text = cloudLayerLabel(c) + (j === 0 ? ` ${cloudReportIcao(m.station)}` : '')
+                      const glyphH = Math.min(cloudGlyphHeight(c), yb - plotTop)
+                      const y = placeCloudLabel(cx, yb, glyphH, text, taken, plotTop, plotBottom)
+                      labels.push(
+                        <G key={`cloud-label-${i}-${j}`}>
+                          {renderHaloText(cx, y, text, accent ?? CLOUD_COLORS.label, 9, opacity, 'middle')}
+                        </G>,
+                      )
+                    })
+                  })
+                  return <>{shapes}{labels}</>
+                })()}
 
                 {/* ── MSA dashed line ─────────────────────────────────── */}
                 {msaPath && (

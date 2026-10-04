@@ -14,7 +14,13 @@ import {
   useXAxisScale,
   useYAxisScale,
 } from 'recharts'
-import { airspaceOutlines, airspaceChips, type OutlineShape, type OutlineChip } from '@open-vfr/shared/airspaceOutline'
+import { airspaceOutlines, airspaceChips, airspaceChipSize, type OutlineShape, type OutlineChip } from '@open-vfr/shared/airspaceOutline'
+import {
+  cloudLayerPaths, cloudLayerLabel, cloudGlyphHeight, cloudOpacityForOffset, cloudReportOffRouteNm,
+  cloudReportIcao, cloudStripHalfWidthNm, placeCloudLabel, type LabelRect,
+} from '@open-vfr/shared/cloudGlyph'
+import { CLOUD_COLORS } from '@open-vfr/shared/featureColors'
+import type { ParsedCloudLayer } from '@open-vfr/shared/fetchWx'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel } from '../utils/units'
@@ -267,8 +273,7 @@ function AirspaceChips({ chips, xFactor }: { chips: OutlineChip[]; xFactor: (nm:
       {chips.map((c, i) => {
         const x = (xScale(xFactor(c.x)) ?? 0) + 3
         const y = (yScale(c.y) ?? 0) + 3
-        const tagW = c.tag.length * 6.4 + 6
-        const freqW = c.freq ? c.freq.length * 6.1 + 6 : 0
+        const { tagW, freqW } = airspaceChipSize(c)
         return (
           <g key={i}>
             <rect x={x} y={y} width={tagW + freqW} height={H} fill="#fff" stroke={c.border} strokeWidth={1} rx={1.5} />
@@ -280,6 +285,67 @@ function AirspaceChips({ chips, xFactor }: { chips: OutlineChip[]; xFactor: (nm:
       })}
     </g>
   )
+}
+
+interface CloudMark {
+  distNm: number
+  offRouteNm: number
+  station: RouteWeatherStation
+  clouds: ParsedCloudLayer[]
+}
+
+/** Weather: one cloud glyph per METAR/TAF cloud group
+ *  (@open-vfr/shared/cloudGlyph): flat bottom at the reported base, lumpy
+ *  tops of fixed pixel height (tops aren't reported, so they mean no
+ *  altitude), cover shown as how much of the station's strip holds cloud,
+ *  CB/TCU as a tower/anvil in a warning colour. Drawn across a fixed-width
+ *  strip around the station (a point observation) rather than interpolated
+ *  between stations. Reports taken far off the route fade out, then drop.
+ *  Labels avoid the airspace chips and each other. Same geometry as
+ *  native's VerticalProfile. */
+function CloudLayers({ marks, chips, totalNm, yMax, xFactor }: {
+  marks: CloudMark[]; chips: OutlineChip[]; totalNm: number; yMax: number; xFactor: (nm: number) => number
+}) {
+  const xScale = useXAxisScale()
+  const yScale = useYAxisScale()
+  if (!xScale || !yScale) return null
+  const xOf = (nm: number) => xScale(xFactor(nm)) ?? 0
+  const yOf = (ft: number) => yScale(ft) ?? 0
+  const plotTop = yOf(yMax), plotBottom = yOf(0)
+  const taken: LabelRect[] = chips.map((c) => {
+    const { w, h } = airspaceChipSize(c)
+    return { x: xOf(c.x) + 3, y: yOf(c.y) + 3, w, h }
+  })
+  const halfWidthNm = cloudStripHalfWidthNm(totalNm)
+  const shapes: React.ReactNode[] = []
+  const labels: React.ReactNode[] = []
+  marks.forEach((m, i) => {
+    const opacity = cloudOpacityForOffset(cloudReportOffRouteNm(m.offRouteNm, m.station))
+    if (opacity === 0) return
+    const x1 = xOf(Math.max(0, m.distNm - halfWidthNm))
+    const x2 = xOf(Math.min(totalNm, m.distNm + halfWidthNm))
+    const cx = (x1 + x2) / 2
+    m.clouds.forEach((c, j) => {
+      const yb = yOf(c.baseFt)
+      if (yb < plotTop + 4) return  // base above the plotted range
+      const accent = c.type === 'CB' ? CLOUD_COLORS.cb : c.type === 'TCU' ? CLOUD_COLORS.tcu : null
+      cloudLayerPaths(x1, x2, yb, c, i * 7 + j, yb - plotTop).forEach((d, k) => shapes.push(
+        <path key={`cloud-${i}-${j}-${k}`} d={d} opacity={opacity}
+          fill={accent ? 'url(#cloudGradConvective)' : 'url(#cloudGrad)'}
+          stroke={accent ?? CLOUD_COLORS.stroke} strokeWidth={accent ? 1.25 : 0.75} />,
+      ))
+      const text = cloudLayerLabel(c) + (j === 0 ? ` ${cloudReportIcao(m.station)}` : '')
+      const glyphH = Math.min(cloudGlyphHeight(c), yb - plotTop)
+      const y = placeCloudLabel(cx, yb, glyphH, text, taken, plotTop, plotBottom)
+      labels.push(
+        <text key={`cloud-label-${i}-${j}`} x={cx} y={y} textAnchor="middle" fontSize={9} opacity={opacity}
+          fill={accent ?? CLOUD_COLORS.label} stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke">
+          {text}
+        </text>,
+      )
+    })
+  })
+  return <g pointerEvents="none">{shapes}{labels}</g>
 }
 
 export default function VirtualRadar({
@@ -452,7 +518,7 @@ export default function VirtualRadar({
         metarClouds: m.station.decoded?.clouds ?? null,
         taf: m.station.taf,
       })
-      return { distNm: m.distNm, wind: resolved.wind, clouds: resolved.clouds, tafChangeSoon: resolved.tafChangeSoon }
+      return { station: m.station, distNm: m.distNm, offRouteNm: m.offRouteNm, wind: resolved.wind, clouds: resolved.clouds, tafChangeSoon: resolved.tafChangeSoon }
     })
   }, [weatherStations, waypoints, profile])
 
@@ -748,6 +814,14 @@ export default function VirtualRadar({
                     <stop key={i} offset={s.offset} stopColor={s.color} />
                   ))}
                 </linearGradient>
+                <linearGradient id="cloudGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"   stopColor={CLOUD_COLORS.fillTop}    stopOpacity={CLOUD_COLORS.fillTopOpacity} />
+                  <stop offset="100%" stopColor={CLOUD_COLORS.fillBottom} stopOpacity={CLOUD_COLORS.fillBottomOpacity} />
+                </linearGradient>
+                <linearGradient id="cloudGradConvective" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"   stopColor={CLOUD_COLORS.convectiveFillTop}    stopOpacity={CLOUD_COLORS.fillTopOpacity} />
+                  <stop offset="100%" stopColor={CLOUD_COLORS.convectiveFillBottom} stopOpacity={CLOUD_COLORS.fillBottomOpacity} />
+                </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
 
@@ -795,28 +869,13 @@ export default function VirtualRadar({
                 xFactor={(nm) => nmToDisplay(nm, units.distance)}
               />
 
-              {/* Weather: cloud-base layers — translucent
-                  bands from each METAR cloud groups base up to the top of
-                  the plot; opacity increases FEW/SCT/BKN/OVC so a ceiling
-                  reads visibly denser than scattered cloud. Drawn as a
-                  fixed-width band straddling the station (a point
-                  observation) rather than interpolated between stations
-                  miles apart, which would imply false precision — same
-                  reasoning/rendering as natives identical overlay. */}
-              {weatherMarks.map((m, i) => {
-                const halfWidthNm = Math.min(profile!.totalNm * 0.06, 4)
-                const x1 = nmToDisplay(Math.max(0, m.distNm - halfWidthNm), units.distance)
-                const x2 = nmToDisplay(Math.min(profile!.totalNm, m.distNm + halfWidthNm), units.distance)
-                const cloudOpacity: Record<string, number> = { FEW: 0.10, SCT: 0.18, BKN: 0.30, OVC: 0.42 }
-                return m.clouds.map((c, j) => (
-                  <ReferenceArea
-                    key={`cloud-${i}-${j}`}
-                    x1={x1} x2={x2} y1={c.baseFt} y2={yMax}
-                    fill={`rgba(205,215,230,${cloudOpacity[c.cover]})`}
-                    stroke="none"
-                  />
-                ))
-              })}
+              <CloudLayers
+                marks={weatherMarks}
+                chips={airspaceChips(profile.airspaceBands, yMax)}
+                totalNm={profile.totalNm}
+                yMax={yMax}
+                xFactor={(nm) => nmToDisplay(nm, units.distance)}
+              />
 
               {/* ── Water (lake/reservoir) crossings ──────────────── */}
               {/* Thin blue band along the ground baseline wherever the route
