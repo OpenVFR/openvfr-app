@@ -33,7 +33,7 @@ type IoniconName = React.ComponentProps<typeof Ionicons>['name']
 
 const TAB_ICONS: Record<string, { active: IoniconName; inactive: IoniconName }> = {
   Map:      { active: 'map',      inactive: 'map-outline'      },
-  Plan:     { active: 'navigate', inactive: 'navigate-outline' },
+  Plan:     { active: 'airplane', inactive: 'airplane-outline' },
   Settings: { active: 'settings', inactive: 'settings-outline' },
 }
 
