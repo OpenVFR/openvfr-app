@@ -1,5 +1,5 @@
 /**
- * useAuth — auth state + email OTP sign-in / sign-out for React Native.
+ * useAuth — auth state + passkey / email OTP sign-in / sign-out for React Native.
  *
  * Flow:
  *   1. sendOtp(email)           → server sends a 6-digit code to the inbox
@@ -7,12 +7,15 @@
  *                                  stored by better-auth client in AsyncStorage
  *   3. signOut()                → clears server session + local token
  *
- * Passkeys are intentionally not supported on native (WebAuthn is browser-only).
+ * Passkeys go through utils/passkeyNative.ts: the better-auth passkey *client*
+ * plugin is browser-only (navigator.credentials), so the platform step is
+ * done by react-native-passkey against the same server endpoints.
  */
 
 import { useEffect, useState, useCallback } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authClient } from '../utils/authClient'
+import { passkeySignIn, passkeyRegister, isPasskeySupported } from '../utils/passkeyNative'
 import { claimLocalData, wipePrivateLocalData } from '../utils/userScope'
 
 export type AuthUser = {
@@ -124,19 +127,18 @@ export function useAuth() {
   const signInWithPasskey = useCallback(async (): Promise<boolean> => {
     setError(null)
     console.log('[auth] signInWithPasskey')
-    const { data, error: err } = await authClient.signIn.passkey()
-    if (err) {
-      console.warn('[auth] passkey error', err)
-      setError(err.message ?? 'Passkey sign-in failed')
+    const res = await passkeySignIn()
+    if (!res.ok) {
+      if (res.cancelled) { console.log('[auth] passkey cancelled'); return false }
+      console.warn('[auth] passkey error', res.message)
+      setError(res.message)
       return false
     }
-    if (data?.user) {
-      console.log('[auth] signed in via passkey as', data.user.email)
-      await claimLocalData(data.user.id)
-      setState({
-        status: 'authenticated',
-        user: { id: data.user.id, email: data.user.email, name: data.user.name ?? null },
-      })
+    if (res.user) {
+      console.log('[auth] signed in via passkey as', res.user.email)
+      await claimLocalData(res.user.id)
+      await AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(res.user)).catch(() => {})
+      setState({ status: 'authenticated', user: res.user })
     }
     return true
   }, [])
@@ -177,15 +179,16 @@ export function useAuth() {
   const registerPasskey = useCallback(async (): Promise<boolean> => {
     setError(null)
     console.log('[auth] registerPasskey')
-    const { error: err } = await authClient.passkey.addPasskey()
-    if (err) {
-      console.warn('[auth] registerPasskey error', err)
-      setError(err.message ?? 'Failed to register passkey')
+    const res = await passkeyRegister()
+    if (!res.ok) {
+      if (res.cancelled) { console.log('[auth] registerPasskey cancelled'); return false }
+      console.warn('[auth] registerPasskey error', res.message)
+      setError(res.message)
       return false
     }
     console.log('[auth] passkey registered')
     return true
   }, [])
 
-  return { state, error, sendOtp, verifyOtp, signInWithPasskey, registerPasskey, requestAccountDeletion, signOut }
+  return { state, error, sendOtp, verifyOtp, signInWithPasskey, registerPasskey, requestAccountDeletion, signOut, passkeySupported: isPasskeySupported() }
 }

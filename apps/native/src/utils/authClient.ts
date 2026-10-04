@@ -8,9 +8,11 @@
  *   `Authorization: Bearer <token>` on subsequent requests.
  *
  * Passkeys:
- *   Uses `react-native-passkey` which wraps the native platform authenticator
- *   APIs directly (iOS ASAuthorizationController / Android CredentialManager).
- *   This is the same underlying mechanism Capacitor uses — fully supported.
+ *   `passkeyClient()` is kept only for its typed `listUserPasskeys` /
+ *   `deletePasskey` helpers. Its `signIn.passkey()` / `addPasskey()` call the
+ *   browser WebAuthn API and will NOT work in React Native — use
+ *   utils/passkeyNative.ts, which drives `react-native-passkey` against the
+ *   same server endpoints.
  */
 
 import { createAuthClient }   from 'better-auth/client'
