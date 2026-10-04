@@ -56,6 +56,10 @@ const MIN_PX_PER_NM = 30
 // Cross-track deviation beyond which the chart badges itself as showing a
 // route the aircraft is no longer actually on — matches native's constant.
 const OFF_TRACK_BADGE_NM = 3
+// Width of the axis-only twin chart behind the pinned FL-scale column. Only
+// its left 40 px (margin.left 4 + YAxis width 36) show -- the column clips
+// the rest -- but recharts draws no axis ticks for a near-zero-width plot.
+const Y_AXIS_PIN_W = 120
 
 
 // ---------------------------------------------------------------------------
@@ -780,6 +784,31 @@ export default function VirtualRadar({
         <div className={css.chartWrap} ref={chartWrapRef}>
           {scrollable && <span className={css.scrollHint}>↔ scroll</span>}
           <div style={{ width: wrapW > 0 ? contentPxWidth : '100%', height: '100%' }}>
+          {/* Pinned FL scale: a 40 px axis-only twin of the chart below
+              (same height, margins and axes, so its ticks line up exactly),
+              stuck to the left edge while the chart scrolls, on an opaque
+              panel-coloured backing so scrolled content disappears at the
+              axis instead of scrolling the FL scale away. Only rendered
+              when the chart actually scrolls. */}
+          {scrollable && (
+            <div className={css.yAxisPinned} aria-hidden>
+              <ComposedChart width={Y_AXIS_PIN_W} height={180} data={chartData} margin={{ top: 26, right: 0, bottom: 2, left: 4 }}>
+                <XAxis dataKey="dist" type="number" domain={[0, Math.ceil(nmToDisplay(profile.totalNm, units.distance))]} tick={false} tickLine={false} axisLine={false} />
+                <YAxis
+                  domain={[0, yMax]}
+                  tickCount={5}
+                  tickFormatter={(v: number) => v >= 1000 ? `FL${Math.round(v / 100).toString().padStart(3,'0')}` : `${v}`}
+                  tick={{ fill: 'var(--text-muted)', fontSize: 10 }}
+                  tickLine={false}
+                  axisLine={{ stroke: 'var(--border-default)' }}
+                  width={36}
+                />
+                {/* Invisible series: recharts draws no axis ticks for an
+                    axis that no graphical item uses. */}
+                <Line dataKey="ground" stroke="none" dot={false} activeDot={false} isAnimationActive={false} />
+              </ComposedChart>
+            </div>
+          )}
           <ResponsiveContainer width="100%" height={180}>
             <ComposedChart
               data={chartData}

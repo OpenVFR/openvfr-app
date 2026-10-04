@@ -103,6 +103,36 @@
   overflow-y: hidden;
 }
 
+/* Pinned FL scale over a horizontally scrolling chart (see VirtualRadar.tsx).
+   Sticky inside the scrolled content; the negative margin overlays it on the
+   chart instead of pushing the chart down. The backing is the panel colour
+   stacked four times (one layer is only ~95% opaque, two still let bright
+   label text ghost through), clipped to the
+   plot's height so the wind row above and the distance labels below stay
+   uncovered. */
+.yAxisPinned {
+  /* Sticky offsets are measured inside the scroller's 4px left padding, so
+     shift the column out over that padding: otherwise a 4px strip of
+     scrolled content shows to its left. */
+  position: sticky;
+  left: -4px;
+  margin-left: -4px;
+  padding-left: 4px;
+  box-sizing: border-box;
+  z-index: 1;
+  width: 44px;
+  height: 180px;
+  margin-bottom: -180px;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--surface-elevated), var(--surface-elevated)),
+    linear-gradient(var(--surface-elevated), var(--surface-elevated)),
+    linear-gradient(var(--surface-elevated), var(--surface-elevated)),
+    var(--surface-elevated);
+  clip-path: inset(18px 0 24px 0);
+}
+
 .scrollHint {
   position: absolute;
   top: 2px;
