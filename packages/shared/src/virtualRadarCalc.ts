@@ -683,6 +683,53 @@ export function projectFlightPath(
   if (altitudeProfile.length === 0 || sampleDistNm.length === 0) {
     return sampleDistNm.map(() => departureElevFt)
   }
+  const verts = buildFlightVertices(altitudeProfile, totalNm, perf, departureElevFt, arrivalElevFt)
+  return sampleDistNm.map(d => interpolateVertices(verts, d))
+}
+
+/** Generic light-aircraft climb/descent model, used for the planned-altitude
+ *  line when no aircraft profile is configured. */
+export const DEFAULT_PERF_MODEL: AircraftPerfModel = {
+  rocSlFpm: 700, rocCeilingFpm: 100, serviceCeilingFt: 14000,
+  climbIas: 75, descentFpm: 500, descentIas: 90,
+}
+
+/**
+ * Planned-altitude line as polyline vertices: starts at departure elevation,
+ * ramps linearly up to the first leg's planned altitude, follows later leg
+ * changes, and ramps linearly down to arrival elevation at the destination.
+ * Falls back to DEFAULT_PERF_MODEL when no aircraft performance is known.
+ */
+export function plannedAltitudeLine(
+  altitudeProfile: ProfilePoint[],
+  totalNm:         number,
+  perf:            AircraftPerfModel | null | undefined,
+  departureElevFt = 0,
+  arrivalElevFt   = 0,
+): ProfilePoint[] {
+  if (altitudeProfile.length === 0) return []
+  return buildFlightVertices(altitudeProfile, totalNm, perf ?? DEFAULT_PERF_MODEL, departureElevFt, arrivalElevFt)
+}
+
+function interpolateVertices(verts: ProfilePoint[], d: number): number {
+  for (let i = 0; i < verts.length - 1; i++) {
+    const { distNm: v1, altFt: a1 } = verts[i]
+    const { distNm: v2, altFt: a2 } = verts[i + 1]
+    if (d >= v1 && d <= v2) {
+      if (v2 === v1) return a1
+      return Math.round(a1 + ((d - v1) / (v2 - v1)) * (a2 - a1))
+    }
+  }
+  return verts[verts.length - 1].altFt
+}
+
+function buildFlightVertices(
+  altitudeProfile:  ProfilePoint[],
+  totalNm:          number,
+  perf:             AircraftPerfModel,
+  departureElevFt:  number,
+  arrivalElevFt:    number,
+): ProfilePoint[] {
 
   // Extract leg altitudes and waypoint end-distances from the step profile.
   // Profile pairs: [legStart, legEnd] with same altFt per leg.
@@ -761,18 +808,7 @@ export function projectFlightPath(
     verts.push({ distNm: totalNm, altFt: arrivalElevFt })
   }
 
-  // Linear interpolation at each sample distance.
-  return sampleDistNm.map((d) => {
-    for (let i = 0; i < verts.length - 1; i++) {
-      const { distNm: v1, altFt: a1 } = verts[i]
-      const { distNm: v2, altFt: a2 } = verts[i + 1]
-      if (d >= v1 && d <= v2) {
-        if (v2 === v1) return a1
-        return Math.round(a1 + ((d - v1) / (v2 - v1)) * (a2 - a1))
-      }
-    }
-    return verts[verts.length - 1].altFt
-  })
+  return verts
 }
 
 // ---------------------------------------------------------------------------
