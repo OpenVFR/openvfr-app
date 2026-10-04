@@ -103,8 +103,8 @@ export function RulerHeaderEnd({ from, to, aircraftProfile, onClear }: {
     <>
       {eteHours != null && <Item label="ETE" value={fmtTime(eteHours)} />}
       {fuelL != null && <Item label="FUEL" value={`${Math.round(fuelL)}L`} />}
-      <TouchableOpacity style={styles.clearBtn} onPress={onClear} hitSlop={8} accessibilityLabel="Clear ruler">
-        <Ionicons name="close" size={12} color={theme.textSecondary} />
+      <TouchableOpacity style={styles.clearBtn} onPress={onClear} hitSlop={{ left: 8, right: 8 }} accessibilityLabel="Clear ruler">
+        <Ionicons name="close" size={16} color={theme.textSecondary} />
       </TouchableOpacity>
     </>
   )
@@ -132,8 +132,12 @@ function makeStyles(theme: ScaledTheme) {
     borderColor:       theme.borderStrong,
     borderRadius:      theme.radiusSm,
     backgroundColor:   theme.surfaceHover,
-    paddingHorizontal: 4,
-    paddingVertical:   1,
+    // Fills the 30 dp header row; hitSlop only widens it sideways since the
+    // row's own bounds cap touch height on Android.
+    minWidth:          36,
+    height:            26,
+    alignItems:        'center',
+    justifyContent:    'center',
   },
 } as const
 }

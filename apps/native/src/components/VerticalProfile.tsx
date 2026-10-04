@@ -397,7 +397,11 @@ export function VerticalProfile({
   const dragStartHeightRef = useRef(chartH)
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
+    // Only claim a touch that began on a header button (ruler clear, PROJ)
+    // once it has really moved vertically: claiming on any move turned a
+    // tap with slight finger jitter into a zero-height resize and cancelled
+    // the button press.
+    onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 6,
     onPanResponderGrant: () => { dragStartHeightRef.current = chartHRef.current },
     onPanResponderMove: (_, gs) => {
       const next = Math.max(MIN_CHART_H, Math.min(MAX_CHART_H, dragStartHeightRef.current - gs.dy))
@@ -1342,8 +1346,11 @@ function makeStyles(theme: ScaledTheme) {
     borderColor:     theme.borderDefault,
   },
   panelCollapsed: {},
+  // 30 (was 22): the row also hosts tappable controls (ruler clear, PROJ),
+  // and Android never delivers touches outside a parent's bounds, so a
+  // child's hitSlop can't make up for a short row.
   dragHandle: {
-    height:          22,
+    height:          30,
     flexDirection:   'row',
     alignItems:      'center',
     justifyContent:  'center',
