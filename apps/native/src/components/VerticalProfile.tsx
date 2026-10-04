@@ -37,7 +37,7 @@ import { type Units, DEFAULT_UNITS, nmToDisplay } from '../utils/units'
 import {
   buildVirtualRadarProfile,
   fetchTerrainProfile,
-  projectFlightPath,
+  projectFlightPath, plannedAltitudeLine,
   computeMsaProfile,
   terrainAt,
   getMsaLookup,
@@ -250,15 +250,6 @@ function niceYTicks(yMax: number, targetTicks = 5): number[] {
   const ticks: number[] = []
   for (let v = 0; v <= yMax + 1e-6; v += step) ticks.push(Math.round(v))
   return ticks
-}
-
-function getPlannedAlt(altProfile: { distNm: number; altFt: number }[], distNm: number): number {
-  let alt = altProfile[0]?.altFt ?? 0
-  for (const p of altProfile) {
-    if (p.distNm <= distNm) alt = p.altFt
-    else break
-  }
-  return alt
 }
 
 
@@ -721,10 +712,13 @@ export function VerticalProfile({
   }, [msaPts, xOf, yOf])
 
   // Planned altitude step-line path
+  // Starts at departure elevation, ramps linearly to the first leg's planned
+  // altitude, and ramps down to arrival elevation at the destination.
   const plannedPath = useMemo(() => {
     if (!profile || profile.altitudeProfile.length === 0) return ''
-    return `M${profile.altitudeProfile.map(p => `${xOf(p.distNm).toFixed(1)},${yOf(p.altFt).toFixed(1)}`).join(' L')}`
-  }, [profile, xOf, yOf])
+    const line = plannedAltitudeLine(profile.altitudeProfile, profile.totalNm, perf, depElevFt, arrElevFt)
+    return `M${line.map(p => `${xOf(p.distNm).toFixed(1)},${yOf(p.altFt).toFixed(1)}`).join(' L')}`
+  }, [profile, perf, depElevFt, arrElevFt, xOf, yOf])
 
   // Weather stations projected onto the route's distance axis — wind
   // arrows + cloud-base layers drawn directly in the vertical profile, not
@@ -1238,9 +1232,9 @@ export function VerticalProfile({
                 )}
                 {currentDistNm != null && currentAltFt != null && (
                   <G transform={`translate(${xOf(currentDistNm)}, ${yOf(currentAltFt)}) rotate(${-pitchDeg})`}>
-                    <Circle r={9} fill="rgba(34,197,94,0.18)" />
+                    <Circle r={13} fill="rgba(34,197,94,0.18)" />
                     {silhouette.map((part, i) => (
-                      <Path key={`ac-part-${i}`} d={part.d} fill="#ffffff" fillOpacity={part.opacity} />
+                      <Path key={`ac-part-${i}`} d={part.d} fill={part.fill ?? '#ffffff'} fillOpacity={part.opacity} />
                     ))}
                   </G>
                 )}

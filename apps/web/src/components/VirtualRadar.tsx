@@ -25,7 +25,7 @@ import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel } from '../utils/units'
 import {
-  buildVirtualRadarProfile, fetchTerrainProfile, projectFlightPath, computeMsaProfile, terrainAt,
+  buildVirtualRadarProfile, fetchTerrainProfile, projectFlightPath, DEFAULT_PERF_MODEL, computeMsaProfile, terrainAt,
   getMsaLookup, computeTrajectoryTicks, computeVspeedTrajectory, projectWeatherMarks,
   type TerrainPoint, type MsaPoint, type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
@@ -115,15 +115,6 @@ interface Props {
 // ---------------------------------------------------------------------------
 // Step-function altitude lookup (planned altitude at any distance along route)
 // ---------------------------------------------------------------------------
-function getPlannedAlt(altProfile: { distNm: number; altFt: number }[], distNm: number): number {
-  let alt = altProfile[0]?.altFt ?? 0
-  for (const p of altProfile) {
-    if (p.distNm <= distNm) alt = p.altFt
-    else break
-  }
-  return alt
-}
-
 // ---------------------------------------------------------------------------
 // Custom tooltip
 // ---------------------------------------------------------------------------
@@ -584,8 +575,10 @@ export default function VirtualRadar({
       // Suppress the MSA danger flag within 5 NM of departure or arrival —
       // climbing through MSA on departure and descending through it on approach
       // are normal operations, not a terrain clearance warning.
+      // Planned line: linear ramp from departure elevation to first-leg
+      // altitude and down to arrival elevation (generic model if no perf).
+      const plannedAlts = projectFlightPath(profile.altitudeProfile, profile.totalNm, perf ?? DEFAULT_PERF_MODEL, sampleDists, depElevFt, arrElevFt)
       const SUPPRESS_NM = 5
-      const lastIdx = terrainPts.length - 1
 
       // First pass: compute per-point values and belowMsa flag.
       const raw = terrainPts.map(({ distNm, elevFt }, i) => {
@@ -593,9 +586,7 @@ export default function VirtualRadar({
         const msa  = getMsa(distNm)
         const nearEndpoint = distNm < SUPPRESS_NM || (profile.totalNm - distNm) < SUPPRESS_NM
         const belowMsa = proj != null && msa > 0 && proj < msa && !nearEndpoint
-        const plannedAlt = i === 0      ? depElevFt
-                         : i === lastIdx ? arrElevFt
-                         : getPlannedAlt(profile.altitudeProfile, distNm)
+        const plannedAlt = plannedAlts[i]
         return { distNm, elevFt, proj, msa, belowMsa, plannedAlt }
       })
 
@@ -1389,7 +1380,7 @@ export default function VirtualRadar({
                     return (
                       <g transform={`translate(${cx},${cy})`} aria-hidden="true">
                         {silhouette.map((part, i) => (
-                          <path key={`ac-part-${i}`} d={part.d} fill="white" opacity={part.opacity} />
+                          <path key={`ac-part-${i}`} d={part.d} fill={part.fill ?? 'white'} opacity={part.opacity} />
                         ))}
                       </g>
                     )
