@@ -39,6 +39,11 @@ export const TILE_BASE: string =
  *  installed). Override via EXPO_PUBLIC_WEB_BASE. */
 export const WEB_BASE: string = process.env.EXPO_PUBLIC_WEB_BASE ?? ''
 
+/** Optional public site origin hosting the privacy policy (`/privacy`) and
+ *  terms (`/terms`), linked from the login screen footer. When unset the
+ *  footer links are hidden. Set via EXPO_PUBLIC_SITE_BASE (no trailing slash). */
+export const SITE_BASE: string = (process.env.EXPO_PUBLIC_SITE_BASE ?? '').replace(/\/+$/, '')
+
 /**
  * Base URL for the OpenSky traffic endpoints (/api/traffic/*).
  *
