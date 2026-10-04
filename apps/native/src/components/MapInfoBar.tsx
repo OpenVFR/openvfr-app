@@ -15,7 +15,7 @@ import { computeMapScale } from '@open-vfr/shared/mapScale'
 import { useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { MAX_FT, ftToLabel } from './AltitudeSlider'
 
-const MAX_BAR_DP = 90
+const MAX_BAR_DP = 60
 const MIN_UPDATE_MS = 100
 
 export interface MapInfoBarHandle {
@@ -85,29 +85,29 @@ const makeStyles = (t: ScaledTheme) => ({
     zIndex: 20,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    gap: 10,
-    paddingVertical: 4,
-    paddingLeft: 6,
-    paddingRight: 12,
-    borderRadius: 8,
+    gap: 7,
+    paddingVertical: 2,
+    paddingLeft: 4,
+    paddingRight: 8,
+    borderRadius: 6,
     backgroundColor: t.surfacePanel,
     borderWidth: 1,
     borderColor: t.borderStrong,
   },
   infoBtn: {
-    width: 22, height: 22, borderRadius: 11,
+    width: 16, height: 16, borderRadius: 8,
     alignItems: 'center' as const, justifyContent: 'center' as const,
   },
-  infoText: { color: t.textMuted, fontSize: 14, fontWeight: '700' as const, fontStyle: 'italic' as const },
-  alt: { color: t.textSecondary, fontSize: t.scale(11), fontWeight: '600' as const },
+  infoText: { color: t.textMuted, fontSize: 11, fontWeight: '700' as const, fontStyle: 'italic' as const },
+  alt: { color: t.textSecondary, fontSize: t.scale(9), fontWeight: '600' as const },
   altFiltered: { color: t.accentYellow },
   scale: { alignItems: 'center' as const, gap: 1 },
   scaleBar: {
-    height: 4,
+    height: 3,
     borderWidth: 1,
     borderColor: t.textPrimary,
     borderTopWidth: 0,
   },
-  scaleLabel: { color: t.textMuted, fontSize: t.scale(9), fontWeight: '500' as const },
-  ratio: { color: t.textSecondary, fontSize: t.scale(11), fontWeight: '600' as const },
+  scaleLabel: { color: t.textMuted, fontSize: t.scale(7), fontWeight: '500' as const },
+  ratio: { color: t.textSecondary, fontSize: t.scale(9), fontWeight: '600' as const },
 })
