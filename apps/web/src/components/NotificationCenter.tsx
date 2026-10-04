@@ -113,7 +113,25 @@ export function NotificationCenter({
 
   const items: Item[] = []
 
-  for (const a of airspaceAlerts) {
+  // One card per airspace: the newest transition toast (entered/left) wins
+  // over the persistent alert for the same airspace; among toasts the latest
+  // expiry wins; among alerts the first (inside sorts before ahead/vertical) wins.
+  const airspaceId = (name: string, cls: string) => `${name}::${cls}`
+  const latestNotif = new Map<string, AirspaceNotification>()
+  for (const n of latestNotif.values()) {
+    const id = airspaceId(n.name, n.cls)
+    const cur = latestNotif.get(id)
+    if (!cur || n.expiresAt >= cur.expiresAt) latestNotif.set(id, n)
+  }
+  const seenAlert = new Set<string>()
+  const shownAlerts = airspaceAlerts.filter(a => {
+    const id = airspaceId(a.name, a.cls)
+    if (latestNotif.has(id) || seenAlert.has(id)) return false
+    seenAlert.add(id)
+    return true
+  })
+
+  for (const a of shownAlerts) {
     items.push({
       key: `as-${a.key}`,
       severity: a.severity,

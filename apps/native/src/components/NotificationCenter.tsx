@@ -17,7 +17,7 @@
  */
 
 import React, { useEffect } from 'react'
-import { View, Text, TouchableOpacity } from 'react-native'
+import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
 import Animated, {
@@ -100,6 +100,7 @@ const OBSTRUCTION_KIND_LABEL: Record<string, string> = {
   other:        '\u25b2 OBSTACLE',
 }
 
+const CONTROLS_SIZE = 40   // map control button edge, dp
 const MAX_VISIBLE = 5
 
 interface Props {
@@ -131,9 +132,35 @@ export function NotificationCenter({
     return () => clearTimeout(id)
   }, [reminderNote, onDismissReminder])
 
+  // Map control buttons sit above this stack (zIndex 50) on the right edge in
+  // portrait and along the top in landscape. Reserve their space so cards are
+  // never hidden underneath them.
+  const { width: winW, height: winH } = useWindowDimensions()
+  const controlsInset = winW > winH
+    ? { top: CONTROLS_SIZE + 24 }
+    : { right: CONTROLS_SIZE + 24 }
+
   const items: Item[] = []
 
-  for (const a of airspaceAlerts) {
+  // One card per airspace: the newest transition toast (entered/left) wins
+  // over the persistent alert for the same airspace; among toasts the latest
+  // expiry wins; among alerts the first (inside sorts before ahead/vertical) wins.
+  const airspaceId = (name: string, cls: string) => `${name}::${cls}`
+  const latestNotif = new Map<string, AirspaceNotification>()
+  for (const n of latestNotif.values()) {
+    const id = airspaceId(n.name, n.cls)
+    const cur = latestNotif.get(id)
+    if (!cur || n.expiresAt >= cur.expiresAt) latestNotif.set(id, n)
+  }
+  const seenAlert = new Set<string>()
+  const shownAlerts = airspaceAlerts.filter(a => {
+    const id = airspaceId(a.name, a.cls)
+    if (latestNotif.has(id) || seenAlert.has(id)) return false
+    seenAlert.add(id)
+    return true
+  })
+
+  for (const a of shownAlerts) {
     items.push({
       key: `as-${a.key}`,
       severity: a.severity,
@@ -211,7 +238,7 @@ export function NotificationCenter({
   const overflow = items.length - MAX_VISIBLE
 
   return (
-    <View style={styles.container} pointerEvents="box-none">
+    <View style={[styles.container, controlsInset]} pointerEvents="box-none">
       {visible.map(item => {
         const bg     = SEVERITY_BG[item.severity]
         const border = SEVERITY_BORDER[item.severity]
