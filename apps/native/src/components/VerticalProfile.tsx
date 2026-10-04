@@ -27,6 +27,9 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, Image, PanResponder, type LayoutChangeEvent,
 } from 'react-native'
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
+import Animated, { useSharedValue, useAnimatedStyle, withDecay, cancelAnimation } from 'react-native-reanimated'
+import { scheduleOnRN } from 'react-native-worklets'
 import Svg, { ClipPath, Rect, Path, Line as SvgLine, Circle, Defs, LinearGradient, Stop, G, Text as SvgText } from 'react-native-svg'
 
 import type { RouteWaypoint, LegOverride, AircraftProfileDocType } from '../types/db'
@@ -189,6 +192,9 @@ const WIND_LABEL_TOP = 20
 // to scroll, so the scroll path effectively never activated for realistic
 // route lengths even though labels were visibly cramped well before that.
 const MIN_PX_PER_NM = 30
+/** Minimum gap (ms) between scrub-position reports to the parent (map
+ *  crosshair): each report re-renders the map screen on the JS thread. */
+const HOVER_REPORT_MS = 100
 // Wind arrow/label horizontal clamp margin (px) from either plot edge —
 // mirrors web's VirtualRadar.tsx identical fix. Without it, a station near
 // the route's start/end lands the arrow (and its dirDeg/speed label) right
@@ -365,7 +371,6 @@ export function VerticalProfile({
   height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
-  const [hoverNm, setHoverNm] = useState<number | null>(null)
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(null)
@@ -375,7 +380,20 @@ export function VerticalProfile({
   const [chartW,      setChartW]      = useState(0)
   // Horizontal scroll offset into the (possibly wider-than-panel) chart
   // content — see MIN_PX_PER_NM above. 0 when the route fits the panel.
-  const [scrollX,     setScrollX]     = useState(0)
+  // Horizontal scroll offset (px) and scrub-crosshair position (viewport px,
+  // -1 = hidden) live in Reanimated shared values, not React state: the drag
+  // runs on the UI thread and moves the content without re-rendering the
+  // chart. Re-rendering the whole SVG on every touch-move held the JS thread
+  // at ~3 fps during a drag. scrollXRef mirrors scrollX for JS-side logic
+  // (auto-follow), synced when a gesture or fling ends.
+  const scrollX = useSharedValue(0)
+  const hoverX  = useSharedValue(-1)
+  const scrollXRef = useRef(0)
+  const setScroll = useCallback((x: number) => {
+    scrollXRef.current = x
+    cancelAnimation(scrollX)
+    scrollX.value = x
+  }, [scrollX])
 
   const chartH    = Math.max(0, height)
   const collapsed = chartH <= COLLAPSE_THRESHOLD
@@ -538,17 +556,17 @@ export function VerticalProfile({
     return out
   }, [profile, xOf])
 
-  // Clamp scrollX whenever the scrollable range shrinks (panel resized wider,
-  // or a shorter route replaces a longer one) — functional update so this
-  // doesn't need to be a PanResponder dependency.
+  // Clamp the scroll offset whenever the scrollable range shrinks (panel
+  // resized wider, or a shorter route replaces a longer one).
+  const maxScrollXSV = useSharedValue(maxScrollX)
   useEffect(() => {
-    setScrollX((x) => Math.min(x, maxScrollX))
-  }, [maxScrollX])
+    maxScrollXSV.value = maxScrollX
+    if (scrollXRef.current > maxScrollX) setScroll(maxScrollX)
+  }, [maxScrollX, maxScrollXSV, setScroll])
 
-  // Manual-pan grace period -- see scrubResponder's onPanResponderRelease
-  // below, which sets this. Without it, the auto-follow effect's hoverNm
-  // guard reopens the INSTANT a finger lifts (clearHover() sets hoverNm
-  // back to null immediately on release), so this effect re-fires on the
+  // Manual-pan grace period -- see the scrub gesture's onFinalize below,
+  // which sets this. Without it, the auto-follow effect's drag guard
+  // reopens the INSTANT a finger lifts, so this effect re-fires on the
   // very next render and snaps straight back to the aircraft before the
   // pilot ever gets to look at wherever they just panned to -- especially
   // bad off-track, where the aircraft marker can sit right at the route's
@@ -563,79 +581,111 @@ export function VerticalProfile({
 
   // Auto-follow the aircraft while flying: if its marker has scrolled out of
   // (or near) the visible window, re-center the view on it. Skipped while
-  // the pilot is mid-drag (hoverNm != null) or shortly after releasing a
+  // the pilot is mid-drag (draggingRef) or shortly after releasing a
   // manual pan (manualPanUntilRef) so this doesn't fight a pan/scrub either
   // during or immediately after the gesture.
+  const draggingRef = useRef(false)
   useEffect(() => {
-    if (currentDistNm == null || !scrollable || hoverNm != null) return
+    if (currentDistNm == null || !scrollable || draggingRef.current) return
     if (Date.now() < manualPanUntilRef.current) return
     const markerX = xOf(currentDistNm)
     const EDGE = 40
-    setScrollX((x) => {
-      if (markerX < x + EDGE || markerX > x + chartW - EDGE) {
-        return Math.max(0, Math.min(maxScrollX, markerX - chartW / 2))
-      }
-      return x
-    })
-  }, [currentDistNm, scrollable, hoverNm, chartW, maxScrollX, xOf])
+    const x = scrollXRef.current
+    if (markerX < x + EDGE || markerX > x + chartW - EDGE) {
+      setScroll(Math.max(0, Math.min(maxScrollX, markerX - chartW / 2)))
+    }
+  }, [currentDistNm, scrollable, chartW, maxScrollX, xOf, setScroll])
 
   // Touch-drag over the chart plot area does double duty:
-  //  1. Scrub — lets the parent screen sync a crosshair marker on the map
-  //     (native equivalent of web's Recharts onMouseMove/onMouseLeave).
+  //  1. Scrub — a crosshair follows the finger, and the parent screen syncs
+  //     a crosshair marker on the map (native equivalent of web's Recharts
+  //     onMouseMove/onMouseLeave).
   //  2. Pan — when the route is wider than the panel (MIN_PX_PER_NM,
-  //     above), the same one-finger drag scrolls the content instead of a
-  //     separate ScrollView, which would otherwise fight this same gesture
-  //     for the same horizontal touch-move (RN's ScrollView claims the
-  //     responder natively; a second JS PanResponder on the same axis can't
-  //     reliably out-race it). One responder driving both an internal
-  //     scrollX state AND the hover crosshair keeps the two forms of
-  //     horizontal drag unambiguous instead of racing two gesture systems.
-  // Singleton PanResponder for the same reason as the resize-drag one above:
-  // must not be recreated mid-gesture.
-  const totalNmRef = useRef(totalNm); totalNmRef.current = totalNm
-  const plotWRef = useRef(plotW); plotWRef.current = plotW
-  const scrollXRef = useRef(scrollX); scrollXRef.current = scrollX
-  const maxScrollXRef = useRef(maxScrollX); maxScrollXRef.current = maxScrollX
-  const dragStartScrollXRef = useRef(0)
+  //     above), the same one-finger drag scrolls the content, with a fling
+  //     (decay) on release. One gesture drives both, so the two forms of
+  //     horizontal drag never race two gesture systems.
+  // Runs on the UI thread: scroll offset and crosshair are shared values
+  // read by animated styles, so dragging never re-renders the chart. The
+  // map crosshair is reported to JS at most every HOVER_REPORT_MS.
+  const totalNmSV = useSharedValue(totalNm)
+  const plotWSV   = useSharedValue(plotW)
+  useEffect(() => { totalNmSV.value = totalNm; plotWSV.value = plotW }, [totalNm, plotW, totalNmSV, plotWSV])
+  const dragStartX      = useSharedValue(0)
+  const lastHoverReport = useSharedValue(0)
   const onHoverDistNmRef = useRef(onHoverDistNm); onHoverDistNmRef.current = onHoverDistNm
-  const updateHover = useCallback((viewportX: number) => {
-    const tNm = totalNmRef.current, pW = plotWRef.current
-    if (tNm <= 0 || pW <= 0) return
-    const contentX = viewportX + scrollXRef.current
-    const nm = Math.max(0, Math.min(tNm, ((contentX - MARGIN_L) / pW) * tNm))
-    setHoverNm(nm)
-    onHoverDistNmRef.current?.(nm)
+  // Latest-wins: each report re-renders the whole map screen (~250 ms in a
+  // dev build), longer than the report interval, so passing every report
+  // through queued renders up and the map crosshair fell further behind the
+  // finger. Keep only the newest value and deliver it on the next frame.
+  const pendingHoverRef = useRef<{ nm: number | null } | null>(null)
+  const reportHover = useCallback((nm: number | null) => {
+    const idle = pendingHoverRef.current == null
+    pendingHoverRef.current = { nm }
+    if (idle) requestAnimationFrame(() => {
+      const v = pendingHoverRef.current
+      pendingHoverRef.current = null
+      if (v) onHoverDistNmRef.current?.(v.nm)
+    })
   }, [])
-  const clearHover = useCallback(() => { setHoverNm(null); onHoverDistNmRef.current?.(null) }, [])
-  const scrubResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: (e) => {
-      dragStartScrollXRef.current = scrollXRef.current
-      updateHover(e.nativeEvent.locationX)
-    },
-    onPanResponderMove: (e, gs) => {
-      const next = Math.max(0, Math.min(maxScrollXRef.current, dragStartScrollXRef.current - gs.dx))
-      setScrollX(next)
-      updateHover(e.nativeEvent.locationX)
-    },
-    onPanResponderRelease: () => {
-      // Only arm the grace period for an actual pan (content moved) --
-      // a stationary tap/scrub that never dragged the content shouldn't
-      // delay auto-follow from a real position change that happens to
-      // land moments later.
-      if (scrollXRef.current !== dragStartScrollXRef.current) {
-        manualPanUntilRef.current = Date.now() + MANUAL_PAN_GRACE_MS
+  const dragStarted   = useCallback(() => { draggingRef.current = true }, [])
+  const dragEnded     = useCallback(() => { draggingRef.current = false }, [])
+  const scrollSettled = useCallback((x: number, panned: boolean) => {
+    scrollXRef.current = x
+    if (panned) manualPanUntilRef.current = Date.now() + MANUAL_PAN_GRACE_MS
+  }, [])
+
+  const scrub = usePanGesture({
+    minDistance: 0,
+    onBegin: (e) => {
+      'worklet'
+      cancelAnimation(scrollX)
+      dragStartX.value = scrollX.value
+      hoverX.value = e.x
+      const tNm = totalNmSV.value, pW = plotWSV.value
+      if (tNm > 0 && pW > 0) {
+        scheduleOnRN(reportHover, Math.max(0, Math.min(tNm, ((e.x + scrollX.value - MARGIN_L) / pW) * tNm)))
       }
-      clearHover()
+      lastHoverReport.value = Date.now()
+      scheduleOnRN(dragStarted)
     },
-    onPanResponderTerminate: () => {
-      if (scrollXRef.current !== dragStartScrollXRef.current) {
-        manualPanUntilRef.current = Date.now() + MANUAL_PAN_GRACE_MS
+    onUpdate: (e) => {
+      'worklet'
+      scrollX.value = Math.max(0, Math.min(maxScrollXSV.value, dragStartX.value - e.translationX))
+      hoverX.value = e.x
+      const now = Date.now()
+      if (now - lastHoverReport.value >= HOVER_REPORT_MS) {
+        lastHoverReport.value = now
+        const tNm = totalNmSV.value, pW = plotWSV.value
+        if (tNm > 0 && pW > 0) {
+          scheduleOnRN(reportHover, Math.max(0, Math.min(tNm, ((e.x + scrollX.value - MARGIN_L) / pW) * tNm)))
+        }
       }
-      clearHover()
     },
-  }), [updateHover, clearHover])
+    onDeactivate: (e) => {
+      'worklet'
+      // Fling: keep scrolling with the release velocity, slowing to a stop,
+      // clamped to the route's ends.
+      if (maxScrollXSV.value > 0 && Math.abs(e.velocityX) > 50) {
+        const panned = scrollX.value !== dragStartX.value
+        scrollX.value = withDecay(
+          { velocity: -e.velocityX, clamp: [0, maxScrollXSV.value], deceleration: 0.997 },
+          (finished) => { if (finished) scheduleOnRN(scrollSettled, scrollX.value, panned) },
+        )
+      }
+    },
+    onFinalize: () => {
+      'worklet'
+      hoverX.value = -1
+      scheduleOnRN(reportHover, null)
+      scheduleOnRN(scrollSettled, scrollX.value, scrollX.value !== dragStartX.value)
+      scheduleOnRN(dragEnded)
+    },
+  })
+  const contentStyle = useAnimatedStyle(() => ({ transform: [{ translateX: -scrollX.value }] }))
+  const crosshairStyle = useAnimatedStyle(() => ({
+    opacity: hoverX.value < 0 ? 0 : 1,
+    transform: [{ translateX: Math.max(0, hoverX.value) }],
+  }))
 
   // Departure/arrival elevation from first/last terrain sample (aerodrome elevation proxy)
   const depElevFt = terrainPts[0]?.elevFt ?? 0
@@ -870,12 +920,14 @@ export function VerticalProfile({
                 </View>
               )}
               {/* Scrollable clip window — width pinned to the panel (chartW);
-                  the wider content view inside is translated by -scrollX.
+                  the wider content view inside is translated by -scrollX
+                  on the UI thread (contentStyle).
                   Touch handling lives here (fixed viewport), not on the
-                  translated inner view, so scrubResponder's locationX stays
-                  in stable viewport coordinates regardless of scroll. */}
-              <View style={{ width: chartW, height: chartH, overflow: 'hidden' }} {...scrubResponder.panHandlers}>
-              <View style={{ width: contentW, height: chartH, transform: [{ translateX: -scrollX }] }}>
+                  translated inner view, so the gesture's x stays in stable
+                  viewport coordinates regardless of scroll. */}
+              <GestureDetector gesture={scrub}>
+              <View style={{ width: chartW, height: chartH, overflow: 'hidden' }}>
+              <Animated.View style={[{ width: contentW, height: chartH }, contentStyle]}>
               <Svg width={contentW} height={chartH}>
                 <Defs>
                   <LinearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
@@ -1179,12 +1231,6 @@ export function VerticalProfile({
                     fill={p.below ? DANGER_COLOR : trajectoryAttitudeColor} />
                 ))}
 
-                {/* ── Scrub crosshair (touch-drag on the chart) ───── */}
-                {hoverNm != null && (
-                  <SvgLine x1={xOf(hoverNm)} y1={MARGIN_T} x2={xOf(hoverNm)} y2={MARGIN_T + plotH}
-                    stroke="rgba(250,204,21,0.85)" strokeWidth={1.5} strokeDasharray="4,3" />
-                )}
-
                 {/* ── Live position marker + aircraft silhouette ──────── */}
                 {currentDistNm != null && (
                   <SvgLine x1={xOf(currentDistNm)} y1={MARGIN_T} x2={xOf(currentDistNm)} y2={MARGIN_T + plotH}
@@ -1321,8 +1367,17 @@ export function VerticalProfile({
                   )
                 })}
               </View>
+              </Animated.View>
+              {/* Scrub crosshair: fixed to the viewport, positioned on the
+                  UI thread (crosshairStyle) so it tracks the finger without
+                  re-rendering the chart. */}
+              <Animated.View pointerEvents="none" style={[styles.crosshair, { top: MARGIN_T, height: plotH }, crosshairStyle]}>
+                <Svg width={2} height={plotH}>
+                  <SvgLine x1={1} y1={0} x2={1} y2={plotH} stroke="rgba(250,204,21,0.85)" strokeWidth={1.5} strokeDasharray="4,3" />
+                </Svg>
+              </Animated.View>
               </View>
-              </View>
+              </GestureDetector>
               {/* Pinned Y-axis tick labels — rendered outside the scrollable
                   clip window (above) so they stay fixed at the left edge
                   regardless of scrollX, instead of scrolling away with the
@@ -1440,6 +1495,11 @@ function makeStyles(theme: ScaledTheme) {
   // window (rendered after it in JSX = higher z-order) so it never scrolls
   // away with the route content. No background fill: same translucent-
   // text-over-terrain look the chart already used before scrolling existed.
+  crosshair: {
+    position: 'absolute',
+    left:     -1,
+    width:    2,
+  },
   yAxisPinned: {
     position: 'absolute',
     left:     0,
