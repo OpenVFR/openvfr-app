@@ -149,6 +149,19 @@ export interface AmbientWx {
    *  as "surface pressure" wherever rendered, never presented as QNH. */
   pressureHpa: number | null
   precipMm:    number | null
+  /** Distance (NM) from the requested point to the model grid cell Open-Meteo
+   *  actually sampled (its response's own latitude/longitude, snapped to the
+   *  model grid -- typically a few km). Null when the response omits them. */
+  gridDistNm:  number | null
+}
+
+/** Haversine distance in NM (kept local: routeCalc.ts pulls in the WMM package). */
+function gcDistNm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return 3440.065 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
 const ambientCache = new Map<string, { result: AmbientWx; expiresAt: number }>()
@@ -181,7 +194,7 @@ export async function fetchAmbientWx(
   const res = await fetchWithRetry(url, { signal })
   if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`)
 
-  const json = await res.json() as { current: Record<string, number> }
+  const json = await res.json() as { current: Record<string, number>; latitude?: number; longitude?: number }
   const speedKts = json.current['wind_speed_10m']
   const dirDegRaw = json.current['wind_direction_10m']
   if (speedKts == null || dirDegRaw == null) {
@@ -196,6 +209,7 @@ export async function fetchAmbientWx(
     cloudPct:    json.current['cloud_cover']      != null ? Math.round(json.current['cloud_cover'])      : null,
     pressureHpa: json.current['surface_pressure'] != null ? Math.round(json.current['surface_pressure']) : null,
     precipMm:    json.current['precipitation']    != null ? json.current['precipitation']                : null,
+    gridDistNm:  json.latitude != null && json.longitude != null ? gcDistNm(lat, lng, json.latitude, json.longitude) : null,
   }
   ambientCache.set(key, { result, expiresAt: Date.now() + CACHE_TTL_MS })
   return result

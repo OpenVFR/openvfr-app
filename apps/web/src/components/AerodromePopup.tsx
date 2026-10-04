@@ -1114,7 +1114,8 @@ export default function AerodromePopup({
                   {ambientWx && (
                     <>
                       <div className={css.wxFallback}>
-                        Modelled (Open-Meteo forecast) at {p.icao}'s own coordinates — not an observed report.
+                        Modelled (Open-Meteo forecast)
+                        {ambientWx.gridDistNm != null ? `, grid point ${ambientWx.gridDistNm < 1 ? '<1' : Math.round(ambientWx.gridDistNm)} NM from ${p.icao}` : ` at ${p.icao}'s coordinates`} — not an observed report.
                       </div>
 
                       {runways.length > 1 && (

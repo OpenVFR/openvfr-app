@@ -26,8 +26,18 @@ describe('fetchAmbientWx', () => {
     // have their own 30-min in-memory caches keyed by rounded lat/lng.
     const result = await fetchAmbientWx(58.1, 15.1)
     expect(result).toEqual({
-      dirDeg: 250, speedKts: 12, gustKts: 18, tempC: 14, cloudPct: 60, pressureHpa: 1013, precipMm: 0.2,
+      dirDeg: 250, speedKts: 12, gustKts: 18, tempC: 14, cloudPct: 60, pressureHpa: 1013, precipMm: 0.2, gridDistNm: null,
     })
+  })
+
+  it('reports the distance to the model grid point Open-Meteo sampled', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => mockResponse(200, {
+      latitude: 58.45, longitude: 15.0,
+      current: { wind_speed_10m: 5, wind_direction_10m: 90 },
+    })))
+    const result = await fetchAmbientWx(58.4, 15.0)
+    // 0.05 deg latitude = 3 NM
+    expect(result.gridDistNm).toBeCloseTo(3, 1)
   })
 
   it('reports dirDeg: null when wind is calm (speed 0) instead of a meaningless direction', async () => {
