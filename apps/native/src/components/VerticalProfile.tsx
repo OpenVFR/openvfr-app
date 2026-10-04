@@ -1315,19 +1315,37 @@ export function VerticalProfile({
                 {/* Renders visibleWaypointTicks (collision-filtered above),
                     not the raw profile.waypointTicks list -- see the memo
                     comment near windXOf. */}
-                {visibleWaypointTicks.map((tick) => (
-                  // Clamp so the destination's label (sitting exactly at the
-                  // right edge of the *content* — not the panel, since this
-                  // whole overlay scrolls with the Svg — doesn't overflow
-                  // past contentW and get clipped to just its first letter.
-                  <Text
-                    key={`wpl-${tick.distNm}-${tick.name}`}
-                    style={[styles.wpLabel, { left: Math.min(contentW - 44, xOf(tick.distNm) + 2), top: MARGIN_T }]}
-                    numberOfLines={1}
-                  >
-                    {tick.name}
-                  </Text>
-                ))}
+                {(() => {
+                  // A label that would sit on an airspace chip drops below it
+                  // (chips can reach the plot's top edge, where the
+                  // waypoint-name row lives).
+                  const chips = layoutAirspaceChips(airspaceChips(profile.airspaceBands, yMax), xOf, yOf)
+                  const WP_LABEL_H = 12
+                  return visibleWaypointTicks.map((tick) => {
+                    // Clamp so the destination's label (sitting exactly at the
+                    // right edge of the *content* — not the panel, since this
+                    // whole overlay scrolls with the Svg — doesn't overflow
+                    // past contentW and get clipped to just its first letter.
+                    const left = Math.min(contentW - 44, xOf(tick.distNm) + 2)
+                    const w = Math.min(60, tick.name.length * 6 + 4)
+                    let top = MARGIN_T
+                    for (let guard = 0; guard < 4; guard++) {
+                      const hit = chips.find((c) =>
+                        left < c.px + c.w && c.px < left + w && top < c.py + c.h && c.py < top + WP_LABEL_H)
+                      if (!hit) break
+                      top = hit.py + hit.h + 1
+                    }
+                    return (
+                      <Text
+                        key={`wpl-${tick.distNm}-${tick.name}`}
+                        style={[styles.wpLabel, { left, top }]}
+                        numberOfLines={1}
+                      >
+                        {tick.name}
+                      </Text>
+                    )
+                  })
+                })()}
 
                 {trajectoryTickNms.map((d, i) => (
                   <Text key={`trajl-${i}`} style={[styles.trajLabel, { left: xOf(d) - 8, top: MARGIN_T - 10 }]}>
