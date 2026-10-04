@@ -5,7 +5,7 @@
  * than as a separate floating overlay so it reads as part of the same panel
  * the pilot is already looking at.
  *
- *   headerStart: DIST · MAG · TRUE
+ *   headerStart: DIST · magnetic (°M) · true (°T) bearing
  *   headerEnd:   ETE · fuel (when an aircraft profile is set) · clear
  */
 
@@ -38,13 +38,27 @@ function Item({ label, value }: { label: string; value: string }) {
   )
 }
 
+/** Bearing as value + reference suffix ("305°M", "311°T"). Far
+ *  narrower than a "MAG"/"TRUE" label in front: headerStart only gets half
+ *  the drag-handle row minus the grip (~180 dp on a phone), and DIST plus
+ *  two labelled bearings overflowed it, so Android ellipsized every item. */
+function BearingItem({ deg, reference }: { deg: number; reference: 'M' | 'T' }) {
+  const styles = useThemedStyles(makeStyles)
+  return (
+    <Text style={styles.item} numberOfLines={1}>
+      <Text style={styles.value}>{fmtBrg(deg)}</Text>
+      <Text style={styles.label}>{reference}</Text>
+    </Text>
+  )
+}
+
 export function RulerHeaderStart({ from, to, units }: { from: RouteWaypoint; to: RouteWaypoint; units: Units }) {
   const distDisplay = nmToDisplay(distanceNm(from, to), units.distance)
   return (
     <>
       <Item label="DIST" value={`${distDisplay.toFixed(1)} ${distLabel(units.distance)}`} />
-      <Item label="MAG" value={fmtBrg(magneticBearingDeg(from, to))} />
-      <Item label="TRUE" value={fmtBrg(bearingDeg(from, to))} />
+      <BearingItem deg={magneticBearingDeg(from, to)} reference="M" />
+      <BearingItem deg={bearingDeg(from, to)} reference="T" />
     </>
   )
 }
