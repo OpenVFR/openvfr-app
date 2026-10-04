@@ -283,7 +283,8 @@ export type AviationMapProps = {
   /** Pan/zoom the camera to a point — e.g. Find-a-Destination panel's row
    *  tap. `nonce` must change on every request (even repeat taps on the
    *  same aerodrome) since [lat,lng] alone wouldn't re-trigger the effect. */
-  flyToTarget?: { lat: number; lng: number; nonce: number } | null
+  /** Fly the camera here; zoom defaults to 13 when omitted. */
+  flyToTarget?: { lat: number; lng: number; zoom?: number; nonce: number } | null
 }
 
 /** A route-planning snap candidate — a nearby feature the user might mean
@@ -1405,7 +1406,7 @@ export function AviationMap({
     if (!flyToTarget) return
     cameraRef.current?.flyTo({
       center: [flyToTarget.lng, flyToTarget.lat],
-      zoom:   13,
+      zoom:   flyToTarget.zoom ?? 13,
       duration: 1400,
     })
   }, [flyToTarget])

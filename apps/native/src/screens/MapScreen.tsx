@@ -907,7 +907,7 @@ export function MapScreen() {
   // Find-a-Destination row tap "fly to" request -- AviationMap consumes
   // this via flyToTarget; nonce forces the effect even on a repeat tap of
   // the same aerodrome (identical lat/lng wouldn't otherwise re-trigger it).
-  const [findDestFlyTarget, setFindDestFlyTarget] = useState<{ lat: number; lng: number; nonce: number } | null>(null)
+  const [findDestFlyTarget, setFindDestFlyTarget] = useState<{ lat: number; lng: number; zoom?: number; nonce: number } | null>(null)
   // Fallback centre when no GPS/sim fix yet: home airfield, else Stockholm
   // -- mirrors web's FindDestPanel wiring in MapView.tsx.
   const mapCentreForFindDest = homeCoord
@@ -927,7 +927,7 @@ export function MapScreen() {
       const q = url.indexOf('?')
       const link = parseMapLink(q >= 0 ? url.slice(q) : '')
       if (!hasMapLink(link)) return
-      if (link.center) setFindDestFlyTarget({ lat: link.center.lat, lng: link.center.lng, nonce: Date.now() })
+      if (link.center) setFindDestFlyTarget({ lat: link.center.lat, lng: link.center.lng, zoom: link.zoom, nonce: Date.now() })
       if (link.ad) {
         const icao = link.ad
         fetch(getTileUrls().aerodromes)
@@ -936,7 +936,7 @@ export function MapScreen() {
             const f = fc?.features.find(x => String((x.properties ?? {}).icao ?? '').toUpperCase() === icao)
             if (!f || f.geometry.type !== 'Point') return
             const [lng, lat] = (f.geometry as Point).coordinates
-            setFindDestFlyTarget({ lat, lng, nonce: Date.now() })
+            setFindDestFlyTarget({ lat, lng, zoom: link.zoom, nonce: Date.now() })
             setAerodromeFeature(aerodromePropsFromFeature((f.properties ?? {}) as Record<string, unknown>, [lng, lat]))
           })
           .catch(() => { /* offline / missing data: link does nothing */ })
