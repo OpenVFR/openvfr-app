@@ -1443,6 +1443,11 @@ export function MapScreen() {
         showsHorizontalScrollIndicator={false}
         pointerEvents="box-none"
       >
+        {/* Stack order, top to bottom, grouped by purpose with the most-used
+            controls nearest the thumb: lookup (briefing, find destination),
+            route planning (plan, ruler, route lock), map view (layers,
+            orientation), then flight (live plog, flight mode) and finally
+            Locate at the very bottom. */}
         <View style={stackGap}>
           <VicinityBriefSheet
             nearby={nearbyFreqs}
@@ -1454,54 +1459,26 @@ export function MapScreen() {
           />
         </View>
         <View style={stackGap}>
-          <TouchableOpacity
-            style={[styles.iconBtn, (flightModeStatus !== 'off' ? followGps : locMode === 'passive') && styles.iconBtnActive]}
-            onPress={handleLocate}
-            onLongPress={() => { if (flightModeStatus === 'off') setLocMode('off') }}
-            accessibilityLabel={flightModeStatus !== 'off' ? 'Re-centre on aircraft' : locMode === 'passive' ? 'Centre on my position. Long-press to turn location off.' : 'Show my position'}
-          >
-            <Ionicons
-              name={locMode === 'passive' || flightModeStatus !== 'off' ? 'locate' : 'locate-outline'}
-              size={18}
-              color={(flightModeStatus !== 'off' ? followGps : locMode === 'passive') ? '#ffffff' : theme.textPrimary}
-            />
-          </TouchableOpacity>
-        </View>
-        <View style={stackGap}>
-          <FlightModeSheet
-            status={flightModeStatus}
-            onStartGps={handleStartGpsFly}
-            onStartSim={handleStartSim}
-            onStop={handleStopFlight}
+          <FindDestinationSheet
+            center={activePosition ? { lat: activePosition.lat, lng: activePosition.lng, altFt: activePosition.altFt } : mapCentreForFindDest}
+            homeIcao={settings.homeAirfield || null}
+            aircraftProfile={aircraftProfile}
+            onFlyTo={(lat, lng) => setFindDestFlyTarget({ lat, lng, nonce: Date.now() })}
+            onAddToRoute={(wp) => { addWaypoint(wp); setPlanningMode(true) }}
           />
         </View>
-        {flightModeStatus !== 'off' && waypoints.length >= 2 && (
-          <View style={stackGap}>
-            <LivePlogPanel waypoints={waypoints} activeWpIdx={activeWpIdx} plogData={plogData} />
-          </View>
-        )}
-        {/* Route planning + activate/deactivate + orientation toggle — one
-            continuous vertical column with the buttons above/below, all
-            right-aligned and stacked bottom-right, just above the map's
-            attribution/info icon (mirrors web's toolbar). Previously an
-            inline 3-across row, which stuck out past the single-button
-            column above it and looked misaligned. */}
-        {/* Nested route-tools group (planning/ruler/lock/orientation) --
-            direction must follow the outer stack's orientation too, or it
-            renders as its own little vertical pair even while every other
-            item in the row sits on one horizontal line in landscape. */}
         <View style={[styles.planRow, { flexDirection: isLandscape ? 'row' : 'column', alignItems: isLandscape ? 'center' : 'flex-end' }, stackGap]}>
           <TouchableOpacity
             style={[styles.iconBtn, planningMode && styles.iconBtnActive]}
             onPress={() => setPlanningMode(m => !m)}
           >
-            <MaterialCommunityIcons name="map-marker-path" size={18} color={planningMode ? '#ffffff' : theme.textPrimary} />
+            <MaterialCommunityIcons name="map-marker-path" size={18} color={planningMode ? theme.accentBlue : theme.textPrimary} />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.iconBtn, rulerMode && styles.iconBtnActive]}
             onPress={() => { setRulerMode(m => !m); setRulerPoints([]) }}
           >
-            <MaterialCommunityIcons name="ruler" size={18} color={rulerMode ? '#ffffff' : theme.textPrimary} />
+            <MaterialCommunityIcons name="ruler" size={18} color={rulerMode ? theme.accentBlue : theme.textPrimary} />
           </TouchableOpacity>
           {flightModeStatus !== 'off' && (
             <TouchableOpacity
@@ -1511,18 +1488,8 @@ export function MapScreen() {
               <Ionicons
                 name={routeAdjustMode ? 'lock-open-outline' : 'lock-closed-outline'}
                 size={18}
-                color={routeAdjustMode ? '#ffffff' : theme.textPrimary}
+                color={routeAdjustMode ? theme.accentBlue : theme.textPrimary}
               />
-            </TouchableOpacity>
-          )}
-          {flightModeStatus !== 'off' && (
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => setMapOrientation(o => o === 'north' ? 'track' : 'north')}
-            >
-              <Text style={styles.orientTxt}>
-                {mapOrientation === 'track' ? '↑TRK' : '↑N'}
-              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -1541,13 +1508,45 @@ export function MapScreen() {
             terrainMemoryLocked={terrainMemoryLocked}
           />
         </View>
-        <FindDestinationSheet
-          center={activePosition ? { lat: activePosition.lat, lng: activePosition.lng, altFt: activePosition.altFt } : mapCentreForFindDest}
-          homeIcao={settings.homeAirfield || null}
-          aircraftProfile={aircraftProfile}
-          onFlyTo={(lat, lng) => setFindDestFlyTarget({ lat, lng, nonce: Date.now() })}
-          onAddToRoute={(wp) => { addWaypoint(wp); setPlanningMode(true) }}
-        />
+        {flightModeStatus !== 'off' && (
+          <View style={stackGap}>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => setMapOrientation(o => o === 'north' ? 'track' : 'north')}
+            >
+              <Text style={styles.orientTxt}>
+                {mapOrientation === 'track' ? '↑TRK' : '↑N'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {flightModeStatus !== 'off' && waypoints.length >= 2 && (
+          <View style={stackGap}>
+            <LivePlogPanel waypoints={waypoints} activeWpIdx={activeWpIdx} plogData={plogData} />
+          </View>
+        )}
+        <View style={stackGap}>
+          <FlightModeSheet
+            status={flightModeStatus}
+            onStartGps={handleStartGpsFly}
+            onStartSim={handleStartSim}
+            onStop={handleStopFlight}
+          />
+        </View>
+        <View style={stackGap}>
+          <TouchableOpacity
+            style={[styles.iconBtn, (flightModeStatus !== 'off' ? followGps : locMode === 'passive') && styles.iconBtnActive]}
+            onPress={handleLocate}
+            onLongPress={() => { if (flightModeStatus === 'off') setLocMode('off') }}
+            accessibilityLabel={flightModeStatus !== 'off' ? 'Re-centre on aircraft' : locMode === 'passive' ? 'Centre on my position. Long-press to turn location off.' : 'Show my position'}
+          >
+            <Ionicons
+              name={locMode === 'passive' || flightModeStatus !== 'off' ? 'locate' : 'locate-outline'}
+              size={18}
+              color={(flightModeStatus !== 'off' ? followGps : locMode === 'passive') ? theme.accentBlue : theme.textPrimary}
+            />
+          </TouchableOpacity>
+        </View>
       </ScrollView>
       </View>
 
@@ -1794,8 +1793,9 @@ function makeStyles(theme: ScaledTheme) {
     alignItems:      'center',
     justifyContent:  'center',
   },
+  // Active = blue outline + blue icon on the normal dark fill, matching the
+  // flight-mode and layers buttons (a solid blue fill looked out of place).
   iconBtnActive: {
-    backgroundColor: theme.accentBlue,
     borderColor:     theme.accentBlue,
   },
   orientTxt: {
