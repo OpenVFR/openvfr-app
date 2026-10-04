@@ -182,6 +182,47 @@ export function bandTag(cls: string, type: string, name: string): string {
   return type || cls
 }
 
+/**
+ * Drop a parent area whose sub-sectors already cover it along the route.
+ *
+ * A restricted area split into sectors (ESR121 -> ESR121A + ESR121B) is
+ * published as three polygons with identical limits. Along the route the
+ * parent's span is then fully covered by its children, so its band and chip
+ * add nothing -- except the radio frequency, which is usually only listed on
+ * the parent. That moves to the earliest child that has none.
+ * A parent is kept when its limits differ from a child's or a stretch of it
+ * is not covered by any child.
+ */
+export function mergeCoveredParents<T extends {
+  class: string; tag: string; freq?: string
+  lower_ft: number; upper_ft: number; entryNm: number; exitNm: number
+}>(bands: T[]): T[] {
+  const TOL_NM = 0.15
+  const dropped = new Set<T>()
+  const freqFor = new Map<T, string>()
+  for (const p of bands) {
+    if (p.class !== 'R' && p.class !== 'TRA') continue
+    const kids = bands
+      .filter((c) => c !== p && c.class === p.class && c.lower_ft === p.lower_ft && c.upper_ft === p.upper_ft &&
+        c.tag.length === p.tag.length + 1 && c.tag.startsWith(p.tag) && /^[A-Z]$/.test(c.tag.slice(p.tag.length)))
+      .sort((a, b) => a.entryNm - b.entryNm)
+    if (kids.length === 0) continue
+    let reach = p.entryNm
+    for (const k of kids) {
+      if (k.entryNm <= reach + TOL_NM) reach = Math.max(reach, k.exitNm)
+    }
+    if (reach < p.exitNm - TOL_NM) continue
+    dropped.add(p)
+    if (p.freq) {
+      const target = kids.find((k) => !k.freq && !freqFor.has(k))
+      if (target) freqFor.set(target, p.freq)
+    }
+  }
+  return bands
+    .filter((b) => !dropped.has(b))
+    .map((b) => (freqFor.has(b) ? { ...b, freq: freqFor.get(b) } : b))
+}
+
 function firstFrequency(f: unknown): string | undefined {
   if (!Array.isArray(f) || f.length === 0) return undefined
   const mhz = Number((f[0] as { freq_mhz?: unknown })?.freq_mhz)
@@ -477,6 +518,7 @@ export function buildVirtualRadarProfile(
   }
 
   // Sort by lower altitude so closer-to-ground bands render first (painter's order)
+  airspaceBands.splice(0, airspaceBands.length, ...mergeCoveredParents(airspaceBands))
   airspaceBands.sort((a, b) => a.lower_ft - b.lower_ft)
 
   // ── 5. Obstacle markers within lateral corridor ────────────────────────────
