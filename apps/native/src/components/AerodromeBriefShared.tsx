@@ -19,11 +19,27 @@ export const FR_COLOR: Record<string, string> = {
   VFR: '#22c55e', MVFR: '#3b82f6', IFR: '#ef4444', LIFR: '#a855f7',
 }
 
-export function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** Flight-rule badge colours — tinted fill + bright text, same as web's .frVFR/.frMVFR/... */
+export const FR_BADGE: Record<string, { bg: string; fg: string }> = {
+  VFR:  { bg: 'rgba(34, 197, 94, 0.18)',  fg: '#86efac' },
+  MVFR: { bg: 'rgba(59, 130, 246, 0.18)', fg: '#7dd3fc' },
+  IFR:  { bg: 'rgba(239, 68, 68, 0.18)',  fg: '#fca5a5' },
+  LIFR: { bg: 'rgba(168, 85, 247, 0.18)', fg: '#c084fc' },
+}
+
+/** `header` renders inline right of the title (badge, timestamp...). `title` may be omitted when the surrounding tab already names the section. */
+export function Section({ title, header, children }: { title?: string; header?: React.ReactNode; children: React.ReactNode }) {
   const sectionStyles = useThemedStyles(makeSectionStyles)
   return (
     <View style={sectionStyles.container}>
-      <Text style={sectionStyles.title}>{title.toUpperCase()}</Text>
+      {header ? (
+        <View style={sectionStyles.headerRow}>
+          {title ? <Text style={[sectionStyles.title, sectionStyles.titleInRow]}>{title.toUpperCase()}</Text> : null}
+          {header}
+        </View>
+      ) : title ? (
+        <Text style={sectionStyles.title}>{title.toUpperCase()}</Text>
+      ) : null}
       {children}
     </View>
   )
@@ -34,6 +50,15 @@ function makeSectionStyles(theme: ScaledTheme) {
   container: {
     marginTop: theme.space2,
     gap:       2,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems:    'center',
+    gap:           theme.space2,
+    marginBottom:  theme.space2,
+  },
+  titleInRow: {
+    marginBottom: 0,
   },
   title: {
     color:         theme.textSecondary,

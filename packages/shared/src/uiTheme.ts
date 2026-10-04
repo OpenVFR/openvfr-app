@@ -6,7 +6,8 @@
  * values from here so 'dark' | 'light' | 'high-contrast' look equivalent on
  * both platforms. Web's CSS file has additional fine-grained tokens (alert
  * cards, status boxes, input fields, terrain bands, tints) that have no
- * native equivalent yet — those stay CSS-only. If you add a new colour to
+ * native equivalent yet — those stay CSS-only (status boxes + the bright-blue
+ * accent + selected-pill tint have since moved here; see below). If you add a new colour to
  * one of the CSS theme blocks that native also needs, add it here first and
  * consume it from both sides, don't hardcode a duplicate.
  *
@@ -49,6 +50,25 @@ export type UiThemeTokens = {
   statusWarn:   string
   statusDanger: string
   statusInfo:   string
+
+  // Status boxes — tinted background + border + text, used for the weather
+  // tiles and info banners (same values as web's --status-box-* tokens).
+  statusBoxOkBg:     string
+  statusBoxOkBorder: string
+  statusBoxOkText:   string
+  statusBoxWarnBg:     string
+  statusBoxWarnBorder: string
+  statusBoxWarnText:   string
+  statusBoxDangerBg:     string
+  statusBoxDangerBorder: string
+  statusBoxDangerText:   string
+  statusBoxInfoBg:     string
+  statusBoxInfoBorder: string
+  statusBoxInfoText:   string
+
+  // Brighter accent blue + selected-pill tint (web's --accent-blue-bright / --tint-blue-mid).
+  accentBlueBright: string
+  tintBlueMid:      string
 }
 
 export const UI_THEME_TOKENS: Record<ThemeName, UiThemeTokens> = {
@@ -80,6 +100,22 @@ export const UI_THEME_TOKENS: Record<ThemeName, UiThemeTokens> = {
     statusWarn:   '#facc15',
     statusDanger: '#fca5a5',
     statusInfo:   '#93c5fd',
+
+    statusBoxOkBg:     'rgba(34, 197, 94, 0.14)',
+    statusBoxOkBorder: 'rgba(34, 197, 94, 0.35)',
+    statusBoxOkText:   'rgba(134, 239, 172, 0.90)',
+    statusBoxWarnBg:     'rgba(234, 179, 8, 0.12)',
+    statusBoxWarnBorder: 'rgba(234, 179, 8, 0.35)',
+    statusBoxWarnText:   'rgba(253, 224, 71, 0.90)',
+    statusBoxDangerBg:     'rgba(239, 68, 68, 0.15)',
+    statusBoxDangerBorder: 'rgba(239, 68, 68, 0.35)',
+    statusBoxDangerText:   'rgba(252, 165, 165, 0.90)',
+    statusBoxInfoBg:     'rgba(59, 130, 246, 0.14)',
+    statusBoxInfoBorder: 'rgba(59, 130, 246, 0.35)',
+    statusBoxInfoText:   'rgba(147, 197, 253, 0.90)',
+
+    accentBlueBright: '#7dd3fc',
+    tintBlueMid:      'rgba(147, 197, 253, 0.18)',
   },
 
   'high-contrast': {
@@ -110,6 +146,22 @@ export const UI_THEME_TOKENS: Record<ThemeName, UiThemeTokens> = {
     statusWarn:   '#ffe066',
     statusDanger: '#ffbbbb',
     statusInfo:   '#bae0ff',
+
+    statusBoxOkBg:     'rgba(34, 197, 94, 0.18)',
+    statusBoxOkBorder: 'rgba(34, 197, 94, 0.55)',
+    statusBoxOkText:   '#a7f3c0',
+    statusBoxWarnBg:     'rgba(234, 179, 8, 0.18)',
+    statusBoxWarnBorder: 'rgba(234, 179, 8, 0.55)',
+    statusBoxWarnText:   '#ffe066',
+    statusBoxDangerBg:     'rgba(239, 68, 68, 0.20)',
+    statusBoxDangerBorder: 'rgba(239, 68, 68, 0.55)',
+    statusBoxDangerText:   '#ffbbbb',
+    statusBoxInfoBg:     'rgba(59, 130, 246, 0.20)',
+    statusBoxInfoBorder: 'rgba(59, 130, 246, 0.55)',
+    statusBoxInfoText:   '#bae0ff',
+
+    accentBlueBright: '#93d4ff',
+    tintBlueMid:      'rgba(147, 197, 253, 0.25)',
   },
 
   light: {
@@ -140,5 +192,21 @@ export const UI_THEME_TOKENS: Record<ThemeName, UiThemeTokens> = {
     statusWarn:   '#ca8a04',
     statusDanger: '#dc2626',
     statusInfo:   '#2563eb',
+
+    statusBoxOkBg:     'rgba(22, 163, 74, 0.10)',
+    statusBoxOkBorder: 'rgba(22, 163, 74, 0.30)',
+    statusBoxOkText:   '#166534',
+    statusBoxWarnBg:     'rgba(161, 98, 7, 0.10)',
+    statusBoxWarnBorder: 'rgba(161, 98, 7, 0.30)',
+    statusBoxWarnText:   '#92400e',
+    statusBoxDangerBg:     'rgba(220, 38, 38, 0.10)',
+    statusBoxDangerBorder: 'rgba(220, 38, 38, 0.30)',
+    statusBoxDangerText:   '#b91c1c',
+    statusBoxInfoBg:     'rgba(37, 99, 235, 0.08)',
+    statusBoxInfoBorder: 'rgba(37, 99, 235, 0.28)',
+    statusBoxInfoText:   '#1d4ed8',
+
+    accentBlueBright: '#0ea5e9',
+    tintBlueMid:      'rgba(37, 99, 235, 0.15)',
   },
 }

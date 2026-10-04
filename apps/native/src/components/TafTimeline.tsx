@@ -190,7 +190,7 @@ function makeStyles(theme: ScaledTheme) {
     borderRightColor: theme.borderStrong,
   },
   cellTxt: {
-    fontSize: 13,
+    fontSize: 10,
     fontWeight: '700',
     textAlign: 'center',
   },
@@ -201,7 +201,7 @@ function makeStyles(theme: ScaledTheme) {
     color: theme.textSecondary,
   },
   timeHour: {
-    fontSize: 13,
+    fontSize: 10,
     fontWeight: '800',
     color: theme.textPrimary,
   },
@@ -211,7 +211,7 @@ function makeStyles(theme: ScaledTheme) {
     paddingVertical: 2,
   },
   frPillTxt: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.5,
   },

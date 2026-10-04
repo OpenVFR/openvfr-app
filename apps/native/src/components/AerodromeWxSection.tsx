@@ -30,8 +30,9 @@ import { visTone, ceilingTone, windTone, fmtVis, fmtWind, fmtObsAge, metarNarrat
 import { parseMetarClouds } from '@open-vfr/shared/fetchWx'
 import { deriveWxDisplay } from '../utils/deriveWxDisplay'
 import { computeRunwayWind } from '@open-vfr/shared/runwayWind'
-import { Section, TONE_COLOR, FR_COLOR } from './AerodromeBriefShared'
+import { Section, FR_BADGE } from './AerodromeBriefShared'
 import { WindCompassGauge, WindSpeedGauge } from './WindGauges'
+import Svg, { Path } from 'react-native-svg'
 import CloudProfile from './CloudProfile'
 import TafTimeline from './TafTimeline'
 
@@ -152,10 +153,33 @@ export default function AerodromeWxSection({ icao, lat, lng, elevationFt, runway
     </View>
   )
 
+  // Wind tile arrow (same as web): points where the wind blows TO.
+  const windArrowDeg = effectiveWind && !effectiveWind.calm && effectiveWind.dirDeg != null ? effectiveWind.dirDeg + 180 : null
+
+  // Header row: flight-rule badge + obs time/age right-aligned (METAR), or
+  // "Modelled · now" (Weather station) — same layout as web's .wxHeader.
+  const wxHeader = wxSource === 'metar' && metar ? (
+    <>
+      {metar.flightRule && FR_BADGE[metar.flightRule] && (
+        <View style={[wxStyles.frBadge, { backgroundColor: FR_BADGE[metar.flightRule].bg }]}>
+          <Text style={[wxStyles.frTxt, { color: FR_BADGE[metar.flightRule].fg }]}>{metar.flightRule}</Text>
+        </View>
+      )}
+      {(metar.time || fmtObsAge(metar.obsMs)) && (
+        <Text style={wxStyles.wxTime}>
+          {metar.time ?? ''}{fmtObsAge(metar.obsMs) ? `${metar.time ? ' · ' : ''}${fmtObsAge(metar.obsMs)}` : ''}
+        </Text>
+      )}
+    </>
+  ) : wxSource === 'station' ? (
+    <Text style={wxStyles.wxTime}>Modelled · now</Text>
+  ) : undefined
+
   return (
     <>
       {/* Weather */}
-      <Section title="Weather">
+      {/* No title: the popup's own "Weather" tab already names this section. */}
+      <Section header={wxHeader}>
         {wxLoading && <ActivityIndicator size="small" color={theme.accentBlue} />}
 
         {/* METAR / Weather station toggle -- always both offered. METAR is
@@ -191,27 +215,16 @@ export default function AerodromeWxSection({ icao, lat, lng, elevationFt, runway
                 station tab is for; this banner just tells the pilot how
                 far away the shown report actually is. */}
             {usingFallbackWx && wx && (
-              <Text style={wxStyles.fallback}>
-                Showing {wx.sourceIcao}{wxSourceName ? ` (${wxSourceName})` : ''}
-                {wx.distNm != null ? `, ${Math.round(wx.distNm)} NM away` : ''} — not {icao}'s own report
-              </Text>
+              <View style={wxStyles.fallbackBox}>
+                <Text style={wxStyles.fallback}>
+                  Showing <Text style={wxStyles.fallbackStrong}>{wx.sourceIcao}</Text>{wxSourceName ? ` (${wxSourceName})` : ''}
+                  {wx.distNm != null ? `, ${Math.round(wx.distNm)} NM away` : ''} — not {icao}'s own report
+                </Text>
+              </View>
             )}
 
             {metar && (
               <>
-                {metar.flightRule && (
-                  <View style={[styles.frBadge, { borderColor: FR_COLOR[metar.flightRule] }]}>
-                    <Text style={[styles.frTxt, { color: FR_COLOR[metar.flightRule] }]}>
-                      {metar.flightRule}
-                      {(metar.time || fmtObsAge(metar.obsMs)) && (
-                        <Text style={styles.frUpdated}>
-                          {metar.time ? `  ${metar.time}` : ''}{fmtObsAge(metar.obsMs) ? `  ·  ${fmtObsAge(metar.obsMs)}` : ''}
-                        </Text>
-                      )}
-                    </Text>
-                  </View>
-                )}
-
                 {runwayPicker}
 
                 <View style={wxStyles.gaugeRow}>
@@ -225,12 +238,12 @@ export default function AerodromeWxSection({ icao, lat, lng, elevationFt, runway
                 </View>
 
                 <View style={wxStyles.tileGrid}>
-                  <WxTile label="Wind" value={fmtWind(effectiveWind)} color={TONE_COLOR[windTone(effectiveWind)]} />
-                  <WxTile label="Visibility" value={fmtVis(metar.visM)} color={TONE_COLOR[visTone(metar.visM)]} />
-                  <WxTile label="Ceiling" value={metar.ceilingFt != null ? `${metar.ceilingFt.toLocaleString()} ft` : metar.clouds === 'CAVOK' ? 'CAVOK' : 'No ceiling'} color={TONE_COLOR[ceilingTone(metar.ceilingFt)]} />
-                  <WxTile label="QNH" value={metar.qnh ? metar.qnh.slice(1) : '—'} color={theme.textSecondary} />
-                  {metar.temp && <WxTile label="T / Td" value={`${metar.temp.replace('/', ' / ')}°C`} color={theme.textSecondary} />}
-                  {metar.wx && <WxTile label="Wx" value={metar.wx} color={theme.statusWarn} />}
+                  <WxTile label="Wind" value={fmtWind(effectiveWind)} tone={windTone(effectiveWind)} arrowDeg={windArrowDeg} />
+                  <WxTile label="Visibility" value={fmtVis(metar.visM)} tone={visTone(metar.visM)} />
+                  <WxTile label="Ceiling" value={metar.ceilingFt != null ? `${metar.ceilingFt.toLocaleString()} ft` : metar.clouds === 'CAVOK' ? 'CAVOK' : 'No ceiling'} tone={ceilingTone(metar.ceilingFt)} />
+                  <WxTile label="QNH" value={metar.qnh ? metar.qnh.slice(1) : '—'} tone="info" />
+                  {metar.temp && <WxTile label="T / Td" value={`${metar.temp.replace('/', ' / ')}°C`} tone="info" />}
+                  {metar.wx && <WxTile label="Wx" value={metar.wx} tone="warn" />}
                 </View>
 
                 {metar.clouds && metar.clouds !== 'CAVOK' && (
@@ -285,9 +298,12 @@ export default function AerodromeWxSection({ icao, lat, lng, elevationFt, runway
 
             {ambientWx && (
               <>
-                <Text style={wxStyles.fallback}>
-                  Modelled (Open-Meteo forecast) at {icao}'s own coordinates — not an observed report.
-                </Text>
+                <View style={wxStyles.fallbackBox}>
+                  <Text style={wxStyles.fallback}>
+                    Modelled (Open-Meteo forecast)
+                    {ambientWx.gridDistNm != null ? `, grid point ${fmtGridDist(ambientWx.gridDistNm)} from ${icao}` : ` at ${icao}'s coordinates`} — not an observed report.
+                  </Text>
+                </View>
 
                 {runwayPicker}
 
@@ -302,11 +318,11 @@ export default function AerodromeWxSection({ icao, lat, lng, elevationFt, runway
                 </View>
 
                 <View style={wxStyles.tileGrid}>
-                  <WxTile label={`Wind${windIsModelled ? ' (modelled)' : ''}`} value={fmtWind(effectiveWind)} color={TONE_COLOR[windTone(effectiveWind)]} />
-                  {ambientWx.tempC != null && <WxTile label="Temp" value={`${ambientWx.tempC}°C`} color={theme.textSecondary} />}
-                  {ambientWx.cloudPct != null && <WxTile label="Cloud cover" value={`${ambientWx.cloudPct}%`} color={theme.textSecondary} />}
-                  {ambientWx.pressureHpa != null && <WxTile label="Surface pressure" value={`${ambientWx.pressureHpa} hPa`} color={theme.textSecondary} />}
-                  {ambientWx.precipMm != null && ambientWx.precipMm > 0 && <WxTile label="Precip" value={`${ambientWx.precipMm} mm`} color={theme.statusWarn} />}
+                  <WxTile label={`Wind${windIsModelled ? ' (modelled)' : ''}`} value={fmtWind(effectiveWind)} tone={windTone(effectiveWind)} arrowDeg={windArrowDeg} />
+                  {ambientWx.tempC != null && <WxTile label="Temp" value={`${ambientWx.tempC}°C`} tone="info" />}
+                  {ambientWx.cloudPct != null && <WxTile label="Cloud cover" value={`${ambientWx.cloudPct}%`} tone="info" />}
+                  {ambientWx.pressureHpa != null && <WxTile label="Surface pressure" value={`${ambientWx.pressureHpa} hPa`} tone="info" />}
+                  {ambientWx.precipMm != null && ambientWx.precipMm > 0 && <WxTile label="Precip" value={`${ambientWx.precipMm} mm`} tone="warn" />}
                 </View>
               </>
             )}
@@ -353,12 +369,34 @@ export default function AerodromeWxSection({ icao, lat, lng, elevationFt, runway
   )
 }
 
-function WxTile({ label, value, color }: { label: string; value: string; color: string }) {
+const TONE_BOX = {
+  ok:     { bg: 'statusBoxOkBg',     border: 'statusBoxOkBorder',     text: 'statusBoxOkText' },
+  warn:   { bg: 'statusBoxWarnBg',   border: 'statusBoxWarnBorder',   text: 'statusBoxWarnText' },
+  danger: { bg: 'statusBoxDangerBg', border: 'statusBoxDangerBorder', text: 'statusBoxDangerText' },
+  info:   { bg: 'statusBoxInfoBg',   border: 'statusBoxInfoBorder',   text: 'statusBoxInfoText' },
+} as const
+
+/** Tone-tinted metric box (bg + border + text) — same look as web's .wxTile. */
+/** "<1 NM" / "3 NM" — model grid points are a few km from the aerodrome. */
+function fmtGridDist(nm: number): string {
+  return nm < 1 ? '<1 NM' : `${Math.round(nm)} NM`
+}
+
+function WxTile({ label, value, tone, arrowDeg }: { label: string; value: string; tone: keyof typeof TONE_BOX; arrowDeg?: number | null }) {
   const wxStyles = useThemedStyles(makeWxStyles)
+  const t = TONE_BOX[tone]
+  const color = theme[t.text]
   return (
-    <View style={wxStyles.tile}>
-      <Text style={wxStyles.tileLabel}>{label}</Text>
-      <Text style={[wxStyles.tileValue, { color }]}>{value}</Text>
+    <View style={[wxStyles.tile, { backgroundColor: theme[t.bg], borderColor: theme[t.border] }]}>
+      <Text style={[wxStyles.tileLabel, { color }]}>{label}</Text>
+      <View style={wxStyles.tileValueRow}>
+        {arrowDeg != null && (
+          <Svg viewBox="0 0 24 24" style={[wxStyles.tileArrow, { transform: [{ rotate: `${arrowDeg % 360}deg` }] }]}>
+            <Path d="M12 2 L18 14 L12 10.5 L6 14 Z" fill={color} />
+          </Svg>
+        )}
+        <Text style={[wxStyles.tileValue, { color }, { flexShrink: 1 }]}>{value}</Text>
+      </View>
     </View>
   )
 }
@@ -370,60 +408,70 @@ function makeStyles(theme: ScaledTheme) {
     fontSize: theme.textSm,
     fontStyle: 'italic',
   },
-  frBadge: {
-    alignSelf:       'flex-start',
-    borderWidth:     1,
-    borderRadius:    theme.radiusSm,
-    paddingHorizontal: theme.space2,
-    paddingVertical:   2,
-    marginBottom:    theme.space2,
-  },
-  frTxt: {
-    fontSize:   theme.textSm,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  frUpdated: {
-    color:      theme.textFaint,
-    fontSize:   theme.textXs,
-    fontWeight: '500',
-  },
   rawMetar: {
     color:      theme.textSecondary,
-    fontSize:   12,
+    fontSize:   theme.scale(10),
     marginTop:  theme.space2,
     fontFamily: 'monospace',
-    lineHeight: 17,
+    lineHeight: theme.scale(14),
   },
   tafToggle: {
     marginTop: theme.space2,
   },
   tafToggleTxt: {
     color:    theme.accentBlue,
-    fontSize: theme.textMd,
+    fontSize: theme.textSm,
     fontWeight: '700',
   },
   tafText: {
     color:      theme.textSecondary,
-    fontSize:   12,
+    fontSize:   theme.scale(9),
     marginTop:  theme.space1,
     fontFamily: 'monospace',
-    lineHeight: 17,
+    lineHeight: theme.scale(13),
   },
 } as const
 }
 
 function makeWxStyles(theme: ScaledTheme) {
  return {
+  frBadge: {
+    borderRadius:      3,
+    paddingHorizontal: 5,
+    paddingVertical:   1,
+  },
+  frTxt: {
+    fontSize:      theme.scale(10),
+    fontWeight:    '700',
+    letterSpacing: 0.8,
+  },
+  wxTime: {
+    marginLeft:  'auto',
+    color:       theme.textFaint,
+    fontSize:    theme.textXs,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+  },
+  fallbackBox: {
+    backgroundColor:   theme.statusBoxInfoBg,
+    borderColor:       theme.statusBoxInfoBorder,
+    borderWidth:       1,
+    borderRadius:      5,
+    paddingHorizontal: theme.space2,
+    paddingVertical:   5,
+    marginBottom:      theme.space2,
+  },
   fallback: {
-    color:    theme.accentBlue,
-    fontSize: theme.textSm,
-    fontWeight: '600',
-    marginBottom: theme.space2,
+    color:      theme.statusBoxInfoText,
+    fontSize:   theme.textSm,
+    lineHeight: theme.textSm * 1.5,
+  },
+  fallbackStrong: {
+    fontWeight: '700',
   },
   gaugeRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'center',
+    gap: 18,
     marginVertical: theme.space2,
   },
   modelledNote: {
@@ -434,24 +482,27 @@ function makeWxStyles(theme: ScaledTheme) {
   },
   rwyPicker: {
     flexDirection: 'row',
-    gap: 8,
+    justifyContent: 'center',
+    gap: 4,
     marginBottom: theme.space2,
   },
   rwyPickerBtn: {
-    borderWidth: 1.5,
-    borderColor: theme.borderStrong,
+    backgroundColor: theme.surfaceHover,
+    borderWidth: 1,
+    borderColor: theme.borderDefault,
     borderRadius: theme.radiusSm,
-    paddingHorizontal: theme.space3,
-    paddingVertical: 5,
+    paddingHorizontal: theme.space2,
+    paddingVertical: 3,
   },
   rwyPickerBtnActive: {
-    backgroundColor: theme.accentBlue,
+    backgroundColor: theme.tintBlueMid,
     borderColor: theme.accentBlue,
   },
   rwyPickerTxt: {
-    color: theme.textSecondary,
-    fontSize: theme.textMd,
-    fontWeight: '700',
+    color: theme.textMuted,
+    fontSize: theme.textXs,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
   // Wind-only "suitable" cue -- applied to the nested per-end <Text> only
   // (see runwayPicker's own doc comment), never the whole pill/border.
@@ -459,45 +510,55 @@ function makeWxStyles(theme: ScaledTheme) {
     color: theme.accentGreen,
   },
   rwyPickerTxtActive: {
-    color: '#fff',
+    color: theme.accentBlueBright,
   },
   // METAR/Weather-station toggle modifiers -- "Weather station" is much
   // longer than a 2-3 char runway designator, so it needs a smaller font
   // and tighter padding than the runway picker's own buttons (rwyPickerBtn/
   // rwyPickerTxt) to avoid an oversized pill.
   wxSourceBtn: {
-    paddingHorizontal: theme.space2,
-    paddingVertical: 4,
+    paddingHorizontal: 7,
   },
   wxSourceTxt: {
-    color: theme.textSecondary,
-    fontSize: theme.textSm,
-    fontWeight: '700',
+    color: theme.textMuted,
+    fontSize: theme.scale(9),
+    fontWeight: '600',
   },
   tileGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
     marginBottom: theme.space2,
   },
+  // 3 per row, equal width (web: auto-fit minmax(84px, 1fr)).
   tile: {
-    minWidth: 92,
-    backgroundColor: theme.surfaceHover,
-    borderRadius: theme.radiusSm,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    width: '32%',
+    gap: 2,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
   tileLabel: {
-    color: theme.textSecondary,
-    fontSize: theme.textXs,
+    fontSize: theme.scale(9),
     fontWeight: '700',
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    opacity: 0.75,
+  },
+  tileValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  tileArrow: {
+    width: theme.scale(12),
+    height: theme.scale(12),
   },
   tileValue: {
     fontSize: theme.textMd,
-    fontWeight: '800',
-    marginTop: 3,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   narrative: {
     color: theme.textSecondary,
@@ -514,7 +575,7 @@ function makeWxStyles(theme: ScaledTheme) {
   },
   tafPeriodsLabel: {
     color: theme.textSecondary,
-    fontSize: theme.textXs,
+    fontSize: theme.scale(9),
     fontWeight: '700',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
@@ -530,16 +591,16 @@ function makeWxStyles(theme: ScaledTheme) {
   },
   tafPeriodKind: {
     color: theme.accentBlue,
-    fontSize: theme.textSm,
+    fontSize: theme.scale(9),
     fontWeight: '700',
   },
   tafPeriodTime: {
-    color: theme.textSecondary,
-    fontSize: theme.textXs,
+    color: theme.textFaint,
+    fontSize: theme.scale(9),
   },
   tafPeriodBody: {
-    color: theme.textPrimary,
-    fontSize: theme.textSm,
+    color: theme.textSecondary,
+    fontSize: theme.scale(10),
     marginTop: 3,
   },
 } as const

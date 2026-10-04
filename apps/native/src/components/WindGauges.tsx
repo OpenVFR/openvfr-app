@@ -12,9 +12,19 @@
  */
 
 import Svg, { Circle, Line, Text as SvgText, Path, Polygon, Rect, G } from 'react-native-svg'
-import { View, Text } from 'react-native'
+import { View, Text, useWindowDimensions } from 'react-native'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import type { ParsedWind } from '@open-vfr/shared/fetchWx'
+
+/**
+ * Gauge pixel size: two gauges sit side by side, so each takes half the
+ * window width minus the sheet's horizontal padding and the inter-gauge gap.
+ * Capped so tablets/landscape don't produce giant dials.
+ */
+function useGaugeSize(): number {
+  const { width } = useWindowDimensions()
+  return Math.max(120, Math.min(300, Math.floor((width - 48) / 2)))
+}
 
 // ── Geometry helpers (identical to web's WindGauges.tsx) ──────────────────
 function pt(cx: number, cy: number, r: number, angleDeg: number): { x: number; y: number } {
@@ -70,6 +80,7 @@ const RWY_CENTERLINE_INSET = RWY_LEN * 0.18
 
 export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: CompassProps) {
   const styles = useThemedStyles(makeStyles)
+  const gaugeSize = useGaugeSize()
   const ticks = []
   for (let a = 0; a < 360; a += 30) {
     const p1 = pt(CX, CY, R_TICK_OUT, a)
@@ -91,7 +102,7 @@ export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: C
 
   return (
     <View style={styles.compassWrap}>
-      <Svg viewBox="0 0 100 100" style={styles.compassSvg}>
+      <Svg viewBox="0 0 100 100" style={[styles.compassSvg, { width: gaugeSize, height: gaugeSize }]}>
         <Circle cx={CX} cy={CY} r={R_DIAL} fill={theme.surfaceHover} stroke={theme.textMuted} strokeWidth={1.5} />
         {ticks}
         {cardinals.map(([label, a]) => {
@@ -229,6 +240,7 @@ const SPEED_LABEL_R       = 25
 
 export function WindSpeedGauge({ wind, tone, maxKt = 45 }: SpeedDialProps) {
   const styles = useThemedStyles(makeStyles)
+  const gaugeSize = useGaugeSize()
   const speedKt = wind && !wind.calm ? wind.speedKt : 0
   const gustKt  = wind?.gustKt ?? null
   const needleAngle = speedAngle(speedKt, maxKt)
@@ -240,7 +252,7 @@ export function WindSpeedGauge({ wind, tone, maxKt = 45 }: SpeedDialProps) {
 
   return (
     <View style={styles.compassWrap}>
-      <Svg viewBox="0 0 100 100" style={styles.compassSvg}>
+      <Svg viewBox="0 0 100 100" style={[styles.compassSvg, { width: gaugeSize, height: gaugeSize }]}>
         <Path d={arcPath(CX, CY, R_DIAL, SWEEP_START, SWEEP_START + SWEEP_DEG)} stroke={theme.borderStrong} strokeWidth={7} strokeLinecap="round" fill="none" />
         <Path d={arcPath(CX, CY, R_DIAL, SWEEP_START, needleAngle)} stroke={progressColor} strokeWidth={7} strokeLinecap="round" fill="none" />
         {gustAngle != null && (
