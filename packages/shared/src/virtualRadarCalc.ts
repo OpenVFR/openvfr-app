@@ -176,9 +176,9 @@ function airspaceColours(cls: string, type: string): ClassColours {
 
 /** Short chip tag: ICAO class letter for controlled airspace, the designator
  *  (first word of the name) for restricted/danger/TRA, else the type. */
-function bandTag(cls: string, type: string, name: string): string {
+export function bandTag(cls: string, type: string, name: string): string {
   if ((CONTROLLED_CLASSES as readonly string[]).includes(cls)) return cls
-  if (cls === 'R' || cls === 'TRA') return name.split(/s+/)[0] || cls
+  if (cls === 'R' || cls === 'TRA') return name.trim().split(/\s+/)[0] || cls
   return type || cls
 }
 
