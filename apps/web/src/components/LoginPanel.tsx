@@ -8,7 +8,21 @@
 
 import { useState, useEffect, useRef } from 'react'
 import type { AuthState } from '../hooks/useAuth'
+import { SITE_BASE_URL } from '../utils/env'
 import styles from './LoginPanel.module.css'
+
+/** WebAuthn available in this browser (hides the passkey option when not). */
+const PASSKEY_SUPPORTED = typeof window !== 'undefined' && 'PublicKeyCredential' in window
+
+/** Map raw auth/network errors to short, actionable text. */
+function friendlyError(raw: string, fallback: string): string {
+  const m = raw.toLowerCase()
+  if (/failed to fetch|network|timed? ?out|offline/.test(m))
+    return 'No connection. Check your internet and try again.'
+  if (/invalid|incorrect|expired/.test(m)) return 'That code is invalid or has expired. Request a new one.'
+  if (/too many|rate/.test(m)) return 'Too many attempts. Wait a minute and try again.'
+  return raw || fallback
+}
 
 interface Props {
   auth: AuthState
@@ -49,9 +63,10 @@ export default function LoginPanel({ auth }: Props) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Passkey sign-in failed'
       if (msg === 'NO_PASSKEY') {
-        setStatus('No passkey found on this device — sign in with email instead.', false)
+        // Browsers report "cancelled" and "no credential" identically by design.
+        setStatus('No passkey used — continue with email instead.', false)
       } else {
-        setStatus(msg, false)
+        setStatus(friendlyError(msg, 'Passkey sign-in failed'), false)
       }
     } finally {
       setBusy(false)
@@ -71,7 +86,7 @@ export default function LoginPanel({ auth }: Props) {
       setStep('otp')
       setStatus('Code sent — check your inbox', true)
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : 'Failed to send code', false)
+      setStatus(friendlyError(err instanceof Error ? err.message : '', 'Failed to send code'), false)
     } finally {
       setBusy(false)
     }
@@ -94,7 +109,7 @@ export default function LoginPanel({ auth }: Props) {
     try {
       await auth.signInOtp(email.trim(), code)
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : 'Invalid code', false)
+      setStatus(friendlyError(err instanceof Error ? err.message : '', 'Invalid code'), false)
     } finally {
       setBusy(false)
     }
@@ -128,7 +143,7 @@ export default function LoginPanel({ auth }: Props) {
       <div className={styles.panel}>
         {/* Logo / title */}
         <div className={styles.logo}>
-          <img src="/pwa-192x192.png" alt="" className={styles.logoImg} width={72} height={72} />
+          <img src="/pwa-512x512.png" alt="" className={styles.logoImg} width={512} height={512} />
           <h1>OpenVFR</h1>
           <p>European VFR Electronic Flight Bag</p>
         </div>
@@ -161,24 +176,35 @@ export default function LoginPanel({ auth }: Props) {
           </div>
         ) : (
           <>
-        {/* Passkey — primary */}
-        <button
-          className={styles.btnPrimary}
-          onClick={() => void handlePasskey()}
-          disabled={busy}
-        >
-          Sign in with passkey
-        </button>
+        {PASSKEY_SUPPORTED && (
+          <>
+            {/* Passkey — primary */}
+            <div className={styles.passkeyBlock}>
+              <button
+                className={styles.btnOutline}
+                onClick={() => void handlePasskey()}
+                disabled={busy}
+              >
+                <svg className={styles.keyIcon} viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="currentColor" d="M7 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm5.65-4A6 6 0 1 0 12.65 14H17v4h4v-4h2v-4H12.65Z" />
+                </svg>
+                Sign in with passkey
+              </button>
+              <p className={styles.passkeyHint}>Uses your device biometrics or PIN — no password needed.</p>
+            </div>
 
-        <div className={styles.divider}>or</div>
+            <div className={styles.divider}>OR</div>
+          </>
+        )}
 
         {/* Email OTP — fallback, two steps */}
         {step === 'email' ? (
-          <div className={styles.emailRow}>
+          <div className={styles.emailStack}>
             <input
               className={styles.emailInput}
               type="email"
-              placeholder="pilot@example.com"
+              placeholder="Email address"
+              aria-label="Email address"
               autoComplete="username webauthn"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -186,11 +212,11 @@ export default function LoginPanel({ auth }: Props) {
               disabled={busy}
             />
             <button
-              className={styles.btnSecondary}
+              className={styles.btnOutline}
               onClick={() => void handleSendOtp()}
               disabled={busy || !email.trim()}
             >
-              Send code
+              Continue with email
             </button>
           </div>
         ) : (
@@ -231,6 +257,14 @@ export default function LoginPanel({ auth }: Props) {
             >
               ← Use a different email
             </button>
+            <button
+              className={styles.backLink}
+              onClick={() => void handleSendOtp()}
+              type="button"
+              disabled={busy}
+            >
+              Resend code
+            </button>
           </div>
         )}
 
@@ -246,6 +280,14 @@ export default function LoginPanel({ auth }: Props) {
           <p className={styles.hint}>
             Sign in once — your routes, aircraft, and settings sync across all your devices.
           </p>
+        )}
+
+        {SITE_BASE_URL && (
+          <nav className={styles.footer} aria-label="Legal">
+            <a href={`${SITE_BASE_URL}/privacy`} target="_blank" rel="noopener noreferrer">Privacy</a>
+            <span aria-hidden="true">·</span>
+            <a href={`${SITE_BASE_URL}/terms`} target="_blank" rel="noopener noreferrer">Terms &amp; Disclaimer</a>
+          </nav>
         )}
       </div>
     </div>

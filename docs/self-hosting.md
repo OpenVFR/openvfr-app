@@ -174,6 +174,9 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
 - You can deploy the frontend, API, and tile storage as one origin
   (simplest) or three separate origins (see `apps/web/src/utils/env.ts`'s
   `VITE_API_BASE_URL`/`VITE_TILES_BASE_URL`) — both are supported.
+- To show Privacy / Terms links on the sign-in screen, set
+  `VITE_SITE_BASE_URL` (web) and `EXPO_PUBLIC_SITE_BASE` (native) to the
+  origin of a site serving `/privacy` and `/terms`. Unset hides the links.
 - `docker/nginx.conf` is a working reference reverse-proxy config for the
   single-origin case (proxies `/api/auth`, `/rest`, `/api/weather`,
   `/api/notam` to the API service; serves `/tiles/*` and hashed JS/CSS

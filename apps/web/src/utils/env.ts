@@ -18,3 +18,8 @@ export const API_BASE_URL: string = (import.meta.env.VITE_API_BASE_URL as string
 // root, no /tiles/ prefix — see docs/self-hosting.md) in production if you
 // serve bulk tile data separately from the app itself.
 export const TILES_BASE_URL: string = (import.meta.env.VITE_TILES_BASE_URL as string | undefined) ?? '/tiles'
+
+// SITE_BASE_URL — optional public site origin serving /privacy and /terms,
+// linked from the sign-in panel footer. Empty (default) hides those links.
+export const SITE_BASE_URL: string =
+  ((import.meta.env.VITE_SITE_BASE_URL as string | undefined) ?? '').replace(/\/+$/, '')
