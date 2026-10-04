@@ -104,6 +104,7 @@ import { useSimFlight }      from '../hooks/useSimFlight'
 import { FlightModeSheet, type FlightModeStatus } from '../components/FlightModeSheet'
 import { SimControlPanel }   from '../components/SimControlPanel'
 import { advancePosition, distanceNm, bearingDeg } from '../utils/routeCalc'
+import { createValueStore } from '../utils/valueStore'
 import type { RouteWaypoint } from '../types/db'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { isLowMemoryDevice } from '../utils/deviceMemory'
@@ -427,7 +428,11 @@ export function MapScreen() {
 
   const [profileHeight, setProfileHeight] = useState(DEFAULT_CHART_H)
   // Chart-scrub → map crosshair sync (VerticalProfile/PastTrackChart touch-drag)
-  const [profileCursorNm, setProfileCursorNm] = useState<number | null>(null)
+  // Map-side marker for a chart scrub, as [lng, lat]. Kept in a store, not
+  // state: it changes several times a second while a chart is dragged, and
+  // as MapScreen state every change re-rendered the whole screen. Only
+  // AviationMap's cursor layer subscribes.
+  const profileCursorStore = useMemo(() => createValueStore<[number, number] | null>(null), [])
   // Estimated combined height of the bottom stack (VerticalProfile header +
   // drag handle + chart, plus GaugesBar) — used to offset other floating
   // buttons that used to assume the screen bottom was empty.
@@ -1092,30 +1097,34 @@ export function MapScreen() {
     [selectedTrack],
   )
 
-  // Map-side crosshair marker position for the current chart-scrub distance
-  // (profileCursorNm) — sourced from whichever mode is active: viewed past
-  // log takes priority (mirrors showPastTrackChart's own priority), then
-  // look-ahead, then the planned route.
-  const profileCursorCoord = useMemo<[number, number] | null>(() => {
-    if (profileCursorNm == null) return null
+  // Chart scrub distance (NM) -> map marker, along whichever line the visible
+  // chart shows: ruler, viewed past log (mirrors showPastTrackChart's own
+  // priority), look-ahead, then the planned route.
+  const profileCursorFor = useCallback((nm: number): [number, number] | null => {
     if (showRulerProfile) {
-      const c = coordinateAlongRouteNm(rulerPoints, profileCursorNm)
+      const c = coordinateAlongRouteNm(rulerPoints, nm)
       return [c.lng, c.lat]
     }
     if (showPastTrackChart) {
-      const c = coordAlongTrack(selectedTrack, profileCursorNm)
+      const c = coordAlongTrack(selectedTrack, nm)
       return [c.lng, c.lat]
     }
     if (showLookaheadProfile && lookaheadWaypoints.length >= 2) {
-      const c = coordinateAlongRouteNm(lookaheadWaypoints, profileCursorNm)
+      const c = coordinateAlongRouteNm(lookaheadWaypoints, nm)
       return [c.lng, c.lat]
     }
     if (showPlannedProfile && waypoints.length >= 2) {
-      const c = coordinateAlongRouteNm(waypoints, profileCursorNm)
+      const c = coordinateAlongRouteNm(waypoints, nm)
       return [c.lng, c.lat]
     }
     return null
-  }, [profileCursorNm, showRulerProfile, rulerPoints, showPastTrackChart, selectedTrack, showLookaheadProfile, lookaheadWaypoints, showPlannedProfile, waypoints])
+  }, [showRulerProfile, rulerPoints, showPastTrackChart, selectedTrack, showLookaheadProfile, lookaheadWaypoints, showPlannedProfile, waypoints])
+  const handleProfileHover = useCallback((nm: number | null) => {
+    profileCursorStore.set(nm == null ? null : profileCursorFor(nm))
+  }, [profileCursorStore, profileCursorFor])
+  // A marker left over from a chart that's no longer shown would sit on the
+  // wrong line: clear it whenever the source line changes.
+  useEffect(() => { profileCursorStore.set(null) }, [profileCursorFor, profileCursorStore])
 
   // Long-press menu — offers "Save Waypoint" for any long-pressed map point
   // (bare point or existing route waypoint alike; a tap on an existing
@@ -1262,7 +1271,7 @@ export function MapScreen() {
           onPlanCandidates={handlePlanCandidates}
           routeVisible={routeVisible}
           pastTrack={pastTrack}
-          profileCursor={profileCursorCoord}
+          profileCursorStore={profileCursorStore}
           rulerMode={rulerMode}
           rulerPoints={rulerPoints}
           onRulerTap={setRulerPoints}
@@ -1580,7 +1589,7 @@ export function MapScreen() {
             }
             height={profileHeight}
             onHeightChange={setProfileHeight}
-            onHoverDistNm={setProfileCursorNm}
+            onHoverDistNm={handleProfileHover}
           />
         </>
       )}
@@ -1604,7 +1613,7 @@ export function MapScreen() {
           trajectoryNm={settings.trajectoryNm}
           height={profileHeight}
           onHeightChange={setProfileHeight}
-          onHoverDistNm={setProfileCursorNm}
+          onHoverDistNm={handleProfileHover}
         />
       )}
 
@@ -1625,7 +1634,7 @@ export function MapScreen() {
           trajectoryNm={settings.trajectoryNm}
           height={profileHeight}
           onHeightChange={setProfileHeight}
-          onHoverDistNm={setProfileCursorNm}
+          onHoverDistNm={handleProfileHover}
         />
       )}
 
@@ -1634,7 +1643,7 @@ export function MapScreen() {
           track={selectedTrack}
           height={profileHeight}
           onHeightChange={setProfileHeight}
-          onHoverDistNm={setProfileCursorNm}
+          onHoverDistNm={handleProfileHover}
         />
       )}
 

@@ -60,6 +60,7 @@ import { buildTerrainColorExpr } from '@open-vfr/shared/terrainColor'
 import { useWindGrid } from '../hooks/useWindGrid'
 import { useResilientTileData } from '../hooks/useResilientTileData'
 import { LogManager } from '@maplibre/maplibre-react-native'
+import { useStoreValue, type ValueStore } from '../utils/valueStore'
 
 // Suppress the PMTiles header-race transient error at cold start -- same
 // benign race web's MapView.tsx suppresses in its map.on('error', ...)
@@ -183,8 +184,9 @@ export type AviationMapProps = {
   /** Changes whenever a whole route is loaded or re-shown: fit the camera to it. */
   routeFitNonce?: number
   /** Map-side crosshair marker driven by a chart hover/scrub (VerticalProfile
-   *  or PastTrackChart touch-drag) — [lng, lat], or null/undefined to hide. */
-  profileCursor?: [number, number] | null
+   *  or PastTrackChart touch-drag) — [lng, lat], or null to hide. A store so
+   *  scrub updates re-render only the marker layer, not the whole map. */
+  profileCursorStore?: ValueStore<[number, number] | null>
   /** 'time' = marks at 1/3/5 min ahead; 'nm' = marks at 1/3/5 NM ahead */
   trajectoryMode?: 'time' | 'nm'
   onFeatureTap?:  (features: Feature[], lngLat: [number, number]) => void
@@ -585,6 +587,28 @@ export function clearProtomapsStyleCache() { _protomapsStyle = null }
 // sidesteps that bridge entirely: the map SDK itself owns the touch stream
 // while dragging and reports lngLat directly, no projectApprox/unproject
 // math needed.
+/** Yellow marker for a chart scrub position. Subscribes to the cursor store
+ *  itself so scrub updates re-render only this source, not AviationMap. */
+function ProfileCursorLayer({ store }: { store: ValueStore<[number, number] | null> }) {
+  const cursor = useStoreValue(store)
+  if (!cursor) return null
+  return (
+    <GeoJSONSource id="profile-cursor-src" data={{ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: cursor } }] }}>
+      <Layer
+        id="profile-cursor-circle"
+        type="circle"
+        paint={{
+          'circle-radius': 8,
+          'circle-color': '#facc15',
+          'circle-opacity': 0.35,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#facc15',
+        }}
+      />
+    </GeoJSONSource>
+  )
+}
+
 const WaypointDragAnnotation = React.memo(function WaypointDragAnnotation({
   wpIndex, lat, lng, onGrab, onMove, onRelease,
 }: {
@@ -751,7 +775,7 @@ export function AviationMap({
   pastTrack,
   activeRouteId,
   routeFitNonce = 0,
-  profileCursor,
+  profileCursorStore,
   onFeatureTap,
   onLongPress,
   onWaypointMove,
@@ -1131,6 +1155,10 @@ export function AviationMap({
   // bearing-reset easeTo when followGps drops out mid-gesture.
   const disabledByPanRef = useRef(false)
 
+  // Only the wind grid reads camForWind, so only track it while wind arrows
+  // are shown: each setCamForWind re-renders all of AviationMap, and during
+  // a pan that happened up to 10x a second with the layer off too.
+  const showWindRef = useRef(showWind); showWindRef.current = showWind
   const handleRegionChange = useCallback((e: NativeSyntheticEvent<ViewStateChangeEvent>) => {
     const { center, zoom, bearing, userInteraction } = e.nativeEvent
     if (center) {
@@ -1142,7 +1170,7 @@ export function AviationMap({
       const z = zoom ?? 5
       const key = `${center[1].toFixed(2)},${center[0].toFixed(2)},${z.toFixed(1)}`
       const now = Date.now()
-      if (key !== lastCamForWindKeyRef.current && now - lastCamForWindAtRef.current >= 100) {
+      if (showWindRef.current && key !== lastCamForWindKeyRef.current && now - lastCamForWindAtRef.current >= 100) {
         lastCamForWindKeyRef.current = key
         lastCamForWindAtRef.current = now
         setCamForWind({ lat: center[1], lng: center[0], zoom: z })
@@ -1164,11 +1192,14 @@ export function AviationMap({
   // anyway. Web's equivalent hook doesn't need this because it calls
   // `map.getBounds()` directly inside its own effect instead of depending
   // on a move-event-driven camera snapshot.
+  // Also re-seeds on every switch-on: camForWind isn't tracked while the
+  // layer is off (see handleRegionChange), so an old value would be stale.
   useEffect(() => {
-    if (!showWind || camForWind) return
+    if (!showWind) return
     const { lat, lng, zoom } = camStateRef.current
+    lastCamForWindKeyRef.current = ''
     setCamForWind({ lat, lng, zoom })
-  }, [showWind, camForWind])
+  }, [showWind])
 
   const windGridFC = useWindGrid(camForWind, showWind, gpsPosition?.altFt ?? null)
 
@@ -2482,21 +2513,7 @@ export function AviationMap({
           />
         </GeoJSONSource>
 
-        {profileCursor && (
-          <GeoJSONSource id="profile-cursor-src" data={{ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: profileCursor } }] }}>
-            <Layer
-              id="profile-cursor-circle"
-              type="circle"
-              paint={{
-                'circle-radius': 8,
-                'circle-color': '#facc15',
-                'circle-opacity': 0.35,
-                'circle-stroke-width': 2,
-                'circle-stroke-color': '#facc15',
-              }}
-            />
-          </GeoJSONSource>
-        )}
+        {profileCursorStore && <ProfileCursorLayer store={profileCursorStore} />}
 
                 {/* ── Past flight log track (Logs segment "View") ──── */}
         {pastTrack && pastTrack.length > 1 && (
