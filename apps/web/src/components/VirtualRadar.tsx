@@ -14,7 +14,7 @@ import {
   useXAxisScale,
   useYAxisScale,
 } from 'recharts'
-import { airspaceOutlines, airspaceChips, airspaceChipSize, type OutlineShape, type OutlineChip } from '@open-vfr/shared/airspaceOutline'
+import { airspaceOutlines, airspaceChips, layoutAirspaceChips, type OutlineShape, type OutlineChip } from '@open-vfr/shared/airspaceOutline'
 import {
   cloudLayerPaths, cloudLayerLabel, cloudGlyphHeight, cloudOpacityForOffset, cloudReportOffRouteNm,
   cloudReportIcao, cloudStripHalfWidthNm, placeCloudLabel, type LabelRect,
@@ -262,24 +262,24 @@ function AirspaceOutlines({ shapes, xFactor }: { shapes: OutlineShape[]; xFactor
 }
 
 /** Label chips at the top-left corner of each airspace band: class letter (or
- *  designator) in a coloured cell, then the first radio frequency. */
+ *  designator) in a coloured cell, then the first radio frequency. Laid out
+ *  so neighbouring sectors' chips never cover each other (see
+ *  layoutAirspaceChips). */
 function AirspaceChips({ chips, xFactor }: { chips: OutlineChip[]; xFactor: (nm: number) => number }) {
   const xScale = useXAxisScale()
   const yScale = useYAxisScale()
   if (!xScale || !yScale) return null
-  const H = 13
+  const placed = layoutAirspaceChips(chips, (nm) => xScale(xFactor(nm)) ?? 0, (ft) => yScale(ft) ?? 0)
   return (
     <g pointerEvents="none">
-      {chips.map((c, i) => {
-        const x = (xScale(xFactor(c.x)) ?? 0) + 3
-        const y = (yScale(c.y) ?? 0) + 3
-        const { tagW, freqW } = airspaceChipSize(c)
+      {placed.map((p, i) => {
+        const { chip: c, px: x, py: y, tagW, freqW, w, h } = p
         return (
           <g key={i}>
-            <rect x={x} y={y} width={tagW + freqW} height={H} fill="#fff" stroke={c.border} strokeWidth={1} rx={1.5} />
-            <rect x={x} y={y} width={tagW} height={H} fill={c.border} rx={1.5} />
+            <rect x={x} y={y} width={w} height={h} fill="#fff" stroke={c.border} strokeWidth={1} rx={1.5} />
+            <rect x={x} y={y} width={tagW} height={h} fill={c.border} rx={1.5} />
             <text x={x + tagW / 2} y={y + 10} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="#fff">{c.tag}</text>
-            {c.freq && <text x={x + tagW + freqW / 2} y={y + 10} textAnchor="middle" fontSize={9.5} fontWeight={600} fill="#111">{c.freq}</text>}
+            {p.showFreq && <text x={x + tagW + freqW / 2} y={y + 10} textAnchor="middle" fontSize={9.5} fontWeight={600} fill="#111">{c.freq}</text>}
           </g>
         )
       })}
@@ -312,10 +312,7 @@ function CloudLayers({ marks, chips, totalNm, yMax, xFactor }: {
   const xOf = (nm: number) => xScale(xFactor(nm)) ?? 0
   const yOf = (ft: number) => yScale(ft) ?? 0
   const plotTop = yOf(yMax), plotBottom = yOf(0)
-  const taken: LabelRect[] = chips.map((c) => {
-    const { w, h } = airspaceChipSize(c)
-    return { x: xOf(c.x) + 3, y: yOf(c.y) + 3, w, h }
-  })
+  const taken: LabelRect[] = layoutAirspaceChips(chips, xOf, yOf).map((p) => ({ x: p.px, y: p.py, w: p.w, h: p.h }))
   const halfWidthNm = cloudStripHalfWidthNm(totalNm)
   const shapes: React.ReactNode[] = []
   const labels: React.ReactNode[] = []

@@ -167,6 +167,7 @@ export function airspaceOutlines(bands: OutlineBand[], maxAltFt = Infinity): Out
 export interface OutlineChip {
   x: number      // distance along route (NM) of the band's start
   y: number      // altitude (ft) of the band's visible top
+  floorFt: number // altitude (ft) of the band's floor
   tag: string
   freq?: string
   border: string
@@ -195,7 +196,126 @@ export function airspaceChips(
     const key = `${b.tag}|${b.freq ?? ''}|${b.entryNm}|${y}`
     if (seen.has(key)) continue
     seen.add(key)
-    out.push({ x: b.entryNm, y, tag: b.tag, freq: b.freq, border: b.border })
+    out.push({ x: b.entryNm, y, floorFt: b.lower_ft, tag: b.tag, freq: b.freq, border: b.border })
   }
   return out
+}
+
+/** A chip positioned in chart pixels by layoutAirspaceChips. */
+export interface PlacedChip {
+  chip: OutlineChip
+  /** Top-left corner, px. */
+  px: number
+  py: number
+  tagW: number
+  /** 0 when the frequency cell is hidden. */
+  freqW: number
+  w: number
+  h: number
+  showFreq: boolean
+}
+
+/** Inset of a chip from its band's top-left corner, px. */
+const CHIP_INSET = 3
+/** Gap between stacked chip rows, px. */
+const CHIP_ROW_GAP = 2
+/** Rows a chip may move down inside its own band to dodge a neighbour. */
+const CHIP_MAX_ROWS = 3
+
+/**
+ * Position the label chips in chart pixels so none covers another.
+ *
+ * Each chip starts at its band's top-left corner. Sectors next to each other
+ * along the route (ESR121A/ESR121B, say) put their chips side by side, and a
+ * long tag + frequency easily runs into the next band's chip. Resolution,
+ * left to right, only for a chip that would collide:
+ *   1. If it collides only with frequency cells of the same frequency, it
+ *      takes that frequency over: the earlier chip drops it, this one shows
+ *      it, and both stay at their band corners (shared frequency shown once).
+ *   2. Otherwise it moves down a row at a time, staying inside its band.
+ *   3. If there's no room, earlier chips drop their frequency cells when
+ *      that clears the way; as a last resort this chip drops its own.
+ * Chips that don't collide always keep their frequency, even when a
+ * neighbour shows the same one: a horizontally scrolled chart may show only
+ * one of them. The tag (class letter or designator) is never hidden.
+ */
+export function layoutAirspaceChips(
+  chips: OutlineChip[],
+  xOf: (nm: number) => number,
+  yOf: (ft: number) => number,
+): PlacedChip[] {
+  type Box = { x1: number; x2: number; y1: number; y2: number }
+  const hits = (a: Box, b: Box) => a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2
+  const placed: PlacedChip[] = []
+  const boxOf = (p: Pick<PlacedChip, 'px' | 'py' | 'w' | 'h'>): Box => ({ x1: p.px, x2: p.px + p.w, y1: p.py, y2: p.py + p.h })
+  const tagBoxOf = (p: PlacedChip): Box => ({ x1: p.px, x2: p.px + p.tagW, y1: p.py, y2: p.py + p.h })
+
+  const make = (c: OutlineChip, px: number, py: number, withFreq: boolean): PlacedChip => {
+    const { tagW, freqW, h } = airspaceChipSize(c)
+    const show = withFreq && !!c.freq
+    return { chip: c, px, py, tagW, freqW: show ? freqW : 0, w: tagW + (show ? freqW : 0), h, showFreq: show }
+  }
+  const setFreq = (p: PlacedChip, show: boolean) => {
+    const { freqW } = airspaceChipSize(p.chip)
+    p.showFreq = show && !!p.chip.freq
+    p.freqW = p.showFreq ? freqW : 0
+    p.w = p.tagW + p.freqW
+  }
+  const colliders = (cand: PlacedChip) => placed.filter((p) => hits(boxOf(cand), boxOf(p)))
+  const free = (cand: PlacedChip) => colliders(cand).length === 0
+  /** Every collider is resolved by hiding its frequency cell. */
+  const clearableByDroppingFreq = (cand: PlacedChip) => {
+    const cs = colliders(cand)
+    return cs.length > 0 && cs.every((p) => p.showFreq && !hits(tagBoxOf(p), boxOf(cand)))
+  }
+
+  const ordered = [...chips].sort((a, b) => xOf(a.x) - xOf(b.x))
+  for (const c of ordered) {
+    const left = xOf(c.x)
+    const px = left + CHIP_INSET
+    const py0 = yOf(c.y) + CHIP_INSET
+    const { h } = airspaceChipSize(c)
+    const bottom = yOf(c.floorFt)
+    const rows: number[] = [py0]
+    for (let r = 1; r < CHIP_MAX_ROWS; r++) {
+      const py = py0 + r * (h + CHIP_ROW_GAP)
+      if (py + h <= bottom - 1) rows.push(py)
+    }
+    const wantFreq = !!c.freq
+
+    let result: PlacedChip | null = null
+    const first = make(c, px, py0, wantFreq)
+    if (free(first)) result = first
+
+    // 1. Same-frequency takeover at the band corner.
+    if (!result && c.freq) {
+      const takeover = make(c, px, py0, true)
+      const cs = colliders(takeover)
+      if (cs.length > 0 && cs.every((p) => p.chip.freq === c.freq) && clearableByDroppingFreq(takeover)) {
+        cs.forEach((p) => setFreq(p, false))
+        result = takeover
+      }
+    }
+    // 2. Move down inside the band.
+    if (!result) {
+      for (const py of rows.slice(1)) {
+        const cand = make(c, px, py, wantFreq)
+        if (free(cand)) { result = cand; break }
+      }
+    }
+    // 3. Earlier chips drop their frequency; last resort, this one does.
+    if (!result) {
+      for (const withFreq of wantFreq ? [true, false] : [false]) {
+        const cand = make(c, px, py0, withFreq)
+        if (free(cand)) { result = cand; break }
+        if (clearableByDroppingFreq(cand)) {
+          colliders(cand).forEach((p) => setFreq(p, false))
+          result = cand
+          break
+        }
+      }
+    }
+    placed.push(result ?? make(c, px, py0, false))
+  }
+  return placed
 }

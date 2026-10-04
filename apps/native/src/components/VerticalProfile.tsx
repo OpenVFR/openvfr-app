@@ -46,7 +46,7 @@ import {
   type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
-import { airspaceOutlines, airspaceChips, airspaceChipSize } from '@open-vfr/shared/airspaceOutline'
+import { airspaceOutlines, airspaceChips, layoutAirspaceChips } from '@open-vfr/shared/airspaceOutline'
 import {
   cloudLayerPaths, cloudLayerLabel, cloudGlyphHeight, cloudOpacityForOffset, cloudReportOffRouteNm,
   cloudReportIcao, cloudStripHalfWidthNm, placeCloudLabel, type LabelRect,
@@ -933,16 +933,17 @@ export function VerticalProfile({
                   )
                 })}
 
-                {/* Label chips: class letter (or designator) + first radio frequency */}
-                {airspaceChips(profile.airspaceBands, yMax).map((c, i) => {
-                  const x = xOf(c.x) + 3, y = yOf(c.y) + 3
-                  const { tagW, freqW } = airspaceChipSize(c)
+                {/* Label chips: class letter (or designator) + first radio
+                    frequency, laid out so neighbouring sectors' chips never
+                    cover each other (see layoutAirspaceChips). */}
+                {layoutAirspaceChips(airspaceChips(profile.airspaceBands, yMax), xOf, yOf).map((p, i) => {
+                  const { chip: c, px: x, py: y, tagW, freqW, w, h } = p
                   return (
                     <G key={`chip-${i}`}>
-                      <Rect x={x} y={y} width={tagW + freqW} height={13} fill="#fff" stroke={c.border} strokeWidth={1} rx={1.5} />
-                      <Rect x={x} y={y} width={tagW} height={13} fill={c.border} rx={1.5} />
+                      <Rect x={x} y={y} width={w} height={h} fill="#fff" stroke={c.border} strokeWidth={1} rx={1.5} />
+                      <Rect x={x} y={y} width={tagW} height={h} fill={c.border} rx={1.5} />
                       <SvgText x={x + tagW / 2} y={y + 10} textAnchor="middle" fontSize={9.5} fontWeight="700" fill="#fff">{c.tag}</SvgText>
-                      {c.freq ? <SvgText x={x + tagW + freqW / 2} y={y + 10} textAnchor="middle" fontSize={9.5} fontWeight="600" fill="#111">{c.freq}</SvgText> : null}
+                      {p.showFreq ? <SvgText x={x + tagW + freqW / 2} y={y + 10} textAnchor="middle" fontSize={9.5} fontWeight="600" fill="#111">{c.freq}</SvgText> : null}
                     </G>
                   )
                 })}
@@ -975,10 +976,8 @@ export function VerticalProfile({
                 {(() => {
                   // Label slots already claimed: airspace chips first, then
                   // each cloud label as it's placed.
-                  const taken: LabelRect[] = airspaceChips(profile.airspaceBands, yMax).map((c) => {
-                    const { w, h } = airspaceChipSize(c)
-                    return { x: xOf(c.x) + 3, y: yOf(c.y) + 3, w, h }
-                  })
+                  const taken: LabelRect[] = layoutAirspaceChips(airspaceChips(profile.airspaceBands, yMax), xOf, yOf)
+                    .map((p) => ({ x: p.px, y: p.py, w: p.w, h: p.h }))
                   const plotTop = MARGIN_T, plotBottom = MARGIN_T + plotH
                   const halfWidthNm = cloudStripHalfWidthNm(totalNm)
                   const shapes: React.ReactNode[] = []

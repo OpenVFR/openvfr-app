@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { unionRectLoops, airspaceOutlines } from './airspaceOutline'
+import {
+  unionRectLoops, airspaceOutlines, airspaceChips, layoutAirspaceChips,
+  type OutlineChip, type PlacedChip,
+} from './airspaceOutline'
 
 describe('unionRectLoops', () => {
   it('returns one rectangle loop for a single rect', () => {
@@ -99,5 +102,104 @@ describe('visibleEdges', () => {
     expect(has(segs, [5, 2500, 20, 2500])).toBe(false)   // C's floor inside A
     expect(has(segs, [0, 2500, 5, 2500])).toBe(true)     // C's floor outside A
     expect(has(segs, [20, 2500, 30, 2500])).toBe(true)
+  })
+})
+
+describe('layoutAirspaceChips', () => {
+  // 10 px per NM; 0 ft at y=300, 6000 ft at y=0 (20 ft per px).
+  const xOf = (nm: number) => nm * 10
+  const yOf = (ft: number) => 300 - ft / 20
+  const chip = (o: Partial<OutlineChip> & Pick<OutlineChip, 'x' | 'tag'>): OutlineChip =>
+    ({ y: 2000, floorFt: 0, border: '#f00', ...o })
+  const rectOf = (p: PlacedChip) => ({ x1: p.px, x2: p.px + p.w, y1: p.py, y2: p.py + p.h })
+  const overlap = (a: PlacedChip, b: PlacedChip) => {
+    const r = rectOf(a), q = rectOf(b)
+    return r.x1 < q.x2 && q.x1 < r.x2 && r.y1 < q.y2 && q.y1 < r.y2
+  }
+  const noOverlaps = (placed: PlacedChip[]) => {
+    for (let i = 0; i < placed.length; i++)
+      for (let j = i + 1; j < placed.length; j++)
+        expect(overlap(placed[i], placed[j]), `${placed[i].chip.tag} vs ${placed[j].chip.tag}`).toBe(false)
+  }
+  const byTag = (placed: PlacedChip[], tag: string) => placed.find((p) => p.chip.tag === tag)!
+
+  it('leaves well-separated chips at their band corners with frequencies', () => {
+    const placed = layoutAirspaceChips([
+      chip({ x: 0, tag: 'C', freq: '134.980' }),
+      chip({ x: 40, tag: 'D', freq: '118.800' }),
+    ], xOf, yOf)
+    expect(byTag(placed, 'C')).toMatchObject({ px: 3, py: yOf(2000) + 3, showFreq: true })
+    expect(byTag(placed, 'D')).toMatchObject({ px: 403, py: yOf(2000) + 3, showFreq: true })
+  })
+
+  it('shows a frequency shared by adjacent sectors once, without overlap (ESR121A/B)', () => {
+    // A's tag + freq is ~150 px wide but B's band starts 120 px later.
+    const placed = layoutAirspaceChips([
+      chip({ x: 0,  y: 1500, floorFt: 1000, tag: 'ESR121A REVINGE', freq: '126.155' }),
+      chip({ x: 12, y: 1500, floorFt: 1000, tag: 'ESR121B REVINGE', freq: '126.155' }),
+    ], xOf, yOf)
+    noOverlaps(placed)
+    expect(placed.filter((p) => p.showFreq)).toHaveLength(1)
+    // Both stay at their own band corners -- nothing pushed down.
+    expect(byTag(placed, 'ESR121A REVINGE').py).toBe(byTag(placed, 'ESR121B REVINGE').py)
+  })
+
+  it('repeats a shared frequency when the chips do not collide', () => {
+    // A horizontally scrolled chart may show only one of the two chips, so
+    // each must carry the frequency unless they actually collide.
+    for (const x2 of [8, 50]) {
+      const placed = layoutAirspaceChips([
+        chip({ x: 0, tag: 'C', freq: '134.980' }),
+        chip({ x: x2, tag: 'C', freq: '134.980' }),
+      ], xOf, yOf)
+      expect(placed.every((p) => p.showFreq), `second chip at ${x2} NM`).toBe(true)
+    }
+  })
+
+  it('repeats a frequency on sectors that do not touch', () => {
+    const placed = layoutAirspaceChips([
+      chip({ x: 0,  tag: 'R1', freq: '126.155' }),
+      chip({ x: 40, tag: 'R2', freq: '126.155' }),
+    ], xOf, yOf)
+    expect(placed.every((p) => p.showFreq)).toBe(true)
+  })
+
+  it('moves a colliding chip with a different frequency down a row when its band has room', () => {
+    const placed = layoutAirspaceChips([
+      chip({ x: 0,  y: 2000, floorFt: 0, tag: 'ESR121A REVINGE', freq: '126.155' }),
+      chip({ x: 12, y: 2000, floorFt: 0, tag: 'ESR121B REVINGE', freq: '119.000' }),
+    ], xOf, yOf)
+    noOverlaps(placed)
+    expect(placed.every((p) => p.showFreq)).toBe(true)
+    expect(byTag(placed, 'ESR121B REVINGE').py).toBeGreaterThan(byTag(placed, 'ESR121A REVINGE').py)
+  })
+
+  it('drops the earlier frequency when a different-frequency neighbour has no room to move', () => {
+    // Bands only 400 ft (20 px) deep: one 13 px row, no second row.
+    const placed = layoutAirspaceChips([
+      chip({ x: 0,  y: 1400, floorFt: 1000, tag: 'ESR121A REVINGE', freq: '126.155' }),
+      chip({ x: 12, y: 1400, floorFt: 1000, tag: 'ESR121B REVINGE', freq: '119.000' }),
+    ], xOf, yOf)
+    noOverlaps(placed)
+    expect(byTag(placed, 'ESR121A REVINGE').showFreq).toBe(false)
+    expect(byTag(placed, 'ESR121B REVINGE').showFreq).toBe(true)
+  })
+
+  it('keeps a crowded cluster overlap-free', () => {
+    const placed = layoutAirspaceChips([
+      chip({ x: 0,  tag: 'ESR123 SANDBY',   freq: '126.155' }),
+      chip({ x: 5,  tag: 'ESR121A REVINGE', freq: '126.155' }),
+      chip({ x: 13, tag: 'ESR121B REVINGE', freq: '126.155' }),
+      chip({ x: 15, y: 6000, floorFt: 1500, tag: 'C', freq: '134.980' }),
+    ], xOf, yOf)
+    noOverlaps(placed)
+  })
+
+  it('takes chips straight from airspaceChips', () => {
+    const chips = airspaceChips([
+      { lower_ft: 0, upper_ft: 2000, entryNm: 0, exitNm: 12, fill: 'f', border: 'b', tag: 'A', freq: '1' },
+    ])
+    expect(chips[0]).toMatchObject({ x: 0, y: 2000, floorFt: 0 })
+    expect(layoutAirspaceChips(chips, xOf, yOf)).toHaveLength(1)
   })
 })
