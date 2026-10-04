@@ -4,8 +4,11 @@
  *
  *  - Icons only (labels dropped to save space); accessibility labels and
  *    test IDs are kept so screen readers and UI automation still work.
- *  - Swipe down on the bar to collapse it, swipe up (or tap) on the handle
- *    to bring it back.
+ *  - Drag the bar up/down: its height follows the finger and snaps open or
+ *    shut on release (a fling toggles it). Tapping a handle also toggles it.
+ *  - Handles sit between the icons (and at the outer edges): wide,
+ *    full-height touch targets, so toggling never needs a precise hit on a
+ *    thin strip.
  *  - The collapsed state lives in TabBarContext so MapScreen can collapse it
  *    automatically when a flight mode starts.
  *  - The bottom safe-area inset is part of the bar in both states but is
@@ -34,24 +37,19 @@ const TAB_ICONS: Record<string, { active: IoniconName; inactive: IoniconName }> 
   Settings: { active: 'settings', inactive: 'settings-outline' },
 }
 
-const HANDLE_ZONE    = 16   // dp: handle touch target when collapsed; drawn inside the bottom inset so it adds no height
 const COLLAPSED_EXTRA = 4   // dp: bar height above the bottom inset when collapsed
-const HANDLE_TOUCH_EXPANDED = 10 // dp: handle touch strip while expanded (must not cover the icons)
+const GAP_HANDLE_WIDTH = 48 // dp: touch width of each handle between icons
 const ICON_ZONE      = 32   // dp: height of the bar when expanded (icons; handle overlays the top edge)
 const ANIM_MS        = 220
-const SWIPE_DISTANCE = 20   // dp of vertical travel that counts as a swipe
+const SWIPE_FLING_VELOCITY = 600 // dp/s: a fling this fast toggles regardless of position
 
 export function CollapsibleTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const scaledTheme = useScaledTheme()
   const insets = useSafeAreaInsets()
   const { collapsed, setCollapsed } = useTabBarCollapsed()
 
-  const handleZone = scaledTheme.scale(HANDLE_ZONE)
   const iconZone   = scaledTheme.scale(ICON_ZONE)
   const collapsedExtra = scaledTheme.scale(COLLAPSED_EXTRA)
-  // Scaled values must be computed here: scaledTheme.scale is a JS function
-  // and cannot be called from inside an animated-style worklet.
-  const handleTouchExpanded = scaledTheme.scale(HANDLE_TOUCH_EXPANDED)
 
   // 1 = expanded, 0 = collapsed. Driven from the context so both gestures and
   // programmatic changes (entering flight mode) animate the same way.
@@ -60,16 +58,36 @@ export function CollapsibleTabBar({ state, descriptors, navigation }: BottomTabB
     progress.value = withTiming(collapsed ? 0 : 1, { duration: ANIM_MS })
   }, [collapsed, progress])
 
+  // Drag-to-resize: the bar height follows the finger 1:1, then snaps open or
+  // shut on release (fling velocity wins, otherwise nearest half). Snapping is
+  // done in onFinalize, not onDeactivate, because a touch that drifts into the
+  // Android system-gesture zone is cancelled and would never deliver a normal
+  // release.
+  const dragRange  = Math.max(1, iconZone - collapsedExtra)
+  const dragStart  = useSharedValue(1)
+  const dragging   = useSharedValue(false)
+  const lastVelY   = useSharedValue(0)  // finalize events carry no velocity, so track it per update
   const pan = usePanGesture({
     activeOffsetY: [-10, 10],
     failOffsetX:   [-20, 20],
-    // Decide as soon as the swipe passes the threshold instead of on release:
-    // a touch that drifts into the system gesture zone gets cancelled by
-    // Android and would never deliver a release callback.
+    onActivate: () => {
+      'worklet'
+      dragStart.value = progress.value
+      dragging.value  = true
+    },
     onUpdate: e => {
       'worklet'
-      if (e.translationY > SWIPE_DISTANCE) scheduleOnRN(setCollapsed, true)
-      else if (e.translationY < -SWIPE_DISTANCE) scheduleOnRN(setCollapsed, false)
+      progress.value = Math.min(1, Math.max(0, dragStart.value - e.translationY / dragRange))
+      lastVelY.value = e.velocityY
+    },
+    onFinalize: () => {
+      'worklet'
+      if (!dragging.value) return
+      dragging.value = false
+      const v = lastVelY.value
+      const target = v > SWIPE_FLING_VELOCITY ? 0 : v < -SWIPE_FLING_VELOCITY ? 1 : progress.value > 0.5 ? 1 : 0
+      progress.value = withTiming(target, { duration: ANIM_MS })
+      scheduleOnRN(setCollapsed, target === 0)
     },
   })
 
@@ -79,31 +97,25 @@ export function CollapsibleTabBar({ state, descriptors, navigation }: BottomTabB
   const iconsStyle = useAnimatedStyle(() => ({
     opacity: progress.value,
   }))
-  // Tall touch target when collapsed, thin strip when expanded so it never
-  // covers the icons underneath.
-  const handleStyle = useAnimatedStyle(() => ({
-    height: handleZone * (1 - progress.value) + handleTouchExpanded * progress.value,
-  }))
-
   return (
     <Animated.View style={[styles.bar, containerStyle, { paddingBottom: insets.bottom }]}>
       <GestureDetector gesture={pan}>
         <View style={styles.content}>
-        <Animated.View style={[styles.handleZone, handleStyle]}>
-          <TouchableOpacity
-            style={styles.handleTouch}
-            activeOpacity={0.7}
-            onPress={() => setCollapsed(!collapsed)}
-            accessibilityRole="button"
-            accessibilityLabel={collapsed ? 'Show navigation bar' : 'Hide navigation bar'}
-            testID="tab-bar-handle"
-          >
-            <View style={styles.handle} />
-          </TouchableOpacity>
-        </Animated.View>
-
-        <Animated.View style={[styles.icons, { height: iconZone }, iconsStyle]} pointerEvents={collapsed ? 'none' : 'auto'}>
+        <View style={[styles.icons, { height: iconZone }]} pointerEvents="box-none">
           {state.routes.map((route, index) => {
+            const gapHandle = (key: string) => (
+              <TouchableOpacity
+                key={key}
+                style={[styles.gapHandle, { width: scaledTheme.scale(GAP_HANDLE_WIDTH) }]}
+                activeOpacity={0.6}
+                onPress={() => setCollapsed(!collapsed)}
+                accessibilityRole="button"
+                accessibilityLabel={collapsed ? 'Show navigation bar' : 'Hide navigation bar'}
+                testID={key === 'start' ? 'tab-bar-handle' : `tab-bar-gap-handle-${key}`}
+              >
+                <View style={styles.gapPill} />
+              </TouchableOpacity>
+            )
             const { options } = descriptors[route.key]
             const focused = state.index === index
             const icons = TAB_ICONS[route.name]
@@ -115,9 +127,11 @@ export function CollapsibleTabBar({ state, descriptors, navigation }: BottomTabB
               if (!focused && !event.defaultPrevented) navigation.navigate(route.name, route.params)
             }
             return (
+              <React.Fragment key={route.key}>
+              {index === 0 && gapHandle('start')}
+              <Animated.View style={[styles.tab, iconsStyle]} pointerEvents={collapsed ? 'none' : 'auto'}>
               <TouchableOpacity
-                key={route.key}
-                style={styles.tab}
+                style={styles.tabTouch}
                 onPress={onPress}
                 onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
                 accessibilityRole="tab"
@@ -131,9 +145,12 @@ export function CollapsibleTabBar({ state, descriptors, navigation }: BottomTabB
                   color={color}
                 />
               </TouchableOpacity>
+              </Animated.View>
+              {gapHandle(index === state.routes.length - 1 ? 'end' : `${index}`)}
+              </React.Fragment>
             )
           })}
-        </Animated.View>
+        </View>
         </View>
       </GestureDetector>
     </Animated.View>
@@ -147,32 +164,9 @@ const styles = StyleSheet.create({
     borderTopWidth:  1,
     overflow:        'hidden',
   },
-  // Overlays the top edge of the bar (absolute) so it costs no height of its
-  // own when the bar is expanded.
   // Everything above the bottom inset; the only region that handles swipes.
   content: {
     flex: 1,
-  },
-  handleZone: {
-    position:       'absolute',
-    top:            0,
-    left:           0,
-    right:          0,
-    zIndex:         1,
-    alignItems:     'center',
-  },
-  handleTouch: {
-    flex:           1,
-    alignSelf:      'stretch',
-    alignItems:     'center',
-    justifyContent: 'flex-start',
-    paddingTop:     3,
-  },
-  handle: {
-    width:           36,
-    height:          4,
-    borderRadius:    2,
-    backgroundColor: theme.borderDefault,
   },
   icons: {
     flexDirection: 'row',
@@ -181,6 +175,30 @@ const styles = StyleSheet.create({
     left:          0,
     right:         0,
     paddingTop:    5,
+  },
+  // Full-height grab target between icons; the horizontal pill at the top edge
+  // matches the main handle and is a visual cue only.
+  gapHandle: {
+    alignSelf:      'stretch',
+    alignItems:     'center',
+    justifyContent: 'flex-start',
+    paddingTop:     2,
+    // Cancel the icon row's paddingTop (5) so the pill sits at the exact
+    // vertical position the old centre handle had (2 dp from the bar's top).
+    marginTop:      -5,
+  },
+  gapPill: {
+    width:           24,
+    height:          3,
+    borderRadius:    2,
+    backgroundColor: theme.textMuted,
+    opacity:         0.45,
+  },
+  tabTouch: {
+    flex:           1,
+    alignSelf:      'stretch',
+    alignItems:     'center',
+    justifyContent: 'center',
   },
   tab: {
     flex:           1,
