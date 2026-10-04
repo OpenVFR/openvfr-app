@@ -26,6 +26,7 @@ const SNAP_POINTS: { ft: number; label: string }[] = [
   { ft: 66000, label: 'Unlimited' },
 ]
 
+export const MAX_FT = SNAP_POINTS[SNAP_POINTS.length - 1].ft
 const MAX_IDX = SNAP_POINTS.length - 1
 
 function idxToFt(idx: number): number {
@@ -37,7 +38,7 @@ function ftToIdx(ft: number): number {
   return idx < 0 ? MAX_IDX : idx
 }
 
-function ftToLabel(ft: number): string {
+export function ftToLabel(ft: number): string {
   return SNAP_POINTS.find((p) => p.ft === ft)?.label ?? `${ft.toLocaleString()} ft`
 }
 

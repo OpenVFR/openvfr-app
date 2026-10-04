@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type * as maplibregl from 'maplibre-gl'
 import { ATTRIBUTION_SOURCES } from '@open-vfr/shared/attributionSources'
+import { computeMapScale, type MapScale } from '@open-vfr/shared/mapScale'
 import { MAX_FT, ftToLabel } from './AltitudeSlider'
 import type { Units } from '../utils/units'
 import css from './MapInfoBar.module.css'
@@ -20,51 +21,15 @@ interface Props {
   units: Units
 }
 
-const EARTH_CIRCUMFERENCE_M = 40_075_016.686
-/** MapLibre's world size at zoom 0, in CSS px. */
-const TILE_SIZE_PX = 512
-/** One CSS px at the CSS reference 96 dpi, in metres. */
-const CSS_PX_M = 0.0254 / 96
 const MAX_BAR_PX = 110
-const M_PER_NM = 1852
 
-/** Largest 1/2/5 × 10^n value ≤ v. */
-function niceFloor(v: number): number {
-  const p = Math.pow(10, Math.floor(Math.log10(v)))
-  const d = v / p
-  return (d >= 5 ? 5 : d >= 2 ? 2 : 1) * p
-}
-
-function fmtRatio(r: number): string {
-  if (r >= 1e6) return `1:${(r / 1e6).toFixed(r >= 1e7 ? 0 : 1)}M`
-  if (r >= 1e3) return `1:${Math.round(r / 1e3)}k`
-  return `1:${Math.round(r)}`
-}
-
-interface ScaleState { barPx: number; label: string; ratio: string }
-
-function computeScale(map: maplibregl.Map, nm: boolean): ScaleState {
-  const lat = map.getCenter().lat
-  const mPerPx = (EARTH_CIRCUMFERENCE_M * Math.cos((lat * Math.PI) / 180)) / (TILE_SIZE_PX * Math.pow(2, map.getZoom()))
-  const unitM = nm ? M_PER_NM : 1000
-  const maxUnits = (mPerPx * MAX_BAR_PX) / unitM
-  let value: number, unit: string, valueM: number
-  if (!nm && maxUnits < 1) {
-    // Sub-kilometre: fall back to metres.
-    value = niceFloor(mPerPx * MAX_BAR_PX); unit = 'm'; valueM = value
-  } else {
-    value = niceFloor(maxUnits); unit = nm ? 'NM' : 'km'; valueM = value * unitM
-  }
-  return {
-    barPx: Math.max(1, Math.round(valueM / mPerPx)),
-    label: `${value} ${unit}`,
-    ratio: fmtRatio(mPerPx / CSS_PX_M),
-  }
+function computeScale(map: maplibregl.Map, nm: boolean): MapScale {
+  return computeMapScale(map.getCenter().lat, map.getZoom(), nm, MAX_BAR_PX)
 }
 
 export default function MapInfoBar({ map, ceilingFt, units }: Props) {
   const nm = units.distance === 'nm'
-  const [scale, setScale] = useState<ScaleState | null>(null)
+  const [scale, setScale] = useState<MapScale | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
 
   useEffect(() => {

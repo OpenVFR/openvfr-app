@@ -29,6 +29,7 @@ import { WAYPOINT_COLORS, RUNWAY_COLORS, AERODROME_COLORS } from '@open-vfr/shar
 import { computeAtcStatus, isNotamAtcRelated, isNotamHoursChangeRelated, type HoursEntry as AtcHoursEntry } from '@open-vfr/shared/atcStatus'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
 import { ATTRIBUTION_SOURCES } from '@open-vfr/shared/attributionSources'
+import { MapInfoBar, type MapInfoBarHandle } from './MapInfoBar'
 import { fetchAerodromeNotamTexts } from '@open-vfr/shared/fetchNotam'
 import { API_BASE, TILE_BASE } from '../config'
 import { LIGHT } from '@protomaps/basemaps'
@@ -103,6 +104,8 @@ export type AviationMapProps = {
   simActive?: boolean
   waypoints?: RouteWaypoint[]
   airspaceCeilingFt?: number
+  /** Distance unit for the scale bar. Defaults to nautical miles. */
+  distanceUnit?: 'nm' | 'km'
   showClassCtr?:   boolean
   showClassCtma?:  boolean
   showClassG?:     boolean
@@ -719,13 +722,6 @@ const LegMidpointAnnotation = React.memo(function LegMidpointAnnotation({
 
 // Credits list shared with web's MapInfoBar -- see @open-vfr/shared/attributionSources.
 const attributionStyles = StyleSheet.create({
-  button: {
-    position: 'absolute', bottom: 8, right: 8, zIndex: 20,
-    width: 22, height: 22, borderRadius: 11,
-    backgroundColor: 'rgba(255,255,255,0.7)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  buttonText: { color: '#3b3b3b', fontSize: 13, fontWeight: '700', fontStyle: 'italic' },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   card: {
     backgroundColor: '#1e2530', borderTopLeftRadius: 16, borderTopRightRadius: 16,
@@ -744,6 +740,7 @@ export function AviationMap({
   simActive = false,
   waypoints = [],
   airspaceCeilingFt = 9_500,
+  distanceUnit = 'nm',
   showClassCtr   = true,
   showClassCtma  = true,
   showClassG     = true,
@@ -1125,6 +1122,7 @@ export function AviationMap({
 
   // Track camera state — read by nav-needle/other features elsewhere below.
   const camStateRef = useRef({ lat: 62, lng: 17, zoom: 5, heading: 0 })
+  const infoBarRef = useRef<MapInfoBarHandle>(null)
 
   // Coarse camera snapshot for useWindGrid below -- only needs to be "close
   // enough", not frame-perfect (the hook itself debounces/dedupes further
@@ -1164,6 +1162,7 @@ export function AviationMap({
     const { center, zoom, bearing, userInteraction } = e.nativeEvent
     if (center) {
       camStateRef.current = { lat: center[1], lng: center[0], zoom: zoom ?? 5, heading: bearing ?? 0 }
+      infoBarRef.current?.setCamera(center[1], zoom ?? 5)
       // Pilot took manual control of the map -- stop fighting the gesture
       // with followGps's own recenter effect (which re-issues an easeTo
       // back to the GPS position on every position tick otherwise).
@@ -2963,17 +2962,17 @@ export function AviationMap({
         })}
       </Map>
 
-      {/* Custom attribution button + dialog -- replaces MapLibre Native's own
-          (i) button/dialog, which drops all but one source's credit on
-          Android. Same bottom-right position the native one used
-          (bottom:8, right:8, matches attributionPosition it had). */}
-      <TouchableOpacity
-        style={attributionStyles.button}
-        onPress={() => setShowAttribution(true)}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <Text style={attributionStyles.buttonText}>i</Text>
-      </TouchableOpacity>
+      {/* Status pill (bottom-right): (i) attribution button, airspace altitude
+          filter, scale bar and 1:N ratio -- same content as web's MapInfoBar.
+          The (i) replaces MapLibre Native's own button/dialog, which drops all
+          but one source's credit on Android. */}
+      <MapInfoBar
+        ref={infoBarRef}
+        ceilingFt={airspaceCeilingFt}
+        distanceUnit={distanceUnit}
+        initialCamera={{ lat: camStateRef.current.lat, zoom: camStateRef.current.zoom }}
+        onInfoPress={() => setShowAttribution(true)}
+      />
       <NativeSheet
         isPresented={showAttribution}
         onDismiss={() => setShowAttribution(false)}

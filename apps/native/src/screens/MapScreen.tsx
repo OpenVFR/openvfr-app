@@ -1216,6 +1216,7 @@ export function MapScreen() {
           activeRouteId={activeRouteId}
           routeFitNonce={routeFitNonce}
           airspaceCeilingFt={settings.airspaceCeilingFt}
+          distanceUnit={settings.units.distance}
           showClassCtr={layers.classCtr}
           showClassCtma={layers.classCtma}
           showClassG={layers.classG}
