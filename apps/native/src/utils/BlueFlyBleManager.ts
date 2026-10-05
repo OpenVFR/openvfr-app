@@ -49,6 +49,23 @@ export class BlueFlyBleManager {
   private lineBuf = ''
   private notifySub: Subscription | null = null
   private lineListeners: Array<(line: string) => void> = []
+  private disconnectSub: Subscription | null = null
+  private disconnectListeners: Array<() => void> = []
+  private intentionalDisconnect = false
+
+  private emitDisconnected(): void {
+    if (this.intentionalDisconnect) return
+    for (const cb of this.disconnectListeners) cb()
+  }
+
+  /** Fires when the link drops or notifications error out unexpectedly
+   *  (device moved out of range, powered off, GATT error) — NOT on disconnect().
+   *  Android's autoConnect restores the raw link on its own but the
+   *  notification subscription dies with it, so callers must reconnect. */
+  onDisconnected(cb: () => void): () => void {
+    this.disconnectListeners.push(cb)
+    return () => { this.disconnectListeners = this.disconnectListeners.filter(x => x !== cb) }
+  }
 
   /** Starts a scan filtered primarily on the BlueFly advertised serviceData UUID
    *  (0xFEDA), with the GATT UART service UUID + name-prefix as fallbacks.
@@ -97,6 +114,13 @@ export class BlueFlyBleManager {
   /** Connect + negotiate MTU/priority + discover services, per ble-pressure.md §1.2. */
   async connect(deviceId: string): Promise<void> {
     this.manager.stopDeviceScan()
+    // Clean up any previous (possibly half-dead) session before reconnecting.
+    this.intentionalDisconnect = true
+    this.notifySub?.remove(); this.notifySub = null
+    this.disconnectSub?.remove(); this.disconnectSub = null
+    if (this.device) await this.manager.cancelDeviceConnection(this.device.id).catch(() => {})
+    this.device = null
+    this.intentionalDisconnect = false
 
     let device = await this.manager.connectToDevice(deviceId, { autoConnect: true })
     device = await device.requestMTU(REQUEST_MTU)
@@ -114,13 +138,15 @@ export class BlueFlyBleManager {
     device = await device.discoverAllServicesAndCharacteristics()
     this.device = device
     this.lineBuf = ''
+    this.disconnectSub = this.manager.onDeviceDisconnected(device.id, () => this.emitDisconnected())
 
     // monitorCharacteristicForDevice already writes the CCCD (0x01 0x00) to
     // enable notifications internally — no need to hand-write the descriptor.
     this.notifySub = this.manager.monitorCharacteristicForDevice(
       device.id, BLUEFLY_SERVICE_UUID, BLUEFLY_TX_CHAR_UUID,
       (error, characteristic) => {
-        if (error || !characteristic?.value) return
+        if (error) { this.emitDisconnected(); return }
+        if (!characteristic?.value) return
         const chunk = Buffer.from(characteristic.value, 'base64').toString('ascii')
         const { lines, rest } = appendChunk(this.lineBuf, chunk)
         this.lineBuf = rest
@@ -142,6 +168,9 @@ export class BlueFlyBleManager {
   }
 
   disconnect(): void {
+    this.intentionalDisconnect = true
+    this.disconnectSub?.remove()
+    this.disconnectSub = null
     this.notifySub?.remove()
     this.notifySub = null
     if (this.device) {
