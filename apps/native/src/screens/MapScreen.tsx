@@ -336,10 +336,10 @@ export function MapScreen() {
 
   const positionForAlerts = React.useMemo(() => (
     flyingActive && activePosition && bestAltFt != null
-      ? { ...activePosition, altFt: bestAltFt }
+      ? { ...activePosition, altFt: bestAltFt, altStdFt: simFlight.active ? null : altitudeSource.stdAltFt }
       : flyingActive ? activePosition : null
   ), [
-    flyingActive,
+    flyingActive, altitudeSource.stdAltFt, simFlight.active,
     activePosition?.lat, activePosition?.lng, activePosition?.speedKts,
     activePosition?.trackDeg, activePosition?.accuracy, bestAltFt,
   ])
@@ -420,7 +420,7 @@ export function MapScreen() {
   // under a burst of rapid position updates (sim stepper taps), compounded
   // into a render storm that tripped React's "Maximum update depth
   // exceeded" safety limit.
-  const lookaheadAltFt   = Math.round((activePosition?.altFt ?? 1000) / 50) * 50
+  const lookaheadAltFt   = Math.round((bestAltFt ?? activePosition?.altFt ?? 1000) / 50) * 50
   const lookaheadSpeedKts = Math.round((activePosition?.speedKts || 90) / 5) * 5
   const lookaheadLegOverrides = React.useMemo(
     () => [{ altFt: lookaheadAltFt, speedKts: lookaheadSpeedKts }],
@@ -516,7 +516,8 @@ export function MapScreen() {
   React.useEffect(() => {
     if (!flyingActive || !activePosition) return
     const ceilingFt = settings.airspaceCeilingFt
-    if (activePosition.altFt < ceilingFt - 500) return
+    const ceilingAltFt = bestAltFt ?? activePosition.altFt
+    if (ceilingAltFt < ceilingFt - 500) return
     // Jump directly to a ceiling that clears the current altitude (+500 ft
     // margin) in ONE step, not a fixed +2000 per effect run. The old fixed
     // +2000 step re-triggered this same effect (its own dependency,
@@ -530,13 +531,13 @@ export function MapScreen() {
     // floor). Still raises by at least 2000 ft even when less would clear
     // the altitude, matching the original "round step" behaviour.
     const newCeiling = Math.min(
-      Math.max(ceilingFt + 2000, Math.ceil((activePosition.altFt + 500) / 2000) * 2000),
+      Math.max(ceilingFt + 2000, Math.ceil((ceilingAltFt + 500) / 2000) * 2000),
       66000,
     )
     if (newCeiling === ceilingFt) return
     update({ airspaceCeilingFt: newCeiling })
     setCeilingEscalatedMsg(`Ceiling raised to ${newCeiling.toLocaleString()} ft`)
-  }, [activePosition, settings.airspaceCeilingFt, flyingActive])
+  }, [activePosition, bestAltFt, settings.airspaceCeilingFt, flyingActive])
 
   const trafficFC = useTraffic({
     enabled:  layers.traffic && mapReady,
@@ -1693,6 +1694,7 @@ export function MapScreen() {
           showLocalTime={settings.showLocalTime}
           onToggleLocalTime={() => update({ showLocalTime: !settings.showLocalTime })}
           varioBatteryLow={varioBatteryLow}
+          baroExpected={settings.useInternalBarometer || vario.status === 'connected' || vario.status === 'connecting'}
         />
       )}
 

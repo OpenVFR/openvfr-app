@@ -42,6 +42,7 @@ import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
 import { advancePosition } from '@open-vfr/shared/routeCalc'
 import { airspaceDisplayClass } from '@open-vfr/shared/airspaceColors'
 import { getTileUrls } from '../config'
+import { altitudeForLimit } from '@open-vfr/shared/airspaceAltitude'
 
 // ── Airspace warnings config (useAirspaceWarnings) ─────────────────────────
 const LOOKAHEAD_MIN_SPEED = 60
@@ -173,7 +174,8 @@ export type PositionAlerts = {
 }
 
 export function usePositionAlerts(
-  position:       GpsPosition | null,
+  /** altStdFt: pressure altitude (1013.25) for FL limits; absent → QNH/GPS altFt is used for all limits. */
+  position:       (GpsPosition & { altStdFt?: number | null }) | null,
   routeWaypoints: RouteWaypoint[],
   lookaheadMin:   number = DEFAULT_LOOKAHEAD_MIN,
   verticalFt:     number = 500,
@@ -298,6 +300,10 @@ export function usePositionAlerts(
     }
 
     const { lat, lng, altFt, speedKts, trackDeg } = position
+    const ownAlt = { qnhFt: altFt, stdFt: position.altStdFt ?? null }
+    // Per-limit own altitude: FL limits compare on 1013.25, ft MSL limits on QNH.
+    const loAlt = (f: AirspaceFeature) => altitudeForLimit(f.lower, ownAlt)
+    const hiAlt = (f: AirspaceFeature) => altitudeForLimit(f.upper, ownAlt)
     const now = Date.now()
 
     // ── Airspace warnings (useAirspaceWarnings algorithm) ─────────────────
@@ -316,7 +322,8 @@ export function usePositionAlerts(
 
       const found: AirspaceAlert[] = []
       for (const f of airspaceFeatures) {
-        const altInBand = altFt >= f.lower_ft && altFt <= f.upper_ft
+        const altLo = loAlt(f), altHi = hiAlt(f)
+        const altInBand = altLo >= f.lower_ft && altHi <= f.upper_ft
         if (altInBand) {
           const key = `${f.name}::${f.cls}`
           const dismissed = airspaceDismissedRef.current.get(key)
@@ -332,9 +339,9 @@ export function usePositionAlerts(
         const horizMatch = pointInPolygon(lat, lng, f.geometry) ||
           ahead.some(p => pointInPolygon(p.lat, p.lng, f.geometry))
         if (!horizMatch) continue
-        if (altFt < f.lower_ft) {
-          const timeBasedTrigger = climbRateFpm > 100 && altFt + climbRateFpm * lookaheadMin >= f.lower_ft
-          const bufferTrigger = verticalFt > 0 && (f.lower_ft - altFt) <= verticalFt
+        if (altLo < f.lower_ft) {
+          const timeBasedTrigger = climbRateFpm > 100 && altLo + climbRateFpm * lookaheadMin >= f.lower_ft
+          const bufferTrigger = verticalFt > 0 && (f.lower_ft - altLo) <= verticalFt
           if (timeBasedTrigger || bufferTrigger) {
             const key = `${f.name}::${f.cls}::floor`
             const dismissed = airspaceDismissedRef.current.get(key)
@@ -342,13 +349,13 @@ export function usePositionAlerts(
               found.push({ key, name: f.name, cls: f.cls, type: f.type,
                 lower: f.lower, upper: f.upper, lower_ft: f.lower_ft, upper_ft: f.upper_ft,
                 severity: getSeverity(f.cls), inside: false,
-                verticalClosure: 'floor', gapFt: Math.round(f.lower_ft - altFt) })
+                verticalClosure: 'floor', gapFt: Math.round(f.lower_ft - altLo) })
             }
           }
         }
-        if (altFt > f.upper_ft) {
-          const timeBasedTrigger = climbRateFpm < -100 && altFt + climbRateFpm * lookaheadMin <= f.upper_ft
-          const bufferTrigger = verticalFt > 0 && (altFt - f.upper_ft) <= verticalFt
+        if (altHi > f.upper_ft) {
+          const timeBasedTrigger = climbRateFpm < -100 && altHi + climbRateFpm * lookaheadMin <= f.upper_ft
+          const bufferTrigger = verticalFt > 0 && (altHi - f.upper_ft) <= verticalFt
           if (timeBasedTrigger || bufferTrigger) {
             const key = `${f.name}::${f.cls}::ceiling`
             const dismissed = airspaceDismissedRef.current.get(key)
@@ -356,7 +363,7 @@ export function usePositionAlerts(
               found.push({ key, name: f.name, cls: f.cls, type: f.type,
                 lower: f.lower, upper: f.upper, lower_ft: f.lower_ft, upper_ft: f.upper_ft,
                 severity: getSeverity(f.cls), inside: false,
-                verticalClosure: 'ceiling', gapFt: Math.round(altFt - f.upper_ft) })
+                verticalClosure: 'ceiling', gapFt: Math.round(altHi - f.upper_ft) })
             }
           }
         }
@@ -376,7 +383,7 @@ export function usePositionAlerts(
       // ── Airspace entry/exit notifications (useAirspaceNotifications) ────
       const current = new Set<string>()
       for (const f of airspaceFeatures) {
-        if (altFt < f.lower_ft || altFt > f.upper_ft) continue
+        if (loAlt(f) < f.lower_ft || hiAlt(f) > f.upper_ft) continue
         if (pointInPolygon(lat, lng, f.geometry)) current.add(f.key)
       }
       const prevInside = insideRef.current

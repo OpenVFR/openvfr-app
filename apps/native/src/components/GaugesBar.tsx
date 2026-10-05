@@ -29,6 +29,8 @@ type Props = {
   onToggleLocalTime?: () => void
   /** Connected BlueFly's battery is critically low — flags the P.ALT gauge so a dying vario is noticed in-flight, not just when checking Settings. */
   varioBatteryLow?: boolean
+  /** A barometric source is enabled/connected. When it isn't delivering data the P.ALT gauge stays visible with a gray dot instead of vanishing. */
+  baroExpected?: boolean
 }
 
 function useClock(local: boolean): string {
@@ -50,8 +52,8 @@ function useClock(local: boolean): string {
 /** Per-gauge layout computed by GaugesBar: relative width weight + shared font sizes. */
 type GaugeSizing = { weight: number; valueSize: number; labelSize: number }
 
-function Gauge({ value, label, sizing, onPress, valueColor }: {
-  value: string; label: string; sizing: GaugeSizing; onPress?: () => void; valueColor?: string
+function Gauge({ value, label, sizing, onPress, valueColor, dotColor, dotGlyph }: {
+  value: string; label: string; sizing: GaugeSizing; onPress?: () => void; valueColor?: string; dotColor?: string; dotGlyph?: string
 }) {
   const styles = useThemedStyles(makeStyles)
   const Wrapper = onPress ? TouchableOpacity : View
@@ -61,7 +63,9 @@ function Gauge({ value, label, sizing, onPress, valueColor }: {
         style={[styles.gaugeValue, { fontSize: sizing.valueSize }, valueColor ? { color: valueColor } : null]}
         allowFontScaling={false} numberOfLines={1}
       >{value}</Text>
-      <Text style={[styles.gaugeLabel, { fontSize: sizing.labelSize }]} allowFontScaling={false} numberOfLines={1}>{label}</Text>
+      <Text style={[styles.gaugeLabel, { fontSize: sizing.labelSize }]} allowFontScaling={false} numberOfLines={1}>
+        {dotColor ? <Text style={{ color: dotColor }}>{`${dotGlyph ?? '\u25cf'} `}</Text> : null}{label}
+      </Text>
     </Wrapper>
   )
 }
@@ -115,7 +119,7 @@ function WindGauge({ windTxt, label, rel, xwColor, sizing }: {
   )
 }
 
-export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeSource, showQnh, onToggleQnh, showLocalTime, onToggleLocalTime, varioBatteryLow }: Props) {
+export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeSource, showQnh, onToggleQnh, showLocalTime, onToggleLocalTime, varioBatteryLow, baroExpected }: Props) {
   const styles = useThemedStyles(makeStyles)
   const clock = useClock(!!showLocalTime)
   const scaled = useScaledTheme()
@@ -136,9 +140,11 @@ export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeS
 
   const hasBaro = altitudeSource != null && altitudeSource.tier !== 'gps' && altitudeSource.altFt != null
   const isVarioLow = varioBatteryLow && altitudeSource?.tier === 'baro-vario'
-  const tierIcon = isVarioLow
-    ? '\u26a0'
-    : altitudeSource?.tier === 'baro-vario' ? '\u25c6' : altitudeSource?.tier === 'baro-internal' ? '\u25cb' : ''
+  // Colour = health (green live+calibrated, amber live but QNH unverified,
+  // gray enabled but no data). Shape = source (filled = BlueFly, outline = phone).
+  // Low BlueFly battery keeps its own warning marker.
+  const baroGlyph = altitudeSource?.tier === 'baro-vario' ? '\u25cf' : '\u25cb'
+  const baroDot = !hasBaro ? theme.textMuted : altitudeSource?.qnhCalibrated === false ? theme.statusWarn : theme.statusOk
 
   const uncalibrated = hasBaro && altitudeSource.tier === 'baro-internal' && !altitudeSource.qnhCalibrated
 
@@ -165,14 +171,15 @@ export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeS
   // minChars: widest reading this gauge can show (GS up to 3 digits, P.ALT up
   // to "FL195", VS up to "+1500"...). Sizing uses max(actual, minChars) so the
   // font stays steady as digits come and go instead of jumping on 99 -> 100.
-  type Item = { key: string; value: string; label: string; minChars: number; minLabelChars?: number; onPress?: () => void; valueColor?: string }
+  type Item = { key: string; value: string; label: string; minChars: number; minLabelChars?: number; onPress?: () => void; valueColor?: string; dotColor?: string; dotGlyph?: string }
   const items: Item[] = [
     { key: 'talt', value: talt, label: showAgl ? 'T.ALT AGL' : 'T.ALT AMSL', minChars: 5, onPress: onToggleAgl },
   ]
-  if (palt != null) {
+  if (palt != null || baroExpected) {
     items.push({
-      key: 'palt', value: palt, minChars: 5,
-      label: `${tierIcon} ${showQnh ? 'QNH' : 'P.ALT'}${uncalibrated ? ' ?' : ''}`.trim(),
+      key: 'palt', value: palt ?? '\u2013', minChars: 5,
+      label: `${isVarioLow ? '\u26a0 ' : ''}${showQnh ? 'QNH' : 'P.ALT'}${uncalibrated ? ' ?' : ''}`,
+      dotColor: baroDot, dotGlyph: baroGlyph,
       onPress: onToggleQnh,
       valueColor: isVarioLow ? theme.statusDanger : uncalibrated ? theme.statusWarn : undefined,
     })
@@ -218,7 +225,7 @@ export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeS
             {i > 0 && <View style={styles.divider} />}
             {it.key === 'wind'
               ? <WindGauge windTxt={windTxt} label={windLabel} rel={rel} xwColor={xwColor} sizing={sizing} />
-              : <Gauge value={it.value} label={it.label} sizing={sizing} onPress={it.onPress} valueColor={it.valueColor} />}
+              : <Gauge value={it.value} label={it.label} sizing={sizing} onPress={it.onPress} valueColor={it.valueColor} dotColor={it.dotColor} dotGlyph={it.dotGlyph} />}
           </React.Fragment>
         )
       })}

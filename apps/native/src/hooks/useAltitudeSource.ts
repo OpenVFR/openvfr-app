@@ -9,8 +9,8 @@
  * real external instrument, unlike the phone's internal sensor.
  */
 
-import { useEffect, useMemo } from 'react'
-import { pickBestAltitudeSource, type AltitudeSourceResult } from '@open-vfr/shared/baroAltitude'
+import { useEffect, useMemo, useState } from 'react'
+import { pickBestAltitudeSource, isVarioFresh, VARIO_STALE_MS, type AltitudeSourceResult } from '@open-vfr/shared/baroAltitude'
 import { useInternalBarometer } from './useInternalBarometer'
 import { useNearestQnh } from './useNearestQnh'
 import { useFieldQnh } from './useFieldQnh'
@@ -27,8 +27,24 @@ export function useAltitudeSource(position: GpsPosition | null): AltitudeSourceR
   const vario         = useVarioContext()
 
   const baroActive = settings.useInternalBarometer && internalBaro.availability === 'available'
-  // Offline / no-METAR fallback: calibrate against the field elevation while parked.
-  const fieldQnh = useFieldQnh(position, internalBaro.pressureHpa, baroActive && settings.qnhAuto)
+
+  // A connected vario that stops streaming (link up, no samples) must not
+  // keep showing a frozen altitude with the BlueFly marker. Re-evaluated on a
+  // 1 Hz tick, only while a vario is connected.
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  const varioLinked = vario.status === 'connected' && vario.state != null
+  useEffect(() => {
+    if (!varioLinked) return
+    const id = setInterval(() => setNowMs(Date.now()), Math.min(1_000, VARIO_STALE_MS))
+    return () => clearInterval(id)
+  }, [varioLinked])
+  const varioConnected = varioLinked && isVarioFresh(vario.state!.lastUpdated, nowMs)
+
+  // Offline / no-METAR fallback: calibrate against the field elevation while
+  // parked, from the BlueFly's pressure when connected (more accurate than the
+  // phone sensor), else the phone barometer.
+  const fieldPressureHpa = varioConnected ? vario.state!.pressurePa / 100 : internalBaro.pressureHpa
+  const fieldQnh = useFieldQnh(position, fieldPressureHpa, (baroActive || varioConnected) && settings.qnhAuto)
 
   const autoQnh = nearestQnh.qnhHpa ?? fieldQnh
   const { qnhHpa, calibrated: qnhCalibrated } = resolveQnh({
@@ -43,7 +59,6 @@ export function useAltitudeSource(position: GpsPosition | null): AltitudeSourceR
     return () => setLiveQnh(null)
   }, [setLiveQnh, settings.qnhAuto, autoQnh])
 
-  const varioConnected = vario.status === 'connected' && vario.state != null
 
   return useMemo(() => pickBestAltitudeSource({
     gpsAltFt: position ? position.altFt : null,
