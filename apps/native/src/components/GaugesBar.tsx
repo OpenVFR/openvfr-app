@@ -6,12 +6,12 @@
  */
 
 import React, { useEffect, useState } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { View, Text, TouchableOpacity, type LayoutChangeEvent } from 'react-native'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { WindAloft } from '@open-vfr/shared/fetchWind'
 import { computeWindRelative } from '@open-vfr/shared/windRelative'
 import type { AltitudeSourceResult } from '@open-vfr/shared/baroAltitude'
-import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
+import { theme, useThemedStyles, useScaledTheme, type ScaledTheme } from '../styles/theme'
 
 type Props = {
   position: GpsPosition | null
@@ -47,16 +47,28 @@ function useClock(local: boolean): string {
   return time
 }
 
-function Gauge({ value, label, onPress, valueColor }: { value: string; label: string; onPress?: () => void; valueColor?: string }) {
+/** Per-gauge layout computed by GaugesBar: relative width weight + shared font sizes. */
+type GaugeSizing = { weight: number; valueSize: number; labelSize: number }
+
+function Gauge({ value, label, sizing, onPress, valueColor }: {
+  value: string; label: string; sizing: GaugeSizing; onPress?: () => void; valueColor?: string
+}) {
   const styles = useThemedStyles(makeStyles)
   const Wrapper = onPress ? TouchableOpacity : View
   return (
-    <Wrapper style={styles.gauge} onPress={onPress} activeOpacity={0.6}>
-      <Text style={[styles.gaugeValue, valueColor ? { color: valueColor } : null]} allowFontScaling={false} numberOfLines={1}>{value}</Text>
-      <Text style={styles.gaugeLabel} numberOfLines={1}>{label}</Text>
+    <Wrapper style={[styles.gauge, { flexGrow: sizing.weight }]} onPress={onPress} activeOpacity={0.6}>
+      <Text
+        style={[styles.gaugeValue, { fontSize: sizing.valueSize }, valueColor ? { color: valueColor } : null]}
+        allowFontScaling={false} numberOfLines={1}
+      >{value}</Text>
+      <Text style={[styles.gaugeLabel, { fontSize: sizing.labelSize }]} allowFontScaling={false} numberOfLines={1}>{label}</Text>
     </Wrapper>
   )
 }
+
+// Approximate glyph widths as a fraction of font size (bold digits / regular caps).
+const VALUE_EM_PER_CHAR = 0.6
+const LABEL_EM_PER_CHAR = 0.56
 
 // Crosswind severity colour — same thresholds as web's GoFlyingPanel.tsx,
 // both sourced from @open-vfr/shared/windRelative so the two apps can't
@@ -78,23 +90,26 @@ function crosswindColor(severity: 'calm' | 'moderate' | 'strong'): string {
  * crosswind severity (green/yellow/red), the one component that's
  * unfavourable regardless of flight phase.
  */
-function WindGauge({ wind, position }: { wind: WindAloft | null; position: GpsPosition | null }) {
+function WindGauge({ windTxt, label, rel, xwColor, sizing }: {
+  windTxt: string
+  label: string
+  rel: ReturnType<typeof computeWindRelative> | null
+  xwColor: string | undefined
+  sizing: GaugeSizing
+}) {
   const styles = useThemedStyles(makeStyles)
-  const windTxt = wind ? `${wind.dirDeg.toString().padStart(3, '0')}\u00b0/${Math.round(wind.speedKts)}` : '\u2013'
-  const rel = position ? computeWindRelative(wind, position.trackDeg, position.speedKts) : null
-  const xwColor = rel ? crosswindColor(rel.crosswindSeverity) : undefined
   return (
-    <View style={styles.gauge}>
+    <View style={[styles.gauge, { flexGrow: sizing.weight }]}>
       <View style={styles.windValueRow}>
         {rel && (
-          <Text style={[styles.windArrow, { transform: [{ rotate: `${rel.arrowRotationDeg}deg` }] }]}>
+          <Text style={[styles.windArrow, { fontSize: sizing.labelSize, transform: [{ rotate: `${rel.arrowRotationDeg}deg` }] }]}>
             {'\u25b2'}
           </Text>
         )}
-        <Text style={styles.gaugeValue} allowFontScaling={false} numberOfLines={1}>{windTxt}</Text>
+        <Text style={[styles.gaugeValue, { fontSize: sizing.valueSize }]} allowFontScaling={false} numberOfLines={1}>{windTxt}</Text>
       </View>
-      <Text style={[styles.gaugeLabel, xwColor ? { color: xwColor } : null]} numberOfLines={1}>
-        {rel ? (rel.hw >= 0 ? `HW${rel.hw}` : `TW${Math.abs(rel.hw)}`) + ` \u00b7 XW${rel.xw}` : 'WIND'}
+      <Text style={[styles.gaugeLabel, { fontSize: sizing.labelSize }, xwColor ? { color: xwColor } : null]} allowFontScaling={false} numberOfLines={1}>
+        {label}
       </Text>
     </View>
   )
@@ -103,6 +118,9 @@ function WindGauge({ wind, position }: { wind: WindAloft | null; position: GpsPo
 export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeSource, showQnh, onToggleQnh, showLocalTime, onToggleLocalTime, varioBatteryLow }: Props) {
   const styles = useThemedStyles(makeStyles)
   const clock = useClock(!!showLocalTime)
+  const scaled = useScaledTheme()
+  const [barWidth, setBarWidth] = useState(0)
+  const onLayout = (e: LayoutChangeEvent) => setBarWidth(e.nativeEvent.layout.width)
 
   const gs = position ? `${Math.round(position.speedKts)}` : '\u2013'
   const tt = position ? `${Math.round(position.trackDeg).toString().padStart(3, '0')}\u00b0` : '\u2013'
@@ -139,34 +157,71 @@ export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeS
     ? `${altitudeSource!.vsFtMin! >= 0 ? '+' : ''}${Math.round(altitudeSource!.vsFtMin!)}`
     : null
 
+  const windTxt = wind ? `${wind.dirDeg.toString().padStart(3, '0')}\u00b0/${Math.round(wind.speedKts)}` : '\u2013'
+  const rel = position ? computeWindRelative(wind, position.trackDeg, position.speedKts) : null
+  const xwColor = rel ? crosswindColor(rel.crosswindSeverity) : undefined
+  const windLabel = rel ? (rel.hw >= 0 ? `HW${rel.hw}` : `TW${Math.abs(rel.hw)}`) + ` \u00b7 XW${rel.xw}` : 'WIND'
+
+  // minChars: widest reading this gauge can show (GS up to 3 digits, P.ALT up
+  // to "FL195", VS up to "+1500"...). Sizing uses max(actual, minChars) so the
+  // font stays steady as digits come and go instead of jumping on 99 -> 100.
+  type Item = { key: string; value: string; label: string; minChars: number; minLabelChars?: number; onPress?: () => void; valueColor?: string }
+  const items: Item[] = [
+    { key: 'talt', value: talt, label: showAgl ? 'T.ALT AGL' : 'T.ALT AMSL', minChars: 5, onPress: onToggleAgl },
+  ]
+  if (palt != null) {
+    items.push({
+      key: 'palt', value: palt, minChars: 5,
+      label: `${tierIcon} ${showQnh ? 'QNH' : 'P.ALT'}${uncalibrated ? ' ?' : ''}`.trim(),
+      onPress: onToggleQnh,
+      valueColor: isVarioLow ? theme.statusDanger : uncalibrated ? theme.statusWarn : undefined,
+    })
+  }
+  if (vs != null) items.push({ key: 'vs', value: vs, label: 'VS fpm', minChars: 5 })
+  items.push(
+    { key: 'gs', value: gs, label: 'GS', minChars: 3 },
+    { key: 'tt', value: tt, label: 'TT', minChars: 4 },
+    { key: 'clock', value: clock || '00:00', label: showLocalTime ? 'LT' : 'UTC', minChars: 5, onPress: onToggleLocalTime },
+    { key: 'wind', value: windTxt + (rel ? '  ' : ''), label: windLabel, minChars: 7, minLabelChars: 9 },
+  )
+
+  // Fit the strip to the device width: each gauge gets a width share in
+  // proportion to its text, then one shared value size and one shared label
+  // size are chosen so the tightest gauge still fits. Text therefore grows and
+  // shrinks with the screen instead of truncating (capped so a wide tablet
+  // doesn't get absurdly large numerals; the device/user scale already applies
+  // to the caps).
+  const valueChars = (it: Item) => Math.max(it.value.length, it.minChars)
+  const labelChars = (it: Item) => Math.max(it.label.length, it.minLabelChars ?? 0)
+  const textLen = (it: Item) => Math.max(valueChars(it) * VALUE_EM_PER_CHAR, labelChars(it) * LABEL_EM_PER_CHAR * 0.62, 1.8)
+  const weights = items.map(textLen)
+  const totalWeight = weights.reduce((a, b) => a + b, 0)
+  const usable = Math.max(0, barWidth - (items.length - 1) - scaled.space2) // dividers + a little edge padding
+  let valueSize = scaled.textXl
+  let labelSize = scaled.scale(11)
+  if (usable > 0) {
+    items.forEach((it, i) => {
+      const slot = (usable * weights[i]) / totalWeight
+      valueSize = Math.min(valueSize, (slot * 0.94) / (valueChars(it) * VALUE_EM_PER_CHAR))
+      labelSize = Math.min(labelSize, (slot * 0.96) / (labelChars(it) * LABEL_EM_PER_CHAR))
+    })
+  }
+  valueSize = Math.max(valueSize, 9)
+  labelSize = Math.max(labelSize, 6)
+
   return (
-    <View style={styles.bar}>
-      <Gauge value={talt} label={showAgl ? 'T.ALT AGL' : 'T.ALT AMSL'} onPress={onToggleAgl} />
-      {palt != null && (
-        <>
-          <View style={styles.divider} />
-          <Gauge
-            value={palt}
-            label={`${tierIcon} ${showQnh ? 'QNH' : 'P.ALT'}${uncalibrated ? ' ?' : ''}`}
-            onPress={onToggleQnh}
-            valueColor={isVarioLow ? theme.statusDanger : uncalibrated ? theme.statusWarn : undefined}
-          />
-        </>
-      )}
-      {vs != null && (
-        <>
-          <View style={styles.divider} />
-          <Gauge value={vs} label="VS fpm" />
-        </>
-      )}
-      <View style={styles.divider} />
-      <Gauge value={gs} label="GS" />
-      <View style={styles.divider} />
-      <Gauge value={tt} label="TT" />
-      <View style={styles.divider} />
-      <Gauge value={clock} label={showLocalTime ? 'LT' : 'UTC'} onPress={onToggleLocalTime} />
-      <View style={styles.divider} />
-      <WindGauge wind={wind} position={position} />
+    <View style={styles.bar} onLayout={onLayout}>
+      {items.map((it, i) => {
+        const sizing: GaugeSizing = { weight: weights[i], valueSize, labelSize }
+        return (
+          <React.Fragment key={it.key}>
+            {i > 0 && <View style={styles.divider} />}
+            {it.key === 'wind'
+              ? <WindGauge windTxt={windTxt} label={windLabel} rel={rel} xwColor={xwColor} sizing={sizing} />
+              : <Gauge value={it.value} label={it.label} sizing={sizing} onPress={it.onPress} valueColor={it.valueColor} />}
+          </React.Fragment>
+        )
+      })}
     </View>
   )
 }
@@ -177,23 +232,24 @@ function makeStyles(theme: ScaledTheme) {
     flexDirection:   'row' as const,
     alignItems:      'center' as const,
     justifyContent:  'space-evenly' as const,
+    paddingHorizontal: theme.space1,
     backgroundColor: theme.surfacePanel,
     borderTopWidth:  1,
     borderColor:     theme.borderDefault,
     paddingVertical: theme.space2,
   },
   gauge: {
-    flex:       1,
+    flexBasis:  0,
+    flexShrink: 1,
     alignItems: 'center' as const,
+    minWidth:   0,
   },
   gaugeValue: {
     color:      theme.textPrimary,
-    fontSize:   theme.textLg,
     fontWeight: '700' as const,
   },
   gaugeLabel: {
     color:    theme.textMuted,
-    fontSize: theme.scale(9),
     marginTop: 1,
   },
   windValueRow: {
@@ -201,7 +257,6 @@ function makeStyles(theme: ScaledTheme) {
     alignItems:    'center' as const,
   },
   windArrow: {
-    fontSize:    theme.scale(9),
     marginRight: 2,
     color:       theme.textSecondary,
   },

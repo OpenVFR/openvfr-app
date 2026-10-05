@@ -15,8 +15,8 @@
  *   - ADV +1NM for a quick fast-forward jump (web's 'Q' key equivalent)
  */
 
-import React, { useCallback, useEffect, useRef } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { View, Text, TouchableOpacity, type LayoutChangeEvent } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
@@ -64,15 +64,16 @@ function useHoldRepeat(fn: (dir: -1 | 1) => void) {
   return { onPressIn: press, onPressOut: clear }
 }
 
-function StepperButton({ onPressIn, onPressOut, children }: {
+function StepperButton({ onPressIn, onPressOut, size, children }: {
   onPressIn:  () => void
   onPressOut: () => void
+  size:       number
   children:   React.ReactNode
 }) {
   const styles = useThemedStyles(makeStyles)
   return (
     <TouchableOpacity
-      style={styles.stepBtn}
+      style={[styles.stepBtn, { width: size, height: size }]}
       onPressIn={onPressIn}
       onPressOut={onPressOut}
       activeOpacity={0.6}
@@ -82,66 +83,89 @@ function StepperButton({ onPressIn, onPressOut, children }: {
   )
 }
 
+// Approximate glyph width as a fraction of font size (bold digits).
+const EM_PER_CHAR = 0.6
+// Units render smaller than the number next to them.
+const UNIT_SCALE = 0.7
+
+type ColumnSpec = { key: 'hdg' | 'spd' | 'alt'; label: string; digits: number; unit: string }
+// Expected widest reading per column, so the layout doesn't jitter as values change.
+const COLUMNS: ColumnSpec[] = [
+  { key: 'hdg', label: 'HDG',   digits: 3, unit: '\u00b0' },
+  { key: 'spd', label: 'SPEED', digits: 3, unit: ' kt' },
+  { key: 'alt', label: 'ALT',   digits: 5, unit: ' ft' },
+]
+const textEm = (c: ColumnSpec, digits: number) => Math.max(digits, c.digits) * EM_PER_CHAR + c.unit.length * EM_PER_CHAR * UNIT_SCALE
+
 export function SimControlPanel({ speedKts, altFt, trackDeg, onAdjustHeading, onAdjustSpeed, onAdjustAlt, onAdvance, onStop }: Props) {
   const styles = useThemedStyles(makeStyles)
   const hdg   = useHoldRepeat(onAdjustHeading)
   const speed = useHoldRepeat(onAdjustSpeed)
   const alt   = useHoldRepeat(onAdjustAlt)
+  const scaled = useScaledTheme()
+  const [rowWidth, setRowWidth] = useState(0)
+  const onRowLayout = (e: LayoutChangeEvent) => setRowWidth(e.nativeEvent.layout.width)
+
+  // Fit the controls to the screen: the +/- buttons scale with the width, the
+  // three columns share the remaining space in proportion to their text, and
+  // one font size is chosen so the tightest column's reading still fits.
+  const rowGap = scaled.space1
+  const innerGap = scaled.space1
+  const btn = Math.max(22, Math.min(scaled.scale(30), Math.round(rowWidth * 0.065)))
+  const digitsNow = { hdg: 3, spd: String(Math.round(speedKts)).length, alt: String(Math.round(altFt)).length }
+  const fixed = 2 * btn + 2 * innerGap          // two buttons + gaps per column
+  const ems = COLUMNS.map((c) => textEm(c, digitsNow[c.key]))
+  const emSum = ems.reduce((x, y) => x + y, 0)
+  // Closed-form fit: columns are fixed + em_i * f wide; choose the largest f
+  // (font size) so the three columns exactly fill the row.
+  const fitSize = rowWidth > 0
+    ? (rowWidth - rowGap * (COLUMNS.length - 1) - COLUMNS.length * fixed) / emSum
+    : scaled.textLg
+  const valueSize = Math.max(9, Math.min(scaled.textLg, fitSize))
+  const weights = ems.map((em) => fixed + em * valueSize)
+  const unitSize = Math.max(8, Math.round(valueSize * UNIT_SCALE))
+  const labelSize = Math.max(8, Math.min(scaled.scale(10), Math.round(valueSize * 0.7)))
+
+  const values: Record<ColumnSpec['key'], { text: string; unit: string; minus: () => void; plus: () => void; onOut: () => void }> = {
+    hdg: { text: Math.round(trackDeg).toString().padStart(3, '0'), unit: '\u00b0', minus: () => hdg.onPressIn(-1), plus: () => hdg.onPressIn(1), onOut: hdg.onPressOut },
+    spd: { text: String(Math.round(speedKts)), unit: ' kt', minus: () => speed.onPressIn(-1), plus: () => speed.onPressIn(1), onOut: speed.onPressOut },
+    alt: { text: String(Math.round(altFt)), unit: ' ft', minus: () => alt.onPressIn(-1), plus: () => alt.onPressIn(1), onOut: alt.onPressOut },
+  }
 
   return (
     <View style={styles.panel}>
       <View style={styles.header}>
         <Ionicons name="game-controller-outline" size={14} color={theme.accentBlue} />
         <Text style={styles.headerTxt}>SIMULATION</Text>
+        <TouchableOpacity style={styles.advBtn} onPress={onAdvance} hitSlop={6}>
+          <Ionicons name="play-skip-forward-outline" size={14} color={theme.accentBlue} />
+          <Text style={[styles.advTxt, { fontSize: labelSize }]} allowFontScaling={false}>+1NM</Text>
+        </TouchableOpacity>
         <TouchableOpacity onPress={onStop} hitSlop={8} testID="sim-stop">
           <Ionicons name="close-circle" size={18} color={theme.statusDanger} />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.row}>
-        <View style={styles.gauge}>
-          <Text style={styles.gaugeLabel}>HDG</Text>
-          <View style={styles.stepperRow}>
-            <StepperButton onPressIn={() => hdg.onPressIn(-1)} onPressOut={hdg.onPressOut}>
-              <Ionicons name="remove" size={16} color={theme.textPrimary} />
-            </StepperButton>
-            <Text style={styles.gaugeVal}>{Math.round(trackDeg).toString().padStart(3, '0')}<Text style={styles.gaugeUnit}>°</Text></Text>
-            <StepperButton onPressIn={() => hdg.onPressIn(1)} onPressOut={hdg.onPressOut}>
-              <Ionicons name="add" size={16} color={theme.textPrimary} />
-            </StepperButton>
-          </View>
-        </View>
-
-        <View style={styles.gauge}>
-          <Text style={styles.gaugeLabel}>SPEED</Text>
-          <View style={styles.stepperRow}>
-            <StepperButton onPressIn={() => speed.onPressIn(-1)} onPressOut={speed.onPressOut}>
-              <Ionicons name="remove" size={16} color={theme.textPrimary} />
-            </StepperButton>
-            <Text style={styles.gaugeVal}>{Math.round(speedKts)}<Text style={styles.gaugeUnit}> kt</Text></Text>
-            <StepperButton onPressIn={() => speed.onPressIn(1)} onPressOut={speed.onPressOut}>
-              <Ionicons name="add" size={16} color={theme.textPrimary} />
-            </StepperButton>
-          </View>
-        </View>
-
-        <View style={styles.gauge}>
-          <Text style={styles.gaugeLabel}>ALT</Text>
-          <View style={styles.stepperRow}>
-            <StepperButton onPressIn={() => alt.onPressIn(-1)} onPressOut={alt.onPressOut}>
-              <Ionicons name="remove" size={16} color={theme.textPrimary} />
-            </StepperButton>
-            <Text style={styles.gaugeVal}>{Math.round(altFt)}<Text style={styles.gaugeUnit}> ft</Text></Text>
-            <StepperButton onPressIn={() => alt.onPressIn(1)} onPressOut={alt.onPressOut}>
-              <Ionicons name="add" size={16} color={theme.textPrimary} />
-            </StepperButton>
-          </View>
-        </View>
-
-        <TouchableOpacity style={styles.advBtn} onPress={onAdvance}>
-          <Ionicons name="play-skip-forward-outline" size={14} color={theme.accentBlue} />
-          <Text style={styles.advTxt}>1NM</Text>
-        </TouchableOpacity>
+      <View style={styles.row} onLayout={onRowLayout}>
+        {COLUMNS.map((c, i) => {
+          const v = values[c.key]
+          return (
+            <View key={c.key} style={[styles.gauge, { flexGrow: weights[i], flexBasis: 0 }]}>
+              <Text style={[styles.gaugeLabel, { fontSize: labelSize }]} allowFontScaling={false}>{c.label}</Text>
+              <View style={styles.stepperRow}>
+                <StepperButton size={btn} onPressIn={v.minus} onPressOut={v.onOut}>
+                  <Ionicons name="remove" size={Math.round(btn * 0.6)} color={theme.textPrimary} />
+                </StepperButton>
+                <Text style={[styles.gaugeVal, { fontSize: valueSize }]} allowFontScaling={false} numberOfLines={1}>
+                  {v.text}<Text style={[styles.gaugeUnit, { fontSize: unitSize }]}>{v.unit}</Text>
+                </Text>
+                <StepperButton size={btn} onPressIn={v.plus} onPressOut={v.onOut}>
+                  <Ionicons name="add" size={Math.round(btn * 0.6)} color={theme.textPrimary} />
+                </StepperButton>
+              </View>
+            </View>
+          )
+        })}
       </View>
     </View>
   )
@@ -175,13 +199,12 @@ function makeStyles(theme: ScaledTheme) {
     gap:           theme.space2,
   },
   gauge: {
-    flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     gap: 2,
   },
   gaugeLabel: {
     color:      theme.textMuted,
-    fontSize:   9,
     fontWeight: '600',
   },
   stepperRow: {
@@ -190,8 +213,6 @@ function makeStyles(theme: ScaledTheme) {
     gap:           theme.space1,
   },
   stepBtn: {
-    width:           26,
-    height:          26,
     borderRadius:    theme.radiusSm,
     backgroundColor: theme.surfaceOverlay,
     borderWidth:     1,
@@ -201,29 +222,27 @@ function makeStyles(theme: ScaledTheme) {
   },
   gaugeVal: {
     color:       theme.textPrimary,
-    fontSize:    theme.textMd,
     fontWeight:  '700',
-    minWidth:    52,
+    flexShrink:  1,
     textAlign:   'center',
   },
   gaugeUnit: {
-    fontSize:   10,
     fontWeight: '500',
     color:      theme.textMuted,
   },
   advBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
     paddingHorizontal: theme.space2,
-    paddingVertical:   theme.space1,
+    paddingVertical:   2,
     borderRadius:      theme.radiusSm,
     borderWidth:       1,
     borderColor:       theme.borderDefault,
   },
   advTxt: {
     color:      theme.accentBlue,
-    fontSize:   9,
     fontWeight: '700',
-    marginTop:  1,
   },
 } as const
 }

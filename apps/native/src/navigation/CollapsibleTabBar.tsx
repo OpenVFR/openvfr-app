@@ -143,6 +143,10 @@ export function CollapsibleTabBar({ state, descriptors, navigation }: BottomTabB
                   name={icons ? (focused ? icons.active : icons.inactive) : 'ellipse-outline'}
                   size={scaledTheme.scale(20)}
                   color={color}
+                  // Glyph box is wider than the font's advance on some
+                  // densities; give it room so the right edge isn't clipped.
+                  style={{ width: scaledTheme.scale(28), textAlign: 'center' }}
+                  allowFontScaling={false}
                 />
               </TouchableOpacity>
               </Animated.View>
