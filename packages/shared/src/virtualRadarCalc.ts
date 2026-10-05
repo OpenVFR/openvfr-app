@@ -52,6 +52,8 @@ import {
 import type { Feature, Geometry, Polygon, MultiPolygon } from 'geojson'
 import type { RouteWaypoint, LegOverride } from './types'
 import { AIRSPACE_COLORS, CONTROLLED_CLASSES, airspaceDisplayClass, controlledStyle } from './airspaceColors'
+import { limitIsAgl } from './airspaceAltitude'
+import type { ElevationLookup } from './terrainDem'
 import { fetchWithRetry } from './fetchWithRetry'
 
 // ---------------------------------------------------------------------------
@@ -68,8 +70,13 @@ export type AirspaceCrossSection = {
   class:    string   // 'C' | 'D' | 'E' | 'G' | 'R' | 'TRA' | 'GLDR' | 'MODEL'
   type:     string   // raw OFMX codeType (CTR, TMA, D, R…)
   name:     string
+  /** Limits in the published reference. AGL limits are the raw height above
+   *  ground here; applyTerrainToBands() lifts them to ft AMSL for drawing. */
   lower_ft: number
   upper_ft: number
+  /** True when the corresponding published limit is AGL/GND (height, not altitude). */
+  lowerAgl?: boolean
+  upperAgl?: boolean
   entryNm:  number   // distance along route where airspace starts
   exitNm:   number   // distance along route where airspace ends
   fill:     string   // colour for the band fill
@@ -309,6 +316,8 @@ interface AirspaceProps {
   class:    string
   type:     string
   name:     string
+  upper:    string
+  lower:    string
   upper_ft: number
   lower_ft: number
   frequencies?: { freq_mhz: number }[]
@@ -508,6 +517,8 @@ export function buildVirtualRadarProfile(
       name:     String(p.name     ?? ''),
       lower_ft: lowerFt,
       upper_ft: upperFt,
+      lowerAgl: limitIsAgl(p.lower) && lowerFt > 0 ? true : undefined,
+      upperAgl: limitIsAgl(p.upper) ? true : undefined,
       entryNm:  Math.round(minDistNm * 10) / 10,
       exitNm:   Math.round(maxDistNm * 10) / 10,
       fill:     colours.fill,
@@ -833,6 +844,10 @@ export async function fetchTerrainProfile(
   waypoints: RouteWaypoint[],
   baseUrl = '',
   signal?:   AbortSignal,
+  /** Offline fallback (e.g. the hillshade DEM, @open-vfr/shared/terrainDem):
+   *  used when the elevation API is unreachable. Sampled sequentially so
+   *  only a handful of DEM tiles are ever decoded at once. */
+  fallback?: ElevationLookup | null,
 ): Promise<TerrainPoint[]> {
   if (waypoints.length < 2) return []
 
@@ -858,25 +873,53 @@ export async function fetchTerrainProfile(
 
   const locStr = samples.map((s) => `${s.lat.toFixed(5)},${s.lng.toFixed(5)}`).join('|')
 
-  // Retries transient network blips / 502-504 -- see fetchWithRetry.ts.
-  const resp = await fetchWithRetry(`${baseUrl}/api/elevation/eudem25m`, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ locations: locStr }),
-    signal,
-  })
-  if (!resp.ok) throw new Error(`OpenTopoData HTTP ${resp.status}`)
+  try {
+    // Retries transient network blips / 502-504 -- see fetchWithRetry.ts.
+    const resp = await fetchWithRetry(`${baseUrl}/api/elevation/eudem25m`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ locations: locStr }),
+      signal,
+    })
+    if (!resp.ok) throw new Error(`OpenTopoData HTTP ${resp.status}`)
 
-  const data = await resp.json() as {
-    results: { elevation: number | null }[]
-    status:  string
+    const data = await resp.json() as {
+      results: { elevation: number | null }[]
+      status:  string
+    }
+    if (data.status !== 'OK') throw new Error(`OpenTopoData: ${data.status}`)
+
+    return data.results.map((r, i) => ({
+      distNm: Math.round(samples[i].distNm * 100) / 100,
+      elevFt: Math.round((r.elevation ?? 0) * 3.28084),
+    }))
+  } catch (err) {
+    if ((err as { name?: string })?.name === 'AbortError' || !fallback) throw err
+    return terrainProfileFromLookup(samples, fallback, signal)
   }
-  if (data.status !== 'OK') throw new Error(`OpenTopoData: ${data.status}`)
+}
 
-  return data.results.map((r, i) => ({
-    distNm: Math.round(samples[i].distNm * 100) / 100,
-    elevFt: Math.round((r.elevation ?? 0) * 3.28084),
-  }))
+/** Sample a route's terrain from a local elevation lookup (DEM fallback).
+ *  Sequential on purpose: consecutive samples share tiles, so the DEM's small
+ *  LRU is enough and nothing is decoded in parallel. Throws when the lookup
+ *  has no coverage for the whole route (caller treats it like an API failure). */
+export async function terrainProfileFromLookup(
+  samples: { distNm: number; lat: number; lng: number }[],
+  lookup:  ElevationLookup,
+  signal?: AbortSignal,
+): Promise<TerrainPoint[]> {
+  const out: TerrainPoint[] = []
+  let lastFt: number | null = null
+  let hits = 0
+  for (const s of samples) {
+    if (signal?.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' })
+    const ft = await lookup.elevationFt(s.lat, s.lng)
+    if (ft != null) { lastFt = ft; hits++ }
+    // Gaps (water mask, edge of coverage) carry the last known value forward.
+    out.push({ distNm: Math.round(s.distNm * 100) / 100, elevFt: ft ?? lastFt ?? 0 })
+  }
+  if (hits === 0) throw new Error('terrain: no DEM coverage along route')
+  return out
 }
 
 // ---------------------------------------------------------------------------
@@ -1002,6 +1045,40 @@ export function computeMsaProfile(terrainPts: TerrainPoint[]): MsaPoint[] {
  * height_m: 0 in the source data (AGL height unsurveyed) — in that case this
  * floor IS the rendered tip.
  */
+/**
+ * Lift AGL airspace limits to ft AMSL using the terrain along the crossing,
+ * so bands draw (and preflight checks compare) at their real altitude.
+ * Rectangular bands are kept, resolved conservatively: an AGL floor sits on
+ * the LOWEST terrain in the span (airspace shown as low as it can be), an
+ * AGL ceiling on the HIGHEST (as high as it can be). Bands with no AGL limit
+ * and calls with no terrain data return the input unchanged.
+ */
+export function applyTerrainToBands<T extends {
+  lower_ft: number; upper_ft: number; lowerAgl?: boolean; upperAgl?: boolean; entryNm: number; exitNm: number
+}>(bands: T[], terrainPts: TerrainPoint[]): T[] {
+  if (terrainPts.length === 0) return bands
+  return bands.map((b) => {
+    if (!b.lowerAgl && !b.upperAgl) return b
+    let lo = Infinity, hi = -Infinity
+    for (const p of terrainPts) {
+      if (p.distNm < b.entryNm || p.distNm > b.exitNm) continue
+      if (p.elevFt < lo) lo = p.elevFt
+      if (p.elevFt > hi) hi = p.elevFt
+    }
+    if (!Number.isFinite(lo)) {
+      // Span narrower than the sample spacing: interpolate at both ends.
+      const a = terrainAt(terrainPts, b.entryNm), c = terrainAt(terrainPts, b.exitNm)
+      lo = Math.min(a, c); hi = Math.max(a, c)
+    }
+    lo = Math.max(0, lo); hi = Math.max(0, hi)
+    return {
+      ...b,
+      lower_ft: b.lowerAgl ? b.lower_ft + lo : b.lower_ft,
+      upper_ft: b.upperAgl ? b.upper_ft + hi : b.upper_ft,
+    }
+  })
+}
+
 export function terrainAt(terrainPts: TerrainPoint[], distNm: number): number {
   if (terrainPts.length === 0) return 0
   if (distNm <= terrainPts[0].distNm) return terrainPts[0].elevFt

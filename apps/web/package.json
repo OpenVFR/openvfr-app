@@ -24,6 +24,7 @@
     "@turf/nearest-point-on-line": "^7.4.0",
     "better-auth": "1.7.6",
     "dexie": "4.4.6",
+    "fflate": "^0.8.3",
     "geomagnetism": "0.2.0",
     "maplibre-gl": "6.11.2",
     "pmtiles": "4.5.0",
