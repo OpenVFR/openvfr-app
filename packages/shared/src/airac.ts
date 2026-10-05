@@ -73,3 +73,70 @@ export function findOutdatedAirac(
     })
     .sort((a, b) => a.country.localeCompare(b.country))
 }
+
+/** Identifier of the cycle effective at `effMs` (exported for UI "next cycle"). */
+export function airacIdentForEffective(effMs: number): string {
+  return identForEffective(effMs)
+}
+
+/**
+ * Everything a "is my aviation data current?" panel needs, in one place:
+ * which cycle the data is, the window it is valid for, whether a newer cycle
+ * is already in force, and when the next one starts.
+ *
+ * `state`:
+ *  - 'current'  the data's cycle is the one in force, or a newer one
+ *               (published ahead of its effective date);
+ *  - 'outdated' a newer cycle is in force -- the data may show superseded
+ *               airspace;
+ *  - 'unknown'  no cycle reported (manifest missing it, or unparseable).
+ *               Shown as a caution, never as "current": the absence of a
+ *               cycle is how a silently stalled pipeline looks.
+ */
+export type AiracDataStatus = {
+  state:           'current' | 'outdated' | 'unknown'
+  cycle:           string | null
+  /** Effective date of the data's cycle, and of the cycle after it (exclusive end). */
+  validFromMs:     number | null
+  validToMs:       number | null
+  inForceCycle:    string
+  inForceSinceMs:  number
+  nextCycle:       string
+  nextEffectiveMs: number
+}
+
+export function airacDataStatus(cycle: string | null | undefined, now: number = Date.now()): AiracDataStatus {
+  const inForceSinceMs  = airacEffectiveMs(now)
+  const nextEffectiveMs = inForceSinceMs + CYCLE_MS
+  const base = {
+    inForceCycle:    identForEffective(inForceSinceMs),
+    inForceSinceMs,
+    nextCycle:       identForEffective(nextEffectiveMs),
+    nextEffectiveMs,
+  }
+  const validFromMs = cycle ? airacIdentToMs(cycle) : null
+  if (!cycle || validFromMs == null) {
+    return { ...base, state: 'unknown', cycle: cycle ?? null, validFromMs: null, validToMs: null }
+  }
+  return {
+    ...base,
+    state:     validFromMs < inForceSinceMs ? 'outdated' : 'current',
+    cycle,
+    validFromMs,
+    validToMs: validFromMs + CYCLE_MS,
+  }
+}
+
+/** "just now", "5 minutes ago", "3 hours ago", "4 days ago"; future → "in 4 days". */
+export function relativeTime(ms: number, now: number = Date.now()): string {
+  const d = ms - now
+  const a = Math.abs(d)
+  const unit = a < 60_000 ? null
+    : a < 3_600_000 ? ['minute', 60_000] as const
+    : a < DAY_MS ? ['hour', 3_600_000] as const
+    : ['day', DAY_MS] as const
+  if (!unit) return 'just now'
+  const n = Math.round(a / unit[1])
+  const s = `${n} ${unit[0]}${n === 1 ? '' : 's'}`
+  return d < 0 ? `${s} ago` : `in ${s}`
+}

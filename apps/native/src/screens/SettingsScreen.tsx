@@ -23,8 +23,8 @@ import { useNearestAerodrome } from '../hooks/useNearestAerodrome'
 import { qnhFromStationPressure } from '@open-vfr/shared/baroAltitude'
 import * as Location from 'expo-location'
 import { API_BASE, TILE_BASE } from '../config'
-import { refreshTileManifest } from '@open-vfr/shared/tileManifest'
-import { isAiracOutdated } from '@open-vfr/shared/airac'
+import { refreshTileManifest, getCachedTileManifest, onTileManifestChanged } from '@open-vfr/shared/tileManifest'
+import { airacDataStatus, relativeTime, type AiracDataStatus } from '@open-vfr/shared/airac'
 import { theme, useThemedStyles, useScaledTheme, type ScaledTheme, type ThemeName } from '../styles/theme'
 import {
   getCacheStatus, getTotalCacheSizeMb, downloadSelected, clearCache,
@@ -122,27 +122,31 @@ export function SettingsScreen() {
   }, [calibrateIcaoTouched, nearestAerodrome, calibrateIcao])
   const calibrateElevationFt = useAerodromeElevation(calibrateIcao)
 
-  // Fetch AIRAC cycle from manifest.json — re-fetch each time Settings tab is opened
-  const [dataAirac, setDataAirac] = useState<string | null>(null)
+  // Aviation-data freshness from the shared manifest cache (versionedTileUrl's
+  // root of trust). The old ad-hoc fetch used `${TILE_BASE}/tiles/manifest.json`,
+  // which 404s against production (bucket root, no /tiles/) and left the row
+  // on "OFM (loading…)" forever. Re-checked each time Settings gains focus.
+  const [manifestTick, setManifestTick] = useState(0)
+  useEffect(() => onTileManifestChanged(() => setManifestTick(t => t + 1)), [])
   useFocusEffect(useCallback(() => {
-    fetch(`${TILE_BASE}/tiles/manifest.json`)
-      .then(r => r.ok ? r.json() : null)
-      .then((m: { airac_cycle?: string; countries?: Record<string, Record<string, { airac_cycle?: string }>> } | null) => {
-        if (!m) return
-        // Top-level airac_cycle (local dev manifest)
-        if (m.airac_cycle) { setDataAirac(m.airac_cycle); return }
-        // Per-dataset airac_cycle (server manifest: countries.se.airspace.airac_cycle)
-        const countries = m.countries ?? {}
-        for (const datasets of Object.values(countries)) {
-          for (const ds of Object.values(datasets)) {
-            if (ds?.airac_cycle) { setDataAirac(ds.airac_cycle); return }
-          }
-        }
-      })
-      .catch(() => {})
+    refreshTileManifest(TILE_BASE).then(() => setManifestTick(t => t + 1)).catch(() => {})
   }, []))
+  const dataStatus = React.useMemo(() => {
+    void manifestTick
+    const m = getCachedTileManifest()
+    if (!m) return null
+    // Airspace is the AIRAC-governed dataset that matters for a go/no-go.
+    const [country, ds] = Object.entries(m.countries ?? {}).find(([, d]) => d?.airspace) ?? Object.entries(m.countries ?? {})[0] ?? []
+    const airspace = ds?.airspace as { airac_cycle?: string; loaded_at?: string } | undefined
+    const loadedAt = airspace?.loaded_at ? Date.parse(airspace.loaded_at) : null
+    return {
+      country: country ?? null,
+      status: airacDataStatus(airspace?.airac_cycle),
+      updatedMs: loadedAt ?? (m.generated_at ? Date.parse(m.generated_at) : null),
+      updatedIsPublish: loadedAt == null,
+    }
+  }, [manifestTick])
 
-  const airacStale = dataAirac !== null && isAiracOutdated(dataAirac)
 
   return (
     <>
@@ -433,7 +437,7 @@ export function SettingsScreen() {
       <Section title="About">
         <InfoRow label="Version"        value="0.1.0" />
         <InfoRow label="Server"         value={API_BASE} />
-        <InfoRow label="Aviation data"  value={dataAirac ? `OFM AIRAC ${dataAirac}${airacStale ? ' ⚠️ outdated' : ''}` : 'OFM (loading…)'} />
+        <AiracStatusRows data={dataStatus} />
         <InfoRow label="Obstacles"      value="OpenAIP (CC BY-NC 4.0)" />
         <InfoRow label="Basemap"        value="Protomaps / OSM (ODbL)" />
         {state.status === 'authenticated' && (
@@ -640,6 +644,46 @@ function makeStepStyles(theme: ScaledTheme) {
       textAlign:  'center' as const,
     },
   }
+}
+
+const fmtDay = (ms: number) => new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' })
+
+/** Aviation-data freshness: cycle + badge, validity window, last update,
+ *  next cycle, and a plain-language note when it is not current. */
+function AiracStatusRows({ data }: {
+  data: { country: string | null; status: AiracDataStatus; updatedMs: number | null; updatedIsPublish: boolean } | null
+}) {
+  const styles = useThemedStyles(makeStyles)
+  if (!data) return <InfoRow label="Aviation data" value="OFM (checking…)" />
+  const { status: st } = data
+  const badge = st.state === 'current' ? { text: 'Current', color: theme.statusOk }
+    : st.state === 'outdated' ? { text: 'Outdated', color: theme.statusDanger }
+    : { text: 'Unknown', color: theme.statusWarn }
+  return (
+    <>
+      <View style={styles.row}>
+        <Text style={styles.rowLabel}>Aviation data{data.country ? ` (${data.country.toUpperCase()})` : ''}</Text>
+        <Text style={[styles.rowValue, styles.infoValue]}>{st.cycle ? `OFM AIRAC ${st.cycle}` : 'OFM'}</Text>
+        <Text style={[styles.statusBadge, { color: badge.color, borderColor: badge.color }]}>{badge.text}</Text>
+      </View>
+      {st.validFromMs != null && st.validToMs != null && (
+        <InfoRow label="Valid" value={`${fmtDay(st.validFromMs)} – ${fmtDay(st.validToMs - 86_400_000)}`} />
+      )}
+      {data.updatedMs != null && (
+        <InfoRow label={data.updatedIsPublish ? 'Last published' : 'Last update'} value={relativeTime(data.updatedMs)} />
+      )}
+      <InfoRow label="Next AIRAC" value={`${st.nextCycle} · ${fmtDay(st.nextEffectiveMs)} (${relativeTime(st.nextEffectiveMs)})`} />
+      {st.state !== 'current' && (
+        <View style={styles.warningBox}>
+          <Text style={styles.warningText}>
+            {st.state === 'outdated'
+              ? `AIRAC ${st.inForceCycle} has been in force since ${fmtDay(st.inForceSinceMs)}. Airspace shown may be superseded; check current AIP/NOTAM before flight.`
+              : 'The data server does not report an AIRAC cycle for this airspace data, so its currency cannot be confirmed. Check current AIP/NOTAM before flight.'}
+          </Text>
+        </View>
+      )}
+    </>
+  )
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -871,6 +915,16 @@ function makeStyles(theme: ScaledTheme) {
     color:    theme.textSecondary,
     fontSize: theme.textXs,
     flex:     1,
+  },
+  statusBadge: {
+    marginLeft:        8,
+    fontSize:          11,
+    fontWeight:        '600',
+    borderWidth:       1,
+    borderRadius:      4,
+    paddingHorizontal: 6,
+    paddingVertical:   1,
+    overflow:          'hidden',
   },
   optionalRow: {
     paddingVertical:   theme.space3,

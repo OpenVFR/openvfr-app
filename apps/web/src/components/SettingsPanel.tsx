@@ -3,7 +3,7 @@ import type { Theme, TrajectoryMode, AirspaceWarnLookahead, TrafficVertFilter, P
 import { AIRSPACE_WARN_LOOKAHEAD_OPTIONS, AIRSPACE_WARN_VERTICAL_OPTIONS, TRAFFIC_VERT_FILTER_OPTIONS, PARK_TIMEOUT_OPTIONS } from '../db/useSettings'
 import type { DataManifest } from '../hooks/useDataManifest'
 import RegionSelector from './RegionSelector'
-import { isAiracOutdated } from '@open-vfr/shared/airac'
+import { airacDataStatus, relativeTime } from '@open-vfr/shared/airac'
 import { repairAppFiles } from '../utils/repairApp'
 import css from './SettingsPanel.module.css'
 
@@ -213,22 +213,39 @@ export default function SettingsPanel({ units, onUnitsChange, region, onRegionCh
               .sort(([a], [b]) => a.localeCompare(b))
               .map(([country, datasets]) => {
                 const airspace = datasets['airspace']
-                const obstacles = datasets['obstacles']
-                const ts = airspace?.loaded_at ?? obstacles?.loaded_at ?? null
-                const updated = ts
-                  ? new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' })
-                  : null
-                const cycle = airspace?.airac_cycle ?? null
-                const stale = cycle !== null && isAiracOutdated(cycle)
+                // A missing cycle is shown as "unknown", never silently as fine:
+                // that is exactly how a stalled refresh pipeline looks.
+                const st = airacDataStatus(airspace?.airac_cycle)
+                const loadedMs = airspace?.loaded_at ? Date.parse(airspace.loaded_at) : null
+                const updatedMs = loadedMs ?? (manifest.generated_at ? Date.parse(manifest.generated_at) : null)
+                const fmtDay = (ms: number) => new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' })
+                const badgeClass = st.state === 'current' ? css.dataVersionBadgeOk
+                  : st.state === 'outdated' ? css.dataVersionBadgeStale : css.dataVersionBadgeUnknown
                 return (
-                  <div key={country} className={css.dataVersionRow}>
-                    <span className={css.dataVersionCountry}>{country.toUpperCase()}</span>
-                    {cycle && (
-                      <span className={`${css.dataVersionBadge}${stale ? ` ${css.dataVersionBadgeStale}` : ''}`}>
-                        AIRAC {cycle}{stale ? ' !' : ''}
+                  <div key={country} className={css.dataVersionBlock}>
+                    <div className={css.dataVersionRow}>
+                      <span className={css.dataVersionCountry}>{country.toUpperCase()}</span>
+                      <span className={css.dataVersionBadge}>{st.cycle ? `AIRAC ${st.cycle}` : 'AIRAC ?'}</span>
+                      <span className={`${css.dataVersionBadge} ${badgeClass}`}>
+                        {st.state === 'current' ? 'Current' : st.state === 'outdated' ? 'Outdated' : 'Unknown'}
                       </span>
+                    </div>
+                    <div className={css.dataVersionDetail}>
+                      {st.validFromMs != null && st.validToMs != null && (
+                        <span>Valid {fmtDay(st.validFromMs)} – {fmtDay(st.validToMs - 86_400_000)}</span>
+                      )}
+                      {updatedMs != null && (
+                        <span>{loadedMs != null ? 'Updated' : 'Published'} {relativeTime(updatedMs)}</span>
+                      )}
+                      <span>Next AIRAC {st.nextCycle} {fmtDay(st.nextEffectiveMs)} ({relativeTime(st.nextEffectiveMs)})</span>
+                    </div>
+                    {st.state !== 'current' && (
+                      <div className={css.dataVersionNote}>
+                        {st.state === 'outdated'
+                          ? `AIRAC ${st.inForceCycle} in force since ${fmtDay(st.inForceSinceMs)}: airspace shown may be superseded. Check current AIP/NOTAM.`
+                          : 'Server reports no AIRAC cycle for this airspace data; currency cannot be confirmed. Check current AIP/NOTAM.'}
+                      </div>
                     )}
-                    {updated && <span className={css.dataVersionDate}>{updated}</span>}
                   </div>
                 )
               })}

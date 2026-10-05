@@ -221,6 +221,40 @@
   border-color: color-mix(in srgb, var(--status-warn) 30%, transparent);
 }
 
+.dataVersionBadgeOk {
+  color:        var(--status-ok);
+  background:   color-mix(in srgb, var(--status-ok) 12%, transparent);
+  border-color: color-mix(in srgb, var(--status-ok) 30%, transparent);
+}
+
+.dataVersionBadgeUnknown {
+  color:        var(--status-warn);
+  background:   color-mix(in srgb, var(--status-warn) 12%, transparent);
+  border-color: color-mix(in srgb, var(--status-warn) 30%, transparent);
+}
+
+.dataVersionBlock {
+  display:        flex;
+  flex-direction: column;
+  gap:            2px;
+}
+
+.dataVersionDetail {
+  display:   flex;
+  flex-wrap: wrap;
+  gap:       2px 10px;
+  font-size: 10px;
+  color:     var(--text-muted);
+  padding-left: 27px;
+}
+
+.dataVersionNote {
+  font-size:    10px;
+  line-height:  1.35;
+  color:        var(--status-warn);
+  padding-left: 27px;
+}
+
 .dataVersionDate {
   font-size: 10px;
   color:     var(--text-muted);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { currentAiracCycle, airacIdentToMs, isAiracOutdated, airacEffectiveMs, findOutdatedAirac } from './airac'
+import { currentAiracCycle, airacIdentToMs, isAiracOutdated, airacEffectiveMs, findOutdatedAirac, airacDataStatus, relativeTime } from './airac'
 
 const d = (y: number, m: number, day: number, h = 12) => Date.UTC(y, m - 1, day, h)
 
@@ -58,4 +58,38 @@ describe('findOutdatedAirac', () => {
     expect(findOutdatedAirac(m, now)).toEqual([{ country: 'dk', cycle: '2504' }, { country: 'se', cycle: '2505' }])
   })
   it('null manifest', () => expect(findOutdatedAirac(null, now)).toEqual([]))
+})
+
+describe('airacDataStatus', () => {
+  const now = Date.UTC(2026, 9, 5, 21, 0) // 2026-10-05, AIRAC 2610 in force since 2026-10-01
+  it('outdated: 2609 after 2610 took effect', () => {
+    const s = airacDataStatus('2609', now)
+    expect(s.state).toBe('outdated')
+    expect(s.inForceCycle).toBe('2610')
+    expect(new Date(s.inForceSinceMs).toISOString().slice(0, 10)).toBe('2026-10-01')
+    expect(new Date(s.validFromMs!).toISOString().slice(0, 10)).toBe('2026-09-03')
+    expect(new Date(s.validToMs!).toISOString().slice(0, 10)).toBe('2026-10-01')
+    expect(s.nextCycle).toBe('2611')
+    expect(new Date(s.nextEffectiveMs).toISOString().slice(0, 10)).toBe('2026-10-29')
+  })
+  it('current, and published-ahead counts as current', () => {
+    expect(airacDataStatus('2610', now).state).toBe('current')
+    expect(airacDataStatus('2611', now).state).toBe('current')
+  })
+  it('unknown when missing or malformed', () => {
+    expect(airacDataStatus(null, now).state).toBe('unknown')
+    expect(airacDataStatus(undefined, now).state).toBe('unknown')
+    expect(airacDataStatus('x', now).state).toBe('unknown')
+  })
+})
+
+describe('relativeTime', () => {
+  const now = Date.UTC(2026, 9, 5, 12)
+  it.each([
+    [now - 10_000, 'just now'],
+    [now - 4 * 60_000, '4 minutes ago'],
+    [now - 3_600_000, '1 hour ago'],
+    [now - 10 * 86_400_000, '10 days ago'],
+    [now + 24 * 86_400_000, 'in 24 days'],
+  ])('%s → %s', (ms, s) => expect(relativeTime(ms, now)).toBe(s))
 })
