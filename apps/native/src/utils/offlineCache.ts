@@ -39,6 +39,10 @@ export interface OfflineAsset {
    *         surprising a mobile user with a multi-hundred-MB download.
    */
   required:  boolean
+  /** Optional assets only: what the pilot loses offline without this file.
+   *  Shown under the opt-in row in Settings so "optional" is an informed
+   *  choice, not a guess from the label. */
+  without?:  string
 }
 
 // BUG FIX: two separate real bugs previously here:
@@ -60,7 +64,8 @@ export function remoteUrlFor(fileName: string): string {
 }
 
 export const OFFLINE_ASSETS: OfflineAsset[] = [
-  { key: 'basemap',           label: 'Basemap (large)',       fileName: 'basemap.pmtiles',              required: false },
+  { key: 'basemap',           label: 'Basemap (large)',       fileName: 'basemap.pmtiles',              required: false,
+    without: 'No roads, towns, lakes or coastline under the aviation layers at map zooms; only the coarse Europe overview.' },
   // Shared Europe-wide low-zoom overview (z0-6) -- small (generalization
   // dominates over area at low zoom, unlike the country-detail basemap
   // above), same file regardless of which country's detail basemap is
@@ -68,9 +73,15 @@ export const OFFLINE_ASSETS: OfflineAsset[] = [
   // the detail basemap's own country bbox/zoom range -- the same visible
   // gap this whole split was built to close, now also true offline.
   { key: 'basemapOverview',   label: 'Basemap overview',      fileName: 'europe-overview.pmtiles',      required: true },
-  { key: 'landuse',           label: 'Terrain (landuse)',     fileName: 'se-landuse.pmtiles',           required: false },
-  { key: 'hillshade',         label: 'Hillshade (relief, large)', fileName: 'se-hillshade.pmtiles',     required: false },
-  { key: 'contours',          label: 'Contour lines',         fileName: 'se-contours.pmtiles',          required: false },
+  { key: 'landuse',           label: 'Terrain (landuse)',     fileName: 'se-landuse.pmtiles',           required: false,
+    without: 'No farmland, built-up or wetland shading on the map.' },
+  // Doubles as the offline elevation model (src/utils/terrainDem.ts): the
+  // vertical profile and AGL airspace limits read ground elevation from it
+  // when the elevation API is unreachable.
+  { key: 'hillshade',         label: 'Terrain elevation + hillshade (large)', fileName: 'se-hillshade.pmtiles', required: false,
+    without: 'Offline: no terrain or MSA line in the vertical profile, and airspace limits given above ground (AGL) are checked at their raw height, as if the ground were at sea level. Also no relief shading on the map.' },
+  { key: 'contours',          label: 'Contour lines',         fileName: 'se-contours.pmtiles',          required: false,
+    without: 'No elevation contour lines on the map.' },
   { key: 'airspace',          label: 'Airspace',              fileName: 'se-airspace.geojson',          required: true },
   { key: 'aerodromes',        label: 'Aerodromes',            fileName: 'se-aerodromes.geojson',        required: true },
   { key: 'navaids',           label: 'Navaids',               fileName: 'se-navaids.geojson',           required: true },
@@ -293,6 +304,13 @@ function writeSidecar(hashes: Record<string, string>): void {
  * not loaded yet / offline, or this asset was downloaded before this
  * sidecar existed) -- never claims staleness without evidence.
  */
+/** Download size (MB) of an asset per the server manifest, or null before the
+ *  manifest has loaded. Lets the opt-in UI say what "large" means. */
+export function remoteSizeMb(asset: OfflineAsset): number | null {
+  const bytes = getCachedTileManifest()?.files?.[asset.fileName]?.bytes
+  return bytes != null && bytes > 0 ? Math.round(bytes / (1024 * 1024)) : null
+}
+
 export function isStale(asset: OfflineAsset): boolean {
   if (!isCached(asset)) return false
   const manifest = getCachedTileManifest()

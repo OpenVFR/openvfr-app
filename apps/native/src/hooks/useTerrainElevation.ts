@@ -11,9 +11,18 @@ import { useEffect, useRef, useState } from 'react'
 import { API_BASE } from '../config'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { fetchWithRetry } from '@open-vfr/shared/fetchWithRetry'
+import { getOfflineDem } from '../utils/terrainDem'
 
 const MIN_MOVE_NM     = 0.3
 const MIN_INTERVAL_MS = 15_000
+// A sample no longer describes the ground under the aircraft once it has
+// moved this far from where it was taken, or after this long (offline, API
+// down). Returning null then is safer than a frozen value: consumers (AGL
+// gauge, AGL airspace limits) fall back to "terrain unknown".
+const STALE_DIST_NM   = 3
+const STALE_AGE_MS    = 5 * 60_000
+
+type Sample = { elevFt: number; lat: number; lng: number; at: number }
 
 function quickDistNm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const dLat = (lat2 - lat1) * 60
@@ -22,7 +31,7 @@ function quickDistNm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 }
 
 export function useTerrainElevation(position: GpsPosition | null): number | null {
-  const [elevFt, setElevFt] = useState<number | null>(null)
+  const [sample, setSample] = useState<Sample | null>(null)
   const lastFetchRef = useRef<{ lat: number; lng: number; at: number } | null>(null)
   const inFlightRef   = useRef(false)
 
@@ -53,11 +62,20 @@ export function useTerrainElevation(position: GpsPosition | null): number | null
       .then((data: { results?: { elevation: number | null }[]; status?: string }) => {
         if (data.status !== 'OK' || !data.results?.[0]) return
         const m = data.results[0].elevation
-        if (m != null) setElevFt(Math.round(m * 3.28084))
+        if (m != null) setSample({ elevFt: Math.round(m * 3.28084), lat: position.lat, lng: position.lng, at: Date.now() })
       })
-      .catch(() => { /* non-fatal — AGL just stays unavailable */ })
+      .catch(async () => {
+        // API unreachable: fall back to the DEM, else terrain stays unknown.
+        const dem = getOfflineDem()
+        if (!dem) return
+        const ft = await dem.elevationFt(position.lat, position.lng).catch(() => null)
+        if (ft != null) setSample({ elevFt: ft, lat: position.lat, lng: position.lng, at: Date.now() })
+      })
       .finally(() => { inFlightRef.current = false })
   }, [position])
 
-  return elevFt
+  if (!sample || !position) return null
+  if (Date.now() - sample.at > STALE_AGE_MS) return null
+  if (quickDistNm(sample.lat, sample.lng, position.lat, position.lng) > STALE_DIST_NM) return null
+  return sample.elevFt
 }

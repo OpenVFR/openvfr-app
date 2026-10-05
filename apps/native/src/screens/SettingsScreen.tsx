@@ -28,7 +28,7 @@ import { isAiracOutdated } from '@open-vfr/shared/airac'
 import { theme, useThemedStyles, useScaledTheme, type ScaledTheme, type ThemeName } from '../styles/theme'
 import {
   getCacheStatus, getTotalCacheSizeMb, downloadSelected, clearCache,
-  REQUIRED_ASSETS, OPTIONAL_ASSETS,
+  REQUIRED_ASSETS, OPTIONAL_ASSETS, remoteSizeMb, isCached,
   type DownloadProgress,
 } from '../utils/offlineCache'
 import { clearProtomapsStyleCache } from '../components/AviationMap'
@@ -693,6 +693,12 @@ function OfflineDataSection() {
   const anyCached = statuses.some(s => s.cached)
   const requiredKeys = new Set(REQUIRED_ASSETS.map(a => a.key))
   const anyRequiredStale = statuses.some(s => s.cached && s.stale && requiredKeys.has(s.key))
+  // Required data is in place but the elevation model is not: offline flight
+  // then has no terrain/MSA and AGL limits are unchecked against the ground.
+  // That is a safety trade-off worth saying out loud, not a cosmetic one.
+  const hillshadeAsset = OPTIONAL_ASSETS.find(a => a.key === 'hillshade')
+  const requiredCached = REQUIRED_ASSETS.length > 0 && REQUIRED_ASSETS.every(isCached)
+  const terrainMissing = requiredCached && hillshadeAsset != null && !isCached(hillshadeAsset)
 
   const handleDownload = useCallback(async () => {
     setConfirmDownload(false)
@@ -742,20 +748,38 @@ function OfflineDataSection() {
         </View>
       ))}
 
+      {terrainMissing && hillshadeAsset && !downloading && (
+        <View style={styles.warningBox}>
+          <Text style={styles.warningTitle}>Offline terrain not downloaded</Text>
+          <Text style={styles.warningText}>
+            {hillshadeAsset.without} Include "{hillshadeAsset.label}" below to
+            add it{remoteSizeMb(hillshadeAsset) != null ? ` (about ${remoteSizeMb(hillshadeAsset)} MB)` : ''}.
+          </Text>
+        </View>
+      )}
+
       <Text style={[styles.rowLabel, { color: theme.textMuted, marginTop: 8 }]}>
         Optional layers to include next download:
       </Text>
       {OPTIONAL_ASSETS.map(a => {
         const checked = selectedOptional.has(a.key)
+        const sizeMb = remoteSizeMb(a)
         return (
           <TouchableOpacity
             key={a.key}
-            style={[styles.row, styles.pressable]}
+            style={[styles.optionalRow, styles.pressable]}
             onPress={() => toggleOptional(a.key)}
             disabled={downloading}
           >
-            <Text style={styles.rowLabel}>{a.label}</Text>
-            <Text style={styles.infoValue}>{checked ? '☑ Include' : '☐ Skip'}</Text>
+            <View style={styles.optionalHead}>
+              <Text style={styles.rowLabel}>
+                {a.label}{sizeMb != null ? ` (${sizeMb} MB)` : ''}
+              </Text>
+              <Text style={styles.infoValue}>{checked ? '☑ Include' : '☐ Skip'}</Text>
+            </View>
+            {a.without && (
+              <Text style={styles.optionalWithout}>Without it: {a.without}</Text>
+            )}
           </TouchableOpacity>
         )
       })}
@@ -847,6 +871,21 @@ function makeStyles(theme: ScaledTheme) {
     color:    theme.textSecondary,
     fontSize: theme.textXs,
     flex:     1,
+  },
+  optionalRow: {
+    paddingVertical:   theme.space3,
+    paddingHorizontal: theme.space3,
+    gap:               theme.space1,
+  },
+  optionalHead: {
+    flexDirection:  'row',
+    alignItems:     'center',
+    justifyContent: 'space-between',
+  },
+  optionalWithout: {
+    color:      theme.textMuted,
+    fontSize:   theme.textXs,
+    lineHeight: 16,
   },
   rowValue: {
     color:    theme.textPrimary,

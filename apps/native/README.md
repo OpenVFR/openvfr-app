@@ -369,12 +369,37 @@ Altitude source priority (`src/hooks/useAltitudeSource.ts`, pure logic in
    is dropped when no fresh METAR is available.
 2. Field calibration (`useFieldQnh`, `packages/shared/src/fieldQnh.ts`): while parked
    (≤ 3 kt) within 1 NM of an aerodrome, QNH is derived from the pressure and the
-   published field elevation.
+   published field elevation. The fix is kept for 1 h after take-off.
 3. Otherwise the stored value is used and the P.ALT gauge shows `?` (uncalibrated).
 
-Manual QNH mode always uses the stored value. The live QNH is also published to the
-BlueFly pipeline (`VarioContext.setLiveQnh`), and the BlueFly filter restarts if QNH
-steps by more than 0.5 hPa so the step is not read as a climb.
+Auto QNH values are rounded to whole hPa (as an altimeter is set). Manual QNH mode
+always uses the stored value. The live QNH is also published to the BlueFly pipeline
+(`VarioContext.setLiveQnh`), and the BlueFly filter restarts if QNH steps by more than
+0.5 hPa so the step is not read as a climb.
+
+**Airspace limits** (`packages/shared/src/airspaceAltitude.ts`, `usePositionAlerts`):
+each published limit is compared in its own reference — `FL` limits against pressure
+altitude (1013.25 hPa), `ft MSL` limits against QNH altitude, and `AGL`/`GND`/`SFC`
+limits against QNH altitude after adding the terrain elevation under the aircraft
+(`useTerrainElevation`; a sample older than 5 min or taken more than 3 NM away counts as
+unknown, and the raw AGL value is used). Without a barometric source the GPS altitude stands in for
+QNH altitude, and pressure altitude is estimated from it only while the QNH is
+verified. When the own altitude is not in the limit's reference (FL limit with no
+pressure altitude, or an uncalibrated QNH) the floor/ceiling warning buffer is widened
+by 500 ft. Entry/exit state has 100 ft of vertical hysteresis. Horizontally, the
+look-ahead samples the projected track, a 15-degree fan either side of it, and the GPS
+accuracy ring around the fix (`packages/shared/src/lookahead.ts`); "inside now" still
+uses the reported position only.
+
+**Offline terrain** (`packages/shared/src/terrainDem.ts`, `src/utils/terrainDem.ts`): when
+the elevation API is unreachable, ground elevation for the vertical profile (terrain line,
+MSA, AGL bands) and the live AGL lookup comes from the cached `se-hillshade.pmtiles`
+(Terrarium-encoded Copernicus GLO-30, ~75-150 m per pixel at its max zoom 10). It is read
+only from the local offline-cache file via `File.open()` ranged reads: one directory
+slice or one ~130 KB tile at a time, decoded tiles kept as Int16 metres in a 6-entry LRU
+(< 1 MB), never via `fetch()`, which buffers whole bodies in the Java heap (see the
+PMTiles OOM gotchas in `AGENTS.md`). Without the hillshade download there is no offline
+terrain and AGL limits fall back to their raw published value.
 
 The phone barometer is advisory: cabin pressure, vents and pocket/case placement
 affect it.

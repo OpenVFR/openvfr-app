@@ -36,6 +36,7 @@ import type { RouteWaypoint, LegOverride, AircraftProfileDocType } from '../type
 import { type Units, DEFAULT_UNITS, nmToDisplay } from '../utils/units'
 import {
   buildVirtualRadarProfile,
+  applyTerrainToBands,
   fetchTerrainProfile,
   projectFlightPath, plannedAltitudeLine,
   computeMsaProfile,
@@ -58,6 +59,7 @@ import { CLOUD_COLORS } from '@open-vfr/shared/featureColors'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
 import { windBarbColorForSpeed, windBarbGeometry } from '@open-vfr/shared/windBarb'
 import { getTileUrls, API_BASE } from '../config'
+import { getOfflineDem } from '../utils/terrainDem'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 import type { WindSample } from '../hooks/useWindAlongRoute'
@@ -366,6 +368,9 @@ export function VerticalProfile({
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [terrainPts, setTerrainPts]   = useState<TerrainPoint[]>([])
+  // True when neither the elevation API nor the offline DEM could supply
+  // terrain for this route: the chart then has no ground, MSA or AGL lift.
+  const [terrainFailed, setTerrainFailed] = useState(false)
   const [msaPts,     setMsaPts]       = useState<MsaPoint[]>([])
   const [showProjection, setShowProjection] = useState(false)
   const [chartW,      setChartW]      = useState(0)
@@ -459,12 +464,14 @@ export function VerticalProfile({
     }
     const controller = new AbortController()
     setTerrainPts([])
+    setTerrainFailed(false)
     // API_BASE, not TILE_BASE -- /api/elevation/ is proxied by the api
     // server's nginx, a different host from TILE_BASE (which in production
     // points at the object-storage tile bucket domain). Using
     // TILE_BASE here hit the R2 bucket with a bogus path and came back with
     // a 401 misreported as "OpenTopoData HTTP 401" (found 2026-09-20).
-    fetchTerrainProfile(waypoints, API_BASE, controller.signal)
+    // Offline: the cached hillshade DEM stands in for the elevation API.
+    fetchTerrainProfile(waypoints, API_BASE, controller.signal, getOfflineDem())
       .then((pts) => {
         setTerrainPts(pts)
         setMsaPts(computeMsaProfile(pts))
@@ -472,17 +479,24 @@ export function VerticalProfile({
       .catch((err: unknown) => {
         if ((err as { name?: string }).name !== 'AbortError') {
           console.warn('[VerticalProfile] terrain fetch failed:', err)
+          setTerrainFailed(true)
         }
       })
     return () => controller.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeKey])
 
-  const profile = useMemo(() => {
+  const rawProfile = useMemo(() => {
     if (waypoints.length < 2 || !airspaceGeo || !obstacleGeo) return null
     // water: undefined on native -- see the loader comment above.
     return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, undefined, landmarkGeo ?? undefined, airspaceCeilingFt ?? Infinity)
   }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, landmarkGeo, airspaceCeilingFt])
+  // AGL limits are published as heights: lift them onto the terrain along the
+  // crossing once the terrain profile is in, so bands draw at their real altitude.
+  const profile = useMemo(
+    () => rawProfile && { ...rawProfile, airspaceBands: applyTerrainToBands(rawProfile.airspaceBands, terrainPts) },
+    [rawProfile, terrainPts],
+  )
 
   // Shared with web's VirtualRadar.tsx (getMsaLookup) — this used to be a
   // byte-for-byte duplicate independently maintained in both files.
@@ -892,6 +906,14 @@ export function VerticalProfile({
                   this is the cheaper stopgap — just surface the fact plainly
                   rather than silently keep drawing planned-route terrain
                   under a marker no longer really on it. */}
+              {/* No terrain at all (offline without the hillshade download, or
+                  the elevation API down): say so, since the missing ground
+                  line also means no MSA and AGL airspace bands at raw height. */}
+              {terrainFailed && terrainPts.length === 0 && (
+                <View style={[styles.offTrackBadge, { top: MARGIN_T + 14 + (crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM ? 18 : 0) }]} pointerEvents="none">
+                  <Text style={styles.offTrackTxt}>⚠ No terrain data: MSA unavailable, AGL limits at raw height</Text>
+                </View>
+              )}
               {crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM && (
                 // top sits just below the waypoint-name label row (MARGIN_T=26
                 // + its own text height) rather than at top:2 alongside it —
