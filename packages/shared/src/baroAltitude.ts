@@ -85,7 +85,9 @@ export type AltitudeSourceInput = {
 export type AltitudeSourceResult = {
   tier:    AltitudeTier
   altFt:   number | null
-  /** Pressure altitude on 1013.25 hPa (flight-level reference). Null for GPS. */
+  /** Pressure altitude on 1013.25 hPa (flight-level reference). For the GPS
+   *  tier it is derived from GPS altitude + a *verified* QNH (geometric ≈
+   *  QNH altitude); null when no verified QNH is known. */
   stdAltFt: number | null
   /** Populated for the barometric tiers (filtered); null for GPS. */
   vsFtMin: number | null
@@ -118,5 +120,10 @@ export function pickBestAltitudeSource(input: AltitudeSourceInput): AltitudeSour
       qnhCalibrated: input.qnhCalibrated ?? true,
     }
   }
-  return { tier: 'gps', altFt: input.gpsAltFt, stdAltFt: null, vsFtMin: null, qnhHpa: input.qnhHpa, qnhCalibrated: true }
+  // GPS altitude does not depend on QNH, so it is always "calibrated" for the
+  // gauge; the pressure altitude estimate is only offered on a verified QNH.
+  const stdAltFt = input.gpsAltFt != null && (input.qnhCalibrated ?? true)
+    ? qnhAltToStdAltFt(input.gpsAltFt, input.qnhHpa)
+    : null
+  return { tier: 'gps', altFt: input.gpsAltFt, stdAltFt, vsFtMin: null, qnhHpa: input.qnhHpa, qnhCalibrated: true }
 }
