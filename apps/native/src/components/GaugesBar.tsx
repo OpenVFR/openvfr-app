@@ -146,7 +146,9 @@ export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeS
   const baroGlyph = altitudeSource?.tier === 'baro-vario' ? '\u25cf' : '\u25cb'
   const baroDot = !hasBaro ? theme.textMuted : altitudeSource?.qnhCalibrated === false ? theme.statusWarn : theme.statusOk
 
-  const uncalibrated = hasBaro && altitudeSource.tier === 'baro-internal' && !altitudeSource.qnhCalibrated
+  // Both barometric tiers are computed on the same live QNH, so both carry the
+  // "?" when that QNH is an unverified fallback.
+  const uncalibrated = hasBaro && !altitudeSource.qnhCalibrated
 
   const paltAltText = hasBaro
     ? (() => {

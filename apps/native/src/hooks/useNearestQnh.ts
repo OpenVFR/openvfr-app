@@ -107,7 +107,7 @@ export function useNearestQnh(position: GpsPosition | null, enabled: boolean): N
       .sort((a, b) => a.distNm - b.distNm)
       .slice(0, CANDIDATE_COUNT)
 
-    ;(async () => {
+    const refresh = async () => {
       const headers = await authHeaders()
       const settled = await Promise.allSettled(
         nearest.map(async (candidate): Promise<QnhReading | null> => {
@@ -126,8 +126,6 @@ export function useNearestQnh(position: GpsPosition | null, enabled: boolean): N
         if (s.status === 'fulfilled' && s.value) readings.push(s.value)
       }
 
-      inFlightRef.current = false
-
       const interpolated = interpolateQnh(readings)
       if (!interpolated) {
         // No usable readings: keep a recent, nearby result (stale-but-recent
@@ -142,11 +140,18 @@ export function useNearestQnh(position: GpsPosition | null, enabled: boolean): N
       resultMetaRef.current = { lat: pos.lat, lng: pos.lng, at: Date.now() }
 
       setResult({
-        qnhHpa:      interpolated.qnhHpa,
+        // Whole hPa, as an altimeter is set: the distance-weighted value would
+        // otherwise creep by fractions of a hPa as the aircraft moves and keep
+        // restarting the vertical-speed filters (qnhStepNeedsReset).
+        qnhHpa:      Math.round(interpolated.qnhHpa),
         stationIcao: interpolated.stations[0] ?? null,
         stations:    interpolated.stations,
       })
-    })()
+    }
+    // authHeaders()/network failure keeps the previous result and retries on
+    // the next throttle window; the in-flight flag is always released, or no
+    // further QNH refresh would ever run.
+    refresh().catch(() => {}).finally(() => { inFlightRef.current = false })
   }, [position, aerodromes, enabled])
 
   return result

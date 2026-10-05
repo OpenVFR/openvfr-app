@@ -34,6 +34,9 @@ function loadOnce(cb: (d: CachedAerodrome[]) => void) {
         if (f.geometry.type !== 'Point') continue
         const p = f.properties as Record<string, unknown>
         const icao = String(p.icao ?? '').trim()
+        // A missing elevation must not become 0 (Number(null) === 0): the QNH
+        // self-calibration would then treat the field as sea level.
+        if (p.elevation_ft == null || p.elevation_ft === '') continue
         const elevationFt = Number(p.elevation_ft)
         if (!icao || !Number.isFinite(elevationFt)) continue
         const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates

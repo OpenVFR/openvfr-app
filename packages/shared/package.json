@@ -11,6 +11,8 @@
     "./airspaceQuery": "./src/airspaceQuery.ts",
     "./airspaceColors":  "./src/airspaceColors.ts",
     "./airspaceAltitude": "./src/airspaceAltitude.ts",
+    "./lookahead": "./src/lookahead.ts",
+    "./terrainDem": "./src/terrainDem.ts",
     "./attributionSources": "./src/attributionSources.ts",
     "./mapScale": "./src/mapScale.ts",
     "./uiTheme":         "./src/uiTheme.ts",
@@ -67,7 +69,9 @@
     "./notamRelevance": "./src/notamRelevance.ts"
   },
   "devDependencies": {
-    "@types/geojson": "^7946.0.16"
+    "@types/geojson": "^7946.0.16",
+    "fflate": "^0.8.3",
+    "pmtiles": "4.5.0"
   },
   "peerDependencies": {
     "geomagnetism": "*",
@@ -77,6 +81,8 @@
     "@turf/helpers": "*",
     "@turf/length": "*",
     "@turf/line-intersect": "*",
-    "@turf/nearest-point-on-line": "*"
+    "@turf/nearest-point-on-line": "*",
+    "fflate": "*",
+    "pmtiles": "*"
   }
 }

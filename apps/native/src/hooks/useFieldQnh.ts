@@ -13,7 +13,9 @@ import type { GpsPosition } from '../utils/gpsTypes'
 
 const EMA_ALPHA = 0.1                 // ~10 s time constant at 1 Hz
 const MIN_SAMPLES = 10                // require this many parked samples before trusting
-const MAX_AGE_MS = 3 * 60 * 60_000    // pressure systems move; don't trust it all day
+// Pressure tendency in a front reaches 1-2 hPa/h (~30-55 ft/h of altitude
+// error), so a parked-field fix is only trusted for an hour after take-off.
+const MAX_AGE_MS = 60 * 60_000
 
 export function useFieldQnh(
   position: GpsPosition | null,
@@ -45,7 +47,9 @@ export function useFieldQnh(
       ? { value: prev.value + EMA_ALPHA * (cand - prev.value), n: prev.n + 1, at: now }
       : { value: cand, n: 1, at: now }
     stateRef.current = next
-    if (next.n >= MIN_SAMPLES) setQnh(next.value)
+    // Whole hPa, as an altimeter is set; also keeps the EMA's slow creep from
+    // repeatedly restarting the vertical-speed filters (qnhStepNeedsReset).
+    if (next.n >= MIN_SAMPLES) setQnh(Math.round(next.value))
   }, [enabled, position, pressureHpa, nearest])
 
   return qnh

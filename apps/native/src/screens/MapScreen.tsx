@@ -336,10 +336,18 @@ export function MapScreen() {
 
   const positionForAlerts = React.useMemo(() => (
     flyingActive && activePosition && bestAltFt != null
-      ? { ...activePosition, altFt: bestAltFt, altStdFt: simFlight.active ? null : altitudeSource.stdAltFt }
+      ? {
+          ...activePosition,
+          altFt: bestAltFt,
+          // Simulated flight: the simulator's altitude is a plain altitude with no
+          // pressure/QNH behind it, so no pressure-altitude or QNH caveats apply.
+          altStdFt:        simFlight.active ? null  : altitudeSource.stdAltFt,
+          altQnhUncertain: simFlight.active ? false : !altitudeSource.qnhCalibrated,
+          terrainFt:       agl,
+        }
       : flyingActive ? activePosition : null
   ), [
-    flyingActive, altitudeSource.stdAltFt, simFlight.active,
+    flyingActive, altitudeSource.stdAltFt, altitudeSource.qnhCalibrated, simFlight.active, agl,
     activePosition?.lat, activePosition?.lng, activePosition?.speedKts,
     activePosition?.trackDeg, activePosition?.accuracy, bestAltFt,
   ])

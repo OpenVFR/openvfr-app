@@ -39,14 +39,13 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
-import { advancePosition } from '@open-vfr/shared/routeCalc'
+import { lookaheadPath, accuracyRing } from '@open-vfr/shared/lookahead'
 import { airspaceDisplayClass } from '@open-vfr/shared/airspaceColors'
 import { getTileUrls } from '../config'
-import { altitudeForLimit } from '@open-vfr/shared/airspaceAltitude'
+import { altitudeForLimit, effectiveLimitFt, limitMarginFt, insideBand } from '@open-vfr/shared/airspaceAltitude'
 
 // ── Airspace warnings config (useAirspaceWarnings) ─────────────────────────
 const LOOKAHEAD_MIN_SPEED = 60
-const LOOKAHEAD_SAMPLES   = 5
 const AIRSPACE_REARM_MS   = 5 * 60_000
 export const DEFAULT_LOOKAHEAD_MIN = 5
 
@@ -141,10 +140,13 @@ function loadAirspaceOnce(cb: (f: AirspaceFeature[]) => void) {
         const type = String(p.type ?? ''); const cls = airspaceDisplayClass(String(p.class ?? ''), type)
         if (!cls && !type) continue
         const name = String(p.name ?? '')
+        const lower = String(p.lower ?? ''), upper = String(p.upper ?? '')
+        const lower_ft = Number(p.lower_ft ?? 0), upper_ft = Number(p.upper_ft ?? 99900)
         arr.push({
-          key: `${name}::${cls}`, name, cls, type,
-          lower: String(p.lower ?? ''), upper: String(p.upper ?? ''),
-          lower_ft: Number(p.lower_ft ?? 0), upper_ft: Number(p.upper_ft ?? 99900),
+          // Limits are part of the key: same-named sectors (TMA/CTA sectors with
+          // different bands) must alert and dismiss independently.
+          key: `${name}::${cls}::${lower_ft}-${upper_ft}`, name, cls, type,
+          lower, upper, lower_ft, upper_ft,
           geometry: g as AirspaceFeature['geometry'],
         })
       }
@@ -173,9 +175,17 @@ export type PositionAlerts = {
   clearAllNotifications:  () => void
 }
 
+export type AlertPosition = GpsPosition & {
+  /** Pressure altitude (1013.25) for FL limits; absent → QNH/GPS altFt is used for all limits. */
+  altStdFt?: number | null
+  /** True when altFt rests on an unverified QNH → closure warnings get a wider buffer. */
+  altQnhUncertain?: boolean
+  /** Ground elevation (ft AMSL) under the aircraft, lifts AGL limits; absent → raw AGL value. */
+  terrainFt?: number | null
+}
+
 export function usePositionAlerts(
-  /** altStdFt: pressure altitude (1013.25) for FL limits; absent → QNH/GPS altFt is used for all limits. */
-  position:       (GpsPosition & { altStdFt?: number | null }) | null,
+  position:       AlertPosition | null,
   routeWaypoints: RouteWaypoint[],
   lookaheadMin:   number = DEFAULT_LOOKAHEAD_MIN,
   verticalFt:     number = 500,
@@ -299,11 +309,18 @@ export function usePositionAlerts(
       return
     }
 
-    const { lat, lng, altFt, speedKts, trackDeg } = position
-    const ownAlt = { qnhFt: altFt, stdFt: position.altStdFt ?? null }
+    const { lat, lng, altFt, speedKts, trackDeg, accuracy } = position
+    const ownAlt = { qnhFt: altFt, stdFt: position.altStdFt ?? null, qnhUncertain: position.altQnhUncertain === true }
+    const terrainFt = position.terrainFt ?? null
     // Per-limit own altitude: FL limits compare on 1013.25, ft MSL limits on QNH.
     const loAlt = (f: AirspaceFeature) => altitudeForLimit(f.lower, ownAlt)
     const hiAlt = (f: AirspaceFeature) => altitudeForLimit(f.upper, ownAlt)
+    // Per-limit published value as an altitude: AGL limits lifted by the terrain.
+    const loLim = (f: AirspaceFeature) => effectiveLimitFt(f.lower, f.lower_ft, terrainFt)
+    const hiLim = (f: AirspaceFeature) => effectiveLimitFt(f.upper, f.upper_ft, terrainFt)
+    // Extra closure buffer when the own altitude is not in the limit's reference.
+    const loBuf = (f: AirspaceFeature) => verticalFt + limitMarginFt(f.lower, ownAlt)
+    const hiBuf = (f: AirspaceFeature) => verticalFt + limitMarginFt(f.upper, ownAlt)
     const now = Date.now()
 
     // ── Airspace warnings (useAirspaceWarnings algorithm) ─────────────────
@@ -316,16 +333,17 @@ export function usePositionAlerts(
 
       const speedForLook = Math.max(speedKts, LOOKAHEAD_MIN_SPEED)
       const lookDistNm   = (lookaheadMin / 60) * speedForLook
-      const ahead = Array.from({ length: LOOKAHEAD_SAMPLES }, (_, i) =>
-        advancePosition(lat, lng, trackDeg, lookDistNm * ((i + 1) / LOOKAHEAD_SAMPLES)),
-      )
+      // Projected path (on-track and a 15-degree fan either side) plus the GPS accuracy ring around
+      // the fix -- see @open-vfr/shared/lookahead for why both.
+      const ahead = [...lookaheadPath(lat, lng, trackDeg, lookDistNm), ...accuracyRing(lat, lng, accuracy)]
 
       const found: AirspaceAlert[] = []
       for (const f of airspaceFeatures) {
         const altLo = loAlt(f), altHi = hiAlt(f)
-        const altInBand = altLo >= f.lower_ft && altHi <= f.upper_ft
+        const lowerFt = loLim(f), upperFt = hiLim(f)
+        const altInBand = insideBand(altLo, altHi, lowerFt, upperFt, insideRef.current.has(f.key))
         if (altInBand) {
-          const key = `${f.name}::${f.cls}`
+          const key = f.key
           const dismissed = airspaceDismissedRef.current.get(key)
           if (dismissed !== undefined && now - dismissed < AIRSPACE_REARM_MS) continue
           const insideCurrent = pointInPolygon(lat, lng, f.geometry)
@@ -339,31 +357,33 @@ export function usePositionAlerts(
         const horizMatch = pointInPolygon(lat, lng, f.geometry) ||
           ahead.some(p => pointInPolygon(p.lat, p.lng, f.geometry))
         if (!horizMatch) continue
-        if (altLo < f.lower_ft) {
-          const timeBasedTrigger = climbRateFpm > 100 && altLo + climbRateFpm * lookaheadMin >= f.lower_ft
-          const bufferTrigger = verticalFt > 0 && (f.lower_ft - altLo) <= verticalFt
+        if (altLo < lowerFt) {
+          const buf = loBuf(f)
+          const timeBasedTrigger = climbRateFpm > 100 && altLo + climbRateFpm * lookaheadMin >= lowerFt
+          const bufferTrigger = buf > 0 && (lowerFt - altLo) <= buf
           if (timeBasedTrigger || bufferTrigger) {
-            const key = `${f.name}::${f.cls}::floor`
+            const key = `${f.key}::floor`
             const dismissed = airspaceDismissedRef.current.get(key)
             if (dismissed === undefined || now - dismissed >= AIRSPACE_REARM_MS) {
               found.push({ key, name: f.name, cls: f.cls, type: f.type,
                 lower: f.lower, upper: f.upper, lower_ft: f.lower_ft, upper_ft: f.upper_ft,
                 severity: getSeverity(f.cls), inside: false,
-                verticalClosure: 'floor', gapFt: Math.round(f.lower_ft - altLo) })
+                verticalClosure: 'floor', gapFt: Math.round(lowerFt - altLo) })
             }
           }
         }
-        if (altHi > f.upper_ft) {
-          const timeBasedTrigger = climbRateFpm < -100 && altHi + climbRateFpm * lookaheadMin <= f.upper_ft
-          const bufferTrigger = verticalFt > 0 && (altHi - f.upper_ft) <= verticalFt
+        if (altHi > upperFt) {
+          const buf = hiBuf(f)
+          const timeBasedTrigger = climbRateFpm < -100 && altHi + climbRateFpm * lookaheadMin <= upperFt
+          const bufferTrigger = buf > 0 && (altHi - upperFt) <= buf
           if (timeBasedTrigger || bufferTrigger) {
-            const key = `${f.name}::${f.cls}::ceiling`
+            const key = `${f.key}::ceiling`
             const dismissed = airspaceDismissedRef.current.get(key)
             if (dismissed === undefined || now - dismissed >= AIRSPACE_REARM_MS) {
               found.push({ key, name: f.name, cls: f.cls, type: f.type,
                 lower: f.lower, upper: f.upper, lower_ft: f.lower_ft, upper_ft: f.upper_ft,
                 severity: getSeverity(f.cls), inside: false,
-                verticalClosure: 'ceiling', gapFt: Math.round(altHi - f.upper_ft) })
+                verticalClosure: 'ceiling', gapFt: Math.round(altHi - upperFt) })
             }
           }
         }
@@ -381,12 +401,14 @@ export function usePositionAlerts(
       }
 
       // ── Airspace entry/exit notifications (useAirspaceNotifications) ────
+      // Hysteresis: once inside, stay inside until clearly out of the band, so
+      // an aircraft level at a floor/ceiling does not flap entered/left.
+      const prevInside = insideRef.current
       const current = new Set<string>()
       for (const f of airspaceFeatures) {
-        if (loAlt(f) < f.lower_ft || hiAlt(f) > f.upper_ft) continue
+        if (!insideBand(loAlt(f), hiAlt(f), loLim(f), hiLim(f), prevInside.has(f.key))) continue
         if (pointInPolygon(lat, lng, f.geometry)) current.add(f.key)
       }
-      const prevInside = insideRef.current
       if (!notifInitializedRef.current) {
         insideRef.current = current
         notifInitializedRef.current = true
@@ -413,8 +435,8 @@ export function usePositionAlerts(
         insideRef.current = current
         if (fresh.length > 0) {
           setAirspaceNotifications(prev => {
-            const freshKeys = new Set(fresh.map(n => n.name + '::' + n.cls))
-            const kept = prev.filter(n => !freshKeys.has(n.name + '::' + n.cls))
+            const freshKeys = new Set(fresh.map(n => n.name + '::' + n.cls + '::' + n.lower + '-' + n.upper))
+            const kept = prev.filter(n => !freshKeys.has(n.name + '::' + n.cls + '::' + n.lower + '-' + n.upper))
             return [...fresh, ...kept].slice(0, NOTIFICATION_MAX_QUEUE)
           })
         }
