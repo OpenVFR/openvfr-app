@@ -101,8 +101,21 @@ function computeWarnings(
   waypoints: RouteWaypoint[],
   legOverrides: LegOverride[],
   aircraftId?: string,
+  terrainFailed = false,
 ): PreflightWarning[] {
   const warnings: PreflightWarning[] = []
+
+  // ── Terrain unavailable: the MSA check below is silently skipped and AGL
+  // airspace limits are compared at their raw height. Say so rather than
+  // let an empty list read as "all clear".
+  if (terrainFailed) {
+    warnings.push({
+      level:  'warn',
+      code:   'terrain-unavailable',
+      title:  'Terrain data unavailable',
+      detail: 'No elevation data for this route: the Minimum Safe Altitude check was skipped and airspace limits given above ground (AGL) are checked at their raw height.',
+    })
+  }
 
   // ── 0. Aircraft profile referenced by this route no longer exists ──────
   // (route.aircraftId set, but no matching aircraft_profiles doc — e.g. the
@@ -206,6 +219,7 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
   const [msaPts,      setMsaPts]      = useState<MsaPoint[]>([])
   const [terrainPts,  setTerrainPts]  = useState<TerrainPoint[]>([])
   const [terrainDone, setTerrainDone] = useState(false)
+  const [terrainFailed, setTerrainFailed] = useState(false)
 
   // Prime module-level cache on first mount
   useEffect(() => {
@@ -230,9 +244,11 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
       setMsaPts([])
       setTerrainPts([])
       setTerrainDone(false)
+      setTerrainFailed(false)
       return
     }
     setTerrainDone(false)
+    setTerrainFailed(false)
     const ctrl = new AbortController()
     fetchTerrainProfile(waypoints, '', ctrl.signal, getRemoteDem())
       .then((pts) => {
@@ -242,6 +258,7 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
       })
       .catch((err: unknown) => {
         if ((err as { name?: string }).name !== 'AbortError') {
+          setTerrainFailed(true)
           setTerrainDone(true)  // show warnings without MSA rather than hang
         }
       })
@@ -261,8 +278,8 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
 
   const warnings = useMemo<PreflightWarning[]>(() => {
     if (!profile) return []
-    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId)
-  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId])
+    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed)
+  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed])
 
   const loading = !terrainDone && waypoints.length >= 2
 

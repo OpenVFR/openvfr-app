@@ -359,6 +359,9 @@ export default function VirtualRadar({
   const [waterGeo,    setWaterGeo]    = useState<GeoJSON.FeatureCollection | null>(null)
   const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [terrainPts, setTerrainPts] = useState<TerrainPoint[]>([])
+  // Neither the elevation API nor the hillshade DEM could supply terrain:
+  // no ground line, no MSA, AGL bands at raw height. Said on the chart.
+  const [terrainFailed, setTerrainFailed] = useState(false)
   const [msaPts,     setMsaPts]     = useState<MsaPoint[]>([])
   const [collapsed, setCollapsed]         = useState(false)
   const [showProjection, setShowProjection] = useState(false)
@@ -412,6 +415,7 @@ export default function VirtualRadar({
     }
     const controller = new AbortController()
     setTerrainPts([])  // clear stale terrain while new fetch is in progress
+    setTerrainFailed(false)
     fetchTerrainProfile(waypoints, '', controller.signal, getRemoteDem())
       .then((pts) => {
         setTerrainPts(pts)
@@ -420,6 +424,7 @@ export default function VirtualRadar({
       .catch((err: unknown) => {
         if ((err as { name?: string }).name !== 'AbortError') {
           console.warn('Terrain fetch failed:', err)
+          setTerrainFailed(true)
         }
       })
     return () => controller.abort()
@@ -756,6 +761,11 @@ export default function VirtualRadar({
             along the *planned* route, so once the aircraft has meaningfully
             diverged from it, what's drawn ahead of the "you are here" marker
             no longer reflects what's actually ahead of the aircraft. */}
+        {terrainFailed && terrainPts.length === 0 && (
+          <span className={css.offTrackBadge} title="No elevation data could be loaded for this route. The MSA line is missing and airspace limits given above ground (AGL) are drawn at their raw height.">
+            ⚠ No terrain data: MSA unavailable, AGL limits at raw height
+          </span>
+        )}
         {crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM && (
           <span className={css.offTrackBadge}>⚠ {Math.abs(crossTrackNm).toFixed(1)}nm off track</span>
         )}

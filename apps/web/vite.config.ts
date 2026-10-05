@@ -59,6 +59,19 @@ export default defineConfig({
             },
           },
           {
+            // Elevation proxy (route terrain profiles + live ground elevation).
+            // Terrain does not change, so CacheFirst: a route flown before keeps
+            // its terrain line, MSA and AGL airspace lift offline. Keyed by the
+            // full URL, so the same waypoints hit the same entry.
+            urlPattern: /\/api\/elevation\/.*/,
+            handler: 'CacheFirst' as const,
+            options: {
+              cacheName: 'elevation-cache',
+              expiration: { maxEntries: 400, maxAgeSeconds: 60 * 60 * 24 * 90 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+          {
             // METAR / TAF proxy — serve stale for up to 10 minutes so popups
             // open instantly offline, then refresh in background when back online.
             urlPattern: /\/api\/weather(\?.*)?$/,

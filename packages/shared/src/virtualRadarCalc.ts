@@ -874,13 +874,15 @@ export async function fetchTerrainProfile(
   const locStr = samples.map((s) => `${s.lat.toFixed(5)},${s.lng.toFixed(5)}`).join('|')
 
   try {
+    // GET, not POST: the same route then maps to the same URL, so the web
+    // service worker can cache the response (terrain does not change) and a
+    // repeat route keeps its terrain/MSA offline. 100 points is ~1.7 KB of
+    // query string, well inside any URL limit.
     // Retries transient network blips / 502-504 -- see fetchWithRetry.ts.
-    const resp = await fetchWithRetry(`${baseUrl}/api/elevation/eudem25m`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ locations: locStr }),
-      signal,
-    })
+    const resp = await fetchWithRetry(
+      `${baseUrl}/api/elevation/eudem25m?${new URLSearchParams({ locations: locStr }).toString()}`,
+      { signal },
+    )
     if (!resp.ok) throw new Error(`OpenTopoData HTTP ${resp.status}`)
 
     const data = await resp.json() as {
