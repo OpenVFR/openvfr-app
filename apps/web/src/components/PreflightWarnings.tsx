@@ -13,9 +13,12 @@ import {
   buildVirtualRadarProfile,
   fetchTerrainProfile,
   computeMsaProfile,
+  applyTerrainToBands,
   type VirtualRadarProfile,
   type MsaPoint,
+  type TerrainPoint,
 } from '@open-vfr/shared/virtualRadarCalc'
+import { getRemoteDem } from '../utils/terrainDem'
 import { computeFuelPlan } from '../utils/fuelCalc'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride, AircraftProfileDocType } from '../db/index'
@@ -201,6 +204,7 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(_airspaceGeo)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(_obstacleGeo)
   const [msaPts,      setMsaPts]      = useState<MsaPoint[]>([])
+  const [terrainPts,  setTerrainPts]  = useState<TerrainPoint[]>([])
   const [terrainDone, setTerrainDone] = useState(false)
 
   // Prime module-level cache on first mount
@@ -224,13 +228,15 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
   useEffect(() => {
     if (waypoints.length < 2) {
       setMsaPts([])
+      setTerrainPts([])
       setTerrainDone(false)
       return
     }
     setTerrainDone(false)
     const ctrl = new AbortController()
-    fetchTerrainProfile(waypoints, '', ctrl.signal)
+    fetchTerrainProfile(waypoints, '', ctrl.signal, getRemoteDem())
       .then((pts) => {
+        setTerrainPts(pts)
         setMsaPts(computeMsaProfile(pts))
         setTerrainDone(true)
       })
@@ -243,10 +249,15 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeKey])
 
-  const profile = useMemo<VirtualRadarProfile | null>(() => {
+  const rawProfile = useMemo<VirtualRadarProfile | null>(() => {
     if (waypoints.length < 2 || !airspaceGeo || !obstacleGeo) return null
     return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo)
   }, [waypoints, legOverrides, airspaceGeo, obstacleGeo])
+  // AGL limits lifted onto the terrain so the penetration check compares altitudes.
+  const profile = useMemo(
+    () => rawProfile && { ...rawProfile, airspaceBands: applyTerrainToBands(rawProfile.airspaceBands, terrainPts) },
+    [rawProfile, terrainPts],
+  )
 
   const warnings = useMemo<PreflightWarning[]>(() => {
     if (!profile) return []

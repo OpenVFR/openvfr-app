@@ -5,12 +5,16 @@
  *   1. Checks if the aircraft is currently INSIDE any airspace polygon
  *      (and the aircraft altitude is within the vertical limits).
  *   2. Projects the aircraft forward by LOOKAHEAD_MIN minutes at current
- *      ground speed (minimum LOOKAHEAD_MIN_SPEED_KTS) and samples
- *      LOOKAHEAD_SAMPLES evenly-spaced points along that path, checking
+ *      ground speed (minimum LOOKAHEAD_MIN_SPEED_KTS) and samples points
+ *      along that path, a 15-degree fan either side of it, and the GPS
+ *      accuracy ring around the fix (@open-vfr/shared/lookahead), checking
  *      if any of them would be inside any airspace. Sampling the path
  *      (rather than just the endpoint) catches narrow airspaces that the
  *      aircraft would cross entirely within the lookahead window, and
  *      oblique approaches where the single endpoint misses laterally.
+ *   3. Vertical limits are compared per reference: FL limits on pressure
+ *      altitude (GPS + 500 ft margin when none), AGL limits lifted by the
+ *      terrain under the aircraft (@open-vfr/shared/airspaceAltitude).
  *
  * Returns an array of AirspaceAlert objects, sorted by severity (red first).
  * Each alert carries a stable `key` so the banner can animate it in/out.
@@ -25,15 +29,15 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
+import { altitudeForLimit, effectiveLimitFt, limitMarginFt, insideBand } from '@open-vfr/shared/airspaceAltitude'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
-import { advancePosition } from '@open-vfr/shared/routeCalc'
+import { lookaheadPath, accuracyRing } from '@open-vfr/shared/lookahead'
 import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
 import { airspaceDisplayClass } from '@open-vfr/shared/airspaceColors'
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const LOOKAHEAD_MIN_SPEED   = 60     // assume at least 60 kts when projecting ahead
-const LOOKAHEAD_SAMPLES     = 5      // sample points along lookahead path (incl. endpoint)
 const DISMISS_REARM_MS      = 5 * 60_000  // 5 minutes
 export const DEFAULT_LOOKAHEAD_MIN = 5
 
@@ -79,6 +83,8 @@ export type AirspaceAlert = {
 
 // ── Internal airspace record (loaded once) ──────────────────────────────────
 type AirspaceFeature = {
+  /** name::cls::lower-upper: limits included so same-named sectors (CTR + TMA) stay distinct. */
+  key:      string
   name:     string
   cls:      string
   type:     string
@@ -89,9 +95,16 @@ type AirspaceFeature = {
   geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon
 }
 
+export type AlertPosition = GpsPosition & {
+  /** Pressure altitude (1013.25) for FL limits; the web has no barometer, so normally absent. */
+  altStdFt?: number | null
+  /** Ground elevation (ft AMSL) under the aircraft; lifts AGL limits. Absent: raw AGL value. */
+  terrainFt?: number | null
+}
+
 // ── Hook ─────────────────────────────────────────────────────────────────────
 export function useAirspaceWarnings(
-  position: GpsPosition | null,
+  position: AlertPosition | null,
   lookaheadMin: number = DEFAULT_LOOKAHEAD_MIN,
   verticalFt: number = 500,
 ): {
@@ -106,6 +119,8 @@ export function useAirspaceWarnings(
 
   // Previous altitude sample — used to derive climb/descent rate.
   const prevAltRef = useRef<{ altFt: number; ts: number } | null>(null)
+  // Airspaces the aircraft was inside last tick (vertical hysteresis).
+  const insideRef  = useRef<Set<string>>(new Set())
 
   // Last-committed result signature -- skip setAlerts() when the computed
   // set is identical to what's already in state. This hook (not to be
@@ -137,7 +152,7 @@ export function useAirspaceWarnings(
           const upper_ft = Number(p['upper_ft'] ?? 99900)
           // Skip unclassified / class-G open FIR (no practical restriction)
           if (!cls && !type) continue
-          arr.push({ name, cls, type, lower, upper, lower_ft, upper_ft, geometry: g })
+          arr.push({ key: `${name}::${cls}::${lower_ft}-${upper_ft}`, name, cls, type, lower, upper, lower_ft, upper_ft, geometry: g })
         }
         setFeatures(arr)
       })
@@ -154,8 +169,19 @@ export function useAirspaceWarnings(
       return
     }
 
-    const { lat, lng, altFt, speedKts, trackDeg } = position
+    const { lat, lng, altFt, speedKts, trackDeg, accuracy } = position
     const now = Date.now()
+    // Per-limit own altitude and limit value: FL limits on pressure altitude
+    // when available (else GPS altitude + a 500 ft margin), AGL limits lifted
+    // by the terrain under the aircraft.
+    const ownAlt = { qnhFt: altFt, stdFt: position.altStdFt ?? null }
+    const terrainFt = position.terrainFt ?? null
+    const loAlt = (f: AirspaceFeature) => altitudeForLimit(f.lower, ownAlt)
+    const hiAlt = (f: AirspaceFeature) => altitudeForLimit(f.upper, ownAlt)
+    const loLim = (f: AirspaceFeature) => effectiveLimitFt(f.lower, f.lower_ft, terrainFt)
+    const hiLim = (f: AirspaceFeature) => effectiveLimitFt(f.upper, f.upper_ft, terrainFt)
+    const loBuf = (f: AirspaceFeature) => verticalFt + limitMarginFt(f.lower, ownAlt)
+    const hiBuf = (f: AirspaceFeature) => verticalFt + limitMarginFt(f.upper, ownAlt)
 
     // ── Derive climb rate from previous position tick ─────────────────────
     const prev = prevAltRef.current
@@ -173,18 +199,22 @@ export function useAirspaceWarnings(
     // cross entirely within the lookahead window.
     const speedForLook = Math.max(speedKts, LOOKAHEAD_MIN_SPEED)
     const lookDistNm   = (lookaheadMin / 60) * speedForLook
-    const aheadSamples = Array.from({ length: LOOKAHEAD_SAMPLES }, (_, i) =>
-      advancePosition(lat, lng, trackDeg, lookDistNm * ((i + 1) / LOOKAHEAD_SAMPLES)),
-    )
+    // On-track samples, a 15-degree fan either side, and the GPS accuracy ring
+    // around the fix -- see @open-vfr/shared/lookahead.
+    const aheadSamples = [...lookaheadPath(lat, lng, trackDeg, lookDistNm), ...accuracyRing(lat, lng, accuracy)]
 
     const found: AirspaceAlert[] = []
+    const nowInside = new Set<string>()
 
     for (const f of features) {
-      const altInBand = altFt >= f.lower_ft && altFt <= f.upper_ft
+      const altLo = loAlt(f), altHi = hiAlt(f)
+      const lowerFt = loLim(f), upperFt = hiLim(f)
+      const altInBand = insideBand(altLo, altHi, lowerFt, upperFt, insideRef.current.has(f.key))
 
       // ── Case 1: altitude inside band — check for horizontal penetration ──
       if (altInBand) {
-        const key = `${f.name}::${f.cls}`
+        const key = f.key
+        if (pointInPolygon(lat, lng, f.geometry)) nowInside.add(f.key)
         const dismissedAt = dismissedRef.current.get(key)
         if (dismissedAt === undefined || now - dismissedAt >= DISMISS_REARM_MS) {
           const insideCurrent = pointInPolygon(lat, lng, f.geometry)
@@ -218,14 +248,15 @@ export function useAirspaceWarnings(
 
       // Approaching floor from below (climbing) — time-based projection OR
       // within static verticalFt buffer of the floor.
+      const floorBuf = loBuf(f)
       if (
-        altFt < f.lower_ft &&
+        altLo < lowerFt &&
         (
-          (climbRateFpm > VERT_THRESHOLD_FPM && altFt + climbRateFpm * lookaheadMin >= f.lower_ft) ||
-          (verticalFt > 0 && (f.lower_ft - altFt) <= verticalFt)
+          (climbRateFpm > VERT_THRESHOLD_FPM && altLo + climbRateFpm * lookaheadMin >= lowerFt) ||
+          (floorBuf > 0 && (lowerFt - altLo) <= floorBuf)
         )
       ) {
-        const vKey = `${f.name}::${f.cls}::floor`
+        const vKey = `${f.key}::floor`
         const dismissedAt = dismissedRef.current.get(vKey)
         if (dismissedAt === undefined || now - dismissedAt >= DISMISS_REARM_MS) {
           found.push({
@@ -240,21 +271,22 @@ export function useAirspaceWarnings(
             severity:       getSeverity(f.cls),
             inside:         false,
             verticalClosure: 'floor',
-            gapFt:          Math.round(f.lower_ft - altFt),
+            gapFt:          Math.round(lowerFt - altLo),
           })
         }
       }
 
       // Approaching ceiling from above (descending) — time-based projection OR
       // within static verticalFt buffer of the ceiling.
+      const ceilBuf = hiBuf(f)
       if (
-        altFt > f.upper_ft &&
+        altHi > upperFt &&
         (
-          (climbRateFpm < -VERT_THRESHOLD_FPM && altFt + climbRateFpm * lookaheadMin <= f.upper_ft) ||
-          (verticalFt > 0 && (altFt - f.upper_ft) <= verticalFt)
+          (climbRateFpm < -VERT_THRESHOLD_FPM && altHi + climbRateFpm * lookaheadMin <= upperFt) ||
+          (ceilBuf > 0 && (altHi - upperFt) <= ceilBuf)
         )
       ) {
-        const vKey = `${f.name}::${f.cls}::ceiling`
+        const vKey = `${f.key}::ceiling`
         const dismissedAt = dismissedRef.current.get(vKey)
         if (dismissedAt === undefined || now - dismissedAt >= DISMISS_REARM_MS) {
           found.push({
@@ -269,7 +301,7 @@ export function useAirspaceWarnings(
             severity:       getSeverity(f.cls),
             inside:         false,
             verticalClosure: 'ceiling',
-            gapFt:          Math.round(altFt - f.upper_ft),
+            gapFt:          Math.round(altHi - upperFt),
           })
         }
       }
@@ -282,6 +314,8 @@ export function useAirspaceWarnings(
       if (sd !== 0) return sd
       return a.lower_ft - b.lower_ft
     })
+
+    insideRef.current = nowInside
 
     const sig = found.map(a => `${a.key}:${a.inside}:${a.verticalClosure ?? ''}:${a.gapFt ?? ''}`).join('|')
     if (sig !== lastSigRef.current) {

@@ -77,6 +77,7 @@ import { useLivePlog } from '../hooks/useLivePlog'
 import { useGoFlying } from '../hooks/useGoFlying'
 import { useNearestFeature, type TrackedPoint } from '../hooks/useNearestFeature'
 import { useAirspaceWarnings } from '../hooks/useAirspaceWarnings'
+import { useTerrainElevation } from '../hooks/useTerrainElevation'
 import { useAirspaceNotifications } from '../hooks/useAirspaceNotifications'
 import { useObstructionWarnings } from '../hooks/useObstructionWarnings'
 import { useAirfieldProximity } from '../hooks/useAirfieldProximity'
@@ -945,8 +946,16 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Position report — nearest aviation feature to current GPS position
   const [trackedPoint, setTrackedPoint] = useState<TrackedPoint | null>(null)
   const nearestFeature = useNearestFeature(flyingMode !== 'off' ? gpsPosition : null, trackedPoint)
-  const { alerts: airspaceAlerts,     dismiss: dismissAlert }       = useAirspaceWarnings(flyingMode !== 'off' ? gpsPosition : null, airspaceWarnLookahead, airspaceWarnVerticalFt)
-  const { notifications: airspaceNotifications }                     = useAirspaceNotifications(flyingMode !== 'off' ? gpsPosition : null)
+  // Ground elevation under the aircraft lifts AGL airspace limits ("1500ft AGL",
+  // "300m AGL" ceilings of model/glider areas) to altitudes before comparing.
+  const flyingPosition = flyingMode !== 'off' ? gpsPosition : null
+  const terrainFt = useTerrainElevation(flyingPosition)
+  const alertPosition = useMemo(
+    () => (flyingPosition ? { ...flyingPosition, terrainFt } : null),
+    [flyingPosition, terrainFt],
+  )
+  const { alerts: airspaceAlerts,     dismiss: dismissAlert }       = useAirspaceWarnings(alertPosition, airspaceWarnLookahead, airspaceWarnVerticalFt)
+  const { notifications: airspaceNotifications }                     = useAirspaceNotifications(alertPosition)
   const { alerts: obstructionAlerts,  dismiss: dismissObstruction } = useObstructionWarnings(flyingMode !== 'off' ? gpsPosition : null)
   const { alerts: airfieldAlerts,     dismiss: dismissAirfield }    = useAirfieldProximity(flyingMode !== 'off' ? gpsPosition : null, routeWaypoints)
   const airfieldBrief = useAirfieldBrief(flyingMode !== 'off' ? gpsPosition : null, routeWaypoints, activeWpIdx)

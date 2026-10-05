@@ -10,8 +10,9 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { GpsPosition } from '../utils/gpsTypes'
+import type { AlertPosition } from './useAirspaceWarnings'
 import { TILES_BASE_URL } from '../utils/env'
+import { altitudeForLimit, effectiveLimitFt, insideBand } from '@open-vfr/shared/airspaceAltitude'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
 import { airspaceDisplayClass } from '@open-vfr/shared/airspaceColors'
 
@@ -91,7 +92,7 @@ type AirspaceFeature = {
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
-export function useAirspaceNotifications(position: GpsPosition | null): {
+export function useAirspaceNotifications(position: AlertPosition | null): {
   notifications: AirspaceNotification[]
   clearAll:      () => void
 } {
@@ -122,7 +123,8 @@ export function useAirspaceNotifications(position: GpsPosition | null): {
           const upper_ft = Number(p['upper_ft'] ?? 99900)
           if (!cls && !type) continue
           arr.push({
-            key: `${name}::${cls}`,
+            // Limits in the key: same-named sectors (CTR + TMA) are distinct airspaces.
+            key: `${name}::${cls}::${lower_ft}-${upper_ft}`,
             name, cls, type, lower, upper, lower_ft, upper_ft,
             geometry: g,
           })
@@ -154,15 +156,19 @@ export function useAirspaceNotifications(position: GpsPosition | null): {
 
     const { lat, lng, altFt } = position
     const now = Date.now()
+    const ownAlt = { qnhFt: altFt, stdFt: position.altStdFt ?? null }
+    const terrainFt = position.terrainFt ?? null
+    const prev = insideRef.current
 
-    // Build current inside-set (vertically filtered)
+    // Build current inside-set (vertically filtered, per-limit reference, AGL
+    // limits lifted by terrain, 100 ft hysteresis so a level flight at a
+    // floor/ceiling does not flap entered/left).
     const current = new Set<string>()
     for (const f of features) {
-      if (altFt < f.lower_ft || altFt > f.upper_ft) continue
+      const lo = effectiveLimitFt(f.lower, f.lower_ft, terrainFt), hi = effectiveLimitFt(f.upper, f.upper_ft, terrainFt)
+      if (!insideBand(altitudeForLimit(f.lower, ownAlt), altitudeForLimit(f.upper, ownAlt), lo, hi, prev.has(f.key))) continue
       if (pointInPolygon(lat, lng, f.geometry)) current.add(f.key)
     }
-
-    const prev = insideRef.current
 
     // On the very first evaluation, just seed insideRef — don't fire notifications.
     if (!initializedRef.current) {
@@ -217,8 +223,9 @@ export function useAirspaceNotifications(position: GpsPosition | null): {
       setNotifications(prev => {
         // Dedup by airspace key: update-in-place (new direction/expiry) rather than
         // stacking a second banner for the same airspace (e.g. boundary jitter).
-        const freshKeys = new Set(fresh.map(n => n.name + '::' + n.cls))
-        const kept = prev.filter(n => !freshKeys.has(n.name + '::' + n.cls))
+        const idOf = (n: AirspaceNotification) => `${n.name}::${n.cls}::${n.lower}-${n.upper}`
+        const freshKeys = new Set(fresh.map(idOf))
+        const kept = prev.filter(n => !freshKeys.has(idOf(n)))
         return [...fresh, ...kept].slice(0, MAX_QUEUE)
       })
     }

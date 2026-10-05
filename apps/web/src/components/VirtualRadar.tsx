@@ -25,11 +25,12 @@ import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel } from '../utils/units'
 import {
-  buildVirtualRadarProfile, fetchTerrainProfile, projectFlightPath, DEFAULT_PERF_MODEL, computeMsaProfile, terrainAt,
+  buildVirtualRadarProfile, applyTerrainToBands, fetchTerrainProfile, projectFlightPath, DEFAULT_PERF_MODEL, computeMsaProfile, terrainAt,
   getMsaLookup, computeTrajectoryTicks, computeVspeedTrajectory, projectWeatherMarks,
   type TerrainPoint, type MsaPoint, type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
+import { getRemoteDem } from '../utils/terrainDem'
 import { windBarbColorForSpeed, windBarbGeometry } from '@open-vfr/shared/windBarb'
 import type { AircraftProfileDocType } from '../db/index'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
@@ -411,7 +412,7 @@ export default function VirtualRadar({
     }
     const controller = new AbortController()
     setTerrainPts([])  // clear stale terrain while new fetch is in progress
-    fetchTerrainProfile(waypoints, '', controller.signal)
+    fetchTerrainProfile(waypoints, '', controller.signal, getRemoteDem())
       .then((pts) => {
         setTerrainPts(pts)
         setMsaPts(computeMsaProfile(pts))
@@ -425,7 +426,7 @@ export default function VirtualRadar({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeKey])
 
-  const profile = useMemo(() => {
+  const rawProfile = useMemo(() => {
     if (waypoints.length < 2 || !airspaceGeo || !obstacleGeo) return null
     return buildVirtualRadarProfile(
       waypoints,
@@ -437,6 +438,12 @@ export default function VirtualRadar({
       airspaceCeilingFt ?? Infinity,
     )
   }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo, landmarkGeo, airspaceCeilingFt])
+  // AGL limits are published as heights: lift them onto the terrain along the
+  // crossing once the terrain profile is in, so bands draw at their real altitude.
+  const profile = useMemo(
+    () => rawProfile && { ...rawProfile, airspaceBands: applyTerrainToBands(rawProfile.airspaceBands, terrainPts) },
+    [rawProfile, terrainPts],
+  )
 
   // Load (and cache) the recoloured SVG markup for every obstacle/landmark
   // kind actually present on this route — same pictograms as the main map
