@@ -99,3 +99,27 @@ describe('pickBestAltitudeSource', () => {
     expect(baroResult.vsFtMin).toBeNull()
   })
 })
+
+describe('pickBestAltitudeSource — internal barometer extras', () => {
+  const base = {
+    gpsAltFt: 1000, internalBaroPressureHpa: 1000, varioAltFt: null, varioVsFtMin: null, qnhHpa: 1013.25,
+  }
+  it('passes the phone barometer VS through', () => {
+    const r = pickBestAltitudeSource({ ...base, internalBaroVsFtMin: 450 })
+    expect(r.tier).toBe('baro-internal')
+    expect(r.vsFtMin).toBe(450)
+  })
+  it('VS is null when the phone filter has not settled', () => {
+    expect(pickBestAltitudeSource({ ...base, internalBaroVsFtMin: null }).vsFtMin).toBeNull()
+  })
+  it('propagates qnhCalibrated=false, defaults to true', () => {
+    expect(pickBestAltitudeSource({ ...base, qnhCalibrated: false }).qnhCalibrated).toBe(false)
+    expect(pickBestAltitudeSource(base).qnhCalibrated).toBe(true)
+  })
+  it('BlueFly still wins over the phone barometer and is always calibrated', () => {
+    const r = pickBestAltitudeSource({ ...base, varioAltFt: 2000, varioVsFtMin: -100, internalBaroVsFtMin: 450, qnhCalibrated: false })
+    expect(r.tier).toBe('baro-vario')
+    expect(r.vsFtMin).toBe(-100)
+    expect(r.qnhCalibrated).toBe(true)
+  })
+})

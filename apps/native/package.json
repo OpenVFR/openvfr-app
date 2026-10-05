@@ -6,6 +6,7 @@
   "main": "index.js",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "check:permissions": "node scripts/check-permissions.mjs",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",

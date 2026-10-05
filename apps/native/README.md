@@ -342,6 +342,43 @@ native/
         └── sunCalc.ts      Sunrise/sunset calculator
 ```
 
+## Barometric altitude & vario
+
+Altitude source priority (`src/hooks/useAltitudeSource.ts`, pure logic in
+`packages/shared/src/baroAltitude.ts`): BlueFly Vario (BLE) > phone barometer > GPS.
+
+**Phone barometer** (`expo-sensors`, opt-in via `useInternalBarometer`):
+
+- First run: `BaroPromptModal` offers it once, only if the sensor is present.
+  Any answer, or touching the Settings toggle, sets `baroPromptSeen`, so the
+  prompt never returns. Turning it off later is respected.
+- Vertical speed comes from `PhoneVarioFilter` (`packages/shared/src/phoneVario.ts`),
+  a Kalman filter tuned for a ~1 Hz phone sensor. It always works against ISA
+  1013.25 hPa so QNH changes never appear as a VS spike. Tuning knobs:
+  `PHONE_POSITION_NOISE`, `PHONE_ACCEL_NOISE`.
+- iOS: reading the sensor triggers the system "Motion & Fitness" prompt
+  (`NSMotionUsageDescription`, set via the `expo-sensors` plugin in `app.json`).
+  The data is used on-device only and is not sent anywhere.
+- Android: no runtime permission is needed. `expo-sensors` also declares
+  `ACTIVITY_RECOGNITION` (pedometer only); `app.json` blocks it.
+
+**QNH** (`packages/shared/src/qnhResolve.ts`), in auto mode:
+
+1. Interpolated METAR QNH of nearby aerodromes (`useNearestQnh`). Values outside
+   940–1080 hPa are rejected; a result older than 3 h or more than 100 NM away
+   is dropped when no fresh METAR is available.
+2. Field calibration (`useFieldQnh`, `packages/shared/src/fieldQnh.ts`): while parked
+   (≤ 3 kt) within 1 NM of an aerodrome, QNH is derived from the pressure and the
+   published field elevation.
+3. Otherwise the stored value is used and the P.ALT gauge shows `?` (uncalibrated).
+
+Manual QNH mode always uses the stored value. The live QNH is also published to the
+BlueFly pipeline (`VarioContext.setLiveQnh`), and the BlueFly filter restarts if QNH
+steps by more than 0.5 hPa so the step is not read as a climb.
+
+The phone barometer is advisory: cabin pressure, vents and pocket/case placement
+affect it.
+
 ## MapLibre v11 API notes
 
 `@maplibre/maplibre-react-native` v11 made breaking changes:

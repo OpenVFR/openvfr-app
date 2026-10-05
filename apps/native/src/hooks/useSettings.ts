@@ -39,6 +39,8 @@ export type AppSettings = {
    *  measure pocket/cabin pressure, not true static pressure, and can be
    *  meaningfully inaccurate depending on how the device is carried. */
   useInternalBarometer: boolean
+  /** First-run barometer offer (components/BaroPromptModal.tsx) already answered. */
+  baroPromptSeen: boolean
   /** Last-connected BlueFly Vario BLE device ID, empty = none/manual reconnect. */
   varioAutoConnectId: string
   /** Manual UI scale multiplier (1.0 = default) applied on top of the automatic
@@ -72,6 +74,7 @@ const DEFAULTS: AppSettings = {
   qnhHpa:                   1013.25,
   qnhAuto:                  true,
   useInternalBarometer:     false,
+  baroPromptSeen:           false,
   varioAutoConnectId:       '',
   uiScale:                  1.0,
   theme:                    'dark',

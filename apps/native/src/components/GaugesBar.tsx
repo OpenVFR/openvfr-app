@@ -122,6 +122,8 @@ export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeS
     ? '\u26a0'
     : altitudeSource?.tier === 'baro-vario' ? '\u25c6' : altitudeSource?.tier === 'baro-internal' ? '\u25cb' : ''
 
+  const uncalibrated = hasBaro && altitudeSource.tier === 'baro-internal' && !altitudeSource.qnhCalibrated
+
   const paltAltText = hasBaro
     ? (() => {
         const ft = Math.round(altitudeSource!.altFt!)
@@ -145,9 +147,9 @@ export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeS
           <View style={styles.divider} />
           <Gauge
             value={palt}
-            label={`${tierIcon} ${showQnh ? 'QNH' : 'P.ALT'}`}
+            label={`${tierIcon} ${showQnh ? 'QNH' : 'P.ALT'}${uncalibrated ? ' ?' : ''}`}
             onPress={onToggleQnh}
-            valueColor={isVarioLow ? theme.statusDanger : undefined}
+            valueColor={isVarioLow ? theme.statusDanger : uncalibrated ? theme.statusWarn : undefined}
           />
         </>
       )}

@@ -44,7 +44,8 @@
         "backgroundColor": "#0a0e16"
       },
       "blockedPermissions": [
-        "android.permission.ACCESS_BACKGROUND_LOCATION"
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.ACTIVITY_RECOGNITION"
       ],
       "permissions": [
         "ACCESS_FINE_LOCATION",
@@ -65,6 +66,10 @@
     },
     "plugins": [
       "@maplibre/maplibre-react-native",
+      [
+        "expo-sensors",
+        { "motionPermission": "open-vfr uses the barometer (motion sensor) for altitude and vertical speed." }
+      ],
       [
         "expo-location",
         {

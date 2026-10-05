@@ -14,12 +14,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { Barometer } from 'expo-sensors'
 import type { EventSubscription } from 'expo-modules-core'
+import { PhoneVarioFilter } from '@open-vfr/shared/phoneVario'
 
 export type BaroAvailability = 'checking' | 'available' | 'unavailable'
 
 export type UseInternalBarometerResult = {
   availability: BaroAvailability
   pressureHpa:  number | null
+  /** Filtered vertical speed (ft/min); null until the filter has settled. */
+  vsFtMin:      number | null
 }
 
 const UPDATE_INTERVAL_MS = 1_000  // 1 Hz — plenty for altitude display, avoids battery drain
@@ -27,6 +30,8 @@ const UPDATE_INTERVAL_MS = 1_000  // 1 Hz — plenty for altitude display, avoid
 export function useInternalBarometer(enabled: boolean): UseInternalBarometerResult {
   const [availability, setAvailability] = useState<BaroAvailability>('checking')
   const [pressureHpa, setPressureHpa]   = useState<number | null>(null)
+  const [vsFtMin, setVsFtMin]           = useState<number | null>(null)
+  const filterRef = useRef(new PhoneVarioFilter())
   const subscriptionRef = useRef<EventSubscription | null>(null)
 
   // Availability is checked regardless of `enabled` so the Settings opt-in
@@ -46,12 +51,15 @@ export function useInternalBarometer(enabled: boolean): UseInternalBarometerResu
       subscriptionRef.current?.remove()
       subscriptionRef.current = null
       setPressureHpa(null)
+      setVsFtMin(null)
+      filterRef.current.reset()
       return
     }
 
     Barometer.setUpdateInterval(UPDATE_INTERVAL_MS)
     subscriptionRef.current = Barometer.addListener(({ pressure }) => {
       setPressureHpa(pressure)
+      setVsFtMin(filterRef.current.update(pressure, Date.now()))
     })
 
     return () => {
@@ -60,5 +68,5 @@ export function useInternalBarometer(enabled: boolean): UseInternalBarometerResu
     }
   }, [enabled, availability])
 
-  return { availability, pressureHpa }
+  return { availability, pressureHpa, vsFtMin }
 }

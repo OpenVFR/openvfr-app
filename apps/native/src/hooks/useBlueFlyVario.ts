@@ -19,6 +19,7 @@ import {
   validateChecksum, parseBfx, parseLk8ex1, type VarioState,
 } from '@open-vfr/shared/blueflyVario'
 import { BaroKalmanFilter } from '@open-vfr/shared/baroKalman'
+import { qnhStepNeedsReset } from '@open-vfr/shared/qnhResolve'
 const FT_PER_M = 3.28084
 const MS_TO_FTMIN = 196.850394
 // Matches BlueFlyBleManager's OUTPUT_RATE_DIVISOR (50Hz base / 10 = 5Hz).
@@ -56,6 +57,15 @@ export function useBlueFlyVario(qnhHpaRef: { current: number }, options: UseBlue
   // Runs on $BFX/$LK8EX1's own pressurePa field (not their vario/vario_cms
   // field — see BlueFlyBleManager's OUTPUT_MODE_BFX comment for why).
   const kalmanRef = useRef(new BaroKalmanFilter({ dt: BFX_SAMPLE_DT_S }))
+  // A QNH change shifts the computed altitude in one step, which the filter
+  // would read as a climb/descent. Restart it instead so VS doesn't spike.
+  const lastQnhRef = useRef<number | null>(null)
+  const qnhForSample = useCallback((): number => {
+    const q = qnhHpaRef.current
+    if (qnhStepNeedsReset(lastQnhRef.current, q)) kalmanRef.current.reset()
+    lastQnhRef.current = q
+    return q
+  }, [qnhHpaRef])
 
   const getManager = useCallback(() => {
     if (!managerRef.current) managerRef.current = new BlueFlyBleManager()
@@ -67,7 +77,7 @@ export function useBlueFlyVario(qnhHpaRef: { current: number }, options: UseBlue
 
     const bfx = parseBfx(line)
     if (bfx) {
-      const { altitudeM, verticalMs } = kalmanRef.current.update(bfx.pressurePa, qnhHpaRef.current)
+      const { altitudeM, verticalMs } = kalmanRef.current.update(bfx.pressurePa, qnhForSample())
       setState({
         pressurePa:         bfx.pressurePa,
         baroAltitudeFt:     altitudeM * FT_PER_M,
@@ -82,7 +92,7 @@ export function useBlueFlyVario(qnhHpaRef: { current: number }, options: UseBlue
 
     const lk = parseLk8ex1(line)
     if (lk) {
-      const { altitudeM, verticalMs } = kalmanRef.current.update(lk.pressurePa, qnhHpaRef.current)
+      const { altitudeM, verticalMs } = kalmanRef.current.update(lk.pressurePa, qnhForSample())
       setState({
         pressurePa:         lk.pressurePa,
         baroAltitudeFt:     altitudeM * FT_PER_M,
@@ -93,7 +103,7 @@ export function useBlueFlyVario(qnhHpaRef: { current: number }, options: UseBlue
         lastUpdated:        Date.now(),
       })
     }
-  }, [qnhHpaRef])
+  }, [qnhForSample])
 
   const scan = useCallback(async () => {
     setFound([])

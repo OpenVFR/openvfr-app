@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { fetchWx, decodeMetar } from '@open-vfr/shared/fetchWx'
 import { interpolateQnh, type QnhReading } from '@open-vfr/shared/qnhInterpolation'
+import { qnhTokenToHpa, isQnhResultStale } from '@open-vfr/shared/qnhResolve'
 import { distanceNm } from '../utils/routeCalc'
 import { getTileUrls, API_BASE } from '../config'
 import { authHeaders } from '../utils/authClient'
@@ -72,20 +73,6 @@ function loadOnce(onLoad: (data: CachedAerodrome[]) => void) {
     .catch(() => { _loading = false })
 }
 
-/** Convert a decoded METAR QNH token (Q1013 or A2992) to hPa. */
-function qnhTokenToHpa(tok: string): number | null {
-  if (tok.startsWith('Q')) {
-    const hpa = Number(tok.slice(1))
-    return Number.isFinite(hpa) ? hpa : null
-  }
-  if (tok.startsWith('A')) {
-    // Altimeter setting in inches Hg * 100 (e.g. A2992 = 29.92 inHg)
-    const inHg = Number(tok.slice(1)) / 100
-    return Number.isFinite(inHg) ? inHg * 33.8639 : null
-  }
-  return null
-}
-
 const EMPTY_RESULT: NearestQnhResult = { qnhHpa: null, stationIcao: null, stations: [] }
 
 export function useNearestQnh(position: GpsPosition | null, enabled: boolean): NearestQnhResult {
@@ -93,6 +80,7 @@ export function useNearestQnh(position: GpsPosition | null, enabled: boolean): N
   const [result, setResult] = useState<NearestQnhResult>(EMPTY_RESULT)
   const lastFetchRef = useRef<{ lat: number; lng: number; at: number } | null>(null)
   const inFlightRef  = useRef(false)
+  const resultMetaRef = useRef<{ lat: number; lng: number; at: number } | null>(null)
 
   useEffect(() => {
     if (!enabled) return
@@ -141,7 +129,17 @@ export function useNearestQnh(position: GpsPosition | null, enabled: boolean): N
       inFlightRef.current = false
 
       const interpolated = interpolateQnh(readings)
-      if (!interpolated) return  // no usable readings — leave previous result in place (stale-but-recent beats flapping to null)
+      if (!interpolated) {
+        // No usable readings: keep a recent, nearby result (stale-but-recent
+        // beats flapping to null), but drop one that is old or far away.
+        const meta = resultMetaRef.current
+        if (meta && isQnhResultStale(Date.now() - meta.at, distanceNm({ lat: meta.lat, lng: meta.lng }, pos))) {
+          resultMetaRef.current = null
+          setResult(EMPTY_RESULT)
+        }
+        return
+      }
+      resultMetaRef.current = { lat: pos.lat, lng: pos.lng, at: Date.now() }
 
       setResult({
         qnhHpa:      interpolated.qnhHpa,

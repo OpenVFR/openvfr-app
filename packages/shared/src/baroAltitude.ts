@@ -48,6 +48,8 @@ export type AltitudeSourceInput = {
   gpsAltFt: number | null
   /** Internal phone barometer, tier 1 — raw pressure only, no vario. */
   internalBaroPressureHpa: number | null
+  /** Filtered vertical speed from the internal barometer (ft/min), if available. */
+  internalBaroVsFtMin?: number | null
   /**
    * External BlueFly Vario, tier 2 — already-converted altitude + vertical
    * speed (the BlueFly firmware applies its own Kalman filtering; we don't
@@ -58,17 +60,22 @@ export type AltitudeSourceInput = {
   /** QNH used to correct internalBaroPressureHpa. Vario altitude is assumed
    *  already QNH-corrected by the caller (see blueflyVario.ts). */
   qnhHpa: number
+  /** See AltitudeSourceResult.qnhCalibrated. Defaults to true when omitted. */
+  qnhCalibrated?: boolean
 }
 
 export type AltitudeSourceResult = {
   tier:    AltitudeTier
   altFt:   number | null
-  /** Only populated when tier === 'baro-vario' — see plan §9 non-goals for why. */
+  /** Populated for the barometric tiers (filtered); null for GPS. */
   vsFtMin: number | null
   /** QNH actually in effect for this reading (echoes the input) — lets the
    *  UI show "what QNH is this altitude computed against" alongside the
    *  altitude itself, without a caller having to separately track it. */
   qnhHpa: number
+  /** false when qnhHpa is an unverified fallback (auto-QNH on but no recent
+   *  METAR available) — the UI flags such altitudes as uncalibrated. */
+  qnhCalibrated: boolean
 }
 
 /**
@@ -79,15 +86,16 @@ export type AltitudeSourceResult = {
  */
 export function pickBestAltitudeSource(input: AltitudeSourceInput): AltitudeSourceResult {
   if (input.varioAltFt != null) {
-    return { tier: 'baro-vario', altFt: input.varioAltFt, vsFtMin: input.varioVsFtMin ?? null, qnhHpa: input.qnhHpa }
+    return { tier: 'baro-vario', altFt: input.varioAltFt, vsFtMin: input.varioVsFtMin ?? null, qnhHpa: input.qnhHpa, qnhCalibrated: true }
   }
   if (input.internalBaroPressureHpa != null) {
     return {
       tier:    'baro-internal',
       altFt:   pressureToAltitudeFt(input.internalBaroPressureHpa * 100, input.qnhHpa),
-      vsFtMin: null,
+      vsFtMin: input.internalBaroVsFtMin ?? null,
       qnhHpa:  input.qnhHpa,
+      qnhCalibrated: input.qnhCalibrated ?? true,
     }
   }
-  return { tier: 'gps', altFt: input.gpsAltFt, vsFtMin: null, qnhHpa: input.qnhHpa }
+  return { tier: 'gps', altFt: input.gpsAltFt, vsFtMin: null, qnhHpa: input.qnhHpa, qnhCalibrated: true }
 }

@@ -71,5 +71,10 @@ jobs:
       - name: Typecheck native app
         run: pnpm --filter native typecheck
 
+      # Guards the resolved Expo config: blocked Android permissions and the
+      # iOS motion usage string (needed for the barometer).
+      - name: Check native permission policy
+        run: pnpm --filter native check:permissions
+
       - name: Typecheck API server
         run: pnpm --filter api typecheck

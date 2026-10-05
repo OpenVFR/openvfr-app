@@ -50,7 +50,7 @@ type Mat2 = [[number, number], [number, number]]
 export class BaroKalmanFilter {
   private readonly dt: number
   private readonly R: number
-  private readonly Q: Mat2
+  private readonly q: number
 
   private x: [number, number] | null = null  // [altitude_m, velocity_m/s]
   private P: Mat2 = [[1, 0], [0, 1]]
@@ -59,11 +59,14 @@ export class BaroKalmanFilter {
     this.dt = options.dt ?? DEFAULT_DT
     this.R  = options.positionNoiseVariance ?? DEFAULT_POSITION_NOISE
 
-    const q  = options.accelNoiseVariance ?? DEFAULT_ACCEL_NOISE
-    const dt = this.dt
-    // Discretized constant-velocity process noise (standard Kalman-filter
-    // textbook form for a "white noise acceleration" model).
-    this.Q = [
+    this.q = options.accelNoiseVariance ?? DEFAULT_ACCEL_NOISE
+  }
+
+  /** Discretized constant-velocity process noise (standard Kalman-filter
+   *  textbook form for a "white noise acceleration" model) for a given dt. */
+  private processNoise(dt: number): Mat2 {
+    const q = this.q
+    return [
       [q * (dt ** 4) / 4, q * (dt ** 3) / 2],
       [q * (dt ** 3) / 2, q * (dt ** 2)],
     ]
@@ -71,8 +74,10 @@ export class BaroKalmanFilter {
 
   /** Feed one raw pressure sample (Pa) + the QNH (hPa) currently in effect,
    *  return the fused altitude/vertical-speed estimate. First call seeds the
-   *  filter state directly from the measurement (velocity = 0). */
-  update(pressurePa: number, qnhHpa: number): BaroKalmanEstimate {
+   *  filter state directly from the measurement (velocity = 0).
+   *  `dtSec` overrides the constructor's fixed interval for this step — for
+   *  sensors with an irregular sample rate (e.g. a phone barometer). */
+  update(pressurePa: number, qnhHpa: number, dtSec?: number): BaroKalmanEstimate {
     const measuredAltM = pressureToAltitudeM(pressurePa, qnhHpa)
 
     if (!this.x) {
@@ -80,7 +85,8 @@ export class BaroKalmanFilter {
       return { altitudeM: measuredAltM, verticalMs: 0 }
     }
 
-    const dt = this.dt
+    const dt = dtSec ?? this.dt
+    const Q  = this.processNoise(dt)
     const [altPrev, velPrev] = this.x
     const P = this.P
 
@@ -94,10 +100,10 @@ export class BaroKalmanFilter {
     const p10 = P[1][0] + dt * P[1][1]
     const p11 = P[1][1]
 
-    const P00 = p00 + this.Q[0][0]
-    const P01 = p01 + this.Q[0][1]
-    const P10 = p10 + this.Q[1][0]
-    const P11 = p11 + this.Q[1][1]
+    const P00 = p00 + Q[0][0]
+    const P01 = p01 + Q[0][1]
+    const P10 = p10 + Q[1][0]
+    const P11 = p11 + Q[1][1]
 
     // ── Update (measurement = altitude only, H = [1, 0]) ────────────────
     const y = measuredAltM - altPred

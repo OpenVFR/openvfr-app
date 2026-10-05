@@ -109,6 +109,7 @@ import type { RouteWaypoint } from '../types/db'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { isLowMemoryDevice } from '../utils/deviceMemory'
 import { NativeSheet } from '../components/NativeSheet'
+import { BaroPromptModal } from '../components/BaroPromptModal'
 import { useTabBarCollapsed } from '../context/TabBarContext'
 
 function isAerodrome(p: Record<string, unknown>) {
@@ -1208,6 +1209,7 @@ export function MapScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      <BaroPromptModal />
       <View style={styles.mapContainer}>
         <AviationMap
           gpsPosition={activePosition}

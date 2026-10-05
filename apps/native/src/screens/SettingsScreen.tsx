@@ -68,6 +68,11 @@ export function SettingsScreen() {
   const vario = useVarioContext()
   const [showBaroWarning, setShowBaroWarning] = useState(false)
   const [showBleScan, setShowBleScan] = useState(false)
+  // Raw pressure for manual QNH calibration: BlueFly if connected, else the phone barometer.
+  const calibratePressurePa: number | null =
+    vario.status === 'connected' && vario.state ? vario.state.pressurePa
+    : settings.useInternalBarometer && internalBaro.pressureHpa != null ? internalBaro.pressureHpa * 100
+    : null
   const hasBarometricSource =
     (settings.useInternalBarometer && internalBaro.availability === 'available') ||
     vario.status === 'connected'
@@ -243,7 +248,7 @@ export function SettingsScreen() {
               value={settings.useInternalBarometer}
               disabled={internalBaro.availability === 'checking'}
               onValueChange={(v) => {
-                if (v) { setShowBaroWarning(true) } else { update({ useInternalBarometer: false }) }
+                if (v) { setShowBaroWarning(true) } else { update({ useInternalBarometer: false, baroPromptSeen: true }) }
               }}
             />
           )}
@@ -265,7 +270,7 @@ export function SettingsScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.warningBtn, styles.warningBtnPrimary]}
-                onPress={() => { update({ useInternalBarometer: true }); setShowBaroWarning(false) }}
+                onPress={() => { update({ useInternalBarometer: true, baroPromptSeen: true }); setShowBaroWarning(false) }}
               >
                 <Text style={[styles.warningBtnText, styles.warningBtnPrimaryText]}>Enable</Text>
               </TouchableOpacity>
@@ -354,12 +359,12 @@ export function SettingsScreen() {
               format={(v) => settings.qnhAuto
                 ? (liveAutoQnh.stations.length > 0
                   ? `${v} hPa (auto, ${liveAutoQnh.stations.length} stn${liveAutoQnh.stations.length > 1 ? 's' : ''}: ${liveAutoQnh.stations.slice(0, 3).join('/')})`
-                  : `${v} hPa (auto — no METAR signal, using ISA default)`)
+                  : `${v} hPa (auto — no METAR signal, ISA default until parked at a known field or a METAR is found)`)
                 : `${v} hPa (manual)`}
               onChange={(v) => update({ qnhHpa: v })}
               disabled={settings.qnhAuto}
             />
-            {vario.status === 'connected' && vario.state && (
+            {calibratePressurePa != null && (
               <>
                 <View style={styles.row}>
                   <Text style={styles.rowLabel}>Calibrate at ICAO</Text>
@@ -384,7 +389,7 @@ export function SettingsScreen() {
                     style={[styles.row, styles.pressable]}
                     onPress={() => {
                       const elevationM = calibrateElevationFt / 3.28084
-                      const qnh = qnhFromStationPressure(vario.state!.pressurePa, elevationM)
+                      const qnh = qnhFromStationPressure(calibratePressurePa, elevationM)
                       update({ qnhAuto: false, qnhHpa: Math.round(qnh) })
                     }}
                   >
@@ -392,7 +397,7 @@ export function SettingsScreen() {
                       Calibrate QNH from {calibrateIcao} field elevation ({calibrateElevationFt} ft) — only valid when parked there
                     </Text>
                     <Text style={styles.infoValue}>
-                      {Math.round(qnhFromStationPressure(vario.state.pressurePa, calibrateElevationFt / 3.28084))} hPa
+                      {Math.round(qnhFromStationPressure(calibratePressurePa, calibrateElevationFt / 3.28084))} hPa
                     </Text>
                   </TouchableOpacity>
                 )}
