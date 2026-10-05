@@ -40,6 +40,24 @@ export function qnhFromStationPressure(pressurePa: number, elevationM: number): 
   return qnhPa / 100
 }
 
+/**
+ * Re-reference an altitude computed on `qnhHpa` to the 1013.25 hPa standard
+ * datum (pressure altitude, the reference for flight levels). Round-trips
+ * through pressure so it works for any source that only yields an altitude.
+ */
+export function qnhAltToStdAltFt(altQnhFt: number, qnhHpa: number): number {
+  const pressurePa = qnhHpa * 100 * Math.pow(1 - altQnhFt / FT_PER_M / 44301.59796, 1 / 0.190295)
+  return pressureToAltitudeFt(pressurePa)
+}
+
+/** A connected vario that stops sending samples for this long is no longer trusted. */
+export const VARIO_STALE_MS = 5_000
+
+/** True while the newest vario sample is recent enough to display/use. */
+export function isVarioFresh(lastUpdatedMs: number, nowMs: number): boolean {
+  return nowMs - lastUpdatedMs <= VARIO_STALE_MS
+}
+
 // ── Altitude source tiers ────────────────────────────────────────────────────
 
 export type AltitudeTier = 'gps' | 'baro-internal' | 'baro-vario'
@@ -67,6 +85,8 @@ export type AltitudeSourceInput = {
 export type AltitudeSourceResult = {
   tier:    AltitudeTier
   altFt:   number | null
+  /** Pressure altitude on 1013.25 hPa (flight-level reference). Null for GPS. */
+  stdAltFt: number | null
   /** Populated for the barometric tiers (filtered); null for GPS. */
   vsFtMin: number | null
   /** QNH actually in effect for this reading (echoes the input) — lets the
@@ -86,16 +106,17 @@ export type AltitudeSourceResult = {
  */
 export function pickBestAltitudeSource(input: AltitudeSourceInput): AltitudeSourceResult {
   if (input.varioAltFt != null) {
-    return { tier: 'baro-vario', altFt: input.varioAltFt, vsFtMin: input.varioVsFtMin ?? null, qnhHpa: input.qnhHpa, qnhCalibrated: true }
+    return { tier: 'baro-vario', altFt: input.varioAltFt, stdAltFt: qnhAltToStdAltFt(input.varioAltFt, input.qnhHpa), vsFtMin: input.varioVsFtMin ?? null, qnhHpa: input.qnhHpa, qnhCalibrated: input.qnhCalibrated ?? true }
   }
   if (input.internalBaroPressureHpa != null) {
     return {
       tier:    'baro-internal',
       altFt:   pressureToAltitudeFt(input.internalBaroPressureHpa * 100, input.qnhHpa),
+      stdAltFt: pressureToAltitudeFt(input.internalBaroPressureHpa * 100),
       vsFtMin: input.internalBaroVsFtMin ?? null,
       qnhHpa:  input.qnhHpa,
       qnhCalibrated: input.qnhCalibrated ?? true,
     }
   }
-  return { tier: 'gps', altFt: input.gpsAltFt, vsFtMin: null, qnhHpa: input.qnhHpa, qnhCalibrated: true }
+  return { tier: 'gps', altFt: input.gpsAltFt, stdAltFt: null, vsFtMin: null, qnhHpa: input.qnhHpa, qnhCalibrated: true }
 }

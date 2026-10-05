@@ -10,6 +10,7 @@
     "./airspaceGeometryCache": "./src/airspaceGeometryCache.ts",
     "./airspaceQuery": "./src/airspaceQuery.ts",
     "./airspaceColors":  "./src/airspaceColors.ts",
+    "./airspaceAltitude": "./src/airspaceAltitude.ts",
     "./attributionSources": "./src/attributionSources.ts",
     "./mapScale": "./src/mapScale.ts",
     "./uiTheme":         "./src/uiTheme.ts",

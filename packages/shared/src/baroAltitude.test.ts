@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pressureToAltitudeM, pressureToAltitudeFt, pickBestAltitudeSource, qnhFromStationPressure } from './baroAltitude'
+import { pressureToAltitudeM, pressureToAltitudeFt, pickBestAltitudeSource, qnhFromStationPressure, isVarioFresh, VARIO_STALE_MS } from './baroAltitude'
 
 describe('pressureToAltitudeM', () => {
   it('returns 0 at standard sea-level pressure (101325 Pa, QNH 1013.25)', () => {
@@ -116,10 +116,16 @@ describe('pickBestAltitudeSource — internal barometer extras', () => {
     expect(pickBestAltitudeSource({ ...base, qnhCalibrated: false }).qnhCalibrated).toBe(false)
     expect(pickBestAltitudeSource(base).qnhCalibrated).toBe(true)
   })
-  it('BlueFly still wins over the phone barometer and is always calibrated', () => {
+  it('BlueFly still wins over the phone barometer and inherits the QNH calibration flag', () => {
     const r = pickBestAltitudeSource({ ...base, varioAltFt: 2000, varioVsFtMin: -100, internalBaroVsFtMin: 450, qnhCalibrated: false })
     expect(r.tier).toBe('baro-vario')
     expect(r.vsFtMin).toBe(-100)
-    expect(r.qnhCalibrated).toBe(true)
+    expect(r.qnhCalibrated).toBe(false)
+    expect(pickBestAltitudeSource({ ...base, varioAltFt: 2000, varioVsFtMin: 0 }).qnhCalibrated).toBe(true)
   })
+})
+
+describe('isVarioFresh', () => {
+  it('fresh within timeout', () => expect(isVarioFresh(1000, 1000 + VARIO_STALE_MS - 1)).toBe(true))
+  it('stale after timeout', () => expect(isVarioFresh(1000, 1000 + VARIO_STALE_MS + 1)).toBe(false))
 })
