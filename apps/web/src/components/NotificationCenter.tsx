@@ -118,7 +118,7 @@ export function NotificationCenter({
   // expiry wins; among alerts the first (inside sorts before ahead/vertical) wins.
   const airspaceId = (name: string, cls: string) => `${name}::${cls}`
   const latestNotif = new Map<string, AirspaceNotification>()
-  for (const n of latestNotif.values()) {
+  for (const n of airspaceNotifications) {
     const id = airspaceId(n.name, n.cls)
     const cur = latestNotif.get(id)
     if (!cur || n.expiresAt >= cur.expiresAt) latestNotif.set(id, n)
@@ -179,7 +179,7 @@ export function NotificationCenter({
     })
   }
 
-  for (const n of airspaceNotifications) {
+  for (const n of latestNotif.values()) {
     items.push({
       key: `nt-${n.id}`,
       severity: n.severity,
