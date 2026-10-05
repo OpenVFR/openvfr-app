@@ -148,7 +148,6 @@ export function useBlueFlyVario(qnhHpaRef: { current: number }, options: UseBlue
   const scheduleReconnect = useCallback(() => {
     if (userStoppedRef.current || !lastIdRef.current) return
     if (reconnectTimer.current) return
-    console.log('[vario] link lost -> reconnect attempt', attemptRef.current + 1)
     setState(null)
     setStatus('connecting')
     const delay = Math.min(2_000 * 2 ** attemptRef.current, 15_000)
@@ -156,7 +155,6 @@ export function useBlueFlyVario(qnhHpaRef: { current: number }, options: UseBlue
     reconnectTimer.current = setTimeout(() => {
       reconnectTimer.current = null
       if (userStoppedRef.current || !lastIdRef.current) return
-      console.log('[vario] reconnecting to', lastIdRef.current)
       connectRef.current(lastIdRef.current).catch(() => {})
     }, delay)
   }, [])
@@ -183,10 +181,8 @@ export function useBlueFlyVario(qnhHpaRef: { current: number }, options: UseBlue
       attemptRef.current = 0
       setLastDeviceId(deviceId)
       onDeviceIdChange?.(deviceId)
-      console.log('[vario] connected')
       setStatus('connected')
-    } catch (e) {
-      console.log('[vario] connect failed:', String((e as Error)?.message ?? e))
+    } catch {
       if (attemptRef.current > 0 && !userStoppedRef.current) { setStatus('connecting'); scheduleReconnect() }
       else setStatus('error')
     }
@@ -199,7 +195,7 @@ export function useBlueFlyVario(qnhHpaRef: { current: number }, options: UseBlue
     if (status !== 'connected') return
     const id = setInterval(() => {
       const last = lastSampleAtRef.current
-      if (last && Date.now() - last > 10_000) { console.log('[vario] watchdog: no samples 10s'); scheduleReconnect() }
+      if (last && Date.now() - last > 10_000) scheduleReconnect()
     }, 2_000)
     return () => clearInterval(id)
   }, [status, scheduleReconnect])
