@@ -179,7 +179,10 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
           EAS_OWNER: ${{ vars.EAS_OWNER }}
-        run: npx eas-cli submit --platform android --profile production --non-interactive --path "${{ steps.build.outputs.artifact }}" --track "${{ inputs.track }}"
+        run: |
+          # eas submit has no --track flag; set it in eas.json instead
+          jq --arg t "${{ inputs.track }}" '.submit.production.android.track = $t' eas.json > eas.json.tmp && mv eas.json.tmp eas.json
+          npx eas-cli submit --platform android --profile production --non-interactive --path "${{ steps.build.outputs.artifact }}"
 
       - name: Delete service account key
         if: always()

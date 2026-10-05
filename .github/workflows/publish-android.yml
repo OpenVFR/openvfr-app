@@ -79,8 +79,10 @@ jobs:
             echo "No build-*.apk/.aab artifact found in downloaded run." >&2
             exit 1
           fi
+          # eas submit has no --track flag; set it in eas.json instead
+          jq --arg t "${{ inputs.track }}" '.submit.production.android.track = $t' eas.json > eas.json.tmp && mv eas.json.tmp eas.json
           npx eas-cli submit --platform android --profile production --non-interactive \
-            --path "$artifact" --track "${{ inputs.track }}"
+            --path "$artifact"
 
       - name: Delete service account key
         if: always()
