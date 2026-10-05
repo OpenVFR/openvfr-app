@@ -428,6 +428,7 @@ export function MapScreen() {
   )
 
   const [profileHeight, setProfileHeight] = useState(DEFAULT_CHART_H)
+  const [mapAreaH, setMapAreaH] = useState<number | null>(null)
   // Chart-scrub → map crosshair sync (VerticalProfile/PastTrackChart touch-drag)
   // Map-side marker for a chart scrub, as [lng, lat]. Kept in a store, not
   // state: it changes several times a second while a chart is dragged, and
@@ -452,9 +453,14 @@ export function MapScreen() {
   // Portrait: cap how far the column can grow down so it never reaches the
   // profile/gauges stack at the true screen bottom; scrolls if it would.
   const topRightBottomOffset = bottomStackH + 8 + 24 + scaledTheme.space2
+  // Prefer the measured height of the map area (flex:1, i.e. exactly the space
+  // above the profile/gauges stack) over the constant-based estimate, which
+  // over-reserved ~120dp and clipped Flight Mode / Locate off the column.
   const topRightMaxHeight = Math.max(
     120,
-    windowHeight - topRightTopOffset - topRightBottomOffset,
+    mapAreaH != null
+      ? mapAreaH - scaledTheme.space2 * 2
+      : windowHeight - topRightTopOffset - topRightBottomOffset,
   )
   // Landscape has width to spare but not height -- lay the same controls
   // out as a row instead of a tall column that would need to scroll to stay
@@ -1210,7 +1216,7 @@ export function MapScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <BaroPromptModal />
-      <View style={styles.mapContainer}>
+      <View style={styles.mapContainer} onLayout={(e) => setMapAreaH(Math.round(e.nativeEvent.layout.height))}>
         <AviationMap
           gpsPosition={activePosition}
           simActive={simPosition != null}
