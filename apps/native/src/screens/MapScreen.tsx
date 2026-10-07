@@ -84,6 +84,8 @@ import { useUserWaypointContext } from '../context/UserWaypointContext'
 import { useHomeAirfield }      from '../hooks/useHomeAirfield'
 import { useSettingsContext } from '../context/SettingsContext'
 import { RouteEditBanner } from '../components/RouteEditBanner'
+import { AutoFlyBanner } from '../components/AutoFlyBanner'
+import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
 import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
 import { RulerHeaderStart, RulerHeaderEnd, RouteHeaderStart } from '../components/RulerHeaderStats'
 import { PastTrackChart } from '../components/PastTrackChart'
@@ -760,6 +762,15 @@ export function MapScreen() {
     setFlying(false); setFollowGps(false)
     KeepAwake.deactivateKeepAwake()
   }, [simFlight])
+
+  // Takeoff / landing detection from the always-on GPS fix. Simulator flights
+  // never auto start or stop (fix is null while the sim drives).
+  const autoFly = useAutoFlyDetect(
+    settings.autoFlyMode ?? 'ask',
+    simFlight.active ? null : position,
+    flying && !simFlight.active,
+    { start: handleStartGpsFly, stop: handleStopFlight },
+  )
 
   // Auto-start GPS on mount — request permission once, then watch position
   // continuously for as long as this screen is mounted.
@@ -1572,6 +1583,15 @@ export function MapScreen() {
         </View>
       </ScrollView>
       </View>
+
+      {autoFly.suggestion && (
+        <AutoFlyBanner
+          kind={autoFly.suggestion}
+          top={scaledTheme.space3}
+          onAccept={autoFly.accept}
+          onDismiss={autoFly.dismiss}
+        />
+      )}
 
       {/* Route edit session: opens on the first edit in planning mode, stays
           for every change, then Apply keeps them (unsaved) or Cancel restores. */}

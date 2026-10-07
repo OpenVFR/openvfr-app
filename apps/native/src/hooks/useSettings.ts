@@ -8,6 +8,7 @@ import { settings as db } from '../db'
 import type { Units } from '../utils/units'
 import { DEFAULT_UNITS } from '../utils/units'
 import type { ThemeName } from '../styles/theme'
+import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
 
 export type AppSettings = {
   units:        Units
@@ -15,6 +16,8 @@ export type AppSettings = {
   selectedAircraftId: string
   airspaceCeilingFt: number
   autoZoom:     boolean
+  /** Takeoff / landing detection starts / stops flight mode: off, ask (prompt) or auto. */
+  autoFlyMode:  AutoFlyMode
   trajectoryNm: number
   /** Horizontal lookahead in minutes for airspace penetration warnings */
   airspaceWarnLookaheadMin: number
@@ -64,6 +67,7 @@ const DEFAULTS: AppSettings = {
   selectedAircraftId:  '',
   airspaceCeilingFt:   9_500,
   autoZoom:            true,
+  autoFlyMode:         'ask',
   trajectoryNm:        5,
   airspaceWarnLookaheadMin: 5,
   airspaceWarnVerticalFt:   500,

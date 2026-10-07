@@ -15,6 +15,7 @@ import { useSettingsContext } from '../context/SettingsContext'
 import { useAuthContext }     from '../context/AuthContext'
 import { useSimContext }      from '../context/SimContext'
 import { SimConnectSheet }    from '../components/SimConnectSheet'
+import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
 import { useInternalBarometer } from '../hooks/useInternalBarometer'
 import { useVarioContext } from '../context/VarioContext'
 import type { VarioState } from '@open-vfr/shared/blueflyVario'
@@ -187,6 +188,13 @@ export function SettingsScreen() {
         <RowTheme
           value={settings.theme}
           onChange={(v) => update({ theme: v })}
+        />
+      </Section>
+
+      <Section title="Flying mode">
+        <RowAutoFly
+          value={settings.autoFlyMode ?? 'ask'}
+          onChange={(v) => update({ autoFlyMode: v })}
         />
       </Section>
 
@@ -547,6 +555,35 @@ const THEME_OPTIONS: { value: ThemeName; label: string }[] = [
   { value: 'light',         label: 'Light'  },
   { value: 'high-contrast', label: 'Hi-Con' },
 ]
+
+const AUTO_FLY_OPTIONS: { value: AutoFlyMode; label: string }[] = [
+  { value: 'off',  label: 'Off'  },
+  { value: 'ask',  label: 'Ask'  },
+  { value: 'auto', label: 'Auto' },
+]
+
+function RowAutoFly({
+  value, onChange,
+}: { value: AutoFlyMode; onChange: (v: AutoFlyMode) => void }) {
+  const styles = useThemedStyles(makeStyles)
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>Auto flying mode</Text>
+      <View style={styles.segmented}>
+        {AUTO_FLY_OPTIONS.map(({ value: v, label }) => (
+          <TouchableOpacity
+            key={v}
+            style={[styles.seg, value === v && styles.segActive]}
+            onPress={() => onChange(v)}
+            accessibilityLabel={`Auto flying mode ${label}`}
+          >
+            <Text style={[styles.segText, value === v && styles.segTextActive]}>{label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  )
+}
 
 function RowTheme({
   value, onChange,
