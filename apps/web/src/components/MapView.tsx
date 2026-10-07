@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as maplibregl from 'maplibre-gl'
 import AutoFlyPrompt from './AutoFlyPrompt'
+import { useThrottledValue } from '../hooks/useThrottledValue'
+import { useStableProps } from '../hooks/useStableProps'
 import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
 import type { GeoJSONSource, ExpressionSpecification } from 'maplibre-gl'
 // MapLibre v6 is ESM-only and locates its worker via a computed
@@ -779,18 +781,22 @@ export default function MapView({ auth }: { auth: AuthState }) {
   }, [flyingMode, routeWaypoints.length, gpsPosition])
   // NM along the planned route where the aircraft currently is — drives the
   // live position marker on the VirtualRadar chart. Only computed during flight.
+  // The profile chart (recharts, hundreds of SVG nodes) is by far the most
+  // expensive thing to re-render; it only needs ~1 Hz position, not every tick.
+  const chartPos = useThrottledValue(gpsPosition, 2000)
+  const chartVSpeedFpm = useThrottledValue(gpsVSpeedFpm, 2000)
   const aircraftDistNm = useMemo(() => {
-    if (flyingMode === 'off' || !gpsPosition || routeWaypoints.length < 2) return undefined
-    return distanceAlongRouteNm(routeWaypoints, gpsPosition)
-  }, [flyingMode, gpsPosition, routeWaypoints])
+    if (flyingMode === 'off' || !chartPos || routeWaypoints.length < 2) return undefined
+    return distanceAlongRouteNm(routeWaypoints, chartPos)
+  }, [flyingMode, chartPos, routeWaypoints])
   // Lateral deviation from the planned line — mirrors native's identical
   // crossTrackNm wiring. VirtualRadar's terrain/airspace/MSA data is only
   // ever sampled along the *planned* route, so this drives an in-chart badge
   // once the aircraft has meaningfully diverged from it.
   const crossTrackNm = useMemo(() => {
-    if (flyingMode === 'off' || !gpsPosition || routeWaypoints.length < 2) return undefined
-    return routeCrossTrackNm(routeWaypoints, gpsPosition)
-  }, [flyingMode, gpsPosition, routeWaypoints])
+    if (flyingMode === 'off' || !chartPos || routeWaypoints.length < 2) return undefined
+    return routeCrossTrackNm(routeWaypoints, chartPos)
+  }, [flyingMode, chartPos, routeWaypoints])
 
   // Aircraft's live progress along the synthesised look-ahead route.
   // Previously hardcoded to 0 when passed to VirtualRadar, which pinned the
@@ -802,9 +808,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // since the aircraft continues along the same track the line was
   // extended from.
   const lookaheadDistNm = useMemo(() => {
-    if (!gpsPosition || lookaheadWaypoints.length < 2) return 0
-    return distanceAlongRouteNm(lookaheadWaypoints, gpsPosition)
-  }, [gpsPosition, lookaheadWaypoints])
+    if (!chartPos || lookaheadWaypoints.length < 2) return 0
+    return distanceAlongRouteNm(lookaheadWaypoints, chartPos)
+  }, [chartPos, lookaheadWaypoints])
+  const lookaheadLegOverrides = useMemo(
+    () => [{ altFt: chartPos?.altFt ?? 1000, speedKts: chartPos?.speedKts || selectedAircraftProfile?.cruiseIas || 90 }] as LegOverride[],
+    [chartPos?.altFt, chartPos?.speedKts, selectedAircraftProfile?.cruiseIas],
+  )
 
   // Update the profile-cursor map marker when the VirtualRadar / LiveTrackChart hover changes.
   useEffect(() => {
@@ -3846,10 +3856,21 @@ export default function MapView({ auth }: { auth: AuthState }) {
   }, [mapReady, toweredAerodromesLoaded, auth.user])
 
   // Sync gpsPosition → aircraft layer on map + optional centering.
+  // Per-tick GeoJSON setData is expensive (each call re-parses tiles in the
+  // worker and forces a repaint): never re-push an already-empty source, and
+  // refresh the slow-changing overlays (glide ring, centrelines) at most once
+  // per SLOW_OVERLAY_MS.
+  const SLOW_OVERLAY_MS = 1000
+  const glideEmptyRef = useRef(false)
+  const trajEmptyRef = useRef(false)
+  const slowOverlayAtRef = useRef(0)
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady || !gpsPosition) return
     gpsPositionRef.current = gpsPosition
+    const nowMs = performance.now()
+    const slowDue = nowMs - slowOverlayAtRef.current >= SLOW_OVERLAY_MS
+    if (slowDue) slowOverlayAtRef.current = nowMs
 
     // Update the aircraft symbol layer.
     ;(map.getSource('aircraft-position') as GeoJSONSource | undefined)?.setData({
@@ -3866,10 +3887,14 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const glideSource = map.getSource('glide-range') as GeoJSONSource | undefined
     if (glideSource) {
       if (glideRatio > 0 && gpsPosition.altFt > 200) {
-        const radiusNm = (gpsPosition.altFt * glideRatio) / 6076.12
-        glideSource.setData({ type: 'FeatureCollection', features: [makeCirclePolygon(gpsPosition.lat, gpsPosition.lng, radiusNm)] })
-      } else {
+        if (slowDue) {
+          const radiusNm = (gpsPosition.altFt * glideRatio) / 6076.12
+          glideSource.setData({ type: 'FeatureCollection', features: [makeCirclePolygon(gpsPosition.lat, gpsPosition.lng, radiusNm)] })
+          glideEmptyRef.current = false
+        }
+      } else if (!glideEmptyRef.current) {
         glideSource.setData({ type: 'FeatureCollection', features: [] })
+        glideEmptyRef.current = true
       }
     }
 
@@ -3911,8 +3936,10 @@ export default function MapView({ auth }: { auth: AuthState }) {
             ...tickFeatures,
           ],
         })
-      } else {
+        trajEmptyRef.current = false
+      } else if (!trajEmptyRef.current) {
         trajSource.setData({ type: 'FeatureCollection', features: [] })
+        trajEmptyRef.current = true
       }
     }
 
@@ -3923,7 +3950,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     // Update extended centrelines: show approach paths for airports within 10 NM.
     const centrelineSource = map.getSource('extended-centrelines') as GeoJSONSource | undefined
     if (centrelineSource) {
-      if (runwayThresholdsRef.current.length > 0) {
+      if (slowDue && runwayThresholdsRef.current.length > 0) {
         centrelineSource.setData(buildCentrelines(
           runwayThresholdsRef.current,
           gpsPosition.lat, gpsPosition.lng, gpsPosition.trackDeg,
@@ -4025,6 +4052,123 @@ export default function MapView({ auth }: { auth: AuthState }) {
     return null
   }, [activePopup])
 
+  // Stable props for the memoised drawer: function props are wrapped so inline
+  // closures don't defeat memo; data props change identity only when they change.
+  const drawerProps = useStableProps({
+    visibility,
+    onVisibilityChange: setVisibilityGroup,
+    ceilingFt,
+    onCeilingChange: setCeilingFt,
+    basemapMode,
+    onBasemapModeChange: setBasemapMode,
+    satelliteLocked,
+    units,
+    onUnitsChange: setUnits,
+    region,
+    onRegionChange: setRegion,
+    theme,
+    onThemeChange: setTheme,
+    autoZoom,
+    onAutoZoomChange: setAutoZoom,
+    trajectoryMode,
+    onTrajectoryModeChange: setTrajectoryMode,
+    airspaceWarnLookahead,
+    onAirspaceWarnLookaheadChange: setAirspaceWarnLookahead,
+    airspaceWarnVerticalFt,
+    onAirspaceWarnVerticalFtChange: setAirspaceWarnVerticalFt,
+    terrainColoring,
+    onTerrainColoringChange: setTerrainColoring,
+    trafficVertFilter,
+    onTrafficVertFilterChange: setTrafficVertFilter,
+    parkTimeout,
+    onParkTimeoutChange: setParkTimeout,
+    autoFlyMode,
+    onAutoFlyModeChange: setAutoFlyMode,
+    inFlight: flyingMode !== 'off' && (gpsPosition?.speedKts ?? 0) >= 30,
+    manifest,
+    isOnline,
+    checking,
+    onRefresh: refreshManifest,
+    waypoints: routeWaypoints,
+    legOverrides,
+    routeVisible,
+    onToggleRouteVisible: () => setRouteVisible((v) => !v),
+    planningMode,
+    onTogglePlanningMode: () => setPlanningMode((m) => !m),
+    onUndo: routeUndo.undo,
+    onRedo: routeUndo.redo,
+    canUndo: routeUndo.canUndo && !routeEditLocked,
+    canRedo: routeUndo.canRedo && !routeEditLocked,
+    onClear: () => { setRouteWaypoints([]); setPlanningMode(false) },
+    onReplace: (wps: RouteWaypoint[]) => setRouteWaypoints(wps),
+    onLoadRoute: (wps: RouteWaypoint[], ovr: LegOverride[], aircraftId?: string) => {
+      loadRouteIntoMap(wps, ovr, aircraftId)
+      if (aircraftId) setSelectedAircraftId(aircraftId)
+      setPlanningMode(true)
+      // Fit the camera to the newly-loaded route's extent -- mirrors
+      // native's identical activeRouteId-keyed AviationMap effect.
+      // Fired directly here (not from a separate effect watching
+      // activeRouteId, unlike native) since this handler already runs
+      // exactly once per load/Save-As/GPX-import and already has
+      // mapRef in scope -- no cross-screen signal needed the way
+      // native's separate Map/Flight-Plan tabs require.
+      if (wps.length >= 2 && mapRef.current) {
+        const lngs = wps.map((w) => w.lng)
+        const lats = wps.map((w) => w.lat)
+        mapRef.current.fitBounds(
+          [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+          { padding: 80, maxZoom: 13, duration: 800 },
+        )
+      }
+    },
+    activeRouteId,
+    onActiveRouteIdChange: setActiveRouteId,
+    onRunwayWind: handleRunwayWind,
+    regionalNotams: regionalNotamsAll,
+    onShowNotamOnMap: handleShowNotamOnMap,
+    onSetLegOverride: (idx: number, ovr: LegOverride) =>
+      setLegOverrides((prev) => {
+        const next = [...prev]
+        next[idx] = ovr
+        return next
+      }),
+    onSetWaypointNote: (wpIdx: number, note: string) =>
+      setRouteWaypoints((prev) => {
+        const next = [...prev]
+        next[wpIdx] = { ...next[wpIdx], note: note || undefined }
+        return next
+      }),
+    onAddToRoute: (wp: RouteWaypoint) => setRouteWaypoints(p => [...p, wp]),
+    activeInfo,
+    onCloseInfo: () => setActivePopup(null),
+    isHome: (icao: string) => homeAirfield?.icao === icao,
+    homeIcao: homeAirfield?.icao ?? null,
+    onSetHome: (icao: string, name: string, lng: number, lat: number) =>
+      setHomeAirfield(homeAirfield?.icao === icao ? null : { icao, name, lng, lat }),
+    selectedAircraftId: selectedAircraftId ?? undefined,
+    selectedAircraftProfile,
+    onSelectAircraft: setSelectedAircraftId,
+    onFlyTo: (r: { lng: number; lat: number; kind?: string }) => mapRef.current?.flyTo({ center: [r.lng, r.lat], zoom: r.kind === 'LL' ? 12 : 13, speed: 1.4 }),
+    selectedLogId,
+    onSelectLog: setSelectedLogId,
+    onClearLog: () => setSelectedLogId(null),
+    userWaypoints,
+    pendingUserWpCoords,
+    folderVisibility,
+    onUserWpCoordsConsumed: () => setPendingUserWpCoords(null),
+    onStartPlaceUserWp: () => { setPlacingUserWp(true); setPendingUserWpCoords(null) },
+    onSaveUserWaypoint: (wp: Parameters<typeof saveUserWaypoint>[0]) => { saveUserWaypoint(wp).catch(console.error) },
+    onDeleteUserWaypoint: (id: string) => { deleteUserWaypoint(id).catch(console.error) },
+    onRenameUserWaypoint: (id: string, name: string) => { renameUserWaypoint(id, name).catch(console.error) },
+    onMoveUserWpFolder: (id: string, folder: string) => { moveUserWpFolder(id, folder).catch(console.error) },
+    onFolderVisChange: (folder: string, visible: boolean) => setFolderVisibility(p => ({ ...p, [folder]: visible })),
+    onSaveHereUserWaypoint: (name: string, lng: number, lat: number) => {
+      saveUserWaypoint({ name, lng, lat, folder: '' }).catch(console.error)
+    },
+    auth,
+    onOpenProfile: () => setProfileOpen(true),
+  })
+
   return (
     <div className={css.wrapper}>
       {routeUndo.editSessionActive && (
@@ -4037,122 +4181,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           onApply={routeUndo.applyEditSession}
         />
       )}
-      <SideDrawer
-        visibility={visibility}
-        onVisibilityChange={setVisibilityGroup}
-        ceilingFt={ceilingFt}
-        onCeilingChange={setCeilingFt}
-        basemapMode={basemapMode}
-        onBasemapModeChange={setBasemapMode}
-        satelliteLocked={satelliteLocked}
-        units={units}
-        onUnitsChange={setUnits}
-        region={region}
-        onRegionChange={setRegion}
-        theme={theme}
-        onThemeChange={setTheme}
-        autoZoom={autoZoom}
-        onAutoZoomChange={setAutoZoom}
-        trajectoryMode={trajectoryMode}
-        onTrajectoryModeChange={setTrajectoryMode}
-        airspaceWarnLookahead={airspaceWarnLookahead}
-        onAirspaceWarnLookaheadChange={setAirspaceWarnLookahead}
-        airspaceWarnVerticalFt={airspaceWarnVerticalFt}
-        onAirspaceWarnVerticalFtChange={setAirspaceWarnVerticalFt}
-        terrainColoring={terrainColoring}
-        onTerrainColoringChange={setTerrainColoring}
-        trafficVertFilter={trafficVertFilter}
-        onTrafficVertFilterChange={setTrafficVertFilter}
-        parkTimeout={parkTimeout}
-        onParkTimeoutChange={setParkTimeout}
-        autoFlyMode={autoFlyMode}
-        onAutoFlyModeChange={setAutoFlyMode}
-        inFlight={flyingMode !== 'off' && (gpsPosition?.speedKts ?? 0) >= 30}
-        manifest={manifest}
-        isOnline={isOnline}
-        checking={checking}
-        onRefresh={refreshManifest}
-        waypoints={routeWaypoints}
-        legOverrides={legOverrides}
-        routeVisible={routeVisible}
-        onToggleRouteVisible={() => setRouteVisible((v) => !v)}
-        planningMode={planningMode}
-        onTogglePlanningMode={() => setPlanningMode((m) => !m)}
-        onUndo={routeUndo.undo}
-        onRedo={routeUndo.redo}
-        canUndo={routeUndo.canUndo && !routeEditLocked}
-        canRedo={routeUndo.canRedo && !routeEditLocked}
-        onClear={() => { setRouteWaypoints([]); setPlanningMode(false) }}
-        onReplace={(wps) => setRouteWaypoints(wps)}
-        onLoadRoute={(wps, ovr, aircraftId) => {
-          loadRouteIntoMap(wps, ovr, aircraftId)
-          if (aircraftId) setSelectedAircraftId(aircraftId)
-          setPlanningMode(true)
-          // Fit the camera to the newly-loaded route's extent -- mirrors
-          // native's identical activeRouteId-keyed AviationMap effect.
-          // Fired directly here (not from a separate effect watching
-          // activeRouteId, unlike native) since this handler already runs
-          // exactly once per load/Save-As/GPX-import and already has
-          // mapRef in scope -- no cross-screen signal needed the way
-          // native's separate Map/Flight-Plan tabs require.
-          if (wps.length >= 2 && mapRef.current) {
-            const lngs = wps.map((w) => w.lng)
-            const lats = wps.map((w) => w.lat)
-            mapRef.current.fitBounds(
-              [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-              { padding: 80, maxZoom: 13, duration: 800 },
-            )
-          }
-        }}
-        activeRouteId={activeRouteId}
-        onActiveRouteIdChange={setActiveRouteId}
-        onRunwayWind={handleRunwayWind}
-        regionalNotams={regionalNotamsAll}
-        onShowNotamOnMap={handleShowNotamOnMap}
-        onSetLegOverride={(idx, ovr) =>
-          setLegOverrides((prev) => {
-            const next = [...prev]
-            next[idx] = ovr
-            return next
-          })
-        }
-        onSetWaypointNote={(wpIdx, note) =>
-          setRouteWaypoints((prev) => {
-            const next = [...prev]
-            next[wpIdx] = { ...next[wpIdx], note: note || undefined }
-            return next
-          })
-        }
-        onAddToRoute={(wp) => setRouteWaypoints(p => [...p, wp])}
-        activeInfo={activeInfo}
-        onCloseInfo={() => setActivePopup(null)}
-        isHome={(icao) => homeAirfield?.icao === icao}
-        onSetHome={(icao, name, lng, lat) =>
-          setHomeAirfield(homeAirfield?.icao === icao ? null : { icao, name, lng, lat })
-        }
-        selectedAircraftId={selectedAircraftId ?? undefined}
-        selectedAircraftProfile={selectedAircraftProfile}
-        onSelectAircraft={setSelectedAircraftId}
-        onFlyTo={(r) => mapRef.current?.flyTo({ center: [r.lng, r.lat], zoom: r.kind === 'LL' ? 12 : 13, speed: 1.4 })}
-        selectedLogId={selectedLogId}
-        onSelectLog={setSelectedLogId}
-        onClearLog={() => setSelectedLogId(null)}
-        userWaypoints={userWaypoints}
-        pendingUserWpCoords={pendingUserWpCoords}
-        folderVisibility={folderVisibility}
-        onUserWpCoordsConsumed={() => setPendingUserWpCoords(null)}
-        onStartPlaceUserWp={() => { setPlacingUserWp(true); setPendingUserWpCoords(null) }}
-        onSaveUserWaypoint={(wp) => { saveUserWaypoint(wp).catch(console.error) }}
-        onDeleteUserWaypoint={(id) => { deleteUserWaypoint(id).catch(console.error) }}
-        onRenameUserWaypoint={(id, name) => { renameUserWaypoint(id, name).catch(console.error) }}
-        onMoveUserWpFolder={(id, folder) => { moveUserWpFolder(id, folder).catch(console.error) }}
-        onFolderVisChange={(folder, visible) => setFolderVisibility(p => ({ ...p, [folder]: visible }))}
-        onSaveHereUserWaypoint={(name, lng, lat) => {
-          saveUserWaypoint({ name, lng, lat, folder: '' }).catch(console.error)
-        }}
-        auth={auth}
-        onOpenProfile={() => setProfileOpen(true)}
-      />
+      <SideDrawer {...drawerProps} />
       <div className={css.mapArea}>
         {autoFly.suggestion && (
           <AutoFlyPrompt kind={autoFly.suggestion} onAccept={autoFly.accept} onDismiss={autoFly.dismiss} />
@@ -4611,9 +4640,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
             airspaceCeilingFt={ceilingFt}
             aircraftProfile={selectedAircraftProfile}
             currentDistNm={aircraftDistNm}
-            currentAltFt={flyingMode !== 'off' ? gpsPosition?.altFt : undefined}
-            currentSpeedKts={flyingMode !== 'off' ? gpsPosition?.speedKts : undefined}
-            currentVSpeedFpm={flyingMode !== 'off' ? gpsVSpeedFpm ?? undefined : undefined}
+            currentAltFt={flyingMode !== 'off' ? chartPos?.altFt : undefined}
+            currentSpeedKts={flyingMode !== 'off' ? chartPos?.speedKts : undefined}
+            currentVSpeedFpm={flyingMode !== 'off' ? chartVSpeedFpm ?? undefined : undefined}
             crossTrackNm={crossTrackNm}
             weatherStations={routeWeatherStations}
             windSamples={routeWindSamples}
@@ -4630,14 +4659,14 @@ export default function MapView({ auth }: { auth: AuthState }) {
             <VirtualRadar
               title={`LOOK-AHEAD · TRK ${Math.round(lookaheadHeadingDeg)}°`}
               waypoints={lookaheadWaypoints}
-              legOverrides={[{ altFt: gpsPosition?.altFt ?? 1000, speedKts: gpsPosition?.speedKts || selectedAircraftProfile?.cruiseIas || 90 }] as LegOverride[]}
+              legOverrides={lookaheadLegOverrides}
               units={units}
               airspaceCeilingFt={ceilingFt}
               aircraftProfile={selectedAircraftProfile}
               currentDistNm={lookaheadDistNm}
-              currentAltFt={gpsPosition?.altFt}
-              currentSpeedKts={gpsPosition?.speedKts}
-              currentVSpeedFpm={gpsVSpeedFpm ?? undefined}
+              currentAltFt={chartPos?.altFt}
+              currentSpeedKts={chartPos?.speedKts}
+              currentVSpeedFpm={chartVSpeedFpm ?? undefined}
               weatherStations={routeWeatherStations}
               trajectoryMode={trajectoryMode}
               onHoverDistNm={setProfileCursorNm}

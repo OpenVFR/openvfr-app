@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
+import { memo, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import LayerPanel, { type BasemapMode } from './LayerPanel'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import SettingsPanel from './SettingsPanel'
@@ -102,6 +102,8 @@ interface Props {
   activeInfo: ActiveInfo
   onCloseInfo: () => void
   isHome: (icao: string) => boolean
+  /** Current home ICAO. Not read directly: lets memo re-render when isHome's answer changes. */
+  homeIcao?: string | null
   onSetHome: (icao: string, name: string, lng: number, lat: number) => void
   /** Forwarded to AerodromePopup so the map's runway threshold labels can mirror its favored-end highlight. */
   onRunwayWind?: (icao: string, ends: RunwayWindEnd[]) => void
@@ -164,7 +166,7 @@ function lsSet(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)) } catch { /* quota */ }
 }
 
-export default function SideDrawer({
+function SideDrawer({
   visibility, onVisibilityChange,
   ceilingFt, onCeilingChange,
   basemapMode, onBasemapModeChange, satelliteLocked,
@@ -573,3 +575,7 @@ export default function SideDrawer({
     </div>
   )
 }
+
+// Memoised (callers pass stable props via useStableProps): MapView re-renders on
+// every GPS tick and the drawer is expensive to render.
+export default memo(SideDrawer)

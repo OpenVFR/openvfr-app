@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from 'react'
+import { memo, useEffect, useMemo, useState, useRef } from 'react'
 import {
   ComposedChart,
   Area,
@@ -341,7 +341,7 @@ function CloudLayers({ marks, chips, totalNm, yMax, xFactor }: {
   return <g pointerEvents="none">{shapes}{labels}</g>
 }
 
-export default function VirtualRadar({
+function VirtualRadar({
   waypoints, legOverrides, units = DEFAULT_UNITS, title, onHoverDistNm, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, crosshairDistNm,
   crossTrackNm, weatherStations, windSamples, airspaceCeilingFt,
@@ -1469,3 +1469,6 @@ export default function VirtualRadar({
     </div>
   )
 }
+
+// Memoised: MapView re-renders every GPS tick, the chart only when its props change.
+export default memo(VirtualRadar)
