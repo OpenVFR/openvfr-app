@@ -2,8 +2,8 @@
 
 .panel {
   position:        absolute;
-  bottom:          16px;
-  right:           54px;          /* clear the MapLibre attribution */
+  bottom:          48px;          /* sit above the MapInfoBar status pill (bottom 10px, ~30px tall) */
+  right:           10px;
   z-index:         420;
   min-width:       220px;
   max-width:       300px;
