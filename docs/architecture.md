@@ -449,6 +449,18 @@ These four tokens must be added to `apps/web/src/styles/theme.css` when Phase 4 
 
 The `AltitudeSlider` enforces a pilot-set ceiling. When the aircraft's GPS altitude climbs within 500 ft of the ceiling, the ceiling must be automatically raised by 2,000 ft (with a toast notification) to prevent inadvertently hiding the airspace being entered. Implemented in `useGoFlying.ts` / `useAirspaceWarnings.ts` when Phase 3 is active.
 
+### Auto Flying Mode
+
+Flying mode (GPS) can start and stop itself from takeoff and landing detected in the position stream. The detector is a pure state machine in `packages/shared/src/autoFlyDetect.ts` (shared by web and native; unit-tested in `autoFlyDetect.test.ts`); it emits a `suggest-start` / `suggest-stop` event and never starts anything itself. The host app decides what to do with it, according to the **Auto flying mode** setting: **Off**, **Ask** (default, shows a prompt) or **Auto** (acts immediately).
+
+| | Rule |
+|---|---|
+| Start suggestion | Ground speed ≥ 40 kt on 5 consecutive fixes with accuracy ≤ 100 m, while not flying. Fires once; re-arms only after speed drops below 20 kt, so a car or train gives one dismissable prompt. |
+| Stop suggestion | After the aircraft was seen at ≥ 30 kt and at least 60 s have passed: ground speed < 20 kt on 10 consecutive fixes. A slow spell right after takeoff does not trigger it. |
+| After a manual stop | No new start suggestion until speed has dropped below 20 kt. |
+
+Only GPS flying mode is auto-started or auto-stopped; simulator and external-feed flights never are. On web the pre-flight position comes from the passive location dot (`usePassivePosition`), so detection only works while location is on (automatic at startup when permission was already granted). Native's GPS runs from launch, so opening the app already in the air prompts on the first fast fix. The setting is persisted per platform (web: RxDB `ovfr:autoFlyMode`; native: `autoFlyMode` in app settings). The thresholds are deliberately separate from the flight-log takeoff/landing detection in `useFlightLog`, which only runs once flying mode is already on.
+
 ### NOTAM Acknowledgement Model
 
 Pilots should never lose track of which NOTAMs they've reviewed:
