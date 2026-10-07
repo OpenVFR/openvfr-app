@@ -242,3 +242,28 @@ async function finishLog(
     updatedAt: Date.now(),
   })
 }
+
+/**
+ * Close out logs left in progress (endedAt === 0) by a previous session — the
+ * app was killed or closed mid-flight, so finishLog never ran. Call once at
+ * startup, before any new recording can begin. Each orphan is ended at its last
+ * recorded track point (falling back to its last update time); orphans with no
+ * track at all are removed. Returns the logs that were finalized.
+ */
+export async function recoverOrphanedLogs(): Promise<FlightLogDocType[]> {
+  const recovered: FlightLogDocType[] = []
+  try {
+    const all = await flightLogsDb.getAll()
+    for (const log of all) {
+      if (log.endedAt > 0) continue
+      let track: TrackPoint[] = []
+      try { track = JSON.parse(log.trackJson || '[]') } catch { /* corrupt → treat as empty */ }
+      if (track.length === 0) { await flightLogsDb.delete(log.id); continue }
+      const endedAt = Math.max(track[track.length - 1].ts || 0, log.startedAt + 1)
+      const fixed: FlightLogDocType = { ...log, endedAt, updatedAt: Date.now() }
+      await flightLogsDb.upsert(fixed)
+      recovered.push(fixed)
+    }
+  } catch { /* best-effort */ }
+  return recovered
+}

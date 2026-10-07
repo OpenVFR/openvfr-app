@@ -77,7 +77,7 @@ import { useSimContext }     from '../context/SimContext'
 import { useNearbyFrequencies } from '../hooks/useNearbyFrequencies'
 import { useLivePlog } from '../hooks/useLivePlog'
 import { LivePlogPanel } from '../components/LivePlogPanel'
-import { useFlightLog } from '../hooks/useFlightLog'
+import { useFlightLog, recoverOrphanedLogs } from '../hooks/useFlightLog'
 import { useFlightLogSync } from '../hooks/useFlightLogSync'
 import { useAuthContext } from '../context/AuthContext'
 import { useUserWaypointContext } from '../context/UserWaypointContext'
@@ -704,6 +704,12 @@ export function MapScreen() {
     aircraftProfile?.registration ?? '',
     nearbyFreqs[0]?.icao ?? null,
   )
+  // Finalize + upload logs orphaned by a previous session that was closed
+  // mid-flight (otherwise they stay "Recording…" forever, unviewable/unsynced).
+  useEffect(() => {
+    recoverOrphanedLogs().then(docs => docs.forEach(d => { void pushLog(d) }))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const prevLogIdRef = React.useRef<string | null>(null)
   useEffect(() => {
     if (prevLogIdRef.current && !activeLogId) {

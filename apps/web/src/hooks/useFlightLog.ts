@@ -58,6 +58,9 @@ export function useFlightLog(
 ): { activeLogId: string | null; liveTrack: TrackPoint[] } {
   const [activeLogId, setActiveLogId] = useState<string | null>(null)
   const [liveTrack,   setLiveTrack]   = useState<TrackPoint[]>([])
+  // Close out logs left in progress by a previous session (tab/app closed
+  // mid-flight, so finishLog never ran). Runs once, before recording can start.
+  useEffect(() => { void recoverOrphanedLogs() }, [])
 
   // Mutable refs — avoid re-creating the interval/effect on every position tick.
   const stateRef = useRef<{
@@ -374,4 +377,25 @@ async function finishLog(
       updatedAt:   Date.now(),
     })
   } catch { /* silently swallow */ }
+}
+
+/**
+ * Finalize logs with endedAt === 0 from a previous session: end each at its
+ * last track point; remove ones with no track. Sync then uploads them like any
+ * completed log.
+ */
+async function recoverOrphanedLogs(): Promise<void> {
+  try {
+    const db   = await getDb()
+    const docs = await db.flight_logs.find({ selector: { endedAt: 0 } }).exec()
+    for (const doc of docs) {
+      let track: TrackPoint[] = []
+      try { track = JSON.parse(doc.trackJson || '[]') } catch { /* corrupt → empty */ }
+      if (track.length === 0) { await doc.remove(); continue }
+      await doc.patch({
+        endedAt:   Math.max(track[track.length - 1].ts || 0, doc.startedAt + 1),
+        updatedAt: Date.now(),
+      })
+    }
+  } catch { /* best-effort */ }
 }
