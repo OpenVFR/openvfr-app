@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getDb } from './index'
 import { type Units, DEFAULT_UNITS } from '../utils/units'
+import { AUTO_FLY_MODES, AUTO_FLY_DEFAULT, type AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
 
 const HOME_KEY  = 'home_airfield'
 const UNITS_KEY = 'units'
@@ -545,6 +546,33 @@ export function useParkTimeout(): [ParkTimeoutOption, (v: ParkTimeoutOption) => 
     setValState(v)
     getDb().then(async (db) => {
       await db.settings.upsert({ id: PARK_TIMEOUT_KEY, value: String(v) })
+    }).catch(() => {})
+  }, [])
+
+  return [val, setVal]
+}
+
+// ---------------------------------------------------------------------------
+// useAutoFlyMode — 'off' | 'ask' | 'auto': whether takeoff / landing detected
+// from position fixes starts / stops flying mode (ask = show a prompt).
+// Persisted to RxDB; default 'ask'.
+// ---------------------------------------------------------------------------
+const AUTO_FLY_KEY = 'ovfr:autoFlyMode'
+
+export function useAutoFlyMode(): [AutoFlyMode, (v: AutoFlyMode) => void] {
+  const [val, setValState] = useState<AutoFlyMode>(AUTO_FLY_DEFAULT)
+
+  useEffect(() => {
+    getDb().then(async (db) => {
+      const doc = await db.settings.findOne(AUTO_FLY_KEY).exec()
+      if (doc && (AUTO_FLY_MODES as readonly string[]).includes(doc.value)) setValState(doc.value as AutoFlyMode)
+    }).catch(() => {})
+  }, [])
+
+  const setVal = useCallback((v: AutoFlyMode) => {
+    setValState(v)
+    getDb().then(async (db) => {
+      await db.settings.upsert({ id: AUTO_FLY_KEY, value: v })
     }).catch(() => {})
   }, [])
 

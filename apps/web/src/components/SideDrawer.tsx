@@ -20,6 +20,7 @@ import FlightLogs from './FlightLogs'
 import type { Units } from '../utils/units'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride, AircraftProfileDocType, UserWaypointDocType } from '../db/index'
+import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
 import type { Theme, TrajectoryMode, AirspaceWarnLookahead, TerrainColoringSettings, TrafficVertFilter, ParkTimeoutOption } from '../db/useSettings'
 import type { DataManifest } from '../hooks/useDataManifest'
 import { scrollIntoContainer } from '../utils/scrollIntoContainer'
@@ -61,6 +62,8 @@ interface Props {
   onTrafficVertFilterChange: (v: TrafficVertFilter) => void
   parkTimeout: ParkTimeoutOption
   onParkTimeoutChange: (v: ParkTimeoutOption) => void
+  autoFlyMode: AutoFlyMode
+  onAutoFlyModeChange: (v: AutoFlyMode) => void
   /** True when aircraft is airborne (GS ≥ 30 kts); locks data-load controls. */
   inFlight?: boolean
   manifest?: DataManifest | null
@@ -174,7 +177,7 @@ export default function SideDrawer({
   airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange,
   terrainColoring, onTerrainColoringChange,
   trafficVertFilter, onTrafficVertFilterChange,
-  parkTimeout, onParkTimeoutChange,
+  parkTimeout, onParkTimeoutChange, autoFlyMode, onAutoFlyModeChange,
   inFlight,
   manifest,
   isOnline,
@@ -538,7 +541,7 @@ export default function SideDrawer({
             </button>
             {expanded.settings && (
               <div className={css.sectionBody}>
-                <SettingsPanel units={units} onUnitsChange={onUnitsChange} region={region} onRegionChange={onRegionChange} theme={theme} onThemeChange={onThemeChange} autoZoom={autoZoom} onAutoZoomChange={onAutoZoomChange} trajectoryMode={trajectoryMode} onTrajectoryModeChange={onTrajectoryModeChange} airspaceWarnLookahead={airspaceWarnLookahead} onAirspaceWarnLookaheadChange={onAirspaceWarnLookaheadChange} airspaceWarnVerticalFt={airspaceWarnVerticalFt} onAirspaceWarnVerticalFtChange={onAirspaceWarnVerticalFtChange} trafficVertFilter={trafficVertFilter} onTrafficVertFilterChange={onTrafficVertFilterChange} parkTimeout={parkTimeout} onParkTimeoutChange={onParkTimeoutChange} inFlight={inFlight} manifest={manifest} isOnline={isOnline} checking={checking} onRefresh={onRefresh} />
+                <SettingsPanel units={units} onUnitsChange={onUnitsChange} region={region} onRegionChange={onRegionChange} theme={theme} onThemeChange={onThemeChange} autoZoom={autoZoom} onAutoZoomChange={onAutoZoomChange} trajectoryMode={trajectoryMode} onTrajectoryModeChange={onTrajectoryModeChange} airspaceWarnLookahead={airspaceWarnLookahead} onAirspaceWarnLookaheadChange={onAirspaceWarnLookaheadChange} airspaceWarnVerticalFt={airspaceWarnVerticalFt} onAirspaceWarnVerticalFtChange={onAirspaceWarnVerticalFtChange} trafficVertFilter={trafficVertFilter} onTrafficVertFilterChange={onTrafficVertFilterChange} parkTimeout={parkTimeout} onParkTimeoutChange={onParkTimeoutChange} autoFlyMode={autoFlyMode} onAutoFlyModeChange={onAutoFlyModeChange} inFlight={inFlight} manifest={manifest} isOnline={isOnline} checking={checking} onRefresh={onRefresh} />
               </div>
             )}
           </div>

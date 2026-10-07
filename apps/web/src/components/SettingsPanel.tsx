@@ -1,4 +1,5 @@
 import type { Units } from '../utils/units'
+import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
 import type { Theme, TrajectoryMode, AirspaceWarnLookahead, TrafficVertFilter, ParkTimeoutOption } from '../db/useSettings'
 import { AIRSPACE_WARN_LOOKAHEAD_OPTIONS, AIRSPACE_WARN_VERTICAL_MIN, AIRSPACE_WARN_VERTICAL_MAX, AIRSPACE_WARN_VERTICAL_STEP, TRAFFIC_VERT_FILTER_OPTIONS, PARK_TIMEOUT_OPTIONS } from '../db/useSettings'
 import type { DataManifest } from '../hooks/useDataManifest'
@@ -26,6 +27,8 @@ interface Props {
   onTrafficVertFilterChange:   (v: TrafficVertFilter) => void
   parkTimeout:                 ParkTimeoutOption
   onParkTimeoutChange:         (v: ParkTimeoutOption) => void
+  autoFlyMode:                 AutoFlyMode
+  onAutoFlyModeChange:         (v: AutoFlyMode) => void
   /** True when aircraft is airborne (GS ≥ 30 kts); data-load controls are locked. */
   inFlight?:             boolean
   onClose?:              () => void
@@ -44,7 +47,7 @@ const THEMES: { value: Theme; label: string }[] = [
   { value: 'high-contrast', label: 'Hi-Con' },
 ]
 
-export default function SettingsPanel({ units, onUnitsChange, region, onRegionChange, theme, onThemeChange, autoZoom, onAutoZoomChange, trajectoryMode, onTrajectoryModeChange, airspaceWarnLookahead, onAirspaceWarnLookaheadChange, airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange, trafficVertFilter, onTrafficVertFilterChange, parkTimeout, onParkTimeoutChange, inFlight, onClose, manifest, isOnline = true, checking = false, onRefresh }: Props) {
+export default function SettingsPanel({ units, onUnitsChange, region, onRegionChange, theme, onThemeChange, autoZoom, onAutoZoomChange, trajectoryMode, onTrajectoryModeChange, airspaceWarnLookahead, onAirspaceWarnLookaheadChange, airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange, trafficVertFilter, onTrafficVertFilterChange, parkTimeout, onParkTimeoutChange, autoFlyMode, onAutoFlyModeChange, inFlight, onClose, manifest, isOnline = true, checking = false, onRefresh }: Props) {
   return (
     <div className={css.panel}>
       <div className={css.header}>
@@ -176,6 +179,22 @@ export default function SettingsPanel({ units, onUnitsChange, region, onRegionCh
               onClick={() => onTrafficVertFilterChange(v)}
               title={v === 0 ? 'Show all traffic regardless of altitude' : `Hide traffic more than ${v.toLocaleString()} ft above or below current altitude`}
             >{v === 0 ? 'All' : `±${v >= 1000 ? `${v / 1000}k` : v}`}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className={css.section}>
+        <span className={css.label}>Auto flying mode</span>
+        <div className={css.optionsRow}>
+          {([['off', 'Off', 'Never start or stop flying mode automatically'],
+             ['ask', 'Ask', 'Show a prompt when takeoff or landing is detected'],
+             ['auto', 'Auto', 'Start and stop flying mode automatically on detected takeoff and landing (GPS only)']] as const).map(([v, label, title]) => (
+            <button
+              key={v}
+              className={`${css.opt}${autoFlyMode === v ? ` ${css.optActive}` : ''}`}
+              onClick={() => onAutoFlyModeChange(v)}
+              title={title}
+            >{label}</button>
           ))}
         </div>
       </div>

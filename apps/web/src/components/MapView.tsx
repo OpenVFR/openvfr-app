@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as maplibregl from 'maplibre-gl'
+import AutoFlyPrompt from './AutoFlyPrompt'
+import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
 import type { GeoJSONSource, ExpressionSpecification } from 'maplibre-gl'
 // MapLibre v6 is ESM-only and locates its worker via a computed
 // `new URL('./maplibre-gl-worker.mjs', import.meta.url)` inside its own
@@ -64,7 +66,7 @@ import ProfilePanel from './ProfilePanel'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { magneticBearingDeg, bearingDeg, advancePosition } from '../utils/routeCalc'
 import { usePersistedRoute } from '../db/useRouteDb'
-import { useHomeAirfield, useUnits, useAlternate, useTheme, useAutoZoom, useTrajectoryMode, useAirspaceWarnLookahead, useAirspaceWarnVerticalFt, useTerrainColoring, useTrafficVertFilter, useLayerVisibility, useAirspaceCeiling, useSelectedAircraftId, useParkTimeout } from '../db/useSettings'
+import { useHomeAirfield, useUnits, useAlternate, useTheme, useAutoZoom, useTrajectoryMode, useAirspaceWarnLookahead, useAirspaceWarnVerticalFt, useTerrainColoring, useTrafficVertFilter, useLayerVisibility, useAirspaceCeiling, useSelectedAircraftId, useParkTimeout, useAutoFlyMode } from '../db/useSettings'
 import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import { useUserWaypoints } from '../db/useUserWaypoints'
 import { getDb, type TrackPoint, type LegOverride } from '../db'
@@ -585,6 +587,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const [terrainColoring, setTerrainColoring] = useTerrainColoring()
   const [trafficVertFilter, setTrafficVertFilter] = useTrafficVertFilter()
   const [parkTimeout, setParkTimeout] = useParkTimeout()
+  const [autoFlyMode, setAutoFlyMode] = useAutoFlyMode()
   const [alternate, _setAlternate] = useAlternate()
   const [routeWaypoints, setRouteWaypoints, legOverrides, setLegOverrides, loadRouteIntoMap, routeAircraftId, setRouteAircraftId, activeRouteId, setActiveRouteId, routeUndo] = usePersistedRoute()
   // Computed once here (not inside SideDrawer) so VirtualRadar's wind-arrow/
@@ -847,6 +850,23 @@ export default function MapView({ auth }: { auth: AuthState }) {
 
   // ── Location button behaviour (see locMode above) ─────────────────────
   const { position: passivePos, denied: locDenied } = usePassivePosition(locMode === 'passive' && flyingMode === 'off')
+  // Takeoff / landing detection: passive position while on the ground, GPS
+  // position in GPS flying mode; sim / external feeds never auto start or stop.
+  // Memoised on the fix objects: a new object every render would re-run the
+  // detector on unrelated re-renders and over-count fixes.
+  const autoFlyFix = useMemo(() => (
+    flyingMode === 'off' && passivePos
+      ? { speedKts: passivePos.speedKts, accuracyM: passivePos.accuracyM }
+      : flyingMode === 'gps' && gpsPosition
+        ? { speedKts: gpsPosition.speedKts, accuracyM: gpsPosition.accuracy }
+        : null
+  ), [flyingMode, passivePos, gpsPosition])
+  const autoFly = useAutoFlyDetect(
+    autoFlyMode,
+    autoFlyFix,
+    flyingMode === 'gps',
+    { start: () => startGps(() => {}), stop: stopFlying },
+  )
   // Startup: if permission was already granted, show the dot straight away
   // (no prompt, camera untouched). Otherwise nothing until the user taps.
   useEffect(() => {
@@ -4045,6 +4065,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
         onTrafficVertFilterChange={setTrafficVertFilter}
         parkTimeout={parkTimeout}
         onParkTimeoutChange={setParkTimeout}
+        autoFlyMode={autoFlyMode}
+        onAutoFlyModeChange={setAutoFlyMode}
         inFlight={flyingMode !== 'off' && (gpsPosition?.speedKts ?? 0) >= 30}
         manifest={manifest}
         isOnline={isOnline}
@@ -4132,6 +4154,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
         onOpenProfile={() => setProfileOpen(true)}
       />
       <div className={css.mapArea}>
+        {autoFly.suggestion && (
+          <AutoFlyPrompt kind={autoFly.suggestion} onAccept={autoFly.accept} onDismiss={autoFly.dismiss} />
+        )}
         <div ref={containerRef} className={css.map} />
         <MapInfoBar map={mapReady ? mapRef.current : null} ceilingFt={ceilingFt} units={units} />
 

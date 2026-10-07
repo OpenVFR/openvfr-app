@@ -16,6 +16,8 @@ export interface PassivePosition {
   accuracyM: number
   /** Degrees true, only when moving (browsers report null when stationary). */
   headingDeg: number | null
+  /** Ground speed in knots; null when the device doesn't report one. */
+  speedKts: number | null
 }
 
 const LS_LAST = 'ovfr:lastPosition'
@@ -43,6 +45,7 @@ export function usePassivePosition(active: boolean): { position: PassivePosition
           lng: p.coords.longitude,
           accuracyM: p.coords.accuracy,
           headingDeg: p.coords.heading !== null && !Number.isNaN(p.coords.heading) ? p.coords.heading : null,
+          speedKts: p.coords.speed !== null && Number.isFinite(p.coords.speed) ? p.coords.speed * 1.943844 : null,
         }
         setPosition(pos)
         // Throttled: a watch can fire every second.
