@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
+import { shouldAutoSubmitOtp } from '@open-vfr/shared/otpAutoSubmit'
 import type { AuthState } from '../hooks/useAuth'
 import { SITE_BASE_URL } from '../utils/env'
 import styles from './LoginPanel.module.css'
@@ -64,7 +65,7 @@ export default function LoginPanel({ auth }: Props) {
       const msg = err instanceof Error ? err.message : 'Passkey sign-in failed'
       if (msg === 'NO_PASSKEY') {
         // Browsers report "cancelled" and "no credential" identically by design.
-        setStatus('No passkey used — continue with email instead.', false)
+        setStatus('No passkey found on this device. Continue with email, then add one in Settings.', false)
       } else {
         setStatus(friendlyError(msg, 'Passkey sign-in failed'), false)
       }
@@ -92,8 +93,16 @@ export default function LoginPanel({ auth }: Props) {
     }
   }
 
-  const handleSignInOtp = async () => {
-    const code = otp.trim()
+  // Auto sign-in only when autofill/paste fills exactly 6 digits in one go;
+  // typed digits never submit (the app-review code is longer than 6).
+  const onOtpChange = (raw: string) => {
+    const digits = raw.replace(/\D/g, '')
+    setOtp(digits)
+    if (!busy && shouldAutoSubmitOtp(otp, digits)) void handleSignInOtp(digits)
+  }
+
+  const handleSignInOtp = async (explicit?: string) => {
+    const code = (explicit ?? otp).trim()
     // >= 6, not === 6: real OTPs are always exactly 6 digits, but the fixed
     // app-review test OTP (apps/api/src/auth.ts, APP_REVIEW_TEST_OTP) is
     // >= 10 digits by design (see that file's comment) -- an exact-6 check
@@ -145,7 +154,7 @@ export default function LoginPanel({ auth }: Props) {
         <div className={styles.logo}>
           <img src="/pwa-512x512.png" alt="" className={styles.logoImg} width={512} height={512} />
           <h1>OpenVFR</h1>
-          <p>European VFR Electronic Flight Bag</p>
+          <p>Open-Source VFR Flight Planning & Navigation</p>
         </div>
 
         {/* Setup step — collect name after first sign-in */}
@@ -190,7 +199,7 @@ export default function LoginPanel({ auth }: Props) {
                 </svg>
                 Sign in with passkey
               </button>
-              <p className={styles.passkeyHint}>Uses your device biometrics or PIN — no password needed.</p>
+              <p className={styles.passkeyHint}>Needs a passkey set up on this device.</p>
             </div>
 
             <div className={styles.divider}>OR</div>
@@ -222,7 +231,7 @@ export default function LoginPanel({ auth }: Props) {
         ) : (
           <div className={styles.otpBlock}>
             <p className={styles.otpHint}>
-              Enter the 6-digit code sent to <strong>{email}</strong>
+              OTP code sent, check your email.
             </p>
             <div className={styles.emailRow}>
               <input
@@ -237,7 +246,7 @@ export default function LoginPanel({ auth }: Props) {
                 placeholder="123456"
                 autoComplete="one-time-code"
                 value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                onChange={(e) => onOtpChange(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !busy && void handleSignInOtp()}
                 disabled={busy}
               />

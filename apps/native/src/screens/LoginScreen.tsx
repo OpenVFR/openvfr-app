@@ -17,6 +17,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { shouldAutoSubmitOtp } from '@open-vfr/shared/otpAutoSubmit'
 import { useAuthContext } from '../context/AuthContext'
 import { SITE_BASE } from '../config'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -30,6 +31,8 @@ function friendlyError(raw: string | null): string | null {
     return 'No connection. Check your internet and try again.'
   if (/invalid|incorrect|expired/.test(m)) return 'That code is invalid or has expired. Request a new one.'
   if (/too many|rate/.test(m)) return 'Too many attempts. Wait a minute and try again.'
+  if (/no (passkey|credential)|not found|no_passkey/.test(m))
+    return 'No passkey found on this device. Continue with email, then add one in Settings.'
   if (/passkey|credential|webauthn/.test(m))
     return 'Passkey sign-in failed. Use an email code instead.'
   return raw
@@ -38,9 +41,13 @@ function friendlyError(raw: string | null): string | null {
 export function LoginScreen() {
   const styles = useThemedStyles(makeStyles)
   const insets                           = useSafeAreaInsets()
-  const { width }                        = useWindowDimensions()
-  // Logo scales with device width (capped so tablets don't get a giant one).
-  const logoSize                         = Math.round(Math.min(width * 0.6, 320))
+  const scaledTheme                      = useScaledTheme()
+  const { width, height }                = useWindowDimensions()
+  // Logo scales with device width (capped so tablets don't get a giant one)
+  // and with height: the rest of the card (buttons, inputs, footer) is sized
+  // by the scaled theme, so on a dense/tall phone at a large display scale a
+  // width-only logo pushes the footer below the fold. Floor keeps it legible.
+  const logoSize                         = Math.round(Math.min(width * 0.6, 320, Math.max(96, height * 0.23)))
   const { sendOtp, verifyOtp, signInWithPasskey, passkeySupported, error } = useAuthContext()
   const [email, setEmail]                = useState('')
   const [otp, setOtp]                    = useState('')
@@ -63,30 +70,42 @@ export function LoginScreen() {
     if (ok) setStep('otp')
   }
 
-  const handleVerifyOtp = async () => {
-    if (!otp.trim()) return
+  const handleVerifyOtp = async (code: string = otp.trim()) => {
+    if (!code) return
     setBusy(true)
-    await verifyOtp(email.trim().toLowerCase(), otp.trim())
+    await verifyOtp(email.trim().toLowerCase(), code)
     setBusy(false)
+  }
+
+  // Auto sign-in only when autofill/paste fills exactly 6 digits in one go;
+  // typed digits never submit (the app-review code is longer than 6).
+  const onOtpChange = (text: string) => {
+    const digits = text.replace(/\D/g, '')
+    setOtp(digits)
+    if (!busy && shouldAutoSubmitOtp(otp, digits)) void handleVerifyOtp(digits)
   }
 
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
+      style={[styles.container, { paddingTop: insets.top }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        // The bottom inset is scroll padding (not container padding) so content
+        // scrolls fully clear of the system gesture bar instead of being cut
+        // off by a fixed band at the bottom of the viewport.
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + scaledTheme.space4 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+      <View style={styles.cardWrap}>
       <View style={styles.card}>
         <Image
           source={require('../../assets/icon.png')}
           style={[styles.logoImg, { width: logoSize, height: logoSize, borderRadius: logoSize / 2 }]}
         />
         <Text style={styles.logo}>OpenVFR</Text>
-        <Text style={styles.subtitle}>European VFR Electronic Flight Bag</Text>
+        <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit>Open-Source VFR Flight Planning & Navigation</Text>
 
         {step === 'choose' && (
           <>
@@ -112,8 +131,8 @@ export function LoginScreen() {
                 )
               }
             </TouchableOpacity>
-            <Text style={styles.hint}>
-              Uses your device biometrics or PIN — no password needed.
+            <Text style={styles.hint} numberOfLines={1} adjustsFontSizeToFit>
+              Needs a passkey set up on this device.
             </Text>
 
             <View style={styles.dividerRow}>
@@ -156,12 +175,12 @@ export function LoginScreen() {
 
         {step === 'otp' && (
           <>
-            <Text style={styles.label}>6-digit code sent to {email}</Text>
+            <Text style={styles.label}>OTP code sent, check your email.</Text>
             <TextInput
               style={[styles.input, styles.otpInput]}
               testID="login-otp"
               value={otp}
-              onChangeText={setOtp}
+              onChangeText={onOtpChange}
               placeholder="000000"
               placeholderTextColor={theme.textFaint}
               keyboardType="number-pad"
@@ -173,12 +192,12 @@ export function LoginScreen() {
               maxLength={32}
               autoFocus
               returnKeyType="done"
-              onSubmitEditing={handleVerifyOtp}
+              onSubmitEditing={() => handleVerifyOtp()}
             />
             <TouchableOpacity
               style={[styles.btn, (busy || !otp.trim()) && styles.btnDisabled]}
               testID="login-verify-otp"
-              onPress={handleVerifyOtp}
+              onPress={() => handleVerifyOtp()}
               disabled={busy || !otp.trim()}
             >
               {busy
@@ -200,18 +219,19 @@ export function LoginScreen() {
 
         {shownError && <Text style={styles.error} testID="login-error">{shownError}</Text>}
 
-        {!!SITE_BASE && (
-        <View style={styles.footer}>
-          <Text style={styles.footerLink} onPress={() => Linking.openURL(`${SITE_BASE}/privacy`)}>
-            Privacy
-          </Text>
-          <Text style={styles.footerDot}>·</Text>
-          <Text style={styles.footerLink} onPress={() => Linking.openURL(`${SITE_BASE}/terms`)}>
-            Terms & Disclaimer
-          </Text>
-        </View>
-        )}
       </View>
+      </View>
+      {!!SITE_BASE && (
+      <View style={styles.footer}>
+        <Text style={styles.footerLink} onPress={() => Linking.openURL(`${SITE_BASE}/privacy`)}>
+          Privacy
+        </Text>
+        <Text style={styles.footerDot}>·</Text>
+        <Text style={styles.footerLink} onPress={() => Linking.openURL(`${SITE_BASE}/terms`)}>
+          Terms & Disclaimer
+        </Text>
+      </View>
+      )}
       </ScrollView>
     </KeyboardAvoidingView>
   )
@@ -225,8 +245,13 @@ function makeStyles(theme: ScaledTheme) {
   },
   scroll: {
     flexGrow:        1,
-    justifyContent:  'center',
     padding:         theme.space4,
+  },
+  // Fills the free height and centres the card in it; the footer below is
+  // therefore always pinned to the bottom (it scrolls only when content is taller than the screen).
+  cardWrap: {
+    flex:            1,
+    justifyContent:  'center',
   },
   card: {
     gap:             theme.space3,
@@ -251,8 +276,9 @@ function makeStyles(theme: ScaledTheme) {
     marginBottom: theme.space2,
   },
   label: {
-    color:    theme.textSecondary,
-    fontSize: theme.textSm,
+    color:     theme.textSecondary,
+    fontSize:  theme.textSm,
+    textAlign: 'center',
   },
   input: {
     backgroundColor:   theme.surfaceOverlay,
@@ -273,9 +299,9 @@ function makeStyles(theme: ScaledTheme) {
   btn: {
     backgroundColor: theme.accentBlue,
     borderRadius:    theme.radiusMd,
-    paddingVertical: theme.space3,
+    paddingVertical: theme.space2,
     paddingHorizontal: theme.space3,
-    minHeight:       52,
+    minHeight:       44,
     justifyContent:  'center',
     alignItems:      'center',
   },
@@ -296,7 +322,7 @@ function makeStyles(theme: ScaledTheme) {
   btnText: {
     flexShrink: 1,
     color:      '#fff',
-    fontSize:   theme.textMd,
+    fontSize:   theme.textSm,
     fontWeight: '600',
   },
   dividerRow: {
@@ -342,7 +368,7 @@ function makeStyles(theme: ScaledTheme) {
     justifyContent: 'center',
     alignItems:     'center',
     gap:            theme.space2,
-    marginTop:      theme.space4,
+    marginTop:      theme.space3,
   },
   footerLink: {
     color:              theme.textMuted,
