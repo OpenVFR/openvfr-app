@@ -58,6 +58,7 @@ import {
 import { CLOUD_COLORS } from '@open-vfr/shared/featureColors'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
 import { windBarbColorForSpeed, windBarbGeometry } from '@open-vfr/shared/windBarb'
+import { useWindAloftAlongRoute } from '../hooks/useWindAloftAlongRoute'
 import { getTileUrls, API_BASE } from '../config'
 import { getOfflineDem } from '../utils/terrainDem'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -489,8 +490,8 @@ export function VerticalProfile({
   const rawProfile = useMemo(() => {
     if (waypoints.length < 2 || !airspaceGeo || !obstacleGeo) return null
     // water: undefined on native -- see the loader comment above.
-    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, undefined, landmarkGeo ?? undefined, airspaceCeilingFt ?? Infinity)
-  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, landmarkGeo, airspaceCeilingFt])
+    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, undefined, landmarkGeo ?? undefined, airspaceCeilingFt ?? Infinity, aircraftProfile?.cruiseAltFt || undefined)
+  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, landmarkGeo, airspaceCeilingFt, aircraftProfile?.cruiseAltFt])
   // AGL limits are published as heights: lift them onto the terrain along the
   // crossing once the terrain profile is in, so bands draw at their real altitude.
   const profile = useMemo(
@@ -511,6 +512,8 @@ export function VerticalProfile({
   }, [profile, terrainPts])
 
   const totalNm = profile?.totalNm ?? 0
+  // Winds aloft at the standard levels up to the chart top, one column every ~20 NM.
+  const windAloft = useWindAloftAlongRoute(waypoints, totalNm, yMax)
   // Content (not panel) plot width: never below what the panel offers, but
   // grows past it once the route needs more than MIN_PX_PER_NM per NM to
   // stay legible (see MIN_PX_PER_NM comment above). contentW
@@ -1093,6 +1096,28 @@ export function VerticalProfile({
                   stroke={showProjection && perf ? 'transparent' : theme.accentMagenta}
                   strokeWidth={2}
                 />
+
+                {/* Winds aloft: barbs at each standard pressure level's nominal
+                    altitude (model forecast), mirrors web's VirtualRadar. */}
+                {windAloft.flatMap((col, ci) => col.levels.map((lv) => {
+                  if (lv.altFt > yMax * 0.96) return null
+                  const x = windXOf(col.distNm), y = yOf(lv.altFt)
+                  const color = windBarbColorForSpeed(lv.speedKts)
+                  const label = lv.speedKts === 0 ? 'CALM' : `${String(lv.dirDeg).padStart(3, '0')}°/${lv.speedKts}`
+                  const p = windLabelPlacement(x, 8, label, 9, contentW - MARGIN_R, MARGIN_L)
+                  return (
+                    <G key={`windaloft-${ci}-${lv.altFt}`} opacity={0.85}>
+                      {lv.speedKts === 0
+                        ? <Circle cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.8)" strokeWidth={1} />
+                        : (
+                          <G transform={`translate(${x},${y}) rotate(${lv.dirDeg}) translate(0, 8)`}>
+                            {renderWindBarbShape(lv.speedKts, color, { shaftLen: 16, barbLen: 7, halfLen: 4, barbGap: 4, strokeW: 1.5 })}
+                          </G>
+                        )}
+                      {p && renderHaloText(p.x, y + 3, label, color, 9, 1, p.anchor)}
+                    </G>
+                  )
+                }))}
 
                 {/* ── Projected flight path (PROJ toggle) ─────────────── */}
                 {showProjection && perf && projSafePath && (

@@ -29,6 +29,24 @@ export interface LatLngBounds {
   north: number
 }
 
+/**
+ * Which altitude the wind overlay shows: where the aircraft is while flying,
+ * otherwise the planned route altitude, otherwise the surface (SkyDemon
+ * defaults its wind feathers to the planned level of the flight the same way).
+ * `altFt` null means surface wind (what fetchWind/fetchWindGrid expect); it
+ * is rounded to 500 ft so a climbing aircraft doesn't retrigger the overlay
+ * on every GPS altitude tick (pressure levels are thousands of feet apart).
+ */
+export function windOverlayAltitude(
+  liveAltFt: number | null | undefined,
+  plannedAltFt: number | null | undefined,
+): { altFt: number | null; label: string } {
+  const fmt = (ft: number) => `${(Math.round(ft / 100) * 100).toLocaleString('en-US')} ft`
+  if (liveAltFt != null && liveAltFt > 1000) return { altFt: Math.round(liveAltFt / 500) * 500, label: `WIND ${fmt(liveAltFt)}` }
+  if (liveAltFt == null && plannedAltFt != null && plannedAltFt > 1000) return { altFt: Math.round(plannedAltFt / 500) * 500, label: `WIND ${fmt(plannedAltFt)} PLAN` }
+  return { altFt: null, label: 'WIND SFC' }
+}
+
 /** Max points per side the lattice may use (so at most N×N points). Clamped to protect Open-Meteo's free tier. */
 const DEFAULT_GRID_SIZE = 6
 const MAX_GRID_SIZE = 6

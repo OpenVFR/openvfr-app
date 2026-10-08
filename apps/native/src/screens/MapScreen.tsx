@@ -20,6 +20,7 @@ import { VicinityBriefSheet } from '../components/VicinityBriefSheet'
 import { FindDestinationSheet } from '../components/FindDestinationSheet'
 import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
 import { useWindAlongRoute } from '../hooks/useWindAlongRoute'
+import { windOverlayAltitude } from '@open-vfr/shared/windGrid'
 import type { LayerState }   from '../components/MapDisplaySheet'
 
 import { AerodromePopup }    from '../components/AerodromePopup'
@@ -609,6 +610,15 @@ export function MapScreen() {
   // wherever an aerodrome happens to sit. Mirrors web's identical addition.
   const routeTotalNm = waypoints.length >= 2 ? distanceAlongRouteNm(waypoints, waypoints[waypoints.length - 1]) : 0
   const routeWindSamples = useWindAlongRoute(waypoints, routeTotalNm, mapReady)
+  // Wind arrows altitude: live while flying, else the planned route level
+  // (highest leg, defaulting to the aircraft's cruise altitude), else surface.
+  const plannedWindAltFt = waypoints.length >= 2
+    ? Math.max(...waypoints.slice(1).map((_, i) => legOverrides[i]?.altFt ?? (aircraftProfile?.cruiseAltFt || 3500)))
+    : null
+  const windOverlay = windOverlayAltitude(
+    (flying || simFlight.active) ? (activePosition?.altFt ?? null) : null,
+    plannedWindAltFt,
+  )
   const notamCirclesFC = useMemo(() => ({
     type: 'FeatureCollection' as const,
     // Map-drawing gate only -- see regionalNotams' own comment above.
@@ -1347,6 +1357,8 @@ export function MapScreen() {
           terrainColorRefAltFt={settings.terrainColorRefAltFt}
           showContours={layers.contours && !layers.satellite}
           showWind={layers.wind}
+          windAltFt={windOverlay.altFt}
+          windLabel={windOverlay.label}
           trafficFC={trafficFC}
           notamCirclesFC={notamCirclesFC}
           notamPointsFC={notamPointsFC}

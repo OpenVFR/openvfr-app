@@ -268,8 +268,8 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
 
   const rawProfile = useMemo<VirtualRadarProfile | null>(() => {
     if (waypoints.length < 2 || !airspaceGeo || !obstacleGeo) return null
-    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo)
-  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo])
+    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, undefined, undefined, Infinity, aircraft?.cruiseAltFt || undefined)
+  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, aircraft?.cruiseAltFt])
   // AGL limits lifted onto the terrain so the penetration check compares altitudes.
   const profile = useMemo(
     () => rawProfile && { ...rawProfile, airspaceBands: applyTerrainToBands(rawProfile.airspaceBands, terrainPts) },

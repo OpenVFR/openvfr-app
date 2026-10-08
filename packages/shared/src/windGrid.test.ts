@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { windLattice, fetchWindGrid, cachedWindGrid } from './windGrid'
+import { windLattice, fetchWindGrid, cachedWindGrid, windOverlayAltitude } from './windGrid'
 
 const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) }) as unknown as Response
 const bounds = (w: number, s: number, e: number, n: number) => ({ west: w, south: s, east: e, north: n })
@@ -29,6 +29,19 @@ describe('windLattice', () => {
   it('zooming in gives a finer lattice (smaller step)', () => {
     const step = (pts: { lat: number }[]) => { const l = [...new Set(pts.map((p) => p.lat))].sort((x, y) => x - y); return l.length > 1 ? l[1] - l[0] : Infinity }
     expect(step(windLattice(bounds(17.9, 59.3, 18.2, 59.5), 5))).toBeLessThan(step(windLattice(bounds(10, 55, 25, 65), 5)))
+  })
+})
+
+describe('windOverlayAltitude', () => {
+  it('uses live altitude while airborne', () => {
+    expect(windOverlayAltitude(2340, 5000)).toEqual({ altFt: 2500, label: 'WIND 2,300 ft' })
+  })
+  it('uses planned altitude when not flying', () => {
+    expect(windOverlayAltitude(null, 4500)).toEqual({ altFt: 4500, label: 'WIND 4,500 ft PLAN' })
+  })
+  it('falls back to surface: no plan, or low live altitude', () => {
+    expect(windOverlayAltitude(null, null)).toEqual({ altFt: null, label: 'WIND SFC' })
+    expect(windOverlayAltitude(300, 5000)).toEqual({ altFt: null, label: 'WIND SFC' })
   })
 })
 

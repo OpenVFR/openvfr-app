@@ -61,6 +61,7 @@ import { registerAerodromeImages } from '../utils/aerodromeIcons'
 import { registerNavaidImages } from '../utils/navaidIcons'
 import { registerWindBarbIcon, registerAllWindBarbIcons } from '../utils/windBarbIcons'
 import { useWindGrid } from '../hooks/useWindGrid'
+import { windOverlayAltitude } from '@open-vfr/shared/windGrid'
 import { type AirspaceFeature, type RegionalNotamHit, airspaceRowKey, notamRowKey } from './AirspacePopup'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
 import { formatObstacleName, formatLandmarkName, obstacleWaypointName } from '@open-vfr/shared/snapLabels'
@@ -1130,10 +1131,19 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Surface wind while on the ground/unknown altitude, live GPS altitude
   // once flying — same convention fetchWind itself documents.
   const windEnabled = visibility['wind'] ?? false
+  // Planned route altitude: the highest leg level (cruise), as the leg/fuel
+  // planner resolves it per leg.
+  const plannedWindAltFt = routeWaypoints.length >= 2
+    ? Math.max(...routeWaypoints.slice(1).map((_, i) => legOverrides[i]?.altFt ?? (selectedAircraftProfile?.cruiseAltFt || 3500)))
+    : null
+  const windOverlay = windOverlayAltitude(
+    flyingMode !== 'off' ? (gpsPosition?.altFt ?? null) : null,
+    plannedWindAltFt,
+  )
   const windGridFC = useWindGrid(
     mapReady ? mapRef.current : null,
     windEnabled,
-    flyingMode !== 'off' ? (gpsPosition?.altFt ?? null) : null,
+    windOverlay.altFt,
   )
   useEffect(() => {
     const map = mapRef.current
@@ -4154,7 +4164,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           })
           return <MapToolbar groups={groups} solos={solos} />
         })(), toolbarHost)}
-        <MapInfoBar map={mapReady ? mapRef.current : null} ceilingFt={ceilingFt} units={units} />
+        <MapInfoBar map={mapReady ? mapRef.current : null} ceilingFt={ceilingFt} units={units} windLabel={windEnabled ? windOverlay.label : undefined} />
 
       {/* ── Data-update notification banner ──────────────────────────── */}
       {hasUpdate && (

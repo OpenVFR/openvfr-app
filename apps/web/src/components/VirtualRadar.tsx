@@ -35,6 +35,7 @@ import { windBarbColorForSpeed, windBarbGeometry } from '@open-vfr/shared/windBa
 import type { AircraftProfileDocType } from '../db/index'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 import type { WindSample } from '../hooks/useWindAlongRoute'
+import { useWindAloftAlongRoute } from '../hooks/useWindAloftAlongRoute'
 import css from './VirtualRadar.module.css'
 import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
@@ -365,6 +366,7 @@ function VirtualRadar({
   const [msaPts,     setMsaPts]     = useState<MsaPoint[]>([])
   const [collapsed, setCollapsed]         = useState(false)
   const [showProjection, setShowProjection] = useState(false)
+  const [showWindAloft, setShowWindAloft] = useState(true)
   const hoverRef = useRef<number | null>(null)
 
   // Extract performance model from selected aircraft profile.
@@ -441,8 +443,9 @@ function VirtualRadar({
       waterGeo ?? undefined,
       landmarkGeo ?? undefined,
       airspaceCeilingFt ?? Infinity,
+      aircraftProfile?.cruiseAltFt || undefined,
     )
-  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo, landmarkGeo, airspaceCeilingFt])
+  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo, landmarkGeo, airspaceCeilingFt, aircraftProfile?.cruiseAltFt])
   // AGL limits are published as heights: lift them onto the terrain along the
   // crossing once the terrain profile is in, so bands draw at their real altitude.
   const profile = useMemo(
@@ -642,6 +645,11 @@ function VirtualRadar({
     return Math.ceil(raw / 1000) * 1000
   }, [profile, terrainPts])
 
+  // Winds aloft at the standard levels up to the chart top, one column every
+  // ~20 NM -- SkyDemon-style, so the best level for the wind is visible at a
+  // glance. Model data (Open-Meteo), nominal ISA height of each pressure level.
+  const windAloft = useWindAloftAlongRoute(waypoints, profile?.totalNm ?? 0, yMax, showWindAloft)
+
   // Terrain gradient stops — elevation bands mapped to SVG y (0%=top=yMax, 100%=bottom=0ft).
   // blue sea level → green lowland → brown hills → grey mountains
   const terrainStops = useMemo(() => [
@@ -778,6 +786,13 @@ function VirtualRadar({
             PROJ
           </button>
         )}
+        <button
+          className={`${css.projToggleBtn} ${showWindAloft ? css.projToggleOn : ''}`}
+          onClick={() => setShowWindAloft((v) => !v)}
+          title={showWindAloft ? 'Hide winds aloft' : 'Show winds aloft at several levels'}
+        >
+          WIND
+        </button>
         <button
           className={css.collapseBtn}
           onClick={() => setCollapsed((c) => !c)}
@@ -1207,6 +1222,43 @@ function VirtualRadar({
                   />
                 )
               })}
+
+              {/* Winds aloft: barbs at each standard pressure level's nominal
+                  altitude, one column every ~20 NM (useWindAloftAlongRoute).
+                  Model forecast, so drawn dimmer than the station barbs. */}
+              {showWindAloft && windAloft.flatMap((col, ci) => col.levels.map((lv) => {
+                if (lv.altFt > yMax * 0.96) return null
+                const pxPerUnit = totalNmDisplay > 0 ? contentPxWidth / totalNmDisplay : 0
+                const edgeMargin = Math.min(pxPerUnit > 0 ? 24 / pxPerUnit : 0, totalNmDisplay / 2)
+                const x = Math.min(Math.max(nmToDisplay(col.distNm, units.distance), edgeMargin), totalNmDisplay - edgeMargin)
+                return (
+                  <ReferenceDot
+                    key={`windaloft-${ci}-${lv.altFt}`}
+                    x={x} y={lv.altFt} r={0} fill="transparent" stroke="none" ifOverflow="visible"
+                    shape={(dotProps) => {
+                      const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
+                      const shaftLen = 16
+                      const color = windBarbColorForSpeed(lv.speedKts)
+                      const label = lv.speedKts === 0 ? 'CALM' : `${String(lv.dirDeg).padStart(3, '0')}°/${lv.speedKts}`
+                      return (
+                        <g aria-hidden="true" opacity={0.85}>
+                          {lv.speedKts === 0
+                            ? <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(148,163,184,0.8)" strokeWidth={1} />
+                            : (
+                              <g transform={`translate(${cx},${cy}) rotate(${lv.dirDeg}) translate(0, ${shaftLen / 2})`}>
+                                {renderWindBarbShape(lv.speedKts, color, { shaftLen, barbLen: 7, halfLen: 4, barbGap: 4, strokeW: 1.5 })}
+                              </g>
+                            )}
+                          <text
+                            x={cx + shaftLen / 2 + 4} y={cy + 3} fontSize={9}
+                            fill={color} stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke"
+                          >{label}</text>
+                        </g>
+                      )
+                    }}
+                  />
+                )
+              }))}
 
               {/* TAF "check the bulletin" warning -- amber triangle+"!"
                   when a real trend change (FM/BECMG) lands within the next

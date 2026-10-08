@@ -187,6 +187,83 @@ export async function fetchWind(
   return result
 }
 
+/** Standard pressure levels Open-Meteo serves, with their nominal ISA altitude (ft AMSL). */
+export const WIND_LEVELS: readonly { hPa: number; altFt: number }[] = [
+  { hPa: 925, altFt: 2500 },
+  { hPa: 850, altFt: 4800 },
+  { hPa: 700, altFt: 9900 },
+  { hPa: 600, altFt: 13800 },
+  { hPa: 500, altFt: 18300 },
+]
+
+export interface WindAtLevel extends WindAloft {
+  altFt: number
+}
+
+/**
+ * Winds aloft at every standard level up to `maxAltFt` (plus the first level
+ * above it, so the top of the chart still has a barb nearby) for many points,
+ * in one multi-point, multi-level request per chunk. Entry i is the list of
+ * levels (low to high) for points[i]; levels the model had no data for are
+ * left out. Fills the same cache as fetchWind, so a level fetched here is
+ * free for the map's wind overlay and the leg wind prefill.
+ */
+export async function fetchWindLevels(
+  points: { lat: number; lng: number }[],
+  maxAltFt: number,
+  baseUrl = '',
+  signal?: AbortSignal,
+): Promise<WindAtLevel[][]> {
+  const wanted: { hPa: number; altFt: number }[] = []
+  for (const l of WIND_LEVELS) {
+    wanted.push(l)
+    if (l.altFt >= maxAltFt) break
+  }
+  const readLevels = (p: { lat: number; lng: number }): WindAtLevel[] => {
+    const out: WindAtLevel[] = []
+    for (const l of wanted) {
+      const hit = cache.get(cacheKey(p.lat, p.lng, String(l.hPa)))
+      if (hit && Date.now() < hit.expiresAt) out.push({ ...hit.result, altFt: l.altFt })
+    }
+    return out
+  }
+  const missing = points
+    .map((p, i) => (readLevels(p).length === wanted.length ? -1 : i))
+    .filter((i) => i >= 0)
+
+  for (let start = 0; start < missing.length; start += MAX_BATCH) {
+    const idx = missing.slice(start, start + MAX_BATCH)
+    const params = new URLSearchParams()
+    params.set('latitude',  idx.map((i) => points[i].lat.toFixed(4)).join(','))
+    params.set('longitude', idx.map((i) => points[i].lng.toFixed(4)).join(','))
+    params.set('current', wanted.flatMap((l) => [`wind_speed_${l.hPa}hPa`, `wind_direction_${l.hPa}hPa`]).join(','))
+    params.set('wind_speed_unit', 'kn')
+    params.set('forecast_days',   '1')
+    params.set('timeformat',      'unixtime')
+    try {
+      const res = await fetchWithRetry(`${baseUrl}/api/open-meteo/forecast?${params.toString()}`, { signal })
+      if (!res.ok) continue
+      const json = await res.json() as { current?: Record<string, number> } | { current?: Record<string, number> }[]
+      const list = Array.isArray(json) ? json : [json]
+      idx.forEach((pointIdx, k) => {
+        const cur = list[k]?.current
+        if (!cur) return
+        for (const l of wanted) {
+          const speedKts = cur[`wind_speed_${l.hPa}hPa`]
+          const dirDeg   = cur[`wind_direction_${l.hPa}hPa`]
+          if (speedKts == null || dirDeg == null) continue
+          const result: WindAloft = { dirDeg: Math.round(dirDeg), speedKts: Math.round(speedKts) }
+          const pt = points[pointIdx]
+          cache.set(cacheKey(pt.lat, pt.lng, String(l.hPa)), { result, expiresAt: Date.now() + CACHE_TTL_MS })
+        }
+      })
+    } catch (err) {
+      if ((err as { name?: string }).name === 'AbortError') throw err
+    }
+  }
+  return points.map(readLevels)
+}
+
 // \u2500\u2500 Ambient (non-aviation) weather-station tier \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 // Powers the Wx tab's "Weather station" toggle option (AerodromePopup.tsx /
 // AerodromeWxSection.tsx) -- a second, always-available source distinct

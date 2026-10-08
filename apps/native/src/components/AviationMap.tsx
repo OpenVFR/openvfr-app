@@ -140,6 +140,10 @@ export type AviationMapProps = {
    *  source/'wind-arrows-icon' layer exactly (same bucketed icon-id
    *  expression, dirDeg rotation, bottom anchor). */
   showWind?: boolean
+  /** Altitude (ft) the wind arrows are sampled at: live altitude while flying, else the planned route altitude; null = surface. */
+  windAltFt?: number | null
+  /** Label for the map info pill, e.g. "WIND 4,500 ft PLAN". */
+  windLabel?: string
   followGps?: boolean
   /** Called when the pilot manually pans/zooms/rotates the map while
    *  followGps is on -- lets the parent drop out of follow mode instead of
@@ -761,6 +765,8 @@ export function AviationMap({
   showTerrainColor     = false,
   showContours   = false,
   showWind       = false,
+  windAltFt      = null,
+  windLabel,
   terrainColorRefAltFt = 2000,
   followGps = false,
   showOwnPosition = false,
@@ -1204,7 +1210,7 @@ export function AviationMap({
     setCamForWind({ lat, lng, zoom })
   }, [showWind])
 
-  const windGridFC = useWindGrid(camForWind, showWind, gpsPosition?.altFt ?? null)
+  const windGridFC = useWindGrid(camForWind, showWind, windAltFt)
 
   // Drag state — driven by WaypointDragAnnotation's native ViewAnnotation
   // drag events (lngLat reported directly by the map SDK, no manual
@@ -2979,6 +2985,7 @@ export function AviationMap({
       <MapInfoBar
         ref={infoBarRef}
         ceilingFt={airspaceCeilingFt}
+        windLabel={showWind ? windLabel : undefined}
         distanceUnit={distanceUnit}
         initialCamera={{ lat: camStateRef.current.lat, zoom: camStateRef.current.zoom }}
         onInfoPress={() => setShowAttribution(true)}

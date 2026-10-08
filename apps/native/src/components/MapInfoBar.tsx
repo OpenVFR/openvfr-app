@@ -27,10 +27,12 @@ interface Props {
   distanceUnit: 'nm' | 'km'
   initialCamera: { lat: number; zoom: number }
   onInfoPress:  () => void
+  /** Altitude the wind arrows show, e.g. "WIND 4,500 ft PLAN"; omit when the layer is off. */
+  windLabel?:   string
 }
 
 export const MapInfoBar = forwardRef<MapInfoBarHandle, Props>(function MapInfoBar(
-  { ceilingFt, distanceUnit, initialCamera, onInfoPress }, ref,
+  { ceilingFt, distanceUnit, initialCamera, onInfoPress, windLabel }, ref,
 ) {
   const styles = useThemedStyles(makeStyles)
   const [cam, setCam] = useState(initialCamera)
@@ -68,6 +70,7 @@ export const MapInfoBar = forwardRef<MapInfoBarHandle, Props>(function MapInfoBa
         <Text style={styles.infoText}>i</Text>
       </TouchableOpacity>
       <Text style={[styles.alt, !unlimited && styles.altFiltered]} testID="map-altitude-filter">{altLabel}</Text>
+      {windLabel ? <Text style={styles.alt} testID="map-wind-altitude">{windLabel}</Text> : null}
       <View style={styles.scale} pointerEvents="none">
         <View style={[styles.scaleBar, { width: scale.barPx }]} />
         <Text style={styles.scaleLabel}>{scale.label}</Text>

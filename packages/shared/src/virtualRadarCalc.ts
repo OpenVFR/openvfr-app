@@ -370,12 +370,15 @@ export function buildVirtualRadarProfile(
    *  and unfiltered (Infinity) by default so existing callers/tests that
    *  don't pass it are unaffected. */
   ceilingFt: number = Infinity,
+  /** Level used for legs without their own override: the aircraft profile's
+   *  cruise altitude (as the fuel plan already does), else 3500 ft. */
+  defaultAltFt: number = DEFAULT_ALT_FT,
 ): VirtualRadarProfile {
   if (waypoints.length < 2) {
     return {
       totalNm: 0,
       altitudeProfile: [],
-      maxPlannedAltFt: DEFAULT_ALT_FT,
+      maxPlannedAltFt: defaultAltFt,
       airspaceBands: [],
       obstacles: [],
       landmarks: [],
@@ -427,7 +430,7 @@ export function buildVirtualRadarProfile(
 
   for (let i = 0; i < waypoints.length - 1; i++) {
     const override = legOverrides[i] ?? {}
-    const altFt = override.altFt ?? DEFAULT_ALT_FT
+    const altFt = override.altFt ?? defaultAltFt
     const legNm = legDistancesNm[i]
     // Start of this leg
     altitudeProfile.push({ distNm: Math.round(distCursor * 100) / 100, altFt })

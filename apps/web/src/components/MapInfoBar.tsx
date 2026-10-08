@@ -19,6 +19,8 @@ interface Props {
   map: maplibregl.Map | null
   ceilingFt: number
   units: Units
+  /** Altitude the wind-arrows overlay shows, e.g. "WIND 4,500 ft PLAN"; omit when the layer is off. */
+  windLabel?: string
 }
 
 const MAX_BAR_PX = 110
@@ -27,7 +29,7 @@ function computeScale(map: maplibregl.Map, nm: boolean): MapScale {
   return computeMapScale(map.getCenter().lat, map.getZoom(), nm, MAX_BAR_PX)
 }
 
-export default function MapInfoBar({ map, ceilingFt, units }: Props) {
+export default function MapInfoBar({ map, ceilingFt, units, windLabel }: Props) {
   const nm = units.distance === 'nm'
   const [scale, setScale] = useState<MapScale | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
@@ -79,6 +81,11 @@ export default function MapInfoBar({ map, ceilingFt, units }: Props) {
         >
           {altLabel}
         </span>
+        {windLabel && (
+          <span className={css.alt} title="Altitude of the wind arrows: your altitude while flying, otherwise the planned route altitude.">
+            {windLabel}
+          </span>
+        )}
         {scale && (
           <>
             <span className={css.scale} title="Map scale at the map centre">
