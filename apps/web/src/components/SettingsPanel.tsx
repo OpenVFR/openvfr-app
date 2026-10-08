@@ -1,6 +1,6 @@
 import type { Units } from '../utils/units'
 import type { Theme, TrajectoryMode, AirspaceWarnLookahead, TrafficVertFilter, ParkTimeoutOption } from '../db/useSettings'
-import { AIRSPACE_WARN_LOOKAHEAD_OPTIONS, AIRSPACE_WARN_VERTICAL_OPTIONS, TRAFFIC_VERT_FILTER_OPTIONS, PARK_TIMEOUT_OPTIONS } from '../db/useSettings'
+import { AIRSPACE_WARN_LOOKAHEAD_OPTIONS, AIRSPACE_WARN_VERTICAL_MIN, AIRSPACE_WARN_VERTICAL_MAX, AIRSPACE_WARN_VERTICAL_STEP, TRAFFIC_VERT_FILTER_OPTIONS, PARK_TIMEOUT_OPTIONS } from '../db/useSettings'
 import type { DataManifest } from '../hooks/useDataManifest'
 import RegionSelector from './RegionSelector'
 import { airacDataStatus, relativeTime } from '@open-vfr/shared/airac'
@@ -108,7 +108,7 @@ export default function SettingsPanel({ units, onUnitsChange, region, onRegionCh
       </div>
 
       <div className={css.section}>
-        <span className={css.label}>Flying</span>
+        <span className={css.label}>Auto-zoom</span>
         <div className={css.options}>
           <button
             className={`${css.opt}${autoZoom ? ` ${css.optActive}` : ''}`}
@@ -118,17 +118,21 @@ export default function SettingsPanel({ units, onUnitsChange, region, onRegionCh
             {autoZoom ? 'Auto-zoom ON' : 'Auto-zoom OFF'}
           </button>
         </div>
-        <div className={css.optionsRow}>
+      </div>
+
+      <div className={css.section}>
+        <span className={css.label}>Trajectory</span>
+        <div className={css.options}>
           <button
             className={`${css.opt}${trajectoryMode === 'time' ? ` ${css.optActive}` : ''}`}
             onClick={() => onTrajectoryModeChange('time')}
             title="Trajectory ticks at 2, 5, 10 minutes ahead"
-          >Traj: min</button>
+          >Minutes</button>
           <button
             className={`${css.opt}${trajectoryMode === 'dist' ? ` ${css.optActive}` : ''}`}
             onClick={() => onTrajectoryModeChange('dist')}
             title="Trajectory ticks at 2, 5, 10 NM ahead"
-          >Traj: NM</button>
+          >NM</button>
         </div>
       </div>
 
@@ -146,18 +150,20 @@ export default function SettingsPanel({ units, onUnitsChange, region, onRegionCh
         </div>
       </div>
 
-      <div className={css.section}>
-        <span className={css.label}>Vertical buffer</span>
-        <div className={css.optionsRow}>
-          {AIRSPACE_WARN_VERTICAL_OPTIONS.map(v => (
-            <button
-              key={v}
-              className={`${css.opt}${airspaceWarnVerticalFt === v ? ` ${css.optActive}` : ''}`}
-              onClick={() => onAirspaceWarnVerticalFtChange(v)}
-              title={v === 0 ? 'Only warn based on climb/descent rate projection' : `Warn when within ${v} ft of an airspace floor/ceiling, regardless of climb rate`}
-            >{v === 0 ? 'Off' : `${v} ft`}</button>
-          ))}
-        </div>
+      <div className={`${css.section} ${css.sectionColumn}`}>
+        <span className={css.label}>
+          Vertical buffer: {airspaceWarnVerticalFt === 0 ? 'Off' : `${airspaceWarnVerticalFt} ft`}
+        </span>
+        <input
+          type="range"
+          className={css.slider}
+          min={AIRSPACE_WARN_VERTICAL_MIN}
+          max={AIRSPACE_WARN_VERTICAL_MAX}
+          step={AIRSPACE_WARN_VERTICAL_STEP}
+          value={airspaceWarnVerticalFt}
+          onChange={e => onAirspaceWarnVerticalFtChange(Number(e.target.value))}
+          title={airspaceWarnVerticalFt === 0 ? 'Only warn based on climb/descent rate projection' : `Warn when within ${airspaceWarnVerticalFt} ft of an airspace floor/ceiling, regardless of climb rate`}
+        />
       </div>
 
       <div className={css.section}>

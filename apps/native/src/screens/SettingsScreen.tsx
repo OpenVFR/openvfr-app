@@ -8,6 +8,7 @@ import {
   View, Text, Switch, ScrollView, TextInput,
   TouchableOpacity, Alert,
 } from 'react-native'
+import Slider from '@react-native-community/slider'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useSettingsContext } from '../context/SettingsContext'
@@ -215,10 +216,10 @@ export function SettingsScreen() {
           format={(v) => `${v} min`}
           onChange={(v) => update({ airspaceWarnLookaheadMin: v })}
         />
-        <RowStep
+        <RowSlider
           label="Vertical buffer"
           value={settings.airspaceWarnVerticalFt}
-          options={[0, 100, 200, 300, 500, 750, 1000, 1500]}
+          min={0} max={2000} step={100}
           format={(v) => v === 0 ? 'Off' : `${v} ft`}
           onChange={(v) => update({ airspaceWarnVerticalFt: v })}
         />
@@ -565,6 +566,41 @@ function RowTheme({
           </TouchableOpacity>
         ))}
       </View>
+    </View>
+  )
+}
+
+function RowSlider({
+  label, value, min, max, step, format, onChange,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  step: number
+  format: (v: number) => string
+  onChange: (v: number) => void
+}) {
+  const styles = useThemedStyles(makeStyles)
+  const [live, setLive] = useState(value)
+  useEffect(() => { setLive(value) }, [value])
+  return (
+    <View style={[styles.row, { flexDirection: 'column', alignItems: 'stretch' }]}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        <Text style={styles.rowLabel}>{format(live)}</Text>
+      </View>
+      <Slider
+        minimumValue={min}
+        maximumValue={max}
+        step={step}
+        value={value}
+        onValueChange={setLive}
+        onSlidingComplete={onChange}
+        minimumTrackTintColor={theme.accentBlue}
+        maximumTrackTintColor={theme.borderDefault}
+        thumbTintColor={theme.accentBlue}
+      />
     </View>
   )
 }

@@ -309,7 +309,9 @@ export function useAirspaceWarnLookahead(): [AirspaceWarnLookahead, (v: Airspace
 // floor/ceiling that triggers a closure warning regardless of climb/descent
 // rate. 0 = off (rate-based projection only). Persisted to RxDB; default 500.
 // ---------------------------------------------------------------------------
-export const AIRSPACE_WARN_VERTICAL_OPTIONS = [0, 100, 200, 300, 500, 750, 1000, 1500]
+export const AIRSPACE_WARN_VERTICAL_MIN = 0
+export const AIRSPACE_WARN_VERTICAL_MAX = 2000
+export const AIRSPACE_WARN_VERTICAL_STEP = 100
 const AIRSPACE_WARN_VERTICAL_KEY = 'airspace_warn_vertical_ft'
 
 export function useAirspaceWarnVerticalFt(): [number, (v: number) => void] {
@@ -320,7 +322,7 @@ export function useAirspaceWarnVerticalFt(): [number, (v: number) => void] {
       const doc = await db.settings.findOne(AIRSPACE_WARN_VERTICAL_KEY).exec()
       if (doc) {
         const raw = parseInt(doc.value, 10)
-        if (AIRSPACE_WARN_VERTICAL_OPTIONS.includes(raw)) setValState(raw)
+        if (Number.isFinite(raw) && raw >= AIRSPACE_WARN_VERTICAL_MIN && raw <= AIRSPACE_WARN_VERTICAL_MAX) setValState(raw)
       }
     }).catch(() => {})
   }, [])
