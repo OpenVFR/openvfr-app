@@ -39,6 +39,7 @@ type FormState = {
   climbIas: string; climbFuelLhr: string
   descentFpm: string; descentIas: string; descentFuelLhr: string
   bestGlideIas: string; glideRatio: string
+  takeoffSpeedKts: string
 }
 
 const EMPTY: FormState = {
@@ -50,6 +51,7 @@ const EMPTY: FormState = {
   climbIas: '80', climbFuelLhr: '30',
   descentFpm: '500', descentIas: '100', descentFuelLhr: '15',
   bestGlideIas: '65', glideRatio: '30',
+  takeoffSpeedKts: '0',
 }
 
 function toForm(p: AircraftProfileDocType): FormState {
@@ -64,6 +66,7 @@ function toForm(p: AircraftProfileDocType): FormState {
     climbFuelLhr: String(p.climbFuelLhr ?? 0), descentFpm: String(p.descentFpm ?? 0),
     descentIas: String(p.descentIas ?? 0), descentFuelLhr: String(p.descentFuelLhr ?? 0),
     bestGlideIas: String(p.bestGlideIas ?? 0), glideRatio: String(p.glideRatio ?? 0),
+    takeoffSpeedKts: String(p.takeoffSpeedKts ?? 0),
   }
 }
 
@@ -135,6 +138,7 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       descentFuelLhr:   HAS_ENGINE(cat) && HAS_FUEL(cat) ? num(form.descentFuelLhr) : 0,
       bestGlideIas:     HAS_GLIDE(cat) ? num(form.bestGlideIas) : 0,
       glideRatio:       HAS_GLIDE(cat) ? num(form.glideRatio)   : 0,
+      takeoffSpeedKts:  num(form.takeoffSpeedKts),
       updatedAt:        Date.now(),
     }
     onSave(doc)
@@ -170,6 +174,7 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       <SectionLabel text="Performance" />
       <FieldRow label="Cruise Alt" unit="ft" value={form.cruiseAltFt} error={errors.cruiseAltFt} numeric onChange={v => set('cruiseAltFt', v)} />
       <FieldRow label="Cruise IAS" unit="kts" value={form.cruiseIas} error={errors.cruiseIas} numeric onChange={v => set('cruiseIas', v)} />
+      <FieldRow label="Takeoff speed (0 = default)" unit="kts" value={form.takeoffSpeedKts} numeric onChange={v => set('takeoffSpeedKts', v)} />
 
       {HAS_FUEL(form.category) && (
         <>

@@ -455,11 +455,15 @@ Flying mode (GPS) can start and stop itself from takeoff and landing detected in
 
 | | Rule |
 |---|---|
-| Start suggestion | Ground speed ≥ 40 kt on 5 consecutive fixes with accuracy ≤ 100 m, while not flying. Fires once; re-arms only after speed drops below 20 kt, so a car or train gives one dismissable prompt. |
-| Stop suggestion | After the aircraft was seen at ≥ 30 kt and at least 60 s have passed: ground speed < 20 kt on 10 consecutive fixes. A slow spell right after takeoff does not trigger it. |
-| After a manual stop | No new start suggestion until speed has dropped below 20 kt. |
+| Start suggestion | Ground speed ≥ start speed on 5 consecutive fixes with accuracy ≤ 100 m, while not flying. Fires once; re-arms only after speed drops below the landed speed, so a car or train gives one dismissable prompt. |
+| Stop suggestion | After the aircraft was seen at ≥ takeoff speed and at least 60 s have passed: ground speed < landed speed on 10 consecutive fixes. A slow spell right after takeoff does not trigger it. |
+| After a manual stop | No new start suggestion until speed has dropped below the landed speed. |
 
-Only GPS flying mode is auto-started or auto-stopped; simulator and external-feed flights never are. On web the pre-flight position comes from the passive location dot (`usePassivePosition`), so detection only works while location is on (automatic at startup when permission was already granted). Native's GPS runs from launch, so opening the app already in the air prompts on the first fast fix. The setting is persisted per platform (web: RxDB `ovfr:autoFlyMode`; native: `autoFlyMode` in app settings). The thresholds are deliberately separate from the flight-log takeoff/landing detection in `useFlightLog`, which only runs once flying mode is already on.
+The three speeds come from the selected aircraft's **Takeoff speed** (`takeoffSpeedKts` in the aircraft profile; 0 = per-category default, see `DEFAULT_TAKEOFF_SPD_KTS`) through `autoFlyThresholds()`: takeoff = V, start = V + 10 kt, landed = ⅔ V (min 10 kt). The 30 kt default gives the original 40 / 30 / 20 kt. The flight-log takeoff/landing detection in `useFlightLog` uses the same takeoff and landed speeds.
+
+**Flight log and stopping flying mode.** When flying mode is stopped (auto-stop on landing or manually) while the log is parked between circuits, the log stays open and the **Log split timeout** (park timer) closes it. Starting flying mode again within the timeout and taking off continues the same log. Stopping while still airborne closes the log immediately.
+
+Only GPS flying mode is auto-started or auto-stopped; simulator and external-feed flights never are. On web the pre-flight position comes from the passive location dot (`usePassivePosition`), so detection only works while location is on (automatic at startup when permission was already granted). Native's GPS runs from launch, so opening the app already in the air prompts on the first fast fix. The setting is persisted per platform (web: RxDB `ovfr:autoFlyMode`; native: `autoFlyMode` in app settings). The flight-log detection in `useFlightLog` runs separately and only once flying mode is on.
 
 ### NOTAM Acknowledgement Model
 

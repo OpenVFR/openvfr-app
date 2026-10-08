@@ -5,6 +5,7 @@ import AutoFlyPrompt from './AutoFlyPrompt'
 import { useThrottledValue } from '../hooks/useThrottledValue'
 import { useStableProps } from '../hooks/useStableProps'
 import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
+import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
 import MapToolbar, { type ToolGroupDef, type ToolItem } from './MapToolbar'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
@@ -864,11 +865,17 @@ export default function MapView({ auth }: { auth: AuthState }) {
         ? { speedKts: gpsPosition.speedKts, accuracyM: gpsPosition.accuracy }
         : null
   ), [flyingMode, passivePos, gpsPosition])
+  // Takeoff / landing speeds from the selected aircraft (category default when unset).
+  const flyThresholds = useMemo(
+    () => autoFlyThresholds(selectedAircraftProfile?.takeoffSpeedKts, selectedAircraftProfile?.category),
+    [selectedAircraftProfile?.takeoffSpeedKts, selectedAircraftProfile?.category],
+  )
   const autoFly = useAutoFlyDetect(
     autoFlyMode,
     autoFlyFix,
     flyingMode === 'gps',
     { start: () => startGps(() => {}), stop: stopFlying },
+    flyThresholds,
   )
   // Startup: if permission was already granted, show the dot straight away
   // (no prompt, camera untouched). Otherwise nothing until the user taps.
@@ -1078,6 +1085,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     selectedAircraftProfile?.registration ?? '',
     nearestFeature?.kind === 'aerodrome' ? nearestFeature.name : null,
     parkTimeout * 1000,
+    flyThresholds,
   )
 
   // ── ADS-B traffic (OpenSky Network via server SSE) ──────────────────────

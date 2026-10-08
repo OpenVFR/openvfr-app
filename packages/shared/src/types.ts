@@ -46,6 +46,8 @@ export type AircraftProfileDocType = {
   descentFuelLhr: number
   bestGlideIas: number
   glideRatio: number
+  /** Takeoff speed, kt GS. 0/absent = category default. Drives auto flying-mode and flight-log detection. */
+  takeoffSpeedKts?: number
   updatedAt: number
 }
 

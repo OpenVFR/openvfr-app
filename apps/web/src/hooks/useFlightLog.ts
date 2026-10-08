@@ -55,6 +55,8 @@ export function useFlightLog(
   registration:   string,
   nearestIcao:    string | null,  // nearest aerodrome ICAO from useNearestFeature
   parkTimeoutMs:  number = PARK_TIMEOUT_MS,
+  /** Takeoff / landed ground speeds (kt); from the aircraft profile via autoFlyThresholds(). */
+  thr:            { takeoffKts: number; landedKts: number } = { takeoffKts: TAKEOFF_SPD_KTS, landedKts: LANDING_SPD_KTS },
 ): { activeLogId: string | null; liveTrack: TrackPoint[] } {
   const [activeLogId, setActiveLogId] = useState<string | null>(null)
   const [liveTrack,   setLiveTrack]   = useState<TrackPoint[]>([])
@@ -101,7 +103,11 @@ export function useFlightLog(
   useEffect(() => {
     if (flyingMode === 'off') {
       const s = stateRef.current
-      // If we were mid-flight or taxiing between circuits, close the log immediately.
+      // Stopped while parked between circuits (auto-stop on landing, or a manual
+      // stop on the apron): leave the log open and let the park timer close it, so
+      // a restart within the timeout continues the same log instead of splitting it.
+      if (s.phase === 'taxiing' && s.logId && s.parkTimer && parkTimeoutMs > 0) return
+      // If we were mid-flight (or parked with no park timer), close the log immediately.
       if ((s.phase === 'flying' || s.phase === 'taxiing') && s.logId) {
         finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '')
       }
@@ -139,7 +145,7 @@ export function useFlightLog(
 
     // ── Idle: new-session takeoff detection ──────────────────────────────
     if (s.phase === 'idle') {
-      if (position.speedKts >= TAKEOFF_SPD_KTS) {
+      if (position.speedKts >= thr.takeoffKts) {
         s.takeoffTicks++
         if (s.takeoffTicks >= TAKEOFF_CONFIRM_TICKS) {
           const id = newId()
@@ -198,7 +204,7 @@ export function useFlightLog(
         }, FLUSH_INTERVAL_MS)
       }
       // T&G resumption
-      if (position.speedKts >= TAKEOFF_SPD_KTS) {
+      if (position.speedKts >= thr.takeoffKts) {
         s.takeoffTicks++
         if (s.takeoffTicks >= TAKEOFF_CONFIRM_TICKS) {
           if (s.parkTimer) { clearTimeout(s.parkTimer); s.parkTimer = null }
@@ -250,7 +256,7 @@ export function useFlightLog(
       // ── Landing detection ─────────────────────────────────────────────
       const flightDuration = now - s.flightStartMs
       if (
-        position.speedKts < LANDING_SPD_KTS &&
+        position.speedKts < thr.landedKts &&
         flightDuration >= MIN_FLIGHT_DURATION_MS
       ) {
         s.landingTicks++

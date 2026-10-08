@@ -86,6 +86,7 @@ import { useSettingsContext } from '../context/SettingsContext'
 import { RouteEditBanner } from '../components/RouteEditBanner'
 import { AutoFlyBanner } from '../components/AutoFlyBanner'
 import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
+import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
 import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
 import { RulerHeaderStart, RulerHeaderEnd, RouteHeaderStart } from '../components/RulerHeaderStats'
 import { PastTrackChart } from '../components/PastTrackChart'
@@ -229,6 +230,11 @@ export function MapScreen() {
     if (!settings.selectedAircraftId) { setAircraftProfile(undefined); return }
     aircraftDb.get(settings.selectedAircraftId).then(setAircraftProfile)
   }, [settings.selectedAircraftId])
+  // Takeoff / landing speeds from the selected aircraft (category default when unset).
+  const flyThresholds = useMemo(
+    () => autoFlyThresholds(aircraftProfile?.takeoffSpeedKts, aircraftProfile?.category),
+    [aircraftProfile?.takeoffSpeedKts, aircraftProfile?.category],
+  )
 
   // Map Ruler — mirrors web's MapView.tsx ruler tool. Each tap while active
   // sets/rolls the two measurement points (A, then B, then each further tap
@@ -717,6 +723,8 @@ export function MapScreen() {
     settings.selectedAircraftId ?? '',
     aircraftProfile?.registration ?? '',
     nearbyFreqs[0]?.icao ?? null,
+    undefined,
+    flyThresholds,
   )
   // Finalize + upload logs orphaned by a previous session that was closed
   // mid-flight (otherwise they stay "Recording…" forever, unviewable/unsynced).
@@ -782,6 +790,7 @@ export function MapScreen() {
     simFlight.active ? null : position,
     flying && !simFlight.active,
     { start: handleStartGpsFly, stop: handleStopFlight },
+    flyThresholds,
   )
 
   // Auto-start GPS on mount — request permission once, then watch position

@@ -131,12 +131,14 @@ export type AircraftProfileDocType = {
   // Glide parameters (v2) — non-zero only for GLIDER / TMG
   bestGlideIas: number      // best glide IAS, kts
   glideRatio: number        // glide ratio (e.g. 30 = 30:1)
+  // v3: takeoff speed, kt GS. 0/absent = category default (autoFlyThresholds)
+  takeoffSpeedKts?: number
   updatedAt: number
 }
 
 const aircraftProfileSchema: RxJsonSchema<AircraftProfileDocType> = {
   title: 'aircraft_profile',
-  version: 2,
+  version: 3,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -163,6 +165,7 @@ const aircraftProfileSchema: RxJsonSchema<AircraftProfileDocType> = {
     descentFuelLhr:   { type: 'number' },
     bestGlideIas:     { type: 'number' },
     glideRatio:       { type: 'number' },
+    takeoffSpeedKts:  { type: 'number' },
     updatedAt:        { type: 'number' },
   },
   required: ['id', 'name', 'registration', 'icaoType', 'category', 'cruiseAltFt', 'cruiseIas',
@@ -358,6 +361,8 @@ export function getDb(): Promise<OpenVfrDb> {
               bestGlideIas:     0,
               glideRatio:       0,
             }),
+            // v2 → v3: optional takeoffSpeedKts (absent = category default)
+            3: (oldDoc) => ({ ...oldDoc }),
           },
         },
         user_waypoints:    { schema: userWaypointSchema },

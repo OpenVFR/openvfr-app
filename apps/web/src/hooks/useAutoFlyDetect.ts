@@ -8,7 +8,8 @@
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
 import {
-  initialAutoFlyState, stepAutoFly, type AutoFlyMode, type AutoFlyState,
+  initialAutoFlyState, stepAutoFly, DEFAULT_AUTO_FLY_THRESHOLDS,
+  type AutoFlyMode, type AutoFlyState, type AutoFlyThresholds,
 } from '@open-vfr/shared/autoFlyDetect'
 
 export interface AutoFlyFixInput { speedKts: number | null; accuracyM: number }
@@ -18,10 +19,14 @@ export function useAutoFlyDetect(
   fix: AutoFlyFixInput | null,
   flying: boolean,
   actions: { start: () => void; stop: () => void },
+  thresholds: AutoFlyThresholds = DEFAULT_AUTO_FLY_THRESHOLDS,
 ): { suggestion: 'start' | 'stop' | null; dismiss: () => void; accept: () => void } {
   const stateRef = useRef<AutoFlyState>(initialAutoFlyState())
   const actionsRef = useRef(actions)
   actionsRef.current = actions
+  // Ref, not a dep: a new thresholds object must not re-run the detector and double-count a fix.
+  const thresholdsRef = useRef(thresholds)
+  thresholdsRef.current = thresholds
   const [suggestion, setSuggestion] = useState<'start' | 'stop' | null>(null)
 
   // A pending suggestion is moot once the mode flipped (manual start/stop).
@@ -30,7 +35,7 @@ export function useAutoFlyDetect(
 
   useEffect(() => {
     if (mode === 'off' || !fix || fix.speedKts === null) return
-    const r = stepAutoFly(stateRef.current, { speedKts: fix.speedKts, accuracyM: fix.accuracyM, t: Date.now() }, flying)
+    const r = stepAutoFly(stateRef.current, { speedKts: fix.speedKts, accuracyM: fix.accuracyM, t: Date.now() }, flying, thresholdsRef.current)
     stateRef.current = r.state
     if (!r.event) return
     const which = r.event === 'suggest-start' ? 'start' : 'stop'

@@ -45,6 +45,8 @@ export function useFlightLog(
   registration:   string,
   nearestIcao:    string | null,
   parkTimeoutMs:  number = PARK_TIMEOUT_MS,
+  /** Takeoff / landed ground speeds (kt); from the aircraft profile via autoFlyThresholds(). */
+  thr:            { takeoffKts: number; landedKts: number } = { takeoffKts: TAKEOFF_SPD_KTS, landedKts: LANDING_SPD_KTS },
 ): { activeLogId: string | null; liveTrack: TrackPoint[] } {
   const [activeLogId, setActiveLogId] = useState<string | null>(null)
   const [liveTrack,   setLiveTrack]   = useState<TrackPoint[]>([])
@@ -74,6 +76,10 @@ export function useFlightLog(
   useEffect(() => {
     if (flyingMode === 'off') {
       const s = stateRef.current
+      // Stopped while parked between circuits (auto-stop on landing, or a manual
+      // stop on the apron): leave the log open and let the park timer close it, so
+      // a restart within the timeout continues the same log instead of splitting it.
+      if (s.phase === 'taxiing' && s.logId && s.parkTimer && parkTimeoutMs > 0) return
       if ((s.phase === 'flying' || s.phase === 'taxiing') && s.logId) {
         finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '')
       }
@@ -97,7 +103,7 @@ export function useFlightLog(
     const now = Date.now()
 
     if (s.phase === 'idle') {
-      if (position.speedKts >= TAKEOFF_SPD_KTS) {
+      if (position.speedKts >= thr.takeoffKts) {
         s.takeoffTicks++
         if (s.takeoffTicks >= TAKEOFF_CONFIRM_TICKS) {
           const id = newId()
@@ -133,7 +139,7 @@ export function useFlightLog(
           }
         }, FLUSH_INTERVAL_MS)
       }
-      if (position.speedKts >= TAKEOFF_SPD_KTS) {
+      if (position.speedKts >= thr.takeoffKts) {
         s.takeoffTicks++
         if (s.takeoffTicks >= TAKEOFF_CONFIRM_TICKS) {
           if (s.parkTimer) { clearTimeout(s.parkTimer); s.parkTimer = null }
@@ -169,7 +175,7 @@ export function useFlightLog(
       }
 
       const flightDuration = now - s.flightStartMs
-      if (position.speedKts < LANDING_SPD_KTS && flightDuration >= MIN_FLIGHT_DURATION_MS) {
+      if (position.speedKts < thr.landedKts && flightDuration >= MIN_FLIGHT_DURATION_MS) {
         s.landingTicks++
         if (s.landingTicks >= LANDING_CONFIRM_TICKS) {
           if (s.flushTimer) { clearTimeout(s.flushTimer); s.flushTimer = null }

@@ -54,6 +54,7 @@ type FormState = {
   // Glide
   bestGlideIas:     string
   glideRatio:       string
+  takeoffSpeedKts:  string
 }
 
 const EMPTY_FORM: FormState = {
@@ -79,6 +80,7 @@ const EMPTY_FORM: FormState = {
   descentFuelLhr:   '15',
   bestGlideIas:     '65',
   glideRatio:       '30',
+  takeoffSpeedKts:  '0',
 }
 
 function profileToForm(p: AircraftProfileDocType): FormState {
@@ -105,6 +107,7 @@ function profileToForm(p: AircraftProfileDocType): FormState {
     descentFuelLhr:   String(p.descentFuelLhr ?? 0),
     bestGlideIas:     String(p.bestGlideIas ?? 0),
     glideRatio:       String(p.glideRatio ?? 0),
+    takeoffSpeedKts:  String(p.takeoffSpeedKts ?? 0),
   }
 }
 
@@ -337,6 +340,7 @@ export default function AircraftLibrary({
         descentFuelLhr:   HAS_ENGINE(form.category) && HAS_FUEL(form.category) ? parseNum(form.descentFuelLhr) : 0,
         bestGlideIas:     HAS_GLIDE(form.category) ? parseNum(form.bestGlideIas) : 0,
         glideRatio:       HAS_GLIDE(form.category) ? parseNum(form.glideRatio)   : 0,
+        takeoffSpeedKts:  parseNum(form.takeoffSpeedKts),
       })
       setMode('list')
     } finally {
@@ -470,6 +474,7 @@ export default function AircraftLibrary({
         <div className={css.sectionLabel}>Performance</div>
         <Field label="Cruise Alt"   unit="ft"  type="number" value={form.cruiseAltFt}  error={errors.cruiseAltFt}  tooltip="Typical cruising altitude in feet MSL. Used for airspace checks and flight profile projection." pohMissing={pohMissing.has('cruiseAltFt')} onChange={v => set('cruiseAltFt', v)} />
         <Field label="Cruise IAS"   unit="kts" type="number" value={form.cruiseIas}    error={errors.cruiseIas}    tooltip="Typical cruise indicated airspeed in knots. Used to calculate leg times and fuel burn." pohMissing={pohMissing.has('cruiseIas')} onChange={v => set('cruiseIas', v)} />
+        <Field label="Takeoff speed" unit="kts" type="number" value={form.takeoffSpeedKts} tooltip="Ground speed at which this aircraft takes off, in knots. Used to detect takeoff and landing for auto flying mode and the flight log. 0 = default for the aircraft category." onChange={v => set('takeoffSpeedKts', v)} />
 
         {HAS_FUEL(form.category) && (
           <>
