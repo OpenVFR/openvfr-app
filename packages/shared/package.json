@@ -12,6 +12,7 @@
     "./airspaceColors":  "./src/airspaceColors.ts",
     "./airspaceAltitude": "./src/airspaceAltitude.ts",
     "./lookahead": "./src/lookahead.ts",
+    "./subAreas": "./src/subAreas.ts",
     "./autoFlyDetect": "./src/autoFlyDetect.ts",
     "./otpAutoSubmit": "./src/otpAutoSubmit.ts",
     "./terrainDem": "./src/terrainDem.ts",

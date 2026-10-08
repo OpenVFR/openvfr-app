@@ -40,6 +40,7 @@ import type { GpsPosition } from '../utils/gpsTypes'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
 import { lookaheadPath, accuracyRing } from '@open-vfr/shared/lookahead'
+import { dropCoveredSubAreas } from '@open-vfr/shared/subAreas'
 import { airspaceDisplayClass } from '@open-vfr/shared/airspaceColors'
 import { getTileUrls } from '../config'
 import { altitudeForLimit, effectiveLimitFt, limitMarginFt, insideBand } from '@open-vfr/shared/airspaceAltitude'
@@ -150,8 +151,10 @@ function loadAirspaceOnce(cb: (f: AirspaceFeature[]) => void) {
           geometry: g as AirspaceFeature['geometry'],
         })
       }
-      _airspaceFeatures = arr
-      _airspaceListeners.forEach(l => l(arr))
+      // Parent + lettered sub-areas (ESR121 / ESR121B) are one hazard: warn once.
+      const deduped = dropCoveredSubAreas(arr)
+      _airspaceFeatures = deduped
+      _airspaceListeners.forEach(l => l(deduped))
       _airspaceListeners.length = 0
     })
     .catch(() => { _airspaceLoading = false })

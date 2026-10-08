@@ -32,6 +32,7 @@ import type { GpsPosition } from '../utils/gpsTypes'
 import { altitudeForLimit, effectiveLimitFt, limitMarginFt, insideBand } from '@open-vfr/shared/airspaceAltitude'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
 import { lookaheadPath, accuracyRing } from '@open-vfr/shared/lookahead'
+import { dropCoveredSubAreas } from '@open-vfr/shared/subAreas'
 import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
 import { airspaceDisplayClass } from '@open-vfr/shared/airspaceColors'
@@ -154,7 +155,8 @@ export function useAirspaceWarnings(
           if (!cls && !type) continue
           arr.push({ key: `${name}::${cls}::${lower_ft}-${upper_ft}`, name, cls, type, lower, upper, lower_ft, upper_ft, geometry: g })
         }
-        setFeatures(arr)
+        // Parent + lettered sub-areas (ESR121 / ESR121B) are one hazard: warn once.
+        setFeatures(dropCoveredSubAreas(arr))
       })
       .catch(() => { /* silently ignore offline */ })
   }, [])
