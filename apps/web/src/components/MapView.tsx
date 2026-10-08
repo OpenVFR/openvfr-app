@@ -3918,6 +3918,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
     // The target is kept until its animation window elapses, so the next
     // GPS tick's follow easeTo (which interrupts the running one) carries
     // the zoom on instead of freezing it part-way.
+    // Phase is per-flight (not per-follow-toggle): reset only when stopped.
+    if (gpsPosition.speedKts < 15) autoZoomPhaseRef.current = 'idle'
     if (followAircraft && autoZoomRef.current) {
       const phase = autoZoomPhaseRef.current
       if (phase === 'idle' && gpsPosition.speedKts >= 30) {

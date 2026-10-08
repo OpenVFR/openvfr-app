@@ -735,6 +735,9 @@ const attributionStyles = StyleSheet.create({
   closeBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
 })
 
+// Auto-zoom phase resets to idle below this ground speed (same on web).
+const AUTO_ZOOM_RESET_KTS = 15
+
 export function AviationMap({
   gpsPosition,
   simActive = false,
@@ -1531,7 +1534,12 @@ export function AviationMap({
 
   // Auto-zoom: idle → 30 kts → zoom 13 (takeoff) → 60 kts → zoom 11 (cruise)
   const autoZoomPhaseRef = useRef<'idle' | 'takeoff' | 'cruise'>('idle')
-  useEffect(() => { if (!followGps) autoZoomPhaseRef.current = 'idle' }, [followGps])
+  // The phase is per-flight, NOT per-follow-toggle: panning away and
+  // recentering mid-flight must not re-trigger the zoom sequence. It resets
+  // only once the aircraft is effectively stopped (landed / parked).
+  useEffect(() => {
+    if (gpsPosition && gpsPosition.speedKts < AUTO_ZOOM_RESET_KTS) autoZoomPhaseRef.current = 'idle'
+  }, [gpsPosition])
   useEffect(() => {
     if (!autoZoom || !followGps || !gpsPosition) return
     const spd   = gpsPosition.speedKts
