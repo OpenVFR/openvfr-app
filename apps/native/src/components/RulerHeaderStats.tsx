@@ -13,6 +13,7 @@ import React from 'react'
 import { Text, TouchableOpacity, type TextStyle } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { bearingDeg, distanceNm, magneticBearingDeg } from '@open-vfr/shared/routeCalc'
+import { iasToTas } from '@open-vfr/shared/airspeed'
 import type { RouteWaypoint, LegOverride, AircraftProfileDocType } from '../types/db'
 import { type Units, nmToDisplay, distLabel } from '../utils/units'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -63,13 +64,16 @@ export function RulerHeaderStart({ from, to, units }: { from: RouteWaypoint; to:
   )
 }
 
-/** Loaded/edited route: total DIST and ETE (per-leg speed overrides, else the
- *  aircraft's cruise speed; ETE is omitted without either). No wind applied. */
-export function RouteHeaderStart({ waypoints, legOverrides, units, cruiseKts }: {
+/** Loaded/edited route: total DIST and ETE (per-leg IAS overrides, else the
+ *  aircraft's cruise IAS, converted to TAS at the leg altitude; ETE is omitted
+ *  without either). No wind applied. */
+export function RouteHeaderStart({ waypoints, legOverrides, units, cruiseKts, cruiseAltFt }: {
   waypoints: RouteWaypoint[]
   legOverrides: LegOverride[]
   units: Units
   cruiseKts?: number
+  /** Default leg altitude for the IAS→TAS conversion. */
+  cruiseAltFt?: number
 }) {
   let nm = 0
   let hours = 0
@@ -77,8 +81,9 @@ export function RouteHeaderStart({ waypoints, legOverrides, units, cruiseKts }: 
   for (let i = 0; i < waypoints.length - 1; i++) {
     const d = distanceNm(waypoints[i], waypoints[i + 1])
     nm += d
-    const tas = legOverrides[i]?.speedKts ?? cruiseKts
-    if (tas && tas > 0) hours += d / tas
+    const ias = legOverrides[i]?.speedKts ?? cruiseKts
+    const tas = ias && ias > 0 ? iasToTas(ias, legOverrides[i]?.altFt ?? cruiseAltFt ?? 3500) : 0
+    if (tas > 0) hours += d / tas
     else haveSpeed = false
   }
   return (
@@ -96,7 +101,8 @@ export function RulerHeaderEnd({ from, to, aircraftProfile, onClear }: {
   onClear: () => void
 }) {
   const styles    = useThemedStyles(makeStyles)
-  const cruiseKts = aircraftProfile?.cruiseIas ?? null
+  // Cruise IAS → TAS at the aircraft's cruise altitude.
+  const cruiseKts = aircraftProfile?.cruiseIas ? iasToTas(aircraftProfile.cruiseIas, aircraftProfile.cruiseAltFt || 3500) : null
   const eteHours  = cruiseKts && cruiseKts > 0 ? distanceNm(from, to) / cruiseKts : null
   const fuelL     = eteHours != null && aircraftProfile ? eteHours * aircraftProfile.fuelBurnLhr : null
   return (

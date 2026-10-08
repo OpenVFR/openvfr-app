@@ -4,6 +4,7 @@ import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel, ktsToDisplay, displa
 import { fetchWind } from '@open-vfr/shared/fetchWind'
 import type { GlobalWind } from '../db/useSettings'
 import css from './LegPropsPanel.module.css'
+import { iasToTas } from '@open-vfr/shared/airspeed'
 
 interface Props {
   legIndex: number
@@ -17,6 +18,8 @@ interface Props {
   midLng:   number
   override: LegOverride
   units?:   Units
+  /** Altitude (ft) assumed when the leg has none: the aircraft's cruise altitude (IAS→TAS conversion). */
+  defaultAltFt?: number
   /** Session-wide wind fallback — used when the leg has no saved wind and skips API fetch. */
   globalWind?: GlobalWind | null
   /** Current note on the destination waypoint (legIndex + 1). */
@@ -35,7 +38,7 @@ function parseField(val: string): number | undefined {
 
 export default function LegPropsPanel({
   legIndex, fromName, toName, distNm, trueBrg, magBrg,
-  midLat, midLng, override, units = DEFAULT_UNITS, globalWind, wpNote, onSaveNote, onSave, onClose,
+  midLat, midLng, override, units = DEFAULT_UNITS, defaultAltFt, globalWind, wpNote, onSaveNote, onSave, onClose,
 }: Props) {
   const [altFt,    setAltFt]    = useState(override.altFt    != null ? String(override.altFt)    : '')
   // Speed field is stored in kts internally; display in selected speed unit.
@@ -73,7 +76,7 @@ export default function LegPropsPanel({
     if (globalWind) return  // global wind pre-filled above — skip API fetch
     const controller = new AbortController()
     setWindLoading(true)
-    const altNum = parseField(altFt) ?? override.altFt ?? null
+    const altNum = parseField(altFt) ?? override.altFt ?? defaultAltFt ?? null
     fetchWind(midLat, midLng, altNum, '', controller.signal)
       .then((w) => {
         setWindDir(String(w.dirDeg))
@@ -99,20 +102,21 @@ export default function LegPropsPanel({
 
   let gs: number | undefined
   let eteMin: number | undefined
+  const tasKts = spd != null && spd > 0 ? iasToTas(spd, parseField(altFt) ?? defaultAltFt ?? 3500) : undefined
 
   if (spd != null && spd > 0) {
     if (wDir != null && wSpd != null && wSpd > 0) {
       // Wind correction angle (WCA) and ground speed via vector triangle.
-      // TAS ≈ IAS at typical VFR altitudes (no significant compressibility).
+      // The entered speed is IAS; wind correction uses TAS at the leg altitude.
       const brg  = (trueBrg * Math.PI) / 180
       const wRad = (wDir    * Math.PI) / 180
       // Headwind/crosswind components
       const hw = wSpd * Math.cos(wRad - brg) // positive = headwind
       const xw = wSpd * Math.sin(wRad - brg)
-      const wca = Math.asin(Math.max(-1, Math.min(1, xw / spd))) // capped to ±1
-      gs = Math.round(spd * Math.cos(wca) - hw)
+      const wca = Math.asin(Math.max(-1, Math.min(1, xw / tasKts!))) // capped to ±1
+      gs = Math.round(tasKts! * Math.cos(wca) - hw)
     } else {
-      gs = spd
+      gs = Math.round(tasKts!)
     }
     if (gs > 0) eteMin = (distNm / gs) * 60
   }

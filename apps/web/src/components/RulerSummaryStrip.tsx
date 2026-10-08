@@ -1,4 +1,5 @@
 import css from './RulerSummaryStrip.module.css'
+import { iasToTas } from '@open-vfr/shared/airspeed'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { bearingDeg, distanceNm, magneticBearingDeg } from '../utils/routeCalc'
 import type { Units } from '../utils/units'
@@ -36,7 +37,8 @@ export default function RulerSummaryStrip({ from, to, units, aircraftProfile, on
   const trueBrg     = bearingDeg(from, to)
   const magBrg      = magneticBearingDeg(from, to)
   // ETE and fuel need an aircraft with a cruise speed (no wind applied).
-  const cruiseKts = aircraftProfile?.cruiseIas ?? null
+  // Cruise IAS → TAS at the aircraft's cruise altitude.
+  const cruiseKts = aircraftProfile?.cruiseIas ? iasToTas(aircraftProfile.cruiseIas, aircraftProfile.cruiseAltFt || 3500) : null
   const eteHours  = cruiseKts && cruiseKts > 0 ? distNm / cruiseKts : null
   const fuelL     = eteHours != null && aircraftProfile ? eteHours * aircraftProfile.fuelBurnLhr : null
 

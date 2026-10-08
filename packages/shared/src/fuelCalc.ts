@@ -15,6 +15,7 @@
 import { distanceNm, bearingDeg } from './routeCalc'
 import type { RouteWaypoint } from './routeCalc'
 import type { LegOverride, AircraftProfileDocType } from './types'
+import { iasToTas } from './airspeed'
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -75,14 +76,14 @@ function avgRocBetween(fromFt: number, toFt: number, profile: AircraftProfileDoc
   return (rocAtAlt(fromFt, profile) + rocAtAlt(toFt, profile)) / 2
 }
 
-/** True when the profile has the fields needed for climb time calculation. */
+/** True when the profile has the fields needed for climb time calculation. Climb fuel burn is optional (falls back to cruise burn). */
 function hasClimbPerf(profile: AircraftProfileDocType): boolean {
-  return profile.rocSlFpm > 0 && profile.climbIas > 0 && profile.climbFuelLhr > 0
+  return profile.rocSlFpm > 0 && profile.climbIas > 0
 }
 
-/** True when the profile has the fields needed for descent time calculation. */
+/** True when the profile has the fields needed for descent time calculation. Descent fuel burn is optional (falls back to cruise burn). */
 function hasDescentPerf(profile: AircraftProfileDocType): boolean {
-  return profile.descentFpm > 0 && profile.descentFuelLhr > 0
+  return profile.descentFpm > 0
 }
 
 // ---------------------------------------------------------------------------
@@ -109,7 +110,12 @@ const EMPTY_PLAN: FuelPlan = {
  * approach and is appropriate for pre-flight fuel planning.
  *
  * If climb/descent perf data is absent (rocSlFpm = 0 etc.), all enroute
- * time is treated as cruise at `fuelBurnLhr` (simple burn-rate model).
+ * time is treated as cruise at `fuelBurnLhr` (simple burn-rate model). A
+ * missing climb / descent fuel burn falls back to the cruise burn.
+ *
+ * Speeds in the profile and leg overrides are INDICATED; time and the wind
+ * triangle use true airspeed (airspeed.ts) at the leg altitude. The distance
+ * flown in climb and descent is taken off the cruise distance.
  *
  * Wind corrections use the bearing + wind-correction-angle method consistent
  * with the PLOG ETE calculation in RoutePlan.tsx.
@@ -141,24 +147,34 @@ export function computeFuelPlan(
   // ── 2. Total climb / descent time across the full route ────────────────────
   let totalClimbMins   = 0
   let totalDescentMins = 0
+  let climbDistNm      = 0
+  let descentDistNm    = 0
 
   for (let i = 0; i < altSeq.length - 1; i++) {
     const delta = altSeq[i + 1] - altSeq[i]
     if (delta > 0) {
       if (hasClimbPerf(profile)) {
         const avgRoc = avgRocBetween(altSeq[i], altSeq[i + 1], profile)
-        if (avgRoc > 0) totalClimbMins += delta / avgRoc
+        if (avgRoc > 0) {
+          const mins = delta / avgRoc
+          totalClimbMins += mins
+          climbDistNm    += (mins / 60) * iasToTas(profile.climbIas, (altSeq[i] + altSeq[i + 1]) / 2)
+        }
       }
       // If no climb perf data: climb time = 0; treated as cruise burn (conservative)
     } else if (delta < 0) {
       if (hasDescentPerf(profile)) {
-        totalDescentMins += Math.abs(delta) / profile.descentFpm
+        const mins = Math.abs(delta) / profile.descentFpm
+        totalDescentMins += mins
+        const descIas = profile.descentIas > 0 ? profile.descentIas : profile.cruiseIas
+        descentDistNm    += (mins / 60) * iasToTas(descIas, (altSeq[i] + altSeq[i + 1]) / 2)
       }
     }
   }
 
   // ── 3. Total enroute time at ground speed per leg ──────────────────────────
-  let totalEnrouteMins = 0
+  let totalCruiseOnlyMins = 0   // whole route flown at cruise speed (before climb/descent distance is removed)
+  let totalDistNm = 0
   let hasAnySpeed = false
 
   for (let i = 0; i < nLegs; i++) {
@@ -166,10 +182,11 @@ export function computeFuelPlan(
     const to   = waypoints[i + 1]
     const dist = distanceNm(from, to)
     const ovr  = legOverrides[i] ?? {}
-    const ias  = ovr.speedKts ?? profile.cruiseIas
+    const iasLeg = ovr.speedKts ?? profile.cruiseIas
 
-    if (ias <= 0) continue  // no speed data for this leg
+    if (iasLeg <= 0) continue  // no speed data for this leg
     hasAnySpeed = true
+    const ias = iasToTas(iasLeg, legAlts[i])   // true airspeed at the leg altitude
 
     // Ground speed with wind correction (identical to RoutePlan.tsx ETE logic).
     let gs = ias
@@ -184,7 +201,8 @@ export function computeFuelPlan(
     }
     gs = Math.max(10, gs) // guard against zero/negative GS
 
-    totalEnrouteMins += (dist / gs) * 60
+    totalCruiseOnlyMins += (dist / gs) * 60
+    totalDistNm += dist
   }
 
   // If no leg has speed data, time-based items are zero but fixed items remain.
@@ -201,15 +219,19 @@ export function computeFuelPlan(
   }
 
   // ── 4. Partition enroute time and compute fuel ────────────────────────────
-  // Cruise = total − climb − descent (clamped; extreme short legs may have no cruise).
-  const cruiseMins = Math.max(0, totalEnrouteMins - totalClimbMins - totalDescentMins)
+  // Cruise covers the distance left after climb and descent (clamped: a route
+  // too short for the climb/descent has no cruise), at the route's average cruise GS.
+  const avgCruiseGs = totalDistNm / (totalCruiseOnlyMins / 60)
+  const cruiseDistNm = Math.max(0, totalDistNm - climbDistNm - descentDistNm)
+  const cruiseMins = avgCruiseGs > 0 ? (cruiseDistNm / avgCruiseGs) * 60 : 0
+  const totalEnrouteMins = totalClimbMins + totalDescentMins + cruiseMins
 
-  // Fuel per phase — fall back to cruise burn if phase-specific data absent.
+  // Fuel per phase — fall back to cruise burn if phase-specific burn is not set.
   const climbFuelL = (totalClimbMins / 60) * (
-    hasClimbPerf(profile) ? profile.climbFuelLhr : profile.fuelBurnLhr
+    profile.climbFuelLhr > 0 ? profile.climbFuelLhr : profile.fuelBurnLhr
   )
   const descentFuelL = (totalDescentMins / 60) * (
-    hasDescentPerf(profile) ? profile.descentFuelLhr : profile.fuelBurnLhr
+    profile.descentFuelLhr > 0 ? profile.descentFuelLhr : profile.fuelBurnLhr
   )
   const cruiseFuelL  = (cruiseMins / 60) * profile.fuelBurnLhr
 

@@ -51,6 +51,7 @@ import {
 } from '@turf/helpers'
 import type { Feature, Geometry, Polygon, MultiPolygon } from 'geojson'
 import type { RouteWaypoint, LegOverride } from './types'
+import { iasToTas } from './airspeed'
 import { AIRSPACE_COLORS, CONTROLLED_CLASSES, airspaceDisplayClass, controlledStyle } from './airspaceColors'
 import { limitIsAgl } from './airspaceAltitude'
 import type { ElevationLookup } from './terrainDem'
@@ -661,14 +662,14 @@ function climbDistNm(fromFt: number, toFt: number, perf: AircraftPerfModel): num
   if (toFt <= fromFt || perf.climbIas <= 0) return 0
   const avgRoc  = (rocAtAlt(fromFt, perf) + rocAtAlt(toFt, perf)) / 2
   const minutes = (toFt - fromFt) / avgRoc
-  return (minutes / 60) * perf.climbIas
+  return (minutes / 60) * iasToTas(perf.climbIas, (fromFt + toFt) / 2)
 }
 
 /** Horizontal distance (NM) to descend from fromFt to toFt. */
 function descentDistNm(fromFt: number, toFt: number, perf: AircraftPerfModel): number {
   if (fromFt <= toFt || perf.descentFpm <= 0 || perf.descentIas <= 0) return 0
   const minutes = (fromFt - toFt) / perf.descentFpm
-  return (minutes / 60) * perf.descentIas
+  return (minutes / 60) * iasToTas(perf.descentIas, (fromFt + toFt) / 2)
 }
 
 /**

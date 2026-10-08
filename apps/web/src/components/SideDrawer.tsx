@@ -390,6 +390,7 @@ function SideDrawer({
                     onAddToRoute={onAddToRoute}
                     onSetLegOverride={onSetLegOverride}
                     onSetWaypointNote={onSetWaypointNote}
+                    defaultAltFt={selectedAircraftProfile?.cruiseAltFt || undefined}
                   />
               </div>
             )}

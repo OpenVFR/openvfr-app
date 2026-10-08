@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { bearingDeg, magneticBearingDeg, distanceNm, type RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
 import { routeToGpx, gpxToRoute } from '@open-vfr/shared/gpx'
+import { iasToTas } from '@open-vfr/shared/airspeed'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel, ktsToDisplay, displayToKts, speedLabel } from '../utils/units'
 import { useTakeoffTime, useAlternate, useGlobalWind } from '../db/useSettings'
 import LegPropsPanel from './LegPropsPanel'
@@ -175,10 +176,12 @@ interface Props {
   onReplace:    (wps: RouteWaypoint[]) => void
   onAddToRoute?: (wp: { lng: number; lat: number; name: string }) => void
   onSetLegOverride: (idx: number, override: LegOverride) => void
+  /** Altitude (ft) assumed for legs without an altitude override: the selected aircraft's cruise altitude. Used for the IAS→TAS conversion. */
+  defaultAltFt?: number
   onSetWaypointNote: (wpIdx: number, note: string) => void
 }
 
-export default function RoutePlan({ waypoints, legOverrides, routeVisible, onToggleRouteVisible, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onAddToRoute, onSetLegOverride, onSetWaypointNote }: Props) {
+export default function RoutePlan({ waypoints, legOverrides, routeVisible, onToggleRouteVisible, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onAddToRoute, onSetLegOverride, onSetWaypointNote, defaultAltFt }: Props) {
   const [kbInput, setKbInput] = useState('')
   const [kbError, setKbError] = useState('')
   const [kbLoading, setKbLoading] = useState(false)
@@ -269,16 +272,18 @@ export default function RoutePlan({ waypoints, legOverrides, routeVisible, onTog
     // Effective wind: per-leg override takes precedence over global wind.
     const effDir = ovr.windDir  ?? globalWind?.dirDeg
     const effSpd = ovr.windSpd  ?? globalWind?.speedKts
-    let gs = ovr.speedKts
+    // Leg speed is indicated; time and wind correction use TAS at the leg altitude.
+    const tas = iasToTas(ovr.speedKts, ovr.altFt ?? defaultAltFt ?? 3500)
+    let gs = tas
     let wcaDeg: number | undefined
     if (effDir != null && effSpd != null && effSpd > 0) {
       const brg  = (leg.brg  * Math.PI) / 180
       const wRad = (effDir   * Math.PI) / 180
       const hw = effSpd * Math.cos(wRad - brg)
       const xw = effSpd * Math.sin(wRad - brg)
-      const wca = Math.asin(Math.max(-1, Math.min(1, xw / ovr.speedKts)))
+      const wca = Math.asin(Math.max(-1, Math.min(1, xw / tas)))
       wcaDeg = Math.round(wca * 180 / Math.PI)
-      gs = ovr.speedKts * Math.cos(wca) - hw
+      gs = tas * Math.cos(wca) - hw
     }
     if (gs <= 0) return { ete: undefined, wcaDeg }
     return { ete: (leg.dist / gs) * 60, wcaDeg }
@@ -593,6 +598,7 @@ export default function RoutePlan({ waypoints, legOverrides, routeVisible, onTog
           midLng={legs[activeLeg].midLng}
           override={legOverrides[activeLeg] ?? {}}
           units={units}
+          defaultAltFt={defaultAltFt}
           globalWind={globalWind}
           wpNote={waypoints[activeLeg + 1]?.note ?? ''}
           onSaveNote={(destWpIdx, note) => onSetWaypointNote(destWpIdx, note)}

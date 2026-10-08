@@ -68,6 +68,7 @@ function gsKts(trackDeg: number, windDir: number, windSpd: number, tas: number):
 // ── GPX export ───────────────────────────────────────────────────────────
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { routeToGpx, gpxToRoute, waypointsToGpx, gpxToWaypoints } from '@open-vfr/shared/gpx'
+import { iasToTas } from '@open-vfr/shared/airspeed'
 import * as FileSystem from 'expo-file-system'
 import * as DocumentPicker from 'expo-document-picker'
 
@@ -225,8 +226,9 @@ export function PlanScreen() {
     setActiveLeg(null)
   }
 
-  // Cruise TAS — from profile or fallback to 90 kts
-  const cruiseTas = profile?.cruiseIas ?? 90
+  // Cruise IAS — from profile or fallback to 90 kts. Converted to TAS at each leg's altitude below.
+  const cruiseIas = profile?.cruiseIas ?? 90
+  const cruiseAltFt = profile?.cruiseAltFt || 3500
 
   // Per-leg summaries — per-leg override (altitude/speed/wind) takes precedence
   // over global wind/cruise TAS, mirroring web's RoutePlan legResults calc.
@@ -237,7 +239,7 @@ export function PlanScreen() {
       const distNm  = distanceNm(from, to)
       const trueHdg = bearingDeg(from, to)
       const magHdg  = magneticBearingDeg(from, to)
-      const tas     = ovr?.speedKts ?? cruiseTas
+      const tas     = iasToTas(ovr?.speedKts ?? cruiseIas, ovr?.altFt ?? cruiseAltFt)
       const effDir  = ovr?.windDir  ?? wind?.dirDeg
       const effSpd  = ovr?.windSpd  ?? wind?.speedKts
       const hasWind = effDir != null && effSpd != null && effSpd > 0
@@ -246,7 +248,7 @@ export function PlanScreen() {
       const eteMins = gs > 0 ? (distNm / gs) * 60 : null
       return { from, to, distNm, magHdg, wca, gs, eteMins, index: i, altFt: ovr?.altFt }
     })
-  }, [waypoints, wind, cruiseTas, legOverrides])
+  }, [waypoints, wind, cruiseIas, cruiseAltFt, legOverrides])
 
   const totalNm   = legs.reduce((s, l) => s + l.distNm, 0)
   const totalMins = legs.reduce((s, l) => s + (l.eteMins ?? 0), 0)
@@ -596,7 +598,7 @@ export function PlanScreen() {
                   <Text style={styles.cardTitle}>Leg {index + 1}: override</Text>
                   <View style={styles.windInputs}>
                     <TextInput style={styles.numberInput} value={ovrAlt} onChangeText={setOvrAlt} placeholder="Alt ft" placeholderTextColor={theme.textFaint} keyboardType="numeric" />
-                    <TextInput style={styles.numberInput} value={ovrSpd} onChangeText={setOvrSpd} placeholder={`TAS ${speedLabel(units.speed)}`} placeholderTextColor={theme.textFaint} keyboardType="numeric" />
+                    <TextInput style={styles.numberInput} value={ovrSpd} onChangeText={setOvrSpd} placeholder={`IAS ${speedLabel(units.speed)}`} placeholderTextColor={theme.textFaint} keyboardType="numeric" />
                   </View>
                   <View style={styles.windInputs}>
                     <TextInput style={styles.numberInput} value={ovrWDir} onChangeText={setOvrWDir} placeholder="Wind Dir°" placeholderTextColor={theme.textFaint} keyboardType="numeric" />

@@ -1668,7 +1668,7 @@ export function MapScreen() {
           units={settings.units}
           airspaceCeilingFt={settings.airspaceCeilingFt}
           aircraftProfile={aircraftProfile}
-          headerStart={<RouteHeaderStart waypoints={waypoints} legOverrides={legOverrides} units={settings.units} cruiseKts={aircraftProfile?.cruiseIas} />}
+          headerStart={<RouteHeaderStart waypoints={waypoints} legOverrides={legOverrides} units={settings.units} cruiseKts={aircraftProfile?.cruiseIas} cruiseAltFt={aircraftProfile?.cruiseAltFt} />}
           currentDistNm={currentDistNm}
           currentAltFt={bestAltFt ?? undefined}
           currentSpeedKts={activePosition?.speedKts}
