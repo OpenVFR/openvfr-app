@@ -135,12 +135,14 @@ export type AircraftProfileDocType = {
   glideRatio: number        // glide ratio (e.g. 30 = 30:1)
   // v3: takeoff speed, kt GS. 0/absent = category default (autoFlyThresholds)
   takeoffSpeedKts?: number
+  // v4: diversion reserve minutes at cruise burn. 0/absent = 30
+  diversionMin?: number
   updatedAt: number
 }
 
 const aircraftProfileSchema: RxJsonSchema<AircraftProfileDocType> = {
   title: 'aircraft_profile',
-  version: 3,
+  version: 4,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -168,6 +170,7 @@ const aircraftProfileSchema: RxJsonSchema<AircraftProfileDocType> = {
     bestGlideIas:     { type: 'number' },
     glideRatio:       { type: 'number' },
     takeoffSpeedKts:  { type: 'number' },
+    diversionMin:     { type: 'number' },
     updatedAt:        { type: 'number' },
   },
   required: ['id', 'name', 'registration', 'icaoType', 'category', 'cruiseAltFt', 'cruiseIas',
@@ -367,6 +370,8 @@ export function getDb(): Promise<OpenVfrDb> {
             }),
             // v2 → v3: optional takeoffSpeedKts (absent = category default)
             3: (oldDoc) => ({ ...oldDoc }),
+            // v3 → v4: optional diversionMin (absent = 30 min)
+            4: (oldDoc) => ({ ...oldDoc }),
           },
         },
         user_waypoints:    { schema: userWaypointSchema },

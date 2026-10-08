@@ -50,6 +50,8 @@ export type AircraftProfileDocType = {
   glideRatio: number
   /** Takeoff speed, kt GS. 0/absent = category default. Drives auto flying-mode and flight-log detection. */
   takeoffSpeedKts?: number
+  /** Diversion reserve, minutes at cruise burn. 0/absent = 30 (standard). */
+  diversionMin?: number
   updatedAt: number
 }
 

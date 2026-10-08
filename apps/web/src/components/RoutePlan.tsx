@@ -178,10 +178,12 @@ interface Props {
   onSetLegOverride: (idx: number, override: LegOverride) => void
   /** Altitude (ft) assumed for legs without an altitude override: the selected aircraft's cruise altitude. Used for the IAS→TAS conversion. */
   defaultAltFt?: number
+  /** Cruise IAS (kt) of the selected aircraft: speed for legs without their own override. */
+  defaultSpeedKts?: number
   onSetWaypointNote: (wpIdx: number, note: string) => void
 }
 
-export default function RoutePlan({ waypoints, legOverrides, routeVisible, onToggleRouteVisible, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onAddToRoute, onSetLegOverride, onSetWaypointNote, defaultAltFt }: Props) {
+export default function RoutePlan({ waypoints, legOverrides, routeVisible, onToggleRouteVisible, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onAddToRoute, onSetLegOverride, onSetWaypointNote, defaultAltFt, defaultSpeedKts }: Props) {
   const [kbInput, setKbInput] = useState('')
   const [kbError, setKbError] = useState('')
   const [kbLoading, setKbLoading] = useState(false)
@@ -267,13 +269,14 @@ export default function RoutePlan({ waypoints, legOverrides, routeVisible, onTog
 
   // Compute per-leg ETE + WCA from override speed + wind (or global wind fallback).
   const legResults: { ete: number | undefined; wcaDeg: number | undefined; tas?: number; gs?: number }[] = legs.map((leg, i) => {
-    const ovr = legOverrides[i]
-    if (!ovr?.speedKts || ovr.speedKts <= 0) return { ete: undefined, wcaDeg: undefined }
+    const ovr: LegOverride = legOverrides[i] ?? {}
+    const iasKts = ovr.speedKts ?? defaultSpeedKts
+    if (!iasKts || iasKts <= 0) return { ete: undefined, wcaDeg: undefined }
     // Effective wind: per-leg override takes precedence over global wind.
     const effDir = ovr.windDir  ?? globalWind?.dirDeg
     const effSpd = ovr.windSpd  ?? globalWind?.speedKts
     // Leg speed is indicated; time and wind correction use TAS at the leg altitude.
-    const tas = iasToTas(ovr.speedKts, ovr.altFt ?? defaultAltFt ?? 3500, ovr.oatC)
+    const tas = iasToTas(iasKts, ovr.altFt ?? defaultAltFt ?? 3500, ovr.oatC)
     let gs = tas
     let wcaDeg: number | undefined
     if (effDir != null && effSpd != null && effSpd > 0) {
@@ -605,6 +608,7 @@ export default function RoutePlan({ waypoints, legOverrides, routeVisible, onTog
           override={legOverrides[activeLeg] ?? {}}
           units={units}
           defaultAltFt={defaultAltFt}
+          defaultSpeedKts={defaultSpeedKts}
           globalWind={globalWind}
           wpNote={waypoints[activeLeg + 1]?.note ?? ''}
           onSaveNote={(destWpIdx, note) => onSetWaypointNote(destWpIdx, note)}

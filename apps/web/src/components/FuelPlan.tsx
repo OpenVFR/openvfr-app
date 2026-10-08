@@ -90,7 +90,7 @@ export default function FuelPlan({ waypoints, legOverrides, aircraft }: Props) {
           </tr>
 
           <tr>
-            <td className={css.label}>Diversion (30 min)</td>
+            <td className={css.label}>Diversion ({plan.diversionMin} min)</td>
             <td className={css.value}>{fmt(plan.diversionFuelL)}</td>
           </tr>
 

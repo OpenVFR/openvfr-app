@@ -34,7 +34,7 @@ type FormState = {
   name: string; registration: string; icaoType: string; category: AircraftCategory
   cruiseAltFt: string; cruiseIas: string
   fuelBurnLhr: string; maxFuelL: string; taxiFuelL: string; landingFuelL: string
-  holdingMin: string; contingencyPct: string
+  holdingMin: string; contingencyPct: string; diversionMin: string
   serviceCeilingFt: string; rocSlFpm: string; rocCeilingFpm: string
   climbIas: string; climbFuelLhr: string
   descentFpm: string; descentIas: string; descentFuelLhr: string
@@ -46,7 +46,7 @@ const EMPTY: FormState = {
   name: '', registration: '', icaoType: '', category: 'SEP',
   cruiseAltFt: '5000', cruiseIas: '100',
   fuelBurnLhr: '25', maxFuelL: '150', taxiFuelL: '5', landingFuelL: '20',
-  holdingMin: '30', contingencyPct: '10',
+  holdingMin: '30', contingencyPct: '10', diversionMin: '30',
   serviceCeilingFt: '14000', rocSlFpm: '700', rocCeilingFpm: '100',
   climbIas: '80', climbFuelLhr: '30',
   descentFpm: '500', descentIas: '100', descentFuelLhr: '15',
@@ -61,6 +61,7 @@ function toForm(p: AircraftProfileDocType): FormState {
     fuelBurnLhr: String(p.fuelBurnLhr), maxFuelL: String(p.maxFuelL),
     taxiFuelL: String(p.taxiFuelL), landingFuelL: String(p.landingFuelL),
     holdingMin: String(p.holdingMin), contingencyPct: String(p.contingencyPct),
+    diversionMin: String(p.diversionMin || 30),
     serviceCeilingFt: String(p.serviceCeilingFt ?? 0), rocSlFpm: String(p.rocSlFpm ?? 0),
     rocCeilingFpm: String(p.rocCeilingFpm ?? 0), climbIas: String(p.climbIas ?? 0),
     climbFuelLhr: String(p.climbFuelLhr ?? 0), descentFpm: String(p.descentFpm ?? 0),
@@ -127,6 +128,7 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       taxiFuelL:        HAS_FUEL(cat) ? num(form.taxiFuelL)   : 0,
       landingFuelL:     HAS_FUEL(cat) ? num(form.landingFuelL): 0,
       holdingMin:       HAS_FUEL(cat) ? num(form.holdingMin)  : 0,
+      diversionMin:     HAS_FUEL(cat) ? num(form.diversionMin, 30) : 0,
       contingencyPct:   HAS_FUEL(cat) ? num(form.contingencyPct) : 0,
       serviceCeilingFt: HAS_ENGINE(cat) ? num(form.serviceCeilingFt) : 0,
       rocSlFpm:         HAS_ENGINE(cat) ? num(form.rocSlFpm)         : 0,
@@ -184,6 +186,7 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
           <FieldRow label="Taxi / T/O" unit="L" value={form.taxiFuelL} numeric onChange={v => set('taxiFuelL', v)} />
           <FieldRow label="Reserve LDG" unit="L" value={form.landingFuelL} numeric onChange={v => set('landingFuelL', v)} />
           <FieldRow label="Holding" unit="min" value={form.holdingMin} numeric onChange={v => set('holdingMin', v)} />
+          <FieldRow label="Diversion" unit="min" value={form.diversionMin} numeric onChange={v => set('diversionMin', v)} />
           <FieldRow label="Contingency" unit="%" value={form.contingencyPct} numeric onChange={v => set('contingencyPct', v)} />
         </>
       )}

@@ -20,6 +20,8 @@ interface Props {
   units?:   Units
   /** Altitude (ft) assumed when the leg has none: the aircraft's cruise altitude (IAS→TAS conversion). */
   defaultAltFt?: number
+  /** Cruise IAS (kt) of the selected aircraft, used when the leg has no speed of its own. */
+  defaultSpeedKts?: number
   /** Session-wide wind fallback — used when the leg has no saved wind and skips API fetch. */
   globalWind?: GlobalWind | null
   /** Current note on the destination waypoint (legIndex + 1). */
@@ -38,7 +40,7 @@ function parseField(val: string): number | undefined {
 
 export default function LegPropsPanel({
   legIndex, fromName, toName, distNm, trueBrg, magBrg,
-  midLat, midLng, override, units = DEFAULT_UNITS, defaultAltFt, globalWind, wpNote, onSaveNote, onSave, onClose,
+  midLat, midLng, override, units = DEFAULT_UNITS, defaultAltFt, defaultSpeedKts, globalWind, wpNote, onSaveNote, onSave, onClose,
 }: Props) {
   const [altFt,    setAltFt]    = useState(override.altFt    != null ? String(override.altFt)    : '')
   // Speed field is stored in kts internally; display in selected speed unit.
@@ -103,7 +105,7 @@ export default function LegPropsPanel({
 
   // Derived ground-speed + ETE when enough data is present.
   // speedKts field contains display-unit value; convert back to kts for calculations.
-  const spd  = parseField(speedKts) != null ? displayToKts(parseField(speedKts)!, units.speed) : undefined
+  const spd  = parseField(speedKts) != null ? displayToKts(parseField(speedKts)!, units.speed) : defaultSpeedKts
   const wDir = parseField(windDir)
   // windSpd field also in display unit
   const wSpd = parseField(windSpd)  != null ? displayToKts(parseField(windSpd)!,  units.speed) : undefined
@@ -188,7 +190,7 @@ export default function LegPropsPanel({
             min={0}
             max={units.speed === 'kmh' ? 926 : 500}
             step={1}
-            placeholder={units.speed === 'kmh' ? 'e.g. 185' : 'e.g. 100'}
+            placeholder={defaultSpeedKts ? String(Math.round(ktsToDisplay(defaultSpeedKts, units.speed))) : (units.speed === 'kmh' ? 'e.g. 185' : 'e.g. 100')}
             value={speedKts}
             onChange={e => setSpeedKts(e.target.value)}
           />

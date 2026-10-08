@@ -74,6 +74,7 @@ Return ONLY a raw JSON object with any of these keys you found (omit keys not fo
 - "descentFuelLhr": fuel burn during descent in L/hr.
 - "bestGlideIas": best glide speed in knots (gliders / TMG / autogyros only). Convert if needed.
 - "glideRatio": best glide ratio as a number e.g. 30 for 30:1 (gliders / TMG / autogyros only).
+- "takeoffSpeedKts": speed at which the aircraft leaves the ground in knots — look for rotation speed (VR), lift-off speed (VLOF) or normal take-off speed. Convert from km/h (×0.5400) or mph (×0.8690).
 
 Output ONLY the JSON object. No markdown, no explanation, no code fences.`
 

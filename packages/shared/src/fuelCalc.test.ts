@@ -46,4 +46,11 @@ describe('computeFuelPlan', () => {
     const hot  = computeFuelPlan(route, [{ oatC: 30 }] as never,  { ...base, rocSlFpm: 0, descentFpm: 0 })
     expect(hot.enrouteMins).toBeLessThan(cold.enrouteMins)
   })
+  it('diversion reserve uses the profile minutes, default 30', () => {
+    expect(plan().diversionMin).toBe(30)
+    expect(plan().diversionFuelL).toBeCloseTo(12.5, 6)
+    const f = plan({ diversionMin: 45 })
+    expect(f.diversionMin).toBe(45)
+    expect(f.diversionFuelL).toBeCloseTo((45 / 60) * 25, 6)
+  })
 })

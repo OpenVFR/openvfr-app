@@ -871,11 +871,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
     () => autoFlyThresholds(selectedAircraftProfile?.takeoffSpeedKts, selectedAircraftProfile?.category),
     [selectedAircraftProfile?.takeoffSpeedKts, selectedAircraftProfile?.category],
   )
+  // Set just before an AUTO stop so useFlightLog leaves a parked log to its park timer.
+  const deferLogCloseRef = useRef(false)
   const autoFly = useAutoFlyDetect(
     autoFlyMode,
     autoFlyFix,
     flyingMode === 'gps',
-    { start: () => startGps(() => {}), stop: stopFlying },
+    { start: () => startGps(() => {}), stop: () => { deferLogCloseRef.current = true; stopFlying() } },
     flyThresholds,
   )
   // Startup: if permission was already granted, show the dot straight away
@@ -1087,6 +1089,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     nearestFeature?.kind === 'aerodrome' ? nearestFeature.name : null,
     parkTimeout * 1000,
     flyThresholds,
+    deferLogCloseRef,
   )
 
   // ── ADS-B traffic (OpenSky Network via server SSE) ──────────────────────

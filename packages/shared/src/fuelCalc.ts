@@ -38,8 +38,10 @@ export type FuelPlan = {
   /** Holding reserve. */
   holdingFuelL: number
   holdingMin: number
-  /** Standard 30-minute diversion reserve at cruise burn. */
+  /** Diversion reserve at cruise burn (profile `diversionMin`, default 30 min). */
   diversionFuelL: number
+  /** Minutes the diversion reserve covers. */
+  diversionMin: number
   /** Fixed landing/alternate reserve from aircraft profile. */
   landingFuelL: number
   /** Grand total minimum required fuel (all items summed). */
@@ -62,6 +64,8 @@ export type FuelPlan = {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_ALT_FT = 3500
+/** Diversion reserve (min at cruise burn) when the profile has none. */
+export const DEFAULT_DIVERSION_MIN = 30
 
 /** Rate of climb (fpm) at a given altitude. Returns 0 when perf data absent. */
 function rocAtAlt(alt: number, profile: AircraftProfileDocType): number {
@@ -93,7 +97,7 @@ function hasDescentPerf(profile: AircraftProfileDocType): boolean {
 const EMPTY_PLAN: FuelPlan = {
   taxiFuelL: 0, climbFuelL: 0, cruiseFuelL: 0, descentFuelL: 0,
   enrouteFuelL: 0, contingencyFuelL: 0, contingencyPct: 0,
-  holdingFuelL: 0, holdingMin: 0, diversionFuelL: 0, landingFuelL: 0,
+  holdingFuelL: 0, holdingMin: 0, diversionFuelL: 0, diversionMin: DEFAULT_DIVERSION_MIN, landingFuelL: 0,
   totalMinFuelL: 0, availableFuelL: 0,
   enrouteMins: 0, climbMins: 0, descentMins: 0, cruiseMins: 0,
 }
@@ -238,7 +242,8 @@ export function computeFuelPlan(
   const enrouteFuelL     = climbFuelL + cruiseFuelL + descentFuelL
   const contingencyFuelL = enrouteFuelL * (profile.contingencyPct / 100)
   const holdingFuelL     = (profile.holdingMin / 60) * profile.fuelBurnLhr
-  const diversionFuelL   = (30 / 60) * profile.fuelBurnLhr  // standard 30-min diversion
+  const diversionMin     = profile.diversionMin && profile.diversionMin > 0 ? profile.diversionMin : DEFAULT_DIVERSION_MIN
+  const diversionFuelL   = (diversionMin / 60) * profile.fuelBurnLhr
   const taxiFuelL        = profile.taxiFuelL
   const landingFuelL     = profile.landingFuelL
 
@@ -257,6 +262,7 @@ export function computeFuelPlan(
     holdingFuelL,
     holdingMin:      profile.holdingMin,
     diversionFuelL,
+    diversionMin,
     landingFuelL,
     totalMinFuelL,
     availableFuelL:  profile.maxFuelL,

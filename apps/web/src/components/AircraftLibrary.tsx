@@ -41,6 +41,7 @@ type FormState = {
   taxiFuelL:        string
   landingFuelL:     string
   holdingMin:       string
+  diversionMin:     string
   contingencyPct:   string
   // Climb / Descent
   serviceCeilingFt: string
@@ -69,6 +70,7 @@ const EMPTY_FORM: FormState = {
   taxiFuelL:        '5',
   landingFuelL:     '20',
   holdingMin:       '30',
+  diversionMin:     '30',
   contingencyPct:   '10',
   serviceCeilingFt: '14000',
   rocSlFpm:         '700',
@@ -96,6 +98,7 @@ function profileToForm(p: AircraftProfileDocType): FormState {
     taxiFuelL:        String(p.taxiFuelL),
     landingFuelL:     String(p.landingFuelL),
     holdingMin:       String(p.holdingMin),
+    diversionMin:     String(p.diversionMin || 30),
     contingencyPct:   String(p.contingencyPct),
     serviceCeilingFt: String(p.serviceCeilingFt ?? 0),
     rocSlFpm:         String(p.rocSlFpm ?? 0),
@@ -247,7 +250,7 @@ export default function AircraftLibrary({
       const EXTRACTABLE_KEYS: (keyof FormState)[] = [
         'name', 'icaoType', 'cruiseAltFt', 'cruiseIas', 'fuelBurnLhr', 'maxFuelL',
         'taxiFuelL', 'landingFuelL', 'serviceCeilingFt', 'rocSlFpm', 'climbIas',
-        'climbFuelLhr', 'descentFpm', 'descentIas', 'bestGlideIas', 'glideRatio',
+        'climbFuelLhr', 'descentFpm', 'descentIas', 'bestGlideIas', 'glideRatio', 'takeoffSpeedKts',
       ]
       const missing = new Set<keyof FormState>()
       for (const key of EXTRACTABLE_KEYS) {
@@ -272,6 +275,7 @@ export default function AircraftLibrary({
         ...(result.descentIas       !== undefined && { descentIas:       result.descentIas }),
         ...(result.bestGlideIas     !== undefined && { bestGlideIas:     result.bestGlideIas }),
         ...(result.glideRatio       !== undefined && { glideRatio:       result.glideRatio }),
+        ...(result.takeoffSpeedKts  !== undefined && { takeoffSpeedKts:  result.takeoffSpeedKts }),
       }))
       if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null }
       setPohState('done')
@@ -329,6 +333,7 @@ export default function AircraftLibrary({
         taxiFuelL:        HAS_FUEL(form.category) ? parseNum(form.taxiFuelL)   : 0,
         landingFuelL:     HAS_FUEL(form.category) ? parseNum(form.landingFuelL): 0,
         holdingMin:       HAS_FUEL(form.category) ? parseNum(form.holdingMin)  : 0,
+        diversionMin:     HAS_FUEL(form.category) ? parseNum(form.diversionMin, 30) : 0,
         contingencyPct:   HAS_FUEL(form.category) ? parseNum(form.contingencyPct) : 0,
         serviceCeilingFt: HAS_ENGINE(form.category) ? parseNum(form.serviceCeilingFt) : 0,
         rocSlFpm:         HAS_ENGINE(form.category) ? parseNum(form.rocSlFpm)         : 0,
@@ -474,7 +479,7 @@ export default function AircraftLibrary({
         <div className={css.sectionLabel}>Performance</div>
         <Field label="Cruise Alt"   unit="ft"  type="number" value={form.cruiseAltFt}  error={errors.cruiseAltFt}  tooltip="Typical cruising altitude in feet MSL. Used for airspace checks and flight profile projection." pohMissing={pohMissing.has('cruiseAltFt')} onChange={v => set('cruiseAltFt', v)} />
         <Field label="Cruise IAS"   unit="kts" type="number" value={form.cruiseIas}    error={errors.cruiseIas}    tooltip="Typical cruise indicated airspeed in knots. Used to calculate leg times and fuel burn." pohMissing={pohMissing.has('cruiseIas')} onChange={v => set('cruiseIas', v)} />
-        <Field label="Takeoff speed" unit="kts" type="number" value={form.takeoffSpeedKts} tooltip="Ground speed at which this aircraft takes off, in knots. Used to detect takeoff and landing for auto flying mode and the flight log. 0 = default for the aircraft category." onChange={v => set('takeoffSpeedKts', v)} />
+        <Field label="Takeoff speed" unit="kts" type="number" value={form.takeoffSpeedKts} pohMissing={pohMissing.has('takeoffSpeedKts')} tooltip="Ground speed at which this aircraft takes off, in knots. Used to detect takeoff and landing for auto flying mode and the flight log. 0 = default for the aircraft category." onChange={v => set('takeoffSpeedKts', v)} />
 
         {HAS_FUEL(form.category) && (
           <>
@@ -484,6 +489,7 @@ export default function AircraftLibrary({
             <Field label="Taxi / T/O"   unit="L"   type="number" value={form.taxiFuelL}    tooltip="Fuel used for engine start, taxi and take-off roll. Deducted before departure fuel is calculated." pohMissing={pohMissing.has('taxiFuelL')} onChange={v => set('taxiFuelL', v)} />
             <Field label="Reserve LDG"  unit="L"   type="number" value={form.landingFuelL} tooltip="Fixed landing fuel reserve in litres. Always kept in reserve and never used in fuel planning." pohMissing={pohMissing.has('landingFuelL')} onChange={v => set('landingFuelL', v)} />
             <Field label="Holding"      unit="min" type="number" value={form.holdingMin}   tooltip="Extra holding allowance in minutes, burned at cruise fuel rate. Added on top of trip fuel." onChange={v => set('holdingMin', v)} />
+            <Field label="Diversion"    unit="min" type="number" value={form.diversionMin} tooltip="Diversion reserve in minutes, burned at cruise fuel rate (default 30)." onChange={v => set('diversionMin', v)} />
             <Field label="Contingency"  unit="%"   type="number" value={form.contingencyPct} error={errors.contingencyPct} tooltip="Extra fuel as a percentage of trip fuel (e.g. 5 for 5%). EU OPS minimum is 5%." onChange={v => set('contingencyPct', v)} />
           </>
         )}

@@ -69,6 +69,8 @@ function gsKts(trackDeg: number, windDir: number, windSpd: number, tas: number):
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { routeToGpx, gpxToRoute, waypointsToGpx, gpxToWaypoints } from '@open-vfr/shared/gpx'
 import { iasToTas } from '@open-vfr/shared/airspeed'
+import { fetchWind } from '@open-vfr/shared/fetchWind'
+import { API_BASE } from '../config'
 import * as FileSystem from 'expo-file-system'
 import * as DocumentPicker from 'expo-document-picker'
 
@@ -216,7 +218,25 @@ export function PlanScreen() {
     setOvrWDir(o.windDir != null ? String(o.windDir) : '')
     setOvrWSpd(o.windSpd != null ? String(Math.round(ktsToDisplay(o.windSpd, units.speed))) : '')
     setOvrOat(o.oatC != null ? String(o.oatC) : '')
-    setActiveLeg(i === activeLeg ? null : i)
+    const opening = i !== activeLeg
+    setActiveLeg(opening ? i : null)
+    // Pre-fill the forecast wind (when neither the leg nor a session wind has one)
+    // and temperature (when none saved), like the web leg panel. Offline: stays blank.
+    const needWind = o.windDir == null && o.windSpd == null && !wind
+    const needOat  = o.oatC == null
+    if (opening && (needWind || needOat) && waypoints[i] && waypoints[i + 1]) {
+      const midLat = (waypoints[i].lat + waypoints[i + 1].lat) / 2
+      const midLng = (waypoints[i].lng + waypoints[i + 1].lng) / 2
+      fetchWind(midLat, midLng, o.altFt ?? profile?.cruiseAltFt ?? null, API_BASE)
+        .then(w => {
+          if (needWind) {
+            setOvrWDir(String(w.dirDeg))
+            setOvrWSpd(String(Math.round(ktsToDisplay(w.speedKts, units.speed))))
+          }
+          if (needOat && w.tempC != null) setOvrOat(String(w.tempC))
+        })
+        .catch(() => {})
+    }
   }
   function saveLegProps(i: number) {
     const next: LegOverride = {}

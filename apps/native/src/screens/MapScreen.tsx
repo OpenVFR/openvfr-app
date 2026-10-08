@@ -718,6 +718,8 @@ export function MapScreen() {
   // useFlightLog wiring in MapView.tsx exactly (gate position on flying mode,
   // pass nearest aerodrome ICAO for departure/arrival tagging).
   const { syncState: logSyncState, pushLog } = useFlightLogSync(authenticated)
+  // Set just before an AUTO stop so useFlightLog leaves a parked log to its park timer.
+  const deferLogCloseRef = React.useRef(false)
   const { activeLogId } = useFlightLog(
     flightModeStatus !== 'off' ? activePosition : null,
     flightModeStatus,
@@ -726,6 +728,7 @@ export function MapScreen() {
     nearbyFreqs[0]?.icao ?? null,
     undefined,
     flyThresholds,
+    deferLogCloseRef,
   )
   // Finalize + upload logs orphaned by a previous session that was closed
   // mid-flight (otherwise they stay "Recording…" forever, unviewable/unsynced).
@@ -791,7 +794,7 @@ export function MapScreen() {
     settings.autoFlyMode ?? 'ask',
     simFlight.active ? null : position,
     flying && !simFlight.active,
-    { start: handleStartGpsFly, stop: handleStopFlight },
+    { start: handleStartGpsFly, stop: () => { deferLogCloseRef.current = true; handleStopFlight() } },
     flyThresholds,
   )
 

@@ -44,6 +44,7 @@ export type PohExtractResult = {
   descentIas?:       string
   bestGlideIas?:     string
   glideRatio?:       string
+  takeoffSpeedKts?:  string
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +151,7 @@ export async function extractPohViaServer(
           descentIas:       numStr('descentIas'),
           bestGlideIas:     numStr('bestGlideIas'),
           glideRatio:       numStr('glideRatio'),
+          takeoffSpeedKts:  numStr('takeoffSpeedKts'),
         }
       }
     }

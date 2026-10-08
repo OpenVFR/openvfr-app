@@ -47,6 +47,8 @@ export function useFlightLog(
   parkTimeoutMs:  number = PARK_TIMEOUT_MS,
   /** Takeoff / landed ground speeds (kt); from the aircraft profile via autoFlyThresholds(). */
   thr:            { takeoffKts: number; landedKts: number } = { takeoffKts: TAKEOFF_SPD_KTS, landedKts: LANDING_SPD_KTS },
+  /** Set to true right before an AUTO stop of flying mode: a log parked between circuits is then left to the park timer. A manual stop (ref false) closes it at once. Reset by the hook. */
+  deferCloseRef?: { current: boolean },
 ): { activeLogId: string | null; liveTrack: TrackPoint[] } {
   const [activeLogId, setActiveLogId] = useState<string | null>(null)
   const [liveTrack,   setLiveTrack]   = useState<TrackPoint[]>([])
@@ -76,10 +78,12 @@ export function useFlightLog(
   useEffect(() => {
     if (flyingMode === 'off') {
       const s = stateRef.current
-      // Stopped while parked between circuits (auto-stop on landing, or a manual
-      // stop on the apron): leave the log open and let the park timer close it, so
-      // a restart within the timeout continues the same log instead of splitting it.
-      if (s.phase === 'taxiing' && s.logId && s.parkTimer && parkTimeoutMs > 0) return
+      // Auto-stopped on landing while parked between circuits: leave the log open
+      // and let the park timer close it, so a restart within the timeout continues
+      // the same log instead of splitting it. A manual stop closes the log now.
+      const defer = deferCloseRef?.current === true
+      if (deferCloseRef) deferCloseRef.current = false
+      if (defer && s.phase === 'taxiing' && s.logId && s.parkTimer && parkTimeoutMs > 0) return
       if ((s.phase === 'flying' || s.phase === 'taxiing') && s.logId) {
         finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '')
       }

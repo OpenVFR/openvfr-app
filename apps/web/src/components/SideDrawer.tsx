@@ -391,6 +391,7 @@ function SideDrawer({
                     onSetLegOverride={onSetLegOverride}
                     onSetWaypointNote={onSetWaypointNote}
                     defaultAltFt={selectedAircraftProfile?.cruiseAltFt || undefined}
+                    defaultSpeedKts={selectedAircraftProfile?.cruiseIas || undefined}
                   />
               </div>
             )}
