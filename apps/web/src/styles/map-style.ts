@@ -1170,8 +1170,8 @@ export function getMapStyle(): StyleSpecification {
       // ── Layers 2-5: controlled airspace (CTR, TMA/CTA) and RMZ/ATZ/TMZ zones ──
       // Separate layer sets per kind so each has its own toggle
       // (LAYER_GROUPS classCtr / classCtma) and per-class colour.
-      ...controlledLayers('ctr'),
       ...controlledLayers('tma'),
+      ...controlledLayers('ctr'),
       // RMZ / ATZ / TMZ: zones inside uncontrolled airspace. Near-clear fill
       // (hit-testable for tap-to-inspect), thin dashed grey outline.
       {

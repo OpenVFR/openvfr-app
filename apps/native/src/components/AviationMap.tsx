@@ -1591,8 +1591,10 @@ export function AviationMap({
   // layer set each. Class G is never drawn; RMZ/ATZ/TMZ have the 'g' zone variant,
   // danger areas the red restricted variants.
   const NON_CONTROLLED_TYPES = [...ZONE_TYPES, 'FIR', 'UIR', 'D']
-  const controlledVariants = CONTROLLED_CLASSES.flatMap((cls) =>
-    (['ctr', 'tma'] as const).map((kind) => {
+  // TMA/CTA first, CTR last: later layers draw on top, and CTR edges often share
+  // a boundary with TMA/CTA limits, so the magenta CTR border must not be buried.
+  const controlledVariants = (['tma', 'ctr'] as const).flatMap((kind) =>
+    CONTROLLED_CLASSES.map((cls) => {
       const st = controlledStyle(cls, kind === 'ctr' ? 'CTR' : 'TMA')
       return {
         k: `${cls.toLowerCase()}-${kind}`,
