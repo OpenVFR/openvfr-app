@@ -10,7 +10,7 @@
  * useAerodromeElevation.ts / useNearestQnh.ts.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { getTileUrls } from '../config'
 import { distanceNm } from '../utils/routeCalc'
 import type { GpsPosition } from '../utils/gpsTypes'
@@ -58,18 +58,31 @@ export type NearestAerodromeResult = {
 export function useNearestAerodrome(position: GpsPosition | null): NearestAerodromeResult {
   const [aerodromes, setAerodromes] = useState<CachedAerodrome[]>([])
   const [result, setResult] = useState<NearestAerodromeResult>(null)
+  const resultRef = useRef<NearestAerodromeResult>(null)
 
   useEffect(() => { loadOnce(setAerodromes) }, [])
 
   useEffect(() => {
-    if (!position || aerodromes.length === 0) { setResult(null); return }
+    if (!position || aerodromes.length === 0) {
+      if (resultRef.current !== null) { resultRef.current = null; setResult(null) }
+      return
+    }
     let best: CachedAerodrome | null = null
     let bestDist = Infinity
     for (const a of aerodromes) {
       const d = distanceNm({ lat: position.lat, lng: position.lng }, { lat: a.lat, lng: a.lng })
       if (d < bestDist) { bestDist = d; best = a }
     }
-    setResult(best ? { icao: best.icao, elevationFt: best.elevationFt, distanceNm: bestDist } : null)
+    // `position` is a new object every GPS/sim tick. Calling setResult from this
+    // effect each time re-rendered the whole screen per tick (even a no-op updater
+    // counts as an update scheduled during effects), so compare against a ref and
+    // only set state when the visible result actually changes.
+    const dist = Math.round(bestDist * 10) / 10
+    const next = best ? { icao: best.icao, elevationFt: best.elevationFt, distanceNm: dist } : null
+    const prev = resultRef.current
+    if (prev === next || (prev && next && prev.icao === next.icao && prev.distanceNm === next.distanceNm)) return
+    resultRef.current = next
+    setResult(next)
   }, [position, aerodromes])
 
   return result

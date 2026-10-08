@@ -142,7 +142,9 @@ appId: org.openvfr.app
 # Find a Destination sheet, view only: nothing is added to the route. Aerodromes
 # load on the sheet's first open, so give them a moment before the shot.
 - tapOn:
-    id: find-destination-open
+    id: map-tools-open
+- tapOn:
+    id: map-tool-dest
 - waitForAnimationToEnd:
     timeout: 10000
 - takeScreenshot: 03-find-destination
@@ -163,7 +165,9 @@ appId: org.openvfr.app
 - tapOn:
     id: tab-map
 - tapOn:
-    id: flight-mode-open
+    id: map-tools-open
+- tapOn:
+    id: map-tool-go
 - tapOn:
     id: flight-mode-start-sim
 # The simulator's first position arrives on its first tick; the profile chart

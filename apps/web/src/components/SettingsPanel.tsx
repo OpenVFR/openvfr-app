@@ -15,8 +15,6 @@ interface Props {
   onRegionChange:    (code: string) => void
   theme:             Theme
   onThemeChange:     (t: Theme) => void
-  autoZoom:              boolean
-  onAutoZoomChange:      (v: boolean) => void
   trajectoryMode:        TrajectoryMode
   onTrajectoryModeChange:(v: TrajectoryMode) => void
   airspaceWarnLookahead:       AirspaceWarnLookahead
@@ -47,7 +45,7 @@ const THEMES: { value: Theme; label: string }[] = [
   { value: 'high-contrast', label: 'Hi-Con' },
 ]
 
-export default function SettingsPanel({ units, onUnitsChange, region, onRegionChange, theme, onThemeChange, autoZoom, onAutoZoomChange, trajectoryMode, onTrajectoryModeChange, airspaceWarnLookahead, onAirspaceWarnLookaheadChange, airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange, trafficVertFilter, onTrafficVertFilterChange, parkTimeout, onParkTimeoutChange, autoFlyMode, onAutoFlyModeChange, inFlight, onClose, manifest, isOnline = true, checking = false, onRefresh }: Props) {
+export default function SettingsPanel({ units, onUnitsChange, region, onRegionChange, theme, onThemeChange, trajectoryMode, onTrajectoryModeChange, airspaceWarnLookahead, onAirspaceWarnLookaheadChange, airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange, trafficVertFilter, onTrafficVertFilterChange, parkTimeout, onParkTimeoutChange, autoFlyMode, onAutoFlyModeChange, inFlight, onClose, manifest, isOnline = true, checking = false, onRefresh }: Props) {
   return (
     <div className={css.panel}>
       <div className={css.header}>
@@ -107,19 +105,6 @@ export default function SettingsPanel({ units, onUnitsChange, region, onRegionCh
           {inFlight && (
             <span className={css.lockedNote}>Not available during flight</span>
           )}
-        </div>
-      </div>
-
-      <div className={css.section}>
-        <span className={css.label}>Auto-zoom</span>
-        <div className={css.options}>
-          <button
-            className={`${css.opt}${autoZoom ? ` ${css.optActive}` : ''}`}
-            onClick={() => onAutoZoomChange(!autoZoom)}
-            title="Automatically zoom to takeoff and cruise zoom levels when airborne"
-          >
-            {autoZoom ? 'Auto-zoom ON' : 'Auto-zoom OFF'}
-          </button>
         </div>
       </div>
 

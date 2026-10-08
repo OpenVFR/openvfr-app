@@ -42,6 +42,9 @@ interface Props {
   onFlyTo:          (lat: number, lng: number) => void
   /** Append as a route waypoint */
   onAddToRoute:     (wp: RouteWaypoint) => void
+  /** Controlled open state (map toolbar menu); omit for the built-in trigger button. */
+  open?:            boolean
+  onOpenChange?:    (open: boolean) => void
 }
 
 const FUEL_OPTS: { v: FuelFilter; label: string }[] = [
@@ -51,10 +54,13 @@ const SURF_OPTS: { v: SurfaceFilter; label: string }[] = [
   { v: 'any', label: 'Any' }, { v: 'hard', label: 'Hard' }, { v: 'grass', label: 'Grass' },
 ]
 
-export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyTo, onAddToRoute }: Props) {
+export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyTo, onAddToRoute, open: openProp, onOpenChange }: Props) {
   const styles = useThemedStyles(makeStyles)
   const sheetMaxH = useSheetMaxHeight()
-  const [open, setOpen] = React.useState(false)
+  const [openState, setOpenState] = React.useState(false)
+  const controlled = openProp !== undefined
+  const open = controlled ? openProp : openState
+  const setOpen = (v: boolean) => { if (controlled) onOpenChange?.(v); else setOpenState(v) }
   const [aerodromes, setAerodromes] = React.useState<AerodromeEntry[]>([])
   const [search, setSearch] = React.useState('')
   // A typed coordinate (any format coordinateParse accepts, e.g. a NOTAM's
@@ -124,9 +130,11 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
 
   return (
     <>
-      <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)} testID="find-destination-open" accessibilityLabel="Find a destination">
-        <Ionicons name="search-outline" size={20} color={theme.textSecondary} />
-      </TouchableOpacity>
+      {!controlled && (
+        <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)} testID="find-destination-open" accessibilityLabel="Find a destination">
+          <Ionicons name="search-outline" size={20} color={theme.textSecondary} />
+        </TouchableOpacity>
+      )}
 
       <NativeSheet
         isPresented={open}

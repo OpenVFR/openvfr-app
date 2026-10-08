@@ -30,27 +30,35 @@ interface Props {
   onStartGps: () => void
   onStartSim: () => void
   onStop: () => void
+  /** Controlled open state (map toolbar menu); omit for the built-in trigger button. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
-export function FlightModeSheet({ status, onStartGps, onStartSim, onStop }: Props) {
+export function FlightModeSheet({ status, onStartGps, onStartSim, onStop, open: openProp, onOpenChange }: Props) {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
-  const [open, setOpen] = useState(false)
+  const [openState, setOpenState] = useState(false)
+  const controlled = openProp !== undefined
+  const open = controlled ? openProp : openState
+  const setOpen = (v: boolean) => { if (controlled) onOpenChange?.(v); else setOpenState(v) }
   const active = status !== 'off'
 
   return (
     <>
-      <TouchableOpacity
-        style={[styles.trigger, active && styles.triggerActive]}
-        onPress={() => setOpen(true)}
-        testID="flight-mode-open"
-      >
-        <Ionicons
-          name={status === 'sim' ? 'game-controller-outline' : 'airplane-outline'}
-          size={19}
-          color={active ? theme.accentBlue : theme.textSecondary}
-        />
-      </TouchableOpacity>
+      {!controlled && (
+        <TouchableOpacity
+          style={[styles.trigger, active && styles.triggerActive]}
+          onPress={() => setOpen(true)}
+          testID="flight-mode-open"
+        >
+          <Ionicons
+            name={status === 'sim' ? 'game-controller-outline' : 'airplane-outline'}
+            size={19}
+            color={active ? theme.accentBlue : theme.textSecondary}
+          />
+        </TouchableOpacity>
+      )}
 
       <NativeSheet
         isPresented={open}

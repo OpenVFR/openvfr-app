@@ -39,6 +39,8 @@ interface Props {
   plogOpen:         boolean
   onAdjustRoute:    () => void  // toggle in-flight route adjustment mode
   adjustMode:       boolean
+  /** Prototype: orientation / Direct-To / drop / adjust live in the map toolbar instead. */
+  hideToolbarButtons?: boolean
 }
 
 function fmtHdg(deg: number): string {
@@ -71,6 +73,7 @@ function fmtEta(minutesFromNow: number): string {
 }
 
 export default function GoFlyingPanel({
+  hideToolbarButtons,
   mode,
   position,
   wind,
@@ -259,6 +262,7 @@ export default function GoFlyingPanel({
 
         {/* Orientation + follow + stop */}
         <div className={css.controls}>
+          {!hideToolbarButtons && (
           <button
             className={`${css.orientBtn} ${css.orientBtnActive}`}
             onClick={() => onOrientationChange(orientation === 'north' ? 'track' : orientation === 'track' ? 'course' : 'north')}
@@ -266,6 +270,7 @@ export default function GoFlyingPanel({
           >
             {orientation === 'north' ? 'N↑' : orientation === 'track' ? 'TRK↑' : 'CRS↑'}
           </button>
+          )}
 
           <button
             className={`${css.followBtn} ${followAircraft ? css.followBtnActive : css.followBtnOff}`}
@@ -275,6 +280,7 @@ export default function GoFlyingPanel({
             {followAircraft ? '⊕' : '⊕ Re-center'}
           </button>
 
+          {!hideToolbarButtons && (<>
           <button className={css.directToBtn} onClick={onOpenDirectTo} title="Direct To aerodrome">
             D→
           </button>
@@ -282,6 +288,7 @@ export default function GoFlyingPanel({
           <button className={css.dropBtn} onClick={onDropWaypoint} title="Drop a waypoint here">
             📍
           </button>
+          </>)}
 
           <button className={css.stopBtn} onClick={onStop}>
             ■ STOP
@@ -341,6 +348,7 @@ export default function GoFlyingPanel({
           >
             PLOG
           </button>
+          {!hideToolbarButtons && (
           <button
             className={`${css.adjustBtn} ${adjustMode ? css.adjustBtnActive : ''}`}
             onClick={onAdjustRoute}
@@ -348,6 +356,7 @@ export default function GoFlyingPanel({
           >
             {adjustMode ? '🔓 ROUTE' : '✎ ROUTE'}
           </button>
+          )}
         </div>
       )}
     </div>

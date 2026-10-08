@@ -1,9 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as maplibregl from 'maplibre-gl'
+import { createPortal } from 'react-dom'
 import AutoFlyPrompt from './AutoFlyPrompt'
 import { useThrottledValue } from '../hooks/useThrottledValue'
 import { useStableProps } from '../hooks/useStableProps'
 import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
+import MapToolbar, { type ToolGroupDef, type ToolItem } from './MapToolbar'
+import { renderToStaticMarkup } from 'react-dom/server'
+import {
+  IconCurrentLocation, IconCurrentLocationFilled, IconHome, IconPlaneDeparture, IconPlaneArrival,
+  IconRulerMeasure, IconSearch, IconNews, IconArrowBigRight, IconMapPinPlus,
+  IconPencil, IconLockOpen, IconArrowUp, IconNavigation, IconRoute, IconZoomScan,
+} from '@tabler/icons-react'
+
+// Map control button glyphs (Tabler Icons). The imperative MapLibre buttons
+// take innerHTML, hence static markup; MapToolbar takes the elements directly.
+const CTRL_ICON = { size: 18, stroke: 2 } as const
+const LOCATE_ICON_SVG         = renderToStaticMarkup(<IconCurrentLocation {...CTRL_ICON} />)
+const LOCATE_ON_ICON_SVG      = renderToStaticMarkup(<IconCurrentLocationFilled {...CTRL_ICON} />)
+
 import type { GeoJSONSource, ExpressionSpecification } from 'maplibre-gl'
 // MapLibre v6 is ESM-only and locates its worker via a computed
 // `new URL('./maplibre-gl-worker.mjs', import.meta.url)` inside its own
@@ -311,9 +326,6 @@ const SNAP_LAYERS = [
   'user-waypoints-circle',
 ]
 
-// Home airfield button icon (Lucide "home").
-const LOCATE_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>'
 
 /** In flight: after the pilot pans away, return to following the aircraft
  *  once the map has been left alone this long. A forgotten Re-center in
@@ -324,27 +336,10 @@ const FOLLOW_RETURN_MS = 15_000
  *  below centre (0.25 × height = aircraft at 75% down the screen). */
 const FOLLOW_LOOKAHEAD_RATIO = 0.25
 
-const HOME_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>'
 
-// Go Flying toggle button icon — same Ionicons "airplane-outline" glyph the
-// native app's FlightModeSheet trigger uses, for icon parity across platforms.
-const FLYING_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"><path d="M407.72,224c-3.4,0-14.79.1-18,.3l-64.9,1.7a1.83,1.83,0,0,1-1.69-.9L193.55,67.56A9,9,0,0,0,186.89,64H160l73,161a2.35,2.35,0,0,1-2.26,3.35l-121.69,1.8a8.06,8.06,0,0,1-6.6-3.1l-37-45c-3-3.9-8.62-6-13.51-6H33.08c-1.29,0-1.1,1.21-.75,2.43L52.17,249.9a16.3,16.3,0,0,1,0,11.9L32.31,333c-.59,1.95-.52,3,1.77,3H52c8.14,0,9.25-1.06,13.41-6.3l37.7-45.7a8.19,8.19,0,0,1,6.6-3.1l120.68,2.7a2.7,2.7,0,0,1,2.43,3.74L160,448h26.64a9,9,0,0,0,6.65-3.55L323.14,287c.39-.6,2-.9,2.69-.9l63.9,1.7c3.3.2,14.59.3,18,.3C452,288.1,480,275.93,480,256S452.12,224,407.72,224Z"/></svg>'
 
-// Ruler tool button icon (Lucide "ruler").
-const RULER_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.3 8.7 8.7 21.3c-1 1-2.5 1-3.4 0l-2.6-2.6c-1-1-1-2.5 0-3.4L15.3 2.7c1-1 2.5-1 3.4 0l2.6 2.6c1 1 1 2.5 0 3.4Z"/><path d="m7.5 10.5 2 2"/><path d="m10.5 7.5 2 2"/><path d="m13.5 4.5 2 2"/><path d="m4.5 13.5 2 2"/></svg>'
 
-// Find a Destination button icon -- same Ionicons "search-outline" glyph the
-// native app's FindDestinationSheet trigger uses, for icon parity across platforms.
-const FIND_DEST_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round" stroke-miterlimit="10"><path d="M221.09,64A157.09,157.09,0,1,0,378.18,221.09,157.1,157.1,0,0,0,221.09,64Z"/><line x1="338.29" y1="338.29" x2="448" y2="448"/></svg>'
 
-// Airfield Brief button icon -- same Ionicons "newspaper-outline" glyph
-// native's VicinityBriefSheet trigger uses, for icon parity across platforms.
-const VICINITY_BRIEF_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-width="32"><path d="M368,415.86V72a24.07,24.07,0,0,0-24-24H72A24.07,24.07,0,0,0,48,72V424a40.12,40.12,0,0,0,40,40H416" stroke-linejoin="round"/><path d="M416,464h0a48,48,0,0,1-48-48V128h72a24,24,0,0,1,24,24V416A48,48,0,0,1,416,464Z" stroke-linejoin="round"/><line x1="240" y1="128" x2="304" y2="128" stroke-linecap="round" stroke-linejoin="round"/><line x1="240" y1="192" x2="304" y2="192" stroke-linecap="round" stroke-linejoin="round"/><line x1="112" y1="256" x2="304" y2="256" stroke-linecap="round" stroke-linejoin="round"/><line x1="112" y1="320" x2="304" y2="320" stroke-linecap="round" stroke-linejoin="round"/><line x1="112" y1="384" x2="304" y2="384" stroke-linecap="round" stroke-linejoin="round"/><path d="M176,208H112a16,16,0,0,1-16-16V128a16,16,0,0,1,16-16h64a16,16,0,0,1,16,16v64A16,16,0,0,1,176,208Z" fill="currentColor" stroke="none"/></svg>'
 
 // Route layer IDs toggled by the route Active/Inactive toggle (in RoutePlan's
 // header, not a map button — see routeVisible below). Waypoint data is
@@ -458,11 +453,9 @@ const NO_WAYPOINTS: RouteWaypoint[] = []
 export default function MapView({ auth }: { auth: AuthState }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
-  const rulerBtnRef = useRef<HTMLButtonElement | null>(null)
   // Active altitude-filter range, shown beside the scale bar so it's always
   // visible that airspace above the ceiling is hidden (the slider itself
   // lives in a collapsible drawer section).
-  const homeBtnRef = useRef<HTMLButtonElement | null>(null)
   // ── Location button: 'off' | 'passive' outside Go Flying (Follow is the
   // flying-mode followAircraft state). Passive = own-position dot, camera
   // only moves on an explicit tap. See usePassivePosition.
@@ -939,6 +932,31 @@ export default function MapView({ auth }: { auth: AuthState }) {
     m.setRotation(passivePos.headingDeg ?? 0)
   }, [passivePos, mapReady, flyingMode])
 
+  const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null)
+  const handleOrientation = (o: MapOrientation) => {
+    setMapOrientation(o)
+    // If following, immediately re-orient the map.
+    const pos = gpsPositionRef.current
+    const map = mapRef.current
+    if (followAircraft && pos && map) {
+      const legBearing =
+        routeWaypoints.length >= 2 && activeWpIdx > 0 && activeWpIdx < routeWaypoints.length
+          ? bearingDeg(routeWaypoints[activeWpIdx - 1], routeWaypoints[activeWpIdx])
+          : pos.trackDeg
+      const bearing =
+        o === 'track'  ? pos.trackDeg
+        : o === 'course' ? legBearing
+        : 0
+      map.easeTo({ bearing, duration: 400 })
+    }
+  }
+  const dropWaypointHere = () => {
+    const pos = gpsPositionRef.current
+    if (!pos) return
+    const name = `Drop ${new Date().toUTCString().slice(17, 22)}z`
+    saveUserWaypoint({ name, lat: pos.lat, lng: pos.lng, folder: 'Dropped in Flight' })
+  }
+
   // Button appearance per state.
   useEffect(() => {
     const btn = locateBtnRef.current
@@ -951,13 +969,12 @@ export default function MapView({ auth }: { auth: AuthState }) {
         ? (locDenied ? 'Location permission denied' : 'Show my position')
         : 'Showing my position — tap to centre, tap again when centred to turn off'
     btn.style.color = on ? 'var(--accent-blue)' : ''
+    btn.innerHTML = on ? LOCATE_ON_ICON_SVG : LOCATE_ICON_SVG
     btn.setAttribute('aria-pressed', String(on))
     btn.setAttribute('aria-label', btn.title)
   }, [locMode, locDenied, followAircraft, flyingMode, mapReady])
   const gpsPositionRef  = useRef<GpsPosition | null>(null)
   const aircraftDragRef = useRef(false)
-  const flyingBtnRef     = useRef<HTMLButtonElement | null>(null)
-  const findDestBtnRef   = useRef<HTMLButtonElement | null>(null)
   // Cache of all runway threshold entries, loaded once from se-runway-thresholds.geojson
   const runwayThresholdsRef = useRef<ThresholdEntry[]>([])
   // Cache of every towered aerodrome's coords + hours, loaded once from
@@ -1482,28 +1499,16 @@ export default function MapView({ auth }: { auth: AuthState }) {
     mapRef.current = map
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right')
+    // Prototype: the map tools menu button (3x3 dot grid) is React, portalled
+    // into this host so they sit in MapLibre's top-right stack.
+    const toolbarCtrlDiv = document.createElement('div')
+    toolbarCtrlDiv.className = 'maplibregl-ctrl'
+    setToolbarHost(toolbarCtrlDiv)
+    map.addControl({ onAdd: () => toolbarCtrlDiv, onRemove: () => {} }, 'top-right')
     // Scale, altitude-filter band and data attribution live in MapInfoBar
     // (React overlay, bottom-right) -- MapLibre's own ScaleControl and
     // AttributionControl are deliberately not added. attributionControl:
     // false above; credits are listed in MapInfoBar's (i) dialog instead.
-
-    // Home airfield button — stacks below the navigation control in the top-right corner.
-    const homeBtn = document.createElement('button')
-    homeBtn.title = 'Fly to home airfield'
-    homeBtn.innerHTML = HOME_ICON_SVG
-    homeBtn.style.cssText = 'display:flex;align-items:center;justify-content:center;'
-    homeBtn.addEventListener('click', () => {
-      // homeAirfield is stale in this closure; read from the ref updated below.
-      const btn = homeBtn as HTMLButtonElement & { _home?: { lng: number; lat: number } }
-      if (btn._home) {
-        mapRef.current?.flyTo({ center: [btn._home.lng, btn._home.lat], zoom: 13, speed: 1.4 })
-      }
-    })
-    homeBtnRef.current = homeBtn
-    const homeCtrlDiv = document.createElement('div')
-    homeCtrlDiv.className = 'maplibregl-ctrl maplibregl-ctrl-group'
-    homeCtrlDiv.appendChild(homeBtn)
-    map.addControl({ onAdd: () => homeCtrlDiv, onRemove: () => {} }, 'top-right')
 
     // Locate button (Off / Passive; Follow while flying) -- behaviour lives
     // in locateClickRef so the click always sees current React state.
@@ -1516,65 +1521,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
     locateCtrlDiv.className = 'maplibregl-ctrl maplibregl-ctrl-group'
     locateCtrlDiv.appendChild(locateBtn)
     map.addControl({ onAdd: () => locateCtrlDiv, onRemove: () => {} }, 'top-right')
-
-    // Map ruler toggle — stacks below the route planning button.
-    const rulerBtn = document.createElement('button')
-    rulerBtn.title = 'Map Ruler — measure distance and bearing'
-    rulerBtn.innerHTML = RULER_ICON_SVG
-    rulerBtn.style.cssText = 'display:flex;align-items:center;justify-content:center;'
-    rulerBtn.addEventListener('click', () => {
-      setRulerMode((m) => {
-        if (m) setRulerPoints([])   // clear points when turning off
-        return !m
-      })
-    })
-    rulerBtnRef.current = rulerBtn
-    const rulerCtrlDiv = document.createElement('div')
-    rulerCtrlDiv.className = 'maplibregl-ctrl maplibregl-ctrl-group'
-    rulerCtrlDiv.appendChild(rulerBtn)
-    map.addControl({ onAdd: () => rulerCtrlDiv, onRemove: () => {} }, 'top-right')
-
-    // Go Flying toggle — stacks below the ruler button.
-    const flyingBtn = document.createElement('button')
-    flyingBtn.title = 'Go Flying — GPS or Simulation'
-    flyingBtn.innerHTML = FLYING_ICON_SVG
-    flyingBtn.style.cssText = 'display:flex;align-items:center;justify-content:center;'
-    flyingBtn.addEventListener('click', () => {
-      if (flyingModeRef.current !== 'off') {
-        stopFlyingRef.current()
-        setShowModePicker(false)
-      } else {
-        setShowModePicker((m) => !m)
-      }
-    })
-    flyingBtnRef.current = flyingBtn
-    const flyingCtrlDiv = document.createElement('div')
-    flyingCtrlDiv.className = 'maplibregl-ctrl maplibregl-ctrl-group'
-    flyingCtrlDiv.appendChild(flyingBtn)
-    map.addControl({ onAdd: () => flyingCtrlDiv, onRemove: () => {} }, 'top-right')
-
-    // Find a Destination button — stacks below the flying button.
-    const findDestBtn = document.createElement('button')
-    findDestBtn.title = 'Find a Destination'
-    findDestBtn.innerHTML = FIND_DEST_ICON_SVG
-    findDestBtn.style.cssText = 'display:flex;align-items:center;justify-content:center;'
-    findDestBtn.addEventListener('click', () => setShowFindDest(m => !m))
-    findDestBtnRef.current = findDestBtn
-    const findDestCtrlDiv = document.createElement('div')
-    findDestCtrlDiv.className = 'maplibregl-ctrl maplibregl-ctrl-group'
-    findDestCtrlDiv.appendChild(findDestBtn)
-    map.addControl({ onAdd: () => findDestCtrlDiv, onRemove: () => {} }, 'top-right')
-
-    // Airfield Brief button — stacks below Find a Destination.
-    const vicinityBriefBtn = document.createElement('button')
-    vicinityBriefBtn.title = 'Airfield Brief'
-    vicinityBriefBtn.innerHTML = VICINITY_BRIEF_ICON_SVG
-    vicinityBriefBtn.style.cssText = 'display:flex;align-items:center;justify-content:center;'
-    vicinityBriefBtn.addEventListener('click', () => setShowVicinityBrief(m => !m))
-    const vicinityBriefCtrlDiv = document.createElement('div')
-    vicinityBriefCtrlDiv.className = 'maplibregl-ctrl maplibregl-ctrl-group'
-    vicinityBriefCtrlDiv.appendChild(vicinityBriefBtn)
-    map.addControl({ onAdd: () => vicinityBriefCtrlDiv, onRemove: () => {} }, 'top-right')
 
     // Register canvas-drawn icons on demand — fires for each missing image ID
     // before the layer renders. This handles the init race where symbol layers
@@ -3196,33 +3142,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
       clearTimeout(followReturnTimer)
       map.remove()
       mapRef.current = null
-      flyingBtnRef.current  = null
-      findDestBtnRef.current = null
     }
   }, [manifestReady])
-
-  // Sync homeAirfield → home button appearance and its _home data ref.
-  useEffect(() => {
-    const btn = homeBtnRef.current as (HTMLButtonElement & { _home?: { lng: number; lat: number } }) | null
-    if (!btn) return
-    if (homeAirfield) {
-      btn._home = { lng: homeAirfield.lng, lat: homeAirfield.lat }
-      btn.title = `Home: ${homeAirfield.icao}`
-      btn.innerHTML = HOME_ICON_SVG
-      btn.style.opacity = '1'
-      btn.style.outline = '2px solid #fbbf24'
-      btn.style.outlineOffset = '-2px'
-      btn.style.borderRadius = '4px'
-    } else {
-      btn._home = undefined
-      btn.title = 'No home airfield set — tap an aerodrome to set one'
-      btn.innerHTML = HOME_ICON_SVG
-      btn.style.opacity = '0.45'
-      btn.style.outline = ''
-      btn.style.outlineOffset = ''
-      btn.style.borderRadius = ''
-    }
-  }, [homeAirfield])
 
   // On first load: fly to home airfield instead of the hardcoded Stockholm default.
   // Only fires once (ref guard) and only when both homeAirfield and mapReady are set.
@@ -3410,14 +3331,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
       map.setLayoutProperty('route-leg-labels-layer', 'visibility', editMode ? 'none' : 'visible')
     }
   }, [planningMode, routeAdjustMode, rulerMode, placingUserWp, mapReady])
-
-  // Ruler mode: yellow button highlight.
-  useEffect(() => {
-    if (rulerBtnRef.current) {
-      rulerBtnRef.current.style.backgroundColor = rulerMode ? 'rgba(250, 204, 21, 0.85)' : ''
-      rulerBtnRef.current.style.color = rulerMode ? '#000000' : ''
-    }
-  }, [rulerMode])
 
   // Sync route waypoints → MapLibre GeoJSON sources.
   useEffect(() => {
@@ -4025,16 +3938,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWpIdx])
 
-  // Flying button visual state (highlighted when active).
-  useEffect(() => {
-    const btn = flyingBtnRef.current
-    if (!btn) return
-    const active = flyingMode !== 'off'
-    btn.style.backgroundColor = active ? 'rgba(168,85,247,0.85)' : ''
-    btn.style.color            = active ? '#ffffff' : ''
-    btn.title = active ? 'Stop flying' : 'Go Flying — GPS or Simulation'
-  }, [flyingMode])
-
   // Memoise activeInfo so its reference only changes when activePopup changes.
   // Without this, the SideDrawer auto-open effect fires on every render
   // (inline JSX ternaries produce a new object each time), re-opening the
@@ -4068,8 +3971,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
     onRegionChange: setRegion,
     theme,
     onThemeChange: setTheme,
-    autoZoom,
-    onAutoZoomChange: setAutoZoom,
     trajectoryMode,
     onTrajectoryModeChange: setTrajectoryMode,
     airspaceWarnLookahead,
@@ -4187,6 +4088,60 @@ export default function MapView({ auth }: { auth: AuthState }) {
           <AutoFlyPrompt kind={autoFly.suggestion} onAccept={autoFly.accept} onDismiss={autoFly.dismiss} />
         )}
         <div ref={containerRef} className={css.map} />
+        {toolbarHost && createPortal((() => {
+          const flying = flyingMode !== 'off'
+          const findItems: ToolItem[] = [
+            { id: 'dest',  label: 'Find dest.', description: 'Search aerodromes by name, fuel, surface and runway length, sorted by distance from you or the map centre', icon: <IconSearch {...CTRL_ICON} />, active: showFindDest, onSelect: () => setShowFindDest(m => !m) },
+            { id: 'home',  label: homeAirfield ? homeAirfield.icao : 'Home',
+              description: homeAirfield ? `Centre the map on your home airfield, ${homeAirfield.icao}` : 'No home airfield set yet. Tap an aerodrome on the map and use its home button.',
+              icon: <IconHome {...CTRL_ICON} />, dim: !homeAirfield,
+              onSelect: () => { if (homeAirfield) mapRef.current?.flyTo({ center: [homeAirfield.lng, homeAirfield.lat], zoom: 13, speed: 1.4 }) } },
+          ]
+          // Route editing: planningMode on the ground, routeAdjustMode in flight.
+          const editOn = flying ? routeAdjustMode : planningMode
+          const toggleEdit = () => flying ? setRouteAdjustMode(v => !v) : setPlanningMode(m => !m)
+          const toolItems: ToolItem[] = [
+            { id: 'ruler', label: 'Ruler', description: 'Measure distance and bearing: tap two points on the map. Tap again to switch off and clear.', icon: <IconRulerMeasure {...CTRL_ICON} />, active: rulerMode,
+              onSelect: () => setRulerMode(m => { if (m) setRulerPoints([]); return !m }) },
+            { id: 'edit', label: editOn ? 'Lock route' : 'Edit route',
+              description: flying
+                ? (editOn ? 'Lock the route again so it cannot be changed by accident' : 'Unlock the route to drag or add waypoints in flight (re-locks on the next flight)')
+                : (editOn ? 'Stop editing and lock the route' : 'Tap the map to add waypoints; drag them or the leg midpoints to change the route'),
+              icon: editOn ? <IconLockOpen {...CTRL_ICON} /> : <IconPencil {...CTRL_ICON} />, active: editOn, onSelect: toggleEdit },
+          ]
+          if (flying) toolItems.push({ id: 'drop', label: 'Drop waypoint', description: 'Save your current position as a waypoint in the "Dropped in Flight" folder', icon: <IconMapPinPlus {...CTRL_ICON} />, onSelect: dropWaypointHere })
+          // Start / stop flying mode lives in the menu: Ask mode already offers a
+          // Start prompt once takeoff is detected, and the flying panel has its own
+          // STOP. Starting early (before the takeoff roll), the simulator and
+          // external feeds still need a manual entry point.
+          const flyItems: ToolItem[] = [flying
+            ? { id: 'stop', label: 'Stop flying', description: 'End flying mode and close the flight log', icon: <IconPlaneArrival {...CTRL_ICON} />,
+                onSelect: () => { stopFlying(); setShowModePicker(false) } }
+            : { id: 'go', label: 'Go flying', description: 'Start flying mode with GPS, the keyboard simulator or an external simulator', icon: <IconPlaneDeparture {...CTRL_ICON} />,
+                active: showModePicker, onSelect: () => setShowModePicker(m => !m) }]
+          // Auto-zoom while following the aircraft (saved setting, shared with Settings).
+          if (flying) flyItems.push({ id: 'autozoom', label: autoZoom ? 'Auto-zoom on' : 'Auto-zoom off',
+            description: autoZoom ? 'Zooms in on takeoff and out in cruise while the map follows you. Tap to turn off.' : 'The map keeps your zoom level while following you. Tap to zoom automatically on takeoff and in cruise.',
+            icon: <IconZoomScan {...CTRL_ICON} />, active: autoZoom, keepOpen: true, onSelect: () => setAutoZoom(!autoZoom) })
+          const groups: ToolGroupDef[] = [
+            { id: 'fly',   label: 'Flying', items: flyItems },
+            { id: 'find',  label: 'Find & look up', items: findItems },
+            { id: 'tools', label: 'Map tools', items: toolItems },
+          ]
+          // Brief is the most-used lookup, so it stays one tap away on the map.
+          const solos: ToolItem[] = [
+            { id: 'brief', label: 'Brief', description: 'Frequencies, weather and NOTAMs for the aerodromes near you or the map centre', icon: <IconNews {...CTRL_ICON} />, active: showVicinityBrief, onSelect: () => setShowVicinityBrief(m => !m) },
+          ]
+          if (flying) solos.push({ id: 'directto', label: 'Direct to', description: 'Pick a nearby aerodrome and fly direct to it from your present position', icon: <IconArrowBigRight {...CTRL_ICON} />, onSelect: () => setShowDirectTo(true) })
+          if (flying) solos.push({
+            id: 'orient',
+            label: mapOrientation === 'north' ? 'North Up' : mapOrientation === 'track' ? 'Track Up' : 'Course Up',
+            description: mapOrientation === 'north' ? 'North is at the top. Tap for Track Up (map turns with your track)' : mapOrientation === 'track' ? 'Map turns with your track. Tap for Course Up (route leg points up)' : 'The active route leg points up. Tap for North Up',
+            icon: mapOrientation === 'north' ? <IconArrowUp {...CTRL_ICON} /> : mapOrientation === 'track' ? <IconNavigation {...CTRL_ICON} /> : <IconRoute {...CTRL_ICON} />,
+            onSelect: () => handleOrientation(mapOrientation === 'north' ? 'track' : mapOrientation === 'track' ? 'course' : 'north'),
+          })
+          return <MapToolbar groups={groups} solos={solos} />
+        })(), toolbarHost)}
         <MapInfoBar map={mapReady ? mapRef.current : null} ceilingFt={ceilingFt} units={units} />
 
       {/* ── Data-update notification banner ──────────────────────────── */}
@@ -4538,12 +4493,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           orientation={mapOrientation}
           positionReport={nearestFeature}
           onOpenDirectTo={() => setShowDirectTo(true)}
-          onDropWaypoint={() => {
-            const pos = gpsPositionRef.current
-            if (!pos) return
-            const name = `Drop ${new Date().toUTCString().slice(17, 22)}z`
-            saveUserWaypoint({ name, lat: pos.lat, lng: pos.lng, folder: 'Dropped in Flight' })
-          }}
+          onDropWaypoint={dropWaypointHere}
           onTrackToggle={() => {
             if (trackedPoint) {
               setTrackedPoint(null)
@@ -4574,23 +4524,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
           plogOpen={showPlog}
           onAdjustRoute={() => setRouteAdjustMode(v => !v)}
           adjustMode={routeAdjustMode}
-          onOrientationChange={(o) => {
-            setMapOrientation(o)
-            // If following, immediately re-orient the map.
-            const pos = gpsPositionRef.current
-            const map = mapRef.current
-            if (followAircraft && pos && map) {
-              const legBearing =
-                routeWaypoints.length >= 2 && activeWpIdx > 0 && activeWpIdx < routeWaypoints.length
-                  ? bearingDeg(routeWaypoints[activeWpIdx - 1], routeWaypoints[activeWpIdx])
-                  : pos.trackDeg
-              const bearing =
-                o === 'track'  ? pos.trackDeg
-                : o === 'course' ? legBearing
-                : 0
-              map.easeTo({ bearing, duration: 400 })
-            }
-          }}
+          onOrientationChange={handleOrientation}
+          hideToolbarButtons
           followAircraft={followAircraft}
           onFollow={() => {
             setFollowAircraft(true)

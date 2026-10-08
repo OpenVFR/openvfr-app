@@ -89,7 +89,19 @@ import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
 import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
 import { RulerHeaderStart, RulerHeaderEnd, RouteHeaderStart } from '../components/RulerHeaderStats'
 import { PastTrackChart } from '../components/PastTrackChart'
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
+import { Ionicons } from '@expo/vector-icons'
+import IconSearch from '@tabler/icons-react-native/IconSearch'
+import IconHome from '@tabler/icons-react-native/IconHome'
+import IconRulerMeasure from '@tabler/icons-react-native/IconRulerMeasure'
+import IconPencil from '@tabler/icons-react-native/IconPencil'
+import IconLockOpen from '@tabler/icons-react-native/IconLockOpen'
+import IconMapPinPlus from '@tabler/icons-react-native/IconMapPinPlus'
+import IconPlaneDeparture from '@tabler/icons-react-native/IconPlaneDeparture'
+import IconPlaneArrival from '@tabler/icons-react-native/IconPlaneArrival'
+import IconCompass from '@tabler/icons-react-native/IconCompass'
+import IconZoomScan from '@tabler/icons-react-native/IconZoomScan'
+import IconNavigation from '@tabler/icons-react-native/IconNavigation'
+import { MapToolbar, type ToolGroupDef } from '../components/MapToolbar'
 import * as Location from 'expo-location'
 import * as Crypto from 'expo-crypto'
 import { GaugesBar }         from '../components/GaugesBar'
@@ -1063,6 +1075,56 @@ export function MapScreen() {
     if (!flyingActive) setRouteAdjustMode(false)
   }, [flyingActive])
   const routeEditLocked = flyingActive ? !routeAdjustMode : !planningMode
+
+  // ── Map tools menu (single dot-grid button; see MapToolbar.tsx) ───────────
+  // Find destination / brief / flight-mode sheets are controlled from here.
+  const [showFindDest, setShowFindDest] = useState(false)
+  const [showModePicker, setShowModePicker] = useState(false)
+  const toolFlying = flightModeStatus !== 'off'
+  // Route editing: planningMode on the ground, routeAdjustMode in flight.
+  const routeEditOn = toolFlying ? routeAdjustMode : planningMode
+  const toolIcon = (Icon: import("@tabler/icons-react-native").Icon) => (color: string) => <Icon size={22} strokeWidth={2} color={color} />
+  const toolGroups: ToolGroupDef[] = [
+    { id: 'fly', label: 'Flying', items: [toolFlying
+      ? { id: 'stop', label: 'Stop flying', description: 'End flying mode and close the flight log', icon: toolIcon(IconPlaneArrival),
+          onSelect: handleStopFlight }
+      : { id: 'go', label: 'Go flying', description: 'Start flying mode with GPS or the touch simulator', icon: toolIcon(IconPlaneDeparture),
+          onSelect: () => setShowModePicker(true) },
+      ...(toolFlying ? [{ id: 'autozoom', label: settings.autoZoom ? 'Auto-zoom on' : 'Auto-zoom off',
+        description: settings.autoZoom ? 'Zooms in on takeoff and out in cruise while the map follows you. Tap to turn off.' : 'The map keeps your zoom level while following you. Tap to zoom automatically on takeoff and in cruise.',
+        icon: toolIcon(IconZoomScan), active: settings.autoZoom, keepOpen: true,
+        onSelect: () => update({ autoZoom: !settings.autoZoom }) }] : []),
+      ...(toolFlying ? [{ id: 'orient', label: mapOrientation === 'track' ? 'Track Up' : 'North Up',
+        description: mapOrientation === 'track' ? 'The map turns with your track. Tap for North Up.' : 'North is at the top of the map. Tap for Track Up (map turns with your track).',
+        icon: toolIcon(mapOrientation === 'track' ? IconNavigation : IconCompass), active: mapOrientation === 'track', keepOpen: true,
+        onSelect: () => setMapOrientation(o => o === 'north' ? 'track' : 'north') }] : []),
+    ] },
+    { id: 'find', label: 'Find & look up', items: [
+      { id: 'dest', label: 'Find dest.', description: 'Search aerodromes by name, fuel, surface and runway length, sorted by distance from you or the map centre',
+        icon: toolIcon(IconSearch), onSelect: () => setShowFindDest(true) },
+      { id: 'home', label: settings.homeAirfield || 'Home',
+        description: settings.homeAirfield ? `Centre the map on your home airfield, ${settings.homeAirfield}` : 'No home airfield set yet. Set one in Settings.',
+        icon: toolIcon(IconHome), dim: !homeCoord,
+        onSelect: () => { if (homeCoord) setFindDestFlyTarget({ lat: homeCoord[1], lng: homeCoord[0], zoom: 13, nonce: Date.now() }) } },
+    ] },
+    { id: 'tools', label: 'Map tools', items: [
+      { id: 'ruler', label: 'Ruler', description: 'Measure distance and bearing: tap two points on the map. Tap again to switch off and clear.',
+        icon: toolIcon(IconRulerMeasure), active: rulerMode, onSelect: () => { setRulerMode(m => !m); setRulerPoints([]) } },
+      { id: 'edit', label: routeEditOn ? 'Lock route' : 'Edit route',
+        description: toolFlying
+          ? (routeEditOn ? 'Lock the route again so it cannot be changed by accident' : 'Unlock the route to drag or add waypoints in flight')
+          : (routeEditOn ? 'Stop editing and lock the route' : 'Tap the map to add waypoints; drag them or the leg midpoints to change the route'),
+        icon: toolIcon(routeEditOn ? IconLockOpen : IconPencil), active: routeEditOn,
+        onSelect: () => toolFlying ? setRouteAdjustMode(v => !v) : setPlanningMode(m => !m) },
+      ...(toolFlying ? [{ id: 'drop', label: 'Drop waypoint', description: 'Save your current position as a waypoint in the "Dropped in Flight" folder',
+        icon: toolIcon(IconMapPinPlus),
+        onSelect: () => {
+          if (!activePosition) return
+          saveWaypoint({ id: Crypto.randomUUID(), name: `Drop ${new Date().toUTCString().slice(17, 22)}z`, lat: activePosition.lat, lng: activePosition.lng, folder: 'Dropped in Flight', updatedAt: Date.now() })
+        } }] : []),
+    ] },
+  ]
+
   // Edit sessions run while route editing is unlocked; leaving it applies the
   // pending changes (nothing is discarded silently).
   useEffect(() => {
@@ -1477,11 +1539,12 @@ export function MapScreen() {
         showsHorizontalScrollIndicator={false}
         pointerEvents="box-none"
       >
-        {/* Stack order, top to bottom, grouped by purpose with the most-used
-            controls nearest the thumb: lookup (briefing, find destination),
-            route planning (plan, ruler, route lock), map view (layers,
-            orientation), then flight (live plog, flight mode) and finally
-            Locate at the very bottom. */}
+        {/* Stack order, top to bottom: Map tools menu (flying, find & look up,
+            ruler, route lock), layers, orientation (flying only), live plog
+            (flying only) and Locate at the very bottom. */}
+        <View style={stackGap}>
+          <MapToolbar groups={toolGroups} />
+        </View>
         <View style={stackGap}>
           <VicinityBriefSheet
             nearby={nearbyFreqs}
@@ -1492,49 +1555,21 @@ export function MapScreen() {
             homeIcao={settings.homeAirfield || undefined}
           />
         </View>
-        <View style={stackGap}>
-          <FindDestinationSheet
-            center={activePosition ? { lat: activePosition.lat, lng: activePosition.lng, altFt: activePosition.altFt } : mapCentreForFindDest}
-            homeIcao={settings.homeAirfield || null}
-            aircraftProfile={aircraftProfile}
-            onFlyTo={(lat, lng) => setFindDestFlyTarget({ lat, lng, nonce: Date.now() })}
-            onAddToRoute={(wp) => { addWaypoint(wp); setPlanningMode(true) }}
-          />
-        </View>
-        <View style={[styles.planRow, { flexDirection: isLandscape ? 'row' : 'column', alignItems: isLandscape ? 'center' : 'flex-end' }, stackGap]}>
-          <TouchableOpacity
-            style={[styles.iconBtn, planningMode && styles.iconBtnActive]}
-            onPress={() => setPlanningMode(m => !m)}
-          >
-            <MaterialCommunityIcons name="map-marker-path" size={18} color={planningMode ? theme.accentBlue : theme.textPrimary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.iconBtn, rulerMode && styles.iconBtnActive]}
-            onPress={() => { setRulerMode(m => !m); setRulerPoints([]) }}
-          >
-            <MaterialCommunityIcons name="ruler" size={18} color={rulerMode ? theme.accentBlue : theme.textPrimary} />
-          </TouchableOpacity>
-          {flightModeStatus !== 'off' && (
-            <TouchableOpacity
-              style={[styles.iconBtn, routeAdjustMode && styles.iconBtnActive]}
-              onPress={() => setRouteAdjustMode(v => !v)}
-            >
-              <Ionicons
-                name={routeAdjustMode ? 'lock-open-outline' : 'lock-closed-outline'}
-                size={18}
-                color={routeAdjustMode ? theme.accentBlue : theme.textPrimary}
-              />
-            </TouchableOpacity>
-          )}
-        </View>
+        <FindDestinationSheet
+          center={activePosition ? { lat: activePosition.lat, lng: activePosition.lng, altFt: activePosition.altFt } : mapCentreForFindDest}
+          homeIcao={settings.homeAirfield || null}
+          aircraftProfile={aircraftProfile}
+          onFlyTo={(lat, lng) => setFindDestFlyTarget({ lat, lng, nonce: Date.now() })}
+          onAddToRoute={(wp) => { addWaypoint(wp); setPlanningMode(true) }}
+          open={showFindDest}
+          onOpenChange={setShowFindDest}
+        />
         <View style={stackGap}>
           <MapDisplaySheet
             layers={layers}
             ceilingFt={settings.airspaceCeilingFt}
-            autoZoom={settings.autoZoom}
             onLayerChange={handleLayerChange}
             onCeilingChange={(ft) => update({ airspaceCeilingFt: ft })}
-            onAutoZoomChange={(on) => update({ autoZoom: on })}
             terrainColorRefAltFt={settings.terrainColorRefAltFt}
             onTerrainColorRefAltFtChange={(ft) => update({ terrainColorRefAltFt: ft })}
             inFlight={!!activePosition && activePosition.altFt > 0}
@@ -1542,42 +1577,30 @@ export function MapScreen() {
             terrainMemoryLocked={terrainMemoryLocked}
           />
         </View>
-        {flightModeStatus !== 'off' && (
-          <View style={stackGap}>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => setMapOrientation(o => o === 'north' ? 'track' : 'north')}
-            >
-              <Text style={styles.orientTxt}>
-                {mapOrientation === 'track' ? '↑TRK' : '↑N'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
         {flightModeStatus !== 'off' && waypoints.length >= 2 && (
           <View style={stackGap}>
             <LivePlogPanel waypoints={waypoints} activeWpIdx={activeWpIdx} plogData={plogData} />
           </View>
         )}
-        <View style={stackGap}>
-          <FlightModeSheet
-            status={flightModeStatus}
-            onStartGps={handleStartGpsFly}
-            onStartSim={handleStartSim}
-            onStop={handleStopFlight}
-          />
-        </View>
+        <FlightModeSheet
+          status={flightModeStatus}
+          onStartGps={handleStartGpsFly}
+          onStartSim={handleStartSim}
+          onStop={handleStopFlight}
+          open={showModePicker}
+          onOpenChange={setShowModePicker}
+        />
         <View style={stackGap}>
           <TouchableOpacity
-            style={[styles.iconBtn, (flightModeStatus !== 'off' ? followGps : locMode === 'passive') && styles.iconBtnActive]}
+            style={[styles.iconBtn, (flightModeStatus !== 'off' ? followGps : locMode === 'passive') && styles.iconBtnActive, flightModeStatus !== 'off' && !followGps && styles.iconBtnAttention]}
             onPress={handleLocate}
             onLongPress={() => { if (flightModeStatus === 'off') setLocMode('off') }}
-            accessibilityLabel={flightModeStatus !== 'off' ? 'Re-centre on aircraft' : locMode === 'passive' ? 'Centre on my position. Long-press to turn location off.' : 'Show my position'}
+            accessibilityLabel={flightModeStatus !== 'off' ? (followGps ? 'Following aircraft' : 'Map not following. Tap to re-centre on aircraft') : locMode === 'passive' ? 'Centre on my position. Long-press to turn location off.' : 'Show my position'}
           >
             <Ionicons
               name={locMode === 'passive' || flightModeStatus !== 'off' ? 'locate' : 'locate-outline'}
               size={18}
-              color={(flightModeStatus !== 'off' ? followGps : locMode === 'passive') ? theme.accentBlue : theme.textPrimary}
+              color={flightModeStatus !== 'off' && !followGps ? '#fb923c' : (flightModeStatus !== 'off' ? followGps : locMode === 'passive') ? theme.accentBlue : theme.textPrimary}
             />
           </TouchableOpacity>
         </View>
@@ -1604,14 +1627,6 @@ export function MapScreen() {
         />
       )}
 
-      {/* Re-center / orientation — also outside GL surface. Offset above the
-          VerticalProfile + GaugesBar stack, which now occupies the true
-          screen bottom (these buttons used a fixed bottom before that stack existed). */}
-      {flightModeStatus !== 'off' && !followGps && (
-        <TouchableOpacity style={[styles.recenterBtn, { bottom: scaledTheme.space3 + bottomStackH }]} onPress={() => setFollowGps(true)}>
-          <Text style={styles.recenterText}>⊕ Re-center</Text>
-        </TouchableOpacity>
-      )}
       {/* FLY button replaced by FlightModeSheet, stacked in topRight with the
           layers/frequency buttons instead of its own large pill — was taking
           up too much dedicated screen space for a single toggle. */}
@@ -1797,12 +1812,6 @@ function makeStyles(theme: ScaledTheme) {
     position: 'absolute',
     right:    theme.space2,
     zIndex:   50,   // above MapLibre GL surface
-    // Single-button rows (headset/gamepad/layers) and the multi-button
-    // planRow must share one right-aligned edge. Without this, the
-    // container auto-sizes to the widest child (planRow, 3 buttons wide)
-    // and single 40x40 buttons default-anchor to its LEFT edge — leaving
-    // the extra orientation toggle in planRow sticking out to the right,
-    // unaligned with the button column above it.
     alignItems: 'flex-end',
   },
   pastTrackBanner: {
@@ -1815,17 +1824,11 @@ function makeStyles(theme: ScaledTheme) {
   },
   airacBanner: { borderColor: theme.statusWarn },
   pastTrackBannerTxt: { flex: 1, color: theme.textPrimary, fontSize: theme.textXs, fontWeight: '600' },
-  recenterBtn: {
-    position: 'absolute', bottom: theme.space3, alignSelf: 'center',
-    paddingHorizontal: theme.space4, paddingVertical: theme.space2,
-    borderRadius: theme.radiusFull, backgroundColor: 'rgba(251,146,60,0.9)',
-    zIndex: 30,
-  },
-  recenterText: { color: '#fff', fontWeight: '700', fontSize: theme.textSm },
-  planRow: {
-    flexDirection: 'column',
-    gap: theme.space2,
-    alignItems: 'flex-end',
+  // Flying with follow off (panned away): orange, so the locate button itself
+  // signals "tap to re-centre" (replaces the former Re-center pill).
+  iconBtnAttention: {
+    borderColor:     '#fb923c',
+    backgroundColor: 'rgba(251,146,60,0.22)',
   },
   iconBtn: {
     width:           40,
@@ -1841,12 +1844,6 @@ function makeStyles(theme: ScaledTheme) {
   // flight-mode and layers buttons (a solid blue fill looked out of place).
   iconBtnActive: {
     borderColor:     theme.accentBlue,
-  },
-  orientTxt: {
-    color:      theme.textSecondary,
-    fontWeight: '700',
-    fontSize:   theme.textSm,
-    letterSpacing: 0.5,
   },
   showProfileBtn: {
     position:        'absolute',

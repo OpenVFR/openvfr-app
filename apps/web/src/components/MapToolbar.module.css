@@ -1,0 +1,48 @@
+.root { display: flex; flex-direction: column; gap: 10px; }
+.group { position: relative; display: flex; justify-content: flex-end; }
+.btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 29px; height: 29px; padding: 0; position: relative;
+  background: #fff; color: #333; border: 0; cursor: pointer;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1); border-radius: 4px;
+  font: inherit; font-size: 13px;
+}
+.btn:hover { background: #f2f2f2; }
+.glyph { display: inline-flex; align-items: center; justify-content: center; font-size: 14px; line-height: 1; }
+.open { background: #e8eefc; }
+.active { background: rgba(250, 204, 21, 0.85); color: #000; }
+.dim { opacity: 0.5; }
+
+/* Compact popover with a tile grid */
+.menu {
+  position: absolute; right: 36px; top: 0; z-index: 50;
+  display: flex; flex-direction: column; gap: 8px;
+  width: max-content; max-width: calc(100vw - 60px);
+  padding: 8px;
+  background: var(--surface-elevated, #fff);
+  color: var(--text-primary, #222);
+  border: 1px solid var(--border-strong, rgba(0, 0, 0, 0.15));
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.menuSection { display: flex; flex-direction: column; gap: 4px; }
+.menuHeading {
+  font-size: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-muted, #777); padding: 0 2px;
+}
+.menuGrid { display: grid; grid-template-columns: repeat(3, 58px); gap: 4px; }
+.tile {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  height: 50px; padding: 4px 2px; border: 1px solid transparent; border-radius: 8px;
+  background: var(--surface-hover, rgba(0, 0, 0, 0.06)); color: inherit;
+  font: inherit; cursor: pointer; touch-action: manipulation;
+}
+.tile:hover { background: var(--surface-active, rgba(0, 0, 0, 0.12)); }
+.tile:active { transform: scale(0.96); }
+.tile:focus-visible { outline: 2px solid var(--accent-blue, #2563eb); outline-offset: 1px; }
+.tileActive {
+  background: rgba(250, 204, 21, 0.9); color: #000; border-color: rgba(0, 0, 0, 0.25);
+}
+.tileActive:hover { background: rgba(250, 204, 21, 1); }
+.tileLabel { font-size: 9px; line-height: 1; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }

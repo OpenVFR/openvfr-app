@@ -143,7 +143,6 @@ const TERRAIN_GROUPS: Group[] = [
 interface Props {
   layers:      LayerState
   ceilingFt:   number
-  autoZoom:    boolean
   onLayerChange:    (key: keyof LayerState, on: boolean) => void
   /** Flight mode is on: the Satellite basemap option is disabled (see
    *  MapScreen's satellite-in-flight lock). */
@@ -154,7 +153,6 @@ interface Props {
    *  same pattern as satelliteLocked above. */
   terrainMemoryLocked?: boolean
   onCeilingChange:  (ft: number) => void
-  onAutoZoomChange: (on: boolean) => void
   /** Reference altitude (ft MSL) for the terrain colour-relief bands --
    *  same concept as web's SettingsPanel terrainColoring.refAltFt, now
    *  living alongside the toggle itself instead of a separate settings
@@ -167,7 +165,7 @@ interface Props {
 }
 
 export function MapDisplaySheet({
-  layers, ceilingFt, autoZoom, onLayerChange, onCeilingChange, onAutoZoomChange,
+  layers, ceilingFt, onLayerChange, onCeilingChange,
   terrainColorRefAltFt, onTerrainColorRefAltFtChange, inFlight, satelliteLocked,
   terrainMemoryLocked,
 }: Props) {
@@ -312,14 +310,6 @@ export function MapDisplaySheet({
                 on={layers[g.key]} onToggle={() => onLayerChange(g.key, !layers[g.key])} />
             ))}
 
-            {/* ── Behaviour ───────────────────────────── */}
-            <SectionHeader title="Behaviour" />
-            <LayerRow
-              label="Auto-zoom"
-              color={theme.accentBlue}
-              on={autoZoom}
-              onToggle={() => onAutoZoomChange(!autoZoom)}
-            />
             <View style={{ height: 16 }} />
           </View>
       </NativeSheet>

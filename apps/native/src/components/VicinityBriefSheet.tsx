@@ -62,23 +62,29 @@ interface Props {
   routeVisible:   boolean
   /** Settings-page home airfield ICAO -- last-resort picker fallback. */
   homeIcao?:      string
+  /** Controlled open state (map toolbar menu); omit for the built-in trigger button. */
+  open?:          boolean
+  onOpenChange?:  (open: boolean) => void
 }
 
-export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position, routeVisible, homeIcao }: Props) {
+export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position, routeVisible, homeIcao, open: openProp, onOpenChange }: Props) {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
-  const [open, setOpen] = useState(false)
+  const [openState, setOpenState] = useState(false)
+  const controlled = openProp !== undefined
+  const open = controlled ? openProp : openState
+  const setOpen = (v: boolean) => { if (controlled) onOpenChange?.(v); else setOpenState(v) }
   const [tab, setTab] = useState<Tab>('freq')
 
   const vicinity = useVicinityAerodromes({ waypoints, position, routeVisible, homeIcao })
   const [selectedIcao, setSelectedIcao] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (vicinity.length === 0) { setSelectedIcao(null); return }
-    setSelectedIcao((prev) => (prev && vicinity.some((a) => a.icao === prev)) ? prev : vicinity[0].icao)
-  }, [vicinity])
 
-  const selected = vicinity.find((a) => a.icao === selectedIcao) ?? null
+  // Derived, not synced via an effect: `vicinity` is a new array on every position
+  // tick, and an effect that re-set state each time forced a re-render per tick.
+  // Falls back to the closest aerodrome while the pick is absent or out of range.
+  const effectiveIcao = vicinity.some((a) => a.icao === selectedIcao) ? selectedIcao : (vicinity[0]?.icao ?? null)
+  const selected = vicinity.find((a) => a.icao === effectiveIcao) ?? null
   const { wx, wxLoading, wxSourceName, ambientWx, notams, notamLoading } =
     useAerodromeBriefing(selected?.icao ?? null, selected?.lat, selected?.lng)
 
@@ -121,14 +127,16 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
 
   return (
     <>
-      <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)} activeOpacity={0.8}>
-        <Ionicons name="newspaper-outline" size={19} color={theme.accentBlue} />
-        {badgeCount > 0 && (
-          <View style={styles.badge}>
-            <Text style={styles.badgeTxt}>{badgeCount}</Text>
-          </View>
-        )}
-      </TouchableOpacity>
+      {!controlled && (
+        <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)} activeOpacity={0.8}>
+          <Ionicons name="newspaper-outline" size={19} color={theme.accentBlue} />
+          {badgeCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeTxt}>{badgeCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      )}
 
       <NativeSheet
         isPresented={open}
@@ -190,7 +198,7 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.picker}>
                 {vicinity.map((a) => {
-                  const isSelected = a.icao === selectedIcao
+                  const isSelected = a.icao === effectiveIcao
                   return (
                     <TouchableOpacity
                       key={a.icao}
