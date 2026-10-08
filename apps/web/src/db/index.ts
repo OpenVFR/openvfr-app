@@ -31,6 +31,7 @@ export type LegOverride = {
   speedKts?: number   // cruise IAS in knots
   windDir?:  number   // wind FROM direction, degrees true (0–359)
   windSpd?:  number   // wind speed in knots
+  oatC?:     number   // outside air temperature at the leg altitude, °C (absent = ISA)
 }
 
 export type RouteDocType = {
@@ -50,7 +51,7 @@ export type RouteDocType = {
 
 const routeSchema: RxJsonSchema<RouteDocType> = {
   title: 'route',
-  version: 4,
+  version: 5,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -78,6 +79,7 @@ const routeSchema: RxJsonSchema<RouteDocType> = {
           speedKts: { type: 'number' },
           windDir:  { type: 'number' },
           windSpd:  { type: 'number' },
+          oatC:     { type: 'number' },
         },
       },
     },
@@ -340,6 +342,8 @@ export function getDb(): Promise<OpenVfrDb> {
             3: (oldDoc) => ({ ...oldDoc, aircraftId: oldDoc.aircraftId ?? '' }),
             // v3 → v4: add optional linkedRouteId field (unset for existing routes)
             4: (oldDoc) => ({ ...oldDoc, linkedRouteId: oldDoc.linkedRouteId ?? '' }),
+            // v4 → v5: optional oatC on leg overrides (no data migration needed)
+            5: (oldDoc) => ({ ...oldDoc }),
           },
         },
         aircraft_profiles: {

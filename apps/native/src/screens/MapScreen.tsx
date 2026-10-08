@@ -87,6 +87,7 @@ import { RouteEditBanner } from '../components/RouteEditBanner'
 import { AutoFlyBanner } from '../components/AutoFlyBanner'
 import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
 import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
+import { iasToTas } from '@open-vfr/shared/airspeed'
 import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
 import { RulerHeaderStart, RulerHeaderEnd, RouteHeaderStart } from '../components/RulerHeaderStats'
 import { PastTrackChart } from '../components/PastTrackChart'
@@ -771,7 +772,8 @@ export function MapScreen() {
     const startTrack = hasRoute
       ? bearingDeg(startPos, waypoints[1])
       : waypoints.length >= 1 ? bearingDeg(startPos, waypoints[0]) : 0
-    const startSpeed = aircraftProfile?.cruiseIas || 90
+    // The simulator moves at ground speed: start at the cruise TAS, not the IAS.
+    const startSpeed = aircraftProfile?.cruiseIas ? iasToTas(aircraftProfile.cruiseIas, aircraftProfile.cruiseAltFt || 3500) : 90
     simFlight.start(startPos, startSpeed, startTrack, 1000)
     setFollowGps(true)
     KeepAwake.activateKeepAwakeAsync()

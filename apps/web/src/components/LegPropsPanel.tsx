@@ -49,6 +49,7 @@ export default function LegPropsPanel({
   const [windSpd,  setWindSpd]  = useState(
     override.windSpd != null ? String(Math.round(ktsToDisplay(override.windSpd, units.speed))) : ''
   )
+  const [oatC, setOatC] = useState(override.oatC != null ? String(override.oatC) : '')
   const [note, setNote] = useState(wpNote ?? '')
   const [windLoading, setWindLoading] = useState(false)
 
@@ -64,6 +65,7 @@ export default function LegPropsPanel({
     const effSpd = override.windSpd  ?? globalWind?.speedKts
     setWindDir (effDir != null ? String(Math.round(effDir))                               : '')
     setWindSpd (effSpd != null ? String(Math.round(ktsToDisplay(effSpd, units.speed)))    : '')
+    setOatC(override.oatC != null ? String(override.oatC) : '')
     setNote(wpNote ?? '')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [legIndex, units.speed])
@@ -72,15 +74,21 @@ export default function LegPropsPanel({
   // AND no global wind is set. If globalWind is provided, it was already pre-filled
   // above and no API call is needed.
   useEffect(() => {
-    if (override.windDir != null || override.windSpd != null) return  // already has saved wind
-    if (globalWind) return  // global wind pre-filled above — skip API fetch
+    // Wind is fetched only when none is saved and no global wind is set; the
+    // forecast temperature (for the IAS->TAS conversion) whenever none is saved.
+    const needWind = override.windDir == null && override.windSpd == null && !globalWind
+    const needOat  = override.oatC == null
+    if (!needWind && !needOat) return
     const controller = new AbortController()
-    setWindLoading(true)
+    if (needWind) setWindLoading(true)
     const altNum = parseField(altFt) ?? override.altFt ?? defaultAltFt ?? null
     fetchWind(midLat, midLng, altNum, '', controller.signal)
       .then((w) => {
-        setWindDir(String(w.dirDeg))
-        setWindSpd(String(Math.round(ktsToDisplay(w.speedKts, units.speed))))
+        if (needWind) {
+          setWindDir(String(w.dirDeg))
+          setWindSpd(String(Math.round(ktsToDisplay(w.speedKts, units.speed))))
+        }
+        if (needOat && w.tempC != null) setOatC(String(w.tempC))
       })
       .catch((err: unknown) => {
         // AbortError is expected on cleanup — suppress it silently.
@@ -102,7 +110,7 @@ export default function LegPropsPanel({
 
   let gs: number | undefined
   let eteMin: number | undefined
-  const tasKts = spd != null && spd > 0 ? iasToTas(spd, parseField(altFt) ?? defaultAltFt ?? 3500) : undefined
+  const tasKts = spd != null && spd > 0 ? iasToTas(spd, parseField(altFt) ?? defaultAltFt ?? 3500, parseField(oatC)) : undefined
 
   if (spd != null && spd > 0) {
     if (wDir != null && wSpd != null && wSpd > 0) {
@@ -129,6 +137,7 @@ export default function LegPropsPanel({
       speedKts: rawSpeed != null ? displayToKts(rawSpeed, units.speed) : undefined,
       windDir:  parseField(windDir),
       windSpd:  rawWind  != null ? displayToKts(rawWind,  units.speed) : undefined,
+      oatC:     parseField(oatC),
     })
     onSaveNote?.(legIndex + 1, note.trim())
     onClose()
@@ -214,11 +223,27 @@ export default function LegPropsPanel({
             onChange={e => setWindSpd(e.target.value)}
           />
         </label>
+
+        <label className={css.field}>
+          <span className={css.label}>OAT (°C)</span>
+          <input
+            className={css.input}
+            type="number"
+            min={-70}
+            max={50}
+            step={1}
+            placeholder="ISA"
+            title="Outside air temperature at the leg altitude (forecast, editable). Blank = standard atmosphere. Used to convert IAS to true airspeed."
+            value={oatC}
+            onChange={e => setOatC(e.target.value)}
+          />
+        </label>
       </div>
 
-      {/* Derived GS + ETE */}
+      {/* Derived TAS + GS + ETE */}
       {(gs != null || eteMin != null) && (
         <div className={css.derived}>
+          {tasKts  != null && <span><span className={css.infoLabel}>TAS</span> {Math.round(ktsToDisplay(tasKts, units.speed))} {speedLabel(units.speed)}</span>}
           {gs      != null && <span><span className={css.infoLabel}>GS</span> {Math.round(ktsToDisplay(gs, units.speed))} {speedLabel(units.speed)}</span>}
           {eteMin  != null && (
             <span>

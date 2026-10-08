@@ -41,4 +41,9 @@ describe('computeFuelPlan', () => {
     const f = computeFuelPlan([wp(59, 18), wp(59, 18.1)], [{ altFt: 9000 }] as never, base)
     expect(f.cruiseMins).toBe(0)
   })
+  it('a hot day lowers cruise time (higher TAS)', () => {
+    const cold = computeFuelPlan(route, [{ oatC: -20 }] as never, { ...base, rocSlFpm: 0, descentFpm: 0 })
+    const hot  = computeFuelPlan(route, [{ oatC: 30 }] as never,  { ...base, rocSlFpm: 0, descentFpm: 0 })
+    expect(hot.enrouteMins).toBeLessThan(cold.enrouteMins)
+  })
 })

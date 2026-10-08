@@ -43,6 +43,8 @@ export interface WindAloft {
   dirDeg: number
   /** Wind speed in knots. */
   speedKts: number
+  /** Forecast air temperature (°C) at the same level (2 m for the surface band); absent when the model returns none. */
+  tempC?: number
 }
 
 /** Below this AMSL altitude (ft), use the surface (10 m) observation instead of a pressure level. */
@@ -87,6 +89,7 @@ export async function fetchWind(
   const hPa      = useSurface ? null : pressureLevelFor(altFt)
   const speedVar = useSurface ? 'wind_speed_10m'     : `wind_speed_${hPa}hPa`
   const dirVar   = useSurface ? 'wind_direction_10m' : `wind_direction_${hPa}hPa`
+  const tempVar  = useSurface ? 'temperature_2m'      : `temperature_${hPa}hPa`
 
   // Return cached result if still fresh (avoids redundant API calls).
   const key    = cacheKey(lat, lng, useSurface ? 'surface' : String(hPa))
@@ -97,7 +100,7 @@ export async function fetchWind(
   const params = new URLSearchParams()
   params.set('latitude',  lat.toFixed(4))
   params.set('longitude', lng.toFixed(4))
-  params.set('current', [speedVar, dirVar].join(','))
+  params.set('current', [speedVar, dirVar, tempVar].join(','))
   params.set('wind_speed_unit', 'kn')
   params.set('forecast_days',   '1')
   params.set('timeformat',      'unixtime')
@@ -119,7 +122,11 @@ export async function fetchWind(
     throw new Error('Open-Meteo: missing wind fields in response')
   }
 
-  const result: WindAloft = { dirDeg: Math.round(dirDeg), speedKts: Math.round(speedKts) }
+  const temp = json.current[tempVar]
+  const result: WindAloft = {
+    dirDeg: Math.round(dirDeg), speedKts: Math.round(speedKts),
+    ...(temp != null ? { tempC: Math.round(temp) } : {}),
+  }
   cache.set(key, { result, expiresAt: Date.now() + CACHE_TTL_MS })
   return result
 }

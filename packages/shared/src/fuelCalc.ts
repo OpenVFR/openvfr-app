@@ -186,7 +186,7 @@ export function computeFuelPlan(
 
     if (iasLeg <= 0) continue  // no speed data for this leg
     hasAnySpeed = true
-    const ias = iasToTas(iasLeg, legAlts[i])   // true airspeed at the leg altitude
+    const ias = iasToTas(iasLeg, legAlts[i], ovr.oatC)   // true airspeed at the leg altitude (and OAT when known)
 
     // Ground speed with wind correction (identical to RoutePlan.tsx ETE logic).
     let gs = ias

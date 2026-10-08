@@ -266,14 +266,14 @@ export default function RoutePlan({ waypoints, legOverrides, routeVisible, onTog
   }
 
   // Compute per-leg ETE + WCA from override speed + wind (or global wind fallback).
-  const legResults: { ete: number | undefined; wcaDeg: number | undefined }[] = legs.map((leg, i) => {
+  const legResults: { ete: number | undefined; wcaDeg: number | undefined; tas?: number; gs?: number }[] = legs.map((leg, i) => {
     const ovr = legOverrides[i]
     if (!ovr?.speedKts || ovr.speedKts <= 0) return { ete: undefined, wcaDeg: undefined }
     // Effective wind: per-leg override takes precedence over global wind.
     const effDir = ovr.windDir  ?? globalWind?.dirDeg
     const effSpd = ovr.windSpd  ?? globalWind?.speedKts
     // Leg speed is indicated; time and wind correction use TAS at the leg altitude.
-    const tas = iasToTas(ovr.speedKts, ovr.altFt ?? defaultAltFt ?? 3500)
+    const tas = iasToTas(ovr.speedKts, ovr.altFt ?? defaultAltFt ?? 3500, ovr.oatC)
     let gs = tas
     let wcaDeg: number | undefined
     if (effDir != null && effSpd != null && effSpd > 0) {
@@ -285,11 +285,17 @@ export default function RoutePlan({ waypoints, legOverrides, routeVisible, onTog
       wcaDeg = Math.round(wca * 180 / Math.PI)
       gs = tas * Math.cos(wca) - hw
     }
-    if (gs <= 0) return { ete: undefined, wcaDeg }
-    return { ete: (leg.dist / gs) * 60, wcaDeg }
+    if (gs <= 0) return { ete: undefined, wcaDeg, tas }
+    return { ete: (leg.dist / gs) * 60, wcaDeg, tas, gs }
   })
   const legEtes: (number | undefined)[] = legResults.map(r => r.ete)
   const legWcas: (number | undefined)[]  = legResults.map(r => r.wcaDeg)
+  const legSpeedTip = (i: number): string | undefined => {
+    const r = legResults[i]
+    if (r?.tas == null) return undefined
+    const u = speedLabel(units.speed)
+    return `TAS ${Math.round(ktsToDisplay(r.tas, units.speed))} ${u}` + (r.gs != null ? ` · GS ${Math.round(ktsToDisplay(r.gs, units.speed))} ${u}` : '')
+  }
   const hasAnyWca = legWcas.some(w => w != null && Math.abs(w) >= 1)
 
   legEtes.forEach(e => {
@@ -515,7 +521,7 @@ export default function RoutePlan({ waypoints, legOverrides, routeVisible, onTog
                   <div className={css.brgTrue}>{String(Math.round(leg.brg)).padStart(3, '0')}°T</div>
                   <div className={css.dist}>{nmToDisplay(leg.dist, units.distance).toFixed(1)} {distLabel(units.distance)}</div>
                   {hasAnyEte && (
-                    <div className={css.ete}>
+                    <div className={css.ete} title={legSpeedTip(i)}>
                       {ete != null
                         ? `${Math.floor(ete)}:${String(Math.round((ete % 1) * 60)).padStart(2, '0')}`
                         : '—'}

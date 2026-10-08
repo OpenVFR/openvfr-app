@@ -6,6 +6,7 @@ import { useThrottledValue } from '../hooks/useThrottledValue'
 import { useStableProps } from '../hooks/useStableProps'
 import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
 import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
+import { iasToTas } from '@open-vfr/shared/airspeed'
 import MapToolbar, { type ToolGroupDef, type ToolItem } from './MapToolbar'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
@@ -806,7 +807,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     return distanceAlongRouteNm(lookaheadWaypoints, chartPos)
   }, [chartPos, lookaheadWaypoints])
   const lookaheadLegOverrides = useMemo(
-    () => [{ altFt: chartPos?.altFt ?? 1000, speedKts: chartPos?.speedKts || selectedAircraftProfile?.cruiseIas || 90 }] as LegOverride[],
+    () => [{ altFt: chartPos?.altFt ?? 1000, speedKts: chartPos?.speedKts || (selectedAircraftProfile?.cruiseIas ? iasToTas(selectedAircraftProfile.cruiseIas, chartPos?.altFt ?? 1000) : 90) }] as LegOverride[],
     [chartPos?.altFt, chartPos?.speedKts, selectedAircraftProfile?.cruiseIas],
   )
 
@@ -4248,7 +4249,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
             onClick={() => {
               setShowModePicker(false)
               setShowExtForm(false)
-              startSim(undefined, selectedAircraftProfileRef.current?.cruiseIas)
+              {
+                // The simulator moves at ground speed: start at the cruise TAS, not the IAS.
+                const p = selectedAircraftProfileRef.current
+                startSim(undefined, p?.cruiseIas ? iasToTas(p.cruiseIas, p.cruiseAltFt || 3500) : undefined)
+              }
             }}
           >
             ▶ Keyboard Sim
