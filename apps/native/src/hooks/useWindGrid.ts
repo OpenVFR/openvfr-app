@@ -5,19 +5,30 @@
  * @maplibre/maplibre-react-native's MapView ref the way web's maplibre-gl
  * JS Map does, so the viewport bounding box is approximated from the
  * camera's center/zoom (reported by AviationMap's onRegionDidChange) using
- * standard Web Mercator tile math — accurate enough for a coarse 4×4
- * wind-sample grid (this only needs to roughly cover what's on screen, not
+ * standard Web Mercator tile math — accurate enough for a coarse
+ * wind-sample lattice (this only needs to roughly cover what's on screen, not
  * pixel-perfect edges).
  */
 
 import { useEffect, useRef, useState } from 'react'
 import { Dimensions } from 'react-native'
 import type { FeatureCollection } from 'geojson'
-import { fetchWindGrid } from '@open-vfr/shared/windGrid'
+import { fetchWindGrid, cachedWindGrid, type WindGridPoint } from '@open-vfr/shared/windGrid'
 import { API_BASE } from '../config'
 
 const EMPTY_FC: FeatureCollection = { type: 'FeatureCollection', features: [] }
-const DEBOUNCE_MS = 800
+const DEBOUNCE_MS = 400
+
+function toFc(points: WindGridPoint[]): FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: points.map((p) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+      properties: { dirDeg: p.dirDeg, speedKts: p.speedKts },
+    })),
+  }
+}
 
 export interface CamState {
   lat: number
@@ -66,17 +77,12 @@ export function useWindGrid(cam: CamState | null, enabled: boolean, altFt: numbe
     const timer = setTimeout(() => {
       lastFetchKeyRef.current = key
       const bounds = approxBounds(cam)
+      // Cached points first (also drops the previous zoom tier at once), then the missing ones.
+      setFc(toFc(cachedWindGrid(bounds, altFt)))
       fetchWindGrid(bounds, altFt, { baseUrl: API_BASE })
         .then((points) => {
           if (cancelled) return
-          setFc({
-            type: 'FeatureCollection',
-            features: points.map((p) => ({
-              type: 'Feature',
-              geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
-              properties: { dirDeg: p.dirDeg, speedKts: p.speedKts },
-            })),
-          })
+          setFc(toFc(points))
         })
         .catch((err: unknown) => {
           if (cancelled) return

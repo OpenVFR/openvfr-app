@@ -2,20 +2,35 @@
  * src/hooks/useWindGrid.ts
  *
  * Feeds the 'wind-grid' MapLibre source for the ambient wind-arrows overlay
- * (LAYER_GROUPS 'wind') — samples a coarse grid of Open-Meteo wind readings
- * across the current viewport via @open-vfr/shared/windGrid, refetching on
- * `moveend` (debounced) while the layer is enabled. No-ops entirely when
- * disabled, so panning/zooming costs nothing unless the user opted in.
+ * (LAYER_GROUPS 'wind') — samples Open-Meteo wind on a world-anchored lattice
+ * across the current viewport via @open-vfr/shared/windGrid, on `moveend`
+ * (debounced) while the layer is enabled. Cached points are painted at once
+ * and only the missing ones are fetched, in a single request. No-ops entirely
+ * when disabled, so panning/zooming costs nothing unless the user opted in.
  */
 
 import { useEffect, useState } from 'react'
 import type * as maplibregl from 'maplibre-gl'
 import type { FeatureCollection } from 'geojson'
-import { fetchWindGrid } from '@open-vfr/shared/windGrid'
+import { fetchWindGrid, cachedWindGrid, type WindGridPoint } from '@open-vfr/shared/windGrid'
 import { API_BASE_URL } from '../utils/env'
 
 const EMPTY_FC: FeatureCollection = { type: 'FeatureCollection', features: [] }
-const DEBOUNCE_MS = 600
+const DEBOUNCE_MS = 250
+
+function toFc(points: WindGridPoint[]): FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: points.map((p) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+      properties: { dirDeg: p.dirDeg, speedKts: p.speedKts },
+    })),
+  }
+}
+
+/** Cheap identity of a point set: skips setData when nothing changed. */
+const sig = (pts: WindGridPoint[]) => pts.map((p) => `${p.lat},${p.lng},${p.dirDeg},${p.speedKts}`).join('|')
 
 export function useWindGrid(
   map: maplibregl.Map | null,
@@ -45,26 +60,28 @@ export function useWindGrid(
     // while zooming" bug reported in a pre-release pass.
     let generation = 0
 
+    let lastSig = ''
+    const commit = (points: WindGridPoint[]) => {
+      const s = sig(points)
+      if (s === lastSig) return
+      lastSig = s
+      setFc(toFc(points))
+    }
+
     async function run() {
       ac?.abort()
       ac = new AbortController()
       const myGeneration = ++generation
       const b = map!.getBounds()
+      const bounds = { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() }
+      // Paint what is already cached for the new view straight away. This also
+      // drops the previous zoom tier's points at once, so two lattices of
+      // different spacing are never on screen together.
+      commit(cachedWindGrid(bounds, altFt))
       try {
-        const points = await fetchWindGrid(
-          { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() },
-          altFt,
-          { baseUrl: API_BASE_URL, signal: ac.signal },
-        )
+        const points = await fetchWindGrid(bounds, altFt, { baseUrl: API_BASE_URL, signal: ac.signal })
         if (cancelled || myGeneration !== generation) return
-        setFc({
-          type: 'FeatureCollection',
-          features: points.map((p) => ({
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
-            properties: { dirDeg: p.dirDeg, speedKts: p.speedKts },
-          })),
-        })
+        commit(points)
       } catch (err) {
         if (cancelled || (err as { name?: string }).name === 'AbortError') return
         // Network hiccup -- leave the last-good arrows in place rather than

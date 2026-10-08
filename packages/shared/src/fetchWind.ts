@@ -59,6 +59,69 @@ function pressureLevelFor(altFt: number): number {
   return 400
 }
 
+/** Cached wind for a point, or null when not cached / expired. Synchronous: lets a map overlay paint what it already knows at once. */
+export function peekWind(lat: number, lng: number, altFt: number | null | undefined): WindAloft | null {
+  const useSurface = altFt == null || altFt <= SURFACE_THRESHOLD_FT
+  const hit = cache.get(cacheKey(lat, lng, useSurface ? 'surface' : String(pressureLevelFor(altFt!))))
+  return hit && Date.now() < hit.expiresAt ? hit.result : null
+}
+
+/** Open-Meteo accepts many coordinates per request; keep each request bounded. */
+const MAX_BATCH = 25
+
+/**
+ * Wind for many points at one altitude using as few requests as possible:
+ * cached points are returned from the cache, the rest go out in a single
+ * multi-coordinate Open-Meteo request (per MAX_BATCH). Entries are null where
+ * the model returned nothing or the request failed, so one bad point or a
+ * failed chunk never blanks the rest. Fills the same cache as fetchWind.
+ */
+export async function fetchWindMany(
+  points: { lat: number; lng: number }[],
+  altFt: number | null | undefined,
+  baseUrl = '',
+  signal?: AbortSignal,
+): Promise<(WindAloft | null)[]> {
+  const useSurface = altFt == null || altFt <= SURFACE_THRESHOLD_FT
+  const hPa      = useSurface ? null : pressureLevelFor(altFt!)
+  const speedVar = useSurface ? 'wind_speed_10m'     : `wind_speed_${hPa}hPa`
+  const dirVar   = useSurface ? 'wind_direction_10m' : `wind_direction_${hPa}hPa`
+  const level    = useSurface ? 'surface' : String(hPa)
+
+  const out: (WindAloft | null)[] = points.map((p) => peekWind(p.lat, p.lng, altFt))
+  const missing = out.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0)
+
+  for (let start = 0; start < missing.length; start += MAX_BATCH) {
+    const idx = missing.slice(start, start + MAX_BATCH)
+    const params = new URLSearchParams()
+    params.set('latitude',  idx.map((i) => points[i].lat.toFixed(4)).join(','))
+    params.set('longitude', idx.map((i) => points[i].lng.toFixed(4)).join(','))
+    params.set('current', [speedVar, dirVar].join(','))
+    params.set('wind_speed_unit', 'kn')
+    params.set('forecast_days',   '1')
+    params.set('timeformat',      'unixtime')
+    try {
+      const res = await fetchWithRetry(`${baseUrl}/api/open-meteo/forecast?${params.toString()}`, { signal })
+      if (!res.ok) continue
+      const json = await res.json() as { current?: Record<string, number> } | { current?: Record<string, number> }[]
+      const list = Array.isArray(json) ? json : [json]
+      idx.forEach((pointIdx, k) => {
+        const cur = list[k]?.current
+        const speedKts = cur?.[speedVar]
+        const dirDeg   = cur?.[dirVar]
+        if (speedKts == null || dirDeg == null) return
+        const result: WindAloft = { dirDeg: Math.round(dirDeg), speedKts: Math.round(speedKts) }
+        cache.set(cacheKey(points[pointIdx].lat, points[pointIdx].lng, level), { result, expiresAt: Date.now() + CACHE_TTL_MS })
+        out[pointIdx] = result
+      })
+    } catch (err) {
+      if ((err as { name?: string }).name === 'AbortError') throw err
+      // Transient failure: leave this chunk null; the next pan/zoom retries it.
+    }
+  }
+  return out
+}
+
 // ── In-memory cache ──────────────────────────────────────────────────────────
 // Keyed by "lat_lng_level" (rounded to 2 dp ≈ 1 km grid; level is either
 // "surface" or an hPa number). TTL: 30 minutes. Prevents redundant API
