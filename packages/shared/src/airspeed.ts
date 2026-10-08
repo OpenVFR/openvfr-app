@@ -3,7 +3,9 @@
  *
  * Aircraft profiles and leg speed overrides hold INDICATED airspeed (what the
  * POH and the pilot quote). Time, wind correction and fuel need TRUE airspeed,
- * which is higher with altitude (about +2 % per 1000 ft in ISA).
+ * which is higher with altitude (about +2 % per 1000 ft in ISA). Standard
+ * atmosphere only: the real temperature changes TAS by about 1-2 %, which is
+ * not worth a per-leg input.
  *
  * IAS is treated as equivalent airspeed: compressibility is negligible at VFR
  * speeds and altitudes, and instrument/position error is not modelled.
@@ -20,23 +22,22 @@ export function isaTempC(altFt: number): number {
   return 15 - LAPSE_C_PER_FT * h
 }
 
-/** Density ratio σ at a pressure altitude; `oatC` overrides the ISA temperature. */
-export function densityRatio(altFt: number, oatC?: number): number {
+/** Density ratio σ at a pressure altitude (ISA). */
+export function densityRatio(altFt: number): number {
   const h = Math.min(Math.max(altFt, 0), TROPOPAUSE_FT)
   const isaK = T0_K - LAPSE_C_PER_FT * h
   const pRatio = Math.pow(isaK / T0_K, PRESSURE_EXP)
-  const tK = oatC != null ? oatC + 273.15 : isaK
-  return pRatio * (T0_K / tK)
+  return pRatio * (T0_K / isaK)
 }
 
-/** True airspeed (kt) from indicated airspeed at a pressure altitude; ISA unless `oatC` is given. */
-export function iasToTas(iasKts: number, altFt: number, oatC?: number): number {
+/** True airspeed (kt) from indicated airspeed at a pressure altitude (ISA). */
+export function iasToTas(iasKts: number, altFt: number): number {
   if (!(iasKts > 0)) return iasKts
-  return iasKts / Math.sqrt(densityRatio(altFt, oatC))
+  return iasKts / Math.sqrt(densityRatio(altFt))
 }
 
 /** Indicated airspeed (kt) from true airspeed; inverse of iasToTas. */
-export function tasToIas(tasKts: number, altFt: number, oatC?: number): number {
+export function tasToIas(tasKts: number, altFt: number): number {
   if (!(tasKts > 0)) return tasKts
-  return tasKts * Math.sqrt(densityRatio(altFt, oatC))
+  return tasKts * Math.sqrt(densityRatio(altFt))
 }

@@ -210,30 +210,24 @@ export function PlanScreen() {
   const [ovrSpd, setOvrSpd]   = useState('')
   const [ovrWDir, setOvrWDir] = useState('')
   const [ovrWSpd, setOvrWSpd] = useState('')
-  const [ovrOat, setOvrOat]   = useState('')
   function openLegProps(i: number) {
     const o = legOverrides[i] ?? {}
     setOvrAlt(o.altFt != null ? String(o.altFt) : '')
     setOvrSpd(o.speedKts != null ? String(Math.round(ktsToDisplay(o.speedKts, units.speed))) : '')
     setOvrWDir(o.windDir != null ? String(o.windDir) : '')
     setOvrWSpd(o.windSpd != null ? String(Math.round(ktsToDisplay(o.windSpd, units.speed))) : '')
-    setOvrOat(o.oatC != null ? String(o.oatC) : '')
     const opening = i !== activeLeg
     setActiveLeg(opening ? i : null)
-    // Pre-fill the forecast wind (when neither the leg nor a session wind has one)
-    // and temperature (when none saved), like the web leg panel. Offline: stays blank.
+    // Pre-fill the forecast wind (when neither the leg nor a session wind has one),
+    // like the web leg panel. Offline: stays blank.
     const needWind = o.windDir == null && o.windSpd == null && !wind
-    const needOat  = o.oatC == null
-    if (opening && (needWind || needOat) && waypoints[i] && waypoints[i + 1]) {
+    if (opening && needWind && waypoints[i] && waypoints[i + 1]) {
       const midLat = (waypoints[i].lat + waypoints[i + 1].lat) / 2
       const midLng = (waypoints[i].lng + waypoints[i + 1].lng) / 2
       fetchWind(midLat, midLng, o.altFt ?? profile?.cruiseAltFt ?? null, API_BASE)
         .then(w => {
-          if (needWind) {
-            setOvrWDir(String(w.dirDeg))
-            setOvrWSpd(String(Math.round(ktsToDisplay(w.speedKts, units.speed))))
-          }
-          if (needOat && w.tempC != null) setOvrOat(String(w.tempC))
+          setOvrWDir(String(w.dirDeg))
+          setOvrWSpd(String(Math.round(ktsToDisplay(w.speedKts, units.speed))))
         })
         .catch(() => {})
     }
@@ -244,7 +238,6 @@ export function PlanScreen() {
     const spd = parseFloat(ovrSpd); if (!isNaN(spd)) next.speedKts = displayToKts(spd, units.speed)
     const wd  = parseFloat(ovrWDir); if (!isNaN(wd)) next.windDir = ((Math.round(wd) % 360) + 360) % 360
     const ws  = parseFloat(ovrWSpd); if (!isNaN(ws)) next.windSpd = displayToKts(ws, units.speed)
-    const oat = parseFloat(ovrOat); if (!isNaN(oat)) next.oatC = oat
     setLegOverride(i, next)
     setActiveLeg(null)
   }
@@ -262,7 +255,7 @@ export function PlanScreen() {
       const distNm  = distanceNm(from, to)
       const trueHdg = bearingDeg(from, to)
       const magHdg  = magneticBearingDeg(from, to)
-      const tas     = iasToTas(ovr?.speedKts ?? cruiseIas, ovr?.altFt ?? cruiseAltFt, ovr?.oatC)
+      const tas     = iasToTas(ovr?.speedKts ?? cruiseIas, ovr?.altFt ?? cruiseAltFt)
       const effDir  = ovr?.windDir  ?? wind?.dirDeg
       const effSpd  = ovr?.windSpd  ?? wind?.speedKts
       const hasWind = effDir != null && effSpd != null && effSpd > 0
@@ -567,7 +560,7 @@ export function PlanScreen() {
         {waypoints.map((wp, index) => {
           const leg = index < legs.length ? legs[index] : null
           const eta = etas?.[index] ?? null
-          const hasOverride = !!(legOverrides[index]?.altFt || legOverrides[index]?.speedKts || legOverrides[index]?.windDir || legOverrides[index]?.windSpd || legOverrides[index]?.oatC != null)
+          const hasOverride = !!(legOverrides[index]?.altFt || legOverrides[index]?.speedKts || legOverrides[index]?.windDir || legOverrides[index]?.windSpd)
           return (
             <View key={index}>
               <View style={styles.wpRow}>
@@ -627,9 +620,6 @@ export function PlanScreen() {
                   <View style={styles.windInputs}>
                     <TextInput style={styles.numberInput} value={ovrWDir} onChangeText={setOvrWDir} placeholder="Wind Dir°" placeholderTextColor={theme.textFaint} keyboardType="numeric" />
                     <TextInput style={styles.numberInput} value={ovrWSpd} onChangeText={setOvrWSpd} placeholder={`Wind ${speedLabel(units.speed)}`} placeholderTextColor={theme.textFaint} keyboardType="numeric" />
-                  </View>
-                  <View style={styles.windInputs}>
-                    <TextInput style={styles.numberInput} value={ovrOat} onChangeText={setOvrOat} placeholder="OAT °C (blank = ISA)" placeholderTextColor={theme.textFaint} keyboardType="numeric" />
                   </View>
                   <View style={styles.saveRowActions}>
                     <TouchableOpacity style={styles.saveConfirm} onPress={() => saveLegProps(index)}>

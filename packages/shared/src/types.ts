@@ -17,8 +17,6 @@ export type LegOverride = {
   speedKts?: number
   windDir?:  number
   windSpd?:  number
-  /** Outside air temperature (°C) at the leg altitude; used for the IAS→TAS conversion. Absent = ISA. */
-  oatC?:     number
 }
 
 export type AircraftCategory =

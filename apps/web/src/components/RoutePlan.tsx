@@ -276,7 +276,7 @@ export default function RoutePlan({ waypoints, legOverrides, routeVisible, onTog
     const effDir = ovr.windDir  ?? globalWind?.dirDeg
     const effSpd = ovr.windSpd  ?? globalWind?.speedKts
     // Leg speed is indicated; time and wind correction use TAS at the leg altitude.
-    const tas = iasToTas(iasKts, ovr.altFt ?? defaultAltFt ?? 3500, ovr.oatC)
+    const tas = iasToTas(iasKts, ovr.altFt ?? defaultAltFt ?? 3500)
     let gs = tas
     let wcaDeg: number | undefined
     if (effDir != null && effSpd != null && effSpd > 0) {
