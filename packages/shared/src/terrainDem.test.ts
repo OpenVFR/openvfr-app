@@ -83,7 +83,8 @@ const haveArchive = fs.existsSync(archive)
 
 describe.skipIf(!haveArchive)('PmtilesDem against se-hillshade.pmtiles', () => {
   let maxRead = 0
-  const fd = fs.openSync(archive, 'r')
+  // describe bodies run even when skipped: don't open a missing file (CI)
+  const fd = haveArchive ? fs.openSync(archive, 'r') : -1
   const source: RangeSource = {
     getKey: () => archive,
     async getBytes(offset, length) {
