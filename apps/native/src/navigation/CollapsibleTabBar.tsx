@@ -113,7 +113,7 @@ export function CollapsibleTabBar({ state, descriptors, navigation }: BottomTabB
                 accessibilityLabel={collapsed ? 'Show navigation bar' : 'Hide navigation bar'}
                 testID={key === 'start' ? 'tab-bar-handle' : `tab-bar-gap-handle-${key}`}
               >
-                <View style={styles.gapPill} />
+                {(key === 'start' || key === 'end') && <View style={styles.gapPill} />}
               </TouchableOpacity>
             )
             const { options } = descriptors[route.key]

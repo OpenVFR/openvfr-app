@@ -1124,7 +1124,7 @@ export function MapScreen() {
       { id: 'dest', label: 'Find dest.', description: 'Search aerodromes by name, fuel, surface and runway length, sorted by distance from you or the map centre',
         icon: toolIcon(IconSearch), onSelect: () => setShowFindDest(true) },
       { id: 'home', label: settings.homeAirfield || 'Home',
-        description: settings.homeAirfield ? `Centre the map on your home airfield, ${settings.homeAirfield}` : 'No home airfield set yet. Set one in Settings.',
+        description: settings.homeAirfield ? `Centre the map on your home airfield, ${settings.homeAirfield}` : 'No home airfield set yet. Open an aerodrome and tap its home button.',
         icon: toolIcon(IconHome), dim: !homeCoord,
         onSelect: () => { if (homeCoord) setFindDestFlyTarget({ lat: homeCoord[1], lng: homeCoord[0], zoom: 13, nonce: Date.now() }) } },
     ] },

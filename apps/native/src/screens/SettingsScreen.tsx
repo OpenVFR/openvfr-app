@@ -198,21 +198,6 @@ export function SettingsScreen() {
         />
       </Section>
 
-      {/* ── Home airfield ─────────────────────────────────────────── */}
-      <Section title="Home Airfield">
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>ICAO code</Text>
-          <TextInput
-            style={styles.textInput}
-            value={settings.homeAirfield}
-            onChangeText={v => update({ homeAirfield: v.toUpperCase() })}
-            placeholder="e.g. ESSA"
-            placeholderTextColor={theme.textFaint}
-            autoCapitalize="characters"
-            maxLength={4}
-          />
-        </View>
-      </Section>
 
       {/* ── Navigation ────────────────────────────────────────────── */}
             {/* ── Airspace Warnings ─────────────────────────────── */}

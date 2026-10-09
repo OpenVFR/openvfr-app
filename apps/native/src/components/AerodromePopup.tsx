@@ -13,6 +13,7 @@
  */
 
 import React, { useEffect, useState } from 'react'
+import { Ionicons } from '@expo/vector-icons'
 import {
   View, Text, ScrollView, TouchableOpacity, Share,
 } from 'react-native'
@@ -23,6 +24,7 @@ import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import type { RoutePoint } from '@open-vfr/shared/notamRouteFilter'
 import { useAerodromeBriefing } from '../hooks/useAerodromeBriefing'
+import { useSettingsContext } from '../context/SettingsContext'
 import { deriveWxDisplay } from '../utils/deriveWxDisplay'
 import { Section, FR_COLOR } from './AerodromeBriefShared'
 import AerodromeWxSection from './AerodromeWxSection'
@@ -179,6 +181,8 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const runwayStyles = useThemedStyles(makeRunwayStyles)
+  const { settings, update } = useSettingsContext()
+  const isHome = !!feature?.icao && settings.homeAirfield.toUpperCase() === feature.icao.toUpperCase()
   // Hooks must be declared before any conditional return (Rules of Hooks)
   const [activeTab, setActiveTab] = useState<'info' | 'wx' | 'notam'>('info')
   // Which wx tab is displayed -- see AerodromeWxSection.tsx's doc comment.
@@ -278,6 +282,15 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
               accessibilityLabel="Share link to this aerodrome"
             >
               <Text style={styles.closeTxt}>⇪</Text>
+            </TouchableOpacity>
+          )}
+          {!!feature.icao && (
+            <TouchableOpacity
+              onPress={() => update({ homeAirfield: isHome ? '' : feature.icao.toUpperCase() })}
+              style={styles.closeBtn}
+              accessibilityLabel={isHome ? 'Home airfield (tap to clear)' : 'Set as home airfield'}
+            >
+              <Ionicons name={isHome ? 'home' : 'home-outline'} size={18} color={isHome ? theme.accentBlue : theme.textMuted} />
             </TouchableOpacity>
           )}
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
