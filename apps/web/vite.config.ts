@@ -16,11 +16,45 @@ const DEV_API_TARGET = env['VITE_DEV_API_TARGET']
 // docs/self-hosting.md. Left unset, these two proxy entries aren't
 // registered at all (dev server 404s /tiles/* unless public/tiles/ is
 // populated locally, per dev.sh).
+// Dev-only sign-in against a REMOTE API (VITE_DEV_API_TARGET set to a hosted
+// instance). better-auth rejects any Origin header that is not in that
+// server's trusted list ("Invalid origin"), and a hosted instance rightly
+// trusts only its own app origin, not http://localhost:<port>. Setting
+// VITE_DEV_API_ORIGIN to that app origin makes the dev server's proxy present
+// it on requests it forwards to the remote API, and strip the cookie Domain
+// so the session cookie sticks on localhost. Nothing changes server-side, so
+// production's trusted-origin list stays as strict as before; this exists
+// only inside `vite` (dev server) and is not part of any build output. Unset
+// (the default) = proxy forwards the browser's real Origin untouched.
+const DEV_API_ORIGIN = DEV_API_TARGET ? (env['VITE_DEV_API_ORIGIN'] || '') : ''
+const devApiOrigin = DEV_API_ORIGIN
+  ? {
+      cookieDomainRewrite: { '*': '' },
+      configure: (proxy: { on: (ev: 'proxyReq', cb: (req: { setHeader: (k: string, v: string) => void; getHeader: (k: string) => unknown }) => void) => void }) => {
+        proxy.on('proxyReq', (proxyReq) => {
+          if (proxyReq.getHeader('origin')) proxyReq.setHeader('origin', DEV_API_ORIGIN)
+          if (proxyReq.getHeader('referer')) proxyReq.setHeader('referer', `${DEV_API_ORIGIN}/`)
+        })
+      },
+    }
+  : {}
 const DEV_TILES_TARGET   = env['VITE_DEV_TILES_TARGET']   || ''
 const DEV_TRAFFIC_TARGET = env['VITE_DEV_TRAFFIC_TARGET'] || DEV_API_TARGET || ''
 
 export default defineConfig({
   plugins: [
+    // Hard stop: VITE_DEV_API_ORIGIN is a dev-server-only sign-in workaround
+    // (see DEV_API_ORIGIN above). It has no meaning in a build, so a build that
+    // sees it set -- e.g. a .env.local copied onto a CI/release machine --
+    // fails instead of shipping with a dev override configured.
+    {
+      name: 'openvfr:forbid-dev-api-origin-in-build',
+      config(_cfg: unknown, { command }: { command: string }) {
+        if (command === 'build' && env['VITE_DEV_API_ORIGIN']) {
+          throw new Error('VITE_DEV_API_ORIGIN is set. It is a dev-server-only sign-in override and must not be present for `vite build`. Remove it from the environment / .env.local and rebuild.')
+        }
+      },
+    },
     react(),
     VitePWA({
       registerType: 'prompt',
@@ -218,6 +252,7 @@ export default defineConfig({
         changeOrigin: true,
       } } : {}),
       '/api/weather': {
+        ...devApiOrigin,
         // Overridable via VITE_DEV_API_TARGET so local dev can point at a
         // running API instance instead of requiring the full docker-compose
         // stack (db/martin/api/postgrest) just to verify a frontend-only
@@ -227,14 +262,17 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/api/notam': {
+        ...devApiOrigin,
         target: DEV_API_TARGET || 'http://localhost:5200',
         changeOrigin: true,
       },
       '/api/auth': {
+        ...devApiOrigin,
         target: DEV_API_TARGET || 'http://localhost:5200',
         changeOrigin: true,
       },
       '/rest': {
+        ...devApiOrigin,
         // Overridable via VITE_DEV_API_TARGET, same as '/api/auth' below — the
         // PostgREST JWT is signed with whichever auth server issued it, so
         // it must be sent to that SAME origin's PostgREST (shared JWT secret)
