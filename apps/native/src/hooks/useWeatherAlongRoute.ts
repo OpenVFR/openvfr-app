@@ -19,6 +19,20 @@ import { authHeaders } from '../utils/authClient'
 const BUFFER_NM    = 15
 const MAX_STATIONS = 12
 
+// Short-lived per-ICAO weather cache shared by every hook instance (map screen,
+// plan screen, ruler): they fetch the same stations for the same route, and
+// each used to hit /api/weather on its own. Failed fetches are not kept.
+const WX_TTL_MS = 60_000
+const wxCache = new Map<string, { at: number; p: Promise<Awaited<ReturnType<typeof fetchWxNearest>>> }>()
+function cachedWx(icao: string, load: () => ReturnType<typeof fetchWxNearest>) {
+  const hit = wxCache.get(icao)
+  if (hit && Date.now() - hit.at < WX_TTL_MS) return hit.p
+  const p = load()
+  wxCache.set(icao, { at: Date.now(), p })
+  p.catch(() => { if (wxCache.get(icao)?.p === p) wxCache.delete(icao) })
+  return p
+}
+
 export interface RouteWeatherStation {
   icao:    string
   name:    string
@@ -158,7 +172,7 @@ export function useWeatherAlongRoute(waypoints: RouteWaypoint[], enabled = true)
       const headers = await authHeaders()
       const results = await Promise.all(nearby.map(async (a): Promise<RouteWeatherStation> => {
         try {
-          const wx = await fetchWxNearest(a.icao, otherCandidatesFor(a), API_BASE, undefined, headers)
+          const wx = await cachedWx(a.icao, () => fetchWxNearest(a.icao, otherCandidatesFor(a), API_BASE, undefined, headers))
           return {
             icao: a.icao, name: a.name, distNm: Math.round(a.distNm * 10) / 10,
             lat: a.lat, lng: a.lng,
