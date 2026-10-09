@@ -177,11 +177,6 @@ const WIND_ROW_Y = 15
 const WIND_ROW_EDGE_L_PX = 16
 const WIND_ROW_EDGE_R_PX = 30
 const WIND_ROW_STATION_SEP_NM = 6
-const WIND_BARB_SHAFT_LEN = 18
-const WIND_BARB_BARB_LEN  = 8
-const WIND_BARB_HALF_LEN  = 5
-const WIND_BARB_BARB_GAP  = 5
-const WIND_BARB_STROKE_W  = 1.8
 
 /**
  * Renders a small WMO-style wind barb (shaft + pennant/full/half-barb
@@ -671,7 +666,6 @@ function VirtualRadar({
   // Right edge of the actual plot area in px -- used by the wind-arrow
   // blocks below to decide whether the dir/speed text fits to the right of
   // the arrow (12 = ComposedChart's margin.right).
-  const plotRightPx = contentPxWidth - 12
   // X-axis tick/unit-label collision avoidance \u2014 XAxis's `label` prop
   // ("NM"/"km", position: 'insideRight') is pinned to the axis's right
   // edge regardless of where the highest auto-generated tick (previously
