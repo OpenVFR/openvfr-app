@@ -28,6 +28,7 @@ import type { WxResolved } from '@open-vfr/shared/fetchWx'
 import type { AmbientWx } from '@open-vfr/shared/fetchWind'
 import { visTone, ceilingTone, windTone, fmtVis, fmtWind, fmtObsAge, metarNarrative } from '@open-vfr/shared/wxFormat'
 import { parseMetarClouds } from '@open-vfr/shared/fetchWx'
+import { tafChangeSoon } from '@open-vfr/shared/parseTaf'
 import { deriveWxDisplay } from '../utils/deriveWxDisplay'
 import { computeRunwayWind } from '@open-vfr/shared/runwayWind'
 import { Section, FR_BADGE } from './AerodromeBriefShared'
@@ -261,6 +262,9 @@ export default function AerodromeWxSection({ icao, lat, lng, elevationFt, runway
                 <TouchableOpacity onPress={() => setTafExpanded(e => !e)} style={styles.tafToggle}>
                   <Text style={styles.tafToggleTxt}>{tafExpanded ? '▴ Hide TAF' : '▾ Show TAF'}</Text>
                 </TouchableOpacity>
+                {tafChangeSoon(wx.taf) && (
+                  <Text style={wxStyles.tafChange}>{'\u26a0'} Trend change due within 3 h</Text>
+                )}
                 {tafExpanded && (
                   <>
                     {tafPeriods && tafPeriods.length > 0 && (
@@ -565,6 +569,12 @@ function makeWxStyles(theme: ScaledTheme) {
     fontSize: theme.textSm,
     lineHeight: 19,
     marginTop: theme.space2,
+  },
+  tafChange: {
+    color: '#f59e0b',
+    fontSize: theme.textXs,
+    fontWeight: '700',
+    marginTop: 2,
   },
   tafBlock: {
     marginTop: theme.space2,

@@ -34,6 +34,7 @@
     "./windBarb": "./src/windBarb.ts",
     "./windGrid": "./src/windGrid.ts",
     "./windAloft": "./src/windAloft.ts",
+    "./windRow": "./src/windRow.ts",
     "./windRelative": "./src/windRelative.ts",
     "./runwayWind": "./src/runwayWind.ts",
     "./virtualRadarCalc": "./src/virtualRadarCalc.ts",

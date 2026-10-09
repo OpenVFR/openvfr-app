@@ -29,10 +29,13 @@ interface Props {
   onInfoPress:  () => void
   /** Altitude the wind arrows show, e.g. "WIND 4,500 ft PLAN"; omit when the layer is off. */
   windLabel?:   string
+  /** True while the pilot forced ground wind; the label is a button that toggles it. */
+  windSurface?: boolean
+  onToggleWindSurface?: () => void
 }
 
 export const MapInfoBar = forwardRef<MapInfoBarHandle, Props>(function MapInfoBar(
-  { ceilingFt, distanceUnit, initialCamera, onInfoPress, windLabel }, ref,
+  { ceilingFt, distanceUnit, initialCamera, onInfoPress, windLabel, windSurface, onToggleWindSurface }, ref,
 ) {
   const styles = useThemedStyles(makeStyles)
   const [cam, setCam] = useState(initialCamera)
@@ -70,7 +73,17 @@ export const MapInfoBar = forwardRef<MapInfoBarHandle, Props>(function MapInfoBa
         <Text style={styles.infoText}>i</Text>
       </TouchableOpacity>
       <Text style={[styles.alt, !unlimited && styles.altFiltered]} testID="map-altitude-filter">{altLabel}</Text>
-      {windLabel ? <Text style={styles.alt} testID="map-wind-altitude">{windLabel}</Text> : null}
+      {windLabel ? (
+        <TouchableOpacity
+          onPress={onToggleWindSurface}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={windSurface ? 'Wind arrows show ground wind, tap to follow altitude' : 'Wind arrows follow altitude, tap to show ground wind'}
+          testID="map-wind-altitude"
+        >
+          <Text style={[styles.alt, windSurface && styles.altFiltered]}>{windLabel}</Text>
+        </TouchableOpacity>
+      ) : null}
       <View style={styles.scale} pointerEvents="none">
         <View style={[styles.scaleBar, { width: scale.barPx }]} />
         <Text style={styles.scaleLabel}>{scale.label}</Text>

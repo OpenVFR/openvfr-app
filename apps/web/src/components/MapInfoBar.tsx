@@ -21,6 +21,9 @@ interface Props {
   units: Units
   /** Altitude the wind-arrows overlay shows, e.g. "WIND 4,500 ft PLAN"; omit when the layer is off. */
   windLabel?: string
+  /** True while the pilot forced ground wind; the label is a button that toggles it. */
+  windSurface?: boolean
+  onToggleWindSurface?: () => void
 }
 
 const MAX_BAR_PX = 110
@@ -29,7 +32,7 @@ function computeScale(map: maplibregl.Map, nm: boolean): MapScale {
   return computeMapScale(map.getCenter().lat, map.getZoom(), nm, MAX_BAR_PX)
 }
 
-export default function MapInfoBar({ map, ceilingFt, units, windLabel }: Props) {
+export default function MapInfoBar({ map, ceilingFt, units, windLabel, windSurface, onToggleWindSurface }: Props) {
   const nm = units.distance === 'nm'
   const [scale, setScale] = useState<MapScale | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
@@ -82,9 +85,16 @@ export default function MapInfoBar({ map, ceilingFt, units, windLabel }: Props) 
           {altLabel}
         </span>
         {windLabel && (
-          <span className={css.alt} title="Altitude of the wind arrows: your altitude while flying, otherwise the planned route altitude.">
+          <button
+            type="button"
+            className={`${css.windBtn} ${windSurface ? css.altFiltered : ''}`}
+            onClick={onToggleWindSurface}
+            title={windSurface
+              ? 'Wind arrows show ground wind. Click to follow your altitude / the planned route altitude.'
+              : 'Wind arrows follow your altitude, otherwise the planned route altitude. Click to show ground wind instead.'}
+          >
             {windLabel}
-          </span>
+          </button>
         )}
         {scale && (
           <>

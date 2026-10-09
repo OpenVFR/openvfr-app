@@ -14,22 +14,23 @@ export function useWindAloftAlongRoute(
   waypoints: RouteWaypoint[],
   totalNm: number,
   maxAltFt: number,
+  enabled = true,
 ): WindAloftColumn[] {
   const [columns, setColumns] = useState<WindAloftColumn[]>([])
   // Keyed on coordinates, not array identity, so a re-render with an equal route doesn't refetch.
   const routeKey = waypoints.map((w) => `${w.lat.toFixed(3)},${w.lng.toFixed(3)}`).join('|')
 
   useEffect(() => {
-    if (waypoints.length < 2 || totalNm <= 0) { setColumns([]); return }
+    if (!enabled || waypoints.length < 2 || totalNm <= 0) { setColumns([]); return }
     const ac = new AbortController()
     const timer = setTimeout(() => {
-      fetchWindAloftAlongRoute(waypoints, totalNm, maxAltFt, API_BASE, ac.signal)
+      fetchWindAloftAlongRoute(waypoints, totalNm, maxAltFt, API_BASE, ac.signal, totalNm / 6)
         .then((c) => { if (!ac.signal.aborted) setColumns(c) })
         .catch(() => { /* offline-safe: no barbs */ })
     }, DEBOUNCE_MS)
     return () => { clearTimeout(timer); ac.abort() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeKey, totalNm, maxAltFt])
+  }, [routeKey, totalNm, maxAltFt, enabled])
 
   return columns
 }

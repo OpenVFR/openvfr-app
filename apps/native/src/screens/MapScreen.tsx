@@ -19,7 +19,6 @@ import { MapDisplaySheet, LAYER_DEFAULTS } from '../components/MapDisplaySheet'
 import { VicinityBriefSheet } from '../components/VicinityBriefSheet'
 import { FindDestinationSheet } from '../components/FindDestinationSheet'
 import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
-import { useWindAlongRoute } from '../hooks/useWindAlongRoute'
 import { windOverlayAltitude } from '@open-vfr/shared/windGrid'
 import type { LayerState }   from '../components/MapDisplaySheet'
 
@@ -605,19 +604,17 @@ export function MapScreen() {
     showRulerProfile ? rulerPoints : NO_WAYPOINTS,
     mapReady && showRulerProfile,
   )
-  // Regular-interval wind samples -- fills the gaps between
-  // routeWeatherStations' real-station markers, which only ever exist
-  // wherever an aerodrome happens to sit. Mirrors web's identical addition.
   const routeTotalNm = waypoints.length >= 2 ? distanceAlongRouteNm(waypoints, waypoints[waypoints.length - 1]) : 0
-  const routeWindSamples = useWindAlongRoute(waypoints, routeTotalNm, mapReady)
   // Wind arrows altitude: live while flying, else the planned route level
   // (highest leg, defaulting to the aircraft's cruise altitude), else surface.
   const plannedWindAltFt = waypoints.length >= 2
     ? Math.max(...waypoints.slice(1).map((_, i) => legOverrides[i]?.altFt ?? (aircraftProfile?.cruiseAltFt || 3500)))
     : null
+  const [windSurface, setWindSurface] = useState(false)
   const windOverlay = windOverlayAltitude(
     (flying || simFlight.active) ? (activePosition?.altFt ?? null) : null,
     plannedWindAltFt,
+    windSurface,
   )
   const notamCirclesFC = useMemo(() => ({
     type: 'FeatureCollection' as const,
@@ -1359,6 +1356,8 @@ export function MapScreen() {
           showWind={layers.wind}
           windAltFt={windOverlay.altFt}
           windLabel={windOverlay.label}
+          windSurface={windSurface}
+          onToggleWindSurface={() => setWindSurface((v) => !v)}
           trafficFC={trafficFC}
           notamCirclesFC={notamCirclesFC}
           notamPointsFC={notamPointsFC}
@@ -1692,7 +1691,6 @@ export function MapScreen() {
           currentVSpeedFpm={altitudeSource.vsFtMin ?? undefined}
           crossTrackNm={crossTrackNm}
           weatherStations={routeWeatherStations}
-          windSamples={routeWindSamples}
           trajectoryMode={settings.trajectoryMode ?? 'time'}
           trajectoryNm={settings.trajectoryNm}
           height={profileHeight}

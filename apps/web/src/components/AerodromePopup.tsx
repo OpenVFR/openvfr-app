@@ -4,7 +4,7 @@ import { notamTitle } from '@open-vfr/shared/notamQCode'
 import { buildAerodromeLink } from '@open-vfr/shared/deepLink'
 import { fetchWxResolved, decodeMetar, parseMetarWind, parseMetarClouds, type WxResolved, type WxStationCandidate, type ParsedWind } from '../utils/fetchWx'
 import { fetchAmbientWx, type AmbientWx } from '@open-vfr/shared/fetchWind'
-import { parseTaf, type TafPeriod } from '@open-vfr/shared/parseTaf'
+import { parseTaf, tafChangeSoon, type TafPeriod } from '@open-vfr/shared/parseTaf'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import { computeRunwayWind, effectiveMagBrg, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import { WindCompassGauge, WindSpeedGauge, type RunwayHeading } from './WindGauges'
@@ -1075,6 +1075,9 @@ export default function AerodromePopup({
                       >
                         TAF {tafExpanded ? '▴' : '▾'}
                       </button>
+                      {tafChangeSoon(wx.taf) && (
+                        <span className={css.tafChange}>{'\u26a0'} Trend change due within 3 h</span>
+                      )}
                       {tafExpanded && (
                         <>
                           {tafPeriods && tafPeriods.length > 0 && (

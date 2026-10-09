@@ -160,6 +160,8 @@ async function getIdentifierLookup(): Promise<Map<string, RouteWaypoint>> {
 
 interface Props {
   waypoints:    RouteWaypoint[]
+  /** ICAOs whose TAF has a trend change due soon (amber warning after the name). */
+  tafWarnIcaos?: string[]
   legOverrides: LegOverride[]
   /** Route activate/deactivate -- shows/hides the drawn route on the map
    *  without clearing its waypoints. Mirrors native's PlanScreen header
@@ -183,7 +185,7 @@ interface Props {
   onSetWaypointNote: (wpIdx: number, note: string) => void
 }
 
-export default function RoutePlan({ waypoints, legOverrides, routeVisible, onToggleRouteVisible, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onAddToRoute, onSetLegOverride, onSetWaypointNote, defaultAltFt, defaultSpeedKts }: Props) {
+export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, routeVisible, onToggleRouteVisible, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onAddToRoute, onSetLegOverride, onSetWaypointNote, defaultAltFt, defaultSpeedKts }: Props) {
   const [kbInput, setKbInput] = useState('')
   const [kbError, setKbError] = useState('')
   const [kbLoading, setKbLoading] = useState(false)
@@ -501,7 +503,7 @@ export default function RoutePlan({ waypoints, legOverrides, routeVisible, onTog
                     draggable
                     title="Drag to reorder"
                     onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(i) }}
-                  >{leg.fromName}</div>
+                  >{leg.fromName}{tafWarnIcaos.includes(leg.fromName) && <span className={css.tafWarn} title="TAF: trend change due within 3 h">{' \u26a0'}</span>}</div>
                   <div
                     className={`${css.arrow}${hasOverride ? ` ${css.arrowSet}` : ''} ${css.arrowBtn}`}
                     title="Edit leg properties"
@@ -512,7 +514,7 @@ export default function RoutePlan({ waypoints, legOverrides, routeVisible, onTog
                     draggable={i === legs.length - 1}
                     title={i === legs.length - 1 ? 'Drag to reorder' : undefined}
                     onDragStart={i === legs.length - 1 ? (e) => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(i + 1) } : undefined}
-                  >{leg.toName}</div>
+                  >{leg.toName}{tafWarnIcaos.includes(leg.toName) && <span className={css.tafWarn} title="TAF: trend change due within 3 h">{' \u26a0'}</span>}</div>
                   <div className={css.brg}>{String(Math.round(leg.magBrg)).padStart(3, '0')}°M</div>
                   {hasAnyWca && (
                     <div className={css.wca}>

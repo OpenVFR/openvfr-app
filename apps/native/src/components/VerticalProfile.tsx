@@ -58,12 +58,12 @@ import {
 import { CLOUD_COLORS } from '@open-vfr/shared/featureColors'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
 import { windBarbColorForSpeed, windBarbGeometry } from '@open-vfr/shared/windBarb'
+import { layoutWindRow, type WindRowItem } from '@open-vfr/shared/windRow'
 import { useWindAloftAlongRoute } from '../hooks/useWindAloftAlongRoute'
 import { getTileUrls, API_BASE } from '../config'
 import { getOfflineDem } from '../utils/terrainDem'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
-import type { WindSample } from '../hooks/useWindAlongRoute'
 
 // ---------------------------------------------------------------------------
 // Module-level GeoJSON cache — fetch + JSON.parse each of these exactly once
@@ -141,10 +141,6 @@ interface Props {
    *  arrows and cloud-base layers are drawn at each station's projected
    *  along-route position. Omit to hide entirely. */
   weatherStations?: RouteWeatherStation[]
-  /** Regular-interval wind samples (from useWindAlongRoute), independent of
-   *  aerodrome positions -- fills the gaps between weatherStations' arrows.
-   *  Mirrors web's identical prop. Omit to hide entirely. */
-  windSamples?: WindSample[]
   /** Chart area height in px — controlled by the parent (draggable via the
    *  handle rendered at the top of this panel). Defaults to DEFAULT_CHART_H. */
   height?: number
@@ -163,28 +159,27 @@ interface Props {
 // Layout constants
 // ---------------------------------------------------------------------------
 
-// DEFAULT_CHART_H bumped 190->206 (+16px) in lockstep with MARGIN_T's
-// 10->26 (+16px) below -- reserves real headroom above the plot for wind
-// arrows (see WIND_ARROW_Y) without shrinking the plot itself (plotH stays
-// chartH - MARGIN_T - MARGIN_B = same value either way). Mirrors web's
-// identical VirtualRadar.tsx chartWrap/margin.top change.
-export const DEFAULT_CHART_H  = 206
+// DEFAULT_CHART_H = MARGIN_T + a plot of the same height as before + MARGIN_B
+// (the wind row lives in the bottom margin, under the x axis).
+export const DEFAULT_CHART_H  = 218
 export const MIN_CHART_H      = 0
 export const MAX_CHART_H      = 340
 export const COLLAPSE_THRESHOLD = 24   // below this, treat as "collapsed"
 const MARGIN_L  = 34   // room for FL/alt ticks
 const MARGIN_R  = 10
 const MARGIN_T  = 26
-const MARGIN_B  = 18
+const MARGIN_B  = 30   // tick labels + the wind-barb row under the x axis
 /** Top of the pinned Y-axis column's opaque backing: just above the top
  *  tick label (drawn at yOf(yMax) - 6 = MARGIN_T - 6). */
 const AXIS_COVER_TOP = MARGIN_T - 8
-// Wind arrow vertical position, within the reserved top margin ABOVE the
-// waypoint-name label row (which sits at top: MARGIN_T, i.e. pixel 26) --
-// previously arrows sat at MARGIN_T+9 (pixel 19 with the old MARGIN_T=10),
-// fighting the waypoint-name row for the same few pixels.
-const WIND_ARROW_Y   = 12
-const WIND_LABEL_TOP = 20
+// Wind row: one row of barbs just under the x axis, in the same band as the
+// tick labels (METAR/TAF station barbs + ground-model barbs; see
+// @open-vfr/shared/windRow for the placement rule). Offset is from the axis.
+const WIND_ROW_DY = 14
+const WIND_ROW_FONT = 10
+const WIND_ROW_EDGE_L_PX = 16   // clears the "0" tick label
+const WIND_ROW_EDGE_R_PX = 12
+const WIND_ROW_STATION_SEP_NM = 6
 
 // Never compress a long route down to fit the panel width —
 // below this pixel-per-NM density the chart becomes horizontally scrollable
@@ -361,7 +356,7 @@ function windLabelPlacement(cx: number, halfW: number, text: string, fontSize: n
 export function VerticalProfile({
   waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, title, headerStart, headerEnd, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
-  crossTrackNm, weatherStations, windSamples,
+  crossTrackNm, weatherStations,
   height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
@@ -374,6 +369,7 @@ export function VerticalProfile({
   const [terrainFailed, setTerrainFailed] = useState(false)
   const [msaPts,     setMsaPts]       = useState<MsaPoint[]>([])
   const [showProjection, setShowProjection] = useState(false)
+  const [showWindAloft, setShowWindAloft] = useState(true)
   const [chartW,      setChartW]      = useState(0)
   // Horizontal scroll offset into the (possibly wider-than-panel) chart
   // content — see MIN_PX_PER_NM above. 0 when the route fits the panel.
@@ -513,7 +509,7 @@ export function VerticalProfile({
 
   const totalNm = profile?.totalNm ?? 0
   // Winds aloft at the standard levels up to the chart top, one column every ~20 NM.
-  const windAloft = useWindAloftAlongRoute(waypoints, totalNm, yMax)
+  const windAloft = useWindAloftAlongRoute(waypoints, totalNm, yMax, showWindAloft)
   // Content (not panel) plot width: never below what the panel offers, but
   // grows past it once the route needs more than MIN_PX_PER_NM per NM to
   // stay legible (see MIN_PX_PER_NM comment above). contentW
@@ -746,9 +742,7 @@ export function VerticalProfile({
   // TAF only fills in wind/clouds when a station has no current METAR (see
   // resolveStationWeather / parseTaf.ts header for the full scope note —
   // this is NOT a route-position-vs-forecast-time overlay, that needs an
-  // ETD field this app doesn't have). tafChangeSoon flags a real trend
-  // change (FM/BECMG) in the next 3h — a nudge to go check the bulletin
-  // rather than a rendered forecast.
+  // ETD field this app doesn't have).
   const weatherMarks = useMemo(() => {
     if (!weatherStations) return []
     return projectWeatherMarks(waypoints, weatherStations, totalNm).map((m) => {
@@ -757,19 +751,9 @@ export function VerticalProfile({
         metarClouds: m.station.decoded?.clouds ?? null,
         taf: m.station.taf,
       })
-      return { station: m.station, distNm: m.distNm, offRouteNm: m.offRouteNm, wind: resolved.wind, clouds: resolved.clouds, tafChangeSoon: resolved.tafChangeSoon }
+      return { station: m.station, distNm: m.distNm, offRouteNm: m.offRouteNm, wind: resolved.wind, clouds: resolved.clouds }
     })
   }, [weatherStations, waypoints, totalNm])
-
-  // Regular-interval wind samples, filtered against weatherMarks above so a
-  // sample doesn't draw a second, visibly-different (dashed/model) arrow
-  // right next to a real station's arrow. Mirrors web's identical filter.
-  const visibleWindSamples = useMemo(() => {
-    if (!windSamples || windSamples.length === 0) return []
-    const MIN_SAMPLE_SEPARATION_NM = 5
-    const markDists = weatherMarks.filter((m) => m.wind).map((m) => m.distNm)
-    return windSamples.filter((s) => !markDists.some((d) => Math.abs(d - s.distNm) < MIN_SAMPLE_SEPARATION_NM))
-  }, [windSamples, weatherMarks])
 
   // Projected flight path — split into safe (cyan) / below-MSA (red) segments
   const { projSafePath, projDangerPath } = useMemo(() => {
@@ -871,6 +855,38 @@ export function VerticalProfile({
   const xTickCount = 6
   const xTicks = Array.from({ length: xTickCount + 1 }, (_, i) => (totalNm / xTickCount) * i)
 
+  // Wind row under the x axis (mirrors web's VirtualRadar): station barbs
+  // (priority 0) beat ground-model barbs (priority 1); each keeps its route
+  // position and degrades dir/kt text -> barb only -> not drawn when it would
+  // overlap a tick label, another barb or the chart edge.
+  type RowWind = { dirDeg: number | null; speedKt: number; calm: boolean }
+  const windRow = (() => {
+    const winds = new Map<string, { distNm: number; wind: RowWind; priority: number }>()
+    for (const [i, m] of weatherMarks.entries()) {
+      if (m.wind) winds.set(`st-${i}`, { distNm: m.distNm, wind: { dirDeg: m.wind.dirDeg ?? null, speedKt: m.wind.speedKt, calm: !!m.wind.calm }, priority: 0 })
+    }
+    const stationNms = weatherMarks.filter((m) => m.wind).map((m) => m.distNm)
+    for (const [ci, col] of windAloft.entries()) {
+      const g = col.levels.find((l) => l.surface)
+      if (!g || stationNms.some((d) => Math.abs(d - col.distNm) < WIND_ROW_STATION_SEP_NM)) continue
+      winds.set(`gr-${ci}`, { distNm: col.distNm, wind: { dirDeg: g.dirDeg, speedKt: g.speedKts, calm: g.speedKts === 0 }, priority: 1 })
+    }
+    const labelOf = (w: RowWind) => w.calm ? 'CALM' : w.dirDeg == null ? '' : `${String(w.dirDeg).padStart(3, '0')}\u00b0/${w.speedKt}`
+    const minPx = MARGIN_L + WIND_ROW_EDGE_L_PX, maxPx = MARGIN_L + plotW - WIND_ROW_EDGE_R_PX
+    const items: WindRowItem[] = [...winds.entries()].map(([key, v]) => ({
+      key, priority: v.priority,
+      // Clamped into the margin: departure/destination stations sit exactly on
+      // the plot edges, and a small nudge keeps their barb clear of the "0" tick.
+      px: Math.min(Math.max(xOf(v.distNm), minPx), maxPx),
+      labelW: labelOf(v.wind).length * WIND_ROW_FONT * 0.62,
+    }))
+    return layoutWindRow(items, {
+      // The "0" tick is skipped: the departure METAR sits there.
+      tickPx: xTicks.filter((d) => d > 0).map((d) => xOf(d)),
+      minPx, maxPx, leftLimitPx: MARGIN_L, rightLimitPx: contentW - 2,
+    }).map((pl) => ({ ...pl, wind: winds.get(pl.key)!.wind, text: labelOf(winds.get(pl.key)!.wind), model: pl.key.startsWith('gr-') }))
+  })()
+
   return (
     <View style={[styles.panel, collapsed && styles.panelCollapsed]}>
       {/* Drag handle + header merged into one compact row — title text and
@@ -884,6 +900,12 @@ export function VerticalProfile({
         <View style={styles.dragGrip} />
         <View style={[styles.headerSide, styles.headerSideEnd]}>
           {headerEnd}
+          <TouchableOpacity
+            style={[styles.projBtn, showWindAloft && styles.projBtnOn]}
+            onPress={() => setShowWindAloft(v => !v)}
+          >
+            <Text style={[styles.projBtnTxt, showWindAloft && styles.projBtnTxtOn]}>WIND</Text>
+          </TouchableOpacity>
           {perf && (
             <TouchableOpacity
               style={[styles.projBtn, showProjection && styles.projBtnOn]}
@@ -921,7 +943,7 @@ export function VerticalProfile({
                 // top sits just below the waypoint-name label row (MARGIN_T=26
                 // + its own text height) rather than at top:2 alongside it —
                 // that used to land directly on top of the wind-arrow/
-                // wind-label row (WIND_ARROW_Y=12 / windLabel top=8) and the
+                // wind row and the
                 // waypoint-name row (MARGIN_T), overlapping their text with
                 // this badge's own (a long, wide string) instead of just
                 // sharing empty chart background the way the scroll hint does.
@@ -1100,7 +1122,8 @@ export function VerticalProfile({
                 {/* Winds aloft: barbs at each standard pressure level's nominal
                     altitude (model forecast), mirrors web's VirtualRadar. */}
                 {windAloft.flatMap((col, ci) => col.levels.map((lv) => {
-                  if (lv.altFt > yMax * 0.96) return null
+                  // Surface (10 m) wind is part of the wind row under the x axis.
+                  if (lv.surface || lv.altFt > yMax * 0.96) return null
                   const x = windXOf(col.distNm), y = yOf(lv.altFt)
                   const color = windBarbColorForSpeed(lv.speedKts)
                   const label = lv.speedKts === 0 ? 'CALM' : `${String(lv.dirDeg).padStart(3, '0')}°/${lv.speedKts}`
@@ -1127,120 +1150,30 @@ export function VerticalProfile({
                   <Path d={projDangerPath} fill="none" stroke="rgba(239,68,68,0.95)" strokeWidth={2.5} />
                 )}
 
-                {weatherMarks.map((m, i) => {
-                  if (!m.wind) return null
-                  const x = windXOf(m.distNm), y = WIND_ARROW_Y
-                  if (m.wind.calm) {
-                    const p = windLabelPlacement(x, 3, 'CALM', 10, contentW - MARGIN_R, MARGIN_L)
-                    return (
-                      <G key={`wind-${i}`}>
-                        <Circle cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
-                        {p && renderHaloText(p.x, y + 3, 'CALM', 'rgba(203,213,225,0.95)', 10, 1, p.anchor)}
-                      </G>
-                    )
+                {/* Wind row under the x axis (see windRow above). */}
+                {windRow.map((w) => {
+                  const x = w.px, y = MARGIN_T + plotH + WIND_ROW_DY
+                  if (w.wind.dirDeg == null && !w.wind.calm) {
+                    return <Circle key={`windrow-${w.key}`} cx={x} cy={y} r={3} fill="none" stroke="rgba(250,204,21,0.7)" strokeWidth={1} strokeDasharray="1.5,1.5" />
                   }
-                  if (m.wind.dirDeg == null) {
-                    return <Circle key={`wind-${i}`} cx={x} cy={y} r={3} fill="none" stroke="rgba(250,204,21,0.7)" strokeWidth={1} strokeDasharray="1.5,1.5" />
-                  }
-                  // Rotation: dirDeg is the meteorological "wind FROM"
-                  // bearing. A barb's shaft points in the FROM direction by
-                  // international convention (unlike the old plain arrow
-                  // this replaced, which rotated by dirDeg+180 to point
-                  // where the air is going) -- matches the map's own
-                  // wind-barb icons and web's identical VirtualRadar.tsx fix.
-                  const rot = m.wind.dirDeg
-                  // Real WMO barb (shaft + feathers) instead of a plain
-                  // arrow -- mirrors web's VirtualRadar.tsx identical change.
-                  const color = windBarbColorForSpeed(m.wind.speedKt)
-                  // windBarbGeometry anchors its local origin at the
-                  // station/"tail" end -- correct for the map's real icons
-                  // (the anchor is a literal geographic point). Here `y` is
-                  // just a reserved chart row, not real data, so a
-                  // tail-anchored rotation made the glyph sit visibly
-                  // higher/lower within that row depending on wind
-                  // direction -- caught in a device review. The extra
-                  // translate(0, shaftLen/2) re-centres rotation on the
-                  // shaft's midpoint instead, keeping the footprint
-                  // balanced above/below y for any direction.
-                  {
-                    const label = `${m.wind.dirDeg}\u00b0/${m.wind.speedKt}`
-                    const p = windLabelPlacement(x, WIND_BARB_SHAFT_LEN / 2, label, 10, contentW - MARGIN_R, MARGIN_L)
-                    return (
-                      <G key={`wind-${i}`}>
-                        <G transform={`translate(${x},${y}) rotate(${rot}) translate(0, ${WIND_BARB_SHAFT_LEN / 2})`}>
-                          {renderWindBarbShape(m.wind.speedKt, color, { shaftLen: WIND_BARB_SHAFT_LEN, barbLen: WIND_BARB_BARB_LEN, halfLen: WIND_BARB_HALF_LEN, barbGap: WIND_BARB_BARB_GAP, strokeW: WIND_BARB_STROKE_W })}
-                        </G>
-                        {p && renderHaloText(p.x, y + 3, label, color, 10, 1, p.anchor)}
-                      </G>
-                    )
-                  }
+                  const color = w.wind.calm ? 'rgba(203,213,225,0.95)' : windBarbColorForSpeed(w.wind.speedKt)
+                  return (
+                    <G key={`windrow-${w.key}`} opacity={w.model ? 0.85 : 1}>
+                      {w.wind.calm
+                        ? <Circle cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.8)" strokeWidth={1} />
+                        : (
+                          // dirDeg is the meteorological FROM bearing; the shaft
+                          // points FROM. Rotation is re-centred on the shaft's
+                          // midpoint so the glyph stays balanced about y.
+                          <G transform={`translate(${x},${y}) rotate(${w.wind.dirDeg}) translate(0, ${WIND_BARB_SHAFT_LEN / 2})`}>
+                            {renderWindBarbShape(w.wind.speedKt, color, { shaftLen: WIND_BARB_SHAFT_LEN, barbLen: WIND_BARB_BARB_LEN, halfLen: WIND_BARB_HALF_LEN, barbGap: WIND_BARB_BARB_GAP, strokeW: WIND_BARB_STROKE_W })}
+                          </G>
+                        )}
+                      {w.label === 'right' && renderHaloText(x + 9 + 4, y + 3, w.text, color, WIND_ROW_FONT, 1, 'start')}
+                      {w.label === 'left' && renderHaloText(x - 9 - 4, y + 3, w.text, color, WIND_ROW_FONT, 1, 'end')}
+                    </G>
+                  )
                 })}
-
-                {/* Regular-interval wind samples (useWindAlongRoute) --
-                    thinner/dashed/dimmer than a real station's arrow, same
-                    reasoning as web's identical block. Already filtered
-                    against weatherMarks in visibleWindSamples above. */}
-                {visibleWindSamples.map((s, i) => {
-                  const x = windXOf(s.distNm), y = WIND_ARROW_Y
-                  if (s.wind.calm) {
-                    const p = windLabelPlacement(x, 3, '~CALM', 10, contentW - MARGIN_R, MARGIN_L)
-                    return (
-                      <G key={`windsample-${i}`}>
-                        <Circle cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
-                        {p && renderHaloText(p.x, y + 3, '~CALM', 'rgba(203,213,225,0.95)', 10, 1, p.anchor)}
-                      </G>
-                    )
-                  }
-                  if (s.wind.dirDeg == null) return null
-                  const rot = s.wind.dirDeg // see FROM-direction comment above
-                  const color = windBarbColorForSpeed(s.wind.speedKt)
-                  // Same size/opacity/weight as the real-station barb above
-                  // -- the two used to look visibly different (bigger/
-                  // bolder real-station vs. smaller/dimmed sample), which
-                  // read as one being broken/lower-quality rather than
-                  // intentional; the "~" text prefix is already the
-                  // differentiator. Re-centres rotation on the shaft's
-                  // midpoint instead of its tail -- see the identical
-                  // comment on the real-station barb above for why.
-                  {
-                    const label = `~${s.wind.dirDeg}\u00b0/${s.wind.speedKt}`
-                    const p = windLabelPlacement(x, WIND_BARB_SHAFT_LEN / 2, label, 10, contentW - MARGIN_R, MARGIN_L)
-                    return (
-                      <G key={`windsample-${i}`}>
-                        <G transform={`translate(${x},${y}) rotate(${rot}) translate(0, ${WIND_BARB_SHAFT_LEN / 2})`}>
-                          {renderWindBarbShape(s.wind.speedKt, color, { shaftLen: WIND_BARB_SHAFT_LEN, barbLen: WIND_BARB_BARB_LEN, halfLen: WIND_BARB_HALF_LEN, barbGap: WIND_BARB_BARB_GAP, strokeW: WIND_BARB_STROKE_W })}
-                        </G>
-                        {p && renderHaloText(p.x, y + 3, label, color, 10, 1, p.anchor)}
-                      </G>
-                    )
-                  }
-                })}
-
-                {/* TAF "check the bulletin" warning -- amber triangle+"!"
-                     when a real trend change (FM/BECMG) lands within the
-                     next 3h (see resolveStationWeather/parseTaf.ts). Not a
-                     rendered forecast column -- just a nudge to go read the
-                     TAF text. The original was a bare filled triangle with
-                     no interior mark -- at this chart's scale it just read
-                     as an unrecognisable smudge, not a warning symbol, per
-                     user feedback. Sized up and given a bold "!" glyph,
-                     matching the universal hazard-triangle convention
-                     instead of relying on shape/colour alone. Mirrors
-                     web's identical VirtualRadar.tsx fix. */}
-                {weatherMarks.map((m, i) => m.tafChangeSoon ? (
-                  <G key={`tafwarn-${i}`} transform={`translate(${xOf(m.distNm)},0)`}>
-                    <Path
-                      d="M0,-8 L7,7 L-7,7 Z"
-                      // Fixed near the true top (y=0), above WIND_ARROW_Y's
-                      // span (~3-21px) at the same x -- was MARGIN_T-8 (pixel
-                      // 2 with the old MARGIN_T=10), which would now land
-                      // right inside the wind arrow's own span after
-                      // MARGIN_T grew to 26.
-                      fill="rgba(250,204,21,0.95)" stroke="rgba(0,0,0,0.7)" strokeWidth={1} strokeLinejoin="round"
-                    />
-                    <SvgText x={0} y={5.5} fontSize={8} fontWeight="bold" fill="rgba(0,0,0,0.85)" textAnchor="middle">!</SvgText>
-                  </G>
-                ) : null)}
 
                 {/* ── Waypoint ticks ──────────────────────────────────── */}
                 {profile.waypointTicks.map((tick, i) => i === 0 ? null : (

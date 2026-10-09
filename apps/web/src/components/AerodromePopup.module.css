@@ -791,6 +791,13 @@
 
 .tafToggle:hover { color: var(--text-muted); }
 
+.tafChange {
+  margin-left: 8px;
+  color: #f59e0b;
+  font-size: 10px;
+  font-weight: 600;
+}
+
 .tafRaw {
   margin-top: 5px;
   font-size: 9.5px;

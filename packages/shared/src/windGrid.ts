@@ -40,7 +40,10 @@ export interface LatLngBounds {
 export function windOverlayAltitude(
   liveAltFt: number | null | undefined,
   plannedAltFt: number | null | undefined,
+  /** The pilot asked for ground wind regardless of live/planned altitude. */
+  forceSurface = false,
 ): { altFt: number | null; label: string } {
+  if (forceSurface) return { altFt: null, label: 'WIND SFC' }
   const fmt = (ft: number) => `${(Math.round(ft / 100) * 100).toLocaleString('en-US')} ft`
   if (liveAltFt != null && liveAltFt > 1000) return { altFt: Math.round(liveAltFt / 500) * 500, label: `WIND ${fmt(liveAltFt)}` }
   if (liveAltFt == null && plannedAltFt != null && plannedAltFt > 1000) return { altFt: Math.round(plannedAltFt / 500) * 500, label: `WIND ${fmt(plannedAltFt)} PLAN` }

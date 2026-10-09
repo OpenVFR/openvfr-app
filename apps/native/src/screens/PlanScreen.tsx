@@ -23,6 +23,8 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import * as Crypto from 'expo-crypto'
 
 import { useRouteContext } from '../context/RouteContext'
+import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
+import { tafChangeIcaos } from '@open-vfr/shared/parseTaf'
 import { useRouteSync }       from '../hooks/useRouteSync'
 import { useSettingsContext }  from '../context/SettingsContext'
 import { useAuthContext }      from '../context/AuthContext'
@@ -94,6 +96,8 @@ export function PlanScreen() {
   const insets = useSafeAreaInsets()
   const { waypoints, legOverrides, removeWaypoint, clearRoute, setWaypoints, moveWaypoint, reverseRoute, setLegOverride, activeRouteId, setActiveRouteId, routeVisible, setRouteVisible } = useRouteContext()
   const { settings, update } = useSettingsContext()
+  const routeWx = useWeatherAlongRoute(waypoints)
+  const tafWarnIcaos = useMemo(() => tafChangeIcaos(routeWx), [routeWx])
   const { state: authState } = useAuthContext()
   const authenticated = authState.status === 'authenticated'
   const { syncState, pull: pullRoutes, pushRoute, deleteRoute } = useRouteSync(authenticated)
@@ -576,7 +580,10 @@ export function PlanScreen() {
                   <Text style={styles.badgeText}>{index + 1}</Text>
                 </View>
                 <View style={styles.wpInfo}>
-                  <Text style={styles.wpName}>{wp.name ?? `${wp.lat.toFixed(3)}°N`}</Text>
+                  <Text style={styles.wpName}>
+                    {wp.name ?? `${wp.lat.toFixed(3)}°N`}
+                    {wp.name && tafWarnIcaos.includes(wp.name) ? <Text style={styles.wpTafWarn}>{' \u26a0'}</Text> : null}
+                  </Text>
                   {eta && <Text style={styles.wpEta}>{eta}</Text>}
                   {wp.note ? <Text style={styles.wpNote} numberOfLines={1}>📌 {wp.note}</Text> : null}
                 </View>
@@ -1058,6 +1065,7 @@ function makeStyles(theme: ScaledTheme) {
   badgeText:   { color: theme.accentMagenta, fontSize: theme.textXs, fontWeight: '700' },
   wpInfo:      { flex: 1 },
   wpName:      { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '500' },
+  wpTafWarn:   { color: '#f59e0b' },
   wpEta:       { color: theme.accentBlue, fontSize: theme.textXs, marginTop: 1 },
   wpNote:      { color: theme.textMuted, fontSize: theme.textXs, marginTop: 1, fontStyle: 'italic' },
   // Bordered chip "button" affordance so the leg-properties tap target reads

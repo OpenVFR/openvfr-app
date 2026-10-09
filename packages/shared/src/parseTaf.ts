@@ -327,3 +327,19 @@ export function resolveStationWeather(opts: {
     tafChangeSoon,
   }
 }
+
+/**
+ * ICAOs of stations whose TAF has a trend change (FM/BECMG) due soon, for the
+ * route list's amber warning on those aerodromes.
+ */
+export function tafChangeIcaos(
+  stations: { icao: string; taf: string | null }[],
+  nowMs?: number,
+): string[] {
+  return stations.filter((s) => tafChangeSoon(s.taf, nowMs)).map((s) => s.icao)
+}
+
+/** True when this TAF has a trend change (FM/BECMG) due within the warning window. */
+export function tafChangeSoon(taf: string | null | undefined, nowMs?: number): boolean {
+  return !!taf && resolveStationWeather({ metarWind: null, metarClouds: null, taf, nowMs }).tafChangeSoon
+}

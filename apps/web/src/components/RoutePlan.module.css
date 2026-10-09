@@ -206,6 +206,8 @@
   cursor: grab;
 }
 
+.tafWarn { color: #f59e0b; }
+
 .wp:active {
   cursor: grabbing;
 }

@@ -93,6 +93,8 @@ interface Props {
   // Aircraft selection
   selectedAircraftId?: string
   selectedAircraftProfile?: AircraftProfileDocType
+  /** ICAOs with a TAF trend change due soon, flagged in the route list. */
+  tafWarnIcaos?: string[]
   onSelectAircraft?: (id: string | null) => void
   // Search / fly-to
   onFlyTo: (r: FindResult) => void
@@ -185,7 +187,7 @@ function SideDrawer({
   waypoints, legOverrides, routeVisible, onToggleRouteVisible, planningMode, onTogglePlanningMode,
   onUndo, onRedo, canUndo, canRedo, onClear, onReplace, onLoadRoute, activeRouteId, onActiveRouteIdChange, onSetLegOverride, onSetWaypointNote,
   onAddToRoute,
-  selectedAircraftId, selectedAircraftProfile, onSelectAircraft,
+  selectedAircraftId, selectedAircraftProfile, tafWarnIcaos, onSelectAircraft,
   onFlyTo,
   activeInfo, onCloseInfo,
   isHome, onSetHome, onRunwayWind, regionalNotams, onShowNotamOnMap,
@@ -377,6 +379,7 @@ function SideDrawer({
               <div className={css.sectionBody}>
                   <RoutePlan
                     waypoints={waypoints}
+                    tafWarnIcaos={tafWarnIcaos}
                     legOverrides={legOverrides}
                     routeVisible={routeVisible}
                     onToggleRouteVisible={onToggleRouteVisible}

@@ -34,7 +34,7 @@ import { getRemoteDem } from '../utils/terrainDem'
 import { windBarbColorForSpeed, windBarbGeometry } from '@open-vfr/shared/windBarb'
 import type { AircraftProfileDocType } from '../db/index'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
-import type { WindSample } from '../hooks/useWindAlongRoute'
+import { layoutWindRow, type WindRowItem } from '@open-vfr/shared/windRow'
 import { useWindAloftAlongRoute } from '../hooks/useWindAloftAlongRoute'
 import css from './VirtualRadar.module.css'
 import { TILES_BASE_URL } from '../utils/env'
@@ -106,12 +106,6 @@ interface Props {
    *  arrows and cloud-base layers drawn at each station's projected
    *  along-route position. Omit to hide entirely. */
   weatherStations?: RouteWeatherStation[]
-  /** Regular-interval wind samples (from useWindAlongRoute), independent of
-   *  aerodrome positions -- fills the gaps between weatherStations' arrows,
-   *  which only ever exist wherever an aerodrome happens to sit. Rendered
-   *  visibly lighter/dashed since these can be model-wind estimates, not
-   *  observed reports. Omit to hide entirely. */
-  windSamples?: WindSample[]
 }
 
 // ---------------------------------------------------------------------------
@@ -170,6 +164,19 @@ function ProfileTooltip({ active, payload }: { active?: boolean; payload?: Toolt
 // "observed vs. estimated", but that read as one being broken/lower-
 // quality rather than intentional. The "~" text prefix on samples is
 // already the differentiator, so both now share identical geometry.
+// The chart has no strip above the plot any more: every wind barb lives in one
+// row just under the distance axis, sharing the band with the tick labels.
+const CHART_TOP = 8
+const CHART_BOTTOM = 2
+const CHART_H = 162
+/** Centre of the wind row, px below the plot bottom (inside the x axis's own 30px band). */
+const WIND_ROW_Y = 15
+/** Station barbs closer than this to a ground-model column replace it (observed beats model). */
+// Edge barbs are nudged this far in from the plot edges (px): clears the "0"
+// tick label on the left and the "NM" unit label on the right.
+const WIND_ROW_EDGE_L_PX = 16
+const WIND_ROW_EDGE_R_PX = 30
+const WIND_ROW_STATION_SEP_NM = 6
 const WIND_BARB_SHAFT_LEN = 18
 const WIND_BARB_BARB_LEN  = 8
 const WIND_BARB_HALF_LEN  = 5
@@ -345,7 +352,7 @@ function CloudLayers({ marks, chips, totalNm, yMax, xFactor }: {
 function VirtualRadar({
   waypoints, legOverrides, units = DEFAULT_UNITS, title, onHoverDistNm, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, crosshairDistNm,
-  crossTrackNm, weatherStations, windSamples, airspaceCeilingFt,
+  crossTrackNm, weatherStations, airspaceCeilingFt,
 }: Props) {
 
   const chartWrapRef = useRef<HTMLDivElement | null>(null)
@@ -514,9 +521,7 @@ function VirtualRadar({
   // TAF only fills in wind/clouds when a station has no current METAR (see
   // resolveStationWeather / parseTaf.ts header for the full scope note —
   // this is NOT a route-position-vs-forecast-time overlay, that needs an
-  // ETD field this app doesn't have). tafChangeSoon flags a real trend
-  // change (FM/BECMG) in the next 3h — a nudge to go check the bulletin
-  // rather than a rendered forecast. Mirrors native's identical change.
+  // ETD field this app doesn't have).
   const weatherMarks = useMemo(() => {
     if (!weatherStations || !profile) return []
     return projectWeatherMarks(waypoints, weatherStations, profile.totalNm).map((m) => {
@@ -525,23 +530,10 @@ function VirtualRadar({
         metarClouds: m.station.decoded?.clouds ?? null,
         taf: m.station.taf,
       })
-      return { station: m.station, distNm: m.distNm, offRouteNm: m.offRouteNm, wind: resolved.wind, clouds: resolved.clouds, tafChangeSoon: resolved.tafChangeSoon }
+      return { station: m.station, distNm: m.distNm, offRouteNm: m.offRouteNm, wind: resolved.wind, clouds: resolved.clouds }
     })
   }, [weatherStations, waypoints, profile])
 
-  // Regular-interval wind samples, filtered against weatherMarks above so a
-  // sample doesn't draw a second, visibly-different (dashed/model) arrow
-  // right next to a real station's arrow that already covers roughly the
-  // same stretch of route. MIN_SAMPLE_SEPARATION_NM is deliberately smaller
-  // than useWindAlongRoute's own SAMPLE_INTERVAL_NM spacing -- it only needs
-  // to suppress the specific case of a sample landing very close to an
-  // existing real marker, not to re-implement that spacing itself.
-  const MIN_SAMPLE_SEPARATION_NM = 5
-  const visibleWindSamples = useMemo(() => {
-    if (!windSamples || windSamples.length === 0) return []
-    const markDists = weatherMarks.filter((m) => m.wind).map((m) => m.distNm)
-    return windSamples.filter((s) => !markDists.some((d) => Math.abs(d - s.distNm) < MIN_SAMPLE_SEPARATION_NM))
-  }, [windSamples, weatherMarks])
 
   // Measure the chart wrap's width — needed to decide whether the route is
   // wider than the panel (MIN_PX_PER_NM) and therefore should scroll instead
@@ -706,6 +698,47 @@ function VirtualRadar({
     return out
   }, [totalNmDisplay])
 
+  // ── Wind row (just under the x axis) ───────────────────────────────────────
+  // METAR/TAF station barbs plus, with the WIND toggle on, the ground (10 m)
+  // model barb of every winds-aloft column that has no station nearby. Each
+  // barb keeps its route position and degrades: dir/kt text -> barb only ->
+  // not drawn, whenever it would overlap a tick label, another barb or the
+  // chart edge (see @open-vfr/shared/windRow).
+  type WindRowWind = { dirDeg: number | null; speedKt: number; calm: boolean }
+  const windRow = (() => {
+    if (!profile || totalNmDisplay <= 0) return []
+    const pxPerUnit = contentPxWidth / totalNmDisplay
+    const winds = new Map<string, { distNm: number; wind: WindRowWind; priority: number }>()
+    for (const [i, m] of weatherMarks.entries()) {
+      if (m.wind) winds.set(`st-${i}`, { distNm: m.distNm, wind: { dirDeg: m.wind.dirDeg ?? null, speedKt: m.wind.speedKt, calm: !!m.wind.calm }, priority: 0 })
+    }
+    if (showWindAloft) {
+      const stationNms = weatherMarks.filter((m) => m.wind).map((m) => m.distNm)
+      for (const [ci, col] of windAloft.entries()) {
+        const g = col.levels.find((l) => l.surface)
+        if (!g || stationNms.some((d) => Math.abs(d - col.distNm) < WIND_ROW_STATION_SEP_NM)) continue
+        winds.set(`gr-${ci}`, { distNm: col.distNm, wind: { dirDeg: g.dirDeg, speedKt: g.speedKts, calm: g.speedKts === 0 }, priority: 1 })
+      }
+    }
+    const labelOf = (w: WindRowWind) => w.calm ? 'CALM' : w.dirDeg == null ? '' : `${String(w.dirDeg).padStart(3, '0')}\u00b0/${w.speedKt}`
+    const items: WindRowItem[] = [...winds.entries()].map(([key, v]) => ({
+      key, priority: v.priority,
+      // Clamped into the margin: departure/destination stations sit exactly on
+      // the chart edges, and a small nudge keeps the barb clear of the "0" tick label (left)
+      // and the "NM" unit label (right).
+      px: Math.min(Math.max(nmToDisplay(v.distNm, units.distance) * pxPerUnit, WIND_ROW_EDGE_L_PX), totalNmDisplay * pxPerUnit - WIND_ROW_EDGE_R_PX),
+      labelW: labelOf(v.wind).length * 10 * 0.62,
+    }))
+    const placed = layoutWindRow(items, {
+      // The "0" tick is skipped: the departure METAR sits exactly there and
+      // is the most useful barb on the row ("0" is self-evident).
+      tickPx: xAxisTicks.filter((t) => t > 0).map((t) => t * pxPerUnit),
+      minPx: WIND_ROW_EDGE_L_PX, maxPx: totalNmDisplay * pxPerUnit - WIND_ROW_EDGE_R_PX,
+      leftLimitPx: 4, rightLimitPx: totalNmDisplay * pxPerUnit,
+    })
+    return placed.map((pl) => ({ ...pl, x: pl.px / pxPerUnit, wind: winds.get(pl.key)!.wind, text: labelOf(winds.get(pl.key)!.wind), model: pl.key.startsWith('gr-') }))
+  })()
+
   // Waypoint-name label collision avoidance — closely-spaced waypoints
   // (e.g. a short leg to a named landmark waypoint) previously rendered
   // every ReferenceLine label regardless of pixel spacing, so adjacent
@@ -815,7 +848,7 @@ function VirtualRadar({
               when the chart actually scrolls. */}
           {scrollable && (
             <div className={css.yAxisPinned} aria-hidden>
-              <ComposedChart width={Y_AXIS_PIN_W} height={180} data={chartData} margin={{ top: 26, right: 0, bottom: 2, left: 4 }}>
+              <ComposedChart width={Y_AXIS_PIN_W} height={CHART_H} data={chartData} margin={{ top: CHART_TOP, right: 0, bottom: CHART_BOTTOM, left: 4 }}>
                 <XAxis dataKey="dist" type="number" domain={[0, Math.ceil(nmToDisplay(profile.totalNm, units.distance))]} tick={false} tickLine={false} axisLine={false} />
                 <YAxis
                   domain={[0, yMax]}
@@ -832,7 +865,7 @@ function VirtualRadar({
               </ComposedChart>
             </div>
           )}
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={CHART_H}>
             <ComposedChart
               data={chartData}
               // top bumped 8->26px (chartWrap grew by the same 20px, see
@@ -840,7 +873,7 @@ function VirtualRadar({
               // plot for wind arrows, which previously sat inside the plot's
               // own top strip fighting waypoint-name labels for the same
               // few pixels -- see the wind-arrow y comment below.
-              margin={{ top: 26, right: 12, bottom: 2, left: 4 }}
+              margin={{ top: CHART_TOP, right: 12, bottom: CHART_BOTTOM, left: 4 }}
               onMouseMove={(e) => {
                 const anyE = e as Record<string, unknown>
                 if (anyE['activePayload'] && Array.isArray(anyE['activePayload']) && anyE['activePayload'][0]) {
@@ -998,243 +1031,56 @@ function VirtualRadar({
                 )
               })}
 
-              {/* Weather: wind arrows — one per station near the top
-                  margin, rotated to point the direction the wind is blowing
-                  TOWARD (METAR wind direction is FROM, hence +180) — same
-                  convention as native and the main map. Length/opacity scale
-                  with speed; calm/variable draw a small ring instead of a
-                  directional arrow, since there is no single direction to
-                  show. Rendered via ReferenceDots custom shape callback,
-                  the same technique already used above for obstacle/landmark
-                  markers and below for the aircraft silhouette. */}
-              {weatherMarks.map((m, i) => {
-                if (!m.wind) return null
-                // Clamp inward from both chart edges — a station near the
-                // route's start/end otherwise lands the arrow (and its
-                // dirDeg/speed label) right on top of the y-axis line and
-                // FL tick labels, or off the right edge past the last NM
-                // tick. Margin is in the same display-distance units as the
-                // x-axis domain, derived from the actual px-per-unit scale
-                // (contentPxWidth/totalNmDisplay, from the scroll-width calc
-                // above) so it stays a constant ~24px regardless of route
-                // length/zoom, not a fixed NM offset that shrinks to nothing
-                // on a long route or overshoots on a short one.
-                const pxPerUnit = totalNmDisplay > 0 ? contentPxWidth / totalNmDisplay : 0
-                const edgeMargin = Math.min(pxPerUnit > 0 ? 24 / pxPerUnit : 0, totalNmDisplay / 2)
-                const xRaw = nmToDisplay(m.distNm, units.distance)
-                const x = Math.min(Math.max(xRaw, edgeMargin), totalNmDisplay - edgeMargin)
-                // Above the y-domain (not just near its top) so the arrow
-                // lands in the reserved top margin (margin.top=26, see
-                // ComposedChart above) instead of the plot's own top strip,
-                // where waypoint-name ReferenceLine labels also live --
-                // requires ifOverflow="visible" since y > yMax is otherwise
-                // clipped to the plot bounds.
-                const y = yMax * 1.1
-                return (
-                  <ReferenceDot
-                    key={`wind-${i}`}
-                    x={x} y={y} r={0} fill="transparent" stroke="none" ifOverflow="visible"
-                    shape={(dotProps) => {
-                      const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
-                      // Dir/speed text drawn to the RIGHT of the arrow (not
-                      // below it, and outside the rotated arrow group so the
-                      // text itself never rotates) -- only when it fits
-                      // before the plot's right edge, using a rough
-                      // char-width*fontSize estimate rather than measuring
-                      // real text width, same fixed-budget tradeoff already
-                      // used elsewhere in this chart (e.g. MIN_WP_LABEL_GAP_PX).
-                      // Skipped entirely (not wrapped/shrunk) when it doesn't
-                      // fit, since a station near the route's end otherwise
-                      // has nowhere else uncluttered to put it. paintOrder=
-                      // "stroke" + a wide dark strokeWidth draws an outline
-                      // BEHIND the fill (same double-stroke-pass contrast fix
-                      // used on the barb icons) instead of the old plain fill
-                      // text, which was flagged as illegible against the
-                      // chart background in a pre-release pass.
-                      // Flips to the LEFT of the arrow when the route's
-                      // final station sits close enough to the chart's
-                      // right edge that a right-side label would run past
-                      // it and get clipped by the chart wrapper's own
-                      // boundary (not caught by this fits-check before --
-                      // a station right at the route's end could render a
-                      // right-side label that passed this check yet still
-                      // got visually cut off, dropping its "/NNkt" suffix
-                      // -- caught in a device review). Falls back to
-                      // skipping entirely only if NEITHER side has room,
-                      // which should be rare at this chart's minimum width.
-                      const fontSize = 10
-                      const renderLabel = (text: string, halfW: number, fill: string) => {
-                        if (!text) return null
-                        const labelW = text.length * fontSize * 0.62
-                        const rightX = cx + halfW + 4
-                        if (rightX + labelW <= plotRightPx) {
-                          return (
-                            <text
-                              x={rightX} y={cy + fontSize * 0.35} fontSize={fontSize}
-                              fill={fill} stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke"
-                            >{text}</text>
-                          )
-                        }
-                        const leftX = cx - halfW - 4
-                        if (leftX - labelW >= 4) {
-                          return (
-                            <text
-                              x={leftX} y={cy + fontSize * 0.35} fontSize={fontSize} textAnchor="end"
-                              fill={fill} stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke"
-                            >{text}</text>
-                          )
-                        }
-                        return null
-                      }
-                      if (m.wind!.calm) {
-                        return (
-                          <g aria-hidden="true">
-                            <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
-                            {renderLabel('CALM', 3, 'rgba(203,213,225,0.95)')}
-                          </g>
-                        )
-                      }
-                      if (m.wind!.dirDeg == null) {
-                        return <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(250,204,21,0.7)" strokeWidth={1} strokeDasharray="1.5,1.5" />
-                      }
-                      // Rotation: dirDeg is the meteorological "wind FROM"
-                      // bearing. A barb's shaft points in the FROM direction
-                      // by international convention (unlike the old plain
-                      // arrow this replaced, which rotated by dirDeg+180 to
-                      // point where the air is going) -- matches the map's
-                      // own wind-barb icons, see map-style.ts's identical
-                      // comment on wind-arrows-icon's icon-rotate.
-                      const rot = m.wind!.dirDeg
-                      // Real WMO barb (shaft + feathers) instead of a plain
-                      // arrow -- see renderWindBarbShape above.
-                      const color = windBarbColorForSpeed(m.wind!.speedKt)
-                      // Same size/opacity/weight as the wind-sample barb
-                      // below -- the two used to look visibly different
-                      // (bigger/bolder real-station vs. smaller/dimmed
-                      // sample), which read as one being broken/lower-
-                      // quality rather than intentional; the "~" text
-                      // prefix on samples is already the differentiator,
-                      // so both barbs now share identical geometry.
-                      const shaftLen = WIND_BARB_SHAFT_LEN
-                      // windBarbGeometry anchors its local origin at the
-                      // station/"tail" end (shaft runs 0 to -shaftLen, tip
-                      // pointing away from station) -- correct for the
-                      // map's real icons, where the anchor IS a literal
-                      // geographic point the icon must pivot around. Here
-                      // cy/WIND_ARROW_Y is just a reserved chart row, not
-                      // real data, so a tail-anchored rotation instead made
-                      // the glyph sit visibly higher/lower within that row
-                      // depending on wind direction (e.g. pointing straight
-                      // up sat entirely above the anchor, pointing down sat
-                      // entirely below it) -- caught in a device review. The
-                      // extra translate(0, shaftLen/2) re-centres rotation
-                      // on the shaft's midpoint instead of its tail, so the
-                      // glyph's footprint stays roughly balanced above/below
-                      // cy for any direction (small resulting x jitter is
-                      // imperceptible at this shaft length vs. the chart's
-                      // pixel-per-NM scale).
-                      return (
-                        <g aria-hidden="true">
-                          <g transform={`translate(${cx},${cy}) rotate(${rot}) translate(0, ${shaftLen / 2})`}>
-                            {renderWindBarbShape(m.wind!.speedKt, color, { shaftLen, barbLen: WIND_BARB_BARB_LEN, halfLen: WIND_BARB_HALF_LEN, barbGap: WIND_BARB_BARB_GAP, strokeW: WIND_BARB_STROKE_W })}
-                          </g>
-                          {renderLabel(`${m.wind!.dirDeg}\u00b0/${m.wind!.speedKt}`, shaftLen / 2 + 4, color)}
-                        </g>
-                      )
-                    }}
-                  />
-                )
-              })}
-
-              {/* Weather: regular-interval wind samples (useWindAlongRoute)
-                  — fills the gaps between real-station arrows above, which
-                  only ever exist wherever an aerodrome happens to sit.
-                  Deliberately drawn thinner/dashed/dimmer than a real
-                  station's arrow so a model-wind estimate (or a distant
-                  METAR borrowed via fetchWxResolvedForPoint) is never
-                  mistaken for an actual local observation. Already filtered
-                  against weatherMarks in visibleWindSamples above. */}
-              {visibleWindSamples.map((s, i) => {
-                const pxPerUnit = totalNmDisplay > 0 ? contentPxWidth / totalNmDisplay : 0
-                const edgeMargin = Math.min(pxPerUnit > 0 ? 24 / pxPerUnit : 0, totalNmDisplay / 2)
-                const xRaw = nmToDisplay(s.distNm, units.distance)
-                const x = Math.min(Math.max(xRaw, edgeMargin), totalNmDisplay - edgeMargin)
-                const y = yMax * 1.1 // reserved top margin, same as the real wind-arrow block above
-                return (
-                  <ReferenceDot
-                    key={`windsample-${i}`}
-                    x={x} y={y} r={0} fill="transparent" stroke="none" ifOverflow="visible"
-                    shape={(dotProps) => {
-                      const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
-                      // Same right-of-arrow (flipping left near the
-                      // chart's end), stroke-outline text placement as the
-                      // real wind-arrow block above -- identical size/
-                      // weight too (see WIND_BARB_* constants); the "~"
-                      // prefix is the only visual differentiator now.
-                      const fontSize = 10
-                      const renderLabel = (text: string, halfW: number, fill: string) => {
-                        if (!text) return null
-                        const labelW = text.length * fontSize * 0.62
-                        const rightX = cx + halfW + 4
-                        if (rightX + labelW <= plotRightPx) {
-                          return (
-                            <text
-                              x={rightX} y={cy + fontSize * 0.35} fontSize={fontSize}
-                              fill={fill} stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke"
-                            >{text}</text>
-                          )
-                        }
-                        const leftX = cx - halfW - 4
-                        if (leftX - labelW >= 4) {
-                          return (
-                            <text
-                              x={leftX} y={cy + fontSize * 0.35} fontSize={fontSize} textAnchor="end"
-                              fill={fill} stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke"
-                            >{text}</text>
-                          )
-                        }
-                        return null
-                      }
-                      if (s.wind.calm) {
-                        return (
-                          <g aria-hidden="true">
-                            <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(148,163,184,0.7)" strokeWidth={1} />
-                            {renderLabel('~CALM', 3, 'rgba(203,213,225,0.95)')}
-                          </g>
-                        )
-                      }
-                      if (s.wind.dirDeg == null) return <g />
-                      const rot = s.wind.dirDeg // see FROM-direction comment above
-                      const color = windBarbColorForSpeed(s.wind.speedKt)
-                      const shaftLen = WIND_BARB_SHAFT_LEN
-                      // Re-centres rotation on the shaft's midpoint instead
-                      // of its tail -- see the identical comment on the
-                      // real-station barb above for why.
-                      return (
-                        <g aria-hidden="true">
-                          <g transform={`translate(${cx},${cy}) rotate(${rot}) translate(0, ${shaftLen / 2})`}>
-                            {renderWindBarbShape(s.wind.speedKt, color, { shaftLen, barbLen: WIND_BARB_BARB_LEN, halfLen: WIND_BARB_HALF_LEN, barbGap: WIND_BARB_BARB_GAP, strokeW: WIND_BARB_STROKE_W })}
-                          </g>
-                          {renderLabel(`~${s.wind.dirDeg}\u00b0/${s.wind.speedKt}`, shaftLen / 2 + 4, color)}
-                        </g>
-                      )
-                    }}
-                  />
-                )
-              })}
+              {/* Wind row under the x axis: station barbs + ground-model barbs,
+                  laid out by layoutWindRow (see windRow above). */}
+              {windRow.map((w) => (
+                <ReferenceDot
+                  key={`windrow-${w.key}`}
+                  x={w.x} y={0} r={0} fill="transparent" stroke="none" ifOverflow="visible"
+                  shape={(dotProps) => {
+                    const { cx = 0, cy: cy0 = 0 } = dotProps as { cx?: number; cy?: number }
+                    const cy = cy0 + WIND_ROW_Y
+                    if (w.wind.dirDeg == null && !w.wind.calm) {
+                      return <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(250,204,21,0.7)" strokeWidth={1} strokeDasharray="1.5,1.5" />
+                    }
+                    const color = w.wind.calm ? 'rgba(203,213,225,0.95)' : windBarbColorForSpeed(w.wind.speedKt)
+                    const shaftLen = 16
+                    const fontSize = 10
+                    const text = w.label === 'right'
+                      ? <text x={cx + 9 + 4} y={cy + fontSize * 0.35} fontSize={fontSize} fill={color} stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke">{w.text}</text>
+                      : w.label === 'left'
+                        ? <text x={cx - 9 - 4} y={cy + fontSize * 0.35} fontSize={fontSize} textAnchor="end" fill={color} stroke="rgba(0,0,0,0.75)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke">{w.text}</text>
+                        : null
+                    return (
+                      <g aria-hidden="true" opacity={w.model ? 0.85 : 1}>
+                        {w.wind.calm
+                          ? <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(148,163,184,0.8)" strokeWidth={1} />
+                          : (
+                            <g transform={`translate(${cx},${cy}) rotate(${w.wind.dirDeg}) translate(0, ${shaftLen / 2})`}>
+                              {renderWindBarbShape(w.wind.speedKt, color, { shaftLen, barbLen: 7, halfLen: 4, barbGap: 4, strokeW: 1.5 })}
+                            </g>
+                          )}
+                        {text}
+                      </g>
+                    )
+                  }}
+                />
+              ))}
 
               {/* Winds aloft: barbs at each standard pressure level's nominal
                   altitude, one column every ~20 NM (useWindAloftAlongRoute).
                   Model forecast, so drawn dimmer than the station barbs. */}
               {showWindAloft && windAloft.flatMap((col, ci) => col.levels.map((lv) => {
-                if (lv.altFt > yMax * 0.96) return null
+                // Surface (10 m) wind is part of the wind row under the x axis.
+                if (lv.surface || lv.altFt > yMax * 0.96) return null
+                const yAlt = lv.altFt
                 const pxPerUnit = totalNmDisplay > 0 ? contentPxWidth / totalNmDisplay : 0
                 const edgeMargin = Math.min(pxPerUnit > 0 ? 24 / pxPerUnit : 0, totalNmDisplay / 2)
                 const x = Math.min(Math.max(nmToDisplay(col.distNm, units.distance), edgeMargin), totalNmDisplay - edgeMargin)
                 return (
                   <ReferenceDot
                     key={`windaloft-${ci}-${lv.altFt}`}
-                    x={x} y={lv.altFt} r={0} fill="transparent" stroke="none" ifOverflow="visible"
+                    x={x} y={yAlt} r={0} fill="transparent" stroke="none" ifOverflow="visible"
                     shape={(dotProps) => {
                       const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
                       const shaftLen = 16
@@ -1259,38 +1105,6 @@ function VirtualRadar({
                   />
                 )
               }))}
-
-              {/* TAF "check the bulletin" warning -- amber triangle+"!"
-                  when a real trend change (FM/BECMG) lands within the next
-                  3h (see resolveStationWeather/parseTaf.ts). Not a rendered
-                  forecast column -- just a nudge to go read the TAF text.
-                  Mirrors native's identical marker. The original was a bare
-                  filled triangle with no interior mark -- at this chart's
-                  scale it just read as an unrecognisable smudge, not a
-                  warning symbol, per user feedback. Sized up and given a
-                  bold "!" glyph, matching the universal hazard-triangle
-                  convention instead of relying on shape/colour alone. */}
-              {weatherMarks.map((m, i) => m.tafChangeSoon ? (
-                <ReferenceDot
-                  key={`tafwarn-${i}`}
-                  x={nmToDisplay(m.distNm, units.distance)}
-                  y={yMax * 0.90}
-                  r={0} fill="transparent" stroke="none"
-                  ifOverflow="visible"
-                  shape={(dotProps) => {
-                    const { cx = 0, cy = 0 } = dotProps as { cx?: number; cy?: number }
-                    return (
-                      <g transform={`translate(${cx},${cy})`}>
-                        <path
-                          d="M0,-8 L7,7 L-7,7 Z"
-                          fill="rgba(250,204,21,0.95)" stroke="rgba(0,0,0,0.7)" strokeWidth={1} strokeLinejoin="round"
-                        />
-                        <text x={0} y={5.5} fontSize={8} fontWeight="bold" fill="rgba(0,0,0,0.85)" textAnchor="middle">!</text>
-                      </g>
-                    )
-                  }}
-                />
-              ) : null)}
 
               {/* ── Landmark markers, floored at terrain, real map pictograms
                   Same lmk-*.svg icons (recoloured via LANDMARK_ICON_DEFS) the

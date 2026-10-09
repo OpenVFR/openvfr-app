@@ -72,7 +72,7 @@ import RouteEditBanner from './RouteEditBanner'
 import VirtualRadar from './VirtualRadar'
 import RulerSummaryStrip from './RulerSummaryStrip'
 import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
-import { useWindAlongRoute } from '../hooks/useWindAlongRoute'
+import { tafChangeIcaos } from '@open-vfr/shared/parseTaf'
 import { useVicinityAerodromes } from '../hooks/useVicinityAerodromes'
 import { useNearbyFrequencies } from '../hooks/useNearbyFrequencies'
 import VicinityBriefPanel from './VicinityBriefPanel'
@@ -602,13 +602,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
     showRulerProfile ? rulerPoints : NO_WAYPOINTS,
     showRulerProfile,
   )
-  // Regular-interval wind samples (nearest METAR-or-model-wind, independent
-  // of aerodrome positions) -- fills the gaps between routeWeatherStations'
-  // real-station markers, which only ever exist wherever an aerodrome
-  // happens to sit. Same lift-to-MapView reasoning as routeWeatherStations
-  // above: one fetch shared by every VirtualRadar instance.
-  const routeTotalNm = routeWaypoints.length >= 2 ? distanceAlongRouteNm(routeWaypoints, routeWaypoints[routeWaypoints.length - 1]) : 0
-  const routeWindSamples = useWindAlongRoute(routeWaypoints, routeTotalNm)
   const { waypoints: userWaypoints, saveWaypoint: saveUserWaypoint, deleteWaypoint: deleteUserWaypoint, renameWaypoint: renameUserWaypoint, moveToFolder: moveUserWpFolder } = useUserWaypoints()
   const [snapPicker, setSnapPicker] = useState<{
     candidates: SnapCandidate[]
@@ -1136,9 +1129,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const plannedWindAltFt = routeWaypoints.length >= 2
     ? Math.max(...routeWaypoints.slice(1).map((_, i) => legOverrides[i]?.altFt ?? (selectedAircraftProfile?.cruiseAltFt || 3500)))
     : null
+  const [windSurface, setWindSurface] = useState(false)
   const windOverlay = windOverlayAltitude(
     flyingMode !== 'off' ? (gpsPosition?.altFt ?? null) : null,
     plannedWindAltFt,
+    windSurface,
   )
   const windGridFC = useWindGrid(
     mapReady ? mapRef.current : null,
@@ -3979,7 +3974,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
 
   // Stable props for the memoised drawer: function props are wrapped so inline
   // closures don't defeat memo; data props change identity only when they change.
+  const tafWarnIcaos = useMemo(() => tafChangeIcaos(routeWeatherStations), [routeWeatherStations])
   const drawerProps = useStableProps({
+    tafWarnIcaos,
     visibility,
     onVisibilityChange: setVisibilityGroup,
     ceilingFt,
@@ -4164,7 +4161,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           })
           return <MapToolbar groups={groups} solos={solos} />
         })(), toolbarHost)}
-        <MapInfoBar map={mapReady ? mapRef.current : null} ceilingFt={ceilingFt} units={units} windLabel={windEnabled ? windOverlay.label : undefined} />
+        <MapInfoBar map={mapReady ? mapRef.current : null} ceilingFt={ceilingFt} units={units} windLabel={windEnabled ? windOverlay.label : undefined} windSurface={windSurface} onToggleWindSurface={() => setWindSurface((v) => !v)} />
 
       {/* ── Data-update notification banner ──────────────────────────── */}
       {hasUpdate && (
@@ -4606,7 +4603,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
             currentVSpeedFpm={flyingMode !== 'off' ? chartVSpeedFpm ?? undefined : undefined}
             crossTrackNm={crossTrackNm}
             weatherStations={routeWeatherStations}
-            windSamples={routeWindSamples}
             trajectoryMode={trajectoryMode}
             onHoverDistNm={setProfileCursorNm}
             crosshairDistNm={profileCursorNm}

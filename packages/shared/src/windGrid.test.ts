@@ -39,6 +39,9 @@ describe('windOverlayAltitude', () => {
   it('uses planned altitude when not flying', () => {
     expect(windOverlayAltitude(null, 4500)).toEqual({ altFt: 4500, label: 'WIND 4,500 ft PLAN' })
   })
+  it('forceSurface wins over live and planned altitude', () => {
+    expect(windOverlayAltitude(3000, 5000, true)).toEqual({ altFt: null, label: 'WIND SFC' })
+  })
   it('falls back to surface: no plan, or low live altitude', () => {
     expect(windOverlayAltitude(null, null)).toEqual({ altFt: null, label: 'WIND SFC' })
     expect(windOverlayAltitude(300, 5000)).toEqual({ altFt: null, label: 'WIND SFC' })

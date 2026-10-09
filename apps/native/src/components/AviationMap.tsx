@@ -144,6 +144,9 @@ export type AviationMapProps = {
   windAltFt?: number | null
   /** Label for the map info pill, e.g. "WIND 4,500 ft PLAN". */
   windLabel?: string
+  /** Pilot forced ground wind on the wind-arrows pill. */
+  windSurface?: boolean
+  onToggleWindSurface?: () => void
   followGps?: boolean
   /** Called when the pilot manually pans/zooms/rotates the map while
    *  followGps is on -- lets the parent drop out of follow mode instead of
@@ -767,6 +770,8 @@ export function AviationMap({
   showWind       = false,
   windAltFt      = null,
   windLabel,
+  windSurface,
+  onToggleWindSurface,
   terrainColorRefAltFt = 2000,
   followGps = false,
   showOwnPosition = false,
@@ -2986,6 +2991,8 @@ export function AviationMap({
         ref={infoBarRef}
         ceilingFt={airspaceCeilingFt}
         windLabel={showWind ? windLabel : undefined}
+        windSurface={windSurface}
+        onToggleWindSurface={onToggleWindSurface}
         distanceUnit={distanceUnit}
         initialCamera={{ lat: camStateRef.current.lat, zoom: camStateRef.current.zoom }}
         onInfoPress={() => setShowAttribution(true)}

@@ -95,7 +95,7 @@
      taller than the ResponsiveContainer below (160→180) so the extra top
      margin (see ComposedChart's margin.top) has real reserved headroom
      above the plot for wind arrows, instead of shrinking the plot itself. */
-  height: 200px;
+  height: 180px;
   /* Scroll instead of squeezing a long route to fit — the inner div (set
      inline in VirtualRadar.tsx) is only ever wider than this wrap when
      totalNm * MIN_PX_PER_NM exceeds the measured wrap width. */
@@ -121,8 +121,8 @@
   box-sizing: border-box;
   z-index: 1;
   width: 44px;
-  height: 180px;
-  margin-bottom: -180px;
+  height: 162px;
+  margin-bottom: -162px;
   overflow: hidden;
   pointer-events: none;
   background:

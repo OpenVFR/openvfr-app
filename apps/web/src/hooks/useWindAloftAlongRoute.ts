@@ -26,7 +26,8 @@ export function useWindAloftAlongRoute(
     if (!enabled || waypoints.length < 2 || totalNm <= 0) { setColumns([]); return }
     const ac = new AbortController()
     const timer = setTimeout(() => {
-      fetchWindAloftAlongRoute(waypoints, totalNm, maxAltFt, API_BASE_URL, ac.signal)
+      // Chart x-axis ticks sit at ~totalNm/7 steps; keep ground barbs off their labels.
+      fetchWindAloftAlongRoute(waypoints, totalNm, maxAltFt, API_BASE_URL, ac.signal, Math.ceil(totalNm) / 7)
         .then((c) => { if (!ac.signal.aborted) setColumns(c) })
         .catch(() => { /* offline-safe: no barbs */ })
     }, DEBOUNCE_MS)
