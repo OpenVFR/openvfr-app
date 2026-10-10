@@ -109,6 +109,7 @@ import { useRegionalNotams } from '../hooks/useRegionalNotams'
 import { usePassivePosition, readLastPosition, geolocationAlreadyGranted } from '../hooks/usePassivePosition'
 import { useNotamVfrOnly } from '../hooks/useNotamPrefs'
 import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
+import { notamRegionsFor } from '@open-vfr/shared/notamRegionScope'
 import { useNotamWarnings } from '../hooks/useNotamWarnings'
 import { useNotamNotifications } from '../hooks/useNotamNotifications'
 import { useNotamAirspaceMatch } from '../hooks/useNotamAirspaceMatch'
@@ -556,6 +557,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
     map.setPaintProperty('runway-threshold-label', 'text-opacity', expr.opacity as ExpressionSpecification)
   }, [runwayWindHighlight])
   const [region, setRegion] = useState(DEFAULT_REGION)
+  // List of selected regions for region-scoped data (regional NOTAMs).
+  // One entry today because the region picker and the landuse/hillshade/
+  // contour sources below are single-region. Multi-region selection only
+  // needs to change this list; consumers already take an array.
+  const selectedRegions = useMemo(() => [region], [region])
   const [basemapMode, setBasemapMode] = useState<'vector' | 'satellite'>('vector')
   const [planningMode, setPlanningMode] = useState(false)
   // Route activate/deactivate — hides the drawn route on the map without
@@ -1111,7 +1117,21 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Full list (lists/popups apply their own relevance filtering so they can
   // say what they hid); map layers + in-flight warnings use the VFR-filtered
   // one per the shared "VFR only" preference.
-  const regionalNotamsAll = useRegionalNotams(regionalNotamsEnabled && mapReady)
+  // Scope: selected region(s) + every region the route crosses + the region
+  // the aircraft is in while flying -- never just the selected countries, or a
+  // cross-border leg would silently lose the neighbour's NOTAMs. Position is
+  // rounded to 0.1 deg so a GPS tick doesn't recompute this every second.
+  const notamPosLat = flyingMode !== 'off' && gpsPosition ? Math.round(gpsPosition.lat * 10) / 10 : null
+  const notamPosLng = flyingMode !== 'off' && gpsPosition ? Math.round(gpsPosition.lng * 10) / 10 : null
+  const notamRegions = useMemo(
+    () => notamRegionsFor({
+      selected: selectedRegions,
+      route: routeWaypoints,
+      position: notamPosLat !== null && notamPosLng !== null ? { lat: notamPosLat, lng: notamPosLng } : null,
+    }),
+    [selectedRegions, routeWaypoints, notamPosLat, notamPosLng],
+  )
+  const regionalNotamsAll = useRegionalNotams(regionalNotamsEnabled && mapReady, notamRegions)
   const notamVfrOnly = useNotamVfrOnly()
   const regionalNotams = useMemo(
     () => (notamVfrOnly ? regionalNotamsAll.filter(n => !isIfrOnly(n)) : regionalNotamsAll),

@@ -294,6 +294,8 @@ NOTAMs and METAR/TAF will be processed by DuckDB pipelines: download raw JSON fr
 
 **Privacy proxy:** All METAR/TAF and NOTAM fetches will be routed through the Hono API server (`/api/weather`, `/api/notam`) — not directly from the browser. This hides the user's IP from NOAA and Eurocontrol, consistent with the existing POH extraction proxy. The Hono server can also cache responses to reduce repeated calls.
 
+**Regional NOTAM scoping:** the server's NOTAM cache is deliberately wider than any one user needs (upstream bulk pulls can't be filtered to a country list; the military classification is kept for all of Europe). Clients therefore call `/api/notam/regional?regions=se,dk,...` with their selected region plus every region their route crosses and their current position is in (`@open-vfr/shared/notamRegionScope`'s `notamRegionsFor()`, legs sampled every 10 NM). The server keeps a NOTAM when it is filed in one of those regions (FIR / location ICAO prefix) or its own geometry reaches into one of their bounding boxes (cross-border areas). Omitting `regions` returns the unscoped list.
+
 ---
 
 ## 4. data-prep Docker Container

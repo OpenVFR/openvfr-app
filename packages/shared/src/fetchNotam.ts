@@ -105,8 +105,14 @@ export async function fetchRegionalNotams(
   baseUrl = '',
   signal?: AbortSignal,
   headers?: Record<string, string>,
+  // Region codes to scope to (see ./notamRegionScope's notamRegionsFor()).
+  // Empty/omitted = unscoped.
+  regions?: string[],
 ): Promise<NotamResult> {
-  const url = `${baseUrl}/api/notam/regional`
+  const scope = regions && regions.length > 0
+    ? `?regions=${encodeURIComponent([...new Set(regions)].sort().join(','))}`
+    : ''
+  const url = `${baseUrl}/api/notam/regional${scope}`
   const resp = await fetchWithRetry(url, { signal, headers })
   if (resp.status === 503) return { notams: [] }
   if (!resp.ok) throw new Error(`Regional NOTAM fetch failed: HTTP ${resp.status}`)

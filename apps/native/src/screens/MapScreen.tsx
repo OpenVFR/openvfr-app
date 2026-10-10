@@ -36,6 +36,8 @@ import { useTraffic }        from '../hooks/useTraffic'
 import { useRegionalNotams } from '../hooks/useRegionalNotams'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
 import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
+import { notamRegionsFor } from '@open-vfr/shared/notamRegionScope'
+import { DEFAULT_REGION_CODES } from '@open-vfr/shared/regions'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { makeCirclePolygon } from '@open-vfr/shared/geoCircle'
 import { NotificationCenter } from '../components/NotificationCenter'
@@ -589,7 +591,23 @@ export function MapScreen() {
   // Full list for the NOTAM lists (they apply their own relevance filtering
   // so they can say what they hid); map layers, tap lookups and alerts use
   // the VFR-filtered list per the shared "VFR only" preference.
-  const regionalNotamsAll = useRegionalNotams(authenticated && mapReady)
+  // Scope: selected region(s) + every region the route crosses + the region
+  // of the current position -- never just the selected countries, or a
+  // cross-border leg would silently lose the neighbour's NOTAMs. Position
+  // rounded to 0.1 deg so a GPS tick doesn't recompute this every second.
+  // Native has no region picker yet, hence DEFAULT_REGION_CODES; a future
+  // (multi-)selection only needs to replace that list.
+  const notamPosLat = activePosition ? Math.round(activePosition.lat * 10) / 10 : null
+  const notamPosLng = activePosition ? Math.round(activePosition.lng * 10) / 10 : null
+  const notamRegions = React.useMemo(
+    () => notamRegionsFor({
+      selected: [...DEFAULT_REGION_CODES],
+      route: waypoints,
+      position: notamPosLat !== null && notamPosLng !== null ? { lat: notamPosLat, lng: notamPosLng } : null,
+    }),
+    [waypoints, notamPosLat, notamPosLng],
+  )
+  const regionalNotamsAll = useRegionalNotams(authenticated && mapReady, notamRegions)
   const { vfrOnly: notamVfrOnly } = useNotamPrefs()
   const regionalNotams = React.useMemo(
     () => (notamVfrOnly ? regionalNotamsAll.filter(n => !isIfrOnly(n)) : regionalNotamsAll),

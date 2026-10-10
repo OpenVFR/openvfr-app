@@ -7,6 +7,11 @@
  * poller against NMS-API (see apps/api/src/notam.ts) — this hook just
  * reads that cache, so a similarly relaxed client poll interval is fine
  * (no reason to poll faster than the data itself changes).
+ *
+ * `regions` scopes the request to the countries the user is working in
+ * (selected region + route + position, see @open-vfr/shared/
+ * notamRegionScope's notamRegionsFor()). A change in the set triggers an
+ * immediate re-fetch; the previous list stays visible until it arrives.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -15,7 +20,9 @@ import { API_BASE_URL } from '../utils/env'
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000 // 5 min -- server refreshes ~every 3.3 min
 
-export function useRegionalNotams(enabled: boolean): NotamItem[] {
+export function useRegionalNotams(enabled: boolean, regions: string[]): NotamItem[] {
+  // Stable key: a new array with the same codes must not restart polling.
+  const regionsKey = [...new Set(regions)].sort().join(',')
   const [notams, setNotams] = useState<NotamItem[]>([])
   const enabledRef = useRef(enabled)
   useEffect(() => { enabledRef.current = enabled }, [enabled])
@@ -28,7 +35,7 @@ export function useRegionalNotams(enabled: boolean): NotamItem[] {
 
     async function poll() {
       try {
-        const data = await fetchRegionalNotams(API_BASE_URL, ac.signal)
+        const data = await fetchRegionalNotams(API_BASE_URL, ac.signal, undefined, regionsKey ? regionsKey.split(',') : undefined)
         if (!destroyed) setNotams(data.notams)
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
@@ -48,7 +55,7 @@ export function useRegionalNotams(enabled: boolean): NotamItem[] {
       ac.abort()
       clearInterval(timer)
     }
-  }, [enabled])
+  }, [enabled, regionsKey])
 
   return notams
 }

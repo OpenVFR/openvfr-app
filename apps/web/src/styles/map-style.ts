@@ -10,6 +10,7 @@ import {
 } from '@open-vfr/shared/runwayWind'
 import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { DEFAULT_REGION_CODE } from '@open-vfr/shared/regions'
 
 // Airspace on-map label text — class/type short code + altitude range, placed
 // along the boundary line (symbol-placement: 'line') so it repeats around the
@@ -321,7 +322,7 @@ export const DEFAULT_CEILING_FT = 9500
 // getLanduseSource()/getHillshadeSource() inside the static getMapStyle()
 // sources object below — keeping these in one place avoids the two spots
 // silently drifting out of sync.
-export const DEFAULT_REGION = 'se'
+export const DEFAULT_REGION = DEFAULT_REGION_CODE
 
 // Build a MapLibre filter: show only features whose lower limit ≤ ceilingFt.
 export function buildAltitudeFilter(

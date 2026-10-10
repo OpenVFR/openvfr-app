@@ -13,6 +13,20 @@ export interface Region {
   bbox: readonly [number, number, number, number]
 }
 
+/**
+ * Region a client starts in before the user picks one (web's region
+ * selector; native has no picker yet). The only region with a full data
+ * pipeline today.
+ */
+export const DEFAULT_REGION_CODE = 'se'
+
+/**
+ * Selected regions are a list: a user may work across several countries
+ * once their tiles exist. Region-scoped data (e.g. regional NOTAMs, see
+ * ./notamRegionScope) must take the whole list, never assume one.
+ */
+export const DEFAULT_REGION_CODES: readonly string[] = [DEFAULT_REGION_CODE]
+
 /** All supported European regions, grouped loosely north → south. */
 export const EUROPEAN_REGIONS: Region[] = [
   // ── Nordic ────────────────────────────────────────────────────────────────

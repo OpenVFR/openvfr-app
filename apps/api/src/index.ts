@@ -30,6 +30,7 @@ import { writeFileSync, createReadStream, unlinkSync } from 'node:fs'
 import { trafficConfig, registerClient, startTrafficPoller, getLatestBatch, touchActivity } from './traffic'
 import { startOgnRelay } from './ognTraffic'
 import { startNotamPoller, getNotamsForIcao, getRegionalNotams, getAerodromeNotamTexts } from './notam'
+import { parseRegionsParam } from '@open-vfr/shared/notamRegionScope'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -639,14 +640,23 @@ app.get('/api/notam', async (c) => {
 // Restricted/danger areas, navaid outages, AIRAC amendments, military
 // notices, etc. filed against the whole Sweden FIR (ESAA) rather than any
 // single airport ICAO — see notam.ts's getRegionalNotams() for the full
-// rationale. Client-side consumption (map layer / dedicated panel) is not
-// yet built — see docs/todo.md — this endpoint exists so the data is
-// already reachable once that UI work happens, without another server change.
+// rationale. Consumed by the web/native map layers, warnings and the
+// regional NOTAM panel.
+//
+// Optional `?regions=se,dk` (ISO 3166-1 alpha-2 codes from
+// @open-vfr/shared/regions) scopes the response to NOTAMs filed in, or
+// geometrically reaching into, those regions. Clients send their selected
+// region plus every region their route / position touches (see
+// @open-vfr/shared/notamRegionScope). Omitted = unscoped, for older
+// clients. Unknown codes -> 400. Auth required; no extra rate limit: it is
+// an in-memory cache read with no upstream call per request.
 // ---------------------------------------------------------------------------
 app.get('/api/notam/regional', async (c) => {
   const user = await requireSession(c)
   if (!user) return c.json({ error: 'Authentication required.' }, 401)
-  return c.json(getRegionalNotams())
+  const regions = parseRegionsParam(c.req.query('regions'))
+  if (regions && !Array.isArray(regions)) return c.json({ error: regions.error }, 400)
+  return c.json(getRegionalNotams(regions))
 })
 
 // ---------------------------------------------------------------------------

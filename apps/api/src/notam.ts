@@ -86,6 +86,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { circleIntersectsBbox, pointNearBbox, polygonNearBbox } from '@open-vfr/shared/notamCoverageArea'
+import { filterNotamsToRegions } from '@open-vfr/shared/notamRegionScope'
 
 export type NotamPolygonGeometry =
   | { type: 'Polygon'; coordinates: number[][][] }
@@ -989,7 +990,7 @@ export function getAerodromeNotamTexts(): Record<string, string[]> {
  * Sweden's, but scales to however many countries/FIRs are configured there
  * without further changes here.
  */
-export function getRegionalNotams(): NotamResponse {
+export function getRegionalNotams(regions?: string[] | null): NotamResponse {
   const notams: NotamItem[] = []
   // Dedup on nmsId (NMS-API's own globally-unique internal id), NOT the
   // display `id` (published NOTAM number) -- confirmed live and real that
@@ -1025,5 +1026,10 @@ export function getRegionalNotams(): NotamResponse {
     seen.add(n.nmsId)
     notams.push(n)
   }
-  return { notams }
+  // Optional per-client scoping (?regions=se,dk) -- the cache above is
+  // wider than any one pilot needs (the military bucket covers all of
+  // Europe). See @open-vfr/shared/notamRegionScope for the inclusion rule
+  // (filed in a region OR geometry reaching into it). No list = everything,
+  // for clients that predate the parameter.
+  return { notams: regions && regions.length > 0 ? filterNotamsToRegions(notams, regions) : notams }
 }

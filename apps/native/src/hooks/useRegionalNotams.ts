@@ -6,6 +6,11 @@
  * Mirrors apps/web/src/hooks/useRegionalNotams.ts, but uses native's bearer
  * token auth (authHeaders()) instead of the browser's cookie-based
  * credentials:'include' -- see apps/native/src/utils/authClient.ts.
+ *
+ * `regions` scopes the request to the countries the user is working in
+ * (default region + route + position, see @open-vfr/shared/
+ * notamRegionScope's notamRegionsFor()). A change in the set triggers an
+ * immediate re-fetch; the previous list stays visible until it arrives.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -15,7 +20,9 @@ import { authHeaders } from '../utils/authClient'
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000 // 5 min -- server refreshes ~every 3.3 min
 
-export function useRegionalNotams(enabled: boolean): NotamItem[] {
+export function useRegionalNotams(enabled: boolean, regions: string[]): NotamItem[] {
+  // Stable key: a new array with the same codes must not restart polling.
+  const regionsKey = [...new Set(regions)].sort().join(',')
   const [notams, setNotams] = useState<NotamItem[]>([])
   const enabledRef = useRef(enabled)
   useEffect(() => { enabledRef.current = enabled }, [enabled])
@@ -28,7 +35,7 @@ export function useRegionalNotams(enabled: boolean): NotamItem[] {
     async function poll() {
       try {
         const headers = await authHeaders()
-        const data = await fetchRegionalNotams(API_BASE, undefined, headers)
+        const data = await fetchRegionalNotams(API_BASE, undefined, headers, regionsKey ? regionsKey.split(',') : undefined)
         if (!destroyed) setNotams(data.notams)
       } catch (err) {
         console.warn('[useRegionalNotams] poll failed:', err)
@@ -42,7 +49,7 @@ export function useRegionalNotams(enabled: boolean): NotamItem[] {
       destroyed = true
       clearInterval(timer)
     }
-  }, [enabled])
+  }, [enabled, regionsKey])
 
   return notams
 }
