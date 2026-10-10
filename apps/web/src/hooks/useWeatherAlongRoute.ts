@@ -18,8 +18,9 @@
 
 import { useState, useEffect } from 'react'
 import type { RouteWaypoint } from '../utils/routeCalc'
-import { TILES_BASE_URL, API_BASE_URL } from '../utils/env'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { API_BASE_URL } from '../utils/env'
+import { countryDatasetSource, type DatasetSource } from '@open-vfr/shared/countryData'
+import { useActiveCountries } from '../utils/countryData'
 import { distanceToRouteNm } from '@open-vfr/shared/notamRouteFilter'
 import { distanceAlongRouteNm } from '@open-vfr/shared/virtualRadarCalc'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
@@ -65,10 +66,10 @@ interface AerodromeRecord { icao: string; name: string; lat: number; lng: number
 // retry after a connectivity gap. Mirrors native's identical cache.
 let aerodromesCache: { url: string; promise: Promise<AerodromeRecord[]> } | null = null
 
-function loadAerodromes(url: string): Promise<AerodromeRecord[]> {
+function loadAerodromes(source: DatasetSource): Promise<AerodromeRecord[]> {
+  const url = source.key
   if (aerodromesCache?.url === url) return aerodromesCache.promise
-  const promise = fetch(url)
-    .then(r => r.json())
+  const promise = source.load()
     .then((fc: GeoJSON.FeatureCollection) => {
       const arr: AerodromeRecord[] = []
       for (const f of fc.features) {
@@ -91,16 +92,17 @@ function loadAerodromes(url: string): Promise<AerodromeRecord[]> {
 export function useWeatherAlongRoute(waypoints: RouteWaypoint[], enabled = true): RouteWeatherStation[] {
   const [aerodromes, setAerodromes] = useState<AerodromeRecord[]>([])
   const [stations, setStations] = useState<RouteWeatherStation[]>([])
+  const { key: countriesKey } = useActiveCountries()
 
-  // Load aerodrome list once -- same static-file pattern as useAirfieldProximity.ts.
+  // Load aerodrome list (again when the selected countries change).
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
-    loadAerodromes(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'))
+    loadAerodromes(countryDatasetSource('aerodromes'))
       .then((arr) => { if (!cancelled) setAerodromes(arr) })
       .catch(() => { /* offline-safe */ })
     return () => { cancelled = true }
-  }, [enabled])
+  }, [enabled, countriesKey])
 
   useEffect(() => {
     if (!enabled || waypoints.length === 0 || aerodromes.length === 0) { setStations([]); return }

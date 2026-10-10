@@ -15,8 +15,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
-import { TILES_BASE_URL } from '../utils/env'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { useActiveCountries } from '../utils/countryData'
 
 // ── Config ───────────────────────────────────────────────────────────────────
 const WARN_RADIUS_NM      = 1.0    // horizontal warning radius
@@ -67,9 +67,9 @@ export function useObstructionWarnings(position: GpsPosition | null): {
   const lastSigRef = useRef<string>('')
 
   // ── Load once ───────────────────────────────────────────────────────────────
+  const { key: countriesKey } = useActiveCountries()
   useEffect(() => {
-    fetch(versionedTileUrl(TILES_BASE_URL, 'se-obstacles.geojson'))
-      .then(r => r.json())
+    loadCountryGeojson('obstacles')
       .then((fc: GeoJSON.FeatureCollection) => {
         const pts: ObstaclePoint[] = []
         fc.features.forEach((f, i) => {
@@ -86,7 +86,7 @@ export function useObstructionWarnings(position: GpsPosition | null): {
         setObstacles(pts)
       })
       .catch(() => { /* silently ignore offline */ })
-  }, [])
+  }, [countriesKey])
 
   // ── Evaluate on every position update ───────────────────────────────────────
   useEffect(() => {

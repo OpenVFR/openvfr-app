@@ -21,6 +21,7 @@ import { interpolateQnh, type QnhReading } from '@open-vfr/shared/qnhInterpolati
 import { qnhTokenToHpa, isQnhResultStale } from '@open-vfr/shared/qnhResolve'
 import { distanceNm } from '../utils/routeCalc'
 import { getTileUrls, API_BASE } from '../config'
+import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
 import { authHeaders } from '../utils/authClient'
 import type { GpsPosition } from '../utils/gpsTypes'
 
@@ -47,6 +48,8 @@ interface CachedAerodrome {
 // useNearbyFrequencies.ts's loadOnce().
 let _cache: CachedAerodrome[] | null = null
 let _loading = false
+// Per-country data: a new active country starts a fresh load.
+onActiveCountriesChange(() => { _cache = null; _loading = false })
 const _listeners: Array<(data: CachedAerodrome[]) => void> = []
 
 function loadOnce(onLoad: (data: CachedAerodrome[]) => void) {

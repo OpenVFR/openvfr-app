@@ -23,8 +23,7 @@ import { computeFuelPlan } from '../utils/fuelCalc'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride, AircraftProfileDocType } from '../db/index'
 import css from './PreflightWarnings.module.css'
-import { TILES_BASE_URL } from '../utils/env'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
 
 // ---------------------------------------------------------------------------
 // Module-level GeoJSON cache (loaded once, same pattern as VirtualRadar)
@@ -32,18 +31,24 @@ import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
 
 let _airspaceGeo: GeoJSON.FeatureCollection | null = null
 let _obstacleGeo: GeoJSON.FeatureCollection | null = null
+let _geoKey = ''
 
 function loadGeoJson() {
+  // A new country selection drops the cached data.
+  if (_geoKey !== activeCountriesKey()) {
+    _geoKey = activeCountriesKey()
+    _airspaceGeo = null
+    _obstacleGeo = null
+  }
+  const key = _geoKey
   if (!_airspaceGeo) {
-    fetch(versionedTileUrl(TILES_BASE_URL, 'se-airspace.geojson'))
-      .then((r) => r.json())
-      .then((d) => { _airspaceGeo = d })
+    loadCountryGeojson('airspace')
+      .then((d) => { if (key === _geoKey) _airspaceGeo = d })
       .catch(() => { /* offline */ })
   }
   if (!_obstacleGeo) {
-    fetch(versionedTileUrl(TILES_BASE_URL, 'se-obstacles.geojson'))
-      .then((r) => r.json())
-      .then((d) => { _obstacleGeo = d })
+    loadCountryGeojson('obstacles')
+      .then((d) => { if (key === _geoKey) _obstacleGeo = d })
       .catch(() => { /* offline */ })
   }
 }

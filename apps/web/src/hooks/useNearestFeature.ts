@@ -11,8 +11,8 @@
 import { useState, useEffect } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { distanceNm, bearingDeg } from '../utils/routeCalc'
-import { TILES_BASE_URL } from '../utils/env'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { useActiveCountries } from '../utils/countryData'
 
 export type NearestFeature = {
   name:        string
@@ -60,11 +60,12 @@ export function useNearestFeature(
   const [nearest, setNearest] = useState<NearestFeature | null>(null)
 
   // ── Load GeoJSON files once ───────────────────────────────────────────────
+  const { key: countriesKey } = useActiveCountries()
   useEffect(() => {
     Promise.all([
-      fetch(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson')).then(r => r.json()) as Promise<GeoJSON.FeatureCollection>,
-      fetch(versionedTileUrl(TILES_BASE_URL, 'se-navaids.geojson')).then(r => r.json())    as Promise<GeoJSON.FeatureCollection>,
-      fetch(versionedTileUrl(TILES_BASE_URL, 'se-waypoints.geojson')).then(r => r.json())  as Promise<GeoJSON.FeatureCollection>,
+      loadCountryGeojson('aerodromes'),
+      loadCountryGeojson('navaids'),
+      loadCountryGeojson('waypoints'),
     ]).then(([ads, navs, wps]) => {
       const pts: Point[] = []
 
@@ -128,7 +129,7 @@ export function useNearestFeature(
 
       setPoints(pts)
     }).catch(console.error)
-  }, [])
+  }, [countriesKey])
 
   // ── Find nearest on every position + data update ──────────────────────────
   useEffect(() => {

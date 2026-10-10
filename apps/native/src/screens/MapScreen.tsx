@@ -37,7 +37,8 @@ import { useRegionalNotams } from '../hooks/useRegionalNotams'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
 import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
 import { notamRegionsFor } from '@open-vfr/shared/notamRegionScope'
-import { useCountries } from '../hooks/useCountries'
+import { useCountries, useActiveCountry } from '../hooks/useCountries'
+import { setFlightActive } from '../utils/flightActive'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { makeCirclePolygon } from '@open-vfr/shared/geoCircle'
 import { NotificationCenter } from '../components/NotificationCenter'
@@ -207,7 +208,20 @@ function coordAlongTrack(track: TrackPoint[], targetNm: number): { lng: number; 
 // ruler profile is hidden -- a fresh [] per render would re-run its effect.
 const NO_WAYPOINTS: RouteWaypoint[] = []
 
+/**
+ * Per-country data (map sources, lookups, warnings) is loaded for the active
+ * country (Settings). Wait until the stored selection is known, then key the
+ * whole screen on the country so a change reloads every source and hook
+ * cleanly. The picker is locked in flight (utils/flightActive), so this
+ * never remounts mid-flight.
+ */
 export function MapScreen() {
+  const { country, ready } = useActiveCountry()
+  if (!ready) return null
+  return <MapScreenForCountry key={country} />
+}
+
+function MapScreenForCountry() {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const insets                                = useSafeAreaInsets()
@@ -325,6 +339,9 @@ export function MapScreen() {
   // real GPS-tracked flight.
   const bestAltFt = simFlight.active ? (simFlight.position?.altFt ?? null) : altitudeSource.altFt
   const flyingActive = flying || simFlight.active || simPosition != null
+  // Lets Settings lock the country picker in flight (see MapScreen wrapper).
+  useEffect(() => { setFlightActive(flyingActive) }, [flyingActive])
+  useEffect(() => () => setFlightActive(false), [])
 
   // Entering any flight mode (real GPS or Simulate) collapses the tab bar so
   // the map gets the full height in the air; leaving it expands the bar again.

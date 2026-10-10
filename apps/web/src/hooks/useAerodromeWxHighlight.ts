@@ -30,6 +30,7 @@ import { computeRunwayWind, type RunwayWindEnd } from '@open-vfr/shared/runwayWi
 import { fetchWxResolved, decodeMetar, parseMetarWind, type ParsedWind } from '../utils/fetchWx'
 import { API_BASE_URL } from '../utils/env'
 import { loadAerodromes, type FullAerodrome } from './useAirfieldBrief'
+import { useActiveCountries } from '../utils/countryData'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 // Deliberately larger than useAirfieldBrief's BRIEF_DIST_NM/DEST_DIST_NM
@@ -65,9 +66,10 @@ export function useAerodromeWxHighlight(
   const inFlightIcaoRef = useRef<string | null>(null)
 
   // Load aerodrome data once (shared cache with useAirfieldBrief).
+  const { key: countriesKey } = useActiveCountries()
   useEffect(() => {
     loadAerodromes().then((arr) => { if (arr.length > 0) setAerodromes(arr) })
-  }, [])
+  }, [countriesKey])
 
   // Which aerodrome currently qualifies -- same nearest/destination pattern
   // as useAirfieldBrief, just with a bigger radius.

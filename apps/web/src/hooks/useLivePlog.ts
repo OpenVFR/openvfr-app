@@ -11,8 +11,7 @@ import { useState, useEffect, useRef } from 'react'
 import type { GpsPosition, FlyingMode } from '../utils/gpsTypes'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { distanceNm } from '../utils/routeCalc'
-import { TILES_BASE_URL } from '../utils/env'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -57,16 +56,20 @@ type CachedNavaid = {
   id: string; name: string; type: string; freq: string
 }
 
+// Keyed by the active countries -- a new selection reloads.
 let _aeroCache: CachedAerodrome[] | null = null
 let _navCache:  CachedNavaid[]    | null = null
+let _aeroKey = ''
+let _navKey  = ''
 
 const COMM_SERVICES = ['TWR', 'AFIS', 'APP', 'DEP', 'GND', 'INFO', 'FIS', 'UNICOM', 'ATIS']
 const COMM_PRIORITY = COMM_SERVICES
 
 async function loadAerodromes(): Promise<CachedAerodrome[]> {
-  if (_aeroCache) return _aeroCache
+  if (_aeroCache && _aeroKey === activeCountriesKey()) return _aeroCache
+  _aeroKey = activeCountriesKey()
   try {
-    const fc = await fetch(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson')).then(r => r.json()) as GeoJSON.FeatureCollection
+    const fc = await loadCountryGeojson('aerodromes')
     _aeroCache = fc.features
       .filter(f => f.geometry.type === 'Point')
       .map(f => {
@@ -90,9 +93,10 @@ async function loadAerodromes(): Promise<CachedAerodrome[]> {
 }
 
 async function loadNavaids(): Promise<CachedNavaid[]> {
-  if (_navCache) return _navCache
+  if (_navCache && _navKey === activeCountriesKey()) return _navCache
+  _navKey = activeCountriesKey()
   try {
-    const fc = await fetch(versionedTileUrl(TILES_BASE_URL, 'se-navaids.geojson')).then(r => r.json()) as GeoJSON.FeatureCollection
+    const fc = await loadCountryGeojson('navaids')
     _navCache = fc.features
       .filter(f => f.geometry.type === 'Point')
       .map(f => {

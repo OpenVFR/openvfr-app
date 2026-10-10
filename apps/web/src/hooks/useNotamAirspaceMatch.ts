@@ -23,8 +23,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { extractDesignators } from '@open-vfr/shared/notamDesignator'
-import { TILES_BASE_URL } from '../utils/env'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { useActiveCountries } from '../utils/countryData'
 
 interface AirspaceIndexEntry {
   name:       string   // full properties.name, e.g. "ESD873 OPTAND"
@@ -47,9 +47,9 @@ export function useNotamAirspaceMatch(regionalNotams: NotamItem[]): {
 
   // Load once -- same static-file pattern as useAirspaceWarnings.ts /
   // useAirspaceNotifications.ts (cheap, browser-cached, not a live endpoint).
+  const { key: countriesKey } = useActiveCountries()
   useEffect(() => {
-    fetch(versionedTileUrl(TILES_BASE_URL, 'se-airspace.geojson'))
-      .then(r => r.json())
+    loadCountryGeojson('airspace')
       .then((fc: GeoJSON.FeatureCollection) => {
         const arr: AirspaceIndexEntry[] = []
         for (const f of fc.features) {
@@ -66,7 +66,7 @@ export function useNotamAirspaceMatch(regionalNotams: NotamItem[]): {
         setAirspaceIndex(arr)
       })
       .catch(() => { /* offline-safe */ })
-  }, [])
+  }, [countriesKey])
 
   return useMemo(() => {
     const byDesignator = new Map<string, AirspaceIndexEntry>()

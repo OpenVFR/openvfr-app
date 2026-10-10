@@ -4,6 +4,7 @@ import * as maplibregl from 'maplibre-gl'
 import { Protocol } from 'pmtiles'
 import { loadTileManifest } from '@open-vfr/shared/tileManifest'
 import { TILES_BASE_URL } from './utils/env'
+import './utils/countryData'
 import './index.css'
 import App from './App.tsx'
 

@@ -37,8 +37,8 @@ import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 import { layoutWindRow, type WindRowItem } from '@open-vfr/shared/windRow'
 import { useWindAloftAlongRoute } from '../hooks/useWindAloftAlongRoute'
 import css from './VirtualRadar.module.css'
-import { TILES_BASE_URL } from '../utils/env'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { useActiveCountries } from '../utils/countryData'
 import { OBSTACLE_ICON_DEFS, OBSTACLE_ICON_FALLBACK_DEF } from '../utils/obstacleIcons'
 import { LANDMARK_ICON_DEFS } from '../utils/landmarkIcons'
 import { loadColoredSvgMarkup } from '../utils/svgIconLoader'
@@ -389,25 +389,22 @@ function VirtualRadar({
     [aircraftProfile?.category],
   )
 
-  // Load GeoJSON once
+  // Load GeoJSON (again when the selected countries change)
+  const { key: countriesKey } = useActiveCountries()
   useEffect(() => {
-    fetch(versionedTileUrl(TILES_BASE_URL, 'se-airspace.geojson'))
-      .then((r) => r.json())
+    loadCountryGeojson('airspace')
       .then(setAirspaceGeo)
       .catch(() => { /* offline — no airspace bands */ })
-    fetch(versionedTileUrl(TILES_BASE_URL, 'se-obstacles.geojson'))
-      .then((r) => r.json())
+    loadCountryGeojson('obstacles')
       .then(setObstacleGeo)
       .catch(() => { /* offline — no obstacle markers */ })
-    fetch(versionedTileUrl(TILES_BASE_URL, 'se-water.geojson'))
-      .then((r) => r.json())
+    loadCountryGeojson('water')
       .then(setWaterGeo)
       .catch(() => { /* offline / not yet generated — no water crossings */ })
-    fetch(versionedTileUrl(TILES_BASE_URL, 'se-landmarks.geojson'))
-      .then((r) => r.json())
+    loadCountryGeojson('landmarks')
       .then(setLandmarkGeo)
       .catch(() => { /* offline — no landmark markers */ })
-  }, [])
+  }, [countriesKey])
 
   // Fetch terrain profile whenever the route changes
   const routeKey = waypoints.map((w) => `${w.lat.toFixed(4)},${w.lng.toFixed(4)}`).join('|')

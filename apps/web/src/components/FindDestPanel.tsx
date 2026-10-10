@@ -20,8 +20,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import type { AircraftProfileDocType } from '../db/index'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import css from './FindDestPanel.module.css'
-import { TILES_BASE_URL } from '../utils/env'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import {
   parseAerodromesGeoJson, filterAndSortAerodromes, computeGlideRangeNm,
   aerodromeToWaypoint, hasAvgas, hasJet, isHard, isGrass, fmtBrg, fmtDist,
@@ -61,9 +60,8 @@ export default function FindDestPanel({
 
   // ── Load once ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    fetch(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'))
-      .then(r => r.json())
-      .then(fc => setAerodromes(parseAerodromesGeoJson(fc)))
+    loadCountryGeojson('aerodromes')
+      .then(fc => setAerodromes(parseAerodromesGeoJson(fc as unknown as Parameters<typeof parseAerodromesGeoJson>[0])))
       .catch(console.error)
 
     const t = setTimeout(() => searchRef.current?.focus(), 60)

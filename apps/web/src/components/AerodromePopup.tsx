@@ -22,9 +22,9 @@ import ctlCss from './NotamViewControls.module.css'
 import RegionalNotamsPanel from './RegionalNotamsPanel'
 import { sunriseSunset, fmtSunTime } from '../utils/sunCalc'
 import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from '@open-vfr/shared/atcStatus'
-import { API_BASE_URL, TILES_BASE_URL } from '../utils/env'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { API_BASE_URL } from '../utils/env'
 import { loadStations as loadStationsShared, type StationRecord } from '@open-vfr/shared/wxStations'
+import { countryDatasetSource } from '@open-vfr/shared/countryData'
 
 // ── Types matching the GeoJSON properties schema ─────────────────────────────
 
@@ -179,7 +179,7 @@ interface Props {
 // cached by URL -- see that module's doc comment.
 
 function loadStations(): Promise<StationRecord[]> {
-  return loadStationsShared(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson')).catch(() => [])
+  return loadStationsShared(countryDatasetSource('aerodromes')).catch(() => [])
 }
 
 // Fallback search radius -- wide enough to reach a towered/AWOS-equipped

@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import { loadAerodromes, type FullAerodrome } from './useAirfieldBrief'
+import { useActiveCountries } from '../utils/countryData'
 
 export interface NearbyFreq {
   service:  string   // TWR, AFIS, APP, GND, ATIS, FIS, INFO, RDO…
@@ -54,7 +55,8 @@ export function useNearbyFrequencies(position: GpsPosition | null): NearbyAerodr
   const [all, setAll] = useState<FullAerodrome[]>([])
   const [nearby, setNearby] = useState<NearbyAerodrome[]>([])
 
-  useEffect(() => { loadAerodromes().then(setAll) }, [])
+  const { key: countriesKey } = useActiveCountries()
+  useEffect(() => { loadAerodromes().then(setAll) }, [countriesKey])
 
   useEffect(() => {
     if (!position || all.length === 0) { setNearby([]); return }

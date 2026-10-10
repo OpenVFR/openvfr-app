@@ -11,6 +11,7 @@ import {
 import { TILES_BASE_URL } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
 import { DEFAULT_REGION_CODE } from '@open-vfr/shared/regions'
+import { countryDatasetFile, countryArchiveFile, type CountryDataset } from '@open-vfr/shared/countryData'
 
 // Airspace on-map label text — class/type short code + altitude range, placed
 // along the boundary line (symbol-placement: 'line') so it repeats around the
@@ -67,6 +68,46 @@ export const MARTIN_URL: string = (() => {
 // getLanduseUrl(). Exported so
 // MapView.tsx can rebuild this source on region change (full removeSource/
 // addSource swap -- PMTiles url-based vector sources have no setTiles()).
+// Per-country Protomaps detail basemap (z7-12), <cc>-basemap.pmtiles.
+// Swapped with the active country like landuse/hillshade/contours.
+export function getBasemapSource(country: string) {
+  return {
+    type: 'vector' as const,
+    url: `pmtiles://${versionedTileUrl(TILES_BASE_URL, countryArchiveFile(country, 'basemap'))}`,
+    // Tiles extracted at minzoom=7/maxzoom=12 (country-bbox detail only
+    // -- see docs/self-hosting.md). z0-6 is deliberately NOT in this
+    // archive; that range is covered by 'protomaps-overview' so every
+    // per-country detail file doesn't re-embed an identical copy of the
+    // whole-continent low-zoom data. MapLibre overzooms vector data
+    // automatically so roads/labels stay visible past z12.
+    maxzoom: 12,
+    attribution:
+      '\u00a9 <a href="https://openstreetmap.org">OpenStreetMap</a> contributors (ODbL)',
+  }
+}
+
+/**
+ * GeoJSON sources whose data is one per-country file: source id -> dataset.
+ * MapView points them at the active country's file (setData) when the
+ * country changes.
+ */
+export const COUNTRY_GEOJSON_SOURCES: Readonly<Record<string, CountryDataset>> = {
+  'ofm':                   'airspace',
+  'ofm-aerodromes':        'aerodromes',
+  'ofm-navaids':           'navaids',
+  'ofm-waypoints':         'waypoints',
+  'ofm-runways':           'runways',
+  'ofm-runway-thresholds': 'runwayThresholds',
+  'openaip-obstacles':     'obstacles',
+  'osm-landmarks':         'landmarks',
+  'osm-aeroways':          'aeroways',
+}
+
+/** URL of one country's GeoJSON dataset (manifest-versioned). */
+export function countryGeojsonUrl(country: string, kind: CountryDataset): string {
+  return versionedTileUrl(TILES_BASE_URL, countryDatasetFile(country, kind))
+}
+
 export function getLanduseSource(country: string) {
   return {
     type: 'vector' as const,
@@ -556,7 +597,8 @@ export const LAYER_GROUPS: LayerGroup[] = [
 // GeoJSON is served as a static file — no PMTiles protocol needed for airspace.
 // /tiles/<file> resolves to the current origin so both environments work.
 
-export function getMapStyle(): StyleSpecification {
+/** Initial style for `country` (the active country; see useCountries). */
+export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecification {
   return ({
     version: 8,
     // Hosted glyphs/sprites -- via jsDelivr's GitHub CDN mirror rather than
@@ -578,7 +620,7 @@ export function getMapStyle(): StyleSpecification {
       // Layer 1 — Protomaps OSM basemap (terrain, roads, water, cities)
       protomaps: {
         type: 'vector',
-        url: `pmtiles://${versionedTileUrl(TILES_BASE_URL, 'basemap.pmtiles')}`,
+        url: getBasemapSource(country).url,
         // Tiles extracted at minzoom=7/maxzoom=12 (country-bbox detail only
         // — see docs/self-hosting.md). z0-6 is deliberately NOT in
         // this archive; that range is covered by 'protomaps-overview' below
@@ -619,7 +661,7 @@ export function getMapStyle(): StyleSpecification {
       //   upper_ft / lower_ft — numeric feet for altitude slider filter
       ofm: {
         type: 'geojson',
-        data: versionedTileUrl(TILES_BASE_URL, 'se-airspace.geojson'),
+        data: countryGeojsonUrl(country, 'airspace'),
         attribution:
           '© <a href="https://openflightmaps.org">OpenFlightMaps</a> (ODbL)',
       },
@@ -631,7 +673,7 @@ export function getMapStyle(): StyleSpecification {
       //             passenger_facilities (JSONB as text)
       'ofm-aerodromes': {
         type: 'geojson',
-        data: versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'),
+        data: countryGeojsonUrl(country, 'aerodromes'),
         attribution:
           '© <a href="https://openflightmaps.org">OpenFlightMaps</a> (ODbL)',
       },
@@ -640,7 +682,7 @@ export function getMapStyle(): StyleSpecification {
       // Properties: kind, id, name, navaid_type, freq, freq_str, has_dme, elevation_ft
       'ofm-navaids': {
         type: 'geojson',
-        data: versionedTileUrl(TILES_BASE_URL, 'se-navaids.geojson'),
+        data: countryGeojsonUrl(country, 'navaids'),
         attribution:
           '© <a href="https://openflightmaps.org">OpenFlightMaps</a> (ODbL)',
       },
@@ -649,7 +691,7 @@ export function getMapStyle(): StyleSpecification {
       // Properties: id, name, wp_type, aerodrome
       'ofm-waypoints': {
         type: 'geojson',
-        data: versionedTileUrl(TILES_BASE_URL, 'se-waypoints.geojson'),
+        data: countryGeojsonUrl(country, 'waypoints'),
         attribution:
           '© <a href="https://openflightmaps.org">OpenFlightMaps</a> (ODbL)',
       },
@@ -658,7 +700,7 @@ export function getMapStyle(): StyleSpecification {
       // Properties: icao, designator, length_m, width_m, surface, mag_brg
       'ofm-runways': {
         type: 'geojson',
-        data: versionedTileUrl(TILES_BASE_URL, 'se-runways.geojson'),
+        data: countryGeojsonUrl(country, 'runways'),
         attribution:
           '© <a href="https://openflightmaps.org">OpenFlightMaps</a> (ODbL)',
       },
@@ -667,7 +709,7 @@ export function getMapStyle(): StyleSpecification {
       // Properties: id (designator e.g. '01L'), icao, mag_brg, true_brg, surface
       'ofm-runway-thresholds': {
         type: 'geojson',
-        data: versionedTileUrl(TILES_BASE_URL, 'se-runway-thresholds.geojson'),
+        data: countryGeojsonUrl(country, 'runwayThresholds'),
         attribution:
           '© <a href="https://openflightmaps.org">OpenFlightMaps</a> (ODbL)',
       },
@@ -684,7 +726,7 @@ export function getMapStyle(): StyleSpecification {
       // large for this without tiling first). See docs/self-hosting.md.
       'openaip-obstacles': {
         type: 'geojson',
-        data: versionedTileUrl(TILES_BASE_URL, 'se-obstacles.geojson'),
+        data: countryGeojsonUrl(country, 'obstacles'),
         attribution:
           '© <a href="https://www.openaip.net">openAIP</a> (CC BY-NC 4.0)',
       },
@@ -699,7 +741,7 @@ export function getMapStyle(): StyleSpecification {
       // are suppressed at data-prep time to avoid double-rendering.
       'osm-landmarks': {
         type: 'geojson',
-        data: versionedTileUrl(TILES_BASE_URL, 'se-landmarks.geojson'),
+        data: countryGeojsonUrl(country, 'landmarks'),
         attribution:
           '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors (ODbL)',
       },
@@ -722,9 +764,9 @@ export function getMapStyle(): StyleSpecification {
       //
       // Source-layer name: 'landuse'  (matches tippecanoe's -l landuse flag)
       // Properties: kind (farmland|residential|commercial|industrial), country
-      'osm-landuse': getLanduseSource(DEFAULT_REGION),
-      'osm-hillshade': getHillshadeSource(DEFAULT_REGION),
-      'osm-contours': getContoursSource(DEFAULT_REGION),
+      'osm-landuse': getLanduseSource(country),
+      'osm-hillshade': getHillshadeSource(country),
+      'osm-contours': getContoursSource(country),
 
       // Layer 10 — OSM aeroway lines (taxiways, aprons, OSM runways)
       // Retired from Postgres/Martin -- static per-country GeoJSON from
@@ -736,7 +778,7 @@ export function getMapStyle(): StyleSpecification {
       // Properties: kind (taxiway|apron|runway), name
       'osm-aeroways': {
         type: 'geojson',
-        data: versionedTileUrl(TILES_BASE_URL, 'se-aeroways.geojson'),
+        data: countryGeojsonUrl(country, 'aeroways'),
         attribution:
           '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors (ODbL)',
       },

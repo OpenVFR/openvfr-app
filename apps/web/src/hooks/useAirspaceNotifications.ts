@@ -11,9 +11,9 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { AlertPosition } from './useAirspaceWarnings'
-import { TILES_BASE_URL } from '../utils/env'
+import { loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { useActiveCountries } from '../utils/countryData'
 import { altitudeForLimit, effectiveLimitFt, insideBand } from '@open-vfr/shared/airspaceAltitude'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
 import { airspaceDisplayClass } from '@open-vfr/shared/airspaceColors'
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -105,9 +105,9 @@ export function useAirspaceNotifications(position: AlertPosition | null): {
   const initializedRef = useRef(false)
 
   // ── Load airspace GeoJSON once ────────────────────────────────────────────
+  const { key: countriesKey } = useActiveCountries()
   useEffect(() => {
-    fetch(versionedTileUrl(TILES_BASE_URL, 'se-airspace.geojson'))
-      .then(r => r.json())
+    loadCountryGeojson('airspace')
       .then((fc: GeoJSON.FeatureCollection) => {
         const arr: AirspaceFeature[] = []
         for (const f of fc.features) {
@@ -132,7 +132,7 @@ export function useAirspaceNotifications(position: AlertPosition | null): {
         setFeatures(arr)
       })
       .catch(() => { /* offline-safe */ })
-  }, [])
+  }, [countriesKey])
 
   // ── Prune expired notifications every second ──────────────────────────────
   useEffect(() => {

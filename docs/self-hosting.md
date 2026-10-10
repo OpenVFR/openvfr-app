@@ -31,8 +31,8 @@ native reads the same files over HTTP from wherever you serve them (see
 
 | File | Format | Contents |
 |---|---|---|
-| `basemap.pmtiles` | PMTiles | OSM-derived vector basemap, country-bbox detail only (z7-12) |
-| `europe-overview.pmtiles` | PMTiles | Shared low-zoom (z0-6) continent-wide overview, NOT country-specific -- built once, fills the gap outside `basemap.pmtiles`'s bbox so pan/zoom-out doesn't show bare gray past the detail archive's edge |
+| `se-basemap.pmtiles` | PMTiles | OSM-derived vector basemap, country-bbox detail only (z7-12). App builds before per-country basemaps request the unprefixed `basemap.pmtiles` (keep a copy of Sweden's under that name until those builds are gone) |
+| `europe-overview.pmtiles` | PMTiles | Shared low-zoom (z0-6) continent-wide overview, NOT country-specific -- built once, fills the gap outside the country basemap's bbox so pan/zoom-out doesn't show bare gray past the detail archive's edge |
 | `se-airspace.geojson` | GeoJSON | Airspace polygons (class, type, altitudes) |
 | `se-aerodromes.geojson` | GeoJSON | Aerodrome points + runway/frequency data |
 | `se-navaids.geojson` | GeoJSON | VOR/NDB points |
@@ -47,9 +47,12 @@ native reads the same files over HTTP from wherever you serve them (see
 | `se-contours.pmtiles` | PMTiles (vector) | Elevation isolines |
 | `manifest.json` | JSON | Content hashes per file, for cache-busting (see `packages/shared/src/tileManifest.ts`) |
 
-Filenames are per-country (`se-*` = Sweden); see `apps/web/src/styles/map-style.ts`
-for the exact source/layer wiring and `docs/architecture.md`'s data table
-for the property schema each file needs.
+Every file except `europe-overview.pmtiles` and `manifest.json` is per country
+(`se-*` = Sweden, `no-*` = Norway, ...). The apps load the files of the
+**active country** chosen in Settings (one at a time; see below); see
+`apps/web/src/styles/map-style.ts` / `@open-vfr/shared/countryData` for the
+wiring and `docs/architecture.md`'s data table for the property schema each
+file needs.
 
 ### Countries served (`countries` table)
 

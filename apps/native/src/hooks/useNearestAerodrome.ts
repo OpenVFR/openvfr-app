@@ -12,6 +12,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { getTileUrls } from '../config'
+import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
 import { distanceNm } from '../utils/routeCalc'
 import type { GpsPosition } from '../utils/gpsTypes'
 
@@ -19,6 +20,8 @@ type CachedAerodrome = { icao: string; lat: number; lng: number; elevationFt: nu
 
 let _cache: CachedAerodrome[] | null = null
 let _loading = false
+// Per-country data: a new active country starts a fresh load.
+onActiveCountriesChange(() => { _cache = null; _loading = false })
 const _listeners: Array<(d: CachedAerodrome[]) => void> = []
 
 function loadOnce(cb: (d: CachedAerodrome[]) => void) {

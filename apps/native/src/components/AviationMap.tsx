@@ -48,6 +48,7 @@ import {
   BASEMAP_STYLE_URL,
   SATELLITE_STYLE,
   createProtomapsStyle,
+  activeCountry,
   getLandusePmtilesUrl,
   getHillshadePmtilesUrl,
   getContoursPmtilesUrl,
@@ -565,7 +566,13 @@ const LANDUSE_FILLS = [
  *  after an offline download completes so a freshly cached basemap.pmtiles takes effect
  *  without requiring a full app restart. */
 let _protomapsStyle: ReturnType<typeof createProtomapsStyle> | null = null
+let _protomapsStyleCountry = ''
 function getProtomapsStyle() {
+  // Per-country detail basemap: a different active country needs a new style.
+  if (_protomapsStyleCountry !== activeCountry()) {
+    _protomapsStyleCountry = activeCountry()
+    _protomapsStyle = null
+  }
   if (!_protomapsStyle) {
     const basemapAsset = OFFLINE_ASSETS.find(a => a.key === 'basemap')
     const localUrl = basemapAsset ? resolveUri(basemapAsset) : undefined

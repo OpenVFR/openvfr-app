@@ -4,8 +4,9 @@
  * fallback (see fetchWx.ts). Loaded once per resolved aerodromes.geojson URL
  * and cached — web and native each resolve that URL differently (versioned
  * tile base vs. offline-cache-aware getResolvedTileUrls()), so the cache is
- * keyed by URL rather than assuming a single global source.
+ * keyed by URL (or merged-source key) rather than assuming a single global source.
  */
+import type { DatasetSource } from './countryData'
 
 export interface StationRecord {
   icao: string
@@ -17,14 +18,18 @@ export interface StationRecord {
 const cache = new Map<string, StationRecord[]>()
 const inFlight = new Map<string, Promise<StationRecord[]>>()
 
-export function loadStations(aerodromesUrl: string): Promise<StationRecord[]> {
+/** `source`: a plain aerodromes GeoJSON URL, or the merged active-country source (./countryData). */
+export function loadStations(source: string | DatasetSource): Promise<StationRecord[]> {
+  const aerodromesUrl = typeof source === 'string' ? source : source.key
   const cached = cache.get(aerodromesUrl)
   if (cached) return Promise.resolve(cached)
   const existing = inFlight.get(aerodromesUrl)
   if (existing) return existing
 
-  const promise = fetch(aerodromesUrl)
-    .then((r) => r.json())
+  const load: Promise<GeoJSON.FeatureCollection> = typeof source === 'string'
+    ? fetch(source).then((r) => r.json())
+    : source.load()
+  const promise = load
     .then((fc: GeoJSON.FeatureCollection) => {
       const arr: StationRecord[] = []
       for (const f of fc.features) {

@@ -9,16 +9,19 @@
  * This module fetches the GeoJSON once on first use, then looks up
  * features by (name, lower_ft, upper_ft) to return the complete ring.
  *
- * Shared between web and native. Pass the platform's own airspace GeoJSON
- * URL (web: '/tiles/se-airspace.geojson', native: TILE_URLS.airspace).
+ * Shared between web and native. Pass the merged airspace source for the
+ * active countries (./countryData's countryDatasetSource('airspace')), or a
+ * plain GeoJSON URL.
  */
 
 import type { Polygon, MultiPolygon, Feature } from 'geojson'
+import type { DatasetSource } from './countryData'
 
 type Key = string   // `${name}|${lower_ft}|${upper_ft}`
 
 let _cache: Map<Key, number[][]> | null = null
 let _fetchPromise: Promise<void> | null = null
+let _promiseKey: string | null = null
 
 function makeKey(props: Record<string, unknown>): Key {
   return `${props.name ?? ''}|${props.lower_ft ?? ''}|${props.upper_ft ?? ''}`
@@ -33,10 +36,11 @@ function exteriorRing(geom: Polygon | MultiPolygon): number[][] {
   )
 }
 
-async function loadCache(tileUrl: string): Promise<void> {
+async function loadCache(source: string | DatasetSource): Promise<void> {
   try {
-    const res  = await fetch(tileUrl)
-    const data = await res.json() as { features: Feature[] }
+    const data = typeof source === 'string'
+      ? await (await fetch(source)).json() as { features: Feature[] }
+      : await source.load()
     _cache = new Map()
     for (const f of data.features) {
       const p = (f.properties ?? {}) as Record<string, unknown>
@@ -55,10 +59,11 @@ async function loadCache(tileUrl: string): Promise<void> {
  */
 export async function getFullRing(
   props: { name?: string; lower_ft?: number; upper_ft?: number },
-  tileUrl: string,
+  source: string | DatasetSource,
   clippedCoords?: number[][],
 ): Promise<number[][] | undefined> {
-  if (!_fetchPromise) _fetchPromise = loadCache(tileUrl)
+  const sourceKey = typeof source === 'string' ? source : source.key
+  if (!_fetchPromise || _promiseKey !== sourceKey) { _promiseKey = sourceKey; _fetchPromise = loadCache(source) }
   await _fetchPromise
 
   const key   = makeKey(props as Record<string, unknown>)

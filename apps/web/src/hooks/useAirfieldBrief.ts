@@ -13,8 +13,8 @@ import { useState, useEffect, useRef } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { AerodromeFeatureProps } from '../components/AerodromePopup'
-import { TILES_BASE_URL } from '../utils/env'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
+import { useActiveCountries } from '../utils/countryData'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const BRIEF_DIST_NM  = 3     // nearest-aerodrome trigger radius
@@ -46,14 +46,20 @@ export interface FullAerodrome {
 }
 
 // Module-level cache so multiple hook instances share one fetch
+// (keyed by the active countries; callers re-run on useActiveCountries().key).
 let cachedAerodromes: FullAerodrome[] | null = null
 let loadPromise: Promise<FullAerodrome[]> | null = null
+let cacheKey = ''
 
 export function loadAerodromes(): Promise<FullAerodrome[]> {
+  if (cacheKey !== activeCountriesKey()) {
+    cacheKey = activeCountriesKey()
+    cachedAerodromes = null
+    loadPromise = null
+  }
   if (cachedAerodromes) return Promise.resolve(cachedAerodromes)
   if (loadPromise) return loadPromise
-  loadPromise = fetch(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'))
-    .then(r => r.json())
+  loadPromise = loadCountryGeojson('aerodromes')
     .then((fc: GeoJSON.FeatureCollection) => {
       const arr: FullAerodrome[] = []
       for (const f of fc.features) {
@@ -107,12 +113,13 @@ export function useAirfieldBrief(
   const [brief, setBrief]           = useState<BriefAerodrome | null>(null)
   const prevKeyRef                  = useRef<string | null>(null)
 
-  // Load aerodrome data once
+  // Load aerodrome data (again when the selected countries change)
+  const { key: countriesKey } = useActiveCountries()
   useEffect(() => {
     loadAerodromes().then(arr => {
       if (arr.length > 0) setAerodromes(arr)
     })
-  }, [])
+  }, [countriesKey])
 
   useEffect(() => {
     if (!position || aerodromes.length === 0) {

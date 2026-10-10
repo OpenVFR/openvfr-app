@@ -11,13 +11,15 @@
  * proximity warnings and the tap-to-inspect popup) must stay complete
  * regardless of what's currently shown, so both read from this instead.
  *
- * Shared between web and native. Pass the platform's own airspace GeoJSON
- * URL (web: '/tiles/se-airspace.geojson', native: TILE_URLS.airspace).
+ * Shared between web and native. Pass the merged airspace source for the
+ * active countries (./countryData's countryDatasetSource('airspace')), or a
+ * plain GeoJSON URL.
  */
 
 import type { Polygon, MultiPolygon, Feature, FeatureCollection } from 'geojson'
 import { pointInPolygon } from './airspaceGeometry'
 import { airspaceDisplayClass } from './airspaceColors'
+import type { DatasetSource } from './countryData'
 
 export interface AirspaceQueryFeature {
   class: string
@@ -33,18 +35,17 @@ export interface AirspaceQueryFeature {
 }
 
 let _cache: Feature[] | null = null
-let _cacheUrl: string | null = null
 let _fetchPromise: Promise<void> | null = null
+let _promiseKey: string | null = null
 
-async function load(tileUrl: string): Promise<void> {
+async function load(source: string | DatasetSource): Promise<void> {
   try {
-    const res  = await fetch(tileUrl)
-    const data = await res.json() as FeatureCollection
-    _cache    = data.features
-    _cacheUrl = tileUrl
+    const data = typeof source === 'string'
+      ? await (await fetch(source)).json() as FeatureCollection
+      : await source.load()
+    _cache = data.features
   } catch {
-    _cache    = []
-    _cacheUrl = tileUrl
+    _cache = []
   }
 }
 
@@ -57,9 +58,10 @@ function parseFrequencies(v: unknown): { freq_mhz: number; callsign: string; ser
 export async function queryAirspaceAtPoint(
   lng: number,
   lat: number,
-  tileUrl: string,
+  source: string | DatasetSource,
 ): Promise<AirspaceQueryFeature[]> {
-  if (!_fetchPromise || _cacheUrl !== tileUrl) _fetchPromise = load(tileUrl)
+  const key = typeof source === 'string' ? source : source.key
+  if (!_fetchPromise || _promiseKey !== key) { _promiseKey = key; _fetchPromise = load(source) }
   await _fetchPromise
 
   const out: AirspaceQueryFeature[] = []

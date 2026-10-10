@@ -6,11 +6,14 @@
  */
 
 import { getTileUrls } from '../config'
+import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
 
 export type AerodromeLookupEntry = { name: string; lng: number; lat: number }
 
 let _cache: Map<string, AerodromeLookupEntry> | null = null
 let _inFlight: Promise<Map<string, AerodromeLookupEntry>> | null = null
+// Per-country data: a new active country starts a fresh load.
+onActiveCountriesChange(() => { _cache = null; _inFlight = null })
 
 export function getAerodromeLookup(): Promise<Map<string, AerodromeLookupEntry>> {
   if (_cache) return Promise.resolve(_cache)

@@ -5,9 +5,12 @@
 
 import { useState, useEffect } from 'react'
 import { getTileUrls } from '../config'
+import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
 
 let _cache: Array<{ icao: string; lat: number; lng: number }> | null = null
 let _loading = false
+// Per-country data: a new active country starts a fresh load.
+onActiveCountriesChange(() => { _cache = null; _loading = false })
 const _listeners: Array<(d: typeof _cache) => void> = []
 
 function loadOnce(cb: (d: typeof _cache) => void) {

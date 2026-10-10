@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import css from './FindFeature.module.css'
-import { TILES_BASE_URL } from '../utils/env'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
 import { parseCoordinate, formatCoordinate } from '@open-vfr/shared/coordinateParse'
 
 export type FindResult = {
@@ -34,20 +33,23 @@ function parseLatLon(q: string): FindResult | null {
 // ---------------------------------------------------------------------------
 // In-memory search index — loaded once on first keystroke.
 // ---------------------------------------------------------------------------
-let _index: FindResult[] | null = null
-let _loading = false
-const _listeners: Array<() => void> = []
+// Keyed by the active countries: a new selection rebuilds the index.
+type IndexFc = { features: { geometry: { coordinates: [number, number] }; properties: Record<string, unknown> }[] }
+let _index: { key: string; promise: Promise<FindResult[]> } | null = null
 
 function loadIndex(): Promise<FindResult[]> {
-  if (_index) return Promise.resolve(_index)
-  return new Promise((resolve) => {
-    _listeners.push(() => resolve(_index!))
-    if (_loading) return
-    _loading = true
+  const key = activeCountriesKey()
+  if (_index?.key === key) return _index.promise
+  const promise = buildIndex()
+  promise.catch(() => { if (_index?.promise === promise) _index = null })
+  _index = { key, promise }
+  return promise
+}
 
-    const aeroP = fetch(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'))
-      .then(r => r.json())
-      .then((fc: { features: { geometry: { coordinates: [number, number] }; properties: Record<string, unknown> }[] }) =>
+function buildIndex(): Promise<FindResult[]> {
+  {
+    const aeroP = (loadCountryGeojson('aerodromes') as Promise<unknown> as Promise<IndexFc>)
+      .then((fc: IndexFc) =>
         fc.features.map((f): FindResult => ({
           kind: 'AD',
           id:   String(f.properties.icao ?? ''),
@@ -58,9 +60,8 @@ function loadIndex(): Promise<FindResult[]> {
         }))
       )
 
-    const navP = fetch(versionedTileUrl(TILES_BASE_URL, 'se-navaids.geojson'))
-      .then(r => r.json())
-      .then((fc: { features: { geometry: { coordinates: [number, number] }; properties: Record<string, unknown> }[] }) =>
+    const navP = (loadCountryGeojson('navaids') as Promise<unknown> as Promise<IndexFc>)
+      .then((fc: IndexFc) =>
         fc.features.map((f): FindResult => ({
           kind: (f.properties.kind === 'VOR' || String(f.properties.navaid_type ?? '').startsWith('VOR')) ? 'VOR' : 'NDB',
           id:   String(f.properties.id ?? ''),
@@ -71,9 +72,8 @@ function loadIndex(): Promise<FindResult[]> {
         }))
       )
 
-    const wpP = fetch(versionedTileUrl(TILES_BASE_URL, 'se-waypoints.geojson'))
-      .then(r => r.json())
-      .then((fc: { features: { geometry: { coordinates: [number, number] }; properties: Record<string, unknown> }[] }) =>
+    const wpP = (loadCountryGeojson('waypoints') as Promise<unknown> as Promise<IndexFc>)
+      .then((fc: IndexFc) =>
         fc.features.map((f): FindResult => ({
           kind: String(f.properties.wp_type ?? '') === 'MRP' ? 'MRP' : 'RP',
           id:   String(f.properties.id ?? ''),
@@ -84,12 +84,8 @@ function loadIndex(): Promise<FindResult[]> {
         }))
       )
 
-    Promise.all([aeroP, navP, wpP]).then(([ads, navs, wps]) => {
-      _index = [...ads, ...navs, ...wps]
-      _listeners.forEach(cb => cb())
-      _listeners.length = 0
-    })
-  })
+    return Promise.all([aeroP, navP, wpP]).then(([ads, navs, wps]) => [...ads, ...navs, ...wps])
+  }
 }
 
 function search(q: string, index: FindResult[]): FindResult[] {

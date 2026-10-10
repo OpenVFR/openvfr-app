@@ -23,6 +23,7 @@ import { useNearestQnh } from '../hooks/useNearestQnh'
 import { useAerodromeElevation } from '../hooks/useAerodromeElevation'
 import { useNearestAerodrome } from '../hooks/useNearestAerodrome'
 import { useCountries } from '../hooks/useCountries'
+import { useFlightActive } from '../utils/flightActive'
 import { toggleCountry } from '@open-vfr/shared/countries'
 import { qnhFromStationPressure } from '@open-vfr/shared/baroAltitude'
 import * as Location from 'expo-location'
@@ -513,6 +514,8 @@ function formatVarioDeviceStatus(state: VarioState): string {
 function CountriesSection() {
   const styles = useThemedStyles(makeStyles)
   const { available, selected, setSelected } = useCountries()
+  // Changing country reloads the map screen and its data: never in flight.
+  const inFlight = useFlightActive()
   if (!available || available.length === 0) {
     return (
       <View style={styles.row}>
@@ -529,7 +532,7 @@ function CountriesSection() {
             <Text style={styles.rowLabel}>{c.name}</Text>
             <Switch
               value={on}
-              disabled={on && selected.length === 1}
+              disabled={inFlight || (on && selected.length === 1)}
               onValueChange={() => setSelected(toggleCountry(selected, c.code))}
             />
           </View>

@@ -12,10 +12,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   fetchAvailableCountries, resolveSelectedCountries, type AvailableCountry,
 } from '@open-vfr/shared/countries'
+import { setActiveCountries } from '@open-vfr/shared/countryData'
 import { API_BASE_URL } from '../utils/env'
-
-const K_AVAILABLE = 'ovfr:countries:available'
-const K_SELECTED  = 'ovfr:countries:selected'
+import { K_COUNTRIES_AVAILABLE as K_AVAILABLE, K_COUNTRIES_SELECTED as K_SELECTED } from '../utils/countryData'
 const REFRESH_MS  = 30 * 60 * 1000
 
 function readJson<T>(key: string): T | null {
@@ -62,6 +61,9 @@ export function useCountries(): CountriesState {
   // Joined key keeps the array identity stable across unrelated renders.
   const selectedKey = resolveSelectedCountries(saved, available).join(',')
   const selected = useMemo(() => (selectedKey ? selectedKey.split(',') : []), [selectedKey])
+
+  // Every country-data consumer follows the effective selection.
+  useEffect(() => { setActiveCountries(selected) }, [selected])
 
   return { available, selected, setSelected }
 }

@@ -15,6 +15,7 @@ import type { GpsPosition, FlyingMode } from '../utils/gpsTypes'
 import type { RouteWaypoint } from '../types/db'
 import { distanceNm } from '../utils/routeCalc'
 import { getTileUrls } from '../config'
+import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -56,6 +57,8 @@ type CachedNavaid = {
 
 let _aeroCache: CachedAerodrome[] | null = null
 let _navCache:  CachedNavaid[]    | null = null
+// Per-country data: a new active country starts a fresh load.
+onActiveCountriesChange(() => { _aeroCache = null; _navCache = null })
 
 const COMM_SERVICES = ['TWR', 'AFIS', 'APP', 'DEP', 'GND', 'INFO', 'FIS', 'UNICOM', 'ATIS']
 const COMM_PRIORITY = COMM_SERVICES

@@ -37,6 +37,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
+import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
 import { lookaheadPath, accuracyRing } from '@open-vfr/shared/lookahead'
@@ -124,6 +125,8 @@ type AerodromeFeature = {
 let _airspaceFeatures: AirspaceFeature[] | null = null
 let _airspaceLoading = false
 const _airspaceListeners: Array<(f: AirspaceFeature[]) => void> = []
+// Per-country data: a new active country starts a fresh load.
+onActiveCountriesChange(() => { _airspaceFeatures = null; _airspaceLoading = false })
 
 function loadAirspaceOnce(cb: (f: AirspaceFeature[]) => void) {
   if (_airspaceFeatures) { cb(_airspaceFeatures); return }

@@ -79,7 +79,7 @@ MapLibre GL JS renders all layers. Style is defined in `apps/web/src/styles/map-
 
 | # | Source ID | Type | File | Description |
 |---|---|---|---|---|
-| 1 | `protomaps` | vector/PMTiles | `apps/web/public/tiles/basemap.pmtiles` | OSM basemap (terrain, water, roads, cities). maxzoom=12 |
+| 1 | `protomaps` | vector/PMTiles | `apps/web/public/tiles/<cc>-basemap.pmtiles` (active country) | OSM basemap (terrain, water, roads, cities). maxzoom=12 |
 | 2 | `ofm` | GeoJSON | `apps/web/public/tiles/se-airspace.geojson` | Airspace polygons |
 | 3 | `ofm-aerodromes` | GeoJSON | `apps/web/public/tiles/se-aerodromes.geojson` | 191 aerodrome/heliport points |
 | 4 | `ofm-navaids` | GeoJSON | `apps/web/public/tiles/se-navaids.geojson` | 90 VOR/NDB points |

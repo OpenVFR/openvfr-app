@@ -15,8 +15,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { RouteWaypoint } from '../utils/routeCalc'
-import { TILES_BASE_URL } from '../utils/env'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { useActiveCountries } from '../utils/countryData'
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const LATERAL_NM   = 1.0
@@ -78,9 +78,9 @@ export function useAirfieldProximity(
   const lastSigRef = useRef<string>('')
 
   // ── Load aerodromes GeoJSON once ──────────────────────────────────────────
+  const { key: countriesKey } = useActiveCountries()
   useEffect(() => {
-    fetch(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'))
-      .then(r => r.json())
+    loadCountryGeojson('aerodromes')
       .then((fc: GeoJSON.FeatureCollection) => {
         const arr: AerodromeFeature[] = []
         for (const f of fc.features) {
@@ -122,7 +122,7 @@ export function useAirfieldProximity(
         setAerodromes(arr)
       })
       .catch(() => { /* offline-safe */ })
-  }, [])
+  }, [countriesKey])
 
   // ── Evaluate on each position + route change ───────────────────────────────
   useEffect(() => {

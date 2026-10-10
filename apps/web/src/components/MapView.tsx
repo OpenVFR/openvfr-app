@@ -37,6 +37,9 @@ maplibregl.setWorkerUrl(maplibreWorkerUrl)
 import 'maplibre-gl/dist/maplibre-gl.css'
 import {
   getMapStyle,
+  getBasemapSource,
+  COUNTRY_GEOJSON_SOURCES,
+  countryGeojsonUrl,
   getLanduseSource,
   getHillshadeSource,
   getContoursSource,
@@ -64,6 +67,9 @@ import { useWindGrid } from '../hooks/useWindGrid'
 import { windOverlayAltitude } from '@open-vfr/shared/windGrid'
 import { type AirspaceFeature, type RegionalNotamHit, airspaceRowKey, notamRowKey } from './AirspacePopup'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
+import { EUROPEAN_REGIONS } from '@open-vfr/shared/regions'
+import { countryDatasetSource, loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { useActiveCountries } from '../utils/countryData'
 import { formatObstacleName, formatLandmarkName, obstacleWaypointName } from '@open-vfr/shared/snapLabels'
 import { type PointFeature } from './FeaturePopup'
 import type { WhatsHereItem } from './WhatsHerePopup'
@@ -128,7 +134,7 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import type { AuthState } from '../hooks/useAuth'
 import type { FlyingMode, MapOrientation, GpsPosition } from '../utils/gpsTypes'
 import { TILES_BASE_URL } from '../utils/env'
-import { versionedTileUrl, waitForTileManifest } from '@open-vfr/shared/tileManifest'
+import { waitForTileManifest } from '@open-vfr/shared/tileManifest'
 import { parseMapLink, hasMapLink, stripMapLinkParams } from '@open-vfr/shared/deepLink'
 import css from './MapView.module.css'
 import MapInfoBar from './MapInfoBar'
@@ -563,6 +569,10 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // landuse/hillshade/contour sources below follow it.
   const { available: availableCountries, selected: selectedRegions, setSelected: setSelectedRegions } = useCountries()
   const region = selectedRegions[0] ?? DEFAULT_REGION
+  // Country the map's per-country sources currently point at (null until
+  // the map exists). See the source-swap effects further down.
+  const appliedRegionRef = useRef<string | null>(null)
+  const { key: countriesKey } = useActiveCountries()
   const [basemapMode, setBasemapMode] = useState<'vector' | 'satellite'>('vector')
   const [planningMode, setPlanningMode] = useState(false)
   // Route activate/deactivate — hides the drawn route on the map without
@@ -1521,9 +1531,12 @@ export default function MapView({ auth }: { auth: AuthState }) {
   useEffect(() => {
     if (!containerRef.current || mapRef.current || !manifestReady) return
 
+    // Sources start on the active country; the swap effects below take
+    // over when it changes.
+    appliedRegionRef.current = region
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: getMapStyle(),
+      style: getMapStyle(region),
       // Last known own position (Passive location mode) when there is one;
       // the home-airfield fly-to below still takes over when set.
       center: (() => { const lp = readLastPosition(); return lp ? [lp.lng, lp.lat] as [number, number] : [18.07, 59.33] as [number, number] })(),
@@ -2877,7 +2890,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       // no padding) ──────────────────────────────────────────────────────
       // Independent of the altitude-ceiling filter and per-class layer
       // toggles — those only control what's drawn, not what's queried here.
-      const airspaceHits = await queryAirspaceAtPoint(e.lngLat.lng, e.lngLat.lat, versionedTileUrl(TILES_BASE_URL, 'se-airspace.geojson'))
+      const airspaceHits = await queryAirspaceAtPoint(e.lngLat.lng, e.lngLat.lat, countryDatasetSource('airspace'))
 
       // Ad-hoc NOTAM circles/polygons geometrically covering the exact click
       // point -- queried alongside airspace (not as an independent click-
@@ -3108,7 +3121,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
 
       // Airspace at the exact click point — same rationale as the left-click
       // handler above: always complete, regardless of filter/visibility.
-      const whAirspace = await queryAirspaceAtPoint(e.lngLat.lng, e.lngLat.lat, versionedTileUrl(TILES_BASE_URL, 'se-airspace.geojson')) as AirspaceFeature[]
+      const whAirspace = await queryAirspaceAtPoint(e.lngLat.lng, e.lngLat.lat, countryDatasetSource('airspace')) as AirspaceFeature[]
 
       setActivePopup({
         kind: 'whatshere',
@@ -3482,8 +3495,12 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // the draw order.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !map.isStyleLoaded()) return
+    // mapReady, not isStyleLoaded(): the latter is false while any source is
+    // still loading tiles -- including right after one of these swaps --
+    // which made the following swaps silently skip.
+    if (!map || !mapReady) return
     if (!map.getSource('osm-landuse')) return
+    if (region === appliedRegionRef.current) return  // style was built for it
     const styleLayers = map.getStyle()?.layers ?? []
     const idx = styleLayers.findIndex((l) => l.id === 'landuse-fill')
     if (idx === -1) return
@@ -3494,7 +3511,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     map.removeSource('osm-landuse')
     map.addSource('osm-landuse', getLanduseSource(region))
     map.addLayer(landuseLayer, beforeId)
-  }, [region])
+  }, [region, mapReady])
 
   // Sync region selector → osm-hillshade PMTiles source. Same removeLayer/
   // removeSource/re-add pattern as osm-landuse above — raster-dem PMTiles
@@ -3509,8 +3526,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // unlike the osm-contours pair below), then reinserted after the swap.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !map.isStyleLoaded()) return
+    if (!map || !mapReady) return
     if (!map.getSource('osm-hillshade')) return
+    if (region === appliedRegionRef.current) return
     const styleLayers = map.getStyle()?.layers ?? []
     const affected = styleLayers
       .map((l, idx) => ({ l, idx }))
@@ -3525,7 +3543,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     map.removeSource('osm-hillshade')
     map.addSource('osm-hillshade', getHillshadeSource(region))
     affected.forEach(({ layer, beforeId }) => map.addLayer(layer, beforeId))
-  }, [region])
+  }, [region, mapReady])
 
   // Sync region selector → osm-contours PMTiles source. Two adjacent layers
   // ('contour-line', 'contour-label') both reference this source — remove
@@ -3536,8 +3554,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // fail for the first one re-added).
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !map.isStyleLoaded()) return
+    if (!map || !mapReady) return
     if (!map.getSource('osm-contours')) return
+    if (region === appliedRegionRef.current) return
     const styleLayers = map.getStyle()?.layers ?? []
     const lineIdx = styleLayers.findIndex((l) => l.id === 'contour-line')
     const labelIdx = styleLayers.findIndex((l) => l.id === 'contour-label')
@@ -3553,7 +3572,55 @@ export default function MapView({ auth }: { auth: AuthState }) {
     map.addSource('osm-contours', getContoursSource(region))
     map.addLayer(lineLayer, anchorId)
     map.addLayer(labelLayer, anchorId)
-  }, [region])
+  }, [region, mapReady])
+
+  // Active country -> basemap + aviation GeoJSON sources. Runs after the
+  // landuse/hillshade/contours swaps above (same deps, declared later), and
+  // only then records the region as applied.
+  //
+  // 'protomaps' layers are interleaved with our own (landuse-fill,
+  // taxiways, runways) and 'hillshade-water-cover' also reads it, so every
+  // layer on the source is removed and re-added, each before the next
+  // layer that was NOT removed -- re-adding in original order before a
+  // common surviving anchor keeps the paint order. getStyle() returns each
+  // layer's current layout/filter, so satellite-mode visibility and
+  // toggles survive the swap. GeoJSON sources just get a new URL.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    if (region === appliedRegionRef.current) return
+
+    if (map.getSource('protomaps')) {
+      const styleLayers = map.getStyle()?.layers ?? []
+      const onSource = new Set(styleLayers
+        .filter((l) => (l as unknown as { source?: string }).source === 'protomaps')
+        .map((l) => l.id))
+      const readd = styleLayers
+        .map((l, idx) => ({ l, idx }))
+        .filter(({ l }) => onSource.has(l.id))
+        .map(({ l, idx }) => ({
+          layer: l,
+          beforeId: styleLayers.slice(idx + 1).find((n) => !onSource.has(n.id))?.id,
+        }))
+      readd.forEach(({ layer }) => map.removeLayer(layer.id))
+      map.removeSource('protomaps')
+      map.addSource('protomaps', getBasemapSource(region))
+      readd.forEach(({ layer, beforeId }) => map.addLayer(layer, beforeId))
+    }
+
+    for (const [sourceId, kind] of Object.entries(COUNTRY_GEOJSON_SOURCES)) {
+      (map.getSource(sourceId) as GeoJSONSource | undefined)?.setData(countryGeojsonUrl(region, kind))
+    }
+
+    // A newly picked country: show it (user action -- never in flight,
+    // the picker is locked then).
+    const r = EUROPEAN_REGIONS.find((x) => x.code === region)
+    if (r && appliedRegionRef.current !== null) {
+      const [s, w, n, e] = r.bbox
+      map.fitBounds([[w, s], [e, n]], { padding: 40, duration: 800 })
+    }
+    appliedRegionRef.current = region
+  }, [region, mapReady])
 
   // Sync ruler points → MapLibre ruler sources.
   useEffect(() => {
@@ -3616,9 +3683,10 @@ export default function MapView({ auth }: { auth: AuthState }) {
     }
     if (link.ad) {
       const icao = link.ad
-      fetch(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'))
-        .then(r => (r.ok ? r.json() : null))
-        .then((fc: { features?: { geometry: { coordinates: [number, number] }; properties: Record<string, unknown> }[] } | null) => {
+      loadCountryGeojson('aerodromes')
+        .then(fc => fc as unknown as { features?: { geometry: { coordinates: [number, number] }; properties: Record<string, unknown> }[] })
+        .catch(() => null)
+        .then((fc) => {
           const feat = fc?.features?.find(f => String(f.properties.icao ?? '').toUpperCase() === icao)
           const m = mapRef.current
           if (!feat || !m) return
@@ -3690,9 +3758,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Load runway threshold data once (used for extended centrelines during Go Flying).
   useEffect(() => {
     if (!mapReady) return
-    if (runwayThresholdsRef.current.length > 0) return  // already loaded
-    fetch(versionedTileUrl(TILES_BASE_URL, 'se-runway-thresholds.geojson'))
-      .then(r => r.json())
+    loadCountryGeojson('runwayThresholds')
       .then((fc: GeoJSON.FeatureCollection) => {
         runwayThresholdsRef.current = fc.features
           .filter(f => f.geometry.type === 'Point')
@@ -3705,7 +3771,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           }))
       })
       .catch(() => { /* non-fatal */ })
-  }, [mapReady])
+  }, [mapReady, countriesKey])
 
   // Load towered-aerodrome hours once (used to periodically recolor the
   // 'aerodromes-atc-ring' layer -- see the effect below). Same fetch-once-
@@ -3713,9 +3779,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const [toweredAerodromesLoaded, setToweredAerodromesLoaded] = useState(false)
   useEffect(() => {
     if (!mapReady) return
-    if (toweredAerodromesRef.current.length > 0) return  // already loaded
-    fetch(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'))
-      .then(r => r.json())
+    loadCountryGeojson('aerodromes')
       .then((fc: GeoJSON.FeatureCollection) => {
         toweredAerodromesRef.current = fc.features
           .filter(f => f.geometry.type === 'Point' && (f.properties as Record<string, unknown>).towered === true)
@@ -3728,7 +3792,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       })
       .catch(() => { /* non-fatal -- ring just stays 'unknown' grey for everyone */ })
       .finally(() => setToweredAerodromesLoaded(true))
-  }, [mapReady])
+  }, [mapReady, countriesKey])
 
   // Recolor 'aerodromes-atc-ring' every 60s from the cached towered-aerodrome
   // list above. AIP-schedule-derived only (see @open-vfr/shared/atcStatus) --

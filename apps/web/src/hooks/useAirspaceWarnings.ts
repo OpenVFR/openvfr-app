@@ -33,8 +33,8 @@ import { altitudeForLimit, effectiveLimitFt, limitMarginFt, insideBand } from '@
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
 import { lookaheadPath, accuracyRing } from '@open-vfr/shared/lookahead'
 import { dropCoveredSubAreas } from '@open-vfr/shared/subAreas'
-import { TILES_BASE_URL } from '../utils/env'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { useActiveCountries } from '../utils/countryData'
 import { airspaceDisplayClass } from '@open-vfr/shared/airspaceColors'
 
 // ── Config ──────────────────────────────────────────────────────────────────
@@ -135,9 +135,9 @@ export function useAirspaceWarnings(
   const lastSigRef = useRef<string>('')
 
   // ── Load airspace GeoJSON once ────────────────────────────────────────────
+  const { key: countriesKey } = useActiveCountries()
   useEffect(() => {
-    fetch(versionedTileUrl(TILES_BASE_URL, 'se-airspace.geojson'))
-      .then(r => r.json())
+    loadCountryGeojson('airspace')
       .then((fc: GeoJSON.FeatureCollection) => {
         const arr: AirspaceFeature[] = []
         for (const f of fc.features) {
@@ -159,7 +159,7 @@ export function useAirspaceWarnings(
         setFeatures(dropCoveredSubAreas(arr))
       })
       .catch(() => { /* silently ignore offline */ })
-  }, [])
+  }, [countriesKey])
 
   // ── Evaluate alerts on each position change ───────────────────────────────
   useEffect(() => {

@@ -23,7 +23,8 @@
 
 import { File, Directory, Paths } from 'expo-file-system'
 import { versionedTileUrl, getCachedTileManifest } from '@open-vfr/shared/tileManifest'
-import { TILE_BASE } from '../config'
+import { TILE_BASE, activeCountry } from '../config'
+import { countryDatasetFile, countryArchiveFile, type CountryDataset, type CountryArchive } from '@open-vfr/shared/countryData'
 
 export interface OfflineAsset {
   key:       string
@@ -63,9 +64,22 @@ export function remoteUrlFor(fileName: string): string {
   return versionedTileUrl(TILE_BASE, fileName)
 }
 
+// Per-country assets resolve their file name from the ACTIVE country at
+// every access (getter), so every existing `OFFLINE_ASSETS.find(...)`/
+// `asset.fileName` call site follows the Settings country without change.
+// Offline data is one country at a time: switching country means the new
+// country's files must be downloaded (isOfflineReady() turns false); the
+// previous country's files stay on disk until the cache is cleared.
+function dataset(key: string, kind: CountryDataset, label: string, required: boolean, without?: string): OfflineAsset {
+  return { key, label, required, without, get fileName() { return countryDatasetFile(activeCountry(), kind) } }
+}
+function archive(key: string, kind: CountryArchive, label: string, without: string): OfflineAsset {
+  return { key, label, required: false, without, get fileName() { return countryArchiveFile(activeCountry(), kind) } }
+}
+
 export const OFFLINE_ASSETS: OfflineAsset[] = [
-  { key: 'basemap',           label: 'Basemap (large)',       fileName: 'basemap.pmtiles',              required: false,
-    without: 'No roads, towns, lakes or coastline under the aviation layers at map zooms; only the coarse Europe overview.' },
+  archive('basemap', 'basemap', 'Basemap (large)',
+    'No roads, towns, lakes or coastline under the aviation layers at map zooms; only the coarse Europe overview.'),
   // Shared Europe-wide low-zoom overview (z0-6) -- small (generalization
   // dominates over area at low zoom, unlike the country-detail basemap
   // above), same file regardless of which country's detail basemap is
@@ -73,24 +87,23 @@ export const OFFLINE_ASSETS: OfflineAsset[] = [
   // the detail basemap's own country bbox/zoom range -- the same visible
   // gap this whole split was built to close, now also true offline.
   { key: 'basemapOverview',   label: 'Basemap overview',      fileName: 'europe-overview.pmtiles',      required: true },
-  { key: 'landuse',           label: 'Terrain (landuse)',     fileName: 'se-landuse.pmtiles',           required: false,
-    without: 'No farmland, built-up or wetland shading on the map.' },
+  archive('landuse', 'landuse', 'Terrain (landuse)',
+    'No farmland, built-up or wetland shading on the map.'),
   // Doubles as the offline elevation model (src/utils/terrainDem.ts): the
   // vertical profile and AGL airspace limits read ground elevation from it
   // when the elevation API is unreachable.
-  { key: 'hillshade',         label: 'Terrain elevation + hillshade (large)', fileName: 'se-hillshade.pmtiles', required: false,
-    without: 'Offline: no terrain or MSA line in the vertical profile, and airspace limits given above ground (AGL) are checked at their raw height, as if the ground were at sea level. Also no relief shading on the map.' },
-  { key: 'contours',          label: 'Contour lines',         fileName: 'se-contours.pmtiles',          required: false,
-    without: 'No elevation contour lines on the map.' },
-  { key: 'airspace',          label: 'Airspace',              fileName: 'se-airspace.geojson',          required: true },
-  { key: 'aerodromes',        label: 'Aerodromes',            fileName: 'se-aerodromes.geojson',        required: true },
-  { key: 'navaids',           label: 'Navaids',               fileName: 'se-navaids.geojson',           required: true },
-  { key: 'waypoints',         label: 'Waypoints',             fileName: 'se-waypoints.geojson',         required: true },
-  { key: 'runways',           label: 'Runways',               fileName: 'se-runways.geojson',           required: true },
-  { key: 'runwayThresholds',  label: 'Runway thresholds',     fileName: 'se-runway-thresholds.geojson', required: true },
-  { key: 'obstacles',         label: 'Obstacles',             fileName: 'se-obstacles.geojson',         required: true },
-  { key: 'landmarks',         label: 'Landmarks',             fileName: 'se-landmarks.geojson',         required: true },
-  { key: 'water',             label: 'Water (Virtual Radar)', fileName: 'se-water.geojson',             required: false },
+  archive('hillshade', 'hillshade', 'Terrain elevation + hillshade (large)', 'Offline: no terrain or MSA line in the vertical profile, and airspace limits given above ground (AGL) are checked at their raw height, as if the ground were at sea level. Also no relief shading on the map.'),
+  archive('contours', 'contours', 'Contour lines',
+    'No elevation contour lines on the map.'),
+  dataset('airspace',         'airspace',         'Airspace',              true),
+  dataset('aerodromes',       'aerodromes',       'Aerodromes',            true),
+  dataset('navaids',          'navaids',          'Navaids',               true),
+  dataset('waypoints',        'waypoints',        'Waypoints',             true),
+  dataset('runways',          'runways',          'Runways',               true),
+  dataset('runwayThresholds', 'runwayThresholds', 'Runway thresholds',     true),
+  dataset('obstacles',        'obstacles',        'Obstacles',             true),
+  dataset('landmarks',        'landmarks',        'Landmarks',             true),
+  dataset('water',            'water',            'Water (Virtual Radar)', false),
 ]
 
 export const REQUIRED_ASSETS: OfflineAsset[] = OFFLINE_ASSETS.filter(a => a.required)
@@ -103,9 +116,23 @@ export function isOfflineReady(): boolean {
   return REQUIRED_ASSETS.every(isCached)
 }
 
+let _migrated = false
+
 function getCacheDir(): Directory {
   const dir = new Directory(Paths.document, 'ovfr-offline')
   if (!dir.exists) dir.create({ intermediates: true })
+  if (!_migrated) {
+    _migrated = true
+    // One-time: the Swedish basemap used to be cached as the unprefixed
+    // 'basemap.pmtiles'. Rename instead of making the user re-download it.
+    try {
+      const legacy = new File(dir, 'basemap.pmtiles')
+      const target = new File(dir, countryArchiveFile('se', 'basemap'))
+      if (legacy.exists && !target.exists) legacy.move(target)
+    } catch (e) {
+      console.warn('[offlineCache] legacy basemap rename failed:', e)
+    }
+  }
   return dir
 }
 

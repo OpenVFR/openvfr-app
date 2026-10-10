@@ -44,6 +44,7 @@ import type { RouteWaypoint } from '@open-vfr/shared/types'
 import { nearestRoutePoint } from '@open-vfr/shared/notamRouteFilter'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import { getTileUrls } from '../config'
+import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
 import { parseFreqs, type NearbyFreq } from './useNearbyFrequencies'
 import type { GpsPosition } from '../utils/gpsTypes'
 
@@ -92,6 +93,8 @@ function parseJson<T>(v: unknown, fallback: T): T {
 
 let _cache: FullVicinityAerodrome[] | null = null
 let _loading = false
+// Per-country data: a new active country starts a fresh load.
+onActiveCountriesChange(() => { _cache = null; _loading = false })
 const _listeners: Array<(d: FullVicinityAerodrome[]) => void> = []
 
 export function loadFullVicinityAerodromes(cb: (d: FullVicinityAerodrome[]) => void) {

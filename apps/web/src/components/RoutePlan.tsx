@@ -7,8 +7,7 @@ import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel, ktsToDisplay, displa
 import { useTakeoffTime, useAlternate, useGlobalWind } from '../db/useSettings'
 import LegPropsPanel from './LegPropsPanel'
 import FindFeature from './FindFeature'
-import { TILES_BASE_URL } from '../utils/env'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
 import css from './RoutePlan.module.css'
 
 // ---------------------------------------------------------------------------
@@ -125,21 +124,24 @@ async function resolveKeyboardRoute(input: string): Promise<RouteWaypoint[]> {
   }).filter(w => w.lng !== 0 || w.lat !== 0 || w.name?.startsWith('?'))
 }
 
+// Keyed by the active countries -- a new selection rebuilds it.
 let _lookupCache: Map<string, RouteWaypoint> | null = null
+let _lookupKey = ''
 
 async function getIdentifierLookup(): Promise<Map<string, RouteWaypoint>> {
-  if (_lookupCache) return _lookupCache
+  if (_lookupCache && _lookupKey === activeCountriesKey()) return _lookupCache
+  _lookupKey = activeCountriesKey()
   const map = new Map<string, RouteWaypoint>()
 
   const sources = [
-    { url: versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'), idKey: 'icao', nameKey: 'icao' },
-    { url: versionedTileUrl(TILES_BASE_URL, 'se-navaids.geojson'),    idKey: 'id',   nameKey: 'id'   },
-    { url: versionedTileUrl(TILES_BASE_URL, 'se-waypoints.geojson'),  idKey: 'id',   nameKey: 'id'   },
+    { kind: 'aerodromes' as const, idKey: 'icao', nameKey: 'icao' },
+    { kind: 'navaids' as const,    idKey: 'id',   nameKey: 'id'   },
+    { kind: 'waypoints' as const,  idKey: 'id',   nameKey: 'id'   },
   ]
 
-  await Promise.all(sources.map(async ({ url, idKey, nameKey }) => {
+  await Promise.all(sources.map(async ({ kind, idKey, nameKey }) => {
     try {
-      const fc = await fetch(url).then(r => r.json()) as {
+      const fc = await loadCountryGeojson(kind) as unknown as {
         features: { geometry: { coordinates: [number, number] }; properties: Record<string, unknown> }[]
       }
       for (const f of fc.features) {

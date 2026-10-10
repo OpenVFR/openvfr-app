@@ -9,6 +9,10 @@ import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 
 import { Platform } from 'react-native'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import {
+  getActiveCountries, countryDatasetFile, countryArchiveFile, type CountryDataset,
+} from '@open-vfr/shared/countryData'
+import { DEFAULT_REGION_CODE } from '@open-vfr/shared/regions'
 
 const devBase =
   Platform.OS === 'android'
@@ -94,17 +98,23 @@ export const MARTIN_BASE: string =
  * since it only ever got exercised against local dev hosts that happen to
  * route /tiles/* themselves.
  */
-const TILE_FILENAMES = {
-  airspace:          'se-airspace.geojson',
-  aerodromes:        'se-aerodromes.geojson',
-  navaids:           'se-navaids.geojson',
-  waypoints:         'se-waypoints.geojson',
-  runways:           'se-runways.geojson',
-  runwayThresholds:  'se-runway-thresholds.geojson',
-  obstacles:         'se-obstacles.geojson',
-  landmarks:         'se-landmarks.geojson',
-  water:             'se-water.geojson',
-} as const
+const TILE_DATASETS = [
+  'airspace', 'aerodromes', 'navaids', 'waypoints', 'runways',
+  'runwayThresholds', 'obstacles', 'landmarks', 'water',
+] as const satisfies readonly CountryDataset[]
+type TileKey = typeof TILE_DATASETS[number]
+
+/** The active country (Settings; one at a time -- see hooks/useCountries.ts). */
+export function activeCountry(): string {
+  return getActiveCountries()[0] ?? DEFAULT_REGION_CODE
+}
+
+/** Per-country file names for the active country, e.g. airspace -> 'no-airspace.geojson'. */
+export function tileFilenames(country: string = activeCountry()): Record<TileKey, string> {
+  const out = {} as Record<TileKey, string>
+  for (const k of TILE_DATASETS) out[k] = countryDatasetFile(country, k)
+  return out
+}
 
 /**
  * BUG FIX: this used to be a plain top-level const object of unversioned
@@ -129,19 +139,12 @@ const TILE_FILENAMES = {
  * picked up the fix immediately, native did not, despite fetching the exact
  * same underlying R2 object.
  */
-export function getTileUrls(): Record<keyof typeof TILE_FILENAMES, string> {
-  const out = {} as Record<keyof typeof TILE_FILENAMES, string>
-  for (const k of Object.keys(TILE_FILENAMES) as (keyof typeof TILE_FILENAMES)[]) {
-    out[k] = versionedTileUrl(TILE_BASE, TILE_FILENAMES[k])
-  }
+export function getTileUrls(): Record<TileKey, string> {
+  const names = tileFilenames()
+  const out = {} as Record<TileKey, string>
+  for (const k of TILE_DATASETS) out[k] = versionedTileUrl(TILE_BASE, names[k])
   return out
 }
-
-/** @deprecated use getTileUrls() -- kept only so TILE_FILENAMES' plain keys
- *  are still usable for code that only needs the filename, not a full URL
- *  (offlineCache.ts's fileName field). Do NOT reintroduce a top-level const
- *  URL map here -- see getTileUrls()'s doc comment for why. */
-export { TILE_FILENAMES }
 
 /**
  * Landuse PMTiles URL — retired from Postgres/Martin (was
@@ -157,7 +160,7 @@ export { TILE_FILENAMES }
  * requires.
  */
 export function getLandusePmtilesUrl(): string {
-  return `pmtiles://${versionedTileUrl(TILE_BASE, 'se-landuse.pmtiles')}`
+  return `pmtiles://${versionedTileUrl(TILE_BASE, countryArchiveFile(activeCountry(), 'landuse'))}`
 }
 
 /**
@@ -171,7 +174,7 @@ export function getLandusePmtilesUrl(): string {
  * gotchas.
  */
 export function getHillshadePmtilesUrl(): string {
-  return `pmtiles://${versionedTileUrl(TILE_BASE, 'se-hillshade.pmtiles')}`
+  return `pmtiles://${versionedTileUrl(TILE_BASE, countryArchiveFile(activeCountry(), 'hillshade'))}`
 }
 
 /**
@@ -182,7 +185,7 @@ export function getHillshadePmtilesUrl(): string {
  * done — config wired for offline caching only so far.
  */
 export function getContoursPmtilesUrl(): string {
-  return `pmtiles://${versionedTileUrl(TILE_BASE, 'se-contours.pmtiles')}`
+  return `pmtiles://${versionedTileUrl(TILE_BASE, countryArchiveFile(activeCountry(), 'contours'))}`
 }
 
 /**
@@ -224,7 +227,7 @@ export const SATELLITE_STYLE = {
  * URL format: pmtiles://<http(s)-url-of-pmtiles-file>
  */
 export function createProtomapsStyle(pmtilesOverrideUrl?: string, overviewOverrideUrl?: string): StyleSpecification {
-  const pmtilesUrl = `pmtiles://${pmtilesOverrideUrl ?? versionedTileUrl(TILE_BASE, 'basemap.pmtiles')}`
+  const pmtilesUrl = `pmtiles://${pmtilesOverrideUrl ?? versionedTileUrl(TILE_BASE, countryArchiveFile(activeCountry(), 'basemap'))}`
   // Shared low-zoom (z0-6) Europe-wide overview -- single file, built once,
   // NOT country-specific (unlike basemap.pmtiles, now country-bbox z7-12
   // detail only -- see docs/self-hosting.md). Never affected by

@@ -17,8 +17,7 @@ import type { AircraftProfileDocType } from '../db/index'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { distanceNm, bearingDeg } from '../utils/routeCalc'
 import css from './DirectToPanel.module.css'
-import { TILES_BASE_URL } from '../utils/env'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -72,8 +71,7 @@ export default function DirectToPanel({
 
   // ── Load aerodrome GeoJSON once ───────────────────────────────────────────
   useEffect(() => {
-    fetch(versionedTileUrl(TILES_BASE_URL, 'se-aerodromes.geojson'))
-      .then(r => r.json() as Promise<GeoJSON.FeatureCollection>)
+    loadCountryGeojson('aerodromes')
       .then(fc => {
         const entries: AerodromeEntry[] = []
         for (const f of fc.features) {

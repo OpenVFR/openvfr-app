@@ -26,6 +26,7 @@ import { nearestRoutePoint } from '@open-vfr/shared/notamRouteFilter'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { loadAerodromes, type FullAerodrome } from './useAirfieldBrief'
+import { useActiveCountries } from '../utils/countryData'
 import type { AerodromeFeatureProps } from '../components/AerodromePopup'
 
 const RADIUS_NM       = 25   // matches native's useVicinityAerodromes.ts
@@ -57,7 +58,8 @@ function toVicinity(a: FullAerodrome, distNm: number): VicinityAerodrome {
 export function useVicinityAerodromes({ waypoints, position, routeVisible, homeIcao }: Opts): VicinityAerodrome[] {
   const [all, setAll] = useState<FullAerodrome[]>([])
 
-  useEffect(() => { loadAerodromes().then(setAll) }, [])
+  const { key: countriesKey } = useActiveCountries()
+  useEffect(() => { loadAerodromes().then(setAll) }, [countriesKey])
 
   const useRoute = routeVisible && waypoints.length > 0
 
