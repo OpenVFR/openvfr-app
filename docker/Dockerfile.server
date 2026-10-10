@@ -26,6 +26,9 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/package.json
 COPY packages/shared/package.json packages/shared/package.json
+# pnpm-workspace.yaml's patchedDependencies are validated at install time
+# even for packages the api doesn't use (@expo/ui etc.): files must exist.
+COPY patches patches
 # Frozen only: a lockfile/manifest mismatch must fail the build loudly, not
 # silently re-resolve to whatever versions happen to be current at build time.
 RUN pnpm install --frozen-lockfile
