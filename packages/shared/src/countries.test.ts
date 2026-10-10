@@ -1,16 +1,20 @@
 import { describe, it, expect } from 'vitest'
-import { resolveSelectedCountries, toggleCountry } from './countries'
+import { resolveSelectedCountries, toggleCountry, MAX_SELECTED_COUNTRIES } from './countries'
 
 const se = { code: 'se', name: 'Sweden' }
 const no = { code: 'no', name: 'Norway' }
 const dk = { code: 'dk', name: 'Denmark' }
 
 describe('resolveSelectedCountries', () => {
-  it('keeps saved countries that are still available', () => {
-    expect(resolveSelectedCountries(['se', 'no'], [se, no, dk])).toEqual(['se', 'no'])
+  it('keeps a saved country that is still available', () => {
+    expect(resolveSelectedCountries(['no'], [se, no, dk])).toEqual(['no'])
+  })
+  it('never returns more than the limit', () => {
+    expect(resolveSelectedCountries(['se', 'no', 'dk'], [se, no, dk])).toHaveLength(MAX_SELECTED_COUNTRIES)
+    expect(resolveSelectedCountries(['se', 'no'], null)).toHaveLength(MAX_SELECTED_COUNTRIES)
   })
   it('drops countries no longer available', () => {
-    expect(resolveSelectedCountries(['se', 'no'], [se])).toEqual(['se'])
+    expect(resolveSelectedCountries(['no', 'se'], [se])).toEqual(['se'])
   })
   it('falls back to the default country when nothing saved is available', () => {
     expect(resolveSelectedCountries(['fi'], [no, se])).toEqual(['se'])
@@ -28,11 +32,9 @@ describe('resolveSelectedCountries', () => {
 })
 
 describe('toggleCountry', () => {
-  it('adds and removes', () => {
-    expect(toggleCountry(['se'], 'no')).toEqual(['se', 'no'])
-    expect(toggleCountry(['se', 'no'], 'se')).toEqual(['no'])
-  })
-  it('never removes the last country', () => {
+  it('with a limit of one, picking replaces the selection', () => {
+    if (MAX_SELECTED_COUNTRIES !== 1) return
+    expect(toggleCountry(['se'], 'no')).toEqual(['no'])
     expect(toggleCountry(['se'], 'se')).toEqual(['se'])
   })
 })

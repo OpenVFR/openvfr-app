@@ -101,7 +101,7 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
       </div>
 
       <div className={css.section}>
-        <span className={css.label}>Countries</span>
+        <span className={css.label}>Country</span>
         <div>
           <RegionSelector countries={countries} selected={selectedCountries} onChange={onSelectedCountriesChange} disabled={inFlight} />
           {inFlight && (

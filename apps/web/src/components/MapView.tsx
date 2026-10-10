@@ -559,9 +559,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
   }, [runwayWindHighlight])
   // Countries the user works in, picked in Settings from the server's list
   // (useCountries). Region-scoped data (regional NOTAMs) takes the whole
-  // list. The landuse/hillshade/contour sources below are still one per
-  // kind, so they follow the first selected country until per-country
-  // sources exist.
+  // list. One active country for now (MAX_SELECTED_COUNTRIES); the
+  // landuse/hillshade/contour sources below follow it.
   const { available: availableCountries, selected: selectedRegions, setSelected: setSelectedRegions } = useCountries()
   const region = selectedRegions[0] ?? DEFAULT_REGION
   const [basemapMode, setBasemapMode] = useState<'vector' | 'satellite'>('vector')

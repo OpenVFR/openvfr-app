@@ -426,7 +426,7 @@ export function SettingsScreen() {
         </View>
       </Section>
 
-      <Section title="Countries">
+      <Section title="Country">
         <CountriesSection />
       </Section>
 
@@ -506,9 +506,10 @@ function formatVarioDeviceStatus(state: VarioState): string {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-// Countries the server serves (useCountries); several can be on, the last
-// one can't be switched off. Scopes country-specific data such as regional
-// NOTAMs.
+// Countries the server serves (useCountries). One at a time for now
+// (MAX_SELECTED_COUNTRIES): switching another on replaces the current one,
+// and the active one can't be switched off. Scopes country-specific data
+// such as regional NOTAMs.
 function CountriesSection() {
   const styles = useThemedStyles(makeStyles)
   const { available, selected, setSelected } = useCountries()

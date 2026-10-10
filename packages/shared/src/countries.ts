@@ -31,26 +31,43 @@ export async function fetchAvailableCountries(
 }
 
 /**
+ * How many countries can be active at once. One for now: map data, offline
+ * downloads and lookups are per country, and combining several countries'
+ * data has open memory/design questions (see the country-registry entry
+ * in the infra todo). The selection stays a list everywhere so raising
+ * this later doesn't change any signature.
+ */
+export const MAX_SELECTED_COUNTRIES = 1
+
+/**
  * The selection actually in effect: the saved selection limited to
- * countries still available. Never empty while anything is available --
- * falls back to the default country if available, else the first one.
- * With no known list yet (first start offline), the saved selection is
- * trusted, or the default country.
+ * countries still available, at most MAX_SELECTED_COUNTRIES. Never empty
+ * while anything is available -- falls back to the default country if
+ * available, else the first one. With no known list yet (first start
+ * offline), the saved selection is trusted, or the default country.
  */
 export function resolveSelectedCountries(
   saved: readonly string[],
   available: readonly AvailableCountry[] | null,
 ): string[] {
-  if (!available) return saved.length > 0 ? [...saved] : [DEFAULT_REGION_CODE]
+  const cap = (codes: string[]) => [...new Set(codes)].slice(0, MAX_SELECTED_COUNTRIES)
+  if (!available) return saved.length > 0 ? cap([...saved]) : [DEFAULT_REGION_CODE]
   const codes = new Set(available.map(c => c.code))
   const kept = saved.filter(c => codes.has(c))
-  if (kept.length > 0) return [...new Set(kept)]
+  if (kept.length > 0) return cap(kept)
   if (codes.has(DEFAULT_REGION_CODE)) return [DEFAULT_REGION_CODE]
   return available[0] ? [available[0].code] : []
 }
 
-/** Toggle one country in a selection, never removing the last one. */
+/**
+ * Pick a country. With a limit of one, picking replaces the selection;
+ * otherwise it toggles, never removing the last country and never going
+ * past the limit.
+ */
 export function toggleCountry(selected: readonly string[], code: string): string[] {
-  if (!selected.includes(code)) return [...selected, code]
+  if (MAX_SELECTED_COUNTRIES === 1) return [code]
+  if (!selected.includes(code)) {
+    return selected.length < MAX_SELECTED_COUNTRIES ? [...selected, code] : [...selected]
+  }
   return selected.length > 1 ? selected.filter(c => c !== code) : [...selected]
 }
