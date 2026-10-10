@@ -1,0 +1,56 @@
+/**
+ * Countries the deployment serves (GET /api/countries) and the user's
+ * selection among them. Shared by web and native.
+ *
+ * The server lists a country only once it is enabled by an operator AND
+ * its data has been built, so anything listed here works immediately.
+ * Clients keep the last list they saw, so the picker still works offline
+ * or when the api is briefly down.
+ */
+import { fetchWithRetry } from './fetchWithRetry'
+import { DEFAULT_REGION_CODE } from './regions'
+
+export interface AvailableCountry {
+  /** ISO 3166-1 alpha-2, lower-case (same codes as ./regions). */
+  code: string
+  name: string
+}
+
+/** null when the server has no list (503) -- callers keep their last-known list. */
+export async function fetchAvailableCountries(
+  baseUrl = '',
+  signal?: AbortSignal,
+): Promise<AvailableCountry[] | null> {
+  const resp = await fetchWithRetry(`${baseUrl}/api/countries`, { signal })
+  if (resp.status === 503 || resp.status === 404) return null
+  if (!resp.ok) throw new Error(`Country list fetch failed: HTTP ${resp.status}`)
+  const json = await resp.json() as { countries?: unknown }
+  if (!Array.isArray(json.countries)) return null
+  return json.countries.filter((c): c is AvailableCountry =>
+    !!c && typeof (c as AvailableCountry).code === 'string' && typeof (c as AvailableCountry).name === 'string')
+}
+
+/**
+ * The selection actually in effect: the saved selection limited to
+ * countries still available. Never empty while anything is available --
+ * falls back to the default country if available, else the first one.
+ * With no known list yet (first start offline), the saved selection is
+ * trusted, or the default country.
+ */
+export function resolveSelectedCountries(
+  saved: readonly string[],
+  available: readonly AvailableCountry[] | null,
+): string[] {
+  if (!available) return saved.length > 0 ? [...saved] : [DEFAULT_REGION_CODE]
+  const codes = new Set(available.map(c => c.code))
+  const kept = saved.filter(c => codes.has(c))
+  if (kept.length > 0) return [...new Set(kept)]
+  if (codes.has(DEFAULT_REGION_CODE)) return [DEFAULT_REGION_CODE]
+  return available[0] ? [available[0].code] : []
+}
+
+/** Toggle one country in a selection, never removing the last one. */
+export function toggleCountry(selected: readonly string[], code: string): string[] {
+  if (!selected.includes(code)) return [...selected, code]
+  return selected.length > 1 ? selected.filter(c => c !== code) : [...selected]
+}

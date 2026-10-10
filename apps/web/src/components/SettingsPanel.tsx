@@ -4,6 +4,7 @@ import type { Theme, TrajectoryMode, AirspaceWarnLookahead, TrafficVertFilter, P
 import { AIRSPACE_WARN_LOOKAHEAD_OPTIONS, AIRSPACE_WARN_VERTICAL_MIN, AIRSPACE_WARN_VERTICAL_MAX, AIRSPACE_WARN_VERTICAL_STEP, TRAFFIC_VERT_FILTER_OPTIONS, PARK_TIMEOUT_OPTIONS } from '../db/useSettings'
 import type { DataManifest } from '../hooks/useDataManifest'
 import RegionSelector from './RegionSelector'
+import type { AvailableCountry } from '@open-vfr/shared/countries'
 import { airacDataStatus, relativeTime } from '@open-vfr/shared/airac'
 import { repairAppFiles } from '../utils/repairApp'
 import css from './SettingsPanel.module.css'
@@ -11,8 +12,9 @@ import css from './SettingsPanel.module.css'
 interface Props {
   units:             Units
   onUnitsChange:     (u: Units) => void
-  region:            string
-  onRegionChange:    (code: string) => void
+  countries:         AvailableCountry[] | null
+  selectedCountries: string[]
+  onSelectedCountriesChange: (codes: string[]) => void
   theme:             Theme
   onThemeChange:     (t: Theme) => void
   trajectoryMode:        TrajectoryMode
@@ -45,7 +47,7 @@ const THEMES: { value: Theme; label: string }[] = [
   { value: 'high-contrast', label: 'Hi-Con' },
 ]
 
-export default function SettingsPanel({ units, onUnitsChange, region, onRegionChange, theme, onThemeChange, trajectoryMode, onTrajectoryModeChange, airspaceWarnLookahead, onAirspaceWarnLookaheadChange, airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange, trafficVertFilter, onTrafficVertFilterChange, parkTimeout, onParkTimeoutChange, autoFlyMode, onAutoFlyModeChange, inFlight, onClose, manifest, isOnline = true, checking = false, onRefresh }: Props) {
+export default function SettingsPanel({ units, onUnitsChange, countries, selectedCountries, onSelectedCountriesChange, theme, onThemeChange, trajectoryMode, onTrajectoryModeChange, airspaceWarnLookahead, onAirspaceWarnLookaheadChange, airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange, trafficVertFilter, onTrafficVertFilterChange, parkTimeout, onParkTimeoutChange, autoFlyMode, onAutoFlyModeChange, inFlight, onClose, manifest, isOnline = true, checking = false, onRefresh }: Props) {
   return (
     <div className={css.panel}>
       <div className={css.header}>
@@ -99,9 +101,9 @@ export default function SettingsPanel({ units, onUnitsChange, region, onRegionCh
       </div>
 
       <div className={css.section}>
-        <span className={css.label}>Region</span>
+        <span className={css.label}>Countries</span>
         <div>
-          <RegionSelector value={region} onChange={onRegionChange} disabled={inFlight} />
+          <RegionSelector countries={countries} selected={selectedCountries} onChange={onSelectedCountriesChange} disabled={inFlight} />
           {inFlight && (
             <span className={css.lockedNote}>Not available during flight</span>
           )}

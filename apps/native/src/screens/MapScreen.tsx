@@ -37,7 +37,7 @@ import { useRegionalNotams } from '../hooks/useRegionalNotams'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
 import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
 import { notamRegionsFor } from '@open-vfr/shared/notamRegionScope'
-import { DEFAULT_REGION_CODES } from '@open-vfr/shared/regions'
+import { useCountries } from '../hooks/useCountries'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { makeCirclePolygon } from '@open-vfr/shared/geoCircle'
 import { NotificationCenter } from '../components/NotificationCenter'
@@ -595,17 +595,17 @@ export function MapScreen() {
   // of the current position -- never just the selected countries, or a
   // cross-border leg would silently lose the neighbour's NOTAMs. Position
   // rounded to 0.1 deg so a GPS tick doesn't recompute this every second.
-  // Native has no region picker yet, hence DEFAULT_REGION_CODES; a future
-  // (multi-)selection only needs to replace that list.
+  // Selected countries come from Settings (useCountries).
+  const { selected: selectedCountries } = useCountries()
   const notamPosLat = activePosition ? Math.round(activePosition.lat * 10) / 10 : null
   const notamPosLng = activePosition ? Math.round(activePosition.lng * 10) / 10 : null
   const notamRegions = React.useMemo(
     () => notamRegionsFor({
-      selected: [...DEFAULT_REGION_CODES],
+      selected: selectedCountries,
       route: waypoints,
       position: notamPosLat !== null && notamPosLng !== null ? { lat: notamPosLat, lng: notamPosLng } : null,
     }),
-    [waypoints, notamPosLat, notamPosLng],
+    [selectedCountries, waypoints, notamPosLat, notamPosLng],
   )
   const regionalNotamsAll = useRegionalNotams(authenticated && mapReady, notamRegions)
   const { vfrOnly: notamVfrOnly } = useNotamPrefs()

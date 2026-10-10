@@ -22,6 +22,8 @@ import type { VarioState } from '@open-vfr/shared/blueflyVario'
 import { useNearestQnh } from '../hooks/useNearestQnh'
 import { useAerodromeElevation } from '../hooks/useAerodromeElevation'
 import { useNearestAerodrome } from '../hooks/useNearestAerodrome'
+import { useCountries } from '../hooks/useCountries'
+import { toggleCountry } from '@open-vfr/shared/countries'
 import { qnhFromStationPressure } from '@open-vfr/shared/baroAltitude'
 import * as Location from 'expo-location'
 import { API_BASE, TILE_BASE } from '../config'
@@ -424,6 +426,10 @@ export function SettingsScreen() {
         </View>
       </Section>
 
+      <Section title="Countries">
+        <CountriesSection />
+      </Section>
+
       <Section title="Offline Data">
         <OfflineDataSection />
       </Section>
@@ -499,6 +505,38 @@ function formatVarioDeviceStatus(state: VarioState): string {
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
+
+// Countries the server serves (useCountries); several can be on, the last
+// one can't be switched off. Scopes country-specific data such as regional
+// NOTAMs.
+function CountriesSection() {
+  const styles = useThemedStyles(makeStyles)
+  const { available, selected, setSelected } = useCountries()
+  if (!available || available.length === 0) {
+    return (
+      <View style={styles.row}>
+        <Text style={styles.infoValue}>{available ? 'No countries available' : 'Country list not loaded yet'}</Text>
+      </View>
+    )
+  }
+  return (
+    <>
+      {available.map((c) => {
+        const on = selected.includes(c.code)
+        return (
+          <View key={c.code} style={styles.row}>
+            <Text style={styles.rowLabel}>{c.name}</Text>
+            <Switch
+              value={on}
+              disabled={on && selected.length === 1}
+              onValueChange={() => setSelected(toggleCountry(selected, c.code))}
+            />
+          </View>
+        )
+      })}
+    </>
+  )
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const sectionStyles = useThemedStyles(makeSectionStyles)

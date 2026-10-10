@@ -27,7 +27,7 @@
  *  - Bootstrap (first poll after boot): GET /v1/notams?classification=INTERNATIONAL
  *    with NO lastUpdatedDate filter — this returns all *currently active*
  *    INTERNATIONAL-classification NOTAMs worldwide as GeoJSON. Filtered
- *    in-memory down to Swedish ICAOs (from aerodrome-coords.json). We
+ *    in-memory down to the supported European regions (INGEST_SCOPE). We
  *    deliberately do NOT use the /notams/il bulk endpoint for this — that
  *    endpoint is AIXM-5.1-only (no GeoJSON option), requiring a full AIXM
  *    XML parser for no benefit over the plain /notams query, which already
@@ -85,8 +85,8 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { gunzipSync } from 'node:zlib'
-import { circleIntersectsBbox, pointNearBbox, polygonNearBbox } from '@open-vfr/shared/notamCoverageArea'
-import { filterNotamsToRegions } from '@open-vfr/shared/notamRegionScope'
+import { notamInRegions, regionScope, type RegionScopeInput } from '@open-vfr/shared/notamRegionScope'
+import { EUROPEAN_REGIONS } from '@open-vfr/shared/regions'
 
 export type NotamPolygonGeometry =
   | { type: 'Polygon'; coordinates: number[][][] }
@@ -196,134 +196,69 @@ export const notamConfig = {
   available: Boolean(NMS_CLIENT_ID && NMS_CLIENT_SECRET),
 }
 
-// ── Swedish ICAO allow-list (from the same static snapshot the legacy code
-// used for lat/lon) — NMS-API's classification query has no location filter
-// usable at this scale, so we pull worldwide INTERNATIONAL NOTAMs and keep
-// only the ones for airports this app actually covers. ─────────────────────
+// ── Ingest scope: every supported region, not just the enabled ones ───────
+// NMS-API's `location` filter takes one ICAO code, not a list, so both
+// classifications are pulled worldwide and filtered here. The cache keeps
+// NOTAMs for ALL regions in @open-vfr/shared/regions (EUROPEAN_REGIONS),
+// deliberately wider than the countries a deployment currently serves:
+//  - enabling a country later needs no NOTAM backfill. A delta cursor only
+//    returns records changed since the last poll, so a narrower scope that
+//    grows would need a fresh worldwide pull to pick up long-standing
+//    NOTAMs for the new country -- and full pulls are capped at 1 / 24 h;
+//  - routes and positions cross into countries nobody selected, and those
+//    NOTAMs must still be there (see notamRegionsFor() in
+//    @open-vfr/shared/notamRegionScope).
+// Clients never receive the whole cache: every endpoint filters per
+// request by the regions the client asks for.
 //
-// ALSO includes ESAA (the Sweden FIR code) -- NOTAMs are not only filed per
-// airport. Restricted/danger areas, DME/navaid outages not tied to a single
-// aerodrome, AIRAC AIP amendment notices, and military exercise-hour changes
-// are all filed with icaoLocation=ESAA (the whole-country FIR), not any
-// airport ICAO. Confirmed against live staging data: 34 currently-active
-// NOTAMs (temporary restricted areas like ESR448/ESR374/ESR738/ESR525,
-// danger areas like ESD873/ESD139, DME outages, AIRAC amendments) were
-// being silently dropped entirely before ESAA was added here -- not just
-// undisplayed, actually never cached at all. See getRegionalNotams() below
-// for how these are surfaced (kept separate from per-airport results since
-// they don't belong to any single ICAO).
-// Per-country FIR codes for regional (non-airport) NOTAMs. One country can
-// have MULTIPLE FIRs (e.g. Germany: EDMM/EDWW/EDUU/EDVV) -- deliberately a
-// country -> string[] map, not one flat list, so adding a country later is
-// "add an entry", not "restructure this". Add a country's FIR(s) here ONLY
-// once its aerodromes/airspace actually exist in the tile pipeline
-// (the tile-preparation pipeline is currently Sweden-only -- see
-// docs/self-hosting.md).
-const FIR_CODES: Record<string, string[]> = {
-  SE: ['ESAA'], // Sweden -- single FIR
-}
-const _regionalKeys = Object.values(FIR_CODES).flat()
+// A NOTAM is kept when it is filed in a supported region (ICAO prefix of
+// its location or FIR, REGION_ICAO_PREFIXES) or its own geometry reaches
+// into one (cross-border: e.g. a Kaliningrad-filed area over the Baltic).
+// See notamInRegions() for the exact rule and its tests.
+const INGEST_SCOPE = regionScope(EUROPEAN_REGIONS.map((r) => r.code))
 
 // NMS-API uses radius="999" (and presumably similar round-number sentinels)
 // as a placeholder for non-geographic administrative NOTAMs -- see
-// activeNotamsFor()'s own comment for the confirmed live example. Hoisted
-// to module scope (was local to activeNotamsFor()) so isNearCoverageArea()
-// below can share the exact same ceiling -- a NOTAM using the sentinel
-// value must not be treated as a legitimate 999nm-radius circle that would
-// trivially "intersect" every country's coverage area on Earth.
+// activeNotamsFor()'s own comment for the confirmed live example. A NOTAM
+// using the sentinel value must not be treated as a legitimate 999nm-radius
+// circle (the shared scope test applies the same 100 NM ceiling).
 const MAX_SANE_RADIUS_NM = 100
 
-// ── Cross-border geometry-based inclusion ───────────────────────────────────
-// The _icaoAllowlist check above only keeps NOTAMs FILED under a tracked
-// ICAO/FIR. That misses NOTAMs filed under a neighboring country's FIR whose
-// actual geographic area still reaches into tracked airspace -- confirmed
-// live and real, not hypothetical: a German military NVG-training NOTAM
-// (icaoLocation=EDWW, Bremen FIR) with Q-line "5418N01211E085" (center
-// 54.30N/12.1833E, radius 85nm) -- 60nm from this bbox's southern edge at
-// the same longitude, well inside its 85nm radius -- never surfaced despite
-// being squarely relevant to southern Sweden. Extending FIR_CODES doesn't
-// fix this class of gap: the NOTAM is correctly filed under EDWW, not ESAA,
-// there's nothing wrong with NMS-API's own classification, our allow-list
-// is just geometry-blind. This is a SEPARATE, independent inclusion path,
-// additive to (never a replacement for) the ICAO/FIR allow-list above --
-// see isNearCoverageArea()'s call site in pollOnce() for how the two combine.
-//
-// Bbox is the tile pipeline's COUNTRY_BBOX (south,west,north,east) -- the same single-source-of-truth extent already
-// used for obstacle/hillshade/contour extraction, duplicated here since
-// there's no cross-repo shared-config mechanism. If that constant changes,
-// this must be updated too -- CROSS_BORDER_BBOX_KEY below forces a fresh
-// bootstrap on mismatch so a stale duplicate can't silently under- or
-// over-match forever.
-const COUNTRY_COVERAGE_BBOX = { south: 55.3, west: 10.9, north: 69.1, east: 24.2 }
-
-// Generic safety margin for geometry shapes with no declared radius to work
-// from (Polygon vertices, point-only NOTAMs) -- NOT used for circles, which
-// get an exact geometric intersection test against their own real radius
-// instead (more precise, and it's what actually catches the EDWW example
-// above with zero slop). ~0.75 degrees =~ 45nm -- generous enough to catch
-// a near-border polygon/point without pulling in every NOTAM on the
-// European mainland.
-const BORDER_MARGIN_DEG = 0.75
-
-const CROSS_BORDER_KEY = '_CROSSBORDER' // synthetic cache key -- never collides with a real 4-letter ICAO/FIR code
 const MILITARY_EU_KEY  = '_MILITARY_EU' // synthetic cache key for the classification=MILITARY pull, see pollMilitaryOnce()
 
-// ICAO location-indicator region prefixes for Europe: 'E' (Northern/Central
-// -- Scandinavia, UK, Ireland, Benelux, Germany, Poland, Baltics) and 'L'
-// (Southern -- France, Spain, Italy, Greece, etc.). Chosen over a
-// geometry/bbox test (unlike isNearCoverageArea() above) because this
-// project's actual scope is "Europe", not just Sweden's own tile-pipeline
-// bbox -- a country-specific bbox would be the wrong tool here even before
-// considering that classification=MILITARY's worldwide dataset is small
-// enough (~5,600 features measured on staging) to just filter by region
-// rather than needing precise geometry matching. Verified empirically
-// against real MILITARY-classification data before choosing this: E/L
-// prefixes covered 336 of 685 unique icaoLocations in a live sample, with
-// the remainder cleanly explained by other ICAO regions (K=USA at the
-// largest non-European share, plus R/P/O/etc. worldwide) -- not a guess.
-function isEuropeanIcaoLocation(icaoLocation: string): boolean {
-  const first = icaoLocation.charAt(0)
-  return first === 'E' || first === 'L'
-}
-
-// Geometric primitives (circleIntersectsBbox/pointNearBbox/polygonNearBbox)
-// live in @open-vfr/shared/notamCoverageArea, not here -- promoted per
-// CONTRIBUTING.md's flight-critical test-coverage rule ("Airspace
-// intersection / containment logic"). apps/api has no test runner
-// configured; packages/shared already does (vitest) -- see
-// notamCoverageArea.test.ts for the EDWW/Sweden-bbox test cases.
-
-// Called for every NOTAM that failed the _icaoAllowlist check -- decides
-// whether its own geometry earns it a place in the CROSS_BORDER_KEY cache
-// bucket anyway. Deliberately conservative: false negative (skip a
-// genuinely-relevant foreign NOTAM) just means it's missing until next
-// poll's judgment call; false positive (include an unrelated one) pollutes
-// the regional NOTAM list/map with noise -- the exact geometric radius test
-// for circles and the real-vertex test for polygons both bias toward
-// "don't guess", unlike a single generic buffer applied everywhere.
-function isNearCoverageArea(n: NmsNotam): boolean {
+// Raw NMS record -> the fields notamInRegions() reads. Same geometry rules
+// as activeNotamsFor(): real polygon first, else DMS point + radius (the
+// sentinel-radius case falls back to a point test inside notamInRegions).
+function scopeInputFor(n: NmsNotam): RegionScopeInput {
   const polygon = extractNotamPolygon(n.geometry)
-  if (polygon) return polygonNearBbox(polygon, BORDER_MARGIN_DEG, COUNTRY_COVERAGE_BBOX)
-
-  const geo = parseNotamCoordinates(n.coordinates)
-  if (!geo) return false
-
+  const geo = polygon ? null : parseNotamCoordinates(n.coordinates)
   const radiusNm = n.radius !== undefined ? Number(n.radius) : NaN
-  if (Number.isFinite(radiusNm) && radiusNm > 0 && radiusNm <= MAX_SANE_RADIUS_NM) {
-    return circleIntersectsBbox(geo.lat, geo.lon, radiusNm, COUNTRY_COVERAGE_BBOX)
+  return {
+    icaoLocation: n.icaoLocation ?? null,
+    affectedFir:  str(n.affectedFir),
+    polygon,
+    lat:          geo?.lat ?? null,
+    lon:          geo?.lon ?? null,
+    radiusNm:     Number.isFinite(radiusNm) ? radiusNm : null,
   }
-  // No usable radius (absent, zero, or the sentinel-bogus case) -- point-only
-  // fallback with the generic margin.
-  return pointNearBbox(geo.lat, geo.lon, BORDER_MARGIN_DEG, COUNTRY_COVERAGE_BBOX)
 }
 
-const _icaoAllowlist = new Set<string>(_regionalKeys)
-try {
-  const coordsJson = (await import('./aerodrome-coords.json', { with: { type: 'json' } })).default as unknown as Record<string, [number, number]>
-  for (const icao of Object.keys(coordsJson)) _icaoAllowlist.add(icao)
-  console.log(`[notam] Loaded ${_icaoAllowlist.size} ICAOs for NOTAM filtering (${_icaoAllowlist.size - _regionalKeys.length} aerodromes + FIRs: ${_regionalKeys.join(', ')})`)
-} catch (e) {
-  console.warn('[notam] Could not load aerodrome coords:', (e as Error).message)
+function inIngestScope(n: NmsNotam): boolean {
+  return notamInRegions(scopeInputFor(n), INGEST_SCOPE)
+}
+
+// "Regional" = not about one aerodrome: filed at FIR level (location is
+// the FIR itself, e.g. ESAA -- restricted/danger areas, navaid outages,
+// AIP amendments) or Q-line scope en-route (E) / navigation warning (W),
+// including such NOTAMs filed at an aerodrome location (e.g. an obstacle
+// near an airport that also matters en route). Pure aerodrome-scope NOTAMs
+// stay in the per-airport lookups only.
+function isRegional(n: NmsNotam): boolean {
+  const loc = n.icaoLocation?.trim().toUpperCase()
+  const fir = str(n.affectedFir)?.toUpperCase()
+  if (loc && fir && loc === fir) return true
+  const scope = str(n.scope)?.toUpperCase() ?? ''
+  return scope.includes('E') || scope.includes('W')
 }
 
 // ── OAuth2 client_credentials token cache ──────────────────────────────────
@@ -512,17 +447,20 @@ let _lastMilitaryPullAt: string | null = null // ISO timestamp of last successfu
 // tolerant of minor clock skew vs. NMS's own timestamps.
 const PRUNE_GRACE_MS = 24 * 60 * 60 * 1000
 
-// Fingerprint of the cross-border coverage-area config (bbox + margin) this
-// cache was populated against -- see loadCacheFromDisk()'s bboxKey check.
-// Recomputed here rather than stored as separate fields so ANY future
-// change to COUNTRY_COVERAGE_BBOX or BORDER_MARGIN_DEG is automatically
-// caught, without needing to remember to bump a version number by hand.
-const CROSS_BORDER_BBOX_KEY = JSON.stringify({ bbox: COUNTRY_COVERAGE_BBOX, marginDeg: BORDER_MARGIN_DEG })
+// Max age of the persisted delta cursor when polls bring no changes -- see
+// pollOnce(). A restart within this window re-reads at most this much delta.
+const CURSOR_SAVE_MS = 30 * 60 * 1000
+let _lastSavedAt = 0
+
+// Fingerprint of the ingest scope (region prefixes + bboxes) this cache
+// was populated against -- see loadCacheFromDisk(). Derived from the shared
+// region table, so adding a region or changing a bbox there is caught
+// automatically, no version number to bump by hand.
+const INGEST_SCOPE_KEY = JSON.stringify({ prefixes: [...INGEST_SCOPE.prefixes].sort(), bboxes: INGEST_SCOPE.bboxes })
 
 interface PersistedCache {
   apiHost:      string // NMS_API_HOST this cache was populated from -- see loadCacheFromDisk()
-  trackedKeys:  string[] // _icaoAllowlist contents this cache was populated from -- see loadCacheFromDisk()
-  bboxKey?:     string // CROSS_BORDER_BBOX_KEY this cache was populated with -- optional for back-compat with caches predating this field, see loadCacheFromDisk()
+  scopeKey?:    string // INGEST_SCOPE_KEY this cache was populated with -- absent in caches from before Europe-wide ingest
   lastPollAt:   string | null
   lastMilitaryPullAt?: string | null // ISO time of the last SUCCESSFUL classification=MILITARY bulk pull -- see pollMilitaryOnce()
   entries: Array<[string, Array<[string, NmsNotam]>]> // [icaoLocation, [id, NmsNotam][]][]
@@ -556,50 +494,33 @@ function loadCacheFromDisk(): void {
       return
     }
 
+    // The MILITARY bucket is a wholesale daily snapshot (no cursor), and its
+    // last-pull time is account-level rate-limit state (1 full pull / 24 h)
+    // -- both survive a scope change. Re-filtered to the current scope.
+    _lastMilitaryPullAt = parsed.lastMilitaryPullAt ?? null
+    const militaryEntries = parsed.entries.find(([key]) => key === MILITARY_EU_KEY)?.[1] ?? []
+    const military = new Map(militaryEntries.filter(([, n]) => inIngestScope(n)))
+    if (military.size > 0) _cache.set(MILITARY_EU_KEY, military)
+
     // Second safety check, same failure mode as the host check above but a
     // different trigger: lastUpdatedDate is a wall-clock cursor, not tied to
-    // WHICH keys were being tracked when it was set. If the allow-list grew
-    // since this cache was written (e.g. a new FIR added to FIR_CODES, or a
-    // new aerodrome added to aerodrome-coords.json), reusing the old cursor
-    // means delta polls only return records CHANGED since then -- a
-    // long-standing NOTAM for the newly-added key that hasn't been reissued/
-    // updated recently would never appear, only a full bootstrap (no
-    // cursor) would catch it. Confirmed this actually happened in
-    // production: adding 'ESAA' to the allow-list did NOT get backfilled by
-    // subsequent delta polls, because the persisted cursor predated it --
-    // the ESAA key never appeared in the cache at all despite ~30+ real
-    // active NOTAMs existing for it. Force a fresh bootstrap whenever
-    // trackedKeys is missing any key the current allow-list has (a superset
-    // relationship is fine -- keys can be removed without needing a
-    // rebootstrap, only additions matter here).
-    const previousKeys = new Set(parsed.trackedKeys ?? [])
-    const newKeys = [..._icaoAllowlist].filter((k) => !previousKeys.has(k))
-    if (newKeys.length > 0) {
-      console.log(`[notam] Allow-list grew since this cache was written (new: ${newKeys.join(', ')}) -- discarding cursor, will bootstrap fresh`)
+    // WHICH NOTAMs were being kept when it was set. If the ingest scope grew
+    // since this cache was written, reusing the old cursor means delta polls
+    // only return records CHANGED since then -- a long-standing NOTAM newly
+    // in scope would never appear; only a full bootstrap (no cursor) catches
+    // it. Confirmed in production once (adding 'ESAA' to the old allow-list
+    // was never backfilled by delta polls). Missing scopeKey (cache from
+    // before Europe-wide ingest) counts as changed: a one-time self-healing
+    // bootstrap on the first restart after the upgrade.
+    if (parsed.scopeKey !== INGEST_SCOPE_KEY) {
+      console.log('[notam] Ingest scope changed (or cache predates it) -- discarding INTERNATIONAL entries and cursor, will bootstrap fresh')
       return
     }
 
-    // Third safety check, same failure mode class as the two above: the
-    // CROSS_BORDER_KEY bucket's contents depend on COUNTRY_COVERAGE_BBOX/
-    // BORDER_MARGIN_DEG at the time each poll ran, not just on
-    // _icaoAllowlist (which this bucket is deliberately independent of --
-    // see its own definition). If that config changes (a wider bbox, a
-    // different margin), reusing the old cursor means only CHANGED foreign
-    // NOTAMs since then get re-evaluated against the new config -- a
-    // long-standing foreign NOTAM that newly qualifies under a widened bbox
-    // would never appear without a full bootstrap, same blind spot as the
-    // trackedKeys case above. Missing bboxKey (cache predates this field)
-    // is treated as "different" -- one-time self-healing rebootstrap on
-    // first restart after this feature ships, no manual cache-file deletion
-    // needed, same pattern as trackedKeys' own rollout.
-    if (parsed.bboxKey !== CROSS_BORDER_BBOX_KEY) {
-      console.log('[notam] Cross-border coverage-area config changed (or cache predates it) -- discarding cursor, will bootstrap fresh')
-      return
+    for (const [icao, idEntries] of parsed.entries) {
+      if (icao !== MILITARY_EU_KEY) _cache.set(icao, new Map(idEntries))
     }
-
-    for (const [icao, idEntries] of parsed.entries) _cache.set(icao, new Map(idEntries))
     _lastPollAt = parsed.lastPollAt
-    _lastMilitaryPullAt = parsed.lastMilitaryPullAt ?? null
     const total = parsed.entries.reduce((n, [, idEntries]) => n + idEntries.length, 0)
     console.log(`[notam] Loaded ${total} cached NOTAMs from disk (${NMS_CACHE_FILE}), last poll: ${_lastPollAt ?? 'never'}`)
   } catch (e) {
@@ -612,13 +533,13 @@ function saveCacheToDisk(): void {
     mkdirSync(dirname(NMS_CACHE_FILE), { recursive: true })
     const payload: PersistedCache = {
       apiHost:     NMS_API_HOST,
-      trackedKeys: [..._icaoAllowlist],
-      bboxKey:     CROSS_BORDER_BBOX_KEY,
+      scopeKey:    INGEST_SCOPE_KEY,
       lastPollAt:  _lastPollAt,
       lastMilitaryPullAt: _lastMilitaryPullAt,
       entries: [..._cache.entries()].map(([icao, byId]) => [icao, [...byId.entries()]]),
     }
     writeFileSync(NMS_CACHE_FILE, JSON.stringify(payload))
+    _lastSavedAt = Date.now()
   } catch (e) {
     // Non-fatal -- worst case, next restart re-bootstraps instead of
     // warm-starting. Don't let a read-only/missing volume crash the poller.
@@ -627,17 +548,20 @@ function saveCacheToDisk(): void {
 }
 
 // Drop entries that are long past relevance so the cache/file don't grow
-// forever. Cheap to run every poll cycle given the small (Sweden-scale) size.
-function pruneCache(): void {
+// forever. Returns how many entries were removed (callers skip the disk
+// write when nothing changed -- the Europe-wide file is tens of MB).
+function pruneCache(): number {
   const cutoff = Date.now() - PRUNE_GRACE_MS
+  let removed = 0
   for (const [icao, byId] of _cache) {
     for (const [id, n] of byId) {
       const cancelled = n.cancelationDate && Date.parse(n.cancelationDate) <= cutoff
       const expired   = n.effectiveEnd && Date.parse(n.effectiveEnd) < cutoff
-      if (cancelled || expired) byId.delete(id)
+      if (cancelled || expired) { byId.delete(id); removed++ }
     }
     if (byId.size === 0) _cache.delete(icao)
   }
+  return removed
 }
 
 async function pollOnce(): Promise<void> {
@@ -675,7 +599,6 @@ async function pollOnce(): Promise<void> {
     const parsed = JSON.parse(text) as NmsGeoJsonFeature[] | NmsNotamsResponse
     const features = Array.isArray(parsed) ? parsed : (parsed.data?.geojson ?? [])
     let kept = 0
-    let crossBorderKept = 0
     for (const feature of features) {
       const n = feature.properties?.coreNOTAMData?.notam
       if (!n?.icaoLocation || !n.id) continue
@@ -685,34 +608,34 @@ async function pollOnce(): Promise<void> {
       // the only point where both are in scope together. See NotamPolygon
       // handling in activeNotamsFor() for how Polygon/MultiPolygon geometry
       // gets surfaced; Point geometry is dropped (DMS coordinates+radius
-      // fields already cover that case). Attached before either inclusion
-      // check below since isNearCoverageArea() also needs it.
+      // fields already cover that case). Attached before the scope check
+      // below since its geometry test needs it.
       n.geometry = feature.geometry ?? null
 
-      const inAllowlist = _icaoAllowlist.has(n.icaoLocation)
-      let crossBorderMatch = false
-      if (!inAllowlist) {
-        // Not filed under a tracked ICAO/FIR -- still worth keeping if its
-        // own geometry reaches into tracked coverage (see
-        // isNearCoverageArea()'s header comment for the real EDWW/Bremen
-        // example this exists for). Falls through to the next feature if
-        // neither check passes.
-        crossBorderMatch = isNearCoverageArea(n)
-        if (!crossBorderMatch) continue
-      }
+      if (!inIngestScope(n)) continue
 
-      const cacheKey = inAllowlist ? n.icaoLocation : CROSS_BORDER_KEY
-      let byId = _cache.get(cacheKey)
-      if (!byId) { byId = new Map(); _cache.set(cacheKey, byId) }
+      // Keyed by the location the NOTAM is filed under (an aerodrome or a
+      // FIR). On a delta, a record moved to another location by an update is
+      // dropped from its old key so it never shows twice (skipped on
+      // bootstrap: the cache starts empty, and the scan is per record).
+      if (!wasBootstrap) {
+        for (const [key, other] of _cache) {
+          if (key !== n.icaoLocation && key !== MILITARY_EU_KEY && other.delete(n.id) && other.size === 0) _cache.delete(key)
+        }
+      }
+      let byId = _cache.get(n.icaoLocation)
+      if (!byId) { byId = new Map(); _cache.set(n.icaoLocation, byId) }
       byId.set(n.id, n)
       kept++
-      if (crossBorderMatch) crossBorderKept++
     }
 
-    pruneCache()
+    const pruned = pruneCache()
     _lastPollAt = pollStartedAt
-    saveCacheToDisk()
-    console.log(`[notam] NMS poll OK (${wasBootstrap ? 'bootstrap' : 'delta'}): ${features.length} received, ${kept} kept for tracked ICAOs (${crossBorderKept} cross-border)`)
+    // The cursor must be persisted even when nothing changed, but a full
+    // rewrite of the Europe-wide file every 3 min is wasteful: write when
+    // entries changed, else at most every CURSOR_SAVE_MS.
+    if (kept > 0 || pruned > 0 || Date.now() - _lastSavedAt > CURSOR_SAVE_MS) saveCacheToDisk()
+    console.log(`[notam] NMS poll OK (${wasBootstrap ? 'bootstrap' : 'delta'}): ${features.length} received, ${kept} kept (supported regions)`)
   } catch (e) {
     // Do not advance _lastPollAt on failure — next cycle retries the same
     // (or wider) window rather than silently skipping missed updates.
@@ -740,13 +663,9 @@ async function pollOnce(): Promise<void> {
  * NOTAMs are naturally dropped without needing pruneCache()'s
  * effectiveEnd/cancelationDate logic to catch them first.
  *
- * Filtered to European ICAO location-indicator prefixes (see
- * isEuropeanIcaoLocation()) rather than run through isNearCoverageArea()'s
- * Sweden-bbox geometry test -- this project's actual scope is Europe, not
- * just Sweden's own tile-pipeline bbox, and the dataset is small enough
- * that a per-country geometry test would be solving a problem that doesn't
- * exist here (unlike pollOnce()'s classification=INTERNATIONAL pull, whose
- * scale genuinely requires bbox-based filtering to stay useful).
+ * Filtered with the same ingest scope as pollOnce() (inIngestScope():
+ * every supported region by ICAO prefix or geometry), so civil and military
+ * NOTAMs always cover the same countries.
  */
 async function pollMilitaryOnce(): Promise<void> {
   if (!notamConfig.available) return
@@ -781,8 +700,8 @@ async function pollMilitaryOnce(): Promise<void> {
     for (const feature of features) {
       const n = feature.properties?.coreNOTAMData?.notam
       if (!n?.icaoLocation || !n.id) continue
-      if (!isEuropeanIcaoLocation(n.icaoLocation)) continue
       n.geometry = feature.geometry ?? null
+      if (!inIngestScope(n)) continue
       byId.set(n.id, n)
     }
 
@@ -796,7 +715,7 @@ async function pollMilitaryOnce(): Promise<void> {
 
     pruneCache()
     saveCacheToDisk()
-    console.log(`[notam] NMS MILITARY poll OK: ${features.length} received worldwide, ${byId.size} kept (European ICAO prefixes)`)
+    console.log(`[notam] NMS MILITARY poll OK: ${features.length} received worldwide, ${byId.size} kept (supported regions)`)
   } catch (e) {
     console.warn('[notam] NMS MILITARY poll failed:', (e as Error).message)
   }
@@ -857,11 +776,14 @@ export function stopNotamPoller(): void {
  */
 function activeNotamsFor(icao: string): NotamItem[] {
   const byId = _cache.get(icao)
-  if (!byId) return []
+  return byId ? activeItems(byId.values()) : []
+}
 
+/** Raw cache records -> currently-active client NotamItems. */
+function activeItems(raw: Iterable<NmsNotam>): NotamItem[] {
   const now = Date.now()
   const notams: NotamItem[] = []
-  for (const n of byId.values()) {
+  for (const n of raw) {
     if (n.cancelationDate && Date.parse(n.cancelationDate) <= now) continue
     if (n.effectiveEnd && Date.parse(n.effectiveEnd) < now) continue
     if (n.effectiveStart && Date.parse(n.effectiveStart) > now) continue
@@ -900,9 +822,7 @@ function activeNotamsFor(icao: string): NotamItem[] {
     //  - radius present, 0 < r <= 100nm       -> legitimate area -- keep all three.
     //  - radius present but > 100nm            -> sentinel/bogus -- drop
     //    lat/lon AND radiusNm together (see comment above).
-    // MAX_SANE_RADIUS_NM is module-scoped (see top of file) -- shared with
-    // isNearCoverageArea()'s cross-border check so the sentinel-radius
-    // guard applies identically in both places.
+    // MAX_SANE_RADIUS_NM is module-scoped (see top of file).
     const radiusGiven = Number.isFinite(radiusNm) && radiusNm > 0
     const radiusIsBogus = radiusGiven && radiusNm > MAX_SANE_RADIUS_NM
 
@@ -925,7 +845,7 @@ function activeNotamsFor(icao: string): NotamItem[] {
       effective:      n.effectiveStart ?? null,
       expires:        n.effectiveEnd ?? null,
       classification: n.classification ?? null,
-      // Already used extensively server-side (cache keying, allowlist/
+      // Already used extensively server-side (cache keying, scope/
       // cross-border filtering) but previously dropped at this exact
       // construction site -- clients had no "where" for a NOTAM at all
       // short of parsing it out of the free-text `text` field themselves.
@@ -957,7 +877,7 @@ export function getNotamsForIcao(icao: string): NotamResponse {
 
 /**
  * Bulk per-aerodrome NOTAM texts (active only), one lookup for EVERY airport
- * ICAO in the allow-list at once -- purely an in-memory cache read (same
+ * ICAO in the requested regions at once -- purely an in-memory cache read (same
  * cost profile as getNotamsForIcao/getRegionalNotams above, no NMS-API call
  * at request time), so no per-user rate limit is needed here either. Built
  * for the map's "towered airport ATC status ring" feature: rather than the
@@ -966,31 +886,32 @@ export function getNotamsForIcao(icao: string): NotamResponse {
  * can return in one shot), it fetches this once and applies its own
  * keyword-based ATC-closed / hours-changed heuristics client-side (see
  * @open-vfr/shared/atcStatus) -- text only, never a definitive status here.
- * FIR-wide (regional) keys are deliberately excluded -- those aren't tied
- * to a single airport ICAO and are already served separately via
+ * FIR-level NOTAMs (filed under the FIR itself, e.g. ESAA) are excluded --
+ * those aren't tied to a single airport ICAO and are served separately via
  * getRegionalNotams()/`/api/notam/regional`.
  */
-export function getAerodromeNotamTexts(): Record<string, string[]> {
+export function getAerodromeNotamTexts(regions: string[]): Record<string, string[]> {
+  const { prefixes } = regionScope(regions)
   const out: Record<string, string[]> = {}
-  for (const icao of _icaoAllowlist) {
-    if (_regionalKeys.includes(icao)) continue
-    const texts = activeNotamsFor(icao).map((n) => n.text).filter(Boolean)
+  for (const [icao, byId] of _cache) {
+    if (icao === MILITARY_EU_KEY || !prefixes.has(icao.slice(0, 2))) continue
+    const raw = [...byId.values()].filter((n) => str(n.affectedFir)?.toUpperCase() !== icao)
+    const texts = activeItems(raw).map((n) => n.text).filter(Boolean)
     if (texts.length > 0) out[icao] = texts
   }
   return out
 }
 
 /**
- * FIR-wide/regional NOTAMs (icaoLocation=ESAA) -- restricted/danger areas,
- * navaid outages, AIRAC amendments, military exercise notices, etc. that
- * aren't filed against any single airport. NOT returned by
- * getNotamsForIcao() for any airport ICAO -- these live under their own key
- * (their FIR code, e.g. 'ESAA') in the cache, separate from per-airport
- * results. Aggregates across every FIR in FIR_CODES -- currently just
- * Sweden's, but scales to however many countries/FIRs are configured there
- * without further changes here.
+ * Regional NOTAMs for the given regions -- restricted/danger areas, navaid
+ * outages, AIRAC amendments, military exercise notices, etc. that aren't
+ * about a single airport (see isRegional()), plus every MILITARY NOTAM.
+ * Scoped with notamInRegions(): filed in one of the regions, or geometry
+ * reaching into one (cross-border areas). The cache itself covers every
+ * supported region; this never returns the whole of it.
  */
-export function getRegionalNotams(regions?: string[] | null): NotamResponse {
+export function getRegionalNotams(regions: string[]): NotamResponse {
+  const scope = regionScope(regions)
   const notams: NotamItem[] = []
   // Dedup on nmsId (NMS-API's own globally-unique internal id), NOT the
   // display `id` (published NOTAM number) -- confirmed live and real that
@@ -1001,35 +922,14 @@ export function getRegionalNotams(regions?: string[] | null): NotamResponse {
   // collision made getRegionalNotams() return only 1 of 2 real, unrelated
   // NOTAMs sharing that number.
   const seen = new Set<string>()
-  for (const fir of _regionalKeys) {
-    for (const n of activeNotamsFor(fir)) {
-      if (seen.has(n.nmsId)) continue // a NOTAM could in principle appear under >1 FIR key
+  for (const [key, byId] of _cache) {
+    const military = key === MILITARY_EU_KEY
+    const raw = [...byId.values()].filter((n) => (military || isRegional(n)) && notamInRegions(scopeInputFor(n), scope))
+    for (const n of activeItems(raw)) {
+      if (seen.has(n.nmsId)) continue // e.g. the same record in the MILITARY and INTERNATIONAL pulls
       seen.add(n.nmsId)
       notams.push(n)
     }
   }
-  // Cross-border NOTAMs (filed under an untracked FIR/ICAO, kept only
-  // because their own geometry reaches into tracked coverage -- see
-  // isNearCoverageArea()) -- same dedup, same flat list, no client-visible
-  // distinction from a same-country regional NOTAM. Web/native map layers
-  // and RegionalNotamsPanel.tsx pick these up automatically, no changes
-  // needed on either platform.
-  for (const n of activeNotamsFor(CROSS_BORDER_KEY)) {
-    if (seen.has(n.nmsId)) continue
-    seen.add(n.nmsId)
-    notams.push(n)
-  }
-  // European classification=MILITARY NOTAMs (see pollMilitaryOnce()) --
-  // same dedup/flat-list treatment as the cross-border bucket above.
-  for (const n of activeNotamsFor(MILITARY_EU_KEY)) {
-    if (seen.has(n.nmsId)) continue
-    seen.add(n.nmsId)
-    notams.push(n)
-  }
-  // Optional per-client scoping (?regions=se,dk) -- the cache above is
-  // wider than any one pilot needs (the military bucket covers all of
-  // Europe). See @open-vfr/shared/notamRegionScope for the inclusion rule
-  // (filed in a region OR geometry reaching into it). No list = everything,
-  // for clients that predate the parameter.
-  return { notams: regions && regions.length > 0 ? filterNotamsToRegions(notams, regions) : notams }
+  return { notams }
 }

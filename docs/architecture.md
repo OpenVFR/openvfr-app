@@ -144,7 +144,7 @@ Altitude filter: `AltitudeSlider` → `buildAltitudeFilter()` → `map.setFilter
 
 | Component | Location | Purpose |
 |---|---|---|
-| `RegionSelector` | Floating, top-left | Country/region dropdown (37 European countries). Updates `osm-landuse` tile URL via `source.setTiles()` — no style reload. |
+| `RegionSelector` | Settings panel | Country multi-select, built from `GET /api/countries` (`useCountries`). The first selected country drives the per-country tile sources until those support several countries. Region change swaps the `osm-landuse`/hillshade/contour sources — no style reload. |
 | `LayerPanel` | Floating, below RegionSelector | Toggle visibility per `LAYER_GROUP`. CSS `--group-color` vars. |
 | `AltitudeSlider` | Floating, top-right | Airspace ceiling filter (default FL095). |
 | `AerodromePopup` | Absolute-positioned | Aerodrome click detail. `--popup-x`, `--popup-y`, `--popup-translate` CSS vars. Flips above/below viewport y. |
@@ -294,7 +294,9 @@ NOTAMs and METAR/TAF will be processed by DuckDB pipelines: download raw JSON fr
 
 **Privacy proxy:** All METAR/TAF and NOTAM fetches will be routed through the Hono API server (`/api/weather`, `/api/notam`) — not directly from the browser. This hides the user's IP from NOAA and Eurocontrol, consistent with the existing POH extraction proxy. The Hono server can also cache responses to reduce repeated calls.
 
-**Regional NOTAM scoping:** the server's NOTAM cache is deliberately wider than any one user needs (upstream bulk pulls can't be filtered to a country list; the military classification is kept for all of Europe). Clients therefore call `/api/notam/regional?regions=se,dk,...` with their selected region plus every region their route crosses and their current position is in (`@open-vfr/shared/notamRegionScope`'s `notamRegionsFor()`, legs sampled every 10 NM). The server keeps a NOTAM when it is filed in one of those regions (FIR / location ICAO prefix) or its own geometry reaches into one of their bounding boxes (cross-border areas). Omitting `regions` returns the unscoped list.
+**Regional NOTAM scoping:** the server's NOTAM cache covers every supported region (`packages/shared/src/regions.ts`), civil and military alike -- upstream pulls can't be filtered to a country list, and a cache that only grows when a country is enabled would need a fresh full pull (1 per 24 h) to backfill it. Clients call `/api/notam/regional?regions=se,dk,...` with their selected countries plus every region their route crosses and their current position is in (`@open-vfr/shared/notamRegionScope`'s `notamRegionsFor()`, legs sampled every 10 NM). The server keeps a NOTAM when it is filed in one of those regions (FIR / location ICAO prefix) or its own geometry reaches into one of their bounding boxes (cross-border areas). "Regional" means filed at FIR level or with Q-line scope E/W; pure aerodrome-scope NOTAMs are served per airport. Omitting `regions` means Sweden (older clients).
+
+**Countries served:** the `countries` table is the single list of countries a deployment serves. An operator enables a country (admin API); the data pipeline builds its files and sets `tiles_ready_at`; only then does `GET /api/countries` list it, and the web/native Settings country pickers (multi-select) are built from that list. See `docs/self-hosting.md`.
 
 ---
 

@@ -106,10 +106,11 @@ import { useAirfieldProximity } from '../hooks/useAirfieldProximity'
 import { useFlightLog } from '../hooks/useFlightLog'
 import { useTraffic } from '../hooks/useTraffic'
 import { useRegionalNotams } from '../hooks/useRegionalNotams'
+import { useCountries } from '../hooks/useCountries'
 import { usePassivePosition, readLastPosition, geolocationAlreadyGranted } from '../hooks/usePassivePosition'
 import { useNotamVfrOnly } from '../hooks/useNotamPrefs'
 import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
-import { notamRegionsFor } from '@open-vfr/shared/notamRegionScope'
+import { notamRegionsFor, regionsForIcaos } from '@open-vfr/shared/notamRegionScope'
 import { useNotamWarnings } from '../hooks/useNotamWarnings'
 import { useNotamNotifications } from '../hooks/useNotamNotifications'
 import { useNotamAirspaceMatch } from '../hooks/useNotamAirspaceMatch'
@@ -556,12 +557,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
     map.setLayoutProperty('runway-threshold-label', 'text-size', expr.size as ExpressionSpecification)
     map.setPaintProperty('runway-threshold-label', 'text-opacity', expr.opacity as ExpressionSpecification)
   }, [runwayWindHighlight])
-  const [region, setRegion] = useState(DEFAULT_REGION)
-  // List of selected regions for region-scoped data (regional NOTAMs).
-  // One entry today because the region picker and the landuse/hillshade/
-  // contour sources below are single-region. Multi-region selection only
-  // needs to change this list; consumers already take an array.
-  const selectedRegions = useMemo(() => [region], [region])
+  // Countries the user works in, picked in Settings from the server's list
+  // (useCountries). Region-scoped data (regional NOTAMs) takes the whole
+  // list. The landuse/hillshade/contour sources below are still one per
+  // kind, so they follow the first selected country until per-country
+  // sources exist.
+  const { available: availableCountries, selected: selectedRegions, setSelected: setSelectedRegions } = useCountries()
+  const region = selectedRegions[0] ?? DEFAULT_REGION
   const [basemapMode, setBasemapMode] = useState<'vector' | 'satellite'>('vector')
   const [planningMode, setPlanningMode] = useState(false)
   // Route activate/deactivate — hides the drawn route on the map without
@@ -3776,7 +3778,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       if (towered.size === 0) return
       let texts: Record<string, string[]>
       try {
-        texts = await fetchAerodromeNotamTexts(API_BASE_URL)
+        texts = await fetchAerodromeNotamTexts(API_BASE_URL, undefined, undefined, regionsForIcaos(towered))
       } catch {
         return  // transient failure -- leave the previous hint state in place
       }
@@ -4006,8 +4008,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
     satelliteLocked,
     units,
     onUnitsChange: setUnits,
-    region,
-    onRegionChange: setRegion,
+    countries: availableCountries,
+    selectedCountries: selectedRegions,
+    onSelectedCountriesChange: setSelectedRegions,
     theme,
     onThemeChange: setTheme,
     trajectoryMode,

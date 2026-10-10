@@ -31,6 +31,8 @@ import { trafficConfig, registerClient, startTrafficPoller, getLatestBatch, touc
 import { startOgnRelay } from './ognTraffic'
 import { startNotamPoller, getNotamsForIcao, getRegionalNotams, getAerodromeNotamTexts } from './notam'
 import { parseRegionsParam } from '@open-vfr/shared/notamRegionScope'
+import { DEFAULT_REGION_CODES } from '@open-vfr/shared/regions'
+import { getAvailableCountries } from './countries'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -647,7 +649,7 @@ app.get('/api/notam', async (c) => {
 // ---------------------------------------------------------------------------
 // NOTAM (regional/FIR-wide) — GET /api/notam/regional
 // Restricted/danger areas, navaid outages, AIRAC amendments, military
-// notices, etc. filed against the whole Sweden FIR (ESAA) rather than any
+// notices, etc. filed against a whole FIR (e.g. ESAA) rather than a
 // single airport ICAO — see notam.ts's getRegionalNotams() for the full
 // rationale. Consumed by the web/native map layers, warnings and the
 // regional NOTAM panel.
@@ -656,8 +658,8 @@ app.get('/api/notam', async (c) => {
 // @open-vfr/shared/regions) scopes the response to NOTAMs filed in, or
 // geometrically reaching into, those regions. Clients send their selected
 // region plus every region their route / position touches (see
-// @open-vfr/shared/notamRegionScope). Omitted = unscoped, for older
-// clients. Unknown codes -> 400. Auth required; no extra rate limit: it is
+// @open-vfr/shared/notamRegionScope). Omitted = Sweden, the only country
+// clients predating the parameter served. Unknown codes -> 400. Auth required; no extra rate limit: it is
 // an in-memory cache read with no upstream call per request.
 // ---------------------------------------------------------------------------
 app.get('/api/notam/regional', async (c) => {
@@ -665,13 +667,15 @@ app.get('/api/notam/regional', async (c) => {
   if (!user) return c.json({ error: 'Authentication required.' }, 401)
   const regions = parseRegionsParam(c.req.query('regions'))
   if (regions && !Array.isArray(regions)) return c.json({ error: regions.error }, 400)
-  return c.json(getRegionalNotams(regions))
+  return c.json(getRegionalNotams(regions ?? [...DEFAULT_REGION_CODES]))
 })
 
 // ---------------------------------------------------------------------------
 // NOTAM (bulk per-aerodrome texts) — GET /api/notam/aerodrome-texts
-// { [icao]: string[] } for every allow-listed airport with at least one
-// currently-active NOTAM. Pure in-memory cache read (see notam.ts's
+// { [icao]: string[] } for every airport in the requested regions with at
+// least one currently-active NOTAM. `?regions=se,dk` as for
+// /api/notam/regional; omitted = Sweden, the only country older clients
+// have aerodrome data for. Pure in-memory cache read (see notam.ts's
 // getAerodromeNotamTexts() doc comment) — no external NMS-API call at
 // request time, so no additional per-user rate limit beyond auth, same as
 // its /api/notam and /api/notam/regional siblings above. Powers the map's
@@ -682,7 +686,25 @@ app.get('/api/notam/regional', async (c) => {
 app.get('/api/notam/aerodrome-texts', async (c) => {
   const user = await requireSession(c)
   if (!user) return c.json({ error: 'Authentication required.' }, 401)
-  return c.json(getAerodromeNotamTexts())
+  const regions = parseRegionsParam(c.req.query('regions'))
+  if (regions && !Array.isArray(regions)) return c.json({ error: regions.error }, 400)
+  return c.json(getAerodromeNotamTexts(regions ?? [...DEFAULT_REGION_CODES]))
+})
+
+// ---------------------------------------------------------------------------
+// Countries — GET /api/countries
+// Countries this deployment serves: enabled by an operator AND built by the
+// data pipeline (see countries.ts and the countries migration). Web/native
+// build their country picker from this, so a country only shows up once
+// its data exists. Public, deliberately: no user data, no paid upstream,
+// served from a 60 s in-memory cache, and the picker is needed before
+// sign-in. 503 when the registry has never been readable.
+// ---------------------------------------------------------------------------
+app.get('/api/countries', async (c) => {
+  const countries = await getAvailableCountries()
+  if (!countries) return c.json({ error: 'Country list unavailable' }, 503)
+  c.header('Cache-Control', 'public, max-age=60')
+  return c.json({ countries })
 })
 
 // ---------------------------------------------------------------------------

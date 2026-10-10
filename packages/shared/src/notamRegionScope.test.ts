@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  notamRegionsFor, sampleRoute, parseRegionsParam, regionsParam,
+  notamRegionsFor, sampleRoute, parseRegionsParam, regionsParam, regionsForIcaos,
   filterNotamsToRegions, notamInRegions, regionScope,
 } from './notamRegionScope'
 
@@ -36,6 +36,12 @@ describe('notamRegionsFor', () => {
   it('is sorted and de-duplicated', () => {
     const r = notamRegionsFor({ selected: ['se', 'se'], route: [stockholm, stockholm] })
     expect(r).toEqual([...new Set(r)].sort())
+  })
+})
+
+describe('regionsForIcaos', () => {
+  it('maps aerodrome ICAOs to their regions', () => {
+    expect(regionsForIcaos(['ESSA', 'ESGG', 'EKCH', 'bad'])).toEqual(['dk', 'se'])
   })
 })
 

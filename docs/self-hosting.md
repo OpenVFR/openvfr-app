@@ -51,6 +51,26 @@ Filenames are per-country (`se-*` = Sweden); see `apps/web/src/styles/map-style.
 for the exact source/layer wiring and `docs/architecture.md`'s data table
 for the property schema each file needs.
 
+### Countries served (`countries` table)
+
+Which countries the apps offer is decided by the `countries` table
+(migration `20261001000000_countries.sql`), not by the apps. `GET
+/api/countries` lists a country only when it is `enabled` **and**
+`tiles_ready_at` is set; the web/native country pickers in Settings are
+built from that list. The migration seeds Sweden as enabled and ready.
+
+- **Enable/disable:** `PUT /api/admin/countries/:code { "enabled": true }`
+  (admin API below), or by hand:
+  `UPDATE countries SET enabled = true, enabled_at = now() WHERE code = 'no';`
+  (insert the row first if it doesn't exist).
+- **Mark data ready:** your data pipeline sets `tiles_ready_at = now()` (and
+  clears `last_error`) once every file for that country is generated and
+  served. Until then the country stays hidden from clients, so nobody can pick
+  a country whose files don't exist.
+
+NOTAMs need no per-country setup: the api keeps NOTAMs for every country in
+`packages/shared/src/regions.ts` and filters per request.
+
 ### Data sources (all open-licensed — see root README's Data & attribution)
 
 - **Airspace / aerodromes / navaids / waypoints / runways**: [OpenFlightMaps](https://www.openflightmaps.org/)
@@ -137,7 +157,8 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
 
 ### Admin API
 
-`/api/admin/*` (user list, sign-up/activity stats, ban/unban) is a JSON API
+`/api/admin/*` (user list, sign-up/activity stats, ban/unban, enabling
+countries) is a JSON API
 for an operator dashboard. This repo ships only the API; the admin web UI is
 deployed separately on its own origin, so script on the main app's origin can
 never drive it. Set `ADMIN_APP_ORIGIN` to that UI's origin (e.g.

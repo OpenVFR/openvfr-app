@@ -130,8 +130,14 @@ export async function fetchAerodromeNotamTexts(
   baseUrl = '',
   signal?: AbortSignal,
   headers?: Record<string, string>,
+  // Region codes whose aerodromes to include (see ./notamRegionScope's
+  // regionsForIcaos()). Empty/omitted = the server default (Sweden).
+  regions?: string[],
 ): Promise<Record<string, string[]>> {
-  const url = `${baseUrl}/api/notam/aerodrome-texts`
+  const scope = regions && regions.length > 0
+    ? `?regions=${encodeURIComponent([...new Set(regions)].sort().join(','))}`
+    : ''
+  const url = `${baseUrl}/api/notam/aerodrome-texts${scope}`
   const resp = await fetchWithRetry(url, { signal, headers })
   if (resp.status === 503) return {}
   if (!resp.ok) throw new Error(`Aerodrome NOTAM texts fetch failed: HTTP ${resp.status}`)

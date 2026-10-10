@@ -31,6 +31,7 @@ import { sunriseSunset } from '@open-vfr/shared/sunCalc'
 import { ATTRIBUTION_SOURCES } from '@open-vfr/shared/attributionSources'
 import { MapInfoBar, type MapInfoBarHandle } from './MapInfoBar'
 import { fetchAerodromeNotamTexts } from '@open-vfr/shared/fetchNotam'
+import { regionsForIcaos } from '@open-vfr/shared/notamRegionScope'
 import { API_BASE, TILE_BASE } from '../config'
 import { LIGHT } from '@protomaps/basemaps'
 import { NativeSheet } from './NativeSheet'
@@ -934,7 +935,7 @@ export function AviationMap({
       let texts: Record<string, string[]>
       try {
         const headers = await authHeaders()
-        texts = await fetchAerodromeNotamTexts(API_BASE, undefined, headers)
+        texts = await fetchAerodromeNotamTexts(API_BASE, undefined, headers, regionsForIcaos(toweredIcaos))
       } catch {
         return  // transient/unauthenticated -- leave previous hint state in place
       }

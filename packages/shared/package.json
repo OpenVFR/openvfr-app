@@ -73,7 +73,8 @@
     "./regions": "./src/regions.ts",
     "./notamIcaoFormat": "./src/notamIcaoFormat.ts",
     "./notamRelevance": "./src/notamRelevance.ts",
-    "./notamRegionScope": "./src/notamRegionScope.ts"
+    "./notamRegionScope": "./src/notamRegionScope.ts",
+    "./countries": "./src/countries.ts"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.16",

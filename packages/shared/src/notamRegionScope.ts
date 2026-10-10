@@ -105,6 +105,21 @@ export function notamRegionsFor(opts: {
   return [...out].sort()
 }
 
+/**
+ * Region codes whose ICAO prefixes cover the given aerodrome ICAOs, sorted
+ * -- e.g. the aerodromes currently loaded on the map -> the regions to ask
+ * for their NOTAM texts.
+ */
+export function regionsForIcaos(icaos: Iterable<string>): string[] {
+  const prefixes = new Set<string>()
+  for (const icao of icaos) if (/^[A-Z]{4}$/.test(icao)) prefixes.add(icao.slice(0, 2))
+  const out: string[] = []
+  for (const [code, pres] of Object.entries(REGION_ICAO_PREFIXES)) {
+    if (pres.some(p => prefixes.has(p))) out.push(code)
+  }
+  return out.sort()
+}
+
 /** Comma-separated, sorted region list for the `regions` query parameter. */
 export function regionsParam(regions: string[]): string {
   return [...new Set(regions)].sort().join(',')

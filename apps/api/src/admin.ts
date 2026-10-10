@@ -30,6 +30,9 @@ import { Hono, type MiddlewareHandler } from 'hono'
 import { auth, TRUSTED_ORIGINS, ADMIN_APP_ORIGIN } from './auth.js'
 import { ACCESS_CONFIG, createAccessVerifier } from './accessJwt.js'
 import { pool } from './db.js'
+import { invalidateCountries } from './countries.js'
+import { EUROPEAN_REGIONS } from '@open-vfr/shared/regions'
+import { isKnownRegion } from '@open-vfr/shared/notamRegionScope'
 
 const MAX_SESSION_MS = Number(process.env['ADMIN_MAX_SESSION_HOURS'] ?? 12) * 3_600_000
 const verifyAccess = ACCESS_CONFIG ? createAccessVerifier(ACCESS_CONFIG) : null
@@ -214,5 +217,50 @@ admin.post('/users/:id/unban', async (c) => {
   const id = c.req.param('id')
   await auth.api.unbanUser({ headers: c.get('adminHeaders'), body: { userId: id } })
   console.log(`[admin] ${c.get('adminEmail')} unbanned user ${id}`)
+  return c.json({ ok: true })
+})
+
+// GET /api/admin/countries -- every supported country with its registry
+// state (see db/migrations/20261001000000_countries.sql). `available` is what
+// clients see: enabled AND built by the data pipeline.
+admin.get('/countries', async (c) => {
+  const { rows } = await pool.query<{
+    code: string; enabled: boolean; enabled_at: Date | null; tiles_ready_at: Date | null; last_error: string | null
+  }>('SELECT code, enabled, enabled_at, tiles_ready_at, last_error FROM countries')
+  const byCode = new Map(rows.map(r => [r.code.trim(), r]))
+  return c.json({
+    countries: EUROPEAN_REGIONS.map(({ code, name }) => {
+      const r = byCode.get(code)
+      return {
+        code, name,
+        enabled:      r?.enabled ?? false,
+        enabledAt:    r?.enabled_at ?? null,
+        tilesReadyAt: r?.tiles_ready_at ?? null,
+        lastError:    r?.last_error ?? null,
+        available:    !!r?.enabled && !!r.tiles_ready_at,
+      }
+    }),
+  })
+})
+
+// PUT /api/admin/countries/:code { enabled: boolean } -- enable/disable a
+// country. Enabling a country without data queues it for the pipeline's
+// next backfill run (it becomes available once tiles_ready_at is set);
+// re-enabling one whose data still exists makes it available at once.
+admin.put('/countries/:code', async (c) => {
+  const code = c.req.param('code').toLowerCase()
+  if (!isKnownRegion(code)) return c.json({ error: 'Unknown country' }, 404)
+  const body = await c.req.json().catch(() => null) as { enabled?: unknown } | null
+  if (typeof body?.enabled !== 'boolean') return c.json({ error: 'Body must be { enabled: boolean }' }, 400)
+  await pool.query(`
+    INSERT INTO countries (code, enabled, enabled_at, updated_at)
+    VALUES ($1, $2, CASE WHEN $2 THEN now() END, now())
+    ON CONFLICT (code) DO UPDATE SET
+      enabled    = EXCLUDED.enabled,
+      enabled_at = CASE WHEN EXCLUDED.enabled AND NOT countries.enabled THEN now() ELSE countries.enabled_at END,
+      updated_at = now()
+  `, [code, body.enabled])
+  invalidateCountries()
+  console.log(`[admin] ${c.get('adminEmail')} ${body.enabled ? 'enabled' : 'disabled'} country ${code}`)
   return c.json({ ok: true })
 })

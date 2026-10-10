@@ -12,6 +12,7 @@ import AccountBadge from './AccountBadge'
 import type { AuthState } from '../hooks/useAuth'
 import AerodromePopup, { type AerodromeFeatureProps } from './AerodromePopup'
 import type { RunwayWindEnd } from '@open-vfr/shared/runwayWind'
+import type { AvailableCountry } from '@open-vfr/shared/countries'
 import AirspacePopup, { type AirspaceFeature, type RegionalNotamHit } from './AirspacePopup'
 import FeaturePopup, { type PointFeature } from './FeaturePopup'
 import WhatsHerePopup, { type WhatsHereItem } from './WhatsHerePopup'
@@ -44,8 +45,9 @@ interface Props {
   satelliteLocked?: boolean
   units: Units
   onUnitsChange: (u: Units) => void
-  region: string
-  onRegionChange: (code: string) => void
+  countries: AvailableCountry[] | null
+  selectedCountries: string[]
+  onSelectedCountriesChange: (codes: string[]) => void
   theme: Theme
   onThemeChange: (t: Theme) => void
   trajectoryMode: TrajectoryMode
@@ -171,7 +173,7 @@ function SideDrawer({
   ceilingFt, onCeilingChange,
   basemapMode, onBasemapModeChange, satelliteLocked,
   units, onUnitsChange,
-  region, onRegionChange,
+  countries, selectedCountries, onSelectedCountriesChange,
   theme, onThemeChange,
   trajectoryMode, onTrajectoryModeChange,
   airspaceWarnLookahead, onAirspaceWarnLookaheadChange,
@@ -545,7 +547,7 @@ function SideDrawer({
             </button>
             {expanded.settings && (
               <div className={css.sectionBody}>
-                <SettingsPanel units={units} onUnitsChange={onUnitsChange} region={region} onRegionChange={onRegionChange} theme={theme} onThemeChange={onThemeChange} trajectoryMode={trajectoryMode} onTrajectoryModeChange={onTrajectoryModeChange} airspaceWarnLookahead={airspaceWarnLookahead} onAirspaceWarnLookaheadChange={onAirspaceWarnLookaheadChange} airspaceWarnVerticalFt={airspaceWarnVerticalFt} onAirspaceWarnVerticalFtChange={onAirspaceWarnVerticalFtChange} trafficVertFilter={trafficVertFilter} onTrafficVertFilterChange={onTrafficVertFilterChange} parkTimeout={parkTimeout} onParkTimeoutChange={onParkTimeoutChange} autoFlyMode={autoFlyMode} onAutoFlyModeChange={onAutoFlyModeChange} inFlight={inFlight} manifest={manifest} isOnline={isOnline} checking={checking} onRefresh={onRefresh} />
+                <SettingsPanel units={units} onUnitsChange={onUnitsChange} countries={countries} selectedCountries={selectedCountries} onSelectedCountriesChange={onSelectedCountriesChange} theme={theme} onThemeChange={onThemeChange} trajectoryMode={trajectoryMode} onTrajectoryModeChange={onTrajectoryModeChange} airspaceWarnLookahead={airspaceWarnLookahead} onAirspaceWarnLookaheadChange={onAirspaceWarnLookaheadChange} airspaceWarnVerticalFt={airspaceWarnVerticalFt} onAirspaceWarnVerticalFtChange={onAirspaceWarnVerticalFtChange} trafficVertFilter={trafficVertFilter} onTrafficVertFilterChange={onTrafficVertFilterChange} parkTimeout={parkTimeout} onParkTimeoutChange={onParkTimeoutChange} autoFlyMode={autoFlyMode} onAutoFlyModeChange={onAutoFlyModeChange} inFlight={inFlight} manifest={manifest} isOnline={isOnline} checking={checking} onRefresh={onRefresh} />
               </div>
             )}
           </div>
