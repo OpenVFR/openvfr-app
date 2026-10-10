@@ -66,7 +66,8 @@ Only countries openflightmaps publishes aviation data for can be served
 be de pl fr it at ch cz sk hu si hr ro bg gr mt); the admin API refuses the
 rest and `/api/countries` never lists them.
 
-- **Enable/disable:** `PUT /api/admin/countries/:code { "enabled": true }`
+- **Enable/disable:** the admin UI's Countries section
+  (`POST /api/admin/countries/:code { "enabled": true }`)
   (admin API below), or by hand:
   `UPDATE countries SET enabled = true, enabled_at = now() WHERE code = 'no';`
   (insert the row first if it doesn't exist).

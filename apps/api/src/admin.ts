@@ -243,11 +243,11 @@ admin.get('/countries', async (c) => {
   })
 })
 
-// PUT /api/admin/countries/:code { enabled: boolean } -- enable/disable a
+// POST /api/admin/countries/:code { enabled: boolean } -- enable/disable a
 // country. Enabling a country without data queues it for the pipeline's
 // next backfill run (it becomes available once tiles_ready_at is set);
 // re-enabling one whose data still exists makes it available at once.
-admin.put('/countries/:code', async (c) => {
+admin.post('/countries/:code', async (c) => {
   const code = c.req.param('code').toLowerCase()
   if (!isSupportedRegion(code)) return c.json({ error: 'Unsupported country (no openflightmaps data)' }, 404)
   const body = await c.req.json().catch(() => null) as { enabled?: unknown } | null
