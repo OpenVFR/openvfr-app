@@ -6,7 +6,7 @@ import React, { useState, useCallback, useEffect } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import {
   View, Text, Switch, ScrollView, TextInput,
-  TouchableOpacity, Alert,
+  TouchableOpacity, Alert, Modal, Pressable,
 } from 'react-native'
 import Slider from '@react-native-community/slider'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -24,7 +24,6 @@ import { useAerodromeElevation } from '../hooks/useAerodromeElevation'
 import { useNearestAerodrome } from '../hooks/useNearestAerodrome'
 import { useCountries } from '../hooks/useCountries'
 import { useFlightActive } from '../utils/flightActive'
-import { toggleCountry } from '@open-vfr/shared/countries'
 import { qnhFromStationPressure } from '@open-vfr/shared/baroAltitude'
 import * as Location from 'expo-location'
 import { API_BASE, TILE_BASE } from '../config'
@@ -507,13 +506,14 @@ function formatVarioDeviceStatus(state: VarioState): string {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-// Countries the server serves (useCountries). One at a time for now
-// (MAX_SELECTED_COUNTRIES): switching another on replaces the current one,
-// and the active one can't be switched off. Scopes country-specific data
-// such as regional NOTAMs.
+// Countries the server serves (useCountries), as a dropdown: one active
+// country at a time (MAX_SELECTED_COUNTRIES). Scopes all per-country data
+// (map, lookups, offline download, regional NOTAMs).
 function CountriesSection() {
   const styles = useThemedStyles(makeStyles)
+  const scaledTheme = useScaledTheme()
   const { available, selected, setSelected } = useCountries()
+  const [open, setOpen] = useState(false)
   // Changing country reloads the map screen and its data: never in flight.
   const inFlight = useFlightActive()
   if (!available || available.length === 0) {
@@ -523,21 +523,43 @@ function CountriesSection() {
       </View>
     )
   }
+  const current = available.find(c => c.code === selected[0])
   return (
     <>
-      {available.map((c) => {
-        const on = selected.includes(c.code)
-        return (
-          <View key={c.code} style={styles.row}>
-            <Text style={styles.rowLabel}>{c.name}</Text>
-            <Switch
-              value={on}
-              disabled={inFlight || (on && selected.length === 1)}
-              onValueChange={() => setSelected(toggleCountry(selected, c.code))}
-            />
+      <TouchableOpacity
+        style={[styles.row, inFlight && { opacity: 0.4 }]}
+        disabled={inFlight}
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={`Country: ${current?.name ?? 'none'}`}
+        accessibilityHint={inFlight ? 'Not available during flight' : 'Opens the country list'}
+      >
+        <Text style={styles.rowLabel}>Country</Text>
+        <Text style={styles.dropdownValue}>{current?.name ?? 'Select'}{'  \u25BE'}</Text>
+      </TouchableOpacity>
+      {inFlight && <Text style={styles.infoValue}>Not available during flight</Text>}
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.dropdownBackdrop} onPress={() => setOpen(false)} accessibilityLabel="Close country list">
+          <View style={styles.dropdownMenu}>
+            <ScrollView>
+              {available.map(c => {
+                const on = c.code === selected[0]
+                return (
+                  <TouchableOpacity
+                    key={c.code}
+                    style={styles.dropdownItem}
+                    onPress={() => { setOpen(false); if (!on) setSelected([c.code]) }}
+                    accessibilityRole="menuitem"
+                    accessibilityState={{ selected: on }}
+                  >
+                    <Text style={[styles.dropdownItemText, on && { color: scaledTheme.accentBlue, fontWeight: '700' }]}>{c.name}</Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </ScrollView>
           </View>
-        )
-      })}
+        </Pressable>
+      </Modal>
     </>
   )
 }
@@ -1010,6 +1032,36 @@ function makeStyles(theme: ScaledTheme) {
   },
   pressable: {
     borderRadius: theme.radiusSm,
+  },
+  dropdownValue: {
+    color:    theme.textPrimary,
+    fontSize: theme.textSm,
+  },
+  dropdownBackdrop: {
+    flex:            1,
+    justifyContent:  'center',
+    alignItems:      'center',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    padding:         theme.space4,
+  },
+  dropdownMenu: {
+    backgroundColor: theme.surfaceSheet,
+    borderRadius:    theme.radiusLg,
+    borderWidth:     1,
+    borderColor:     theme.borderDefault,
+    paddingVertical: theme.space2,
+    minWidth:        220,
+    maxHeight:       '70%',
+  },
+  dropdownItem: {
+    paddingVertical:   theme.space3,
+    paddingHorizontal: theme.space4,
+    minHeight:         44,
+    justifyContent:    'center',
+  },
+  dropdownItemText: {
+    color:    theme.textPrimary,
+    fontSize: theme.textSm,
   },
   rowLabel: {
     color:    theme.textSecondary,
