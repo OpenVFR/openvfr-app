@@ -12,7 +12,7 @@
  * list; with no list at all the endpoint answers 503 and clients fall back
  * to their own last-known list.
  */
-import { EUROPEAN_REGIONS } from '@open-vfr/shared/regions'
+import { EUROPEAN_REGIONS, isSupportedRegion } from '@open-vfr/shared/regions'
 import { pool } from './db.js'
 
 const CACHE_MS = 60_000
@@ -35,11 +35,11 @@ async function load(): Promise<AvailableCountry[] | null> {
        WHERE enabled AND tiles_ready_at IS NOT NULL
        ORDER BY code`,
     )
-    // Only codes the shared region table knows (bbox, ICAO prefixes, name):
-    // anything else couldn't be scoped or labelled by clients anyway.
+    // Only supported codes the shared region table knows (bbox, ICAO
+    // prefixes, name): anything else couldn't be built, scoped or labelled.
     _cached = rows
       .map(r => r.code.trim().toLowerCase())
-      .filter(code => NAME_BY_CODE.has(code))
+      .filter(code => NAME_BY_CODE.has(code) && isSupportedRegion(code))
       .map(code => ({ code, name: NAME_BY_CODE.get(code)! }))
     _cachedAt = Date.now()
   } catch (e) {

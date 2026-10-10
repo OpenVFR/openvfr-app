@@ -1539,7 +1539,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
       style: getMapStyle(region),
       // Last known own position (Passive location mode) when there is one;
       // the home-airfield fly-to below still takes over when set.
-      center: (() => { const lp = readLastPosition(); return lp ? [lp.lng, lp.lat] as [number, number] : [18.07, 59.33] as [number, number] })(),
+      // Without one, the middle of the active country.
+      center: (() => {
+        const lp = readLastPosition()
+        if (lp) return [lp.lng, lp.lat] as [number, number]
+        const bb = EUROPEAN_REGIONS.find((x) => x.code === region)?.bbox
+        return bb ? [(bb[1] + bb[3]) / 2, (bb[0] + bb[2]) / 2] as [number, number] : [18.07, 59.33] as [number, number]
+      })(),
       zoom: 8,
       minZoom: 4,
       maxZoom: 17,

@@ -61,6 +61,10 @@ Which countries the apps offer is decided by the `countries` table
 /api/countries` lists a country only when it is `enabled` **and**
 `tiles_ready_at` is set; the web/native country pickers in Settings are
 built from that list. The migration seeds Sweden as enabled and ready.
+Only countries openflightmaps publishes aviation data for can be served
+(`SUPPORTED_REGION_CODES` in `packages/shared/src/regions.ts`: se fi dk nl
+be de pl fr it at ch cz sk hu si hr ro bg gr mt); the admin API refuses the
+rest and `/api/countries` never lists them.
 
 - **Enable/disable:** `PUT /api/admin/countries/:code { "enabled": true }`
   (admin API below), or by hand:

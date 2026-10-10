@@ -27,6 +27,23 @@ export const DEFAULT_REGION_CODE = 'se'
  */
 export const DEFAULT_REGION_CODES: readonly string[] = [DEFAULT_REGION_CODE]
 
+/**
+ * Regions a deployment can serve: those openflightmaps publishes aviation
+ * data for (openflightmaps.org/downloads). Without it there is no airspace /
+ * aerodrome data, so the data pipeline cannot build the country and the
+ * admin API refuses to enable it. All EUROPEAN_REGIONS stay known for
+ * NOTAM scoping (routes cross every country). Update when openflightmaps
+ * adds a region (and the pipeline's territory list with it).
+ */
+export const SUPPORTED_REGION_CODES: readonly string[] = [
+  'se', 'fi', 'dk', 'nl', 'be', 'de', 'pl', 'fr', 'it', 'at',
+  'ch', 'cz', 'sk', 'hu', 'si', 'hr', 'ro', 'bg', 'gr', 'mt',
+]
+
+export function isSupportedRegion(code: string): boolean {
+  return SUPPORTED_REGION_CODES.includes(code)
+}
+
 /** All supported European regions, grouped loosely north → south. */
 export const EUROPEAN_REGIONS: Region[] = [
   // ── Nordic ────────────────────────────────────────────────────────────────

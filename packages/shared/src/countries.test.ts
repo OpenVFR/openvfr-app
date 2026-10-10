@@ -38,3 +38,13 @@ describe('toggleCountry', () => {
     expect(toggleCountry(['se'], 'se')).toEqual(['se'])
   })
 })
+
+describe('SUPPORTED_REGION_CODES', () => {
+  it('only lists known regions, includes the openflightmaps ones', async () => {
+    const { SUPPORTED_REGION_CODES, EUROPEAN_REGIONS, isSupportedRegion } = await import('./regions')
+    const known = new Set(EUROPEAN_REGIONS.map(r => r.code))
+    expect(SUPPORTED_REGION_CODES.every(c => known.has(c))).toBe(true)
+    expect(isSupportedRegion('de')).toBe(true)
+    expect(isSupportedRegion('no')).toBe(false)
+  })
+})

@@ -31,8 +31,7 @@ import { auth, TRUSTED_ORIGINS, ADMIN_APP_ORIGIN } from './auth.js'
 import { ACCESS_CONFIG, createAccessVerifier } from './accessJwt.js'
 import { pool } from './db.js'
 import { invalidateCountries } from './countries.js'
-import { EUROPEAN_REGIONS } from '@open-vfr/shared/regions'
-import { isKnownRegion } from '@open-vfr/shared/notamRegionScope'
+import { EUROPEAN_REGIONS, isSupportedRegion } from '@open-vfr/shared/regions'
 
 const MAX_SESSION_MS = Number(process.env['ADMIN_MAX_SESSION_HOURS'] ?? 12) * 3_600_000
 const verifyAccess = ACCESS_CONFIG ? createAccessVerifier(ACCESS_CONFIG) : null
@@ -229,7 +228,8 @@ admin.get('/countries', async (c) => {
   }>('SELECT code, enabled, enabled_at, tiles_ready_at, last_error FROM countries')
   const byCode = new Map(rows.map(r => [r.code.trim(), r]))
   return c.json({
-    countries: EUROPEAN_REGIONS.map(({ code, name }) => {
+    // Only countries openflightmaps publishes data for (SUPPORTED_REGION_CODES).
+    countries: EUROPEAN_REGIONS.filter(({ code }) => isSupportedRegion(code)).map(({ code, name }) => {
       const r = byCode.get(code)
       return {
         code, name,
@@ -249,7 +249,7 @@ admin.get('/countries', async (c) => {
 // re-enabling one whose data still exists makes it available at once.
 admin.put('/countries/:code', async (c) => {
   const code = c.req.param('code').toLowerCase()
-  if (!isKnownRegion(code)) return c.json({ error: 'Unknown country' }, 404)
+  if (!isSupportedRegion(code)) return c.json({ error: 'Unsupported country (no openflightmaps data)' }, 404)
   const body = await c.req.json().catch(() => null) as { enabled?: unknown } | null
   if (typeof body?.enabled !== 'boolean') return c.json({ error: 'Body must be { enabled: boolean }' }, 400)
   await pool.query(`
