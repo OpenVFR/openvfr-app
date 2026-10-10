@@ -5,10 +5,16 @@
  *   - AUTH: every route requires a valid session whose user has
  *     ba_user.role = 'admin' (set by hand in the DB; nothing here can grant
  *     it). Non-admins get 403.
- *   - PASSKEY-ONLY: admins must have >=1 registered passkey, and OTP sign-in is
- *     refused for admin accounts (auth.ts hooks), so a mailbox takeover alone
- *     is not enough. The session must also be younger than
- *     ADMIN_MAX_SESSION_HOURS (default 12); older ones must sign in again.
+ *   - SECOND FACTOR, one of two modes (a mailbox takeover alone is never enough):
+ *       a) CF_ACCESS_TEAM_DOMAIN + CF_ACCESS_AUD set: every request needs a
+ *          valid Cloudflare Access JWT whose email matches the admin
+ *          (accessJwt.ts). Email-OTP sign-in is allowed.
+ *       b) otherwise passkey-only: the admin needs >=1 registered passkey,
+ *          and OTP sign-in is refused for admin accounts (auth.ts hooks).
+ *     Either way the session must be younger than ADMIN_MAX_SESSION_HOURS
+ *     (default 12); older ones must sign in again.
+ *   - ORIGIN: if ADMIN_APP_ORIGIN is set, a request carrying any other Origin
+ *     is rejected, and writes must carry it. Unset = auth's trusted origins.
  *   - RATE LIMIT: per-admin sliding window (ADMIN_RATE_PER_MIN, default 120).
  *   - CSRF: state-changing methods additionally require an `Origin` header in
  *     the trusted-origins list (same list better-auth uses).
@@ -21,10 +27,14 @@
  */
 
 import { Hono, type MiddlewareHandler } from 'hono'
-import { auth, TRUSTED_ORIGINS } from './auth.js'
+import { auth, TRUSTED_ORIGINS, ADMIN_APP_ORIGIN } from './auth.js'
+import { ACCESS_CONFIG, createAccessVerifier } from './accessJwt.js'
 import { pool } from './db.js'
 
 const MAX_SESSION_MS = Number(process.env['ADMIN_MAX_SESSION_HOURS'] ?? 12) * 3_600_000
+const verifyAccess = ACCESS_CONFIG ? createAccessVerifier(ACCESS_CONFIG) : null
+if (ACCESS_CONFIG) console.log(`[admin] Cloudflare Access required (${ACCESS_CONFIG.issuer})`)
+
 const RATE_PER_MIN = Number(process.env['ADMIN_RATE_PER_MIN'] ?? 120)
 
 const hits = new Map<string, number[]>() // admin user id -> request timestamps (last 60 s)
@@ -42,6 +52,14 @@ type AdminEnv = { Variables: { adminEmail: string; adminHeaders: Headers } }
 const requireAdmin: MiddlewareHandler<AdminEnv> = async (c, next) => {
   c.header('Cache-Control', 'no-store')
 
+  // Origin first, before any DB/session work. Browsers always send Origin on
+  // cross-origin fetches, so this stops script on any other origin (e.g. the
+  // main app, which shares the session cookie) at the server, not only via CORS.
+  const origin = c.req.header('origin')
+  const isWrite = c.req.method !== 'GET' && c.req.method !== 'HEAD'
+  const allowed = ADMIN_APP_ORIGIN ? [ADMIN_APP_ORIGIN] : TRUSTED_ORIGINS
+  if (origin ? !allowed.includes(origin) : isWrite) return c.json({ error: 'Bad origin' }, 403)
+
   const session = await auth.api.getSession({ headers: c.req.raw.headers })
   if (!session?.user) return c.json({ error: 'Unauthenticated' }, 401)
   const { id, email, role } = session.user as { id: string; email: string; role?: string | null }
@@ -53,15 +71,19 @@ const requireAdmin: MiddlewareHandler<AdminEnv> = async (c, next) => {
   if (!(Date.now() - created < MAX_SESSION_MS)) {
     return c.json({ error: 'Admin session expired; sign in again with your passkey', code: 'reauth_required' }, 403)
   }
-  const pk = await pool.query('SELECT 1 FROM ba_passkey WHERE "userId" = $1 LIMIT 1', [id])
-  if (!pk.rowCount) {
-    return c.json({ error: 'Register a passkey on this account first', code: 'passkey_required' }, 403)
+  if (verifyAccess) {
+    const r = await verifyAccess(c.req.header('cf-access-jwt-assertion'), email)
+    if (!r.ok) {
+      console.warn(`[admin] Access check failed for ${email}: ${r.reason}`)
+      return c.json({ error: 'Cloudflare Access login required for this account', code: 'access_required' }, 403)
+    }
+  } else {
+    const pk = await pool.query('SELECT 1 FROM ba_passkey WHERE "userId" = $1 LIMIT 1', [id])
+    if (!pk.rowCount) {
+      return c.json({ error: 'Register a passkey on this account first', code: 'passkey_required' }, 403)
+    }
   }
 
-  if (c.req.method !== 'GET' && c.req.method !== 'HEAD') {
-    const origin = c.req.header('origin')
-    if (!origin || !TRUSTED_ORIGINS.includes(origin)) return c.json({ error: 'Bad origin' }, 403)
-  }
   if (rateLimited(id)) return c.json({ error: 'Too many requests' }, 429)
 
   c.set('adminEmail', email.toLowerCase())
@@ -73,7 +95,7 @@ export const admin = new Hono<AdminEnv>()
 admin.use('*', requireAdmin)
 
 // GET /api/admin/me -- lets the UI decide whether to render (200) or not.
-admin.get('/me', (c) => c.json({ email: c.get('adminEmail') }))
+admin.get('/me', (c) => c.json({ email: c.get('adminEmail'), mode: verifyAccess ? 'access' : 'passkey' }))
 
 // GET /api/admin/overview -- KPIs + 30-day series.
 admin.get('/overview', async (c) => {

@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
     "@better-auth/passkey": "1.7.6",
@@ -16,6 +17,7 @@
     "@open-vfr/shared": "workspace:*",
     "better-auth": "1.7.6",
     "hono": "4.13.9",
+    "jose": "6.2.12",
     "openai": "7.23.0",
     "pg": "8.23.0"
   },

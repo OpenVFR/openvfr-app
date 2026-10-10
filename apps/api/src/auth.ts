@@ -17,6 +17,7 @@ import { bearer }     from 'better-auth/plugins'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { sendEmail }  from './mailer.js'
 import { pool }        from './db.js'
+import { ACCESS_CONFIG } from './accessJwt.js'
 
 // ---------------------------------------------------------------------------
 // Validate required env vars at startup (fail fast, not on first request).
@@ -31,6 +32,11 @@ const BASE_URL = process.env['BETTER_AUTH_URL']
 // null/undefined), or `new URL('')` throws ERR_INVALID_URL below.
 const APP_ORIGIN = process.env['BETTER_AUTH_APP_ORIGIN'] || BASE_URL || 'http://localhost:5173'
 const IS_PROD = process.env['NODE_ENV'] === 'production'
+
+// Origin of the separately deployed admin UI (e.g. https://admin.<domain>).
+// Optional. When set it is trusted for sign-in (incl. passkeys) and is the
+// ONLY origin the /api/admin router accepts (see admin.ts).
+export const ADMIN_APP_ORIGIN = process.env['ADMIN_APP_ORIGIN']?.trim().replace(/\/+$/, '') || ''
 
 // WebAuthn Relying Party ID. Must be the registrable apex (e.g. openvfr.org)
 // when the API and app live on different subdomains, so a passkey registered
@@ -105,6 +111,7 @@ export const TRUSTED_ORIGINS: string[] = [
   BASE_URL,
   ...DEV_TRUSTED_ORIGINS,
   ...(process.env['BETTER_AUTH_TRUSTED_ORIGINS']?.split(',').map(o => o.trim()).filter(Boolean) ?? []),
+  ...(ADMIN_APP_ORIGIN ? [ADMIN_APP_ORIGIN] : []),
 ]
 
 export const auth = betterAuth({
@@ -113,12 +120,17 @@ export const auth = betterAuth({
 
   trustedOrigins: TRUSTED_ORIGINS,
 
-  // Admin accounts are passkey-only: a compromised mailbox (email OTP) must
-  // not be enough to become admin. Rejects the OTP sign-in route for any user
-  // whose role is 'admin'. Same message as a bad code, so it doesn't reveal
-  // which emails are admins. Lost passkey? See docs/self-hosting.md "Admin UI".
+  // A compromised mailbox (email OTP) alone must never be enough to become
+  // admin. Two modes (see admin.ts):
+  //   - Cloudflare Access configured (CF_ACCESS_*): Access is the second
+  //     factor, verified on every admin request, so OTP sign-in is allowed.
+  //   - Otherwise admins are passkey-only: the OTP sign-in route is refused
+  //     for any user whose role is 'admin', with the same message as a bad
+  //     code so it doesn't reveal which emails are admins.
+  // Lost passkey? See docs/self-hosting.md "Admin UI".
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      if (ACCESS_CONFIG) return
       if (ctx.path !== '/sign-in/email-otp') return
       const email = (ctx.body as { email?: unknown } | undefined)?.email
       if (typeof email !== 'string') return
@@ -232,6 +244,7 @@ export const auth = betterAuth({
       origin: Array.from(new Set([
         APP_ORIGIN,
         `https://${RP_ID}`,
+        ...(ADMIN_APP_ORIGIN ? [ADMIN_APP_ORIGIN] : []),
         ...(process.env['ANDROID_PASSKEY_ORIGIN'] ?? '')
           .split(',').map(o => o.trim()).filter(Boolean),
       ])),

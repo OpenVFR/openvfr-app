@@ -266,10 +266,6 @@ export default defineConfig({
         target: DEV_API_TARGET || 'http://localhost:5200',
         changeOrigin: true,
       },
-      '/api/admin': {
-        target: DEV_API_TARGET || 'http://localhost:5200',
-        changeOrigin: true,
-      },
       '/api/auth': {
         ...devApiOrigin,
         target: DEV_API_TARGET || 'http://localhost:5200',

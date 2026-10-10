@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, type ReactNode } from 'react'
+import { Component, type ReactNode } from 'react'
 import MapView from './components/MapView'
 import LoginPanel from './components/LoginPanel'
 import UpdatePrompt from './components/UpdatePrompt'
@@ -6,11 +6,6 @@ import TileUpdatePrompt from './components/TileUpdatePrompt'
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
 import { repairAppFiles } from './utils/repairApp'
-
-// Admin UI: separate lazy chunk, web only. Access is enforced server-side
-// (/api/admin/* + role=admin); this path check only picks what to render.
-const AdminPage = lazy(() => import('./components/admin/AdminPage'))
-const IS_ADMIN_ROUTE = window.location.pathname.replace(/\/+$/, '') === '/admin'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   constructor(props: { children: ReactNode }) {
@@ -61,9 +56,6 @@ function AppInner() {
 }
 
 export default function App() {
-  if (IS_ADMIN_ROUTE) {
-    return <ErrorBoundary><Suspense fallback={null}><AdminPage /></Suspense></ErrorBoundary>
-  }
   return <ErrorBoundary><AppInner /></ErrorBoundary>
 }
 

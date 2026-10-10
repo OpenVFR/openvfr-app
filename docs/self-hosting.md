@@ -135,23 +135,40 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   codes; without it, OTP codes are logged to the server console (fine for
   self-hosted/single-user use)
 
-### Admin UI
+### Admin API
 
-The web admin UI at `/admin` (user list, sign-up/activity stats, banning)
-and `/api/admin/*` are available to users whose `ba_user.role` is `admin`.
-There is no signup path for it -- grant it by hand. Admins are **passkey-only**:
-the account needs a registered passkey before `/api/admin/*` works, and the
-email-OTP sign-in is refused for admin accounts, so a compromised mailbox is
-not enough. Admin sessions also expire after `ADMIN_MAX_SESSION_HOURS`
-(default 12) and require signing in again with the passkey. So: sign in
-once (OTP), register a passkey in the app, then grant the role:
+`/api/admin/*` (user list, sign-up/activity stats, ban/unban) is a JSON API
+for an operator dashboard. This repo ships only the API; the admin web UI is
+deployed separately on its own origin, so script on the main app's origin can
+never drive it. Set `ADMIN_APP_ORIGIN` to that UI's origin (e.g.
+`https://admin.example.org`): it is trusted for sign-in and passkeys, and it
+becomes the *only* origin `/api/admin/*` accepts (requests with any other
+`Origin` get 403). Also allow that origin in your reverse proxy's CORS for
+`/api/auth/` and `/api/admin/`.
+
+Access requires `ba_user.role = 'admin'`. There is no signup path for it --
+grant it by hand after the account exists:
 
 ```sql
 UPDATE ba_user SET role = 'admin' WHERE email = 'you@example.org';
 ```
 
-Lost the passkey? Demote (`SET role = 'user'`), sign in by OTP, register a
-new passkey, promote again.
+A compromised mailbox (email OTP) alone must never be enough, so admins need a
+second factor, in one of two modes:
+
+- **Passkey-only (default).** The admin account needs a registered passkey,
+  and email-OTP sign-in is refused for admin accounts. Bootstrap: sign in by
+  OTP, register a passkey, *then* grant the role. Lost the passkey? Demote
+  (`SET role = 'user'`), sign in by OTP, register a new passkey, promote again.
+- **Cloudflare Access.** If the admin UI and `/api/admin/*` sit behind a
+  Cloudflare Access application, set `CF_ACCESS_TEAM_DOMAIN` (e.g.
+  `myteam.cloudflareaccess.com`) and `CF_ACCESS_AUD` (the application's
+  Audience tag). The api then verifies the `Cf-Access-Jwt-Assertion` token on
+  every admin request (signature, audience, issuer, expiry, and that its email
+  matches the admin account) and email-OTP sign-in is allowed for admins. Use
+  an Access login method that is not the same mailbox.
+
+Either way admin sessions expire after `ADMIN_MAX_SESSION_HOURS` (default 12).
 
 Admins see account metadata and aggregate counts only -- never routes,
 positions or flight logs. Banning uses better-auth's admin plugin: it
