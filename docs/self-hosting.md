@@ -31,7 +31,7 @@ native reads the same files over HTTP from wherever you serve them (see
 
 | File | Format | Contents |
 |---|---|---|
-| `se-basemap.pmtiles` | PMTiles | OSM-derived vector basemap, country-bbox detail only (z7-12). App builds before per-country basemaps request the unprefixed `basemap.pmtiles` (keep a copy of Sweden's under that name until those builds are gone) |
+| `se-basemap.pmtiles` | PMTiles | OSM-derived vector basemap, country-bbox detail only (z7-12) |
 | `europe-overview.pmtiles` | PMTiles | Shared low-zoom (z0-6) continent-wide overview, NOT country-specific -- built once, fills the gap outside the country basemap's bbox so pan/zoom-out doesn't show bare gray past the detail archive's edge |
 | `se-airspace.geojson` | GeoJSON | Airspace polygons (class, type, altitudes) |
 | `se-aerodromes.geojson` | GeoJSON | Aerodrome points + runway/frequency data |
@@ -220,7 +220,7 @@ removes it. An already-issued PostgREST JWT stays valid until its 1 h expiry.
   been observed happening *intermittently* on a large multipart-uploaded
   object fronted by a CDN whose per-object cache limit was smaller than
   the archive (every request went to origin uncached). Verify with:
-  `curl -sI -H 'Range: bytes=100000000-100016383' https://<tiles>/basemap.pmtiles`
+  `curl -sI -H 'Range: bytes=100000000-100016383' https://<tiles>/se-basemap.pmtiles`
   -- expect `HTTP/1.1 206` and `Content-Length: 16384`, never `200`. Repeat
   a few times; a single `200` is a failure. Object-storage backends and
   CDNs generally honour Range, but check yours, and keep single archives
@@ -238,7 +238,7 @@ removes it. An already-issued PostgREST JWT stays valid until its 1 h expiry.
   tile hostname with **Cache eligibility: Bypass cache**. Requests then go
   straight to R2, which serves correct `206` responses for any archive
   size, so no per-file size list needs maintaining. Confirm with
-  `curl -sI https://<tiles>/basemap.pmtiles | grep -i cf-cache-status`
+  `curl -sI https://<tiles>/se-basemap.pmtiles | grep -i cf-cache-status`
   (expect `BYPASS` or `DYNAMIC`, not `HIT`/`MISS`) and repeat the Range
   check above several hundred times, since the failure is intermittent.
 - You can deploy the frontend, API, and tile storage as one origin

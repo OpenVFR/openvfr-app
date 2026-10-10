@@ -6,8 +6,8 @@
  * `size`, and `uri` are plain synchronous getters, so callers can check cache
  * state without awaiting anything.
  *
- * Cache layout: <documentDirectory>/ovfr-offline/<name>
- *   basemap.pmtiles          — Protomaps vector basemap (large, ~600 MB+ for
+ * Cache layout: <documentDirectory>/ovfr-offline/<name>, per country (<cc>-*)
+ *   se-basemap.pmtiles       — Protomaps vector basemap (large, ~600 MB+ for
  *                               a whole country; this is the dominant cost,
  *                               warn the user and require explicit opt-in)
  *   se-airspace.geojson
@@ -123,8 +123,9 @@ function getCacheDir(): Directory {
   if (!dir.exists) dir.create({ intermediates: true })
   if (!_migrated) {
     _migrated = true
-    // One-time: the Swedish basemap used to be cached as the unprefixed
-    // 'basemap.pmtiles'. Rename instead of making the user re-download it.
+    // One-time: early (internal test) builds cached the Swedish basemap as
+    // the unprefixed 'basemap.pmtiles'. Rename it so it isn't left behind as
+    // an orphaned ~640 MB file; the server no longer serves that name.
     try {
       const legacy = new File(dir, 'basemap.pmtiles')
       const target = new File(dir, countryArchiveFile('se', 'basemap'))
