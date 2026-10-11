@@ -274,7 +274,9 @@ function scopeInputFor(n: NmsNotam): RegionScopeInput {
     lon:          g.lon,
     // Unclamped Q radius for the scope test when no better geometry exists,
     // so the 999 NM sentinel is recognised there as "no usable radius".
-    radiusNm:     g.radiusNm ?? g.qRadiusNm,
+    // A point (no radius) is tested as a point: e.g. a navaid outage is
+    // relevant where the navaid is, not across its whole service range.
+    radiusNm:     g.radiusNm,
   }
 }
 
@@ -315,6 +317,18 @@ function geometryOf(n: NmsNotam): NotamGeometry {
   const qRadiusNm = Number.isFinite(r) ? r : null
   const radiusGiven = qRadiusNm !== null && qRadiusNm > 0
   const bogus = radiusGiven && qRadiusNm! > MAX_SANE_RADIUS_NM
+  // The Q-line radius only describes an AREA for subject groups R
+  // (airspace restrictions: R/D/P areas, TRA/TSA activations) and W
+  // (navigation warnings: exercises, UAS, parachuting, ...). For everything
+  // else it is a range of influence -- a VOR's or ATS unit's service
+  // volume ("VOR TNO U/S" r=60, "LIEPAJA FIS SECT HR" r=87, "VAASA TWR/APP
+  // OPR HR" r=30), an aerodrome's surroundings -- and drawing it as a
+  // circle paints large false areas over neighbouring countries. Those are
+  // shown as a point at their location instead (a reference NOTAM map
+  // draws ~97% R/W as areas, the rest only where the text gives a shape).
+  const qc = qCodeFor(n)
+  const areaSubject = !qc || qc[1] === 'R' || qc[1] === 'W'
+  const qArea = radiusGiven && !bogus && areaSubject
 
   let out: NotamGeometry
   const polygon = extractNotamPolygon(n.geometry)
@@ -324,12 +338,12 @@ function geometryOf(n: NmsNotam): NotamGeometry {
     const t = notamTextGeometry(n.text, geo ? { lat: geo.lat, lon: geo.lon, radiusNm: qRadiusNm } : null)
     if (t.polygon) out = { polygon: t.polygon, lat: null, lon: null, radiusNm: null, qRadiusNm }
     else if (t.circle) out = { polygon: null, lat: t.circle.lat, lon: t.circle.lon, radiusNm: t.circle.radiusNm, qRadiusNm }
-    else if (t.point) out = { polygon: null, lat: t.point.lat, lon: t.point.lon, radiusNm: radiusGiven && !bogus ? qRadiusNm : null, qRadiusNm }
+    else if (t.point) out = { polygon: null, lat: t.point.lat, lon: t.point.lon, radiusNm: qArea ? qRadiusNm : null, qRadiusNm }
     else out = {
       polygon: null,
       lat: geo && !bogus ? geo.lat : null,
       lon: geo && !bogus ? geo.lon : null,
-      radiusNm: geo && radiusGiven && !bogus ? qRadiusNm : null,
+      radiusNm: geo && qArea ? qRadiusNm : null,
       qRadiusNm,
     }
   }
