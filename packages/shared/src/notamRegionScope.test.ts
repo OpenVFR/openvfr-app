@@ -119,3 +119,32 @@ describe('filterNotamsToRegions', () => {
     expect(filterNotamsToRegions(list, ['se', 'dk']).map(n => n.affectedFir)).toEqual(['ESAA', 'EKDK'])
   })
 })
+
+describe('notamInRegions with real country outlines', async () => {
+  const { prepareOutline } = await import('./notamCoverageArea')
+  const raw = (await import('../../../apps/api/src/country-outlines.json')).default as Record<string, number[][][][]>
+  const outlines = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, prepareOutline(v)]))
+  const se = regionScope(['se'], outlines)
+  const foreign = (lat: number, lon: number, radiusNm: number | null, fir: string) =>
+    ({ ...base, affectedFir: fir, icaoLocation: fir, lat, lon, radiusNm })
+
+  it('keeps the German Baltic exercise circle that reaches the Swedish coast', () => {
+    expect(notamInRegions(foreign(54.3, 12.1833, 85, 'EDWW'), se)).toBe(true)
+  })
+  it('drops a Latvian coastal restricted area (inside Sweden\'s bbox, far from Swedish airspace)', () => {
+    expect(notamInRegions(foreign(57.0, 21.5, 5, 'EVRR'), se)).toBe(false)
+  })
+  it('drops a Finnish west-coast area', () => {
+    expect(notamInRegions(foreign(62.6, 21.3, 5, 'EFIN'), se)).toBe(false)
+  })
+  it('keeps an area just off Gotland (island is part of the outline)', () => {
+    // East of Gotland (~57.5N 18.9E coast), centre 15 NM out, radius 5 NM.
+    expect(notamInRegions(foreign(57.5, 19.35, 5, 'EVRR'), se)).toBe(true)
+  })
+  it('drops a whole-FIR reference point of another FIR', () => {
+    expect(notamInRegions(foreign(58.7, 25.0, 999, 'EETT'), se)).toBe(false)
+  })
+  it('still keeps anything filed in the region', () => {
+    expect(notamInRegions(foreign(0, 0, 5, 'ESAA'), se)).toBe(true)
+  })
+})

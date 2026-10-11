@@ -24,7 +24,8 @@ import { EUROPEAN_REGIONS, type Region } from './regions'
 import { REGION_ICAO_PREFIXES } from './notamRelevance'
 import {
   circleIntersectsBbox, pointNearBbox, polygonNearBbox,
-  type CoverageBbox, type NotamPolygonGeometry,
+  circleNearOutline, pointNearOutline, polygonNearOutline,
+  type CoverageBbox, type NotamPolygonGeometry, type PreparedOutline,
 } from './notamCoverageArea'
 
 export interface LatLng { lat: number; lng: number }
@@ -152,28 +153,52 @@ export interface RegionScopeInput {
 export interface RegionScope {
   prefixes: Set<string>
   bboxes: CoverageBbox[]
+  /** Real country outlines (when supplied) -- used instead of the bboxes. */
+  outlines?: PreparedOutline[]
 }
 
-export function regionScope(regions: string[]): RegionScope {
+/**
+ * How close (NM) a foreign NOTAM's geometry must come to a country's real
+ * outline to count as relevant: the 12 NM territorial sea, i.e. the
+ * country's own airspace. Islands (Gotland, Öland, ...) are part of the
+ * outline.
+ */
+export const OUTLINE_BUFFER_NM = 12
+
+/**
+ * `outlines`: real country outlines by region code (server side; see
+ * apps/api country-outlines.json). Without them the geometry test falls
+ * back to the region bounding boxes, which are far too coarse for
+ * filtering (Sweden's covers the coasts of Finland and the Baltics) and
+ * only good enough for the broad ingest scope.
+ */
+export function regionScope(
+  regions: string[],
+  outlines?: Readonly<Record<string, PreparedOutline>>,
+): RegionScope {
   const prefixes = new Set<string>()
   const bboxes: CoverageBbox[] = []
+  const prepared: PreparedOutline[] = []
   for (const code of regions) {
     const r = REGION_BY_CODE.get(code)
     if (!r) continue
     bboxes.push(toBbox(r))
+    const o = outlines?.[code]
+    if (o) prepared.push(o)
     for (const p of REGION_ICAO_PREFIXES[code] ?? []) prefixes.add(p)
   }
-  return { prefixes, bboxes }
+  return { prefixes, bboxes, outlines: outlines ? prepared : undefined }
 }
 
 /**
  * True when a NOTAM is relevant to the region set. Kept if EITHER:
  *  - it is filed in one of the regions (ICAO prefix of its FIR or location
  *    indicator), wherever its geometry is; or
- *  - its own geometry (polygon, sane-radius circle, or bare point) reaches
- *    into one of the regions' bounding boxes -- the cross-border case, e.g.
- *    a German-filed exercise area over the southern Baltic for a Swedish
- *    pilot.
+ *  - its own geometry (polygon, sane-radius circle, or bare point) comes
+ *    within OUTLINE_BUFFER_NM of one of the regions' real outlines (or,
+ *    without outlines, reaches into their bounding boxes) -- the
+ *    cross-border case, e.g. a German-filed exercise area reaching the
+ *    Swedish coast.
  * A NOTAM with neither a recognisable filing location nor any geometry is
  * kept: nothing says it is irrelevant, and dropping it would be silent.
  */
@@ -183,14 +208,25 @@ export function notamInRegions(n: RegionScopeInput, scope: RegionScope): boolean
     .map(s => s.slice(0, 2).toUpperCase())
   if (filed.some(p => scope.prefixes.has(p))) return true
 
-  if (n.polygon) return scope.bboxes.some(b => polygonNearBbox(n.polygon!, REGION_MARGIN_DEG, b))
+  const outlines = scope.outlines
+  if (n.polygon) {
+    return outlines
+      ? outlines.some(o => polygonNearOutline(n.polygon!, OUTLINE_BUFFER_NM, o))
+      : scope.bboxes.some(b => polygonNearBbox(n.polygon!, REGION_MARGIN_DEG, b))
+  }
 
   if (n.lat !== null && n.lon !== null) {
     const r = n.radiusNm
     if (typeof r === 'number' && Number.isFinite(r) && r > 0 && r <= MAX_SANE_RADIUS_NM) {
-      return scope.bboxes.some(b => circleIntersectsBbox(n.lat!, n.lon!, r, b))
+      return outlines
+        ? outlines.some(o => circleNearOutline(n.lat!, n.lon!, r, OUTLINE_BUFFER_NM, o))
+        : scope.bboxes.some(b => circleIntersectsBbox(n.lat!, n.lon!, r, b))
     }
-    return scope.bboxes.some(b => pointNearBbox(n.lat!, n.lon!, REGION_MARGIN_DEG, b))
+    // No usable radius (point, or the 999 NM whole-FIR sentinel whose
+    // coordinate is just the FIR's reference point): the point itself.
+    return outlines
+      ? outlines.some(o => pointNearOutline(n.lat!, n.lon!, OUTLINE_BUFFER_NM, o))
+      : scope.bboxes.some(b => pointNearBbox(n.lat!, n.lon!, REGION_MARGIN_DEG, b))
   }
 
   return filed.length === 0

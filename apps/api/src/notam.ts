@@ -87,6 +87,43 @@ import { dirname } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { notamInRegions, regionScope, type RegionScopeInput } from '@open-vfr/shared/notamRegionScope'
 import { EUROPEAN_REGIONS } from '@open-vfr/shared/regions'
+import { prepareOutline, type PreparedOutline } from '@open-vfr/shared/notamCoverageArea'
+import countryOutlinesJson from './country-outlines.json' with { type: 'json' }
+
+// Real country outlines (incl. islands) for request-time NOTAM scoping --
+// see scripts/build-country-outlines.ts. The ingest scope below keeps using
+// the coarse region boxes on purpose (broad cache, cheap per record).
+const COUNTRY_OUTLINES: Record<string, PreparedOutline> = Object.fromEntries(
+  Object.entries(countryOutlinesJson as unknown as Record<string, number[][][][]>)
+    .map(([code, mp]) => [code, prepareOutline(mp)]),
+)
+
+const _regionScopes = new Map<string, ReturnType<typeof regionScope>>()
+function scopeFor(code: string): ReturnType<typeof regionScope> {
+  let s = _regionScopes.get(code)
+  if (!s) { s = regionScope([code], COUNTRY_OUTLINES); _regionScopes.set(code, s) }
+  return s
+}
+
+// Outline tests are much heavier than the old box test; a record's answer
+// per region never changes (an update replaces the record object), so
+// memoise per record object -- the cache drops entries with the record.
+const _inRegionMemo = new WeakMap<object, Map<string, boolean>>()
+function inAnyRegion(n: NmsNotam, scopes: { code: string; scope: ReturnType<typeof regionScope> }[]): boolean {
+  let memo = _inRegionMemo.get(n)
+  if (!memo) { memo = new Map(); _inRegionMemo.set(n, memo) }
+  let input: RegionScopeInput | null = null
+  for (const { code, scope } of scopes) {
+    let hit = memo.get(code)
+    if (hit === undefined) {
+      input ??= scopeInputFor(n)
+      hit = notamInRegions(input, scope)
+      memo.set(code, hit)
+    }
+    if (hit) return true
+  }
+  return false
+}
 
 export type NotamPolygonGeometry =
   | { type: 'Polygon'; coordinates: number[][][] }
@@ -911,7 +948,7 @@ export function getAerodromeNotamTexts(regions: string[]): Record<string, string
  * supported region; this never returns the whole of it.
  */
 export function getRegionalNotams(regions: string[]): NotamResponse {
-  const scope = regionScope(regions)
+  const scopes = regions.map((code) => ({ code, scope: scopeFor(code) }))
   const notams: NotamItem[] = []
   // Dedup on nmsId (NMS-API's own globally-unique internal id), NOT the
   // display `id` (published NOTAM number) -- confirmed live and real that
@@ -924,7 +961,7 @@ export function getRegionalNotams(regions: string[]): NotamResponse {
   const seen = new Set<string>()
   for (const [key, byId] of _cache) {
     const military = key === MILITARY_EU_KEY
-    const raw = [...byId.values()].filter((n) => (military || isRegional(n)) && notamInRegions(scopeInputFor(n), scope))
+    const raw = [...byId.values()].filter((n) => (military || isRegional(n)) && inAnyRegion(n, scopes))
     for (const n of activeItems(raw)) {
       if (seen.has(n.nmsId)) continue // e.g. the same record in the MILITARY and INTERNATIONAL pulls
       seen.add(n.nmsId)

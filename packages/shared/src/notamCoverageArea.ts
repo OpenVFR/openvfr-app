@@ -80,3 +80,122 @@ export function polygonNearBbox(
   }
   return false
 }
+
+// ── Country outlines (real borders incl. islands) ───────────────────────────
+// A rectangle per country is far too coarse for "does this NOTAM reach the
+// country": Sweden's spans the whole Baltic and the coasts of Finland,
+// Estonia, Latvia and Lithuania. These test against the country's actual
+// land outline (MultiPolygon, [lon, lat] rings, holes ignored) plus a
+// buffer in NM -- e.g. 12 NM, the territorial sea, i.e. the country's own
+// airspace.
+
+/** MultiPolygon coordinates: polygons -> rings -> [lon, lat] points. */
+export type CountryOutline = number[][][][]
+
+/** Precomputed outline + its bbox, for a cheap reject before the exact test. */
+export interface PreparedOutline {
+  rings: number[][][]   // outer rings only
+  bbox: CoverageBbox
+}
+
+export function prepareOutline(outline: CountryOutline): PreparedOutline {
+  const rings = outline.map(p => p[0]).filter((r): r is number[][] => !!r && r.length >= 3)
+  let south = 90, west = 180, north = -90, east = -180
+  for (const r of rings) for (const [lon, lat] of r) {
+    if (lat! < south) south = lat!; if (lat! > north) north = lat!
+    if (lon! < west) west = lon!;   if (lon! > east) east = lon!
+  }
+  return { rings, bbox: { south, west, north, east } }
+}
+
+function inRing(lat: number, lon: number, ring: number[][]): boolean {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i] as [number, number]
+    const [xj, yj] = ring[j] as [number, number]
+    if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside
+  }
+  return inside
+}
+
+// Local flat projection in NM around refLat -- fine at the scale of a
+// NOTAM buffer (tens of NM), same approach as circleIntersectsBbox.
+function segDistNm(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax, dy = by - ay
+  const len2 = dx * dx + dy * dy
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2))
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+}
+
+/** Distance (NM) from a point to the outline; 0 when on land inside it. */
+export function distanceToOutlineNm(lat: number, lon: number, o: PreparedOutline): number {
+  const kx = nmPerDegLon(lat), ky = 60
+  let best = Infinity
+  for (const ring of o.rings) {
+    if (inRing(lat, lon, ring)) return 0
+    for (let i = 1; i < ring.length; i++) {
+      const [ax, ay] = ring[i - 1] as [number, number]
+      const [bx, by] = ring[i] as [number, number]
+      const d = segDistNm(lon * kx, lat * ky, ax * kx, ay * ky, bx * kx, by * ky)
+      if (d < best) best = d
+    }
+  }
+  return best
+}
+
+function bboxGrow(b: CoverageBbox, nm: number): CoverageBbox {
+  const dLat = nm / 60
+  const dLon = nm / Math.max(1, nmPerDegLon(Math.max(Math.abs(b.south), Math.abs(b.north))))
+  return { south: b.south - dLat, north: b.north + dLat, west: b.west - dLon, east: b.east + dLon }
+}
+
+/** Point within bufferNm of the outline (or on land). */
+export function pointNearOutline(lat: number, lon: number, bufferNm: number, o: PreparedOutline): boolean {
+  if (!pointNearBbox(lat, lon, 0, bboxGrow(o.bbox, bufferNm))) return false
+  return distanceToOutlineNm(lat, lon, o) <= bufferNm
+}
+
+/** Circle (radius NM) reaching within bufferNm of the outline. */
+export function circleNearOutline(lat: number, lon: number, radiusNm: number, bufferNm: number, o: PreparedOutline): boolean {
+  if (!circleIntersectsBbox(lat, lon, radiusNm, bboxGrow(o.bbox, bufferNm))) return false
+  return distanceToOutlineNm(lat, lon, o) <= radiusNm + bufferNm
+}
+
+function segsIntersect(a: number[], b: number[], c: number[], d: number[]): boolean {
+  const o = (p: number[], q: number[], r: number[]) =>
+    Math.sign((q[0]! - p[0]!) * (r[1]! - p[1]!) - (q[1]! - p[1]!) * (r[0]! - p[0]!))
+  return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b)
+}
+
+/**
+ * NOTAM polygon reaching within bufferNm of the outline: a vertex near it,
+ * an edge crossing it, or the country lying inside the NOTAM area.
+ */
+export function polygonNearOutline(polygon: NotamPolygonGeometry, bufferNm: number, o: PreparedOutline): boolean {
+  const rings = polygon.type === 'Polygon' ? [polygon.coordinates[0]] : polygon.coordinates.map(p => p[0])
+  const grown = bboxGrow(o.bbox, bufferNm)
+  for (const ring of rings) {
+    if (!ring || ring.length < 3) continue
+    // Cheap reject: NOTAM area's own bbox doesn't touch the grown outline bbox.
+    let s = 90, w = 180, n = -90, e = -180
+    for (const [lon, lat] of ring) {
+      if (lat! < s) s = lat!; if (lat! > n) n = lat!
+      if (lon! < w) w = lon!; if (lon! > e) e = lon!
+    }
+    if (n < grown.south || s > grown.north || e < grown.west || w > grown.east) continue
+    for (const v of ring) {
+      const [lon, lat] = v as [number, number]
+      if (pointNearOutline(lat, lon, bufferNm, o)) return true
+    }
+    for (const cr of o.rings) {
+      const first = cr[0]
+      if (first && inRing(first[1]!, first[0]!, ring)) return true
+      for (let i = 1; i < ring.length; i++) {
+        for (let j = 1; j < cr.length; j++) {
+          if (segsIntersect(ring[i - 1]!, ring[i]!, cr[j - 1]!, cr[j]!)) return true
+        }
+      }
+    }
+  }
+  return false
+}

@@ -84,6 +84,9 @@ OpenVFR is built on the following data and map sources:
   (Eurocontrol EAD requires a paid service agreement for real access). Do
   not treat as a complete substitute for official national NOTAM/AIP
   sources.
+* **[Natural Earth](https://www.naturalearthdata.com/)** — country outlines
+  (1:10m Admin 0, simplified; `apps/api/src/country-outlines.json`) used to
+  decide which cross-border NOTAMs reach a country. Public domain.
 * **[OpenSky Network](https://opensky-network.org/)** — live ADS-B air
   traffic data, via a registered OpenSky account (rate/credit limited).
 * **[Open Glider Network (OGN)](https://www.glidernet.org/)** — live
