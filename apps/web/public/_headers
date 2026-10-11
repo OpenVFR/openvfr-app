@@ -1,5 +1,20 @@
+# Security headers for app.openvfr.org (Cloudflare Workers static assets).
+# HSTS and X-Content-Type-Options come from the zone (SSL/TLS settings).
+#
+# CSP: every origin the SPA talks to must be listed in connect-src --
+# MapLibre fetches ALL tile/sprite/glyph/raster data via fetch(), so image
+# hosts go in connect-src too, not img-src. Workers are created from blob:
+# URLs (MapLibre); images are decoded from blobs; React sets inline style
+# attributes, which style-src needs 'unsafe-inline' for. If a new third-
+# party host is added to map-style.ts or a fetch helper, add it here or the
+# browser silently refuses the request ("Refused to connect" in console).
 /*
   X-Robots-Tag: noindex, nofollow
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.openvfr.org https://tiles.openvfr.org https://cdn.jsdelivr.net https://server.arcgisonline.com; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=()
+  Cross-Origin-Opener-Policy: same-origin
 
 # BUG FIX: sw.js, index.html, and manifest.webmanifest must never be
 # edge/browser-cached, or the browser's own byte-comparison update check
