@@ -59,13 +59,38 @@ describe('notamTextGeometry', () => {
   })
 
   it('ignores text geometry far outside the Q-line circle', () => {
-    const g = notamTextGeometry('PSN 481149N0105237E', { lat: 59.65, lon: 17.93, radiusNm: 5 })
+    const g = notamTextGeometry('PSN 481149N0105237E', { lat: 59.65, lon: 17.93, radiusNm: 5 }) // ~700 NM away
     expect(g.point).toBeNull()
   })
 
-  it('several circles: none chosen (the Q envelope stays)', () => {
-    const g = notamTextGeometry('KITES 1NM RADIUS OF 513706N 0073009E AND 1NM RADIUS OF 514000N 0073500E', null)
-    expect(g).toEqual({ polygon: null, circle: null, point: null })
+  it('several circles: one polygon each', () => {
+    const g = notamTextGeometry('AREA 1: 1.45KM RADIUS OF 543954.00N 0251400.00E (VILKPEDE), AREA 2: 1.24KM RADIUS OF 544034.22N 0251538.37E', null)
+    expect(g.polygon?.type).toBe('MultiPolygon')
+    expect(g.polygon?.type === 'MultiPolygon' && g.polygon.coordinates).toHaveLength(2)
+  })
+
+  it('numbered vertex list ("1. c 2. c")', () => {
+    const t = 'TEMPORARY RESERVED AREA EPTR427 ZEGRZE. LATERAL LIMITS: 1. 522747N 0210113E 2. 522831N 0210154E 3. 522909N 0205951E 4. 522823N 0205905E 5. 522804N 0205953E 1. 522747N 0210113E VERTICAL LIMITS: GND-1800FT AMSL.'
+    const g = notamTextGeometry(t, { lat: 52.4667, lon: 21, radiusNm: 2 })
+    expect(g.polygon?.type).toBe('Polygon')
+  })
+
+  it('"STATE BORDER" links between vertices', () => {
+    const t = 'WITHIN AREA BOUNDED BY THE \nFOLLOWING COORD POINTS:\n483103N0205854E\nSTATE BORDER\n483018N0213612E\nSTATE BORDER\n472025N0215511E\nSTATE BORDER\n465307N0213518E\n483103N0205854E (AG-22 HIGH).'
+    expect(notamTextGeometry(t, null).polygon?.type).toBe('Polygon')
+  })
+
+  it('circle: "CIRCLE RADIUS 2NM CENTERED ON POINT c", "1050M RADIUS CENTERED ON COORD: c", double spaces, "1NM AROUND c"', () => {
+    expect(notamTextGeometry('LATERAL LIMITS: CIRCLE RADIUS 2NM CENTERED ON POINT 542119N 0185004E', null).circle?.radiusNm).toBe(2)
+    expect(notamTextGeometry('WI 1050M RADIUS CENTERED ON COORD: 371242.7N 0064606.0W AREA', null).circle).not.toBeNull()
+    expect(notamTextGeometry('WI 600M RADIUS CENTERED  ON 542132N\r\n0232633E (SESTOKAI)', null).circle).not.toBeNull()
+    expect(notamTextGeometry('UAS ACTIVITY 1NM AROUND 541914N0093156E (HOHN)', null).circle?.radiusNm).toBe(1)
+    expect(notamTextGeometry('AVOID ZWIGGELTE AT PSN 525358N 0063348E RADIUS 0,25NM.', null).circle?.radiusNm).toBe(0.25)
+  })
+
+  it('single bare coordinate is the position', () => {
+    expect(notamTextGeometry('CAPTIVE BALLOON 514942N 0155831E - TARNOW UPPER LIMIT: 900FT AMSL', null).point).not.toBeNull()
+    expect(notamTextGeometry('FIREWORKS DISPLAY AT COORD: 275505,30N 0152401,15W HEIGHT: 100M', null).point?.lat).toBeCloseTo(27.918, 3)
   })
 
   it('no geometry in plain text', () => {
