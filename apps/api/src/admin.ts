@@ -32,6 +32,10 @@ import { ACCESS_CONFIG, createAccessVerifier } from './accessJwt.js'
 import { pool } from './db.js'
 import { invalidateCountries } from './countries.js'
 import { EUROPEAN_REGIONS, isSupportedRegion } from '@open-vfr/shared/regions'
+import { currentAiracCycle } from '@open-vfr/shared/airac'
+import { countryPipelineDetail, countrySummaries, isPipelineJob, PIPELINE_JOBS, queuePipelineJob, queuedCount } from './pipeline.js'
+
+const MAX_QUEUED_JOBS = 20
 
 const MAX_SESSION_MS = Number(process.env['ADMIN_MAX_SESSION_HOURS'] ?? 12) * 3_600_000
 const verifyAccess = ACCESS_CONFIG ? createAccessVerifier(ACCESS_CONFIG) : null
@@ -219,28 +223,92 @@ admin.post('/users/:id/unban', async (c) => {
   return c.json({ ok: true })
 })
 
+type RegistryRow = {
+  code: string; enabled: boolean; enabled_at: Date | null; tiles_ready_at: Date | null; last_error: string | null
+}
+
+function registryJson(code: string, name: string, r: RegistryRow | undefined) {
+  return {
+    code, name,
+    enabled:      r?.enabled ?? false,
+    enabledAt:    r?.enabled_at ?? null,
+    tilesReadyAt: r?.tiles_ready_at ?? null,
+    lastError:    r?.last_error ?? null,
+    available:    !!r?.enabled && !!r.tiles_ready_at,
+  }
+}
+
 // GET /api/admin/countries -- every supported country with its registry
-// state (see db/migrations/20261001000000_countries.sql). `available` is what
-// clients see: enabled AND built by the data pipeline.
+// state (see db/migrations/20261001000000_countries.sql) and a data summary:
+// oldest AIRAC cycle among its aviation datasets, oldest dataset load, and
+// pipeline jobs queued/running or whose latest run failed. `available` is
+// what clients see: enabled AND built by the data pipeline.
 admin.get('/countries', async (c) => {
-  const { rows } = await pool.query<{
-    code: string; enabled: boolean; enabled_at: Date | null; tiles_ready_at: Date | null; last_error: string | null
-  }>('SELECT code, enabled, enabled_at, tiles_ready_at, last_error FROM countries')
+  const [{ rows }, summary] = await Promise.all([
+    pool.query<RegistryRow>('SELECT code, enabled, enabled_at, tiles_ready_at, last_error FROM countries'),
+    countrySummaries(),
+  ])
   const byCode = new Map(rows.map(r => [r.code.trim(), r]))
   return c.json({
+    currentAirac: currentAiracCycle(),
     // Only countries openflightmaps publishes data for (SUPPORTED_REGION_CODES).
     countries: EUROPEAN_REGIONS.filter(({ code }) => isSupportedRegion(code)).map(({ code, name }) => {
-      const r = byCode.get(code)
+      const s = summary.get(code)
       return {
-        code, name,
-        enabled:      r?.enabled ?? false,
-        enabledAt:    r?.enabled_at ?? null,
-        tilesReadyAt: r?.tiles_ready_at ?? null,
-        lastError:    r?.last_error ?? null,
-        available:    !!r?.enabled && !!r.tiles_ready_at,
+        ...registryJson(code, name, byCode.get(code)),
+        airacCycle:     s?.airacCycle ?? null,
+        oldestLoadAt:   s?.oldestLoadAt ?? null,
+        datasetsLoaded: s?.datasetsLoaded ?? 0,
+        activeJobs:     s?.activeJobs ?? 0,
+        failedJobs:     s?.failedJobs ?? 0,
       }
     }),
   })
+})
+
+// GET /api/admin/countries/:code -- one country's data in detail: per-dataset
+// loads (AIRAC cycle, last success, rows), pipeline jobs (latest run with log
+// tail, whether a run may be requested), recent runs, and the files the tile
+// host serves (manifest entry + HEAD: size, Last-Modified). Pipeline output
+// only; no user data.
+admin.get('/countries/:code', async (c) => {
+  const code = c.req.param('code').toLowerCase()
+  if (!isSupportedRegion(code)) return c.json({ error: 'Unsupported country (no openflightmaps data)' }, 404)
+  const name = EUROPEAN_REGIONS.find(r => r.code === code)?.name ?? code
+  const { rows } = await pool.query<RegistryRow>(
+    'SELECT code, enabled, enabled_at, tiles_ready_at, last_error FROM countries WHERE code = $1', [code])
+  const reg = registryJson(code, name, rows[0])
+  const detail = await countryPipelineDetail(code, { enabled: reg.enabled, ready: !!reg.tilesReadyAt })
+  return c.json({ ...reg, currentAirac: currentAiracCycle(), ...detail })
+})
+
+// POST /api/admin/countries/:code/jobs { job } -- ask the data pipeline to run
+// one job for this country now (e.g. retry a failed AIRAC update). Only
+// queues a row in pipeline_jobs; the pipeline picks it up (one at a time) and
+// records the result. Refresh jobs need a country with built data; 'build'
+// needs an enabled country without it. One queued-or-running run per
+// (job, country) -- a second request gets 409 -- and at most MAX_QUEUED_JOBS
+// waiting overall. Auth + per-admin rate limit come from requireAdmin.
+admin.post('/countries/:code/jobs', async (c) => {
+  const code = c.req.param('code').toLowerCase()
+  if (!isSupportedRegion(code)) return c.json({ error: 'Unsupported country (no openflightmaps data)' }, 404)
+  const body = await c.req.json().catch(() => null) as { job?: unknown } | null
+  const job = body?.job
+  if (!isPipelineJob(job)) return c.json({ error: `Body must be { job: ${Object.keys(PIPELINE_JOBS).join(' | ')} }` }, 400)
+
+  const { rows } = await pool.query<{ enabled: boolean; tiles_ready_at: Date | null }>(
+    'SELECT enabled, tiles_ready_at FROM countries WHERE code = $1', [code])
+  const r = rows[0]
+  if (!r?.enabled) return c.json({ error: 'Country is not enabled' }, 409)
+  const ready = !!r.tiles_ready_at
+  if (PIPELINE_JOBS[job].when === 'ready' && !ready) return c.json({ error: 'Country has no built data yet; request a full build instead' }, 409)
+  if (PIPELINE_JOBS[job].when === 'pending' && ready) return c.json({ error: 'Country is already built; request individual refreshes instead' }, 409)
+
+  if (await queuedCount() >= MAX_QUEUED_JOBS) return c.json({ error: 'Too many runs waiting; try again later' }, 429)
+  const id = await queuePipelineJob(job, code, c.get('adminEmail'))
+  if (id === 'busy') return c.json({ error: 'This job is already queued or running for this country' }, 409)
+  console.log(`[admin] ${c.get('adminEmail')} queued pipeline job ${job} for ${code} (#${id})`)
+  return c.json({ ok: true, id })
 })
 
 // POST /api/admin/countries/:code { enabled: boolean } -- enable/disable a

@@ -76,6 +76,34 @@ rest and `/api/countries` never lists them.
   served. Until then the country stays hidden from clients, so nobody can pick
   a country whose files don't exist.
 
+### Pipeline runs (`pipeline_jobs` table, optional)
+
+The admin UI's country detail shows each dataset's last load (`data_loads`:
+AIRAC cycle, time, row count), the files the tile host serves, and the
+pipeline's run history, and can request a run. Both are a contract with your
+data pipeline via the `pipeline_jobs` table (migration
+`20261011000000_pipeline_jobs.sql`); a pipeline that ignores it still works,
+the UI then just has no history and requested runs stay queued.
+
+- **History:** when a scheduled job starts on a country, insert a row with
+  `status = 'running'`, `trigger = 'schedule'`, `started_at = now()`; when it
+  ends, set `status` to `ok`/`failed`, `finished_at`, a one-line `message`
+  and optionally the last few KB of output in `log_tail`. Failures are the
+  point: `data_loads` only records successes.
+- **Requested runs:** `POST /api/admin/countries/:code/jobs { "job": "ofmx" }`
+  inserts a `queued` row. Poll for queued rows, set them `running`, run the
+  job for that country, finish them as above. Job ids (see
+  `apps/api/src/pipeline.ts`): `ofmx` (airspace, aerodromes, navaids,
+  waypoints, runways, runway thresholds), `obstacles`, `landmarks`, `water`,
+  `aeroways`, `landuse`, `basemap` (refreshes of a ready country) and `build`
+  (first build of an enabled country without data).
+- At most one `queued`/`running` row per (job, country) is allowed (unique
+  index): a scheduled run that cannot insert its row should skip that
+  country, since another run is already active.
+- Set `TILES_BASE_URL` on the api (your public tile host) for the file check:
+  it reads `manifest.json` and sends one `HEAD` per country file (size,
+  `Last-Modified`).
+
 NOTAMs need no per-country setup: the api keeps NOTAMs for every country in
 `packages/shared/src/regions.ts` and filters per request.
 
@@ -162,11 +190,14 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
 - `BREVO_API_KEY` — optional, enables transactional email for auth OTP
   codes; without it, OTP codes are logged to the server console (fine for
   self-hosted/single-user use)
+- `TILES_BASE_URL` — optional, your public tile host (e.g.
+  `https://tiles.example.org`); the admin country detail checks
+  `manifest.json` and each country file there. Unset = that check is skipped
 
 ### Admin API
 
 `/api/admin/*` (user list, sign-up/activity stats, ban/unban, enabling
-countries) is a JSON API
+countries, per-country data status and pipeline runs) is a JSON API
 for an operator dashboard. This repo ships only the API; the admin web UI is
 deployed separately on its own origin, so script on the main app's origin can
 never drive it. Set `ADMIN_APP_ORIGIN` to that UI's origin (e.g.

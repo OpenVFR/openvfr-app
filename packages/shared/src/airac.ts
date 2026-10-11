@@ -34,8 +34,8 @@ export function currentAiracCycle(now: number = Date.now()): string {
 export function airacIdentToMs(ident: string): number | null {
   const m = /^(\d{2})(\d{2})$/.exec(ident.trim())
   if (!m) return null
-  const year = 2000 + parseInt(m[1], 10)
-  const ordinal = parseInt(m[2], 10)
+  const year = 2000 + parseInt(m[1]!, 10)
+  const ordinal = parseInt(m[2]!, 10)
   if (ordinal < 1) return null
   // First cycle effective on/after Jan 1 of that year.
   const jan1 = Date.UTC(year, 0, 1)
