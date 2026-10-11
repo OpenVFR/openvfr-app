@@ -143,6 +143,8 @@ files worth knowing up front:
 
 ## Server API Security Baseline (Non-Negotiable)
 
+**Web CSP lives in `apps/web/public/_headers` and is enforced on app.openvfr.org.** Every origin the SPA fetches from must be in `connect-src` (currently the api, tiles, `cdn.jsdelivr.net` for Protomaps sprites/glyphs, `server.arcgisonline.com` for satellite). MapLibre loads tiles/sprites/raster via `fetch()`, so image hosts go in `connect-src`, not `img-src`. Adding a new third-party URL to `map-style.ts` or a fetch helper without updating `_headers` ships a silent "Refused to connect" in production. No inline `<script>` in `index.html` (`script-src 'self'`, no nonce).
+
 Every endpoint added to `apps/api/src/index.ts` MUST be checked against this list before merging:
 
 1. **Auth-gate anything that costs money or touches user data.** Paid third-party API calls or user-data reads/writes require `auth.api.getSession({ headers: c.req.raw.headers })`, 401 if `!session?.user`. Public endpoints are the exception — justify in a comment why (`/health`, public read-only data, `/.well-known/*`).
