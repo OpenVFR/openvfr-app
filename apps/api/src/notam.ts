@@ -326,8 +326,17 @@ function geometryOf(n: NmsNotam): NotamGeometry {
   // circle paints large false areas over neighbouring countries. Those are
   // shown as a point at their location instead (a reference NOTAM map
   // draws ~97% R/W as areas, the rest only where the text gives a shape).
+  // Within R/W, some conditions (Q-code letters 4-5) are not an area
+  // that is in force either:
+  //   TT  trigger NOTAM -- only announces an AIP SUP/AMDT; the Q circle is
+  //       an envelope around several areas defined in that document
+  //       ("ESD317 ARKOSUND, ESD318 VASTERVIK AND ESD319 BYXELKROK", 42 NM);
+  //   AW  completely withdrawn, CD deactivated, CC completed, CN cancelled.
+  // Those become a point; areas they name are matched to charted airspace
+  // by designator where we have it (web useNotamAirspaceMatch).
   const qc = qCodeFor(n)
-  const areaSubject = !qc || qc[1] === 'R' || qc[1] === 'W'
+  const NOT_IN_FORCE = new Set(['TT', 'AW', 'CD', 'CC', 'CN'])
+  const areaSubject = !qc || ((qc[1] === 'R' || qc[1] === 'W') && !NOT_IN_FORCE.has(qc.slice(3, 5)))
   const qArea = radiusGiven && !bogus && areaSubject
 
   let out: NotamGeometry
