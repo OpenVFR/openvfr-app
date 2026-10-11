@@ -87,6 +87,7 @@ import { dirname } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { notamInRegions, regionScope, type RegionScopeInput } from '@open-vfr/shared/notamRegionScope'
 import { EUROPEAN_REGIONS } from '@open-vfr/shared/regions'
+import { notamTextGeometry } from '@open-vfr/shared/notamTextGeometry'
 import { prepareOutline, type PreparedOutline } from '@open-vfr/shared/notamCoverageArea'
 import countryOutlinesJson from './country-outlines.json' with { type: 'json' }
 
@@ -158,23 +159,20 @@ export interface NotamItem {
   affectedFir:    string | null
   // True when the NOTAM covers its entire FIR (Q-line radius 999 NM, the
   // ICAO "whole FIR" convention). Its position is dropped as meaningless
-  // (see radiusIsBogus below), so this is the only geographic hint left.
+  // (see geometryOf()), so this is the only geographic hint left.
   firWide:        boolean
   // Structured ICAO fields for rebuilding the standard message layout
   // (Q/A/B/C/D/E/F/G items) -- see @open-vfr/shared/notamIcaoFormat.
   // Mirrors shared NotamIcaoFields. null when upstream supplied none.
   icao:           NotamIcaoFields | null
-  // Real multi-vertex area geometry, straight from NMS-API's own GeoJSON
-  // feature.geometry (never synthesized) -- present only for NOTAMs whose
-  // subject area is an actual polygon/multipolygon (e.g. cross-border
-  // military exercise areas defined by a list of lat/lon vertices in the
-  // NOTAM text, which NMS-API itself resolves into real geometry). Mutually
-  // exclusive in practice with the lat/lon/radiusNm circle fields below --
-  // when both would apply, this takes priority (see activeNotamsFor()).
-  // null for the common point/circle/textual-only cases.
+  // Real area: the polygon listed in the NOTAM text (item E, incl. arcs --
+  // @open-vfr/shared/notamTextGeometry), or one from NMS-API's
+  // feature.geometry if it ever supplies one (in practice it only gives the
+  // Q-line point). Mutually exclusive with lat/lon/radiusNm below (polygon
+  // wins, see geometryOf()). null for point/circle/textual-only NOTAMs.
   polygon: NotamPolygonGeometry | null
-  // Geo fields, present only when NMS-API supplied a coordinates+radius pair
-  // (parsed from DMS strings like "5939N01756E" + radius in NM) -- used to
+  // Geo fields: a circle or position stated in the text when there is one,
+  // else the Q-line coordinates+radius (DMS like "5939N01756E" + NM) -- used to
   // render an ad-hoc circle for NOTAMs that don't correspond to a charted
   // airspace polygon (e.g. temporary restricted/danger areas established
   // mid-AIRAC-cycle). null when absent, e.g. purely textual NOTAMs.
@@ -267,17 +265,76 @@ const MILITARY_EU_KEY  = '_MILITARY_EU' // synthetic cache key for the classific
 // as activeNotamsFor(): real polygon first, else DMS point + radius (the
 // sentinel-radius case falls back to a point test inside notamInRegions).
 function scopeInputFor(n: NmsNotam): RegionScopeInput {
-  const polygon = extractNotamPolygon(n.geometry)
-  const geo = polygon ? null : parseNotamCoordinates(n.coordinates)
-  const radiusNm = n.radius !== undefined ? Number(n.radius) : NaN
+  const g = geometryOf(n)
   return {
     icaoLocation: n.icaoLocation ?? null,
     affectedFir:  str(n.affectedFir),
-    polygon,
-    lat:          geo?.lat ?? null,
-    lon:          geo?.lon ?? null,
-    radiusNm:     Number.isFinite(radiusNm) ? radiusNm : null,
+    polygon:      g.polygon,
+    lat:          g.lat,
+    lon:          g.lon,
+    // Unclamped Q radius for the scope test when no better geometry exists,
+    // so the 999 NM sentinel is recognised there as "no usable radius".
+    radiusNm:     g.radiusNm ?? g.qRadiusNm,
   }
+}
+
+interface NotamGeometry {
+  polygon:   NotamPolygonGeometry | null
+  lat:       number | null
+  lon:       number | null
+  radiusNm:  number | null
+  qRadiusNm: number | null
+}
+
+// Parse every cached record's text geometry off the request path (after
+// load / each poll), so the first regional request doesn't pay for it.
+function warmGeometry(): void {
+  setImmediate(() => { for (const byId of _cache.values()) for (const n of byId.values()) geometryOf(n) })
+}
+
+// Per record object (an update replaces the record, so no invalidation).
+const _geometryMemo = new WeakMap<object, NotamGeometry>()
+
+/**
+ * Best geometry for a NOTAM, in this order:
+ *   1. a real Polygon/MultiPolygon from NMS-API's feature.geometry (none
+ *      seen in practice -- every record carries just the Q-line Point);
+ *   2. the area described in the text (item E): polygon, circle or precise
+ *      position -- see @open-vfr/shared/notamTextGeometry. The Q-line circle
+ *      is only an envelope (whole-NM radius around a whole-minute centre),
+ *      e.g. 85 NM for an exercise area whose real polygon is a coastal strip;
+ *   3. the Q-line point + radius.
+ * A radius above MAX_SANE_RADIUS_NM (the 999 NM whole-FIR sentinel) drops
+ * the Q-line point and radius together -- see activeNotamsFor().
+ */
+function geometryOf(n: NmsNotam): NotamGeometry {
+  const cached = _geometryMemo.get(n)
+  if (cached) return cached
+  const geo = parseNotamCoordinates(n.coordinates)
+  const r = n.radius !== undefined ? Number(n.radius) : NaN
+  const qRadiusNm = Number.isFinite(r) ? r : null
+  const radiusGiven = qRadiusNm !== null && qRadiusNm > 0
+  const bogus = radiusGiven && qRadiusNm! > MAX_SANE_RADIUS_NM
+
+  let out: NotamGeometry
+  const polygon = extractNotamPolygon(n.geometry)
+  if (polygon) {
+    out = { polygon, lat: null, lon: null, radiusNm: null, qRadiusNm }
+  } else {
+    const t = notamTextGeometry(n.text, geo ? { lat: geo.lat, lon: geo.lon, radiusNm: qRadiusNm } : null)
+    if (t.polygon) out = { polygon: t.polygon, lat: null, lon: null, radiusNm: null, qRadiusNm }
+    else if (t.circle) out = { polygon: null, lat: t.circle.lat, lon: t.circle.lon, radiusNm: t.circle.radiusNm, qRadiusNm }
+    else if (t.point) out = { polygon: null, lat: t.point.lat, lon: t.point.lon, radiusNm: radiusGiven && !bogus ? qRadiusNm : null, qRadiusNm }
+    else out = {
+      polygon: null,
+      lat: geo && !bogus ? geo.lat : null,
+      lon: geo && !bogus ? geo.lon : null,
+      radiusNm: geo && radiusGiven && !bogus ? qRadiusNm : null,
+      qRadiusNm,
+    }
+  }
+  _geometryMemo.set(n, out)
+  return out
 }
 
 function inIngestScope(n: NmsNotam): boolean {
@@ -667,6 +724,7 @@ async function pollOnce(): Promise<void> {
     }
 
     const pruned = pruneCache()
+    warmGeometry()
     _lastPollAt = pollStartedAt
     // The cursor must be persisted even when nothing changed, but a full
     // rewrite of the Europe-wide file every 3 min is wasteful: write when
@@ -751,6 +809,7 @@ async function pollMilitaryOnce(): Promise<void> {
     }
 
     pruneCache()
+    warmGeometry()
     saveCacheToDisk()
     console.log(`[notam] NMS MILITARY poll OK: ${features.length} received worldwide, ${byId.size} kept (supported regions)`)
   } catch (e) {
@@ -774,6 +833,7 @@ export function startNotamPoller(): void {
     return
   }
   loadCacheFromDisk()
+  warmGeometry()
   console.log(`[notam] NMS-API poller starting (host=${NMS_API_HOST}, interval=${POLL_INTERVAL_MS}ms)`)
   void pollOnce()
   _pollTimer = setInterval(() => { void pollOnce() }, POLL_INTERVAL_MS)
@@ -824,7 +884,6 @@ function activeItems(raw: Iterable<NmsNotam>): NotamItem[] {
     if (n.cancelationDate && Date.parse(n.cancelationDate) <= now) continue
     if (n.effectiveEnd && Date.parse(n.effectiveEnd) < now) continue
     if (n.effectiveStart && Date.parse(n.effectiveStart) > now) continue
-    const geo = parseNotamCoordinates(n.coordinates)
     const radiusNm = n.radius !== undefined ? Number(n.radius) : NaN
     const text = (n.text ?? '').replace(/\r\n/g, '\n').trim()
     const qCode = qCodeFor(n)
@@ -861,9 +920,8 @@ function activeItems(raw: Iterable<NmsNotam>): NotamItem[] {
     //    lat/lon AND radiusNm together (see comment above).
     // MAX_SANE_RADIUS_NM is module-scoped (see top of file).
     const radiusGiven = Number.isFinite(radiusNm) && radiusNm > 0
-    const radiusIsBogus = radiusGiven && radiusNm > MAX_SANE_RADIUS_NM
-
-    const polygon = extractNotamPolygon(n.geometry)
+    const g = geometryOf(n)
+    const polygon = g.polygon
 
     notams.push({
       id:             n.number ?? n.id ?? '',
@@ -893,16 +951,11 @@ function activeItems(raw: Iterable<NmsNotam>): NotamItem[] {
       firWide:        !polygon && radiusGiven && radiusNm >= 999,
       icao:           icaoFieldsFor(n),
       polygon,
-      // Polygon geometry (real, structured, from NMS-API itself) takes
-      // priority over the synthesized DMS point/circle fields when both
-      // would otherwise apply -- an actual multi-vertex area shape is
-      // strictly more accurate than a single-point circle approximation of
-      // the same NOTAM. The radius=999-style sentinel/bogus check above only
-      // ever applied to the circle path; a real Polygon is never subject to
-      // it since it isn't derived from a radius field at all.
-      lat:            polygon ? null : (geo && !radiusIsBogus ? geo.lat : null),
-      lon:            polygon ? null : (geo && !radiusIsBogus ? geo.lon : null),
-      radiusNm:       polygon ? null : (geo && radiusGiven && !radiusIsBogus ? radiusNm : null),
+      // Polygon (from the text, or NMS) wins over point/circle; a text
+      // circle/position wins over the Q-line envelope -- see geometryOf().
+      lat:            g.lat,
+      lon:            g.lon,
+      radiusNm:       g.radiusNm,
     })
   }
   return notams

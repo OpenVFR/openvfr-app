@@ -10,7 +10,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
-import { distanceNm } from '@open-vfr/shared/routeCalc'
+import { pointInNotamArea } from '@open-vfr/shared/notamTextGeometry'
 
 const NOTIFICATION_TTL_MS = 9_000
 const MAX_QUEUE           = 8
@@ -57,8 +57,7 @@ export function useNotamNotifications(
     // two unrelated NOTAMs' entry/exit state and showing the wrong text.
     const current = new Set<string>()
     for (const n of regionalNotams) {
-      if (n.lat === null || n.lon === null || n.radiusNm === null || n.radiusNm <= 0) continue
-      if (distanceNm({ lat, lng }, { lat: n.lat, lng: n.lon }) <= n.radiusNm) current.add(n.nmsId)
+      if (pointInNotamArea(lat, lng, n)) current.add(n.nmsId)
     }
 
     const prev = insideRef.current

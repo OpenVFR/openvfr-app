@@ -30,7 +30,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
-import { distanceNm, advancePosition } from '@open-vfr/shared/routeCalc'
+import { advancePosition } from '@open-vfr/shared/routeCalc'
+import { pointInNotamArea, hasNotamArea } from '@open-vfr/shared/notamTextGeometry'
 
 const LOOKAHEAD_MIN_SPEED = 60
 const LOOKAHEAD_SAMPLES   = 5
@@ -46,7 +47,8 @@ export type NotamAlert = {
   key:      string
   notamId:  string
   text:     string
-  radiusNm: number
+  /** Circle radius; null for a polygon area. */
+  radiusNm: number | null
   /** True = aircraft is currently inside; false = lookahead penetration. */
   inside:   boolean
 }
@@ -80,23 +82,23 @@ export function useNotamWarnings(
     const found: NotamAlert[] = []
 
     for (const n of regionalNotams) {
-      if (n.lat === null || n.lon === null || n.radiusNm === null || n.radiusNm <= 0) continue
+      // Polygon (from the NOTAM text) when there is one, else the circle.
+      if (!hasNotamArea(n)) continue
 
       const key = n.nmsId
       const dismissedAt = dismissedRef.current.get(key)
       if (dismissedAt !== undefined && now - dismissedAt < DISMISS_REARM_MS) continue
 
-      const center = { lat: n.lat, lng: n.lon }
-      const insideCurrent = distanceNm({ lat, lng }, center) <= n.radiusNm
+      const insideCurrent = pointInNotamArea(lat, lng, n)
       const insideAhead   = !insideCurrent &&
-        aheadSamples.some(p => distanceNm(p, center) <= n.radiusNm!)
+        aheadSamples.some(p => pointInNotamArea(p.lat, p.lng, n))
 
       if (insideCurrent || insideAhead) {
         found.push({
           key,
           notamId:  notamTitle(n),
           text:     n.text,
-          radiusNm: n.radiusNm,
+          radiusNm: n.polygon ? null : n.radiusNm,
           inside:   insideCurrent,
         })
       }
