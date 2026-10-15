@@ -39,6 +39,7 @@ import { randomUUID } from 'node:crypto'
 import { createHmac } from 'node:crypto'
 import { auth } from './auth'
 import { admin } from './admin'
+import { chartDocumentRoutes } from './chartDocuments'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -229,6 +230,11 @@ async function requireSession(c: import('hono').Context): Promise<{ id: string }
   const session = await auth.api.getSession({ headers: c.req.raw.headers })
   return session?.user ?? null
 }
+
+// Official chart documents (experimental): auth + per-user rate limit +
+// host allow-list; disabled unless CHART_DOCUMENT_HOSTS is set. See
+// chartDocuments.ts for the full checklist.
+app.route('/api/charts', chartDocumentRoutes({ requireUser: requireSession }))
 
 // ---------------------------------------------------------------------------
 // POH extraction rate limiting — each call costs real Azure OpenAI money, so

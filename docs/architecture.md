@@ -286,7 +286,66 @@ Protomaps is the correct choice for this project's constraints (open-source, no 
 - **Deduplication:** masts/chimneys within 200 m of an OpenAIP tower/chimney suppressed; windmills within 300 m of a wind_turbine suppressed.
 - **Phase 1.7 plan:** Replace Overpass with Geofabrik daily `.osm.pbf` extract filtered by `osmium` (purpose-built C++ PBF streaming; faster than DuckDB for this task), load into PostGIS `landmarks` table with `country` column, serve via Martin.
 
-### F. Dynamic Data — DuckDB (Phase 4, not yet implemented)
+### F. Charts index — official charts (optional, experimental)
+
+Behind the web build flag `VITE_EXPERIMENTAL_CHARTS=true`. A deployment may
+publish, next to the other per-country files, `<cc>-charts.json`: links to
+each aerodrome's **official** published charts (national AIP visual approach,
+aerodrome, ground movement, ... charts) and, where known, a georeference. How
+the file is produced is up to the operator; the app only reads it, and an
+absent file just means no Charts section. Parser and types:
+`packages/shared/src/chartsIndex.ts` (`parseChartsIndex` drops malformed
+entries and non-https URLs).
+
+```jsonc
+{
+  "schema": "openvfr.charts/1",
+  "country": "xx",
+  "cycle": "2026-01-22",                       // effective date of the linked publication
+  "source": { "name": "...", "url": "https://...", "attribution": "(c) ..." },
+  "display": { "document": true, "overlay": true }, // what the publisher's terms allow
+  "aerodromes": {
+    "XXTT": {
+      "name": "Testville",
+      "info_url": "https://...",                // publisher's page for the aerodrome
+      "charts": [{
+        "id": "a1b2c3", "title": "VAC - ICAO",
+        "kind": "VAC",                         // VAC ADC PDC GMC IAC SID STAR AREA OBST OTHER
+        "url": "https://.../XXTT VAC.pdf",      // the publisher's own document
+        "georef": {                             // optional, only if display.overlay
+          "method": "graticule", "page": 1, "page_size_pt": [595, 842],
+          "corners": [[lon, lat] x4],           // whole page: TL, TR, BR, BL
+          "crop": [0.05, 0.12, 0.95, 0.77],     // map frame as page fractions (l, t, r, b)
+          "crop_corners": [[lon, lat] x4],      // map frame: TL, TR, BR, BL
+          "accuracy_m": 350, "printed_scale": 250000
+        }
+      }]
+    }
+  }
+}
+```
+
+**Web:** `ChartsSection` in the aerodrome popup lists the charts (VFR kinds
+first); every chart links to the publisher. Signed-in users also get an
+in-app viewer (`ChartViewer`, pdf.js) and, for georeferenced charts, a map
+overlay (`ChartOverlay`): the map frame (`crop`) is rendered client-side into
+a MapLibre `canvas` source at `crop_corners`, below the airspace layers, with
+an opacity slider. A canvas source needs no network fetch, so it works under
+the CSP (`connect-src` doesn't list `blob:`/`data:`). pdf.js is loaded on
+first use only. Documents are always the publisher's own, never altered or
+stored server-side beyond a short in-memory cache.
+
+**API pass-through:** publishers' document hosts don't send CORS headers, so
+the web app fetches PDF bytes through `GET /api/charts/document?url=...`
+(`apps/api/src/chartDocuments.ts`): session required, per-user hourly/daily
+limits, exact-match host allow-list `CHART_DOCUMENT_HOSTS` (endpoint returns
+404 while it is empty), https + `.pdf` only, at most one redirect and only to
+an allowed host, size cap, body must start with `%PDF-`, served with
+`Content-Security-Policy: sandbox`. Only list hosts of officially, freely
+published documents whose terms allow this. Native apps (planned) fetch the
+documents directly and don't need it.
+
+### G. Dynamic Data — DuckDB (Phase 4, not yet implemented)
 
 NOTAMs and METAR/TAF will be processed by DuckDB pipelines: download raw JSON from NOAA/Eurocontrol, spatial-join against the aerodromes table in PostGIS, export as clean GeoJSON or serve via Martin. DuckDB is the right tool here because these are tabular/JSON sources that benefit from SQL aggregation and columnar filtering. DuckDB is **not** used for OSM PBF processing — `osmium` is faster for that specific task.
 

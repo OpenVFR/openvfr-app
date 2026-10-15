@@ -65,7 +65,9 @@ export default defineConfig({
       workbox: {
         // Don't precache .pmtiles archives — they are large and fetched on demand
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        globIgnores: ['**/*.pmtiles', '**/*.mbtiles'],
+        // pdf.js (lazy chunk, charts viewer/overlay only) is fetched on first
+        // use instead of precached for everyone: charts need the network anyway.
+        globIgnores: ['**/*.pmtiles', '**/*.mbtiles', '**/assets/pdf-*.js', '**/assets/pdf.worker*'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [
           {
@@ -267,6 +269,12 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/api/countries': {
+        ...devApiOrigin,
+        target: DEV_API_TARGET || 'http://localhost:5200',
+        changeOrigin: true,
+      },
+      // Official chart documents (experimental, see src/utils/charts.ts).
+      '/api/charts': {
         ...devApiOrigin,
         target: DEV_API_TARGET || 'http://localhost:5200',
         changeOrigin: true,

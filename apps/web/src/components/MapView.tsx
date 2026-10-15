@@ -56,7 +56,9 @@ import { computeAtcStatus, isNotamAtcRelated, isNotamHoursChangeRelated, type Ho
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
 import { AERODROME_COLORS } from '@open-vfr/shared/featureColors'
 import { fetchAerodromeNotamTexts, type NotamItem } from '@open-vfr/shared/fetchNotam'
-import { API_BASE_URL } from '../utils/env'
+import { API_BASE_URL, EXPERIMENTAL_CHARTS } from '../utils/env'
+import ChartOverlay from './ChartOverlay'
+import ChartViewer from './ChartViewer'
 import { type AerodromeFeatureProps } from './AerodromePopup'
 import { registerObstacleImages } from '../utils/obstacleIcons'
 import { registerLandmarkImages } from '../utils/landmarkIcons'
@@ -4199,6 +4201,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
           <AutoFlyPrompt kind={autoFly.suggestion} onAccept={autoFly.accept} onDismiss={autoFly.dismiss} />
         )}
         <div ref={containerRef} className={css.map} />
+        {EXPERIMENTAL_CHARTS && mapReady && <ChartOverlay map={mapRef.current} />}
+        {EXPERIMENTAL_CHARTS && <ChartViewer />}
         {toolbarHost && createPortal((() => {
           const flying = flyingMode !== 'off'
           const findItems: ToolItem[] = [
