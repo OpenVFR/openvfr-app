@@ -255,6 +255,14 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   when no connection string is set); without either, nothing is sent and, unless `NODE_ENV=production`,
   each message (sign-in code, account-deletion link) is printed to the api's console instead (fine for
   local dev and single-user self-hosting; with `NODE_ENV=production` only a warning without the code)
+- `CHART_DOCUMENT_HOSTS` — optional, experimental. Comma-separated hostnames
+  of official chart publishers whose PDFs `/api/charts/document` may pass
+  through to the web app (in-app viewer and map overlay of charts listed in
+  `<cc>-charts.json`, see docs/architecture.md "Charts index"). Empty =
+  endpoint disabled. Limits: `CHART_DOCUMENT_MAX_MB` (20),
+  `CHART_DOCUMENT_HOURLY_LIMIT` (120) / `CHART_DOCUMENT_DAILY_LIMIT` (600)
+  per user, `CHART_DOCUMENT_CACHE_MB` (100, shared in-memory). The web
+  client shows charts only when built with `VITE_EXPERIMENTAL_CHARTS=true`.
 - `TILES_BASE_URL` — optional, your public tile host (e.g.
   `https://tiles.example.org`); the admin country detail checks
   `manifest.json` and each country file there. Unset = that check is skipped

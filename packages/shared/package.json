@@ -144,6 +144,7 @@
     "./notamRegionScope": "./src/notamRegionScope.ts",
     "./countries": "./src/countries.ts",
     "./countryData": "./src/countryData.ts",
+    "./chartsIndex": "./src/chartsIndex.ts",
     "./notamTextGeometry": "./src/notamTextGeometry.ts",
     "./notamVertical": "./src/notamVertical.ts",
     "./notamBorder": "./src/notamBorder.ts",

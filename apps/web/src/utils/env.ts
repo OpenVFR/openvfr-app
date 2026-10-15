@@ -19,6 +19,12 @@ export const API_BASE_URL: string = (import.meta.env.VITE_API_BASE_URL as string
 // serve bulk tile data separately from the app itself.
 export const TILES_BASE_URL: string = (import.meta.env.VITE_TILES_BASE_URL as string | undefined) ?? '/tiles'
 
+// EXPERIMENTAL_CHARTS — official charts (Charts section in the aerodrome
+// popup, in-app document viewer, georeferenced map overlay). Off unless
+// VITE_EXPERIMENTAL_CHARTS=true at build/dev time; needs a charts index
+// (<cc>-charts.json) in the tile data, see docs/architecture.md.
+export const EXPERIMENTAL_CHARTS: boolean = import.meta.env.VITE_EXPERIMENTAL_CHARTS === 'true'
+
 // SITE_BASE_URL — optional public site origin serving /privacy and /terms,
 // linked from the sign-in panel footer. Empty (default) hides those links.
 export const SITE_BASE_URL: string =

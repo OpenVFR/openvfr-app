@@ -51,6 +51,7 @@ import { pohUsageLine } from './pohUsage'
 import { PohGuards, pohGuardConfigFromEnv, countPdfPages } from './pohGuards'
 import { BodyTooLarge, readLimitedFormData, looksLikePdf } from './upload'
 import { createWeatherCache, type WxUpstreamResult } from './weatherCache'
+import { chartDocumentRoutes } from './chartDocuments'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -283,6 +284,11 @@ async function requireSession(c: import('hono').Context): Promise<{ id: string }
   const session = await auth.api.getSession({ headers: c.req.raw.headers })
   return session?.user ?? null
 }
+
+// Official chart documents (experimental): auth + per-user rate limit +
+// host allow-list; disabled unless CHART_DOCUMENT_HOSTS is set. See
+// chartDocuments.ts for the full checklist.
+app.route('/api/charts', chartDocumentRoutes({ requireUser: requireSession }))
 
 // ---------------------------------------------------------------------------
 // POH extraction guards. Every call sends a whole PDF to a paid model in one request, so cost is bounded here and not

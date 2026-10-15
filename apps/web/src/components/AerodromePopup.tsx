@@ -28,6 +28,7 @@ import { sunriseSunset, fmtSunTime } from '../utils/sunCalc'
 import { aerodromeClosure, closureLabel } from '@open-vfr/shared/aerodromeClosure'
 import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from '@open-vfr/shared/atcStatus'
 import { API_BASE_URL } from '../utils/env'
+import ChartsSection from './ChartsSection'
 import { loadStations as loadStationsShared, type StationRecord } from '@open-vfr/shared/wxStations'
 import { countryDatasetSource } from '@open-vfr/shared/countryData'
 import { IconChevronDown, IconChevronUp, IconHome, IconHomeFilled, IconX } from '@tabler/icons-react'
@@ -787,6 +788,9 @@ export default function AerodromePopup({
                 })}
               </div>
             )}
+
+            {/* Official charts (experimental; renders nothing when disabled or none) */}
+            <ChartsSection icao={p.icao} sectionClass={css.section} titleClass={css.sectionTitle} authed={authed} />
 
             {/* Hours of operation */}
             {hours.length > 0 && (
