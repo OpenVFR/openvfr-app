@@ -902,7 +902,12 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
               // floor (see 'protomaps' source's own minzoom=7 comment above)
               // -- 'ov-background' (maxzoom:7) already covers the base
               // background role below that.
-              return { ...layer, minzoom: 7 }
+              // Unmapped open land (no OSM farmland polygon, past the z10
+              // landcover limit) would otherwise show as a flat grey void.
+              // Paint the base ICAO-cream instead; water, forest, urban and
+              // wetland fills draw on top of it.
+              const bgPaint = (layer as { paint?: Record<string, unknown> }).paint ?? {}
+              return { ...layer, minzoom: 7, paint: { ...bgPaint, 'background-color': FARMLAND_CREAM } }
             }
             if (layer.id === 'landcover') {
               // Override opacity so landcover stays visible at VFR planning zooms,
