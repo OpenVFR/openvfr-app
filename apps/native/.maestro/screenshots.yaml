@@ -60,6 +60,18 @@ appId: org.openvfr.app
         id: login-email
     file: login.yaml
 
+# First launch after sign-in may open the "Use device barometer?" prompt
+# (BaroPromptModal). It is a native Modal, so while it is up the tab bar is not
+# in the accessibility tree -- dismiss it before waiting for the tabs.
+- extendedWaitUntil:
+    visible:
+      text: "Not now"
+    timeout: 10000
+    optional: true
+- tapOn:
+    text: "Not now"
+    optional: true
+
 # Tab bar only renders once authenticated.
 - extendedWaitUntil:
     visible:
