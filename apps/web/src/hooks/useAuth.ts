@@ -152,7 +152,13 @@ export function useAuth(): AuthState {
 
   const registerPasskey = useCallback(async (name?: string) => {
     const result = await authClient.passkey.addPasskey({ name: name?.trim() || 'OpenVFR passkey' })
-    if (result?.error) throw new Error(result.error.message ?? 'Passkey registration failed')
+    if (result?.error) {
+      const { code, message } = result.error as { code?: string; message?: string }
+      if (code === 'SESSION_NOT_FRESH' || /not fresh/i.test(message ?? '')) {
+        throw new Error('For security, adding a passkey needs a recent sign-in. Sign out, sign in again with an email code, then retry.')
+      }
+      throw new Error(message ?? 'Passkey registration failed')
+    }
   }, [])
 
   const updateUser = useCallback(async (data: { name: string }) => {
