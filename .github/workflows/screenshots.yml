@@ -156,11 +156,15 @@ jobs:
       # random working dir per run, and absolute paths are part of the
       # ccache hash, so pin it (EAS_LOCAL_BUILD_WORKINGDIR) and set
       # CCACHE_BASEDIR to it.
-      - name: Cache ccache (NDK compile cache)
-        uses: actions/cache@v6
+      # restore + save as separate steps: a plain actions/cache never saves again
+      # after an exact key hit (the cache would stay frozen at its first contents)
+      # and skips saving when the job fails. The unique run_id key makes every run
+      # save an updated cache; the prefix restore picks up the newest one.
+      - name: Restore Cache ccache (NDK compile cache)
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/ccache
-          key: ccache-android-screenshots-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}
+          key: ccache-android-screenshots-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}-${{ github.run_id }}
           restore-keys: |
             ccache-android-screenshots-
       - name: Install ccache
@@ -177,6 +181,7 @@ jobs:
           } >> "$GITHUB_ENV"
           ccache --zero-stats
       - name: Build APK
+        id: build
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
@@ -186,6 +191,15 @@ jobs:
           apks=(build-*.apk)
           mv "${apks[0]}" openvfr-screenshots.apk
           ccache --show-stats
+      # Keep the compiled objects even if a later step fails. Only when the build
+      # actually ran, so an early failure can't save an empty cache that then
+      # shadows a good one in the prefix restore.
+      - name: Save Cache ccache (NDK compile cache)
+        if: ${{ always() && steps.build.conclusion != 'skipped' }}
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/ccache
+          key: ccache-android-screenshots-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}-${{ github.run_id }}
       - uses: actions/upload-artifact@v7
         with:
           name: android-screenshots-apk
@@ -314,6 +328,17 @@ jobs:
       - name: Install dependencies
         working-directory: .
         run: pnpm install --frozen-lockfile
+      # Before the ~1 h simulator build: both only download tooling, and a
+      # transient failure here (setup-java's version lookup once returned
+      # HTTP 409 after the build had finished) should cost seconds, not an hour.
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Install Maestro
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
       # macOS runners egress from different IP ranges than ubuntu ones --
       # re-check here instead of trusting the preflight job.
       - name: Check data hosts reachable from runner
@@ -331,11 +356,16 @@ jobs:
           key: pods-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}
           restore-keys: |
             pods-
-      - name: Cache ccache (simulator build)
-        uses: actions/cache@v6
+      # restore + save as separate steps: a plain actions/cache never saves
+      # again after an exact key hit (so the cache would stay frozen at its
+      # first contents) and skips saving when the job fails. The unique
+      # run_id key makes every run save an updated cache; the prefix restore
+      # picks up the newest one.
+      - name: Restore ccache (simulator build)
+        uses: actions/cache/restore@v6
         with:
           path: ~/Library/Caches/ccache
-          key: ccache-ios-sim-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}
+          key: ccache-ios-sim-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}-${{ github.run_id }}
           restore-keys: |
             ccache-ios-sim-
       # Xcode invokes clang by absolute path, so a ccache shim dir on PATH
@@ -367,6 +397,7 @@ jobs:
           } >> "$GITHUB_ENV"
           ccache --zero-stats
       - name: Build simulator app
+        id: build
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
@@ -383,14 +414,15 @@ jobs:
           mkdir -p "$RUNNER_TEMP/app"
           archives=(build-*.tar.gz)
           tar -xzf "${archives[0]}" -C "$RUNNER_TEMP/app"
-      - uses: actions/setup-java@v6
+      # Even when a later step fails, keep the ~1 h of compiled objects. Only
+      # if the build actually ran, so an early failure can't save an empty
+      # cache that then shadows a good one in the prefix restore.
+      - name: Save ccache (simulator build)
+        if: ${{ always() && steps.build.conclusion != 'skipped' }}
+        uses: actions/cache/save@v6
         with:
-          java-version: '17'
-          distribution: 'temurin'
-      - name: Install Maestro
-        run: |
-          curl -fsSL "https://get.maestro.mobile.dev" | bash
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          path: ~/Library/Caches/ccache
+          key: ccache-ios-sim-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}-${{ github.run_id }}
       - name: Capture
         env:
           MAESTRO_TEST_EMAIL: ${{ secrets.APP_REVIEW_TEST_EMAIL }}

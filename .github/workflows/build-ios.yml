@@ -83,11 +83,15 @@ jobs:
       # source change only misses cache for that unit -- never serves stale
       # object code. Covers the expensive part (clang compiling Hermes,
       # MapLibre Native, other native modules), unlike Podfile resolution.
-      - name: Cache ccache (clang compile cache)
-        uses: actions/cache@v6
+      # restore + save as separate steps: a plain actions/cache never saves again
+      # after an exact key hit (the cache would stay frozen at its first contents)
+      # and skips saving when the job fails. The unique run_id key makes every run
+      # save an updated cache; the prefix restore picks up the newest one.
+      - name: Restore Cache ccache (clang compile cache)
+        uses: actions/cache/restore@v6
         with:
           path: ~/Library/Caches/ccache
-          key: ccache-ios-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}
+          key: ccache-ios-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}-${{ github.run_id }}
           restore-keys: |
             ccache-ios-
 
@@ -138,6 +142,15 @@ jobs:
           artifact=$(ls build-*.ipa 2>/dev/null | head -n1)
           echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
 
+      # Keep the compiled objects even if a later step fails. Only when the build
+      # actually ran, so an early failure can't save an empty cache that then
+      # shadows a good one in the prefix restore.
+      - name: Save Cache ccache (clang compile cache)
+        if: ${{ always() && steps.build.conclusion != 'skipped' }}
+        uses: actions/cache/save@v6
+        with:
+          path: ~/Library/Caches/ccache
+          key: ccache-ios-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}-${{ github.run_id }}
       # Verifies whether ccache actually engaged (CC/CXX env may be ignored
       # by xcodebuild depending on target toolchain resolution) -- check
       # cache hit rate here rather than assume it worked.

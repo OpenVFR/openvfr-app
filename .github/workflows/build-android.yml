@@ -128,11 +128,15 @@ jobs:
       # random working dir per run, and absolute paths are part of the
       # ccache hash, so pin it (EAS_LOCAL_BUILD_WORKINGDIR) and set
       # CCACHE_BASEDIR to it.
-      - name: Cache ccache (NDK compile cache)
-        uses: actions/cache@v6
+      # restore + save as separate steps: a plain actions/cache never saves again
+      # after an exact key hit (the cache would stay frozen at its first contents)
+      # and skips saving when the job fails. The unique run_id key makes every run
+      # save an updated cache; the prefix restore picks up the newest one.
+      - name: Restore Cache ccache (NDK compile cache)
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/ccache
-          key: ccache-android-${{ inputs.profile }}-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}
+          key: ccache-android-${{ inputs.profile }}-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}-${{ github.run_id }}
           restore-keys: |
             ccache-android-${{ inputs.profile }}-
       - name: Install ccache
@@ -162,6 +166,15 @@ jobs:
           artifact=$(ls build-*.apk build-*.aab 2>/dev/null | head -n1)
           echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
 
+      # Keep the compiled objects even if a later step fails. Only when the build
+      # actually ran, so an early failure can't save an empty cache that then
+      # shadows a good one in the prefix restore.
+      - name: Save Cache ccache (NDK compile cache)
+        if: ${{ always() && steps.build.conclusion != 'skipped' }}
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/ccache
+          key: ccache-android-${{ inputs.profile }}-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}-${{ github.run_id }}
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
