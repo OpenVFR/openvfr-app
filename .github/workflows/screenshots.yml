@@ -12,6 +12,11 @@ name: Store screenshots
 # the same backend a store build would. Output: one `screenshots-*` artifact
 # per form factor. Nothing is uploaded to the stores.
 #
+# BEFORE DISPATCHING: temporarily turn off Cloudflare Bot Fight Mode on the
+# openvfr.org zone (Security -> Bots), and turn it back on after the run
+# finishes. Cloudflare challenges GitHub runner IPs (HTTP 403), both for the
+# preflight and for the app running in the emulator/simulator.
+#
 # See .github/workflows/README.md#store-screenshots for secrets + sizes.
 
 on:
@@ -22,6 +27,12 @@ on:
         type: choice
         options: [all, ios, android]
         default: all
+      bot_fight_disabled:
+        description: >-
+          I turned OFF Cloudflare Bot Fight Mode (Security > Bots) for this
+          run and will turn it back ON afterwards
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -43,6 +54,17 @@ jobs:
       run:
         working-directory: apps/native
     steps:
+      - name: Remind about Cloudflare Bot Fight Mode
+        run: |
+          {
+            echo "### Cloudflare Bot Fight Mode"
+            echo "Must be **OFF** for this run (Security > Bots), otherwise the runner gets HTTP 403."
+            echo "**Turn it back ON when this run finishes.**"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ inputs.bot_fight_disabled }}" != "true" ]; then
+            echo "::error::Disable Cloudflare Bot Fight Mode first, then re-run with 'bot_fight_disabled' ticked (re-enable it afterwards)."
+            exit 1
+          fi
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
