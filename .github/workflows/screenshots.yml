@@ -197,7 +197,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
-      fail-fast: false
+      # First emulator failure cancels the others: they all run the same
+      # flows, so a failure is almost always shared and the rest only burn time.
+      fail-fast: true
       # Every job signs in as the same review account. Signing in consumes
       # that account's stored one-time code, so concurrent jobs make each
       # other fail with "Invalid OTP" (and share the send rate limit).
@@ -288,9 +290,11 @@ jobs:
   ios:
     # After the Android jobs, not beside them: same review account, see the
     # max-parallel note on the android job. !cancelled() so a failed or
-    # skipped Android run doesn't skip iOS.
+    # skipped Android run doesn't skip iOS (iOS-only runs), but a failed
+    # Android run does: the flows are shared, so the same failure would only
+    # cost ~1h of macOS time.
     needs: [preflight, android]
-    if: ${{ !cancelled() && inputs.platform != 'android' }}
+    if: ${{ !cancelled() && inputs.platform != 'android' && (inputs.platform == 'ios' || needs.android.result == 'success') }}
     runs-on: macos-latest
     # ~28 min simulator build + ~30 min capture (two simulators; the iPad
     # one takes ~5 min to boot and ~14 min to run the flow). A 60-minute
