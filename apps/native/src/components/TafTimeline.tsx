@@ -8,10 +8,10 @@
  */
 
 import { View, Text, ScrollView } from 'react-native'
-import Svg, { Path, Circle, Line } from 'react-native-svg'
+import Svg, { Path, Circle, Line, G } from 'react-native-svg'
 import { buildTafTimeline, type TafPeriod } from '@open-vfr/shared/parseTaf'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
-import { fmtVis, fmtWind, visTone, ceilingTone, windTone, skyLabel, type TileTone } from '@open-vfr/shared/wxFormat'
+import { fmtVis, fmtWind, visTone, ceilingTone, windTone, skyLabel, skyCover, SKY_ICON_CLOUD_TRANSFORM, type TileTone } from '@open-vfr/shared/wxFormat'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 interface Props {
@@ -29,35 +29,30 @@ function isDaytimeAt(lat: number, lng: number, atMs: number): boolean {
 
 type Cover = 'CLR' | 'FEW' | 'SCT' | 'BKN' | 'OVC'
 
-function coverForCeiling(ceilingFt: number | null, hasAnyClouds: boolean): Cover {
-  if (ceilingFt == null) return hasAnyClouds ? 'SCT' : 'CLR'
-  if (ceilingFt < 1500) return 'OVC'
-  return 'BKN'
-}
-
 function SkyIcon({ cover, daytime }: { cover: Cover; daytime: boolean }) {
-  const showCelestial = cover === 'CLR' || cover === 'FEW' || cover === 'SCT'
+  const showCelestial = cover !== 'OVC'
   const showCloud = cover !== 'CLR'
+  const sunTransform = cover === 'BKN' ? 'translate(-1 -1) scale(0.85)' : undefined
   return (
     <Svg viewBox="0 0 24 24" width={26} height={26}>
       {showCelestial && daytime && (
-        <>
-          <Circle cx={12} cy={10} r={4} fill={theme.accentYellow} stroke={theme.accentYellow} strokeWidth={1.4} />
+        <G transform={sunTransform}>
+          <Circle cx={9} cy={9} r={3.2} fill={theme.accentYellow} stroke={theme.accentYellow} strokeWidth={1.4} />
           {[0, 45, 90, 135, 180, 225, 270, 315].map((a) => (
             <Line
               key={a}
-              x1={12} y1={10} x2={12} y2={4}
+              x1={9} y1={9} x2={9} y2={3.5}
               stroke={theme.accentYellow} strokeWidth={1.4} strokeLinecap="round"
-              transform={`rotate(${a} 12 10)`}
+              transform={`rotate(${a} 9 9)`}
             />
           ))}
-        </>
+        </G>
       )}
       {showCelestial && !daytime && (
-        <Path fill={theme.accentYellow} d="M14 5 A6 6 0 1 0 14 17 A5 5 0 0 1 14 5 Z" />
+        <Path fill={theme.accentYellow} transform="translate(1 0) scale(0.75)" d="M14 5 A6 6 0 1 0 14 17 A5 5 0 0 1 14 5 Z" />
       )}
       {showCloud && (
-        <Path fill={theme.textMuted} d="M6 18 a3.5 3.5 0 0 1 0.3 -6.98 A4.5 4.5 0 0 1 15 10.2 A3.2 3.2 0 0 1 18 18 Z" />
+        <Path fill={theme.textMuted} transform={SKY_ICON_CLOUD_TRANSFORM[cover as Exclude<Cover, 'CLR'>]} d="M6 18 a3.5 3.5 0 0 1 0.3 -6.98 A4.5 4.5 0 0 1 15 10.2 A3.2 3.2 0 0 1 18 18 Z" />
       )}
     </Svg>
   )
@@ -117,7 +112,7 @@ export default function TafTimeline({ periods, lat, lng, maxHours = 24 }: Props)
         <Row>
           {slices.map((s) => (
             <Cell key={s.atMs}>
-              <SkyIcon cover={coverForCeiling(s.ceilingFt, s.clouds.length > 0)} daytime={isDaytimeAt(lat, lng, s.atMs)} />
+              <SkyIcon cover={skyCover(s.clouds)} daytime={isDaytimeAt(lat, lng, s.atMs)} />
               <Text style={styles.skyLabel} numberOfLines={2} adjustsFontSizeToFit>{skyLabel(s.clouds)}</Text>
             </Cell>
           ))}

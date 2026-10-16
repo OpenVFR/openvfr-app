@@ -124,6 +124,22 @@ export function metarNarrative(metar: MetarDecoded): string[] {
 /** One headline phrase for a cloud layer set — picks the most significant
  *  (highest-cover) layer, same "one summary word" convention public METAR/TAF
  *  sites use per hour instead of listing every layer. */
+export function skyCover(clouds: ParsedCloudLayer[]): 'CLR' | 'FEW' | 'SCT' | 'BKN' | 'OVC' {
+  if (clouds.length === 0) return 'CLR'
+  const rank: Record<ParsedCloudLayer['cover'], number> = { FEW: 1, SCT: 2, BKN: 3, OVC: 4 }
+  return clouds.reduce((a, b) => (rank[b.cover] > rank[a.cover] ? b : a)).cover
+}
+
+/** Cloud glyph transform per cover (base cloud path spans ~x6-18, y6-18):
+ *  FEW/SCT = small/medium cloud tucked beside the sun, BKN = large cloud
+ *  mostly covering a small sun, OVC = full cloud only. */
+export const SKY_ICON_CLOUD_TRANSFORM = {
+  FEW: 'translate(9 8) scale(0.6)',
+  SCT: 'translate(5 4) scale(0.8)',
+  BKN: 'translate(1 1) scale(1)',
+  OVC: 'translate(0 0) scale(1)',
+} as const
+
 export function skyLabel(clouds: ParsedCloudLayer[]): string {
   if (clouds.length === 0) return 'Clear'
   const rank: Record<ParsedCloudLayer['cover'], number> = { FEW: 1, SCT: 2, BKN: 3, OVC: 4 }

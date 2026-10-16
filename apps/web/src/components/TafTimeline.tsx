@@ -12,7 +12,7 @@
 
 import { buildTafTimeline, type TafPeriod } from '@open-vfr/shared/parseTaf'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
-import { fmtVis, fmtWind, visTone, ceilingTone, windTone, skyLabel } from '@open-vfr/shared/wxFormat'
+import { fmtVis, fmtWind, visTone, ceilingTone, windTone, skyLabel, skyCover, SKY_ICON_CLOUD_TRANSFORM } from '@open-vfr/shared/wxFormat'
 import css from './TafTimeline.module.css'
 
 interface Props {
@@ -30,39 +30,35 @@ function isDaytimeAt(lat: number, lng: number, atMs: number): boolean {
 }
 
 function SkyIcon({ cover, daytime }: { cover: 'CLR' | 'FEW' | 'SCT' | 'BKN' | 'OVC'; daytime: boolean }) {
-  const showCelestial = cover === 'CLR' || cover === 'FEW' || cover === 'SCT'
+  const showCelestial = cover !== 'OVC'
   const showCloud = cover !== 'CLR'
+  const sunTransform = cover === 'BKN' ? 'translate(-1 -1) scale(0.85)' : undefined
   return (
     <svg viewBox="0 0 24 24" className={css.skyIcon}>
       {showCelestial && daytime && (
-        <g className={css.sun}>
-          <circle cx="12" cy="10" r="4" />
+        <g className={css.sun} transform={sunTransform}>
+          <circle cx="9" cy="9" r="3.2" />
           {[0, 45, 90, 135, 180, 225, 270, 315].map((a) => (
             <line
               key={a}
-              x1="12" y1="10" x2="12" y2="4"
-              transform={`rotate(${a} 12 10)`}
+              x1="9" y1="9" x2="9" y2="3.5"
+              transform={`rotate(${a} 9 9)`}
             />
           ))}
         </g>
       )}
       {showCelestial && !daytime && (
-        <path className={css.moon} d="M14 5 A6 6 0 1 0 14 17 A5 5 0 0 1 14 5 Z" />
+        <path className={css.moon} transform="translate(1 0) scale(0.75)" d="M14 5 A6 6 0 1 0 14 17 A5 5 0 0 1 14 5 Z" />
       )}
       {showCloud && (
         <path
           className={css.cloud}
+          transform={cover !== 'CLR' ? SKY_ICON_CLOUD_TRANSFORM[cover] : undefined}
           d="M6 18 a3.5 3.5 0 0 1 0.3 -6.98 A4.5 4.5 0 0 1 15 10.2 A3.2 3.2 0 0 1 18 18 Z"
         />
       )}
     </svg>
   )
-}
-
-function coverForCeiling(ceilingFt: number | null, hasAnyClouds: boolean): 'CLR' | 'FEW' | 'SCT' | 'BKN' | 'OVC' {
-  if (ceilingFt == null) return hasAnyClouds ? 'SCT' : 'CLR'
-  if (ceilingFt < 1500) return 'OVC'
-  return 'BKN'
 }
 
 function fmtColTime(atMs: number): { day: string; time: string } {
@@ -104,7 +100,7 @@ export default function TafTimeline({ periods, lat, lng, maxHours = 24 }: Props)
             <th className={css.rowLabel}>Sky</th>
             {slices.map((s) => (
               <td key={s.atMs} className={css.cell}>
-                <SkyIcon cover={coverForCeiling(s.ceilingFt, s.clouds.length > 0)} daytime={isDaytimeAt(lat, lng, s.atMs)} />
+                <SkyIcon cover={skyCover(s.clouds)} daytime={isDaytimeAt(lat, lng, s.atMs)} />
                 <div className={css.skyLabel}>{skyLabel(s.clouds)}</div>
               </td>
             ))}
