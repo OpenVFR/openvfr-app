@@ -133,12 +133,11 @@ npx eas-cli credentials       # generate/upload the release keystore (Android) a
 
 ## Store screenshots
 
-> **Before dispatching:** Cloudflare challenges GitHub runner IPs (HTTP 403),
+> **Before dispatching:** the edge challenges GitHub runner IPs (HTTP 403),
 > both in the `preflight` host check and for the app itself in the
-> emulator/simulator. Temporarily turn **Bot Fight Mode OFF** (Cloudflare
-> dashboard, openvfr.org zone, Security > Bots), tick the
-> `bot_fight_disabled` input, and turn it back **ON** once the run
-> finishes. Preflight fails fast if the box isn't ticked.
+> emulator/simulator. Temporarily disable edge bot protection (maintainers:
+> see the private infra docs), tick the `bot_protection_disabled` input,
+> and re-enable it once the run finishes. Preflight fails fast if the box isn't ticked.
 
 
 `screenshots.yml` (manual `workflow_dispatch`) produces store-listing
