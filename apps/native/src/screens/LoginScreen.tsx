@@ -10,10 +10,10 @@
  *   After first OTP sign-in the user can register a passkey from Settings.
  */
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Image,
-  ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, useWindowDimensions, Linking,
+  ActivityIndicator, Keyboard, Platform, useWindowDimensions, Linking,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -38,16 +38,39 @@ function friendlyError(raw: string | null): string | null {
   return raw
 }
 
+/**
+ * Height of the on-screen keyboard (0 when hidden). Tracked by hand instead of
+ * relying on KeyboardAvoidingView / adjustResize: Android is edge-to-edge, where
+ * the window no longer resizes for the keyboard, so 'height' avoiding silently
+ * does nothing and the keyboard covers the inputs and the send button.
+ */
+function useKeyboardHeight(): number {
+  const [kb, setKb] = useState(0)
+  useEffect(() => {
+    const ios = Platform.OS === 'ios'
+    const show = Keyboard.addListener(ios ? 'keyboardWillShow' : 'keyboardDidShow', (e) => setKb(e.endCoordinates.height))
+    const hide = Keyboard.addListener(ios ? 'keyboardWillHide' : 'keyboardDidHide', () => setKb(0))
+    return () => { show.remove(); hide.remove() }
+  }, [])
+  return kb
+}
+
 export function LoginScreen() {
   const styles = useThemedStyles(makeStyles)
   const insets                           = useSafeAreaInsets()
   const scaledTheme                      = useScaledTheme()
   const { width, height }                = useWindowDimensions()
-  // Logo scales with device width (capped so tablets don't get a giant one)
-  // and with height: the rest of the card (buttons, inputs, footer) is sized
-  // by the scaled theme, so on a dense/tall phone at a large display scale a
-  // width-only logo pushes the footer below the fold. Floor keeps it legible.
-  const logoSize                         = Math.round(Math.min(width * 0.6, 320, Math.max(96, height * 0.23)))
+  // No scrolling: the form and footer keep their natural (theme-scaled) size and
+  // the brand area above them takes whatever height is left (flex: 1). The
+  // logo is sized to that measured area, so the screen always fits -- with or
+  // without the keyboard -- and a short area just gets a smaller logo (hidden only below 24px).
+  const kbHeight                         = useKeyboardHeight()
+  const keyboardOpen                     = kbHeight > 0
+  const [brandH, setBrandH]              = useState(0)
+  const titleBlockH = scaledTheme.text2xl * 1.4 + scaledTheme.space3
+    + (keyboardOpen ? 0 : scaledTheme.textSm * 1.4 + scaledTheme.space2)
+  const logoFit  = Math.floor(Math.min(width * 0.6, 320, brandH - titleBlockH))
+  const logoSize = logoFit >= 24 ? logoFit : 0
   const { sendOtp, verifyOtp, signInWithPasskey, passkeySupported, error } = useAuthContext()
   const [email, setEmail]                = useState('')
   const [otp, setOtp]                    = useState('')
@@ -86,26 +109,21 @@ export function LoginScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { paddingTop: insets.top }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView
-        // The bottom inset is scroll padding (not container padding) so content
-        // scrolls fully clear of the system gesture bar instead of being cut
-        // off by a fixed band at the bottom of the viewport.
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + scaledTheme.space4 }]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-      <View style={styles.cardWrap}>
-      <View style={styles.card}>
-        <Image
-          source={require('../../assets/icon.png')}
-          style={[styles.logoImg, { width: logoSize, height: logoSize, borderRadius: logoSize / 2 }]}
-        />
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: kbHeight }]}>
+      <View style={[styles.body, { paddingBottom: (keyboardOpen ? 0 : insets.bottom) + scaledTheme.space4 }]}>
+      <View style={styles.brand} onLayout={(e) => setBrandH(e.nativeEvent.layout.height)}>
+        {logoSize > 0 && (
+          <Image
+            source={require('../../assets/icon.png')}
+            style={[styles.logoImg, { width: logoSize, height: logoSize, borderRadius: logoSize / 2 }]}
+          />
+        )}
         <Text style={styles.logo}>OpenVFR</Text>
-        <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit>Open-Source VFR Flight Planning & Navigation</Text>
+        {!keyboardOpen && (
+          <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit>Open-Source VFR Flight Planning & Navigation</Text>
+        )}
+      </View>
+      <View style={styles.card}>
 
         {step === 'choose' && (
           <>
@@ -220,7 +238,6 @@ export function LoginScreen() {
         {shownError && <Text style={styles.error} testID="login-error">{shownError}</Text>}
 
       </View>
-      </View>
       {!!SITE_BASE && (
       <View style={styles.footer}>
         <Text style={styles.footerLink} onPress={() => Linking.openURL(`${SITE_BASE}/privacy`)}>
@@ -232,8 +249,8 @@ export function LoginScreen() {
         </Text>
       </View>
       )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </View>
+    </View>
   )
 }
 
@@ -243,15 +260,16 @@ function makeStyles(theme: ScaledTheme) {
     flex:            1,
     backgroundColor: theme.surfaceBase,
   },
-  scroll: {
-    flexGrow:        1,
+  body: {
+    flex:            1,
     padding:         theme.space4,
   },
-  // Fills the free height and centres the card in it; the footer below is
-  // therefore always pinned to the bottom (it scrolls only when content is taller than the screen).
-  cardWrap: {
+  // Takes all height the form and footer don't need; the logo is sized to it.
+  brand: {
     flex:            1,
     justifyContent:  'center',
+    alignItems:      'center',
+    overflow:        'hidden',
   },
   card: {
     gap:             theme.space3,
