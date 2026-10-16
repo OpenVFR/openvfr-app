@@ -53,7 +53,7 @@ function SkyIcon({ cover, daytime }: { cover: 'CLR' | 'FEW' | 'SCT' | 'BKN' | 'O
       {showCloud && (
         <path
           className={css.cloud}
-          transform={cover !== 'CLR' ? SKY_ICON_CLOUD_TRANSFORM[cover] : undefined}
+          transform={SKY_ICON_CLOUD_TRANSFORM[cover]}
           d="M6 18 a3.5 3.5 0 0 1 0.3 -6.98 A4.5 4.5 0 0 1 15 10.2 A3.2 3.2 0 0 1 18 18 Z"
         />
       )}
