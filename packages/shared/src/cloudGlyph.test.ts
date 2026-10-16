@@ -26,9 +26,9 @@ describe('parseMetarClouds', () => {
 })
 
 describe('cloudLayerPaths', () => {
-  it('draws one body for FEW/OVC, two for SCT, three for BKN', () => {
+  it('draws one body for FEW/OVC, three for SCT, three for BKN', () => {
     expect(cloudLayerPaths(0, 100, 50, { cover: 'FEW' }, 1)).toHaveLength(1)
-    expect(cloudLayerPaths(0, 100, 50, { cover: 'SCT' }, 1)).toHaveLength(2)
+    expect(cloudLayerPaths(0, 100, 50, { cover: 'SCT' }, 1)).toHaveLength(3)
     expect(cloudLayerPaths(0, 100, 50, { cover: 'BKN' }, 1)).toHaveLength(3)
     expect(cloudLayerPaths(0, 100, 50, { cover: 'OVC' }, 1)).toHaveLength(1)
   })

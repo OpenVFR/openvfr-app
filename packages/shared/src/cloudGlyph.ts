@@ -37,9 +37,9 @@ interface CloudStyle {
 }
 
 const CLOUD_STYLE: Record<CloudCover, CloudStyle> = {
-  FEW: { fraction: 0.40, clusters: 1, bumpH: 11, bodyH: 2, chord: 9 },
-  SCT: { fraction: 0.60, clusters: 2, bumpH: 10, bodyH: 2, chord: 9 },
-  BKN: { fraction: 0.88, clusters: 3, bumpH: 9,  bodyH: 3, chord: 9 },
+  FEW: { fraction: 0.18, clusters: 1, bumpH: 11, bodyH: 2, chord: 9 },
+  SCT: { fraction: 0.45, clusters: 3, bumpH: 10, bodyH: 2, chord: 9 },
+  BKN: { fraction: 0.80, clusters: 3, bumpH: 9,  bodyH: 3, chord: 9 },
   OVC: { fraction: 1.00, clusters: 1, bumpH: 5,  bodyH: 5, chord: 9 },
 }
 
