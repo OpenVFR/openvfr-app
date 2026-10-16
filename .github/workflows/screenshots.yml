@@ -55,6 +55,8 @@ jobs:
         working-directory: apps/native
     steps:
       - name: Remind about edge bot protection
+        # Runs before checkout, so the job's default apps/native dir doesn't exist yet.
+        working-directory: .
         run: |
           {
             echo "### Edge bot protection"
