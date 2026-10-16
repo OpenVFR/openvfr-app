@@ -3354,6 +3354,12 @@ export default function MapView({ auth }: { auth: AuthState }) {
     routeWaypointsRef.current = routeWaypoints
   }, [routeWaypoints])
 
+  // Ruler and route editing are mutually exclusive: turning editing on (from
+  // the tools menu or anywhere else) switches the ruler off and clears it.
+  useEffect(() => {
+    if (planningMode || routeAdjustMode) { setRulerMode(false); setRulerPoints([]) }
+  }, [planningMode, routeAdjustMode])
+
   // Sync ruler state → refs.
   useEffect(() => {
     rulerModeRef.current = rulerMode
@@ -4202,18 +4208,18 @@ export default function MapView({ auth }: { auth: AuthState }) {
 
   return (
     <div className={css.wrapper}>
-      {routeUndo.editSessionActive && (
-        <RouteEditBanner
-          canUndo={routeUndo.canUndo}
-          canRedo={routeUndo.canRedo}
-          onUndo={routeUndo.undo}
-          onRedo={routeUndo.redo}
-          onCancel={routeUndo.cancelEditSession}
-          onApply={routeUndo.applyEditSession}
-        />
-      )}
       <SideDrawer {...drawerProps} />
       <div className={css.mapArea}>
+        {routeUndo.editSessionActive && (
+          <RouteEditBanner
+            canUndo={routeUndo.canUndo}
+            canRedo={routeUndo.canRedo}
+            onUndo={routeUndo.undo}
+            onRedo={routeUndo.redo}
+            onCancel={routeUndo.cancelEditSession}
+            onApply={routeUndo.applyEditSession}
+          />
+        )}
         {autoFly.suggestion && (
           <AutoFlyPrompt kind={autoFly.suggestion} onAccept={autoFly.accept} onDismiss={autoFly.dismiss} />
         )}
@@ -4232,7 +4238,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           const toggleEdit = () => flying ? setRouteAdjustMode(v => !v) : setPlanningMode(m => !m)
           const toolItems: ToolItem[] = [
             { id: 'ruler', label: 'Ruler', description: 'Measure distance and bearing: tap two points on the map. Tap again to switch off and clear.', icon: <IconRulerMeasure {...CTRL_ICON} />, active: rulerMode,
-              onSelect: () => setRulerMode(m => { if (m) setRulerPoints([]); return !m }) },
+              onSelect: () => { if (rulerMode) setRulerPoints([]); else { setPlanningMode(false); setRouteAdjustMode(false) }; setRulerMode(!rulerMode) } },
             { id: 'edit', label: editOn ? 'Lock route' : 'Edit route',
               description: flying
                 ? (editOn ? 'Lock the route again so it cannot be changed by accident' : 'Unlock the route to drag or add waypoints in flight (re-locks on the next flight)')

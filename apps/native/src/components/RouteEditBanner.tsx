@@ -1,5 +1,5 @@
 /**
- * RouteEditBanner — compact pill just above the vertical profile for the whole
+ * RouteEditBanner — compact pill at the top-left of the map for the whole
  * duration of a route edit session (first edit in planning mode until
  * Apply/Cancel). Distance and ETE are shown in the profile header. Apply
  * keeps the changes as an unsaved working copy; Cancel restores the route as
@@ -12,10 +12,10 @@ import { Ionicons } from '@expo/vector-icons'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 export function RouteEditBanner({
-  bottom, canUndo, canRedo,
+  top, canUndo, canRedo,
   onUndo, onRedo, onCancel, onApply,
 }: {
-  bottom: number
+  top: number
   canUndo: boolean
   canRedo: boolean
   onUndo: () => void
@@ -25,7 +25,7 @@ export function RouteEditBanner({
 }) {
   const styles = useThemedStyles(makeStyles)
   return (
-    <View style={[styles.bar, { bottom }]} testID="route-edit-banner">
+    <View style={[styles.bar, { top }]} testID="route-edit-banner">
       <TouchableOpacity onPress={onUndo} disabled={!canUndo} hitSlop={8} accessibilityLabel="Undo">
         <Ionicons name="arrow-undo" size={18} color={canUndo ? theme.textPrimary : theme.textFaint} />
       </TouchableOpacity>

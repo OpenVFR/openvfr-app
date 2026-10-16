@@ -49,6 +49,8 @@ import { useDataFreshness } from '../hooks/useDataFreshness'
 
 /** In flight: auto-return to follow this long after the last user pan. */
 const FOLLOW_RETURN_MS = 15_000
+// Vertical space the top-left route-edit banner takes; other top banners step below it.
+const EDIT_BANNER_H = 44
 
 /** GeoJSON aerodrome feature properties -> AerodromePopup props. Nested
  *  arrays arrive JSON-stringified from MapLibre feature queries but as real
@@ -1143,6 +1145,11 @@ function MapScreenForCountry() {
   const toolFlying = flightModeStatus !== 'off'
   // Route editing: planningMode on the ground, routeAdjustMode in flight.
   const routeEditOn = toolFlying ? routeAdjustMode : planningMode
+  // Ruler and route editing are mutually exclusive: turning editing on (from
+  // the tools menu or anywhere else) switches the ruler off and clears it.
+  useEffect(() => {
+    if (planningMode || routeAdjustMode) { setRulerMode(false); setRulerPoints([]) }
+  }, [planningMode, routeAdjustMode])
   const toolIcon = (Icon: import("@tabler/icons-react-native").Icon) => (color: string) => <Icon size={22} strokeWidth={2} color={color} />
   const toolGroups: ToolGroupDef[] = [
     { id: 'fly', label: 'Flying', items: [toolFlying
@@ -1169,7 +1176,7 @@ function MapScreenForCountry() {
     ] },
     { id: 'tools', label: 'Map tools', items: [
       { id: 'ruler', label: 'Ruler', description: 'Measure distance and bearing: tap two points on the map. Tap again to switch off and clear.',
-        icon: toolIcon(IconRulerMeasure), active: rulerMode, onSelect: () => { setRulerMode(m => !m); setRulerPoints([]) } },
+        icon: toolIcon(IconRulerMeasure), active: rulerMode, onSelect: () => { if (!rulerMode) { setPlanningMode(false); setRouteAdjustMode(false) }; setRulerMode(!rulerMode); setRulerPoints([]) } },
       { id: 'edit', label: routeEditOn ? 'Lock route' : 'Edit route',
         description: toolFlying
           ? (routeEditOn ? 'Lock the route again so it cannot be changed by accident' : 'Unlock the route to drag or add waypoints in flight')
@@ -1548,7 +1555,7 @@ function MapScreenForCountry() {
 
         {/* Viewed flight log banner — Logs segment "View" action on PlanScreen */}
         {selectedLog && (
-          <View style={[styles.pastTrackBanner, { top: scaledTheme.space2 }]}>
+          <View style={[styles.pastTrackBanner, { top: scaledTheme.space2 + (editSessionActive ? EDIT_BANNER_H : 0) }]}>
             <Ionicons name="navigate-outline" size={13} color="#c4b5fd" />
             <Text style={styles.pastTrackBannerTxt} numberOfLines={1}>
               {selectedLog.departureIcao || '?'} → {selectedLog.arrivalIcao || '?'} · {selectedLog.distanceNm.toFixed(0)} NM
@@ -1561,7 +1568,7 @@ function MapScreenForCountry() {
 
         {/* Outdated-AIRAC warning -- non-blocking, stacked under the log banner */}
         {outdatedAirac.length > 0 && dismissedAiracKey !== outdatedAiracKey && (
-          <View style={[styles.pastTrackBanner, styles.airacBanner, { top: scaledTheme.space2 + (selectedLog ? 44 : 0) }]}>
+          <View style={[styles.pastTrackBanner, styles.airacBanner, { top: scaledTheme.space2 + (editSessionActive ? EDIT_BANNER_H : 0) + (selectedLog ? 44 : 0) }]}>
             <Ionicons name="warning-outline" size={13} color={theme.statusWarn} />
             <Text style={styles.pastTrackBannerTxt} numberOfLines={2}>
               Airspace data outdated — {outdatedAirac.map(o => `${o.country.toUpperCase()} AIRAC ${o.cycle}`).join(', ')} (current {currentAirac}). Verify against official AIP.
@@ -1684,7 +1691,7 @@ function MapScreenForCountry() {
           for every change, then Apply keeps them (unsaved) or Cancel restores. */}
       {editSessionActive && (
         <RouteEditBanner
-          bottom={scaledTheme.space3 + bottomStackH}
+          top={scaledTheme.space2}
           canUndo={canUndo} canRedo={canRedo}
           onUndo={undoRoute} onRedo={redoRoute}
           onCancel={cancelEditSession} onApply={applyEditSession}

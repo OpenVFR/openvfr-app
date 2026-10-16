@@ -1,8 +1,9 @@
 .banner {
-  position: fixed;
+  /* Top-left of the map area (not the viewport) so it follows the drawer edge;
+     left clears the 38px drawer tab column that pokes into the map area. */
+  position: absolute;
   top: calc(12px + env(safe-area-inset-top, 0px));
-  left: 50%;
-  transform: translateX(-50%);
+  left: 50px;
   z-index: 900;
 
   display: flex;
