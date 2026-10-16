@@ -989,7 +989,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
       : locMode === 'off'
         ? (locDenied ? 'Location permission denied' : 'Show my position')
         : 'Showing my position — tap to centre, tap again when centred to turn off'
-    btn.style.color = on ? 'var(--accent-blue)' : ''
+    // Same highlight as the map-tools toolbar's active state (MapToolbar .active).
+    btn.style.color = on ? '#000' : ''
+    btn.style.backgroundColor = on ? 'rgba(250, 204, 21, 0.85)' : ''
     btn.innerHTML = on ? LOCATE_ON_ICON_SVG : LOCATE_ICON_SVG
     btn.setAttribute('aria-pressed', String(on))
     btn.setAttribute('aria-label', btn.title)
