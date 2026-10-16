@@ -924,6 +924,21 @@ export default function MapView({ auth }: { auth: AuthState }) {
     }
   }
 
+  // Is the map centred on the passive position dot? Drives the locate button's
+  // highlight: yellow = locked on position.
+  const [locCentred, setLocCentred] = useState(false)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !passivePos) { setLocCentred(false); return }
+    const update = () => {
+      const c = map.getCenter()
+      setLocCentred(distanceNm({ lat: c.lat, lng: c.lng }, passivePos) * 1852 < 50)
+    }
+    update()
+    map.on('moveend', update)
+    return () => { map.off('moveend', update) }
+  }, [passivePos, mapReady])
+
   useEffect(() => {
     const map = mapRef.current
     if (!map || !passivePos || !pendingLocateCenterRef.current) return
@@ -984,18 +999,20 @@ export default function MapView({ auth }: { auth: AuthState }) {
     if (!btn) return
     const flying = flyingMode !== 'off'
     const on = flying ? followAircraft : locMode === 'passive'
+    // Highlight (yellow) only while actually locked on; shown-but-panned-away stays plain.
+    const locked = flying ? followAircraft : locMode === 'passive' && locCentred
     btn.title = flying
       ? (followAircraft ? 'Following aircraft' : 'Re-centre on aircraft (returns automatically after 15 s)')
       : locMode === 'off'
         ? (locDenied ? 'Location permission denied' : 'Show my position')
         : 'Showing my position — tap to centre, tap again when centred to turn off'
     // Same highlight as the map-tools toolbar's active state (MapToolbar .active).
-    btn.style.color = on ? '#000' : ''
-    btn.style.backgroundColor = on ? 'rgba(250, 204, 21, 0.85)' : ''
+    btn.style.color = locked ? '#000' : ''
+    btn.style.backgroundColor = locked ? 'rgba(250, 204, 21, 0.85)' : ''
     btn.innerHTML = on ? LOCATE_ON_ICON_SVG : LOCATE_ICON_SVG
     btn.setAttribute('aria-pressed', String(on))
     btn.setAttribute('aria-label', btn.title)
-  }, [locMode, locDenied, followAircraft, flyingMode, mapReady])
+  }, [locMode, locDenied, followAircraft, flyingMode, mapReady, locCentred])
   const gpsPositionRef  = useRef<GpsPosition | null>(null)
   const aircraftDragRef = useRef(false)
   // Cache of all runway threshold entries, loaded once from se-runway-thresholds.geojson

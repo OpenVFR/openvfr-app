@@ -1072,6 +1072,9 @@ function MapScreenForCountry() {
   // AviationMap's showOwnPosition; the camera only moves on an explicit
   // tap. Never starts logging, alerts or keep-awake (flight-only).
   const [locMode, setLocMode] = useState<'off' | 'passive'>('off')
+  // Map is locked on the passive position dot (set by Locate, cleared by a user pan).
+  // Drives the Locate button's yellow highlight, like the web app.
+  const [locCentred, setLocCentred] = useState(false)
   useEffect(() => {
     // Permission already granted -> show the dot at startup (no prompt,
     // camera untouched). Otherwise nothing until the user taps.
@@ -1092,7 +1095,7 @@ function MapScreenForCountry() {
     try {
       const pos = (await Location.getLastKnownPositionAsync({ maxAge: 60_000 }))
         ?? (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }))
-      if (pos) setFindDestFlyTarget({ lat: pos.coords.latitude, lng: pos.coords.longitude, nonce: Date.now() })
+      if (pos) { setFindDestFlyTarget({ lat: pos.coords.latitude, lng: pos.coords.longitude, nonce: Date.now() }); setLocCentred(true) }
     } catch { /* no fix yet -- the dot appears once one arrives */ }
   }, [flightModeStatus])
 
@@ -1114,6 +1117,7 @@ function MapScreenForCountry() {
   }, [])
   const handleUserPan = useCallback(() => {
     setFollowGps(false)
+    setLocCentred(false)
     clearFollowReturn()
     if (!followReturnArmableRef.current) return
     followReturnTimerRef.current = setTimeout(() => {
@@ -1652,7 +1656,7 @@ function MapScreenForCountry() {
         />
         <View style={stackGap}>
           <TouchableOpacity
-            style={[styles.iconBtn, (flightModeStatus !== 'off' ? followGps : locMode === 'passive') && styles.iconBtnActive, flightModeStatus !== 'off' && !followGps && styles.iconBtnAttention]}
+            style={[styles.iconBtn, (flightModeStatus !== 'off' ? followGps : locMode === 'passive' && locCentred) && styles.iconBtnActive, flightModeStatus !== 'off' && !followGps && styles.iconBtnAttention]}
             onPress={handleLocate}
             onLongPress={() => { if (flightModeStatus === 'off') setLocMode('off') }}
             accessibilityLabel={flightModeStatus !== 'off' ? (followGps ? 'Following aircraft' : 'Map not following. Tap to re-centre on aircraft') : locMode === 'passive' ? 'Centre on my position. Long-press to turn location off.' : 'Show my position'}
@@ -1660,7 +1664,7 @@ function MapScreenForCountry() {
             <Ionicons
               name={locMode === 'passive' || flightModeStatus !== 'off' ? 'locate' : 'locate-outline'}
               size={18}
-              color={flightModeStatus !== 'off' && !followGps ? '#fb923c' : (flightModeStatus !== 'off' ? followGps : locMode === 'passive') ? theme.accentBlue : theme.textPrimary}
+              color={flightModeStatus !== 'off' && !followGps ? '#fb923c' : (flightModeStatus !== 'off' ? followGps : locMode === 'passive' && locCentred) ? '#000' : theme.textPrimary}
             />
           </TouchableOpacity>
         </View>
@@ -1902,7 +1906,8 @@ function makeStyles(theme: ScaledTheme) {
   // Active = blue outline + blue icon on the normal dark fill, matching the
   // flight-mode and layers buttons (a solid blue fill looked out of place).
   iconBtnActive: {
-    borderColor:     theme.accentBlue,
+    borderColor:     'rgba(0,0,0,0.25)',
+    backgroundColor: 'rgba(250,204,21,0.9)',
   },
   showProfileBtn: {
     position:        'absolute',
