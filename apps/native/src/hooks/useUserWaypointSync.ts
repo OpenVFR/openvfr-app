@@ -16,6 +16,7 @@ import { API_BASE } from '../config'
 import { getSyncJwt } from '../utils/syncJwt'
 import { useAuthContext } from '../context/AuthContext'
 import { getLastSyncAt, setLastSyncAt } from './syncMeta'
+import { syncLog } from '../utils/syncLog'
 
 const REST = `${API_BASE}/rest`
 
@@ -62,7 +63,7 @@ async function restUpsert(jwt: string, userId: string, doc: UserWaypointDocType)
     }),
   })
   if (!res.ok) {
-    console.warn('[useUserWaypointSync] restUpsert failed', res.status, await res.text().catch(() => ''))
+    syncLog('[useUserWaypointSync] restUpsert failed', res.status, await res.text().catch(() => ''))
     return false
   }
   return true
@@ -74,7 +75,7 @@ async function restDelete(jwt: string, id: string): Promise<boolean> {
     headers: { Authorization: `Bearer ${jwt}` },
   })
   if (!res.ok) {
-    console.warn('[useUserWaypointSync] restDelete failed', res.status, await res.text().catch(() => ''))
+    syncLog('[useUserWaypointSync] restDelete failed', res.status, await res.text().catch(() => ''))
     return false
   }
   return true

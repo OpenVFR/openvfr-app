@@ -24,6 +24,7 @@ import { API_BASE } from '../config'
 import { getSyncJwt } from '../utils/syncJwt'
 import { useAuthContext } from '../context/AuthContext'
 import { getLastSyncAt, setLastSyncAt } from './syncMeta'
+import { syncLog } from '../utils/syncLog'
 
 const REST = `${API_BASE}/rest`
 
@@ -40,7 +41,7 @@ async function restFetch(jwt: string): Promise<ServerAircraft[]> {
     headers: { Authorization: `Bearer ${jwt}`, Accept: 'application/json' },
   })
   if (!res.ok) {
-    console.warn('[useAircraftSync] restFetch failed', res.status, await res.text().catch(() => ''))
+    syncLog('[useAircraftSync] restFetch failed', res.status, await res.text().catch(() => ''))
     return []
   }
   return res.json() as Promise<ServerAircraft[]>
@@ -64,7 +65,7 @@ async function restUpsert(jwt: string, userId: string, doc: AircraftProfileDocTy
     }),
   })
   if (!res.ok) {
-    console.warn('[useAircraftSync] restUpsert failed', res.status, await res.text().catch(() => ''))
+    syncLog('[useAircraftSync] restUpsert failed', res.status, await res.text().catch(() => ''))
     return false
   }
   return true
@@ -76,7 +77,7 @@ async function restDelete(jwt: string, id: string): Promise<boolean> {
     headers: { Authorization: `Bearer ${jwt}` },
   })
   if (!res.ok) {
-    console.warn('[useAircraftSync] restDelete failed', res.status, await res.text().catch(() => ''))
+    syncLog('[useAircraftSync] restDelete failed', res.status, await res.text().catch(() => ''))
     return false
   }
   return true

@@ -33,6 +33,7 @@
 
 import { API_BASE } from '../config'
 import { authHeaders, authClient } from './authClient'
+import { syncLog } from './syncLog'
 
 let _jwt:       string | null = null
 let _jwtExpiry: number        = 0
@@ -51,7 +52,7 @@ export async function getSyncJwt(): Promise<string | null> {
 
     if (!res.ok) {
       const body = await res.text().catch(() => '')
-      console.warn('[syncJwt] /api/auth/token failed, retrying after session refresh', res.status, body)
+      syncLog('[syncJwt] /api/auth/token failed, retrying after session refresh', res.status, body)
       // Force authClient's own fetch wrapper to run once -- its onSuccess
       // hook is the only thing that refreshes the stored bearer token (see
       // module doc comment above). If the session itself is gone (fully
@@ -60,7 +61,7 @@ export async function getSyncJwt(): Promise<string | null> {
       res = await fetchToken()
       if (!res.ok) {
         const retryBody = await res.text().catch(() => '')
-        console.error('[syncJwt] /api/auth/token failed after session refresh retry', res.status, retryBody)
+        syncLog('[syncJwt] /api/auth/token failed after session refresh retry', res.status, retryBody)
         return null
       }
     }
@@ -70,7 +71,7 @@ export async function getSyncJwt(): Promise<string | null> {
     _jwtExpiry = (body.expiresAt - 60) * 1000  // expire 60 s before actual expiry
     return _jwt
   } catch (err) {
-    console.error('[syncJwt] /api/auth/token request threw', err instanceof Error ? err.message : String(err))
+    syncLog('[syncJwt] /api/auth/token request threw', err instanceof Error ? err.message : String(err))
     return null
   }
 }

@@ -39,3 +39,9 @@ export async function setLastSyncAt(ts: number): Promise<void> {
   cached = ts
   try { await AsyncStorage.setItem(KEY, String(ts)) } catch { /* ignore */ }
 }
+
+/** Forget the high-water mark (local data wiped / account changed). */
+export async function resetLastSyncAt(): Promise<void> {
+  cached = 0
+  try { await AsyncStorage.removeItem(KEY) } catch { /* ignore */ }
+}

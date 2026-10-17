@@ -18,6 +18,7 @@ import { API_BASE } from '../config'
 import { getSyncJwt } from '../utils/syncJwt'
 import { useAuthContext } from '../context/AuthContext'
 import { getLastSyncAt, setLastSyncAt } from './syncMeta'
+import { syncLog } from '../utils/syncLog'
 
 const REST = `${API_BASE}/rest`
 
@@ -71,7 +72,7 @@ async function restUpsert(jwt: string, userId: string, doc: FlightLogDocType): P
     }),
   })
   if (!res.ok) {
-    console.warn('[useFlightLogSync] restUpsert failed', res.status, await res.text().catch(() => ''))
+    syncLog('[useFlightLogSync] restUpsert failed', res.status, await res.text().catch(() => ''))
     return false
   }
   return true
@@ -83,7 +84,7 @@ async function restDelete(jwt: string, id: string): Promise<boolean> {
     headers: { Authorization: `Bearer ${jwt}` },
   })
   if (!res.ok) {
-    console.warn('[useFlightLogSync] restDelete failed', res.status, await res.text().catch(() => ''))
+    syncLog('[useFlightLogSync] restDelete failed', res.status, await res.text().catch(() => ''))
     return false
   }
   return true

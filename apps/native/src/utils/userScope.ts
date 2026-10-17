@@ -16,6 +16,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { resetLastSyncAt } from '../hooks/syncMeta'
 
 const OWNER_KEY = 'ovfr:syncOwner'
 const PRIVATE_KEYS = [
@@ -27,6 +28,7 @@ const PRIVATE_KEYS = [
 
 export async function wipePrivateLocalData(): Promise<void> {
   await AsyncStorage.removeMany([...PRIVATE_KEYS, OWNER_KEY]).catch(() => {})
+  await resetLastSyncAt()
 }
 
 export async function claimLocalData(userId: string): Promise<void> {

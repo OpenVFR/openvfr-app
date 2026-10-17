@@ -2,7 +2,7 @@
  * SettingsScreen — app preferences.
  */
 
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import {
   View, Text, Switch, ScrollView, TextInput,
@@ -39,6 +39,8 @@ import { clearProtomapsStyleCache } from '../components/AviationMap'
 
 const UI_SCALE_OPTIONS = [0.85, 0.9, 1.0, 1.1, 1.2, 1.3, 1.45, 1.6]
 
+import { getSyncLog } from '../utils/syncLog'
+
 export function SettingsScreen() {
   const scaledTheme          = useScaledTheme()
   const styles                = useThemedStyles(makeStyles)
@@ -46,6 +48,9 @@ export function SettingsScreen() {
   const { settings, update } = useSettingsContext()
   const { state, signOut, registerPasskey, requestAccountDeletion } = useAuthContext()
   const [deleteBusy, setDeleteBusy] = useState(false)
+  // Hidden diagnostics: tap the Version row 5 times to reveal the sync log.
+  const versionTaps = useRef(0)
+  const [showDiag, setShowDiag] = useState(false)
   const [deleteSent, setDeleteSent] = useState(false)
 
   const handleDeleteAccount = useCallback(() => {
@@ -435,13 +440,26 @@ export function SettingsScreen() {
       </Section>
 
       <Section title="About">
-        <InfoRow label="Version"        value="0.1.0" />
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => {
+            versionTaps.current += 1
+            if (versionTaps.current >= 5) setShowDiag(true)
+          }}
+        >
+          <InfoRow label="Version"        value="0.1.0" />
+        </TouchableOpacity>
         <InfoRow label="Server"         value={API_BASE} />
         <AiracStatusRows data={dataStatus} />
         <InfoRow label="Obstacles"      value="OpenAIP (CC BY-NC 4.0)" />
         <InfoRow label="Basemap"        value="Protomaps / OSM (ODbL)" />
         {state.status === 'authenticated' && (
           <InfoRow label="Signed in as" value={state.user.email} />
+        )}
+        {showDiag && (
+          <TouchableOpacity onPress={() => Alert.alert('Sync log', getSyncLog())}>
+            <InfoRow label="Diagnostics" value="Sync log ›" />
+          </TouchableOpacity>
         )}
       </Section>
 

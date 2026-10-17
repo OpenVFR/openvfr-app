@@ -26,6 +26,7 @@ import { API_BASE } from '../config'
 import { getSyncJwt } from '../utils/syncJwt'
 import { useAuthContext } from '../context/AuthContext'
 import { getLastSyncAt, setLastSyncAt } from './syncMeta'
+import { syncLog } from '../utils/syncLog'
 
 // ── PostgREST helpers ─────────────────────────────────────────────────────────
 
@@ -46,7 +47,13 @@ async function restFetch(jwt: string): Promise<ServerRoute[]> {
   const res = await fetch(`${REST}/user_routes?select=*&order=updated_at.desc`, {
     headers: { Authorization: `Bearer ${jwt}`, Accept: 'application/json' },
   })
-  if (!res.ok) return []
+  if (!res.ok) {
+    // Must not look like "server has no routes": the reconcile step would
+    // then delete local routes and stamp a successful sync.
+    const body = await res.text().catch(() => '')
+    syncLog('[useRouteSync] restFetch failed', res.status, body)
+    throw new Error(`user_routes fetch failed: ${res.status}`)
+  }
   return res.json() as Promise<ServerRoute[]>
 }
 
@@ -71,7 +78,7 @@ async function restUpsert(jwt: string, userId: string, route: RouteDocType): Pro
     }),
   })
   if (!res.ok) {
-    console.warn('[useRouteSync] restUpsert failed', res.status, await res.text().catch(() => ''))
+    syncLog('[useRouteSync] restUpsert failed', res.status, await res.text().catch(() => ''))
     return false
   }
   return true
@@ -83,7 +90,7 @@ async function restDelete(jwt: string, id: string): Promise<boolean> {
     headers: { Authorization: `Bearer ${jwt}` },
   })
   if (!res.ok) {
-    console.warn('[useRouteSync] restDelete failed', res.status, await res.text().catch(() => ''))
+    syncLog('[useRouteSync] restDelete failed', res.status, await res.text().catch(() => ''))
     return false
   }
   return true
@@ -111,6 +118,7 @@ export function useRouteSync(authenticated: boolean) {
 
     try {
       const serverRoutes = await restFetch(jwt)
+      syncLog('[useRouteSync] pulled', serverRoutes.length, 'server routes')
       const localRoutes  = await routeDb.getAll()
       const lastSyncAt   = await getLastSyncAt()
       const serverIds    = new Set(serverRoutes.map(sr => sr.id))
@@ -146,14 +154,16 @@ export function useRouteSync(authenticated: boolean) {
 
       await setLastSyncAt(Date.now())
       setSyncState('idle')
-    } catch {
+    } catch (err) {
+      syncLog('[useRouteSync] pull failed', err instanceof Error ? err.message : String(err))
       setSyncState('error')
     }
   }, [authenticated, userId])
 
   // Initial pull on login
   useEffect(() => {
-    if (!authenticated || syncedRef.current) return
+    if (!authenticated) { syncedRef.current = false; return }
+    if (syncedRef.current) return
     syncedRef.current = true
     pull()
   }, [authenticated, pull])
