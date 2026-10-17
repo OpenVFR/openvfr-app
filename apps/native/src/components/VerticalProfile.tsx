@@ -63,6 +63,7 @@ import { useWindAloftAlongRoute } from '../hooks/useWindAloftAlongRoute'
 import { getTileUrls, API_BASE } from '../config'
 import { getOfflineDem } from '../utils/terrainDem'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
+import { Ionicons } from '@expo/vector-icons'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 
 // ---------------------------------------------------------------------------
@@ -113,6 +114,10 @@ interface Props {
    *  instead of as a separate floating overlay. */
   headerStart?: React.ReactNode
   headerEnd?: React.ReactNode
+  /** Renders a close (X) button at the far right of the header row, after
+   *  the WIND/PROJ toggles. */
+  onClose?: () => void
+  closeLabel?: string
   aircraftProfile?: AircraftProfileDocType
   currentDistNm?: number
   currentAltFt?: number
@@ -354,7 +359,7 @@ function windLabelPlacement(cx: number, halfW: number, text: string, fontSize: n
 // ---------------------------------------------------------------------------
 
 export function VerticalProfile({
-  waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, title, headerStart, headerEnd, aircraftProfile,
+  waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, title, headerStart, headerEnd, onClose, closeLabel, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
   crossTrackNm, weatherStations,
   height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm,
@@ -914,6 +919,11 @@ export function VerticalProfile({
               <Text style={[styles.projBtnTxt, showProjection && styles.projBtnTxtOn]}>PROJ</Text>
             </TouchableOpacity>
           )}
+          {onClose && (
+            <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ left: 8, right: 8 }} accessibilityLabel={closeLabel ?? 'Close'}>
+              <Ionicons name="close" size={16} color={theme.textSecondary} />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
       {/* ── Chart ──────────────────────────────────────────────────── */}
@@ -1442,6 +1452,18 @@ function makeStyles(theme: ScaledTheme) {
     height:          5,
     borderRadius:    3,
     backgroundColor: theme.textMuted,
+  },
+  closeBtn: {
+    borderWidth:       1,
+    borderColor:       theme.borderStrong,
+    borderRadius:      theme.radiusSm,
+    backgroundColor:   theme.surfaceHover,
+    // Fills the 30 dp header row; hitSlop only widens it sideways since the
+    // row's own bounds cap touch height on Android.
+    minWidth:          36,
+    height:            26,
+    alignItems:        'center',
+    justifyContent:    'center',
   },
   projBtn: {
     borderWidth:       1,

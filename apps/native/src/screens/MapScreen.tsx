@@ -1724,9 +1724,10 @@ function MapScreenForCountry() {
             weatherStations={rulerWeatherStations}
             headerStart={<RulerHeaderStart from={rulerPoints[0]} to={rulerPoints[1]} units={settings.units} />}
             headerEnd={
-              <RulerHeaderEnd from={rulerPoints[0]} to={rulerPoints[1]} aircraftProfile={aircraftProfile}
-                onClear={() => { setRulerPoints([]); setRulerMode(false) }} />
+              <RulerHeaderEnd from={rulerPoints[0]} to={rulerPoints[1]} aircraftProfile={aircraftProfile} />
             }
+            onClose={() => { setRulerPoints([]); setRulerMode(false) }}
+            closeLabel="Clear ruler"
             height={profileHeight}
             onHeightChange={setProfileHeight}
             onHoverDistNm={handleProfileHover}

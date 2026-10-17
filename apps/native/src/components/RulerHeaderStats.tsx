@@ -6,17 +6,17 @@
  * the pilot is already looking at.
  *
  *   headerStart: DIST · magnetic (°M) · true (°T) bearing
- *   headerEnd:   ETE · fuel (when an aircraft profile is set) · clear
+ *   headerEnd:   ETE · fuel (when an aircraft profile is set); the clear
+ *                button is VerticalProfile's own onClose, at the far right
  */
 
 import React from 'react'
-import { Text, TouchableOpacity, type TextStyle } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { Text, type TextStyle } from 'react-native'
 import { bearingDeg, distanceNm, magneticBearingDeg } from '@open-vfr/shared/routeCalc'
 import { iasToTas } from '@open-vfr/shared/airspeed'
 import type { RouteWaypoint, LegOverride, AircraftProfileDocType } from '../types/db'
 import { type Units, nmToDisplay, distLabel } from '../utils/units'
-import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
+import { useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 function fmtBrg(deg: number): string {
   return `${Math.round(deg).toString().padStart(3, '0')}°`
@@ -94,13 +94,11 @@ export function RouteHeaderStart({ waypoints, legOverrides, units, cruiseKts, cr
   )
 }
 
-export function RulerHeaderEnd({ from, to, aircraftProfile, onClear }: {
+export function RulerHeaderEnd({ from, to, aircraftProfile }: {
   from: RouteWaypoint
   to: RouteWaypoint
   aircraftProfile?: AircraftProfileDocType
-  onClear: () => void
 }) {
-  const styles    = useThemedStyles(makeStyles)
   // Cruise IAS → TAS at the aircraft's cruise altitude.
   const cruiseKts = aircraftProfile?.cruiseIas ? iasToTas(aircraftProfile.cruiseIas, aircraftProfile.cruiseAltFt || 3500) : null
   const eteHours  = cruiseKts && cruiseKts > 0 ? distanceNm(from, to) / cruiseKts : null
@@ -109,9 +107,6 @@ export function RulerHeaderEnd({ from, to, aircraftProfile, onClear }: {
     <>
       {eteHours != null && <Item label="ETE" value={fmtTime(eteHours)} />}
       {fuelL != null && <Item label="FUEL" value={`${Math.round(fuelL)}L`} />}
-      <TouchableOpacity style={styles.clearBtn} onPress={onClear} hitSlop={{ left: 8, right: 8 }} accessibilityLabel="Clear ruler">
-        <Ionicons name="close" size={16} color={theme.textSecondary} />
-      </TouchableOpacity>
     </>
   )
 }
@@ -132,18 +127,6 @@ function makeStyles(theme: ScaledTheme) {
     fontSize:    11,
     fontWeight:  '600',
     fontVariant: ['tabular-nums'] as TextStyle['fontVariant'],
-  },
-  clearBtn: {
-    borderWidth:       1,
-    borderColor:       theme.borderStrong,
-    borderRadius:      theme.radiusSm,
-    backgroundColor:   theme.surfaceHover,
-    // Fills the 30 dp header row; hitSlop only widens it sideways since the
-    // row's own bounds cap touch height on Android.
-    minWidth:          36,
-    height:            26,
-    alignItems:        'center',
-    justifyContent:    'center',
   },
 } as const
 }
