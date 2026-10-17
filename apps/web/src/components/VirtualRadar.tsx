@@ -124,23 +124,21 @@ function fmtFt(ft: number): string {
 
 const SERIES_LABELS: Record<string, string> = {
   alt:        'Plan',
-  projected:  'Proj',
-  projSafe:   'Proj',
-  projDanger: 'Proj',
   msa:        'MSA',
   ground:     'GND',
 }
 
 function ProfileTooltip({ active, payload }: { active?: boolean; payload?: TooltipEntry[] }) {
   if (!active || !payload?.length) return null
-  // Collect one entry per logical series (projSafe + projDanger → single 'Proj' row)
+  // One row per labelled series (the belowMsa overlay has no label: it
+  // repeats the 'Plan' value).
   const seen = new Set<string>()
   const rows: { label: string; ft: number; color: string }[] = []
   for (const p of payload) {
     const key = p.name ?? ''
     const label = SERIES_LABELS[key]
     if (!label || p.value == null || p.value <= 0) continue
-    const dedupeKey = label  // collapse projSafe/projDanger → 'Proj'
+    const dedupeKey = label
     if (seen.has(dedupeKey)) continue
     seen.add(dedupeKey)
     rows.push({ label, ft: p.value, color: (p.color as string) ?? 'var(--text-secondary)' })
@@ -367,7 +365,6 @@ function VirtualRadar({
   const [terrainFailed, setTerrainFailed] = useState(false)
   const [msaPts,     setMsaPts]     = useState<MsaPoint[]>([])
   const [collapsed, setCollapsed]         = useState(false)
-  const [showProjection, setShowProjection] = useState(false)
   const [showWindAloft, setShowWindAloft] = useState(true)
   const hoverRef = useRef<number | null>(null)
 
@@ -565,12 +562,6 @@ function VirtualRadar({
       // ground rather than at 0 ft MSL.
       const depElevFt = terrainPts[0]?.elevFt ?? 0
       const arrElevFt = terrainPts[terrainPts.length - 1]?.elevFt ?? 0
-      // Always compute projected path when perf is available — used for the
-      // purple altitude line regardless of PROJ toggle so the chart always
-      // shows when the aircraft reaches planned cruise altitude per leg.
-      const projAlts = perf
-        ? projectFlightPath(profile.altitudeProfile, profile.totalNm, perf, sampleDists, depElevFt, arrElevFt)
-        : null
       // Suppress the MSA danger flag within 5 NM of departure or arrival —
       // climbing through MSA on departure and descending through it on approach
       // are normal operations, not a terrain clearance warning.
@@ -581,17 +572,17 @@ function VirtualRadar({
 
       // First pass: compute per-point values and belowMsa flag.
       const raw = terrainPts.map(({ distNm, elevFt }, i) => {
-        const proj = projAlts ? projAlts[i] : undefined
         const msa  = getMsa(distNm)
         const nearEndpoint = distNm < SUPPRESS_NM || (profile.totalNm - distNm) < SUPPRESS_NM
-        const belowMsa = proj != null && msa > 0 && proj < msa && !nearEndpoint
         const plannedAlt = plannedAlts[i]
-        return { distNm, elevFt, proj, msa, belowMsa, plannedAlt }
+        const belowMsa = msa > 0 && plannedAlt < msa && !nearEndpoint
+        return { distNm, elevFt, msa, belowMsa, plannedAlt }
       })
 
-      // Second pass: include transition points in BOTH series so cyan and red
-      // lines meet at their boundary rather than leaving a gap.
-      return raw.map(({ distNm, elevFt, proj, msa, belowMsa, plannedAlt }, i) => {
+      // Second pass: belowMsa stretches become a red overlay on the planned
+      // line. Transition points are included so the red segment starts and
+      // ends exactly on the magenta line instead of leaving a gap.
+      return raw.map(({ distNm, elevFt, msa, belowMsa, plannedAlt }, i) => {
         const prevBelow = i > 0 ? raw[i - 1].belowMsa : belowMsa
         const nextBelow = i < raw.length - 1 ? raw[i + 1].belowMsa : belowMsa
         const isTransition = prevBelow !== belowMsa || nextBelow !== belowMsa
@@ -600,11 +591,8 @@ function VirtualRadar({
           alt:        plannedAlt,
           ground:     elevFt,
           msa:        msa > 0 ? msa : undefined,
-          projected:  proj,
-          // At a safe↔danger transition, include the point in both series so
-          // the two coloured lines share an endpoint and connect without a gap.
-          projSafe:   (showProjection && proj != null && (!belowMsa || isTransition)) ? proj : undefined,
-          projDanger: (showProjection && proj != null && (belowMsa  || isTransition)) ? proj : undefined,
+          // A safe point at a transition has a below-MSA neighbour.
+          belowMsa:   (belowMsa || isTransition) ? plannedAlt : undefined,
         }
       })
     }
@@ -614,11 +602,9 @@ function VirtualRadar({
       alt:        p.altFt,
       ground:     0,
       msa:        undefined,
-      projected:  undefined,
-      projSafe:   undefined,
-      projDanger: undefined,
+      belowMsa:   undefined,
     }))
-  }, [profile, terrainPts, units.distance, perf, showProjection])
+  }, [profile, terrainPts, units.distance, perf])
 
   // Y-axis ceiling: scale to 1.5× planned alt, but always clear the terrain.
   const yMax = useMemo(() => {
@@ -800,15 +786,6 @@ function VirtualRadar({
         )}
         {crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM && (
           <span className={css.offTrackBadge}>⚠ {Math.abs(crossTrackNm).toFixed(1)}nm off track</span>
-        )}
-        {perf && (
-          <button
-            className={`${css.projToggleBtn} ${showProjection ? css.projToggleOn : ''}`}
-            onClick={() => setShowProjection((v) => !v)}
-            title={showProjection ? 'Hide performance projection' : 'Show performance projection'}
-          >
-            PROJ
-          </button>
         )}
         <button
           className={`${css.projToggleBtn} ${showWindAloft ? css.projToggleOn : ''}`}
@@ -1176,14 +1153,14 @@ function VirtualRadar({
                 name="ground"
               />
 
-              {/* ── Planned altitude line (linear so dep/arr ground ramps draw correctly) ─
-                   When PROJ is on the cyan/red lines cover the same data, so
-                   we make the purple line transparent to avoid visual overlap. */}
+              {/* ── Planned altitude line (linear so dep/arr ground ramps draw correctly).
+                   Climb/descent follow the aircraft's performance (generic
+                   model without one); below-MSA stretches are overlaid red. */}
               <Line
                 type="linear"
                 dataKey="alt"
-                stroke={(perf && showProjection) ? 'transparent' : '#e040fb'}
-                strokeWidth={(perf && showProjection) ? 0 : 2}
+                stroke="#e040fb"
+                strokeWidth={2}
                 strokeDasharray={undefined}
                 dot={false}
                 isAnimationActive={false}
@@ -1205,33 +1182,17 @@ function VirtualRadar({
                 />
               )}
 
-              {/* ── Projected flight path (performance-based, toggleable) ── */}
-              {/* Safe segments (cyan) — below-MSA points suppressed via projSafe */}
-              {perf && showProjection && (
-                <Line
-                  type="linear"
-                  dataKey="projSafe"
-                  stroke="rgba(0,220,255,0.90)"
-                  strokeWidth={2}
-                  dot={false}
-                  isAnimationActive={false}
-                  name="projSafe"
-                  connectNulls={false}
-                />
-              )}
-              {/* Below-MSA segments (red) */}
-              {perf && showProjection && (
-                <Line
-                  type="linear"
-                  dataKey="projDanger"
-                  stroke="rgba(239,68,68,0.95)"
-                  strokeWidth={2.5}
-                  dot={false}
-                  isAnimationActive={false}
-                  name="projDanger"
-                  connectNulls={false}
-                />
-              )}
+              {/* ── Below-MSA stretches of the planned line (red overlay) ── */}
+              <Line
+                type="linear"
+                dataKey="belowMsa"
+                stroke="rgba(239,68,68,0.95)"
+                strokeWidth={2.5}
+                dot={false}
+                isAnimationActive={false}
+                name="belowMsa"
+                connectNulls={false}
+              />
 
               {/* ── Live position marker: vertical needle + aircraft silhouette + trajectory ticks ── */}
               {currentDistNm != null && (

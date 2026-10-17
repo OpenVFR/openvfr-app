@@ -3,8 +3,8 @@
  *
  * Shows, along the planned route: terrain elevation (gradient-shaded), MSA,
  * airspace cross-sections with class/altitude labels, obstacle pictograms at
- * their true elevation, the planned altitude step-line, an optional
- * performance-projected flight path, the aircraft's live position with a
+ * their true elevation, the planned altitude line (performance-based climb/
+ * descent, red where below MSA), the aircraft's live position with a
  * pitch-tilted silhouette, and forward trajectory ticks.
  *
  * Built with react-native-svg (no Recharts — that's web/DOM-only). Visual
@@ -38,7 +38,7 @@ import {
   buildVirtualRadarProfile,
   applyTerrainToBands,
   fetchTerrainProfile,
-  projectFlightPath, plannedAltitudeLine,
+  projectFlightPath, plannedAltitudeLine, DEFAULT_PERF_MODEL,
   computeMsaProfile,
   terrainAt,
   getMsaLookup,
@@ -109,13 +109,13 @@ interface Props {
   airspaceCeilingFt?: number
   title?: string
   /** Optional content for the drag-handle row, left / right of the grip
-   *  (right slot sits before the PROJ toggle). Lets a caller show a compact
+   *  (right slot sits before the WIND toggle). Lets a caller show a compact
    *  readout (e.g. Map Ruler distance/track) inside the panel's own chrome
    *  instead of as a separate floating overlay. */
   headerStart?: React.ReactNode
   headerEnd?: React.ReactNode
   /** Renders a close (X) button at the far right of the header row, after
-   *  the WIND/PROJ toggles. */
+   *  the WIND toggle. */
   onClose?: () => void
   closeLabel?: string
   aircraftProfile?: AircraftProfileDocType
@@ -373,7 +373,6 @@ export function VerticalProfile({
   // terrain for this route: the chart then has no ground, MSA or AGL lift.
   const [terrainFailed, setTerrainFailed] = useState(false)
   const [msaPts,     setMsaPts]       = useState<MsaPoint[]>([])
-  const [showProjection, setShowProjection] = useState(false)
   const [showWindAloft, setShowWindAloft] = useState(true)
   const [chartW,      setChartW]      = useState(0)
   // Horizontal scroll offset into the (possibly wider-than-panel) chart
@@ -416,7 +415,7 @@ export function VerticalProfile({
   const dragStartHeightRef = useRef(chartH)
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
-    // Only claim a touch that began on a header button (ruler clear, PROJ)
+    // Only claim a touch that began on a header button (ruler clear, WIND)
     // once it has really moved vertically: claiming on any move turned a
     // tap with slight finger jitter into a zero-height resize and cancelled
     // the button press.
@@ -700,10 +699,13 @@ export function VerticalProfile({
   const depElevFt = terrainPts[0]?.elevFt ?? 0
   const arrElevFt = terrainPts[terrainPts.length - 1]?.elevFt ?? 0
 
+  // Planned altitude at each terrain sample -- same model as plannedPath
+  // (generic performance when no aircraft is selected), used to flag the
+  // stretches below MSA.
   const projAlts = useMemo(() => {
-    if (!perf || !profile || terrainPts.length === 0) return null
+    if (!profile || terrainPts.length === 0) return null
     return projectFlightPath(
-      profile.altitudeProfile, profile.totalNm, perf,
+      profile.altitudeProfile, profile.totalNm, perf ?? DEFAULT_PERF_MODEL,
       terrainPts.map(p => p.distNm), depElevFt, arrElevFt,
     )
   }, [perf, profile, terrainPts, depElevFt, arrElevFt])
@@ -760,9 +762,9 @@ export function VerticalProfile({
     })
   }, [weatherStations, waypoints, totalNm])
 
-  // Projected flight path — split into safe (cyan) / below-MSA (red) segments
-  const { projSafePath, projDangerPath } = useMemo(() => {
-    if (!projAlts || terrainPts.length === 0) return { projSafePath: '', projDangerPath: '' }
+  // Below-MSA stretches of the planned line (drawn red over the magenta line)
+  const projDangerPath = useMemo(() => {
+    if (!projAlts || terrainPts.length === 0) return ''
     const SUPPRESS_NM = 5
     const lastIdx = terrainPts.length - 1
     const segs: { safe: boolean; x: number; y: number }[] = terrainPts.map((tp, i) => {
@@ -789,7 +791,7 @@ export function VerticalProfile({
       if (cur.length > 0) parts.push(`M${cur.join(' L')}`)
       return parts.join(' ')
     }
-    return { projSafePath: buildPath(true), projDangerPath: buildPath(false) }
+    return buildPath(false)
   }, [projAlts, terrainPts, getMsa, totalNm, xOf, yOf])
 
   // Trajectory ticks ahead of current position — near ticks fixed at 1/3,
@@ -898,7 +900,7 @@ export function VerticalProfile({
           the separate header row were removed entirely to reclaim vertical
           space (distance is already visible via the X-axis; mode context
           [planned/look-ahead] wasn't worth a dedicated text row). The grip
-          is absolutely centred so the PROJ toggle can sit at the right edge
+          is absolutely centred so the WIND toggle can sit at the right edge
           of the same row without fighting it for layout space. */}
       <View style={styles.dragHandle} {...panResponder.panHandlers}>
         <View style={styles.headerSide}>{headerStart}</View>
@@ -911,14 +913,6 @@ export function VerticalProfile({
           >
             <Text style={[styles.projBtnTxt, showWindAloft && styles.projBtnTxtOn]}>WIND</Text>
           </TouchableOpacity>
-          {perf && (
-            <TouchableOpacity
-              style={[styles.projBtn, showProjection && styles.projBtnOn]}
-              onPress={() => setShowProjection(v => !v)}
-            >
-              <Text style={[styles.projBtnTxt, showProjection && styles.projBtnTxtOn]}>PROJ</Text>
-            </TouchableOpacity>
-          )}
           {onClose && (
             <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ left: 8, right: 8 }} accessibilityLabel={closeLabel ?? 'Close'}>
               <Ionicons name="close" size={16} color={theme.textSecondary} />
@@ -1121,13 +1115,8 @@ export function VerticalProfile({
                   <Path d={msaPath} fill="none" stroke="rgba(251,146,60,0.65)" strokeWidth={1} strokeDasharray="5,3" />
                 )}
 
-                {/* ── Planned altitude step-line ──────────────────────── */}
-                <Path
-                  d={plannedPath}
-                  fill="none"
-                  stroke={showProjection && perf ? 'transparent' : theme.accentMagenta}
-                  strokeWidth={2}
-                />
+                {/* ── Planned altitude line ───────────────────────────── */}
+                <Path d={plannedPath} fill="none" stroke={theme.accentMagenta} strokeWidth={2} />
 
                 {/* Winds aloft: barbs at each standard pressure level's nominal
                     altitude (model forecast), mirrors web's VirtualRadar. */}
@@ -1152,11 +1141,8 @@ export function VerticalProfile({
                   )
                 }))}
 
-                {/* ── Projected flight path (PROJ toggle) ─────────────── */}
-                {showProjection && perf && projSafePath && (
-                  <Path d={projSafePath} fill="none" stroke="rgba(0,220,255,0.90)" strokeWidth={2} />
-                )}
-                {showProjection && perf && projDangerPath && (
+                {/* ── Below-MSA stretches of the planned line ─────────── */}
+                {projDangerPath && (
                   <Path d={projDangerPath} fill="none" stroke="rgba(239,68,68,0.95)" strokeWidth={2.5} />
                 )}
 
@@ -1202,9 +1188,9 @@ export function VerticalProfile({
                      linearly extrapolated to each distance tick above —
                      distinct from the yellow dashed distance/time ticks
                      (which stay purely horizontal reference marks) and from
-                     the PROJ toggle's full performance-model path (which
-                     needs an aircraft profile and models level-off/climb
-                     schedule; this one is always available). */}
+                     the planned line's performance-model path (which
+                     models the level-off/climb schedule from departure;
+                     this one follows the live vertical speed). */}
                 {trajectoryLine.segments.map((seg, i) => (
                   <Path key={`trajseg-${i}`} d={seg.path} fill="none"
                     stroke={seg.below ? DANGER_COLOR : trajectoryAttitudeColor}
@@ -1424,7 +1410,7 @@ function makeStyles(theme: ScaledTheme) {
     borderColor:     theme.borderDefault,
   },
   panelCollapsed: {},
-  // 30 (was 22): the row also hosts tappable controls (ruler clear, PROJ),
+  // 30 (was 22): the row also hosts tappable controls (ruler clear, WIND),
   // and Android never delivers touches outside a parent's bounds, so a
   // child's hitSlop can't make up for a short row.
   dragHandle: {
