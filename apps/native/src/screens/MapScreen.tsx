@@ -403,7 +403,9 @@ function MapScreenForCountry() {
     // first) — without this, the look-ahead route (and therefore the
     // VerticalProfile chart) appeared as soon as GPS produced a position,
     // even before the pilot started a flight (flightModeStatus === 'off').
-    if ((!flying && !simFlight.active) || waypoints.length >= 2 || !activePosition) {
+    // An inactive route (routeVisible false) counts as no route here, so the
+    // look-ahead chart takes over instead of the hidden route's profile.
+    if ((!flying && !simFlight.active) || (routeVisible && waypoints.length >= 2) || !activePosition) {
       if (lookaheadWaypoints.length > 0) setLookaheadWaypoints([])
       return
     }
@@ -424,7 +426,7 @@ function MapScreenForCountry() {
   // activePosition reference changes every tick — only re-run when the values
   // that matter for the threshold check change, not on every position update.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waypoints.length, activePosition, flying, simFlight.active])
+  }, [waypoints.length, routeVisible, activePosition, flying, simFlight.active])
 
   // Viewed flight log track (Logs segment "View" action on PlanScreen) —
   // takes priority over the live/lookahead profile: reviewing a past flight
@@ -436,7 +438,10 @@ function MapScreenForCountry() {
   // than reviewing a log or the standing planned route.
   const showRulerProfile    = rulerMode && rulerPoints.length === 2
   const showPastTrackChart  = !showRulerProfile && !!selectedLog && selectedTrack.length >= 2
-  const showPlannedProfile   = !showRulerProfile && !showPastTrackChart && waypoints.length >= 2
+  // Gated on routeVisible: an inactive route is hidden from the map, so its
+  // profile must close too (also when leaving ruler mode, which would
+  // otherwise fall through to the hidden route's chart).
+  const showPlannedProfile   = !showRulerProfile && !showPastTrackChart && routeVisible && waypoints.length >= 2
   const showLookaheadProfile = !showRulerProfile && !showPastTrackChart && !showPlannedProfile && lookaheadWaypoints.length >= 2
 
   // Aircraft's live progress along the synthesised look-ahead route.
