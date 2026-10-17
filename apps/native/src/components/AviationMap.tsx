@@ -435,6 +435,8 @@ const SNAP_PX = 20
 // finger position shifted UP by this many screen points, so the point being
 // placed stays visible above the fingertip instead of under it.
 const DRAG_LIFT_PX = 72
+// Map long-presses within this long after a route drag ends are ignored.
+const DRAG_LONG_PRESS_GUARD_MS = 800
 // Colour of the route as it would be after the drop (the original route is
 // left in place, faded, while dragging).
 const DRAG_ROUTE_COLOR = '#ff9800'
@@ -1258,6 +1260,11 @@ export function AviationMap({
   // Set true by releaseDrag, consumed (and cleared) by the very next
   // handleMapPress call — see releaseDrag comment.
   const suppressNextPressRef = useRef(false)
+  // Time the last waypoint/leg drag ended. The map's own long-press
+  // recognizer can fire while the finger pauses mid-drag, or just after
+  // release (after suppressNextPressRef was already consumed by the tap),
+  // which opened the generic Save Waypoint menu at the finger position.
+  const lastDragEndRef = useRef(0)
   // Screen point -> map position of the lifted drop point (finger point moved
   // up by DRAG_LIFT_PX). Falls back to the raw position if the conversion fails.
   const liftedLngLat = useCallback(async (
@@ -1293,6 +1300,7 @@ export function AviationMap({
     // would otherwise open the waypoint's tap popup right after a drag.
     // Suppress exactly the next handleMapPress call.
     suppressNextPressRef.current = true
+    lastDragEndRef.current = Date.now()
     if (!d || !preview) {
       dragPreviewRef.current = null
       setDragPreview(null)
@@ -1392,6 +1400,7 @@ export function AviationMap({
     setLegDragging(false)
     setLegDragPreview(null)
     suppressNextPressRef.current = true
+    lastDragEndRef.current = Date.now()
     if (!d || !preview) return
     const legIndex = d.legIndex
     legDragSeqRef.current++
@@ -1759,6 +1768,11 @@ export function AviationMap({
         suppressNextPressRef.current = false
         return
       }
+      // Never treat a drag (in progress or just finished) as a long-press.
+      const dragGuarded = () =>
+        dragRef.current !== null || legDragRef.current !== null ||
+        Date.now() - lastDragEndRef.current < DRAG_LONG_PRESS_GUARD_MS
+      if (dragGuarded()) return
       const payload = e.nativeEvent
       const { lngLat, point } = payload as PressEvent
       const [lng, lat] = lngLat
@@ -1791,10 +1805,13 @@ export function AviationMap({
             return
           }
           if (legHits.length > 0) return
+          // A drag may have started while the queries ran.
+          if (dragGuarded()) return
           if (onLongPress) {
             onLongPress({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: {} })
           }
         }).catch(() => {
+          if (dragGuarded()) return
           if (onLongPress) onLongPress({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: {} })
         })
         return
