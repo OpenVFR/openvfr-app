@@ -909,6 +909,13 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
               const bgPaint = (layer as { paint?: Record<string, unknown> }).paint ?? {}
               return { ...layer, minzoom: 7, paint: { ...bgPaint, 'background-color': FARMLAND_CREAM } }
             }
+            if (layer.id === 'earth') {
+              // The visible grey in unmapped rural gaps: Protomaps' `earth` land
+              // fill (#e2dfda in the LIGHT flavor) paints over `background`, so
+              // patching only the background has no effect. Make it cream.
+              const earthPaint = (layer as { paint?: Record<string, unknown> }).paint ?? {}
+              return { ...layer, paint: { ...earthPaint, 'fill-color': FARMLAND_CREAM } }
+            }
             if (layer.id === 'landcover') {
               // Override opacity so landcover stays visible at VFR planning zooms,
               // AND override the farmland fill-color to ICAO cream so the z10→z11
