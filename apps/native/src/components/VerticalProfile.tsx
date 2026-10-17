@@ -164,15 +164,16 @@ interface Props {
 // Layout constants
 // ---------------------------------------------------------------------------
 
-// DEFAULT_CHART_H = MARGIN_T + a plot of the same height as before + MARGIN_B
-// (the wind row lives in the bottom margin, under the x axis).
-export const DEFAULT_CHART_H  = 218
+// DEFAULT_CHART_H = MARGIN_T + plot + MARGIN_B. The wind row lives in the
+// bottom margin, under the x axis, so the top margin only needs room for
+// the top tick label and the waypoint-name row.
+export const DEFAULT_CHART_H  = 202
 export const MIN_CHART_H      = 0
 export const MAX_CHART_H      = 340
 export const COLLAPSE_THRESHOLD = 24   // below this, treat as "collapsed"
 const MARGIN_L  = 34   // room for FL/alt ticks
 const MARGIN_R  = 10
-const MARGIN_T  = 26
+const MARGIN_T  = 10
 const MARGIN_B  = 30   // tick labels + the wind-barb row under the x axis
 /** Top of the pinned Y-axis column's opaque backing: just above the top
  *  tick label (drawn at yOf(yMax) - 6 = MARGIN_T - 6). */
@@ -944,10 +945,9 @@ export function VerticalProfile({
                 </View>
               )}
               {crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM && (
-                // top sits just below the waypoint-name label row (MARGIN_T=26
+                // top sits just below the waypoint-name label row (MARGIN_T
                 // + its own text height) rather than at top:2 alongside it —
-                // that used to land directly on top of the wind-arrow/
-                // wind row and the
+                // that used to land directly on top of the
                 // waypoint-name row (MARGIN_T), overlapping their text with
                 // this badge's own (a long, wide string) instead of just
                 // sharing empty chart background the way the scroll hint does.
