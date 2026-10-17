@@ -97,6 +97,9 @@ import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../compone
 import { RulerHeaderStart, RulerHeaderEnd, RouteHeaderStart } from '../components/RulerHeaderStats'
 import { PastTrackChart } from '../components/PastTrackChart'
 import { Ionicons } from '@expo/vector-icons'
+import { useNavigation } from '@react-navigation/native'
+import IconClipboardList from '@tabler/icons-react-native/IconClipboardList'
+import IconSettings from '@tabler/icons-react-native/IconSettings'
 import IconSearch from '@tabler/icons-react-native/IconSearch'
 import IconHome from '@tabler/icons-react-native/IconHome'
 import IconRulerMeasure from '@tabler/icons-react-native/IconRulerMeasure'
@@ -131,7 +134,6 @@ import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../sty
 import { isLowMemoryDevice } from '../utils/deviceMemory'
 import { NativeSheet } from '../components/NativeSheet'
 import { BaroPromptModal } from '../components/BaroPromptModal'
-import { useTabBarCollapsed } from '../context/TabBarContext'
 
 function isAerodrome(p: Record<string, unknown>) {
   // `icao` alone isn't a safe discriminator -- a real minority of aerodromes
@@ -345,17 +347,6 @@ function MapScreenForCountry() {
   useEffect(() => { setFlightActive(flyingActive) }, [flyingActive])
   useEffect(() => () => setFlightActive(false), [])
 
-  // Entering any flight mode (real GPS or Simulate) collapses the tab bar so
-  // the map gets the full height in the air; leaving it expands the bar again.
-  // Edge-triggered only: in between, the pilot can pull it up or push it down
-  // manually and it is not forced back.  The bar animates both transitions.
-  const { setCollapsed: setTabBarCollapsed } = useTabBarCollapsed()
-  const wasFlyingRef = React.useRef(false)
-  useEffect(() => {
-    if (flyingActive !== wasFlyingRef.current) setTabBarCollapsed(flyingActive)
-    wasFlyingRef.current = flyingActive
-  }, [flyingActive, setTabBarCollapsed])
-
   // NM along the planned route where the aircraft currently is, and its
   // lateral deviation from that planned line — both mirror web's MapView.tsx
   // (aircraftDistNm / crossTrackNm), gated to flyingActive there too. Only
@@ -491,6 +482,9 @@ function MapScreenForCountry() {
   const GAUGES_BAR_H = 56
   const SIM_PANEL_H  = 110  // approx height of SimControlPanel when shown
   const PROFILE_CHROME_H = 22 + 34  // drag handle + header row
+  // Nothing stacked under the map -> it also bleeds under the bottom inset.
+  const bottomStackPresent = flying || simFlight.active
+    || showRulerProfile || showPlannedProfile || showLookaheadProfile || showPastTrackChart
   const bottomStackH = GAUGES_BAR_H
     + (simFlight.active ? SIM_PANEL_H : 0)
     + ((showRulerProfile || showPlannedProfile || showLookaheadProfile || showPastTrackChart) ? PROFILE_CHROME_H + profileHeight : 0)
@@ -1151,6 +1145,7 @@ function MapScreenForCountry() {
     if (planningMode || routeAdjustMode) { setRulerMode(false); setRulerPoints([]) }
   }, [planningMode, routeAdjustMode])
   const toolIcon = (Icon: import("@tabler/icons-react-native").Icon) => (color: string) => <Icon size={22} strokeWidth={2} color={color} />
+  const navigation = useNavigation()
   const toolGroups: ToolGroupDef[] = [
     { id: 'fly', label: 'Flying', items: [toolFlying
       ? { id: 'stop', label: 'Stop flying', description: 'End flying mode and close the flight log', icon: toolIcon(IconPlaneArrival),
@@ -1189,6 +1184,12 @@ function MapScreenForCountry() {
           if (!activePosition) return
           saveWaypoint({ id: Crypto.randomUUID(), name: `Drop ${new Date().toUTCString().slice(17, 22)}z`, lat: activePosition.lat, lng: activePosition.lng, folder: 'Dropped in Flight', updatedAt: Date.now() })
         } }] : []),
+    ] },
+    { id: 'app', label: 'Go to', items: [
+      { id: 'plan', label: 'Flight plan', description: 'Open the flight plan: route, legs, fuel, aircraft and flight logs',
+        icon: toolIcon(IconClipboardList), onSelect: () => navigation.navigate('Plan' as never) },
+      { id: 'settings', label: 'Settings', description: 'Open settings: units, map display, sensors and account',
+        icon: toolIcon(IconSettings), onSelect: () => navigation.navigate('Settings' as never) },
     ] },
   ]
 
@@ -1369,7 +1370,10 @@ function MapScreenForCountry() {
   }, [terrainMemoryLocked, layers.hillshade, layers.contours, layers.terrainColor, handleLayerChange])
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      {/* Map renders edge to edge, under the status bar; this faint band keeps
+          the status icons legible on a light map. */}
+      {insets.top > 0 && <View pointerEvents="none" style={[styles.statusScrim, { height: insets.top }]} />}
       <BaroPromptModal />
       <View style={styles.mapContainer} onLayout={(e) => setMapAreaH(Math.round(e.nativeEvent.layout.height))}>
         <AviationMap
@@ -1444,6 +1448,8 @@ function MapScreenForCountry() {
           rulerPoints={rulerPoints}
           onRulerTap={setRulerPoints}
           onMapReady={handleMapReady}
+          bleedTop={insets.top}
+          bleedBottom={bottomStackPresent ? 0 : insets.bottom}
         />
 
         {snapPicker && (
@@ -1842,6 +1848,7 @@ function makeStyles(theme: ScaledTheme) {
  return {
   container:    { flex: 1, backgroundColor: theme.surfaceBase },
   mapContainer: { flex: 1 },
+  statusScrim: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 60, backgroundColor: 'rgba(10,14,22,0.35)' },
   longPressMenu: {
     position: 'absolute', left: 16, right: 16, bottom: 24,
     backgroundColor: theme.surfaceSheet, borderRadius: theme.radiusMd,

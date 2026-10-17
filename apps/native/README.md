@@ -13,7 +13,7 @@ React Native (bare Expo) app — the native companion to the open-vfr PWA.
 | Auth | `better-auth` v1.6 + `@better-auth/passkey` |
 | Storage | `@react-native-async-storage/async-storage` |
 | GPS | `expo-location` |
-| Navigation | React Navigation v7 (bottom tabs) |
+| Navigation | React Navigation v7 (native stack; Map is home, Plan/Settings open from the map tools menu) |
 
 ## Prerequisites
 
@@ -111,7 +111,15 @@ pnpm metro:prod    # → whatever EXPO_PUBLIC_API_BASE / EXPO_PUBLIC_TILE_BASE
                    #   are set to in your own environment or .env file
 ```
 
-`metro:local` tunnels `adb reverse`, restarts Metro with `--clear`, and
+Both scripts run `scripts/dev-device.mjs`: it finds an authorized device
+(USB or wireless adb; set `ANDROID_SERIAL` if several), wakes it and waits for
+unlock, runs `adb reverse`, installs the dev client if it is missing, starts
+Metro, and deep-links the app to `http://localhost:8081` (the dev client's
+server list uses LAN discovery, which never sees an adb tunnel). Metro's cache
+is cleared automatically when you switch between `metro:local` and
+`metro:prod`; pass `--clear` (`pnpm metro:prod -- --clear`) to force it.
+
+`metro:local` also reverses ports 5200/5174/5100 and
 injects `EXPO_PUBLIC_API_BASE=http://localhost:5200` /
 `EXPO_PUBLIC_TILE_BASE=http://localhost:5174/tiles` via `cross-env` — no
 `.env` file editing required (`config.ts`'s tile URL builders append no
@@ -125,8 +133,8 @@ set `EXPO_PUBLIC_API_BASE=https://api.example.org` and
 docs/self-hosting.md).
 
 > **Env vars are baked in at bundle time.** Metro does not watch `.env` files.
-> Always use `metro:local` / `metro:prod` (which include `--clear`) rather
-> than plain `npx expo start` when switching targets.
+> Always use `metro:local` / `metro:prod` (which clear the cache when the
+> target changes) rather than plain `npx expo start` when switching targets.
 
 ### 6. Reload after JS-only changes
 
@@ -234,7 +242,7 @@ set this to your own deployed production API/tile host. Restart Metro.
 
 `cross-env` injects the URLs directly into the Metro process — takes
 precedence over `.env.local` so no file editing or deletion required.
-Metro restarts with `--clear` on every switch to flush the module cache.
+Metro's cache is cleared on every local/prod switch to flush the module cache.
 
 `adb reverse` for ports 5200 and 5174 is only wired into `metro:local`
 (production uses HTTPS, no tunnelling needed).

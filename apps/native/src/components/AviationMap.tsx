@@ -292,6 +292,11 @@ export type AviationMapProps = {
    *  loaded is deliberately the EARLIEST safe point, so the map itself still
    *  gets first claim on bandwidth/memory ahead of these secondary fetches. */
   onMapReady?: () => void
+  /** Distance the map extends beyond its parent at the top / bottom, so it renders
+   *  under the status bar / home-indicator area. Overlays drawn by the map itself
+   *  (compass, info bar) are moved clear of those areas. */
+  bleedTop?: number
+  bleedBottom?: number
   /** Pan/zoom the camera to a point — e.g. Find-a-Destination panel's row
    *  tap. `nonce` must change on every request (even repeat taps on the
    *  same aerodrome) since [lat,lng] alone wouldn't re-trigger the effect. */
@@ -819,6 +824,8 @@ export function AviationMap({
   rulerPoints,
   onRulerTap,
   onMapReady,
+  bleedTop = 0,
+  bleedBottom = 0,
   flyToTarget,
 }: AviationMapProps) {
   const dragStyles = useThemedStyles(makeDragStyles)
@@ -1445,9 +1452,9 @@ export function AviationMap({
   }, [pastTrack])
 
   // Fit camera to the route's bounds right after it's loaded/activated —
-  // RouteLibrarySheet's handleLoad (Flight Plan tab) changes activeRouteId,
+  // RouteLibrarySheet's handleLoad (Flight Plan screen) changes activeRouteId,
   // which this screen doesn't otherwise have a map-camera reaction to since
-  // the library sheet lives on a separate tab from the map. Skips the very
+  // the library sheet lives on a separate screen from the map. Skips the very
   // first invocation (component mount / cold-start restore of the last
   // session's linked route) via routeFitMountedRef — that case already gets
   // its own flyTo from the home-airfield/initialCenter effect above, and
@@ -1855,7 +1862,7 @@ export function AviationMap({
 
   return (
     <View
-      style={StyleSheet.absoluteFill}
+      style={[StyleSheet.absoluteFill, { top: -bleedTop, bottom: -bleedBottom }]}
     >
       <Map
         key={mapRetryKey}
@@ -1882,7 +1889,7 @@ export function AviationMap({
         // button/Modal below. See showAttribution state doc comment above.
         attribution={false}
         compass={true}
-        compassPosition={{ top: 8, right: 8 }}
+        compassPosition={{ top: 8 + bleedTop, right: 8 }}
       >
         {showOwnPosition && <UserLocation accuracy heading minDisplacement={5} />}
         <Camera
@@ -2997,6 +3004,7 @@ export function AviationMap({
           but one source's credit on Android. */}
       <MapInfoBar
         ref={infoBarRef}
+        bottomOffset={bleedBottom}
         ceilingFt={airspaceCeilingFt}
         windLabel={showWind ? windLabel : undefined}
         windSurface={windSurface}

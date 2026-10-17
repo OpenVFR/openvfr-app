@@ -146,7 +146,7 @@ export function PlanScreen() {
   const [wpLat,    setWpLat]    = useState('')
   const [wpLng,    setWpLng]    = useState('')
 
-  // Flight logs — auto-recorded on the Map tab (GPS takeoff/landing detection),
+  // Flight logs — auto-recorded on the map (GPS takeoff/landing detection),
   // synced to cloud (upload-only + cross-device pull) when authenticated.
   const { logs, pull: pullLogs, deleteLog } = useFlightLogSync(authenticated)
   const { selectedLog, viewLog, clearView } = useFlightLogViewContext()
@@ -347,37 +347,12 @@ export function PlanScreen() {
     setWpName(''); setWpFolder(''); setWpLat(''); setWpLng(''); setSavingWp(false)
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
-  return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Flight Plan</Text>
-        {segment === 'route' && (
-          <View style={styles.headerActions}>
-            <RouteLibrarySheet
-              waypoints={waypoints}
-              legOverrides={legOverrides}
-              aircraftId={selectedId ?? ''}
-              aircraftProfiles={profiles}
-              activeRouteId={activeRouteId}
-              onActiveRouteIdChange={setActiveRouteId}
-              syncState={syncState}
-              onLoad={(route) => {
-                setWaypoints(route.waypoints, route.legOverrides)
-                // Only switch the active aircraft when the loaded route actually
-                // has one stored — an empty aircraftId means "not recorded", not
-                // "explicitly none", so keep whatever's currently selected
-                // (mirrors web's MapView.tsx onLoadRoute behaviour).
-                if (route.aircraftId) setSelectedId(route.aircraftId)
-              }}
-              onPush={pushRoute}
-              onDelete={deleteRoute}
-              onRefreshCloud={pullRoutes}
-              open={libraryOpen}
-              onOpenChange={setLibraryOpen}
-              hideTrigger
-            />
+  // Standard native header: back button + title come from the navigator; the
+  // route actions live in its right slot.
+  React.useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: segment === 'route' ? () => (
+        <View style={styles.headerActions}>
             {waypoints.length > 0 && (
               <TouchableOpacity
                 onPress={() => setRouteVisible(v => !v)}
@@ -398,9 +373,39 @@ export function PlanScreen() {
             <TouchableOpacity onPress={() => setMoreMenuOpen(true)} testID="plan-more-open" style={styles.moreBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="ellipsis-horizontal" size={14} color={theme.accentBlue} />
             </TouchableOpacity>
-          </View>
-        )}
-      </View>
+        </View>
+      ) : undefined,
+    })
+  })
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  return (
+    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+      {segment === 'route' && (
+        <RouteLibrarySheet
+          waypoints={waypoints}
+          legOverrides={legOverrides}
+          aircraftId={selectedId ?? ''}
+          aircraftProfiles={profiles}
+          activeRouteId={activeRouteId}
+          onActiveRouteIdChange={setActiveRouteId}
+          syncState={syncState}
+          onLoad={(route) => {
+            setWaypoints(route.waypoints, route.legOverrides)
+            // Only switch the active aircraft when the loaded route actually
+            // has one stored — an empty aircraftId means "not recorded", not
+            // "explicitly none", so keep whatever's currently selected
+            // (mirrors web's MapView.tsx onLoadRoute behaviour).
+            if (route.aircraftId) setSelectedId(route.aircraftId)
+          }}
+          onPush={pushRoute}
+          onDelete={deleteRoute}
+          onRefreshCloud={pullRoutes}
+          open={libraryOpen}
+          onOpenChange={setLibraryOpen}
+          hideTrigger
+        />
+      )}
 
       <NativeSheet
         isPresented={moreMenuOpen}
@@ -555,7 +560,7 @@ export function PlanScreen() {
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>No waypoints</Text>
             <Text style={styles.emptyBody}>
-              Long-press the map or tap aerodromes, navaids, and waypoints on the Map tab to build a route.
+              Long-press the map or tap aerodromes, navaids, and waypoints on the map to build a route.
             </Text>
           </View>
         )}
@@ -774,7 +779,7 @@ export function PlanScreen() {
             {!savingWp ? (
               <View style={{ gap: scaledTheme.space2 }}>
                 <Text style={styles.emptyBody}>
-                  Tip: long-press anywhere on the Map tab to save that point as a waypoint directly.
+                  Tip: long-press anywhere on the map to save that point as a waypoint directly.
                 </Text>
                 <TouchableOpacity style={styles.saveBtn} onPress={() => setSavingWp(true)}>
                   <Ionicons name="add-circle-outline" size={14} color={theme.accentBlue} />
@@ -817,7 +822,7 @@ export function PlanScreen() {
                   placeholderTextColor={theme.textFaint}
                 />
                 <Text style={styles.inputHint}>
-                  Tip: tap a point on the Map tab to read its coordinates, or long-press to add it directly to the route.
+                  Tip: tap a point on the map to read its coordinates, or long-press to add it directly to the route.
                 </Text>
                 <View style={styles.saveRowActions}>
                   <TouchableOpacity style={styles.saveConfirm} onPress={handleSaveWaypoint}>
@@ -864,7 +869,7 @@ export function PlanScreen() {
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>No flight logs</Text>
               <Text style={styles.emptyBody}>
-                Logs are recorded automatically on the Map tab (GPS-detected takeoff/landing) and
+                Logs are recorded automatically on the map (GPS-detected takeoff/landing) and
                 synced to the cloud once completed.
               </Text>
             </View>
@@ -953,6 +958,7 @@ function makeStyles(theme: ScaledTheme) {
     paddingHorizontal: theme.space4, paddingVertical: theme.space3,
     borderBottomWidth: 1, borderBottomColor: theme.borderSubtle,
   },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: theme.space3 },
   headerTitle: { color: theme.textPrimary, fontSize: theme.textLg, fontWeight: '600' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: theme.space3 },
   headerBtn: {

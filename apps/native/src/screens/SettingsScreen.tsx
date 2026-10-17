@@ -161,9 +161,8 @@ export function SettingsScreen() {
     <>
     <ScrollView
       style={styles.container}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + scaledTheme.space4 }]}
+      contentContainerStyle={[styles.content, { paddingTop: scaledTheme.space4, paddingBottom: insets.bottom + scaledTheme.space5 }]}
     >
-      <Text style={styles.screenTitle}>Settings</Text>
 
       {/* ── Units ─────────────────────────────────────────────────── */}
       <Section title="Units">
@@ -1033,12 +1032,6 @@ function makeStyles(theme: ScaledTheme) {
     padding:       theme.space4,
     paddingBottom: theme.space5,
     gap:           theme.space4,
-  },
-  screenTitle: {
-    color:      theme.textPrimary,
-    fontSize:   theme.textXl,
-    fontWeight: '700',
-    marginBottom: theme.space2,
   },
   row: {
     flexDirection:   'row',
