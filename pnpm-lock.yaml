@@ -167,7 +167,7 @@ overrides:
 
 patchedDependencies:
   '@expo/ui@57.0.22': b38d2f27a35d062782f66914fb7d06418850e7be4afe71e9ff7ab13201ad4626
-  '@maplibre/maplibre-react-native@11.4.0': 10cf47280fb36e6ec710392e79e8be1afc71ad53e4fc7f6b0aeadaa534a5bb3c
+  '@maplibre/maplibre-react-native@11.4.0': 0034963e60a0e942003437116fc56e7d85ad4ea1c1ddfcec7d163da01e99d67b
 
 importers:
 
@@ -236,7 +236,7 @@ importers:
         version: 26.4.4
       '@maplibre/maplibre-react-native':
         specifier: ^11.4.0
-        version: 11.4.0(patch_hash=10cf47280fb36e6ec710392e79e8be1afc71ad53e4fc7f6b0aeadaa534a5bb3c)(@types/geojson@7946.0.16)(@types/react@19.2.18)(expo@57.0.27)(react-native@0.86.3(@babel/core@7.29.7(supports-color@10.2.2))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@types/react@19.2.18)(react@19.2.8)(supports-color@10.2.2))(react@19.2.8)
+        version: 11.4.0(patch_hash=0034963e60a0e942003437116fc56e7d85ad4ea1c1ddfcec7d163da01e99d67b)(@types/geojson@7946.0.16)(@types/react@19.2.18)(expo@57.0.27)(react-native@0.86.3(@babel/core@7.29.7(supports-color@10.2.2))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@types/react@19.2.18)(react@19.2.8)(supports-color@10.2.2))(react@19.2.8)
       '@open-vfr/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -8107,7 +8107,7 @@ snapshots:
       quickselect: 3.0.0
       tinyqueue: 3.0.0
 
-  '@maplibre/maplibre-react-native@11.4.0(patch_hash=10cf47280fb36e6ec710392e79e8be1afc71ad53e4fc7f6b0aeadaa534a5bb3c)(@types/geojson@7946.0.16)(@types/react@19.2.18)(expo@57.0.27)(react-native@0.86.3(@babel/core@7.29.7(supports-color@10.2.2))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@types/react@19.2.18)(react@19.2.8)(supports-color@10.2.2))(react@19.2.8)':
+  '@maplibre/maplibre-react-native@11.4.0(patch_hash=0034963e60a0e942003437116fc56e7d85ad4ea1c1ddfcec7d163da01e99d67b)(@types/geojson@7946.0.16)(@types/react@19.2.18)(expo@57.0.27)(react-native@0.86.3(@babel/core@7.29.7(supports-color@10.2.2))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@types/react@19.2.18)(react@19.2.8)(supports-color@10.2.2))(react@19.2.8)':
     dependencies:
       '@maplibre/maplibre-gl-style-spec': 26.2.1
       '@turf/distance': 7.4.0

@@ -83,3 +83,47 @@ index b38e97a9b0b00fc33be626a93c1e9eab20b3089f..275018eac41d5478191c3c890c52c682
          }
      }
  
+diff --git a/ios/components/annotations/point-annotation/MLRNPointAnnotation.m b/ios/components/annotations/point-annotation/MLRNPointAnnotation.m
+index 71ee64d..024269e 100644
+--- a/ios/components/annotations/point-annotation/MLRNPointAnnotation.m
++++ b/ios/components/annotations/point-annotation/MLRNPointAnnotation.m
+@@ -91,6 +91,14 @@ const float CENTER_Y_OFFSET_BASE = -0.5f;
+   }
+ 
+   [super setCenter:center];
++
++  // The pan recognizer moves the view through this setter on every touch
++  // move, but the drag state only changes once (Starting -> Dragging), so
++  // onDrag from setDragState alone fires a single time per drag. Report
++  // each move here too so JS can follow the finger.
++  if (self.dragState == MLNAnnotationViewDragStateDragging && self.reactOnDrag != nil) {
++    self.reactOnDrag([self makeEventPayload]);
++  }
+ }
+ 
+ - (void)setMap:(MLNMapView *)map {
+@@ -279,9 +287,22 @@ const float CENTER_Y_OFFSET_BASE = -0.5f;
+ - (NSDictionary *)makeEventPayload {
+   NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+   payload[@"id"] = _id ?: @"";
+-  payload[@"lngLat"] = @[ @(self.coordinate.longitude), @(self.coordinate.latitude) ];
+ 
+-  CGPoint screenPoint = [_map convertCoordinate:self.coordinate toPointToView:_map];
++  CLLocationCoordinate2D coordinate = self.coordinate;
++  CGPoint screenPoint = [_map convertCoordinate:coordinate toPointToView:_map];
++
++  // While dragging, MLNAnnotationView only moves the view; the annotation's
++  // coordinate is written back once, on drag end. Reporting self.coordinate
++  // would make every onDrag event carry the position the drag started from.
++  // Derive the live position from the view's anchor point instead.
++  if (self.dragState != MLNAnnotationViewDragStateNone && _map != nil && self.superview != nil) {
++    CGPoint anchor = CGPointMake(self.center.x - self.centerOffset.dx,
++                                 self.center.y - self.centerOffset.dy);
++    screenPoint = [self.superview convertPoint:anchor toView:_map];
++    coordinate = [_map convertPoint:screenPoint toCoordinateFromView:_map];
++  }
++
++  payload[@"lngLat"] = @[ @(coordinate.longitude), @(coordinate.latitude) ];
+   payload[@"point"] = @[ @(screenPoint.x), @(screenPoint.y) ];
+ 
+   return payload;
