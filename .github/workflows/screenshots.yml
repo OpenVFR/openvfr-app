@@ -288,7 +288,10 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: ${{ matrix.profile }}
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin ${{ matrix.size }}
+          # swangle_indirect (ANGLE over SwiftShader Vulkan): plain
+          # swiftshader_indirect GLES dropped MapLibre's dashed lines and all
+          # text labels (both sampled from alpha-only atlas textures).
+          emulator-options: -no-window -gpu swangle_indirect -no-snapshot -noaudio -no-boot-anim -skin ${{ matrix.size }}
           disable-animations: true
           script: bash apps/native/.maestro/capture-android.sh "${{ runner.temp }}/apk/openvfr-screenshots.apk" "${{ runner.temp }}/shots" ${{ matrix.size }} ${{ matrix.density }}
       # Only PNGs land in shots/ (run-flow.sh keeps Maestro's own artifact
