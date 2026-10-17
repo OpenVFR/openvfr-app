@@ -59,6 +59,32 @@ appId: org.openvfr.app
     when:
       visible:
         id: login-error
+      notVisible:
+        id: login-otp
+    commands:
+      # The screen went back to the email step (seen on the iOS simulator:
+      # the code field was gone, email still filled, error showing), so there
+      # is no code field to re-type into. Request a fresh code and start over.
+      - tapOn:
+          id: login-send-otp
+      - extendedWaitUntil:
+          visible:
+            id: login-otp
+          timeout: 30000
+      - tapOn:
+          id: login-otp
+      - inputText: ${MAESTRO_TEST_OTP}
+      - tapOn:
+          id: login-verify-otp
+      - extendedWaitUntil:
+          notVisible:
+            id: login-verify-otp
+          timeout: 15000
+          optional: true
+- runFlow:
+    when:
+      visible:
+        id: login-otp
     commands:
       - tapOn:
           id: login-otp
