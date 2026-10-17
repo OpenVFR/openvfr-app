@@ -36,6 +36,7 @@ import type {
   PasskeyCreateRequest, PasskeyCreateResult, PasskeyGetRequest, PasskeyGetResult,
 } from 'react-native-passkey'
 import { authClient, authHeaders } from './authClient'
+import { syncLog } from './syncLog'
 
 export type PasskeyUser = { id: string; email: string; name: string | null }
 
@@ -98,6 +99,7 @@ async function verify<T>(
 function fromPlatformError(e: unknown): { cancelled: boolean; message: string } {
   const code = (e as { error?: string })?.error ?? ''
   const msg  = (e as { message?: string })?.message ?? String(e)
+  syncLog('[passkey] platform error', code || '(no code)', msg)
   switch (code) {
     case 'UserCancelled':
     case 'Interrupted':

@@ -266,6 +266,30 @@ The server's `trustedOrigins` (in `apps/api/src/auth.ts`) includes (dev only):
 
 In production only `BETTER_AUTH_APP_ORIGIN` + `BETTER_AUTH_TRUSTED_ORIGINS` are trusted.
 
+### iOS passkeys: Associated Domains
+
+Passkeys on iOS need the app to be associated with the WebAuthn RP ID domain:
+
+1. `app.json` declares `webcredentials:<rp-id-domain>` under
+   `ios.entitlements["com.apple.developer.associated-domains"]`.
+2. The domain serves `/.well-known/apple-app-site-association` (200,
+   `application/json`, no redirects) listing `<TeamID>.<bundle id>` under
+   `webcredentials.apps`.
+3. The **App ID must have the Associated Domains capability enabled** in the
+   Apple Developer portal, and the **provisioning profile must be generated
+   after that**. A profile created earlier lacks the entitlement: the build
+   succeeds, but the OS rejects passkeys with *"Application with identifier
+   `<TeamID>.<bundle id>` is not associated with domain `<domain>`"*
+   (AuthorizationError 1004).
+
+Fix for (3): enable the capability on the App ID, remove the existing profile
+(`eas credentials` -> iOS -> Provisioning Profile, or delete it in the portal),
+and rebuild so a fresh one is generated.
+
+Passkey and cloud-sync failures are recorded in an in-memory log. In a build
+without a debugger, open Settings -> About, tap **Version** five times, then
+open **Diagnostics -> Sync log**.
+
 ## Debugging
 
 ### Logs
