@@ -53,6 +53,12 @@ export function SettingsScreen() {
   const [showDiag, setShowDiag] = useState(false)
   const [deleteSent, setDeleteSent] = useState(false)
 
+  const handleRegisterPasskey = useCallback(async () => {
+    const res = await registerPasskey()
+    if (res.ok) Alert.alert('Passkey added', 'You can now sign in with a passkey on this device.')
+    else if (!res.cancelled) Alert.alert('Could not add passkey', res.message ?? 'Unknown error')
+  }, [registerPasskey])
+
   const handleDeleteAccount = useCallback(() => {
     Alert.alert(
       'Delete account?',
@@ -465,7 +471,7 @@ export function SettingsScreen() {
       {/* ── Account ───────────────────────────────────────────── */}
       {state.status === 'authenticated' && (
         <Section title="Account">
-          <TouchableOpacity style={[styles.row, styles.pressable]} onPress={registerPasskey}>
+          <TouchableOpacity style={[styles.row, styles.pressable]} onPress={handleRegisterPasskey}>
             <Text style={styles.rowLabel}>Register passkey on this device</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.row, styles.pressable]} onPress={signOut}>

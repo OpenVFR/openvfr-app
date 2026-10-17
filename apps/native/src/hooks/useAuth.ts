@@ -176,18 +176,18 @@ export function useAuth() {
     return true
   }, [])
 
-  const registerPasskey = useCallback(async (): Promise<boolean> => {
+  const registerPasskey = useCallback(async (): Promise<{ ok: boolean; cancelled?: boolean; message?: string }> => {
     setError(null)
     console.log('[auth] registerPasskey')
     const res = await passkeyRegister()
     if (!res.ok) {
-      if (res.cancelled) { console.log('[auth] registerPasskey cancelled'); return false }
+      if (res.cancelled) { console.log('[auth] registerPasskey cancelled'); return { ok: false, cancelled: true } }
       console.warn('[auth] registerPasskey error', res.message)
       setError(res.message)
-      return false
+      return { ok: false, message: res.message }
     }
     console.log('[auth] passkey registered')
-    return true
+    return { ok: true }
   }, [])
 
   return { state, error, sendOtp, verifyOtp, signInWithPasskey, registerPasskey, requestAccountDeletion, signOut, passkeySupported: isPasskeySupported() }
