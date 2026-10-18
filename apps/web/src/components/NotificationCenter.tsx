@@ -77,6 +77,7 @@ const OBSTRUCTION_KIND_LABEL: Record<string, string> = {
 
 const MAX_VISIBLE = 5
 const AUTO_DISMISS_MS = 30_000
+const PLANNING_NOTICE_MS = 10_000
 
 interface Props {
   airspaceAlerts:        AirspaceAlert[]
@@ -92,6 +93,10 @@ interface Props {
   ceilingMsg?:           string | null
   reminderNote?:         { wpName: string; text: string } | null
   onDismissReminder?:    () => void
+  /** Planning-time notice (e.g. a new leg's altitude raised for terrain);
+   *  auto-dismisses after PLANNING_NOTICE_MS. */
+  planningNotice?:       { title: string; text: string } | null
+  onDismissPlanning?:    () => void
 }
 
 export function NotificationCenter({
@@ -103,6 +108,7 @@ export function NotificationCenter({
   notamNotifications = [],
   ceilingMsg,
   reminderNote, onDismissReminder,
+  planningNotice, onDismissPlanning,
 }: Props) {
   // Waypoint reminder auto-dismisses after 30s.
   useEffect(() => {
@@ -110,6 +116,11 @@ export function NotificationCenter({
     const id = setTimeout(onDismissReminder, AUTO_DISMISS_MS)
     return () => clearTimeout(id)
   }, [reminderNote, onDismissReminder])
+  useEffect(() => {
+    if (!planningNotice || !onDismissPlanning) return
+    const id = setTimeout(onDismissPlanning, PLANNING_NOTICE_MS)
+    return () => clearTimeout(id)
+  }, [planningNotice, onDismissPlanning])
 
   const items: Item[] = []
 
@@ -232,6 +243,18 @@ export function NotificationCenter({
       text: reminderNote.text,
       dismissible: true,
       onDismiss: onDismissReminder,
+    })
+  }
+
+  if (planningNotice) {
+    items.push({
+      key: 'planning',
+      severity: 'yellow',
+      badge: '✈ CRUISE LEVEL',
+      title: planningNotice.title,
+      text: planningNotice.text,
+      dismissible: true,
+      onDismiss: onDismissPlanning,
     })
   }
 

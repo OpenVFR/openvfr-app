@@ -1,0 +1,82 @@
+/**
+ * useAutoCruiseLevel — gives a newly appended/inserted route leg a safe
+ * altitude. Mirrors the web hook of the same name.
+ *
+ * On every waypoint change that is a single append/insert
+ * (@open-vfr/shared/autoCruiseLevel newLegsAfterChange), the terrain under
+ * each new leg and the obstacles in its corridor are looked up. If the leg's
+ * planned altitude (its override, else the aircraft cruise altitude) is
+ * below the required level, the override is raised and `onNotice` is
+ * called with a one-line explanation. Legs the user already levelled, or
+ * whose endpoints merely moved, are never changed.
+ */
+
+import { useEffect, useRef } from 'react'
+import { fetchTerrainProfile, buildVirtualRadarProfile } from '@open-vfr/shared/virtualRadarCalc'
+import { requiredLegAltFt, newLegsAfterChange, autoLevelMessage } from '@open-vfr/shared/autoCruiseLevel'
+import { getTileUrls, API_BASE } from '../config'
+import { getOfflineDem } from '../utils/terrainDem'
+import type { RouteWaypoint, LegOverride } from '../types/db'
+
+const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
+
+// Obstacles file (0.5-3 MB, fine for fetch() on native -- see AGENTS.md on
+// large GeoJSON). Parsed once per URL, like VerticalProfile's own cache.
+let _obstacles: { url: string; p: Promise<GeoJSON.FeatureCollection> } | null = null
+function loadObstacles(): Promise<GeoJSON.FeatureCollection> {
+  const url = getTileUrls().obstacles
+  if (!_obstacles || _obstacles.url !== url) {
+    const p = fetch(url).then((r) => r.json() as Promise<GeoJSON.FeatureCollection>)
+    p.catch(() => { if (_obstacles?.p === p) _obstacles = null })
+    _obstacles = { url, p }
+  }
+  return _obstacles.p
+}
+
+export function useAutoCruiseLevel(opts: {
+  waypoints: RouteWaypoint[]
+  legOverrides: LegOverride[]
+  setLegOverride: (idx: number, override: LegOverride) => void
+  /** Planned altitude for legs without an override. */
+  defaultAltFt: number
+  onNotice: (text: string) => void
+  /** Off while flying: the route is being followed, not planned. */
+  enabled: boolean
+}) {
+  const { waypoints, legOverrides, setLegOverride, defaultAltFt, onNotice, enabled } = opts
+  const prevRef = useRef<RouteWaypoint[]>(waypoints)
+  // Latest values for the async work below.
+  const latest = useRef({ waypoints, legOverrides, defaultAltFt, onNotice, setLegOverride })
+  latest.current = { waypoints, legOverrides, defaultAltFt, onNotice, setLegOverride }
+
+  useEffect(() => {
+    const prev = prevRef.current
+    prevRef.current = waypoints
+    if (!enabled) return
+    const legs = newLegsAfterChange(prev, waypoints)
+    if (legs.length === 0) return
+    for (const legIndex of legs) {
+      const legWps = [waypoints[legIndex], waypoints[legIndex + 1]]
+      Promise.all([
+        fetchTerrainProfile(legWps, API_BASE, undefined, getOfflineDem()).catch(() => []),
+        loadObstacles().catch(() => EMPTY_FC),
+      ]).then(([terrain, obstacles]) => {
+        // Stale if the leg's endpoints changed while the lookup ran (or the
+        // route went away).
+        const now = latest.current.waypoints
+        const same = (a?: RouteWaypoint, b?: RouteWaypoint) => !!a && !!b && a.lat === b.lat && a.lng === b.lng
+        if (!same(now[legIndex], legWps[0]) || !same(now[legIndex + 1], legWps[1])) return
+        const profile = buildVirtualRadarProfile(legWps, [], EMPTY_FC, obstacles)
+        const required = requiredLegAltFt(terrain.map((t) => t.elevFt), profile.obstacles.map((o) => o.elevationFt))
+        const { legOverrides, defaultAltFt, onNotice, setLegOverride } = latest.current
+        const planned = legOverrides[legIndex]?.altFt ?? defaultAltFt
+        if (required <= planned) return
+        setLegOverride(legIndex, { ...(legOverrides[legIndex] ?? {}), altFt: required })
+        const name = (i: number) => now[i]?.name ?? `WP${i + 1}`
+        onNotice(autoLevelMessage(name(legIndex), name(legIndex + 1), required))
+      }).catch(() => { /* lookup failed: leave the leg as planned */ })
+    }
+  // Only waypoint identity changes matter; the rest is read through `latest`.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waypoints, enabled])
+}

@@ -1,7 +1,6 @@
 /**
- * LivePlogPanel — in-flight pilot log. Compact icon trigger (matches
- * FrequencyPanel/MapDisplaySheet 40×40 button convention) that opens a
- * bottom-sheet Modal showing the route table with live ETA/ATA columns,
+ * LivePlogPanel — in-flight pilot log. Opened from the Map tools menu
+ * (controlled `open`); a bottom sheet showing the route table with live ETA/ATA columns,
  * a progress indicator on the active leg, upcoming comm frequencies
  * (10-min lookahead), and nearby VOR/NDB nav aids.
  *
@@ -9,10 +8,9 @@
  * useLivePlog, table layout adapted from CSS grid to RN flex rows.
  */
 
-import React, { useState } from 'react'
-import { View, Text, TouchableOpacity } from 'react-native'
+import React from 'react'
+import { View, Text } from 'react-native'
 import { NativeSheet } from './NativeSheet'
-import { Ionicons } from '@expo/vector-icons'
 import type { RouteWaypoint } from '../types/db'
 import type { LivePlogData } from '../hooks/useLivePlog'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -25,22 +23,20 @@ interface Props {
   waypoints:   RouteWaypoint[]
   activeWpIdx: number
   plogData:    LivePlogData
+  open:        boolean
+  onOpenChange: (open: boolean) => void
 }
 
-export function LivePlogPanel({ waypoints, activeWpIdx, plogData }: Props) {
+export function LivePlogPanel({ waypoints, activeWpIdx, plogData, open, onOpenChange }: Props) {
   const styles = useThemedStyles(makeStyles)
-  const [open, setOpen] = useState(false)
   const { atas, liveEtas, legProgressPct, upcomingFreqs, nearbyNavaids } = plogData
 
   if (waypoints.length < 2) return null
 
   return (
     <>
-      <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)} activeOpacity={0.8}>
-        <Ionicons name="list-outline" size={19} color={theme.accentBlue} />
-      </TouchableOpacity>
-
-      <NativeSheet isPresented={open} onDismiss={() => setOpen(false)} title="PILOT LOG" testID="plog-sheet">
+      <NativeSheet isPresented={open} onDismiss={() => onOpenChange(false)} title="PILOT LOG" testID="plog-sheet"
+        contentContainerStyle={styles.body}>
             <View>
               {/* Route table */}
               <View style={styles.tableHead}>
@@ -114,25 +110,7 @@ export function LivePlogPanel({ waypoints, activeWpIdx, plogData }: Props) {
 
 function makeStyles(theme: ScaledTheme) {
  return {
-  trigger: {
-    width: 40, height: 40, borderRadius: theme.radiusMd,
-    backgroundColor: 'rgba(19,24,36,0.92)',
-    borderWidth: 1, borderColor: theme.borderDefault,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  modalRoot: { flex: 1, justifyContent: 'flex-end' },
-  backdrop:  { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' },
-  sheet: {
-    maxHeight: '75%',
-    backgroundColor: theme.surfaceSheet,
-    borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    borderTopWidth: 1, borderColor: theme.borderDefault,
-    padding: theme.space3,
-  },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.borderDefault, alignSelf: 'center', marginBottom: theme.space2 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.space2 },
-  title:  { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '700', letterSpacing: 0.5 },
-  scroll: {},
+  body: { paddingHorizontal: theme.space4, paddingBottom: theme.space2 },
   tableHead: {
     flexDirection: 'row', paddingVertical: theme.space1,
     borderBottomWidth: 1, borderColor: theme.borderSubtle,

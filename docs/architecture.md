@@ -486,11 +486,20 @@ Each route leg must show the WCA alongside the magnetic heading (e.g. `093°M / 
 
 Displayed in the aerodrome popup for destination/alternate aerodromes. Use an astronomical formula (no external API) — e.g. the `suncalc` npm package (BSD-2). Highlight ETAs within ±30 min of civil sunset in amber: European VFR at night requires either a night rating or the flight to end before sunset + 30 min.
 
+### Route Planning on the Map
+
+Shared rules for web (`MapView.tsx`) and native (`AviationMap.tsx`), helpers in `@open-vfr/shared/snapChoice` and `@open-vfr/shared/autoCruiseLevel`:
+
+- **Snapping.** A tap or drop within 20 px of map features snaps to them. One feature → taken silently; several → a picker, aerodromes first, the exact tapped position last. While a point is dragged the preview follows the feature it would snap to (ring + name hint), with the nearest aerodrome preferred over any nearer non-aerodrome.
+- **Drop onto a neighbour removes.** Dropping a waypoint onto the point before or after it deletes it instead of leaving a zero-length leg; a midpoint dragged back onto either end of its leg inserts nothing.
+- **Automatic cruise level.** A newly appended or inserted leg whose planned altitude is below the highest terrain under it + 1,000 ft (or the highest obstacle in its 1 NM corridor + 500 ft), rounded up to 100 ft, gets its altitude raised to that value and a notice is shown. Only new legs are touched: a leg the pilot already levelled, or whose endpoints merely moved, is left alone (the pre-flight check still flags it). Off while flying.
+- **Drawing.** Direction chevrons along every leg (hidden under the leg label), leg labels (`HDG°  IASkt`) only outside planning/adjust mode, intermediate waypoint names only from zoom 8.
+
 ---
 
 ## 8. Phased Roadmap Summary
 
-The detailed task list with priority and complexity annotations lives in [`docs/todo.md`](todo.md). This is a high-level phase summary only.
+The detailed task list with priority and complexity annotations lives in the maintainers' infrastructure repository (`docs/todo.md` there). This is a high-level phase summary only.
 
 | Phase | Name | Status |
 |---|---|---|

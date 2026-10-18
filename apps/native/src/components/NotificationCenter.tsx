@@ -114,9 +114,14 @@ interface Props {
   ceilingMsg?:           string | null
   reminderNote?:         { wpName: string; text: string } | null
   onDismissReminder?:    () => void
+  /** Planning-time notice (e.g. a new leg's altitude raised for terrain);
+   *  auto-dismisses after PLANNING_NOTICE_MS. */
+  planningNotice?:       { title: string; text: string } | null
+  onDismissPlanning?:    () => void
 }
 
 const AUTO_DISMISS_MS = 30_000
+const PLANNING_NOTICE_MS = 10_000
 
 export function NotificationCenter({
   airspaceAlerts, onDismissAirspace,
@@ -124,6 +129,7 @@ export function NotificationCenter({
   airfieldAlerts, onDismissAirfield,
   airspaceNotifications, ceilingMsg,
   reminderNote, onDismissReminder,
+  planningNotice, onDismissPlanning,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   useEffect(() => {
@@ -131,6 +137,11 @@ export function NotificationCenter({
     const id = setTimeout(onDismissReminder, AUTO_DISMISS_MS)
     return () => clearTimeout(id)
   }, [reminderNote, onDismissReminder])
+  useEffect(() => {
+    if (!planningNotice || !onDismissPlanning) return
+    const id = setTimeout(onDismissPlanning, PLANNING_NOTICE_MS)
+    return () => clearTimeout(id)
+  }, [planningNotice, onDismissPlanning])
 
   // Map control buttons sit above this stack (zIndex 50) on the right edge in
   // portrait and along the top in landscape. Reserve their space so cards are
@@ -230,6 +241,18 @@ export function NotificationCenter({
       text: reminderNote.text,
       dismissible: true,
       onDismiss: onDismissReminder,
+    })
+  }
+
+  if (planningNotice) {
+    items.push({
+      key: 'planning',
+      severity: 'yellow',
+      badge: '✈ CRUISE LEVEL',
+      title: planningNotice.title,
+      text: planningNotice.text,
+      dismissible: true,
+      onDismiss: onDismissPlanning,
     })
   }
 

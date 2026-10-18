@@ -15,6 +15,8 @@ export function RouteEditBanner({
   top, canUndo, canRedo,
   onUndo, onRedo, onCancel, onApply,
 }: {
+  /** Distance from the top of the screen: pass the toolbar's own offset
+   *  (below the status bar) so the banner lines up with the menu button. */
   top: number
   canUndo: boolean
   canRedo: boolean
@@ -50,7 +52,9 @@ function makeStyles(theme: ScaledTheme) {
       flexDirection: 'row' as const, alignItems: 'center' as const, gap: theme.space3,
       backgroundColor: 'rgba(19,24,36,0.94)', borderRadius: theme.radiusFull,
       borderWidth: 1, borderColor: '#22d3ee',
-      paddingLeft: theme.space3, paddingRight: theme.space2, paddingVertical: theme.space1,
+      // Same height as the toolbar buttons (40) so the two line up.
+      height: 40,
+      paddingLeft: theme.space3, paddingRight: theme.space2,
     },
     cancelBtn: {
       width: 30, height: 30, borderRadius: 15, alignItems: 'center' as const, justifyContent: 'center' as const,

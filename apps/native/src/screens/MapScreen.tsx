@@ -89,6 +89,7 @@ import { useUserWaypointContext } from '../context/UserWaypointContext'
 import { useHomeAirfield }      from '../hooks/useHomeAirfield'
 import { useSettingsContext } from '../context/SettingsContext'
 import { RouteEditBanner } from '../components/RouteEditBanner'
+import { CompassButton } from '../components/CompassButton'
 import { AutoFlyBanner } from '../components/AutoFlyBanner'
 import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
 import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
@@ -108,9 +109,8 @@ import IconLockOpen from '@tabler/icons-react-native/IconLockOpen'
 import IconMapPinPlus from '@tabler/icons-react-native/IconMapPinPlus'
 import IconPlaneDeparture from '@tabler/icons-react-native/IconPlaneDeparture'
 import IconPlaneArrival from '@tabler/icons-react-native/IconPlaneArrival'
-import IconCompass from '@tabler/icons-react-native/IconCompass'
 import IconZoomScan from '@tabler/icons-react-native/IconZoomScan'
-import IconNavigation from '@tabler/icons-react-native/IconNavigation'
+import IconListDetails from '@tabler/icons-react-native/IconListDetails'
 import { MapToolbar, type ToolGroupDef } from '../components/MapToolbar'
 import * as Location from 'expo-location'
 import * as Crypto from 'expo-crypto'
@@ -119,6 +119,7 @@ import { distanceAlongRouteNm, coordinateAlongRouteNm, routeCrossTrackNm } from 
 import { aircraft as aircraftDb, flightLogs as flightLogsDb } from '../db'
 import type { AircraftProfileDocType } from '../types/db'
 import { useTerrainElevation } from '../hooks/useTerrainElevation'
+import { useAutoCruiseLevel } from '../hooks/useAutoCruiseLevel'
 import { useAltitudeSource } from '../hooks/useAltitudeSource'
 import { useVarioContext } from '../context/VarioContext'
 import { useFlightLogViewContext } from '../context/FlightLogViewContext'
@@ -241,7 +242,7 @@ function MapScreenForCountry() {
   const { waypoints, legOverrides, addWaypoint, insertWaypoint, updateWaypoint, removeWaypoint,
            routeVisible, activeRouteId, routeFitNonce,
            editSessionActive, setEditSessionArmed, applyEditSession, cancelEditSession,
-           undo: undoRoute, redo: redoRoute, canUndo, canRedo } = useRouteContext()
+           undo: undoRoute, redo: redoRoute, canUndo, canRedo, setLegOverride } = useRouteContext()
   const { settings, update }                  = useSettingsContext()
   const { state: authState } = useAuthContext()
   const authenticated = authState.status === 'authenticated'
@@ -481,6 +482,12 @@ function MapScreenForCountry() {
   // as MapScreen state every change re-rendered the whole screen. Only
   // AviationMap's cursor layer subscribes.
   const profileCursorStore = useMemo(() => createValueStore<[number, number] | null>(null), [])
+  // Map bearing for the compass button (a store: it changes on every frame of a
+  // rotate gesture and only the button needs it) and a request counter that
+  // sends the map back to north.
+  const bearingStore = useMemo(() => createValueStore<number>(0), [])
+  const [resetNorthNonce, setResetNorthNonce] = useState(0)
+  const [showPlog, setShowPlog] = useState(false)
   // Estimated combined height of the bottom stack (VerticalProfile header +
   // drag handle + chart, plus GaugesBar) — used to offset other floating
   // buttons that used to assume the screen bottom was empty.
@@ -545,6 +552,19 @@ function MapScreenForCountry() {
 
   // Waypoint reminder — fire when activeWpIdx changes while flying, if the
   // new active-leg destination has a pilot-entered free-text note.
+  // A new leg gets a terrain/obstacle-safe altitude; the notice shows in
+  // the notification stack (auto-dismissed).
+  const [planningNotice, setPlanningNotice] = useState<{ title: string; text: string } | null>(null)
+  const dismissPlanningNotice = useCallback(() => setPlanningNotice(null), [])
+  const autoLevelNotice = useCallback((text: string) => setPlanningNotice({ title: 'Leg altitude raised', text }), [])
+  useAutoCruiseLevel({
+    waypoints,
+    legOverrides,
+    setLegOverride,
+    defaultAltFt: aircraftProfile?.cruiseAltFt || 3500,
+    onNotice: autoLevelNotice,
+    enabled: !flyingActive,
+  })
   const [reminderNote, setReminderNote] = useState<{ text: string; wpName: string } | null>(null)
   React.useEffect(() => {
     if (!flyingActive) return
@@ -646,6 +666,12 @@ function MapScreenForCountry() {
   const plannedWindAltFt = waypoints.length >= 2
     ? Math.max(...waypoints.slice(1).map((_, i) => legOverrides[i]?.altFt ?? (aircraftProfile?.cruiseAltFt || 3500)))
     : null
+  // Planned IAS per leg for the on-map leg labels (leg override, else the
+  // aircraft's cruise IAS).
+  const legIasKts = useMemo(
+    () => waypoints.slice(1).map((_, i) => legOverrides[i]?.speedKts ?? aircraftProfile?.cruiseIas),
+    [waypoints, legOverrides, aircraftProfile?.cruiseIas],
+  )
   const [windSurface, setWindSurface] = useState(false)
   const windOverlay = windOverlayAltitude(
     (flying || simFlight.active) ? (activePosition?.altFt ?? null) : null,
@@ -1157,14 +1183,14 @@ function MapScreenForCountry() {
           onSelect: handleStopFlight }
       : { id: 'go', label: 'Go flying', description: 'Start flying mode with GPS or the touch simulator', icon: toolIcon(IconPlaneDeparture),
           onSelect: () => setShowModePicker(true) },
-      ...(toolFlying ? [{ id: 'autozoom', label: settings.autoZoom ? 'Auto-zoom on' : 'Auto-zoom off',
+      ...(toolFlying ? [{ id: 'autozoom', label: 'Auto zoom',
         description: settings.autoZoom ? 'Zooms in on takeoff and out in cruise while the map follows you. Tap to turn off.' : 'The map keeps your zoom level while following you. Tap to zoom automatically on takeoff and in cruise.',
         icon: toolIcon(IconZoomScan), active: settings.autoZoom, keepOpen: true,
         onSelect: () => update({ autoZoom: !settings.autoZoom }) }] : []),
-      ...(toolFlying ? [{ id: 'orient', label: mapOrientation === 'track' ? 'Track Up' : 'North Up',
-        description: mapOrientation === 'track' ? 'The map turns with your track. Tap for North Up.' : 'North is at the top of the map. Tap for Track Up (map turns with your track).',
-        icon: toolIcon(mapOrientation === 'track' ? IconNavigation : IconCompass), active: mapOrientation === 'track', keepOpen: true,
-        onSelect: () => setMapOrientation(o => o === 'north' ? 'track' : 'north') }] : []),
+      ...(toolFlying && waypoints.length >= 2 ? [{ id: 'plog', label: 'Pilot log',
+        description: 'Route table with live ETA and ATA, comms ahead and nearby nav aids.',
+        icon: toolIcon(IconListDetails),
+        onSelect: () => setShowPlog(true) }] : []),
     ] },
     { id: 'find', label: 'Find & look up', items: [
       { id: 'dest', label: 'Find dest.', description: 'Search aerodromes by name, fuel, surface and runway length, sorted by distance from you or the map centre',
@@ -1183,7 +1209,7 @@ function MapScreenForCountry() {
           : (routeEditOn ? 'Stop editing and lock the route' : 'Tap the map to add waypoints; drag them or the leg midpoints to change the route'),
         icon: toolIcon(routeEditOn ? IconLockOpen : IconPencil), active: routeEditOn,
         onSelect: () => toolFlying ? setRouteAdjustMode(v => !v) : setPlanningMode(m => !m) },
-      ...(toolFlying ? [{ id: 'drop', label: 'Drop waypoint', description: 'Save your current position as a waypoint in the "Dropped in Flight" folder',
+      ...(toolFlying ? [{ id: 'drop', label: 'Drop point', description: 'Save your current position as a waypoint in the "Dropped in Flight" folder',
         icon: toolIcon(IconMapPinPlus),
         onSelect: () => {
           if (!activePosition) return
@@ -1433,12 +1459,27 @@ function MapScreenForCountry() {
           // marker, and Off shows none.
           showAircraft={flyingActive}
           mapOrientation={mapOrientation}
+          bearingStore={bearingStore}
+          resetNorthNonce={resetNorthNonce}
+          // Compass sits bottom right, just above the scale pill (inside the map
+          // area, so it follows the profile panel up and down).
+          mapCornerSlot={(
+            <CompassButton
+              bearingStore={bearingStore}
+              trackUp={mapOrientation === 'track'}
+              canToggle={flyingActive}
+              onResetNorth={() => { setMapOrientation('north'); setResetNorthNonce((n) => n + 1) }}
+              onSetTrackUp={() => setMapOrientation('track')}
+            />
+          )}
           onFeatureTap={handleFeatureTap as (features: Feature[], lngLat: [number,number]) => void}
           onLongPress={handleLongPress}
           onWaypointMove={handleWaypointMove}
           onWaypointMoveCandidates={handleWaypointMoveCandidates}
           onWaypointLongPress={handleWaypointLongPress}
           onWaypointRemove={removeWaypoint}
+          // Tap the route's last point on the ground: start extending it.
+          onRouteEndTap={flyingActive ? undefined : () => setPlanningMode(true)}
           onLegTap={handleLegTap}
           onLegInsert={handleLegInsert}
           onLegInsertCandidates={handleLegInsertCandidates}
@@ -1447,6 +1488,10 @@ function MapScreenForCountry() {
           onPlanTap={handlePlanTap}
           onPlanCandidates={handlePlanCandidates}
           routeVisible={routeVisible}
+          // Same gating as web: labels only when not editing, so they never
+          // cover the midpoint drag handles.
+          showLegLabels={!planningMode && !routeAdjustMode}
+          legIasKts={legIasKts}
           pastTrack={pastTrack}
           profileCursorStore={profileCursorStore}
           rulerMode={rulerMode}
@@ -1562,6 +1607,8 @@ function MapScreenForCountry() {
           ceilingMsg={ceilingEscalatedMsg}
           reminderNote={reminderNote}
           onDismissReminder={() => setReminderNote(null)}
+          planningNotice={planningNotice}
+          onDismissPlanning={dismissPlanningNotice}
         />
 
         {/* Viewed flight log banner — Logs segment "View" action on PlanScreen */}
@@ -1660,9 +1707,10 @@ function MapScreenForCountry() {
           />
         </View>
         {flightModeStatus !== 'off' && waypoints.length >= 2 && (
-          <View style={stackGap}>
-            <LivePlogPanel waypoints={waypoints} activeWpIdx={activeWpIdx} plogData={plogData} />
-          </View>
+          <LivePlogPanel
+            waypoints={waypoints} activeWpIdx={activeWpIdx} plogData={plogData}
+            open={showPlog} onOpenChange={setShowPlog}
+          />
         )}
         <FlightModeSheet
           status={flightModeStatus}
@@ -1674,15 +1722,16 @@ function MapScreenForCountry() {
         />
         <View style={stackGap}>
           <TouchableOpacity
-            style={[styles.iconBtn, (flightModeStatus !== 'off' ? followGps : locMode === 'passive' && locCentred) && styles.iconBtnActive, flightModeStatus !== 'off' && !followGps && styles.iconBtnAttention]}
+            style={[styles.iconBtn, (flightModeStatus !== 'off' ? followGps : locMode === 'passive' && locCentred) && styles.iconBtnActive]}
+            activeOpacity={0.85}
             onPress={handleLocate}
             onLongPress={() => { if (flightModeStatus === 'off') setLocMode('off') }}
             accessibilityLabel={flightModeStatus !== 'off' ? (followGps ? 'Following aircraft' : 'Map not following. Tap to re-centre on aircraft') : locMode === 'passive' ? 'Centre on my position. Long-press to turn location off.' : 'Show my position'}
           >
             <Ionicons
-              name={locMode === 'passive' || flightModeStatus !== 'off' ? 'locate' : 'locate-outline'}
+              name={(flightModeStatus !== 'off' ? followGps : locMode === 'passive') ? 'locate' : 'locate-outline'}
               size={18}
-              color={flightModeStatus !== 'off' && !followGps ? '#fb923c' : (flightModeStatus !== 'off' ? followGps : locMode === 'passive' && locCentred) ? '#000' : theme.textPrimary}
+              color={(flightModeStatus !== 'off' ? followGps : locMode === 'passive' && locCentred) ? theme.accentBlue : theme.textPrimary}
             />
           </TouchableOpacity>
         </View>
@@ -1702,7 +1751,9 @@ function MapScreenForCountry() {
           for every change, then Apply keeps them (unsaved) or Cancel restores. */}
       {editSessionActive && (
         <RouteEditBanner
-          top={scaledTheme.space2}
+          // Same top offset and height as the toolbar buttons on the right, and
+          // below the status bar (only the map may bleed under it).
+          top={topRightTopOffset}
           canUndo={canUndo} canRedo={canRedo}
           onUndo={undoRoute} onRedo={redoRoute}
           onCancel={cancelEditSession} onApply={applyEditSession}
@@ -1901,23 +1952,17 @@ function makeStyles(theme: ScaledTheme) {
     position: 'absolute', left: theme.space2, right: theme.space2,
     zIndex: 45,
     flexDirection: 'row', alignItems: 'center', gap: theme.space2,
-    backgroundColor: 'rgba(19,24,36,0.92)', borderRadius: theme.radiusMd,
+    backgroundColor: theme.surfaceSheet, borderRadius: theme.radiusMd,
     borderWidth: 1, borderColor: '#a78bfa',
     paddingHorizontal: theme.space3, paddingVertical: theme.space2,
   },
   airacBanner: { borderColor: theme.statusWarn },
   pastTrackBannerTxt: { flex: 1, color: theme.textPrimary, fontSize: theme.textXs, fontWeight: '600' },
-  // Flying with follow off (panned away): orange, so the locate button itself
-  // signals "tap to re-centre" (replaces the former Re-center pill).
-  iconBtnAttention: {
-    borderColor:     '#fb923c',
-    backgroundColor: 'rgba(251,146,60,0.22)',
-  },
   iconBtn: {
     width:           40,
     height:          40,
     borderRadius:    theme.radiusMd,
-    backgroundColor: 'rgba(19,24,36,0.90)',
+    backgroundColor: theme.surfaceSheet,
     borderWidth:     1,
     borderColor:     theme.borderDefault,
     alignItems:      'center',
@@ -1926,8 +1971,7 @@ function makeStyles(theme: ScaledTheme) {
   // Active = blue outline + blue icon on the normal dark fill, matching the
   // flight-mode and layers buttons (a solid blue fill looked out of place).
   iconBtnActive: {
-    borderColor:     'rgba(0,0,0,0.25)',
-    backgroundColor: 'rgba(250,204,21,0.9)',
+    borderColor: theme.accentBlue,
   },
   showProfileBtn: {
     position:        'absolute',
@@ -1935,7 +1979,7 @@ function makeStyles(theme: ScaledTheme) {
     width:           36,
     height:          20,
     borderRadius:    theme.radiusMd,
-    backgroundColor: 'rgba(19,24,36,0.92)',
+    backgroundColor: theme.surfaceSheet,
     borderWidth:     1,
     borderColor:     theme.borderDefault,
     alignItems:      'center',

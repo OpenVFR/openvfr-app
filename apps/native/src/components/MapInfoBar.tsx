@@ -34,10 +34,12 @@ interface Props {
   onToggleWindSurface?: () => void
   /** Extra distance above the bottom edge, when the map bleeds under the bottom inset. */
   bottomOffset?: number
+  /** Stacked directly above the pill, right-aligned (the compass button). */
+  above?: React.ReactNode
 }
 
 export const MapInfoBar = forwardRef<MapInfoBarHandle, Props>(function MapInfoBar(
-  { ceilingFt, distanceUnit, initialCamera, onInfoPress, windLabel, windSurface, onToggleWindSurface, bottomOffset = 0 }, ref,
+  { ceilingFt, distanceUnit, initialCamera, onInfoPress, windLabel, windSurface, onToggleWindSurface, bottomOffset = 0, above }, ref,
 ) {
   const styles = useThemedStyles(makeStyles)
   const [cam, setCam] = useState(initialCamera)
@@ -63,7 +65,9 @@ export const MapInfoBar = forwardRef<MapInfoBarHandle, Props>(function MapInfoBa
   const altLabel = `SFC \u2013 ${unlimited ? 'UNL' : ftToLabel(ceilingFt)}`
 
   return (
-    <View style={[styles.bar, { bottom: 8 + bottomOffset }]} pointerEvents="box-none">
+    <View style={[styles.wrap, { bottom: 8 + bottomOffset }]} pointerEvents="box-none">
+    {above}
+    <View style={styles.bar} pointerEvents="box-none">
       <TouchableOpacity
         style={styles.infoBtn}
         onPress={onInfoPress}
@@ -92,15 +96,19 @@ export const MapInfoBar = forwardRef<MapInfoBarHandle, Props>(function MapInfoBa
       </View>
       <Text style={styles.ratio} pointerEvents="none">{scale.ratio}</Text>
     </View>
+    </View>
   )
 })
 
 const makeStyles = (t: ScaledTheme) => ({
-  bar: {
+  wrap: {
     position: 'absolute' as const,
     right: 8,
-    bottom: 8,
     zIndex: 20,
+    alignItems: 'flex-end' as const,
+    gap: 8,
+  },
+  bar: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: 7,
