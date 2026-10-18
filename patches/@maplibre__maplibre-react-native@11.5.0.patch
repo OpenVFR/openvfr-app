@@ -84,7 +84,7 @@ index b38e97a9b0b00fc33be626a93c1e9eab20b3089f..275018eac41d5478191c3c890c52c682
      }
  
 diff --git a/ios/components/annotations/point-annotation/MLRNPointAnnotation.m b/ios/components/annotations/point-annotation/MLRNPointAnnotation.m
-index 71ee64d..024269e 100644
+index 71ee64d14f2892373cfb4556dfd35ee3c005f4ce..024269e454bd44277374fafc5226aef557bf46a0 100644
 --- a/ios/components/annotations/point-annotation/MLRNPointAnnotation.m
 +++ b/ios/components/annotations/point-annotation/MLRNPointAnnotation.m
 @@ -91,6 +91,14 @@ const float CENTER_Y_OFFSET_BASE = -0.5f;
