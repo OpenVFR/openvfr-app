@@ -14,6 +14,7 @@ import {
   useXAxisScale,
   useYAxisScale,
 } from 'recharts'
+import { pickWaypointLabels, estimateLabelWidth } from '@open-vfr/shared/profileLabels'
 import { airspaceOutlines, airspaceChips, layoutAirspaceChips, type OutlineShape, type OutlineChip } from '@open-vfr/shared/airspaceOutline'
 import {
   cloudLayerPaths, cloudLayerLabel, cloudGlyphHeight, cloudOpacityForOffset, cloudReportOffRouteNm,
@@ -616,8 +617,7 @@ function VirtualRadar({
   }, [profile, terrainPts])
 
   // Winds aloft at the standard levels up to the chart top, one column every
-  // ~20 NM -- SkyDemon-style, so the best level for the wind is visible at a
-  // glance. Model data (Open-Meteo), nominal ISA height of each pressure level.
+  // ~20 NM, so the best level for the wind is visible at a glance. Model data (Open-Meteo), nominal ISA height of each pressure level.
   const windAloft = useWindAloftAlongRoute(waypoints, profile?.totalNm ?? 0, yMax, showWindAloft)
 
   // Terrain gradient stops — elevation bands mapped to SVG y (0%=top=yMax, 100%=bottom=0ft).
@@ -720,35 +720,23 @@ function VirtualRadar({
   // (e.g. a short leg to a named landmark waypoint) previously rendered
   // every ReferenceLine label regardless of pixel spacing, so adjacent
   // names ran into each other and became unreadable ("Kulla…Church"
-  // mashed together). Skip a label if it would land within
-  // MIN_WP_LABEL_GAP_PX of the last one actually KEPT (not just the last
-  // one considered) — a rough fixed budget rather than measuring each
-  // name's real text width, same tradeoff already made elsewhere in this
-  // chart (e.g. the wind-arrow edge clamp above).
-  const MIN_WP_LABEL_GAP_PX = 46
+  // mashed together). Labels are now chosen on their estimated rectangles.
   const visibleWaypointTicks = useMemo(() => {
     if (!profile) return []
     const pxPerUnit = totalNmDisplay > 0 ? contentPxWidth / totalNmDisplay : 0
-    // Seeded at 0 (the Y-axis's own pixel position), not -Infinity --
-    // treats the axis/departure edge as an already-kept label competing
-    // for the same MIN_WP_LABEL_GAP_PX budget. Without this, a SECOND
-    // waypoint that's genuinely very close to departure (e.g. a VRP named
-    // after a literal landmark right by the airfield, common on Swedish
-    // VFR charts -- "Church", "Tolånga kyrka") had nothing before it to
-    // collide against, so it always rendered regardless of how close to
-    // x=0 it was, overlapping the Y-axis/FL-scale margin instead of
-    // sitting cleanly inside the plot -- reported as the label rendering
-    // "outside the chart" on both platforms.
-    let lastX = 0
-    const out: typeof profile.waypointTicks = []
-    profile.waypointTicks.forEach((tick, i) => {
-      if (i === 0) return // departure skipped, same as before -- sits on Y-axis
-      const x = nmToDisplay(tick.distNm, units.distance) * pxPerUnit
-      if (x - lastX < MIN_WP_LABEL_GAP_PX) return
-      out.push(tick)
-      lastX = x
+    // Real label rectangles (see @open-vfr/shared/profileLabels): names are
+    // variable-width and the destination label is right-aligned to its line
+    // (insideTopRight), so spacing the ticks alone let it land on the
+    // previous label. The destination always wins; the departure is skipped
+    // (it sits on the Y axis).
+    const ticks = profile.waypointTicks
+    const lastIdx = ticks.length - 1
+    const rects = ticks.map((t, i) => {
+      const x = nmToDisplay(t.distNm, units.distance) * pxPerUnit
+      const w = estimateLabelWidth(t.name, Infinity)
+      return i === lastIdx ? { left: x - 2 - w, right: x - 2 } : { left: x + 2, right: x + 2 + w }
     })
-    return out
+    return pickWaypointLabels(rects, 0).map((i) => ticks[i])
   }, [profile, totalNmDisplay, contentPxWidth, units.distance])
 
   // Auto-follow the aircraft while flying, mirroring native: if its marker

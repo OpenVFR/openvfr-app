@@ -49,6 +49,7 @@ import {
   type MsaPoint,
   type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
+import { pickWaypointLabels, estimateLabelWidth } from '@open-vfr/shared/profileLabels'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
 import { airspaceOutlines, airspaceChips, layoutAirspaceChips } from '@open-vfr/shared/airspaceOutline'
 import {
@@ -538,32 +539,21 @@ export function VerticalProfile({
     return Math.min(MARGIN_L + plotW - margin, Math.max(MARGIN_L + margin, xOf(distNm)))
   }, [xOf, plotW])
 
-  // Waypoint-name label collision avoidance -- mirrors web's identical fix.
-  // Skip a label if it would land within MIN_WP_LABEL_GAP_PX of the last
-  // one actually kept (not just the last one considered), using the real
-  // px scale (xOf) directly since native already tracks true pixel
-  // positions, unlike web's Recharts-domain approximation.
-  const MIN_WP_LABEL_GAP_PX = 46
+  // Waypoint-name label collision avoidance, on the real label rectangles
+  // (see @open-vfr/shared/profileLabels): names are variable-width and the
+  // destination label is clamped toward the left to stay inside the chart,
+  // so spacing the ticks alone let it land on the previous label. The
+  // destination always wins; the departure is skipped (it sits on the Y axis).
+  const wpLabelRect = useCallback((name: string, distNm: number) => {
+    const left = Math.min(contentW - 44, xOf(distNm) + 2)
+    return { left, right: left + estimateLabelWidth(name) }
+  }, [xOf, contentW])
   const visibleWaypointTicks = useMemo(() => {
     if (!profile) return []
-    // Seeded at xOf(0) (the Y-axis's own pixel position), not -Infinity --
-    // see web's identical VirtualRadar.tsx fix for why: a second waypoint
-    // genuinely very close to departure (e.g. a VRP named after a literal
-    // landmark right by the airfield -- "Church", "Tol\u00e5nga kyrka") had
-    // nothing before it to collide against, so it always rendered
-    // regardless of proximity to x=0, overlapping the Y-axis/FL-scale
-    // margin -- reported as the label rendering "outside the chart".
-    let lastX = xOf(0)
-    const out: typeof profile.waypointTicks = []
-    profile.waypointTicks.forEach((tick, i) => {
-      if (i === 0) return // departure skipped, same as before -- sits on Y-axis
-      const x = xOf(tick.distNm)
-      if (x - lastX < MIN_WP_LABEL_GAP_PX) return
-      out.push(tick)
-      lastX = x
-    })
-    return out
-  }, [profile, xOf])
+    const ticks = profile.waypointTicks
+    const keep = pickWaypointLabels(ticks.map((t) => wpLabelRect(t.name, t.distNm)), xOf(0))
+    return keep.map((i) => ticks[i])
+  }, [profile, xOf, wpLabelRect])
 
   // Clamp the scroll offset whenever the scrollable range shrinks (panel
   // resized wider, or a shorter route replaces a longer one).
