@@ -121,7 +121,7 @@ function makeStyles(theme: ScaledTheme) {
     width:           40,
     height:          40,
     borderRadius:    theme.radiusMd,
-    backgroundColor: 'rgba(19,24,36,0.90)',
+    backgroundColor: theme.surfaceSheet,
     borderWidth:     1,
     borderColor:     theme.borderDefault,
     alignItems:      'center' as const,

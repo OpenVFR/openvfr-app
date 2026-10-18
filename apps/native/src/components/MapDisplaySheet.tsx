@@ -179,7 +179,7 @@ export function MapDisplaySheet({
   return (
     <>
       {/* Trigger button */}
-      <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)} testID="map-display-open" accessibilityLabel="Map display">
+      <TouchableOpacity style={styles.trigger} activeOpacity={0.85} onPress={() => setOpen(true)} testID="map-display-open" accessibilityLabel="Map display">
         <Ionicons name="layers-outline" size={20} color={theme.textSecondary} />
       </TouchableOpacity>
 
@@ -362,7 +362,7 @@ function makeStyles(theme: ScaledTheme) {
     width:           40,
     height:          40,
     borderRadius:    theme.radiusMd,
-    backgroundColor: 'rgba(19,24,36,0.90)',
+    backgroundColor: theme.surfaceSheet,
     borderWidth:     1,
     borderColor:     theme.borderDefault,
     alignItems:      'center',
@@ -401,6 +401,7 @@ function makeStyles(theme: ScaledTheme) {
     fontSize:   11,
     color:      theme.textFaint,
     paddingTop: 4,
+    paddingHorizontal: theme.space4,
   },
   basemapBtn: {
     flex:              1,

@@ -131,7 +131,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
   return (
     <>
       {!controlled && (
-        <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)} testID="find-destination-open" accessibilityLabel="Find a destination">
+        <TouchableOpacity style={styles.trigger} activeOpacity={0.85} onPress={() => setOpen(true)} testID="find-destination-open" accessibilityLabel="Find a destination">
           <Ionicons name="search-outline" size={20} color={theme.textSecondary} />
         </TouchableOpacity>
       )}
@@ -238,7 +238,7 @@ function makeStyles(theme: ScaledTheme) {
  return {
   trigger: {
     width: 40, height: 40, borderRadius: theme.radiusMd,
-    backgroundColor: 'rgba(19,24,36,0.90)', borderWidth: 1, borderColor: theme.borderDefault,
+    backgroundColor: theme.surfaceSheet, borderWidth: 1, borderColor: theme.borderDefault,
     alignItems: 'center', justifyContent: 'center',
   },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },

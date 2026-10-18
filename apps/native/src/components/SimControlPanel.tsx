@@ -16,8 +16,9 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { View, Text, TouchableOpacity, type LayoutChangeEvent } from 'react-native'
+import { View, Text, TouchableOpacity, useWindowDimensions, type LayoutChangeEvent } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { LANDSCAPE_COMPACT } from './GaugesBar'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 type Props = {
@@ -103,6 +104,10 @@ export function SimControlPanel({ speedKts, altFt, trackDeg, onAdjustHeading, on
   const speed = useHoldRepeat(onAdjustSpeed)
   const alt   = useHoldRepeat(onAdjustAlt)
   const scaled = useScaledTheme()
+  // Landscape is short, not narrow: shrink the controls so the panel does not
+  // eat the map (see GaugesBar).
+  const { width: winW, height: winH } = useWindowDimensions()
+  const compact = winW > winH ? LANDSCAPE_COMPACT : 1
   const [rowWidth, setRowWidth] = useState(0)
   const onRowLayout = (e: LayoutChangeEvent) => setRowWidth(e.nativeEvent.layout.width)
 
@@ -111,7 +116,7 @@ export function SimControlPanel({ speedKts, altFt, trackDeg, onAdjustHeading, on
   // one font size is chosen so the tightest column's reading still fits.
   const rowGap = scaled.space1
   const innerGap = scaled.space1
-  const btn = Math.max(22, Math.min(scaled.scale(30), Math.round(rowWidth * 0.065)))
+  const btn = Math.max(22, Math.min(scaled.scale(30) * compact, Math.round(rowWidth * 0.065)))
   const digitsNow = { hdg: 3, spd: String(Math.round(speedKts)).length, alt: String(Math.round(altFt)).length }
   const fixed = 2 * btn + 2 * innerGap          // two buttons + gaps per column
   const ems = COLUMNS.map((c) => textEm(c, digitsNow[c.key]))
@@ -121,10 +126,10 @@ export function SimControlPanel({ speedKts, altFt, trackDeg, onAdjustHeading, on
   const fitSize = rowWidth > 0
     ? (rowWidth - rowGap * (COLUMNS.length - 1) - COLUMNS.length * fixed) / emSum
     : scaled.textLg
-  const valueSize = Math.max(9, Math.min(scaled.textLg, fitSize))
+  const valueSize = Math.max(9, Math.min(scaled.textLg * compact, fitSize))
   const weights = ems.map((em) => fixed + em * valueSize)
   const unitSize = Math.max(8, Math.round(valueSize * UNIT_SCALE))
-  const labelSize = Math.max(8, Math.min(scaled.scale(10), Math.round(valueSize * 0.7)))
+  const labelSize = Math.max(8, Math.min(scaled.scale(10) * compact, Math.round(valueSize * 0.7)))
 
   const values: Record<ColumnSpec['key'], { text: string; unit: string; minus: () => void; plus: () => void; onOut: () => void }> = {
     hdg: { text: Math.round(trackDeg).toString().padStart(3, '0'), unit: '\u00b0', minus: () => hdg.onPressIn(-1), plus: () => hdg.onPressIn(1), onOut: hdg.onPressOut },
@@ -133,7 +138,7 @@ export function SimControlPanel({ speedKts, altFt, trackDeg, onAdjustHeading, on
   }
 
   return (
-    <View style={styles.panel}>
+    <View style={[styles.panel, compact < 1 && { paddingVertical: scaled.space1 / 2 }]}>
       <View style={styles.header}>
         <Ionicons name="game-controller-outline" size={14} color={theme.accentBlue} />
         <Text style={styles.headerTxt}>SIMULATION</Text>

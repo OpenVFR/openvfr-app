@@ -78,8 +78,22 @@ function opaque(color: string): string {
  *  menus. surfacePanel is slightly translucent (fine for chrome drawn over
  *  the map), but under a sheet that lets the map buttons show through,
  *  which reads as the buttons being drawn on top of the sheet. */
+/** Move an `rgb(r, g, b)` colour toward white (dark themes) or black (light)
+ *  by `amt` (0..1). */
+function shift(color: string, toWhite: boolean, amt: number): string {
+  const m = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/.exec(color)
+  if (!m) return color
+  const t = toWhite ? 255 : 0
+  const c = (v: string) => Math.round(Number(v) + (t - Number(v)) * amt)
+  return `rgb(${c(m[1])}, ${c(m[2])}, ${c(m[3])})`
+}
+
 function derivedTokens(name: ThemeName) {
-  return { surfaceSheet: opaque(UI_THEME_TOKENS[name].surfacePanel) }
+  const surfaceSheet = opaque(UI_THEME_TOKENS[name].surfacePanel)
+  // surfaceMenu: a popover that opens over other panels (the map tools menu).
+  // Same family as the sheet colour but visibly lifted, so it does not melt
+  // into the equally dark gauges / profile behind it.
+  return { surfaceSheet, surfaceMenu: shift(surfaceSheet, name !== 'light', name === 'light' ? 0.06 : 0.09) }
 }
 
 export const theme = {

@@ -63,6 +63,7 @@ export function MapToolbar({ groups }: { groups: ToolGroupDef[] }) {
       <TouchableOpacity
         ref={btnRef}
         style={[styles.btn, anyActive && styles.btnActive]}
+        activeOpacity={0.85}
         onPress={() => (anchor ? close() : openMenu())}
         accessibilityRole="button"
         accessibilityLabel="Map tools"
@@ -100,7 +101,7 @@ export function MapToolbar({ groups }: { groups: ToolGroupDef[] }) {
                         testID={`map-tool-${it.id}`}
                       >
                         {it.icon(color)}
-                        <Text style={[styles.tileLabel, it.active && { color: theme.accentBlue }]} numberOfLines={2}>{it.label}</Text>
+                        <Text style={[styles.tileLabel, it.active && { color: theme.accentBlue }]} numberOfLines={1}>{it.label}</Text>
                       </TouchableOpacity>
                     )
                   })}
@@ -122,7 +123,7 @@ function makeStyles(t: ScaledTheme) {
       width:           40,
       height:          40,
       borderRadius:    t.radiusMd,
-      backgroundColor: 'rgba(19,24,36,0.90)',
+      backgroundColor: t.surfaceSheet,
       borderWidth:     1,
       borderColor:     t.borderDefault,
       alignItems:      'center' as const,
@@ -132,10 +133,18 @@ function makeStyles(t: ScaledTheme) {
     backdrop:  { ...{ position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0 } },
     menu: {
       position:        'absolute' as const,
-      backgroundColor: t.surfaceSheet,
+      // Lifted off the gauges/profile behind it (see theme surfaceMenu).
+      backgroundColor: t.surfaceMenu,
       borderRadius:    t.radiusLg,
-      borderWidth:     1,
-      borderColor:     t.borderDefault,
+      // Lifted off the profile / gauges behind it (same dark surface): a
+      // stronger edge and a shadow, so the menu does not melt into them.
+      borderWidth:     1.5,
+      borderColor:     t.borderStrong,
+      elevation:       16,
+      shadowColor:     '#000',
+      shadowOpacity:   0.6,
+      shadowRadius:    12,
+      shadowOffset:    { width: 0, height: 4 },
       padding:         t.space2,
       gap:             t.space2,
     },
@@ -162,20 +171,22 @@ function makeStyles(t: ScaledTheme) {
     grid:     { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: t.space1 },
     tile: {
       width:           MENU_TILE_W,
-      minHeight:       58,
+      // Fixed height: every tile is the same size whether its label wraps or not.
+      height:          t.scale(52),
       borderRadius:    t.radiusMd,
       backgroundColor: t.surfaceOverlay,
       borderWidth:     1,
       borderColor:     t.borderSubtle,
       alignItems:      'center' as const,
-      justifyContent:  'center' as const,
+      justifyContent:  'flex-start' as const,
       gap:             t.space1,
       paddingHorizontal: t.space1,
-      paddingVertical:   t.space2,
+      paddingTop:        t.space2,
     },
     tileActive: { borderColor: t.accentBlue },
     dim:        { opacity: 0.5 },
-    tileLabel:  { color: t.textPrimary, fontSize: t.scale(9), fontWeight: '600' as const, textAlign: 'center' as const },
+    // One line: labels are kept short so tiles never wrap.
+    tileLabel:  { color: t.textPrimary, fontSize: t.scale(9), lineHeight: t.scale(11), fontWeight: '600' as const, textAlign: 'center' as const },
     hint: {
       color:      t.textMuted,
       fontSize:   t.textXs,

@@ -128,7 +128,7 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
   return (
     <>
       {!controlled && (
-        <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)} activeOpacity={0.85}>
           <Ionicons name="newspaper-outline" size={19} color={theme.accentBlue} />
           {badgeCount > 0 && (
             <View style={styles.badge}>
@@ -294,7 +294,7 @@ function makeStyles(theme: ScaledTheme) {
  return {
   trigger: {
     width: 40, height: 40, borderRadius: theme.radiusMd,
-    backgroundColor: 'rgba(19,24,36,0.90)', borderWidth: 1, borderColor: theme.borderDefault,
+    backgroundColor: theme.surfaceSheet, borderWidth: 1, borderColor: theme.borderDefault,
     alignItems: 'center' as const, justifyContent: 'center' as const,
   },
   badge: {

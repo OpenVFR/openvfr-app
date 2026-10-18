@@ -26,10 +26,15 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import BottomSheet, { type BottomSheetMethods } from '@expo/ui/community/bottom-sheet'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { theme, useThemedStyles } from '../styles/theme'
 
-/** Tallest a sheet may grow, as a fraction of the window height. */
+/** Tallest a sheet may grow, as a fraction of the usable height (window minus
+ *  system bars). Landscape is short, so it keeps more of the map visible. */
 const MAX_FRACTION = 0.85
+const MAX_FRACTION_LANDSCAPE = 0.8
+/** Drag handle + padding the platform sheet adds around our content. */
+const SHEET_HANDLE_H = 30
 /** Material 3's ModalBottomSheet caps its width at 640dp (wider windows, i.e.
  *  tablets, get a centred sheet). The library lays our content out at full
  *  window width regardless, so on tablets it overflows and is clipped on both
@@ -57,9 +62,13 @@ export function useKeyboardHeight(): number {
 }
 
 export function useSheetMaxHeight(): number {
-  const { height: winH } = useWindowDimensions()
+  const { width: winW, height: winH } = useWindowDimensions()
+  const insets = useSafeAreaInsets()
   const kbH = useKeyboardHeight()
-  return (winH - kbH) * MAX_FRACTION
+  // The platform sheet is laid out inside the safe area (it must not run under
+  // the status bar or gesture bar), so size against that, not the full window.
+  const usable = winH - insets.top - insets.bottom - kbH
+  return usable * (winW > winH ? MAX_FRACTION_LANDSCAPE : MAX_FRACTION) - SHEET_HANDLE_H
 }
 
 interface Props {

@@ -6,12 +6,15 @@
  */
 
 import React, { useEffect, useState } from 'react'
-import { View, Text, TouchableOpacity, type LayoutChangeEvent } from 'react-native'
+import { View, Text, TouchableOpacity, useWindowDimensions, type LayoutChangeEvent } from 'react-native'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { WindAloft } from '@open-vfr/shared/fetchWind'
 import { computeWindRelative } from '@open-vfr/shared/windRelative'
 import type { AltitudeSourceResult } from '@open-vfr/shared/baroAltitude'
 import { theme, useThemedStyles, useScaledTheme, type ScaledTheme } from '../styles/theme'
+
+/** Landscape text/control size factor (the screen is short, not narrow). */
+export const LANDSCAPE_COMPACT = 0.62
 
 type Props = {
   position: GpsPosition | null
@@ -123,6 +126,10 @@ export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeS
   const styles = useThemedStyles(makeStyles)
   const clock = useClock(!!showLocalTime)
   const scaled = useScaledTheme()
+  // Landscape is short, not narrow: the width-fit below would otherwise grow the
+  // numerals to their caps and the strip would eat half the screen height.
+  const { width: winW, height: winH } = useWindowDimensions()
+  const compact = winW > winH ? LANDSCAPE_COMPACT : 1
   const [barWidth, setBarWidth] = useState(0)
   const onLayout = (e: LayoutChangeEvent) => setBarWidth(e.nativeEvent.layout.width)
 
@@ -206,8 +213,8 @@ export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeS
   const weights = items.map(textLen)
   const totalWeight = weights.reduce((a, b) => a + b, 0)
   const usable = Math.max(0, barWidth - (items.length - 1) - scaled.space2) // dividers + a little edge padding
-  let valueSize = scaled.textXl
-  let labelSize = scaled.scale(11)
+  let valueSize = scaled.textXl * compact
+  let labelSize = scaled.scale(11) * compact
   if (usable > 0) {
     items.forEach((it, i) => {
       const slot = (usable * weights[i]) / totalWeight
@@ -219,7 +226,7 @@ export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeS
   labelSize = Math.max(labelSize, 6)
 
   return (
-    <View style={styles.bar} onLayout={onLayout}>
+    <View style={[styles.bar, compact < 1 && { paddingVertical: scaled.space1 }]} onLayout={onLayout}>
       {items.map((it, i) => {
         const sizing: GaugeSizing = { weight: weights[i], valueSize, labelSize }
         return (
