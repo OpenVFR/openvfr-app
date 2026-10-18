@@ -1042,9 +1042,10 @@ export default function MapView({ auth }: { auth: AuthState }) {
       : locMode === 'off'
         ? (locDenied ? 'Location permission denied' : 'Show my position')
         : 'Showing my position — tap to centre, tap again when centred to turn off'
-    // Same highlight as the map-tools toolbar's active state (MapToolbar .active).
-    btn.style.color = locked ? '#000' : ''
-    btn.style.backgroundColor = locked ? 'rgba(250, 204, 21, 0.85)' : ''
+    // Same highlight as the map-tools toolbar's active state (MapToolbar .active):
+    // blue outline and icon, no fill.
+    btn.style.color = locked ? '#2563eb' : ''
+    btn.style.boxShadow = locked ? 'inset 0 0 0 2px #2563eb' : ''
     btn.innerHTML = on ? LOCATE_ON_ICON_SVG : LOCATE_ICON_SVG
     btn.setAttribute('aria-pressed', String(on))
     btn.setAttribute('aria-label', btn.title)
@@ -4908,7 +4909,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
         <div className={css.vrRow}>
           <LiveTrackChart track={selectedLogTrack} onHoverDistNm={setProfileCursorNm} />
         </div>
-      ) : routeWaypoints.length >= 2 ? (
+      ) : routeVisible && routeWaypoints.length >= 2 ? (
+        // An inactive route is hidden from the map, so it gets no radar either.
         <div className={css.vrRow}>
           <VirtualRadar
             waypoints={routeWaypoints}
