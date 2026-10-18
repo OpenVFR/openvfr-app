@@ -54,17 +54,32 @@ async function writeAll<T>(key: string, items: T[]): Promise<void> {
   await AsyncStorage.setItem(key, JSON.stringify(items))
 }
 
-async function upsert<T extends { id: string }>(key: string, doc: T): Promise<void> {
-  const items = await readAll<T>(key)
-  const idx = items.findIndex(i => i.id === doc.id)
-  if (idx >= 0) items[idx] = doc
-  else items.push(doc)
-  await writeAll(key, items)
+// Read-modify-write on a whole-array key is not atomic: two concurrent
+// upserts (e.g. the working-route autosave and a cloud pull) would both read
+// the old array and the later write would silently drop the other's row.
+// Serialise mutations per key.
+const locks = new Map<string, Promise<unknown>>()
+function withLock<R>(key: string, fn: () => Promise<R>): Promise<R> {
+  const run = (locks.get(key) ?? Promise.resolve()).then(fn, fn)
+  locks.set(key, run.catch(() => {}))
+  return run
 }
 
-async function remove(key: string, id: string): Promise<void> {
-  const items = await readAll<{ id: string }>(key)
-  await writeAll(key, items.filter(i => i.id !== id))
+function upsert<T extends { id: string }>(key: string, doc: T): Promise<void> {
+  return withLock(key, async () => {
+    const items = await readAll<T>(key)
+    const idx = items.findIndex(i => i.id === doc.id)
+    if (idx >= 0) items[idx] = doc
+    else items.push(doc)
+    await writeAll(key, items)
+  })
+}
+
+function remove(key: string, id: string): Promise<void> {
+  return withLock(key, async () => {
+    const items = await readAll<{ id: string }>(key)
+    await writeAll(key, items.filter(i => i.id !== id))
+  })
 }
 
 // ---------------------------------------------------------------------------
