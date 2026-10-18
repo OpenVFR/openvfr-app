@@ -31,8 +31,8 @@ export interface LatLngBounds {
 
 /**
  * Which altitude the wind overlay shows: where the aircraft is while flying,
- * otherwise the planned route altitude, otherwise the surface (SkyDemon
- * defaults its wind feathers to the planned level of the flight the same way).
+ * otherwise the planned route altitude, otherwise the surface (the planned
+ * level of the flight is the level the pilot wants the wind for).
  * `altFt` null means surface wind (what fetchWind/fetchWindGrid expect); it
  * is rounded to 500 ft so a climbing aircraft doesn't retrigger the overlay
  * on every GPS altitude tick (pressure levels are thousands of feet apart).

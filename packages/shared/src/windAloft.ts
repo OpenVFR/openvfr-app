@@ -1,8 +1,7 @@
 /**
  * windAloft — wind at several flight levels at regular intervals along a
- * route, for the Virtual Radar (SkyDemon-style: barbs at several altitudes
- * above the route, so the pilot can see at a glance which level has the best
- * wind). One multi-level Open-Meteo request covers the whole route.
+ * route, for the Virtual Radar (barbs at several altitudes above the route,
+ * so the pilot can see at a glance which level has the best wind). One multi-level Open-Meteo request covers the whole route.
  */
 
 import { fetchWindLevels, type WindAtLevel } from './fetchWind'

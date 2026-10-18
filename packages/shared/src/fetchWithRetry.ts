@@ -4,8 +4,8 @@
  *
  * Purpose: tolerate BRIEF connectivity gaps (a momentary Wi-Fi/LTE handoff,
  * a dropped packet, a transient 502/503/504 from a proxy mid-restart) —
- * distinct from full offline-mode handling (see docs/todo.md's staleness/
- * cache-based degradation for that). Before this existed, every one-shot
+ * distinct from full offline-mode handling (staleness/cache-based
+ * degradation, tracked in the maintainers' todo). Before this existed, every one-shot
  * fetch in the app (weather, NOTAM, wind, terrain profile) would surface a
  * user-visible error from a single dropped packet, forcing a manual retry
  * (re-open the popup / re-fetch) even though the network was fine a second

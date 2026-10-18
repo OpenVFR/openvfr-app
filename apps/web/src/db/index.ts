@@ -12,8 +12,8 @@ addRxPlugin(RxDBQueryBuilderPlugin)
 // not the paid rxdb-premium plugin. setPremiumFlag() to silence it lives INSIDE
 // rxdb-premium itself (license-token-gated package we don't install/purchase),
 // so it cannot be called from the free tier. Same reasoning as native's
-// RxDB-SQLite-adapter decision — see docs/todo.md's "RxDB SQLite adapter" entry
-// and docs/architecture.md's local-DB row. Leave the log as-is; do not add
+// RxDB-SQLite-adapter decision — see the "RxDB SQLite adapter" entry in the
+// maintainers' todo and docs/architecture.md's local-DB row. Leave the log as-is; do not add
 // rxdb-premium as a dependency just to mute a console message.
 
 // ---------------------------------------------------------------------------

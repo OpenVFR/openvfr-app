@@ -8,7 +8,7 @@
  * of this file — it needs a real ETD (estimated departure time) input to
  * convert route distance into wall-clock time, and no such field exists
  * anywhere in RouteDocType/LegOverride/AircraftProfileDocType today. That's
- * tracked separately in docs/todo.md as its own item (schema change + UI).
+ * tracked separately in the maintainers' todo (schema change + UI).
  *
  * What IS implemented: evaluate the TAF at the real current wall-clock time
  * (same as METAR is already used — "current best data", not a predicted

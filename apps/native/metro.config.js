@@ -26,7 +26,7 @@ config.resolver.assetExts.push('geojson')
 // (`expo export` / `expo export:embed`, only used by the `build:apk:prod`
 // release script) still fails with "Failed to get the SHA-1 for: ..." for
 // files under packages/shared/src — an unresolved Metro/Expo SDK 57 crawler
-// regression for source outside native/. See docs/todo.md.
+// regression for source outside native/. Tracked in the maintainers' todo.
 // ---------------------------------------------------------------------------
 const sharedRoot = path.resolve(config.projectRoot, '../../packages/shared')
 const sharedSrc = path.resolve(sharedRoot, 'src')

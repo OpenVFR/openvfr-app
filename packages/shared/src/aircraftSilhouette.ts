@@ -8,8 +8,8 @@
  * keyed off that one field, shared so both platforms draw identically.
  *
  * Deliberately schematic, not a true per-registration geometric model (the
- * app has no wingspan/high-low-wing data at all — see docs/todo.md's
- * separate, larger "true per-registration aircraft side-view model" item).
+ * app has no wingspan/high-low-wing data at all — a true per-registration
+ * side-view model is a separate, larger item in the maintainers' todo).
  * At the ~16-20px size this marker renders at, the goal is just "readably a
  * different silhouette family", not aerodynamic accuracy:
  *   - FIXED_WING:  SEP, MEP, MICRO (twin vs single is invisible at this
