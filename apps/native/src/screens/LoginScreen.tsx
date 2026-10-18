@@ -71,6 +71,8 @@ export function LoginScreen() {
     + (keyboardOpen ? 0 : scaledTheme.textSm * 1.4 + scaledTheme.space2)
   const logoFit  = Math.floor(Math.min(width * 0.6, 320, brandH - titleBlockH))
   const logoSize = logoFit >= 24 ? logoFit : 0
+  // Short area (small phone + keyboard): hide the title too instead of showing it clipped.
+  const showTitle = brandH === 0 || brandH >= scaledTheme.text2xl * 1.4
   const { sendOtp, verifyOtp, signInWithPasskey, passkeySupported, error } = useAuthContext()
   const [email, setEmail]                = useState('')
   const [otp, setOtp]                    = useState('')
@@ -118,8 +120,8 @@ export function LoginScreen() {
             style={[styles.logoImg, { width: logoSize, height: logoSize, borderRadius: logoSize / 2 }]}
           />
         )}
-        <Text style={styles.logo}>OpenVFR</Text>
-        {!keyboardOpen && (
+        {showTitle && <Text style={styles.logo}>OpenVFR</Text>}
+        {showTitle && !keyboardOpen && (
           <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit>Open-Source VFR Flight Planning & Navigation</Text>
         )}
       </View>
