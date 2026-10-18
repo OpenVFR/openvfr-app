@@ -16,6 +16,8 @@ overrides:
   # Optional peer of react-native's CLI plugin: keep it on the same line as
   # react-native (0.86.x) instead of floating to the newest release.
   "@react-native/metro-config": "0.86.3"
+  # sp-react-native-in-app-updates pins underscore 1.12 (DoS in _.flatten/_.isEqual).
+  underscore: "^1.13.8"
 
 patchedDependencies:
   '@expo/ui@57.0.25': patches/@expo__ui@57.0.25.patch
