@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import type { AuthState, PasskeyInfo } from '../hooks/useAuth'
+import { API_BASE_URL } from '../utils/env'
 import styles from './ProfilePanel.module.css'
 
 interface Props {
@@ -34,6 +35,15 @@ export default function ProfilePanel({ auth, onClose }: Props) {
   const [deleteBusy,       setDeleteBusy]       = useState(false)
   const [deleteError,      setDeleteError]      = useState<string | null>(null)
   const [deleteSent,       setDeleteSent]       = useState(false)
+
+  // Shared app-tester account can't have passkeys (server enforces; this hides the UI).
+  const [passkeyAllowed, setPasskeyAllowed] = useState(true)
+  useEffect(() => {
+    void fetch(`${API_BASE_URL}/api/auth/account-flags`, { credentials: 'include' })
+      .then(r => (r.ok ? r.json() as Promise<{ passkeyAllowed?: boolean }> : null))
+      .then(j => { if (j?.passkeyAllowed === false) setPasskeyAllowed(false) })
+      .catch(() => { /* keep default */ })
+  }, [])
 
   // Load passkeys on mount.
   useEffect(() => {
@@ -166,7 +176,7 @@ export default function ProfilePanel({ auth, onClose }: Props) {
         <div className={styles.section}>
           <div className={styles.passkeyHeader}>
             <p className={styles.label}>Passkeys</p>
-            {!registering && !pkBusy && (
+            {passkeyAllowed && !registering && !pkBusy && (
               <button className={styles.btnAdd} onClick={() => setRegistering(true)} type="button">
                 + Add passkey
               </button>

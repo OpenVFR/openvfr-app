@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useSettingsContext } from '../context/SettingsContext'
 import { useAuthContext }     from '../context/AuthContext'
+import { authHeaders } from '../utils/authClient'
 import { useSimContext }      from '../context/SimContext'
 import { SimConnectSheet }    from '../components/SimConnectSheet'
 import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
@@ -52,6 +53,23 @@ export function SettingsScreen() {
   const versionTaps = useRef(0)
   const [showDiag, setShowDiag] = useState(false)
   const [deleteSent, setDeleteSent] = useState(false)
+  // Shared app-tester account can't have passkeys; server says so. Default
+  // true (also when offline) -- the server enforces it regardless.
+  const [passkeyAllowed, setPasskeyAllowed] = useState(true)
+  const signedIn = state.status === 'authenticated'
+  useEffect(() => {
+    if (!signedIn) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/account-flags`, { headers: await authHeaders() })
+        if (!res.ok) return
+        const j = await res.json() as { passkeyAllowed?: boolean }
+        if (!cancelled && j.passkeyAllowed === false) setPasskeyAllowed(false)
+      } catch { /* offline: keep default */ }
+    })()
+    return () => { cancelled = true }
+  }, [signedIn])
 
   const handleRegisterPasskey = useCallback(async () => {
     const res = await registerPasskey()
@@ -471,9 +489,11 @@ export function SettingsScreen() {
       {/* ── Account ───────────────────────────────────────────── */}
       {state.status === 'authenticated' && (
         <Section title="Account">
-          <TouchableOpacity style={[styles.row, styles.pressable]} onPress={handleRegisterPasskey}>
-            <Text style={styles.rowLabel}>Register passkey on this device</Text>
-          </TouchableOpacity>
+          {passkeyAllowed && (
+            <TouchableOpacity style={[styles.row, styles.pressable]} onPress={handleRegisterPasskey}>
+              <Text style={styles.rowLabel}>Register passkey on this device</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={[styles.row, styles.pressable]} onPress={signOut}>
             <Text style={[styles.rowLabel, { color: theme.statusDanger }]}>Sign out</Text>
           </TouchableOpacity>

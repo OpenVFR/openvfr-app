@@ -37,7 +37,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createHmac } from 'node:crypto'
-import { auth } from './auth'
+import { auth, isReviewAccountEmail } from './auth'
 import { admin } from './admin'
 
 // ---------------------------------------------------------------------------
@@ -201,6 +201,13 @@ app.get('/api/auth/token', async (c) => {
   const jwt = `${header}.${payload}.${sig}`
 
   return c.json({ jwt, expiresAt: exp })
+})
+
+// Per-account capability flags for the UIs. Before the /api/auth/* catch-all.
+app.get('/api/auth/account-flags', async (c) => {
+  const session = await auth.api.getSession({ headers: c.req.raw.headers })
+  if (!session?.user) return c.json({ error: 'Unauthenticated' }, 401)
+  return c.json({ passkeyAllowed: !isReviewAccountEmail(session.user.email) })
 })
 
 // ---------------------------------------------------------------------------

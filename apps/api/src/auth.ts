@@ -14,7 +14,7 @@ import { betterAuth } from 'better-auth'
 import { emailOTP, admin } from 'better-auth/plugins'
 import { passkey }    from '@better-auth/passkey'
 import { bearer }     from 'better-auth/plugins'
-import { APIError, createAuthMiddleware } from 'better-auth/api'
+import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { sendEmail }  from './mailer.js'
 import { pool }        from './db.js'
 import { ACCESS_CONFIG } from './accessJwt.js'
@@ -77,6 +77,10 @@ const DEV_TRUSTED_ORIGINS = IS_PROD ? [] : [
 // better-auth's own verifyStoredOTP regardless of otp length/charset.
 const APP_REVIEW_TEST_EMAIL = process.env['APP_REVIEW_TEST_EMAIL']?.toLowerCase() || null
 const APP_REVIEW_TEST_OTP   = process.env['APP_REVIEW_TEST_OTP'] || null
+/** True for the shared app-review/tester account (passkeys are disabled for it). */
+export function isReviewAccountEmail(email: string | null | undefined): boolean {
+  return !!APP_REVIEW_TEST_EMAIL && !!email && email.toLowerCase() === APP_REVIEW_TEST_EMAIL
+}
 if ((APP_REVIEW_TEST_EMAIL && !APP_REVIEW_TEST_OTP) || (!APP_REVIEW_TEST_EMAIL && APP_REVIEW_TEST_OTP)) {
   throw new Error('APP_REVIEW_TEST_EMAIL and APP_REVIEW_TEST_OTP must both be set, or both left unset')
 }
@@ -130,6 +134,15 @@ export const auth = betterAuth({
   // Lost passkey? See docs/self-hosting.md "Admin UI".
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      // The shared review/tester account must not gain passkeys: it signs in
+      // with a fixed OTP, and a passkey would let one reviewer lock the next
+      // out / persist access beyond the review cycle.
+      if (ctx.path === '/passkey/generate-register-options' || ctx.path === '/passkey/verify-registration') {
+        const session = await getSessionFromCtx(ctx)
+        if (isReviewAccountEmail(session?.user.email)) {
+          throw APIError.from('FORBIDDEN', { message: 'Passkeys are disabled for this account', code: 'PASSKEY_DISABLED' })
+        }
+      }
       if (ACCESS_CONFIG) return
       if (ctx.path !== '/sign-in/email-otp') return
       const email = (ctx.body as { email?: unknown } | undefined)?.email
