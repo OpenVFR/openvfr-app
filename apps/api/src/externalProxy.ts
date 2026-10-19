@@ -513,15 +513,61 @@ export function mountExternalProxies(
   console.log(`[external-proxy] requests without a session: ${anonymousMode}`)
   for (const spec of [OPEN_METEO, ELEVATION]) {
     const state = newProxyState()
+    const stats = newUsageStats()
     app.get(`${spec.prefix}*`, async (c) => {
       const user = await requireSession(c)
       const url = new URL(c.req.url)
-      if (user) return handleProxy(spec, state, { kind: 'user', id: user.id }, url.pathname, url.search)
-      if (anonymousMode === 'off') return c.json({ error: 'Authentication required.' }, 401)
-      // Same trusted client-IP headers as better-auth (auth.ts): set by
-      // Cloudflare / the reverse proxy, never X-Forwarded-For.
-      const ip = c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || 'unknown'
-      return handleProxy(spec, state, { kind: 'anonymous', ip }, url.pathname, url.search)
+      let res: Response
+      if (user) {
+        res = await handleProxy(spec, state, { kind: 'user', id: user.id }, url.pathname, url.search)
+        stats.users.add(user.id)
+      } else if (anonymousMode === 'off') {
+        return c.json({ error: 'Authentication required.' }, 401)
+      } else {
+        // Same trusted client-IP headers as better-auth (auth.ts): set by
+        // Cloudflare / the reverse proxy, never X-Forwarded-For.
+        const ip = c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || 'unknown'
+        res = await handleProxy(spec, state, { kind: 'anonymous', ip }, url.pathname, url.search)
+        stats.anonymousIps.add(ip)
+      }
+      countResponse(stats, res)
+      return res
     })
+    // Hourly usage line, to size the plan from real numbers (no user ids or IPs logged).
+    setInterval(() => logUsage(spec, state, stats), HOUR_MS).unref?.()
   }
+}
+
+interface UsageStats {
+  byOutcome: Record<string, number>
+  users: Set<string>
+  anonymousIps: Set<string>
+}
+
+function newUsageStats(): UsageStats {
+  return { byOutcome: {}, users: new Set(), anonymousIps: new Set() }
+}
+
+function countResponse(stats: UsageStats, res: Response): void {
+  const k = res.status === 200 ? (res.headers.get('X-Cache') ?? 'OK') : String(res.status)
+  stats.byOutcome[k] = (stats.byOutcome[k] ?? 0) + 1
+}
+
+/** One summary line for the last hour, then reset. Exported for tests. */
+export function usageLine(spec: ProxySpec, s: ProxyState, stats: UsageStats, now: number): string {
+  const calls = s.upstreamCalls
+  const lastHour = calls.filter((t) => now - t < HOUR_MS).length
+  const lastDay = calls.filter((t) => now - t < DAY_MS).length
+  const outcomes = Object.entries(stats.byOutcome).map(([k, v]) => `${k}=${v}`).join(' ') || 'none'
+  return `[${spec.name}] last hour: requests ${outcomes}; users ${stats.users.size}, anonymous IPs ${stats.anonymousIps.size}; ` +
+    `upstream calls (weighted) hour ${lastHour}/${spec.upstream.hourly}, 24 h ${lastDay}/${spec.upstream.daily}; ` +
+    `cache ${s.cache.size} entries, ${Math.round(s.cacheBytes / 1024)} KiB`
+}
+
+function logUsage(spec: ProxySpec, s: ProxyState, stats: UsageStats): void {
+  s.upstreamCalls = pruneWindow(s.upstreamCalls, Date.now(), DAY_MS)
+  console.log(usageLine(spec, s, stats, Date.now()))
+  stats.byOutcome = {}
+  stats.users.clear()
+  stats.anonymousIps.clear()
 }

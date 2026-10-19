@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { handleProxy, newProxyState, takeUserMiss, upstreamWaitS, anonymousModeFromEnv, openMeteoWeight, openMeteoFreshUntil, OPEN_METEO, ELEVATION, type ProxySpec, type ProxyState } from './externalProxy.js'
+import { handleProxy, newProxyState, takeUserMiss, upstreamWaitS, anonymousModeFromEnv, openMeteoWeight, openMeteoFreshUntil, usageLine, OPEN_METEO, ELEVATION, type ProxySpec, type ProxyState } from './externalProxy.js'
 
 const realFetch = globalThis.fetch
 let calls: string[] = []
@@ -233,6 +233,15 @@ test('per location: a current reading stays fresh until the next 15-min value is
   assert.equal(calls.length, 2)
   assert.equal(openMeteoFreshUntil('{"hourly":{}}', 1000), 1000 + 30 * 60_000)
   assert.equal(openMeteoFreshUntil('{"x":1}', 1000), undefined)
+})
+
+test('usage line summarises the hour without ids', () => {
+  const s = newProxyState()
+  const t = 50_000_000
+  s.upstreamCalls = [t - 2 * 3_600_000, t - 1000, t - 500]
+  const line = usageLine(OPEN_METEO, s, { byOutcome: { HIT: 7, MISS: 2 }, users: new Set(['secret-user']), anonymousIps: new Set(['9.9.9.9']) }, t)
+  assert.match(line, /HIT=7 MISS=2; users 1, anonymous IPs 1; upstream calls \(weighted\) hour 2\/4000, 24 h 3\/9000/)
+  assert.doesNotMatch(line, /secret-user|9\.9\.9\.9/)
 })
 
 test('server-wide upstream budget', () => {
