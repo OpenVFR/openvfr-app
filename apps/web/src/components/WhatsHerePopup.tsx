@@ -154,7 +154,7 @@ export default function WhatsHerePopup({
       {saveName === null ? (
         <div className={css.footer}>
           <button className={css.saveBtn} onClick={() => setSaveName('')}>
-            📍 Save as User Waypoint
+            📍 Save Place
           </button>
         </div>
       ) : (
@@ -163,11 +163,11 @@ export default function WhatsHerePopup({
             className={css.saveInput}
             value={saveName}
             onChange={e => setSaveName(e.target.value)}
-            placeholder="Waypoint name…"
+            placeholder="Place name (optional)…"
             // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
             onKeyDown={e => {
-              if (e.key === 'Enter' && saveName.trim()) {
+              if (e.key === 'Enter') {
                 onSaveUserWaypoint(saveName.trim(), lng, lat)
                 setSaveName(null)
                 onClose()
@@ -178,13 +178,10 @@ export default function WhatsHerePopup({
           />
           <button
             className={css.saveConfirm}
-            disabled={!saveName.trim()}
             onClick={() => {
-              if (saveName.trim()) {
-                onSaveUserWaypoint(saveName.trim(), lng, lat)
-                setSaveName(null)
-                onClose()
-              }
+              onSaveUserWaypoint(saveName.trim(), lng, lat)
+              setSaveName(null)
+              onClose()
             }}
           >
             Save

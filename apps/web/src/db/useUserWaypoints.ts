@@ -39,11 +39,13 @@ export function useUserWaypoints() {
     if (doc) await doc.remove()
   }, [])
 
-  /** Rename a waypoint in-place without changing its folder or position. */
-  const renameWaypoint = useCallback(async (id: string, name: string) => {
+  /** Rename a waypoint in-place without changing its position. Pass `folder`
+   *  to move it in the same write (one patch = one cloud push, so two quick
+   *  edits can't land out of order on the server). */
+  const renameWaypoint = useCallback(async (id: string, name: string, folder?: string) => {
     const db = await getDb()
     const doc = await db.user_waypoints.findOne(id).exec()
-    if (doc) await doc.patch({ name, updatedAt: Date.now() })
+    if (doc) await doc.patch({ name, ...(folder !== undefined ? { folder } : {}), updatedAt: Date.now() })
   }, [])
 
   /** Move a waypoint to a different folder. Empty string = "Unfiled". */

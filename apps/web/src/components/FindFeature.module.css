@@ -116,6 +116,7 @@
 .badgeMRP { background: rgba(20,184,166,0.25);  color: var(--accent-cyan); }
 .badgeRP  { background: rgba(148,163,184,0.20); color: #94a3b8; }
 .badgeLL  { background: var(--surface-active);  color: var(--text-muted); }
+.badgePL  { background: rgba(250,204,21,0.18);  color: #facc15; }
 
 .name {
   color: var(--text-primary);

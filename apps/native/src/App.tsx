@@ -28,6 +28,7 @@ import { SettingsProvider }             from './context/SettingsContext'
 import { RouteProvider }               from './context/RouteContext'
 import { UserWaypointProvider }        from './context/UserWaypointContext'
 import { FlightLogViewProvider }       from './context/FlightLogViewContext'
+import { MapFocusProvider }            from './context/MapFocusContext'
 import { SimProvider }                 from './context/SimContext'
 import { VarioProvider }               from './context/VarioContext'
 import { AppNavigator }  from './navigation'
@@ -84,11 +85,13 @@ export default function App() {
           <RouteProvider>
             <UserWaypointProvider>
             <FlightLogViewProvider>
+            <MapFocusProvider>
             <SimProvider>
               <VarioProvider>
                 <AppShell />
               </VarioProvider>
             </SimProvider>
+            </MapFocusProvider>
             </FlightLogViewProvider>
             </UserWaypointProvider>
           </RouteProvider>

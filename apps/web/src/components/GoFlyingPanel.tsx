@@ -285,7 +285,7 @@ export default function GoFlyingPanel({
             D→
           </button>
 
-          <button className={css.dropBtn} onClick={onDropWaypoint} title="Drop a waypoint here">
+          <button className={css.dropBtn} onClick={onDropWaypoint} title="Save a place here">
             📍
           </button>
           </>)}

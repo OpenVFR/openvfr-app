@@ -23,6 +23,9 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import * as Crypto from 'expo-crypto'
 
 import { useRouteContext } from '../context/RouteContext'
+import { useMapFocus } from '../context/MapFocusContext'
+import { groupPlaces } from '../utils/places'
+import { useKeyboardHeight } from '../components/NativeSheet'
 import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
 import { tafChangeIcaos } from '@open-vfr/shared/parseTaf'
 import { useRouteSync }       from '../hooks/useRouteSync'
@@ -49,7 +52,7 @@ type Segment = 'route' | 'aircraft' | 'waypoints' | 'logs'
 const SEGMENTS: { key: Segment; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
   { key: 'route',     label: 'Route',     icon: 'navigate-outline' },
   { key: 'aircraft',  label: 'Aircraft',  icon: 'airplane-outline' },
-  { key: 'waypoints', label: 'Waypoints', icon: 'pin-outline' },
+  { key: 'waypoints', label: 'Places', icon: 'pin-outline' },
   { key: 'logs',      label: 'Logs',      icon: 'list-outline' },
 ]
 
@@ -94,7 +97,7 @@ export function PlanScreen() {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const insets = useSafeAreaInsets()
-  const { waypoints, legOverrides, removeWaypoint, clearRoute, setWaypoints, moveWaypoint, reverseRoute, setLegOverride, activeRouteId, setActiveRouteId, routeVisible, setRouteVisible } = useRouteContext()
+  const { waypoints, legOverrides, addWaypoint, insertWaypoint, removeWaypoint, clearRoute, setWaypoints, moveWaypoint, reverseRoute, setLegOverride, activeRouteId, setActiveRouteId, routeVisible, setRouteVisible } = useRouteContext()
   const { settings, update } = useSettingsContext()
   const routeWx = useWeatherAlongRoute(waypoints)
   const tafWarnIcaos = useMemo(() => tafChangeIcaos(routeWx), [routeWx])
@@ -145,6 +148,40 @@ export function PlanScreen() {
   const [wpFolder, setWpFolder] = useState('')
   const [wpLat,    setWpLat]    = useState('')
   const [wpLng,    setWpLng]    = useState('')
+  // Saved-place list: search, expanded row, inline edit, delete confirm.
+  const { focusMap } = useMapFocus()
+  // Android is edge-to-edge (window doesn't resize), so lift the Places list by the keyboard height.
+  const kbHeight = useKeyboardHeight()
+  const [placeQuery,   setPlaceQuery]   = useState('')
+  const [openPlaceId,  setOpenPlaceId]  = useState<string | null>(null)
+  const [editPlaceId,  setEditPlaceId]  = useState<string | null>(null)
+  const [editName,     setEditName]     = useState('')
+  const [editFolder,   setEditFolder]   = useState('')
+  const [delPlaceId,   setDelPlaceId]   = useState<string | null>(null)
+  const [insertPlaceId, setInsertPlaceId] = useState<string | null>(null)
+  const placeFolders = useMemo(
+    () => [...new Set(userWaypoints.map(w => (w.folder ?? '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [userWaypoints],
+  )
+  const placeGroups = useMemo(() => {
+    const q = placeQuery.trim().toLowerCase()
+    const list = q
+      ? userWaypoints.filter(w => w.name.toLowerCase().includes(q) || (w.folder ?? '').toLowerCase().includes(q))
+      : userWaypoints
+    return groupPlaces(list)
+  }, [userWaypoints, placeQuery])
+  const placeToRoutePoint = (w: UserWaypointDocType) => ({ lat: w.lat, lng: w.lng, name: w.name })
+  const startRouteAt = (w: UserWaypointDocType) => { setWaypoints([placeToRoutePoint(w)], [{}]); setSegment('route') }
+  const appendToRoute = (w: UserWaypointDocType) => { addWaypoint(placeToRoutePoint(w)); setSegment('route') }
+  const insertIntoRoute = (w: UserWaypointDocType, afterIdx: number) => { insertWaypoint(afterIdx, placeToRoutePoint(w)); setInsertPlaceId(null); setSegment('route') }
+  const showPlaceOnMap = (w: UserWaypointDocType) => { focusMap(w.lat, w.lng, 13); navigation.navigate('Map' as never) }
+  const beginEditPlace = (w: UserWaypointDocType) => { setEditPlaceId(w.id); setEditName(w.name); setEditFolder((w.folder ?? '').trim()); setDelPlaceId(null) }
+  const commitEditPlace = (w: UserWaypointDocType) => {
+    const name = editName.trim()
+    if (!name) return
+    saveWaypoint({ ...w, name, folder: editFolder.trim(), updatedAt: Date.now() })
+    setEditPlaceId(null)
+  }
 
   // Flight logs — auto-recorded on the map (GPS takeoff/landing detection),
   // synced to cloud (upload-only + cross-device pull) when authenticated.
@@ -558,7 +595,7 @@ export function PlanScreen() {
         {/* ── Empty state ─────────────────────────────────────────── */}
         {waypoints.length === 0 && (
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>No waypoints</Text>
+            <Text style={styles.emptyTitle}>No route points</Text>
             <Text style={styles.emptyBody}>
               Long-press the map or tap aerodromes, navaids, and waypoints on the map to build a route.
             </Text>
@@ -592,36 +629,32 @@ export function PlanScreen() {
                   {eta && <Text style={styles.wpEta}>{eta}</Text>}
                   {wp.note ? <Text style={styles.wpNote} numberOfLines={1}>📌 {wp.note}</Text> : null}
                 </View>
-                {leg && (
-                  <TouchableOpacity
-                    style={[styles.legCol, hasOverride && styles.legColSet]}
-                    onPress={() => openLegProps(index)}
-                  >
-                    <View style={styles.legColHeader}>
-                      <Text style={styles.legDist}>
-                        {nmToDisplay(leg.distNm, units.distance).toFixed(1)} {distLabel(units.distance)}
-                      </Text>
-                      <Ionicons name="create-outline" size={11} color={hasOverride ? theme.accentBlue : theme.textFaint} />
-                    </View>
-                    <View style={styles.legHdgEteRow}>
-                      <Text style={[styles.legHdg, hasOverride && styles.legHdgSet]}>{Math.round(leg.magHdg).toString().padStart(3, '0')}°M</Text>
-                      {leg.eteMins != null && (
-                        <Text style={styles.legEte}>{fmtTime(leg.eteMins)}</Text>
-                      )}
-                    </View>
-                    {leg.altFt != null && (
-                      <Text style={styles.legWca}>{Math.round(leg.altFt)} ft</Text>
-                    )}
-                    <Text style={styles.legWca}>TAS {Math.round(ktsToDisplay(leg.tas, units.speed))}</Text>
-                    {Math.abs(leg.wca) >= 1 && (
-                      <Text style={styles.legWca}>WCA {leg.wca > 0 ? '+' : ''}{Math.round(leg.wca)}°</Text>
-                    )}
-                  </TouchableOpacity>
-                )}
                 <TouchableOpacity style={styles.removeBtn} onPress={() => handleRemove(index)}>
                   <Text style={styles.removeBtnText}>✕</Text>
                 </TouchableOpacity>
               </View>
+              {leg && (
+                <TouchableOpacity
+                  style={[styles.legCol, hasOverride && styles.legColSet]}
+                  onPress={() => openLegProps(index)}
+                  accessibilityLabel={`Edit leg ${index + 1} properties`}
+                >
+                  <Ionicons name="arrow-down" size={14} color={hasOverride ? theme.accentBlue : theme.textFaint} />
+                  <View style={styles.legStats}>
+                    <Text style={styles.legDist}>
+                      {nmToDisplay(leg.distNm, units.distance).toFixed(1)} {distLabel(units.distance)}
+                    </Text>
+                    <Text style={[styles.legHdg, hasOverride && styles.legHdgSet]}>{Math.round(leg.magHdg).toString().padStart(3, '0')}°M</Text>
+                    {leg.eteMins != null && <Text style={styles.legEte}>{fmtTime(leg.eteMins)}</Text>}
+                    {leg.altFt != null && <Text style={styles.legWca}>{Math.round(leg.altFt)} ft</Text>}
+                    <Text style={styles.legWca}>TAS {Math.round(ktsToDisplay(leg.tas, units.speed))}</Text>
+                    {Math.abs(leg.wca) >= 1 && (
+                      <Text style={styles.legWca}>WCA {leg.wca > 0 ? '+' : ''}{Math.round(leg.wca)}°</Text>
+                    )}
+                  </View>
+                  <Ionicons name="create-outline" size={14} color={hasOverride ? theme.accentBlue : theme.textFaint} />
+                </TouchableOpacity>
+              )}
               {activeLeg === index && leg && (
                 <View style={styles.legPropsPanel}>
                   <Text style={styles.cardTitle}>Leg {index + 1}: override</Text>
@@ -762,7 +795,8 @@ export function PlanScreen() {
       {segment === 'waypoints' && (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ padding: scaledTheme.space3 }}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ padding: scaledTheme.space3, paddingBottom: scaledTheme.space3 + kbHeight }}
           refreshControl={<RefreshControl refreshing={waypointsRefreshing} onRefresh={handleWaypointsRefresh} tintColor={theme.accentBlue} />}
         >
           <View style={styles.saveSection}>
@@ -779,7 +813,7 @@ export function PlanScreen() {
             {!savingWp ? (
               <View style={{ gap: scaledTheme.space2 }}>
                 <Text style={styles.emptyBody}>
-                  Tip: long-press anywhere on the map to save that point as a waypoint directly.
+                  Tip: long-press anywhere on the map to save that point as a place.
                 </Text>
                 <TouchableOpacity style={styles.saveBtn} onPress={() => setSavingWp(true)}>
                   <Ionicons name="add-circle-outline" size={14} color={theme.accentBlue} />
@@ -822,7 +856,7 @@ export function PlanScreen() {
                   placeholderTextColor={theme.textFaint}
                 />
                 <Text style={styles.inputHint}>
-                  Tip: tap a point on the map to read its coordinates, or long-press to add it directly to the route.
+                  Tip: long-press a point on the map to read its coordinates and save it.
                 </Text>
                 <View style={styles.saveRowActions}>
                   <TouchableOpacity style={styles.saveConfirm} onPress={handleSaveWaypoint}>
@@ -836,23 +870,148 @@ export function PlanScreen() {
             )}
           </View>
 
+          {userWaypoints.length > 0 && (
+            <TextInput
+              style={[styles.numberInput, { marginBottom: scaledTheme.space2 }]}
+              value={placeQuery}
+              onChangeText={setPlaceQuery}
+              placeholder="Search places or folders"
+              placeholderTextColor={theme.textFaint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              clearButtonMode="while-editing"
+            />
+          )}
           {userWaypoints.length === 0 ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No saved waypoints</Text>
-              <Text style={styles.emptyBody}>Save custom waypoints to reuse across routes and devices.</Text>
+              <Text style={styles.emptyTitle}>No saved places</Text>
+              <Text style={styles.emptyBody}>Save places to reuse across routes and devices.</Text>
+            </View>
+          ) : placeGroups.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyBody}>No places match “{placeQuery}”.</Text>
             </View>
           ) : (
-            [...userWaypoints].sort((a, b) => b.updatedAt - a.updatedAt).map((wp: UserWaypointDocType) => (
-              <View key={wp.id} style={styles.aircraftRow}>
-                <View style={styles.aircraftInfo}>
-                  <Text style={styles.aircraftName}>{wp.name}</Text>
-                  <Text style={styles.aircraftMeta}>
-                    {wp.lat.toFixed(4)}, {wp.lng.toFixed(4)}{wp.folder ? ` · ${wp.folder}` : ''}
-                  </Text>
-                </View>
-                <TouchableOpacity style={styles.removeBtn} onPress={() => deleteWaypoint(wp.id)}>
-                  <Ionicons name="trash-outline" size={14} color={theme.statusDanger} />
-                </TouchableOpacity>
+            placeGroups.map(g => (
+              <View key={g.folder || '__none'}>
+                {(placeGroups.length > 1 || g.folder) && (
+                  <View style={styles.placeFolderHdr}>
+                    <Ionicons name="folder-outline" size={13} color={theme.textMuted} />
+                    <Text style={styles.placeFolderTxt}>{g.folder || 'Unfiled'}</Text>
+                    <Text style={styles.placeFolderCount}>{g.items.length}</Text>
+                  </View>
+                )}
+                {g.items.map((wp: UserWaypointDocType) => {
+                  const open = openPlaceId === wp.id
+                  const editing = editPlaceId === wp.id
+                  return (
+                    <View key={wp.id} style={[styles.placeCard, open && styles.aircraftRowActive]}>
+                      <TouchableOpacity
+                        style={styles.placeHead}
+                        onPress={() => { setOpenPlaceId(open ? null : wp.id); setEditPlaceId(null); setDelPlaceId(null); setInsertPlaceId(null) }}
+                      >
+                        <Ionicons name="bookmark" size={16} color={theme.accentYellow} />
+                        <View style={styles.aircraftInfo}>
+                          <Text style={styles.aircraftName}>{wp.name}</Text>
+                          <Text style={styles.aircraftMeta}>{wp.lat.toFixed(4)}, {wp.lng.toFixed(4)}</Text>
+                        </View>
+                        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={14} color={theme.textMuted} />
+                      </TouchableOpacity>
+                      {open && !editing && (
+                        <View style={styles.placeActions}>
+                          <TouchableOpacity style={styles.placeAction} onPress={() => appendToRoute(wp)}>
+                            <Ionicons name="add-circle-outline" size={15} color={theme.accentBlue} />
+                            <Text style={styles.placeActionTxt}>Add to route</Text>
+                          </TouchableOpacity>
+                          {waypoints.length > 0 && (
+                            <TouchableOpacity style={styles.placeAction} onPress={() => setInsertPlaceId(insertPlaceId === wp.id ? null : wp.id)}>
+                              <Ionicons name="return-down-forward-outline" size={15} color={theme.accentBlue} />
+                              <Text style={styles.placeActionTxt}>Insert into route…</Text>
+                            </TouchableOpacity>
+                          )}
+                          {insertPlaceId === wp.id && (
+                            <View style={[styles.placeChips, { paddingHorizontal: scaledTheme.space3, paddingBottom: scaledTheme.space2 }]}>
+                              <TouchableOpacity style={styles.placeChip} onPress={() => insertIntoRoute(wp, -1)}>
+                                <Text style={styles.placeChipTxt}>At start</Text>
+                              </TouchableOpacity>
+                              {waypoints.map((r, i) => (
+                                <TouchableOpacity key={i} style={styles.placeChip} onPress={() => insertIntoRoute(wp, i)}>
+                                  <Text style={styles.placeChipTxt}>After {i + 1}{r.name ? ` · ${r.name}` : ''}</Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                          )}
+                          <TouchableOpacity style={styles.placeAction} onPress={() => startRouteAt(wp)}>
+                            <MaterialCommunityIcons name="map-marker-path" size={15} color={theme.accentBlue} />
+                            <Text style={styles.placeActionTxt}>New route from here</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.placeAction} onPress={() => showPlaceOnMap(wp)}>
+                            <Ionicons name="map-outline" size={15} color={theme.accentBlue} />
+                            <Text style={styles.placeActionTxt}>Show on map</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.placeAction} onPress={() => beginEditPlace(wp)}>
+                            <Ionicons name="create-outline" size={15} color={theme.accentBlue} />
+                            <Text style={styles.placeActionTxt}>Edit</Text>
+                          </TouchableOpacity>
+                          {delPlaceId === wp.id ? (
+                            <TouchableOpacity
+                              style={styles.placeAction}
+                              onPress={() => { deleteWaypoint(wp.id); setDelPlaceId(null); setOpenPlaceId(null) }}
+                            >
+                              <Ionicons name="trash" size={15} color={theme.statusDanger} />
+                              <Text style={[styles.placeActionTxt, { color: theme.statusDanger }]}>Tap again to delete</Text>
+                            </TouchableOpacity>
+                          ) : (
+                            <TouchableOpacity style={styles.placeAction} onPress={() => setDelPlaceId(wp.id)}>
+                              <Ionicons name="trash-outline" size={15} color={theme.statusDanger} />
+                              <Text style={[styles.placeActionTxt, { color: theme.statusDanger }]}>Delete</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      )}
+                      {open && editing && (
+                        <View style={styles.placeEdit}>
+                          <TextInput
+                            style={styles.numberInput}
+                            value={editName}
+                            onChangeText={setEditName}
+                            placeholder="Name"
+                            placeholderTextColor={theme.textFaint}
+                            autoFocus
+                          />
+                          <TextInput
+                            style={styles.numberInput}
+                            value={editFolder}
+                            onChangeText={setEditFolder}
+                            placeholder="Folder (optional)"
+                            placeholderTextColor={theme.textFaint}
+                          />
+                          {placeFolders.length > 0 && (
+                            <View style={styles.placeChips}>
+                              {placeFolders.map(f => (
+                                <TouchableOpacity
+                                  key={f}
+                                  style={[styles.placeChip, editFolder.trim() === f && styles.placeChipOn]}
+                                  onPress={() => setEditFolder(editFolder.trim() === f ? '' : f)}
+                                >
+                                  <Text style={[styles.placeChipTxt, editFolder.trim() === f && { color: theme.accentBlue }]}>{f}</Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                          )}
+                          <View style={styles.saveRowActions}>
+                            <TouchableOpacity style={styles.saveConfirm} onPress={() => commitEditPlace(wp)}>
+                              <Text style={styles.saveConfirmTxt}>Save</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => setEditPlaceId(null)}>
+                              <Text style={styles.clearBtn}>Cancel</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                  )
+                })}
               </View>
             ))
           )}
@@ -1037,6 +1196,23 @@ function makeStyles(theme: ScaledTheme) {
   aircraftMeta: { color: theme.textFaint, fontSize: theme.textXs, marginTop: 2 },
   categoryBadge: { color: theme.textFaint, fontSize: 9, fontWeight: '700' },
 
+  placeFolderHdr: { flexDirection: 'row', alignItems: 'center', gap: theme.space1, paddingVertical: theme.space1, marginTop: theme.space1 },
+  placeFolderTxt: { color: theme.textMuted, fontSize: theme.textXs, fontWeight: '700', textTransform: 'uppercase', flex: 1 },
+  placeFolderCount: { color: theme.textFaint, fontSize: theme.textXs },
+  placeCard: {
+    marginBottom: theme.space2, backgroundColor: theme.surfacePanel, borderRadius: theme.radiusMd,
+    borderWidth: 1, borderColor: theme.borderSubtle, overflow: 'hidden',
+  },
+  placeHead: { flexDirection: 'row', alignItems: 'center', gap: theme.space2, padding: theme.space3 },
+  placeActions: { borderTopWidth: 1, borderTopColor: theme.borderSubtle, paddingVertical: theme.space1 },
+  placeAction: { flexDirection: 'row', alignItems: 'center', gap: theme.space2, paddingHorizontal: theme.space3, paddingVertical: theme.space2 },
+  placeActionTxt: { color: theme.textPrimary, fontSize: theme.textSm },
+  placeEdit: { borderTopWidth: 1, borderTopColor: theme.borderSubtle, padding: theme.space3, gap: theme.space2 },
+  placeChips: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space1 },
+  placeChip: { paddingHorizontal: theme.space2, paddingVertical: theme.space1, borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.borderDefault },
+  placeChipOn: { borderColor: theme.accentBlue },
+  placeChipTxt: { color: theme.textMuted, fontSize: theme.textXs },
+
   saveSection: {
     padding: theme.space3, marginBottom: theme.space2,
     backgroundColor: theme.surfacePanel, borderRadius: theme.radiusMd,
@@ -1078,21 +1254,21 @@ function makeStyles(theme: ScaledTheme) {
   // as an action, not inert stats text - mirrors web's RoutePlan.module.css
   // .arrow chip fix (same discoverability bug, ported here for parity).
   legCol: {
-    alignItems: 'flex-end', gap: 1, minWidth: 74,
-    paddingHorizontal: theme.space2, paddingVertical: theme.space1,
+    flexDirection: 'row', alignItems: 'center', gap: theme.space2,
+    marginLeft: 56, marginRight: theme.space3, marginBottom: theme.space2,
+    paddingHorizontal: theme.space2, paddingVertical: theme.space2,
     borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.borderDefault,
     backgroundColor: theme.surfaceOverlay,
   },
   legColSet: {
     borderColor: theme.accentBlue, backgroundColor: theme.surfaceHover,
   },
-  legColHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.space1 },
-  legDist:     { color: theme.textSecondary, fontSize: theme.textSm, fontWeight: '500' },
-  legHdgEteRow: { flexDirection: 'row', alignItems: 'baseline', gap: theme.space1 },
-  legHdg:      { color: theme.accentBlue, fontSize: theme.textXs },
+  legStats:    { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: theme.space3, rowGap: 2 },
+  legDist:     { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '600' },
+  legHdg:      { color: theme.accentBlue, fontSize: theme.textSm },
   legHdgSet:   { color: theme.accentYellow, fontWeight: '700' },
-  legEte:      { color: theme.textMuted, fontSize: theme.textXs },
-  legWca:      { color: theme.accentYellow, fontSize: 9 },
+  legEte:      { color: theme.textSecondary, fontSize: theme.textSm },
+  legWca:      { color: theme.textMuted, fontSize: theme.textXs },
   legPropsPanel: {
     marginHorizontal: theme.space3, marginBottom: theme.space2, padding: theme.space3,
     backgroundColor: theme.surfacePanel, borderRadius: theme.radiusMd,

@@ -101,6 +101,7 @@ import { usePersistedRoute } from '../db/useRouteDb'
 import { useHomeAirfield, useUnits, useAlternate, useTheme, useAutoZoom, useTrajectoryMode, useAirspaceWarnLookahead, useAirspaceWarnVerticalFt, useTerrainColoring, useTrafficVertFilter, useLayerVisibility, useAirspaceCeiling, useSelectedAircraftId, useParkTimeout, useAutoFlyMode } from '../db/useSettings'
 import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import { useUserWaypoints } from '../db/useUserWaypoints'
+import { nextPlaceName } from '../utils/places'
 import { getDb, type TrackPoint, type LegOverride } from '../db'
 import { distanceNm } from '../utils/routeCalc'
 import { distanceAlongRouteNm, coordinateAlongRouteNm, routeCrossTrackNm } from '@open-vfr/shared/virtualRadarCalc'
@@ -4394,6 +4395,16 @@ export default function MapView({ auth }: { auth: AuthState }) {
         return next
       }),
     onAddToRoute: (wp: RouteWaypoint) => setRouteWaypoints(p => [...p, wp]),
+    // Insert after route point `afterIdx` (-1 = at the start). The split leg's
+    // overrides carry over to the first half, same as dragging a leg.
+    onInsertInRoute: (wp: RouteWaypoint, afterIdx: number) => {
+      setRouteWaypoints(p => [...p.slice(0, afterIdx + 1), wp, ...p.slice(afterIdx + 1)])
+      setLegOverrides(prev => {
+        const next = [...prev]
+        next.splice(afterIdx + 1, 0, afterIdx >= 0 ? (prev[afterIdx] ?? {}) : {})
+        return next
+      })
+    },
     activeInfo,
     onCloseInfo: () => setActivePopup(null),
     isHome: (icao: string) => homeAirfield?.icao === icao,
@@ -4414,11 +4425,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
     onStartPlaceUserWp: () => { setPlacingUserWp(true); setPendingUserWpCoords(null) },
     onSaveUserWaypoint: (wp: Parameters<typeof saveUserWaypoint>[0]) => { saveUserWaypoint(wp).catch(console.error) },
     onDeleteUserWaypoint: (id: string) => { deleteUserWaypoint(id).catch(console.error) },
-    onRenameUserWaypoint: (id: string, name: string) => { renameUserWaypoint(id, name).catch(console.error) },
+    onRenameUserWaypoint: (id: string, name: string, folder?: string) => { renameUserWaypoint(id, name, folder).catch(console.error) },
     onMoveUserWpFolder: (id: string, folder: string) => { moveUserWpFolder(id, folder).catch(console.error) },
     onFolderVisChange: (folder: string, visible: boolean) => setFolderVisibility(p => ({ ...p, [folder]: visible })),
     onSaveHereUserWaypoint: (name: string, lng: number, lat: number) => {
-      saveUserWaypoint({ name, lng, lat, folder: '' }).catch(console.error)
+      // Blank name -> next free "Place N" so saving needs no typing.
+      const finalName = name.trim() || nextPlaceName(userWaypoints.map(w => w.name))
+      saveUserWaypoint({ name: finalName, lng, lat, folder: '' }).catch(console.error)
     },
     auth,
     onOpenProfile: () => setProfileOpen(true),

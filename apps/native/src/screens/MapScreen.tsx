@@ -41,6 +41,7 @@ import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
 import { notamRegionsFor } from '@open-vfr/shared/notamRegionScope'
 import { useCountries, useActiveCountry } from '../hooks/useCountries'
 import { setFlightActive } from '../utils/flightActive'
+import { nextPlaceName } from '../utils/places'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { makeCirclePolygon } from '@open-vfr/shared/geoCircle'
 import { NotificationCenter } from '../components/NotificationCenter'
@@ -87,6 +88,7 @@ import { useFlightLog, recoverOrphanedLogs } from '../hooks/useFlightLog'
 import { useFlightLogSync } from '../hooks/useFlightLogSync'
 import { useAuthContext } from '../context/AuthContext'
 import { useUserWaypointContext } from '../context/UserWaypointContext'
+import { useMapFocus } from '../context/MapFocusContext'
 import { useHomeAirfield }      from '../hooks/useHomeAirfield'
 import { useSettingsContext } from '../context/SettingsContext'
 import { RouteEditBanner } from '../components/RouteEditBanner'
@@ -968,6 +970,17 @@ function MapScreenForCountry() {
           return
         }
 
+        // Saved place (user waypoint): `id` is a UUID, so show its name.
+        if (p.folder !== undefined && p.name) {
+          setFeatureInfo({
+            kind: 'waypoint', name: String(p.name), lngLat: [lng, lat],
+            subtitle: p.folder ? `Saved place · ${String(p.folder)}` : 'Saved place',
+            rows: [],
+            canAddToRoute: true,
+          })
+          return
+        }
+
         // Waypoint (MRP / RP)
         if (p.wp_type || p.id) {
           setFeatureInfo({
@@ -1027,6 +1040,11 @@ function MapScreenForCountry() {
     ? { lat: homeCoord[1], lng: homeCoord[0] }
     : { lat: 59.33, lng: 18.07 }
   const [planningMode, setPlanningMode] = useState(false)
+  // Focus requests from other screens (e.g. "Show on map" for a saved place).
+  const { request: mapFocusRequest } = useMapFocus()
+  useEffect(() => {
+    if (mapFocusRequest) setFindDestFlyTarget({ ...mapFocusRequest, zoom: mapFocusRequest.zoom ?? 13 })
+  }, [mapFocusRequest])
 
   // ── Shareable links: openvfr://map?ad=ESSB or ?c=<coordinate> (same
   // params as web, parsed by @open-vfr/shared/deepLink). Handles both the
@@ -1205,7 +1223,7 @@ function MapScreenForCountry() {
           : (routeEditOn ? 'Stop editing and lock the route' : 'Tap the map to add waypoints; drag them or the leg midpoints to change the route'),
         icon: toolIcon(routeEditOn ? IconLockOpen : IconPencil), active: routeEditOn,
         onSelect: () => toolFlying ? setRouteAdjustMode(v => !v) : setPlanningMode(m => !m) },
-      ...(toolFlying ? [{ id: 'drop', label: 'Drop point', description: 'Save your current position as a waypoint in the "Dropped in Flight" folder',
+      ...(toolFlying ? [{ id: 'drop', label: 'Drop point', description: 'Save your current position as a place in the "Dropped in Flight" folder',
         icon: toolIcon(IconMapPinPlus),
         onSelect: () => {
           if (!activePosition) return
@@ -1276,7 +1294,7 @@ function MapScreenForCountry() {
     features: userWaypoints.map(w => ({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [w.lng, w.lat] },
-      properties: { name: w.name, id: w.id },
+      properties: { name: w.name, id: w.id, folder: w.folder },
     })),
   }), [userWaypoints])
 
@@ -1335,17 +1353,19 @@ function MapScreenForCountry() {
   }, [])
 
   const handleConfirmSaveWaypoint = useCallback(() => {
-    if (!savingWpAt || !wpSaveName.trim()) return
+    if (!savingWpAt) return
+    // Blank name -> auto "Place N" so saving needs no typing (e.g. in flight).
+    const name = wpSaveName.trim() || nextPlaceName(userWaypoints.map(w => w.name))
     saveWaypoint({
       id:        Crypto.randomUUID(),
-      name:      wpSaveName.trim(),
+      name,
       lat:       savingWpAt.lat,
       lng:       savingWpAt.lng,
       folder:    '',
       updatedAt: Date.now(),
     })
     setSavingWpAt(null); setWpSaveName('')
-  }, [savingWpAt, wpSaveName, saveWaypoint])
+  }, [savingWpAt, wpSaveName, saveWaypoint, userWaypoints])
 
   const handleLayerChange = useCallback((key: keyof LayerState, on: boolean) => {
     setLayers(l => {
@@ -1528,7 +1548,7 @@ function MapScreenForCountry() {
               onPress={() => { setSavingWpAt(longPressMenu); setLongPressMenu(null); setWpSaveName('') }}
             >
               <Ionicons name="bookmark-outline" size={16} color={theme.accentBlue} />
-              <Text style={styles.longPressMenuBtnTxt}>Save Waypoint</Text>
+              <Text style={styles.longPressMenuBtnTxt}>Save Place</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.longPressMenuCancel} onPress={() => setLongPressMenu(null)}>
               <Text style={styles.longPressMenuCancelTxt}>Cancel</Text>
@@ -1572,18 +1592,18 @@ function MapScreenForCountry() {
         <NativeSheet
           isPresented={!!savingWpAt}
           onDismiss={() => { setSavingWpAt(null); setWpSaveName('') }}
-          title="Save waypoint"
+          title="Save place"
           testID="save-waypoint-sheet"
         >
           <View style={{ paddingHorizontal: scaledTheme.space4, paddingTop: scaledTheme.space3, gap: scaledTheme.space2 }}>
           <Text style={styles.longPressMenuCoord}>
-            Save waypoint at {savingWpAt?.lat.toFixed(5)}, {savingWpAt?.lng.toFixed(5)}
+            Save place at {savingWpAt?.lat.toFixed(5)}, {savingWpAt?.lng.toFixed(5)}
           </Text>
           <TextInput
             style={styles.wpNameInput}
             value={wpSaveName}
             onChangeText={setWpSaveName}
-            placeholder="Name"
+            placeholder={nextPlaceName(userWaypoints.map(w => w.name))}
             placeholderTextColor={theme.textFaint}
             autoFocus
             returnKeyType="done"
@@ -1695,6 +1715,11 @@ function MapScreenForCountry() {
           aircraftProfile={aircraftProfile}
           onFlyTo={(lat, lng) => setFindDestFlyTarget({ lat, lng, nonce: Date.now() })}
           onAddToRoute={(wp) => { addWaypoint(wp); setPlanningMode(true) }}
+          places={userWaypoints}
+          onSavePlace={(lat, lng) => saveWaypoint({
+            id: Crypto.randomUUID(), name: nextPlaceName(userWaypoints.map(w => w.name)),
+            lat, lng, folder: '', updatedAt: Date.now(),
+          })}
           open={showFindDest}
           onOpenChange={setShowFindDest}
         />

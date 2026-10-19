@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { AppState } from 'react-native'
 import { waypoints as waypointsDb } from '../db'
 import type { UserWaypointDocType } from '../types/db'
 import { API_BASE } from '../config'
@@ -146,6 +147,18 @@ export function useUserWaypointSync(authenticated: boolean) {
     if (!authenticated || syncedRef.current) return
     syncedRef.current = true
     pull()
+  }, [authenticated, pull])
+
+  // Re-pull whenever the app returns to the foreground: the process outlives
+  // app-switches, so a place saved, edited or deleted on another device or the
+  // web app would otherwise not show up until a manual refresh or relaunch
+  // (same reasoning as useRouteSync).
+  useEffect(() => {
+    if (!authenticated) return
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') void pull()
+    })
+    return () => sub.remove()
   }, [authenticated, pull])
 
   const saveWaypoint = useCallback(async (doc: UserWaypointDocType) => {

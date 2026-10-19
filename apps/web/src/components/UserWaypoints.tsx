@@ -2,6 +2,7 @@ import { useState, useEffect, useId, useRef } from 'react'
 import type { UserWaypointDocType } from '../db/index'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { waypointsToGpx, gpxToWaypoints } from '@open-vfr/shared/gpx'
+import { nextPlaceName } from '../utils/places'
 import css from './UserWaypoints.module.css'
 
 // ── GPX helpers ───────────────────────────────────────────────────────────────
@@ -41,23 +42,30 @@ interface Props {
   onStartPlace: () => void
   onSave: (wp: Omit<UserWaypointDocType, 'id' | 'updatedAt'>) => void
   onDelete: (id: string) => void
-  onRename: (id: string, name: string) => void
+  onRename: (id: string, name: string, folder?: string) => void
   onMoveFolder: (id: string, folder: string) => void
   onAddToRoute: (wp: RouteWaypoint) => void
+  onShowOnMap: (lng: number, lat: number) => void
+  routeWaypoints: RouteWaypoint[]
+  onInsertInRoute: (wp: RouteWaypoint, afterIdx: number) => void
   onFolderVisChange: (folder: string, visible: boolean) => void
 }
 
 export default function UserWaypoints({
   waypoints, pendingCoords, folderVisibility,
   onCoordsConsumed, onStartPlace,
-  onSave, onDelete, onRename, onMoveFolder: _onMoveFolder,
-  onAddToRoute, onFolderVisChange,
+  onSave, onDelete, onRename, onMoveFolder,
+  onAddToRoute, onShowOnMap, routeWaypoints, onInsertInRoute, onFolderVisChange,
 }: Props) {
   const formId = useId()
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState<NewWpForm>(BLANK)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [editingFolder, setEditingFolder] = useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [insertingId, setInsertingId] = useState<string | null>(null)
 
   // Fill form when "pick on map" coords arrive.
   useEffect(() => {
@@ -75,7 +83,20 @@ export default function UserWaypoints({
   // All folder names (empty string → "Unfiled").
   const folders = Array.from(new Set(['', ...waypoints.map(w => w.folder)]))
 
-  const wpByFolder = (folder: string) => waypoints.filter(w => w.folder === folder)
+  const q = query.trim().toLowerCase()
+  const matches = (w: UserWaypointDocType) =>
+    !q || w.name.toLowerCase().includes(q) || w.folder.toLowerCase().includes(q)
+  const wpByFolder = (folder: string) => waypoints.filter(w => w.folder === folder && matches(w))
+
+  function commitEdit(wp: UserWaypointDocType) {
+    const name = editingName.trim()
+    const folder = editingFolder.trim()
+    const nameChanged = !!name && name !== wp.name
+    const folderChanged = folder !== wp.folder
+    if (nameChanged) onRename(wp.id, name, folderChanged ? folder : undefined)
+    else if (folderChanged) onMoveFolder(wp.id, folder)
+    setEditingId(null)
+  }
   const isFolderVisible = (f: string) => folderVisibility[f] !== false
   const existingFolders = folders.filter(Boolean)
 
@@ -120,14 +141,14 @@ export default function UserWaypoints({
           className={css.addBtn}
           onClick={() => { setForm(BLANK); setShowForm(s => !s) }}
         >
-          {showForm ? '✕ Cancel' : '+ New Waypoint'}
+          {showForm ? '✕ Cancel' : '+ New Place'}
         </button>
         {waypoints.length > 0 && (
           <button className={css.exportBtn} onClick={exportGpx} title="Export all as GPX">
             GPX ↓
           </button>
         )}
-        <button className={css.exportBtn} onClick={() => fileInputRef.current?.click()} title="Import waypoints from GPX">
+        <button className={css.exportBtn} onClick={() => fileInputRef.current?.click()} title="Import places from GPX">
           GPX ↑
         </button>
         <input
@@ -149,7 +170,7 @@ export default function UserWaypoints({
               className={css.input}
               value={form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              placeholder="Waypoint name"
+              placeholder={`Place name (e.g. ${nextPlaceName(waypoints.map(w => w.name))})`}
               // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
               onKeyDown={e => { if (e.key === 'Enter') submit() }}
@@ -200,7 +221,7 @@ export default function UserWaypoints({
           </div>
           <div className={css.formActions}>
             <button className={css.saveBtn} onClick={submit} disabled={!canSave}>
-              Save Waypoint
+              Save Place
             </button>
           </div>
         </div>
@@ -209,9 +230,23 @@ export default function UserWaypoints({
       {/* Empty state */}
       {waypoints.length === 0 && !showForm && (
         <div className={css.empty}>
-          No user waypoints yet.<br />
-          Use "+ New Waypoint" or right-click the map.
+          No saved places yet.<br />
+          Use "+ New Place" or right-click the map.
         </div>
+      )}
+
+      {waypoints.length > 0 && (
+        <input
+          className={css.searchInput}
+          type="search"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search places or folders"
+          aria-label="Search places"
+        />
+      )}
+      {q && waypoints.length > 0 && !waypoints.some(matches) && (
+        <div className={css.empty}>No places match “{query}”.</div>
       )}
 
       {/* Folder groups */}
@@ -236,42 +271,93 @@ export default function UserWaypoints({
               {wpByFolder(folder).map(wp => (
                 <li key={wp.id} className={css.wpRow}>
                   {editingId === wp.id ? (
-                    <input
-                      className={css.editInput}
-                      value={editingName}
-                      onChange={e => setEditingName(e.target.value)}
-                      title="Edit waypoint name"
-                      placeholder="Waypoint name"
-                      onBlur={() => {
-                        if (editingName.trim() && editingName !== wp.name) {
-                          onRename(wp.id, editingName.trim())
-                        }
-                        setEditingId(null)
-                      }}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          if (editingName.trim() && editingName !== wp.name) onRename(wp.id, editingName.trim())
-                          setEditingId(null)
-                        } else if (e.key === 'Escape') {
-                          setEditingId(null)
-                        }
-                      }}
-                      // eslint-disable-next-line jsx-a11y/no-autofocus
-                      autoFocus
-                    />
+                    <div className={css.editBox}>
+                      <input
+                        className={css.editInput}
+                        value={editingName}
+                        onChange={e => setEditingName(e.target.value)}
+                        title="Place name"
+                        placeholder="Place name"
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') commitEdit(wp)
+                          else if (e.key === 'Escape') setEditingId(null)
+                        }}
+                        // eslint-disable-next-line jsx-a11y/no-autofocus
+                        autoFocus
+                      />
+                      <input
+                        className={css.editInput}
+                        value={editingFolder}
+                        onChange={e => setEditingFolder(e.target.value)}
+                        title="Folder"
+                        placeholder="Folder (Unfiled)"
+                        list={`${formId}-folders`}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') commitEdit(wp)
+                          else if (e.key === 'Escape') setEditingId(null)
+                        }}
+                      />
+                      <datalist id={`${formId}-folders`}>
+                        {existingFolders.map(f => <option key={f} value={f} />)}
+                      </datalist>
+                      <div className={css.editActions}>
+                        <button className={css.saveBtn} onClick={() => commitEdit(wp)} disabled={!editingName.trim()}>Save</button>
+                        <button className={css.exportBtn} onClick={() => setEditingId(null)}>Cancel</button>
+                      </div>
+                    </div>
                   ) : (
-                    <span
-                      className={css.wpName}
-                      onDoubleClick={() => { setEditingId(wp.id); setEditingName(wp.name) }}
-                      title="Double-click to rename"
-                    >
-                      {wp.name}
-                    </span>
+                    <>
+                      <span
+                        className={css.wpName}
+                        onDoubleClick={() => { setEditingId(wp.id); setEditingName(wp.name); setEditingFolder(wp.folder) }}
+                        title="Double-click to edit"
+                      >
+                        {wp.name}
+                      </span>
+                      <span className={css.wpCoord}>
+                        {wp.lat.toFixed(3)}, {wp.lng.toFixed(3)}
+                      </span>
+                    </>
                   )}
-                  <span className={css.wpCoord}>
-                    {wp.lat.toFixed(3)}, {wp.lng.toFixed(3)}
-                  </span>
+                  {insertingId === wp.id && (
+                    <select
+                      className={css.insertSelect}
+                      aria-label="Insert position"
+                      autoFocus // eslint-disable-line jsx-a11y/no-autofocus
+                      value=""
+                      onChange={e => {
+                        const afterIdx = Number(e.target.value)
+                        onInsertInRoute({ lng: wp.lng, lat: wp.lat, name: wp.name }, afterIdx)
+                        setInsertingId(null)
+                      }}
+                      onBlur={() => setInsertingId(null)}
+                    >
+                      <option value="" disabled>Insert…</option>
+                      <option value={-1}>At start</option>
+                      {routeWaypoints.map((r, i) => (
+                        <option key={i} value={i}>After {i + 1}{r.name ? ` · ${r.name}` : ''}</option>
+                      ))}
+                    </select>
+                  )}
                   <div className={css.wpActions}>
+                    {routeWaypoints.length > 0 && (
+                      <button
+                        className={css.wpRouteBtn}
+                        onClick={() => setInsertingId(id => (id === wp.id ? null : wp.id))}
+                        title="Insert into route at a position"
+                        aria-label="Insert into route"
+                      >
+                        ⤷
+                      </button>
+                    )}
+                    <button
+                      className={css.wpRouteBtn}
+                      onClick={() => onShowOnMap(wp.lng, wp.lat)}
+                      title="Show on map"
+                      aria-label="Show on map"
+                    >
+                      ◎
+                    </button>
                     <button
                       className={css.wpRouteBtn}
                       onClick={() => onAddToRoute({ lng: wp.lng, lat: wp.lat, name: wp.name })}
@@ -281,12 +367,24 @@ export default function UserWaypoints({
                       +
                     </button>
                     <button
-                      className={css.wpDeleteBtn}
-                      onClick={() => onDelete(wp.id)}
-                      title="Delete"
-                      aria-label="Delete waypoint"
+                      className={css.wpRouteBtn}
+                      onClick={() => { setEditingId(wp.id); setEditingName(wp.name); setEditingFolder(wp.folder) }}
+                      title="Edit name and folder"
+                      aria-label="Edit place"
                     >
-                      ✕
+                      ✎
+                    </button>
+                    <button
+                      className={css.wpDeleteBtn}
+                      onClick={() => {
+                        if (confirmDeleteId === wp.id) { onDelete(wp.id); setConfirmDeleteId(null) }
+                        else setConfirmDeleteId(wp.id)
+                      }}
+                      onBlur={() => setConfirmDeleteId(id => (id === wp.id ? null : id))}
+                      title={confirmDeleteId === wp.id ? 'Click again to delete' : 'Delete'}
+                      aria-label={confirmDeleteId === wp.id ? 'Confirm delete place' : 'Delete place'}
+                    >
+                      {confirmDeleteId === wp.id ? 'Delete?' : '✕'}
                     </button>
                   </div>
                 </li>

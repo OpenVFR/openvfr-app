@@ -92,6 +92,7 @@ interface Props {
   onSetWaypointNote: (wpIdx: number, note: string) => void
   // Add to route (used by WhatsHere + UserWaypoints)
   onAddToRoute: (wp: RouteWaypoint) => void
+  onInsertInRoute: (wp: RouteWaypoint, afterIdx: number) => void
   // Aircraft selection
   selectedAircraftId?: string
   selectedAircraftProfile?: AircraftProfileDocType
@@ -127,7 +128,7 @@ interface Props {
   onStartPlaceUserWp: () => void
   onSaveUserWaypoint: (wp: Omit<UserWaypointDocType, 'id' | 'updatedAt'>) => void
   onDeleteUserWaypoint: (id: string) => void
-  onRenameUserWaypoint: (id: string, name: string) => void
+  onRenameUserWaypoint: (id: string, name: string, folder?: string) => void
   onMoveUserWpFolder: (id: string, folder: string) => void
   onFolderVisChange: (folder: string, visible: boolean) => void
   onSaveHereUserWaypoint: (name: string, lng: number, lat: number) => void
@@ -143,7 +144,7 @@ const SECTION_LABELS = {
   routes:        'Routes',
   flightLogs:    'Flight Logs',
   aircraft:      'Aircraft',
-  userWaypoints: 'User Waypoints',
+  userWaypoints: 'Places',
   layers:        'Layers',
   settings:      'Settings',
 } as const
@@ -188,7 +189,7 @@ function SideDrawer({
   onRefresh,
   waypoints, legOverrides, routeVisible, onToggleRouteVisible, planningMode, onTogglePlanningMode,
   onUndo, onRedo, canUndo, canRedo, onClear, onReplace, onLoadRoute, activeRouteId, onActiveRouteIdChange, onSetLegOverride, onSetWaypointNote,
-  onAddToRoute,
+  onAddToRoute, onInsertInRoute,
   selectedAircraftId, selectedAircraftProfile, tafWarnIcaos, onSelectAircraft,
   onFlyTo,
   activeInfo, onCloseInfo,
@@ -303,7 +304,7 @@ function SideDrawer({
       )}
       <div className={`${css.drawer} ${open ? '' : css.drawerClosed}`}>
         <div className={css.searchBar}>
-          <FindFeature onResult={onFlyTo} onAddToRoute={onAddToRoute} />
+          <FindFeature onResult={onFlyTo} onAddToRoute={onAddToRoute} places={userWaypoints} onSavePlace={(lng, lat) => onSaveHereUserWaypoint('', lng, lat)} />
         </div>
         <div className={css.scroll}>
 
@@ -521,6 +522,9 @@ function SideDrawer({
                   onRename={onRenameUserWaypoint}
                   onMoveFolder={onMoveUserWpFolder}
                   onAddToRoute={onAddToRoute}
+                  routeWaypoints={waypoints}
+                  onInsertInRoute={onInsertInRoute}
+                  onShowOnMap={(lng, lat) => onFlyTo({ kind: 'LL', id: '', name: '', sub: '', lng, lat })}
                   onFolderVisChange={onFolderVisChange}
                 />
               </div>

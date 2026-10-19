@@ -57,7 +57,7 @@ export default function SnapPicker({ candidates, x, y, onPick, onClose }: Props)
         className={css.panel}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className={css.header}>Add waypoint</div>
+        <div className={css.header}>Add route point</div>
         <ul className={css.list}>
           {candidates.map((c, i) => (
             <li key={i}>

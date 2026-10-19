@@ -41,7 +41,7 @@ export function SnapPicker({ candidates, onPick, onClose }: Props) {
     <NativeSheet
       isPresented
       onDismiss={onClose}
-      title="Add waypoint"
+      title="Add route point"
       testID="snap-picker-sheet"
     >
       {candidates.map((c, i) => (

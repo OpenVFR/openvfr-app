@@ -5,7 +5,7 @@ import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/country
 import { parseCoordinate, formatCoordinate } from '@open-vfr/shared/coordinateParse'
 
 export type FindResult = {
-  kind: 'AD' | 'VOR' | 'NDB' | 'MRP' | 'RP' | 'LL'
+  kind: 'AD' | 'VOR' | 'NDB' | 'MRP' | 'RP' | 'LL' | 'PL'
   id: string
   name: string
   sub: string
@@ -16,6 +16,10 @@ export type FindResult = {
 interface Props {
   onResult: (r: FindResult) => void
   onAddToRoute?: (wp: { lng: number; lat: number; name: string }) => void
+  /** Saved places, searched by name/folder and listed first. */
+  /** Offer to save a typed coordinate as a place. */
+  onSavePlace?: (lng: number, lat: number) => void
+  places?: { id: string; name: string; folder: string; lng: number; lat: number }[]
 }
 
 // ---------------------------------------------------------------------------
@@ -107,9 +111,19 @@ const BADGE_CLASS: Record<FindResult['kind'], string> = {
   MRP: css.badgeMRP,
   RP:  css.badgeRP,
   LL:  css.badgeLL,
+  PL:  css.badgePL,
 }
 
-export default function FindFeature({ onResult, onAddToRoute }: Props) {
+function searchPlaces(q: string, places: Props['places']): FindResult[] {
+  const up = q.trim().toUpperCase()
+  if (!up || !places) return []
+  return places
+    .filter(p => p.name.toUpperCase().includes(up) || p.folder.toUpperCase().includes(up))
+    .slice(0, 5)
+    .map(p => ({ kind: 'PL' as const, id: p.id, name: p.name, sub: p.folder || 'Saved place', lng: p.lng, lat: p.lat }))
+}
+
+export default function FindFeature({ onResult, onAddToRoute, places, onSavePlace }: Props) {
   const [query, setQuery]       = useState('')
   const [results, setResults]   = useState<FindResult[]>([])
   const [active, setActive]     = useState(0)
@@ -145,15 +159,15 @@ export default function FindFeature({ onResult, onAddToRoute }: Props) {
     if (!val.trim()) { setResults([]); return }
 
     if (index) {
-      setResults(search(val, index))
+      setResults([...searchPlaces(val, places), ...search(val, index)])
     } else {
       // Lazy-load the index on first keystroke
       loadIndex().then(idx => {
         setIndex(idx)
-        setResults(search(val, idx))
+        setResults([...searchPlaces(val, places), ...search(val, idx)])
       })
     }
-  }, [index])
+  }, [index, places])
 
   // Update results reactively when index loads mid-typing. Must honour the
   // coordinate parse first, same as handleChange -- otherwise this effect
@@ -162,8 +176,8 @@ export default function FindFeature({ onResult, onAddToRoute }: Props) {
   useEffect(() => {
     if (!index || !query) return
     const ll = parseLatLon(query)
-    setResults(ll ? [ll] : search(query, index))
-  }, [index, query])
+    setResults(ll ? [ll] : [...searchPlaces(query, places), ...search(query, index)])
+  }, [index, query, places])
 
   const pick = useCallback((r: FindResult) => {
     onResult(r)
@@ -196,7 +210,7 @@ export default function FindFeature({ onResult, onAddToRoute }: Props) {
         <input
           ref={inputRef}
           className={css.input}
-          placeholder="Find aerodrome, navaid, waypoint…"
+          placeholder="Find aerodrome, navaid, waypoint, place…"
           value={query}
           onChange={e => handleChange(e.target.value)}
           onKeyDown={handleKey}
@@ -224,17 +238,31 @@ export default function FindFeature({ onResult, onAddToRoute }: Props) {
                 onMouseDown={e => { e.preventDefault(); pick(r) }}
               >
                 <span className={`${css.badge} ${BADGE_CLASS[r.kind]}`}>{r.kind}</span>
-                <span className={css.name}>{r.id && r.id !== r.name ? `${r.id} — ${r.name}` : r.name}</span>
+                <span className={css.name}>{r.kind !== 'PL' && r.id && r.id !== r.name ? `${r.id} — ${r.name}` : r.name}</span>
                 {r.sub && <span className={css.sub}>{r.sub}</span>}
               </div>
-              {onAddToRoute && r.kind === 'AD' && (
+              {onSavePlace && r.kind === 'LL' && (
+                <button
+                  className={css.addBtn}
+                  title="Save as place"
+                  onMouseDown={e => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onSavePlace(r.lng, r.lat)
+                    setQuery('')
+                    setResults([])
+                    setDropRect(null)
+                  }}
+                >★</button>
+              )}
+              {onAddToRoute && (r.kind === 'AD' || r.kind === 'PL') && (
                 <button
                   className={css.addBtn}
                   title="Add to route"
                   onMouseDown={e => {
                     e.preventDefault()
                     e.stopPropagation()
-                    onAddToRoute({ lng: r.lng, lat: r.lat, name: r.id })
+                    onAddToRoute({ lng: r.lng, lat: r.lat, name: r.kind === 'PL' ? r.name : r.id })
                   }}
                 >+</button>
               )}

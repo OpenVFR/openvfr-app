@@ -42,6 +42,10 @@ interface Props {
   onFlyTo:          (lat: number, lng: number) => void
   /** Append as a route waypoint */
   onAddToRoute:     (wp: RouteWaypoint) => void
+  /** Saved places; matches (by name/folder) are listed above the aerodromes. */
+  /** Save a typed coordinate as a place. */
+  onSavePlace?:     (lat: number, lng: number) => void
+  places?:          { id: string; name: string; folder: string; lat: number; lng: number }[]
   /** Controlled open state (map toolbar menu); omit for the built-in trigger button. */
   open?:            boolean
   onOpenChange?:    (open: boolean) => void
@@ -54,7 +58,7 @@ const SURF_OPTS: { v: SurfaceFilter; label: string }[] = [
   { v: 'any', label: 'Any' }, { v: 'hard', label: 'Hard' }, { v: 'grass', label: 'Grass' },
 ]
 
-export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyTo, onAddToRoute, open: openProp, onOpenChange }: Props) {
+export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyTo, onAddToRoute, places, onSavePlace, open: openProp, onOpenChange }: Props) {
   const styles = useThemedStyles(makeStyles)
   const sheetMaxH = useSheetMaxHeight()
   const [openState, setOpenState] = React.useState(false)
@@ -92,6 +96,12 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
     ).slice(0, 80),
     [aerodromes, center, homeIcao, minRunwayM, fuelFilter, surfFilter, search, glideRangeNm],
   )
+
+  const placeMatches = React.useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q || !places) return []
+    return places.filter(p => p.name.toLowerCase().includes(q) || (p.folder ?? '').toLowerCase().includes(q)).slice(0, 5)
+  }, [places, search])
 
   const renderRow = ({ item: a }: { item: AerodromeResult }) => (
     <View style={[styles.row, a.icao === homeIcao && styles.rowHome, a.withinGlide && styles.rowGlide]}>
@@ -160,7 +170,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
             value={search}
             onChangeText={setSearch}
             testID="find-destination-search"
-            placeholder="Search ICAO or name…"
+            placeholder="Search ICAO, name or saved place…"
             placeholderTextColor={theme.textFaint}
             autoCapitalize="characters"
           />
@@ -207,16 +217,48 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
         </View>
 
         {coord && (
-          <TouchableOpacity
-            style={[styles.row, styles.rowMain]}
-            onPress={() => { onFlyTo(coord.lat, coord.lng); setOpen(false) }}
-          >
-            <View style={styles.rowTop}>
-              <Text style={styles.rowIcao}>Go to</Text>
-              <Text style={styles.rowName} numberOfLines={1}>{formatCoordinate(coord.lat, coord.lng, coord.format)}</Text>
-            </View>
-          </TouchableOpacity>
+          <View style={styles.row}>
+            <TouchableOpacity
+              style={styles.rowMain}
+              onPress={() => { onFlyTo(coord.lat, coord.lng); setOpen(false) }}
+            >
+              <View style={styles.rowTop}>
+                <Text style={styles.rowIcao}>Go to</Text>
+                <Text style={styles.rowName} numberOfLines={1}>{formatCoordinate(coord.lat, coord.lng, coord.format)}</Text>
+              </View>
+            </TouchableOpacity>
+            {onSavePlace && (
+              <TouchableOpacity
+                style={styles.addBtn}
+                onPress={() => { onSavePlace(coord.lat, coord.lng); setSearch('') }}
+                accessibilityLabel="Save as place"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="bookmark-outline" size={16} color={theme.textPrimary} />
+              </TouchableOpacity>
+            )}
+          </View>
         )}
+
+        {placeMatches.map(p => (
+          <View key={p.id} style={styles.row}>
+            <TouchableOpacity style={styles.rowMain} onPress={() => { onFlyTo(p.lat, p.lng); setOpen(false) }}>
+              <View style={styles.rowTop}>
+                <Ionicons name="bookmark" size={13} color={theme.accentYellow} />
+                <Text style={styles.rowName} numberOfLines={1}>{p.name}</Text>
+              </View>
+              <Text style={styles.rowNav}>{p.folder ? p.folder : 'Saved place'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={() => onAddToRoute({ lat: p.lat, lng: p.lng, name: p.name })}
+              accessibilityLabel={`Add ${p.name} to route`}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="add" size={18} color={theme.textPrimary} />
+            </TouchableOpacity>
+          </View>
+        ))}
 
         <FlatList
           data={sorted}
