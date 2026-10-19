@@ -36,7 +36,8 @@
  * Vite proxy / nginx same-origin); pass API_BASE for native.
  */
 
-import { openMeteoJson, snapCoord } from './openMeteo'
+import { openMeteoJson, snapCoord, currentExpiresAt } from './openMeteo'
+import { registerPersistedCache, markCacheDirty } from './persistedCache'
 
 export interface WindAloft {
   /** Wind FROM direction in degrees true (meteorological convention). */
@@ -129,7 +130,8 @@ export async function fetchWindMany(
         const dirDeg   = cur?.[dirVar]
         if (speedKts == null || dirDeg == null) return
         const result: WindAloft = { dirDeg: Math.round(dirDeg), speedKts: Math.round(speedKts) }
-        cache.set(cacheKey(cell.lat, cell.lng, level), { result, expiresAt: Date.now() + CACHE_TTL_MS })
+        cache.set(cacheKey(cell.lat, cell.lng, level), { result, expiresAt: currentExpiresAt(cur, Date.now()) })
+        markCacheDirty('wind')
         for (const i of cell.idx) out[i] = result
       })
     } catch (err) {
@@ -147,13 +149,20 @@ export async function fetchWindMany(
 
 // ── In-memory cache ──────────────────────────────────────────────────────────
 // Keyed by "lat_lng_level" (the 0.05 deg cell, see cacheKey; level is either
-// "surface" or an hPa number). TTL: 30 minutes. Prevents redundant API
-// calls when the user opens the same leg panel repeatedly.
-const CACHE_TTL_MS = 30 * 60 * 1000
+// "surface" or an hPa number). An entry expires when Open-Meteo's next
+// 15-minute value is due (currentExpiresAt), at most 30 min after receipt.
+// Prevents redundant API calls when the user opens the same leg panel
+// repeatedly.
 const cache = new Map<string, { result: WindAloft; expiresAt: number }>()
 
-/** Expired entries are still served for this long when a fetch fails. */
-const STALE_MAX_MS = 3 * 60 * 60 * 1000
+/** Expired entries are still served for this long, and only when a fetch
+ *  fails (Open-Meteo throttled / offline). Short on purpose: an hours-old
+ *  wind must not pass for the current one. Callers that need to tell the
+ *  pilot (Virtual Radar) get that from the fetch outcome, not the value. */
+const STALE_MAX_MS = 60 * 60 * 1000
+// Kept across reloads / restarts once the app enables it (see persistedCache).
+// Persisting never extends freshness: entries keep their absolute expiry.
+registerPersistedCache('wind', cache, { keepAfterExpiryMs: STALE_MAX_MS, maxEntries: 3000 })
 
 /** Keyed on the 0.05 deg cell the point falls in (see snapCoord). */
 function cacheKey(lat: number, lng: number, level: string): string {
@@ -222,7 +231,8 @@ export async function fetchWind(
   }
 
   const result: WindAloft = { dirDeg: Math.round(dirDeg), speedKts: Math.round(speedKts) }
-  cache.set(key, { result, expiresAt: Date.now() + CACHE_TTL_MS })
+  cache.set(key, { result, expiresAt: currentExpiresAt(json.current, Date.now()) })
+  markCacheDirty('wind')
   return result
 }
 
@@ -290,9 +300,10 @@ export async function fetchWindLevels(
         const cur = list[k]?.current
         if (!cur) return
         if (cur['wind_speed_10m'] != null && cur['wind_direction_10m'] != null) {
+          markCacheDirty('wind')
           cache.set(cacheKey(pt.lat, pt.lng, 'surface'), {
             result: { dirDeg: Math.round(cur['wind_direction_10m']), speedKts: Math.round(cur['wind_speed_10m']) },
-            expiresAt: Date.now() + CACHE_TTL_MS,
+            expiresAt: currentExpiresAt(cur, Date.now()),
           })
         }
         for (const l of wanted) {
@@ -300,7 +311,8 @@ export async function fetchWindLevels(
           const dirDeg   = cur[`wind_direction_${l.hPa}hPa`]
           if (speedKts == null || dirDeg == null) continue
           const result: WindAloft = { dirDeg: Math.round(dirDeg), speedKts: Math.round(speedKts) }
-          cache.set(cacheKey(pt.lat, pt.lng, String(l.hPa)), { result, expiresAt: Date.now() + CACHE_TTL_MS })
+          cache.set(cacheKey(pt.lat, pt.lng, String(l.hPa)), { result, expiresAt: currentExpiresAt(cur, Date.now()) })
+          markCacheDirty('wind')
         }
       })
     } catch (err) {
@@ -352,6 +364,7 @@ function gcDistNm(lat1: number, lng1: number, lat2: number, lng2: number): numbe
 }
 
 const ambientCache = new Map<string, { result: AmbientWx; expiresAt: number }>()
+registerPersistedCache('ambientWx', ambientCache, { keepAfterExpiryMs: STALE_MAX_MS, maxEntries: 300 })
 
 function ambientCacheKey(lat: number, lng: number): string {
   return `${lat.toFixed(2)}_${lng.toFixed(2)}`
@@ -405,6 +418,7 @@ export async function fetchAmbientWx(
     precipMm:    json.current['precipitation']    != null ? json.current['precipitation']                : null,
     gridDistNm:  json.latitude != null && json.longitude != null ? gcDistNm(lat, lng, json.latitude, json.longitude) : null,
   }
-  ambientCache.set(key, { result, expiresAt: Date.now() + CACHE_TTL_MS })
+  ambientCache.set(key, { result, expiresAt: currentExpiresAt(json.current, Date.now()) })
+  markCacheDirty('ambientWx')
   return result
 }

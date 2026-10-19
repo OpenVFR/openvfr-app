@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { API_BASE_URL } from '../utils/env'
-import { watchWindAloftAlongRoute, type WindAloftColumn } from '@open-vfr/shared/windAloft'
+import { watchWindAloftAlongRoute, type WindAloftColumn, type WindAloftStatus } from '@open-vfr/shared/windAloft'
 
 const DEBOUNCE_MS = 400
 
@@ -17,22 +17,23 @@ export function useWindAloftAlongRoute(
   totalNm: number,
   maxAltFt: number,
   enabled: boolean,
-): WindAloftColumn[] {
-  const [columns, setColumns] = useState<WindAloftColumn[]>([])
+): { columns: WindAloftColumn[]; status: WindAloftStatus } {
+  const [state, setState] = useState<{ columns: WindAloftColumn[]; status: WindAloftStatus }>({ columns: [], status: 'ok' })
   // Keyed on coordinates, not array identity, so a re-render with an equal route doesn't refetch.
   const routeKey = waypoints.map((w) => `${w.lat.toFixed(3)},${w.lng.toFixed(3)}`).join('|')
 
   useEffect(() => {
-    if (!enabled || waypoints.length < 2 || totalNm <= 0) { setColumns([]); return }
+    if (!enabled || waypoints.length < 2 || totalNm <= 0) { setState({ columns: [], status: 'ok' }); return }
     const ac = new AbortController()
     const timer = setTimeout(() => {
       // Chart x-axis ticks sit at ~totalNm/7 steps; keep ground barbs off their labels.
       // Re-fetches what is missing if Open-Meteo was throttling (see watchWindAloftAlongRoute).
-      watchWindAloftAlongRoute(waypoints, totalNm, maxAltFt, API_BASE_URL, ac.signal, Math.ceil(totalNm) / 7, setColumns)
+      watchWindAloftAlongRoute(waypoints, totalNm, maxAltFt, API_BASE_URL, ac.signal, Math.ceil(totalNm) / 7,
+        (columns, status) => setState({ columns, status }))
     }, DEBOUNCE_MS)
     return () => { clearTimeout(timer); ac.abort() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeKey, totalNm, maxAltFt, enabled])
 
-  return columns
+  return state
 }

@@ -3,6 +3,10 @@ import { createRoot } from 'react-dom/client'
 import * as maplibregl from 'maplibre-gl'
 import { Protocol } from 'pmtiles'
 import { loadTileManifest } from '@open-vfr/shared/tileManifest'
+// Imported for their side effect first: they register the caches restored below.
+import '@open-vfr/shared/fetchWind'
+import '@open-vfr/shared/windForecast'
+import { enableCachePersistence } from '@open-vfr/shared/persistedCache'
 import { TILES_BASE_URL } from './utils/env'
 import './utils/countryData'
 import './index.css'
@@ -12,6 +16,10 @@ import App from './App.tsx'
 // versionedTileUrl() degrades gracefully to an unversioned URL if called
 // before this resolves, so there's no need to block first render on it.
 void loadTileManifest(TILES_BASE_URL)
+// Wind readings survive a reload, so a reload doesn't refetch them from the
+// rate-limited Open-Meteo API (see @open-vfr/shared/persistedCache).
+// localStorage can throw on access (blocked storage); then caches stay in memory.
+try { void enableCachePersistence(window.localStorage) } catch { /* in-memory only */ }
 // Suppress the RxDB free-tier promotional log that fires on every DB open.
 // The message is printed unconditionally by getRxStorageDexie and is not an error.
 const _origLog = console.log

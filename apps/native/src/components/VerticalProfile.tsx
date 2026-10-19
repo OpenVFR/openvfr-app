@@ -490,7 +490,7 @@ export function VerticalProfile({
 
   const totalNm = profile?.totalNm ?? 0
   // Winds aloft at the standard levels up to the chart top, one column every ~20 NM.
-  const windAloft = useWindAloftAlongRoute(waypoints, totalNm, yMax, showWindAloft)
+  const { columns: windAloft, status: windAloftStatus } = useWindAloftAlongRoute(waypoints, totalNm, yMax, showWindAloft)
   // Content (not panel) plot width: never below what the panel offers, but
   // grows past it once the route needs more than MIN_PX_PER_NM per NM to
   // stay legible (see MIN_PX_PER_NM comment above). contentW
@@ -856,6 +856,14 @@ export function VerticalProfile({
         <View style={styles.dragGrip} />
         <View style={[styles.headerSide, styles.headerSideEnd]}>
           {headerEnd}
+          {/* Winds aloft came back incomplete (Open-Meteo throttled or
+              offline): say so instead of silently drawing fewer barbs.
+              Mirrors web's VirtualRadar. */}
+          {showWindAloft && windAloftStatus !== 'ok' && (
+            <Text style={styles.windStatusTxt} numberOfLines={1}>
+              {windAloftStatus === 'retrying' ? 'Winds: retrying\u2026' : 'Winds unavailable'}
+            </Text>
+          )}
           <TouchableOpacity
             style={[styles.projBtn, showWindAloft && styles.projBtnOn]}
             onPress={() => setShowWindAloft(v => !v)}
@@ -1417,6 +1425,12 @@ function makeStyles(theme: ScaledTheme) {
     fontWeight: '700',
   },
   projBtnTxtOn: { color: '#00dcff' },
+  windStatusTxt: {
+    color:      theme.textSecondary,
+    fontSize:   9,
+    fontWeight: '600',
+    marginRight: theme.space2,
+  },
   chartWrap: {},
   wpLabel: {
     position: 'absolute',

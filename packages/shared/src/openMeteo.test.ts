@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
-  openMeteoJson, openMeteoCooldownMs, openMeteoFailureCount, throttleDelayMs, snapCoord,
+  openMeteoJson, openMeteoCooldownMs, openMeteoFailureCount, throttleDelayMs, snapCoord, currentExpiresAt,
   OpenMeteoError, __resetOpenMeteoForTests,
 } from './openMeteo'
 
@@ -151,6 +151,22 @@ describe('openMeteoJson', () => {
     b.abort()
     await expect(pb).rejects.toMatchObject({ name: 'AbortError' })
     expect(seen!.aborted).toBe(true)
+  })
+})
+
+describe('currentExpiresAt', () => {
+  const at = Date.UTC(2026, 0, 1, 10, 0, 0)
+  const slot = (startMs: number) => ({ time: startMs / 1000, interval: 900 })
+  it('expires when the next 15-min value is due (+1 min)', () => {
+    // Received 2 min into the 10:00 slot -> next value 10:15, refetch 10:16.
+    expect(currentExpiresAt(slot(at - 2 * 60_000), at)).toBe(at + 14 * 60_000)
+  })
+  it('never sooner than 5 min (a proxy-cached response may still carry the old slot)', () => {
+    expect(currentExpiresAt(slot(at - 20 * 60_000), at)).toBe(at + 5 * 60_000)
+  })
+  it('falls back to 30 min without slot info', () => {
+    expect(currentExpiresAt(undefined, at)).toBe(at + 30 * 60_000)
+    expect(currentExpiresAt({ time: 1 }, at)).toBe(at + 30 * 60_000)
   })
 })
 

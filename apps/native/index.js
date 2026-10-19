@@ -1,5 +1,10 @@
 import { registerRootComponent } from 'expo'
 import { loadTileManifest } from '@open-vfr/shared/tileManifest'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+// Imported for their side effect first: they register the caches restored below.
+import '@open-vfr/shared/fetchWind'
+import '@open-vfr/shared/windForecast'
+import { enableCachePersistence } from '@open-vfr/shared/persistedCache'
 import { TILE_BASE } from './src/config'
 import App from './src/App'
 // Must be imported here (unconditionally, at startup) so expo-task-manager's
@@ -19,6 +24,9 @@ import './src/tasks/locationTask'
 // first use, same graceful-degrade-to-unversioned-URL behavior as web when
 // this hasn't resolved yet (offline first launch, etc.).
 void loadTileManifest(TILE_BASE)
+// Wind readings survive an app restart, so a restart doesn't refetch them
+// from the rate-limited Open-Meteo API (see @open-vfr/shared/persistedCache).
+void enableCachePersistence(AsyncStorage)
 
 // Deliberately NOT also polling in the background here (unlike web's
 // TileUpdatePrompt.tsx) -- a native cold-start already re-runs this file

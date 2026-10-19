@@ -11,6 +11,7 @@
  */
 
 import { openMeteoJson, snapCoord } from './openMeteo'
+import { registerPersistedCache, markCacheDirty } from './persistedCache'
 import { pressureLevelFor, SURFACE_THRESHOLD_FT, type WindAloft } from './fetchWind'
 
 /** Open-Meteo forecast horizon (days). Beyond this there is no data. */
@@ -21,9 +22,12 @@ const HOUR_S = 3600
 
 interface Series { times: number[]; speed: number[]; dir: number[]; expiresAt: number }
 const cache = new Map<string, Series>()
+// Kept across reloads / restarts once the app enables it (see persistedCache).
+// ~2-5 KB per series, hence the small cap.
+registerPersistedCache('windForecast', cache, { keepAfterExpiryMs: 3 * 60 * 60 * 1000, maxEntries: 80 })
 
 /** Drop cached series so the next fetch hits the API (manual "update wind"). */
-export function clearWindForecastCache(): void { cache.clear() }
+export function clearWindForecastCache(): void { cache.clear(); markCacheDirty('windForecast') }
 
 export interface WindForecastPoint {
   lat: number
@@ -82,8 +86,10 @@ function seriesKey(lat: number, lng: number, level: string, days: number): strin
   return `${snapCoord(lat).toFixed(2)}_${snapCoord(lng).toFixed(2)}_${level}_${days}`
 }
 
-/** An expired series (an older model run) is still used for this long when a fetch fails. */
-const STALE_MAX_MS = 6 * 60 * 60 * 1000
+/** An expired series is still used for this long, only when a fetch fails.
+ *  It is a forecast for the leg's time from a model run at most ~3.5 h
+ *  older than the newest -- the kind of age a briefing forecast has anyway. */
+const STALE_MAX_MS = 3 * 60 * 60 * 1000
 
 /**
  * Hourly series for many points at one level, as few requests as possible
@@ -129,6 +135,7 @@ async function loadSeriesMany(
       if (!h?.time || !h[speedVar] || !h[dirVar]) return
       const series: Series = { times: h.time, speed: h[speedVar], dir: h[dirVar], expiresAt: Date.now() + CACHE_TTL_MS }
       cache.set(seriesKey(pts[pi].lat, pts[pi].lng, level, days), series)
+      markCacheDirty('windForecast')
       out[pi] = series
     })
   }

@@ -92,8 +92,8 @@ describe('fetchWindMany', () => {
     vi.setSystemTime(Date.now() + 40 * 60_000)
     vi.stubGlobal('fetch', vi.fn(async () => mockResponse(400, { reason: 'bad' })))
     expect(await fetchWindMany([{ lat: 62.2, lng: 15.2 }], null)).toEqual([{ dirDeg: 90, speedKts: 7 }])
-    // 4 h later the reading is too old to show.
-    vi.setSystemTime(Date.now() + 4 * 60 * 60_000)
+    // Over an hour past expiry the reading is too old to pass for current.
+    vi.setSystemTime(Date.now() + 61 * 60_000)
     expect(await fetchWindMany([{ lat: 62.2, lng: 15.2 }], null)).toEqual([null])
   })
 })

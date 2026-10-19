@@ -167,6 +167,19 @@
   pointer-events: none;
 }
 
+/* Winds aloft incomplete (see windAloftStatus in VirtualRadar.tsx). Muted:
+   informational, not a safety warning like the off-track badge. */
+.windStatus {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border: 1px dashed var(--border-default);
+  border-radius: 3px;
+  padding: 0 5px;
+  white-space: nowrap;
+  cursor: help;
+}
+
 .offTrackBadge {
   font-size: 9px;
   font-weight: 700;

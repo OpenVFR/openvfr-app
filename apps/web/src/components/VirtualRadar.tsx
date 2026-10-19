@@ -634,7 +634,7 @@ function VirtualRadar({
   // Winds aloft at the standard levels up to the chart top, one column every
   // ~20 NM, so the best level for the wind is visible at a glance. Model data
   // (Open-Meteo), nominal ISA height of each pressure level.
-  const windAloft = useWindAloftAlongRoute(waypoints, profile?.totalNm ?? 0, yMax, showWindAloft)
+  const { columns: windAloft, status: windAloftStatus } = useWindAloftAlongRoute(waypoints, profile?.totalNm ?? 0, yMax, showWindAloft)
 
   const unitPerNm = nmToDisplay(1, units.distance)
   const layout = useMemo(() => (profile && wrapW > 0
@@ -994,6 +994,18 @@ function VirtualRadar({
             no longer reflects what's actually ahead of the aircraft. */}
         {crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM && (
           <span className={css.offTrackBadge}>⚠ {Math.abs(crossTrackNm).toFixed(1)}nm off track</span>
+        )}
+        {/* Winds aloft came back incomplete (Open-Meteo throttled or offline):
+            say so instead of silently drawing fewer barbs. */}
+        {showWindAloft && windAloftStatus !== 'ok' && (
+          <span
+            className={css.windStatus}
+            title={windAloftStatus === 'retrying'
+              ? 'The wind forecast service is busy or unreachable. Some winds aloft are missing or older readings; retrying shortly.'
+              : 'The wind forecast service is busy or unreachable. Some winds aloft are missing or older readings. Change the route or toggle WIND to try again.'}
+          >
+            {windAloftStatus === 'retrying' ? 'Winds: retrying…' : 'Winds unavailable'}
+          </span>
         )}
         <button
           className={`${css.projToggleBtn} ${showWindAloft ? css.projToggleOn : ''}`}

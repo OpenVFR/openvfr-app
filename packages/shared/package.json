@@ -43,6 +43,7 @@
     "./sunCalc":   "./src/sunCalc.ts",
     "./fetchWind": "./src/fetchWind.ts",
     "./openMeteo": "./src/openMeteo.ts",
+    "./persistedCache": "./src/persistedCache.ts",
     "./windBarb": "./src/windBarb.ts",
     "./windGrid": "./src/windGrid.ts",
     "./windAloft": "./src/windAloft.ts",

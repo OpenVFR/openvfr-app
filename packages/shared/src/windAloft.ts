@@ -52,7 +52,13 @@ const FOLLOW_UP_MIN_MS = 30_000
  * again (never sooner than FOLLOW_UP_MIN_MS). Only the points still missing
  * are requested again (the rest come from fetchWind's cache). Stop it by
  * aborting `signal`.
+ *
+ * `status` says whether what was delivered is complete: 'ok', 'retrying'
+ * (incomplete, another attempt is scheduled) or 'unavailable' (incomplete,
+ * retries used up -- the next route change tries again).
  */
+export type WindAloftStatus = 'ok' | 'retrying' | 'unavailable'
+
 export function watchWindAloftAlongRoute(
   waypoints: { lat: number; lng: number }[],
   totalNm: number,
@@ -60,7 +66,7 @@ export function watchWindAloftAlongRoute(
   baseUrl: string,
   signal: AbortSignal,
   tickStepNm: number,
-  onColumns: (columns: WindAloftColumn[]) => void,
+  onColumns: (columns: WindAloftColumn[], status: WindAloftStatus) => void,
 ): void {
   let retries = 0
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -70,12 +76,16 @@ export function watchWindAloftAlongRoute(
     fetchWindAloftAlongRoute(waypoints, totalNm, maxAltFt, baseUrl, signal, tickStepNm)
       .then((c) => {
         if (signal.aborted) return
-        onColumns(c)
-        if (openMeteoFailureCount() > failuresBefore && retries++ < FOLLOW_UP_RETRIES) {
+        const incomplete = openMeteoFailureCount() > failuresBefore
+        if (!incomplete) { onColumns(c, 'ok'); return }
+        if (retries++ < FOLLOW_UP_RETRIES) {
+          onColumns(c, 'retrying')
           timer = setTimeout(load, Math.max(FOLLOW_UP_MIN_MS, openMeteoCooldownMs()))
+        } else {
+          onColumns(c, 'unavailable')
         }
       })
-      .catch(() => { /* aborted / offline: keep what is shown */ })
+      .catch(() => { /* aborted */ })
   }
   load()
 }

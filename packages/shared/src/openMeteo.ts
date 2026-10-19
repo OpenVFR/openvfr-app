@@ -237,6 +237,29 @@ export function openMeteoJson<T>(url: string, signal?: AbortSignal): Promise<T> 
   })
 }
 
+/** Shortest / longest life of a cached Open-Meteo "current" reading. The
+ *  minimum also stops a refetch loop when a proxy-cached response still
+ *  carries the previous slot (the proxy keeps responses 5 min). */
+const CURRENT_MIN_TTL_MS = 5 * 60_000
+const CURRENT_MAX_TTL_MS = 30 * 60_000
+/** Open-Meteo publishes a slot's value shortly after it starts. */
+const CURRENT_PUBLISH_MARGIN_MS = 60_000
+
+/**
+ * When a cached "current" reading should be refetched: as soon as Open-Meteo's
+ * next value is due (`time` + `interval` of the response's `current` block,
+ * normally 15 min), not a fixed time after we happened to receive it -- a
+ * response can already be minutes old when it arrives through the proxy
+ * cache. Clamped to [now + 5 min, now + 30 min]; 30 min when the block
+ * carries no slot time.
+ */
+export function currentExpiresAt(current: { time?: number; interval?: number } | undefined, at: number): number {
+  const t = current?.time, iv = current?.interval
+  if (typeof t !== 'number' || typeof iv !== 'number' || iv <= 0) return at + CURRENT_MAX_TTL_MS
+  const due = (t + iv) * 1000 + CURRENT_PUBLISH_MARGIN_MS
+  return Math.min(at + CURRENT_MAX_TTL_MS, Math.max(at + CURRENT_MIN_TTL_MS, due))
+}
+
 /** Snap a coordinate to a 0.05° lattice (~3-5 km): within the forecast
  *  models' own resolution, and it makes nearby requests -- from the route,
  *  the map grid, the aircraft position, other users -- share one URL, so
