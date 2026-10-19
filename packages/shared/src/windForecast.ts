@@ -61,57 +61,101 @@ export function interpolateWind(series: Pick<Series, 'times' | 'speed' | 'dir'>,
   return { dirDeg: Math.round(d) % 360, speedKts: Math.round(spd) }
 }
 
-async function loadSeries(
-  lat: number, lng: number, altFt: number | null | undefined, at: Date,
-  baseUrl: string, signal?: AbortSignal,
-): Promise<Series | null> {
+const MAX_BATCH = 25
+
+function levelOf(altFt: number | null | undefined): { level: string; speedVar: string; dirVar: string } {
   const useSurface = altFt == null || altFt <= SURFACE_THRESHOLD_FT
   const level = useSurface ? 'surface' : String(pressureLevelFor(altFt!))
-  const speedVar = useSurface ? 'wind_speed_10m' : `wind_speed_${level}hPa`
-  const dirVar   = useSurface ? 'wind_direction_10m' : `wind_direction_${level}hPa`
-  const nowS = Date.now() / 1000
-  const tS = at.getTime() / 1000
-  const days = Math.min(MAX_FORECAST_DAYS, Math.max(2, Math.ceil((tS - nowS) / 86_400) + 2))
-  const key = `${lat.toFixed(2)}_${lng.toFixed(2)}_${level}_${days}`
-  const hit = cache.get(key)
-  if (hit && Date.now() < hit.expiresAt) return hit
+  return {
+    level,
+    speedVar: useSurface ? 'wind_speed_10m' : `wind_speed_${level}hPa`,
+    dirVar:   useSurface ? 'wind_direction_10m' : `wind_direction_${level}hPa`,
+  }
+}
 
-  const params = new URLSearchParams()
-  params.set('latitude',  lat.toFixed(4))
-  params.set('longitude', lng.toFixed(4))
-  params.set('hourly', `${speedVar},${dirVar}`)
-  params.set('wind_speed_unit', 'kn')
-  params.set('forecast_days', String(days))
-  params.set('past_days', '1')
-  params.set('timeformat', 'unixtime')
-  const res = await fetchWithRetry(`${baseUrl}/api/open-meteo/forecast?${params.toString()}`, { signal })
-  if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`)
-  const json = await res.json() as { hourly?: Record<string, number[]> }
-  const h = json.hourly
-  if (!h?.time || !h[speedVar] || !h[dirVar]) return null
-  const series: Series = { times: h.time, speed: h[speedVar], dir: h[dirVar], expiresAt: Date.now() + CACHE_TTL_MS }
-  cache.set(key, series)
-  return series
+function forecastDays(at: Date): number {
+  return Math.min(MAX_FORECAST_DAYS, Math.max(2, Math.ceil((at.getTime() / 1000 - Date.now() / 1000) / 86_400) + 2))
+}
+
+function seriesKey(lat: number, lng: number, level: string, days: number): string {
+  return `${lat.toFixed(2)}_${lng.toFixed(2)}_${level}_${days}`
+}
+
+/**
+ * Hourly series for many points at one level, as few requests as possible
+ * (one multi-coordinate request per MAX_BATCH uncached points). Entry null
+ * where the model returned nothing. Throws on network failure / abort.
+ */
+async function loadSeriesMany(
+  pts: { lat: number; lng: number }[], altFt: number | null | undefined, days: number,
+  baseUrl: string, signal?: AbortSignal,
+): Promise<(Series | null)[]> {
+  const { level, speedVar, dirVar } = levelOf(altFt)
+  const out: (Series | null)[] = pts.map((p) => {
+    const hit = cache.get(seriesKey(p.lat, p.lng, level, days))
+    return hit && Date.now() < hit.expiresAt ? hit : null
+  })
+  const missing = out.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0)
+  for (let start = 0; start < missing.length; start += MAX_BATCH) {
+    const idx = missing.slice(start, start + MAX_BATCH)
+    const params = new URLSearchParams()
+    params.set('latitude',  idx.map((i) => pts[i].lat.toFixed(4)).join(','))
+    params.set('longitude', idx.map((i) => pts[i].lng.toFixed(4)).join(','))
+    params.set('hourly', `${speedVar},${dirVar}`)
+    params.set('wind_speed_unit', 'kn')
+    params.set('forecast_days', String(days))
+    params.set('past_days', '1')
+    params.set('timeformat', 'unixtime')
+    const res = await fetchWithRetry(`${baseUrl}/api/open-meteo/forecast?${params.toString()}`, { signal })
+    if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`)
+    const json = await res.json() as { hourly?: Record<string, number[]> } | { hourly?: Record<string, number[]> }[]
+    const list = Array.isArray(json) ? json : [json]
+    idx.forEach((pi, k) => {
+      const h = list[k]?.hourly
+      if (!h?.time || !h[speedVar] || !h[dirVar]) return
+      const series: Series = { times: h.time, speed: h[speedVar], dir: h[dirVar], expiresAt: Date.now() + CACHE_TTL_MS }
+      cache.set(seriesKey(pts[pi].lat, pts[pi].lng, level, days), series)
+      out[pi] = series
+    })
+  }
+  return out
 }
 
 /** Forecast wind for one point at its own time. Null when out of horizon / no data. Throws on network failure. */
 export async function fetchWindForecast(
   p: WindForecastPoint, baseUrl = '', signal?: AbortSignal,
 ): Promise<WindAloft | null> {
-  if (!isForecastable(p.at)) return null
-  const series = await loadSeries(p.lat, p.lng, p.altFt, p.at, baseUrl, signal)
-  return series ? interpolateWind(series, p.at.getTime() / 1000) : null
+  return (await fetchWindForecastMany([p], baseUrl, signal))[0]
 }
 
-/** Forecast wind for many points (e.g. leg midpoints), concurrently. Entry null where unavailable or failed. */
+/**
+ * Forecast wind for many points (e.g. leg midpoints), each at its own time and
+ * altitude. Points are grouped by wind level and fetched in multi-coordinate
+ * requests. Entry null where unavailable or the request failed (so one failed
+ * level never blanks the rest); AbortError is rethrown.
+ */
 export async function fetchWindForecastMany(
   points: WindForecastPoint[], baseUrl = '', signal?: AbortSignal,
 ): Promise<(WindAloft | null)[]> {
-  return Promise.all(points.map(async (p) => {
-    try { return await fetchWindForecast(p, baseUrl, signal) }
-    catch (err) {
+  const out: (WindAloft | null)[] = points.map(() => null)
+  const groups = new Map<string, number[]>()
+  points.forEach((p, i) => {
+    if (!isForecastable(p.at)) return
+    const key = levelOf(p.altFt).level
+    groups.set(key, [...(groups.get(key) ?? []), i])
+  })
+  await Promise.all([...groups.values()].map(async (idx) => {
+    // One window per group, long enough for its latest time: keeps cache keys stable.
+    const days = Math.max(...idx.map((i) => forecastDays(points[i].at)))
+    try {
+      const series = await loadSeriesMany(idx.map((i) => points[i]), points[idx[0]].altFt, days, baseUrl, signal)
+      idx.forEach((i, k) => {
+        const s = series[k]
+        out[i] = s ? interpolateWind(s, points[i].at.getTime() / 1000) : null
+      })
+    } catch (err) {
       if ((err as { name?: string }).name === 'AbortError') throw err
-      return null
     }
   }))
+  return out
 }
