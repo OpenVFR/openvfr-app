@@ -70,7 +70,10 @@ Full architecture reference: [`docs/architecture.md`](docs/architecture.md).
 
 ## Data & attribution
 
-OpenVFR is built on the following data and map sources:
+OpenVFR is built on the following data and map sources. The app's map
+information (i) dialog credits the same list (`packages/shared/src/attributionSources.ts`)
+and links to the website's full credits page,
+[openvfr.org/credits](https://openvfr.org/credits).
 
 * **[aviationweather.gov](https://aviationweather.gov/)** (NOAA Aviation
   Weather Center) — METAR and TAF data. US government, public domain.

@@ -29,7 +29,7 @@ import type { ViewStateChangeEvent } from '@maplibre/maplibre-react-native'
 import { WAYPOINT_COLORS, RUNWAY_COLORS, AERODROME_COLORS } from '@open-vfr/shared/featureColors'
 import { computeAtcStatus, isNotamAtcRelated, isNotamHoursChangeRelated, type HoursEntry as AtcHoursEntry } from '@open-vfr/shared/atcStatus'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
-import { ATTRIBUTION_SOURCES, COPERNICUS_GLO30_NOTICE } from '@open-vfr/shared/attributionSources'
+import { ATTRIBUTION_SOURCES, COPERNICUS_GLO30_NOTICE, FULL_CREDITS_LINK } from '@open-vfr/shared/attributionSources'
 import { MapInfoBar, type MapInfoBarHandle } from './MapInfoBar'
 import { fetchAerodromeNotamTexts } from '@open-vfr/shared/fetchNotam'
 import { regionsForIcaos } from '@open-vfr/shared/notamRegionScope'
@@ -3410,7 +3410,7 @@ export function AviationMap({
         title="Map data & attribution"
         testID="attribution-sheet"
       >
-        {ATTRIBUTION_SOURCES.map((s) => (
+        {[...ATTRIBUTION_SOURCES, FULL_CREDITS_LINK].map((s) => (
           <TouchableOpacity
             key={s.name}
             style={attributionStyles.row}

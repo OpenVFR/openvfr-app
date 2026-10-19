@@ -20,6 +20,16 @@
 export const COPERNICUS_GLO30_NOTICE =
   'produced using Copernicus WorldDEM-30 \u00a9 DLR e.V. 2010-2014 and \u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved'
 
+/**
+ * Last row of the credits dialog (web + native): the website's full credits
+ * page, with every source's licence and required notice.
+ */
+export const FULL_CREDITS_LINK: AttributionSource = {
+  name: 'Full credits & licences',
+  note: 'All data sources, their licences and required notices \u2014 openvfr.org/credits',
+  url: 'https://openvfr.org/credits',
+}
+
 export interface AttributionSource {
   name: string
   note: string

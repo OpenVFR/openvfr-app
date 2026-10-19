@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type * as maplibregl from 'maplibre-gl'
-import { ATTRIBUTION_SOURCES } from '@open-vfr/shared/attributionSources'
+import { ATTRIBUTION_SOURCES, FULL_CREDITS_LINK } from '@open-vfr/shared/attributionSources'
 import { computeMapScale, type MapScale } from '@open-vfr/shared/mapScale'
 import { MAX_FT, ftToLabel } from './AltitudeSlider'
 import type { Units } from '../utils/units'
@@ -118,7 +118,7 @@ export default function MapInfoBar({ map, ceilingFt, units, windLabel, windSurfa
           >
             <div id="map-info-title" className={css.title}>Map data &amp; attribution</div>
             <div className={css.list}>
-              {ATTRIBUTION_SOURCES.map((s) => (
+              {[...ATTRIBUTION_SOURCES, FULL_CREDITS_LINK].map((s) => (
                 <a key={s.name} className={css.row} href={s.url} target="_blank" rel="noopener noreferrer">
                   <span className={css.rowName}>{s.name}</span>
                   <span className={css.rowNote}>{s.note}</span>
