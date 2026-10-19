@@ -4,10 +4,11 @@
  * two platforms can't drift apart.
  *
  * Mirrors README.md's "Data & attribution" section -- keep in sync with it.
- * Only the sources actually rendered as visible map layers (weather/NOTAM/
- * traffic API sources are cited in the README but aren't map "credits").
- * Open-Meteo is listed because its model wind is drawn on the map (wind
- * arrows overlay) and its CC BY 4.0 licence requires the credit.
+ * Every source whose data is drawn on the map: base layers, aviation
+ * layers, and the live overlays (model wind arrows, traffic, NOTAM areas,
+ * METAR/TAF-based aerodrome colouring). Sources used only off the map (e.g.
+ * the vertical profile's terrain from OpenTopoData) are credited in the
+ * README. Open-Meteo (CC BY 4.0) and OGN (ODbL) require the credit.
  */
 export interface AttributionSource {
   name: string
@@ -22,5 +23,9 @@ export const ATTRIBUTION_SOURCES: readonly AttributionSource[] = [
   { name: 'OpenAIP', note: 'Airspace and obstacle data (CC BY-NC 4.0 \u2014 non-commercial use only)', url: 'https://www.openaip.net/' },
   { name: 'Copernicus DEM GLO-30', note: '\u00a9 ESA / European Union \u2014 hillshade & contour lines, doi:10.5270/ESA-c5d3d65', url: 'https://doi.org/10.5270/ESA-c5d3d65' },
   { name: 'ESRI', note: 'Satellite imagery basemap toggle (proprietary, ESRI terms apply)', url: 'https://www.esri.com/en-us/legal/terms/full-master-agreement' },
+  { name: 'OpenSky Network', note: 'Live air traffic (ADS-B)', url: 'https://opensky-network.org/' },
+  { name: 'Open Glider Network', note: 'Live glider / FLARM traffic (ODbL)', url: 'https://www.glidernet.org/' },
+  { name: 'FAA NOTAM Management Service', note: 'NOTAMs and NOTAM areas', url: 'https://www.faa.gov/air_traffic/publications/atpubs/notam_html/' },
+  { name: 'aviationweather.gov (NOAA)', note: 'METAR and TAF', url: 'https://aviationweather.gov/' },
   { name: 'Open-Meteo', note: 'Weather data by Open-Meteo.com \u2014 model wind on the map, winds aloft, forecast wind (CC BY 4.0)', url: 'https://open-meteo.com/' },
 ]

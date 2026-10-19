@@ -394,6 +394,15 @@ OFM data is stale when `airac_cycle` doesn't match the current AIRAC (new cycle 
 | **OpenFlightMaps (OFM)** | Airspace, aerodromes, navaids, waypoints, runways | `https://snapshots.openflightmaps.org/live/{AIRAC}/ofmx/esaa/latest/ofmx_es.zip` | ODbL | Every 28-day AIRAC cycle | OFMX format (AIXM 4.5 XML). |
 | **OpenAIP** | Obstacles (turbines, towers, chimneys) | `https://api.core.openaip.net/api/obstacles?country={ISO2}` (paginated) | CC BY-NC 4.0 | Weekly | Official Core API, requires free API key (`OPENAIP_API_KEY`, register at openaip.net → profile → API Clients). **Attribution required.** Non-commercial only. Old anonymous GCS bucket export retired (requester-pays now). |
 | **OpenStreetMap** (Overpass) | VFR ground landmarks | `https://overpass-api.de/api/interpreter` | ODbL | On-demand | Sweden bbox hardcoded for now. Phase 1.7: replace with Geofabrik PBF + osmium. |
+| **Copernicus DEM GLO-30** | Elevation for hillshade, contours, offline terrain | `copernicus-dem-30m` AWS open-data bucket | Free & open, attribution (DOI 10.5270/ESA-c5d3d65) | Per pipeline run | Built into `<cc>-hillshade.pmtiles` / `<cc>-contours.pmtiles`; the hillshade archive doubles as the offline terrain DEM (`@open-vfr/shared/terrainDem`). |
+| **Esri World Imagery** | Satellite basemap (planning only) | `server.arcgisonline.com` (legacy endpoint, fetched by the client) | Proprietary, Esri terms | Live | Locked off in flight modes; licensing open, see the infra todo. |
+| **aviationweather.gov** (NOAA) | METAR, TAF | `https://aviationweather.gov/api/data/` via `/api/weather` | Public domain | Live, 5-min server cache | Session required. |
+| **FAA NMS-API** | NOTAMs (worldwide, incl. European series) | NMS-API via the api's NOTAM poller (`apps/api/src/notam.ts`) | FAA terms, credentials issued by the FAA | Delta poll every few minutes | Session required; account-wide rate limit. |
+| **OpenSky Network** | Live ADS-B traffic | OpenSky REST API (OAuth2) via `/api/traffic` | OpenSky terms (non-commercial) | Live | One server-side poller, credit-limited. |
+| **Open Glider Network** | Live FLARM / glider traffic, device privacy flags | APRS-IS `aprs.glidernet.org:14580`, OGN DDB | ODbL + OGN data usage rules | Live | Merged with OpenSky; DDB opt-outs honoured (`ognDdbPrivacy.ts`). |
+| **Open-Meteo** | Model wind (surface + pressure levels), weather-station readings | `/api/open-meteo/` (api relay, `externalProxy.ts`) -> `api.open-meteo.com` | Data CC BY 4.0; free API non-commercial only | 15-min `current`, hourly series | Session + per-user caps + shared budget under the per-IP free tier; see the infra todo for outgrowing it. |
+| **OpenTopoData** (`eudem25m`) | Terrain profile / live ground elevation | `/api/elevation/` (api relay) -> `api.opentopodata.org` | EU-DEM v1.1 (Copernicus), attribution | Static data, 7-day relay cache | Public API limit 1 call/s, 1 000/day shared; clients fall back to the local DEM. |
+| **Natural Earth** | Country outlines (NOTAM region scoping) | Bundled `apps/api/src/country-outlines.json` | Public domain | Static | 1:10m Admin 0, simplified. |
 | **OpenStreetMap** (Overpass) | Landuse polygons | `https://overpass-api.de/api/interpreter` | ODbL | Monthly per country | Per-country via `load_region.sh`. Stored in PostGIS `landuse` table, served via Martin. Phase 1.7: replace with Geofabrik PBF. |
 
 ### Planned / Evaluated
@@ -406,10 +415,9 @@ OFM data is stale when `airac_cycle` doesn't match the current AIRAC (new cycle 
 | Source | Provides | URL / Access | License | Status | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Eurocontrol B2B / SWIM** | NOTAMs, AUP/UUP | Eurocontrol NM B2B API | Restricted | Phase 4 | Requires org-level access. AIXM 5.x format — needs separate parser. Eurocontrol's public GitHub repos contain only analytics packages, no operational data. |
-| **NOAA Aviation Weather** | METAR, TAF, AIRMETs | `https://aviationweather.gov/api/data/` | Public domain | Phase 4 | REST API, no key required. Worldwide coverage. |
+| **NOAA Aviation Weather** (AIRMETs/SIGMETs) | AIRMET / SIGMET products | `https://aviationweather.gov/api/data/` | Public domain | Phase 4 | METAR/TAF from the same API are integrated (table above); AIRMET/SIGMET not yet. |
 | **Eurocontrol NOTAM** | European NOTAMs | Eurocontrol NM B2B | Restricted | Phase 4 | May be replaceable with national AIP NOTAM feeds (Sweden: LFV). |
 | **LFV (Luftfartsverket)** | Sweden AIP, NOTAMs | `https://aro.lfv.se/` | AIP copyright | Phase 4 | Swedish ANSP. AIP accessible via OFM for charting. |
-| **OpenSky Network** | Live ADS-B/FLARM traffic | `https://opensky-network.org/api/states/all?lamin=…` | Non-commercial | Phase 3 | OAuth2, free account. 4,000 credits/day; Sweden bbox ≈ 3 credits/call ≈ 1,333 calls/day. 5 s resolution. |
 | **OpenAeroVFR** | European VFR charts (raster) | `https://www.openaeromap.org` | CC BY-SA | Evaluated, not used | Raster PNG tiles — not compatible with our vector stack. |
 | **OurAirports** | Global airport database (CSV) | `https://ourairports.com/data/` | Public domain | Evaluated, not used | Good fallback but OFM OFMX is richer for European data. |
 | **OpenAIR** | User-imported supplemental airspace | User-supplied `.txt` file | Various (per file) | Phase 2 | Parachute drop zones, microlight sites, glider club areas, temporary restrictions not in OFM. Client-side parser → GeoJSON overlay. No server needed. |
