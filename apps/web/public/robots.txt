@@ -1,2 +1,4 @@
 User-agent: *
-Disallow: /
+Allow: /
+# Not indexed: pages send "noindex, nofollow" (meta tag + X-Robots-Tag header).
+# Crawling must stay allowed so crawlers can read that directive.
