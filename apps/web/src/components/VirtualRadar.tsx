@@ -932,6 +932,12 @@ function VirtualRadar({
           </g>
         )
       })}
+      {/* Vertical-speed trajectory, clipped to the plot: a steep descent
+          extrapolates below 0 ft and would run through the axis labels. */}
+      <clipPath id="vr-plot-clip">
+        <rect x={L.plotLeft} y={L.plotTop - 4} width={L.plotW} height={L.plotH + 8} />
+      </clipPath>
+      <g clipPath="url(#vr-plot-clip)">
       {vspeedTrajectory.points.slice(1).map((p, i) => {
         const prev = vspeedTrajectory.points[i]
         const below = prev.below || p.below
@@ -945,6 +951,7 @@ function VirtualRadar({
         <circle key={`vspeed-dot-${i}`} cx={L.xOf(p.distNm)} cy={L.yOf(p.altFt)} r={p.below ? 3 : 2.5}
           fill={p.below ? DANGER_COLOR : vspeedAttitudeColor} />
       ))}
+      </g>
       {/* Aircraft silhouette; clamped to the altitude scale so it never leaves the plot. */}
       {currentDistNm != null && currentAltFt != null && (
         <g transform={`translate(${L.xOf(currentDistNm)},${L.yOf(Math.max(0, Math.min(yMax, currentAltFt)))})`} aria-hidden="true">
