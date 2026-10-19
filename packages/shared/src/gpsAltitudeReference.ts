@@ -138,6 +138,29 @@ export function gpsAltitudeReferenceStatus(): {
   return { ref: gpsAltitudeReference(), source: verdict ? 'verified' : 'platform-default', platformDefault, verdict, pendingSamples: offsets.length }
 }
 
+/**
+ * Settings / About line for the current reference. `value` is short (one
+ * row); `detail` explains it; `mismatch` = the measured reference differs
+ * from the platform default, i.e. the platform changed.
+ */
+export function describeGpsAltitudeReference(
+  st: ReturnType<typeof gpsAltitudeReferenceStatus>,
+  fmtDate: (iso: string) => string = (iso) => iso.slice(0, 10),
+): { value: string; detail: string; mismatch: boolean } {
+  const what = st.ref === 'ellipsoid' ? 'Geoid-corrected' : 'Sea level'
+  const v = st.verdict
+  const mismatch = !!v && v.ref !== st.platformDefault
+  const value = v ? `${what} \u00b7 verified ${fmtDate(v.checkedAt)}` : `${what} \u00b7 not verified yet`
+  const how = st.ref === 'ellipsoid'
+    ? 'This device reports GPS height above the WGS-84 ellipsoid; the app subtracts the geoid height to show altitude above mean sea level.'
+    : 'This device reports GPS altitude above mean sea level; the app uses it as it is.'
+  const check = v
+    ? ` Checked against the terrain while stationary on the ground: raw GPS was ${v.medianOffsetM} m above the terrain where the geoid is ${v.geoidM} m (${v.samples} samples).`
+    : ` Assumed for this platform; it is checked automatically against the terrain the next time the phone is stationary on the ground with GPS on${st.pendingSamples ? ` (${st.pendingSamples} samples so far)` : ''}.`
+  const warn = mismatch ? ' This differs from what the platform is known to report: the measured reference is used.' : ''
+  return { value, detail: how + check + warn, mismatch }
+}
+
 export function subscribeGpsAltitudeReference(fn: () => void): () => void {
   listeners.add(fn)
   return () => { listeners.delete(fn) }
@@ -173,6 +196,7 @@ export function observeGroundSample(s: GroundSample): void {
   if (!ref) {
     // Never decided after many samples (e.g. the DEM is off here): start over.
     if (offsets.length >= MIN_SAMPLES * 3) { offsets = []; geoidSum = 0 }
+    notify()
     return
   }
   verdict = {

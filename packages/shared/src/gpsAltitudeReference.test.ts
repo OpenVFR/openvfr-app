@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
-  classifyOffsets, initGpsAltitudeReference, gpsAltitudeReference, gpsAltitudeReferenceStatus,
+  classifyOffsets, initGpsAltitudeReference, gpsAltitudeReference, gpsAltitudeReferenceStatus, describeGpsAltitudeReference,
   observeGroundSample, __resetGpsAltitudeReferenceForTests, type GroundSample,
 } from './gpsAltitudeReference'
 
@@ -74,6 +74,20 @@ describe('ground check', () => {
     for (let i = 0; i < 30; i++) observeGroundSample({ ...ARLANDA, rawAltM: GROUND_M, groundElevM: GROUND_M, speedKts: 0, t: 9_000_000 + i * 1000 })
     expect(gpsAltitudeReferenceStatus().source).toBe('platform-default')
     expect(gpsAltitudeReferenceStatus().pendingSamples).toBeLessThan(20)
+  })
+
+  it('describes the state for Settings', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await initGpsAltitudeReference({ platformDefault: 'ellipsoid', environment: 'x' })
+    let d = describeGpsAltitudeReference(gpsAltitudeReferenceStatus())
+    expect(d.value).toBe('Geoid-corrected \u00b7 not verified yet')
+    expect(d.mismatch).toBe(false)
+    feed(25, 0)
+    d = describeGpsAltitudeReference(gpsAltitudeReferenceStatus(), () => '19 Oct')
+    expect(d.value).toBe('Sea level \u00b7 verified 19 Oct')
+    expect(d.mismatch).toBe(true)
+    expect(d.detail).toMatch(/differs from what the platform is known to report/)
+    warn.mockRestore()
   })
 
   it('does not decide where the geoid height is unknown or small', async () => {

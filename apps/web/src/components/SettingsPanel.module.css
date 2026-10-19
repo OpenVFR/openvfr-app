@@ -42,6 +42,15 @@
   font-size: 12px;
 }
 
+/* Read-only status value (GPS altitude reference); details in the row's title. */
+.infoValue {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: right;
+  cursor: help;
+}
+.infoWarn { color: var(--status-warn, #facc15); }
+
 .options {
   display: flex;
   gap: 4px;

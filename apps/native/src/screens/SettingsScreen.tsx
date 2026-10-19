@@ -18,6 +18,7 @@ import { useSimContext }      from '../context/SimContext'
 import { SimConnectSheet }    from '../components/SimConnectSheet'
 import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
 import { PARK_TIMEOUT_OPTIONS, parseParkTimeout, parkTimeoutLabel, type ParkTimeoutOption } from '@open-vfr/shared/parkTimeout'
+import { describeGpsAltitudeReference, gpsAltitudeReferenceStatus, subscribeGpsAltitudeReference } from '@open-vfr/shared/gpsAltitudeReference'
 import { useInternalBarometer } from '../hooks/useInternalBarometer'
 import { useVarioContext } from '../context/VarioContext'
 import type { VarioState } from '@open-vfr/shared/blueflyVario'
@@ -478,6 +479,7 @@ export function SettingsScreen() {
           <InfoRow label="Version"        value="0.1.0" />
         </TouchableOpacity>
         <InfoRow label="Server"         value={API_BASE} />
+        <GpsAltitudeReferenceRow />
         <AiracStatusRows data={dataStatus} />
         <InfoRow label="Obstacles"      value="OpenAIP (CC BY-NC 4.0)" />
         <InfoRow label="Basemap"        value="Protomaps / OSM (ODbL)" />
@@ -878,6 +880,19 @@ function AiracStatusRows({ data }: {
         </View>
       )}
     </>
+  )
+}
+
+/** Whether GPS altitudes are geoid-corrected, and whether that was verified
+ *  on the ground (@open-vfr/shared/gpsAltitudeReference). Tap for details. */
+function GpsAltitudeReferenceRow() {
+  const [st, setSt] = useState(gpsAltitudeReferenceStatus)
+  useEffect(() => subscribeGpsAltitudeReference(() => setSt(gpsAltitudeReferenceStatus())), [])
+  const d = describeGpsAltitudeReference(st, (iso) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }))
+  return (
+    <TouchableOpacity onPress={() => Alert.alert('GPS altitude', d.detail)}>
+      <InfoRow label="GPS altitude" value={`${d.mismatch ? '\u26a0 ' : ''}${d.value} \u203a`} />
+    </TouchableOpacity>
   )
 }
 

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { parkTimeoutLabel } from '@open-vfr/shared/parkTimeout'
 import type { Units } from '../utils/units'
 import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
@@ -7,6 +8,21 @@ import type { DataManifest } from '../hooks/useDataManifest'
 import RegionSelector from './RegionSelector'
 import type { AvailableCountry } from '@open-vfr/shared/countries'
 import { airacDataStatus, relativeTime } from '@open-vfr/shared/airac'
+import { describeGpsAltitudeReference, gpsAltitudeReferenceStatus, subscribeGpsAltitudeReference } from '@open-vfr/shared/gpsAltitudeReference'
+
+/** Whether GPS altitudes are geoid-corrected, and whether that was verified
+ *  on the ground (@open-vfr/shared/gpsAltitudeReference). */
+function GpsAltitudeReferenceRow() {
+  const [st, setSt] = useState(gpsAltitudeReferenceStatus)
+  useEffect(() => subscribeGpsAltitudeReference(() => setSt(gpsAltitudeReferenceStatus())), [])
+  const d = describeGpsAltitudeReference(st, (iso) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }))
+  return (
+    <div className={css.section} title={d.detail}>
+      <span className={css.label}>GPS altitude</span>
+      <span className={`${css.infoValue}${d.mismatch ? ` ${css.infoWarn}` : ''}`}>{d.mismatch ? '\u26a0 ' : ''}{d.value}</span>
+    </div>
+  )
+}
 import { repairAppFiles } from '../utils/repairApp'
 import css from './SettingsPanel.module.css'
 
@@ -265,6 +281,8 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
           </div>
         </div>
       )}
+
+      <GpsAltitudeReferenceRow />
 
       <div className={css.section}>
         <span className={css.label}>App files</span>
