@@ -94,9 +94,12 @@ OpenVFR is built on the following data and map sources:
   self-hosted Open-Meteo server (see `docs/self-hosting.md`).
 * **[OpenTopoData](https://www.opentopodata.org/)** (`eudem25m` dataset,
   public API) — terrain elevation along routes for the vertical profile, MSA
-  and the live ground-elevation readout. Elevation data: **EU-DEM v1.1**,
-  produced using Copernicus data and information funded by the European
-  Union (Copernicus Land Monitoring Service).
+  and the live ground-elevation readout. Elevation data: **EU-DEM v1.1**
+  from the Copernicus Land Monitoring Service, produced with funding by the
+  European Union. Adapted: sampled along the route, converted to feet, and
+  the minimum safe altitude (MSA) is derived from it. Its use here is not
+  endorsed by the EU. Public API limits: 100 locations per request,
+  1 call/s, 1 000 calls/day (the api's relay stays under them).
 * **[Natural Earth](https://www.naturalearthdata.com/)** — country outlines
   (1:10m Admin 0, simplified; `apps/api/src/country-outlines.json`) used to
   decide which cross-border NOTAMs reach a country. Public domain.

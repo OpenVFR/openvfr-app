@@ -237,6 +237,9 @@ export async function fetchWind(
 }
 
 /** Standard pressure levels Open-Meteo serves, with their nominal ISA altitude (ft AMSL). */
+/** Pressure levels per fetchWindLevels request (see the comment there). */
+const MAX_ALOFT_LEVELS = 4
+
 export const WIND_LEVELS: readonly { hPa: number; altFt: number }[] = [
   { hPa: 925, altFt: 2500 },
   { hPa: 850, altFt: 4800 },
@@ -265,8 +268,13 @@ export async function fetchWindLevels(
   baseUrl = '',
   signal?: AbortSignal,
 ): Promise<WindAtLevel[][]> {
+  // At most MAX_ALOFT_LEVELS pressure levels: with the 10 m wind that is 10
+  // variables, which Open-Meteo bills as one call per location (more than 10
+  // bills proportionally more: 12 variables = 1.2 calls). Only charts topping
+  // out above ~13 800 ft would have asked for the 500 hPa level.
   const wanted: { hPa: number; altFt: number }[] = []
   for (const l of WIND_LEVELS) {
+    if (wanted.length >= MAX_ALOFT_LEVELS) break
     wanted.push(l)
     if (l.altFt >= maxAltFt) break
   }

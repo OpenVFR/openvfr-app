@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { fetchAmbientWx, fetchWindMany } from './fetchWind'
+import { fetchAmbientWx, fetchWindMany, fetchWindLevels } from './fetchWind'
 import { __resetOpenMeteoForTests } from './openMeteo'
 
 function mockResponse(status: number, body: unknown): Response {
@@ -82,6 +82,16 @@ describe('fetchWindMany', () => {
     expect(out).toEqual([
       { dirDeg: 200, speedKts: 10 }, { dirDeg: 200, speedKts: 10 }, { dirDeg: 300, speedKts: 20 },
     ])
+  })
+
+  it('winds aloft stay within 10 variables (one Open-Meteo call per location), even for high charts', async () => {
+    const fetchMock = vi.fn(async (_url: string) => mockResponse(200, { current: {} }))
+    vi.stubGlobal('fetch', fetchMock)
+    await fetchWindLevels([{ lat: 63.9, lng: 15.9 }], 30000)
+    const vars = new URL(fetchMock.mock.calls[0][0], 'http://x').searchParams.get('current')!.split(',')
+    expect(vars.length).toBe(10)
+    expect(vars).toContain('wind_speed_600hPa')
+    expect(vars).not.toContain('wind_speed_500hPa')
   })
 
   it('falls back to a recent reading when the request fails', async () => {

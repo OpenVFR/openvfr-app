@@ -188,21 +188,6 @@ export function getContoursPmtilesUrl(): string {
   return `pmtiles://${versionedTileUrl(TILE_BASE, countryArchiveFile(activeCountry(), 'contours'))}`
 }
 
-/**
- * MapLibre GL style URL for the basemap.
- *
- * OpenFreeMap (https://openfreemap.org) is a completely free, no-API-key
- * service built on the same Protomaps/OpenMapTiles stack as the web basemap.
- * ODbL licence; self-hostable.
- *
- * Alternatives (also free, no key):
- *   - 'https://tiles.openfreemap.org/styles/bright'
- *   - 'https://tiles.openfreemap.org/styles/positron'
- */
-export const BASEMAP_STYLE_URL =
-  (process.env.EXPO_PUBLIC_BASEMAP_URL ?? '') ||
-  'https://tiles.openfreemap.org/styles/liberty'
-
 /** ESRI World Imagery — free XYZ satellite tiles, no API key. */
 export const SATELLITE_STYLE = {
   version: 8 as const,

@@ -4,11 +4,11 @@
  * two platforms can't drift apart.
  *
  * Mirrors README.md's "Data & attribution" section -- keep in sync with it.
- * Every source whose data is drawn on the map: base layers, aviation
- * layers, and the live overlays (model wind arrows, traffic, NOTAM areas,
- * METAR/TAF-based aerodrome colouring). Sources used only off the map (e.g.
- * the vertical profile's terrain from OpenTopoData) are credited in the
- * README. Open-Meteo (CC BY 4.0) and OGN (ODbL) require the credit.
+ * Every source whose data is shown in the app: base layers, aviation
+ * layers, the live overlays (model wind arrows, traffic, NOTAM areas,
+ * METAR/TAF-based aerodrome colouring) and the vertical profile's terrain
+ * (OpenTopoData / EU-DEM). Open-Meteo (CC BY 4.0), OGN (ODbL) and EU-DEM
+ * (Copernicus: name the source, acknowledge EU funding) require the credit.
  */
 export interface AttributionSource {
   name: string
@@ -27,5 +27,6 @@ export const ATTRIBUTION_SOURCES: readonly AttributionSource[] = [
   { name: 'Open Glider Network', note: 'Live glider / FLARM traffic (ODbL)', url: 'https://www.glidernet.org/' },
   { name: 'FAA NOTAM Management Service', note: 'NOTAMs and NOTAM areas', url: 'https://www.faa.gov/air_traffic/publications/atpubs/notam_html/' },
   { name: 'aviationweather.gov (NOAA)', note: 'METAR and TAF', url: 'https://aviationweather.gov/' },
+  { name: 'OpenTopoData \u00b7 EU-DEM v1.1', note: 'Terrain along the route (vertical profile, MSA, ground elevation). EU-DEM: Copernicus Land Monitoring Service, produced with funding by the European Union', url: 'https://www.opentopodata.org/datasets/eudem/' },
   { name: 'Open-Meteo', note: 'Weather data by Open-Meteo.com \u2014 model wind on the map, winds aloft, forecast wind (CC BY 4.0)', url: 'https://open-meteo.com/' },
 ]

@@ -47,7 +47,6 @@ import { formatObstacleName, formatLandmarkName, obstacleWaypointName, CURRENT_P
 import { chooseSnapTarget, sortSnapCandidates, snapHintText, neighbourAtDrop } from '@open-vfr/shared/snapChoice'
 
 import {
-  BASEMAP_STYLE_URL,
   SATELLITE_STYLE,
   createProtomapsStyle,
   activeCountry,
