@@ -133,11 +133,10 @@ npx eas-cli credentials       # generate/upload the release keystore (Android) a
 
 ## Store screenshots
 
-> **Before dispatching:** the edge challenges GitHub runner IPs (HTTP 403),
-> both in the `preflight` host check and for the app itself in the
-> emulator/simulator. Temporarily disable edge bot protection (maintainers:
-> see the private infra docs), tick the `bot_protection_disabled` input,
-> and re-enable it once the run finishes. Preflight fails fast if the box isn't ticked.
+> The runner must reach the production data hosts. If the edge ever
+> challenges GitHub runner IPs (HTTP 403 / `cf-mitigated`), the `preflight`
+> host check (`apps/native/.maestro/check-data-hosts.sh`) fails fast
+> instead of the run capturing error screens.
 
 
 `screenshots.yml` (manual `workflow_dispatch`) produces store-listing

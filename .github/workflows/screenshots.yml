@@ -12,11 +12,6 @@ name: Store screenshots
 # the same backend a store build would. Output: one `screenshots-*` artifact
 # per form factor. Nothing is uploaded to the stores.
 #
-# BEFORE DISPATCHING: temporarily disable edge bot protection (see the
-# private infra docs for the exact steps), and re-enable it after the run
-# finishes. The edge challenges GitHub runner IPs (HTTP 403), both for the
-# preflight and for the app running in the emulator/simulator.
-#
 # See .github/workflows/README.md#store-screenshots for secrets + sizes.
 
 on:
@@ -27,12 +22,6 @@ on:
         type: choice
         options: [all, ios, android]
         default: all
-      bot_protection_disabled:
-        description: >-
-          I temporarily disabled edge bot protection for this run and
-          will re-enable it afterwards
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -54,19 +43,6 @@ jobs:
       run:
         working-directory: apps/native
     steps:
-      - name: Remind about edge bot protection
-        # Runs before checkout, so the job's default apps/native dir doesn't exist yet.
-        working-directory: .
-        run: |
-          {
-            echo "### Edge bot protection"
-            echo "Must be **OFF** for this run, otherwise the runner gets HTTP 403."
-            echo "**Turn it back ON when this run finishes.**"
-          } >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ inputs.bot_protection_disabled }}" != "true" ]; then
-            echo "::error::Disable edge bot protection first, then re-run with 'bot_protection_disabled' ticked (re-enable it afterwards)."
-            exit 1
-          fi
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
