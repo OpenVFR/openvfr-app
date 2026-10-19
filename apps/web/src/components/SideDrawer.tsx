@@ -485,6 +485,7 @@ function SideDrawer({
                   selectedLogId={selectedLogId}
                   onSelect={onSelectLog}
                   onClear={onClearLog}
+                  importAircraft={selectedAircraftId ? { id: selectedAircraftId, registration: selectedAircraftProfile?.registration ?? '' } : undefined}
                 />
               </div>
             )}

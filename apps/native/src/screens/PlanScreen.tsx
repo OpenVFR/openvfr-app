@@ -238,7 +238,11 @@ export function PlanScreen() {
     try {
       const res = await DocumentPicker.getDocumentAsync({ type: ['application/gpx+xml', '*/*'], copyToCacheDirectory: true })
       if (res.canceled || !res.assets?.[0]) return
-      const doc = gpxToFlightLog(await new FileSystem.File(res.assets[0].uri).text(), Crypto.randomUUID())
+      const doc = {
+        ...gpxToFlightLog(await new FileSystem.File(res.assets[0].uri).text(), Crypto.randomUUID()),
+        // A GPX file carries no aircraft: attribute it to the selected profile.
+        ...(profile ? { aircraftId: profile.id, registration: profile.registration ?? '' } : {}),
+      }
       // Same start and end as an existing log = the same flight imported twice.
       if (logs.some(l => l.startedAt === doc.startedAt && l.endedAt === doc.endedAt)) {
         Alert.alert('Already imported', 'This flight is already in your logs.')

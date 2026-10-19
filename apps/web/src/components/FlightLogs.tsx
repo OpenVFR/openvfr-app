@@ -11,6 +11,8 @@ interface Props {
   selectedLogId: string | null
   onSelect: (id: string) => void
   onClear: () => void
+  /** Selected aircraft profile: imported logs are attributed to it (a GPX file carries no aircraft). */
+  importAircraft?: { id: string; registration: string }
 }
 
 function fmt(ms: number): string {
@@ -35,7 +37,7 @@ function landingsLabel(st: LogStats): string {
   return st.touchAndGos > 0 ? `${base} (${st.touchAndGos} T&G)` : base
 }
 
-export default function FlightLogs({ selectedLogId, onSelect, onClear }: Props) {
+export default function FlightLogs({ selectedLogId, onSelect, onClear, importAircraft }: Props) {
   const [logs, setLogs] = useState<{ doc: FlightLogDocType; stats: LogStats | null }[]>([])
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -66,7 +68,10 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear }: Props) 
     e.target.value = ''
     if (!file) return
     try {
-      const doc = gpxToFlightLog(await file.text(), crypto.randomUUID())
+      const doc = {
+        ...gpxToFlightLog(await file.text(), crypto.randomUUID()),
+        ...(importAircraft ? { aircraftId: importAircraft.id, registration: importAircraft.registration } : {}),
+      }
       const db = await getDb()
       // Same start and end as an existing log = the same flight imported twice.
       const dup = await db.flight_logs.findOne({ selector: { startedAt: doc.startedAt, endedAt: doc.endedAt } }).exec()
