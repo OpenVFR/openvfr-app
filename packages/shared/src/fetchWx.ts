@@ -18,6 +18,9 @@ export async function fetchWx(
   signal?: AbortSignal,
   headers?: Record<string, string>,
 ): Promise<WxResult> {
+  // The API only serves real 4-letter ICAO codes (400 otherwise). Some dataset aerodromes carry a longer
+  // pseudo-ICAO (e.g. ESTAGA); fail here instead of sending a request that is certain to 400.
+  if (!/^[A-Z]{4}$/.test(icao)) throw new Error(`Weather fetch failed: not an ICAO code (${icao})`)
   const url = `${baseUrl}/api/weather?icao=${encodeURIComponent(icao)}`
   // Retries transient network blips / 502-504 -- see fetchWithRetry.ts.
   const resp = await fetchWithRetry(url, { signal, headers })

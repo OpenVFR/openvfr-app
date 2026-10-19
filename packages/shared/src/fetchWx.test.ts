@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { fetchWxNearest, fetchWxResolved, decodeMetar } from './fetchWx'
+import { fetchWx, fetchWxNearest, fetchWxResolved, decodeMetar } from './fetchWx'
 
 function mockResponse(status: number, body: unknown): Response {
   return {
@@ -35,7 +35,8 @@ describe('fetchWxNearest', () => {
     expect(result.sourceIcao).toBe('ESMS')
     expect(result.distNm).toBe(12.3)
     expect(result.metar).toContain('ESMS')
-    expect(calls.length).toBe(2) // tried ESTAGA (400), then fell through to ESMS
+    expect(calls.length).toBe(1) // ESTAGA is rejected client-side (no request), then falls through to ESMS
+    expect(calls.some(u => u.includes('ESTAGA'))).toBe(false)
   })
 
   it('returns the requested ICAO\'s own data when it succeeds, without touching candidates', async () => {
@@ -127,5 +128,15 @@ describe('decodeMetar obsMs', () => {
     const ref = Date.UTC(2026, 8, 14, 8, 25) // 14 Sep 2026 08:25Z
     const decoded = decodeMetar('ESMS 140820Z 26008KT 9999 SCT012 14/13 Q1021', ref)
     expect(decoded.obsMs).toBe(Date.UTC(2026, 8, 14, 8, 20))
+  })
+})
+
+describe('fetchWx ICAO guard', () => {
+  it('rejects pseudo-ICAO codes without making a request', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchWx('ESTAGA')).rejects.toThrow(/not an ICAO/)
+    expect(fetchMock).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
   })
 })
