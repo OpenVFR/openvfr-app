@@ -5,7 +5,10 @@
 export type GpsPosition = {
   lat: number
   lng: number
-  /** Altitude AMSL in feet (GPS ellipsoidal altitude converted to ft; 0 when unavailable). */
+  /** Altitude AMSL in feet; 0 when unavailable. From GPS, it is already
+   *  corrected to mean sea level where the platform reports height above the
+   *  WGS-84 ellipsoid (Android, Android browsers: @open-vfr/shared/geoid) --
+   *  never feed a raw ellipsoidal value in here. */
   altFt: number
   /** Ground speed in knots. */
   speedKts: number

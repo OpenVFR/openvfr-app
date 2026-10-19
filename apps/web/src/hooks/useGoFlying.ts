@@ -11,6 +11,13 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition, FlyingMode } from '../utils/gpsTypes'
+import { ellipsoidToMslM, gpsAltitudeIsEllipsoidal } from '@open-vfr/shared/geoid'
+
+// The Geolocation API reports altitude above the WGS-84 ellipsoid; on Android
+// browsers that is Android's own value, 60-125 ft above sea level over the
+// Nordics. iOS Safari reports altitude above mean sea level. See
+// @open-vfr/shared/geoid.
+const ELLIPSOIDAL_ALTITUDE = typeof navigator !== 'undefined' && gpsAltitudeIsEllipsoidal({ userAgent: navigator.userAgent })
 import { bearingDeg, distanceNm, advancePosition } from '../utils/routeCalc'
 import type { RouteWaypoint } from '../utils/routeCalc'
 
@@ -135,7 +142,8 @@ export function useGoFlying(routeWaypoints: RouteWaypoint[]): UseGoFlyingReturn 
         setPosition({
           lat:      pos.coords.latitude,
           lng:      pos.coords.longitude,
-          altFt:    (pos.coords.altitude  ?? 0) * 3.28084,
+          altFt:    pos.coords.altitude == null ? 0
+            : (ELLIPSOIDAL_ALTITUDE ? ellipsoidToMslM(pos.coords.altitude, pos.coords.latitude, pos.coords.longitude) : pos.coords.altitude) * 3.28084,
           speedKts: (pos.coords.speed     ?? 0) * 1.94384,
           trackDeg: (pos.coords.heading   ?? 0) || 0,
           accuracy: pos.coords.accuracy,
