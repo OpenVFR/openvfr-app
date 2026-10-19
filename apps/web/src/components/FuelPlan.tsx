@@ -8,6 +8,8 @@ interface Props {
   waypoints:    RouteWaypoint[]
   legOverrides: LegOverride[]
   aircraft:     AircraftProfileDocType
+  /** Effective wind per leg (override > global > forecast). */
+  legWinds?:    ({ dirDeg: number; speedKts: number } | null)[]
 }
 
 function fmt(l: number): string {
@@ -22,11 +24,11 @@ function fmtTime(mins: number): string {
   return `${h}h ${m.toString().padStart(2, '0')}min`
 }
 
-export default function FuelPlan({ waypoints, legOverrides, aircraft }: Props) {
+export default function FuelPlan({ waypoints, legOverrides, aircraft, legWinds }: Props) {
   const plan = useMemo(
-    () => computeFuelPlan(waypoints, legOverrides, aircraft),
+    () => computeFuelPlan(waypoints, legOverrides, aircraft, legWinds),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [waypoints, legOverrides, aircraft],
+    [waypoints, legOverrides, aircraft, legWinds],
   )
 
   const hasSpeed = aircraft.cruiseIas > 0 ||

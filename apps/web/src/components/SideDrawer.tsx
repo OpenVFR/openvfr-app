@@ -25,6 +25,8 @@ import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
 import type { Theme, TrajectoryMode, AirspaceWarnLookahead, TerrainColoringSettings, TrafficVertFilter, ParkTimeoutOption } from '../db/useSettings'
 import type { DataManifest } from '../hooks/useDataManifest'
 import { scrollIntoContainer } from '../utils/scrollIntoContainer'
+import { useTakeoffTime, useGlobalWind } from '../db/useSettings'
+import { useRouteWinds } from '../hooks/useRouteWinds'
 import css from './SideDrawer.module.css'
 
 export type ActiveInfo =
@@ -240,6 +242,10 @@ function SideDrawer({
   // (AirspacePopup) -- two competing smooth scrolls would fight.
   const infoRef = useRef<HTMLDivElement>(null)
   const [infoFlash, setInfoFlash] = useState(false)
+  // Planning inputs + effective per-leg wind, shared by the route table, pre-flight check and fuel plan.
+  const [takeoffTime, setTakeoffTime] = useTakeoffTime()
+  const [globalWind, setGlobalWind] = useGlobalWind()
+  const routeWinds = useRouteWinds(waypoints, legOverrides, selectedAircraftProfile?.cruiseAltFt || undefined, selectedAircraftProfile?.cruiseIas || undefined, takeoffTime, globalWind)
   useEffect(() => {
     if (!activeInfo) return
     setOpen(true)
@@ -398,6 +404,11 @@ function SideDrawer({
                     onSetWaypointNote={onSetWaypointNote}
                     defaultAltFt={selectedAircraftProfile?.cruiseAltFt || undefined}
                     defaultSpeedKts={selectedAircraftProfile?.cruiseIas || undefined}
+                    takeoffTime={takeoffTime}
+                    setTakeoffTime={setTakeoffTime}
+                    globalWind={globalWind}
+                    setGlobalWind={setGlobalWind}
+                    routeWinds={routeWinds}
                   />
               </div>
             )}
@@ -427,6 +438,7 @@ function SideDrawer({
                     legOverrides={legOverrides}
                     aircraft={selectedAircraftProfile}
                     aircraftId={selectedAircraftId}
+                    legWinds={routeWinds.effective}
                   />
                 </div>
               )}
@@ -446,6 +458,7 @@ function SideDrawer({
                     waypoints={waypoints}
                     legOverrides={legOverrides}
                     aircraft={selectedAircraftProfile}
+                    legWinds={routeWinds.effective}
                   />
                 </div>
               )}

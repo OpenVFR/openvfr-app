@@ -107,6 +107,7 @@ function computeWarnings(
   legOverrides: LegOverride[],
   aircraftId?: string,
   terrainFailed = false,
+  legWinds?: ({ dirDeg: number; speedKts: number } | null)[],
 ): PreflightWarning[] {
   const warnings: PreflightWarning[] = []
 
@@ -182,7 +183,7 @@ function computeWarnings(
 
   // ── 3. Fuel ─────────────────────────────────────────────────────────────
   if (aircraft && waypoints.length >= 2) {
-    const plan = computeFuelPlan(waypoints, legOverrides, aircraft)
+    const plan = computeFuelPlan(waypoints, legOverrides, aircraft, legWinds)
     if (plan.availableFuelL > 0) {
       if (plan.totalMinFuelL > plan.availableFuelL) {
         warnings.push({
@@ -216,9 +217,11 @@ interface Props {
   /** aircraft_profile id stored on the current route, if any — used only to
    *  detect the orphaned-reference case (id set, but `aircraft` undefined). */
   aircraftId?:  string
+  /** Effective wind per leg (override > global > forecast), for the fuel check. */
+  legWinds?:    ({ dirDeg: number; speedKts: number } | null)[]
 }
 
-export default function PreflightWarnings({ waypoints, legOverrides, aircraft, aircraftId }: Props) {
+export default function PreflightWarnings({ waypoints, legOverrides, aircraft, aircraftId, legWinds }: Props) {
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(_airspaceGeo)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(_obstacleGeo)
   const [msaPts,      setMsaPts]      = useState<MsaPoint[]>([])
@@ -283,8 +286,8 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
 
   const warnings = useMemo<PreflightWarning[]>(() => {
     if (!profile) return []
-    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed)
-  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed])
+    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds)
+  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds])
 
   const loading = !terrainDone && waypoints.length >= 2
 

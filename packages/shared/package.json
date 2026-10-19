@@ -14,6 +14,7 @@
     "./airspaceAltitude": "./src/airspaceAltitude.ts",
     "./lookahead": "./src/lookahead.ts",
     "./airspeed": "./src/airspeed.ts",
+    "./windForecast": "./src/windForecast.ts",
     "./subAreas": "./src/subAreas.ts",
     "./autoFlyDetect": "./src/autoFlyDetect.ts",
     "./flightLogStats": "./src/flightLogStats.ts",

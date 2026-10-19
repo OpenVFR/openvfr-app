@@ -4,8 +4,9 @@ import type { LegOverride } from '../db/index'
 import { routeToGpx, gpxToRoute } from '@open-vfr/shared/gpx'
 import { iasToTas } from '@open-vfr/shared/airspeed'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel, ktsToDisplay, displayToKts, speedLabel } from '../utils/units'
-import { useTakeoffTime, useAlternate, useGlobalWind } from '../db/useSettings'
+import { useAlternate, type GlobalWind } from '../db/useSettings'
 import LegPropsPanel from './LegPropsPanel'
+import type { RouteWinds } from '../hooks/useRouteWinds'
 import FindFeature from './FindFeature'
 import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
 import css from './RoutePlan.module.css'
@@ -185,9 +186,15 @@ interface Props {
   /** Cruise IAS (kt) of the selected aircraft: speed for legs without their own override. */
   defaultSpeedKts?: number
   onSetWaypointNote: (wpIdx: number, note: string) => void
+  /** Planned departure + manual wind + effective per-leg winds; owned by SideDrawer so fuel plan / pre-flight share them. */
+  takeoffTime: Date | null
+  setTakeoffTime: (d: Date | null) => void
+  globalWind: GlobalWind | null
+  setGlobalWind: (w: GlobalWind | null) => void
+  routeWinds: RouteWinds
 }
 
-export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, routeVisible, onToggleRouteVisible, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onAddToRoute, onSetLegOverride, onSetWaypointNote, defaultAltFt, defaultSpeedKts }: Props) {
+export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, routeVisible, onToggleRouteVisible, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onAddToRoute, onSetLegOverride, onSetWaypointNote, defaultAltFt, defaultSpeedKts, takeoffTime, setTakeoffTime, globalWind, setGlobalWind, routeWinds }: Props) {
   const [kbInput, setKbInput] = useState('')
   const [kbError, setKbError] = useState('')
   const [kbLoading, setKbLoading] = useState(false)
@@ -200,9 +207,7 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
   const menuRef      = useRef<HTMLDivElement>(null)
   const kbRef        = useRef<HTMLInputElement>(null)
   const gpxInputRef  = useRef<HTMLInputElement>(null)
-  const [takeoffTime, setTakeoffTime] = useTakeoffTime()
   const [alternate, setAlternate] = useAlternate()
-  const [globalWind, setGlobalWind] = useGlobalWind()
   // Local string inputs for WND row (display-unit)
   const [wndDir, setWndDir] = useState(globalWind ? String(globalWind.dirDeg) : '')
   const [wndSpd, setWndSpd] = useState(globalWind ? String(Math.round(ktsToDisplay(globalWind.speedKts, units.speed))) : '')
@@ -271,14 +276,18 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
     legs.push({ fromName: from.name ?? `WP${i + 1}`, toName: to.name ?? `WP${i + 2}`, brg, magBrg, dist, midLat, midLng })
   }
 
-  // Compute per-leg ETE + WCA from override speed + wind (or global wind fallback).
+  const forecastWinds = routeWinds.forecast
+  const { loading: forecastLoading, error: forecastError, refresh: refreshForecast } = routeWinds
+
+  // Compute per-leg ETE + WCA from override speed + wind (leg override → global wind → forecast).
   const legResults: { ete: number | undefined; wcaDeg: number | undefined; tas?: number; gs?: number }[] = legs.map((leg, i) => {
     const ovr: LegOverride = legOverrides[i] ?? {}
     const iasKts = ovr.speedKts ?? defaultSpeedKts
     if (!iasKts || iasKts <= 0) return { ete: undefined, wcaDeg: undefined }
     // Effective wind: per-leg override takes precedence over global wind.
-    const effDir = ovr.windDir  ?? globalWind?.dirDeg
-    const effSpd = ovr.windSpd  ?? globalWind?.speedKts
+    const fw = forecastWinds[i]
+    const effDir = ovr.windDir  ?? globalWind?.dirDeg ?? fw?.dirDeg
+    const effSpd = ovr.windSpd  ?? globalWind?.speedKts ?? fw?.speedKts
     // Leg speed is indicated; time and wind correction use TAS at the leg altitude.
     const tas = iasToTas(iasKts, ovr.altFt ?? defaultAltFt ?? 3500)
     let gs = tas
@@ -444,7 +453,7 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
       </div>
       {/* ── Global Wind ──────────────────────────────────────────────── */}
       <div className={css.depRow}>
-        <span className={css.depLabel} title="Global wind — applied to all legs unless overridden per-leg">WND</span>
+        <span className={css.depLabel} title="Wind. Blank = forecast for takeoff time per leg. Enter a value to use one manual wind for all legs (per-leg wind still overrides)">WND</span>
         <input
           className={css.wndInput}
           type="number"
@@ -468,8 +477,16 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
           onBlur={commitWind}
           onKeyDown={e => { if (e.key === 'Enter') { commitWind(); e.currentTarget.blur() } }}
         />
+        {!globalWind && (
+          <>
+            <span className={css.depLabel} title={forecastError ? 'Forecast unavailable (offline or beyond 16 days)' : 'Forecast wind per leg for the DEP time'}>
+              {forecastLoading ? 'FCST …' : forecastError ? 'no FCST' : 'FCST'}
+            </span>
+            <button className={css.depClear} title="Update wind forecast now" onClick={refreshForecast}>↻</button>
+          </>
+        )}
         {globalWind && (
-          <button className={css.depClear} title="Clear global wind" onClick={() => { setWndDir(''); setWndSpd(''); setGlobalWind(null) }}>✕</button>
+          <button className={css.depClear} title="Clear manual wind (use forecast)" onClick={() => { setWndDir(''); setWndSpd(''); setGlobalWind(null) }}>✕</button>
         )}
       </div>
       {legs.length === 0 ? (
@@ -607,13 +624,13 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
           distNm={legs[activeLeg].dist}
           trueBrg={legs[activeLeg].brg}
           magBrg={legs[activeLeg].magBrg}
-          midLat={legs[activeLeg].midLat}
-          midLng={legs[activeLeg].midLng}
           override={legOverrides[activeLeg] ?? {}}
           units={units}
           defaultAltFt={defaultAltFt}
           defaultSpeedKts={defaultSpeedKts}
           globalWind={globalWind}
+          forecastWind={forecastWinds[activeLeg] ?? null}
+          forecastLoading={forecastLoading}
           wpNote={waypoints[activeLeg + 1]?.note ?? ''}
           onSaveNote={(destWpIdx, note) => onSetWaypointNote(destWpIdx, note)}
           onSave={(idx, ovr) => {

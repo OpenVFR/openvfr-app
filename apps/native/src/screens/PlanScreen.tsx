@@ -79,8 +79,7 @@ function gsKts(trackDeg: number, windDir: number, windSpd: number, tas: number):
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { routeToGpx, gpxToRoute, waypointsToGpx, gpxToWaypoints, flightLogToGpx, gpxToFlightLog } from '@open-vfr/shared/gpx'
 import { iasToTas } from '@open-vfr/shared/airspeed'
-import { fetchWind } from '@open-vfr/shared/fetchWind'
-import { API_BASE } from '../config'
+import { useLegForecastWind, type LegWindQuery } from '../hooks/useLegForecastWind'
 import * as FileSystem from 'expo-file-system'
 import * as Sharing from 'expo-sharing'
 import * as DocumentPicker from 'expo-document-picker'
@@ -333,34 +332,24 @@ export function PlanScreen() {
   const [ovrSpd, setOvrSpd]   = useState('')
   const [ovrWDir, setOvrWDir] = useState('')
   const [ovrWSpd, setOvrWSpd] = useState('')
+  // 'auto' = no leg wind override (global wind, else forecast); 'manual' = saved leg override.
+  const [ovrWindMode, setOvrWindMode] = useState<'auto' | 'manual'>('auto')
   function openLegProps(i: number) {
     const o = legOverrides[i] ?? {}
     setOvrAlt(o.altFt != null ? String(o.altFt) : '')
     setOvrSpd(o.speedKts != null ? String(Math.round(ktsToDisplay(o.speedKts, units.speed))) : '')
     setOvrWDir(o.windDir != null ? String(o.windDir) : '')
     setOvrWSpd(o.windSpd != null ? String(Math.round(ktsToDisplay(o.windSpd, units.speed))) : '')
-    const opening = i !== activeLeg
-    setActiveLeg(opening ? i : null)
-    // Pre-fill the forecast wind (when neither the leg nor a session wind has one),
-    // like the web leg panel. Offline: stays blank.
-    const needWind = o.windDir == null && o.windSpd == null && !wind
-    if (opening && needWind && waypoints[i] && waypoints[i + 1]) {
-      const midLat = (waypoints[i].lat + waypoints[i + 1].lat) / 2
-      const midLng = (waypoints[i].lng + waypoints[i + 1].lng) / 2
-      fetchWind(midLat, midLng, o.altFt ?? profile?.cruiseAltFt ?? null, API_BASE)
-        .then(w => {
-          setOvrWDir(String(w.dirDeg))
-          setOvrWSpd(String(Math.round(ktsToDisplay(w.speedKts, units.speed))))
-        })
-        .catch(() => {})
-    }
+    setOvrWindMode(o.windDir != null || o.windSpd != null ? 'manual' : 'auto')
+    setActiveLeg(i !== activeLeg ? i : null)
   }
   function saveLegProps(i: number) {
     const next: LegOverride = {}
     const alt = parseFloat(ovrAlt); if (!isNaN(alt)) next.altFt = alt
     const spd = parseFloat(ovrSpd); if (!isNaN(spd)) next.speedKts = displayToKts(spd, units.speed)
-    const wd  = parseFloat(ovrWDir); if (!isNaN(wd)) next.windDir = ((Math.round(wd) % 360) + 360) % 360
-    const ws  = parseFloat(ovrWSpd); if (!isNaN(ws)) next.windSpd = displayToKts(ws, units.speed)
+    // Auto wind (forecast/global) is never frozen into the leg — only a manual entry is saved.
+    const wd  = ovrWindMode === 'manual' ? parseFloat(ovrWDir) : NaN; if (!isNaN(wd)) next.windDir = ((Math.round(wd) % 360) + 360) % 360
+    const ws  = ovrWindMode === 'manual' ? parseFloat(ovrWSpd) : NaN; if (!isNaN(ws)) next.windSpd = displayToKts(ws, units.speed)
     setLegOverride(i, next)
     setActiveLeg(null)
   }
@@ -368,6 +357,35 @@ export function PlanScreen() {
   // Cruise IAS — from profile or fallback to 90 kts. Converted to TAS at each leg's altitude below.
   const cruiseIas = profile?.cruiseIas ?? 90
   const cruiseAltFt = profile?.cruiseAltFt || 3500
+
+  // Forecast wind per leg (SkyDemon-style): leg midpoint, altitude and expected time
+  // (takeoff time, or now when unset, plus still-air time flown so far). Per-leg manual
+  // wind and the global wind take precedence over it.
+  const legWindQueries = useMemo<LegWindQuery[]>(() => {
+    const startMs = (takeoffTime ?? new Date()).getTime()
+    let cumMin = 0
+    return waypoints.slice(0, -1).map((from, i) => {
+      const to  = waypoints[i + 1]
+      const ovr = legOverrides[i]
+      const alt = ovr?.altFt ?? cruiseAltFt
+      const tas = iasToTas(ovr?.speedKts ?? cruiseIas, alt)
+      const legMin = tas > 0 ? (distanceNm(from, to) / tas) * 60 : 0
+      const q = { lat: (from.lat + to.lat) / 2, lng: (from.lng + to.lng) / 2, altFt: alt, at: new Date(startMs + (cumMin + legMin / 2) * 60_000) }
+      cumMin += legMin
+      return q
+    })
+  }, [waypoints, legOverrides, cruiseIas, cruiseAltFt, takeoffTime])
+  const { winds: forecastWinds, loading: forecastLoading, error: forecastError, refresh: refreshForecast } =
+    useLegForecastWind(legWindQueries, !wind)
+
+  // Keep the wind fields on the auto wind (global / forecast) until the pilot types an override.
+  const activeAutoWind = activeLeg != null ? (wind ? { dirDeg: wind.dirDeg, speedKts: wind.speedKts } : forecastWinds[activeLeg] ?? null) : null
+  useEffect(() => {
+    if (activeLeg == null || ovrWindMode !== 'auto') return
+    setOvrWDir(activeAutoWind ? String(Math.round(activeAutoWind.dirDeg)) : '')
+    setOvrWSpd(activeAutoWind ? String(Math.round(ktsToDisplay(activeAutoWind.speedKts, units.speed))) : '')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeLeg, ovrWindMode, activeAutoWind?.dirDeg, activeAutoWind?.speedKts, units.speed])
 
   // Per-leg summaries — per-leg override (altitude/speed/wind) takes precedence
   // over global wind/cruise TAS, mirroring web's RoutePlan legResults calc.
@@ -379,15 +397,16 @@ export function PlanScreen() {
       const trueHdg = bearingDeg(from, to)
       const magHdg  = magneticBearingDeg(from, to)
       const tas     = iasToTas(ovr?.speedKts ?? cruiseIas, ovr?.altFt ?? cruiseAltFt)
-      const effDir  = ovr?.windDir  ?? wind?.dirDeg
-      const effSpd  = ovr?.windSpd  ?? wind?.speedKts
+      const fw      = forecastWinds[i]
+      const effDir  = ovr?.windDir  ?? wind?.dirDeg ?? fw?.dirDeg
+      const effSpd  = ovr?.windSpd  ?? wind?.speedKts ?? fw?.speedKts
       const hasWind = effDir != null && effSpd != null && effSpd > 0
       const wca     = hasWind ? wcaDeg(trueHdg, effDir!, effSpd!, tas) : 0
       const gs      = hasWind ? gsKts(trueHdg, effDir!, effSpd!, tas) : tas
       const eteMins = gs > 0 ? (distNm / gs) * 60 : null
       return { from, to, distNm, magHdg, wca, gs, tas, eteMins, index: i, altFt: ovr?.altFt }
     })
-  }, [waypoints, wind, cruiseIas, cruiseAltFt, legOverrides])
+  }, [waypoints, wind, forecastWinds, cruiseIas, cruiseAltFt, legOverrides])
 
   const totalNm   = legs.reduce((s, l) => s + l.distNm, 0)
   const totalMins = legs.reduce((s, l) => s + (l.eteMins ?? 0), 0)
@@ -405,8 +424,10 @@ export function PlanScreen() {
   // Fuel plan
   const fuelPlan = useMemo(() => {
     if (!profile || waypoints.length < 2) return null
-    return computeFuelPlan(waypoints, legOverrides, profile)
-  }, [profile, waypoints, legOverrides])
+    // Legs without a manual wind use the global wind, else the forecast (same as the leg table above).
+    const legWinds = forecastWinds.map(fw => (wind ? { dirDeg: wind.dirDeg, speedKts: wind.speedKts } : fw))
+    return computeFuelPlan(waypoints, legOverrides, profile, legWinds)
+  }, [profile, waypoints, legOverrides, wind, forecastWinds])
 
   // ── Actions ──────────────────────────────────────────────────────────────
   const handleRemove = (index: number) => removeWaypoint(index)
@@ -625,6 +646,11 @@ export function PlanScreen() {
                   keyboardType="numeric"
                   maxLength={3}
                 />
+                {!wind && (
+                  <TouchableOpacity onPress={refreshForecast}>
+                    <Text style={styles.clearBtn}>{forecastLoading ? 'FCST …' : forecastError ? 'no FCST ↻' : 'FCST ↻'}</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
 
@@ -745,8 +771,18 @@ export function PlanScreen() {
                     <TextInput style={styles.numberInput} value={ovrSpd} onChangeText={setOvrSpd} placeholder={`IAS ${speedLabel(units.speed)}`} placeholderTextColor={theme.textFaint} keyboardType="numeric" />
                   </View>
                   <View style={styles.windInputs}>
-                    <TextInput style={styles.numberInput} value={ovrWDir} onChangeText={setOvrWDir} placeholder="Wind Dir°" placeholderTextColor={theme.textFaint} keyboardType="numeric" />
-                    <TextInput style={styles.numberInput} value={ovrWSpd} onChangeText={setOvrWSpd} placeholder={`Wind ${speedLabel(units.speed)}`} placeholderTextColor={theme.textFaint} keyboardType="numeric" />
+                    <TextInput style={styles.numberInput} value={ovrWDir} onChangeText={(t) => { setOvrWindMode('manual'); setOvrWDir(t) }} placeholder="Wind Dir°" placeholderTextColor={theme.textFaint} keyboardType="numeric" />
+                    <TextInput style={styles.numberInput} value={ovrWSpd} onChangeText={(t) => { setOvrWindMode('manual'); setOvrWSpd(t) }} placeholder={`Wind ${speedLabel(units.speed)}`} placeholderTextColor={theme.textFaint} keyboardType="numeric" />
+                  </View>
+                  <View style={styles.saveRowActions}>
+                    <Text style={styles.inputLabel}>
+                      {ovrWindMode === 'manual' ? 'Wind: manual' : wind ? 'Wind: global' : forecastWinds[index] ? 'Wind: forecast' : forecastLoading ? 'Wind: loading…' : 'Wind: no forecast'}
+                    </Text>
+                    {ovrWindMode === 'manual' && (
+                      <TouchableOpacity onPress={() => setOvrWindMode('auto')}>
+                        <Text style={styles.clearBtn}>Reset to {wind ? 'global' : 'forecast'}</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                   <View style={styles.saveRowActions}>
                     <TouchableOpacity style={styles.saveConfirm} onPress={() => saveLegProps(index)}>

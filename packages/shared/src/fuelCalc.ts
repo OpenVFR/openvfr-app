@@ -128,6 +128,8 @@ export function computeFuelPlan(
   waypoints:    RouteWaypoint[],
   legOverrides: LegOverride[],
   profile:      AircraftProfileDocType,
+  /** Effective wind per leg (override > global > forecast). Used for legs whose override has no wind. */
+  legWinds?:    ({ dirDeg: number; speedKts: number } | null | undefined)[],
 ): FuelPlan {
   if (waypoints.length < 2) {
     return {
@@ -194,12 +196,14 @@ export function computeFuelPlan(
 
     // Ground speed with wind correction (identical to RoutePlan.tsx ETE logic).
     let gs = ias
-    if (ovr.windDir != null && ovr.windSpd != null && ovr.windSpd > 0) {
+    const wDirDeg = ovr.windDir ?? legWinds?.[i]?.dirDeg
+    const wSpdKts = ovr.windSpd ?? legWinds?.[i]?.speedKts
+    if (wDirDeg != null && wSpdKts != null && wSpdKts > 0) {
       const brg  = bearingDeg(from, to)
-      const wRad = (ovr.windDir * Math.PI) / 180
+      const wRad = (wDirDeg * Math.PI) / 180
       const bRad = (brg         * Math.PI) / 180
-      const hw   = ovr.windSpd * Math.cos(wRad - bRad)
-      const xw   = ovr.windSpd * Math.sin(wRad - bRad)
+      const hw   = wSpdKts * Math.cos(wRad - bRad)
+      const xw   = wSpdKts * Math.sin(wRad - bRad)
       const wca  = Math.asin(Math.max(-1, Math.min(1, xw / Math.max(ias, 1))))
       gs = ias * Math.cos(wca) - hw
     }

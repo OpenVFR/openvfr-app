@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { LegOverride } from '../db/index'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel, ktsToDisplay, displayToKts, speedLabel } from '../utils/units'
-import { fetchWind } from '@open-vfr/shared/fetchWind'
+import type { WindAloft } from '@open-vfr/shared/fetchWind'
 import type { GlobalWind } from '../db/useSettings'
 import css from './LegPropsPanel.module.css'
 import { iasToTas } from '@open-vfr/shared/airspeed'
@@ -13,17 +13,17 @@ interface Props {
   distNm:   number
   trueBrg:  number
   magBrg:   number
-  /** Leg midpoint coordinates — used to fetch winds-aloft. */
-  midLat:   number
-  midLng:   number
   override: LegOverride
   units?:   Units
   /** Altitude (ft) assumed when the leg has none: the aircraft's cruise altitude (IAS→TAS conversion). */
   defaultAltFt?: number
   /** Cruise IAS (kt) of the selected aircraft, used when the leg has no speed of its own. */
   defaultSpeedKts?: number
-  /** Session-wide wind fallback — used when the leg has no saved wind and skips API fetch. */
+  /** Session-wide manual wind — used when the leg has no override of its own. */
   globalWind?: GlobalWind | null
+  /** Forecast wind for this leg (takeoff time + position + altitude); null when unavailable. */
+  forecastWind?: WindAloft | null
+  forecastLoading?: boolean
   /** Current note on the destination waypoint (legIndex + 1). */
   wpNote?: string
   /** Called when the pilot saves or clears the destination waypoint note. */
@@ -40,7 +40,7 @@ function parseField(val: string): number | undefined {
 
 export default function LegPropsPanel({
   legIndex, fromName, toName, distNm, trueBrg, magBrg,
-  midLat, midLng, override, units = DEFAULT_UNITS, defaultAltFt, defaultSpeedKts, globalWind, wpNote, onSaveNote, onSave, onClose,
+  override, units = DEFAULT_UNITS, defaultAltFt, defaultSpeedKts, globalWind, forecastWind, forecastLoading, wpNote, onSaveNote, onSave, onClose,
 }: Props) {
   const [altFt,    setAltFt]    = useState(override.altFt    != null ? String(override.altFt)    : '')
   // Speed field is stored in kts internally; display in selected speed unit.
@@ -52,7 +52,10 @@ export default function LegPropsPanel({
     override.windSpd != null ? String(Math.round(ktsToDisplay(override.windSpd, units.speed))) : ''
   )
   const [note, setNote] = useState(wpNote ?? '')
-  const [windLoading, setWindLoading] = useState(false)
+  // 'auto' = no per-leg wind override (global wind, else forecast); 'manual' = saved leg override.
+  const [windMode, setWindMode] = useState<'auto' | 'manual'>(override.windDir != null || override.windSpd != null ? 'manual' : 'auto')
+  const windLoading = !!forecastLoading && windMode === 'auto' && !globalWind
+  const autoWind = globalWind ? { dirDeg: globalWind.dirDeg, speedKts: globalWind.speedKts } : forecastWind ?? null
 
   // Re-populate if the panel is re-used for a different leg.
   // Intentionally omits `override` from deps — it's used only for initialisation.
@@ -61,39 +64,24 @@ export default function LegPropsPanel({
   useEffect(() => {
     setAltFt   (override.altFt    != null ? String(override.altFt)    : '')
     setSpeedKts(override.speedKts != null ? String(Math.round(ktsToDisplay(override.speedKts, units.speed))) : '')
-    // Wind: per-leg override → globalWind fallback → blank (API fetch will fill)
-    const effDir = override.windDir  ?? globalWind?.dirDeg
-    const effSpd = override.windSpd  ?? globalWind?.speedKts
+    // Wind: per-leg override → global wind → forecast (filled by the effect below once it arrives)
+    const manual = override.windDir != null || override.windSpd != null
+    setWindMode(manual ? 'manual' : 'auto')
+    const effDir = override.windDir  ?? autoWind?.dirDeg
+    const effSpd = override.windSpd  ?? autoWind?.speedKts
     setWindDir (effDir != null ? String(Math.round(effDir))                               : '')
     setWindSpd (effSpd != null ? String(Math.round(ktsToDisplay(effSpd, units.speed)))    : '')
     setNote(wpNote ?? '')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [legIndex, units.speed])
 
-  // Auto-fetch winds-aloft when the panel opens for a leg with no saved wind
-  // AND no global wind is set. If globalWind is provided, it was already pre-filled
-  // above and no API call is needed.
+  // Keep the fields in sync with the auto wind (forecast / global) until the pilot overrides it.
   useEffect(() => {
-    if (override.windDir != null || override.windSpd != null) return  // already has saved wind
-    if (globalWind) return  // global wind pre-filled above — skip API fetch
-    const controller = new AbortController()
-    setWindLoading(true)
-    const altNum = parseField(altFt) ?? override.altFt ?? defaultAltFt ?? null
-    fetchWind(midLat, midLng, altNum, '', controller.signal)
-      .then((w) => {
-        setWindDir(String(w.dirDeg))
-        setWindSpd(String(Math.round(ktsToDisplay(w.speedKts, units.speed))))
-      })
-      .catch((err: unknown) => {
-        // AbortError is expected on cleanup — suppress it silently.
-        if ((err as { name?: string }).name !== 'AbortError') {
-          console.warn('Wind fetch failed:', err)
-        }
-      })
-      .finally(() => setWindLoading(false))
-    return () => controller.abort()
+    if (windMode !== 'auto') return
+    setWindDir(autoWind ? String(Math.round(autoWind.dirDeg)) : '')
+    setWindSpd(autoWind ? String(Math.round(ktsToDisplay(autoWind.speedKts, units.speed))) : '')
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [legIndex, midLat, midLng])
+  }, [windMode, autoWind?.dirDeg, autoWind?.speedKts, units.speed])
 
   // Derived ground-speed + ETE when enough data is present.
   // speedKts field contains display-unit value; convert back to kts for calculations.
@@ -129,8 +117,9 @@ export default function LegPropsPanel({
     onSave(legIndex, {
       altFt:    parseField(altFt),
       speedKts: rawSpeed != null ? displayToKts(rawSpeed, units.speed) : undefined,
-      windDir:  parseField(windDir),
-      windSpd:  rawWind  != null ? displayToKts(rawWind,  units.speed) : undefined,
+      // Auto wind (forecast/global) is never frozen into the leg — only a manual entry is saved.
+      windDir:  windMode === 'manual' ? parseField(windDir) : undefined,
+      windSpd:  windMode === 'manual' && rawWind != null ? displayToKts(rawWind, units.speed) : undefined,
     })
     onSaveNote?.(legIndex + 1, note.trim())
     onClose()
@@ -197,8 +186,7 @@ export default function LegPropsPanel({
             step={1}
             placeholder="e.g. 270"
             value={windDir}
-            disabled={windLoading}
-            onChange={e => setWindDir(e.target.value)}
+            onChange={e => { setWindMode('manual'); setWindDir(e.target.value) }}
           />
         </label>
 
@@ -212,10 +200,20 @@ export default function LegPropsPanel({
             step={1}
             placeholder={units.speed === 'kmh' ? 'e.g. 28' : 'e.g. 15'}
             value={windSpd}
-            disabled={windLoading}
-            onChange={e => setWindSpd(e.target.value)}
+            onChange={e => { setWindMode('manual'); setWindSpd(e.target.value) }}
           />
         </label>
+      </div>
+      <div className={css.derived}>
+        <span>
+          <span className={css.infoLabel}>Wind</span>{' '}
+          {windMode === 'manual' ? 'manual' : globalWind ? 'global (manual)' : forecastWind ? 'forecast' : windLoading ? 'loading…' : 'no forecast'}
+        </span>
+        {windMode === 'manual' && (
+          <button type="button" onClick={() => setWindMode('auto')} title="Drop the manual wind and use global/forecast wind">
+            Reset to {globalWind ? 'global' : 'forecast'}
+          </button>
+        )}
       </div>
 
       {/* Derived TAS + GS + ETE */}

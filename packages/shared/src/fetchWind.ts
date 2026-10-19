@@ -46,10 +46,10 @@ export interface WindAloft {
 }
 
 /** Below this AMSL altitude (ft), use the surface (10 m) observation instead of a pressure level. */
-const SURFACE_THRESHOLD_FT = 1000
+export const SURFACE_THRESHOLD_FT = 1000
 
 /** Map altitude (ft) to the nearest STANDARD Open-Meteo pressure level (hPa). */
-function pressureLevelFor(altFt: number): number {
+export function pressureLevelFor(altFt: number): number {
   if (altFt <= 2000)  return 1000
   if (altFt <= 4500)  return 925
   if (altFt <= 7500)  return 850

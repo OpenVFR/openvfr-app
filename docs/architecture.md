@@ -484,6 +484,16 @@ Pilots should never lose track of which NOTAMs they've reviewed:
 
 Each route leg must show the WCA alongside the magnetic heading (e.g. `093°M / WCA +3°`). This is the heading the pilot actually flies — not the track. Computed from `(wind vector × TAS) → ground vector` using the standard wind triangle. When global wind is zero, WCA = 0 and can be omitted from display.
 
+#### Wind source per leg
+
+Wind is a function of (time, position, level), modelled on SkyDemon's `GetWind`, and is never frozen into a leg. Effective wind per leg, in priority order:
+
+1. **Manual leg wind** (`LegOverride.windDir/windSpd`, set in the leg panel). Only wind the pilot actually typed is saved; "Reset to forecast" drops it.
+2. **Manual global wind** (WND row, applies to all legs). While set, the forecast is not fetched.
+3. **Forecast wind** (`packages/shared/src/windForecast.ts`): Open-Meteo hourly series at the leg midpoint, leg altitude (10 m surface at or below 1000 ft, else the standard pressure level) and expected time = takeoff time (or now if unset) + still-air time flown so far, linearly interpolated between hours as u/v vectors. Horizon is now-1 day to +16 days; outside it, or offline, there is no forecast wind (still air).
+
+`useRouteWinds` (web, owned by `SideDrawer`) and `PlanScreen` (native) compute the effective wind once per route/altitude/speed/takeoff-time change (debounced). The route table, `computeFuelPlan(..., legWinds)` and the pre-flight fuel check all use the same values, so ETE and fuel agree. The FCST button clears the 30-min cache and re-fetches.
+
 ### Sunrise / Sunset Awareness
 
 Displayed in the aerodrome popup for destination/alternate aerodromes. Use an astronomical formula (no external API) — e.g. the `suncalc` npm package (BSD-2). Highlight ETAs within ±30 min of civil sunset in amber: European VFR at night requires either a night rating or the flight to end before sunset + 30 min.

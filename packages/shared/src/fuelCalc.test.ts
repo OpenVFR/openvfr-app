@@ -48,4 +48,23 @@ describe('computeFuelPlan', () => {
     expect(f.diversionMin).toBe(45)
     expect(f.diversionFuelL).toBeCloseTo((45 / 60) * 25, 6)
   })
+
+  describe('leg winds (override > global > forecast)', () => {
+    const noClimb = { rocSlFpm: 0, descentFpm: 0 }
+    const run = (ovr: object[], winds?: ({ dirDeg: number; speedKts: number } | null)[]) =>
+      computeFuelPlan(route, ovr as never, { ...base, ...noClimb }, winds)
+    it('a headwind from legWinds lengthens enroute time', () => {
+      expect(run([], [{ dirDeg: 90, speedKts: 20 }]).enrouteMins).toBeGreaterThan(run([]).enrouteMins)   // track is due east: wind from 090 = headwind
+    })
+    it('a tailwind from legWinds shortens enroute time', () => {
+      expect(run([], [{ dirDeg: 270, speedKts: 20 }]).enrouteMins).toBeLessThan(run([]).enrouteMins)
+    })
+    it('a manual leg wind beats legWinds', () => {
+      const manual = run([{ windDir: 270, windSpd: 20 }], [{ dirDeg: 90, speedKts: 20 }])
+      expect(manual.enrouteMins).toBeCloseTo(run([{ windDir: 270, windSpd: 20 }]).enrouteMins, 6)
+    })
+    it('null legWinds entry means still air', () => {
+      expect(run([], [null]).enrouteMins).toBeCloseTo(run([]).enrouteMins, 6)
+    })
+  })
 })
