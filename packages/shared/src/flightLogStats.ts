@@ -139,3 +139,76 @@ export function formatLogDuration(ms: number): string {
   const m = mins % 60
   return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`
 }
+
+export interface LogMapPoint extends LogTrackPoint {
+  lat: number
+  lng: number
+}
+
+type LineFeature = {
+  type: 'Feature'
+  geometry: { type: 'LineString'; coordinates: [number, number][] }
+  properties: { kind: 'track' | 'gap' }
+}
+
+/**
+ * Map geometry for a viewed log: one solid `track` LineString per continuous
+ * stretch, and a `gap` LineString bridging each recording gap (hole longer than
+ * GAP_MIN_MS), so a GPS dropout is drawn dashed instead of as a believable line.
+ */
+export function trackToGeoJson(track: LogMapPoint[]): { type: 'FeatureCollection'; features: LineFeature[] } {
+  const features: LineFeature[] = []
+  let cur: [number, number][] = []
+  const flush = () => {
+    if (cur.length > 1) features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: cur }, properties: { kind: 'track' } })
+    cur = []
+  }
+  for (let i = 0; i < track.length; i++) {
+    const p = track[i]
+    if (i > 0 && p.ts - track[i - 1].ts > GAP_MIN_MS) {
+      const a = track[i - 1]
+      flush()
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: [[a.lng, a.lat], [p.lng, p.lat]] },
+        properties: { kind: 'gap' },
+      })
+    }
+    cur.push([p.lng, p.lat])
+  }
+  flush()
+  return { type: 'FeatureCollection', features }
+}
+
+export type LogPeriod = 'all' | '30d' | '90d' | 'year'
+export const LOG_PERIODS: readonly LogPeriod[] = ['all', '30d', '90d', 'year']
+export const LOG_PERIOD_LABEL: Record<LogPeriod, string> = { all: 'All', '30d': '30 days', '90d': '90 days', year: 'This year' }
+
+/** Earliest startedAt (ms) included in `period`; 0 for 'all'. 'year' = since 1 Jan (local time). */
+export function logPeriodStart(period: LogPeriod, now: number = Date.now()): number {
+  const DAY = 86_400_000
+  switch (period) {
+    case '30d':  return now - 30 * DAY
+    case '90d':  return now - 90 * DAY
+    case 'year': return new Date(new Date(now).getFullYear(), 0, 1).getTime()
+    default:     return 0
+  }
+}
+
+export interface LogTotals {
+  logs:       number
+  airborneMs: number
+  landings:   number
+  distanceNm: number
+}
+
+/** Sum over logs. Airborne time falls back to the recorded span when no flight was detected, matching the list rows. */
+export function logTotals(items: { startedAt: number; endedAt: number; distanceNm: number; stats: LogStats | null }[]): LogTotals {
+  const t: LogTotals = { logs: items.length, airborneMs: 0, landings: 0, distanceNm: 0 }
+  for (const it of items) {
+    t.airborneMs += it.stats && it.stats.airborneMs > 0 ? it.stats.airborneMs : Math.max(0, it.endedAt - it.startedAt)
+    t.landings   += it.stats?.landings ?? 0
+    t.distanceNm += it.distanceNm
+  }
+  return t
+}

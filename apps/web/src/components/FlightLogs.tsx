@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { flightLogToGpx } from '@open-vfr/shared/gpx'
-import { computeLogStats, formatLogDuration, type LogStats } from '@open-vfr/shared/flightLogStats'
+import {
+  computeLogStats, formatLogDuration, logTotals, logPeriodStart, LOG_PERIODS, LOG_PERIOD_LABEL,
+  type LogStats, type LogPeriod,
+} from '@open-vfr/shared/flightLogStats'
 import { getDb, type FlightLogDocType, type TrackPoint } from '../db'
 import css from './FlightLogs.module.css'
 
@@ -35,6 +38,18 @@ function landingsLabel(st: LogStats): string {
 export default function FlightLogs({ selectedLogId, onSelect, onClear }: Props) {
   const [logs, setLogs] = useState<{ doc: FlightLogDocType; stats: LogStats | null }[]>([])
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [period, setPeriod] = useState<LogPeriod>('all')
+  const [reg, setReg] = useState('')  // '' = all aircraft
+
+  const registrations = useMemo(
+    () => [...new Set(logs.map(l => l.doc.registration).filter(Boolean))].sort(),
+    [logs],
+  )
+  const shown = useMemo(() => {
+    const from = logPeriodStart(period)
+    return logs.filter(l => l.doc.startedAt >= from && (!reg || l.doc.registration === reg))
+  }, [logs, period, reg])
+  const totals = useMemo(() => logTotals(shown.map(l => ({ ...l.doc, stats: l.stats }))), [shown])
 
   async function handleDelete(id: string) {
     const db = await getDb()
@@ -85,8 +100,23 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear }: Props) 
           <button className={css.clearBtn} onClick={onClear}>Clear track</button>
         </div>
       )}
+      <div className={css.filters}>
+        <select className={css.filterSel} value={period} onChange={e => setPeriod(e.target.value as LogPeriod)} aria-label="Period">
+          {LOG_PERIODS.map(p => <option key={p} value={p}>{LOG_PERIOD_LABEL[p]}</option>)}
+        </select>
+        {registrations.length > 1 && (
+          <select className={css.filterSel} value={reg} onChange={e => setReg(e.target.value)} aria-label="Aircraft">
+            <option value="">All aircraft</option>
+            {registrations.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        )}
+      </div>
+      <div className={css.totals}>
+        {totals.logs} flight{totals.logs === 1 ? '' : 's'} · {formatLogDuration(totals.airborneMs)} · {totals.landings} landing{totals.landings === 1 ? '' : 's'} · {Math.round(totals.distanceNm)} NM
+      </div>
       <div className={css.list}>
-        {logs.map(({ doc: log, stats }) => {
+        {shown.length === 0 && <p className={css.empty}>No flights match this filter.</p>}
+        {shown.map(({ doc: log, stats }) => {
           const isActive = log.id === selectedLogId
           const depArr = [log.departureIcao, log.arrivalIcao]
             .filter(Boolean).join(' → ') || 'Unknown route'

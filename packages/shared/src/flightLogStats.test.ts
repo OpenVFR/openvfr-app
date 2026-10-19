@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeLogStats, trimParkedTail, formatLogDuration, type LogTrackPoint } from './flightLogStats'
+import { computeLogStats, trimParkedTail, formatLogDuration, type LogTrackPoint, type LogStats } from './flightLogStats'
 
 const THR = { takeoffKts: 30, landedKts: 20 }
 
@@ -80,5 +80,45 @@ describe('formatLogDuration', () => {
     expect(formatLogDuration(20_000)).toBe('<1m')
     expect(formatLogDuration(42 * 60_000)).toBe('42m')
     expect(formatLogDuration(65 * 60_000)).toBe('1h 05m')
+  })
+})
+
+import { trackToGeoJson, type LogMapPoint } from './flightLogStats'
+describe('trackToGeoJson', () => {
+  const mk = (t0: number, n: number, lat0: number): LogMapPoint[] =>
+    Array.from({ length: n }, (_, i) => ({ ts: t0 + i * 1000, spdKts: 80, altFt: 1000, lat: lat0 + i * 0.001, lng: 18 }))
+  it('one solid line when continuous', () => {
+    const fc = trackToGeoJson(mk(0, 10, 59))
+    expect(fc.features).toHaveLength(1)
+    expect(fc.features[0].properties.kind).toBe('track')
+    expect(fc.features[0].geometry.coordinates).toHaveLength(10)
+  })
+  it('bridges a gap with a dashed gap feature', () => {
+    const fc = trackToGeoJson([...mk(0, 5, 59), ...mk(300_000, 5, 59.1)])
+    expect(fc.features.map(f => f.properties.kind)).toEqual(['track', 'gap', 'track'])
+    expect(fc.features[1].geometry.coordinates).toEqual([[18, 59.004], [18, 59.1]])
+  })
+  it('empty/short tracks give no features', () => {
+    expect(trackToGeoJson([]).features).toHaveLength(0)
+    expect(trackToGeoJson(mk(0, 1, 59)).features).toHaveLength(0)
+  })
+})
+
+import { logTotals, logPeriodStart } from './flightLogStats'
+describe('logTotals / logPeriodStart', () => {
+  const st = (airborneMs: number, landings: number) => ({ airborneMs, landings } as LogStats)
+  it('sums with fallback to recorded span', () => {
+    const t = logTotals([
+      { startedAt: 0, endedAt: 1000, distanceNm: 10, stats: st(60_000, 2) },
+      { startedAt: 0, endedAt: 5000, distanceNm: 5, stats: st(0, 0) },
+      { startedAt: 0, endedAt: 2000, distanceNm: 1, stats: null },
+    ])
+    expect(t).toEqual({ logs: 3, airborneMs: 67_000, landings: 2, distanceNm: 16 })
+  })
+  it('period starts', () => {
+    const now = Date.UTC(2026, 5, 15)
+    expect(logPeriodStart('all', now)).toBe(0)
+    expect(logPeriodStart('30d', now)).toBe(now - 30 * 86_400_000)
+    expect(new Date(logPeriodStart('year', now)).getMonth()).toBe(0)
   })
 })

@@ -201,6 +201,8 @@ export type AviationMapProps = {
    *  changes from null → a track (or to a different track). Pass null/empty
    *  to hide and stop fitting. */
   pastTrack?: [number, number][]
+  /** Drawn geometry for the viewed log: solid `track` lines plus dashed `gap` bridges (shared trackToGeoJson). */
+  pastTrackGeoJson?: FeatureCollection
   /** Id of the saved-route row the working route is currently linked to
    *  ('' = untitled/unlinked) -- RouteContext's activeRouteId, changed by
    *  RouteLibrarySheet's handleLoad/Save As, GPX import, and New Route.
@@ -871,6 +873,7 @@ export function AviationMap({
   trajectoryNm   = 5,
   trajectoryMode = 'time' as const,
   pastTrack,
+  pastTrackGeoJson,
   activeRouteId,
   routeFitNonce = 0,
   profileCursorStore,
@@ -2829,11 +2832,21 @@ export function AviationMap({
 
                 {/* ── Past flight log track (Logs segment "View") ──── */}
         {pastTrack && pastTrack.length > 1 && (
-          <GeoJSONSource id="past-track-src" data={{ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: pastTrack } }] }}>
+          <GeoJSONSource
+            id="past-track-src"
+            data={pastTrackGeoJson ?? { type: 'FeatureCollection', features: [{ type: 'Feature', properties: { kind: 'track' }, geometry: { type: 'LineString', coordinates: pastTrack } }] }}
+          >
             <Layer
               id="past-track-line"
               type="line"
+              filter={['==', ['get', 'kind'], 'track']}
               paint={{ 'line-color': '#a78bfa', 'line-width': 3, 'line-opacity': 0.85 }}
+            />
+            <Layer
+              id="past-track-gap-line"
+              type="line"
+              filter={['==', ['get', 'kind'], 'gap']}
+              paint={{ 'line-color': '#ef4444', 'line-width': 3, 'line-opacity': 0.9, 'line-dasharray': [1.5, 2] }}
             />
           </GeoJSONSource>
         )}

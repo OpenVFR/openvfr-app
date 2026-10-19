@@ -44,7 +44,10 @@ import { getAerodromeLookup } from '../utils/aerodromeLookup'
 import type { UserWaypointDocType } from '../types/db'
 import type { LegOverride } from '../types/db'
 import { distanceNm, magneticBearingDeg, bearingDeg } from '../utils/routeCalc'
-import { computeLogStats, formatLogDuration } from '@open-vfr/shared/flightLogStats'
+import {
+  computeLogStats, formatLogDuration, logTotals, logPeriodStart, LOG_PERIODS, LOG_PERIOD_LABEL,
+  type LogStats, type LogPeriod,
+} from '@open-vfr/shared/flightLogStats'
 import { nmToDisplay, distLabel, ktsToDisplay, displayToKts, speedLabel } from '../utils/units'
 import { computeFuelPlan } from '../utils/fuelCalc'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -96,23 +99,25 @@ function fmtEta(baseMins: number, offsetMins: number): string {
 
 // ── Component ─────────────────────────────────────────────────────────────
 const LOG_STATS_THR = { takeoffKts: 30, landedKts: 20 }
-const logSummaryCache = new Map<string, string>()
+const logInfoCache = new Map<string, { stats: LogStats | null; summary: string }>()
 
-/** "42m · 3 landings (2 T&G) · max 3,500 ft", derived from the stored track. */
-function logSummary(log: { id: string; updatedAt: number; trackJson: string; endedAt: number; startedAt: number; maxAltFt: number }): string {
+type LogLike = { id: string; updatedAt: number; trackJson: string; endedAt: number; startedAt: number; maxAltFt: number }
+
+/** Stats + "42m · 3 landings (2 T&G) · max 3,500 ft" line, derived from the stored track (cached per log revision). */
+function logInfo(log: LogLike): { stats: LogStats | null; summary: string } {
   const key = `${log.id}:${log.updatedAt}`
-  const hit = logSummaryCache.get(key)
-  if (hit !== undefined) return hit
-  let out = ''
+  const hit = logInfoCache.get(key)
+  if (hit) return hit
+  let out: { stats: LogStats | null; summary: string } = { stats: null, summary: '' }
   try {
     const st = computeLogStats(JSON.parse(log.trackJson || '[]'), LOG_STATS_THR)
     const parts = [formatLogDuration(st.airborneMs > 0 ? st.airborneMs : log.endedAt - log.startedAt)]
     if (st.landings > 0) parts.push(`${st.landings} landing${st.landings === 1 ? '' : 's'}${st.touchAndGos > 0 ? ` (${st.touchAndGos} T&G)` : ''}`)
     if (log.maxAltFt > 0) parts.push(`max ${Math.round(log.maxAltFt).toLocaleString()} ft`)
     if (st.gapCount > 0) parts.push('⚠ gaps')
-    out = parts.join(' · ')
+    out = { stats: st, summary: parts.join(' · ') }
   } catch { /* corrupt track: no summary */ }
-  logSummaryCache.set(key, out)
+  logInfoCache.set(key, out)
   return out
 }
 
@@ -212,6 +217,22 @@ export function PlanScreen() {
   const { selectedLog, viewLog, clearView } = useFlightLogViewContext()
   const navigation = useNavigation()
   const [logDeleteId, setLogDeleteId] = useState<string | null>(null)
+  const [logPeriod, setLogPeriod] = useState<LogPeriod>('all')
+  const [logReg, setLogReg] = useState('')  // '' = all aircraft
+  const logRegistrations = useMemo(
+    () => [...new Set(logs.map(l => l.registration).filter(Boolean))].sort(),
+    [logs],
+  )
+  const shownLogs = useMemo(() => {
+    const from = logPeriodStart(logPeriod)
+    return [...logs]
+      .filter(l => l.startedAt >= from && (!logReg || l.registration === logReg))
+      .sort((a, b) => b.startedAt - a.startedAt)
+  }, [logs, logPeriod, logReg])
+  const logSummaryTotals = useMemo(
+    () => logTotals(shownLogs.filter(l => l.endedAt > 0).map(l => ({ ...l, stats: logInfo(l).stats }))),
+    [shownLogs],
+  )
   const handleExportLog = async (log: (typeof logs)[number]) => {
     try {
       const { filename, xml } = flightLogToGpx(log)
@@ -1070,8 +1091,28 @@ export function PlanScreen() {
                 synced to the cloud once completed.
               </Text>
             </View>
-          ) : (
-            [...logs].sort((a, b) => b.startedAt - a.startedAt).map(log => {
+          ) : (<>
+            <View style={styles.logFilterRow}>
+              {LOG_PERIODS.map(p => (
+                <TouchableOpacity key={p} style={[styles.placeChip, logPeriod === p && styles.placeChipOn]} onPress={() => setLogPeriod(p)}>
+                  <Text style={[styles.placeChipTxt, logPeriod === p && { color: theme.accentBlue }]}>{LOG_PERIOD_LABEL[p]}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {logRegistrations.length > 1 && (
+              <View style={styles.logFilterRow}>
+                {['', ...logRegistrations].map(r => (
+                  <TouchableOpacity key={r || 'all'} style={[styles.placeChip, logReg === r && styles.placeChipOn]} onPress={() => setLogReg(r)}>
+                    <Text style={[styles.placeChipTxt, logReg === r && { color: theme.accentBlue }]}>{r || 'All aircraft'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            <Text style={styles.aircraftMeta}>
+              {logSummaryTotals.logs} flight{logSummaryTotals.logs === 1 ? '' : 's'} · {formatLogDuration(logSummaryTotals.airborneMs)} · {logSummaryTotals.landings} landing{logSummaryTotals.landings === 1 ? '' : 's'} · {Math.round(logSummaryTotals.distanceNm)} NM
+            </Text>
+            {shownLogs.length === 0 && <Text style={styles.aircraftMeta}>No flights match this filter.</Text>}
+            {shownLogs.map(log => {
               const isActive = selectedLog?.id === log.id
               const isCompleted = log.endedAt > 0
               return (
@@ -1082,7 +1123,7 @@ export function PlanScreen() {
                     </Text>
                     <Text style={styles.aircraftMeta}>
                       {new Date(log.startedAt).toLocaleString()} · {log.distanceNm.toFixed(0)} NM · {log.registration}
-                      {isCompleted ? ` · ${logSummary(log)}` : ''}
+                      {isCompleted ? ` · ${logInfo(log).summary}` : ''}
                     </Text>
                   </View>
                   <View style={styles.aircraftActions}>
@@ -1113,8 +1154,8 @@ export function PlanScreen() {
                   </View>
                 </View>
               )
-            })
-          )}
+            })}
+          </>)}
         </ScrollView>
       )}
     </View>
@@ -1253,6 +1294,7 @@ function makeStyles(theme: ScaledTheme) {
   placeChips: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space1 },
   placeChip: { paddingHorizontal: theme.space2, paddingVertical: theme.space1, borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.borderDefault },
   placeChipOn: { borderColor: theme.accentBlue },
+  logFilterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space1, marginBottom: theme.space2 },
   placeChipTxt: { color: theme.textMuted, fontSize: theme.textXs },
 
   saveSection: {

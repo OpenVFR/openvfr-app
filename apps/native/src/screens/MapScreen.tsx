@@ -105,6 +105,7 @@ import { FollowCountdown } from '../components/FollowCountdown'
 import type { MapOrientation } from '../utils/gpsTypes'
 import { AutoFlyBanner } from '../components/AutoFlyBanner'
 import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
+import { trackToGeoJson } from '@open-vfr/shared/flightLogStats'
 import { parseParkTimeout } from '@open-vfr/shared/parkTimeout'
 import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
 import { iasToTas } from '@open-vfr/shared/airspeed'
@@ -1327,6 +1328,7 @@ function MapScreenForCountry() {
     () => selectedTrack.map(p => [p.lng, p.lat] as [number, number]),
     [selectedTrack],
   )
+  const pastTrackGeoJson = useMemo(() => trackToGeoJson(selectedTrack) as FeatureCollection, [selectedTrack])
 
   // Chart scrub distance (NM) -> map marker, along whichever line the visible
   // chart shows: ruler, viewed past log (mirrors showPastTrackChart's own
@@ -1541,6 +1543,7 @@ function MapScreenForCountry() {
           showLegLabels={!planningMode && !routeAdjustMode}
           legIasKts={legIasKts}
           pastTrack={pastTrack}
+          pastTrackGeoJson={pastTrackGeoJson}
           profileCursorStore={profileCursorStore}
           rulerMode={rulerMode}
           rulerPoints={rulerPoints}

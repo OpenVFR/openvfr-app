@@ -1,3 +1,4 @@
+import { trackToGeoJson } from '@open-vfr/shared/flightLogStats'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as maplibregl from 'maplibre-gl'
 import { createPortal } from 'react-dom'
@@ -1427,15 +1428,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       const track: TrackPoint[] = JSON.parse(doc.trackJson)
       setSelectedLogTrack(track)
       if (track.length < 2) return
-      const coords = track.map(p => [p.lng, p.lat] as [number, number])
-      src?.setData({
-        type: 'FeatureCollection',
-        features: [{
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: coords },
-          properties: {},
-        }],
-      })
+      src?.setData(trackToGeoJson(track))
       const lngs = track.map(p => p.lng)
       const lats = track.map(p => p.lat)
       map.fitBounds(
@@ -1907,7 +1900,16 @@ export default function MapView({ auth }: { auth: AuthState }) {
         id: 'past-track-layer',
         type: 'line',
         source: 'past-track',
+        filter: ['==', ['get', 'kind'], 'track'],
         paint: { 'line-color': '#a78bfa', 'line-width': 2.5, 'line-opacity': 0.9 },
+      })
+      // Recording gaps (GPS loss): dashed red bridge, not a believable line.
+      map.addLayer({
+        id: 'past-track-gap-layer',
+        type: 'line',
+        source: 'past-track',
+        filter: ['==', ['get', 'kind'], 'gap'],
+        paint: { 'line-color': '#ef4444', 'line-width': 2.5, 'line-opacity': 0.9, 'line-dasharray': [1.5, 2] },
       })
 
       // Panning: 'grabbing' regardless of the tool cursor, restored on release.
