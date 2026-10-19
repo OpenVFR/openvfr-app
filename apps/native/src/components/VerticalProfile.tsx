@@ -802,7 +802,7 @@ export function VerticalProfile({
   const yTicks = altitudeTicks(yMax)
   // Round display-unit values (NM or km), converted back to NM for xOf.
   const unitPerNm = nmToDisplay(1, units.distance)
-  const xTicks = distanceTicks(totalNm * unitPerNm, Math.max(2, Math.round(plotW / X_TICK_SPACING_PX)), 0.04)
+  const xTicks = distanceTicks(totalNm * unitPerNm, Math.max(2, Math.round(plotW / X_TICK_SPACING_PX)), Math.min(0.5, 20 / Math.max(1, plotW)))
     .map((v) => v / unitPerNm)
 
   // Wind row under the x axis (mirrors web's VirtualRadar): station barbs

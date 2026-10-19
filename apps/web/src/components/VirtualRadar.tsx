@@ -650,7 +650,10 @@ function VirtualRadar({
   const xTicks = useMemo(() => {
     if (!layout) return []
     const target = Math.max(2, Math.round(layout.plotW / X_TICK_SPACING_PX))
-    return distanceTicks(layout.totalNm * unitPerNm, target).map((v) => ({ label: v.toFixed(0), nm: v / unitPerNm }))
+    // Keep ~30 px at the right end free for the unit label (a fraction of
+    // the axis would leave tens of NM unlabelled on a long scrolling route).
+    const reserve = Math.min(0.5, 30 / Math.max(1, layout.plotW))
+    return distanceTicks(layout.totalNm * unitPerNm, target, reserve).map((v) => ({ label: v.toFixed(0), nm: v / unitPerNm }))
   }, [layout, unitPerNm])
 
   // ── Wind row (just under the x axis) ───────────────────────────────────────
@@ -802,8 +805,11 @@ function VirtualRadar({
             .map((p) => p.elevFt)
           const spanMaxFt = Math.min(yMax, Math.max(200, ...(spanElevs.length ? spanElevs : [0])))
           const x1 = L.xOf(wc.entryNm), x2 = L.xOf(wc.exitNm), yTop = L.yOf(spanMaxFt)
+          // A zero-width crossing (route touching a shoreline) would draw as a
+          // stray vertical stroke.
+          if (x2 - x1 <= 0) return null
           return (
-            <rect key={`water-${i}`} x={x1} y={yTop} width={Math.max(0, x2 - x1)} height={L.plotBottom - yTop}
+            <rect key={`water-${i}`} x={x1} y={yTop} width={x2 - x1} height={L.plotBottom - yTop}
               fill="rgba(30,100,200,0.35)" stroke="rgba(60,140,230,0.7)" strokeWidth={1} />
           )
         })}
