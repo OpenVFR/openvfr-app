@@ -140,3 +140,22 @@
   padding: 10px 12px;
   text-align: center;
 }
+
+.insertRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 12px 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.insertChip {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+.insertChip:hover { color: var(--accent-blue); border-color: var(--accent-blue); }

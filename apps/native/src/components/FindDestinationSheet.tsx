@@ -18,6 +18,7 @@ import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { getTileUrls } from '../config'
 import type { AircraftProfileDocType } from '../db'
 import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
+import { parseBearingDistance, pointFromBearingDistance, describeBearingDistance } from '@open-vfr/shared/bearingDistance'
 import { parseCoordinate, formatCoordinate } from '@open-vfr/shared/coordinateParse'
 import { NativeSheet, useSheetMaxHeight } from './NativeSheet'
 import {
@@ -42,6 +43,9 @@ interface Props {
   onFlyTo:          (lat: number, lng: number) => void
   /** Append as a route waypoint */
   onAddToRoute:     (wp: RouteWaypoint) => void
+  /** Current route points; with onInsertInRoute, rows offer insert-at-position. */
+  routePoints?:     { name?: string }[]
+  onInsertInRoute?: (wp: RouteWaypoint, afterIdx: number) => void
   /** Saved places; matches (by name/folder) are listed above the aerodromes. */
   /** Save a typed coordinate as a place. */
   onSavePlace?:     (lat: number, lng: number) => void
@@ -58,7 +62,7 @@ const SURF_OPTS: { v: SurfaceFilter; label: string }[] = [
   { v: 'any', label: 'Any' }, { v: 'hard', label: 'Hard' }, { v: 'grass', label: 'Grass' },
 ]
 
-export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyTo, onAddToRoute, places, onSavePlace, open: openProp, onOpenChange }: Props) {
+export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyTo, onAddToRoute, routePoints, onInsertInRoute, places, onSavePlace, open: openProp, onOpenChange }: Props) {
   const styles = useThemedStyles(makeStyles)
   const sheetMaxH = useSheetMaxHeight()
   const [openState, setOpenState] = React.useState(false)
@@ -66,10 +70,46 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
   const open = controlled ? openProp : openState
   const setOpen = (v: boolean) => { if (controlled) onOpenChange?.(v); else setOpenState(v) }
   const [aerodromes, setAerodromes] = React.useState<AerodromeEntry[]>([])
+  // Row whose "insert at position" chips are showing.
+  const [insertKey, setInsertKey] = React.useState<string | null>(null)
+  const canInsert = !!onInsertInRoute && !!routePoints && routePoints.length > 0
+  const renderInsert = (key: string, wp: RouteWaypoint) => canInsert && insertKey === key ? (
+    <View style={styles.insertChips}>
+      <TouchableOpacity style={styles.insertChip} onPress={() => { onInsertInRoute!(wp, -1); setInsertKey(null) }}>
+        <Text style={styles.insertChipTxt}>At start</Text>
+      </TouchableOpacity>
+      {routePoints!.map((r, i) => (
+        <TouchableOpacity key={i} style={styles.insertChip} onPress={() => { onInsertInRoute!(wp, i); setInsertKey(null) }}>
+          <Text style={styles.insertChipTxt}>After {i + 1}{r.name ? ` · ${r.name}` : ''}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  ) : null
+  const insertBtn = (key: string, label: string) => canInsert ? (
+    <TouchableOpacity
+      style={styles.addBtn}
+      onPress={() => setInsertKey(insertKey === key ? null : key)}
+      accessibilityLabel={`Insert ${label} into route`}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    >
+      <Ionicons name="git-merge-outline" size={16} color={theme.textPrimary} />
+    </TouchableOpacity>
+  ) : null
   const [search, setSearch] = React.useState('')
   // A typed coordinate (any format coordinateParse accepts, e.g. a NOTAM's
   // "5939N01756E") offers a "Go to" row above the aerodrome list.
   const coord = React.useMemo(() => parseCoordinate(search), [search])
+  // "EGLL 270 10" (or a place name): a point on a magnetic bearing and
+  // distance from a reference, shown as a "Go to" row like a coordinate.
+  const bdTarget = React.useMemo(() => {
+    const bd = parseBearingDistance(search)
+    if (!bd) return null
+    const up = bd.ref.toUpperCase()
+    const ref = aerodromes.find(a => a.icao.toUpperCase() === up) ?? places?.find(p => p.name.toUpperCase() === up)
+    if (!ref) return null
+    const pt = pointFromBearingDistance(ref, bd.bearingMag, bd.distNm)
+    return { lat: pt.lat, lng: pt.lng, label: describeBearingDistance(bd, bd.ref) }
+  }, [search, aerodromes, places])
   const [minRunwayM, setMinRunway] = React.useState(0)
   const [fuelFilter, setFuelFilter] = React.useState<FuelFilter>('any')
   const [surfFilter, setSurfFilter] = React.useState<SurfaceFilter>('any')
@@ -104,6 +144,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
   }, [places, search])
 
   const renderRow = ({ item: a }: { item: AerodromeResult }) => (
+    <>
     <View style={[styles.row, a.icao === homeIcao && styles.rowHome, a.withinGlide && styles.rowGlide]}>
       <TouchableOpacity
         style={styles.rowMain}
@@ -135,7 +176,10 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
       >
         <Ionicons name="add" size={18} color={theme.textPrimary} />
       </TouchableOpacity>
+      {insertBtn(a.icao, a.icao)}
     </View>
+    {renderInsert(a.icao, aerodromeToWaypoint(a))}
+    </>
   )
 
   return (
@@ -216,32 +260,46 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
           </View>
         </View>
 
-        {coord && (
+        {(coord || bdTarget) && (() => {
+          const goTo = coord
+            ? { lat: coord.lat, lng: coord.lng, label: formatCoordinate(coord.lat, coord.lng, coord.format) }
+            : bdTarget!
+          return (
           <View style={styles.row}>
             <TouchableOpacity
               style={styles.rowMain}
-              onPress={() => { onFlyTo(coord.lat, coord.lng); setOpen(false) }}
+              onPress={() => { onFlyTo(goTo.lat, goTo.lng); setOpen(false) }}
             >
               <View style={styles.rowTop}>
                 <Text style={styles.rowIcao}>Go to</Text>
-                <Text style={styles.rowName} numberOfLines={1}>{formatCoordinate(coord.lat, coord.lng, coord.format)}</Text>
+                <Text style={styles.rowName} numberOfLines={1}>{goTo.label}</Text>
               </View>
             </TouchableOpacity>
             {onSavePlace && (
               <TouchableOpacity
                 style={styles.addBtn}
-                onPress={() => { onSavePlace(coord.lat, coord.lng); setSearch('') }}
+                onPress={() => { onSavePlace(goTo.lat, goTo.lng); setSearch('') }}
                 accessibilityLabel="Save as place"
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Ionicons name="bookmark-outline" size={16} color={theme.textPrimary} />
               </TouchableOpacity>
             )}
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={() => onAddToRoute({ lat: goTo.lat, lng: goTo.lng })}
+              accessibilityLabel="Add to route"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="add" size={18} color={theme.textPrimary} />
+            </TouchableOpacity>
           </View>
-        )}
+          )
+        })()}
 
         {placeMatches.map(p => (
-          <View key={p.id} style={styles.row}>
+          <React.Fragment key={p.id}>
+          <View style={styles.row}>
             <TouchableOpacity style={styles.rowMain} onPress={() => { onFlyTo(p.lat, p.lng); setOpen(false) }}>
               <View style={styles.rowTop}>
                 <Ionicons name="bookmark" size={13} color={theme.accentYellow} />
@@ -257,7 +315,10 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
             >
               <Ionicons name="add" size={18} color={theme.textPrimary} />
             </TouchableOpacity>
+            {insertBtn(p.id, p.name)}
           </View>
+          {renderInsert(p.id, { lat: p.lat, lng: p.lng, name: p.name })}
+          </React.Fragment>
         ))}
 
         <FlatList
@@ -350,6 +411,9 @@ function makeStyles(theme: ScaledTheme) {
     width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
     backgroundColor: theme.surfaceHover, borderWidth: 1, borderColor: theme.borderDefault,
   },
+  insertChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingVertical: 6 },
+  insertChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, borderWidth: 1, borderColor: theme.borderDefault },
+  insertChipTxt: { color: theme.textMuted, fontSize: 11 },
   empty: { color: theme.textFaint, fontSize: 12, textAlign: 'center', paddingVertical: 24 },
  } as const
 }

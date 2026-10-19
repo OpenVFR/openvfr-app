@@ -304,7 +304,7 @@ function SideDrawer({
       )}
       <div className={`${css.drawer} ${open ? '' : css.drawerClosed}`}>
         <div className={css.searchBar}>
-          <FindFeature onResult={onFlyTo} onAddToRoute={onAddToRoute} places={userWaypoints} onSavePlace={(lng, lat) => onSaveHereUserWaypoint('', lng, lat)} />
+          <FindFeature onResult={onFlyTo} onAddToRoute={onAddToRoute} routeWaypoints={waypoints} onInsertInRoute={onInsertInRoute} places={userWaypoints} onSavePlace={(lng, lat) => onSaveHereUserWaypoint('', lng, lat)} />
         </div>
         <div className={css.scroll}>
 

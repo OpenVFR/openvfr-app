@@ -1737,6 +1737,8 @@ function MapScreenForCountry() {
           aircraftProfile={aircraftProfile}
           onFlyTo={(lat, lng) => setFindDestFlyTarget({ lat, lng, nonce: Date.now() })}
           onAddToRoute={(wp) => { addWaypoint(wp); setPlanningMode(true) }}
+          routePoints={waypoints}
+          onInsertInRoute={(wp, afterIdx) => { insertWaypoint(afterIdx, wp); setPlanningMode(true) }}
           places={userWaypoints}
           onSavePlace={(lat, lng) => saveWaypoint({
             id: Crypto.randomUUID(), name: nextPlaceName(userWaypoints.map(w => w.name)),

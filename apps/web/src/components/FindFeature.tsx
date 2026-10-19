@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { Fragment, useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import css from './FindFeature.module.css'
 import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
+import { parseBearingDistance, pointFromBearingDistance, describeBearingDistance } from '@open-vfr/shared/bearingDistance'
 import { parseCoordinate, formatCoordinate } from '@open-vfr/shared/coordinateParse'
 
 export type FindResult = {
@@ -16,9 +17,12 @@ export type FindResult = {
 interface Props {
   onResult: (r: FindResult) => void
   onAddToRoute?: (wp: { lng: number; lat: number; name: string }) => void
-  /** Saved places, searched by name/folder and listed first. */
+  /** Current route points + insert callback: adds an "insert at position" button. */
+  routeWaypoints?: { name?: string }[]
+  onInsertInRoute?: (wp: { lng: number; lat: number; name: string }, afterIdx: number) => void
   /** Offer to save a typed coordinate as a place. */
   onSavePlace?: (lng: number, lat: number) => void
+  /** Saved places, searched by name/folder and listed first. */
   places?: { id: string; name: string; folder: string; lng: number; lat: number }[]
 }
 
@@ -104,6 +108,26 @@ function search(q: string, index: FindResult[]): FindResult[] {
   return [...exact, ...names].slice(0, 12)
 }
 
+// "EGLL 270 10": a point 10 NM from EGLL on the 270 magnetic bearing. The
+// reference is an exact id (aerodrome/navaid/fix) or saved-place name.
+function bearingDistanceResult(q: string, index: FindResult[], places: Props['places']): FindResult | null {
+  const bd = parseBearingDistance(q)
+  if (!bd) return null
+  const up = bd.ref.toUpperCase()
+  const ref =
+    places?.find(p => p.name.toUpperCase() === up) ??
+    index.find(r => r.id.toUpperCase() === up)
+  if (!ref) return null
+  const pt = pointFromBearingDistance(ref, bd.bearingMag, bd.distNm)
+  const label = `${bd.ref} ${String(Math.round(bd.bearingMag) % 360).padStart(3, '0')}/${bd.distNm}`
+  return { kind: 'LL', id: label, name: label, sub: describeBearingDistance(bd, bd.ref), lng: pt.lng, lat: pt.lat }
+}
+
+function buildResults(q: string, index: FindResult[], places: Props['places']): FindResult[] {
+  const bd = bearingDistanceResult(q, index, places)
+  return bd ? [bd] : [...searchPlaces(q, places), ...search(q, index)]
+}
+
 const BADGE_CLASS: Record<FindResult['kind'], string> = {
   AD:  css.badgeAD,
   VOR: css.badgeVOR,
@@ -123,12 +147,13 @@ function searchPlaces(q: string, places: Props['places']): FindResult[] {
     .map(p => ({ kind: 'PL' as const, id: p.id, name: p.name, sub: p.folder || 'Saved place', lng: p.lng, lat: p.lat }))
 }
 
-export default function FindFeature({ onResult, onAddToRoute, places, onSavePlace }: Props) {
+export default function FindFeature({ onResult, onAddToRoute, routeWaypoints, onInsertInRoute, places, onSavePlace }: Props) {
   const [query, setQuery]       = useState('')
   const [results, setResults]   = useState<FindResult[]>([])
   const [active, setActive]     = useState(0)
   const [index, setIndex]       = useState<FindResult[] | null>(null)
   const [dropRect, setDropRect] = useState<{ left: number; top: number; width: number } | null>(null)
+  const [insertIdx, setInsertIdx] = useState<number | null>(null)
   const inputRef                = useRef<HTMLInputElement>(null)
   const wrapRef                 = useRef<HTMLDivElement>(null)
 
@@ -159,12 +184,12 @@ export default function FindFeature({ onResult, onAddToRoute, places, onSavePlac
     if (!val.trim()) { setResults([]); return }
 
     if (index) {
-      setResults([...searchPlaces(val, places), ...search(val, index)])
+      setResults(buildResults(val, index, places))
     } else {
       // Lazy-load the index on first keystroke
       loadIndex().then(idx => {
         setIndex(idx)
-        setResults([...searchPlaces(val, places), ...search(val, idx)])
+        setResults(buildResults(val, idx, places))
       })
     }
   }, [index, places])
@@ -176,7 +201,7 @@ export default function FindFeature({ onResult, onAddToRoute, places, onSavePlac
   useEffect(() => {
     if (!index || !query) return
     const ll = parseLatLon(query)
-    setResults(ll ? [ll] : [...searchPlaces(query, places), ...search(query, index)])
+    setResults(ll ? [ll] : buildResults(query, index, places))
   }, [index, query, places])
 
   const pick = useCallback((r: FindResult) => {
@@ -228,8 +253,8 @@ export default function FindFeature({ onResult, onAddToRoute, places, onSavePlac
           style={{ left: dropRect.left, top: dropRect.top, width: dropRect.width }}
         >
           {results.map((r, i) => (
+            <Fragment key={`${r.kind}:${r.id}:${i}`}>
             <div
-              key={`${r.kind}:${r.id}:${i}`}
               className={`${css.item} ${i === active ? css.active : ''}`}
               onMouseEnter={() => setActive(i)}
             >
@@ -266,7 +291,37 @@ export default function FindFeature({ onResult, onAddToRoute, places, onSavePlac
                   }}
                 >+</button>
               )}
+              {onInsertInRoute && routeWaypoints && routeWaypoints.length > 0 && (r.kind === 'AD' || r.kind === 'PL') && (
+                <button
+                  className={css.addBtn}
+                  title="Insert in route…"
+                  onMouseDown={e => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setInsertIdx(insertIdx === i ? null : i)
+                  }}
+                >⤵</button>
+              )}
             </div>
+            {insertIdx === i && onInsertInRoute && routeWaypoints && (
+              <div className={css.insertRow}>
+                {[-1, ...routeWaypoints.map((_, k) => k)].map(afterIdx => (
+                  <button
+                    key={afterIdx}
+                    className={css.insertChip}
+                    onMouseDown={e => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      onInsertInRoute({ lng: r.lng, lat: r.lat, name: r.kind === 'PL' ? r.name : r.id }, afterIdx)
+                      setInsertIdx(null)
+                    }}
+                  >
+                    {afterIdx < 0 ? 'At start' : `After ${afterIdx + 1}${routeWaypoints[afterIdx].name ? ` · ${routeWaypoints[afterIdx].name}` : ''}`}
+                  </button>
+                ))}
+              </div>
+            )}
+            </Fragment>
           ))}
           {results.length === 0 && (
             <div className={css.noResults}>No results for "{query}"</div>

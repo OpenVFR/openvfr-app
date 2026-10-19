@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     "./suggestRouteName": "./src/suggestRouteName.ts",
+    "./bearingDistance": "./src/bearingDistance.ts",
     "./airspaceGeometry": "./src/airspaceGeometry.ts",
     "./airspaceGeometryCache": "./src/airspaceGeometryCache.ts",
     "./airspaceQuery": "./src/airspaceQuery.ts",
