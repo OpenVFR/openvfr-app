@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { flightLogToGpx } from '@open-vfr/shared/gpx'
 import { computeLogStats, formatLogDuration, type LogStats } from '@open-vfr/shared/flightLogStats'
 import { getDb, type FlightLogDocType, type TrackPoint } from '../db'
 import css from './FlightLogs.module.css'
@@ -41,6 +42,19 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear }: Props) 
     await doc?.remove()
     setDeleteId(null)
     if (id === selectedLogId) onClear()
+  }
+
+  function handleExport(log: FlightLogDocType) {
+    try {
+      const { filename, xml } = flightLogToGpx(log)
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(new Blob([xml], { type: 'application/gpx+xml' }))
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(a.href)
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Export failed')
+    }
   }
 
   useEffect(() => {
@@ -105,6 +119,7 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear }: Props) 
                     >
                       {isActive ? 'Hide' : 'View'}
                     </button>
+                    <button className={css.viewBtn} title="Export as GPX" onClick={() => handleExport(log)}>GPX</button>
                     <button className={`${css.viewBtn} ${css.viewBtnDanger}`} title="Delete" onClick={() => setDeleteId(log.id)}>✕</button>
                   </>
                 )}

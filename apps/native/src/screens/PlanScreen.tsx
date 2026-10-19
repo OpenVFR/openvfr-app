@@ -15,7 +15,7 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  ScrollView, TextInput, Share, RefreshControl,
+  ScrollView, TextInput, Share, RefreshControl, Alert,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
@@ -73,11 +73,12 @@ function gsKts(trackDeg: number, windDir: number, windSpd: number, tas: number):
 
 // ── GPX export ───────────────────────────────────────────────────────────
 import type { RouteWaypoint } from '../utils/routeCalc'
-import { routeToGpx, gpxToRoute, waypointsToGpx, gpxToWaypoints } from '@open-vfr/shared/gpx'
+import { routeToGpx, gpxToRoute, waypointsToGpx, gpxToWaypoints, flightLogToGpx } from '@open-vfr/shared/gpx'
 import { iasToTas } from '@open-vfr/shared/airspeed'
 import { fetchWind } from '@open-vfr/shared/fetchWind'
 import { API_BASE } from '../config'
 import * as FileSystem from 'expo-file-system'
+import * as Sharing from 'expo-sharing'
 import * as DocumentPicker from 'expo-document-picker'
 
 function fmtTime(totalMins: number): string {
@@ -211,6 +212,21 @@ export function PlanScreen() {
   const { selectedLog, viewLog, clearView } = useFlightLogViewContext()
   const navigation = useNavigation()
   const [logDeleteId, setLogDeleteId] = useState<string | null>(null)
+  const handleExportLog = async (log: (typeof logs)[number]) => {
+    try {
+      const { filename, xml } = flightLogToGpx(log)
+      const file = new FileSystem.File(FileSystem.Paths.cache, filename)
+      if (file.exists) file.delete()
+      file.create()
+      file.write(xml)
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(file.uri, { mimeType: 'application/gpx+xml', dialogTitle: 'Export flight as GPX' })
+      }
+    } catch (e) {
+      Alert.alert('Export failed', e instanceof Error ? e.message : String(e))
+    }
+  }
+
   const handleViewLog = (log: (typeof logs)[number]) => {
     if (selectedLog?.id === log.id) { clearView(); return }
     viewLog(log)
@@ -1085,6 +1101,9 @@ export function PlanScreen() {
                       <>
                         <TouchableOpacity style={styles.removeBtn} onPress={() => handleViewLog(log)}>
                           <Ionicons name={isActive ? 'eye-off-outline' : 'eye-outline'} size={16} color={isActive ? theme.accentBlue : theme.textMuted} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.removeBtn} onPress={() => void handleExportLog(log)} accessibilityLabel="Export flight as GPX">
+                          <Ionicons name="share-outline" size={16} color={theme.textMuted} />
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.removeBtn} onPress={() => setLogDeleteId(log.id)}>
                           <Ionicons name="trash-outline" size={14} color={theme.statusDanger} />

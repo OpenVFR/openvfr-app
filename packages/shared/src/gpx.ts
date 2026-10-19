@@ -146,3 +146,93 @@ export function gpxToWaypoints(xml: string): UserWaypoint[] {
     return wp
   })
 }
+
+// ---------------------------------------------------------------------------
+// Flight track  (<trk>/<trkseg>/<trkpt>)  — recorded flight logs
+// ---------------------------------------------------------------------------
+
+export type GpxTrackPoint = {
+  lat:    number
+  lng:    number
+  altFt:  number
+  spdKts: number
+  trkDeg: number
+  /** Unix ms */
+  ts:     number
+}
+
+const FT_TO_M = 0.3048
+/** A hole longer than this starts a new <trkseg>, so viewers don't draw a straight line across a GPS dropout. */
+const TRKSEG_GAP_MS = 30_000
+
+/**
+ * Serialise a recorded track. Altitude is exported in metres (GPX <ele>), time
+ * as ISO 8601 UTC. Ground speed (kt) and track (deg) have no GPX 1.1 field, so
+ * they ride in <extensions>; other tools ignore them, gpxToTrack reads them back.
+ */
+export function trackToGpx(points: GpxTrackPoint[], name = 'Flight'): string {
+  const segs: GpxTrackPoint[][] = []
+  for (const p of points) {
+    const cur = segs[segs.length - 1]
+    if (!cur || p.ts - cur[cur.length - 1].ts > TRKSEG_GAP_MS) segs.push([p])
+    else cur.push(p)
+  }
+  const body = segs
+    .map((seg) => {
+      const pts = seg
+        .map((p) => {
+          const ele  = Number.isFinite(p.altFt) ? `<ele>${(p.altFt * FT_TO_M).toFixed(1)}</ele>` : ''
+          const time = `<time>${new Date(p.ts).toISOString()}</time>`
+          const ext  = `<extensions><ovfr:spd xmlns:ovfr="${OVFR_NS}">${Math.round(p.spdKts)}</ovfr:spd><ovfr:trk xmlns:ovfr="${OVFR_NS}">${Math.round(p.trkDeg)}</ovfr:trk></extensions>`
+          return `      <trkpt lat="${p.lat}" lon="${p.lng}">${ele}${time}${ext}</trkpt>`
+        })
+        .join('\n')
+      return `    <trkseg>\n${pts}\n    </trkseg>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="open-vfr" xmlns="${GPX_NS}">
+  <trk>
+    <name>${xmlEscape(name)}</name>
+${body}
+  </trk>
+</gpx>
+`
+}
+
+/** Read a track back (own export or any GPX with <trk>). Missing speed/track become 0; points without a time are skipped. */
+export function gpxToTrack(xml: string): { name: string; points: GpxTrackPoint[] } {
+  const trk = extractBlocks(xml, 'trk')
+  if (trk.length === 0) throw new Error('No <trk> element found in GPX file')
+  const name = extractTag(trk[0], 'name') ?? 'Imported flight'
+  const points: GpxTrackPoint[] = []
+  for (const pt of extractBlocks(trk[0], 'trkpt')) {
+    const timeStr = extractTag(pt, 'time')
+    const ts = timeStr ? Date.parse(timeStr) : NaN
+    const lat = Number(attr(pt, 'lat'))
+    const lng = Number(attr(pt, 'lon'))
+    if (!Number.isFinite(ts) || !Number.isFinite(lat) || !Number.isFinite(lng)) continue
+    const ele = Number(extractTag(pt, 'ele'))
+    points.push({
+      lat, lng, ts,
+      altFt:  Number.isFinite(ele) ? ele / FT_TO_M : 0,
+      spdKts: Number(extractTag(pt, 'ovfr:spd')) || 0,
+      trkDeg: Number(extractTag(pt, 'ovfr:trk')) || 0,
+    })
+  }
+  return { name, points }
+}
+
+/** GPX file (name + content) for a stored flight log document. Throws if the track is empty or unreadable. */
+export function flightLogToGpx(log: {
+  startedAt: number; departureIcao: string; arrivalIcao: string; registration: string; trackJson: string
+}): { filename: string; xml: string } {
+  const points = JSON.parse(log.trackJson || '[]') as GpxTrackPoint[]
+  if (!Array.isArray(points) || points.length === 0) throw new Error('This log has no track points')
+  const date = new Date(log.startedAt).toISOString().slice(0, 10)
+  const route = [log.departureIcao, log.arrivalIcao].filter(Boolean).join('-')
+  const stem = [route, log.registration, date].filter(Boolean).join('_').replace(/[^A-Za-z0-9_-]+/g, '')
+  const title = [[log.departureIcao, log.arrivalIcao].filter(Boolean).join(' → '), log.registration, date]
+    .filter(Boolean).join(' · ')
+  return { filename: `${stem || 'flight'}.gpx`, xml: trackToGpx(points, title) }
+}
