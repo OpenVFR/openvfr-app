@@ -54,6 +54,14 @@ import { FOLLOW_RETURN_MS } from '@open-vfr/shared/followZoom'
 // Vertical space the top-left route-edit banner takes; other top banners step below it.
 const EDIT_BANNER_H = 44
 
+const LANDMARK_LABELS: Record<string, string> = {
+  church: 'Church',
+  mast: 'Radio / telecom mast',
+  windmill: 'Windmill',
+  water_tower: 'Water tower',
+  chimney: 'Chimney',
+}
+
 /** GeoJSON aerodrome feature properties -> AerodromePopup props. Nested
  *  arrays arrive JSON-stringified from MapLibre feature queries but as real
  *  arrays from a raw GeoJSON fetch -- `parse` accepts both. Shared by the
@@ -951,6 +959,20 @@ function MapScreenForCountry() {
               p.elevation_ft != null ? { label: 'Elevation', value: `${p.elevation_ft} ft` } : null,
             ].filter(Boolean) as { label: string; value: string }[],
             canAddToRoute: true,
+          })
+          return
+        }
+
+        // OSM landmark (church / mast / windmill / water tower / chimney):
+        // no elevation, so tell apart from OpenAIP obstacles of the same kind.
+        if (p.elevation_ft == null && typeof p.kind === 'string' && LANDMARK_LABELS[p.kind]) {
+          setFeatureInfo({
+            kind: 'obstacle', name: String(p.name || LANDMARK_LABELS[p.kind]), lngLat: [lng, lat],
+            subtitle: LANDMARK_LABELS[p.kind],
+            rows: [
+              p.height_m ? { label: 'Height', value: `${p.height_m} m` } : null,
+            ].filter(Boolean) as { label: string; value: string }[],
+            canAddToRoute: false,
           })
           return
         }

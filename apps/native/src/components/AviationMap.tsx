@@ -2737,7 +2737,7 @@ export function AviationMap({
             />
           </GeoJSONSource>
         {/* ── OSM Landmarks ─────────────────────────────────── */}
-        <GeoJSONSource id="osm-landmarks" data={landmarksData}>
+        <GeoJSONSource id="osm-landmarks" onPress={() => {}} data={landmarksData}>
           <Layer
             id="landmarks-circle"
             type="symbol"
