@@ -10,7 +10,7 @@
  * bracketing forecast hours as u/v vectors.
  */
 
-import { fetchWithRetry } from './fetchWithRetry'
+import { openMeteoJson, snapCoord } from './openMeteo'
 import { pressureLevelFor, SURFACE_THRESHOLD_FT, type WindAloft } from './fetchWind'
 
 /** Open-Meteo forecast horizon (days). Beyond this there is no data. */
@@ -77,14 +77,19 @@ function forecastDays(at: Date): number {
   return Math.min(MAX_FORECAST_DAYS, Math.max(2, Math.ceil((at.getTime() / 1000 - Date.now() / 1000) / 86_400) + 2))
 }
 
+/** Keyed on the 0.05 deg cell (see snapCoord), which is also what is requested. */
 function seriesKey(lat: number, lng: number, level: string, days: number): string {
-  return `${lat.toFixed(2)}_${lng.toFixed(2)}_${level}_${days}`
+  return `${snapCoord(lat).toFixed(2)}_${snapCoord(lng).toFixed(2)}_${level}_${days}`
 }
+
+/** An expired series (an older model run) is still used for this long when a fetch fails. */
+const STALE_MAX_MS = 6 * 60 * 60 * 1000
 
 /**
  * Hourly series for many points at one level, as few requests as possible
  * (one multi-coordinate request per MAX_BATCH uncached points). Entry null
- * where the model returned nothing. Throws on network failure / abort.
+ * where the model returned nothing or the request failed with no recent
+ * series to fall back on. Throws only on abort.
  */
 async function loadSeriesMany(
   pts: { lat: number; lng: number }[], altFt: number | null | undefined, days: number,
@@ -99,16 +104,25 @@ async function loadSeriesMany(
   for (let start = 0; start < missing.length; start += MAX_BATCH) {
     const idx = missing.slice(start, start + MAX_BATCH)
     const params = new URLSearchParams()
-    params.set('latitude',  idx.map((i) => pts[i].lat.toFixed(4)).join(','))
-    params.set('longitude', idx.map((i) => pts[i].lng.toFixed(4)).join(','))
+    params.set('latitude',  idx.map((i) => snapCoord(pts[i].lat).toFixed(2)).join(','))
+    params.set('longitude', idx.map((i) => snapCoord(pts[i].lng).toFixed(2)).join(','))
     params.set('hourly', `${speedVar},${dirVar}`)
     params.set('wind_speed_unit', 'kn')
     params.set('forecast_days', String(days))
     params.set('past_days', '1')
     params.set('timeformat', 'unixtime')
-    const res = await fetchWithRetry(`${baseUrl}/api/open-meteo/forecast?${params.toString()}`, { signal })
-    if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`)
-    const json = await res.json() as { hourly?: Record<string, number[]> } | { hourly?: Record<string, number[]> }[]
+    type HourlyJson = { hourly?: Record<string, number[]> } | { hourly?: Record<string, number[]> }[]
+    let json: HourlyJson
+    try {
+      json = await openMeteoJson<HourlyJson>(`${baseUrl}/api/open-meteo/forecast?${params.toString()}`, signal)
+    } catch (err) {
+      if ((err as { name?: string }).name === 'AbortError') throw err
+      for (const pi of idx) {
+        const hit = cache.get(seriesKey(pts[pi].lat, pts[pi].lng, level, days))
+        if (hit && Date.now() < hit.expiresAt + STALE_MAX_MS) out[pi] = hit
+      }
+      continue
+    }
     const list = Array.isArray(json) ? json : [json]
     idx.forEach((pi, k) => {
       const h = list[k]?.hourly

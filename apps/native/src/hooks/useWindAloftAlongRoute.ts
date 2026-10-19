@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from 'react'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
-import { fetchWindAloftAlongRoute, type WindAloftColumn } from '@open-vfr/shared/windAloft'
+import { watchWindAloftAlongRoute, type WindAloftColumn } from '@open-vfr/shared/windAloft'
 import { API_BASE } from '../config'
 
 const DEBOUNCE_MS = 400
@@ -24,9 +24,8 @@ export function useWindAloftAlongRoute(
     if (!enabled || waypoints.length < 2 || totalNm <= 0) { setColumns((prev) => (prev.length ? [] : prev)); return }
     const ac = new AbortController()
     const timer = setTimeout(() => {
-      fetchWindAloftAlongRoute(waypoints, totalNm, maxAltFt, API_BASE, ac.signal, totalNm / 6)
-        .then((c) => { if (!ac.signal.aborted) setColumns(c) })
-        .catch(() => { /* offline-safe: no barbs */ })
+      // Re-fetches what is missing if Open-Meteo was throttling (see watchWindAloftAlongRoute).
+      watchWindAloftAlongRoute(waypoints, totalNm, maxAltFt, API_BASE, ac.signal, totalNm / 6, setColumns)
     }, DEBOUNCE_MS)
     return () => { clearTimeout(timer); ac.abort() }
   // eslint-disable-next-line react-hooks/exhaustive-deps

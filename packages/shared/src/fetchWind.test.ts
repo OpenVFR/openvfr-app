@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { fetchAmbientWx } from './fetchWind'
+import { fetchAmbientWx, fetchWindMany } from './fetchWind'
+import { __resetOpenMeteoForTests } from './openMeteo'
 
 function mockResponse(status: number, body: unknown): Response {
   return {
@@ -55,5 +56,44 @@ describe('fetchAmbientWx', () => {
   it('throws on a non-OK HTTP status', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => mockResponse(500, {})))
     await expect(fetchAmbientWx(58.3, 15.3)).rejects.toThrow('Open-Meteo HTTP 500')
+  })
+})
+
+describe('fetchWindMany', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+    __resetOpenMeteoForTests()
+  })
+
+  it('requests one snapped point per 0.05 deg cell and answers every input from it', async () => {
+    const fetchMock = vi.fn(async (_url: string) => mockResponse(200, [
+      { current: { wind_speed_10m: 10, wind_direction_10m: 200 } },
+      { current: { wind_speed_10m: 20, wind_direction_10m: 300 } },
+    ]))
+    vi.stubGlobal('fetch', fetchMock)
+    const out = await fetchWindMany([
+      { lat: 61.101, lng: 14.004 }, { lat: 61.099, lng: 13.996 }, { lat: 61.3, lng: 14.0 },
+    ], null)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const url = new URL(fetchMock.mock.calls[0][0], 'http://x')
+    expect(url.searchParams.get('latitude')).toBe('61.10,61.30')
+    expect(url.searchParams.get('longitude')).toBe('14.00,14.00')
+    expect(out).toEqual([
+      { dirDeg: 200, speedKts: 10 }, { dirDeg: 200, speedKts: 10 }, { dirDeg: 300, speedKts: 20 },
+    ])
+  })
+
+  it('falls back to a recent reading when the request fails', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.stubGlobal('fetch', vi.fn(async () => mockResponse(200, [{ current: { wind_speed_10m: 7, wind_direction_10m: 90 } }])))
+    await fetchWindMany([{ lat: 62.2, lng: 15.2 }], null)
+    // 40 min later: the 30-min cache has expired and Open-Meteo answers 400.
+    vi.setSystemTime(Date.now() + 40 * 60_000)
+    vi.stubGlobal('fetch', vi.fn(async () => mockResponse(400, { reason: 'bad' })))
+    expect(await fetchWindMany([{ lat: 62.2, lng: 15.2 }], null)).toEqual([{ dirDeg: 90, speedKts: 7 }])
+    // 4 h later the reading is too old to show.
+    vi.setSystemTime(Date.now() + 4 * 60 * 60_000)
+    expect(await fetchWindMany([{ lat: 62.2, lng: 15.2 }], null)).toEqual([null])
   })
 })

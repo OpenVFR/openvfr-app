@@ -36,7 +36,7 @@
  * Vite proxy / nginx same-origin); pass API_BASE for native.
  */
 
-import { fetchWithRetry } from './fetchWithRetry'
+import { openMeteoJson, snapCoord } from './openMeteo'
 
 export interface WindAloft {
   /** Wind FROM direction in degrees true (meteorological convention). */
@@ -62,8 +62,30 @@ export function pressureLevelFor(altFt: number): number {
 /** Cached wind for a point, or null when not cached / expired. Synchronous: lets a map overlay paint what it already knows at once. */
 export function peekWind(lat: number, lng: number, altFt: number | null | undefined): WindAloft | null {
   const useSurface = altFt == null || altFt <= SURFACE_THRESHOLD_FT
-  const hit = cache.get(cacheKey(lat, lng, useSurface ? 'surface' : String(pressureLevelFor(altFt!))))
-  return hit && Date.now() < hit.expiresAt ? hit.result : null
+  return cacheGet(cacheKey(lat, lng, useSurface ? 'surface' : String(pressureLevelFor(altFt!))), false)
+}
+
+type CurrentJson = { current?: Record<string, number> } | { current?: Record<string, number> }[]
+
+/** Points to request: one per 0.05 deg cell (see snapCoord), with the input
+ *  indices each one answers. */
+function groupBySnappedCell(points: { lat: number; lng: number }[], indices: number[]) {
+  const cells = new Map<string, { lat: number; lng: number; idx: number[] }>()
+  for (const i of indices) {
+    const lat = snapCoord(points[i].lat), lng = snapCoord(points[i].lng)
+    const k = `${lat}_${lng}`
+    const c = cells.get(k)
+    if (c) c.idx.push(i)
+    else cells.set(k, { lat, lng, idx: [i] })
+  }
+  return [...cells.values()]
+}
+
+function batchParams(cells: { lat: number; lng: number }[]): URLSearchParams {
+  const params = new URLSearchParams()
+  params.set('latitude',  cells.map((c) => c.lat.toFixed(2)).join(','))
+  params.set('longitude', cells.map((c) => c.lng.toFixed(2)).join(','))
+  return params
 }
 
 /** Open-Meteo accepts many coordinates per request; keep each request bounded. */
@@ -89,48 +111,63 @@ export async function fetchWindMany(
   const level    = useSurface ? 'surface' : String(hPa)
 
   const out: (WindAloft | null)[] = points.map((p) => peekWind(p.lat, p.lng, altFt))
-  const missing = out.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0)
+  const missing = groupBySnappedCell(points, out.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0))
 
   for (let start = 0; start < missing.length; start += MAX_BATCH) {
-    const idx = missing.slice(start, start + MAX_BATCH)
-    const params = new URLSearchParams()
-    params.set('latitude',  idx.map((i) => points[i].lat.toFixed(4)).join(','))
-    params.set('longitude', idx.map((i) => points[i].lng.toFixed(4)).join(','))
+    const cells = missing.slice(start, start + MAX_BATCH)
+    const params = batchParams(cells)
     params.set('current', [speedVar, dirVar].join(','))
     params.set('wind_speed_unit', 'kn')
     params.set('forecast_days',   '1')
     params.set('timeformat',      'unixtime')
     try {
-      const res = await fetchWithRetry(`${baseUrl}/api/open-meteo/forecast?${params.toString()}`, { signal })
-      if (!res.ok) continue
-      const json = await res.json() as { current?: Record<string, number> } | { current?: Record<string, number> }[]
+      const json = await openMeteoJson<CurrentJson>(`${baseUrl}/api/open-meteo/forecast?${params.toString()}`, signal)
       const list = Array.isArray(json) ? json : [json]
-      idx.forEach((pointIdx, k) => {
+      cells.forEach((cell, k) => {
         const cur = list[k]?.current
         const speedKts = cur?.[speedVar]
         const dirDeg   = cur?.[dirVar]
         if (speedKts == null || dirDeg == null) return
         const result: WindAloft = { dirDeg: Math.round(dirDeg), speedKts: Math.round(speedKts) }
-        cache.set(cacheKey(points[pointIdx].lat, points[pointIdx].lng, level), { result, expiresAt: Date.now() + CACHE_TTL_MS })
-        out[pointIdx] = result
+        cache.set(cacheKey(cell.lat, cell.lng, level), { result, expiresAt: Date.now() + CACHE_TTL_MS })
+        for (const i of cell.idx) out[i] = result
       })
     } catch (err) {
       if ((err as { name?: string }).name === 'AbortError') throw err
-      // Transient failure: leave this chunk null; the next pan/zoom retries it.
+      // Failed (throttled / offline): show the last known wind for these
+      // points if it isn't too old; the next pan/zoom retries the rest.
+      for (const cell of cells) {
+        const stale = cacheGet(cacheKey(cell.lat, cell.lng, level), true)
+        if (stale) for (const i of cell.idx) out[i] = stale
+      }
     }
   }
   return out
 }
 
 // ── In-memory cache ──────────────────────────────────────────────────────────
-// Keyed by "lat_lng_level" (rounded to 2 dp ≈ 1 km grid; level is either
+// Keyed by "lat_lng_level" (the 0.05 deg cell, see cacheKey; level is either
 // "surface" or an hPa number). TTL: 30 minutes. Prevents redundant API
 // calls when the user opens the same leg panel repeatedly.
 const CACHE_TTL_MS = 30 * 60 * 1000
 const cache = new Map<string, { result: WindAloft; expiresAt: number }>()
 
+/** Expired entries are still served for this long when a fetch fails. */
+const STALE_MAX_MS = 3 * 60 * 60 * 1000
+
+/** Keyed on the 0.05 deg cell the point falls in (see snapCoord). */
 function cacheKey(lat: number, lng: number, level: string): string {
-  return `${lat.toFixed(2)}_${lng.toFixed(2)}_${level}`
+  return `${snapCoord(lat).toFixed(2)}_${snapCoord(lng).toFixed(2)}_${level}`
+}
+
+function cacheGet(key: string, allowStale: boolean): WindAloft | null {
+  const hit = cache.get(key)
+  if (!hit) return null
+  const t = Date.now()
+  if (t < hit.expiresAt) return hit.result
+  if (allowStale && t < hit.expiresAt + STALE_MAX_MS) return hit.result
+  if (t >= hit.expiresAt + STALE_MAX_MS) cache.delete(key)
+  return null
 }
 
 /**
@@ -153,13 +190,11 @@ export async function fetchWind(
 
   // Return cached result if still fresh (avoids redundant API calls).
   const key    = cacheKey(lat, lng, useSurface ? 'surface' : String(hPa))
-  const cached = cache.get(key)
-  if (cached && Date.now() < cached.expiresAt) return cached.result
+  const cached = cacheGet(key, false)
+  if (cached) return cached
 
   // Proxied in dev (Vite) and production (nginx): /api/open-meteo → https://api.open-meteo.com/v1
-  const params = new URLSearchParams()
-  params.set('latitude',  lat.toFixed(4))
-  params.set('longitude', lng.toFixed(4))
+  const params = batchParams([{ lat: snapCoord(lat), lng: snapCoord(lng) }])
   params.set('current', [speedVar, dirVar].join(','))
   params.set('wind_speed_unit', 'kn')
   params.set('forecast_days',   '1')
@@ -167,16 +202,20 @@ export async function fetchWind(
 
   const url = `${baseUrl}/api/open-meteo/forecast?${params.toString()}`
 
-  // Retries transient network blips / 502-504 -- see fetchWithRetry.ts.
-  const res = await fetchWithRetry(url, { signal })
-  if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`)
-
-  const json = await res.json() as {
-    current: Record<string, number>
+  // Throttling / retries are handled by openMeteoJson. If it still fails, a
+  // recent (expired) reading beats no wind at all.
+  let json: { current?: Record<string, number> }
+  try {
+    json = await openMeteoJson<{ current?: Record<string, number> }>(url, signal)
+  } catch (err) {
+    if ((err as { name?: string }).name === 'AbortError') throw err
+    const stale = cacheGet(key, true)
+    if (stale) return stale
+    throw err
   }
 
-  const speedKts = json.current[speedVar]
-  const dirDeg   = json.current[dirVar]
+  const speedKts = json.current?.[speedVar]
+  const dirDeg   = json.current?.[dirVar]
 
   if (speedKts == null || dirDeg == null) {
     throw new Error('Open-Meteo: missing wind fields in response')
@@ -221,39 +260,36 @@ export async function fetchWindLevels(
     wanted.push(l)
     if (l.altFt >= maxAltFt) break
   }
-  const readLevels = (p: { lat: number; lng: number }): WindAtLevel[] => {
+  const readLevels = (p: { lat: number; lng: number }, allowStale = false): WindAtLevel[] => {
     const out: WindAtLevel[] = []
-    const sfc = cache.get(cacheKey(p.lat, p.lng, 'surface'))
-    if (sfc && Date.now() < sfc.expiresAt) out.push({ ...sfc.result, altFt: 0, surface: true })
+    const sfc = cacheGet(cacheKey(p.lat, p.lng, 'surface'), allowStale)
+    if (sfc) out.push({ ...sfc, altFt: 0, surface: true })
     for (const l of wanted) {
-      const hit = cache.get(cacheKey(p.lat, p.lng, String(l.hPa)))
-      if (hit && Date.now() < hit.expiresAt) out.push({ ...hit.result, altFt: l.altFt })
+      const hit = cacheGet(cacheKey(p.lat, p.lng, String(l.hPa)), allowStale)
+      if (hit) out.push({ ...hit, altFt: l.altFt })
     }
     return out
   }
-  const missing = points
+  const missing = groupBySnappedCell(points, points
     .map((p, i) => (readLevels(p).length === wanted.length + 1 ? -1 : i))
-    .filter((i) => i >= 0)
+    .filter((i) => i >= 0))
 
+  // Points whose request failed fall back to recent (expired) readings.
+  const failed = new Set<number>()
   for (let start = 0; start < missing.length; start += MAX_BATCH) {
-    const idx = missing.slice(start, start + MAX_BATCH)
-    const params = new URLSearchParams()
-    params.set('latitude',  idx.map((i) => points[i].lat.toFixed(4)).join(','))
-    params.set('longitude', idx.map((i) => points[i].lng.toFixed(4)).join(','))
+    const cells = missing.slice(start, start + MAX_BATCH)
+    const params = batchParams(cells)
     params.set('current', ['wind_speed_10m', 'wind_direction_10m', ...wanted.flatMap((l) => [`wind_speed_${l.hPa}hPa`, `wind_direction_${l.hPa}hPa`])].join(','))
     params.set('wind_speed_unit', 'kn')
     params.set('forecast_days',   '1')
     params.set('timeformat',      'unixtime')
     try {
-      const res = await fetchWithRetry(`${baseUrl}/api/open-meteo/forecast?${params.toString()}`, { signal })
-      if (!res.ok) continue
-      const json = await res.json() as { current?: Record<string, number> } | { current?: Record<string, number> }[]
+      const json = await openMeteoJson<CurrentJson>(`${baseUrl}/api/open-meteo/forecast?${params.toString()}`, signal)
       const list = Array.isArray(json) ? json : [json]
-      idx.forEach((pointIdx, k) => {
+      cells.forEach((pt, k) => {
         const cur = list[k]?.current
         if (!cur) return
         if (cur['wind_speed_10m'] != null && cur['wind_direction_10m'] != null) {
-          const pt = points[pointIdx]
           cache.set(cacheKey(pt.lat, pt.lng, 'surface'), {
             result: { dirDeg: Math.round(cur['wind_direction_10m']), speedKts: Math.round(cur['wind_speed_10m']) },
             expiresAt: Date.now() + CACHE_TTL_MS,
@@ -264,15 +300,15 @@ export async function fetchWindLevels(
           const dirDeg   = cur[`wind_direction_${l.hPa}hPa`]
           if (speedKts == null || dirDeg == null) continue
           const result: WindAloft = { dirDeg: Math.round(dirDeg), speedKts: Math.round(speedKts) }
-          const pt = points[pointIdx]
           cache.set(cacheKey(pt.lat, pt.lng, String(l.hPa)), { result, expiresAt: Date.now() + CACHE_TTL_MS })
         }
       })
     } catch (err) {
       if ((err as { name?: string }).name === 'AbortError') throw err
+      for (const cell of cells) for (const i of cell.idx) failed.add(i)
     }
   }
-  return points.map(readLevels)
+  return points.map((p, i) => readLevels(p, failed.has(i)))
 }
 
 // \u2500\u2500 Ambient (non-aviation) weather-station tier \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -332,6 +368,9 @@ export async function fetchAmbientWx(
   if (cached && Date.now() < cached.expiresAt) return cached.result
 
   const vars = ['wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m', 'temperature_2m', 'cloud_cover', 'surface_pressure', 'precipitation']
+  // Not snapped: requested at the aerodrome's own (fixed) coordinates, which
+  // are already stable across users, and gridDistNm reports the distance to
+  // the model cell actually sampled.
   const params = new URLSearchParams()
   params.set('latitude',  lat.toFixed(4))
   params.set('longitude', lng.toFixed(4))
@@ -342,10 +381,14 @@ export async function fetchAmbientWx(
 
   const url = `${baseUrl}/api/open-meteo/forecast?${params.toString()}`
 
-  const res = await fetchWithRetry(url, { signal })
-  if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`)
-
-  const json = await res.json() as { current: Record<string, number>; latitude?: number; longitude?: number }
+  let json: { current: Record<string, number>; latitude?: number; longitude?: number }
+  try {
+    json = await openMeteoJson<typeof json>(url, signal)
+  } catch (err) {
+    if ((err as { name?: string }).name === 'AbortError') throw err
+    if (cached && Date.now() < cached.expiresAt + STALE_MAX_MS) return cached.result
+    throw err
+  }
   const speedKts = json.current['wind_speed_10m']
   const dirDegRaw = json.current['wind_direction_10m']
   if (speedKts == null || dirDegRaw == null) {

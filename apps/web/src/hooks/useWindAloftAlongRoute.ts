@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { API_BASE_URL } from '../utils/env'
-import { fetchWindAloftAlongRoute, type WindAloftColumn } from '@open-vfr/shared/windAloft'
+import { watchWindAloftAlongRoute, type WindAloftColumn } from '@open-vfr/shared/windAloft'
 
 const DEBOUNCE_MS = 400
 
@@ -27,9 +27,8 @@ export function useWindAloftAlongRoute(
     const ac = new AbortController()
     const timer = setTimeout(() => {
       // Chart x-axis ticks sit at ~totalNm/7 steps; keep ground barbs off their labels.
-      fetchWindAloftAlongRoute(waypoints, totalNm, maxAltFt, API_BASE_URL, ac.signal, Math.ceil(totalNm) / 7)
-        .then((c) => { if (!ac.signal.aborted) setColumns(c) })
-        .catch(() => { /* offline-safe: no barbs */ })
+      // Re-fetches what is missing if Open-Meteo was throttling (see watchWindAloftAlongRoute).
+      watchWindAloftAlongRoute(waypoints, totalNm, maxAltFt, API_BASE_URL, ac.signal, Math.ceil(totalNm) / 7, setColumns)
     }, DEBOUNCE_MS)
     return () => { clearTimeout(timer); ac.abort() }
   // eslint-disable-next-line react-hooks/exhaustive-deps

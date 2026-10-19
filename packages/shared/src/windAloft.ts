@@ -5,6 +5,7 @@
  */
 
 import { fetchWindLevels, type WindAtLevel } from './fetchWind'
+import { openMeteoCooldownMs, openMeteoFailureCount } from './openMeteo'
 import { coordinateAlongRouteNm, regularIntervalDistances } from './virtualRadarCalc'
 
 export interface WindAloftColumn {
@@ -38,6 +39,45 @@ export function nudgeOffTicks(distances: number[], totalNm: number, tickStepNm: 
     }
     return d
   })
+}
+
+/** Retries of an incomplete route wind fetch, and the least wait before each. */
+const FOLLOW_UP_RETRIES = 3
+const FOLLOW_UP_MIN_MS = 30_000
+
+/**
+ * Calls `onColumns` with the route's winds aloft, and again (up to
+ * FOLLOW_UP_RETRIES times) if part of the request failed -- Open-Meteo
+ * throttled or the network dropped -- once Open-Meteo lets requests through
+ * again (never sooner than FOLLOW_UP_MIN_MS). Only the points still missing
+ * are requested again (the rest come from fetchWind's cache). Stop it by
+ * aborting `signal`.
+ */
+export function watchWindAloftAlongRoute(
+  waypoints: { lat: number; lng: number }[],
+  totalNm: number,
+  maxAltFt: number,
+  baseUrl: string,
+  signal: AbortSignal,
+  tickStepNm: number,
+  onColumns: (columns: WindAloftColumn[]) => void,
+): void {
+  let retries = 0
+  let timer: ReturnType<typeof setTimeout> | undefined
+  signal.addEventListener('abort', () => clearTimeout(timer), { once: true })
+  const load = () => {
+    const failuresBefore = openMeteoFailureCount()
+    fetchWindAloftAlongRoute(waypoints, totalNm, maxAltFt, baseUrl, signal, tickStepNm)
+      .then((c) => {
+        if (signal.aborted) return
+        onColumns(c)
+        if (openMeteoFailureCount() > failuresBefore && retries++ < FOLLOW_UP_RETRIES) {
+          timer = setTimeout(load, Math.max(FOLLOW_UP_MIN_MS, openMeteoCooldownMs()))
+        }
+      })
+      .catch(() => { /* aborted / offline: keep what is shown */ })
+  }
+  load()
 }
 
 export async function fetchWindAloftAlongRoute(

@@ -282,3 +282,12 @@ removes it. An already-issued PostgREST JWT stays valid until its 1 h expiry.
   single-origin case (proxies `/api/auth`, `/rest`, `/api/weather`,
   `/api/notam` to the API service; serves `/tiles/*` and hashed JS/CSS
   assets with appropriate caching).
+- `/api/open-meteo/` proxies the free Open-Meteo forecast API, which is
+  for non-commercial use and rate limited per IP (600 calls/min, 5 000/h,
+  10 000/day; see open-meteo.com/en/terms). All your users share your
+  server's IP, so keep the response cache from `docker/nginx.conf`
+  (`proxy_cache open_meteo`) in any config you write yourself: it answers
+  repeated requests locally and serves the last good response when
+  Open-Meteo throttles. The apps themselves back off on 429/503 (see
+  `packages/shared/src/openMeteo.ts`). A commercial deployment needs an
+  Open-Meteo API subscription.
