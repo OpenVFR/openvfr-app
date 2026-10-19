@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { handleProxy, newProxyState, takeUserMiss, upstreamWaitS, anonymousModeFromEnv, openMeteoWeight, OPEN_METEO, ELEVATION, type ProxySpec, type ProxyState } from './externalProxy.js'
+import { handleProxy, newProxyState, takeUserMiss, upstreamWaitS, anonymousModeFromEnv, openMeteoWeight, openMeteoFreshUntil, OPEN_METEO, ELEVATION, type ProxySpec, type ProxyState } from './externalProxy.js'
 
 const realFetch = globalThis.fetch
 let calls: string[] = []
@@ -217,6 +217,22 @@ test('weighted calls count against the upstream budget and user caps', async () 
   const r2 = await handleProxy(spec, s, 'v', '/api/open-meteo/forecast', q(52))
   assert.equal(r2.status, 503)
   assert.equal(calls.length, 1)
+})
+
+test('per location: a current reading stays fresh until the next 15-min value is due', async () => {
+  const s = newProxyState()
+  let t = Date.UTC(2026, 0, 1, 10, 2, 0)
+  const now = () => t
+  const slotStart = Date.UTC(2026, 0, 1, 10, 0, 0) / 1000
+  reply = () => new Response(JSON.stringify({ current: { time: slotStart, interval: 900, wind_speed_10m: 5 } }), { status: 200 })
+  await om(s, Q, 'u', now)
+  t += 10 * 60_000                                  // 10:12 -- past the old fixed 5 min
+  assert.equal((await om(s, Q, 'u', now)).headers.get('X-Cache'), 'HIT')
+  t += 5 * 60_000                                   // 10:17 -- next value (10:15) due
+  assert.equal((await om(s, Q, 'u', now)).headers.get('X-Cache'), 'MISS')
+  assert.equal(calls.length, 2)
+  assert.equal(openMeteoFreshUntil('{"hourly":{}}', 1000), 1000 + 30 * 60_000)
+  assert.equal(openMeteoFreshUntil('{"x":1}', 1000), undefined)
 })
 
 test('server-wide upstream budget', () => {

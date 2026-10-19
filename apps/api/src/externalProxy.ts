@@ -36,7 +36,7 @@
  */
 
 import type { Context } from 'hono'
-import { throttleDelayMs } from '@open-vfr/shared/openMeteo'
+import { throttleDelayMs, currentExpiresAt } from '@open-vfr/shared/openMeteo'
 
 export interface ProxySpec {
   name: string
@@ -167,7 +167,29 @@ export const ELEVATION: ProxySpec = {
   timeoutMs: 20_000,
 }
 
-interface CacheEntry { body: string; storedAt: number; bytes: number }
+/** freshUntil: absolute end of freshness (default storedAt + spec.freshMs);
+ *  the stale window runs spec.staleMs past it. */
+interface CacheEntry { body: string; storedAt: number; bytes: number; freshUntil?: number }
+
+const isFresh = (e: CacheEntry, spec: ProxySpec, t: number) => t < (e.freshUntil ?? e.storedAt + spec.freshMs)
+const isUsableStale = (e: CacheEntry, spec: ProxySpec, t: number) => t < (e.freshUntil ?? e.storedAt + spec.freshMs) + spec.staleMs
+
+/** Hourly forecast series change with model runs (hourly or slower). */
+const HOURLY_FRESH_MS = 30 * MINUTE_MS
+
+/**
+ * Freshness of one Open-Meteo location element: a "current" block is fresh
+ * until the next 15-min value is due (same rule as the apps,
+ * currentExpiresAt), hourly series for 30 min. Exported for tests.
+ */
+export function openMeteoFreshUntil(elementJson: string, at: number): number | undefined {
+  try {
+    const e = JSON.parse(elementJson) as { current?: { time?: number; interval?: number }; hourly?: unknown }
+    if (e.current) return currentExpiresAt(e.current, at)
+    if (e.hourly) return at + HOURLY_FRESH_MS
+  } catch { /* fall back to spec.freshMs */ }
+  return undefined
+}
 
 export interface ProxyState {
   cache: Map<string, CacheEntry>
@@ -206,11 +228,11 @@ function pruneWindow(ts: number[], now: number, win: number): number[] {
   return i ? ts.slice(i) : ts
 }
 
-function putCache(s: ProxyState, spec: ProxySpec, key: string, body: string, now: number): void {
+function putCache(s: ProxyState, spec: ProxySpec, key: string, body: string, now: number, freshUntil?: number): void {
   const old = s.cache.get(key)
   if (old) { s.cacheBytes -= old.bytes; s.cache.delete(key) }
   const bytes = body.length * 2
-  s.cache.set(key, { body, storedAt: now, bytes })
+  s.cache.set(key, { body, storedAt: now, bytes, freshUntil })
   s.cacheBytes += bytes
   // Map iterates in insertion order: drop the oldest until under budget.
   for (const [k, v] of s.cache) {
@@ -350,8 +372,8 @@ async function handlePerLocation(
     if (seen.has(l.key)) continue
     seen.add(l.key)
     const hit = s.cache.get(l.key)
-    if (hit && t - hit.storedAt < spec.freshMs) { fresh.set(l.key, hit.body); continue }
-    if (hit && t - hit.storedAt < spec.freshMs + spec.staleMs) stale.set(l.key, hit.body)
+    if (hit && isFresh(hit, spec, t)) { fresh.set(l.key, hit.body); continue }
+    if (hit && isUsableStale(hit, spec, t)) stale.set(l.key, hit.body)
     const pend = s.inflightLoc.get(l.key)
     if (pend) { waiting.push(pend.then((b) => { if (b) fresh.set(l.key, b) })); continue }
     toFetch.push(l)
@@ -382,7 +404,7 @@ async function handlePerLocation(
           return { r: { kind: 'unavailable', retryAfterS: 30 } as Upstream, els: null }
         }
         const at = now()
-        els.forEach((e, i) => putCache(s, spec, toFetch[i]!.key, e, at))
+        els.forEach((e, i) => putCache(s, spec, toFetch[i]!.key, e, at, openMeteoFreshUntil(e, at)))
         return { r, els }
       })
       toFetch.forEach((l, i) => {
@@ -442,8 +464,8 @@ export async function handleProxy(
   const t = now()
   const hit = s.cache.get(key)
   const cacheControl = `private, max-age=${Math.round(spec.freshMs / 1000)}`
-  if (hit && t - hit.storedAt < spec.freshMs) return json(hit.body, 200, { 'Cache-Control': cacheControl, 'X-Cache': 'HIT' })
-  const stale = hit && t - hit.storedAt < spec.freshMs + spec.staleMs ? hit : undefined
+  if (hit && isFresh(hit, spec, t)) return json(hit.body, 200, { 'Cache-Control': cacheControl, 'X-Cache': 'HIT' })
+  const stale = hit && isUsableStale(hit, spec, t) ? hit : undefined
 
   let pending = s.inflight.get(key)
   if (!pending) {
