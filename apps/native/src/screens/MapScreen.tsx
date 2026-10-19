@@ -105,6 +105,7 @@ import { FollowCountdown } from '../components/FollowCountdown'
 import type { MapOrientation } from '../utils/gpsTypes'
 import { AutoFlyBanner } from '../components/AutoFlyBanner'
 import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
+import { parseParkTimeout } from '@open-vfr/shared/parkTimeout'
 import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
 import { iasToTas } from '@open-vfr/shared/airspeed'
 import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
@@ -781,7 +782,7 @@ function MapScreenForCountry() {
     settings.selectedAircraftId ?? '',
     aircraftProfile?.registration ?? '',
     nearbyFreqs[0]?.icao ?? null,
-    undefined,
+    parseParkTimeout(settings.parkTimeoutSec) * 1000,
     flyThresholds,
     deferLogCloseRef,
   )

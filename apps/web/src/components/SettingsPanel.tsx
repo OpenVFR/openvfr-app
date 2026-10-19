@@ -1,3 +1,4 @@
+import { parkTimeoutLabel } from '@open-vfr/shared/parkTimeout'
 import type { Units } from '../utils/units'
 import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
 import type { Theme, TrajectoryMode, AirspaceWarnLookahead, TrafficVertFilter, ParkTimeoutOption } from '../db/useSettings'
@@ -195,7 +196,7 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
               className={`${css.opt}${parkTimeout === v ? ` ${css.optActive}` : ''}`}
               onClick={() => onParkTimeoutChange(v)}
               title={v === 0 ? 'Each touch-and-go creates a separate flight log' : `Keep one flight log if airborne again within ${v / 60} min of landing`}
-            >{v === 0 ? 'Per leg' : v < 60 ? `${v}s` : `${v / 60} min`}</button>
+            >{parkTimeoutLabel(v)}</button>
           ))}
         </div>
       </div>

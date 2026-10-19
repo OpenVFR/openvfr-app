@@ -9,6 +9,7 @@ import type { Units } from '../utils/units'
 import { DEFAULT_UNITS } from '../utils/units'
 import type { ThemeName } from '../styles/theme'
 import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
+import { PARK_TIMEOUT_DEFAULT, type ParkTimeoutOption } from '@open-vfr/shared/parkTimeout'
 
 export type AppSettings = {
   units:        Units
@@ -18,6 +19,8 @@ export type AppSettings = {
   autoZoom:     boolean
   /** Takeoff / landing detection starts / stops flight mode: off, ask (prompt) or auto. */
   autoFlyMode:  AutoFlyMode
+  /** Seconds on the ground after landing before the flight log closes; 0 = one log per leg. */
+  parkTimeoutSec: ParkTimeoutOption
   trajectoryNm: number
   /** Horizontal lookahead in minutes for airspace penetration warnings */
   airspaceWarnLookaheadMin: number
@@ -68,6 +71,7 @@ const DEFAULTS: AppSettings = {
   airspaceCeilingFt:   9_500,
   autoZoom:            true,
   autoFlyMode:         'ask',
+  parkTimeoutSec:      PARK_TIMEOUT_DEFAULT,
   trajectoryNm:        5,
   airspaceWarnLookaheadMin: 5,
   airspaceWarnVerticalFt:   500,

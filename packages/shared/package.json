@@ -17,6 +17,7 @@
     "./subAreas": "./src/subAreas.ts",
     "./autoFlyDetect": "./src/autoFlyDetect.ts",
     "./flightLogStats": "./src/flightLogStats.ts",
+    "./parkTimeout": "./src/parkTimeout.ts",
     "./otpAutoSubmit": "./src/otpAutoSubmit.ts",
     "./terrainDem": "./src/terrainDem.ts",
     "./attributionSources": "./src/attributionSources.ts",

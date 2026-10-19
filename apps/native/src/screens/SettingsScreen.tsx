@@ -17,6 +17,7 @@ import { authHeaders } from '../utils/authClient'
 import { useSimContext }      from '../context/SimContext'
 import { SimConnectSheet }    from '../components/SimConnectSheet'
 import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
+import { PARK_TIMEOUT_OPTIONS, parseParkTimeout, parkTimeoutLabel, type ParkTimeoutOption } from '@open-vfr/shared/parkTimeout'
 import { useInternalBarometer } from '../hooks/useInternalBarometer'
 import { useVarioContext } from '../context/VarioContext'
 import type { VarioState } from '@open-vfr/shared/blueflyVario'
@@ -225,6 +226,10 @@ export function SettingsScreen() {
         <RowAutoFly
           value={settings.autoFlyMode ?? 'ask'}
           onChange={(v) => update({ autoFlyMode: v })}
+        />
+        <RowParkTimeout
+          value={parseParkTimeout(settings.parkTimeoutSec)}
+          onChange={(v) => update({ parkTimeoutSec: v })}
         />
       </Section>
 
@@ -670,6 +675,31 @@ function RowAutoFly({
             accessibilityLabel={`Auto flying mode ${label}`}
           >
             <Text style={[styles.segText, value === v && styles.segTextActive]}>{label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  )
+}
+
+function RowParkTimeout({
+  value, onChange,
+}: { value: ParkTimeoutOption; onChange: (v: ParkTimeoutOption) => void }) {
+  const styles = useThemedStyles(makeStyles)
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>Log split timeout</Text>
+      <View style={styles.segmented}>
+        {PARK_TIMEOUT_OPTIONS.map((v) => (
+          <TouchableOpacity
+            key={v}
+            style={[styles.seg, value === v && styles.segActive]}
+            onPress={() => onChange(v)}
+            accessibilityLabel={`Log split timeout ${parkTimeoutLabel(v)}`}
+          >
+            <Text style={[styles.segText, value === v && styles.segTextActive]}>
+              {v === 0 ? 'Leg' : `${v / 60}m`}
+            </Text>
           </TouchableOpacity>
         ))}
       </View>

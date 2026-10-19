@@ -1,3 +1,4 @@
+import { PARK_TIMEOUT_OPTIONS, PARK_TIMEOUT_DEFAULT, parseParkTimeout, type ParkTimeoutOption } from '@open-vfr/shared/parkTimeout'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getDb } from './index'
 import { type Units, DEFAULT_UNITS } from '../utils/units'
@@ -522,10 +523,8 @@ export function useAirspaceCeiling(): [number, (ft: number) => void] {
 // 0 = split every touch-and-go into a separate log (legacy behaviour).
 // Persisted to RxDB; default 300 s (5 min).
 // ---------------------------------------------------------------------------
-export const PARK_TIMEOUT_OPTIONS = [0, 60, 120, 300, 600] as const
-export type ParkTimeoutOption = typeof PARK_TIMEOUT_OPTIONS[number]
+export { PARK_TIMEOUT_OPTIONS, type ParkTimeoutOption }
 const PARK_TIMEOUT_KEY = 'ovfr:parkTimeout'
-const PARK_TIMEOUT_DEFAULT: ParkTimeoutOption = 300
 
 export function useParkTimeout(): [ParkTimeoutOption, (v: ParkTimeoutOption) => void] {
   const [val, setValState] = useState<ParkTimeoutOption>(PARK_TIMEOUT_DEFAULT)
@@ -534,10 +533,7 @@ export function useParkTimeout(): [ParkTimeoutOption, (v: ParkTimeoutOption) => 
     getDb().then(async (db) => {
       const doc = await db.settings.findOne(PARK_TIMEOUT_KEY).exec()
       if (doc) {
-        const raw = parseInt(doc.value, 10)
-        if ((PARK_TIMEOUT_OPTIONS as readonly number[]).includes(raw)) {
-          setValState(raw as ParkTimeoutOption)
-        }
+        setValState(parseParkTimeout(doc.value))
       }
     }).catch(() => {})
   }, [])
