@@ -47,6 +47,8 @@ export interface ProxySpec {
   endpoints: Record<string, readonly string[]>
   /** Validates one query: returns an error message, or null when acceptable. */
   validate: (endpoint: string, q: URLSearchParams) => string | null
+  /** Cache and fetch per location (latitude/longitude lists), see handlePerLocation. */
+  perLocation?: boolean
   /** How many upstream "calls" one request costs against the provider's
    *  limits (all budgets and caps below are in these units). */
   weight: (endpoint: string, q: URLSearchParams) => number
@@ -71,7 +73,8 @@ const MAX_PAUSE_REPORT_S = 3600
 const MAX_QUEUE_MS = 10_000
 
 const COORD = /^-?\d{1,3}(\.\d{1,6})?$/
-const VARS = /^[a-z0-9_]{1,40}(,[a-z0-9_]{1,40}){0,24}$/
+// Open-Meteo variable names, e.g. wind_speed_10m, wind_direction_925hPa.
+const VARS = /^[A-Za-z0-9_]{1,40}(,[A-Za-z0-9_]{1,40}){0,24}$/
 
 /** Open-Meteo cost of one request in calls (see OPEN_METEO.weight). Exported for tests. */
 export function openMeteoWeight(q: URLSearchParams): number {
@@ -120,6 +123,7 @@ export const OPEN_METEO: ProxySpec = {
   // fractional counts; its cost calculator takes variables, time span and
   // locations). Rounded up so a budget is never under-counted.
   weight: (_endpoint, q) => openMeteoWeight(q),
+  perLocation: true,
   freshMs: 5 * MINUTE_MS,
   staleMs: HOUR_MS,
   maxCacheBytes: 64 * 1024 * 1024,
@@ -169,6 +173,8 @@ export interface ProxyState {
   cache: Map<string, CacheEntry>
   cacheBytes: number
   inflight: Map<string, Promise<Upstream>>
+  /** Per-location fetches in progress (perLocation specs): element JSON or null. */
+  inflightLoc: Map<string, Promise<string | null>>
   userMisses: Map<string, number[]>
   upstreamCalls: number[]
   /** Upstream calls caused by requests without a session (last 24 h). */
@@ -179,7 +185,7 @@ export interface ProxyState {
 }
 
 export function newProxyState(): ProxyState {
-  return { cache: new Map(), cacheBytes: 0, inflight: new Map(), userMisses: new Map(), upstreamCalls: [], anonUpstreamCalls: [], pausedUntil: 0, consecutiveThrottles: 0, nextSlotAt: 0 }
+  return { cache: new Map(), cacheBytes: 0, inflight: new Map(), inflightLoc: new Map(), userMisses: new Map(), upstreamCalls: [], anonUpstreamCalls: [], pausedUntil: 0, consecutiveThrottles: 0, nextSlotAt: 0 }
 }
 
 type Upstream =
@@ -293,6 +299,125 @@ function unavailable(spec: ProxySpec, retryAfterS: number, why: string): Respons
 /** Who is asking: a signed-in user, or (transition mode) an anonymous client IP. */
 export type Caller = { kind: 'user'; id: string } | { kind: 'anonymous'; ip: string }
 
+/** Charge `weight` upstream calls to the caller's caps; seconds to wait, or 0 (charged). */
+function chargeCaller(s: ProxyState, spec: ProxySpec, caller: Caller, t: number, weight: number): number {
+  let wait = caller.kind === 'user'
+    ? takeUserMiss(s, spec, caller.id, t, spec.perUser, weight)
+    : takeUserMiss(s, spec, `anon:${caller.ip}`, t, { hourly: spec.anonymous.perIpHourly, daily: spec.anonymous.perIpDaily }, weight)
+  if (!wait && caller.kind === 'anonymous') {
+    s.anonUpstreamCalls = pruneWindow(s.anonUpstreamCalls, t, DAY_MS)
+    if (s.anonUpstreamCalls.length + weight > spec.anonymous.upstreamDaily) wait = Math.ceil(((s.anonUpstreamCalls[0] ?? t) + DAY_MS - t) / 1000)
+    else for (let i = 0; i < weight; i++) s.anonUpstreamCalls.push(t)
+  }
+  return wait
+}
+
+function limitReached(spec: ProxySpec, caller: Caller, waitS: number): Response {
+  const why = caller.kind === 'anonymous' ? `Request limit reached for ${spec.name}; sign in for more` : `Request limit reached for ${spec.name}`
+  return json(JSON.stringify({ error: true, reason: why }), 429, { 'Retry-After': String(Math.min(MAX_PAUSE_REPORT_S, waitS)), 'Cache-Control': 'no-store' })
+}
+
+/**
+ * Multi-location request (Open-Meteo): cached, fetched and shared PER
+ * LOCATION, not per URL. Clients only ask for the points they lack, so two
+ * users looking at the same map area rarely send the same URL -- but the
+ * points themselves (world-anchored wind-grid lattice, 0.05 deg snapped
+ * route samples) are the same. Each location is served from the cache when
+ * fresh, awaited when another request is already fetching it, and only the
+ * rest go upstream in one batched request (costed for those alone). The
+ * answer keeps Open-Meteo's shape: an object for one location, else an
+ * array in request order. If any location can't be served (not even
+ * stale), the whole request gets 429/503 -- the apps fall back to their own
+ * last good values and retry later, now with the rest cached here.
+ */
+async function handlePerLocation(
+  spec: ProxySpec, s: ProxyState, caller: Caller, endpoint: string, q: URLSearchParams, now: () => number,
+): Promise<Response> {
+  const lats = q.get('latitude')!.split(','), lngs = q.get('longitude')!.split(',')
+  const rest = new URLSearchParams()
+  for (const k of spec.endpoints[endpoint] ?? []) {
+    if (k !== 'latitude' && k !== 'longitude' && q.has(k)) rest.set(k, q.get(k)!)
+  }
+  const base = `${endpoint}?${rest.toString()}`
+  const locs = lats.map((la, i) => ({ la, lo: lngs[i]!, key: `${base}@${la},${lngs[i]}` }))
+  const t = now()
+  const fresh = new Map<string, string>()
+  const stale = new Map<string, string>()
+  const waiting: Promise<void>[] = []
+  const toFetch: typeof locs = []
+  const seen = new Set<string>()
+  for (const l of locs) {
+    if (seen.has(l.key)) continue
+    seen.add(l.key)
+    const hit = s.cache.get(l.key)
+    if (hit && t - hit.storedAt < spec.freshMs) { fresh.set(l.key, hit.body); continue }
+    if (hit && t - hit.storedAt < spec.freshMs + spec.staleMs) stale.set(l.key, hit.body)
+    const pend = s.inflightLoc.get(l.key)
+    if (pend) { waiting.push(pend.then((b) => { if (b) fresh.set(l.key, b) })); continue }
+    toFetch.push(l)
+  }
+
+  let outcome: Upstream | { kind: 'limit'; waitS: number } | null = null
+  if (toFetch.length > 0) {
+    const fq = new URLSearchParams()
+    fq.set('latitude', toFetch.map((l) => l.la).join(','))
+    fq.set('longitude', toFetch.map((l) => l.lo).join(','))
+    for (const [k, v] of rest) fq.set(k, v)
+    const weight = spec.weight(endpoint, fq)
+    const waitS = chargeCaller(s, spec, caller, t, weight)
+    if (waitS > 0) {
+      outcome = { kind: 'limit', waitS }
+    } else {
+      const url = `${spec.upstreamBase}${endpoint}?${decodeURIComponent(fq.toString())}`
+      const call = callUpstream(s, spec, url, weight, now).then((r) => {
+        if (r.kind !== 'ok') return { r, els: null as string[] | null }
+        let els: string[] | null = null
+        try {
+          const parsed: unknown = JSON.parse(r.body)
+          const list = Array.isArray(parsed) ? parsed : [parsed]
+          if (list.length === toFetch.length) els = list.map((e) => JSON.stringify(e))
+        } catch { /* fall through */ }
+        if (!els) {
+          console.error(`[${spec.name}] unexpected upstream body for ${toFetch.length} location(s): ${r.body.slice(0, 200)}`)
+          return { r: { kind: 'unavailable', retryAfterS: 30 } as Upstream, els: null }
+        }
+        const at = now()
+        els.forEach((e, i) => putCache(s, spec, toFetch[i]!.key, e, at))
+        return { r, els }
+      })
+      toFetch.forEach((l, i) => {
+        const p = call.then((c) => c.els?.[i] ?? null).catch(() => null).finally(() => {
+          if (s.inflightLoc.get(l.key) === p) s.inflightLoc.delete(l.key)
+        })
+        s.inflightLoc.set(l.key, p)
+      })
+      const c = await call.catch(() => ({ r: { kind: 'unavailable', retryAfterS: 10 } as Upstream, els: null }))
+      outcome = c.r
+      c.els?.forEach((e, i) => fresh.set(toFetch[i]!.key, e))
+    }
+  }
+  await Promise.all(waiting)
+
+  const parts: string[] = []
+  let usedStale = false
+  for (const l of locs) {
+    const b = fresh.get(l.key) ?? stale.get(l.key)
+    if (!b) {
+      if (outcome?.kind === 'limit') return limitReached(spec, caller, outcome.waitS)
+      if (outcome?.kind === 'client-error') return json(outcome.body || JSON.stringify({ error: true, reason: 'Upstream rejected the request' }), outcome.status)
+      return unavailable(spec, outcome && outcome.kind === 'unavailable' ? outcome.retryAfterS : 10, 'upstream busy')
+    }
+    if (!fresh.has(l.key)) usedStale = true
+    parts.push(b)
+  }
+  const body = lats.length === 1 ? parts[0]! : `[${parts.join(',')}]`
+  if (usedStale) return json(body, 200, { 'Cache-Control': 'no-store', 'X-Cache': 'STALE' })
+  return json(body, 200, {
+    'Cache-Control': `private, max-age=${Math.round(spec.freshMs / 1000)}`,
+    'X-Cache': toFetch.length === 0 && waiting.length === 0 ? 'HIT' : 'MISS',
+  })
+}
+
 /**
  * Handle one proxied request. `path` is the request path, `search` its raw
  * query string. A bare string caller is a user id (tests, convenience).
@@ -311,6 +436,7 @@ export async function handleProxy(
   }
   const invalid = spec.validate(endpoint, q)
   if (invalid) return json(JSON.stringify({ error: true, reason: invalid }), 400)
+  if (spec.perLocation) return handlePerLocation(spec, s, caller, endpoint, q, now)
 
   const key = cacheKey(spec, endpoint, q)
   const t = now()
@@ -322,18 +448,10 @@ export async function handleProxy(
   let pending = s.inflight.get(key)
   if (!pending) {
     const weight = spec.weight(endpoint, q)
-    let userWait = caller.kind === 'user'
-      ? takeUserMiss(s, spec, caller.id, t, spec.perUser, weight)
-      : takeUserMiss(s, spec, `anon:${caller.ip}`, t, { hourly: spec.anonymous.perIpHourly, daily: spec.anonymous.perIpDaily }, weight)
-    if (!userWait && caller.kind === 'anonymous') {
-      s.anonUpstreamCalls = pruneWindow(s.anonUpstreamCalls, t, DAY_MS)
-      if (s.anonUpstreamCalls.length + weight > spec.anonymous.upstreamDaily) userWait = Math.ceil(((s.anonUpstreamCalls[0] ?? t) + DAY_MS - t) / 1000)
-      else for (let i = 0; i < weight; i++) s.anonUpstreamCalls.push(t)
-    }
+    const userWait = chargeCaller(s, spec, caller, t, weight)
     if (userWait > 0) {
       if (stale) return json(stale.body, 200, { 'Cache-Control': 'no-store', 'X-Cache': 'STALE' })
-      const why = caller.kind === 'anonymous' ? `Request limit reached for ${spec.name}; sign in for more` : `Request limit reached for ${spec.name}`
-      return json(JSON.stringify({ error: true, reason: why }), 429, { 'Retry-After': String(Math.min(MAX_PAUSE_REPORT_S, userWait)), 'Cache-Control': 'no-store' })
+      return limitReached(spec, caller, userWait)
     }
     const url = `${spec.upstreamBase}${endpoint}?${key.slice(endpoint.length + 1)}`
     pending = callUpstream(s, spec, url, weight, now).then((r) => {

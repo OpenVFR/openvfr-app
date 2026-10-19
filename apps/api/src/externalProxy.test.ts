@@ -4,12 +4,20 @@ import { handleProxy, newProxyState, takeUserMiss, upstreamWaitS, anonymousModeF
 
 const realFetch = globalThis.fetch
 let calls: string[] = []
-let reply: () => Response = () => new Response('{"ok":1}', { status: 200 })
+/** Default upstream: Open-Meteo shape -- one object per requested latitude
+ *  (an object for one location, an array for several); others get {"ok":1}. */
+const echo = (u: string) => {
+  const lat = new URL(u).searchParams.get('latitude')
+  if (!lat) return new Response('{"ok":1}', { status: 200 })
+  const els = lat.split(',').map((la) => ({ ok: 1, lat: la }))
+  return new Response(JSON.stringify(els.length === 1 ? els[0] : els), { status: 200 })
+}
+let reply: (u: string) => Response = echo
 
 beforeEach(() => {
   calls = []
-  reply = () => new Response('{"ok":1}', { status: 200 })
-  globalThis.fetch = (async (u: string | URL) => { calls.push(String(u)); return reply() }) as typeof fetch
+  reply = echo
+  globalThis.fetch = (async (u: string | URL) => { calls.push(String(u)); return reply(String(u)) }) as typeof fetch
 })
 afterEach(() => { globalThis.fetch = realFetch })
 
@@ -27,8 +35,56 @@ test('relays an allowed request and caches it per normalised query', async () =>
   const reordered = '?longitude=17.70&latitude=59.30&timeformat=unixtime&forecast_days=1&wind_speed_unit=kn&current=wind_speed_10m,wind_direction_10m'
   const r2 = await om(s, reordered, 'u2')
   assert.equal(r2.headers.get('X-Cache'), 'HIT')
-  assert.equal(await r2.text(), '{"ok":1}')
+  assert.equal(await r2.text(), '{"ok":1,"lat":"59.30"}')
   assert.equal(calls.length, 1)
+})
+
+test('per location: only missing points go upstream, answers keep request order and shape', async () => {
+  const s = newProxyState()
+  const q = (lats: string) => `?latitude=${lats}&longitude=${lats.split(',').map(() => '17.70').join(',')}&current=wind_speed_10m&forecast_days=1`
+  await om(s, q('59.30,59.35'), 'a')
+  assert.equal(calls.length, 1)
+  // Another user asks for an overlapping set: only 59.40 is fetched.
+  const r = await om(s, q('59.40,59.30,59.35'), 'b')
+  assert.equal(calls.length, 2)
+  assert.equal(new URL(calls[1]!).searchParams.get('latitude'), '59.40')
+  assert.deepEqual((JSON.parse(await r.text()) as { lat: string }[]).map((e) => e.lat), ['59.40', '59.30', '59.35'])
+  // A single location is an object, served from the per-location cache.
+  const one = await om(s, q('59.35'), 'c')
+  assert.equal(one.headers.get('X-Cache'), 'HIT')
+  assert.deepEqual(JSON.parse(await one.text()), { ok: 1, lat: '59.35' })
+  assert.equal(calls.length, 2)
+  // A different variable set is a different entry.
+  await om(s, q('59.35').replace('wind_speed_10m', 'wind_speed_925hPa'), 'c')
+  assert.equal(calls.length, 3)
+})
+
+test('per location: a point already being fetched for someone else is awaited, not refetched', async () => {
+  const s = newProxyState()
+  let release!: () => void
+  const gate = new Promise<void>((r) => { release = r })
+  globalThis.fetch = (async (u: string | URL) => { calls.push(String(u)); await gate; return echo(String(u)) }) as typeof fetch
+  const q = (lats: string) => `?latitude=${lats}&longitude=${lats.split(',').map(() => '17.70').join(',')}&current=wind_speed_10m&forecast_days=1`
+  const p1 = om(s, q('60.00,60.05'), 'a')
+  await new Promise((r) => setTimeout(r, 0))
+  const p2 = om(s, q('60.05,60.10'), 'b')   // 60.05 in flight; only 60.10 fetched
+  await new Promise((r) => setTimeout(r, 0))
+  release()
+  const [r1, r2] = await Promise.all([p1, p2])
+  assert.equal(r1.status, 200)
+  assert.deepEqual((JSON.parse(await r2.text()) as { lat: string }[]).map((e) => e.lat), ['60.05', '60.10'])
+  assert.equal(calls.length, 2)
+  assert.equal(new URL(calls[1]!).searchParams.get('latitude'), '60.10')
+})
+
+test('per location: a point that cannot be served fails the request (no partial answers)', async () => {
+  const s = newProxyState()
+  const q = (lats: string) => `?latitude=${lats}&longitude=${lats.split(',').map(() => '17.70').join(',')}&current=wind_speed_10m&forecast_days=1`
+  await om(s, q('61.00'), 'a')
+  reply = () => new Response('{"error":true,"reason":"overloaded"}', { status: 503 })
+  const r = await om(s, q('61.00,61.05'), 'a')
+  assert.equal(r.status, 503)
+  assert.ok(Number(r.headers.get('Retry-After')) >= 1)
 })
 
 test('rejects unknown endpoints, parameters and oversized coordinate lists', async () => {
@@ -42,6 +98,23 @@ test('rejects unknown endpoints, parameters and oversized coordinate lists', asy
   const pts = Array.from({ length: 101 }, () => '59.3,17.7').join('|')
   assert.equal((await handleProxy(ELEVATION, s, 'u', '/api/elevation/eudem25m', `?locations=${encodeURIComponent(pts)}`)).status, 400)
   assert.equal(calls.length, 0)
+})
+
+test('accepts every query shape the apps actually send', async () => {
+  // Copied from real app requests (wind grid / gauge, winds aloft, leg
+  // forecast, aerodrome weather station, terrain profile).
+  const real = [
+    '?latitude=59.30,59.35&longitude=17.70,17.75&current=wind_speed_925hPa,wind_direction_925hPa&wind_speed_unit=kn&forecast_days=1&timeformat=unixtime',
+    '?latitude=59.55,59.50&longitude=18.25,18.05&current=wind_speed_10m,wind_direction_10m,wind_speed_925hPa,wind_direction_925hPa,wind_speed_850hPa,wind_direction_850hPa,wind_speed_700hPa,wind_direction_700hPa,wind_speed_600hPa,wind_direction_600hPa,wind_speed_500hPa,wind_direction_500hPa&wind_speed_unit=kn&forecast_days=1&timeformat=unixtime',
+    '?latitude=59.60,59.45&longitude=18.25,18.20&hourly=wind_speed_925hPa,wind_direction_925hPa&wind_speed_unit=kn&forecast_days=5&past_days=1&timeformat=unixtime',
+    '?latitude=59.6519&longitude=17.9186&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m,temperature_2m,cloud_cover,surface_pressure,precipitation&wind_speed_unit=kn&forecast_days=1&timeformat=unixtime',
+  ]
+  for (const q of real) {
+    const r = await om(newProxyState(), q)
+    assert.equal(r.status, 200, `${q} -> ${r.status} ${await r.text()}`)
+  }
+  const elev = await handleProxy(ELEVATION, newProxyState(), 'u', '/api/elevation/eudem25m', `?locations=${encodeURIComponent('59.48554,18.27164|59.48202,18.25557')}`)
+  assert.equal(elev.status, 200)
 })
 
 test('identical concurrent misses make one upstream call', async () => {
