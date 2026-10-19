@@ -8,7 +8,7 @@ import {
 import { CLOUD_COLORS } from '@open-vfr/shared/featureColors'
 import type { ParsedCloudLayer } from '@open-vfr/shared/fetchWx'
 import {
-  profileChartLayout, profileYMax, altitudeTicks, formatAltitudeTick, distanceTicks,
+  profileChartLayout, profileYMax, altitudeTicks, formatAltitudeTick, formatAltitudeFt, distanceTicks,
   polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, type ProfileChartLayout,
 } from '@open-vfr/shared/profileChart'
 import type { RouteWaypoint } from '../utils/routeCalc'
@@ -299,8 +299,9 @@ function renderClouds(marks: CloudMark[], chips: ReturnType<typeof layoutAirspac
   return <g pointerEvents="none">{shapes}{labels}</g>
 }
 
-/** Altitude axis: line on the plot's left edge plus FL/ft labels. Drawn in the
- *  chart and again in the pinned column while the chart scrolls. */
+/** Altitude axis: line on the plot's left edge plus labels in feet (QNH
+ *  altitude, see formatAltitudeTick). Drawn in the chart and again in the
+ *  pinned column while the chart scrolls. */
 function renderYAxis(L: ProfileChartLayout, yTicks: number[]) {
   return (
     <g>
@@ -318,11 +319,6 @@ function renderYAxis(L: ProfileChartLayout, yTicks: number[]) {
 // Hover readout
 // ---------------------------------------------------------------------------
 
-function fmtFt(ft: number): string {
-  return ft >= 1000
-    ? `FL${Math.round(ft / 100).toString().padStart(3, '0')}`
-    : `${Math.round(ft)} ft`
-}
 
 /**
  * Pointer cursor + value readout (planned altitude, MSA, ground) at the
@@ -384,7 +380,7 @@ const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDist
             {rows.map((r) => (
               <div key={r.label} className={css.tooltipRow}>
                 <span className={css.tooltipLabel} style={{ color: r.color }}>{r.label}</span>
-                <span className={css.tooltipVal}>{fmtFt(r.ft)}</span>
+                <span className={css.tooltipVal}>{formatAltitudeFt(r.ft)}</span>
               </div>
             ))}
           </div>

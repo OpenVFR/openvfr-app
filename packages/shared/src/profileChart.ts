@@ -99,9 +99,22 @@ export function altitudeTicks(yMax: number, targetTicks = 5): number[] {
   return ticks
 }
 
-/** Altitude tick label: flight-level style from 1000 ft, plain feet below. */
+/**
+ * Altitude tick label, always in feet. The profile's scale is QNH altitude
+ * (terrain, MSA and the planned line are all ft AMSL), so a flight level --
+ * pressure altitude on 1013.25 hPa, used above the transition altitude --
+ * would be the wrong reference at any height. The 0 tick carries the unit.
+ * Airspace limits keep their own published reference (ft / FL / AGL)
+ * elsewhere; this is only the scale.
+ */
 export function formatAltitudeTick(ft: number): string {
-  return ft >= 1000 ? `FL${Math.round(ft / 100).toString().padStart(3, '0')}` : `${Math.round(ft)}`
+  const v = Math.round(ft)
+  return v === 0 ? '0 ft' : `${v}`
+}
+
+/** An altitude readout in feet, e.g. "3500 ft" (see formatAltitudeTick). */
+export function formatAltitudeFt(ft: number): string {
+  return `${Math.round(ft)} ft`
 }
 
 /**

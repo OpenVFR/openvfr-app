@@ -22,17 +22,17 @@ type Props = {
   wind:     WindAloft | null
   showAgl:  boolean
   onToggleAgl: () => void
-  /** Barometric altitude source (tier 1/2) — undefined/tier==='gps' hides the P.ALT/VS gauges entirely. */
+  /** Barometric altitude source (tier 1/2) — undefined/tier==='gps' hides the B.ALT/VS gauges entirely. */
   altitudeSource?: AltitudeSourceResult
-  /** P.ALT gauge: show QNH (hPa) instead of the FL/altitude value — tap to toggle, same pattern as T.ALT's AMSL/AGL toggle. */
+  /** B.ALT gauge (barometric altitude on QNH, ft): show QNH (hPa) instead of the altitude — tap to toggle, same pattern as T.ALT's AMSL/AGL toggle. */
   showQnh?: boolean
   onToggleQnh?: () => void
   /** UTC gauge: show local device time instead of Zulu — tap to toggle. */
   showLocalTime?: boolean
   onToggleLocalTime?: () => void
-  /** Connected BlueFly's battery is critically low — flags the P.ALT gauge so a dying vario is noticed in-flight, not just when checking Settings. */
+  /** Connected BlueFly's battery is critically low — flags the B.ALT gauge so a dying vario is noticed in-flight, not just when checking Settings. */
   varioBatteryLow?: boolean
-  /** A barometric source is enabled/connected. When it isn't delivering data the P.ALT gauge stays visible with a gray dot instead of vanishing. */
+  /** A barometric source is enabled/connected. When it isn't delivering data the B.ALT gauge stays visible with a gray dot instead of vanishing. */
   baroExpected?: boolean
 }
 
@@ -157,12 +157,10 @@ export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeS
   // "?" when that QNH is an unverified fallback.
   const uncalibrated = hasBaro && !altitudeSource.qnhCalibrated
 
-  const paltAltText = hasBaro
-    ? (() => {
-        const ft = Math.round(altitudeSource!.altFt!)
-        return ft >= 1000 ? `FL${Math.round(ft / 100).toString().padStart(3, '0')}` : `${ft}`
-      })()
-    : null
+  // Feet, always: altFt is the barometric altitude on the live QNH, not a
+  // pressure altitude on 1013.25 hPa, so showing it as a flight level would
+  // be wrong by ~30 ft per hPa that QNH differs from standard.
+  const paltAltText = hasBaro ? `${Math.round(altitudeSource!.altFt!)}` : null
 
   const palt = hasBaro
     ? (showQnh ? `${Math.round(altitudeSource!.qnhHpa)}` : paltAltText)
@@ -177,8 +175,8 @@ export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeS
   const xwColor = rel ? crosswindColor(rel.crosswindSeverity) : undefined
   const windLabel = rel ? (rel.hw >= 0 ? `HW${rel.hw}` : `TW${Math.abs(rel.hw)}`) + ` \u00b7 XW${rel.xw}` : 'WIND'
 
-  // minChars: widest reading this gauge can show (GS up to 3 digits, P.ALT up
-  // to "FL195", VS up to "+1500"...). Sizing uses max(actual, minChars) so the
+  // minChars: widest reading this gauge can show (GS up to 3 digits, B.ALT up
+  // to "12500", VS up to "+1500"...). Sizing uses max(actual, minChars) so the
   // font stays steady as digits come and go instead of jumping on 99 -> 100.
   type Item = { key: string; value: string; label: string; minChars: number; minLabelChars?: number; onPress?: () => void; valueColor?: string; dotColor?: string; dotGlyph?: string }
   const items: Item[] = [
@@ -187,7 +185,7 @@ export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeS
   if (palt != null || baroExpected) {
     items.push({
       key: 'palt', value: palt ?? '\u2013', minChars: 5,
-      label: `${isVarioLow ? '\u26a0 ' : ''}${showQnh ? 'QNH' : 'P.ALT'}${uncalibrated ? ' ?' : ''}`,
+      label: `${isVarioLow ? '\u26a0 ' : ''}${showQnh ? 'QNH' : 'B.ALT'}${uncalibrated ? ' ?' : ''}`,
       dotColor: baroDot, dotGlyph: baroGlyph,
       onPress: onToggleQnh,
       valueColor: isVarioLow ? theme.statusDanger : uncalibrated ? theme.statusWarn : undefined,

@@ -30,7 +30,7 @@ export type AppSettings = {
   trajectoryMode: 'time' | 'nm'
   /** GaugesBar T.ALT field: show Height AGL instead of AMSL (tap to toggle) */
   showAltitudeAgl: boolean
-  /** GaugesBar P.ALT gauge: show current QNH (hPa) instead of the FL/altitude value (tap to toggle) */
+  /** GaugesBar B.ALT gauge: show current QNH (hPa) instead of the altitude in ft (tap to toggle) */
   showQnhOnPaltGauge: boolean
   /** GaugesBar clock gauge: show local device time instead of UTC/Zulu (tap to toggle) */
   showLocalTime: boolean

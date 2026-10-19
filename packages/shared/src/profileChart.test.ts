@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  profileChartLayout, profileYMax, altitudeTicks, formatAltitudeTick, distanceTicks,
+  profileChartLayout, profileYMax, altitudeTicks, formatAltitudeTick, formatAltitudeFt, distanceTicks,
   polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex,
 } from './profileChart'
 
@@ -55,11 +55,17 @@ describe('altitudeTicks', () => {
   })
 })
 
-describe('formatAltitudeTick', () => {
-  it('formats flight levels from 1000 ft', () => {
+describe('formatAltitudeTick / formatAltitudeFt', () => {
+  it('labels the QNH altitude scale in feet, never as flight levels', () => {
+    expect(formatAltitudeTick(0)).toBe('0 ft')
     expect(formatAltitudeTick(500)).toBe('500')
-    expect(formatAltitudeTick(1000)).toBe('FL010')
-    expect(formatAltitudeTick(4500)).toBe('FL045')
+    expect(formatAltitudeTick(1000)).toBe('1000')
+    expect(formatAltitudeTick(4500)).toBe('4500')
+    expect(formatAltitudeTick(12000)).toBe('12000')
+  })
+  it('formats readouts with the unit', () => {
+    expect(formatAltitudeFt(3499.6)).toBe('3500 ft')
+    expect(formatAltitudeFt(156)).toBe('156 ft')
   })
 })
 
