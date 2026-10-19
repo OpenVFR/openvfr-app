@@ -15,6 +15,7 @@ import { useState } from 'react'
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { filterAndSortNotamsNearRoute, type RoutePoint } from '@open-vfr/shared/notamRouteFilter'
 import css from './RegionalNotamsPanel.module.css'
+import { notamStatus } from '@open-vfr/shared/notamValidity'
 import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
@@ -104,6 +105,7 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, r
         const exp = fmtNotamDate(n.expires)
         const hasGeo = n.polygon !== null || (n.lat !== null && n.lon !== null && n.radiusNm !== null)
         const isMilitary = n.classification === 'MILITARY'
+        const offSchedule = notamStatus(n).state === 'scheduled'
         return (
           <div key={n.nmsId} className={css.item}>
             <div className={css.toggle}>
@@ -114,6 +116,7 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, r
               >
                 {n.icaoLocation && <span className={css.locBadge}>{n.icaoLocation}</span>}
                 {isMilitary && <span className={css.milBadge}>MIL</span>}
+                {offSchedule && <span className={css.offBadge} title="Inside its validity dates, but outside its daily/weekly schedule right now">OFF SCHEDULE</span>}
                 <span className={css.id}>{notamTitle(n)}</span>
                 <span className={css.period}>{eff}{exp ? ` – ${exp}` : ''}</span>
                 <span className={css.chevron}>{expanded ? '▴' : '▾'}</span>

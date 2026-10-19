@@ -99,9 +99,17 @@ export function notamRegionsFor(opts: {
   for (const code of opts.selected) if (REGION_BY_CODE.has(code)) out.add(code)
   const points = sampleRoute(opts.route ?? [])
   if (opts.position) points.push(opts.position)
+  // Region boxes are rough and overlap (Sweden's covers Skane and
+  // Copenhagen, Denmark's covers Malmo): a point already inside a selected
+  // region's box doesn't pull in the neighbour -- that would load the whole
+  // neighbouring country's NOTAMs for someone flying around Malmo. Cross-
+  // border NOTAMs that reach the selected country are still kept by their
+  // own geometry (notamInRegions). A point beyond the selected boxes does
+  // add the region it is in.
+  const selectedBoxes = [...out].map(c => REGION_BY_CODE.get(c)!)
   for (const r of EUROPEAN_REGIONS) {
     if (out.has(r.code)) continue
-    if (points.some(p => inBbox(p, r))) out.add(r.code)
+    if (points.some(p => inBbox(p, r) && !selectedBoxes.some(s => inBbox(p, s)))) out.add(r.code)
   }
   return [...out].sort()
 }
@@ -166,6 +174,14 @@ export interface RegionScope {
 export const OUTLINE_BUFFER_NM = 12
 
 /**
+ * Buffer for a foreign NOTAM that is a bare point (aerodrome procedure or
+ * hours, obstacle light, navaid). It affects only that spot, so a point 10
+ * NM into Finland says nothing about Swedish airspace -- only points on the
+ * outline itself (coast, islands, the border) count.
+ */
+export const POINT_BUFFER_NM = 3
+
+/**
  * `outlines`: real country outlines by region code (server side; see
  * apps/api country-outlines.json). Without them the geometry test falls
  * back to the region bounding boxes, which are far too coarse for
@@ -225,7 +241,7 @@ export function notamInRegions(n: RegionScopeInput, scope: RegionScope): boolean
     // No usable radius (point, or the 999 NM whole-FIR sentinel whose
     // coordinate is just the FIR's reference point): the point itself.
     return outlines
-      ? outlines.some(o => pointNearOutline(n.lat!, n.lon!, OUTLINE_BUFFER_NM, o))
+      ? outlines.some(o => pointNearOutline(n.lat!, n.lon!, POINT_BUFFER_NM, o))
       : scope.bboxes.some(b => pointNearBbox(n.lat!, n.lon!, REGION_MARGIN_DEG, b))
   }
 

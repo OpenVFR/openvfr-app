@@ -15,7 +15,7 @@ import { AIRSPACE_COLORS as AC, CONTROLLED_CLASSES, controlledStyle } from '@ope
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { extractDesignators } from '@open-vfr/shared/notamDesignator'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
-import { notamValidity } from '@open-vfr/shared/notamValidity'
+import { notamStatus } from '@open-vfr/shared/notamValidity'
 import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
 import { NativeSheet } from './NativeSheet'
@@ -411,7 +411,7 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
           {dedupedNotams.map((hit, i) => {
             const group = hit.notams
             const n     = group[0]
-            const validity = notamValidity(n.effective, n.expires, now)
+            const validity = notamStatus(n, now)
             const validityColor =
               validity.state === 'active'   ? NOTAM_COLOR
               : validity.state === 'upcoming' ? theme.textPrimary

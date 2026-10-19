@@ -33,6 +33,11 @@ describe('notamRegionsFor', () => {
   it('adds the region of the current position', () => {
     expect(notamRegionsFor({ selected: ['se'], position: hamburg })).toContain('de')
   })
+  it('a position inside the selected region box does not add an overlapping neighbour', () => {
+    // Malmo is inside Denmark's rough box too, but Sweden is selected.
+    expect(notamRegionsFor({ selected: ['se'], position: malmo })).toEqual(['se'])
+    expect(notamRegionsFor({ selected: ['se'], route: [malmo, { lat: 55.9, lng: 13.2 }] })).toEqual(['se'])
+  })
   it('is sorted and de-duplicated', () => {
     const r = notamRegionsFor({ selected: ['se', 'se'], route: [stockholm, stockholm] })
     expect(r).toEqual([...new Set(r)].sort())
@@ -140,6 +145,10 @@ describe('notamInRegions with real country outlines', async () => {
   it('keeps an area just off Gotland (island is part of the outline)', () => {
     // East of Gotland (~57.5N 18.9E coast), centre 15 NM out, radius 5 NM.
     expect(notamInRegions(foreign(57.5, 19.35, 5, 'EVRR'), se)).toBe(true)
+  })
+  it('drops a Finnish aerodrome point just across the border (Kemi), keeps a bare point on Swedish soil', () => {
+    expect(notamInRegions(foreign(65.78, 24.58, null, 'EFIN'), se)).toBe(false)
+    expect(notamInRegions(foreign(59.35, 17.94, null, 'EKDK'), se)).toBe(true)
   })
   it('drops a whole-FIR reference point of another FIR', () => {
     expect(notamInRegions(foreign(58.7, 25.0, 999, 'EETT'), se)).toBe(false)

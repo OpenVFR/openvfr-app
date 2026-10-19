@@ -34,6 +34,8 @@ import { useRouteContext } from '../context/RouteContext'
 import { SnapPicker, type SnapCandidate } from '../components/SnapPicker'
 import { useTraffic }        from '../hooks/useTraffic'
 import { useRegionalNotams } from '../hooks/useRegionalNotams'
+import { useNotamAirspaceMatch } from '../hooks/useNotamAirspaceMatch'
+import { notamMapFeatures, matchedAirspaceFeatures, notamsInWindow, NOTAM_MAP_HORIZON_MS } from '@open-vfr/shared/notamMapLayers'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
 import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
 import { notamRegionsFor } from '@open-vfr/shared/notamRegionScope'
@@ -684,81 +686,49 @@ function MapScreenForCountry() {
     plannedWindAltFt,
     windSurface,
   )
-  const notamCirclesFC = useMemo(() => ({
-    type: 'FeatureCollection' as const,
-    // Map-drawing gate only -- see regionalNotams' own comment above.
-    features: !layers.notamCircles ? [] : regionalNotams
-      .filter((n) => !n.polygon) // real polygon geometry (below) takes priority over the synthesized circle
-      .filter((n) => n.lat !== null && n.lon !== null && n.radiusNm !== null && n.radiusNm > 0)
-      .map((n) => {
-        const circle = makeCirclePolygon(n.lat!, n.lon!, n.radiusNm!)
-        circle.properties = {
-          notamId:        n.id,
-          qCode:          n.qCode ?? null,
-          nmsId:          n.nmsId,
-          text:           n.text,
-          effective:      n.effective,
-          expires:        n.expires,
-          classification: n.classification,
-          icaoLocation:   n.icaoLocation,
-          radiusNm:       n.radiusNm,
-        }
-        return circle
-      }),
-  }), [regionalNotams, layers.notamCircles])
-
-  // Point-only regional NOTAMs (coordinates present, no usable radius --
-  // obstacle lights, single-point navaid faults). Rendered as clustered
-  // pins -- see AviationMap.tsx's notamPointsFC prop / notam-points-src.
-  const notamPointsFC = useMemo(() => ({
-    type: 'FeatureCollection' as const,
-    // Map-drawing gate only -- see regionalNotams' own comment above.
-    features: !layers.notamCircles ? [] : regionalNotams
-      .filter((n) => !n.polygon)
-      .filter((n) => n.lat !== null && n.lon !== null && (n.radiusNm === null || n.radiusNm <= 0))
-      .map((n) => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: [n.lon!, n.lat!] },
-        properties: {
-          notamId:        n.id,
-          qCode:          n.qCode ?? null,
-          nmsId:          n.nmsId,
-          text:           n.text,
-          effective:      n.effective,
-          expires:        n.expires,
-          classification: n.classification,
-          icaoLocation:   n.icaoLocation,
-        },
-      })),
-  }), [regionalNotams, layers.notamCircles])
-
-  // Real-geometry regional NOTAM polygons -- see AviationMap.tsx's
-  // notamPolygonsFC prop / notam-polygons-src, mirrors web's MapView.tsx
-  // 'notam-polygons' source exactly. Distinct from notamCirclesFC above:
-  // these are NOTAMs where NMS-API itself resolved the NOTAM text's area
-  // description into actual multi-vertex Polygon/MultiPolygon geometry
-  // (see apps/api/src/notam.ts's extractNotamPolygon()), e.g. a
-  // cross-border military exercise box, not a single point+radius circle.
-  const notamPolygonsFC = useMemo(() => ({
-    type: 'FeatureCollection' as const,
-    // Map-drawing gate only -- see regionalNotams' own comment above.
-    features: !layers.notamCircles ? [] : regionalNotams
-      .filter((n) => n.polygon !== null)
-      .map((n) => ({
-        type: 'Feature' as const,
-        geometry: n.polygon as GeoJSON.Polygon | GeoJSON.MultiPolygon,
-        properties: {
-          notamId:        n.id,
-          qCode:          n.qCode ?? null,
-          nmsId:          n.nmsId,
-          text:           n.text,
-          effective:      n.effective,
-          expires:        n.expires,
-          classification: n.classification,
-          icaoLocation:   n.icaoLocation,
-        },
-      })),
-  }), [regionalNotams, layers.notamCircles])
+  // Regional NOTAMs -> circle / polygon / point / matched-airspace layers.
+  // What is drawn, and which circles a charted area replaces (a NOTAM naming
+  // "ESD873" shows the charted polygon highlighted instead of its Q-line
+  // envelope), is decided in @open-vfr/shared/notamMapLayers -- the same code
+  // web's MapView.tsx runs. Map-drawing gate (layers.notamCircles) only; see
+  // regionalNotams' own comment above.
+  // Schedule-aware: NOTAMs whose own schedule (D / leading E text) is off for
+  // the whole look-ahead window aren't drawn or matched. Re-evaluated every
+  // 5 min; unparseable schedules count as in force.
+  const [notamClock, setNotamClock] = React.useState(() => Math.floor(Date.now() / 300_000))
+  React.useEffect(() => {
+    const t = setInterval(() => setNotamClock(Math.floor(Date.now() / 300_000)), 60_000)
+    return () => clearInterval(t)
+  }, [])
+  const mapNotams = React.useMemo(
+    () => notamsInWindow(regionalNotams, notamClock * 300_000, notamClock * 300_000 + NOTAM_MAP_HORIZON_MS),
+    [regionalNotams, notamClock],
+  )
+  const { matches: notamAirspaceMatches, matchedNotamIds } = useNotamAirspaceMatch(mapNotams)
+  const notamAirspaceMatchesRef = React.useRef(notamAirspaceMatches)
+  useEffect(() => { notamAirspaceMatchesRef.current = notamAirspaceMatches }, [notamAirspaceMatches])
+  const notamFeatures = useMemo(
+    () => notamMapFeatures(mapNotams, matchedNotamIds),
+    [mapNotams, matchedNotamIds],
+  )
+  const emptyFC = { type: 'FeatureCollection' as const, features: [] }
+  const notamCirclesFC = useMemo(
+    () => (layers.notamCircles ? { type: 'FeatureCollection' as const, features: notamFeatures.circles } : emptyFC),
+    [notamFeatures, layers.notamCircles])
+  const notamPointsFC = useMemo(
+    () => (layers.notamCircles ? { type: 'FeatureCollection' as const, features: notamFeatures.points } : emptyFC),
+    [notamFeatures, layers.notamCircles])
+  const notamObstaclesFC = useMemo(
+    () => (layers.notamCircles ? { type: 'FeatureCollection' as const, features: notamFeatures.obstacles } : emptyFC),
+    [notamFeatures, layers.notamCircles])
+  const notamPolygonsFC = useMemo(
+    () => (layers.notamCircles ? { type: 'FeatureCollection' as const, features: notamFeatures.polygons } : emptyFC),
+    [notamFeatures, layers.notamCircles])
+  const notamMatchedAirspaceFC = useMemo(
+    () => (layers.notamCircles
+      ? { type: 'FeatureCollection' as const, features: matchedAirspaceFeatures(notamAirspaceMatches) }
+      : emptyFC),
+    [notamAirspaceMatches, layers.notamCircles])
 
   const [aerodromeFeature, setAerodromeFeature] = useState<AerodromeFeatureProps | null>(null)
 
@@ -1025,9 +995,18 @@ function MapScreenForCountry() {
     // those only control what's drawn on the map, not what's reported here.
     // Always query the full dataset directly.
     const airspaces = await queryAirspaceAtPoint(tapLng, tapLat, getTileUrls().airspace)
-    if (airspaces.length > 0 || notamHits.length > 0) {
+    // NOTAMs naming a tapped charted area by designator (their circle is
+    // hidden, see notamAirspaceMatches) -- attached as sibling cards, same as
+    // web's AirspacePopup shows them inline on the airspace.
+    const matchedHits: RegionalNotamHit[] = []
+    for (const a of airspaces) {
+      const m = notamAirspaceMatchesRef.current.find(x => x.airspaceName === a.name)
+      if (m) matchedHits.push({ notams: m.notams, coords: a.coords })
+    }
+    const allNotamHits = [...notamHits, ...matchedHits]
+    if (airspaces.length > 0 || allNotamHits.length > 0) {
       setAirspaceFeatures(airspaces)
-      setRegionalNotamHits(notamHits)
+      setRegionalNotamHits(allNotamHits)
     }
   }, [addWaypoint, regionalNotams])
 
@@ -1459,7 +1438,9 @@ function MapScreenForCountry() {
           trafficFC={trafficFC}
           notamCirclesFC={notamCirclesFC}
           notamPointsFC={notamPointsFC}
+          notamObstaclesFC={notamObstaclesFC}
           notamPolygonsFC={notamPolygonsFC}
+          notamMatchedAirspaceFC={notamMatchedAirspaceFC}
           userWaypointsFC={userWaypointsFC}
           basemapMode={layers.satellite ? 'satellite' : 'vector'}
           flyToTarget={findDestFlyTarget}

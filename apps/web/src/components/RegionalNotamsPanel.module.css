@@ -107,6 +107,17 @@
   font-variant-numeric: tabular-nums;
 }
 
+.offBadge {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-faint, #868e96);
+  border: 1px solid rgba(134, 142, 150, 0.4);
+  background: rgba(134, 142, 150, 0.12);
+  border-radius: 3px;
+  padding: 1px 4px;
+  flex-shrink: 0;
+}
+
 .milBadge {
   font-size: 9px;
   font-weight: 700;

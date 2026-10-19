@@ -17,7 +17,8 @@
  *    instead of one card per NOTAM number.
  */
 
-const DESIGNATOR_RE = /\b([A-Z]{2}[RD]\d{1,4})\b/g
+// Optional trailing sector letter: "ESR15A", "EFR143B" (charted sectors of one area).
+const DESIGNATOR_RE = /\b([A-Z]{2}[RD]\d{1,4}[A-Z]?)\b/g
 
 export function extractDesignators(text: string): string[] {
   return [...new Set(text.match(DESIGNATOR_RE) ?? [])]

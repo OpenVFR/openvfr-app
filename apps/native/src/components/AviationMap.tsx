@@ -4,6 +4,7 @@
  */
 
 import React, { useRef, useCallback, useMemo, useEffect, useState } from 'react'
+import { NOTAM_OBSTACLE_MIN_ZOOM } from '@open-vfr/shared/notamMapLayers'
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Linking, useWindowDimensions } from 'react-native'
 import {
   Map,
@@ -264,12 +265,19 @@ export type AviationMapProps = {
    *  source's own comment for why clustering needs Point geometry and thus
    *  a separate source from notamCirclesFC's Polygon geometry. */
   notamPointsFC?: FeatureCollection
+  /** Obstacle NOTAMs (lights out of service, new obstacles) -- unclustered,
+   *  only drawn from NOTAM_OBSTACLE_MIN_ZOOM; see @open-vfr/shared/notamMapLayers. */
+  notamObstaclesFC?: FeatureCollection
   /** Real multi-vertex area geometry for regional NOTAMs, straight from
    *  NMS-API's own GeoJSON feature.geometry -- see apps/api/src/notam.ts's
    *  extractNotamPolygon(). Distinct from notamCirclesFC above: takes
    *  priority over the synthesized circle when a NOTAM has both. Mirrors
    *  web's MapView.tsx 'notam-polygons' source. */
   notamPolygonsFC?: FeatureCollection
+  /** Charted restricted/danger areas that have an active NOTAM naming them
+   *  by designator -- highlight over the plain airspace layers, mirrors web's
+   *  'notam-matched-airspace' source (see @open-vfr/shared/notamMapLayers). */
+  notamMatchedAirspaceFC?: FeatureCollection
   /** Route planning mode — mirrors web's "Plan route" button. While true,
    *  every map tap adds a waypoint (snapped to a nearby feature within a
    *  screen-pixel radius when unambiguous) instead of opening feature popups. */
@@ -880,7 +888,9 @@ export function AviationMap({
   userWaypointsFC,
   notamCirclesFC,
   notamPointsFC,
+  notamObstaclesFC,
   notamPolygonsFC,
+  notamMatchedAirspaceFC,
   planningMode = false,
   editLocked = false,
   onPlanTap,
@@ -3109,6 +3119,19 @@ export function AviationMap({
           </GeoJSONSource>
         )}
 
+        {notamMatchedAirspaceFC && notamMatchedAirspaceFC.features.length > 0 && (
+          <GeoJSONSource id="notam-matched-airspace-src" data={notamMatchedAirspaceFC} onPress={() => {}}>
+            <Layer
+              id="notam-matched-airspace-fill" type="fill"
+              paint={{ 'fill-color': '#e64980', 'fill-opacity': 0.18 }}
+            />
+            <Layer
+              id="notam-matched-airspace-border" type="line"
+              paint={{ 'line-color': '#e64980', 'line-width': 2.5, 'line-opacity': 0.9 }}
+            />
+          </GeoJSONSource>
+        )}
+
         {notamPolygonsFC && notamPolygonsFC.features.length > 0 && (
           <GeoJSONSource id="notam-polygons-src" data={notamPolygonsFC} onPress={() => {}}>
             <Layer
@@ -3118,6 +3141,22 @@ export function AviationMap({
             <Layer
               id="notam-polygons-border" type="line"
               paint={{ 'line-color': '#e64980', 'line-width': 1.5, 'line-opacity': 0.85 }}
+            />
+          </GeoJSONSource>
+        )}
+
+        {notamObstaclesFC && notamObstaclesFC.features.length > 0 && (
+          <GeoJSONSource id="notam-obstacles-src" data={notamObstaclesFC} onPress={() => {}}>
+            <Layer
+              id="notam-obstacles-unclustered" type="circle"
+              minzoom={NOTAM_OBSTACLE_MIN_ZOOM}
+              paint={{
+                'circle-color': '#e64980',
+                'circle-opacity': 0.9,
+                'circle-radius': 5,
+                'circle-stroke-width': 1.5,
+                'circle-stroke-color': '#ffffff',
+              }}
             />
           </GeoJSONSource>
         )}

@@ -5,7 +5,7 @@ import { AIRSPACE_COLORS as AC, CONTROLLED_CLASSES, controlledStyle } from '@ope
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { extractDesignators } from '@open-vfr/shared/notamDesignator'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
-import { notamValidity, fmtUtcClock } from '@open-vfr/shared/notamValidity'
+import { notamStatus, fmtUtcClock } from '@open-vfr/shared/notamValidity'
 import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
 import NotamViewControls from './NotamViewControls'
@@ -300,6 +300,7 @@ function useNow(intervalMs = 30_000): number {
 
 const VALIDITY_CLASS = {
   active:   css.validityActive,
+  scheduled: css.validityEnded,
   upcoming: css.validityUpcoming,
   ended:    css.validityEnded,
 } as const
@@ -480,7 +481,7 @@ export default function AirspacePopup({ features, regionalNotams = NO_NOTAM_HITS
               // chain (superseded -> current).
               const group = item.hit.notams
               const n = group[0]
-              const validity = notamValidity(n.effective, n.expires, now)
+              const validity = notamStatus(n, now)
               const notamColor = '#e64980'
               const isOpen = expanded.has(i)
               return (

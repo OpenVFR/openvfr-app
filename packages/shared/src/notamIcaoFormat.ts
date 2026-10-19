@@ -13,6 +13,7 @@
  */
 import type { NotamItem } from './fetchNotam'
 import { notamTitle } from './notamQCode'
+import { notamAreaQualifier } from './notamTextGeometry'
 
 export type NotamTextView = 'short' | 'full' | 'raw'
 
@@ -56,7 +57,11 @@ export function notamShortText(n: N): string {
   const lead = firstSentence(n.text)
   // notamTitle falls back to the bare id when the Q-code is unknown -- then
   // the first sentence carries the meaning on its own.
-  return title === n.id ? `${n.id} · ${lead}` : `${title} — ${lead}`
+  const base = title === n.id ? `${n.id} · ${lead}` : `${title} — ${lead}`
+  // The one-line view drops everything after the first sentence, including
+  // what limits the drawn area ("only within German territory", exclusions).
+  const limit = notamAreaQualifier(n.text)
+  return limit && !base.toUpperCase().includes(limit.toUpperCase()) ? `${base} [${limit}]` : base
 }
 
 export function notamFullText(n: N): string {

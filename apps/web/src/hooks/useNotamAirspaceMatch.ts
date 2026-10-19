@@ -22,25 +22,20 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
-import { extractDesignators } from '@open-vfr/shared/notamDesignator'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
+import {
+  buildAirspaceIndex, matchNotamsToAirspace,
+  type AirspaceIndexEntry, type MatchedAirspaceNotam,
+} from '@open-vfr/shared/notamMapLayers'
 import { useActiveCountries } from '../utils/countryData'
 
-interface AirspaceIndexEntry {
-  name:       string   // full properties.name, e.g. "ESD873 OPTAND"
-  designator: string   // extracted prefix, e.g. "ESD873"
-  geometry:   GeoJSON.Polygon | GeoJSON.MultiPolygon
-}
+export type { MatchedAirspaceNotam }
 
-export interface MatchedAirspaceNotam {
-  airspaceName: string
-  geometry:     GeoJSON.Polygon | GeoJSON.MultiPolygon
-  notams:       NotamItem[]
-}
-
+// The matching itself (designators, sector letters, which circles to hide)
+// lives in @open-vfr/shared/notamMapLayers, shared with native.
 export function useNotamAirspaceMatch(regionalNotams: NotamItem[]): {
   matches:         MatchedAirspaceNotam[]
-  /** NOTAM ids that matched a charted polygon -- suppress their ad-hoc circle. */
+  /** NOTAM nmsIds whose designators are all charted -- suppress their ad-hoc circle. */
   matchedNotamIds: Set<string>
 } {
   const [airspaceIndex, setAirspaceIndex] = useState<AirspaceIndexEntry[]>([])
@@ -50,50 +45,9 @@ export function useNotamAirspaceMatch(regionalNotams: NotamItem[]): {
   const { key: countriesKey } = useActiveCountries()
   useEffect(() => {
     loadCountryGeojson('airspace')
-      .then((fc: GeoJSON.FeatureCollection) => {
-        const arr: AirspaceIndexEntry[] = []
-        for (const f of fc.features) {
-          const g = f.geometry
-          if (g.type !== 'Polygon' && g.type !== 'MultiPolygon') continue
-          const p   = f.properties as Record<string, unknown>
-          const cls = String(p['class'] ?? '')
-          if (cls !== 'R' && cls !== 'D' && cls !== 'TRA') continue
-          const name = String(p['name'] ?? '')
-          const m = /^([A-Z]{2}[RD]\d{1,4})/.exec(name)
-          if (!m) continue
-          arr.push({ name, designator: m[1], geometry: g })
-        }
-        setAirspaceIndex(arr)
-      })
+      .then(fc => setAirspaceIndex(buildAirspaceIndex(fc)))
       .catch(() => { /* offline-safe */ })
   }, [countriesKey])
 
-  return useMemo(() => {
-    const byDesignator = new Map<string, AirspaceIndexEntry>()
-    for (const a of airspaceIndex) byDesignator.set(a.designator, a)
-
-    const grouped = new Map<string, MatchedAirspaceNotam>()
-    const matchedNotamIds = new Set<string>()
-
-    for (const n of regionalNotams) {
-      for (const d of extractDesignators(n.text)) {
-        const airspace = byDesignator.get(d)
-        if (!airspace) continue
-        // Tracked/deduped by nmsId, not the display id -- different issuing
-        // authorities reuse the same published NOTAM number (confirmed
-        // live: a German and an unrelated Italian NOTAM both "M3011/26").
-        // MapView.tsx's own matchedNotamIds.has(n.nmsId) check must stay in
-        // sync with this.
-        matchedNotamIds.add(n.nmsId)
-        let entry = grouped.get(airspace.name)
-        if (!entry) {
-          entry = { airspaceName: airspace.name, geometry: airspace.geometry, notams: [] }
-          grouped.set(airspace.name, entry)
-        }
-        if (!entry.notams.some(x => x.nmsId === n.nmsId)) entry.notams.push(n)
-      }
-    }
-
-    return { matches: [...grouped.values()], matchedNotamIds }
-  }, [airspaceIndex, regionalNotams])
+  return useMemo(() => matchNotamsToAirspace(airspaceIndex, regionalNotams), [airspaceIndex, regionalNotams])
 }

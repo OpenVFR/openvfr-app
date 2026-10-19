@@ -29,6 +29,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
+import { notamStatus } from '@open-vfr/shared/notamValidity'
 import { filterAndSortNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM, DEFAULT_VICINITY_NOTAM_NM, type RoutePoint } from '@open-vfr/shared/notamRouteFilter'
 import { Section } from './AerodromeBriefShared'
 import { notamText } from '@open-vfr/shared/notamIcaoFormat'
@@ -124,7 +125,7 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
             <TouchableOpacity key={n.nmsId} style={styles.notamRow} onPress={() => toggleNotam(n.nmsId)}>
               <Text style={styles.notamId}>{notamTitle(n)} {expanded ? '▴' : '▾'}</Text>
               {n.effective && (
-                <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}</Text>
+                <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}{notamStatus(n).state === 'scheduled' ? ' · off schedule now' : ''}</Text>
               )}
               {!expanded && <Text style={styles.notamPreview} numberOfLines={1}>{previewText(n.text)}</Text>}
               {expanded && <Text style={[styles.notamText, textView === 'raw' && styles.rawText]}>{notamText(n, textView)}</Text>}

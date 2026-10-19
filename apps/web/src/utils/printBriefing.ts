@@ -11,7 +11,7 @@
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { fmtNotamDate } from '@open-vfr/shared/fetchNotam'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
-import { notamValidity } from '@open-vfr/shared/notamValidity'
+import { notamStatus } from '@open-vfr/shared/notamValidity'
 import { notamText, type NotamTextView } from '@open-vfr/shared/notamIcaoFormat'
 
 export interface BriefingSection {
@@ -106,7 +106,7 @@ export function printBriefingDoc(b: BriefingDoc, now: Date = new Date()): boolea
       const row = el(d, 'div', undefined, 'n')
       const head = el(d, 'div')
       head.appendChild(el(d, 'span', notamTitle(n), 't'))
-      const v = notamValidity(n.effective, n.expires, nowMs)
+      const v = notamStatus(n, nowMs)
       if (v.state !== 'unknown') head.appendChild(el(d, 'span', v.label, 's'))
       row.appendChild(head)
       const view = b.textView ?? 'full'

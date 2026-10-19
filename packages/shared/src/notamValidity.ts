@@ -9,7 +9,9 @@
  * compare two UTC timestamps against the clock in their head.
  */
 
-export type ValidityState = 'active' | 'upcoming' | 'ended' | 'unknown'
+import { isOffSchedule } from './notamSchedule'
+
+export type ValidityState = 'active' | 'scheduled' | 'upcoming' | 'ended' | 'unknown'
 
 export interface ValidityStatus {
   state: ValidityState
@@ -54,4 +56,22 @@ export function notamValidity(
 export function fmtUtcClock(now: number = Date.now()): string {
   const d = new Date(now)
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}Z`
+}
+
+/**
+ * notamValidity plus the NOTAM's own schedule (item D / leading E text):
+ * inside B)-C) but outside every scheduled period within `horizonMs` ->
+ * state 'scheduled' ("Off schedule"), not 'active'. NOTAMs without a
+ * schedule we understand are unaffected.
+ */
+export function notamStatus(
+  n: Parameters<typeof isOffSchedule>[0] & { expires?: string | null },
+  now: number = Date.now(),
+  horizonMs = 0,
+): ValidityStatus {
+  const v = notamValidity(n.effective, n.expires, now)
+  if (v.state === 'active' && isOffSchedule(n, now, now + Math.max(horizonMs, 60_000))) {
+    return { state: 'scheduled', label: 'Off schedule' }
+  }
+  return v
 }

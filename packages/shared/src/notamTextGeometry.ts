@@ -63,23 +63,38 @@ export function normalizeNotamText(text: string): string {
   return text.replace(/(\d)[\r\n]+(\d)/g, '$1$2').replace(/[\r\n]+/g, ' ').toUpperCase()
 }
 
+// Typos seen in live NOTAMs, accepted so a polygon keeps all its vertices
+// (the Q-line check in notamTextGeometry() still rejects wild positions):
+//   - longitude missing its leading zero: "501710N070521E" (DDMMSS = 6 digits)
+//   - longitude hemisphere typed as N/S: "520715.38N 0205330.39N"
+const COORD_TYPO_SRC = [
+  String.raw`(\d{2})(\d{2})(\d{2})([NS])\s*0?(\d{2})(\d{2})(\d{2})(?![\d.,])([EW])`,
+  String.raw`(\d{2})(\d{2})(\d{2}(?:[.,]\d+)?)([NS])\s*(\d{3})(\d{2})(\d{2}(?:[.,]\d+)?)(N)(?![A-Z])`,
+]
+
 function coords(t: string): Coord[] {
   const out: Coord[] = []
-  for (const m of t.matchAll(COORD)) {
+  const add = (m: RegExpMatchArray, typo: boolean) => {
     const [, la1, la2, la3, ns, lo1, lo2, lo3, ew] = m
     const lat = toDeg(la1!, la2!, la3, ns!)
-    const lon = toDeg(lo1!, lo2!, lo3, ew!)
-    if (Number(la2) >= 60 || Number(lo2) >= 60 || !plausible(lat, lon)) continue
-    out.push({ lat, lon, start: m.index!, end: m.index! + m[0].length })
+    // Typo variants: the longitude is E (the only hemisphere we cover) --
+    // except an explicit W, which keeps its sign.
+    const lon = toDeg(lo1!, lo2!, lo3, typo && ew === 'N' ? 'E' : ew!)
+    if (Number(la2) >= 60 || Number(lo2) >= 60 || !plausible(lat, lon)) return
+    const start = m.index!, end = start + m[0].length
+    if (out.some(o => start < o.end && end > o.start)) return
+    out.push({ lat, lon, start, end })
   }
-  return out
+  for (const m of t.matchAll(COORD)) add(m, false)
+  for (const src of COORD_TYPO_SRC) for (const m of t.matchAll(new RegExp(src, 'g'))) add(m, true)
+  return out.sort((a, b) => a.start - b.start)
 }
 
 // Boundary segment along an arc, between two vertices:
 //   A ALONG A (COUNTER/ANTI-)CLOCKWISE ARC (RADIUS 8NM WITH CENTRE <c>) TO B
 const ARC = new RegExp(String.raw`ALONG\s+(?:AN?\s+|THE\s+)?(CLOCKWISE|COUNTER[- ]?CLOCKWISE|ANTI[- ]?CLOCKWISE)\s+ARC\s*\(?\s*(?:WITH\s+)?(?:A\s+)?RADIUS\s+(?:OF\s+)?${UNIT}\s*,?\s*(?:WITH\s+)?(?:CENTRE|CENTER|CENTRED ON|CENTERED ON)\s*(?:AT|ON)?\s*${COORD_SRC}\s*\)?\s*TO`, 'g')
 
-const BORDER_LINK = /^\s*[-\u2013,]?\s*(?:THEN\s+)?(?:ALONG\s+(?:THE\s+)?)?(?:[A-Z]+\s+)?(?:STATE|NATIONAL|INTERNATIONAL|COUNTRY|FIR)?\s*(?:BORDER|BOUNDARY|COASTLINE|COAST)(?:\s+LINE)?\s*(?:TO\s+)?(?:POINT\s*)?[-\u2013,]?\s*$/
+const BORDER_LINK = /^\s*[-\u2013,]?\s*(?:THEN\s+)?(?:ALONG\s+(?:THE\s+)?)?(?:[A-Z]+\s+)?(?:STATE|NATIONAL|INTERNATIONAL|COUNTRY|FIR)?\s*(?:BORDER|BOUNDARY|BDRY|COASTLINE|COAST)(?:\s+LINE)?(?:\s+OF\s+[A-Z]{1,20})?\s*(?:TO\s+)?(?:POINT\s*)?[-\u2013,]?\s*$/
 
 interface ArcClause { start: number; end: number; clockwise: boolean; lat: number; lon: number }
 
@@ -133,7 +148,10 @@ function polygons(t: string, all: Coord[]): number[][][] {
   }
   for (const c of cs) {
     if (prev) {
+      // Commentary between vertices -- "(0.7NM E MESTO ...)" reference
+      // points, repeated "PSN" labels -- does not break the boundary.
       const gap = t.slice(prev.end, c.start)
+        .replace(/\([^()]*\)/g, ' ').replace(/\b(?:PSN|POSN|POINT)\b\s*:?/g, ' ')
       const arc = arcs.find(a => a.start >= prev!.end && a.end <= c.start)
       if (arc && /^\s*$/.test(t.slice(prev.end, arc.start)) && /^\s*$/.test(t.slice(arc.end, c.start))) {
         ring.push(...arcPoints(prev, c, arc))
@@ -168,7 +186,7 @@ const CIRCLE_PATTERNS: RegExp[] = [
   // RADIUS (OF) 1.5NM CENTERED ON <c> / CIRCLE RADIUS 2NM CENTERED ON POINT <c>
   new RegExp(String.raw`RADIUS\s+(?:OF\s+)?${UNIT}\s*,?\s*(?:WITH\s+)?(?:${CENTRE}|AROUND)\s*${KW}${COORD_SRC}`, 'g'),
   // 1NM AROUND <c> / WI 2.5NM OF PSN <c>
-  new RegExp(String.raw`${UNIT}\s+(?:AROUND|OF)\s+${KW}${COORD_SRC}`, 'g'),
+  new RegExp(String.raw`${UNIT}\s+(?:AROUND|OF|${CENTRE})\s+${KW}${COORD_SRC}`, 'g'),
 ]
 // <c> RADIUS 2NM / PSN <c> WITH A RADIUS OF 500M / PSN <c> RADIUS 0,25NM (coordinate first)
 const CIRCLE_COORD_FIRST = new RegExp(String.raw`${COORD_SRC}\s*(?:\([^)]{0,80}\))?\s*,?\s*(?:WITH\s+)?(?:A\s+)?(?:RADIUS|RAD)\s+(?:OF\s+)?(?:UP\s+TO\s+)?${UNIT}`, 'g')
@@ -257,6 +275,29 @@ export function notamTextGeometry(
   // "LASER: c") is the subject's position.
   if (cs.length === 1 && inQ(cs[0]!.lat, cs[0]!.lon)) return { ...none, point: { lat: cs[0]!.lat, lon: cs[0]!.lon } }
   return none
+}
+
+/**
+ * Sentences of the NOTAM text that narrow the drawn area without changing
+ * its geometry: "... ONLY WITHIN GERMAN TERRITORY.", "AIRSPACE CAT C/D AND
+ * ALL ED-R ARE EXCLUDED.", "CTR EDDV EXCLUDED". We draw the listed polygon /
+ * circle as-is (clipping needs outlines we don't ship), so clients show
+ * this as a note next to the area. null when there is none.
+ */
+export function notamAreaQualifier(text: string | null | undefined): string | null {
+  if (!text) return null
+  const ONLY = /\bONLY\s+(?:WITHIN|IN|OVER|INSIDE)\b/
+  const sentences = normalizeNotamText(text).split(/\.(?=\s|$)/).map(x => x.replace(/\s+/g, ' ').trim())
+  const out: string[] = []
+  for (const x of sentences) {
+    if (!x) continue
+    const i = x.search(ONLY)
+    // "... 550000N0063000E ONLY WITHIN GERMAN TERRITORY": keep from the keyword.
+    const y = i >= 0 ? x.slice(i) : /\b(?:EXCLUDED|EXCEPTED)\b/.test(x) ? x : ''
+    if (!y || y.length > 200 || /\d{4,6}[NS]\s*\d{5,7}[EW]/.test(y)) continue
+    out.push(y.charAt(0) + y.slice(1).toLowerCase())
+  }
+  return out.length > 0 ? out.join('. ') : null
 }
 
 /** The part of a NotamItem that describes where it applies. */
