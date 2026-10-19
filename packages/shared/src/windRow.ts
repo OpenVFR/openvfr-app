@@ -7,6 +7,11 @@
  * with its "dir/kt" text; if that would overlap a tick label, another barb or
  * the chart edge, it is drawn as the barb alone; if even that overlaps, it is
  * not drawn at all.
+ *
+ * Pass only the tick labels that must win in `tickPx` (or none): with a tick
+ * every 100 px or so, letting every tick label beat the barbs hides most of
+ * the row. `tickLabelsClearOfWindRow` then tells the caller which remaining
+ * tick labels to hide because a placed barb or its text sits on them.
  */
 
 export interface WindRowItem {
@@ -66,4 +71,20 @@ export function layoutWindRow(items: WindRowItem[], o: WindRowOpts): WindRowPlac
     out.set(it.key, placed)
   }
   return items.flatMap((i) => (out.has(i.key) ? [out.get(i.key)!] : []))
+}
+
+/**
+ * For each tick label centre in `tickPx`, whether it is clear of every placed
+ * barb (and its text). Labels that aren't should be skipped by the caller;
+ * the grid line can stay.
+ */
+export function tickLabelsClearOfWindRow(tickPx: number[], items: WindRowItem[], placed: WindRowPlaced[]): boolean[] {
+  const labelW = new Map(items.map((i) => [i.key, i.labelW]))
+  const spans: Span[] = placed.map((p) => {
+    const w = labelW.get(p.key) ?? 0
+    return p.label === 'right' ? [p.px - BARB_HALF_PX, p.px + BARB_HALF_PX + TEXT_GAP_PX + w]
+      : p.label === 'left' ? [p.px - BARB_HALF_PX - TEXT_GAP_PX - w, p.px + BARB_HALF_PX]
+      : [p.px - BARB_HALF_PX, p.px + BARB_HALF_PX]
+  })
+  return tickPx.map((t) => !spans.some((s) => overlaps([t - TICK_HALF_PX, t + TICK_HALF_PX], s)))
 }

@@ -62,7 +62,7 @@ import {
 import { CLOUD_COLORS } from '@open-vfr/shared/featureColors'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
 import { windBarbColorForSpeed, windBarbGeometry } from '@open-vfr/shared/windBarb'
-import { layoutWindRow, type WindRowItem } from '@open-vfr/shared/windRow'
+import { layoutWindRow, tickLabelsClearOfWindRow, type WindRowItem } from '@open-vfr/shared/windRow'
 import { useWindAloftAlongRoute } from '../hooks/useWindAloftAlongRoute'
 import { getTileUrls, API_BASE } from '../config'
 import { getOfflineDem } from '../utils/terrainDem'
@@ -830,11 +830,17 @@ export function VerticalProfile({
       px: Math.min(Math.max(xOf(v.distNm), minPx), maxPx),
       labelW: labelOf(v.wind).length * WIND_ROW_FONT * 0.62,
     }))
-    return layoutWindRow(items, {
-      // The "0" tick is skipped: the departure METAR sits there.
-      tickPx: xTicks.filter((d) => d > 0).map((d) => xOf(d)),
-      minPx, maxPx, leftLimitPx: MARGIN_L, rightLimitPx: contentW - 2,
-    }).map((pl) => ({ ...pl, wind: winds.get(pl.key)!.wind, text: labelOf(winds.get(pl.key)!.wind), model: pl.key.startsWith('gr-') }))
+    // Barbs beat distance-tick labels; colliding labels are hidden instead
+    // (mirrors web). The "0" label stays: minPx keeps barbs clear of it.
+    const placed = layoutWindRow(items, {
+      tickPx: [], minPx, maxPx, leftLimitPx: MARGIN_L, rightLimitPx: contentW - 2,
+    })
+    const tickLabelShown = tickLabelsClearOfWindRow(xTicks.map((d) => xOf(d)), items, placed)
+      .map((clear, i) => clear || xTicks[i] === 0)
+    return {
+      barbs: placed.map((pl) => ({ ...pl, wind: winds.get(pl.key)!.wind, text: labelOf(winds.get(pl.key)!.wind), model: pl.key.startsWith('gr-') })),
+      tickLabelShown,
+    }
   })()
 
   return (
@@ -1089,7 +1095,7 @@ export function VerticalProfile({
                 )}
 
                 {/* Wind row under the x axis (see windRow above). */}
-                {windRow.map((w) => {
+                {windRow.barbs.map((w) => {
                   const x = w.px, y = MARGIN_T + plotH + WIND_ROW_DY
                   if (w.wind.dirDeg == null && !w.wind.calm) {
                     return <Circle key={`windrow-${w.key}`} cx={x} cy={y} r={3} fill="none" stroke="rgba(250,204,21,0.7)" strokeWidth={1} strokeDasharray="1.5,1.5" />
@@ -1275,6 +1281,7 @@ export function VerticalProfile({
 
 
                 {xTicks.map((d, i) => {
+                  if (!windRow.tickLabelShown[i]) return null
                   // Centres the label under its tick mark by actual text
                   // width instead of a fixed -8px offset -- that assumed
                   // every number was ~2 digits wide, so single-digit ticks

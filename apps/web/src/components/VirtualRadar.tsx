@@ -24,7 +24,7 @@ import { getRemoteDem } from '../utils/terrainDem'
 import { windBarbColorForSpeed, windBarbGeometry } from '@open-vfr/shared/windBarb'
 import type { AircraftProfileDocType } from '../db/index'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
-import { layoutWindRow, type WindRowItem } from '@open-vfr/shared/windRow'
+import { layoutWindRow, tickLabelsClearOfWindRow, type WindRowItem } from '@open-vfr/shared/windRow'
 import { useWindAloftAlongRoute } from '../hooks/useWindAloftAlongRoute'
 import css from './VirtualRadar.module.css'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
@@ -660,7 +660,7 @@ function VirtualRadar({
   // not drawn, whenever it would overlap a tick label, another barb or the
   // chart edge (see @open-vfr/shared/windRow).
   const windRow = useMemo(() => {
-    if (!layout) return []
+    if (!layout) return { barbs: [], tickLabelShown: [] as boolean[] }
     type RowWind = { dirDeg: number | null; speedKt: number; calm: boolean }
     const winds = new Map<string, { distNm: number; wind: RowWind; priority: number }>()
     for (const [i, m] of weatherMarks.entries()) {
@@ -685,12 +685,19 @@ function VirtualRadar({
       px: Math.min(Math.max(layout.xOf(v.distNm), minPx), maxPx),
       labelW: labelOf(v.wind).length * 10 * 0.62,
     }))
-    return layoutWindRow(items, {
-      // The "0" tick is skipped: the departure METAR sits exactly there and
-      // is the most useful barb on the row ("0" is self-evident).
-      tickPx: xTicks.filter((t) => t.nm > 0).map((t) => layout.xOf(t.nm)),
-      minPx, maxPx, leftLimitPx: 4, rightLimitPx: layout.contentW,
-    }).map((pl) => ({ ...pl, wind: winds.get(pl.key)!.wind, text: labelOf(winds.get(pl.key)!.wind), model: pl.key.startsWith('gr-') }))
+    // Barbs beat distance-tick labels (a tick lands every ~100 px, so the
+    // other way round hides most of the row); colliding labels are hidden
+    // instead. The "0" label never yields to a barb: the departure barb is
+    // nudged clear of it by minPx anyway.
+    const placed = layoutWindRow(items, {
+      tickPx: [], minPx, maxPx, leftLimitPx: 4, rightLimitPx: layout.contentW,
+    })
+    const tickLabelShown = tickLabelsClearOfWindRow(xTicks.map((t) => layout.xOf(t.nm)), items, placed)
+      .map((clear, i) => clear || xTicks[i].nm === 0)
+    return {
+      barbs: placed.map((pl) => ({ ...pl, wind: winds.get(pl.key)!.wind, text: labelOf(winds.get(pl.key)!.wind), model: pl.key.startsWith('gr-') })),
+      tickLabelShown,
+    }
   }, [layout, weatherMarks, windAloft, showWindAloft, xTicks])
 
   // Waypoint-name label collision avoidance on the real label rectangles
@@ -811,7 +818,7 @@ function VirtualRadar({
         })}
 
         {/* ── Wind row under the x axis (see windRow above) ─────── */}
-        {windRow.map((w) => {
+        {windRow.barbs.map((w) => {
           const cx = w.px, cy = L.plotBottom + WIND_ROW_Y
           if (w.wind.dirDeg == null && !w.wind.calm) {
             return <circle key={`windrow-${w.key}`} cx={cx} cy={cy} r={3} fill="none" stroke="rgba(250,204,21,0.7)" strokeWidth={1} strokeDasharray="1.5,1.5" />
@@ -890,7 +897,7 @@ function VirtualRadar({
         {/* ── Axes ──────────────────────────────────────────────── */}
         {renderYAxis(L, yTicks)}
         <line x1={L.plotLeft} y1={L.plotBottom} x2={L.plotRight} y2={L.plotBottom} stroke="var(--border-default)" />
-        {xTicks.map((t) => (
+        {xTicks.map((t, i) => windRow.tickLabelShown[i] !== false && (
           <text key={`xl-${t.label}`} x={L.xOf(t.nm)} y={L.plotBottom + 8} dy="0.71em" textAnchor="middle" fontSize={10} fill="var(--text-muted)">
             {t.label}
           </text>

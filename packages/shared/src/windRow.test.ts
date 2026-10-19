@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { layoutWindRow, type WindRowItem } from './windRow'
+import { layoutWindRow, tickLabelsClearOfWindRow, type WindRowItem } from './windRow'
 
 const base = { tickPx: [0, 200, 400, 600], minPx: 12, maxPx: 588, leftLimitPx: 4, rightLimitPx: 600 }
 const item = (key: string, px: number, priority = 0, labelW = 43): WindRowItem => ({ key, px, priority, labelW })
@@ -31,6 +31,12 @@ describe('layoutWindRow', () => {
   })
   it('flips the text left near the right edge', () => {
     expect(layoutWindRow([item('a', 560)], base)[0].label).toBe('left')
+  })
+  it('hides the tick labels a placed barb or its text sits on', () => {
+    const items = [item('a', 190), item('b', 500, 0, 0)]
+    const placed = layoutWindRow(items, { ...base, tickPx: [] })
+    // a: barb 181-199 + text to 246 covers the 200 tick; b: bare barb 491-509 misses 400 and 600.
+    expect(tickLabelsClearOfWindRow([200, 400, 600], items, placed)).toEqual([false, true, true])
   })
   it('omits barbs outside the allowed range', () => {
     expect(layoutWindRow([item('a', 5)], base)).toEqual([])
