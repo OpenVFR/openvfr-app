@@ -124,6 +124,9 @@ export const OPEN_METEO: ProxySpec = {
   // locations). Rounded up so a budget is never under-counted.
   weight: (_endpoint, q) => openMeteoWeight(q),
   perLocation: true,
+  // Fallback only: per location, freshness follows the data
+  // (openMeteoFreshUntil: next 15-min "current" value, hourly series 30 min).
+  // The stale window matches the apps' 1 h failure-only fallback.
   freshMs: 5 * MINUTE_MS,
   staleMs: HOUR_MS,
   maxCacheBytes: 64 * 1024 * 1024,
