@@ -73,7 +73,7 @@
     "expo-location": "~57.0.21",
     "expo-modules-core": "~57.0.23",
     "expo-navigation-bar": "~57.0.3",
-    "expo-sensors": "~57.0.3",
+    "expo-sensors": "~58.0.4",
     "expo-sharing": "~57.0.23",
     "expo-splash-screen": "~57.0.10",
     "expo-status-bar": "~57.0.1",
