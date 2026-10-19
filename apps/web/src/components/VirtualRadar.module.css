@@ -91,25 +91,46 @@
 .chartWrap {
   position: relative;
   padding: 4px 4px 0;
-  /* recharts ResponsiveContainer needs a non-zero parent height. 20px
-     taller than the ResponsiveContainer below (160→180) so the extra top
-     margin (see ComposedChart's margin.top) has real reserved headroom
-     above the plot for wind arrows, instead of shrinking the plot itself. */
+  /* Chart SVG (162px, CHART_H in VirtualRadar.tsx) plus room for the
+     horizontal scrollbar when the route is wider than the panel. */
   height: 180px;
-  /* Scroll instead of squeezing a long route to fit — the inner div (set
-     inline in VirtualRadar.tsx) is only ever wider than this wrap when
-     totalNm * MIN_PX_PER_NM exceeds the measured wrap width. */
+  /* Scroll instead of squeezing a long route to fit — the content div (width
+     set inline in VirtualRadar.tsx) is only ever wider than this wrap when
+     the route needs more than MIN_PX_PER_UNIT per NM/km. */
   overflow-x: auto;
   overflow-y: hidden;
+}
+
+.chartContent {
+  position: relative;
+}
+
+.chartSvg {
+  display: block;
+}
+
+/* Pointer readout overlay (HoverOverlay in VirtualRadar.tsx): covers the
+   chart, owns the pointer events, draws the cursor line and tooltip. */
+.hoverLayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+}
+
+.hoverSvg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
 }
 
 /* Pinned FL scale over a horizontally scrolling chart (see VirtualRadar.tsx).
    Sticky inside the scrolled content; the negative margin overlays it on the
    chart instead of pushing the chart down. The backing is the panel colour
    stacked four times (one layer is only ~95% opaque, two still let bright
-   label text ghost through), clipped to the
-   plot's height so the wind row above and the distance labels below stay
-   uncovered. */
+   label text ghost through), clipped above the distance-axis band so the
+   tick labels and wind row below stay uncovered. */
 .yAxisPinned {
   /* Sticky offsets are measured inside the scroller's 4px left padding, so
      shift the column out over that padding: otherwise a 4px strip of
@@ -130,7 +151,7 @@
     linear-gradient(var(--surface-elevated), var(--surface-elevated)),
     linear-gradient(var(--surface-elevated), var(--surface-elevated)),
     var(--surface-elevated);
-  clip-path: inset(18px 0 24px 0);
+  clip-path: inset(0 0 30px 0);
 }
 
 .scrollHint {
@@ -158,6 +179,8 @@
 
 /* ── Tooltip ─────────────────────────────────────────────────────────── */
 .tooltip {
+  position: absolute;
+  white-space: nowrap;
   background: var(--surface-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 4px;

@@ -822,8 +822,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
   }, [flyingMode, routeWaypoints.length, gpsPosition])
   // NM along the planned route where the aircraft currently is — drives the
   // live position marker on the VirtualRadar chart. Only computed during flight.
-  // The profile chart (recharts, hundreds of SVG nodes) is by far the most
-  // expensive thing to re-render; it only needs ~1 Hz position, not every tick.
+  // The profile chart (hundreds of SVG nodes) is by far the most expensive
+  // thing to re-render; it only needs ~1 Hz position, not every tick.
   const chartPos = useThrottledValue(gpsPosition, 2000)
   const chartVSpeedFpm = useThrottledValue(gpsVSpeedFpm, 2000)
   const aircraftDistNm = useMemo(() => {

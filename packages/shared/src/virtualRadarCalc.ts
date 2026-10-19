@@ -1101,9 +1101,9 @@ export function terrainAt(terrainPts: TerrainPoint[], distNm: number): number {
 
 // ---------------------------------------------------------------------------
 // Chart domain math shared between native's react-native-svg VerticalProfile
-// and web's Recharts VirtualRadar — anything below here operates purely in
+// and web's VirtualRadar — anything below here operates purely in
 // distNm/altFt/msaFt terms, never pixels. Each platform maps the results
-// through its own xOf()/yOf() (or Recharts dataKey) to actually draw them;
+// through xOf()/yOf() (@open-vfr/shared/profileChart) to actually draw them;
 // that pixel-mapping step is the only part that has to stay per-platform.
 // Before this was pulled out here, getMsa() and the trajectory-tick math
 // were independently re-implemented, byte-for-byte identical, in both

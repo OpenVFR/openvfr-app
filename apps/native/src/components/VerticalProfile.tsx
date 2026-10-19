@@ -7,11 +7,11 @@
  * descent, red where below MSA), the aircraft's live position with a
  * pitch-tilted silhouette, and forward trajectory ticks.
  *
- * Built with react-native-svg (no Recharts — that's web/DOM-only). Visual
- * design is intentionally richer than the web ComposedChart version: layered
- * terrain relief shadow, glow-halo airspace borders, real obstacle icon
- * pictograms (reusing the same PNGs as the map), and a pitch-responsive
- * aircraft silhouette.
+ * Built with react-native-svg. Plot geometry, axis ticks and the below-MSA
+ * runs come from @open-vfr/shared/profileChart, the same module web's
+ * VirtualRadar.tsx draws from. Visual design is intentionally a little
+ * richer than web's: layered terrain relief shadow, real obstacle icon
+ * PNGs (reusing the map's), and a pitch-responsive aircraft silhouette.
  *
  * ── Static-pressure / barometric-altitude limitation ────────────────────────
  * See @open-vfr/shared/virtualRadarCalc header comment and AGENTS.md for the
@@ -50,6 +50,9 @@ import {
   type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { pickWaypointLabels, estimateLabelWidth } from '@open-vfr/shared/profileLabels'
+import {
+  profileChartLayout, profileYMax, altitudeTicks, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
+} from '@open-vfr/shared/profileChart'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
 import { airspaceOutlines, airspaceChips, layoutAirspaceChips } from '@open-vfr/shared/airspaceOutline'
 import {
@@ -157,7 +160,7 @@ interface Props {
   /** Called with the distance-along-route (NM) under the finger while
    *  touch-dragging the chart plot area, and with null on release — lets
    *  the parent screen sync a crosshair marker on the map. Touch-drag
-   *  equivalent of web's Recharts onMouseMove/onMouseLeave. */
+   *  equivalent of web's pointer hover readout. */
   onHoverDistNm?: (nm: number | null) => void
 }
 
@@ -228,34 +231,8 @@ const LANDMARK_ICONS: Record<string, ReturnType<typeof require>> = {
 }
 const LANDMARK_ICON_FALLBACK = require('../../assets/poi_icons/lmk-church.png')
 
-/**
- * "Nice" axis tick step — real flight levels are always assigned in round
- * increments (500 ft is standard below the transition level), never arbitrary
- * values. Web gets this for free from Recharts' built-in nice-tick algorithm;
- * native's hand-rolled chart needs the same 1-2-5-10 stepping rule so ticks
- * land on values like FL020/FL025/FL050 instead of FL023.
- */
-function niceStep(range: number, targetTicks: number): number {
-  if (range <= 0) return 500
-  const raw = range / targetTicks
-  const mag = Math.pow(10, Math.floor(Math.log10(raw)))
-  const norm = raw / mag
-  let step: number
-  if (norm < 1.5) step = 1
-  else if (norm < 3)  step = 2
-  else if (norm < 7)  step = 5
-  else step = 10
-  // Never go below a 500 ft step — anything finer isn't a meaningful
-  // altitude increment for a VFR vertical profile.
-  return Math.max(500, step * mag)
-}
-
-function niceYTicks(yMax: number, targetTicks = 5): number[] {
-  const step = niceStep(yMax, targetTicks)
-  const ticks: number[] = []
-  for (let v = 0; v <= yMax + 1e-6; v += step) ticks.push(Math.round(v))
-  return ticks
-}
+/** Roughly one distance tick per this many px of plot width. */
+const X_TICK_SPACING_PX = 90
 
 
 // Shared size for BOTH the real-station and wind-sample barbs -- mirrors
@@ -505,13 +482,11 @@ export function VerticalProfile({
   // byte-for-byte duplicate independently maintained in both files.
   const getMsa = useMemo(() => getMsaLookup(msaPts), [msaPts])
 
-  const yMax = useMemo(() => {
-    if (!profile) return 10000
-    const planned    = Math.max(profile.maxPlannedAltFt, 1000)
-    const maxTerrain = terrainPts.reduce((m, p) => Math.max(m, p.elevFt), 0)
-    const raw        = Math.max(planned * 1.5, maxTerrain * 1.2, 3000)
-    return Math.ceil(raw / 1000) * 1000
-  }, [profile, terrainPts])
+  // Shared with web (@open-vfr/shared/profileChart).
+  const yMax = useMemo(
+    () => (profile ? profileYMax(profile.maxPlannedAltFt, terrainPts) : 10000),
+    [profile, terrainPts],
+  )
 
   const totalNm = profile?.totalNm ?? 0
   // Winds aloft at the standard levels up to the chart top, one column every ~20 NM.
@@ -520,17 +495,14 @@ export function VerticalProfile({
   // grows past it once the route needs more than MIN_PX_PER_NM per NM to
   // stay legible (see MIN_PX_PER_NM comment above). contentW
   // is what actually gets drawn into the Svg; chartW is just the visible
-  // clipping window.
-  const availablePlotW = Math.max(0, chartW - MARGIN_L - MARGIN_R)
-  const desiredPlotW   = totalNm * MIN_PX_PER_NM
-  const plotW    = Math.max(availablePlotW, desiredPlotW)
-  const plotH    = chartH - MARGIN_T - MARGIN_B
-  const contentW = plotW + MARGIN_L + MARGIN_R
-  const scrollable = contentW > chartW + 0.5
+  // clipping window. Geometry shared with web (@open-vfr/shared/profileChart).
+  const layout = useMemo(() => profileChartLayout({
+    viewportW: chartW, height: chartH,
+    margin: { top: MARGIN_T, right: MARGIN_R, bottom: MARGIN_B, left: MARGIN_L },
+    totalNm, yMax, minPxPerNm: MIN_PX_PER_NM,
+  }), [chartW, chartH, totalNm, yMax])
+  const { plotW, plotH, contentW, scrollable, xOf, yOf } = layout
   const maxScrollX  = Math.max(0, contentW - chartW)
-
-  const xOf = useCallback((distNm: number) => MARGIN_L + (totalNm > 0 ? (distNm / totalNm) * plotW : 0), [totalNm, plotW])
-  const yOf = useCallback((altFt: number) => MARGIN_T + plotH - (yMax > 0 ? (altFt / yMax) * plotH : 0), [yMax, plotH])
   // Clamped x for wind arrows/labels only -- keeps the marker inside the
   // plot area by WIND_EDGE_MARGIN_PX regardless of route length, falling
   // back to plotW/2 on a route too short for the full margin on both sides.
@@ -597,8 +569,8 @@ export function VerticalProfile({
 
   // Touch-drag over the chart plot area does double duty:
   //  1. Scrub — a crosshair follows the finger, and the parent screen syncs
-  //     a crosshair marker on the map (native equivalent of web's Recharts
-  //     onMouseMove/onMouseLeave).
+  //     a crosshair marker on the map (native equivalent of web's pointer
+  //     hover readout).
   //  2. Pan — when the route is wider than the panel (MIN_PX_PER_NM,
   //     above), the same one-finger drag scrolls the content, with a fling
   //     (decay) on release. One gesture drives both, so the two forms of
@@ -756,33 +728,11 @@ export function VerticalProfile({
   // Below-MSA stretches of the planned line (drawn red over the magenta line)
   const projDangerPath = useMemo(() => {
     if (!projAlts || terrainPts.length === 0) return ''
-    const SUPPRESS_NM = 5
-    const lastIdx = terrainPts.length - 1
-    const segs: { safe: boolean; x: number; y: number }[] = terrainPts.map((tp, i) => {
-      const alt = projAlts[i]
-      const msa = getMsa(tp.distNm)
-      const nearEndpoint = tp.distNm < SUPPRESS_NM || (totalNm - tp.distNm) < SUPPRESS_NM
-      const belowMsa = msa > 0 && alt < msa && !nearEndpoint && i !== 0 && i !== lastIdx
-      return { safe: !belowMsa, x: xOf(tp.distNm), y: yOf(alt) }
-    })
-    const buildPath = (wantSafe: boolean) => {
-      const parts: string[] = []
-      let cur: string[] = []
-      for (let i = 0; i < segs.length; i++) {
-        const s = segs[i]
-        const include = s.safe === wantSafe ||
-          (i > 0 && segs[i - 1].safe !== segs[i].safe)  // include transition point
-        if (include) {
-          cur.push(`${s.x.toFixed(1)},${s.y.toFixed(1)}`)
-        } else if (cur.length > 0) {
-          parts.push(`M${cur.join(' L')}`)
-          cur = []
-        }
-      }
-      if (cur.length > 0) parts.push(`M${cur.join(' L')}`)
-      return parts.join(' ')
-    }
-    return buildPath(false)
+    // Shared with web (@open-vfr/shared/profileChart): same endpoint
+    // suppression and transition points on both apps.
+    return belowMsaRuns({ distNms: terrainPts.map((p) => p.distNm), plannedAlts: projAlts, getMsa, totalNm })
+      .map((run) => polylinePath(run, xOf, yOf))
+      .join(' ')
   }, [projAlts, terrainPts, getMsa, totalNm, xOf, yOf])
 
   // Trajectory ticks ahead of current position — near ticks fixed at 1/3,
@@ -849,9 +799,11 @@ export function VerticalProfile({
 
   if (!profile || profile.totalNm === 0) return null
 
-  const yTicks = niceYTicks(yMax)
-  const xTickCount = 6
-  const xTicks = Array.from({ length: xTickCount + 1 }, (_, i) => (totalNm / xTickCount) * i)
+  const yTicks = altitudeTicks(yMax)
+  // Round display-unit values (NM or km), converted back to NM for xOf.
+  const unitPerNm = nmToDisplay(1, units.distance)
+  const xTicks = distanceTicks(totalNm * unitPerNm, Math.max(2, Math.round(plotW / X_TICK_SPACING_PX)), 0.04)
+    .map((v) => v / unitPerNm)
 
   // Wind row under the x axis (mirrors web's VirtualRadar): station barbs
   // (priority 0) beat ground-model barbs (priority 1); each keeps its route
@@ -1380,7 +1332,7 @@ export function VerticalProfile({
                 </Svg>
                 {yTicks.map((ft, i) => (
                   <Text key={`yl-${i}`} style={[styles.axisLabel, { left: 2, top: yOf(ft) - 6 }]}>
-                    {ft >= 1000 ? `FL${Math.round(ft / 100).toString().padStart(3, '0')}` : `${ft}`}
+                    {formatAltitudeTick(ft)}
                   </Text>
                 ))}
               </View>
