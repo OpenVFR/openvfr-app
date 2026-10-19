@@ -1,6 +1,7 @@
 /**
- * GaugesBar — the "gauges" instrument strip: GS · T.ALT (tap to toggle
- * AMSL/AGL) · TT · UTC · WIND dir. Always visible at the bottom of the map
+ * GaugesBar — the "gauges" instrument strip: GPS ALT / GPS HGT (tap to
+ * toggle above sea level / above ground) · ALT (barometric, on QNH; tap for
+ * the QNH) · VS · GS · TT · UTC · WIND dir. Always visible at the bottom of the map
  * screen — VerticalProfile is draggable above it but this bar itself never
  * scrolls away.
  */
@@ -22,17 +23,17 @@ type Props = {
   wind:     WindAloft | null
   showAgl:  boolean
   onToggleAgl: () => void
-  /** Barometric altitude source (tier 1/2) — undefined/tier==='gps' hides the B.ALT/VS gauges entirely. */
+  /** Barometric altitude source (tier 1/2) — undefined/tier==='gps' hides the ALT/VS gauges entirely. */
   altitudeSource?: AltitudeSourceResult
-  /** B.ALT gauge (barometric altitude on QNH, ft): show QNH (hPa) instead of the altitude — tap to toggle, same pattern as T.ALT's AMSL/AGL toggle. */
+  /** ALT gauge (barometric altitude on QNH, ft): show QNH (hPa) instead of the altitude — tap to toggle, same pattern as the GPS ALT / GPS HGT toggle. */
   showQnh?: boolean
   onToggleQnh?: () => void
   /** UTC gauge: show local device time instead of Zulu — tap to toggle. */
   showLocalTime?: boolean
   onToggleLocalTime?: () => void
-  /** Connected BlueFly's battery is critically low — flags the B.ALT gauge so a dying vario is noticed in-flight, not just when checking Settings. */
+  /** Connected BlueFly's battery is critically low — flags the ALT gauge so a dying vario is noticed in-flight, not just when checking Settings. */
   varioBatteryLow?: boolean
-  /** A barometric source is enabled/connected. When it isn't delivering data the B.ALT gauge stays visible with a gray dot instead of vanishing. */
+  /** A barometric source is enabled/connected. When it isn't delivering data the ALT gauge stays visible with a gray dot instead of vanishing. */
   baroExpected?: boolean
 }
 
@@ -175,17 +176,21 @@ export function GaugesBar({ position, agl, wind, showAgl, onToggleAgl, altitudeS
   const xwColor = rel ? crosswindColor(rel.crosswindSeverity) : undefined
   const windLabel = rel ? (rel.hw >= 0 ? `HW${rel.hw}` : `TW${Math.abs(rel.hw)}`) + ` \u00b7 XW${rel.xw}` : 'WIND'
 
-  // minChars: widest reading this gauge can show (GS up to 3 digits, B.ALT up
+  // minChars: widest reading this gauge can show (GS up to 3 digits, ALT up
   // to "12500", VS up to "+1500"...). Sizing uses max(actual, minChars) so the
   // font stays steady as digits come and go instead of jumping on 99 -> 100.
   type Item = { key: string; value: string; label: string; minChars: number; minLabelChars?: number; onPress?: () => void; valueColor?: string; dotColor?: string; dotGlyph?: string }
   const items: Item[] = [
-    { key: 'talt', value: talt, label: showAgl ? 'T.ALT AGL' : 'T.ALT AMSL', minChars: 5, onPress: onToggleAgl },
+    // GPS altitude (above sea level) or GPS height (above ground, GPS minus
+    // terrain) -- ICAO: altitude is above MSL, height above ground. Short
+    // labels on purpose: the longest label sets the shared label size of
+    // the whole strip.
+    { key: 'talt', value: talt, label: showAgl ? 'GPS HGT' : 'GPS ALT', minChars: 5, onPress: onToggleAgl },
   ]
   if (palt != null || baroExpected) {
     items.push({
       key: 'palt', value: palt ?? '\u2013', minChars: 5,
-      label: `${isVarioLow ? '\u26a0 ' : ''}${showQnh ? 'QNH' : 'B.ALT'}${uncalibrated ? ' ?' : ''}`,
+      label: `${isVarioLow ? '\u26a0 ' : ''}${showQnh ? 'QNH' : 'ALT'}${uncalibrated ? ' ?' : ''}`,
       dotColor: baroDot, dotGlyph: baroGlyph,
       onPress: onToggleQnh,
       valueColor: isVarioLow ? theme.statusDanger : uncalibrated ? theme.statusWarn : undefined,

@@ -28,9 +28,9 @@ export type AppSettings = {
   airspaceWarnVerticalFt: number
   /** Trajectory mode: project N minutes ahead (time) or fixed NM (nm) */
   trajectoryMode: 'time' | 'nm'
-  /** GaugesBar T.ALT field: show Height AGL instead of AMSL (tap to toggle) */
+  /** GaugesBar GPS gauge: show GPS HGT (above ground) instead of GPS ALT (above sea level) (tap to toggle) */
   showAltitudeAgl: boolean
-  /** GaugesBar B.ALT gauge: show current QNH (hPa) instead of the altitude in ft (tap to toggle) */
+  /** GaugesBar ALT gauge: show current QNH (hPa) instead of the altitude in ft (tap to toggle) */
   showQnhOnPaltGauge: boolean
   /** GaugesBar clock gauge: show local device time instead of UTC/Zulu (tap to toggle) */
   showLocalTime: boolean

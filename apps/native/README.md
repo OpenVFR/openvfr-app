@@ -404,7 +404,7 @@ Altitude source priority (`src/hooks/useAltitudeSource.ts`, pure logic in
 2. Field calibration (`useFieldQnh`, `packages/shared/src/fieldQnh.ts`): while parked
    (≤ 3 kt) within 1 NM of an aerodrome, QNH is derived from the pressure and the
    published field elevation. The fix is kept for 1 h after take-off.
-3. Otherwise the stored value is used and the B.ALT gauge (barometric altitude on QNH, in feet) shows `?` (uncalibrated).
+3. Otherwise the stored value is used and the ALT gauge (barometric altitude on QNH, in feet) shows `?` (uncalibrated).
 
 Auto QNH values are rounded to whole hPa (as an altimeter is set). Manual QNH mode
 always uses the stored value. The live QNH is also published to the BlueFly pipeline

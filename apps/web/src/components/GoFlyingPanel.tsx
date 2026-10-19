@@ -179,7 +179,9 @@ export default function GoFlyingPanel({
           </div>
 
           <div className={css.cell}>
-            <span className={css.cellLabel}>ALT</span>
+            {/* GPS ALT, not ALT: the browser has no barometer, and ALT means
+                the barometric (QNH) altitude in the native gauges. */}
+            <span className={css.cellLabel}>GPS ALT</span>
             <span className={`${css.cellValue} ${pos.altFt === 0 && mode === 'gps' ? css.dimmed : ''}`}>
               {fmtAlt(pos.altFt)}<span className={css.cellUnit}>ft</span>
             </span>

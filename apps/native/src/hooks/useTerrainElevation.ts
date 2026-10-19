@@ -1,6 +1,6 @@
 /**
  * useTerrainElevation — live single-point ground elevation lookup for the
- * current GPS position, used to compute Height AGL (T.ALT AGL) in GaugesBar.
+ * current GPS position, used to compute height above ground (GPS HGT) in GaugesBar.
  *
  * Throttled: only re-fetches when the position has moved more than
  * MIN_MOVE_NM or MIN_INTERVAL_MS has elapsed, to avoid spamming OpenTopoData
