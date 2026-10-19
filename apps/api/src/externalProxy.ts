@@ -513,8 +513,10 @@ export function mountExternalProxies(
   console.log(`[external-proxy] requests without a session: ${anonymousMode}`)
   for (const spec of [OPEN_METEO, ELEVATION]) {
     const state = newProxyState()
-    const stats = newUsageStats()
+    const stats = newUsageStats(Date.now())
+    registry.push({ spec, state, stats, anonymousMode })
     app.get(`${spec.prefix}*`, async (c) => {
+      rotateHour(spec, state, stats, Date.now())
       const user = await requireSession(c)
       const url = new URL(c.req.url)
       let res: Response
@@ -533,19 +535,108 @@ export function mountExternalProxies(
       countResponse(stats, res)
       return res
     })
-    // Hourly usage line, to size the plan from real numbers (no user ids or IPs logged).
-    setInterval(() => logUsage(spec, state, stats), HOUR_MS).unref?.()
+    // Closes each clock hour: one log line + a snapshot for the admin UI,
+    // even when no request arrives to trigger it.
+    setInterval(() => rotateHour(spec, state, stats, Date.now()), MINUTE_MS).unref?.()
   }
 }
 
 interface UsageStats {
+  /** Start of the clock hour being counted. */
+  hourStart: number
   byOutcome: Record<string, number>
   users: Set<string>
   anonymousIps: Set<string>
+  /** Closed hours, oldest first, at most HISTORY_HOURS. */
+  history: HourSnapshot[]
 }
 
-function newUsageStats(): UsageStats {
-  return { byOutcome: {}, users: new Set(), anonymousIps: new Set() }
+/** One closed clock hour (counts only, no ids). */
+export interface HourSnapshot {
+  hourStart: string
+  outcomes: Record<string, number>
+  users: number
+  anonymousIps: number
+  /** Weighted upstream calls made in that hour. */
+  upstreamCalls: number
+}
+
+const HISTORY_HOURS = 48
+const hourOf = (t: number) => t - (t % HOUR_MS)
+
+function newUsageStats(now: number): UsageStats {
+  return { hourStart: hourOf(now), byOutcome: {}, users: new Set(), anonymousIps: new Set(), history: [] }
+}
+
+/** Close the counted hour if the clock has moved on. Exported for tests. */
+export function rotateHour(spec: ProxySpec, s: ProxyState, stats: UsageStats, now: number, log = true): void {
+  if (hourOf(now) === stats.hourStart) return
+  const end = stats.hourStart + HOUR_MS
+  s.upstreamCalls = pruneWindow(s.upstreamCalls, now, DAY_MS)
+  stats.history.push({
+    hourStart: new Date(stats.hourStart).toISOString(),
+    outcomes: stats.byOutcome,
+    users: stats.users.size,
+    anonymousIps: stats.anonymousIps.size,
+    upstreamCalls: s.upstreamCalls.filter((t) => t >= stats.hourStart && t < end).length,
+  })
+  if (stats.history.length > HISTORY_HOURS) stats.history.splice(0, stats.history.length - HISTORY_HOURS)
+  // Hourly usage line, to size the plan from real numbers (no user ids or IPs logged).
+  if (log) console.log(usageLine(spec, s, stats, end))
+  stats.hourStart = hourOf(now)
+  stats.byOutcome = {}
+  stats.users = new Set()
+  stats.anonymousIps = new Set()
+}
+
+const registry: { spec: ProxySpec; state: ProxyState; stats: UsageStats; anonymousMode: 'limited' | 'off' }[] = []
+const processStartedAt = new Date().toISOString()
+
+/** Aggregate usage of one relay for the admin API (counts only, no ids). */
+export interface ExternalApiUsage {
+  name: string
+  anonymousMode: 'limited' | 'off'
+  /** Counters are in memory: they start empty when the api (re)starts. */
+  since: string
+  budget: { perMinute: number; hourly: number; daily: number }
+  upstream: { lastMinute: number; lastHour: number; last24h: number }
+  anonymous: { last24h: number; dailyCap: number }
+  perUserCap: { hourly: number; daily: number }
+  pausedUntil: string | null
+  cache: { entries: number; bytes: number }
+  currentHour: Omit<HourSnapshot, 'upstreamCalls'> & { upstreamCalls: number }
+  /** Closed clock hours, oldest first (up to 48). */
+  hours: HourSnapshot[]
+}
+
+export function usageSnapshot(spec: ProxySpec, s: ProxyState, stats: UsageStats, anonymousMode: 'limited' | 'off', now: number): ExternalApiUsage {
+  rotateHour(spec, s, stats, now)
+  const calls = s.upstreamCalls
+  const count = (win: number) => calls.filter((t) => now - t < win).length
+  return {
+    name: spec.name,
+    anonymousMode,
+    since: processStartedAt,
+    budget: { perMinute: spec.upstream.perMinute, hourly: spec.upstream.hourly, daily: spec.upstream.daily },
+    upstream: { lastMinute: count(MINUTE_MS), lastHour: count(HOUR_MS), last24h: count(DAY_MS) },
+    anonymous: { last24h: s.anonUpstreamCalls.filter((t) => now - t < DAY_MS).length, dailyCap: spec.anonymous.upstreamDaily },
+    perUserCap: { ...spec.perUser },
+    pausedUntil: s.pausedUntil > now ? new Date(s.pausedUntil).toISOString() : null,
+    cache: { entries: s.cache.size, bytes: s.cacheBytes },
+    currentHour: {
+      hourStart: new Date(stats.hourStart).toISOString(),
+      outcomes: { ...stats.byOutcome },
+      users: stats.users.size,
+      anonymousIps: stats.anonymousIps.size,
+      upstreamCalls: calls.filter((t) => t >= stats.hourStart).length,
+    },
+    hours: [...stats.history],
+  }
+}
+
+/** Usage of every mounted relay (GET /api/admin/external-apis). */
+export function externalApiUsage(now = Date.now()): ExternalApiUsage[] {
+  return registry.map((r) => usageSnapshot(r.spec, r.state, r.stats, r.anonymousMode, now))
 }
 
 function countResponse(stats: UsageStats, res: Response): void {
@@ -564,10 +655,4 @@ export function usageLine(spec: ProxySpec, s: ProxyState, stats: UsageStats, now
     `cache ${s.cache.size} entries, ${Math.round(s.cacheBytes / 1024)} KiB`
 }
 
-function logUsage(spec: ProxySpec, s: ProxyState, stats: UsageStats): void {
-  s.upstreamCalls = pruneWindow(s.upstreamCalls, Date.now(), DAY_MS)
-  console.log(usageLine(spec, s, stats, Date.now()))
-  stats.byOutcome = {}
-  stats.users.clear()
-  stats.anonymousIps.clear()
-}
+

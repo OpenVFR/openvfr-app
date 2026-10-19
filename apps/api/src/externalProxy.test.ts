@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { handleProxy, newProxyState, takeUserMiss, upstreamWaitS, anonymousModeFromEnv, openMeteoWeight, openMeteoFreshUntil, usageLine, OPEN_METEO, ELEVATION, type ProxySpec, type ProxyState } from './externalProxy.js'
+import { handleProxy, newProxyState, takeUserMiss, upstreamWaitS, anonymousModeFromEnv, openMeteoWeight, openMeteoFreshUntil, usageLine, rotateHour, usageSnapshot, type HourSnapshot, OPEN_METEO, ELEVATION, type ProxySpec, type ProxyState } from './externalProxy.js'
 
 const realFetch = globalThis.fetch
 let calls: string[] = []
@@ -239,9 +239,28 @@ test('usage line summarises the hour without ids', () => {
   const s = newProxyState()
   const t = 50_000_000
   s.upstreamCalls = [t - 2 * 3_600_000, t - 1000, t - 500]
-  const line = usageLine(OPEN_METEO, s, { byOutcome: { HIT: 7, MISS: 2 }, users: new Set(['secret-user']), anonymousIps: new Set(['9.9.9.9']) }, t)
+  const line = usageLine(OPEN_METEO, s, { hourStart: t, byOutcome: { HIT: 7, MISS: 2 }, users: new Set(['secret-user']), anonymousIps: new Set(['9.9.9.9']), history: [] }, t)
   assert.match(line, /HIT=7 MISS=2; users 1, anonymous IPs 1; upstream calls \(weighted\) hour 2\/4000, 24 h 3\/9000/)
   assert.doesNotMatch(line, /secret-user|9\.9\.9\.9/)
+})
+
+test('clock-hour snapshots and the admin usage view (counts only)', () => {
+  const s = newProxyState()
+  const h0 = Date.UTC(2026, 0, 1, 10, 0, 0)
+  const stats = { hourStart: h0, byOutcome: { HIT: 3, MISS: 1 }, users: new Set(['u1', 'u2']), anonymousIps: new Set(['1.2.3.4']), history: [] as HourSnapshot[] }
+  s.upstreamCalls = [h0 + 1000, h0 + 2000, h0 + 3_700_000]   // 2 in 10:00, 1 in 11:00
+  s.anonUpstreamCalls = [h0 + 1000]
+  rotateHour(OPEN_METEO, s, stats, h0 + 30 * 60_000, false)   // same hour: no-op
+  assert.equal(stats.history.length, 0)
+  const u = usageSnapshot(OPEN_METEO, s, stats, 'limited', h0 + 3_720_000)  // 11:02 -> closes 10:00
+  assert.deepEqual(u.hours, [{ hourStart: '2026-01-01T10:00:00.000Z', outcomes: { HIT: 3, MISS: 1 }, users: 2, anonymousIps: 1, upstreamCalls: 2 }])
+  assert.equal(u.currentHour.hourStart, '2026-01-01T11:00:00.000Z')
+  assert.equal(u.currentHour.upstreamCalls, 1)
+  assert.equal(u.upstream.lastHour, 1)        // rolling 10:02-11:02: only the 11:01 call
+  assert.equal(u.upstream.last24h, 3)
+  assert.deepEqual(u.anonymous, { last24h: 1, dailyCap: 1500 })
+  assert.deepEqual(u.budget, { perMinute: 400, hourly: 4000, daily: 9000 })
+  assert.doesNotMatch(JSON.stringify(u), /u1|u2|1\.2\.3\.4/)
 })
 
 test('server-wide upstream budget', () => {

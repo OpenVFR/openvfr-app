@@ -18,9 +18,10 @@
  *   - RATE LIMIT: per-admin sliding window (ADMIN_RATE_PER_MIN, default 120).
  *   - CSRF: state-changing methods additionally require an `Origin` header in
  *     the trusted-origins list (same list better-auth uses).
- *   - DATA: aggregate counts + account metadata from the ba_* tables only.
- *     No user content (routes, positions, flight logs) and no IP addresses
- *     are exposed; the api_app role couldn't read user content anyway.
+ *   - DATA: aggregate counts + account metadata from the ba_* tables only,
+ *     plus in-memory aggregate counters of this process (external-API relay
+ *     usage). No user content (routes, positions, flight logs) and no IP
+ *     addresses are exposed; the api_app role couldn't read user content anyway.
  *   - BANS: better-auth admin plugin (auth.api.banUser / unbanUser), called
  *     server-side; the plugin's own HTTP endpoints are not exposed.
  *   - Responses are `Cache-Control: no-store`.
@@ -34,6 +35,7 @@ import { invalidateCountries } from './countries.js'
 import { EUROPEAN_REGIONS, isSupportedRegion } from '@open-vfr/shared/regions'
 import { currentAiracCycle } from '@open-vfr/shared/airac'
 import { countryPipelineDetail, countrySummaries, isPipelineJob, PIPELINE_JOBS, queuePipelineJob, queuedCount } from './pipeline.js'
+import { externalApiUsage } from './externalProxy.js'
 
 const MAX_QUEUED_JOBS = 20
 
@@ -135,6 +137,11 @@ admin.get('/overview', async (c) => {
   ])
   return c.json({ totals: totals.rows[0], signupsPerDay: signups.rows, activePerDay: active.rows })
 })
+
+// GET /api/admin/external-apis -- Open-Meteo / OpenTopoData relay usage
+// against the shared free-tier budgets (externalProxy.ts). Counts only: no
+// user ids, no IPs, no coordinates. In memory: resets when the api restarts.
+admin.get('/external-apis', (c) => c.json({ upstreams: externalApiUsage() }))
 
 const SORTS: Record<string, string> = {
   created:    'u."createdAt" DESC',
