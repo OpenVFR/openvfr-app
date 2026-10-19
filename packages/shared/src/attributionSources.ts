@@ -6,6 +6,8 @@
  * Mirrors README.md's "Data & attribution" section -- keep in sync with it.
  * Only the sources actually rendered as visible map layers (weather/NOTAM/
  * traffic API sources are cited in the README but aren't map "credits").
+ * Open-Meteo is listed because its model wind is drawn on the map (wind
+ * arrows overlay) and its CC BY 4.0 licence requires the credit.
  */
 export interface AttributionSource {
   name: string
@@ -20,4 +22,5 @@ export const ATTRIBUTION_SOURCES: readonly AttributionSource[] = [
   { name: 'OpenAIP', note: 'Airspace and obstacle data (CC BY-NC 4.0 \u2014 non-commercial use only)', url: 'https://www.openaip.net/' },
   { name: 'Copernicus DEM GLO-30', note: '\u00a9 ESA / European Union \u2014 hillshade & contour lines, doi:10.5270/ESA-c5d3d65', url: 'https://doi.org/10.5270/ESA-c5d3d65' },
   { name: 'ESRI', note: 'Satellite imagery basemap toggle (proprietary, ESRI terms apply)', url: 'https://www.esri.com/en-us/legal/terms/full-master-agreement' },
+  { name: 'Open-Meteo', note: 'Weather data by Open-Meteo.com \u2014 model wind on the map, winds aloft, forecast wind (CC BY 4.0)', url: 'https://open-meteo.com/' },
 ]

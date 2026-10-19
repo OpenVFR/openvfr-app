@@ -84,6 +84,19 @@ OpenVFR is built on the following data and map sources:
   (Eurocontrol EAD requires a paid service agreement for real access). Do
   not treat as a complete substitute for official national NOTAM/AIP
   sources.
+* **[Open-Meteo](https://open-meteo.com/)** — *Weather data by
+  Open-Meteo.com*: model wind for the map's wind arrows, the vertical
+  profile's winds aloft, per-leg forecast wind, the in-flight wind gauge and
+  the aerodrome "weather station" reading. Data licensed
+  **[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)**. The free
+  open-meteo.com API is for **non-commercial use only** (open-meteo.com/en/terms);
+  a commercial deployment needs an Open-Meteo API subscription or a
+  self-hosted Open-Meteo server (see `docs/self-hosting.md`).
+* **[OpenTopoData](https://www.opentopodata.org/)** (`eudem25m` dataset,
+  public API) — terrain elevation along routes for the vertical profile, MSA
+  and the live ground-elevation readout. Elevation data: **EU-DEM v1.1**,
+  produced using Copernicus data and information funded by the European
+  Union (Copernicus Land Monitoring Service).
 * **[Natural Earth](https://www.naturalearthdata.com/)** — country outlines
   (1:10m Admin 0, simplified; `apps/api/src/country-outlines.json`) used to
   decide which cross-border NOTAMs reach a country. Public domain.
