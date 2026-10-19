@@ -24,6 +24,7 @@
     "./legLabels": "./src/legLabels.ts",
     "./legLevelDrag": "./src/legLevelDrag.ts",
     "./profileLabels": "./src/profileLabels.ts",
+    "./followZoom": "./src/followZoom.ts",
     "./uiTheme":         "./src/uiTheme.ts",
     "./featureColors":  "./src/featureColors.ts",
     "./fetchWx":        "./src/fetchWx.ts",

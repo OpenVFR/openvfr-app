@@ -47,8 +47,7 @@ import { getTileUrls } from '../config'
 import { parseMapLink, hasMapLink } from '@open-vfr/shared/deepLink'
 import { useDataFreshness } from '../hooks/useDataFreshness'
 
-/** In flight: auto-return to follow this long after the last user pan. */
-const FOLLOW_RETURN_MS = 15_000
+import { FOLLOW_RETURN_MS } from '@open-vfr/shared/followZoom'
 // Vertical space the top-left route-edit banner takes; other top banners step below it.
 const EDIT_BANNER_H = 44
 
@@ -90,6 +89,8 @@ import { useHomeAirfield }      from '../hooks/useHomeAirfield'
 import { useSettingsContext } from '../context/SettingsContext'
 import { RouteEditBanner } from '../components/RouteEditBanner'
 import { CompassButton } from '../components/CompassButton'
+import { FollowCountdown } from '../components/FollowCountdown'
+import type { MapOrientation } from '../utils/gpsTypes'
 import { AutoFlyBanner } from '../components/AutoFlyBanner'
 import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
 import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
@@ -268,7 +269,7 @@ function MapScreenForCountry() {
 
   const [flying, setFlying]           = useState(false)
   const [followGps, setFollowGps]     = useState(false)
-  const [mapOrientation, setMapOrientation] = useState<'north' | 'track'>('north')
+  const [mapOrientation, setMapOrientation] = useState<MapOrientation>('north')
   // Map-layer toggle visibility. Persisted to AsyncStorage under the same
   // 'ovfr:layerVisibility' key web's useLayerVisibility (src/db/useSettings.ts)
   // uses -- previously a plain useState(LAYER_DEFAULTS) with NO persistence
@@ -488,6 +489,11 @@ function MapScreenForCountry() {
   const bearingStore = useMemo(() => createValueStore<number>(0), [])
   const [resetNorthNonce, setResetNorthNonce] = useState(0)
   const [showPlog, setShowPlog] = useState(false)
+  // Deadline of the pending return-to-follow (null = none); drives the countdown badge.
+  const followReturnAtStore = useMemo(() => createValueStore<number | null>(null), [])
+  // A manual zoom pauses auto-zoom until resumed from the tools menu.
+  const [autoZoomPaused, setAutoZoomPaused] = useState(false)
+  const [autoZoomResumeNonce, setAutoZoomResumeNonce] = useState(0)
   // Estimated combined height of the bottom stack (VerticalProfile header +
   // drag handle + chart, plus GaugesBar) — used to offset other floating
   // buttons that used to assume the screen bottom was empty.
@@ -1141,17 +1147,24 @@ function MapScreenForCountry() {
   followReturnArmableRef.current = flightModeStatus !== 'off' && !routeAdjustMode
   const clearFollowReturn = useCallback(() => {
     if (followReturnTimerRef.current) { clearTimeout(followReturnTimerRef.current); followReturnTimerRef.current = null }
-  }, [])
+    followReturnAtStore.set(null)
+  }, [followReturnAtStore])
   const handleUserPan = useCallback(() => {
     setFollowGps(false)
     setLocCentred(false)
     clearFollowReturn()
     if (!followReturnArmableRef.current) return
+    // onUserPan fires on every frame of a drag: only move the shown deadline
+    // when it has changed by a visible amount.
+    const at = Date.now() + FOLLOW_RETURN_MS
+    const shown = followReturnAtStore.get()
+    if (shown == null || at - shown > 250) followReturnAtStore.set(at)
     followReturnTimerRef.current = setTimeout(() => {
       followReturnTimerRef.current = null
+      followReturnAtStore.set(null)
       if (followReturnArmableRef.current) setFollowGps(true)
     }, FOLLOW_RETURN_MS)
-  }, [clearFollowReturn])
+  }, [clearFollowReturn, followReturnAtStore])
   // Cancel a pending return when following resumes some other way, the
   // flight ends, route-adjust starts, or the screen unmounts.
   useEffect(() => {
@@ -1183,10 +1196,14 @@ function MapScreenForCountry() {
           onSelect: handleStopFlight }
       : { id: 'go', label: 'Go flying', description: 'Start flying mode with GPS or the touch simulator', icon: toolIcon(IconPlaneDeparture),
           onSelect: () => setShowModePicker(true) },
-      ...(toolFlying ? [{ id: 'autozoom', label: 'Auto zoom',
-        description: settings.autoZoom ? 'Zooms in on takeoff and out in cruise while the map follows you. Tap to turn off.' : 'The map keeps your zoom level while following you. Tap to zoom automatically on takeoff and in cruise.',
-        icon: toolIcon(IconZoomScan), active: settings.autoZoom, keepOpen: true,
-        onSelect: () => update({ autoZoom: !settings.autoZoom }) }] : []),
+      ...(toolFlying ? [{ id: 'autozoom', label: settings.autoZoom && autoZoomPaused ? 'Resume' : 'Auto zoom',
+        description: settings.autoZoom && autoZoomPaused
+          ? 'Your own zoom paused auto zoom. Tap to resume it.'
+          : settings.autoZoom
+            ? 'Zooms in as far as it can while you and your departure or destination both stay on screen. Zooming yourself pauses it. Tap to turn off.'
+            : 'The map keeps your zoom level while following you. Tap to zoom automatically, keeping your departure or destination in view.',
+        icon: toolIcon(IconZoomScan), active: settings.autoZoom && !autoZoomPaused, keepOpen: true,
+        onSelect: () => { if (settings.autoZoom && autoZoomPaused) setAutoZoomResumeNonce((n) => n + 1); else update({ autoZoom: !settings.autoZoom }) } }] : []),
       ...(toolFlying && waypoints.length >= 2 ? [{ id: 'plog', label: 'Pilot log',
         description: 'Route table with live ETA and ATA, comms ahead and nearby nav aids.',
         icon: toolIcon(IconListDetails),
@@ -1449,6 +1466,8 @@ function MapScreenForCountry() {
           initialCenter={homeCoord ?? undefined}
           initialZoom={homeCoord ? 11 : undefined}
           autoZoom={settings.autoZoom}
+          autoZoomResumeNonce={autoZoomResumeNonce}
+          onAutoZoomPausedChange={setAutoZoomPaused}
           trajectoryNm={settings.trajectoryNm}
           trajectoryMode={settings.trajectoryMode ?? 'time'}
           followGps={followGps}
@@ -1459,6 +1478,7 @@ function MapScreenForCountry() {
           // marker, and Off shows none.
           showAircraft={flyingActive}
           mapOrientation={mapOrientation}
+          activeWpIdx={activeWpIdx}
           bearingStore={bearingStore}
           resetNorthNonce={resetNorthNonce}
           // Compass sits bottom right, just above the scale pill (inside the map
@@ -1466,10 +1486,14 @@ function MapScreenForCountry() {
           mapCornerSlot={(
             <CompassButton
               bearingStore={bearingStore}
-              trackUp={mapOrientation === 'track'}
+              orientation={mapOrientation}
               canToggle={flyingActive}
               onResetNorth={() => { setMapOrientation('north'); setResetNorthNonce((n) => n + 1) }}
-              onSetTrackUp={() => setMapOrientation('track')}
+              onNextOrientation={() => {
+                if (mapOrientation === 'north') setMapOrientation('track')
+                else if (mapOrientation === 'track' && routeVisible && waypoints.length >= 2) setMapOrientation('course')
+                else { setMapOrientation('north'); setResetNorthNonce((n) => n + 1) }
+              }}
             />
           )}
           onFeatureTap={handleFeatureTap as (features: Feature[], lngLat: [number,number]) => void}
@@ -1733,6 +1757,7 @@ function MapScreenForCountry() {
               size={18}
               color={(flightModeStatus !== 'off' ? followGps : locMode === 'passive' && locCentred) ? theme.accentBlue : theme.textPrimary}
             />
+            <FollowCountdown returnAtStore={followReturnAtStore} />
           </TouchableOpacity>
         </View>
       </ScrollView>

@@ -85,6 +85,10 @@ import { useNearbyFrequencies } from '../hooks/useNearbyFrequencies'
 import VicinityBriefPanel from './VicinityBriefPanel'
 import { useGpsVerticalSpeed } from '../hooks/useGpsVerticalSpeed'
 import LiveTrackChart from './LiveTrackChart'
+import {
+  recenterNeeded, chooseAutoZoom, createFocusTracker, distNm, AUTO_ZOOM_PREFERRED,
+  FOLLOW_RETURN_MS, FOLLOW_LOOKAHEAD_RATIO, followCountdownSecs, type FollowSnapshot,
+} from '@open-vfr/shared/followZoom'
 import LivePlogPanel from './LivePlogPanel'
 import WpActionMenu from './WpActionMenu'
 import LegActionMenu from './LegActionMenu'
@@ -344,11 +348,9 @@ const SNAP_LAYERS = [
 /** In flight: after the pilot pans away, return to following the aircraft
  *  once the map has been left alone this long. A forgotten Re-center in
  *  flight otherwise leaves the map parked away from the aircraft. */
-const FOLLOW_RETURN_MS = 15_000
 
 /** Track-/course-up follow: aircraft sits this fraction of the map height
  *  below centre (0.25 × height = aircraft at 75% down the screen). */
-const FOLLOW_LOOKAHEAD_RATIO = 0.25
 
 
 
@@ -614,6 +616,16 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const [autoZoom, setAutoZoom] = useAutoZoom()
   const autoZoomRef = useRef(autoZoom)
   useEffect(() => { autoZoomRef.current = autoZoom }, [autoZoom])
+  // A manual zoom pauses auto-zoom until resumed from the tools menu; turning
+  // the setting off and on also clears the pause.
+  const [autoZoomPaused, setAutoZoomPaused] = useState(false)
+  const autoZoomPausedRef = useRef(false)
+  useEffect(() => { autoZoomPausedRef.current = autoZoomPaused }, [autoZoomPaused])
+  useEffect(() => { setAutoZoomPaused(false) }, [autoZoom])
+  // Deadline of the pending return-to-follow (null = none); drives the countdown on the locate button.
+  const [followReturnAt, setFollowReturnAt] = useState<number | null>(null)
+  const lastFollowRef = useRef<FollowSnapshot | null>(null)
+  const focusTrackerRef = useRef(createFocusTracker())
   const [trajectoryMode, setTrajectoryMode] = useTrajectoryMode()
   const trajectoryModeRef = useRef(trajectoryMode)
   useEffect(() => { trajectoryModeRef.current = trajectoryMode }, [trajectoryMode])
@@ -1046,10 +1058,26 @@ export default function MapView({ auth }: { auth: AuthState }) {
     // blue outline and icon, no fill.
     btn.style.color = locked ? '#2563eb' : ''
     btn.style.boxShadow = locked ? 'inset 0 0 0 2px #2563eb' : ''
-    btn.innerHTML = on ? LOCATE_ON_ICON_SVG : LOCATE_ICON_SVG
+    // The small span shows the seconds left until a panned map returns to the aircraft.
+    btn.innerHTML = (on ? LOCATE_ON_ICON_SVG : LOCATE_ICON_SVG)
+      + '<span data-follow-countdown style="position:absolute;right:2px;bottom:0;font:800 10px/1 system-ui,sans-serif;color:#2563eb;pointer-events:none"></span>'
+    btn.style.position = 'relative'
     btn.setAttribute('aria-pressed', String(on))
     btn.setAttribute('aria-label', btn.title)
   }, [locMode, locDenied, followAircraft, flyingMode, mapReady, locCentred])
+  // Follow-return countdown: write the remaining seconds into the locate button's span.
+  useEffect(() => {
+    const write = () => {
+      const el = locateBtnRef.current?.querySelector('[data-follow-countdown]')
+      if (el) el.textContent = String(followCountdownSecs(followReturnAt, Date.now()) ?? '')
+    }
+    write()
+    if (followReturnAt == null) return
+    const id = window.setInterval(write, 250)
+    return () => window.clearInterval(id)
+  }, [followReturnAt])
+  // Following again (by button or by the timer) ends the countdown.
+  useEffect(() => { if (followAircraft) setFollowReturnAt(null) }, [followAircraft])
   const gpsPositionRef  = useRef<GpsPosition | null>(null)
   const aircraftDragRef = useRef(false)
   // Cache of all runway threshold entries, loaded once from se-runway-thresholds.geojson
@@ -3351,7 +3379,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
     let followReturnTimer = 0
     const armFollowReturn = () => {
       clearTimeout(followReturnTimer)
+      setFollowReturnAt(Date.now() + FOLLOW_RETURN_MS)
       followReturnTimer = window.setTimeout(() => {
+        setFollowReturnAt(null)
         // Not while deliberately adjusting the route in flight.
         if (flyingModeRef.current !== 'off' && !routeAdjustModeRef.current) setFollowAircraft(true)
       }, FOLLOW_RETURN_MS)
@@ -3390,6 +3420,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
     map.on('movestart', onMoveStart)
     map.on('pitchstart', disableFollow)
     map.on('rotatestart', disableFollow)
+    // A pilot zoom (not a pan) pauses auto-zoom.
+    const onZoomStart = (e: { originalEvent?: unknown }) => {
+      if (e.originalEvent && flyingModeRef.current !== 'off' && !autoZoomPausedRef.current) setAutoZoomPaused(true)
+    }
+    map.on('zoomstart', onZoomStart)
 
     return () => {
       ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols', 'notam-circles-fill', 'notam-polygons-fill', 'notam-points-cluster', 'notam-points-unclustered'].forEach((id) => {
@@ -3402,6 +3437,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       map.off('movestart', onMoveStart)
       map.off('pitchstart', disableFollow)
       map.off('rotatestart', disableFollow)
+      map.off('zoomstart', onZoomStart)
       clearTimeout(dragEndTimer)
       clearTimeout(followReturnTimer)
       map.remove()
@@ -4215,7 +4251,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
     if (zt && zoomLeftMs <= 0) autoZoomTargetRef.current = null
     const autoZoom = zt && zoomLeftMs > 0 ? { zoom: zt.zoom, duration: Math.max(250, zoomLeftMs) } : null
 
-    // Optionally pan / rotate to follow.
+    // Optionally pan / rotate to follow. The map moves in steps, not on every
+    // position tick: only after the aircraft has moved a meaningful distance
+    // across the screen or the map heading is off by 15 deg (recenterNeeded).
     if (followAircraft) {
       const legBearing =
         routeWaypoints.length >= 2 && activeWpIdx > 0 && activeWpIdx < routeWaypoints.length
@@ -4225,17 +4263,51 @@ export default function MapView({ auth }: { auth: AuthState }) {
         mapOrientation === 'track'  ? gpsPosition.trackDeg
         : mapOrientation === 'course' ? legBearing
         : 0
+      const container = map.getContainer()
+      const viewW = container.clientWidth
+      const viewH = container.clientHeight
       // Track-/course-up: place the aircraft in the lower part of the screen
       // so most of the map shows what lies ahead rather than behind. easeTo's
       // `offset` is resolved against the *target* bearing, so it stays
-      // correct while the map rotates. (maplibre's calculateAnchoredCameraOptions
-      // was considered but holds bearing fixed, so it doesn't fit here.)
-      // North-up keeps the aircraft centred -- "ahead" isn't a screen
-      // direction there.
-      const lookAheadPx = mapOrientation === 'north' ? 0 : Math.round(map.getContainer().clientHeight * FOLLOW_LOOKAHEAD_RATIO)
-      map.easeTo({ center: [gpsPosition.lng, gpsPosition.lat], bearing, offset: [0, lookAheadPx], duration: 250, ...autoZoom })
+      // correct while the map rotates. North-up keeps the aircraft centred --
+      // "ahead" isn't a screen direction there.
+      const lookAheadPx = mapOrientation === 'north' ? 0 : Math.round(viewH * FOLLOW_LOOKAHEAD_RATIO)
+      const pos = { lat: gpsPosition.lat, lng: gpsPosition.lng }
+
+      // Destination-aware auto-zoom: as close as possible with the aircraft
+      // and the departure / destination both on screen.
+      let zoom: number | null = null
+      let centre: [number, number] = [pos.lng, pos.lat]
+      if (autoZoomRef.current && !autoZoomPausedRef.current) {
+        const focus = focusTrackerRef.current.update({
+          pos, speedKts: gpsPosition.speedKts, parkedKts: 15,
+          route: routeVisible ? routeWaypoints : [],
+        })
+        if (focus && gpsPosition.speedKts >= 15) {
+          const near = distNm(pos, focus.focus) <= focus.nearNm
+          const choice = chooseAutoZoom({ pos, focus: focus.focus, near, bearing, viewW, viewH, aheadOffsetDp: lookAheadPx })
+          if (choice) {
+            zoom = choice.zoom
+            if (choice.centre) centre = [choice.centre.lng, choice.centre.lat]
+          }
+        }
+        if (zoom == null && autoZoom) {
+          // No focus yet, or nothing fits: the speed phases (take-off close, cruise wide).
+          zoom = autoZoom.zoom
+        } else if (zoom == null && focus && autoZoomPhaseRef.current === 'cruise') {
+          zoom = AUTO_ZOOM_PREFERRED
+        }
+      }
+      const curZoom = map.getZoom()
+      const zoomChange = zoom != null && Math.abs(zoom - curZoom) > 0.08
+      if (zoomChange || recenterNeeded({ last: lastFollowRef.current, pos, targetBearing: bearing, zoom: curZoom, viewW, viewH })) {
+        lastFollowRef.current = { lat: pos.lat, lng: pos.lng, bearing }
+        map.easeTo({ center: centre, bearing, offset: [0, lookAheadPx], duration: zoomChange ? 1200 : 450, ...(zoomChange ? { zoom: zoom as number } : null) })
+      }
     }
-  }, [gpsPosition, mapReady, followAircraft, mapOrientation, routeWaypoints, activeWpIdx, selectedAircraftProfile])
+  }, [gpsPosition, mapReady, followAircraft, mapOrientation, routeWaypoints, routeVisible, activeWpIdx, selectedAircraftProfile])
+  // Anything that changes where / how the map should sit forces the next move.
+  useEffect(() => { lastFollowRef.current = null }, [followAircraft, mapOrientation, activeWpIdx, autoZoom, autoZoomPaused])
 
   // Auto-advance active WP index when aircraft is within 0.3 NM of next WP.
   useEffect(() => {
@@ -4457,9 +4529,14 @@ export default function MapView({ auth }: { auth: AuthState }) {
             : { id: 'go', label: 'Go flying', description: 'Start flying mode with GPS, the keyboard simulator or an external simulator', icon: <IconPlaneDeparture {...CTRL_ICON} />,
                 active: showModePicker, onSelect: () => setShowModePicker(m => !m) }]
           // Auto-zoom while following the aircraft (saved setting, shared with Settings).
-          if (flying) flyItems.push({ id: 'autozoom', label: 'Auto zoom',
-            description: autoZoom ? 'Zooms in on takeoff and out in cruise while the map follows you. Tap to turn off.' : 'The map keeps your zoom level while following you. Tap to zoom automatically on takeoff and in cruise.',
-            icon: <IconZoomScan {...CTRL_ICON} />, active: autoZoom, keepOpen: true, onSelect: () => setAutoZoom(!autoZoom) })
+          if (flying) flyItems.push({ id: 'autozoom', label: autoZoom && autoZoomPaused ? 'Resume' : 'Auto zoom',
+            description: autoZoom && autoZoomPaused
+              ? 'Your own zoom paused auto zoom. Click to resume it.'
+              : autoZoom
+                ? 'Zooms in as far as it can while you and your departure or destination both stay on screen. Zooming yourself pauses it. Click to turn off.'
+                : 'The map keeps your zoom level while following you. Click to zoom automatically, keeping your departure or destination in view.',
+            icon: <IconZoomScan {...CTRL_ICON} />, active: autoZoom && !autoZoomPaused, keepOpen: true,
+            onSelect: () => { if (autoZoom && autoZoomPaused) setAutoZoomPaused(false); else setAutoZoom(!autoZoom) } })
           const groups: ToolGroupDef[] = [
             { id: 'fly',   label: 'Flying', items: flyItems },
             { id: 'find',  label: 'Find & look up', items: findItems },

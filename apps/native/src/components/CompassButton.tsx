@@ -7,9 +7,9 @@
  * - Shown while the map is rotated, or while flying (then it also shows the
  *   orientation mode: blue border = Track Up). On the ground with the map
  *   facing north it is hidden, like a standard compass.
- * - Tap, Track Up: back to North Up.
+ * - Tap while flying cycles North Up -> Track Up -> Course Up (when a route
+ *   leg exists) -> North Up. A small T / C badge names the mode.
  * - Tap, North Up but rotated by hand: re-align to north.
- * - Tap, flying with north up: switch to Track Up.
  * - Tap on the ground, rotated: re-align to north.
  * It is the only orientation control (no toolbar tile).
  *
@@ -18,7 +18,8 @@
  */
 
 import React from 'react'
-import { TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native'
+import { Text, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native'
+import type { MapOrientation } from '../utils/gpsTypes'
 import Svg, { Path } from 'react-native-svg'
 import { useStoreValue, type ValueStore } from '../utils/valueStore'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -27,16 +28,17 @@ import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 const ROTATED_DEG = 1
 
 export function CompassButton({
-  bearingStore, trackUp, canToggle, onResetNorth, onSetTrackUp, style,
+  bearingStore, orientation, canToggle, onResetNorth, onNextOrientation, style,
 }: {
   bearingStore: ValueStore<number>
-  /** Orientation mode: map turns with the track. */
-  trackUp: boolean
+  /** Current orientation mode. */
+  orientation: MapOrientation
   /** Orientation can be toggled (flying). */
   canToggle: boolean
   /** Go to North Up and re-align the map to north. */
   onResetNorth: () => void
-  onSetTrackUp: () => void
+  /** Advance to the next orientation mode (North -> Track -> Course -> North). */
+  onNextOrientation: () => void
   style?: StyleProp<ViewStyle>
 }) {
   const styles = useThemedStyles(makeStyles)
@@ -44,15 +46,19 @@ export function CompassButton({
   const norm = ((bearing % 360) + 540) % 360 - 180   // -180..180, 0 = north up
   const rotated = Math.abs(norm) > ROTATED_DEG
   if (!rotated && !canToggle) return null
-  const toTrackUp = canToggle && !trackUp && !rotated
-  const label = toTrackUp ? 'North up. Tap for track up'
-    : trackUp ? 'Track up. Tap for north up'
-    : 'Map is rotated. Tap for north up'
+  const trackUp = orientation !== 'north'
+  // Flying: tap cycles the mode, except for a north-up map the pilot turned by
+  // hand, which just re-aligns.
+  const cycles = canToggle && (trackUp || !rotated)
+  const label = !cycles ? 'Map is rotated. Tap for north up'
+    : orientation === 'north' ? 'North up. Tap for track up'
+    : orientation === 'track' ? 'Track up. Tap for next orientation'
+    : 'Course up. Tap for north up'
   return (
     <TouchableOpacity
       style={[styles.btn, trackUp && styles.btnActive, style]}
       activeOpacity={0.85}
-      onPress={toTrackUp ? onSetTrackUp : onResetNorth}
+      onPress={cycles ? onNextOrientation : onResetNorth}
       accessibilityRole="button"
       accessibilityLabel={label}
       testID="map-compass"
@@ -64,6 +70,7 @@ export function CompassButton({
           <Path d="M12 22 L6.5 13 H17.5 Z" fill={theme.textPrimary} opacity={0.85} />
         </Svg>
       </View>
+      {trackUp && <Text style={styles.badge}>{orientation === 'course' ? 'C' : 'T'}</Text>}
     </TouchableOpacity>
   )
 }
@@ -81,5 +88,6 @@ function makeStyles(t: ScaledTheme) {
       justifyContent:  'center' as const,
     },
     btnActive: { borderColor: t.accentBlue },
+    badge: { position: 'absolute' as const, right: 4, bottom: 2, fontSize: 9, fontWeight: '800' as const, color: t.accentBlue },
   }
 }

@@ -4,7 +4,7 @@
  */
 
 import React, { useRef, useCallback, useMemo, useEffect, useState } from 'react'
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Linking } from 'react-native'
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Linking, useWindowDimensions } from 'react-native'
 import {
   Map,
   Camera,
@@ -56,8 +56,13 @@ import {
   getTileUrls,
 } from '../config'
 import type { GpsPosition } from '../utils/gpsTypes'
+import type { MapOrientation } from '../utils/gpsTypes'
+import {
+  recenterNeeded, chooseAutoZoom, createFocusTracker, distNm, AUTO_ZOOM_PREFERRED, FOLLOW_LOOKAHEAD_RATIO,
+  type FollowSnapshot,
+} from '@open-vfr/shared/followZoom'
 import type { RouteWaypoint } from '../utils/routeCalc'
-import { advancePosition, distanceNm, magneticBearingDeg } from '../utils/routeCalc'
+import { advancePosition, bearingDeg, distanceNm, magneticBearingDeg } from '../utils/routeCalc'
 import { legLabelVariants } from '@open-vfr/shared/legLabels'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { OFFLINE_ASSETS, resolveUri } from '../utils/offlineCache'
@@ -170,7 +175,9 @@ export type AviationMapProps = {
    *  features, but the map shouldn't show a position the pilot turned off.
    *  gpsPosition still drives camera follow either way. */
   showAircraft?: boolean
-  mapOrientation?: 'north' | 'track'
+  mapOrientation?: MapOrientation
+  /** Index of the waypoint being flown to (Course Up turns the map to the leg ending there). */
+  activeWpIdx?: number
   /** Receives the map bearing on every camera change (for the compass button). */
   bearingStore?: ValueStore<number>
   /** Rendered just above the scale pill, bottom right (the compass button). */
@@ -178,6 +185,10 @@ export type AviationMapProps = {
   /** Bump to send the map back to north (compass button). */
   resetNorthNonce?: number
   autoZoom?: boolean
+  /** Bump to resume auto-zoom after a manual zoom paused it. */
+  autoZoomResumeNonce?: number
+  /** Reports whether a manual zoom has paused auto-zoom (for the toolbar). */
+  onAutoZoomPausedChange?: (paused: boolean) => void
   /** Optional initial center — fly to this on first load (home airfield) */
   initialCenter?: [number, number]
   initialZoom?:   number
@@ -839,10 +850,13 @@ export function AviationMap({
   showAircraft = true,
   onUserPan,
   mapOrientation = 'north',
+  activeWpIdx = 0,
   bearingStore,
   mapCornerSlot,
   resetNorthNonce = 0,
   autoZoom = true,
+  autoZoomResumeNonce = 0,
+  onAutoZoomPausedChange,
   initialCenter,
   initialZoom,
   basemapMode   = 'vector' as const,
@@ -1241,9 +1255,16 @@ export function AviationMap({
   // are shown: each setCamForWind re-renders all of AviationMap, and during
   // a pan that happened up to 10x a second with the layer off too.
   const showWindRef = useRef(showWind); showWindRef.current = showWind
+  // True while a manual zoom has paused auto-zoom (see the follow effect).
+  const autoZoomPausedRef = useRef(false)
   const handleRegionChange = useCallback((e: NativeSyntheticEvent<ViewStateChangeEvent>) => {
     const { center, zoom, bearing, userInteraction } = e.nativeEvent
     if (center) {
+      // A pilot zoom (pinch / double-tap) pauses auto-zoom; a pan alone does not.
+      if (userInteraction && zoom != null && Math.abs(zoom - camStateRef.current.zoom) > 0.03 && !autoZoomPausedRef.current) {
+        autoZoomPausedRef.current = true
+        onAutoZoomPausedChange?.(true)
+      }
       camStateRef.current = { lat: center[1], lng: center[0], zoom: zoom ?? 5, heading: bearing ?? 0 }
       bearingStore?.set(bearing ?? 0)
       infoBarRef.current?.setCamera(center[1], zoom ?? 5)
@@ -1260,7 +1281,7 @@ export function AviationMap({
         setCamForWind({ lat: center[1], lng: center[0], zoom: z })
       }
     }
-  }, [onUserPan])
+  }, [onUserPan, onAutoZoomPausedChange])
 
   // Seed camForWind from the last-known camera state as soon as Wind
   // Arrows is enabled, instead of waiting for the first real pan/zoom to
@@ -1645,27 +1666,98 @@ export function AviationMap({
     })
   }, [gpsPosition, simActive])
 
+  // ── Follow + auto-zoom ───────────────────────────────────────────────────
+  // The camera is moved in steps, not on every position tick: only after the
+  // aircraft has moved a meaningful distance across the screen or the map
+  // heading is off by 15 deg (see recenterNeeded). Each move is a short ease;
+  // steps are seconds apart, so a longer ease than the old every-tick one is
+  // safe (that one had to stay <= the 200 ms sim tick to avoid self-fighting).
+  const { width: viewW, height: viewH } = useWindowDimensions()
+  const lastFollowRef = useRef<FollowSnapshot | null>(null)
+  const focusTrackerRef = useRef(createFocusTracker())
+  const focusKeyRef = useRef('')
+  const routeVisibleRef = useRef(routeVisible); routeVisibleRef.current = routeVisible
+  // Anything that changes where / how the map should sit forces the next move.
+  useEffect(() => { lastFollowRef.current = null }, [followGps, mapOrientation, activeWpIdx, autoZoom, viewW, viewH])
+  // Resuming auto-zoom, or turning it off and on, clears a manual-zoom pause.
+  useEffect(() => {
+    if (autoZoomPausedRef.current) { autoZoomPausedRef.current = false; onAutoZoomPausedChange?.(false) }
+    lastFollowRef.current = null
+  }, [autoZoom, autoZoomResumeNonce, onAutoZoomPausedChange])
+
+  // Fallback auto-zoom while no focus point fits (no route yet, still on the
+  // ground): idle -> 30 kts -> z13 -> 60 kts -> z11. Per flight, not per
+  // follow toggle: panning away and recentring must not re-trigger it. Resets
+  // once the aircraft is effectively stopped, which also clears a manual-zoom
+  // pause (a new flight starts with auto-zoom active).
+  const autoZoomPhaseRef = useRef<'idle' | 'takeoff' | 'cruise'>('idle')
+  useEffect(() => {
+    if (gpsPosition && gpsPosition.speedKts < AUTO_ZOOM_RESET_KTS) {
+      autoZoomPhaseRef.current = 'idle'
+      if (autoZoomPausedRef.current) { autoZoomPausedRef.current = false; onAutoZoomPausedChange?.(false) }
+    }
+  }, [gpsPosition, onAutoZoomPausedChange])
+
   useEffect(() => {
     if (!followGps || !gpsPosition) return
-    const heading = mapOrientation === 'track' ? gpsPosition.trackDeg : 0
-    // duration MUST be <= the position-source's own update cadence (sim's
-    // SimFlightEngine ticks at 5 Hz / TICK_MS=200 -- see that file). This
-    // effect re-issues easeTo on every single gpsPosition change, so a
-    // duration longer than the tick interval (previously 300ms) meant each
-    // new easeTo restarted/interrupted the still-animating previous one
-    // before it finished -- a self-fighting camera stutter that, under a
-    // JS-thread hiccup (GC pause, awaited fetch resolving, etc.) backlogs a
-    // burst of onRegionIsChanging callbacks into a single flush and can trip
-    // React's synchronous update-depth guard (reproduced in practice: fires
-    // every ~15s during hands-off sim flight, no user panning involved).
-    // 200ms lets each animation fully settle right as the next tick's data
-    // arrives -- smooth follow with no overlapping/self-interrupting easeTo.
+    // Course Up: the active leg points up; with no leg (no route, or still
+    // before the first waypoint) it falls back to the track, like web.
+    const wps = waypointsRef.current ?? []
+    const legBearing = wps.length >= 2 && activeWpIdx > 0 && activeWpIdx < wps.length
+      ? bearingDeg(wps[activeWpIdx - 1], wps[activeWpIdx])
+      : gpsPosition.trackDeg
+    const heading = mapOrientation === 'track' ? gpsPosition.trackDeg
+      : mapOrientation === 'course' ? legBearing
+      : 0
+    const pos = { lat: gpsPosition.lat, lng: gpsPosition.lng }
+    // Track-/course-up keep the aircraft in the lower part of the screen so
+    // most of the map shows what lies ahead (north-up keeps it centred).
+    const aheadPx = mapOrientation === 'north' ? 0 : Math.round(viewH * FOLLOW_LOOKAHEAD_RATIO)
+
+    // Destination-aware auto-zoom: as close as possible with the aircraft and
+    // the departure / destination both on screen.
+    let zoom: number | undefined
+    let centre: [number, number] = [pos.lng, pos.lat]
+    if (autoZoom && !autoZoomPausedRef.current) {
+      const route = routeVisibleRef.current ? wps : []
+      const focus = focusTrackerRef.current.update({ pos, speedKts: gpsPosition.speedKts, route, parkedKts: AUTO_ZOOM_RESET_KTS })
+      if (focus) {
+        focusKeyRef.current = focus.key
+        const near = distNm(pos, focus.focus) <= focus.nearNm
+        const choice = gpsPosition.speedKts >= AUTO_ZOOM_RESET_KTS
+          ? chooseAutoZoom({ pos, focus: focus.focus, near, bearing: heading, viewW, viewH, aheadOffsetDp: aheadPx })
+          : null
+        if (choice) {
+          zoom = choice.zoom
+          if (choice.centre) centre = [choice.centre.lng, choice.centre.lat]
+        }
+      }
+      if (zoom == null) {
+        // No focus yet, or nothing fits: the speed phases (take-off close, cruise wide).
+        const spd = gpsPosition.speedKts
+        const phase = autoZoomPhaseRef.current
+        if (phase === 'idle' && spd >= 30) { autoZoomPhaseRef.current = 'takeoff'; zoom = 13 }
+        else if (phase === 'takeoff' && spd >= 60) { autoZoomPhaseRef.current = 'cruise'; zoom = 11 }
+        else if (focus && phase === 'cruise') zoom = AUTO_ZOOM_PREFERRED
+      }
+    }
+
+    const curZoom = camStateRef.current.zoom
+    const zoomChange = zoom != null && Math.abs(zoom - curZoom) > 0.08
+    if (!zoomChange && !recenterNeeded({ last: lastFollowRef.current, pos, targetBearing: heading, zoom: curZoom, viewW, viewH })) return
+    lastFollowRef.current = { lat: pos.lat, lng: pos.lng, bearing: heading }
+    // Centre on the aircraft (or, near the field, between aircraft and field),
+    // NOT camStateRef.current: that is only updated asynchronously by the map's
+    // own region events, so right after re-enabling follow it is still the
+    // stale panned-to location and fought the recentre.
     cameraRef.current?.easeTo({
-      center:   [gpsPosition.lng, gpsPosition.lat],
+      center:   centre,
       bearing:  heading,
-      duration: 200,
+      ...(zoomChange ? { zoom } : null),
+      padding:  { top: aheadPx * 2, right: 0, bottom: 0, left: 0 },
+      duration: zoomChange ? 1200 : 450,
     })
-  }, [followGps, gpsPosition, mapOrientation])
+  }, [followGps, gpsPosition, mapOrientation, activeWpIdx, autoZoom, viewW, viewH, onAutoZoomPausedChange])
 
   // Compass button: send the map back to north.
   useEffect(() => {
@@ -1686,37 +1778,6 @@ export function AviationMap({
       cameraRef.current?.easeTo({ center: [lng, lat], bearing: 0, duration: 500 })
     }
   }, [followGps])
-
-  // Auto-zoom: idle → 30 kts → zoom 13 (takeoff) → 60 kts → zoom 11 (cruise)
-  const autoZoomPhaseRef = useRef<'idle' | 'takeoff' | 'cruise'>('idle')
-  // The phase is per-flight, NOT per-follow-toggle: panning away and
-  // recentering mid-flight must not re-trigger the zoom sequence. It resets
-  // only once the aircraft is effectively stopped (landed / parked).
-  useEffect(() => {
-    if (gpsPosition && gpsPosition.speedKts < AUTO_ZOOM_RESET_KTS) autoZoomPhaseRef.current = 'idle'
-  }, [gpsPosition])
-  useEffect(() => {
-    if (!autoZoom || !followGps || !gpsPosition) return
-    const spd   = gpsPosition.speedKts
-    const phase = autoZoomPhaseRef.current
-    // Center on gpsPosition (the aircraft), NOT camStateRef.current -- this
-    // effect runs in the same commit as the plain followGps recenter effect
-    // above whenever the pilot re-enables follow (e.g. the recenter button)
-    // after having panned away. camStateRef is only updated asynchronously
-    // by the native map's own onRegionDidChange/onRegionIsChanging events,
-    // so right after re-enabling it's still the stale panned-to location --
-    // using it here fought the recenter effect's aircraft-centered easeTo
-    // with a second, longer (1500/2000ms) one back toward where the pilot
-    // had panned, at a new zoom. Symptom: recenter looked like it needed a
-    // second press to actually land on the aircraft.
-    if (phase === 'idle' && spd >= 30) {
-      autoZoomPhaseRef.current = 'takeoff'
-      cameraRef.current?.easeTo({ center: [gpsPosition.lng, gpsPosition.lat], zoom: 13, duration: 1500 })
-    } else if (phase === 'takeoff' && spd >= 60) {
-      autoZoomPhaseRef.current = 'cruise'
-      cameraRef.current?.easeTo({ center: [gpsPosition.lng, gpsPosition.lat], zoom: 11, duration: 2000 })
-    }
-  }, [autoZoom, followGps, gpsPosition])
 
   const ceilingFilter = ['<=', ['get', 'lower_ft'], airspaceCeilingFt]
 
