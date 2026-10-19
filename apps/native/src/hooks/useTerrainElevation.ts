@@ -12,6 +12,7 @@ import { API_BASE } from '../config'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { fetchWithRetry } from '@open-vfr/shared/fetchWithRetry'
 import { getOfflineDem } from '../utils/terrainDem'
+import { authHeaders } from '../utils/authClient'
 
 const MIN_MOVE_NM     = 0.3
 const MIN_INTERVAL_MS = 15_000
@@ -57,8 +58,13 @@ export function useTerrainElevation(position: GpsPosition | null): number | null
     // points at the R2 tiles bucket domain). Using TILE_BASE here hit the
     // R2 bucket with a bogus path and came back with a 401 misreported as
     // "OpenTopoData HTTP 401" (found 2026-09-20).
-    fetchWithRetry(`${API_BASE}/api/elevation/eudem25m?${params.toString()}`)
-      .then(r => r.json())
+    // Session required (API server proxy). A 429/503 means the shared
+    // OpenTopoData budget is used up for now: no quick retry, the DEM
+    // fallback below takes over.
+    authHeaders()
+      .then((headers) => fetchWithRetry(`${API_BASE}/api/elevation/eudem25m?${params.toString()}`, { headers }, { retryStatuses: [502, 504] }))
+      // Non-OK (401/429/503) -> catch below -> DEM fallback, not a silent no-op.
+      .then(r => { if (!r.ok) throw new Error(`elevation HTTP ${r.status}`); return r.json() })
       .then((data: { results?: { elevation: number | null }[]; status?: string }) => {
         if (data.status !== 'OK' || !data.results?.[0]) return
         const m = data.results[0].elevation

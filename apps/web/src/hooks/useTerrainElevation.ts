@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { fetchWithRetry } from '@open-vfr/shared/fetchWithRetry'
 import { getRemoteDem } from '../utils/terrainDem'
+import { API_BASE_URL } from '../utils/env'
 import type { GpsPosition } from '../utils/gpsTypes'
 
 const MIN_MOVE_NM     = 0.3
@@ -44,8 +45,13 @@ export function useTerrainElevation(position: GpsPosition | null): number | null
     lastFetchRef.current = { lat: position.lat, lng: position.lng, at: now }
 
     const params = new URLSearchParams({ locations: `${position.lat.toFixed(5)},${position.lng.toFixed(5)}` })
-    fetchWithRetry(`/api/elevation/eudem25m?${params.toString()}`)
-      .then(r => r.json())
+    // API_BASE_URL, not a relative path: in split-origin production a
+    // relative /api/... hits the static app host and gets index.html back.
+    // Session cookie sent by fetchWithRetry (credentials: 'include'); a
+    // 429/503 (shared OpenTopoData budget used up) falls back to the DEM.
+    fetchWithRetry(`${API_BASE_URL}/api/elevation/eudem25m?${params.toString()}`, undefined, { retryStatuses: [502, 504] })
+      // Non-OK (401/429/503) -> catch below -> DEM fallback, not a silent no-op.
+      .then(r => { if (!r.ok) throw new Error(`elevation HTTP ${r.status}`); return r.json() })
       .then((data: { results?: { elevation: number | null }[]; status?: string }) => {
         if (data.status !== 'OK' || !data.results?.[0]) return
         const m = data.results[0].elevation

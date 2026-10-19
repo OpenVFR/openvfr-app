@@ -282,12 +282,19 @@ removes it. An already-issued PostgREST JWT stays valid until its 1 h expiry.
   single-origin case (proxies `/api/auth`, `/rest`, `/api/weather`,
   `/api/notam` to the API service; serves `/tiles/*` and hashed JS/CSS
   assets with appropriate caching).
-- `/api/open-meteo/` proxies the free Open-Meteo forecast API, which is
-  for non-commercial use and rate limited per IP (600 calls/min, 5 000/h,
-  10 000/day; see open-meteo.com/en/terms). All your users share your
-  server's IP, so keep the response cache from `docker/nginx.conf`
-  (`proxy_cache open_meteo`) in any config you write yourself: it answers
-  repeated requests locally and serves the last good response when
-  Open-Meteo throttles. The apps themselves back off on 429/503 (see
-  `packages/shared/src/openMeteo.ts`). A commercial deployment needs an
-  Open-Meteo API subscription.
+- `/api/open-meteo/` (model wind, Open-Meteo) and `/api/elevation/`
+  (terrain, OpenTopoData) are relayed by the API server
+  (`apps/api/src/externalProxy.ts`): session required, per-user caps, a
+  response cache, and a server-wide budget kept under the free tiers'
+  per-IP limits (Open-Meteo 600/min, 5 000/h, 10 000/day; OpenTopoData
+  1/s, 1 000/day), which all your users share because they leave through
+  your server's IP. In any reverse-proxy config of your own, route these
+  two paths to the API like `docker/nginx.conf` does: not straight to the
+  third-party hosts, and without an nginx cache (it would answer cached
+  requests without the session check). `EXTERNAL_PROXY_ANONYMOUS` (API
+  server env): `limited` (default) still serves requests without a session,
+  with tight per-IP caps and a capped share of the upstream budget, for app
+  builds that predate the session requirement; `off` answers them 401.
+  Open-Meteo's free tier is for
+  non-commercial use only (open-meteo.com/en/terms); a commercial
+  deployment needs an Open-Meteo API subscription.

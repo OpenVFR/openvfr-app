@@ -39,6 +39,7 @@ import { randomUUID } from 'node:crypto'
 import { createHmac } from 'node:crypto'
 import { auth, isReviewAccountEmail } from './auth'
 import { admin } from './admin'
+import { mountExternalProxies } from './externalProxy'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -564,6 +565,17 @@ app.get('/api/traffic/stream', async (c) => {
     },
   })
 })
+
+// ---------------------------------------------------------------------------
+// Model wind + terrain — GET /api/open-meteo/forecast, GET /api/elevation/eudem25m
+// Free third-party APIs limited per IP, i.e. one budget shared by all users
+// of this server. Auth: session required. Rate limit: per-user hourly +
+// daily cap on cache misses, plus server-wide upstream budgets under the
+// free-tier limits. Input: endpoint + parameter allowlist, bounded
+// coordinate counts. Errors: upstream detail logged, client gets a generic
+// reason (+ Retry-After). See ./externalProxy.ts.
+// ---------------------------------------------------------------------------
+mountExternalProxies(app, requireSession)
 
 // ---------------------------------------------------------------------------
 // Weather — GET /api/weather?icao=ESSA

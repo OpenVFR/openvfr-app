@@ -225,15 +225,18 @@ export default defineConfig({
           })
         },
       } } : {}),
+      // Terrain + model wind go through the API server (session, per-user
+      // caps, shared upstream budget: apps/api/src/externalProxy.ts), same
+      // as production -- not straight to the third-party APIs.
       '/api/elevation': {
-        target: 'https://api.opentopodata.org',
+        ...devApiOrigin,
+        target: DEV_API_TARGET || 'http://localhost:5200',
         changeOrigin: true,
-        rewrite: (path: string) => path.replace(/^\/api\/elevation/, '/v1'),
       },
       '/api/open-meteo': {
-        target: 'https://api.open-meteo.com',
+        ...devApiOrigin,
+        target: DEV_API_TARGET || 'http://localhost:5200',
         changeOrigin: true,
-        rewrite: (path: string) => path.replace(/^\/api\/open-meteo/, '/v1'),
       },
       '/api/poh-extract': {
         target: 'http://localhost:5200',

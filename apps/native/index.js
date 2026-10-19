@@ -5,6 +5,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import '@open-vfr/shared/fetchWind'
 import '@open-vfr/shared/windForecast'
 import { enableCachePersistence } from '@open-vfr/shared/persistedCache'
+import { setApiAuthHeaders } from '@open-vfr/shared/apiAuth'
+import { authHeaders } from './src/utils/authClient'
 import { TILE_BASE } from './src/config'
 import App from './src/App'
 // Must be imported here (unconditionally, at startup) so expo-task-manager's
@@ -27,6 +29,9 @@ void loadTileManifest(TILE_BASE)
 // Wind readings survive an app restart, so a restart doesn't refetch them
 // from the rate-limited Open-Meteo API (see @open-vfr/shared/persistedCache).
 void enableCachePersistence(AsyncStorage)
+// Shared fetch code without its own headers parameter (Open-Meteo gate,
+// terrain profile) authenticates with the bearer token: RN has no cookie jar.
+setApiAuthHeaders(authHeaders)
 
 // Deliberately NOT also polling in the background here (unlike web's
 // TileUpdatePrompt.tsx) -- a native cold-start already re-runs this file

@@ -19,6 +19,7 @@ import {
   type TerrainPoint,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { getRemoteDem } from '../utils/terrainDem'
+import { API_BASE_URL } from '../utils/env'
 import { computeFuelPlan } from '../utils/fuelCalc'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride, AircraftProfileDocType } from '../db/index'
@@ -258,7 +259,7 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
     setTerrainDone(false)
     setTerrainFailed(false)
     const ctrl = new AbortController()
-    fetchTerrainProfile(waypoints, '', ctrl.signal, getRemoteDem())
+    fetchTerrainProfile(waypoints, API_BASE_URL, ctrl.signal, getRemoteDem())
       .then((pts) => {
         setTerrainPts(pts)
         setMsaPts(computeMsaProfile(pts))

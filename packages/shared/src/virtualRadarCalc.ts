@@ -52,6 +52,7 @@ import {
 import type { Feature, Geometry, Polygon, MultiPolygon } from 'geojson'
 import type { RouteWaypoint, LegOverride } from './types'
 import { iasToTas } from './airspeed'
+import { apiAuthHeaders } from './apiAuth'
 import { AIRSPACE_COLORS, CONTROLLED_CLASSES, airspaceDisplayClass, controlledStyle } from './airspaceColors'
 import { limitIsAgl } from './airspaceAltitude'
 import type { ElevationLookup } from './terrainDem'
@@ -882,10 +883,14 @@ export async function fetchTerrainProfile(
     // service worker can cache the response (terrain does not change) and a
     // repeat route keeps its terrain/MSA offline. 100 points is ~1.7 KB of
     // query string, well inside any URL limit.
-    // Retries transient network blips / 502-504 -- see fetchWithRetry.ts.
+    // Session required (API server proxy, apps/api externalProxy.ts).
+    // Retries network blips / 502 / 504 only: a 429/503 from the proxy means
+    // the shared OpenTopoData budget is used up for now -- fall back to the
+    // DEM below instead of asking again.
     const resp = await fetchWithRetry(
       `${baseUrl}/api/elevation/eudem25m?${new URLSearchParams({ locations: locStr }).toString()}`,
-      { signal },
+      { signal, headers: await apiAuthHeaders() },
+      { retryStatuses: [502, 504] },
     )
     if (!resp.ok) throw new Error(`OpenTopoData HTTP ${resp.status}`)
 

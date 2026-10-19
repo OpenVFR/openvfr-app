@@ -16,6 +16,7 @@ import { fetchTerrainProfile, buildVirtualRadarProfile } from '@open-vfr/shared/
 import { requiredLegAltFt, newLegsAfterChange, autoLevelMessage } from '@open-vfr/shared/autoCruiseLevel'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { getRemoteDem } from '../utils/terrainDem'
+import { API_BASE_URL } from '../utils/env'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
 
@@ -46,7 +47,7 @@ export function useAutoCruiseLevel(opts: {
     for (const legIndex of legs) {
       const legWps = [waypoints[legIndex], waypoints[legIndex + 1]]
       Promise.all([
-        fetchTerrainProfile(legWps, '', undefined, getRemoteDem()).catch(() => []),
+        fetchTerrainProfile(legWps, API_BASE_URL, undefined, getRemoteDem()).catch(() => []),
         loadCountryGeojson('obstacles').catch(() => EMPTY_FC),
       ]).then(([terrain, obstacles]) => {
         // Stale if the leg's endpoints changed while the lookup ran (or the

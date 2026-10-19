@@ -21,6 +21,7 @@ import {
 } from '@open-vfr/shared/virtualRadarCalc'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
 import { getRemoteDem } from '../utils/terrainDem'
+import { API_BASE_URL } from '../utils/env'
 import { windBarbColorForSpeed, windBarbGeometry } from '@open-vfr/shared/windBarb'
 import type { AircraftProfileDocType } from '../db/index'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
@@ -479,7 +480,7 @@ function VirtualRadar({
     const controller = new AbortController()
     setTerrainPts([])  // clear stale terrain while new fetch is in progress
     setTerrainFailed(false)
-    fetchTerrainProfile(waypoints, '', controller.signal, getRemoteDem())
+    fetchTerrainProfile(waypoints, API_BASE_URL, controller.signal, getRemoteDem())
       .then((pts) => {
         setTerrainPts(pts)
         setMsaPts(computeMsaProfile(pts))

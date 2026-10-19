@@ -4,6 +4,8 @@
  *
  * Open-Meteo's free tier is rate limited per IP (600 calls/min, 5 000/h,
  * 10 000/day) and answers 429 or 503 when it is overloaded or a limit is hit.
+ * The API server relays it (session required, per-user caps, its own cache
+ * and upstream budget) and answers 429/503 + Retry-After the same way.
  * Behind the production proxy every user shares the server's IP, so a client
  * that answers a 503 with quick retries (as the generic fetchWithRetry does)
  * makes the overload worse: every failure turned into three requests, from
@@ -23,6 +25,8 @@
  * Network errors (offline, Wi-Fi handoff) are not upstream load: they get one
  * quick retry and do not close the gate.
  */
+
+import { apiAuthHeaders } from './apiAuth'
 
 export class OpenMeteoError extends Error {
   constructor(message: string, readonly status: number | null, readonly throttled: boolean) {
@@ -146,7 +150,8 @@ async function attempt(url: string, signal: AbortSignal): Promise<unknown> {
     // Re-check: the gate may have closed while this request sat in the queue.
     await waitForGate(signal)
     const sentAt = now()
-    res = await fetch(url, { signal })
+    // Session required by the API server's proxy (apps/api externalProxy.ts).
+    res = await fetch(url, { signal, credentials: 'include', headers: await apiAuthHeaders() })
     if (!res.ok) {
       // Read the reason and close the gate BEFORE releasing the slot, or the
       // queued requests go out in the meantime.
