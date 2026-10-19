@@ -25,12 +25,24 @@ export function useFieldQnh(
   const nearest = useNearestAerodrome(enabled ? position : null)
   const [qnh, setQnh] = useState<number | null>(null)
   const stateRef = useRef<{ value: number; n: number; at: number } | null>(null)
+  // Last value handed to setQnh. This effect runs on every position tick, so a
+  // state set must only happen when the value really changes: a redundant
+  // setQnh(null) / setQnh(same) in a passive effect can still schedule a
+  // render, and a render per tick that schedules the next keeps React's
+  // nested-update counter from ever resetting ("Maximum update depth
+  // exceeded" every ~50 commits).
+  const lastSetRef = useRef<number | null>(null)
+  const publish = (v: number | null) => {
+    if (lastSetRef.current === v) return
+    lastSetRef.current = v
+    setQnh(v)
+  }
 
   useEffect(() => {
-    if (!enabled) { stateRef.current = null; setQnh(null); return }
+    if (!enabled) { stateRef.current = null; publish(null); return }
     const now = Date.now()
     const s = stateRef.current
-    if (s && now - s.at > MAX_AGE_MS) { stateRef.current = null; setQnh(null) }
+    if (s && now - s.at > MAX_AGE_MS) { stateRef.current = null; publish(null) }
     if (!position || !nearest || pressureHpa == null) return
 
     const cand = fieldQnhCandidate({
@@ -49,7 +61,7 @@ export function useFieldQnh(
     stateRef.current = next
     // Whole hPa, as an altimeter is set; also keeps the EMA's slow creep from
     // repeatedly restarting the vertical-speed filters (qnhStepNeedsReset).
-    if (next.n >= MIN_SAMPLES) setQnh(Math.round(next.value))
+    if (next.n >= MIN_SAMPLES) publish(Math.round(next.value))
   }, [enabled, position, pressureHpa, nearest])
 
   return qnh

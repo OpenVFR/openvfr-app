@@ -21,7 +21,7 @@ export function useWindAloftAlongRoute(
   const routeKey = waypoints.map((w) => `${w.lat.toFixed(3)},${w.lng.toFixed(3)}`).join('|')
 
   useEffect(() => {
-    if (!enabled || waypoints.length < 2 || totalNm <= 0) { setColumns([]); return }
+    if (!enabled || waypoints.length < 2 || totalNm <= 0) { setColumns((prev) => (prev.length ? [] : prev)); return }
     const ac = new AbortController()
     const timer = setTimeout(() => {
       fetchWindAloftAlongRoute(waypoints, totalNm, maxAltFt, API_BASE, ac.signal, totalNm / 6)

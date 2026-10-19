@@ -18,12 +18,14 @@ export function useWind(position: GpsPosition | null, enabled: boolean): WindAlo
   const posRef      = useRef(position)
   const retryRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fetchedOnceRef = useRef(false)
+  const hasWindRef = useRef(false)
 
   useEffect(() => { posRef.current = position }, [position])
 
   useEffect(() => {
     if (!enabled) {
-      setWind(null)
+      // Runs on every position tick: only touch state when there is something to clear.
+      if (hasWindRef.current) { hasWindRef.current = false; setWind(null) }
       fetchedOnceRef.current = false
       return
     }
@@ -32,7 +34,7 @@ export function useWind(position: GpsPosition | null, enabled: boolean): WindAlo
       const pos = posRef.current
       if (!pos) return
       fetchWind(pos.lat, pos.lng, pos.altFt > 100 ? pos.altFt : null, API_BASE)
-        .then(setWind)
+        .then((w) => { hasWindRef.current = w != null; setWind(w) })
         .catch(() => {
           retryRef.current = setTimeout(doFetch, RETRY_MS)
         })

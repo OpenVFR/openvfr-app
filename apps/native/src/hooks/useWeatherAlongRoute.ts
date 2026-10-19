@@ -106,7 +106,7 @@ export function useWeatherAlongRoute(waypoints: RouteWaypoint[], enabled = true)
   }, [enabled])
 
   useEffect(() => {
-    if (!enabled || waypoints.length === 0 || aerodromes.length === 0) { setStations([]); return }
+    if (!enabled || waypoints.length === 0 || aerodromes.length === 0) { setStations((prev) => (prev.length ? [] : prev)); return }
 
     // distNm here is LATERAL (cross-track) distance to the route -- kept
     // as-is, other callers (WeatherAlongRouteSheet etc.) display it as

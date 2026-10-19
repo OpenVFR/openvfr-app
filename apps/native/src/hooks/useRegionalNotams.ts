@@ -28,7 +28,7 @@ export function useRegionalNotams(enabled: boolean, regions: string[]): NotamIte
   useEffect(() => { enabledRef.current = enabled }, [enabled])
 
   useEffect(() => {
-    if (!enabled) { setNotams([]); return }
+    if (!enabled) { setNotams((prev) => (prev.length ? [] : prev)); return }
 
     let destroyed = false
 
