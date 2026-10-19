@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { flightLogToGpx } from '@open-vfr/shared/gpx'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { flightLogToGpx, gpxToFlightLog } from '@open-vfr/shared/gpx'
 import {
   computeLogStats, formatLogDuration, logTotals, logPeriodStart, LOG_PERIODS, LOG_PERIOD_LABEL,
   type LogStats, type LogPeriod,
@@ -38,6 +38,8 @@ function landingsLabel(st: LogStats): string {
 export default function FlightLogs({ selectedLogId, onSelect, onClear }: Props) {
   const [logs, setLogs] = useState<{ doc: FlightLogDocType; stats: LogStats | null }[]>([])
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [importMsg, setImportMsg] = useState<string | null>(null)
   const [period, setPeriod] = useState<LogPeriod>('all')
   const [reg, setReg] = useState('')  // '' = all aircraft
 
@@ -57,6 +59,23 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear }: Props) 
     await doc?.remove()
     setDeleteId(null)
     if (id === selectedLogId) onClear()
+  }
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    try {
+      const doc = gpxToFlightLog(await file.text(), crypto.randomUUID())
+      const db = await getDb()
+      // Same start and end as an existing log = the same flight imported twice.
+      const dup = await db.flight_logs.findOne({ selector: { startedAt: doc.startedAt, endedAt: doc.endedAt } }).exec()
+      if (dup) { setImportMsg('This flight is already in your logs.'); return }
+      await db.flight_logs.insert(doc)
+      setImportMsg(`Imported ${doc.distanceNm.toFixed(1)} NM flight.`)
+    } catch (err) {
+      setImportMsg(err instanceof Error ? err.message : 'Could not import this GPX file.')
+    }
   }
 
   function handleExport(log: FlightLogDocType) {
@@ -89,12 +108,22 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear }: Props) 
     return (
       <div className={css.panel}>
         <p className={css.empty}>No completed flights recorded yet.</p>
+      <div className={css.clearRow}>
+        <button className={css.clearBtn} onClick={() => fileRef.current?.click()}>↑ Import GPX</button>
+        <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml" hidden aria-label="Import GPX flight" onChange={handleImport} />
+      </div>
+      {importMsg && <p className={css.empty}>{importMsg}</p>}
       </div>
     )
   }
 
   return (
     <div className={css.panel}>
+      <div className={css.clearRow}>
+        <button className={css.clearBtn} onClick={() => fileRef.current?.click()}>↑ Import GPX</button>
+        <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml" hidden aria-label="Import GPX flight" onChange={handleImport} />
+      </div>
+      {importMsg && <p className={css.empty}>{importMsg}</p>}
       {selectedLogId && (
         <div className={css.clearRow}>
           <button className={css.clearBtn} onClick={onClear}>Clear track</button>

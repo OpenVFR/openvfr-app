@@ -38,6 +38,7 @@ import { NativeSheet }        from '../components/NativeSheet'
 import { useAircraftSync }    from '../hooks/useAircraftSync'
 import type { AircraftProfileDocType } from '../types/db'
 import { useFlightLogSync } from '../hooks/useFlightLogSync'
+import { flightLogs as flightLogsDb } from '../db'
 import { useFlightLogViewContext } from '../context/FlightLogViewContext'
 import { useTakeoffTime, useAlternate, useGlobalWind } from '../hooks/usePlanningSettings'
 import { getAerodromeLookup } from '../utils/aerodromeLookup'
@@ -76,7 +77,7 @@ function gsKts(trackDeg: number, windDir: number, windSpd: number, tas: number):
 
 // ── GPX export ───────────────────────────────────────────────────────────
 import type { RouteWaypoint } from '../utils/routeCalc'
-import { routeToGpx, gpxToRoute, waypointsToGpx, gpxToWaypoints, flightLogToGpx } from '@open-vfr/shared/gpx'
+import { routeToGpx, gpxToRoute, waypointsToGpx, gpxToWaypoints, flightLogToGpx, gpxToFlightLog } from '@open-vfr/shared/gpx'
 import { iasToTas } from '@open-vfr/shared/airspeed'
 import { fetchWind } from '@open-vfr/shared/fetchWind'
 import { API_BASE } from '../config'
@@ -213,7 +214,7 @@ export function PlanScreen() {
 
   // Flight logs — auto-recorded on the map (GPS takeoff/landing detection),
   // synced to cloud (upload-only + cross-device pull) when authenticated.
-  const { logs, pull: pullLogs, deleteLog } = useFlightLogSync(authenticated)
+  const { logs, pull: pullLogs, deleteLog, pushLog, refresh: refreshLogs } = useFlightLogSync(authenticated)
   const { selectedLog, viewLog, clearView } = useFlightLogViewContext()
   const navigation = useNavigation()
   const [logDeleteId, setLogDeleteId] = useState<string | null>(null)
@@ -233,6 +234,24 @@ export function PlanScreen() {
     () => logTotals(shownLogs.filter(l => l.endedAt > 0).map(l => ({ ...l, stats: logInfo(l).stats }))),
     [shownLogs],
   )
+  const handleImportLog = async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ type: ['application/gpx+xml', '*/*'], copyToCacheDirectory: true })
+      if (res.canceled || !res.assets?.[0]) return
+      const doc = gpxToFlightLog(await new FileSystem.File(res.assets[0].uri).text(), Crypto.randomUUID())
+      // Same start and end as an existing log = the same flight imported twice.
+      if (logs.some(l => l.startedAt === doc.startedAt && l.endedAt === doc.endedAt)) {
+        Alert.alert('Already imported', 'This flight is already in your logs.')
+        return
+      }
+      await flightLogsDb.upsert(doc)
+      await refreshLogs()
+      void pushLog(doc)
+    } catch (e) {
+      Alert.alert('Import failed', e instanceof Error ? e.message : 'Could not read this GPX file.')
+    }
+  }
+
   const handleExportLog = async (log: (typeof logs)[number]) => {
     try {
       const { filename, xml } = flightLogToGpx(log)
@@ -1083,6 +1102,11 @@ export function PlanScreen() {
           contentContainerStyle={{ padding: scaledTheme.space3 }}
           refreshControl={<RefreshControl refreshing={logsRefreshing} onRefresh={handleLogsRefresh} tintColor={theme.accentBlue} />}
         >
+          <View style={styles.logFilterRow}>
+            <TouchableOpacity style={styles.placeChip} onPress={() => void handleImportLog()} accessibilityLabel="Import flight from GPX">
+              <Text style={styles.placeChipTxt}>↑ Import GPX</Text>
+            </TouchableOpacity>
+          </View>
           {logs.length === 0 ? (
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>No flight logs</Text>

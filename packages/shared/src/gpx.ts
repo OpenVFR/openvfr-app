@@ -213,14 +213,84 @@ export function gpxToTrack(xml: string): { name: string; points: GpxTrackPoint[]
     const lng = Number(attr(pt, 'lon'))
     if (!Number.isFinite(ts) || !Number.isFinite(lat) || !Number.isFinite(lng)) continue
     const ele = Number(extractTag(pt, 'ele'))
+    const spd = extractTag(pt, 'ovfr:spd')
+    const trk = extractTag(pt, 'ovfr:trk')
     points.push({
       lat, lng, ts,
       altFt:  Number.isFinite(ele) ? ele / FT_TO_M : 0,
-      spdKts: Number(extractTag(pt, 'ovfr:spd')) || 0,
-      trkDeg: Number(extractTag(pt, 'ovfr:trk')) || 0,
+      spdKts: spd !== undefined ? Number(spd) || 0 : NaN,
+      trkDeg: trk !== undefined ? Number(trk) || 0 : NaN,
     })
   }
+  points.sort((a, b) => a.ts - b.ts)
+  fillDerivedMotion(points)
   return { name, points }
+}
+
+const NM_PER_DEG = 60
+
+function legNm(a: GpxTrackPoint, b: GpxTrackPoint): number {
+  const dLat = (b.lat - a.lat) * NM_PER_DEG
+  const dLng = (b.lng - a.lng) * NM_PER_DEG * Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180)
+  return Math.sqrt(dLat * dLat + dLng * dLng)
+}
+
+function legBearingDeg(a: GpxTrackPoint, b: GpxTrackPoint): number {
+  const dLat = b.lat - a.lat
+  const dLng = (b.lng - a.lng) * Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180)
+  return (Math.atan2(dLng, dLat) * 180 / Math.PI + 360) % 360
+}
+
+/**
+ * Files from other tools carry no ground speed or track. Derive them from the
+ * movement to the next point (the last point reuses the previous leg), so the
+ * stats and take-off/landing detection work on imported logs too.
+ */
+function fillDerivedMotion(points: GpxTrackPoint[]): void {
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i]
+    if (Number.isFinite(p.spdKts) && Number.isFinite(p.trkDeg)) continue
+    const a = i + 1 < points.length ? p : points[i - 1]
+    const b = i + 1 < points.length ? points[i + 1] : p
+    if (!a || a === b) { if (!Number.isFinite(p.spdKts)) p.spdKts = 0; if (!Number.isFinite(p.trkDeg)) p.trkDeg = 0; continue }
+    const hours = (b.ts - a.ts) / 3_600_000
+    if (!Number.isFinite(p.spdKts)) p.spdKts = hours > 0 ? Math.round(legNm(a, b) / hours) : 0
+    if (!Number.isFinite(p.trkDeg)) p.trkDeg = Math.round(legBearingDeg(a, b))
+  }
+}
+
+/** Distance along a track in NM (straight legs). */
+export function trackDistanceNm(points: { lat: number; lng: number }[]): number {
+  let d = 0
+  for (let i = 1; i < points.length; i++) d += legNm(points[i - 1] as GpxTrackPoint, points[i] as GpxTrackPoint)
+  return d
+}
+
+/**
+ * Flight-log document fields for a GPX file (`<trk>` with timed points), ready
+ * to insert. Departure/arrival and aircraft are unknown (left blank); distance,
+ * max altitude and the start/end times come from the track. Throws if the file
+ * has fewer than two timed points.
+ */
+export function gpxToFlightLog(xml: string, id: string, now: number = Date.now()): {
+  id: string; startedAt: number; endedAt: number; aircraftId: string; registration: string
+  trackJson: string; departureIcao: string; arrivalIcao: string; distanceNm: number; maxAltFt: number; updatedAt: number
+} {
+  const { points } = gpxToTrack(xml)
+  if (points.length < 2) throw new Error('GPX track needs at least two points with a time')
+  return {
+    id,
+    startedAt:     points[0].ts,
+    endedAt:       points[points.length - 1].ts,
+    aircraftId:    '',
+    registration:  '',
+    trackJson:     JSON.stringify(points),
+    departureIcao: '',
+    arrivalIcao:   '',
+    distanceNm:    trackDistanceNm(points),
+    maxAltFt:      Math.max(0, ...points.map((p) => p.altFt)),
+    updatedAt:     now,
+  }
 }
 
 /** GPX file (name + content) for a stored flight log document. Throws if the track is empty or unreadable. */
