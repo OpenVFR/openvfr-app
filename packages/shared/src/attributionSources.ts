@@ -10,6 +10,16 @@
  * (OpenTopoData / EU-DEM). Open-Meteo (CC BY 4.0), OGN (ODbL) and EU-DEM
  * (Copernicus: name the source, acknowledge EU funding) require the credit.
  */
+/**
+ * Notice the Copernicus DEM licence requires for ADAPTED GLO-30 data (our
+ * hillshade, contours and offline terrain DEM are smoothed, extended and
+ * re-encoded): copied verbatim from the Copernicus Data Space "User
+ * Obligations" for COP-DEM. Use it wherever that data is credited (map source
+ * attributions, credits list, README).
+ */
+export const COPERNICUS_GLO30_NOTICE =
+  'produced using Copernicus WorldDEM-30 \u00a9 DLR e.V. 2010-2014 and \u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved'
+
 export interface AttributionSource {
   name: string
   note: string
@@ -21,7 +31,7 @@ export const ATTRIBUTION_SOURCES: readonly AttributionSource[] = [
   { name: 'OpenStreetMap', note: 'Basemap + landuse data (\u00a9 OpenStreetMap contributors, ODbL)', url: 'https://www.openstreetmap.org/copyright' },
   { name: 'OpenFlightMaps', note: 'VFR chart / airspace layers (ODbL)', url: 'https://www.openflightmaps.org/' },
   { name: 'OpenAIP', note: 'Airspace and obstacle data (CC BY-NC 4.0 \u2014 non-commercial use only)', url: 'https://www.openaip.net/' },
-  { name: 'Copernicus DEM GLO-30', note: '\u00a9 ESA / European Union \u2014 hillshade & contour lines, doi:10.5270/ESA-c5d3d65', url: 'https://doi.org/10.5270/ESA-c5d3d65' },
+  { name: 'Copernicus DEM GLO-30', note: `Hillshade, contour lines, offline terrain \u2014 ${COPERNICUS_GLO30_NOTICE}`, url: 'https://doi.org/10.5270/ESA-c5d3d65' },
   { name: 'ESRI', note: 'Satellite imagery basemap toggle (proprietary, ESRI terms apply)', url: 'https://www.esri.com/en-us/legal/terms/full-master-agreement' },
   { name: 'OpenSky Network', note: 'Live air traffic (ADS-B)', url: 'https://opensky-network.org/' },
   { name: 'Open Glider Network', note: 'Live glider / FLARM traffic (ODbL)', url: 'https://www.glidernet.org/' },

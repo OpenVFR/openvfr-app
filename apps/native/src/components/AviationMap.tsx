@@ -29,7 +29,7 @@ import type { ViewStateChangeEvent } from '@maplibre/maplibre-react-native'
 import { WAYPOINT_COLORS, RUNWAY_COLORS, AERODROME_COLORS } from '@open-vfr/shared/featureColors'
 import { computeAtcStatus, isNotamAtcRelated, isNotamHoursChangeRelated, type HoursEntry as AtcHoursEntry } from '@open-vfr/shared/atcStatus'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
-import { ATTRIBUTION_SOURCES } from '@open-vfr/shared/attributionSources'
+import { ATTRIBUTION_SOURCES, COPERNICUS_GLO30_NOTICE } from '@open-vfr/shared/attributionSources'
 import { MapInfoBar, type MapInfoBarHandle } from './MapInfoBar'
 import { fetchAerodromeNotamTexts } from '@open-vfr/shared/fetchNotam'
 import { regionsForIcaos } from '@open-vfr/shared/notamRegionScope'
@@ -2251,9 +2251,10 @@ export function AviationMap({
           url={hillshadePmtilesUrl}
           encoding="terrarium"
           // Attribution parity with web's getHillshadeSource() — Copernicus
-          // DEM license requires citing the dataset DOI. See osm-landuse's
+          // DEM licence requires its notice for adapted data
+          // (COPERNICUS_GLO30_NOTICE). See osm-landuse's
           // attribution comment above for why this must be set here too.
-          attribution="Copernicus DEM GLO-30 \u2014 \u00a9 ESA / European Union, doi:10.5270/ESA-c5d3d65"
+          attribution={`Copernicus DEM GLO-30, ${COPERNICUS_GLO30_NOTICE}`}
           // Must match the archive's REAL base zoom (10), not a desired
           // one -- mirrors getHillshadeSource()'s maxzoom in web's
           // map-style.ts (see its detailed comment). dem_mosaic.sh's
@@ -2403,7 +2404,7 @@ export function AviationMap({
           maxzoom={12}
           // Attribution parity with web's getContoursSource() — same
           // Copernicus DEM source as osm-hillshade above.
-          attribution="Copernicus DEM GLO-30 \u2014 \u00a9 ESA / European Union, doi:10.5270/ESA-c5d3d65"
+          attribution={`Copernicus DEM GLO-30, ${COPERNICUS_GLO30_NOTICE}`}
         >
           <Layer
             id="contour-line"

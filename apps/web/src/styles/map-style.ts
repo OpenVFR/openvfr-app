@@ -1,5 +1,6 @@
 import type { StyleSpecification, FilterSpecification, ExpressionSpecification } from 'maplibre-gl'
 import { layers, LIGHT } from '@protomaps/basemaps'
+import { COPERNICUS_GLO30_NOTICE } from '@open-vfr/shared/attributionSources'
 import { AIRSPACE_COLORS as AC, CONTROLLED_CLASSES, ZONE_TYPES, controlledStyle } from '@open-vfr/shared/airspaceColors'
 import { AERODROME_COLORS, NAVAID_COLORS, WAYPOINT_COLORS, OBSTACLE_COLORS, RUNWAY_COLORS } from '@open-vfr/shared/featureColors'
 import {
@@ -153,7 +154,7 @@ export function getContoursSource(country: string) {
     minzoom: 6,
     maxzoom: 12,
     attribution:
-      'Copernicus DEM GLO-30 — © ESA / European Union, doi:10.5270/ESA-c5d3d65',
+      `Copernicus DEM GLO-30, ${COPERNICUS_GLO30_NOTICE}`,
   }
 }
 
@@ -181,10 +182,10 @@ export function getHillshadeSource(country: string) {
     // real tile data, not by exceeding a correctly-declared one.
     maxzoom: 10,
     // Copernicus DEM license (free, open, commercial use permitted) requires
-    // citing the dataset DOI — see https://doi.org/10.5270/ESA-c5d3d65 and
+    // its notice for adapted data (COPERNICUS_GLO30_NOTICE); the DOI (https://doi.org/10.5270/ESA-c5d3d65) is for citing in publications. See
     // docs/architecture.md licensing table.
     attribution:
-      'Copernicus DEM GLO-30 — © ESA / European Union, doi:10.5270/ESA-c5d3d65',
+      `Copernicus DEM GLO-30, ${COPERNICUS_GLO30_NOTICE}`,
   }
 }
 

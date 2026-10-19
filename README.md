@@ -132,8 +132,15 @@ OpenVFR is built on the following data and map sources:
 * **[Copernicus DEM GLO-30](https://registry.opendata.aws/copernicus-dem/)**
   (ESA / European Union) — 30 m digital elevation model used for the
   optional map hillshade (relief shading) and elevation contour line
-  layers. Free & open license, commercial use permitted; attribution via
-  DOI [10.5270/ESA-c5d3d65](https://doi.org/10.5270/ESA-c5d3d65).
+  layers, and as the offline terrain model. Free & open licence, commercial
+  use permitted. The data is adapted (smoothed, extended past coastlines and
+  borders, re-encoded), so the licence's notice for adapted data applies:
+  *produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and
+  © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by
+  the European Union and ESA; all rights reserved* (shown in the app's map
+  credits; `COPERNICUS_GLO30_NOTICE` in `packages/shared/src/attributionSources.ts`).
+  Citation for publications: DOI
+  [10.5270/ESA-c5d3d65](https://doi.org/10.5270/ESA-c5d3d65).
 * **[OpenStreetMap](https://www.openstreetmap.org/copyright)** (via
   Overpass API / Geofabrik extracts) — supplementary obstacles (masts,
   chimneys, water towers). Licensed ODbL.
