@@ -72,7 +72,7 @@
     "expo-keep-awake": "~57.0.2",
     "expo-location": "~57.0.21",
     "expo-modules-core": "~57.0.23",
-    "expo-navigation-bar": "~57.0.3",
+    "expo-navigation-bar": "~58.0.4",
     "expo-sensors": "~57.0.3",
     "expo-sharing": "~57.0.23",
     "expo-splash-screen": "~57.0.10",
