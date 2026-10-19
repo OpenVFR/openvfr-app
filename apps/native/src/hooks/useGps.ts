@@ -17,13 +17,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { addLocationListener, startBackgroundLocation, stopBackgroundLocation } from '../tasks/locationTask'
 import type { GpsPosition } from '../utils/gpsTypes'
-import { Platform } from 'react-native'
-import { ellipsoidToMslM, gpsAltitudeIsEllipsoidal } from '@open-vfr/shared/geoid'
+import { ellipsoidToMslM } from '@open-vfr/shared/geoid'
+import { gpsAltitudeReference } from '@open-vfr/shared/gpsAltitudeReference'
 
 // Android reports GPS altitude above the WGS-84 ellipsoid (60-125 ft above
 // sea level over the Nordics); iOS already reports it above mean sea level.
-// See @open-vfr/shared/geoid.
-const ELLIPSOIDAL_ALTITUDE = gpsAltitudeIsEllipsoidal({ os: Platform.OS })
+// The platform default is set at startup (index.js) and verified on the
+// ground (@open-vfr/shared/gpsAltitudeReference), so a platform change is
+// caught instead of correcting twice. Read per fix: the verdict can arrive
+// mid-session.
 
 export type GpsStatus = 'idle' | 'requesting' | 'active' | 'denied' | 'unavailable'
 
@@ -101,8 +103,10 @@ export function useGps(): UseGpsResult {
         lat:      coords.latitude,
         lng:      coords.longitude,
         altFt:    coords.altitude != null
-          ? (ELLIPSOIDAL_ALTITUDE ? ellipsoidToMslM(coords.altitude, coords.latitude, coords.longitude) : coords.altitude) * M_TO_FT
+          ? (gpsAltitudeReference() === 'ellipsoid' ? ellipsoidToMslM(coords.altitude, coords.latitude, coords.longitude) : coords.altitude) * M_TO_FT
           : 0,
+        ...(coords.altitude != null ? { rawAltM: coords.altitude } : {}),
+        ...(coords.altitudeAccuracy != null ? { altAccuracyM: coords.altitudeAccuracy } : {}),
         speedKts,
         trackDeg: lastStableTrackRef.current,
         accuracy: coords.accuracy ?? 0,

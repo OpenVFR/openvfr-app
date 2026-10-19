@@ -114,6 +114,7 @@ import { useGoFlying } from '../hooks/useGoFlying'
 import { useNearestFeature, type TrackedPoint } from '../hooks/useNearestFeature'
 import { useAirspaceWarnings } from '../hooks/useAirspaceWarnings'
 import { useTerrainElevation } from '../hooks/useTerrainElevation'
+import { observeGroundSample } from '@open-vfr/shared/gpsAltitudeReference'
 import { useAutoCruiseLevel } from '../hooks/useAutoCruiseLevel'
 import { useAirspaceNotifications } from '../hooks/useAirspaceNotifications'
 import { useObstructionWarnings } from '../hooks/useObstructionWarnings'
@@ -1105,6 +1106,16 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // "300m AGL" ceilings of model/glider areas) to altitudes before comparing.
   const flyingPosition = flyingMode !== 'off' ? gpsPosition : null
   const terrainFt = useTerrainElevation(flyingPosition)
+  // Verify the GPS altitude reference (ellipsoid vs sea level) against the
+  // terrain under real GPS fixes only (not the keyboard / external sims).
+  useEffect(() => {
+    if (flyingMode !== 'gps' || !gpsPosition || gpsPosition.rawAltM == null || terrainFt == null) return
+    observeGroundSample({
+      rawAltM: gpsPosition.rawAltM, altAccuracyM: gpsPosition.altAccuracyM ?? null,
+      groundElevM: terrainFt / 3.28084, lat: gpsPosition.lat, lng: gpsPosition.lng,
+      speedKts: gpsPosition.speedKts, t: Date.now(),
+    })
+  }, [flyingMode, gpsPosition, terrainFt])
   const alertPosition = useMemo(
     () => (flyingPosition ? { ...flyingPosition, terrainFt } : null),
     [flyingPosition, terrainFt],

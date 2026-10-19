@@ -134,6 +134,7 @@ import { distanceAlongRouteNm, coordinateAlongRouteNm, routeCrossTrackNm } from 
 import { aircraft as aircraftDb, flightLogs as flightLogsDb } from '../db'
 import type { AircraftProfileDocType } from '../types/db'
 import { useTerrainElevation } from '../hooks/useTerrainElevation'
+import { observeGroundSample } from '@open-vfr/shared/gpsAltitudeReference'
 import { useAutoCruiseLevel } from '../hooks/useAutoCruiseLevel'
 import { useAltitudeSource } from '../hooks/useAltitudeSource'
 import { useVarioContext } from '../context/VarioContext'
@@ -314,6 +315,17 @@ function MapScreenForCountry() {
   }, [])
 
   const agl  = useTerrainElevation(activePosition)
+  // Verify the GPS altitude reference (ellipsoid vs sea level) against the
+  // terrain under real GPS fixes -- never simulator positions. The check
+  // itself only takes stationary, accurate, spaced samples.
+  useEffect(() => {
+    if (simPosition || simFlight.position || !position || position.rawAltM == null || agl == null) return
+    observeGroundSample({
+      rawAltM: position.rawAltM, altAccuracyM: position.altAccuracyM ?? null,
+      groundElevM: agl / 3.28084, lat: position.lat, lng: position.lng,
+      speedKts: position.speedKts, t: Date.now(),
+    })
+  }, [position, agl, simPosition, simFlight.position])
   const altitudeSource = useAltitudeSource(activePosition)
   const vario = useVarioContext()
   const varioBatteryLow = vario.status === 'connected' && vario.state != null && vario.state.batteryPercent < 20

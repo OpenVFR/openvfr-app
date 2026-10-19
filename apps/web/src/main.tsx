@@ -7,6 +7,8 @@ import { loadTileManifest } from '@open-vfr/shared/tileManifest'
 import '@open-vfr/shared/fetchWind'
 import '@open-vfr/shared/windForecast'
 import { enableCachePersistence } from '@open-vfr/shared/persistedCache'
+import { gpsAltitudeIsEllipsoidal } from '@open-vfr/shared/geoid'
+import { initGpsAltitudeReference } from '@open-vfr/shared/gpsAltitudeReference'
 import { TILES_BASE_URL } from './utils/env'
 import './utils/countryData'
 import './index.css'
@@ -20,6 +22,18 @@ void loadTileManifest(TILES_BASE_URL)
 // rate-limited Open-Meteo API (see @open-vfr/shared/persistedCache).
 // localStorage can throw on access (blocked storage); then caches stay in memory.
 try { void enableCachePersistence(window.localStorage) } catch { /* in-memory only */ }
+// GPS altitude reference (ellipsoid vs mean sea level): platform default from
+// the user agent, verified on the ground and re-checked when the browser
+// (user agent) changes -- see @open-vfr/shared/gpsAltitudeReference.
+{
+  let store: Storage | undefined
+  try { store = window.localStorage } catch { /* blocked storage: check per session */ }
+  void initGpsAltitudeReference({
+    platformDefault: gpsAltitudeIsEllipsoidal({ userAgent: navigator.userAgent }) ? 'ellipsoid' : 'msl',
+    environment: navigator.userAgent,
+    store,
+  })
+}
 // Suppress the RxDB free-tier promotional log that fires on every DB open.
 // The message is printed unconditionally by getRxStorageDexie and is not an error.
 const _origLog = console.log

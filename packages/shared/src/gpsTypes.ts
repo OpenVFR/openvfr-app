@@ -10,6 +10,12 @@ export type GpsPosition = {
    *  WGS-84 ellipsoid (Android, Android browsers: @open-vfr/shared/geoid) --
    *  never feed a raw ellipsoidal value in here. */
   altFt: number
+  /** Real GPS only: the altitude exactly as the platform reported it (m,
+   *  before any geoid correction), for the ground check in
+   *  @open-vfr/shared/gpsAltitudeReference. Not for display. */
+  rawAltM?: number
+  /** Real GPS only: the platform's vertical accuracy estimate (m), if any. */
+  altAccuracyM?: number
   /** Ground speed in knots. */
   speedKts: number
   /** True track 0–360°. */

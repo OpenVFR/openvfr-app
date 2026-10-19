@@ -11,13 +11,14 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition, FlyingMode } from '../utils/gpsTypes'
-import { ellipsoidToMslM, gpsAltitudeIsEllipsoidal } from '@open-vfr/shared/geoid'
+import { ellipsoidToMslM } from '@open-vfr/shared/geoid'
+import { gpsAltitudeReference } from '@open-vfr/shared/gpsAltitudeReference'
 
 // The Geolocation API reports altitude above the WGS-84 ellipsoid; on Android
 // browsers that is Android's own value, 60-125 ft above sea level over the
-// Nordics. iOS Safari reports altitude above mean sea level. See
-// @open-vfr/shared/geoid.
-const ELLIPSOIDAL_ALTITUDE = typeof navigator !== 'undefined' && gpsAltitudeIsEllipsoidal({ userAgent: navigator.userAgent })
+// Nordics. iOS Safari reports altitude above mean sea level. The platform
+// default is set at startup (main.tsx) and verified on the ground
+// (@open-vfr/shared/gpsAltitudeReference); read per fix.
 import { bearingDeg, distanceNm, advancePosition } from '../utils/routeCalc'
 import type { RouteWaypoint } from '../utils/routeCalc'
 
@@ -143,7 +144,9 @@ export function useGoFlying(routeWaypoints: RouteWaypoint[]): UseGoFlyingReturn 
           lat:      pos.coords.latitude,
           lng:      pos.coords.longitude,
           altFt:    pos.coords.altitude == null ? 0
-            : (ELLIPSOIDAL_ALTITUDE ? ellipsoidToMslM(pos.coords.altitude, pos.coords.latitude, pos.coords.longitude) : pos.coords.altitude) * 3.28084,
+            : (gpsAltitudeReference() === 'ellipsoid' ? ellipsoidToMslM(pos.coords.altitude, pos.coords.latitude, pos.coords.longitude) : pos.coords.altitude) * 3.28084,
+          ...(pos.coords.altitude != null ? { rawAltM: pos.coords.altitude } : {}),
+          ...(pos.coords.altitudeAccuracy != null ? { altAccuracyM: pos.coords.altitudeAccuracy } : {}),
           speedKts: (pos.coords.speed     ?? 0) * 1.94384,
           trackDeg: (pos.coords.heading   ?? 0) || 0,
           accuracy: pos.coords.accuracy,
