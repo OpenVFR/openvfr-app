@@ -47,6 +47,9 @@ export interface ProxySpec {
   endpoints: Record<string, readonly string[]>
   /** Validates one query: returns an error message, or null when acceptable. */
   validate: (endpoint: string, q: URLSearchParams) => string | null
+  /** How many upstream "calls" one request costs against the provider's
+   *  limits (all budgets and caps below are in these units). */
+  weight: (endpoint: string, q: URLSearchParams) => number
   freshMs: number
   staleMs: number
   maxCacheBytes: number
@@ -69,6 +72,14 @@ const MAX_QUEUE_MS = 10_000
 
 const COORD = /^-?\d{1,3}(\.\d{1,6})?$/
 const VARS = /^[a-z0-9_]{1,40}(,[a-z0-9_]{1,40}){0,24}$/
+
+/** Open-Meteo cost of one request in calls (see OPEN_METEO.weight). Exported for tests. */
+export function openMeteoWeight(q: URLSearchParams): number {
+  const locations = (q.get('latitude') ?? '').split(',').filter(Boolean).length || 1
+  const vars = ['current', 'hourly'].reduce((n, k) => n + (q.get(k)?.split(',').filter(Boolean).length ?? 0), 0)
+  const days = Number(q.get('forecast_days') ?? 7) + Number(q.get('past_days') ?? 0)
+  return Math.ceil(locations * Math.max(1, vars / 10) * Math.max(1, days / 14))
+}
 
 function coordList(v: string | null, max: number, lo: number, hi: number): boolean {
   if (!v) return false
@@ -104,13 +115,18 @@ export const OPEN_METEO: ProxySpec = {
   },
   // Matches the apps' own refetch rule (currentExpiresAt: next 15-min value);
   // the stale window matches their 1 h failure-only fallback.
+  // Open-Meteo counts a request with N locations as N calls, more than 10
+  // variables or more than 14 days as proportionally more (pricing FAQ:
+  // fractional counts; its cost calculator takes variables, time span and
+  // locations). Rounded up so a budget is never under-counted.
+  weight: (_endpoint, q) => openMeteoWeight(q),
   freshMs: 5 * MINUTE_MS,
   staleMs: HOUR_MS,
   maxCacheBytes: 64 * 1024 * 1024,
-  // A pilot panning the map and editing routes makes a few misses a minute.
-  perUser: { hourly: 300, daily: 1500 },
-  anonymous: { perIpHourly: 40, perIpDaily: 150, upstreamDaily: 1500 },
-  // Free tier: 600/min, 5 000/h, 10 000/day per IP -- kept with a margin.
+  // In weighted calls. One map view of the wind grid is up to ~36 locations.
+  perUser: { hourly: 600, daily: 2000 },
+  anonymous: { perIpHourly: 100, perIpDaily: 300, upstreamDaily: 1500 },
+  // Free tier: 600/min, 5 000/h, 10 000/day per IP (weighted) -- with a margin.
   upstream: { minIntervalMs: 0, perMinute: 400, hourly: 4000, daily: 9000 },
   timeoutMs: 15_000,
 }
@@ -120,6 +136,8 @@ export const ELEVATION: ProxySpec = {
   prefix: '/api/elevation/',
   upstreamBase: 'https://api.opentopodata.org/v1/',
   endpoints: { eudem25m: ['locations'] },
+  // OpenTopoData limits requests (up to 100 locations each), not locations.
+  weight: () => 1,
   validate(_endpoint, q) {
     const loc = q.get('locations')
     if (!loc) return 'locations is required'
@@ -196,29 +214,31 @@ function putCache(s: ProxyState, spec: ProxySpec, key: string, body: string, now
   }
 }
 
-/** Seconds until another upstream call fits the budgets (0 = now). Exported for tests. */
-export function upstreamWaitS(s: ProxyState, spec: ProxySpec, now: number): number {
+/** Seconds until an upstream call of `weight` fits the budgets (0 = now). Exported for tests. */
+export function upstreamWaitS(s: ProxyState, spec: ProxySpec, now: number, weight = 1): number {
   s.upstreamCalls = pruneWindow(s.upstreamCalls, now, DAY_MS)
   const calls = s.upstreamCalls
   const waits: number[] = [Math.max(0, s.pausedUntil - now)]
   const windows: [number, number][] = [[MINUTE_MS, spec.upstream.perMinute], [HOUR_MS, spec.upstream.hourly], [DAY_MS, spec.upstream.daily]]
   for (const [win, max] of windows) {
     const inWin = calls.filter((t) => now - t < win)
-    if (inWin.length >= max) waits.push(inWin[inWin.length - max]! + win - now)
+    if (weight > max) { waits.push(win); continue }
+    // Entries are unit calls (a weighted call is pushed `weight` times).
+    if (inWin.length + weight > max) waits.push(inWin[inWin.length + weight - max - 1]! + win - now)
   }
   return Math.ceil(Math.max(...waits) / 1000)
 }
 
-async function callUpstream(s: ProxyState, spec: ProxySpec, url: string, now: () => number): Promise<Upstream> {
+async function callUpstream(s: ProxyState, spec: ProxySpec, url: string, weight: number, now: () => number): Promise<Upstream> {
   // Spacing (OpenTopoData: 1 call/s): take the next free slot, but don't
   // queue a request for long -- the apps fall back (DEM) or retry later.
   const slot = Math.max(now(), s.nextSlotAt)
   if (slot - now() > MAX_QUEUE_MS) return { kind: 'unavailable', retryAfterS: Math.ceil((slot - now()) / 1000) }
   s.nextSlotAt = slot + spec.upstream.minIntervalMs
   if (slot > now()) await new Promise((r) => setTimeout(r, slot - now()))
-  const wait = upstreamWaitS(s, spec, now())
+  const wait = upstreamWaitS(s, spec, now(), weight)
   if (wait > 0) return { kind: 'unavailable', retryAfterS: wait }
-  s.upstreamCalls.push(now())
+  for (let i = 0; i < weight; i++) s.upstreamCalls.push(now())
   let res: Response
   try {
     res = await fetch(url, { headers: { 'User-Agent': 'open-vfr/1.0', Accept: 'application/json' }, signal: AbortSignal.timeout(spec.timeoutMs) })
@@ -251,12 +271,12 @@ async function callUpstream(s: ProxyState, spec: ProxySpec, url: string, now: ()
 }
 
 /** Per-user miss quota. Returns seconds to wait, or 0 (and records the miss). Exported for tests. */
-export function takeUserMiss(s: ProxyState, spec: ProxySpec, userId: string, now: number, limits = spec.perUser): number {
+export function takeUserMiss(s: ProxyState, spec: ProxySpec, userId: string, now: number, limits = spec.perUser, weight = 1): number {
   const ts = pruneWindow(s.userMisses.get(userId) ?? [], now, DAY_MS)
   const lastHour = ts.filter((t) => now - t < HOUR_MS)
-  if (lastHour.length >= limits.hourly) { s.userMisses.set(userId, ts); return Math.ceil((lastHour[0]! + HOUR_MS - now) / 1000) }
-  if (ts.length >= limits.daily) { s.userMisses.set(userId, ts); return Math.ceil((ts[0]! + DAY_MS - now) / 1000) }
-  ts.push(now)
+  if (lastHour.length + weight > limits.hourly) { s.userMisses.set(userId, ts); return Math.ceil(((lastHour[0] ?? now) + HOUR_MS - now) / 1000) }
+  if (ts.length + weight > limits.daily) { s.userMisses.set(userId, ts); return Math.ceil(((ts[0] ?? now) + DAY_MS - now) / 1000) }
+  for (let i = 0; i < weight; i++) ts.push(now)
   s.userMisses.set(userId, ts)
   return 0
 }
@@ -301,13 +321,14 @@ export async function handleProxy(
 
   let pending = s.inflight.get(key)
   if (!pending) {
+    const weight = spec.weight(endpoint, q)
     let userWait = caller.kind === 'user'
-      ? takeUserMiss(s, spec, caller.id, t)
-      : takeUserMiss(s, spec, `anon:${caller.ip}`, t, { hourly: spec.anonymous.perIpHourly, daily: spec.anonymous.perIpDaily })
+      ? takeUserMiss(s, spec, caller.id, t, spec.perUser, weight)
+      : takeUserMiss(s, spec, `anon:${caller.ip}`, t, { hourly: spec.anonymous.perIpHourly, daily: spec.anonymous.perIpDaily }, weight)
     if (!userWait && caller.kind === 'anonymous') {
       s.anonUpstreamCalls = pruneWindow(s.anonUpstreamCalls, t, DAY_MS)
-      if (s.anonUpstreamCalls.length >= spec.anonymous.upstreamDaily) userWait = Math.ceil((s.anonUpstreamCalls[0]! + DAY_MS - t) / 1000)
-      else s.anonUpstreamCalls.push(t)
+      if (s.anonUpstreamCalls.length + weight > spec.anonymous.upstreamDaily) userWait = Math.ceil(((s.anonUpstreamCalls[0] ?? t) + DAY_MS - t) / 1000)
+      else for (let i = 0; i < weight; i++) s.anonUpstreamCalls.push(t)
     }
     if (userWait > 0) {
       if (stale) return json(stale.body, 200, { 'Cache-Control': 'no-store', 'X-Cache': 'STALE' })
@@ -315,7 +336,7 @@ export async function handleProxy(
       return json(JSON.stringify({ error: true, reason: why }), 429, { 'Retry-After': String(Math.min(MAX_PAUSE_REPORT_S, userWait)), 'Cache-Control': 'no-store' })
     }
     const url = `${spec.upstreamBase}${endpoint}?${key.slice(endpoint.length + 1)}`
-    pending = callUpstream(s, spec, url, now).then((r) => {
+    pending = callUpstream(s, spec, url, weight, now).then((r) => {
       if (r.kind === 'ok') putCache(s, spec, key, r.body, now())
       return r
     }).finally(() => s.inflight.delete(key))

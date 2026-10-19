@@ -1453,7 +1453,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const doFetch = () => {
       const pos = gpsPositionRef.current
       if (!pos) return
-      fetchWind(pos.lat, pos.lng, pos.altFt > 100 ? pos.altFt : null, '')
+      // API_BASE_URL: a relative path hits the static app host in
+      // split-origin production (index.html back, no live wind).
+      fetchWind(pos.lat, pos.lng, pos.altFt > 100 ? pos.altFt : null, API_BASE_URL)
         .then(setLiveWind)
         .catch(() => {
           // Retry in 30 s instead of waiting the full 5-minute interval
@@ -1471,7 +1473,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     if (flyingMode === 'off' || !gpsPosition || windFetchedRef.current) return
     if (liveWind) return  // already have wind, no need to re-fetch
     windFetchedRef.current = true
-    fetchWind(gpsPosition.lat, gpsPosition.lng, gpsPosition.altFt > 100 ? gpsPosition.altFt : null, '')
+    fetchWind(gpsPosition.lat, gpsPosition.lng, gpsPosition.altFt > 100 ? gpsPosition.altFt : null, API_BASE_URL)
       .then(setLiveWind)
       .catch(() => {
         windFetchedRef.current = false  // allow retry on next position update

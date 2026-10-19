@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { handleProxy, newProxyState, takeUserMiss, upstreamWaitS, anonymousModeFromEnv, OPEN_METEO, ELEVATION, type ProxySpec, type ProxyState } from './externalProxy.js'
+import { handleProxy, newProxyState, takeUserMiss, upstreamWaitS, anonymousModeFromEnv, openMeteoWeight, OPEN_METEO, ELEVATION, type ProxySpec, type ProxyState } from './externalProxy.js'
 
 const realFetch = globalThis.fetch
 let calls: string[] = []
@@ -119,6 +119,31 @@ test('anonymous mode env parsing defaults to limited', () => {
   assert.equal(anonymousModeFromEnv(''), 'limited')
   assert.equal(anonymousModeFromEnv(' OFF '), 'off')
   assert.equal(anonymousModeFromEnv('yes'), 'limited')
+})
+
+test('Open-Meteo cost: locations x variables/10 x days/14, rounded up', () => {
+  const w = (qs: string) => openMeteoWeight(new URLSearchParams(qs))
+  assert.equal(w('latitude=1&longitude=1&current=a,b&forecast_days=1'), 1)
+  assert.equal(w('latitude=1,2,3&longitude=1,2,3&current=a,b&forecast_days=1'), 3)
+  // 12 variables at 25 locations (winds-aloft batch): 25 x 1.2 = 30
+  assert.equal(w(`latitude=${Array(25).fill(1)}&longitude=${Array(25).fill(1)}&current=${'v,'.repeat(11)}v&forecast_days=1`), 30)
+  // 16 + 1 days of hourly data: 17/14 per location
+  assert.equal(w('latitude=1,2&longitude=1,2&hourly=a,b&forecast_days=16&past_days=1'), 3)
+})
+
+test('weighted calls count against the upstream budget and user caps', async () => {
+  const spec: ProxySpec = { ...OPEN_METEO, perUser: { hourly: 30, daily: 100 }, upstream: { minIntervalMs: 0, perMinute: 40, hourly: 1000, daily: 1000 } }
+  const s = newProxyState()
+  const many = (base: number) => Array.from({ length: 25 }, (_, i) => (base + i / 100).toFixed(2)).join(',')
+  const q = (base: number) => `?latitude=${many(base)}&longitude=${many(10)}&current=wind_speed_10m&forecast_days=1`
+  assert.equal((await handleProxy(spec, s, 'u', '/api/open-meteo/forecast', q(50))).status, 200)   // 25 of 30
+  const r = await handleProxy(spec, s, 'u', '/api/open-meteo/forecast', q(51))                     // would be 50
+  assert.equal(r.status, 429)
+  assert.equal(calls.length, 1)
+  // Another user: per-minute budget 40 can't fit a second 25.
+  const r2 = await handleProxy(spec, s, 'v', '/api/open-meteo/forecast', q(52))
+  assert.equal(r2.status, 503)
+  assert.equal(calls.length, 1)
 })
 
 test('server-wide upstream budget', () => {
