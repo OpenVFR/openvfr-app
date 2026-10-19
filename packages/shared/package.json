@@ -16,6 +16,7 @@
     "./airspeed": "./src/airspeed.ts",
     "./subAreas": "./src/subAreas.ts",
     "./autoFlyDetect": "./src/autoFlyDetect.ts",
+    "./flightLogStats": "./src/flightLogStats.ts",
     "./otpAutoSubmit": "./src/otpAutoSubmit.ts",
     "./terrainDem": "./src/terrainDem.ts",
     "./attributionSources": "./src/attributionSources.ts",

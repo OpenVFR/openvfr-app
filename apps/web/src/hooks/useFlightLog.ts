@@ -21,6 +21,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { getDb, type TrackPoint } from '../db'
+import { trimParkedTail } from '@open-vfr/shared/flightLogStats'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { FlyingMode } from '../utils/gpsTypes'
 
@@ -113,7 +114,7 @@ export function useFlightLog(
       if (defer && s.phase === 'taxiing' && s.logId && s.parkTimer && parkTimeoutMs > 0) return
       // If we were mid-flight (or parked with no park timer), close the log immediately.
       if ((s.phase === 'flying' || s.phase === 'taxiing') && s.logId) {
-        finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '')
+        finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '', thr.landedKts)
       }
       if (s.flushTimer) clearTimeout(s.flushTimer)
       if (s.parkTimer)  clearTimeout(s.parkTimer)
@@ -270,7 +271,7 @@ export function useFlightLog(
           if (parkTimeoutMs === 0) {
             // Option A — close immediately, split per leg.
             if (s.logId) {
-              finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '')
+              finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '', thr.landedKts)
               setActiveLogId(null)
             }
             s.logId        = null
@@ -287,7 +288,7 @@ export function useFlightLog(
               const cs = stateRef.current
               if (cs.phase !== 'taxiing' || !cs.logId) return
               if (cs.flushTimer) { clearTimeout(cs.flushTimer) }
-              finishLog(cs.logId, cs.track, cs.distanceNm, cs.maxAltFt, arrivalIcao)
+              finishLog(cs.logId, cs.track, cs.distanceNm, cs.maxAltFt, arrivalIcao, thr.landedKts)
               stateRef.current = {
                 phase:         'idle',
                 logId:         null,
@@ -373,14 +374,21 @@ async function finishLog(
   distanceNm:  number,
   maxAltFt:    number,
   arrivalIcao: string,
+  landedKts:   number = LANDING_SPD_KTS,
 ): Promise<void> {
   try {
     const db  = await getDb()
     const doc = await db.flight_logs.findOne(id).exec()
     if (!doc) return
+    // Drop the points recorded while parked waiting for the park timer, and
+    // end the log at the last real movement instead of when the timer fired.
+    const trimmed = trimParkedTail(track, landedKts)
+    const endedAt = trimmed !== track && trimmed.length > 0
+      ? Math.max(trimmed[trimmed.length - 1].ts, doc.startedAt + 1)
+      : Date.now()
     await doc.patch({
-      endedAt:     Date.now(),
-      trackJson:   JSON.stringify(track),
+      endedAt,
+      trackJson:   JSON.stringify(trimmed),
       distanceNm,
       maxAltFt,
       arrivalIcao,

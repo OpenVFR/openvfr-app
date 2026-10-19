@@ -44,6 +44,7 @@ import { getAerodromeLookup } from '../utils/aerodromeLookup'
 import type { UserWaypointDocType } from '../types/db'
 import type { LegOverride } from '../types/db'
 import { distanceNm, magneticBearingDeg, bearingDeg } from '../utils/routeCalc'
+import { computeLogStats, formatLogDuration } from '@open-vfr/shared/flightLogStats'
 import { nmToDisplay, distLabel, ktsToDisplay, displayToKts, speedLabel } from '../utils/units'
 import { computeFuelPlan } from '../utils/fuelCalc'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -93,6 +94,27 @@ function fmtEta(baseMins: number, offsetMins: number): string {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────
+const LOG_STATS_THR = { takeoffKts: 30, landedKts: 20 }
+const logSummaryCache = new Map<string, string>()
+
+/** "42m · 3 landings (2 T&G) · max 3,500 ft", derived from the stored track. */
+function logSummary(log: { id: string; updatedAt: number; trackJson: string; endedAt: number; startedAt: number; maxAltFt: number }): string {
+  const key = `${log.id}:${log.updatedAt}`
+  const hit = logSummaryCache.get(key)
+  if (hit !== undefined) return hit
+  let out = ''
+  try {
+    const st = computeLogStats(JSON.parse(log.trackJson || '[]'), LOG_STATS_THR)
+    const parts = [formatLogDuration(st.airborneMs > 0 ? st.airborneMs : log.endedAt - log.startedAt)]
+    if (st.landings > 0) parts.push(`${st.landings} landing${st.landings === 1 ? '' : 's'}${st.touchAndGos > 0 ? ` (${st.touchAndGos} T&G)` : ''}`)
+    if (log.maxAltFt > 0) parts.push(`max ${Math.round(log.maxAltFt).toLocaleString()} ft`)
+    if (st.gapCount > 0) parts.push('⚠ gaps')
+    out = parts.join(' · ')
+  } catch { /* corrupt track: no summary */ }
+  logSummaryCache.set(key, out)
+  return out
+}
+
 export function PlanScreen() {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
@@ -1044,6 +1066,7 @@ export function PlanScreen() {
                     </Text>
                     <Text style={styles.aircraftMeta}>
                       {new Date(log.startedAt).toLocaleString()} · {log.distanceNm.toFixed(0)} NM · {log.registration}
+                      {isCompleted ? ` · ${logSummary(log)}` : ''}
                     </Text>
                   </View>
                   <View style={styles.aircraftActions}>

@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import * as Crypto from 'expo-crypto'
+import { trimParkedTail } from '@open-vfr/shared/flightLogStats'
 import { flightLogs as flightLogsDb } from '../db'
 import type { TrackPoint, FlightLogDocType } from '../types/db'
 import type { GpsPosition, FlyingMode } from '../utils/gpsTypes'
@@ -85,7 +86,7 @@ export function useFlightLog(
       if (deferCloseRef) deferCloseRef.current = false
       if (defer && s.phase === 'taxiing' && s.logId && s.parkTimer && parkTimeoutMs > 0) return
       if ((s.phase === 'flying' || s.phase === 'taxiing') && s.logId) {
-        finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '')
+        finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '', thr.landedKts)
       }
       if (s.flushTimer) clearTimeout(s.flushTimer)
       if (s.parkTimer)  clearTimeout(s.parkTimer)
@@ -186,7 +187,7 @@ export function useFlightLog(
 
           if (parkTimeoutMs === 0) {
             if (s.logId) {
-              finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '')
+              finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '', thr.landedKts)
               setActiveLogId(null)
             }
             s.logId = null; s.phase = 'idle'; s.takeoffTicks = 0; s.landingTicks = 0
@@ -197,7 +198,7 @@ export function useFlightLog(
               const cs = stateRef.current
               if (cs.phase !== 'taxiing' || !cs.logId) return
               if (cs.flushTimer) clearTimeout(cs.flushTimer)
-              finishLog(cs.logId, cs.track, cs.distanceNm, cs.maxAltFt, arrivalIcao)
+              finishLog(cs.logId, cs.track, cs.distanceNm, cs.maxAltFt, arrivalIcao, thr.landedKts)
               stateRef.current = {
                 phase: 'idle', logId: null, takeoffTicks: 0, landingTicks: 0, flightStartMs: 0,
                 track: [], lastTrackMs: 0, distanceNm: 0, maxAltFt: 0, prevLat: 0, prevLng: 0,
@@ -246,9 +247,14 @@ async function flushLog(id: string, track: TrackPoint[], distanceNm: number, max
 
 async function finishLog(
   id: string, track: TrackPoint[], distanceNm: number, maxAltFt: number, arrivalIcao: string,
+  landedKts: number = LANDING_SPD_KTS,
 ): Promise<void> {
+  // Drop the points recorded while parked waiting for the park timer, and end
+  // the log at the last real movement instead of when the timer fired.
+  const trimmed = trimParkedTail(track, landedKts)
+  const endedAt = trimmed !== track && trimmed.length > 0 ? trimmed[trimmed.length - 1].ts : Date.now()
   await patchLog(id, {
-    endedAt: Date.now(), trackJson: JSON.stringify(track), distanceNm, maxAltFt, arrivalIcao,
+    endedAt, trackJson: JSON.stringify(trimmed), distanceNm, maxAltFt, arrivalIcao,
     updatedAt: Date.now(),
   })
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { getDb, type FlightLogDocType } from '../db'
+import { computeLogStats, formatLogDuration, type LogStats } from '@open-vfr/shared/flightLogStats'
+import { getDb, type FlightLogDocType, type TrackPoint } from '../db'
 import css from './FlightLogs.module.css'
 
 interface Props {
@@ -15,15 +16,23 @@ function fmt(ms: number): string {
   })
 }
 
-function duration(startMs: number, endMs: number): string {
-  const s = Math.round((endMs - startMs) / 1000)
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  return h > 0 ? `${h}h ${m}m` : `${m}m`
+// Default takeoff/landed speeds; the aircraft profile's own thresholds are not
+// known per log, and the list only needs a good approximation.
+const STATS_THR = { takeoffKts: 30, landedKts: 20 }
+
+function statsFor(log: FlightLogDocType): LogStats | null {
+  try {
+    return computeLogStats(JSON.parse(log.trackJson || '[]') as TrackPoint[], STATS_THR)
+  } catch { return null }
+}
+
+function landingsLabel(st: LogStats): string {
+  const base = `${st.landings} landing${st.landings === 1 ? '' : 's'}`
+  return st.touchAndGos > 0 ? `${base} (${st.touchAndGos} T&G)` : base
 }
 
 export default function FlightLogs({ selectedLogId, onSelect, onClear }: Props) {
-  const [logs, setLogs] = useState<FlightLogDocType[]>([])
+  const [logs, setLogs] = useState<{ doc: FlightLogDocType; stats: LogStats | null }[]>([])
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
   async function handleDelete(id: string) {
@@ -41,7 +50,7 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear }: Props) 
         .find({ selector: { endedAt: { $gt: 0 } } })
         .$.subscribe(docs => {
           const sorted = [...docs].sort((a, b) => b.startedAt - a.startedAt)
-          setLogs(sorted.map(d => d.toJSON()))
+          setLogs(sorted.map(d => { const doc = d.toJSON(); return { doc, stats: statsFor(doc) } }))
         })
     })
     return () => sub?.unsubscribe()
@@ -63,7 +72,7 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear }: Props) 
         </div>
       )}
       <div className={css.list}>
-        {logs.map(log => {
+        {logs.map(({ doc: log, stats }) => {
           const isActive = log.id === selectedLogId
           const depArr = [log.departureIcao, log.arrivalIcao]
             .filter(Boolean).join(' → ') || 'Unknown route'
@@ -74,7 +83,12 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear }: Props) 
                 <div className={css.itemMeta}>
                   <span className={css.itemMetaVal}>{fmt(log.startedAt)}</span>
                   <span className={css.itemMetaVal}>{log.distanceNm.toFixed(1)} NM</span>
-                  <span className={css.itemMetaVal}>{duration(log.startedAt, log.endedAt)}</span>
+                  <span className={css.itemMetaVal}>
+                    {formatLogDuration(stats && stats.airborneMs > 0 ? stats.airborneMs : log.endedAt - log.startedAt)}
+                  </span>
+                  {stats && stats.landings > 0 && <span className={css.itemMetaVal}>{landingsLabel(stats)}</span>}
+                  {log.maxAltFt > 0 && <span className={css.itemMetaVal}>max {Math.round(log.maxAltFt).toLocaleString()} ft</span>}
+                  {stats && stats.gapCount > 0 && <span className={css.itemMetaVal} title="GPS track has gaps">⚠ gaps</span>}
                 </div>
               </div>
               <div className={css.itemActions}>
