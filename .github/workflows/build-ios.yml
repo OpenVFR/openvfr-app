@@ -159,6 +159,41 @@ jobs:
         if: always()
         run: ccache -s
 
+      # Which store build is this? Version numbers are owned by EAS (remote
+      # versioning), so read them from the finished .ipa and put them, with the
+      # commit, in the run summary and the diagnostics artifact name. A crash in
+      # TestFlight / App Store Connect (version + build) then maps to one run.
+      - name: Build info (store version -> symbols)
+        id: info
+        if: ${{ always() && steps.build.conclusion == 'success' }}
+        run: |
+          f="${{ steps.build.outputs.artifact }}"
+          name=""; code=""
+          if [ -n "$f" ]; then
+            rm -rf .ipa-info && mkdir .ipa-info
+            unzip -q -o "$f" 'Payload/*.app/Info.plist' -d .ipa-info || true
+            plist=$(ls .ipa-info/Payload/*.app/Info.plist 2>/dev/null | head -n1)
+            if [ -n "$plist" ]; then
+              name=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist" 2>/dev/null || true)
+              code=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist" 2>/dev/null || true)
+            fi
+            rm -rf .ipa-info
+          fi
+          sha=$(git rev-parse --short=10 HEAD)
+          tag="v${name:-unknown}-${code:-unknown}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          {
+            echo "### iOS build ${tag}"
+            echo "| | |"; echo "|---|---|"
+            echo "| Profile | ${{ inputs.profile }} |"
+            echo "| Version | ${name:-?} |"
+            echo "| Build | ${code:-?} |"
+            echo "| Commit | \`${sha}\` (${{ github.sha }}) |"
+            echo "| File | \`$f\` |"
+            echo ""
+            echo "Symbols: artifact \`ios-${{ inputs.profile }}-${tag}-diagnostics\` (JS source map, dSYM). App Store Connect / TestFlight shows this build as **${name:-?} (${code:-?})**."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # Crash diagnostics: Hermes stack frames (p@1:132161) can only be read with
       # the source map of the exact build. Keep it (and the native symbols the
       # build produced) next to the binary. Public repo, nothing secret in them.
@@ -175,7 +210,7 @@ jobs:
         if: ${{ always() && steps.build.conclusion == 'success' }}
         uses: actions/upload-artifact@v7
         with:
-          name: ios-${{ inputs.profile }}-diagnostics
+          name: ios-${{ inputs.profile }}-${{ steps.info.outputs.tag }}-diagnostics
           path: diag
           if-no-files-found: warn
           retention-days: 90

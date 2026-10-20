@@ -176,6 +176,45 @@ jobs:
         with:
           path: ~/.cache/ccache
           key: ccache-android-${{ inputs.profile }}-${{ hashFiles('pnpm-lock.yaml', 'apps/native/package.json') }}-${{ github.run_id }}
+      # Which store build is this? Version numbers are owned by EAS (remote
+      # versioning), so read them from the finished binary and put them, with
+      # the commit, in the run summary and the diagnostics artifact name. A
+      # crash in Play (versionName + versionCode) then maps to one run.
+      - name: Build info (store version -> symbols)
+        id: info
+        if: ${{ always() && steps.build.conclusion == 'success' }}
+        run: |
+          f="${{ steps.build.outputs.artifact }}"
+          name=""; code=""
+          if [[ "$f" == *.aab ]]; then
+            curl -fsSL -o bundletool.jar https://github.com/google/bundletool/releases/download/1.18.1/bundletool-all-1.18.1.jar || true
+            if [ -s bundletool.jar ]; then
+              name=$(java -jar bundletool.jar dump manifest --bundle "$f" --xpath /manifest/@android:versionName 2>/dev/null || true)
+              code=$(java -jar bundletool.jar dump manifest --bundle "$f" --xpath /manifest/@android:versionCode 2>/dev/null || true)
+            fi
+          else
+            aapt2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | tail -n1)
+            if [ -n "$aapt2" ]; then
+              b=$("$aapt2" dump badging "$f" | grep -m1 '^package:')
+              name=$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<<"$b")
+              code=$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<<"$b")
+            fi
+          fi
+          sha=$(git rev-parse --short=10 HEAD)
+          tag="v${name:-unknown}-${code:-unknown}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Android build ${tag}"
+            echo "| | |"; echo "|---|---|"
+            echo "| Profile | ${{ inputs.profile }} |"
+            echo "| versionName | ${name:-?} |"
+            echo "| versionCode | ${code:-?} |"
+            echo "| Commit | \`${sha}\` (${{ github.sha }}) |"
+            echo "| File | \`$f\` |"
+            echo ""
+            echo "Symbols: artifact \`android-${{ inputs.profile }}-${tag}-diagnostics\` (Hermes source map, native symbols). Play Console shows this build as **${name:-?} (${code:-?})**."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # Crash diagnostics: Hermes stack frames (p@1:132161) can only be read with
       # the source map of the exact build. Keep it (and the native symbols the
       # build produced) next to the binary. Public repo, nothing secret in them.
@@ -189,7 +228,7 @@ jobs:
         if: ${{ always() && steps.build.conclusion == 'success' }}
         uses: actions/upload-artifact@v7
         with:
-          name: android-${{ inputs.profile }}-diagnostics
+          name: android-${{ inputs.profile }}-${{ steps.info.outputs.tag }}-diagnostics
           path: diag
           if-no-files-found: warn
           retention-days: 90
