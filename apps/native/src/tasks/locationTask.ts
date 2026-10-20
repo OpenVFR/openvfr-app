@@ -18,6 +18,7 @@
  * source of truth for position updates whether the app is foregrounded or not.
  */
 
+import { PermissionsAndroid, Platform } from 'react-native'
 import * as Location from 'expo-location'
 import * as TaskManager from 'expo-task-manager'
 
@@ -54,6 +55,14 @@ export async function startBackgroundLocation(): Promise<'ok' | 'foreground-deni
   if (fg.status === 'undetermined') fg = await Location.requestForegroundPermissionsAsync()
   if (fg.status !== 'granted') return 'foreground-denied'
 
+  // Android 13+: the foreground service's notification is hidden (and the
+  // service invisible to the pilot) unless POST_NOTIFICATIONS is granted, and
+  // the system does not prompt for it on its own. Ask once; a refusal only
+  // hides the notification, tracking still works.
+  if (Platform.OS === 'android' && Number(Platform.Version) >= 33) {
+    await PermissionsAndroid.request('android.permission.POST_NOTIFICATIONS').catch(() => {})
+  }
+
   // Background ("all the time") permission is deliberately NOT requested.
   // Continuous tracking with the screen locked or the app in the background
   // comes from the foreground service below on Android (expo-location only
@@ -66,7 +75,15 @@ export async function startBackgroundLocation(): Promise<'ok' | 'foreground-deni
   // otherwise require a separate background-location declaration for.
 
   const alreadyStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false)
-  if (!alreadyStarted) {
+  // A registration left over from a previous process (swiped away, crashed)
+  // survives in expo-task-manager but its foreground service does not, so the
+  // OS location provider keeps feeding a task with no notification and the app
+  // can be killed in the background. `started` is false in a fresh process, so
+  // restart it to get the service (and its notification) back.
+  if (alreadyStarted && !started) {
+    await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => {})
+  }
+  if (!alreadyStarted || !started) {
     await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
       accuracy:         Location.Accuracy.BestForNavigation,
       timeInterval:     1_000,
