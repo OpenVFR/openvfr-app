@@ -15,7 +15,8 @@ import type { RouteWaypoint } from '../utils/routeCalc'
 import { useMsaMargins } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
-import { obstacleSymbol, polyPath } from '@open-vfr/shared/obstacleSymbol'
+import { obstacleSymbol, polyPath, ESTIMATED_DASH, type SymbolPrim } from '@open-vfr/shared/obstacleSymbol'
+import { effectiveHeight, obstacleTipsForMsa, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
 import { legSpans, legMsaList, legBelowMsa, dragShownFt, altAtY, unreachedLegs, LEVEL_STEP_FT, DRAG_MIN_MOVE_PX, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { useMefGrids } from '../hooks/useMefGrids'
 import type { LegOverride } from '../db/index'
@@ -208,6 +209,25 @@ function renderBarbAt(cx: number, cy: number, dirDeg: number, speedKt: number, c
 /** Recoloured map pictogram anchored by its BOTTOM edge at (cx, cy), so it
  *  only ever grows upward from its data point (a centred or top-anchored icon
  *  on a zero-height obstacle or a landmark at ground level drew below 0 ft). */
+/** Which obstacle shape a landmark kind is drawn as when it is tall enough. */
+const LANDMARK_SHAPE_KIND: Record<string, string> = {
+  church: 'building', mast: 'tower', chimney: 'chimney', water_tower: 'water_tower', windmill: 'tower',
+}
+
+/** SVG for the primitives of obstacleSymbol(); `dash` primitives (assumed height) are dashed. */
+function renderShape(shape: SymbolPrim[]): ReactNode {
+  return shape.map((p, k) => {
+    const dash = p.dash ? ESTIMATED_DASH : undefined
+    return p.t === 'rect'
+      ? <rect key={k} x={p.x} y={p.y} width={p.w} height={p.h} fill={p.dash ? 'none' : p.fill} stroke={p.dash ? (p.stroke ?? p.fill) : p.stroke} strokeWidth={1} strokeDasharray={dash} />
+      : p.t === 'line'
+        ? <line key={k} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.stroke} strokeWidth={p.w} strokeLinecap="round" strokeDasharray={dash} />
+        : p.t === 'poly'
+          ? <path key={k} d={polyPath(p.pts)} fill={p.dash ? 'none' : p.fill} stroke={p.dash ? (p.stroke ?? p.fill) : p.stroke} strokeWidth={1} strokeDasharray={dash} />
+          : <circle key={k} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill} />
+  })
+}
+
 function renderIconAt(key: string, cx: number, cy: number, size: number, markup: string | undefined, fallback: ReactNode) {
   if (!markup) return <g key={key}>{fallback}</g>
   return (
@@ -425,9 +445,9 @@ const LANDMARK_MIN_GAP_PX = 18
 /** Labels of aerodromes / reporting points / navaids closer than this (px) are thinned. */
 const POI_LABEL_GAP_PX = 46
 
-type ObstacleMark = { key: string; kind: string; cx: number; cy: number; groundY: number; opacity: number; limiting: boolean; priority: number; full: boolean }
+type ObstacleMark = { key: string; kind: string; cx: number; cy: number; groundY: number; opacity: number; limiting: boolean; priority: number; full: boolean; estimated: boolean }
 type PoiMark = { key: string; kind: string; subtype: string; towered: boolean; label: string; cx: number; cy: number; priority: number; labelled: boolean }
-type LandmarkMark = { key: string; kind: string; cx: number; cy: number; full: boolean }
+type LandmarkMark = { key: string; kind: string; cx: number; cy: number; tipY: number; groundY: number; full: boolean; estimated: boolean }
 
 /** Half-height of a leg's drag target around its level line (px). */
 const LEG_HIT_HALF_PX = 12
@@ -714,8 +734,8 @@ function VirtualRadar({
     [mefGrids, terrainPts, corridorFt],
   )
   const msaPts = useMemo<MsaPoint[]>(
-    () => computeMsaProfile(terrainPts, msaMargins, profile?.obstacles, corridorFt),
-    [terrainPts, msaMargins, profile?.obstacles, corridorFt],
+    () => computeMsaProfile(terrainPts, msaMargins, profile ? obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(terrainPts, d)) : undefined, corridorFt),
+    [terrainPts, msaMargins, profile, corridorFt],
   )
   const getMsa = useMemo(() => getMsaLookup(msaPts), [msaPts])
 
@@ -961,11 +981,15 @@ function VirtualRadar({
     const clampX = (x: number, half: number) => Math.max(L.xOf(0) + half, Math.min(L.xOf(L.totalNm) - half, x))
     const obs = profile.obstacles.map((o, i) => {
       const baseFt = Math.max(o.elevationFt, terrainAt(terrainPts, o.distNm))
-      const tipFt = o.heightM > 0 ? Math.round(baseFt + o.heightM * 3.28084) : baseFt
+      // Unknown height: the per-kind estimate (dashed on the chart, and the same
+      // figure the MSA uses, see obstacleHeights.ts).
+      const eh = effectiveHeight(o.kind, o.heightM)
+      const tipFt = Math.round(baseFt + eh.heightM * FT_PER_M)
       const limiting = isLimitingObstacle(tipFt, margins.obstacleClearanceFt, getMsa(o.distNm))
       return {
         key: `obs-${i}`, kind: o.kind, cx: clampX(L.xOf(o.distNm), 8), cy: L.yOf(tipFt), groundY: L.yOf(Math.max(0, baseFt)),
-        opacity: obstacleOpacity(o.lateralNm, margins.abeamNm), limiting, priority: limiting ? 1e9 + tipFt : tipFt, full: false,
+        opacity: obstacleOpacity(o.lateralNm, margins.abeamNm) * (eh.estimated ? 0.7 : 1), limiting,
+        priority: limiting ? 1e9 + tipFt : tipFt, full: false, estimated: eh.estimated,
       }
     })
     const obsFull = declutterMarks(obs.map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), OBSTACLE_MIN_GAP_PX)
@@ -974,7 +998,12 @@ function VirtualRadar({
       // Floored at 0: landmarks have no elevation of their own and
       // terrainAt() can go slightly negative from DEM noise near water.
       const baseFt = Math.max(0, terrainAt(terrainPts, l.distNm))
-      return { key: `lmk-${i}`, kind: l.kind, cx: clampX(L.xOf(l.distNm), 7), cy: L.yOf(baseFt), full: false }
+      const eh = effectiveHeight(l.kind, l.heightM)
+      return {
+        key: `lmk-${i}`, kind: l.kind, cx: clampX(L.xOf(l.distNm), 7), cy: L.yOf(baseFt),
+        // Where the structure ends (its tip), for the full-height shape.
+        tipY: L.yOf(Math.round(baseFt + eh.heightM * FT_PER_M)), groundY: L.yOf(baseFt), full: false, estimated: eh.estimated,
+      }
     })
     const lmkFull = declutterMarks(lmk.map((m) => ({ id: m.key, x: m.cx, priority: 0 })), LANDMARK_MIN_GAP_PX)
     lmk.forEach((m) => { m.full = lmkFull.has(m.key) })
@@ -1064,17 +1093,11 @@ function VirtualRadar({
             return <circle key={m.key} cx={m.cx} cy={m.cy} r={2} fill="rgba(220,80,60,0.9)" opacity={m.opacity} />
           }
           // Tall enough: the real shape from the ground up to the tip altitude.
-          const shape = obstacleSymbol(m.kind, m.cx, m.cy, m.groundY)
+          const shape = obstacleSymbol(m.kind, m.cx, m.cy, m.groundY, m.estimated)
           if (shape) {
             return (
               <g key={m.key} opacity={m.opacity}>
-                {shape.map((p, k) => p.t === 'rect'
-                  ? <rect key={k} x={p.x} y={p.y} width={p.w} height={p.h} fill={p.fill} stroke={p.stroke} strokeWidth={1} />
-                  : p.t === 'line'
-                    ? <line key={k} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.stroke} strokeWidth={p.w} strokeLinecap="round" />
-                    : p.t === 'poly'
-                      ? <path key={k} d={polyPath(p.pts)} fill={p.fill} stroke={p.stroke} strokeWidth={1} />
-                      : <circle key={k} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill} />)}
+                {renderShape(shape)}
                 {m.limiting && <circle cx={m.cx} cy={m.cy} r={11} fill="none" stroke={DANGER_COLOR} strokeWidth={1.5} />}
               </g>
             )
@@ -1130,10 +1153,14 @@ function VirtualRadar({
         }))}
 
         {/* ── Landmarks on the ground, real map pictograms ──────── */}
-        {landmarkMarks.map((m) => m.full
+        {landmarkMarks.map((m) => {
+          const shape = obstacleSymbol(LANDMARK_SHAPE_KIND[m.kind] ?? 'tower', m.cx, m.tipY, m.groundY, m.estimated)
+          if (shape) return <g key={m.key} opacity={m.estimated ? 0.7 : 1}>{renderShape(shape)}</g>
+          return m.full
           ? renderIconAt(m.key, m.cx, m.cy, 14, iconMarkup[`lmk:${m.kind}`],
             <circle cx={m.cx} cy={m.cy} r={2.5} fill="rgba(150,150,150,0.9)" stroke="rgba(0,0,0,0.4)" strokeWidth={1} />)
-          : <circle key={m.key} cx={m.cx} cy={m.cy} r={1.6} fill="rgba(150,150,150,0.8)" />)}
+          : <circle key={m.key} cx={m.cx} cy={m.cy} r={1.6} fill="rgba(150,150,150,0.8)" />
+        })}
 
         {/* ── Aerodromes, reporting points, navaids (own distance per kind) ── */}
         {poiMarks.map((m) => (

@@ -53,7 +53,8 @@ import {
 import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import { legSpans, legMsaList, legBelowMsa, dragShownFt, altAtY, unreachedLegs, LEVEL_STEP_FT, DRAG_MIN_MOVE_PX, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
-import { obstacleSymbol, polyPath } from '@open-vfr/shared/obstacleSymbol'
+import { obstacleSymbol, polyPath, ESTIMATED_DASH } from '@open-vfr/shared/obstacleSymbol'
+import { effectiveHeight, obstacleTipsForMsa, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
 import { useMefGrids } from '../hooks/useMefGrids'
 import { pickWaypointLabels, estimateLabelWidth } from '@open-vfr/shared/profileLabels'
 import {
@@ -211,6 +212,11 @@ const WIND_ROW_STATION_SEP_NM = 6
 // to scroll, so the scroll path effectively never activated for realistic
 // route lengths even though labels were visibly cramped well before that.
 const MIN_PX_PER_NM = 30
+/** Which obstacle shape a landmark kind is drawn as when it is tall enough. */
+const LANDMARK_SHAPE_KIND: Record<string, string> = {
+  church: 'building', mast: 'tower', chimney: 'chimney', water_tower: 'water_tower', windmill: 'tower',
+}
+
 /** A touch within this many px of a leg's drawn line starts a level drag (if it moves vertically). */
 const LEG_HIT_PX = 22
 
@@ -516,8 +522,8 @@ export function VerticalProfile({
     [mefGrids, terrainPts, corridorFt],
   )
   const msaPts = useMemo<MsaPoint[]>(
-    () => computeMsaProfile(terrainPts, msaMargins, profile?.obstacles, corridorFt),
-    [terrainPts, msaMargins, profile?.obstacles, corridorFt],
+    () => computeMsaProfile(terrainPts, msaMargins, profile ? obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(terrainPts, d)) : undefined, corridorFt),
+    [terrainPts, msaMargins, profile, corridorFt],
   )
   const getMsa = useMemo(() => getMsaLookup(msaPts), [msaPts])
 
@@ -566,11 +572,17 @@ export function VerticalProfile({
     const clampX = (x: number, half: number) => Math.max(xOf(0) + half, Math.min(xOf(totalNm) - half, x))
     const obs = (profile?.obstacles ?? []).map((o, i) => {
       const baseFt = Math.max(o.elevationFt, terrainAt(terrainPts, o.distNm))
-      const tipFt = o.heightM > 0 ? Math.round(baseFt + o.heightM * 3.28084) : baseFt
+      // Unknown height: the per-kind estimate (dashed, and the same figure the
+      // MSA uses, see obstacleHeights.ts).
+      const eh = effectiveHeight(o.kind, o.heightM)
+      const tipFt = Math.round(baseFt + eh.heightM * FT_PER_M)
       const limiting = isLimitingObstacle(tipFt, margins.obstacleClearanceFt, getMsa(o.distNm))
+      const cx = clampX(xOf(o.distNm), 8), cy = yOf(tipFt), groundY = yOf(Math.max(0, baseFt))
       return {
-        key: `obs-${i}`, kind: o.kind, cx: clampX(xOf(o.distNm), 8), cy: yOf(tipFt), groundY: yOf(Math.max(0, baseFt)),
-        opacity: obstacleOpacity(o.lateralNm, margins.abeamNm), limiting, priority: limiting ? 1e9 + tipFt : tipFt, full: false,
+        key: `obs-${i}`, kind: o.kind, cx, cy, groundY,
+        opacity: obstacleOpacity(o.lateralNm, margins.abeamNm) * (eh.estimated ? 0.7 : 1), limiting,
+        priority: limiting ? 1e9 + tipFt : tipFt, full: false, estimated: eh.estimated,
+        shape: obstacleSymbol(o.kind, cx, cy, groundY, eh.estimated),
       }
     })
     const obsFull = declutterMarks(obs.map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), 14)
@@ -579,7 +591,13 @@ export function VerticalProfile({
       // Floor at 0: landmarks rely purely on terrainAt(), which can go
       // negative from DEM noise over/near water.
       const baseFt = Math.max(0, terrainAt(terrainPts, l.distNm))
-      return { key: `lmk-${i}`, kind: l.kind, cx: clampX(xOf(l.distNm), 7), cy: yOf(baseFt), full: false }
+      const eh = effectiveHeight(l.kind, l.heightM)
+      const cx = clampX(xOf(l.distNm), 7), groundY = yOf(baseFt)
+      const tipY = yOf(Math.round(baseFt + eh.heightM * FT_PER_M))
+      return {
+        key: `lmk-${i}`, kind: l.kind, cx, cy: groundY, full: false, estimated: eh.estimated,
+        shape: obstacleSymbol(LANDMARK_SHAPE_KIND[l.kind] ?? 'tower', cx, tipY, groundY, eh.estimated),
+      }
     })
     const lmkFull = declutterMarks(lmk.map((m) => ({ id: m.key, x: m.cx, priority: 0 })), 18)
     lmk.forEach((m) => { m.full = lmkFull.has(m.key) })
@@ -1456,24 +1474,8 @@ export function VerticalProfile({
                     // turn into overlapping pictograms.
                     return <View key={m.key} style={{ position: 'absolute', width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(220,80,60,0.9)', opacity: m.opacity, left: m.cx - 2, top: m.cy - 2 }} />
                   }
-                  // Tall enough: the real shape from the ground up to the tip altitude.
-                  const shape = obstacleSymbol(m.kind, m.cx, m.cy, m.groundY)
-                  if (shape) {
-                    return (
-                      <View key={m.key} style={{ position: 'absolute', left: 0, top: 0, width: contentW, height: chartH, opacity: m.opacity }} pointerEvents="none">
-                        <Svg width={contentW} height={chartH}>
-                          {shape.map((p, k) => p.t === 'rect'
-                            ? <Rect key={k} x={p.x} y={p.y} width={p.w} height={p.h} fill={p.fill} stroke={p.stroke} strokeWidth={1} />
-                            : p.t === 'line'
-                              ? <SvgLine key={k} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.stroke} strokeWidth={p.w} strokeLinecap="round" />
-                              : p.t === 'poly'
-                                ? <Path key={k} d={polyPath(p.pts)} fill={p.fill} stroke={p.stroke} strokeWidth={1} />
-                                : <Circle key={k} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill} />)}
-                          {m.limiting && <Circle cx={m.cx} cy={m.cy} r={11} fill="none" stroke="rgba(239,68,68,0.95)" strokeWidth={1.5} />}
-                        </Svg>
-                      </View>
-                    )
-                  }
+                  // Tall enough: drawn in the single shape layer below.
+                  if (m.shape) return null
                   return (
                     // Anchor by BOTTOM edge at the tip point, growing
                     // UPWARD from it -- a top-anchor's fixed pixel height
@@ -1505,6 +1507,7 @@ export function VerticalProfile({
                 {landmarkMarks.map((m) => {
                   const icon = LANDMARK_ICONS[m.kind] ?? LANDMARK_ICON_FALLBACK
                   const size = 14
+                  if (m.shape) return null   // drawn in the shape layer below
                   if (!m.full) {
                     return <View key={m.key} style={{ position: 'absolute', width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(150,150,150,0.8)', left: m.cx - 1.5, top: m.cy - 3 }} />
                   }
@@ -1518,6 +1521,26 @@ export function VerticalProfile({
                     />
                   )
                 })}
+
+                {/* Full-height shapes of obstacles and landmarks (ground to tip), one layer.
+                    Dashed = height is an assumption, not data. */}
+                <Svg width={contentW} height={chartH} style={{ position: 'absolute', left: 0, top: 0 }} pointerEvents="none">
+                  {[...landmarkMarks.map((m) => ({ ...m, opacity: m.estimated ? 0.7 : 1, limiting: false, cyRing: 0 })), ...obstacleMarks.map((m) => ({ ...m, cyRing: m.cy }))].map((m) => m.shape ? (
+                    <G key={`shape-${m.key}`} opacity={m.opacity}>
+                      {m.shape.map((p, k) => {
+                        const dash = p.dash ? ESTIMATED_DASH.replace(' ', ',') : undefined
+                        return p.t === 'rect'
+                          ? <Rect key={k} x={p.x} y={p.y} width={p.w} height={p.h} fill={p.dash ? 'none' : p.fill} stroke={p.dash ? (p.stroke ?? p.fill) : p.stroke} strokeWidth={1} strokeDasharray={dash} />
+                          : p.t === 'line'
+                            ? <SvgLine key={k} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.stroke} strokeWidth={p.w} strokeLinecap="round" strokeDasharray={dash} />
+                            : p.t === 'poly'
+                              ? <Path key={k} d={polyPath(p.pts)} fill={p.dash ? 'none' : p.fill} stroke={p.dash ? (p.stroke ?? p.fill) : p.stroke} strokeWidth={1} strokeDasharray={dash} />
+                              : <Circle key={k} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill} />
+                      })}
+                      {m.limiting && <Circle cx={m.cx} cy={m.cyRing} r={11} fill="none" stroke="rgba(239,68,68,0.95)" strokeWidth={1.5} />}
+                    </G>
+                  ) : null)}
+                </Svg>
 
                 {/* Aerodromes, reporting points, navaids (own distance per kind) */}
                 {poiMarks.map((m) => (

@@ -12,9 +12,10 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { fetchTerrainProfile, buildVirtualRadarProfile } from '@open-vfr/shared/virtualRadarCalc'
+import { fetchTerrainProfile, buildVirtualRadarProfile, terrainAt } from '@open-vfr/shared/virtualRadarCalc'
 import { requiredLegAltFt, newLegsAfterChange, autoLevelMessage } from '@open-vfr/shared/autoCruiseLevel'
 import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
+import { obstacleTipsForMsa } from '@open-vfr/shared/obstacleHeights'
 import { getTileUrls, API_BASE } from '../config'
 import { getOfflineDem } from '../utils/terrainDem'
 import type { RouteWaypoint, LegOverride } from '../types/db'
@@ -32,6 +33,18 @@ export function loadObstacles(): Promise<GeoJSON.FeatureCollection> {
     _obstacles = { url, p }
   }
   return _obstacles.p
+}
+
+// Landmarks (masts, chimneys...) count towards the MSA like the chart does.
+let _landmarks: { url: string; p: Promise<GeoJSON.FeatureCollection> } | null = null
+export function loadLandmarks(): Promise<GeoJSON.FeatureCollection> {
+  const url = getTileUrls().landmarks
+  if (!_landmarks || _landmarks.url !== url) {
+    const p = fetch(url).then((r) => r.json() as Promise<GeoJSON.FeatureCollection>)
+    p.catch(() => { if (_landmarks?.p === p) _landmarks = null })
+    _landmarks = { url, p }
+  }
+  return _landmarks.p
 }
 
 export function useAutoCruiseLevel(opts: {
@@ -62,14 +75,16 @@ export function useAutoCruiseLevel(opts: {
       Promise.all([
         fetchTerrainProfile(legWps, API_BASE, undefined, getOfflineDem()).catch(() => []),
         loadObstacles().catch(() => EMPTY_FC),
-      ]).then(([terrain, obstacles]) => {
+        loadLandmarks().catch(() => EMPTY_FC),
+      ]).then(([terrain, obstacles, landmarks]) => {
         // Stale if the leg's endpoints changed while the lookup ran (or the
         // route went away).
         const now = latest.current.waypoints
         const same = (a?: RouteWaypoint, b?: RouteWaypoint) => !!a && !!b && a.lat === b.lat && a.lng === b.lng
         if (!same(now[legIndex], legWps[0]) || !same(now[legIndex + 1], legWps[1])) return
-        const profile = buildVirtualRadarProfile(legWps, [], EMPTY_FC, obstacles, undefined, undefined, Infinity, undefined, { obstacleNm: resolveMsaMargins(latest.current.msaMargins).abeamNm })
-        const required = requiredLegAltFt(terrain.map((t) => t.elevFt), profile.obstacles.map((o) => o.elevationFt), latest.current.msaMargins)
+        const profile = buildVirtualRadarProfile(legWps, [], EMPTY_FC, obstacles, undefined, landmarks, Infinity, undefined, { obstacleNm: resolveMsaMargins(latest.current.msaMargins).abeamNm, landmarkNm: resolveMsaMargins(latest.current.msaMargins).abeamNm })
+        const tips = obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(terrain, d)).map((o) => o.elevationFt)
+        const required = requiredLegAltFt(terrain.map((t) => t.elevFt), tips, latest.current.msaMargins)
         const { legOverrides, defaultAltFt, onNotice, setLegOverride } = latest.current
         const planned = legOverrides[legIndex]?.altFt ?? defaultAltFt
         if (required <= planned) return

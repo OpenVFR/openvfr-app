@@ -10,6 +10,7 @@
 
 import { useMsaMargins } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
+import { obstacleTipsForMsa } from '@open-vfr/shared/obstacleHeights'
 import { useMefGrids } from '../hooks/useMefGrids'
 import { useState, useEffect, useMemo } from 'react'
 import {
@@ -18,6 +19,7 @@ import {
   computeMsaProfile,
   corridorTerrainAlongRoute,
   applyTerrainToBands,
+  terrainAt,
   type VirtualRadarProfile,
   type MsaPoint,
   type TerrainPoint,
@@ -36,6 +38,7 @@ import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/country
 
 let _airspaceGeo: GeoJSON.FeatureCollection | null = null
 let _obstacleGeo: GeoJSON.FeatureCollection | null = null
+let _landmarkGeo: GeoJSON.FeatureCollection | null = null
 let _geoKey = ''
 
 function loadGeoJson() {
@@ -44,6 +47,7 @@ function loadGeoJson() {
     _geoKey = activeCountriesKey()
     _airspaceGeo = null
     _obstacleGeo = null
+    _landmarkGeo = null
   }
   const key = _geoKey
   if (!_airspaceGeo) {
@@ -54,6 +58,12 @@ function loadGeoJson() {
   if (!_obstacleGeo) {
     loadCountryGeojson('obstacles')
       .then((d) => { if (key === _geoKey) _obstacleGeo = d })
+      .catch(() => { /* offline */ })
+  }
+  if (!_landmarkGeo) {
+    // Masts, chimneys etc. count towards the MSA like the chart does.
+    loadCountryGeojson('landmarks')
+      .then((d) => { if (key === _geoKey) _landmarkGeo = d })
       .catch(() => { /* offline */ })
   }
 }
@@ -229,6 +239,7 @@ interface Props {
 export default function PreflightWarnings({ waypoints, legOverrides, aircraft, aircraftId, legWinds }: Props) {
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(_airspaceGeo)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(_obstacleGeo)
+  const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(_landmarkGeo)
   const [terrainPts,  setTerrainPts]  = useState<TerrainPoint[]>([])
   const [terrainDone, setTerrainDone] = useState(false)
   const [terrainFailed, setTerrainFailed] = useState(false)
@@ -240,7 +251,8 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
     const id = setInterval(() => {
       if (_airspaceGeo && !airspaceGeo) setAirspaceGeo(_airspaceGeo)
       if (_obstacleGeo && !obstacleGeo) setObstacleGeo(_obstacleGeo)
-      if (_airspaceGeo && _obstacleGeo) clearInterval(id)
+      if (_landmarkGeo && !landmarkGeo) setLandmarkGeo(_landmarkGeo)
+      if (_airspaceGeo && _obstacleGeo && _landmarkGeo) clearInterval(id)
     }, 200)
     return () => clearInterval(id)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -280,8 +292,8 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
   const abeamNm = resolveMsaMargins(msaMargins).abeamNm
   const rawProfile = useMemo<VirtualRadarProfile | null>(() => {
     if (waypoints.length < 2 || !airspaceGeo || !obstacleGeo) return null
-    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, undefined, undefined, Infinity, aircraft?.cruiseAltFt || undefined, { obstacleNm: abeamNm })
-  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, aircraft?.cruiseAltFt, abeamNm])
+    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, undefined, landmarkGeo ?? undefined, Infinity, aircraft?.cruiseAltFt || undefined, { obstacleNm: abeamNm, landmarkNm: abeamNm })
+  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, landmarkGeo, aircraft?.cruiseAltFt, abeamNm])
   // AGL limits lifted onto the terrain so the penetration check compares altitudes.
   const profile = useMemo(
     () => rawProfile && { ...rawProfile, airspaceBands: applyTerrainToBands(rawProfile.airspaceBands, terrainPts) },
@@ -294,8 +306,8 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
     [waypoints, terrainPts, mefGrids, msaMargins],
   )
   const msaPts = useMemo<MsaPoint[]>(
-    () => computeMsaProfile(terrainPts, msaMargins, profile?.obstacles, corridorFt),
-    [terrainPts, msaMargins, profile?.obstacles, corridorFt],
+    () => computeMsaProfile(terrainPts, msaMargins, profile ? obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(terrainPts, d)) : undefined, corridorFt),
+    [terrainPts, msaMargins, profile, corridorFt],
   )
 
   const warnings = useMemo<PreflightWarning[]>(() => {

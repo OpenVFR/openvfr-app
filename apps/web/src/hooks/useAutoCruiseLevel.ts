@@ -12,12 +12,13 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { fetchTerrainProfile, buildVirtualRadarProfile } from '@open-vfr/shared/virtualRadarCalc'
+import { fetchTerrainProfile, buildVirtualRadarProfile, terrainAt } from '@open-vfr/shared/virtualRadarCalc'
 import { requiredLegAltFt, newLegsAfterChange, autoLevelMessage } from '@open-vfr/shared/autoCruiseLevel'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { getRemoteDem } from '../utils/terrainDem'
 import { getMsaMargins } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
+import { obstacleTipsForMsa } from '@open-vfr/shared/obstacleHeights'
 import { API_BASE_URL } from '../utils/env'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
@@ -51,14 +52,16 @@ export function useAutoCruiseLevel(opts: {
       Promise.all([
         fetchTerrainProfile(legWps, API_BASE_URL, undefined, getRemoteDem()).catch(() => []),
         loadCountryGeojson('obstacles').catch(() => EMPTY_FC),
-      ]).then(([terrain, obstacles]) => {
+        loadCountryGeojson('landmarks').catch(() => EMPTY_FC),
+      ]).then(([terrain, obstacles, landmarks]) => {
         // Stale if the leg's endpoints changed while the lookup ran (or the
         // route went away).
         const now = latest.current.waypoints
         const same = (a?: RouteWaypoint, b?: RouteWaypoint) => !!a && !!b && a.lat === b.lat && a.lng === b.lng
         if (!same(now[legIndex], legWps[0]) || !same(now[legIndex + 1], legWps[1])) return
-        const profile = buildVirtualRadarProfile(legWps, [], EMPTY_FC, obstacles, undefined, undefined, Infinity, undefined, { obstacleNm: resolveMsaMargins(getMsaMargins()).abeamNm })
-        const required = requiredLegAltFt(terrain.map((t) => t.elevFt), profile.obstacles.map((o) => o.elevationFt), getMsaMargins())
+        const profile = buildVirtualRadarProfile(legWps, [], EMPTY_FC, obstacles, undefined, landmarks, Infinity, undefined, { obstacleNm: resolveMsaMargins(getMsaMargins()).abeamNm, landmarkNm: resolveMsaMargins(getMsaMargins()).abeamNm })
+        const tips = obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(terrain, d)).map((o) => o.elevationFt)
+        const required = requiredLegAltFt(terrain.map((t) => t.elevFt), tips, getMsaMargins())
         const { legOverrides, defaultAltFt, onNotice, setLegOverrides } = latest.current
         const planned = legOverrides[legIndex]?.altFt ?? defaultAltFt
         if (required <= planned) return

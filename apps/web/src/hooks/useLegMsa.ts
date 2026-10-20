@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   fetchTerrainProfile, buildVirtualRadarProfile, computeMsaProfile, corridorTerrainAlongRoute,
-  getMsaLookup, type TerrainPoint,
+  getMsaLookup, terrainAt, type TerrainPoint,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { legSpans, legMsaList, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
@@ -22,6 +22,7 @@ import { useActiveCountries } from '../utils/countryData'
 import { API_BASE_URL } from '../utils/env'
 import { useMsaMargins } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
+import { obstacleTipsForMsa } from '@open-vfr/shared/obstacleHeights'
 import { useMefGrids } from './useMefGrids'
 import type { RouteWaypoint } from '../utils/routeCalc'
 
@@ -33,12 +34,14 @@ const NONE: LegMsa = { legMsa: [], spans: [], totalNm: 0 }
 export function useLegMsa(waypoints: RouteWaypoint[]): LegMsa {
   const [terrain, setTerrain] = useState<TerrainPoint[]>([])
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(null)
+  const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [margins] = useMsaMargins()
   const grids = useMefGrids()
   const { key: countriesKey } = useActiveCountries()
 
   useEffect(() => {
     loadCountryGeojson('obstacles').then(setObstacleGeo).catch(() => setObstacleGeo(EMPTY_FC))
+    loadCountryGeojson('landmarks').then(setLandmarkGeo).catch(() => setLandmarkGeo(EMPTY_FC))
   }, [countriesKey])
 
   const routeKey = waypoints.map((w) => `${w.lat.toFixed(4)},${w.lng.toFixed(4)}`).join('|')
@@ -57,15 +60,15 @@ export function useLegMsa(waypoints: RouteWaypoint[]): LegMsa {
   const profile = useMemo(
     () => waypoints.length < 2 || !obstacleGeo
       ? null
-      : buildVirtualRadarProfile(waypoints, [], EMPTY_FC, obstacleGeo, undefined, undefined, Infinity, undefined, { obstacleNm: resolveMsaMargins(margins).abeamNm }),
+      : buildVirtualRadarProfile(waypoints, [], EMPTY_FC, obstacleGeo, undefined, landmarkGeo ?? undefined, Infinity, undefined, { obstacleNm: resolveMsaMargins(margins).abeamNm, landmarkNm: resolveMsaMargins(margins).abeamNm }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [routeKey, obstacleGeo, margins.abeamNm],
+    [routeKey, obstacleGeo, landmarkGeo, margins.abeamNm],
   )
 
   return useMemo(() => {
     if (!profile || terrain.length === 0) return NONE
     const corridor = corridorTerrainAlongRoute(waypoints, terrain, grids, margins)
-    const msaPts = computeMsaProfile(terrain, margins, profile.obstacles, corridor)
+    const msaPts = computeMsaProfile(terrain, margins, obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(terrain, d)), corridor)
     const spans = legSpans(profile.altitudeProfile)
     return { legMsa: legMsaList(spans, msaPts, getMsaLookup(msaPts)), spans, totalNm: profile.totalNm }
   // eslint-disable-next-line react-hooks/exhaustive-deps

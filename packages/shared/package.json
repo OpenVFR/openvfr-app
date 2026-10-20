@@ -17,6 +17,7 @@
     "./mefGrid": "./src/mefGrid.ts",
     "./routePois": "./src/routePois.ts",
     "./obstacleSymbol": "./src/obstacleSymbol.ts",
+    "./obstacleHeights": "./src/obstacleHeights.ts",
     "./airspeed": "./src/airspeed.ts",
     "./windForecast": "./src/windForecast.ts",
     "./subAreas": "./src/subAreas.ts",

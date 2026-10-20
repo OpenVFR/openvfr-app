@@ -10,10 +10,10 @@
  */
 
 export type SymbolPrim =
-  | { t: 'rect'; x: number; y: number; w: number; h: number; fill: string; stroke?: string }
-  | { t: 'line'; x1: number; y1: number; x2: number; y2: number; stroke: string; w: number }
-  | { t: 'poly'; pts: [number, number][]; fill: string; stroke?: string }
-  | { t: 'circle'; cx: number; cy: number; r: number; fill: string }
+  | { t: 'rect'; x: number; y: number; w: number; h: number; fill: string; stroke?: string; dash?: boolean }
+  | { t: 'line'; x1: number; y1: number; x2: number; y2: number; stroke: string; w: number; dash?: boolean }
+  | { t: 'poly'; pts: [number, number][]; fill: string; stroke?: string; dash?: boolean }
+  | { t: 'circle'; cx: number; cy: number; r: number; fill: string; dash?: boolean }
 
 /** Below this on-screen height the full shape is just a smudge: use the icon. */
 export const MIN_FULL_HEIGHT_PX = 10
@@ -25,8 +25,19 @@ const STEEL_DARK = 'rgba(71,85,105,0.95)'
 const WINDOW = 'rgba(226,232,240,0.55)'
 const WHITE = 'rgba(241,245,249,0.95)'
 
-/** Shape of one obstacle, or null when it is too short for a full-height drawing. */
-export function obstacleSymbol(kind: string, cx: number, tipY: number, groundY: number): SymbolPrim[] | null {
+/** Dash pattern of an estimated (assumed-height) symbol's outline, in px. */
+export const ESTIMATED_DASH = '3 2'
+
+/** Shape of one obstacle, or null when it is too short for a full-height drawing.
+ *  `estimated`: the height is an assumption, every primitive is flagged `dash` so
+ *  the renderer draws it dashed and lighter. */
+export function obstacleSymbol(kind: string, cx: number, tipY: number, groundY: number, estimated = false): SymbolPrim[] | null {
+  const prims = obstacleSymbolSolid(kind, cx, tipY, groundY)
+  if (prims && estimated) for (const p of prims) p.dash = true
+  return prims
+}
+
+function obstacleSymbolSolid(kind: string, cx: number, tipY: number, groundY: number): SymbolPrim[] | null {
   const h = groundY - tipY
   if (!(h >= MIN_FULL_HEIGHT_PX)) return null
   const prims: SymbolPrim[] = []

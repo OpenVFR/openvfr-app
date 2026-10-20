@@ -102,7 +102,9 @@ export type ObstacleMarker = {
   distNm:      number
   /** Distance off the route line (NM), for fading far-off obstacles. */
   lateralNm:   number
-  elevationFt: number   // tip elevation (AMSL)
+  /** Surveyed GROUND elevation of the structure (ft AMSL), 0 if unknown. The tip
+   *  is this (or the terrain) plus the height: see obstacleHeights.ts. */
+  elevationFt: number
   heightM:     number   // AGL height (0 if unknown)
   kind:        string   // 'wind_turbine' | 'tower' | 'chimney' | …
   name:        string
@@ -118,6 +120,8 @@ export type ObstacleMarker = {
  */
 export type LandmarkMarker = {
   distNm: number
+  /** OSM height in metres, 0 when unknown (an estimate is used then). */
+  heightM: number
   kind:   string   // 'church' | 'mast' | 'windmill' | 'water_tower' | 'chimney' | …
   name:   string
 }
@@ -339,6 +343,7 @@ interface ObstacleProps {
 interface LandmarkProps {
   kind: string
   name: string
+  height_m?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -593,6 +598,7 @@ export function buildVirtualRadarProfile(
 
     landmarkMarkers.push({
       distNm: Math.round(distNm * 10) / 10,
+      heightM: Number(p?.height_m ?? 0) || 0,
       kind:   String(p?.kind ?? ''),
       name:   String(p?.name ?? ''),
     })
