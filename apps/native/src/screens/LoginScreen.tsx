@@ -160,7 +160,7 @@ export function LoginScreen() {
               onPress={handleSaveName}
               disabled={busy || !name.trim()}
             >
-              {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Continue</Text>}
+              <Text style={styles.btnText}>Continue</Text>
             </TouchableOpacity>
           </>
         )}
@@ -177,17 +177,12 @@ export function LoginScreen() {
               onPress={handlePasskey}
               disabled={busy}
             >
-              {busy
-                ? <ActivityIndicator color="#fff" />
-                : (
-                  <View style={styles.btnRow}>
-                    <Ionicons name="key" size={22} color="#FACC15" />
-                    <Text style={styles.btnText} numberOfLines={1} adjustsFontSizeToFit>
-                      Sign in with passkey
-                    </Text>
-                  </View>
-                )
-              }
+              <View style={styles.btnRow}>
+                <Ionicons name="key" size={22} color="#FACC15" />
+                <Text style={styles.btnText} numberOfLines={1} adjustsFontSizeToFit>
+                  Sign in with passkey
+                </Text>
+              </View>
             </TouchableOpacity>
             <Text style={styles.hint} numberOfLines={1} adjustsFontSizeToFit>
               Needs a passkey set up on this device.
@@ -223,10 +218,7 @@ export function LoginScreen() {
               onPress={handleSendOtp}
               disabled={busy || !email.trim()}
             >
-              {busy
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.btnText}>Continue with email</Text>
-              }
+              <Text style={styles.btnText}>Continue with email</Text>
             </TouchableOpacity>
           </>
         )}
@@ -258,22 +250,22 @@ export function LoginScreen() {
               onPress={() => handleVerifyOtp()}
               disabled={busy || !otp.trim()}
             >
-              {busy
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.btnText}>Sign in</Text>
-              }
+              <Text style={styles.btnText}>Sign in</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.backBtn}
+              style={[styles.backBtn, busy && styles.btnDisabled]}
+              disabled={busy}
               onPress={() => { setStep('choose'); setOtp('') }}
             >
               <Text style={styles.backBtnText}>← Use a different email</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.backBtn} onPress={handleSendOtp} disabled={busy}>
+            <TouchableOpacity style={[styles.backBtn, busy && styles.btnDisabled]} onPress={handleSendOtp} disabled={busy}>
               <Text style={styles.backBtnText}>Resend code</Text>
             </TouchableOpacity>
           </>
         )}
+
+        {busy && <ActivityIndicator color={theme.textMuted} testID="login-progress" />}
 
         {shownError && <Text style={styles.error} testID="login-error">{shownError}</Text>}
 
