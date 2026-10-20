@@ -13,7 +13,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   IconCurrentLocation, IconCurrentLocationFilled, IconHome, IconPlaneDeparture, IconPlaneArrival,
   IconRulerMeasure, IconSearch, IconNews, IconArrowBigRight, IconMapPinPlus,
-  IconPencil, IconLockOpen, IconArrowUp, IconNavigation, IconRoute, IconZoomScan,
+  IconPencil, IconLockOpen, IconMagnet, IconMagnetOff, IconArrowUp, IconNavigation, IconRoute, IconZoomScan,
 } from '@tabler/icons-react'
 
 // Map control button glyphs (Tabler Icons). The imperative MapLibre buttons
@@ -784,6 +784,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
   }, [routeEditLocked, routeUndo.undo, routeUndo.redo])
   const routeAdjustModeRef = useRef(false)
   useEffect(() => { routeAdjustModeRef.current = routeAdjustMode }, [routeAdjustMode])
+  // Snapping of dragged route points to POIs, switchable from the map tools for
+  // touch (desktop can hold Alt while dragging). Off only while editing; the
+  // ref is what the map handlers read.
+  const [snapOff, setSnapOff] = useState(false)
+  const snapOffRef = useRef(false)
+  useEffect(() => { snapOffRef.current = snapOff }, [snapOff])
+  useEffect(() => { if (!planningMode && !routeAdjustMode) setSnapOff(false) }, [planningMode, routeAdjustMode])
   // Small context menu shown when tapping a waypoint in adjust mode
   const [wpMenu, setWpMenu] = useState<{ wpIdx: number; x: number; y: number } | null>(null)
   // Context menu shown after long-press on a route leg
@@ -2013,7 +2020,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       // are targets too: dropping a point onto its neighbour removes it
       // (see neighbourAtDrop), and the live hint says so.
       const snapQuery = (e: DragEvent, neighboursOf?: number): SnapCandidate[] => {
-        if (e.originalEvent?.altKey) return []
+        if (e.originalEvent?.altKey || snapOffRef.current) return []
         const SNAP_PX = 20
         const box: [maplibregl.PointLike, maplibregl.PointLike] = [
           [e.point.x - SNAP_PX, e.point.y - SNAP_PX],
@@ -4517,6 +4524,16 @@ export default function MapView({ auth }: { auth: AuthState }) {
                 : (editOn ? 'Stop editing and lock the route' : 'Tap the map to add waypoints; drag them or the leg midpoints to change the route'),
               icon: editOn ? <IconLockOpen {...CTRL_ICON} /> : <IconPencil {...CTRL_ICON} />, active: editOn, onSelect: toggleEdit },
           ]
+          // Place route points exactly where they are dropped, even next to a POI:
+          // the touch counterpart of holding Alt while dragging.
+          if (editOn) toolItems.push({
+            id: 'snap', label: snapOff ? 'Snap off' : 'Snap on', keepOpen: true, active: !snapOff,
+            description: snapOff
+              ? 'Dragged route points land exactly where you drop them. Tap to snap to aerodromes, navaids and obstacles again.'
+              : 'Dragged route points snap to a nearby aerodrome, navaid or obstacle. Tap to place them exactly instead (on a desktop, hold Alt while dragging).',
+            icon: snapOff ? <IconMagnetOff {...CTRL_ICON} /> : <IconMagnet {...CTRL_ICON} />,
+            onSelect: () => setSnapOff((v) => !v),
+          })
           if (flying) toolItems.push({ id: 'drop', label: 'Drop point', description: 'Save your current position as a waypoint in the "Dropped in Flight" folder', icon: <IconMapPinPlus {...CTRL_ICON} />, onSelect: dropWaypointHere })
           // Start / stop flying mode lives in the menu: Ask mode already offers a
           // Start prompt once takeoff is detected, and the flying panel has its own
