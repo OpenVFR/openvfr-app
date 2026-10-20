@@ -941,7 +941,9 @@ function OfflineDataSection() {
   // asset — default unchecked so a first download doesn't silently pull
   // hundreds of MB the pilot didn't ask for. Required (flight-safety-
   // critical) aviation data is always included, no checkbox shown.
-  const [selectedOptional, setSelectedOptional] = useState<Set<string>>(() => new Set())
+  // The terrain maximum grid is a few MB and feeds the MSA line, so it is
+  // ticked by default; the large layers stay opt-in.
+  const [selectedOptional, setSelectedOptional] = useState<Set<string>>(() => new Set(['mef']))
 
   const toggleOptional = useCallback((key: string) => {
     setSelectedOptional(prev => {
