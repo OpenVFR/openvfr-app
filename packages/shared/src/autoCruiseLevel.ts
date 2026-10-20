@@ -11,12 +11,11 @@
  */
 
 import type { RouteWaypoint } from './types'
+import { DEFAULT_MSA_MARGINS, resolveMsaMargins, type MsaMargins } from './msaMargins'
 
-/** Clearance above the highest terrain sample under the leg. Same figure
- *  as the Virtual Radar MSA line (virtualRadarCalc.ts MSA_CLEARANCE_FT). */
-export const TERRAIN_CLEARANCE_FT = 1000
-/** Clearance above the highest obstacle tip in the leg's corridor. */
-export const OBSTACLE_CLEARANCE_FT = 500
+/** Defaults, shared with the Virtual Radar MSA line (msaMargins.ts). */
+export const TERRAIN_CLEARANCE_FT = DEFAULT_MSA_MARGINS.terrainClearanceFt
+export const OBSTACLE_CLEARANCE_FT = DEFAULT_MSA_MARGINS.obstacleClearanceFt
 
 const roundUp100 = (ft: number) => Math.ceil(ft / 100) * 100
 
@@ -26,13 +25,15 @@ const roundUp100 = (ft: number) => Math.ceil(ft / 100) * 100
 export function requiredLegAltFt(
   terrainElevFt: readonly number[],
   obstacleTipFt: readonly number[],
+  margins?: Partial<MsaMargins> | null,
 ): number {
+  const m = resolveMsaMargins(margins)
   let maxTerrain = 0
   for (const e of terrainElevFt) if (e > maxTerrain) maxTerrain = e
   let maxObstacle = 0
   for (const t of obstacleTipFt) if (t > maxObstacle) maxObstacle = t
-  const forTerrain  = maxTerrain  > 0 ? roundUp100(maxTerrain)  + TERRAIN_CLEARANCE_FT  : 0
-  const forObstacle = maxObstacle > 0 ? roundUp100(maxObstacle) + OBSTACLE_CLEARANCE_FT : 0
+  const forTerrain  = maxTerrain  > 0 ? roundUp100(maxTerrain)  + m.terrainClearanceFt  : 0
+  const forObstacle = maxObstacle > 0 ? roundUp100(maxObstacle) + m.obstacleClearanceFt : 0
   return Math.max(forTerrain, forObstacle)
 }
 

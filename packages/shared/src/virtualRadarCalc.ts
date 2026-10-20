@@ -39,6 +39,7 @@
  * feet.
  */
 
+import { resolveMsaMargins, type MsaMargins } from './msaMargins'
 import along from '@turf/along'
 import length from '@turf/length'
 import booleanIntersects from '@turf/boolean-intersects'
@@ -937,8 +938,6 @@ export async function terrainProfileFromLookup(
 // MSA computation — Minimum Safe Altitude per terrain sample point
 // ---------------------------------------------------------------------------
 
-const MSA_CORRIDOR_NM  = 5.0    // abeam half-width either side of route centreline
-const MSA_CLEARANCE_FT = 1000   // obstacle clearance above highest terrain
 
 /**
  * Returns the aircraft's current distance in nautical miles along a planned
@@ -1003,42 +1002,49 @@ export function coordinateAlongRouteNm(
 /**
  * Compute MSA at each terrain sample point.
  *
- * For each point, scan all other terrain samples within a ±MSA_CORRIDOR_NM
+ * For each point, scan all other terrain samples within the abeam margin (default 5 NM)
  * window along the route (i.e. the route-distance axis, not lateral distance —
  * this is a conservative simplification appropriate for VFR planning: it
  * effectively checks a "sausage" of terrain either side of the route segment).
- * MSA = max terrain elevation in that window + MSA_CLEARANCE_FT.
+ * MSA = max(terrain + terrain clearance, obstacle tip + obstacle clearance).
+ * Margins: see msaMargins.ts.
  *
  * The corridor is sampled along the route distance axis rather than laterally
  * because we only have elevation data along the centreline.  For a proper
  * lateral scan the user would need a full DEM raster (Phase 2 deferred task).
  * This approach is standard for single-corridor MSA used in VFR planning tools.
  */
-export function computeMsaProfile(terrainPts: TerrainPoint[]): MsaPoint[] {
+export function computeMsaProfile(
+  terrainPts: TerrainPoint[],
+  margins?: Partial<MsaMargins> | null,
+  /** Obstacle tips (AMSL) along the route; each raises the MSA within the
+   *  corridor to tip + obstacle clearance. Optional: terrain only if omitted. */
+  obstacles?: readonly { distNm: number; elevationFt: number }[],
+): MsaPoint[] {
   if (terrainPts.length === 0) return []
+  const m = resolveMsaMargins(margins)
+  const obs = obstacles ?? []
 
-  return terrainPts.map((pt, _i) => {
-    // Find the sample-index range that falls within ±MSA_CORRIDOR_NM.
-    // Since samples are monotonically ordered by distNm we can binary-search,
-    // but a simple linear scan is fast enough for ≤100 points.
+  return terrainPts.map((pt) => {
     let maxElev = 0
     for (let j = 0; j < terrainPts.length; j++) {
-      const diff = Math.abs(terrainPts[j].distNm - pt.distNm)
-      if (diff > MSA_CORRIDOR_NM) continue
+      if (Math.abs(terrainPts[j].distNm - pt.distNm) > m.abeamNm) continue
       if (terrainPts[j].elevFt > maxElev) maxElev = terrainPts[j].elevFt
+    }
+    let maxTip = 0
+    for (const o of obs) {
+      if (Math.abs(o.distNm - pt.distNm) > m.abeamNm) continue
+      if (o.elevationFt > maxTip) maxTip = o.elevationFt
     }
 
     // Round up to the next 100 ft for a conventional MSA presentation.
-    const rawMsa   = maxElev + MSA_CLEARANCE_FT
-    const roundedMsa = Math.ceil(rawMsa / 100) * 100
+    const forTerrain  = maxElev > 0 ? maxElev + m.terrainClearanceFt : 0
+    const forObstacle = maxTip  > 0 ? maxTip  + m.obstacleClearanceFt : 0
+    const rawMsa = Math.max(forTerrain, forObstacle)
 
-    // Suppress MSA for sea-level terrain (open ocean / flat estuary):
-    // terrain ≤ 0 ft → MSA is just the clearance itself, which is meaningless
-    // to show so we emit 0 so the chart can filter it out.
-    return {
-      distNm: pt.distNm,
-      msaFt:  maxElev > 0 ? roundedMsa : 0,
-    }
+    // Terrain <= 0 ft (open ocean / flat estuary) with no obstacle: emit 0 so
+    // the chart can filter it out.
+    return { distNm: pt.distNm, msaFt: rawMsa > 0 ? Math.ceil(rawMsa / 100) * 100 : 0 }
   })
 }
 

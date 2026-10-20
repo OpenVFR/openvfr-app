@@ -13,6 +13,7 @@
     "./airspaceColors":  "./src/airspaceColors.ts",
     "./airspaceAltitude": "./src/airspaceAltitude.ts",
     "./lookahead": "./src/lookahead.ts",
+    "./msaMargins": "./src/msaMargins.ts",
     "./airspeed": "./src/airspeed.ts",
     "./windForecast": "./src/windForecast.ts",
     "./subAreas": "./src/subAreas.ts",
