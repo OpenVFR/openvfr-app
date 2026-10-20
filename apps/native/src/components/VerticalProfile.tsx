@@ -559,12 +559,16 @@ export function VerticalProfile({
   // pictogram). Landmarks thin out the same way, lower priority. Mirrors web.
   const { obstacleMarks, landmarkMarks, poiMarks } = useMemo(() => {
     const margins = resolveMsaMargins(msaMargins)
+    // Symbols at the very start/end of the route (the destination's church, an
+    // aerodrome on the last waypoint) are kept fully inside the plot instead of
+    // being half cut off at its edge.
+    const clampX = (x: number, half: number) => Math.max(xOf(0) + half, Math.min(xOf(totalNm) - half, x))
     const obs = (profile?.obstacles ?? []).map((o, i) => {
       const baseFt = Math.max(o.elevationFt, terrainAt(terrainPts, o.distNm))
       const tipFt = o.heightM > 0 ? Math.round(baseFt + o.heightM * 3.28084) : baseFt
       const limiting = isLimitingObstacle(tipFt, margins.obstacleClearanceFt, getMsa(o.distNm))
       return {
-        key: `obs-${i}`, kind: o.kind, cx: xOf(o.distNm), cy: yOf(tipFt), groundY: yOf(Math.max(0, baseFt)),
+        key: `obs-${i}`, kind: o.kind, cx: clampX(xOf(o.distNm), 8), cy: yOf(tipFt), groundY: yOf(Math.max(0, baseFt)),
         opacity: obstacleOpacity(o.lateralNm, margins.abeamNm), limiting, priority: limiting ? 1e9 + tipFt : tipFt, full: false,
       }
     })
@@ -574,7 +578,7 @@ export function VerticalProfile({
       // Floor at 0: landmarks rely purely on terrainAt(), which can go
       // negative from DEM noise over/near water.
       const baseFt = Math.max(0, terrainAt(terrainPts, l.distNm))
-      return { key: `lmk-${i}`, kind: l.kind, cx: xOf(l.distNm), cy: yOf(baseFt), full: false }
+      return { key: `lmk-${i}`, kind: l.kind, cx: clampX(xOf(l.distNm), 7), cy: yOf(baseFt), full: false }
     })
     const lmkFull = declutterMarks(lmk.map((m) => ({ id: m.key, x: m.cx, priority: 0 })), 18)
     lmk.forEach((m) => { m.full = lmkFull.has(m.key) })
@@ -584,14 +588,14 @@ export function VerticalProfile({
       const baseFt = poiBaseFt(p, terrainAt(terrainPts, p.distNm))
       return {
         key: `poi-${i}`, kind: p.kind, subtype: p.subtype, towered: p.towered, label: p.label,
-        cx: xOf(p.distNm), cy: yOf(baseFt),
+        cx: clampX(xOf(p.distNm), 6), cy: yOf(baseFt),
         priority: p.kind === 'aerodrome' ? (p.towered ? 4 : 3) : p.kind === 'navaid' ? 2 : 1, labelled: false,
       }
     })
     const poiLabelled = declutterMarks(pois.filter((m) => m.label).map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), 46)
     pois.forEach((m) => { m.labelled = poiLabelled.has(m.key) })
     return { obstacleMarks: obs, landmarkMarks: lmk, poiMarks: pois }
-  }, [profile, terrainPts, getMsa, msaMargins, xOf, yOf, waypoints, poiSets])
+  }, [profile, terrainPts, getMsa, msaMargins, xOf, yOf, totalNm, waypoints, poiSets])
   const maxScrollX  = Math.max(0, contentW - chartW)
   // Clamped x for wind arrows/labels only -- keeps the marker inside the
   // plot area by WIND_EDGE_MARGIN_PX regardless of route length, falling
@@ -607,12 +611,13 @@ export function VerticalProfile({
   // so spacing the ticks alone let it land on the previous label. The
   // destination always wins; the departure is skipped (it sits on the Y axis).
   const wpLabelRect = useCallback((name: string, distNm: number) => {
-    // Clamp by the label's own width (not a fixed 44 px): a long destination name
-    // such as "Sankt Pauli kyrka" is up to 60 px wide and was clipped at the edge.
+    // Clamp by the label's own width, and to the PLOT's right edge (not the
+    // wider content incl. the right margin): a long destination name such as
+    // "Sankt Pauli kyrka" (and its ellipsis) must stay inside the chart box.
     const w = estimateLabelWidth(name)
-    const left = Math.max(0, Math.min(contentW - w - 2, xOf(distNm) + 2))
+    const left = Math.max(0, Math.min(xOf(totalNm) - w - 2, xOf(distNm) + 2))
     return { left, right: left + w }
-  }, [xOf, contentW])
+  }, [xOf, totalNm])
   const visibleWaypointTicks = useMemo(() => {
     if (!profile) return []
     const ticks = profile.waypointTicks
@@ -1430,7 +1435,10 @@ export function VerticalProfile({
                     // web's identical fix.
                     <View key={m.key} style={{ position: 'absolute', left: 0, top: 0, opacity: m.opacity }} pointerEvents="none">
                       {m.groundY - m.cy > 4 && (
-                        <View style={{ position: 'absolute', width: 1, left: m.cx, top: m.cy, height: m.groundY - m.cy, backgroundColor: 'rgba(220,80,60,0.55)' }} />
+                        <>
+                          <View style={{ position: 'absolute', width: 1.5, left: m.cx - 0.75, top: m.cy, height: m.groundY - m.cy, backgroundColor: 'rgba(220,80,60,0.85)' }} />
+                          <View style={{ position: 'absolute', width: 4, height: 4, borderRadius: 2, left: m.cx - 2, top: m.groundY - 2, backgroundColor: 'rgba(220,80,60,0.95)' }} />
+                        </>
                       )}
                       {m.limiting && (
                         <View style={{ position: 'absolute', width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: 'rgba(239,68,68,0.95)', left: m.cx - 11, top: m.cy - 18 }} />
@@ -1506,7 +1514,8 @@ export function VerticalProfile({
                     // whole overlay scrolls with the Svg — doesn't overflow
                     // past contentW and get clipped to just its first letter.
                     const w = estimateLabelWidth(tick.name)
-                    const left = Math.max(0, Math.min(contentW - w - 2, xOf(tick.distNm) + 2))
+                    const left = Math.max(0, Math.min(xOf(totalNm) - w - 2, xOf(tick.distNm) + 2))
+                    const nearRight = xOf(tick.distNm) + 2 + w > xOf(totalNm) - 2
                     let top = MARGIN_T
                     for (let guard = 0; guard < 4; guard++) {
                       const hit = chips.find((c) =>
@@ -1517,7 +1526,9 @@ export function VerticalProfile({
                     return (
                       <Text
                         key={`wpl-${tick.distNm}-${tick.name}`}
-                        style={[styles.wpLabel, { left, top }]}
+                        // Near the plot's right edge the label is anchored by its RIGHT edge:
+                        // whatever width the text really renders at, it ends inside the plot.
+                        style={[styles.wpLabel, nearRight ? { right: contentW - xOf(totalNm) + 2, top, maxWidth: w } : { left, top, maxWidth: w }]}
                         numberOfLines={1}
                       >
                         {tick.name}

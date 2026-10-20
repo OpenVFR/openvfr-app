@@ -942,12 +942,15 @@ function VirtualRadar({
     if (!profile || !layout) return none
     const L = layout
     const margins = resolveMsaMargins(msaMargins)
+    // Symbols at the very start/end of the route are kept fully inside the plot
+    // instead of being half cut off at its edge.
+    const clampX = (x: number, half: number) => Math.max(L.xOf(0) + half, Math.min(L.xOf(L.totalNm) - half, x))
     const obs = profile.obstacles.map((o, i) => {
       const baseFt = Math.max(o.elevationFt, terrainAt(terrainPts, o.distNm))
       const tipFt = o.heightM > 0 ? Math.round(baseFt + o.heightM * 3.28084) : baseFt
       const limiting = isLimitingObstacle(tipFt, margins.obstacleClearanceFt, getMsa(o.distNm))
       return {
-        key: `obs-${i}`, kind: o.kind, cx: L.xOf(o.distNm), cy: L.yOf(tipFt), groundY: L.yOf(Math.max(0, baseFt)),
+        key: `obs-${i}`, kind: o.kind, cx: clampX(L.xOf(o.distNm), 8), cy: L.yOf(tipFt), groundY: L.yOf(Math.max(0, baseFt)),
         opacity: obstacleOpacity(o.lateralNm, margins.abeamNm), limiting, priority: limiting ? 1e9 + tipFt : tipFt, full: false,
       }
     })
@@ -957,7 +960,7 @@ function VirtualRadar({
       // Floored at 0: landmarks have no elevation of their own and
       // terrainAt() can go slightly negative from DEM noise near water.
       const baseFt = Math.max(0, terrainAt(terrainPts, l.distNm))
-      return { key: `lmk-${i}`, kind: l.kind, cx: L.xOf(l.distNm), cy: L.yOf(baseFt), full: false }
+      return { key: `lmk-${i}`, kind: l.kind, cx: clampX(L.xOf(l.distNm), 7), cy: L.yOf(baseFt), full: false }
     })
     const lmkFull = declutterMarks(lmk.map((m) => ({ id: m.key, x: m.cx, priority: 0 })), LANDMARK_MIN_GAP_PX)
     lmk.forEach((m) => { m.full = lmkFull.has(m.key) })
@@ -967,7 +970,7 @@ function VirtualRadar({
       const baseFt = poiBaseFt(p, terrainAt(terrainPts, p.distNm))
       return {
         key: `poi-${i}`, kind: p.kind, subtype: p.subtype, towered: p.towered, label: p.label,
-        cx: L.xOf(p.distNm), cy: L.yOf(baseFt),
+        cx: clampX(L.xOf(p.distNm), 6), cy: L.yOf(baseFt),
         priority: p.kind === 'aerodrome' ? (p.towered ? 4 : 3) : p.kind === 'navaid' ? 2 : 1, labelled: false,
       }
     })
@@ -1049,7 +1052,10 @@ function VirtualRadar({
           return (
             <g key={m.key} opacity={m.opacity}>
               {m.groundY - m.cy > 4 && (
-                <line x1={m.cx} y1={m.cy} x2={m.cx} y2={m.groundY} stroke="rgba(220,80,60,0.55)" strokeWidth={1} />
+                <>
+                  <line x1={m.cx} y1={m.cy} x2={m.cx} y2={m.groundY} stroke="rgba(220,80,60,0.85)" strokeWidth={1.5} />
+                  <circle cx={m.cx} cy={m.groundY} r={2} fill="rgba(220,80,60,0.95)" />
+                </>
               )}
               {m.limiting && <circle cx={m.cx} cy={m.cy - 7} r={11} fill="none" stroke={DANGER_COLOR} strokeWidth={1.5} />}
               {renderIconAt(`${m.key}-i`, m.cx, m.cy, 16, iconMarkup[`obs:${m.kind}`],
