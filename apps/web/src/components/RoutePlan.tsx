@@ -7,6 +7,8 @@ import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel, ktsToDisplay, displa
 import { useAlternate, type GlobalWind } from '../db/useSettings'
 import LegPropsPanel from './LegPropsPanel'
 import type { RouteWinds } from '../hooks/useRouteWinds'
+import { useLegMsa } from '../hooks/useLegMsa'
+import { legBelowMsa, legMsaApplies } from '@open-vfr/shared/legLevelDrag'
 import FindFeature from './FindFeature'
 import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
 import css from './RoutePlan.module.css'
@@ -208,6 +210,11 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
   const kbRef        = useRef<HTMLInputElement>(null)
   const gpxInputRef  = useRef<HTMLInputElement>(null)
   const [alternate, setAlternate] = useAlternate()
+  const { legMsa, spans: msaSpans, totalNm: msaTotalNm } = useLegMsa(waypoints)
+  // Planned level of a leg: its own override, else the route/aircraft default.
+  const legPlannedAlt = (i: number) => legOverrides[i]?.altFt ?? defaultAltFt ?? 3500
+  const legIsBelowMsa = (i: number) =>
+    msaSpans[i] != null && legBelowMsa(msaSpans[i], msaTotalNm, legPlannedAlt(i), legMsa[i] ?? 0)
   // Local string inputs for WND row (display-unit)
   const [wndDir, setWndDir] = useState(globalWind ? String(globalWind.dirDeg) : '')
   const [wndSpd, setWndSpd] = useState(globalWind ? String(Math.round(ktsToDisplay(globalWind.speedKts, units.speed))) : '')
@@ -524,8 +531,10 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
                     onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(i) }}
                   >{leg.fromName}{tafWarnIcaos.includes(leg.fromName) && <span className={css.tafWarn} title="TAF: trend change due within 3 h">{' \u26a0'}</span>}</div>
                   <div
-                    className={`${css.arrow}${hasOverride ? ` ${css.arrowSet}` : ''} ${css.arrowBtn}`}
-                    title="Edit leg properties"
+                    className={`${css.arrow}${hasOverride ? ` ${css.arrowSet}` : ''}${legIsBelowMsa(i) ? ` ${css.arrowMsa}` : ''} ${css.arrowBtn}`}
+                    title={legIsBelowMsa(i)
+                      ? `Planned ${legPlannedAlt(i).toLocaleString('en-US')} ft is below this leg's MSA of ${legMsa[i].toLocaleString('en-US')} ft. Edit leg properties`
+                      : legMsa[i] > 0 ? `MSA ${legMsa[i].toLocaleString('en-US')} ft. Edit leg properties` : 'Edit leg properties'}
                     onClick={() => setActiveLeg(i === activeLeg ? null : i)}
                   >→</div>
                   <div
@@ -627,6 +636,8 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
           override={legOverrides[activeLeg] ?? {}}
           units={units}
           defaultAltFt={defaultAltFt}
+          msaFt={legMsa[activeLeg] ?? 0}
+          msaApplies={msaSpans[activeLeg] != null && legMsaApplies(msaSpans[activeLeg], msaTotalNm)}
           defaultSpeedKts={defaultSpeedKts}
           globalWind={globalWind}
           forecastWind={forecastWinds[activeLeg] ?? null}

@@ -249,6 +249,12 @@
   color: var(--accent-blue-bright);
 }
 
+.arrowMsa {
+  border-color: var(--accent-red);
+  background: rgba(252, 165, 165, 0.12);
+  color: var(--accent-red);
+}
+
 .brg {
   color: var(--accent-blue-bright);
   font-size: 11px;

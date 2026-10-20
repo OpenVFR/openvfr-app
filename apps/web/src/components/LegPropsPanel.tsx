@@ -17,6 +17,10 @@ interface Props {
   units?:   Units
   /** Altitude (ft) assumed when the leg has none: the aircraft's cruise altitude (IAS→TAS conversion). */
   defaultAltFt?: number
+  /** Minimum safe altitude (ft) of this leg; 0 / undefined = unknown. */
+  msaFt?: number
+  /** False near departure/destination, where flying below MSA is normal. */
+  msaApplies?: boolean
   /** Cruise IAS (kt) of the selected aircraft, used when the leg has no speed of its own. */
   defaultSpeedKts?: number
   /** Session-wide manual wind — used when the leg has no override of its own. */
@@ -40,7 +44,7 @@ function parseField(val: string): number | undefined {
 
 export default function LegPropsPanel({
   legIndex, fromName, toName, distNm, trueBrg, magBrg,
-  override, units = DEFAULT_UNITS, defaultAltFt, defaultSpeedKts, globalWind, forecastWind, forecastLoading, wpNote, onSaveNote, onSave, onClose,
+  override, units = DEFAULT_UNITS, defaultAltFt, msaFt, msaApplies = true, defaultSpeedKts, globalWind, forecastWind, forecastLoading, wpNote, onSaveNote, onSave, onClose,
 }: Props) {
   const [altFt,    setAltFt]    = useState(override.altFt    != null ? String(override.altFt)    : '')
   // Speed field is stored in kts internally; display in selected speed unit.
@@ -215,6 +219,25 @@ export default function LegPropsPanel({
           </button>
         )}
       </div>
+
+      {/* Minimum safe altitude of this leg, with a one-tap raise when below it */}
+      {msaFt != null && msaFt > 0 && (() => {
+        const planned = parseField(altFt) ?? defaultAltFt ?? 3500
+        const below = msaApplies && planned < msaFt
+        return (
+          <div className={css.derived}>
+            <span className={below ? css.msaWarn : undefined}>
+              <span className={css.infoLabel}>MSA</span> {msaFt.toLocaleString('en-US')} ft
+              {below && ' — planned level is below it'}
+            </span>
+            {below && (
+              <button type="button" onClick={() => setAltFt(String(msaFt))} title="Set this leg's altitude to its MSA (then Apply)">
+                Raise to MSA
+              </button>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Derived TAS + GS + ETE */}
       {(gs != null || eteMin != null) && (

@@ -144,6 +144,11 @@
   border-top: 1px solid var(--border-subtle);
 }
 
+.msaWarn {
+  color: var(--accent-red);
+  font-weight: 600;
+}
+
 /* ── Footer ──────────────────────────────────────────────────────────────── */
 .footer {
   display: flex;

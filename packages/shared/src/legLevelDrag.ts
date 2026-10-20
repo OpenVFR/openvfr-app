@@ -14,6 +14,7 @@
  */
 
 import type { ProfilePoint, MsaPoint } from './virtualRadarCalc'
+import { BELOW_MSA_ENDPOINT_SUPPRESS_NM } from './profileChart'
 
 export const LEVEL_STEP_FT = 100
 export const LEVEL_MAX_FT = 50_000
@@ -59,4 +60,35 @@ export function legMsaFt(msaPts: readonly MsaPoint[], fromNm: number, toNm: numb
  *  convention; keep feet here so the label matches the leg editor. */
 export function levelLabel(altFt: number): string {
   return `${altFt.toLocaleString('en-US')} ft`
+}
+
+/**
+ * MSA (ft, multiple of 100; 0 = none known) of every leg: the highest MSA
+ * sample inside the leg's span. A leg shorter than the sample spacing has no
+ * sample of its own, so it falls back to the MSA at its midpoint.
+ */
+export function legMsaList(
+  spans: readonly LegSpan[],
+  msaPts: readonly MsaPoint[],
+  msaAt: (distNm: number) => number,
+): number[] {
+  return spans.map((s) => Math.max(legMsaFt(msaPts, s.fromNm, s.toNm), msaAt((s.fromNm + s.toNm) / 2)))
+}
+
+/**
+ * True when a leg planned at `altFt` is below its MSA and should be flagged.
+ * Climb-out and approach are normal below MSA, so a leg lying entirely
+ * within BELOW_MSA_ENDPOINT_SUPPRESS_NM of departure or destination is not
+ * flagged (same rule as the chart's red line).
+ */
+export function legBelowMsa(span: LegSpan, totalNm: number, altFt: number, msaFt: number): boolean {
+  if (msaFt <= 0 || altFt >= msaFt) return false
+  return legMsaApplies(span, totalNm)
+}
+
+/** False for a leg lying entirely within the endpoint suppression distance of
+ *  departure or destination, where flying below MSA is normal. */
+export function legMsaApplies(span: LegSpan, totalNm: number): boolean {
+  const s = BELOW_MSA_ENDPOINT_SUPPRESS_NM
+  return !(span.toNm <= s || span.fromNm >= totalNm - s)
 }
