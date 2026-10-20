@@ -12,7 +12,9 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { fetchTerrainProfile, buildVirtualRadarProfile, terrainAt } from '@open-vfr/shared/virtualRadarCalc'
+import { buildVirtualRadarProfile, terrainAt, terrainWithCorridorFt } from '@open-vfr/shared/virtualRadarCalc'
+import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
+import { useMefGrids } from './useMefGrids'
 import { requiredLegAltFt, newLegsAfterChange, autoLevelMessage } from '@open-vfr/shared/autoCruiseLevel'
 import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import { obstacleTipsForMsa } from '@open-vfr/shared/obstacleHeights'
@@ -60,9 +62,10 @@ export function useAutoCruiseLevel(opts: {
 }) {
   const { waypoints, legOverrides, setLegOverride, defaultAltFt, onNotice, enabled, msaMargins } = opts
   const prevRef = useRef<RouteWaypoint[]>(waypoints)
+  const mefGrids = useMefGrids()
   // Latest values for the async work below.
-  const latest = useRef({ waypoints, legOverrides, defaultAltFt, onNotice, setLegOverride, msaMargins })
-  latest.current = { waypoints, legOverrides, defaultAltFt, onNotice, setLegOverride, msaMargins }
+  const latest = useRef({ waypoints, legOverrides, defaultAltFt, onNotice, setLegOverride, msaMargins, mefGrids })
+  latest.current = { waypoints, legOverrides, defaultAltFt, onNotice, setLegOverride, msaMargins, mefGrids }
 
   useEffect(() => {
     const prev = prevRef.current
@@ -73,7 +76,7 @@ export function useAutoCruiseLevel(opts: {
     for (const legIndex of legs) {
       const legWps = [waypoints[legIndex], waypoints[legIndex + 1]]
       Promise.all([
-        fetchTerrainProfile(legWps, API_BASE, undefined, getOfflineDem()).catch(() => []),
+        fetchTerrainProfileShared(legWps, API_BASE, undefined, getOfflineDem()).catch(() => []),
         loadObstacles().catch(() => EMPTY_FC),
         loadLandmarks().catch(() => EMPTY_FC),
       ]).then(([terrain, obstacles, landmarks]) => {
@@ -84,7 +87,8 @@ export function useAutoCruiseLevel(opts: {
         if (!same(now[legIndex], legWps[0]) || !same(now[legIndex + 1], legWps[1])) return
         const profile = buildVirtualRadarProfile(legWps, [], EMPTY_FC, obstacles, undefined, landmarks, Infinity, undefined, { obstacleNm: resolveMsaMargins(latest.current.msaMargins).abeamNm, landmarkNm: resolveMsaMargins(latest.current.msaMargins).abeamNm })
         const tips = obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(terrain, d)).map((o) => o.elevationFt)
-        const required = requiredLegAltFt(terrain.map((t) => t.elevFt), tips, latest.current.msaMargins)
+        // Corridor maximum (offline grid) as well as the centreline, like the chart's MSA.
+        const required = requiredLegAltFt(terrainWithCorridorFt(legWps, terrain, latest.current.mefGrids, latest.current.msaMargins), tips, latest.current.msaMargins)
         const { legOverrides, defaultAltFt, onNotice, setLegOverride } = latest.current
         const planned = legOverrides[legIndex]?.altFt ?? defaultAltFt
         if (required <= planned) return

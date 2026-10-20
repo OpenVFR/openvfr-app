@@ -18,6 +18,7 @@
     "./routePois": "./src/routePois.ts",
     "./obstacleSymbol": "./src/obstacleSymbol.ts",
     "./obstacleHeights": "./src/obstacleHeights.ts",
+    "./terrainCache": "./src/terrainCache.ts",
     "./airspeed": "./src/airspeed.ts",
     "./windForecast": "./src/windForecast.ts",
     "./subAreas": "./src/subAreas.ts",

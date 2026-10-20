@@ -1090,6 +1090,22 @@ export function corridorTerrainAlongRoute(
 }
 
 /**
+ * Terrain elevation per sample for a clearance calculation: the higher of the
+ * centreline sample and the corridor maximum from the offline grid (when there
+ * is one). Same figure the Virtual Radar MSA line is built on, for callers that
+ * only need the numbers (the automatic cruise level for a new leg).
+ */
+export function terrainWithCorridorFt(
+  waypoints: RouteWaypoint[],
+  terrainPts: readonly TerrainPoint[],
+  grids: readonly MefGrid[],
+  margins?: Partial<MsaMargins> | null,
+): number[] {
+  const corridor = corridorTerrainAlongRoute(waypoints, terrainPts, grids, margins)
+  return terrainPts.map((p, i) => Math.max(p.elevFt, corridor[i] ?? 0))
+}
+
+/**
  * Linearly interpolate ground elevation at an arbitrary distance along the
  * route from the sampled terrain points.
  *

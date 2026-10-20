@@ -11,11 +11,11 @@
 import { useMsaMargins } from '../db/useSettings'
 import { resolveMsaMargins, DEFAULT_MSA_MARGINS, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import { obstacleTipsForMsa } from '@open-vfr/shared/obstacleHeights'
+import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
 import { useMefGrids } from '../hooks/useMefGrids'
 import { useState, useEffect, useMemo } from 'react'
 import {
   buildVirtualRadarProfile,
-  fetchTerrainProfile,
   computeMsaProfile,
   corridorTerrainAlongRoute,
   applyTerrainToBands,
@@ -274,7 +274,7 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
     setTerrainDone(false)
     setTerrainFailed(false)
     const ctrl = new AbortController()
-    fetchTerrainProfile(waypoints, API_BASE_URL, ctrl.signal, getRemoteDem())
+    fetchTerrainProfileShared(waypoints, API_BASE_URL, ctrl.signal, getRemoteDem())
       .then((pts) => {
         setTerrainPts(pts)
         setTerrainDone(true)

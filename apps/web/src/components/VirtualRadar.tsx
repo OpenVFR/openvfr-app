@@ -15,6 +15,7 @@ import type { RouteWaypoint } from '../utils/routeCalc'
 import { useMsaMargins } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
+import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
 import { obstacleSymbol, polyPath, ESTIMATED_DASH, type SymbolPrim } from '@open-vfr/shared/obstacleSymbol'
 import { effectiveHeight, obstacleTipsForMsa, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
 import { legSpans, legMsaList, legBelowMsa, dragShownFt, altAtY, unreachedLegs, LEVEL_STEP_FT, DRAG_MIN_MOVE_PX, type LegSpan } from '@open-vfr/shared/legLevelDrag'
@@ -22,7 +23,7 @@ import { useMefGrids } from '../hooks/useMefGrids'
 import type { LegOverride } from '../db/index'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel } from '../utils/units'
 import {
-  buildVirtualRadarProfile, applyTerrainToBands, fetchTerrainProfile, projectFlightPath, DEFAULT_PERF_MODEL, computeMsaProfile, terrainAt,
+  buildVirtualRadarProfile, applyTerrainToBands, projectFlightPath, DEFAULT_PERF_MODEL, computeMsaProfile, terrainAt,
   getMsaLookup, corridorTerrainAlongRoute, computeTrajectoryTicks, computeVspeedTrajectory, projectWeatherMarks,
   type TerrainPoint, type MsaPoint, type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
@@ -658,7 +659,7 @@ function VirtualRadar({
     const controller = new AbortController()
     setTerrainPts([])  // clear stale terrain while new fetch is in progress
     setTerrainFailed(false)
-    fetchTerrainProfile(waypoints, API_BASE_URL, controller.signal, getRemoteDem())
+    fetchTerrainProfileShared(waypoints, API_BASE_URL, controller.signal, getRemoteDem())
       .then((pts) => {
         setTerrainPts(pts)
       })

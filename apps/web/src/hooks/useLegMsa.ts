@@ -12,7 +12,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import {
-  fetchTerrainProfile, buildVirtualRadarProfile, computeMsaProfile, corridorTerrainAlongRoute,
+  buildVirtualRadarProfile, computeMsaProfile, corridorTerrainAlongRoute,
   getMsaLookup, terrainAt, type TerrainPoint,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { legSpans, legMsaList, type LegSpan } from '@open-vfr/shared/legLevelDrag'
@@ -23,6 +23,7 @@ import { API_BASE_URL } from '../utils/env'
 import { useMsaMargins } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { obstacleTipsForMsa } from '@open-vfr/shared/obstacleHeights'
+import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
 import { useMefGrids } from './useMefGrids'
 import type { RouteWaypoint } from '../utils/routeCalc'
 
@@ -48,7 +49,7 @@ export function useLegMsa(waypoints: RouteWaypoint[]): LegMsa {
   useEffect(() => {
     if (waypoints.length < 2) { setTerrain([]); return }
     const ctrl = new AbortController()
-    fetchTerrainProfile(waypoints, API_BASE_URL, ctrl.signal, getRemoteDem())
+    fetchTerrainProfileShared(waypoints, API_BASE_URL, ctrl.signal, getRemoteDem())
       .then(setTerrain)
       .catch(() => { if (!ctrl.signal.aborted) setTerrain([]) })
     return () => ctrl.abort()

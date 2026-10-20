@@ -37,7 +37,6 @@ import { type Units, DEFAULT_UNITS, nmToDisplay } from '../utils/units'
 import {
   buildVirtualRadarProfile,
   applyTerrainToBands,
-  fetchTerrainProfile,
   projectFlightPath, plannedAltitudeLine, DEFAULT_PERF_MODEL,
   computeMsaProfile,
   corridorTerrainAlongRoute,
@@ -54,6 +53,7 @@ import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import { legSpans, legMsaList, legBelowMsa, dragShownFt, altAtY, unreachedLegs, LEVEL_STEP_FT, DRAG_MIN_MOVE_PX, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
 import { obstacleSymbol, polyPath, ESTIMATED_DASH } from '@open-vfr/shared/obstacleSymbol'
+import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
 import { effectiveHeight, obstacleTipsForMsa, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
 import { useMefGrids } from '../hooks/useMefGrids'
 import { pickWaypointLabels, estimateLabelWidth } from '@open-vfr/shared/profileLabels'
@@ -479,7 +479,7 @@ export function VerticalProfile({
     // TILE_BASE here hit the R2 bucket with a bogus path and came back with
     // a 401 misreported as "OpenTopoData HTTP 401" (found 2026-09-20).
     // Offline: the cached hillshade DEM stands in for the elevation API.
-    fetchTerrainProfile(waypoints, API_BASE, controller.signal, getOfflineDem())
+    fetchTerrainProfileShared(waypoints, API_BASE, controller.signal, getOfflineDem())
       .then((pts) => {
         setTerrainPts(pts)
       })
