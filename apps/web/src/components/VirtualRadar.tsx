@@ -12,6 +12,7 @@ import {
   polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, type ProfileChartLayout,
 } from '@open-vfr/shared/profileChart'
 import type { RouteWaypoint } from '../utils/routeCalc'
+import { useMsaMargins } from '../db/useSettings'
 import type { LegOverride } from '../db/index'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel } from '../utils/units'
 import {
@@ -426,7 +427,6 @@ function VirtualRadar({
   // Neither the elevation API nor the hillshade DEM could supply terrain:
   // no ground line, no MSA, AGL bands at raw height. Said on the chart.
   const [terrainFailed, setTerrainFailed] = useState(false)
-  const [msaPts,     setMsaPts]     = useState<MsaPoint[]>([])
   const [collapsed, setCollapsed]         = useState(false)
   const [showWindAloft, setShowWindAloft] = useState(true)
 
@@ -470,7 +470,6 @@ function VirtualRadar({
   useEffect(() => {
     if (waypoints.length < 2) {
       setTerrainPts([])
-      setMsaPts([])
       return
     }
     const controller = new AbortController()
@@ -479,7 +478,6 @@ function VirtualRadar({
     fetchTerrainProfile(waypoints, API_BASE_URL, controller.signal, getRemoteDem())
       .then((pts) => {
         setTerrainPts(pts)
-        setMsaPts(computeMsaProfile(pts))
       })
       .catch((err: unknown) => {
         if ((err as { name?: string }).name !== 'AbortError') {
@@ -536,6 +534,11 @@ function VirtualRadar({
   }, [profile, iconMarkup])
 
   // MSA lookup at a given distNm — shared with native (getMsaLookup).
+  const [msaMargins] = useMsaMargins()
+  const msaPts = useMemo<MsaPoint[]>(
+    () => computeMsaProfile(terrainPts, msaMargins, profile?.obstacles),
+    [terrainPts, msaMargins, profile?.obstacles],
+  )
   const getMsa = useMemo(() => getMsaLookup(msaPts), [msaPts])
 
   // Trajectory tick distances (NM along route) — mirrors the map trajectory

@@ -14,6 +14,7 @@
 import { useEffect, useRef } from 'react'
 import { fetchTerrainProfile, buildVirtualRadarProfile } from '@open-vfr/shared/virtualRadarCalc'
 import { requiredLegAltFt, newLegsAfterChange, autoLevelMessage } from '@open-vfr/shared/autoCruiseLevel'
+import type { MsaMargins } from '@open-vfr/shared/msaMargins'
 import { getTileUrls, API_BASE } from '../config'
 import { getOfflineDem } from '../utils/terrainDem'
 import type { RouteWaypoint, LegOverride } from '../types/db'
@@ -42,12 +43,13 @@ export function useAutoCruiseLevel(opts: {
   onNotice: (text: string) => void
   /** Off while flying: the route is being followed, not planned. */
   enabled: boolean
+  msaMargins?: Partial<MsaMargins>
 }) {
-  const { waypoints, legOverrides, setLegOverride, defaultAltFt, onNotice, enabled } = opts
+  const { waypoints, legOverrides, setLegOverride, defaultAltFt, onNotice, enabled, msaMargins } = opts
   const prevRef = useRef<RouteWaypoint[]>(waypoints)
   // Latest values for the async work below.
-  const latest = useRef({ waypoints, legOverrides, defaultAltFt, onNotice, setLegOverride })
-  latest.current = { waypoints, legOverrides, defaultAltFt, onNotice, setLegOverride }
+  const latest = useRef({ waypoints, legOverrides, defaultAltFt, onNotice, setLegOverride, msaMargins })
+  latest.current = { waypoints, legOverrides, defaultAltFt, onNotice, setLegOverride, msaMargins }
 
   useEffect(() => {
     const prev = prevRef.current
@@ -67,7 +69,7 @@ export function useAutoCruiseLevel(opts: {
         const same = (a?: RouteWaypoint, b?: RouteWaypoint) => !!a && !!b && a.lat === b.lat && a.lng === b.lng
         if (!same(now[legIndex], legWps[0]) || !same(now[legIndex + 1], legWps[1])) return
         const profile = buildVirtualRadarProfile(legWps, [], EMPTY_FC, obstacles)
-        const required = requiredLegAltFt(terrain.map((t) => t.elevFt), profile.obstacles.map((o) => o.elevationFt))
+        const required = requiredLegAltFt(terrain.map((t) => t.elevFt), profile.obstacles.map((o) => o.elevationFt), latest.current.msaMargins)
         const { legOverrides, defaultAltFt, onNotice, setLegOverride } = latest.current
         const planned = legOverrides[legIndex]?.altFt ?? defaultAltFt
         if (required <= planned) return

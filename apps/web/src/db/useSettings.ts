@@ -1,5 +1,6 @@
 import { PARK_TIMEOUT_OPTIONS, PARK_TIMEOUT_DEFAULT, parseParkTimeout, type ParkTimeoutOption } from '@open-vfr/shared/parkTimeout'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
+import { DEFAULT_MSA_MARGINS, resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import { getDb } from './index'
 import { type Units, DEFAULT_UNITS } from '../utils/units'
 import { AUTO_FLY_MODES, AUTO_FLY_DEFAULT, type AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
@@ -604,4 +605,48 @@ export function useSelectedAircraftId(): [string | null, (id: string | null) => 
   }, [])
 
   return [id, setId]
+}
+
+// ---------------------------------------------------------------------------
+// useMsaMargins — abeam corridor + terrain/obstacle clearance used by the
+// Virtual Radar MSA line, pre-flight below-MSA warnings and the automatic
+// cruise level. One shared store (not per-component state) so changing it in
+// Settings updates the chart and warnings at once. Persisted to RxDB as JSON.
+// ---------------------------------------------------------------------------
+const MSA_MARGINS_KEY = 'msa_margins'
+let msaMargins: MsaMargins = DEFAULT_MSA_MARGINS
+let msaMarginsLoaded = false
+const msaMarginsListeners = new Set<() => void>()
+
+function setMsaMarginsStore(next: MsaMargins) {
+  msaMargins = next
+  msaMarginsListeners.forEach((l) => l())
+}
+
+function loadMsaMargins() {
+  if (msaMarginsLoaded) return
+  msaMarginsLoaded = true
+  getDb().then(async (db) => {
+    const doc = await db.settings.findOne(MSA_MARGINS_KEY).exec()
+    if (!doc) return
+    try { setMsaMarginsStore(resolveMsaMargins(JSON.parse(doc.value))) } catch { /* keep defaults */ }
+  }).catch(() => { msaMarginsLoaded = false })
+}
+
+export function setMsaMargins(v: Partial<MsaMargins>) {
+  const next = resolveMsaMargins({ ...msaMargins, ...v })
+  setMsaMarginsStore(next)
+  getDb().then(async (db) => {
+    await db.settings.upsert({ id: MSA_MARGINS_KEY, value: JSON.stringify(next) })
+  }).catch(() => {})
+}
+
+export function getMsaMargins(): MsaMargins { return msaMargins }
+
+export function useMsaMargins(): [MsaMargins, (v: Partial<MsaMargins>) => void] {
+  const val = useSyncExternalStore(
+    (cb) => { loadMsaMargins(); msaMarginsListeners.add(cb); return () => { msaMarginsListeners.delete(cb) } },
+    () => msaMargins,
+  )
+  return [val, setMsaMargins]
 }

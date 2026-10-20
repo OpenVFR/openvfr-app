@@ -23,6 +23,8 @@ function GpsAltitudeReferenceRow() {
     </div>
   )
 }
+import { useMsaMargins } from '../db/useSettings'
+import { DEFAULT_MSA_MARGINS } from '@open-vfr/shared/msaMargins'
 import { repairAppFiles } from '../utils/repairApp'
 import css from './SettingsPanel.module.css'
 
@@ -63,6 +65,25 @@ const THEMES: { value: Theme; label: string }[] = [
   { value: 'light',         label: 'Light'  },
   { value: 'high-contrast', label: 'Hi-Con' },
 ]
+
+/** Terrain/obstacle margins for the MSA line, below-MSA warnings and auto cruise level. */
+function MsaMarginsSettings() {
+  const [m, setM] = useMsaMargins()
+  const row = (label: string, value: number, unit: string, min: number, max: number, step: number, key: 'abeamNm' | 'terrainClearanceFt' | 'obstacleClearanceFt', title: string) => (
+    <div className={`${css.section} ${css.sectionColumn}`} title={title}>
+      <span className={css.label}>{label}: {value} {unit}</span>
+      <input type="range" className={css.slider} min={min} max={max} step={step} value={value}
+        onChange={e => setM({ [key]: Number(e.target.value) })} />
+    </div>
+  )
+  return (
+    <>
+      {row('MSA abeam', m.abeamNm, 'NM', 1, 10, 0.5, 'abeamNm', `Terrain is checked this far either side of the route (default ${DEFAULT_MSA_MARGINS.abeamNm} NM)`)}
+      {row('Terrain clearance', m.terrainClearanceFt, 'ft', 0, 3000, 100, 'terrainClearanceFt', `Minimum height above the highest terrain (default ${DEFAULT_MSA_MARGINS.terrainClearanceFt} ft)`)}
+      {row('Obstacle clearance', m.obstacleClearanceFt, 'ft', 0, 2000, 100, 'obstacleClearanceFt', `Minimum height above the highest obstacle tip (default ${DEFAULT_MSA_MARGINS.obstacleClearanceFt} ft)`)}
+    </>
+  )
+}
 
 export default function SettingsPanel({ units, onUnitsChange, countries, selectedCountries, onSelectedCountriesChange, theme, onThemeChange, trajectoryMode, onTrajectoryModeChange, airspaceWarnLookahead, onAirspaceWarnLookaheadChange, airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange, trafficVertFilter, onTrafficVertFilterChange, parkTimeout, onParkTimeoutChange, autoFlyMode, onAutoFlyModeChange, inFlight, onClose, manifest, isOnline = true, checking = false, onRefresh }: Props) {
   return (
@@ -156,6 +177,8 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
           ))}
         </div>
       </div>
+
+      <MsaMarginsSettings />
 
       <div className={`${css.section} ${css.sectionColumn}`}>
         <span className={css.label}>

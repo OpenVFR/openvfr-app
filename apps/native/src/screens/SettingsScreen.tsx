@@ -252,6 +252,27 @@ export function SettingsScreen() {
           format={(v) => v === 0 ? 'Off' : `${v} ft`}
           onChange={(v) => update({ airspaceWarnVerticalFt: v })}
         />
+        <RowSlider
+          label="MSA abeam"
+          value={settings.msaMargins.abeamNm}
+          min={1} max={10} step={0.5}
+          format={(v) => `${v} NM`}
+          onChange={(v) => update({ msaMargins: { ...settings.msaMargins, abeamNm: v } })}
+        />
+        <RowSlider
+          label="Terrain clearance"
+          value={settings.msaMargins.terrainClearanceFt}
+          min={0} max={3000} step={100}
+          format={(v) => `${v} ft`}
+          onChange={(v) => update({ msaMargins: { ...settings.msaMargins, terrainClearanceFt: v } })}
+        />
+        <RowSlider
+          label="Obstacle clearance"
+          value={settings.msaMargins.obstacleClearanceFt}
+          min={0} max={2000} step={100}
+          format={(v) => `${v} ft`}
+          onChange={(v) => update({ msaMargins: { ...settings.msaMargins, obstacleClearanceFt: v } })}
+        />
       </Section>
 
       <Section title="Navigation">

@@ -10,6 +10,7 @@ import { DEFAULT_UNITS } from '../utils/units'
 import type { ThemeName } from '../styles/theme'
 import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
 import { PARK_TIMEOUT_DEFAULT, type ParkTimeoutOption } from '@open-vfr/shared/parkTimeout'
+import { DEFAULT_MSA_MARGINS, type MsaMargins } from '@open-vfr/shared/msaMargins'
 
 export type AppSettings = {
   units:        Units
@@ -26,6 +27,8 @@ export type AppSettings = {
   airspaceWarnLookaheadMin: number
   /** Vertical buffer in feet — warn when within this distance of a floor/ceiling */
   airspaceWarnVerticalFt: number
+  /** Abeam corridor + terrain/obstacle clearance for the MSA line, below-MSA warnings and auto cruise level */
+  msaMargins: MsaMargins
   /** Trajectory mode: project N minutes ahead (time) or fixed NM (nm) */
   trajectoryMode: 'time' | 'nm'
   /** GaugesBar GPS gauge: show GPS HGT (above ground) instead of GPS ALT (above sea level) (tap to toggle) */
@@ -75,6 +78,7 @@ const DEFAULTS: AppSettings = {
   trajectoryNm:        5,
   airspaceWarnLookaheadMin: 5,
   airspaceWarnVerticalFt:   500,
+  msaMargins:               DEFAULT_MSA_MARGINS,
   trajectoryMode:           'time',
   showAltitudeAgl:          false,
   showQnhOnPaltGauge:       false,

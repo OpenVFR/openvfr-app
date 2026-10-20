@@ -16,6 +16,7 @@ import { fetchTerrainProfile, buildVirtualRadarProfile } from '@open-vfr/shared/
 import { requiredLegAltFt, newLegsAfterChange, autoLevelMessage } from '@open-vfr/shared/autoCruiseLevel'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { getRemoteDem } from '../utils/terrainDem'
+import { getMsaMargins } from '../db/useSettings'
 import { API_BASE_URL } from '../utils/env'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
@@ -56,7 +57,7 @@ export function useAutoCruiseLevel(opts: {
         const same = (a?: RouteWaypoint, b?: RouteWaypoint) => !!a && !!b && a.lat === b.lat && a.lng === b.lng
         if (!same(now[legIndex], legWps[0]) || !same(now[legIndex + 1], legWps[1])) return
         const profile = buildVirtualRadarProfile(legWps, [], EMPTY_FC, obstacles)
-        const required = requiredLegAltFt(terrain.map((t) => t.elevFt), profile.obstacles.map((o) => o.elevationFt))
+        const required = requiredLegAltFt(terrain.map((t) => t.elevFt), profile.obstacles.map((o) => o.elevationFt), getMsaMargins())
         const { legOverrides, defaultAltFt, onNotice, setLegOverrides } = latest.current
         const planned = legOverrides[legIndex]?.altFt ?? defaultAltFt
         if (required <= planned) return

@@ -8,6 +8,7 @@
  *   3. Fuel — total minimum fuel exceeds available fuel (based on aircraft profile)
  */
 
+import { useMsaMargins } from '../db/useSettings'
 import { useState, useEffect, useMemo } from 'react'
 import {
   buildVirtualRadarProfile,
@@ -225,7 +226,6 @@ interface Props {
 export default function PreflightWarnings({ waypoints, legOverrides, aircraft, aircraftId, legWinds }: Props) {
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(_airspaceGeo)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(_obstacleGeo)
-  const [msaPts,      setMsaPts]      = useState<MsaPoint[]>([])
   const [terrainPts,  setTerrainPts]  = useState<TerrainPoint[]>([])
   const [terrainDone, setTerrainDone] = useState(false)
   const [terrainFailed, setTerrainFailed] = useState(false)
@@ -250,7 +250,6 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
 
   useEffect(() => {
     if (waypoints.length < 2) {
-      setMsaPts([])
       setTerrainPts([])
       setTerrainDone(false)
       setTerrainFailed(false)
@@ -262,7 +261,6 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
     fetchTerrainProfile(waypoints, API_BASE_URL, ctrl.signal, getRemoteDem())
       .then((pts) => {
         setTerrainPts(pts)
-        setMsaPts(computeMsaProfile(pts))
         setTerrainDone(true)
       })
       .catch((err: unknown) => {
@@ -283,6 +281,12 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
   const profile = useMemo(
     () => rawProfile && { ...rawProfile, airspaceBands: applyTerrainToBands(rawProfile.airspaceBands, terrainPts) },
     [rawProfile, terrainPts],
+  )
+
+  const [msaMargins] = useMsaMargins()
+  const msaPts = useMemo<MsaPoint[]>(
+    () => computeMsaProfile(terrainPts, msaMargins, profile?.obstacles),
+    [terrainPts, msaMargins, profile?.obstacles],
   )
 
   const warnings = useMemo<PreflightWarning[]>(() => {

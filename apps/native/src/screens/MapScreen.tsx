@@ -596,6 +596,7 @@ function MapScreenForCountry() {
     defaultAltFt: aircraftProfile?.cruiseAltFt || 3500,
     onNotice: autoLevelNotice,
     enabled: !flyingActive,
+    msaMargins: settings.msaMargins,
   })
   const [reminderNote, setReminderNote] = useState<{ text: string; wpName: string } | null>(null)
   React.useEffect(() => {
@@ -1842,6 +1843,7 @@ function MapScreenForCountry() {
             legOverrides={[]}
             units={settings.units}
             airspaceCeilingFt={settings.airspaceCeilingFt}
+            msaMargins={settings.msaMargins}
             aircraftProfile={aircraftProfile}
             weatherStations={rulerWeatherStations}
             headerStart={<RulerHeaderStart from={rulerPoints[0]} to={rulerPoints[1]} units={settings.units} />}
@@ -1863,6 +1865,7 @@ function MapScreenForCountry() {
           legOverrides={legOverrides}
           units={settings.units}
           airspaceCeilingFt={settings.airspaceCeilingFt}
+          msaMargins={settings.msaMargins}
           aircraftProfile={aircraftProfile}
           headerStart={<RouteHeaderStart waypoints={waypoints} legOverrides={legOverrides} units={settings.units} cruiseKts={aircraftProfile?.cruiseIas} cruiseAltFt={aircraftProfile?.cruiseAltFt} />}
           currentDistNm={currentDistNm}
@@ -1886,6 +1889,7 @@ function MapScreenForCountry() {
           legOverrides={lookaheadLegOverrides}
           units={settings.units}
           airspaceCeilingFt={settings.airspaceCeilingFt}
+          msaMargins={settings.msaMargins}
           aircraftProfile={aircraftProfile}
           currentDistNm={lookaheadDistNm}
           currentAltFt={bestAltFt ?? undefined}

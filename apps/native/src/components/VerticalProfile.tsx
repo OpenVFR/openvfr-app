@@ -49,6 +49,7 @@ import {
   type MsaPoint,
   type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
+import type { MsaMargins } from '@open-vfr/shared/msaMargins'
 import { pickWaypointLabels, estimateLabelWidth } from '@open-vfr/shared/profileLabels'
 import {
   profileChartLayout, profileYMax, altitudeTicks, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
@@ -111,6 +112,8 @@ interface Props {
    *  -- airspace bands whose floor is above this are hidden from the chart,
    *  matching what's already hidden on the map. Unfiltered if omitted. */
   airspaceCeilingFt?: number
+  /** Abeam corridor + clearances for the MSA line (settings.msaMargins); defaults if omitted. */
+  msaMargins?: Partial<MsaMargins>
   title?: string
   /** Optional content for the drag-handle row, left / right of the grip
    *  (right slot sits before the WIND toggle). Lets a caller show a compact
@@ -338,7 +341,7 @@ function windLabelPlacement(cx: number, halfW: number, text: string, fontSize: n
 // ---------------------------------------------------------------------------
 
 export function VerticalProfile({
-  waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, title, headerStart, headerEnd, onClose, closeLabel, aircraftProfile,
+  waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, msaMargins, title, headerStart, headerEnd, onClose, closeLabel, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
   crossTrackNm, weatherStations,
   height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm,
@@ -351,7 +354,6 @@ export function VerticalProfile({
   // True when neither the elevation API nor the offline DEM could supply
   // terrain for this route: the chart then has no ground, MSA or AGL lift.
   const [terrainFailed, setTerrainFailed] = useState(false)
-  const [msaPts,     setMsaPts]       = useState<MsaPoint[]>([])
   const [showWindAloft, setShowWindAloft] = useState(true)
   const [chartW,      setChartW]      = useState(0)
   // Horizontal scroll offset into the (possibly wider-than-panel) chart
@@ -439,7 +441,6 @@ export function VerticalProfile({
   useEffect(() => {
     if (waypoints.length < 2) {
       setTerrainPts([])
-      setMsaPts([])
       return
     }
     const controller = new AbortController()
@@ -454,7 +455,6 @@ export function VerticalProfile({
     fetchTerrainProfile(waypoints, API_BASE, controller.signal, getOfflineDem())
       .then((pts) => {
         setTerrainPts(pts)
-        setMsaPts(computeMsaProfile(pts))
       })
       .catch((err: unknown) => {
         if ((err as { name?: string }).name !== 'AbortError') {
@@ -480,6 +480,10 @@ export function VerticalProfile({
 
   // Shared with web's VirtualRadar.tsx (getMsaLookup) — this used to be a
   // byte-for-byte duplicate independently maintained in both files.
+  const msaPts = useMemo<MsaPoint[]>(
+    () => computeMsaProfile(terrainPts, msaMargins, profile?.obstacles),
+    [terrainPts, msaMargins, profile?.obstacles],
+  )
   const getMsa = useMemo(() => getMsaLookup(msaPts), [msaPts])
 
   // Shared with web (@open-vfr/shared/profileChart).
