@@ -24,7 +24,7 @@
 import { File, Directory, Paths } from 'expo-file-system'
 import { versionedTileUrl, getCachedTileManifest } from '@open-vfr/shared/tileManifest'
 import { TILE_BASE, activeCountry } from '../config'
-import { countryDatasetFile, countryArchiveFile, type CountryDataset, type CountryArchive } from '@open-vfr/shared/countryData'
+import { countryDatasetFile, countryArchiveFile, countryMefFile, type CountryDataset, type CountryArchive } from '@open-vfr/shared/countryData'
 
 export interface OfflineAsset {
   key:       string
@@ -95,6 +95,11 @@ export const OFFLINE_ASSETS: OfflineAsset[] = [
   archive('hillshade', 'hillshade', 'Terrain elevation + hillshade (large)', 'Offline: no terrain or MSA line in the vertical profile, and airspace limits given above ground (AGL) are checked at their raw height, as if the ground were at sea level. Also no relief shading on the map.'),
   archive('contours', 'contours', 'Contour lines',
     'No elevation contour lines on the map.'),
+  // Small (a few MB): highest terrain per ~15" cell, the offline corridor-
+  // maximum MSA without the large hillshade DEM above (see mefGrid.ts).
+  { key: 'mef', label: 'Terrain maximum grid (MSA)', required: false,
+    without: 'Offline: the minimum safe altitude only looks at terrain under the route line, not the corridor either side of it, unless the large terrain elevation file is downloaded.',
+    get fileName() { return countryMefFile(activeCountry()) } },
   dataset('airspace',         'airspace',         'Airspace',              true),
   dataset('aerodromes',       'aerodromes',       'Aerodromes',            true),
   dataset('navaids',          'navaids',          'Navaids',               true),

@@ -9,11 +9,13 @@
  */
 
 import { useMsaMargins } from '../db/useSettings'
+import { useMefGrids } from '../hooks/useMefGrids'
 import { useState, useEffect, useMemo } from 'react'
 import {
   buildVirtualRadarProfile,
   fetchTerrainProfile,
   computeMsaProfile,
+  corridorTerrainAlongRoute,
   applyTerrainToBands,
   type VirtualRadarProfile,
   type MsaPoint,
@@ -284,9 +286,14 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
   )
 
   const [msaMargins] = useMsaMargins()
+  const mefGrids = useMefGrids()
+  const corridorFt = useMemo(
+    () => corridorTerrainAlongRoute(waypoints, terrainPts, mefGrids, msaMargins),
+    [waypoints, terrainPts, mefGrids, msaMargins],
+  )
   const msaPts = useMemo<MsaPoint[]>(
-    () => computeMsaProfile(terrainPts, msaMargins, profile?.obstacles),
-    [terrainPts, msaMargins, profile?.obstacles],
+    () => computeMsaProfile(terrainPts, msaMargins, profile?.obstacles, corridorFt),
+    [terrainPts, msaMargins, profile?.obstacles, corridorFt],
   )
 
   const warnings = useMemo<PreflightWarning[]>(() => {

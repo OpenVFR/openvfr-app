@@ -40,6 +40,7 @@ import {
   fetchTerrainProfile,
   projectFlightPath, plannedAltitudeLine, DEFAULT_PERF_MODEL,
   computeMsaProfile,
+  corridorTerrainAlongRoute,
   terrainAt,
   getMsaLookup,
   computeTrajectoryTicks,
@@ -50,6 +51,7 @@ import {
   type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import type { MsaMargins } from '@open-vfr/shared/msaMargins'
+import { useMefGrids } from '../hooks/useMefGrids'
 import { pickWaypointLabels, estimateLabelWidth } from '@open-vfr/shared/profileLabels'
 import {
   profileChartLayout, profileYMax, altitudeTicks, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
@@ -480,15 +482,26 @@ export function VerticalProfile({
 
   // Shared with web's VirtualRadar.tsx (getMsaLookup) — this used to be a
   // byte-for-byte duplicate independently maintained in both files.
+  // Highest terrain within the abeam corridor, from the offline grid file.
+  // No grid (not built yet / not fetched) = centreline samples only.
+  const mefGrids = useMefGrids()
+  const corridorFt = useMemo(
+    () => corridorTerrainAlongRoute(waypoints, terrainPts, mefGrids, msaMargins),
+    [waypoints, terrainPts, mefGrids, msaMargins],
+  )
+  const corridorPts = useMemo<TerrainPoint[]>(
+    () => mefGrids.length === 0 ? [] : terrainPts.map((p, i) => ({ distNm: p.distNm, elevFt: Math.max(p.elevFt, corridorFt[i] ?? 0) })),
+    [mefGrids, terrainPts, corridorFt],
+  )
   const msaPts = useMemo<MsaPoint[]>(
-    () => computeMsaProfile(terrainPts, msaMargins, profile?.obstacles),
-    [terrainPts, msaMargins, profile?.obstacles],
+    () => computeMsaProfile(terrainPts, msaMargins, profile?.obstacles, corridorFt),
+    [terrainPts, msaMargins, profile?.obstacles, corridorFt],
   )
   const getMsa = useMemo(() => getMsaLookup(msaPts), [msaPts])
 
   // Shared with web (@open-vfr/shared/profileChart).
   const yMax = useMemo(
-    () => (profile ? profileYMax(profile.maxPlannedAltFt, terrainPts) : 10000),
+    () => (profile ? profileYMax(profile.maxPlannedAltFt, corridorPts.length > 0 ? corridorPts : terrainPts) : 10000),
     [profile, terrainPts],
   )
 
@@ -689,6 +702,14 @@ export function VerticalProfile({
     const shadow = `M${xOf(0).toFixed(1)},${bottomY} L${shadowPts.join(' L')} L${xOf(totalNm).toFixed(1)},${bottomY} Z`
     return { fill, shadow, outline }
   }, [terrainPts, plotW, plotH, xOf, yOf, totalNm])
+
+  // Faint corridor-maximum silhouette behind the solid centreline terrain.
+  const corridorFill = useMemo(() => {
+    if (corridorPts.length === 0 || plotW <= 0) return ''
+    const pts = corridorPts.map(p => `${xOf(p.distNm).toFixed(1)},${yOf(p.elevFt).toFixed(1)}`)
+    const bottomY = MARGIN_T + plotH
+    return `M${xOf(0).toFixed(1)},${bottomY} L${pts.join(' L')} L${xOf(totalNm).toFixed(1)},${bottomY} Z`
+  }, [corridorPts, plotW, plotH, xOf, yOf, totalNm])
 
   // MSA dashed path
   const msaPath = useMemo(() => {
@@ -1020,6 +1041,9 @@ export function VerticalProfile({
                   return <Path key={`water-${i}`} d={d} fill="rgba(30,100,200,0.35)" stroke="rgba(60,140,230,0.7)" strokeWidth={1} />
                 })}
 
+                {corridorFill !== '' && (
+                  <Path d={corridorFill} fill="rgba(160,130,90,0.16)" stroke="rgba(160,130,90,0.35)" strokeWidth={1} strokeDasharray="3 3" />
+                )}
                 <Path d={terrainPath.shadow} fill="rgba(0,0,0,0.28)" />
                 <Path d={terrainPath.fill} fill="url(#terrainGrad)" />
                 <Path d={terrainPath.outline} fill="none" stroke="rgba(160,130,90,0.55)" strokeWidth={1} />

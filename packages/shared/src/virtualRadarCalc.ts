@@ -40,6 +40,7 @@
  */
 
 import { resolveMsaMargins, type MsaMargins } from './msaMargins'
+import { corridorMaxFt as mefCorridorMaxFt, type MefGrid } from './mefGrid'
 import along from '@turf/along'
 import length from '@turf/length'
 import booleanIntersects from '@turf/boolean-intersects'
@@ -1020,13 +1021,17 @@ export function computeMsaProfile(
   /** Obstacle tips (AMSL) along the route; each raises the MSA within the
    *  corridor to tip + obstacle clearance. Optional: terrain only if omitted. */
   obstacles?: readonly { distNm: number; elevationFt: number }[],
+  /** Highest terrain within the abeam corridor of each terrain point (same
+   *  indexing as `terrainPts`, from corridorTerrainAlongRoute); null where the
+   *  grid has no data. Combined with the centreline samples by taking the max. */
+  corridorMaxFt?: readonly (number | null)[] | null,
 ): MsaPoint[] {
   if (terrainPts.length === 0) return []
   const m = resolveMsaMargins(margins)
   const obs = obstacles ?? []
 
-  return terrainPts.map((pt) => {
-    let maxElev = 0
+  return terrainPts.map((pt, i) => {
+    let maxElev = corridorMaxFt?.[i] ?? 0
     for (let j = 0; j < terrainPts.length; j++) {
       if (Math.abs(terrainPts[j].distNm - pt.distNm) > m.abeamNm) continue
       if (terrainPts[j].elevFt > maxElev) maxElev = terrainPts[j].elevFt
@@ -1045,6 +1050,26 @@ export function computeMsaProfile(
     // Terrain <= 0 ft (open ocean / flat estuary) with no obstacle: emit 0 so
     // the chart can filter it out.
     return { distNm: pt.distNm, msaFt: rawMsa > 0 ? Math.ceil(rawMsa / 100) * 100 : 0 }
+  })
+}
+
+/**
+ * Highest terrain (ft) within the abeam corridor of every terrain sample,
+ * from the offline grid-maximum file (see mefGrid.ts). One entry per
+ * `terrainPts` element; null where no grid covers the point. Empty `grids`
+ * gives all nulls, so callers can pass it straight to computeMsaProfile.
+ */
+export function corridorTerrainAlongRoute(
+  waypoints: RouteWaypoint[],
+  terrainPts: readonly TerrainPoint[],
+  grids: readonly MefGrid[],
+  margins?: Partial<MsaMargins> | null,
+): (number | null)[] {
+  if (grids.length === 0 || waypoints.length < 2) return terrainPts.map(() => null)
+  const { abeamNm } = resolveMsaMargins(margins)
+  return terrainPts.map((pt) => {
+    const c = coordinateAlongRouteNm(waypoints, pt.distNm)
+    return mefCorridorMaxFt(grids, c.lat, c.lng, abeamNm)
   })
 }
 

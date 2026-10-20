@@ -40,3 +40,13 @@ describe('requiredLegAltFt margins', () => {
     expect(requiredLegAltFt([], [1230], { obstacleClearanceFt: 1000 })).toBe(2300)
   })
 })
+
+describe('computeMsaProfile corridor maximum', () => {
+  const pts = [0, 10, 20].map((d) => ({ distNm: d, elevFt: 100 }))
+  it('raises MSA from the corridor figure, null entries are ignored', () => {
+    const m = computeMsaProfile(pts, null, undefined, [null, 2450, 50])
+    expect(m[0].msaFt).toBe(1100)   // centreline only
+    expect(m[1].msaFt).toBe(3500)   // 2450 + 1000 -> 3450 -> 3500
+    expect(m[2].msaFt).toBe(1100)   // corridor lower than centreline: centreline wins
+  })
+})

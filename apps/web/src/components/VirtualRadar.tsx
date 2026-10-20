@@ -13,11 +13,12 @@ import {
 } from '@open-vfr/shared/profileChart'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { useMsaMargins } from '../db/useSettings'
+import { useMefGrids } from '../hooks/useMefGrids'
 import type { LegOverride } from '../db/index'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel } from '../utils/units'
 import {
   buildVirtualRadarProfile, applyTerrainToBands, fetchTerrainProfile, projectFlightPath, DEFAULT_PERF_MODEL, computeMsaProfile, terrainAt,
-  getMsaLookup, computeTrajectoryTicks, computeVspeedTrajectory, projectWeatherMarks,
+  getMsaLookup, corridorTerrainAlongRoute, computeTrajectoryTicks, computeVspeedTrajectory, projectWeatherMarks,
   type TerrainPoint, type MsaPoint, type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
@@ -535,9 +536,20 @@ function VirtualRadar({
 
   // MSA lookup at a given distNm — shared with native (getMsaLookup).
   const [msaMargins] = useMsaMargins()
+  // Highest terrain within the abeam corridor, from the offline grid file.
+  // No grid (not built yet / not fetched) = centreline samples only.
+  const mefGrids = useMefGrids()
+  const corridorFt = useMemo(
+    () => corridorTerrainAlongRoute(waypoints, terrainPts, mefGrids, msaMargins),
+    [waypoints, terrainPts, mefGrids, msaMargins],
+  )
+  const corridorPts = useMemo<TerrainPoint[]>(
+    () => mefGrids.length === 0 ? [] : terrainPts.map((p, i) => ({ distNm: p.distNm, elevFt: Math.max(p.elevFt, corridorFt[i] ?? 0) })),
+    [mefGrids, terrainPts, corridorFt],
+  )
   const msaPts = useMemo<MsaPoint[]>(
-    () => computeMsaProfile(terrainPts, msaMargins, profile?.obstacles),
-    [terrainPts, msaMargins, profile?.obstacles],
+    () => computeMsaProfile(terrainPts, msaMargins, profile?.obstacles, corridorFt),
+    [terrainPts, msaMargins, profile?.obstacles, corridorFt],
   )
   const getMsa = useMemo(() => getMsaLookup(msaPts), [msaPts])
 
@@ -627,7 +639,7 @@ function VirtualRadar({
   }, [profile, terrainPts, perf, getMsa])
 
   const yMax = useMemo(
-    () => (profile ? profileYMax(profile.maxPlannedAltFt, terrainPts) : 10000),
+    () => (profile ? profileYMax(profile.maxPlannedAltFt, corridorPts.length > 0 ? corridorPts : terrainPts) : 10000),
     [profile, terrainPts],
   )
 
@@ -888,6 +900,9 @@ function VirtualRadar({
         {/* ── Ground fill (elevation-banded gradient) + outline ─── */}
         {series.ground && (
           <>
+            {corridorPts.length > 0 && (
+              <path d={groundAreaPath(corridorPts, L.xOf, L.yOf, L.totalNm)} fill="rgba(160,130,90,0.16)" stroke="rgba(160,130,90,0.35)" strokeWidth={1} strokeDasharray="3 3" />
+            )}
             <path d={groundAreaPath(terrainPts, L.xOf, L.yOf, L.totalNm)} fill="url(#terrainGrad)" />
             <path d={groundOutline} fill="none" stroke={GROUND_COLOR} strokeWidth={1} />
           </>

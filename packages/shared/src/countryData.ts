@@ -46,6 +46,11 @@ export function countryArchiveFile(country: string, kind: CountryArchive): strin
   return `${country}-${kind}.pmtiles`
 }
 
+/** File name of one country's grid-maximum-elevation file, e.g. 'se' -> 'se-mef.mef' (see infra scripts/mef_format.py). */
+export function countryMefFile(country: string): string {
+  return `${country}-mef.mef`
+}
+
 export interface CountryDataConfig {
   /** File name -> URL to fetch (e.g. manifest-versioned tile URL, or a local file URI). */
   resolveUrl: (fileName: string) => string
