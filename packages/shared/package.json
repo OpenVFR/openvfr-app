@@ -15,6 +15,7 @@
     "./lookahead": "./src/lookahead.ts",
     "./msaMargins": "./src/msaMargins.ts",
     "./mefGrid": "./src/mefGrid.ts",
+    "./routePois": "./src/routePois.ts",
     "./airspeed": "./src/airspeed.ts",
     "./windForecast": "./src/windForecast.ts",
     "./subAreas": "./src/subAreas.ts",

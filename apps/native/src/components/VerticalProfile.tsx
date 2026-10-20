@@ -51,6 +51,7 @@ import {
   type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
+import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
 import { useMefGrids } from '../hooks/useMefGrids'
 import { pickWaypointLabels, estimateLabelWidth } from '@open-vfr/shared/profileLabels'
 import {
@@ -352,6 +353,8 @@ export function VerticalProfile({
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(null)
+  // Aerodromes, reporting points and navaids along the route (own distances per kind).
+  const [poiSets, setPoiSets] = useState<{ aerodromes: GeoJSON.FeatureCollection | null; reporting: GeoJSON.FeatureCollection | null; navaids: GeoJSON.FeatureCollection | null }>({ aerodromes: null, reporting: null, navaids: null })
   const [terrainPts, setTerrainPts]   = useState<TerrainPoint[]>([])
   // True when neither the elevation API nor the offline DEM could supply
   // terrain for this route: the chart then has no ground, MSA or AGL lift.
@@ -436,6 +439,14 @@ export function VerticalProfile({
     loadGeoJsonOnce(getTileUrls().airspace).then(setAirspaceGeo).catch(() => {})
     loadGeoJsonOnce(getTileUrls().obstacles).then(setObstacleGeo).catch(() => {})
     loadGeoJsonOnce(getTileUrls().landmarks).then(setLandmarkGeo).catch(() => { /* optional layer — offline-safe no-op */ })
+    {
+      const none = () => null
+      Promise.all([
+        loadGeoJsonOnce(getTileUrls().aerodromes).catch(none),
+        loadGeoJsonOnce(getTileUrls().waypoints).catch(none),
+        loadGeoJsonOnce(getTileUrls().navaids).catch(none),
+      ]).then(([aerodromes, reporting, navaids]) => setPoiSets({ aerodromes, reporting, navaids }))
+    }
   }, [])
 
   // Fetch terrain profile whenever the route changes
@@ -539,7 +550,7 @@ export function VerticalProfile({
   // distance the MSA uses and fade with distance off track; the one that sets
   // the MSA gets a ring; a crowd collapses to dots (highest first keeps its
   // pictogram). Landmarks thin out the same way, lower priority. Mirrors web.
-  const { obstacleMarks, landmarkMarks } = useMemo(() => {
+  const { obstacleMarks, landmarkMarks, poiMarks } = useMemo(() => {
     const margins = resolveMsaMargins(msaMargins)
     const obs = (profile?.obstacles ?? []).map((o, i) => {
       const baseFt = Math.max(o.elevationFt, terrainAt(terrainPts, o.distNm))
@@ -560,8 +571,20 @@ export function VerticalProfile({
     })
     const lmkFull = declutterMarks(lmk.map((m) => ({ id: m.key, x: m.cx, priority: 0 })), 18)
     lmk.forEach((m) => { m.full = lmkFull.has(m.key) })
-    return { obstacleMarks: obs, landmarkMarks: lmk }
-  }, [profile, terrainPts, getMsa, msaMargins, xOf, yOf])
+    // Aerodromes / reporting points / navaids: symbols always drawn, labels
+    // thinned by priority (aerodromes first, towered before others).
+    const pois = collectRoutePois(waypoints, poiSets).map((p, i) => {
+      const baseFt = poiBaseFt(p, terrainAt(terrainPts, p.distNm))
+      return {
+        key: `poi-${i}`, kind: p.kind, subtype: p.subtype, towered: p.towered, label: p.label,
+        cx: xOf(p.distNm), cy: yOf(baseFt),
+        priority: p.kind === 'aerodrome' ? (p.towered ? 4 : 3) : p.kind === 'navaid' ? 2 : 1, labelled: false,
+      }
+    })
+    const poiLabelled = declutterMarks(pois.filter((m) => m.label).map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), 46)
+    pois.forEach((m) => { m.labelled = poiLabelled.has(m.key) })
+    return { obstacleMarks: obs, landmarkMarks: lmk, poiMarks: pois }
+  }, [profile, terrainPts, getMsa, msaMargins, xOf, yOf, waypoints, poiSets])
   const maxScrollX  = Math.max(0, contentW - chartW)
   // Clamped x for wind arrows/labels only -- keeps the marker inside the
   // plot area by WIND_EDGE_MARGIN_PX regardless of route length, falling
@@ -1314,6 +1337,36 @@ export function VerticalProfile({
                     />
                   )
                 })}
+
+                {/* Aerodromes, reporting points, navaids (own distance per kind) */}
+                {poiMarks.map((m) => (
+                  <View key={m.key} style={{ position: 'absolute', left: 0, top: 0 }} pointerEvents="none">
+                    {m.kind === 'aerodrome' && (
+                      <View style={{
+                        position: 'absolute', width: m.subtype === 'HP' ? 8 : 10, height: m.subtype === 'HP' ? 8 : 10,
+                        borderRadius: m.subtype === 'HP' ? 1.5 : 5, borderWidth: 1, borderColor: '#fff',
+                        backgroundColor: m.subtype === 'HP' ? '#f472b6' : m.towered ? '#c084fc' : '#60a5fa',
+                        left: m.cx - (m.subtype === 'HP' ? 4 : 5), top: m.cy - (m.subtype === 'HP' ? 4 : 5),
+                      }} />
+                    )}
+                    {m.kind === 'navaid' && (
+                      <Text style={{ position: 'absolute', left: m.cx - 6, top: m.cy - 8, fontSize: 12, lineHeight: 14, color: '#34d399' }}>{'◆'}</Text>
+                    )}
+                    {m.kind === 'reporting' && (
+                      <Text style={{ position: 'absolute', left: m.cx - 5.5, top: m.cy - 8, fontSize: 11, lineHeight: 13, color: '#facc15' }}>{'▲'}</Text>
+                    )}
+                    {m.labelled && (
+                      <Text
+                        style={{
+                          position: 'absolute', left: m.cx - 30, width: 60, top: m.cy - 21, textAlign: 'center', fontSize: 9,
+                          fontWeight: m.kind === 'aerodrome' ? '700' : '400', color: '#cbd5e1',
+                          textShadowColor: 'rgba(0,0,0,0.85)', textShadowRadius: 2, textShadowOffset: { width: 0, height: 0 },
+                        }}
+                        numberOfLines={1}
+                      >{m.label}</Text>
+                    )}
+                  </View>
+                ))}
 
                 {/* Renders visibleWaypointTicks (collision-filtered above),
                     not the raw profile.waypointTicks list -- see the memo

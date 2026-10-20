@@ -14,6 +14,7 @@ import {
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { useMsaMargins } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
+import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
 import { legSpans, legMsaList, legBelowMsa, dragLevelFt, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { useMefGrids } from '../hooks/useMefGrids'
 import type { LegOverride } from '../db/index'
@@ -420,8 +421,11 @@ const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDist
 /** Pictograms closer than this (px) collapse to dots, highest obstacle first. */
 const OBSTACLE_MIN_GAP_PX = 14
 const LANDMARK_MIN_GAP_PX = 18
+/** Labels of aerodromes / reporting points / navaids closer than this (px) are thinned. */
+const POI_LABEL_GAP_PX = 46
 
 type ObstacleMark = { key: string; kind: string; cx: number; cy: number; groundY: number; opacity: number; limiting: boolean; priority: number; full: boolean }
+type PoiMark = { key: string; kind: string; subtype: string; towered: boolean; label: string; cx: number; cy: number; priority: number; labelled: boolean }
 type LandmarkMark = { key: string; kind: string; cx: number; cy: number; full: boolean }
 
 /** Half-height of a leg's drag target around its level line (px). */
@@ -563,6 +567,8 @@ function VirtualRadar({
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [waterGeo,    setWaterGeo]    = useState<GeoJSON.FeatureCollection | null>(null)
   const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(null)
+  // Aerodromes, reporting points and navaids along the route (own distances per kind).
+  const [poiSets, setPoiSets] = useState<{ aerodromes: GeoJSON.FeatureCollection | null; reporting: GeoJSON.FeatureCollection | null; navaids: GeoJSON.FeatureCollection | null }>({ aerodromes: null, reporting: null, navaids: null })
   const [terrainPts, setTerrainPts] = useState<TerrainPoint[]>([])
   // Neither the elevation API nor the hillshade DEM could supply terrain:
   // no ground line, no MSA, AGL bands at raw height. Said on the chart.
@@ -603,6 +609,12 @@ function VirtualRadar({
     loadCountryGeojson('landmarks')
       .then(setLandmarkGeo)
       .catch(() => { /* offline — no landmark markers */ })
+    const none = () => null
+    Promise.all([
+      loadCountryGeojson('aerodromes').catch(none),
+      loadCountryGeojson('waypoints').catch(none),
+      loadCountryGeojson('navaids').catch(none),
+    ]).then(([aerodromes, reporting, navaids]) => setPoiSets({ aerodromes, reporting, navaids }))
   }, [countriesKey])
 
   // Fetch terrain profile whenever the route changes
@@ -923,8 +935,8 @@ function VirtualRadar({
   // distance the MSA uses and fade with distance off track; the one that sets
   // the MSA gets a ring; a crowd collapses to dots (highest first keeps its
   // pictogram). Landmarks thin out the same way, lower priority.
-  const { obstacleMarks, landmarkMarks } = useMemo(() => {
-    const none = { obstacleMarks: [] as ObstacleMark[], landmarkMarks: [] as LandmarkMark[] }
+  const { obstacleMarks, landmarkMarks, poiMarks } = useMemo(() => {
+    const none = { obstacleMarks: [] as ObstacleMark[], landmarkMarks: [] as LandmarkMark[], poiMarks: [] as PoiMark[] }
     if (!profile || !layout) return none
     const L = layout
     const margins = resolveMsaMargins(msaMargins)
@@ -947,8 +959,20 @@ function VirtualRadar({
     })
     const lmkFull = declutterMarks(lmk.map((m) => ({ id: m.key, x: m.cx, priority: 0 })), LANDMARK_MIN_GAP_PX)
     lmk.forEach((m) => { m.full = lmkFull.has(m.key) })
-    return { obstacleMarks: obs, landmarkMarks: lmk }
-  }, [profile, layout, terrainPts, getMsa, msaMargins])
+    // Aerodromes / reporting points / navaids: symbols always drawn, labels
+    // thinned by priority (aerodromes first, towered before others).
+    const pois = collectRoutePois(waypoints, poiSets).map((p, i) => {
+      const baseFt = poiBaseFt(p, terrainAt(terrainPts, p.distNm))
+      return {
+        key: `poi-${i}`, kind: p.kind, subtype: p.subtype, towered: p.towered, label: p.label,
+        cx: L.xOf(p.distNm), cy: L.yOf(baseFt),
+        priority: p.kind === 'aerodrome' ? (p.towered ? 4 : 3) : p.kind === 'navaid' ? 2 : 1, labelled: false,
+      }
+    })
+    const poiLabelled = declutterMarks(pois.filter((m) => m.label).map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), POI_LABEL_GAP_PX)
+    pois.forEach((m) => { m.labelled = poiLabelled.has(m.key) })
+    return { obstacleMarks: obs, landmarkMarks: lmk, poiMarks: pois }
+  }, [profile, layout, terrainPts, getMsa, msaMargins, waypoints, poiSets])
 
   const scene = useMemo(() => {
     if (!profile || !layout || !series) return null
@@ -1073,6 +1097,20 @@ function VirtualRadar({
             <circle cx={m.cx} cy={m.cy} r={2.5} fill="rgba(150,150,150,0.9)" stroke="rgba(0,0,0,0.4)" strokeWidth={1} />)
           : <circle key={m.key} cx={m.cx} cy={m.cy} r={1.6} fill="rgba(150,150,150,0.8)" />)}
 
+        {/* ── Aerodromes, reporting points, navaids (own distance per kind) ── */}
+        {poiMarks.map((m) => (
+          <g key={m.key} aria-hidden="true">
+            {m.kind === 'aerodrome' && (m.subtype === 'HP'
+              ? <rect x={m.cx - 4} y={m.cy - 4} width={8} height={8} rx={1.5} fill="#f472b6" stroke="#fff" strokeWidth={1} />
+              : <circle cx={m.cx} cy={m.cy} r={5} fill={m.towered ? '#c084fc' : '#60a5fa'} stroke="#fff" strokeWidth={1} />)}
+            {m.kind === 'navaid' && <path d={`M${m.cx},${m.cy - 5} L${m.cx + 5},${m.cy} L${m.cx},${m.cy + 5} L${m.cx - 5},${m.cy} Z`} fill="#34d399" stroke="#fff" strokeWidth={1} />}
+            {m.kind === 'reporting' && <path d={`M${m.cx},${m.cy - 5} L${m.cx + 4.5},${m.cy + 3} L${m.cx - 4.5},${m.cy + 3} Z`} fill="#facc15" stroke="#fff" strokeWidth={1} />}
+            {m.labelled && (
+              <text x={m.cx} y={m.cy - 9} textAnchor="middle" fontSize={9} fontWeight={m.kind === 'aerodrome' ? 700 : 400} fill="var(--text-secondary)" {...HALO}>{m.label}</text>
+            )}
+          </g>
+        ))}
+
         {/* ── Waypoint lines + names (collision-filtered above) ─── */}
         {visibleWaypointTicks.map(({ tick, isLast }) => {
           const x = L.xOf(tick.distNm)
@@ -1121,7 +1159,7 @@ function VirtualRadar({
         </text>
       </>
     )
-  }, [profile, layout, series, yMax, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, windAloft, iconMarkup, visibleWaypointTicks, units.distance, dragging, obstacleMarks, landmarkMarks])
+  }, [profile, layout, series, yMax, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, windAloft, iconMarkup, visibleWaypointTicks, units.distance, dragging, obstacleMarks, landmarkMarks, poiMarks])
 
   if (!profile || !series || series.distNms.length === 0) return null
 
