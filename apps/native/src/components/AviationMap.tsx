@@ -3409,6 +3409,7 @@ export function AviationMap({
         onDismiss={() => setShowAttribution(false)}
         title="Map data & attribution"
         testID="attribution-sheet"
+        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
       >
         {[...ATTRIBUTION_SOURCES, FULL_CREDITS_LINK].map((s) => (
           <TouchableOpacity

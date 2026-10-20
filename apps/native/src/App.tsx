@@ -55,8 +55,8 @@ function AppShell() {
             <ActivityIndicator color={theme.accentBlue} size="large" />
           </View>
         )}
-        {state.status === 'unauthenticated' && <LoginScreen />}
-        {state.status === 'authenticated'   && <AppNavigator />}
+        {(state.status === 'unauthenticated' || (state.status === 'authenticated' && !state.user.name)) && <LoginScreen />}
+        {state.status === 'authenticated' && !!state.user.name && <AppNavigator />}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   )

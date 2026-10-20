@@ -73,7 +73,9 @@ export function LoginScreen() {
   const logoSize = logoFit >= 24 ? logoFit : 0
   // Short area (small phone + keyboard): hide the title too instead of showing it clipped.
   const showTitle = brandH === 0 || brandH >= scaledTheme.text2xl * 1.4
-  const { sendOtp, verifyOtp, signInWithPasskey, passkeySupported, error } = useAuthContext()
+  const { state, sendOtp, verifyOtp, signInWithPasskey, updateName, passkeySupported, error } = useAuthContext()
+  const needsName                        = state.status === 'authenticated' && !state.user.name
+  const [name, setName]                  = useState('')
   const [email, setEmail]                = useState('')
   const [otp, setOtp]                    = useState('')
   const [step, setStep]                  = useState<'choose' | 'otp'>('choose')
@@ -93,6 +95,13 @@ export function LoginScreen() {
     const ok = await sendOtp(email.trim().toLowerCase())
     setBusy(false)
     if (ok) setStep('otp')
+  }
+
+  const handleSaveName = async () => {
+    if (!name.trim()) return
+    setBusy(true)
+    await updateName(name)
+    setBusy(false)
   }
 
   const handleVerifyOtp = async (code: string = otp.trim()) => {
@@ -127,7 +136,36 @@ export function LoginScreen() {
       </View>
       <View style={styles.card}>
 
-        {step === 'choose' && (
+        {needsName && (
+          <>
+            <Text style={styles.label}>One last thing: what should we call you?</Text>
+            <TextInput
+              style={styles.input}
+              testID="login-name"
+              value={name}
+              onChangeText={setName}
+              placeholder="Firstname Lastname"
+              accessibilityLabel="Your name"
+              placeholderTextColor={theme.textFaint}
+              autoCapitalize="words"
+              autoComplete="name"
+              textContentType="name"
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleSaveName}
+            />
+            <TouchableOpacity
+              style={[styles.btn, (busy || !name.trim()) && styles.btnDisabled]}
+              testID="login-save-name"
+              onPress={handleSaveName}
+              disabled={busy || !name.trim()}
+            >
+              {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Continue</Text>}
+            </TouchableOpacity>
+          </>
+        )}
+
+        {!needsName && step === 'choose' && (
           <>
             {/* ── Passkey (hidden when the OS has no passkey support) ── */}
             {passkeySupported && (<>
@@ -193,7 +231,7 @@ export function LoginScreen() {
           </>
         )}
 
-        {step === 'otp' && (
+        {!needsName && step === 'otp' && (
           <>
             <Text style={styles.label}>OTP code sent, check your email.</Text>
             <TextInput

@@ -143,6 +143,26 @@ export function useAuth() {
     return true
   }, [])
 
+  // First sign-in has no name (matches web LoginPanel "One last thing" step).
+  const updateName = useCallback(async (name: string): Promise<boolean> => {
+    setError(null)
+    const trimmed = name.trim()
+    if (!trimmed) { setError('Enter your name'); return false }
+    const { error: err } = await authClient.updateUser({ name: trimmed })
+    if (err) {
+      console.warn('[auth] updateName error', err)
+      setError(err.message ?? 'Failed to save name')
+      return false
+    }
+    setState((prev) => {
+      if (prev.status !== 'authenticated') return prev
+      const user = { ...prev.user, name: trimmed }
+      AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(user)).catch(() => {})
+      return { status: 'authenticated', user }
+    })
+    return true
+  }, [])
+
   const signOut = useCallback(async () => {
     console.log('[auth] signOut')
     await authClient.signOut()
@@ -190,5 +210,5 @@ export function useAuth() {
     return { ok: true }
   }, [])
 
-  return { state, error, sendOtp, verifyOtp, signInWithPasskey, registerPasskey, requestAccountDeletion, signOut, passkeySupported: isPasskeySupported() }
+  return { state, error, sendOtp, verifyOtp, signInWithPasskey, registerPasskey, updateName, requestAccountDeletion, signOut, passkeySupported: isPasskeySupported() }
 }
