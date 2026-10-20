@@ -82,3 +82,34 @@ export function obstructionTipFt(o: ObstructionPoint, ownTerrainFt: number | nul
   if (ownTerrainFt == null || !Number.isFinite(ownTerrainFt)) return null
   return Math.max(0, ownTerrainFt) + o.tipFt
 }
+
+export type GroupableAlert = {
+  key: string
+  kind: string
+  name: string
+  elevationFt: number
+  tipFt: number
+  estimated: boolean
+  distNm: number
+}
+
+/**
+ * One alert per obstacle kind instead of one per obstacle (a mast field would
+ * otherwise stack five identical cards): the nearest obstacle gives the
+ * distance and name, the highest tip is shown, `count` says how many. The key
+ * is per kind, so dismissing silences the whole group.
+ */
+export function groupObstructionAlerts<T extends GroupableAlert>(items: readonly T[]): Array<T & { count: number }> {
+  const byKind = new Map<string, T[]>()
+  for (const it of items) {
+    const arr = byKind.get(it.kind)
+    if (arr) arr.push(it); else byKind.set(it.kind, [it])
+  }
+  const out: Array<T & { count: number }> = []
+  for (const [kind, arr] of byKind) {
+    const nearest = arr.reduce((a, b) => (b.distNm < a.distNm ? b : a))
+    const highest = arr.reduce((a, b) => (b.tipFt > a.tipFt ? b : a))
+    out.push({ ...nearest, key: `kind:${kind}`, tipFt: highest.tipFt, estimated: highest.estimated, elevationFt: highest.elevationFt, count: arr.length })
+  }
+  return out.sort((a, b) => a.distNm - b.distNm)
+}

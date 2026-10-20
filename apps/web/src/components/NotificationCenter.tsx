@@ -166,8 +166,8 @@ export function NotificationCenter({
       key: `ob-${a.key}`,
       severity: 'yellow',
       badge: OBSTRUCTION_KIND_LABEL[a.kind] ?? '▲ OBSTACLE',
-      title: a.name || a.kind.replace('_', ' '),
-      meta: `${a.tipFt > a.elevationFt ? `Top ${a.tipFt} ft${a.estimated ? ' (est.)' : ''} · base ${a.elevationFt} ft AMSL` : `${a.elevationFt} ft AMSL`} · ${a.distNm < 0.1 ? '<0.1' : a.distNm.toFixed(1)} NM`,
+      title: a.count > 1 ? `${a.count} × ${a.kind.replace('_', ' ')}` : (a.name || a.kind.replace('_', ' ')),
+      meta: `${a.tipFt > a.elevationFt ? `${a.count > 1 ? 'Highest top' : 'Top'} ${a.tipFt} ft${a.estimated ? ' (est.)' : ''} · base ${a.elevationFt} ft AMSL` : `${a.elevationFt} ft AMSL`} · ${a.count > 1 ? 'nearest ' : ''}${a.distNm < 0.1 ? '<0.1' : a.distNm.toFixed(1)} NM`,
       dismissible: true,
       onDismiss: () => onDismissObstruction(a.key),
     })

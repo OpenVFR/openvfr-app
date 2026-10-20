@@ -29,3 +29,14 @@ describe('buildObstructionPoints', () => {
     expect(new Set(pts.map((x) => x.key)).size).toBe(2)
   })
 })
+
+import { groupObstructionAlerts } from './obstructionPoints'
+describe('groupObstructionAlerts', () => {
+  const a = (key: string, kind: string, distNm: number, tipFt: number) => ({ key, kind, name: key, elevationFt: 100, tipFt, estimated: true, distNm })
+  it('merges same-kind alerts: nearest distance, highest tip, count', () => {
+    const g = groupObstructionAlerts([a('a', 'mast', 0.9, 500), a('b', 'mast', 0.4, 700), a('c', 'chimney', 0.6, 300)])
+    expect(g).toHaveLength(2)
+    expect(g[0]).toMatchObject({ key: 'kind:mast', distNm: 0.4, tipFt: 700, count: 2 })
+    expect(g[1]).toMatchObject({ key: 'kind:chimney', count: 1 })
+  })
+})

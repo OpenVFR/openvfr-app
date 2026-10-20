@@ -18,7 +18,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { useActiveCountries } from '../utils/countryData'
-import { buildObstructionPoints, obstructionTipFt, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
+import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
 import { useMefGrids } from './useMefGrids'
 
 // ── Config ───────────────────────────────────────────────────────────────────
@@ -38,6 +38,8 @@ export type ObstructionAlert = {
   /** Tip height is the per-kind estimate, not a recorded value. */
   estimated:   boolean
   distNm:      number
+  /** Obstacles of this kind in range (alerts are grouped per kind). */
+  count:       number
 }
 
 type ObstaclePoint = ObstructionPoint
@@ -98,10 +100,6 @@ export function useObstructionWarnings(position: (GpsPosition & { terrainFt?: nu
       const tipFt = obstructionTipFt(obs, position.terrainFt)
       if (tipFt == null || altFt > tipFt + VERTICAL_BUFFER_FT) continue
 
-      // Dismiss check
-      const dismissedAt = dismissedRef.current.get(obs.key)
-      if (dismissedAt !== undefined && now - dismissedAt < DISMISS_REARM_MS) continue
-
       found.push({
         key:         obs.key,
         kind:        obs.kind,
@@ -110,16 +108,19 @@ export function useObstructionWarnings(position: (GpsPosition & { terrainFt?: nu
         tipFt,
         estimated:   obs.estimated,
         distNm,
+        count:       1,
       })
 
-      if (found.length >= MAX_ALERTS) break
     }
 
-    found.sort((a, b) => a.distNm - b.distNm)
-    const sig = found.map(a => `${a.key}:${a.distNm}`).join('|')
+    // One alert per kind; dismissing silences the kind for a while.
+    const grouped = groupObstructionAlerts(found)
+      .filter(g => { const d = dismissedRef.current.get(g.key); return d === undefined || now - d >= DISMISS_REARM_MS })
+      .slice(0, MAX_ALERTS)
+    const sig = grouped.map(a => `${a.key}:${a.count}:${a.distNm}`).join('|')
     if (sig !== lastSigRef.current) {
       lastSigRef.current = sig
-      setAlerts(found)
+      setAlerts(grouped)
     }
   }, [position, obstacles])
 

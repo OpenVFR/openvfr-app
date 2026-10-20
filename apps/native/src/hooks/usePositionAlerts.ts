@@ -38,7 +38,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
-import { buildObstructionPoints, obstructionTipFt, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
+import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
 import { useMefGrids } from './useMefGrids'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
@@ -86,6 +86,8 @@ export type ObstructionAlert = {
   elevationFt: number; tipFt: number; distNm: number
   /** Tip height is the per-kind estimate, not a recorded value. */
   estimated: boolean
+  /** Obstacles of this kind in range (alerts are grouped per kind). */
+  count: number
 }
 
 export type AirfieldProximityAlert = {
@@ -460,17 +462,17 @@ export function usePositionAlerts(
         if (distNm > OBS_WARN_RADIUS_NM) continue
         const tipFt = obstructionTipFt(obs, terrainFt)
         if (tipFt == null || altFt > tipFt + OBS_VERTICAL_BUFFER_FT) continue
-        const dismissedAt = obstructionDismissedRef.current.get(obs.key)
-        if (dismissedAt !== undefined && now - dismissedAt < OBS_REARM_MS) continue
         found.push({ key: obs.key, kind: obs.kind, name: obs.name || obs.kind.replace('_', ' '),
-          elevationFt: obs.groundKnown ? obs.elevFt : Math.round(terrainFt ?? 0), tipFt, estimated: obs.estimated, distNm })
-        if (found.length >= OBS_MAX_ALERTS) break
+          elevationFt: obs.groundKnown ? obs.elevFt : Math.round(terrainFt ?? 0), tipFt, estimated: obs.estimated, distNm, count: 1 })
       }
-      found.sort((a, b) => a.distNm - b.distNm)
-      const sig = found.map(a => `${a.key}:${a.distNm}`).join('|')
+      // One alert per kind; dismissing silences the kind for a while.
+      const grouped = groupObstructionAlerts(found)
+        .filter(g => { const d = obstructionDismissedRef.current.get(g.key); return d === undefined || now - d >= OBS_REARM_MS })
+        .slice(0, OBS_MAX_ALERTS)
+      const sig = grouped.map(a => `${a.key}:${a.count}:${a.distNm}`).join('|')
       if (sig !== obstructionSigRef.current) {
         obstructionSigRef.current = sig
-        setObstructionAlerts(found)
+        setObstructionAlerts(grouped)
       }
     }
 
