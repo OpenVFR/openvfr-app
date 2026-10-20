@@ -9,6 +9,7 @@
  */
 
 import { useMsaMargins } from '../db/useSettings'
+import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { useMefGrids } from '../hooks/useMefGrids'
 import { useState, useEffect, useMemo } from 'react'
 import {
@@ -275,17 +276,18 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeKey])
 
+  const [msaMargins] = useMsaMargins()
+  const abeamNm = resolveMsaMargins(msaMargins).abeamNm
   const rawProfile = useMemo<VirtualRadarProfile | null>(() => {
     if (waypoints.length < 2 || !airspaceGeo || !obstacleGeo) return null
-    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, undefined, undefined, Infinity, aircraft?.cruiseAltFt || undefined)
-  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, aircraft?.cruiseAltFt])
+    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, undefined, undefined, Infinity, aircraft?.cruiseAltFt || undefined, { obstacleNm: abeamNm })
+  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, aircraft?.cruiseAltFt, abeamNm])
   // AGL limits lifted onto the terrain so the penetration check compares altitudes.
   const profile = useMemo(
     () => rawProfile && { ...rawProfile, airspaceBands: applyTerrainToBands(rawProfile.airspaceBands, terrainPts) },
     [rawProfile, terrainPts],
   )
 
-  const [msaMargins] = useMsaMargins()
   const mefGrids = useMefGrids()
   const corridorFt = useMemo(
     () => corridorTerrainAlongRoute(waypoints, terrainPts, mefGrids, msaMargins),

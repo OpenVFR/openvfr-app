@@ -9,10 +9,11 @@ import { CLOUD_COLORS } from '@open-vfr/shared/featureColors'
 import type { ParsedCloudLayer } from '@open-vfr/shared/fetchWx'
 import {
   profileChartLayout, profileYMax, altitudeTicks, formatAltitudeTick, formatAltitudeFt, distanceTicks,
-  polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, type ProfileChartLayout,
+  polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, declutterMarks, obstacleOpacity, isLimitingObstacle, type ProfileChartLayout,
 } from '@open-vfr/shared/profileChart'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { useMsaMargins } from '../db/useSettings'
+import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { legSpans, legMsaList, legBelowMsa, dragLevelFt, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { useMefGrids } from '../hooks/useMefGrids'
 import type { LegOverride } from '../db/index'
@@ -416,6 +417,13 @@ const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDist
 // flat line at its level; the dragged leg turns red when below its MSA.
 // ---------------------------------------------------------------------------
 
+/** Pictograms closer than this (px) collapse to dots, highest obstacle first. */
+const OBSTACLE_MIN_GAP_PX = 14
+const LANDMARK_MIN_GAP_PX = 18
+
+type ObstacleMark = { key: string; kind: string; cx: number; cy: number; groundY: number; opacity: number; limiting: boolean; priority: number; full: boolean }
+type LandmarkMark = { key: string; kind: string; cx: number; cy: number; full: boolean }
+
 /** Half-height of a leg's drag target around its level line (px). */
 const LEG_HIT_HALF_PX = 12
 
@@ -621,6 +629,10 @@ function VirtualRadar({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeKey])
 
+  // Obstacles are collected out to the same abeam distance the MSA uses, so an
+  // obstacle that raises the MSA is always on the chart.
+  const [msaMargins] = useMsaMargins()
+  const abeamNm = resolveMsaMargins(msaMargins).abeamNm
   const rawProfile = useMemo(() => {
     if (waypoints.length < 2 || !airspaceGeo || !obstacleGeo) return null
     return buildVirtualRadarProfile(
@@ -632,8 +644,9 @@ function VirtualRadar({
       landmarkGeo ?? undefined,
       airspaceCeilingFt ?? Infinity,
       aircraftProfile?.cruiseAltFt || undefined,
+      { obstacleNm: abeamNm },
     )
-  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo, landmarkGeo, airspaceCeilingFt, aircraftProfile?.cruiseAltFt])
+  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo, landmarkGeo, airspaceCeilingFt, aircraftProfile?.cruiseAltFt, abeamNm])
   // AGL limits are published as heights: lift them onto the terrain along the
   // crossing once the terrain profile is in, so bands draw at their real altitude.
   const profile = useMemo(
@@ -666,7 +679,6 @@ function VirtualRadar({
   }, [profile, iconMarkup])
 
   // MSA lookup at a given distNm — shared with native (getMsaLookup).
-  const [msaMargins] = useMsaMargins()
   // Highest terrain within the abeam corridor, from the offline grid file.
   // No grid (not built yet / not fetched) = centreline samples only.
   const mefGrids = useMefGrids()
@@ -907,6 +919,37 @@ function VirtualRadar({
   // Everything that only changes with the route, terrain, weather or panel
   // size. Memoised so the per-GPS-tick re-render (live layer below) only
   // rebuilds the aircraft marker and trajectory, not airspace, clouds, icons.
+  // Obstacle and landmark symbols. Obstacles are collected out to the abeam
+  // distance the MSA uses and fade with distance off track; the one that sets
+  // the MSA gets a ring; a crowd collapses to dots (highest first keeps its
+  // pictogram). Landmarks thin out the same way, lower priority.
+  const { obstacleMarks, landmarkMarks } = useMemo(() => {
+    const none = { obstacleMarks: [] as ObstacleMark[], landmarkMarks: [] as LandmarkMark[] }
+    if (!profile || !layout) return none
+    const L = layout
+    const margins = resolveMsaMargins(msaMargins)
+    const obs = profile.obstacles.map((o, i) => {
+      const baseFt = Math.max(o.elevationFt, terrainAt(terrainPts, o.distNm))
+      const tipFt = o.heightM > 0 ? Math.round(baseFt + o.heightM * 3.28084) : baseFt
+      const limiting = isLimitingObstacle(tipFt, margins.obstacleClearanceFt, getMsa(o.distNm))
+      return {
+        key: `obs-${i}`, kind: o.kind, cx: L.xOf(o.distNm), cy: L.yOf(tipFt), groundY: L.yOf(Math.max(0, baseFt)),
+        opacity: obstacleOpacity(o.lateralNm, margins.abeamNm), limiting, priority: limiting ? 1e9 + tipFt : tipFt, full: false,
+      }
+    })
+    const obsFull = declutterMarks(obs.map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), OBSTACLE_MIN_GAP_PX)
+    obs.forEach((m) => { m.full = obsFull.has(m.key) })
+    const lmk = profile.landmarks.map((l, i) => {
+      // Floored at 0: landmarks have no elevation of their own and
+      // terrainAt() can go slightly negative from DEM noise near water.
+      const baseFt = Math.max(0, terrainAt(terrainPts, l.distNm))
+      return { key: `lmk-${i}`, kind: l.kind, cx: L.xOf(l.distNm), cy: L.yOf(baseFt), full: false }
+    })
+    const lmkFull = declutterMarks(lmk.map((m) => ({ id: m.key, x: m.cx, priority: 0 })), LANDMARK_MIN_GAP_PX)
+    lmk.forEach((m) => { m.full = lmkFull.has(m.key) })
+    return { obstacleMarks: obs, landmarkMarks: lmk }
+  }, [profile, layout, terrainPts, getMsa, msaMargins])
+
   const scene = useMemo(() => {
     if (!profile || !layout || !series) return null
     const L = layout
@@ -971,12 +1014,22 @@ function VirtualRadar({
         })}
 
         {/* ── Obstacles at tip elevation, real map pictograms ───── */}
-        {profile.obstacles.map((obs, i) => {
-          const baseFt = Math.max(obs.elevationFt, terrainAt(terrainPts, obs.distNm))
-          const tipFt = obs.heightM > 0 ? Math.round(baseFt + obs.heightM * 3.28084) : baseFt
-          const cx = L.xOf(obs.distNm), cy = L.yOf(tipFt)
-          return renderIconAt(`obs-${i}`, cx, cy, 16, iconMarkup[`obs:${obs.kind}`],
-            <circle cx={cx} cy={cy} r={3} fill="rgba(220,80,60,0.85)" stroke="rgba(0,0,0,0.4)" strokeWidth={1} />)
+        {obstacleMarks.map((m) => {
+          if (!m.full) {
+            // Crowded: a dot at the tip, so nothing vanishes but a field of masts
+            // does not turn into overlapping pictograms.
+            return <circle key={m.key} cx={m.cx} cy={m.cy} r={2} fill="rgba(220,80,60,0.9)" opacity={m.opacity} />
+          }
+          return (
+            <g key={m.key} opacity={m.opacity}>
+              {m.groundY - m.cy > 4 && (
+                <line x1={m.cx} y1={m.cy} x2={m.cx} y2={m.groundY} stroke="rgba(220,80,60,0.55)" strokeWidth={1} />
+              )}
+              {m.limiting && <circle cx={m.cx} cy={m.cy - 7} r={11} fill="none" stroke={DANGER_COLOR} strokeWidth={1.5} />}
+              {renderIconAt(`${m.key}-i`, m.cx, m.cy, 16, iconMarkup[`obs:${m.kind}`],
+                <circle cx={m.cx} cy={m.cy} r={3} fill="rgba(220,80,60,0.85)" stroke="rgba(0,0,0,0.4)" strokeWidth={1} />)}
+            </g>
+          )
         })}
 
         {/* ── Wind row under the x axis (see windRow above) ─────── */}
@@ -1015,14 +1068,10 @@ function VirtualRadar({
         }))}
 
         {/* ── Landmarks on the ground, real map pictograms ──────── */}
-        {profile.landmarks.map((lmk, i) => {
-          // Floored at 0: landmarks have no elevation of their own and
-          // terrainAt() can go slightly negative from DEM noise near water.
-          const baseFt = Math.max(0, terrainAt(terrainPts, lmk.distNm))
-          const cx = L.xOf(lmk.distNm), cy = L.yOf(baseFt)
-          return renderIconAt(`lmk-${i}`, cx, cy, 14, iconMarkup[`lmk:${lmk.kind}`],
-            <circle cx={cx} cy={cy} r={2.5} fill="rgba(150,150,150,0.9)" stroke="rgba(0,0,0,0.4)" strokeWidth={1} />)
-        })}
+        {landmarkMarks.map((m) => m.full
+          ? renderIconAt(m.key, m.cx, m.cy, 14, iconMarkup[`lmk:${m.kind}`],
+            <circle cx={m.cx} cy={m.cy} r={2.5} fill="rgba(150,150,150,0.9)" stroke="rgba(0,0,0,0.4)" strokeWidth={1} />)
+          : <circle key={m.key} cx={m.cx} cy={m.cy} r={1.6} fill="rgba(150,150,150,0.8)" />)}
 
         {/* ── Waypoint lines + names (collision-filtered above) ─── */}
         {visibleWaypointTicks.map(({ tick, isLast }) => {
@@ -1072,7 +1121,7 @@ function VirtualRadar({
         </text>
       </>
     )
-  }, [profile, layout, series, yMax, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, windAloft, iconMarkup, visibleWaypointTicks, units.distance, dragging])
+  }, [profile, layout, series, yMax, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, windAloft, iconMarkup, visibleWaypointTicks, units.distance, dragging, obstacleMarks, landmarkMarks])
 
   if (!profile || !series || series.distNms.length === 0) return null
 

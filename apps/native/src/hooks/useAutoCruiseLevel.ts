@@ -14,7 +14,7 @@
 import { useEffect, useRef } from 'react'
 import { fetchTerrainProfile, buildVirtualRadarProfile } from '@open-vfr/shared/virtualRadarCalc'
 import { requiredLegAltFt, newLegsAfterChange, autoLevelMessage } from '@open-vfr/shared/autoCruiseLevel'
-import type { MsaMargins } from '@open-vfr/shared/msaMargins'
+import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import { getTileUrls, API_BASE } from '../config'
 import { getOfflineDem } from '../utils/terrainDem'
 import type { RouteWaypoint, LegOverride } from '../types/db'
@@ -68,7 +68,7 @@ export function useAutoCruiseLevel(opts: {
         const now = latest.current.waypoints
         const same = (a?: RouteWaypoint, b?: RouteWaypoint) => !!a && !!b && a.lat === b.lat && a.lng === b.lng
         if (!same(now[legIndex], legWps[0]) || !same(now[legIndex + 1], legWps[1])) return
-        const profile = buildVirtualRadarProfile(legWps, [], EMPTY_FC, obstacles)
+        const profile = buildVirtualRadarProfile(legWps, [], EMPTY_FC, obstacles, undefined, undefined, Infinity, undefined, { obstacleNm: resolveMsaMargins(latest.current.msaMargins).abeamNm })
         const required = requiredLegAltFt(terrain.map((t) => t.elevFt), profile.obstacles.map((o) => o.elevationFt), latest.current.msaMargins)
         const { legOverrides, defaultAltFt, onNotice, setLegOverride } = latest.current
         const planned = legOverrides[legIndex]?.altFt ?? defaultAltFt

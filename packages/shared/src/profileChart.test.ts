@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  profileChartLayout, profileYMax, altitudeTicks, formatAltitudeTick, formatAltitudeFt, distanceTicks,
+  profileChartLayout, profileYMax, declutterMarks, obstacleOpacity, isLimitingObstacle, altitudeTicks, formatAltitudeTick, formatAltitudeFt, distanceTicks,
   polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex,
 } from './profileChart'
 
@@ -120,5 +120,39 @@ describe('nearestSampleIndex', () => {
     expect(nearestSampleIndex([0, 1, 2, 3], -5)).toBe(0)
     expect(nearestSampleIndex([0, 1, 2, 3], 50)).toBe(3)
     expect(nearestSampleIndex([], 1)).toBe(-1)
+  })
+})
+
+describe('declutterMarks', () => {
+  it('keeps the highest priority in a crowd and spaces the rest', () => {
+    const kept = declutterMarks([
+      { id: 'a', x: 100, priority: 1 },
+      { id: 'b', x: 104, priority: 5 },   // wins over a
+      { id: 'c', x: 140, priority: 1 },
+      { id: 'd', x: 143, priority: 1 },   // too close to c, loses (left to right)
+    ], 10)
+    expect([...kept].sort()).toEqual(['b', 'c'])
+  })
+  it('keeps everything that is far enough apart', () => {
+    expect(declutterMarks([{ id: 'a', x: 0, priority: 0 }, { id: 'b', x: 50, priority: 0 }], 20).size).toBe(2)
+  })
+})
+
+describe('obstacleOpacity', () => {
+  it('is full near the line and fades to 45 % at the abeam limit', () => {
+    expect(obstacleOpacity(0.4, 5)).toBe(1)
+    expect(obstacleOpacity(1, 5)).toBe(1)
+    expect(obstacleOpacity(5, 5)).toBeCloseTo(0.45)
+    expect(obstacleOpacity(3, 5)).toBeCloseTo(0.725)
+    expect(obstacleOpacity(2, 1)).toBe(1)
+  })
+})
+
+describe('isLimitingObstacle', () => {
+  it('is true when tip + clearance rounds up to the MSA', () => {
+    expect(isLimitingObstacle(2650, 500, 3200)).toBe(true)   // 3150 -> 3200
+    expect(isLimitingObstacle(2650, 500, 3300)).toBe(false)
+    expect(isLimitingObstacle(0, 500, 3000)).toBe(false)
+    expect(isLimitingObstacle(2650, 500, 0)).toBe(false)
   })
 })

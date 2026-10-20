@@ -208,3 +208,43 @@ export function nearestSampleIndex(distNms: readonly number[], distNm: number): 
   }
   return Math.abs(distNms[lo] - distNm) <= Math.abs(distNms[hi] - distNm) ? lo : hi
 }
+
+// ── Obstacle / landmark symbols ────────────────────────────────────────────
+
+/**
+ * Greedy pixel declutter: returns the ids to draw as full symbols; the rest
+ * are drawn as small dots (so nothing disappears, but a dense field of masts
+ * does not become a thicket of overlapping pictograms). Higher priority wins
+ * a slot first, ties go left to right. A mark is kept when no kept mark lies
+ * within `minGapPx` horizontally.
+ */
+export function declutterMarks(
+  marks: readonly { id: string; x: number; priority: number }[],
+  minGapPx: number,
+): Set<string> {
+  const order = [...marks].sort((a, b) => b.priority - a.priority || a.x - b.x)
+  const kept: number[] = []
+  const out = new Set<string>()
+  for (const m of order) {
+    if (kept.some((x) => Math.abs(x - m.x) < minGapPx)) continue
+    kept.push(m.x)
+    out.add(m.id)
+  }
+  return out
+}
+
+/** Obstacles near the route line are drawn at full strength, those out to the
+ *  abeam limit fade towards 45 % so the ones that matter stand out. */
+export const OBSTACLE_FULL_STRENGTH_NM = 1
+export function obstacleOpacity(lateralNm: number, abeamNm: number): number {
+  if (lateralNm <= OBSTACLE_FULL_STRENGTH_NM || abeamNm <= OBSTACLE_FULL_STRENGTH_NM) return 1
+  const f = Math.min(1, (lateralNm - OBSTACLE_FULL_STRENGTH_NM) / (abeamNm - OBSTACLE_FULL_STRENGTH_NM))
+  return 1 - 0.55 * f
+}
+
+/** True when this obstacle is what sets the MSA at its position: tip plus the
+ *  obstacle clearance, rounded up to 100 ft, reaches the MSA there. */
+export function isLimitingObstacle(tipFt: number, obstacleClearanceFt: number, msaFt: number): boolean {
+  if (msaFt <= 0 || tipFt <= 0) return false
+  return Math.ceil((tipFt + obstacleClearanceFt) / 100) * 100 >= msaFt
+}

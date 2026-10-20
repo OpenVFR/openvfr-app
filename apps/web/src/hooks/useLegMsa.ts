@@ -21,6 +21,7 @@ import { getRemoteDem } from '../utils/terrainDem'
 import { useActiveCountries } from '../utils/countryData'
 import { API_BASE_URL } from '../utils/env'
 import { useMsaMargins } from '../db/useSettings'
+import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { useMefGrids } from './useMefGrids'
 import type { RouteWaypoint } from '../utils/routeCalc'
 
@@ -56,9 +57,9 @@ export function useLegMsa(waypoints: RouteWaypoint[]): LegMsa {
   const profile = useMemo(
     () => waypoints.length < 2 || !obstacleGeo
       ? null
-      : buildVirtualRadarProfile(waypoints, [], EMPTY_FC, obstacleGeo),
+      : buildVirtualRadarProfile(waypoints, [], EMPTY_FC, obstacleGeo, undefined, undefined, Infinity, undefined, { obstacleNm: resolveMsaMargins(margins).abeamNm }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [routeKey, obstacleGeo],
+    [routeKey, obstacleGeo, margins.abeamNm],
   )
 
   return useMemo(() => {

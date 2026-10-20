@@ -100,6 +100,8 @@ export type WaterCrossing = {
 /** An obstacle marker on the profile floor. */
 export type ObstacleMarker = {
   distNm:      number
+  /** Distance off the route line (NM), for fading far-off obstacles. */
+  lateralNm:   number
   elevationFt: number   // tip elevation (AMSL)
   heightM:     number   // AGL height (0 if unknown)
   kind:        string   // 'wind_turbine' | 'tower' | 'chimney' | …
@@ -376,7 +378,13 @@ export function buildVirtualRadarProfile(
   /** Level used for legs without their own override: the aircraft profile's
    *  cruise altitude (as the fuel plan already does), else 3500 ft. */
   defaultAltFt: number = DEFAULT_ALT_FT,
+  /** Corridor half-widths (NM either side of the route) for obstacles and
+   *  landmarks. Obstacles should use the same abeam value as the MSA
+   *  (msaMargins.abeamNm) so an obstacle that raises the MSA is also shown. */
+  corridors: { obstacleNm?: number; landmarkNm?: number } = {},
 ): VirtualRadarProfile {
+  const obstacleCorridorNm = corridors.obstacleNm ?? OBSTACLE_CORRIDOR_NM
+  const landmarkCorridorNm = corridors.landmarkNm ?? OBSTACLE_CORRIDOR_NM
   if (waypoints.length < 2) {
     return {
       totalNm: 0,
@@ -403,7 +411,7 @@ export function buildVirtualRadarProfile(
   // (airspace/water), and a corridor-widened one for the point-in-corridor
   // tests (obstacles/landmarks).
   const routeBbox         = bboxOfCoords([coords])
-  const routeBboxCorridor = expandBbox(routeBbox, OBSTACLE_CORRIDOR_NM)
+  const routeBboxCorridor = expandBbox(routeBbox, Math.max(obstacleCorridorNm, landmarkCorridorNm))
 
   // ── 2. Cumulative distance to each waypoint ────────────────────────────────
   const legDistancesNm: number[] = []
@@ -541,7 +549,8 @@ export function buildVirtualRadarProfile(
 
   // ── 5. Obstacle markers within lateral corridor ────────────────────────────
   const obstacleMarkers: ObstacleMarker[] = []
-  const corridorNmKm = OBSTACLE_CORRIDOR_NM / 0.539957  // NM → km
+  const obstacleCorridorKm = obstacleCorridorNm / 0.539957  // NM → km
+  const landmarkCorridorKm = landmarkCorridorNm / 0.539957
 
   for (const feature of obstacleGeoJson.features) {
     if (feature.geometry?.type !== 'Point') continue
@@ -550,13 +559,14 @@ export function buildVirtualRadarProfile(
     const p = feature.properties as ObstacleProps
     const snapped = nearestPointOnLine(routeLine, feature as Feature<GeoJSON.Point>, { units: 'kilometers' })
     const lateralKm = snapped.properties.dist ?? Infinity
-    if (lateralKm > corridorNmKm) continue
+    if (lateralKm > obstacleCorridorKm) continue
 
     const distNm = (snapped.properties.location ?? 0) * 0.539957
     if (distNm < 0 || distNm > totalNm) continue
 
     obstacleMarkers.push({
       distNm:      Math.round(distNm * 10) / 10,
+      lateralNm:   Math.round(lateralKm * 0.539957 * 10) / 10,
       elevationFt: Number(p.elevation_ft ?? 0),
       heightM:     Number(p.height_m     ?? 0),
       kind:        String(p.kind         ?? ''),
@@ -576,7 +586,7 @@ export function buildVirtualRadarProfile(
     const p = feature.properties as LandmarkProps
     const snapped = nearestPointOnLine(routeLine, feature as Feature<GeoJSON.Point>, { units: 'kilometers' })
     const lateralKm = snapped.properties.dist ?? Infinity
-    if (lateralKm > corridorNmKm) continue
+    if (lateralKm > landmarkCorridorKm) continue
 
     const distNm = (snapped.properties.location ?? 0) * 0.539957
     if (distNm < 0 || distNm > totalNm) continue

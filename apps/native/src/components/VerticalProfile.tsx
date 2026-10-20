@@ -50,11 +50,11 @@ import {
   type MsaPoint,
   type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
-import type { MsaMargins } from '@open-vfr/shared/msaMargins'
+import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import { useMefGrids } from '../hooks/useMefGrids'
 import { pickWaypointLabels, estimateLabelWidth } from '@open-vfr/shared/profileLabels'
 import {
-  profileChartLayout, profileYMax, altitudeTicks, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
+  profileChartLayout, profileYMax, declutterMarks, obstacleOpacity, isLimitingObstacle, altitudeTicks, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
 } from '@open-vfr/shared/profileChart'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
 import { airspaceOutlines, airspaceChips, layoutAirspaceChips } from '@open-vfr/shared/airspaceOutline'
@@ -468,11 +468,14 @@ export function VerticalProfile({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeKey])
 
+  // Obstacles are collected out to the same abeam distance the MSA uses, so an
+  // obstacle that raises the MSA is always on the chart.
+  const abeamNm = resolveMsaMargins(msaMargins).abeamNm
   const rawProfile = useMemo(() => {
     if (waypoints.length < 2 || !airspaceGeo || !obstacleGeo) return null
     // water: undefined on native -- see the loader comment above.
-    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, undefined, landmarkGeo ?? undefined, airspaceCeilingFt ?? Infinity, aircraftProfile?.cruiseAltFt || undefined)
-  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, landmarkGeo, airspaceCeilingFt, aircraftProfile?.cruiseAltFt])
+    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, undefined, landmarkGeo ?? undefined, airspaceCeilingFt ?? Infinity, aircraftProfile?.cruiseAltFt || undefined, { obstacleNm: abeamNm })
+  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, landmarkGeo, airspaceCeilingFt, aircraftProfile?.cruiseAltFt, abeamNm])
   // AGL limits are published as heights: lift them onto the terrain along the
   // crossing once the terrain profile is in, so bands draw at their real altitude.
   const profile = useMemo(
@@ -531,6 +534,34 @@ export function VerticalProfile({
     totalNm, yMax, minPxPerNm: MIN_PX_PER_NM,
   }), [chartW, chartH, totalNm, yMax])
   const { plotW, plotH, contentW, scrollable, xOf, yOf } = layout
+
+  // Obstacle and landmark symbols. Obstacles are collected out to the abeam
+  // distance the MSA uses and fade with distance off track; the one that sets
+  // the MSA gets a ring; a crowd collapses to dots (highest first keeps its
+  // pictogram). Landmarks thin out the same way, lower priority. Mirrors web.
+  const { obstacleMarks, landmarkMarks } = useMemo(() => {
+    const margins = resolveMsaMargins(msaMargins)
+    const obs = (profile?.obstacles ?? []).map((o, i) => {
+      const baseFt = Math.max(o.elevationFt, terrainAt(terrainPts, o.distNm))
+      const tipFt = o.heightM > 0 ? Math.round(baseFt + o.heightM * 3.28084) : baseFt
+      const limiting = isLimitingObstacle(tipFt, margins.obstacleClearanceFt, getMsa(o.distNm))
+      return {
+        key: `obs-${i}`, kind: o.kind, cx: xOf(o.distNm), cy: yOf(tipFt), groundY: yOf(Math.max(0, baseFt)),
+        opacity: obstacleOpacity(o.lateralNm, margins.abeamNm), limiting, priority: limiting ? 1e9 + tipFt : tipFt, full: false,
+      }
+    })
+    const obsFull = declutterMarks(obs.map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), 14)
+    obs.forEach((m) => { m.full = obsFull.has(m.key) })
+    const lmk = (profile?.landmarks ?? []).map((l, i) => {
+      // Floor at 0: landmarks rely purely on terrainAt(), which can go
+      // negative from DEM noise over/near water.
+      const baseFt = Math.max(0, terrainAt(terrainPts, l.distNm))
+      return { key: `lmk-${i}`, kind: l.kind, cx: xOf(l.distNm), cy: yOf(baseFt), full: false }
+    })
+    const lmkFull = declutterMarks(lmk.map((m) => ({ id: m.key, x: m.cx, priority: 0 })), 18)
+    lmk.forEach((m) => { m.full = lmkFull.has(m.key) })
+    return { obstacleMarks: obs, landmarkMarks: lmk }
+  }, [profile, terrainPts, getMsa, msaMargins, xOf, yOf])
   const maxScrollX  = Math.max(0, contentW - chartW)
   // Clamped x for wind arrows/labels only -- keeps the marker inside the
   // plot area by WIND_EDGE_MARGIN_PX regardless of route length, falling
@@ -1234,11 +1265,14 @@ export function VerticalProfile({
                   this, in a separate non-scrolling overlay after the clip
                   window closes. */}
               <View style={{ position: 'absolute', left: 0, top: 0, width: contentW, height: chartH }} pointerEvents="none">
-                {profile.obstacles.map((obs, i) => {
-                  const baseFt = Math.max(obs.elevationFt, terrainAt(terrainPts, obs.distNm))
-                  const tipFt  = obs.heightM > 0 ? Math.round(baseFt + obs.heightM * 3.28084) : baseFt
-                  const icon = OBSTACLE_ICONS[obs.kind] ?? OBSTACLE_ICON_FALLBACK
+                {obstacleMarks.map((m) => {
+                  const icon = OBSTACLE_ICONS[m.kind] ?? OBSTACLE_ICON_FALLBACK
                   const size = 16
+                  if (!m.full) {
+                    // Crowded: a dot at the tip, so a field of masts does not
+                    // turn into overlapping pictograms.
+                    return <View key={m.key} style={{ position: 'absolute', width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(220,80,60,0.9)', opacity: m.opacity, left: m.cx - 2, top: m.cy - 2 }} />
+                  }
                   return (
                     // Anchor by BOTTOM edge at the tip point, growing
                     // UPWARD from it -- a top-anchor's fixed pixel height
@@ -1248,31 +1282,34 @@ export function VerticalProfile({
                     // 0ft/ground -- same failure mode as the original
                     // center-anchor bug, just via a different path. Mirrors
                     // web's identical fix.
-                    <Image
-                      key={`obs-${i}`}
-                      source={icon}
-                      style={{ position: 'absolute', width: size, height: size, left: xOf(obs.distNm) - size / 2, top: yOf(tipFt) - size }}
-                      resizeMode="contain"
-                    />
+                    <View key={m.key} style={{ position: 'absolute', left: 0, top: 0, opacity: m.opacity }} pointerEvents="none">
+                      {m.groundY - m.cy > 4 && (
+                        <View style={{ position: 'absolute', width: 1, left: m.cx, top: m.cy, height: m.groundY - m.cy, backgroundColor: 'rgba(220,80,60,0.55)' }} />
+                      )}
+                      {m.limiting && (
+                        <View style={{ position: 'absolute', width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: 'rgba(239,68,68,0.95)', left: m.cx - 11, top: m.cy - 18 }} />
+                      )}
+                      <Image
+                        source={icon}
+                        style={{ position: 'absolute', width: size, height: size, left: m.cx - size / 2, top: m.cy - size }}
+                        resizeMode="contain"
+                      />
+                    </View>
                   )
                 })}
 
-                {profile.landmarks.map((lmk, i) => {
-                  // Floor at 0 -- see web VirtualRadar.tsx's identical fix
-                  // for the full rationale: unlike obstacles (floored via
-                  // Math.max against their own surveyed elevationFt),
-                  // landmarks rely purely on terrainAt(), which can go
-                  // negative from real DEM noise over/near water.
-                  const baseFt = Math.max(0, terrainAt(terrainPts, lmk.distNm))
-                  const icon = LANDMARK_ICONS[lmk.kind] ?? LANDMARK_ICON_FALLBACK
+                {landmarkMarks.map((m) => {
+                  const icon = LANDMARK_ICONS[m.kind] ?? LANDMARK_ICON_FALLBACK
                   const size = 14
+                  if (!m.full) {
+                    return <View key={m.key} style={{ position: 'absolute', width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(150,150,150,0.8)', left: m.cx - 1.5, top: m.cy - 3 }} />
+                  }
                   return (
-                    // Anchor by BOTTOM edge, not center -- yOf(baseFt) here
-                    // is ground; mirrors web's identical fix.
+                    // Anchor by BOTTOM edge, not center -- m.cy is ground.
                     <Image
-                      key={`lmk-${i}`}
+                      key={m.key}
                       source={icon}
-                      style={{ position: 'absolute', width: size, height: size, left: xOf(lmk.distNm) - size / 2, top: yOf(baseFt) - size }}
+                      style={{ position: 'absolute', width: size, height: size, left: m.cx - size / 2, top: m.cy - size }}
                       resizeMode="contain"
                     />
                   )

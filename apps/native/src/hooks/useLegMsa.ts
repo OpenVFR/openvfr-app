@@ -11,7 +11,7 @@ import {
   getMsaLookup, type TerrainPoint,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { legSpans, legMsaList, type LegSpan } from '@open-vfr/shared/legLevelDrag'
-import type { MsaMargins } from '@open-vfr/shared/msaMargins'
+import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import { API_BASE } from '../config'
 import { getOfflineDem } from '../utils/terrainDem'
 import { loadObstacles } from './useAutoCruiseLevel'
@@ -48,9 +48,9 @@ export function useLegMsa(waypoints: RouteWaypoint[], margins: Partial<MsaMargin
   const profile = useMemo(
     () => waypoints.length < 2 || !obstacleGeo
       ? null
-      : buildVirtualRadarProfile(waypoints, [], EMPTY_FC, obstacleGeo),
+      : buildVirtualRadarProfile(waypoints, [], EMPTY_FC, obstacleGeo, undefined, undefined, Infinity, undefined, { obstacleNm: resolveMsaMargins(margins).abeamNm }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [routeKey, obstacleGeo],
+    [routeKey, obstacleGeo, margins.abeamNm],
   )
 
   return useMemo(() => {
