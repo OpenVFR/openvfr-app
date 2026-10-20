@@ -8,7 +8,7 @@
 .loading {
   font-size: 11px;
   color: var(--text-muted);
-  padding: 4px 0;
+  padding: 4px 12px;
 }
 
 /* ── No-issues green line ─────────────────────────────────── */
@@ -18,7 +18,8 @@
   gap: 6px;
   font-size: 11px;
   color: var(--accent-green);
-  padding: 4px 0;
+  /* Same 12px side inset as the other drawer panels; was flush with the edge. */
+  padding: 8px 12px;
 }
 
 .okIcon {
