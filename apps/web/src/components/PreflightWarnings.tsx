@@ -3,13 +3,13 @@
  *
  * Checks for three categories of issue:
  *   1. Airspace penetration — planned altitude enters Class C / D / R / TRA
- *   2. Below Minimum Safe Altitude — planned altitude < terrain + 1,000 ft
+ *   2. Below Minimum Safe Altitude — planned altitude < the MSA (terrain + terrain clearance, obstacles + obstacle clearance; user margins)
  *      (outside the 5 NM departure/arrival suppression window)
  *   3. Fuel — total minimum fuel exceeds available fuel (based on aircraft profile)
  */
 
 import { useMsaMargins } from '../db/useSettings'
-import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
+import { resolveMsaMargins, DEFAULT_MSA_MARGINS, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import { obstacleTipsForMsa } from '@open-vfr/shared/obstacleHeights'
 import { useMefGrids } from '../hooks/useMefGrids'
 import { useState, useEffect, useMemo } from 'react'
@@ -123,6 +123,7 @@ function computeWarnings(
   aircraftId?: string,
   terrainFailed = false,
   legWinds?: ({ dirDeg: number; speedKts: number } | null)[],
+  margins: MsaMargins = DEFAULT_MSA_MARGINS,
 ): PreflightWarning[] {
   const warnings: PreflightWarning[] = []
 
@@ -191,7 +192,7 @@ function computeWarnings(
         level:  'danger',
         code:   'below-msa',
         title:  'Route segment below Minimum Safe Altitude',
-        detail: 'Planned altitude on one or more legs falls below terrain + 1,000 ft. Check Virtual Radar.',
+        detail: `Planned altitude on one or more legs falls below the minimum safe altitude (terrain + ${margins.terrainClearanceFt.toLocaleString('en-US')} ft within ${margins.abeamNm} NM, obstacles + ${margins.obstacleClearanceFt.toLocaleString('en-US')} ft). Check Virtual Radar.`,
       })
     }
   }
@@ -312,8 +313,8 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
 
   const warnings = useMemo<PreflightWarning[]>(() => {
     if (!profile) return []
-    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds)
-  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds])
+    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, resolveMsaMargins(msaMargins))
+  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, msaMargins])
 
   const loading = !terrainDone && waypoints.length >= 2
 
