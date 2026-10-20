@@ -1,7 +1,8 @@
 /**
  * useObstructionWarnings — proximity alerts for fixed obstacles.
  *
- * Loads se-obstacles.geojson once on mount. On each position update,
+ * Loads the obstacles and landmarks files once on mount (unknown heights use
+ * the per-kind estimate, see @open-vfr/shared/obstructionPoints). On each position update,
  * scans all obstacles within a configurable horizontal radius and checks
  * whether the aircraft altitude is within a vertical clearance margin.
  *
@@ -13,10 +14,12 @@
  * Dismiss suppresses that obstacle for DISMISS_REARM_MS (5 min).
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { useActiveCountries } from '../utils/countryData'
+import { buildObstructionPoints, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
+import { useMefGrids } from './useMefGrids'
 
 // ── Config ───────────────────────────────────────────────────────────────────
 const WARN_RADIUS_NM      = 1.0    // horizontal warning radius
@@ -32,18 +35,12 @@ export type ObstructionAlert = {
   name:        string
   elevationFt: number  // ground AMSL ft
   tipFt:       number  // tip altitude AMSL ft
+  /** Tip height is the per-kind estimate, not a recorded value. */
+  estimated:   boolean
   distNm:      number
 }
 
-type ObstaclePoint = {
-  key:        string
-  lat:        number
-  lng:        number
-  kind:       string
-  name:       string
-  elevFt:     number
-  tipFt:      number
-}
+type ObstaclePoint = ObstructionPoint
 
 // ── Fast approximate distance ─────────────────────────────────────────────────
 function approxDistNm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -58,7 +55,10 @@ export function useObstructionWarnings(position: GpsPosition | null): {
   alerts:  ObstructionAlert[]
   dismiss: (key: string) => void
 } {
-  const [obstacles, setObstacles] = useState<ObstaclePoint[]>([])
+  const [obstacleFc, setObstacleFc] = useState<GeoJSON.FeatureCollection | null>(null)
+  const [landmarkFc, setLandmarkFc] = useState<GeoJSON.FeatureCollection | null>(null)
+  const mefGrids = useMefGrids()
+  const obstacles = useMemo<ObstaclePoint[]>(() => buildObstructionPoints(obstacleFc, landmarkFc, mefGrids), [obstacleFc, landmarkFc, mefGrids])
   const [alerts,    setAlerts]    = useState<ObstructionAlert[]>([])
   const dismissedRef = useRef<Map<string, number>>(new Map())
   // Last-committed result signature -- skip setAlerts() when the computed
@@ -69,23 +69,8 @@ export function useObstructionWarnings(position: GpsPosition | null): {
   // ── Load once ───────────────────────────────────────────────────────────────
   const { key: countriesKey } = useActiveCountries()
   useEffect(() => {
-    loadCountryGeojson('obstacles')
-      .then((fc: GeoJSON.FeatureCollection) => {
-        const pts: ObstaclePoint[] = []
-        fc.features.forEach((f, i) => {
-          const g = f.geometry as GeoJSON.Point
-          const p = f.properties as Record<string, unknown>
-          const elevFt  = Number(p['elevation_ft'] ?? 0)
-          const heightM = Number(p['height_m']     ?? 0)
-          const tipFt   = elevFt + Math.round(heightM * 3.28084)
-          const kind    = String(p['kind'] ?? 'other')
-          const name    = String(p['name'] ?? '').trim()
-          const key     = name || `obs-${i}`
-          pts.push({ key, lat: g.coordinates[1], lng: g.coordinates[0], kind, name, elevFt, tipFt })
-        })
-        setObstacles(pts)
-      })
-      .catch(() => { /* silently ignore offline */ })
+    loadCountryGeojson('obstacles').then(setObstacleFc).catch(() => { /* silently ignore offline */ })
+    loadCountryGeojson('landmarks').then(setLandmarkFc).catch(() => { /* optional dataset */ })
   }, [countriesKey])
 
   // ── Evaluate on every position update ───────────────────────────────────────
@@ -122,6 +107,7 @@ export function useObstructionWarnings(position: GpsPosition | null): {
         name:        obs.name || obs.kind.replace('_', ' '),
         elevationFt: obs.elevFt,
         tipFt:       obs.tipFt,
+        estimated:   obs.estimated,
         distNm,
       })
 

@@ -35,9 +35,11 @@
  * below for the original hook it was extracted from.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
-import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
+import { onActiveCountriesChange, loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { buildObstructionPoints, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
+import { useMefGrids } from './useMefGrids'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
 import { lookaheadPath, accuracyRing } from '@open-vfr/shared/lookahead'
@@ -82,6 +84,8 @@ export type AirspaceAlert = {
 export type ObstructionAlert = {
   key: string; kind: string; name: string
   elevationFt: number; tipFt: number; distNm: number
+  /** Tip height is the per-kind estimate, not a recorded value. */
+  estimated: boolean
 }
 
 export type AirfieldProximityAlert = {
@@ -111,10 +115,7 @@ type AirspaceFeature = {
   geometry: { type: 'Polygon'; coordinates: number[][][] }
            | { type: 'MultiPolygon'; coordinates: number[][][][] }
 }
-type ObstaclePoint = {
-  key: string; lat: number; lng: number
-  kind: string; name: string; elevFt: number; tipFt: number
-}
+type ObstaclePoint = ObstructionPoint
 type AerodromeFeature = {
   key: string; icao: string; name: string; lat: number; lng: number
   elevationFt: number; primaryFreq: string | null
@@ -197,7 +198,11 @@ export function usePositionAlerts(
   verticalFt:     number = 500,
 ): PositionAlerts {
   const [airspaceFeatures, setAirspaceFeatures]   = useState<AirspaceFeature[]>([])
-  const [obstacleFeatures, setObstacleFeatures]   = useState<ObstaclePoint[]>([])
+  // Obstacles + landmarks; unknown heights use the per-kind estimate.
+  const [obstacleFc, setObstacleFc]               = useState<GeoJSON.FeatureCollection | null>(null)
+  const [landmarkFc, setLandmarkFc]               = useState<GeoJSON.FeatureCollection | null>(null)
+  const mefGrids                                  = useMefGrids()
+  const obstacleFeatures = useMemo<ObstaclePoint[]>(() => buildObstructionPoints(obstacleFc, landmarkFc, mefGrids), [obstacleFc, landmarkFc, mefGrids])
   const [aerodromeFeatures, setAerodromeFeatures] = useState<AerodromeFeature[]>([])
 
   const [airspaceAlerts, setAirspaceAlerts]               = useState<AirspaceAlert[]>([])
@@ -222,21 +227,9 @@ export function usePositionAlerts(
   useEffect(() => {
     fetch(getTileUrls().obstacles)
       .then(r => r.json())
-      .then((fc: GeoJSON.FeatureCollection) => {
-        const pts: ObstaclePoint[] = []
-        fc.features.forEach((f, i) => {
-          const g = f.geometry as GeoJSON.Point
-          const p = f.properties as Record<string, unknown>
-          const elevFt  = Number(p['elevation_ft'] ?? 0)
-          const heightM = Number(p['height_m']     ?? 0)
-          const tipFt   = elevFt + Math.round(heightM * 3.28084)
-          const kind    = String(p['kind'] ?? 'other')
-          const name    = String(p['name'] ?? '').trim()
-          pts.push({ key: name || `obs-${i}`, lat: g.coordinates[1], lng: g.coordinates[0], kind, name, elevFt, tipFt })
-        })
-        setObstacleFeatures(pts)
-      })
+      .then((fc: GeoJSON.FeatureCollection) => setObstacleFc(fc))
       .catch(() => { /* offline-safe */ })
+    loadCountryGeojson('landmarks').then(setLandmarkFc).catch(() => { /* optional dataset */ })
   }, [])
 
   useEffect(() => {
@@ -460,7 +453,7 @@ export function usePositionAlerts(
         const dismissedAt = obstructionDismissedRef.current.get(obs.key)
         if (dismissedAt !== undefined && now - dismissedAt < OBS_REARM_MS) continue
         found.push({ key: obs.key, kind: obs.kind, name: obs.name || obs.kind.replace('_', ' '),
-          elevationFt: obs.elevFt, tipFt: obs.tipFt, distNm })
+          elevationFt: obs.elevFt, tipFt: obs.tipFt, estimated: obs.estimated, distNm })
         if (found.length >= OBS_MAX_ALERTS) break
       }
       found.sort((a, b) => a.distNm - b.distNm)

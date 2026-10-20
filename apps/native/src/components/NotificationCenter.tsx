@@ -97,6 +97,10 @@ const OBSTRUCTION_KIND_LABEL: Record<string, string> = {
   tower:        '\u25b2 TOWER',
   chimney:      '\u25b2 CHIMNEY',
   building:     '\u25a3 BUILDING',
+  mast:         '\u25b2 MAST',
+  water_tower:  '\u25b2 WATER TOWER',
+  church:       '\u25b2 CHURCH',
+  windmill:     '\u25b2 WINDMILL',
   other:        '\u25b2 OBSTACLE',
 }
 
@@ -192,7 +196,7 @@ export function NotificationCenter({
       severity: 'yellow',
       badge: OBSTRUCTION_KIND_LABEL[a.kind] ?? '\u25b2 OBSTACLE',
       title: a.name || a.kind.replace('_', ' '),
-      meta: `${a.tipFt > a.elevationFt ? `Top ${a.tipFt} ft \u00b7 base ${a.elevationFt} ft AMSL` : `${a.elevationFt} ft AMSL`} \u00b7 ${a.distNm < 0.1 ? '<0.1' : a.distNm.toFixed(1)} NM`,
+      meta: `${a.tipFt > a.elevationFt ? `Top ${a.tipFt} ft${a.estimated ? ' (est.)' : ''} \u00b7 base ${a.elevationFt} ft AMSL` : `${a.elevationFt} ft AMSL`} \u00b7 ${a.distNm < 0.1 ? '<0.1' : a.distNm.toFixed(1)} NM`,
       dismissible: true,
       onDismiss: () => onDismissObstruction(a.key),
     })
