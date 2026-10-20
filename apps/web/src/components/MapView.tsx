@@ -2004,11 +2004,16 @@ export default function MapView({ auth }: { auth: AuthState }) {
 
       // Shared snap-query helper used by the live drag preview and both
       // commitDrag variants.
-      type DragEvent = { lngLat: maplibregl.LngLat; point: maplibregl.Point }
+      // Holding Alt while dragging turns snapping off, so a point can be placed
+      // (or nudged) exactly where it is dropped even next to, or on top of, a
+      // POI. Without it every drop within SNAP_PX of a POI snaps to it, and a
+      // point already on a POI can only be moved by dragging far away.
+      type DragEvent = { lngLat: maplibregl.LngLat; point: maplibregl.Point; originalEvent?: { altKey?: boolean } }
       // With `neighboursOf`, the route points before/after that waypoint
       // are targets too: dropping a point onto its neighbour removes it
       // (see neighbourAtDrop), and the live hint says so.
       const snapQuery = (e: DragEvent, neighboursOf?: number): SnapCandidate[] => {
+        if (e.originalEvent?.altKey) return []
         const SNAP_PX = 20
         const box: [maplibregl.PointLike, maplibregl.PointLike] = [
           [e.point.x - SNAP_PX, e.point.y - SNAP_PX],
