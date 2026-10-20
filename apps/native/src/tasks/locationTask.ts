@@ -90,7 +90,7 @@ export async function startBackgroundLocation(): Promise<'ok' | 'foreground-deni
       distanceInterval: 0,
       showsBackgroundLocationIndicator: true,
       foregroundService: {
-        notificationTitle: 'open-vfr — tracking flight',
+        notificationTitle: 'OpenVFR — tracking flight',
         notificationBody:  'GPS tracking continues while the app is in the background.',
       },
     })

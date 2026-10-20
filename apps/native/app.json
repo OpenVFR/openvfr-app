@@ -26,8 +26,8 @@
         "LSApplicationQueriesSchemes": [
           "itms-apps"
         ],
-        "NSLocationWhenInUseUsageDescription": "open-vfr needs GPS to show your position on the map and provide in-flight navigation.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "open-vfr needs background GPS access to continue tracking your flight when the screen locks.",
+        "NSLocationWhenInUseUsageDescription": "OpenVFR needs GPS to show your position on the map and provide in-flight navigation.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "OpenVFR needs background GPS access to continue tracking your flight when the screen locks.",
         "UIBackgroundModes": [
           "location",
           "fetch"
@@ -67,12 +67,12 @@
       "@maplibre/maplibre-react-native",
       [
         "expo-sensors",
-        { "motionPermission": "open-vfr uses the barometer (motion sensor) for altitude and vertical speed." }
+        { "motionPermission": "OpenVFR uses the barometer (motion sensor) for altitude and vertical speed." }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "open-vfr needs GPS for in-flight navigation.",
+          "locationAlwaysAndWhenInUsePermission": "OpenVFR needs GPS for in-flight navigation.",
           "isAndroidBackgroundLocationEnabled": false,
           "isAndroidForegroundServiceEnabled": true
         }
@@ -84,7 +84,7 @@
           "modes": [
             "peripheral"
           ],
-          "bluetoothAlwaysPermission": "open-vfr uses Bluetooth to connect to a BlueFly Vario for barometric altitude and vertical speed."
+          "bluetoothAlwaysPermission": "OpenVFR uses Bluetooth to connect to a BlueFly Vario for barometric altitude and vertical speed."
         }
       ],
       "expo-status-bar",
