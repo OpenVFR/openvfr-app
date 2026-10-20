@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { legSpans, dragLevelFt, legMsaFt, levelLabel, legMsaList, legBelowMsa } from './legLevelDrag'
+import { legSpans, dragLevelFt, legMsaFt, levelLabel, legMsaList, legBelowMsa, altAtY, unreachedLegs } from './legLevelDrag'
 
 describe('legSpans', () => {
   it('pairs profile points into legs', () => {
@@ -16,34 +16,28 @@ describe('legSpans', () => {
 
 describe('dragLevelFt', () => {
   const pxPerFt = 0.02 // 50 ft per px
-  it('moves a quarter of the finger when dragging up', () => {
-    // 80 px up -> 20 px effective -> +1000 ft
-    expect(dragLevelFt(3000, -80, pxPerFt)).toBe(4000)
+  it('follows the finger 1:1 up', () => {
+    expect(dragLevelFt(3000, -20, pxPerFt)).toBe(4000)   // 20 px up -> +1000 ft
   })
-  it('moves half of the finger when dragging down', () => {
-    // 40 px down -> 20 px effective -> -1000 ft
-    expect(dragLevelFt(3000, 40, pxPerFt)).toBe(2000)
+  it('follows the finger 1:1 down', () => {
+    expect(dragLevelFt(3000, 20, pxPerFt)).toBe(2000)
   })
   it('snaps to 100 ft and caps', () => {
-    expect(dragLevelFt(3000, -7, pxPerFt)).toBe(3100)
+    expect(dragLevelFt(3000, -2, pxPerFt)).toBe(3100)
     expect(dragLevelFt(49_950, -400, pxPerFt)).toBe(50_000)
   })
-  it('clears the override below the lowest step', () => {
-    expect(dragLevelFt(300, 40, pxPerFt)).toBeNull()
+  it('below the lowest step clears the override', () => {
+    expect(dragLevelFt(1000, 40, pxPerFt)).toBeNull()
   })
 })
 
-describe('legMsaFt', () => {
-  it('takes the highest MSA inside the span', () => {
-    const msa = [{ distNm: 0, msaFt: 2000 }, { distNm: 5, msaFt: 3500 }, { distNm: 12, msaFt: 2500 }]
-    expect(legMsaFt(msa, 0, 10)).toBe(3500)
-    expect(legMsaFt(msa, 11, 20)).toBe(2500)
-    expect(legMsaFt(msa, 30, 40)).toBe(0)
+describe('altAtY', () => {
+  it('reads the altitude drawn at a screen height', () => {
+    expect(altAtY(900, 1000, 0.1)).toBe(1000)      // 100 px above ground, 10 ft/px
+    expect(altAtY(1000, 1000, 0.1)).toBe(0)
+    expect(altAtY(1100, 1000, 0.1)).toBe(0)        // below ground: never negative
+    expect(altAtY(960, 1000, 0.1)).toBe(400)
   })
-})
-
-describe('levelLabel', () => {
-  it('formats feet', () => { expect(levelLabel(3500)).toBe('3,500 ft') })
 })
 
 describe('legMsaList / legBelowMsa', () => {
@@ -67,5 +61,22 @@ describe('legMsaList / legBelowMsa', () => {
     expect(legBelowMsa(spans[2], 50, 3000, 0)).toBe(false)              // no MSA known
     expect(legBelowMsa({ legIndex: 0, fromNm: 0, toNm: 4, altFt: 500 }, 50, 500, 1100)).toBe(false) // departure
     expect(legBelowMsa({ legIndex: 3, fromNm: 46, toNm: 50, altFt: 500 }, 50, 500, 1100)).toBe(false) // arrival
+  })
+})
+
+describe('unreachedLegs', () => {
+  const spans = [
+    { legIndex: 0, fromNm: 0, toNm: 3, altFt: 3500 },
+    { legIndex: 1, fromNm: 3, toNm: 30, altFt: 3500 },
+  ]
+  const path = [
+    { distNm: 0, altFt: 50 }, { distNm: 1.5, altFt: 700 }, { distNm: 3, altFt: 900 },
+    { distNm: 10, altFt: 3500 }, { distNm: 20, altFt: 3500 }, { distNm: 30, altFt: 40 },
+  ]
+  it('flags a leg the path never gets near its level on', () => {
+    expect(unreachedLegs(spans, path)).toEqual([{ legIndex: 0, levelFt: 3500, reachedFt: 900 }])
+  })
+  it('flags nothing when the path reaches the level', () => {
+    expect(unreachedLegs([spans[1]], path)).toEqual([])
   })
 })

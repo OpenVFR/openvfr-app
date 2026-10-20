@@ -51,7 +51,7 @@ import {
   type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
-import { legSpans, legMsaList, legBelowMsa, dragLevelFt, type LegSpan } from '@open-vfr/shared/legLevelDrag'
+import { legSpans, legMsaList, legBelowMsa, dragShownFt, altAtY, unreachedLegs, LEVEL_STEP_FT, DRAG_MIN_MOVE_PX, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
 import { obstacleSymbol, polyPath } from '@open-vfr/shared/obstacleSymbol'
 import { useMefGrids } from '../hooks/useMefGrids'
@@ -709,37 +709,54 @@ export function VerticalProfile({
   const legEnabledSV = useSharedValue(false)
   const legHitSV = useSharedValue(-1)
   const legModeSV = useSharedValue(0)   // 0 undecided, 1 level drag, 2 normal pan
-  const [legDrag, setLegDrag] = useState<{ leg: number; startAlt: number; cand: number | null } | null>(null)
+  const [legDrag, setLegDrag] = useState<{ leg: number; startAlt: number; cand: number | null; shown: number; moved: boolean } | null>(null)
+  const legTouchYSV = useSharedValue(0)
   const legDragRef = useRef(legDrag)
   legDragRef.current = legDrag
   const legSpanList = useMemo(() => (profile ? legSpans(profile.altitudeProfile) : []), [profile])
   const legMsaFt = useMemo(() => legMsaList(legSpanList, msaPts, getMsa), [legSpanList, msaPts, getMsa])
+  // Requested levels the drawn path never reaches (a short leg cannot climb that
+  // far): shown as a dashed marker instead of silently ignored.
+  const unreached = useMemo(() => {
+    if (!profile || profile.altitudeProfile.length === 0) return []
+    const line = plannedAltitudeLine(profile.altitudeProfile, profile.totalNm, perf, terrainPts[0]?.elevFt ?? 0, terrainPts[terrainPts.length - 1]?.elevFt ?? 0)
+    return unreachedLegs(legSpanList, line)
+  }, [profile, perf, terrainPts, legSpanList])
   const legPxPerFt = (yOf(0) - yOf(10000)) / 10000
   const legCeilingFt = Math.min(aircraftProfile?.serviceCeilingFt || 50_000, Math.round(yMax / 100) * 100)
   const legFallbackAltFt = aircraftProfile?.cruiseAltFt || 3500
-  const legInputsRef = useRef({ legSpanList, legPxPerFt, legCeilingFt, legOverrides, onLegLevelChange })
-  legInputsRef.current = { legSpanList, legPxPerFt, legCeilingFt, legOverrides, onLegLevelChange }
-  const legDragBegin = useCallback((leg: number) => {
-    const span = legInputsRef.current.legSpanList[leg]
-    if (span) setLegDrag({ leg, startAlt: span.altFt, cand: span.altFt })
+  const legGroundY = yOf(0)
+  const legInputsRef = useRef({ legSpanList, legPxPerFt, legCeilingFt, legOverrides, onLegLevelChange, legGroundY })
+  legInputsRef.current = { legSpanList, legPxPerFt, legCeilingFt, legOverrides, onLegLevelChange, legGroundY }
+  const legDragBegin = useCallback((leg: number, touchY: number) => {
+    const { legSpanList: spans, legPxPerFt: pxPerFt, legGroundY: y0 } = legInputsRef.current
+    const span = spans[leg]
+    if (!span) return
+    // Start from the altitude DRAWN under the finger, not the leg's requested
+    // level: a level the aircraft cannot reach on this distance sits far above
+    // the drawn line, and starting there made the line jump to the top.
+    const startAlt = Math.min(span.altFt, altAtY(touchY, y0, pxPerFt))
+    setLegDrag({ leg, startAlt, cand: startAlt >= LEVEL_STEP_FT ? startAlt : null, shown: startAlt, moved: false })
   }, [])
   const legDragMove = useCallback((dy: number) => {
     const cur = legDragRef.current
     if (!cur) return
     const { legPxPerFt: pxPerFt, legCeilingFt: ceil } = legInputsRef.current
-    const next = dragLevelFt(cur.startAlt, dy, pxPerFt)
-    // Never clamp below where the drag started: a leg already above the chart
-    // top must not drop when dragged up.
-    const cand = next == null ? null : Math.min(next, Math.max(ceil, cur.startAlt))
-    if (cand !== cur.cand) setLegDrag({ ...cur, cand })
+    // Never clamp below where the drag started.
+    const shown = Math.min(dragShownFt(cur.startAlt, dy, pxPerFt), Math.max(ceil, cur.startAlt))
+    const cand = shown < LEVEL_STEP_FT ? null : shown
+    const moved = cur.moved || Math.abs(dy) >= DRAG_MIN_MOVE_PX
+    if (shown !== cur.shown || cand !== cur.cand || moved !== cur.moved) setLegDrag({ ...cur, shown, cand, moved })
   }, [])
   const legDragEnd = useCallback((success: boolean) => {
     const cur = legDragRef.current
     setLegDrag(null)
     const cb = legInputsRef.current.onLegLevelChange
-    if (!cur || !success || !cb) return
+    // A press without real movement is not an edit.
+    if (!cur || !success || !cb || !cur.moved) return
+    const level = legInputsRef.current.legSpanList[cur.leg]?.altFt
     if (cur.cand === null) { if (legInputsRef.current.legOverrides[cur.leg]?.altFt != null) cb(cur.leg, null) }
-    else if (cur.cand !== cur.startAlt) cb(cur.leg, cur.cand)
+    else if (cur.cand !== level) cb(cur.leg, cur.cand)
   }, [])
 
   const scrub = usePanGesture({
@@ -759,6 +776,7 @@ export function VerticalProfile({
       // (vertical = level drag, horizontal = normal scrub/pan) on first moves.
       legHitSV.value = -1
       legModeSV.value = 0
+      legTouchYSV.value = e.y
       if (legEnabledSV.value) {
         const segs = legSegsSV.value
         const px = e.x + scrollX.value, py = e.y
@@ -786,7 +804,7 @@ export function VerticalProfile({
             // The scrub crosshair (and the map cursor it drives) is for horizontal scrubbing only.
             hoverX.value = -1
             scheduleOnRN(reportHover, null)
-            scheduleOnRN(legDragBegin, legHitSV.value)
+            scheduleOnRN(legDragBegin, legHitSV.value, legTouchYSV.value)
           }
           else if (ax > 8) legModeSV.value = 2
         }
@@ -1278,9 +1296,22 @@ export function VerticalProfile({
                 )}
 
                 {/* ── Planned altitude line ───────────────────────────── */}
-                {!legDrag && <Path d={plannedPath} fill="none" stroke={theme.accentMagenta} strokeWidth={2} />}
+                <Path d={plannedPath} fill="none" stroke={theme.accentMagenta} strokeWidth={2} opacity={legDrag ? 0.35 : 1} />
+                {unreached.map((u) => {
+                  const s = legSpanList[u.legIndex]
+                  if (!s) return null
+                  const y = Math.max(MARGIN_T + 2, yOf(u.levelFt))
+                  const x1 = xOf(s.fromNm), x2 = xOf(s.toNm)
+                  return (
+                    <G key={`unreached-${u.legIndex}`}>
+                      <SvgLine x1={x1} x2={x2} y1={y} y2={y} stroke={theme.accentMagenta} strokeWidth={1.5} strokeDasharray="6,4" opacity={0.75} />
+                      {renderHaloText((x1 + x2) / 2, y < MARGIN_T + 22 ? y + 14 : y - 5, `${u.levelFt.toLocaleString('en-US')} ft set, path reaches ${u.reachedFt.toLocaleString('en-US')}`, theme.accentMagenta, 10, 1, 'middle')}
+                    </G>
+                  )
+                })}
                 {legDrag && legSpanList.map((s, i) => {
-                  const alt = legDrag.leg === i ? (legDrag.cand ?? legFallbackAltFt) : s.altFt
+                  if (legDrag.leg !== i) return null
+                  const alt = legDrag.shown
                   const y = Math.min(MARGIN_T + plotH, Math.max(MARGIN_T + 2, yOf(alt)))
                   const below = legBelowMsa(s, totalNm, alt, legMsaFt[i] ?? 0)
                   const dragged = legDrag.leg === i
@@ -1290,7 +1321,7 @@ export function VerticalProfile({
                       <SvgLine x1={x1} x2={x2} y1={y} y2={y} stroke={below ? 'rgba(239,68,68,0.95)' : theme.accentMagenta} strokeWidth={dragged ? 3 : 2} opacity={dragged ? 1 : 0.7} />
                       {dragged && renderHaloText(
                         (x1 + x2) / 2, y < MARGIN_T + 22 ? y + 16 : y - 8,
-                        (legDrag.cand == null ? 'route level ' : '') + `${alt.toLocaleString('en-US')} ft` + (below ? ` — below MSA ${legMsaFt[i].toLocaleString('en-US')} ft` : ''),
+                        (legDrag.cand == null ? `release = route level (${legFallbackAltFt.toLocaleString('en-US')} ft)` : `${alt.toLocaleString('en-US')} ft`) + (below ? ` — below MSA ${legMsaFt[i].toLocaleString('en-US')} ft` : ''),
                         below ? 'rgba(239,68,68,0.95)' : '#e2e8f0', 12, 1, 'middle',
                       )}
                     </G>

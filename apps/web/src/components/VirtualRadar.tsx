@@ -16,7 +16,7 @@ import { useMsaMargins } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
 import { obstacleSymbol, polyPath } from '@open-vfr/shared/obstacleSymbol'
-import { legSpans, legMsaList, legBelowMsa, dragLevelFt, type LegSpan } from '@open-vfr/shared/legLevelDrag'
+import { legSpans, legMsaList, legBelowMsa, dragShownFt, altAtY, unreachedLegs, LEVEL_STEP_FT, DRAG_MIN_MOVE_PX, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { useMefGrids } from '../hooks/useMefGrids'
 import type { LegOverride } from '../db/index'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel } from '../utils/units'
@@ -432,7 +432,7 @@ type LandmarkMark = { key: string; kind: string; cx: number; cy: number; full: b
 /** Half-height of a leg's drag target around its level line (px). */
 const LEG_HIT_HALF_PX = 12
 
-type LegDragState = { leg: number; startAlt: number; startY: number; cand: number | null }
+type LegDragState = { leg: number; startAlt: number; startY: number; cand: number | null; shown: number; moved: boolean }
 
 function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilingFt, legOverrides, plannedPts, onLegLevelChange, drag, setDrag }: {
   layout: ProfileChartLayout
@@ -463,7 +463,6 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
     if (pts.length < 2) return `M${L.xOf(s.fromNm)},${flatY} L${L.xOf(s.toNm)},${flatY}`
     return 'M' + pts.map((p) => `${L.xOf(p.distNm).toFixed(1)},${yClamped(p.altFt).toFixed(1)}`).join(' L')
   }
-  const levelOf = (i: number, s: LegSpan) => (drag && drag.leg === i ? (drag.cand ?? fallbackAltFt) : s.altFt)
 
   // The pressed target keeps pointer capture for the whole gesture, so it
   // stays mounted (and un-moved) while the flat preview lines are drawn.
@@ -473,33 +472,42 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
     // the browser no longer knows must not abort the drag.
     try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* no capture */ }
     e.preventDefault()
-    setDrag({ leg: i, startAlt: s.altFt, startY: e.clientY, cand: s.altFt })
+    // Start from the altitude DRAWN under the pointer, not the leg's requested
+    // level: an unreachable level sits far above the drawn line and made the
+    // line jump to the top.
+    const svgTop = (e.currentTarget.ownerSVGElement ?? e.currentTarget).getBoundingClientRect().top
+    const startAlt = Math.min(s.altFt, altAtY(e.clientY - svgTop, L.yOf(0), pxPerFt))
+    setDrag({ leg: i, startAlt, startY: e.clientY, cand: startAlt >= LEVEL_STEP_FT ? startAlt : null, shown: startAlt, moved: false })
   }
   const move = (e: React.PointerEvent<SVGElement>) => {
     if (!drag) return
-    const next = dragLevelFt(drag.startAlt, e.clientY - drag.startY, pxPerFt)
-    // Never clamp below where the drag started: a leg already above the chart
-    // top must not drop when dragged up.
-    const cand = next == null ? null : Math.min(next, Math.max(ceilingFt, drag.startAlt))
-    if (cand !== drag.cand) setDrag({ ...drag, cand })
+    const dy = e.clientY - drag.startY
+    // Never clamp below where the drag started.
+    const shown = Math.min(dragShownFt(drag.startAlt, dy, pxPerFt), Math.max(ceilingFt, drag.startAlt))
+    const cand = shown < LEVEL_STEP_FT ? null : shown
+    const moved = drag.moved || Math.abs(dy) >= DRAG_MIN_MOVE_PX
+    if (shown !== drag.shown || cand !== drag.cand || moved !== drag.moved) setDrag({ ...drag, shown, cand, moved })
   }
   const end = (e: React.PointerEvent<SVGElement>, commit: boolean) => {
     if (!drag || !onLegLevelChange) return
     try { if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* already released */ }
-    const { leg, startAlt, cand } = drag
+    const { leg, cand, moved } = drag
     setDrag(null)
-    if (!commit) return
+    // A press without real movement is not an edit.
+    if (!commit || !moved) return
+    const level = spans[leg]?.altFt
     if (cand === null) { if (legOverrides[leg]?.altFt != null) onLegLevelChange(leg, null) }
-    else if (cand !== startAlt) onLegLevelChange(leg, cand)
+    else if (cand !== level) onLegLevelChange(leg, cand)
   }
 
   return (
     <svg className={css.dragSvg} width={L.contentW} height={CHART_H}>
       {drag && spans.map((s, i) => {
-        const alt = levelOf(i, s)
+        if (drag.leg !== i) return null
+        const alt = drag.shown
         const y = yClamped(alt)
         const below = legBelowMsa(s, totalNm, alt, legMsa[i] ?? 0)
-        const dragged = drag.leg === i
+        const dragged = true
         return (
           <g key={`flat-${i}`} pointerEvents="none">
             <line x1={L.xOf(s.fromNm)} x2={L.xOf(s.toNm)} y1={y} y2={y}
@@ -507,7 +515,7 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
             {dragged && (
               <text x={(L.xOf(s.fromNm) + L.xOf(s.toNm)) / 2} y={y < L.plotTop + 22 ? y + 16 : y - 8} textAnchor="middle" fontSize={11} fontWeight={600}
                 fill={below ? DANGER_COLOR : 'var(--text-primary)'} {...HALO}>
-                {drag.cand == null ? `route level ${formatAltitudeFt(alt)}` : formatAltitudeFt(alt)}
+                {drag.cand == null ? `release = route level (${formatAltitudeFt(fallbackAltFt)})` : formatAltitudeFt(alt)}
                 {below ? ` \u2014 below MSA ${formatAltitudeFt(legMsa[i])}` : ''}
               </text>
             )}
@@ -799,6 +807,11 @@ function VirtualRadar({
   // Leg spans and each leg's MSA, for the drag layer's targets and warnings.
   const legSpanList = useMemo(() => (profile ? legSpans(profile.altitudeProfile) : []), [profile])
   const legMsaFt = useMemo(() => legMsaList(legSpanList, msaPts, getMsa), [legSpanList, msaPts, getMsa])
+  // Requested levels the drawn path never reaches (a short leg cannot climb that far): shown as a dashed marker instead of silently ignored.
+  const unreached = useMemo(
+    () => (series ? unreachedLegs(legSpanList, series.distNms.map((d, i) => ({ distNm: d, altFt: series.plannedAlts[i] }))) : []),
+    [legSpanList, series],
+  )
 
   // The scale follows the path actually drawn (with climbs and descents the
   // aircraft's performance allows), not the requested levels: a short leg at
@@ -989,7 +1002,7 @@ function VirtualRadar({
       : ''
     // While a leg level is being dragged the modelled climbs/descents are
     // hidden; the drag layer shows each leg as a flat line instead.
-    const plannedPath = dragging ? '' : polylinePath(series.distNms.map((d, i) => ({ distNm: d, altFt: series.plannedAlts[i] })), L.xOf, L.yOf)
+    const plannedPath = polylinePath(series.distNms.map((d, i) => ({ distNm: d, altFt: series.plannedAlts[i] })), L.xOf, L.yOf)
     const groundOutline = series.ground
       ? polylinePath(series.distNms.map((d, i) => ({ distNm: d, altFt: series.ground![i] })), L.xOf, L.yOf)
       : ''
@@ -1165,7 +1178,21 @@ function VirtualRadar({
         )}
 
         {/* ── Planned altitude line, MSA, below-MSA stretches in red ── */}
-        <path d={plannedPath} fill="none" stroke={PLAN_COLOR} strokeWidth={2} />
+        <path d={plannedPath} fill="none" stroke={PLAN_COLOR} strokeWidth={2} opacity={dragging ? 0.35 : 1} />
+        {unreached.map((u) => {
+          const s = legSpanList[u.legIndex]
+          if (!s) return null
+          const y = Math.max(L.plotTop + 2, L.yOf(u.levelFt))
+          const x1 = L.xOf(s.fromNm), x2 = L.xOf(s.toNm)
+          return (
+            <g key={`unreached-${u.legIndex}`} pointerEvents="none">
+              <line x1={x1} x2={x2} y1={y} y2={y} stroke={PLAN_COLOR} strokeWidth={1.5} strokeDasharray="6 4" opacity={0.75} />
+              <text x={(x1 + x2) / 2} y={y < L.plotTop + 22 ? y + 14 : y - 5} textAnchor="middle" fontSize={10} fill={PLAN_COLOR} {...HALO}>
+                {`${formatAltitudeFt(u.levelFt)} set, path reaches ${formatAltitudeFt(u.reachedFt)}`}
+              </text>
+            </g>
+          )
+        })}
         {msaPath && <path d={msaPath} fill="none" stroke={MSA_COLOR} strokeWidth={1} strokeDasharray="5 3" />}
         {!dragging && series.belowMsa.map((run, i) => (
           <path key={`below-${i}`} d={polylinePath(run, L.xOf, L.yOf)} fill="none" stroke={DANGER_COLOR} strokeWidth={2.5} />
@@ -1184,7 +1211,7 @@ function VirtualRadar({
         </text>
       </>
     )
-  }, [profile, layout, series, yMax, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, windAloft, iconMarkup, visibleWaypointTicks, units.distance, dragging, obstacleMarks, landmarkMarks, poiMarks])
+  }, [profile, layout, series, yMax, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, windAloft, iconMarkup, visibleWaypointTicks, units.distance, dragging, obstacleMarks, landmarkMarks, poiMarks, unreached, legSpanList])
 
   if (!profile || !series || series.distNms.length === 0) return null
 

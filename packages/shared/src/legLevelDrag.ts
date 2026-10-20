@@ -4,9 +4,13 @@
  * (VerticalProfile.tsx); the gesture and drawing live in each app.
  *
  * Rules:
- * - The level moves at a fraction of the finger: a quarter of the travel
- *   when dragging up, half when dragging down, so a tall chart range on a
- *   small panel is not twitchy.
+ * - The level follows the finger 1:1 (the line you grab stays under it). The
+ *   reference planner moves it at a quarter (up) / half (down) of the travel;
+ *   on a phone that made the level run away from the finger and made lowering
+ *   it a long drag, so we do not copy that part.
+ * - The drag starts from the altitude drawn under the finger, not from the
+ *   leg's requested level: a level the aircraft cannot reach on that distance
+ *   sits far above the drawn line and made the line jump to the top.
  * - Snaps to 100 ft, capped at LEVEL_MAX_FT.
  * - Dragging below the lowest step clears the leg's override (`null`), so
  *   the leg falls back to the route's default level.
@@ -19,8 +23,39 @@ import { BELOW_MSA_ENDPOINT_SUPPRESS_NM } from './profileChart'
 export const LEVEL_STEP_FT = 100
 export const LEVEL_MAX_FT = 50_000
 /** Finger travel → level travel ratios (see module header). */
-export const DRAG_UP_RATIO = 0.25
-export const DRAG_DOWN_RATIO = 0.5
+export const DRAG_UP_RATIO = 1
+export const DRAG_DOWN_RATIO = 1
+/** Finger travel (px) below which a press-and-release is not an edit. */
+export const DRAG_MIN_MOVE_PX = 10
+
+/** A requested level the drawn path stays this far below is "not reached". */
+export const UNREACHED_MARGIN_FT = 150
+
+/**
+ * Legs whose requested level the projected flight path never gets near (a short
+ * leg cannot climb to 3500 ft): index -> requested level, so the chart can say
+ * so instead of showing a line that silently ignores the level.
+ */
+export function unreachedLegs(
+  spans: readonly LegSpan[],
+  pathPts: readonly { distNm: number; altFt: number }[],
+): { legIndex: number; levelFt: number; reachedFt: number }[] {
+  const out: { legIndex: number; levelFt: number; reachedFt: number }[] = []
+  for (const s of spans) {
+    let max = -Infinity
+    for (const p of pathPts) if (p.distNm >= s.fromNm - 0.01 && p.distNm <= s.toNm + 0.01 && p.altFt > max) max = p.altFt
+    if (max === -Infinity) continue
+    if (s.altFt - max > UNREACHED_MARGIN_FT) out.push({ legIndex: s.legIndex, levelFt: s.altFt, reachedFt: Math.round(max / 100) * 100 })
+  }
+  return out
+}
+
+/** Altitude (ft, rounded to the level step) drawn at screen height `y`, given the
+ *  chart's ground line `y0` and scale `pxPerFt`. Never below 0. */
+export function altAtY(y: number, y0: number, pxPerFt: number): number {
+  if (pxPerFt <= 0) return 0
+  return Math.max(0, Math.round((y0 - y) / pxPerFt / LEVEL_STEP_FT) * LEVEL_STEP_FT)
+}
 
 export type LegSpan = { legIndex: number; fromNm: number; toNm: number; altFt: number }
 
@@ -38,12 +73,19 @@ export function legSpans(altitudeProfile: readonly ProfilePoint[]): LegSpan[] {
  *  `dyPx` pixels (positive = down the screen) on a chart with `pxPerFt`
  *  vertical scale. `null` means "clear the override". */
 export function dragLevelFt(startAltFt: number, dyPx: number, pxPerFt: number): number | null {
+  const snapped = dragShownFt(startAltFt, dyPx, pxPerFt)
+  if (snapped < LEVEL_STEP_FT) return null
+  return snapped
+}
+
+/** The level under the finger, snapped to the step, never below 0 (what the
+ *  preview line is drawn at; `dragLevelFt` turns anything below the lowest
+ *  step into "clear the override"). */
+export function dragShownFt(startAltFt: number, dyPx: number, pxPerFt: number): number {
   if (pxPerFt <= 0) return startAltFt
   const effDy = dyPx < 0 ? dyPx * DRAG_UP_RATIO : dyPx * DRAG_DOWN_RATIO
   const raw = startAltFt - effDy / pxPerFt
-  const snapped = Math.round(raw / LEVEL_STEP_FT) * LEVEL_STEP_FT
-  if (snapped < LEVEL_STEP_FT) return null
-  return Math.min(snapped, LEVEL_MAX_FT)
+  return Math.min(LEVEL_MAX_FT, Math.max(0, Math.round(raw / LEVEL_STEP_FT) * LEVEL_STEP_FT))
 }
 
 /** Highest MSA within a leg's span (0 when there is no MSA data there). */
