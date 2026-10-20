@@ -118,6 +118,12 @@
   z-index: 2;
 }
 
+.dragHint {
+  font-size: 10px;
+  color: var(--text-faint);
+  margin-left: 8px;
+}
+
 .dragSvg {
   position: absolute;
   top: 0;
@@ -127,8 +133,11 @@
 }
 
 .legHit {
-  fill: transparent;
-  pointer-events: all;
+  fill: none;
+  stroke: transparent;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: stroke;
   cursor: ns-resize;
   touch-action: none;
 }

@@ -421,7 +421,7 @@ const LEG_HIT_HALF_PX = 12
 
 type LegDragState = { leg: number; startAlt: number; startY: number; cand: number | null }
 
-function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilingFt, legOverrides, onLegLevelChange, drag, setDrag }: {
+function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilingFt, legOverrides, plannedPts, onLegLevelChange, drag, setDrag }: {
   layout: ProfileChartLayout
   spans: LegSpan[]
   legMsa: number[]
@@ -431,7 +431,10 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
   /** Highest level a drag may reach (service ceiling / chart top). */
   ceilingFt: number
   legOverrides: LegOverride[]
-  onLegLevelChange: (legIndex: number, altFt: number | null) => void
+  /** The drawn (projected) planned path; a leg is grabbed where its line is drawn. */
+  plannedPts: { distNm: number; altFt: number }[]
+  /** Undefined while route editing is locked: targets then only explain how to unlock. */
+  onLegLevelChange?: (legIndex: number, altFt: number | null) => void
   drag: LegDragState | null
   setDrag: (d: LegDragState | null) => void
 }) {
@@ -439,25 +442,34 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
   // A leg planned above the chart top (the scale follows the path the aircraft
   // can actually fly) is drawn and grabbed at the top edge, never off-chart.
   const yClamped = (ft: number) => Math.min(L.plotBottom, Math.max(L.plotTop + 2, L.yOf(ft)))
+  // Grab target of a leg: a thick invisible stroke along its drawn path (the
+  // projected climbs and descents), or a flat line at its level when the path
+  // has no samples inside the leg.
+  const hitPath = (s: LegSpan, flatY: number): string => {
+    const pts = plannedPts.filter((p) => p.distNm >= s.fromNm && p.distNm <= s.toNm)
+    if (pts.length < 2) return `M${L.xOf(s.fromNm)},${flatY} L${L.xOf(s.toNm)},${flatY}`
+    return 'M' + pts.map((p) => `${L.xOf(p.distNm).toFixed(1)},${yClamped(p.altFt).toFixed(1)}`).join(' L')
+  }
   const levelOf = (i: number, s: LegSpan) => (drag && drag.leg === i ? (drag.cand ?? fallbackAltFt) : s.altFt)
 
   // The pressed target keeps pointer capture for the whole gesture, so it
   // stays mounted (and un-moved) while the flat preview lines are drawn.
-  const begin = (e: React.PointerEvent<SVGRectElement>, i: number, s: LegSpan) => {
+  const begin = (e: React.PointerEvent<SVGElement>, i: number, s: LegSpan) => {
+    if (!onLegLevelChange) return
     // Capture keeps the gesture tracking outside the thin target; a pointer
     // the browser no longer knows must not abort the drag.
     try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* no capture */ }
     e.preventDefault()
     setDrag({ leg: i, startAlt: s.altFt, startY: e.clientY, cand: s.altFt })
   }
-  const move = (e: React.PointerEvent<SVGRectElement>) => {
+  const move = (e: React.PointerEvent<SVGElement>) => {
     if (!drag) return
     const next = dragLevelFt(drag.startAlt, e.clientY - drag.startY, pxPerFt)
     const cand = next == null ? null : Math.min(next, ceilingFt)
     if (cand !== drag.cand) setDrag({ ...drag, cand })
   }
-  const end = (e: React.PointerEvent<SVGRectElement>, commit: boolean) => {
-    if (!drag) return
+  const end = (e: React.PointerEvent<SVGElement>, commit: boolean) => {
+    if (!drag || !onLegLevelChange) return
     try { if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* already released */ }
     const { leg, startAlt, cand } = drag
     setDrag(null)
@@ -493,17 +505,19 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
         const below = legBelowMsa(s, totalNm, s.altFt, legMsa[i] ?? 0)
         return (
           <g key={`hit-${i}`}>
-            <rect
+            <path
               className={css.legHit}
-              x={x1} y={y - LEG_HIT_HALF_PX} width={Math.max(0, x2 - x1)} height={LEG_HIT_HALF_PX * 2}
+              style={onLegLevelChange ? undefined : { pointerEvents: 'none' }}
+              d={hitPath(s, y)}
+              strokeWidth={LEG_HIT_HALF_PX * 2}
               onPointerDown={(e) => begin(e, i, s)}
               onPointerMove={move}
               onPointerUp={(e) => end(e, true)}
               onPointerCancel={(e) => end(e, false)}
             >
               <title>Drag up or down to change this leg&apos;s level</title>
-            </rect>
-            {!drag && below && x2 - x1 > 80 && (
+            </path>
+            {onLegLevelChange && !drag && below && x2 - x1 > 80 && (
               <g className={css.legChip} onClick={() => onLegLevelChange(i, legMsa[i])}>
                 <rect x={(x1 + x2) / 2 - 40} y={y - 30} width={80} height={16} rx={8} />
                 <text x={(x1 + x2) / 2} y={y - 19} textAnchor="middle" fontSize={10}>{'\u25b2'} MSA {formatAltitudeFt(legMsa[i])}</text>
@@ -1127,6 +1141,11 @@ function VirtualRadar({
         <span className={css.totalDist}>
           {nmToDisplay(profile.totalNm, units.distance).toFixed(1)} {distLabel(units.distance)}
         </span>
+        {onLegLevelChange && (
+          <span className={css.dragHint} title="Press a leg on the chart and drag up or down to change its level">
+            drag a leg to set its level
+          </span>
+        )}
         {terrainFailed && terrainPts.length === 0 && (
           <span className={css.offTrackBadge} title="No elevation data could be loaded for this route. The MSA line is missing and airspace limits given above ground (AGL) are drawn at their raw height.">
             ⚠ No terrain data: MSA unavailable, AGL limits at raw height
@@ -1188,7 +1207,7 @@ function VirtualRadar({
                 {live}
               </svg>
               <HoverOverlay layout={L} series={series} onHoverDistNm={onHoverDistNm} />
-              {onLegLevelChange && profile && (
+              {profile && series && (
                 <LegDragLayer
                   layout={L}
                   spans={legSpanList}
@@ -1197,6 +1216,7 @@ function VirtualRadar({
                   fallbackAltFt={aircraftProfile?.cruiseAltFt || 3500}
                   ceilingFt={Math.min(aircraftProfile?.serviceCeilingFt || 50_000, Math.round(yMax / 100) * 100)}
                   legOverrides={legOverrides}
+                  plannedPts={series.distNms.map((d, i) => ({ distNm: d, altFt: series.plannedAlts[i] }))}
                   onLegLevelChange={onLegLevelChange}
                   drag={legDrag}
                   setDrag={setLegDrag}
