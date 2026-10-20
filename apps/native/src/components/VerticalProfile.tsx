@@ -51,6 +51,7 @@ import {
   type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
+import { legSpans, legMsaList, legBelowMsa, dragLevelFt, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
 import { useMefGrids } from '../hooks/useMefGrids'
 import { pickWaypointLabels, estimateLabelWidth } from '@open-vfr/shared/profileLabels'
@@ -168,6 +169,9 @@ interface Props {
    *  the parent screen sync a crosshair marker on the map. Touch-drag
    *  equivalent of web's pointer hover readout. */
   onHoverDistNm?: (nm: number | null) => void
+  /** Enables dragging a leg up/down to change its planned level; `null` clears
+   *  the leg's override (route level). Omit while route editing is locked. */
+  onLegLevelChange?: (legIndex: number, altFt: number | null) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -206,6 +210,9 @@ const WIND_ROW_STATION_SEP_NM = 6
 // to scroll, so the scroll path effectively never activated for realistic
 // route lengths even though labels were visibly cramped well before that.
 const MIN_PX_PER_NM = 30
+/** A touch within this many px of a leg's drawn line starts a level drag (if it moves vertically). */
+const LEG_HIT_PX = 22
+
 /** Minimum gap (ms) between scrub-position reports to the parent (map
  *  crosshair): each report re-renders the map screen on the JS thread. */
 const HOVER_REPORT_MS = 100
@@ -347,7 +354,7 @@ export function VerticalProfile({
   waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, msaMargins, title, headerStart, headerEnd, onClose, closeLabel, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
   crossTrackNm, weatherStations,
-  height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm,
+  height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm, onLegLevelChange,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(null)
@@ -688,6 +695,42 @@ export function VerticalProfile({
     if (panned) manualPanUntilRef.current = Date.now() + MANUAL_PAN_GRACE_MS
   }, [])
 
+  // ── Leg level drag state (see the gesture below) ───────────────────────
+  const legSegsSV = useSharedValue<number[]>([])
+  const legEnabledSV = useSharedValue(false)
+  const legHitSV = useSharedValue(-1)
+  const legModeSV = useSharedValue(0)   // 0 undecided, 1 level drag, 2 normal pan
+  const [legDrag, setLegDrag] = useState<{ leg: number; startAlt: number; cand: number | null } | null>(null)
+  const legDragRef = useRef(legDrag)
+  legDragRef.current = legDrag
+  const legSpanList = useMemo(() => (profile ? legSpans(profile.altitudeProfile) : []), [profile])
+  const legMsaFt = useMemo(() => legMsaList(legSpanList, msaPts, getMsa), [legSpanList, msaPts, getMsa])
+  const legPxPerFt = (yOf(0) - yOf(10000)) / 10000
+  const legCeilingFt = Math.min(aircraftProfile?.serviceCeilingFt || 50_000, Math.round(yMax / 100) * 100)
+  const legFallbackAltFt = aircraftProfile?.cruiseAltFt || 3500
+  const legInputsRef = useRef({ legSpanList, legPxPerFt, legCeilingFt, legOverrides, onLegLevelChange })
+  legInputsRef.current = { legSpanList, legPxPerFt, legCeilingFt, legOverrides, onLegLevelChange }
+  const legDragBegin = useCallback((leg: number) => {
+    const span = legInputsRef.current.legSpanList[leg]
+    if (span) setLegDrag({ leg, startAlt: span.altFt, cand: span.altFt })
+  }, [])
+  const legDragMove = useCallback((dy: number) => {
+    const cur = legDragRef.current
+    if (!cur) return
+    const { legPxPerFt: pxPerFt, legCeilingFt: ceil } = legInputsRef.current
+    const next = dragLevelFt(cur.startAlt, dy, pxPerFt)
+    const cand = next == null ? null : Math.min(next, ceil)
+    if (cand !== cur.cand) setLegDrag({ ...cur, cand })
+  }, [])
+  const legDragEnd = useCallback((success: boolean) => {
+    const cur = legDragRef.current
+    setLegDrag(null)
+    const cb = legInputsRef.current.onLegLevelChange
+    if (!cur || !success || !cb) return
+    if (cur.cand === null) { if (legInputsRef.current.legOverrides[cur.leg]?.altFt != null) cb(cur.leg, null) }
+    else if (cur.cand !== cur.startAlt) cb(cur.leg, cur.cand)
+  }, [])
+
   const scrub = usePanGesture({
     minDistance: 0,
     onBegin: (e) => {
@@ -701,9 +744,37 @@ export function VerticalProfile({
       }
       lastHoverReport.value = Date.now()
       scheduleOnRN(dragStarted)
+      // Leg level drag: did the touch land on a leg's drawn line? Decided
+      // (vertical = level drag, horizontal = normal scrub/pan) on first moves.
+      legHitSV.value = -1
+      legModeSV.value = 0
+      if (legEnabledSV.value) {
+        const segs = legSegsSV.value
+        const px = e.x + scrollX.value, py = e.y
+        let best = -1, bestD = LEG_HIT_PX * LEG_HIT_PX
+        for (let k = 0; k + 4 < segs.length; k += 5) {
+          const ax = segs[k + 1], ay = segs[k + 2], bx = segs[k + 3], by = segs[k + 4]
+          const dx = bx - ax, dy = by - ay
+          const len2 = dx * dx + dy * dy
+          let t = len2 === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / len2
+          t = t < 0 ? 0 : t > 1 ? 1 : t
+          const cx = ax + t * dx - px, cy = ay + t * dy - py
+          const d2 = cx * cx + cy * cy
+          if (d2 < bestD) { bestD = d2; best = segs[k] }
+        }
+        legHitSV.value = best
+      }
     },
     onUpdate: (e) => {
       'worklet'
+      if (legHitSV.value >= 0) {
+        if (legModeSV.value === 0) {
+          const ay = Math.abs(e.translationY), ax = Math.abs(e.translationX)
+          if (ay > 8 && ay > ax) { legModeSV.value = 1; scheduleOnRN(legDragBegin, legHitSV.value) }
+          else if (ax > 8) legModeSV.value = 2
+        }
+        if (legModeSV.value === 1) { scheduleOnRN(legDragMove, e.translationY); return }
+      }
       scrollX.value = Math.max(0, Math.min(maxScrollXSV.value, dragStartX.value - e.translationX))
       hoverX.value = e.x
       const now = Date.now()
@@ -727,8 +798,11 @@ export function VerticalProfile({
         )
       }
     },
-    onFinalize: () => {
+    onFinalize: (e) => {
       'worklet'
+      if (legModeSV.value === 1) scheduleOnRN(legDragEnd, !e.canceled)
+      legHitSV.value = -1
+      legModeSV.value = 0
       hoverX.value = -1
       scheduleOnRN(reportHover, null)
       scheduleOnRN(scrollSettled, scrollX.value, scrollX.value !== dragStartX.value)
@@ -825,6 +899,27 @@ export function VerticalProfile({
       .map((run) => polylinePath(run, xOf, yOf))
       .join(' ')
   }, [projAlts, terrainPts, getMsa, totalNm, xOf, yOf])
+
+  // Hit segments for the leg level drag: the drawn planned line (climbs and
+  // descents included), each piece assigned to the leg it lies in. Flat
+  // [leg, x0, y0, x1, y1, ...] in content px, read by the gesture worklet.
+  useEffect(() => {
+    legEnabledSV.value = !!onLegLevelChange
+    if (!onLegLevelChange || !profile || profile.altitudeProfile.length === 0 || legSpanList.length === 0) {
+      legSegsSV.value = []
+      return
+    }
+    const line = plannedAltitudeLine(profile.altitudeProfile, profile.totalNm, perf, depElevFt, arrElevFt)
+    const yClamp = (ft: number) => Math.min(MARGIN_T + plotH, Math.max(MARGIN_T + 2, yOf(ft)))
+    const out: number[] = []
+    for (let k = 0; k + 1 < line.length; k++) {
+      const mid = (line[k].distNm + line[k + 1].distNm) / 2
+      let leg = legSpanList.findIndex((s) => mid >= s.fromNm && mid <= s.toNm)
+      if (leg < 0) leg = mid < legSpanList[0].fromNm ? 0 : legSpanList.length - 1
+      out.push(leg, xOf(line[k].distNm), yClamp(line[k].altFt), xOf(line[k + 1].distNm), yClamp(line[k + 1].altFt))
+    }
+    legSegsSV.value = out
+  }, [onLegLevelChange, profile, perf, depElevFt, arrElevFt, xOf, yOf, plotH, legSpanList, legEnabledSV, legSegsSV])
 
   // Trajectory ticks ahead of current position — near ticks fixed at 1/3,
   // far tick uses trajectoryNm (mirrors AviationMap's on-map trajectory line
@@ -1166,7 +1261,24 @@ export function VerticalProfile({
                 )}
 
                 {/* ── Planned altitude line ───────────────────────────── */}
-                <Path d={plannedPath} fill="none" stroke={theme.accentMagenta} strokeWidth={2} />
+                {!legDrag && <Path d={plannedPath} fill="none" stroke={theme.accentMagenta} strokeWidth={2} />}
+                {legDrag && legSpanList.map((s, i) => {
+                  const alt = legDrag.leg === i ? (legDrag.cand ?? legFallbackAltFt) : s.altFt
+                  const y = Math.min(MARGIN_T + plotH, Math.max(MARGIN_T + 2, yOf(alt)))
+                  const below = legBelowMsa(s, totalNm, alt, legMsaFt[i] ?? 0)
+                  const dragged = legDrag.leg === i
+                  const x1 = xOf(s.fromNm), x2 = xOf(s.toNm)
+                  return (
+                    <G key={`legflat-${i}`}>
+                      <SvgLine x1={x1} x2={x2} y1={y} y2={y} stroke={below ? 'rgba(239,68,68,0.95)' : theme.accentMagenta} strokeWidth={dragged ? 3 : 2} opacity={dragged ? 1 : 0.7} />
+                      {dragged && renderHaloText(
+                        (x1 + x2) / 2, y - 8,
+                        (legDrag.cand == null ? 'route level ' : '') + `${alt.toLocaleString('en-US')} ft` + (below ? ` — below MSA ${legMsaFt[i].toLocaleString('en-US')} ft` : ''),
+                        below ? 'rgba(239,68,68,0.95)' : '#e2e8f0', 12, 1, 'middle',
+                      )}
+                    </G>
+                  )
+                })}
 
                 {/* Winds aloft: barbs at each standard pressure level's nominal
                     altitude (model forecast), mirrors web's VirtualRadar. */}
@@ -1192,7 +1304,7 @@ export function VerticalProfile({
                 }))}
 
                 {/* ── Below-MSA stretches of the planned line ─────────── */}
-                {projDangerPath && (
+                {!legDrag && projDangerPath && (
                   <Path d={projDangerPath} fill="none" stroke="rgba(239,68,68,0.95)" strokeWidth={2.5} />
                 )}
 

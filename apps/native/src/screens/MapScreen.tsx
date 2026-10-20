@@ -1210,6 +1210,15 @@ function MapScreenForCountry() {
   }, [flyingActive])
   const routeEditLocked = flyingActive ? !routeAdjustMode : !planningMode
 
+  // Leg level dragged in the vertical profile: null clears the leg's override
+  // so it falls back to the route level.
+  const handleLegLevelChange = useCallback((idx: number, altFt: number | null) => {
+    const next = { ...(legOverrides[idx] ?? {}) }
+    if (altFt == null) delete next.altFt
+    else next.altFt = altFt
+    setLegOverride(idx, next)
+  }, [legOverrides, setLegOverride])
+
   // ── Map tools menu (single dot-grid button; see MapToolbar.tsx) ───────────
   // Find destination / brief / flight-mode sheets are controlled from here.
   const [showFindDest, setShowFindDest] = useState(false)
@@ -1863,6 +1872,7 @@ function MapScreenForCountry() {
         <VerticalProfile
           waypoints={waypoints}
           legOverrides={legOverrides}
+          onLegLevelChange={routeEditLocked ? undefined : handleLegLevelChange}
           units={settings.units}
           airspaceCeilingFt={settings.airspaceCeilingFt}
           msaMargins={settings.msaMargins}
