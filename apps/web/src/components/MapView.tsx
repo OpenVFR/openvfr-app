@@ -754,6 +754,19 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Same lock as the waypoint-drag handlers: while flying, route edits
   // (including undo/redo) need the explicit in-flight adjust unlock.
   const routeEditLocked = flyingMode !== 'off' && !routeAdjustMode
+
+  // Leg level dragged in the Virtual Radar: null clears the leg's override so
+  // it falls back to the route level. One state change = one undo step.
+  const handleLegLevelChange = useCallback((idx: number, altFt: number | null) => {
+    setLegOverrides((prev) => {
+      const next = [...prev]
+      const cur = { ...(next[idx] ?? {}) }
+      if (altFt == null) delete cur.altFt
+      else cur.altFt = altFt
+      next[idx] = cur
+      return next
+    })
+  }, [setLegOverrides])
   // Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z or Ctrl+Y = redo -- ignored while
   // typing so text fields keep their native undo.
   useEffect(() => {
@@ -4977,6 +4990,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             trajectoryMode={trajectoryMode}
             onHoverDistNm={setProfileCursorNm}
             crosshairDistNm={profileCursorNm}
+            onLegLevelChange={(planningMode || routeAdjustMode) && !routeEditLocked ? handleLegLevelChange : undefined}
           />
         </div>
       ) : flyingMode !== 'off' ? (

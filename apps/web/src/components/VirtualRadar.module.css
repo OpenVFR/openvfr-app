@@ -118,6 +118,25 @@
   z-index: 2;
 }
 
+.dragSvg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.legHit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.legChip { cursor: pointer; pointer-events: all; }
+.legChip rect { fill: rgba(239, 68, 68, 0.9); }
+.legChip text { fill: #fff; font-weight: 600; pointer-events: none; }
+
 .hoverSvg {
   position: absolute;
   top: 0;

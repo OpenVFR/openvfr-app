@@ -13,6 +13,7 @@ import {
 } from '@open-vfr/shared/profileChart'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { useMsaMargins } from '../db/useSettings'
+import { legSpans, legMsaList, legBelowMsa, dragLevelFt, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { useMefGrids } from '../hooks/useMefGrids'
 import type { LegOverride } from '../db/index'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel } from '../utils/units'
@@ -119,6 +120,9 @@ interface Props {
    *  arrows and cloud-base layers drawn at each station's projected
    *  along-route position. Omit to hide entirely. */
   weatherStations?: RouteWeatherStation[]
+  /** Enables dragging a leg up/down to change its planned level. `null` clears
+   *  the leg's override (route level). Omit while the route is locked. */
+  onLegLevelChange?: (legIndex: number, altFt: number | null) => void
 }
 
 /** Per-sample series the chart lines and the hover readout are drawn from. */
@@ -403,6 +407,112 @@ const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDist
   )
 })
 
+
+// ---------------------------------------------------------------------------
+// Leg level drag: press on a leg in the profile and drag up/down to change its
+// planned level (dragLevelFt rules: a quarter of the finger travel up, half
+// down, 100 ft steps, below the lowest step clears the override). While
+// dragging, the modelled climbs/descents are hidden and every leg shows as a
+// flat line at its level; the dragged leg turns red when below its MSA.
+// ---------------------------------------------------------------------------
+
+/** Half-height of a leg's drag target around its level line (px). */
+const LEG_HIT_HALF_PX = 12
+
+type LegDragState = { leg: number; startAlt: number; startY: number; cand: number | null }
+
+function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilingFt, legOverrides, onLegLevelChange, drag, setDrag }: {
+  layout: ProfileChartLayout
+  spans: LegSpan[]
+  legMsa: number[]
+  totalNm: number
+  /** Level a leg falls back to when its override is cleared. */
+  fallbackAltFt: number
+  /** Highest level a drag may reach (service ceiling / chart top). */
+  ceilingFt: number
+  legOverrides: LegOverride[]
+  onLegLevelChange: (legIndex: number, altFt: number | null) => void
+  drag: LegDragState | null
+  setDrag: (d: LegDragState | null) => void
+}) {
+  const pxPerFt = (L.yOf(0) - L.yOf(10000)) / 10000
+  const levelOf = (i: number, s: LegSpan) => (drag && drag.leg === i ? (drag.cand ?? fallbackAltFt) : s.altFt)
+
+  // The pressed target keeps pointer capture for the whole gesture, so it
+  // stays mounted (and un-moved) while the flat preview lines are drawn.
+  const begin = (e: React.PointerEvent<SVGRectElement>, i: number, s: LegSpan) => {
+    // Capture keeps the gesture tracking outside the thin target; a pointer
+    // the browser no longer knows must not abort the drag.
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* no capture */ }
+    e.preventDefault()
+    setDrag({ leg: i, startAlt: s.altFt, startY: e.clientY, cand: s.altFt })
+  }
+  const move = (e: React.PointerEvent<SVGRectElement>) => {
+    if (!drag) return
+    const next = dragLevelFt(drag.startAlt, e.clientY - drag.startY, pxPerFt)
+    const cand = next == null ? null : Math.min(next, ceilingFt)
+    if (cand !== drag.cand) setDrag({ ...drag, cand })
+  }
+  const end = (e: React.PointerEvent<SVGRectElement>, commit: boolean) => {
+    if (!drag) return
+    try { if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* already released */ }
+    const { leg, startAlt, cand } = drag
+    setDrag(null)
+    if (!commit) return
+    if (cand === null) { if (legOverrides[leg]?.altFt != null) onLegLevelChange(leg, null) }
+    else if (cand !== startAlt) onLegLevelChange(leg, cand)
+  }
+
+  return (
+    <svg className={css.dragSvg} width={L.contentW} height={CHART_H}>
+      {drag && spans.map((s, i) => {
+        const alt = levelOf(i, s)
+        const y = L.yOf(alt)
+        const below = legBelowMsa(s, totalNm, alt, legMsa[i] ?? 0)
+        const dragged = drag.leg === i
+        return (
+          <g key={`flat-${i}`} pointerEvents="none">
+            <line x1={L.xOf(s.fromNm)} x2={L.xOf(s.toNm)} y1={y} y2={y}
+              stroke={below ? DANGER_COLOR : PLAN_COLOR} strokeWidth={dragged ? 3 : 2} opacity={dragged ? 1 : 0.7} />
+            {dragged && (
+              <text x={(L.xOf(s.fromNm) + L.xOf(s.toNm)) / 2} y={y - 8} textAnchor="middle" fontSize={11} fontWeight={600}
+                fill={below ? DANGER_COLOR : 'var(--text-primary)'} {...HALO}>
+                {drag.cand == null ? `route level ${formatAltitudeFt(alt)}` : formatAltitudeFt(alt)}
+                {below ? ` \u2014 below MSA ${formatAltitudeFt(legMsa[i])}` : ''}
+              </text>
+            )}
+          </g>
+        )
+      })}
+      {spans.map((s, i) => {
+        const x1 = L.xOf(s.fromNm), x2 = L.xOf(s.toNm)
+        const y = L.yOf(s.altFt)
+        const below = legBelowMsa(s, totalNm, s.altFt, legMsa[i] ?? 0)
+        return (
+          <g key={`hit-${i}`}>
+            <rect
+              className={css.legHit}
+              x={x1} y={y - LEG_HIT_HALF_PX} width={Math.max(0, x2 - x1)} height={LEG_HIT_HALF_PX * 2}
+              onPointerDown={(e) => begin(e, i, s)}
+              onPointerMove={move}
+              onPointerUp={(e) => end(e, true)}
+              onPointerCancel={(e) => end(e, false)}
+            >
+              <title>Drag up or down to change this leg&apos;s level</title>
+            </rect>
+            {!drag && below && x2 - x1 > 80 && (
+              <g className={css.legChip} onClick={() => onLegLevelChange(i, legMsa[i])}>
+                <rect x={(x1 + x2) / 2 - 40} y={y - 30} width={80} height={16} rx={8} />
+                <text x={(x1 + x2) / 2} y={y - 19} textAnchor="middle" fontSize={10}>{'\u25b2'} MSA {formatAltitudeFt(legMsa[i])}</text>
+              </g>
+            )}
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -410,8 +520,12 @@ const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDist
 function VirtualRadar({
   waypoints, legOverrides, units = DEFAULT_UNITS, title, onHoverDistNm, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, crosshairDistNm,
-  crossTrackNm, weatherStations, airspaceCeilingFt,
+  crossTrackNm, weatherStations, airspaceCeilingFt, onLegLevelChange,
 }: Props) {
+  const [legDrag, setLegDrag] = useState<LegDragState | null>(null)
+  const dragging = legDrag !== null
+  // A route change or a lock mid-drag must not leave a stale preview behind.
+  useEffect(() => { setLegDrag(null) }, [waypoints, onLegLevelChange == null])
 
   const chartWrapRef = useRef<HTMLDivElement | null>(null)
   const [wrapW, setWrapW] = useState(0)
@@ -638,6 +752,10 @@ function VirtualRadar({
     }
   }, [profile, terrainPts, perf, getMsa])
 
+  // Leg spans and each leg's MSA, for the drag layer's targets and warnings.
+  const legSpanList = useMemo(() => (profile ? legSpans(profile.altitudeProfile) : []), [profile])
+  const legMsaFt = useMemo(() => legMsaList(legSpanList, msaPts, getMsa), [legSpanList, msaPts, getMsa])
+
   const yMax = useMemo(
     () => (profile ? profileYMax(profile.maxPlannedAltFt, corridorPts.length > 0 ? corridorPts : terrainPts) : 10000),
     [profile, terrainPts],
@@ -772,7 +890,9 @@ function VirtualRadar({
     const msaPath = series.msa
       ? polylinePath(series.distNms.flatMap((d, i) => (series.msa![i] > 0 ? [{ distNm: d, altFt: series.msa![i] }] : [])), L.xOf, L.yOf)
       : ''
-    const plannedPath = polylinePath(series.distNms.map((d, i) => ({ distNm: d, altFt: series.plannedAlts[i] })), L.xOf, L.yOf)
+    // While a leg level is being dragged the modelled climbs/descents are
+    // hidden; the drag layer shows each leg as a flat line instead.
+    const plannedPath = dragging ? '' : polylinePath(series.distNms.map((d, i) => ({ distNm: d, altFt: series.plannedAlts[i] })), L.xOf, L.yOf)
     const groundOutline = series.ground
       ? polylinePath(series.distNms.map((d, i) => ({ distNm: d, altFt: series.ground![i] })), L.xOf, L.yOf)
       : ''
@@ -911,7 +1031,7 @@ function VirtualRadar({
         {/* ── Planned altitude line, MSA, below-MSA stretches in red ── */}
         <path d={plannedPath} fill="none" stroke={PLAN_COLOR} strokeWidth={2} />
         {msaPath && <path d={msaPath} fill="none" stroke={MSA_COLOR} strokeWidth={1} strokeDasharray="5 3" />}
-        {series.belowMsa.map((run, i) => (
+        {!dragging && series.belowMsa.map((run, i) => (
           <path key={`below-${i}`} d={polylinePath(run, L.xOf, L.yOf)} fill="none" stroke={DANGER_COLOR} strokeWidth={2.5} />
         ))}
 
@@ -928,7 +1048,7 @@ function VirtualRadar({
         </text>
       </>
     )
-  }, [profile, layout, series, yMax, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, windAloft, iconMarkup, visibleWaypointTicks, units.distance])
+  }, [profile, layout, series, yMax, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, windAloft, iconMarkup, visibleWaypointTicks, units.distance, dragging])
 
   if (!profile || !series || series.distNms.length === 0) return null
 
@@ -1058,6 +1178,20 @@ function VirtualRadar({
                 {live}
               </svg>
               <HoverOverlay layout={L} series={series} onHoverDistNm={onHoverDistNm} />
+              {onLegLevelChange && profile && (
+                <LegDragLayer
+                  layout={L}
+                  spans={legSpanList}
+                  legMsa={legMsaFt}
+                  totalNm={profile.totalNm}
+                  fallbackAltFt={aircraftProfile?.cruiseAltFt || 3500}
+                  ceilingFt={Math.min(aircraftProfile?.serviceCeilingFt || 50_000, Math.round(yMax / 100) * 100)}
+                  legOverrides={legOverrides}
+                  onLegLevelChange={onLegLevelChange}
+                  drag={legDrag}
+                  setDrag={setLegDrag}
+                />
+              )}
             </div>
           )}
         </div>
