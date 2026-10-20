@@ -65,15 +65,17 @@ export function profileChartLayout(o: {
 }
 
 /**
- * Altitude scale top: 1.5x the highest planned altitude, but always clear of
- * the terrain and at least 3000 ft, rounded up to the next 1000 ft.
+ * Altitude scale top: the highest planned altitude plus headroom (25 % and at
+ * least 1000 ft, so a low route is not squashed against the top and a high one
+ * does not leave most of the chart empty), always clear of the terrain and at
+ * least 3000 ft, rounded up to the next 1000 ft.
  * Airspace ceilings deliberately don't count (one FL660 CTA must not flatten
  * the whole chart; bands are clamped to the top instead).
  */
 export function profileYMax(maxPlannedAltFt: number, terrainPts: readonly { elevFt: number }[]): number {
   const planned = Math.max(maxPlannedAltFt, 1000)
   const maxTerrain = terrainPts.reduce((m, p) => Math.max(m, p.elevFt), 0)
-  const raw = Math.max(planned * 1.5, maxTerrain * 1.2, 3000)
+  const raw = Math.max(planned * 1.25, planned + 1000, maxTerrain * 1.2, 3000)
   return Math.ceil(raw / 1000) * 1000
 }
 

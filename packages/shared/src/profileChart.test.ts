@@ -35,8 +35,10 @@ describe('profileChartLayout', () => {
 })
 
 describe('profileYMax', () => {
-  it('scales to 1.5x planned altitude, rounded up', () => {
-    expect(profileYMax(4500, [])).toBe(7000)
+  it('leaves 25 % (at least 1000 ft) above the planned altitude, rounded up', () => {
+    expect(profileYMax(3500, [])).toBe(5000)   // +1000 ft wins
+    expect(profileYMax(4500, [])).toBe(6000)   // 5625 -> 6000
+    expect(profileYMax(12000, [])).toBe(15000) // +25 % wins
   })
   it('clears high terrain and never goes below 3000', () => {
     expect(profileYMax(1500, [{ elevFt: 4000 }])).toBe(5000)
