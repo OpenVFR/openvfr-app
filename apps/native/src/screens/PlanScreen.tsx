@@ -79,6 +79,8 @@ function gsKts(trackDeg: number, windDir: number, windSpd: number, tas: number):
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { routeToGpx, gpxToRoute, waypointsToGpx, gpxToWaypoints, flightLogToGpx, gpxToFlightLog } from '@open-vfr/shared/gpx'
 import { iasToTas } from '@open-vfr/shared/airspeed'
+import { legBelowMsa, legMsaApplies } from '@open-vfr/shared/legLevelDrag'
+import { useLegMsa } from '../hooks/useLegMsa'
 import { useLegForecastWind, type LegWindQuery } from '../hooks/useLegForecastWind'
 import * as FileSystem from 'expo-file-system'
 import * as Sharing from 'expo-sharing'
@@ -357,6 +359,10 @@ export function PlanScreen() {
   // Cruise IAS — from profile or fallback to 90 kts. Converted to TAS at each leg's altitude below.
   const cruiseIas = profile?.cruiseIas ?? 90
   const cruiseAltFt = profile?.cruiseAltFt || 3500
+  const { legMsa, spans: msaSpans, totalNm: msaTotalNm } = useLegMsa(waypoints, settings.msaMargins)
+  const legPlannedAlt = (i: number) => legOverrides[i]?.altFt ?? cruiseAltFt
+  const legIsBelowMsa = (i: number) =>
+    msaSpans[i] != null && legBelowMsa(msaSpans[i], msaTotalNm, legPlannedAlt(i), legMsa[i] ?? 0)
 
   // Forecast wind per leg (SkyDemon-style): leg midpoint, altitude and expected time
   // (takeoff time, or now when unset, plus still-air time flown so far). Per-leg manual
@@ -754,7 +760,10 @@ export function PlanScreen() {
                     </Text>
                     <Text style={[styles.legHdg, hasOverride && styles.legHdgSet]}>{Math.round(leg.magHdg).toString().padStart(3, '0')}°M</Text>
                     {leg.eteMins != null && <Text style={styles.legEte}>{fmtTime(leg.eteMins)}</Text>}
-                    {leg.altFt != null && <Text style={styles.legWca}>{Math.round(leg.altFt)} ft</Text>}
+                    {leg.altFt != null && <Text style={[styles.legWca, legIsBelowMsa(index) && styles.legMsaWarn]}>{Math.round(leg.altFt)} ft</Text>}
+                    {(legMsa[index] ?? 0) > 0 && (
+                      <Text style={[styles.legWca, legIsBelowMsa(index) && styles.legMsaWarn]}>MSA {legMsa[index].toLocaleString('en-US')}</Text>
+                    )}
                     <Text style={styles.legWca}>TAS {Math.round(ktsToDisplay(leg.tas, units.speed))}</Text>
                     {Math.abs(leg.wca) >= 1 && (
                       <Text style={styles.legWca}>WCA {leg.wca > 0 ? '+' : ''}{Math.round(leg.wca)}°</Text>
@@ -774,6 +783,23 @@ export function PlanScreen() {
                     <TextInput style={styles.numberInput} value={ovrWDir} onChangeText={(t) => { setOvrWindMode('manual'); setOvrWDir(t) }} placeholder="Wind Dir°" placeholderTextColor={theme.textFaint} keyboardType="numeric" />
                     <TextInput style={styles.numberInput} value={ovrWSpd} onChangeText={(t) => { setOvrWindMode('manual'); setOvrWSpd(t) }} placeholder={`Wind ${speedLabel(units.speed)}`} placeholderTextColor={theme.textFaint} keyboardType="numeric" />
                   </View>
+                  {(legMsa[index] ?? 0) > 0 && (() => {
+                    const planned = parseFloat(ovrAlt)
+                    const alt = isNaN(planned) ? cruiseAltFt : planned
+                    const below = msaSpans[index] != null && legMsaApplies(msaSpans[index], msaTotalNm) && alt < legMsa[index]
+                    return (
+                      <View style={styles.saveRowActions}>
+                        <Text style={[styles.inputLabel, below && styles.legMsaWarn]}>
+                          MSA {legMsa[index].toLocaleString('en-US')} ft{below ? ' — planned level is below it' : ''}
+                        </Text>
+                        {below && (
+                          <TouchableOpacity onPress={() => setOvrAlt(String(legMsa[index]))}>
+                            <Text style={styles.clearBtn}>Raise to MSA</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    )
+                  })()}
                   <View style={styles.saveRowActions}>
                     <Text style={styles.inputLabel}>
                       {ovrWindMode === 'manual' ? 'Wind: manual' : wind ? 'Wind: global' : forecastWinds[index] ? 'Wind: forecast' : forecastLoading ? 'Wind: loading…' : 'Wind: no forecast'}
@@ -1417,6 +1443,7 @@ function makeStyles(theme: ScaledTheme) {
   legHdgSet:   { color: theme.accentYellow, fontWeight: '700' },
   legEte:      { color: theme.textSecondary, fontSize: theme.textSm },
   legWca:      { color: theme.textMuted, fontSize: theme.textXs },
+  legMsaWarn:  { color: theme.accentRed, fontWeight: '600' },
   legPropsPanel: {
     marginHorizontal: theme.space3, marginBottom: theme.space2, padding: theme.space3,
     backgroundColor: theme.surfacePanel, borderRadius: theme.radiusMd,

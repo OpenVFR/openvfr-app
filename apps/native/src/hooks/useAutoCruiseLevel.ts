@@ -24,7 +24,7 @@ const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', feature
 // Obstacles file (0.5-3 MB, fine for fetch() on native -- see AGENTS.md on
 // large GeoJSON). Parsed once per URL, like VerticalProfile's own cache.
 let _obstacles: { url: string; p: Promise<GeoJSON.FeatureCollection> } | null = null
-function loadObstacles(): Promise<GeoJSON.FeatureCollection> {
+export function loadObstacles(): Promise<GeoJSON.FeatureCollection> {
   const url = getTileUrls().obstacles
   if (!_obstacles || _obstacles.url !== url) {
     const p = fetch(url).then((r) => r.json() as Promise<GeoJSON.FeatureCollection>)
