@@ -500,9 +500,21 @@ export function VerticalProfile({
   const getMsa = useMemo(() => getMsaLookup(msaPts), [msaPts])
 
   // Shared with web (@open-vfr/shared/profileChart).
+  // The scale follows the path actually drawn (with the climbs and descents
+  // the aircraft's performance allows), not the requested levels: a short leg
+  // at 7500 ft is never reached, and a 10000 ft axis over a 3400 ft line is noise.
+  const plannedPeakFt = useMemo(() => {
+    if (!profile) return 0
+    if (terrainPts.length === 0) return profile.maxPlannedAltFt
+    const alts = projectFlightPath(
+      profile.altitudeProfile, profile.totalNm, perf ?? DEFAULT_PERF_MODEL,
+      terrainPts.map(p => p.distNm), terrainPts[0].elevFt, terrainPts[terrainPts.length - 1].elevFt,
+    )
+    return alts.length > 0 ? Math.max(...alts) : profile.maxPlannedAltFt
+  }, [perf, profile, terrainPts])
   const yMax = useMemo(
-    () => (profile ? profileYMax(profile.maxPlannedAltFt, corridorPts.length > 0 ? corridorPts : terrainPts) : 10000),
-    [profile, terrainPts],
+    () => (profile ? profileYMax(plannedPeakFt, corridorPts.length > 0 ? corridorPts : terrainPts) : 10000),
+    [profile, plannedPeakFt, corridorPts, terrainPts],
   )
 
   const totalNm = profile?.totalNm ?? 0

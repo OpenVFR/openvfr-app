@@ -436,6 +436,9 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
   setDrag: (d: LegDragState | null) => void
 }) {
   const pxPerFt = (L.yOf(0) - L.yOf(10000)) / 10000
+  // A leg planned above the chart top (the scale follows the path the aircraft
+  // can actually fly) is drawn and grabbed at the top edge, never off-chart.
+  const yClamped = (ft: number) => Math.min(L.plotBottom, Math.max(L.plotTop + 2, L.yOf(ft)))
   const levelOf = (i: number, s: LegSpan) => (drag && drag.leg === i ? (drag.cand ?? fallbackAltFt) : s.altFt)
 
   // The pressed target keeps pointer capture for the whole gesture, so it
@@ -467,7 +470,7 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
     <svg className={css.dragSvg} width={L.contentW} height={CHART_H}>
       {drag && spans.map((s, i) => {
         const alt = levelOf(i, s)
-        const y = L.yOf(alt)
+        const y = yClamped(alt)
         const below = legBelowMsa(s, totalNm, alt, legMsa[i] ?? 0)
         const dragged = drag.leg === i
         return (
@@ -486,7 +489,7 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
       })}
       {spans.map((s, i) => {
         const x1 = L.xOf(s.fromNm), x2 = L.xOf(s.toNm)
-        const y = L.yOf(s.altFt)
+        const y = yClamped(s.altFt)
         const below = legBelowMsa(s, totalNm, s.altFt, legMsa[i] ?? 0)
         return (
           <g key={`hit-${i}`}>
@@ -756,9 +759,16 @@ function VirtualRadar({
   const legSpanList = useMemo(() => (profile ? legSpans(profile.altitudeProfile) : []), [profile])
   const legMsaFt = useMemo(() => legMsaList(legSpanList, msaPts, getMsa), [legSpanList, msaPts, getMsa])
 
+  // The scale follows the path actually drawn (with climbs and descents the
+  // aircraft's performance allows), not the requested levels: a short leg at
+  // 7500 ft is never reached, and a 10000 ft axis over a 3400 ft line is noise.
+  const plannedPeakFt = useMemo(
+    () => (series && series.plannedAlts.length > 0 ? Math.max(...series.plannedAlts) : (profile?.maxPlannedAltFt ?? 0)),
+    [series, profile],
+  )
   const yMax = useMemo(
-    () => (profile ? profileYMax(profile.maxPlannedAltFt, corridorPts.length > 0 ? corridorPts : terrainPts) : 10000),
-    [profile, terrainPts],
+    () => (profile ? profileYMax(plannedPeakFt, corridorPts.length > 0 ? corridorPts : terrainPts) : 10000),
+    [profile, plannedPeakFt, corridorPts, terrainPts],
   )
 
   // Winds aloft at the standard levels up to the chart top, one column every
