@@ -134,8 +134,18 @@ export function gpsAltitudeReferenceStatus(): {
   platformDefault: GpsAltitudeRef
   verdict: GpsAltitudeRefVerdict | null
   pendingSamples: number
+  /** Median raw-minus-terrain offset (m) of the pending samples, null if none. */
+  pendingMedianM: number | null
+  /** Mean geoid height (m) over the pending samples, null if none. */
+  pendingGeoidM: number | null
 } {
-  return { ref: gpsAltitudeReference(), source: verdict ? 'verified' : 'platform-default', platformDefault, verdict, pendingSamples: offsets.length }
+  const n = offsets.length
+  return {
+    ref: gpsAltitudeReference(), source: verdict ? 'verified' : 'platform-default', platformDefault, verdict,
+    pendingSamples: n,
+    pendingMedianM: n ? Math.round(classifyOffsets(offsets, geoidSum / n).medianM * 10) / 10 : null,
+    pendingGeoidM: n ? Math.round((geoidSum / n) * 10) / 10 : null,
+  }
 }
 
 /**
@@ -156,7 +166,7 @@ export function describeGpsAltitudeReference(
     : 'This device reports GPS altitude above mean sea level; the app uses it as it is.'
   const check = v
     ? ` Checked against the terrain while stationary on the ground: raw GPS was ${v.medianOffsetM} m above the terrain where the geoid is ${v.geoidM} m (${v.samples} samples).`
-    : ` Assumed for this platform; it is checked automatically against the terrain the next time the phone is stationary on the ground with GPS on${st.pendingSamples ? ` (${st.pendingSamples} samples so far)` : ''}.`
+    : ` Assumed for this platform; it is checked automatically against the terrain the next time the phone is stationary on the ground with GPS on${st.pendingSamples ? ` (${st.pendingSamples} samples so far${st.pendingMedianM != null ? `: raw GPS ${st.pendingMedianM} m above the terrain, geoid ${st.pendingGeoidM} m; it decides when that is within ${TOLERANCE_M} m of 0 or of the geoid height, with at least ${MIN_SAMPLES} samples. Indoors, upstairs or with a weak vertical fix it stays undecided` : ''})` : ''}.`
   const warn = mismatch ? ' This differs from what the platform is known to report: the measured reference is used.' : ''
   return { value, detail: how + check + warn, mismatch }
 }
