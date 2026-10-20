@@ -18,7 +18,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { useActiveCountries } from '../utils/countryData'
-import { buildObstructionPoints, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
+import { buildObstructionPoints, obstructionTipFt, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
 import { useMefGrids } from './useMefGrids'
 
 // ── Config ───────────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ function approxDistNm(lat1: number, lng1: number, lat2: number, lng2: number): n
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
-export function useObstructionWarnings(position: GpsPosition | null): {
+export function useObstructionWarnings(position: (GpsPosition & { terrainFt?: number | null }) | null): {
   alerts:  ObstructionAlert[]
   dismiss: (key: string) => void
 } {
@@ -95,7 +95,8 @@ export function useObstructionWarnings(position: GpsPosition | null): {
       if (distNm > WARN_RADIUS_NM) continue
 
       // Vertical filter: only warn if aircraft is at risk altitude
-      if (altFt > obs.tipFt + VERTICAL_BUFFER_FT) continue
+      const tipFt = obstructionTipFt(obs, position.terrainFt)
+      if (tipFt == null || altFt > tipFt + VERTICAL_BUFFER_FT) continue
 
       // Dismiss check
       const dismissedAt = dismissedRef.current.get(obs.key)
@@ -105,8 +106,8 @@ export function useObstructionWarnings(position: GpsPosition | null): {
         key:         obs.key,
         kind:        obs.kind,
         name:        obs.name || obs.kind.replace('_', ' '),
-        elevationFt: obs.elevFt,
-        tipFt:       obs.tipFt,
+        elevationFt: obs.groundKnown ? obs.elevFt : Math.round(position.terrainFt ?? 0),
+        tipFt,
         estimated:   obs.estimated,
         distNm,
       })

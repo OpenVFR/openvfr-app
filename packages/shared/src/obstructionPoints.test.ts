@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { FeatureCollection } from 'geojson'
-import { buildObstructionPoints } from './obstructionPoints'
+import { buildObstructionPoints, obstructionTipFt } from './obstructionPoints'
 
 const fc = (props: Record<string, unknown>[]): FeatureCollection => ({
   type: 'FeatureCollection',
@@ -18,8 +18,11 @@ describe('buildObstructionPoints', () => {
     expect(p.tipFt).toBe(100 + Math.round(135 * 3.28084))
     expect(p.estimated).toBe(true)
   })
-  it('skips landmarks without a ground grid', () => {
-    expect(buildObstructionPoints(null, fc([{ kind: 'mast', height_m: 50 }]), [])).toEqual([])
+  it('keeps landmarks without a ground grid, relative to the aircraft ground', () => {
+    const [p] = buildObstructionPoints(null, fc([{ kind: 'mast', height_m: 50 }]), [])
+    expect(p.groundKnown).toBe(false)
+    expect(obstructionTipFt(p, 200)).toBe(200 + 164)
+    expect(obstructionTipFt(p, null)).toBeNull()
   })
   it('gives unique keys even for equal names', () => {
     const pts = buildObstructionPoints(fc([{ kind: 'tower', name: 'A', elevation_ft: 1, height_m: 5 }, { kind: 'tower', name: 'A', elevation_ft: 1, height_m: 5 }]), null, [])

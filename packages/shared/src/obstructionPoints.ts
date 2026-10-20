@@ -6,8 +6,10 @@
  * height is no longer treated as flush with the ground.
  *
  * Landmarks carry no ground elevation; the terrain maximum grid (conservative:
- * highest terrain in a ~460 m cell) stands in. Without a grid they are skipped
- * (a guessed ground would give false alerts or none).
+ * highest terrain in a ~460 m cell) stands in. Without a grid their ground is
+ * unknown (`groundKnown` false): the tip is then taken relative to the ground
+ * under the aircraft (see obstructionTipFt), valid because alerts only look
+ * 1 NM around the aircraft.
  */
 import type { FeatureCollection, Point } from 'geojson'
 import { effectiveHeight, FT_PER_M } from './obstacleHeights'
@@ -19,8 +21,11 @@ export type ObstructionPoint = {
   lng: number
   kind: string
   name: string
+  /** Ground elevation AMSL; 0 when `groundKnown` is false. */
   elevFt: number
+  /** Tip AMSL; when `groundKnown` is false, only the height above ground. */
   tipFt: number
+  groundKnown: boolean
   /** True when the height is the per-kind estimate, not a recorded value. */
   estimated: boolean
 }
@@ -46,14 +51,14 @@ export function buildObstructionPoints(
       const [lng, lat] = (f.geometry as Point).coordinates
       const p = (f.properties ?? {}) as Record<string, unknown>
       const elevFt = ground(lat, lng, p['elevation_ft'])
-      if (elevFt == null) return
+      const groundKnown = elevFt != null
       const rawH = p['height_m'] == null ? null : Number(p['height_m'])
       const kind = String(p['kind'] ?? 'other')
       const name = String(p['name'] ?? '').trim()
       const h = effectiveHeight(kind, rawH)
       pts.push({
-        key: `${prefix}-${i}`, lat, lng, kind, name, elevFt,
-        tipFt: elevFt + Math.round(h.heightM * FT_PER_M),
+        key: `${prefix}-${i}`, lat, lng, kind, name, elevFt: elevFt ?? 0,
+        tipFt: (elevFt ?? 0) + Math.round(h.heightM * FT_PER_M), groundKnown,
         estimated: h.estimated,
       })
     })
@@ -65,4 +70,15 @@ export function buildObstructionPoints(
   })
   add(landmarks, 'lm', (lat, lng) => gridGroundFt(grids, lat, lng))
   return pts
+}
+
+/**
+ * Tip altitude AMSL to compare the aircraft against, or null when it cannot be
+ * known (ground unknown and no terrain under the aircraft either). Unknown
+ * ground is taken as the ground under the aircraft.
+ */
+export function obstructionTipFt(o: ObstructionPoint, ownTerrainFt: number | null | undefined): number | null {
+  if (o.groundKnown) return o.tipFt
+  if (ownTerrainFt == null || !Number.isFinite(ownTerrainFt)) return null
+  return Math.max(0, ownTerrainFt) + o.tipFt
 }

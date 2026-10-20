@@ -37,8 +37,8 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
-import { onActiveCountriesChange, loadCountryGeojson } from '@open-vfr/shared/countryData'
-import { buildObstructionPoints, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
+import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
+import { buildObstructionPoints, obstructionTipFt, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
 import { useMefGrids } from './useMefGrids'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
@@ -229,7 +229,16 @@ export function usePositionAlerts(
       .then(r => r.json())
       .then((fc: GeoJSON.FeatureCollection) => setObstacleFc(fc))
       .catch(() => { /* offline-safe */ })
-    loadCountryGeojson('landmarks').then(setLandmarkFc).catch(() => { /* optional dataset */ })
+  }, [])
+
+  // Landmarks (masts, chimneys, churches...): optional dataset, fetched like the obstacles.
+  useEffect(() => {
+    let alive = true
+    fetch(getTileUrls().landmarks)
+      .then(r => r.json())
+      .then((fc: GeoJSON.FeatureCollection) => { if (alive) setLandmarkFc(fc) })
+      .catch(() => { /* offline-safe / not published for this country */ })
+    return () => { alive = false }
   }, [])
 
   useEffect(() => {
@@ -449,11 +458,12 @@ export function usePositionAlerts(
         if (Math.abs(obs.lat - lat) > OBS_WARN_RADIUS_NM / NM_PER_DEG_LAT * 1.2) continue
         const distNm = approxDistNm(lat, lng, obs.lat, obs.lng)
         if (distNm > OBS_WARN_RADIUS_NM) continue
-        if (altFt > obs.tipFt + OBS_VERTICAL_BUFFER_FT) continue
+        const tipFt = obstructionTipFt(obs, terrainFt)
+        if (tipFt == null || altFt > tipFt + OBS_VERTICAL_BUFFER_FT) continue
         const dismissedAt = obstructionDismissedRef.current.get(obs.key)
         if (dismissedAt !== undefined && now - dismissedAt < OBS_REARM_MS) continue
         found.push({ key: obs.key, kind: obs.kind, name: obs.name || obs.kind.replace('_', ' '),
-          elevationFt: obs.elevFt, tipFt: obs.tipFt, estimated: obs.estimated, distNm })
+          elevationFt: obs.groundKnown ? obs.elevFt : Math.round(terrainFt ?? 0), tipFt, estimated: obs.estimated, distNm })
         if (found.length >= OBS_MAX_ALERTS) break
       }
       found.sort((a, b) => a.distNm - b.distNm)
