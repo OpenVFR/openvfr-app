@@ -34,3 +34,16 @@ describe('obstacleTipsForMsa', () => {
     expect(tips[2].elevationFt).toBe(Math.round(200 + 40 * FT_PER_M))
   })
 })
+
+import { limitingObstacleLabel } from './obstacleHeights'
+describe('limitingObstacleLabel', () => {
+  it('uses the name, else the kind, with the tip altitude and an estimate mark', () => {
+    expect(limitingObstacleLabel('building', 'Kronprinsen', 289, false)).toBe('Kronprinsen 289 ft')
+    expect(limitingObstacleLabel('wind_turbine', '', 944, true)).toBe('Turbine 944 ft (est.)')
+    expect(limitingObstacleLabel('tower', 'Älvsborgsbron', 1096, false)).toBe('Älvsborgsbron 1,096 ft')
+  })
+  it('drops a leading code and shortens long names', () => {
+    expect(limitingObstacleLabel('tower', '70939S1 - Vaxtuna', 500, false)).toBe('Vaxtuna 500 ft')
+    expect(limitingObstacleLabel('tower', 'A very long mast name indeed', 500, false)).toBe('A very long mast… 500 ft')
+  })
+})

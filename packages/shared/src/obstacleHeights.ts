@@ -36,6 +36,22 @@ export function effectiveHeight(kind: string, knownHeightM: number | null | unde
   return { heightM: ESTIMATED_HEIGHT_M[kind] ?? DEFAULT_ESTIMATED_HEIGHT_M, estimated: true }
 }
 
+const KIND_LABEL: Record<string, string> = {
+  wind_turbine: 'Turbine', tower: 'Tower', mast: 'Mast', building: 'Building', chimney: 'Chimney',
+  water_tower: 'Water tower', church: 'Church', windmill: 'Windmill',
+}
+
+/**
+ * Short label for the obstacle that sets the MSA: its name (OpenAIP names can
+ * be long codes, so trimmed), else its kind, with the tip altitude and a mark
+ * when the height is only an estimate: `Älvsborgsbron 1,096 ft`, `Turbine 944 ft (est.)`.
+ */
+export function limitingObstacleLabel(kind: string, name: string | undefined, tipFt: number, estimated: boolean): string {
+  const clean = (name ?? '').replace(/^[\w-]*\d[\w-]*\s*-\s*/, '').trim()
+  const base = clean ? (clean.length > 18 ? clean.slice(0, 17).trimEnd() + '…' : clean) : (KIND_LABEL[kind] ?? 'Obstacle')
+  return `${base} ${tipFt.toLocaleString('en-US')} ft${estimated ? ' (est.)' : ''}`
+}
+
 type ObstacleLike = { distNm: number; kind: string; elevationFt: number; heightM: number }
 type LandmarkLike = { distNm: number; kind: string; heightM?: number }
 

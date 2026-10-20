@@ -17,7 +17,7 @@ import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
 import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
 import { obstacleSymbol, polyPath, ESTIMATED_DASH, type SymbolPrim } from '@open-vfr/shared/obstacleSymbol'
-import { effectiveHeight, obstacleTipsForMsa, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
+import { effectiveHeight, obstacleTipsForMsa, limitingObstacleLabel, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
 import { legSpans, legMsaList, legBelowMsa, dragShownFt, altAtY, unreachedLegs, LEVEL_STEP_FT, DRAG_MIN_MOVE_PX, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { useMefGrids } from '../hooks/useMefGrids'
 import type { LegOverride } from '../db/index'
@@ -446,7 +446,7 @@ const LANDMARK_MIN_GAP_PX = 18
 /** Labels of aerodromes / reporting points / navaids closer than this (px) are thinned. */
 const POI_LABEL_GAP_PX = 46
 
-type ObstacleMark = { key: string; kind: string; cx: number; cy: number; groundY: number; opacity: number; limiting: boolean; priority: number; full: boolean; estimated: boolean }
+type ObstacleMark = { key: string; kind: string; cx: number; cy: number; groundY: number; opacity: number; limiting: boolean; priority: number; full: boolean; estimated: boolean; label: string; labelled: boolean }
 type PoiMark = { key: string; kind: string; subtype: string; towered: boolean; label: string; cx: number; cy: number; priority: number; labelled: boolean }
 type LandmarkMark = { key: string; kind: string; cx: number; cy: number; tipY: number; groundY: number; full: boolean; estimated: boolean }
 
@@ -991,8 +991,12 @@ function VirtualRadar({
         key: `obs-${i}`, kind: o.kind, cx: clampX(L.xOf(o.distNm), 8), cy: L.yOf(tipFt), groundY: L.yOf(Math.max(0, baseFt)),
         opacity: obstacleOpacity(o.lateralNm, margins.abeamNm) * (eh.estimated ? 0.7 : 1), limiting,
         priority: limiting ? 1e9 + tipFt : tipFt, full: false, estimated: eh.estimated,
+        label: limiting ? limitingObstacleLabel(o.kind, o.name, tipFt, eh.estimated) : '', labelled: false,
       }
     })
+    // Only the obstacle(s) that set the MSA are named; labels that would overlap are thinned.
+    const obsLabelled = declutterMarks(obs.filter((m) => m.limiting).map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), 110)
+    obs.forEach((m) => { m.labelled = obsLabelled.has(m.key) })
     const obsFull = declutterMarks(obs.map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), OBSTACLE_MIN_GAP_PX)
     obs.forEach((m) => { m.full = obsFull.has(m.key) })
     const lmk = profile.landmarks.map((l, i) => {
@@ -1161,6 +1165,17 @@ function VirtualRadar({
           ? renderIconAt(m.key, m.cx, m.cy, 14, iconMarkup[`lmk:${m.kind}`],
             <circle cx={m.cx} cy={m.cy} r={2.5} fill="rgba(150,150,150,0.9)" stroke="rgba(0,0,0,0.4)" strokeWidth={1} />)
           : <circle key={m.key} cx={m.cx} cy={m.cy} r={1.6} fill="rgba(150,150,150,0.8)" />
+        })}
+
+        {obstacleMarks.filter((m) => m.labelled).map((m) => {
+          const nearRight = m.cx > L.xOf(L.totalNm) - 70
+          const nearLeft = m.cx < L.xOf(0) + 70
+          const ty = m.cy - 16 < L.plotTop + 12 ? m.cy + 22 : m.cy - 16
+          return (
+            <text key={`lim-${m.key}`} x={nearLeft ? L.xOf(0) + 2 : m.cx} y={ty} textAnchor={nearRight ? 'end' : nearLeft ? 'start' : 'middle'} fontSize={10} fontWeight={600} fill={DANGER_COLOR} {...HALO}>
+              {m.label}
+            </text>
+          )
         })}
 
         {/* ── Aerodromes, reporting points, navaids (own distance per kind) ── */}

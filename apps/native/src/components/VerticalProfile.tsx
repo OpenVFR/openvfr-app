@@ -54,7 +54,7 @@ import { legSpans, legMsaList, legBelowMsa, dragShownFt, altAtY, unreachedLegs, 
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
 import { obstacleSymbol, polyPath, ESTIMATED_DASH } from '@open-vfr/shared/obstacleSymbol'
 import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
-import { effectiveHeight, obstacleTipsForMsa, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
+import { effectiveHeight, obstacleTipsForMsa, limitingObstacleLabel, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
 import { useMefGrids } from '../hooks/useMefGrids'
 import { pickWaypointLabels, estimateLabelWidth } from '@open-vfr/shared/profileLabels'
 import {
@@ -582,9 +582,13 @@ export function VerticalProfile({
         key: `obs-${i}`, kind: o.kind, cx, cy, groundY,
         opacity: obstacleOpacity(o.lateralNm, margins.abeamNm) * (eh.estimated ? 0.7 : 1), limiting,
         priority: limiting ? 1e9 + tipFt : tipFt, full: false, estimated: eh.estimated,
+        label: limiting ? limitingObstacleLabel(o.kind, o.name, tipFt, eh.estimated) : '', labelled: false,
         shape: obstacleSymbol(o.kind, cx, cy, groundY, eh.estimated),
       }
     })
+    // Only the obstacle(s) that set the MSA are named; labels that would overlap are thinned.
+    const obsLabelled = declutterMarks(obs.filter((m) => m.limiting).map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), 110)
+    obs.forEach((m) => { m.labelled = obsLabelled.has(m.key) })
     const obsFull = declutterMarks(obs.map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), 14)
     obs.forEach((m) => { m.full = obsFull.has(m.key) })
     const lmk = (profile?.landmarks ?? []).map((l, i) => {
@@ -1541,6 +1545,24 @@ export function VerticalProfile({
                     </G>
                   ) : null)}
                 </Svg>
+
+                {obstacleMarks.filter((m) => m.labelled).map((m) => {
+                  const nearRight = m.cx > xOf(totalNm) - 70
+                  const nearLeft = m.cx < xOf(0) + 70
+                  const ty = m.cy - 16 < MARGIN_T + 12 ? m.cy + 22 : m.cy - 16
+                  return (
+                    <Text
+                      key={`lim-${m.key}`}
+                      style={{
+                        position: 'absolute', top: ty - 10, fontSize: 10, fontWeight: '700', color: 'rgba(239,68,68,0.95)',
+                        textShadowColor: 'rgba(0,0,0,0.85)', textShadowRadius: 2, textShadowOffset: { width: 0, height: 0 },
+                        ...(nearRight ? { right: contentW - m.cx - 4 } : nearLeft ? { left: xOf(0) + 2 } : { left: m.cx - 55, width: 110, textAlign: 'center' as const }),
+                      }}
+                      numberOfLines={1}
+                      pointerEvents="none"
+                    >{m.label}</Text>
+                  )
+                })}
 
                 {/* Aerodromes, reporting points, navaids (own distance per kind) */}
                 {poiMarks.map((m) => (
