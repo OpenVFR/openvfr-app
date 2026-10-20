@@ -7,7 +7,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import {
-  buildVirtualRadarProfile, computeMsaProfile, corridorTerrainAlongRoute,
+  buildVirtualRadarProfile, computeMsaProfile, terrainForMsa,
   getMsaLookup, terrainAt, type TerrainPoint,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { legSpans, legMsaList, type LegSpan } from '@open-vfr/shared/legLevelDrag'
@@ -27,6 +27,7 @@ const NONE: LegMsa = { legMsa: [], spans: [], totalNm: 0 }
 
 export function useLegMsa(waypoints: RouteWaypoint[], margins: Partial<MsaMargins>): LegMsa {
   const [terrain, setTerrain] = useState<TerrainPoint[]>([])
+  const [failed, setFailed] = useState(false)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const grids = useMefGrids()
@@ -38,11 +39,12 @@ export function useLegMsa(waypoints: RouteWaypoint[], margins: Partial<MsaMargin
 
   const routeKey = waypoints.map((w) => `${w.lat.toFixed(4)},${w.lng.toFixed(4)}`).join('|')
   useEffect(() => {
+    setFailed(false)
     if (waypoints.length < 2) { setTerrain([]); return }
     const ctrl = new AbortController()
     fetchTerrainProfileShared(waypoints, API_BASE, ctrl.signal, getOfflineDem())
       .then(setTerrain)
-      .catch(() => { if (!ctrl.signal.aborted) setTerrain([]) })
+      .catch(() => { if (!ctrl.signal.aborted) { setTerrain([]); setFailed(true) } })
     return () => ctrl.abort()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeKey])
@@ -58,11 +60,13 @@ export function useLegMsa(waypoints: RouteWaypoint[], margins: Partial<MsaMargin
   )
 
   return useMemo(() => {
-    if (!profile || terrain.length === 0) return NONE
-    const corridor = corridorTerrainAlongRoute(waypoints, terrain, grids, margins)
-    const msaPts = computeMsaProfile(terrain, margins, obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(terrain, d)), corridor)
+    // Fetched terrain, or (once the fetch failed, e.g. offline without the hillshade DEM)
+    // route samples from the terrain grid.
+    const t = terrainForMsa(waypoints, terrain, grids, margins, failed)
+    if (!profile || t.pts.length === 0) return NONE
+    const msaPts = computeMsaProfile(t.pts, margins, obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(t.pts, d)), t.corridorFt)
     const spans = legSpans(profile.altitudeProfile)
     return { legMsa: legMsaList(spans, msaPts, getMsaLookup(msaPts)), spans, totalNm: profile.totalNm }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, terrain, grids, margins, routeKey])
+  }, [profile, terrain, failed, grids, margins, routeKey])
 }

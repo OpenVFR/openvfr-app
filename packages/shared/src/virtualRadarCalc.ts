@@ -40,7 +40,7 @@
  */
 
 import { resolveMsaMargins, type MsaMargins } from './msaMargins'
-import { corridorMaxFt as mefCorridorMaxFt, type MefGrid } from './mefGrid'
+import { corridorMaxFt as mefCorridorMaxFt, mefFtAt, type MefGrid } from './mefGrid'
 import along from '@turf/along'
 import length from '@turf/length'
 import booleanIntersects from '@turf/boolean-intersects'
@@ -1090,19 +1090,45 @@ export function corridorTerrainAlongRoute(
 }
 
 /**
- * Terrain elevation per sample for a clearance calculation: the higher of the
- * centreline sample and the corridor maximum from the offline grid (when there
- * is one). Same figure the Virtual Radar MSA line is built on, for callers that
- * only need the numbers (the automatic cruise level for a new leg).
+ * Terrain for the MSA when there may be no elevation data: the fetched samples
+ * (plus the corridor maximum from the offline grid), or, when the fetch failed
+ * and the grid is loaded, samples made along the route from the grid alone.
+ *
+ * Why: the MSA is computed per terrain sample, so a failed elevation fetch (no
+ * network, no downloaded hillshade DEM) left no MSA at all even with the small
+ * terrain grid cached. The grid holds the highest terrain per ~460 m cell, so an
+ * MSA from it alone is never below the real one. Samples made from the grid are
+ * for the MSA only: callers must not draw them as the ground line.
+ *
+ * `allowGridOnly` is false while the fetch is still running (no flicker from a
+ * grid MSA to the real one), true once it has failed.
  */
-export function terrainWithCorridorFt(
+export function terrainForMsa(
   waypoints: RouteWaypoint[],
   terrainPts: readonly TerrainPoint[],
   grids: readonly MefGrid[],
-  margins?: Partial<MsaMargins> | null,
-): number[] {
-  const corridor = corridorTerrainAlongRoute(waypoints, terrainPts, grids, margins)
-  return terrainPts.map((p, i) => Math.max(p.elevFt, corridor[i] ?? 0))
+  margins: Partial<MsaMargins> | null | undefined,
+  allowGridOnly: boolean,
+): { pts: TerrainPoint[]; corridorFt: (number | null)[]; fromGridOnly: boolean } {
+  if (terrainPts.length > 0) {
+    return { pts: [...terrainPts], corridorFt: corridorTerrainAlongRoute(waypoints, terrainPts, grids, margins), fromGridOnly: false }
+  }
+  if (!allowGridOnly || grids.length === 0 || waypoints.length < 2) return { pts: [], corridorFt: [], fromGridOnly: false }
+  const totalNm = length(lineString(waypoints.map((w) => [w.lng, w.lat])), { units: 'kilometers' }) * 0.539957
+  if (!(totalNm > 0)) return { pts: [], corridorFt: [], fromGridOnly: false }
+  const n = Math.min(TERRAIN_MAX_PTS, Math.max(10, Math.ceil(totalNm)))
+  const pts: TerrainPoint[] = []
+  for (let i = 0; i < n; i++) {
+    const distNm = Math.round((totalNm * i) / (n - 1) * 100) / 100
+    const c = coordinateAlongRouteNm(waypoints, distNm)
+    let ft = 0
+    for (const g of grids) { const v = mefFtAt(g, c.lat, c.lng); if (v != null && v > ft) ft = v }
+    pts.push({ distNm, elevFt: ft })
+  }
+  const corridorFt = corridorTerrainAlongRoute(waypoints, pts, grids, margins)
+  // No cell anywhere on the route (outside the grid): nothing to base an MSA on.
+  if (!pts.some((p) => p.elevFt > 0) && !corridorFt.some((v) => v != null && v > 0)) return { pts: [], corridorFt: [], fromGridOnly: false }
+  return { pts, corridorFt, fromGridOnly: true }
 }
 
 /**

@@ -40,6 +40,7 @@ import {
   projectFlightPath, plannedAltitudeLine, DEFAULT_PERF_MODEL,
   computeMsaProfile,
   corridorTerrainAlongRoute,
+  terrainForMsa,
   terrainAt,
   getMsaLookup,
   computeTrajectoryTicks,
@@ -521,9 +522,15 @@ export function VerticalProfile({
     () => mefGrids.length === 0 ? [] : terrainPts.map((p, i) => ({ distNm: p.distNm, elevFt: Math.max(p.elevFt, corridorFt[i] ?? 0) })),
     [mefGrids, terrainPts, corridorFt],
   )
+  // Terrain the MSA is built on: the fetched samples, or, once the fetch has failed
+  // (offline, no hillshade DEM), samples made from the terrain grid so the MSA is not lost.
+  const msaTerrain = useMemo(
+    () => terrainForMsa(waypoints, terrainPts, mefGrids, msaMargins, terrainFailed),
+    [waypoints, terrainPts, mefGrids, msaMargins, terrainFailed],
+  )
   const msaPts = useMemo<MsaPoint[]>(
-    () => computeMsaProfile(terrainPts, msaMargins, profile ? obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(terrainPts, d)) : undefined, corridorFt),
-    [terrainPts, msaMargins, profile, corridorFt],
+    () => computeMsaProfile(msaTerrain.pts, msaMargins, profile ? obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(msaTerrain.pts, d)) : undefined, msaTerrain.corridorFt),
+    [msaTerrain, msaMargins, profile],
   )
   const getMsa = useMemo(() => getMsaLookup(msaPts), [msaPts])
 
@@ -879,13 +886,16 @@ export function VerticalProfile({
   // Planned altitude at each terrain sample -- same model as plannedPath
   // (generic performance when no aircraft is selected), used to flag the
   // stretches below MSA.
+  // Sample points of the projected path: the terrain samples, or the grid-made
+  // samples when only the terrain grid is available (no ground line then).
+  const pathSamples = terrainPts.length > 0 ? terrainPts : (msaTerrain.fromGridOnly ? msaTerrain.pts : [])
   const projAlts = useMemo(() => {
-    if (!profile || terrainPts.length === 0) return null
+    if (!profile || pathSamples.length === 0) return null
     return projectFlightPath(
       profile.altitudeProfile, profile.totalNm, perf ?? DEFAULT_PERF_MODEL,
-      terrainPts.map(p => p.distNm), depElevFt, arrElevFt,
+      pathSamples.map(p => p.distNm), depElevFt, arrElevFt,
     )
-  }, [perf, profile, terrainPts, depElevFt, arrElevFt])
+  }, [perf, profile, pathSamples, depElevFt, arrElevFt])
 
   // Terrain silhouette path + relief-shadow duplicate (offset down/right)
   const terrainPath = useMemo(() => {
@@ -949,13 +959,13 @@ export function VerticalProfile({
 
   // Below-MSA stretches of the planned line (drawn red over the magenta line)
   const projDangerPath = useMemo(() => {
-    if (!projAlts || terrainPts.length === 0) return ''
+    if (!projAlts || pathSamples.length === 0) return ''
     // Shared with web (@open-vfr/shared/profileChart): same endpoint
     // suppression and transition points on both apps.
-    return belowMsaRuns({ distNms: terrainPts.map((p) => p.distNm), plannedAlts: projAlts, getMsa, totalNm })
+    return belowMsaRuns({ distNms: pathSamples.map((p) => p.distNm), plannedAlts: projAlts, getMsa, totalNm })
       .map((run) => polylinePath(run, xOf, yOf))
       .join(' ')
-  }, [projAlts, terrainPts, getMsa, totalNm, xOf, yOf])
+  }, [projAlts, pathSamples, getMsa, totalNm, xOf, yOf])
 
   // Hit segments for the leg level drag: the drawn planned line (climbs and
   // descents included), each piece assigned to the leg it lies in. Flat
@@ -1140,7 +1150,7 @@ export function VerticalProfile({
                   line also means no MSA and AGL airspace bands at raw height. */}
               {terrainFailed && terrainPts.length === 0 && (
                 <View style={[styles.offTrackBadge, { top: MARGIN_T + 14 + (crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM ? 18 : 0) }]} pointerEvents="none">
-                  <Text style={styles.offTrackTxt}>⚠ No terrain data: MSA unavailable, AGL limits at raw height</Text>
+                  <Text style={styles.offTrackTxt}>{msaTerrain.fromGridOnly ? '⚠ No ground line: MSA from the terrain grid, AGL limits at raw height' : '⚠ No terrain data: MSA unavailable, AGL limits at raw height'}</Text>
                 </View>
               )}
               {crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM && (

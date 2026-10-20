@@ -24,7 +24,7 @@ import type { LegOverride } from '../db/index'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel } from '../utils/units'
 import {
   buildVirtualRadarProfile, applyTerrainToBands, projectFlightPath, DEFAULT_PERF_MODEL, computeMsaProfile, terrainAt,
-  getMsaLookup, corridorTerrainAlongRoute, computeTrajectoryTicks, computeVspeedTrajectory, projectWeatherMarks,
+  getMsaLookup, corridorTerrainAlongRoute, terrainForMsa, computeTrajectoryTicks, computeVspeedTrajectory, projectWeatherMarks,
   type TerrainPoint, type MsaPoint, type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
@@ -734,9 +734,15 @@ function VirtualRadar({
     () => mefGrids.length === 0 ? [] : terrainPts.map((p, i) => ({ distNm: p.distNm, elevFt: Math.max(p.elevFt, corridorFt[i] ?? 0) })),
     [mefGrids, terrainPts, corridorFt],
   )
+  // Terrain the MSA is built on: the fetched samples, or, once the fetch has failed
+  // (offline, no hillshade DEM), samples made from the terrain grid so the MSA is not lost.
+  const msaTerrain = useMemo(
+    () => terrainForMsa(waypoints, terrainPts, mefGrids, msaMargins, terrainFailed),
+    [waypoints, terrainPts, mefGrids, msaMargins, terrainFailed],
+  )
   const msaPts = useMemo<MsaPoint[]>(
-    () => computeMsaProfile(terrainPts, msaMargins, profile ? obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(terrainPts, d)) : undefined, corridorFt),
-    [terrainPts, msaMargins, profile, corridorFt],
+    () => computeMsaProfile(msaTerrain.pts, msaMargins, profile ? obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(msaTerrain.pts, d)) : undefined, msaTerrain.corridorFt),
+    [msaTerrain, msaMargins, profile],
   )
   const getMsa = useMemo(() => getMsaLookup(msaPts), [msaPts])
 
@@ -800,18 +806,22 @@ function VirtualRadar({
   // projected onto them), else the planned altitude breakpoints alone.
   const series = useMemo((): ProfileSeries | null => {
     if (!profile) return null
-    if (terrainPts.length > 0) {
-      const distNms = terrainPts.map((p) => p.distNm)
+    // Without a ground line but with a grid-made MSA the path and the MSA line are still sampled.
+    const gridOnly = terrainPts.length === 0 && msaTerrain.fromGridOnly
+    if (terrainPts.length > 0 || gridOnly) {
+      const base = terrainPts.length > 0 ? terrainPts : msaTerrain.pts
+      const distNms = base.map((p) => p.distNm)
       // Departure / arrival elevation from the first and last terrain sample,
-      // so the planned path starts and ends on the ground rather than at 0 ft.
-      const depElevFt = terrainPts[0]?.elevFt ?? 0
-      const arrElevFt = terrainPts[terrainPts.length - 1]?.elevFt ?? 0
+      // so the planned path starts and ends on the ground rather than at 0 ft
+      // (0 ft when only the grid is available: its cell maxima are not ground).
+      const depElevFt = gridOnly ? 0 : (terrainPts[0]?.elevFt ?? 0)
+      const arrElevFt = gridOnly ? 0 : (terrainPts[terrainPts.length - 1]?.elevFt ?? 0)
       // Climb/descent follow the aircraft's performance (generic model without one).
       const plannedAlts = projectFlightPath(profile.altitudeProfile, profile.totalNm, perf ?? DEFAULT_PERF_MODEL, distNms, depElevFt, arrElevFt)
       return {
         distNms,
         plannedAlts,
-        ground: terrainPts.map((p) => p.elevFt),
+        ground: gridOnly ? null : terrainPts.map((p) => p.elevFt),
         msa: distNms.map((d) => getMsa(d)),
         belowMsa: belowMsaRuns({ distNms, plannedAlts, getMsa, totalNm: profile.totalNm }),
       }
@@ -823,7 +833,7 @@ function VirtualRadar({
       msa: null,
       belowMsa: [],
     }
-  }, [profile, terrainPts, perf, getMsa])
+  }, [profile, terrainPts, msaTerrain, perf, getMsa])
 
   // Leg spans and each leg's MSA, for the drag layer's targets and warnings.
   const legSpanList = useMemo(() => (profile ? legSpans(profile.altitudeProfile) : []), [profile])
@@ -1329,8 +1339,10 @@ function VirtualRadar({
           </span>
         )}
         {terrainFailed && terrainPts.length === 0 && (
-          <span className={css.offTrackBadge} title="No elevation data could be loaded for this route. The MSA line is missing and airspace limits given above ground (AGL) are drawn at their raw height.">
-            ⚠ No terrain data: MSA unavailable, AGL limits at raw height
+          <span className={css.offTrackBadge} title={msaTerrain.fromGridOnly
+            ? 'No elevation data could be loaded for this route. The MSA line comes from the terrain maximum grid (highest terrain per ~460 m cell, so conservative); there is no ground line and airspace limits given above ground (AGL) are drawn at their raw height.'
+            : 'No elevation data could be loaded for this route. The MSA line is missing and airspace limits given above ground (AGL) are drawn at their raw height.'}>
+            {msaTerrain.fromGridOnly ? '⚠ No ground line: MSA from the terrain grid, AGL limits at raw height' : '⚠ No terrain data: MSA unavailable, AGL limits at raw height'}
           </span>
         )}
         {/* Cross-track deviation badge — same reasoning as native's identical

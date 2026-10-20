@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { buildVirtualRadarProfile, terrainAt, terrainWithCorridorFt } from '@open-vfr/shared/virtualRadarCalc'
+import { buildVirtualRadarProfile, terrainAt, terrainForMsa } from '@open-vfr/shared/virtualRadarCalc'
 import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
 import { useMefGrids } from './useMefGrids'
 import { requiredLegAltFt, newLegsAfterChange, autoLevelMessage } from '@open-vfr/shared/autoCruiseLevel'
@@ -63,9 +63,12 @@ export function useAutoCruiseLevel(opts: {
         const same = (a?: RouteWaypoint, b?: RouteWaypoint) => !!a && !!b && a.lat === b.lat && a.lng === b.lng
         if (!same(now[legIndex], legWps[0]) || !same(now[legIndex + 1], legWps[1])) return
         const profile = buildVirtualRadarProfile(legWps, [], EMPTY_FC, obstacles, undefined, landmarks, Infinity, undefined, { obstacleNm: resolveMsaMargins(getMsaMargins()).abeamNm, landmarkNm: resolveMsaMargins(getMsaMargins()).abeamNm })
-        const tips = obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(terrain, d)).map((o) => o.elevationFt)
+        // Fetched terrain, or (fetch failed) route samples from the terrain grid.
+        const tt = terrainForMsa(legWps, terrain, latest.current.mefGrids, getMsaMargins(), true)
+        const tips = obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(tt.pts, d)).map((o) => o.elevationFt)
         // Corridor maximum (offline grid) as well as the centreline, like the chart's MSA.
-        const required = requiredLegAltFt(terrainWithCorridorFt(legWps, terrain, latest.current.mefGrids, getMsaMargins()), tips, getMsaMargins())
+        const elev = tt.pts.map((p, i) => Math.max(p.elevFt, tt.corridorFt[i] ?? 0))
+        const required = requiredLegAltFt(elev, tips, getMsaMargins())
         const { legOverrides, defaultAltFt, onNotice, setLegOverrides } = latest.current
         const planned = legOverrides[legIndex]?.altFt ?? defaultAltFt
         if (required <= planned) return

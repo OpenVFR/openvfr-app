@@ -17,7 +17,7 @@ import { useState, useEffect, useMemo } from 'react'
 import {
   buildVirtualRadarProfile,
   computeMsaProfile,
-  corridorTerrainAlongRoute,
+  terrainForMsa,
   applyTerrainToBands,
   terrainAt,
   type VirtualRadarProfile,
@@ -135,7 +135,9 @@ function computeWarnings(
       level:  'warn',
       code:   'terrain-unavailable',
       title:  'Terrain data unavailable',
-      detail: 'No elevation data for this route: the Minimum Safe Altitude check was skipped and airspace limits given above ground (AGL) are checked at their raw height.',
+      detail: msaPts.length > 0
+        ? 'No elevation data for this route: the Minimum Safe Altitude check uses the terrain maximum grid (highest terrain per ~460 m cell, so conservative) and airspace limits given above ground (AGL) are checked at their raw height.'
+        : 'No elevation data for this route: the Minimum Safe Altitude check was skipped and airspace limits given above ground (AGL) are checked at their raw height.',
     })
   }
 
@@ -302,13 +304,14 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
   )
 
   const mefGrids = useMefGrids()
-  const corridorFt = useMemo(
-    () => corridorTerrainAlongRoute(waypoints, terrainPts, mefGrids, msaMargins),
-    [waypoints, terrainPts, mefGrids, msaMargins],
+  // Fetched terrain, or (once the fetch failed) route samples from the terrain grid.
+  const msaTerrain = useMemo(
+    () => terrainForMsa(waypoints, terrainPts, mefGrids, msaMargins, terrainFailed),
+    [waypoints, terrainPts, mefGrids, msaMargins, terrainFailed],
   )
   const msaPts = useMemo<MsaPoint[]>(
-    () => computeMsaProfile(terrainPts, msaMargins, profile ? obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(terrainPts, d)) : undefined, corridorFt),
-    [terrainPts, msaMargins, profile, corridorFt],
+    () => computeMsaProfile(msaTerrain.pts, msaMargins, profile ? obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(msaTerrain.pts, d)) : undefined, msaTerrain.corridorFt),
+    [msaTerrain, msaMargins, profile],
   )
 
   const warnings = useMemo<PreflightWarning[]>(() => {
