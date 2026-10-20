@@ -2798,8 +2798,16 @@ export default function MapView({ auth }: { auth: AuthState }) {
     // actionable feature always has a hover affordance. Leaving restores the
     // idle cursor for the active tool (baseCursor: crosshair for measure /
     // add-waypoint tools, else the map's own grab hand).
-    const onEnter = () => { map.getCanvas().style.cursor = 'pointer' }
-    const onLeave = () => { map.getCanvas().style.cursor = baseCursor() }
+    // While a point is being dragged (route waypoint, midpoint insert, sim
+    // aircraft) or the map is being panned, the cursor stays 'grabbing': the
+    // drag handlers own it, and hover handlers firing as the pointer crosses
+    // POIs/obstacles used to flip it between crosshair and hand.
+    let panning = false
+    map.on('dragstart', () => { panning = true })
+    map.on('dragend', () => { panning = false })
+    const dragActive = () => panning || !!dragMoveRef.current || !!dragInsertRef.current || !!aircraftDragRef.current
+    const onEnter = () => { if (!dragActive()) map.getCanvas().style.cursor = 'pointer' }
+    const onLeave = () => { if (!dragActive()) map.getCanvas().style.cursor = baseCursor() }
     ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols', 'notam-circles-fill', 'notam-polygons-fill', 'notam-points-cluster', 'notam-points-unclustered', 'notam-obstacles-unclustered'].forEach((id) => {
       map.on('mouseenter', id, onEnter)
       map.on('mouseleave', id, onLeave)
