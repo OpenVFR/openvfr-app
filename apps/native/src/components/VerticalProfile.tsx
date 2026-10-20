@@ -53,6 +53,7 @@ import {
 import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import { legSpans, legMsaList, legBelowMsa, dragLevelFt, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
+import { obstacleSymbol, polyPath } from '@open-vfr/shared/obstacleSymbol'
 import { useMefGrids } from '../hooks/useMefGrids'
 import { pickWaypointLabels, estimateLabelWidth } from '@open-vfr/shared/profileLabels'
 import {
@@ -1423,6 +1424,24 @@ export function VerticalProfile({
                     // Crowded: a dot at the tip, so a field of masts does not
                     // turn into overlapping pictograms.
                     return <View key={m.key} style={{ position: 'absolute', width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(220,80,60,0.9)', opacity: m.opacity, left: m.cx - 2, top: m.cy - 2 }} />
+                  }
+                  // Tall enough: the real shape from the ground up to the tip altitude.
+                  const shape = obstacleSymbol(m.kind, m.cx, m.cy, m.groundY)
+                  if (shape) {
+                    return (
+                      <View key={m.key} style={{ position: 'absolute', left: 0, top: 0, width: contentW, height: chartH, opacity: m.opacity }} pointerEvents="none">
+                        <Svg width={contentW} height={chartH}>
+                          {shape.map((p, k) => p.t === 'rect'
+                            ? <Rect key={k} x={p.x} y={p.y} width={p.w} height={p.h} fill={p.fill} stroke={p.stroke} strokeWidth={1} />
+                            : p.t === 'line'
+                              ? <SvgLine key={k} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.stroke} strokeWidth={p.w} strokeLinecap="round" />
+                              : p.t === 'poly'
+                                ? <Path key={k} d={polyPath(p.pts)} fill={p.fill} stroke={p.stroke} strokeWidth={1} />
+                                : <Circle key={k} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill} />)}
+                          {m.limiting && <Circle cx={m.cx} cy={m.cy} r={11} fill="none" stroke="rgba(239,68,68,0.95)" strokeWidth={1.5} />}
+                        </Svg>
+                      </View>
+                    )
                   }
                   return (
                     // Anchor by BOTTOM edge at the tip point, growing

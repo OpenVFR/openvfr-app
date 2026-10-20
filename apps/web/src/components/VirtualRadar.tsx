@@ -15,6 +15,7 @@ import type { RouteWaypoint } from '../utils/routeCalc'
 import { useMsaMargins } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
+import { obstacleSymbol, polyPath } from '@open-vfr/shared/obstacleSymbol'
 import { legSpans, legMsaList, legBelowMsa, dragLevelFt, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { useMefGrids } from '../hooks/useMefGrids'
 import type { LegOverride } from '../db/index'
@@ -1048,6 +1049,22 @@ function VirtualRadar({
             // Crowded: a dot at the tip, so nothing vanishes but a field of masts
             // does not turn into overlapping pictograms.
             return <circle key={m.key} cx={m.cx} cy={m.cy} r={2} fill="rgba(220,80,60,0.9)" opacity={m.opacity} />
+          }
+          // Tall enough: the real shape from the ground up to the tip altitude.
+          const shape = obstacleSymbol(m.kind, m.cx, m.cy, m.groundY)
+          if (shape) {
+            return (
+              <g key={m.key} opacity={m.opacity}>
+                {shape.map((p, k) => p.t === 'rect'
+                  ? <rect key={k} x={p.x} y={p.y} width={p.w} height={p.h} fill={p.fill} stroke={p.stroke} strokeWidth={1} />
+                  : p.t === 'line'
+                    ? <line key={k} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.stroke} strokeWidth={p.w} strokeLinecap="round" />
+                    : p.t === 'poly'
+                      ? <path key={k} d={polyPath(p.pts)} fill={p.fill} stroke={p.stroke} strokeWidth={1} />
+                      : <circle key={k} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill} />)}
+                {m.limiting && <circle cx={m.cx} cy={m.cy} r={11} fill="none" stroke={DANGER_COLOR} strokeWidth={1.5} />}
+              </g>
+            )
           }
           return (
             <g key={m.key} opacity={m.opacity}>
