@@ -477,7 +477,9 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
   const move = (e: React.PointerEvent<SVGElement>) => {
     if (!drag) return
     const next = dragLevelFt(drag.startAlt, e.clientY - drag.startY, pxPerFt)
-    const cand = next == null ? null : Math.min(next, ceilingFt)
+    // Never clamp below where the drag started: a leg already above the chart
+    // top must not drop when dragged up.
+    const cand = next == null ? null : Math.min(next, Math.max(ceilingFt, drag.startAlt))
     if (cand !== drag.cand) setDrag({ ...drag, cand })
   }
   const end = (e: React.PointerEvent<SVGElement>, commit: boolean) => {
@@ -502,7 +504,7 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
             <line x1={L.xOf(s.fromNm)} x2={L.xOf(s.toNm)} y1={y} y2={y}
               stroke={below ? DANGER_COLOR : PLAN_COLOR} strokeWidth={dragged ? 3 : 2} opacity={dragged ? 1 : 0.7} />
             {dragged && (
-              <text x={(L.xOf(s.fromNm) + L.xOf(s.toNm)) / 2} y={y - 8} textAnchor="middle" fontSize={11} fontWeight={600}
+              <text x={(L.xOf(s.fromNm) + L.xOf(s.toNm)) / 2} y={y < L.plotTop + 22 ? y + 16 : y - 8} textAnchor="middle" fontSize={11} fontWeight={600}
                 fill={below ? DANGER_COLOR : 'var(--text-primary)'} {...HALO}>
                 {drag.cand == null ? `route level ${formatAltitudeFt(alt)}` : formatAltitudeFt(alt)}
                 {below ? ` \u2014 below MSA ${formatAltitudeFt(legMsa[i])}` : ''}

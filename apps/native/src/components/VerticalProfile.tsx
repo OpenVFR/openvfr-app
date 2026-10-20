@@ -607,8 +607,11 @@ export function VerticalProfile({
   // so spacing the ticks alone let it land on the previous label. The
   // destination always wins; the departure is skipped (it sits on the Y axis).
   const wpLabelRect = useCallback((name: string, distNm: number) => {
-    const left = Math.min(contentW - 44, xOf(distNm) + 2)
-    return { left, right: left + estimateLabelWidth(name) }
+    // Clamp by the label's own width (not a fixed 44 px): a long destination name
+    // such as "Sankt Pauli kyrka" is up to 60 px wide and was clipped at the edge.
+    const w = estimateLabelWidth(name)
+    const left = Math.max(0, Math.min(contentW - w - 2, xOf(distNm) + 2))
+    return { left, right: left + w }
   }, [xOf, contentW])
   const visibleWaypointTicks = useMemo(() => {
     if (!profile) return []
@@ -719,7 +722,9 @@ export function VerticalProfile({
     if (!cur) return
     const { legPxPerFt: pxPerFt, legCeilingFt: ceil } = legInputsRef.current
     const next = dragLevelFt(cur.startAlt, dy, pxPerFt)
-    const cand = next == null ? null : Math.min(next, ceil)
+    // Never clamp below where the drag started: a leg already above the chart
+    // top must not drop when dragged up.
+    const cand = next == null ? null : Math.min(next, Math.max(ceil, cur.startAlt))
     if (cand !== cur.cand) setLegDrag({ ...cur, cand })
   }, [])
   const legDragEnd = useCallback((success: boolean) => {
@@ -770,7 +775,13 @@ export function VerticalProfile({
       if (legHitSV.value >= 0) {
         if (legModeSV.value === 0) {
           const ay = Math.abs(e.translationY), ax = Math.abs(e.translationX)
-          if (ay > 8 && ay > ax) { legModeSV.value = 1; scheduleOnRN(legDragBegin, legHitSV.value) }
+          if (ay > 8 && ay > ax) {
+            legModeSV.value = 1
+            // The scrub crosshair (and the map cursor it drives) is for horizontal scrubbing only.
+            hoverX.value = -1
+            scheduleOnRN(reportHover, null)
+            scheduleOnRN(legDragBegin, legHitSV.value)
+          }
           else if (ax > 8) legModeSV.value = 2
         }
         if (legModeSV.value === 1) { scheduleOnRN(legDragMove, e.translationY); return }
@@ -1272,7 +1283,7 @@ export function VerticalProfile({
                     <G key={`legflat-${i}`}>
                       <SvgLine x1={x1} x2={x2} y1={y} y2={y} stroke={below ? 'rgba(239,68,68,0.95)' : theme.accentMagenta} strokeWidth={dragged ? 3 : 2} opacity={dragged ? 1 : 0.7} />
                       {dragged && renderHaloText(
-                        (x1 + x2) / 2, y - 8,
+                        (x1 + x2) / 2, y < MARGIN_T + 22 ? y + 16 : y - 8,
                         (legDrag.cand == null ? 'route level ' : '') + `${alt.toLocaleString('en-US')} ft` + (below ? ` — below MSA ${legMsaFt[i].toLocaleString('en-US')} ft` : ''),
                         below ? 'rgba(239,68,68,0.95)' : '#e2e8f0', 12, 1, 'middle',
                       )}
@@ -1494,8 +1505,8 @@ export function VerticalProfile({
                     // right edge of the *content* — not the panel, since this
                     // whole overlay scrolls with the Svg — doesn't overflow
                     // past contentW and get clipped to just its first letter.
-                    const left = Math.min(contentW - 44, xOf(tick.distNm) + 2)
-                    const w = Math.min(60, tick.name.length * 6 + 4)
+                    const w = estimateLabelWidth(tick.name)
+                    const left = Math.max(0, Math.min(contentW - w - 2, xOf(tick.distNm) + 2))
                     let top = MARGIN_T
                     for (let guard = 0; guard < 4; guard++) {
                       const hit = chips.find((c) =>
