@@ -93,6 +93,7 @@
       "./plugins/withMapLibreHttpGuardIos",
       "./plugins/withAndroidLargeHeap",
       "./plugins/withAndroidDisableLintVital",
+      "./plugins/withAndroidNativeDebugSymbols",
       "expo-splash-screen"
     ]
   }

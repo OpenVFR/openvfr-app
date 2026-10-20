@@ -130,6 +130,7 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
           EAS_OWNER: ${{ vars.EAS_OWNER }}
+          EAS_LOCAL_BUILD_SKIP_CLEANUP: "1"  # keep the workdir: source maps / symbols are collected below
         run: |
           npx eas-cli build --platform ios --profile ${{ inputs.profile }} --local --non-interactive
           ccache --show-stats
@@ -157,6 +158,27 @@ jobs:
       - name: ccache stats
         if: always()
         run: ccache -s
+
+      # Crash diagnostics: Hermes stack frames (p@1:132161) can only be read with
+      # the source map of the exact build. Keep it (and the native symbols the
+      # build produced) next to the binary. Public repo, nothing secret in them.
+      - name: Collect crash-diagnostics files
+        if: ${{ always() && steps.build.conclusion == 'success' }}
+        run: |
+          mkdir -p diag
+          # macOS cp has no --parents; a dSYM is a directory. Tar the lot.
+          find "$RUNNER_TEMP/eas-build" \( -name 'main.jsbundle*.map' -o -name '*.dSYM' \) -not -path '*/node_modules/*' -prune -print > diag/list.txt || true
+          [ -s diag/list.txt ] && tar -czf diag/ios-diagnostics.tgz -T diag/list.txt || echo "::warning::no source map / dSYM found in the EAS workdir"
+          rm -f diag/list.txt
+          find diag -type f | head -20
+      - name: Upload crash-diagnostics files
+        if: ${{ always() && steps.build.conclusion == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-${{ inputs.profile }}-diagnostics
+          path: diag
+          if-no-files-found: warn
+          retention-days: 90
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
