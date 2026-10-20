@@ -24,7 +24,7 @@ function GpsAltitudeReferenceRow() {
   )
 }
 import { useMsaMargins } from '../db/useSettings'
-import { DEFAULT_MSA_MARGINS } from '@open-vfr/shared/msaMargins'
+import { DEFAULT_MSA_MARGINS, MSA_ABEAM_RANGE_NM, MSA_CLEARANCE_RANGE_FT } from '@open-vfr/shared/msaMargins'
 import { repairAppFiles } from '../utils/repairApp'
 import css from './SettingsPanel.module.css'
 
@@ -78,9 +78,9 @@ function MsaMarginsSettings() {
   )
   return (
     <>
-      {row('MSA abeam', m.abeamNm, 'NM', 1, 10, 0.5, 'abeamNm', `Terrain is checked this far either side of the route (default ${DEFAULT_MSA_MARGINS.abeamNm} NM)`)}
-      {row('Terrain clearance', m.terrainClearanceFt, 'ft', 0, 3000, 100, 'terrainClearanceFt', `Minimum height above the highest terrain (default ${DEFAULT_MSA_MARGINS.terrainClearanceFt} ft)`)}
-      {row('Obstacle clearance', m.obstacleClearanceFt, 'ft', 0, 2000, 100, 'obstacleClearanceFt', `Minimum height above the highest obstacle tip (default ${DEFAULT_MSA_MARGINS.obstacleClearanceFt} ft)`)}
+      {row('MSA abeam', m.abeamNm, 'NM', MSA_ABEAM_RANGE_NM[0], MSA_ABEAM_RANGE_NM[1], 0.5, 'abeamNm', `Terrain is checked this far either side of the route (default ${DEFAULT_MSA_MARGINS.abeamNm} NM)`)}
+      {row('Terrain clearance', m.terrainClearanceFt, 'ft', MSA_CLEARANCE_RANGE_FT[0], MSA_CLEARANCE_RANGE_FT[1], 100, 'terrainClearanceFt', `Minimum height above the highest terrain (default ${DEFAULT_MSA_MARGINS.terrainClearanceFt} ft)`)}
+      {row('Obstacle clearance', m.obstacleClearanceFt, 'ft', MSA_CLEARANCE_RANGE_FT[0], MSA_CLEARANCE_RANGE_FT[1], 100, 'obstacleClearanceFt', `Minimum height above the highest obstacle tip (default ${DEFAULT_MSA_MARGINS.obstacleClearanceFt} ft)`)}
     </>
   )
 }

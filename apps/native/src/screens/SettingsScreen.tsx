@@ -19,6 +19,7 @@ import { SimConnectSheet }    from '../components/SimConnectSheet'
 import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
 import { PARK_TIMEOUT_OPTIONS, parseParkTimeout, parkTimeoutLabel, type ParkTimeoutOption } from '@open-vfr/shared/parkTimeout'
 import { describeGpsAltitudeReference, gpsAltitudeReferenceStatus, subscribeGpsAltitudeReference } from '@open-vfr/shared/gpsAltitudeReference'
+import { MSA_CLEARANCE_RANGE_FT } from '@open-vfr/shared/msaMargins'
 import { useInternalBarometer } from '../hooks/useInternalBarometer'
 import { useVarioContext } from '../context/VarioContext'
 import type { VarioState } from '@open-vfr/shared/blueflyVario'
@@ -262,14 +263,14 @@ export function SettingsScreen() {
         <RowSlider
           label="Terrain clearance"
           value={settings.msaMargins.terrainClearanceFt}
-          min={0} max={3000} step={100}
+          min={MSA_CLEARANCE_RANGE_FT[0]} max={MSA_CLEARANCE_RANGE_FT[1]} step={100}
           format={(v) => `${v} ft`}
           onChange={(v) => update({ msaMargins: { ...settings.msaMargins, terrainClearanceFt: v } })}
         />
         <RowSlider
           label="Obstacle clearance"
           value={settings.msaMargins.obstacleClearanceFt}
-          min={0} max={2000} step={100}
+          min={MSA_CLEARANCE_RANGE_FT[0]} max={MSA_CLEARANCE_RANGE_FT[1]} step={100}
           format={(v) => `${v} ft`}
           onChange={(v) => update({ msaMargins: { ...settings.msaMargins, obstacleClearanceFt: v } })}
         />

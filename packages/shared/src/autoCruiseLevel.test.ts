@@ -6,15 +6,15 @@ describe('requiredLegAltFt', () => {
     expect(requiredLegAltFt([0, 0], [])).toBe(0)
     expect(requiredLegAltFt([], [])).toBe(0)
   })
-  it('rounds terrain up to 100 ft and adds 1 000 ft', () => {
-    expect(requiredLegAltFt([120, 1510, 800], [])).toBe(2600)
+  it('rounds terrain up to 100 ft and adds 800 ft', () => {
+    expect(requiredLegAltFt([120, 1510, 800], [])).toBe(2400)
   })
-  it('rounds obstacles up to 100 ft and adds 500 ft', () => {
-    expect(requiredLegAltFt([], [1230])).toBe(1800)
+  it('rounds obstacles up to 100 ft and adds 1 000 ft', () => {
+    expect(requiredLegAltFt([], [1230])).toBe(2300)
   })
   it('takes the higher of the two', () => {
-    expect(requiredLegAltFt([1000], [1700])).toBe(2200)
-    expect(requiredLegAltFt([2000], [1700])).toBe(3000)
+    expect(requiredLegAltFt([1000], [1700])).toBe(2700)   // obstacle 1700 + 1000
+    expect(requiredLegAltFt([2000], [1700])).toBe(2800)   // terrain 2000 + 800
   })
 })
 
