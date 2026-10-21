@@ -14,9 +14,9 @@ describe('obstacleSymbol', () => {
   })
   it('puts the highest blade of a turbine at the tip and the tower on the ground', () => {
     const p = obstacleSymbol('wind_turbine', 50, 20, 120)!
-    const lines = p.filter((x) => x.t === 'line') as Extract<typeof p[number], { t: 'line' }>[]
-    expect(Math.min(...lines.flatMap((l) => [l.y1, l.y2]))).toBeCloseTo(20)          // blade tip
-    expect(Math.max(...lines.flatMap((l) => [l.y1, l.y2]))).toBeCloseTo(120)         // tower foot
+    const ys = p.flatMap((x) => x.t === 'line' ? [x.y1, x.y2] : x.t === 'poly' ? x.pts.map((q) => q[1]) : [])
+    expect(Math.min(...ys)).toBeCloseTo(20)          // blade tip
+    expect(Math.max(...ys)).toBeCloseTo(120)         // tower foot
   })
   it('stays inside its vertical extent for every kind', () => {
     for (const kind of ['building', 'chimney', 'wind_turbine', 'water_tower', 'tower', 'whatever']) {

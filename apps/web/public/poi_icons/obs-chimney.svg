@@ -1,4 +1,9 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0" y="0" viewBox="0 0 15 15">
-  <path d="M10.5 0C12.5 0 14 1 14 2C14 3 12.5 4 10.5 4C9.5 4 9 3.75 9 3.75C9 5.5 6 5 6 5C6 5.5 5.5 6 4.5 6C3.5 6 3 5.5 3 5C3 4.5 3.5 4 4.5 4C4.5 3.5 4.5 2 7 2C7 1 8.5 0 10.5 0zM2 7C2 7 2 14.5 2 14.5C2 15 5 15 5 14.5C5 14.5 5 7 5 7C5 6.5 2 6.5 2 7z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 15 15">
+  <!-- Tapered stack with two white bands, flared rim, drifting smoke. -->
+  <path d="M5.5 4.2h4l1.05 10.8h-6.1z"/>
+  <path d="M5.55 5.2h3.9l0.17 1.6h-4.24zM5.9 9h3.2l0.17 1.6h-3.54z" fill="#fff" opacity="0.85"/>
+  <rect x="5.1" y="3.6" width="4.8" height="1" rx="0.3"/>
+  <circle cx="9.4" cy="2.3" r="1" opacity="0.5"/>
+  <circle cx="11.2" cy="1.3" r="1.2" opacity="0.35"/>
+  <circle cx="13" cy="1" r="0.8" opacity="0.22"/>
 </svg>

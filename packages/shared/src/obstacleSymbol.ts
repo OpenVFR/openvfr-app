@@ -24,6 +24,8 @@ const STEEL = 'rgba(148,163,184,0.95)'
 const STEEL_DARK = 'rgba(71,85,105,0.95)'
 const WINDOW = 'rgba(226,232,240,0.55)'
 const WHITE = 'rgba(241,245,249,0.95)'
+/** Right-hand half of a round shaft: a front view with a hint of depth. */
+const SHADE = 'rgba(15,23,42,0.28)'
 
 /** Dash pattern of an estimated (assumed-height) symbol's outline, in px. */
 export const ESTIMATED_DASH = '3 2'
@@ -46,6 +48,7 @@ function obstacleSymbolSolid(kind: string, cx: number, tipY: number, groundY: nu
     case 'building': {
       const w = Math.max(6, Math.min(14, h * 0.45))
       prims.push({ t: 'rect', x: cx - w / 2, y: tipY, w, h, fill: STEEL, stroke: STEEL_DARK })
+      prims.push({ t: 'rect', x: cx + w / 4, y: tipY, w: w / 4, h, fill: SHADE })
       // Rows of windows, just enough to read as a building.
       const rows = Math.min(8, Math.floor(h / 6))
       for (let i = 1; i <= rows; i++) {
@@ -55,25 +58,37 @@ function obstacleSymbolSolid(kind: string, cx: number, tipY: number, groundY: nu
       break
     }
     case 'chimney': {
+      // Front elevation, tapered, right half shaded for depth (cylinder
+      // look), two pale bands and a dark rim.
       const bw = Math.max(5, Math.min(9, h * 0.25)), tw = bw * 0.62
+      const halfAt = (y: number) => (tw + ((bw - tw) * (y - tipY)) / h) / 2
       prims.push({
         t: 'poly', fill: RED, stroke: STEEL_DARK,
         pts: [[cx - tw / 2, tipY], [cx + tw / 2, tipY], [cx + bw / 2, groundY], [cx - bw / 2, groundY]],
       })
-      prims.push({ t: 'rect', x: cx - tw / 2, y: tipY, w: tw, h: Math.min(4, h * 0.2), fill: WHITE })
+      prims.push({ t: 'poly', fill: SHADE, pts: [[cx, tipY], [cx + tw / 2, tipY], [cx + bw / 2, groundY], [cx, groundY]] })
+      for (const f of [0.14, 0.4]) {
+        const y0 = tipY + h * f, y1 = y0 + Math.max(1.5, h * 0.1)
+        prims.push({ t: 'poly', fill: WHITE, pts: [[cx - halfAt(y0), y0], [cx + halfAt(y0), y0], [cx + halfAt(y1), y1], [cx - halfAt(y1), y1]] })
+      }
+      prims.push({ t: 'rect', x: cx - tw / 2 - 1, y: tipY, w: tw + 2, h: Math.min(2, h * 0.1), fill: STEEL_DARK })
       break
     }
     case 'wind_turbine': {
       // The tip altitude is the top of the highest blade: hub one rotor
-      // radius below it.
+      // radius below it. Tapered, half-shaded tower; three tapered blades.
       const r = Math.max(5, Math.min(18, h * 0.38))
       const hubY = tipY + r
-      prims.push({ t: 'line', x1: cx, y1: groundY, x2: cx, y2: hubY, stroke: WHITE, w: 2 })
+      const base = Math.max(2.5, Math.min(5, h * 0.05))
+      prims.push({ t: 'poly', fill: WHITE, stroke: STEEL_DARK, pts: [[cx - 0.8, hubY], [cx + 0.8, hubY], [cx + base / 2, groundY], [cx - base / 2, groundY]] })
+      prims.push({ t: 'poly', fill: SHADE, pts: [[cx, hubY], [cx + 0.8, hubY], [cx + base / 2, groundY], [cx, groundY]] })
+      const bw = Math.max(1.2, r * 0.13)
       for (const deg of [-90, 30, 150]) {
         const a = (deg * Math.PI) / 180
-        prims.push({ t: 'line', x1: cx, y1: hubY, x2: cx + r * Math.cos(a), y2: hubY + r * Math.sin(a), stroke: WHITE, w: 1.5 })
+        const ux = Math.cos(a), uy = Math.sin(a)
+        prims.push({ t: 'poly', fill: WHITE, stroke: STEEL_DARK, pts: [[cx - uy * bw, hubY + ux * bw], [cx + ux * r, hubY + uy * r], [cx + uy * bw, hubY - ux * bw]] })
       }
-      prims.push({ t: 'circle', cx, cy: hubY, r: 1.8, fill: RED })
+      prims.push({ t: 'circle', cx, cy: hubY, r: 2, fill: RED })
       break
     }
     case 'water_tower': {
@@ -83,13 +98,23 @@ function obstacleSymbolSolid(kind: string, cx: number, tipY: number, groundY: nu
       break
     }
     default: {
-      // Tower / mast / anything else tall and thin: a lattice-like pole with a
-      // beacon at the top and two guy lines.
-      prims.push({ t: 'line', x1: cx, y1: groundY, x2: cx, y2: tipY, stroke: RED, w: 2 })
+      // Tower / mast / anything else tall and thin: a lattice mast (two legs,
+      // zig-zag bracing), two guy wires and a beacon at the top.
+      const half = Math.max(1.5, Math.min(3, h * 0.04))
+      const legL = (y: number) => cx - half * (0.5 + ((y - tipY) / h) * 0.5)
+      const legR = (y: number) => cx + half * (0.5 + ((y - tipY) / h) * 0.5)
+      prims.push({ t: 'line', x1: legL(tipY), y1: tipY, x2: legL(groundY), y2: groundY, stroke: RED, w: 1.5 })
+      prims.push({ t: 'line', x1: legR(tipY), y1: tipY, x2: legR(groundY), y2: groundY, stroke: RED, w: 1.5 })
+      const cells = Math.max(2, Math.min(8, Math.floor(h / 7)))
+      for (let i = 0; i < cells; i++) {
+        const y0 = tipY + (i * h) / cells, y1 = tipY + ((i + 1) * h) / cells
+        const left = i % 2 === 0
+        prims.push({ t: 'line', x1: left ? legL(y0) : legR(y0), y1: y0, x2: left ? legR(y1) : legL(y1), y2: y1, stroke: RED_SOFT, w: 1 })
+      }
       const guy = Math.min(8, h * 0.3)
       prims.push({ t: 'line', x1: cx, y1: tipY + h * 0.45, x2: cx - guy, y2: groundY, stroke: RED_SOFT, w: 1 })
       prims.push({ t: 'line', x1: cx, y1: tipY + h * 0.45, x2: cx + guy, y2: groundY, stroke: RED_SOFT, w: 1 })
-      prims.push({ t: 'circle', cx, cy: tipY + 2.4, r: 2.4, fill: RED })
+      prims.push({ t: 'circle', cx, cy: tipY + 1.6, r: 1.6, fill: RED })
     }
   }
   return prims
