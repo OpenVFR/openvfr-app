@@ -939,10 +939,10 @@ function OfflineDataSection() {
   const [progress, setProgress] = useState<DownloadProgress | null>(null)
   const [confirmDownload, setConfirmDownload] = useState(false)
   // Required (flight-safety-critical) aviation data is always included, no
-  // checkbox shown. Optional layers: the terrain model + MSA grid + water are
-  // ticked by default (offline terrain/MSA depend on them, ~90 MB); the large
-  // cosmetic ones (basemap, landuse, contours) stay opt-in so a first download
-  // doesn't silently pull hundreds of MB. Already-cached layers start ticked.
+  // checkbox shown. Optional layers: everything the map needs to look right and
+  // the terrain/MSA model is ticked by default (basemap, landuse, terrain, MSA
+  // grid, water; ~700 MB, covered by the large-download warning); only the
+  // contour lines are an opt-in extra. Already-cached layers start ticked.
   const [selectedOptional, setSelectedOptional] = useState<Set<string>>(() => defaultOptionalSelection())
 
   const toggleOptional = useCallback((key: string) => {

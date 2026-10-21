@@ -83,7 +83,7 @@ function archive(key: string, kind: CountryArchive, label: string, without: stri
 
 export const OFFLINE_ASSETS: OfflineAsset[] = [
   archive('basemap', 'basemap', 'Basemap (large)',
-    'No roads, towns, lakes or coastline under the aviation layers at map zooms; only the coarse Europe overview.'),
+    'No roads, towns, lakes or coastline under the aviation layers at map zooms; only the coarse Europe overview.', true),
   // Shared Europe-wide low-zoom overview (z0-6) -- small (generalization
   // dominates over area at low zoom, unlike the country-detail basemap
   // above), same file regardless of which country's detail basemap is
@@ -92,7 +92,7 @@ export const OFFLINE_ASSETS: OfflineAsset[] = [
   // gap this whole split was built to close, now also true offline.
   { key: 'basemapOverview',   label: 'Basemap overview',      fileName: 'europe-overview.pmtiles',      required: true },
   archive('landuse', 'landuse', 'Terrain (landuse)',
-    'No farmland, built-up or wetland shading on the map.'),
+    'No farmland, built-up or wetland shading on the map.', true),
   // Doubles as the offline elevation model (src/utils/terrainDem.ts): the
   // vertical profile and AGL airspace limits read ground elevation from it
   // when the elevation API is unreachable.
