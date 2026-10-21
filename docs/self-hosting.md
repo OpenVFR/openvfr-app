@@ -193,6 +193,18 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
 - `TILES_BASE_URL` — optional, your public tile host (e.g.
   `https://tiles.example.org`); the admin country detail checks
   `manifest.json` and each country file there. Unset = that check is skipped
+- Fixed-code accounts, for sign-in without an inbox (both off by default):
+  - `APP_REVIEW_TEST_EMAIL` + `APP_REVIEW_TEST_OTP` — one account for
+    app-store review (both or neither).
+  - `APP_TEST_ACCOUNTS` — `email:code,email:code`, any number of accounts for
+    automated tests, kept separate from the review account.
+  Each listed address signs in with its own fixed code instead of a random one
+  (no email is sent) and cannot register passkeys. Codes are digits only (the
+  login screens cannot type anything else) and at most 32 long, and must differ
+  between accounts. The review account's code needs at least 10 digits; a test
+  account's needs 32 (so exactly 32). A bad entry stops the api from starting. The
+  codes never expire, so treat them as secrets and use dedicated addresses.
+  See `apps/api/src/fixedOtpAccounts.ts`.
 
 ### Admin API
 

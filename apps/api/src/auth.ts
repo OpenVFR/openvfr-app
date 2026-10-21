@@ -13,6 +13,7 @@
 import { betterAuth } from 'better-auth'
 import { emailOTP, admin } from 'better-auth/plugins'
 import { passkey }    from '@better-auth/passkey'
+import { parseFixedOtpAccounts } from './fixedOtpAccounts.js'
 import { bearer }     from 'better-auth/plugins'
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { sendEmail }  from './mailer.js'
@@ -62,40 +63,32 @@ const DEV_TRUSTED_ORIGINS = IS_PROD ? [] : [
 ]
 
 // ---------------------------------------------------------------------------
-// App-store / Play-store review test account.
+// Fixed-code accounts: the app-store / Play-store review account and automated-test
+// accounts.
 //
-// Reviewers can't receive live OTP emails, so a single allowlisted address
-// gets a fixed, long OTP instead of the normal random 6-digit code. Both
-// vars must be set explicitly per-deployment (never committed, unset by
-// default in .env.example) — leaving either unset disables this
-// path entirely and every account uses the normal random OTP.
+// Reviewers can't receive live OTP emails, and automated tests can't read an inbox, so these
+// allowlisted addresses get a fixed, long OTP instead of the normal random 6-digit code.
+//   APP_REVIEW_TEST_EMAIL + APP_REVIEW_TEST_OTP   one account for the store reviews (both or neither)
+//   APP_TEST_ACCOUNTS=email:code,email:code       any number of test accounts, each with its own code
+// Never committed, unset by default in .env.example. Leaving all unset disables this path
+// entirely and every account uses the normal random OTP.
 //
-// Deliberately longer than the default otpLength: this code has no
-// expiresIn rotation (it's the same value for the whole review cycle), so
-// it needs more entropy than a normal 10-minute-lived 6-digit code to stay
-// safe against brute force. Compared with constant-time equality by
-// better-auth's own verifyStoredOTP regardless of otp length/charset.
-const APP_REVIEW_TEST_EMAIL = process.env['APP_REVIEW_TEST_EMAIL']?.toLowerCase() || null
-const APP_REVIEW_TEST_OTP   = process.env['APP_REVIEW_TEST_OTP'] || null
-/** True for the shared app-review/tester account (passkeys are disabled for it). */
+// The codes are deliberately long: they have no expiresIn rotation, so they need more entropy
+// than a normal 10-minute-lived 6-digit code to stay safe against brute force. Compared with
+// constant-time equality by better-auth's own verifyStoredOTP regardless of length/charset.
+// Parsing and validation: fixedOtpAccounts.ts (throws on a misconfiguration).
+const FIXED_OTP = parseFixedOtpAccounts({
+  reviewEmail:  process.env['APP_REVIEW_TEST_EMAIL'],
+  reviewOtp:    process.env['APP_REVIEW_TEST_OTP'],
+  testAccounts: process.env['APP_TEST_ACCOUNTS'],
+})
+for (const w of FIXED_OTP.warnings) console.warn(`[auth] ${w}`)
+function fixedOtpFor(email: string | null | undefined): string | null {
+  return (email && FIXED_OTP.byEmail.get(email.toLowerCase())) || null
+}
+/** True for a fixed-code account (review or test): passkeys are disabled for it. */
 export function isReviewAccountEmail(email: string | null | undefined): boolean {
-  return !!APP_REVIEW_TEST_EMAIL && !!email && email.toLowerCase() === APP_REVIEW_TEST_EMAIL
-}
-if ((APP_REVIEW_TEST_EMAIL && !APP_REVIEW_TEST_OTP) || (!APP_REVIEW_TEST_EMAIL && APP_REVIEW_TEST_OTP)) {
-  throw new Error('APP_REVIEW_TEST_EMAIL and APP_REVIEW_TEST_OTP must both be set, or both left unset')
-}
-if (APP_REVIEW_TEST_OTP && APP_REVIEW_TEST_OTP.length < 10) {
-  throw new Error('APP_REVIEW_TEST_OTP must be at least 10 characters — it never expires/rotates, unlike normal OTPs')
-}
-// Warn, don't throw: both login UIs only accept digits (numeric keypad on
-// native, non-digits stripped on web), so a non-numeric code would boot fine
-// but be impossible to type. Failing startup over it would take the whole
-// API down for a review-account typo.
-if (APP_REVIEW_TEST_OTP && !/^\d+$/.test(APP_REVIEW_TEST_OTP)) {
-  console.warn('[auth] APP_REVIEW_TEST_OTP contains non-digits — the login UIs only accept digits, so reviewers cannot enter it')
-}
-if (APP_REVIEW_TEST_OTP && APP_REVIEW_TEST_OTP.length > 32) {
-  console.warn('[auth] APP_REVIEW_TEST_OTP is longer than 32 digits — the login UIs cap input at 32')
+  return fixedOtpFor(email) !== null
 }
 
 if (!SECRET || SECRET.length < 32) {
@@ -271,17 +264,14 @@ export const auth = betterAuth({
       // defaultOTPGenerator(opts) (random, otpLength below) for every other
       // email, so this only ever affects the one allowlisted address.
       generateOTP: ({ email }) => {
-        if (APP_REVIEW_TEST_EMAIL && APP_REVIEW_TEST_OTP && email.toLowerCase() === APP_REVIEW_TEST_EMAIL) {
-          return APP_REVIEW_TEST_OTP
-        }
-        return undefined
+        return fixedOtpFor(email) ?? undefined
       },
       // Sent via Brevo (see mailer.ts). Falls back to a console log when
       // BREVO_API_KEY / BREVO_SENDER_EMAIL are unset, e.g. in local dev.
       sendVerificationOTP: async ({ email, otp }) => {
         // Skip sending for the review account — reviewer never sees this
         // email, they type the fixed code straight from review notes.
-        if (APP_REVIEW_TEST_EMAIL && email.toLowerCase() === APP_REVIEW_TEST_EMAIL) {
+        if (fixedOtpFor(email)) {
           return
         }
         await sendEmail({
