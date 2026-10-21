@@ -10,8 +10,10 @@
      old z-index:50 this backdrop+panel rendered visually BEHIND the drawer
      on a touch device whenever both were open at once (e.g. opening
      Airfield Brief while the sidepane's Weather Along Route section is
-     showing), making the modal look broken/unreachable under the drawer. */
-  z-index: 250;
+     showing), making the modal look broken/unreachable under the drawer.
+     Also above the NotificationCenter banners (430): a modal must not open
+     underneath warnings. Stays below the waypoint action menu (490). */
+  z-index: 440;
   background: var(--overlay-scrim);
   display: flex;
   align-items: flex-start;
