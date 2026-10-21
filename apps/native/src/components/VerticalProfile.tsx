@@ -44,7 +44,9 @@ import {
   terrainAt,
   getMsaLookup,
   computeTrajectoryTicks,
+  computeTrajectoryEndTick,
   computeVspeedTrajectory,
+  trajectoryPitchDeg,
   projectWeatherMarks,
   type TerrainPoint,
   type MsaPoint,
@@ -1071,12 +1073,18 @@ export function VerticalProfile({
   // rate extrapolation + below-MSA flagging) lives in the shared
   // computeVspeedTrajectory, used identically by web's VirtualRadar.tsx —
   // only the xOf/yOf pixel mapping and SVG path-string building stay local.
+  // The line runs on to the destination when the far marks lie beyond it.
+  const trajectoryEndTick = useMemo(() => computeTrajectoryEndTick({
+    currentDistNm, currentSpeedKts, timeMode: trajectoryMode === 'time',
+    marks: [1, 3, trajectoryNm], totalNm,
+  }), [currentDistNm, currentSpeedKts, trajectoryMode, trajectoryNm, totalNm])
   const vspeedTrajectory = useMemo(() => computeVspeedTrajectory({
-    currentDistNm, currentAltFt, currentVSpeedFpm, ticks: trajectoryTicks, getMsa,
-  }), [currentDistNm, currentAltFt, currentVSpeedFpm, trajectoryTicks, getMsa])
+    currentDistNm, currentAltFt, currentVSpeedFpm,
+    ticks: trajectoryEndTick ? [...trajectoryTicks, trajectoryEndTick] : trajectoryTicks, getMsa,
+  }), [currentDistNm, currentAltFt, currentVSpeedFpm, trajectoryTicks, trajectoryEndTick, getMsa])
   const trajectoryLine = useMemo(() => {
     const pts = vspeedTrajectory.points
-    if (pts.length < 2) return { segments: [] as { path: string; below: boolean }[], dots: [] as { x: number; y: number; below: boolean }[], attitude: vspeedTrajectory.attitude }
+    if (pts.length < 2) return { segments: [] as { path: string; below: boolean }[], dots: [] as { x: number; y: number; below: boolean }[], attitude: vspeedTrajectory.attitude, estimated: vspeedTrajectory.estimated }
     const withXY = pts.map((p) => ({ ...p, x: xOf(p.distNm), y: yOf(p.altFt) }))
     const segments = withXY.slice(1).map((p, i) => {
       const prev = withXY[i]
@@ -1085,7 +1093,7 @@ export function VerticalProfile({
         below: prev.below || p.below,
       }
     })
-    return { segments, dots: withXY.slice(1).map((p) => ({ x: p.x, y: p.y, below: p.below })), attitude: vspeedTrajectory.attitude }
+    return { segments, dots: withXY.slice(1).map((p) => ({ x: p.x, y: p.y, below: p.below })), attitude: vspeedTrajectory.attitude, estimated: vspeedTrajectory.estimated }
   }, [vspeedTrajectory, xOf, yOf])
   const trajectoryAttitudeColor =
     trajectoryLine.attitude === 'climb'   ? 'rgba(34,197,94,0.85)'  :
@@ -1094,10 +1102,15 @@ export function VerticalProfile({
   const DANGER_COLOR = 'rgba(239,68,68,0.95)'
 
   // Aircraft pitch tilt — nose up on climb, nose down on descent (visual flourish)
+  // Follows the slope of the drawn trajectory line (shared with web), so the
+  // symbol tilts as much as the line climbs or falls; level while the vertical
+  // speed is unknown.
   const pitchDeg = useMemo(() => {
-    if (currentVSpeedFpm == null) return 0
-    return Math.max(-20, Math.min(20, currentVSpeedFpm / 100))
-  }, [currentVSpeedFpm])
+    const [a, b] = vspeedTrajectory.points
+    return trajectoryPitchDeg(
+      a && { x: xOf(a.distNm), y: yOf(a.altFt) }, b && { x: xOf(b.distNm), y: yOf(b.altFt) }, vspeedTrajectory.estimated,
+    )
+  }, [vspeedTrajectory, xOf, yOf])
 
   // Category-shaped marker (fixed-wing/glider/helicopter/gyrocopter) instead
   // of always the same generic single-engine-airplane silhouette — see
@@ -1503,11 +1516,11 @@ export function VerticalProfile({
                 {trajectoryLine.segments.map((seg, i) => (
                   <Path key={`trajseg-${i}`} d={seg.path} fill="none"
                     stroke={seg.below ? DANGER_COLOR : trajectoryAttitudeColor}
-                    strokeWidth={seg.below ? 2.25 : 1.75} strokeDasharray="1,2" />
+                    strokeWidth={seg.below ? 2.25 : 1.75} strokeDasharray="1,2" opacity={trajectoryLine.estimated ? 0.6 : 1} />
                 ))}
                 {trajectoryLine.dots.map((p, i) => (
                   <Circle key={`trajdot-${i}`} cx={p.x} cy={p.y} r={p.below ? 3 : 2.5}
-                    fill={p.below ? DANGER_COLOR : trajectoryAttitudeColor} />
+                    fill={p.below ? DANGER_COLOR : trajectoryAttitudeColor} opacity={trajectoryLine.estimated ? 0.6 : 1} />
                 ))}
 
                 {/* ── Live position marker + aircraft silhouette ──────── */}

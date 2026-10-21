@@ -25,7 +25,7 @@ import type { LegOverride } from '../db/index'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel } from '../utils/units'
 import {
   buildVirtualRadarProfile, applyTerrainToBands, projectFlightPath, DEFAULT_PERF_MODEL, computeMsaProfile, terrainAt,
-  getMsaLookup, corridorTerrainAlongRoute, terrainForMsa, computeTrajectoryTicks, computeVspeedTrajectory, projectWeatherMarks,
+  getMsaLookup, corridorTerrainAlongRoute, terrainForMsa, computeTrajectoryTicks, computeTrajectoryEndTick, computeVspeedTrajectory, trajectoryPitchDeg, projectWeatherMarks,
   type TerrainPoint, type MsaPoint, type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
@@ -767,9 +767,15 @@ function VirtualRadar({
 
   // Climb/descent-aware trajectory line — same shared domain math as
   // native's VerticalProfile.
+  // The line runs on to the destination when the far marks lie beyond it.
+  const trajectoryEndTick = useMemo(() => computeTrajectoryEndTick({
+    currentDistNm, currentSpeedKts, timeMode: trajectoryMode === 'time',
+    marks: [1, 3, 5], totalNm: profile?.totalNm ?? 0,
+  }), [currentDistNm, currentSpeedKts, trajectoryMode, profile])
   const vspeedTrajectory = useMemo(() => computeVspeedTrajectory({
-    currentDistNm, currentAltFt, currentVSpeedFpm, ticks: trajectoryTicks, getMsa,
-  }), [currentDistNm, currentAltFt, currentVSpeedFpm, trajectoryTicks, getMsa])
+    currentDistNm, currentAltFt, currentVSpeedFpm,
+    ticks: trajectoryEndTick ? [...trajectoryTicks, trajectoryEndTick] : trajectoryTicks, getMsa,
+  }), [currentDistNm, currentAltFt, currentVSpeedFpm, trajectoryTicks, trajectoryEndTick, getMsa])
   const vspeedAttitudeColor =
     vspeedTrajectory.attitude === 'climb'   ? 'rgba(34,197,94,0.85)'   :
     vspeedTrajectory.attitude === 'descent' ? 'rgba(248,113,113,0.85)' :
@@ -1371,6 +1377,8 @@ function VirtualRadar({
         <rect x={L.plotLeft} y={L.plotTop - 4} width={L.plotW} height={L.plotH + 8} />
       </clipPath>
       <g clipPath="url(#vr-plot-clip)">
+      {/* Faded while the vertical speed is unknown (drawn as level flight). */}
+      <g opacity={vspeedTrajectory.estimated ? 0.6 : 1}>
       {vspeedTrajectory.points.slice(1).map((p, i) => {
         const prev = vspeedTrajectory.points[i]
         const below = prev.below || p.below
@@ -1385,9 +1393,14 @@ function VirtualRadar({
           fill={p.below ? DANGER_COLOR : vspeedAttitudeColor} />
       ))}
       </g>
+      </g>
       {/* Aircraft silhouette; clamped to the altitude scale so it never leaves the plot. */}
       {currentDistNm != null && currentAltFt != null && (
-        <g transform={`translate(${L.xOf(currentDistNm)},${L.yOf(Math.max(0, Math.min(yMax, currentAltFt)))})`} aria-hidden="true">
+        <g transform={`translate(${L.xOf(currentDistNm)},${L.yOf(Math.max(0, Math.min(yMax, currentAltFt)))}) rotate(${-trajectoryPitchDeg(
+          vspeedTrajectory.points[0] && { x: L.xOf(vspeedTrajectory.points[0].distNm), y: L.yOf(vspeedTrajectory.points[0].altFt) },
+          vspeedTrajectory.points[1] && { x: L.xOf(vspeedTrajectory.points[1].distNm), y: L.yOf(vspeedTrajectory.points[1].altFt) },
+          vspeedTrajectory.estimated,
+        )})`} aria-hidden="true">
           {silhouette.map((part, i) => (
             <path key={`ac-part-${i}`} d={part.d} fill={part.fill ?? 'white'} opacity={part.opacity} />
           ))}

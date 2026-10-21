@@ -1236,6 +1236,9 @@ export interface TrajectoryTick {
  * treats them as NM directly (still returns elapsed time for each, needed
  * by computeVspeedTrajectory below). Ticks beyond `totalNm` are dropped.
  */
+/** Below this ground speed there is no meaningful "ahead" (SkyDemon draws from 1 kt). */
+export const TRAJECTORY_MIN_SPEED_KTS = 1
+
 export function computeTrajectoryTicks(opts: {
   currentDistNm: number | undefined
   currentSpeedKts: number | undefined
@@ -1244,11 +1247,53 @@ export function computeTrajectoryTicks(opts: {
   totalNm: number
 }): TrajectoryTick[] {
   const { currentDistNm, currentSpeedKts, timeMode, marks, totalNm } = opts
-  if (currentDistNm == null || (currentSpeedKts ?? 0) < 5 || totalNm === 0) return []
+  if (currentDistNm == null || !((currentSpeedKts ?? 0) >= TRAJECTORY_MIN_SPEED_KTS) || totalNm === 0) return []
   const pairs: TrajectoryTick[] = timeMode
     ? marks.map((min) => ({ distNm: currentDistNm + (min / 60) * currentSpeedKts!, timeMin: min }))
     : marks.map((nm)  => ({ distNm: currentDistNm + nm, timeMin: (nm / currentSpeedKts!) * 60 }))
   return pairs.filter((p) => p.distNm <= totalNm)
+}
+
+/**
+ * When the farthest trajectory mark lies beyond the end of the route (its tick
+ * is dropped by computeTrajectoryTicks), the extrapolated line should still run
+ * to the destination instead of stopping at the last whole mark. Returns that
+ * extra end-of-route point (same shape as a tick, but not meant to be labelled),
+ * or null when every mark is on the route or there is nothing to extend.
+ */
+export function computeTrajectoryEndTick(opts: {
+  currentDistNm: number | undefined
+  currentSpeedKts: number | undefined
+  timeMode: boolean
+  marks: number[]
+  totalNm: number
+}): TrajectoryTick | null {
+  const { currentDistNm, currentSpeedKts, timeMode, marks, totalNm } = opts
+  if (currentDistNm == null || !((currentSpeedKts ?? 0) >= TRAJECTORY_MIN_SPEED_KTS) || !(totalNm > currentDistNm)) return null
+  const farNm = Math.max(...marks.map((m) => (timeMode ? (m / 60) * currentSpeedKts! : m)))
+  if (!(currentDistNm + farNm > totalNm + 1e-6)) return null
+  const kept = computeTrajectoryTicks(opts)
+  if (kept.length > 0 && totalNm - kept[kept.length - 1].distNm < 0.05) return null
+  return { distNm: totalNm, timeMin: ((totalNm - currentDistNm) / currentSpeedKts!) * 60 }
+}
+
+/**
+ * Pitch (degrees, nose up positive) of the aircraft marker from the on-screen
+ * slope of the trajectory's first segment, so the symbol tilts exactly as much
+ * as the drawn line rises or falls. Pixel coordinates, y pointing down.
+ * 0 when the line is only an assumption (unknown vertical speed).
+ */
+export function trajectoryPitchDeg(
+  from: { x: number; y: number } | undefined,
+  to: { x: number; y: number } | undefined,
+  estimated: boolean,
+  maxDeg = 30,
+): number {
+  if (!from || !to || estimated) return 0
+  const dx = to.x - from.x
+  if (!(dx > 0)) return 0
+  const deg = (Math.atan2(from.y - to.y, dx) * 180) / Math.PI
+  return Math.max(-maxDeg, Math.min(maxDeg, deg))
 }
 
 export interface VspeedTrajectoryPoint {
@@ -1274,28 +1319,33 @@ export interface VspeedTrajectoryPoint {
 export function computeVspeedTrajectory(opts: {
   currentDistNm: number | undefined
   currentAltFt: number | undefined
-  currentVSpeedFpm: number | undefined
+  /** Vertical speed in ft/min, or undefined/null when no source knows it. */
+  currentVSpeedFpm: number | null | undefined
   ticks: TrajectoryTick[]
   getMsa: (distNm: number) => number
-}): { points: VspeedTrajectoryPoint[]; attitude: 'climb' | 'descent' | 'level' } {
+}): { points: VspeedTrajectoryPoint[]; attitude: 'climb' | 'descent' | 'level'; estimated: boolean } {
   const { currentDistNm, currentAltFt, currentVSpeedFpm, ticks, getMsa } = opts
   const LEVEL_VSPEED_FPM = 100
+  // Unknown vertical speed is drawn as level flight, flagged `estimated` so the
+  // renderer can show it as an assumption (the reference planner does the same:
+  // it always draws the line and treats a missing rate as 0).
+  const estimated = currentVSpeedFpm == null || !Number.isFinite(currentVSpeedFpm)
+  const vs = estimated ? 0 : currentVSpeedFpm!
   const attitude: 'climb' | 'descent' | 'level' =
-    currentVSpeedFpm == null ? 'level' :
-    currentVSpeedFpm > LEVEL_VSPEED_FPM ? 'climb' :
-    currentVSpeedFpm < -LEVEL_VSPEED_FPM ? 'descent' : 'level'
-  if (currentDistNm == null || currentAltFt == null || currentVSpeedFpm == null || ticks.length === 0) {
-    return { points: [], attitude }
+    vs > LEVEL_VSPEED_FPM ? 'climb' :
+    vs < -LEVEL_VSPEED_FPM ? 'descent' : 'level'
+  if (currentDistNm == null || currentAltFt == null || ticks.length === 0) {
+    return { points: [], attitude, estimated }
   }
   const raw = [
     { distNm: currentDistNm, altFt: currentAltFt },
-    ...ticks.map((t) => ({ distNm: t.distNm, altFt: currentAltFt + currentVSpeedFpm * t.timeMin })),
+    ...ticks.map((t) => ({ distNm: t.distNm, altFt: currentAltFt + vs * t.timeMin })),
   ]
   const points = raw.map((p) => {
     const msa = getMsa(p.distNm)
     return { ...p, below: msa > 0 && p.altFt < msa }
   })
-  return { points, attitude }
+  return { points, attitude, estimated }
 }
 
 export interface WeatherMark<S> {
