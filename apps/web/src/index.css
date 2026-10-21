@@ -84,3 +84,18 @@ body {
   border-right: 6px solid transparent;
   border-bottom: 10px solid #3b82f6;
 }
+
+
+/* MapLibre's own controls (zoom, compass, locate) follow the app theme, so the
+   whole top-right button column matches native's map buttons. Doubled
+   selectors beat maplibre-gl.css, which loads later. */
+.maplibregl-ctrl-group.maplibregl-ctrl-group {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  box-shadow: none;
+}
+.maplibregl-ctrl-group.maplibregl-ctrl-group button { background-color: transparent; color: var(--text-primary); }
+.maplibregl-ctrl-group.maplibregl-ctrl-group button + button { border-top: 1px solid var(--border-default); }
+.maplibregl-ctrl-group.maplibregl-ctrl-group button:not(:disabled):hover { background-color: var(--surface-hover); }
+.maplibregl-ctrl-group .maplibregl-ctrl-icon { filter: var(--ctrl-icon-filter, none); }

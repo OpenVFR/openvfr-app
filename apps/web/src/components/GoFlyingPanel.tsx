@@ -3,11 +3,11 @@
  *
  * Displayed at the bottom of the map canvas when flying mode is active.
  * Shows: mode badge, GS, TRK (true), ALT, next-waypoint info with
- * ETE/ETA tap-cycle, course correction indicator, and map-orientation buttons.
+ * ETE/ETA tap-cycle and course correction indicator. Map orientation lives in MapCompass.
  */
 
 import { useState } from 'react'
-import type { GpsPosition, FlyingMode, MapOrientation } from '../utils/gpsTypes'
+import type { GpsPosition, FlyingMode } from '../utils/gpsTypes'
 import { distanceNm, bearingDeg } from '../utils/routeCalc'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { NearestFeature } from '../hooks/useNearestFeature'
@@ -25,8 +25,6 @@ interface Props {
   nextWp:            RouteWaypoint | null
   /** All remaining waypoints from activeWpIdx to end of route (inclusive). */
   remainingWaypoints: RouteWaypoint[]
-  orientation:       MapOrientation
-  onOrientationChange: (o: MapOrientation) => void
   followAircraft:   boolean
   onFollow:         () => void
   onStop:           () => void
@@ -39,7 +37,7 @@ interface Props {
   plogOpen:         boolean
   onAdjustRoute:    () => void  // toggle in-flight route adjustment mode
   adjustMode:       boolean
-  /** Prototype: orientation / Direct-To / drop / adjust live in the map toolbar instead. */
+  /** Prototype: Direct-To / drop / adjust live in the map toolbar instead. */
   hideToolbarButtons?: boolean
 }
 
@@ -79,8 +77,6 @@ export default function GoFlyingPanel({
   wind,
   nextWp,
   remainingWaypoints,
-  orientation,
-  onOrientationChange,
   followAircraft,
   onFollow,
   onStop,
@@ -149,7 +145,7 @@ export default function GoFlyingPanel({
 
   return (
     <div className={css.panel}>
-      {/* ── Row 1: mode badge + instruments + orientation + stop ─────────── */}
+      {/* ── Row 1: mode badge + instruments + stop ─────────── */}
       <div className={css.topRow}>
 
         {/* Mode badge */}
@@ -262,18 +258,8 @@ export default function GoFlyingPanel({
           )}
         </div>
 
-        {/* Orientation + follow + stop */}
+        {/* Follow + stop */}
         <div className={css.controls}>
-          {!hideToolbarButtons && (
-          <button
-            className={`${css.orientBtn} ${css.orientBtnActive}`}
-            onClick={() => onOrientationChange(orientation === 'north' ? 'track' : orientation === 'track' ? 'course' : 'north')}
-            title={orientation === 'north' ? 'North Up — tap for Track Up' : orientation === 'track' ? 'Track Up — tap for Course Up' : 'Course Up — tap for North Up'}
-          >
-            {orientation === 'north' ? 'N↑' : orientation === 'track' ? 'TRK↑' : 'CRS↑'}
-          </button>
-          )}
-
           <button
             className={`${css.followBtn} ${followAircraft ? css.followBtnActive : css.followBtnOff}`}
             onClick={onFollow}

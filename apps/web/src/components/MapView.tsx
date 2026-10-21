@@ -12,8 +12,8 @@ import MapToolbar, { type ToolGroupDef, type ToolItem } from './MapToolbar'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
   IconCurrentLocation, IconCurrentLocationFilled, IconHome, IconPlaneDeparture, IconPlaneArrival,
-  IconRulerMeasure, IconSearch, IconNews, IconArrowBigRight, IconMapPinPlus,
-  IconPencil, IconLockOpen, IconMagnet, IconMagnetOff, IconArrowUp, IconNavigation, IconRoute, IconZoomScan,
+  IconRulerMeasure, IconSearch, IconNews, IconMapPinPlus,
+  IconPencil, IconLockOpen, IconMagnet, IconMagnetOff, IconZoomScan,
 } from '@tabler/icons-react'
 
 // Map control button glyphs (Tabler Icons). The imperative MapLibre buttons
@@ -150,6 +150,7 @@ import { waitForTileManifest } from '@open-vfr/shared/tileManifest'
 import { parseMapLink, hasMapLink, stripMapLinkParams } from '@open-vfr/shared/deepLink'
 import css from './MapView.module.css'
 import MapInfoBar from './MapInfoBar'
+import MapCompass from './MapCompass'
 
 // MapLibre layer IDs we listen to for aerodrome clicks.
 // All layers that reference the ofm-aerodromes source.
@@ -1080,12 +1081,12 @@ export default function MapView({ auth }: { auth: AuthState }) {
         ? (locDenied ? 'Location permission denied' : 'Show my position')
         : 'Showing my position — tap to centre, tap again when centred to turn off'
     // Same highlight as the map-tools toolbar's active state (MapToolbar .active):
-    // blue outline and icon, no fill.
-    btn.style.color = locked ? '#2563eb' : ''
-    btn.style.boxShadow = locked ? 'inset 0 0 0 2px #2563eb' : ''
+    // accent-blue outline and icon, no fill.
+    btn.style.color = locked ? 'var(--accent-blue)' : ''
+    btn.style.boxShadow = locked ? 'inset 0 0 0 1px var(--accent-blue)' : ''
     // The small span shows the seconds left until a panned map returns to the aircraft.
     btn.innerHTML = (on ? LOCATE_ON_ICON_SVG : LOCATE_ICON_SVG)
-      + '<span data-follow-countdown style="position:absolute;right:2px;bottom:0;font:800 10px/1 system-ui,sans-serif;color:#2563eb;pointer-events:none"></span>'
+      + '<span data-follow-countdown style="position:absolute;right:2px;bottom:0;font:800 10px/1 system-ui,sans-serif;color:var(--accent-blue);pointer-events:none"></span>'
     btn.style.position = 'relative'
     btn.setAttribute('aria-pressed', String(on))
     btn.setAttribute('aria-label', btn.title)
@@ -1596,7 +1597,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
     })
     mapRef.current = map
 
-    map.addControl(new maplibregl.NavigationControl(), 'top-right')
+    // Zoom buttons only: orientation lives in MapCompass (bottom right, as on native).
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
     // Prototype: the map tools menu button (3x3 dot grid) is React, portalled
     // into this host so they sit in MapLibre's top-right stack.
     const toolbarCtrlDiv = document.createElement('div')
@@ -4563,16 +4565,15 @@ export default function MapView({ auth }: { auth: AuthState }) {
           const solos: ToolItem[] = [
             { id: 'brief', label: 'Brief', description: 'Frequencies, weather and NOTAMs for the aerodromes near you or the map centre', icon: <IconNews {...CTRL_ICON} />, active: showVicinityBrief, onSelect: () => setShowVicinityBrief(m => !m) },
           ]
-          if (flying) solos.push({ id: 'directto', label: 'Direct to', description: 'Pick a nearby aerodrome and fly direct to it from your present position', icon: <IconArrowBigRight {...CTRL_ICON} />, onSelect: () => setShowDirectTo(true) })
-          if (flying) solos.push({
-            id: 'orient',
-            label: mapOrientation === 'north' ? 'North Up' : mapOrientation === 'track' ? 'Track Up' : 'Course Up',
-            description: mapOrientation === 'north' ? 'North is at the top. Tap for Track Up (map turns with your track)' : mapOrientation === 'track' ? 'Map turns with your track. Tap for Course Up (route leg points up)' : 'The active route leg points up. Tap for North Up',
-            icon: mapOrientation === 'north' ? <IconArrowUp {...CTRL_ICON} /> : mapOrientation === 'track' ? <IconNavigation {...CTRL_ICON} /> : <IconRoute {...CTRL_ICON} />,
-            onSelect: () => handleOrientation(mapOrientation === 'north' ? 'track' : mapOrientation === 'track' ? 'course' : 'north'),
-          })
           return <MapToolbar groups={groups} solos={solos} />
         })(), toolbarHost)}
+        <MapCompass
+          map={mapReady ? mapRef.current : null}
+          orientation={mapOrientation}
+          canToggle={flyingMode !== 'off'}
+          canCourse={routeVisible && routeWaypoints.length >= 2}
+          onOrientationChange={handleOrientation}
+        />
         <MapInfoBar map={mapReady ? mapRef.current : null} ceilingFt={ceilingFt} units={units} windLabel={windEnabled ? windOverlay.label : undefined} windSurface={windSurface} onToggleWindSurface={() => setWindSurface((v) => !v)} />
 
       {/* ── Data-update notification banner ──────────────────────────── */}
@@ -4931,7 +4932,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
             wind={liveWind}
             nextWp={routeWaypoints[activeWpIdx] ?? null}
             remainingWaypoints={routeWaypoints.slice(activeWpIdx)}
-            orientation={mapOrientation}
             positionReport={nearestFeature}
             onOpenDirectTo={() => setShowDirectTo(true)}
             onDropWaypoint={dropWaypointHere}
@@ -4965,7 +4965,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
             plogOpen={showPlog}
             onAdjustRoute={() => setRouteAdjustMode(v => !v)}
             adjustMode={routeAdjustMode}
-            onOrientationChange={handleOrientation}
             hideToolbarButtons
             followAircraft={followAircraft}
             onFollow={() => {

@@ -1,0 +1,11 @@
+/* Bottom-right, just above the MapInfoBar scale pill. */
+.btn {
+  position: absolute; right: 10px; bottom: 48px; z-index: 5;
+  width: 40px; height: 40px; padding: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-elevated); color: var(--text-primary);
+  border: 1px solid var(--border-default); cursor: pointer;
+}
+.btn:hover { border-color: var(--border-strong); }
+.active, .active:hover { border-color: var(--accent-blue); }
+.badge { position: absolute; right: 4px; bottom: 2px; font-size: 9px; font-weight: 800; color: var(--accent-blue); pointer-events: none; }

@@ -3,15 +3,17 @@
 .btn {
   display: flex; align-items: center; justify-content: center;
   width: 29px; height: 29px; padding: 0; position: relative;
-  background: #fff; color: #333; border: 0; cursor: pointer;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1); border-radius: 4px;
+  /* Same look as native's map buttons: theme surface, thin border, accent-coloured active state. */
+  background: var(--surface-elevated); color: var(--text-primary);
+  border: 1px solid var(--border-default); cursor: pointer; box-sizing: border-box;
+  border-radius: 6px;
   font: inherit; font-size: 13px;
 }
 /* Doubled selector: beat maplibre-gl's `.maplibregl-ctrl button:not(:disabled):hover` (translucent bg). */
-.btn.btn:hover:not(:disabled) { background-color: #f2f2f2; }
+.btn.btn:hover:not(:disabled) { background-color: var(--surface-elevated); background-image: linear-gradient(var(--surface-hover), var(--surface-hover)); }
 .glyph { display: inline-flex; align-items: center; justify-content: center; font-size: 14px; line-height: 1; }
-.btn.btn.open:hover:not(:disabled), .btn.open { background-color: #e8eefc; }
-.btn.btn.active:hover:not(:disabled), .btn.active { color: #2563eb; box-shadow: inset 0 0 0 2px #2563eb; }
+.btn.btn.open:hover:not(:disabled), .btn.open { background-color: var(--surface-elevated); background-image: linear-gradient(var(--surface-active), var(--surface-active)); border-color: var(--border-strong); }
+.btn.btn.active:hover:not(:disabled), .btn.active { color: var(--accent-blue); border-color: var(--accent-blue); }
 .dim { opacity: 0.5; }
 
 /* Compact popover with a tile grid */
@@ -41,9 +43,8 @@
 }
 .tile.tile:hover:not(:disabled) { background-color: var(--surface-active, rgba(0, 0, 0, 0.12)); }
 .tile:active { transform: scale(0.96); }
-.tile:focus-visible { outline: 2px solid var(--accent-blue, #2563eb); outline-offset: 1px; }
+.tile:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1px; }
 .tileActive {
-  color: #2563eb; border-color: #2563eb; box-shadow: inset 0 0 0 1px #2563eb;
+  color: var(--accent-blue); border-color: var(--accent-blue);
 }
-.tile.tileActive.tileActive:hover:not(:disabled) { background-color: #eef3ff; }
 .tileLabel { font-size: 9px; line-height: 1; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }

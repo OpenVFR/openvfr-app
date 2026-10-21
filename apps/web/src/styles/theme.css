@@ -58,6 +58,7 @@
 
   /* Accent — data / navigation */
   --accent-blue:       #93c5fd;
+  --ctrl-icon-filter:  invert(0.92);   /* MapLibre's dark zoom/compass glyphs on a dark button */
   --accent-blue-bright:#7dd3fc;
   --accent-green:      #86efac;
   --accent-green-bright:#4ade80;
@@ -152,6 +153,7 @@
   --accent-purple:     #f06fff;
   --accent-purple-dim: #d8b4fe;
   --accent-blue:       #bae0ff;
+  --ctrl-icon-filter:  invert(1);
   --accent-blue-bright:#93d4ff;
   --accent-green:      #a7f3c0;
   --accent-green-bright:#6ee7a0;
@@ -240,6 +242,7 @@
   --accent-purple:     #9333ea;
   --accent-purple-dim: #7c3aed;
   --accent-blue:       #2563eb;
+  --ctrl-icon-filter:  none;
   --accent-blue-bright:#0ea5e9;
   --accent-green:      #16a34a;
   --accent-green-bright:#15803d;
