@@ -1,4 +1,5 @@
-import { memo, useCallback, useEffect, useMemo, useState, useRef, type ReactNode } from 'react'
+import { useChartH } from '../utils/vrChartHeight'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef, type ReactNode } from 'react'
 import { pickWaypointLabels, estimateLabelWidth } from '@open-vfr/shared/profileLabels'
 import { airspaceOutlines, airspaceChips, layoutAirspaceChips } from '@open-vfr/shared/airspaceOutline'
 import {
@@ -8,7 +9,7 @@ import {
 import { CLOUD_COLORS } from '@open-vfr/shared/featureColors'
 import type { ParsedCloudLayer } from '@open-vfr/shared/fetchWx'
 import {
-  profileChartLayout, profileYMax, altitudeTicks, formatAltitudeTick, formatAltitudeFt, distanceTicks,
+  profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, altitudeTicks, formatAltitudeTick, formatAltitudeFt, distanceTicks,
   polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, declutterMarks, obstacleOpacity, isLimitingObstacle, type ProfileChartLayout,
 } from '@open-vfr/shared/profileChart'
 import type { RouteWaypoint } from '../utils/routeCalc'
@@ -59,8 +60,9 @@ const OFF_TRACK_BADGE_NM = 3
 // scales and ticks native's VerticalProfile uses). Left margin = 4 px gutter
 // + 36 px altitude-label column; bottom margin = distance-tick band, which
 // the wind row shares.
-const CHART_H = 162
 const MARGIN = { top: 8, right: 12, bottom: 32, left: 40 }
+/** Chart svg height implied by a layout (the user can resize the chart). */
+const chartHeightOf = (L: { plotBottom: number }) => L.plotBottom + MARGIN.bottom
 /** Centre of the wind row, px below the plot bottom (inside the x-axis band). */
 const WIND_ROW_Y = 15
 // Edge barbs are nudged this far in from the plot edges (px): clears the "0"
@@ -396,7 +398,7 @@ const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDist
     const flip = x > L.contentW - 110
     content = (
       <>
-        <svg className={css.hoverSvg} width={L.contentW} height={CHART_H} aria-hidden>
+        <svg className={css.hoverSvg} width={L.contentW} height={chartHeightOf(L)} aria-hidden>
           <line x1={x} y1={L.plotTop} x2={x} y2={L.plotBottom} stroke="var(--text-faint)" strokeWidth={1} />
           {rows.map((r) => (
             <circle key={r.label} cx={x} cy={L.yOf(r.ft)} r={3} fill={r.color} stroke="#fff" strokeWidth={1} />
@@ -422,7 +424,7 @@ const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDist
   return (
     <div
       className={css.hoverLayer}
-      style={{ width: L.contentW, height: CHART_H }}
+      style={{ width: L.contentW, height: chartHeightOf(L) }}
       onPointerMove={onMove}
       onPointerLeave={() => update(null)}
     >
@@ -522,7 +524,7 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
   }
 
   return (
-    <svg className={css.dragSvg} width={L.contentW} height={CHART_H}>
+    <svg className={css.dragSvg} width={L.contentW} height={chartHeightOf(L)}>
       {drag && spans.map((s, i) => {
         if (drag.leg !== i) return null
         const alt = drag.shown
@@ -606,6 +608,10 @@ function VirtualRadar({
   // no ground line, no MSA, AGL bands at raw height. Said on the chart.
   const [terrainFailed, setTerrainFailed] = useState(false)
   const [collapsed, setCollapsed]         = useState(false)
+  // Chart height: set by the splitter on top of the bottom pane (MapView).
+  const chartH = useChartH()
+  // Zoom on the distance axis (1 = whole route fitted / minimum legible).
+  const [zoom, setZoom]                   = useState(1)
   const [showWindAloft, setShowWindAloft] = useState(true)
 
   // Extract performance model from selected aircraft profile.
@@ -864,10 +870,80 @@ function VirtualRadar({
   const unitPerNm = nmToDisplay(1, units.distance)
   const layout = useMemo(() => (profile && wrapW > 0
     ? profileChartLayout({
-      viewportW: wrapW, height: CHART_H, margin: MARGIN,
-      totalNm: profile.totalNm, yMax, minPxPerNm: MIN_PX_PER_UNIT * unitPerNm,
+      viewportW: wrapW, height: chartH, margin: MARGIN,
+      totalNm: profile.totalNm, yMax, minPxPerNm: MIN_PX_PER_UNIT * unitPerNm, zoom,
     })
-    : null), [profile, wrapW, yMax, unitPerNm])
+    : null), [profile, wrapW, yMax, unitPerNm, chartH, zoom])
+
+  // ── Zoom on the distance axis ────────────────────────────────────────────
+  // Buttons, Ctrl/⌘ + wheel (also a trackpad pinch) and a two-finger pinch.
+  // The route position under the cursor / fingers stays put; the scroll
+  // offset is corrected right after the wider layout is committed.
+  const layoutRef = useRef(layout); layoutRef.current = layout
+  const zoomRef = useRef(zoom); zoomRef.current = zoom
+  const pendingScrollRef = useRef<number | null>(null)
+  const zoomBy = useCallback((factor: number, anchorPx?: number) => {
+    const el = chartWrapRef.current, L0 = layoutRef.current
+    if (!el || !L0) return
+    const base = L0.plotW / zoomRef.current
+    const next = clampProfileZoom(zoomRef.current * factor, base, L0.totalNm)
+    if (next === zoomRef.current) return
+    const newPlotW = base * next
+    pendingScrollRef.current = scrollAfterZoom({
+      scrollLeft: el.scrollLeft, anchorPx: anchorPx ?? el.clientWidth / 2, plotLeft: L0.plotLeft,
+      oldPlotW: L0.plotW, newPlotW, viewportW: el.clientWidth, newContentW: newPlotW + MARGIN.left + MARGIN.right,
+    })
+    zoomRef.current = next
+    setZoom(next)
+  }, [])
+  useLayoutEffect(() => {
+    const el = chartWrapRef.current
+    if (el && pendingScrollRef.current != null) { el.scrollLeft = pendingScrollRef.current; pendingScrollRef.current = null }
+  }, [layout])
+  const hasChart = layout != null && !collapsed
+  useEffect(() => {
+    const el = chartWrapRef.current
+    if (!el || !hasChart) return
+    const anchorOf = (clientX: number) => clientX - el.getBoundingClientRect().left
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return   // plain wheel keeps scrolling the page / chart
+      e.preventDefault()
+      zoomBy(Math.exp(-e.deltaY * 0.01), anchorOf(e.clientX))
+    }
+    // Two-finger pinch (touch screens): pointer distance ratio between moves.
+    const pts = new Map<number, { x: number; y: number }>()
+    let lastDist = 0
+    const dist = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y) }
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (pts.size === 2) lastDist = dist()
+    }
+    const onMove = (e: PointerEvent) => {
+      if (!pts.has(e.pointerId)) return
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (pts.size !== 2) return
+      const d = dist()
+      if (lastDist > 0 && d > 0) {
+        const [a, b] = [...pts.values()]
+        zoomBy(d / lastDist, anchorOf((a.x + b.x) / 2))
+      }
+      lastDist = d
+    }
+    const onUp = (e: PointerEvent) => { pts.delete(e.pointerId); lastDist = 0 }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    el.addEventListener('pointerdown', onDown, true)
+    el.addEventListener('pointermove', onMove, true)
+    el.addEventListener('pointerup', onUp, true)
+    el.addEventListener('pointercancel', onUp, true)
+    return () => {
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('pointerdown', onDown, true)
+      el.removeEventListener('pointermove', onMove, true)
+      el.removeEventListener('pointerup', onUp, true)
+      el.removeEventListener('pointercancel', onUp, true)
+    }
+  }, [hasChart, zoomBy])
 
   const yTicks = useMemo(() => altitudeTicks(yMax), [yMax])
   // Distance ticks on round display-unit values; the right end of the axis is
@@ -1365,6 +1441,8 @@ function VirtualRadar({
             {windAloftStatus === 'retrying' ? 'Winds: retrying…' : 'Winds unavailable'}
           </span>
         )}
+        <button className={css.projToggleBtn} onClick={() => zoomBy(1 / 1.5)} disabled={zoom <= 1} title="Zoom out (Ctrl + wheel, or pinch the chart)" aria-label="Zoom profile out">−</button>
+        <button className={css.projToggleBtn} onClick={() => zoomBy(1.5)} title="Zoom in along the route (Ctrl + wheel, or pinch the chart)" aria-label="Zoom profile in">+</button>
         <button
           className={`${css.projToggleBtn} ${showWindAloft ? css.projToggleOn : ''}`}
           onClick={() => setShowWindAloft((v) => !v)}
@@ -1383,20 +1461,20 @@ function VirtualRadar({
 
       {/* ── Chart ──────────────────────────────────────────────────── */}
       {!collapsed && (
-        <div className={css.chartWrap} ref={chartWrapRef}>
+        <div className={css.chartWrap} ref={chartWrapRef} style={{ height: chartH + 18 }}>
           {L?.scrollable && <span className={css.scrollHint}>↔ scroll</span>}
           {L && (
-            <div className={css.chartContent} style={{ width: L.contentW, height: CHART_H }}>
+            <div className={css.chartContent} style={{ width: L.contentW, height: chartH }}>
               {/* Pinned altitude scale: stuck to the left edge while the chart
                   scrolls, on an opaque panel-coloured backing so scrolled
                   content disappears at the axis instead of scrolling the FL
                   scale away. Only rendered when the chart actually scrolls. */}
               {L.scrollable && (
                 <div className={css.yAxisPinned} aria-hidden>
-                  <svg width={MARGIN.left} height={CHART_H}>{renderYAxis(L, yTicks)}</svg>
+                  <svg width={MARGIN.left} height={chartH}>{renderYAxis(L, yTicks)}</svg>
                 </div>
               )}
-              <svg className={css.chartSvg} width={L.contentW} height={CHART_H} role="img" aria-label="Vertical profile of the route">
+              <svg className={css.chartSvg} width={L.contentW} height={chartH} role="img" aria-label="Vertical profile of the route">
                 {scene}
                 {live}
               </svg>

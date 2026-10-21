@@ -1,0 +1,23 @@
+/* Full-width splitter on the top edge of the bottom pane. */
+.grip {
+  position: absolute;
+  top: -7px;
+  left: 0;
+  right: 0;
+  height: 14px;
+  z-index: 20;
+  cursor: ns-resize;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.grip::after {
+  content: '';
+  width: 44px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--text-faint);
+  opacity: 0.6;
+}
+.grip:hover::after { opacity: 1; background: var(--accent-blue); }

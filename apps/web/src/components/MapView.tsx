@@ -78,6 +78,7 @@ import type { WhatsHereItem } from './WhatsHerePopup'
 import SnapPicker, { type SnapCandidate } from './SnapPicker'
 import RouteEditBanner from './RouteEditBanner'
 import VirtualRadar from './VirtualRadar'
+import VrResizeGrip from './VrResizeGrip'
 import RulerSummaryStrip from './RulerSummaryStrip'
 import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
 import { tafChangeIcaos } from '@open-vfr/shared/parseTaf'
@@ -4917,140 +4918,146 @@ export default function MapView({ auth }: { auth: AuthState }) {
       )}
       </div>
 
-      {/* ── In-flight instruments (GoFlyingPanel) — own grid row ──────── */}
-      {flyingMode !== 'off' && gpsPosition && (
-        <div className={css.gfpRow}>
-          <GoFlyingPanel
-          mode={flyingMode}
-          position={gpsPosition}
-          wind={liveWind}
-          nextWp={routeWaypoints[activeWpIdx] ?? null}
-          remainingWaypoints={routeWaypoints.slice(activeWpIdx)}
-          orientation={mapOrientation}
-          positionReport={nearestFeature}
-          onOpenDirectTo={() => setShowDirectTo(true)}
-          onDropWaypoint={dropWaypointHere}
-          onTrackToggle={() => {
-            if (trackedPoint) {
-              setTrackedPoint(null)
-            } else if (nearestFeature) {
-              // Convert NearestFeature to TrackedPoint using current position
+      {/* Bottom pane: instruments / sim buttons / ruler strip + Virtual Radar.
+          The splitter on its top edge sets the chart height. */}
+      <div className={css.bottomPane}>
+        {(showRulerProfile || (selectedLogId && selectedLogTrack.length > 0) || (routeVisible && routeWaypoints.length >= 2) || flyingMode !== 'off') && <VrResizeGrip />}
+        {/* ── In-flight instruments (GoFlyingPanel) — own grid row ──────── */}
+        {flyingMode !== 'off' && gpsPosition && (
+          <div className={css.gfpRow}>
+            <GoFlyingPanel
+            mode={flyingMode}
+            position={gpsPosition}
+            wind={liveWind}
+            nextWp={routeWaypoints[activeWpIdx] ?? null}
+            remainingWaypoints={routeWaypoints.slice(activeWpIdx)}
+            orientation={mapOrientation}
+            positionReport={nearestFeature}
+            onOpenDirectTo={() => setShowDirectTo(true)}
+            onDropWaypoint={dropWaypointHere}
+            onTrackToggle={() => {
+              if (trackedPoint) {
+                setTrackedPoint(null)
+              } else if (nearestFeature) {
+                // Convert NearestFeature to TrackedPoint using current position
+                const pos = gpsPositionRef.current
+                if (!pos) return
+                // Find the geographic coords of the nearest feature from the rendered nearest
+                // We store the ICAO/name which is sufficient — pass it as lat/lng approximation
+                // by going back via the nearest feature data. For simplicity we compute
+                // the projected point from bearing + distance.
+                const brg = nearestFeature.bearingTrue * Math.PI / 180
+                const d   = nearestFeature.distNm / 3440.065
+                const lat1 = pos.lat * Math.PI / 180
+                const lng1 = pos.lng * Math.PI / 180
+                const lat2 = Math.asin(Math.sin(lat1)*Math.cos(d) + Math.cos(lat1)*Math.sin(d)*Math.cos(brg))
+                const lng2 = lng1 + Math.atan2(Math.sin(brg)*Math.sin(d)*Math.cos(lat1), Math.cos(d)-Math.sin(lat1)*Math.sin(lat2))
+                setTrackedPoint({
+                  lat:  lat2 * 180 / Math.PI,
+                  lng:  ((lng2 * 180 / Math.PI) + 540) % 360 - 180,
+                  name: nearestFeature.name,
+                  kind: nearestFeature.kind,
+                })
+              }
+            }}
+            isTracking={trackedPoint !== null}
+            onOpenPlog={() => setShowPlog(v => !v)}
+            plogOpen={showPlog}
+            onAdjustRoute={() => setRouteAdjustMode(v => !v)}
+            adjustMode={routeAdjustMode}
+            onOrientationChange={handleOrientation}
+            hideToolbarButtons
+            followAircraft={followAircraft}
+            onFollow={() => {
+              setFollowAircraft(true)
               const pos = gpsPositionRef.current
-              if (!pos) return
-              // Find the geographic coords of the nearest feature from the rendered nearest
-              // We store the ICAO/name which is sufficient — pass it as lat/lng approximation
-              // by going back via the nearest feature data. For simplicity we compute
-              // the projected point from bearing + distance.
-              const brg = nearestFeature.bearingTrue * Math.PI / 180
-              const d   = nearestFeature.distNm / 3440.065
-              const lat1 = pos.lat * Math.PI / 180
-              const lng1 = pos.lng * Math.PI / 180
-              const lat2 = Math.asin(Math.sin(lat1)*Math.cos(d) + Math.cos(lat1)*Math.sin(d)*Math.cos(brg))
-              const lng2 = lng1 + Math.atan2(Math.sin(brg)*Math.sin(d)*Math.cos(lat1), Math.cos(d)-Math.sin(lat1)*Math.sin(lat2))
-              setTrackedPoint({
-                lat:  lat2 * 180 / Math.PI,
-                lng:  ((lng2 * 180 / Math.PI) + 540) % 360 - 180,
-                name: nearestFeature.name,
-                kind: nearestFeature.kind,
-              })
-            }
-          }}
-          isTracking={trackedPoint !== null}
-          onOpenPlog={() => setShowPlog(v => !v)}
-          plogOpen={showPlog}
-          onAdjustRoute={() => setRouteAdjustMode(v => !v)}
-          adjustMode={routeAdjustMode}
-          onOrientationChange={handleOrientation}
-          hideToolbarButtons
-          followAircraft={followAircraft}
-          onFollow={() => {
-            setFollowAircraft(true)
-            const pos = gpsPositionRef.current
-            const map = mapRef.current
-            if (pos && map) {
-              map.flyTo({ center: [pos.lng, pos.lat], speed: 2 })
-            }
-          }}
-          onStop={stopFlying}
-        />
-        </div>
-      )}
+              const map = mapRef.current
+              if (pos && map) {
+                map.flyTo({ center: [pos.lng, pos.lat], speed: 2 })
+              }
+            }}
+            onStop={stopFlying}
+          />
+          </div>
+        )}
 
-      {/* VirtualRadar: ruler profile → past-log review → planned route → look-ahead (unplanned flight) */}
-      {showRulerProfile ? (
-        <div className={css.vrRow}>
-          <RulerSummaryStrip
-            from={rulerPoints[0]}
-            to={rulerPoints[1]}
-            units={units}
-            aircraftProfile={selectedAircraftProfile}
-            onClear={() => { setRulerPoints([]); setRulerMode(false) }}
-          />
-          <VirtualRadar
-            waypoints={rulerPoints}
-            legOverrides={[]}
-            units={units}
-            airspaceCeilingFt={ceilingFt}
-            aircraftProfile={selectedAircraftProfile}
-            onHoverDistNm={setProfileCursorNm}
-            weatherStations={rulerWeatherStations}
-          />
-        </div>
-      ) : selectedLogId && selectedLogTrack.length > 0 ? (
-        // Past-log review: show the recorded track chart, even when a planned route exists.
-        // The route stays visible on the map but the bottom panel belongs to the flight log.
-        <div className={css.vrRow}>
-          <LiveTrackChart track={selectedLogTrack} onHoverDistNm={setProfileCursorNm} />
-        </div>
-      ) : routeVisible && routeWaypoints.length >= 2 ? (
-        // An inactive route is hidden from the map, so it gets no radar either.
-        <div className={css.vrRow}>
-          <VirtualRadar
-            waypoints={routeWaypoints}
-            legOverrides={legOverrides}
-            units={units}
-            airspaceCeilingFt={ceilingFt}
-            aircraftProfile={selectedAircraftProfile}
-            currentDistNm={aircraftDistNm}
-            currentAltFt={flyingMode !== 'off' ? chartPos?.altFt : undefined}
-            currentSpeedKts={flyingMode !== 'off' ? chartPos?.speedKts : undefined}
-            currentVSpeedFpm={flyingMode !== 'off' ? chartVSpeedFpm ?? undefined : undefined}
-            crossTrackNm={crossTrackNm}
-            weatherStations={routeWeatherStations}
-            trajectoryMode={trajectoryMode}
-            onHoverDistNm={setProfileCursorNm}
-            crosshairDistNm={profileCursorNm}
-            onLegLevelChange={(planningMode || routeAdjustMode) && !routeEditLocked ? handleLegLevelChange : undefined}
-          />
-        </div>
-      ) : flyingMode !== 'off' ? (
-        // Flying without a planned route: show forward-looking profile along current heading.
-        // Falls back to the live track chart while the first look-ahead route is initialising.
-        lookaheadWaypoints.length >= 2 ? (
+        {/* VirtualRadar: ruler profile → past-log review → planned route → look-ahead (unplanned flight) */}
+        {showRulerProfile ? (
           <div className={css.vrRow}>
+            <RulerSummaryStrip
+              from={rulerPoints[0]}
+              to={rulerPoints[1]}
+              units={units}
+              aircraftProfile={selectedAircraftProfile}
+              onClear={() => { setRulerPoints([]); setRulerMode(false) }}
+            />
             <VirtualRadar
-              title={`LOOK-AHEAD · TRK ${Math.round(lookaheadHeadingDeg)}°`}
-              waypoints={lookaheadWaypoints}
-              legOverrides={lookaheadLegOverrides}
+              waypoints={rulerPoints}
+              legOverrides={[]}
               units={units}
               airspaceCeilingFt={ceilingFt}
               aircraftProfile={selectedAircraftProfile}
-              currentDistNm={lookaheadDistNm}
-              currentAltFt={chartPos?.altFt}
-              currentSpeedKts={chartPos?.speedKts}
-              currentVSpeedFpm={chartVSpeedFpm ?? undefined}
+              onHoverDistNm={setProfileCursorNm}
+              weatherStations={rulerWeatherStations}
+            />
+          </div>
+        ) : selectedLogId && selectedLogTrack.length > 0 ? (
+          // Past-log review: show the recorded track chart, even when a planned route exists.
+          // The route stays visible on the map but the bottom panel belongs to the flight log.
+          <div className={css.vrRow}>
+            <LiveTrackChart track={selectedLogTrack} onHoverDistNm={setProfileCursorNm} />
+          </div>
+        ) : routeVisible && routeWaypoints.length >= 2 ? (
+          // An inactive route is hidden from the map, so it gets no radar either.
+          <div className={css.vrRow}>
+            <VirtualRadar
+              waypoints={routeWaypoints}
+              legOverrides={legOverrides}
+              units={units}
+              airspaceCeilingFt={ceilingFt}
+              aircraftProfile={selectedAircraftProfile}
+              currentDistNm={aircraftDistNm}
+              currentAltFt={flyingMode !== 'off' ? chartPos?.altFt : undefined}
+              currentSpeedKts={flyingMode !== 'off' ? chartPos?.speedKts : undefined}
+              currentVSpeedFpm={flyingMode !== 'off' ? chartVSpeedFpm ?? undefined : undefined}
+              crossTrackNm={crossTrackNm}
               weatherStations={routeWeatherStations}
               trajectoryMode={trajectoryMode}
               onHoverDistNm={setProfileCursorNm}
               crosshairDistNm={profileCursorNm}
+              onLegLevelChange={(planningMode || routeAdjustMode) && !routeEditLocked ? handleLegLevelChange : undefined}
             />
           </div>
-        ) : (
-          <div className={css.vrRow}>
-            <LiveTrackChart track={liveTrack} />
-          </div>
-        )
-      ) : null}
+        ) : flyingMode !== 'off' ? (
+          // Flying without a planned route: show forward-looking profile along current heading.
+          // Falls back to the live track chart while the first look-ahead route is initialising.
+          lookaheadWaypoints.length >= 2 ? (
+            <div className={css.vrRow}>
+              <VirtualRadar
+                title={`LOOK-AHEAD · TRK ${Math.round(lookaheadHeadingDeg)}°`}
+                waypoints={lookaheadWaypoints}
+                legOverrides={lookaheadLegOverrides}
+                units={units}
+                airspaceCeilingFt={ceilingFt}
+                aircraftProfile={selectedAircraftProfile}
+                currentDistNm={lookaheadDistNm}
+                currentAltFt={chartPos?.altFt}
+                currentSpeedKts={chartPos?.speedKts}
+                currentVSpeedFpm={chartVSpeedFpm ?? undefined}
+                weatherStations={routeWeatherStations}
+                trajectoryMode={trajectoryMode}
+                onHoverDistNm={setProfileCursorNm}
+                crosshairDistNm={profileCursorNm}
+              />
+            </div>
+          ) : (
+            <div className={css.vrRow}>
+              <LiveTrackChart track={liveTrack} />
+            </div>
+          )
+        ) : null}
+
+      </div>
 
       {profileOpen && <ProfilePanel auth={auth} onClose={() => setProfileOpen(false)} />}
     </div>

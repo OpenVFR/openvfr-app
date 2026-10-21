@@ -1,7 +1,7 @@
 .wrapper {
   display: grid;
   grid-template-columns: auto 1fr;
-  grid-template-rows: 1fr auto auto;
+  grid-template-rows: 1fr auto;
   width: 100vw;
   height: 100dvh;
 }
@@ -20,7 +20,13 @@
   height: 100%;
 }
 
-/* Third row: GoFlyingPanel spans both columns */
+/* Second row: instruments + Virtual Radar, with the resize splitter on top */
+.bottomPane {
+  grid-column: 1 / -1;
+  position: relative;
+}
+
+/* GoFlyingPanel spans both columns */
 .gfpRow {
   grid-column: 1 / -1;
   background: var(--surface-elevated);

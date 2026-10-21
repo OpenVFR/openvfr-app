@@ -91,7 +91,7 @@
 .chartWrap {
   position: relative;
   padding: 4px 4px 0;
-  /* Chart SVG (162px, CHART_H in VirtualRadar.tsx) plus room for the
+  /* Chart SVG (chartH in VirtualRadar.tsx, set inline) plus room for the
      horizontal scrollbar when the route is wider than the panel. */
   height: 180px;
   /* Scroll instead of squeezing a long route to fit — the content div (width
@@ -99,6 +99,9 @@
      the route needs more than MIN_PX_PER_UNIT per NM/km. */
   overflow-x: auto;
   overflow-y: hidden;
+  /* Horizontal pan stays native; the browser's own pinch-zoom is off here so
+     the two-finger pinch can zoom the distance axis instead. */
+  touch-action: pan-x;
 }
 
 .chartContent {
@@ -252,3 +255,5 @@
   color: var(--text-primary);
   font-size: 11px;
 }
+
+.projToggleBtn:disabled { opacity: 0.35; cursor: default; }
