@@ -59,7 +59,7 @@ import { obstacleSymbol, polyPath, ESTIMATED_DASH } from '@open-vfr/shared/obsta
 import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
 import { effectiveHeight, obstacleTipsForMsa, limitingObstacleLabel, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
 import { useMefGrids } from '../hooks/useMefGrids'
-import { pickWaypointLabels, estimateLabelWidth } from '@open-vfr/shared/profileLabels'
+import { pickWaypointLabels, estimateLabelWidth, placeLabels, type BoxRect, type LabelRequest, type PlacedLabel } from '@open-vfr/shared/profileLabels'
 import {
   profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, declutterMarks, obstacleOpacity, isLimitingObstacle, altitudeTicks, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
 } from '@open-vfr/shared/profileChart'
@@ -215,6 +215,10 @@ const WIND_ROW_STATION_SEP_NM = 6
 // to scroll, so the scroll path effectively never activated for realistic
 // route lengths even though labels were visibly cramped well before that.
 const MIN_PX_PER_NM = 30
+
+/** Label box widths (px) for obstacle (10 px bold) and POI (9 px) names; shared by placement and drawing. */
+const obstacleLabelW = (label: string) => Math.ceil(estimateLabelWidth(label, 150) * 1.1)
+const poiLabelW = (label: string) => Math.ceil(estimateLabelWidth(label, 100) * 0.9)
 /** Which obstacle shape a landmark kind is drawn as when it is tall enough. */
 const LANDMARK_SHAPE_KIND: Record<string, string> = {
   church: 'building', mast: 'tower', chimney: 'chimney', water_tower: 'water_tower', windmill: 'tower',
@@ -594,13 +598,10 @@ export function VerticalProfile({
         key: `obs-${i}`, kind: o.kind, cx, cy, groundY,
         opacity: obstacleOpacity(o.lateralNm, margins.abeamNm) * (eh.estimated ? 0.7 : 1), limiting,
         priority: limiting ? 1e9 + tipFt : tipFt, full: false, estimated: eh.estimated,
-        label: limiting ? limitingObstacleLabel(o.kind, o.name, tipFt, eh.estimated) : '', labelled: false,
+        label: limiting ? limitingObstacleLabel(o.kind, o.name, tipFt, eh.estimated) : '', labelPos: undefined as PlacedLabel | undefined,
         shape: obstacleSymbol(o.kind, cx, cy, groundY, eh.estimated),
       }
     })
-    // Only the obstacle(s) that set the MSA are named; labels that would overlap are thinned.
-    const obsLabelled = declutterMarks(obs.filter((m) => m.limiting).map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), 110)
-    obs.forEach((m) => { m.labelled = obsLabelled.has(m.key) })
     const obsFull = declutterMarks(obs.map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), 14)
     obs.forEach((m) => { m.full = obsFull.has(m.key) })
     const lmk = (profile?.landmarks ?? []).map((l, i) => {
@@ -611,7 +612,7 @@ export function VerticalProfile({
       const cx = clampX(xOf(l.distNm), 7), groundY = yOf(baseFt)
       const tipY = yOf(Math.round(baseFt + eh.heightM * FT_PER_M))
       return {
-        key: `lmk-${i}`, kind: l.kind, cx, cy: groundY, full: false, estimated: eh.estimated,
+        key: `lmk-${i}`, kind: l.kind, cx, cy: groundY, tipY, full: false, estimated: eh.estimated,
         shape: obstacleSymbol(LANDMARK_SHAPE_KIND[l.kind] ?? 'tower', cx, tipY, groundY, eh.estimated),
       }
     })
@@ -624,11 +625,34 @@ export function VerticalProfile({
       return {
         key: `poi-${i}`, kind: p.kind, subtype: p.subtype, towered: p.towered, label: p.label,
         cx: clampX(xOf(p.distNm), 6), cy: yOf(baseFt),
-        priority: p.kind === 'aerodrome' ? (p.towered ? 4 : 3) : p.kind === 'navaid' ? 2 : 1, labelled: false,
+        priority: p.kind === 'aerodrome' ? (p.towered ? 4 : 3) : p.kind === 'navaid' ? 2 : 1, labelPos: undefined as PlacedLabel | undefined,
       }
     })
-    const poiLabelled = declutterMarks(pois.filter((m) => m.label).map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), 46)
-    pois.forEach((m) => { m.labelled = poiLabelled.has(m.key) })
+    // Names (the obstacle that sets the MSA, aerodromes, navaids, reporting
+    // points) are placed by rectangle: each tries above / below / beside its
+    // symbol and takes the first spot clear of every symbol and other label.
+    // Same logic as web (@open-vfr/shared/profileLabels).
+    const sym = (cx: number, top: number, bottom: number, half: number): BoxRect => ({ left: cx - half, right: cx + half, top, bottom })
+    const obsBox = (m: (typeof obs)[number]) => !m.full ? sym(m.cx, m.cy - 3, m.cy + 3, 3)
+      : m.shape ? sym(m.cx, m.cy, m.groundY, 7) : sym(m.cx, m.cy - 16, Math.max(m.cy, m.groundY), 8)
+    const avoid: BoxRect[] = [
+      ...obs.map(obsBox),
+      ...lmk.map((m) => !m.full ? sym(m.cx, m.cy - 2, m.cy + 2, 2)
+        : m.shape ? sym(m.cx, m.tipY, m.cy, 7) : sym(m.cx, m.cy - 14, m.cy, 7)),
+      ...pois.map((m) => sym(m.cx, m.cy - 6, m.cy + 6, 6)),
+    ]
+    const requests: LabelRequest[] = [
+      ...obs.filter((m) => m.limiting && m.label).map((m) => {
+        const b = obsBox(m)
+        return { id: m.key, x: m.cx, top: b.top, bottom: b.bottom, halfW: 8, w: obstacleLabelW(m.label), h: 12, priority: m.priority }
+      }),
+      ...pois.filter((m) => m.label).map((m) => ({
+        id: m.key, x: m.cx, top: m.cy - 6, bottom: m.cy + 6, halfW: 6, w: poiLabelW(m.label), h: 11, priority: m.priority,
+      })),
+    ]
+    const placed = placeLabels(requests, avoid, { left: MARGIN_L, right: MARGIN_L + plotW, top: MARGIN_T + 14, bottom: MARGIN_T + plotH - 2 })
+    obs.forEach((m) => { m.labelPos = placed.get(m.key) })
+    pois.forEach((m) => { m.labelPos = placed.get(m.key) })
     return { obstacleMarks: obs, landmarkMarks: lmk, poiMarks: pois }
   }, [profile, terrainPts, getMsa, msaMargins, xOf, yOf, totalNm, waypoints, poiSets])
   const maxScrollX  = Math.max(0, contentW - chartW)
@@ -1632,23 +1656,18 @@ export function VerticalProfile({
                   ) : null)}
                 </Svg>
 
-                {obstacleMarks.filter((m) => m.labelled).map((m) => {
-                  const nearRight = m.cx > xOf(totalNm) - 70
-                  const nearLeft = m.cx < xOf(0) + 70
-                  const ty = m.cy - 16 < MARGIN_T + 12 ? m.cy + 22 : m.cy - 16
-                  return (
-                    <Text
-                      key={`lim-${m.key}`}
-                      style={{
-                        position: 'absolute', top: ty - 10, fontSize: 10, fontWeight: '700', color: 'rgba(239,68,68,0.95)',
-                        textShadowColor: 'rgba(0,0,0,0.85)', textShadowRadius: 2, textShadowOffset: { width: 0, height: 0 },
-                        ...(nearRight ? { right: contentW - m.cx - 4 } : nearLeft ? { left: xOf(0) + 2 } : { left: m.cx - 55, width: 110, textAlign: 'center' as const }),
-                      }}
-                      numberOfLines={1}
-                      pointerEvents="none"
-                    >{m.label}</Text>
-                  )
-                })}
+                {obstacleMarks.filter((m) => m.labelPos).map((m) => (
+                  <Text
+                    key={`lim-${m.key}`}
+                    style={{
+                      position: 'absolute', left: m.labelPos!.left, top: m.labelPos!.baseline - 10, width: obstacleLabelW(m.label) + 6,
+                      fontSize: 10, fontWeight: '700', color: 'rgba(239,68,68,0.95)',
+                      textShadowColor: 'rgba(0,0,0,0.85)', textShadowRadius: 2, textShadowOffset: { width: 0, height: 0 },
+                    }}
+                    numberOfLines={1}
+                    pointerEvents="none"
+                  >{m.label}</Text>
+                ))}
 
                 {/* Aerodromes, reporting points, navaids (own distance per kind) */}
                 {poiMarks.map((m) => (
@@ -1667,10 +1686,10 @@ export function VerticalProfile({
                     {m.kind === 'reporting' && (
                       <Text style={{ position: 'absolute', left: m.cx - 5.5, top: m.cy - 8, fontSize: 11, lineHeight: 13, color: '#facc15' }}>{'▲'}</Text>
                     )}
-                    {m.labelled && (
+                    {m.labelPos && (
                       <Text
                         style={{
-                          position: 'absolute', left: m.cx - 30, width: 60, top: m.cy - 21, textAlign: 'center', fontSize: 9,
+                          position: 'absolute', left: m.labelPos.left, width: poiLabelW(m.label) + 6, top: m.labelPos.baseline - 9, fontSize: 9,
                           fontWeight: m.kind === 'aerodrome' ? '700' : '400', color: '#cbd5e1',
                           textShadowColor: 'rgba(0,0,0,0.85)', textShadowRadius: 2, textShadowOffset: { width: 0, height: 0 },
                         }}

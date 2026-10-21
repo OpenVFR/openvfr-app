@@ -1,6 +1,6 @@
 import { useChartH } from '../utils/vrChartHeight'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef, type ReactNode } from 'react'
-import { pickWaypointLabels, estimateLabelWidth } from '@open-vfr/shared/profileLabels'
+import { pickWaypointLabels, estimateLabelWidth, placeLabels, type BoxRect, type LabelRequest, type PlacedLabel } from '@open-vfr/shared/profileLabels'
 import { airspaceOutlines, airspaceChips, layoutAirspaceChips } from '@open-vfr/shared/airspaceOutline'
 import {
   cloudLayerPaths, cloudLayerLabel, cloudGlyphHeight, cloudOpacityForOffset, cloudReportOffRouteNm,
@@ -17,7 +17,7 @@ import { useMsaMargins } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
 import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
-import { obstacleSymbol, polyPath, ESTIMATED_DASH, type SymbolPrim } from '@open-vfr/shared/obstacleSymbol'
+import { obstacleSymbol, polyPath, MIN_FULL_HEIGHT_PX, ESTIMATED_DASH, type SymbolPrim } from '@open-vfr/shared/obstacleSymbol'
 import { effectiveHeight, obstacleTipsForMsa, limitingObstacleLabel, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
 import { legSpans, legMsaList, legBelowMsa, dragShownFt, altAtY, unreachedLegs, LEVEL_STEP_FT, DRAG_MIN_MOVE_PX, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { useMefGrids } from '../hooks/useMefGrids'
@@ -445,11 +445,9 @@ const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDist
 /** Pictograms closer than this (px) collapse to dots, highest obstacle first. */
 const OBSTACLE_MIN_GAP_PX = 14
 const LANDMARK_MIN_GAP_PX = 18
-/** Labels of aerodromes / reporting points / navaids closer than this (px) are thinned. */
-const POI_LABEL_GAP_PX = 46
 
-type ObstacleMark = { key: string; kind: string; cx: number; cy: number; groundY: number; opacity: number; limiting: boolean; priority: number; full: boolean; estimated: boolean; label: string; labelled: boolean }
-type PoiMark = { key: string; kind: string; subtype: string; towered: boolean; label: string; cx: number; cy: number; priority: number; labelled: boolean }
+type ObstacleMark = { key: string; kind: string; cx: number; cy: number; groundY: number; opacity: number; limiting: boolean; priority: number; full: boolean; estimated: boolean; label: string; labelPos?: PlacedLabel }
+type PoiMark = { key: string; kind: string; subtype: string; towered: boolean; label: string; cx: number; cy: number; priority: number; labelPos?: PlacedLabel }
 type LandmarkMark = { key: string; kind: string; cx: number; cy: number; tipY: number; groundY: number; full: boolean; estimated: boolean }
 
 /** Half-height of a leg's drag target around its level line (px). */
@@ -1083,12 +1081,9 @@ function VirtualRadar({
         key: `obs-${i}`, kind: o.kind, cx: clampX(L.xOf(o.distNm), 8), cy: L.yOf(tipFt), groundY: L.yOf(Math.max(0, baseFt)),
         opacity: obstacleOpacity(o.lateralNm, margins.abeamNm) * (eh.estimated ? 0.7 : 1), limiting,
         priority: limiting ? 1e9 + tipFt : tipFt, full: false, estimated: eh.estimated,
-        label: limiting ? limitingObstacleLabel(o.kind, o.name, tipFt, eh.estimated) : '', labelled: false,
+        label: limiting ? limitingObstacleLabel(o.kind, o.name, tipFt, eh.estimated) : '', labelPos: undefined as PlacedLabel | undefined,
       }
     })
-    // Only the obstacle(s) that set the MSA are named; labels that would overlap are thinned.
-    const obsLabelled = declutterMarks(obs.filter((m) => m.limiting).map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), 110)
-    obs.forEach((m) => { m.labelled = obsLabelled.has(m.key) })
     const obsFull = declutterMarks(obs.map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), OBSTACLE_MIN_GAP_PX)
     obs.forEach((m) => { m.full = obsFull.has(m.key) })
     const lmk = profile.landmarks.map((l, i) => {
@@ -1111,11 +1106,33 @@ function VirtualRadar({
       return {
         key: `poi-${i}`, kind: p.kind, subtype: p.subtype, towered: p.towered, label: p.label,
         cx: clampX(L.xOf(p.distNm), 6), cy: L.yOf(baseFt),
-        priority: p.kind === 'aerodrome' ? (p.towered ? 4 : 3) : p.kind === 'navaid' ? 2 : 1, labelled: false,
+        priority: p.kind === 'aerodrome' ? (p.towered ? 4 : 3) : p.kind === 'navaid' ? 2 : 1, labelPos: undefined as PlacedLabel | undefined,
       }
     })
-    const poiLabelled = declutterMarks(pois.filter((m) => m.label).map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), POI_LABEL_GAP_PX)
-    pois.forEach((m) => { m.labelled = poiLabelled.has(m.key) })
+    // Names (the obstacle that sets the MSA, aerodromes, navaids, reporting
+    // points) are placed by rectangle: each tries above / below / beside its
+    // symbol and takes the first spot clear of every symbol and other label.
+    const sym = (cx: number, top: number, bottom: number, half: number): BoxRect => ({ left: cx - half, right: cx + half, top, bottom })
+    const obsBox = (m: (typeof obs)[number]) => !m.full ? sym(m.cx, m.cy - 3, m.cy + 3, 3)
+      : m.groundY - m.cy >= MIN_FULL_HEIGHT_PX ? sym(m.cx, m.cy, m.groundY, 7) : sym(m.cx, m.cy - 16, Math.max(m.cy, m.groundY), 8)
+    const avoid: BoxRect[] = [
+      ...obs.map(obsBox),
+      ...lmk.map((m) => !m.full ? sym(m.cx, m.cy - 2, m.cy + 2, 2)
+        : m.groundY - m.tipY >= MIN_FULL_HEIGHT_PX ? sym(m.cx, m.tipY, m.groundY, 7) : sym(m.cx, m.cy - 14, m.cy, 7)),
+      ...pois.map((m) => sym(m.cx, m.cy - 6, m.cy + 6, 6)),
+    ]
+    const requests: LabelRequest[] = [
+      ...obs.filter((m) => m.limiting && m.label).map((m) => {
+        const b = obsBox(m)
+        return { id: m.key, x: m.cx, top: b.top, bottom: b.bottom, halfW: 8, w: Math.ceil(estimateLabelWidth(m.label, Infinity) * 1.1), h: 12, priority: m.priority }
+      }),
+      ...pois.filter((m) => m.label).map((m) => ({
+        id: m.key, x: m.cx, top: m.cy - 6, bottom: m.cy + 6, halfW: 6, w: Math.ceil(estimateLabelWidth(m.label, Infinity) * 0.9), h: 11, priority: m.priority,
+      })),
+    ]
+    const placed = placeLabels(requests, avoid, { left: L.plotLeft, right: L.plotRight, top: L.plotTop + 14, bottom: L.plotBottom - 2 })
+    obs.forEach((m) => { m.labelPos = placed.get(m.key) })
+    pois.forEach((m) => { m.labelPos = placed.get(m.key) })
     return { obstacleMarks: obs, landmarkMarks: lmk, poiMarks: pois }
   }, [profile, layout, terrainPts, getMsa, msaMargins, waypoints, poiSets])
 
@@ -1257,16 +1274,11 @@ function VirtualRadar({
           : <circle key={m.key} cx={m.cx} cy={m.cy} r={1.6} fill="rgba(150,150,150,0.8)" />
         })}
 
-        {obstacleMarks.filter((m) => m.labelled).map((m) => {
-          const nearRight = m.cx > L.xOf(L.totalNm) - 70
-          const nearLeft = m.cx < L.xOf(0) + 70
-          const ty = m.cy - 16 < L.plotTop + 12 ? m.cy + 22 : m.cy - 16
-          return (
-            <text key={`lim-${m.key}`} x={nearLeft ? L.xOf(0) + 2 : m.cx} y={ty} textAnchor={nearRight ? 'end' : nearLeft ? 'start' : 'middle'} fontSize={10} fontWeight={600} fill={DANGER_COLOR} {...HALO}>
-              {m.label}
-            </text>
-          )
-        })}
+        {obstacleMarks.filter((m) => m.labelPos).map((m) => (
+          <text key={`lim-${m.key}`} x={m.labelPos!.left} y={m.labelPos!.baseline} textAnchor="start" fontSize={10} fontWeight={600} fill={DANGER_COLOR} {...HALO}>
+            {m.label}
+          </text>
+        ))}
 
         {/* ── Aerodromes, reporting points, navaids (own distance per kind) ── */}
         {poiMarks.map((m) => (
@@ -1276,8 +1288,8 @@ function VirtualRadar({
               : <circle cx={m.cx} cy={m.cy} r={5} fill={m.towered ? '#c084fc' : '#60a5fa'} stroke="#fff" strokeWidth={1} />)}
             {m.kind === 'navaid' && <path d={`M${m.cx},${m.cy - 5} L${m.cx + 5},${m.cy} L${m.cx},${m.cy + 5} L${m.cx - 5},${m.cy} Z`} fill="#34d399" stroke="#fff" strokeWidth={1} />}
             {m.kind === 'reporting' && <path d={`M${m.cx},${m.cy - 5} L${m.cx + 4.5},${m.cy + 3} L${m.cx - 4.5},${m.cy + 3} Z`} fill="#facc15" stroke="#fff" strokeWidth={1} />}
-            {m.labelled && (
-              <text x={m.cx} y={m.cy - 9} textAnchor="middle" fontSize={9} fontWeight={m.kind === 'aerodrome' ? 700 : 400} fill="var(--text-secondary)" {...HALO}>{m.label}</text>
+            {m.labelPos && (
+              <text x={m.labelPos.left} y={m.labelPos.baseline} textAnchor="start" fontSize={9} fontWeight={m.kind === 'aerodrome' ? 700 : 400} fill="var(--text-secondary)" {...HALO}>{m.label}</text>
             )}
           </g>
         ))}

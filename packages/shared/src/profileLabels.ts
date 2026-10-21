@@ -44,3 +44,78 @@ export function pickWaypointLabels(rects: readonly LabelRect[], minLeft: number,
   }
   return kept
 }
+
+// ---------------------------------------------------------------------------
+// Rectangle label placement (obstacle names, aerodrome / navaid / reporting
+// point names). Each label tries a few spots around its symbol and takes the
+// first one that touches neither another label, any symbol, nor the chart edge;
+// if none is free it is not drawn. Labels are placed by priority, so the
+// important ones keep the best spot and the rest fit around them.
+// ---------------------------------------------------------------------------
+
+export type BoxRect = { left: number; top: number; right: number; bottom: number }
+
+export interface LabelRequest {
+  id: string
+  /** Symbol anchor x (px). */
+  x: number
+  /** Top and bottom (px, y down) of the symbol this label names. */
+  top: number
+  bottom: number
+  /** Symbol half width, so side-shifted labels clear it. */
+  halfW: number
+  /** Label box size (px). */
+  w: number
+  h: number
+  priority: number
+}
+
+/** Where to draw a label: left edge x, text baseline y (draw with text-anchor start). */
+export interface PlacedLabel { left: number; baseline: number }
+
+const overlaps = (a: BoxRect, b: BoxRect, pad: number) =>
+  a.left < b.right + pad && a.right > b.left - pad && a.top < b.bottom + pad && a.bottom > b.top - pad
+
+/**
+ * Greedy placement by priority (highest first, then left to right). Candidate
+ * spots, in order: above centred, below centred, above/below shifted to the
+ * right and to the left of the symbol, then a second row above and below.
+ * `avoid` holds every symbol (and anything else that must stay readable);
+ * placed labels are added to it as it goes. `bounds` is the area labels may use.
+ */
+export function placeLabels(
+  requests: readonly LabelRequest[],
+  avoid: readonly BoxRect[],
+  bounds: BoxRect,
+  pad = 1,
+): Map<string, PlacedLabel> {
+  const out = new Map<string, PlacedLabel>()
+  const taken: BoxRect[] = [...avoid]
+  const order = [...requests].sort((a, b) => b.priority - a.priority || a.x - b.x)
+  for (const r of order) {
+    if (r.w > bounds.right - bounds.left) continue
+    const aboveBottom = r.top - 2
+    const belowTop = r.bottom + 2
+    const spots: { left: number; top: number }[] = []
+    const mid = r.x - r.w / 2
+    const right = r.x + r.halfW
+    const left = r.x - r.halfW - r.w
+    for (const row of [0, 1]) {
+      const aTop = aboveBottom - r.h - row * (r.h + 1)
+      const bTop = belowTop + row * (r.h + 1)
+      spots.push({ left: mid, top: aTop }, { left: mid, top: bTop })
+      if (row === 0) spots.push({ left: right, top: aTop }, { left, top: aTop }, { left: right, top: bTop }, { left, top: bTop })
+    }
+    for (const s of spots) {
+      // Slide into the usable area instead of discarding a label that only pokes out sideways.
+      const l = Math.max(bounds.left, Math.min(bounds.right - r.w, s.left))
+      const box: BoxRect = { left: l, top: s.top, right: l + r.w, bottom: s.top + r.h }
+      if (box.top < bounds.top || box.bottom > bounds.bottom) continue
+      if (taken.some((t) => overlaps(box, t, pad))) continue
+      taken.push(box)
+      out.set(r.id, { left: l, baseline: box.bottom - 2 })
+      break
+    }
+  }
+  return out
+}
