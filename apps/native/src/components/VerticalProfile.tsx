@@ -574,7 +574,7 @@ export function VerticalProfile({
 
   // Obstacle and landmark symbols. Obstacles are collected out to the abeam
   // distance the MSA uses and fade with distance off track; the one that sets
-  // the MSA gets a ring; a crowd collapses to dots (highest first keeps its
+  // the MSA is named in red; a crowd collapses to dots (highest first keeps its
   // pictogram). Landmarks thin out the same way, lower priority. Mirrors web.
   const { obstacleMarks, landmarkMarks, poiMarks } = useMemo(() => {
     const margins = resolveMsaMargins(msaMargins)
@@ -1586,9 +1586,6 @@ export function VerticalProfile({
                           <View style={{ position: 'absolute', width: 4, height: 4, borderRadius: 2, left: m.cx - 2, top: m.groundY - 2, backgroundColor: 'rgba(220,80,60,0.95)' }} />
                         </>
                       )}
-                      {m.limiting && (
-                        <View style={{ position: 'absolute', width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: 'rgba(239,68,68,0.95)', left: m.cx - 11, top: m.cy - 18 }} />
-                      )}
                       <Image
                         source={icon}
                         style={{ position: 'absolute', width: size, height: size, left: m.cx - size / 2, top: m.cy - size }}
@@ -1619,7 +1616,7 @@ export function VerticalProfile({
                 {/* Full-height shapes of obstacles and landmarks (ground to tip), one layer.
                     Dashed = height is an assumption, not data. */}
                 <Svg width={contentW} height={chartH} style={{ position: 'absolute', left: 0, top: 0 }} pointerEvents="none">
-                  {[...landmarkMarks.map((m) => ({ ...m, opacity: m.estimated ? 0.7 : 1, limiting: false, cyRing: 0 })), ...obstacleMarks.map((m) => ({ ...m, cyRing: m.cy }))].map((m) => m.shape ? (
+                  {[...landmarkMarks.map((m) => ({ ...m, opacity: m.estimated ? 0.7 : 1 })), ...obstacleMarks].map((m) => m.shape ? (
                     <G key={`shape-${m.key}`} opacity={m.opacity}>
                       {m.shape.map((p, k) => {
                         const dash = p.dash ? ESTIMATED_DASH.replace(' ', ',') : undefined
@@ -1631,7 +1628,6 @@ export function VerticalProfile({
                               ? <Path key={k} d={polyPath(p.pts)} fill={p.dash ? 'none' : p.fill} stroke={p.dash ? (p.stroke ?? p.fill) : p.stroke} strokeWidth={1} strokeDasharray={dash} />
                               : <Circle key={k} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill} />
                       })}
-                      {m.limiting && <Circle cx={m.cx} cy={m.cyRing} r={11} fill="none" stroke="rgba(239,68,68,0.95)" strokeWidth={1.5} />}
                     </G>
                   ) : null)}
                 </Svg>

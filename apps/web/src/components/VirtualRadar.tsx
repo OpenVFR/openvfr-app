@@ -1062,7 +1062,7 @@ function VirtualRadar({
   // rebuilds the aircraft marker and trajectory, not airspace, clouds, icons.
   // Obstacle and landmark symbols. Obstacles are collected out to the abeam
   // distance the MSA uses and fade with distance off track; the one that sets
-  // the MSA gets a ring; a crowd collapses to dots (highest first keeps its
+  // the MSA is named in red; a crowd collapses to dots (highest first keeps its
   // pictogram). Landmarks thin out the same way, lower priority.
   const { obstacleMarks, landmarkMarks, poiMarks } = useMemo(() => {
     const none = { obstacleMarks: [] as ObstacleMark[], landmarkMarks: [] as LandmarkMark[], poiMarks: [] as PoiMark[] }
@@ -1195,7 +1195,6 @@ function VirtualRadar({
             return (
               <g key={m.key} opacity={m.opacity}>
                 {renderShape(shape)}
-                {m.limiting && <circle cx={m.cx} cy={m.cy} r={11} fill="none" stroke={DANGER_COLOR} strokeWidth={1.5} />}
               </g>
             )
           }
@@ -1207,7 +1206,6 @@ function VirtualRadar({
                   <circle cx={m.cx} cy={m.groundY} r={2} fill="rgba(220,80,60,0.95)" />
                 </>
               )}
-              {m.limiting && <circle cx={m.cx} cy={m.cy - 7} r={11} fill="none" stroke={DANGER_COLOR} strokeWidth={1.5} />}
               {renderIconAt(`${m.key}-i`, m.cx, m.cy, 16, iconMarkup[`obs:${m.kind}`],
                 <circle cx={m.cx} cy={m.cy} r={3} fill="rgba(220,80,60,0.85)" stroke="rgba(0,0,0,0.4)" strokeWidth={1} />)}
             </g>
