@@ -27,7 +27,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, Image, PanResponder, type LayoutChangeEvent,
 } from 'react-native'
-import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
+import { GestureDetector, usePanGesture, usePinchGesture, useSimultaneousGestures } from 'react-native-gesture-handler'
 import Animated, { useSharedValue, useAnimatedStyle, withDecay, cancelAnimation } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
 import Svg, { ClipPath, Rect, Path, Line as SvgLine, Circle, Defs, LinearGradient, Stop, G, Text as SvgText } from 'react-native-svg'
@@ -59,7 +59,7 @@ import { effectiveHeight, obstacleTipsForMsa, limitingObstacleLabel, FT_PER_M } 
 import { useMefGrids } from '../hooks/useMefGrids'
 import { pickWaypointLabels, estimateLabelWidth } from '@open-vfr/shared/profileLabels'
 import {
-  profileChartLayout, profileYMax, declutterMarks, obstacleOpacity, isLimitingObstacle, altitudeTicks, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
+  profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, declutterMarks, obstacleOpacity, isLimitingObstacle, altitudeTicks, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
 } from '@open-vfr/shared/profileChart'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
 import { airspaceOutlines, airspaceChips, layoutAirspaceChips } from '@open-vfr/shared/airspaceOutline'
@@ -560,11 +560,14 @@ export function VerticalProfile({
   // stay legible (see MIN_PX_PER_NM comment above). contentW
   // is what actually gets drawn into the Svg; chartW is just the visible
   // clipping window. Geometry shared with web (@open-vfr/shared/profileChart).
+  // Zoom on the distance axis (1 = fitted / minimum legible): + / − buttons and a
+  // two-finger pinch. See zoomBy below.
+  const [zoom, setZoom] = useState(1)
   const layout = useMemo(() => profileChartLayout({
     viewportW: chartW, height: chartH,
     margin: { top: MARGIN_T, right: MARGIN_R, bottom: MARGIN_B, left: MARGIN_L },
-    totalNm, yMax, minPxPerNm: MIN_PX_PER_NM,
-  }), [chartW, chartH, totalNm, yMax])
+    totalNm, yMax, minPxPerNm: MIN_PX_PER_NM, zoom,
+  }), [chartW, chartH, totalNm, yMax, zoom])
   const { plotW, plotH, contentW, scrollable, xOf, yOf } = layout
 
   // Obstacle and landmark symbols. Obstacles are collected out to the abeam
@@ -706,6 +709,44 @@ export function VerticalProfile({
   // Runs on the UI thread: scroll offset and crosshair are shared values
   // read by animated styles, so dragging never re-renders the chart. The
   // map crosshair is reported to JS at most every HOVER_REPORT_MS.
+
+  // ── Zoom ────────────────────────────────────────────────────────────────
+  // A pinch previews as a cheap scaleX of the already-drawn content (UI
+  // thread, no re-render) and commits one real re-layout when the fingers
+  // lift; the buttons commit straight away. The route position under the
+  // pinch centre / viewport middle stays put (scrollAfterZoom).
+  const zoomRef = useRef(zoom); zoomRef.current = zoom
+  const layoutRef = useRef(layout); layoutRef.current = layout
+  const chartWRef = useRef(chartW); chartWRef.current = chartW
+  const pendingScrollRef = useRef<number | null>(null)
+  const pinchScale = useSharedValue(1)
+  const pinchFocal = useSharedValue(0)
+  const zoomSV = useSharedValue(1)
+  const maxRatioSV = useSharedValue(1)
+  const zoomBy = useCallback((factor: number, anchorPx?: number) => {
+    const L0 = layoutRef.current, vw = chartWRef.current
+    const base = L0.plotW / zoomRef.current
+    const next = clampProfileZoom(zoomRef.current * factor, base, L0.totalNm)
+    if (next === zoomRef.current) { pinchScale.value = 1; return }
+    const newPlotW = base * next
+    pendingScrollRef.current = scrollAfterZoom({
+      scrollLeft: scrollXRef.current, anchorPx: anchorPx ?? vw / 2, plotLeft: L0.plotLeft,
+      oldPlotW: L0.plotW, newPlotW, viewportW: vw, newContentW: newPlotW + MARGIN_L + MARGIN_R,
+    })
+    zoomRef.current = next
+    setZoom(next)
+  }, [pinchScale])
+  const commitPinch = useCallback((scale: number, focal: number) => {
+    scrollXRef.current = scrollX.value
+    zoomBy(scale, focal)
+  }, [zoomBy, scrollX])
+  useEffect(() => {
+    zoomSV.value = zoom
+    maxRatioSV.value = clampProfileZoom(1e9, plotW / zoom, totalNm) / zoom
+    if (pendingScrollRef.current != null) { setScroll(pendingScrollRef.current); pendingScrollRef.current = null }
+    pinchScale.value = 1
+  }, [zoom, plotW, totalNm, zoomSV, maxRatioSV, pinchScale, setScroll])
+
   const totalNmSV = useSharedValue(totalNm)
   const plotWSV   = useSharedValue(plotW)
   useEffect(() => { totalNmSV.value = totalNm; plotWSV.value = plotW }, [totalNm, plotW, totalNmSV, plotWSV])
@@ -873,7 +914,27 @@ export function VerticalProfile({
       scheduleOnRN(dragEnded)
     },
   })
-  const contentStyle = useAnimatedStyle(() => ({ transform: [{ translateX: -scrollX.value }] }))
+  const pinch = usePinchGesture({
+    onUpdate: (e) => {
+      'worklet'
+      // keep the live scale inside [1 / zoom, max] so the preview never overshoots the limits
+      pinchScale.value = Math.max(1 / zoomSV.value, Math.min(maxRatioSV.value, e.scale))
+      pinchFocal.value = e.focalX
+    },
+    onFinalize: () => {
+      'worklet'
+      if (pinchScale.value !== 1) scheduleOnRN(commitPinch, pinchScale.value, pinchFocal.value)
+    },
+  })
+  const chartGesture = useSimultaneousGestures(scrub, pinch)
+  const contentStyle = useAnimatedStyle(() => {
+    const sc = pinchScale.value
+    if (sc === 1) return { transform: [{ translateX: -scrollX.value }] }
+    // scaleX is about the content's centre (RN default), so fold that into the
+    // translation: the content point under the pinch focal point stays put.
+    const cx = (plotWSV.value + MARGIN_L + MARGIN_R) / 2
+    return { transform: [{ translateX: pinchFocal.value - sc * (pinchFocal.value + scrollX.value) + cx * (sc - 1) }, { scaleX: sc }] }
+  })
   const crosshairStyle = useAnimatedStyle(() => ({
     opacity: hoverX.value < 0 ? 0 : 1,
     transform: [{ translateX: Math.max(0, hoverX.value) }],
@@ -1117,6 +1178,12 @@ export function VerticalProfile({
               {windAloftStatus === 'retrying' ? 'Winds: retrying\u2026' : 'Winds unavailable'}
             </Text>
           )}
+          <TouchableOpacity style={[styles.projBtn, zoom <= 1 && { opacity: 0.35 }]} onPress={() => zoomBy(1 / 1.5)} disabled={zoom <= 1} accessibilityLabel="Zoom out">
+            <Text style={styles.projBtnTxt}>−</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.projBtn} onPress={() => zoomBy(1.5)} accessibilityLabel="Zoom in">
+            <Text style={styles.projBtnTxt}>+</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.projBtn, showWindAloft && styles.projBtnOn]}
             onPress={() => setShowWindAloft(v => !v)}
@@ -1179,7 +1246,7 @@ export function VerticalProfile({
                   Touch handling lives here (fixed viewport), not on the
                   translated inner view, so the gesture's x stays in stable
                   viewport coordinates regardless of scroll. */}
-              <GestureDetector gesture={scrub}>
+              <GestureDetector gesture={chartGesture}>
               <View style={{ width: chartW, height: chartH, overflow: 'hidden' }}>
               <Animated.View style={[{ width: contentW, height: chartH }, contentStyle]}>
               <Svg width={contentW} height={chartH}>

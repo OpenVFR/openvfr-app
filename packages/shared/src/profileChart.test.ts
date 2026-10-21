@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   profileChartLayout, profileYMax, declutterMarks, obstacleOpacity, isLimitingObstacle, altitudeTicks, formatAltitudeTick, formatAltitudeFt, distanceTicks,
-  polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex,
+  polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, clampProfileZoom, scrollAfterZoom, MAX_PROFILE_PX_PER_NM,
 } from './profileChart'
 
 const margin = { top: 10, right: 10, bottom: 30, left: 40 }
@@ -154,5 +154,29 @@ describe('isLimitingObstacle', () => {
     expect(isLimitingObstacle(2650, 500, 3300)).toBe(false)
     expect(isLimitingObstacle(0, 500, 3000)).toBe(false)
     expect(isLimitingObstacle(2650, 500, 0)).toBe(false)
+  })
+})
+
+describe('profile zoom', () => {
+  const base = { viewportW: 440, height: 200, margin, totalNm: 100, yMax: 5000, minPxPerNm: 1 }
+  it('zoom 1 is the unchanged layout; zoom widens the plot', () => {
+    const a = profileChartLayout(base), b = profileChartLayout({ ...base, zoom: 3 })
+    expect(a.plotW).toBe(390)
+    expect(b.plotW).toBe(1170)
+    expect(b.scrollable).toBe(true)
+  })
+  it('clamps below 1 and above the max px/NM', () => {
+    expect(clampProfileZoom(0.2, 390, 100)).toBe(1)
+    expect(clampProfileZoom(1e6, 390, 100)).toBeCloseTo((MAX_PROFILE_PX_PER_NM * 100) / 390)
+    expect(clampProfileZoom(NaN, 390, 100)).toBe(1)
+  })
+  it('keeps the anchored route position under the same viewport x', () => {
+    const sl = scrollAfterZoom({ scrollLeft: 100, anchorPx: 200, plotLeft: 40, oldPlotW: 800, newPlotW: 1600, viewportW: 440, newContentW: 1650 })
+    const nmBefore = (100 + 200 - 40) / 800, nmAfter = (sl + 200 - 40) / 1600
+    expect(nmAfter).toBeCloseTo(nmBefore)
+  })
+  it('never scrolls outside the content', () => {
+    expect(scrollAfterZoom({ scrollLeft: 0, anchorPx: 0, plotLeft: 40, oldPlotW: 800, newPlotW: 400, viewportW: 440, newContentW: 450 })).toBeGreaterThanOrEqual(0)
+    expect(scrollAfterZoom({ scrollLeft: 5000, anchorPx: 400, plotLeft: 40, oldPlotW: 800, newPlotW: 800, viewportW: 440, newContentW: 850 })).toBe(410)
   })
 })

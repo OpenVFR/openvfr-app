@@ -31,6 +31,32 @@ export interface ProfileChartLayout {
   nmAtX: (px: number) => number
 }
 
+/** Most px per NM the zoom may reach (about 1 NM per 3 cm on a phone). */
+export const MAX_PROFILE_PX_PER_NM = 120
+
+/** Zoom factor limits: 1 (fit / minimum legible) up to MAX_PROFILE_PX_PER_NM. */
+export function clampProfileZoom(zoom: number, basePlotW: number, totalNm: number): number {
+  const max = basePlotW > 0 && totalNm > 0 ? Math.max(1, (MAX_PROFILE_PX_PER_NM * totalNm) / basePlotW) : 1
+  if (!Number.isFinite(zoom)) return 1
+  return Math.max(1, Math.min(max, zoom))
+}
+
+/**
+ * New horizontal scroll offset after the plot width changed from `oldPlotW` to
+ * `newPlotW`, keeping the route position under viewport x `anchorPx` still
+ * (pinch centre, cursor, or the viewport middle for the zoom buttons).
+ */
+export function scrollAfterZoom(o: {
+  scrollLeft: number; anchorPx: number; plotLeft: number
+  oldPlotW: number; newPlotW: number; viewportW: number; newContentW: number
+}): number {
+  const { scrollLeft, anchorPx, plotLeft, oldPlotW, newPlotW, viewportW, newContentW } = o
+  const frac = oldPlotW > 0 ? (scrollLeft + anchorPx - plotLeft) / oldPlotW : 0
+  const next = plotLeft + frac * newPlotW - anchorPx
+  const maxScroll = Math.max(0, newContentW - viewportW)
+  return Math.max(0, Math.min(maxScroll, next))
+}
+
 /**
  * Plot geometry for a route of `totalNm` drawn into a viewport `viewportW` px
  * wide. The plot never gets narrower than `minPxPerNm` per NM: a long route
@@ -44,10 +70,13 @@ export function profileChartLayout(o: {
   totalNm: number
   yMax: number
   minPxPerNm: number
+  /** User zoom on the distance axis, 1 = the base width (default). */
+  zoom?: number
 }): ProfileChartLayout {
   const { viewportW, height, margin: m, totalNm, yMax, minPxPerNm } = o
   const availablePlotW = Math.max(0, viewportW - m.left - m.right)
-  const plotW = Math.max(availablePlotW, totalNm * minPxPerNm)
+  const basePlotW = Math.max(availablePlotW, totalNm * minPxPerNm)
+  const plotW = basePlotW * clampProfileZoom(o.zoom ?? 1, basePlotW, totalNm)
   const plotH = Math.max(0, height - m.top - m.bottom)
   const contentW = plotW + m.left + m.right
   const plotLeft = m.left
