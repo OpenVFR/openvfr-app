@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  unionRectLoops, airspaceOutlines, airspaceChips, layoutAirspaceChips,
+  unionRectLoops, interiorFloors, airspaceOutlines, airspaceChips, layoutAirspaceChips,
   type OutlineChip, type PlacedChip,
 } from './airspaceOutline'
 
@@ -227,5 +227,45 @@ describe('layoutAirspaceChips', () => {
     ])
     expect(chips[0]).toMatchObject({ x: 0, y: 2000, floorFt: 0 })
     expect(layoutAirspaceChips(chips, xOf, yOf)).toHaveLength(1)
+  })
+})
+
+describe('interiorFloors', () => {
+  it('returns the floor of a sector lying inside a lower one, and nothing for a separate sector', () => {
+    const low = { x1: 0, x2: 30, y1: 1500, y2: 6500 }
+    const inner = { x1: 10, x2: 20, y1: 2500, y2: 6500 }
+    expect(interiorFloors([low, inner])).toEqual([[10, 2500, 20, 2500]])
+    expect(interiorFloors([low, { x1: 40, x2: 50, y1: 2500, y2: 6500 }])).toEqual([])
+  })
+  it('keeps only the part of a floor that lies inside the lower sector (partial overlap)', () => {
+    const low = { x1: 0, x2: 30, y1: 1500, y2: 6500 }
+    const sticksOut = { x1: 20, x2: 50, y1: 2500, y2: 6500 }
+    expect(interiorFloors([low, sticksOut])).toEqual([[20, 2500, 30, 2500]])
+  })
+
+  it('airspaceOutlines reports the inner floor next to the outline, and drops it from the segments', () => {
+    const band = (lower_ft: number, entryNm: number, exitNm: number) =>
+      ({ lower_ft, upper_ft: 6500, entryNm, exitNm, fill: 'f', border: 'b' })
+    const [shape] = airspaceOutlines([band(1500, 0, 30), band(2500, 10, 20)])
+    expect(shape.innerFloors).toEqual([[10, 2500, 20, 2500]])
+    expect(shape.segments.some(([x1, y1, x2, y2]) => y1 === 2500 && y2 === 2500 && x1 >= 10 && x2 <= 20)).toBe(false)
+  })
+  it('draws no ceiling line for a band whose real ceiling is above the chart', () => {
+    const band = (upper_ft: number) => ({ lower_ft: 1500, upper_ft, entryNm: 0, exitNm: 10, fill: 'f', border: 'b' })
+    const ceilingAt = (segs: [number, number, number, number][], y: number) => segs.some(([, y1, , y2]) => y1 === y && y2 === y)
+    const [capped] = airspaceOutlines([band(19500)], 7000)
+    expect(ceilingAt(capped.segments, 7000)).toBe(false)
+    expect(ceilingAt(capped.segments, 1500)).toBe(true)
+    const [low] = airspaceOutlines([band(6500)], 7000)
+    expect(ceilingAt(low.segments, 6500)).toBe(true)
+  })
+  it('draws no side wall where the route starts or ends inside the airspace', () => {
+    const band = { lower_ft: 1500, upper_ft: 6500, entryNm: 0, exitNm: 10, fill: 'f', border: 'b' }
+    const wallAt = (segs: [number, number, number, number][], x: number) => segs.some(([x1, , x2]) => x1 === x && x2 === x)
+    const [closed] = airspaceOutlines([band])
+    expect(wallAt(closed.segments, 0)).toBe(true)
+    const [open] = airspaceOutlines([{ ...band, openStart: true }])
+    expect(wallAt(open.segments, 0)).toBe(false)
+    expect(wallAt(open.segments, 10)).toBe(true)
   })
 })

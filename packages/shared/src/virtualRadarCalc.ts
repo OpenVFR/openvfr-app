@@ -83,6 +83,9 @@ export type AirspaceCrossSection = {
   upperAgl?: boolean
   entryNm:  number   // distance along route where airspace starts
   exitNm:   number   // distance along route where airspace ends
+  /** The route starts / ends inside this airspace, so it does not really end at the chart edge. */
+  openStart?: boolean
+  openEnd?:   boolean
   fill:     string   // colour for the band fill
   border:   string   // colour for the band border
   /** Label chip: class letter (or designator for restricted areas) + first radio frequency. */
@@ -528,10 +531,28 @@ export function buildVirtualRadarProfile(
     maxDistNm = Math.min(totalNm, maxDistNm)
     if (maxDistNm <= minDistNm) continue
 
+    // A route can leave an area and come back (a TMA either side of another one):
+    // one band per stretch actually inside, not one band from first to last crossing.
+    // Each stretch between two crossings is tested at its midpoint.
+    const spans: [number, number][] = []
+    if (crossingDistsNm.length > 0) {
+      const cuts = [...new Set([0, totalNm, ...crossingDistsNm.map((d) => Math.min(totalNm, Math.max(0, d)))])].sort((a, b) => a - b)
+      for (let k = 0; k < cuts.length - 1; k++) {
+        const a = cuts[k], b = cuts[k + 1]
+        if (b - a < 0.02) continue
+        const mid = along(routeLine, ((a + b) / 2) / 0.539957, { units: 'kilometers' })
+        if (!booleanPointInPolygon(mid, feature as Feature<Polygon | MultiPolygon>)) continue
+        const last = spans[spans.length - 1]
+        if (last && a - last[1] < 0.05) last[1] = b
+        else spans.push([a, b])
+      }
+    }
+    if (spans.length === 0) spans.push([minDistNm, maxDistNm])
+
     const bandClass = airspaceDisplayClass(String(p.class ?? ''), String(p.type ?? ''))
     const colours = airspaceColours(bandClass, String(p.type ?? ''))
 
-    airspaceBands.push({
+    for (const [spanMin, spanMax] of spans) airspaceBands.push({
       class:    bandClass,
       type:     String(p.type     ?? ''),
       name:     String(p.name     ?? ''),
@@ -539,8 +560,10 @@ export function buildVirtualRadarProfile(
       upper_ft: upperFt,
       lowerAgl: limitIsAgl(p.lower) && lowerFt > 0 ? true : undefined,
       upperAgl: limitIsAgl(p.upper) ? true : undefined,
-      entryNm:  Math.round(minDistNm * 10) / 10,
-      exitNm:   Math.round(maxDistNm * 10) / 10,
+      entryNm:  Math.round(spanMin * 10) / 10,
+      exitNm:   Math.round(spanMax * 10) / 10,
+      openStart: startInside && spanMin <= 0.05 ? true : undefined,
+      openEnd:   endInside && spanMax >= totalNm - 0.05 ? true : undefined,
       fill:     colours.fill,
       border:   colours.border,
       tag:      bandTag(bandClass, String(p.type ?? ''), String(p.name ?? '')),

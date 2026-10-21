@@ -240,12 +240,15 @@ export function cloudLabelWidth(text: string): number {
 export function placeCloudLabel(
   cx: number, yBase: number, glyphH: number, text: string,
   taken: LabelRect[], plotTop: number, plotBottom: number,
+  /** Label size relative to the default 9 px text (1 = default). */
+  textScale = 1,
 ): number {
-  const w = cloudLabelWidth(text)
-  const H = 10
-  const rectFor = (baseline: number): LabelRect => ({ x: cx - w / 2, y: baseline - 8, w, h: H })
-  const candidates = [yBase + 10, yBase - glyphH - 3, yBase + 21]
-  const fits = (b: number) => b - 8 >= plotTop && b + 2 <= plotBottom
+  const w = cloudLabelWidth(text) * textScale
+  const H = 10 * textScale
+  const asc = 8 * textScale
+  const rectFor = (baseline: number): LabelRect => ({ x: cx - w / 2, y: baseline - asc, w, h: H })
+  const candidates = [yBase + 10 * textScale, yBase - glyphH - 3, yBase + 21 * textScale]
+  const fits = (b: number) => b - asc >= plotTop && b + 2 <= plotBottom
   const pick = candidates.find((b) => fits(b) && !taken.some((t) => overlaps(rectFor(b), t)))
     ?? candidates.find(fits)
     ?? candidates[0]

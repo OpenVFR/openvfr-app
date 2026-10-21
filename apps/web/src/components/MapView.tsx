@@ -2715,10 +2715,10 @@ export default function MapView({ auth }: { auth: AuthState }) {
         type: 'circle',
         source: 'profile-cursor',
         paint: {
-          'circle-radius': 8,
-          'circle-color': 'rgba(250,204,21,0.25)',
+          'circle-radius': 10,
+          'circle-color': 'rgba(250,204,21,0.4)',
           'circle-stroke-color': '#facc15',
-          'circle-stroke-width': 2,
+          'circle-stroke-width': 3,
         },
       })
 
@@ -5034,6 +5034,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             <div className={css.vrRow}>
               <VirtualRadar
                 title={`LOOK-AHEAD · TRK ${Math.round(lookaheadHeadingDeg)}°`}
+                followAircraft
                 waypoints={lookaheadWaypoints}
                 legOverrides={lookaheadLegOverrides}
                 units={units}

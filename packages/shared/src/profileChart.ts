@@ -23,6 +23,8 @@ export interface ProfileChartLayout {
   scrollable: boolean
   totalNm: number
   yMax: number
+  /** Altitude at the plot bottom (0 unless the ground is high). */
+  yMin: number
   /** NM along the route -> px from the content's left edge. */
   xOf: (distNm: number) => number
   /** Feet AMSL -> px from the top. */
@@ -69,11 +71,14 @@ export function profileChartLayout(o: {
   margin: ChartMargin
   totalNm: number
   yMax: number
+  /** Altitude at the bottom of the plot (default 0). Raised for high ground so the route is not squashed. */
+  yMin?: number
   minPxPerNm: number
   /** User zoom on the distance axis, 1 = the base width (default). */
   zoom?: number
 }): ProfileChartLayout {
   const { viewportW, height, margin: m, totalNm, yMax, minPxPerNm } = o
+  const yMin = Math.max(0, Math.min(o.yMin ?? 0, yMax - 1))
   const availablePlotW = Math.max(0, viewportW - m.left - m.right)
   const basePlotW = Math.max(availablePlotW, totalNm * minPxPerNm)
   const plotW = basePlotW * clampProfileZoom(o.zoom ?? 1, basePlotW, totalNm)
@@ -86,9 +91,9 @@ export function profileChartLayout(o: {
     contentW, plotW, plotH, plotLeft, plotTop, plotBottom,
     plotRight: plotLeft + plotW,
     scrollable: contentW > viewportW + 0.5,
-    totalNm, yMax,
+    totalNm, yMax, yMin,
     xOf: (distNm) => plotLeft + (totalNm > 0 ? (distNm / totalNm) * plotW : 0),
-    yOf: (altFt) => plotBottom - (yMax > 0 ? (altFt / yMax) * plotH : 0),
+    yOf: (altFt) => plotBottom - (yMax > 0 ? ((altFt - yMin) / (yMax - yMin)) * plotH : 0),
     nmAtX: (px) => (plotW > 0 ? Math.max(0, Math.min(totalNm, ((px - plotLeft) / plotW) * totalNm)) : 0),
   }
 }
@@ -276,4 +281,25 @@ export function obstacleOpacity(lateralNm: number, abeamNm: number): number {
 export function isLimitingObstacle(tipFt: number, obstacleClearanceFt: number, msaFt: number): boolean {
   if (msaFt <= 0 || tipFt <= 0) return false
   return Math.ceil((tipFt + obstacleClearanceFt) / 100) * 100 >= msaFt
+}
+
+/**
+ * Altitude window for a live chart that follows the aircraft (no planned route).
+ * At least 3500 ft tall; grows to the aircraft's altitude (capped at 6000 ft) when
+ * high, and to 5 x the vertical speed so the climb or descent fits. Level flight keeps
+ * the aircraft near the top with ~1000 ft of sky above; a climb puts it 20 % up from
+ * the bottom, a descent 80 %, leaving room in the direction it is going.
+ * Both ends are rounded to 500 ft so the scale does not jitter with every GPS fix.
+ */
+export function liveAltitudeWindow(altFt: number, vsFpm = 0): { yMin: number; yMax: number } {
+  const alt = Number.isFinite(altFt) ? Math.max(0, altFt) : 0
+  let h = 3500
+  if (alt > 3500) h = Math.max(h, Math.min(alt, 6000))
+  if (vsFpm > 200) h = Math.max(h, vsFpm * 5)
+  else if (vsFpm < -200) h = Math.max(h, Math.min(-vsFpm * 5, alt + 1000))
+  const below = vsFpm > 200 ? h * 0.2 : vsFpm < -200 ? h * 0.8 : h - 1000
+  const bottom = Math.max(0, alt - below)
+  const yMin = Math.floor(bottom / 500) * 500
+  const yMax = Math.max(yMin + 2000, Math.ceil((bottom + h) / 500) * 500)
+  return { yMin, yMax }
 }

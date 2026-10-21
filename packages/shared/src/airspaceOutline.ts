@@ -19,6 +19,9 @@ export interface OutlineBand {
   upper_ft: number
   entryNm:  number
   exitNm:   number
+  /** The airspace continues past the chart's left / right edge: no side wall there. */
+  openStart?: boolean
+  openEnd?:   boolean
   fill:     string
   border:   string
 }
@@ -33,9 +36,12 @@ export interface OutlineShape {
    *  lying strictly inside another sector of the same style. Sectors that only
    *  touch keep the line between them. */
   segments: [number, number, number, number][]
+  /** Floors drawn through a lower sector of the same style (see interiorFloors). */
+  innerFloors?: [number, number, number, number][]
 }
 
-type Rect = { x1: number; x2: number; y1: number; y2: number }
+/** `openTop`: the real ceiling is above the chart, so no ceiling line is drawn at its top edge. */
+type Rect = { x1: number; x2: number; y1: number; y2: number; openTop?: boolean; openLeft?: boolean; openRight?: boolean }
 
 /** Boundary loops of the union of axis-aligned rectangles. */
 export function unionRectLoops(rects: Rect[]): [number, number][][] {
@@ -112,14 +118,15 @@ export function visibleEdges(rects: Rect[]): [number, number, number, number][] 
   for (const r of rects) {
     const xs = [...new Set([r.x1, r.x2, ...rects.flatMap((o) => [o.x1, o.x2]).filter((x) => x > r.x1 && x < r.x2)])].sort((a, b) => a - b)
     const ys = [...new Set([r.y1, r.y2, ...rects.flatMap((o) => [o.y1, o.y2]).filter((y) => y > r.y1 && y < r.y2)])].sort((a, b) => a - b)
-    for (const y of [r.y1, r.y2]) {
+    for (const y of r.openTop ? [r.y1] : [r.y1, r.y2]) {
       for (let i = 0; i < xs.length - 1; i++) {
         const key = `h|${y}|${xs[i]}|${xs[i + 1]}`
         if (seen.has(key) || inside((xs[i] + xs[i + 1]) / 2, y)) continue
         seen.add(key); h.push([y, xs[i], xs[i + 1]])
       }
     }
-    for (const x of [r.x1, r.x2]) {
+    for (const x of [r.openLeft ? null : r.x1, r.openRight ? null : r.x2]) {
+      if (x == null) continue
       for (let j = 0; j < ys.length - 1; j++) {
         const key = `v|${x}|${ys[j]}|${ys[j + 1]}`
         if (seen.has(key)) continue   // side edges are always kept, even inside another sector
@@ -144,6 +151,24 @@ export function visibleEdges(rects: Rect[]): [number, number, number, number][] 
   ]
 }
 
+/** Floor pieces of rectangles that `visibleEdges` drops because they lie inside another
+ *  rectangle. [x1, y, x2, y]. */
+export function interiorFloors(rects: Rect[]): [number, number, number, number][] {
+  const inside = (x: number, y: number) =>
+    rects.some((r) => x > r.x1 && x < r.x2 && y > r.y1 && y < r.y2)
+  const out: [number, number, number, number][] = []
+  const seen = new Set<string>()
+  for (const r of rects) {
+    const xs = [...new Set([r.x1, r.x2, ...rects.flatMap((o) => [o.x1, o.x2]).filter((x) => x > r.x1 && x < r.x2)])].sort((a, b) => a - b)
+    for (let i = 0; i < xs.length - 1; i++) {
+      const key = `${r.y1}|${xs[i]}|${xs[i + 1]}`
+      if (seen.has(key) || !inside((xs[i] + xs[i + 1]) / 2, r.y1)) continue
+      seen.add(key); out.push([xs[i], r.y1, xs[i + 1], r.y1])
+    }
+  }
+  return out
+}
+
 /** One merged outline per distinct fill/border style. `maxAltFt` clamps band
  *  tops to the chart's top edge; bands entirely above it are dropped. */
 export function airspaceOutlines(bands: OutlineBand[], maxAltFt = Infinity): OutlineShape[] {
@@ -155,12 +180,13 @@ export function airspaceOutlines(bands: OutlineBand[], maxAltFt = Infinity): Out
     const key = `${b.fill}|${b.border}`
     let g = groups.get(key)
     if (!g) { g = { fill: b.fill, border: b.border, rects: [] }; groups.set(key, g) }
-    g.rects.push({ x1: b.entryNm, x2: b.exitNm, y1: b.lower_ft, y2 })
+    g.rects.push({ x1: b.entryNm, x2: b.exitNm, y1: b.lower_ft, y2, openTop: b.upper_ft > maxAltFt, openLeft: b.openStart, openRight: b.openEnd })
   }
   return [...groups.values()].map((g) => ({
     fill: g.fill, border: g.border,
     loops: unionRectLoops(g.rects),
     segments: visibleEdges(g.rects),
+    innerFloors: interiorFloors(g.rects),
   }))
 }
 

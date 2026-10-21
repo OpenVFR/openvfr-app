@@ -6,7 +6,7 @@
  */
 import { useSyncExternalStore } from 'react'
 
-export const DEFAULT_CHART_H = 162
+export const DEFAULT_CHART_H = 280
 export const MIN_CHART_H = 100
 export const MAX_CHART_H = 520
 const KEY = 'ovfr.vr.chartH'

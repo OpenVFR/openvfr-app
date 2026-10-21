@@ -80,3 +80,18 @@ describe('unreachedLegs', () => {
     expect(unreachedLegs([spans[1]], path)).toEqual([])
   })
 })
+
+import { verticalPhaseMarks } from './legLevelDrag'
+describe('verticalPhaseMarks', () => {
+  it('marks top of climb at the level-off and top of descent where the descent starts', () => {
+    const pts = [[0, 0], [2, 1000], [4, 2000], [8, 2000], [10, 1000], [12, 0]].map(([distNm, altFt]) => ({ distNm, altFt }))
+    expect(verticalPhaseMarks(pts)).toEqual([
+      { kind: 'TOC', distNm: 4, altFt: 2000 },
+      { kind: 'TOD', distNm: 8, altFt: 2000 },
+    ])
+  })
+  it('marks only a top of climb when a climb turns straight into a descent', () => {
+    const pts = [[0, 0], [5, 3000], [10, 0]].map(([distNm, altFt]) => ({ distNm, altFt }))
+    expect(verticalPhaseMarks(pts)).toEqual([{ kind: 'TOC', distNm: 5, altFt: 3000 }])
+  })
+})

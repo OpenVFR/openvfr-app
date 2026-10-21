@@ -76,9 +76,9 @@ export const CLOUD_COLORS = {
   /** Glyph fill gradient, top → bottom (lit tops, shaded base) */
   fillTop:     '#f1f5f9',
   fillBottom:  '#94a3b8',
-  fillTopOpacity:    0.60,
-  fillBottomOpacity: 0.40,
-  stroke:      'rgba(255,255,255,0.55)',
+  fillTopOpacity:    0.90,
+  fillBottomOpacity: 0.65,
+  stroke:      'rgba(255,255,255,0.85)',
   label:       'rgba(226,232,240,0.95)',
   /** Convective cloud: darker body, warning outline + label */
   convectiveFillTop:    '#cbd5e1',

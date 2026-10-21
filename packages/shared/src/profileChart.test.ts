@@ -180,3 +180,25 @@ describe('profile zoom', () => {
     expect(scrollAfterZoom({ scrollLeft: 5000, anchorPx: 400, plotLeft: 40, oldPlotW: 800, newPlotW: 800, viewportW: 440, newContentW: 850 })).toBe(410)
   })
 })
+
+import { liveAltitudeWindow } from './profileChart'
+describe('liveAltitudeWindow', () => {
+  it('level flight low down: window from the ground, aircraft near the top', () => {
+    expect(liveAltitudeWindow(1500, 0)).toEqual({ yMin: 0, yMax: 3500 })
+  })
+  it('level flight high: window grows with altitude and follows it up', () => {
+    const w = liveAltitudeWindow(5000, 0)
+    expect(w.yMin).toBeLessThanOrEqual(1500)
+    expect(w.yMax).toBeGreaterThanOrEqual(6000)
+  })
+  it('a climb leaves room above, a descent room below', () => {
+    const climb = liveAltitudeWindow(3000, 700), desc = liveAltitudeWindow(3000, -700)
+    expect(climb.yMax - 3000).toBeGreaterThan(desc.yMax - 3000)
+    expect(3000 - desc.yMin).toBeGreaterThan(3000 - climb.yMin)
+  })
+  it('never goes below ground and keeps at least 2000 ft of span', () => {
+    const w = liveAltitudeWindow(100, -1500)
+    expect(w.yMin).toBe(0)
+    expect(w.yMax - w.yMin).toBeGreaterThanOrEqual(2000)
+  })
+})

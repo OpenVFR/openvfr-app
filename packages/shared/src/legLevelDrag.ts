@@ -134,3 +134,26 @@ export function legMsaApplies(span: LegSpan, totalNm: number): boolean {
   const s = BELOW_MSA_ENDPOINT_SUPPRESS_NM
   return !(span.toNm <= s || span.fromNm >= totalNm - s)
 }
+
+export type PhaseMark = { kind: 'TOC' | 'TOD'; distNm: number; altFt: number }
+
+/** Top of climb / top of descent along a flown path: the point where a climb stops
+ *  (levelling off, or turning straight into a descent) and where a descent starts
+ *  from level flight. Changes smaller than `flatFt` between samples count as level. */
+export function verticalPhaseMarks(
+  pathPts: readonly { distNm: number; altFt: number }[],
+  flatFt = 5,
+): PhaseMark[] {
+  const out: PhaseMark[] = []
+  let phase: 'up' | 'flat' | 'down' = 'flat'
+  for (let i = 1; i < pathPts.length; i++) {
+    const d = pathPts[i].altFt - pathPts[i - 1].altFt
+    const next: 'up' | 'flat' | 'down' = d > flatFt ? 'up' : d < -flatFt ? 'down' : 'flat'
+    if (next === phase) continue
+    const prev = pathPts[i - 1]
+    if (phase === 'up') out.push({ kind: 'TOC', distNm: prev.distNm, altFt: prev.altFt })
+    if (next === 'down' && phase !== 'up') out.push({ kind: 'TOD', distNm: prev.distNm, altFt: prev.altFt })
+    phase = next
+  }
+  return out
+}
