@@ -1038,6 +1038,19 @@ function OfflineDataSection() {
       <Text style={[styles.rowLabel, { color: theme.textMuted, marginTop: 8 }]}>
         Optional layers to include next download:
       </Text>
+      <TouchableOpacity
+        style={styles.pressable}
+        onPress={() => setSelectedOptional(
+          selectedOptional.size >= OPTIONAL_ASSETS.length
+            ? new Set()
+            : new Set(OPTIONAL_ASSETS.map(a => a.key)),
+        )}
+        disabled={downloading}
+      >
+        <Text style={[styles.infoValue, { paddingVertical: 6 }]}>
+          {selectedOptional.size >= OPTIONAL_ASSETS.length ? 'Select none' : 'Select all'}
+        </Text>
+      </TouchableOpacity>
       {OPTIONAL_ASSETS.map(a => {
         const checked = selectedOptional.has(a.key)
         const sizeMb = remoteSizeMb(a)
