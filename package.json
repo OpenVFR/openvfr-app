@@ -12,6 +12,7 @@
     "build": "pnpm --filter web build",
     "build:web": "pnpm --filter web build",
     "preview": "pnpm --filter web preview",
+    "typecheck": "pnpm --filter web typecheck && pnpm --filter native typecheck",
     "test": "pnpm --filter web test",
     "test:watch": "pnpm --filter web test:watch"
   },

@@ -4,7 +4,7 @@
   position:        absolute;
   bottom:          48px;          /* sit above the MapInfoBar status pill (bottom 10px, ~30px tall) */
   right:           10px;
-  z-index:         420;
+  z-index:         440;          /* above the NotificationCenter banners (430), below the waypoint action menu (490) */
   min-width:       220px;
   max-width:       300px;
   background:      var(--surface-elevated);

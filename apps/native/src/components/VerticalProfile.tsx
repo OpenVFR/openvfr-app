@@ -216,9 +216,11 @@ const WIND_ROW_STATION_SEP_NM = 6
 // route lengths even though labels were visibly cramped well before that.
 const MIN_PX_PER_NM = 30
 
-/** Label box widths (px) for obstacle (10 px bold) and POI (9 px) names; shared by placement and drawing. */
-const obstacleLabelW = (label: string) => Math.ceil(estimateLabelWidth(label, 150) * 1.1)
-const poiLabelW = (label: string) => Math.ceil(estimateLabelWidth(label, 100) * 0.9)
+/** Label box widths (px) for obstacle (10 px bold) and POI (9 px) names; shared by placement and drawing.
+ *  React Native cannot measure text synchronously, so these are generous (bold text and the text shadow run
+ *  wider than the 5.2 px/char estimate): a label may leave a little extra room, but never touches a neighbour. */
+const obstacleLabelW = (label: string) => Math.ceil(estimateLabelWidth(label, 150) * 1.3)
+const poiLabelW = (label: string) => Math.ceil(estimateLabelWidth(label, 100) * 1.05)
 /** Which obstacle shape a landmark kind is drawn as when it is tall enough. */
 const LANDMARK_SHAPE_KIND: Record<string, string> = {
   church: 'building', mast: 'tower', chimney: 'chimney', water_tower: 'water_tower', windmill: 'tower',
