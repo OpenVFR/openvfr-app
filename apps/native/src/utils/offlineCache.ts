@@ -44,6 +44,10 @@ export interface OfflineAsset {
    *  Shown under the opt-in row in Settings so "optional" is an informed
    *  choice, not a guess from the label. */
   without?:  string
+  /** Optional assets only: ticked by default in the download UI. True for what offline
+   *  flight safety leans on (terrain model, MSA grid) and small layers; false for the
+   *  large cosmetic ones (basemap, landuse, contours). Already-cached ones are ticked too. */
+  defaultOn?: boolean
 }
 
 // BUG FIX: two separate real bugs previously here:
@@ -70,11 +74,11 @@ export function remoteUrlFor(fileName: string): string {
 // Offline data is one country at a time: switching country means the new
 // country's files must be downloaded (isOfflineReady() turns false); the
 // previous country's files stay on disk until the cache is cleared.
-function dataset(key: string, kind: CountryDataset, label: string, required: boolean, without?: string): OfflineAsset {
-  return { key, label, required, without, get fileName() { return countryDatasetFile(activeCountry(), kind) } }
+function dataset(key: string, kind: CountryDataset, label: string, required: boolean, without?: string, defaultOn = false): OfflineAsset {
+  return { key, label, required, without, defaultOn, get fileName() { return countryDatasetFile(activeCountry(), kind) } }
 }
-function archive(key: string, kind: CountryArchive, label: string, without: string): OfflineAsset {
-  return { key, label, required: false, without, get fileName() { return countryArchiveFile(activeCountry(), kind) } }
+function archive(key: string, kind: CountryArchive, label: string, without: string, defaultOn = false): OfflineAsset {
+  return { key, label, required: false, without, defaultOn, get fileName() { return countryArchiveFile(activeCountry(), kind) } }
 }
 
 export const OFFLINE_ASSETS: OfflineAsset[] = [
@@ -92,12 +96,12 @@ export const OFFLINE_ASSETS: OfflineAsset[] = [
   // Doubles as the offline elevation model (src/utils/terrainDem.ts): the
   // vertical profile and AGL airspace limits read ground elevation from it
   // when the elevation API is unreachable.
-  archive('hillshade', 'hillshade', 'Terrain elevation + hillshade (large)', 'Offline: no terrain or MSA line in the vertical profile, and airspace limits given above ground (AGL) are checked at their raw height, as if the ground were at sea level. Also no relief shading on the map.'),
+  archive('hillshade', 'hillshade', 'Terrain elevation + hillshade (large)', 'Offline: no terrain or MSA line in the vertical profile, and airspace limits given above ground (AGL) are checked at their raw height, as if the ground were at sea level. Also no relief shading on the map.', true),
   archive('contours', 'contours', 'Contour lines',
     'No elevation contour lines on the map.'),
   // Small (a few MB): highest terrain per ~15" cell, the offline corridor-
   // maximum MSA without the large hillshade DEM above (see mefGrid.ts).
-  { key: 'mef', label: 'Terrain maximum grid (MSA)', required: false,
+  { key: 'mef', label: 'Terrain maximum grid (MSA)', required: false, defaultOn: true,
     without: 'Offline: the minimum safe altitude only looks at terrain under the route line, not the corridor either side of it, unless the large terrain elevation file is downloaded.',
     get fileName() { return countryMefFile(activeCountry()) } },
   dataset('airspace',         'airspace',         'Airspace',              true),
@@ -108,8 +112,14 @@ export const OFFLINE_ASSETS: OfflineAsset[] = [
   dataset('runwayThresholds', 'runwayThresholds', 'Runway thresholds',     true),
   dataset('obstacles',        'obstacles',        'Obstacles',             true),
   dataset('landmarks',        'landmarks',        'Landmarks',             true),
-  dataset('water',            'water',            'Water (Virtual Radar)', false),
+  dataset('water',            'water',            'Water (Virtual Radar)', false, undefined, true),
 ]
+
+/** Optional assets to tick in the download UI: the defaults plus whatever is already cached
+ *  (so a re-download refreshes what the pilot has rather than silently dropping it). */
+export function defaultOptionalSelection(): Set<string> {
+  return new Set(OPTIONAL_ASSETS.filter(a => a.defaultOn || isCached(a)).map(a => a.key))
+}
 
 export const REQUIRED_ASSETS: OfflineAsset[] = OFFLINE_ASSETS.filter(a => a.required)
 export const OPTIONAL_ASSETS: OfflineAsset[] = OFFLINE_ASSETS.filter(a => !a.required)

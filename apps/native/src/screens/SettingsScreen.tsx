@@ -36,7 +36,7 @@ import { airacDataStatus, relativeTime, type AiracDataStatus } from '@open-vfr/s
 import { theme, useThemedStyles, useScaledTheme, type ScaledTheme, type ThemeName } from '../styles/theme'
 import {
   getCacheStatus, getTotalCacheSizeMb, downloadSelected, clearCache,
-  REQUIRED_ASSETS, OPTIONAL_ASSETS, remoteSizeMb, isCached,
+  REQUIRED_ASSETS, OPTIONAL_ASSETS, defaultOptionalSelection, remoteSizeMb, isCached,
   type DownloadProgress,
 } from '../utils/offlineCache'
 import { clearProtomapsStyleCache } from '../components/AviationMap'
@@ -938,13 +938,12 @@ function OfflineDataSection() {
   const [downloading, setDownloading] = useState(false)
   const [progress, setProgress] = useState<DownloadProgress | null>(null)
   const [confirmDownload, setConfirmDownload] = useState(false)
-  // Optional/cosmetic layers (basemap, landuse, hillshade) are opt-in per
-  // asset — default unchecked so a first download doesn't silently pull
-  // hundreds of MB the pilot didn't ask for. Required (flight-safety-
-  // critical) aviation data is always included, no checkbox shown.
-  // The terrain maximum grid is a few MB and feeds the MSA line, so it is
-  // ticked by default; the large layers stay opt-in.
-  const [selectedOptional, setSelectedOptional] = useState<Set<string>>(() => new Set(['mef']))
+  // Required (flight-safety-critical) aviation data is always included, no
+  // checkbox shown. Optional layers: the terrain model + MSA grid + water are
+  // ticked by default (offline terrain/MSA depend on them, ~90 MB); the large
+  // cosmetic ones (basemap, landuse, contours) stay opt-in so a first download
+  // doesn't silently pull hundreds of MB. Already-cached layers start ticked.
+  const [selectedOptional, setSelectedOptional] = useState<Set<string>>(() => defaultOptionalSelection())
 
   const toggleOptional = useCallback((key: string) => {
     setSelectedOptional(prev => {
