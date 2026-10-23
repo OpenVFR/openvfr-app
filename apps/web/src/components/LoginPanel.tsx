@@ -245,6 +245,11 @@ export default function LoginPanel({ auth }: Props) {
                 maxLength={32}
                 placeholder="123456"
                 autoComplete="one-time-code"
+                // Not a credential: ask password managers not to decorate it.
+                data-1p-ignore
+                data-lpignore="true"
+                data-bwignore
+                data-kpxc-ignore
                 value={otp}
                 onChange={(e) => onOtpChange(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !busy && void handleSignInOtp()}

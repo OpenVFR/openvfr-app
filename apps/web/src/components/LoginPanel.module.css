@@ -104,6 +104,8 @@
 
 .emailInput {
   flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border-default);
   border-radius: 8px;
@@ -235,6 +237,8 @@
 
 .otpInput {
   flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border-default);
   border-radius: 8px;
