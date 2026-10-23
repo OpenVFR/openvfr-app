@@ -1,5 +1,5 @@
 diff --git a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
-index e90edd3fd682f1a53a0950526ae63fe20f3efd24..0092d9d0709e7e9de16f5272d0e298e8a8cbc095 100644
+index e90edd3fd682f1a53a0950526ae63fe20f3efd24..25101ba55e46a0be2f5998f0ca62f6a183859dd5 100644
 --- a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
 +++ b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
 @@ -20,6 +20,10 @@ import androidx.compose.runtime.LaunchedEffect
@@ -13,7 +13,7 @@ index e90edd3fd682f1a53a0950526ae63fe20f3efd24..0092d9d0709e7e9de16f5272d0e298e8
  import expo.modules.kotlin.records.Field
  import expo.modules.kotlin.records.Record
  import expo.modules.kotlin.types.OptimizedRecord
-@@ -90,6 +94,35 @@ private fun ForwardKeyEventsToActivity(activity: Activity?) {
+@@ -90,6 +94,52 @@ private fun ForwardKeyEventsToActivity(activity: Activity?) {
    }
  }
  
@@ -23,6 +23,11 @@ index e90edd3fd682f1a53a0950526ae63fe20f3efd24..0092d9d0709e7e9de16f5272d0e298e8
 + * navigation bar and (on large screens) the taskbar back the moment a sheet opens. Mirror the
 + * activity's state onto the dialog window so a fullscreen app stays fullscreen while a sheet is
 + * up. No-op when the activity shows its bars.
++ *
++ * A single hide at first composition is not enough: on large screens (tablet taskbar; the sheet
++ * is also width-capped at 640dp there) the system re-shows the bars on the dialog window after
++ * the sheet's enter transition, so the hide must be re-applied every time the window reports the
++ * bars visible again. The insets listener below does that for as long as the sheet is up.
 + */
 +@Composable
 +private fun MatchActivitySystemBars(activity: Activity?) {
@@ -33,23 +38,35 @@ index e90edd3fd682f1a53a0950526ae63fe20f3efd24..0092d9d0709e7e9de16f5272d0e298e8
 +  }
 +
 +  DisposableEffect(dialogWindow, activityWindow) {
-+    val activityInsets = ViewCompat.getRootWindowInsets(activityWindow.decorView)
-+    val barsHidden = activityInsets != null && !activityInsets.isVisible(WindowInsetsCompat.Type.systemBars())
-+    if (barsHidden) {
-+      WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
-+      WindowCompat.getInsetsController(dialogWindow, dialogWindow.decorView).apply {
-+        systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-+        hide(WindowInsetsCompat.Type.systemBars())
++    fun mirror() {
++      val activityInsets = ViewCompat.getRootWindowInsets(activityWindow.decorView) ?: return
++      val barsHidden = !activityInsets.isVisible(WindowInsetsCompat.Type.statusBars()) ||
++        !activityInsets.isVisible(WindowInsetsCompat.Type.navigationBars())
++      if (barsHidden) {
++        WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
++        WindowCompat.getInsetsController(dialogWindow, dialogWindow.decorView).apply {
++          systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
++          hide(WindowInsetsCompat.Type.systemBars())
++        }
 +      }
 +    }
-+    onDispose { }
++    mirror()
++    ViewCompat.setOnApplyWindowInsetsListener(dialogWindow.decorView) { _, insets ->
++      if (insets.isVisible(WindowInsetsCompat.Type.statusBars()) ||
++        insets.isVisible(WindowInsetsCompat.Type.navigationBars())
++      ) {
++        mirror()
++      }
++      insets
++    }
++    onDispose { ViewCompat.setOnApplyWindowInsetsListener(dialogWindow.decorView, null) }
 +  }
 +}
 +
  @Composable
  fun FunctionalComposableScope.ModalBottomSheetContent(
    props: ModalBottomSheetViewProps,
-@@ -162,6 +195,7 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
+@@ -162,6 +212,7 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
      modifier = ModifierRegistry.applyModifiers(props.modifiers, appContext, composableScope, globalEventDispatcher)
    ) {
      ForwardKeyEventsToActivity(appContext.currentActivity)
