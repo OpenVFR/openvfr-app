@@ -39,7 +39,8 @@ import { limitingObstacleLabel } from './obstacleHeights'
 describe('limitingObstacleLabel', () => {
   it('uses the name, else the kind, with the tip altitude and an estimate mark', () => {
     expect(limitingObstacleLabel('building', 'Kronprinsen', 289, false)).toBe('Kronprinsen 289 ft')
-    expect(limitingObstacleLabel('wind_turbine', '', 944, true)).toBe('Turbine 944 ft (est.)')
+    expect(limitingObstacleLabel('wind_turbine', '', 944, true)).toBe("944'")
+    expect(limitingObstacleLabel('tower', undefined, 1500, false)).toBe("1,500'")
     expect(limitingObstacleLabel('tower', 'Älvsborgsbron', 1096, false)).toBe('Älvsborgsbron 1,096 ft')
   })
   it('drops a leading code and shortens long names', () => {

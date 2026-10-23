@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { placeLabels, type LabelRequest, type BoxRect } from './profileLabels'
+import { placeLabels, mergeNearbyLabels, placeRadarLabels, type LabelRequest, type BoxRect } from './profileLabels'
 
 const bounds: BoxRect = { left: 0, top: 0, right: 400, bottom: 200 }
 const req = (id: string, x: number, o: Partial<LabelRequest> = {}): LabelRequest =>
@@ -43,5 +43,42 @@ describe('placeLabels', () => {
     const placed = placeLabels([a, b], [], bounds)
     expect(boxOf(placed.get('b')!, b).bottom).toBeLessThan(a.top)   // b above
     expect(placed.get('a')!.baseline).not.toBe(placed.get('b')!.baseline)
+  })
+})
+
+describe('mergeNearbyLabels', () => {
+  it('keeps the highest label of a crowd and counts the others', () => {
+    const m = [
+      { key: 'a', cx: 100, priority: 5, label: 'Turbine 300 ft' },
+      { key: 'b', cx: 140, priority: 9, label: 'Turbine 400 ft' },
+      { key: 'c', cx: 150, priority: 1, label: 'Turbine 200 ft' },
+      { key: 'far', cx: 600, priority: 2, label: 'Mast 500 ft' },
+    ]
+    mergeNearbyLabels(m, 160)
+    expect(m.map((x) => x.label)).toEqual(['', 'Turbine 400 ft +2', '', 'Mast 500 ft'])
+  })
+})
+
+describe('placeRadarLabels', () => {
+  const area: BoxRect = { left: 0, top: 0, right: 400, bottom: 200 }
+  const wall: BoxRect[] = [{ left: 0, top: 80, right: 400, bottom: 130 }]
+  it('lifts a must-show name with a leader when the symbol is walled in', () => {
+    const r = req('obs-1', 200, { top: 100, bottom: 110 })
+    const { placed, leaders } = placeRadarLabels({ requests: [r], symbols: wall, chips: [], clouds: [], area, mustShow: () => true })
+    expect(placed.has('obs-1')).toBe(true)
+    expect(leaders.has('obs-1')).toBe(true)
+    expect(hit(boxOf(placed.get('obs-1')!, r), wall[0])).toBe(false)
+  })
+  it('drops clouds before the name disappears', () => {
+    const r = req('obs-1', 200, { top: 100, bottom: 110 })
+    const sym: BoxRect = { left: 194, top: 100, right: 206, bottom: 110 }
+    const clouds: BoxRect[] = [{ left: 0, top: 60, right: 400, bottom: 99 }, { left: 0, top: 111, right: 400, bottom: 160 }]
+    const withClouds = placeRadarLabels({ requests: [r], symbols: [sym], chips: [], clouds, area, mustShow: () => true })
+    expect(withClouds.placed.has('obs-1')).toBe(true)
+  })
+  it('does not force names that need not show', () => {
+    const r = req('poi-1', 200, { top: 100, bottom: 110 })
+    const { placed } = placeRadarLabels({ requests: [r], symbols: [{ left: 0, top: 0, right: 400, bottom: 200 }], chips: [], clouds: [], area, mustShow: (id) => id.startsWith('obs-') })
+    expect(placed.has('poi-1')).toBe(false)
   })
 })

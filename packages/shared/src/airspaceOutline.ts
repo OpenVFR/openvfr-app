@@ -203,9 +203,11 @@ export interface OutlineChip {
  *  Shared so both charts draw chips the same size and other labels (cloud
  *  layers) can avoid them. */
 export function airspaceChipSize(chip: Pick<OutlineChip, 'tag' | 'freq'>): { tagW: number; freqW: number; w: number; h: number } {
-  const tagW = chip.tag.length * 6.4 + 6
-  const freqW = chip.freq ? chip.freq.length * 6.1 + 6 : 0
-  return { tagW, freqW, w: tagW + freqW, h: 13 }
+  // Generous: bold 9.5 px digits run ~6.3 px wide and the renderers cannot all measure text, so a tight
+  // estimate lets the frequency touch the class letter. Both cells get 5 px of padding each side.
+  const tagW = chip.tag.length * 6.8 + 10
+  const freqW = chip.freq ? chip.freq.length * 6.6 + 10 : 0
+  return { tagW, freqW, w: tagW + freqW, h: 14 }
 }
 
 /** One label chip per band, at its top-left corner. Bands of the same class and

@@ -553,6 +553,10 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
                   )}
                   <div className={css.brgTrue}>{String(Math.round(leg.brg)).padStart(3, '0')}°T</div>
                   <div className={css.dist}>{nmToDisplay(leg.dist, units.distance).toFixed(1)} {distLabel(units.distance)}</div>
+                  <div
+                    className={`${css.lvl}${legOverrides[i]?.altFt ? ` ${css.lvlSet}` : ''}`}
+                    title={legOverrides[i]?.altFt ? 'Planned level for this leg (set on the leg)' : 'Planned level for this leg (route level)'}
+                  >{legPlannedAlt(i).toLocaleString('en-US')}'</div>
                   {hasAnyEte && (
                     <div className={css.ete} title={legSpeedTip(i)}>
                       {ete != null
@@ -574,6 +578,7 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
             <div /><div />
             <div />{hasAnyWca && <div />}<div />
             <div className={css.dist}>{nmToDisplay(totalNm, units.distance).toFixed(1)} {distLabel(units.distance)}</div>
+            <div />
             {hasAnyEte && (
               <div className={css.ete}>
                 {Math.floor(totalEteMin)}:{String(Math.round((totalEteMin % 1) * 60)).padStart(2, '0')}

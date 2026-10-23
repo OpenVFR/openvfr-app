@@ -119,3 +119,66 @@ export function placeLabels(
   }
   return out
 }
+
+/** Label box widths (px) of obstacle (12 px bold) and POI (11 px) names, shared by placement and drawing.
+ *  Generous on purpose: native cannot measure text synchronously, and bold text with its halo runs wider
+ *  than the 5.2 px/char estimate. A label may leave a little extra room, but never touches a neighbour. */
+export const obstacleLabelWidth = (label: string) => Math.ceil(estimateLabelWidth(label, Infinity) * 1.35)
+export const poiLabelWidth = (label: string) => Math.ceil(estimateLabelWidth(label, Infinity) * 1.15)
+/** Width (px) of a waypoint name drawn at 12 px semibold (~6.8 px per character): used to decide which
+ *  names fit side by side. Deliberately generous and uncapped, so a long name never runs into its neighbour. */
+export const waypointLabelWidth = (name: string) => Math.ceil(name.length * 6.8) + 6
+export const OBSTACLE_LABEL_H = 15
+export const POI_LABEL_H = 13
+
+/**
+ * Limiting obstacles close together (a wind farm) share one label: the one with the
+ * highest priority keeps it, the others are counted ("+1") instead of stacking names.
+ * Mutates `label` of the given marks.
+ */
+export function mergeNearbyLabels(marks: { key: string; cx: number; priority: number; label: string }[], mergePx: number): void {
+  const merged = new Map<string, number>()
+  const kept: typeof marks = []
+  for (const m of marks.filter((x) => x.label).sort((a, b) => b.priority - a.priority)) {
+    const host = kept.find((k) => Math.abs(k.cx - m.cx) < mergePx)
+    if (host) { merged.set(host.key, (merged.get(host.key) ?? 0) + 1); m.label = '' } else kept.push(m)
+  }
+  kept.forEach((k) => { const n = merged.get(k.key); if (n) k.label += ` +${n}` })
+}
+
+/**
+ * Places the obstacle and POI names. Names keep clear of symbols, airspace chips and
+ * clouds when there is room. A `mustShow` name (a limiting obstacle's warning must not
+ * vanish) that finds no such spot is first lifted into free sky above its symbol, joined
+ * by a leader line, then retried with fewer constraints: clouds dropped first, then chips.
+ */
+export function placeRadarLabels(o: {
+  requests: readonly LabelRequest[]
+  /** Every symbol: always avoided. */
+  symbols: readonly BoxRect[]
+  chips: readonly BoxRect[]
+  clouds: readonly BoxRect[]
+  area: BoxRect
+  mustShow: (id: string) => boolean
+}): { placed: Map<string, PlacedLabel>; leaders: Set<string> } {
+  const { requests, symbols, chips, clouds, area, mustShow } = o
+  const allBoxes = [...symbols, ...chips, ...clouds]
+  const placed = placeLabels(requests, allBoxes, area)
+  const boxOf = (r: LabelRequest, pl: PlacedLabel): BoxRect => ({ left: pl.left, right: pl.left + r.w, top: pl.baseline + 2 - r.h, bottom: pl.baseline + 2 })
+  const placedBoxes = () => requests.filter((r) => placed.has(r.id)).map((r) => boxOf(r, placed.get(r.id)!))
+  const leaders = new Set<string>()
+  // Crowded near the ground: lift the name into free sky above, joined by a leader line.
+  for (const r of requests.filter((q) => !placed.has(q.id) && mustShow(q.id))) {
+    for (let lift = r.h + 8; lift < area.bottom - area.top; lift += r.h + 3) {
+      const got = placeLabels([{ ...r, top: r.top - lift, bottom: r.top - lift }], [...allBoxes, ...placedBoxes()], area)
+      if (got.size) { placed.set(r.id, got.get(r.id)!); leaders.add(r.id); break }
+    }
+  }
+  // Last resort: fewer constraints, clouds first, then chips.
+  for (const tier of [[...symbols, ...chips], symbols]) {
+    const missing = requests.filter((q) => !placed.has(q.id) && mustShow(q.id))
+    if (missing.length === 0) break
+    placeLabels(missing, [...tier, ...placedBoxes()], area).forEach((v, k) => placed.set(k, v))
+  }
+  return { placed, leaders }
+}

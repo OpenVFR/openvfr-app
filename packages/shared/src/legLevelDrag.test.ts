@@ -95,3 +95,22 @@ describe('verticalPhaseMarks', () => {
     expect(verticalPhaseMarks(pts)).toEqual([{ kind: 'TOC', distNm: 5, altFt: 3000 }])
   })
 })
+
+import { dragShownFt, withLegLevel } from './legLevelDrag'
+describe('drag snapping and preview', () => {
+  it('snaps to 100 ft, or to another step when one is given', () => {
+    // 100 px up at 0.1 px/ft = +1000 ft: 2300 -> 3300 raw
+    expect(dragShownFt(2300, -100, 0.1, 500)).toBe(3500)
+    expect(dragShownFt(2300, -100, 0.1)).toBe(3300)
+    expect(dragShownFt(300, 100, 0.1, 500)).toBe(0)
+  })
+  it('moves only the chosen leg in the altitude profile', () => {
+    const prof = [
+      { distNm: 0, altFt: 3000 }, { distNm: 10, altFt: 3000 },
+      { distNm: 10, altFt: 3000 }, { distNm: 25, altFt: 3000 },
+    ]
+    const out = withLegLevel(prof, 1, 5000)
+    expect(out.map((p) => p.altFt)).toEqual([3000, 3000, 5000, 5000])
+    expect(prof[2].altFt).toBe(3000)
+  })
+})

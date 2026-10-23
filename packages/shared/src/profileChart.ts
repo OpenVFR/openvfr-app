@@ -268,12 +268,12 @@ export function declutterMarks(
 }
 
 /** Obstacles near the route line are drawn at full strength, those out to the
- *  abeam limit fade towards 45 % so the ones that matter stand out. */
+ *  abeam limit fade towards 65 % so the ones that matter stand out (but stay readable). */
 export const OBSTACLE_FULL_STRENGTH_NM = 1
 export function obstacleOpacity(lateralNm: number, abeamNm: number): number {
   if (lateralNm <= OBSTACLE_FULL_STRENGTH_NM || abeamNm <= OBSTACLE_FULL_STRENGTH_NM) return 1
   const f = Math.min(1, (lateralNm - OBSTACLE_FULL_STRENGTH_NM) / (abeamNm - OBSTACLE_FULL_STRENGTH_NM))
-  return 1 - 0.55 * f
+  return 1 - 0.35 * f
 }
 
 /** True when this obstacle is what sets the MSA at its position: tip plus the
@@ -302,4 +302,22 @@ export function liveAltitudeWindow(altFt: number, vsFpm = 0): { yMin: number; yM
   const yMin = Math.floor(bottom / 500) * 500
   const yMax = Math.max(yMin + 2000, Math.ceil((bottom + h) / 500) * 500)
   return { yMin, yMax }
+}
+
+/**
+ * Bottom of the scale: the lowest ground / planned altitude along the route less
+ * 500 ft (rounded to 500), so a route over high ground is not squashed against an
+ * axis that starts at sea level. 0 near the coast, and never within 2000 ft of yMax.
+ */
+export function profileYMin(groundElevsFt: readonly number[], plannedAltsFt: readonly number[], yMax: number): number {
+  if (groundElevsFt.length === 0) return 0
+  let lo = Math.min(...groundElevsFt)
+  if (plannedAltsFt.length > 0) lo = Math.min(lo, ...plannedAltsFt)
+  return Math.min(Math.max(0, Math.floor((lo - 500) / 500) * 500), Math.max(0, yMax - 2000))
+}
+
+/** Altitude ticks for a scale that may start above 0: the floor itself, then every tick above it. */
+export function altitudeTicksFrom(yMax: number, yMin: number): number[] {
+  const t = altitudeTicks(yMax)
+  return yMin > 0 ? [yMin, ...t.filter((ft) => ft > yMin)] : t
 }

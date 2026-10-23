@@ -18,21 +18,41 @@ export type SymbolPrim =
 /** Below this on-screen height the full shape is just a smudge: use the icon. */
 export const MIN_FULL_HEIGHT_PX = 10
 
-const RED = 'rgba(220,80,60,0.95)'
-const RED_SOFT = 'rgba(220,80,60,0.55)'
-const STEEL = 'rgba(148,163,184,0.95)'
-const STEEL_DARK = 'rgba(71,85,105,0.95)'
-const WINDOW = 'rgba(226,232,240,0.55)'
-const WHITE = 'rgba(241,245,249,0.95)'
+// Mid-tone sky and green / blue ground: light fills with a dark outline read on both.
+const RED = '#ef4a36'
+const RED_SOFT = 'rgba(239,74,54,0.8)'
+const STEEL = '#dbe4ee'
+const STEEL_DARK = '#16202e'
+const WINDOW = 'rgba(30,41,59,0.6)'
+const WHITE = '#f8fafc'
+const HALO = 'rgba(8,16,28,0.8)'
 /** Right-hand half of a round shaft: a front view with a hint of depth. */
-const SHADE = 'rgba(15,23,42,0.28)'
+const SHADE = 'rgba(15,23,42,0.3)'
 
-/** Dash pattern of an estimated (assumed-height) symbol's outline, in px. */
-export const ESTIMATED_DASH = '3 2'
+/** Fill opacity of an estimated (assumed-height) symbol: a little lighter than a measured one, never hollow
+ *  and never dashed (a dashed outline breaks a thin tower into dots). The "(est.)" in its name says the rest. */
+export const ESTIMATED_FILL_OPACITY = 0.7
+
+/** How an obstacle kind is widened (not heightened: height is data) when drawn. Thin masts are stretched
+ *  to stay visible; a turbine (already wide: its rotor) and a building are not, or they dwarf a church. */
+export function obstacleXScale(kind: string): number {
+  switch (kind) {
+    case 'wind_turbine': return 1
+    case 'building': return 1.2
+    case 'water_tower': return 1.3
+    case 'chimney': return 1.5
+    default: return 1.6
+  }
+}
+
+/** Paint of a rect / poly primitive, the same for web and native. */
+export function primStyle(p: Extract<SymbolPrim, { t: 'rect' | 'poly' }>): { fill: string; fillOpacity: number; stroke?: string } {
+  return { fill: p.fill, fillOpacity: p.dash ? ESTIMATED_FILL_OPACITY : 1, stroke: p.stroke ?? (p.dash ? p.fill : undefined) }
+}
 
 /** Shape of one obstacle, or null when it is too short for a full-height drawing.
  *  `estimated`: the height is an assumption, every primitive is flagged `dash` so
- *  the renderer draws it dashed and lighter. */
+ *  the renderer draws it a little lighter. */
 export function obstacleSymbol(kind: string, cx: number, tipY: number, groundY: number, estimated = false): SymbolPrim[] | null {
   const prims = obstacleSymbolSolid(kind, cx, tipY, groundY)
   if (prims && estimated) for (const p of prims) p.dash = true
@@ -75,20 +95,29 @@ function obstacleSymbolSolid(kind: string, cx: number, tipY: number, groundY: nu
       break
     }
     case 'wind_turbine': {
-      // The tip altitude is the top of the highest blade: hub one rotor
-      // radius below it. Tapered, half-shaded tower; three tapered blades.
-      const r = Math.max(5, Math.min(18, h * 0.38))
+      // The tip altitude is the top of the highest blade: hub one rotor radius below it. A white tower and
+      // three white blades (as real turbines are), each on a dark halo: at 1-3 px wide, a dark outline
+      // drawn around a white fill would swallow it and the turbine would look black.
+      // Proportioned to the real height (rotor about a third of it), capped so the span stays about a
+      // landmark icon wide (14 px) however tall the turbine is.
+      const r = Math.max(3.2, Math.min(8, h * 0.34))
       const hubY = tipY + r
-      const base = Math.max(2.5, Math.min(5, h * 0.05))
-      prims.push({ t: 'poly', fill: WHITE, stroke: STEEL_DARK, pts: [[cx - 0.8, hubY], [cx + 0.8, hubY], [cx + base / 2, groundY], [cx - base / 2, groundY]] })
-      prims.push({ t: 'poly', fill: SHADE, pts: [[cx, hubY], [cx + 0.8, hubY], [cx + base / 2, groundY], [cx, groundY]] })
-      const bw = Math.max(1.2, r * 0.13)
-      for (const deg of [-90, 30, 150]) {
+      // A slim tower: about 1.4 px wide under the hub, 2 px at the foot (halo adds 0.7 px each side), so it
+      // reads as a pole, not a stump.
+      const top = 0.7, foot = 1
+      const tower = (grow: number, fill: string): SymbolPrim =>
+        ({ t: 'poly', fill, pts: [[cx - top - grow, hubY], [cx + top + grow, hubY], [cx + foot + grow, groundY], [cx - foot - grow, groundY]] })
+      prims.push(tower(0.7, HALO), tower(0, WHITE))
+      prims.push({ t: 'poly', fill: SHADE, pts: [[cx, hubY], [cx + top, hubY], [cx + foot, groundY], [cx, groundY]] })
+      const blades = [-90, 30, 150].map((deg) => {
         const a = (deg * Math.PI) / 180
-        const ux = Math.cos(a), uy = Math.sin(a)
-        prims.push({ t: 'poly', fill: WHITE, stroke: STEEL_DARK, pts: [[cx - uy * bw, hubY + ux * bw], [cx + ux * r, hubY + uy * r], [cx + uy * bw, hubY - ux * bw]] })
-      }
-      prims.push({ t: 'circle', cx, cy: hubY, r: 2, fill: RED })
+        return { x2: cx + Math.cos(a) * r, y2: hubY + Math.sin(a) * r }
+      })
+      const bw = r < 6 ? 1.5 : 2
+      for (const b of blades) prims.push({ t: 'line', x1: cx, y1: hubY, x2: b.x2, y2: b.y2, stroke: HALO, w: bw + 2 })
+      for (const b of blades) prims.push({ t: 'line', x1: cx, y1: hubY, x2: b.x2, y2: b.y2, stroke: WHITE, w: bw })
+      prims.push({ t: 'circle', cx, cy: hubY, r: bw + 1.2, fill: HALO })
+      prims.push({ t: 'circle', cx, cy: hubY, r: bw + 0.2, fill: WHITE })
       break
     }
     case 'water_tower': {
@@ -103,8 +132,11 @@ function obstacleSymbolSolid(kind: string, cx: number, tipY: number, groundY: nu
       const half = Math.max(1.5, Math.min(3, h * 0.04))
       const legL = (y: number) => cx - half * (0.5 + ((y - tipY) / h) * 0.5)
       const legR = (y: number) => cx + half * (0.5 + ((y - tipY) / h) * 0.5)
-      prims.push({ t: 'line', x1: legL(tipY), y1: tipY, x2: legL(groundY), y2: groundY, stroke: RED, w: 1.5 })
-      prims.push({ t: 'line', x1: legR(tipY), y1: tipY, x2: legR(groundY), y2: groundY, stroke: RED, w: 1.5 })
+      // Dark under-strokes, so thin red lines hold up against the sky.
+      prims.push({ t: 'line', x1: legL(tipY), y1: tipY, x2: legL(groundY), y2: groundY, stroke: HALO, w: 3.5 })
+      prims.push({ t: 'line', x1: legR(tipY), y1: tipY, x2: legR(groundY), y2: groundY, stroke: HALO, w: 3.5 })
+      prims.push({ t: 'line', x1: legL(tipY), y1: tipY, x2: legL(groundY), y2: groundY, stroke: RED, w: 1.8 })
+      prims.push({ t: 'line', x1: legR(tipY), y1: tipY, x2: legR(groundY), y2: groundY, stroke: RED, w: 1.8 })
       const cells = Math.max(2, Math.min(8, Math.floor(h / 7)))
       for (let i = 0; i < cells; i++) {
         const y0 = tipY + (i * h) / cells, y1 = tipY + ((i + 1) * h) / cells
@@ -114,7 +146,7 @@ function obstacleSymbolSolid(kind: string, cx: number, tipY: number, groundY: nu
       const guy = Math.min(8, h * 0.3)
       prims.push({ t: 'line', x1: cx, y1: tipY + h * 0.45, x2: cx - guy, y2: groundY, stroke: RED_SOFT, w: 1 })
       prims.push({ t: 'line', x1: cx, y1: tipY + h * 0.45, x2: cx + guy, y2: groundY, stroke: RED_SOFT, w: 1 })
-      prims.push({ t: 'circle', cx, cy: tipY + 1.6, r: 1.6, fill: RED })
+      prims.push({ t: 'circle', cx, cy: tipY + 2, r: 2, fill: RED })
     }
   }
   return prims

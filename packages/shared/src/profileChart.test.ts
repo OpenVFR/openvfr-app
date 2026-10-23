@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   profileChartLayout, profileYMax, declutterMarks, obstacleOpacity, isLimitingObstacle, altitudeTicks, formatAltitudeTick, formatAltitudeFt, distanceTicks,
-  polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, clampProfileZoom, scrollAfterZoom, MAX_PROFILE_PX_PER_NM,
+  polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, clampProfileZoom, scrollAfterZoom, MAX_PROFILE_PX_PER_NM, profileYMin, altitudeTicksFrom,
 } from './profileChart'
 
 const margin = { top: 10, right: 10, bottom: 30, left: 40 }
@@ -139,11 +139,11 @@ describe('declutterMarks', () => {
 })
 
 describe('obstacleOpacity', () => {
-  it('is full near the line and fades to 45 % at the abeam limit', () => {
+  it('is full near the line and fades to 65 % at the abeam limit', () => {
     expect(obstacleOpacity(0.4, 5)).toBe(1)
     expect(obstacleOpacity(1, 5)).toBe(1)
-    expect(obstacleOpacity(5, 5)).toBeCloseTo(0.45)
-    expect(obstacleOpacity(3, 5)).toBeCloseTo(0.725)
+    expect(obstacleOpacity(5, 5)).toBeCloseTo(0.65)
+    expect(obstacleOpacity(3, 5)).toBeCloseTo(0.825)
     expect(obstacleOpacity(2, 1)).toBe(1)
   })
 })
@@ -200,5 +200,25 @@ describe('liveAltitudeWindow', () => {
     const w = liveAltitudeWindow(100, -1500)
     expect(w.yMin).toBe(0)
     expect(w.yMax - w.yMin).toBeGreaterThanOrEqual(2000)
+  })
+})
+
+describe('profileYMin / altitudeTicksFrom', () => {
+  it('is 0 without ground data or near the coast', () => {
+    expect(profileYMin([], [], 5000)).toBe(0)
+    expect(profileYMin([20, 100], [1500], 5000)).toBe(0)
+  })
+  it('lifts the floor over high ground, 500 ft below the lowest ground or plan', () => {
+    expect(profileYMin([2300, 2600], [3500], 8000)).toBe(1500)
+    expect(profileYMin([2300, 2600], [2000], 8000)).toBe(1500)
+  })
+  it('keeps at least 2000 ft of scale', () => {
+    expect(profileYMin([4800], [], 5000)).toBe(3000)
+  })
+  it('starts the ticks at the floor', () => {
+    expect(altitudeTicksFrom(5000, 0)).toEqual(altitudeTicks(5000))
+    const t = altitudeTicksFrom(5000, 1500)
+    expect(t[0]).toBe(1500)
+    expect(t.slice(1).every((v) => v > 1500)).toBe(true)
   })
 })

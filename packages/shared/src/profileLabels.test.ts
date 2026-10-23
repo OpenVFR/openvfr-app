@@ -33,3 +33,19 @@ describe('pickWaypointLabels', () => {
     expect(pickWaypointLabels([rect(0, 20)], 0)).toEqual([])
   })
 })
+
+import { waypointLabelWidth } from './profileLabels'
+describe('waypointLabelWidth', () => {
+  it('grows with the name and is not capped', () => {
+    expect(waypointLabelWidth('WP8')).toBe(27)
+    expect(waypointLabelWidth('Heliga Trefaldighetskyrka')).toBeGreaterThan(170)
+  })
+  it('lets the destination evict a long neighbour that really overlaps it', () => {
+    const long = waypointLabelWidth('Heliga Trefaldighetskyrka')
+    const dest = waypointLabelWidth('WP8')
+    const x = 600 // route end
+    const prev = { left: x - 150 + 5, right: x - 150 + 5 + long }
+    const last = { left: x - 5 - dest, right: x - 5 }
+    expect(pickWaypointLabels([{ left: 0, right: 10 }, prev, last], 0)).toEqual([2])
+  })
+})

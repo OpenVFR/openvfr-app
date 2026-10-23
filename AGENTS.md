@@ -62,6 +62,7 @@ files worth knowing up front:
 | `apps/web/src/components/MapView.tsx` | Mounts MapLibre, registers images, wires click handlers |
 | `packages/shared/src/autoFlyDetect.ts` | Takeoff/landing detector behind the Auto flying mode setting — see `docs/architecture.md` §7 |
 | `packages/shared/src/virtualRadarCalc.ts` | Vertical-profile computation engine, shared web + native |
+| `packages/shared/src/{radarStyle,profileLabels,profileChart,airspaceOutline}.ts` | Virtual Radar look (colours, symbol sizes, TOC/TOD wording), label placement (`placeRadarLabels`), axis scale (`profileYMin`, `liveAltitudeWindow`) and airspace outlines. Web `VirtualRadar.tsx` and native `VerticalProfile.tsx` both draw from these: change the shared module, not one renderer, and check both |
 | `packages/shared/src/fetchWithRetry.ts` | Retry-with-backoff wrapper — see the connectivity-gap gotcha below |
 | `@open-vfr/shared/{airspaceColors,featureColors}` | The **only** source of aviation-domain colours — see the colour-palette gotcha below |
 

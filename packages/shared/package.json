@@ -36,6 +36,7 @@
     "./legLevelDrag": "./src/legLevelDrag.ts",
     "./profileLabels": "./src/profileLabels.ts",
     "./profileChart": "./src/profileChart.ts",
+    "./radarStyle": "./src/radarStyle.ts",
     "./followZoom": "./src/followZoom.ts",
     "./uiTheme":         "./src/uiTheme.ts",
     "./featureColors":  "./src/featureColors.ts",

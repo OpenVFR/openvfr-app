@@ -1895,6 +1895,7 @@ function MapScreenForCountry() {
       {showLookaheadProfile && (
         <VerticalProfile
           title={`LOOK-AHEAD · TRK ${Math.round(lookaheadHeadingDeg)}°`}
+          followAircraft
           waypoints={lookaheadWaypoints}
           legOverrides={lookaheadLegOverrides}
           units={settings.units}

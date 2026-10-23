@@ -136,27 +136,27 @@
 }
 
 .plog {
-  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 38px 62px;
+  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 38px 62px 40px;
 }
 
 .plogWca {
-  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 32px 38px 62px;
+  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 32px 38px 62px 40px;
 }
 
 .plogEte {
-  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 38px 62px 48px;
+  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 38px 62px 40px 48px;
 }
 
 .plogWcaEte {
-  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 32px 38px 62px 48px;
+  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 32px 38px 62px 40px 48px;
 }
 
 .plogEteEta {
-  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 38px 62px 48px 52px;
+  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 38px 62px 40px 48px 52px;
 }
 
 .plogWcaEteEta {
-  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 32px 38px 62px 48px 52px;
+  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 32px 38px 62px 40px 48px 52px;
 }
 
 .plogBody {
@@ -288,6 +288,20 @@
   padding: 5px 6px 5px 4px;
   white-space: nowrap;
   text-align: right;
+}
+
+.lvl {
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  padding: 5px 2px;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.lvlSet {
+  color: var(--accent-blue-bright);
+  font-weight: 600;
 }
 
 .ete {

@@ -1,7 +1,14 @@
 import { useChartH } from '../utils/vrChartHeight'
 import { usePersistedFlag } from '../utils/usePersistedFlag'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef, type ReactNode } from 'react'
-import { pickWaypointLabels, estimateLabelWidth, placeLabels, type BoxRect, type LabelRequest, type PlacedLabel } from '@open-vfr/shared/profileLabels'
+import {
+  pickWaypointLabels, waypointLabelWidth, placeLabels, placeRadarLabels, mergeNearbyLabels, obstacleLabelWidth, poiLabelWidth, OBSTACLE_LABEL_H, POI_LABEL_H,
+  type BoxRect, type LabelRequest, type PlacedLabel,
+} from '@open-vfr/shared/profileLabels'
+import {
+  symbolGroundY, LIMITING_LABEL_MERGE_PX, POI_SCALE, poiCenterY, SKY_TOP, SKY_BOTTOM, PLAN_COLOR, MSA_COLOR, GROUND_COLOR, GROUND_OUTLINE, CORRIDOR_FILL, CORRIDOR_OUTLINE,
+  DANGER_COLOR, DANGER_TEXT, PHASE_SHORT_COLOR, WIND_LABEL_COLOR, windAloftFit, terrainGradientStops, phaseLabelText,
+} from '@open-vfr/shared/radarStyle'
 import { airspaceOutlines, airspaceChips, layoutAirspaceChips } from '@open-vfr/shared/airspaceOutline'
 import {
   cloudLayerPaths, cloudLayerLabel, cloudGlyphHeight, cloudOpacityForOffset, cloudReportOffRouteNm,
@@ -10,7 +17,7 @@ import {
 import { CLOUD_COLORS } from '@open-vfr/shared/featureColors'
 import type { ParsedCloudLayer } from '@open-vfr/shared/fetchWx'
 import {
-  profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, liveAltitudeWindow, altitudeTicks, formatAltitudeTick, formatAltitudeFt, distanceTicks,
+  profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, profileYMin, liveAltitudeWindow, altitudeTicksFrom, formatAltitudeTick, formatAltitudeFt, distanceTicks,
   polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, declutterMarks, obstacleOpacity, isLimitingObstacle, type ProfileChartLayout,
 } from '@open-vfr/shared/profileChart'
 import type { RouteWaypoint } from '../utils/routeCalc'
@@ -18,9 +25,9 @@ import { useMsaMargins } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
 import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
-import { obstacleSymbol, polyPath, MIN_FULL_HEIGHT_PX, ESTIMATED_DASH, type SymbolPrim } from '@open-vfr/shared/obstacleSymbol'
+import { obstacleSymbol, polyPath, primStyle, obstacleXScale, MIN_FULL_HEIGHT_PX, type SymbolPrim } from '@open-vfr/shared/obstacleSymbol'
 import { effectiveHeight, obstacleTipsForMsa, limitingObstacleLabel, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
-import { legSpans, legMsaList, legBelowMsa, dragShownFt, altAtY, unreachedLegs, verticalPhaseMarks, LEVEL_STEP_FT, DRAG_MIN_MOVE_PX, type LegSpan } from '@open-vfr/shared/legLevelDrag'
+import { legSpans, legMsaList, legBelowMsa, dragShownFt, withLegLevel, altAtY, unreachedLegs, verticalPhaseMarks, LEVEL_STEP_FT, DRAG_MIN_MOVE_PX, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { useMefGrids } from '../hooks/useMefGrids'
 import type { LegOverride } from '../db/index'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel } from '../utils/units'
@@ -79,25 +86,6 @@ const X_TICK_SPACING_PX = 100
 /** Waypoint / trajectory label inset from its line (px). */
 const LINE_LABEL_INSET = 5
 
-/** Obstacle symbols are widened (not heightened: height is data) for legibility. */
-const OBSTACLE_X_SCALE = 1.6
-/** Obstacle pictograms hang from their true tip altitude and are at least this tall (px)
- *  whatever the altitude scale, so a 150 ft turbine on a 3000 ft axis is still a readable
- *  symbol. Taller structures keep their true height. Clamped to the plot bottom. */
-const OBSTACLE_MIN_SYMBOL_PX = 28
-const symbolGroundY = (tipY: number, groundY: number, plotBottom: number) =>
-  Math.max(groundY, Math.min(tipY + OBSTACLE_MIN_SYMBOL_PX, plotBottom))
-/** Limiting obstacles closer than this (px) share a single label. */
-const LIMITING_LABEL_MERGE_PX = 160
-/** Plot background, top → bottom. Mid-tone so red/steel obstacles and white clouds all contrast. */
-const SKY_TOP = '#2c4468'
-const SKY_BOTTOM = '#6b92b8'
-const PLAN_COLOR = '#e040fb'
-const MSA_COLOR = '#ffb454'
-const GROUND_COLOR = '#e4f0b8'
-const DANGER_COLOR = 'rgba(239,68,68,0.95)'
-/** Red text on the dark chart: DANGER_COLOR fails contrast, use a lighter tint. */
-const DANGER_TEXT = '#ff8f8f'
 const HALO = { stroke: 'rgba(0,0,0,0.9)', strokeWidth: 4, strokeLinejoin: 'round' as const, paintOrder: 'stroke' }
 
 
@@ -239,15 +227,32 @@ const LANDMARK_SHAPE_KIND: Record<string, string> = {
 /** SVG for the primitives of obstacleSymbol(); `dash` primitives (assumed height) are dashed. */
 function renderShape(shape: SymbolPrim[]): ReactNode {
   return shape.map((p, k) => {
-    const dash = p.dash ? ESTIMATED_DASH : undefined
-    return p.t === 'rect'
-      ? <rect key={k} x={p.x} y={p.y} width={p.w} height={p.h} fill={p.dash ? 'none' : p.fill} stroke={p.dash ? (p.stroke ?? p.fill) : p.stroke} strokeWidth={1} strokeDasharray={dash} />
-      : p.t === 'line'
-        ? <line key={k} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.stroke} strokeWidth={p.w} strokeLinecap="round" strokeDasharray={dash} />
-        : p.t === 'poly'
-          ? <path key={k} d={polyPath(p.pts)} fill={p.dash ? 'none' : p.fill} stroke={p.dash ? (p.stroke ?? p.fill) : p.stroke} strokeWidth={1} strokeDasharray={dash} />
-          : <circle key={k} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill} />
+    if (p.t === 'rect') {
+      const st = primStyle(p)
+      return <rect key={k} x={p.x} y={p.y} width={p.w} height={p.h} fill={st.fill} fillOpacity={st.fillOpacity} stroke={st.stroke} strokeWidth={1} />
+    }
+    if (p.t === 'poly') {
+      const st = primStyle(p)
+      return <path key={k} d={polyPath(p.pts)} fill={st.fill} fillOpacity={st.fillOpacity} stroke={st.stroke} strokeWidth={1} />
+    }
+    if (p.t === 'line') return <line key={k} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.stroke} strokeWidth={p.w} strokeLinecap="round" />
+    return <circle key={k} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill} />
   })
+}
+
+/** Aerodrome / navaid / reporting-point symbol; `halo` = the dark outline pass drawn first. */
+function renderPoiSymbol(m: { kind: string; subtype: string; towered: boolean; cx: number; cy: number }, halo: boolean) {
+  const stroke = halo ? 'rgba(0,0,0,0.8)' : '#fff'
+  const sw = halo ? 4 : 1.25
+  const col = (c: string) => (halo ? 'rgba(0,0,0,0.8)' : c)
+  if (m.kind === 'aerodrome') {
+    return m.subtype === 'HP'
+      ? <rect x={m.cx - 4} y={m.cy - 4} width={8} height={8} rx={1.5} fill={col('#f472b6')} stroke={stroke} strokeWidth={sw} />
+      : <circle cx={m.cx} cy={m.cy} r={5} fill={col(m.towered ? '#c084fc' : '#60a5fa')} stroke={stroke} strokeWidth={sw} />
+  }
+  if (m.kind === 'navaid') return <path d={`M${m.cx},${m.cy - 5} L${m.cx + 5},${m.cy} L${m.cx},${m.cy + 5} L${m.cx - 5},${m.cy} Z`} fill={col('#34d399')} stroke={stroke} strokeWidth={sw} />
+  if (m.kind === 'reporting') return <path d={`M${m.cx},${m.cy - 5} L${m.cx + 4.5},${m.cy + 3} L${m.cx - 4.5},${m.cy + 3} Z`} fill={col('#facc15')} stroke={stroke} strokeWidth={sw} />
+  return null
 }
 
 function renderIconAt(key: string, cx: number, cy: number, size: number, markup: string | undefined, fallback: ReactNode) {
@@ -318,8 +323,8 @@ function renderAirspaceChips(placed: ReturnType<typeof layoutAirspaceChips>) {
           <g key={i}>
             <rect x={x} y={y} width={w} height={h} fill="#fff" stroke={c.border} strokeWidth={1} rx={1.5} />
             <rect x={x} y={y} width={tagW} height={h} fill={c.border} rx={1.5} />
-            <text x={x + tagW / 2} y={y + 10} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="#fff">{c.tag}</text>
-            {p.showFreq && <text x={x + tagW + freqW / 2} y={y + 10} textAnchor="middle" fontSize={9.5} fontWeight={600} fill="#111">{c.freq}</text>}
+            <text x={x + tagW / 2} y={y + 10.5} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="#fff">{c.tag}</text>
+            {p.showFreq && <text x={x + tagW + freqW / 2} y={y + 10.5} textAnchor="middle" fontSize={9.5} fontWeight={600} fill="#111">{c.freq}</text>}
           </g>
         )
       })}
@@ -506,7 +511,7 @@ const LEG_HIT_HALF_PX = 12
 
 type LegDragState = { leg: number; startAlt: number; startY: number; cand: number | null; shown: number; moved: boolean }
 
-function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilingFt, legOverrides, plannedPts, onLegLevelChange, drag, setDrag }: {
+function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilingFt, legOverrides, plannedPts, previewPts, chipBoxes, onLegLevelChange, drag, setDrag }: {
   layout: ProfileChartLayout
   spans: LegSpan[]
   legMsa: number[]
@@ -518,6 +523,10 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
   legOverrides: LegOverride[]
   /** The drawn (projected) planned path; a leg is grabbed where its line is drawn. */
   plannedPts: { distNm: number; altFt: number }[]
+  /** The path the aircraft would fly if the drag were released now (climbs and descents included). */
+  previewPts: { distNm: number; altFt: number }[] | null
+  /** Airspace chips already on the chart: the below-MSA shortcut must not sit on one. */
+  chipBoxes: BoxRect[]
   /** Undefined while route editing is locked: targets then only explain how to unlock. */
   onLegLevelChange?: (legIndex: number, altFt: number | null) => void
   drag: LegDragState | null
@@ -574,26 +583,59 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
 
   return (
     <svg className={css.dragSvg} width={L.contentW} height={chartHeightOf(L)}>
-      {drag && spans.map((s, i) => {
-        if (drag.leg !== i) return null
-        const alt = drag.shown
-        const y = yClamped(alt)
-        const below = legBelowMsa(s, totalNm, alt, legMsa[i] ?? 0)
-        const dragged = true
-        return (
-          <g key={`flat-${i}`} pointerEvents="none">
-            <line x1={L.xOf(s.fromNm)} x2={L.xOf(s.toNm)} y1={y} y2={y}
-              stroke={below ? DANGER_COLOR : PLAN_COLOR} strokeWidth={dragged ? 3 : 2} opacity={dragged ? 1 : 0.7} />
-            {dragged && (
-              <text x={(L.xOf(s.fromNm) + L.xOf(s.toNm)) / 2} y={y < L.plotTop + 22 ? y + 16 : y - 8} textAnchor="middle" fontSize={12} fontWeight={700}
-                fill={below ? DANGER_TEXT : 'var(--text-primary)'} {...HALO}>
-                {drag.cand == null ? `release = route level (${formatAltitudeFt(fallbackAltFt)})` : formatAltitudeFt(alt)}
-                {below ? ` \u2014 below MSA ${formatAltitudeFt(legMsa[i])}` : ''}
-              </text>
-            )}
-          </g>
-        )
-      })}
+      {drag && (
+        <g pointerEvents="none">
+          {/* Leg frame: a tint over the dragged leg, a divider at every turning point and a number on each leg,
+              so it is clear where a leg begins and ends and which one is moving. */}
+          {spans.map((s, i) => {
+            const x1 = L.xOf(s.fromNm), x2 = L.xOf(s.toNm)
+            const mine = drag.leg === i
+            return (
+              <g key={`frame-${i}`}>
+                {mine && <rect x={x1} y={L.plotTop} width={Math.max(0, x2 - x1)} height={L.plotH} fill="rgba(255,255,255,0.12)" />}
+                {i > 0 && <line x1={x1} x2={x1} y1={L.plotTop} y2={L.plotBottom} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeDasharray="4 3" />}
+                {x2 - x1 > 22 && (
+                  <g>
+                    <circle cx={(x1 + x2) / 2} cy={L.plotTop + 27} r={8} fill={mine ? '#fff' : 'rgba(0,0,0,0.55)'} stroke="#fff" strokeWidth={1} />
+                    <text x={(x1 + x2) / 2} y={L.plotTop + 31} textAnchor="middle" fontSize={10} fontWeight={700} fill={mine ? '#111' : '#fff'}>{i + 1}</text>
+                  </g>
+                )}
+              </g>
+            )
+          })}
+          {/* Where the aircraft would actually fly if released now. */}
+          {previewPts && previewPts.length > 1 && (
+            <>
+              <path d={'M' + previewPts.map((p) => `${L.xOf(p.distNm).toFixed(1)},${yClamped(p.altFt).toFixed(1)}`).join(' L')} fill="none" stroke="rgba(0,0,0,0.7)" strokeWidth={5} strokeLinejoin="round" />
+              <path d={'M' + previewPts.map((p) => `${L.xOf(p.distNm).toFixed(1)},${yClamped(p.altFt).toFixed(1)}`).join(' L')} fill="none" stroke={PLAN_COLOR} strokeWidth={2.75} strokeLinejoin="round" />
+              {spans.slice(1).map((s, i) => {
+                const near = previewPts.reduce((b, p) => (Math.abs(p.distNm - s.fromNm) < Math.abs(b.distNm - s.fromNm) ? p : b), previewPts[0])
+                return <circle key={`pv-turn-${i}`} cx={L.xOf(s.fromNm)} cy={yClamped(near.altFt)} r={3} fill="#2a1038" stroke="#fff" strokeWidth={1.5} />
+              })}
+            </>
+          )}
+          {/* Every leg's level, so the whole plan can be read while one leg moves. */}
+          {spans.map((s, i) => {
+            const x1 = L.xOf(s.fromNm), x2 = L.xOf(s.toNm)
+            const mine = drag.leg === i
+            const alt = mine ? drag.shown : s.altFt
+            const y = yClamped(alt)
+            const below = legBelowMsa(s, totalNm, alt, legMsa[i] ?? 0)
+            const mid = (x1 + x2) / 2
+            if (!mine && x2 - x1 < 46) return null
+            return (
+              <g key={`lvl-${i}`}>
+                {mine && <line x1={x1} x2={x2} y1={y} y2={y} stroke={below ? DANGER_COLOR : '#fff'} strokeWidth={1.5} strokeDasharray="6 4" />}
+                <text x={mid} y={y - 8 >= L.plotTop + 46 ? y - 8 : Math.max(y + 16, L.plotTop + 50)} textAnchor="middle" fontSize={mine ? 12 : 10} fontWeight={700}
+                  fill={below ? DANGER_TEXT : 'var(--text-primary)'} {...HALO}>
+                  {mine && drag.cand == null ? `release = route level (${formatAltitudeFt(fallbackAltFt)})` : formatAltitudeFt(alt)}
+                  {mine && below ? ` \u2014 below MSA ${formatAltitudeFt(legMsa[i])}` : ''}
+                </text>
+              </g>
+            )
+          })}
+        </g>
+      )}
       {spans.map((s, i) => {
         const x1 = L.xOf(s.fromNm), x2 = L.xOf(s.toNm)
         const y = yClamped(s.altFt)
@@ -612,12 +654,19 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
             >
               <title>Drag up or down to change this leg&apos;s level</title>
             </path>
-            {onLegLevelChange && !drag && below && x2 - x1 > 80 && (
-              <g className={css.legChip} onClick={() => onLegLevelChange(i, legMsa[i])}>
-                <rect x={(x1 + x2) / 2 - 40} y={y - 30} width={80} height={16} rx={8} />
-                <text x={(x1 + x2) / 2} y={y - 19} textAnchor="middle" fontSize={10}>{'\u25b2'} MSA {formatAltitudeFt(legMsa[i])}</text>
-              </g>
-            )}
+            {onLegLevelChange && !drag && below && x2 - x1 > 80 && (() => {
+              // Above the line, else below it, else (when both are taken by airspace chips) none; the leg can still be dragged.
+              const cx = (x1 + x2) / 2
+              const spot = [y - 30, y + 14].find((top) => top > L.plotTop && top + 16 < L.plotBottom
+                && !chipBoxes.some((c) => cx - 40 < c.right && cx + 40 > c.left && top < c.bottom && top + 16 > c.top))
+              if (spot == null) return null
+              return (
+                <g className={css.legChip} onClick={() => onLegLevelChange(i, legMsa[i])}>
+                  <rect x={cx - 40} y={spot} width={80} height={16} rx={8} />
+                  <text x={cx} y={spot + 11} textAnchor="middle" fontSize={10}>{'\u25b2'} MSA {formatAltitudeFt(legMsa[i])}</text>
+                </g>
+              )
+            })()}
           </g>
         )
       })}
@@ -664,6 +713,8 @@ function VirtualRadar({
   const [showWindAloft, setShowWindAloft] = usePersistedFlag('ovfr:vr:wind', true)
   // The MSA line (below-MSA stretches in red stay on either way).
   const [showMsa, setShowMsa] = usePersistedFlag('ovfr:vr:msa', true)
+  // Obstacle labels (the short tip altitude / name beside each limiting obstacle); the symbols stay either way.
+  const [showObstLabels, setShowObstLabels] = usePersistedFlag('ovfr:vr:obst', true)
 
   // Extract performance model from selected aircraft profile.
   // Only populated when all critical perf fields are non-zero.
@@ -898,6 +949,22 @@ function VirtualRadar({
     }
   }, [profile, terrainPts, msaTerrain, perf, getMsa])
 
+  // While a leg level is dragged: the path the aircraft would fly at that level (climbs and descents
+  // included), so the effect on the whole route is visible before the change is committed.
+  const dragPreviewPts = useMemo(() => {
+    if (!profile || !series || !legDrag?.moved) return null
+    const gridOnly = terrainPts.length === 0 && msaTerrain.fromGridOnly
+    if (terrainPts.length === 0 && !gridOnly) return null
+    const dep = gridOnly ? 0 : (terrainPts[0]?.elevFt ?? 0)
+    const arr = gridOnly ? 0 : (terrainPts[terrainPts.length - 1]?.elevFt ?? 0)
+    const level = legDrag.cand ?? (aircraftProfile?.cruiseAltFt || 3500)
+    const alts = projectFlightPath(withLegLevel(profile.altitudeProfile, legDrag.leg, level), profile.totalNm, perf ?? DEFAULT_PERF_MODEL, series.distNms, dep, arr)
+    return series.distNms.map((d, i) => ({ distNm: d, altFt: alts[i] }))
+  }, [profile, series, legDrag, terrainPts, msaTerrain, perf, aircraftProfile?.cruiseAltFt])
+
+  // Inputs of the drag layer, kept stable so a drag step only re-renders the layer, not rebuilds these.
+  const plannedPts = useMemo(() => (series ? series.distNms.map((d, i) => ({ distNm: d, altFt: series.plannedAlts[i] })) : []), [series])
+
   // Leg spans and each leg's MSA, for the drag layer's targets and warnings.
   const legSpanList = useMemo(() => (profile ? legSpans(profile.altitudeProfile) : []), [profile])
   const legMsaFt = useMemo(() => legMsaList(legSpanList, msaPts, getMsa), [legSpanList, msaPts, getMsa])
@@ -930,15 +997,11 @@ function VirtualRadar({
   )
   const yMax = liveWindow ? liveWindow.yMax : yMaxFull
 
-  // Bottom of the scale: the lowest ground / planned altitude along the route
-  // less 500 ft (rounded to 500), so a route over high ground is not squashed
-  // against an axis that starts at sea level. 0 near the coast.
+  // Bottom of the scale (profileYMin): 0 near the coast, raised over high ground.
   const yMin = useMemo(() => {
     if (liveWindow) return liveWindow.yMin
-    if (!profile || terrainPts.length === 0) return 0
-    let lo = Math.min(...terrainPts.map((p) => p.elevFt))
-    if (series && series.plannedAlts.length > 0) lo = Math.min(lo, ...series.plannedAlts)
-    return Math.min(Math.max(0, Math.floor((lo - 500) / 500) * 500), Math.max(0, yMax - 2000))
+    if (!profile) return 0
+    return profileYMin(terrainPts.map((p) => p.elevFt), series?.plannedAlts ?? [], yMax)
   }, [profile, terrainPts, series, yMax, liveWindow])
 
   // Winds aloft at the standard levels up to the chart top, one column every
@@ -961,6 +1024,9 @@ function VirtualRadar({
   const layoutRef = useRef(layout); layoutRef.current = layout
   const zoomRef = useRef(zoom); zoomRef.current = zoom
   const pendingScrollRef = useRef<number | null>(null)
+  // The zoom buttons only appear when there is room to zoom: a short route already sits near the maximum
+  // scale, where they would change nothing.
+  const canZoom = zoom > 1 || (layout != null && clampProfileZoom(1e9, layout.plotW / zoom, layout.totalNm) > 1.05)
   const zoomBy = useCallback((factor: number, anchorPx?: number) => {
     const el = chartWrapRef.current, L0 = layoutRef.current
     if (!el || !L0) return
@@ -1024,10 +1090,7 @@ function VirtualRadar({
     }
   }, [hasChart, zoomBy])
 
-  const yTicks = useMemo(() => {
-    const t = altitudeTicks(yMax).filter((ft) => ft > yMin)
-    return yMin > 0 ? [yMin, ...t] : altitudeTicks(yMax)
-  }, [yMax, yMin])
+  const yTicks = useMemo(() => altitudeTicksFrom(yMax, yMin), [yMax, yMin])
   // Distance ticks on round display-unit values; the right end of the axis is
   // left free for the unit label (see distanceTicks).
   const xTicks = useMemo(() => {
@@ -1096,7 +1159,7 @@ function VirtualRadar({
     const lastIdx = ticks.length - 1
     const rects = ticks.map((t, i) => {
       const x = layout.xOf(t.distNm)
-      const w = estimateLabelWidth(t.name, Infinity)
+      const w = waypointLabelWidth(t.name)
       return i === lastIdx
         ? { left: x - LINE_LABEL_INSET - w, right: x - LINE_LABEL_INSET }
         : { left: x + LINE_LABEL_INSET, right: x + LINE_LABEL_INSET + w }
@@ -1120,18 +1183,10 @@ function VirtualRadar({
   // Terrain gradient: elevation bands in chart space (yMax at the top of the
   // plot, 0 ft at the bottom) so a colour always means the same altitude.
   // blue sea level → green lowland → brown hills → grey mountains
-  const terrainStops = useMemo(() => [
-    // Opaque, mid-tone colours: the ground must separate clearly from the sky above it.
-    { elev: yMax,  color: '#a39e96' },  // grey rock (peak / top of chart)
-    { elev: 3000,  color: '#a8844f' },  // brown highland
-    { elev: 1000,  color: '#8fa850' },  // mixed hill
-    { elev: 300,   color: '#78b43e' },  // green lowland
-    { elev: 50,    color: '#5fa63c' },  // coastal green
-    { elev: 0,     color: '#3f86c8' },  // blue — sea level / water
-  ].map(({ elev, color }) => ({
-    offset: `${Math.max(0, Math.min(100, ((yMax - elev) / (yMax - yMin)) * 100)).toFixed(1)}%`,
-    color,
-  })), [yMax, yMin])
+  const terrainStops = useMemo(
+    () => terrainGradientStops(yMin, yMax).map((st) => ({ offset: `${st.offset.toFixed(1)}%`, color: st.color })),
+    [yMax, yMin],
+  )
 
   // ── Static scene ───────────────────────────────────────────────────────────
   // Everything that only changes with the route, terrain, weather or panel
@@ -1141,6 +1196,10 @@ function VirtualRadar({
   // distance the MSA uses and fade with distance off track; the one that sets
   // the MSA is named in red; a crowd collapses to dots (highest first keeps its
   // pictogram). Landmarks thin out the same way, lower priority.
+  // Airspace chip boxes for the leg-drag layer (its below-MSA shortcut keeps clear of them).
+  const chipBoxes = useMemo((): BoxRect[] => (profile && layout
+    ? layoutAirspaceChips(airspaceChips(profile.airspaceBands, yMax), layout.xOf, layout.yOf).map((c) => ({ left: c.px, right: c.px + c.w, top: c.py, bottom: c.py + c.h }))
+    : []), [profile, layout, yMax])
   const { obstacleMarks, landmarkMarks, poiMarks } = useMemo(() => {
     const none = { obstacleMarks: [] as ObstacleMark[], landmarkMarks: [] as LandmarkMark[], poiMarks: [] as PoiMark[] }
     if (!profile || !layout) return none
@@ -1158,21 +1217,12 @@ function VirtualRadar({
       const limiting = isLimitingObstacle(tipFt, margins.obstacleClearanceFt, getMsa(o.distNm))
       return {
         key: `obs-${i}`, kind: o.kind, cx: clampX(L.xOf(o.distNm), 8), cy: L.yOf(tipFt), groundY: L.yOf(Math.max(0, baseFt)),
-        opacity: obstacleOpacity(o.lateralNm, margins.abeamNm) * (eh.estimated ? 0.7 : 1), limiting,
+        opacity: obstacleOpacity(o.lateralNm, margins.abeamNm) * (eh.estimated ? 0.85 : 1), limiting,
         priority: limiting ? 1e9 + tipFt : tipFt, full: false, estimated: eh.estimated,
-        label: limiting ? limitingObstacleLabel(o.kind, o.name, tipFt, eh.estimated) : '', labelPos: undefined as PlacedLabel | undefined, leader: false,
+        label: limiting && showObstLabels ? limitingObstacleLabel(o.kind, o.name, tipFt, eh.estimated) : '', labelPos: undefined as PlacedLabel | undefined, leader: false,
       }
     })
-    // Limiting obstacles close together (a wind farm) share one label: the
-    // highest keeps it, the rest are counted ("+1") instead of stacking names.
-    const merged = new Map<string, number>()
-    const labelled = obs.filter((m) => m.label).sort((x, y) => y.priority - x.priority)
-    const kept: (typeof obs)[number][] = []
-    for (const m of labelled) {
-      const host = kept.find((k) => Math.abs(k.cx - m.cx) < LIMITING_LABEL_MERGE_PX)
-      if (host) { merged.set(host.key, (merged.get(host.key) ?? 0) + 1); m.label = '' } else kept.push(m)
-    }
-    kept.forEach((k) => { const n = merged.get(k.key); if (n) k.label += ` +${n}` })
+    mergeNearbyLabels(obs, LIMITING_LABEL_MERGE_PX)
     const obsFull = declutterMarks(obs.map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), OBSTACLE_MIN_GAP_PX)
     obs.forEach((m) => { m.full = obsFull.has(m.key) })
     const lmk = profile.landmarks.map((l, i) => {
@@ -1196,7 +1246,7 @@ function VirtualRadar({
         key: `poi-${i}`, kind: p.kind, subtype: p.subtype, towered: p.towered, label: p.label,
         // Stands on the ground line (like the obstacles) instead of being centred on it, where the
         // ground fill would cover its lower half and the axis would cut it off.
-        cx: clampX(L.xOf(p.distNm), 6), cy: Math.min(L.yOf(baseFt) - 7, L.plotBottom - 8),
+        cx: clampX(L.xOf(p.distNm), 6), cy: poiCenterY(L.yOf(baseFt), L.plotBottom),
         priority: p.kind === 'aerodrome' ? (p.towered ? 4 : 3) : p.kind === 'navaid' ? 2 : 1, labelPos: undefined as PlacedLabel | undefined,
       }
     })
@@ -1229,39 +1279,23 @@ function VirtualRadar({
     const requests: LabelRequest[] = [
       ...obs.filter((m) => m.limiting && m.label).map((m) => {
         const b = obsBox(m)
-        return { id: m.key, x: m.cx, top: b.top, bottom: b.bottom, halfW: 8, w: Math.ceil(estimateLabelWidth(m.label, Infinity) * 1.35), h: 15, priority: m.priority }
+        return { id: m.key, x: m.cx, top: b.top, bottom: b.bottom, halfW: 8, w: obstacleLabelWidth(m.label), h: OBSTACLE_LABEL_H, priority: m.priority }
       }),
       ...pois.filter((m) => m.label).map((m) => ({
-        id: m.key, x: m.cx, top: m.cy - 6, bottom: m.cy + 6, halfW: 6, w: Math.ceil(estimateLabelWidth(m.label, Infinity) * 1.15), h: 13, priority: m.priority,
+        id: m.key, x: m.cx, top: m.cy - 6, bottom: m.cy + 6, halfW: 6, w: poiLabelWidth(m.label), h: POI_LABEL_H, priority: m.priority,
       })),
     ]
-    // Names keep clear of symbols, airspace chips and clouds when there is room. A label
-    // that finds no such spot (a limiting obstacle's warning must not vanish) is retried
-    // with fewer constraints, clouds first, then chips.
-    const area = { left: L.plotLeft, right: L.plotRight, top: L.plotTop + 14, bottom: L.plotBottom - 2 }
-    const placed = placeLabels(requests, [...avoid, ...chipBoxes, ...cloudBoxes], area)
-    const boxOf = (r: LabelRequest, pl: PlacedLabel): BoxRect => ({ left: pl.left, right: pl.left + r.w, top: pl.baseline + 2 - r.h, bottom: pl.baseline + 2 })
-    const allBoxes = [...avoid, ...chipBoxes, ...cloudBoxes]
-    const placedBoxes = () => requests.filter((r) => placed.has(r.id)).map((r) => boxOf(r, placed.get(r.id)!))
-    const leaders = new Set<string>()
-    // Crowded near the ground: lift the name into free sky above, joined by a leader line.
-    for (const r of requests.filter((q) => !placed.has(q.id) && q.id.startsWith('obs-'))) {
-      for (let lift = r.h + 8; lift < L.plotH; lift += r.h + 3) {
-        const got = placeLabels([{ ...r, top: r.top - lift, bottom: r.top - lift }], [...allBoxes, ...placedBoxes()], area)
-        if (got.size) { placed.set(r.id, got.get(r.id)!); leaders.add(r.id); break }
-      }
-    }
-    // Last resort: fewer constraints, clouds first, then chips.
-    for (const tier of [[...avoid, ...chipBoxes], avoid]) {
-      const missing = requests.filter((q) => !placed.has(q.id) && q.id.startsWith('obs-'))
-      if (missing.length === 0) break
-      placeLabels(missing, [...tier, ...placedBoxes()], area).forEach((v, k) => placed.set(k, v))
-    }
+    // Names keep clear of symbols, airspace chips and clouds when there is room; a limiting
+    // obstacle's name is never dropped (lifted with a leader line, or fewer constraints).
+    const { placed, leaders } = placeRadarLabels({
+      requests, symbols: avoid, chips: chipBoxes, clouds: cloudBoxes, mustShow: (id) => id.startsWith('obs-'),
+      area: { left: L.plotLeft, right: L.plotRight, top: L.plotTop + 14, bottom: L.plotBottom - 2 },
+    })
     obs.forEach((m) => { m.leader = leaders.has(m.key) })
     obs.forEach((m) => { m.labelPos = placed.get(m.key) })
     pois.forEach((m) => { m.labelPos = placed.get(m.key) })
     return { obstacleMarks: obs, landmarkMarks: lmk, poiMarks: pois }
-  }, [profile, layout, terrainPts, getMsa, msaMargins, waypoints, poiSets, yMax, yMin, weatherMarks])
+  }, [profile, layout, terrainPts, getMsa, msaMargins, waypoints, poiSets, yMax, yMin, weatherMarks, showObstLabels])
 
   const scene = useMemo(() => {
     if (!profile || !layout || !series) return null
@@ -1272,17 +1306,17 @@ function VirtualRadar({
     const phaseTaken: BoxRect[] = [
       ...placedChips.map((c): BoxRect => ({ left: c.px, right: c.px + c.w, top: c.py, bottom: c.py + c.h })),
       ...obstacleMarks.filter((m) => m.labelPos).map((m): BoxRect => {
-        const w = Math.ceil(estimateLabelWidth(m.label, Infinity) * 1.35)
+        const w = obstacleLabelWidth(m.label)
         return { left: m.labelPos!.left, right: m.labelPos!.left + w, top: m.labelPos!.baseline - 13, bottom: m.labelPos!.baseline + 3 }
       }),
       ...poiMarks.filter((m) => m.labelPos).map((m): BoxRect => {
-        const w = Math.ceil(estimateLabelWidth(m.label, Infinity) * 1.15)
+        const w = poiLabelWidth(m.label)
         return { left: m.labelPos!.left, right: m.labelPos!.left + w, top: m.labelPos!.baseline - 12, bottom: m.labelPos!.baseline + 3 }
       }),
     ]
     const phaseShown = phaseMarks.filter((m) => m.altFt <= yMax && m.altFt >= yMin).map((m) => {
       const short = m.kind === 'TOC' ? unreached.find((u) => { const sp = legSpanList[u.legIndex]; return sp && m.distNm >= sp.fromNm - 0.01 && m.distNm <= sp.toNm + 0.01 }) : undefined
-      const text = short ? `TOC ${formatAltitudeFt(m.altFt)} (${formatAltitudeFt(short.levelFt)} set)` : m.kind === 'TOC' ? `TOC ${formatAltitudeFt(m.altFt)}` : 'TOD'
+      const text = phaseLabelText(m.kind, m.altFt, short?.levelFt)
       return { m, short, text, x: L.xOf(m.distNm), y: L.yOf(m.altFt), w: Math.ceil(text.length * 6.3) + 4 }
     })
     phaseShown.forEach((p) => phaseTaken.push({ left: p.x - 4, right: p.x + 4, top: p.y - 4, bottom: p.y + 4 }))
@@ -1292,6 +1326,7 @@ function VirtualRadar({
         { left: L.plotLeft, right: L.plotRight, top: L.plotTop + 14, bottom: L.plotBottom - 2 }).get(String(k))
       if (got) { phasePlaced.set(k, got); phaseTaken.push({ left: got.left, right: got.left + p.w, top: got.baseline - 12, bottom: got.baseline + 2 }) }
     })
+    const chipBoxes: BoxRect[] = placedChips.map((c) => ({ left: c.px, right: c.px + c.w, top: c.py, bottom: c.py + c.h }))
     const msaPath = series.msa
       ? polylinePath(series.distNms.flatMap((d, i) => (series.msa![i] > 0 ? [{ distNm: d, altFt: series.msa![i] }] : [])), L.xOf, L.yOf)
       : ''
@@ -1337,9 +1372,23 @@ function VirtualRadar({
         {renderAirspace(profile.airspaceBands, L)}
 
         {renderClouds(weatherMarks, placedChips, L, [...obstacleMarks, ...poiMarks].filter((m) => m.labelPos && m.label).map((m) => {
-          const w = Math.ceil(estimateLabelWidth(m.label, Infinity) * 1.35)
+          const w = obstacleLabelWidth(m.label)
           return { x: m.labelPos!.left, y: m.labelPos!.baseline - 13, w, h: 16 }
         }))}
+
+        {/* ── Ground fill (elevation-banded gradient) + outline ───
+            Before water / obstacles / landmarks / POIs: the corridor band is
+            translucent and the terrain fill opaque, so anything standing on
+            the ground line must paint after them or it gets washed out. */}
+        {series.ground && (
+          <>
+            {corridorPts.length > 0 && (
+              <path d={groundAreaPath(corridorPts, L.xOf, L.yOf, L.totalNm)} fill={CORRIDOR_FILL} stroke={CORRIDOR_OUTLINE} strokeWidth={1.25} />
+            )}
+            <path d={groundAreaPath(terrainPts, L.xOf, L.yOf, L.totalNm)} fill="url(#terrainGrad)" />
+            <path d={groundOutline} fill="none" stroke={GROUND_OUTLINE} strokeWidth={1.5} />
+          </>
+        )}
 
         {/* ── Water (lake/reservoir) crossings ──────────────────── */}
         {/* Thin blue band along the ground baseline wherever the route
@@ -1372,7 +1421,7 @@ function VirtualRadar({
           if (shape) {
             return (
               <g key={m.key} opacity={m.opacity}>
-                <g transform={`translate(${m.cx} 0) scale(${OBSTACLE_X_SCALE} 1) translate(${-m.cx} 0)`}>{renderShape(shape)}</g>
+                <g transform={`translate(${m.cx} 0) scale(${obstacleXScale(m.kind)} 1) translate(${-m.cx} 0)`}>{renderShape(shape)}</g>
               </g>
             )
           }
@@ -1412,15 +1461,19 @@ function VirtualRadar({
             forecast, so drawn dimmer than the station barbs. */}
         {showWindAloft && windAloft.flatMap((col, ci) => col.levels.map((lv) => {
           // Surface (10 m) wind is part of the wind row under the x axis.
-          if (lv.surface || lv.altFt > yMax * 0.96) return null
+          if (lv.surface || lv.altFt > yMax * 0.96 || lv.altFt < yMin) return null
           const edge = Math.min(WIND_ALOFT_EDGE_PX, L.plotW / 2)
           const cx = Math.min(Math.max(L.xOf(col.distNm), L.plotLeft + edge), L.plotRight - edge)
           const cy = L.yOf(lv.altFt)
           const label = lv.speedKts === 0 ? 'CALM' : `${String(lv.dirDeg).padStart(3, '0')}°/${lv.speedKts}`
+          // Keep clear of the airspace chips: label right, else left, else barb only.
+          const fit = windAloftFit(cx, cy, Math.ceil(label.length * 6.8), chipBoxes, { left: L.plotLeft, right: L.plotRight })
+          if (!fit.barb) return null
           return (
             <g key={`windaloft-${ci}-${lv.altFt}`} aria-hidden="true">
               {renderBarbAt(cx, cy, lv.dirDeg, lv.speedKts, lv.speedKts === 0)}
-              <text x={cx + 12} y={cy + 4} fontSize={11} fontWeight={600} fill="#eaf6ff" {...HALO}>{label}</text>
+              {fit.label === 'right' && <text x={cx + 12} y={cy + 4} fontSize={11} fontWeight={600} fill={WIND_LABEL_COLOR} {...HALO}>{label}</text>}
+              {fit.label === 'left' && <text x={cx - 12} y={cy + 4} fontSize={11} fontWeight={600} textAnchor="end" fill={WIND_LABEL_COLOR} {...HALO}>{label}</text>}
             </g>
           )
         }))}
@@ -1428,7 +1481,7 @@ function VirtualRadar({
         {/* ── Landmarks on the ground, real map pictograms ──────── */}
         {landmarkMarks.map((m) => {
           const shape = obstacleSymbol(LANDMARK_SHAPE_KIND[m.kind] ?? 'tower', m.cx, m.tipY, m.groundY, m.estimated)
-          if (shape) return <g key={m.key} opacity={m.estimated ? 0.7 : 1}>{renderShape(shape)}</g>
+          if (shape) return <g key={m.key} opacity={m.estimated ? 0.85 : 1}>{renderShape(shape)}</g>
           return m.full
           ? renderIconAt(m.key, m.cx, m.cy, 14, iconMarkup[`lmk:${m.kind}`],
             <circle cx={m.cx} cy={m.cy} r={2.5} fill="rgba(150,150,150,0.9)" stroke="rgba(0,0,0,0.4)" strokeWidth={1} />)
@@ -1437,12 +1490,10 @@ function VirtualRadar({
 
         {/* ── Aerodromes, reporting points, navaids (own distance per kind) ── */}
         {poiMarks.map((m) => (
-          <g key={m.key} aria-hidden="true" transform={`translate(${m.cx} ${m.cy}) scale(1.45) translate(${-m.cx} ${-m.cy})`}>
-            {m.kind === 'aerodrome' && (m.subtype === 'HP'
-              ? <rect x={m.cx - 4} y={m.cy - 4} width={8} height={8} rx={1.5} fill="#f472b6" stroke="#fff" strokeWidth={1} />
-              : <circle cx={m.cx} cy={m.cy} r={5} fill={m.towered ? '#c084fc' : '#60a5fa'} stroke="#fff" strokeWidth={1} />)}
-            {m.kind === 'navaid' && <path d={`M${m.cx},${m.cy - 5} L${m.cx + 5},${m.cy} L${m.cx},${m.cy + 5} L${m.cx - 5},${m.cy} Z`} fill="#34d399" stroke="#fff" strokeWidth={1} />}
-            {m.kind === 'reporting' && <path d={`M${m.cx},${m.cy - 5} L${m.cx + 4.5},${m.cy + 3} L${m.cx - 4.5},${m.cy + 3} Z`} fill="#facc15" stroke="#fff" strokeWidth={1} />}
+          <g key={m.key} aria-hidden="true" transform={`translate(${m.cx} ${m.cy}) scale(${POI_SCALE}) translate(${-m.cx} ${-m.cy})`}>
+            {/* dark halo pass under the coloured symbol, so it holds up on any sky or ground */}
+            {renderPoiSymbol(m, true)}
+            {renderPoiSymbol(m, false)}
           </g>
         ))}
 
@@ -1463,21 +1514,10 @@ function VirtualRadar({
           )
         })}
 
-        {/* ── Ground fill (elevation-banded gradient) + outline ─── */}
-        {series.ground && (
-          <>
-            {corridorPts.length > 0 && (
-              <path d={groundAreaPath(corridorPts, L.xOf, L.yOf, L.totalNm)} fill="rgba(214,182,128,0.55)" stroke="rgba(236,214,168,0.9)" strokeWidth={1} strokeDasharray="3 3" />
-            )}
-            <path d={groundAreaPath(terrainPts, L.xOf, L.yOf, L.totalNm)} fill="url(#terrainGrad)" />
-            <path d={groundOutline} fill="none" stroke={GROUND_COLOR} strokeWidth={1.75} />
-          </>
-        )}
-
         {/* ── Planned altitude line, MSA, below-MSA stretches in red ── */}
         <clipPath id="plan-clip"><rect x={L.plotLeft} y={L.plotTop} width={L.plotW} height={L.plotH + 4} /></clipPath>
-        <path d={plannedPath} clipPath="url(#plan-clip)" fill="none" stroke="rgba(0,0,0,0.7)" strokeWidth={5} strokeLinejoin="round" opacity={dragging ? 0.35 : 1} />
-        <path d={plannedPath} clipPath="url(#plan-clip)" fill="none" stroke={PLAN_COLOR} strokeWidth={2.75} strokeLinejoin="round" opacity={dragging ? 0.35 : 1} />
+        <path d={plannedPath} clipPath="url(#plan-clip)" fill="none" stroke="rgba(0,0,0,0.7)" strokeWidth={5} strokeLinejoin="round" opacity={dragging ? 0.18 : 1} />
+        <path d={plannedPath} clipPath="url(#plan-clip)" fill="none" stroke={PLAN_COLOR} strokeWidth={2.75} strokeLinejoin="round" opacity={dragging ? 0.18 : 1} />
         {/* Turn points: white dots with a dark rim where one leg ends and the next begins. */}
         {!dragging && legSpanList.slice(1).map((sp, i) => {
           const alt = series.plannedAlts[nearestSampleIndex(series.distNms, sp.fromNm)]
@@ -1487,9 +1527,21 @@ function VirtualRadar({
         })}
         {unreached.map((u) => {
           const sp = legSpanList[u.legIndex]
-          if (!sp || u.levelFt > yMax) return null
+          if (!sp) return null
+          // A level above the chart top is pinned to the top edge, labelled with its value, so it is never silently absent.
+          const above = u.levelFt > yMax
           const y = Math.max(L.plotTop + 2, L.yOf(u.levelFt))
-          return <line key={`unreached-${u.legIndex}`} x1={L.xOf(sp.fromNm)} x2={L.xOf(sp.toNm)} y1={y} y2={y} stroke={PLAN_COLOR} strokeWidth={1.5} strokeDasharray="6 4" opacity={0.75} pointerEvents="none" />
+          const x1 = L.xOf(sp.fromNm), x2 = L.xOf(sp.toNm)
+          return (
+            <g key={`unreached-${u.legIndex}`} pointerEvents="none">
+              <line x1={x1} x2={x2} y1={y} y2={y} stroke={PLAN_COLOR} strokeWidth={1.5} strokeDasharray="6 4" opacity={0.75} />
+              {above && !dragging && x2 - x1 > 70 && (
+                <text x={(x1 + x2) / 2} y={L.plotTop + 46} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--text-primary)" {...HALO}>
+                  {'\u25b2'} {formatAltitudeFt(u.levelFt)} set
+                </text>
+              )}
+            </g>
+          )
         })}
         {/* Top of climb / top of descent on the flown path. A climb that ends below the level set
             for its leg is flagged in amber with that level. */}
@@ -1498,7 +1550,7 @@ function VirtualRadar({
           return (
             <g key={`phase-${k}`} pointerEvents="none">
               <circle cx={p.x} cy={p.y} r={3.5} fill="#fff" stroke="#000" strokeWidth={1.25} />
-              {pl && <text x={pl.left} y={pl.baseline} textAnchor="start" fontSize={11} fontWeight={700} fill={p.short ? '#ffc766' : '#fff'} {...HALO}>{p.text}</text>}
+              {pl && <text x={pl.left} y={pl.baseline} textAnchor="start" fontSize={11} fontWeight={700} fill={p.short ? PHASE_SHORT_COLOR : '#fff'} {...HALO}>{p.text}</text>}
             </g>
           )
         })}
@@ -1643,14 +1695,25 @@ function VirtualRadar({
             {windAloftStatus === 'retrying' ? 'Winds: retrying…' : 'Winds unavailable'}
           </span>
         )}
-        <button className={css.projToggleBtn} onClick={() => zoomBy(1 / 1.5)} disabled={zoom <= 1} title="Zoom out (Ctrl + wheel, or pinch the chart)" aria-label="Zoom profile out">−</button>
-        <button className={css.projToggleBtn} onClick={() => zoomBy(1.5)} title="Zoom in along the route (Ctrl + wheel, or pinch the chart)" aria-label="Zoom profile in">+</button>
+        {canZoom && (
+          <>
+          <button className={css.projToggleBtn} onClick={() => zoomBy(1 / 1.5)} disabled={zoom <= 1} title="Zoom out (Ctrl + wheel, or pinch the chart)" aria-label="Zoom profile out">−</button>
+          <button className={css.projToggleBtn} onClick={() => zoomBy(1.5)} title="Zoom in along the route (Ctrl + wheel, or pinch the chart)" aria-label="Zoom profile in">+</button>
+          </>
+        )}
         <button
           className={`${css.projToggleBtn} ${showMsa ? css.projToggleOn : ''}`}
           onClick={() => setShowMsa((v) => !v)}
           title={showMsa ? 'Hide the minimum safe altitude line' : 'Show the minimum safe altitude line'}
         >
           MSA
+        </button>
+        <button
+          className={`${css.projToggleBtn} ${showObstLabels ? css.projToggleOn : ''}`}
+          onClick={() => setShowObstLabels((v) => !v)}
+          title={showObstLabels ? 'Hide obstacle height labels' : 'Show height labels on the obstacles near your level'}
+        >
+          OBST
         </button>
         <button
           className={`${css.projToggleBtn} ${showWindAloft ? css.projToggleOn : ''}`}
@@ -1697,7 +1760,9 @@ function VirtualRadar({
                   fallbackAltFt={aircraftProfile?.cruiseAltFt || 3500}
                   ceilingFt={Math.min(aircraftProfile?.serviceCeilingFt || 50_000, Math.round(yMax / 100) * 100)}
                   legOverrides={legOverrides}
-                  plannedPts={series.distNms.map((d, i) => ({ distNm: d, altFt: series.plannedAlts[i] }))}
+                  plannedPts={plannedPts}
+                  previewPts={dragPreviewPts}
+                  chipBoxes={chipBoxes}
                   onLegLevelChange={onLegLevelChange}
                   drag={legDrag}
                   setDrag={setLegDrag}

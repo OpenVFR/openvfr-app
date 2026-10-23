@@ -36,19 +36,17 @@ export function effectiveHeight(kind: string, knownHeightM: number | null | unde
   return { heightM: ESTIMATED_HEIGHT_M[kind] ?? DEFAULT_ESTIMATED_HEIGHT_M, estimated: true }
 }
 
-const KIND_LABEL: Record<string, string> = {
-  wind_turbine: 'Turbine', tower: 'Tower', mast: 'Mast', building: 'Building', chimney: 'Chimney',
-  water_tower: 'Water tower', church: 'Church', windmill: 'Windmill',
-}
-
 /**
  * Short label for the obstacle that sets the MSA: its name (OpenAIP names can
  * be long codes, so trimmed), else its kind, with the tip altitude and a mark
- * when the height is only an estimate: `Älvsborgsbron 1,096 ft`, `Turbine 944 ft (est.)`.
+ * when the height is only an estimate: `Älvsborgsbron 1,096 ft`. An unnamed one is just the tip altitude: `944'`.
  */
-export function limitingObstacleLabel(kind: string, name: string | undefined, tipFt: number, estimated: boolean): string {
+export function limitingObstacleLabel(_kind: string, name: string | undefined, tipFt: number, estimated: boolean): string {
   const clean = (name ?? '').replace(/^[\w-]*\d[\w-]*\s*-\s*/, '').trim()
-  const base = clean ? (clean.length > 18 ? clean.slice(0, 17).trimEnd() + '…' : clean) : (KIND_LABEL[kind] ?? 'Obstacle')
+  // Unnamed structures (nearly every turbine) get just the tip altitude: the symbol already says what it
+  // is, and a long "Turbine 738 ft (est.)" repeated along a wind farm buries the chart.
+  if (!clean) return `${tipFt.toLocaleString('en-US')}'`
+  const base = clean.length > 18 ? clean.slice(0, 17).trimEnd() + '…' : clean
   return `${base} ${tipFt.toLocaleString('en-US')} ft${estimated ? ' (est.)' : ''}`
 }
 

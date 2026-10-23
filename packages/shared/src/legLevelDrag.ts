@@ -11,7 +11,8 @@
  * - The drag starts from the altitude drawn under the finger, not from the
  *   leg's requested level: a level the aircraft cannot reach on that distance
  *   sits far above the drawn line and made the line jump to the top.
- * - Snaps to 100 ft, capped at LEVEL_MAX_FT.
+ * - Snaps to 100 ft, capped at LEVEL_MAX_FT. No step-size mode: on a touch screen a mode button is easy to
+ *   leave on, and a second finger would pinch the chart instead.
  * - Dragging below the lowest step clears the leg's override (`null`), so
  *   the leg falls back to the route's default level.
  * - Only new levels differing from the current one are committed.
@@ -81,11 +82,17 @@ export function dragLevelFt(startAltFt: number, dyPx: number, pxPerFt: number): 
 /** The level under the finger, snapped to the step, never below 0 (what the
  *  preview line is drawn at; `dragLevelFt` turns anything below the lowest
  *  step into "clear the override"). */
-export function dragShownFt(startAltFt: number, dyPx: number, pxPerFt: number): number {
+export function dragShownFt(startAltFt: number, dyPx: number, pxPerFt: number, stepFt: number = LEVEL_STEP_FT): number {
   if (pxPerFt <= 0) return startAltFt
   const effDy = dyPx < 0 ? dyPx * DRAG_UP_RATIO : dyPx * DRAG_DOWN_RATIO
   const raw = startAltFt - effDy / pxPerFt
-  return Math.min(LEVEL_MAX_FT, Math.max(0, Math.round(raw / LEVEL_STEP_FT) * LEVEL_STEP_FT))
+  return Math.min(LEVEL_MAX_FT, Math.max(0, Math.round(raw / stepFt) * stepFt))
+}
+
+/** The step-function altitude profile with one leg moved to `altFt`: feed it to the flight-path
+ *  projection to preview the climbs and descents a drag would produce before it is committed. */
+export function withLegLevel(altitudeProfile: readonly ProfilePoint[], legIndex: number, altFt: number): ProfilePoint[] {
+  return altitudeProfile.map((p, i) => (Math.floor(i / 2) === legIndex ? { ...p, altFt } : p))
 }
 
 /** Highest MSA within a leg's span (0 when there is no MSA data there). */
