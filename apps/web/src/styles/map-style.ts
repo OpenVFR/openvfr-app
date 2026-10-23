@@ -1775,7 +1775,15 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
           'text-font': ['Noto Sans Regular'],
           'text-size': 9,
           'text-anchor': 'top',
-          'text-offset': [0, 0.5],
+          // Below the icon, not over it: the icon is centred on the point and 28 px * icon-size tall, so the
+          // label starts half that (in ems of the 9 px text) plus a small gap under the point. A fixed
+          // offset used to put the text on the lower half of the icon (the base of a turbine tower).
+          'text-offset': [
+            'interpolate', ['linear'], ['zoom'],
+            12, ['literal', [0, 1.35]],
+            13, ['literal', [0, 1.5]],
+            15, ['literal', [0, 1.8]],
+          ],
           'text-allow-overlap': false,
         },
         paint: {

@@ -1,9 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 15 15">
-  <!-- Tapered tower, three swept blades (one tilted so a field of turbines does not look stamped), hub with a light. -->
-  <path d="M7.1 6.2h0.8L8.7 15H6.3z"/>
-  <g id="b"><path d="M6.95 5.2C6.7 3.1 7 1.4 7.5 0.1 8.1 1.5 8.3 3.2 8.05 5.2z"/></g>
-  <use href="#b" transform="rotate(120 7.5 5.5)"/>
-  <use href="#b" transform="rotate(240 7.5 5.5)"/>
-  <circle cx="7.5" cy="5.5" r="1.25"/>
-  <circle cx="7.5" cy="5.5" r="0.5" fill="#fff"/>
+  <!-- White turbine on a dark halo (matches the Virtual Radar symbol). Explicit paint: the recolour step
+       (fill on the root) does not touch it. Halo first, then the white shapes. The rotor is turned 20 deg so
+       it does not read as an arrow; every halo edge stays inside the 15x15 box. -->
+  <g fill="none" stroke="#0b1522" stroke-opacity="0.85" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.5 6.3V13" stroke-width="2.6"/>
+    <path d="M7.5 6.3L6.06 2.35M7.5 6.3L11.64 7.03M7.5 6.3L4.8 9.52" stroke-width="3.2"/>
+  </g>
+  <circle cx="7.5" cy="6.3" r="2.3" fill="#0b1522" fill-opacity="0.85"/>
+  <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.5 6.3V13" stroke-width="1.1"/>
+    <path d="M7.5 6.3L6.06 2.35M7.5 6.3L11.64 7.03M7.5 6.3L4.8 9.52" stroke-width="1.5"/>
+  </g>
+  <circle cx="7.5" cy="6.3" r="1.5" fill="#fff"/>
 </svg>
