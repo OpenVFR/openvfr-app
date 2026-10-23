@@ -1,5 +1,5 @@
 diff --git a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
-index e90edd3fd682f1a53a0950526ae63fe20f3efd24..25101ba55e46a0be2f5998f0ca62f6a183859dd5 100644
+index e90edd3..bd23969 100644
 --- a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
 +++ b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
 @@ -20,6 +20,10 @@ import androidx.compose.runtime.LaunchedEffect
@@ -13,7 +13,7 @@ index e90edd3fd682f1a53a0950526ae63fe20f3efd24..25101ba55e46a0be2f5998f0ca62f6a1
  import expo.modules.kotlin.records.Field
  import expo.modules.kotlin.records.Record
  import expo.modules.kotlin.types.OptimizedRecord
-@@ -90,6 +94,70 @@ private fun ForwardKeyEventsToActivity(activity: Activity?) {
+@@ -90,6 +94,83 @@ private fun ForwardKeyEventsToActivity(activity: Activity?) {
    }
  }
  
@@ -27,7 +27,7 @@ index e90edd3fd682f1a53a0950526ae63fe20f3efd24..25101ba55e46a0be2f5998f0ca62f6a1
 + * A single hide at first composition is not enough: on large screens (tablet taskbar; the sheet
 + * is also width-capped at 640dp there) the system re-shows the bars on the dialog window after
 + * the sheet's enter transition, so the hide must be re-applied every time the window reports the
-+ * bars visible again. The insets listener below does that for as long as the sheet is up.
++ * bars visible again. The insets listener and a 250 ms poll below do that while the sheet is up.
 + */
 +@Composable
 +private fun MatchActivitySystemBars(activity: Activity?) {
@@ -58,7 +58,6 @@ index e90edd3fd682f1a53a0950526ae63fe20f3efd24..25101ba55e46a0be2f5998f0ca62f6a1
 +        !activityInsets.isVisible(WindowInsetsCompat.Type.statusBars()) ||
 +          !activityInsets.isVisible(WindowInsetsCompat.Type.navigationBars())
 +      }
-+      android.util.Log.i("OVFRSheet", "mirror barsHidden=$barsHidden")
 +      if (barsHidden) {
 +        WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
 +        WindowCompat.getInsetsController(dialogWindow, dialogWindow.decorView).apply {
@@ -77,14 +76,28 @@ index e90edd3fd682f1a53a0950526ae63fe20f3efd24..25101ba55e46a0be2f5998f0ca62f6a1
 +      }
 +      insets
 +    }
-+    onDispose { ViewCompat.setOnApplyWindowInsetsListener(dialogWindow.decorView, null) }
++    // The listener alone is not reliable: the sheet's own window setup can replace it, and the
++    // system re-shows the bars after window focus changes without an insets pass we observe. Poll
++    // while the sheet is up; re-hiding already-hidden bars is a no-op.
++    val handler = android.os.Handler(android.os.Looper.getMainLooper())
++    val poll = object : Runnable {
++      override fun run() {
++        mirror()
++        handler.postDelayed(this, 250)
++      }
++    }
++    handler.postDelayed(poll, 250)
++    onDispose {
++      handler.removeCallbacks(poll)
++      ViewCompat.setOnApplyWindowInsetsListener(dialogWindow.decorView, null)
++    }
 +  }
 +}
 +
  @Composable
  fun FunctionalComposableScope.ModalBottomSheetContent(
    props: ModalBottomSheetViewProps,
-@@ -162,6 +230,7 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
+@@ -162,6 +243,7 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
      modifier = ModifierRegistry.applyModifiers(props.modifiers, appContext, composableScope, globalEventDispatcher)
    ) {
      ForwardKeyEventsToActivity(appContext.currentActivity)
