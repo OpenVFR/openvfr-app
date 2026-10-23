@@ -154,6 +154,8 @@ function computeWarnings(
   }
 
   // ── 1. Airspace penetration ─────────────────────────────────────────────
+  // The route can cross one airspace twice (it is one band per crossing): warn once per airspace and vertical extent.
+  const penetrationSeen = new Set<string>()
   for (const band of profile.airspaceBands) {
     const isDangerous =
       CONTROLLED_CLASSES.has(band.class) || RESTRICTED_CLASSES.has(band.class)
@@ -165,6 +167,9 @@ function computeWarnings(
 
     // Flag if planned altitude is INSIDE the vertical extent (flying through)
     if (planned >= band.lower_ft && planned <= band.upper_ft) {
+      const seenKey = `${band.class}|${band.name}|${band.lower_ft}|${band.upper_ft}`
+      if (penetrationSeen.has(seenKey)) continue
+      penetrationSeen.add(seenKey)
       const level = RESTRICTED_CLASSES.has(band.class) ? 'danger' : 'warn'
       const classLabel = band.type === 'CTR' ? `Class ${band.class} CTR` : `Class ${band.class}`
       warnings.push({
