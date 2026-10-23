@@ -839,7 +839,12 @@ function buildFlightVertices(
   // Solution: pop verts strictly past todNm, then insert the descent ramp.
   if (curAlt > arrivalElevFt) {
     const descentDist = descentDistNm(curAlt, arrivalElevFt, perf)
-    const todNm = totalNm - descentDist
+    // The descent may start no earlier than where the final level was first reached. On a short route
+    // the full descent does not fit, and starting before that point used to pop every vertex: the whole
+    // plan (each leg's climb) vanished and the line ran straight from departure to arrival.
+    let levelReachedNm = 0
+    for (let k = verts.length - 1; k >= 0 && verts[k].altFt === curAlt; k--) levelReachedNm = verts[k].distNm
+    const todNm = Math.max(totalNm - descentDist, levelReachedNm)
 
     if (todNm >= totalNm) {
       // Route is too short to complete a full descent — force arrival altitude.
@@ -1259,7 +1264,7 @@ export interface TrajectoryTick {
  * treats them as NM directly (still returns elapsed time for each, needed
  * by computeVspeedTrajectory below). Ticks beyond `totalNm` are dropped.
  */
-/** Below this ground speed there is no meaningful "ahead" (SkyDemon draws from 1 kt). */
+/** Below this ground speed there is no meaningful "ahead". */
 export const TRAJECTORY_MIN_SPEED_KTS = 1
 
 export function computeTrajectoryTicks(opts: {
