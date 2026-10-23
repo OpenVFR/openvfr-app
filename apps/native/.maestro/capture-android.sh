@@ -52,8 +52,22 @@ demo notifications -e visible false
 adb install -r "$apk"
 
 adb logcat -c
+# Diagnosis for system bars leaking into sheet screenshots: sample the focused
+# window and who requests which system bars, every 2 s (a few lines each).
+mkdir -p "$out/debug"
+(
+  while true; do
+    echo "=== $(date +%T)"
+    adb shell dumpsys window 2>/dev/null \
+      | grep -E 'mCurrentFocus|mInputMethodTarget|requestedVisibleTypes|mRequestedVisibleTypes|InsetsSourceProvider|Window #[0-9]+ Window[{].*(Dialog|openvfr|Taskbar|StatusBar|NavigationBar)' \
+      | head -40
+    sleep 2
+  done
+) > "$out/debug/window-samples.txt" 2>&1 &
+sampler=$!
 status=0
 bash "$here/run-flow.sh" "$out" || status=$?
+kill "$sampler" 2>/dev/null || true
 
 # Keep a filtered logcat for diagnosis: MapLibre/PMTiles lines (map sources
 # that fail to load leave no trace in the screenshots, just missing detail)
@@ -63,7 +77,7 @@ bash "$here/run-flow.sh" "$out" || status=$?
 mkdir -p "$out/debug"
 keep='mbgl|maplibre|pmtiles|AndroidRuntime|FATAL EXCEPTION|OutOfMemory'
 keep+='|lowmemorykiller|lmkd|has died|Process org[.]openvfr[.]app'
-keep+='|ActivityManager: (Start proc|Killing).*openvfr'
+keep+='|ActivityManager: (Start proc|Killing).*openvfr|OVFRSheet'
 adb logcat -d -v time 2>/dev/null \
   | grep -E -i "$keep" \
   | grep -v 'Could not find generated setter' \

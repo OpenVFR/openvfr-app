@@ -13,7 +13,7 @@ index e90edd3fd682f1a53a0950526ae63fe20f3efd24..25101ba55e46a0be2f5998f0ca62f6a1
  import expo.modules.kotlin.records.Field
  import expo.modules.kotlin.records.Record
  import expo.modules.kotlin.types.OptimizedRecord
-@@ -90,6 +94,68 @@ private fun ForwardKeyEventsToActivity(activity: Activity?) {
+@@ -90,6 +94,70 @@ private fun ForwardKeyEventsToActivity(activity: Activity?) {
    }
  }
  
@@ -58,6 +58,7 @@ index e90edd3fd682f1a53a0950526ae63fe20f3efd24..25101ba55e46a0be2f5998f0ca62f6a1
 +        !activityInsets.isVisible(WindowInsetsCompat.Type.statusBars()) ||
 +          !activityInsets.isVisible(WindowInsetsCompat.Type.navigationBars())
 +      }
++      android.util.Log.i("OVFRSheet", "mirror barsHidden=$barsHidden")
 +      if (barsHidden) {
 +        WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
 +        WindowCompat.getInsetsController(dialogWindow, dialogWindow.decorView).apply {
@@ -68,6 +69,7 @@ index e90edd3fd682f1a53a0950526ae63fe20f3efd24..25101ba55e46a0be2f5998f0ca62f6a1
 +    }
 +    mirror()
 +    ViewCompat.setOnApplyWindowInsetsListener(dialogWindow.decorView) { _, insets ->
++      android.util.Log.i("OVFRSheet", "dialog insets status=${insets.isVisible(WindowInsetsCompat.Type.statusBars())} nav=${insets.isVisible(WindowInsetsCompat.Type.navigationBars())}")
 +      if (insets.isVisible(WindowInsetsCompat.Type.statusBars()) ||
 +        insets.isVisible(WindowInsetsCompat.Type.navigationBars())
 +      ) {
@@ -82,7 +84,7 @@ index e90edd3fd682f1a53a0950526ae63fe20f3efd24..25101ba55e46a0be2f5998f0ca62f6a1
  @Composable
  fun FunctionalComposableScope.ModalBottomSheetContent(
    props: ModalBottomSheetViewProps,
-@@ -162,6 +228,7 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
+@@ -162,6 +230,7 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
      modifier = ModifierRegistry.applyModifiers(props.modifiers, appContext, composableScope, globalEventDispatcher)
    ) {
      ForwardKeyEventsToActivity(appContext.currentActivity)
