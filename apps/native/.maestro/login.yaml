@@ -21,6 +21,27 @@ appId: org.openvfr.app
       notVisible:
         id: login-otp
     commands:
+      # Keep the server's answer for diagnosis. Cropped to the error text only
+      # (never the whole screen), so nothing sensitive lands in the artifact.
+      - runFlow:
+          when:
+            visible:
+              id: login-error
+          commands:
+            - takeScreenshot:
+                path: _login-send-error
+                cropOn:
+                  id: login-error
+      # The API allows 3 code sends per minute per IP (rate limit on
+      # /email-otp/send-verification-otp). A shared runner IP or the previous
+      # simulator's login can have used that up, and an immediate resend would
+      # just be refused too. Idle for a full window first (nothing here ever
+      # becomes visible, so this is a plain 65 s wait).
+      - extendedWaitUntil:
+          visible:
+            id: login-wait-for-rate-limit-window
+          timeout: 65000
+          optional: true
       - tapOn:
           id: login-email
       - eraseText: 80
