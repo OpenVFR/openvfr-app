@@ -190,12 +190,35 @@ appId: org.openvfr.app
     id: map-tools-open
 - tapOn:
     id: map-tool-go
+# Let the flight-mode sheet finish its presentation animation before tapping:
+# on iOS it is a SwiftUI sheet, and tapping while the card is still sliding
+# in lands on stale coordinates (the scrim), dismissing the sheet without
+# starting the simulator (run 39917919486).
+- waitForAnimationToEnd:
+    timeout: 5000
 - tapOn:
     id: flight-mode-start-sim
 # The simulator's first position arrives on its first tick; the profile chart
 # and terrain sampling render a moment later.
 - waitForAnimationToEnd:
     timeout: 10000
+# Retry once if the tap still missed (sim-stop appears synchronously with
+# simFlight.active, so its absence here means the sim never started).
+- runFlow:
+    when:
+      notVisible:
+        id: sim-stop
+    commands:
+      - tapOn:
+          id: map-tools-open
+      - tapOn:
+          id: map-tool-go
+      - waitForAnimationToEnd:
+          timeout: 5000
+      - tapOn:
+          id: flight-mode-start-sim
+      - waitForAnimationToEnd:
+          timeout: 10000
 - extendedWaitUntil:
     visible:
       id: sim-stop
