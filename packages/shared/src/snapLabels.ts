@@ -77,3 +77,39 @@ export function formatLandmarkName(props: { name?: string | null; kind?: string 
   if (name) return name
   return LANDMARK_KIND_LABEL[props.kind ?? ''] ?? 'Landmark'
 }
+
+const LANDMARK_ONLY_KINDS = new Set(['church', 'mast', 'windmill'])
+const OBSTACLE_ONLY_KINDS = new Set(['wind_turbine', 'tower', 'building', 'other'])
+
+/**
+ * Whether a feature with a plain `kind` property is an obstacle (OBS) rather than a landmark (LMK), for
+ * clients whose map query does not say which layer matched. Both carry `kind` and `height_m` (a church
+ * has one too), so neither says it; the kind value does where it is exclusive, else the obstacles' own
+ * surveyed `elevation_ft`, which landmarks do not have.
+ */
+export function isObstacleFeature(props: { kind?: unknown; elevation_ft?: unknown }): boolean {
+  const kind = typeof props.kind === 'string' ? props.kind : ''
+  if (LANDMARK_ONLY_KINDS.has(kind)) return false
+  if (OBSTACLE_ONLY_KINDS.has(kind)) return true
+  return props.elevation_ft !== undefined && props.elevation_ft !== null
+}
+
+const OBSTACLE_ICON: Record<string, string> = {
+  wind_turbine: 'obs-wind-turbine', tower: 'obs-tower', chimney: 'obs-chimney', building: 'obs-building',
+  water_tower: 'lmk-water-tower', other: 'obs-other',
+}
+const LANDMARK_ICON: Record<string, string> = {
+  church: 'lmk-church', mast: 'lmk-mast', windmill: 'lmk-windmill', water_tower: 'lmk-water-tower', chimney: 'lmk-chimney',
+}
+
+/**
+ * Name of the map icon (`poi_icons/<name>`) a picker row shows instead of a text badge, for obstacles
+ * and landmarks: the same pictogram the map draws says what it is better than "OBS" / "LMK". Null for
+ * every other kind, which keeps its text badge.
+ */
+export function snapIconName(badge: string, kind?: unknown): string | null {
+  const k = typeof kind === 'string' ? kind : ''
+  if (badge === 'OBS') return OBSTACLE_ICON[k] ?? 'obs-other'
+  if (badge === 'LMK') return LANDMARK_ICON[k] ?? 'lmk-church'
+  return null
+}

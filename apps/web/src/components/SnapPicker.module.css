@@ -71,6 +71,12 @@
 .kindUwp { background: #facc15; color: #000; }
 .kindPt  { background: rgba(255, 255, 255, 0.14); }
 .kindDefault { background: #94a3b8; }
+.icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
 .badgeCancel { background: rgba(255, 255, 255, 0.15); }
 
 .name {

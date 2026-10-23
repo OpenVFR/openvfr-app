@@ -72,7 +72,7 @@ import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
 import { EUROPEAN_REGIONS } from '@open-vfr/shared/regions'
 import { countryDatasetSource, loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { useActiveCountries } from '../utils/countryData'
-import { formatObstacleName, formatLandmarkName, obstacleWaypointName } from '@open-vfr/shared/snapLabels'
+import { snapIconName, formatObstacleName, formatLandmarkName, obstacleWaypointName } from '@open-vfr/shared/snapLabels'
 import { type PointFeature } from './FeaturePopup'
 import type { WhatsHereItem } from './WhatsHerePopup'
 import SnapPicker, { type SnapCandidate } from './SnapPicker'
@@ -2057,7 +2057,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
           const key  = `${name}|${geom.coordinates[0].toFixed(4)}|${geom.coordinates[1].toFixed(4)}`
           if (seen.has(key)) continue
           seen.add(key)
-          out.push({ kind: extractSnapKind(feat), displayName: extractSnapDisplayName(feat), waypoint: { lng: geom.coordinates[0], lat: geom.coordinates[1], name } })
+          const snapKind = extractSnapKind(feat)
+          out.push({ kind: snapKind, icon: snapIconName(snapKind, (feat.properties as Record<string, unknown>)?.kind), displayName: extractSnapDisplayName(feat), waypoint: { lng: geom.coordinates[0], lat: geom.coordinates[1], name } })
         }
         return out
       }
@@ -2892,7 +2893,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           const key = `${kind}:${name}:${geom.coordinates[1].toFixed(5)}:${geom.coordinates[0].toFixed(5)}`
           if (!seen.has(key)) {
             seen.add(key)
-            real.push({ kind, displayName: extractSnapDisplayName(feat), waypoint: { lng: geom.coordinates[0], lat: geom.coordinates[1], name } })
+            real.push({ kind, icon: snapIconName(kind, (feat.properties as Record<string, unknown>)?.kind), displayName: extractSnapDisplayName(feat), waypoint: { lng: geom.coordinates[0], lat: geom.coordinates[1], name } })
           }
         }
         const raw = { lng: e.lngLat.lng, lat: e.lngLat.lat }

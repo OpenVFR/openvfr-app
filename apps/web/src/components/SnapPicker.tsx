@@ -15,6 +15,8 @@ export type SnapCandidate = {
    *  MapView.tsx's extractSnapName/extractSnapDisplayName split). Falls
    *  back to `waypoint.name` when absent. */
   displayName?: string
+  /** Map icon (poi_icons/<name>.svg) shown instead of the text badge (obstacles and landmarks). */
+  icon?: string | null
 }
 
 interface Props {
@@ -65,9 +67,13 @@ export default function SnapPicker({ candidates, x, y, onPick, onClose }: Props)
                 className={css.item}
                 onClick={() => { onPick(c.waypoint); onClose() }}
               >
-                <span className={`${css.badge} ${KIND_CSS[c.kind] ?? css.kindDefault}`}>
-                  {c.kind}
-                </span>
+                {c.icon ? (
+                  <img className={css.icon} src={`/poi_icons/${c.icon}.svg`} alt="" width={22} height={22} />
+                ) : (
+                  <span className={`${css.badge} ${KIND_CSS[c.kind] ?? css.kindDefault}`}>
+                    {c.kind}
+                  </span>
+                )}
                 <span className={css.name}>{c.displayName ?? c.waypoint.name ?? (c.kind === 'PT' ? CURRENT_POSITION_LABEL : '—')}</span>
               </button>
             </li>

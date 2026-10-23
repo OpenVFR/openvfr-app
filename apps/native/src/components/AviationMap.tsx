@@ -43,7 +43,7 @@ import {
   type RunwayWindHighlightEnd,
 } from '@open-vfr/shared/runwayWind'
 import { AIRSPACE_COLORS as AC, CONTROLLED_CLASSES, ZONE_TYPES, controlledStyle } from '@open-vfr/shared/airspaceColors'
-import { formatObstacleName, formatLandmarkName, obstacleWaypointName, CURRENT_POSITION_LABEL } from '@open-vfr/shared/snapLabels'
+import { formatObstacleName, formatLandmarkName, obstacleWaypointName, isObstacleFeature, snapIconName, CURRENT_POSITION_LABEL } from '@open-vfr/shared/snapLabels'
 import { chooseSnapTarget, sortSnapCandidates, snapHintText, neighbourAtDrop } from '@open-vfr/shared/snapChoice'
 
 import {
@@ -349,6 +349,8 @@ export type SnapCandidate = {
   waypoint: RouteWaypoint
   /** Verbose picker-only label -- see extractSnapDisplayName below. */
   displayName?: string
+  /** Map icon name shown instead of the text badge (obstacles and landmarks). */
+  icon?: string | null
 }
 
 // Layers that are valid snap targets during route planning (mirrors web's
@@ -429,8 +431,8 @@ function extractSnapKind(feat: Feature): string {
   // some kind VALUES even overlap, e.g. 'chimney') so `kind` alone can't
   // tell them apart — native queryRenderedFeatures results don't carry back
   // which layer matched, unlike web's MapGeoJSONFeature.layer.id. Obstacles
-  // are the only one of the two with elevation/height properties.
-  if (typeof p.kind === 'string' && (p.elevation_ft !== undefined || p.height_m !== undefined)) return 'OBS'
+  // are the only one of the two with a surveyed elevation (landmarks carry height_m too, so that alone is no tell).
+  if (typeof p.kind === 'string' && isObstacleFeature(p)) return 'OBS'
   if (typeof p.kind === 'string') return 'LMK'
   return 'WP'
 }
@@ -459,7 +461,7 @@ function buildSnapCandidates(hits: Feature[]): SnapCandidate[] {
     const key  = `${kind}:${name}:${lat.toFixed(5)}:${lng.toFixed(5)}`
     if (seen.has(key)) continue
     seen.add(key)
-    out.push({ kind, displayName: extractSnapDisplayName(feat), waypoint: { lng, lat, name } })
+    out.push({ kind, icon: snapIconName(kind, (feat.properties as Record<string, unknown> | null)?.kind), displayName: extractSnapDisplayName(feat), waypoint: { lng, lat, name } })
   }
   return out
 }
