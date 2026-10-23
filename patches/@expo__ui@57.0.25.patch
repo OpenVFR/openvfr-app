@@ -13,7 +13,7 @@ index e90edd3fd682f1a53a0950526ae63fe20f3efd24..25101ba55e46a0be2f5998f0ca62f6a1
  import expo.modules.kotlin.records.Field
  import expo.modules.kotlin.records.Record
  import expo.modules.kotlin.types.OptimizedRecord
-@@ -90,6 +94,52 @@ private fun ForwardKeyEventsToActivity(activity: Activity?) {
+@@ -90,6 +94,68 @@ private fun ForwardKeyEventsToActivity(activity: Activity?) {
    }
  }
  
@@ -39,9 +39,25 @@ index e90edd3fd682f1a53a0950526ae63fe20f3efd24..25101ba55e46a0be2f5998f0ca62f6a1
 +
 +  DisposableEffect(dialogWindow, activityWindow) {
 +    fun mirror() {
-+      val activityInsets = ViewCompat.getRootWindowInsets(activityWindow.decorView) ?: return
-+      val barsHidden = !activityInsets.isVisible(WindowInsetsCompat.Type.statusBars()) ||
-+        !activityInsets.isVisible(WindowInsetsCompat.Type.navigationBars())
++      // Ask what the activity *requested*, not what its insets currently show: once the sheet's
++      // dialog window has focus the system shows the bars, so the activity's own insets already
++      // read "visible" and an insets check would conclude the app was never immersive (this is
++      // what left the status bar and taskbar in tablet sheet screenshots). The requested state
++      // (API 34+) is unaffected by the dialog; older APIs fall back to the current insets.
++      val barsHidden = if (android.os.Build.VERSION.SDK_INT >= 34) {
++        val bars = android.view.WindowInsets.Type.statusBars() or
++          android.view.WindowInsets.Type.navigationBars()
++        val controller = activityWindow.insetsController
++        if (controller != null) {
++          (controller.requestedVisibleTypes and bars) != bars
++        } else {
++          return
++        }
++      } else {
++        val activityInsets = ViewCompat.getRootWindowInsets(activityWindow.decorView) ?: return
++        !activityInsets.isVisible(WindowInsetsCompat.Type.statusBars()) ||
++          !activityInsets.isVisible(WindowInsetsCompat.Type.navigationBars())
++      }
 +      if (barsHidden) {
 +        WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
 +        WindowCompat.getInsetsController(dialogWindow, dialogWindow.decorView).apply {
@@ -66,7 +82,7 @@ index e90edd3fd682f1a53a0950526ae63fe20f3efd24..25101ba55e46a0be2f5998f0ca62f6a1
  @Composable
  fun FunctionalComposableScope.ModalBottomSheetContent(
    props: ModalBottomSheetViewProps,
-@@ -162,6 +212,7 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
+@@ -162,6 +228,7 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
      modifier = ModifierRegistry.applyModifiers(props.modifiers, appContext, composableScope, globalEventDispatcher)
    ) {
      ForwardKeyEventsToActivity(appContext.currentActivity)
