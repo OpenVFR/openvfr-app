@@ -16,7 +16,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { resetLastSyncAt } from '../hooks/syncMeta'
+import { stopCloudSync } from '../sync/cloudSync'
 
 const OWNER_KEY = 'ovfr:syncOwner'
 const PRIVATE_KEYS = [
@@ -24,15 +24,20 @@ const PRIVATE_KEYS = [
   'ovfr:aircraft_profiles',
   'ovfr:user_waypoints',
   'ovfr:flight_logs',
+  'ovfr:sync_last_at',   // retired sync high-water mark
 ]
 
 export async function wipePrivateLocalData(): Promise<void> {
   await AsyncStorage.removeMany([...PRIVATE_KEYS, OWNER_KEY]).catch(() => {})
-  await resetLastSyncAt()
 }
 
 export async function claimLocalData(userId: string): Promise<void> {
   const owner = await AsyncStorage.getItem(OWNER_KEY).catch(() => null)
-  if (owner && owner !== userId) await wipePrivateLocalData()
+  if (owner && owner !== userId) {
+    // The previous account's sync may still be mid-round; it must not write
+    // its rows back after the wipe.
+    await stopCloudSync()
+    await wipePrivateLocalData()
+  }
   await AsyncStorage.setItem(OWNER_KEY, userId).catch(() => {})
 }

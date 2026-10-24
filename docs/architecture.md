@@ -63,9 +63,18 @@ React PWA
   → MapLibre sources → Martin (tile endpoints) → PostgreSQL (landuse, aeroway_lines …)
 ```
 
-### RxDB sync strategy
+### Cloud sync
 
-Phase 2 stores all user data in RxDB (IndexedDB) for offline-first operation. Phase 6 adds sync: RxDB's HTTP replication protocol pushes/pulls deltas to a Hono endpoint that writes to PostgREST. Auth JWT is attached to every sync request. The local RxDB schema is the source of truth; the backend is a sync target, not the primary store.
+User data lives on the device first (RxDB/IndexedDB on web, AsyncStorage on native) and works fully offline. Signed-in devices sync it two-way with the `user_*` tables through PostgREST, using one engine shared by both apps (`packages/shared/src/cloudSync.ts`, column mapping in `packages/shared/src/cloudSyncRows.ts`, local storage side in `apps/web/src/sync/cloudSync.ts` and `apps/native/src/sync/cloudSync.ts`):
+
+- Every row carries `updatedAt`; the newest version wins. The database enforces this (migration `sync_tombstones`): an upload older than the stored row, or not newer than the row's delete, is ignored.
+- Deletes leave a tombstone (`user_sync_tombstones`, written by a trigger on every `user_*` table). Clients delete through `rpc/sync_delete`, passing when the user deleted the row (it may have been queued offline), so a delete and a later re-create of the same settings key stay in order on that device's clock. A device removes its copy only when the tombstone is newer than its own last edit, so an upload that failed offline is never mistaken for a delete made elsewhere.
+- Database rules are covered by `db/tests/sync_tombstones.test.sql` (`psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/tests/sync_tombstones.test.sql` as the migration owner; one transaction, rolled back).
+- Tombstones are kept 365 days. A device offline longer than that may upload a row that was deleted elsewhere again.
+- Device clocks: timestamps more than 2 minutes ahead of the server are clamped, and the device adopts the stored value, so one fast clock cannot make every other device's edits lose. Last-write-wins still compares device clocks otherwise.
+- A device syncs in idempotent rounds: send queued deletes, compare `(id, updated_at)` lists and tombstones, download what is newer on the server, upload what is newer locally. Rounds run at sign-in, shortly after a local change, every 5 min, on app foreground / tab visible / back online, and with backoff after a failure until they go through. Every request has a timeout. A row the server rejects permanently (4xx) is logged and not retried.
+- `user_flight_logs` is upload-only (a completed log never changes); the in-progress log never leaves the device. Native does not sync settings (per-device); web syncs them by key with a locally kept modification time, and a setting never edited while signed in is download-only (it may be a default or a previous account's value).
+- Sign-out first tries to send everything and asks before wiping local data that has not reached the server.
 
 ---
 

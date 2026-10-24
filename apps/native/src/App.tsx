@@ -24,6 +24,7 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {error:
 }
 
 import { AuthProvider, useAuthContext } from './context/AuthContext'
+import { useCloudSyncLifecycle } from './sync/cloudSync'
 import { SettingsProvider }             from './context/SettingsContext'
 import { RouteProvider }               from './context/RouteContext'
 import { UserWaypointProvider }        from './context/UserWaypointContext'
@@ -39,6 +40,9 @@ import { useForceUpdate } from './hooks/useForceUpdate'
 function AppShell() {
   const styles = useThemedStyles(makeStyles)
   const { state } = useAuthContext()
+  // Cloud sync of routes, aircraft, waypoints and flight logs for the
+  // signed-in account (see sync/cloudSync.ts).
+  useCloudSyncLifecycle(state.status === 'authenticated' ? state.user.id : null)
 
   React.useEffect(() => {
     if (SCREENSHOT_MODE && Platform.OS === 'android') {

@@ -30,7 +30,6 @@ import { useWeatherAlongRoute } from '../hooks/useWeatherAlongRoute'
 import { tafChangeIcaos } from '@open-vfr/shared/parseTaf'
 import { useRouteSync }       from '../hooks/useRouteSync'
 import { useSettingsContext }  from '../context/SettingsContext'
-import { useAuthContext }      from '../context/AuthContext'
 import { useUserWaypointContext } from '../context/UserWaypointContext'
 import { RouteLibrarySheet }  from '../components/RouteLibrarySheet'
 import { AircraftEditSheet }  from '../components/AircraftEditSheet'
@@ -131,9 +130,7 @@ export function PlanScreen() {
   const { settings, update } = useSettingsContext()
   const routeWx = useWeatherAlongRoute(waypoints)
   const tafWarnIcaos = useMemo(() => tafChangeIcaos(routeWx), [routeWx])
-  const { state: authState } = useAuthContext()
-  const authenticated = authState.status === 'authenticated'
-  const { syncState, pull: pullRoutes, pushRoute, deleteRoute } = useRouteSync(authenticated)
+  const { syncState, pull: pullRoutes, notifyRouteChanged, deleteRoute } = useRouteSync()
   const units = settings.units
   const [segment, setSegment] = useState<Segment>('route')
   // Overflow menu -- consolidates Open (Route Library) / GPX Import / GPX
@@ -143,7 +140,7 @@ export function PlanScreen() {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
 
   // Aircraft profiles — synced with cloud (user_aircraft_profiles) when authenticated
-  const { profiles, pull: pullAircraft, pushAircraft, deleteAircraft } = useAircraftSync(authenticated)
+  const { profiles, pull: pullAircraft, pushAircraft, deleteAircraft } = useAircraftSync()
   const [aircraftRefreshing, setAircraftRefreshing] = useState(false)
   const handleAircraftRefresh = async () => { setAircraftRefreshing(true); try { await pullAircraft() } finally { setAircraftRefreshing(false) } }
   const selectedId = settings.selectedAircraftId || null
@@ -215,7 +212,7 @@ export function PlanScreen() {
 
   // Flight logs — auto-recorded on the map (GPS takeoff/landing detection),
   // synced to cloud (upload-only + cross-device pull) when authenticated.
-  const { logs, pull: pullLogs, deleteLog, pushLog, refresh: refreshLogs } = useFlightLogSync(authenticated)
+  const { logs, pull: pullLogs, deleteLog, pushLog, refresh: refreshLogs } = useFlightLogSync()
   const { selectedLog, viewLog, clearView } = useFlightLogViewContext()
   const navigation = useNavigation()
   const [logDeleteId, setLogDeleteId] = useState<string | null>(null)
@@ -544,7 +541,7 @@ export function PlanScreen() {
             // (mirrors web's MapView.tsx onLoadRoute behaviour).
             if (route.aircraftId) setSelectedId(route.aircraftId)
           }}
-          onPush={pushRoute}
+          onPush={notifyRouteChanged}
           onDelete={deleteRoute}
           onRefreshCloud={pullRoutes}
           open={libraryOpen}

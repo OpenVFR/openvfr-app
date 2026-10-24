@@ -44,6 +44,7 @@ import { clearProtomapsStyleCache } from '../components/AviationMap'
 const UI_SCALE_OPTIONS = [0.85, 0.9, 1.0, 1.1, 1.2, 1.3, 1.45, 1.6]
 
 import { getSyncLog } from '../utils/syncLog'
+import { flushBeforeSignOut } from '../sync/cloudSync'
 
 export function SettingsScreen() {
   const scaledTheme          = useScaledTheme()
@@ -79,6 +80,21 @@ export function SettingsScreen() {
     if (res.ok) Alert.alert('Passkey added', 'You can now sign in with a passkey on this device.')
     else if (!res.cancelled) Alert.alert('Could not add passkey', res.message ?? 'Unknown error')
   }, [registerPasskey])
+
+  // Sign-out wipes this device's copy of routes, aircraft, waypoints and
+  // flight logs. Send what has not reached the server first, and ask before
+  // throwing away anything that still could not be sent (e.g. offline).
+  const handleSignOut = useCallback(async () => {
+    if (await flushBeforeSignOut()) { void signOut(); return }
+    Alert.alert(
+      'Unsynced changes',
+      'Some routes, aircraft, waypoints or flight logs on this device have not reached the cloud yet (no connection?). Signing out deletes them from this device.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign out anyway', style: 'destructive', onPress: () => { void signOut() } },
+      ],
+    )
+  }, [signOut])
 
   const handleDeleteAccount = useCallback(() => {
     Alert.alert(
@@ -523,7 +539,7 @@ export function SettingsScreen() {
               <Text style={styles.rowLabel}>Register passkey on this device</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={[styles.row, styles.pressable]} onPress={signOut}>
+          <TouchableOpacity style={[styles.row, styles.pressable]} onPress={handleSignOut}>
             <Text style={[styles.rowLabel, { color: theme.statusDanger }]}>Sign out</Text>
           </TouchableOpacity>
           {deleteSent ? (

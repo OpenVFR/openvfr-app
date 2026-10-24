@@ -1,8 +1,8 @@
 /**
- * getSyncJwt — shared PostgREST JWT fetcher for native's sync hooks
- * (useRouteSync, useAircraftSync, useUserWaypointSync, useFlightLogSync).
+ * getSyncJwt — cached PostgREST JWT fetcher for native cloud sync
+ * (../sync/cloudSync.ts is its only consumer).
  *
- * Extracted from 4 near-identical copies of the same getJwt() -- each hook
+ * History: extracted from 4 near-identical copies of the same getJwt() -- each hook
  * had its own module-level _jwt/_jwtExpiry cache and its own copy of this
  * exact fetch. Centralizing means all four now share one cache (a JWT
  * fetched by one hook is immediately usable by the others, not re-fetched
@@ -42,6 +42,12 @@ async function fetchToken(): Promise<Response> {
   return fetch(`${API_BASE}/api/auth/token`, {
     headers: { Origin: API_BASE, ...(await authHeaders()) },
   })
+}
+
+/** Forget the cached JWT (the server rejected it), so the next call fetches a new one. */
+export function invalidateSyncJwt(): void {
+  _jwt = null
+  _jwtExpiry = 0
 }
 
 export async function getSyncJwt(): Promise<string | null> {

@@ -5,7 +5,7 @@
  * The PostgREST JWT is held in React state (never localStorage — avoids XSS).
  *
  * Usage:
- *   const { user, jwt, loading, sendOtp, signInOtp, signInPasskey, registerPasskey, signOut } = useAuth()
+ *   const { user, loading, sendOtp, signInOtp, signInPasskey, registerPasskey, signOut } = useAuth()
  */
 
 import { useState, useEffect, useCallback } from 'react'
@@ -14,6 +14,7 @@ import { emailOTPClient }   from 'better-auth/client/plugins'
 import { passkeyClient }    from '@better-auth/passkey/client'
 import { API_BASE_URL } from '../utils/env'
 import { flagWipeOnSignOut } from '../db/userScope'
+import { flushBeforeSignOut, stopCloudSync } from '../sync/cloudSync'
 
 // ---------------------------------------------------------------------------
 // Client singleton — created once per app lifecycle.
@@ -50,7 +51,6 @@ export interface PasskeyInfo {
 
 export interface AuthState {
   user:    AuthUser | null
-  jwt:     string | null
   loading: boolean
   /** Step 1 — send a 6-digit OTP to the given email. */
   sendOtp:         (email: string) => Promise<void>
@@ -81,10 +81,10 @@ export interface AuthState {
 // ---------------------------------------------------------------------------
 export function useAuth(): AuthState {
   const [user,    setUser]    = useState<AuthUser | null>(null)
-  const [jwt,     setJwt]     = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Fetch the current session and (if authed) a fresh PostgREST JWT.
+  // Fetch the current session. (Cloud sync fetches its own PostgREST JWT,
+  // see sync/cloudSync.ts.)
   // `silent` (after an explicit sign-in) skips the loading flag: App.tsx renders
   // nothing while `loading`, which unmounted the login panel mid sign-in and
   // reset it to the email step. Returns whether a session exists.
@@ -95,21 +95,13 @@ export function useAuth(): AuthState {
       if (session?.data?.user) {
         const u = session.data.user
         setUser({ id: u.id, email: u.email ?? '', name: u.name ?? '' })
-        // Exchange session cookie for a short-lived PostgREST JWT.
-        const res = await fetch(`${API_BASE_URL}/api/auth/token`, { credentials: 'include' })
-        if (res.ok) {
-          const { jwt: newJwt } = await res.json() as { jwt: string }
-          setJwt(newJwt)
-        }
         return true
       }
       setUser(null)
-      setJwt(null)
       return false
     } catch (err) {
       console.warn('[useAuth] session refresh failed:', err)
       setUser(null)
-      setJwt(null)
       return false
     } finally {
       setLoading(false)
@@ -190,13 +182,18 @@ export function useAuth(): AuthState {
   }, [])
 
   const signOut = useCallback(async () => {
+    // Sign-out wipes this browser's copy of the account's data: send what has
+    // not reached the server yet, and ask before dropping what still can't be.
+    if (!(await flushBeforeSignOut()) && !window.confirm(
+      'Some routes, aircraft, waypoints, settings or flight logs in this browser have not reached the cloud yet (no connection?). Signing out deletes them from this browser. Sign out anyway?',
+    )) return
+    await stopCloudSync()
     await authClient.signOut()
     // The local copy of this account's data must not survive into the next
-    // sign-in; useSync wipes it once its push subscriptions are torn down.
+    // sign-in; useSync wipes it once cloud sync has stopped.
     flagWipeOnSignOut()
     setUser(null)
-    setJwt(null)
   }, [])
 
-  return { user, jwt, loading, sendOtp, signInOtp, signInPasskey, registerPasskey, listPasskeys, deletePasskey, updateUser, requestAccountDeletion, signOut }
+  return { user, loading, sendOtp, signInOtp, signInPasskey, registerPasskey, listPasskeys, deletePasskey, updateUser, requestAccountDeletion, signOut }
 }

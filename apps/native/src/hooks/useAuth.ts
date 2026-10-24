@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authClient } from '../utils/authClient'
 import { passkeySignIn, passkeyRegister, isPasskeySupported } from '../utils/passkeyNative'
 import { claimLocalData, wipePrivateLocalData } from '../utils/userScope'
+import { stopCloudSync } from '../sync/cloudSync'
 
 export type AuthUser = {
   id:    string
@@ -195,6 +196,7 @@ export function useAuth() {
     await AsyncStorage.removeItem('better-auth-token').catch(() => {})
     await AsyncStorage.removeItem(CACHED_USER_KEY).catch(() => {})
     // This account's private local data must not survive into the next sign-in.
+    await stopCloudSync()
     await wipePrivateLocalData()
     setState({ status: 'unauthenticated' })
   }, [])

@@ -78,6 +78,8 @@
     "./terrainColor": "./src/terrainColor.ts",
     "./tileManifest": "./src/tileManifest.ts",
     "./fetchWithRetry": "./src/fetchWithRetry.ts",
+    "./cloudSync":      "./src/cloudSync.ts",
+    "./cloudSyncRows":  "./src/cloudSyncRows.ts",
     "./geoCircle": "./src/geoCircle.ts",
     "./notamRouteFilter": "./src/notamRouteFilter.ts",
     "./notamDesignator": "./src/notamDesignator.ts",

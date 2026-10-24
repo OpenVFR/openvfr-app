@@ -787,7 +787,7 @@ function MapScreenForCountry() {
   // Flight log recording — auto takeoff/landing detection, mirrors web's
   // useFlightLog wiring in MapView.tsx exactly (gate position on flying mode,
   // pass nearest aerodrome ICAO for departure/arrival tagging).
-  const { syncState: logSyncState, pushLog } = useFlightLogSync(authenticated)
+  const { syncState: logSyncState, pushLog } = useFlightLogSync()
   // Set just before an AUTO stop so useFlightLog leaves a parked log to its park timer.
   const deferLogCloseRef = React.useRef(false)
   const { activeLogId } = useFlightLog(

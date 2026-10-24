@@ -6,15 +6,13 @@
 
 import React, { createContext, useContext, ReactNode } from 'react'
 import { useUserWaypointSync } from '../hooks/useUserWaypointSync'
-import { useAuthContext } from './AuthContext'
 
 type UserWaypointContextValue = ReturnType<typeof useUserWaypointSync>
 
 const UserWaypointContext = createContext<UserWaypointContextValue | null>(null)
 
 export function UserWaypointProvider({ children }: { children: ReactNode }) {
-  const { state } = useAuthContext()
-  const sync = useUserWaypointSync(state.status === 'authenticated')
+  const sync = useUserWaypointSync()
   return <UserWaypointContext.Provider value={sync}>{children}</UserWaypointContext.Provider>
 }
 

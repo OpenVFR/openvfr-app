@@ -22,7 +22,7 @@ import { resolveSaveRouteId } from '@open-vfr/shared/resolveSaveRouteId'
 import { routes as routeDb } from '../db'
 import type { RouteDocType, LegOverride, AircraftProfileDocType } from '../types/db'
 import type { RouteWaypoint } from '../utils/routeCalc'
-import type { SyncState } from '../hooks/useRouteSync'
+import type { SyncStatus } from '@open-vfr/shared/cloudSync'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { NativeSheet, useSheetMaxHeight } from './NativeSheet'
 import { distanceNm } from '../utils/routeCalc'
@@ -40,9 +40,10 @@ interface Props {
   /** Id of the saved route the working route was loaded from, or '' if untitled. */
   activeRouteId: string
   onActiveRouteIdChange: (id: string) => void
-  syncState:    SyncState
+  syncState:    SyncStatus
   onLoad:       (route: RouteDocType) => void
-  onPush:       (route: RouteDocType) => void
+  /** A route was created or edited locally (already saved). */
+  onPush:       () => void
   onDelete:     (id: string) => void
   /** Pull-to-refresh — re-fetches from cloud (routes added/edited on another
    *  device or the web app while this session is already running), then
@@ -161,7 +162,7 @@ export function RouteLibrarySheet({
       updatedAt:    Date.now(),
     }
     await routeDb.upsert(doc)
-    onPush(doc)
+    onPush()
     onActiveRouteIdChange(id)
     setSaveName('')
     setSaving(false)
@@ -178,7 +179,7 @@ export function RouteLibrarySheet({
       updatedAt: Date.now(),
     }
     await routeDb.upsert(doc)
-    onPush(doc)
+    onPush()
     loadRoutes()
   }
 
@@ -197,7 +198,7 @@ export function RouteLibrarySheet({
       updatedAt: Date.now(),
     }
     await routeDb.upsert(doc)
-    onPush(doc)
+    onPush()
     onActiveRouteIdChange(id)
     setSaveAsOpen(false)
     loadRoutes()
@@ -220,7 +221,7 @@ export function RouteLibrarySheet({
     if (!route) return
     const updated = { ...route, name, updatedAt: Date.now() }
     await routeDb.upsert(updated)
-    onPush(updated)
+    onPush()
     setRenaming(null)
     loadRoutes()
   }
@@ -265,7 +266,7 @@ export function RouteLibrarySheet({
         updatedAt: Date.now(),
       }
       await routeDb.upsert(doc)
-      onPush(doc)
+      onPush()
       loadRoutes()
     } catch (e) {
       Alert.alert('Import failed', e instanceof Error ? e.message : String(e))

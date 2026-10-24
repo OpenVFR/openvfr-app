@@ -40,11 +40,23 @@ const KEY = {
 // ---------------------------------------------------------------------------
 // Generic helpers
 // ---------------------------------------------------------------------------
+/**
+ * Read a collection. Throws when the stored value cannot be read or parsed:
+ * every mutation goes through this, because writing back "[] plus my change"
+ * after a failed read would silently discard every stored row.
+ */
+async function readAllOrThrow<T>(key: string): Promise<T[]> {
+  const raw = await AsyncStorage.getItem(key)
+  if (!raw) return []
+  const parsed = JSON.parse(raw) as unknown
+  if (!Array.isArray(parsed)) throw new Error(`${key}: stored value is not a list`)
+  return parsed as T[]
+}
+
+/** Read for display: an unreadable collection shows as empty (and is never written back). */
 async function readAll<T>(key: string): Promise<T[]> {
   try {
-    const raw = await AsyncStorage.getItem(key)
-    if (!raw) return []
-    return JSON.parse(raw) as T[]
+    return await readAllOrThrow<T>(key)
   } catch {
     return []
   }
@@ -67,7 +79,7 @@ function withLock<R>(key: string, fn: () => Promise<R>): Promise<R> {
 
 function upsert<T extends { id: string }>(key: string, doc: T): Promise<void> {
   return withLock(key, async () => {
-    const items = await readAll<T>(key)
+    const items = await readAllOrThrow<T>(key)
     const idx = items.findIndex(i => i.id === doc.id)
     if (idx >= 0) items[idx] = doc
     else items.push(doc)
@@ -77,9 +89,70 @@ function upsert<T extends { id: string }>(key: string, doc: T): Promise<void> {
 
 function remove(key: string, id: string): Promise<void> {
   return withLock(key, async () => {
-    const items = await readAll<{ id: string }>(key)
+    const items = await readAllOrThrow<{ id: string }>(key)
     await writeAll(key, items.filter(i => i.id !== id))
   })
+}
+
+// Cloud-sync writes. Each row is re-checked against the current local copy
+// under the key's lock: the user may have edited it while the sync round was
+// talking to the server, and that newer local edit must win.
+type Versioned = { id: string; updatedAt: number }
+
+/** Write server rows that are new here or newer than the local copy. */
+function applyRemote<T extends Versioned>(key: string, rows: T[]): Promise<void> {
+  if (rows.length === 0) return Promise.resolve()
+  return withLock(key, async () => {
+    const items = await readAllOrThrow<T>(key)
+    const idx = new Map(items.map((i, n) => [i.id, n]))
+    for (const r of rows) {
+      const n = idx.get(r.id)
+      if (n === undefined) { idx.set(r.id, items.length); items.push(r) }
+      else if (items[n].updatedAt < r.updatedAt) items[n] = r
+    }
+    await writeAll(key, items)
+  })
+}
+
+/** Remove rows deleted on another device, unless edited here after that delete. */
+function removeRemote(key: string, rows: { id: string; deletedAt: number }[]): Promise<void> {
+  if (rows.length === 0) return Promise.resolve()
+  return withLock(key, async () => {
+    const del = new Map(rows.map(r => [r.id, r.deletedAt]))
+    const items = await readAllOrThrow<Versioned>(key)
+    await writeAll(key, items.filter(i => !(del.has(i.id) && i.updatedAt <= del.get(i.id)!)))
+  })
+}
+
+/** Adopt the server's stored updatedAt (clock guard), unless edited again since the upload. */
+function restampRemote(key: string, rows: { id: string; from: number; to: number }[]): Promise<void> {
+  if (rows.length === 0) return Promise.resolve()
+  return withLock(key, async () => {
+    const by = new Map(rows.map(r => [r.id, r]))
+    const items = await readAllOrThrow<Versioned>(key)
+    let changed = false
+    for (const i of items) {
+      const r = by.get(i.id)
+      if (r && i.updatedAt === r.from) { i.updatedAt = r.to; changed = true }
+    }
+    if (changed) await writeAll(key, items)
+  })
+}
+
+type RemoteOps<T> = {
+  /** Like getAll, but throws when the stored collection cannot be read. */
+  listForSync:   () => Promise<T[]>
+  applyRemote:   (rows: T[]) => Promise<void>
+  removeRemote:  (rows: { id: string; deletedAt: number }[]) => Promise<void>
+  restampRemote: (rows: { id: string; from: number; to: number }[]) => Promise<void>
+}
+function remoteOps<T extends Versioned>(key: string, prepare: (r: T) => T = r => r): RemoteOps<T> {
+  return {
+    listForSync:   () => readAllOrThrow<T>(key),
+    applyRemote:   rows => applyRemote(key, rows.map(prepare)),
+    removeRemote:  rows => removeRemote(key, rows),
+    restampRemote: rows => restampRemote(key, rows),
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -90,6 +163,7 @@ export const routes = {
   get:       async (id: string) => (await readAll<RouteDocType>(KEY.routes)).find(r => r.id === id),
   upsert:    (doc: RouteDocType) => upsert(KEY.routes, doc),
   delete:    (id: string) => remove(KEY.routes, id),
+  ...remoteOps<RouteDocType>(KEY.routes),
 }
 
 // ---------------------------------------------------------------------------
@@ -100,6 +174,7 @@ export const aircraft = {
   get:       async (id: string) => (await readAll<AircraftProfileDocType>(KEY.aircraft)).find(a => a.id === id),
   upsert:    (doc: AircraftProfileDocType) => upsert(KEY.aircraft, doc),
   delete:    (id: string) => remove(KEY.aircraft, id),
+  ...remoteOps<AircraftProfileDocType>(KEY.aircraft),
 }
 
 // ---------------------------------------------------------------------------
@@ -109,6 +184,7 @@ export const waypoints = {
   getAll:    () => readAll<UserWaypointDocType>(KEY.waypoints),
   upsert:    (doc: UserWaypointDocType) => upsert(KEY.waypoints, doc),
   delete:    (id: string) => remove(KEY.waypoints, id),
+  ...remoteOps<UserWaypointDocType>(KEY.waypoints),
 }
 
 // ---------------------------------------------------------------------------
@@ -133,22 +209,22 @@ export const settings = {
 // ---------------------------------------------------------------------------
 const MAX_TRACK_POINTS = 2_000
 
+// Guard track size: trim to last MAX_TRACK_POINTS
+function trimTrack(doc: FlightLogDocType): FlightLogDocType {
+  if (!doc.trackJson) return doc
+  try {
+    const pts: TrackPoint[] = JSON.parse(doc.trackJson)
+    if (pts.length > MAX_TRACK_POINTS) return { ...doc, trackJson: JSON.stringify(pts.slice(-MAX_TRACK_POINTS)) }
+  } catch { /* leave as-is */ }
+  return doc
+}
+
 export const flightLogs = {
   getAll: () => readAll<FlightLogDocType>(KEY.logs),
 
-  upsert: async (doc: FlightLogDocType): Promise<void> => {
-    // Guard track size: trim to last MAX_TRACK_POINTS
-    let d = doc
-    if (doc.trackJson) {
-      try {
-        const pts: TrackPoint[] = JSON.parse(doc.trackJson)
-        if (pts.length > MAX_TRACK_POINTS) {
-          d = { ...doc, trackJson: JSON.stringify(pts.slice(-MAX_TRACK_POINTS)) }
-        }
-      } catch { /* leave as-is */ }
-    }
-    await upsert(KEY.logs, d)
-  },
+  upsert: (doc: FlightLogDocType): Promise<void> => upsert(KEY.logs, trimTrack(doc)),
 
   delete: (id: string) => remove(KEY.logs, id),
+
+  ...remoteOps<FlightLogDocType>(KEY.logs, trimTrack),
 }
