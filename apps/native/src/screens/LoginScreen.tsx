@@ -29,6 +29,9 @@ function friendlyError(raw: string | null): string | null {
   if (/cancel|abort|dismiss|not allowed/.test(m)) return null
   if (/network|fetch failed|unable to resolve|timed? ?out|offline/.test(m))
     return 'No connection. Check your internet and try again.'
+  // Before the generic /invalid/: the server's "Invalid email" is about the
+  // address, not the code.
+  if (/invalid email/.test(m)) return 'That does not look like an email address. Check it and try again.'
   if (/invalid|incorrect|expired/.test(m)) return 'That code is invalid or has expired. Request a new one.'
   if (/too many|rate/.test(m)) return 'Too many attempts. Wait a minute and try again.'
   if (/no (passkey|credential)|not found|no_passkey/.test(m))
@@ -83,32 +86,32 @@ export function LoginScreen() {
 
   const shownError = friendlyError(error)
 
+  // try/finally: a rejected auth call must never leave the screen on its
+  // spinner with every button disabled (useAuth settles the known rejections,
+  // this guards the rest).
   const handlePasskey = async () => {
     setBusy(true)
-    await signInWithPasskey()
-    setBusy(false)
+    try { await signInWithPasskey() } finally { setBusy(false) }
   }
 
   const handleSendOtp = async () => {
     if (!email.trim()) return
     setBusy(true)
-    const ok = await sendOtp(email.trim().toLowerCase())
-    setBusy(false)
+    let ok = false
+    try { ok = await sendOtp(email.trim().toLowerCase()) } finally { setBusy(false) }
     if (ok) setStep('otp')
   }
 
   const handleSaveName = async () => {
     if (!name.trim()) return
     setBusy(true)
-    await updateName(name)
-    setBusy(false)
+    try { await updateName(name) } finally { setBusy(false) }
   }
 
   const handleVerifyOtp = async (code: string = otp.trim()) => {
     if (!code) return
     setBusy(true)
-    await verifyOtp(email.trim().toLowerCase(), code)
-    setBusy(false)
+    try { await verifyOtp(email.trim().toLowerCase(), code) } finally { setBusy(false) }
   }
 
   // Auto sign-in only when autofill/paste fills exactly 6 digits in one go;
@@ -211,6 +214,13 @@ export function LoginScreen() {
               textContentType="emailAddress"
               returnKeyType="send"
               onSubmitEditing={handleSendOtp}
+              // Both inputs: a focus selects the old value so typing replaces
+              // it, and iOS shows its clear button. Besides the UX, the store
+              // screenshot flow (apps/native/.maestro/login.yaml) relies on the
+              // clear button: its erase command only deletes backwards from
+              // the caret, which a tap into the field puts mid-text.
+              selectTextOnFocus
+              clearButtonMode="while-editing"
             />
             <TouchableOpacity
               style={[styles.btn, styles.btnSecondary, (busy || !email.trim()) && styles.btnDisabled]}
@@ -243,6 +253,8 @@ export function LoginScreen() {
               autoFocus
               returnKeyType="done"
               onSubmitEditing={() => handleVerifyOtp()}
+              selectTextOnFocus
+              clearButtonMode="while-editing"
             />
             <TouchableOpacity
               style={[styles.btn, (busy || !otp.trim()) && styles.btnDisabled]}

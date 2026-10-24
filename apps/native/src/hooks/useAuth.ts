@@ -44,6 +44,28 @@ async function readCachedUser(): Promise<AuthUser | null> {
   }
 }
 
+/**
+ * better-auth's client returns server errors as `{ error }`, but a request
+ * that never reaches the server (no network, DNS failure, the 30 s timeout in
+ * authClient.ts) REJECTS instead. Callers below only looked at `{ error }`,
+ * so such a rejection escaped them, LoginScreen never cleared its busy state
+ * (no try/finally) and the user was left on a spinner with no message (seen
+ * on the iOS simulator in the screenshot workflow). Turn the rejection into
+ * the same `{ error }` shape; LoginScreen.friendlyError maps the message to
+ * "No connection ...".
+ */
+async function settle<T>(call: Promise<T>): Promise<T | { data: null; error: { message: string; status?: number } }> {
+  try {
+    return await call
+  } catch (e) {
+    const name = (e as { name?: string } | null)?.name
+    const message = name === 'AbortError' || name === 'TimeoutError'
+      ? 'Request timed out'
+      : (e instanceof Error && e.message) || 'Network request failed'
+    return { data: null, error: { message } }
+  }
+}
+
 export function useAuth() {
   const [state, setState] = useState<AuthState>({ status: 'loading' })
   const [error, setError] = useState<string | null>(null)
@@ -89,10 +111,10 @@ export function useAuth() {
   const sendOtp = useCallback(async (email: string): Promise<boolean> => {
     setError(null)
     console.log('[auth] sendOtp →', email)
-    const { error: err } = await authClient.emailOtp.sendVerificationOtp({
+    const { error: err } = await settle(authClient.emailOtp.sendVerificationOtp({
       email,
       type: 'sign-in',
-    })
+    }))
     if (err) {
       console.warn('[auth] sendOtp error', err)
       setError(err.message ?? 'Failed to send code')
@@ -107,7 +129,7 @@ export function useAuth() {
     console.log('[auth] verifyOtp →', email)
     // signIn.emailOtp is the correct endpoint for OTP sign-in (not emailOtp.verifyEmail
     // which is for email-verification flows, not sign-in).
-    const { data, error: err } = await authClient.signIn.emailOtp({ email, otp })
+    const { data, error: err } = await settle(authClient.signIn.emailOtp({ email, otp }))
     if (err) {
       console.warn('[auth] verifyOtp error', err)
       setError(err.message ?? 'Invalid code')
@@ -148,7 +170,7 @@ export function useAuth() {
     setError(null)
     const trimmed = name.trim()
     if (!trimmed) { setError('Enter your name'); return false }
-    const { error: err } = await authClient.updateUser({ name: trimmed })
+    const { error: err } = await settle(authClient.updateUser({ name: trimmed }))
     if (err) {
       console.warn('[auth] updateName error', err)
       setError(err.message ?? 'Failed to save name')
@@ -186,7 +208,7 @@ export function useAuth() {
   const requestAccountDeletion = useCallback(async (): Promise<boolean> => {
     setError(null)
     console.log('[auth] requestAccountDeletion')
-    const { error: err } = await authClient.deleteUser()
+    const { error: err } = await settle(authClient.deleteUser())
     if (err) {
       console.warn('[auth] requestAccountDeletion error', err)
       setError(err.message ?? 'Failed to request account deletion')

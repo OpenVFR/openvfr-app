@@ -1,10 +1,63 @@
 # Signs in with the app-review test account (fixed OTP, never emailed --
 # see APP_REVIEW_TEST_EMAIL / APP_REVIEW_TEST_OTP in apps/api/src/auth.ts).
+#
+# Text entry is verified, not trusted. Maestro's iOS driver types through
+# XCTest at a fixed 30 characters/second, and on a hosted macOS runner's
+# software-rendered simulator most of a 22-character address never arrives
+# ("arg", "ag", "a" were typed in three consecutive runs). The server then
+# answers "Invalid email" and the flow fails on the code field. So every
+# field is typed, read back with copyTextFrom and compared with what was
+# meant to go in; a mismatch clears the field and types again, one character
+# per inputText call (each call types its first character slowly and waits
+# before the next), which is slow but has not dropped characters.
 appId: org.openvfr.app
 ---
-- tapOn:
-    id: login-email
-- inputText: ${MAESTRO_TEST_EMAIL}
+# --- Email -------------------------------------------------------------------
+- evalScript: ${output.loginAttempt = 0}
+- repeat:
+    times: 4
+    while:
+      true: ${maestro.copiedText != MAESTRO_TEST_EMAIL}
+    commands:
+      - tapOn:
+          id: login-email
+      # iOS: the field's clear button (LoginScreen clearButtonMode) empties it
+      # whatever the caret position. eraseText only deletes backwards from the
+      # caret, which a tap into a filled field puts mid-text, and its deletes
+      # are typed at the same lossy rate as the characters. Checked once, no
+      # wait: the button only exists on iOS while the field has text.
+      - runFlow:
+          when:
+            visible:
+              text: "Clear text"
+          commands:
+            - tapOn:
+                text: "Clear text"
+      - eraseText: 80
+      # First attempt: one inputText (fast). Retries: character by character.
+      - runFlow:
+          when:
+            true: ${output.loginAttempt == 0}
+          commands:
+            - inputText: ${MAESTRO_TEST_EMAIL}
+      - runFlow:
+          when:
+            true: ${output.loginAttempt > 0}
+          commands:
+            - evalScript: ${output.loginChar = 0}
+            - repeat:
+                while:
+                  true: ${output.loginChar < MAESTRO_TEST_EMAIL.length}
+                commands:
+                  - inputText: ${MAESTRO_TEST_EMAIL[output.loginChar]}
+                  - evalScript: ${output.loginChar = output.loginChar + 1}
+      - copyTextFrom:
+          id: login-email
+      - evalScript: ${output.loginAttempt = output.loginAttempt + 1}
+- assertTrue:
+    condition: ${maestro.copiedText == MAESTRO_TEST_EMAIL}
+    label: "Email field holds the test account address"
+
 - tapOn:
     id: login-send-otp
 - extendedWaitUntil:
@@ -12,17 +65,14 @@ appId: org.openvfr.app
       id: login-otp
     timeout: 30000
     optional: true
-# Maestro's inputText drops characters on a slow simulator (seen on the
-# iPad: the field held a mangled address and the server said "Invalid
-# email"). If the code field hasn't appeared, clear the field, type the
-# address again and resend -- same recovery the OTP step has below.
+# No code field: the send failed (server error, or the request timed out --
+# authClient.ts gives up after 30 s). Keep the server's answer for diagnosis,
+# cropped to the error text only (never the whole screen), then resend once.
 - runFlow:
     when:
       notVisible:
         id: login-otp
     commands:
-      # Keep the server's answer for diagnosis. Cropped to the error text only
-      # (never the whole screen), so nothing sensitive lands in the artifact.
       - runFlow:
           when:
             visible:
@@ -43,39 +93,72 @@ appId: org.openvfr.app
           timeout: 65000
           optional: true
       - tapOn:
-          id: login-email
-      - eraseText: 80
-      - inputText: ${MAESTRO_TEST_EMAIL}
-      - tapOn:
           id: login-send-otp
       - extendedWaitUntil:
           visible:
             id: login-otp
           timeout: 30000
-- tapOn:
-    id: login-otp
-- inputText: ${MAESTRO_TEST_OTP}
+
+# --- Code --------------------------------------------------------------------
+- evalScript: ${output.loginAttempt = 0}
+- repeat:
+    times: 4
+    while:
+      true: ${maestro.copiedText != MAESTRO_TEST_OTP}
+    commands:
+      - tapOn:
+          id: login-otp
+      - runFlow:
+          when:
+            visible:
+              text: "Clear text"
+          commands:
+            - tapOn:
+                text: "Clear text"
+      - eraseText: 40
+      - runFlow:
+          when:
+            true: ${output.loginAttempt == 0}
+          commands:
+            - inputText: ${MAESTRO_TEST_OTP}
+      - runFlow:
+          when:
+            true: ${output.loginAttempt > 0}
+          commands:
+            - evalScript: ${output.loginChar = 0}
+            - repeat:
+                while:
+                  true: ${output.loginChar < MAESTRO_TEST_OTP.length}
+                commands:
+                  - inputText: ${MAESTRO_TEST_OTP[output.loginChar]}
+                  - evalScript: ${output.loginChar = output.loginChar + 1}
+      - copyTextFrom:
+          id: login-otp
+      - evalScript: ${output.loginAttempt = output.loginAttempt + 1}
+- assertTrue:
+    condition: ${maestro.copiedText == MAESTRO_TEST_OTP}
+    label: "Code field holds the test account code"
+
 - tapOn:
     id: login-verify-otp
-# Fail fast and legibly instead of the caller's tab-bar assertion timing out
-# 60s later with no clue why. login-verify-otp only ever stops being visible
-# once LoginScreen unmounts on a successful sign-in -- on failure (wrong/
-# expired code, or the server-side APP_REVIEW_TEST_EMAIL/OTP env vars not
-# matching these secrets, a deployment config issue rather than an app bug)
-# the button just re-enables and the screen stays put, so this becomes the
-# real "did auth actually succeed" signal instead of guessing from a
-# downstream screen. optional: true means a slow-but-eventual success still
-# proceeds normally -- only the assertNotVisible below decides pass/fail.
-# Costs ~0 extra time on the happy path (returns as soon as satisfied);
-# only the failure path pays the 15s.
+# Fail fast and legibly instead of the caller's map assertion timing out 60s
+# later with no clue why. login-verify-otp only ever stops being visible once
+# LoginScreen unmounts on a successful sign-in -- on failure (wrong/expired
+# code, or the server-side APP_REVIEW_TEST_EMAIL/OTP env vars not matching
+# these secrets, a deployment config issue rather than an app bug) the button
+# just re-enables and the screen stays put, so this becomes the real "did
+# auth actually succeed" signal instead of guessing from a downstream screen.
+# optional: true means a slow-but-eventual success still proceeds normally --
+# only the assertNotVisible below decides pass/fail. Costs ~0 extra time on
+# the happy path (returns as soon as satisfied); only the failure path pays.
 - extendedWaitUntil:
     notVisible:
       id: login-verify-otp
     timeout: 15000
     optional: true
-# Maestro's inputText occasionally garbles long strings on a slow emulator
-# (repeated/dropped characters -> "Invalid OTP"). Re-type the code once if
-# the error is showing.
+# The screen went back to the email step with an error showing (seen on the
+# iOS simulator: code field gone, email still filled). There is no code field
+# to retype into, so request a fresh code and enter it once more.
 - runFlow:
     when:
       visible:
@@ -83,30 +166,12 @@ appId: org.openvfr.app
       notVisible:
         id: login-otp
     commands:
-      # The screen went back to the email step (seen on the iOS simulator:
-      # the code field was gone, email still filled, error showing), so there
-      # is no code field to re-type into. Request a fresh code and start over.
       - tapOn:
           id: login-send-otp
       - extendedWaitUntil:
           visible:
             id: login-otp
           timeout: 30000
-      - tapOn:
-          id: login-otp
-      - inputText: ${MAESTRO_TEST_OTP}
-      - tapOn:
-          id: login-verify-otp
-      - extendedWaitUntil:
-          notVisible:
-            id: login-verify-otp
-          timeout: 15000
-          optional: true
-- runFlow:
-    when:
-      visible:
-        id: login-otp
-    commands:
       - tapOn:
           id: login-otp
       - eraseText: 40

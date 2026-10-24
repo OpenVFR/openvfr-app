@@ -36,6 +36,12 @@ const asyncStorageAdapter = {
 export const authClient = createAuthClient({
   baseURL: API_BASE,
   fetchOptions: {
+    // A request that never completes (seen on the iOS simulator: the OTP send
+    // left the login screen on its spinner for minutes with no response)
+    // would otherwise hang the sign-in UI forever: better-fetch has no default
+    // timeout. Turn it into an error the screen can show and the user can
+    // retry. Generous, since passkey and session calls share this client.
+    timeout: 30_000,
     headers: {
       // React Native fetch omits Origin (browser-only concept). better-auth
       // requires it for CSRF protection — send the API base as the origin so

@@ -20,6 +20,9 @@ function friendlyError(raw: string, fallback: string): string {
   const m = raw.toLowerCase()
   if (/failed to fetch|network|timed? ?out|offline/.test(m))
     return 'No connection. Check your internet and try again.'
+  // Before the generic /invalid/: the server's "Invalid email" is about the
+  // address, not the code.
+  if (/invalid email/.test(m)) return 'That does not look like an email address. Check it and try again.'
   if (/invalid|incorrect|expired/.test(m)) return 'That code is invalid or has expired. Request a new one.'
   if (/too many|rate/.test(m)) return 'Too many attempts. Wait a minute and try again.'
   return raw || fallback
