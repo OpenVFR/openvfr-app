@@ -36,6 +36,13 @@
         "react-native-svg",
         "@react-native-community/slider"
       ]
+    },
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "expo-ui"
+        ]
+      }
     }
   },
   "dependencies": {

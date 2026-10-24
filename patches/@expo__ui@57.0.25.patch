@@ -1,8 +1,20 @@
 diff --git a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
-index e90edd3..bd23969 100644
+index e90edd3fd682f1a53a0950526ae63fe20f3efd24..9f65b6e597a9e7b8eeb3f2f2e908055c3f0404bb 100644
 --- a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
 +++ b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
-@@ -20,6 +20,10 @@ import androidx.compose.runtime.LaunchedEffect
+@@ -6,6 +6,7 @@ import android.app.Activity
+ import android.app.Dialog
+ import android.content.Context
+ import android.graphics.Color
++import android.util.Log
+ import android.view.KeyEvent
+ import android.view.inputmethod.InputMethodManager
+ import androidx.compose.material3.BottomSheetDefaults
+@@ -17,9 +18,14 @@ import androidx.compose.material3.rememberModalBottomSheetState
+ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.DisposableEffect
+ import androidx.compose.runtime.LaunchedEffect
++import androidx.compose.runtime.remember
  import androidx.compose.runtime.rememberCoroutineScope
  import androidx.compose.ui.platform.LocalView
  import androidx.compose.ui.window.DialogWindowProvider
@@ -13,7 +25,7 @@ index e90edd3..bd23969 100644
  import expo.modules.kotlin.records.Field
  import expo.modules.kotlin.records.Record
  import expo.modules.kotlin.types.OptimizedRecord
-@@ -90,6 +94,83 @@ private fun ForwardKeyEventsToActivity(activity: Activity?) {
+@@ -90,6 +96,69 @@ private fun ForwardKeyEventsToActivity(activity: Activity?) {
    }
  }
  
@@ -24,80 +36,66 @@ index e90edd3..bd23969 100644
 + * activity's state onto the dialog window so a fullscreen app stays fullscreen while a sheet is
 + * up. No-op when the activity shows its bars.
 + *
-+ * A single hide at first composition is not enough: on large screens (tablet taskbar; the sheet
-+ * is also width-capped at 640dp there) the system re-shows the bars on the dialog window after
-+ * the sheet's enter transition, so the hide must be re-applied every time the window reports the
-+ * bars visible again. The insets listener and a 250 ms poll below do that while the sheet is up.
++ * The activity's state is read once, during the sheet's first composition. That runs before the
++ * dialog window is shown (Material3 composes the sheet content in setContent, then shows the
++ * dialog from an effect), so the activity's insets still describe what the app asked for: once
++ * the dialog has focus and the system shows the bars for it, every window's insets report them
++ * visible and the information is gone. The hide is re-applied whenever the dialog window's insets
++ * report the bars visible again, which covers the system re-showing them after focus changes.
 + */
 +@Composable
 +private fun MatchActivitySystemBars(activity: Activity?) {
-+  val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
-+  val activityWindow = activity?.window
-+  if (dialogWindow == null || activityWindow == null) {
++  val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window ?: return
++  val activityWindow = activity?.window ?: return
++
++  val hiddenTypes = remember(activityWindow) {
++    val insets = ViewCompat.getRootWindowInsets(activityWindow.decorView)
++    var types = 0
++    if (insets != null && !insets.isVisible(WindowInsetsCompat.Type.statusBars())) {
++      types = types or WindowInsetsCompat.Type.statusBars()
++    }
++    if (insets != null && !insets.isVisible(WindowInsetsCompat.Type.navigationBars())) {
++      types = types or WindowInsetsCompat.Type.navigationBars()
++    }
++    Log.i(SYSTEM_BARS_TAG, "activity hides system bar types=$types")
++    types
++  }
++  if (hiddenTypes == 0) {
 +    return
 +  }
 +
-+  DisposableEffect(dialogWindow, activityWindow) {
-+    fun mirror() {
-+      // Ask what the activity *requested*, not what its insets currently show: once the sheet's
-+      // dialog window has focus the system shows the bars, so the activity's own insets already
-+      // read "visible" and an insets check would conclude the app was never immersive (this is
-+      // what left the status bar and taskbar in tablet sheet screenshots). The requested state
-+      // (API 34+) is unaffected by the dialog; older APIs fall back to the current insets.
-+      val barsHidden = if (android.os.Build.VERSION.SDK_INT >= 34) {
-+        val bars = android.view.WindowInsets.Type.statusBars() or
-+          android.view.WindowInsets.Type.navigationBars()
-+        val controller = activityWindow.insetsController
-+        if (controller != null) {
-+          (controller.requestedVisibleTypes and bars) != bars
-+        } else {
-+          return
-+        }
-+      } else {
-+        val activityInsets = ViewCompat.getRootWindowInsets(activityWindow.decorView) ?: return
-+        !activityInsets.isVisible(WindowInsetsCompat.Type.statusBars()) ||
-+          !activityInsets.isVisible(WindowInsetsCompat.Type.navigationBars())
-+      }
-+      if (barsHidden) {
-+        WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
-+        WindowCompat.getInsetsController(dialogWindow, dialogWindow.decorView).apply {
-+          systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-+          hide(WindowInsetsCompat.Type.systemBars())
-+        }
-+      }
++  DisposableEffect(dialogWindow, hiddenTypes) {
++    val decorView = dialogWindow.decorView
++    val controller = WindowCompat.getInsetsController(dialogWindow, decorView)
++    fun hide() {
++      controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
++      controller.hide(hiddenTypes)
 +    }
-+    mirror()
-+    ViewCompat.setOnApplyWindowInsetsListener(dialogWindow.decorView) { _, insets ->
-+      android.util.Log.i("OVFRSheet", "dialog insets status=${insets.isVisible(WindowInsetsCompat.Type.statusBars())} nav=${insets.isVisible(WindowInsetsCompat.Type.navigationBars())}")
-+      if (insets.isVisible(WindowInsetsCompat.Type.statusBars()) ||
-+        insets.isVisible(WindowInsetsCompat.Type.navigationBars())
-+      ) {
-+        mirror()
++    WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
++    hide()
++    ViewCompat.setOnApplyWindowInsetsListener(decorView) { view, insets ->
++      // isVisible(mask) is true only when every type in the mask is visible; check them one by one.
++      val reappeared = listOf(WindowInsetsCompat.Type.statusBars(), WindowInsetsCompat.Type.navigationBars())
++        .any { type -> (hiddenTypes and type) != 0 && insets.isVisible(type) }
++      if (reappeared) {
++        Log.i(SYSTEM_BARS_TAG, "dialog window shows hidden system bars again, re-hiding")
++        hide()
 +      }
-+      insets
++      // Keep the decor view's own handling (system bar background views, child dispatch).
++      ViewCompat.onApplyWindowInsets(view, insets)
 +    }
-+    // The listener alone is not reliable: the sheet's own window setup can replace it, and the
-+    // system re-shows the bars after window focus changes without an insets pass we observe. Poll
-+    // while the sheet is up; re-hiding already-hidden bars is a no-op.
-+    val handler = android.os.Handler(android.os.Looper.getMainLooper())
-+    val poll = object : Runnable {
-+      override fun run() {
-+        mirror()
-+        handler.postDelayed(this, 250)
-+      }
-+    }
-+    handler.postDelayed(poll, 250)
 +    onDispose {
-+      handler.removeCallbacks(poll)
-+      ViewCompat.setOnApplyWindowInsetsListener(dialogWindow.decorView, null)
++      ViewCompat.setOnApplyWindowInsetsListener(decorView, null)
 +    }
 +  }
 +}
 +
++private const val SYSTEM_BARS_TAG = "ExpoUISheetSystemBars"
++
  @Composable
  fun FunctionalComposableScope.ModalBottomSheetContent(
    props: ModalBottomSheetViewProps,
-@@ -162,6 +243,7 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
+@@ -162,6 +231,7 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
      modifier = ModifierRegistry.applyModifiers(props.modifiers, appContext, composableScope, globalEventDispatcher)
    ) {
      ForwardKeyEventsToActivity(appContext.currentActivity)

@@ -457,3 +457,33 @@ Not yet implemented. Planned:
 - MapLibre Native `OfflineManager` for basemap tile caching
 - `expo-file-system` to cache GeoJSON aviation data
 - SQLite adapter to replace AsyncStorage for flight logs and tracks
+
+## Store screenshots (CI)
+
+The screenshot workflow (`.github/workflows/screenshots.yml`, documented in
+`.github/workflows/README.md#store-screenshots`) drives this app with the
+Maestro flows in `.maestro/`. Two things about it live in this app, not in
+the workflow:
+
+**The `@expo/ui` patch only takes effect because `package.json` lists
+`expo-ui` under `expo.autolinking.android.buildFromSource`.** Expo ships its
+Android modules as prebuilt AARs (`local-maven-repo/` inside each package,
+declared under `android.publication` in `expo-module.config.json`) and links
+those by default, so a pnpm patch of a module's Kotlin source is silently
+ignored unless that module is forced to build from source. The patch
+(`patches/@expo__ui@*.patch`) makes a sheet's dialog window copy the
+activity's hidden system bars, so screenshot-mode captures of a sheet have
+no status bar / navigation bar / tablet taskbar. It logs its decisions under
+the `ExpoUISheetSystemBars` tag; `capture-android.sh` keeps those lines in
+`debug/app-logcat.txt`, so a sheet screenshot with system chrome can be
+traced to "patch not compiled" (no lines), "activity never hid its bars"
+(`types=0`) or "bars came back".
+
+**`login.yaml` verifies every typed field.** Maestro's iOS driver types
+through XCTest at a fixed 30 characters/second and the hosted macOS runner's
+software-rendered simulator drops most of them ("arg", "ag", "a" of a
+22-character address in three consecutive runs). After each `inputText` the
+field is read back with `copyTextFrom` and compared with the intended value;
+on a mismatch it is cleared (the iOS clear button from `clearButtonMode` on
+`LoginScreen`'s inputs, then `eraseText`) and typed again one character per
+`inputText` call, up to four attempts, then a clear assertion failure.
