@@ -20,5 +20,5 @@ overrides:
   underscore: "^1.13.8"
 
 patchedDependencies:
-  '@expo/ui@57.0.25': patches/@expo__ui@57.0.25.patch
+  '@expo/ui@57.0.26': patches/@expo__ui@57.0.26.patch
   '@maplibre/maplibre-react-native@11.5.0': patches/@maplibre__maplibre-react-native@11.5.0.patch
