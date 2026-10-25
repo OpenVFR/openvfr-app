@@ -38,7 +38,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
-import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
+import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, obstructionAlertsSig, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
 import { useMefGrids } from './useMefGrids'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
@@ -469,7 +469,7 @@ export function usePositionAlerts(
       const grouped = groupObstructionAlerts(found)
         .filter(g => { const d = obstructionDismissedRef.current.get(g.key); return d === undefined || now - d >= OBS_REARM_MS })
         .slice(0, OBS_MAX_ALERTS)
-      const sig = grouped.map(a => `${a.key}:${a.count}:${a.distNm}`).join('|')
+      const sig = obstructionAlertsSig(grouped)
       if (sig !== obstructionSigRef.current) {
         obstructionSigRef.current = sig
         setObstructionAlerts(grouped)

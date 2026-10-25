@@ -18,7 +18,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { useActiveCountries } from '../utils/countryData'
-import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
+import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, obstructionAlertsSig, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
 import { useMefGrids } from './useMefGrids'
 
 // ── Config ───────────────────────────────────────────────────────────────────
@@ -117,7 +117,7 @@ export function useObstructionWarnings(position: (GpsPosition & { terrainFt?: nu
     const grouped = groupObstructionAlerts(found)
       .filter(g => { const d = dismissedRef.current.get(g.key); return d === undefined || now - d >= DISMISS_REARM_MS })
       .slice(0, MAX_ALERTS)
-    const sig = grouped.map(a => `${a.key}:${a.count}:${a.distNm}`).join('|')
+    const sig = obstructionAlertsSig(grouped)
     if (sig !== lastSigRef.current) {
       lastSigRef.current = sig
       setAlerts(grouped)

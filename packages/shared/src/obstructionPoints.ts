@@ -113,3 +113,19 @@ export function groupObstructionAlerts<T extends GroupableAlert>(items: readonly
   }
   return out.sort((a, b) => a.distNm - b.distNm)
 }
+
+/** Distance as the alert shows it ("<0.1" or one decimal, NM). */
+export function obstructionDistLabel(distNm: number): string {
+  return distNm < 0.1 ? '<0.1' : distNm.toFixed(1)
+}
+
+/**
+ * Signature of what the obstruction alerts show. The position hooks only set
+ * state when it changes. It uses the distance *as displayed*, not the raw
+ * value: the raw distance changes on every GPS tick while an obstacle is in
+ * range, so every tick's effect set state, and after 50 such ticks in a row
+ * React stops with "Maximum update depth exceeded".
+ */
+export function obstructionAlertsSig(alerts: readonly (GroupableAlert & { count: number })[]): string {
+  return alerts.map((a) => `${a.key}:${a.count}:${a.name}:${a.tipFt}:${a.elevationFt}:${a.estimated ? 1 : 0}:${obstructionDistLabel(a.distNm)}`).join('|')
+}
