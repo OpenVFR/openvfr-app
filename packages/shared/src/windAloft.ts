@@ -5,7 +5,7 @@
  */
 
 import { fetchWindLevels, type WindAtLevel } from './fetchWind'
-import { openMeteoCooldownMs, openMeteoFailureCount } from './openMeteo'
+import { openMeteoCooldownMs } from './openMeteo'
 import { coordinateAlongRouteNm, regularIntervalDistances } from './virtualRadarCalc'
 
 export interface WindAloftColumn {
@@ -47,7 +47,7 @@ const FOLLOW_UP_MIN_MS = 30_000
 
 /**
  * Calls `onColumns` with the route's winds aloft, and again (up to
- * FOLLOW_UP_RETRIES times) if part of the request failed -- Open-Meteo
+ * FOLLOW_UP_RETRIES times) if part of ITS request failed -- Open-Meteo
  * throttled or the network dropped -- once Open-Meteo lets requests through
  * again (never sooner than FOLLOW_UP_MIN_MS). Only the points still missing
  * are requested again (the rest come from fetchWind's cache). Stop it by
@@ -72,12 +72,14 @@ export function watchWindAloftAlongRoute(
   let timer: ReturnType<typeof setTimeout> | undefined
   signal.addEventListener('abort', () => clearTimeout(timer), { once: true })
   const load = () => {
-    const failuresBefore = openMeteoFailureCount()
-    fetchWindAloftAlongRoute(waypoints, totalNm, maxAltFt, baseUrl, signal, tickStepNm)
+    // Only this route's own requests count: a failure elsewhere in the app
+    // (the map's wind overlay, the wind gauge, a leg forecast) used to mark
+    // complete route winds as "retrying" too.
+    const outcome = { failed: false }
+    fetchWindAloftAlongRoute(waypoints, totalNm, maxAltFt, baseUrl, signal, tickStepNm, outcome)
       .then((c) => {
         if (signal.aborted) return
-        const incomplete = openMeteoFailureCount() > failuresBefore
-        if (!incomplete) { onColumns(c, 'ok'); return }
+        if (!outcome.failed) { onColumns(c, 'ok'); return }
         if (retries++ < FOLLOW_UP_RETRIES) {
           onColumns(c, 'retrying')
           timer = setTimeout(load, Math.max(FOLLOW_UP_MIN_MS, openMeteoCooldownMs()))
@@ -97,11 +99,12 @@ export async function fetchWindAloftAlongRoute(
   baseUrl = '',
   signal?: AbortSignal,
   tickStepNm = 0,
+  outcome?: { failed: boolean },
 ): Promise<WindAloftColumn[]> {
   if (waypoints.length < 2 || totalNm <= 0) return []
   const distances = nudgeOffTicks(regularIntervalDistances(totalNm, COLUMN_INTERVAL_NM, MAX_COLUMNS), totalNm, tickStepNm)
   if (distances.length === 0) return []
   const pts = distances.map((d) => coordinateAlongRouteNm(waypoints, d))
-  const levels = await fetchWindLevels(pts, maxAltFt, baseUrl, signal)
+  const levels = await fetchWindLevels(pts, maxAltFt, baseUrl, signal, outcome)
   return distances.map((distNm, i) => ({ distNm, levels: levels[i] })).filter((c) => c.levels.length > 0)
 }

@@ -60,6 +60,11 @@ export function pressureLevelFor(altFt: number): number {
   return 400
 }
 
+/** Which wind fetchWind reads for `altFt`: 'surface' (10 m) or a pressure level in hPa. Stable while the aircraft stays in one level band. */
+export function windLevelFor(altFt: number | null | undefined): string {
+  return altFt == null || altFt <= SURFACE_THRESHOLD_FT ? 'surface' : String(pressureLevelFor(altFt))
+}
+
 /** Cached wind for a point, or null when not cached / expired. Synchronous: lets a map overlay paint what it already knows at once. */
 export function peekWind(lat: number, lng: number, altFt: number | null | undefined): WindAloft | null {
   const useSurface = altFt == null || altFt <= SURFACE_THRESHOLD_FT
@@ -267,6 +272,8 @@ export async function fetchWindLevels(
   maxAltFt: number,
   baseUrl = '',
   signal?: AbortSignal,
+  /** Set to true when a request for these points failed (the result is then incomplete or partly stale). */
+  outcome?: { failed: boolean },
 ): Promise<WindAtLevel[][]> {
   // At most MAX_ALOFT_LEVELS pressure levels: with the 10 m wind that is 10
   // variables, which Open-Meteo bills as one call per location (more than 10
@@ -325,6 +332,7 @@ export async function fetchWindLevels(
       })
     } catch (err) {
       if ((err as { name?: string }).name === 'AbortError') throw err
+      if (outcome) outcome.failed = true
       for (const cell of cells) for (const i of cell.idx) failed.add(i)
     }
   }

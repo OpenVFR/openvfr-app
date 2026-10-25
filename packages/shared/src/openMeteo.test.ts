@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
-  openMeteoJson, openMeteoCooldownMs, openMeteoFailureCount, throttleDelayMs, snapCoord, currentExpiresAt,
+  openMeteoJson, openMeteoCooldownMs, throttleDelayMs, snapCoord, currentExpiresAt,
   OpenMeteoError, __resetOpenMeteoForTests,
 } from './openMeteo'
 
@@ -77,7 +77,6 @@ describe('openMeteoJson', () => {
     await expect(p).resolves.toEqual({ ok: 1 })
     await expect(q).resolves.toEqual({ ok: 1 })
     expect(fetchMock).toHaveBeenCalledTimes(3)
-    expect(openMeteoFailureCount()).toBe(0)
   })
 
   it('a 503 storm: queued requests wait for the gate, and one incident escalates once', async () => {
@@ -102,14 +101,13 @@ describe('openMeteoJson', () => {
     expect(sentWhileClosed).toEqual([])
   })
 
-  it('gives up after one retry and counts the failure', async () => {
+  it('gives up after one retry', async () => {
     fetchMock.mockImplementation(() => Promise.resolve(json({}, 503)))
     const p = openMeteoJson('/a')
     const check = expect(p).rejects.toMatchObject({ name: 'OpenMeteoError', status: 503, throttled: true })
     await vi.advanceTimersByTimeAsync(10_000)
     await check
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(openMeteoFailureCount()).toBe(1)
   })
 
   it('fails fast instead of waiting hours for a daily limit', async () => {

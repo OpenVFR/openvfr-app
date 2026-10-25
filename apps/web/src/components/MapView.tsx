@@ -107,7 +107,7 @@ import { nextPlaceName } from '../utils/places'
 import { getDb, type TrackPoint, type LegOverride } from '../db'
 import { distanceNm } from '../utils/routeCalc'
 import { distanceAlongRouteNm, coordinateAlongRouteNm, routeCrossTrackNm } from '@open-vfr/shared/virtualRadarCalc'
-import { fetchWind, type WindAloft } from '@open-vfr/shared/fetchWind'
+import { fetchWind, windLevelFor, type WindAloft } from '@open-vfr/shared/fetchWind'
 import { aircraftIconUrl, registerAircraftImageFromSvg } from '../utils/aircraftIcon'
 import { buildTerrainColorExpr } from '../utils/terrainColor'
 import { useLivePlog } from '../hooks/useLivePlog'
@@ -1471,47 +1471,42 @@ export default function MapView({ auth }: { auth: AuthState }) {
     }).catch(console.warn)
   }, [selectedLogId, mapReady])
 
-  // Live wind — fetched at current position + altitude every 5 minutes while flying.
-  // On failure retries after 30 s (handles offline start / API blip without waiting 5 min).
+  // Live wind at the current position + altitude while flying: on the first
+  // position, every 5 minutes, whenever the aircraft enters another wind
+  // level (surface / pressure level), and 30 s after a failure. The effect
+  // restarts only on those changes, never on a plain position tick (that
+  // would clear the timers -- see the native useWind hook).
   const [liveWind, setLiveWind] = useState<WindAloft | null>(null)
-  const windFetchedRef = useRef(false)
-  const windRetryRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const liveWindAlt = (altFt: number) => (altFt > 100 ? altFt : null)
+  const hasGpsPosition = gpsPosition != null
+  // Own ref, set during render: gpsPositionRef is only filled by a later
+  // effect (and only once the map is ready), so it can still be empty here.
+  const liveWindPosRef = useRef(gpsPosition)
+  liveWindPosRef.current = gpsPosition
+  const liveWindLevel = gpsPosition ? windLevelFor(liveWindAlt(gpsPosition.altFt)) : null
   useEffect(() => {
-    if (flyingMode === 'off') {
-      setLiveWind(null)
-      windFetchedRef.current = false
-      if (windRetryRef.current) { clearTimeout(windRetryRef.current); windRetryRef.current = null }
-      return
-    }
+    if (flyingMode === 'off') { setLiveWind(null); return }
+    if (!hasGpsPosition) return
+    const ac = new AbortController()
+    let retry: ReturnType<typeof setTimeout> | undefined
     const doFetch = () => {
-      const pos = gpsPositionRef.current
+      clearTimeout(retry)
+      const pos = liveWindPosRef.current
       if (!pos) return
       // API_BASE_URL: a relative path hits the static app host in
       // split-origin production (index.html back, no live wind).
-      fetchWind(pos.lat, pos.lng, pos.altFt > 100 ? pos.altFt : null, API_BASE_URL)
-        .then(setLiveWind)
-        .catch(() => {
-          // Retry in 30 s instead of waiting the full 5-minute interval
-          windRetryRef.current = setTimeout(doFetch, 30_000)
+      fetchWind(pos.lat, pos.lng, liveWindAlt(pos.altFt), API_BASE_URL, ac.signal)
+        .then((w) => { if (!ac.signal.aborted) setLiveWind(w) })
+        .catch((err) => {
+          if (ac.signal.aborted || (err as { name?: string }).name === 'AbortError') return
+          // Keep the last wind; retry in 30 s instead of waiting 5 minutes.
+          retry = setTimeout(doFetch, 30_000)
         })
     }
     doFetch()
     const id = setInterval(doFetch, 5 * 60 * 1000)
-    return () => { clearInterval(id); if (windRetryRef.current) clearTimeout(windRetryRef.current) }
-  }, [flyingMode])
-
-  // First-position wind trigger: fires when GPS position first becomes available
-  // after flying starts, so wind data doesn't wait 5 minutes if pos wasn't ready yet.
-  useEffect(() => {
-    if (flyingMode === 'off' || !gpsPosition || windFetchedRef.current) return
-    if (liveWind) return  // already have wind, no need to re-fetch
-    windFetchedRef.current = true
-    fetchWind(gpsPosition.lat, gpsPosition.lng, gpsPosition.altFt > 100 ? gpsPosition.altFt : null, API_BASE_URL)
-      .then(setLiveWind)
-      .catch(() => {
-        windFetchedRef.current = false  // allow retry on next position update
-      })
-  }, [flyingMode, gpsPosition, liveWind])
+    return () => { ac.abort(); clearInterval(id); clearTimeout(retry) }
+  }, [flyingMode, hasGpsPosition, liveWindLevel])
 
   // Airspace ceiling auto-escalation: if within 500 ft of ceiling, raise by 2 000 ft.
   const [ceilingEscalatedMsg, setCeilingEscalatedMsg] = useState<string | null>(null)

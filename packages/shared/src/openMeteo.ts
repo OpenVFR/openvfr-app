@@ -50,7 +50,6 @@ let closedUntil = 0
  *  are the same incident and must not escalate the backoff again. */
 let closedAt = -Infinity
 let consecutiveThrottles = 0
-let failureCount = 0
 let active = 0
 const waiting: (() => void)[] = []
 const inflight = new Map<string, { promise: Promise<unknown>; users: number; ac: AbortController }>()
@@ -62,12 +61,6 @@ let random = () => Math.random()
 /** ms until Open-Meteo requests may go out again (0 = open). */
 export function openMeteoCooldownMs(): number {
   return Math.max(0, closedUntil - now())
-}
-
-/** Increments on every failed Open-Meteo request; lets a caller tell that a
- *  fetch it just ran came back incomplete and is worth trying again later. */
-export function openMeteoFailureCount(): number {
-  return failureCount
 }
 
 /** Resolves once the gate is open (rejects with AbortError on abort). */
@@ -190,14 +183,9 @@ async function run(url: string, signal: AbortSignal): Promise<unknown> {
     // for it), network errors after a short pause. Not retried: other HTTP
     // errors, and a gate closed for longer than MAX_WAIT_MS (status null).
     const retryable = network || (err.throttled && err.status !== null)
-    if (!retryable) { failureCount++; throw err }
-    try {
-      if (network) await sleep(NETWORK_RETRY_MS, signal)
-      return await attempt(url, signal)
-    } catch (err2) {
-      if ((err2 as Error).name !== 'AbortError') failureCount++
-      throw err2
-    }
+    if (!retryable) throw err
+    if (network) await sleep(NETWORK_RETRY_MS, signal)
+    return await attempt(url, signal)
   }
 }
 
@@ -278,7 +266,6 @@ export function __resetOpenMeteoForTests(opts: { now?: () => number; random?: ()
   closedUntil = 0
   closedAt = -Infinity
   consecutiveThrottles = 0
-  failureCount = 0
   active = 0
   waiting.length = 0
   inflight.clear()
