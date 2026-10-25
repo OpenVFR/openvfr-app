@@ -24,6 +24,7 @@
     "./alertDismiss": "./src/alertDismiss.ts",
     "./climbRate": "./src/climbRate.ts",
     "./plannedCourse": "./src/plannedCourse.ts",
+    "./alertLog": "./src/alertLog.ts",
     "./alertStack": "./src/alertStack.ts",
     "./alertStability": "./src/alertStability.ts",
     "./terrainCache": "./src/terrainCache.ts",

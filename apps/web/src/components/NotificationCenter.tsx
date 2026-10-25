@@ -13,11 +13,13 @@
  *   - WaypointReminderToast   (transient, single item, 30s auto-dismiss)
  */
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { summarizeObstructionAlerts, obstructionSummaryText, obstructionDistLabel } from '@open-vfr/shared/obstructionPoints'
 import { layoutAlertStack, type AlertTier } from '@open-vfr/shared/alertStack'
 import type { StableTiming } from '@open-vfr/shared/alertStability'
 import { useStableItems } from '../hooks/useStableItems'
+import { useAlertLog } from '../hooks/useAlertLog'
+import { alertLogTime } from '@open-vfr/shared/alertLog'
 import type { AirspaceAlert } from '../hooks/useAirspaceWarnings'
 import type { AirspaceNotification } from '../hooks/useAirspaceNotifications'
 import type { ObstructionAlert } from '../hooks/useObstructionWarnings'
@@ -272,8 +274,11 @@ export function NotificationCenter({
   // Debounce first (no flicker at trigger edges), then split into a few full
   // cards and one-line chips.
   const { visible: stable, forget } = useStableItems(items.map(withPolicy))
-  if (stable.length === 0) return null
   const { cards, chips, overflow } = layoutAlertStack(stable.map(i => ({ ...i, tier: i.tier as AlertTier })))
+  // Recently shown but no longer on screen: a muted pill opens the list.
+  const history = useAlertLog([...cards, ...chips])
+  const [historyOpen, setHistoryOpen] = useState(false)
+  if (stable.length === 0 && history.length === 0) return null
   const dismissOf = (item: Item) => item.onDismiss && (() => { forget(item.key); item.onDismiss?.() })
 
   return (
@@ -315,6 +320,18 @@ export function NotificationCenter({
       {overflow > 0 && (
         <div className={css.overflow}>+{overflow} more</div>
       )}
+      {history.length > 0 && (
+        <button className={css.historyPill} onClick={() => setHistoryOpen(o => !o)} aria-expanded={historyOpen}>
+          ↺ {history.length} recent
+        </button>
+      )}
+      {historyOpen && history.slice(0, 8).map(e => (
+        <div key={`${e.key}-${e.at}`} className={`${css.historyRow} ${css[e.severity]}`}>
+          <span className={css.historyTime}>{alertLogTime(e.lastAt)}</span>
+          <span className={css.chipBadge}>{e.badge}</span>
+          <span className={css.chipTitle}>{e.title}</span>
+        </div>
+      ))}
     </div>
   )
 }

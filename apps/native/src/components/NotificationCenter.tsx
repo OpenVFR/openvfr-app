@@ -22,11 +22,13 @@
  * insets.top padding applied — see MapScreen.tsx's outer container).
  */
 
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { summarizeObstructionAlerts, obstructionSummaryText, obstructionDistLabel } from '@open-vfr/shared/obstructionPoints'
 import { layoutAlertStack, type AlertTier } from '@open-vfr/shared/alertStack'
 import type { StableTiming } from '@open-vfr/shared/alertStability'
 import { useStableItems } from '../hooks/useStableItems'
+import { useAlertLog } from '../hooks/useAlertLog'
+import { alertLogTime } from '@open-vfr/shared/alertLog'
 import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
@@ -278,8 +280,11 @@ export function NotificationCenter({
   // Debounce first (no flicker at trigger edges), then split into a few full
   // cards and one-line chips.
   const { visible: stable, forget } = useStableItems(items.map(withPolicy))
-  if (stable.length === 0) return null
   const { cards, chips, overflow } = layoutAlertStack(stable.map(i => ({ ...i, tier: i.tier as AlertTier })))
+  // Recently shown but no longer on screen: a muted pill opens the list.
+  const history = useAlertLog([...cards, ...chips])
+  const [historyOpen, setHistoryOpen] = useState(false)
+  if (stable.length === 0 && history.length === 0) return null
   const dismissOf = (item: Item) => item.onDismiss && (() => { forget(item.key); item.onDismiss?.() })
 
   return (
@@ -336,6 +341,21 @@ export function NotificationCenter({
       {overflow > 0 && (
         <Text style={styles.overflow}>+{overflow} more</Text>
       )}
+      {history.length > 0 && (
+        <TouchableOpacity onPress={() => setHistoryOpen(o => !o)} hitSlop={{ top: 6, bottom: 6, left: 10, right: 10 }}>
+          <Text style={styles.overflow}>{'\u21ba'} {history.length} recent</Text>
+        </TouchableOpacity>
+      )}
+      {historyOpen && history.slice(0, 8).map(e => (
+        <View
+          key={`${e.key}-${e.at}`}
+          style={[styles.chip, { backgroundColor: SEVERITY_BG[e.severity], borderLeftColor: SEVERITY_BORDER[e.severity], opacity: 0.8 }]}
+        >
+          <Text style={styles.chipShort}>{alertLogTime(e.lastAt)}</Text>
+          <Text style={[styles.chipBadge, { color: SEVERITY_ACCENT[e.severity] }]} numberOfLines={1}>{e.badge}</Text>
+          <Text style={styles.chipTitle} numberOfLines={1}>{e.title}</Text>
+        </View>
+      ))}
     </View>
   )
 }

@@ -150,3 +150,34 @@
 }
 /* Keep the chip one line high even with the larger touch dismiss target. */
 .chip .chipDismiss { min-height: 22px; min-width: 28px; }
+
+/* Recent alerts: muted pill + compact list of what was shown and is gone. */
+.historyPill {
+  pointer-events: auto;
+  background:     var(--surface-overlay, rgba(0, 0, 0, 0.6));
+  color:          var(--text-muted);
+  border:         none;
+  border-radius:  8px;
+  padding:        3px 10px;
+  font-size:      11px;
+  cursor:         pointer;
+}
+
+.historyRow {
+  composes: alertCard from '../styles/shared.module.css';
+  width:       100%;
+  box-sizing:  border-box;
+  display:     flex;
+  align-items: center;
+  gap:         6px;
+  padding:     3px 8px;
+  font-size:   11px;
+  opacity:     0.8;
+}
+
+.historyTime {
+  font-size:   10px;
+  font-variant-numeric: tabular-nums;
+  opacity:     0.85;
+  white-space: nowrap;
+}

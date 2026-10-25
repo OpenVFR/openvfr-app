@@ -481,6 +481,7 @@ One stack at the top of the map (`NotificationCenter`, web and native) carries e
 - **Class E/F airspace** only produces entered/left notices by default; "Class E / F warnings" adds yellow look-ahead warnings for them.
 - **Aerodrome nearby** (within 1 NM and 1,500 ft, not on the route) only alerts while a route with at least two waypoints is planned; without a route a deliberate approach cannot be told from a fly-by.
 - **Planned course:** with "Mute airspace warnings on planned course" on, yellow and blue airspace warnings are hidden while the aircraft is moving, within 1 NM of a route leg and tracking within 30° of it (`plannedCourse.ts`). Red hazards always show.
+- **Recent alerts** (`alertLog.ts`): everything the stack showed in the last 30 minutes is logged; a muted "↺ N recent" pill under the stack lists what is no longer on screen (time in UTC, newest first), so a dismissed or timed-out alert can be looked up again.
 - **Dismissal** (`alertDismiss.ts`): a dismissed alert stays muted while its hazard is still detected, and can alert again after the hazard has been absent for 60 s.
 - **Settings → Alert banners** (web and native) turn off obstacle, aerodrome-nearby and airspace entered/left banners, and opt in to class E/F warnings.
 
