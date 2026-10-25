@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   profileChartLayout, profileYMax, declutterMarks, obstacleOpacity, isLimitingObstacle, altitudeTicks, formatAltitudeTick, formatAltitudeFt, distanceTicks,
-  polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, clampProfileZoom, scrollAfterZoom, MAX_PROFILE_PX_PER_NM, profileYMin, altitudeTicksFrom,
+  polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, clampProfileZoom, scrollAfterZoom, MAX_PROFILE_PX_PER_NM, profileYMin, altitudeTicksFrom, waterBandTopFt,
 } from './profileChart'
 
 const margin = { top: 10, right: 10, bottom: 30, left: 40 }
@@ -220,5 +220,22 @@ describe('profileYMin / altitudeTicksFrom', () => {
     const t = altitudeTicksFrom(5000, 1500)
     expect(t[0]).toBe(1500)
     expect(t.slice(1).every((v) => v > 1500)).toBe(true)
+  })
+})
+
+describe('waterBandTopFt', () => {
+  it('is at least 200 ft and follows terrain samples over the water', () => {
+    expect(waterBandTopFt([], 0, 4000)).toBe(200)
+    expect(waterBandTopFt([10, 15], 0, 4000)).toBe(200)
+    expect(waterBandTopFt([480, 450], 0, 4000)).toBe(480)
+  })
+  it('is capped at the scale top', () => {
+    expect(waterBandTopFt([5200], 0, 4000)).toBe(4000)
+  })
+  it('is null when the water is not above the scale floor (live altitude window in flight)', () => {
+    // Climbing through 3 200 ft: the window starts at 2 500 ft, the lake is at sea level.
+    expect(waterBandTopFt([0, 3], 2500, 6000)).toBeNull()
+    expect(waterBandTopFt([0], 200, 4000)).toBeNull()
+    expect(waterBandTopFt([0], 0, 4000)).toBe(200)
   })
 })

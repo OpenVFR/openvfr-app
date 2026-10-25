@@ -316,6 +316,22 @@ export function profileYMin(groundElevsFt: readonly number[], plannedAltsFt: rea
   return Math.min(Math.max(0, Math.floor((lo - 500) / 500) * 500), Math.max(0, yMax - 2000))
 }
 
+/** Lowest top of the water band, so a lake at sea level still reads as a band, not a hairline. */
+const WATER_BAND_MIN_FT = 200
+
+/**
+ * Top (ft) of the band marking a lake/reservoir crossing, drawn from there down
+ * to the plot bottom: the highest terrain sample over the water (at least
+ * WATER_BAND_MIN_FT), capped at the scale top. Null when that is not above the
+ * scale floor -- in flight the live altitude window can start well above the
+ * water, and the band would then have a negative height (an SVG error on web,
+ * a band drawn under the plot on native).
+ */
+export function waterBandTopFt(spanElevsFt: readonly number[], yMin: number, yMax: number): number | null {
+  const top = Math.min(yMax, Math.max(WATER_BAND_MIN_FT, ...spanElevsFt))
+  return top > yMin ? top : null
+}
+
 /** Altitude ticks for a scale that may start above 0: the floor itself, then every tick above it. */
 export function altitudeTicksFrom(yMax: number, yMin: number): number[] {
   const t = altitudeTicks(yMax)

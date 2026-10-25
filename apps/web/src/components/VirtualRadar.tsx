@@ -18,7 +18,7 @@ import { CLOUD_COLORS } from '@open-vfr/shared/featureColors'
 import type { ParsedCloudLayer } from '@open-vfr/shared/fetchWx'
 import {
   profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, profileYMin, liveAltitudeWindow, altitudeTicksFrom, formatAltitudeTick, formatAltitudeFt, distanceTicks,
-  polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, declutterMarks, obstacleOpacity, isLimitingObstacle, type ProfileChartLayout,
+  polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, declutterMarks, obstacleOpacity, isLimitingObstacle, waterBandTopFt, type ProfileChartLayout,
 } from '@open-vfr/shared/profileChart'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { useMsaMargins } from '../db/useSettings'
@@ -1425,11 +1425,13 @@ function VirtualRadar({
           const spanElevs = terrainPts
             .filter((p) => p.distNm >= wc.entryNm && p.distNm <= wc.exitNm)
             .map((p) => p.elevFt)
-          const spanMaxFt = Math.min(yMax, Math.max(200, ...(spanElevs.length ? spanElevs : [0])))
-          const x1 = L.xOf(wc.entryNm), x2 = L.xOf(wc.exitNm), yTop = L.yOf(spanMaxFt)
+          // Null when the water is below the scale floor (live altitude window).
+          const topFt = waterBandTopFt(spanElevs, yMin, yMax)
+          const x1 = L.xOf(wc.entryNm), x2 = L.xOf(wc.exitNm)
           // A zero-width crossing (route touching a shoreline) would draw as a
           // stray vertical stroke.
-          if (x2 - x1 <= 0) return null
+          if (topFt == null || x2 - x1 <= 0) return null
+          const yTop = L.yOf(topFt)
           return (
             <rect key={`water-${i}`} x={x1} y={yTop} width={x2 - x1} height={L.plotBottom - yTop}
               fill="rgba(30,100,200,0.35)" stroke="rgba(60,140,230,0.7)" strokeWidth={1} />

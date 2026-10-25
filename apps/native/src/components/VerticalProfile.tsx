@@ -71,6 +71,7 @@ import {
 } from '@open-vfr/shared/radarStyle'
 import {
   profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, profileYMin, liveAltitudeWindow, declutterMarks, obstacleOpacity, isLimitingObstacle, altitudeTicksFrom, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
+  waterBandTopFt,
 } from '@open-vfr/shared/profileChart'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
 import { airspaceOutlines, airspaceChips, layoutAirspaceChips } from '@open-vfr/shared/airspaceOutline'
@@ -556,9 +557,11 @@ const RadarBackdrop = React.memo(function RadarBackdrop(P: BackdropProps) {
           const spanElevs = terrainPts
             .filter(p => p.distNm >= wc.entryNm && p.distNm <= wc.exitNm)
             .map(p => p.elevFt)
-          const spanMaxFt = Math.max(200, ...(spanElevs.length ? spanElevs : [0]))
+          // Null when the water is below the scale floor (live altitude window).
+          const topFt = waterBandTopFt(spanElevs, yMin, yMax)
+          if (topFt == null) return null
           const x1 = xOf(wc.entryNm), x2 = xOf(wc.exitNm)
-          const yTop = yOf(Math.min(yMax, spanMaxFt)), yBot = plotBottom
+          const yTop = yOf(topFt), yBot = plotBottom
           const d = `M${x1},${yTop} L${x2},${yTop} L${x2},${yBot} L${x1},${yBot} Z`
           return <Path key={`water-${i}`} d={d} fill="rgba(30,100,200,0.35)" stroke="rgba(60,140,230,0.7)" strokeWidth={1} />
         })}
