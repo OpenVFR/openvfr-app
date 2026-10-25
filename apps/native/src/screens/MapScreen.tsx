@@ -228,6 +228,8 @@ function coordAlongTrack(track: TrackPoint[], targetNm: number): { lng: number; 
 // Stable empty input for the ruler's useWeatherAlongRoute instance while the
 // ruler profile is hidden -- a fresh [] per render would re-run its effect.
 const NO_WAYPOINTS: RouteWaypoint[] = []
+// Stable empty list for alert categories the pilot turned off (a fresh [] would re-render every time).
+const NO_ALERTS: never[] = []
 
 /**
  * Per-country data (map sources, lookups, warnings) is loaded for the active
@@ -1674,11 +1676,11 @@ function MapScreenForCountry() {
         <NotificationCenter
           airspaceAlerts={airspaceAlerts}
           onDismissAirspace={dismissAirspace}
-          obstructionAlerts={obstructionAlerts}
+          obstructionAlerts={settings.alertObstacles ? obstructionAlerts : NO_ALERTS}
           onDismissObstruction={dismissObstruction}
-          airfieldAlerts={airfieldAlerts}
+          airfieldAlerts={settings.alertAerodromes ? airfieldAlerts : NO_ALERTS}
           onDismissAirfield={dismissAirfield}
-          airspaceNotifications={airspaceNotifications}
+          airspaceNotifications={settings.alertAirspaceEvents ? airspaceNotifications : NO_ALERTS}
           ceilingMsg={ceilingEscalatedMsg}
           reminderNote={reminderNote}
           onDismissReminder={() => setReminderNote(null)}

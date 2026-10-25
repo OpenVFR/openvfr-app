@@ -319,6 +319,27 @@ export function SettingsScreen() {
         />
       </Section>
 
+      <Section title="Alert banners">
+        <RowToggle
+          label="Obstacles ahead"
+          left="Off" right="On"
+          value={settings.alertObstacles}
+          onToggle={v => update({ alertObstacles: v })}
+        />
+        <RowToggle
+          label="Aerodrome nearby"
+          left="Off" right="On"
+          value={settings.alertAerodromes}
+          onToggle={v => update({ alertAerodromes: v })}
+        />
+        <RowToggle
+          label="Airspace entered / left"
+          left="Off" right="On"
+          value={settings.alertAirspaceEvents}
+          onToggle={v => update({ alertAirspaceEvents: v })}
+        />
+      </Section>
+
       <Section title="Navigation">
         <RowStep
           label="Trajectory lookahead"

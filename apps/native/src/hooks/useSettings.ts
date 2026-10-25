@@ -31,6 +31,12 @@ export type AppSettings = {
   airspaceWarnLookaheadMin: number
   /** Vertical buffer in feet — warn when within this distance of a floor/ceiling */
   airspaceWarnVerticalFt: number
+  /** Show the "obstacles ahead" alert */
+  alertObstacles: boolean
+  /** Show the "aerodrome nearby" advisory (unplanned aerodrome within 1 NM) */
+  alertAerodromes: boolean
+  /** Show entered / left notices for airspaces */
+  alertAirspaceEvents: boolean
   /** Abeam corridor + terrain/obstacle clearance for the MSA line, below-MSA warnings and auto cruise level */
   msaMargins: MsaMargins
   /** Trajectory mode: project N minutes ahead (time) or fixed NM (nm) */
@@ -83,6 +89,9 @@ const DEFAULTS: AppSettings = {
   trajectoryNm:        5,
   airspaceWarnLookaheadMin: 5,
   airspaceWarnVerticalFt:   500,
+  alertObstacles:           true,
+  alertAerodromes:          true,
+  alertAirspaceEvents:      true,
   msaMargins:               DEFAULT_MSA_MARGINS,
   trajectoryMode:           'time',
   showAltitudeAgl:          false,
