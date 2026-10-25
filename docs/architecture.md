@@ -478,6 +478,7 @@ One stack at the top of the map (`NotificationCenter`, web and native) carries e
 - **Obstacles** alert only when they lie in the forward corridor of the current track (±0.5 NM, 2 minutes ahead, 1–5 NM), or within 0.25 NM. Below 30 kt ground speed there are no obstacle alerts. All obstacles are one merged card. Logic: `packages/shared/src/obstructionPoints.ts`.
 - **Layout** (`alertStack.ts`): red alerts always get a full card; yellow alerts and notes share two card slots in total. Entered/left events, blue advisories (aerodrome nearby, ceiling filter) and anything that does not fit are one-line chips, with "+N more" beyond four.
 - **Debounce** (`alertStability.ts`): a condition must hold 2 s before its card shows, and a shown card stays at least 5 s (2 s after the condition ends). Red alerts, events and notes show at once.
+- **Planned course:** with "Mute airspace warnings on planned course" on, yellow and blue airspace warnings are hidden while the aircraft is moving, within 1 NM of a route leg and tracking within 30° of it (`plannedCourse.ts`). Red hazards always show.
 - **Dismissal** (`alertDismiss.ts`): a dismissed alert stays muted while its hazard is still detected, and can alert again after the hazard has been absent for 60 s.
 - **Settings → Alert banners** (web and native) turn off obstacle, aerodrome-nearby and airspace entered/left banners.
 

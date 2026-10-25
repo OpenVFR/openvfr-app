@@ -30,6 +30,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { filterDismissed } from '@open-vfr/shared/alertDismiss'
+import { onPlannedCourse } from '@open-vfr/shared/plannedCourse'
+import type { RouteWaypoint } from '../utils/routeCalc'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { altitudeForLimit, effectiveLimitFt, limitMarginFt, insideBand } from '@open-vfr/shared/airspaceAltitude'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
@@ -109,6 +111,9 @@ export function useAirspaceWarnings(
   position: AlertPosition | null,
   lookaheadMin: number = DEFAULT_LOOKAHEAD_MIN,
   verticalFt: number = 500,
+  /** While flying the planned route, drop yellow/blue warnings (red hazards always stay). */
+  suppressOnCourse: boolean = false,
+  routeWaypoints: readonly RouteWaypoint[] = [],
 ): {
   alerts:  AirspaceAlert[]
   dismiss: (key: string) => void
@@ -302,7 +307,9 @@ export function useAirspaceWarnings(
     }
 
     // Sort: inside-now first, then vertical-closure, then by severity, then by lower_ft
-    const shown = filterDismissed(dismissedRef.current, found, now)
+    const onCourse = suppressOnCourse && onPlannedCourse({ lat, lng, trackDeg, speedKts }, routeWaypoints)
+    const candidates = onCourse ? found.filter(a => a.severity === 'red') : found
+    const shown = filterDismissed(dismissedRef.current, candidates, now)
     shown.sort((a, b) => {
       if (a.inside !== b.inside) return a.inside ? -1 : 1
       const sd = SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]
@@ -317,7 +324,7 @@ export function useAirspaceWarnings(
       lastSigRef.current = sig
       setAlerts(shown)
     }
-  }, [position, features, lookaheadMin, verticalFt])
+  }, [position, features, lookaheadMin, verticalFt, suppressOnCourse, routeWaypoints])
 
   const dismiss = useCallback((key: string) => {
     dismissedRef.current.set(key, Date.now())

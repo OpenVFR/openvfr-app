@@ -338,6 +338,12 @@ export function SettingsScreen() {
           value={settings.alertAirspaceEvents}
           onToggle={v => update({ alertAirspaceEvents: v })}
         />
+        <RowToggle
+          label="Mute airspace warnings on planned course"
+          left="Off" right="On"
+          value={settings.alertSuppressOnCourse}
+          onToggle={v => update({ alertSuppressOnCourse: v })}
+        />
       </Section>
 
       <Section title="Navigation">

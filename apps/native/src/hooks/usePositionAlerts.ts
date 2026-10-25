@@ -40,6 +40,7 @@ import type { GpsPosition } from '../utils/gpsTypes'
 import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
 import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, obstructionAlertsSig, obstructionReachNm, obstructionThreatDistNm, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
 import { filterDismissed } from '@open-vfr/shared/alertDismiss'
+import { onPlannedCourse } from '@open-vfr/shared/plannedCourse'
 import { useMefGrids } from './useMefGrids'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
@@ -195,6 +196,8 @@ export function usePositionAlerts(
   routeWaypoints: RouteWaypoint[],
   lookaheadMin:   number = DEFAULT_LOOKAHEAD_MIN,
   verticalFt:     number = 500,
+  /** While flying the planned route, drop yellow/blue airspace warnings (red hazards always stay). */
+  suppressOnCourse: boolean = false,
 ): PositionAlerts {
   const [airspaceFeatures, setAirspaceFeatures]   = useState<AirspaceFeature[]>([])
   // Obstacles + landmarks; unknown heights use the per-kind estimate.
@@ -388,7 +391,9 @@ export function usePositionAlerts(
         }
       }
       // A dismissed airspace stays muted while it is still detected (see alertDismiss).
-      const shown = filterDismissed(airspaceDismissedRef.current, found, now)
+      const onCourse = suppressOnCourse && onPlannedCourse({ lat, lng, trackDeg, speedKts }, routeWaypoints)
+      const candidates = onCourse ? found.filter(a => a.severity === 'red') : found
+      const shown = filterDismissed(airspaceDismissedRef.current, candidates, now)
       shown.sort((a, b) => {
         if (a.inside !== b.inside) return a.inside ? -1 : 1
         const sv = { red: 0, yellow: 1, blue: 2 }
@@ -499,7 +504,7 @@ export function usePositionAlerts(
         setAirfieldAlerts(shown)
       }
     }
-  }, [position, airspaceFeatures, obstacleFeatures, aerodromeFeatures, routeWaypoints, lookaheadMin, verticalFt])
+  }, [position, airspaceFeatures, obstacleFeatures, aerodromeFeatures, routeWaypoints, lookaheadMin, verticalFt, suppressOnCourse])
 
   const dismissAirspace = useCallback((key: string) => {
     airspaceDismissedRef.current.set(key, Date.now())

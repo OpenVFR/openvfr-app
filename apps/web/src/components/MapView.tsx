@@ -1146,7 +1146,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     () => (flyingPosition ? { ...flyingPosition, terrainFt } : null),
     [flyingPosition, terrainFt],
   )
-  const { alerts: airspaceAlerts,     dismiss: dismissAlert }       = useAirspaceWarnings(alertPosition, airspaceWarnLookahead, airspaceWarnVerticalFt)
+  const { alerts: airspaceAlerts,     dismiss: dismissAlert }       = useAirspaceWarnings(alertPosition, airspaceWarnLookahead, airspaceWarnVerticalFt, alertBanners.suppressOnCourse, routeWaypoints)
   const { notifications: airspaceNotifications }                     = useAirspaceNotifications(alertPosition)
   const { alerts: obstructionAlerts,  dismiss: dismissObstruction } = useObstructionWarnings(flyingMode !== 'off' ? gpsPosition : null)
   const { alerts: airfieldAlerts,     dismiss: dismissAirfield }    = useAirfieldProximity(flyingMode !== 'off' ? gpsPosition : null, routeWaypoints)

@@ -90,6 +90,7 @@ function AlertBannerSettings() {
       {row('Obstacles ahead banner', 'obstacles')}
       {row('Aerodrome nearby banner', 'aerodromes')}
       {row('Airspace entered / left', 'airspaceEvents')}
+      {row('Mute airspace warnings on planned course', 'suppressOnCourse')}
     </>
   )
 }
