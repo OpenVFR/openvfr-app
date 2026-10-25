@@ -475,7 +475,7 @@ The `AltitudeSlider` enforces a pilot-set ceiling. When the aircraft's GPS altit
 
 One stack at the top of the map (`NotificationCenter`, web and native) carries every in-flight alert. It is built to stay quiet:
 
-- **Obstacles** alert only when they lie in the forward corridor of the current track (±0.5 NM, 2 minutes ahead, 1–5 NM), or within 0.25 NM. Below 30 kt ground speed there are no obstacle alerts. All obstacles are one merged card. Logic: `packages/shared/src/obstructionPoints.ts`.
+- **Obstacles** alert only when they lie in the forward corridor of the current track (±0.5 NM, 2 minutes ahead, 1–5 NM), or within 0.25 NM.  The aircraft altitude is tested against the tip + 500 ft; a sustained descent (smoothed, > 200 ft/min) is projected to the arrival at the obstacle, and the card advises the altitude that clears it. Below 30 kt ground speed there are no obstacle alerts. All obstacles are one merged card. Logic: `packages/shared/src/obstructionPoints.ts`.
 - **Layout** (`alertStack.ts`): red alerts always get a full card; yellow alerts and notes share two card slots in total. Entered/left events, blue advisories (aerodrome nearby, ceiling filter) and anything that does not fit are one-line chips, with "+N more" beyond four.
 - **Debounce** (`alertStability.ts`): a condition must hold 2 s before its card shows, and a shown card stays at least 5 s (2 s after the condition ends). Red alerts, events and notes show at once.
 - **Class E/F airspace** only produces entered/left notices by default; "Class E / F warnings" adds yellow look-ahead warnings for them.

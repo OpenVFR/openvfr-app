@@ -38,8 +38,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
-import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, obstructionAlertsSig, obstructionReachNm, obstructionThreatDistNm, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
+import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, obstructionAlertsSig, obstructionReachNm, obstructionThreatDistNm, obstructionRiskAltFt, OBSTRUCTION_VERTICAL_BUFFER_FT, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
 import { filterDismissed } from '@open-vfr/shared/alertDismiss'
+import { updateClimbRate, type ClimbState } from '@open-vfr/shared/climbRate'
 import { onPlannedCourse } from '@open-vfr/shared/plannedCourse'
 import { useMefGrids } from './useMefGrids'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
@@ -55,7 +56,6 @@ const LOOKAHEAD_MIN_SPEED = 60
 export const DEFAULT_LOOKAHEAD_MIN = 5
 
 // ── Obstruction config (useObstructionWarnings) ────────────────────────────
-const OBS_VERTICAL_BUFFER_FT = 500
 const OBS_MAX_ALERTS         = 5
 const NM_PER_DEG_LAT         = 60.0
 
@@ -218,6 +218,7 @@ export function usePositionAlerts(
   const obstructionDismissedRef = useRef<Map<string, number>>(new Map())
   const airfieldDismissedRef    = useRef<Map<string, number>>(new Map())
   const prevAltRef              = useRef<{ altFt: number; ts: number } | null>(null)
+  const obsClimbRef             = useRef<ClimbState | null>(null)
   const insideRef               = useRef<Set<string>>(new Set())
   const notifInitializedRef     = useRef(false)
 
@@ -460,13 +461,15 @@ export function usePositionAlerts(
       const found: ObstructionAlert[] = []
       // Only obstacles in the forward corridor (none while nearly stationary).
       const reachNm = obstructionReachNm(speedKts)
+      obsClimbRef.current = updateClimbRate(obsClimbRef.current, altFt, now)
+      const climbRateFpm = obsClimbRef.current.rateFpm
       const own = { lat, lng, trackDeg, speedKts, accuracyM: accuracy }
       for (const obs of obstacleFeatures) {
         if (Math.abs(obs.lat - lat) > reachNm / NM_PER_DEG_LAT * 1.2) continue
         const distNm = obstructionThreatDistNm(own, obs)
         if (distNm == null) continue
         const tipFt = obstructionTipFt(obs, terrainFt)
-        if (tipFt == null || altFt > tipFt + OBS_VERTICAL_BUFFER_FT) continue
+        if (tipFt == null || obstructionRiskAltFt(altFt, climbRateFpm, distNm, speedKts) > tipFt + OBSTRUCTION_VERTICAL_BUFFER_FT) continue
         found.push({ key: obs.key, kind: obs.kind, name: obs.name || obs.kind.replace('_', ' '),
           elevationFt: obs.groundKnown ? obs.elevFt : Math.round(terrainFt ?? 0), tipFt, estimated: obs.estimated, distNm, count: 1 })
       }

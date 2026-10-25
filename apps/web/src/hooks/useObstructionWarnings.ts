@@ -9,7 +9,7 @@
  *
  * An alert fires when:
  *   - The obstacle is in the forward corridor or very close, AND
- *   - Aircraft altitude ≤ obstacle tip elevation + VERTICAL_BUFFER_FT (default 500 ft)
+ *   - Aircraft altitude (projected to the obstacle when descending) ≤ obstacle tip elevation + 500 ft
  *
  * Returns up to MAX_ALERTS sorted by distance (closest first).
  * Dismiss mutes the kind while it is still detected (@open-vfr/shared/alertDismiss).
@@ -19,12 +19,12 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { useActiveCountries } from '../utils/countryData'
-import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, obstructionAlertsSig, obstructionReachNm, obstructionThreatDistNm, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
+import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, obstructionAlertsSig, obstructionReachNm, obstructionThreatDistNm, obstructionRiskAltFt, OBSTRUCTION_VERTICAL_BUFFER_FT, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
 import { filterDismissed } from '@open-vfr/shared/alertDismiss'
+import { updateClimbRate, type ClimbState } from '@open-vfr/shared/climbRate'
 import { useMefGrids } from './useMefGrids'
 
 // ── Config ───────────────────────────────────────────────────────────────────
-const VERTICAL_BUFFER_FT  = 500    // fire if aircraft ≤ tip + 500 ft
 const MAX_ALERTS          = 5
 const NM_PER_DEG_LAT      = 60.0
 
@@ -59,6 +59,7 @@ export function useObstructionWarnings(position: (GpsPosition & { terrainFt?: nu
   // set is unchanged. See useAirfieldProximity.ts's identical fix for the
   // full rationale (2026-09-13, "Maximum update depth exceeded" mitigation).
   const lastSigRef = useRef<string>('')
+  const climbRef = useRef<ClimbState | null>(null)
 
   // ── Load once ───────────────────────────────────────────────────────────────
   const { key: countriesKey } = useActiveCountries()
@@ -82,6 +83,8 @@ export function useObstructionWarnings(position: (GpsPosition & { terrainFt?: nu
     const found: ObstructionAlert[] = []
     // Only obstacles in the forward corridor (none while nearly stationary).
     const reachNm = obstructionReachNm(speedKts)
+    climbRef.current = updateClimbRate(climbRef.current, altFt, now)
+    const climbRateFpm = climbRef.current.rateFpm
     const own = { lat, lng, trackDeg, speedKts, accuracyM: accuracy }
 
     for (const obs of obstacles) {
@@ -93,7 +96,7 @@ export function useObstructionWarnings(position: (GpsPosition & { terrainFt?: nu
 
       // Vertical filter: only warn if aircraft is at risk altitude
       const tipFt = obstructionTipFt(obs, position.terrainFt)
-      if (tipFt == null || altFt > tipFt + VERTICAL_BUFFER_FT) continue
+      if (tipFt == null || obstructionRiskAltFt(altFt, climbRateFpm, distNm, speedKts) > tipFt + OBSTRUCTION_VERTICAL_BUFFER_FT) continue
 
       found.push({
         key:         obs.key,

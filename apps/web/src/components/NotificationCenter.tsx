@@ -173,7 +173,7 @@ export function NotificationCenter({
       title,
       meta,
       chipTitle: `${obstructions.count} \u00b7 nearest ${obstructionDistLabel(obstructions.nearestNm)} NM`,
-      short: `top ${obstructions.highestTipFt} ft`,
+      short: `\u2191 ${obstructions.clearFt} ft`,
       dismissible: true,
       onDismiss: () => obstructions.keys.forEach(onDismissObstruction),
     })

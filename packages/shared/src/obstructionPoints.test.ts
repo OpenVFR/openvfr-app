@@ -83,10 +83,33 @@ describe('obstructionSummaryText', () => {
     ({ key: `kind:${kind}`, kind, name: kind, elevationFt: 0, tipFt, estimated, distNm, count })
   it('lists kinds with counts', () => {
     const s = summarizeObstructionAlerts([a('church', 4, 0.3, 382, true), a('mast', 5, 0.5, 699, true)])!
-    expect(obstructionSummaryText(s)).toEqual({ title: '5 \u00d7 masts \u00b7 4 \u00d7 churches', meta: 'Highest top 699 ft (est.) \u00b7 nearest 0.3 NM ahead' })
+    expect(obstructionSummaryText(s)).toEqual({ title: '5 \u00d7 masts \u00b7 4 \u00d7 churches', meta: 'Highest top 699 ft (est.) \u00b7 nearest 0.3 NM ahead \u00b7 climb above 1200 ft' })
   })
   it('uses the name for a single obstacle', () => {
     const s = summarizeObstructionAlerts([a('windmill', 1, 0.5, 166)])!
-    expect(obstructionSummaryText(s, 'Kvarnen')).toEqual({ title: 'Kvarnen', meta: 'Top 166 ft \u00b7 nearest 0.5 NM ahead' })
+    expect(obstructionSummaryText(s, 'Kvarnen')).toEqual({ title: 'Kvarnen', meta: 'Top 166 ft \u00b7 nearest 0.5 NM ahead \u00b7 climb above 700 ft' })
+  })
+})
+
+import { obstructionRiskAltFt, obstructionClearFt } from './obstructionPoints'
+describe('obstructionRiskAltFt', () => {
+  it('tests a level or climbing aircraft at its current altitude', () => {
+    expect(obstructionRiskAltFt(1500, 0, 2, 90)).toBe(1500)
+    expect(obstructionRiskAltFt(1500, 800, 2, 90)).toBe(1500)
+    expect(obstructionRiskAltFt(1500, -100, 2, 90)).toBe(1500)
+  })
+  it('projects a descent to the arrival at the obstacle', () => {
+    // 2 NM at 120 kt = 1 min; -600 fpm -> 600 ft lower
+    expect(obstructionRiskAltFt(1500, -600, 2, 120)).toBe(900)
+  })
+  it('caps the credited descent', () => {
+    expect(obstructionRiskAltFt(5000, -2000, 5, 60)).toBe(3500)
+  })
+})
+describe('obstructionClearFt', () => {
+  it('adds the margin and rounds up to 100 ft', () => {
+    expect(obstructionClearFt(699)).toBe(1200)
+    expect(obstructionClearFt(700)).toBe(1200)
+    expect(obstructionClearFt(701)).toBe(1300)
   })
 })

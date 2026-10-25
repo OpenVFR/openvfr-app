@@ -22,6 +22,7 @@
     "./obstacleHeights": "./src/obstacleHeights.ts",
     "./obstructionPoints": "./src/obstructionPoints.ts",
     "./alertDismiss": "./src/alertDismiss.ts",
+    "./climbRate": "./src/climbRate.ts",
     "./plannedCourse": "./src/plannedCourse.ts",
     "./alertStack": "./src/alertStack.ts",
     "./alertStability": "./src/alertStability.ts",

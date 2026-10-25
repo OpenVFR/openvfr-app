@@ -151,6 +151,30 @@ export const OBSTRUCTION_NEAR_NM = 0.25
 
 const NM_PER_DEG = 60
 
+/** Margin above an obstacle tip the aircraft must clear, ft. */
+export const OBSTRUCTION_VERTICAL_BUFFER_FT = 500
+/** Smoothed descent slower than this is treated as level flight, ft/min. */
+export const OBSTRUCTION_DESCENT_MIN_FPM = 200
+/** Never credit more than this much descent before reaching the obstacle, ft. */
+export const OBSTRUCTION_DESCENT_MAX_FT = 1500
+
+/**
+ * Altitude to test against an obstacle tip: where a descending aircraft will be
+ * when it reaches the obstacle (so a descent into the obstacle's height band
+ * warns early). A climb is never credited: a level or climbing aircraft is
+ * tested at its current altitude.
+ */
+export function obstructionRiskAltFt(altFt: number, climbRateFpm: number, distNm: number, speedKts: number): number {
+  if (!(climbRateFpm <= -OBSTRUCTION_DESCENT_MIN_FPM)) return altFt
+  const minutes = distNm / Math.max(speedKts, 1) * 60
+  return altFt - Math.min(OBSTRUCTION_DESCENT_MAX_FT, -climbRateFpm * minutes)
+}
+
+/** Altitude that clears all of the given tips with the standard margin, rounded up to 100 ft. */
+export function obstructionClearFt(highestTipFt: number): number {
+  return Math.ceil((highestTipFt + OBSTRUCTION_VERTICAL_BUFFER_FT) / 100) * 100
+}
+
 /** Corridor length ahead of the aircraft, NM. */
 export function obstructionReachNm(speedKts: number): number {
   const nm = (Math.max(speedKts, 0) * OBSTRUCTION_LOOKAHEAD_MIN) / 60
@@ -191,6 +215,8 @@ export type ObstructionSummary = {
   /** Highest tip AMSL among all, and whether that value is an estimate. */
   highestTipFt: number
   estimated: boolean
+  /** Altitude that clears the highest tip with the standard margin. */
+  clearFt: number
   /** Alert keys to dismiss together. */
   keys: string[]
 }
@@ -209,7 +235,7 @@ export function summarizeObstructionAlerts(alerts: readonly SummarizableAlert[])
   const kinds = alerts
     .map((a): [string, number] => [a.kind, a.count])
     .sort((a, b) => b[1] - a[1])
-  return { count, kinds, nearestNm, highestTipFt: highest.tipFt, estimated: highest.estimated, keys: alerts.map(a => a.key) }
+  return { count, kinds, nearestNm, highestTipFt: highest.tipFt, estimated: highest.estimated, clearFt: obstructionClearFt(highest.tipFt), keys: alerts.map(a => a.key) }
 }
 
 const KIND_LABEL: Record<string, [string, string]> = {
@@ -230,6 +256,6 @@ export function obstructionSummaryText(s: ObstructionSummary, singleName?: strin
   const title = s.count === 1 && singleName
     ? singleName
     : s.kinds.slice(0, 3).map(([k, n]) => `${n} \u00d7 ${kindLabel(k, n)}`).join(' \u00b7 ') + (s.kinds.length > 3 ? ' \u2026' : '')
-  const meta = `${s.count === 1 ? 'Top' : 'Highest top'} ${s.highestTipFt} ft${s.estimated ? ' (est.)' : ''} \u00b7 nearest ${obstructionDistLabel(s.nearestNm)} NM ahead`
+  const meta = `${s.count === 1 ? 'Top' : 'Highest top'} ${s.highestTipFt} ft${s.estimated ? ' (est.)' : ''} \u00b7 nearest ${obstructionDistLabel(s.nearestNm)} NM ahead \u00b7 climb above ${s.clearFt} ft`
   return { title, meta }
 }
