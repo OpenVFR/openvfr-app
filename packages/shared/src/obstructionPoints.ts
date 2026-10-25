@@ -256,6 +256,6 @@ export function obstructionSummaryText(s: ObstructionSummary, singleName?: strin
   const title = s.count === 1 && singleName
     ? singleName
     : s.kinds.slice(0, 3).map(([k, n]) => `${n} \u00d7 ${kindLabel(k, n)}`).join(' \u00b7 ') + (s.kinds.length > 3 ? ' \u2026' : '')
-  const meta = `${s.count === 1 ? 'Top' : 'Highest top'} ${s.highestTipFt} ft${s.estimated ? ' (est.)' : ''} \u00b7 nearest ${obstructionDistLabel(s.nearestNm)} NM ahead \u00b7 climb above ${s.clearFt} ft`
+  const meta = `Top ${s.highestTipFt} ft${s.estimated ? ' (est.)' : ''} \u00b7 nearest ${obstructionDistLabel(s.nearestNm)} NM \u00b7 climb above ${s.clearFt} ft`
   return { title, meta }
 }

@@ -83,11 +83,11 @@ describe('obstructionSummaryText', () => {
     ({ key: `kind:${kind}`, kind, name: kind, elevationFt: 0, tipFt, estimated, distNm, count })
   it('lists kinds with counts', () => {
     const s = summarizeObstructionAlerts([a('church', 4, 0.3, 382, true), a('mast', 5, 0.5, 699, true)])!
-    expect(obstructionSummaryText(s)).toEqual({ title: '5 \u00d7 masts \u00b7 4 \u00d7 churches', meta: 'Highest top 699 ft (est.) \u00b7 nearest 0.3 NM ahead \u00b7 climb above 1200 ft' })
+    expect(obstructionSummaryText(s)).toEqual({ title: '5 \u00d7 masts \u00b7 4 \u00d7 churches', meta: 'Top 699 ft (est.) \u00b7 nearest 0.3 NM \u00b7 climb above 1200 ft' })
   })
   it('uses the name for a single obstacle', () => {
     const s = summarizeObstructionAlerts([a('windmill', 1, 0.5, 166)])!
-    expect(obstructionSummaryText(s, 'Kvarnen')).toEqual({ title: 'Kvarnen', meta: 'Top 166 ft \u00b7 nearest 0.5 NM ahead \u00b7 climb above 700 ft' })
+    expect(obstructionSummaryText(s, 'Kvarnen')).toEqual({ title: 'Kvarnen', meta: 'Top 166 ft \u00b7 nearest 0.5 NM \u00b7 climb above 700 ft' })
   })
 })
 
