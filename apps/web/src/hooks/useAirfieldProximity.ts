@@ -5,6 +5,9 @@
  *   - LATERAL_NM  (1.0 NM) horizontally
  *   - VERTICAL_FT (1,500 ft) vertically of an aerodrome's elevation
  *
+ * Only active while a route (2+ waypoints) is planned: without one there is no
+ * way to tell a deliberate approach from a fly-by, so every aerodrome would warn.
+ *
  * Aerodromes that appear in routeWaypoints (matched by proximity ≤ 0.5 NM)
  * are excluded — they are planned destinations and need no proximity alert.
  *
@@ -127,7 +130,8 @@ export function useAirfieldProximity(
 
   // ── Evaluate on each position + route change ───────────────────────────────
   useEffect(() => {
-    if (!position || aerodromes.length === 0) {
+    // Without a planned route nothing is known about where the pilot means to land.
+    if (!position || aerodromes.length === 0 || routeWaypoints.length < 2) {
       if (lastSigRef.current !== '') {
         lastSigRef.current = ''
         setAlerts([])

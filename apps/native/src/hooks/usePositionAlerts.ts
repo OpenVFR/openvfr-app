@@ -475,7 +475,9 @@ export function usePositionAlerts(
     }
 
     // ── Airfield proximity (useAirfieldProximity algorithm) ──────────────
-    if (aerodromeFeatures.length > 0) {
+    // Only with a planned route (2+ waypoints): without one a deliberate approach
+    // cannot be told from a fly-by, so every aerodrome would warn.
+    if (aerodromeFeatures.length > 0 && routeWaypoints.length >= 2) {
       const routeOnAero = new Set<string>()
       for (const ad of aerodromeFeatures) {
         for (const wp of routeWaypoints) {
@@ -503,6 +505,9 @@ export function usePositionAlerts(
         airfieldSigRef.current = sig
         setAirfieldAlerts(shown)
       }
+    } else if (airfieldSigRef.current !== '') {
+      airfieldSigRef.current = ''
+      setAirfieldAlerts([])
     }
   }, [position, airspaceFeatures, obstacleFeatures, aerodromeFeatures, routeWaypoints, lookaheadMin, verticalFt, suppressOnCourse])
 
