@@ -114,6 +114,8 @@ export function useAirspaceWarnings(
   /** While flying the planned route, drop yellow/blue warnings (red hazards always stay). */
   suppressOnCourse: boolean = false,
   routeWaypoints: readonly RouteWaypoint[] = [],
+  /** Warn about class E/F airspace too (default off: only entered/left notices). */
+  warnClassEF: boolean = false,
 ): {
   alerts:  AirspaceAlert[]
   dismiss: (key: string) => void
@@ -307,8 +309,12 @@ export function useAirspaceWarnings(
     }
 
     // Sort: inside-now first, then vertical-closure, then by severity, then by lower_ft
+    // Class E/F is advisory: dropped unless the pilot opted in, then yellow.
+    const classFiltered = found.flatMap((a): AirspaceAlert[] => (a.cls === 'E' || a.cls === 'F')
+      ? (warnClassEF ? [{ ...a, severity: 'yellow' }] : [])
+      : [a])
     const onCourse = suppressOnCourse && onPlannedCourse({ lat, lng, trackDeg, speedKts }, routeWaypoints)
-    const candidates = onCourse ? found.filter(a => a.severity === 'red') : found
+    const candidates = onCourse ? classFiltered.filter(a => a.severity === 'red') : classFiltered
     const shown = filterDismissed(dismissedRef.current, candidates, now)
     shown.sort((a, b) => {
       if (a.inside !== b.inside) return a.inside ? -1 : 1
@@ -324,7 +330,7 @@ export function useAirspaceWarnings(
       lastSigRef.current = sig
       setAlerts(shown)
     }
-  }, [position, features, lookaheadMin, verticalFt, suppressOnCourse, routeWaypoints])
+  }, [position, features, lookaheadMin, verticalFt, suppressOnCourse, routeWaypoints, warnClassEF])
 
   const dismiss = useCallback((key: string) => {
     dismissedRef.current.set(key, Date.now())

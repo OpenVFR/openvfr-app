@@ -570,7 +570,7 @@ function MapScreenForCountry() {
     obstructionAlerts, dismissObstruction,
     airfieldAlerts, dismissAirfield,
     airspaceNotifications,
-  } = usePositionAlerts(positionForAlerts, waypoints, settings.airspaceWarnLookaheadMin, settings.airspaceWarnVerticalFt, settings.alertSuppressOnCourse)
+  } = usePositionAlerts(positionForAlerts, waypoints, settings.airspaceWarnLookaheadMin, settings.airspaceWarnVerticalFt, settings.alertSuppressOnCourse, settings.alertClassEF)
 
   // Active route-leg index (mirrors web MapView.tsx's activeWpIdx). Auto-
   // advances when within 0.3 NM of the current destination waypoint.

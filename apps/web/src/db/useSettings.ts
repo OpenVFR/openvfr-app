@@ -683,11 +683,11 @@ export function useMsaMargins(): [MsaMargins, (v: Partial<MsaMargins>) => void] 
 // useAlertBanners — which optional in-flight banners are shown (obstacles
 // ahead, aerodrome nearby, airspace entered/left). One shared store so the
 // Settings toggles update the alert stack at once. Persisted to RxDB as JSON;
-// everything defaults to on except suppressOnCourse (mute yellow/blue airspace
+// everything defaults to on except suppressOnCourse and classEF (off; mute yellow/blue airspace
 // warnings while flying the planned route).
 // ---------------------------------------------------------------------------
-export type AlertBanners = { obstacles: boolean; aerodromes: boolean; airspaceEvents: boolean; suppressOnCourse: boolean }
-const DEFAULT_ALERT_BANNERS: AlertBanners = { obstacles: true, aerodromes: true, airspaceEvents: true, suppressOnCourse: false }
+export type AlertBanners = { obstacles: boolean; aerodromes: boolean; airspaceEvents: boolean; suppressOnCourse: boolean; classEF: boolean }
+const DEFAULT_ALERT_BANNERS: AlertBanners = { obstacles: true, aerodromes: true, airspaceEvents: true, suppressOnCourse: false, classEF: false }
 const ALERT_BANNERS_KEY = 'alert_banners'
 let alertBanners: AlertBanners = DEFAULT_ALERT_BANNERS
 let alertBannersLoaded = false
@@ -711,6 +711,7 @@ function loadAlertBanners() {
         aerodromes:     raw.aerodromes !== false,
         airspaceEvents: raw.airspaceEvents !== false,
         suppressOnCourse: raw.suppressOnCourse === true,
+        classEF:          raw.classEF === true,
       })
     } catch { /* keep defaults */ }
   }).catch(() => { alertBannersLoaded = false })

@@ -198,6 +198,8 @@ export function usePositionAlerts(
   verticalFt:     number = 500,
   /** While flying the planned route, drop yellow/blue airspace warnings (red hazards always stay). */
   suppressOnCourse: boolean = false,
+  /** Warn about class E/F airspace too (default off: only entered/left notices). */
+  warnClassEF: boolean = false,
 ): PositionAlerts {
   const [airspaceFeatures, setAirspaceFeatures]   = useState<AirspaceFeature[]>([])
   // Obstacles + landmarks; unknown heights use the per-kind estimate.
@@ -391,8 +393,12 @@ export function usePositionAlerts(
         }
       }
       // A dismissed airspace stays muted while it is still detected (see alertDismiss).
+      // Class E/F is advisory: dropped unless the pilot opted in, then yellow.
+      const classFiltered = found.flatMap((a): AirspaceAlert[] => (a.cls === 'E' || a.cls === 'F')
+        ? (warnClassEF ? [{ ...a, severity: 'yellow' }] : [])
+        : [a])
       const onCourse = suppressOnCourse && onPlannedCourse({ lat, lng, trackDeg, speedKts }, routeWaypoints)
-      const candidates = onCourse ? found.filter(a => a.severity === 'red') : found
+      const candidates = onCourse ? classFiltered.filter(a => a.severity === 'red') : classFiltered
       const shown = filterDismissed(airspaceDismissedRef.current, candidates, now)
       shown.sort((a, b) => {
         if (a.inside !== b.inside) return a.inside ? -1 : 1
@@ -509,7 +515,7 @@ export function usePositionAlerts(
       airfieldSigRef.current = ''
       setAirfieldAlerts([])
     }
-  }, [position, airspaceFeatures, obstacleFeatures, aerodromeFeatures, routeWaypoints, lookaheadMin, verticalFt, suppressOnCourse])
+  }, [position, airspaceFeatures, obstacleFeatures, aerodromeFeatures, routeWaypoints, lookaheadMin, verticalFt, suppressOnCourse, warnClassEF])
 
   const dismissAirspace = useCallback((key: string) => {
     airspaceDismissedRef.current.set(key, Date.now())
