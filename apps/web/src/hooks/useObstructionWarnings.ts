@@ -3,29 +3,29 @@
  *
  * Loads the obstacles and landmarks files once on mount (unknown heights use
  * the per-kind estimate, see @open-vfr/shared/obstructionPoints). On each position update,
- * scans all obstacles within a configurable horizontal radius and checks
- * whether the aircraft altitude is within a vertical clearance margin.
+ * checks which obstacles lie in the forward corridor of the current track
+ * (obstructionThreatDistNm: none while nearly stationary) and whether the
+ * aircraft altitude is within a vertical clearance margin.
  *
  * An alert fires when:
- *   - Horizontal distance ≤ WARN_RADIUS_NM (default 1 NM), AND
+ *   - The obstacle is in the forward corridor or very close, AND
  *   - Aircraft altitude ≤ obstacle tip elevation + VERTICAL_BUFFER_FT (default 500 ft)
  *
  * Returns up to MAX_ALERTS sorted by distance (closest first).
- * Dismiss suppresses that obstacle for DISMISS_REARM_MS (5 min).
+ * Dismiss mutes the kind while it is still detected (@open-vfr/shared/alertDismiss).
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { useActiveCountries } from '../utils/countryData'
-import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, obstructionAlertsSig, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
+import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, obstructionAlertsSig, obstructionReachNm, obstructionThreatDistNm, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
+import { filterDismissed } from '@open-vfr/shared/alertDismiss'
 import { useMefGrids } from './useMefGrids'
 
 // ── Config ───────────────────────────────────────────────────────────────────
-const WARN_RADIUS_NM      = 1.0    // horizontal warning radius
 const VERTICAL_BUFFER_FT  = 500    // fire if aircraft ≤ tip + 500 ft
 const MAX_ALERTS          = 5
-const DISMISS_REARM_MS    = 5 * 60_000
 const NM_PER_DEG_LAT      = 60.0
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -43,14 +43,6 @@ export type ObstructionAlert = {
 }
 
 type ObstaclePoint = ObstructionPoint
-
-// ── Fast approximate distance ─────────────────────────────────────────────────
-function approxDistNm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const dLat = (lat2 - lat1) * NM_PER_DEG_LAT
-  const cosLat = Math.cos((lat1 + lat2) * 0.5 * Math.PI / 180)
-  const dLng = (lng2 - lng1) * NM_PER_DEG_LAT * cosLat
-  return Math.sqrt(dLat * dLat + dLng * dLng)
-}
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 export function useObstructionWarnings(position: (GpsPosition & { terrainFt?: number | null }) | null): {
@@ -85,16 +77,19 @@ export function useObstructionWarnings(position: (GpsPosition & { terrainFt?: nu
       return
     }
 
-    const { lat, lng, altFt } = position
+    const { lat, lng, altFt, speedKts, trackDeg, accuracy } = position
     const now = Date.now()
     const found: ObstructionAlert[] = []
+    // Only obstacles in the forward corridor (none while nearly stationary).
+    const reachNm = obstructionReachNm(speedKts)
+    const own = { lat, lng, trackDeg, speedKts, accuracyM: accuracy }
 
     for (const obs of obstacles) {
       // Fast bounding-box pre-filter (1 NM ≈ 1/60 degrees lat)
-      if (Math.abs(obs.lat - lat) > WARN_RADIUS_NM / NM_PER_DEG_LAT * 1.2) continue
+      if (Math.abs(obs.lat - lat) > reachNm / NM_PER_DEG_LAT * 1.2) continue
 
-      const distNm = approxDistNm(lat, lng, obs.lat, obs.lng)
-      if (distNm > WARN_RADIUS_NM) continue
+      const distNm = obstructionThreatDistNm(own, obs)
+      if (distNm == null) continue
 
       // Vertical filter: only warn if aircraft is at risk altitude
       const tipFt = obstructionTipFt(obs, position.terrainFt)
@@ -114,8 +109,7 @@ export function useObstructionWarnings(position: (GpsPosition & { terrainFt?: nu
     }
 
     // One alert per kind; dismissing silences the kind for a while.
-    const grouped = groupObstructionAlerts(found)
-      .filter(g => { const d = dismissedRef.current.get(g.key); return d === undefined || now - d >= DISMISS_REARM_MS })
+    const grouped = filterDismissed(dismissedRef.current, groupObstructionAlerts(found), now)
       .slice(0, MAX_ALERTS)
     const sig = obstructionAlertsSig(grouped)
     if (sig !== lastSigRef.current) {

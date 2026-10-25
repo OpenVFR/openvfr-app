@@ -14,7 +14,10 @@
  */
 
 import { useEffect } from 'react'
-import { obstructionDistLabel } from '@open-vfr/shared/obstructionPoints'
+import { summarizeObstructionAlerts, obstructionSummaryText, obstructionDistLabel } from '@open-vfr/shared/obstructionPoints'
+import { layoutAlertStack, type AlertTier } from '@open-vfr/shared/alertStack'
+import type { StableTiming } from '@open-vfr/shared/alertStability'
+import { useStableItems } from '../hooks/useStableItems'
 import type { AirspaceAlert } from '../hooks/useAirspaceWarnings'
 import type { AirspaceNotification } from '../hooks/useAirspaceNotifications'
 import type { ObstructionAlert } from '../hooks/useObstructionWarnings'
@@ -25,8 +28,11 @@ import css from './NotificationCenter.module.css'
 
 type Severity = 'red' | 'yellow' | 'blue'
 
-interface Item {
+interface Item extends StableTiming {
   key:         string
+  tier?:       AlertTier         // set by withPolicy(); drives card vs chip layout
+  chipTitle?:  string            // shorter title for the one-line chip
+  short?:      string            // trailing detail shown on the one-line chip
   severity:    Severity
   badge:       string            // small uppercase label, top-left of card
   status?:     string            // small label, top-right of card (optional)
@@ -37,8 +43,6 @@ interface Item {
   onDismiss?:  () => void
   transient?:  boolean           // fades out on its own (CSS animation)
 }
-
-const SEVERITY_ORDER: Record<Severity, number> = { red: 0, yellow: 1, blue: 2 }
 
 const CLS_LABEL: Record<string, string> = {
   A: 'Class A', B: 'Class B', C: 'Class C', D: 'Class D',
@@ -68,19 +72,15 @@ function airspaceStatus(a: AirspaceAlert): string {
   return '⚠ AHEAD'
 }
 
-const OBSTRUCTION_KIND_LABEL: Record<string, string> = {
-  wind_turbine: '⟳ WIND TURBINE',
-  tower:        '▲ TOWER',
-  chimney:      '▲ CHIMNEY',
-  building:     '▣ BUILDING',
-  mast:         '▲ MAST',
-  water_tower:  '▲ WATER TOWER',
-  church:       '▲ CHURCH',
-  windmill:     '▲ WINDMILL',
-  other:        '▲ OBSTACLE',
+/** Card/chip tier and debounce timing by item kind (keys are prefixed per source). */
+function withPolicy(item: Item): Item & { tier: AlertTier } {
+  const instant = { enterMs: 0, minShowMs: 0, lingerMs: 0 }
+  const k = item.key
+  if (k === 'ceiling' || k.startsWith('nt-') || k.startsWith('nmn-')) return { ...item, ...instant, tier: 'event' }
+  if (k === 'reminder' || k === 'planning') return { ...item, ...instant, tier: 'note' }
+  // Red hazards show at once; the rest wait a moment so edge flicker never reaches the screen.
+  return { ...item, ...(item.severity === 'red' ? { enterMs: 0 } : {}), tier: 'alert' }
 }
-
-const MAX_VISIBLE = 5
 const AUTO_DISMISS_MS = 30_000
 const PLANNING_NOTICE_MS = 10_000
 
@@ -162,15 +162,20 @@ export function NotificationCenter({
     })
   }
 
-  for (const a of obstructionAlerts) {
+  // All obstacles ahead are one card, however many kinds there are.
+  const obstructions = summarizeObstructionAlerts(obstructionAlerts)
+  if (obstructions) {
+    const { title, meta } = obstructionSummaryText(obstructions, obstructionAlerts.length === 1 ? obstructionAlerts[0].name : undefined)
     items.push({
-      key: `ob-${a.key}`,
+      key: 'obstructions',
       severity: 'yellow',
-      badge: OBSTRUCTION_KIND_LABEL[a.kind] ?? '▲ OBSTACLE',
-      title: a.count > 1 ? `${a.count} × ${a.kind.replace('_', ' ')}` : (a.name || a.kind.replace('_', ' ')),
-      meta: `${a.tipFt > a.elevationFt ? `${a.count > 1 ? 'Highest top' : 'Top'} ${a.tipFt} ft${a.estimated ? ' (est.)' : ''} · base ${a.elevationFt} ft AMSL` : `${a.elevationFt} ft AMSL`} · ${a.count > 1 ? 'nearest ' : ''}${obstructionDistLabel(a.distNm)} NM`,
+      badge: obstructions.count === 1 ? '▲ OBSTACLE AHEAD' : '▲ OBSTACLES AHEAD',
+      title,
+      meta,
+      chipTitle: `${obstructions.count} \u00b7 nearest ${obstructionDistLabel(obstructions.nearestNm)} NM`,
+      short: `top ${obstructions.highestTipFt} ft`,
       dismissible: true,
-      onDismiss: () => onDismissObstruction(a.key),
+      onDismiss: () => obstructions.keys.forEach(onDismissObstruction),
     })
   }
 
@@ -181,6 +186,7 @@ export function NotificationCenter({
       badge: '✈ AERODROME NEARBY',
       title: `${a.icao ? `${a.icao} — ` : ''}${a.name}`,
       meta: `${a.distNm.toFixed(1)} NM · elev ${a.elevationFt} ft${a.primaryFreq ? ` · ${a.primaryFreq} MHz` : ''}`,
+      short: `${a.distNm.toFixed(1)} NM`,
       dismissible: true,
       onDismiss: () => onDismissAirfield(a.key),
     })
@@ -263,15 +269,16 @@ export function NotificationCenter({
     })
   }
 
-  if (items.length === 0) return null
-
-  items.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity])
-  const visible = items.slice(0, MAX_VISIBLE)
-  const overflow = items.length - MAX_VISIBLE
+  // Debounce first (no flicker at trigger edges), then split into a few full
+  // cards and one-line chips.
+  const { visible: stable, forget } = useStableItems(items.map(withPolicy))
+  if (stable.length === 0) return null
+  const { cards, chips, overflow } = layoutAlertStack(stable.map(i => ({ ...i, tier: i.tier as AlertTier })))
+  const dismissOf = (item: Item) => item.onDismiss && (() => { forget(item.key); item.onDismiss?.() })
 
   return (
-    <div className={css.container} role="alert" aria-live="assertive">
-      {visible.map(item => (
+    <div className={css.container} role="alert" aria-live="polite">
+      {cards.map(item => (
         <div
           key={item.key}
           className={`${css.card} ${css[item.severity]} ${item.transient ? css.transientCard : ''}`}
@@ -282,7 +289,7 @@ export function NotificationCenter({
             {item.dismissible && item.onDismiss && (
               <button
                 className={css.dismiss}
-                onClick={item.onDismiss}
+                onClick={dismissOf(item)}
                 aria-label="Dismiss"
               >✕</button>
             )}
@@ -290,6 +297,19 @@ export function NotificationCenter({
           <div className={css.title}>{item.title}</div>
           {item.meta && <div className={css.meta}>{item.meta}</div>}
           {item.text && <div className={css.text}>{item.text}</div>}
+        </div>
+      ))}
+      {chips.map(item => (
+        <div
+          key={item.key}
+          className={`${css.chip} ${css[item.severity]} ${item.transient ? css.transientCard : ''}`}
+        >
+          <span className={css.chipBadge}>{item.badge}</span>
+          <span className={css.chipTitle}>{item.chipTitle ?? item.title}</span>
+          {(item.status || item.short) && <span className={css.chipShort}>{item.status ?? item.short}</span>}
+          {item.dismissible && item.onDismiss && (
+            <button className={css.chipDismiss} onClick={dismissOf(item)} aria-label="Dismiss">✕</button>
+          )}
         </div>
       ))}
       {overflow > 0 && (

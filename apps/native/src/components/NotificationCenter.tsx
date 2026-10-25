@@ -12,12 +12,21 @@
  *   - airspaceNotifications (transient entry/exit toasts)
  *   - ceiling-escalation msg + waypoint-reminder note (transient / dismissible)
  *
+ * Layout (see @open-vfr/shared/alertStack): red alerts and at most two cards in
+ * total are full cards; obstacles ahead are merged into one card; entry/exit
+ * events, advisories and overflow are one-line chips. Items pass through
+ * useStableItems first, so a condition must hold ~2 s before it shows and a
+ * shown item stays a few seconds -- no flicker at trigger edges.
+ *
  * Positioned top-centre, absolute, inside mapContainer (parent already has
  * insets.top padding applied — see MapScreen.tsx's outer container).
  */
 
 import React, { useEffect } from 'react'
-import { obstructionDistLabel } from '@open-vfr/shared/obstructionPoints'
+import { summarizeObstructionAlerts, obstructionSummaryText, obstructionDistLabel } from '@open-vfr/shared/obstructionPoints'
+import { layoutAlertStack, type AlertTier } from '@open-vfr/shared/alertStack'
+import type { StableTiming } from '@open-vfr/shared/alertStability'
+import { useStableItems } from '../hooks/useStableItems'
 import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
@@ -32,8 +41,11 @@ import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../sty
 
 type Severity = 'red' | 'yellow' | 'blue'
 
-interface Item {
+interface Item extends StableTiming {
   key:         string
+  tier?:       AlertTier   // set by withPolicy(); drives card vs chip layout
+  chipTitle?:  string      // shorter title for the one-line chip
+  short?:      string      // trailing detail shown on the one-line chip
   severity:    Severity
   badge:       string
   status?:     string
@@ -44,7 +56,6 @@ interface Item {
   onDismiss?:  () => void
 }
 
-const SEVERITY_ORDER: Record<Severity, number> = { red: 0, yellow: 1, blue: 2 }
 
 // Near-opaque backgrounds — legibility over a busy map matters more than
 // see-through chrome (mirrors web's --alert-bg-* tokens; also fixes the
@@ -93,20 +104,17 @@ function airspaceStatus(a: AirspaceAlert): string {
   return '\u26a0 AHEAD'
 }
 
-const OBSTRUCTION_KIND_LABEL: Record<string, string> = {
-  wind_turbine: '\u27f3 WIND TURBINE',
-  tower:        '\u25b2 TOWER',
-  chimney:      '\u25b2 CHIMNEY',
-  building:     '\u25a3 BUILDING',
-  mast:         '\u25b2 MAST',
-  water_tower:  '\u25b2 WATER TOWER',
-  church:       '\u25b2 CHURCH',
-  windmill:     '\u25b2 WINDMILL',
-  other:        '\u25b2 OBSTACLE',
+/** Card/chip tier and debounce timing by item kind (keys are prefixed per source). */
+function withPolicy(item: Item): Item & { tier: AlertTier } {
+  const instant = { enterMs: 0, minShowMs: 0, lingerMs: 0 }
+  const k = item.key
+  if (k === 'ceiling' || k.startsWith('nt-')) return { ...item, ...instant, tier: 'event' }
+  if (k === 'reminder' || k === 'planning') return { ...item, ...instant, tier: 'note' }
+  // Red hazards show at once; the rest wait a moment so edge flicker never reaches the screen.
+  return { ...item, ...(item.severity === 'red' ? { enterMs: 0 } : {}), tier: 'alert' }
 }
 
 const CONTROLS_SIZE = 40   // map control button edge, dp
-const MAX_VISIBLE = 5
 
 interface Props {
   airspaceAlerts:        AirspaceAlert[]
@@ -191,15 +199,20 @@ export function NotificationCenter({
     })
   }
 
-  for (const a of obstructionAlerts) {
+  // All obstacles ahead are one card, however many kinds there are.
+  const obstructions = summarizeObstructionAlerts(obstructionAlerts)
+  if (obstructions) {
+    const { title, meta } = obstructionSummaryText(obstructions, obstructionAlerts.length === 1 ? obstructionAlerts[0].name : undefined)
     items.push({
-      key: `ob-${a.key}`,
+      key: 'obstructions',
       severity: 'yellow',
-      badge: OBSTRUCTION_KIND_LABEL[a.kind] ?? '\u25b2 OBSTACLE',
-      title: a.count > 1 ? `${a.count} × ${a.kind.replace('_', ' ')}` : (a.name || a.kind.replace('_', ' ')),
-      meta: `${a.tipFt > a.elevationFt ? `${a.count > 1 ? 'Highest top' : 'Top'} ${a.tipFt} ft${a.estimated ? ' (est.)' : ''} \u00b7 base ${a.elevationFt} ft AMSL` : `${a.elevationFt} ft AMSL`} \u00b7 ${a.count > 1 ? 'nearest ' : ''}${obstructionDistLabel(a.distNm)} NM`,
+      badge: obstructions.count === 1 ? '\u25b2 OBSTACLE AHEAD' : '\u25b2 OBSTACLES AHEAD',
+      title,
+      meta,
+      chipTitle: `${obstructions.count} \u00b7 nearest ${obstructionDistLabel(obstructions.nearestNm)} NM`,
+      short: `top ${obstructions.highestTipFt} ft`,
       dismissible: true,
-      onDismiss: () => onDismissObstruction(a.key),
+      onDismiss: () => obstructions.keys.forEach(onDismissObstruction),
     })
   }
 
@@ -210,6 +223,7 @@ export function NotificationCenter({
       badge: '\u2708 AERODROME NEARBY',
       title: `${a.icao ? `${a.icao} \u2014 ` : ''}${a.name}`,
       meta: `${a.distNm.toFixed(1)} NM \u00b7 elev ${a.elevationFt} ft${a.primaryFreq ? ` \u00b7 ${a.primaryFreq} MHz` : ''}`,
+      short: `${a.distNm.toFixed(1)} NM`,
       dismissible: true,
       onDismiss: () => onDismissAirfield(a.key),
     })
@@ -261,28 +275,30 @@ export function NotificationCenter({
     })
   }
 
-  if (items.length === 0) return null
-
-  items.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity])
-  const visible = items.slice(0, MAX_VISIBLE)
-  const overflow = items.length - MAX_VISIBLE
+  // Debounce first (no flicker at trigger edges), then split into a few full
+  // cards and one-line chips.
+  const { visible: stable, forget } = useStableItems(items.map(withPolicy))
+  if (stable.length === 0) return null
+  const { cards, chips, overflow } = layoutAlertStack(stable.map(i => ({ ...i, tier: i.tier as AlertTier })))
+  const dismissOf = (item: Item) => item.onDismiss && (() => { forget(item.key); item.onDismiss?.() })
 
   return (
     <View style={[styles.container, controlsInset]} pointerEvents="box-none">
-      {visible.map(item => {
+      {cards.map(item => {
         const bg     = SEVERITY_BG[item.severity]
         const border = SEVERITY_BORDER[item.severity]
         const accent = SEVERITY_ACCENT[item.severity]
+        const dismiss = dismissOf(item)
         return (
-          <SwipeableCard key={item.key} dismissible={item.dismissible} onDismiss={item.onDismiss}>
+          <SwipeableCard key={item.key} dismissible={item.dismissible} onDismiss={dismiss}>
             <View style={[styles.card, { backgroundColor: bg, borderLeftColor: border }]}>
               <View style={styles.header}>
                 <Text style={[styles.badge, { color: accent }]} numberOfLines={1}>{item.badge}</Text>
                 {item.status && <Text style={styles.status}>{item.status}</Text>}
-                {item.dismissible && item.onDismiss && (
+                {item.dismissible && dismiss && (
                   <TouchableOpacity
                     style={styles.dismissBtn}
-                    onPress={item.onDismiss}
+                    onPress={dismiss}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <Ionicons name="close" size={14} color={accent} />
@@ -292,6 +308,27 @@ export function NotificationCenter({
               <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
               {item.meta && <Text style={styles.meta}>{item.meta}</Text>}
               {item.text && <Text style={styles.text}>{item.text}</Text>}
+            </View>
+          </SwipeableCard>
+        )
+      })}
+      {chips.map(item => {
+        const accent = SEVERITY_ACCENT[item.severity]
+        const dismiss = dismissOf(item)
+        return (
+          <SwipeableCard key={item.key} dismissible={item.dismissible} onDismiss={dismiss}>
+            <View style={[styles.chip, { backgroundColor: SEVERITY_BG[item.severity], borderLeftColor: SEVERITY_BORDER[item.severity] }]}>
+              <Text style={[styles.chipBadge, { color: accent }]} numberOfLines={1}>{item.badge}</Text>
+              <Text style={styles.chipTitle} numberOfLines={1}>{item.chipTitle ?? item.title}</Text>
+              {(item.status || item.short) && <Text style={styles.chipShort} numberOfLines={1}>{item.status ?? item.short}</Text>}
+              {item.dismissible && dismiss && (
+                <TouchableOpacity
+                  onPress={dismiss}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close" size={12} color={accent} />
+                </TouchableOpacity>
+              )}
             </View>
           </SwipeableCard>
         )
@@ -380,6 +417,34 @@ function makeStyles(theme: ScaledTheme) {
     borderLeftWidth: 4,
     padding:        theme.space2,
     gap:            2,
+  },
+  chip: {
+    width:          '100%',
+    maxWidth:       360,
+    borderRadius:   theme.radiusMd,
+    borderLeftWidth: 4,
+    paddingHorizontal: theme.space2,
+    paddingVertical:   4,
+    flexDirection:  'row',
+    alignItems:     'center',
+    gap:            6,
+  },
+  chipBadge: {
+    fontSize:       9,
+    fontWeight:     '700',
+    letterSpacing:  0.4,
+    textTransform:  'uppercase',
+  },
+  chipTitle: {
+    flex:       1,
+    color:      '#ffffff',
+    fontSize:   12,
+    fontWeight: '600',
+  },
+  chipShort: {
+    color:      '#ffffff',
+    opacity:    0.9,
+    fontSize:   10,
   },
   header: {
     flexDirection: 'row',

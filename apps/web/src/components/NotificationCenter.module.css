@@ -105,3 +105,48 @@
   padding:        3px 10px;
   pointer-events: none;
 }
+
+/* One-line chip: advisories, entered/left events and cards that did not fit. */
+.chip {
+  composes: alertCard from '../styles/shared.module.css';
+  width:        100%;
+  box-sizing:   border-box;
+  display:      flex;
+  align-items:  center;
+  gap:          6px;
+  padding:      3px 8px;
+  min-height:   24px;
+  font-size:    11px;
+  animation:    slideDown 0.18s ease;
+}
+
+.chipBadge {
+  font-size:      9px;
+  font-weight:    700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity:        0.9;
+  white-space:    nowrap;
+}
+
+.chipTitle {
+  flex:          1;
+  min-width:     0;
+  font-weight:   600;
+  white-space:   nowrap;
+  overflow:      hidden;
+  text-overflow: ellipsis;
+}
+
+.chipShort {
+  font-size:   10px;
+  opacity:     0.9;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.chipDismiss {
+  composes: alertDismiss from '../styles/shared.module.css';
+}
+/* Keep the chip one line high even with the larger touch dismiss target. */
+.chip .chipDismiss { min-height: 22px; min-width: 28px; }

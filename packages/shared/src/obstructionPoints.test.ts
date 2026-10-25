@@ -40,3 +40,53 @@ describe('groupObstructionAlerts', () => {
     expect(g[1]).toMatchObject({ key: 'kind:chimney', count: 1 })
   })
 })
+
+import { obstructionThreatDistNm, summarizeObstructionAlerts } from './obstructionPoints'
+
+describe('obstructionThreatDistNm', () => {
+  const own = { lat: 60, lng: 17, trackDeg: 0, speedKts: 90 }
+  const nm = (n: number) => n / 60
+  it('flags an obstacle straight ahead', () => {
+    expect(obstructionThreatDistNm(own, { lat: 60 + nm(2), lng: 17 })).toBeCloseTo(2, 1)
+  })
+  it('ignores one beside the track', () => {
+    expect(obstructionThreatDistNm(own, { lat: 60 + nm(1), lng: 17 + nm(0.9) / 0.5 })).toBeNull()
+  })
+  it('ignores one behind', () => {
+    expect(obstructionThreatDistNm(own, { lat: 60 - nm(0.6), lng: 17 })).toBeNull()
+  })
+  it('ignores one beyond the reach', () => {
+    expect(obstructionThreatDistNm(own, { lat: 60 + nm(4), lng: 17 })).toBeNull()
+  })
+  it('stays silent when (nearly) stationary', () => {
+    expect(obstructionThreatDistNm({ ...own, speedKts: 0 }, { lat: 60 + nm(0.1), lng: 17 })).toBeNull()
+  })
+  it('flags something very close whatever the heading', () => {
+    expect(obstructionThreatDistNm(own, { lat: 60 - nm(0.2), lng: 17 })).not.toBeNull()
+  })
+})
+
+describe('summarizeObstructionAlerts', () => {
+  const a = (kind: string, count: number, distNm: number, tipFt: number, estimated = false) =>
+    ({ key: `kind:${kind}`, kind, name: kind, elevationFt: 0, tipFt, estimated, distNm, count })
+  it('merges kinds into one summary', () => {
+    const s = summarizeObstructionAlerts([a('church', 4, 0.3, 382, true), a('mast', 5, 0.5, 699, true)])
+    expect(s).toMatchObject({ count: 9, nearestNm: 0.3, highestTipFt: 699, estimated: true, keys: ['kind:church', 'kind:mast'] })
+    expect(s?.kinds[0]).toEqual(['mast', 5])
+  })
+  it('is null for no alerts', () => expect(summarizeObstructionAlerts([])).toBeNull())
+})
+
+import { obstructionSummaryText } from './obstructionPoints'
+describe('obstructionSummaryText', () => {
+  const a = (kind: string, count: number, distNm: number, tipFt: number, estimated = false) =>
+    ({ key: `kind:${kind}`, kind, name: kind, elevationFt: 0, tipFt, estimated, distNm, count })
+  it('lists kinds with counts', () => {
+    const s = summarizeObstructionAlerts([a('church', 4, 0.3, 382, true), a('mast', 5, 0.5, 699, true)])!
+    expect(obstructionSummaryText(s)).toEqual({ title: '5 \u00d7 masts \u00b7 4 \u00d7 churches', meta: 'Highest top 699 ft (est.) \u00b7 nearest 0.3 NM ahead' })
+  })
+  it('uses the name for a single obstacle', () => {
+    const s = summarizeObstructionAlerts([a('windmill', 1, 0.5, 166)])!
+    expect(obstructionSummaryText(s, 'Kvarnen')).toEqual({ title: 'Kvarnen', meta: 'Top 166 ft \u00b7 nearest 0.5 NM ahead' })
+  })
+})

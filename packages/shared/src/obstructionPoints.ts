@@ -129,3 +129,107 @@ export function obstructionDistLabel(distNm: number): string {
 export function obstructionAlertsSig(alerts: readonly (GroupableAlert & { count: number })[]): string {
   return alerts.map((a) => `${a.key}:${a.count}:${a.name}:${a.tipFt}:${a.elevationFt}:${a.estimated ? 1 : 0}:${obstructionDistLabel(a.distNm)}`).join('|')
 }
+
+// ── Forward-corridor filter ─────────────────────────────────────────────────
+// A fixed obstacle is only a threat when the aircraft is moving towards it. A
+// plain circle around the fix warns about every mast beside a parked aircraft
+// or a track that is flying away, which is what turned the alert stack into
+// background noise. The corridor is the straight projection of the current
+// track, a fixed half-width either side of it.
+
+/** Half-width of the corridor either side of the track, NM. */
+export const OBSTRUCTION_CORRIDOR_HALF_NM = 0.5
+/** Minutes of flight ahead the corridor reaches. */
+export const OBSTRUCTION_LOOKAHEAD_MIN = 2
+/** Reach is never shorter / longer than this, NM. */
+export const OBSTRUCTION_REACH_MIN_NM = 1
+export const OBSTRUCTION_REACH_MAX_NM = 5
+/** Below this ground speed the aircraft is not "flying towards" anything. */
+export const OBSTRUCTION_MIN_SPEED_KTS = 30
+/** Anything this close is a threat regardless of heading (turns, GPS error). */
+export const OBSTRUCTION_NEAR_NM = 0.25
+
+const NM_PER_DEG = 60
+
+/** Corridor length ahead of the aircraft, NM. */
+export function obstructionReachNm(speedKts: number): number {
+  const nm = (Math.max(speedKts, 0) * OBSTRUCTION_LOOKAHEAD_MIN) / 60
+  return Math.min(OBSTRUCTION_REACH_MAX_NM, Math.max(OBSTRUCTION_REACH_MIN_NM, nm))
+}
+
+/**
+ * Straight distance in NM when the obstacle lies in the forward corridor (or
+ * within the near radius), otherwise null. `accuracyM` widens the corridor a
+ * little for a poor GPS fix (noise below 30 m is ignored, the extra is capped).
+ */
+export function obstructionThreatDistNm(
+  own: { lat: number; lng: number; trackDeg: number; speedKts: number; accuracyM?: number },
+  obs: { lat: number; lng: number },
+): number | null {
+  if (!(own.speedKts >= OBSTRUCTION_MIN_SPEED_KTS)) return null
+  const north = (obs.lat - own.lat) * NM_PER_DEG
+  const east  = (obs.lng - own.lng) * NM_PER_DEG * Math.cos(((own.lat + obs.lat) / 2) * Math.PI / 180)
+  const dist  = Math.hypot(north, east)
+  if (dist <= OBSTRUCTION_NEAR_NM) return dist
+  const t = (own.trackDeg * Math.PI) / 180
+  const along = east * Math.sin(t) + north * Math.cos(t)
+  const cross = Math.abs(east * Math.cos(t) - north * Math.sin(t))
+  const acc   = Math.min(Math.max((own.accuracyM ?? 0) - 30, 0), 270) / 1852
+  if (along < 0 || along > obstructionReachNm(own.speedKts)) return null
+  if (cross > OBSTRUCTION_CORRIDOR_HALF_NM + acc) return null
+  return dist
+}
+
+export type SummarizableAlert = GroupableAlert & { count: number }
+
+export type ObstructionSummary = {
+  /** Obstacles in total across kinds. */
+  count: number
+  /** Kinds present, most numerous first, e.g. [['mast', 5], ['church', 4]]. */
+  kinds: Array<[string, number]>
+  nearestNm: number
+  /** Highest tip AMSL among all, and whether that value is an estimate. */
+  highestTipFt: number
+  estimated: boolean
+  /** Alert keys to dismiss together. */
+  keys: string[]
+}
+
+/** One summary for the whole set of per-kind alerts (null when empty). */
+export function summarizeObstructionAlerts(alerts: readonly SummarizableAlert[]): ObstructionSummary | null {
+  if (alerts.length === 0) return null
+  let count = 0
+  let nearestNm = Infinity
+  let highest = alerts[0]
+  for (const a of alerts) {
+    count += a.count
+    if (a.distNm < nearestNm) nearestNm = a.distNm
+    if (a.tipFt > highest.tipFt) highest = a
+  }
+  const kinds = alerts
+    .map((a): [string, number] => [a.kind, a.count])
+    .sort((a, b) => b[1] - a[1])
+  return { count, kinds, nearestNm, highestTipFt: highest.tipFt, estimated: highest.estimated, keys: alerts.map(a => a.key) }
+}
+
+const KIND_LABEL: Record<string, [string, string]> = {
+  wind_turbine: ['wind turbine', 'wind turbines'],
+  water_tower:  ['water tower', 'water towers'],
+  church:       ['church', 'churches'],
+  chimney:      ['chimney', 'chimneys'],
+}
+function kindLabel(kind: string, n: number): string {
+  const l = KIND_LABEL[kind]
+  if (l) return n === 1 ? l[0] : l[1]
+  const base = kind.replace(/_/g, ' ')
+  return n === 1 ? base : `${base}s`
+}
+
+/** Title and detail line for the single merged obstruction card. */
+export function obstructionSummaryText(s: ObstructionSummary, singleName?: string): { title: string; meta: string } {
+  const title = s.count === 1 && singleName
+    ? singleName
+    : s.kinds.slice(0, 3).map(([k, n]) => `${n} \u00d7 ${kindLabel(k, n)}`).join(' \u00b7 ') + (s.kinds.length > 3 ? ' \u2026' : '')
+  const meta = `${s.count === 1 ? 'Top' : 'Highest top'} ${s.highestTipFt} ft${s.estimated ? ' (est.)' : ''} \u00b7 nearest ${obstructionDistLabel(s.nearestNm)} NM ahead`
+  return { title, meta }
+}

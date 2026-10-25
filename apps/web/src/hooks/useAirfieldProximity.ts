@@ -9,11 +9,13 @@
  * are excluded — they are planned destinations and need no proximity alert.
  *
  * Alerts are dismissed manually or auto-cleared when outside the threshold.
- * Dismissed alerts re-arm after REARM_MS if the aircraft is still close.
+ * A dismissed alert stays muted while the aerodrome is still in range
+ * (@open-vfr/shared/alertDismiss).
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
+import { filterDismissed } from '@open-vfr/shared/alertDismiss'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { useActiveCountries } from '../utils/countryData'
@@ -21,7 +23,6 @@ import { useActiveCountries } from '../utils/countryData'
 // ── Config ────────────────────────────────────────────────────────────────────
 const LATERAL_NM   = 1.0
 const VERTICAL_FT  = 1_500
-const REARM_MS     = 5 * 60_000   // 5 minutes before re-alerting a dismissed aerodrome
 const DEG_PER_NM   = 1 / 60      // approximate for bounding-box pre-filter
 const ROUTE_MATCH_NM = 0.5       // aerodrome is "on route" if a waypoint is this close
 
@@ -164,10 +165,6 @@ export function useAirfieldProximity(
       // Vertical check: within VERTICAL_FT of aerodrome elevation
       if (Math.abs(altFt - ad.elevationFt) > VERTICAL_FT) continue
 
-      // Dismiss cooldown
-      const dismissedAt = dismissedRef.current.get(ad.key)
-      if (dismissedAt !== undefined && now - dismissedAt < REARM_MS) continue
-
       found.push({
         key:         ad.key,
         icao:        ad.icao,
@@ -179,12 +176,13 @@ export function useAirfieldProximity(
     }
 
     // Sort by distance
-    found.sort((a, b) => a.distNm - b.distNm)
+    const shown = filterDismissed(dismissedRef.current, found, now)
+    shown.sort((a, b) => a.distNm - b.distNm)
 
-    const sig = found.map(a => `${a.key}:${a.distNm}`).join('|')
+    const sig = shown.map(a => `${a.key}:${a.distNm}`).join('|')
     if (sig !== lastSigRef.current) {
       lastSigRef.current = sig
-      setAlerts(found)
+      setAlerts(shown)
     }
   }, [position, aerodromes, routeWaypoints])
 

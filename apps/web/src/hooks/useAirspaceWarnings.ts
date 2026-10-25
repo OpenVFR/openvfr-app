@@ -19,8 +19,9 @@
  * Returns an array of AirspaceAlert objects, sorted by severity (red first).
  * Each alert carries a stable `key` so the banner can animate it in/out.
  *
- * Dismiss: calling dismiss(key) suppresses that airspace+position combo for
- * DISMISS_REARM_MS (5 minutes), after which it will re-fire if still inside.
+ * Dismiss: calling dismiss(key) mutes that airspace for as long as it keeps being
+ * detected; it can alert again once it has been absent for a while
+ * (@open-vfr/shared/alertDismiss).
  *
  * Altitude check: an alert only fires when:
  *   altFt >= lower_ft  AND  altFt <= upper_ft
@@ -28,6 +29,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { filterDismissed } from '@open-vfr/shared/alertDismiss'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { altitudeForLimit, effectiveLimitFt, limitMarginFt, insideBand } from '@open-vfr/shared/airspaceAltitude'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
@@ -39,7 +41,6 @@ import { airspaceDisplayClass } from '@open-vfr/shared/airspaceColors'
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const LOOKAHEAD_MIN_SPEED   = 60     // assume at least 60 kts when projecting ahead
-const DISMISS_REARM_MS      = 5 * 60_000  // 5 minutes
 export const DEFAULT_LOOKAHEAD_MIN = 5
 
 // ── Severity classification ─────────────────────────────────────────────────
@@ -217,26 +218,23 @@ export function useAirspaceWarnings(
       if (altInBand) {
         const key = f.key
         if (pointInPolygon(lat, lng, f.geometry)) nowInside.add(f.key)
-        const dismissedAt = dismissedRef.current.get(key)
-        if (dismissedAt === undefined || now - dismissedAt >= DISMISS_REARM_MS) {
-          const insideCurrent = pointInPolygon(lat, lng, f.geometry)
-          const insideAhead   = !insideCurrent &&
-            aheadSamples.some(p => pointInPolygon(p.lat, p.lng, f.geometry))
+        const insideCurrent = pointInPolygon(lat, lng, f.geometry)
+        const insideAhead   = !insideCurrent &&
+          aheadSamples.some(p => pointInPolygon(p.lat, p.lng, f.geometry))
 
-          if (insideCurrent || insideAhead) {
-            found.push({
-              key,
-              name:     f.name,
-              cls:      f.cls,
-              type:     f.type,
-              lower:    f.lower,
-              upper:    f.upper,
-              lower_ft: f.lower_ft,
-              upper_ft: f.upper_ft,
-              severity: getSeverity(f.cls),
-              inside:   insideCurrent,
-            })
-          }
+        if (insideCurrent || insideAhead) {
+          found.push({
+            key,
+            name:     f.name,
+            cls:      f.cls,
+            type:     f.type,
+            lower:    f.lower,
+            upper:    f.upper,
+            lower_ft: f.lower_ft,
+            upper_ft: f.upper_ft,
+            severity: getSeverity(f.cls),
+            inside:   insideCurrent,
+          })
         }
         continue
       }
@@ -259,23 +257,20 @@ export function useAirspaceWarnings(
         )
       ) {
         const vKey = `${f.key}::floor`
-        const dismissedAt = dismissedRef.current.get(vKey)
-        if (dismissedAt === undefined || now - dismissedAt >= DISMISS_REARM_MS) {
-          found.push({
-            key:            vKey,
-            name:           f.name,
-            cls:            f.cls,
-            type:           f.type,
-            lower:          f.lower,
-            upper:          f.upper,
-            lower_ft:       f.lower_ft,
-            upper_ft:       f.upper_ft,
-            severity:       getSeverity(f.cls),
-            inside:         false,
-            verticalClosure: 'floor',
-            gapFt:          Math.round(lowerFt - altLo),
-          })
-        }
+        found.push({
+          key:            vKey,
+          name:           f.name,
+          cls:            f.cls,
+          type:           f.type,
+          lower:          f.lower,
+          upper:          f.upper,
+          lower_ft:       f.lower_ft,
+          upper_ft:       f.upper_ft,
+          severity:       getSeverity(f.cls),
+          inside:         false,
+          verticalClosure: 'floor',
+          gapFt:          Math.round(lowerFt - altLo),
+        })
       }
 
       // Approaching ceiling from above (descending) — time-based projection OR
@@ -289,28 +284,26 @@ export function useAirspaceWarnings(
         )
       ) {
         const vKey = `${f.key}::ceiling`
-        const dismissedAt = dismissedRef.current.get(vKey)
-        if (dismissedAt === undefined || now - dismissedAt >= DISMISS_REARM_MS) {
-          found.push({
-            key:            vKey,
-            name:           f.name,
-            cls:            f.cls,
-            type:           f.type,
-            lower:          f.lower,
-            upper:          f.upper,
-            lower_ft:       f.lower_ft,
-            upper_ft:       f.upper_ft,
-            severity:       getSeverity(f.cls),
-            inside:         false,
-            verticalClosure: 'ceiling',
-            gapFt:          Math.round(altHi - upperFt),
-          })
-        }
+        found.push({
+          key:            vKey,
+          name:           f.name,
+          cls:            f.cls,
+          type:           f.type,
+          lower:          f.lower,
+          upper:          f.upper,
+          lower_ft:       f.lower_ft,
+          upper_ft:       f.upper_ft,
+          severity:       getSeverity(f.cls),
+          inside:         false,
+          verticalClosure: 'ceiling',
+          gapFt:          Math.round(altHi - upperFt),
+        })
       }
     }
 
     // Sort: inside-now first, then vertical-closure, then by severity, then by lower_ft
-    found.sort((a, b) => {
+    const shown = filterDismissed(dismissedRef.current, found, now)
+    shown.sort((a, b) => {
       if (a.inside !== b.inside) return a.inside ? -1 : 1
       const sd = SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]
       if (sd !== 0) return sd
@@ -319,10 +312,10 @@ export function useAirspaceWarnings(
 
     insideRef.current = nowInside
 
-    const sig = found.map(a => `${a.key}:${a.inside}:${a.verticalClosure ?? ''}:${a.gapFt ?? ''}`).join('|')
+    const sig = shown.map(a => `${a.key}:${a.inside}:${a.verticalClosure ?? ''}:${a.gapFt ?? ''}`).join('|')
     if (sig !== lastSigRef.current) {
       lastSigRef.current = sig
-      setAlerts(found)
+      setAlerts(shown)
     }
   }, [position, features, lookaheadMin, verticalFt])
 

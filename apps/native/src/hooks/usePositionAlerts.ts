@@ -38,7 +38,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
-import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, obstructionAlertsSig, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
+import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, obstructionAlertsSig, obstructionReachNm, obstructionThreatDistNm, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
+import { filterDismissed } from '@open-vfr/shared/alertDismiss'
 import { useMefGrids } from './useMefGrids'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
@@ -50,20 +51,16 @@ import { altitudeForLimit, effectiveLimitFt, limitMarginFt, insideBand } from '@
 
 // ── Airspace warnings config (useAirspaceWarnings) ─────────────────────────
 const LOOKAHEAD_MIN_SPEED = 60
-const AIRSPACE_REARM_MS   = 5 * 60_000
 export const DEFAULT_LOOKAHEAD_MIN = 5
 
 // ── Obstruction config (useObstructionWarnings) ────────────────────────────
-const OBS_WARN_RADIUS_NM     = 1.0
 const OBS_VERTICAL_BUFFER_FT = 500
 const OBS_MAX_ALERTS         = 5
-const OBS_REARM_MS           = 5 * 60_000
 const NM_PER_DEG_LAT         = 60.0
 
 // ── Airfield proximity config (useAirfieldProximity) ───────────────────────
 const AF_LATERAL_NM    = 1.0
 const AF_VERTICAL_FT   = 1_500
-const AF_REARM_MS      = 5 * 60_000
 const AF_DEG_PER_NM    = 1 / 60
 const AF_ROUTE_MATCH_NM = 0.5
 
@@ -354,8 +351,6 @@ export function usePositionAlerts(
         const altInBand = insideBand(altLo, altHi, lowerFt, upperFt, insideRef.current.has(f.key))
         if (altInBand) {
           const key = f.key
-          const dismissed = airspaceDismissedRef.current.get(key)
-          if (dismissed !== undefined && now - dismissed < AIRSPACE_REARM_MS) continue
           const insideCurrent = pointInPolygon(lat, lng, f.geometry)
           const insideAhead   = !insideCurrent && ahead.some(p => pointInPolygon(p.lat, p.lng, f.geometry))
           if (!insideCurrent && !insideAhead) continue
@@ -373,13 +368,10 @@ export function usePositionAlerts(
           const bufferTrigger = buf > 0 && (lowerFt - altLo) <= buf
           if (timeBasedTrigger || bufferTrigger) {
             const key = `${f.key}::floor`
-            const dismissed = airspaceDismissedRef.current.get(key)
-            if (dismissed === undefined || now - dismissed >= AIRSPACE_REARM_MS) {
-              found.push({ key, name: f.name, cls: f.cls, type: f.type,
-                lower: f.lower, upper: f.upper, lower_ft: f.lower_ft, upper_ft: f.upper_ft,
-                severity: getSeverity(f.cls), inside: false,
-                verticalClosure: 'floor', gapFt: Math.round(lowerFt - altLo) })
-            }
+            found.push({ key, name: f.name, cls: f.cls, type: f.type,
+              lower: f.lower, upper: f.upper, lower_ft: f.lower_ft, upper_ft: f.upper_ft,
+              severity: getSeverity(f.cls), inside: false,
+              verticalClosure: 'floor', gapFt: Math.round(lowerFt - altLo) })
           }
         }
         if (altHi > upperFt) {
@@ -388,26 +380,25 @@ export function usePositionAlerts(
           const bufferTrigger = buf > 0 && (altHi - upperFt) <= buf
           if (timeBasedTrigger || bufferTrigger) {
             const key = `${f.key}::ceiling`
-            const dismissed = airspaceDismissedRef.current.get(key)
-            if (dismissed === undefined || now - dismissed >= AIRSPACE_REARM_MS) {
-              found.push({ key, name: f.name, cls: f.cls, type: f.type,
-                lower: f.lower, upper: f.upper, lower_ft: f.lower_ft, upper_ft: f.upper_ft,
-                severity: getSeverity(f.cls), inside: false,
-                verticalClosure: 'ceiling', gapFt: Math.round(altHi - upperFt) })
-            }
+            found.push({ key, name: f.name, cls: f.cls, type: f.type,
+              lower: f.lower, upper: f.upper, lower_ft: f.lower_ft, upper_ft: f.upper_ft,
+              severity: getSeverity(f.cls), inside: false,
+              verticalClosure: 'ceiling', gapFt: Math.round(altHi - upperFt) })
           }
         }
       }
-      found.sort((a, b) => {
+      // A dismissed airspace stays muted while it is still detected (see alertDismiss).
+      const shown = filterDismissed(airspaceDismissedRef.current, found, now)
+      shown.sort((a, b) => {
         if (a.inside !== b.inside) return a.inside ? -1 : 1
         const sv = { red: 0, yellow: 1, blue: 2 }
         if (sv[a.severity] !== sv[b.severity]) return sv[a.severity] - sv[b.severity]
         return a.lower_ft - b.lower_ft
       })
-      const sig = found.map(a => `${a.key}:${a.inside}:${a.verticalClosure ?? ''}:${a.gapFt ?? ''}`).join('|')
+      const sig = shown.map(a => `${a.key}:${a.inside}:${a.verticalClosure ?? ''}:${a.gapFt ?? ''}`).join('|')
       if (sig !== airspaceSigRef.current) {
         airspaceSigRef.current = sig
-        setAirspaceAlerts(found)
+        setAirspaceAlerts(shown)
       }
 
       // ── Airspace entry/exit notifications (useAirspaceNotifications) ────
@@ -456,18 +447,20 @@ export function usePositionAlerts(
     // ── Obstruction warnings (useObstructionWarnings algorithm) ──────────
     if (obstacleFeatures.length > 0) {
       const found: ObstructionAlert[] = []
+      // Only obstacles in the forward corridor (none while nearly stationary).
+      const reachNm = obstructionReachNm(speedKts)
+      const own = { lat, lng, trackDeg, speedKts, accuracyM: accuracy }
       for (const obs of obstacleFeatures) {
-        if (Math.abs(obs.lat - lat) > OBS_WARN_RADIUS_NM / NM_PER_DEG_LAT * 1.2) continue
-        const distNm = approxDistNm(lat, lng, obs.lat, obs.lng)
-        if (distNm > OBS_WARN_RADIUS_NM) continue
+        if (Math.abs(obs.lat - lat) > reachNm / NM_PER_DEG_LAT * 1.2) continue
+        const distNm = obstructionThreatDistNm(own, obs)
+        if (distNm == null) continue
         const tipFt = obstructionTipFt(obs, terrainFt)
         if (tipFt == null || altFt > tipFt + OBS_VERTICAL_BUFFER_FT) continue
         found.push({ key: obs.key, kind: obs.kind, name: obs.name || obs.kind.replace('_', ' '),
           elevationFt: obs.groundKnown ? obs.elevFt : Math.round(terrainFt ?? 0), tipFt, estimated: obs.estimated, distNm, count: 1 })
       }
       // One alert per kind; dismissing silences the kind for a while.
-      const grouped = groupObstructionAlerts(found)
-        .filter(g => { const d = obstructionDismissedRef.current.get(g.key); return d === undefined || now - d >= OBS_REARM_MS })
+      const grouped = filterDismissed(obstructionDismissedRef.current, groupObstructionAlerts(found), now)
         .slice(0, OBS_MAX_ALERTS)
       const sig = obstructionAlertsSig(grouped)
       if (sig !== obstructionSigRef.current) {
@@ -495,16 +488,15 @@ export function usePositionAlerts(
         const distNm = approxDistNm(lat, lng, ad.lat, ad.lng)
         if (distNm > AF_LATERAL_NM) continue
         if (Math.abs(altFt - ad.elevationFt) > AF_VERTICAL_FT) continue
-        const dismissedAt = airfieldDismissedRef.current.get(ad.key)
-        if (dismissedAt !== undefined && now - dismissedAt < AF_REARM_MS) continue
         found.push({ key: ad.key, icao: ad.icao, name: ad.name,
           distNm: Math.round(distNm * 10) / 10, elevationFt: ad.elevationFt, primaryFreq: ad.primaryFreq })
       }
-      found.sort((a, b) => a.distNm - b.distNm)
-      const sig = found.map(a => `${a.key}:${a.distNm}`).join('|')
+      const shown = filterDismissed(airfieldDismissedRef.current, found, now)
+      shown.sort((a, b) => a.distNm - b.distNm)
+      const sig = shown.map(a => `${a.key}:${a.distNm}`).join('|')
       if (sig !== airfieldSigRef.current) {
         airfieldSigRef.current = sig
-        setAirfieldAlerts(found)
+        setAirfieldAlerts(shown)
       }
     }
   }, [position, airspaceFeatures, obstacleFeatures, aerodromeFeatures, routeWaypoints, lookaheadMin, verticalFt])
