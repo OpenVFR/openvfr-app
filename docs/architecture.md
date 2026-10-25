@@ -471,6 +471,16 @@ These four tokens must be added to `apps/web/src/styles/theme.css` when Phase 4 
 
 The `AltitudeSlider` enforces a pilot-set ceiling. When the aircraft's GPS altitude climbs within 500 ft of the ceiling, the ceiling must be automatically raised by 2,000 ft (with a toast notification) to prevent inadvertently hiding the airspace being entered. Implemented in `useGoFlying.ts` / `useAirspaceWarnings.ts` when Phase 3 is active.
 
+### In-flight Alert Stack
+
+One stack at the top of the map (`NotificationCenter`, web and native) carries every in-flight alert. It is built to stay quiet:
+
+- **Obstacles** alert only when they lie in the forward corridor of the current track (±0.5 NM, 2 minutes ahead, 1–5 NM), or within 0.25 NM. Below 30 kt ground speed there are no obstacle alerts. All obstacles are one merged card. Logic: `packages/shared/src/obstructionPoints.ts`.
+- **Layout** (`alertStack.ts`): red alerts always get a full card; yellow alerts and notes share two card slots in total. Entered/left events, blue advisories (aerodrome nearby, ceiling filter) and anything that does not fit are one-line chips, with "+N more" beyond four.
+- **Debounce** (`alertStability.ts`): a condition must hold 2 s before its card shows, and a shown card stays at least 5 s (2 s after the condition ends). Red alerts, events and notes show at once.
+- **Dismissal** (`alertDismiss.ts`): a dismissed alert stays muted while its hazard is still detected, and can alert again after the hazard has been absent for 60 s.
+- **Native settings → Alert banners** turns off obstacle, aerodrome-nearby and airspace entered/left banners.
+
 ### Auto Flying Mode
 
 Flying mode (GPS) can start and stop itself from takeoff and landing detected in the position stream. The detector is a pure state machine in `packages/shared/src/autoFlyDetect.ts` (shared by web and native; unit-tested in `autoFlyDetect.test.ts`); it emits a `suggest-start` / `suggest-stop` event and never starts anything itself. The host app decides what to do with it, according to the **Auto flying mode** setting: **Off**, **Ask** (default, shows a prompt) or **Auto** (acts immediately).
