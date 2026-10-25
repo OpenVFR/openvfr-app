@@ -40,6 +40,7 @@ import {
   projectFlightPath, plannedAltitudeLine, DEFAULT_PERF_MODEL,
   computeMsaProfile,
   corridorTerrainAlongRoute,
+  legCorridorMsaFt,
   terrainForMsa,
   terrainAt,
   getMsaLookup,
@@ -65,7 +66,7 @@ import {
   type BoxRect, type LabelRequest, type PlacedLabel,
 } from '@open-vfr/shared/profileLabels'
 import {
-  symbolGroundY, LIMITING_LABEL_MERGE_PX, POI_SCALE, poiCenterY, SKY_TOP, SKY_BOTTOM, PLAN_COLOR, MSA_COLOR, GROUND_OUTLINE, CORRIDOR_FILL, CORRIDOR_OUTLINE,
+  symbolGroundY, LIMITING_LABEL_MERGE_PX, POI_SCALE, poiCenterY, SKY_TOP, SKY_BOTTOM, PLAN_COLOR, MSA_COLOR, GROUND_OUTLINE, CORRIDOR_FILL, CORRIDOR_OUTLINE, CORRIDOR_OUTLINE_WIDTH,
   DANGER_COLOR, DANGER_TEXT, PHASE_SHORT_COLOR, WIND_LABEL_COLOR, windAloftFit, terrainGradientStops, phaseLabelText,
 } from '@open-vfr/shared/radarStyle'
 import {
@@ -190,6 +191,10 @@ interface Props {
   /** The chart follows the aircraft's altitude (no planned route: look-ahead). The scale is a
    *  window around the aircraft instead of fitting a plan. */
   followAircraft?: boolean
+  /** Draw the band of highest ground within the abeam distance behind the ground line
+   *  (default true). Off for the ruler and the look-ahead: only a planned route has a
+   *  corridor the pilot set out to fly. The MSA still uses it either way. */
+  corridorBand?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -559,7 +564,7 @@ const RadarBackdrop = React.memo(function RadarBackdrop(P: BackdropProps) {
         })}
 
         {corridorFill !== '' && (
-          <Path d={corridorFill} fill={CORRIDOR_FILL} stroke={CORRIDOR_OUTLINE} strokeWidth={1.25} />
+          <Path d={corridorFill} fill={CORRIDOR_FILL} stroke={CORRIDOR_OUTLINE} strokeWidth={CORRIDOR_OUTLINE_WIDTH} />
         )}
         <Path d={terrainPath.shadow} fill="rgba(0,0,0,0.28)" />
         <Path d={terrainPath.fill} fill="url(#terrainGrad)" />
@@ -628,7 +633,7 @@ export function VerticalProfile({
   waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, msaMargins, title, headerStart, headerEnd, onClose, closeLabel, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
   crossTrackNm, weatherStations,
-  height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm, onLegLevelChange, followAircraft,
+  height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm, onLegLevelChange, followAircraft, corridorBand = true,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(null)
@@ -812,9 +817,18 @@ export function VerticalProfile({
     () => terrainForMsa(waypoints, terrainPts, mefGrids, msaMargins, terrainFailed),
     [waypoints, terrainPts, mefGrids, msaMargins, terrainFailed],
   )
+  const msaObstacles = useMemo(
+    () => profile ? obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(msaTerrain.pts, d)) : undefined,
+    [profile, msaTerrain],
+  )
   const msaPts = useMemo<MsaPoint[]>(
-    () => computeMsaProfile(msaTerrain.pts, msaMargins, profile ? obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(msaTerrain.pts, d)) : undefined, msaTerrain.corridorFt),
-    [msaTerrain, msaMargins, profile],
+    () => computeMsaProfile(msaTerrain.pts, msaMargins, msaObstacles, msaTerrain.corridorFt),
+    [msaTerrain, msaMargins, msaObstacles],
+  )
+  // Per-leg MSA floor: the whole leg corridor incl. the circles around its ends.
+  const legMsaFloors = useMemo(
+    () => legCorridorMsaFt(waypoints, mefGrids, msaMargins, msaObstacles),
+    [waypoints, mefGrids, msaMargins, msaObstacles],
   )
   const getMsa = useMemo(() => getMsaLookup(msaPts), [msaPts])
 
@@ -1145,7 +1159,7 @@ export function VerticalProfile({
   const dragging = useSyncExternalStore(dragStore.subscribe, () => dragStore.get() !== null)
   const legTouchYSV = useSharedValue(0)
   const legSpanList = useMemo(() => (profile ? legSpans(profile.altitudeProfile) : []), [profile])
-  const legMsaFt = useMemo(() => legMsaList(legSpanList, msaPts, getMsa), [legSpanList, msaPts, getMsa])
+  const legMsaFt = useMemo(() => legMsaList(legSpanList, msaPts, getMsa, legMsaFloors), [legSpanList, msaPts, getMsa, legMsaFloors])
   // Requested levels the drawn path never reaches (a short leg cannot climb that
   // far): shown as a dashed marker instead of silently ignored.
   const unreached = useMemo(() => {
@@ -1334,11 +1348,11 @@ export function VerticalProfile({
 
   // Faint corridor-maximum silhouette behind the solid centreline terrain.
   const corridorFill = useMemo(() => {
-    if (corridorPts.length === 0 || plotW <= 0) return ''
+    if (!corridorBand || corridorPts.length === 0 || plotW <= 0) return ''
     const pts = corridorPts.map(p => `${xOf(p.distNm).toFixed(1)},${yOf(p.elevFt).toFixed(1)}`)
     const bottomY = MARGIN_T + plotH
     return `M${xOf(0).toFixed(1)},${bottomY} L${pts.join(' L')} L${xOf(totalNm).toFixed(1)},${bottomY} Z`
-  }, [corridorPts, plotW, plotH, xOf, yOf, totalNm])
+  }, [corridorBand, corridorPts, plotW, plotH, xOf, yOf, totalNm])
 
   // MSA dashed path
   const msaPath = useMemo(() => {

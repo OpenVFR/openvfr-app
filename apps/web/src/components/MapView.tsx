@@ -4992,6 +4992,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
               onClear={() => { setRulerPoints([]); setRulerMode(false) }}
             />
             <VirtualRadar
+              corridorBand={false}
               waypoints={rulerPoints}
               legOverrides={[]}
               units={units}
@@ -5036,6 +5037,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
               <VirtualRadar
                 title={`LOOK-AHEAD · TRK ${Math.round(lookaheadHeadingDeg)}°`}
                 followAircraft
+                corridorBand={false}
                 waypoints={lookaheadWaypoints}
                 legOverrides={lookaheadLegOverrides}
                 units={units}

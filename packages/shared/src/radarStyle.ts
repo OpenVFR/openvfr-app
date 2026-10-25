@@ -32,10 +32,13 @@ export const GROUND_COLOR = '#e4f0b8'
 /** Outline of the ground under the track: dark green, so it separates the ground from the sky and the
  *  corridor band without a bright seam. */
 export const GROUND_OUTLINE = '#1f6b22'
-/** Highest ground within the corridor either side of the track: a nearly opaque khaki band behind the ground,
- *  with a brown outline (no dashes), so the two layers read as two different things. */
-export const CORRIDOR_FILL = 'rgba(201,177,96,0.88)'
-export const CORRIDOR_OUTLINE = '#d08645'
+/** Highest ground within the abeam distance either side of the track (planned route only): a
+ *  translucent khaki band behind the opaque ground, the sky showing through, with a thin light
+ *  outline. It is context for the MSA, not ground under the aircraft, so it must not compete
+ *  with the ground line or the plan. */
+export const CORRIDOR_FILL = 'rgba(222,205,150,0.30)'
+export const CORRIDOR_OUTLINE = 'rgba(236,218,160,0.70)'
+export const CORRIDOR_OUTLINE_WIDTH = 1
 export const DANGER_COLOR = 'rgba(239,68,68,0.95)'
 /** Red text on the dark chart: DANGER_COLOR fails contrast, use a lighter tint. */
 export const DANGER_TEXT = '#ff8f8f'

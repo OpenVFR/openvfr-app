@@ -12,7 +12,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import {
-  buildVirtualRadarProfile, computeMsaProfile, terrainForMsa,
+  buildVirtualRadarProfile, computeMsaProfile, terrainForMsa, legCorridorMsaFt,
   getMsaLookup, terrainAt, type TerrainPoint,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { legSpans, legMsaList, type LegSpan } from '@open-vfr/shared/legLevelDrag'
@@ -72,9 +72,12 @@ export function useLegMsa(waypoints: RouteWaypoint[]): LegMsa {
     // Fetched terrain, or (once the fetch failed) route samples from the terrain grid.
     const t = terrainForMsa(waypoints, terrain, grids, margins, failed)
     if (!profile || t.pts.length === 0) return NONE
-    const msaPts = computeMsaProfile(t.pts, margins, obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(t.pts, d)), t.corridorFt)
+    const obstacles = obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(t.pts, d))
+    const msaPts = computeMsaProfile(t.pts, margins, obstacles, t.corridorFt)
     const spans = legSpans(profile.altitudeProfile)
-    return { legMsa: legMsaList(spans, msaPts, getMsaLookup(msaPts)), spans, totalNm: profile.totalNm }
+    // Floor per leg: its whole corridor incl. the circles around its ends.
+    const floors = legCorridorMsaFt(waypoints, grids, margins, obstacles)
+    return { legMsa: legMsaList(spans, msaPts, getMsaLookup(msaPts), floors), spans, totalNm: profile.totalNm }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, terrain, failed, grids, margins, routeKey])
 }

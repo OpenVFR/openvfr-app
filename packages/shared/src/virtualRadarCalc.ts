@@ -40,7 +40,7 @@
  */
 
 import { resolveMsaMargins, type MsaMargins } from './msaMargins'
-import { corridorMaxFt as mefCorridorMaxFt, mefFtAt, type MefGrid } from './mefGrid'
+import { mefFtAt, segmentStripMaxFt, waypointCapMaxFt, type MefGrid } from './mefGrid'
 import along from '@turf/along'
 import length from '@turf/length'
 import booleanIntersects from '@turf/boolean-intersects'
@@ -1083,12 +1083,13 @@ export function coordinateAlongRouteNm(
 export function computeMsaProfile(
   terrainPts: TerrainPoint[],
   margins?: Partial<MsaMargins> | null,
-  /** Obstacle tips (AMSL) along the route; each raises the MSA within the
-   *  corridor to tip + obstacle clearance. Optional: terrain only if omitted. */
+  /** Obstacle tips (AMSL) along the route (within the abeam distance of it);
+   *  each raises the MSA to tip + obstacle clearance where it is abeam.
+   *  Optional: terrain only if omitted. */
   obstacles?: readonly { distNm: number; elevationFt: number }[],
-  /** Highest terrain within the abeam corridor of each terrain point (same
+  /** Highest terrain in each sample's stretch of the abeam corridor (same
    *  indexing as `terrainPts`, from corridorTerrainAlongRoute); null where the
-   *  grid has no data. Combined with the centreline samples by taking the max. */
+   *  grid has no data. */
   corridorMaxFt?: readonly (number | null)[] | null,
 ): MsaPoint[] {
   if (terrainPts.length === 0) return []
@@ -1096,14 +1097,28 @@ export function computeMsaProfile(
   const obs = obstacles ?? []
 
   return terrainPts.map((pt, i) => {
-    let maxElev = corridorMaxFt?.[i] ?? 0
-    for (let j = 0; j < terrainPts.length; j++) {
-      if (Math.abs(terrainPts[j].distNm - pt.distNm) > m.abeamNm) continue
-      if (terrainPts[j].elevFt > maxElev) maxElev = terrainPts[j].elevFt
+    const corridor = corridorMaxFt?.[i]
+    // A sample stands for the stretch from the previous sample to the next
+    // (see corridorTerrainAlongRoute): the step lookup and the line drawn
+    // between two samples then never fall below what lies in between.
+    let lo: number, hi: number, maxElev: number
+    if (corridor != null) {
+      lo = terrainPts[i - 1]?.distNm ?? pt.distNm
+      hi = terrainPts[i + 1]?.distNm ?? pt.distNm
+      maxElev = Math.max(corridor, pt.elevFt)
+    } else {
+      // No grid: nothing is known beside the track, so stay conservative and
+      // take the centreline maximum within the abeam distance along it.
+      lo = pt.distNm - m.abeamNm
+      hi = pt.distNm + m.abeamNm
+      maxElev = 0
+      for (const q of terrainPts) {
+        if (q.distNm >= lo && q.distNm <= hi && q.elevFt > maxElev) maxElev = q.elevFt
+      }
     }
     let maxTip = 0
     for (const o of obs) {
-      if (Math.abs(o.distNm - pt.distNm) > m.abeamNm) continue
+      if (o.distNm < lo || o.distNm > hi) continue
       if (o.elevationFt > maxTip) maxTip = o.elevationFt
     }
 
@@ -1118,11 +1133,47 @@ export function computeMsaProfile(
   })
 }
 
+/** Cumulative distance (NM, same measure as the terrain samples) of every waypoint. */
+function waypointDistsNm(waypoints: readonly RouteWaypoint[]): number[] {
+  const out = [0]
+  for (let k = 1; k < waypoints.length; k++) {
+    const a = waypoints[k - 1]!, b = waypoints[k]!
+    out.push(out[k - 1]! + length(lineString([[a.lng, a.lat], [b.lng, b.lat]]), { units: 'kilometers' }) * 0.539957)
+  }
+  return out
+}
+
+/** Highest grid terrain in the corridor between route distances lo..hi (strips only, no caps). */
+function stripMaxAlongRoute(
+  waypoints: readonly RouteWaypoint[], wpDist: readonly number[], grids: readonly MefGrid[], lo: number, hi: number, abeamNm: number,
+): number | null {
+  let best: number | null = null
+  for (let k = 0; k + 1 < waypoints.length; k++) {
+    const from = Math.max(lo, wpDist[k]!), to = Math.min(hi, wpDist[k + 1]!)
+    if (to < from) continue
+    const legNm = wpDist[k + 1]! - wpDist[k]!
+    if (!(legNm > 0)) continue
+    const v = segmentStripMaxFt(grids, waypoints[k]!, waypoints[k + 1]!, legNm, from - wpDist[k]!, to - wpDist[k]!, abeamNm)
+    if (v != null && (best == null || v > best)) best = v
+  }
+  return best
+}
+
 /**
- * Highest terrain (ft) within the abeam corridor of every terrain sample,
- * from the offline grid-maximum file (see mefGrid.ts). One entry per
- * `terrainPts` element; null where no grid covers the point. Empty `grids`
- * gives all nulls, so callers can pass it straight to computeMsaProfile.
+ * Highest terrain (ft) in each terrain sample's stretch of the abeam
+ * corridor, from the offline grid-maximum file (see mefGrid.ts). One entry
+ * per `terrainPts` element; null where no grid covers it. Empty `grids` gives
+ * all nulls, so callers can pass it straight to computeMsaProfile.
+ *
+ * Sample i stands for the corridor from sample i-1 to sample i+1 (the strip
+ * along the legs there, `abeamNm` either side). Neighbouring stretches
+ * overlap, so the step lookup of the MSA (a sample's value holds until the
+ * next) and the line drawn between two samples are never below the terrain
+ * in between, while a hill only shows where it is abeam -- not, as with a
+ * circle around each sample, `abeamNm` before and after it, which drew long
+ * flat plateaus. At each waypoint the part of the circle no strip covers
+ * (outside of a turn, before the start, after the end) is added to the
+ * samples whose stretch includes the waypoint.
  */
 export function corridorTerrainAlongRoute(
   waypoints: RouteWaypoint[],
@@ -1132,10 +1183,68 @@ export function corridorTerrainAlongRoute(
 ): (number | null)[] {
   if (grids.length === 0 || waypoints.length < 2) return terrainPts.map(() => null)
   const { abeamNm } = resolveMsaMargins(margins)
-  return terrainPts.map((pt) => {
-    const c = coordinateAlongRouteNm(waypoints, pt.distNm)
-    return mefCorridorMaxFt(grids, c.lat, c.lng, abeamNm)
+  const wpDist = waypointDistsNm(waypoints)
+  const caps = waypoints.map((wp, k) =>
+    waypointCapMaxFt(grids, wp, waypoints[k - 1] ?? null, waypoints[k + 1] ?? null, abeamNm, true))
+  return terrainPts.map((pt, i) => {
+    const lo = terrainPts[i - 1]?.distNm ?? pt.distNm
+    const hi = terrainPts[i + 1]?.distNm ?? pt.distNm
+    let best = stripMaxAlongRoute(waypoints, wpDist, grids, lo, hi, abeamNm)
+    // Caps: the first / last sample always (start and end), otherwise when
+    // the stretch contains the waypoint.
+    for (let k = 0; k < waypoints.length; k++) {
+      const c = caps[k]
+      if (c == null) continue
+      const d = wpDist[k]!
+      const owns = (i === 0 && k === 0) || (i === terrainPts.length - 1 && k === waypoints.length - 1) || (d >= lo && d <= hi)
+      if (owns && (best == null || c > best)) best = c
+    }
+    return best
   })
+}
+
+/**
+ * MSA floor (ft) per leg from the grid: the highest terrain in the leg's
+ * strip and in the FULL circle of `abeamNm` around both its ends, + terrain
+ * clearance, and obstacles within the abeam distance of the leg or of its
+ * ends (by route distance, as listed in the profile), + obstacle clearance;
+ * rounded up to 100 ft. 0 without grid data.
+ *
+ * The leg MSA (labels, "leg below MSA") takes the max of this and the
+ * per-sample figures, so it covers what a circle around every point of the
+ * leg covers: narrowing the per-sample corridor to what is abeam never lowers
+ * a leg's MSA.
+ */
+export function legCorridorMsaFt(
+  waypoints: readonly RouteWaypoint[],
+  grids: readonly MefGrid[],
+  margins?: Partial<MsaMargins> | null,
+  obstacles?: readonly { distNm: number; elevationFt: number }[],
+): number[] {
+  if (waypoints.length < 2) return []
+  const m = resolveMsaMargins(margins)
+  const wpDist = waypointDistsNm(waypoints)
+  const out: number[] = []
+  for (let k = 0; k + 1 < waypoints.length; k++) {
+    const a = waypoints[k]!, b = waypoints[k + 1]!
+    const legNm = wpDist[k + 1]! - wpDist[k]!
+    let terrain: number | null = null
+    if (grids.length > 0) {
+      for (const v of [
+        legNm > 0 ? segmentStripMaxFt(grids, a, b, legNm, 0, legNm, m.abeamNm) : null,
+        waypointCapMaxFt(grids, a, null, null, m.abeamNm, false),
+        waypointCapMaxFt(grids, b, null, null, m.abeamNm, false),
+      ]) if (v != null && (terrain == null || v > terrain)) terrain = v
+    }
+    let tip = 0
+    for (const o of obstacles ?? []) {
+      if (o.distNm < wpDist[k]! - m.abeamNm || o.distNm > wpDist[k + 1]! + m.abeamNm) continue
+      if (o.elevationFt > tip) tip = o.elevationFt
+    }
+    const raw = Math.max(terrain != null && terrain > 0 ? terrain + m.terrainClearanceFt : 0, tip > 0 ? tip + m.obstacleClearanceFt : 0)
+    out.push(raw > 0 ? Math.ceil(raw / 100) * 100 : 0)
+  }
+  return out
 }
 
 /**

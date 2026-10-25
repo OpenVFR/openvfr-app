@@ -45,11 +45,13 @@ describe('terrainForMsa', () => {
     expect(t.pts.length).toBeGreaterThanOrEqual(10)
     expect(t.pts[0].distNm).toBe(0)
     const msa = computeMsaProfile(t.pts, null, undefined, t.corridorFt)
-    const near = msa.find((m) => m.distNm > 6 && m.distNm < 9)!      // beside the ridge
-    const first = msa[0]                                              // 4.5 NM from the ridge: inside the 5 NM corridor
-    const away = msa[msa.length - 1]                                  // ~10 NM from it, flat
-    expect(near.msaFt).toBeGreaterThanOrEqual(2900 + 800)             // ridge + terrain clearance
-    expect(first.msaFt).toBeGreaterThanOrEqual(2900 + 800)
-    expect(away.msaFt).toBe(900)                                      // flat 100 ft + 800 ft clearance
+    // The ridge crosses the track ~4.5 NM out: the MSA rises where it is abeam,
+    // not 5 NM before and after it.
+    const atRidge = msa.find((m) => m.distNm >= 4 && m.distNm <= 5.5)!
+    const start = msa[0]
+    const away = msa[msa.length - 1]                                  // ~10 NM past it, flat
+    expect(atRidge.msaFt).toBeGreaterThanOrEqual(2900 + 800)          // ridge + terrain clearance
+    expect(start.msaFt).toBe(900)                                     // flat 100 ft + 800 ft clearance
+    expect(away.msaFt).toBe(900)
   })
 })

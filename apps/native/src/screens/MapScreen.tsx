@@ -1848,6 +1848,7 @@ function MapScreenForCountry() {
       {showRulerProfile && (
         <>
           <VerticalProfile
+            corridorBand={false}
             waypoints={rulerPoints}
             legOverrides={[]}
             units={settings.units}
@@ -1896,6 +1897,7 @@ function MapScreenForCountry() {
         <VerticalProfile
           title={`LOOK-AHEAD · TRK ${Math.round(lookaheadHeadingDeg)}°`}
           followAircraft
+          corridorBand={false}
           waypoints={lookaheadWaypoints}
           legOverrides={lookaheadLegOverrides}
           units={settings.units}

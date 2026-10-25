@@ -115,13 +115,17 @@ export function levelLabel(altFt: number): string {
  * MSA (ft, multiple of 100; 0 = none known) of every leg: the highest MSA
  * sample inside the leg's span. A leg shorter than the sample spacing has no
  * sample of its own, so it falls back to the MSA at its midpoint.
+ * `floorFt`: per-leg minimum by leg index (legCorridorMsaFt: the whole leg
+ * corridor including the circles around its ends), so a leg's MSA covers at
+ * least what lies within the abeam distance of any point of it.
  */
 export function legMsaList(
   spans: readonly LegSpan[],
   msaPts: readonly MsaPoint[],
   msaAt: (distNm: number) => number,
+  floorFt?: readonly number[],
 ): number[] {
-  return spans.map((s) => Math.max(legMsaFt(msaPts, s.fromNm, s.toNm), msaAt((s.fromNm + s.toNm) / 2)))
+  return spans.map((s) => Math.max(legMsaFt(msaPts, s.fromNm, s.toNm), msaAt((s.fromNm + s.toNm) / 2), floorFt?.[s.legIndex] ?? 0))
 }
 
 /**

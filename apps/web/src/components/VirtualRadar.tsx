@@ -6,7 +6,7 @@ import {
   type BoxRect, type LabelRequest, type PlacedLabel,
 } from '@open-vfr/shared/profileLabels'
 import {
-  symbolGroundY, LIMITING_LABEL_MERGE_PX, POI_SCALE, poiCenterY, SKY_TOP, SKY_BOTTOM, PLAN_COLOR, MSA_COLOR, GROUND_COLOR, GROUND_OUTLINE, CORRIDOR_FILL, CORRIDOR_OUTLINE,
+  symbolGroundY, LIMITING_LABEL_MERGE_PX, POI_SCALE, poiCenterY, SKY_TOP, SKY_BOTTOM, PLAN_COLOR, MSA_COLOR, GROUND_COLOR, GROUND_OUTLINE, CORRIDOR_FILL, CORRIDOR_OUTLINE, CORRIDOR_OUTLINE_WIDTH,
   DANGER_COLOR, DANGER_TEXT, PHASE_SHORT_COLOR, WIND_LABEL_COLOR, windAloftFit, terrainGradientStops, phaseLabelText,
 } from '@open-vfr/shared/radarStyle'
 import { airspaceOutlines, airspaceChips, layoutAirspaceChips } from '@open-vfr/shared/airspaceOutline'
@@ -34,7 +34,7 @@ import type { LegOverride } from '../db/index'
 import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel } from '../utils/units'
 import {
   buildVirtualRadarProfile, applyTerrainToBands, projectFlightPath, DEFAULT_PERF_MODEL, computeMsaProfile, terrainAt,
-  getMsaLookup, corridorTerrainAlongRoute, terrainForMsa, computeTrajectoryTicks, computeTrajectoryEndTick, computeVspeedTrajectory, trajectoryPitchDeg, projectWeatherMarks,
+  getMsaLookup, corridorTerrainAlongRoute, legCorridorMsaFt, terrainForMsa, computeTrajectoryTicks, computeTrajectoryEndTick, computeVspeedTrajectory, trajectoryPitchDeg, projectWeatherMarks,
   type TerrainPoint, type MsaPoint, type AircraftPerfModel,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
@@ -138,6 +138,10 @@ interface Props {
   /** The chart follows the aircraft's altitude (no planned route: look-ahead). The scale is
    *  a window around the aircraft instead of fitting a plan. */
   followAircraft?: boolean
+  /** Draw the band of highest ground within the abeam distance behind the ground line
+   *  (default true). Off for the ruler and the look-ahead: only a planned route has a
+   *  corridor the pilot set out to fly. The MSA still uses it either way. */
+  corridorBand?: boolean
 }
 
 /** Per-sample series the chart lines and the hover readout are drawn from. */
@@ -682,7 +686,7 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
 function VirtualRadar({
   waypoints, legOverrides, units = DEFAULT_UNITS, title, onHoverDistNm, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, crosshairDistNm,
-  crossTrackNm, weatherStations, airspaceCeilingFt, onLegLevelChange, followAircraft,
+  crossTrackNm, weatherStations, airspaceCeilingFt, onLegLevelChange, followAircraft, corridorBand = true,
 }: Props) {
   const [legDrag, setLegDrag] = useState<LegDragState | null>(null)
   const dragging = legDrag !== null
@@ -862,9 +866,18 @@ function VirtualRadar({
     () => terrainForMsa(waypoints, terrainPts, mefGrids, msaMargins, terrainFailed),
     [waypoints, terrainPts, mefGrids, msaMargins, terrainFailed],
   )
+  const msaObstacles = useMemo(
+    () => profile ? obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(msaTerrain.pts, d)) : undefined,
+    [profile, msaTerrain],
+  )
   const msaPts = useMemo<MsaPoint[]>(
-    () => computeMsaProfile(msaTerrain.pts, msaMargins, profile ? obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(msaTerrain.pts, d)) : undefined, msaTerrain.corridorFt),
-    [msaTerrain, msaMargins, profile],
+    () => computeMsaProfile(msaTerrain.pts, msaMargins, msaObstacles, msaTerrain.corridorFt),
+    [msaTerrain, msaMargins, msaObstacles],
+  )
+  // Per-leg MSA floor: the whole leg corridor incl. the circles around its ends.
+  const legMsaFloors = useMemo(
+    () => legCorridorMsaFt(waypoints, mefGrids, msaMargins, msaObstacles),
+    [waypoints, mefGrids, msaMargins, msaObstacles],
   )
   const getMsa = useMemo(() => getMsaLookup(msaPts), [msaPts])
 
@@ -981,7 +994,7 @@ function VirtualRadar({
 
   // Leg spans and each leg's MSA, for the drag layer's targets and warnings.
   const legSpanList = useMemo(() => (profile ? legSpans(profile.altitudeProfile) : []), [profile])
-  const legMsaFt = useMemo(() => legMsaList(legSpanList, msaPts, getMsa), [legSpanList, msaPts, getMsa])
+  const legMsaFt = useMemo(() => legMsaList(legSpanList, msaPts, getMsa, legMsaFloors), [legSpanList, msaPts, getMsa, legMsaFloors])
   // Requested levels the drawn path never reaches (a short leg cannot climb that far): shown as a dashed marker instead of silently ignored.
   const phaseMarks = useMemo(
     () => (series ? verticalPhaseMarks(series.distNms.map((d, i) => ({ distNm: d, altFt: series.plannedAlts[i] }))) : []),
@@ -1396,8 +1409,8 @@ function VirtualRadar({
             the ground line must paint after them or it gets washed out. */}
         {series.ground && (
           <>
-            {corridorPts.length > 0 && (
-              <path d={groundAreaPath(corridorPts, L.xOf, L.yOf, L.totalNm)} fill={CORRIDOR_FILL} stroke={CORRIDOR_OUTLINE} strokeWidth={1.25} />
+            {corridorBand && corridorPts.length > 0 && (
+              <path d={groundAreaPath(corridorPts, L.xOf, L.yOf, L.totalNm)} fill={CORRIDOR_FILL} stroke={CORRIDOR_OUTLINE} strokeWidth={CORRIDOR_OUTLINE_WIDTH} />
             )}
             <path d={groundAreaPath(terrainPts, L.xOf, L.yOf, L.totalNm)} fill="url(#terrainGrad)" />
             <path d={groundOutline} fill="none" stroke={GROUND_OUTLINE} strokeWidth={1.5} />
