@@ -23,7 +23,7 @@ function GpsAltitudeReferenceRow() {
     </div>
   )
 }
-import { useMsaMargins } from '../db/useSettings'
+import { useMsaMargins, useAlertBanners, type AlertBanners } from '../db/useSettings'
 import { DEFAULT_MSA_MARGINS, MSA_ABEAM_RANGE_NM, MSA_CLEARANCE_RANGE_FT } from '@open-vfr/shared/msaMargins'
 import { repairAppFiles } from '../utils/repairApp'
 import css from './SettingsPanel.module.css'
@@ -67,6 +67,32 @@ const THEMES: { value: Theme; label: string }[] = [
   { value: 'light',         label: 'Light'  },
   { value: 'high-contrast', label: 'Hi-Con' },
 ]
+
+/** On/off for the optional in-flight banners (obstacles, aerodrome nearby, airspace entered/left). */
+function AlertBannerSettings() {
+  const [b, setB] = useAlertBanners()
+  const row = (label: string, key: keyof AlertBanners) => (
+    <div className={css.section}>
+      <span className={css.label}>{label}</span>
+      <div className={css.optionsRow}>
+        {([false, true] as const).map(v => (
+          <button
+            key={String(v)}
+            className={`${css.opt}${b[key] === v ? ` ${css.optActive}` : ''}`}
+            onClick={() => setB({ [key]: v })}
+          >{v ? 'On' : 'Off'}</button>
+        ))}
+      </div>
+    </div>
+  )
+  return (
+    <>
+      {row('Obstacles ahead banner', 'obstacles')}
+      {row('Aerodrome nearby banner', 'aerodromes')}
+      {row('Airspace entered / left', 'airspaceEvents')}
+    </>
+  )
+}
 
 /** Terrain/obstacle margins for the MSA line, below-MSA warnings and auto cruise level. */
 function MsaMarginsSettings() {
@@ -181,6 +207,8 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
       </div>
 
       <MsaMarginsSettings />
+
+      <AlertBannerSettings />
 
       <div className={`${css.section} ${css.sectionColumn}`}>
         <span className={css.label}>

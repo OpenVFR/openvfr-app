@@ -678,3 +678,54 @@ export function useMsaMargins(): [MsaMargins, (v: Partial<MsaMargins>) => void] 
   )
   return [val, setMsaMargins]
 }
+
+// ---------------------------------------------------------------------------
+// useAlertBanners — which optional in-flight banners are shown (obstacles
+// ahead, aerodrome nearby, airspace entered/left). One shared store so the
+// Settings toggles update the alert stack at once. Persisted to RxDB as JSON;
+// everything defaults to on.
+// ---------------------------------------------------------------------------
+export type AlertBanners = { obstacles: boolean; aerodromes: boolean; airspaceEvents: boolean }
+const DEFAULT_ALERT_BANNERS: AlertBanners = { obstacles: true, aerodromes: true, airspaceEvents: true }
+const ALERT_BANNERS_KEY = 'alert_banners'
+let alertBanners: AlertBanners = DEFAULT_ALERT_BANNERS
+let alertBannersLoaded = false
+const alertBannersListeners = new Set<() => void>()
+
+function setAlertBannersStore(next: AlertBanners) {
+  alertBanners = next
+  alertBannersListeners.forEach((l) => l())
+}
+
+function loadAlertBanners() {
+  if (alertBannersLoaded) return
+  alertBannersLoaded = true
+  getDb().then(async (db) => {
+    const doc = await db.settings.findOne(ALERT_BANNERS_KEY).exec()
+    if (!doc) return
+    try {
+      const raw = JSON.parse(doc.value) as Partial<AlertBanners>
+      setAlertBannersStore({
+        obstacles:      raw.obstacles !== false,
+        aerodromes:     raw.aerodromes !== false,
+        airspaceEvents: raw.airspaceEvents !== false,
+      })
+    } catch { /* keep defaults */ }
+  }).catch(() => { alertBannersLoaded = false })
+}
+
+export function setAlertBanners(v: Partial<AlertBanners>) {
+  const next = { ...alertBanners, ...v }
+  setAlertBannersStore(next)
+  getDb().then(async (db) => {
+    await db.settings.upsert({ id: ALERT_BANNERS_KEY, value: JSON.stringify(next) })
+  }).catch(() => {})
+}
+
+export function useAlertBanners(): [AlertBanners, (v: Partial<AlertBanners>) => void] {
+  const val = useSyncExternalStore(
+    (cb) => { loadAlertBanners(); alertBannersListeners.add(cb); return () => { alertBannersListeners.delete(cb) } },
+    () => alertBanners,
+  )
+  return [val, setAlertBanners]
+}

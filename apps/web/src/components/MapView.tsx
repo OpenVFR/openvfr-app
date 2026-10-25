@@ -100,7 +100,7 @@ import type { RouteWaypoint } from '../utils/routeCalc'
 import { magneticBearingDeg, bearingDeg, advancePosition } from '../utils/routeCalc'
 import { legLabelVariants } from '@open-vfr/shared/legLabels'
 import { usePersistedRoute } from '../db/useRouteDb'
-import { useHomeAirfield, useUnits, useAlternate, useTheme, useAutoZoom, useTrajectoryMode, useAirspaceWarnLookahead, useAirspaceWarnVerticalFt, useTerrainColoring, useTrafficVertFilter, useLayerVisibility, useAirspaceCeiling, useSelectedAircraftId, useParkTimeout, useAutoFlyMode, useRecordSimulatedFlights } from '../db/useSettings'
+import { useHomeAirfield, useUnits, useAlternate, useTheme, useAutoZoom, useTrajectoryMode, useAirspaceWarnLookahead, useAirspaceWarnVerticalFt, useTerrainColoring, useTrafficVertFilter, useLayerVisibility, useAirspaceCeiling, useSelectedAircraftId, useParkTimeout, useAutoFlyMode, useRecordSimulatedFlights, useAlertBanners } from '../db/useSettings'
 import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import { useUserWaypoints } from '../db/useUserWaypoints'
 import { nextPlaceName } from '../utils/places'
@@ -367,6 +367,8 @@ const SNAP_LAYERS = [
 // header, not a map button — see routeVisible below). Waypoint data is
 // untouched — only display is affected.
 const noop = () => {}
+// Stable empty list for alert categories the pilot turned off.
+const NO_ALERTS: never[] = []
 
 /** The three leg-label variant layers (see the addLayer loop in map init). */
 const LEG_LABEL_LAYERS: readonly string[] = ['route-leg-labels-short', 'route-leg-labels-mid', 'route-leg-labels-full']
@@ -637,6 +639,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   useEffect(() => { trajectoryModeRef.current = trajectoryMode }, [trajectoryMode])
   const [airspaceWarnLookahead, setAirspaceWarnLookahead] = useAirspaceWarnLookahead()
   const [airspaceWarnVerticalFt, setAirspaceWarnVerticalFt] = useAirspaceWarnVerticalFt()
+  const [alertBanners] = useAlertBanners()
   const [terrainColoring, setTerrainColoring] = useTerrainColoring()
   const [trafficVertFilter, setTrafficVertFilter] = useTrafficVertFilter()
   const [parkTimeout, setParkTimeout] = useParkTimeout()
@@ -4736,14 +4739,14 @@ export default function MapView({ auth }: { auth: AuthState }) {
         <NotificationCenter
           airspaceAlerts={airspaceAlerts}
           onDismissAirspace={dismissAlert}
-          obstructionAlerts={obstructionAlerts}
+          obstructionAlerts={alertBanners.obstacles ? obstructionAlerts : NO_ALERTS}
           onDismissObstruction={dismissObstruction}
-          airfieldAlerts={airfieldAlerts}
+          airfieldAlerts={alertBanners.aerodromes ? airfieldAlerts : NO_ALERTS}
           onDismissAirfield={dismissAirfield}
-          airspaceNotifications={airspaceNotifications}
+          airspaceNotifications={alertBanners.airspaceEvents ? airspaceNotifications : NO_ALERTS}
           notamAlerts={notamAlerts}
           onDismissNotam={dismissNotam}
-          notamNotifications={notamNotifications}
+          notamNotifications={alertBanners.airspaceEvents ? notamNotifications : NO_ALERTS}
           ceilingMsg={ceilingEscalatedMsg}
           reminderNote={reminderNote}
           onDismissReminder={() => setReminderNote(null)}

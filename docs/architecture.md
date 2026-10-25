@@ -479,7 +479,7 @@ One stack at the top of the map (`NotificationCenter`, web and native) carries e
 - **Layout** (`alertStack.ts`): red alerts always get a full card; yellow alerts and notes share two card slots in total. Entered/left events, blue advisories (aerodrome nearby, ceiling filter) and anything that does not fit are one-line chips, with "+N more" beyond four.
 - **Debounce** (`alertStability.ts`): a condition must hold 2 s before its card shows, and a shown card stays at least 5 s (2 s after the condition ends). Red alerts, events and notes show at once.
 - **Dismissal** (`alertDismiss.ts`): a dismissed alert stays muted while its hazard is still detected, and can alert again after the hazard has been absent for 60 s.
-- **Native settings → Alert banners** turns off obstacle, aerodrome-nearby and airspace entered/left banners.
+- **Settings → Alert banners** (web and native) turn off obstacle, aerodrome-nearby and airspace entered/left banners.
 
 ### Auto Flying Mode
 
