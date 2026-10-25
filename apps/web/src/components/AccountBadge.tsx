@@ -14,17 +14,11 @@ interface Props {
 }
 
 export default function AccountBadge({ auth, onOpenProfile }: Props) {
-  if (!auth.user) return null
-
+  // Hooks first, unconditionally: this badge renders signed out (nothing) and
+  // signed in, and an early return above them changed the hook list at sign-in
+  // (React: "Internal React error: Expected static flag was missing").
   const [open,   setOpen]   = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
-
-  const nameParts = auth.user.name.trim().split(/\s+/).filter(Boolean)
-  const initials = nameParts.length >= 2
-    ? (nameParts[0][0]! + nameParts[nameParts.length - 1][0]!).toUpperCase()
-    : nameParts.length === 1
-      ? nameParts[0][0]!.toUpperCase()
-      : (auth.user.email[0] ?? '?').toUpperCase()
 
   // Close flyout when clicking outside.
   useEffect(() => {
@@ -37,6 +31,15 @@ export default function AccountBadge({ auth, onOpenProfile }: Props) {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
+
+  if (!auth.user) return null
+
+  const nameParts = auth.user.name.trim().split(/\s+/).filter(Boolean)
+  const initials = nameParts.length >= 2
+    ? (nameParts[0][0]! + nameParts[nameParts.length - 1][0]!).toUpperCase()
+    : nameParts.length === 1
+      ? nameParts[0][0]!.toUpperCase()
+      : (auth.user.email[0] ?? '?').toUpperCase()
 
   return (
     <div ref={wrapperRef} className={styles.wrapper}>
