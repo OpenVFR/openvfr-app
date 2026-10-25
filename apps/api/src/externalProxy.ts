@@ -444,12 +444,63 @@ async function handlePerLocation(
 }
 
 /**
+ * A source this server answers from itself (elevation: its own terrain
+ * archives, demElevation.ts). Used whenever upstream can't serve the request
+ * right away: caller over its upstream quota, upstream paused / over budget /
+ * queued for longer than LOCAL_PREFER_QUEUE_MS, or upstream failing. Answers
+ * cost no upstream budget; their own generous per-caller caps only stop abuse.
+ */
+export interface LocalSource {
+  /** Response body, or null when it can't answer this query (no coverage, read error). */
+  answer: (endpoint: string, q: URLSearchParams) => Promise<string | null>
+  perUser: { hourly: number; daily: number }
+  anonymous: { hourly: number; daily: number }
+}
+
+/** Longest upstream queue wait accepted before answering locally instead. */
+const LOCAL_PREFER_QUEUE_MS = 2_000
+
+function localCapKey(caller: Caller): string {
+  return caller.kind === 'user' ? `local:${caller.id}` : `local:anon:${caller.ip}`
+}
+
+/** True when the caller still has room under its local cap (read only, charges nothing). */
+function localCapOpen(s: ProxyState, local: LocalSource, caller: Caller, t: number): boolean {
+  const limits = caller.kind === 'user' ? local.perUser : local.anonymous
+  const ts = (s.userMisses.get(localCapKey(caller)) ?? []).filter((x) => t - x < DAY_MS)
+  return ts.filter((x) => t - x < HOUR_MS).length < limits.hourly && ts.length < limits.daily
+}
+
+/**
+ * One request's access to the local source: the cap is checked BEFORE any
+ * read (an over-cap caller costs no DEM work), the read runs at most once per
+ * request whichever branch asks, and the cap is charged only for an answer
+ * actually served -- not on the upstream-failed path, where the caller was
+ * already charged for the upstream attempt.
+ */
+function localAnswerer(spec: ProxySpec, s: ProxyState, local: LocalSource, caller: Caller, endpoint: string, q: URLSearchParams) {
+  let body: Promise<string | null> | null = null
+  return async (t: number, charge = true): Promise<Response | null> => {
+    if (!body) {
+      if (!localCapOpen(s, local, caller, t)) return null
+      body = local.answer(endpoint, q).catch(() => null)
+    }
+    const b = await body
+    if (!b) return null
+    if (charge) takeUserMiss(s, spec, localCapKey(caller), t, caller.kind === 'user' ? local.perUser : local.anonymous)
+    // Terrain does not change; a day is enough for repeat views and the web service worker.
+    return json(b, 200, { 'Cache-Control': 'private, max-age=86400', 'X-Cache': 'LOCAL' })
+  }
+}
+
+/**
  * Handle one proxied request. `path` is the request path, `search` its raw
  * query string. A bare string caller is a user id (tests, convenience).
  */
 export async function handleProxy(
   spec: ProxySpec, s: ProxyState, callerOrUserId: Caller | string, path: string, search: string,
   now: () => number = Date.now,
+  local?: LocalSource | null,
 ): Promise<Response> {
   const caller: Caller = typeof callerOrUserId === 'string' ? { kind: 'user', id: callerOrUserId } : callerOrUserId
   const endpoint = path.slice(spec.prefix.length)
@@ -470,14 +521,31 @@ export async function handleProxy(
   if (hit && isFresh(hit, spec, t)) return json(hit.body, 200, { 'Cache-Control': cacheControl, 'X-Cache': 'HIT' })
   const stale = hit && isUsableStale(hit, spec, t) ? hit : undefined
 
+  const staleRes = () => stale && json(stale.body, 200, { 'Cache-Control': 'no-store', 'X-Cache': 'STALE' })
+  const fromLocal = local ? localAnswerer(spec, s, local, caller, endpoint, q) : null
+  // Order whenever upstream can't answer: stale upstream answer (the finer
+  // data; terrain does not change), then the local source, then an error.
   let pending = s.inflight.get(key)
+  let chargedUpstream = false
   if (!pending) {
     const weight = spec.weight(endpoint, q)
+    if (fromLocal) {
+      const upstreamWait = upstreamWaitS(s, spec, t, weight)
+      if (upstreamWait > 0 || s.nextSlotAt - t > LOCAL_PREFER_QUEUE_MS) {
+        const r = staleRes() || await fromLocal(t)
+        if (r) return r
+        // Paused / over budget: asking would not reach upstream either, so
+        // don't charge the caller or take a queue slot for it.
+        if (upstreamWait > 0) return unavailable(spec, upstreamWait, 'upstream busy')
+      }
+    }
     const userWait = chargeCaller(s, spec, caller, t, weight)
     if (userWait > 0) {
-      if (stale) return json(stale.body, 200, { 'Cache-Control': 'no-store', 'X-Cache': 'STALE' })
+      const r = staleRes() || (fromLocal && await fromLocal(t))
+      if (r) return r
       return limitReached(spec, caller, userWait)
     }
+    chargedUpstream = true
     const url = `${spec.upstreamBase}${endpoint}?${key.slice(endpoint.length + 1)}`
     pending = callUpstream(s, spec, url, weight, now).then((r) => {
       if (r.kind === 'ok') putCache(s, spec, key, r.body, now())
@@ -488,7 +556,8 @@ export async function handleProxy(
   const r = await pending
   if (r.kind === 'ok') return json(r.body, 200, { 'Cache-Control': cacheControl, 'X-Cache': 'MISS' })
   if (r.kind === 'client-error') return json(r.body || JSON.stringify({ error: true, reason: 'Upstream rejected the request' }), r.status)
-  if (stale) return json(stale.body, 200, { 'Cache-Control': 'no-store', 'X-Cache': 'STALE' })
+  const fallback = staleRes() || (fromLocal && await fromLocal(now(), !chargedUpstream))
+  if (fallback) return fallback
   return unavailable(spec, r.retryAfterS, 'upstream busy')
 }
 
@@ -509,6 +578,8 @@ export function mountExternalProxies(
   app: { get: (path: string, h: (c: Context) => Promise<Response> | Response) => unknown },
   requireSession: (c: Context) => Promise<{ id: string } | null>,
   anonymousMode: 'limited' | 'off' = anonymousModeFromEnv(process.env['EXTERNAL_PROXY_ANONYMOUS']),
+  /** Answers this server can give itself, by spec name (elevation: own terrain archives). */
+  locals: Partial<Record<string, LocalSource | null>> = {},
 ): void {
   console.log(`[external-proxy] requests without a session: ${anonymousMode}`)
   for (const spec of [OPEN_METEO, ELEVATION]) {
@@ -521,7 +592,7 @@ export function mountExternalProxies(
       const url = new URL(c.req.url)
       let res: Response
       if (user) {
-        res = await handleProxy(spec, state, { kind: 'user', id: user.id }, url.pathname, url.search)
+        res = await handleProxy(spec, state, { kind: 'user', id: user.id }, url.pathname, url.search, Date.now, locals[spec.name])
         stats.users.add(user.id)
       } else if (anonymousMode === 'off') {
         return c.json({ error: 'Authentication required.' }, 401)
@@ -529,7 +600,7 @@ export function mountExternalProxies(
         // Same trusted client-IP headers as better-auth (auth.ts): set by
         // Cloudflare / the reverse proxy, never X-Forwarded-For.
         const ip = c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || 'unknown'
-        res = await handleProxy(spec, state, { kind: 'anonymous', ip }, url.pathname, url.search)
+        res = await handleProxy(spec, state, { kind: 'anonymous', ip }, url.pathname, url.search, Date.now, locals[spec.name])
         stats.anonymousIps.add(ip)
       }
       countResponse(stats, res)

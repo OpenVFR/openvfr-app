@@ -40,6 +40,7 @@ import { createHmac } from 'node:crypto'
 import { auth, isReviewAccountEmail } from './auth'
 import { admin } from './admin'
 import { mountExternalProxies } from './externalProxy'
+import { createDemElevation, parseDemSources } from './demElevation'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -575,7 +576,24 @@ app.get('/api/traffic/stream', async (c) => {
 // coordinate counts. Errors: upstream detail logged, client gets a generic
 // reason (+ Retry-After). See ./externalProxy.ts.
 // ---------------------------------------------------------------------------
-mountExternalProxies(app, requireSession)
+// Terrain also comes from this deployment's own terrain archives whenever
+// OpenTopoData can't answer at once (see ./demElevation.ts):
+// ELEVATION_DEM_SOURCES unset = <TILES_BASE_URL>/<cc>-hillshade.pmtiles for
+// the available countries, `off`, or a list of archive URLs / file paths.
+const demElevation = createDemElevation({
+  sources: parseDemSources(process.env['ELEVATION_DEM_SOURCES']),
+  tilesBaseUrl: (process.env['TILES_BASE_URL'] ?? '').trim().replace(/\/+$/, ''),
+  countries: async () => (await getAvailableCountries())?.map((c) => c.code) ?? null,
+})
+mountExternalProxies(app, requireSession, undefined, {
+  elevation: demElevation && {
+    answer: (_endpoint, q) => demElevation(q.get('locations') ?? ''),
+    // Local answers cost no third-party budget; caps only stop abuse
+    // (live ground elevation + look-ahead profile in flight are ~10 requests/min).
+    perUser: { hourly: 3000, daily: 20000 },
+    anonymous: { hourly: 200, daily: 1000 },
+  },
+})
 
 // ---------------------------------------------------------------------------
 // Weather — GET /api/weather?icao=ESSA

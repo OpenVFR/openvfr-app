@@ -27,11 +27,13 @@
  * Terrarium: elevation_m = R * 256 + G + B / 256 - 32768.
  */
 
-import { PMTiles, type Source, type RangeResponse } from 'pmtiles'
+import { PMTiles, EtagMismatch, type Source, type RangeResponse } from 'pmtiles'
 import { unzlibSync } from 'fflate'
 
 export type RangeSource = Source
 export type { RangeResponse }
+/** Thrown by a RangeSource when the archive changed under it (pmtiles re-reads the header once). */
+export { EtagMismatch }
 
 export const TILE_CACHE_SIZE = 6
 const TILE_PX = 256
@@ -72,7 +74,7 @@ export function decodeTerrariumPng(png: Uint8Array): Int16Array | null {
   let pos = 8
   while (pos + 8 <= png.length) {
     const len = dv.getUint32(pos)
-    const type = String.fromCharCode(png[pos + 4], png[pos + 5], png[pos + 6], png[pos + 7])
+    const type = String.fromCharCode(png[pos + 4]!, png[pos + 5]!, png[pos + 6]!, png[pos + 7]!)
     const start = pos + 8
     if (type === 'IDAT') { idat.push(png.subarray(start, start + len)); total += len }
     if (type === 'IEND') break
@@ -80,7 +82,7 @@ export function decodeTerrariumPng(png: Uint8Array): Int16Array | null {
   }
   if (total === 0) return null
   let zdata: Uint8Array
-  if (idat.length === 1) zdata = idat[0]
+  if (idat.length === 1) zdata = idat[0]!
   else {
     zdata = new Uint8Array(total)
     let o = 0
@@ -100,10 +102,10 @@ export function decodeTerrariumPng(png: Uint8Array): Int16Array | null {
   for (let y = 0; y < height; y++) {
     const filter = raw[rp++]
     for (let x = 0; x < stride; x++) {
-      const v = raw[rp++]
-      const a = x >= channels ? cur[x - channels] : 0
-      const b = prev[x]
-      const c = x >= channels ? prev[x - channels] : 0
+      const v = raw[rp++]!
+      const a = x >= channels ? cur[x - channels]! : 0
+      const b = prev[x]!
+      const c = x >= channels ? prev[x - channels]! : 0
       let r: number
       switch (filter) {
         case 0: r = v; break
@@ -117,7 +119,7 @@ export function decodeTerrariumPng(png: Uint8Array): Int16Array | null {
     }
     const rowOff = y * width
     for (let x = 0, px = 0; x < width; x++, px += channels) {
-      const m = cur[px] * 256 + cur[px + 1] + cur[px + 2] / 256 - 32768
+      const m = cur[px]! * 256 + cur[px + 1]! + cur[px + 2]! / 256 - 32768
       out[rowOff + x] = Math.max(-32768, Math.min(32767, Math.round(m)))
     }
     const t = prev; prev = cur; cur = t
@@ -144,18 +146,46 @@ export function latLngToTilePixel(lat: number, lng: number, z: number): { x: num
 // ── DEM reader ──────────────────────────────────────────────────────────────
 
 export class PmtilesDem implements ElevationLookup {
-  private readonly pm: PMTiles
+  private pm: PMTiles
+  private readonly source: RangeSource
   private header: Promise<{ minLon: number; minLat: number; maxLon: number; maxLat: number; maxZoom: number; tileType: number }> | null = null
   private readonly cache = new Map<string, Int16Array | null>()
   private readonly pending = new Map<string, Promise<Int16Array | null>>()
+  private readonly cacheSize: number
 
-  constructor(source: RangeSource) {
+  /** `cacheSize`: decoded tiles kept (128 KB each). Apps keep the small default;
+   *  the API server, answering many users, passes a larger one. */
+  constructor(source: RangeSource, opts?: { cacheSize?: number }) {
+    this.source = source
     this.pm = new PMTiles(source)
+    this.cacheSize = Math.max(1, opts?.cacheSize ?? TILE_CACHE_SIZE)
+  }
+
+  /** True when the point lies inside the archive's bounds (a PNG raster-dem archive). */
+  async covers(lat: number, lng: number): Promise<boolean> {
+    const h = await this.getHeader()
+    return h.tileType === 2 && lng >= h.minLon && lng <= h.maxLon && lat >= h.minLat && lat <= h.maxLat
   }
 
   private getHeader() {
-    if (!this.header) this.header = this.pm.getHeader()
+    if (!this.header) {
+      const h = this.pm.getHeader()
+      this.header = h
+      // A failed read (network blip, file not there yet) is not remembered:
+      // the next lookup tries again instead of the DEM staying dead. pmtiles
+      // keeps the rejected header in its own cache, so start a fresh instance.
+      h.catch(() => {
+        if (this.header !== h) return
+        this.header = null
+        this.pm = new PMTiles(this.source)
+      })
+    }
     return this.header
+  }
+
+  /** Resolves once the archive header could be read; rejects when it can't. */
+  async ready(): Promise<void> {
+    await this.getHeader()
   }
 
   private async tile(z: number, x: number, y: number): Promise<Int16Array | null> {
@@ -173,7 +203,7 @@ export class PmtilesDem implements ElevationLookup {
         const res = await this.pm.getZxy(z, x, y)
         const dem = res ? decodeTerrariumPng(new Uint8Array(res.data)) : null
         this.cache.set(key, dem)
-        while (this.cache.size > TILE_CACHE_SIZE) {
+        while (this.cache.size > this.cacheSize) {
           const oldest = this.cache.keys().next().value
           if (oldest === undefined) break
           this.cache.delete(oldest)
@@ -195,7 +225,7 @@ export class PmtilesDem implements ElevationLookup {
     const { x, y, px, py } = latLngToTilePixel(lat, lng, h.maxZoom)
     const dem = await this.tile(h.maxZoom, x, y)
     if (!dem) return null
-    return dem[py * TILE_PX + px]
+    return dem[py * TILE_PX + px] ?? null
   }
 
   async elevationFt(lat: number, lng: number): Promise<number | null> {

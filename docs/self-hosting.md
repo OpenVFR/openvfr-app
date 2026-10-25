@@ -307,6 +307,23 @@ removes it. An already-issued PostgREST JWT stays valid until its 1 h expiry.
   server env): `limited` (default) still serves requests without a session,
   with tight per-IP caps and a capped share of the upstream budget, for app
   builds that predate the session requirement; `off` answers them 401.
+- Terrain does not depend on OpenTopoData's small free budget alone: whenever
+  it can't answer at once (the caller's hourly/daily cap used up, the
+  server-wide budget used up or paused after a 429/503, a queue longer than
+  2 s, or an error) and no cached answer exists, the API answers
+  `/api/elevation/` from your own `<cc>-hillshade.pmtiles` (Copernicus
+  GLO-30, ~75-150 m per pixel at the archive's max zoom, coarser than
+  OpenTopoData's 25 m but fine for the profile, MSA and AGL limits). Those
+  answers cost no upstream budget (`X-Cache: LOCAL`; own per-user cap of
+  3 000/h, 20 000/day). `ELEVATION_DEM_SOURCES` (API server env): unset =
+  `<TILES_BASE_URL>/<cc>-hillshade.pmtiles` for every available country
+  (nothing when `TILES_BASE_URL` is unset); `off`; or a comma-separated list
+  of archive URLs and/or absolute file paths (e.g. a volume with the archives
+  mounted into the API container, which avoids HTTP entirely). Over HTTP the
+  API only accepts `206` answers no larger than the range it asked for, so
+  the Range requirement on the tile host above applies here too. The set is
+  re-read every hour (every 2 minutes after the registry or an archive
+  could not be read), so new countries and rebuilt archives are picked up.
   Open-Meteo's free tier is for
   non-commercial use only (open-meteo.com/en/terms); a commercial
   deployment needs an Open-Meteo API subscription.

@@ -111,3 +111,18 @@ describe.skipIf(!haveArchive)('PmtilesDem against se-hillshade.pmtiles', () => {
     expect(maxRead).toBeLessThan(512 * 1024)
   })
 })
+
+describe('PmtilesDem header errors', () => {
+  it('a failed header read is retried on the next lookup', async () => {
+    let calls = 0
+    const source: RangeSource = {
+      getKey: () => 'flaky',
+      async getBytes() { calls++; throw new Error('network down') },
+    }
+    const dem = new PmtilesDem(source)
+    await expect(dem.ready()).rejects.toThrow('network down')
+    await new Promise((r) => setTimeout(r, 0))
+    await expect(dem.elevationFt(60, 15)).rejects.toThrow('network down')
+    expect(calls).toBe(2)
+  })
+})
