@@ -24,6 +24,8 @@
     "./alertDismiss": "./src/alertDismiss.ts",
     "./climbRate": "./src/climbRate.ts",
     "./plannedCourse": "./src/plannedCourse.ts",
+    "./airspaceAlertLevel": "./src/airspaceAlertLevel.ts",
+    "./airspaceAlertSummary": "./src/airspaceAlertSummary.ts",
     "./alertLog": "./src/alertLog.ts",
     "./alertStack": "./src/alertStack.ts",
     "./alertStability": "./src/alertStability.ts",

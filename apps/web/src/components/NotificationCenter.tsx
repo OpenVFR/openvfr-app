@@ -16,6 +16,7 @@
 import { useEffect, useState } from 'react'
 import { summarizeObstructionAlerts, obstructionSummaryText, obstructionDistLabel } from '@open-vfr/shared/obstructionPoints'
 import { layoutAlertStack, type AlertTier } from '@open-vfr/shared/alertStack'
+import { summarizeAirspaceAlerts } from '@open-vfr/shared/airspaceAlertSummary'
 import type { StableTiming } from '@open-vfr/shared/alertStability'
 import { useStableItems } from '../hooks/useStableItems'
 import { useAlertLog } from '../hooks/useAlertLog'
@@ -151,7 +152,27 @@ export function NotificationCenter({
     return true
   })
 
+  // Several yellow airspaces at once (stacked sectors, a CTR inside a TMA) are one
+  // situation: one card listing them. Red hazards always keep their own card.
+  const yellowAlerts = shownAlerts.filter(a => a.severity === 'yellow')
+  const airspaceSummary = yellowAlerts.length >= 2 ? summarizeAirspaceAlerts(yellowAlerts) : null
+  if (airspaceSummary) {
+    items.push({
+      key: 'airspaces',
+      severity: 'yellow',
+      badge: `${'▲'} ${airspaceSummary.count} AIRSPACES`,
+      status: airspaceSummary.anyInside ? '▲ INSIDE' : '⚠ AHEAD',
+      title: airspaceSummary.title,
+      text: yellowAlerts.map(a => `${a.name}  ${a.lower} \u2013 ${a.upper}  ${airspaceStatus(a)}`).join('\n'),
+      chipTitle: airspaceSummary.title,
+      short: `${airspaceSummary.count}`,
+      dismissible: true,
+      onDismiss: () => airspaceSummary.keys.forEach(onDismissAirspace),
+    })
+  }
+
   for (const a of shownAlerts) {
+    if (airspaceSummary && a.severity === 'yellow') continue
     items.push({
       key: `as-${a.key}`,
       severity: a.severity,
@@ -221,7 +242,23 @@ export function NotificationCenter({
   // NOTAM circles are always treated as 'red' severity -- restricted/danger
   // areas by nature, and we don't currently have a vertical band to soften
   // that (see useNotamWarnings.ts's simplification note).
-  for (const a of notamAlerts) {
+  // Several NOTAM circles at once are one card too.
+  const mergeNotams = notamAlerts.length >= 2
+  if (mergeNotams) {
+    items.push({
+      key: 'notams',
+      severity: 'red',
+      badge: `NOTAM ×${notamAlerts.length}`,
+      status: notamAlerts.some(n => n.inside) ? '▲ INSIDE' : '⚠ AHEAD',
+      title: notamAlerts.map(n => n.notamId).join(' · '),
+      text: notamAlerts.map(n => `${n.notamId}: ${n.text.slice(0, 70)}${n.text.length > 70 ? '…' : ''}`).join('\n'),
+      chipTitle: notamAlerts.map(n => n.notamId).join(' · '),
+      short: `${notamAlerts.length}`,
+      dismissible: !!onDismissNotam,
+      onDismiss: onDismissNotam ? () => notamAlerts.forEach(n => onDismissNotam(n.key)) : undefined,
+    })
+  }
+  for (const a of mergeNotams ? [] : notamAlerts) {
     items.push({
       key: `nm-${a.key}`,
       severity: 'red',

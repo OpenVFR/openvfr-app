@@ -88,6 +88,7 @@ function aerodromePropsFromFeature(p: Record<string, unknown>, coords: [number, 
 }
 import { settings as settingsDb } from '../db'
 import { usePositionAlerts } from '../hooks/usePositionAlerts'
+import { resolveAirspaceLevels } from '@open-vfr/shared/airspaceAlertLevel'
 import { useSimContext }     from '../context/SimContext'
 import { useNearbyFrequencies } from '../hooks/useNearbyFrequencies'
 import { useLivePlog } from '../hooks/useLivePlog'
@@ -565,12 +566,13 @@ function MapScreenForCountry() {
   // Combined into one hook/effect/setState pass -- see usePositionAlerts.ts
   // doc comment for why (React "Maximum update depth exceeded" under two
   // simultaneous Class C transitions, 2026-09-20).
+  const airspaceLevels = React.useMemo(() => resolveAirspaceLevels(settings.alertAirspaceLevels), [settings.alertAirspaceLevels])
   const {
     airspaceAlerts, dismissAirspace,
     obstructionAlerts, dismissObstruction,
     airfieldAlerts, dismissAirfield,
     airspaceNotifications,
-  } = usePositionAlerts(positionForAlerts, waypoints, settings.airspaceWarnLookaheadMin, settings.airspaceWarnVerticalFt, settings.alertSuppressOnCourse, settings.alertClassEF)
+  } = usePositionAlerts(positionForAlerts, waypoints, settings.airspaceWarnLookaheadMin, settings.airspaceWarnVerticalFt, settings.alertSuppressOnCourse, airspaceLevels)
 
   // Active route-leg index (mirrors web MapView.tsx's activeWpIdx). Auto-
   // advances when within 0.3 NM of the current destination waypoint.

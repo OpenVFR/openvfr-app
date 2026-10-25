@@ -25,6 +25,7 @@
 import React, { useEffect, useState } from 'react'
 import { summarizeObstructionAlerts, obstructionSummaryText, obstructionDistLabel } from '@open-vfr/shared/obstructionPoints'
 import { layoutAlertStack, type AlertTier } from '@open-vfr/shared/alertStack'
+import { summarizeAirspaceAlerts } from '@open-vfr/shared/airspaceAlertSummary'
 import type { StableTiming } from '@open-vfr/shared/alertStability'
 import { useStableItems } from '../hooks/useStableItems'
 import { useAlertLog } from '../hooks/useAlertLog'
@@ -188,7 +189,27 @@ export function NotificationCenter({
     return true
   })
 
+  // Several yellow airspaces at once (stacked sectors, a CTR inside a TMA) are one
+  // situation: one card listing them. Red hazards always keep their own card.
+  const yellowAlerts = shownAlerts.filter(a => a.severity === 'yellow')
+  const airspaceSummary = yellowAlerts.length >= 2 ? summarizeAirspaceAlerts(yellowAlerts) : null
+  if (airspaceSummary) {
+    items.push({
+      key: 'airspaces',
+      severity: 'yellow',
+      badge: `${'\u25b2'} ${airspaceSummary.count} AIRSPACES`,
+      status: airspaceSummary.anyInside ? '\u25b2 INSIDE' : '\u26a0 AHEAD',
+      title: airspaceSummary.title,
+      text: yellowAlerts.map(a => `${a.name}  ${a.lower} \u2013 ${a.upper}  ${airspaceStatus(a)}`).join('\n'),
+      chipTitle: airspaceSummary.title,
+      short: `${airspaceSummary.count}`,
+      dismissible: true,
+      onDismiss: () => airspaceSummary.keys.forEach(onDismissAirspace),
+    })
+  }
+
   for (const a of shownAlerts) {
+    if (airspaceSummary && a.severity === 'yellow') continue
     items.push({
       key: `as-${a.key}`,
       severity: a.severity,

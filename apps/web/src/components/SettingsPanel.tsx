@@ -23,7 +23,8 @@ function GpsAltitudeReferenceRow() {
     </div>
   )
 }
-import { useMsaMargins, useAlertBanners, type AlertBanners } from '../db/useSettings'
+import { useMsaMargins, useAlertBanners } from '../db/useSettings'
+import { AIRSPACE_CATEGORIES, type AlertLevel } from '@open-vfr/shared/airspaceAlertLevel'
 import { DEFAULT_MSA_MARGINS, MSA_ABEAM_RANGE_NM, MSA_CLEARANCE_RANGE_FT } from '@open-vfr/shared/msaMargins'
 import { repairAppFiles } from '../utils/repairApp'
 import css from './SettingsPanel.module.css'
@@ -71,7 +72,7 @@ const THEMES: { value: Theme; label: string }[] = [
 /** On/off for the optional in-flight banners (obstacles, aerodrome nearby, airspace entered/left). */
 function AlertBannerSettings() {
   const [b, setB] = useAlertBanners()
-  const row = (label: string, key: keyof AlertBanners) => (
+  const row = (label: string, key: 'obstacles' | 'aerodromes' | 'airspaceEvents' | 'suppressOnCourse') => (
     <div className={css.section}>
       <span className={css.label}>{label}</span>
       <div className={css.optionsRow}>
@@ -90,7 +91,24 @@ function AlertBannerSettings() {
       {row('Obstacles ahead banner', 'obstacles')}
       {row('Aerodrome nearby banner', 'aerodromes')}
       {row('Airspace entered / left', 'airspaceEvents')}
-      {row('Class E / F warnings', 'classEF')}
+      <div className={`${css.section} ${css.sectionColumn}`}>
+        <span className={css.label}>Airspace warning level</span>
+        {AIRSPACE_CATEGORIES.map(c => (
+          <div key={c.key} className={css.section}>
+            <span className={css.label}>{c.label}</span>
+            <div className={css.optionsRow}>
+              {(['alert', 'info', ...(c.canIgnore ? ['ignore'] : [])] as AlertLevel[]).map(l => (
+                <button
+                  key={l}
+                  className={`${css.opt}${b.airspaceLevels[c.key] === l ? ` ${css.optActive}` : ''}`}
+                  onClick={() => setB({ airspaceLevels: { ...b.airspaceLevels, [c.key]: l } })}
+                  title={l === 'alert' ? 'Full warning card' : l === 'info' ? 'Quiet one-line chip' : 'No look-ahead warning'}
+                >{l === 'alert' ? 'Alert' : l === 'info' ? 'Info' : 'Ignore'}</button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
       {row('Mute airspace warnings on planned course', 'suppressOnCourse')}
     </>
   )

@@ -31,6 +31,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { filterDismissed } from '@open-vfr/shared/alertDismiss'
 import { onPlannedCourse } from '@open-vfr/shared/plannedCourse'
+import { applyAirspaceLevel, DEFAULT_AIRSPACE_LEVELS, type AirspaceAlertLevels } from '@open-vfr/shared/airspaceAlertLevel'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { altitudeForLimit, effectiveLimitFt, limitMarginFt, insideBand } from '@open-vfr/shared/airspaceAltitude'
@@ -114,8 +115,8 @@ export function useAirspaceWarnings(
   /** While flying the planned route, drop yellow/blue warnings (red hazards always stay). */
   suppressOnCourse: boolean = false,
   routeWaypoints: readonly RouteWaypoint[] = [],
-  /** Warn about class E/F airspace too (default off: only entered/left notices). */
-  warnClassEF: boolean = false,
+  /** Per-category alert level (alert / info chip / ignore). */
+  airspaceLevels: AirspaceAlertLevels = DEFAULT_AIRSPACE_LEVELS,
 ): {
   alerts:  AirspaceAlert[]
   dismiss: (key: string) => void
@@ -309,10 +310,11 @@ export function useAirspaceWarnings(
     }
 
     // Sort: inside-now first, then vertical-closure, then by severity, then by lower_ft
-    // Class E/F is advisory: dropped unless the pilot opted in, then yellow.
-    const classFiltered = found.flatMap((a): AirspaceAlert[] => (a.cls === 'E' || a.cls === 'F')
-      ? (warnClassEF ? [{ ...a, severity: 'yellow' }] : [])
-      : [a])
+    // Per-category level: ignored categories are dropped, quiet ones become blue chips.
+    const classFiltered = found.flatMap((a): AirspaceAlert[] => {
+      const r = applyAirspaceLevel(a, airspaceLevels)
+      return r ? [r] : []
+    })
     const onCourse = suppressOnCourse && onPlannedCourse({ lat, lng, trackDeg, speedKts }, routeWaypoints)
     const candidates = onCourse ? classFiltered.filter(a => a.severity === 'red') : classFiltered
     const shown = filterDismissed(dismissedRef.current, candidates, now)
@@ -330,7 +332,7 @@ export function useAirspaceWarnings(
       lastSigRef.current = sig
       setAlerts(shown)
     }
-  }, [position, features, lookaheadMin, verticalFt, suppressOnCourse, routeWaypoints, warnClassEF])
+  }, [position, features, lookaheadMin, verticalFt, suppressOnCourse, routeWaypoints, airspaceLevels])
 
   const dismiss = useCallback((key: string) => {
     dismissedRef.current.set(key, Date.now())

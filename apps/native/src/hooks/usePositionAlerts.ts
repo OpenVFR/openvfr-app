@@ -42,6 +42,7 @@ import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, obstr
 import { filterDismissed } from '@open-vfr/shared/alertDismiss'
 import { updateClimbRate, type ClimbState } from '@open-vfr/shared/climbRate'
 import { onPlannedCourse } from '@open-vfr/shared/plannedCourse'
+import { applyAirspaceLevel, DEFAULT_AIRSPACE_LEVELS, type AirspaceAlertLevels } from '@open-vfr/shared/airspaceAlertLevel'
 import { useMefGrids } from './useMefGrids'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
@@ -198,8 +199,8 @@ export function usePositionAlerts(
   verticalFt:     number = 500,
   /** While flying the planned route, drop yellow/blue airspace warnings (red hazards always stay). */
   suppressOnCourse: boolean = false,
-  /** Warn about class E/F airspace too (default off: only entered/left notices). */
-  warnClassEF: boolean = false,
+  /** Per-category alert level (alert / info chip / ignore). */
+  airspaceLevels: AirspaceAlertLevels = DEFAULT_AIRSPACE_LEVELS,
 ): PositionAlerts {
   const [airspaceFeatures, setAirspaceFeatures]   = useState<AirspaceFeature[]>([])
   // Obstacles + landmarks; unknown heights use the per-kind estimate.
@@ -394,10 +395,11 @@ export function usePositionAlerts(
         }
       }
       // A dismissed airspace stays muted while it is still detected (see alertDismiss).
-      // Class E/F is advisory: dropped unless the pilot opted in, then yellow.
-      const classFiltered = found.flatMap((a): AirspaceAlert[] => (a.cls === 'E' || a.cls === 'F')
-        ? (warnClassEF ? [{ ...a, severity: 'yellow' }] : [])
-        : [a])
+      // Per-category level: ignored categories are dropped, quiet ones become blue chips.
+      const classFiltered = found.flatMap((a): AirspaceAlert[] => {
+        const r = applyAirspaceLevel(a, airspaceLevels)
+        return r ? [r] : []
+      })
       const onCourse = suppressOnCourse && onPlannedCourse({ lat, lng, trackDeg, speedKts }, routeWaypoints)
       const candidates = onCourse ? classFiltered.filter(a => a.severity === 'red') : classFiltered
       const shown = filterDismissed(airspaceDismissedRef.current, candidates, now)
@@ -518,7 +520,7 @@ export function usePositionAlerts(
       airfieldSigRef.current = ''
       setAirfieldAlerts([])
     }
-  }, [position, airspaceFeatures, obstacleFeatures, aerodromeFeatures, routeWaypoints, lookaheadMin, verticalFt, suppressOnCourse, warnClassEF])
+  }, [position, airspaceFeatures, obstacleFeatures, aerodromeFeatures, routeWaypoints, lookaheadMin, verticalFt, suppressOnCourse, airspaceLevels])
 
   const dismissAirspace = useCallback((key: string) => {
     airspaceDismissedRef.current.set(key, Date.now())

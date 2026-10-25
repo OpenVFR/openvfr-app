@@ -12,6 +12,7 @@ import Slider from '@react-native-community/slider'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useSettingsContext } from '../context/SettingsContext'
+import { AIRSPACE_CATEGORIES, resolveAirspaceLevels, type AlertLevel } from '@open-vfr/shared/airspaceAlertLevel'
 import { useAuthContext }     from '../context/AuthContext'
 import { authHeaders } from '../utils/authClient'
 import { useSimContext }      from '../context/SimContext'
@@ -52,6 +53,7 @@ export function SettingsScreen() {
   const styles                = useThemedStyles(makeStyles)
   const insets               = useSafeAreaInsets()
   const { settings, update } = useSettingsContext()
+  const airspaceLevels = resolveAirspaceLevels(settings.alertAirspaceLevels)
   const { state, signOut, registerPasskey, requestAccountDeletion } = useAuthContext()
   const { logs: flightLogs, deleteSimulatedLogs } = useFlightLogSync()
   const simulatedLogCount = flightLogs.filter(l => l.simulated === true && l.endedAt > 0).length
@@ -338,12 +340,15 @@ export function SettingsScreen() {
           value={settings.alertAirspaceEvents}
           onToggle={v => update({ alertAirspaceEvents: v })}
         />
-        <RowToggle
-          label="Class E / F warnings"
-          left="Off" right="On"
-          value={settings.alertClassEF}
-          onToggle={v => update({ alertClassEF: v })}
-        />
+        {AIRSPACE_CATEGORIES.map(c => (
+          <RowLevel
+            key={c.key}
+            label={c.label}
+            canIgnore={c.canIgnore}
+            value={airspaceLevels[c.key]}
+            onChange={l => update({ alertAirspaceLevels: { ...settings.alertAirspaceLevels, [c.key]: l } })}
+          />
+        ))}
         <RowToggle
           label="Mute airspace warnings on planned course"
           left="Off" right="On"
@@ -718,6 +723,34 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <View style={sectionStyles.container}>
       <Text style={sectionStyles.title}>{title.toUpperCase()}</Text>
       <View style={sectionStyles.card}>{children}</View>
+    </View>
+  )
+}
+
+/** Alert / Info / Ignore picker for one airspace category. */
+function RowLevel({
+  label, canIgnore, value, onChange,
+}: { label: string; canIgnore: boolean; value: AlertLevel; onChange: (v: AlertLevel) => void }) {
+  const styles = useThemedStyles(makeStyles)
+  const options: { value: AlertLevel; label: string }[] = [
+    { value: 'alert', label: 'Alert' },
+    { value: 'info', label: 'Info' },
+    ...(canIgnore ? [{ value: 'ignore' as AlertLevel, label: 'Ignore' }] : []),
+  ]
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <View style={styles.segmented}>
+        {options.map(o => (
+          <TouchableOpacity
+            key={o.value}
+            style={[styles.seg, value === o.value && styles.segActive]}
+            onPress={() => onChange(o.value)}
+          >
+            <Text style={[styles.segText, value === o.value && styles.segTextActive]}>{o.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
     </View>
   )
 }

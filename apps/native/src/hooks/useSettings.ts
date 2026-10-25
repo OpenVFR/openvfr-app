@@ -39,8 +39,8 @@ export type AppSettings = {
   alertAirspaceEvents: boolean
   /** While flying the planned route, hide yellow/blue airspace warnings (red ones always show) */
   alertSuppressOnCourse: boolean
-  /** Also warn (yellow) before entering class E/F airspace; entered/left notices always show */
-  alertClassEF: boolean
+  /** Look-ahead warning level per airspace category (alert / info / ignore), see shared airspaceAlertLevel */
+  alertAirspaceLevels: Partial<Record<string, string>>
   /** Abeam corridor + terrain/obstacle clearance for the MSA line, below-MSA warnings and auto cruise level */
   msaMargins: MsaMargins
   /** Trajectory mode: project N minutes ahead (time) or fixed NM (nm) */
@@ -97,7 +97,7 @@ const DEFAULTS: AppSettings = {
   alertAerodromes:          true,
   alertAirspaceEvents:      true,
   alertSuppressOnCourse:    false,
-  alertClassEF:             false,
+  alertAirspaceLevels:      {},
   msaMargins:               DEFAULT_MSA_MARGINS,
   trajectoryMode:           'time',
   showAltitudeAgl:          false,
