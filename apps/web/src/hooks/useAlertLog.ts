@@ -3,26 +3,30 @@
  * @open-vfr/shared/alertLog) and returns those no longer on screen, newest
  * first, so a dismissed or timed-out alert can be looked up again.
  *
- * The list lives in a ref and only a counter is state: item text (distances)
- * changes every tick, which must not re-render.
+ * The list lives in a ref. The effect runs only when the SET of shown keys
+ * changes (never on every render), and then bumps a counter once so the
+ * "recent" list re-renders. Item text changes (distances) do not matter.
  */
 import { useEffect, useRef, useState } from 'react'
-import { recordAlerts, pastAlerts, type AlertLogEntry, type LoggableAlert } from '@open-vfr/shared/alertLog'
+import { recordAlerts, markDeparted, pastAlerts, type AlertLogEntry, type LoggableAlert } from '@open-vfr/shared/alertLog'
 
 export function useAlertLog(shown: readonly LoggableAlert[]): AlertLogEntry[] {
   const logRef = useRef<AlertLogEntry[]>([])
   const prevKeysRef = useRef<Set<string>>(new Set())
+  const shownRef = useRef(shown)
+  shownRef.current = shown
   const [, setVersion] = useState(0)
+  const keySig = shown.map(s => s.key).join('|')
 
   useEffect(() => {
-    const r = recordAlerts(logRef.current, shown, prevKeysRef.current, Date.now())
-    logRef.current = r.log
-    const keys = new Set(shown.map(s => s.key))
-    const changedKeys = keys.size !== prevKeysRef.current.size || [...keys].some(k => !prevKeysRef.current.has(k))
+    const now = Date.now()
+    const items = shownRef.current
+    const keys = new Set(items.map(s => s.key))
+    const departed = markDeparted(logRef.current, prevKeysRef.current, keys, now)
+    logRef.current = recordAlerts(departed, items, prevKeysRef.current, now).log
     prevKeysRef.current = keys
-    // Re-render only when something entered or left the screen: the "recent" list depends on it.
-    if (r.added || changedKeys) setVersion(v => v + 1)
-  })
+    setVersion(v => v + 1)
+  }, [keySig])
 
   return pastAlerts(logRef.current, new Set(shown.map(s => s.key)))
 }

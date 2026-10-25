@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { recordAlerts, pastAlerts, alertLogTime, type AlertLogEntry, type LoggableAlert } from './alertLog'
+import { recordAlerts, pastAlerts, alertLogTime, markDeparted, type AlertLogEntry, type LoggableAlert } from './alertLog'
 
 const a = (key: string, title = key): LoggableAlert => ({ key, severity: 'yellow', badge: 'B', title })
 
@@ -41,4 +41,17 @@ describe('pastAlerts', () => {
 
 describe('alertLogTime', () => {
   it('formats UTC', () => expect(alertLogTime(Date.UTC(2026, 9, 25, 7, 5))).toBe('07:05Z'))
+})
+
+describe('markDeparted', () => {
+  it('stamps the time a shown item went away', () => {
+    const log = recordAlerts([], [a('x'), a('y')], new Set(), 0).log
+    const next = markDeparted(log, new Set(['x', 'y']), new Set(['y']), 9000)
+    expect(next.find(e => e.key === 'x')?.lastAt).toBe(9000)
+    expect(next.find(e => e.key === 'y')?.lastAt).toBe(0)
+  })
+  it('returns the same log when nothing left', () => {
+    const log = recordAlerts([], [a('x')], new Set(), 0).log
+    expect(markDeparted(log, new Set(['x']), new Set(['x']), 5)).toBe(log)
+  })
 })

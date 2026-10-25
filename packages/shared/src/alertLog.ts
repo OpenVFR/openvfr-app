@@ -38,7 +38,8 @@ export function recordAlerts(
   prevKeys: ReadonlySet<string>,
   now: number,
 ): RecordResult {
-  const next = log.filter(e => now - e.lastAt <= ALERT_LOG_MAX_AGE_MS).map(e => ({ ...e }))
+  const onScreen = new Set(shown.map(i => i.key))
+  const next = log.filter(e => onScreen.has(e.key) || now - e.lastAt <= ALERT_LOG_MAX_AGE_MS).map(e => ({ ...e }))
   let added = next.length !== log.length
   for (const item of shown) {
     let idx = -1
@@ -63,4 +64,27 @@ export function pastAlerts(log: readonly AlertLogEntry[], shownKeys: ReadonlySet
 export function alertLogTime(ts: number): string {
   const d = new Date(ts)
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}Z`
+}
+
+/**
+ * Stamp `lastAt = now` on the newest entry of every key that was on screen
+ * (`prevKeys`) and no longer is (`keys`), so the list shows when it went away.
+ * Returns the same array when nothing departed.
+ */
+export function markDeparted(
+  log: readonly AlertLogEntry[],
+  prevKeys: ReadonlySet<string>,
+  keys: ReadonlySet<string>,
+  now: number,
+): AlertLogEntry[] {
+  const departed = new Set<string>()
+  for (const k of prevKeys) if (!keys.has(k)) departed.add(k)
+  if (departed.size === 0) return log as AlertLogEntry[]
+  const next = log.map(e => ({ ...e }))
+  for (const k of departed) {
+    for (let i = next.length - 1; i >= 0; i--) {
+      if (next[i].key === k) { next[i].lastAt = now; break }
+    }
+  }
+  return next
 }
