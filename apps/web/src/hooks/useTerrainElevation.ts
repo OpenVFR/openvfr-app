@@ -1,7 +1,8 @@
 /**
  * useTerrainElevation — live single-point ground elevation (ft AMSL) under
  * the current GPS position, for AGL airspace limits in the alert hooks.
- * Mirrors the native hook of the same name.
+ * Mirrors the native hook of the same name. Source: the hillshade DEM
+ * first, the elevation API where the DEM has no coverage.
  *
  * Throttled: re-fetches only after MIN_MOVE_NM of movement or MIN_INTERVAL_MS.
  * A sample older than STALE_AGE_MS or taken more than STALE_DIST_NM away is
@@ -9,7 +10,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { fetchWithRetry } from '@open-vfr/shared/fetchWithRetry'
+import { pointElevationFt } from '@open-vfr/shared/pointElevation'
 import { getRemoteDem } from '../utils/terrainDem'
 import { API_BASE_URL } from '../utils/env'
 import type { GpsPosition } from '../utils/gpsTypes'
@@ -44,26 +45,14 @@ export function useTerrainElevation(position: GpsPosition | null): number | null
     inFlightRef.current = true
     lastFetchRef.current = { lat: position.lat, lng: position.lng, at: now }
 
-    const params = new URLSearchParams({ locations: `${position.lat.toFixed(5)},${position.lng.toFixed(5)}` })
+    const { lat, lng } = position
+    // DEM first, API where it has no data (@open-vfr/shared/pointElevation).
     // API_BASE_URL, not a relative path: in split-origin production a
     // relative /api/... hits the static app host and gets index.html back.
-    // Session cookie sent by fetchWithRetry (credentials: 'include'); a
-    // 429/503 (shared OpenTopoData budget used up) falls back to the DEM.
-    fetchWithRetry(`${API_BASE_URL}/api/elevation/eudem25m?${params.toString()}`, undefined, { retryStatuses: [502, 504] })
-      // Non-OK (401/429/503) -> catch below -> DEM fallback, not a silent no-op.
-      .then(r => { if (!r.ok) throw new Error(`elevation HTTP ${r.status}`); return r.json() })
-      .then((data: { results?: { elevation: number | null }[]; status?: string }) => {
-        if (data.status !== 'OK' || !data.results?.[0]) return
-        const m = data.results[0].elevation
-        if (m != null) setSample({ elevFt: Math.round(m * 3.28084), lat: position.lat, lng: position.lng, at: Date.now() })
-      })
-      .catch(async () => {
-        // API unreachable: fall back to the DEM, else terrain stays unknown.
-        const dem = getRemoteDem()
-        if (!dem) return
-        const ft = await dem.elevationFt(position.lat, position.lng).catch(() => null)
-        if (ft != null) setSample({ elevFt: ft, lat: position.lat, lng: position.lng, at: Date.now() })
-      })
+    // Session cookie sent by fetchWithRetry (credentials: 'include').
+    pointElevationFt(lat, lng, { dem: getRemoteDem(), baseUrl: API_BASE_URL })
+      // Nothing answered: terrain stays unknown (the sample goes stale).
+      .then((ft) => { if (ft != null) setSample({ elevFt: ft, lat, lng, at: Date.now() }) })
       .finally(() => { inFlightRef.current = false })
   }, [position])
 

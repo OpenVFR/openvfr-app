@@ -13,6 +13,8 @@
     "./airspaceColors":  "./src/airspaceColors.ts",
     "./airspaceAltitude": "./src/airspaceAltitude.ts",
     "./lookahead": "./src/lookahead.ts",
+    "./lookaheadTerrain": "./src/lookaheadTerrain.ts",
+    "./pointElevation": "./src/pointElevation.ts",
     "./msaMargins": "./src/msaMargins.ts",
     "./mefGrid": "./src/mefGrid.ts",
     "./routePois": "./src/routePois.ts",

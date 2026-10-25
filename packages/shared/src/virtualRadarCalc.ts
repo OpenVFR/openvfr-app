@@ -899,6 +899,11 @@ export async function fetchTerrainProfile(
    *  used when the elevation API is unreachable. Sampled sequentially so
    *  only a handful of DEM tiles are ever decoded at once. */
   fallback?: ElevationLookup | null,
+  /** preferLookup: ask `fallback` first and the API only when it does not
+   *  cover every sample. For terrain asked for again and again in flight (the
+   *  look-ahead profile that moves with the aircraft): a local DEM answers
+   *  at once, offline, and costs the shared elevation budget nothing. */
+  opts?: { preferLookup?: boolean },
 ): Promise<TerrainPoint[]> {
   if (waypoints.length < 2) return []
 
@@ -920,6 +925,18 @@ export async function fetchTerrainProfile(
       lng:    pt.geometry.coordinates[0],
       lat:    pt.geometry.coordinates[1],
     })
+  }
+
+  const triedLookup = !!(opts?.preferLookup && fallback)
+  if (triedLookup) {
+    try {
+      // Every sample must hit the DEM: a route leaving its coverage (archive
+      // edge, border) would otherwise get flat carried-forward values there.
+      return await terrainProfileFromLookup(samples, fallback!, signal, { requireFull: true })
+    } catch (err) {
+      if ((err as { name?: string })?.name === 'AbortError') throw err
+      // DEM does not cover the whole route: ask the API below.
+    }
   }
 
   const locStr = samples.map((s) => `${s.lat.toFixed(5)},${s.lng.toFixed(5)}`).join('|')
@@ -951,7 +968,7 @@ export async function fetchTerrainProfile(
       elevFt: Math.round((r.elevation ?? 0) * 3.28084),
     }))
   } catch (err) {
-    if ((err as { name?: string })?.name === 'AbortError' || !fallback) throw err
+    if ((err as { name?: string })?.name === 'AbortError' || !fallback || triedLookup) throw err
     return terrainProfileFromLookup(samples, fallback, signal)
   }
 }
@@ -964,6 +981,9 @@ export async function terrainProfileFromLookup(
   samples: { distNm: number; lat: number; lng: number }[],
   lookup:  ElevationLookup,
   signal?: AbortSignal,
+  /** requireFull: throw unless every sample has a DEM value (used when the
+   *  DEM goes first and the API is still there to fill gaps). */
+  opts?: { requireFull?: boolean },
 ): Promise<TerrainPoint[]> {
   const out: TerrainPoint[] = []
   let lastFt: number | null = null
@@ -976,6 +996,7 @@ export async function terrainProfileFromLookup(
     out.push({ distNm: Math.round(s.distNm * 100) / 100, elevFt: ft ?? lastFt ?? 0 })
   }
   if (hits === 0) throw new Error('terrain: no DEM coverage along route')
+  if (opts?.requireFull && hits < samples.length) throw new Error('terrain: DEM covers only part of the route')
   return out
 }
 

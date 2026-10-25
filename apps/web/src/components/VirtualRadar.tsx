@@ -25,6 +25,7 @@ import { useMsaMargins } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
 import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
+import { carryLookaheadTerrain } from '@open-vfr/shared/lookaheadTerrain'
 import { obstacleSymbol, polyPath, primStyle, obstacleXScale, MIN_FULL_HEIGHT_PX, type SymbolPrim } from '@open-vfr/shared/obstacleSymbol'
 import { effectiveHeight, obstacleTipsForMsa, limitingObstacleLabel, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
 import { legSpans, legMsaList, legBelowMsa, dragShownFt, withLegLevel, altAtY, unreachedLegs, verticalPhaseMarks, LEVEL_STEP_FT, DRAG_MIN_MOVE_PX, type LegSpan } from '@open-vfr/shared/legLevelDrag'
@@ -759,21 +760,34 @@ function VirtualRadar({
 
   // Fetch terrain profile whenever the route changes
   const routeKey = waypoints.map((w) => `${w.lat.toFixed(4)},${w.lng.toFixed(4)}`).join('|')
+  // Last route whose terrain arrived (look-ahead: carried forward while the next loads).
+  const lastTerrainRef = useRef<{ wps: RouteWaypoint[]; pts: TerrainPoint[] } | null>(null)
   useEffect(() => {
     if (waypoints.length < 2) {
       setTerrainPts([])
+      lastTerrainRef.current = null
       return
     }
     const controller = new AbortController()
-    setTerrainPts([])  // clear stale terrain while new fetch is in progress
+    // Look-ahead refresh that only slid forward: keep the previous ground,
+    // shifted, instead of blanking it until the new samples arrive.
+    const last = lastTerrainRef.current
+    const carried = followAircraft && last ? carryLookaheadTerrain(last.wps, last.pts, waypoints) : null
+    setTerrainPts(carried ?? [])
     setTerrainFailed(false)
-    fetchTerrainProfileShared(waypoints, API_BASE_URL, controller.signal, getRemoteDem())
+    // Look-ahead asks again every few seconds: the hillshade DEM first, the
+    // elevation API (shared budget) only where the DEM has no coverage.
+    fetchTerrainProfileShared(waypoints, API_BASE_URL, controller.signal, getRemoteDem(), { preferLookup: !!followAircraft })
       .then((pts) => {
+        lastTerrainRef.current = { wps: waypoints, pts }
         setTerrainPts(pts)
+        setTerrainFailed(false)
       })
       .catch((err: unknown) => {
         if ((err as { name?: string }).name !== 'AbortError') {
           console.warn('Terrain fetch failed:', err)
+          lastTerrainRef.current = null
+          setTerrainPts([])
           setTerrainFailed(true)
         }
       })
@@ -1669,7 +1683,7 @@ function VirtualRadar({
           </span>
         )}
         {terrainFailed && terrainPts.length === 0 && (
-          <span className={css.offTrackBadge} title={msaTerrain.fromGridOnly
+          <span className={`${css.offTrackBadge} ${css.wrapBadge}`} title={msaTerrain.fromGridOnly
             ? 'No elevation data could be loaded for this route. The MSA line comes from the terrain maximum grid (highest terrain per ~460 m cell, so conservative); there is no ground line and airspace limits given above ground (AGL) are drawn at their raw height.'
             : 'No elevation data could be loaded for this route. The MSA line is missing and airspace limits given above ground (AGL) are drawn at their raw height.'}>
             {msaTerrain.fromGridOnly ? '⚠ No ground line: MSA from the terrain grid, AGL limits at raw height' : '⚠ No terrain data: MSA unavailable, AGL limits at raw height'}

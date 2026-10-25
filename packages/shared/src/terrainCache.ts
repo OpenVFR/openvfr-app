@@ -58,6 +58,7 @@ export function fetchTerrainProfileShared(
   baseUrl = '',
   signal?: AbortSignal,
   fallback?: ElevationLookup | null,
+  opts?: { preferLookup?: boolean },
 ): Promise<TerrainPoint[]> {
   if (waypoints.length < 2) return Promise.resolve([])
   if (signal?.aborted) return Promise.reject(abortError())
@@ -67,7 +68,7 @@ export function fetchTerrainProfileShared(
   if (!entry) {
     const controller = new AbortController()
     const e: Entry = { promise: undefined as unknown as Promise<TerrainPoint[]>, controller, refs: 0, settled: false, at: Date.now() }
-    e.promise = fetchTerrainProfile(waypoints, baseUrl, controller.signal, fallback)
+    e.promise = fetchTerrainProfile(waypoints, baseUrl, controller.signal, fallback, opts)
       .then((pts) => { e.settled = true; e.at = Date.now(); evict(); return pts })
       .catch((err) => { if (cache.get(key) === e) cache.delete(key); throw err })
     cache.set(key, e)

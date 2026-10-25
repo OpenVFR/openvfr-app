@@ -2,6 +2,8 @@
  * useTerrainElevation — live single-point ground elevation lookup for the
  * current GPS position, used to compute height above ground (GPS HGT) in GaugesBar.
  *
+ * Source: the downloaded hillshade DEM first, else the elevation API.
+ *
  * Throttled: only re-fetches when the position has moved more than
  * MIN_MOVE_NM or MIN_INTERVAL_MS has elapsed, to avoid spamming OpenTopoData
  * on every GPS tick (1 Hz).
@@ -10,7 +12,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { API_BASE } from '../config'
 import type { GpsPosition } from '../utils/gpsTypes'
-import { fetchWithRetry } from '@open-vfr/shared/fetchWithRetry'
+import { pointElevationFt } from '@open-vfr/shared/pointElevation'
 import { getOfflineDem } from '../utils/terrainDem'
 import { authHeaders } from '../utils/authClient'
 
@@ -48,35 +50,16 @@ export function useTerrainElevation(position: GpsPosition | null): number | null
     inFlightRef.current = true
     lastFetchRef.current = { lat: position.lat, lng: position.lng, at: now }
 
-    const params = new URLSearchParams({ locations: `${position.lat.toFixed(5)},${position.lng.toFixed(5)}` })
-    // Retries transient network blips / 502-504 -- see fetchWithRetry.ts.
-    // Also self-heals via the next GPS-driven effect run (MIN_INTERVAL_MS)
-    // even if a request exhausts its retries, so a brief gap never leaves
-    // AGL stuck stale for long.
+    const { lat, lng } = position
+    // Downloaded DEM first, API where it has none (@open-vfr/shared/pointElevation).
     // API_BASE, not TILE_BASE -- /api/elevation/ is proxied by the api
-    // server's nginx, a different host from TILE_BASE (which in production
-    // points at the R2 tiles bucket domain). Using TILE_BASE here hit the
-    // R2 bucket with a bogus path and came back with a 401 misreported as
+    // server, a different host from TILE_BASE (which in production points
+    // at the R2 tiles bucket domain). Using TILE_BASE here hit the R2 bucket
+    // with a bogus path and came back with a 401 misreported as
     // "OpenTopoData HTTP 401" (found 2026-09-20).
-    // Session required (API server proxy). A 429/503 means the shared
-    // OpenTopoData budget is used up for now: no quick retry, the DEM
-    // fallback below takes over.
-    authHeaders()
-      .then((headers) => fetchWithRetry(`${API_BASE}/api/elevation/eudem25m?${params.toString()}`, { headers }, { retryStatuses: [502, 504] }))
-      // Non-OK (401/429/503) -> catch below -> DEM fallback, not a silent no-op.
-      .then(r => { if (!r.ok) throw new Error(`elevation HTTP ${r.status}`); return r.json() })
-      .then((data: { results?: { elevation: number | null }[]; status?: string }) => {
-        if (data.status !== 'OK' || !data.results?.[0]) return
-        const m = data.results[0].elevation
-        if (m != null) setSample({ elevFt: Math.round(m * 3.28084), lat: position.lat, lng: position.lng, at: Date.now() })
-      })
-      .catch(async () => {
-        // API unreachable: fall back to the DEM, else terrain stays unknown.
-        const dem = getOfflineDem()
-        if (!dem) return
-        const ft = await dem.elevationFt(position.lat, position.lng).catch(() => null)
-        if (ft != null) setSample({ elevFt: ft, lat: position.lat, lng: position.lng, at: Date.now() })
-      })
+    pointElevationFt(lat, lng, { dem: getOfflineDem(), baseUrl: API_BASE, headers: authHeaders })
+      // Nothing answered: terrain stays unknown (the sample goes stale).
+      .then((ft) => { if (ft != null) setSample({ elevFt: ft, lat, lng, at: Date.now() }) })
       .finally(() => { inFlightRef.current = false })
   }, [position])
 

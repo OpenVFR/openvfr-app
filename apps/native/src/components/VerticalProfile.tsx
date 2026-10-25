@@ -57,6 +57,7 @@ import { legSpans, legMsaList, legBelowMsa, dragShownFt, withLegLevel, altAtY, u
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
 import { obstacleSymbol, polyPath, primStyle, obstacleXScale } from '@open-vfr/shared/obstacleSymbol'
 import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
+import { carryLookaheadTerrain } from '@open-vfr/shared/lookaheadTerrain'
 import { effectiveHeight, obstacleTipsForMsa, limitingObstacleLabel, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
 import { useMefGrids } from '../hooks/useMefGrids'
 import {
@@ -735,27 +736,41 @@ export function VerticalProfile({
 
   // Fetch terrain profile whenever the route changes
   const routeKey = waypoints.map((w) => `${w.lat.toFixed(4)},${w.lng.toFixed(4)}`).join('|')
+  // Last route whose terrain arrived (look-ahead: carried forward while the next loads).
+  const lastTerrainRef = useRef<{ wps: RouteWaypoint[]; pts: TerrainPoint[] } | null>(null)
   useEffect(() => {
     if (waypoints.length < 2) {
       setTerrainPts([])
+      lastTerrainRef.current = null
       return
     }
     const controller = new AbortController()
-    setTerrainPts([])
+    // Look-ahead refresh that only slid forward: keep the previous ground,
+    // shifted, instead of blanking it until the new samples arrive (on a slow
+    // link the next refresh used to come first, so no ground showed at all).
+    const last = lastTerrainRef.current
+    const carried = followAircraft && last ? carryLookaheadTerrain(last.wps, last.pts, waypoints) : null
+    setTerrainPts(carried ?? [])
     setTerrainFailed(false)
     // API_BASE, not TILE_BASE -- /api/elevation/ is proxied by the api
     // server's nginx, a different host from TILE_BASE (which in production
     // points at the object-storage tile bucket domain). Using
     // TILE_BASE here hit the R2 bucket with a bogus path and came back with
     // a 401 misreported as "OpenTopoData HTTP 401" (found 2026-09-20).
-    // Offline: the cached hillshade DEM stands in for the elevation API.
-    fetchTerrainProfileShared(waypoints, API_BASE, controller.signal, getOfflineDem())
+    // The downloaded hillshade DEM stands in for the API offline; for the
+    // look-ahead (asked again every few seconds) it goes first, so flying
+    // costs the shared elevation budget nothing when it is downloaded.
+    fetchTerrainProfileShared(waypoints, API_BASE, controller.signal, getOfflineDem(), { preferLookup: !!followAircraft })
       .then((pts) => {
+        lastTerrainRef.current = { wps: waypoints, pts }
         setTerrainPts(pts)
+        setTerrainFailed(false)
       })
       .catch((err: unknown) => {
         if ((err as { name?: string }).name !== 'AbortError') {
           console.warn('[VerticalProfile] terrain fetch failed:', err)
+          lastTerrainRef.current = null
+          setTerrainPts([])
           setTerrainFailed(true)
         }
       })
@@ -1593,8 +1608,12 @@ export function VerticalProfile({
                   the elevation API down): say so, since the missing ground
                   line also means no MSA and AGL airspace bands at raw height. */}
               {terrainFailed && terrainPts.length === 0 && (
-                <View style={[styles.offTrackBadge, { top: MARGIN_T + 14 + (crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM ? 18 : 0) }]} pointerEvents="none">
-                  <Text style={styles.offTrackTxt}>{msaTerrain.fromGridOnly ? '⚠ No ground line: MSA from the terrain grid, AGL limits at raw height' : '⚠ No terrain data: MSA unavailable, AGL limits at raw height'}</Text>
+                // maxWidth: wraps on narrow screens instead of running off the chart.
+                <View style={[styles.offTrackBadge, { top: MARGIN_T + 14 + (crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM ? 18 : 0), maxWidth: Math.max(120, chartW - MARGIN_L - MARGIN_R - 4) }]} pointerEvents="none">
+                  <Text style={styles.offTrackTxt}>
+                    {msaTerrain.fromGridOnly ? '⚠ No ground line: MSA from the terrain grid, AGL limits at raw height' : '⚠ No terrain data: MSA unavailable, AGL limits at raw height'}
+                    {getOfflineDem() == null ? '. Download "Terrain elevation + hillshade" under Settings → Offline Data for ground without a connection.' : ''}
+                  </Text>
                 </View>
               )}
               {crossTrackNm != null && Math.abs(crossTrackNm) > OFF_TRACK_BADGE_NM && (
