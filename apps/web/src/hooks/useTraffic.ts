@@ -193,10 +193,13 @@ export function useTraffic(opts: UseTrafficOptions = {}): TrafficTarget[] {
     // credentials configured" because of the graceful .catch() below.
     fetch(`${API_BASE_URL}/api/traffic/config`, { credentials: 'include' })
       .then(r => r.json())
-      .then((cfg: { available: boolean }) => {
+      .then((cfg: { available: boolean; ognAvailable?: boolean }) => {
         if (destroyed) return
-        availableRef.current = cfg.available
-        if (!cfg.available) return  // graceful silence — no OpenSky credentials configured
+        // Either feed is enough: an OGN-only server (no OpenSky credentials)
+        // still streams gliders / FLARM traffic.
+        const any = cfg.available || cfg.ognAvailable === true
+        availableRef.current = any
+        if (!any) return  // graceful silence — no traffic feed configured
 
         // Open SSE stream. withCredentials:true is EventSource's OWN,
         // separate cross-origin credentials flag -- NOT the same mechanism

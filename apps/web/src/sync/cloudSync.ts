@@ -41,9 +41,16 @@ const log = (...a: unknown[]) => console.info(...a)
 // fetched at sign-in. Sync fetches and caches its own.
 
 let jwtCache: { jwt: string; exp: number } | null = null
+/** A fetch in progress: the tables of one round ask at once; share one request. */
+let jwtInflight: Promise<string | null> | null = null
 
-async function getSyncJwt(): Promise<string | null> {
-  if (jwtCache && Date.now() < jwtCache.exp) return jwtCache.jwt
+function getSyncJwt(): Promise<string | null> {
+  if (jwtCache && Date.now() < jwtCache.exp) return Promise.resolve(jwtCache.jwt)
+  jwtInflight ??= fetchSyncJwt().finally(() => { jwtInflight = null })
+  return jwtInflight
+}
+
+async function fetchSyncJwt(): Promise<string | null> {
   try {
     const res = await fetch(`${API_BASE_URL}/api/auth/token`, { credentials: 'include' })
     if (!res.ok) {

@@ -76,6 +76,17 @@ export interface AuthState {
   signOut:    () => Promise<void>
 }
 
+// Service-worker runtime caches of API responses (vite.config.ts workbox
+// runtimeCaching). The terrain cache is keyed by the coordinates of routes
+// this account planned and flew, so it goes with the account's other local
+// data on sign-out; weather and NOTAM caches go too, for a clean slate.
+const API_RESPONSE_CACHES = ['elevation-cache', 'wx-cache', 'notam-cache']
+
+async function clearApiResponseCaches(): Promise<void> {
+  if (typeof caches === 'undefined') return
+  await Promise.all(API_RESPONSE_CACHES.map((name) => caches.delete(name).catch(() => false)))
+}
+
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -188,10 +199,18 @@ export function useAuth(): AuthState {
       'Some routes, aircraft, waypoints, settings or flight logs in this browser have not reached the cloud yet (no connection?). Signing out deletes them from this browser. Sign out anyway?',
     )) return
     await stopCloudSync()
-    await authClient.signOut()
+    // A failed request (offline, server down) must not skip the local wipe
+    // below; the server session then simply expires on its own.
+    try {
+      const res = await authClient.signOut()
+      if (res?.error) console.warn('[useAuth] server sign-out failed; signing out locally:', res.error)
+    } catch (err) {
+      console.warn('[useAuth] server sign-out failed; signing out locally:', err)
+    }
     // The local copy of this account's data must not survive into the next
     // sign-in; useSync wipes it once cloud sync has stopped.
     flagWipeOnSignOut()
+    await clearApiResponseCaches()
     setUser(null)
   }, [])
 

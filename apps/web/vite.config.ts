@@ -93,6 +93,9 @@ export default defineConfig({
             },
           },
           {
+            // API response caches (elevation / wx / notam) are deleted on
+            // sign-out by name: keep src/hooks/useAuth.ts API_RESPONSE_CACHES
+            // in sync when renaming or adding one.
             // Elevation proxy (route terrain profiles + live ground elevation).
             // Terrain does not change, so CacheFirst: a route flown before keeps
             // its terrain line, MSA and AGL airspace lift offline. Keyed by the
