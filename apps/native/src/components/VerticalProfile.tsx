@@ -1156,21 +1156,31 @@ const FlownAircraftGlyph = React.memo(function FlownAircraftGlyph({ silhouette }
   )
 })
 
-/** Readout of the inspected point, fixed to the top right of the chart viewport. */
-function FlownReadout({ store, flown, bands, terrainPts, getMsa, styles }: {
+/** Readout of the inspected point, at the top of the chart viewport on the side away from the
+ *  aircraft (it covered the aircraft and the end of the line when fixed to the right). */
+function FlownReadout({ store, flown, bands, terrainPts, getMsa, styles, xOf, scrollXRef, viewportW }: {
   store: ValueStore<FlownInspect>
   flown: FlownPoint[]
   bands: FlownBand[]
+  xOf: (nm: number) => number
+  scrollXRef: { current: number }
+  viewportW: number
   terrainPts: TerrainPoint[]
   getMsa: (nm: number) => number
   styles: ReturnType<typeof makeStyles>
 }) {
   const { idx, touched } = useStoreValue(store)
   const p = flown[idx]
+  const aircraftOnRight = !!p && xOf(p.distNm) - scrollXRef.current > viewportW / 2
+  // A full-width row with the box aligned to one end (switching absolute left/right offsets
+  // left a stale offset behind on Fabric, stretching the box across the chart).
+  const rowStyle = [styles.flownReadoutRow, { justifyContent: aircraftOnRight ? 'flex-start' as const : 'flex-end' as const }]
   if (!touched || !p) {
     return (
-      <View style={styles.flownReadout} pointerEvents="none">
-        <Text style={styles.flownHint}>Drag the aircraft, or tap the chart, to inspect</Text>
+      <View style={rowStyle} pointerEvents="none">
+        <View style={styles.flownReadout}>
+          <Text style={styles.flownHint}>Drag the aircraft, or tap the chart, to inspect</Text>
+        </View>
       </View>
     )
   }
@@ -1187,13 +1197,15 @@ function FlownReadout({ store, flown, bands, terrainPts, getMsa, styles }: {
   // Airspace the aircraft was in (limits as drawn: for review, not proof of an infringement).
   for (const b of altKnown ? flownAirspaceAt(bands, p.distNm, p.altFt).slice(0, 2) : []) rows.push({ label: b.class, value: b.name })
   return (
-    <View style={styles.flownReadout} pointerEvents="none">
-      {rows.map((r) => (
-        <View key={r.label} style={styles.flownRow}>
-          <Text style={[styles.flownLabel, r.color ? { color: r.color } : null]}>{r.label}</Text>
-          <Text style={styles.flownValue}>{r.value}</Text>
-        </View>
-      ))}
+    <View style={rowStyle} pointerEvents="none">
+      <View style={styles.flownReadout}>
+        {rows.map((r) => (
+          <View key={r.label} style={styles.flownRow}>
+            <Text style={[styles.flownLabel, r.color ? { color: r.color } : null]}>{r.label}</Text>
+            <Text style={styles.flownValue}>{r.value}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   )
 }
@@ -2594,7 +2606,7 @@ export function VerticalProfile({
                   <SvgLine x1={1} y1={0} x2={1} y2={plotH} stroke="rgba(250,204,21,0.85)" strokeWidth={1.5} strokeDasharray="4,3" />
                 </Svg>
               </Animated.View>
-              {flown && <FlownReadout store={flownStore} flown={flown} bands={profile.airspaceBands} terrainPts={terrainPts} getMsa={getMsa} styles={styles} />}
+              {flown && <FlownReadout store={flownStore} flown={flown} bands={profile.airspaceBands} terrainPts={terrainPts} getMsa={getMsa} styles={styles} xOf={xOf} scrollXRef={scrollXRef} viewportW={chartW} />}
               </View>
               </GestureDetector>
               {/* Pinned Y-axis tick labels — rendered outside the scrollable
@@ -2708,10 +2720,14 @@ function makeStyles(theme: ScaledTheme) {
   },
   // Readout of the inspected flight-log point. Always dark: it sits on the chart, which is
   // dark in every theme, and its labels use the chart's line colours.
+  flownReadoutRow: {
+    position:      'absolute',
+    top:           MARGIN_T + 2,
+    left:          MARGIN_L + 4,
+    right:         4,
+    flexDirection: 'row',
+  },
   flownReadout: {
-    position:        'absolute',
-    top:             MARGIN_T + 2,
-    right:           4,
     backgroundColor: 'rgba(12,16,26,0.92)',
     borderColor:     'rgba(255,255,255,0.22)',
     borderWidth:     1,

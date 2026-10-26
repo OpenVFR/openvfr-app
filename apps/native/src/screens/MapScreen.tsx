@@ -114,7 +114,7 @@ import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../compone
 import { RulerHeaderStart, RulerHeaderEnd, RouteHeaderStart } from '../components/RulerHeaderStats'
 import { flightLogProfile, flownCoordinateAt, flownPointAt } from '@open-vfr/shared/flightLogProfile'
 import { Ionicons } from '@expo/vector-icons'
-import { useNavigation } from '@react-navigation/native'
+import { useNavigation, useIsFocused } from '@react-navigation/native'
 import IconClipboardList from '@tabler/icons-react-native/IconClipboardList'
 import IconSettings from '@tabler/icons-react-native/IconSettings'
 import IconSearch from '@tabler/icons-react-native/IconSearch'
@@ -443,6 +443,7 @@ function MapScreenForCountry() {
   // takes priority over the live/lookahead profile: reviewing a past flight
   // is a distinct mode from planning/flying the current route.
   const { selectedLog, selectedTrack, clearView, jumpTs: logJumpTs } = useFlightLogViewContext()
+  const screenFocused = useIsFocused()
   // Ruler cross-section takes priority over everything else (mirrors web's
   // MapView.tsx priority order: ruler -> past-log -> planned -> look-ahead)
   // -- an active ad-hoc measurement is a more deliberate, momentary action
@@ -1556,6 +1557,7 @@ function MapScreenForCountry() {
           showLegLabels={!planningMode && !routeAdjustMode}
           legIasKts={legIasKts}
           pastTrack={pastTrack}
+          screenFocused={screenFocused}
           pastTrackGeoJson={pastTrackGeoJson}
           profileCursorStore={profileCursorStore}
           rulerMode={rulerMode}

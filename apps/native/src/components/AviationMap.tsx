@@ -203,6 +203,9 @@ export type AviationMapProps = {
   pastTrack?: [number, number][]
   /** Drawn geometry for the viewed log: solid `track` lines plus dashed `gap` bridges (shared trackToGeoJson). */
   pastTrackGeoJson?: FeatureCollection
+  /** The map's screen is the one in front. Camera moves made while another screen covers it
+   *  (a log picked on the Flight Plan screen) are lost, so the log fit is repeated on return. */
+  screenFocused?: boolean
   /** Id of the saved-route row the working route is currently linked to
    *  ('' = untitled/unlinked) -- RouteContext's activeRouteId, changed by
    *  RouteLibrarySheet's handleLoad/Save As, GPX import, and New Route.
@@ -1688,6 +1691,7 @@ export function AviationMap({
   trajectoryMode = 'time' as const,
   pastTrack,
   pastTrackGeoJson,
+  screenFocused = true,
   activeRouteId,
   routeFitNonce = 0,
   profileCursorStore,
@@ -2421,16 +2425,31 @@ export function AviationMap({
   }, [flyToTarget])
 
   // Fit camera to a viewed flight log's track bounds whenever it's selected
-  // (or changes) — Logs segment "View" action on PlanScreen.
+  // (or changes) — Logs segment "View" action on PlanScreen. The log is picked
+  // on another screen: a fit issued while the map is covered was lost (the map
+  // stayed at the own position), so it runs once the map screen is in front,
+  // after a short settle for the navigation transition. It also counts as the
+  // start-up centring, so a late home / own-position fly-to does not undo it.
+  const pastTrackFittedRef = useRef<[number, number][] | null>(null)
+  const pastTrackRef = useRef(pastTrack)
+  pastTrackRef.current = pastTrack
   useEffect(() => {
-    if (!pastTrack || pastTrack.length < 2) return
-    const lngs = pastTrack.map(p => p[0])
-    const lats = pastTrack.map(p => p[1])
-    cameraRef.current?.fitBounds(
-      [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)],
-      { padding: { top: 60, bottom: 60, left: 60, right: 60 }, duration: 600 },
-    )
-  }, [pastTrack])
+    if (!pastTrack || pastTrack.length < 2) { pastTrackFittedRef.current = null; return }
+    // Also wait for the style: on a cold start a fit sent before it had loaded was
+    // dropped and the map stayed at its default (whole-country) view.
+    if (!screenFocused || !styleLoaded || pastTrackFittedRef.current === pastTrack) return
+    homeCenteredRef.current = true
+    const t = setTimeout(() => {
+      pastTrackFittedRef.current = pastTrack
+      const lngs = pastTrack.map(p => p[0])
+      const lats = pastTrack.map(p => p[1])
+      cameraRef.current?.fitBounds(
+        [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)],
+        { padding: { top: 80, bottom: 60, left: 60, right: 80 }, duration: 600 },
+      )
+    }, 350)
+    return () => clearTimeout(t)
+  }, [pastTrack, screenFocused, styleLoaded])
 
   // Fit camera to the route's bounds right after it's loaded/activated —
   // RouteLibrarySheet's handleLoad (Flight Plan screen) changes activeRouteId,
@@ -2494,9 +2513,11 @@ export function AviationMap({
     if (!gpsPosition) return
     if (posCenteredRef.current && !simJustActivated) return
     posCenteredRef.current = true
-    // A route already in view (fitted on open/load) takes priority over the
-    // first passive fix; the sim/live flight modes still centre on the aircraft.
-    if (!simJustActivated && !followGps && (waypointsRef.current?.length ?? 0) >= 2) return
+    // A route or a viewed flight log already in view (fitted on open/load) takes
+    // priority over the first passive fix (it used to fly back to the own
+    // position at zoom 11 right after a log was fitted); the sim/live flight
+    // modes still centre on the aircraft.
+    if (!simJustActivated && !followGps && ((waypointsRef.current?.length ?? 0) >= 2 || (pastTrackRef.current?.length ?? 0) >= 2)) return
     cameraRef.current?.flyTo({
       center:   [gpsPosition.lng, gpsPosition.lat],
       zoom:     11,
