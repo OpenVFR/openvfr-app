@@ -5065,7 +5065,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           </div>
         ) : flyingMode !== 'off' ? (
           // Flying without a planned route: show forward-looking profile along current heading.
-          // Nothing until the first position gives the look-ahead its start and track.
+          // A one-line note until the first position gives the look-ahead its start and track.
           lookaheadWaypoints.length >= 2 ? (
             <div className={css.vrRow}>
               <VirtualRadar
@@ -5087,7 +5087,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
                 crosshairDistNm={profileCursorNm}
               />
             </div>
-          ) : null
+          ) : (
+            <div className={css.vrRow}>
+              <div className={css.vrWaiting}>LOOK-AHEAD · waiting for a position…</div>
+            </div>
+          )
         ) : null}
 
       </div>

@@ -30,6 +30,12 @@ export const PLAN_COLOR = '#e040fb'
 export const FLOWN_COLOR = '#a78bfa'
 /** Recording gap in a viewed flight log (no data): dashed bridge plus a dot at each end. */
 export const FLOWN_GAP_COLOR = '#ef4444'
+/** Ground-speed line of a viewed flight log (own scale on the right). */
+export const FLOWN_SPEED_COLOR = '#22d3ee'
+/** Below MSA near an aerodrome in a viewed log (climb-out, approach): expected, so amber, not red. */
+export const FLOWN_NEAR_FIELD_COLOR = '#ffc766'
+/** How far along the track from an aerodrome (or the log's start/end) low flying counts as near it. */
+export const FLOWN_NEAR_FIELD_NM = 5
 export const MSA_COLOR = '#ffb454'
 /** Light green: the ground's label colour (hover readout). */
 export const GROUND_COLOR = '#e4f0b8'

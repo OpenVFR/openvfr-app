@@ -40,6 +40,17 @@
   grid-column: 1 / -1;
 }
 
+/* Flying without a route, before the first position: stands in for the look-ahead profile. */
+.vrWaiting {
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  background: var(--surface-elevated);
+  border-top: 1px solid var(--border-default);
+}
+
 /* ── Data update notification banner ─────────────────────────────────────── */
 .updateBanner {
   position:       absolute;

@@ -8,9 +8,12 @@ import {
 import {
   symbolGroundY, LIMITING_LABEL_MERGE_PX, POI_SCALE, poiCenterY, SKY_TOP, SKY_BOTTOM, PLAN_COLOR, MSA_COLOR, GROUND_COLOR, GROUND_OUTLINE, CORRIDOR_FILL, CORRIDOR_OUTLINE, CORRIDOR_OUTLINE_WIDTH,
   DANGER_COLOR, DANGER_TEXT, PHASE_SHORT_COLOR, WIND_LABEL_COLOR, windAloftFit, terrainGradientStops, phaseLabelText,
-  FLOWN_COLOR, FLOWN_GAP_COLOR,
+  FLOWN_COLOR, FLOWN_GAP_COLOR, FLOWN_SPEED_COLOR, FLOWN_NEAR_FIELD_COLOR, FLOWN_NEAR_FIELD_NM,
 } from '@open-vfr/shared/radarStyle'
-import { flownAltitudeAt, flownIndexAt, flownLineParts, formatElapsed, type FlownPoint } from '@open-vfr/shared/flightLogProfile'
+import {
+  flownAltitudeAt, flownIndexAt, flownLineParts, formatElapsed, formatUtcTime, flownGaps, flownSpeedScale, flownSpeedRuns,
+  flownAirspaceAt, flownAirspaceEntries, splitBelowMsaNearFields, type FlownPoint,
+} from '@open-vfr/shared/flightLogProfile'
 import { airspaceOutlines, airspaceChips, layoutAirspaceChips } from '@open-vfr/shared/airspaceOutline'
 import {
   cloudLayerPaths, cloudLayerLabel, cloudGlyphHeight, cloudOpacityForOffset, cloudReportOffRouteNm,
@@ -89,6 +92,11 @@ const X_TICK_SPACING_PX = 100
 /** Waypoint / trajectory label inset from its line (px). */
 const LINE_LABEL_INSET = 5
 
+// Text and guide lines drawn inside the plot: the chart is dark in every theme, so these are
+// fixed light colours, not the theme's (dark in the light theme). Axes outside the plot follow the theme.
+const CHART_TEXT = '#ffffff'
+const CHART_LINE = 'rgba(255,255,255,0.45)'
+
 const HALO = { stroke: 'rgba(0,0,0,0.9)', strokeWidth: 4, strokeLinejoin: 'round' as const, paintOrder: 'stroke' }
 
 
@@ -162,6 +170,8 @@ interface ProfileSeries {
   /** MSA per sample (0 = none). */
   msa:         number[] | null
   belowMsa:    { distNm: number; altFt: number }[][]
+  /** Flight log: below-MSA stretches near an aerodrome (departure, arrival), drawn softer. */
+  belowMsaNearField?: { distNm: number; altFt: number }[][]
 }
 
 interface CloudMark {
@@ -470,7 +480,7 @@ const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDist
     content = (
       <>
         <svg className={css.hoverSvg} width={L.contentW} height={chartHeightOf(L)} aria-hidden>
-          <line x1={x} y1={L.plotTop} x2={x} y2={L.plotBottom} stroke="var(--text-faint)" strokeWidth={1} />
+          <line x1={x} y1={L.plotTop} x2={x} y2={L.plotBottom} stroke={CHART_LINE} strokeWidth={1} />
           {rows.map((r) => (
             <circle key={r.label} cx={x} cy={L.yOf(r.ft)} r={3} fill={r.color} stroke="#fff" strokeWidth={1} />
           ))}
@@ -520,10 +530,12 @@ const TAP_MAX_MS = 350
  * while it is moved and after a touch, so it can be read without hovering.
  * Reports the inspected distance for the map marker from the first interaction on.
  */
-const FlownScrubOverlay = memo(function FlownScrubOverlay({ layout: L, series, flown, silhouette, onHoverDistNm }: {
+const FlownScrubOverlay = memo(function FlownScrubOverlay({ layout: L, series, flown, bands, silhouette, onHoverDistNm }: {
   layout: ProfileChartLayout
   series: ProfileSeries
   flown: FlownPoint[]
+  /** Airspace bands (terrain applied), for the "in airspace" rows of the readout. */
+  bands: { class: string; type: string; name: string; tag: string; border: string; lower_ft: number; upper_ft: number; entryNm: number; exitNm: number }[]
   silhouette: ReturnType<typeof getAircraftSilhouette>
   onHoverDistNm?: (distNm: number | null) => void
 }) {
@@ -652,16 +664,20 @@ const FlownScrubOverlay = memo(function FlownScrubOverlay({ layout: L, series, f
     const y = Number.isFinite(alt) ? L.yOf(Math.max(L.yMin, Math.min(L.yMax, alt))) : L.plotTop + 20
     const rows: { label: string; value: string; color?: string }[] = [
       { label: 'Time', value: formatElapsed(fp.elapsedMs) },
+      { label: 'UTC', value: formatUtcTime(fp.ts) },
       { label: 'Alt', value: altKnown ? formatAltitudeFt(alt) : '\u2014', color: FLOWN_COLOR },
-      { label: 'GS', value: Number.isFinite(fp.spdKts) ? `${Math.round(fp.spdKts)} kt` : '\u2014' },
+      { label: 'GS', value: Number.isFinite(fp.spdKts) ? `${Math.round(fp.spdKts)} kt` : '\u2014', color: FLOWN_SPEED_COLOR },
     ]
     if (altKnown && gnd != null) rows.push({ label: 'AGL', value: formatAltitudeFt(alt - gnd), color: GROUND_COLOR })
     if (msa > 0) rows.push({ label: 'MSA', value: formatAltitudeFt(msa), color: altKnown && alt < msa ? DANGER_TEXT : MSA_COLOR })
-    const flip = x > L.contentW - 140
+    for (const b of altKnown ? flownAirspaceAt(bands, fp.distNm, alt).slice(0, 2) : []) {
+      rows.push({ label: b.class, value: b.name })
+    }
+    const flip = x > L.contentW - 180
     content = (
       <>
         <svg className={css.hoverSvg} width={L.contentW} height={chartHeightOf(L)}>
-          {showReadout && <line x1={x} y1={L.plotTop} x2={x} y2={L.plotBottom} stroke="var(--text-faint)" strokeWidth={1} />}
+          {showReadout && <line x1={x} y1={L.plotTop} x2={x} y2={L.plotBottom} stroke={CHART_LINE} strokeWidth={1} />}
           <g
             className={css.scrubHandle}
             transform={`translate(${x},${y})`}
@@ -838,7 +854,7 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
               <g key={`lvl-${i}`}>
                 {mine && <line x1={x1} x2={x2} y1={y} y2={y} stroke={below ? DANGER_COLOR : '#fff'} strokeWidth={1.5} strokeDasharray="6 4" />}
                 <text x={mid} y={y - 8 >= L.plotTop + 46 ? y - 8 : Math.max(y + 16, L.plotTop + 50)} textAnchor="middle" fontSize={mine ? 12 : 10} fontWeight={700}
-                  fill={below ? DANGER_TEXT : 'var(--text-primary)'} {...HALO}>
+                  fill={below ? DANGER_TEXT : CHART_TEXT} {...HALO}>
                   {mine && drag.cand == null ? `release = route level (${formatAltitudeFt(fallbackAltFt)})` : formatAltitudeFt(alt)}
                   {mine && below ? ` \u2014 below MSA ${formatAltitudeFt(legMsa[i])}` : ''}
                 </text>
@@ -928,6 +944,8 @@ function VirtualRadar({
   const [showMsa, setShowMsa] = usePersistedFlag('ovfr:vr:msa', true)
   // Obstacle labels (the short tip altitude / name beside each limiting obstacle); the symbols stay either way.
   const [showObstLabels, setShowObstLabels] = usePersistedFlag('ovfr:vr:obst', true)
+  // Flight log: the ground-speed line (own scale; exact values are in the readout either way).
+  const [showSpeed, setShowSpeed] = usePersistedFlag('ovfr:vr:gs', true)
 
   // Extract performance model from selected aircraft profile.
   // Only populated when all critical perf fields are non-zero.
@@ -1117,7 +1135,7 @@ function VirtualRadar({
   const vspeedAttitudeColor =
     vspeedTrajectory.attitude === 'climb'   ? 'rgba(34,197,94,0.85)'   :
     vspeedTrajectory.attitude === 'descent' ? 'rgba(248,113,113,0.85)' :
-                                               'var(--text-secondary)'
+                                               'rgba(255,255,255,0.55)'
 
   // Weather stations projected onto the route's distance axis — same shared
   // projection native uses for its wind-arrow/cloud-layer overlay.
@@ -1152,6 +1170,13 @@ function VirtualRadar({
     return () => ro.disconnect()
   }, [collapsed, profile])
 
+  // Flight log: aerodromes on the flown track (within 1.5 NM of it) plus the log's own start and end.
+  const logFieldNms = useMemo(() => {
+    if (!flown || flown.length === 0) return [] as number[]
+    const fields = collectRoutePois(waypoints, poiSets).filter((p) => p.kind === 'aerodrome' && p.lateralNm <= 1.5).map((p) => p.distNm)
+    return [0, flown[flown.length - 1].distNm, ...fields]
+  }, [flown, waypoints, poiSets])
+
   // Per-sample series: terrain samples when terrain is in (planned altitude
   // projected onto them), else the planned altitude breakpoints alone.
   const series = useMemo((): ProfileSeries | null => {
@@ -1166,14 +1191,19 @@ function VirtualRadar({
       const alts = distNms.map((d) => { const a = flownAltitudeAt(flown, d); return Number.isFinite(a) ? a : 0 })
       const msaKnown = terrainPts.length > 0 || gridOnly
       const pts = flown.filter((p) => Number.isFinite(p.altFt))
+      // No endpoint allowance: a log starts and ends on the ground. Being low near an aerodrome
+      // on the track (or the log's own start and end) is shown softer instead of in red.
+      const runs = msaKnown
+        ? belowMsaRuns({ distNms: pts.map((p) => p.distNm), plannedAlts: pts.map((p) => p.altFt), getMsa, totalNm: profile.totalNm, suppressNm: 0 })
+        : []
+      const split = splitBelowMsaNearFields(runs, logFieldNms, FLOWN_NEAR_FIELD_NM)
       return {
         distNms,
         plannedAlts: alts,
         ground: terrainPts.length > 0 ? terrainPts.map((p) => p.elevFt) : null,
         msa: msaKnown ? distNms.map((d) => getMsa(d)) : null,
-        belowMsa: msaKnown
-          ? belowMsaRuns({ distNms: pts.map((p) => p.distNm), plannedAlts: pts.map((p) => p.altFt), getMsa, totalNm: profile.totalNm })
-          : [],
+        belowMsa: split.away,
+        belowMsaNearField: split.nearField,
       }
     }
     if (terrainPts.length > 0 || gridOnly) {
@@ -1201,7 +1231,7 @@ function VirtualRadar({
       msa: null,
       belowMsa: [],
     }
-  }, [profile, terrainPts, msaTerrain, perf, getMsa, flown])
+  }, [profile, terrainPts, msaTerrain, perf, getMsa, flown, logFieldNms])
 
   // While a leg level is dragged: the path the aircraft would fly at that level (climbs and descents
   // included), so the effect on the whole route is visible before the change is committed.
@@ -1218,6 +1248,9 @@ function VirtualRadar({
 
   // Flight log: the flown line in continuous stretches plus the recording gaps between them.
   const flownParts = useMemo(() => (flown ? flownLineParts(flown) : null), [flown])
+  const flownSpeed = useMemo(() => (flown ? { scale: flownSpeedScale(flown), runs: flownSpeedRuns(flown) } : null), [flown])
+  const flownGapInfo = useMemo(() => (flown ? flownGaps(flown) : null), [flown])
+  const flownEntries = useMemo(() => (flown && profile ? flownAirspaceEntries(flown, profile.airspaceBands) : []), [flown, profile])
 
   // Inputs of the drag layer, kept stable so a drag step only re-renders the layer, not rebuilds these.
   const plannedPts = useMemo(() => (series ? series.distNms.map((d, i) => ({ distNm: d, altFt: series.plannedAlts[i] })) : []), [series])
@@ -1764,11 +1797,11 @@ function VirtualRadar({
           const x = L.xOf(tick.distNm)
           return (
             <g key={`wp-${tick.distNm}-${tick.name}`}>
-              <line x1={x} y1={L.plotTop} x2={x} y2={L.plotBottom} stroke="var(--border-default)" />
+              <line x1={x} y1={L.plotTop} x2={x} y2={L.plotBottom} stroke={CHART_LINE} />
               <text
                 x={isLast ? x - LINE_LABEL_INSET : x + LINE_LABEL_INSET} y={L.plotTop + LINE_LABEL_INSET}
                 dominantBaseline="hanging" textAnchor={isLast ? 'end' : 'start'}
-                fontSize={12} fontWeight={600} fill="var(--text-primary)"
+                fontSize={12} fontWeight={600} fill={CHART_TEXT}
               >
                 {tick.name}
               </text>
@@ -1778,6 +1811,19 @@ function VirtualRadar({
 
         {/* ── Planned altitude line, MSA, below-MSA stretches in red ── */}
         <clipPath id="plan-clip"><rect x={L.plotLeft} y={L.plotTop} width={L.plotW} height={L.plotH + 4} /></clipPath>
+        {/* Ground speed on its own scale (0 at the plot bottom, the GS button's range at the top), under the altitude line. */}
+        {flownSpeed && showSpeed && (() => {
+          const top = flownSpeed.scale.topKts
+          const ys = (k: number) => L.plotBottom - (k / top) * L.plotH
+          return (
+            <g clipPath="url(#plan-clip)" pointerEvents="none">
+              {flownSpeed.runs.map((run, i) => (
+                <path key={`spd-${i}`} d={'M' + run.map((p) => `${L.xOf(p.distNm).toFixed(1)},${ys(p.spdKts).toFixed(1)}`).join(' L')}
+                  fill="none" stroke={FLOWN_SPEED_COLOR} strokeWidth={1.5} strokeDasharray="5 3" opacity={0.85} />
+              ))}
+            </g>
+          )
+        })()}
         {flownParts && (
           <g clipPath="url(#plan-clip)" pointerEvents="none">
             {flownParts.runs.map((run, i) => {
@@ -1812,7 +1858,7 @@ function VirtualRadar({
             <g key={`unreached-${u.legIndex}`} pointerEvents="none">
               <line x1={x1} x2={x2} y1={y} y2={y} stroke={PLAN_COLOR} strokeWidth={1.5} strokeDasharray="6 4" opacity={0.75} />
               {above && !dragging && x2 - x1 > 70 && (
-                <text x={(x1 + x2) / 2} y={L.plotTop + 46} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--text-primary)" {...HALO}>
+                <text x={(x1 + x2) / 2} y={L.plotTop + 46} textAnchor="middle" fontSize={10} fontWeight={700} fill={CHART_TEXT} {...HALO}>
                   {'\u25b2'} {formatAltitudeFt(u.levelFt)} set
                 </text>
               )}
@@ -1836,6 +1882,9 @@ function VirtualRadar({
         {!dragging && series.belowMsa.map((run, i) => (
           <path key={`below-${i}`} d={polylinePath(run, L.xOf, L.yOf)} fill="none" stroke={DANGER_COLOR} strokeWidth={2.5} />
         ))}
+        {series.belowMsaNearField?.map((run, i) => (
+          <path key={`below-near-${i}`} d={polylinePath(run, L.xOf, L.yOf)} fill="none" stroke={FLOWN_NEAR_FIELD_COLOR} strokeWidth={2.5} />
+        ))}
         {/* Recording gaps: nothing is known in between, so a dashed bridge and a dot at each end. */}
         {flownParts?.gaps.map(([a, b], i) => (
           <g key={`gap-${i}`} pointerEvents="none">
@@ -1857,7 +1906,7 @@ function VirtualRadar({
         ))}
 
         {poiMarks.filter((m) => m.labelPos).map((m) => (
-          <text key={`poi-label-${m.key}`} x={m.labelPos!.left} y={m.labelPos!.baseline} textAnchor="start" fontSize={11} fontWeight={m.kind === 'aerodrome' ? 700 : 500} fill="var(--text-primary)" {...HALO} aria-hidden="true">{m.label}</text>
+          <text key={`poi-label-${m.key}`} x={m.labelPos!.left} y={m.labelPos!.baseline} textAnchor="start" fontSize={11} fontWeight={m.kind === 'aerodrome' ? 700 : 500} fill={CHART_TEXT} {...HALO} aria-hidden="true">{m.label}</text>
         ))}
         {/* ── Axes ──────────────────────────────────────────────── */}
         {renderYAxis(L, yTicks)}
@@ -1872,9 +1921,21 @@ function VirtualRadar({
         </text>
       </>
     )
-  }, [profile, layout, series, yMax, yMin, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, showMsa, windAloft, iconMarkup, visibleWaypointTicks, units.distance, dragging, obstacleMarks, landmarkMarks, poiMarks, unreached, legSpanList, phaseMarks, flownParts, logMode, windOn])
+  }, [profile, layout, series, yMax, yMin, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, showMsa, windAloft, iconMarkup, visibleWaypointTicks, units.distance, dragging, obstacleMarks, landmarkMarks, poiMarks, unreached, legSpanList, phaseMarks, flownParts, logMode, windOn, flownSpeed, showSpeed])
 
-  if (!profile || !series || series.distNms.length === 0) return null
+  if (!profile || !series || series.distNms.length === 0) {
+    // A flight log shows its panel at once: building its profile (map data, terrain) takes a moment.
+    if (!logMode) return null
+    return (
+      <div className={css.panel}>
+        <div className={css.header}>
+          <span className={css.title}>{title ?? 'FLIGHT LOG'}</span>
+          {onClose && <button className={css.collapseBtn} onClick={onClose} title="Close the flight log" aria-label="Close the flight log">✕</button>}
+        </div>
+        <div className={css.loadingMsg} style={{ height: chartH }}>Building the profile along the flown track…</div>
+      </div>
+    )
+  }
 
   // ── Live layer (re-rendered every GPS tick) ────────────────────────────────
   const L = layout
@@ -1882,7 +1943,7 @@ function VirtualRadar({
     <g pointerEvents="none">
       {currentDistNm != null && (
         <line x1={L.xOf(currentDistNm)} y1={L.plotTop} x2={L.xOf(currentDistNm)} y2={L.plotBottom}
-          stroke="var(--text-faint)" strokeWidth={1} strokeDasharray="3 3" />
+          stroke={CHART_LINE} strokeWidth={1} strokeDasharray="3 3" />
       )}
       {/* Trajectory ticks — yellow dashed lines at 1/3/5 min or NM ahead,
           labelled just above the plot bottom (the top row holds waypoint names). */}
@@ -1953,6 +2014,17 @@ function VirtualRadar({
             drag the aircraft to inspect
           </span>
         )}
+        {flownGapInfo && flownGapInfo.count > 0 && (
+          <span className={css.offTrackBadge} title="The recording has holes (GPS lost or the app suspended). Nothing is known about the flight there: drawn as a dashed red line between the two ends.">
+            ⚠ {flownGapInfo.count} GPS gap{flownGapInfo.count > 1 ? 's' : ''}, longest {formatElapsed(flownGapInfo.largestMs)}
+          </span>
+        )}
+        {flownEntries.length > 0 && (
+          <span className={css.logBadge} title={'Airspace entered (from the limits as drawn, approximate; not proof of an infringement):\n'
+            + flownEntries.map((e) => `${formatElapsed(e.point.elapsedMs)}  ${e.band.class} ${e.band.name}`).join('\n')}>
+            {flownEntries.length} airspace entr{flownEntries.length > 1 ? 'ies' : 'y'}
+          </span>
+        )}
         {onLegLevelChange && (
           <span className={css.dragHint} title="Press a leg on the chart and drag up or down to change its level">
             drag a leg to set its level
@@ -2005,6 +2077,17 @@ function VirtualRadar({
         >
           OBST
         </button>
+        {logMode && (
+          <button
+            className={`${css.projToggleBtn} ${showSpeed ? css.projToggleOn : ''}`}
+            onClick={() => setShowSpeed((v) => !v)}
+            title={showSpeed
+              ? `Ground-speed line: own scale, 0 kt at the bottom of the chart to ${flownSpeed?.scale.topKts ?? 0} kt at the top. Click to hide.`
+              : 'Show the ground speed along the flight (own scale)'}
+          >
+            {showSpeed && flownSpeed ? `GS 0–${flownSpeed.scale.topKts}` : 'GS'}
+          </button>
+        )}
         {!logMode && (
           <button
             className={`${css.projToggleBtn} ${showWindAloft ? css.projToggleOn : ''}`}
@@ -2046,7 +2129,7 @@ function VirtualRadar({
                 {live}
               </svg>
               {flown
-                ? <FlownScrubOverlay layout={L} series={series} flown={flown} silhouette={silhouette} onHoverDistNm={onHoverDistNm} />
+                ? <FlownScrubOverlay layout={L} series={series} flown={flown} bands={profile.airspaceBands} silhouette={silhouette} onHoverDistNm={onHoverDistNm} />
                 : <HoverOverlay layout={L} series={series} onHoverDistNm={onHoverDistNm} />}
               {profile && series && !logMode && (
                 <LegDragLayer

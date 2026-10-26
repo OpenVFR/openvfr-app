@@ -41,6 +41,8 @@ export interface FlownPoint {
   trkDeg:    number
   /** Time since the first recorded point, ms. */
   elapsedMs: number
+  /** Recorded time, Unix ms. */
+  ts:        number
   /** A recording gap (GPS loss, app suspended) lies between the previous point and this one. */
   gapBefore: boolean
 }
@@ -177,7 +179,7 @@ export function flightLogProfile(
         altFt: Number.isFinite(p.altFt) ? p.altFt : NaN,
         spdKts: Number.isFinite(p.spdKts) ? p.spdKts : NaN,
         trkDeg: trackAt(i),
-        elapsedMs: p.ts - t0, gapBefore: gapBefore[i],
+        elapsedMs: p.ts - t0, ts: p.ts, gapBefore: gapBefore[i],
       }
     }
     at(a, pathCum)
@@ -285,4 +287,106 @@ export function formatElapsed(ms: number): string {
   if (h > 0) return `${h} h ${String(m).padStart(2, '0')} min ${String(sec).padStart(2, '0')} s`
   if (m > 0) return `${m} min ${String(sec).padStart(2, '0')} s`
   return `${sec} s`
+}
+
+/** UTC time of day, "09:42:10Z". */
+export function formatUtcTime(ts: number): string {
+  const d = new Date(ts)
+  const two = (n: number) => String(n).padStart(2, '0')
+  return `${two(d.getUTCHours())}:${two(d.getUTCMinutes())}:${two(d.getUTCSeconds())}Z`
+}
+
+/** Recording gaps in the log: how many, and the longest (ms). */
+export function flownGaps(points: readonly FlownPoint[]): { count: number; largestMs: number } {
+  let count = 0, largestMs = 0
+  for (let i = 1; i < points.length; i++) {
+    if (!points[i].gapBefore) continue
+    count++
+    largestMs = Math.max(largestMs, points[i].ts - points[i - 1].ts)
+  }
+  return { count, largestMs }
+}
+
+/** Ground-speed axis for the speed line: top rounded up to 20 kt with some headroom, three ticks. */
+export function flownSpeedScale(points: readonly FlownPoint[]): { topKts: number; ticks: number[] } {
+  let max = 0
+  for (const p of points) if (Number.isFinite(p.spdKts) && p.spdKts > max) max = p.spdKts
+  const topKts = Math.max(40, Math.ceil((max * 1.1) / 20) * 20)
+  return { topKts, ticks: [0, topKts / 2, topKts] }
+}
+
+/** Ground speed along the flown line, split at recording gaps and at points without a speed. */
+export function flownSpeedRuns(points: readonly FlownPoint[]): { distNm: number; spdKts: number }[][] {
+  const runs: { distNm: number; spdKts: number }[][] = []
+  let cur: { distNm: number; spdKts: number }[] = []
+  const flush = () => { if (cur.length > 1) runs.push(cur); cur = [] }
+  for (const p of points) {
+    if (p.gapBefore || !Number.isFinite(p.spdKts)) flush()
+    if (Number.isFinite(p.spdKts)) cur.push({ distNm: p.distNm, spdKts: p.spdKts })
+  }
+  flush()
+  return runs
+}
+
+/** The minimum an airspace band needs for these lookups (the profile's AirspaceCrossSection fits). */
+export interface FlownBand {
+  class: string; type: string; name: string; tag: string
+  lower_ft: number; upper_ft: number; entryNm: number; exitNm: number
+}
+
+/**
+ * Airspace the aircraft was in at `distNm` / `altFt`, class G left out. Uses the
+ * band limits as drawn in the profile (FL limits read as feet, AGL limits lifted
+ * onto the terrain), the same approximation the chart shows: for review, not
+ * as proof of an infringement.
+ */
+export function flownAirspaceAt<B extends FlownBand>(bands: readonly B[], distNm: number, altFt: number): B[] {
+  if (!Number.isFinite(altFt)) return []
+  return bands.filter((b) => b.class !== 'G' && distNm >= b.entryNm && distNm <= b.exitNm && altFt >= b.lower_ft && altFt <= b.upper_ft)
+}
+
+/** Each time the flown line enters an airspace band (class G left out), in flight order. */
+export function flownAirspaceEntries<B extends FlownBand>(points: readonly FlownPoint[], bands: readonly B[]): { band: B; point: FlownPoint }[] {
+  const out: { band: B; point: FlownPoint }[] = []
+  const inside = new Set<B>()
+  for (const p of points) {
+    if (!Number.isFinite(p.altFt)) continue
+    const now = new Set(flownAirspaceAt(bands, p.distNm, p.altFt))
+    for (const b of now) if (!inside.has(b)) out.push({ band: b, point: p })
+    inside.clear()
+    for (const b of now) inside.add(b)
+  }
+  return out
+}
+
+/**
+ * Splits below-MSA stretches into those near an aerodrome (departure, arrival,
+ * a touch-and-go: being low there is expected, shown softer) and the rest.
+ * `fieldNms` are distances along the path of aerodromes on it (and the log's
+ * own start and end); `radiusNm` is how far either side counts as near.
+ */
+export function splitBelowMsaNearFields(
+  runs: readonly { distNm: number; altFt: number }[][],
+  fieldNms: readonly number[],
+  radiusNm: number,
+): { away: { distNm: number; altFt: number }[][]; nearField: { distNm: number; altFt: number }[][] } {
+  const away: { distNm: number; altFt: number }[][] = []
+  const nearField: { distNm: number; altFt: number }[][] = []
+  const isNear = (d: number) => fieldNms.some((f) => Math.abs(d - f) <= radiusNm)
+  for (const run of runs) {
+    let cur: { distNm: number; altFt: number }[] = []
+    let curNear: boolean | null = null
+    for (const p of run) {
+      const near = isNear(p.distNm)
+      if (curNear !== null && near !== curNear) {
+        cur.push(p) // share the boundary point so the two colours join up
+        if (cur.length > 1) (curNear ? nearField : away).push(cur)
+        cur = []
+      }
+      cur.push(p)
+      curNear = near
+    }
+    if (cur.length > 1 && curNear !== null) (curNear ? nearField : away).push(cur)
+  }
+  return { away, nearField }
 }

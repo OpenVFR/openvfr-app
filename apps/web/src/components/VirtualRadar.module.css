@@ -72,6 +72,13 @@
   border-color: rgba(0, 220, 255, 0.80);
 }
 
+/* The header follows the theme (the chart does not): bright cyan is unreadable on the light panel. */
+:global(:root[data-theme="light"]) .projToggleOn,
+:global(:root[data-theme="light"]) .projToggleOn:hover {
+  color: #0e7490;
+  border-color: rgba(14, 116, 144, 0.6);
+}
+
 .collapseBtn {
   background: none;
   border: none;
@@ -294,3 +301,24 @@
 :global(:root[data-theme="light"]) .tooltipVal { color: #e8edf5; }
 
 .projToggleBtn:disabled { opacity: 0.35; cursor: default; }
+
+/* Flight log: count of airspace entered (details in the title). */
+.logBadge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  padding: 0 5px;
+  white-space: nowrap;
+  cursor: help;
+}
+
+/* Flight log panel while its profile is still being built. */
+.loadingMsg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
