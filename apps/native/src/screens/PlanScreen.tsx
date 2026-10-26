@@ -1307,7 +1307,7 @@ export function PlanScreen() {
                         {!log.simulated && (
                           <Text style={styles.logEventsToggle} onPress={() => setLogAircraftOpen(logAircraftOpen === log.id ? null : log.id)} accessibilityRole="button"
                             accessibilityLabel="Aircraft flown">
-                            {'\u2708'} {profiles.find(p => p.id === log.aircraftId)?.registration || profiles.find(p => p.id === log.aircraftId)?.name || log.registration || 'No aircraft'} {logAircraftOpen === log.id ? '\u25be' : '\u25b8'}
+                            {'\u2708'} {profiles.find(p => p.id === log.aircraftId)?.registration || profiles.find(p => p.id === log.aircraftId)?.name || log.registration || (log.aircraftId ? 'Unknown aircraft' : 'No aircraft')} {logAircraftOpen === log.id ? '\u25be' : '\u25b8'}
                           </Text>
                         )}
                         {mergeNext.has(log.id) && (
