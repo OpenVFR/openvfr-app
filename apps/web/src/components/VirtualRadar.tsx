@@ -416,15 +416,11 @@ function renderYAxis(L: ProfileChartLayout, yTicks: number[]) {
  * re-renders this overlay, never the chart underneath; also reports the
  * hovered distance to the parent (map crosshair) once per sample change.
  */
-const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDistNm, flown, silhouette }: {
+const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDistNm }: {
   layout: ProfileChartLayout
   series: ProfileSeries
   onHoverDistNm?: (distNm: number | null) => void
-  /** Flight-log review: the cursor snaps to the nearest recorded point and reads it out. */
-  flown?: FlownPoint[]
-  silhouette?: ReturnType<typeof getAircraftSilhouette>
 }) {
-  // Index into flown (log review) or series.distNms (route).
   const [idx, setIdx] = useState<number | null>(null)
   const lastIdxRef = useRef<number | null>(null)
   const onHoverRef = useRef(onHoverDistNm)
@@ -434,11 +430,11 @@ const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDist
     if (next === lastIdxRef.current) return
     lastIdxRef.current = next
     setIdx(next)
-    onHoverRef.current?.(next == null ? null : flown ? flown[next].distNm : series.distNms[next])
-  }, [series, flown])
+    onHoverRef.current?.(next == null ? null : series.distNms[next])
+  }, [series])
 
   // A new series invalidates the sample index.
-  useEffect(() => () => { lastIdxRef.current = null; setIdx(null) }, [series, flown])
+  useEffect(() => () => { lastIdxRef.current = null; setIdx(null) }, [series])
 
   // Listen on the chart container (the layer's parent), not on this layer: the leg drag
   // layer sits on top and its hit area around the planned level line swallows pointer
@@ -451,59 +447,16 @@ const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDist
     const move = (e: PointerEvent) => {
       const px = e.clientX - host.getBoundingClientRect().left
       if (px < L.plotLeft || px > L.plotRight) { update(null); return }
-      const nm = L.nmAtX(px)
-      if (flown) {
-        update(flown.length > 0 ? flownIndexAt(flown, nm) : null)
-      } else update(nearestSampleIndex(series.distNms, nm))
+      update(nearestSampleIndex(series.distNms, L.nmAtX(px)))
     }
     const leave = () => update(null)
     host.addEventListener('pointermove', move)
     host.addEventListener('pointerleave', leave)
     return () => { host.removeEventListener('pointermove', move); host.removeEventListener('pointerleave', leave) }
-  }, [L, series, update, flown])
+  }, [L, series, update])
 
   let content: ReactNode = null
-  const fp = flown && idx != null ? flown[idx] : undefined
-  if (fp) {
-    // Recorded point: aircraft on the flown line, readout of time, altitude, ground speed, height above ground.
-    const x = L.xOf(fp.distNm)
-    const si = nearestSampleIndex(series.distNms, fp.distNm)
-    const gnd = series.ground?.[si]
-    const msa = series.msa?.[si] ?? 0
-    const alt = Number.isFinite(fp.altFt) ? fp.altFt : null
-    const y = alt != null ? L.yOf(Math.max(L.yMin, Math.min(L.yMax, alt))) : null
-    const rows: { label: string; value: string; color?: string }[] = [
-      { label: 'Time', value: formatElapsed(fp.elapsedMs) },
-      { label: 'Alt', value: alt != null ? formatAltitudeFt(Math.round(alt)) : '\u2014', color: FLOWN_COLOR },
-      { label: 'GS', value: Number.isFinite(fp.spdKts) ? `${Math.round(fp.spdKts)} kt` : '\u2014' },
-    ]
-    if (alt != null && gnd != null) rows.push({ label: 'AGL', value: formatAltitudeFt(alt - gnd), color: GROUND_COLOR })
-    if (msa > 0) rows.push({ label: 'MSA', value: formatAltitudeFt(msa), color: alt != null && alt < msa ? DANGER_TEXT : MSA_COLOR })
-    const flip = x > L.contentW - 130
-    content = (
-      <>
-        <svg className={css.hoverSvg} width={L.contentW} height={chartHeightOf(L)} aria-hidden>
-          <line x1={x} y1={L.plotTop} x2={x} y2={L.plotBottom} stroke="var(--text-faint)" strokeWidth={1} />
-          {y != null && silhouette && (
-            <g transform={`translate(${x},${y})`}>
-              {silhouette.map((part, i) => <path key={i} d={part.d} fill={part.fill ?? 'white'} opacity={part.opacity} stroke="rgba(0,0,0,0.6)" strokeWidth={0.5} />)}
-            </g>
-          )}
-        </svg>
-        <div
-          className={css.tooltip}
-          style={flip ? { right: L.contentW - x + 14, top: L.plotTop } : { left: x + 14, top: L.plotTop }}
-        >
-          {rows.map((r) => (
-            <div key={r.label} className={css.tooltipRow}>
-              <span className={css.tooltipLabel} style={r.color ? { color: r.color } : undefined}>{r.label}</span>
-              <span className={css.tooltipVal}>{r.value}</span>
-            </div>
-          ))}
-        </div>
-      </>
-    )
-  } else if (!flown && idx != null && idx < series.distNms.length) {
+  if (idx != null && idx < series.distNms.length) {
     const x = L.xOf(series.distNms[idx])
     const rows: { label: string; ft: number; color: string }[] = []
     const plan = series.plannedAlts[idx]
@@ -545,6 +498,203 @@ const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDist
       className={css.hoverLayer}
       style={{ width: L.contentW, height: chartHeightOf(L) }}
     >
+      {content}
+    </div>
+  )
+})
+
+/** Scrub distance from a scrolled chart edge (px) at which dragging scrolls the chart along. */
+const SCRUB_EDGE_PX = 32
+/** Chart scroll per animation frame while the aircraft is held at an edge (px). */
+const SCRUB_SCROLL_STEP_PX = 10
+/** A touch that moves less than this (px) and lifts quickly is a tap. */
+const TAP_SLOP_PX = 8
+const TAP_MAX_MS = 350
+
+/**
+ * Flight-log inspection: an aircraft on the flown line that can be moved along it.
+ * Mouse: follows the pointer while it is over the chart. Touch: drag the aircraft
+ * (scrolling the chart along at its edges), or tap a spot to move it there; elsewhere
+ * a swipe still scrolls the chart. The aircraft stays where it was left, and the
+ * readout (elapsed time, altitude, ground speed, height above ground, MSA) shows
+ * while it is moved and after a touch, so it can be read without hovering.
+ * Reports the inspected distance for the map marker from the first interaction on.
+ */
+const FlownScrubOverlay = memo(function FlownScrubOverlay({ layout: L, series, flown, silhouette, onHoverDistNm }: {
+  layout: ProfileChartLayout
+  series: ProfileSeries
+  flown: FlownPoint[]
+  silhouette: ReturnType<typeof getAircraftSilhouette>
+  onHoverDistNm?: (distNm: number | null) => void
+}) {
+  const totalNm = flown.length > 0 ? flown[flown.length - 1].distNm : 0
+  // Idle position: the middle of the flight, so the aircraft is visible and clear of the departure clutter.
+  const [idx, setIdx] = useState(() => flownIndexAt(flown, totalNm / 2))
+  const [showReadout, setShowReadout] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const touchedRef = useRef(false)
+  const onHoverRef = useRef(onHoverDistNm)
+  onHoverRef.current = onHoverDistNm
+
+  // A different log starts over in the middle, untouched.
+  useEffect(() => {
+    setIdx(flownIndexAt(flown, totalNm / 2))
+    setShowReadout(false)
+    touchedRef.current = false
+  }, [flown, totalNm])
+  // The map marker follows the inspected point once the user has touched it, and goes with the chart.
+  useEffect(() => {
+    if (touchedRef.current && flown[idx]) onHoverRef.current?.(flown[idx].distNm)
+  }, [idx, flown])
+  useEffect(() => () => onHoverRef.current?.(null), [])
+
+  const layerRef = useRef<HTMLDivElement>(null)
+  const hostOf = () => layerRef.current?.parentElement ?? null
+  const indexAtClientX = useCallback((clientX: number): number | null => {
+    const host = layerRef.current?.parentElement
+    if (!host || flown.length === 0) return null
+    const px = Math.max(L.plotLeft, Math.min(L.plotRight, clientX - host.getBoundingClientRect().left))
+    return flownIndexAt(flown, L.nmAtX(px))
+  }, [L, flown])
+  const moveTo = useCallback((clientX: number) => {
+    const i = indexAtClientX(clientX)
+    if (i == null) return
+    touchedRef.current = true
+    setIdx(i)
+  }, [indexAtClientX])
+
+  // Mouse / pen: follow the pointer over the chart; touch: a tap moves the aircraft.
+  useEffect(() => {
+    const host = hostOf()
+    if (!host) return
+    let tap: { x: number; y: number; t: number; id: number } | null = null
+    const move = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') {
+        if (tap && tap.id === e.pointerId && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > TAP_SLOP_PX) tap = null
+        return
+      }
+      if (dragging) return
+      const px = e.clientX - host.getBoundingClientRect().left
+      if (px < L.plotLeft || px > L.plotRight) { setShowReadout(false); return }
+      moveTo(e.clientX)
+      setShowReadout(true)
+    }
+    const down = (e: PointerEvent) => { if (e.pointerType === 'touch') tap = { x: e.clientX, y: e.clientY, t: e.timeStamp, id: e.pointerId } }
+    const up = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch' || !tap || tap.id !== e.pointerId) return
+      const isTap = e.timeStamp - tap.t <= TAP_MAX_MS && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) <= TAP_SLOP_PX
+      tap = null
+      if (isTap) { moveTo(e.clientX); setShowReadout(true) }
+    }
+    const leave = (e: PointerEvent) => { if (e.pointerType !== 'touch' && !dragging) setShowReadout(false) }
+    host.addEventListener('pointermove', move)
+    host.addEventListener('pointerdown', down)
+    host.addEventListener('pointerup', up)
+    host.addEventListener('pointerleave', leave)
+    return () => {
+      host.removeEventListener('pointermove', move)
+      host.removeEventListener('pointerdown', down)
+      host.removeEventListener('pointerup', up)
+      host.removeEventListener('pointerleave', leave)
+    }
+  }, [L, moveTo, dragging])
+
+  // Dragging the aircraft; held near a scrolled chart edge, the chart scrolls along.
+  const lastXRef = useRef(0)
+  const rafRef = useRef<number | null>(null)
+  const stopEdgeScroll = () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current); rafRef.current = null }
+  useEffect(() => stopEdgeScroll, [])
+  const edgeScroll = () => {
+    const wrap = hostOf()?.parentElement
+    if (!wrap) { rafRef.current = null; return }
+    const r = wrap.getBoundingClientRect()
+    const x = lastXRef.current
+    const dir = x < r.left + SCRUB_EDGE_PX ? -1 : x > r.right - SCRUB_EDGE_PX ? 1 : 0
+    const before = wrap.scrollLeft
+    if (dir !== 0) wrap.scrollLeft = before + dir * SCRUB_SCROLL_STEP_PX
+    if (dir === 0 || wrap.scrollLeft === before) { rafRef.current = null; return }
+    moveTo(x)
+    rafRef.current = requestAnimationFrame(edgeScroll)
+  }
+  const onHandleDown = (e: React.PointerEvent<SVGGElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* no capture */ }
+    lastXRef.current = e.clientX
+    setDragging(true)
+    setShowReadout(true)
+    moveTo(e.clientX)
+  }
+  const onHandleMove = (e: React.PointerEvent<SVGGElement>) => {
+    if (!dragging) return
+    lastXRef.current = e.clientX
+    moveTo(e.clientX)
+    if (rafRef.current == null) rafRef.current = requestAnimationFrame(edgeScroll)
+  }
+  const onHandleUp = (e: React.PointerEvent<SVGGElement>) => {
+    if (!dragging) return
+    try { if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* released */ }
+    stopEdgeScroll()
+    setDragging(false)
+    // Touch has no hover: keep the readout up after letting go. A mouse hides it on leaving the chart.
+    if (e.pointerType !== 'touch') setShowReadout(false)
+  }
+
+  const fp = flown[idx]
+  let content: ReactNode = null
+  if (fp) {
+    const x = L.xOf(fp.distNm)
+    const si = nearestSampleIndex(series.distNms, fp.distNm)
+    const gnd = series.ground?.[si]
+    const msa = series.msa?.[si] ?? 0
+    const altKnown = Number.isFinite(fp.altFt)
+    const alt = altKnown ? fp.altFt : flownAltitudeAt(flown, fp.distNm)
+    const y = Number.isFinite(alt) ? L.yOf(Math.max(L.yMin, Math.min(L.yMax, alt))) : L.plotTop + 20
+    const rows: { label: string; value: string; color?: string }[] = [
+      { label: 'Time', value: formatElapsed(fp.elapsedMs) },
+      { label: 'Alt', value: altKnown ? formatAltitudeFt(alt) : '\u2014', color: FLOWN_COLOR },
+      { label: 'GS', value: Number.isFinite(fp.spdKts) ? `${Math.round(fp.spdKts)} kt` : '\u2014' },
+    ]
+    if (altKnown && gnd != null) rows.push({ label: 'AGL', value: formatAltitudeFt(alt - gnd), color: GROUND_COLOR })
+    if (msa > 0) rows.push({ label: 'MSA', value: formatAltitudeFt(msa), color: altKnown && alt < msa ? DANGER_TEXT : MSA_COLOR })
+    const flip = x > L.contentW - 140
+    content = (
+      <>
+        <svg className={css.hoverSvg} width={L.contentW} height={chartHeightOf(L)}>
+          {showReadout && <line x1={x} y1={L.plotTop} x2={x} y2={L.plotBottom} stroke="var(--text-faint)" strokeWidth={1} />}
+          <g
+            className={css.scrubHandle}
+            transform={`translate(${x},${y})`}
+            onPointerDown={onHandleDown}
+            onPointerMove={onHandleMove}
+            onPointerUp={onHandleUp}
+            onPointerCancel={onHandleUp}
+          >
+            <title>Drag the aircraft along the flight log to inspect it</title>
+            {/* Finger-sized grab target; a faint ring shows it can be picked up. */}
+            <circle r={20} className={css.scrubTarget} />
+            {silhouette.map((part, i) => <path key={i} d={part.d} fill={part.fill ?? 'white'} opacity={part.opacity} stroke="rgba(0,0,0,0.7)" strokeWidth={0.6} />)}
+          </g>
+        </svg>
+        {showReadout && (
+          <div
+            className={css.tooltip}
+            style={flip ? { right: L.contentW - x + 24, top: L.plotTop } : { left: x + 24, top: L.plotTop }}
+          >
+            {rows.map((r) => (
+              <div key={r.label} className={css.tooltipRow}>
+                <span className={css.tooltipLabel} style={r.color ? { color: r.color } : undefined}>{r.label}</span>
+                <span className={css.tooltipVal}>{r.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </>
+    )
+  }
+
+  return (
+    <div ref={layerRef} className={css.hoverLayer} style={{ width: L.contentW, height: chartHeightOf(L) }}>
       {content}
     </div>
   )
@@ -1798,6 +1948,11 @@ function VirtualRadar({
         <span className={css.totalDist}>
           {nmToDisplay(profile.totalNm, units.distance).toFixed(1)} {distLabel(units.distance)}
         </span>
+        {logMode && (
+          <span className={css.dragHint} title="Drag the aircraft along the flown line, or tap a spot on the chart, to read time, altitude and speed there">
+            drag the aircraft to inspect
+          </span>
+        )}
         {onLegLevelChange && (
           <span className={css.dragHint} title="Press a leg on the chart and drag up or down to change its level">
             drag a leg to set its level
@@ -1890,7 +2045,9 @@ function VirtualRadar({
                 {scene}
                 {live}
               </svg>
-              <HoverOverlay layout={L} series={series} onHoverDistNm={onHoverDistNm} flown={flown} silhouette={silhouette} />
+              {flown
+                ? <FlownScrubOverlay layout={L} series={series} flown={flown} silhouette={silhouette} onHoverDistNm={onHoverDistNm} />
+                : <HoverOverlay layout={L} series={series} onHoverDistNm={onHoverDistNm} />}
               {profile && series && !logMode && (
                 <LegDragLayer
                   layout={L}

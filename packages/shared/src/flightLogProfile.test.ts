@@ -27,6 +27,9 @@ describe('flightLogProfile', () => {
     expect(prof.points[499].distNm).toBeCloseTo(prof.totalNm, 9)
     for (let i = 1; i < prof.points.length; i++) expect(prof.points[i].distNm).toBeGreaterThan(prof.points[i - 1].distNm)
     expect(prof.points[10].elapsedMs).toBe(10_000)
+    // East-bound with no recorded track: derived from the positions.
+    expect(prof.points[10].trkDeg).toBeCloseTo(90, 0)
+    expect(prof.points[499].trkDeg).toBeCloseTo(90, 0)
   })
 
   it('keeps a turn as a vertex', () => {

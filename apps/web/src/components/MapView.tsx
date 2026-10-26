@@ -1,5 +1,5 @@
 import { trackToGeoJson } from '@open-vfr/shared/flightLogStats'
-import { flightLogProfile, flownCoordinateAt } from '@open-vfr/shared/flightLogProfile'
+import { flightLogProfile, flownCoordinateAt, flownPointAt } from '@open-vfr/shared/flightLogProfile'
 import { FLOWN_COLOR, FLOWN_GAP_COLOR } from '@open-vfr/shared/radarStyle'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as maplibregl from 'maplibre-gl'
@@ -881,9 +881,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
       return
     }
     let coord: { lng: number; lat: number } | null = null
+    let props: Record<string, unknown> = {}
     // Past-log review takes priority: cursor must follow the flown track, not the planned route.
+    // It is drawn as the aircraft, pointing along the recorded track.
     if (selectedLogProfile) {
       coord = flownCoordinateAt(selectedLogProfile.points, profileCursorNm)
+      const p = flownPointAt(selectedLogProfile.points, profileCursorNm)
+      props = { kind: 'aircraft', trackDeg: p?.trkDeg ?? 0 }
     } else if (lookaheadWaypoints.length >= 2) {
       // Hovering the look-ahead chart: place cursor on the map ahead of the aircraft.
       coord = coordinateAlongRouteNm(lookaheadWaypoints, profileCursorNm)
@@ -893,7 +897,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     if (coord) {
       src.setData({
         type: 'FeatureCollection',
-        features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [coord.lng, coord.lat] }, properties: {} }],
+        features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [coord.lng, coord.lat] }, properties: props }],
       })
     } else {
       src.setData({ type: 'FeatureCollection', features: [] })
@@ -2707,11 +2711,35 @@ export default function MapView({ auth }: { auth: AuthState }) {
         id: 'profile-cursor-circle',
         type: 'circle',
         source: 'profile-cursor',
+        filter: ['!=', ['get', 'kind'], 'aircraft'],
         paint: {
           'circle-radius': 10,
           'circle-color': 'rgba(250,204,21,0.4)',
           'circle-stroke-color': '#facc15',
           'circle-stroke-width': 3,
+        },
+      })
+      // Flight-log inspection: the aircraft at the inspected point, on a yellow halo
+      // so it is not mistaken for the live position.
+      map.addLayer({
+        id: 'profile-cursor-aircraft-halo',
+        type: 'circle',
+        source: 'profile-cursor',
+        filter: ['==', ['get', 'kind'], 'aircraft'],
+        paint: { 'circle-radius': 16, 'circle-color': 'rgba(250,204,21,0.25)', 'circle-stroke-color': '#facc15', 'circle-stroke-width': 2 },
+      })
+      map.addLayer({
+        id: 'profile-cursor-aircraft',
+        type: 'symbol',
+        source: 'profile-cursor',
+        filter: ['==', ['get', 'kind'], 'aircraft'],
+        layout: {
+          'icon-image':              'aircraft-icon',
+          'icon-rotate':             ['get', 'trackDeg'],
+          'icon-rotation-alignment': 'map',
+          'icon-allow-overlap':      true,
+          'icon-ignore-placement':   true,
+          'icon-size':               0.6,
         },
       })
 

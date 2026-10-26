@@ -161,6 +161,21 @@
   pointer-events: none;
 }
 
+/* Flight-log aircraft (FlownScrubOverlay): the only part of the overlay that takes
+   pointer input, so a swipe anywhere else still scrolls the chart. */
+.scrubHandle {
+  pointer-events: all;
+  touch-action: none;
+  cursor: grab;
+}
+.scrubHandle:active { cursor: grabbing; }
+.scrubTarget {
+  fill: rgba(255, 255, 255, 0.10);
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
 /* Pinned FL scale over a horizontally scrolling chart (see VirtualRadar.tsx).
    Sticky inside the scrolled content; the negative margin overlays it on the
    chart instead of pushing the chart down. The backing is the panel colour

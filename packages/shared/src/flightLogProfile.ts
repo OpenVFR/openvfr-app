@@ -23,6 +23,8 @@ export interface FlightLogTrackPoint {
   lng:    number
   altFt:  number
   spdKts: number
+  /** Track over ground, degrees true; optional (files from other tools may lack it). */
+  trkDeg?: number
   /** Unix ms */
   ts:     number
 }
@@ -35,6 +37,8 @@ export interface FlownPoint {
   /** NaN when the recording has no altitude for this point. */
   altFt:     number
   spdKts:    number
+  /** Track over ground, degrees true (from the recording, else from the neighbouring points). */
+  trkDeg:    number
   /** Time since the first recorded point, ms. */
   elapsedMs: number
   /** A recording gap (GPS loss, app suspended) lies between the previous point and this one. */
@@ -151,6 +155,16 @@ export function flightLogProfile(
   for (let i = 1; i < pts.length; i++) rawCum[i] = rawCum[i - 1] + gcNm(pts[i - 1], pts[i])
 
   const t0 = pts[0].ts
+  // A recorded track wins; else the bearing to the next point (from the previous one at the end).
+  const trackAt = (i: number): number => {
+    const r = pts[i].trkDeg
+    if (r != null && Number.isFinite(r) && r !== 0) return r
+    const a = pts[Math.min(i, pts.length - 2)], b = pts[Math.min(i, pts.length - 2) + 1]
+    const φ1 = toRad(a.lat), φ2 = toRad(b.lat), dλ = toRad(b.lng - a.lng)
+    const y = Math.sin(dλ) * Math.cos(φ2)
+    const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dλ)
+    return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
+  }
   const points: FlownPoint[] = new Array(pts.length)
   let pathCum = 0
   for (let k = 0; k < kept.length; k++) {
@@ -162,6 +176,7 @@ export function flightLogProfile(
         distNm: d, lat: p.lat, lng: p.lng,
         altFt: Number.isFinite(p.altFt) ? p.altFt : NaN,
         spdKts: Number.isFinite(p.spdKts) ? p.spdKts : NaN,
+        trkDeg: trackAt(i),
         elapsedMs: p.ts - t0, gapBefore: gapBefore[i],
       }
     }
