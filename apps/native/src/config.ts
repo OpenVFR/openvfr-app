@@ -201,6 +201,8 @@ export const SATELLITE_STYLE = {
     },
   },
   layers: [{ id: 'satellite', type: 'raster' as const, source: 'satellite' }],
+  // No fade/transition: see getProtomapsStyle in AviationMap.tsx.
+  transition: { duration: 0, delay: 0 },
 }
 
 /**

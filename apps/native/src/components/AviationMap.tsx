@@ -662,10 +662,18 @@ function getProtomapsStyle() {
     const overviewAsset = OFFLINE_ASSETS.find(a => a.key === 'basemapOverview')
     const overviewLocalUrl = overviewAsset ? resolveUri(overviewAsset) : undefined
     const overviewIsLocal = overviewLocalUrl?.startsWith('file://')
-    _protomapsStyle = createProtomapsStyle(
-      isLocal ? localUrl : undefined,
-      overviewIsLocal ? overviewLocalUrl : undefined,
-    )
+    _protomapsStyle = {
+      ...createProtomapsStyle(
+        isLocal ? localUrl : undefined,
+        overviewIsLocal ? overviewLocalUrl : undefined,
+      ),
+      // No symbol fade / paint transitions. MapLibre fades symbols for 300 ms
+      // after every placement change, rendering at display rate meanwhile, and
+      // each GeoJSON update (aircraft, trajectory, traffic) changes placement:
+      // ~25 frames per update. Measured on the tablet in Simulate, map frames
+      // per 10 s: follow off 157 -> 55, follow on (1:78k) ~100 -> 58.
+      transition: { duration: 0, delay: 0 },
+    }
   }
   return _protomapsStyle
 }
