@@ -878,6 +878,8 @@ function buildFlightVertices(
 // ---------------------------------------------------------------------------
 
 const TERRAIN_MAX_PTS = 100   // single request; API limit is 100 per call
+/** Local-DEM sample cap for denseLookup (a recorded flight): ~0.5 NM spacing up to 300 NM. */
+const TERRAIN_DENSE_MAX_PTS = 600
 
 /**
  * Fetch ground elevations along the route from OpenTopoData (EU-DEM 25 m).
@@ -903,7 +905,11 @@ export async function fetchTerrainProfile(
    *  cover every sample. For terrain asked for again and again in flight (the
    *  look-ahead profile that moves with the aircraft): a local DEM answers
    *  at once, offline, and costs the shared elevation budget nothing. */
-  opts?: { preferLookup?: boolean },
+  /** denseLookup: with preferLookup, sample the local DEM every ~0.5 NM (up to
+   *  TERRAIN_DENSE_MAX_PTS) instead of the API's 100-point cap. For long paths
+   *  (a recorded flight): the DEM costs nothing per sample, the API has a
+   *  per-call limit and a shared budget, so the API keeps its 100 points. */
+  opts?: { preferLookup?: boolean; denseLookup?: boolean },
 ): Promise<TerrainPoint[]> {
   if (waypoints.length < 2) return []
 
@@ -912,27 +918,28 @@ export async function fetchTerrainProfile(
   const totalKm   = length(routeLine, { units: 'kilometers' })
   const totalNm   = totalKm * 0.539957
 
-  // Choose sample count so spacing is ~1 NM but capped at TERRAIN_MAX_PTS.
-  const n      = Math.min(TERRAIN_MAX_PTS, Math.max(10, Math.ceil(totalNm)))
-  const stepKm = totalKm / (n - 1)
-
-  const samples: { distNm: number; lat: number; lng: number }[] = []
-  for (let i = 0; i < n; i++) {
-    const distKm = Math.min(i * stepKm, totalKm)
-    const pt     = along(routeLine, distKm, { units: 'kilometers' })
-    samples.push({
-      distNm: distKm * 0.539957,
-      lng:    pt.geometry.coordinates[0],
-      lat:    pt.geometry.coordinates[1],
-    })
+  const sampleAlong = (n: number) => {
+    const stepKm = totalKm / (n - 1)
+    const out: { distNm: number; lat: number; lng: number }[] = []
+    for (let i = 0; i < n; i++) {
+      const distKm = Math.min(i * stepKm, totalKm)
+      const pt     = along(routeLine, distKm, { units: 'kilometers' })
+      out.push({ distNm: distKm * 0.539957, lng: pt.geometry.coordinates[0], lat: pt.geometry.coordinates[1] })
+    }
+    return out
   }
+  // Choose sample count so spacing is ~1 NM but capped at TERRAIN_MAX_PTS.
+  const samples = sampleAlong(Math.min(TERRAIN_MAX_PTS, Math.max(10, Math.ceil(totalNm))))
 
   const triedLookup = !!(opts?.preferLookup && fallback)
   if (triedLookup) {
     try {
       // Every sample must hit the DEM: a route leaving its coverage (archive
       // edge, border) would otherwise get flat carried-forward values there.
-      return await terrainProfileFromLookup(samples, fallback!, signal, { requireFull: true })
+      const lookupSamples = opts?.denseLookup
+        ? sampleAlong(Math.min(TERRAIN_DENSE_MAX_PTS, Math.max(10, Math.ceil(totalNm * 2))))
+        : samples
+      return await terrainProfileFromLookup(lookupSamples, fallback!, signal, { requireFull: true })
     } catch (err) {
       if ((err as { name?: string })?.name === 'AbortError') throw err
       // DEM does not cover the whole route: ask the API below.

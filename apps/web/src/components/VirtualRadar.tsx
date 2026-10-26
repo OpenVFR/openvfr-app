@@ -1005,9 +1005,11 @@ function VirtualRadar({
     const carried = followAircraft && last ? carryLookaheadTerrain(last.wps, last.pts, waypoints) : null
     setTerrainPts(carried ?? [])
     setTerrainFailed(false)
+    // A flight log is sampled densely from the DEM (~0.5 NM, free per sample); the API stays
+    // at 100 points if the DEM does not cover it.
     // Look-ahead asks again every few seconds: the hillshade DEM first, the
     // elevation API (shared budget) only where the DEM has no coverage.
-    fetchTerrainProfileShared(waypoints, API_BASE_URL, controller.signal, getRemoteDem(), { preferLookup: !!followAircraft })
+    fetchTerrainProfileShared(waypoints, API_BASE_URL, controller.signal, getRemoteDem(), { preferLookup: !!followAircraft || logMode, denseLookup: logMode })
       .then((pts) => {
         lastTerrainRef.current = { wps: waypoints, pts }
         setTerrainPts(pts)

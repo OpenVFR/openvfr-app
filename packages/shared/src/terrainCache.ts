@@ -58,12 +58,13 @@ export function fetchTerrainProfileShared(
   baseUrl = '',
   signal?: AbortSignal,
   fallback?: ElevationLookup | null,
-  opts?: { preferLookup?: boolean },
+  opts?: { preferLookup?: boolean; denseLookup?: boolean },
 ): Promise<TerrainPoint[]> {
   if (waypoints.length < 2) return Promise.resolve([])
   if (signal?.aborted) return Promise.reject(abortError())
 
-  const key = terrainRouteKey(waypoints, baseUrl)
+  // Dense DEM sampling gives a different answer for the same path: its own entry.
+  const key = terrainRouteKey(waypoints, baseUrl) + (opts?.preferLookup && opts.denseLookup ? '|dense' : '')
   let entry = cache.get(key)
   if (!entry) {
     const controller = new AbortController()
