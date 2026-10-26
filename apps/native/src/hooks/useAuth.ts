@@ -4,7 +4,7 @@
  * Flow:
  *   1. sendOtp(email)           → server sends a 6-digit code to the inbox
  *   2. verifyOtp(email, code)   → server verifies, returns bearer token
- *                                  stored by better-auth client in AsyncStorage
+ *                                  kept in secure storage (utils/sessionToken.ts)
  *   3. signOut()                → clears server session + local token
  *
  * Passkeys go through utils/passkeyNative.ts: the better-auth passkey *client*
@@ -15,6 +15,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authClient } from '../utils/authClient'
+import { getSessionToken, clearSessionToken } from '../utils/sessionToken'
 import { passkeySignIn, passkeyRegister, isPasskeySupported } from '../utils/passkeyNative'
 import { claimLocalData, wipePrivateLocalData } from '../utils/userScope'
 import { stopCloudSync } from '../sync/cloudSync'
@@ -37,7 +38,7 @@ async function readCachedUser(): Promise<AuthUser | null> {
     const raw = await AsyncStorage.getItem(CACHED_USER_KEY)
     // A cached user is only useful together with the bearer token that
     // authHeaders() sends once back online; without one it's stale.
-    if (!raw || !(await AsyncStorage.getItem('better-auth-token'))) return null
+    if (!raw || !(await getSessionToken())) return null
     const u = JSON.parse(raw) as AuthUser
     return u?.id && u?.email ? u : null
   } catch {
@@ -188,12 +189,16 @@ export function useAuth() {
 
   const signOut = useCallback(async () => {
     console.log('[auth] signOut')
-    await authClient.signOut()
+    // Offline (or the server failing) must not block signing out locally:
+    // a rejected request used to skip everything below, leaving the token
+    // and this account's private data on the device.
+    const { error: signOutErr } = await settle(authClient.signOut())
+    if (signOutErr) console.warn('[auth] server sign-out failed; signing out locally', signOutErr)
     // Clear the manually-captured bearer token too (see authClient.ts's
     // onSuccess hook) -- otherwise a stale token from the just-ended session
     // would keep being sent by authHeaders()-based fetches (traffic, regional
     // NOTAMs, weather-along-route) until overwritten by a future sign-in.
-    await AsyncStorage.removeItem('better-auth-token').catch(() => {})
+    await clearSessionToken()
     await AsyncStorage.removeItem(CACHED_USER_KEY).catch(() => {})
     // This account's private local data must not survive into the next sign-in.
     await stopCloudSync()

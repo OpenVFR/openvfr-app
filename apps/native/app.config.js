@@ -10,9 +10,15 @@
 //                      Optional; only needed when the logged-in account differs
 //                      from the project owner.
 //
-// Self-hosters / forks: run `eas init` in apps/native, then export the two
+//   PASSKEY_RP_ID   -- the WebAuthn RP ID domain (the API's
+//                      BETTER_AUTH_RP_ID), declared as the iOS associated
+//                      domain `webcredentials:<PASSKEY_RP_ID>` so passkeys
+//                      work. Defaults to openvfr.org, the maintainers' own
+//                      instance; forks set their own.
+//
+// Self-hosters / forks: run `eas init` in apps/native, then export the
 // variables above (locally in your shell or `.env`, in CI as secrets/vars).
-// Plain `expo start` / `expo run:*` work without either being set.
+// Plain `expo start` / `expo run:*` work without any being set.
 
 const appJson = require('./app.json')
 
@@ -20,10 +26,15 @@ module.exports = ({ config }) => {
   const base = { ...appJson.expo, ...config }
   const projectId = process.env.EAS_PROJECT_ID
   const owner     = process.env.EAS_OWNER
+  const rpId      = (process.env.PASSKEY_RP_ID || '').trim() || 'openvfr.org'
 
   return {
     ...base,
     ...(owner ? { owner } : {}),
+    ios: {
+      ...(base.ios ?? {}),
+      associatedDomains: [`webcredentials:${rpId}`],
+    },
     extra: {
       ...(base.extra ?? {}),
       ...(projectId ? { eas: { ...(base.extra?.eas ?? {}), projectId } } : {}),

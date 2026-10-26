@@ -278,10 +278,12 @@ In production only `BETTER_AUTH_APP_ORIGIN` + `BETTER_AUTH_TRUSTED_ORIGINS` are 
 
 Passkeys on iOS need the app to be associated with the WebAuthn RP ID domain:
 
-1. `app.json` declares `webcredentials:<rp-id-domain>` under
-   `ios.associatedDomains` (NOT `ios.entitlements[...]`: Expo's built-in
+1. `app.config.js` declares `webcredentials:<rp-id-domain>` under
+   `ios.associatedDomains`, from the `PASSKEY_RP_ID` build env var (default
+   `openvfr.org`, the maintainers' instance; set it to your API's
+   `BETTER_AUTH_RP_ID`). Not `ios.entitlements[...]`: Expo's built-in
    `withAssociatedDomains` plugin discards that key, so the signed app ends up
-   without the entitlement even though the profile has it).
+   without the entitlement even though the profile has it.
 2. The domain serves `/.well-known/apple-app-site-association` (200,
    `application/json`, no redirects) listing `<TeamID>.<bundle id>` under
    `webcredentials.apps`.

@@ -9,7 +9,7 @@
  * per hook) and the bug fix below only needs to exist in one place.
  *
  * Bug fixed here (found live 2026-09-20): authHeaders() reads the
- * 'better-auth-token' AsyncStorage key, which is only refreshed by
+ * stored bearer token (utils/sessionToken.ts), which is only refreshed by
  * authClient's own onSuccess hook (fires on sign-in / getSession() / any
  * request routed through the authClient fetch wrapper) -- NOT by this bare
  * fetch() to /api/auth/token. If enough time passes after sign-in with no

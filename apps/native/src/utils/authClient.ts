@@ -4,8 +4,9 @@
  * Cookie issue & bearer workaround:
  *   React Native's fetch silently drops Set-Cookie response headers.
  *   The server's `bearer()` plugin causes better-auth to return the session
- *   token as JSON so we can store it in AsyncStorage and send it as
- *   `Authorization: Bearer <token>` on subsequent requests.
+ *   token in a `set-auth-token` header so we can keep it in secure storage
+ *   (utils/sessionToken.ts) and send it as `Authorization: Bearer <token>`
+ *   on subsequent requests.
  *
  * Passkeys:
  *   `passkeyClient()` is kept only for its typed `listUserPasskeys` /
@@ -18,17 +19,8 @@
 import { createAuthClient }   from 'better-auth/client'
 import { emailOTPClient }     from 'better-auth/client/plugins'
 import { passkeyClient }      from '@better-auth/passkey/client'
-import AsyncStorage           from '@react-native-async-storage/async-storage'
 import { API_BASE }           from '../config'
-
-// ---------------------------------------------------------------------------
-// Async storage adapter
-// ---------------------------------------------------------------------------
-const asyncStorageAdapter = {
-  getItem:    (key: string)              => AsyncStorage.getItem(key),
-  setItem:    (key: string, val: string) => AsyncStorage.setItem(key, val),
-  removeItem: (key: string)              => AsyncStorage.removeItem(key),
-}
+import { getSessionToken, setSessionToken } from './sessionToken'
 
 // ---------------------------------------------------------------------------
 // better-auth client
@@ -52,8 +44,8 @@ export const authClient = createAuthClient({
     // device — Air Traffic toggle showed zero aircraft with no error). The
     // server's bearer() plugin returns the session token in a 'set-auth-token'
     // response header on every request (per better-auth's own bearer docs),
-    // but nothing was ever capturing it and writing it into AsyncStorage under
-    // the 'better-auth-token' key that authHeaders() (below) reads from —
+    // but nothing was ever capturing it and storing it where authHeaders()
+    // (below) reads it from (now secure storage, utils/sessionToken.ts) —
     // that function has always returned {} in practice, silently downgrading
     // every authHeaders()-based fetch (traffic, regional NOTAMs, weather-
     // along-route) to an unauthenticated request. Some of those happened to
@@ -65,21 +57,20 @@ export const authClient = createAuthClient({
     // for exactly this: capture + persist on every response, not just sign-in.
     onSuccess: (ctx) => {
       const token = ctx.response.headers.get('set-auth-token')
-      if (token) AsyncStorage.setItem('better-auth-token', token).catch(() => {})
+      if (token) void setSessionToken(token)
     },
   },
   plugins: [
     emailOTPClient(),
     passkeyClient(),
   ],
-  storage: asyncStorageAdapter,
 })
 
 // ---------------------------------------------------------------------------
 // Helper: Authorization header for manual fetch() calls (PostgREST, etc.)
 // ---------------------------------------------------------------------------
 export async function authHeaders(): Promise<Record<string, string>> {
-  const token = await AsyncStorage.getItem('better-auth-token')
+  const token = await getSessionToken()
   if (!token) return {}
   return { Authorization: `Bearer ${token}` }
 }

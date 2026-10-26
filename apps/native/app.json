@@ -19,9 +19,6 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "org.openvfr.app",
-      "associatedDomains": [
-        "webcredentials:openvfr.org"
-      ],
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
           "itms-apps"
@@ -29,13 +26,13 @@
         "NSLocationWhenInUseUsageDescription": "OpenVFR needs GPS to show your position on the map and provide in-flight navigation.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "OpenVFR needs background GPS access to continue tracking your flight when the screen locks.",
         "UIBackgroundModes": [
-          "location",
-          "fetch"
+          "location"
         ]
       }
     },
     "android": {
       "package": "org.openvfr.app",
+      "allowBackup": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundImage": "./assets/adaptive-icon-background.png",
@@ -55,12 +52,9 @@
         "CHANGE_WIFI_MULTICAST_STATE",
         "BLUETOOTH_SCAN",
         "BLUETOOTH_CONNECT",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION",
-        "android.permission.POST_NOTIFICATIONS",
-        "android.permission.BLUETOOTH_CONNECT"
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "plugins": [
@@ -89,6 +83,10 @@
       ],
       "expo-status-bar",
       "expo-sharing",
+      [
+        "expo-secure-store",
+        { "faceIDPermission": false }
+      ],
       "./plugins/withMapLibreHttpGuard",
       "./plugins/withMapLibreHttpGuardIos",
       "./plugins/withAndroidLargeHeap",
