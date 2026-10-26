@@ -210,10 +210,13 @@ function SideDrawer({
   auth,
   onOpenProfile,
 }: Props) {
-  const [open, setOpen]         = useState(() => lsGet(LS_OPEN, false))
+  // First visit: the pane starts open (so what it offers is visible) with
+  // every section folded to its header. Phone-sized screens start closed:
+  // there the pane overlays the map. Later visits restore the saved state.
+  const [open, setOpen]         = useState(() => lsGet(LS_OPEN, typeof window === 'undefined' || window.innerWidth >= 700))
   const [width, setWidth]       = useState(() => lsGet(LS_WIDTH, DEFAULT_WIDTH))
   const [expanded, setExpanded] = useState<Record<Section, boolean>>(() =>
-    lsGet(LS_EXPANDED, { info: true, route: true, preflight: true, fuel: true, flightLogs: true, aircraft: false, userWaypoints: true, layers: true, settings: false })
+    lsGet(LS_EXPANDED, { info: false, route: false, preflight: false, fuel: false, flightLogs: false, aircraft: false, userWaypoints: false, layers: false, settings: false })
   )
 
   // Drag-resize handle
@@ -268,6 +271,14 @@ function SideDrawer({
   useEffect(() => {
     if (waypoints.length > 0) { setOpen(true) }
   }, [waypoints.length > 0]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Starting or extending the route on the map shows the Route section, so
+  // the points appear as they are added.
+  useEffect(() => {
+    if (!extending) return
+    setOpen(true)
+    setExpanded(e => (e.route ? e : { ...e, route: true }))
+  }, [extending])
 
   useEffect(() => {
     if (pendingUserWpCoords) {
