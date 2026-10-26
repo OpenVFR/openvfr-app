@@ -112,7 +112,9 @@ export const flightLogRows: RowSpec<FlightLogDocType> = {
     departure_icao: l.departureIcao ?? '',
     arrival_icao:   l.arrivalIcao   ?? '',
     distance_nm:    l.distanceNm    ?? null,
-    max_alt_ft:     l.maxAltFt      ?? null,
+    // INTEGER column: a fractional value (GPX altitude converted from metres) is refused with a 400
+    // and the log would never upload.
+    max_alt_ft:     l.maxAltFt != null && Number.isFinite(l.maxAltFt) ? Math.round(l.maxAltFt) : null,
     updated_at:     iso(l.updatedAt),
   }),
 }

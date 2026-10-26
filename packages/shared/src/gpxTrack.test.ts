@@ -72,7 +72,8 @@ describe('gpxToFlightLog', () => {
     expect(d.id).toBe('id-1')
     expect(d.endedAt - d.startedAt).toBe(60_000)
     expect(d.distanceNm).toBeCloseTo(1, 1)
-    expect(d.maxAltFt).toBeCloseTo(300 / 0.3048, 0)
+    // Whole feet: the server column is an integer and refuses 984.25.
+    expect(d.maxAltFt).toBe(Math.round(300 / 0.3048))
     expect(d.updatedAt).toBe(123)
     expect(JSON.parse(d.trackJson)).toHaveLength(61)
   })

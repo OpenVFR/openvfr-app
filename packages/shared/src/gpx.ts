@@ -288,7 +288,7 @@ export function gpxToFlightLog(xml: string, id: string, now: number = Date.now()
     departureIcao: '',
     arrivalIcao:   '',
     distanceNm:    trackDistanceNm(points),
-    maxAltFt:      Math.max(0, ...points.map((p) => p.altFt)),
+    maxAltFt:      Math.round(Math.max(0, ...points.map((p) => p.altFt))),
     updatedAt:     now,
   }
 }
