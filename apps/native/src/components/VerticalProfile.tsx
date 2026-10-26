@@ -632,6 +632,403 @@ const RadarBackdrop = React.memo(function RadarBackdrop(P: BackdropProps) {
   return keys.every((k) => a[k] === b[k]) && a.yTicks.join() === b.yTicks.join() && a.xTicks.join() === b.xTicks.join()
 })
 
+/** Planned line, turn points, MSA, wind barbs, chips and waypoint ticks inside the chart Svg. Independent of the aircraft position, memoized so a position tick does not rebuild ~hundreds of Svg elements; keep its props stable. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ProfileAStatic = React.memo(function ProfileAStatic({
+  arrElevFt,
+  contentW,
+  depElevFt,
+  dragStore,
+  dragging,
+  legFallbackAltFt,
+  legMsaFt,
+  legSpanList,
+  msaPath,
+  obstacleMarks,
+  pathSamples,
+  perf,
+  phaseLayout,
+  phaseMarks,
+  plannedAltAt,
+  plannedPath,
+  plotH,
+  plotW,
+  poiMarks,
+  profile,
+  projDangerPath,
+  showMsa,
+  totalNm,
+  unreached,
+  windAloft,
+  windRow,
+  windXOf,
+  xOf,
+  yMax,
+  yMin,
+  yOf,
+}: any) {
+  return (
+    <>
+                {/* ── Planned altitude line (dark outline under it), clipped to the plot ── */}
+                <Defs><ClipPath id="plan-clip"><Rect x={MARGIN_L} y={MARGIN_T} width={plotW} height={plotH + 4} /></ClipPath></Defs>
+                <Path d={plannedPath} clipPath="url(#plan-clip)" fill="none" stroke="rgba(0,0,0,0.7)" strokeWidth={5} strokeLinejoin="round" opacity={dragging ? 0.18 : 1} />
+                <Path d={plannedPath} clipPath="url(#plan-clip)" fill="none" stroke={PLAN_COLOR} strokeWidth={2.75} strokeLinejoin="round" opacity={dragging ? 0.18 : 1} />
+                {/* Turn points: white dots with a dark rim where one leg ends and the next begins. */}
+                {!dragging && legSpanList.slice(1).map((sp: any, i: any) => {
+                  const alt = plannedAltAt(sp.fromNm)
+                  if (alt == null || alt > yMax || alt < yMin) return null
+                  if (phaseMarks.some((m: any) => Math.abs(m.distNm - sp.fromNm) < 0.3 && Math.abs(m.altFt - alt) < 150)) return null
+                  return <Circle key={`turn-${i}`} cx={xOf(sp.fromNm)} cy={yOf(alt)} r={2.75} fill="#2a1038" stroke="#fff" strokeWidth={1.5} />
+                })}
+                {/* A requested level the drawn path never reaches: dashed at that level. */}
+                {unreached.map((u: any) => {
+                  const s = legSpanList[u.legIndex]
+                  if (!s) return null
+                  // A level above the chart top is pinned to the top edge, labelled with its value, so it is never silently absent.
+                  const above = u.levelFt > yMax
+                  const y = Math.max(MARGIN_T + 2, yOf(u.levelFt))
+                  const x1 = xOf(s.fromNm), x2 = xOf(s.toNm)
+                  return (
+                    <G key={`unreached-${u.legIndex}`} pointerEvents="none">
+                      <SvgLine x1={x1} x2={x2} y1={y} y2={y} stroke={PLAN_COLOR} strokeWidth={1.5} strokeDasharray="6,4" opacity={0.75} />
+                      {above && !dragging && x2 - x1 > 70 && renderHaloText((x1 + x2) / 2, MARGIN_T + 46, `\u25b2 ${u.levelFt.toLocaleString('en-US')} ft set`, '#fff', 10, 1, 'middle', { weight: '700', halo: 3 })}
+                    </G>
+                  )
+                })}
+                {/* Top of climb / top of descent on the flown path (amber, with the level set, when a climb falls short). */}
+                {!dragging && phaseLayout.map((p: any, k: any) => (
+                  <G key={`phase-${k}`}>
+                    <Circle cx={p.x} cy={p.y} r={3.5} fill="#fff" stroke="#000" strokeWidth={1.25} />
+                    {p.pl && renderHaloText(p.pl.left, p.pl.baseline, p.text, p.short ? PHASE_SHORT_COLOR : '#fff', 11, 1, 'start', { weight: '700' })}
+                  </G>
+                ))}
+
+                {/* ── MSA dashed line (dark underlay), after the plan so it stays visible ── */}
+                {showMsa && msaPath !== '' && <Path d={msaPath} fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth={3.5} />}
+                {showMsa && msaPath !== '' && <Path d={msaPath} fill="none" stroke={MSA_COLOR} strokeWidth={1.75} strokeDasharray="6,3" />}
+
+                {dragging && (
+                  <LegDragOverlay
+                    store={dragStore} spans={legSpanList} legMsa={legMsaFt} totalNm={totalNm} fallbackAltFt={legFallbackAltFt}
+                    profile={profile} samples={pathSamples} perf={perf} depElevFt={depElevFt} arrElevFt={arrElevFt}
+                    xOf={xOf} yOf={yOf} plotH={plotH}
+                  />
+                )}
+
+                {/* Winds aloft: barbs at each standard pressure level's nominal
+                    altitude (model forecast), mirrors web's VirtualRadar. */}
+                {(() => {
+                  const chipBoxes: BoxRect[] = layoutAirspaceChips(airspaceChips(profile.airspaceBands, yMax), xOf, yOf)
+                    .map((c) => ({ left: c.px, right: c.px + c.w, top: c.py, bottom: c.py + c.h }))
+                  return windAloft.flatMap((col: any, ci: any) => col.levels.map((lv: any) => {
+                  // Surface (10 m) wind is part of the wind row under the x axis.
+                  if (lv.surface || lv.altFt > yMax * 0.96 || lv.altFt < yMin) return null
+                  const x = windXOf(col.distNm), y = yOf(lv.altFt)
+                  const color = windBarbColorForSpeed(lv.speedKts)
+                  const label = lv.speedKts === 0 ? 'CALM' : `${String(lv.dirDeg).padStart(3, '0')}°/${lv.speedKts}`
+                  // Label right, else left, else barb only; clear of the airspace chips and the plot edges.
+                  const fit = windAloftFit(x, y, Math.ceil(label.length * 11 * 0.65), chipBoxes, { left: MARGIN_L, right: contentW - MARGIN_R }, 12)
+                  if (!fit.barb) return null
+                  return (
+                    <G key={`windaloft-${ci}-${lv.altFt}`}>
+                      {lv.speedKts === 0
+                        ? <Circle cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.8)" strokeWidth={1} />
+                        : (
+                          <G transform={`translate(${x},${y}) rotate(${lv.dirDeg}) translate(0, 8)`}>
+                            {renderWindBarbShape(lv.speedKts, color, { shaftLen: 16, barbLen: 7, halfLen: 4, barbGap: 4, strokeW: 1.5 })}
+                          </G>
+                        )}
+                      {fit.label === 'right' && renderHaloText(x + 12, y + 4, label, WIND_LABEL_COLOR, 11, 1, 'start', { weight: '600' })}
+                      {fit.label === 'left' && renderHaloText(x - 12, y + 4, label, WIND_LABEL_COLOR, 11, 1, 'end', { weight: '600' })}
+                    </G>
+                  )
+                  }))
+                })()}
+
+                {/* ── Below-MSA stretches of the planned line ─────────── */}
+                {!dragging && projDangerPath && (
+                  <Path d={projDangerPath} fill="none" stroke={DANGER_COLOR} strokeWidth={2.5} />
+                )}
+
+                {/* ── Labels on top of every line (plan, MSA, below-MSA): chips, then obstacle / aerodrome names ── */}
+                {/* Label chips: class letter (or designator) + first radio
+                    frequency, laid out so neighbouring sectors' chips never
+                    cover each other (see layoutAirspaceChips). */}
+                {layoutAirspaceChips(airspaceChips(profile.airspaceBands, yMax), xOf, yOf).map((p, i) => {
+                  const { chip: c, px: x, py: y, tagW, freqW, w, h } = p
+                  return (
+                    <G key={`chip-${i}`}>
+                      <Rect x={x} y={y} width={w} height={h} fill="#fff" stroke={c.border} strokeWidth={1} rx={1.5} />
+                      <Rect x={x} y={y} width={tagW} height={h} fill={c.border} rx={1.5} />
+                      <SvgText x={x + tagW / 2} y={y + 10.5} textAnchor="middle" fontSize={9.5} fontWeight="700" fill="#fff">{c.tag}</SvgText>
+                      {p.showFreq ? <SvgText x={x + tagW + freqW / 2} y={y + 10.5} textAnchor="middle" fontSize={9.5} fontWeight="600" fill="#111">{c.freq}</SvgText> : null}
+                    </G>
+                  )
+                })}
+
+                {obstacleMarks.filter((m: any) => m.labelPos && m.leader).map((m: any) => (
+                  <SvgLine key={`lead-${m.key}`} x1={m.cx} y1={m.cy - 4} x2={m.cx} y2={m.labelPos!.baseline + 3}
+                    stroke={DANGER_TEXT} strokeWidth={1} strokeDasharray="2,2" opacity={0.8} />
+                ))}
+                {obstacleMarks.filter((m: any) => m.labelPos).map((m: any) => (
+                  <G key={`lim-${m.key}`}>{renderHaloText(m.labelPos!.left, m.labelPos!.baseline, m.label, DANGER_TEXT, 12, 1, 'start', { weight: '700' })}</G>
+                ))}
+                {poiMarks.filter((m: any) => m.labelPos).map((m: any) => (
+                  <G key={`poi-label-${m.key}`}>{renderHaloText(m.labelPos!.left, m.labelPos!.baseline, m.label, '#fff', 11, 1, 'start', { weight: m.kind === 'aerodrome' ? '700' : '500' })}</G>
+                ))}
+
+                {/* Wind row under the x axis (see windRow above). */}
+                {windRow.barbs.map((w: any) => {
+                  const x = w.px, y = MARGIN_T + plotH + WIND_ROW_DY
+                  if (w.wind.dirDeg == null && !w.wind.calm) {
+                    return <Circle key={`windrow-${w.key}`} cx={x} cy={y} r={3} fill="none" stroke="rgba(250,204,21,0.7)" strokeWidth={1} strokeDasharray="1.5,1.5" />
+                  }
+                  const color = w.wind.calm ? 'rgba(203,213,225,0.95)' : windBarbColorForSpeed(w.wind.speedKt)
+                  return (
+                    <G key={`windrow-${w.key}`} opacity={w.model ? 0.85 : 1}>
+                      {w.wind.calm
+                        ? <Circle cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.8)" strokeWidth={1} />
+                        : (
+                          // dirDeg is the meteorological FROM bearing; the shaft
+                          // points FROM. Rotation is re-centred on the shaft's
+                          // midpoint so the glyph stays balanced about y.
+                          <G transform={`translate(${x},${y}) rotate(${w.wind.dirDeg}) translate(0, ${WIND_BARB_SHAFT_LEN / 2})`}>
+                            {renderWindBarbShape(w.wind.speedKt, color, { shaftLen: WIND_BARB_SHAFT_LEN, barbLen: WIND_BARB_BARB_LEN, halfLen: WIND_BARB_HALF_LEN, barbGap: WIND_BARB_BARB_GAP, strokeW: WIND_BARB_STROKE_W })}
+                          </G>
+                        )}
+                      {w.label === 'right' && renderHaloText(x + 9 + 4, y + 3, w.text, color, WIND_ROW_FONT, 1, 'start')}
+                      {w.label === 'left' && renderHaloText(x - 9 - 4, y + 3, w.text, color, WIND_ROW_FONT, 1, 'end')}
+                    </G>
+                  )
+                })}
+
+                {/* ── Waypoint ticks ──────────────────────────────────── */}
+                {profile.waypointTicks.map((tick: any, i: any) => i === 0 ? null : (
+                  <SvgLine key={`wp-${i}`} x1={xOf(tick.distNm)} y1={MARGIN_T} x2={xOf(tick.distNm)} y2={MARGIN_T + plotH}
+                    stroke="rgba(255,255,255,0.16)" strokeWidth={1} />
+                ))}
+
+    </>
+  )
+})
+
+
+/** Obstacle / landmark icons and waypoint text (first part of the RN overlay). Position independent, memoized; keep props stable. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ProfileCStatic = React.memo(function ProfileCStatic({
+  chartH,
+  contentW,
+  landmarkMarks,
+  obstacleMarks,
+  poiMarks,
+  profile,
+  styles,
+  totalNm,
+  visibleWaypointTicks,
+  xOf,
+  yMax,
+  yOf,
+}: any) {
+  return (
+    <>
+                {obstacleMarks.map((m: any) => {
+                  const icon = OBSTACLE_ICONS[m.kind] ?? OBSTACLE_ICON_FALLBACK
+                  const size = 22
+                  if (!m.full) {
+                    // Crowded: a dot at the tip, so a field of masts does not
+                    // turn into overlapping pictograms.
+                    return <View key={m.key} style={{ position: 'absolute', width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(220,80,60,0.9)', opacity: m.opacity, left: m.cx - 2, top: m.cy - 2 }} />
+                  }
+                  // Tall enough: drawn in the single shape layer below.
+                  if (m.shape) return null
+                  return (
+                    // Anchor by BOTTOM edge at the tip point, growing
+                    // UPWARD from it -- a top-anchor's fixed pixel height
+                    // extends DOWNWARD from tipFt instead, which for a
+                    // short/zero-height obstacle (tipFt near baseFt, itself
+                    // near the chart floor) has nowhere to go but below true
+                    // 0ft/ground -- same failure mode as the original
+                    // center-anchor bug, just via a different path. Mirrors
+                    // web's identical fix.
+                    <View key={m.key} style={{ position: 'absolute', left: 0, top: 0, opacity: m.opacity }} pointerEvents="none">
+                      {m.groundY - m.cy > 4 && (
+                        <>
+                          <View style={{ position: 'absolute', width: 1.5, left: m.cx - 0.75, top: m.cy, height: m.groundY - m.cy, backgroundColor: 'rgba(220,80,60,0.85)' }} />
+                          <View style={{ position: 'absolute', width: 4, height: 4, borderRadius: 2, left: m.cx - 2, top: m.groundY - 2, backgroundColor: 'rgba(220,80,60,0.95)' }} />
+                        </>
+                      )}
+                      <Image
+                        source={icon}
+                        style={{ position: 'absolute', width: size, height: size, left: m.cx - size / 2, top: m.cy - size }}
+                        resizeMode="contain"
+                      />
+                    </View>
+                  )
+                })}
+
+                {landmarkMarks.map((m: any) => {
+                  const icon = LANDMARK_ICONS[m.kind] ?? LANDMARK_ICON_FALLBACK
+                  const size = 14
+                  if (m.shape) return null   // drawn in the shape layer below
+                  if (!m.full) {
+                    return <View key={m.key} style={{ position: 'absolute', width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(150,150,150,0.8)', left: m.cx - 1.5, top: m.cy - 3 }} />
+                  }
+                  return (
+                    // Anchor by BOTTOM edge, not center -- m.cy is ground.
+                    <Image
+                      key={m.key}
+                      source={icon}
+                      style={{ position: 'absolute', width: size, height: size, left: m.cx - size / 2, top: m.cy - size }}
+                      resizeMode="contain"
+                    />
+                  )
+                })}
+
+                {/* Full-height shapes of obstacles and landmarks (ground to tip), then the aerodrome /
+                    navaid / reporting-point symbols, one layer. Dashed = height is an assumption, not data.
+                    Obstacle shapes are widened (not heightened: height is data) for legibility. */}
+                <Svg width={contentW} height={chartH} style={{ position: 'absolute', left: 0, top: 0 }} pointerEvents="none">
+                  {[...landmarkMarks.map((m: any) => ({ ...m, opacity: m.estimated ? 0.85 : 1, scaleX: 1 })), ...obstacleMarks.map((m: any) => ({ ...m, scaleX: obstacleXScale(m.kind) }))].map((m) => m.shape ? (
+                    <G key={`shape-${m.key}`} opacity={m.opacity}>
+                      <G transform={`translate(${m.cx} 0) scale(${m.scaleX} 1) translate(${-m.cx} 0)`}>
+                        {m.shape.map((p: any, k: any) => {
+                          if (p.t === 'rect') {
+                            const st = primStyle(p)
+                            return <Rect key={k} x={p.x} y={p.y} width={p.w} height={p.h} fill={st.fill} fillOpacity={st.fillOpacity} stroke={st.stroke} strokeWidth={1} />
+                          }
+                          if (p.t === 'poly') {
+                            const st = primStyle(p)
+                            return <Path key={k} d={polyPath(p.pts)} fill={st.fill} fillOpacity={st.fillOpacity} stroke={st.stroke} strokeWidth={1} />
+                          }
+                          if (p.t === 'line') return <SvgLine key={k} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.stroke} strokeWidth={p.w} strokeLinecap="round" />
+                          return <Circle key={k} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill} />
+                        })}
+                      </G>
+                    </G>
+                  ) : null)}
+                  {poiMarks.map((m: any) => (
+                    <G key={m.key} transform={`translate(${m.cx} ${m.cy}) scale(${POI_SCALE}) translate(${-m.cx} ${-m.cy})`}>
+                      {/* dark halo pass under the coloured symbol, so it holds up on any sky or ground */}
+                      {[true, false].map((halo) => {
+                        const stroke = halo ? 'rgba(0,0,0,0.8)' : '#fff'
+                        const sw = halo ? 4 : 1.25
+                        const col = (c: string) => (halo ? 'rgba(0,0,0,0.8)' : c)
+                        return (
+                          <G key={halo ? 'h' : 'm'}>
+                            {m.kind === 'aerodrome' && (m.subtype === 'HP'
+                              ? <Rect x={m.cx - 4} y={m.cy - 4} width={8} height={8} rx={1.5} fill={col('#f472b6')} stroke={stroke} strokeWidth={sw} />
+                              : <Circle cx={m.cx} cy={m.cy} r={5} fill={col(m.towered ? '#c084fc' : '#60a5fa')} stroke={stroke} strokeWidth={sw} />)}
+                            {m.kind === 'navaid' && <Path d={`M${m.cx},${m.cy - 5} L${m.cx + 5},${m.cy} L${m.cx},${m.cy + 5} L${m.cx - 5},${m.cy} Z`} fill={col('#34d399')} stroke={stroke} strokeWidth={sw} />}
+                            {m.kind === 'reporting' && <Path d={`M${m.cx},${m.cy - 5} L${m.cx + 4.5},${m.cy + 3} L${m.cx - 4.5},${m.cy + 3} Z`} fill={col('#facc15')} stroke={stroke} strokeWidth={sw} />}
+                          </G>
+                        )
+                      })}
+                    </G>
+                  ))}
+                </Svg>
+
+                {/* Renders visibleWaypointTicks (collision-filtered above),
+                    not the raw profile.waypointTicks list -- see the memo
+                    comment near windXOf. */}
+                {(() => {
+                  // A label that would sit on an airspace chip drops below it
+                  // (chips can reach the plot's top edge, where the
+                  // waypoint-name row lives).
+                  const chips = layoutAirspaceChips(airspaceChips(profile.airspaceBands, yMax), xOf, yOf)
+                  const WP_LABEL_H = 12
+                  return visibleWaypointTicks.map((tick: any) => {
+                    // Clamp so the destination's label (sitting exactly at the
+                    // right edge of the *content* — not the panel, since this
+                    // whole overlay scrolls with the Svg — doesn't overflow
+                    // past contentW and get clipped to just its first letter.
+                    const w = wpLabelWidth(tick.name)
+                    const left = Math.max(0, Math.min(xOf(totalNm) - w - 2, xOf(tick.distNm) + 2))
+                    const nearRight = xOf(tick.distNm) + 2 + w > xOf(totalNm) - 2
+                    let top = MARGIN_T
+                    for (let guard = 0; guard < 4; guard++) {
+                      const hit = chips.find((c) =>
+                        left < c.px + c.w && c.px < left + w && top < c.py + c.h && c.py < top + WP_LABEL_H)
+                      if (!hit) break
+                      top = hit.py + hit.h + 1
+                    }
+                    return (
+                      <Text
+                        key={`wpl-${tick.distNm}-${tick.name}`}
+                        // Near the plot's right edge the label is anchored by its RIGHT edge:
+                        // whatever width the text really renders at, it ends inside the plot.
+                        style={[styles.wpLabel, nearRight ? { right: contentW - xOf(totalNm) + 2, top, maxWidth: w } : { left, top, maxWidth: w }]}
+                        numberOfLines={1}
+                      >
+                        {tick.name}
+                      </Text>
+                    )
+                  })
+                })()}
+
+    </>
+  )
+})
+
+
+/** Wind-barb and x-axis tick text (last part of the RN overlay). Position independent, memoized; keep props stable. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ProfileDStatic = React.memo(function ProfileDStatic({
+  contentW,
+  plotH,
+  styles,
+  units,
+  windRow,
+  xOf,
+  xTicks,
+}: any) {
+  return (
+    <>
+                {/* No dir/speed text label alongside the barb -- see the
+                    map's identical fix (AviationMap.tsx's removed
+                    'wind-arrows-label' layer): the barb shape itself
+                    (feather count + speed-tiered colour) already carries
+                    the at-a-glance strength read, and a tiny permanent
+                    text label at this chart's scale was flagged as
+                    illegible in a pre-release pass. */}
+
+
+                {xTicks.map((d: any, i: any) => {
+                  if (!windRow.tickLabelShown[i]) return null
+                  // Centres the label under its tick mark by actual text
+                  // width instead of a fixed -8px offset -- that assumed
+                  // every number was ~2 digits wide, so single-digit ticks
+                  // ("0", "6") sat visibly off-centre from the tick line
+                  // above them, more so after the fontSize bump widened
+                  // the fixed-offset error further. Same char-width*
+                  // fontSize*0.62 estimate used elsewhere in this chart
+                  // (e.g. the wind labels), halved for a center offset.
+                  const label = nmToDisplay(d, units.distance).toFixed(0)
+                  const halfW = label.length * AXIS_FONT * 0.31
+                  return (
+                    <Text key={`xl-${i}`} style={[
+                      styles.axisLabelX,
+                      // Floor at MARGIN_L, not 0: left of it is the pinned
+                      // axis column, which would cover part of the "0" label.
+                      { left: Math.min(contentW - 20, Math.max(MARGIN_L, xOf(d) - halfW)), top: MARGIN_T + plotH + 3 },
+                    ]}>
+                      {label}
+                    </Text>
+                  )
+                })}
+    </>
+  )
+})
+
+
+const NO_SAMPLES: TerrainPoint[] = []
+
+/** Keeps the previous array while the numbers are unchanged, so memoized children see a stable prop. */
+function useStableList(next: number[]): number[] {
+  const ref = useRef(next)
+  if (ref.current.length !== next.length || ref.current.some((v, i) => v !== next[i])) ref.current = next
+  return ref.current
+}
+
 export function VerticalProfile({
   waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, msaMargins, title, headerStart, headerEnd, onClose, closeLabel, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
@@ -1327,7 +1724,7 @@ export function VerticalProfile({
   // stretches below MSA.
   // Sample points of the projected path: the terrain samples, or the grid-made
   // samples when only the terrain grid is available (no ground line then).
-  const pathSamples = terrainPts.length > 0 ? terrainPts : (msaTerrain.fromGridOnly ? msaTerrain.pts : [])
+  const pathSamples = terrainPts.length > 0 ? terrainPts : (msaTerrain.fromGridOnly ? msaTerrain.pts : NO_SAMPLES)
   const projAlts = useMemo(() => {
     if (!profile || pathSamples.length === 0) return null
     return projectFlightPath(
@@ -1511,20 +1908,18 @@ export function VerticalProfile({
     setChartW(e.nativeEvent.layout.width)
   }, [])
 
-  if (!profile || profile.totalNm === 0) return null
 
-  const yTicks = altitudeTicksFrom(yMax, yMin)
+  const yTicks = useStableList(altitudeTicksFrom(yMax, yMin))
   // Round display-unit values (NM or km), converted back to NM for xOf.
   const unitPerNm = nmToDisplay(1, units.distance)
-  const xTicks = distanceTicks(totalNm * unitPerNm, Math.max(2, Math.round(plotW / X_TICK_SPACING_PX)), Math.min(0.5, 20 / Math.max(1, plotW)))
-    .map((v) => v / unitPerNm)
+  const xTicks = useStableList(distanceTicks(totalNm * unitPerNm, Math.max(2, Math.round(plotW / X_TICK_SPACING_PX)), Math.min(0.5, 20 / Math.max(1, plotW))).map((v) => v / unitPerNm))
 
   // Wind row under the x axis (mirrors web's VirtualRadar): station barbs
   // (priority 0) beat ground-model barbs (priority 1); each keeps its route
   // position and degrades dir/kt text -> barb only -> not drawn when it would
   // overlap a tick label, another barb or the chart edge.
   type RowWind = { dirDeg: number | null; speedKt: number; calm: boolean }
-  const windRow = (() => {
+  const windRow = useMemo(() => {
     const winds = new Map<string, { distNm: number; wind: RowWind; priority: number }>()
     for (const [i, m] of weatherMarks.entries()) {
       if (m.wind) winds.set(`st-${i}`, { distNm: m.distNm, wind: { dirDeg: m.wind.dirDeg ?? null, speedKt: m.wind.speedKt, calm: !!m.wind.calm }, priority: 0 })
@@ -1555,8 +1950,9 @@ export function VerticalProfile({
       barbs: placed.map((pl) => ({ ...pl, wind: winds.get(pl.key)!.wind, text: labelOf(winds.get(pl.key)!.wind), model: pl.key.startsWith('gr-') })),
       tickLabelShown,
     }
-  })()
+  }, [weatherMarks, windAloft, plotW, contentW, xOf, xTicks])
 
+  if (!profile || profile.totalNm === 0) return null
   return (
     <View style={[styles.panel, collapsed && styles.panelCollapsed]}>
       {/* Drag handle + header merged into one compact row — title text and
@@ -1670,144 +2066,39 @@ export function VerticalProfile({
                   totalNm={totalNm} yTicks={yTicks} xTicks={xTicks}
                 />
 
-                {/* ── Planned altitude line (dark outline under it), clipped to the plot ── */}
-                <Defs><ClipPath id="plan-clip"><Rect x={MARGIN_L} y={MARGIN_T} width={plotW} height={plotH + 4} /></ClipPath></Defs>
-                <Path d={plannedPath} clipPath="url(#plan-clip)" fill="none" stroke="rgba(0,0,0,0.7)" strokeWidth={5} strokeLinejoin="round" opacity={dragging ? 0.18 : 1} />
-                <Path d={plannedPath} clipPath="url(#plan-clip)" fill="none" stroke={PLAN_COLOR} strokeWidth={2.75} strokeLinejoin="round" opacity={dragging ? 0.18 : 1} />
-                {/* Turn points: white dots with a dark rim where one leg ends and the next begins. */}
-                {!dragging && legSpanList.slice(1).map((sp, i) => {
-                  const alt = plannedAltAt(sp.fromNm)
-                  if (alt == null || alt > yMax || alt < yMin) return null
-                  if (phaseMarks.some((m) => Math.abs(m.distNm - sp.fromNm) < 0.3 && Math.abs(m.altFt - alt) < 150)) return null
-                  return <Circle key={`turn-${i}`} cx={xOf(sp.fromNm)} cy={yOf(alt)} r={2.75} fill="#2a1038" stroke="#fff" strokeWidth={1.5} />
-                })}
-                {/* A requested level the drawn path never reaches: dashed at that level. */}
-                {unreached.map((u) => {
-                  const s = legSpanList[u.legIndex]
-                  if (!s) return null
-                  // A level above the chart top is pinned to the top edge, labelled with its value, so it is never silently absent.
-                  const above = u.levelFt > yMax
-                  const y = Math.max(MARGIN_T + 2, yOf(u.levelFt))
-                  const x1 = xOf(s.fromNm), x2 = xOf(s.toNm)
-                  return (
-                    <G key={`unreached-${u.legIndex}`} pointerEvents="none">
-                      <SvgLine x1={x1} x2={x2} y1={y} y2={y} stroke={PLAN_COLOR} strokeWidth={1.5} strokeDasharray="6,4" opacity={0.75} />
-                      {above && !dragging && x2 - x1 > 70 && renderHaloText((x1 + x2) / 2, MARGIN_T + 46, `\u25b2 ${u.levelFt.toLocaleString('en-US')} ft set`, '#fff', 10, 1, 'middle', { weight: '700', halo: 3 })}
-                    </G>
-                  )
-                })}
-                {/* Top of climb / top of descent on the flown path (amber, with the level set, when a climb falls short). */}
-                {!dragging && phaseLayout.map((p, k) => (
-                  <G key={`phase-${k}`}>
-                    <Circle cx={p.x} cy={p.y} r={3.5} fill="#fff" stroke="#000" strokeWidth={1.25} />
-                    {p.pl && renderHaloText(p.pl.left, p.pl.baseline, p.text, p.short ? PHASE_SHORT_COLOR : '#fff', 11, 1, 'start', { weight: '700' })}
-                  </G>
-                ))}
-
-                {/* ── MSA dashed line (dark underlay), after the plan so it stays visible ── */}
-                {showMsa && msaPath !== '' && <Path d={msaPath} fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth={3.5} />}
-                {showMsa && msaPath !== '' && <Path d={msaPath} fill="none" stroke={MSA_COLOR} strokeWidth={1.75} strokeDasharray="6,3" />}
-
-                {dragging && (
-                  <LegDragOverlay
-                    store={dragStore} spans={legSpanList} legMsa={legMsaFt} totalNm={totalNm} fallbackAltFt={legFallbackAltFt}
-                    profile={profile} samples={pathSamples} perf={perf} depElevFt={depElevFt} arrElevFt={arrElevFt}
-                    xOf={xOf} yOf={yOf} plotH={plotH}
-                  />
-                )}
-
-                {/* Winds aloft: barbs at each standard pressure level's nominal
-                    altitude (model forecast), mirrors web's VirtualRadar. */}
-                {(() => {
-                  const chipBoxes: BoxRect[] = layoutAirspaceChips(airspaceChips(profile.airspaceBands, yMax), xOf, yOf)
-                    .map((c) => ({ left: c.px, right: c.px + c.w, top: c.py, bottom: c.py + c.h }))
-                  return windAloft.flatMap((col, ci) => col.levels.map((lv) => {
-                  // Surface (10 m) wind is part of the wind row under the x axis.
-                  if (lv.surface || lv.altFt > yMax * 0.96 || lv.altFt < yMin) return null
-                  const x = windXOf(col.distNm), y = yOf(lv.altFt)
-                  const color = windBarbColorForSpeed(lv.speedKts)
-                  const label = lv.speedKts === 0 ? 'CALM' : `${String(lv.dirDeg).padStart(3, '0')}°/${lv.speedKts}`
-                  // Label right, else left, else barb only; clear of the airspace chips and the plot edges.
-                  const fit = windAloftFit(x, y, Math.ceil(label.length * 11 * 0.65), chipBoxes, { left: MARGIN_L, right: contentW - MARGIN_R }, 12)
-                  if (!fit.barb) return null
-                  return (
-                    <G key={`windaloft-${ci}-${lv.altFt}`}>
-                      {lv.speedKts === 0
-                        ? <Circle cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.8)" strokeWidth={1} />
-                        : (
-                          <G transform={`translate(${x},${y}) rotate(${lv.dirDeg}) translate(0, 8)`}>
-                            {renderWindBarbShape(lv.speedKts, color, { shaftLen: 16, barbLen: 7, halfLen: 4, barbGap: 4, strokeW: 1.5 })}
-                          </G>
-                        )}
-                      {fit.label === 'right' && renderHaloText(x + 12, y + 4, label, WIND_LABEL_COLOR, 11, 1, 'start', { weight: '600' })}
-                      {fit.label === 'left' && renderHaloText(x - 12, y + 4, label, WIND_LABEL_COLOR, 11, 1, 'end', { weight: '600' })}
-                    </G>
-                  )
-                  }))
-                })()}
-
-                {/* ── Below-MSA stretches of the planned line ─────────── */}
-                {!dragging && projDangerPath && (
-                  <Path d={projDangerPath} fill="none" stroke={DANGER_COLOR} strokeWidth={2.5} />
-                )}
-
-                {/* ── Labels on top of every line (plan, MSA, below-MSA): chips, then obstacle / aerodrome names ── */}
-                {/* Label chips: class letter (or designator) + first radio
-                    frequency, laid out so neighbouring sectors' chips never
-                    cover each other (see layoutAirspaceChips). */}
-                {layoutAirspaceChips(airspaceChips(profile.airspaceBands, yMax), xOf, yOf).map((p, i) => {
-                  const { chip: c, px: x, py: y, tagW, freqW, w, h } = p
-                  return (
-                    <G key={`chip-${i}`}>
-                      <Rect x={x} y={y} width={w} height={h} fill="#fff" stroke={c.border} strokeWidth={1} rx={1.5} />
-                      <Rect x={x} y={y} width={tagW} height={h} fill={c.border} rx={1.5} />
-                      <SvgText x={x + tagW / 2} y={y + 10.5} textAnchor="middle" fontSize={9.5} fontWeight="700" fill="#fff">{c.tag}</SvgText>
-                      {p.showFreq ? <SvgText x={x + tagW + freqW / 2} y={y + 10.5} textAnchor="middle" fontSize={9.5} fontWeight="600" fill="#111">{c.freq}</SvgText> : null}
-                    </G>
-                  )
-                })}
-
-                {obstacleMarks.filter((m) => m.labelPos && m.leader).map((m) => (
-                  <SvgLine key={`lead-${m.key}`} x1={m.cx} y1={m.cy - 4} x2={m.cx} y2={m.labelPos!.baseline + 3}
-                    stroke={DANGER_TEXT} strokeWidth={1} strokeDasharray="2,2" opacity={0.8} />
-                ))}
-                {obstacleMarks.filter((m) => m.labelPos).map((m) => (
-                  <G key={`lim-${m.key}`}>{renderHaloText(m.labelPos!.left, m.labelPos!.baseline, m.label, DANGER_TEXT, 12, 1, 'start', { weight: '700' })}</G>
-                ))}
-                {poiMarks.filter((m) => m.labelPos).map((m) => (
-                  <G key={`poi-label-${m.key}`}>{renderHaloText(m.labelPos!.left, m.labelPos!.baseline, m.label, '#fff', 11, 1, 'start', { weight: m.kind === 'aerodrome' ? '700' : '500' })}</G>
-                ))}
-
-                {/* Wind row under the x axis (see windRow above). */}
-                {windRow.barbs.map((w) => {
-                  const x = w.px, y = MARGIN_T + plotH + WIND_ROW_DY
-                  if (w.wind.dirDeg == null && !w.wind.calm) {
-                    return <Circle key={`windrow-${w.key}`} cx={x} cy={y} r={3} fill="none" stroke="rgba(250,204,21,0.7)" strokeWidth={1} strokeDasharray="1.5,1.5" />
-                  }
-                  const color = w.wind.calm ? 'rgba(203,213,225,0.95)' : windBarbColorForSpeed(w.wind.speedKt)
-                  return (
-                    <G key={`windrow-${w.key}`} opacity={w.model ? 0.85 : 1}>
-                      {w.wind.calm
-                        ? <Circle cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.8)" strokeWidth={1} />
-                        : (
-                          // dirDeg is the meteorological FROM bearing; the shaft
-                          // points FROM. Rotation is re-centred on the shaft's
-                          // midpoint so the glyph stays balanced about y.
-                          <G transform={`translate(${x},${y}) rotate(${w.wind.dirDeg}) translate(0, ${WIND_BARB_SHAFT_LEN / 2})`}>
-                            {renderWindBarbShape(w.wind.speedKt, color, { shaftLen: WIND_BARB_SHAFT_LEN, barbLen: WIND_BARB_BARB_LEN, halfLen: WIND_BARB_HALF_LEN, barbGap: WIND_BARB_BARB_GAP, strokeW: WIND_BARB_STROKE_W })}
-                          </G>
-                        )}
-                      {w.label === 'right' && renderHaloText(x + 9 + 4, y + 3, w.text, color, WIND_ROW_FONT, 1, 'start')}
-                      {w.label === 'left' && renderHaloText(x - 9 - 4, y + 3, w.text, color, WIND_ROW_FONT, 1, 'end')}
-                    </G>
-                  )
-                })}
-
-                {/* ── Waypoint ticks ──────────────────────────────────── */}
-                {profile.waypointTicks.map((tick, i) => i === 0 ? null : (
-                  <SvgLine key={`wp-${i}`} x1={xOf(tick.distNm)} y1={MARGIN_T} x2={xOf(tick.distNm)} y2={MARGIN_T + plotH}
-                    stroke="rgba(255,255,255,0.16)" strokeWidth={1} />
-                ))}
+                <ProfileAStatic
+                  windAloft={windAloft}
+                  arrElevFt={arrElevFt}
+                  contentW={contentW}
+                  depElevFt={depElevFt}
+                  dragStore={dragStore}
+                  dragging={dragging}
+                  legFallbackAltFt={legFallbackAltFt}
+                  legMsaFt={legMsaFt}
+                  legSpanList={legSpanList}
+                  msaPath={msaPath}
+                  obstacleMarks={obstacleMarks}
+                  pathSamples={pathSamples}
+                  perf={perf}
+                  phaseLayout={phaseLayout}
+                  phaseMarks={phaseMarks}
+                  plannedAltAt={plannedAltAt}
+                  plannedPath={plannedPath}
+                  plotH={plotH}
+                  plotW={plotW}
+                  poiMarks={poiMarks}
+                  profile={profile}
+                  projDangerPath={projDangerPath}
+                  showMsa={showMsa}
+                  totalNm={totalNm}
+                  unreached={unreached}
+                  windRow={windRow}
+                  windXOf={windXOf}
+                  xOf={xOf}
+                  yMax={yMax}
+                  yMin={yMin}
+                  yOf={yOf}
+                />
 
                 {/* ── Trajectory ticks ─────────────────────────────────── */}
                 {trajectoryTickNms.map((d, i) => (
@@ -1870,139 +2161,20 @@ export function VerticalProfile({
                   this, in a separate non-scrolling overlay after the clip
                   window closes. */}
               <View style={{ position: 'absolute', left: 0, top: 0, width: contentW, height: chartH }} pointerEvents="none">
-                {obstacleMarks.map((m) => {
-                  const icon = OBSTACLE_ICONS[m.kind] ?? OBSTACLE_ICON_FALLBACK
-                  const size = 22
-                  if (!m.full) {
-                    // Crowded: a dot at the tip, so a field of masts does not
-                    // turn into overlapping pictograms.
-                    return <View key={m.key} style={{ position: 'absolute', width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(220,80,60,0.9)', opacity: m.opacity, left: m.cx - 2, top: m.cy - 2 }} />
-                  }
-                  // Tall enough: drawn in the single shape layer below.
-                  if (m.shape) return null
-                  return (
-                    // Anchor by BOTTOM edge at the tip point, growing
-                    // UPWARD from it -- a top-anchor's fixed pixel height
-                    // extends DOWNWARD from tipFt instead, which for a
-                    // short/zero-height obstacle (tipFt near baseFt, itself
-                    // near the chart floor) has nowhere to go but below true
-                    // 0ft/ground -- same failure mode as the original
-                    // center-anchor bug, just via a different path. Mirrors
-                    // web's identical fix.
-                    <View key={m.key} style={{ position: 'absolute', left: 0, top: 0, opacity: m.opacity }} pointerEvents="none">
-                      {m.groundY - m.cy > 4 && (
-                        <>
-                          <View style={{ position: 'absolute', width: 1.5, left: m.cx - 0.75, top: m.cy, height: m.groundY - m.cy, backgroundColor: 'rgba(220,80,60,0.85)' }} />
-                          <View style={{ position: 'absolute', width: 4, height: 4, borderRadius: 2, left: m.cx - 2, top: m.groundY - 2, backgroundColor: 'rgba(220,80,60,0.95)' }} />
-                        </>
-                      )}
-                      <Image
-                        source={icon}
-                        style={{ position: 'absolute', width: size, height: size, left: m.cx - size / 2, top: m.cy - size }}
-                        resizeMode="contain"
-                      />
-                    </View>
-                  )
-                })}
-
-                {landmarkMarks.map((m) => {
-                  const icon = LANDMARK_ICONS[m.kind] ?? LANDMARK_ICON_FALLBACK
-                  const size = 14
-                  if (m.shape) return null   // drawn in the shape layer below
-                  if (!m.full) {
-                    return <View key={m.key} style={{ position: 'absolute', width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(150,150,150,0.8)', left: m.cx - 1.5, top: m.cy - 3 }} />
-                  }
-                  return (
-                    // Anchor by BOTTOM edge, not center -- m.cy is ground.
-                    <Image
-                      key={m.key}
-                      source={icon}
-                      style={{ position: 'absolute', width: size, height: size, left: m.cx - size / 2, top: m.cy - size }}
-                      resizeMode="contain"
-                    />
-                  )
-                })}
-
-                {/* Full-height shapes of obstacles and landmarks (ground to tip), then the aerodrome /
-                    navaid / reporting-point symbols, one layer. Dashed = height is an assumption, not data.
-                    Obstacle shapes are widened (not heightened: height is data) for legibility. */}
-                <Svg width={contentW} height={chartH} style={{ position: 'absolute', left: 0, top: 0 }} pointerEvents="none">
-                  {[...landmarkMarks.map((m) => ({ ...m, opacity: m.estimated ? 0.85 : 1, scaleX: 1 })), ...obstacleMarks.map((m) => ({ ...m, scaleX: obstacleXScale(m.kind) }))].map((m) => m.shape ? (
-                    <G key={`shape-${m.key}`} opacity={m.opacity}>
-                      <G transform={`translate(${m.cx} 0) scale(${m.scaleX} 1) translate(${-m.cx} 0)`}>
-                        {m.shape.map((p, k) => {
-                          if (p.t === 'rect') {
-                            const st = primStyle(p)
-                            return <Rect key={k} x={p.x} y={p.y} width={p.w} height={p.h} fill={st.fill} fillOpacity={st.fillOpacity} stroke={st.stroke} strokeWidth={1} />
-                          }
-                          if (p.t === 'poly') {
-                            const st = primStyle(p)
-                            return <Path key={k} d={polyPath(p.pts)} fill={st.fill} fillOpacity={st.fillOpacity} stroke={st.stroke} strokeWidth={1} />
-                          }
-                          if (p.t === 'line') return <SvgLine key={k} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.stroke} strokeWidth={p.w} strokeLinecap="round" />
-                          return <Circle key={k} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill} />
-                        })}
-                      </G>
-                    </G>
-                  ) : null)}
-                  {poiMarks.map((m) => (
-                    <G key={m.key} transform={`translate(${m.cx} ${m.cy}) scale(${POI_SCALE}) translate(${-m.cx} ${-m.cy})`}>
-                      {/* dark halo pass under the coloured symbol, so it holds up on any sky or ground */}
-                      {[true, false].map((halo) => {
-                        const stroke = halo ? 'rgba(0,0,0,0.8)' : '#fff'
-                        const sw = halo ? 4 : 1.25
-                        const col = (c: string) => (halo ? 'rgba(0,0,0,0.8)' : c)
-                        return (
-                          <G key={halo ? 'h' : 'm'}>
-                            {m.kind === 'aerodrome' && (m.subtype === 'HP'
-                              ? <Rect x={m.cx - 4} y={m.cy - 4} width={8} height={8} rx={1.5} fill={col('#f472b6')} stroke={stroke} strokeWidth={sw} />
-                              : <Circle cx={m.cx} cy={m.cy} r={5} fill={col(m.towered ? '#c084fc' : '#60a5fa')} stroke={stroke} strokeWidth={sw} />)}
-                            {m.kind === 'navaid' && <Path d={`M${m.cx},${m.cy - 5} L${m.cx + 5},${m.cy} L${m.cx},${m.cy + 5} L${m.cx - 5},${m.cy} Z`} fill={col('#34d399')} stroke={stroke} strokeWidth={sw} />}
-                            {m.kind === 'reporting' && <Path d={`M${m.cx},${m.cy - 5} L${m.cx + 4.5},${m.cy + 3} L${m.cx - 4.5},${m.cy + 3} Z`} fill={col('#facc15')} stroke={stroke} strokeWidth={sw} />}
-                          </G>
-                        )
-                      })}
-                    </G>
-                  ))}
-                </Svg>
-
-                {/* Renders visibleWaypointTicks (collision-filtered above),
-                    not the raw profile.waypointTicks list -- see the memo
-                    comment near windXOf. */}
-                {(() => {
-                  // A label that would sit on an airspace chip drops below it
-                  // (chips can reach the plot's top edge, where the
-                  // waypoint-name row lives).
-                  const chips = layoutAirspaceChips(airspaceChips(profile.airspaceBands, yMax), xOf, yOf)
-                  const WP_LABEL_H = 12
-                  return visibleWaypointTicks.map((tick) => {
-                    // Clamp so the destination's label (sitting exactly at the
-                    // right edge of the *content* — not the panel, since this
-                    // whole overlay scrolls with the Svg — doesn't overflow
-                    // past contentW and get clipped to just its first letter.
-                    const w = wpLabelWidth(tick.name)
-                    const left = Math.max(0, Math.min(xOf(totalNm) - w - 2, xOf(tick.distNm) + 2))
-                    const nearRight = xOf(tick.distNm) + 2 + w > xOf(totalNm) - 2
-                    let top = MARGIN_T
-                    for (let guard = 0; guard < 4; guard++) {
-                      const hit = chips.find((c) =>
-                        left < c.px + c.w && c.px < left + w && top < c.py + c.h && c.py < top + WP_LABEL_H)
-                      if (!hit) break
-                      top = hit.py + hit.h + 1
-                    }
-                    return (
-                      <Text
-                        key={`wpl-${tick.distNm}-${tick.name}`}
-                        // Near the plot's right edge the label is anchored by its RIGHT edge:
-                        // whatever width the text really renders at, it ends inside the plot.
-                        style={[styles.wpLabel, nearRight ? { right: contentW - xOf(totalNm) + 2, top, maxWidth: w } : { left, top, maxWidth: w }]}
-                        numberOfLines={1}
-                      >
-                        {tick.name}
-                      </Text>
-                    )
-                  })
-                })()}
+                <ProfileCStatic
+                  chartH={chartH}
+                  contentW={contentW}
+                  landmarkMarks={landmarkMarks}
+                  obstacleMarks={obstacleMarks}
+                  poiMarks={poiMarks}
+                  profile={profile}
+                  styles={styles}
+                  totalNm={totalNm}
+                  visibleWaypointTicks={visibleWaypointTicks}
+                  xOf={xOf}
+                  yMax={yMax}
+                  yOf={yOf}
+                />
 
                 {trajectoryTickNms.map((d, i) => (
                   <Text key={`trajl-${i}`} style={[styles.trajLabel, { left: xOf(d) - 8, top: MARGIN_T - 10 }]}>
@@ -2010,38 +2182,15 @@ export function VerticalProfile({
                   </Text>
                 ))}
 
-                {/* No dir/speed text label alongside the barb -- see the
-                    map's identical fix (AviationMap.tsx's removed
-                    'wind-arrows-label' layer): the barb shape itself
-                    (feather count + speed-tiered colour) already carries
-                    the at-a-glance strength read, and a tiny permanent
-                    text label at this chart's scale was flagged as
-                    illegible in a pre-release pass. */}
-
-
-                {xTicks.map((d, i) => {
-                  if (!windRow.tickLabelShown[i]) return null
-                  // Centres the label under its tick mark by actual text
-                  // width instead of a fixed -8px offset -- that assumed
-                  // every number was ~2 digits wide, so single-digit ticks
-                  // ("0", "6") sat visibly off-centre from the tick line
-                  // above them, more so after the fontSize bump widened
-                  // the fixed-offset error further. Same char-width*
-                  // fontSize*0.62 estimate used elsewhere in this chart
-                  // (e.g. the wind labels), halved for a center offset.
-                  const label = nmToDisplay(d, units.distance).toFixed(0)
-                  const halfW = label.length * AXIS_FONT * 0.31
-                  return (
-                    <Text key={`xl-${i}`} style={[
-                      styles.axisLabelX,
-                      // Floor at MARGIN_L, not 0: left of it is the pinned
-                      // axis column, which would cover part of the "0" label.
-                      { left: Math.min(contentW - 20, Math.max(MARGIN_L, xOf(d) - halfW)), top: MARGIN_T + plotH + 3 },
-                    ]}>
-                      {label}
-                    </Text>
-                  )
-                })}
+                <ProfileDStatic
+                  contentW={contentW}
+                  plotH={plotH}
+                  styles={styles}
+                  units={units}
+                  windRow={windRow}
+                  xOf={xOf}
+                  xTicks={xTicks}
+                />
               </View>
               </Animated.View>
               {/* Scrub crosshair: fixed to the viewport, positioned on the

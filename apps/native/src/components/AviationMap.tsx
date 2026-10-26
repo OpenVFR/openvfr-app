@@ -828,6 +828,760 @@ const attributionStyles = StyleSheet.create({
 // Auto-zoom phase resets to idle below this ground speed (same on web).
 const AUTO_ZOOM_RESET_KTS = 15
 
+/**
+ * Position-independent map layers (basemap overlays + aviation data). Split out of
+ * AviationMap and memoized: they only depend on data and layer toggles, never on
+ * the aircraft position, so a GPS/sim tick no longer re-creates ~300 MapLibre layer
+ * elements (that was most of the JS-thread time while flying). Props are primitives
+ * or stable references; keep it that way or the memo stops working.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const StaticMapLayers = React.memo(function StaticMapLayers({
+  aerodromesData,
+  airspaceCeilingFt,
+  airspaceData,
+  atcClosedIcaos,
+  atcOpenIcaos,
+  basemapMode,
+  contoursMounted,
+  contoursPmtilesUrl,
+  hillshadeMounted,
+  hillshadePmtilesUrl,
+  landmarksData,
+  landuseMounted,
+  landusePmtilesUrl,
+  navaidsData,
+  notamHintFilter,
+  notamHintTextExpr,
+  obstaclesData,
+  runwayThresholdsData,
+  runwayWindExpr,
+  runwaysData,
+  showActivity,
+  showAerodromes,
+  showClassCtma,
+  showClassCtr,
+  showClassG,
+  showContours,
+  showHillshade,
+  showLandmarks,
+  showLanduse,
+  showNavaids,
+  showObstacles,
+  showRestricted,
+  showRunways,
+  showTerrainColor,
+  showWaypoints,
+  terrainColorRefAltFt,
+  waypointsData,
+  ownAltFt,
+}: any) {
+  const ceilingFilter = ['<=', ['get', 'lower_ft'], airspaceCeilingFt]
+
+  // Per-class filters combined with ceiling
+  const mkFilter = (classExpr: unknown[]) => ['all', ceilingFilter, classExpr] as unknown[]
+  const isDanger         = ['all', ['==', ['get', 'class'], 'D'], ['==', ['get', 'type'], 'D']]
+  const filterZones      = mkFilter(['in', ['get', 'type'], ['literal', [...ZONE_TYPES]]])
+  const filterRestricted = mkFilter(['any', ['in', ['get', 'class'], ['literal', ['R', 'TRA']]], isDanger])
+  const filterRed        = mkFilter(['any', ['==', ['get', 'class'], 'R'], isDanger])
+  const filterActivity   = mkFilter(['in', ['get', 'class'], ['literal', ['GLDR', 'MODEL']]])
+
+  // One static-colour layer set per airspace sub-class. iOS aborts at style
+  // load when a colour property carries a data-driven expression on a GeoJSON
+  // layer (uncaught exception in MLRNStyle set*Color), so colours are never
+  // computed from feature properties here; the filter picks the sub-class.
+  const subClass = (f: unknown[], c: string) => ['all', f, ['==', ['get', 'class'], c]]
+  type AsParams = { inset: { w: number; off: number; op: number }; bdr: { w: number; dash?: number[] }; label: { size: number; field: unknown } }
+  const AS_PARAMS: Record<'ctr' | 'tma' | 'g' | 'r' | 'dng' | 'act', AsParams> = {
+    ctr: { inset: { w: 6, off: 3,   op: 0.22 }, bdr: { w: 1.5, dash: [4, 3] }, label: { size: 10, field: AIRSPACE_LABEL_TEXT_FIELD } },
+    tma: { inset: { w: 10, off: 5,  op: 0.28 }, bdr: { w: 1.5, dash: [4, 3] }, label: { size: 10, field: AIRSPACE_LABEL_TEXT_FIELD } },
+    g:   { inset: { w: 0, off: 0,   op: 0 },    bdr: { w: 1.0, dash: [2, 2] }, label: { size: 9,  field: AIRSPACE_ZONE_LABEL_TEXT_FIELD } },
+    r:   { inset: { w: 6, off: 3,   op: 0.24 }, bdr: { w: 1.8 },               label: { size: 10, field: AIRSPACE_RESTRICTED_LABEL_TEXT_FIELD } },
+    dng: { inset: { w: 6, off: 3,   op: 0.24 }, bdr: { w: 1.8, dash: [4, 3] }, label: { size: 10, field: AIRSPACE_RESTRICTED_LABEL_TEXT_FIELD } },
+    act: { inset: { w: 5, off: 2.5, op: 0.16 }, bdr: { w: 1.0, dash: [3, 2] }, label: { size: 9,  field: AIRSPACE_LABEL_TEXT_FIELD } },
+  }
+  // Controlled airspace (ICAO classes A-F) x kind (CTR / TMA+CTA): one static-colour
+  // layer set each. Class G is never drawn; RMZ/ATZ/TMZ have the 'g' zone variant,
+  // danger areas the red restricted variants.
+  const NON_CONTROLLED_TYPES = [...ZONE_TYPES, 'FIR', 'UIR', 'D']
+  // TMA/CTA first, CTR last: later layers draw on top, and CTR edges often share
+  // a boundary with TMA/CTA limits, so the magenta CTR border must not be buried.
+  const controlledVariants = (['tma', 'ctr'] as const).flatMap((kind) =>
+    CONTROLLED_CLASSES.map((cls) => {
+      const st = controlledStyle(cls, kind === 'ctr' ? 'CTR' : 'TMA')
+      return {
+        k: `${cls.toLowerCase()}-${kind}`,
+        f: ['all', mkFilter(['==', ['get', 'class'], cls]), kind === 'ctr'
+          ? ['==', ['get', 'type'], 'CTR']
+          : ['all', ['!=', ['get', 'type'], 'CTR'], ['!', ['in', ['get', 'type'], ['literal', NON_CONTROLLED_TYPES]]]]] as unknown[],
+        col: st.border, fill: st.mapFill, kind, band: st.band, width: st.width,
+        show: kind === 'ctr' ? showClassCtr : showClassCtma,
+        p: AS_PARAMS[kind],
+      }
+    }))
+  const asVariants: { k: string; f: unknown[]; col: string; fill?: string; kind?: 'ctr' | 'tma'; band?: number; width?: number; show: boolean; p: AsParams }[] = [
+    ...controlledVariants,
+    { k: 'g', f: filterZones, col: AC.gBorder, fill: 'rgba(120, 120, 120, 0.01)', show: showClassG, p: AS_PARAMS.g },
+    { k: 'r',     f: subClass(filterRestricted, 'R'),                   col: AC.rBorder,     show: showRestricted, p: AS_PARAMS.r },
+    { k: 'dng',   f: mkFilter(isDanger),                                col: AC.rBorder,     show: showRestricted, p: AS_PARAMS.dng },
+    { k: 'tra',   f: subClass(filterRestricted, 'TRA'),                 col: AC.traBorder,   show: showRestricted, p: AS_PARAMS.r },
+    { k: 'gldr',  f: subClass(filterActivity, 'GLDR'),                  col: AC.gldrBorder,  show: showActivity,   p: AS_PARAMS.act },
+    { k: 'model', f: subClass(filterActivity, 'MODEL'),                 col: AC.modelBorder, show: showActivity,   p: AS_PARAMS.act },
+  ]
+
+  return (
+    <>
+        {/* ── Landuse (farmland/residential/wetland) — static PMTiles ──────── */}
+        {/* Retired from Postgres/Martin, same pattern as basemap.pmtiles — see
+            apps/web/src/styles/map-style.ts getLanduseSource() and
+            docs/self-hosting.md. Matches web landuse-fill layer. Renders
+            below all aviation overlays. Lazy-mounted -- see landuseMounted
+            comment above; only pays its ~87MB source cost once showLanduse
+            has been true at least once this session (true by default). */}
+        {landuseMounted && (
+        <VectorSource
+          id="osm-landuse"
+          url={landusePmtilesUrl}
+          maxzoom={12}
+          // Attribution parity with web's getLanduseSource() (map-style.ts) —
+          // MapLibre Native's (i) attribution dialog only lists what each
+          // mounted source declares; without this the dialog was silently
+          // missing the OSM/ODbL credit that's required and shown on web.
+          attribution='© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors (ODbL)'
+        >
+          {LANDUSE_FILLS.map(lu => (
+            <Layer
+              key={lu.k}
+              id={`landuse-fill-${lu.k}`}
+              filter={['==', ['get', 'kind'], lu.kind] as any}
+              type="fill"
+              source="osm-landuse"
+              {...{'source-layer': 'landuse'} as any}
+              // BUG FIX (found live on device): MapLibre React Native inserts
+              // JSX-declared <Layer> children ABOVE every existing style layer
+              // by default (append-only, no implicit position), unlike web's
+              // map-style.ts where landuse-fill's position in the raw style
+              // JSON array is explicitly chosen (fills before labels). Without
+              // beforeId this fill layer rendered on top of the basemap's own
+              // place/label text (city names like "Gislaved" became unreadable
+              // when landuse was on) -- confirmed NOT reproducible on web,
+              // native-only bug. 'address_label' is the FIRST symbol/label
+              // layer in protomaps-themes-base's layers() output (verified via
+              // node -e against the actual installed @protomaps/basemaps
+              // package) -- beforeId places landuse-fill immediately below it,
+              // i.e. below every text label, matching web's fill-before-labels
+              // z-order exactly.
+              beforeId="address_label"
+              layout={{ visibility: showLanduse ? 'visible' : 'none' }}
+              paint={{
+                'fill-color': lu.col,
+                'fill-opacity': 0.85,
+              }}
+            />
+          ))}
+        </VectorSource>
+        )}
+
+        {/* Hillshade (relief shading) -- self-hosted Copernicus GLO-30 DEM,
+            Terrarium-encoded raster-dem PMTiles from R2, same source
+            getHillshadeSource() uses on web (map-style.ts). Verified
+            supported on both platforms at the native binary level (Android:
+            MLRNLayer.kt -> HillshadeLayer / org.maplibre.android.style.layers;
+            iOS: MLRNLayer.m -> MLNHillshadeStyleLayer) -- see AGENTS.md. Off
+            by default; toggled via layout.visibility like every other layer
+            here, never unmounted (MapLibre Native throws 'id cannot be
+            changed' otherwise). Rendered below landuse-fill and all
+            aviation overlays. Lazy-mounted -- see hillshadeMounted comment
+            above; ~681MB source, only pays that cost once hillshade or
+            terrain-color has actually been turned on this session. */}
+        {hillshadeMounted && (
+        <RasterDEMSource
+          id="osm-hillshade"
+          url={hillshadePmtilesUrl}
+          encoding="terrarium"
+          // Attribution parity with web's getHillshadeSource() — Copernicus
+          // DEM licence requires its notice for adapted data
+          // (COPERNICUS_GLO30_NOTICE). See osm-landuse's
+          // attribution comment above for why this must be set here too.
+          attribution={`Copernicus DEM GLO-30, ${COPERNICUS_GLO30_NOTICE}`}
+          // Must match the archive's REAL base zoom (10), not a desired
+          // one -- mirrors getHillshadeSource()'s maxzoom in web's
+          // map-style.ts (see its detailed comment). dem_mosaic.sh's
+          // ~90m/px downsampled input raster's base (finest) zoom lands
+          // at z10; there is no z11/z12 data in this file, only coarser
+          // gdaladdo overview zooms below it. A declared maxzoom of 12
+          // (as this was) doesn't error -- MapLibre Native overzooms by
+          // upsampling the real z10 tile and treating it as if it were
+          // native z11/z12 resolution, which recomputes the hillshade
+          // slope algorithm's horizontal distance-per-pixel far too small
+          // for the *same* real elevation delta, producing grossly
+          // exaggerated relief ('huge mountains' rendered even over
+          // genuinely flat terrain like Skåne). Confirmed as the root
+          // cause on a real device; web's JS SDK fails differently for
+          // the identical over-declared-maxzoom mistake (tiles hang in
+          // 'loading' state forever instead of rendering wrong) which is
+          // why that fix predates this one.
+          maxzoom={10}
+        >
+          <Layer
+            id="hillshade"
+            type="hillshade"
+            source="osm-hillshade"
+            // BUG FIX (overzoom blockiness at the border, mirrors web's
+            // map-style.ts fix): the source above is already capped at its
+            // real maxzoom=10 (~90m/px), but MapLibre Native still overzooms
+            // (upscales) that tile above z10 for rendering -- each real data
+            // pixel then covers more screen pixels the further in you zoom,
+            // most visible as a blocky/stairstepped dark band tracing the
+            // country-border alpha cutoff. This layer-level maxzoom stops
+            // the LAYER from rendering at all beyond z11 (distinct from the
+            // source maxzoom above, which only bounds tile fetch/overzoom).
+            maxzoom={11}
+            layout={{ visibility: showHillshade ? 'visible' : 'none' }}
+            paint={{
+              // MUCH lower than web's 0.5 (map-style.ts) -- confirmed via a
+              // real-device A/B test that MapLibre Native's Android
+              // hillshade renderer is far more sensitive to this value
+              // than the JS SDK: web's own comment notes 0.5 was barely
+              // visible even over genuinely steep, snow-capped Kiruna
+              // fjell terrain, whereas 0.5 on native rendered dramatic,
+              // unrealistic mountain-ridge relief even over flat Skåne
+              // farmland (near-zero real elevation variation). Same
+              // underlying Terrarium-encoded DEM data on both platforms
+              // (round-trip verified at the pipeline level, see
+              // hillshade_to_pmtiles.sh) -- this is a genuine rendering-
+              // engine difference, not a data or maxzoom bug (that fix
+              // above was real and necessary, but didn't address this).
+              // Revisit if a maplibre-react-native/MapLibre Native update
+              // changes this sensitivity. Goal is visual parity with web's
+              // actual rendered look (near-invisible over flat terrain,
+              // subtle even over real mountains at 0.5), not just "less bad"
+              // -- 0.15 was still visibly too strong per live device testing
+              // over southern Sweden (Skåne, genuinely flat). Dropped much
+              // further to 0.02.
+              'hillshade-exaggeration': 0.02,
+              // hillshade-shadow-color/highlight-color intentionally NOT
+              // set (library default used instead) -- confirmed against
+              // the installed @maplibre/maplibre-react-native 11.3.10
+              // Android source (MLRNStyleFactory.kt):
+              // setHillshadeShadowColor/HighlightColor's literal-string
+              // branch calls getStringArray() on a plain color string and
+              // throws UnexpectedNativeTypeException (Double cannot be
+              // cast to ReadableArray), crashing on every map mount
+              // regardless of whether hillshade is visible. Passing an
+              // ['rgba', r, g, b, a] expression instead avoids the crash
+              // (routes into the isExpression() branch) but Mbgl's JNI
+              // layer then logs "Expected array<color> but found color
+              // instead" and silently doesn't apply it for these two
+              // properties specifically -- accent-color (below) is the
+              // only one of the three that actually accepts the same
+              // expression form correctly on this library version. Revisit
+              // if a maplibre-react-native update fixes the Android bridge.
+              'hillshade-accent-color': ['rgba', 60, 50, 40, 0.3],
+            }}
+          />
+
+          {/* EXPERIMENTAL -- terrain colour-relief (red/orange/yellow/green
+              clearance bands), web equivalent of terrain-color in map-style.ts
+              + src/utils/terrainColor.ts. Shares this same osm-hillshade
+              raster-dem source. color-relief has a documented GPU/Adreno
+              rendering bug (RGBA32F texture format, not mandatory in the
+              Vulkan spec) -- off by default, exists specifically so this can
+              be checked on real hardware. If colours render wrong (all-brown,
+              or stuck on one colour in the ramp) on a given device, that
+              confirms the bug and this should stay disabled for that
+              device/chipset until MapLibre Native ships a fix. */}
+          <Layer
+            id="terrain-color"
+            type="color-relief"
+            source="osm-hillshade"
+            layout={{ visibility: showTerrainColor ? 'visible' : 'none' }}
+            paint={{
+              'color-relief-color': buildTerrainColorExpr(
+                ownAltFt > 0 ? ownAltFt : terrainColorRefAltFt,
+              ) as any,
+            }}
+          />
+        </RasterDEMSource>
+        )}
+        {/* Water cover for hillshade -- mirrors web's 'hillshade-water-cover'
+            in map-style.ts. The DEM ships with no alpha/NoData (MapLibre
+            Native decodes DEM tiles premultiplied and the hillshade shader
+            discards alpha, so any transparent pixel is a -32768 m cliff at
+            the coast); the pipeline continues terrain smoothly out to sea
+            instead, and this fill paints basemap water back over it. Same
+            source-layer/filter/colour as the Protomaps 'water' layer.
+            References the style's own 'protomaps' source, so it lives
+            outside the RasterDEMSource above. Gated on the same sticky
+            hillshadeMounted flag (never unmount a layer once added -- 'id
+            cannot be changed'); visibility tied to showHillshade. Vector
+            basemap only (satellite style has no 'protomaps' source). */}
+        {hillshadeMounted && basemapMode !== 'satellite' && (
+          <Layer
+            id="hillshade-water-cover"
+            type="fill"
+            source="protomaps"
+            {...{'source-layer': 'water'} as any}
+            filter={['==', '$type', 'Polygon'] as any}
+            maxzoom={11}
+            layout={{ visibility: showHillshade ? 'visible' : 'none' }}
+            paint={{ 'fill-color': LIGHT.water }}
+          />
+        )}
+
+        {/* ── Elevation contour lines (Copernicus GLO-30 DEM, vector) ─────
+            Web equivalent: getContoursSource() + 'contour-line'/'contour-label'
+            layers in map-style.ts. Same source-layer ('contours') and
+            elev_m numeric property. Tiled at -Z6 -z12 (scripts/contours_to_
+            pmtiles.sh) -- minzoom/maxzoom below must match the script's
+            real -z value exactly, same maxzoom-mismatch bug class as
+            hillshade above (see its comment): a vector source degrades
+            less catastrophically than raster-dem for a wrong declared
+            maxzoom (a fetch to a non-existent tile just empty-tiles rather
+            than rendering garbage), but there's no reason to leave it
+            wrong. Line width/color widened+darkened to match web's own
+            verified-live fix (the original faint styling was invisible in
+            practice over real Kiruna-fjell contour data). Off by default;
+            toggled via layout.visibility. Lazy-mounted -- see contoursMounted
+            comment above; ~234MB source, only pays that cost once contours
+            has actually been turned on this session. */}
+        {contoursMounted && (
+        <VectorSource
+          id="osm-contours"
+          url={contoursPmtilesUrl}
+          minzoom={6}
+          maxzoom={12}
+          // Attribution parity with web's getContoursSource() — same
+          // Copernicus DEM source as osm-hillshade above.
+          attribution={`Copernicus DEM GLO-30, ${COPERNICUS_GLO30_NOTICE}`}
+        >
+          <Layer
+            id="contour-line"
+            type="line"
+            source="osm-contours"
+            {...{'source-layer': 'contours'} as any}
+            minzoom={8}
+            layout={{ visibility: showContours ? 'visible' : 'none', 'line-join': 'round' }}
+            paint={{
+              'line-color': 'rgba(120,80,35,0.85)',
+              // Index contours (multiples of 250m) drawn wider than intermediate ones.
+              'line-width': ['case', ['==', ['%', ['round', ['get', 'elev_m']], 250], 0], 2.2, 1.1],
+            }}
+          />
+          <Layer
+            id="contour-label"
+            type="symbol"
+            source="osm-contours"
+            {...{'source-layer': 'contours'} as any}
+            minzoom={10}
+            filter={['==', ['%', ['round', ['get', 'elev_m']], 250], 0] as any}
+            layout={{
+              visibility: showContours ? 'visible' : 'none',
+              'symbol-placement': 'line',
+              'text-field': ['concat', ['to-string', ['round', ['get', 'elev_m']]], 'm'] as any,
+              'text-font': ['Noto Sans Regular'],
+              'text-size': 10,
+            }}
+            paint={{
+              'text-color': 'rgba(120,85,40,0.9)',
+              'text-halo-color': 'rgba(255,255,255,0.8)',
+              'text-halo-width': 1,
+            }}
+          />
+        </VectorSource>
+        )}
+
+        {/* ── Airspace ──────────────────────────────────── */}
+        {/* Always-mounted — visibility toggled via layout.visibility, not mount/unmount.
+            MapLibre Native throws 'id cannot be changed' when same id is removed then re-added. */}
+        <GeoJSONSource id="ofm-airspace" onPress={() => {}} data={airspaceData}>
+          {/* Static per-class fill colours: no data-driven colour expression on a
+              GeoJSON fill layer. An expression-valued fill-color aborted the app on
+              iOS at style load (uncaught exception in MLRNStyle setFillColor). */}
+          {asVariants.filter(v => v.fill).map(v => (
+            <Layer key={`as-fill-${v.k}`} id={`as-fill-${v.k}`} type="fill" filter={v.f as any} paint={{ 'fill-color': v.fill as string, 'fill-opacity': v.kind === 'ctr' ? ['interpolate', ['linear'], ['zoom'], 10, 1, 12, 0.15] as any : 1 }} layout={{ visibility: v.show ? 'visible' : 'none' }} />
+          ))}
+          <Layer id="as-fill-r" type="fill" filter={filterRed as any} paint={{ 'fill-color': AC.rFill, 'fill-opacity': 1 }} layout={{ visibility: showRestricted ? 'visible' : 'none' }} />
+          <Layer id="as-fill-tra" type="fill" filter={['all', filterRestricted, ['==', ['get', 'class'], 'TRA']] as any} paint={{ 'fill-color': AC.traFill, 'fill-opacity': 1 }} layout={{ visibility: showRestricted ? 'visible' : 'none' }} />
+          <Layer id="as-fill-gldr" type="fill" filter={['all', filterActivity, ['==', ['get', 'class'], 'GLDR']] as any} paint={{ 'fill-color': AC.gldrFill, 'fill-opacity': 1 }} layout={{ visibility: showActivity ? 'visible' : 'none' }} />
+          <Layer id="as-fill-model" type="fill" filter={['all', filterActivity, ['==', ['get', 'class'], 'MODEL']] as any} paint={{ 'fill-color': AC.modelFill, 'fill-opacity': 1 }} layout={{ visibility: showActivity ? 'visible' : 'none' }} />
+          {/* Inset shading bands — wide translucent line offset INTO the polygon
+              interior via positive line-offset. Source geometry is Polygon, so
+              MapLibre's polygon-aware line-offset inset/outset is winding-order
+              independent (see AGENTS.md / docs/architecture.md for the style-spec
+              citation). Shows unambiguously which side of the boundary the
+              airspace occupies. */}
+          {asVariants.map(v => (
+            <Layer key={`as-inset-${v.k}`} id={`as-inset-${v.k}`} type="line" filter={['all', v.f, ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: v.show ? 'visible' : 'none' }} paint={{ 'line-color': v.col, 'line-width': v.p.inset.w, 'line-offset': v.p.inset.off, 'line-opacity': v.p.inset.op * (v.band ?? 1) }} />
+          ))}
+
+          {asVariants.map(v => (
+            <Layer key={`as-bdr-${v.k}`} id={`as-bdr-${v.k}`} type="line" filter={['all', v.f, ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: v.show ? 'visible' : 'none' }} paint={{ 'line-color': v.col, 'line-width': v.p.bdr.w * (v.width ?? 1), ...(v.p.bdr.dash ? { 'line-dasharray': v.p.bdr.dash } : {}) }} />
+          ))}
+
+          {/* On-map class + altitude-range labels, placed along the boundary line
+              (repeats around the perimeter, stays visible even off-centre).
+              text-font is required — MapLibre Native silently drops the whole
+              layer without it. */}
+          {asVariants.map(v => (
+            <Layer key={`as-label-${v.k}`} id={`as-label-${v.k}`} type="symbol" filter={['all', v.f, ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: v.show ? 'visible' : 'none', 'symbol-placement': 'line', 'text-offset': [0, 1], 'text-field': v.p.label.field as any, 'text-size': v.p.label.size, 'symbol-spacing': 200, 'text-font': ['Noto Sans Regular'] }} paint={{ 'text-color': v.col, 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 }} />
+          ))}
+        </GeoJSONSource>
+
+
+        {/* ── Runways ──────────────────────────────────────── */}
+        <GeoJSONSource id="ofm-runways" data={runwaysData}>
+            <Layer
+              id="runways-outline"
+              type="line"
+              layout={{ visibility: showRunways ? 'visible' : 'none', 'line-cap': 'butt' }}
+              minzoom={11}
+              paint={{
+                'line-color': RUNWAY_COLORS.outline,
+                'line-width': [
+                  'interpolate', ['exponential', 2], ['zoom'],
+                  11, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 1.5],
+                  14, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 7],
+                  17, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 32],
+                ],
+                'line-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 0.9],
+              }}
+            />
+            {RUNWAY_SURFACES.map(rs => (
+              <Layer
+                key={rs.k}
+                id={`runways-line-${rs.k}`}
+                filter={rs.f as any}
+                type="line"
+                layout={{ visibility: showRunways ? 'visible' : 'none', 'line-cap': 'butt' }}
+                minzoom={11}
+                paint={{
+                  'line-color': rs.col,
+                  'line-width': [
+                    'interpolate', ['exponential', 2], ['zoom'],
+                    11, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 1],
+                    14, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 5],
+                    17, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 24],
+                  ],
+                  'line-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
+                }}
+              />
+            ))}
+          </GeoJSONSource>
+
+        {/* ── Aerodromes ───────────────────────────────────── */}
+        <GeoJSONSource id="ofm-aerodromes" onPress={() => {}} data={aerodromesData}>
+            {/* Towered-airport ATC status ring -- mirrors web map-style.ts
+                aerodromes-atc-ring. Filtered to towered===true only; color
+                driven by atcRingMatchExpr state (60s-interval recompute, see
+                effect above). Declared before aerodromes-circle so the icon
+                symbol paints on top / reads as a halo around it. */}
+            {[
+              { k: 'unknown', col: AERODROME_COLORS.atcUnknown, f: ['!', ['in', ['get', 'icao'], ['literal', [...atcOpenIcaos, ...atcClosedIcaos]]]] },
+              { k: 'open',    col: AERODROME_COLORS.atcOpen,    f: ['in', ['get', 'icao'], ['literal', atcOpenIcaos]] },
+              { k: 'closed',  col: AERODROME_COLORS.atcClosed,  f: ['in', ['get', 'icao'], ['literal', atcClosedIcaos]] },
+            ].map(r => (
+              <Layer
+                key={r.k}
+                id={r.k === 'unknown' ? 'aerodromes-atc-ring' : `aerodromes-atc-ring-${r.k}`}
+                type="circle"
+                filter={['all', ['==', ['get', 'towered'], true], r.f] as any}
+                layout={{ visibility: showAerodromes ? 'visible' : 'none' }}
+                paint={{
+                  'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 5, 10, 7.5, 13, 10],
+                  'circle-color': 'rgba(0,0,0,0)',
+                  'circle-stroke-width': 2,
+                  'circle-stroke-color': r.col,
+                }}
+              />
+            ))}
+            <Layer
+              id="aerodromes-circle"
+              layout={{
+                visibility: showAerodromes ? 'visible' : 'none',
+                'icon-image': ['match', ['get', 'type'], 'HP', 'ad-heliport', 'ad-airport'],
+                'icon-size': ['interpolate', ['linear'], ['zoom'], 6, 0.3, 10, 0.45, 13, 0.6],
+                'icon-allow-overlap': true,
+                'icon-ignore-placement': true,
+              }}
+              type="symbol"
+              minzoom={6}
+            />
+            <Layer
+              id="aerodromes-label"
+              type="symbol"
+              minzoom={8}
+              layout={{
+                visibility: showAerodromes ? 'visible' : 'none',
+                'text-field': ['get', 'icao'],
+                'text-size': 11,
+                'text-offset': [0, 1.3],
+                'text-font': ['Noto Sans Regular'],
+              }}
+              paint={{
+                'text-color': theme.textPrimary,
+                'text-halo-color': theme.surfaceBase,
+                'text-halo-width': 1.5,
+              }}
+            />
+            {/* NOTAM keyword hint badge (warning/clock emoji) -- mirrors
+                web's map-style.ts 'aerodromes-notam-hint'. filter/text-field
+                driven by notamHintFilter/notamHintTextExpr state (60s-
+                interval bulk fetch, see effect above). Text-only signal,
+                never affects aerodromes-atc-ring's color. */}
+            <Layer
+              id="aerodromes-notam-hint"
+              type="symbol"
+              minzoom={7}
+              filter={notamHintFilter as any}
+              layout={{
+                'text-field': notamHintTextExpr as any,
+                'text-font': ['Noto Sans Regular'],
+                'text-size': 13,
+                'text-anchor': 'bottom-left',
+                'text-offset': [0.6, -0.6],
+                'text-allow-overlap': true,
+                'text-ignore-placement': true,
+              }}
+              paint={{
+                'text-halo-color': '#ffffff',
+                'text-halo-width': 1.5,
+              }}
+            />
+          </GeoJSONSource>
+
+        {/* ── Navaids ──────────────────────────────────────── */}
+        <GeoJSONSource id="ofm-navaids" onPress={() => {}} data={navaidsData}>
+            <Layer
+              id="navaids-circle"
+              layout={{
+                visibility: showNavaids ? 'visible' : 'none',
+                'icon-image': ['match', ['get', 'kind'], 'VOR', 'nav-vor', 'nav-ndb'],
+                'icon-size': ['interpolate', ['linear'], ['zoom'], 6, 0.22, 10, 0.35, 13, 0.5],
+                'icon-allow-overlap': true,
+                'icon-ignore-placement': true,
+              }}
+              type="symbol"
+              minzoom={6}
+            />
+            <Layer
+              id="navaids-label"
+              type="symbol"
+              minzoom={7}
+              layout={{
+                visibility: showNavaids ? 'visible' : 'none',
+                'text-field': ['get', 'id'],
+                'text-size': 10,
+                'text-offset': [0, 1.2],
+                'text-font': ['Noto Sans Regular'],
+              }}
+              paint={{
+                'text-color': theme.textSecondary,
+                'text-halo-color': theme.surfaceBase,
+                'text-halo-width': 1.5,
+              }}
+            />
+          </GeoJSONSource>
+
+        {/* ── Waypoints (MRP) ──────────────────────────────── */}
+        <GeoJSONSource id="ofm-waypoints" onPress={() => {}} data={waypointsData}>
+            <Layer
+              id="waypoints-mrp-circle"
+              layout={{
+                visibility: showWaypoints ? 'visible' : 'none',
+                'icon-image': 'wp-mrp',
+                'icon-size': ['interpolate', ['linear'], ['zoom'], 8, 0.22, 10, 0.35, 13, 0.5],
+                'icon-allow-overlap': true,
+                'icon-ignore-placement': true,
+              }}
+              type="symbol"
+              minzoom={8}
+              filter={['==', ['get', 'wp_type'], 'MRP']}
+            />
+            <Layer
+              id="waypoints-mrp-label"
+              type="symbol"
+              minzoom={9}
+              filter={['==', ['get', 'wp_type'], 'MRP']}
+              layout={{
+                visibility: showWaypoints ? 'visible' : 'none',
+                'text-field': ['get', 'id'],
+                'text-size': 9,
+                'text-offset': [0, 1.1],
+                'text-font': ['Noto Sans Regular'],
+              }}
+              paint={{
+                'text-color': WAYPOINT_COLORS.mrp,
+                'text-halo-color': theme.surfaceBase,
+                'text-halo-width': 1,
+              }}
+            />
+            <Layer
+              id="waypoints-rp-circle"
+              layout={{
+                visibility: showWaypoints ? 'visible' : 'none',
+                'icon-image': 'wp-rp',
+                'icon-size': ['interpolate', ['linear'], ['zoom'], 8, 0.22, 10, 0.35, 13, 0.5],
+                'icon-allow-overlap': true,
+                'icon-ignore-placement': true,
+              }}
+              type="symbol"
+              minzoom={8}
+              filter={['==', ['get', 'wp_type'], 'RP']}
+            />
+            <Layer
+              id="waypoints-rp-label"
+              type="symbol"
+              minzoom={9}
+              filter={['==', ['get', 'wp_type'], 'RP']}
+              layout={{
+                visibility: showWaypoints ? 'visible' : 'none',
+                'text-field': ['get', 'id'],
+                'text-size': 9,
+                'text-offset': [0, 1.1],
+                'text-font': ['Noto Sans Regular'],
+              }}
+              paint={{
+                'text-color': WAYPOINT_COLORS.rp,
+                'text-halo-color': theme.surfaceBase,
+                'text-halo-width': 1,
+              }}
+            />
+          </GeoJSONSource>
+
+        {/* ── Obstacles ────────────────────────────────────── */}
+        <GeoJSONSource id="openaip-obstacles" onPress={() => {}} data={obstaclesData}>
+            <Layer
+              id="obstacles-circle"
+              layout={{
+                visibility: showObstacles ? 'visible' : 'none',
+                'icon-image': [
+                  'match', ['get', 'kind'],
+                  'wind_turbine', 'obs-wind-turbine',
+                  'tower',        'obs-tower',
+                  'chimney',      'obs-chimney',
+                  'building',     'obs-building',
+                                  'obs-other',
+                ],
+                'icon-size': ['interpolate', ['linear'], ['zoom'], 9, 0.22, 11, 0.35, 14, 0.5],
+                'icon-allow-overlap': true,
+                'icon-ignore-placement': true,
+              }}
+              type="symbol"
+              minzoom={9}
+            />
+            <Layer
+              id="obstacles-label"
+              type="symbol"
+              minzoom={12}
+              layout={{
+                visibility: showObstacles ? 'visible' : 'none',
+                'text-field': ['concat', ['to-string', ['get', 'elevation_ft']], '\''],
+                'text-size': 9,
+                'text-offset': [0, 1.1],
+                'text-font': ['Noto Sans Regular'],
+              }}
+              paint={{
+                'text-color': theme.textMuted,
+                'text-halo-color': theme.surfaceBase,
+                'text-halo-width': 1,
+              }}
+            />
+          </GeoJSONSource>
+        {/* ── OSM Landmarks ─────────────────────────────────── */}
+        <GeoJSONSource id="osm-landmarks" onPress={() => {}} data={landmarksData}>
+          <Layer
+            id="landmarks-circle"
+            type="symbol"
+            minzoom={10}
+            layout={{
+              visibility: showLandmarks ? 'visible' : 'none',
+              'icon-image': [
+                'match', ['get', 'kind'],
+                'church',      'lmk-church',
+                'mast',        'lmk-mast',
+                'windmill',    'lmk-windmill',
+                'water_tower', 'lmk-water-tower',
+                'chimney',     'lmk-chimney',
+                               'lmk-church',
+              ],
+              'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.3, 14, 0.5],
+              'icon-allow-overlap': true,
+              'icon-ignore-placement': true,
+            }}
+          />
+          {LANDMARK_LABEL_COLORS.map(lk => (
+            <Layer
+              key={lk.k}
+              id={`landmarks-label-${lk.k}`}
+              type="symbol"
+              minzoom={13}
+              filter={['all', ['!=', ['get', 'name'], ''], lk.f] as any}
+              layout={{
+                visibility: showLandmarks ? 'visible' : 'none',
+                'text-field': ['get', 'name'],
+                'text-font': ['Noto Sans Regular'],
+                'text-size': ['interpolate', ['linear'], ['zoom'], 13, 9, 16, 11],
+                'text-anchor': 'top',
+                'text-offset': [0, 0.6],
+                'text-optional': true,
+              }}
+              paint={{
+                'text-color': lk.col,
+                'text-halo-color': 'rgba(255,255,255,0.9)',
+                'text-halo-width': 1.5,
+              }}
+            />
+          ))}
+        </GeoJSONSource>
+
+        {/* ── Runway threshold designators ─────────────────── */}
+        <GeoJSONSource id="ofm-runway-thresholds" data={runwayThresholdsData}>
+          <Layer
+            id="runway-threshold-label"
+            type="symbol"
+            minzoom={12}
+            layout={{
+              visibility: showRunways ? 'visible' : 'none',
+              'text-field': ['get', 'id'],
+              'text-font': ['Noto Sans Medium'],
+              // Bumped for the wind-favored end (bigger draws the eye) --
+              // same expression/logic web's map-style.ts applies via
+              // setPaintProperty, shared via buildRunwayWindHighlight so
+              // "favored" means exactly the same thing on both platforms.
+              'text-size': runwayWindExpr.size as any,
+              // mag_brg is a "not yet computed" placeholder `0` for a large
+              // fraction of thresholds in the source data (true_brg is
+              // always populated) -- coalesce alone doesn't catch that (only
+              // null/undefined substitute), so this falls back to true_brg
+              // whenever mag_brg is exactly 0. Same fix as web's
+              // map-style.ts 'runway-threshold-label' layer, and matches
+              // @open-vfr/shared/runwayWind's effectiveMagBrg used by every
+              // JS-side reader of this same field.
+              'text-rotate': [
+                'case',
+                ['==', ['coalesce', ['get', 'mag_brg'], 0], 0],
+                ['coalesce', ['get', 'true_brg'], 0],
+                ['get', 'mag_brg'],
+              ] as any,
+              'text-rotation-alignment': 'map',
+              'text-allow-overlap': true,
+              'text-ignore-placement': true,
+            }}
+            paint={{
+              'text-color': runwayWindExpr.color as any,
+              'text-halo-color': runwayWindExpr.haloColor as any,
+              'text-halo-width': 1.5,
+              'text-opacity': runwayWindExpr.opacity as any,
+            }}
+          />
+        </GeoJSONSource>
+
+    </>
+  )
+})
+
+
 export function AviationMap({
   gpsPosition,
   simActive = false,
@@ -1793,59 +2547,6 @@ export function AviationMap({
     }
   }, [followGps])
 
-  const ceilingFilter = ['<=', ['get', 'lower_ft'], airspaceCeilingFt]
-
-  // Per-class filters combined with ceiling
-  const mkFilter = (classExpr: unknown[]) => ['all', ceilingFilter, classExpr] as unknown[]
-  const isDanger         = ['all', ['==', ['get', 'class'], 'D'], ['==', ['get', 'type'], 'D']]
-  const filterZones      = mkFilter(['in', ['get', 'type'], ['literal', [...ZONE_TYPES]]])
-  const filterRestricted = mkFilter(['any', ['in', ['get', 'class'], ['literal', ['R', 'TRA']]], isDanger])
-  const filterRed        = mkFilter(['any', ['==', ['get', 'class'], 'R'], isDanger])
-  const filterActivity   = mkFilter(['in', ['get', 'class'], ['literal', ['GLDR', 'MODEL']]])
-
-  // One static-colour layer set per airspace sub-class. iOS aborts at style
-  // load when a colour property carries a data-driven expression on a GeoJSON
-  // layer (uncaught exception in MLRNStyle set*Color), so colours are never
-  // computed from feature properties here; the filter picks the sub-class.
-  const subClass = (f: unknown[], c: string) => ['all', f, ['==', ['get', 'class'], c]]
-  type AsParams = { inset: { w: number; off: number; op: number }; bdr: { w: number; dash?: number[] }; label: { size: number; field: unknown } }
-  const AS_PARAMS: Record<'ctr' | 'tma' | 'g' | 'r' | 'dng' | 'act', AsParams> = {
-    ctr: { inset: { w: 6, off: 3,   op: 0.22 }, bdr: { w: 1.5, dash: [4, 3] }, label: { size: 10, field: AIRSPACE_LABEL_TEXT_FIELD } },
-    tma: { inset: { w: 10, off: 5,  op: 0.28 }, bdr: { w: 1.5, dash: [4, 3] }, label: { size: 10, field: AIRSPACE_LABEL_TEXT_FIELD } },
-    g:   { inset: { w: 0, off: 0,   op: 0 },    bdr: { w: 1.0, dash: [2, 2] }, label: { size: 9,  field: AIRSPACE_ZONE_LABEL_TEXT_FIELD } },
-    r:   { inset: { w: 6, off: 3,   op: 0.24 }, bdr: { w: 1.8 },               label: { size: 10, field: AIRSPACE_RESTRICTED_LABEL_TEXT_FIELD } },
-    dng: { inset: { w: 6, off: 3,   op: 0.24 }, bdr: { w: 1.8, dash: [4, 3] }, label: { size: 10, field: AIRSPACE_RESTRICTED_LABEL_TEXT_FIELD } },
-    act: { inset: { w: 5, off: 2.5, op: 0.16 }, bdr: { w: 1.0, dash: [3, 2] }, label: { size: 9,  field: AIRSPACE_LABEL_TEXT_FIELD } },
-  }
-  // Controlled airspace (ICAO classes A-F) x kind (CTR / TMA+CTA): one static-colour
-  // layer set each. Class G is never drawn; RMZ/ATZ/TMZ have the 'g' zone variant,
-  // danger areas the red restricted variants.
-  const NON_CONTROLLED_TYPES = [...ZONE_TYPES, 'FIR', 'UIR', 'D']
-  // TMA/CTA first, CTR last: later layers draw on top, and CTR edges often share
-  // a boundary with TMA/CTA limits, so the magenta CTR border must not be buried.
-  const controlledVariants = (['tma', 'ctr'] as const).flatMap((kind) =>
-    CONTROLLED_CLASSES.map((cls) => {
-      const st = controlledStyle(cls, kind === 'ctr' ? 'CTR' : 'TMA')
-      return {
-        k: `${cls.toLowerCase()}-${kind}`,
-        f: ['all', mkFilter(['==', ['get', 'class'], cls]), kind === 'ctr'
-          ? ['==', ['get', 'type'], 'CTR']
-          : ['all', ['!=', ['get', 'type'], 'CTR'], ['!', ['in', ['get', 'type'], ['literal', NON_CONTROLLED_TYPES]]]]] as unknown[],
-        col: st.border, fill: st.mapFill, kind, band: st.band, width: st.width,
-        show: kind === 'ctr' ? showClassCtr : showClassCtma,
-        p: AS_PARAMS[kind],
-      }
-    }))
-  const asVariants: { k: string; f: unknown[]; col: string; fill?: string; kind?: 'ctr' | 'tma'; band?: number; width?: number; show: boolean; p: AsParams }[] = [
-    ...controlledVariants,
-    { k: 'g', f: filterZones, col: AC.gBorder, fill: 'rgba(120, 120, 120, 0.01)', show: showClassG, p: AS_PARAMS.g },
-    { k: 'r',     f: subClass(filterRestricted, 'R'),                   col: AC.rBorder,     show: showRestricted, p: AS_PARAMS.r },
-    { k: 'dng',   f: mkFilter(isDanger),                                col: AC.rBorder,     show: showRestricted, p: AS_PARAMS.dng },
-    { k: 'tra',   f: subClass(filterRestricted, 'TRA'),                 col: AC.traBorder,   show: showRestricted, p: AS_PARAMS.r },
-    { k: 'gldr',  f: subClass(filterActivity, 'GLDR'),                  col: AC.gldrBorder,  show: showActivity,   p: AS_PARAMS.act },
-    { k: 'model', f: subClass(filterActivity, 'MODEL'),                 col: AC.modelBorder, show: showActivity,   p: AS_PARAMS.act },
-  ]
-
   const handleMapPress = useCallback(
     (e: NativeSyntheticEvent<PressEvent | PressEventWithFeatures>) => {
       if (suppressNextPressRef.current) {
@@ -2140,6 +2841,10 @@ export function AviationMap({
     }
   }, [gpsPosition, trajectoryNm, trajectoryMode])
 
+  // Coarse own altitude for the terrain-colour reference (100 ft steps): the
+  // memoized static layers must not see every position tick.
+  const ownAltFt = gpsPosition ? Math.round(gpsPosition.altFt / 100) * 100 : 0
+
   return (
     <View
       style={[StyleSheet.absoluteFill, { top: -bleedTop, bottom: -bleedBottom }]}
@@ -2184,651 +2889,46 @@ export function AviationMap({
           }}
         />
 
-        {/* ── Landuse (farmland/residential/wetland) — static PMTiles ──────── */}
-        {/* Retired from Postgres/Martin, same pattern as basemap.pmtiles — see
-            apps/web/src/styles/map-style.ts getLanduseSource() and
-            docs/self-hosting.md. Matches web landuse-fill layer. Renders
-            below all aviation overlays. Lazy-mounted -- see landuseMounted
-            comment above; only pays its ~87MB source cost once showLanduse
-            has been true at least once this session (true by default). */}
-        {landuseMounted && (
-        <VectorSource
-          id="osm-landuse"
-          url={landusePmtilesUrl}
-          maxzoom={12}
-          // Attribution parity with web's getLanduseSource() (map-style.ts) —
-          // MapLibre Native's (i) attribution dialog only lists what each
-          // mounted source declares; without this the dialog was silently
-          // missing the OSM/ODbL credit that's required and shown on web.
-          attribution='© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors (ODbL)'
-        >
-          {LANDUSE_FILLS.map(lu => (
-            <Layer
-              key={lu.k}
-              id={`landuse-fill-${lu.k}`}
-              filter={['==', ['get', 'kind'], lu.kind] as any}
-              type="fill"
-              source="osm-landuse"
-              {...{'source-layer': 'landuse'} as any}
-              // BUG FIX (found live on device): MapLibre React Native inserts
-              // JSX-declared <Layer> children ABOVE every existing style layer
-              // by default (append-only, no implicit position), unlike web's
-              // map-style.ts where landuse-fill's position in the raw style
-              // JSON array is explicitly chosen (fills before labels). Without
-              // beforeId this fill layer rendered on top of the basemap's own
-              // place/label text (city names like "Gislaved" became unreadable
-              // when landuse was on) -- confirmed NOT reproducible on web,
-              // native-only bug. 'address_label' is the FIRST symbol/label
-              // layer in protomaps-themes-base's layers() output (verified via
-              // node -e against the actual installed @protomaps/basemaps
-              // package) -- beforeId places landuse-fill immediately below it,
-              // i.e. below every text label, matching web's fill-before-labels
-              // z-order exactly.
-              beforeId="address_label"
-              layout={{ visibility: showLanduse ? 'visible' : 'none' }}
-              paint={{
-                'fill-color': lu.col,
-                'fill-opacity': 0.85,
-              }}
-            />
-          ))}
-        </VectorSource>
-        )}
-
-        {/* Hillshade (relief shading) -- self-hosted Copernicus GLO-30 DEM,
-            Terrarium-encoded raster-dem PMTiles from R2, same source
-            getHillshadeSource() uses on web (map-style.ts). Verified
-            supported on both platforms at the native binary level (Android:
-            MLRNLayer.kt -> HillshadeLayer / org.maplibre.android.style.layers;
-            iOS: MLRNLayer.m -> MLNHillshadeStyleLayer) -- see AGENTS.md. Off
-            by default; toggled via layout.visibility like every other layer
-            here, never unmounted (MapLibre Native throws 'id cannot be
-            changed' otherwise). Rendered below landuse-fill and all
-            aviation overlays. Lazy-mounted -- see hillshadeMounted comment
-            above; ~681MB source, only pays that cost once hillshade or
-            terrain-color has actually been turned on this session. */}
-        {hillshadeMounted && (
-        <RasterDEMSource
-          id="osm-hillshade"
-          url={hillshadePmtilesUrl}
-          encoding="terrarium"
-          // Attribution parity with web's getHillshadeSource() — Copernicus
-          // DEM licence requires its notice for adapted data
-          // (COPERNICUS_GLO30_NOTICE). See osm-landuse's
-          // attribution comment above for why this must be set here too.
-          attribution={`Copernicus DEM GLO-30, ${COPERNICUS_GLO30_NOTICE}`}
-          // Must match the archive's REAL base zoom (10), not a desired
-          // one -- mirrors getHillshadeSource()'s maxzoom in web's
-          // map-style.ts (see its detailed comment). dem_mosaic.sh's
-          // ~90m/px downsampled input raster's base (finest) zoom lands
-          // at z10; there is no z11/z12 data in this file, only coarser
-          // gdaladdo overview zooms below it. A declared maxzoom of 12
-          // (as this was) doesn't error -- MapLibre Native overzooms by
-          // upsampling the real z10 tile and treating it as if it were
-          // native z11/z12 resolution, which recomputes the hillshade
-          // slope algorithm's horizontal distance-per-pixel far too small
-          // for the *same* real elevation delta, producing grossly
-          // exaggerated relief ('huge mountains' rendered even over
-          // genuinely flat terrain like Skåne). Confirmed as the root
-          // cause on a real device; web's JS SDK fails differently for
-          // the identical over-declared-maxzoom mistake (tiles hang in
-          // 'loading' state forever instead of rendering wrong) which is
-          // why that fix predates this one.
-          maxzoom={10}
-        >
-          <Layer
-            id="hillshade"
-            type="hillshade"
-            source="osm-hillshade"
-            // BUG FIX (overzoom blockiness at the border, mirrors web's
-            // map-style.ts fix): the source above is already capped at its
-            // real maxzoom=10 (~90m/px), but MapLibre Native still overzooms
-            // (upscales) that tile above z10 for rendering -- each real data
-            // pixel then covers more screen pixels the further in you zoom,
-            // most visible as a blocky/stairstepped dark band tracing the
-            // country-border alpha cutoff. This layer-level maxzoom stops
-            // the LAYER from rendering at all beyond z11 (distinct from the
-            // source maxzoom above, which only bounds tile fetch/overzoom).
-            maxzoom={11}
-            layout={{ visibility: showHillshade ? 'visible' : 'none' }}
-            paint={{
-              // MUCH lower than web's 0.5 (map-style.ts) -- confirmed via a
-              // real-device A/B test that MapLibre Native's Android
-              // hillshade renderer is far more sensitive to this value
-              // than the JS SDK: web's own comment notes 0.5 was barely
-              // visible even over genuinely steep, snow-capped Kiruna
-              // fjell terrain, whereas 0.5 on native rendered dramatic,
-              // unrealistic mountain-ridge relief even over flat Skåne
-              // farmland (near-zero real elevation variation). Same
-              // underlying Terrarium-encoded DEM data on both platforms
-              // (round-trip verified at the pipeline level, see
-              // hillshade_to_pmtiles.sh) -- this is a genuine rendering-
-              // engine difference, not a data or maxzoom bug (that fix
-              // above was real and necessary, but didn't address this).
-              // Revisit if a maplibre-react-native/MapLibre Native update
-              // changes this sensitivity. Goal is visual parity with web's
-              // actual rendered look (near-invisible over flat terrain,
-              // subtle even over real mountains at 0.5), not just "less bad"
-              // -- 0.15 was still visibly too strong per live device testing
-              // over southern Sweden (Skåne, genuinely flat). Dropped much
-              // further to 0.02.
-              'hillshade-exaggeration': 0.02,
-              // hillshade-shadow-color/highlight-color intentionally NOT
-              // set (library default used instead) -- confirmed against
-              // the installed @maplibre/maplibre-react-native 11.3.10
-              // Android source (MLRNStyleFactory.kt):
-              // setHillshadeShadowColor/HighlightColor's literal-string
-              // branch calls getStringArray() on a plain color string and
-              // throws UnexpectedNativeTypeException (Double cannot be
-              // cast to ReadableArray), crashing on every map mount
-              // regardless of whether hillshade is visible. Passing an
-              // ['rgba', r, g, b, a] expression instead avoids the crash
-              // (routes into the isExpression() branch) but Mbgl's JNI
-              // layer then logs "Expected array<color> but found color
-              // instead" and silently doesn't apply it for these two
-              // properties specifically -- accent-color (below) is the
-              // only one of the three that actually accepts the same
-              // expression form correctly on this library version. Revisit
-              // if a maplibre-react-native update fixes the Android bridge.
-              'hillshade-accent-color': ['rgba', 60, 50, 40, 0.3],
-            }}
-          />
-
-          {/* EXPERIMENTAL -- terrain colour-relief (red/orange/yellow/green
-              clearance bands), web equivalent of terrain-color in map-style.ts
-              + src/utils/terrainColor.ts. Shares this same osm-hillshade
-              raster-dem source. color-relief has a documented GPU/Adreno
-              rendering bug (RGBA32F texture format, not mandatory in the
-              Vulkan spec) -- off by default, exists specifically so this can
-              be checked on real hardware. If colours render wrong (all-brown,
-              or stuck on one colour in the ramp) on a given device, that
-              confirms the bug and this should stay disabled for that
-              device/chipset until MapLibre Native ships a fix. */}
-          <Layer
-            id="terrain-color"
-            type="color-relief"
-            source="osm-hillshade"
-            layout={{ visibility: showTerrainColor ? 'visible' : 'none' }}
-            paint={{
-              'color-relief-color': buildTerrainColorExpr(
-                gpsPosition && gpsPosition.altFt > 0 ? gpsPosition.altFt : terrainColorRefAltFt,
-              ) as any,
-            }}
-          />
-        </RasterDEMSource>
-        )}
-        {/* Water cover for hillshade -- mirrors web's 'hillshade-water-cover'
-            in map-style.ts. The DEM ships with no alpha/NoData (MapLibre
-            Native decodes DEM tiles premultiplied and the hillshade shader
-            discards alpha, so any transparent pixel is a -32768 m cliff at
-            the coast); the pipeline continues terrain smoothly out to sea
-            instead, and this fill paints basemap water back over it. Same
-            source-layer/filter/colour as the Protomaps 'water' layer.
-            References the style's own 'protomaps' source, so it lives
-            outside the RasterDEMSource above. Gated on the same sticky
-            hillshadeMounted flag (never unmount a layer once added -- 'id
-            cannot be changed'); visibility tied to showHillshade. Vector
-            basemap only (satellite style has no 'protomaps' source). */}
-        {hillshadeMounted && basemapMode !== 'satellite' && (
-          <Layer
-            id="hillshade-water-cover"
-            type="fill"
-            source="protomaps"
-            {...{'source-layer': 'water'} as any}
-            filter={['==', '$type', 'Polygon'] as any}
-            maxzoom={11}
-            layout={{ visibility: showHillshade ? 'visible' : 'none' }}
-            paint={{ 'fill-color': LIGHT.water }}
-          />
-        )}
-
-        {/* ── Elevation contour lines (Copernicus GLO-30 DEM, vector) ─────
-            Web equivalent: getContoursSource() + 'contour-line'/'contour-label'
-            layers in map-style.ts. Same source-layer ('contours') and
-            elev_m numeric property. Tiled at -Z6 -z12 (scripts/contours_to_
-            pmtiles.sh) -- minzoom/maxzoom below must match the script's
-            real -z value exactly, same maxzoom-mismatch bug class as
-            hillshade above (see its comment): a vector source degrades
-            less catastrophically than raster-dem for a wrong declared
-            maxzoom (a fetch to a non-existent tile just empty-tiles rather
-            than rendering garbage), but there's no reason to leave it
-            wrong. Line width/color widened+darkened to match web's own
-            verified-live fix (the original faint styling was invisible in
-            practice over real Kiruna-fjell contour data). Off by default;
-            toggled via layout.visibility. Lazy-mounted -- see contoursMounted
-            comment above; ~234MB source, only pays that cost once contours
-            has actually been turned on this session. */}
-        {contoursMounted && (
-        <VectorSource
-          id="osm-contours"
-          url={contoursPmtilesUrl}
-          minzoom={6}
-          maxzoom={12}
-          // Attribution parity with web's getContoursSource() — same
-          // Copernicus DEM source as osm-hillshade above.
-          attribution={`Copernicus DEM GLO-30, ${COPERNICUS_GLO30_NOTICE}`}
-        >
-          <Layer
-            id="contour-line"
-            type="line"
-            source="osm-contours"
-            {...{'source-layer': 'contours'} as any}
-            minzoom={8}
-            layout={{ visibility: showContours ? 'visible' : 'none', 'line-join': 'round' }}
-            paint={{
-              'line-color': 'rgba(120,80,35,0.85)',
-              // Index contours (multiples of 250m) drawn wider than intermediate ones.
-              'line-width': ['case', ['==', ['%', ['round', ['get', 'elev_m']], 250], 0], 2.2, 1.1],
-            }}
-          />
-          <Layer
-            id="contour-label"
-            type="symbol"
-            source="osm-contours"
-            {...{'source-layer': 'contours'} as any}
-            minzoom={10}
-            filter={['==', ['%', ['round', ['get', 'elev_m']], 250], 0] as any}
-            layout={{
-              visibility: showContours ? 'visible' : 'none',
-              'symbol-placement': 'line',
-              'text-field': ['concat', ['to-string', ['round', ['get', 'elev_m']]], 'm'] as any,
-              'text-font': ['Noto Sans Regular'],
-              'text-size': 10,
-            }}
-            paint={{
-              'text-color': 'rgba(120,85,40,0.9)',
-              'text-halo-color': 'rgba(255,255,255,0.8)',
-              'text-halo-width': 1,
-            }}
-          />
-        </VectorSource>
-        )}
-
-        {/* ── Airspace ──────────────────────────────────── */}
-        {/* Always-mounted — visibility toggled via layout.visibility, not mount/unmount.
-            MapLibre Native throws 'id cannot be changed' when same id is removed then re-added. */}
-        <GeoJSONSource id="ofm-airspace" onPress={() => {}} data={airspaceData}>
-          {/* Static per-class fill colours: no data-driven colour expression on a
-              GeoJSON fill layer. An expression-valued fill-color aborted the app on
-              iOS at style load (uncaught exception in MLRNStyle setFillColor). */}
-          {asVariants.filter(v => v.fill).map(v => (
-            <Layer key={`as-fill-${v.k}`} id={`as-fill-${v.k}`} type="fill" filter={v.f as any} paint={{ 'fill-color': v.fill as string, 'fill-opacity': v.kind === 'ctr' ? ['interpolate', ['linear'], ['zoom'], 10, 1, 12, 0.15] as any : 1 }} layout={{ visibility: v.show ? 'visible' : 'none' }} />
-          ))}
-          <Layer id="as-fill-r" type="fill" filter={filterRed as any} paint={{ 'fill-color': AC.rFill, 'fill-opacity': 1 }} layout={{ visibility: showRestricted ? 'visible' : 'none' }} />
-          <Layer id="as-fill-tra" type="fill" filter={['all', filterRestricted, ['==', ['get', 'class'], 'TRA']] as any} paint={{ 'fill-color': AC.traFill, 'fill-opacity': 1 }} layout={{ visibility: showRestricted ? 'visible' : 'none' }} />
-          <Layer id="as-fill-gldr" type="fill" filter={['all', filterActivity, ['==', ['get', 'class'], 'GLDR']] as any} paint={{ 'fill-color': AC.gldrFill, 'fill-opacity': 1 }} layout={{ visibility: showActivity ? 'visible' : 'none' }} />
-          <Layer id="as-fill-model" type="fill" filter={['all', filterActivity, ['==', ['get', 'class'], 'MODEL']] as any} paint={{ 'fill-color': AC.modelFill, 'fill-opacity': 1 }} layout={{ visibility: showActivity ? 'visible' : 'none' }} />
-          {/* Inset shading bands — wide translucent line offset INTO the polygon
-              interior via positive line-offset. Source geometry is Polygon, so
-              MapLibre's polygon-aware line-offset inset/outset is winding-order
-              independent (see AGENTS.md / docs/architecture.md for the style-spec
-              citation). Shows unambiguously which side of the boundary the
-              airspace occupies. */}
-          {asVariants.map(v => (
-            <Layer key={`as-inset-${v.k}`} id={`as-inset-${v.k}`} type="line" filter={['all', v.f, ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: v.show ? 'visible' : 'none' }} paint={{ 'line-color': v.col, 'line-width': v.p.inset.w, 'line-offset': v.p.inset.off, 'line-opacity': v.p.inset.op * (v.band ?? 1) }} />
-          ))}
-
-          {asVariants.map(v => (
-            <Layer key={`as-bdr-${v.k}`} id={`as-bdr-${v.k}`} type="line" filter={['all', v.f, ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: v.show ? 'visible' : 'none' }} paint={{ 'line-color': v.col, 'line-width': v.p.bdr.w * (v.width ?? 1), ...(v.p.bdr.dash ? { 'line-dasharray': v.p.bdr.dash } : {}) }} />
-          ))}
-
-          {/* On-map class + altitude-range labels, placed along the boundary line
-              (repeats around the perimeter, stays visible even off-centre).
-              text-font is required — MapLibre Native silently drops the whole
-              layer without it. */}
-          {asVariants.map(v => (
-            <Layer key={`as-label-${v.k}`} id={`as-label-${v.k}`} type="symbol" filter={['all', v.f, ['==', ['geometry-type'], 'Polygon']] as any} layout={{ visibility: v.show ? 'visible' : 'none', 'symbol-placement': 'line', 'text-offset': [0, 1], 'text-field': v.p.label.field as any, 'text-size': v.p.label.size, 'symbol-spacing': 200, 'text-font': ['Noto Sans Regular'] }} paint={{ 'text-color': v.col, 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 }} />
-          ))}
-        </GeoJSONSource>
-
-
-        {/* ── Runways ──────────────────────────────────────── */}
-        <GeoJSONSource id="ofm-runways" data={runwaysData}>
-            <Layer
-              id="runways-outline"
-              type="line"
-              layout={{ visibility: showRunways ? 'visible' : 'none', 'line-cap': 'butt' }}
-              minzoom={11}
-              paint={{
-                'line-color': RUNWAY_COLORS.outline,
-                'line-width': [
-                  'interpolate', ['exponential', 2], ['zoom'],
-                  11, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 1.5],
-                  14, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 7],
-                  17, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 32],
-                ],
-                'line-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 0.9],
-              }}
-            />
-            {RUNWAY_SURFACES.map(rs => (
-              <Layer
-                key={rs.k}
-                id={`runways-line-${rs.k}`}
-                filter={rs.f as any}
-                type="line"
-                layout={{ visibility: showRunways ? 'visible' : 'none', 'line-cap': 'butt' }}
-                minzoom={11}
-                paint={{
-                  'line-color': rs.col,
-                  'line-width': [
-                    'interpolate', ['exponential', 2], ['zoom'],
-                    11, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 1],
-                    14, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 5],
-                    17, ['*', ['/', ['coalesce', ['get', 'width_m'], 30], 30], 24],
-                  ],
-                  'line-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
-                }}
-              />
-            ))}
-          </GeoJSONSource>
-
-        {/* ── Aerodromes ───────────────────────────────────── */}
-        <GeoJSONSource id="ofm-aerodromes" onPress={() => {}} data={aerodromesData}>
-            {/* Towered-airport ATC status ring -- mirrors web map-style.ts
-                aerodromes-atc-ring. Filtered to towered===true only; color
-                driven by atcRingMatchExpr state (60s-interval recompute, see
-                effect above). Declared before aerodromes-circle so the icon
-                symbol paints on top / reads as a halo around it. */}
-            {[
-              { k: 'unknown', col: AERODROME_COLORS.atcUnknown, f: ['!', ['in', ['get', 'icao'], ['literal', [...atcOpenIcaos, ...atcClosedIcaos]]]] },
-              { k: 'open',    col: AERODROME_COLORS.atcOpen,    f: ['in', ['get', 'icao'], ['literal', atcOpenIcaos]] },
-              { k: 'closed',  col: AERODROME_COLORS.atcClosed,  f: ['in', ['get', 'icao'], ['literal', atcClosedIcaos]] },
-            ].map(r => (
-              <Layer
-                key={r.k}
-                id={r.k === 'unknown' ? 'aerodromes-atc-ring' : `aerodromes-atc-ring-${r.k}`}
-                type="circle"
-                filter={['all', ['==', ['get', 'towered'], true], r.f] as any}
-                layout={{ visibility: showAerodromes ? 'visible' : 'none' }}
-                paint={{
-                  'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 5, 10, 7.5, 13, 10],
-                  'circle-color': 'rgba(0,0,0,0)',
-                  'circle-stroke-width': 2,
-                  'circle-stroke-color': r.col,
-                }}
-              />
-            ))}
-            <Layer
-              id="aerodromes-circle"
-              layout={{
-                visibility: showAerodromes ? 'visible' : 'none',
-                'icon-image': ['match', ['get', 'type'], 'HP', 'ad-heliport', 'ad-airport'],
-                'icon-size': ['interpolate', ['linear'], ['zoom'], 6, 0.3, 10, 0.45, 13, 0.6],
-                'icon-allow-overlap': true,
-                'icon-ignore-placement': true,
-              }}
-              type="symbol"
-              minzoom={6}
-            />
-            <Layer
-              id="aerodromes-label"
-              type="symbol"
-              minzoom={8}
-              layout={{
-                visibility: showAerodromes ? 'visible' : 'none',
-                'text-field': ['get', 'icao'],
-                'text-size': 11,
-                'text-offset': [0, 1.3],
-                'text-font': ['Noto Sans Regular'],
-              }}
-              paint={{
-                'text-color': theme.textPrimary,
-                'text-halo-color': theme.surfaceBase,
-                'text-halo-width': 1.5,
-              }}
-            />
-            {/* NOTAM keyword hint badge (warning/clock emoji) -- mirrors
-                web's map-style.ts 'aerodromes-notam-hint'. filter/text-field
-                driven by notamHintFilter/notamHintTextExpr state (60s-
-                interval bulk fetch, see effect above). Text-only signal,
-                never affects aerodromes-atc-ring's color. */}
-            <Layer
-              id="aerodromes-notam-hint"
-              type="symbol"
-              minzoom={7}
-              filter={notamHintFilter as any}
-              layout={{
-                'text-field': notamHintTextExpr as any,
-                'text-font': ['Noto Sans Regular'],
-                'text-size': 13,
-                'text-anchor': 'bottom-left',
-                'text-offset': [0.6, -0.6],
-                'text-allow-overlap': true,
-                'text-ignore-placement': true,
-              }}
-              paint={{
-                'text-halo-color': '#ffffff',
-                'text-halo-width': 1.5,
-              }}
-            />
-          </GeoJSONSource>
-
-        {/* ── Navaids ──────────────────────────────────────── */}
-        <GeoJSONSource id="ofm-navaids" onPress={() => {}} data={navaidsData}>
-            <Layer
-              id="navaids-circle"
-              layout={{
-                visibility: showNavaids ? 'visible' : 'none',
-                'icon-image': ['match', ['get', 'kind'], 'VOR', 'nav-vor', 'nav-ndb'],
-                'icon-size': ['interpolate', ['linear'], ['zoom'], 6, 0.22, 10, 0.35, 13, 0.5],
-                'icon-allow-overlap': true,
-                'icon-ignore-placement': true,
-              }}
-              type="symbol"
-              minzoom={6}
-            />
-            <Layer
-              id="navaids-label"
-              type="symbol"
-              minzoom={7}
-              layout={{
-                visibility: showNavaids ? 'visible' : 'none',
-                'text-field': ['get', 'id'],
-                'text-size': 10,
-                'text-offset': [0, 1.2],
-                'text-font': ['Noto Sans Regular'],
-              }}
-              paint={{
-                'text-color': theme.textSecondary,
-                'text-halo-color': theme.surfaceBase,
-                'text-halo-width': 1.5,
-              }}
-            />
-          </GeoJSONSource>
-
-        {/* ── Waypoints (MRP) ──────────────────────────────── */}
-        <GeoJSONSource id="ofm-waypoints" onPress={() => {}} data={waypointsData}>
-            <Layer
-              id="waypoints-mrp-circle"
-              layout={{
-                visibility: showWaypoints ? 'visible' : 'none',
-                'icon-image': 'wp-mrp',
-                'icon-size': ['interpolate', ['linear'], ['zoom'], 8, 0.22, 10, 0.35, 13, 0.5],
-                'icon-allow-overlap': true,
-                'icon-ignore-placement': true,
-              }}
-              type="symbol"
-              minzoom={8}
-              filter={['==', ['get', 'wp_type'], 'MRP']}
-            />
-            <Layer
-              id="waypoints-mrp-label"
-              type="symbol"
-              minzoom={9}
-              filter={['==', ['get', 'wp_type'], 'MRP']}
-              layout={{
-                visibility: showWaypoints ? 'visible' : 'none',
-                'text-field': ['get', 'id'],
-                'text-size': 9,
-                'text-offset': [0, 1.1],
-                'text-font': ['Noto Sans Regular'],
-              }}
-              paint={{
-                'text-color': WAYPOINT_COLORS.mrp,
-                'text-halo-color': theme.surfaceBase,
-                'text-halo-width': 1,
-              }}
-            />
-            <Layer
-              id="waypoints-rp-circle"
-              layout={{
-                visibility: showWaypoints ? 'visible' : 'none',
-                'icon-image': 'wp-rp',
-                'icon-size': ['interpolate', ['linear'], ['zoom'], 8, 0.22, 10, 0.35, 13, 0.5],
-                'icon-allow-overlap': true,
-                'icon-ignore-placement': true,
-              }}
-              type="symbol"
-              minzoom={8}
-              filter={['==', ['get', 'wp_type'], 'RP']}
-            />
-            <Layer
-              id="waypoints-rp-label"
-              type="symbol"
-              minzoom={9}
-              filter={['==', ['get', 'wp_type'], 'RP']}
-              layout={{
-                visibility: showWaypoints ? 'visible' : 'none',
-                'text-field': ['get', 'id'],
-                'text-size': 9,
-                'text-offset': [0, 1.1],
-                'text-font': ['Noto Sans Regular'],
-              }}
-              paint={{
-                'text-color': WAYPOINT_COLORS.rp,
-                'text-halo-color': theme.surfaceBase,
-                'text-halo-width': 1,
-              }}
-            />
-          </GeoJSONSource>
-
-        {/* ── Obstacles ────────────────────────────────────── */}
-        <GeoJSONSource id="openaip-obstacles" onPress={() => {}} data={obstaclesData}>
-            <Layer
-              id="obstacles-circle"
-              layout={{
-                visibility: showObstacles ? 'visible' : 'none',
-                'icon-image': [
-                  'match', ['get', 'kind'],
-                  'wind_turbine', 'obs-wind-turbine',
-                  'tower',        'obs-tower',
-                  'chimney',      'obs-chimney',
-                  'building',     'obs-building',
-                                  'obs-other',
-                ],
-                'icon-size': ['interpolate', ['linear'], ['zoom'], 9, 0.22, 11, 0.35, 14, 0.5],
-                'icon-allow-overlap': true,
-                'icon-ignore-placement': true,
-              }}
-              type="symbol"
-              minzoom={9}
-            />
-            <Layer
-              id="obstacles-label"
-              type="symbol"
-              minzoom={12}
-              layout={{
-                visibility: showObstacles ? 'visible' : 'none',
-                'text-field': ['concat', ['to-string', ['get', 'elevation_ft']], '\''],
-                'text-size': 9,
-                'text-offset': [0, 1.1],
-                'text-font': ['Noto Sans Regular'],
-              }}
-              paint={{
-                'text-color': theme.textMuted,
-                'text-halo-color': theme.surfaceBase,
-                'text-halo-width': 1,
-              }}
-            />
-          </GeoJSONSource>
-        {/* ── OSM Landmarks ─────────────────────────────────── */}
-        <GeoJSONSource id="osm-landmarks" onPress={() => {}} data={landmarksData}>
-          <Layer
-            id="landmarks-circle"
-            type="symbol"
-            minzoom={10}
-            layout={{
-              visibility: showLandmarks ? 'visible' : 'none',
-              'icon-image': [
-                'match', ['get', 'kind'],
-                'church',      'lmk-church',
-                'mast',        'lmk-mast',
-                'windmill',    'lmk-windmill',
-                'water_tower', 'lmk-water-tower',
-                'chimney',     'lmk-chimney',
-                               'lmk-church',
-              ],
-              'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.3, 14, 0.5],
-              'icon-allow-overlap': true,
-              'icon-ignore-placement': true,
-            }}
-          />
-          {LANDMARK_LABEL_COLORS.map(lk => (
-            <Layer
-              key={lk.k}
-              id={`landmarks-label-${lk.k}`}
-              type="symbol"
-              minzoom={13}
-              filter={['all', ['!=', ['get', 'name'], ''], lk.f] as any}
-              layout={{
-                visibility: showLandmarks ? 'visible' : 'none',
-                'text-field': ['get', 'name'],
-                'text-font': ['Noto Sans Regular'],
-                'text-size': ['interpolate', ['linear'], ['zoom'], 13, 9, 16, 11],
-                'text-anchor': 'top',
-                'text-offset': [0, 0.6],
-                'text-optional': true,
-              }}
-              paint={{
-                'text-color': lk.col,
-                'text-halo-color': 'rgba(255,255,255,0.9)',
-                'text-halo-width': 1.5,
-              }}
-            />
-          ))}
-        </GeoJSONSource>
-
-        {/* ── Runway threshold designators ─────────────────── */}
-        <GeoJSONSource id="ofm-runway-thresholds" data={runwayThresholdsData}>
-          <Layer
-            id="runway-threshold-label"
-            type="symbol"
-            minzoom={12}
-            layout={{
-              visibility: showRunways ? 'visible' : 'none',
-              'text-field': ['get', 'id'],
-              'text-font': ['Noto Sans Medium'],
-              // Bumped for the wind-favored end (bigger draws the eye) --
-              // same expression/logic web's map-style.ts applies via
-              // setPaintProperty, shared via buildRunwayWindHighlight so
-              // "favored" means exactly the same thing on both platforms.
-              'text-size': runwayWindExpr.size as any,
-              // mag_brg is a "not yet computed" placeholder `0` for a large
-              // fraction of thresholds in the source data (true_brg is
-              // always populated) -- coalesce alone doesn't catch that (only
-              // null/undefined substitute), so this falls back to true_brg
-              // whenever mag_brg is exactly 0. Same fix as web's
-              // map-style.ts 'runway-threshold-label' layer, and matches
-              // @open-vfr/shared/runwayWind's effectiveMagBrg used by every
-              // JS-side reader of this same field.
-              'text-rotate': [
-                'case',
-                ['==', ['coalesce', ['get', 'mag_brg'], 0], 0],
-                ['coalesce', ['get', 'true_brg'], 0],
-                ['get', 'mag_brg'],
-              ] as any,
-              'text-rotation-alignment': 'map',
-              'text-allow-overlap': true,
-              'text-ignore-placement': true,
-            }}
-            paint={{
-              'text-color': runwayWindExpr.color as any,
-              'text-halo-color': runwayWindExpr.haloColor as any,
-              'text-halo-width': 1.5,
-              'text-opacity': runwayWindExpr.opacity as any,
-            }}
-          />
-        </GeoJSONSource>
+        <StaticMapLayers
+          aerodromesData={aerodromesData}
+          airspaceCeilingFt={airspaceCeilingFt}
+          airspaceData={airspaceData}
+          atcClosedIcaos={atcClosedIcaos}
+          atcOpenIcaos={atcOpenIcaos}
+          basemapMode={basemapMode}
+          contoursMounted={contoursMounted}
+          contoursPmtilesUrl={contoursPmtilesUrl}
+          hillshadeMounted={hillshadeMounted}
+          hillshadePmtilesUrl={hillshadePmtilesUrl}
+          landmarksData={landmarksData}
+          landuseMounted={landuseMounted}
+          landusePmtilesUrl={landusePmtilesUrl}
+          navaidsData={navaidsData}
+          notamHintFilter={notamHintFilter}
+          notamHintTextExpr={notamHintTextExpr}
+          obstaclesData={obstaclesData}
+          runwayThresholdsData={runwayThresholdsData}
+          runwayWindExpr={runwayWindExpr}
+          runwaysData={runwaysData}
+          showActivity={showActivity}
+          showAerodromes={showAerodromes}
+          showClassCtma={showClassCtma}
+          showClassCtr={showClassCtr}
+          showClassG={showClassG}
+          showContours={showContours}
+          showHillshade={showHillshade}
+          showLandmarks={showLandmarks}
+          showLanduse={showLanduse}
+          showNavaids={showNavaids}
+          showObstacles={showObstacles}
+          showRestricted={showRestricted}
+          showRunways={showRunways}
+          showTerrainColor={showTerrainColor}
+          showWaypoints={showWaypoints}
+          terrainColorRefAltFt={terrainColorRefAltFt}
+          waypointsData={waypointsData}
+          ownAltFt={ownAltFt}
+        />
 
         {profileCursorStore && <ProfileCursorLayer store={profileCursorStore} />}
 

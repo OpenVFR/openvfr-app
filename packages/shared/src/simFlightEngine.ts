@@ -38,6 +38,9 @@ import { bearingDeg, distanceNm, advancePosition } from './routeCalc'
 import type { GpsPosition } from './gpsTypes'
 
 const TICK_MS  = 200        // 5 Hz — position advance + target-steering only
+/** Position emitted at this rate, like a real GPS fix (1 Hz). Emitting every physics
+ *  tick re-rendered the whole map screen 5x a second and saturated the JS thread. */
+const EMIT_MS  = 1000
 const TICK_S   = TICK_MS / 1000
 const TURN_DEG_S  = 3       // turn rate °/s — target-steering only
 const MAX_SPEED_KTS = 300
@@ -61,6 +64,7 @@ type State = {
 
 export class SimFlightEngine {
   private state: State | null = null
+  private sinceEmitMs = 0
   private intervalId: ReturnType<typeof setInterval> | null = null
   private onUpdate: (pos: GpsPosition) => void
   private onTargetChange?: (hasTarget: boolean) => void
@@ -76,6 +80,7 @@ export class SimFlightEngine {
 
   start(initialPos: { lat: number; lng: number }, initialSpeedKts = 90, initialTrackDeg = 0, initialAltFt = 1000): void {
     this.stop()
+    this.sinceEmitMs = 0
     this.state = {
       lat: initialPos.lat,
       lng: initialPos.lng,
@@ -186,12 +191,18 @@ export class SimFlightEngine {
       s.lng = lng
     }
 
-    this.emit()
+    // Physics stays at TICK_MS; the app only sees a new position every EMIT_MS.
+    this.sinceEmitMs += TICK_MS
+    if (this.sinceEmitMs >= EMIT_MS) {
+      this.sinceEmitMs = 0
+      this.emit()
+    }
   }
 
   private emit(): void {
     const s = this.state
     if (!s) return
+    this.sinceEmitMs = 0
     this.onUpdate({
       lat: s.lat,
       lng: s.lng,
