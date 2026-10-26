@@ -742,15 +742,14 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const t = setTimeout(() => setRouteHint(null), 2500)
     return () => clearTimeout(t)
   }, [routeHint])
-  // Route changes made in flight are collected in an edit session, so the
-  // banner can offer Undo and a one-tap revert to the route as it was
-  // before. On the ground the side pane's undo is enough.
+  // Every route change opens an edit session (ground and flight), so the
+  // banner offers Undo / Redo and a one-tap revert to the route as it was
+  // before the first change, until Apply / Keep. Starting or ending a
+  // flight closes the session, so a revert never crosses that boundary.
   const { setEditSessionArmed, applyEditSession } = routeUndo
-  const flyingArmed = flyingMode !== 'off'
-  useEffect(() => {
-    setEditSessionArmed(flyingArmed)
-    if (!flyingArmed) applyEditSession()
-  }, [flyingArmed, setEditSessionArmed, applyEditSession])
+  useEffect(() => { setEditSessionArmed(true) }, [setEditSessionArmed])
+  const flyingNow = flyingMode !== 'off'
+  useEffect(() => { applyEditSession() }, [flyingNow, applyEditSession])
 
   // Leg level dragged in the Virtual Radar: null clears the leg's override so
   // it falls back to the route level. One state change = one undo step.
@@ -4659,9 +4658,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
       <div className={css.mapArea}>
         {routeUndo.editSessionActive && (
           <RouteEditBanner
-            label="Route changed"
-            cancelLabel="Revert"
-            applyLabel="Keep"
+            label={flyingMode !== 'off' ? 'Route changed' : 'Editing route'}
+            cancelLabel={flyingMode !== 'off' ? 'Revert' : 'Cancel'}
+            applyLabel={flyingMode !== 'off' ? 'Keep' : 'Apply'}
             canUndo={routeUndo.canUndo}
             canRedo={routeUndo.canRedo}
             onUndo={routeUndo.undo}
