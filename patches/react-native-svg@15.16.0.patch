@@ -1,0 +1,72 @@
+diff --git a/android/src/main/java/com/horcrux/svg/TSpanView.java b/android/src/main/java/com/horcrux/svg/TSpanView.java
+index b6e0a3892eb5416b1badf447d4f8c4e4baef828c..0da894a6329dd7fd0f08e4041ca615cee5977a4e 100644
+--- a/android/src/main/java/com/horcrux/svg/TSpanView.java
++++ b/android/src/main/java/com/horcrux/svg/TSpanView.java
+@@ -306,7 +306,15 @@ class TSpanView extends TextView {
+             defaultFeatures + disableDiscretionaryLigatures + font.fontFeatureSettings);
+       }
+ 
+-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
++      // open-vfr patch: setFontVariationSettings builds a brand-new Typeface
++      // (and FreeType face) on every call. Called on every text draw, the
++      // native faces piled up until a rare Java GC (~8 MB/min while a chart
++      // with SVG text redraws). On API 28+ the weight is already applied by
++      // the cached Typeface.create(typeface, weight, italic) in
++      // applyTextPropertiesToPaint, so only explicit variation settings
++      // need this call there.
++      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
++          && (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || !font.fontVariationSettings.isEmpty())) {
+         paint.setFontVariationSettings(
+             fontWeightTag + font.absoluteFontWeight + font.fontVariationSettings);
+       }
+@@ -486,7 +494,15 @@ class TSpanView extends TextView {
+             defaultFeatures + disableDiscretionaryLigatures + font.fontFeatureSettings);
+       }
+ 
+-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
++      // open-vfr patch: setFontVariationSettings builds a brand-new Typeface
++      // (and FreeType face) on every call. Called on every text draw, the
++      // native faces piled up until a rare Java GC (~8 MB/min while a chart
++      // with SVG text redraws). On API 28+ the weight is already applied by
++      // the cached Typeface.create(typeface, weight, italic) in
++      // applyTextPropertiesToPaint, so only explicit variation settings
++      // need this call there.
++      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
++          && (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || !font.fontVariationSettings.isEmpty())) {
+         paint.setFontVariationSettings(
+             fontWeightTag + font.absoluteFontWeight + font.fontVariationSettings);
+       }
+@@ -1124,6 +1140,8 @@ class TSpanView extends TextView {
+     }
+   }
+ 
++  private static final java.util.HashMap<String, Typeface> sAssetTypefaces = new java.util.HashMap<>();
++
+   private void applyTextPropertiesToPaint(Paint paint, FontData font) {
+     boolean isBold = font.fontWeight == FontWeight.Bold || font.absoluteFontWeight >= 550;
+     boolean isItalic = font.fontStyle == FontStyle.italic;
+@@ -1142,7 +1160,12 @@ class TSpanView extends TextView {
+     Typeface typeface = null;
+     int weight = font.absoluteFontWeight;
+     final String fontFamily = font.fontFamily;
+-    if (fontFamily != null && fontFamily.length() > 0) {
++    // open-vfr patch: cache asset typefaces; building one per draw leaked
++    // native font faces the same way as setFontVariationSettings above.
++    final String typefaceKey = fontFamily + "|" + weight + "|" + isItalic + "|" + font.fontVariationSettings;
++    if (fontFamily != null && fontFamily.length() > 0 && sAssetTypefaces.containsKey(typefaceKey)) {
++      typeface = sAssetTypefaces.get(typefaceKey);
++    } else if (fontFamily != null && fontFamily.length() > 0) {
+       String otfpath = FONTS + fontFamily + OTF;
+       String ttfpath = FONTS + fontFamily + TTF;
+       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+@@ -1172,6 +1195,10 @@ class TSpanView extends TextView {
+       }
+     }
+ 
++    if (fontFamily != null && fontFamily.length() > 0 && !sAssetTypefaces.containsKey(typefaceKey)) {
++      sAssetTypefaces.put(typefaceKey, typeface);
++    }
++
+     if (typeface == null) {
+       try {
+         typeface = ReactFontManager.getInstance().getTypeface(fontFamily, style, assets);

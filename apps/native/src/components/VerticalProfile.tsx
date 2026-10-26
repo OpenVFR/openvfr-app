@@ -307,8 +307,10 @@ const WIND_BARB_STROKE_W  = 1.8
 function renderWindBarbShape(
   speedKts: number,
   color: string,
-  opts: { strokeW?: number; shaftLen?: number; barbLen?: number; halfLen?: number; barbGap?: number; outlineOpacity?: number } = {},
+  opts: { strokeW?: number; shaftLen?: number; barbLen?: number; halfLen?: number; barbGap?: number; outlineOpacity?: number; opacity?: number } = {},
 ) {
+  // Opacity goes on the leaf shapes, never on a <G> (see renderHaloText).
+  const op = opts.opacity ?? 1
   const { shaft, feathers } = windBarbGeometry(speedKts, opts)
   if (!shaft) return null
   const strokeW = opts.strokeW ?? 1.6
@@ -317,15 +319,16 @@ function renderWindBarbShape(
 
   const renderPass = (stroke: string, fill: string, width: number, key: string) => (
     <G key={key}>
-      <SvgLine x1={shaft.x1} y1={shaft.y1} x2={shaft.x2} y2={shaft.y2} stroke={stroke} strokeWidth={width} strokeLinecap="round" />
+      <SvgLine x1={shaft.x1} y1={shaft.y1} x2={shaft.x2} y2={shaft.y2} stroke={stroke} strokeWidth={width} strokeLinecap="round" opacity={op} />
       {feathers.map((f, idx) =>
         f.kind === 'line' ? (
-          <SvgLine key={idx} x1={f.x1} y1={f.y1} x2={f.x2} y2={f.y2} stroke={stroke} strokeWidth={width} strokeLinecap="round" />
+          <SvgLine key={idx} x1={f.x1} y1={f.y1} x2={f.x2} y2={f.y2} stroke={stroke} strokeWidth={width} strokeLinecap="round" opacity={op} />
         ) : (
           <Path
             key={idx}
             d={`M${f.points[0][0]},${f.points[0][1]} L${f.points[1][0]},${f.points[1][1]} L${f.points[2][0]},${f.points[2][1]} Z`}
             fill={fill}
+            opacity={op}
           />
         ),
       )}
@@ -356,10 +359,15 @@ function renderHaloText(
   x: number, y: number, text: string, fill: string, fontSize: number, opacity = 1, anchor: 'start' | 'middle' | 'end' = 'start',
   opts: { weight?: '500' | '600' | '700'; halo?: number } = {},
 ) {
+  // Opacity as stroke/fill alpha, never as `opacity` on the <G> or <Text>:
+  // react-native-svg (Android) draws a group or text with opacity != 1 into
+  // its own canvas-sized bitmap on every redraw (~3 MB here), and a dropped
+  // group keeps that bitmap until the Java GC finalises it -- native memory
+  // grew without bound during long flights.
   return (
-    <G key={`${x}-${y}-${text}`} opacity={opacity}>
-      <SvgText x={x} y={y} fontSize={fontSize} fontWeight={opts.weight} textAnchor={anchor} fill="none" stroke="rgba(0,0,0,0.9)" strokeWidth={opts.halo ?? 4} strokeLinejoin="round">{text}</SvgText>
-      <SvgText x={x} y={y} fontSize={fontSize} fontWeight={opts.weight} textAnchor={anchor} fill={fill}>{text}</SvgText>
+    <G key={`${x}-${y}-${text}`}>
+      <SvgText x={x} y={y} fontSize={fontSize} fontWeight={opts.weight} textAnchor={anchor} fill="none" stroke="rgba(0,0,0,0.9)" strokeOpacity={opacity} strokeWidth={opts.halo ?? 4} strokeLinejoin="round">{text}</SvgText>
+      <SvgText x={x} y={y} fontSize={fontSize} fontWeight={opts.weight} textAnchor={anchor} fill={fill} fillOpacity={opacity}>{text}</SvgText>
     </G>
   )
 }
@@ -786,19 +794,19 @@ const ProfileAStatic = React.memo(function ProfileAStatic({
                   }
                   const color = w.wind.calm ? 'rgba(203,213,225,0.95)' : windBarbColorForSpeed(w.wind.speedKt)
                   return (
-                    <G key={`windrow-${w.key}`} opacity={w.model ? 0.85 : 1}>
+                    <G key={`windrow-${w.key}`}>
                       {w.wind.calm
-                        ? <Circle cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.8)" strokeWidth={1} />
+                        ? <Circle cx={x} cy={y} r={3} fill="none" stroke="rgba(148,163,184,0.8)" strokeWidth={1} opacity={w.model ? 0.85 : 1} />
                         : (
                           // dirDeg is the meteorological FROM bearing; the shaft
                           // points FROM. Rotation is re-centred on the shaft's
                           // midpoint so the glyph stays balanced about y.
                           <G transform={`translate(${x},${y}) rotate(${w.wind.dirDeg}) translate(0, ${WIND_BARB_SHAFT_LEN / 2})`}>
-                            {renderWindBarbShape(w.wind.speedKt, color, { shaftLen: WIND_BARB_SHAFT_LEN, barbLen: WIND_BARB_BARB_LEN, halfLen: WIND_BARB_HALF_LEN, barbGap: WIND_BARB_BARB_GAP, strokeW: WIND_BARB_STROKE_W })}
+                            {renderWindBarbShape(w.wind.speedKt, color, { shaftLen: WIND_BARB_SHAFT_LEN, barbLen: WIND_BARB_BARB_LEN, halfLen: WIND_BARB_HALF_LEN, barbGap: WIND_BARB_BARB_GAP, strokeW: WIND_BARB_STROKE_W, opacity: w.model ? 0.85 : 1 })}
                           </G>
                         )}
-                      {w.label === 'right' && renderHaloText(x + 9 + 4, y + 3, w.text, color, WIND_ROW_FONT, 1, 'start')}
-                      {w.label === 'left' && renderHaloText(x - 9 - 4, y + 3, w.text, color, WIND_ROW_FONT, 1, 'end')}
+                      {w.label === 'right' && renderHaloText(x + 9 + 4, y + 3, w.text, color, WIND_ROW_FONT, w.model ? 0.85 : 1, 'start')}
+                      {w.label === 'left' && renderHaloText(x - 9 - 4, y + 3, w.text, color, WIND_ROW_FONT, w.model ? 0.85 : 1, 'end')}
                     </G>
                   )
                 })}
@@ -895,19 +903,21 @@ const ProfileCStatic = React.memo(function ProfileCStatic({
                     Obstacle shapes are widened (not heightened: height is data) for legibility. */}
                 <Svg width={contentW} height={chartH} style={{ position: 'absolute', left: 0, top: 0 }} pointerEvents="none">
                   {[...landmarkMarks.map((m: any) => ({ ...m, opacity: m.estimated ? 0.85 : 1, scaleX: 1 })), ...obstacleMarks.map((m: any) => ({ ...m, scaleX: obstacleXScale(m.kind) }))].map((m) => m.shape ? (
-                    <G key={`shape-${m.key}`} opacity={m.opacity}>
+                    // Opacity on each shape, not on a <G> (see renderHaloText).
+                    <G key={`shape-${m.key}`}>
                       <G transform={`translate(${m.cx} 0) scale(${m.scaleX} 1) translate(${-m.cx} 0)`}>
                         {m.shape.map((p: any, k: any) => {
+                          const op = m.opacity ?? 1
                           if (p.t === 'rect') {
                             const st = primStyle(p)
-                            return <Rect key={k} x={p.x} y={p.y} width={p.w} height={p.h} fill={st.fill} fillOpacity={st.fillOpacity} stroke={st.stroke} strokeWidth={1} />
+                            return <Rect key={k} x={p.x} y={p.y} width={p.w} height={p.h} fill={st.fill} fillOpacity={st.fillOpacity} stroke={st.stroke} strokeWidth={1} opacity={op} />
                           }
                           if (p.t === 'poly') {
                             const st = primStyle(p)
-                            return <Path key={k} d={polyPath(p.pts)} fill={st.fill} fillOpacity={st.fillOpacity} stroke={st.stroke} strokeWidth={1} />
+                            return <Path key={k} d={polyPath(p.pts)} fill={st.fill} fillOpacity={st.fillOpacity} stroke={st.stroke} strokeWidth={1} opacity={op} />
                           }
-                          if (p.t === 'line') return <SvgLine key={k} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.stroke} strokeWidth={p.w} strokeLinecap="round" />
-                          return <Circle key={k} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill} />
+                          if (p.t === 'line') return <SvgLine key={k} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.stroke} strokeWidth={p.w} strokeLinecap="round" opacity={op} />
+                          return <Circle key={k} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill} opacity={op} />
                         })}
                       </G>
                     </G>
