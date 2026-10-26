@@ -65,6 +65,11 @@ function flyingSegments(track: LogTrackPoint[], thr: LogSpeedThresholds): Segmen
   return segs.filter((s) => s.endTs - s.startTs >= MIN_FLIGHT_MS)
 }
 
+/** Takeoff-to-landing segments (start/end time; landed = false when the track ends airborne). */
+export function flightSegments(track: LogTrackPoint[], thr: LogSpeedThresholds): { startTs: number; endTs: number; landed: boolean }[] {
+  return flyingSegments(track, thr).map((s) => ({ startTs: s.startTs, endTs: s.endTs, landed: s.endIdx >= 0 }))
+}
+
 export function computeLogStats(track: LogTrackPoint[], thr: LogSpeedThresholds): LogStats {
   const segs = flyingSegments(track, thr)
   const landed = segs.filter((s) => s.endIdx >= 0)

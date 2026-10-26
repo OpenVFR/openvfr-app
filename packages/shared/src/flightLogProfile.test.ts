@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   flightLogProfile, flownAltitudeAt, flownCoordinateAt, flownLineParts, flownPointAt, formatElapsed,
-  formatUtcTime, flownGaps, flownSpeedScale, flownSpeedRuns, flownAirspaceAt, flownAirspaceEntries, splitBelowMsaNearFields,
+  formatUtcTime, flownGaps, flownEvents, flownSpeedScale, flownSpeedRuns, flownAirspaceAt, flownAirspaceEntries, splitBelowMsaNearFields,
   type FlightLogTrackPoint,
 } from './flightLogProfile'
 
@@ -155,5 +155,17 @@ describe('splitBelowMsaNearFields', () => {
     expect(nearField).toHaveLength(1)
     expect(nearField[0].map((p) => p.distNm)).toEqual([0, 1, 2, 3, 4])
     expect(away[0].map((p) => p.distNm)).toEqual([4, 5, 6, 7, 8])
+  })
+})
+
+describe('flownEvents', () => {
+  it('lists takeoff, touch-and-go, gap and landing in time order', () => {
+    // 1 point/s along a line; speed pattern: taxi, fly 60 s, touch-and-go (20 s slow), fly, gap, fly, land.
+    const spd = [...Array(5).fill(10), ...Array(60).fill(90), ...Array(20).fill(10), ...Array(60).fill(90), ...Array(40).fill(90), ...Array(20).fill(5)]
+    const track = spd.map((v, i) => ({ lat: 60, lng: 15 + i * 0.0008, altFt: 1000, spdKts: v, ts: i * 1000 + (i >= 145 ? 60_000 : 0) }))
+    const pts = flightLogProfile(track)!.points
+    const ev = flownEvents(pts, [], { takeoffKts: 30, landedKts: 20 })
+    expect(ev.map((e) => e.kind)).toEqual(['takeoff', 'touch-and-go', 'gap', 'landing'])
+    expect(ev[2].label).toBe('GPS lost 1 min 01 s')
   })
 })

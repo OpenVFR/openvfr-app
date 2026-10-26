@@ -16,7 +16,7 @@
  * km -> NM 0.539957) as buildVirtualRadarProfile, so totals match the chart.
  */
 
-import { GAP_MIN_MS } from './flightLogStats'
+import { GAP_MIN_MS, TOUCH_AND_GO_MAX_MS, flightSegments, type LogSpeedThresholds } from './flightLogStats'
 
 export interface FlightLogTrackPoint {
   lat:    number
@@ -394,4 +394,62 @@ export function splitBelowMsaNearFields(
     if (cur.length > 1 && curNear !== null) (curNear ? nearField : away).push(cur)
   }
   return { away, nearField }
+}
+
+export type FlownEventKind = 'takeoff' | 'landing' | 'touch-and-go' | 'gap' | 'airspace'
+
+/** Something that happened during a logged flight, at a recorded point. */
+export interface FlownEvent {
+  kind:   FlownEventKind
+  /** Index into the flown points (inspect / jump there). */
+  index:  number
+  point:  FlownPoint
+  /** Short description, e.g. "Entered C STOCKHOLM CTR", "GPS lost 2 min 01 s". */
+  label:  string
+}
+
+function indexAtTs(points: readonly FlownPoint[], ts: number): number {
+  let lo = 0, hi = points.length - 1
+  if (hi < 0) return 0
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (points[mid].ts < ts) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
+/**
+ * Events of a logged flight, in time order, derived from the recording when it
+ * is viewed (nothing stored): takeoffs, landings and touch-and-goes (from ground
+ * speed, the same rules as the log statistics), recording gaps, and airspace
+ * entries (class G left out; limits as drawn in the profile, for review only).
+ */
+export function flownEvents<B extends FlownBand>(
+  points: readonly FlownPoint[],
+  bands: readonly B[],
+  thr: LogSpeedThresholds,
+): FlownEvent[] {
+  if (points.length === 0) return []
+  const out: FlownEvent[] = []
+  const at = (kind: FlownEventKind, index: number, label: string) => out.push({ kind, index, point: points[index], label })
+
+  const segs = flightSegments(points as unknown as { altFt: number; spdKts: number; ts: number }[], thr)
+  segs.forEach((sg, k) => {
+    const next = segs[k + 1]
+    const prev = segs[k - 1]
+    const tng = (a: typeof sg | undefined, b: typeof sg | undefined) => !!a && !!b && a.landed && b.startTs - a.endTs < TOUCH_AND_GO_MAX_MS
+    if (!tng(prev, sg)) at('takeoff', indexAtTs(points, sg.startTs), 'Takeoff')
+    if (sg.landed) {
+      if (tng(sg, next)) at('touch-and-go', indexAtTs(points, sg.endTs), 'Touch-and-go')
+      else at('landing', indexAtTs(points, sg.endTs), 'Landing')
+    }
+  })
+  for (let i = 1; i < points.length; i++) {
+    if (points[i].gapBefore) at('gap', i - 1, `GPS lost ${formatElapsed(points[i].ts - points[i - 1].ts)}`)
+  }
+  for (const e of flownAirspaceEntries(points, bands)) {
+    at('airspace', points.indexOf(e.point), `Entered ${e.band.class} ${e.band.name}`.trim())
+  }
+  return out.sort((a, b) => a.point.ts - b.point.ts || a.index - b.index)
 }
