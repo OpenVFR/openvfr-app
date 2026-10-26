@@ -44,6 +44,7 @@ import { mountExternalProxies } from './externalProxy'
 import { createDemElevation, parseDemSources } from './demElevation'
 import { RateLimiter, limitFromEnv } from './rateLimiter'
 import { BodyTooLarge, readLimitedFormData, looksLikePdf } from './upload'
+import { createWeatherCache, type WxUpstreamResult } from './weatherCache'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -645,26 +646,23 @@ mountExternalProxies(app, requireSession, undefined, {
 // Weather — GET /api/weather?icao=ESSA
 // Proxies to aviationweather.gov (free, no API key required).
 // Returns { metar: string | null, taf: string | null }.
-// Server-side 5-minute cache keyed by uppercase ICAO (bounded, oldest
-// dropped first); identical concurrent misses share one upstream call.
+// Cache (./weatherCache.ts): 5 minutes fresh, identical concurrent misses
+// share one upstream call; when upstream fails the last good report (up to
+// 90 min old) is served and the station is not asked again for a minute;
+// failures are logged as one summary line per minute.
 // Client IP is never forwarded upstream.
 // Auth: session. Rate limit: per-user hourly + daily cap on cache MISSES
 // (hits are free), so one account can't walk the ICAO space and burn the
 // shared upstream allowance. Normal use (popups, route weather, the map's
 // weather highlight) stays far below it.
 // ---------------------------------------------------------------------------
-type WxData = { metar: string | null; taf: string | null }
-const wxCache = new Map<string, { data: WxData; expiresAt: number }>()
-const wxInflight = new Map<string, Promise<{ data: WxData; complete: boolean }>>()
-const WX_TTL_MS = 5 * 60 * 1000
-const WX_CACHE_MAX = 5000
 const WX_TIMEOUT_MS = 10_000
 const wxMissLimiter = new RateLimiter([
   { windowMs: HOUR_MS, max: limitFromEnv('WX_HOURLY_LIMIT', 600) },
   { windowMs: DAY_MS,  max: limitFromEnv('WX_DAILY_LIMIT', 3000) },
 ])
 
-async function fetchWxUpstream(icao: string): Promise<{ data: WxData; complete: boolean }> {
+async function fetchWxUpstream(icao: string): Promise<WxUpstreamResult> {
   const headers = { 'User-Agent': 'open-vfr/1.0', 'Accept': 'application/json' }
   const signal = AbortSignal.timeout(WX_TIMEOUT_MS)
   const [metarResp, tafResp] = await Promise.all([
@@ -672,15 +670,11 @@ async function fetchWxUpstream(icao: string): Promise<{ data: WxData; complete: 
     fetch(`https://aviationweather.gov/api/data/taf?ids=${icao}&format=json`, { headers, signal }),
   ])
   // 204 = no report for this station: a valid, cacheable answer. Any other
-  // non-2xx is an upstream failure -- served, but not cached, so a brief
-  // outage doesn't read as "no METAR" for the next 5 minutes.
+  // non-2xx is an upstream failure -- not cached, so a brief outage doesn't
+  // read as "no METAR" for the next 5 minutes.
   const fine = (r: Response) => r.ok || r.status === 204
-  if (!fine(metarResp) && !fine(tafResp)) {
-    throw new Error(`upstream HTTP metar=${metarResp.status} taf=${tafResp.status}`)
-  }
-  if (!fine(metarResp) || !fine(tafResp)) {
-    console.warn(`[weather] upstream HTTP metar=${metarResp.status} taf=${tafResp.status} for ${icao}`)
-  }
+  const reason = `upstream HTTP metar=${metarResp.status} taf=${tafResp.status}`
+  if (!fine(metarResp) && !fine(tafResp)) throw new Error(reason)
 
   let metar: string | null = null
   let taf: string | null = null
@@ -708,8 +702,13 @@ async function fetchWxUpstream(icao: string): Promise<{ data: WxData; complete: 
     }
   }
 
-  return { data: { metar, taf }, complete: fine(metarResp) && fine(tafResp) }
+  const failed: ('metar' | 'taf')[] = []
+  if (!fine(metarResp)) failed.push('metar')
+  if (!fine(tafResp)) failed.push('taf')
+  return { data: { metar, taf }, failed, ...(failed.length ? { reason } : {}) }
 }
+
+const wxCache = createWeatherCache({ fetchUpstream: fetchWxUpstream })
 
 app.get('/api/weather', async (c) => {
   const user = await requireSession(c)
@@ -717,36 +716,17 @@ app.get('/api/weather', async (c) => {
   const icao = (c.req.query('icao') ?? '').toUpperCase().trim()
   if (!/^[A-Z]{4}$/.test(icao)) return c.json({ error: 'Invalid ICAO identifier' }, 400)
 
-  const cached = wxCache.get(icao)
-  if (cached && Date.now() < cached.expiresAt) return c.json(cached.data)
-
-  let pending = wxInflight.get(icao)
-  if (!pending) {
-    const limit = wxMissLimiter.take(user.id)
-    if (limit.waitS > 0) {
-      c.header('Retry-After', String(Math.min(limit.waitS, 3600)))
-      return c.json({ error: 'Weather request limit reached. Try again later.' }, 429)
-    }
-    pending = fetchWxUpstream(icao).then((r) => {
-      if (r.complete) {
-        wxCache.delete(icao)
-        wxCache.set(icao, { data: r.data, expiresAt: Date.now() + WX_TTL_MS })
-        // Map iterates in insertion order: drop the oldest beyond the cap.
-        for (const k of wxCache.keys()) {
-          if (wxCache.size <= WX_CACHE_MAX) break
-          wxCache.delete(k)
-        }
-      }
-      return r
-    }).finally(() => wxInflight.delete(icao))
-    wxInflight.set(icao, pending)
+  let waitS = 0
+  const r = await wxCache.get(icao, () => {
+    waitS = wxMissLimiter.take(user.id).waitS
+    return waitS <= 0
+  })
+  if (r.kind === 'limited') {
+    c.header('Retry-After', String(Math.min(waitS, 3600)))
+    return c.json({ error: 'Weather request limit reached. Try again later.' }, 429)
   }
-  try {
-    return c.json((await pending).data)
-  } catch (err) {
-    console.error('[weather] fetch failed:', (err as Error)?.name, (err as Error)?.message)
-    return c.json({ error: 'Weather service unavailable' }, 502)
-  }
+  if (r.kind === 'unavailable') return c.json({ error: 'Weather service unavailable' }, 502)
+  return c.json(r.data)
 })
 
 // ---------------------------------------------------------------------------
