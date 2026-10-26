@@ -78,3 +78,6 @@ jobs:
 
       - name: Typecheck API server
         run: pnpm --filter api typecheck
+
+      - name: Test API server
+        run: pnpm --filter api test
