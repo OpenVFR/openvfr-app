@@ -20,6 +20,7 @@ import {
 import { useSyncRejected } from '../sync/cloudSync'
 import { SyncRefusedNote } from '../components/SyncRefusedNote'
 import { LogEventsList } from '../components/LogEventsList'
+import { mergeCandidates, mergeLogs } from '@open-vfr/shared/flightLogRoute'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
@@ -293,6 +294,35 @@ export function PlanScreen() {
   const handleViewLogAt = (log: (typeof logs)[number], ts: number) => {
     viewLog(log, ts)
     navigation.navigate('Map' as never)
+  }
+  // The flight a log can be joined with (recording broken off by a GPS loss), by log id.
+  const mergeNext = useMemo(() => mergeCandidates(logs), [logs])
+  // The log whose aircraft chips are open.
+  const [logAircraftOpen, setLogAircraftOpen] = useState<string | null>(null)
+  /** Set or correct the aircraft a log was flown with (syncs as an edit of the log). */
+  const handleSetLogAircraft = async (log: (typeof logs)[number], aircraftId: string) => {
+    const ac = profiles.find(p => p.id === aircraftId)
+    const doc = { ...log, aircraftId: ac?.id ?? '', registration: ac?.registration ?? '', updatedAt: Math.max(Date.now(), log.updatedAt + 1) }
+    setLogAircraftOpen(null)
+    await flightLogsDb.upsert(doc)
+    await pushLog(doc)
+  }
+  /** Join a log with the one that continues it: the combined log is saved new, then both parts are deleted. */
+  const handleMergeLog = (log: (typeof logs)[number]) => {
+    const next = logs.find(l => l.id === mergeNext.get(log.id))
+    if (!next) return
+    const gapMin = Math.max(1, Math.round((next.startedAt - log.endedAt) / 60_000))
+    Alert.alert('Join flights?', `Join this flight with the one that continues it ${gapMin} min later? They become one log; the gap stays marked as lost GPS.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Join', onPress: () => { void (async () => {
+        const merged = mergeLogs(log, next, Crypto.randomUUID())
+        await flightLogsDb.upsert(merged)
+        await pushLog(merged)
+        if (selectedLog?.id === log.id || selectedLog?.id === next.id) clearView()
+        await deleteLog(log.id)
+        await deleteLog(next.id)
+      })() } },
+    ])
   }
   // Logs whose events are open in the list (worked out on opening).
   const [eventsOpen, setEventsOpen] = useState<Set<string>>(new Set())
@@ -1270,9 +1300,30 @@ export function PlanScreen() {
                     </Text>
                     <SyncRefusedNote row={refusedLogs.get(log.id)} />
                     {isCompleted && (
-                      <Text style={styles.logEventsToggle} onPress={() => toggleEvents(log.id)} accessibilityRole="button">
-                        {eventsOpen.has(log.id) ? '\u25be' : '\u25b8'} Events
-                      </Text>
+                      <View style={styles.logTools}>
+                        <Text style={styles.logEventsToggle} onPress={() => toggleEvents(log.id)} accessibilityRole="button">
+                          {eventsOpen.has(log.id) ? '\u25be' : '\u25b8'} Events
+                        </Text>
+                        {!log.simulated && (
+                          <Text style={styles.logEventsToggle} onPress={() => setLogAircraftOpen(logAircraftOpen === log.id ? null : log.id)} accessibilityRole="button"
+                            accessibilityLabel="Aircraft flown">
+                            {'\u2708'} {profiles.find(p => p.id === log.aircraftId)?.registration || profiles.find(p => p.id === log.aircraftId)?.name || log.registration || 'No aircraft'} {logAircraftOpen === log.id ? '\u25be' : '\u25b8'}
+                          </Text>
+                        )}
+                        {mergeNext.has(log.id) && (
+                          <Text style={styles.logEventsToggle} onPress={() => handleMergeLog(log)} accessibilityRole="button">Join with next part</Text>
+                        )}
+                      </View>
+                    )}
+                    {isCompleted && logAircraftOpen === log.id && (
+                      <View style={styles.placeChips}>
+                        {[{ id: '', label: 'None' }, ...profiles.map(p => ({ id: p.id, label: p.registration || p.name }))].map(o => (
+                          <TouchableOpacity key={o.id || 'none'} style={[styles.placeChip, log.aircraftId === o.id && styles.placeChipOn]}
+                            onPress={() => void handleSetLogAircraft(log, o.id)}>
+                            <Text style={styles.placeChipTxt}>{o.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     )}
                     {isCompleted && eventsOpen.has(log.id) && (
                       <LogEventsList log={log} aircraft={profiles.find(p => p.id === log.aircraftId)} onPick={(ts) => handleViewLogAt(log, ts)} />
@@ -1450,6 +1501,7 @@ function makeStyles(theme: ScaledTheme) {
   placeChipOn: { borderColor: theme.accentBlue },
   logFilterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space1, marginBottom: theme.space2 },
   logEventsToggle: { color: theme.textSecondary, fontSize: theme.textXs, marginTop: theme.space1 },
+  logTools: { flexDirection: 'row', flexWrap: 'wrap', columnGap: theme.space3 },
   importBox: { gap: theme.space1, padding: theme.space2, marginBottom: theme.space2, borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.borderDefault },
   placeChipTxt: { color: theme.textMuted, fontSize: theme.textXs },
 

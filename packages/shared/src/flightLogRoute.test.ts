@@ -26,9 +26,9 @@ describe('merging logs broken by a GPS loss', () => {
     expect(canMergeLogs(a, { ...b, simulated: true })).toBe(false)
   })
 
-  it('combines the tracks under the first log', () => {
-    const m = mergeLogs(a, b, 1000)
-    expect(m.id).toBe('a')
+  it('combines the tracks into a new log', () => {
+    const m = mergeLogs(a, b, 'ab', 1000)
+    expect(m.id).toBe('ab')
     expect(m.startedAt).toBe(a.startedAt)
     expect(m.endedAt).toBe(b.endedAt)
     expect(JSON.parse(m.trackJson)).toHaveLength(240)

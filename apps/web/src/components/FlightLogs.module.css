@@ -188,3 +188,20 @@
 .eventIcon { width: 12px; opacity: 0.85; }
 .eventTime { color: var(--text-secondary); font-variant-numeric: tabular-nums; min-width: 72px; }
 .eventWarn { color: var(--accent-red); }
+
+/* Aircraft and "join" controls under a log. */
+.logTools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+}
+.aircraftSel {
+  font-size: 10px;
+  background: none;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 0 2px;
+  max-width: 140px;
+}

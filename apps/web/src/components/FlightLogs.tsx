@@ -11,6 +11,7 @@ import SyncRefusedNote from './SyncRefusedNote'
 import { flightLogEvents } from '@open-vfr/shared/flightLogEvents'
 import { formatElapsed, formatUtcTime, type FlownEvent } from '@open-vfr/shared/flightLogProfile'
 import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
+import { mergeCandidates, mergeLogs } from '@open-vfr/shared/flightLogRoute'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import type { AircraftProfileDocType } from '../db'
 import css from './FlightLogs.module.css'
@@ -128,6 +129,33 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
     const sims = await db.flight_logs.find({ selector: { endedAt: { $gt: 0 } } }).exec()
     await Promise.all(sims.filter(d => d.simulated === true).map(d => d.remove()))
     if (selectedLogId && logs.some(l => l.doc.id === selectedLogId && l.doc.simulated)) onClear()
+  }
+
+  // The flight this log can be joined with (a recording broken off by a GPS loss), by log id.
+  const mergeNext = useMemo(() => mergeCandidates(logs.map(l => l.doc)), [logs])
+
+  /** Set or correct the aircraft a log was flown with (syncs as an edit of the log). */
+  async function handleSetAircraft(id: string, aircraftId: string) {
+    const ac = aircraftProfiles.find(p => p.id === aircraftId)
+    const db = await getDb()
+    const doc = await db.flight_logs.findOne(id).exec()
+    await doc?.incrementalPatch({ aircraftId: ac?.id ?? '', registration: ac?.registration ?? '', updatedAt: Math.max(Date.now(), (doc?.updatedAt ?? 0) + 1) })
+  }
+
+  /** Join a log with the one that continues it: the combined log is saved new, then both parts are deleted. */
+  async function handleMerge(id: string) {
+    const nextId = mergeNext.get(id)
+    if (!nextId) return
+    const db = await getDb()
+    const [first, next] = await Promise.all([db.flight_logs.findOne(id).exec(), db.flight_logs.findOne(nextId).exec()])
+    if (!first || !next) return
+    const gapMin = Math.max(1, Math.round((next.startedAt - first.endedAt) / 60_000))
+    if (!window.confirm(`Join this flight with the one that continues it ${gapMin} min later? They become one log; the gap stays marked as lost GPS.`)) return
+    const merged = mergeLogs(first.toJSON() as FlightLogDocType, next.toJSON() as FlightLogDocType, crypto.randomUUID())
+    await db.flight_logs.insert(merged)
+    if (selectedLogId === id || selectedLogId === nextId) onSelect(merged.id)
+    await first.remove()
+    await next.remove()
   }
 
   async function handleDelete(id: string) {
@@ -288,6 +316,26 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
                     {eventsOpen.has(log.id) ? '\u25be' : '\u25b8'} Events
                   </button>
                 </div>
+                {!log.simulated && (
+                  <div className={css.logTools}>
+                    <select
+                      className={css.aircraftSel}
+                      value={aircraftProfiles.some(p => p.id === log.aircraftId) ? log.aircraftId : ''}
+                      onChange={e => void handleSetAircraft(log.id, e.target.value)}
+                      aria-label="Aircraft flown"
+                      title="Aircraft this flight was flown with"
+                    >
+                      <option value="">{log.aircraftId && !aircraftProfiles.some(p => p.id === log.aircraftId) ? (log.registration || 'Unknown aircraft') : 'No aircraft'}</option>
+                      {aircraftProfiles.map(p => <option key={p.id} value={p.id}>{p.registration || p.name}</option>)}
+                    </select>
+                    {mergeNext.has(log.id) && (
+                      <button className={css.eventsToggle} onClick={() => void handleMerge(log.id)}
+                        title="The recording broke off (GPS lost or the app closed) and the next log continues this flight: join them">
+                        Join with next part
+                      </button>
+                    )}
+                  </div>
+                )}
                 <SyncRefusedNote row={refusedLogs.get(log.id)} />
                 {eventsOpen.has(log.id) && (
                   <LogEvents log={log} aircraft={aircraftProfiles.find((p) => p.id === log.aircraftId)} onPick={(ts) => onSelect(log.id, ts)} />

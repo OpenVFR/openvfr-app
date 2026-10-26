@@ -117,23 +117,27 @@ export function canMergeLogs(first: MergeableLog, next: MergeableLog): boolean {
 }
 
 /**
- * `first` with `next` appended: one log with the combined track (the hole
- * between them stays a recording gap), `first`'s id, departure and route,
- * `next`'s arrival, distance and maximum altitude recomputed. The caller
- * saves it and deletes `next`.
+ * `first` with `next` appended, as a new log `id`: the combined track (the
+ * hole between them stays a recording gap), `first`'s start, departure,
+ * aircraft and route, `next`'s arrival, distance and maximum altitude
+ * recomputed. The caller saves it, then deletes both parts. A new log (an
+ * insert) rather than an edit of `first`: it is accepted by any server, also
+ * one still without log updates, where an edit would be refused while the
+ * delete of `next` went through, losing that part from the account.
  */
-export function mergeLogs<L extends FlightLogDocType>(first: L, next: L, now: number = Date.now()): L {
+export function mergeLogs<L extends FlightLogDocType>(first: L, next: L, id: string, now: number = Date.now()): L {
   const track = [...trackOf(first), ...trackOf(next)].sort((a, b) => a.ts - b.ts)
   const maxAlt = track.reduce((m, p) => (Number.isFinite(p.altFt) ? Math.max(m, p.altFt) : m), 0)
   return {
     ...first,
+    id,
     endedAt:      Math.max(first.endedAt, next.endedAt),
     trackJson:    JSON.stringify(track),
     arrivalIcao:  next.arrivalIcao || first.arrivalIcao,
     distanceNm:   trackDistanceNm(track),
     maxAltFt:     Math.round(maxAlt),
     routeJson:    first.routeJson ?? next.routeJson,
-    updatedAt:    Math.max(now, first.updatedAt + 1),
+    updatedAt:    now,
   }
 }
 
