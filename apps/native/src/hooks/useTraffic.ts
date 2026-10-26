@@ -1,6 +1,6 @@
 /**
  * useTraffic (native) — polls /api/traffic/latest every 70 s and dead-reckons
- * aircraft positions at 1 s intervals between polls.
+ * aircraft positions at 2 s intervals between polls.
  *
  * Mirrors the web useTraffic hook but uses polling instead of SSE.
  *
@@ -60,7 +60,9 @@ interface TrafficBatch {
 
 const POLL_INTERVAL_MS  = 70_000   // slightly above server's 65 s OpenSky poll
 const STALE_S           = 180
-const DEAD_RECKON_MS    = 1_000
+// 2 s, not 1 s: every traffic source update makes MapLibre redraw at display
+// rate for ~0.65 s, and a target at 120 kt moves only ~120 m in 2 s.
+const DEAD_RECKON_MS    = 2_000
 const EARTH_R_M         = 6_371_008.8
 
 // ── Dead-reckoning ────────────────────────────────────────────────────────────
@@ -115,7 +117,7 @@ export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: 
   const [fc, setFc] = useState<FeatureCollection>({ type: 'FeatureCollection', features: [] })
   // Own position via refs so a GPS fix does not tear down and restart the
   // dead-reckon timer (that used to happen on every fix, i.e. ~1 Hz, which
-  // starved / jittered the 1 s timer).
+  // starved / jittered the timer).
   const ownRef = useRef({ ownAltFt, ownLat, ownLon })
   ownRef.current = { ownAltFt, ownLat, ownLon }
 
@@ -140,7 +142,7 @@ export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: 
     return () => clearInterval(pollTimer)
   }, [enabled, poll])
 
-  // ── Dead-reckon at 1 s ────────────────────────────────────────────────────
+  // ── Dead-reckon at 2 s ────────────────────────────────────────────────────
   useEffect(() => {
     if (!enabled) return
     const timer = setInterval(() => {
