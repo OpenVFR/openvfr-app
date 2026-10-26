@@ -84,8 +84,11 @@
 .toggle:hover { color: var(--text-primary); }
 
 /* Section */
+/* Sections: each header is a solid bar (separates sections whether they
+   are folded or long), an open section's header gets an accent edge and
+   stays pinned at the top while its content scrolls under it. */
 .section {
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .sectionHeader {
@@ -93,10 +96,15 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 12px;
-  background: none;
+  padding: 9px 12px 9px 9px;
+  /* Opaque (tint over the pane colour): content scrolls under the pinned header. */
+  background: linear-gradient(var(--surface-active), var(--surface-active)), var(--surface-elevated);
   border: none;
-  color: var(--text-muted);
+  border-left: 3px solid transparent;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  color: var(--text-secondary);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -106,11 +114,19 @@
   transition: color 0.15s;
   font-family: system-ui, sans-serif;
 }
-.sectionHeader:hover { color: var(--text-primary); }
+.sectionHeader:hover { color: var(--text-primary); background: linear-gradient(var(--surface-hover), var(--surface-hover)), linear-gradient(var(--surface-active), var(--surface-active)), var(--surface-elevated); }
+
+/* Open section: accent edge + full-strength title, and a line under the
+   header so where its content starts is clear. */
+.section:has(> .sectionBody) > .sectionHeader {
+  color: var(--text-primary);
+  border-left-color: var(--accent-blue);
+  box-shadow: inset 0 -1px 0 var(--border-default);
+}
 
 .chevron {
   font-size: 12px;
-  opacity: 0.6;
+  opacity: 0.85;
 }
 
 .planPill {
@@ -169,7 +185,7 @@
 .routeEmptyActions button { font-size: 11px; }
 
 .sectionBody {
-  padding-bottom: 4px;
+  padding-bottom: 8px;
 }
 
 /* Resize handle */
