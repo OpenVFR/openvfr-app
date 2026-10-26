@@ -258,6 +258,8 @@
   text-transform: uppercase;
   opacity: 0.85;
   min-width: 28px;
+  /* Rows without a colour of their own (flight-log time, ground speed). */
+  color: var(--text-secondary);
 }
 
 .tooltipVal {
