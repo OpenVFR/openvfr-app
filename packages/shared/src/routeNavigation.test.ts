@@ -53,6 +53,40 @@ describe('navigatingLeg', () => {
   })
 })
 
+describe('navigatingLeg along a simulated flight', () => {
+  // Fly A-B-C-D in 0.2 NM steps, but turn early at B (cut the corner
+  // ~1.5 NM inside) and overshoot C by ~1 NM before turning: the active leg
+  // must step 0, 1, 2 exactly once each, never skip or go back.
+  function fly(path: { lat: number; lng: number }[]): number[] {
+    const legs: number[] = []
+    for (let k = 0; k < path.length - 1; k++) {
+      const a = path[k], b = path[k + 1]
+      const dLat = (b.lat - a.lat) * 60
+      const dLng = (b.lng - a.lng) * 60 * Math.cos((a.lat * Math.PI) / 180)
+      const nm = Math.hypot(dLat, dLng)
+      const track = ((Math.atan2(dLng, dLat) * 180) / Math.PI + 360) % 360
+      const steps = Math.max(1, Math.round(nm / 0.2))
+      for (let s = 0; s < steps; s++) {
+        const p = { lat: a.lat + ((b.lat - a.lat) * s) / steps, lng: a.lng + ((b.lng - a.lng) * s) / steps }
+        const leg = navigatingLeg(route, p, track)
+        if (legs[legs.length - 1] !== leg) legs.push(leg)
+      }
+    }
+    return legs
+  }
+  it('follows corner cuts and overshoots in order', () => {
+    const path = [
+      A,
+      { lat: 59.475, lng: 18.0 },   // 1.5 NM short of B, turn early
+      { lat: 59.5, lng: 18.06 },    // join leg 1 inside the corner
+      { lat: 59.5, lng: 19.03 },    // overshoot C by ~1 NM
+      { lat: 59.52, lng: 19.0 },    // turn back onto leg 2
+      D,
+    ]
+    expect(fly(path)).toEqual([0, 1, 2])
+  })
+})
+
 describe('shortcutTargetIndex', () => {
   it('only matches points ahead of the active leg', () => {
     expect(shortcutTargetIndex(route, 1, C)).toBe(2)

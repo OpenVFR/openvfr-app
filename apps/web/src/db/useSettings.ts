@@ -116,8 +116,17 @@ const ALTERNATE_KEY = 'alternate'
 
 export type AlternateAirfield = { icao: string; name: string; lng: number; lat: number }
 
+// Every mounted useAlternate() hears changes made through any other one (the
+// route pane and the map both use it), not only after a reload.
+const alternateListeners = new Set<(a: AlternateAirfield | null) => void>()
+
 export function useAlternate(): [AlternateAirfield | null, (a: AlternateAirfield | null) => void] {
   const [alt, setAltState] = useState<AlternateAirfield | null>(null)
+
+  useEffect(() => {
+    alternateListeners.add(setAltState)
+    return () => { alternateListeners.delete(setAltState) }
+  }, [])
 
   useEffect(() => {
     getDb().then(async (db) => {
@@ -129,7 +138,7 @@ export function useAlternate(): [AlternateAirfield | null, (a: AlternateAirfield
   }, [])
 
   const setAlt = useCallback((a: AlternateAirfield | null) => {
-    setAltState(a)
+    for (const l of alternateListeners) l(a)
     getDb().then(async (db) => {
       if (a === null) {
         const doc = await db.settings.findOne(ALTERNATE_KEY).exec()

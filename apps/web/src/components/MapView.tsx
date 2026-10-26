@@ -59,7 +59,7 @@ import { buildRunwayWindHighlight, effectiveMagBrg, type RunwayWindEnd } from '@
 import { computeAtcStatus, isNotamAtcRelated, isNotamHoursChangeRelated, type HoursEntry as AtcHoursEntry } from '@open-vfr/shared/atcStatus'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
 import { chooseSnapTarget, sortSnapCandidates, snapHintText, neighbourAtDrop } from '@open-vfr/shared/snapChoice'
-import { navigatingLeg, routeDirect } from '@open-vfr/shared/routeNavigation'
+import { navigatingLeg, routeDirect, samePoint, shortcutTargetIndex } from '@open-vfr/shared/routeNavigation'
 import { AERODROME_COLORS } from '@open-vfr/shared/featureColors'
 import { fetchAerodromeNotamTexts, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { API_BASE_URL } from '../utils/env'
@@ -374,6 +374,8 @@ const NO_ALERTS: never[] = []
 const LEG_UNLOCK_MS = 10_000
 /** Pointer travel (px) before a press on the route counts as a drag. */
 const DRAG_SLOP_PX = 6
+/** An intermediate route point this close to the previous one drops its label below zoom 11. */
+const CROWDED_POINT_NM = 1.5
 
 /** The three leg-label variant layers (see the addLayer loop in map init). */
 const LEG_LABEL_LAYERS: readonly string[] = ['route-leg-labels-short', 'route-leg-labels-mid', 'route-leg-labels-full']
@@ -621,7 +623,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const [parkTimeout, setParkTimeout] = useParkTimeout()
   const [recordSimulatedFlights, setRecordSimulatedFlights] = useRecordSimulatedFlights()
   const [autoFlyMode, setAutoFlyMode] = useAutoFlyMode()
-  const [alternate, _setAlternate] = useAlternate()
+  const [alternate, setAlternate] = useAlternate()
   const [routeWaypoints, setRouteWaypoints, legOverrides, setLegOverrides, loadRouteIntoMap, routeAircraftId, setRouteAircraftId, activeRouteId, setActiveRouteId, routeUndo] = usePersistedRoute()
   // Computed once here (not inside SideDrawer) so VirtualRadar's wind-arrow/
   // cloud-layer overlay and SideDrawer's Weather-Along-Route panel share the
@@ -976,7 +978,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
     })
     setRouteWaypoints(r.waypoints)
     setLegOverrides(r.legOverrides)
+    // Diverting to the alternate makes it the destination.
+    if (alternate && samePoint(alternate, target)) setAlternate(null)
   }
+  // Label for the Direct To action on `target`: a point further along the
+  // route is a shortcut (the rest of the route stays).
+  const directToLabel = (target: { lat: number; lng: number }) =>
+    shortcutTargetIndex(routeWaypoints, activeLeg, target) >= 0 ? 'Take shortcut' : 'Direct to'
   const removeWaypointAtRef = useRef(removeWaypointAt)
   removeWaypointAtRef.current = removeWaypointAt
   const flyingModeRef   = useRef<FlyingMode>('off')
@@ -1819,7 +1827,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
         layout: {
           // Zoomed out, only the start/end names are drawn; intermediate
           // names reappear from zoom 8 (same rule on native).
-          'text-field': ['step', ['zoom'], ['case', ['get', 'endpoint'], ['get', 'name'], ''], 8, ['get', 'name']],
+          // Points crowding a neighbour (e.g. the present-position points
+          // a Direct To leaves behind) keep their name for zoom 11+.
+          'text-field': ['step', ['zoom'], ['case', ['get', 'endpoint'], ['get', 'name'], ''], 8, ['case', ['get', 'crowded'], '', ['get', 'name']], 11, ['get', 'name']],
           'text-font': ['Noto Sans Medium'],
           'text-size': 11,
           'text-anchor': 'bottom-left',
@@ -3817,7 +3827,12 @@ export default function MapView({ auth }: { auth: AuthState }) {
       features: routeWaypoints.map((w, i) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [w.lng, w.lat] },
-        properties: { seq: i + 1, name: w.name ?? `WP${i + 1}`, endpoint: i === 0 || i === routeWaypoints.length - 1 },
+        properties: {
+          seq: i + 1, name: w.name ?? `WP${i + 1}`, endpoint: i === 0 || i === routeWaypoints.length - 1,
+          // Checked against the previous point only, so of a close pair the
+          // later one (a Direct To's present-position point) yields.
+          crowded: i > 0 && i < routeWaypoints.length - 1 && distanceNm(routeWaypoints[i - 1], w) < CROWDED_POINT_NM,
+        },
       })),
     })
 
@@ -4648,6 +4663,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
       const finalName = name.trim() || nextPlaceName(userWaypoints.map(w => w.name))
       saveUserWaypoint({ name: finalName, lng, lat, folder: '' }).catch(console.error)
     },
+    inFlightRoute: flyingMode !== 'off' && !!gpsPosition,
+    directToLabel,
+    onDirectTo: (wp: RouteWaypoint, rejoin: boolean) => flyDirect(wp, rejoin),
+    onTrackPoint: (wp: RouteWaypoint, kind: TrackedPoint['kind']) =>
+      setTrackedPoint({ lat: wp.lat, lng: wp.lng, name: wp.name ?? 'Point', kind }),
     auth,
     onOpenProfile: () => setProfileOpen(true),
   })

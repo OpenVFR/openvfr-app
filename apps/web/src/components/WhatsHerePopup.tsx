@@ -75,11 +75,19 @@ interface Props {
   onAddToRoute: (wp: RouteWaypoint) => void
   onSaveUserWaypoint: (name: string, lng: number, lat: number) => void
   onClose: () => void
+  /** In flight only: replaces +Route with Direct to / Take shortcut and Track. */
+  flight?: {
+    /** "Direct to" or "Take shortcut" for this point. */
+    directLabel: (wp: RouteWaypoint) => string
+    /** `rejoin`: an en-route fix (rejoin the route after it) rather than a destination. */
+    onDirectTo: (wp: RouteWaypoint, rejoin: boolean) => void
+    onTrack: (wp: RouteWaypoint, kind: 'aerodrome' | 'navaid' | 'waypoint') => void
+  }
 }
 
 export default function WhatsHerePopup({
   items, airspaceFeatures, lng, lat,
-  onAddToRoute, onSaveUserWaypoint, onClose,
+  onAddToRoute, onSaveUserWaypoint, onClose, flight,
 }: Props) {
   const [airspaceOpen, setAirspaceOpen] = useState(true)
   const [saveName, setSaveName] = useState<string | null>(null)
@@ -104,7 +112,23 @@ export default function WhatsHerePopup({
                   {KIND_BADGE[item.kind]}
                 </span>
                 <span className={css.rowLabel}>{itemLabel(item)}</span>
-                {wp && (
+                {wp && flight && (<>
+                  <button
+                    className={css.addBtn}
+                    onClick={() => { flight.onDirectTo(wp, item.kind !== 'aerodrome'); onClose() }}
+                    title="Fly there from your present position (legs already flown stay in the route)"
+                  >
+                    {flight.directLabel(wp)}
+                  </button>
+                  <button
+                    className={css.addBtn}
+                    onClick={() => { flight.onTrack(wp, item.kind === 'aerodrome' || item.kind === 'navaid' ? item.kind : 'waypoint'); onClose() }}
+                    title="Show distance and bearing to this point in the position report (the route is unchanged)"
+                  >
+                    Track
+                  </button>
+                </>)}
+                {wp && !flight && (
                   <button
                     className={css.addBtn}
                     onClick={() => { onAddToRoute(wp); onClose() }}

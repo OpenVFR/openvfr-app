@@ -136,6 +136,11 @@ interface Props {
   onMoveUserWpFolder: (id: string, folder: string) => void
   onFolderVisChange: (folder: string, visible: boolean) => void
   onSaveHereUserWaypoint: (name: string, lng: number, lat: number) => void
+  /** In flight: What's Here? offers Direct to / shortcut and Track instead of +Route. */
+  inFlightRoute: boolean
+  directToLabel: (wp: RouteWaypoint) => string
+  onDirectTo: (wp: RouteWaypoint, rejoin: boolean) => void
+  onTrackPoint: (wp: RouteWaypoint, kind: 'aerodrome' | 'navaid' | 'waypoint') => void
   auth: AuthState
   onOpenProfile: () => void
 }
@@ -201,7 +206,7 @@ function SideDrawer({
   userWaypoints, pendingUserWpCoords, folderVisibility,
   onUserWpCoordsConsumed, onStartPlaceUserWp,
   onSaveUserWaypoint, onDeleteUserWaypoint, onRenameUserWaypoint, onMoveUserWpFolder,
-  onFolderVisChange, onSaveHereUserWaypoint,
+  onFolderVisChange, onSaveHereUserWaypoint, inFlightRoute, directToLabel, onDirectTo, onTrackPoint,
   auth,
   onOpenProfile,
 }: Props) {
@@ -363,6 +368,7 @@ function SideDrawer({
                       onAddToRoute={onAddToRoute}
                       onSaveUserWaypoint={onSaveHereUserWaypoint}
                       onClose={onCloseInfo}
+                      flight={inFlightRoute ? { directLabel: directToLabel, onDirectTo, onTrack: onTrackPoint } : undefined}
                     />
                   )}
                 </div>
