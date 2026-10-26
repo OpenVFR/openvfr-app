@@ -42,6 +42,7 @@ import { toNearbyFreqs, type NearbyAerodrome } from '../hooks/useNearbyFrequenci
 import type { RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { filterNotamsNearRoute } from '@open-vfr/shared/notamRouteFilter'
+import { distanceNm } from '@open-vfr/shared/routeCalc'
 import type { RouteWaypoint } from '../utils/routeCalc'
 
 const SVC_COLOR: Record<string, string> = {
@@ -69,10 +70,12 @@ interface Props {
   routeWaypoints?: RouteWaypoint[]
   onShowNotamOnMap?: (notam: NotamItem) => void
   onClose:     () => void
+  /** Current fix: the Frequencies tab shows live distances from it. */
+  position?:   { lat: number; lng: number } | null
 }
 
 export default function VicinityBriefPanel({
-  nearbyFreqs, aerodromes, isHome, authed, onSetHome, onRunwayWind,
+  nearbyFreqs, aerodromes, isHome, authed, onSetHome, onRunwayWind, position,
   regionalNotams = [], routeWaypoints = [], onShowNotamOnMap,
   onClose,
 }: Props) {
@@ -135,7 +138,7 @@ export default function VicinityBriefPanel({
                 <div className={css.adHeader}>
                   <span className={css.adIcao}>{ad.icao}</span>
                   <span className={css.adName}>{ad.name}</span>
-                  <span className={css.adDist}>{ad.distNm.toFixed(1)} NM</span>
+                  <span className={css.adDist}>{(position && ad.lat != null && ad.lng != null ? distanceNm(position, { lat: ad.lat, lng: ad.lng }) : ad.distNm).toFixed(1)} NM</span>
                 </div>
                 {ad.frequencies.length === 0 ? (
                   <div className={css.noFreq}>No frequencies on record</div>

@@ -11,7 +11,7 @@
  * adding another se-aerodromes.geojson parser.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import { loadAerodromes, type FullAerodrome } from './useAirfieldBrief'
@@ -26,7 +26,11 @@ export interface NearbyFreq {
 export interface NearbyAerodrome {
   icao:        string
   name:        string
+  /** Distance when the list was last rebuilt (not refreshed per fix; see lat/lng). */
   distNm:      number
+  /** Position, so a display can show a live distance from the current fix. */
+  lat?:        number
+  lng?:        number
   frequencies: NearbyFreq[]
 }
 
@@ -54,20 +58,30 @@ export function toNearbyFreqs(frequencies: FullAerodrome['props']['frequencies']
 export function useNearbyFrequencies(position: GpsPosition | null): NearbyAerodrome[] {
   const [all, setAll] = useState<FullAerodrome[]>([])
   const [nearby, setNearby] = useState<NearbyAerodrome[]>([])
+  const sigRef = useRef('')
 
   const { key: countriesKey } = useActiveCountries()
   useEffect(() => { loadAerodromes().then(setAll) }, [countriesKey])
 
   useEffect(() => {
-    if (!position || all.length === 0) { setNearby([]); return }
+    if (!position || all.length === 0) {
+      if (sigRef.current !== '') { sigRef.current = ''; setNearby([]) }
+      return
+    }
     const pos = { lat: position.lat, lng: position.lng }
     const results: NearbyAerodrome[] = []
     for (const a of all) {
       const d = distanceNm(pos, { lat: a.lat, lng: a.lng })
       if (d > RADIUS_NM) continue
-      results.push({ icao: a.props.icao, name: a.props.name, distNm: d, frequencies: toNearbyFreqs(a.props.frequencies) })
+      results.push({ icao: a.props.icao, name: a.props.name, distNm: d, lat: a.lat, lng: a.lng, frequencies: toNearbyFreqs(a.props.frequencies) })
     }
     results.sort((x, y) => x.distNm - y.distNm)
+    // Only which aerodromes and their order: a new list on every GPS fix
+    // re-rendered the whole map view a second time per fix. The panel shows
+    // live distances from lat/lng and the current fix instead.
+    const sig = results.map((r) => r.icao).join('|')
+    if (sig === sigRef.current) return
+    sigRef.current = sig
     setNearby(results)
   }, [position, all])
 

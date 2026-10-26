@@ -1595,6 +1595,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
       maxPitch: 0,
       pitchWithRotate: false,
       attributionControl: false,
+      // No symbol fade: MapLibre fades symbols for 300 ms after every
+      // placement change and repaints at display rate meanwhile; each GeoJSON
+      // update in flight (aircraft, trajectory, traffic) changes placement.
+      // Same setting as native (getProtomapsStyle's transition: 0).
+      fadeDuration: 0,
     })
     mapRef.current = map
 
@@ -4908,6 +4913,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       {showVicinityBrief && (
         <VicinityBriefPanel
           nearbyFreqs={nearbyFreqs}
+          position={gpsPosition}
           aerodromes={vicinityAerodromes}
           isHome={(icao) => homeAirfield?.icao === icao}
           authed={!!auth.user}
