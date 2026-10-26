@@ -16,7 +16,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   IconCurrentLocation, IconCurrentLocationFilled, IconHome, IconPlaneDeparture, IconPlaneArrival,
   IconRulerMeasure, IconSearch, IconNews, IconMapPinPlus,
-  IconMagnet, IconMagnetOff, IconZoomScan, IconArrowBigRight,
+  IconZoomScan, IconArrowBigRight,
 } from '@tabler/icons-react'
 
 // Map control button glyphs (Tabler Icons). The imperative MapLibre buttons
@@ -380,6 +380,8 @@ function pointRouteWp(feat: maplibregl.MapGeoJSONFeature, name: string): RouteWa
 const LEG_UNLOCK_MS = 10_000
 /** Pointer travel (px) before a press on the route counts as a drag. */
 const DRAG_SLOP_PX = 6
+/** Touch drags place the point this far above the finger (~5 mm). */
+const FINGER_LIFT_PX = 20
 /** An intermediate route point this close to the previous one drops its label below zoom 11. */
 const CROWDED_POINT_NM = 1.5
 
@@ -638,6 +640,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Stop extending; a lone start point is not a route, so it goes too.
   const finishExtending = useCallback(() => {
     setExtending(false)
+    setSnapPicker(null)
     if (routeWaypointsRef.current.length === 1) setRouteWaypoints([])
   }, [setRouteWaypoints])
   const finishExtendingRef = useRef(finishExtending)
@@ -806,13 +809,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [routeUndo.undo, routeUndo.redo])
-  // Snapping of dragged route points to POIs, switchable from the map tools for
-  // touch (desktop can hold Alt while dragging). Back on when a flight
-  // starts; the ref is what the map handlers read.
-  const [snapOff, setSnapOff] = useState(false)
-  const snapOffRef = useRef(false)
-  useEffect(() => { snapOffRef.current = snapOff }, [snapOff])
-  useEffect(() => { if (flyingMode !== 'off') setSnapOff(false) }, [flyingMode])
   // Small context menu shown when tapping a route waypoint in flight
   const [wpMenu, setWpMenu] = useState<{ wpIdx: number; x: number; y: number } | null>(null)
   // Context menu shown after long-press on a route leg
@@ -2183,7 +2179,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       // are targets too: dropping a point onto its neighbour removes it
       // (see neighbourAtDrop), and the live hint says so.
       const snapQuery = (e: DragEvent, neighboursOf?: number): SnapCandidate[] => {
-        if (e.originalEvent?.altKey || snapOffRef.current) return []
+        if (e.originalEvent?.altKey) return []
         const SNAP_PX = 20
         const box: [maplibregl.PointLike, maplibregl.PointLike] = [
           [e.point.x - SNAP_PX, e.point.y - SNAP_PX],
@@ -2523,13 +2519,27 @@ export default function MapView({ auth }: { auth: AuthState }) {
         if (e.originalEvent.touches.length !== 1) return
         const dragI = dragInsertRef.current
         if (dragI) {
+          // Finger still within the tap slop: not a drag yet (and the
+          // long-press menu may still come).
+          if (!dragI.moved && !beyondSlop(dragI.startPt, e.point)) return
+          dragI.moved = true
           clearLegLongPress()  // finger moved — cancel long-press auto-insert
-          previewInsert(dragI, e)
+          previewInsert(dragI, liftAboveFinger(e.point))
           return
         }
         const dragM = dragMoveRef.current
-        if (dragM) previewMove(dragM, e)
+        if (dragM) {
+          if (!dragM.moved && !beyondSlop(dragM.startPt, e.point)) return
+          dragM.moved = true
+          previewMove(dragM, liftAboveFinger(e.point))
+        }
       })
+      // On touch the dragged point sits FINGER_LIFT_PX above the finger, so
+      // the finger does not cover the point being placed (or the snap hint).
+      function liftAboveFinger(p: maplibregl.Point): DragEvent {
+        const lifted = new maplibregl.Point(p.x, p.y - FINGER_LIFT_PX)
+        return { point: lifted, lngLat: map.unproject(lifted) }
+      }
 
       // ── Touch: commit drag on finger-lift ──────────────────────────────
       // lngLat is unreliable on touchend (finger lifted), so use last stored cur.
@@ -4817,16 +4827,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
             { id: 'ruler', label: 'Ruler', description: 'Measure distance and bearing: tap two points on the map. Tap again to switch off and clear.', icon: <IconRulerMeasure {...CTRL_ICON} />, active: rulerMode,
               onSelect: () => { if (rulerMode) setRulerPoints([]); else setExtending(false); setRulerMode(!rulerMode) } },
           ]
-          // Place route points exactly where they are dropped, even next to a POI:
-          // the touch counterpart of holding Alt while dragging.
-          if (!flying && routeWaypoints.length > 0) toolItems.push({
-            id: 'snap', label: snapOff ? 'Snap off' : 'Snap on', keepOpen: true, active: !snapOff,
-            description: snapOff
-              ? 'Dragged route points land exactly where you drop them. Tap to snap to aerodromes, navaids and obstacles again.'
-              : 'Dragged route points snap to a nearby aerodrome, navaid or obstacle. Tap to place them exactly instead (on a desktop, hold Alt while dragging).',
-            icon: snapOff ? <IconMagnetOff {...CTRL_ICON} /> : <IconMagnet {...CTRL_ICON} />,
-            onSelect: () => setSnapOff((v) => !v),
-          })
           if (flying) toolItems.push({ id: 'drop', label: 'Drop point', description: 'Save your current position as a waypoint in the "Dropped in Flight" folder', icon: <IconMapPinPlus {...CTRL_ICON} />, onSelect: dropWaypointHere })
           // Start / stop flying mode lives in the menu: Ask mode already offers a
           // Start prompt once takeoff is detected, and the flying panel has its own
