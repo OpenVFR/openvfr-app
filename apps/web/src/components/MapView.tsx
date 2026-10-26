@@ -4754,7 +4754,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
     pendingUserWpCoords,
     folderVisibility,
     onUserWpCoordsConsumed: () => setPendingUserWpCoords(null),
-    onStartPlaceUserWp: () => { setPlacingUserWp(true); setPendingUserWpCoords(null) },
+    // Placing a new place takes the next map click, so route extending stops.
+    onStartPlaceUserWp: () => { setExtending(false); setPlacingUserWp(true); setPendingUserWpCoords(null) },
     onSaveUserWaypoint: (wp: Parameters<typeof saveUserWaypoint>[0]) => { saveUserWaypoint(wp).catch(console.error) },
     onDeleteUserWaypoint: (id: string) => { deleteUserWaypoint(id).catch(console.error) },
     onRenameUserWaypoint: (id: string, name: string, folder?: string) => { renameUserWaypoint(id, name, folder).catch(console.error) },

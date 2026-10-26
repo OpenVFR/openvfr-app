@@ -113,9 +113,10 @@
 }
 
 /* Route action ("Start route here" / "Add to route" / "Direct to"). */
+.routeRow {
+  padding: 0 14px 8px;
+}
 .routeBtn {
-  flex-shrink: 0;
-  align-self: flex-start;
   background: none;
   border: 1px solid #e040fb;
   border-radius: 4px;

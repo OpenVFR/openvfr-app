@@ -94,6 +94,9 @@ export default function WhatsHerePopup({
 }: Props) {
   const [airspaceOpen, setAirspaceOpen] = useState(true)
   const [saveName, setSaveName] = useState<string | null>(null)
+  // Opened on a feature itself (a place, say): its own row already has the
+  // route button, so no second one for "this point".
+  const pointIsItem = items.some((i) => 'lng' in i && i.lng === lng && i.lat === lat)
 
   return (
     <div className={css.panel}>
@@ -180,7 +183,7 @@ export default function WhatsHerePopup({
       {/* Save as user waypoint */}
       {saveName === null ? (
         <div className={css.footer}>
-          {pointAction && (
+          {pointAction && !pointIsItem && (
             <button className={css.saveBtn} onClick={() => { pointAction.onClick(); onClose() }}>
               + {pointAction.label} (this point)
             </button>

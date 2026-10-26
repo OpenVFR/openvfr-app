@@ -646,9 +646,6 @@ export default function AerodromePopup({
               <div className={css.notamHint}>⏰ Active NOTAM may have changed opening hours — check NOTAMs tab</div>
             )}
           </div>
-          {routeAction && (
-            <button className={css.routeBtn} onClick={routeAction.onClick}>{routeAction.label}</button>
-          )}
           <ShareAerodromeButton icao={p.icao} name={p.name} />
           <button
             className={`${css.homeBtn} ${isHome ? css.homeBtnActive : ''}`}
@@ -667,6 +664,11 @@ export default function AerodromePopup({
         </div>
 
         {/* ── Tab bar ─────────────────────────────────────────────────── */}
+        {routeAction && (
+          <div className={css.routeRow}>
+            <button className={css.routeBtn} onClick={routeAction.onClick}>{routeAction.label}</button>
+          </div>
+        )}
         <div className={css.tabBar}>
           <button
             className={`${css.tab} ${activeTab === 'info' ? css.tabActive : ''}`}
