@@ -18,6 +18,11 @@ overrides:
   "@react-native/metro-config": "0.86.3"
   # sp-react-native-in-app-updates pins underscore 1.12 (DoS in _.flatten/_.isEqual).
   underscore: "^1.13.8"
+  # openai (api) pulls undici <7.30.1: DoS via excessive content-encodings /
+  # unbounded EventSource parser memory (GHSA advisories, fixed in 7.30.1).
+  undici: "^7.30.1"
+  # rxdb / workbox-build pull fast-uri <3.1.9 (URI host/scheme confusion).
+  fast-uri: "^3.1.9"
 
 patchedDependencies:
   '@expo/ui@57.0.26': patches/@expo__ui@57.0.26.patch
