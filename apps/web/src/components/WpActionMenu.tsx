@@ -1,10 +1,11 @@
 /**
- * WpActionMenu — small floating context menu shown when tapping a route
- * waypoint in in-flight route adjustment mode.
+ * WpActionMenu — small floating context menu shown when tapping (or
+ * long-pressing) a route point in flight.
  *
  * Actions:
- *  • "Direct to [WP]" — take a shortcut, cutting all waypoints before this one
- *  • "Remove waypoint"
+ *  • "Direct to" (the point being flown to) / "Take shortcut" (a point
+ *    further along: the points in between are skipped)
+ *  • "Remove"
  *  • "Cancel"
  */
 import type { RouteWaypoint } from '../utils/routeCalc'
@@ -48,8 +49,8 @@ export default function WpActionMenu({
   const left = Math.min(x + 6, canvasW - MENU_W - 8)
   const top  = Math.min(y + 6, canvasH - MENU_H - 8)
 
-  // "Direct to" only makes sense for waypoints ahead of the current active one
-  const canDirectTo = wpIdx > activeWpIdx
+  // Only points not yet passed: the one being flown to, or any after it.
+  const canDirectTo = wpIdx >= activeWpIdx
 
   return (
     <>
@@ -64,7 +65,7 @@ export default function WpActionMenu({
             className={css.item}
             onClick={() => { onDirectTo(wpIdx); onClose() }}
           >
-            ✈ Direct To
+            ✈ {wpIdx > activeWpIdx ? 'Take shortcut' : 'Direct to'}
           </button>
         )}
 

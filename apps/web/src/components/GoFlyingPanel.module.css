@@ -389,31 +389,6 @@
   border-color: var(--input-focus-border);
 }
 
-.adjustBtn {
-  margin-left: 4px;
-  background:    transparent;
-  border:        1px solid var(--border-default);
-  border-radius: 4px;
-  color:         var(--text-muted);
-  font-size:     9px;
-  font-weight:   700;
-  letter-spacing: 0.06em;
-  padding:       1px 5px;
-  cursor:        pointer;
-  transition:    background 0.12s, color 0.12s, border-color 0.12s;
-  white-space:   nowrap;
-}
-.adjustBtn:hover {
-  background:   var(--tint-yellow-low);
-  color:        var(--accent-yellow);
-  border-color: var(--tint-yellow-border);
-}
-.adjustBtnActive {
-  background:   var(--tint-yellow-low);
-  color:        var(--accent-yellow);
-  border-color: var(--tint-yellow-border);
-}
-
 /* ── Touch (pointer: coarse) — larger tap targets ────────────────────────── */
 @media (pointer: coarse) {
   /* Primary action buttons in the top controls row */
@@ -443,9 +418,7 @@
   }
 
   .plogBtn,
-  .plogBtnActive,
-  .adjustBtn,
-  .adjustBtnActive {
+  .plogBtnActive {
     min-height:    36px;
     padding-left:  10px;
     padding-right: 10px;

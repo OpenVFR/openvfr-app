@@ -102,6 +102,7 @@
     "./wxFormat": "./src/wxFormat.ts",
     "./wxStations": "./src/wxStations.ts",
     "./routeDirty": "./src/routeDirty.ts",
+    "./routeNavigation": "./src/routeNavigation.ts",
     "./resolveSaveRouteId": "./src/resolveSaveRouteId.ts",
     "./findDestination": "./src/findDestination.ts",
     "./notamCoverageArea": "./src/notamCoverageArea.ts",

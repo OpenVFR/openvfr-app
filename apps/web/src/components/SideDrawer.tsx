@@ -77,11 +77,10 @@ interface Props {
   // Route plan
   waypoints: RouteWaypoint[]
   legOverrides: LegOverride[]
-  /** Route activate/deactivate -- shows/hides the drawn route on the map without clearing its waypoints, mirrors native's PlanScreen Active/Inactive toggle. */
-  routeVisible: boolean
-  onToggleRouteVisible: () => void
+  /** Add-points mode: map clicks append route points. */
   planningMode: boolean
-  onTogglePlanningMode: () => void
+  /** Toggles add-points mode; undefined while flying (not offered then). */
+  onTogglePlanningMode?: () => void
   onUndo: () => void
   onRedo?: () => void
   canUndo?: boolean
@@ -143,10 +142,9 @@ interface Props {
 
 const SECTION_LABELS = {
   info:          'Selected Feature',
-  route:         'Route Plan',
+  route:         'Route',
   preflight:     'Pre-flight Check',
   fuel:          'Fuel Plan',
-  routes:        'Routes',
   flightLogs:    'Flight Logs',
   aircraft:      'Aircraft',
   userWaypoints: 'Places',
@@ -192,7 +190,7 @@ function SideDrawer({
   isOnline,
   checking,
   onRefresh,
-  waypoints, legOverrides, routeVisible, onToggleRouteVisible, planningMode, onTogglePlanningMode,
+  waypoints, legOverrides, planningMode, onTogglePlanningMode,
   onUndo, onRedo, canUndo, canRedo, onClear, onReplace, onLoadRoute, activeRouteId, onActiveRouteIdChange, onSetLegOverride, onSetWaypointNote,
   onAddToRoute, onInsertInRoute,
   selectedAircraftId, selectedAircraftProfile, tafWarnIcaos, onSelectAircraft,
@@ -210,7 +208,7 @@ function SideDrawer({
   const [open, setOpen]         = useState(() => lsGet(LS_OPEN, false))
   const [width, setWidth]       = useState(() => lsGet(LS_WIDTH, DEFAULT_WIDTH))
   const [expanded, setExpanded] = useState<Record<Section, boolean>>(() =>
-    lsGet(LS_EXPANDED, { info: true, route: true, preflight: true, fuel: true, routes: true, flightLogs: true, aircraft: false, userWaypoints: true, layers: true, settings: false })
+    lsGet(LS_EXPANDED, { info: true, route: true, preflight: true, fuel: true, flightLogs: true, aircraft: false, userWaypoints: true, layers: true, settings: false })
   )
 
   // Drag-resize handle
@@ -372,57 +370,72 @@ function SideDrawer({
             </div>
           )}
 
-          {/* ── Route Plan ─────────────────────────────────────── */}
+          {/* ── Route: the working route, as a document (name, Save, Open) ── */}
           <div className={css.section}>
             <button className={css.sectionHeader} onClick={() => toggle('route')}>
               <span>{SECTION_LABELS.route}</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span
-                  role="button"
-                  className={`${css.planPill} ${planningMode ? css.planPillActive : ''}`}
-                  onClick={(e) => { e.stopPropagation(); onTogglePlanningMode() }}
-                >
-                  {planningMode ? 'Editing' : 'Locked'}
-                </span>
+                {onTogglePlanningMode && (
+                  <span
+                    role="button"
+                    className={`${css.planPill} ${planningMode ? css.planPillActive : ''}`}
+                    title={planningMode ? 'Stop adding points by clicking the map' : 'Click the map to add route points'}
+                    onClick={(e) => { e.stopPropagation(); onTogglePlanningMode() }}
+                  >
+                    {planningMode ? 'Done adding' : '+ Add points'}
+                  </span>
+                )}
                 <span className={css.chevron}>{expanded.route ? '▾' : '▸'}</span>
               </span>
             </button>
-            {expanded.route && hasRoute && (
+            {expanded.route && (
               <div className={css.sectionBody}>
-                  <RoutePlan
-                    waypoints={waypoints}
-                    tafWarnIcaos={tafWarnIcaos}
-                    legOverrides={legOverrides}
-                    routeVisible={routeVisible}
-                    onToggleRouteVisible={onToggleRouteVisible}
-                    units={units}
-                    onUndo={onUndo}
-                    onRedo={onRedo}
-                    canUndo={canUndo}
-                    canRedo={canRedo}
-                    onClear={onClear}
-                    onReplace={onReplace}
-                    onAddToRoute={onAddToRoute}
-                    onSetLegOverride={onSetLegOverride}
-                    onSetWaypointNote={onSetWaypointNote}
-                    defaultAltFt={selectedAircraftProfile?.cruiseAltFt || undefined}
-                    defaultSpeedKts={selectedAircraftProfile?.cruiseIas || undefined}
-                    takeoffTime={takeoffTime}
-                    setTakeoffTime={setTakeoffTime}
-                    globalWind={globalWind}
-                    setGlobalWind={setGlobalWind}
-                    routeWinds={routeWinds}
-                  />
-              </div>
-            )}
-            {expanded.route && !hasRoute && (
-              <div className={css.sectionBody}>
-                <p style={{ padding: '4px 12px', color: 'var(--text-muted)', fontSize: 11 }}>
-                  No route yet. Tap "Locked" above to start planning, then click the map to add waypoints.
-                </p>
-                {canUndo && (
-                  <button style={{ margin: '0 12px 6px', fontSize: 11 }} onClick={onUndo} title="Undo last route change (Ctrl+Z)">↶ Undo</button>
-                )}
+                <RouteLibrary
+                  currentWaypoints={waypoints}
+                  currentLegOverrides={legOverrides}
+                  currentAircraftId={selectedAircraftId ?? ''}
+                  onLoad={onLoadRoute}
+                  onClear={onClear}
+                  activeRouteId={activeRouteId}
+                  onActiveRouteIdChange={onActiveRouteIdChange}
+                >
+                  {hasRoute ? (
+                    <RoutePlan
+                      waypoints={waypoints}
+                      tafWarnIcaos={tafWarnIcaos}
+                      legOverrides={legOverrides}
+                      units={units}
+                      onUndo={onUndo}
+                      onRedo={onRedo}
+                      canUndo={canUndo}
+                      canRedo={canRedo}
+                      onClear={onClear}
+                      onReplace={onReplace}
+                      onAddToRoute={onAddToRoute}
+                      onSetLegOverride={onSetLegOverride}
+                      onSetWaypointNote={onSetWaypointNote}
+                      defaultAltFt={selectedAircraftProfile?.cruiseAltFt || undefined}
+                      defaultSpeedKts={selectedAircraftProfile?.cruiseIas || undefined}
+                      takeoffTime={takeoffTime}
+                      setTakeoffTime={setTakeoffTime}
+                      globalWind={globalWind}
+                      setGlobalWind={setGlobalWind}
+                      routeWinds={routeWinds}
+                    />
+                  ) : (
+                    <div className={css.routeEmpty}>
+                      <p>No route. {onTogglePlanningMode ? 'Add points by clicking the map, or open a saved route.' : 'Use Direct To, or open a saved route.'}</p>
+                      <div className={css.routeEmptyActions}>
+                        {onTogglePlanningMode && !planningMode && (
+                          <button onClick={onTogglePlanningMode}>+ Add points on map</button>
+                        )}
+                        {canUndo && (
+                          <button onClick={onUndo} title="Undo last route change (Ctrl+Z)">↶ Undo</button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </RouteLibrary>
               </div>
             )}
           </div>
@@ -467,27 +480,6 @@ function SideDrawer({
               )}
             </div>
           )}
-
-          {/* ── Routes (library) ───────────────────────────────── */}
-          <div className={css.section}>
-            <button className={css.sectionHeader} onClick={() => toggle('routes')}>
-              <span>{SECTION_LABELS.routes}</span>
-              <span className={css.chevron}>{expanded.routes ? '▾' : '▸'}</span>
-            </button>
-            {expanded.routes && (
-              <div className={css.sectionBody}>
-                <RouteLibrary
-                  currentWaypoints={waypoints}
-                  currentLegOverrides={legOverrides}
-                  currentAircraftId={selectedAircraftId ?? ''}
-                  onLoad={onLoadRoute}
-                  onClear={onClear}
-                  activeRouteId={activeRouteId}
-                  onActiveRouteIdChange={onActiveRouteIdChange}
-                />
-              </div>
-            )}
-          </div>
 
           {/* ── Flight Logs ────────────────────────────────────── */}
           <div className={css.section}>

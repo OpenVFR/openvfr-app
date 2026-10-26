@@ -1,12 +1,12 @@
 /**
  * LegActionMenu — small floating context menu shown when long-pressing a route
- * leg in planning mode or in-flight route adjustment mode.
+ * leg (touch), or right-clicking one in flight.
  *
  * Actions:
  *  • "Insert here"    — insert a new WP at the pressed location
  *  • "Append to end"  — append the pressed location as the last waypoint
- *  • "Take Shortcut"  — skip ahead: remove all WPs between current active and
- *                        this point, then insert this point as the new next WP
+ *  • "Take Shortcut"  — in flight, for a leg ahead: fly from the present
+ *                        position to this point, then rejoin the route there
  *  • "Cancel"
  */
 import type { LngLat } from 'maplibre-gl'

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, type ReactNode } from 'react'
 import { useRouteLibrary } from '../db/useRouteDb'
 import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import { useSyncState } from '../hooks/useSync'
@@ -44,6 +44,9 @@ interface Props {
   /** Id of the saved route the working route was loaded from, or '' if untitled. */
   activeRouteId:          string
   onActiveRouteIdChange:  (id: string) => void
+  /** The working route's own editor, shown between the document header
+   *  (name, Save) and the saved-routes list. */
+  children?:              ReactNode
 }
 
 /** Short label for a route's aircraft badge: registration if set, else name. */
@@ -61,7 +64,7 @@ const MISSING_AIRCRAFT_HINT =
 
 export default function RouteLibrary({
   currentWaypoints, currentLegOverrides, currentAircraftId, onLoad, onClear,
-  activeRouteId, onActiveRouteIdChange,
+  activeRouteId, onActiveRouteIdChange, children,
 }: Props) {
   const { routes, saveRoute, loadRoute, deleteRoute, renameRoute } = useRouteLibrary()
   // The saved-route row the working route is currently linked to, if any —
@@ -102,6 +105,12 @@ export default function RouteLibrary({
   const [saveName, setSaveName]   = useState('')
   const [saving,   setSaving]     = useState(false)
   const [saveAsOpen, setSaveAsOpen] = useState(false)
+
+  // Saved-routes list: open while there is no working route (it is the way
+  // to start one), folded away once a route is loaded or being planned.
+  const hasCurrent = currentWaypoints.length > 0
+  const [showSaved, setShowSaved] = useState(!hasCurrent)
+  useEffect(() => { setShowSaved(!hasCurrent) }, [hasCurrent])
 
   // Search / sort (shown when > 5 routes)
   const [search, setSearch]       = useState('')
@@ -197,6 +206,7 @@ export default function RouteLibrary({
   async function doLoad(id: string) {
     const result = await loadRoute(id)
     if (result) {
+      setShowSaved(false)
       onLoad(result.waypoints, result.legOverrides, result.aircraftId)
       onActiveRouteIdChange(id)
       if (result.aircraftId && result.aircraftId !== currentAircraftId) {
@@ -285,7 +295,7 @@ export default function RouteLibrary({
             </div>
           )}
         </>
-      ) : (
+      ) : hasCurrent ? (
         /* ── Save current route (untitled — create new / overwrite by name) ── */
         <div className={css.saveRow}>
           <input
@@ -305,8 +315,19 @@ export default function RouteLibrary({
             {saving ? '…' : 'Save'}
           </button>
         </div>
-      )}
+      ) : null}
 
+      {children && <div className={css.body}>{children}</div>}
+
+      {/* ── Saved routes: open one into the working route ──────────── */}
+      <button
+        className={css.savedToggle}
+        onClick={() => setShowSaved((v) => !v)}
+        aria-expanded={showSaved}
+      >
+        {showSaved ? '▾' : '▸'} {hasCurrent ? 'Open another route' : 'Saved routes'} ({routes.length})
+      </button>
+      {showSaved && (<>
       {/* ── Search + sort (shown when > 5 saved routes) ─────────────── */}
       {routes.length > 5 && (
         <div className={css.searchRow}>
@@ -385,13 +406,16 @@ export default function RouteLibrary({
         <p className={css.empty}>No matches</p>
       )}
 
+      {/* ── New Route button (closes the current one, asking first if unsaved) ── */}
+      {hasCurrent && (
+        <div className={css.footer}>
+          <button className={css.newBtn} onClick={requestNew}>+ New Route</button>
+        </div>
+      )}
+      </>)}
+
       {/* ── Transient "switched aircraft" confirmation ──────────────── */}
       {switchMsg && <p className={css.switchNote}>✓ {switchMsg}</p>}
-
-      {/* ── New Route button ────────────────────────────────────────── */}
-      <div className={css.footer}>
-        <button className={css.newBtn} onClick={requestNew}>+ New Route</button>
-      </div>
 
       {/* ── Confirm dialog (unsaved changes) ────────────────────────── */}
       {pendingAction && (

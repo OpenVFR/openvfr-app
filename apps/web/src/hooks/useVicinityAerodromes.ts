@@ -5,7 +5,7 @@
  * as native, kept in sync deliberately -- see that file's doc comment for
  * the full rationale:
  *
- *  1. Route marked Active (routeVisible) + route planned -> aerodromes near
+ *  1. Route planned -> aerodromes near
  *     the planned route (same lateral-buffer match as useWeatherAlongRoute.ts),
  *     ordered by distance from the route.
  *  2. Otherwise -> nearest aerodromes to the current/last-known GPS position
@@ -45,8 +45,6 @@ export interface VicinityAerodrome {
 interface Opts {
   waypoints:    RouteWaypoint[]
   position:     GpsPosition | null
-  /** RouteContext's own Active/Inactive toggle -- see doc comment above. */
-  routeVisible: boolean
   /** Settings-page home airfield ICAO -- last-resort fallback. */
   homeIcao?:    string | null
 }
@@ -55,13 +53,13 @@ function toVicinity(a: FullAerodrome, distNm: number): VicinityAerodrome {
   return { icao: a.props.icao, name: a.props.name, lat: a.lat, lng: a.lng, distNm, props: a.props }
 }
 
-export function useVicinityAerodromes({ waypoints, position, routeVisible, homeIcao }: Opts): VicinityAerodrome[] {
+export function useVicinityAerodromes({ waypoints, position, homeIcao }: Opts): VicinityAerodrome[] {
   const [all, setAll] = useState<FullAerodrome[]>([])
 
   const { key: countriesKey } = useActiveCountries()
   useEffect(() => { loadAerodromes().then(setAll) }, [countriesKey])
 
-  const useRoute = routeVisible && waypoints.length > 0
+  const useRoute = waypoints.length > 0
 
   if (all.length === 0) return []
 

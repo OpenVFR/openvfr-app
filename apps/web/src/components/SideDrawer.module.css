@@ -136,6 +136,19 @@
   color: #ffffff;
 }
 
+/* Route section without a route: short how-to plus actions. */
+.routeEmpty {
+  padding: 4px 12px 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.routeEmpty p { margin: 0 0 6px; }
+.routeEmptyActions {
+  display: flex;
+  gap: 6px;
+}
+.routeEmptyActions button { font-size: 11px; }
+
 .sectionBody {
   padding-bottom: 4px;
 }

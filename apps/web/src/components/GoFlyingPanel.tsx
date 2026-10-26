@@ -35,9 +35,7 @@ interface Props {
   isTracking:       boolean     // true = position report is locked to a specific point
   onOpenPlog:       () => void  // open / close the live pilot log panel
   plogOpen:         boolean
-  onAdjustRoute:    () => void  // toggle in-flight route adjustment mode
-  adjustMode:       boolean
-  /** Prototype: Direct-To / drop / adjust live in the map toolbar instead. */
+  /** Prototype: Direct-To / drop live in the map toolbar instead. */
   hideToolbarButtons?: boolean
 }
 
@@ -87,8 +85,6 @@ export default function GoFlyingPanel({
   isTracking,
   onOpenPlog,
   plogOpen,
-  onAdjustRoute,
-  adjustMode,
 }: Props) {
   const [eteMode, setEteMode] = useState<EteMode>('ete-nxt')
 
@@ -336,15 +332,6 @@ export default function GoFlyingPanel({
           >
             PLOG
           </button>
-          {!hideToolbarButtons && (
-          <button
-            className={`${css.adjustBtn} ${adjustMode ? css.adjustBtnActive : ''}`}
-            onClick={onAdjustRoute}
-            title={adjustMode ? 'Lock route — exit adjustment mode' : 'Adjust route in flight'}
-          >
-            {adjustMode ? '🔓 ROUTE' : '✎ ROUTE'}
-          </button>
-          )}
         </div>
       )}
     </div>

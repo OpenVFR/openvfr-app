@@ -16,7 +16,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   IconCurrentLocation, IconCurrentLocationFilled, IconHome, IconPlaneDeparture, IconPlaneArrival,
   IconRulerMeasure, IconSearch, IconNews, IconMapPinPlus,
-  IconPencil, IconLockOpen, IconMagnet, IconMagnetOff, IconZoomScan,
+  IconPencil, IconMagnet, IconMagnetOff, IconZoomScan, IconArrowBigRight,
 } from '@tabler/icons-react'
 
 // Map control button glyphs (Tabler Icons). The imperative MapLibre buttons
@@ -59,6 +59,7 @@ import { buildRunwayWindHighlight, effectiveMagBrg, type RunwayWindEnd } from '@
 import { computeAtcStatus, isNotamAtcRelated, isNotamHoursChangeRelated, type HoursEntry as AtcHoursEntry } from '@open-vfr/shared/atcStatus'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
 import { chooseSnapTarget, sortSnapCandidates, snapHintText, neighbourAtDrop } from '@open-vfr/shared/snapChoice'
+import { navigatingLeg, routeDirect } from '@open-vfr/shared/routeNavigation'
 import { AERODROME_COLORS } from '@open-vfr/shared/featureColors'
 import { fetchAerodromeNotamTexts, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { API_BASE_URL } from '../utils/env'
@@ -365,12 +366,14 @@ const SNAP_LAYERS = [
 
 
 
-// Route layer IDs toggled by the route Active/Inactive toggle (in RoutePlan's
-// header, not a map button — see routeVisible below). Waypoint data is
-// untouched — only display is affected.
 const noop = () => {}
 // Stable empty list for alert categories the pilot turned off.
 const NO_ALERTS: never[] = []
+
+/** How long a tapped leg stays unlocked for dragging in flight. */
+const LEG_UNLOCK_MS = 10_000
+/** Pointer travel (px) before a press on the route counts as a drag. */
+const DRAG_SLOP_PX = 6
 
 /** The three leg-label variant layers (see the addLayer loop in map init). */
 const LEG_LABEL_LAYERS: readonly string[] = ['route-leg-labels-short', 'route-leg-labels-mid', 'route-leg-labels-full']
@@ -383,19 +386,6 @@ const ROUTE_CASING_WIDTH: maplibregl.ExpressionSpecification = ['interpolate', [
  *  does not merge with the orange obstacle icons the drag snaps onto. */
 const DRAG_ROUTE_COLOR = '#22d3ee'
 const DRAG_ROUTE_FILL = 'rgba(34,211,238,0.18)'
-
-const ROUTE_DISPLAY_LAYERS = [
-  'route-line-casing',
-  'route-line-layer',
-  'route-direction-layer',
-  'route-waypoints-casing',
-  'route-waypoints-circle',
-  'route-waypoints-label',
-  'route-midpoints-layer',
-  ...LEG_LABEL_LAYERS,
-  'alternate-line-layer',
-  'alternate-point-layer',
-]
 
 // Popup state — discriminated union covering every interactive feature type.
 type ActivePopup =
@@ -502,9 +492,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
     (rulerModeRef.current || planningModeRef.current || placingUserWpRef.current) ? 'crosshair' : ''
   const hasInitialCenteredRef = useRef(false)
   // Non-null while a midpoint drag-insert is in progress.
-  const dragInsertRef = useRef<{ legIndex: number; cur: maplibregl.LngLat } | null>(null)
+  // `moved` turns true once the pointer leaves DRAG_SLOP_PX around
+  // `startPt`, so finger jitter on a tap never reshapes the route.
+  const dragInsertRef = useRef<{ legIndex: number; cur: maplibregl.LngLat; moved?: boolean; startPt?: { x: number; y: number } } | null>(null)
   // Non-null while an existing waypoint drag-move is in progress.
-  const dragMoveRef = useRef<{ wpIndex: number; cur: maplibregl.LngLat; moved: boolean } | null>(null)
+  const dragMoveRef = useRef<{ wpIndex: number; cur: maplibregl.LngLat; moved: boolean; startPt?: { x: number; y: number } } | null>(null)
   // Long-press timer for leg-line touch (fires at 500 ms, auto-inserts WP).
   const legLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Suppresses the next map click event after a drag-move mousedown fires.
@@ -588,10 +580,10 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const appliedRegionRef = useRef<string | null>(null)
   const { key: countriesKey } = useActiveCountries()
   const [basemapMode, setBasemapMode] = useState<'vector' | 'satellite'>('vector')
+  // "Add points" mode: map clicks append route points. Moving points and
+  // reshaping legs needs no mode on the ground (undo is the safety net); in
+  // flight a leg has to be tapped first (see unlockedLeg).
   const [planningMode, setPlanningMode] = useState(false)
-  // Route activate/deactivate — hides the drawn route on the map without
-  // touching stored waypoints. Independent of planningMode/Clear.
-  const [routeVisible, setRouteVisible] = useState(true)
   const [rulerMode, setRulerMode] = useState(false)
   const [rulerPoints, setRulerPoints] = useState<RouteWaypoint[]>([])
   const [placingUserWp, setPlacingUserWp] = useState(false)
@@ -709,7 +701,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const vicinityAerodromes = useVicinityAerodromes({
     waypoints: routeWaypoints,
     position: gpsPosition,
-    routeVisible,
     homeIcao: homeAirfield?.icao ?? null,
   })
   const nearbyFreqs = useNearbyFrequencies(gpsPosition)
@@ -731,19 +722,35 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // ICAO dismissed by the user; resets when a different aerodrome enters range
   const [briefDismissed, setBriefDismissed] = useState<string | null>(null)
   const [showPlog, setShowPlog] = useState(false)
-  // In-flight route adjustment mode: unlocks drag-move/insert without full planning mode
-  const [routeAdjustMode, setRouteAdjustMode] = useState(false)
-  // Edit sessions run while route editing is possible; leaving planning /
-  // adjust mode applies pending changes (nothing is discarded silently).
-  const { setEditSessionArmed, applyEditSession } = routeUndo
+  // In flight the route is locked against stray touches, one leg at a time:
+  // tapping a leg unlocks just that leg (and its two end points) for
+  // LEG_UNLOCK_MS. Any route change locks it again. Explicit actions (menus,
+  // Direct To, the pilot log) need no unlock.
+  const [unlockedLeg, setUnlockedLeg] = useState<number | null>(null)
+  const unlockedLegRef = useRef<number | null>(null)
+  useEffect(() => { unlockedLegRef.current = unlockedLeg }, [unlockedLeg])
   useEffect(() => {
-    const armed = planningMode || routeAdjustMode
-    setEditSessionArmed(armed)
-    if (!armed) applyEditSession()
-  }, [planningMode, routeAdjustMode, setEditSessionArmed, applyEditSession])
-  // Same lock as the waypoint-drag handlers: while flying, route edits
-  // (including undo/redo) need the explicit in-flight adjust unlock.
-  const routeEditLocked = flyingMode !== 'off' && !routeAdjustMode
+    if (unlockedLeg == null) return
+    const t = setTimeout(() => setUnlockedLeg(null), LEG_UNLOCK_MS)
+    return () => clearTimeout(t)
+  }, [unlockedLeg])
+  useEffect(() => { setUnlockedLeg(null) }, [routeWaypoints, flyingMode])
+  // Short on-map hint ("Tap the leg to unlock it"); auto-hides.
+  const [routeHint, setRouteHint] = useState<string | null>(null)
+  useEffect(() => {
+    if (!routeHint) return
+    const t = setTimeout(() => setRouteHint(null), 2500)
+    return () => clearTimeout(t)
+  }, [routeHint])
+  // Route changes made in flight are collected in an edit session, so the
+  // banner can offer Undo and a one-tap revert to the route as it was
+  // before. On the ground the side pane's undo is enough.
+  const { setEditSessionArmed, applyEditSession } = routeUndo
+  const flyingArmed = flyingMode !== 'off'
+  useEffect(() => {
+    setEditSessionArmed(flyingArmed)
+    if (!flyingArmed) applyEditSession()
+  }, [flyingArmed, setEditSessionArmed, applyEditSession])
 
   // Leg level dragged in the Virtual Radar: null clears the leg's override so
   // it falls back to the route level. One state change = one undo step.
@@ -760,7 +767,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z or Ctrl+Y = redo -- ignored while
   // typing so text fields keep their native undo.
   useEffect(() => {
-    if (routeEditLocked) return
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return
       const t = e.target as HTMLElement | null
@@ -771,17 +777,15 @@ export default function MapView({ auth }: { auth: AuthState }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [routeEditLocked, routeUndo.undo, routeUndo.redo])
-  const routeAdjustModeRef = useRef(false)
-  useEffect(() => { routeAdjustModeRef.current = routeAdjustMode }, [routeAdjustMode])
+  }, [routeUndo.undo, routeUndo.redo])
   // Snapping of dragged route points to POIs, switchable from the map tools for
-  // touch (desktop can hold Alt while dragging). Off only while editing; the
-  // ref is what the map handlers read.
+  // touch (desktop can hold Alt while dragging). Back on when a flight
+  // starts; the ref is what the map handlers read.
   const [snapOff, setSnapOff] = useState(false)
   const snapOffRef = useRef(false)
   useEffect(() => { snapOffRef.current = snapOff }, [snapOff])
-  useEffect(() => { if (!planningMode && !routeAdjustMode) setSnapOff(false) }, [planningMode, routeAdjustMode])
-  // Small context menu shown when tapping a waypoint in adjust mode
+  useEffect(() => { if (flyingMode !== 'off') setSnapOff(false) }, [flyingMode])
+  // Small context menu shown when tapping a route waypoint in flight
   const [wpMenu, setWpMenu] = useState<{ wpIdx: number; x: number; y: number } | null>(null)
   // Context menu shown after long-press on a route leg
   const [legMenu, setLegMenu] = useState<{ legIndex: number; lngLat: maplibregl.LngLat; x: number; y: number } | null>(null)
@@ -938,10 +942,19 @@ export default function MapView({ auth }: { auth: AuthState }) {
       ?? '/aircraft_icons/cessna.svg'
     registerAircraftImageFromSvg(map, url).catch(console.warn)
   }, [selectedAircraftProfile, mapReady])
-  const [activeWpIdx,    setActiveWpIdx]    = useState(1)
+  // Leg being flown, picked from position and track (see routeNavigation):
+  // follows corner cuts, wide passes, shortcuts and edits without any state.
+  // The track only breaks near-ties, and is ignored while (nearly) stopped.
+  const activeLeg = useMemo(() => {
+    if (flyingMode === 'off' || !gpsPosition || routeWaypoints.length < 2) return -1
+    const track = gpsPosition.speedKts >= 15 ? gpsPosition.trackDeg : null
+    return navigatingLeg(routeWaypoints, gpsPosition, track)
+  }, [flyingMode, gpsPosition, routeWaypoints])
+  // Index of the waypoint the aircraft is heading for (the active leg's end).
+  const activeWpIdx = activeLeg >= 0 ? activeLeg + 1 : 1
   // Remove one route point (waypoint menu, drop-onto-neighbour). Kept in a
   // ref too so the map's drag handlers, wired once at map init, see the
-  // latest activeWpIdx.
+  // latest closure.
   const removeWaypointAt = (idx: number) => {
     setRouteWaypoints(prev => prev.filter((_, i) => i !== idx))
     setLegOverrides(prev => {
@@ -949,9 +962,21 @@ export default function MapView({ auth }: { auth: AuthState }) {
       next.splice(idx, 1)
       return next
     })
-    // Clamp activeWpIdx if needed
-    const n = routeWaypointsRef.current.length
-    if (activeWpIdx >= n - 1) setActiveWpIdx(Math.max(1, n - 2))
+  }
+  // Direct To / shortcut / divert from the present position, applied to the
+  // working route (flown legs kept; see routeDirect). One undo step; in
+  // flight the route-changed banner offers Revert.
+  const flyDirect = (target: RouteWaypoint, rejoin = false) => {
+    const pos = gpsPosition
+    if (!pos) return
+    const t = new Date()
+    const hhmm = `${String(t.getUTCHours()).padStart(2, '0')}${String(t.getUTCMinutes()).padStart(2, '0')}`
+    const r = routeDirect({
+      waypoints: routeWaypoints, legOverrides, activeLeg, position: pos, target, rejoin,
+      rejoinMaxNm: 2, positionName: `Pos ${hhmm}Z`,
+    })
+    setRouteWaypoints(r.waypoints)
+    setLegOverrides(r.legOverrides)
   }
   const removeWaypointAtRef = useRef(removeWaypointAt)
   removeWaypointAtRef.current = removeWaypointAt
@@ -1202,11 +1227,10 @@ export default function MapView({ auth }: { auth: AuthState }) {
     }
   }, [airfieldBrief?.icao])
 
-  // Close plog + adjust mode when flying stops
+  // Close plog + route point menu when flying stops
   useEffect(() => {
     if (flyingMode === 'off') {
       setShowPlog(false)
-      setRouteAdjustMode(false)
       setWpMenu(null)
     }
   }, [flyingMode])
@@ -1230,9 +1254,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
     map.setLayoutProperty('terrain-color', 'visibility', 'visible')
   }, [terrainColoring, mapReady, flyingMode, gpsPosition?.altFt, basemapMode])
 
-  // The route being flown, kept with a new flight log (only a route shown on the map counts).
+  // The route being flown, kept with a new flight log (a closed route is gone, so any route counts).
   const plannedRouteRef = useRef<FlightLogRoute | null>(null)
-  plannedRouteRef.current = routeVisible && routeWaypoints.length >= 2
+  plannedRouteRef.current = routeWaypoints.length >= 2
     ? { waypoints: routeWaypoints, legOverrides, aircraftId: selectedAircraftId ?? undefined }
     : null
   // Flight log: records the in-flight track
@@ -1719,6 +1743,15 @@ export default function MapView({ auth }: { auth: AuthState }) {
         source: 'route-line',
         paint: { 'line-color': 'rgba(15,10,30,0.2)', 'line-width': ROUTE_CASING_WIDTH },
       })
+      // Glow under the leg that is unlocked for dragging in flight (filter
+      // set from unlockedLeg; matches nothing otherwise).
+      map.addLayer({
+        id: 'route-leg-unlocked',
+        type: 'line',
+        source: 'route-line',
+        filter: ['==', ['get', 'legIndex'], -1],
+        paint: { 'line-color': DRAG_ROUTE_COLOR, 'line-opacity': 0.45, 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 10, 13, 14, 16, 18], 'line-blur': 2 },
+      })
       map.addLayer({
         id: 'route-line-layer',
         type: 'line',
@@ -1999,12 +2032,43 @@ export default function MapView({ auth }: { auth: AuthState }) {
       })
       map.on('mouseleave', 'route-line-layer', () => {
         setProfileCursorNmRef.current(null)
+        if (!dragInsertRef.current && !dragMoveRef.current) map.getCanvas().style.cursor = baseCursor()
+      })
+      map.on('mouseenter', 'route-line-layer', () => {
+        if (dragInsertRef.current || dragMoveRef.current || editBlocked()) return
+        // Ground: the leg itself can be dragged. Flight: a tap unlocks it.
+        map.getCanvas().style.cursor = flyingModeRef.current === 'off' ? 'grab' : 'pointer'
       })
 
+      // Route editing guard (see unlockedLeg): on the ground every leg and
+      // point can be dragged; in flight only the unlocked leg and its two end
+      // points. A press on a locked one lets the map pan as usual and arms
+      // the "tap to unlock" hint, shown if that press turns into a drag.
+      const editBlocked = () => rulerModeRef.current || placingUserWpRef.current
+      const legDraggable = (leg: number) =>
+        !editBlocked() && (flyingModeRef.current === 'off' || unlockedLegRef.current === leg)
+      const pointDraggable = (wp: number) => {
+        if (editBlocked()) return false
+        if (flyingModeRef.current === 'off') return true
+        const u = unlockedLegRef.current
+        return u != null && (wp === u || wp === u + 1)
+      }
+      let lockedPress = false
+      const noteLockedPress = () => { lockedPress = flyingModeRef.current !== 'off' && !editBlocked() }
+      map.on('dragstart', () => {
+        if (lockedPress) setRouteHint('Route is locked in flight. Tap a leg to unlock it.')
+        lockedPress = false
+      })
+      // A press that ends without a drag is a click. (dragstart can fire a
+      // frame after the pointer is already up, so not reset on mouseup.)
+      map.on('click', () => { lockedPress = false })
+
       // ── Drag-move existing waypoints ─────────────────────────────────────
-      map.on('mouseenter', 'route-waypoints-circle', () => {
-        if ((!planningModeRef.current && !routeAdjustModeRef.current) || dragInsertRef.current || dragMoveRef.current) return
-        map.getCanvas().style.cursor = 'grab'
+      map.on('mouseenter', 'route-waypoints-circle', (e) => {
+        if (dragInsertRef.current || dragMoveRef.current) return
+        const wpIndex = (e.features?.[0]?.properties?.seq as number) - 1
+        if (pointDraggable(wpIndex)) map.getCanvas().style.cursor = 'grab'
+        else if (flyingModeRef.current !== 'off') map.getCanvas().style.cursor = 'pointer'
       })
       map.on('mouseleave', 'route-waypoints-circle', () => {
         if (!dragInsertRef.current && !dragMoveRef.current) {
@@ -2012,32 +2076,54 @@ export default function MapView({ auth }: { auth: AuthState }) {
         }
       })
       map.on('mousedown', 'route-waypoints-circle', (e) => {
-        if ((!planningModeRef.current && !routeAdjustModeRef.current) || e.originalEvent.button !== 0) return
-        e.preventDefault()
-        e.originalEvent.stopPropagation()
-        suppressNextClickRef.current = true
+        if (e.originalEvent.button !== 0) return
         const feat = e.features?.[0]
         const seq = feat?.properties?.seq as number
         const wpIndex = seq - 1   // seq is 1-based
         if (wpIndex < 0) return
-        dragMoveRef.current = { wpIndex, cur: e.lngLat, moved: false }
+        if (!pointDraggable(wpIndex)) { noteLockedPress(); return }
+        e.preventDefault()
+        e.originalEvent.stopPropagation()
+        suppressNextClickRef.current = true
+        dragMoveRef.current = { wpIndex, cur: e.lngLat, moved: false, startPt: e.point }
         map.getCanvas().style.cursor = 'grabbing'
         map.dragPan.disable()
       })
 
       map.on('mousedown', 'route-midpoints-layer', (e) => {
-        // Only respond to left-button (button=0) in planning or adjust mode.
-        if ((!planningModeRef.current && !routeAdjustModeRef.current) || e.originalEvent.button !== 0) return
-        e.preventDefault()
-        e.originalEvent.stopPropagation()
-
+        if (e.originalEvent.button !== 0 || dragMoveRef.current) return
         const feat = e.features?.[0]
         const legIndex = feat?.properties?.legIndex as number ?? -1
         if (legIndex < 0) return
+        if (!legDraggable(legIndex)) { noteLockedPress(); return }
+        e.preventDefault()
+        e.originalEvent.stopPropagation()
 
-        dragInsertRef.current = { legIndex, cur: e.lngLat }
+        dragInsertRef.current = { legIndex, cur: e.lngLat, moved: false, startPt: e.point }
         map.getCanvas().style.cursor = 'grabbing'
         // Disable map panning during drag.
+        map.dragPan.disable()
+      })
+
+      // The leg line itself is a drag handle too (rubber-band a new point
+      // into it), not only the midpoint circle shown while adding points.
+      // Hit-tested with a few px of slack: the line is only 2-4 px wide.
+      const LINE_HIT_PX = 6
+      const onRouteLine = (p: maplibregl.Point): boolean => {
+        if (!map.getLayer('route-line-layer')) return false
+        const box: [maplibregl.PointLike, maplibregl.PointLike] = [[p.x - LINE_HIT_PX, p.y - LINE_HIT_PX], [p.x + LINE_HIT_PX, p.y + LINE_HIT_PX]]
+        return map.queryRenderedFeatures(box, { layers: ['route-line-layer'] }).length > 0
+      }
+      map.on('mousedown', (e) => {
+        if (e.originalEvent.button !== 0 || dragInsertRef.current || dragMoveRef.current) return
+        const wps = routeWaypointsRef.current
+        if (wps.length < 2 || !onRouteLine(e.point)) return
+        const handles = ['route-waypoints-circle', 'route-midpoints-layer'].filter((id) => map.getLayer(id))
+        if (map.queryRenderedFeatures(e.point, { layers: handles }).length > 0) return
+        const legIndex = navigatingLeg(wps, e.lngLat)
+        if (!legDraggable(legIndex)) { noteLockedPress(); return }
+        e.preventDefault()
+        dragInsertRef.current = { legIndex, cur: e.lngLat, moved: false, startPt: e.point }
         map.dragPan.disable()
       })
 
@@ -2116,8 +2202,12 @@ export default function MapView({ auth }: { auth: AuthState }) {
       }
 
       // Drag-insert preview: midpoint handle → new waypoint between two legs.
-      const previewInsert = (dragI: { legIndex: number; cur: maplibregl.LngLat }, e: DragEvent) => {
+      const beyondSlop = (start: { x: number; y: number } | undefined, p: maplibregl.Point) =>
+        !start || Math.hypot(p.x - start.x, p.y - start.y) > DRAG_SLOP_PX
+      const previewInsert = (dragI: { legIndex: number; cur: maplibregl.LngLat; moved?: boolean; startPt?: { x: number; y: number } }, e: DragEvent) => {
         dragI.cur = e.lngLat
+        if (!dragI.moved && !beyondSlop(dragI.startPt, e.point)) return
+        dragI.moved = true
         const wps = routeWaypointsRef.current
         const { legIndex } = dragI
         if (legIndex < 0 || legIndex >= wps.length - 1) return
@@ -2135,8 +2225,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
       }
 
       // Drag-move preview: existing waypoint → new position.
-      const previewMove = (dragM: { wpIndex: number; cur: maplibregl.LngLat; moved: boolean }, e: DragEvent) => {
+      const previewMove = (dragM: { wpIndex: number; cur: maplibregl.LngLat; moved: boolean; startPt?: { x: number; y: number } }, e: DragEvent) => {
         dragM.cur = e.lngLat
+        if (!dragM.moved && !beyondSlop(dragM.startPt, e.point)) return
         dragM.moved = true
         const wps = routeWaypointsRef.current
         const { wpIndex } = dragM
@@ -2186,21 +2277,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
       // Returns the 0-based index of the route leg closest to (lng, lat).
       // Uses simple Euclidean distance in lng/lat space — fine for the short
       // tap-accuracy distances involved here.
-      const nearestLegIndex = (lng: number, lat: number, wps: RouteWaypoint[]): number => {
-        let best = 0
-        let bestDist = Infinity
-        for (let i = 0; i < wps.length - 1; i++) {
-          const ax = wps[i].lng, ay = wps[i].lat
-          const bx = wps[i + 1].lng, by = wps[i + 1].lat
-          const dx = bx - ax, dy = by - ay
-          const lenSq = dx * dx + dy * dy
-          const t = lenSq === 0 ? 0 : Math.max(0, Math.min(1, ((lng - ax) * dx + (lat - ay) * dy) / lenSq))
-          const cx = ax + t * dx, cy = ay + t * dy
-          const d = (lng - cx) * (lng - cx) + (lat - cy) * (lat - cy)
-          if (d < bestDist) { bestDist = d; best = i }
-        }
-        return best
-      }
+      const nearestLegIndex = (lng: number, lat: number, wps: RouteWaypoint[]): number =>
+        Math.max(0, navigatingLeg(wps, { lng, lat }))
 
       const commitDrag = (e: DragEvent) => {
         // ── Commit drag-move (existing waypoint repositioned) ─────────────
@@ -2211,12 +2289,19 @@ export default function MapView({ auth }: { auth: AuthState }) {
           clearPreview()
           map.getCanvas().style.cursor = baseCursor()
           if (!dragM.moved) {
-            // Stationary tap in adjust mode → show WP context menu
-            if (routeAdjustModeRef.current) {
+            // Stationary tap. In flight: the point's action menu (the click
+            // that follows stays suppressed). On the ground: let the click
+            // through, so the feature under the point opens as usual (or the
+            // route's last point starts adding points).
+            if (flyingModeRef.current !== 'off') {
               setWpMenu({ wpIdx: dragM.wpIndex, x: e.point.x, y: e.point.y })
+            } else {
+              suppressNextClickRef.current = false
             }
             return
           }
+          // A drag produces no click, so nothing is left to suppress.
+          suppressNextClickRef.current = false
 
           const { wpIndex } = dragM
           const moveWp = (wp: RouteWaypoint) => {
@@ -2262,6 +2347,10 @@ export default function MapView({ auth }: { auth: AuthState }) {
         map.dragPan.enable()
         clearPreview()
         map.getCanvas().style.cursor = baseCursor()
+        // A press on a leg without dragging is a tap, not an insert: the
+        // click that follows handles it (popup, unlock, add point).
+        suppressNextClickRef.current = false
+        if (!dragI.moved) return
 
         const { legIndex } = dragI
         const insertWp = (wp: RouteWaypoint) => {
@@ -2307,48 +2396,52 @@ export default function MapView({ auth }: { auth: AuthState }) {
 
       // ── Touch: start drag on waypoint handle ───────────────────────────
       map.on('touchstart', 'route-waypoints-circle', (e) => {
-        if (!planningModeRef.current && !routeAdjustModeRef.current) return
         if (e.originalEvent.touches.length !== 1) return  // ignore multi-touch / pinch
-        e.preventDefault()
-        e.originalEvent.stopPropagation()
-        suppressNextClickRef.current = true
         const feat = e.features?.[0]
         const seq = feat?.properties?.seq as number
         const wpIndex = seq - 1
         if (wpIndex < 0) return
-        dragMoveRef.current = { wpIndex, cur: e.lngLat, moved: false }
+        if (!pointDraggable(wpIndex)) { noteLockedPress(); return }
+        e.preventDefault()
+        e.originalEvent.stopPropagation()
+        suppressNextClickRef.current = true
+        dragMoveRef.current = { wpIndex, cur: e.lngLat, moved: false, startPt: e.point }
         map.dragPan.disable()
       })
 
       // ── Touch: start drag on midpoint handle ───────────────────────────
       map.on('touchstart', 'route-midpoints-layer', (e) => {
-        if (!planningModeRef.current && !routeAdjustModeRef.current) return
-        if (e.originalEvent.touches.length !== 1) return
-        e.preventDefault()
-        e.originalEvent.stopPropagation()
+        if (e.originalEvent.touches.length !== 1 || dragMoveRef.current) return
         const feat = e.features?.[0]
         const legIndex = feat?.properties?.legIndex as number ?? -1
         if (legIndex < 0) return
-        dragInsertRef.current = { legIndex, cur: e.lngLat }
+        if (!legDraggable(legIndex)) { noteLockedPress(); return }
+        e.preventDefault()
+        e.originalEvent.stopPropagation()
+        dragInsertRef.current = { legIndex, cur: e.lngLat, moved: false, startPt: e.point }
         map.dragPan.disable()
       })
 
       // ── Touch: tap or drag on leg line to insert a new waypoint ────────
       // Makes the full line a touch target, not just the small midpoint circle.
-      //   short tap  (<500 ms, no drag) → commitDrag inserts WP at tap point
-      //   long press (≥500 ms, no drag) → auto-inserts WP immediately on hold
-      //   touch + drag                  → rubber-band drag-insert (same as midpoint)
-      map.on('touchstart', 'route-line-layer', (e) => {
-        if (!planningModeRef.current && !routeAdjustModeRef.current) return
+      //   short tap  (no drag)  → a plain click (popup / unlock / add point)
+      //   long press (≥500 ms)  → leg menu: insert here / append
+      //   touch + drag          → rubber-band drag-insert (same as midpoint)
+      // In flight only on the unlocked leg; a locked leg pans the map, and a
+      // long press there opens the leg menu via contextmenu.
+      map.on('touchstart', (e) => {
         if (e.originalEvent.touches.length !== 1) return
         if (dragInsertRef.current || dragMoveRef.current) return  // midpoint / WP drag already active
         const wps = routeWaypointsRef.current
-        if (wps.length < 2) return
+        if (wps.length < 2 || !onRouteLine(e.point)) return
+        const handles = ['route-waypoints-circle', 'route-midpoints-layer'].filter((id) => map.getLayer(id))
+        if (map.queryRenderedFeatures(e.point, { layers: handles }).length > 0) return
+        const legIndex = nearestLegIndex(e.lngLat.lng, e.lngLat.lat, wps)
+        if (!legDraggable(legIndex)) { noteLockedPress(); return }
         e.preventDefault()
         e.originalEvent.stopPropagation()
         suppressNextClickRef.current = true
-        const legIndex = nearestLegIndex(e.lngLat.lng, e.lngLat.lat, wps)
-        dragInsertRef.current = { legIndex, cur: e.lngLat }
+        dragInsertRef.current = { legIndex, cur: e.lngLat, moved: false, startPt: e.point }
         map.dragPan.disable()
         // Long-press: show a context menu instead of auto-inserting.
         // The menu offers: Insert here / Append to end / Take Shortcut.
@@ -2881,6 +2974,26 @@ export default function MapView({ auth }: { auth: AuthState }) {
       // Suppress click immediately following a waypoint drag-move mousedown.
       if (suppressNextClickRef.current) { suppressNextClickRef.current = false; return }
 
+      // In flight: tapping a route point opens its action menu; tapping a
+      // leg unlocks that leg (and its end points) for dragging for a few
+      // seconds -- the in-flight guard against stray touches.
+      if (flyingModeRef.current !== 'off' && !rulerModeRef.current && !placingUserWpRef.current &&
+          map.getLayer('route-line-layer') && routeWaypointsRef.current.length >= 2) {
+        const pad = 8
+        const box: [maplibregl.PointLike, maplibregl.PointLike] = [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]]
+        const hits = map.queryRenderedFeatures(box, { layers: ['route-waypoints-circle', 'route-line-layer'] })
+        const wpHit = hits.find((f) => f.layer.id === 'route-waypoints-circle')
+        if (wpHit) {
+          setWpMenu({ wpIdx: (wpHit.properties?.seq as number) - 1, x: e.point.x, y: e.point.y })
+          return
+        }
+        if (hits.length > 0) {
+          setUnlockedLeg(Math.max(0, navigatingLeg(routeWaypointsRef.current, e.lngLat)))
+          setRouteHint('Leg unlocked: drag it or its end points to change the route.')
+          return
+        }
+      }
+
       // ── 0. Sim mode click-to-navigate ─────────────────────────────────────
       // In sim mode, any click that doesn't hit a point feature sets the
       // navigation target. Airspace polygon fills are intentionally excluded —
@@ -2898,7 +3011,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
 
       // ── 0a0. Tap the route's last point outside editing → start extending
       // the route (same as the Plan toggle): the next taps append waypoints.
-      if (!planningModeRef.current && !routeAdjustModeRef.current && !rulerModeRef.current &&
+      if (!planningModeRef.current && !rulerModeRef.current &&
           !placingUserWpRef.current && flyingModeRef.current === 'off' && map.getLayer('route-waypoints-circle')) {
         const n = routeWaypointsRef.current.length
         const hit = map.queryRenderedFeatures(e.point, { layers: ['route-waypoints-circle'] })
@@ -3271,21 +3384,33 @@ export default function MapView({ auth }: { auth: AuthState }) {
       // handlers, which already own long-press on route features while
       // editing (waypoint drag, leg long-press menu).
       const fromTouch = !e.originalEvent.isTrusted
-      const editing = planningModeRef.current || routeAdjustModeRef.current
-      if (fromTouch && editing) {
-        const routeLayers = ['route-waypoints-circle', 'route-midpoints-layer', 'route-line-layer']
-          .filter(id => map.getLayer(id))
-        if (routeLayers.length > 0 && map.queryRenderedFeatures(hitBox, { layers: routeLayers }).length > 0) {
-          e.preventDefault()
-          return
+      const routeLayers = ['route-waypoints-circle', 'route-midpoints-layer', 'route-line-layer']
+        .filter(id => map.getLayer(id))
+      const routeHits = routeLayers.length > 0 ? map.queryRenderedFeatures(hitBox, { layers: routeLayers }) : []
+      const wpHits = routeHits.filter((f) => f.layer.id === 'route-waypoints-circle')
+
+      // In flight, a long press / right-click on the route opens its action
+      // menu (direct to, shortcut, insert, remove) -- explicit actions that
+      // need no leg unlock.
+      if (flyingModeRef.current !== 'off' && routeHits.length > 0) {
+        e.preventDefault()
+        if (wpHits.length > 0) {
+          const seq = (wpHits[0].properties as { seq: number }).seq
+          setWpMenu({ wpIdx: seq - 1, x: e.point.x, y: e.point.y })
+        } else if (routeWaypointsRef.current.length >= 2) {
+          const legIndex = Math.max(0, navigatingLeg(routeWaypointsRef.current, e.lngLat))
+          setLegMenu({ legIndex, lngLat: e.lngLat, x: e.point.x, y: e.point.y })
         }
+        return
+      }
+      // On the ground the route's own touch handlers own long-presses on it
+      // (point drag, leg menu).
+      if (fromTouch && routeHits.length > 0) {
+        e.preventDefault()
+        return
       }
 
-      // Route waypoint removal takes priority (never from a touch long-press
-      // while route editing is locked — falls through to "What's Here?").
-      const wpHits = (fromTouch && !editing)
-        ? []
-        : map.queryRenderedFeatures(hitBox, { layers: ['route-waypoints-circle'] })
+      // Right-click on a route point removes it.
       if (wpHits.length > 0) {
         const seq = (wpHits[0].properties as { seq: number }).seq
         setRouteWaypoints(routeWaypointsRef.current.filter((_, i) => i !== seq - 1))
@@ -3434,7 +3559,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       followReturnTimer = window.setTimeout(() => {
         setFollowReturnAt(null)
         // Not while deliberately adjusting the route in flight.
-        if (flyingModeRef.current !== 'off' && !routeAdjustModeRef.current) setFollowAircraft(true)
+        if (flyingModeRef.current !== 'off' && unlockedLegRef.current == null) setFollowAircraft(true)
       }, FOLLOW_RETURN_MS)
     }
     const disableFollow = () => {
@@ -3632,8 +3757,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Ruler and route editing are mutually exclusive: turning editing on (from
   // the tools menu or anywhere else) switches the ruler off and clears it.
   useEffect(() => {
-    if (planningMode || routeAdjustMode) { setRulerMode(false); setRulerPoints([]) }
-  }, [planningMode, routeAdjustMode])
+    if (planningMode) { setRulerMode(false); setRulerPoints([]) }
+  }, [planningMode])
 
   // Sync ruler state → refs.
   useEffect(() => {
@@ -3654,40 +3779,27 @@ export default function MapView({ auth }: { auth: AuthState }) {
     try { localStorage.setItem('ovfr:uwp:folderVis', JSON.stringify(folderVisibility)) } catch { /* quota */ }
   }, [folderVisibility])
 
-  // Route activate/deactivate: display layer visibility only — the toggle
-  // itself now lives in the side pane's RoutePlan header (Active/Inactive
-  // button), mirroring native's PlanScreen header toggle, instead of a
-  // floating map-corner icon button.
-  // Independent of planningMode's dashed/midpoint styling — applied after that effect
-  // so a hidden route stays hidden even while planning mode is on.
+  // Highlight of the leg unlocked for dragging in flight.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !mapReady) return
-    const editMode = planningMode || routeAdjustMode
-    ROUTE_DISPLAY_LAYERS.forEach((id) => {
-      if (!map.getLayer(id)) return
-      if (!routeVisible) { map.setLayoutProperty(id, 'visibility', 'none'); return }
-      // Restore each layer's normal edit-vs-view visibility rule.
-      if (id === 'route-midpoints-layer') map.setLayoutProperty(id, 'visibility', editMode ? 'visible' : 'none')
-      else if (LEG_LABEL_LAYERS.includes(id)) map.setLayoutProperty(id, 'visibility', editMode ? 'none' : 'visible')
-      else map.setLayoutProperty(id, 'visibility', 'visible')
-    })
-  }, [routeVisible, planningMode, routeAdjustMode, mapReady])
+    if (!map || !mapReady || !map.getLayer('route-leg-unlocked')) return
+    map.setFilter('route-leg-unlocked', ['==', ['get', 'legIndex'], unlockedLeg ?? -1])
+  }, [unlockedLeg, mapReady])
 
-  // Planning mode: toggle button highlight + line style; also re-applies the
-  // idle cursor for the active tool (see baseCursor).
+  // Add-points mode: line style, midpoint handles; also re-applies the idle
+  // cursor for the active tool (see baseCursor).
   useEffect(() => {
     const map = mapRef.current
     if (map) map.getCanvas().style.cursor = baseCursor()
     if (map && mapReady) {
-      const editMode = planningMode || routeAdjustMode
-      // Dashed while editing, solid when viewing the finished route.
+      const editMode = planningMode
+      // Dashed while adding points, solid when viewing the route.
       map.setPaintProperty('route-line-layer', 'line-dasharray', editMode ? [4, 2] : undefined)
       // Midpoint handles and leg labels are mutually exclusive.
       map.setLayoutProperty('route-midpoints-layer', 'visibility', editMode ? 'visible' : 'none')
       for (const id of LEG_LABEL_LAYERS) map.setLayoutProperty(id, 'visibility', editMode ? 'none' : 'visible')
     }
-  }, [planningMode, routeAdjustMode, rulerMode, placingUserWp, mapReady])
+  }, [planningMode, rulerMode, placingUserWp, mapReady])
 
   // Sync route waypoints → MapLibre GeoJSON sources.
   useEffect(() => {
@@ -4033,7 +4145,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     flyingModeRef.current = flyingMode
     if (flyingMode !== 'off') {
       setFollowAircraft(true)
-      setActiveWpIdx(1)
+      setPlanningMode(false)
       autoZoomPhaseRef.current = 'idle'  // ready to detect takeoff
       autoZoomTargetRef.current = null
       setTrackedPoint(null)
@@ -4332,7 +4444,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       if (autoZoomRef.current && !autoZoomPausedRef.current) {
         const focus = focusTrackerRef.current.update({
           pos, speedKts: gpsPosition.speedKts, parkedKts: 15,
-          route: routeVisible ? routeWaypoints : [],
+          route: routeWaypoints,
         })
         if (focus && gpsPosition.speedKts >= 15) {
           const near = distNm(pos, focus.focus) <= focus.nearNm
@@ -4356,28 +4468,24 @@ export default function MapView({ auth }: { auth: AuthState }) {
         map.easeTo({ center: centre, bearing, offset: [0, lookAheadPx], duration: zoomChange ? 1200 : 450, ...(zoomChange ? { zoom: zoom as number } : null) })
       }
     }
-  }, [gpsPosition, mapReady, followAircraft, mapOrientation, routeWaypoints, routeVisible, activeWpIdx, selectedAircraftProfile])
+  }, [gpsPosition, mapReady, followAircraft, mapOrientation, routeWaypoints, activeWpIdx, selectedAircraftProfile])
   // Anything that changes where / how the map should sit forces the next move.
   useEffect(() => { lastFollowRef.current = null }, [followAircraft, mapOrientation, activeWpIdx, autoZoom, autoZoomPaused])
 
-  // Auto-advance active WP index when aircraft is within 0.3 NM of next WP.
-  useEffect(() => {
-    if (!gpsPosition || flyingMode === 'off' || routeWaypoints.length < 2) return
-    const destWp = routeWaypoints[activeWpIdx]
-    if (!destWp || activeWpIdx >= routeWaypoints.length - 1) return
-    if (distanceNm(gpsPosition, destWp) < 0.3) {
-      setActiveWpIdx(i => i + 1)
-    }
-  }, [gpsPosition, flyingMode, routeWaypoints, activeWpIdx])
-
   // Waypoint reminder — fire when activeWpIdx changes while flying.
   const [reminderNote, setReminderNote] = useState<{ text: string; wpName: string } | null>(null)
+  // The active leg can switch back and forth near a turning point (ties are
+  // broken by track), so each reminder fires once per flight.
+  const firedRemindersRef = useRef(new Set<string>())
+  useEffect(() => { if (flyingMode !== 'off') firedRemindersRef.current = new Set() }, [flyingMode])
   useEffect(() => {
-    if (flyingMode === 'off') return
+    if (flyingMode === 'off' || activeLeg < 0) return
     const wp = routeWaypoints[activeWpIdx]
-    if (wp?.note) {
-      setReminderNote({ text: wp.note, wpName: wp.name ?? `WP${activeWpIdx + 1}` })
-    }
+    if (!wp?.note) return
+    const key = `${wp.lat.toFixed(5)},${wp.lng.toFixed(5)}:${wp.note}`
+    if (firedRemindersRef.current.has(key)) return
+    firedRemindersRef.current.add(key)
+    setReminderNote({ text: wp.note, wpName: wp.name ?? `WP${activeWpIdx + 1}` })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWpIdx])
 
@@ -4454,20 +4562,21 @@ export default function MapView({ auth }: { auth: AuthState }) {
     onRefresh: refreshManifest,
     waypoints: routeWaypoints,
     legOverrides,
-    routeVisible,
-    onToggleRouteVisible: () => setRouteVisible((v) => !v),
     planningMode,
-    onTogglePlanningMode: () => setPlanningMode((m) => !m),
+    // Adding points by clicking the map is a planning tool: not offered in
+    // flight (the route menus and Direct To cover changes there).
+    onTogglePlanningMode: flyingMode === 'off' ? () => setPlanningMode((m) => !m) : undefined,
     onUndo: routeUndo.undo,
     onRedo: routeUndo.redo,
-    canUndo: routeUndo.canUndo && !routeEditLocked,
-    canRedo: routeUndo.canRedo && !routeEditLocked,
-    onClear: () => { setRouteWaypoints([]); setPlanningMode(false) },
+    canUndo: routeUndo.canUndo,
+    canRedo: routeUndo.canRedo,
+    // Close the route: off the map and unlinked from its saved copy (which
+    // stays in the library). Undoable.
+    onClear: () => { setRouteWaypoints([]); setActiveRouteId(''); setPlanningMode(false) },
     onReplace: (wps: RouteWaypoint[]) => setRouteWaypoints(wps),
     onLoadRoute: (wps: RouteWaypoint[], ovr: LegOverride[], aircraftId?: string) => {
       loadRouteIntoMap(wps, ovr, aircraftId)
       if (aircraftId) setSelectedAircraftId(aircraftId)
-      setPlanningMode(true)
       // Fit the camera to the newly-loaded route's extent -- mirrors
       // native's identical activeRouteId-keyed AviationMap effect.
       // Fired directly here (not from a separate effect watching
@@ -4550,6 +4659,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
       <div className={css.mapArea}>
         {routeUndo.editSessionActive && (
           <RouteEditBanner
+            label="Route changed"
+            cancelLabel="Revert"
+            applyLabel="Keep"
             canUndo={routeUndo.canUndo}
             canRedo={routeUndo.canRedo}
             onUndo={routeUndo.undo}
@@ -4557,6 +4669,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
             onCancel={routeUndo.cancelEditSession}
             onApply={routeUndo.applyEditSession}
           />
+        )}
+        {routeHint && !routeUndo.editSessionActive && (
+          <div className={css.routeHint} role="status">{routeHint}</div>
         )}
         {autoFly.suggestion && (
           <AutoFlyPrompt kind={autoFly.suggestion} onAccept={autoFly.accept} onDismiss={autoFly.dismiss} />
@@ -4571,21 +4686,20 @@ export default function MapView({ auth }: { auth: AuthState }) {
               icon: <IconHome {...CTRL_ICON} />, dim: !homeAirfield,
               onSelect: () => { if (homeAirfield) mapRef.current?.flyTo({ center: [homeAirfield.lng, homeAirfield.lat], zoom: 13, speed: 1.4 }) } },
           ]
-          // Route editing: planningMode on the ground, routeAdjustMode in flight.
-          const editOn = flying ? routeAdjustMode : planningMode
-          const toggleEdit = () => flying ? setRouteAdjustMode(v => !v) : setPlanningMode(m => !m)
           const toolItems: ToolItem[] = [
             { id: 'ruler', label: 'Ruler', description: 'Measure distance and bearing: tap two points on the map. Tap again to switch off and clear.', icon: <IconRulerMeasure {...CTRL_ICON} />, active: rulerMode,
-              onSelect: () => { if (rulerMode) setRulerPoints([]); else { setPlanningMode(false); setRouteAdjustMode(false) }; setRulerMode(!rulerMode) } },
-            { id: 'edit', label: editOn ? 'Lock route' : 'Edit route',
-              description: flying
-                ? (editOn ? 'Lock the route again so it cannot be changed by accident' : 'Unlock the route to drag or add waypoints in flight (re-locks on the next flight)')
-                : (editOn ? 'Stop editing and lock the route' : 'Tap the map to add waypoints; drag them or the leg midpoints to change the route'),
-              icon: editOn ? <IconLockOpen {...CTRL_ICON} /> : <IconPencil {...CTRL_ICON} />, active: editOn, onSelect: toggleEdit },
+              onSelect: () => { if (rulerMode) setRulerPoints([]); else setPlanningMode(false); setRulerMode(!rulerMode) } },
           ]
+          // Adding points by clicking the map (planning only; dragging points
+          // and legs needs no mode on the ground, and a tapped leg in flight).
+          if (!flying) toolItems.push({ id: 'edit', label: planningMode ? 'Done adding' : 'Add points',
+            description: planningMode
+              ? 'Stop adding route points by clicking the map'
+              : 'Click the map to add route points at the end of the route. Points and legs can always be dragged; Ctrl+Z undoes.',
+            icon: <IconPencil {...CTRL_ICON} />, active: planningMode, onSelect: () => setPlanningMode(m => !m) })
           // Place route points exactly where they are dropped, even next to a POI:
           // the touch counterpart of holding Alt while dragging.
-          if (editOn) toolItems.push({
+          if (!flying && routeWaypoints.length > 0) toolItems.push({
             id: 'snap', label: snapOff ? 'Snap off' : 'Snap on', keepOpen: true, active: !snapOff,
             description: snapOff
               ? 'Dragged route points land exactly where you drop them. Tap to snap to aerodromes, navaids and obstacles again.'
@@ -4603,6 +4717,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
                 onSelect: () => { stopFlying(); setShowModePicker(false) } }
             : { id: 'go', label: 'Go flying', description: 'Start flying mode with GPS, the keyboard simulator or an external simulator', icon: <IconPlaneDeparture {...CTRL_ICON} />,
                 active: showModePicker, onSelect: () => setShowModePicker(m => !m) }]
+          // Direct To: the in-flight replanning entry point (also reached from
+          // a route point's or leg's menu on the map).
+          if (flying) flyItems.push({ id: 'directto', label: 'Direct to',
+            description: 'Fly direct from your present position to a nearby aerodrome. Legs already flown stay in the route; Revert undoes it.',
+            icon: <IconArrowBigRight {...CTRL_ICON} />, active: showDirectTo, onSelect: () => setShowDirectTo(m => !m) })
           // Auto-zoom while following the aircraft (saved setting, shared with Settings).
           if (flying) flyItems.push({ id: 'autozoom', label: autoZoom && autoZoomPaused ? 'Resume' : 'Auto zoom',
             description: autoZoom && autoZoomPaused
@@ -4627,7 +4746,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           map={mapReady ? mapRef.current : null}
           orientation={mapOrientation}
           canToggle={flyingMode !== 'off'}
-          canCourse={routeVisible && routeWaypoints.length >= 2}
+          canCourse={routeWaypoints.length >= 2}
           onOrientationChange={handleOrientation}
         />
         <MapInfoBar map={mapReady ? mapRef.current : null} ceilingFt={ceilingFt} units={units} windLabel={windEnabled ? windOverlay.label : undefined} windSurface={windSurface} onToggleWindSurface={() => setWindSurface((v) => !v)} />
@@ -4842,8 +4961,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
         />
       )}
 
-      {/* ── In-flight waypoint action menu (adjust mode tap) ─────────── */}
-      {wpMenu && routeAdjustMode && (
+      {/* ── In-flight route point menu (tap / long-press a route point) ── */}
+      {wpMenu && flyingMode !== 'off' && (
         <WpActionMenu
           wpIdx={wpMenu.wpIdx}
           waypoints={routeWaypoints}
@@ -4852,27 +4971,19 @@ export default function MapView({ auth }: { auth: AuthState }) {
           y={wpMenu.y}
           canvasW={containerRef.current?.clientWidth  ?? window.innerWidth}
           canvasH={containerRef.current?.clientHeight ?? window.innerHeight}
-          onDirectTo={(idx) => {
-            // Cut the route: keep origin (wp 0) or current active, then skip to idx
-            setRouteWaypoints(prev => {
-              const before = prev.slice(0, activeWpIdx)
-              const after  = prev.slice(idx)
-              return [...before, ...after]
-            })
-            // activeWpIdx stays the same — the waypoint at that index is now idx
-          }}
+          onDirectTo={(idx) => { const wp = routeWaypoints[idx]; if (wp) flyDirect(wp) }}
           onRemove={removeWaypointAt}
           onClose={() => setWpMenu(null)}
         />
       )}
 
-      {/* ── Long-press leg action menu (planning mode + adjust mode) ─── */}
+      {/* ── Leg menu (long-press a leg; right-click in flight) ─────────── */}
       {legMenu && (
         <LegActionMenu
           lngLat={legMenu.lngLat}
           legIndex={legMenu.legIndex}
           waypointCount={routeWaypoints.length}
-          activeWpIdx={routeAdjustMode ? activeWpIdx : -1}
+          activeWpIdx={flyingMode !== 'off' && activeLeg >= 0 ? activeWpIdx : -1}
           x={legMenu.x}
           y={legMenu.y}
           canvasW={containerRef.current?.clientWidth  ?? window.innerWidth}
@@ -4894,20 +5005,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
             setRouteWaypoints(prev => [...prev, { lng: ll.lng, lat: ll.lat }])
             setLegOverrides(prev => [...prev, {}])
           }}
-          onShortcut={(ll, legIndex) => {
-            // Replace route from activeWpIdx onward with [pressed point, next original WP...]
-            setRouteWaypoints(prev => {
-              const before = prev.slice(0, activeWpIdx)
-              const after  = prev.slice(legIndex + 1)
-              return [...before, { lng: ll.lng, lat: ll.lat }, ...after]
-            })
-            setLegOverrides(prev => {
-              const before = prev.slice(0, activeWpIdx)
-              const after  = prev.slice(legIndex + 1)
-              return [...before, {}, ...after]
-            })
-            // activeWpIdx stays — the new WP at activeWpIdx becomes the target
-          }}
+          /* Fly to the pressed point, then rejoin the route after that leg. */
+          onShortcut={(ll) => flyDirect({ lng: ll.lng, lat: ll.lat }, true)}
           onClose={() => setLegMenu(null)}
         />
       )}
@@ -4918,14 +5017,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           position={gpsPosition}
           homeIcao={homeAirfield?.icao ?? null}
           aircraftProfile={selectedAircraftProfile}
-          onDirectTo={(wp) => {
-            // Replace route with [current position → chosen aerodrome]
-            setRouteWaypoints([
-              { lat: gpsPosition.lat, lng: gpsPosition.lng, name: 'Position' },
-              wp,
-            ])
-            setActiveWpIdx(1)
-          }}
+          onDirectTo={(wp) => flyDirect(wp)}
           onClose={() => setShowDirectTo(false)}
         />
       )}
@@ -4979,7 +5071,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       {/* Bottom pane: instruments / sim buttons / ruler strip + Virtual Radar.
           The splitter on its top edge sets the chart height. */}
       <div className={css.bottomPane}>
-        {(showRulerProfile || (selectedLogId && selectedLogProfile) || (routeVisible && routeWaypoints.length >= 2) || flyingMode !== 'off') && <VrResizeGrip />}
+        {(showRulerProfile || (selectedLogId && selectedLogProfile) || routeWaypoints.length >= 2 || flyingMode !== 'off') && <VrResizeGrip />}
         {/* ── In-flight instruments (GoFlyingPanel) — own grid row ──────── */}
         {flyingMode !== 'off' && gpsPosition && (
           <div className={css.gfpRow}>
@@ -5020,8 +5112,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
             isTracking={trackedPoint !== null}
             onOpenPlog={() => setShowPlog(v => !v)}
             plogOpen={showPlog}
-            onAdjustRoute={() => setRouteAdjustMode(v => !v)}
-            adjustMode={routeAdjustMode}
             hideToolbarButtons
             followAircraft={followAircraft}
             onFollow={() => {
@@ -5077,8 +5167,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
               plannedRoute={selectedLogRoute}
             />
           </div>
-        ) : routeVisible && routeWaypoints.length >= 2 ? (
-          // An inactive route is hidden from the map, so it gets no radar either.
+        ) : routeWaypoints.length >= 2 ? (
           <div className={css.vrRow}>
             <VirtualRadar
               waypoints={routeWaypoints}
@@ -5095,7 +5184,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
               trajectoryMode={trajectoryMode}
               onHoverDistNm={setProfileCursorNm}
               crosshairDistNm={profileCursorNm}
-              onLegLevelChange={(planningMode || routeAdjustMode) && !routeEditLocked ? handleLegLevelChange : undefined}
+              onLegLevelChange={flyingMode === 'off' ? handleLegLevelChange : undefined}
             />
           </div>
         ) : flyingMode !== 'off' ? (

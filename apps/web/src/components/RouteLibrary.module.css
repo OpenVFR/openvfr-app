@@ -213,6 +213,24 @@
   padding-top: 2px;
 }
 
+/* The working route's editor (RoutePlan), full width under the header. */
+.body {
+  margin: 0 -10px;
+}
+
+/* Fold toggle for the saved-routes list. */
+.savedToggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 2px 0;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.savedToggle:hover { color: var(--text-primary); }
+
 .newBtn {
   background: none;
   border: 1px dashed var(--border-strong);
