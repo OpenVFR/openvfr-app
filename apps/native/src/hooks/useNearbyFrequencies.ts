@@ -24,7 +24,11 @@ export interface NearbyFreq {
 export interface NearbyAerodrome {
   icao:        string
   name:        string
+  /** Distance when the list was last rebuilt (not refreshed per fix; see lat/lng). */
   distNm:      number
+  /** Position, so a display can show a live distance from the current fix. */
+  lat?:        number
+  lng?:        number
   /** Primary freq — TWR > AFIS > INFO > first available */
   primaryFreq: string | null
   frequencies: NearbyFreq[]
@@ -198,13 +202,18 @@ export function useNearbyFrequencies(position: GpsPosition | null): NearbyAerodr
         icao:        a.icao,
         name:        a.name,
         distNm:      d,
+        lat:         a.lat,
+        lng:         a.lng,
         primaryFreq: pickPrimary(a.freqs),
         frequencies: a.freqs,
       })
     }
     results.sort((a, b) => a.distNm - b.distNm)
-    // One decimal = what the readout shows; finer made every second's movement a state change (an extra MapScreen render).
-    const sig = results.map(r => `${r.icao}:${r.distNm.toFixed(1)}`).join('|')
+    // Only which aerodromes and their order: a distance in the signature made a
+    // state change (an extra MapScreen render) about every second in flight
+    // with several fields in range. The readout computes live distances from
+    // lat/lng and the current fix instead.
+    const sig = results.map(r => r.icao).join('|')
     if (sig !== lastSigRef.current) {
       lastSigRef.current = sig
       setNearby(results)

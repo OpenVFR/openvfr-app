@@ -98,7 +98,8 @@ const COLUMNS: ColumnSpec[] = [
 ]
 const textEm = (c: ColumnSpec, digits: number) => Math.max(digits, c.digits) * EM_PER_CHAR + c.unit.length * EM_PER_CHAR * UNIT_SCALE
 
-export function SimControlPanel({ speedKts, altFt, trackDeg, onAdjustHeading, onAdjustSpeed, onAdjustAlt, onAdvance, onStop }: Props) {
+// Memoized: MapScreen re-renders on every position tick, the panel only when its values change.
+export const SimControlPanel = React.memo(function SimControlPanel({ speedKts, altFt, trackDeg, onAdjustHeading, onAdjustSpeed, onAdjustAlt, onAdvance, onStop }: Props) {
   const styles = useThemedStyles(makeStyles)
   const hdg   = useHoldRepeat(onAdjustHeading)
   const speed = useHoldRepeat(onAdjustSpeed)
@@ -174,7 +175,7 @@ export function SimControlPanel({ speedKts, altFt, trackDeg, onAdjustHeading, on
       </View>
     </View>
   )
-}
+})
 
 function makeStyles(theme: ScaledTheme) {
  return {

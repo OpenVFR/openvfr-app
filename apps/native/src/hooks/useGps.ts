@@ -64,8 +64,16 @@ function sameFix(a: GpsPosition, b: GpsPosition): boolean {
     && a.trackDeg === b.trackDeg
 }
 
-export function useGps(): UseGpsResult {
+/**
+ * @param opts.paused While true, fixes are not published as state (the
+ *   location service keeps running). The map screen passes true while a
+ *   simulator drives the position: a real fix would otherwise re-render the
+ *   whole screen once a second for a position nobody shows.
+ */
+export function useGps(opts: { paused?: boolean } = {}): UseGpsResult {
   const [position, setPosition]  = useState<GpsPosition | null>(null)
+  const pausedRef                = useRef(!!opts.paused)
+  pausedRef.current              = !!opts.paused
   const [status, setStatus]      = useState<GpsStatus>('idle')
   const activeRef                = useRef(false)
   const lastStableTrackRef       = useRef(0)
@@ -94,6 +102,7 @@ export function useGps(): UseGpsResult {
     setStatus('active')
 
     unsubscribeRef.current = addLocationListener((loc) => {
+      if (pausedRef.current) return
       const coords = loc.coords
       const speedKts = coords.speed != null ? coords.speed * 1.943844 : 0  // m/s -> kts
       if (speedKts >= MIN_SPEED_FOR_TRACK_KTS && coords.heading != null) {

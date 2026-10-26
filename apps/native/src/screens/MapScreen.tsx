@@ -250,13 +250,14 @@ function MapScreenForCountry() {
   const styles = useThemedStyles(makeStyles)
   const insets                                = useSafeAreaInsets()
   const { width: windowWidth, height: windowHeight } = useWindowDimensions()
-  const { position, status, start, stop }     = useGps()
   const { simStatus, simPosition, startUdp, startWs, stopSim } = useSimContext()
   // Internal touch-controlled flight simulation (useSimFlight) — distinct
   // from useSimContext above, which is an EXTERNAL simulator connection
   // (X-Plane/MSFS via UDP or WebSocket, configured in Settings). Precedence:
   // external sim > internal touch sim > real GPS.
   const simFlight = useSimFlight()
+  // Real fixes are not needed while a simulator drives the position.
+  const { position, status, start, stop }     = useGps({ paused: simPosition != null || simFlight.active })
   const activePosition = simPosition ?? simFlight.position ?? position
   const { waypoints, legOverrides, addWaypoint, insertWaypoint, updateWaypoint, removeWaypoint,
            routeVisible, activeRouteId, routeFitNonce,
@@ -857,6 +858,8 @@ function MapScreenForCountry() {
     KeepAwake.activateKeepAwakeAsync()
   }, [flying, homeCoord, position, waypoints, aircraftProfile, simFlight])
 
+  const simAdvanceNm = simFlight.advanceNm
+  const handleSimAdvance = useCallback(() => simAdvanceNm(1), [simAdvanceNm])
   const handleStopFlight = useCallback(() => {
     if (simFlight.active) simFlight.stop()
     setFlying(false); setFollowGps(false)
@@ -1945,13 +1948,14 @@ function MapScreenForCountry() {
 
       {simFlight.active && (
         <SimControlPanel
-          speedKts={simFlight.position?.speedKts ?? 0}
-          altFt={simFlight.position?.altFt ?? 0}
-          trackDeg={simFlight.position?.trackDeg ?? 0}
+          // Rounded like the panel shows them, so the memoized panel skips ticks that change nothing visible.
+          speedKts={Math.round(simFlight.position?.speedKts ?? 0)}
+          altFt={Math.round(simFlight.position?.altFt ?? 0)}
+          trackDeg={Math.round(simFlight.position?.trackDeg ?? 0)}
           onAdjustHeading={simFlight.adjustHeading}
           onAdjustSpeed={simFlight.adjustSpeed}
           onAdjustAlt={simFlight.adjustAlt}
-          onAdvance={() => simFlight.advanceNm(1)}
+          onAdvance={handleSimAdvance}
           onStop={handleStopFlight}
         />
       )}

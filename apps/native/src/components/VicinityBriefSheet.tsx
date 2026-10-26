@@ -43,6 +43,7 @@ import AerodromeWxSection from './AerodromeWxSection'
 import AerodromeNotamSection, { useNotamLists } from './AerodromeNotamSection'
 import { NativeSheet } from './NativeSheet'
 import { decodeMetar } from '@open-vfr/shared/fetchWx'
+import { distanceNm } from '../utils/routeCalc'
 
 const SVC_COLOR: Record<string, string> = {
   TWR: '#3b82f6', AFIS: '#3b82f6', APP: '#8b5cf6', DEP: '#8b5cf6',
@@ -167,7 +168,7 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
               <View style={styles.adHeader}>
                 <Text style={styles.adIcao}>{ad.icao}</Text>
                 <Text style={styles.adName} numberOfLines={1}>{ad.name}</Text>
-                <Text style={styles.adDist}>{ad.distNm.toFixed(1)} NM</Text>
+                <Text style={styles.adDist}>{(position && ad.lat != null && ad.lng != null ? distanceNm(position, { lat: ad.lat, lng: ad.lng }) : ad.distNm).toFixed(1)} NM</Text>
               </View>
               {ad.frequencies.length === 0 ? (
                 <Text style={styles.noFreq}>No frequencies on record</Text>
