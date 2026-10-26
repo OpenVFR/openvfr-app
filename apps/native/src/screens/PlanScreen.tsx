@@ -130,7 +130,7 @@ export function PlanScreen() {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const insets = useSafeAreaInsets()
-  const { waypoints, legOverrides, addWaypoint, insertWaypoint, removeWaypoint, clearRoute, setWaypoints, moveWaypoint, reverseRoute, setLegOverride, activeRouteId, setActiveRouteId, routeVisible, setRouteVisible } = useRouteContext()
+  const { waypoints, legOverrides, addWaypoint, insertWaypoint, removeWaypoint, clearRoute, setWaypoints, moveWaypoint, reverseRoute, setLegOverride, activeRouteId, setActiveRouteId } = useRouteContext()
   const { settings, update } = useSettingsContext()
   const routeWx = useWeatherAlongRoute(waypoints)
   const tafWarnIcaos = useMemo(() => tafChangeIcaos(routeWx), [routeWx])
@@ -590,23 +590,9 @@ export function PlanScreen() {
     navigation.setOptions({
       headerRight: segment === 'route' ? () => (
         <View style={styles.headerActions}>
-            {waypoints.length > 0 && (
-              <TouchableOpacity
-                onPress={() => setRouteVisible(v => !v)}
-                style={[styles.headerBtn, !routeVisible && styles.headerBtnInactive]}
-              >
-                <MaterialCommunityIcons
-                  name="map-marker-path"
-                  size={14}
-                  color={routeVisible ? theme.textPrimary : '#ffffff'}
-                />
-                <Text style={[styles.headerBtnTxt, !routeVisible && styles.headerBtnTxtInactive]}>
-                  {routeVisible ? ' Active' : ' Inactive'}
-                </Text>
-              </TouchableOpacity>
-            )}
-            {/* Overflow menu -- Open (Route Library) / Undo / Export / Import /
-                Reverse / Clear, previously six separate always-visible buttons here. */}
+            {/* Overflow menu -- Route Library / Export / Import / Reverse /
+                Close route. There is no Active/Inactive switch: the route
+                on screen is the one working route; one not wanted is closed. */}
             <TouchableOpacity onPress={() => setMoreMenuOpen(true)} testID="plan-more-open" style={styles.moreBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="ellipsis-horizontal" size={14} color={theme.accentBlue} />
             </TouchableOpacity>
@@ -688,8 +674,8 @@ export function PlanScreen() {
             style={styles.moreMenuItem}
             onPress={() => { setMoreMenuOpen(false); handleClear() }}
           >
-            <Ionicons name="trash-outline" size={16} color={theme.accentRed} />
-            <Text style={[styles.moreMenuItemTxt, { color: theme.accentRed }]}>Clear Route</Text>
+            <Ionicons name="close-circle-outline" size={16} color={theme.textSecondary} />
+            <Text style={styles.moreMenuItemTxt}>Close route</Text>
           </TouchableOpacity>
         )}
       </NativeSheet>
@@ -1447,14 +1433,12 @@ function makeStyles(theme: ScaledTheme) {
     height: theme.scale(26), paddingHorizontal: theme.space2,
     borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.accentBlue,
   },
-  headerBtnInactive: { borderColor: 'rgba(248, 113, 113, 0.85)', backgroundColor: 'rgba(248, 113, 113, 0.85)' },
   moreBtn: {
     width: theme.scale(26), height: theme.scale(26),
     alignItems: 'center', justifyContent: 'center',
     borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.accentBlue,
   },
   headerBtnTxt: { color: theme.accentBlue, fontSize: theme.textXs, fontWeight: '700' },
-  headerBtnTxtInactive: { color: '#ffffff' },
   clearBtn:    { color: theme.accentRed, fontSize: theme.textSm },
 
   // Overflow ("...") menu -- Open Route Library / Undo / Export / Import

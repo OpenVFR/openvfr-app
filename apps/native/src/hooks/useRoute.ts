@@ -138,15 +138,6 @@ export function useRoute() {
     persist(prev => ({ ...prev, waypoints: [...prev.waypoints, wp], updatedAt: Date.now() }))
   }, [persist])
 
-  const [routeVisible, setRouteVisibleRaw] = useState(true)
-  const routeVisibleRef = useRef(true)
-  const setRouteVisible = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
-    const next = typeof v === 'function' ? v(routeVisibleRef.current) : v
-    routeVisibleRef.current = next
-    setRouteVisibleRaw(next)
-    if (next) setRouteFitNonce(n => n + 1)
-  }, [])
-
   const removeWaypoint = useCallback((index: number) => {
     persist(prev => ({
       ...prev,
@@ -156,10 +147,11 @@ export function useRoute() {
     }))
   }, [persist])
 
+  /** Close route / New route: takes the route off the map and unlinks it
+   *  from its saved copy. One undo step (undo restores both the points and
+   *  the link). Ends any edit session, like loading a route does. */
   const clearRoute = useCallback(() => {
-    // New Route — also unlinks from whatever saved route was active, same as
-    // web's requestNew()/onActiveRouteIdChange('') pairing.
-    persist(() => ({ ...blank(), updatedAt: Date.now() }))
+    persist(() => ({ ...blank(), updatedAt: Date.now() }), true, true)
   }, [persist])
 
   // Bumped whenever a whole route is loaded or re-shown; the map fits its
@@ -168,6 +160,12 @@ export function useRoute() {
   const setWaypoints = useCallback((wps: RouteWaypoint[], overrides?: LegOverride[]) => {
     setRouteFitNonce(n => n + 1)
     persist(prev => ({ ...prev, waypoints: wps, legOverrides: overrides ?? prev.legOverrides, updatedAt: Date.now() }), true, true)
+  }, [persist])
+
+  /** Replace points and leg overrides as one ordinary edit (one undo step,
+   *  part of the edit session; no camera fit). Used by Direct To / shortcut. */
+  const replaceRoute = useCallback((wps: RouteWaypoint[], overrides: LegOverride[]) => {
+    persist(prev => ({ ...prev, waypoints: wps, legOverrides: overrides, updatedAt: Date.now() }))
   }, [persist])
 
   const insertWaypoint = useCallback((afterIndex: number, wp: RouteWaypoint) => {
@@ -229,10 +227,7 @@ export function useRoute() {
            undo, redo,
            canUndo: historyRef.current.past.length > 0,
            canRedo: historyRef.current.future.length > 0,
-           clearRoute, setWaypoints, loaded,
-           // Route activate/deactivate — hides the drawn route on the map without
-           // touching stored waypoints. Purely a display toggle, not persisted.
-           routeVisible, setRouteVisible,
+           clearRoute, setWaypoints, replaceRoute, loaded,
            // Saved-route link — id of the routes-collection row the working
            // route was loaded from ('' = untitled/unlinked). See setActiveRouteId above.
            activeRouteId: route.linkedRouteId ?? '', setActiveRouteId, routeFitNonce,

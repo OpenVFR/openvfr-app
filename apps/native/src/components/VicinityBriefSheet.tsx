@@ -17,7 +17,7 @@
  *   See useVicinityAerodromes.ts's own `frequencies` field doc comment.
  * - Wx / NOTAM tabs: share one aerodrome picker (useVicinityAerodromes.ts),
  *   defaulting to the closest aerodrome -- along the route when one is
- *   loaded AND marked Active (routeVisible), otherwise nearest by GPS
+ *   loaded, otherwise nearest by GPS
  *   radius. Switching tabs
  *   keeps the same picked aerodrome; switching aerodrome refetches via
  *   useAerodromeBriefing.ts (one fetch at a time, for whichever aerodrome
@@ -59,8 +59,6 @@ interface Props {
   regionalNotams: NotamItem[]
   waypoints:      RouteWaypoint[]
   position:       GpsPosition | null
-  /** RouteContext's own Active/Inactive toggle -- see useVicinityAerodromes.ts. */
-  routeVisible:   boolean
   /** Settings-page home airfield ICAO -- last-resort picker fallback. */
   homeIcao?:      string
   /** Controlled open state (map toolbar menu); omit for the built-in trigger button. */
@@ -68,7 +66,7 @@ interface Props {
   onOpenChange?:  (open: boolean) => void
 }
 
-export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position, routeVisible, homeIcao, open: openProp, onOpenChange }: Props) {
+export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position, homeIcao, open: openProp, onOpenChange }: Props) {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const [openState, setOpenState] = useState(false)
@@ -77,7 +75,7 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
   const setOpen = (v: boolean) => { if (controlled) onOpenChange?.(v); else setOpenState(v) }
   const [tab, setTab] = useState<Tab>('freq')
 
-  const vicinity = useVicinityAerodromes({ waypoints, position, routeVisible, homeIcao })
+  const vicinity = useVicinityAerodromes({ waypoints, position, homeIcao })
   const [selectedIcao, setSelectedIcao] = useState<string | null>(null)
 
 
@@ -194,7 +192,7 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
           <>
             {vicinity.length === 0 ? (
               <Text style={styles.muted}>
-                {routeVisible && hasRoute ? 'No aerodromes within range of the active route' : 'No aerodromes nearby'}
+                {hasRoute ? 'No aerodromes within range of the active route' : 'No aerodromes nearby'}
               </Text>
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.picker}>

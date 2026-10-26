@@ -53,6 +53,8 @@ import { useDataFreshness } from '../hooks/useDataFreshness'
 import { FOLLOW_RETURN_MS } from '@open-vfr/shared/followZoom'
 // Vertical space the top-left route-edit banner takes; other top banners step below it.
 const EDIT_BANNER_H = 44
+/** How long a tapped leg stays unlocked for dragging in flight. */
+const LEG_UNLOCK_MS = 10_000
 
 const LANDMARK_LABELS: Record<string, string> = {
   church: 'Church',
@@ -122,7 +124,7 @@ import IconSearch from '@tabler/icons-react-native/IconSearch'
 import IconHome from '@tabler/icons-react-native/IconHome'
 import IconRulerMeasure from '@tabler/icons-react-native/IconRulerMeasure'
 import IconPencil from '@tabler/icons-react-native/IconPencil'
-import IconLockOpen from '@tabler/icons-react-native/IconLockOpen'
+import IconNavigation from '@tabler/icons-react-native/IconNavigation'
 import IconMapPinPlus from '@tabler/icons-react-native/IconMapPinPlus'
 import IconPlaneDeparture from '@tabler/icons-react-native/IconPlaneDeparture'
 import IconPlaneArrival from '@tabler/icons-react-native/IconPlaneArrival'
@@ -146,6 +148,8 @@ import { useSimFlight }      from '../hooks/useSimFlight'
 import { FlightModeSheet, type FlightModeStatus } from '../components/FlightModeSheet'
 import { SimControlPanel }   from '../components/SimControlPanel'
 import { advancePosition, distanceNm, bearingDeg } from '../utils/routeCalc'
+import { navigatingLeg, routeDirect, samePoint, shortcutTargetIndex } from '@open-vfr/shared/routeNavigation'
+import { useAlternate } from '../hooks/usePlanningSettings'
 import { createValueStore } from '../utils/valueStore'
 import type { RouteWaypoint } from '../types/db'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -239,7 +243,7 @@ function MapScreenForCountry() {
   const { position, status, start, stop }     = useGps({ paused: simPosition != null || simFlight.active })
   const activePosition = simPosition ?? simFlight.position ?? position
   const { waypoints, legOverrides, addWaypoint, insertWaypoint, updateWaypoint, removeWaypoint,
-           routeVisible, activeRouteId, routeFitNonce,
+           replaceRoute, activeRouteId, routeFitNonce,
            editSessionActive, setEditSessionArmed, applyEditSession, cancelEditSession,
            undo: undoRoute, redo: redoRoute, canUndo, canRedo, setLegOverride } = useRouteContext()
   const { settings, update }                  = useSettingsContext()
@@ -414,9 +418,7 @@ function MapScreenForCountry() {
     // first) — without this, the look-ahead route (and therefore the
     // VerticalProfile chart) appeared as soon as GPS produced a position,
     // even before the pilot started a flight (flightModeStatus === 'off').
-    // An inactive route (routeVisible false) counts as no route here, so the
-    // look-ahead chart takes over instead of the hidden route's profile.
-    if ((!flying && !simFlight.active) || (routeVisible && waypoints.length >= 2) || !activePosition) {
+    if ((!flying && !simFlight.active) || waypoints.length >= 2 || !activePosition) {
       if (lookaheadWaypoints.length > 0) setLookaheadWaypoints([])
       return
     }
@@ -437,7 +439,7 @@ function MapScreenForCountry() {
   // activePosition reference changes every tick — only re-run when the values
   // that matter for the threshold check change, not on every position update.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waypoints.length, routeVisible, activePosition, flying, simFlight.active])
+  }, [waypoints.length, activePosition, flying, simFlight.active])
 
   // Viewed flight log track (Logs segment "View" action on PlanScreen) —
   // takes priority over the live/lookahead profile: reviewing a past flight
@@ -454,10 +456,7 @@ function MapScreenForCountry() {
   // Route planned for the viewed log (stored with it when it was recorded), for the planned-level line.
   const selectedLogRoute = useMemo(() => parseLogRoute(selectedLog?.routeJson), [selectedLog?.routeJson])
   const showLogProfile  = !showRulerProfile && !!selectedLog && selectedLogProfile != null
-  // Gated on routeVisible: an inactive route is hidden from the map, so its
-  // profile must close too (also when leaving ruler mode, which would
-  // otherwise fall through to the hidden route's chart).
-  const showPlannedProfile   = !showRulerProfile && !showLogProfile && routeVisible && waypoints.length >= 2
+  const showPlannedProfile   = !showRulerProfile && !showLogProfile && waypoints.length >= 2
   const showLookaheadProfile = !showRulerProfile && !showLogProfile && !showPlannedProfile && lookaheadWaypoints.length >= 2
 
   // Aircraft's live progress along the synthesised look-ahead route.
@@ -559,17 +558,37 @@ function MapScreenForCountry() {
     airspaceNotifications,
   } = usePositionAlerts(positionForAlerts, waypoints, settings.airspaceWarnLookaheadMin, settings.airspaceWarnVerticalFt, settings.alertSuppressOnCourse, airspaceLevels)
 
-  // Active route-leg index (mirrors web MapView.tsx's activeWpIdx). Auto-
-  // advances when within 0.3 NM of the current destination waypoint.
-  const [activeWpIdx, setActiveWpIdx] = useState(1)
-  React.useEffect(() => {
-    if (!activePosition || !flyingActive || waypoints.length < 2) return
-    const destWp = waypoints[activeWpIdx]
-    if (!destWp || activeWpIdx >= waypoints.length - 1) return
-    if (distanceNm(activePosition, destWp) < 0.3) {
-      setActiveWpIdx(i => i + 1)
-    }
-  }, [activePosition, flyingActive, waypoints, activeWpIdx])
+  // Leg being flown, picked from position and track (shared
+  // routeNavigation.navigatingLeg, same as web): follows corner cuts, wide
+  // passes, shortcuts and edits without any state. The track only breaks
+  // near-ties, and is ignored while (nearly) stopped.
+  const activeLeg = useMemo(() => {
+    if (!flyingActive || !activePosition || waypoints.length < 2) return -1
+    const track = activePosition.speedKts >= 15 ? activePosition.trackDeg : null
+    return navigatingLeg(waypoints, activePosition, track)
+  }, [flyingActive, activePosition, waypoints])
+  // Index of the waypoint the aircraft is heading for (the active leg's end).
+  const activeWpIdx = activeLeg >= 0 ? activeLeg + 1 : 1
+  // Direct To / shortcut / divert from the present position, applied to the
+  // working route (flown legs kept; see routeDirect). One undo step; the
+  // route-changed banner offers Revert.
+  const [alternate, setAlternate] = useAlternate()
+  const flyDirect = useCallback((target: RouteWaypoint, rejoin = false) => {
+    const pos = activePosition
+    if (!pos) return
+    const t = new Date()
+    const hhmm = `${String(t.getUTCHours()).padStart(2, '0')}${String(t.getUTCMinutes()).padStart(2, '0')}`
+    const r = routeDirect({
+      waypoints, legOverrides, activeLeg, position: pos, target, rejoin,
+      rejoinMaxNm: 2, positionName: `Pos ${hhmm}Z`,
+    })
+    replaceRoute(r.waypoints, r.legOverrides)
+    // Diverting to the alternate makes it the destination.
+    if (alternate && samePoint(alternate, target)) setAlternate(null)
+  }, [activePosition, waypoints, legOverrides, activeLeg, replaceRoute, alternate, setAlternate])
+  // A point further along the route is a shortcut (the rest of the route stays).
+  const directToLabel = (target: { lat: number; lng: number }) =>
+    shortcutTargetIndex(waypoints, activeLeg, target) >= 0 ? 'Take shortcut' : 'Direct to'
 
   // Waypoint reminder — fire when activeWpIdx changes while flying, if the
   // new active-leg destination has a pilot-entered free-text note.
@@ -587,15 +606,21 @@ function MapScreenForCountry() {
     enabled: !flyingActive,
     msaMargins: settings.msaMargins,
   })
+  // Each note fires once per flight: the active leg is position based, so
+  // it can step back and forth near a turning point.
   const [reminderNote, setReminderNote] = useState<{ text: string; wpName: string } | null>(null)
+  const remindedRef = React.useRef(new Set<string>())
+  React.useEffect(() => { remindedRef.current = new Set() }, [flyingActive])
   React.useEffect(() => {
-    if (!flyingActive) return
+    if (!flyingActive || activeLeg < 0) return
     const wp = waypoints[activeWpIdx]
-    if (wp?.note) {
-      setReminderNote({ text: wp.note, wpName: wp.name ?? `WP${activeWpIdx + 1}` })
-    }
+    if (!wp?.note) return
+    const key = `${wp.lat.toFixed(5)},${wp.lng.toFixed(5)}:${wp.note}`
+    if (remindedRef.current.has(key)) return
+    remindedRef.current.add(key)
+    setReminderNote({ text: wp.note, wpName: wp.name ?? `WP${activeWpIdx + 1}` })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeWpIdx])
+  }, [activeWpIdx, activeLeg])
 
   // Airspace ceiling auto-escalation: if within 500 ft of ceiling, raise by 2 000 ft.
   const [ceilingEscalatedMsg, setCeilingEscalatedMsg] = useState<string | null>(null)
@@ -779,9 +804,9 @@ function MapScreenForCountry() {
   const { syncState: logSyncState, pushLog } = useFlightLogSync()
   // Set just before an AUTO stop so useFlightLog leaves a parked log to its park timer.
   const deferLogCloseRef = React.useRef(false)
-  // The route being flown, kept with a new flight log (only a route shown on the map counts).
+  // The route being flown, kept with a new flight log (a closed route is gone, so any route counts).
   const plannedRouteRef = React.useRef<FlightLogRoute | null>(null)
-  plannedRouteRef.current = routeVisible && waypoints.length >= 2
+  plannedRouteRef.current = waypoints.length >= 2
     ? { waypoints, legOverrides, aircraftId: settings.selectedAircraftId ?? undefined }
     : null
   const { activeLogId } = useFlightLog(
@@ -1029,8 +1054,9 @@ function MapScreenForCountry() {
           return
         }
 
-        // Unknown point — add to route
-        addWaypoint({ lng, lat, name: (p.icao ?? p.id ?? p.name) as string | undefined })
+        // Unknown point
+        // A tap never changes the route by itself: taps add points only
+        // while extending (handled in AviationMap), so nothing to do here.
         return
       }
     }
@@ -1074,7 +1100,22 @@ function MapScreenForCountry() {
   const mapCentreForFindDest = homeCoord
     ? { lat: homeCoord[1], lng: homeCoord[0] }
     : { lat: 59.33, lng: 18.07 }
-  const [planningMode, setPlanningMode] = useState(false)
+  // Extending the route: its last point is selected (ringed) and taps on
+  // map features (aerodromes, navaids, reporting points...) append them.
+  // Started by tapping the route's last point, Add to route (feature card,
+  // Find destination, long-press menu) or Map tools > Add points; ended by
+  // Done, tapping the end again, the ruler, or a flight starting. Ground
+  // only. Moving points and legs needs no mode on the ground (undo and the
+  // edit banner are the safety net); in flight a leg is tapped first (see
+  // unlockedLeg).
+  const [extending, setExtending] = useState(false)
+  // Short on-map hint; auto-hides.
+  const [routeHint, setRouteHint] = useState<string | null>(null)
+  useEffect(() => {
+    if (!routeHint) return
+    const t = setTimeout(() => setRouteHint(null), 3500)
+    return () => clearTimeout(t)
+  }, [routeHint])
   // Focus requests from other screens (e.g. "Show on map" for a saved place).
   const { request: mapFocusRequest } = useMapFocus()
   useEffect(() => {
@@ -1121,16 +1162,26 @@ function MapScreenForCountry() {
   const [dismissedAiracKey, setDismissedAiracKey] = useState<string | null>(null)
   const [snapPicker, setSnapPicker] = useState<{ candidates: SnapCandidate[]; onPick: (wp: RouteWaypoint) => void } | null>(null)
 
-  // ── Route-edit lock — waypoint/leg drag is disabled by default, both on
-  // the ground and airborne (touchscreens can be knocked while flying, and
-  // an accidental drag while panning around the map should never silently
-  // move a leg). On the ground, toggling "planningMode" re-enables dragging;
-  // in flight, "Adjust Route" (routeAdjustMode) does, for as long as it
-  // stays toggled on — it always resets to locked the next time a flight
-  // starts, so a forgotten toggle from a previous flight can't carry over.
-  // Mirrors web's MapView.tsx planningMode/routeAdjustMode gating around the
-  // route-line drag handlers. ─────
-  const [routeAdjustMode, setRouteAdjustMode] = useState(false)
+  // ── Route-edit lock ─────────────────────────────────────────────────────
+  // On the ground every route point and leg midpoint can be dragged (undo
+  // and the edit banner are the safety net). In flight the route is locked
+  // against stray touches, one leg at a time: tapping a leg unlocks just
+  // that leg (and its two end points) for LEG_UNLOCK_MS; any route change
+  // or flight start/stop locks it again. Explicit actions (route point menu,
+  // Direct To) need no unlock. Same model as web's MapView.tsx.
+  const [unlockedLeg, setUnlockedLeg] = useState<number | null>(null)
+  useEffect(() => {
+    if (unlockedLeg == null) return
+    const t = setTimeout(() => setUnlockedLeg(null), LEG_UNLOCK_MS)
+    return () => clearTimeout(t)
+  }, [unlockedLeg])
+  useEffect(() => { setUnlockedLeg(null) }, [waypoints, flyingActive])
+  // Extending is a ground-only mode.
+  useEffect(() => { if (flyingActive) setExtending(false) }, [flyingActive])
+  const handleLegPress = useCallback((leg: number) => {
+    setUnlockedLeg(leg)
+    setRouteHint('Leg unlocked for 10 s: drag its points or the middle handle')
+  }, [])
 
   // ── Location button: 'off' | 'passive' outside flight (Follow is the
   // flight-mode followGps state). Passive draws the own-position dot via
@@ -1176,7 +1227,7 @@ function MapScreenForCountry() {
   // depth exceeded". setFollowGps(false) is a no-op once already false.
   const followReturnTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const followReturnArmableRef = React.useRef(false)
-  followReturnArmableRef.current = flightModeStatus !== 'off' && !routeAdjustMode
+  followReturnArmableRef.current = flightModeStatus !== 'off' && unlockedLeg == null
   const clearFollowReturn = useCallback(() => {
     if (followReturnTimerRef.current) { clearTimeout(followReturnTimerRef.current); followReturnTimerRef.current = null }
     followReturnAtStore.set(null)
@@ -1198,15 +1249,22 @@ function MapScreenForCountry() {
     }, FOLLOW_RETURN_MS)
   }, [clearFollowReturn, followReturnAtStore])
   // Cancel a pending return when following resumes some other way, the
-  // flight ends, route-adjust starts, or the screen unmounts.
+  // flight ends, a leg is unlocked for editing, or the screen unmounts.
   useEffect(() => {
-    if (followGps || flightModeStatus === 'off' || routeAdjustMode) clearFollowReturn()
-  }, [followGps, flightModeStatus, routeAdjustMode, clearFollowReturn])
+    if (followGps || flightModeStatus === 'off' || unlockedLeg != null) clearFollowReturn()
+  }, [followGps, flightModeStatus, unlockedLeg, clearFollowReturn])
   useEffect(() => clearFollowReturn, [clearFollowReturn])
+  // An unlocked leg stops the map following the aircraft (it would slide
+  // away under the finger); once the leg locks again the usual return to
+  // follow is armed.
+  const hadUnlockedLegRef = React.useRef(false)
   useEffect(() => {
-    if (!flyingActive) setRouteAdjustMode(false)
-  }, [flyingActive])
-  const routeEditLocked = flyingActive ? !routeAdjustMode : !planningMode
+    if (unlockedLeg != null) { hadUnlockedLegRef.current = true; setFollowGps(false); return }
+    if (hadUnlockedLegRef.current && flightModeStatus !== 'off') handleUserPan()
+    hadUnlockedLegRef.current = false
+  }, [unlockedLeg, flightModeStatus, handleUserPan])
+  // Drag handles: all of them on the ground; in flight only the unlocked leg's.
+  const routeEditLocked = flyingActive
 
   // Leg level dragged in the vertical profile: null clears the leg's override
   // so it falls back to the route level.
@@ -1222,13 +1280,17 @@ function MapScreenForCountry() {
   const [showFindDest, setShowFindDest] = useState(false)
   const [showModePicker, setShowModePicker] = useState(false)
   const toolFlying = flightModeStatus !== 'off'
-  // Route editing: planningMode on the ground, routeAdjustMode in flight.
-  const routeEditOn = toolFlying ? routeAdjustMode : planningMode
-  // Ruler and route editing are mutually exclusive: turning editing on (from
-  // the tools menu or anywhere else) switches the ruler off and clears it.
+  // Ruler and extending the route are mutually exclusive: starting to
+  // extend (from anywhere) switches the ruler off and clears it.
   useEffect(() => {
-    if (planningMode || routeAdjustMode) { setRulerMode(false); setRulerPoints([]) }
-  }, [planningMode, routeAdjustMode])
+    if (extending) { setRulerMode(false); setRulerPoints([]) }
+  }, [extending])
+  // Stop extending; a lone start point is not a route, so it goes too.
+  const finishExtending = useCallback(() => {
+    setExtending(false)
+    setSnapPicker(null)
+    if (waypoints.length === 1) removeWaypoint(0)
+  }, [waypoints.length, removeWaypoint])
   const toolIcon = (Icon: import("@tabler/icons-react-native").Icon) => (color: string) => <Icon size={22} strokeWidth={2} color={color} />
   const navigation = useNavigation()
   const toolGroups: ToolGroupDef[] = [
@@ -1245,6 +1307,10 @@ function MapScreenForCountry() {
             : 'The map keeps your zoom level while following you. Tap to zoom automatically, keeping your departure or destination in view.',
         icon: toolIcon(IconZoomScan), active: settings.autoZoom && !autoZoomPaused, keepOpen: true,
         onSelect: () => { if (settings.autoZoom && autoZoomPaused) setAutoZoomResumeNonce((n) => n + 1); else update({ autoZoom: !settings.autoZoom }) } }] : []),
+      ...(toolFlying ? [{ id: 'direct', label: 'Direct to',
+        description: 'Fly direct to an aerodrome, place or coordinate from your present position. Legs already flown are kept; a point further along the route is a shortcut.',
+        icon: toolIcon(IconNavigation),
+        onSelect: () => setShowFindDest(true) }] : []),
       ...(toolFlying && waypoints.length >= 2 ? [{ id: 'plog', label: 'Pilot log',
         description: 'Route table with live ETA and ATA, comms ahead and nearby nav aids.',
         icon: toolIcon(IconListDetails),
@@ -1260,13 +1326,13 @@ function MapScreenForCountry() {
     ] },
     { id: 'tools', label: 'Map tools', items: [
       { id: 'ruler', label: 'Ruler', description: 'Measure distance and bearing: tap two points on the map. Tap again to switch off and clear.',
-        icon: toolIcon(IconRulerMeasure), active: rulerMode, onSelect: () => { if (!rulerMode) { setPlanningMode(false); setRouteAdjustMode(false) }; setRulerMode(!rulerMode); setRulerPoints([]) } },
-      { id: 'edit', label: routeEditOn ? 'Lock route' : 'Edit route',
-        description: toolFlying
-          ? (routeEditOn ? 'Lock the route again so it cannot be changed by accident' : 'Unlock the route to drag or add waypoints in flight')
-          : (routeEditOn ? 'Stop editing and lock the route' : 'Tap the map to add waypoints; drag them or the leg midpoints to change the route'),
-        icon: toolIcon(routeEditOn ? IconLockOpen : IconPencil), active: routeEditOn,
-        onSelect: () => toolFlying ? setRouteAdjustMode(v => !v) : setPlanningMode(m => !m) },
+        icon: toolIcon(IconRulerMeasure), active: rulerMode, onSelect: () => { if (!rulerMode) finishExtending(); setRulerMode(!rulerMode); setRulerPoints([]) } },
+      ...(!toolFlying ? [{ id: 'extend', label: waypoints.length ? 'Add points' : 'Start route',
+        description: extending
+          ? 'Stop adding points to the route'
+          : 'Tap aerodromes, navaids and reporting points to add them to the end of the route. Points and legs can always be dragged; undo is in the edit banner.',
+        icon: toolIcon(IconPencil), active: extending,
+        onSelect: () => { if (extending) finishExtending(); else setExtending(true) } }] : []),
       ...(toolFlying ? [{ id: 'drop', label: 'Drop point', description: 'Save your current position as a place in the "Dropped in Flight" folder',
         icon: toolIcon(IconMapPinPlus),
         onSelect: () => {
@@ -1282,16 +1348,22 @@ function MapScreenForCountry() {
     ] },
   ]
 
-  // Edit sessions run while route editing is unlocked; leaving it applies the
-  // pending changes (nothing is discarded silently).
-  useEffect(() => {
-    setEditSessionArmed(!routeEditLocked)
-    if (routeEditLocked) applyEditSession()
-  }, [routeEditLocked, setEditSessionArmed, applyEditSession])
+  // Every route change opens an edit session (ground and flight), so the
+  // banner offers Undo / Redo and a one-tap revert to the route as it was
+  // before the first change, until Apply / Keep. Starting or ending a
+  // flight closes the session, so a revert never crosses that boundary.
+  useEffect(() => { setEditSessionArmed(true) }, [setEditSessionArmed])
+  useEffect(() => { applyEditSession() }, [flyingActive, applyEditSession])
 
   const handlePlanTap = useCallback((wp: RouteWaypoint) => {
     addWaypoint(wp)
   }, [addWaypoint])
+
+  // Extending, tap with nothing to snap to: a missed tap must not end the
+  // mode or drop a stray point, so it only explains how to add a free point.
+  const handlePlanEmptyTap = useCallback(() => {
+    setRouteHint('Nothing to add here. Long-press for this exact point, or tap Done.')
+  }, [])
 
   const handlePlanCandidates = useCallback((candidates: SnapCandidate[]) => {
     setSnapPicker({ candidates, onPick: handlePlanTap })
@@ -1382,12 +1454,11 @@ function MapScreenForCountry() {
   useEffect(() => { profileCursorStore.set(null) }, [profileCursorFor, profileCursorStore])
 
   // Long-press menu — offers "Save Waypoint" for any long-pressed map point
-  // (bare point or existing route waypoint alike; a tap on an existing
-  // feature still routes straight through addWaypoint elsewhere, same as
-  // before — this menu only applies to a long-hold). "Add to Route" was
-  // removed from here entirely — planning mode / feature-tap already cover
-  // adding to the route, and it doesn't make sense at all for an existing
-  // route waypoint.
+  // (a long-press on a route point opens that point's menu instead, see
+  // handleWaypointLongPress). It also offers this exact point for the route:
+  // on the ground "Add to route (this point)" / "Start route here" (taps
+  // while extending snap to map features, so this is how a free point is
+  // added), in flight "Direct to here".
   const [longPressMenu, setLongPressMenu] = useState<{ lat: number; lng: number } | null>(null)
   const [savingWpAt,    setSavingWpAt]    = useState<{ lat: number; lng: number } | null>(null)
   const [wpSaveName,    setWpSaveName]    = useState('')
@@ -1539,7 +1610,7 @@ function MapScreenForCountry() {
               onResetNorth={() => { setMapOrientation('north'); setResetNorthNonce((n) => n + 1) }}
               onNextOrientation={() => {
                 if (mapOrientation === 'north') setMapOrientation('track')
-                else if (mapOrientation === 'track' && routeVisible && waypoints.length >= 2) setMapOrientation('course')
+                else if (mapOrientation === 'track' && waypoints.length >= 2) setMapOrientation('course')
                 else { setMapOrientation('north'); setResetNorthNonce((n) => n + 1) }
               }}
             />
@@ -1549,20 +1620,27 @@ function MapScreenForCountry() {
           onWaypointMove={handleWaypointMove}
           onWaypointMoveCandidates={handleWaypointMoveCandidates}
           onWaypointLongPress={handleWaypointLongPress}
-          onWaypointRemove={removeWaypoint}
-          // Tap the route's last point on the ground: start extending it.
-          onRouteEndTap={flyingActive ? undefined : () => setPlanningMode(true)}
+          // Ground: double-tap a point removes it. In flight a tap opens the
+          // point's menu instead (no one-gesture removal while airborne).
+          onWaypointRemove={flyingActive ? undefined : removeWaypoint}
+          onWaypointPress={flyingActive ? handleWaypointLongPress : undefined}
+          // Tap the route's last point on the ground: start (or stop) extending it.
+          onRouteEndTap={flyingActive ? undefined : () => { if (extending) finishExtending(); else setExtending(true) }}
+          // In flight a tapped leg unlocks for LEG_UNLOCK_MS.
+          onLegPress={flyingActive ? handleLegPress : undefined}
           onLegTap={handleLegTap}
           onLegInsert={handleLegInsert}
           onLegInsertCandidates={handleLegInsertCandidates}
           editLocked={routeEditLocked}
-          planningMode={planningMode}
+          unlockedLeg={unlockedLeg}
+          planningMode={extending}
+          extendingEnd={extending && waypoints.length > 0}
           onPlanTap={handlePlanTap}
           onPlanCandidates={handlePlanCandidates}
-          routeVisible={routeVisible}
-          // Same gating as web: labels only when not editing, so they never
-          // cover the midpoint drag handles.
-          showLegLabels={!planningMode && !routeAdjustMode}
+          onPlanEmptyTap={handlePlanEmptyTap}
+          // Labels hide while extending or with a leg unlocked, so the
+          // route under the finger stays clear.
+          showLegLabels={!extending && unlockedLeg == null}
           legIasKts={legIasKts}
           pastTrack={pastTrack}
           screenFocused={screenFocused}
@@ -1599,6 +1677,26 @@ function MapScreenForCountry() {
               <Ionicons name="bookmark-outline" size={16} color={theme.accentBlue} />
               <Text style={styles.longPressMenuBtnTxt}>Save Place</Text>
             </TouchableOpacity>
+            {/* Ground: this exact point goes on the end of the route (a free
+                point; taps while extending snap to map features). Flight:
+                fly direct to it, rejoining the route if it lies near a leg ahead. */}
+            {flyingActive ? (activePosition && (
+              <TouchableOpacity
+                style={styles.longPressMenuBtn}
+                onPress={() => { flyDirect({ lat: longPressMenu.lat, lng: longPressMenu.lng }, true); setLongPressMenu(null) }}
+              >
+                <Ionicons name="airplane-outline" size={16} color={theme.accentBlue} />
+                <Text style={styles.longPressMenuBtnTxt}>Direct to here</Text>
+              </TouchableOpacity>
+            )) : (
+              <TouchableOpacity
+                style={styles.longPressMenuBtn}
+                onPress={() => { addWaypoint({ lat: longPressMenu.lat, lng: longPressMenu.lng }); setExtending(true); setLongPressMenu(null) }}
+              >
+                <Ionicons name="add-circle-outline" size={16} color={theme.accentBlue} />
+                <Text style={styles.longPressMenuBtnTxt}>{waypoints.length ? 'Add to route (this point)' : 'Start route here'}</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={styles.longPressMenuCancel} onPress={() => setLongPressMenu(null)}>
               <Text style={styles.longPressMenuCancelTxt}>Cancel</Text>
             </TouchableOpacity>
@@ -1612,13 +1710,15 @@ function MapScreenForCountry() {
             <Text style={styles.longPressMenuCoord}>
               WP {wpActionMenu.wpIdx + 1}
             </Text>
-            {wpActionMenu.wpIdx > activeWpIdx && (
+            {/* In flight, only points not yet passed: the one being flown
+                to (Direct to) or any after it (Take shortcut). */}
+            {flyingActive && activePosition && wpActionMenu.wpIdx >= activeWpIdx && waypoints[wpActionMenu.wpIdx] && (
               <TouchableOpacity
                 style={styles.longPressMenuBtn}
-                onPress={() => { setActiveWpIdx(wpActionMenu.wpIdx); setWpActionMenu(null) }}
+                onPress={() => { flyDirect(waypoints[wpActionMenu.wpIdx]); setWpActionMenu(null) }}
               >
                 <Ionicons name="airplane-outline" size={16} color={theme.accentBlue} />
-                <Text style={styles.longPressMenuBtnTxt}>Direct To</Text>
+                <Text style={styles.longPressMenuBtnTxt}>{directToLabel(waypoints[wpActionMenu.wpIdx])}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
@@ -1754,7 +1854,6 @@ function MapScreenForCountry() {
             regionalNotams={regionalNotamsAll}
             waypoints={waypoints}
             position={activePosition}
-            routeVisible={routeVisible}
             homeIcao={settings.homeAirfield || undefined}
           />
         </View>
@@ -1763,9 +1862,18 @@ function MapScreenForCountry() {
           homeIcao={settings.homeAirfield || null}
           aircraftProfile={aircraftProfile}
           onFlyTo={(lat, lng) => setFindDestFlyTarget({ lat, lng, nonce: Date.now() })}
-          onAddToRoute={(wp) => { addWaypoint(wp); setPlanningMode(true) }}
+          // In flight each row is Direct To (rejoining the route when the
+          // point lies near a leg ahead); on the ground + starts or extends
+          // the route.
+          directTo={flyingActive}
+          onAddToRoute={(wp, isAerodrome) => {
+            // An aerodrome ends the route; a place or coordinate is an
+            // en-route fix the route can rejoin after.
+            if (flyingActive) { flyDirect(wp, !isAerodrome); setShowFindDest(false); return }
+            addWaypoint(wp); setExtending(true)
+          }}
           routePoints={waypoints}
-          onInsertInRoute={(wp, afterIdx) => { insertWaypoint(afterIdx, wp); setPlanningMode(true) }}
+          onInsertInRoute={flyingActive ? undefined : (wp, afterIdx) => { insertWaypoint(afterIdx, wp) }}
           places={userWaypoints}
           onSavePlace={(lat, lng) => saveWaypoint({
             id: Crypto.randomUUID(), name: nextPlaceName(userWaypoints.map(w => w.name)),
@@ -1836,10 +1944,33 @@ function MapScreenForCountry() {
           // Same top offset and height as the toolbar buttons on the right, and
           // below the status bar (only the map may bleed under it).
           top={topRightTopOffset}
+          label={flyingActive ? 'Route changed' : 'Editing'}
+          cancelLabel={flyingActive ? 'Revert: restore the route as it was before these changes' : 'Cancel changes'}
+          applyLabel={flyingActive ? 'Keep the changes' : 'Apply changes'}
           canUndo={canUndo} canRedo={canRedo}
           onUndo={undoRoute} onRedo={redoRoute}
           onCancel={cancelEditSession} onApply={applyEditSession}
         />
+      )}
+
+      {/* Extending the route: what a tap does, and Done. A short hint
+          (leg unlocked, missed tap) replaces the text for a few seconds. */}
+      {(extending || routeHint) && (
+        <View
+          style={[styles.routeHintPill, { top: topRightTopOffset + (editSessionActive ? EDIT_BANNER_H : 0) }]}
+          testID="route-hint"
+        >
+          <Text style={styles.routeHintTxt} numberOfLines={2}>
+            {routeHint ?? (waypoints.length
+              ? 'Tap aerodromes or points to add them to the route'
+              : 'Tap an aerodrome or point to start the route')}
+          </Text>
+          {extending && (
+            <TouchableOpacity onPress={finishExtending} hitSlop={8} style={styles.routeHintDone} testID="route-extend-done" accessibilityLabel="Done adding points">
+              <Text style={styles.routeHintDoneTxt}>Done</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       )}
 
       {/* FLY button replaced by FlightModeSheet, stacked in topRight with the
@@ -1987,6 +2118,17 @@ function MapScreenForCountry() {
         onRunwayWind={handleRunwayWind}
         regionalNotams={regionalNotamsAll}
         routeWaypoints={waypoints}
+        routeAction={aerodromeFeature?.lat == null || aerodromeFeature.lng == null ? undefined : (() => {
+          const wp: RouteWaypoint = { lat: aerodromeFeature.lat, lng: aerodromeFeature.lng, name: aerodromeFeature.icao || aerodromeFeature.name }
+          if (flyingActive) {
+            if (!activePosition) return undefined
+            const label = directToLabel(wp)
+            return { short: label === 'Take shortcut' ? 'Shortcut' : 'Direct', label, icon: 'airplane' as const, onPress: () => flyDirect(wp) }
+          }
+          return waypoints.length
+            ? { short: 'Route', label: 'Add to the end of the route', icon: 'add' as const, onPress: () => { addWaypoint(wp); setExtending(true) } }
+            : { short: 'Route', label: 'Start a route here', icon: 'add' as const, onPress: () => { addWaypoint(wp); setExtending(true) } }
+        })()}
       />
       <AirspacePopup
         features={airspaceFeatures}
@@ -1996,7 +2138,16 @@ function MapScreenForCountry() {
       <FeaturePopup
         feature={featureInfo}
         onClose={() => setFeatureInfo(null)}
-        onAddToRoute={(lngLat, name) => addWaypoint({ lng: lngLat[0], lat: lngLat[1], name })}
+        // Ground: append and keep extending from it. Flight: Direct To (a
+        // navaid / reporting point / place is an en-route fix: rejoin after it).
+        addLabel={flyingActive
+          ? (featureInfo?.lngLat ? directToLabel({ lng: featureInfo.lngLat[0], lat: featureInfo.lngLat[1] }) : 'Direct to')
+          : waypoints.length ? '+ Add to route' : '+ Start route here'}
+        onAddToRoute={(lngLat, name) => {
+          const wp = { lng: lngLat[0], lat: lngLat[1], name }
+          if (flyingActive) { flyDirect(wp, true); return }
+          addWaypoint(wp); setExtending(true)
+        }}
       />
     </View>
   )
@@ -2058,6 +2209,20 @@ function makeStyles(theme: ScaledTheme) {
     paddingHorizontal: theme.space3, paddingVertical: theme.space2,
   },
   airacBanner: { borderColor: theme.statusWarn },
+  routeHintPill: {
+    position: 'absolute', left: theme.space2, maxWidth: '72%',
+    zIndex: 46,
+    flexDirection: 'row', alignItems: 'center', gap: theme.space2,
+    backgroundColor: 'rgba(19,24,36,0.94)', borderRadius: theme.radiusMd,
+    borderWidth: 1, borderColor: '#22d3ee',
+    paddingLeft: theme.space3, paddingRight: theme.space2, paddingVertical: theme.space2,
+  },
+  routeHintTxt: { flexShrink: 1, color: '#e5e7eb', fontSize: theme.textXs, fontWeight: '600' },
+  routeHintDone: {
+    paddingHorizontal: theme.space3, paddingVertical: theme.space1,
+    borderRadius: theme.radiusFull, backgroundColor: '#22d3ee',
+  },
+  routeHintDoneTxt: { color: '#0b1220', fontSize: theme.textXs, fontWeight: '700' },
   pastTrackBannerTxt: { flex: 1, color: theme.textPrimary, fontSize: theme.textXs, fontWeight: '600' },
   iconBtn: {
     width:           40,

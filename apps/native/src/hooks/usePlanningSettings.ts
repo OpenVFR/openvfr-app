@@ -44,15 +44,21 @@ export function useTakeoffTime(): [Date | null, (d: Date | null) => void] {
 export type AlternateAirfield = { icao: string; name: string; lng: number; lat: number }
 const ALTERNATE_KEY = 'alternate'
 
+// Every mounted useAlternate() hears a change made by any other (the map
+// clears the alternate on a Direct To to it while the plan screen is open).
+const alternateListeners = new Set<(a: AlternateAirfield | null) => void>()
+
 export function useAlternate(): [AlternateAirfield | null, (a: AlternateAirfield | null) => void] {
   const [alt, setAltState] = useState<AlternateAirfield | null>(null)
 
   useEffect(() => {
     db.get<AlternateAirfield>(ALTERNATE_KEY).then((v) => { if (v) setAltState(v) })
+    alternateListeners.add(setAltState)
+    return () => { alternateListeners.delete(setAltState) }
   }, [])
 
   const setAlt = useCallback((a: AlternateAirfield | null) => {
-    setAltState(a)
+    for (const l of alternateListeners) l(a)
     if (a) db.set(ALTERNATE_KEY, a)
     else db.remove(ALTERNATE_KEY)
   }, [])

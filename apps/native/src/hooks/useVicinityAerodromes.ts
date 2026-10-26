@@ -3,20 +3,11 @@
  * Wx/NOTAM aerodrome picker.
  *
  * Source of the list:
- *  - Route marked Active (routeVisible, RouteContext's own "Active"/
- *    "Inactive" toggle -- native PlanScreen.tsx's header button, web
- *    MapView.tsx's "Show/Hide route" toolbar button) + route planned ->
- *    aerodromes near the planned route (same lateral-buffer match as
- *    useWeatherAlongRoute.ts), ordered by distance from the route.
- *    Deliberately keyed on routeVisible, NOT on `flying` (GPS/Simulate-
- *    detected motion) -- routeVisible is the pilot's own explicit
- *    active/inactive call for the loaded route (independent of whether a
- *    flight happens to be underway right now), and a route sitting loaded
- *    but marked Inactive shouldn't override "what's actually near me"
- *    just because the pilot happens to be moving. NOTE: routeVisible is
- *    NOT persisted (`useState(true)` in useRoute.ts/MapView.tsx) -- it
- *    resets to Active on every app restart regardless of what was last set.
- *  - Otherwise (route Inactive, or no route loaded) -> nearest aerodromes
+ *  - Route planned -> aerodromes near the planned route (same
+ *    lateral-buffer match as useWeatherAlongRoute.ts), ordered by distance
+ *    from the route. A route the pilot no longer wants is closed (Close
+ *    route), so a loaded route always counts.
+ *  - Otherwise (no route loaded) -> nearest aerodromes
  *    to the current/last-known GPS position within RADIUS_NM, same radius
  *    as FrequencyPanel's useNearbyFrequencies.ts (unchanged, Freq tab
  *    still uses that hook directly).
@@ -132,18 +123,16 @@ export function loadFullVicinityAerodromes(cb: (d: FullVicinityAerodrome[]) => v
 interface Opts {
   waypoints:     RouteWaypoint[]
   position:      GpsPosition | null
-  /** RouteContext's own Active/Inactive toggle -- see doc comment above. */
-  routeVisible:  boolean
   /** Settings-page home airfield ICAO -- last-resort fallback, see doc comment above. */
   homeIcao?:     string
 }
 
-export function useVicinityAerodromes({ waypoints, position, routeVisible, homeIcao }: Opts): VicinityAerodrome[] {
+export function useVicinityAerodromes({ waypoints, position, homeIcao }: Opts): VicinityAerodrome[] {
   const [all, setAll] = useState<FullVicinityAerodrome[]>([])
 
   useEffect(() => { loadFullVicinityAerodromes(setAll) }, [])
 
-  const useRoute = routeVisible && waypoints.length > 0
+  const useRoute = waypoints.length > 0
 
   if (all.length === 0) return []
 

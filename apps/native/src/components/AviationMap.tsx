@@ -249,6 +249,16 @@ export type AviationMapProps = {
   /** Fired on a tap on the route's last point outside planning mode —
    *  the caller starts extending the route (same as the Plan toggle). */
   onRouteEndTap?: () => void
+  /** Fired on a single tap on a route point outside planning mode (used in
+   *  flight: opens the point's menu instead of double-tap removal). */
+  onWaypointPress?: (index: number, lat: number, lng: number) => void
+  /** Fired on a tap on a route leg outside planning mode (used in flight to
+   *  unlock that leg). Without it a leg tap falls through to the features
+   *  underneath; outside planning mode a tap never inserts a point. */
+  onLegPress?: (legIndex: number) => void
+  /** Fired when a planning-mode tap has nothing to snap to. Without it the
+   *  exact tapped position is added. */
+  onPlanEmptyTap?: (wp: RouteWaypoint) => void
   /** Fired when a leg-midpoint drag-insert resolves to exactly one waypoint
    *  (raw coordinate or a single unambiguous snap target). */
   onLegInsert?: (afterIndex: number, wp: RouteWaypoint) => void
@@ -294,6 +304,11 @@ export type AviationMapProps = {
    *  off only via an explicit "Adjust Route" toggle, mirroring web's
    *  MapView.tsx routeAdjustMode gating on the route-line drag handlers. */
   editLocked?: boolean
+  /** While editLocked, this one leg (and its two end points) can still be
+   *  dragged: the in-flight per-leg unlock. Highlighted on the map. */
+  unlockedLeg?: number | null
+  /** Ring the route's last point: the route is being extended from it. */
+  extendingEnd?: boolean
   /** Fired when a plan-mode tap resolves to exactly one waypoint (raw
    *  coordinate or a single unambiguous snap target). */
   onPlanTap?: (wp: RouteWaypoint) => void
@@ -1702,6 +1717,9 @@ export function AviationMap({
   onWaypointLongPress,
   onWaypointRemove,
   onRouteEndTap,
+  onWaypointPress,
+  onLegPress,
+  onPlanEmptyTap,
   onLegTap,
   onLegInsert,
   onLegInsertCandidates,
@@ -1714,6 +1732,8 @@ export function AviationMap({
   notamMatchedAirspaceFC,
   planningMode = false,
   editLocked = false,
+  unlockedLeg = null,
+  extendingEnd = false,
   onPlanTap,
   onPlanCandidates,
   routeVisible = true,
@@ -2673,8 +2693,18 @@ export function AviationMap({
             [[point[0] - SNAP_PX_LOCAL, point[1] - SNAP_PX_LOCAL], [point[0] + SNAP_PX_LOCAL, point[1] + SNAP_PX_LOCAL]],
             { layers: SNAP_LAYERS },
           ),
+          mapRef.current.queryRenderedFeatures(
+            [[point[0] - SNAP_PX_LOCAL, point[1] - SNAP_PX_LOCAL], [point[0] + SNAP_PX_LOCAL, point[1] + SNAP_PX_LOCAL]],
+            { layers: ['route-pts-circle'] },
+          ),
         ])
-          .then(([legHits, hits]) => {
+          .then(([legHits, hits, ptHits]) => {
+            // Tapping the route's (ringed) end again stops extending, rather
+            // than adding the same point twice.
+            if (onRouteEndTap && ptHits.some(f => f.properties?.wpIndex === waypoints.length - 1)) {
+              onRouteEndTap()
+              return
+            }
             // Leg hit takes priority over snap/append — insert waypoint
             // mid-route instead of appending at end (mirrors web's
             // MapView.tsx planning-mode click handler).
@@ -2688,6 +2718,10 @@ export function AviationMap({
             // exact tapped position last).
             const raw = { lng: lngLat[0], lat: lngLat[1] }
             const real = buildSnapCandidates(hits)
+            if (real.length === 0 && onPlanEmptyTap) {
+              onPlanEmptyTap(raw)
+              return
+            }
             if (real.length <= 1) {
               onPlanTap?.(real[0]?.waypoint ?? raw)
               return
@@ -2714,6 +2748,10 @@ export function AviationMap({
       //    extending the route (see onRouteEndTap), held back for one
       //    double-tap window so a double-tap (remove) cancels it.
       const handleRoutePoint = (wpIndex: number): boolean => {
+        if (onWaypointPress) {
+          const wp = waypoints[wpIndex]
+          if (wp) { onWaypointPress(wpIndex, wp.lat, wp.lng); return true }
+        }
         if (onWaypointRemove) {
           const now = Date.now()
           const last = lastWpTapRef.current
@@ -2756,30 +2794,31 @@ export function AviationMap({
           return
         }
 
-        // Leg tap — insert waypoint after this leg
-        if (p.featureType === 'leg' && onLegTap) {
-          onLegTap(p.legIndex as number, { lat: tapLngLat[1], lng: tapLngLat[0] })
-          return
-        }
-
         onFeatureTap?.(fs, tapLngLat)
       }
 
       const pressPoint = (payload as PressEvent).point
-      if (!planningMode && pressPoint && mapRef.current && waypoints.length > 0 && (onWaypointRemove || onRouteEndTap)) {
-        mapRef.current.queryRenderedFeatures(
-          [[pressPoint[0] - SNAP_PX, pressPoint[1] - SNAP_PX], [pressPoint[0] + SNAP_PX, pressPoint[1] + SNAP_PX]],
-          { layers: ['route-pts-circle'] },
-        ).then((hits) => {
+      if (!planningMode && pressPoint && mapRef.current && waypoints.length > 0
+          && (onWaypointRemove || onRouteEndTap || onWaypointPress || onLegPress)) {
+        const box: [[number, number], [number, number]] =
+          [[pressPoint[0] - SNAP_PX, pressPoint[1] - SNAP_PX], [pressPoint[0] + SNAP_PX, pressPoint[1] + SNAP_PX]]
+        Promise.all([
+          mapRef.current.queryRenderedFeatures(box, { layers: ['route-pts-circle'] }),
+          onLegPress && waypoints.length >= 2
+            ? mapRef.current.queryRenderedFeatures(box, { layers: ['route-legs-hit'] })
+            : Promise.resolve([]),
+        ]).then(([hits, legHits]) => {
           const idx = hits[0]?.properties?.wpIndex
           if (typeof idx === 'number' && handleRoutePoint(idx)) return
+          const leg = legHits[0]?.properties?.legIndex
+          if (typeof leg === 'number' && onLegPress) { onLegPress(leg); return }
           handleFeatures()
         }).catch(() => handleFeatures())
         return
       }
       handleFeatures()
     },
-    [onFeatureTap, onLegTap, planningMode, onPlanTap, onPlanCandidates, onWaypointMove, onWaypointRemove, onRouteEndTap, waypoints.length, rulerMode, rulerPoints, onRulerTap],
+    [onFeatureTap, onLegTap, planningMode, onPlanTap, onPlanCandidates, onPlanEmptyTap, onWaypointMove, onWaypointRemove, onRouteEndTap, onWaypointPress, onLegPress, waypoints, rulerMode, rulerPoints, onRulerTap],
   )
 
   const handleMapLongPress = useCallback(
@@ -2846,6 +2885,11 @@ export function AviationMap({
   // original legs are drawn as a faded ghost and the legs as they would be
   // after the drop in the drag colour; the rest of the route stays as is.
   const routeDragActive = (dragging && !!dragPreview) || (legDragging && !!legDragPreview)
+  // Which drag handles exist: all of them when unlocked (ground), otherwise
+  // only the unlocked leg's midpoint and its two end points (in flight).
+  const legEditable = (leg: number) => !editLocked || unlockedLeg === leg
+  const pointEditable = (wp: number) =>
+    !editLocked || (unlockedLeg != null && (wp === unlockedLeg || wp === unlockedLeg + 1))
   // Indices of the would-be legs touching the dragged point.
   const previewLegs = !routeDragActive ? []
     : dragPreview ? [dragPreview.wpIndex - 1, dragPreview.wpIndex]
@@ -3196,7 +3240,16 @@ export function AviationMap({
               }}
               paint={{ 'text-color': ['case', ['boolean', ['get', 'preview'], false], DRAG_ROUTE_COLOR, theme.accentMagenta], 'text-halo-color': theme.surfaceBase, 'text-halo-width': 1.5 }}
             />
-            {onLegTap && (
+            {/* In-flight unlocked leg: a wide glow under the dashes while
+                it can be dragged. */}
+            {unlockedLeg != null && (
+              <Layer
+                id="route-leg-unlocked" type="line"
+                filter={['==', ['get', 'legIndex'], unlockedLeg]}
+                paint={{ 'line-color': DRAG_ROUTE_COLOR, 'line-width': 12, 'line-opacity': 0.35 }}
+              />
+            )}
+            {(onLegTap || onLegPress) && (
               <Layer
                 id="route-legs-hit" type="line"
                 paint={{ 'line-color': '#000000', 'line-opacity': 0.01, 'line-width': 22 }}
@@ -3270,6 +3323,14 @@ export function AviationMap({
                 'circle-stroke-color': theme.accentMagenta,
               }}
             />
+            {/* The route is being extended from its last point. */}
+            {extendingEnd && (
+              <Layer
+                id="route-end-selected" type="circle"
+                filter={['==', ['get', 'wpIndex'], waypoints.length - 1]}
+                paint={{ 'circle-radius': 15, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-width': 3, 'circle-stroke-color': DRAG_ROUTE_COLOR }}
+              />
+            )}
             <Layer
               id="route-pts-label" type="symbol"
               // Zoomed out, only the start/end names are drawn; intermediate
@@ -3533,7 +3594,7 @@ export function AviationMap({
             sibling views (see AGENTS.md "MapLibre RN — touch interception").
             Long-press-for-popup and normal map pan continue to work
             everywhere except exactly on a waypoint's small drag handle. */}
-        {onWaypointMove && !editLocked && waypoints.map((wp, i) => (
+        {onWaypointMove && waypoints.map((wp, i) => pointEditable(i) && (
           <WaypointDragAnnotation
             key={`${i}-${handleNonce}`}
             wpIndex={i}
@@ -3551,7 +3612,8 @@ export function AviationMap({
             above) — the native SDK owns the visual position while a drag is
             in progress regardless of the lngLat prop we pass on re-render,
             so there's no need to hide/swap the active one. */}
-        {onLegInsert && !editLocked && routeVisible && waypoints.length >= 2 && legMidpointWps.slice(0, -1).map((from, i) => {
+        {onLegInsert && routeVisible && waypoints.length >= 2 && legMidpointWps.slice(0, -1).map((from, i) => {
+          if (!legEditable(i)) return null
           const to = legMidpointWps[i + 1]
           return (
             <LegMidpointAnnotation

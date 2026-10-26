@@ -41,8 +41,10 @@ interface Props {
   aircraftProfile?: AircraftProfileDocType
   /** Pan the map to this location */
   onFlyTo:          (lat: number, lng: number) => void
-  /** Append as a route waypoint */
-  onAddToRoute:     (wp: RouteWaypoint) => void
+  /** Append as a route waypoint (or, with directTo, fly direct to it) */
+  onAddToRoute:     (wp: RouteWaypoint, isAerodrome?: boolean) => void
+  /** In flight: each row's action is Direct To instead of Add to route. */
+  directTo?:        boolean
   /** Current route points; with onInsertInRoute, rows offer insert-at-position. */
   routePoints?:     { name?: string }[]
   onInsertInRoute?: (wp: RouteWaypoint, afterIdx: number) => void
@@ -62,7 +64,9 @@ const SURF_OPTS: { v: SurfaceFilter; label: string }[] = [
   { v: 'any', label: 'Any' }, { v: 'hard', label: 'Hard' }, { v: 'grass', label: 'Grass' },
 ]
 
-export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyTo, onAddToRoute, routePoints, onInsertInRoute, places, onSavePlace, open: openProp, onOpenChange }: Props) {
+export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyTo, onAddToRoute, directTo = false, routePoints, onInsertInRoute, places, onSavePlace, open: openProp, onOpenChange }: Props) {
+  const addIcon = directTo ? 'navigate' as const : 'add' as const
+  const addVerb = directTo ? 'Direct to' : 'Add to route:'
   const styles = useThemedStyles(makeStyles)
   const sheetMaxH = useSheetMaxHeight()
   const [openState, setOpenState] = React.useState(false)
@@ -169,12 +173,12 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
       </TouchableOpacity>
       <TouchableOpacity
         style={styles.addBtn}
-        onPress={() => onAddToRoute(aerodromeToWaypoint(a))}
+        onPress={() => onAddToRoute(aerodromeToWaypoint(a), true)}
         testID={`find-destination-add-${a.icao}`}
-        accessibilityLabel={`Add ${a.icao} to route`}
+        accessibilityLabel={`${addVerb} ${a.icao}`}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <Ionicons name="add" size={18} color={theme.textPrimary} />
+        <Ionicons name={addIcon} size={18} color={theme.textPrimary} />
       </TouchableOpacity>
       {insertBtn(a.icao, a.icao)}
     </View>
@@ -197,7 +201,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
         scroll={false}
         header={(
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Find a Destination</Text>
+            <Text style={styles.headerTitle}>{directTo ? 'Direct To' : 'Find a Destination'}</Text>
             {glideRangeNm !== null && (
               <Text style={styles.glideNote}>⬡ Glide {glideRangeNm.toFixed(0)} NM</Text>
             )}
@@ -288,10 +292,10 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
             <TouchableOpacity
               style={styles.addBtn}
               onPress={() => onAddToRoute({ lat: goTo.lat, lng: goTo.lng })}
-              accessibilityLabel="Add to route"
+              accessibilityLabel={directTo ? 'Direct to this position' : 'Add to route'}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="add" size={18} color={theme.textPrimary} />
+              <Ionicons name={addIcon} size={18} color={theme.textPrimary} />
             </TouchableOpacity>
           </View>
           )
@@ -310,10 +314,10 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
             <TouchableOpacity
               style={styles.addBtn}
               onPress={() => onAddToRoute({ lat: p.lat, lng: p.lng, name: p.name })}
-              accessibilityLabel={`Add ${p.name} to route`}
+              accessibilityLabel={`${addVerb} ${p.name}`}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="add" size={18} color={theme.textPrimary} />
+              <Ionicons name={addIcon} size={18} color={theme.textPrimary} />
             </TouchableOpacity>
             {insertBtn(p.id, p.name)}
           </View>

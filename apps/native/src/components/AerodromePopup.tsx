@@ -175,9 +175,13 @@ interface Props {
    *  existed. */
   regionalNotams?: NotamItem[]
   routeWaypoints?: RoutePoint[]
+  /** Route action in the header: on the ground add to / start the route,
+   *  in flight Direct To / Take shortcut. `short` is the pill text, `label`
+   *  the full description (accessibility). Closes the popup after. */
+  routeAction?: { short: string; label: string; icon: 'add' | 'airplane'; onPress: () => void }
 }
 
-export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams, routeWaypoints }: Props) {
+export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams, routeWaypoints, routeAction }: Props) {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const runwayStyles = useThemedStyles(makeRunwayStyles)
@@ -271,6 +275,17 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
               <Text style={styles.notamHint}>⏰ Active NOTAM may have changed opening hours — see NOTAMs</Text>
             )}
           </View>
+          {routeAction && feature.lat != null && feature.lng != null && (
+            <TouchableOpacity
+              onPress={() => { routeAction.onPress(); onClose() }}
+              style={styles.routeActionBtn}
+              accessibilityLabel={routeAction.label}
+              testID="aerodrome-route-action"
+            >
+              <Ionicons name={routeAction.icon} size={14} color="#0b1220" />
+              <Text style={styles.routeActionTxt}>{routeAction.short}</Text>
+            </TouchableOpacity>
+          )}
           {!!feature.icao && (
             <TouchableOpacity
               onPress={() => {
@@ -531,6 +546,13 @@ function makeStyles(theme: ScaledTheme) {
   closeBtn: {
     padding: theme.space2,
   },
+  routeActionBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: theme.space2, paddingVertical: theme.space1,
+    marginRight: theme.space1,
+    borderRadius: theme.radiusFull, backgroundColor: theme.accentBlue,
+  },
+  routeActionTxt: { color: '#0b1220', fontSize: theme.textXs, fontWeight: '700' },
   tabBar: {
     flexDirection: 'row',
     borderBottomWidth: 1,

@@ -27,6 +27,8 @@ interface Props {
   feature: FeatureInfo | null
   onClose: () => void
   onAddToRoute?: (lngLat: [number, number], name?: string) => void
+  /** Button text, e.g. "Start route here", "Direct to" (default "+ Add to route"). */
+  addLabel?: string
 }
 
 const KIND_ICON: Record<NonNullable<FeatureKind>, string> = {
@@ -35,7 +37,7 @@ const KIND_ICON: Record<NonNullable<FeatureKind>, string> = {
   waypoint: '📍',
 }
 
-export function FeaturePopup({ feature, onClose, onAddToRoute }: Props) {
+export function FeaturePopup({ feature, onClose, onAddToRoute, addLabel = '+ Add to route' }: Props) {
   const styles = useThemedStyles(makeStyles)
   if (!feature) return null
 
@@ -62,7 +64,7 @@ export function FeaturePopup({ feature, onClose, onAddToRoute }: Props) {
             style={styles.addBtn}
             onPress={() => { onAddToRoute(feature.lngLat!, feature.name); onClose() }}
           >
-            <Text style={styles.addBtnTxt}>+ Add to route</Text>
+            <Text style={styles.addBtnTxt}>{addLabel}</Text>
           </TouchableOpacity>
         )}
       </View>

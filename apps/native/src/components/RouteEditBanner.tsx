@@ -1,23 +1,30 @@
 /**
  * RouteEditBanner — compact pill at the top-left of the map for the whole
- * duration of a route edit session (first edit in planning mode until
- * Apply/Cancel). Distance and ETE are shown in the profile header. Apply
- * keeps the changes as an unsaved working copy; Cancel restores the route as
- * it was before the first edit.
+ * duration of a route edit session (first route change until Apply/Cancel,
+ * on the ground and in flight). Distance and ETE are shown in the profile
+ * header. Apply ("Keep" in flight) keeps the changes as an unsaved working
+ * copy; Cancel ("Revert" in flight) restores the route as it was before the
+ * first change.
  */
 
 import React from 'react'
-import { View, TouchableOpacity } from 'react-native'
+import { View, Text, TouchableOpacity } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 export function RouteEditBanner({
-  top, canUndo, canRedo,
+  top, label, cancelLabel = 'Cancel changes', applyLabel = 'Apply changes',
+  canUndo, canRedo,
   onUndo, onRedo, onCancel, onApply,
 }: {
   /** Distance from the top of the screen: pass the toolbar's own offset
    *  (below the status bar) so the banner lines up with the menu button. */
   top: number
+  /** Short state text before the buttons, e.g. "Route changed" in flight. */
+  label?: string
+  /** Accessibility labels of the two buttons. */
+  cancelLabel?: string
+  applyLabel?: string
   canUndo: boolean
   canRedo: boolean
   onUndo: () => void
@@ -28,16 +35,17 @@ export function RouteEditBanner({
   const styles = useThemedStyles(makeStyles)
   return (
     <View style={[styles.bar, { top }]} testID="route-edit-banner">
+      {label ? <Text style={styles.label} numberOfLines={1}>{label}</Text> : null}
       <TouchableOpacity onPress={onUndo} disabled={!canUndo} hitSlop={8} accessibilityLabel="Undo">
         <Ionicons name="arrow-undo" size={18} color={canUndo ? theme.textPrimary : theme.textFaint} />
       </TouchableOpacity>
       <TouchableOpacity onPress={onRedo} disabled={!canRedo} hitSlop={8} accessibilityLabel="Redo">
         <Ionicons name="arrow-redo" size={18} color={canRedo ? theme.textPrimary : theme.textFaint} />
       </TouchableOpacity>
-      <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} hitSlop={6} testID="route-edit-cancel" accessibilityLabel="Cancel changes">
+      <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} hitSlop={6} testID="route-edit-cancel" accessibilityLabel={cancelLabel}>
         <Ionicons name="close" size={18} color={theme.textPrimary} />
       </TouchableOpacity>
-      <TouchableOpacity style={styles.applyBtn} onPress={onApply} hitSlop={6} testID="route-edit-apply" accessibilityLabel="Apply changes">
+      <TouchableOpacity style={styles.applyBtn} onPress={onApply} hitSlop={6} testID="route-edit-apply" accessibilityLabel={applyLabel}>
         <Ionicons name="checkmark" size={18} color="#0b1220" />
       </TouchableOpacity>
     </View>
@@ -56,6 +64,7 @@ function makeStyles(theme: ScaledTheme) {
       height: 40,
       paddingLeft: theme.space3, paddingRight: theme.space2,
     },
+    label: { color: '#e5e7eb', fontSize: theme.textXs, fontWeight: '700' as const },
     cancelBtn: {
       width: 30, height: 30, borderRadius: 15, alignItems: 'center' as const, justifyContent: 'center' as const,
       backgroundColor: 'rgba(255,255,255,0.12)',
