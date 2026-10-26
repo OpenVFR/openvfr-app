@@ -1,6 +1,5 @@
 import { memo, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import LayerPanel, { type BasemapMode } from './LayerPanel'
-import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import SettingsPanel from './SettingsPanel'
 import RoutePlan from './RoutePlan'
 import PreflightWarnings from './PreflightWarnings'
@@ -10,12 +9,7 @@ import FuelPlan from './FuelPlan'
 import FindFeature, { type FindResult } from './FindFeature'
 import AccountBadge from './AccountBadge'
 import type { AuthState } from '../hooks/useAuth'
-import AerodromePopup, { type AerodromeFeatureProps } from './AerodromePopup'
-import type { RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import type { AvailableCountry } from '@open-vfr/shared/countries'
-import AirspacePopup, { type AirspaceFeature, type RegionalNotamHit } from './AirspacePopup'
-import FeaturePopup, { type PointFeature } from './FeaturePopup'
-import WhatsHerePopup, { type WhatsHereItem } from './WhatsHerePopup'
 import UserWaypoints from './UserWaypoints'
 import FlightLogs from './FlightLogs'
 import type { Units } from '../utils/units'
@@ -24,17 +18,9 @@ import type { LegOverride, AircraftProfileDocType, UserWaypointDocType } from '.
 import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
 import type { Theme, TrajectoryMode, AirspaceWarnLookahead, TerrainColoringSettings, TrafficVertFilter, ParkTimeoutOption } from '../db/useSettings'
 import type { DataManifest } from '../hooks/useDataManifest'
-import { scrollIntoContainer } from '../utils/scrollIntoContainer'
 import { useTakeoffTime, useGlobalWind } from '../db/useSettings'
 import { useRouteWinds } from '../hooks/useRouteWinds'
 import css from './SideDrawer.module.css'
-
-export type ActiveInfo =
-  | { kind: 'aerodrome'; props: AerodromeFeatureProps; lng: number; lat: number }
-  | { kind: 'airspace';  features: AirspaceFeature[]; regionalNotams?: RegionalNotamHit[]; focusKey?: string }
-  | { kind: 'point';     feature: PointFeature; routeWp?: RouteWaypoint }
-  | { kind: 'whatshere'; items: WhatsHereItem[]; airspaceFeatures: AirspaceFeature[]; lng: number; lat: number }
-  | null
 
 interface Props {
   // Map controls
@@ -104,21 +90,6 @@ interface Props {
   onSelectAircraft?: (id: string | null) => void
   // Search / fly-to
   onFlyTo: (r: FindResult) => void
-  // Feature info panel
-  activeInfo: ActiveInfo
-  onCloseInfo: () => void
-  isHome: (icao: string) => boolean
-  /** Current home ICAO. Not read directly: lets memo re-render when isHome's answer changes. */
-  homeIcao?: string | null
-  onSetHome: (icao: string, name: string, lng: number, lat: number) => void
-  /** Forwarded to AerodromePopup so the map's runway threshold labels can mirror its favored-end highlight. */
-  onRunwayWind?: (icao: string, ends: RunwayWindEnd[]) => void
-  // FIR-wide regional NOTAMs (unfiltered), forwarded to AerodromePopup's own
-  // "Other NOTAMs" section (see that component's regionalNotams Props doc
-  // comment) when activeInfo.kind === 'aerodrome' -- filtering to the
-  // planned route (waypoints, above) happens inside AerodromePopup itself.
-  regionalNotams?: NotamItem[]
-  onShowNotamOnMap?: (notam: NotamItem) => void
   // Flight logs
   selectedLogId: string | null
   /** `atTs`: open the log inspecting the recorded point at that time (an event picked in the list). */
@@ -136,17 +107,13 @@ interface Props {
   onMoveUserWpFolder: (id: string, folder: string) => void
   onFolderVisChange: (folder: string, visible: boolean) => void
   onSaveHereUserWaypoint: (name: string, lng: number, lat: number) => void
-  /** In flight: What's Here? offers Direct to / shortcut and Track instead of +Route. */
+  /** Flying with a position fix (the empty-route hint then points at Direct To). */
   inFlightRoute: boolean
-  directToLabel: (wp: RouteWaypoint) => string
-  onDirectTo: (wp: RouteWaypoint, rejoin: boolean) => void
-  onTrackPoint: (wp: RouteWaypoint, kind: 'aerodrome' | 'navaid' | 'waypoint') => void
   auth: AuthState
   onOpenProfile: () => void
 }
 
 const SECTION_LABELS = {
-  info:          'Selected Feature',
   route:         'Route',
   preflight:     'Pre-flight Check',
   fuel:          'Fuel Plan',
@@ -200,13 +167,11 @@ function SideDrawer({
   onAddToRoute, onInsertInRoute,
   selectedAircraftId, selectedAircraftProfile, tafWarnIcaos, onSelectAircraft,
   onFlyTo,
-  activeInfo, onCloseInfo,
-  isHome, onSetHome, onRunwayWind, regionalNotams, onShowNotamOnMap,
   selectedLogId, onSelectLog, onClearLog,
   userWaypoints, pendingUserWpCoords, folderVisibility,
   onUserWpCoordsConsumed, onStartPlaceUserWp,
   onSaveUserWaypoint, onDeleteUserWaypoint, onRenameUserWaypoint, onMoveUserWpFolder,
-  onFolderVisChange, onSaveHereUserWaypoint, inFlightRoute, directToLabel, onDirectTo, onTrackPoint,
+  onFolderVisChange, onSaveHereUserWaypoint, inFlightRoute,
   auth,
   onOpenProfile,
 }: Props) {
@@ -216,7 +181,7 @@ function SideDrawer({
   const [open, setOpen]         = useState(() => lsGet(LS_OPEN, typeof window === 'undefined' || window.innerWidth >= 700))
   const [width, setWidth]       = useState(() => lsGet(LS_WIDTH, DEFAULT_WIDTH))
   const [expanded, setExpanded] = useState<Record<Section, boolean>>(() =>
-    lsGet(LS_EXPANDED, { info: false, route: false, preflight: false, fuel: false, flightLogs: false, aircraft: false, userWaypoints: false, layers: false, settings: false })
+    lsGet(LS_EXPANDED, { route: false, preflight: false, fuel: false, flightLogs: false, aircraft: false, userWaypoints: false, layers: false, settings: false })
   )
 
   // Drag-resize handle
@@ -243,31 +208,12 @@ function SideDrawer({
     window.addEventListener('mouseup', onUp)
   }, [width])
 
-  // Auto-open the drawer when a feature is tapped, route exists, or user WP coords arrive.
-  // Also force the Selected Feature section open (it may have been
-  // collapsed and persisted that way) and bring it into view with a brief
-  // highlight, so a map click always visibly lands on its feature. An
-  // airspace stack with a focused row scrolls to that row itself instead
-  // (AirspacePopup) -- two competing smooth scrolls would fight.
-  const infoRef = useRef<HTMLDivElement>(null)
-  const [infoFlash, setInfoFlash] = useState(false)
+  // Auto-open the drawer when a route exists or user WP coords arrive.
+  // (Clicked map features show in FeatureCard beside the map, not here.)
   // Planning inputs + effective per-leg wind, shared by the route table, pre-flight check and fuel plan.
   const [takeoffTime, setTakeoffTime] = useTakeoffTime()
   const [globalWind, setGlobalWind] = useGlobalWind()
   const routeWinds = useRouteWinds(waypoints, legOverrides, selectedAircraftProfile?.cruiseAltFt || undefined, selectedAircraftProfile?.cruiseIas || undefined, takeoffTime, globalWind)
-  useEffect(() => {
-    if (!activeInfo) return
-    setOpen(true)
-    setExpanded(e => (e.info ? e : { ...e, info: true }))
-    setInfoFlash(true)
-    const rowFocused = activeInfo.kind === 'airspace' && !!activeInfo.focusKey
-    const raf = rowFocused ? 0 : requestAnimationFrame(() => {
-      if (infoRef.current) scrollIntoContainer(infoRef.current, { block: 'start', margin: 0 })
-    })
-    const t = setTimeout(() => setInfoFlash(false), 1600)
-    return () => { cancelAnimationFrame(raf); clearTimeout(t) }
-  }, [activeInfo])
-
   useEffect(() => {
     if (waypoints.length > 0) { setOpen(true) }
   }, [waypoints.length > 0]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -314,12 +260,6 @@ function SideDrawer({
   const toggle = (s: Section) => setExpanded(p => ({ ...p, [s]: !p[s] }))
 
   const hasRoute = waypoints.length > 0
-  // Route action in a feature's popup: on the ground it starts or extends
-  // the route (map clicks on features then keep extending it); in flight it
-  // flies there from the present position.
-  const routeActionFor = (wp: RouteWaypoint, rejoin: boolean): { label: string; onClick: () => void } => inFlightRoute
-    ? { label: directToLabel(wp), onClick: () => onDirectTo(wp, rejoin) }
-    : { label: hasRoute ? 'Add to route' : 'Start route here', onClick: () => onAddToRoute(wp) }
   // Computed once here (not inline in JSX) so the section header's count
   // badge and the panel body agree -- both must reflect the SAME filtered
   // list, not the badge showing the unfiltered total while the body below
@@ -336,65 +276,6 @@ function SideDrawer({
           <FindFeature onResult={onFlyTo} onAddToRoute={onAddToRoute} routeWaypoints={waypoints} onInsertInRoute={onInsertInRoute} places={userWaypoints} onSavePlace={(lng, lat) => onSaveHereUserWaypoint('', lng, lat)} />
         </div>
         <div className={css.scroll}>
-
-          {/* ── Selected Feature ───────────────────────────────── */}
-          {activeInfo && (
-            <div ref={infoRef} className={`${css.section} ${infoFlash ? css.sectionFlash : ''}`}>
-              <button className={css.sectionHeader} onClick={() => toggle('info')}>
-                <span>{SECTION_LABELS.info}</span>
-                <span className={css.chevron}>{expanded.info ? '▾' : '▸'}</span>
-              </button>
-              {expanded.info && (
-                <div className={css.sectionBody}>
-                  {activeInfo.kind === 'aerodrome' && (
-                    <AerodromePopup
-                      key={activeInfo.props.icao}
-                      props={activeInfo.props}
-                      lng={activeInfo.lng}
-                      lat={activeInfo.lat}
-                      isHome={isHome(activeInfo.props.icao)}
-                      authed={!!auth.user}
-                      onSetHome={onSetHome}
-                      onClose={onCloseInfo}
-                      onRunwayWind={onRunwayWind}
-                      regionalNotams={regionalNotams}
-                      routeWaypoints={waypoints}
-                      onShowNotamOnMap={onShowNotamOnMap}
-                      routeAction={routeActionFor({ lng: activeInfo.lng, lat: activeInfo.lat, name: activeInfo.props.icao }, false)}
-                    />
-                  )}
-                  {activeInfo.kind === 'airspace' && (
-                    <AirspacePopup
-                      features={activeInfo.features}
-                      regionalNotams={activeInfo.regionalNotams}
-                      focusKey={activeInfo.focusKey}
-                      onClose={onCloseInfo}
-                    />
-                  )}
-                  {activeInfo.kind === 'point' && (
-                    <FeaturePopup
-                      feature={activeInfo.feature}
-                      onClose={onCloseInfo}
-                      routeAction={activeInfo.routeWp ? routeActionFor(activeInfo.routeWp, true) : undefined}
-                    />
-                  )}
-                  {activeInfo.kind === 'whatshere' && (
-                    <WhatsHerePopup
-                      items={activeInfo.items}
-                      airspaceFeatures={activeInfo.airspaceFeatures}
-                      lng={activeInfo.lng}
-                      lat={activeInfo.lat}
-                      onAddToRoute={onAddToRoute}
-                      onSaveUserWaypoint={onSaveHereUserWaypoint}
-                      onClose={onCloseInfo}
-                      flight={inFlightRoute ? { directLabel: directToLabel, onDirectTo, onTrack: onTrackPoint } : undefined}
-                      pointAction={routeActionFor({ lng: activeInfo.lng, lat: activeInfo.lat }, true)}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* ── Route: the working route, as a document (name, Save, Open) ── */}
           <div className={css.section}>

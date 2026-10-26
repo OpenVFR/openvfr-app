@@ -141,6 +141,7 @@ import GoFlyingPanel from './GoFlyingPanel'
 import { NotificationCenter } from './NotificationCenter'
 import AirfieldBriefPanel from './AirfieldBriefPanel'
 import DirectToPanel from './DirectToPanel'
+import FeatureCard, { type ActiveInfo } from './FeatureCard'
 import FindDestPanel from './FindDestPanel'
 import { useAirfieldBrief } from '../hooks/useAirfieldBrief'
 import { useAerodromeWxHighlight } from '../hooks/useAerodromeWxHighlight'
@@ -4624,11 +4625,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
     enabled: flyingMode === 'off',
   })
 
-  // Memoise activeInfo so its reference only changes when activePopup changes.
-  // Without this, the SideDrawer auto-open effect fires on every render
-  // (inline JSX ternaries produce a new object each time), re-opening the
-  // drawer immediately after the user closes it.
-  const activeInfo = useMemo(() => {
+  // Memoise activeInfo so its reference only changes when activePopup
+  // changes (FeatureCard is memoised on it).
+  const activeInfo = useMemo((): ActiveInfo | null => {
     if (!activePopup) return null
     if (activePopup.kind === 'aerodrome')
       return { kind: 'aerodrome' as const, props: activePopup.props, lng: activePopup.lng, lat: activePopup.lat }
@@ -4716,9 +4715,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
     },
     activeRouteId,
     onActiveRouteIdChange: setActiveRouteId,
-    onRunwayWind: handleRunwayWind,
-    regionalNotams: regionalNotamsAll,
-    onShowNotamOnMap: handleShowNotamOnMap,
     onSetLegOverride: (idx: number, ovr: LegOverride) =>
       setLegOverrides((prev) => {
         const next = [...prev]
@@ -4747,12 +4743,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
         return next
       })
     },
-    activeInfo,
-    onCloseInfo: () => setActivePopup(null),
-    isHome: (icao: string) => homeAirfield?.icao === icao,
-    homeIcao: homeAirfield?.icao ?? null,
-    onSetHome: (icao: string, name: string, lng: number, lat: number) =>
-      setHomeAirfield(homeAirfield?.icao === icao ? null : { icao, name, lng, lat }),
     selectedAircraftId: selectedAircraftId ?? undefined,
     selectedAircraftProfile,
     onSelectAircraft: setSelectedAircraftId,
@@ -4777,12 +4767,50 @@ export default function MapView({ auth }: { auth: AuthState }) {
       saveUserWaypoint({ name: finalName, lng, lat, folder: '' }).catch(console.error)
     },
     inFlightRoute: flyingMode !== 'off' && !!gpsPosition,
+    auth,
+    onOpenProfile: () => setProfileOpen(true),
+  })
+
+  // A feature clicked where the card will cover it: slide the map left so the
+  // feature stays in view beside the card (desktop, not while flying).
+  useEffect(() => {
+    const map = mapRef.current
+    const el = containerRef.current
+    if (!map || !el || !activePopup || flyingMode !== 'off') return
+    const w = el.clientWidth
+    if (w <= 700) return
+    const cardLeft = w - 60 - Math.min(400, w - 140)
+    const margin = 40
+    if (activePopup.x > cardLeft - margin) map.panBy([activePopup.x - (cardLeft - margin) + 20, 0], { duration: 300 })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePopup])
+
+  // Clicked-feature card beside the map (see FeatureCard). Stable props, so
+  // the memoised card skips the per-GPS-tick re-renders of this component.
+  const inFlightRoute = flyingMode !== 'off' && !!gpsPosition
+  const cardProps = useStableProps({
+    onClose: () => setActivePopup(null),
+    isHome: (icao: string) => homeAirfield?.icao === icao,
+    authed: !!auth.user,
+    onSetHome: (icao: string, name: string, lng: number, lat: number) =>
+      setHomeAirfield(homeAirfield?.icao === icao ? null : { icao, name, lng, lat }),
+    onRunwayWind: handleRunwayWind,
+    regionalNotams: regionalNotamsAll,
+    routeWaypoints,
+    onShowNotamOnMap: handleShowNotamOnMap,
+    // The route button on a feature: start / extend the route on the ground
+    // (map clicks on features then keep extending it); in flight, fly there.
+    routeActionFor: (wp: RouteWaypoint, rejoin: boolean) => inFlightRoute
+      ? { label: directToLabel(wp), onClick: () => flyDirect(wp, rejoin) }
+      : { label: routeWaypoints.length > 0 ? 'Add to route' : 'Start route here', onClick: () => drawerProps.onAddToRoute(wp) },
+    onAddToRoute: drawerProps.onAddToRoute,
+    onSaveHereUserWaypoint: drawerProps.onSaveHereUserWaypoint,
+    inFlight: inFlightRoute,
     directToLabel,
     onDirectTo: (wp: RouteWaypoint, rejoin: boolean) => flyDirect(wp, rejoin),
     onTrackPoint: (wp: RouteWaypoint, kind: TrackedPoint['kind']) =>
       setTrackedPoint({ lat: wp.lat, lng: wp.lng, name: wp.name ?? 'Point', kind }),
-    auth,
-    onOpenProfile: () => setProfileOpen(true),
+    routeKey: `${routeWaypoints.length}:${activeLeg}`,
   })
 
   return (
@@ -4802,6 +4830,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             onApply={routeUndo.applyEditSession}
           />
         )}
+        {activeInfo && <FeatureCard info={activeInfo} {...cardProps} />}
         {extending && (
           <div className={css.extendHint} role="status">
             Click aerodromes, navaids or reporting points to add them. For any other point: Alt+click, or right-click / long-press. Click empty map or press Esc when done.
