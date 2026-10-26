@@ -339,18 +339,22 @@ export interface FlownBand {
   lower_ft: number; upper_ft: number; entryNm: number; exitNm: number
 }
 
+/** Airspace kinds that do not count for a log: uncontrolled (G), model-flying and glider areas. */
+const NOT_LOGGED_AIRSPACE = new Set(['G', 'MODEL', 'GLDR'])
+
 /**
- * Airspace the aircraft was in at `distNm` / `altFt`, class G left out. Uses the
+ * Airspace the aircraft was in at `distNm` / `altFt` (class G, model-flying and
+ * glider areas left out). Uses the
  * band limits as drawn in the profile (FL limits read as feet, AGL limits lifted
  * onto the terrain), the same approximation the chart shows: for review, not
  * as proof of an infringement.
  */
 export function flownAirspaceAt<B extends FlownBand>(bands: readonly B[], distNm: number, altFt: number): B[] {
   if (!Number.isFinite(altFt)) return []
-  return bands.filter((b) => b.class !== 'G' && distNm >= b.entryNm && distNm <= b.exitNm && altFt >= b.lower_ft && altFt <= b.upper_ft)
+  return bands.filter((b) => !NOT_LOGGED_AIRSPACE.has(b.class) && distNm >= b.entryNm && distNm <= b.exitNm && altFt >= b.lower_ft && altFt <= b.upper_ft)
 }
 
-/** Each time the flown line enters an airspace band (class G left out), in flight order. */
+/** Each time the flown line enters an airspace band (class G, model and glider areas left out), in flight order. */
 export function flownAirspaceEntries<B extends FlownBand>(points: readonly FlownPoint[], bands: readonly B[]): { band: B; point: FlownPoint }[] {
   const out: { band: B; point: FlownPoint }[] = []
   const inside = new Set<B>()

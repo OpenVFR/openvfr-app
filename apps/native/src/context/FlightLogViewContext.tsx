@@ -16,7 +16,10 @@ interface FlightLogViewValue {
   /** Parsed track points for the selected log (empty if none/unparseable). */
   selectedTrack: TrackPoint[]
   /** Select a log to view (or pass null to clear/hide it). */
-  viewLog: (log: FlightLogDocType | null) => void
+  /** `atTs`: open the log inspecting the recorded point at that time (an event picked in the list). */
+  viewLog: (log: FlightLogDocType | null, atTs?: number) => void
+  /** Moment to inspect when the log opens (set by viewLog's atTs); `n` makes a repeat pick count. */
+  jumpTs: { ts: number; n: number } | null
   /** Clear the current selection (equivalent to viewLog(null)). */
   clearView: () => void
 }
@@ -26,8 +29,10 @@ const FlightLogViewContext = createContext<FlightLogViewValue | null>(null)
 export function FlightLogViewProvider({ children }: { children: ReactNode }) {
   const [selectedLog, setSelectedLog]     = useState<FlightLogDocType | null>(null)
   const [selectedTrack, setSelectedTrack] = useState<TrackPoint[]>([])
+  const [jumpTs, setJumpTs] = useState<{ ts: number; n: number } | null>(null)
 
-  const viewLog = useCallback((log: FlightLogDocType | null) => {
+  const viewLog = useCallback((log: FlightLogDocType | null, atTs?: number) => {
+    setJumpTs((j) => (log && atTs != null ? { ts: atTs, n: (j?.n ?? 0) + 1 } : null))
     setSelectedLog(log)
     if (!log) { setSelectedTrack([]); return }
     try {
@@ -40,7 +45,7 @@ export function FlightLogViewProvider({ children }: { children: ReactNode }) {
   const clearView = useCallback(() => viewLog(null), [viewLog])
 
   return (
-    <FlightLogViewContext.Provider value={{ selectedLog, selectedTrack, viewLog, clearView }}>
+    <FlightLogViewContext.Provider value={{ selectedLog, selectedTrack, viewLog, clearView, jumpTs }}>
       {children}
     </FlightLogViewContext.Provider>
   )

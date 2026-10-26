@@ -19,6 +19,7 @@ import {
 } from 'react-native'
 import { useSyncRejected } from '../sync/cloudSync'
 import { SyncRefusedNote } from '../components/SyncRefusedNote'
+import { LogEventsList } from '../components/LogEventsList'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
@@ -288,6 +289,19 @@ export function PlanScreen() {
     viewLog(log)
     navigation.navigate('Map' as never)
   }
+  // An event picked under a log: open the log on the map at that moment.
+  const handleViewLogAt = (log: (typeof logs)[number], ts: number) => {
+    viewLog(log, ts)
+    navigation.navigate('Map' as never)
+  }
+  // Logs whose events are open in the list (worked out on opening).
+  const [eventsOpen, setEventsOpen] = useState<Set<string>>(new Set())
+  const toggleEvents = (id: string) => setEventsOpen((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
   const [logsRefreshing, setLogsRefreshing] = useState(false)
   const handleLogsRefresh = async () => { setLogsRefreshing(true); try { await pullLogs() } finally { setLogsRefreshing(false) } }
 
@@ -1255,6 +1269,14 @@ export function PlanScreen() {
                       {isCompleted ? ` · ${logInfo(log).summary}` : ''}
                     </Text>
                     <SyncRefusedNote row={refusedLogs.get(log.id)} />
+                    {isCompleted && (
+                      <Text style={styles.logEventsToggle} onPress={() => toggleEvents(log.id)} accessibilityRole="button">
+                        {eventsOpen.has(log.id) ? '\u25be' : '\u25b8'} Events
+                      </Text>
+                    )}
+                    {isCompleted && eventsOpen.has(log.id) && (
+                      <LogEventsList log={log} aircraft={profiles.find(p => p.id === log.aircraftId)} onPick={(ts) => handleViewLogAt(log, ts)} />
+                    )}
                   </View>
                   <View style={styles.aircraftActions}>
                     {!isCompleted ? (
@@ -1427,6 +1449,7 @@ function makeStyles(theme: ScaledTheme) {
   placeChip: { paddingHorizontal: theme.space2, paddingVertical: theme.space1, borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.borderDefault },
   placeChipOn: { borderColor: theme.accentBlue },
   logFilterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space1, marginBottom: theme.space2 },
+  logEventsToggle: { color: theme.textSecondary, fontSize: theme.textXs, marginTop: theme.space1 },
   importBox: { gap: theme.space1, padding: theme.space2, marginBottom: theme.space2, borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.borderDefault },
   placeChipTxt: { color: theme.textMuted, fontSize: theme.textXs },
 

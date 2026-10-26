@@ -134,9 +134,10 @@ describe('log summaries', () => {
 describe('airspace along the flown line', () => {
   const band = (name: string, cls: string, entryNm: number, exitNm: number, lower: number, upper: number) =>
     ({ class: cls, type: 'CTR', name, tag: cls, lower_ft: lower, upper_ft: upper, entryNm, exitNm })
-  const bands = [band('CTR', 'C', 0, 0.5, 0, 2000), band('G', 'G', 0, 10, 0, 99999), band('TMA', 'C', 0.4, 1, 1500, 9500)]
+  const bands = [band('CTR', 'C', 0, 0.5, 0, 2000), band('G', 'G', 0, 10, 0, 99999), band('TMA', 'C', 0.4, 1, 1500, 9500),
+    band('MODEL', 'MODEL', 0, 10, 0, 1500), band('GLDR', 'GLDR', 0, 10, 0, 5000)]
 
-  it('finds the airspace at a point, class G left out', () => {
+  it('finds the airspace at a point, class G, model and glider areas left out', () => {
     expect(flownAirspaceAt(bands, 0.45, 1800).map((b) => b.name)).toEqual(['CTR', 'TMA'])
     expect(flownAirspaceAt(bands, 0.8, 1000)).toEqual([])
   })

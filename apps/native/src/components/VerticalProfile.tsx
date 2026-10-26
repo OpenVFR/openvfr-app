@@ -25,7 +25,7 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback, useSyncExternalStore } from 'react'
 import {
-  View, Text, TouchableOpacity, StyleSheet, Image, PanResponder, ScrollView, type LayoutChangeEvent,
+  View, Text, TouchableOpacity, StyleSheet, Image, PanResponder, type LayoutChangeEvent,
 } from 'react-native'
 import { GestureDetector, usePanGesture, usePinchGesture, useSimultaneousGestures } from 'react-native-gesture-handler'
 import Animated, { useSharedValue, useAnimatedStyle, withDecay, cancelAnimation } from 'react-native-reanimated'
@@ -72,9 +72,8 @@ import {
 } from '@open-vfr/shared/radarStyle'
 import {
   flownAltitudeAt, flownIndexAt, flownLineParts, formatElapsed, formatUtcTime, flownGaps, flownSpeedScale, flownSpeedRuns,
-  flownAirspaceAt, flownAirspaceEntries, splitBelowMsaNearFields, flownEvents, type FlownPoint, type FlownBand, type FlownEvent,
+  flownAirspaceAt, flownAirspaceEntries, splitBelowMsaNearFields, type FlownPoint, type FlownBand,
 } from '@open-vfr/shared/flightLogProfile'
-import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
 import { createValueStore, useStoreValue, type ValueStore } from '../utils/valueStore'
 import {
   profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, profileYMin, liveAltitudeWindow, declutterMarks, obstacleOpacity, isLimitingObstacle, altitudeTicksFrom, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
@@ -118,7 +117,7 @@ import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 // usePositionAlerts.ts (combined airspace/obstruction/airfield/notification hook).
 // ---------------------------------------------------------------------------
 const _geoJsonCache = new Map<string, Promise<GeoJSON.FeatureCollection>>()
-function loadGeoJsonOnce(url: string): Promise<GeoJSON.FeatureCollection> {
+export function loadGeoJsonOnce(url: string): Promise<GeoJSON.FeatureCollection> {
   let p = _geoJsonCache.get(url)
   if (!p) {
     p = fetch(url).then(r => r.json())
@@ -209,6 +208,8 @@ interface Props {
    *  an aircraft on the line can be dragged (or a spot tapped) to read time, altitude and
    *  ground speed there. Mirrors web's VirtualRadar `flown` mode. */
   flown?: FlownPoint[]
+  /** Flight log: inspect the recorded point closest to this time (an event picked in the Logs list); `n` makes a repeat pick count. */
+  jumpToTs?: { ts: number; n: number } | null
 }
 
 // ---------------------------------------------------------------------------
@@ -660,7 +661,6 @@ const ProfileAStatic = React.memo(function ProfileAStatic({
   logMode,
   flownDraw,
   showSpeed,
-  flownEventList,
   arrElevFt,
   contentW,
   depElevFt,
@@ -794,11 +794,6 @@ const ProfileAStatic = React.memo(function ProfileAStatic({
                 {flownDraw && flownDraw.belowNear !== '' && (
                   <Path d={flownDraw.belowNear} fill="none" stroke={FLOWN_NEAR_FIELD_COLOR} strokeWidth={2.5} />
                 )}
-                {/* Takeoffs, landings, touch-and-goes and airspace entries: a small dot on the flown line. */}
-                {(flownEventList as FlownEvent[] | undefined)?.filter((e) => e.kind !== 'gap' && Number.isFinite(e.point.altFt)).map((e, i) => (
-                  <Circle key={`ev-${i}`} cx={xOf(e.point.distNm)} cy={yOf(e.point.altFt)} r={4}
-                    fill={e.kind === 'airspace' ? '#93c5fd' : '#fff'} stroke="#000" strokeWidth={1.25} />
-                ))}
                 {/* Recording gaps: nothing known in between, so a dashed bridge and a dot at each end. */}
                 {flownDraw?.gaps.map((g: { x1: number; y1: number; x2: number; y2: number }, i: number) => (
                   <G key={`gap-${i}`}>
@@ -1208,7 +1203,7 @@ export function VerticalProfile({
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
   crossTrackNm, weatherStations,
   height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm, onLegLevelChange, followAircraft, corridorBand = true,
-  flown,
+  flown, jumpToTs,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const logMode = flown != null
@@ -1957,7 +1952,9 @@ export function VerticalProfile({
       'worklet'
       if (legModeSV.value === 1) scheduleOnRN(legDragEnd, !e.canceled)
       // Flight log: a tap away from the aircraft moves it there.
-      if (flownModeSV.value && flownScrubSV.value === 0 && !e.canceled
+      // (Not gated on e.canceled: a quick tap that never moved ends the pan gesture as
+      // cancelled / failed, which is exactly the tap we want.)
+      if (flownModeSV.value && flownScrubSV.value === 0
         && flownMoveSV.value < FLOWN_TAP_SLOP_PX && Date.now() - flownBeginSV.value.t <= FLOWN_TAP_MAX_MS) {
         const tNm = totalNmSV.value, pW = plotWSV.value
         if (tNm > 0 && pW > 0) scheduleOnRN(reportHover, Math.max(0, Math.min(tNm, ((flownBeginSV.value.x + scrollX.value - MARGIN_L) / pW) * tNm)))
@@ -2125,19 +2122,17 @@ export function VerticalProfile({
     }
   }, [flown, terrainPts, msaTerrain, getMsa, totalNm, xOf, yOf, plotH, waypoints, poiSets, profile])
 
-  // Events of the flight (takeoff, landing, touch-and-go, GPS lost, airspace entered), as chips under
-  // the chart; a tap moves the aircraft there and scrolls the chart to it.
-  const flownEventList = useMemo(() => {
-    if (!flown || !profile) return [] as FlownEvent[]
-    const t = autoFlyThresholds(aircraftProfile?.takeoffSpeedKts, aircraftProfile?.category)
-    return flownEvents(flown, profile.airspaceBands, { takeoffKts: t.takeoffKts, landedKts: t.landedKts })
-  }, [flown, profile, aircraftProfile])
-  const jumpToEvent = useCallback((e: FlownEvent) => {
-    flownStore.set({ idx: e.index, touched: true })
-    onHoverDistNmRef.current?.(e.point.distNm)
-    const target = Math.max(0, Math.min(maxScrollX, xOf(e.point.distNm) - chartW / 2))
-    setScroll(target)
-  }, [flownStore, maxScrollX, xOf, chartW, setScroll])
+  // Opened from an event in the Logs list: inspect the recorded point at that time (aircraft,
+  // readout and map marker there, chart scrolled to it).
+  useEffect(() => {
+    if (!flown || !jumpToTs || flown.length === 0 || chartW <= 0) return
+    let best = 0
+    for (let i = 1; i < flown.length; i++) if (Math.abs(flown[i].ts - jumpToTs.ts) < Math.abs(flown[best].ts - jumpToTs.ts)) best = i
+    flownStore.set({ idx: best, touched: true })
+    onHoverDistNmRef.current?.(flown[best].distNm)
+    setScroll(Math.max(0, Math.min(maxScrollX, xOf(flown[best].distNm) - chartW / 2)))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpToTs, flown, flownStore, chartW > 0, profile != null])
 
   // Hit segments for the leg level drag: the drawn planned line (climbs and
   // descents included), each piece assigned to the leg it lies in. Flat
@@ -2461,7 +2456,6 @@ export function VerticalProfile({
                   logMode={logMode}
                   flownDraw={flownDraw}
                   showSpeed={showSpeed}
-                  flownEventList={flownEventList}
                   windAloft={windAloft}
                   arrElevFt={arrElevFt}
                   contentW={contentW}
@@ -2628,21 +2622,6 @@ export function VerticalProfile({
           )}
         </View>
       )}
-      {logMode && !collapsed && flownEventList.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.eventsRow}>
-          {flownEventList.map((e, i) => (
-            <TouchableOpacity
-              key={`${e.kind}-${e.index}-${i}`}
-              style={[styles.eventChip, e.kind === 'gap' && styles.eventChipWarn]}
-              onPress={() => jumpToEvent(e)}
-              accessibilityLabel={`${e.label} at ${formatElapsed(e.point.elapsedMs)}`}
-            >
-              <Text style={styles.eventTime}>{formatElapsed(e.point.elapsedMs)}</Text>
-              <Text style={styles.eventLabel}>{e.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
     </View>
   )
 }
@@ -2754,33 +2733,6 @@ function makeStyles(theme: ScaledTheme) {
     color:      '#e8edf5',
     fontSize:   11,
     fontWeight: '600',
-  },
-  eventsRow: {
-    flexDirection:     'row',
-    gap:               theme.space1,
-    paddingHorizontal: theme.space2,
-    paddingVertical:   theme.space1,
-  },
-  eventChip: {
-    flexDirection:     'row',
-    gap:               4,
-    alignItems:        'center',
-    paddingHorizontal: theme.space2,
-    paddingVertical:   3,
-    borderRadius:      10,
-    borderWidth:       1,
-    borderColor:       theme.borderDefault,
-  },
-  eventChipWarn: {
-    borderColor: 'rgba(239,68,68,0.6)',
-  },
-  eventTime: {
-    color:    theme.textSecondary,
-    fontSize: 11,
-  },
-  eventLabel: {
-    color:    theme.textPrimary,
-    fontSize: 11,
   },
   flownLoading: {
     alignItems:     'center',

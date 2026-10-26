@@ -8,11 +8,60 @@ import { getDb, type FlightLogDocType, type TrackPoint } from '../db'
 import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import { useSyncRejected } from '../sync/cloudSync'
 import SyncRefusedNote from './SyncRefusedNote'
+import { flightLogEvents } from '@open-vfr/shared/flightLogEvents'
+import { formatElapsed, formatUtcTime, type FlownEvent } from '@open-vfr/shared/flightLogProfile'
+import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
+import { loadCountryGeojson } from '@open-vfr/shared/countryData'
+import type { AircraftProfileDocType } from '../db'
 import css from './FlightLogs.module.css'
+
+const EVENT_ICON: Record<FlownEvent['kind'], string> = {
+  takeoff: '\u2197', landing: '\u2198', 'touch-and-go': '\u21c4', gap: '\u26a0', airspace: '\u25a3',
+}
+
+/**
+ * A log's events (takeoff, landing, touch-and-go, GPS lost, airspace entered),
+ * worked out when opened: the track is parsed and the airspace it crosses looked
+ * up only then. Picking one opens the log on the map at that moment.
+ */
+function LogEvents({ log, aircraft, onPick }: {
+  log: FlightLogDocType
+  aircraft?: AircraftProfileDocType
+  onPick: (ts: number) => void
+}) {
+  const [events, setEvents] = useState<FlownEvent[] | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    const t = autoFlyThresholds(aircraft?.takeoffSpeedKts, aircraft?.category)
+    loadCountryGeojson('airspace').catch(() => null).then((airspace) => {
+      if (cancelled) return
+      try {
+        const track = JSON.parse(log.trackJson || '[]') as TrackPoint[]
+        setEvents(flightLogEvents(track, airspace, { takeoffKts: t.takeoffKts, landedKts: t.landedKts }))
+      } catch { setEvents([]) }
+    })
+    return () => { cancelled = true }
+  }, [log.trackJson, aircraft?.takeoffSpeedKts, aircraft?.category])
+  if (events == null) return <div className={css.events}><span className={css.eventsNote}>Working out events…</span></div>
+  if (events.length === 0) return <div className={css.events}><span className={css.eventsNote}>No events found.</span></div>
+  return (
+    <div className={css.events}>
+      {events.map((e, i) => (
+        <button key={`${e.kind}-${e.index}-${i}`} className={css.eventRow} onClick={() => onPick(e.point.ts)}
+          title={`${formatUtcTime(e.point.ts)}. Open the log here.`}>
+          <span className={css.eventIcon}>{EVENT_ICON[e.kind]}</span>
+          <span className={css.eventTime}>{formatElapsed(e.point.elapsedMs)}</span>
+          <span className={e.kind === 'gap' ? css.eventWarn : undefined}>{e.label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
 
 interface Props {
   selectedLogId: string | null
-  onSelect: (id: string) => void
+  /** `atTs`: open the log inspecting the recorded point at that time. */
+  onSelect: (id: string, atTs?: number) => void
   onClear: () => void
   /** Selected aircraft profile: imported logs are attributed to it (a GPX file carries no aircraft). */
   importAircraft?: { id: string; registration: string }
@@ -49,6 +98,14 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
   // A picked GPX file waiting for its aircraft (a GPX file carries none): confirmed in a small row.
   const [pendingImport, setPendingImport] = useState<{ doc: FlightLogDocType; aircraftId: string } | null>(null)
   const { profiles: aircraftProfiles } = useAircraftProfiles()
+  // Logs whose events are open in the list.
+  const [eventsOpen, setEventsOpen] = useState<Set<string>>(new Set())
+  const toggleEvents = (id: string) => setEventsOpen((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
   const [period, setPeriod] = useState<LogPeriod>('all')
   const [reg, setReg] = useState('')  // '' = all aircraft
 
@@ -227,8 +284,14 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
                   {stats && stats.landings > 0 && <span className={css.itemMetaVal}>{landingsLabel(stats)}</span>}
                   {log.maxAltFt > 0 && <span className={css.itemMetaVal}>max {Math.round(log.maxAltFt).toLocaleString()} ft</span>}
                   {stats && stats.gapCount > 0 && <span className={css.itemMetaVal} title="GPS track has gaps">⚠ gaps</span>}
+                  <button className={css.eventsToggle} onClick={() => toggleEvents(log.id)} aria-expanded={eventsOpen.has(log.id)}>
+                    {eventsOpen.has(log.id) ? '\u25be' : '\u25b8'} Events
+                  </button>
                 </div>
                 <SyncRefusedNote row={refusedLogs.get(log.id)} />
+                {eventsOpen.has(log.id) && (
+                  <LogEvents log={log} aircraft={aircraftProfiles.find((p) => p.id === log.aircraftId)} onPick={(ts) => onSelect(log.id, ts)} />
+                )}
               </div>
               <div className={css.itemActions}>
                 {deleteId === log.id ? (

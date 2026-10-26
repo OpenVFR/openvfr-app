@@ -122,7 +122,8 @@ interface Props {
   onShowNotamOnMap?: (notam: NotamItem) => void
   // Flight logs
   selectedLogId: string | null
-  onSelectLog: (id: string) => void
+  /** `atTs`: open the log inspecting the recorded point at that time (an event picked in the list). */
+  onSelectLog: (id: string, atTs?: number) => void
   onClearLog: () => void
   // User waypoints
   userWaypoints: UserWaypointDocType[]

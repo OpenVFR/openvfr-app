@@ -442,7 +442,7 @@ function MapScreenForCountry() {
   // Viewed flight log track (Logs segment "View" action on PlanScreen) —
   // takes priority over the live/lookahead profile: reviewing a past flight
   // is a distinct mode from planning/flying the current route.
-  const { selectedLog, selectedTrack, clearView } = useFlightLogViewContext()
+  const { selectedLog, selectedTrack, clearView, jumpTs: logJumpTs } = useFlightLogViewContext()
   // Ruler cross-section takes priority over everything else (mirrors web's
   // MapView.tsx priority order: ruler -> past-log -> planned -> look-ahead)
   // -- an active ad-hoc measurement is a more deliberate, momentary action
@@ -1920,6 +1920,7 @@ function MapScreenForCountry() {
           aircraftProfile={aircraftProfile}
           onClose={clearView}
           closeLabel="Close the flight log"
+          jumpToTs={logJumpTs}
           height={profileHeight}
           onHeightChange={setProfileHeight}
           onHoverDistNm={handleProfileHover}

@@ -794,6 +794,12 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // The viewed log as a profile path (simplified track) plus every recorded point on its distance axis.
   const selectedLogProfile = useMemo(() => flightLogProfile(selectedLogTrack), [selectedLogTrack])
   const closeSelectedLog = useCallback(() => setSelectedLogId(null), [])
+  // Opened from an event in the Logs list: the profile inspects that moment.
+  const [logJumpTs, setLogJumpTs] = useState<{ ts: number; n: number } | null>(null)
+  const selectLog = useCallback((id: string, atTs?: number) => {
+    setSelectedLogId(id)
+    setLogJumpTs((j) => (atTs != null ? { ts: atTs, n: (j?.n ?? 0) + 1 } : null))
+  }, [])
 
   // ── Look-ahead VirtualRadar for unplanned flight ──────────────────────────
   // While flying without a planned route, synthesise a 2-waypoint route from
@@ -4506,7 +4512,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     onSelectAircraft: setSelectedAircraftId,
     onFlyTo: (r: { lng: number; lat: number; kind?: string }) => mapRef.current?.flyTo({ center: [r.lng, r.lat], zoom: r.kind === 'LL' ? 12 : 13, speed: 1.4 }),
     selectedLogId,
-    onSelectLog: setSelectedLogId,
+    onSelectLog: selectLog,
     onClearLog: () => setSelectedLogId(null),
     userWaypoints,
     pendingUserWpCoords,
@@ -5056,6 +5062,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
               aircraftProfile={selectedAircraftProfile}
               onHoverDistNm={setLogCursor}
               onClose={closeSelectedLog}
+              jumpToTs={logJumpTs}
             />
           </div>
         ) : routeVisible && routeWaypoints.length >= 2 ? (

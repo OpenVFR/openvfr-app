@@ -12,9 +12,8 @@ import {
 } from '@open-vfr/shared/radarStyle'
 import {
   flownAltitudeAt, flownIndexAt, flownLineParts, formatElapsed, formatUtcTime, flownGaps, flownSpeedScale, flownSpeedRuns,
-  flownAirspaceAt, flownAirspaceEntries, splitBelowMsaNearFields, flownEvents, type FlownPoint, type FlownEvent,
+  flownAirspaceAt, flownAirspaceEntries, splitBelowMsaNearFields, type FlownPoint,
 } from '@open-vfr/shared/flightLogProfile'
-import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
 import { airspaceOutlines, airspaceChips, layoutAirspaceChips } from '@open-vfr/shared/airspaceOutline'
 import {
   cloudLayerPaths, cloudLayerLabel, cloudGlyphHeight, cloudOpacityForOffset, cloudReportOffRouteNm,
@@ -98,16 +97,6 @@ const LINE_LABEL_INSET = 5
 const CHART_TEXT = '#ffffff'
 const CHART_LINE = 'rgba(255,255,255,0.45)'
 
-/** Takeoff / landed speeds for a log's events: the aircraft's own, else its category's default. */
-const logSpeedThr = (ac?: AircraftProfileDocType) => {
-  const t = autoFlyThresholds(ac?.takeoffSpeedKts, ac?.category)
-  return { takeoffKts: t.takeoffKts, landedKts: t.landedKts }
-}
-
-const EVENT_ICON: Record<FlownEvent['kind'], string> = {
-  takeoff: '\u2197', landing: '\u2198', 'touch-and-go': '\u21c4', gap: '\u26a0', airspace: '\u25a3',
-}
-
 const HALO = { stroke: 'rgba(0,0,0,0.9)', strokeWidth: 4, strokeLinejoin: 'round' as const, paintOrder: 'stroke' }
 
 
@@ -170,6 +159,8 @@ interface Props {
   flown?: FlownPoint[]
   /** Shows a close button in the header. */
   onClose?: () => void
+  /** Flight log: inspect the recorded point closest to this time (an event picked in the Logs list); `n` makes a repeat pick count. */
+  jumpToTs?: { ts: number; n: number } | null
 }
 
 /** Per-sample series the chart lines and the hover readout are drawn from. */
@@ -935,7 +926,7 @@ function VirtualRadar({
   waypoints, legOverrides, units = DEFAULT_UNITS, title, onHoverDistNm, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, crosshairDistNm,
   crossTrackNm, weatherStations, airspaceCeilingFt, onLegLevelChange, followAircraft, corridorBand = true,
-  flown, onClose,
+  flown, onClose, jumpToTs,
 }: Props) {
   const logMode = flown != null
   const [legDrag, setLegDrag] = useState<LegDragState | null>(null)
@@ -1279,13 +1270,13 @@ function VirtualRadar({
   const flownSpeed = useMemo(() => (flown ? { scale: flownSpeedScale(flown), runs: flownSpeedRuns(flown) } : null), [flown])
   const flownGapInfo = useMemo(() => (flown ? flownGaps(flown) : null), [flown])
   const flownEntries = useMemo(() => (flown && profile ? flownAirspaceEntries(flown, profile.airspaceBands) : []), [flown, profile])
-  // Events of the flight (takeoff, landing, touch-and-go, GPS lost, airspace entered), listed under the chart.
-  const flownEventList = useMemo(
-    () => (flown && profile ? flownEvents(flown, profile.airspaceBands, logSpeedThr(aircraftProfile)) : []),
-    [flown, profile, aircraftProfile],
-  )
-  const [jumpTo, setJumpTo] = useState<{ index: number; n: number } | null>(null)
-  const [showEvents, setShowEvents] = usePersistedFlag('ovfr:vr:events', true)
+  // Opened from an event in the Logs list: inspect the recorded point at that time.
+  const jumpTo = useMemo(() => {
+    if (!flown || !jumpToTs || flown.length === 0) return null
+    let best = 0
+    for (let i = 1; i < flown.length; i++) if (Math.abs(flown[i].ts - jumpToTs.ts) < Math.abs(flown[best].ts - jumpToTs.ts)) best = i
+    return { index: best, n: jumpToTs.n }
+  }, [flown, jumpToTs])
 
   // Inputs of the drag layer, kept stable so a drag step only re-renders the layer, not rebuilds these.
   const plannedPts = useMemo(() => (series ? series.distNms.map((d, i) => ({ distNm: d, altFt: series.plannedAlts[i] })) : []), [series])
@@ -1920,13 +1911,6 @@ function VirtualRadar({
         {series.belowMsaNearField?.map((run, i) => (
           <path key={`below-near-${i}`} d={polylinePath(run, L.xOf, L.yOf)} fill="none" stroke={FLOWN_NEAR_FIELD_COLOR} strokeWidth={2.5} />
         ))}
-        {/* Takeoffs, landings, touch-and-goes and airspace entries: a small flag on the flown line. */}
-        {flownEventList.filter((e) => e.kind !== 'gap' && Number.isFinite(e.point.altFt)).map((e, i) => (
-          <g key={`ev-${i}`} pointerEvents="none">
-            <circle cx={L.xOf(e.point.distNm)} cy={L.yOf(e.point.altFt)} r={4}
-              fill={e.kind === 'airspace' ? '#93c5fd' : '#fff'} stroke="#000" strokeWidth={1.25} />
-          </g>
-        ))}
         {/* Recording gaps: nothing is known in between, so a dashed bridge and a dot at each end. */}
         {flownParts?.gaps.map(([a, b], i) => (
           <g key={`gap-${i}`} pointerEvents="none">
@@ -1963,7 +1947,7 @@ function VirtualRadar({
         </text>
       </>
     )
-  }, [profile, layout, series, yMax, yMin, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, showMsa, windAloft, iconMarkup, visibleWaypointTicks, units.distance, dragging, obstacleMarks, landmarkMarks, poiMarks, unreached, legSpanList, phaseMarks, flownParts, logMode, windOn, flownSpeed, showSpeed, flownEventList])
+  }, [profile, layout, series, yMax, yMin, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, showMsa, windAloft, iconMarkup, visibleWaypointTicks, units.distance, dragging, obstacleMarks, landmarkMarks, poiMarks, unreached, legSpanList, phaseMarks, flownParts, logMode, windOn, flownSpeed, showSpeed])
 
   if (!profile || !series || series.distNms.length === 0) {
     // A flight log shows its panel at once: building its profile (map data, terrain) takes a moment.
@@ -2195,26 +2179,6 @@ function VirtualRadar({
         </div>
       )}
 
-      {/* ── Flight log events (tap to inspect there) ─────────────────── */}
-      {logMode && !collapsed && flownEventList.length > 0 && (
-        <div className={css.events}>
-          <button className={css.eventsToggle} onClick={() => setShowEvents((v) => !v)} aria-expanded={showEvents}>
-            {showEvents ? '\u25be' : '\u25b8'} Events ({flownEventList.length})
-          </button>
-          {showEvents && flownEventList.map((e, i) => (
-            <button
-              key={`${e.kind}-${e.index}-${i}`}
-              className={`${css.eventChip} ${e.kind === 'gap' ? css.eventWarn : ''}`}
-              onClick={() => setJumpTo((j) => ({ index: e.index, n: (j?.n ?? 0) + 1 }))}
-              title={`${formatUtcTime(e.point.ts)} \u00b7 ${Number.isFinite(e.point.altFt) ? `${Math.round(e.point.altFt)} ft` : 'no altitude'}. Click to inspect here.`}
-            >
-              <span className={css.eventIcon}>{EVENT_ICON[e.kind]}</span>
-              <span className={css.eventTime}>{formatElapsed(e.point.elapsedMs)}</span>
-              {e.label}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
