@@ -113,6 +113,11 @@ interface Options {
 export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: Options): FeatureCollection {
   const batchRef    = useRef<TrafficBatch | null>(null)
   const [fc, setFc] = useState<FeatureCollection>({ type: 'FeatureCollection', features: [] })
+  // Own position via refs so a GPS fix does not tear down and restart the
+  // dead-reckon timer (that used to happen on every fix, i.e. ~1 Hz, which
+  // starved / jittered the 1 s timer).
+  const ownRef = useRef({ ownAltFt, ownLat, ownLon })
+  ownRef.current = { ownAltFt, ownLat, ownLon }
 
   // ── Poll server ───────────────────────────────────────────────────────────
   const poll = useCallback(async () => {
@@ -141,6 +146,7 @@ export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: 
     const timer = setInterval(() => {
       const batch = batchRef.current
       if (!batch) return
+      const { ownAltFt, ownLat, ownLon } = ownRef.current
       const nowS = Date.now() / 1000
       const features: Feature<Point>[] = []
 
@@ -184,10 +190,14 @@ export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: 
         })
       }
 
-      setFc({ type: 'FeatureCollection', features })
+      // Empty -> empty: keep the old object so MapScreen does not re-render
+      // and the map source is not re-uploaded every second for nothing.
+      setFc(prev => (features.length === 0 && prev.features.length === 0)
+        ? prev
+        : { type: 'FeatureCollection', features })
     }, DEAD_RECKON_MS)
     return () => clearInterval(timer)
-  }, [enabled, ownAltFt, ownLat, ownLon])
+  }, [enabled])
 
   return fc
 }
