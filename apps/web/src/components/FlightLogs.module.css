@@ -142,3 +142,16 @@
   font-size: 11px;
   color: var(--text-faint);
 }
+
+/* GPX import: which aircraft flew it, before the log is saved. */
+.importConfirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 6px;
+}
+.importInfo {
+  font-size: 11px;
+  color: var(--text-secondary);
+}

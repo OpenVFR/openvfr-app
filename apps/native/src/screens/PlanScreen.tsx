@@ -236,25 +236,35 @@ export function PlanScreen() {
     () => logTotals(shownLogs.filter(l => l.endedAt > 0).map(l => ({ ...l, stats: logInfo(l).stats }))),
     [shownLogs],
   )
+  // A picked GPX file waiting for its aircraft (a GPX file carries none), chosen in a row of chips.
+  const [pendingImport, setPendingImport] = useState<{ doc: ReturnType<typeof gpxToFlightLog>; aircraftId: string } | null>(null)
   const handleImportLog = async () => {
     try {
       const res = await DocumentPicker.getDocumentAsync({ type: ['application/gpx+xml', '*/*'], copyToCacheDirectory: true })
       if (res.canceled || !res.assets?.[0]) return
-      const doc = {
-        ...gpxToFlightLog(await new FileSystem.File(res.assets[0].uri).text(), Crypto.randomUUID()),
-        // A GPX file carries no aircraft: attribute it to the selected profile.
-        ...(profile ? { aircraftId: profile.id, registration: profile.registration ?? '' } : {}),
-      }
+      const doc = gpxToFlightLog(await new FileSystem.File(res.assets[0].uri).text(), Crypto.randomUUID())
       // Same start and end as an existing log = the same flight imported twice.
       if (logs.some(l => l.startedAt === doc.startedAt && l.endedAt === doc.endedAt)) {
         Alert.alert('Already imported', 'This flight is already in your logs.')
         return
       }
+      // The selected aircraft is preselected; a log's aircraft is set once, here.
+      setPendingImport({ doc, aircraftId: profile?.id ?? '' })
+    } catch (e) {
+      Alert.alert('Import failed', e instanceof Error ? e.message : 'Could not read this GPX file.')
+    }
+  }
+  const confirmImportLog = async () => {
+    if (!pendingImport) return
+    const ac = profiles.find(p => p.id === pendingImport.aircraftId)
+    const doc = { ...pendingImport.doc, aircraftId: ac?.id ?? '', registration: ac?.registration ?? '', updatedAt: Date.now() }
+    setPendingImport(null)
+    try {
       await flightLogsDb.upsert(doc)
       await refreshLogs()
       void pushLog(doc)
     } catch (e) {
-      Alert.alert('Import failed', e instanceof Error ? e.message : 'Could not read this GPX file.')
+      Alert.alert('Import failed', e instanceof Error ? e.message : 'Could not save this flight.')
     }
   }
 
@@ -1175,6 +1185,32 @@ export function PlanScreen() {
               <Text style={styles.placeChipTxt}>↑ Import GPX</Text>
             </TouchableOpacity>
           </View>
+          {pendingImport && (
+            <View style={styles.importBox}>
+              <Text style={styles.aircraftMeta}>
+                {new Date(pendingImport.doc.startedAt).toLocaleDateString()} · {pendingImport.doc.distanceNm.toFixed(1)} NM. Which aircraft?
+              </Text>
+              <View style={styles.placeChips}>
+                {[{ id: '', label: 'None' }, ...profiles.map(p => ({ id: p.id, label: p.registration || p.name }))].map(o => (
+                  <TouchableOpacity
+                    key={o.id || 'none'}
+                    style={[styles.placeChip, pendingImport.aircraftId === o.id && styles.placeChipOn]}
+                    onPress={() => setPendingImport({ ...pendingImport, aircraftId: o.id })}
+                  >
+                    <Text style={styles.placeChipTxt}>{o.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.placeChips}>
+                <TouchableOpacity style={[styles.placeChip, styles.placeChipOn]} onPress={() => void confirmImportLog()}>
+                  <Text style={styles.placeChipTxt}>Import</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.placeChip} onPress={() => setPendingImport(null)}>
+                  <Text style={styles.placeChipTxt}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
           {logs.length === 0 ? (
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>No flight logs</Text>
@@ -1391,6 +1427,7 @@ function makeStyles(theme: ScaledTheme) {
   placeChip: { paddingHorizontal: theme.space2, paddingVertical: theme.space1, borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.borderDefault },
   placeChipOn: { borderColor: theme.accentBlue },
   logFilterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space1, marginBottom: theme.space2 },
+  importBox: { gap: theme.space1, padding: theme.space2, marginBottom: theme.space2, borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.borderDefault },
   placeChipTxt: { color: theme.textMuted, fontSize: theme.textXs },
 
   saveSection: {

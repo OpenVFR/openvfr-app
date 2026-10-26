@@ -5,6 +5,7 @@ import {
   type LogStats, type LogPeriod,
 } from '@open-vfr/shared/flightLogStats'
 import { getDb, type FlightLogDocType, type TrackPoint } from '../db'
+import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import { useSyncRejected } from '../sync/cloudSync'
 import SyncRefusedNote from './SyncRefusedNote'
 import css from './FlightLogs.module.css'
@@ -45,6 +46,9 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [importMsg, setImportMsg] = useState<string | null>(null)
+  // A picked GPX file waiting for its aircraft (a GPX file carries none): confirmed in a small row.
+  const [pendingImport, setPendingImport] = useState<{ doc: FlightLogDocType; aircraftId: string } | null>(null)
+  const { profiles: aircraftProfiles } = useAircraftProfiles()
   const [period, setPeriod] = useState<LogPeriod>('all')
   const [reg, setReg] = useState('')  // '' = all aircraft
 
@@ -82,20 +86,52 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
     e.target.value = ''
     if (!file) return
     try {
-      const doc = {
-        ...gpxToFlightLog(await file.text(), crypto.randomUUID()),
-        ...(importAircraft ? { aircraftId: importAircraft.id, registration: importAircraft.registration } : {}),
-      }
+      const doc: FlightLogDocType = gpxToFlightLog(await file.text(), crypto.randomUUID())
       const db = await getDb()
       // Same start and end as an existing log = the same flight imported twice.
       const dup = await db.flight_logs.findOne({ selector: { startedAt: doc.startedAt, endedAt: doc.endedAt } }).exec()
       if (dup) { setImportMsg('This flight is already in your logs.'); return }
-      await db.flight_logs.insert(doc)
-      setImportMsg(`Imported ${doc.distanceNm.toFixed(1)} NM flight.`)
+      // Ask which aircraft flew it (the selected one preselected); a log's aircraft is set once.
+      setImportMsg(null)
+      setPendingImport({ doc, aircraftId: importAircraft?.id ?? '' })
     } catch (err) {
       setImportMsg(err instanceof Error ? err.message : 'Could not import this GPX file.')
     }
   }
+
+  async function confirmImport() {
+    if (!pendingImport) return
+    const { doc, aircraftId } = pendingImport
+    const ac = aircraftProfiles.find(p => p.id === aircraftId)
+    setPendingImport(null)
+    try {
+      const db = await getDb()
+      await db.flight_logs.insert({ ...doc, aircraftId: ac?.id ?? '', registration: ac?.registration ?? '', updatedAt: Date.now() })
+      setImportMsg(`Imported ${doc.distanceNm.toFixed(1)} NM flight${ac ? ` (${ac.registration || ac.name})` : ''}.`)
+    } catch (err) {
+      setImportMsg(err instanceof Error ? err.message : 'Could not import this GPX file.')
+    }
+  }
+
+  const importConfirm = pendingImport && (
+    <div className={css.importConfirm}>
+      <span className={css.importInfo}>
+        {new Date(pendingImport.doc.startedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+        {' · '}{pendingImport.doc.distanceNm.toFixed(1)} NM. Aircraft:
+      </span>
+      <select
+        className={css.filterSel}
+        value={pendingImport.aircraftId}
+        onChange={e => setPendingImport({ ...pendingImport, aircraftId: e.target.value })}
+        aria-label="Aircraft for the imported flight"
+      >
+        <option value="">None</option>
+        {aircraftProfiles.map(p => <option key={p.id} value={p.id}>{p.registration || p.name}</option>)}
+      </select>
+      <button className={css.clearBtn} onClick={() => void confirmImport()}>Import</button>
+      <button className={css.clearBtn} onClick={() => setPendingImport(null)}>Cancel</button>
+    </div>
+  )
 
   function handleExport(log: FlightLogDocType) {
     try {
@@ -131,6 +167,7 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
         <button className={css.clearBtn} onClick={() => fileRef.current?.click()}>↑ Import GPX</button>
         <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml" hidden aria-label="Import GPX flight" onChange={handleImport} />
       </div>
+      {importConfirm}
       {importMsg && <p className={css.empty}>{importMsg}</p>}
       </div>
     )
@@ -142,6 +179,7 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
         <button className={css.clearBtn} onClick={() => fileRef.current?.click()}>↑ Import GPX</button>
         <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml" hidden aria-label="Import GPX flight" onChange={handleImport} />
       </div>
+      {importConfirm}
       {importMsg && <p className={css.empty}>{importMsg}</p>}
       {selectedLogId && (
         <div className={css.clearRow}>
