@@ -24,6 +24,15 @@ function moveWaypoint(arr: RouteWaypoint[], from: number, to: number): RouteWayp
   return next
 }
 
+/** Hover text on a leg's MT cell: all track/heading values for the leg, so
+ *  true track stays reachable when its column is hidden in a narrow pane. */
+function trackTip(mt: number, tt: number, wca: number | null | undefined): string {
+  const f = (d: number) => String(((Math.round(d) % 360) + 360) % 360).padStart(3, '0') + '\u00b0'
+  const parts = [`Magnetic track ${f(mt)}`, `true track ${f(tt)}`]
+  if (wca != null) parts.push(`magnetic heading ${f(mt + wca)} (WCA ${wca > 0 ? '+' : ''}${wca}\u00b0)`)
+  return parts.join(', ')
+}
+
 // ---------------------------------------------------------------------------
 // GPX export
 // ---------------------------------------------------------------------------
@@ -541,7 +550,10 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
                         >{'\u2192'}</div>
                       )}
                     </td>
-                    <td className={css.brg}>{leg ? String(Math.round(leg.magBrg)).padStart(3, '0') : ''}</td>
+                    <td
+                      className={css.brg}
+                      title={leg ? trackTip(leg.magBrg, leg.brg, legWcas[i]) : undefined}
+                    >{leg ? String(Math.round(leg.magBrg)).padStart(3, '0') : ''}</td>
                     {hasAnyWca && (
                       <td className={`${css.wca} ${css.colWca}`}>
                         {leg && legWcas[i] != null && Math.abs(legWcas[i]!) >= 1
