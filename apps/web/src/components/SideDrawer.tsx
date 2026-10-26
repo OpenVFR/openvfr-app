@@ -260,6 +260,12 @@ function SideDrawer({
   const toggle = (s: Section) => setExpanded(p => ({ ...p, [s]: !p[s] }))
 
   const hasRoute = waypoints.length > 0
+  // Route header aircraft chip: open the Aircraft section and bring it into view.
+  const aircraftRef = useRef<HTMLButtonElement>(null)
+  const showAircraft = () => {
+    setExpanded(e => (e.aircraft ? e : { ...e, aircraft: true }))
+    requestAnimationFrame(() => aircraftRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }))
+  }
   // Computed once here (not inline in JSX) so the section header's count
   // badge and the panel body agree -- both must reflect the SAME filtered
   // list, not the badge showing the unfiltered total while the body below
@@ -282,6 +288,18 @@ function SideDrawer({
             <button className={css.sectionHeader} onClick={() => toggle('route')}>
               <span>{SECTION_LABELS.route}</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* The aircraft sets the plan's speeds, fuel and levels, so it
+                    sits with the route; the Aircraft section manages profiles. */}
+                <span
+                  role="button"
+                  className={`${css.acChip}${selectedAircraftProfile ? '' : ` ${css.acChipNone}`}`}
+                  title={selectedAircraftProfile
+                    ? `Aircraft for this plan: ${selectedAircraftProfile.name}. Click to change.`
+                    : 'No aircraft: pick one for speeds, fuel and times en route'}
+                  onClick={(e) => { e.stopPropagation(); showAircraft() }}
+                >
+                  {selectedAircraftProfile ? (selectedAircraftProfile.registration || selectedAircraftProfile.name) : 'No aircraft'} {'\u25be'}
+                </span>
                 {extending && (
                   <span
                     role="button"
@@ -387,37 +405,6 @@ function SideDrawer({
             </div>
           )}
 
-          {/* ── Flight Logs ────────────────────────────────────── */}
-          <div className={css.section}>
-            <button className={css.sectionHeader} onClick={() => toggle('flightLogs')}>
-              <span>{SECTION_LABELS.flightLogs}</span>
-              <span className={css.chevron}>{expanded.flightLogs ? '▾' : '▸'}</span>
-            </button>
-            {expanded.flightLogs && (
-              <div className={css.sectionBody}>
-                <FlightLogs
-                  selectedLogId={selectedLogId}
-                  onSelect={onSelectLog}
-                  onClear={onClearLog}
-                  importAircraft={selectedAircraftId ? { id: selectedAircraftId, registration: selectedAircraftProfile?.registration ?? '' } : undefined}
-                />
-              </div>
-            )}
-          </div>
-
-          {/* ── Aircraft ───────────────────────────────────────── */}
-          <div className={css.section}>
-            <button className={css.sectionHeader} onClick={() => toggle('aircraft')}>
-              <span>{SECTION_LABELS.aircraft}</span>
-              <span className={css.chevron}>{expanded.aircraft ? '▾' : '▸'}</span>
-            </button>
-            {expanded.aircraft && (
-              <div className={css.sectionBody}>
-                <AircraftLibrary selectedId={selectedAircraftId} onSelect={onSelectAircraft} />
-              </div>
-            )}
-          </div>
-
           {/* ── User Waypoints ─────────────────────────────────── */}
           <div className={css.section}>
             <button className={css.sectionHeader} onClick={() => toggle('userWaypoints')}>
@@ -445,6 +432,37 @@ function SideDrawer({
               </div>
             )}
           </div>
+          {/* ── Aircraft ───────────────────────────────────────── */}
+          <div className={css.section}>
+            <button ref={aircraftRef} className={css.sectionHeader} onClick={() => toggle('aircraft')}>
+              <span>{SECTION_LABELS.aircraft}</span>
+              <span className={css.chevron}>{expanded.aircraft ? '▾' : '▸'}</span>
+            </button>
+            {expanded.aircraft && (
+              <div className={css.sectionBody}>
+                <AircraftLibrary selectedId={selectedAircraftId} onSelect={onSelectAircraft} />
+              </div>
+            )}
+          </div>
+
+          {/* ── Flight Logs ────────────────────────────────────── */}
+          <div className={css.section}>
+            <button className={css.sectionHeader} onClick={() => toggle('flightLogs')}>
+              <span>{SECTION_LABELS.flightLogs}</span>
+              <span className={css.chevron}>{expanded.flightLogs ? '▾' : '▸'}</span>
+            </button>
+            {expanded.flightLogs && (
+              <div className={css.sectionBody}>
+                <FlightLogs
+                  selectedLogId={selectedLogId}
+                  onSelect={onSelectLog}
+                  onClear={onClearLog}
+                  importAircraft={selectedAircraftId ? { id: selectedAircraftId, registration: selectedAircraftProfile?.registration ?? '' } : undefined}
+                />
+              </div>
+            )}
+          </div>
+
 
           <div className={css.section}>
             <button className={css.sectionHeader} onClick={() => toggle('layers')}>

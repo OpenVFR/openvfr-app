@@ -130,6 +130,25 @@
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .planPill:hover { color: var(--text-primary); }
+
+/* Aircraft of the plan, in the Route header. */
+.acChip {
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.acChip:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.acChipNone { color: var(--accent-yellow); border-color: var(--tint-yellow-border, rgba(250, 204, 21, 0.4)); }
 .planPill.planPillActive {
   background: rgba(96, 165, 250, 0.85);
   border-color: rgba(96, 165, 250, 0.85);
