@@ -49,6 +49,15 @@ describe('flightLogProfile', () => {
     expect(prof.path.length).toBeLessThanOrEqual(100)
   })
 
+  it('a parked stretch of identical fixes is not a recording gap', () => {
+    const a = straight(50)
+    // 2 minutes parked: one fix per second, all at the last position.
+    const parked = Array.from({ length: 120 }, (_, i) => ({ ...a[49], ts: a[49].ts + (i + 1) * 1000 }))
+    const b = straight(50, { t0: parked[119].ts + 1000 }).map((p) => ({ ...p, lng: p.lng + 0.04 }))
+    const prof = flightLogProfile([...a, ...parked, ...b])!
+    expect(prof.points.some((p) => p.gapBefore)).toBe(false)
+  })
+
   it('drops parked repeats and marks recording gaps, keeping both ends as vertices', () => {
     const a = straight(100)
     const parked = Array.from({ length: 30 }, (_, i) => ({ ...a[99], ts: a[99].ts + (i + 1) * 1000 }))

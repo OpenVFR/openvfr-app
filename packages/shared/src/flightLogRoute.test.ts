@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { canMergeLogs, mergeLogs, mergeCandidates, logRouteJson, parseLogRoute, plannedAltitudesAlongTrack } from './flightLogRoute'
+import { canMergeLogs, mergeLogs, mergeCandidates, logRouteJson, parseLogRoute, plannedAltitudesAlongTrack, MergedLogTooLargeError } from './flightLogRoute'
 import type { FlightLogDocType } from './types'
 
 const pts = (t0: number, n: number, spd: number, lng0 = 15) =>
@@ -36,6 +36,13 @@ describe('merging logs broken by a GPS loss', () => {
     expect(m.arrivalIcao).toBe('ESOW')
     expect(m.distanceNm).toBeGreaterThan(5)
     expect(m.updatedAt).toBe(1000)
+    expect('routeJson' in m).toBe(false)   // no explicit undefined key
+    expect(mergeLogs({ ...a, routeJson: '{"r":1}' }, b, 'ab2').routeJson).toBe('{"r":1}')
+  })
+
+  it('refuses a combined track over the server cap, before anything is written', () => {
+    const big = (id: string, t0: number) => log(id, pts(t0, 2, 90), { trackJson: JSON.stringify(pts(t0, 2, 90).map((p) => ({ ...p, pad: 'x'.repeat(9_000_000) }))) })
+    expect(() => mergeLogs(big('a', 0), big('b', 60_000), 'ab')).toThrow(MergedLogTooLargeError)
   })
 })
 

@@ -63,8 +63,9 @@ export function fetchTerrainProfileShared(
   if (waypoints.length < 2) return Promise.resolve([])
   if (signal?.aborted) return Promise.reject(abortError())
 
-  // Dense DEM sampling gives a different answer for the same path: its own entry.
-  const key = terrainRouteKey(waypoints, baseUrl) + (opts?.preferLookup && opts.denseLookup ? '|dense' : '')
+  // Dense DEM sampling gives a different answer for the same path: its own entry. Only when
+  // there is a DEM to sample (without one fetchTerrainProfile asks the API as usual).
+  const key = terrainRouteKey(waypoints, baseUrl) + (opts?.preferLookup && opts.denseLookup && fallback ? '|dense' : '')
   let entry = cache.get(key)
   if (!entry) {
     const controller = new AbortController()

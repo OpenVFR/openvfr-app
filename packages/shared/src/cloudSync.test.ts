@@ -438,6 +438,23 @@ describe('TableSync two-way', () => {
     expect(a.sync.rejected.has('big')).toBe(false)
   })
 
+  it('gives a stable snapshot of refused rows per table', async () => {
+    const server = new FakeServer()
+    const a = new Device(server)
+    const orig = server.fetch
+    server.fetch = async (url, init) => (init?.method === 'POST' && String(init.body).includes('"big"'))
+      ? new Response('{"message":"violates check constraint \\"user_routes_size_chk\\""}', { status: 400 })
+      : orig(url, init)
+    const c = new SyncCoordinator([a.sync as unknown as TableSync<unknown>])
+    expect(c.rejectedSnapshot('user_routes').size).toBe(0)
+    a.edit('big', 'b', tick())
+    await c.syncAll()
+    const s1 = c.rejectedSnapshot('user_routes')
+    expect(s1.get('big')?.reason).toBe('too-large')
+    expect(c.rejectedSnapshot('user_routes')).toBe(s1)   // same object while unchanged
+    await c.stop()
+  })
+
   it('classifies refusals', () => {
     expect(rejectionReason('violates check constraint "user_aircraft_profiles_size_chk"')).toBe('too-large')
     expect(rejectionReason('quota exceeded: at most 500 rows in user_aircraft_profiles')).toBe('quota')

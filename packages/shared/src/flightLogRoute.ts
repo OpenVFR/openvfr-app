@@ -8,7 +8,8 @@
  * to the route.
  */
 
-import { buildVirtualRadarProfile, plannedAltitudeLine, distanceAlongRouteNm, routeCrossTrackNm, type AircraftPerfModel } from './virtualRadarCalc'
+import { buildVirtualRadarProfile, plannedAltitudeLine, distanceAlongRouteNm, routeCrossTrackNm, EMPTY_FEATURES, type AircraftPerfModel } from './virtualRadarCalc'
+import type { FlightLogTrackPoint } from './flightLogProfile'
 import type { RouteWaypoint } from './routeCalc'
 import type { LegOverride, FlightLogDocType } from './types'
 import { trackDistanceNm } from './gpx'
@@ -42,7 +43,6 @@ export function parseLogRoute(json: string | null | undefined): FlightLogRoute |
   }
 }
 
-const NO_FEATURES: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 /** Farther than this from the route, the planned level says nothing about where the aircraft was. */
 export const PLANNED_MAX_OFF_ROUTE_NM = 2
 
@@ -60,7 +60,7 @@ export function plannedAltitudesAlongTrack(
   perf: AircraftPerfModel | null | undefined,
   defaultAltFt?: number,
 ): (number | null)[] {
-  const prof = buildVirtualRadarProfile(route.waypoints, route.legOverrides, NO_FEATURES, NO_FEATURES, undefined, undefined, Infinity, defaultAltFt)
+  const prof = buildVirtualRadarProfile(route.waypoints, route.legOverrides, EMPTY_FEATURES, EMPTY_FEATURES, undefined, undefined, Infinity, defaultAltFt)
   const line = plannedAltitudeLine(prof.altitudeProfile, prof.totalNm, perf)
   if (line.length < 2) return samples.map(() => null)
   const at = (d: number): number => {
@@ -87,7 +87,7 @@ export const MERGE_AIRBORNE_WITHIN_MS = 10_000
 
 type MergeableLog = Pick<FlightLogDocType, 'id' | 'startedAt' | 'endedAt' | 'aircraftId' | 'registration' | 'trackJson'> & { simulated?: boolean }
 
-function trackOf(log: { trackJson: string }): { lat: number; lng: number; altFt: number; spdKts: number; trkDeg?: number; ts: number }[] {
+function trackOf(log: { trackJson: string }): FlightLogTrackPoint[] {
   try { return JSON.parse(log.trackJson || '[]') } catch { return [] }
 }
 
@@ -116,6 +116,30 @@ export function canMergeLogs(first: MergeableLog, next: MergeableLog): boolean {
   return max >= MERGE_AIRBORNE_KTS
 }
 
+/** The server's cap on one log's track_json (user_flight_logs_size_chk). */
+export const MAX_TRACK_JSON_BYTES = 16 * 1024 * 1024
+
+/** UTF-8 byte length of a string (no TextEncoder needed). */
+function utf8Bytes(s: string): number {
+  let n = 0
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i)
+    if (c < 0x80) n += 1
+    else if (c < 0x800) n += 2
+    else if (c >= 0xd800 && c <= 0xdbff) { n += 4; i++ }
+    else n += 3
+  }
+  return n
+}
+
+/** Thrown by mergeLogs when the combined track would be refused by the server for its size. */
+export class MergedLogTooLargeError extends Error {
+  constructor(readonly bytes: number) {
+    super(`The joined flight would be ${Math.round(bytes / 1048576)} MB, more than the ${MAX_TRACK_JSON_BYTES / 1048576} MB a log may hold.`)
+    this.name = 'MergedLogTooLargeError'
+  }
+}
+
 /**
  * `first` with `next` appended, as a new log `id`: the combined track (the
  * hole between them stays a recording gap), `first`'s start, departure,
@@ -128,16 +152,26 @@ export function canMergeLogs(first: MergeableLog, next: MergeableLog): boolean {
 export function mergeLogs<L extends FlightLogDocType>(first: L, next: L, id: string, now: number = Date.now()): L {
   const track = [...trackOf(first), ...trackOf(next)].sort((a, b) => a.ts - b.ts)
   const maxAlt = track.reduce((m, p) => (Number.isFinite(p.altFt) ? Math.max(m, p.altFt) : m), 0)
+  const trackJson = JSON.stringify(track)
+  // Refuse before anything is written: a log over the cap would stay on this device
+  // while the deletes of both parts reached the server.
+  const bytes = utf8Bytes(trackJson)
+  if (bytes > MAX_TRACK_JSON_BYTES) throw new MergedLogTooLargeError(bytes)
+  const routeJson = first.routeJson ?? next.routeJson
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { routeJson: _firstRoute, ...rest } = first
   return {
+    ...(rest as L),
     ...first,
     id,
     endedAt:      Math.max(first.endedAt, next.endedAt),
-    trackJson:    JSON.stringify(track),
+    trackJson,
     arrivalIcao:  next.arrivalIcao || first.arrivalIcao,
     distanceNm:   trackDistanceNm(track),
     maxAltFt:     Math.round(maxAlt),
-    routeJson:    first.routeJson ?? next.routeJson,
     updatedAt:    now,
+    // Only when there is one, as every other writer does (no explicit `routeJson: undefined`).
+    ...(routeJson ? { routeJson } : {}),
   }
 }
 

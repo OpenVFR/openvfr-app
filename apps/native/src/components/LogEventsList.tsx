@@ -5,12 +5,11 @@
  */
 import React, { useEffect, useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
-import { flightLogEvents } from '@open-vfr/shared/flightLogEvents'
+import { flightLogEventsForLog } from '@open-vfr/shared/flightLogEvents'
 import { formatElapsed, type FlownEvent } from '@open-vfr/shared/flightLogProfile'
-import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
-import type { AircraftProfileDocType, FlightLogDocType, TrackPoint } from '../types/db'
+import type { AircraftProfileDocType, FlightLogDocType } from '../types/db'
 import { getTileUrls } from '../config'
-import { loadGeoJsonOnce } from './VerticalProfile'
+import { loadGeoJsonOnce } from '../utils/geoJsonCache'
 import { theme } from '../styles/theme'
 
 const ICON: Record<FlownEvent['kind'], string> = {
@@ -25,15 +24,10 @@ export function LogEventsList({ log, aircraft, onPick }: {
   const [events, setEvents] = useState<FlownEvent[] | null>(null)
   useEffect(() => {
     let cancelled = false
-    const t = autoFlyThresholds(aircraft?.takeoffSpeedKts, aircraft?.category)
-    loadGeoJsonOnce(getTileUrls().airspace).catch(() => null).then((airspace) => {
-      if (cancelled) return
-      try {
-        const track = JSON.parse(log.trackJson || '[]') as TrackPoint[]
-        setEvents(flightLogEvents(track, airspace, { takeoffKts: t.takeoffKts, landedKts: t.landedKts }))
-      } catch { setEvents([]) }
-    })
+    void flightLogEventsForLog(log, aircraft, () => loadGeoJsonOnce(getTileUrls().airspace))
+      .then((ev) => { if (!cancelled) setEvents(ev) })
     return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [log.trackJson, aircraft?.takeoffSpeedKts, aircraft?.category])
 
   if (events == null) return <Text style={styles.note}>Working out events\u2026</Text>

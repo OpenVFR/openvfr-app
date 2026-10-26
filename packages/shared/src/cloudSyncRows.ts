@@ -120,7 +120,10 @@ export const flightLogRows: RowSpec<FlightLogDocType> = {
     max_alt_ft:     l.maxAltFt != null && Number.isFinite(l.maxAltFt) ? Math.round(l.maxAltFt) : null,
     updated_at:     iso(l.updatedAt),
     // Only when there is a route: a server without the column (before migration
-    // 20261110000000) would refuse every log otherwise.
+    // 20261110000000) would refuse every log otherwise. Safe only because logs go up
+    // one per request (uploadBatch: 1 above): PostgREST bulk inserts need the same
+    // keys in every row, so raising the batch size means sending route_json always
+    // (null when none) once every server has the column.
     ...(l.routeJson ? { route_json: l.routeJson } : {}),
   }),
 }

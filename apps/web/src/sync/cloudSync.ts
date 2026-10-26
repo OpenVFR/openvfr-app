@@ -19,7 +19,7 @@
 
 import type { RxCollection, RxChangeEvent } from 'rxdb'
 import {
-  SyncCoordinator, TableSync, queuePendingDelete, type RejectedRow,
+  SyncCoordinator, TableSync, queuePendingDelete, NO_REJECTED, type RejectedRow,
   type SyncStatus, type SyncTable, type TableAdapter, type SyncStorage, type SyncTransport,
   type Tombstone, type Restamp,
 } from '@open-vfr/shared/cloudSync'
@@ -351,25 +351,10 @@ export function clearSyncLocalState(): void {
 
 // ─── Rows the server refused (shown in the lists) ───────────────────────────
 
-const rejectedCache = new Map<SyncTable, { key: string; map: ReadonlyMap<string, RejectedRow> }>()
-const NO_REJECTED: ReadonlyMap<string, RejectedRow> = new Map()
-
-/** A stable snapshot (same object while nothing changed), as useSyncExternalStore requires. */
-function rejectedSnapshot(c: SyncCoordinator | null, table: SyncTable): ReadonlyMap<string, RejectedRow> {
-  const live = c?.get(table)?.rejected
-  if (!live || live.size === 0) return NO_REJECTED
-  const key = [...live.values()].map((r) => `${r.id}:${r.reason}`).join('|')
-  const cached = rejectedCache.get(table)
-  if (cached && cached.key === key) return cached.map
-  const map = new Map(live)
-  rejectedCache.set(table, { key, map })
-  return map
-}
-
 /**
  * Local rows of `table` the server refused for good (too large, account limit):
  * they exist on this device only. Lists show a note on those rows.
  */
 export function useSyncRejected(table: SyncTable): ReadonlyMap<string, RejectedRow> {
-  return useSyncExternalStore(subscribeCloudSync, () => rejectedSnapshot(coordinator, table))
+  return useSyncExternalStore(subscribeCloudSync, () => coordinator?.rejectedSnapshot(table) ?? NO_REJECTED)
 }

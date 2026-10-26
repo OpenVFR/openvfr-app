@@ -208,6 +208,8 @@ function notamItemRing(n: NotamItem): number[][] | undefined {
 const NO_WAYPOINTS: RouteWaypoint[] = []
 // Stable empty list for alert categories the pilot turned off (a fresh [] would re-render every time).
 const NO_ALERTS: never[] = []
+// A viewed flight log has no planned levels. Stable reference: the profile memoises on it.
+const NO_LEG_OVERRIDES: never[] = []
 
 /**
  * Per-country data (map sources, lookups, warnings) is loaded for the active
@@ -216,9 +218,6 @@ const NO_ALERTS: never[] = []
  * cleanly. The picker is locked in flight (utils/flightActive), so this
  * never remounts mid-flight.
  */
-/** A viewed flight log has no planned levels. Stable reference: the profile memoises on it. */
-const NO_LEG_OVERRIDES: never[] = []
-
 export function MapScreen() {
   const { country, ready } = useActiveCountry()
   if (!ready) return null

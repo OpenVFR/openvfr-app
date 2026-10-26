@@ -200,6 +200,9 @@ export function rejectionText(reason: RejectionReason): string {
   }
 }
 
+/** No refused rows (one shared empty map, so snapshots stay identical). */
+export const NO_REJECTED: ReadonlyMap<string, RejectedRow> = new Map()
+
 class OfflineError extends Error {}
 class HttpError extends Error {
   constructor(readonly status: number, message: string) { super(message) }
@@ -576,7 +579,9 @@ export class TableSync<L> {
       const failed = plan.upload.length ? await this.upload(plan.upload, new Set(server.map(s => s.id))) : 0
 
       if (plan.download.length || plan.upload.length || plan.removeLocal.length) {
-        this.log(`down ${plan.download.length}, up ${plan.upload.length - failed}/${plan.upload.length}, removed ${plan.removeLocal.length}`)
+        // Rows the server refused for good count neither as uploaded nor as failed (not retried).
+        const refused = plan.upload.filter(l => this.rejectedRows.has(adapter.version(l).id)).length
+        this.log(`down ${plan.download.length}, up ${plan.upload.length - failed - refused}/${plan.upload.length}${refused ? `, refused ${refused}` : ''}, removed ${plan.removeLocal.length}`)
       }
       return failed
         ? { status: 'error', changedLocal, message: `${failed} upload(s) failed` }
@@ -627,6 +632,23 @@ export class SyncCoordinator {
   /** Local rows the server refused for good, all tables. */
   rejected(): RejectedRow[] {
     return [...this.tables.values()].flatMap(t => [...t.rejected.values()])
+  }
+
+  private rejectedCache = new Map<SyncTable, { key: string; map: ReadonlyMap<string, RejectedRow> }>()
+  /**
+   * Refused rows of one table as a stable snapshot: the same object while
+   * nothing changed (what React's useSyncExternalStore requires), a new one
+   * when the set or a reason changes.
+   */
+  rejectedSnapshot(table: SyncTable): ReadonlyMap<string, RejectedRow> {
+    const live = this.tables.get(table)?.rejected
+    if (!live || live.size === 0) return NO_REJECTED
+    const key = [...live.values()].map(r => `${r.id}:${r.reason}`).join('|')
+    const cached = this.rejectedCache.get(table)
+    if (cached && cached.key === key) return cached.map
+    const map = new Map(live)
+    this.rejectedCache.set(table, { key, map })
+    return map
   }
 
   /** Overall state for a status indicator: worst of all tables. */

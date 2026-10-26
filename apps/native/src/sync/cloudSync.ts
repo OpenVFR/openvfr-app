@@ -20,7 +20,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { AppState } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
-  SyncCoordinator, TableSync, queuePendingDelete, type RejectedRow,
+  SyncCoordinator, TableSync, queuePendingDelete, NO_REJECTED, type RejectedRow,
   type SyncStatus, type SyncTable, type TableAdapter, type SyncStorage, type SyncTransport,
 } from '@open-vfr/shared/cloudSync'
 import { routeRows, aircraftRows, waypointRows, flightLogRows, isSyncableLog } from '@open-vfr/shared/cloudSyncRows'
@@ -97,6 +97,13 @@ async function syncJwtForCurrentUser(): Promise<string | null> {
     if (!jwt || !want) return jwt
     const sub = jwtSubject(jwt)
     if (sub === want) return jwt
+    if (sub === null) {
+      // Not a readable JWT (unexpected token format): no account to compare. Use it -- the
+      // server still enforces the token's own account, and stopCloudSync already drops a
+      // previous account's token -- but say so instead of reporting a mismatch.
+      syncLog('[sync] sync token has no readable account (sub); using it unchecked')
+      return jwt
+    }
     syncLog('[sync] JWT is for another account; fetching a new one')
     invalidateSyncJwt()
   }
@@ -222,21 +229,6 @@ export function useTableSync(table: SyncTable): { status: SyncStatus; localVersi
 
 // ─── Rows the server refused (shown in the lists) ───────────────────────────
 
-const rejectedCache = new Map<SyncTable, { key: string; map: ReadonlyMap<string, RejectedRow> }>()
-const NO_REJECTED: ReadonlyMap<string, RejectedRow> = new Map()
-
-/** A stable snapshot (same object while nothing changed), as useSyncExternalStore requires. */
-function rejectedSnapshot(c: SyncCoordinator | null, table: SyncTable): ReadonlyMap<string, RejectedRow> {
-  const live = c?.get(table)?.rejected
-  if (!live || live.size === 0) return NO_REJECTED
-  const key = [...live.values()].map((r) => `${r.id}:${r.reason}`).join('|')
-  const cached = rejectedCache.get(table)
-  if (cached && cached.key === key) return cached.map
-  const map = new Map(live)
-  rejectedCache.set(table, { key, map })
-  return map
-}
-
 /**
  * Local rows of `table` the server refused for good (too large, account limit):
  * they exist on this device only. Lists show a note on those rows.
@@ -248,6 +240,6 @@ export function useSyncRejected(table: SyncTable): ReadonlyMap<string, RejectedR
   )
   return useSyncExternalStore(
     (cb) => c?.subscribe(cb) ?? (() => {}),
-    () => rejectedSnapshot(c, table),
+    () => c?.rejectedSnapshot(table) ?? NO_REJECTED,
   )
 }

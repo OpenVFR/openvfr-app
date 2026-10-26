@@ -8,9 +8,8 @@ import { getDb, type FlightLogDocType, type TrackPoint } from '../db'
 import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import { useSyncRejected } from '../sync/cloudSync'
 import SyncRefusedNote from './SyncRefusedNote'
-import { flightLogEvents } from '@open-vfr/shared/flightLogEvents'
+import { flightLogEventsForLog } from '@open-vfr/shared/flightLogEvents'
 import { formatElapsed, formatUtcTime, type FlownEvent } from '@open-vfr/shared/flightLogProfile'
-import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
 import { mergeCandidates, mergeLogs } from '@open-vfr/shared/flightLogRoute'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import type { AircraftProfileDocType } from '../db'
@@ -33,15 +32,10 @@ function LogEvents({ log, aircraft, onPick }: {
   const [events, setEvents] = useState<FlownEvent[] | null>(null)
   useEffect(() => {
     let cancelled = false
-    const t = autoFlyThresholds(aircraft?.takeoffSpeedKts, aircraft?.category)
-    loadCountryGeojson('airspace').catch(() => null).then((airspace) => {
-      if (cancelled) return
-      try {
-        const track = JSON.parse(log.trackJson || '[]') as TrackPoint[]
-        setEvents(flightLogEvents(track, airspace, { takeoffKts: t.takeoffKts, landedKts: t.landedKts }))
-      } catch { setEvents([]) }
-    })
+    void flightLogEventsForLog(log, aircraft, () => loadCountryGeojson('airspace'))
+      .then((ev) => { if (!cancelled) setEvents(ev) })
     return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [log.trackJson, aircraft?.takeoffSpeedKts, aircraft?.category])
   if (events == null) return <div className={css.events}><span className={css.eventsNote}>Working out events…</span></div>
   if (events.length === 0) return <div className={css.events}><span className={css.eventsNote}>No events found.</span></div>
@@ -137,25 +131,44 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
   /** Set or correct the aircraft a log was flown with (syncs as an edit of the log). */
   async function handleSetAircraft(id: string, aircraftId: string) {
     const ac = aircraftProfiles.find(p => p.id === aircraftId)
-    const db = await getDb()
-    const doc = await db.flight_logs.findOne(id).exec()
-    await doc?.incrementalPatch({ aircraftId: ac?.id ?? '', registration: ac?.registration ?? '', updatedAt: Math.max(Date.now(), (doc?.updatedAt ?? 0) + 1) })
+    try {
+      const db = await getDb()
+      const doc = await db.flight_logs.findOne(id).exec()
+      await doc?.incrementalPatch({ aircraftId: ac?.id ?? '', registration: ac?.registration ?? '', updatedAt: Math.max(Date.now(), (doc?.updatedAt ?? 0) + 1) })
+    } catch (err) {
+      setImportMsg(`Could not change the aircraft: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
-  /** Join a log with the one that continues it: the combined log is saved new, then both parts are deleted. */
+  /**
+   * Join a log with the one that continues it. The combined log is saved first (as a new log),
+   * then both parts are deleted: a failure in between leaves an extra log, never a lost one, and
+   * says which parts to delete by hand.
+   */
   async function handleMerge(id: string) {
     const nextId = mergeNext.get(id)
     if (!nextId) return
-    const db = await getDb()
-    const [first, next] = await Promise.all([db.flight_logs.findOne(id).exec(), db.flight_logs.findOne(nextId).exec()])
-    if (!first || !next) return
-    const gapMin = Math.max(1, Math.round((next.startedAt - first.endedAt) / 60_000))
-    if (!window.confirm(`Join this flight with the one that continues it ${gapMin} min later? They become one log; the gap stays marked as lost GPS.`)) return
-    const merged = mergeLogs(first.toJSON() as FlightLogDocType, next.toJSON() as FlightLogDocType, crypto.randomUUID())
-    await db.flight_logs.insert(merged)
-    if (selectedLogId === id || selectedLogId === nextId) onSelect(merged.id)
-    await first.remove()
-    await next.remove()
+    try {
+      const db = await getDb()
+      const [first, next] = await Promise.all([db.flight_logs.findOne(id).exec(), db.flight_logs.findOne(nextId).exec()])
+      if (!first || !next) return
+      const gapMin = Math.max(1, Math.round((next.startedAt - first.endedAt) / 60_000))
+      if (!window.confirm(`Join this flight with the one that continues it ${gapMin} min later? They become one log; the gap stays marked as lost GPS.`)) return
+      // Throws (nothing written yet) when the combined track would exceed the server's cap.
+      const merged = mergeLogs(first.toJSON() as FlightLogDocType, next.toJSON() as FlightLogDocType, crypto.randomUUID())
+      await db.flight_logs.insert(merged)
+      if (selectedLogId === id || selectedLogId === nextId) onSelect(merged.id)
+      try {
+        await first.remove()
+        await next.remove()
+      } catch (err) {
+        setImportMsg(`The flights were joined, but a part could not be deleted (${err instanceof Error ? err.message : String(err)}). Delete the leftover part from the list.`)
+        return
+      }
+      setImportMsg('Flights joined.')
+    } catch (err) {
+      setImportMsg(`Could not join the flights: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   async function handleDelete(id: string) {

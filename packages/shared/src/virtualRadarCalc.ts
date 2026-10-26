@@ -746,6 +746,9 @@ export function projectFlightPath(
 
 /** Generic light-aircraft climb/descent model, used for the planned-altitude
  *  line when no aircraft profile is configured. */
+/** An empty FeatureCollection, for building a profile without obstacles / airspace. */
+export const EMPTY_FEATURES: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
+
 export const DEFAULT_PERF_MODEL: AircraftPerfModel = {
   rocSlFpm: 700, rocCeilingFpm: 100, serviceCeilingFt: 14000,
   climbIas: 75, descentFpm: 500, descentIas: 90,

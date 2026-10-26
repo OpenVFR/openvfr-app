@@ -122,14 +122,19 @@ export function flightLogProfile(
   const maxVertices = Math.max(2, opts.maxVertices ?? FLOWN_PATH_MAX_VERTICES)
 
   // Usable points, consecutive duplicates collapsed (a gap is carried onto the next kept point).
+  // A gap is a hole in the recording: measured between consecutive usable points as recorded,
+  // not from the last kept one, or a parked stretch of identical fixes (collapsed here) would
+  // read as lost GPS (the log statistics also measure between consecutive recorded points).
   const pts: FlightLogTrackPoint[] = []
   const gapBefore: boolean[] = []
   let pendingGap = false
+  let lastRawTs: number | null = null
   for (let i = 0; i < track.length; i++) {
     const p = track[i]
     if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng) || Math.abs(p.lat) > 90 || Math.abs(p.lng) > 180) continue
+    if (lastRawTs != null && p.ts - lastRawTs > gapMs) pendingGap = true
+    lastRawTs = p.ts
     const prev = pts[pts.length - 1]
-    if (prev && p.ts - prev.ts > gapMs) pendingGap = true
     if (prev && gcNm(prev, p) < 1e-4) continue
     pts.push(p)
     gapBefore.push(pts.length > 1 && pendingGap)
@@ -158,6 +163,10 @@ export function flightLogProfile(
 
   const t0 = pts[0].ts
   // A recorded track wins; else the bearing to the next point (from the previous one at the end).
+  // Exactly 0 counts as missing: both recorders store `heading ?? 0` (and GPX import writes 0 for a
+  // file without track), so a 0 is far more often "unknown" than due north; due north is then
+  // recomputed from the positions, which gives the same answer when the aircraft really flew north.
+  // A recorder that stores a real 0 must store it as e.g. 360 or change this rule.
   const trackAt = (i: number): number => {
     const r = pts[i].trkDeg
     if (r != null && Number.isFinite(r) && r !== 0) return r
@@ -355,13 +364,14 @@ export function flownAirspaceAt<B extends FlownBand>(bands: readonly B[], distNm
 }
 
 /** Each time the flown line enters an airspace band (class G, model and glider areas left out), in flight order. */
-export function flownAirspaceEntries<B extends FlownBand>(points: readonly FlownPoint[], bands: readonly B[]): { band: B; point: FlownPoint }[] {
-  const out: { band: B; point: FlownPoint }[] = []
+export function flownAirspaceEntries<B extends FlownBand>(points: readonly FlownPoint[], bands: readonly B[]): { band: B; point: FlownPoint; index: number }[] {
+  const out: { band: B; point: FlownPoint; index: number }[] = []
   const inside = new Set<B>()
-  for (const p of points) {
+  for (let index = 0; index < points.length; index++) {
+    const p = points[index]
     if (!Number.isFinite(p.altFt)) continue
     const now = new Set(flownAirspaceAt(bands, p.distNm, p.altFt))
-    for (const b of now) if (!inside.has(b)) out.push({ band: b, point: p })
+    for (const b of now) if (!inside.has(b)) out.push({ band: b, point: p, index })
     inside.clear()
     for (const b of now) inside.add(b)
   }
@@ -453,7 +463,7 @@ export function flownEvents<B extends FlownBand>(
     if (points[i].gapBefore) at('gap', i - 1, `GPS lost ${formatElapsed(points[i].ts - points[i - 1].ts)}`)
   }
   for (const e of flownAirspaceEntries(points, bands)) {
-    at('airspace', points.indexOf(e.point), `Entered ${e.band.class} ${e.band.name}`.trim())
+    at('airspace', e.index, `Entered ${e.band.class} ${e.band.name}`.trim())
   }
   return out.sort((a, b) => a.point.ts - b.point.ts || a.index - b.index)
 }

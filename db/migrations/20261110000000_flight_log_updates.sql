@@ -3,11 +3,10 @@
 -- Flight logs become editable by their owner, and can carry the planned route.
 --
 -- Until now user_flight_logs was insert-only (plus delete): a completed log
--- never changed. Three things need to change an existing log:
---   * setting or correcting the aircraft a log was flown with;
---   * merging a log broken by a GPS loss with the one that continues it
---     (the first log gets the combined track, the second is deleted);
---   * attaching the route that was planned for the flight.
+-- never changed. Editing an existing log is needed to set or correct the
+-- aircraft it was flown with and to attach the route planned for it.
+-- (Joining a log broken by a GPS loss with the one that continues it needs no
+-- update: clients save the combined log as a new row and delete both parts.)
 -- Updates go through the same guard as the other synced tables
 -- (sync_guard_update, see 20261020000000_sync_tombstones): last write wins by
 -- updated_at, with client timestamps clamped to at most 2 minutes ahead.
@@ -42,6 +41,10 @@ NOTIFY pgrst, 'reload schema';
 
 -- migrate:down
 
+-- Drops route_json: planned routes stored with logs are lost and are not
+-- recovered by applying the migration again (clients only send a route for
+-- logs recorded with one, and keep their local copy until a newer server
+-- version replaces it).
 REVOKE UPDATE ON user_flight_logs FROM authenticated;
 DROP POLICY IF EXISTS user_flight_logs_update ON user_flight_logs;
 

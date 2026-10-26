@@ -536,7 +536,7 @@ const TAP_MAX_MS = 350
  * while it is moved and after a touch, so it can be read without hovering.
  * Reports the inspected distance for the map marker from the first interaction on.
  */
-const FlownScrubOverlay = memo(function FlownScrubOverlay({ layout: L, series, flown, bands, silhouette, onHoverDistNm, jumpTo, planned }: {
+const FlownScrubOverlay = memo(function FlownScrubOverlay({ layout: L, series, flown, bands, silhouette, onHoverDistNm, jumpTo, planned, scrollRef }: {
   layout: ProfileChartLayout
   series: ProfileSeries
   flown: FlownPoint[]
@@ -548,7 +548,11 @@ const FlownScrubOverlay = memo(function FlownScrubOverlay({ layout: L, series, f
   jumpTo?: { index: number; n: number } | null
   /** Planned level per series sample (route stored with the log); null off the route. */
   planned?: (number | null)[] | null
+  /** The chart's horizontal scroll container (scrolled to an event, and along at its edges while dragging). */
+  scrollRef: { current: HTMLDivElement | null }
 }) {
+  // The overlay layer; its parent is the chart content, which takes the pointer listeners.
+  const layerRef = useRef<HTMLDivElement>(null)
   const totalNm = flown.length > 0 ? flown[flown.length - 1].distNm : 0
   // Idle position: the middle of the flight, so the aircraft is visible and clear of the departure clutter.
   const [idx, setIdx] = useState(() => flownIndexAt(flown, totalNm / 2))
@@ -570,7 +574,7 @@ const FlownScrubOverlay = memo(function FlownScrubOverlay({ layout: L, series, f
     touchedRef.current = true
     setIdx(jumpTo.index)
     setShowReadout(true)
-    const wrap = layerRef.current?.parentElement?.parentElement
+    const wrap = scrollRef.current
     if (wrap) {
       const x = L.xOf(flown[jumpTo.index].distNm)
       wrap.scrollTo({ left: Math.max(0, x - wrap.clientWidth / 2), behavior: 'smooth' })
@@ -583,7 +587,6 @@ const FlownScrubOverlay = memo(function FlownScrubOverlay({ layout: L, series, f
   }, [idx, flown])
   useEffect(() => () => onHoverRef.current?.(null), [])
 
-  const layerRef = useRef<HTMLDivElement>(null)
   const hostOf = () => layerRef.current?.parentElement ?? null
   const indexAtClientX = useCallback((clientX: number): number | null => {
     const host = layerRef.current?.parentElement
@@ -639,8 +642,12 @@ const FlownScrubOverlay = memo(function FlownScrubOverlay({ layout: L, series, f
   const rafRef = useRef<number | null>(null)
   const stopEdgeScroll = () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current); rafRef.current = null }
   useEffect(() => stopEdgeScroll, [])
-  const edgeScroll = () => {
-    const wrap = hostOf()?.parentElement
+  // The rAF loop runs across renders: it reads the current moveTo through a ref instead of the
+  // closure of the render it started in, and is itself one stable function.
+  const moveToRef = useRef(moveTo)
+  moveToRef.current = moveTo
+  const edgeScroll = useCallback(() => {
+    const wrap = scrollRef.current
     if (!wrap) { rafRef.current = null; return }
     const r = wrap.getBoundingClientRect()
     const x = lastXRef.current
@@ -648,9 +655,9 @@ const FlownScrubOverlay = memo(function FlownScrubOverlay({ layout: L, series, f
     const before = wrap.scrollLeft
     if (dir !== 0) wrap.scrollLeft = before + dir * SCRUB_SCROLL_STEP_PX
     if (dir === 0 || wrap.scrollLeft === before) { rafRef.current = null; return }
-    moveTo(x)
+    moveToRef.current(x)
     rafRef.current = requestAnimationFrame(edgeScroll)
-  }
+  }, [scrollRef])
   const onHandleDown = (e: React.PointerEvent<SVGGElement>) => {
     e.preventDefault()
     e.stopPropagation()
@@ -2182,7 +2189,7 @@ function VirtualRadar({
                 {live}
               </svg>
               {flown
-                ? <FlownScrubOverlay layout={L} series={series} flown={flown} bands={profile.airspaceBands} silhouette={silhouette} onHoverDistNm={onHoverDistNm} jumpTo={jumpTo} planned={flownPlanned?.alts} />
+                ? <FlownScrubOverlay layout={L} series={series} flown={flown} bands={profile.airspaceBands} silhouette={silhouette} onHoverDistNm={onHoverDistNm} jumpTo={jumpTo} planned={flownPlanned?.alts} scrollRef={chartWrapRef} />
                 : <HoverOverlay layout={L} series={series} onHoverDistNm={onHoverDistNm} />}
               {profile && series && !logMode && (
                 <LegDragLayer

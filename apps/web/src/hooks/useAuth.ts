@@ -198,29 +198,30 @@ export function useAuth(): AuthState {
   const signOut = useCallback(async () => {
     if (signingOutRef.current) return
     signingOutRef.current = true
-    try { await signOutOnce() } finally { signingOutRef.current = false }
-  }, [])
-  const signOutOnce = async () => {
-    // Sign-out wipes this browser's copy of the account's data: send what has
-    // not reached the server yet, and ask before dropping what still can't be.
-    if (!(await flushBeforeSignOut()) && !window.confirm(
-      'Some routes, aircraft, waypoints, settings or flight logs in this browser have not reached the cloud yet (no connection?). Signing out deletes them from this browser. Sign out anyway?',
-    )) return
-    await stopCloudSync()
-    // A failed request (offline, server down) must not skip the local wipe
-    // below; the server session then simply expires on its own.
     try {
-      const res = await authClient.signOut()
-      if (res?.error) console.warn('[useAuth] server sign-out failed; signing out locally:', res.error)
-    } catch (err) {
-      console.warn('[useAuth] server sign-out failed; signing out locally:', err)
+      // Sign-out wipes this browser's copy of the account's data: send what has
+      // not reached the server yet, and ask before dropping what still can't be.
+      if (!(await flushBeforeSignOut()) && !window.confirm(
+        'Some routes, aircraft, waypoints, settings or flight logs in this browser have not reached the cloud yet (no connection?). Signing out deletes them from this browser. Sign out anyway?',
+      )) return
+      await stopCloudSync()
+      // A failed request (offline, server down) must not skip the local wipe
+      // below; the server session then simply expires on its own.
+      try {
+        const res = await authClient.signOut()
+        if (res?.error) console.warn('[useAuth] server sign-out failed; signing out locally:', res.error)
+      } catch (err) {
+        console.warn('[useAuth] server sign-out failed; signing out locally:', err)
+      }
+      // The local copy of this account's data must not survive into the next
+      // sign-in; useSync wipes it once cloud sync has stopped.
+      flagWipeOnSignOut()
+      await clearApiResponseCaches()
+      setUser(null)
+    } finally {
+      signingOutRef.current = false
     }
-    // The local copy of this account's data must not survive into the next
-    // sign-in; useSync wipes it once cloud sync has stopped.
-    flagWipeOnSignOut()
-    await clearApiResponseCaches()
-    setUser(null)
-  }
+  }, [])
 
   return { user, loading, sendOtp, signInOtp, signInPasskey, registerPasskey, listPasskeys, deletePasskey, updateUser, requestAccountDeletion, signOut }
 }

@@ -299,31 +299,67 @@ export function PlanScreen() {
   const mergeNext = useMemo(() => mergeCandidates(logs), [logs])
   // The log whose aircraft chips are open.
   const [logAircraftOpen, setLogAircraftOpen] = useState<string | null>(null)
-  /** Set or correct the aircraft a log was flown with (syncs as an edit of the log). */
-  const handleSetLogAircraft = async (log: (typeof logs)[number], aircraftId: string) => {
+  /** Set or correct the aircraft a log was flown with (syncs as an edit of the log). Re-reads the
+   *  stored log and patches only these fields, so a newer version a sync round applied meanwhile
+   *  is not written back stale. */
+  const handleSetLogAircraft = async (logId: string, aircraftId: string) => {
     const ac = profiles.find(p => p.id === aircraftId)
-    const doc = { ...log, aircraftId: ac?.id ?? '', registration: ac?.registration ?? '', updatedAt: Math.max(Date.now(), log.updatedAt + 1) }
     setLogAircraftOpen(null)
-    await flightLogsDb.upsert(doc)
-    await pushLog(doc)
+    try {
+      const current = await flightLogsDb.get(logId)
+      if (!current) return
+      const patch = { aircraftId: ac?.id ?? '', registration: ac?.registration ?? '', updatedAt: Math.max(Date.now(), current.updatedAt + 1) }
+      await flightLogsDb.patch(logId, patch)
+      await pushLog({ ...current, ...patch })
+    } catch (e) {
+      Alert.alert('Could not change the aircraft', e instanceof Error ? e.message : String(e))
+    }
   }
-  /** Join a log with the one that continues it: the combined log is saved new, then both parts are deleted. */
+  /**
+   * Join a log with the one that continues it. Both are re-read from storage (not the rendered
+   * copies). The combined log is saved first (as a new log), then both parts are deleted: a
+   * failure in between leaves an extra log, never a lost one, and says so.
+   */
   const handleMergeLog = (log: (typeof logs)[number]) => {
-    const next = logs.find(l => l.id === mergeNext.get(log.id))
-    if (!next) return
-    const gapMin = Math.max(1, Math.round((next.startedAt - log.endedAt) / 60_000))
+    const nextId = mergeNext.get(log.id)
+    const nextShown = logs.find(l => l.id === nextId)
+    if (!nextId || !nextShown) return
+    const gapMin = Math.max(1, Math.round((nextShown.startedAt - log.endedAt) / 60_000))
     Alert.alert('Join flights?', `Join this flight with the one that continues it ${gapMin} min later? They become one log; the gap stays marked as lost GPS.`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Join', onPress: () => { void (async () => {
-        const merged = mergeLogs(log, next, Crypto.randomUUID())
-        await flightLogsDb.upsert(merged)
-        await pushLog(merged)
-        if (selectedLog?.id === log.id || selectedLog?.id === next.id) clearView()
-        await deleteLog(log.id)
-        await deleteLog(next.id)
+        let merged: (typeof logs)[number]
+        try {
+          const [first, next] = await Promise.all([flightLogsDb.get(log.id), flightLogsDb.get(nextId)])
+          if (!first || !next) return
+          // Throws (nothing written yet) when the combined track would exceed the server's cap.
+          merged = mergeLogs(first, next, Crypto.randomUUID())
+          await flightLogsDb.upsert(merged)
+        } catch (e) {
+          Alert.alert('Join failed', e instanceof Error ? e.message : String(e))
+          return
+        }
+        try {
+          if (selectedLog?.id === log.id || selectedLog?.id === nextId) clearView()
+          await deleteLog(log.id)
+          await deleteLog(nextId)
+        } catch (e) {
+          Alert.alert('Join incomplete', `The flights were joined, but a part could not be deleted (${e instanceof Error ? e.message : String(e)}). Delete the leftover part from the list.`)
+        }
+        await pushLog(merged).catch(() => {})
       })() } },
     ])
   }
+  /** The aircraft a log names: its profile here, else the stored registration, else unknown / none. */
+  const logAircraftLabel = (log: (typeof logs)[number]) => {
+    const ac = profiles.find(p => p.id === log.aircraftId)
+    return ac?.registration || ac?.name || log.registration || (log.aircraftId ? 'Unknown aircraft' : 'No aircraft')
+  }
+  // Aircraft choices for a log (and for an imported flight): None, then every profile.
+  const aircraftChoices = useMemo(
+    () => [{ id: '', label: 'None' }, ...profiles.map(p => ({ id: p.id, label: p.registration || p.name }))],
+    [profiles],
+  )
   // Logs whose events are open in the list (worked out on opening).
   const [eventsOpen, setEventsOpen] = useState<Set<string>>(new Set())
   const toggleEvents = (id: string) => setEventsOpen((prev) => {
@@ -1235,7 +1271,7 @@ export function PlanScreen() {
                 {new Date(pendingImport.doc.startedAt).toLocaleDateString()} · {pendingImport.doc.distanceNm.toFixed(1)} NM. Which aircraft?
               </Text>
               <View style={styles.placeChips}>
-                {[{ id: '', label: 'None' }, ...profiles.map(p => ({ id: p.id, label: p.registration || p.name }))].map(o => (
+                {aircraftChoices.map(o => (
                   <TouchableOpacity
                     key={o.id || 'none'}
                     style={[styles.placeChip, pendingImport.aircraftId === o.id && styles.placeChipOn]}
@@ -1307,7 +1343,7 @@ export function PlanScreen() {
                         {!log.simulated && (
                           <Text style={styles.logEventsToggle} onPress={() => setLogAircraftOpen(logAircraftOpen === log.id ? null : log.id)} accessibilityRole="button"
                             accessibilityLabel="Aircraft flown">
-                            {'\u2708'} {profiles.find(p => p.id === log.aircraftId)?.registration || profiles.find(p => p.id === log.aircraftId)?.name || log.registration || (log.aircraftId ? 'Unknown aircraft' : 'No aircraft')} {logAircraftOpen === log.id ? '\u25be' : '\u25b8'}
+                            {'\u2708'} {logAircraftLabel(log)} {logAircraftOpen === log.id ? '\u25be' : '\u25b8'}
                           </Text>
                         )}
                         {mergeNext.has(log.id) && (
@@ -1317,9 +1353,9 @@ export function PlanScreen() {
                     )}
                     {isCompleted && logAircraftOpen === log.id && (
                       <View style={styles.placeChips}>
-                        {[{ id: '', label: 'None' }, ...profiles.map(p => ({ id: p.id, label: p.registration || p.name }))].map(o => (
+                        {aircraftChoices.map(o => (
                           <TouchableOpacity key={o.id || 'none'} style={[styles.placeChip, log.aircraftId === o.id && styles.placeChipOn]}
-                            onPress={() => void handleSetLogAircraft(log, o.id)}>
+                            onPress={() => void handleSetLogAircraft(log.id, o.id)}>
                             <Text style={styles.placeChipTxt}>{o.label}</Text>
                           </TouchableOpacity>
                         ))}
