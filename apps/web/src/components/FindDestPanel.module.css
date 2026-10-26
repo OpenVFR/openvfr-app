@@ -5,8 +5,10 @@
   inset: 0;
   /* Above SideDrawer's mobile/touch fixed-overlay stack (z-index 218-221) --
      see VicinityBriefPanel.module.css's identical fix for the full
-     rationale (same shared bug, same modal pattern). */
-  z-index: 250;
+     rationale (same shared bug, same modal pattern). Also above the
+     in-flight alert stack (NotificationCenter, 430): a panel the pilot just
+     opened must not be covered by banners. Same tier as VicinityBriefPanel. */
+  z-index: 440;
   background: var(--overlay-scrim);
   display: flex;
   align-items: flex-start;
