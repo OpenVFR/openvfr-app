@@ -599,6 +599,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // needs no mode on the ground (undo is the safety net); in flight a leg
   // has to be tapped first (see unlockedLeg).
   const [extending, setExtending] = useState(false)
+  // Leg whose editor is open in the route table (ground): picked by clicking
+  // its row or the leg on the map; glows on the map like an unlocked leg.
+  const [selectedLeg, setSelectedLeg] = useState<number | null>(null)
+  const selectedLegRef = useRef<number | null>(null)
+  useEffect(() => { selectedLegRef.current = selectedLeg }, [selectedLeg])
   const [rulerMode, setRulerMode] = useState(false)
   const [rulerPoints, setRulerPoints] = useState<RouteWaypoint[]>([])
   const [placingUserWp, setPlacingUserWp] = useState(false)
@@ -3156,6 +3161,20 @@ export default function MapView({ auth }: { auth: AuthState }) {
         return
       }
 
+      // ── 0c2. A click on a route leg (ground) opens that leg's editor in the
+      // route table (again: closes it). Route points keep their own behaviour.
+      if (flyingModeRef.current === 'off' && !rulerModeRef.current && !placingUserWpRef.current &&
+          routeWaypointsRef.current.length >= 2 && map.getLayer('route-line-layer')) {
+        const pad = 6
+        const box: [maplibregl.PointLike, maplibregl.PointLike] = [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]]
+        const hits = map.queryRenderedFeatures(box, { layers: ['route-waypoints-circle', 'route-line-layer'] })
+        if (hits.length > 0 && !hits.some((f) => f.layer.id === 'route-waypoints-circle')) {
+          const leg = Math.max(0, navigatingLeg(routeWaypointsRef.current, e.lngLat))
+          setSelectedLeg(selectedLegRef.current === leg ? null : leg)
+          return
+        }
+      }
+
       // ── 0d. Traffic symbol click — show aircraft details ────────────────
       {
         const pad = 12
@@ -3900,8 +3919,14 @@ export default function MapView({ auth }: { auth: AuthState }) {
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady || !map.getLayer('route-leg-unlocked')) return
-    map.setFilter('route-leg-unlocked', ['==', ['get', 'legIndex'], unlockedLeg ?? -1])
-  }, [unlockedLeg, mapReady])
+    const leg = unlockedLeg ?? (flyingMode === 'off' ? selectedLeg : null)
+    map.setFilter('route-leg-unlocked', ['==', ['get', 'legIndex'], leg ?? -1])
+  }, [unlockedLeg, selectedLeg, flyingMode, mapReady])
+  // A selected leg that no longer exists (route shortened), or a flight
+  // starting, closes the leg editor.
+  useEffect(() => {
+    if (selectedLeg != null && (flyingMode !== 'off' || selectedLeg > routeWaypoints.length - 2)) setSelectedLeg(null)
+  }, [selectedLeg, flyingMode, routeWaypoints.length])
 
   // Add-points mode: line style, midpoint handles; also re-applies the idle
   // cursor for the active tool (see baseCursor).
@@ -4686,6 +4711,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
     // Adding points by clicking the map is a planning tool: not offered in
     // flight (the route menus and Direct To cover changes there).
     onStopExtending: finishExtending,
+    selectedLeg,
+    onSelectLeg: setSelectedLeg,
     onUndo: routeUndo.undo,
     onRedo: routeUndo.redo,
     canUndo: routeUndo.canUndo,

@@ -155,7 +155,7 @@
 .plogTable td:last-child { padding-right: 10px; }
 .plogTable tbody tr { border-top: 1px solid var(--border-subtle); }
 .plogTable tbody tr:first-child { border-top: none; }
-.btnCell { width: 20px; padding: 0 2px; }
+.btnCell { width: 14px; padding: 0 2px; text-align: center; }
 
 /* Narrower pane: ETA first (ETE + departure time give it, and widening
    the pane shows it), then true track, then WCA go. */
@@ -197,48 +197,6 @@
   cursor: grabbing;
 }
 
-/* Leg-properties trigger — was a bare low-contrast arrow glyph with no
-   button chrome, easy to miss entirely before an override was ever set
-   (only became visually distinct once `arrowSet` kicked in). Now a small
-   bordered chip, visible at rest regardless of override state. */
-.arrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  margin: 0 auto;
-  border: 1px solid var(--border-default);
-  border-radius: 4px;
-  background: var(--surface-hover);
-  color: var(--text-secondary);
-  font-size: 10px;
-  line-height: 1;
-  transition: color 0.1s, border-color 0.1s, background-color 0.1s;
-  text-align: center;
-}
-
-.arrowBtn {
-  cursor: pointer;
-}
-
-.arrowBtn:hover {
-  border-color: var(--accent-blue);
-  background: var(--surface-active);
-  color: var(--text-primary);
-}
-
-.arrowSet {
-  border-color: var(--accent-blue);
-  background: var(--tint-blue-low);
-  color: var(--accent-blue-bright);
-}
-
-.arrowMsa {
-  border-color: var(--accent-red);
-  background: rgba(252, 165, 165, 0.12);
-  color: var(--accent-red);
-}
 
 .brg {
   color: var(--accent-blue-bright);
@@ -417,4 +375,47 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 5px 4px 6px 12px;
+}
+
+/* ── Leg rows: the whole row opens the leg's editor ─────────────────────── */
+.legRow { cursor: pointer; }
+.legRow:hover { background: var(--surface-hover); }
+.legRow.rowActive:hover { background: rgba(96, 165, 250, 0.12); }
+
+/* Row-end state mark: › (rotates when open); blue when the leg has its own
+   level / speed / wind, red when the planned level is below MSA. */
+.chev {
+  display: inline-block;
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1;
+  transition: transform 0.12s;
+}
+.chevOpen { transform: rotate(90deg); color: var(--accent-blue); }
+.chevSet { color: var(--accent-blue-bright); }
+.chevMsa { color: var(--accent-red); }
+
+/* Level cell: click to type a new level. */
+.lvlEditable { cursor: text; }
+.lvlEditable:hover { text-decoration: underline dotted; text-underline-offset: 2px; }
+.lvlMsa { color: var(--accent-red); }
+.lvlInput {
+  width: 52px;
+  box-sizing: border-box;
+  padding: 1px 3px;
+  font: inherit;
+  font-size: 11px;
+  text-align: right;
+  color: var(--text-primary);
+  background: var(--input-bg, var(--surface-hover));
+  border: 1px solid var(--accent-blue);
+  border-radius: 3px;
+}
+
+/* The open leg's editor, directly under its row. */
+.editorRow { cursor: default; }
+.editorRow > td {
+  padding: 0;
+  background: rgba(96, 165, 250, 0.05);
+  border-bottom: 1px solid var(--border-default);
 }

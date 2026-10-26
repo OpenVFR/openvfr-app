@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { Fragment, useState, useRef, useEffect } from 'react'
 import { bearingDeg, magneticBearingDeg, distanceNm, type RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
 import { routeToGpx, gpxToRoute } from '@open-vfr/shared/gpx'
@@ -198,15 +198,47 @@ interface Props {
   globalWind: GlobalWind | null
   setGlobalWind: (w: GlobalWind | null) => void
   routeWinds: RouteWinds
+  /** Leg whose editor is open (also selected from the map); controlled by
+   *  the parent when given, else local. */
+  selectedLeg?: number | null
+  onSelectLeg?: (leg: number | null) => void
 }
 
-export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onAddToRoute, onSetLegOverride, onSetWaypointNote, defaultAltFt, defaultSpeedKts, takeoffTime, setTakeoffTime, globalWind, setGlobalWind, routeWinds }: Props) {
+export default function RoutePlan({ selectedLeg, onSelectLeg, waypoints, tafWarnIcaos = [], legOverrides, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onAddToRoute, onSetLegOverride, onSetWaypointNote, defaultAltFt, defaultSpeedKts, takeoffTime, setTakeoffTime, globalWind, setGlobalWind, routeWinds }: Props) {
   const [kbInput, setKbInput] = useState('')
   const [kbError, setKbError] = useState('')
   const [kbLoading, setKbLoading] = useState(false)
   const [showKb, setShowKb] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
-  const [activeLeg, setActiveLeg] = useState<number | null>(null)
+  const [localLeg, setLocalLeg] = useState<number | null>(null)
+  const activeLeg = selectedLeg !== undefined ? selectedLeg : localLeg
+  const setActiveLeg = onSelectLeg ?? setLocalLeg
+  // Inline altitude edit in the Lvl cell: leg index being edited + draft text.
+  const [lvlEdit, setLvlEdit] = useState<{ leg: number; text: string } | null>(null)
+  const rowRefs = useRef<(HTMLTableRowElement | null)[]>([])
+  // A leg opened from the map: bring its row (and editor) into view.
+  useEffect(() => {
+    if (activeLeg == null) return
+    requestAnimationFrame(() => rowRefs.current[activeLeg + 1]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
+  }, [activeLeg])
+  // Esc closes the leg editor.
+  useEffect(() => {
+    if (activeLeg == null) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setActiveLeg(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [activeLeg, setActiveLeg])
+  const commitLvl = () => {
+    if (!lvlEdit) return
+    const { leg, text } = lvlEdit
+    setLvlEdit(null)
+    const ovr = { ...(legOverrides[leg] ?? {}) }
+    const v = parseInt(text.replace(/[^\d]/g, ''), 10)
+    if (text.trim() === '') delete ovr.altFt
+    else if (Number.isFinite(v) && v >= 0 && v <= 30000) ovr.altFt = v
+    else return
+    onSetLegOverride(leg, ovr)
+  }
   const [showMenu, setShowMenu] = useState(false)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [overIdx, setOverIdx] = useState<number | null>(null)
@@ -521,10 +553,14 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
                 const eta = i >= 0 ? legEtas[i] : null
                 const name = w === 0 ? (legs[0]?.fromName ?? wp.name ?? 'WP1') : (leg?.toName ?? wp.name ?? `WP${w + 1}`)
                 const hasOverride = i >= 0 && !!(legOverrides[i]?.altFt || legOverrides[i]?.speedKts || legOverrides[i]?.windDir || legOverrides[i]?.windSpd)
+                const open = leg != null && activeLeg === i
                 return (
+                  <Fragment key={w}>
                   <tr
-                    key={w}
-                    className={`${activeLeg === i && i >= 0 ? css.rowActive : ''}${overIdx === w ? ` ${css.rowDragOver}` : ''}`}
+                    ref={(el) => { rowRefs.current[w] = el }}
+                    className={`${leg ? css.legRow : ''}${open ? ` ${css.rowActive}` : ''}${overIdx === w ? ` ${css.rowDragOver}` : ''}`}
+                    title={leg ? `${leg.fromName} \u2192 ${leg.toName}: click to ${open ? 'close' : 'edit level, speed, wind and note'}` : undefined}
+                    onClick={leg ? () => setActiveLeg(open ? null : i) : undefined}
                     onDragOver={(e) => { e.preventDefault(); if (overIdx !== w) setOverIdx(w) }}
                     onDrop={(e) => {
                       e.preventDefault()
@@ -541,13 +577,13 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
                     >{name}{tafWarnIcaos.includes(name) && <span className={css.tafWarn} title="TAF: trend change due within 3 h">{' \u26a0'}</span>}</td>
                     <td className={css.btnCell}>
                       {leg && (
-                        <div
-                          className={`${css.arrow}${hasOverride ? ` ${css.arrowSet}` : ''}${legIsBelowMsa(i) ? ` ${css.arrowMsa}` : ''} ${css.arrowBtn}`}
-                          title={(legIsBelowMsa(i)
-                            ? `Planned ${legPlannedAlt(i).toLocaleString('en-US')} ft is below this leg's MSA of ${legMsa[i].toLocaleString('en-US')} ft. `
-                            : legMsa[i] > 0 ? `MSA ${legMsa[i].toLocaleString('en-US')} ft. ` : '') + `Edit leg ${leg.fromName} \u2192 ${leg.toName}`}
-                          onClick={() => setActiveLeg(i === activeLeg ? null : i)}
-                        >{'\u2192'}</div>
+                        <span
+                          className={`${css.chev}${open ? ` ${css.chevOpen}` : ''}${hasOverride ? ` ${css.chevSet}` : ''}${legIsBelowMsa(i) ? ` ${css.chevMsa}` : ''}`}
+                          title={legIsBelowMsa(i)
+                            ? `Planned ${legPlannedAlt(i).toLocaleString('en-US')} ft is below this leg's MSA of ${legMsa[i].toLocaleString('en-US')} ft`
+                            : hasOverride ? 'This leg has its own level, speed or wind' : undefined}
+                          aria-hidden={!legIsBelowMsa(i) && !hasOverride}
+                        >{'\u203a'}</span>
                       )}
                     </td>
                     <td
@@ -564,9 +600,28 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
                     <td className={`${css.brgTrue} ${css.colTt}`}>{leg ? String(Math.round(leg.brg)).padStart(3, '0') : ''}</td>
                     <td className={css.dist}>{leg ? nmToDisplay(leg.dist, units.distance).toFixed(1) : ''}</td>
                     <td
-                      className={`${css.lvl}${i >= 0 && legOverrides[i]?.altFt ? ` ${css.lvlSet}` : ''}`}
-                      title={i >= 0 ? (legOverrides[i]?.altFt ? 'Planned level for this leg (set on the leg)' : 'Planned level for this leg (route level)') : undefined}
-                    >{leg ? legPlannedAlt(i).toLocaleString('en-US') : ''}</td>
+                      className={`${css.lvl}${leg ? ` ${css.lvlEditable}` : ''}${i >= 0 && legOverrides[i]?.altFt ? ` ${css.lvlSet}` : ''}${leg && legIsBelowMsa(i) ? ` ${css.lvlMsa}` : ''}`}
+                      title={leg ? `${legOverrides[i]?.altFt ? 'Level set on this leg' : 'Route level'}${legIsBelowMsa(i) ? `, below MSA ${legMsa[i].toLocaleString('en-US')} ft` : ''}. Click to type a new level (empty = route level).` : undefined}
+                      onClick={leg ? (e) => { e.stopPropagation(); setLvlEdit({ leg: i, text: legOverrides[i]?.altFt != null ? String(legOverrides[i]!.altFt) : '' }) } : undefined}
+                    >
+                      {leg && lvlEdit?.leg === i ? (
+                        <input
+                          className={css.lvlInput}
+                          autoFocus
+                          inputMode="numeric"
+                          placeholder={String(legPlannedAlt(i))}
+                          aria-label={`Level for leg ${leg.fromName} to ${leg.toName}, ft`}
+                          value={lvlEdit.text}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => setLvlEdit({ leg: i, text: e.target.value })}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') { e.preventDefault(); commitLvl() }
+                            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setLvlEdit(null) }
+                          }}
+                          onBlur={commitLvl}
+                        />
+                      ) : leg ? legPlannedAlt(i).toLocaleString('en-US') : ''}
+                    </td>
                     {hasAnyEte && (
                       <td className={css.ete} title={leg ? legSpeedTip(i) : undefined}>
                         {leg ? (ete != null ? `${Math.floor(ete)}:${String(Math.round((ete % 1) * 60)).padStart(2, '0')}` : '\u2014') : ''}
@@ -576,6 +631,36 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
                       <td className={`${css.eta} ${css.colEta}`}>{leg ? (eta ? fmtUtc(eta) : '\u2014') : fmtUtc(takeoffTime)}</td>
                     )}
                   </tr>
+                  {/* The leg's editor, right under its row. */}
+                  {open && leg && (
+                    <tr className={css.editorRow}>
+                      <td colSpan={6 + (hasAnyWca ? 1 : 0) + (hasAnyEte ? 1 : 0) + (takeoffTime && hasAnyEte ? 1 : 0)}>
+                        <LegPropsPanel
+                          key={i}
+                          legIndex={i}
+                          fromName={leg.fromName}
+                          toName={leg.toName}
+                          distNm={leg.dist}
+                          trueBrg={leg.brg}
+                          magBrg={leg.magBrg}
+                          override={legOverrides[i] ?? {}}
+                          units={units}
+                          defaultAltFt={defaultAltFt}
+                          msaFt={legMsa[i] ?? 0}
+                          msaApplies={msaSpans[i] != null && legMsaApplies(msaSpans[i], msaTotalNm)}
+                          defaultSpeedKts={defaultSpeedKts}
+                          globalWind={globalWind}
+                          forecastWind={forecastWinds[i] ?? null}
+                          forecastLoading={forecastLoading}
+                          wpNote={waypoints[i + 1]?.note ?? ''}
+                          onSaveNote={(destWpIdx, note) => onSetWaypointNote(destWpIdx, note)}
+                          onSave={(idx, ovr) => { onSetLegOverride(idx, ovr); setActiveLeg(null) }}
+                          onClose={() => setActiveLeg(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 )
               })}
             </tbody>
@@ -641,32 +726,6 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
         </div>
       )}
 
-      {activeLeg !== null && activeLeg < legs.length && (
-        <LegPropsPanel
-          legIndex={activeLeg}
-          fromName={legs[activeLeg].fromName}
-          toName={legs[activeLeg].toName}
-          distNm={legs[activeLeg].dist}
-          trueBrg={legs[activeLeg].brg}
-          magBrg={legs[activeLeg].magBrg}
-          override={legOverrides[activeLeg] ?? {}}
-          units={units}
-          defaultAltFt={defaultAltFt}
-          msaFt={legMsa[activeLeg] ?? 0}
-          msaApplies={msaSpans[activeLeg] != null && legMsaApplies(msaSpans[activeLeg], msaTotalNm)}
-          defaultSpeedKts={defaultSpeedKts}
-          globalWind={globalWind}
-          forecastWind={forecastWinds[activeLeg] ?? null}
-          forecastLoading={forecastLoading}
-          wpNote={waypoints[activeLeg + 1]?.note ?? ''}
-          onSaveNote={(destWpIdx, note) => onSetWaypointNote(destWpIdx, note)}
-          onSave={(idx, ovr) => {
-            onSetLegOverride(idx, ovr)
-            setActiveLeg(null)
-          }}
-          onClose={() => setActiveLeg(null)}
-        />
-      )}
     </div>
   )
 }

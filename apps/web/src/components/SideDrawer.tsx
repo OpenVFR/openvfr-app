@@ -67,6 +67,9 @@ interface Props {
   extending: boolean
   /** Stops extending the route (Done). */
   onStopExtending: () => void
+  /** Leg whose editor is open in the route table (also selected by clicking the leg on the map). */
+  selectedLeg: number | null
+  onSelectLeg: (leg: number | null) => void
   onUndo: () => void
   onRedo?: () => void
   canUndo?: boolean
@@ -162,7 +165,7 @@ function SideDrawer({
   isOnline,
   checking,
   onRefresh,
-  waypoints, legOverrides, extending, onStopExtending,
+  waypoints, legOverrides, extending, onStopExtending, selectedLeg, onSelectLeg,
   onUndo, onRedo, canUndo, canRedo, onClear, onReplace, onLoadRoute, activeRouteId, onActiveRouteIdChange, onSetLegOverride, onSetWaypointNote,
   onAddToRoute, onInsertInRoute,
   selectedAircraftId, selectedAircraftProfile, tafWarnIcaos, onSelectAircraft,
@@ -217,6 +220,14 @@ function SideDrawer({
   useEffect(() => {
     if (waypoints.length > 0) { setOpen(true) }
   }, [waypoints.length > 0]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A leg picked on the map opens the pane at the Route section (the table
+  // scrolls its row into view).
+  useEffect(() => {
+    if (selectedLeg == null) return
+    setOpen(true)
+    setExpanded(e => (e.route ? e : { ...e, route: true }))
+  }, [selectedLeg])
 
   // Starting or extending the route on the map shows the Route section, so
   // the points appear as they are added.
@@ -326,6 +337,8 @@ function SideDrawer({
                 >
                   {hasRoute ? (
                     <RoutePlan
+                      selectedLeg={selectedLeg}
+                      onSelectLeg={onSelectLeg}
                       waypoints={waypoints}
                       tafWarnIcaos={tafWarnIcaos}
                       legOverrides={legOverrides}
