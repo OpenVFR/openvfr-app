@@ -2,8 +2,9 @@ import css from './RouteEditBanner.module.css'
 
 /**
  * Shown for the whole duration of a route edit session (first route change
- * until Apply/Keep or Cancel/Revert; a flight starting or ending closes it). Apply keeps the changes as an unsaved
- * working copy; Cancel restores the route as it was before the first change.
+ * until Apply/Keep or Cancel/Revert; a flight starting or ending closes it).
+ * Apply keeps the changes as an unsaved working copy; Cancel restores the
+ * route as it was before the first change.
  */
 export default function RouteEditBanner({
   label = 'Editing route', cancelLabel = 'Cancel', applyLabel = 'Apply',
