@@ -164,6 +164,30 @@
   border-top: none;
 }
 
+/* Column headings: same grid as the rows, same paddings as the cells below. */
+.headRow {
+  border-top: none;
+  border-bottom: 1px solid var(--border-default);
+}
+.head,
+.headWp {
+  color: var(--text-faint);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 4px 3px;
+  white-space: nowrap;
+  cursor: default;
+}
+.headWp { padding-left: 12px; }
+.headCenter { text-align: center; padding: 4px 2px 3px; }
+.headRight { text-align: right; }
+.headDist { padding-right: 6px; }
+.headLvl { padding-right: 2px; }
+.headEte { padding-right: 6px; }
+.headEta { padding-right: 12px; }
+
 .rowActive {
   background: rgba(96, 165, 250, 0.08);
 }

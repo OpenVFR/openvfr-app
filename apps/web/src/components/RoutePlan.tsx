@@ -492,6 +492,19 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
           hasAnyEte                            ? css.plogEte :
           css.plog
         }>
+          {/* Column headings (outside the scroll body, so they stay put). */}
+          <div className={`${css.row} ${css.headRow}`} role="row">
+            <div className={css.headWp} title="Leg start">From</div>
+            <div title="Leg properties" />
+            <div className={css.headWp} title="Leg end">To</div>
+            <div className={css.head} title="Magnetic track">MT</div>
+            {hasAnyWca && <div className={`${css.head} ${css.headCenter}`} title="Wind correction angle (heading = MT + WCA)">WCA</div>}
+            <div className={css.head} title="True track">TT</div>
+            <div className={`${css.head} ${css.headRight} ${css.headDist}`} title="Leg distance">Dist</div>
+            <div className={`${css.head} ${css.headRight} ${css.headLvl}`} title="Planned altitude, ft (the ALT row below is the alternate aerodrome)">Lvl</div>
+            {hasAnyEte && <div className={`${css.head} ${css.headRight} ${css.headEte}`} title="Estimated time en route (h:mm)">ETE</div>}
+            {takeoffTime && hasAnyEte && <div className={`${css.head} ${css.headRight} ${css.headEta}`} title="Estimated time of arrival (UTC)">ETA</div>}
+          </div>
           <div className={legs.length > 10 ? css.plogBodyScroll : css.plogBody}>
             {legs.map((leg, i) => {
               const ete = legEtes[i]
