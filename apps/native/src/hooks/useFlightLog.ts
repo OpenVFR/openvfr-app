@@ -252,9 +252,8 @@ async function createLog(
 
 async function patchLog(id: string, patch: Partial<FlightLogDocType>): Promise<void> {
   try {
-    const existing = await flightLogsDb.getAll().then(all => all.find(l => l.id === id))
-    if (!existing) return
-    await flightLogsDb.upsert({ ...existing, ...patch })
+    // Reads and writes only this log (runs every FLUSH_INTERVAL_MS in flight).
+    await flightLogsDb.patch(id, patch)
   } catch { /* silently swallow */ }
 }
 

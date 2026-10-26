@@ -10,8 +10,11 @@
  * Writes are atomic (full array replacement) — suitable for the data volumes
  * involved (routes, aircraft profiles, waypoints).
  *
- * Flight log tracks are stored separately with a size guard; tracks > 500 KB
- * are silently trimmed to the most recent 2,000 points.
+ * Flight logs are the exception: one key per log (`ovfr:flight_log:<id>`).
+ * The in-progress log is saved every few seconds during a flight, and with a
+ * single array key every save re-read and re-wrote every past flight's track
+ * too (about 1 MB/s of storage traffic with a modest logbook). Tracks are
+ * trimmed to the most recent 2,000 points.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -34,8 +37,12 @@ const KEY = {
   aircraft:  'ovfr:aircraft_profiles',
   waypoints: 'ovfr:user_waypoints',
   settings:  'ovfr:settings',
+  /** Legacy single-array key for flight logs; migrated to per-log keys on first use. */
   logs:      'ovfr:flight_logs',
 } as const
+
+/** Prefix of the per-log keys (`ovfr:flight_log:<id>`). */
+export const FLIGHT_LOG_KEY_PREFIX = 'ovfr:flight_log:'
 
 // ---------------------------------------------------------------------------
 // Generic helpers
@@ -219,12 +226,132 @@ function trimTrack(doc: FlightLogDocType): FlightLogDocType {
   return doc
 }
 
+// One lock for every flight-log operation (they are cheap now: one key each).
+const LOGS_LOCK = 'flight_logs'
+const logKey = (id: string) => FLIGHT_LOG_KEY_PREFIX + id
+
+let logsMigrated: Promise<void> | null = null
+/** Move logs from the legacy array key to per-log keys (once per process; idempotent). */
+function migrateLogs(): Promise<void> {
+  logsMigrated ??= (async () => {
+    const raw = await AsyncStorage.getItem(KEY.logs)
+    if (raw == null) return
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) throw new Error(`${KEY.logs}: stored value is not a list`)
+    const entries: Record<string, string> = {}
+    for (const l of parsed as FlightLogDocType[]) if (l?.id) entries[logKey(l.id)] = JSON.stringify(l)
+    if (Object.keys(entries).length > 0) await AsyncStorage.setMany(entries)
+    await AsyncStorage.removeItem(KEY.logs)
+  })().catch((err) => { logsMigrated = null; throw err })
+  return logsMigrated
+}
+
+async function logKeys(): Promise<string[]> {
+  await migrateLogs()
+  return (await AsyncStorage.getAllKeys()).filter(k => k.startsWith(FLIGHT_LOG_KEY_PREFIX))
+}
+
+/** All logs. Throws when storage cannot be read (an unparsable single log is skipped). */
+async function readLogsOrThrow(): Promise<FlightLogDocType[]> {
+  const keys = await logKeys()
+  if (keys.length === 0) return []
+  const values = await AsyncStorage.getMany(keys)
+  const out: FlightLogDocType[] = []
+  for (const k of keys) {
+    const v = values[k]
+    if (v == null) continue
+    try { out.push(JSON.parse(v) as FlightLogDocType) } catch { /* skip a corrupt row */ }
+  }
+  return out
+}
+
+async function readLog(id: string): Promise<FlightLogDocType | undefined> {
+  await migrateLogs()
+  const v = await AsyncStorage.getItem(logKey(id))
+  return v == null ? undefined : JSON.parse(v) as FlightLogDocType
+}
+
+const writeLog = (doc: FlightLogDocType) => AsyncStorage.setItem(logKey(doc.id), JSON.stringify(doc))
+
 export const flightLogs = {
-  getAll: () => readAll<FlightLogDocType>(KEY.logs),
+  getAll: async (): Promise<FlightLogDocType[]> => {
+    try { return await readLogsOrThrow() } catch { return [] }
+  },
 
-  upsert: (doc: FlightLogDocType): Promise<void> => upsert(KEY.logs, trimTrack(doc)),
+  /** One log; waits for pending writes (e.g. read right after finishing a flight). */
+  get: (id: string): Promise<FlightLogDocType | undefined> =>
+    withLock(LOGS_LOCK, () => readLog(id)).catch(() => undefined),
 
-  delete: (id: string) => remove(KEY.logs, id),
+  upsert: (doc: FlightLogDocType): Promise<void> =>
+    withLock(LOGS_LOCK, async () => { await migrateLogs(); await writeLog(trimTrack(doc)) }),
 
-  ...remoteOps<FlightLogDocType>(KEY.logs, trimTrack),
+  /** Merge `patch` into the stored log (no-op when it does not exist). Reads and writes only this log. */
+  patch: (id: string, patch: Partial<FlightLogDocType>): Promise<void> =>
+    withLock(LOGS_LOCK, async () => {
+      const existing = await readLog(id)
+      if (existing) await writeLog(trimTrack({ ...existing, ...patch, id }))
+    }),
+
+  delete: (id: string): Promise<void> =>
+    withLock(LOGS_LOCK, async () => { await migrateLogs(); await AsyncStorage.removeItem(logKey(id)) }),
+
+  /** Remove every stored log (sign-out / account switch). */
+  wipeAll: async (): Promise<void> => {
+    await AsyncStorage.removeItem(KEY.logs)
+    const keys = (await AsyncStorage.getAllKeys()).filter(k => k.startsWith(FLIGHT_LOG_KEY_PREFIX))
+    if (keys.length > 0) await AsyncStorage.removeMany(keys)
+    logsMigrated = null
+  },
+
+  // Cloud sync, same rules as the array collections above (local edit newer than the server wins).
+  listForSync: (): Promise<FlightLogDocType[]> => readLogsOrThrow(),
+
+  applyRemote: (rows: FlightLogDocType[]): Promise<void> => {
+    if (rows.length === 0) return Promise.resolve()
+    return withLock(LOGS_LOCK, async () => {
+      await migrateLogs()
+      const current = await AsyncStorage.getMany(rows.map(r => logKey(r.id)))
+      const entries: Record<string, string> = {}
+      for (const r of rows) {
+        const raw = current[logKey(r.id)]
+        let local: FlightLogDocType | null = null
+        try { local = raw == null ? null : JSON.parse(raw) as FlightLogDocType } catch { /* corrupt: replace */ }
+        if (!local || local.updatedAt < r.updatedAt) entries[logKey(r.id)] = JSON.stringify(trimTrack(r))
+      }
+      if (Object.keys(entries).length > 0) await AsyncStorage.setMany(entries)
+    })
+  },
+
+  removeRemote: (rows: { id: string; deletedAt: number }[]): Promise<void> => {
+    if (rows.length === 0) return Promise.resolve()
+    return withLock(LOGS_LOCK, async () => {
+      await migrateLogs()
+      const current = await AsyncStorage.getMany(rows.map(r => logKey(r.id)))
+      const drop: string[] = []
+      for (const r of rows) {
+        const raw = current[logKey(r.id)]
+        if (raw == null) continue
+        let local: FlightLogDocType | null = null
+        try { local = JSON.parse(raw) as FlightLogDocType } catch { /* corrupt: drop */ }
+        if (!local || local.updatedAt <= r.deletedAt) drop.push(logKey(r.id))
+      }
+      if (drop.length > 0) await AsyncStorage.removeMany(drop)
+    })
+  },
+
+  restampRemote: (rows: { id: string; from: number; to: number }[]): Promise<void> => {
+    if (rows.length === 0) return Promise.resolve()
+    return withLock(LOGS_LOCK, async () => {
+      await migrateLogs()
+      const current = await AsyncStorage.getMany(rows.map(r => logKey(r.id)))
+      const entries: Record<string, string> = {}
+      for (const r of rows) {
+        const raw = current[logKey(r.id)]
+        if (raw == null) continue
+        const local = JSON.parse(raw) as FlightLogDocType
+        if (local.updatedAt === r.from) entries[logKey(r.id)] = JSON.stringify({ ...local, updatedAt: r.to })
+      }
+      if (Object.keys(entries).length > 0) await AsyncStorage.setMany(entries)
+    })
+  },
 }

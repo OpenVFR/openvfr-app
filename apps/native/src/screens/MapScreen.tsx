@@ -816,8 +816,7 @@ function MapScreenForCountry() {
   useEffect(() => {
     if (prevLogIdRef.current && !activeLogId) {
       const finishedId = prevLogIdRef.current
-      flightLogsDb.getAll().then(all => {
-        const doc = all.find(l => l.id === finishedId)
+      flightLogsDb.get(finishedId).then(doc => {
         if (doc && doc.endedAt > 0) pushLog(doc)
       })
     }

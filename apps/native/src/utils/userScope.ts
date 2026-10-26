@@ -17,17 +17,19 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { stopCloudSync } from '../sync/cloudSync'
+import { flightLogs } from '../db'
 
 const OWNER_KEY = 'ovfr:syncOwner'
 const PRIVATE_KEYS = [
   'ovfr:routes',
   'ovfr:aircraft_profiles',
   'ovfr:user_waypoints',
-  'ovfr:flight_logs',
+  'ovfr:flight_logs',    // legacy single-array key; logs now live under ovfr:flight_log:<id>
   'ovfr:sync_last_at',   // retired sync high-water mark
 ]
 
 export async function wipePrivateLocalData(): Promise<void> {
+  await flightLogs.wipeAll().catch(() => {})
   await AsyncStorage.removeMany([...PRIVATE_KEYS, OWNER_KEY]).catch(() => {})
 }
 
