@@ -134,6 +134,9 @@ interface Props {
    *  auto-dismisses after PLANNING_NOTICE_MS. */
   planningNotice?:       { title: string; text: string } | null
   onDismissPlanning?:    () => void
+  /** Extra space to leave at the top (the route edit banner and route hint
+   *  sit there), so neither covers the other. */
+  topInset?:             number
 }
 
 const AUTO_DISMISS_MS = 30_000
@@ -145,9 +148,10 @@ export function NotificationCenter({
   airfieldAlerts, onDismissAirfield,
   airspaceNotifications, ceilingMsg,
   reminderNote, onDismissReminder,
-  planningNotice, onDismissPlanning,
+  planningNotice, onDismissPlanning, topInset = 0,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
+  const scaledTheme = useScaledTheme()
   useEffect(() => {
     if (!reminderNote || !onDismissReminder) return
     const id = setTimeout(onDismissReminder, AUTO_DISMISS_MS)
@@ -164,8 +168,8 @@ export function NotificationCenter({
   // never hidden underneath them.
   const { width: winW, height: winH } = useWindowDimensions()
   const controlsInset = winW > winH
-    ? { top: CONTROLS_SIZE + 24 }
-    : { right: CONTROLS_SIZE + 24 }
+    ? { top: CONTROLS_SIZE + 24 + topInset }
+    : { right: CONTROLS_SIZE + 24, top: scaledTheme.space2 + topInset }
 
   const items: Item[] = []
 

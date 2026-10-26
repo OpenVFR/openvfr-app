@@ -3217,11 +3217,11 @@ export function AviationMap({
             {/* Faint dark track under the dashes: keeps the route readable over
                 pale terrain and over magenta/purple airspace outlines. */}
             <Layer
-              id="route-legs-casing" type="line"
+              key="route-legs-casing" id="route-legs-casing" type="line"
               paint={{ 'line-color': 'rgba(15,10,30,0.2)', 'line-width': ROUTE_CASING_WIDTH }}
             />
             <Layer
-              id="route-legs-line" type="line"
+              key="route-legs-line" id="route-legs-line" type="line"
               paint={{ 'line-color': ['case', ['boolean', ['get', 'preview'], false], DRAG_ROUTE_COLOR, theme.accentMagenta], 'line-width': ROUTE_LINE_WIDTH, 'line-dasharray': [6, 3] }}
             />
             {/* Direction chevrons along each leg. A text glyph placed along
@@ -3229,7 +3229,7 @@ export function AviationMap({
                 chevron always points in the direction of flight. Skipped
                 automatically on legs too short for the spacing. */}
             <Layer
-              id="route-legs-dir" type="symbol"
+              key="route-legs-dir" id="route-legs-dir" type="symbol"
               layout={{
                 'symbol-placement': 'line', 'symbol-spacing': ROUTE_CHEVRON_SPACING_PX,
                 'text-field': '>', 'text-size': 16, 'text-font': ['Noto Sans Medium'],
@@ -3244,14 +3244,14 @@ export function AviationMap({
                 it can be dragged. */}
             {unlockedLeg != null && (
               <Layer
-                id="route-leg-unlocked" type="line"
+                key="route-leg-unlocked" id="route-leg-unlocked" type="line"
                 filter={['==', ['get', 'legIndex'], unlockedLeg]}
                 paint={{ 'line-color': DRAG_ROUTE_COLOR, 'line-width': 12, 'line-opacity': 0.35 }}
               />
             )}
             {(onLegTap || onLegPress) && (
               <Layer
-                id="route-legs-hit" type="line"
+                key="route-legs-hit" id="route-legs-hit" type="line"
                 paint={{ 'line-color': '#000000', 'line-opacity': 0.01, 'line-width': 22 }}
               />
             )}
@@ -3301,7 +3301,7 @@ export function AviationMap({
         {waypoints.length >= 1 && routeVisible && (
           <GeoJSONSource id="route-pts-src" data={routePoints} onPress={onWaypointMove ? () => {} : undefined}>
             <Layer
-              id="route-pts-casing" type="circle"
+              key="route-pts-casing" id="route-pts-casing" type="circle"
               paint={{
                 'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, ['case', ['get', 'endpoint'], 11, 0], 8, 11],
                 'circle-color': 'rgba(0,0,0,0)',
@@ -3310,7 +3310,7 @@ export function AviationMap({
               }}
             />
             <Layer
-              id="route-pts-circle" type="circle"
+              key="route-pts-circle" id="route-pts-circle" type="circle"
               // Hollow ring: a snapped point's own symbol (aerodrome, navaid,
               // VRP) stays visible inside it; a free point shows just the
               // ring. Same on web.
@@ -3326,13 +3326,13 @@ export function AviationMap({
             {/* The route is being extended from its last point. */}
             {extendingEnd && (
               <Layer
-                id="route-end-selected" type="circle"
+                key="route-end-selected" id="route-end-selected" type="circle"
                 filter={['==', ['get', 'wpIndex'], waypoints.length - 1]}
                 paint={{ 'circle-radius': 15, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-width': 3, 'circle-stroke-color': DRAG_ROUTE_COLOR }}
               />
             )}
             <Layer
-              id="route-pts-label" type="symbol"
+              key="route-pts-label" id="route-pts-label" type="symbol"
               // Zoomed out, only the start/end names are drawn; intermediate
               // names reappear from zoom 8 (same rule on web).
               layout={{ 'text-field': ['step', ['zoom'], ['case', ['get', 'endpoint'], ['get', 'name'], ''], 8, ['get', 'name']], 'text-size': 11, 'text-offset': [0, -1.6], 'text-font': ['Noto Sans Medium'] }}

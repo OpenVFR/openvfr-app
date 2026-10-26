@@ -53,6 +53,8 @@ import { useDataFreshness } from '../hooks/useDataFreshness'
 import { FOLLOW_RETURN_MS } from '@open-vfr/shared/followZoom'
 // Vertical space the top-left route-edit banner takes; other top banners step below it.
 const EDIT_BANNER_H = 44
+/** Height of the route hint pill (two lines) plus a gap. */
+const ROUTE_HINT_H = 64
 /** How long a tapped leg stays unlocked for dragging in flight. */
 const LEG_UNLOCK_MS = 10_000
 
@@ -1783,6 +1785,8 @@ function MapScreenForCountry() {
           onDismissReminder={() => setReminderNote(null)}
           planningNotice={planningNotice}
           onDismissPlanning={dismissPlanningNotice}
+          // Below the route edit banner and the route hint pill (top left).
+          topInset={(editSessionActive ? EDIT_BANNER_H : 0) + (extending || routeHint ? ROUTE_HINT_H : 0)}
         />
 
         {/* Viewed flight log banner — Logs segment "View" action on PlanScreen */}
