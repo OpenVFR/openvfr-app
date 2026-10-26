@@ -9,7 +9,6 @@ import LegPropsPanel from './LegPropsPanel'
 import type { RouteWinds } from '../hooks/useRouteWinds'
 import { useLegMsa } from '../hooks/useLegMsa'
 import { legBelowMsa, legMsaApplies } from '@open-vfr/shared/legLevelDrag'
-import FindFeature from './FindFeature'
 import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
 import css from './RoutePlan.module.css'
 
@@ -185,7 +184,6 @@ interface Props {
   /** Close the route: off the map and unlinked from its saved copy. */
   onClear:      () => void
   onReplace:    (wps: RouteWaypoint[]) => void
-  onAddToRoute?: (wp: { lng: number; lat: number; name: string }) => void
   onSetLegOverride: (idx: number, override: LegOverride) => void
   /** Altitude (ft) assumed for legs without an altitude override: the selected aircraft's cruise altitude. Used for the IAS→TAS conversion. */
   defaultAltFt?: number
@@ -198,18 +196,19 @@ interface Props {
   globalWind: GlobalWind | null
   setGlobalWind: (w: GlobalWind | null) => void
   routeWinds: RouteWinds
+  /** Opens the Find a Destination panel (its + adds an aerodrome to the route). */
+  onFindDestination?: () => void
   /** Leg whose editor is open (also selected from the map); controlled by
    *  the parent when given, else local. */
   selectedLeg?: number | null
   onSelectLeg?: (leg: number | null) => void
 }
 
-export default function RoutePlan({ selectedLeg, onSelectLeg, waypoints, tafWarnIcaos = [], legOverrides, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onAddToRoute, onSetLegOverride, onSetWaypointNote, defaultAltFt, defaultSpeedKts, takeoffTime, setTakeoffTime, globalWind, setGlobalWind, routeWinds }: Props) {
+export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination, waypoints, tafWarnIcaos = [], legOverrides, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onSetLegOverride, onSetWaypointNote, defaultAltFt, defaultSpeedKts, takeoffTime, setTakeoffTime, globalWind, setGlobalWind, routeWinds }: Props) {
   const [kbInput, setKbInput] = useState('')
   const [kbError, setKbError] = useState('')
   const [kbLoading, setKbLoading] = useState(false)
   const [showKb, setShowKb] = useState(false)
-  const [showAdd, setShowAdd] = useState(false)
   const [localLeg, setLocalLeg] = useState<number | null>(null)
   const activeLeg = selectedLeg !== undefined ? selectedLeg : localLeg
   const setActiveLeg = onSelectLeg ?? setLocalLeg
@@ -420,8 +419,10 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, waypoints, tafWarn
       <div className={css.header}>
         <span className={css.title}>Waypoints</span>
         <div className={css.actions}>
-          <button className={css.btn} title="Search and add a waypoint" onClick={() => { setShowAdd(s => !s); setShowKb(false) }}>+</button>
-          <button className={css.btn} title="Keyboard route entry" onClick={() => { setShowKb(s => !s); setShowAdd(false); setTimeout(() => kbRef.current?.focus(), 50) }}>⌨</button>
+          {onFindDestination && (
+            <button className={css.btn} title="Find a destination: aerodromes by fuel, surface, runway length and distance; + adds one to the route" onClick={onFindDestination}>Find dest.</button>
+          )}
+          <button className={css.btn} title="Type the whole route, e.g. ESOS ESGG ESSA (to add a single point, use the search at the top)" onClick={() => { setShowKb(s => !s); setTimeout(() => kbRef.current?.focus(), 50) }}>⌨</button>
           <button className={css.btn} onClick={onUndo} disabled={!canUndo} title="Undo last route change (Ctrl+Z)">↶</button>
           {onRedo && <button className={css.btn} onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">↷</button>}
           <div className={css.menuWrap} ref={menuRef}>
@@ -439,15 +440,6 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, waypoints, tafWarn
           </div>
         </div>
       </div>
-
-      {showAdd && (
-        <div className={css.kbRow}>
-          <FindFeature
-            onResult={(r) => { onAddToRoute?.({ lng: r.lng, lat: r.lat, name: r.name }); setShowAdd(false) }}
-            onAddToRoute={(wp) => { onAddToRoute?.(wp); setShowAdd(false) }}
-          />
-        </div>
-      )}
 
       {showKb && (
         <div className={css.kbRow}>

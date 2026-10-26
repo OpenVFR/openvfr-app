@@ -16,10 +16,10 @@ export type FindResult = {
 
 interface Props {
   onResult: (r: FindResult) => void
-  onAddToRoute?: (wp: { lng: number; lat: number; name: string }) => void
+  onAddToRoute?: (wp: { lng: number; lat: number; name?: string }) => void
   /** Current route points + insert callback: adds an "insert at position" button. */
   routeWaypoints?: { name?: string }[]
-  onInsertInRoute?: (wp: { lng: number; lat: number; name: string }, afterIdx: number) => void
+  onInsertInRoute?: (wp: { lng: number; lat: number; name?: string }, afterIdx: number) => void
   /** Offer to save a typed coordinate as a place. */
   onSavePlace?: (lng: number, lat: number) => void
   /** Saved places, searched by name/folder and listed first. */
@@ -31,6 +31,13 @@ interface Props {
 // trailing hemisphere letters, lon-first) -- see shared coordinateParse.ts.
 // The result is echoed back in the style the user typed.
 // ---------------------------------------------------------------------------
+/** Route point for any search result: aerodromes, navaids and reporting
+ *  points by their ident, places by name, coordinates as a free point. */
+function routePoint(r: FindResult): { lng: number; lat: number; name?: string } {
+  if (r.kind === 'LL') return { lng: r.lng, lat: r.lat }
+  return { lng: r.lng, lat: r.lat, name: r.kind === 'PL' ? r.name : (r.id || r.name) }
+}
+
 function parseLatLon(q: string): FindResult | null {
   const p = parseCoordinate(q)
   if (!p) return null
@@ -280,18 +287,21 @@ export default function FindFeature({ onResult, onAddToRoute, routeWaypoints, on
                   }}
                 >★</button>
               )}
-              {onAddToRoute && (r.kind === 'AD' || r.kind === 'PL') && (
+              {onAddToRoute && (
                 <button
                   className={css.addBtn}
-                  title="Add to route"
+                  title={routeWaypoints && routeWaypoints.length > 0 ? 'Add to the end of the route' : 'Start a route here'}
                   onMouseDown={e => {
                     e.preventDefault()
                     e.stopPropagation()
-                    onAddToRoute({ lng: r.lng, lat: r.lat, name: r.kind === 'PL' ? r.name : r.id })
+                    onAddToRoute(routePoint(r))
+                    setQuery('')
+                    setResults([])
+                    setDropRect(null)
                   }}
                 >+</button>
               )}
-              {onInsertInRoute && routeWaypoints && routeWaypoints.length > 0 && (r.kind === 'AD' || r.kind === 'PL') && (
+              {onInsertInRoute && routeWaypoints && routeWaypoints.length > 0 && (
                 <button
                   className={css.addBtn}
                   title="Insert in route…"
@@ -312,7 +322,7 @@ export default function FindFeature({ onResult, onAddToRoute, routeWaypoints, on
                     onMouseDown={e => {
                       e.preventDefault()
                       e.stopPropagation()
-                      onInsertInRoute({ lng: r.lng, lat: r.lat, name: r.kind === 'PL' ? r.name : r.id }, afterIdx)
+                      onInsertInRoute(routePoint(r), afterIdx)
                       setInsertIdx(null)
                     }}
                   >

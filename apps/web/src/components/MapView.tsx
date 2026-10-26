@@ -4721,6 +4721,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     onStopExtending: finishExtending,
     selectedLeg,
     onSelectLeg: setSelectedLeg,
+    onFindDestination: () => setShowFindDest(true),
     onUndo: routeUndo.undo,
     onRedo: routeUndo.redo,
     canUndo: routeUndo.canUndo,

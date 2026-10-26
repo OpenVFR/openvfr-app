@@ -68,6 +68,8 @@ interface Props {
   extending: boolean
   /** Stops extending the route (Done). */
   onStopExtending: () => void
+  /** Opens the Find a Destination panel (aerodromes by fuel / runway / distance). */
+  onFindDestination: () => void
   /** Leg whose editor is open in the route table (also selected by clicking the leg on the map). */
   selectedLeg: number | null
   onSelectLeg: (leg: number | null) => void
@@ -168,7 +170,7 @@ function SideDrawer({
   isOnline,
   checking,
   onRefresh,
-  waypoints, legOverrides, extending, onStopExtending, selectedLeg, onSelectLeg,
+  waypoints, legOverrides, extending, onStopExtending, selectedLeg, onSelectLeg, onFindDestination,
   onUndo, onRedo, canUndo, canRedo, onClear, onReplace, onLoadRoute, activeRouteId, onActiveRouteIdChange, onSetLegOverride, onSetWaypointNote,
   onAddToRoute, onInsertInRoute,
   selectedAircraftId, selectedAircraftProfile, tafWarnIcaos, onSelectAircraft,
@@ -343,7 +345,7 @@ function SideDrawer({
                       canRedo={canRedo}
                       onClear={onClear}
                       onReplace={onReplace}
-                      onAddToRoute={onAddToRoute}
+                      onFindDestination={onFindDestination}
                       onSetLegOverride={onSetLegOverride}
                       onSetWaypointNote={onSetWaypointNote}
                       defaultAltFt={selectedAircraftProfile?.cruiseAltFt || undefined}
@@ -360,6 +362,9 @@ function SideDrawer({
                         ? 'No route. Use Direct To, or open a saved route.'
                         : 'No route. Click an aerodrome or navaid on the map and choose "Start route here", search above, or open a saved route.'}</p>
                       <div className={css.routeEmptyActions}>
+                        {!inFlightRoute && (
+                          <button onClick={onFindDestination} title="Aerodromes by fuel, surface, runway length and distance; + starts the route there">Find a destination</button>
+                        )}
                         {canUndo && (
                           <button onClick={onUndo} title="Undo last route change (Ctrl+Z)">↶ Undo</button>
                         )}
