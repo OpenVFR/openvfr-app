@@ -29,7 +29,7 @@ import {
 } from '../db'
 import type { RouteDocType, AircraftProfileDocType, UserWaypointDocType, FlightLogDocType } from '../types/db'
 import { API_BASE } from '../config'
-import { getSyncJwt, invalidateSyncJwt } from '../utils/syncJwt'
+import { getSyncJwt, invalidateSyncJwt, jwtSubject } from '../utils/syncJwt'
 import { syncLog } from '../utils/syncLog'
 
 const routeAdapter: TableAdapter<RouteDocType> = {
@@ -75,7 +75,7 @@ const storage: SyncStorage = {
 
 const transport: SyncTransport = {
   restBase: `${API_BASE}/rest`,
-  getJwt: getSyncJwt,
+  getJwt: syncJwtForCurrentUser,
   invalidateJwt: invalidateSyncJwt,
   log: syncLog,
 }
@@ -83,6 +83,25 @@ const transport: SyncTransport = {
 // ─── Coordinator lifecycle ──────────────────────────────────────────────────
 
 let coordinator: SyncCoordinator | null = null
+
+/**
+ * The sync JWT, only when it was issued for the account being synced. A token
+ * for another account (left over from before a sign-out / account switch) is
+ * dropped and fetched again; when the server still answers for someone else,
+ * sync waits (treated as offline) instead of touching that account's rows.
+ */
+async function syncJwtForCurrentUser(): Promise<string | null> {
+  const want = coordinatorUser
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const jwt = await getSyncJwt()
+    if (!jwt || !want) return jwt
+    const sub = jwtSubject(jwt)
+    if (sub === want) return jwt
+    syncLog('[sync] JWT is for another account; fetching a new one')
+    invalidateSyncJwt()
+  }
+  return null
+}
 let coordinatorUser: string | null = null
 let previousStop: Promise<void> = Promise.resolve()
 let generation = 0
@@ -113,6 +132,11 @@ export async function stopCloudSync(): Promise<void> {
   const c = coordinator
   coordinator = null
   coordinatorUser = null
+  // The cached PostgREST JWT belongs to the account that is stopping. Kept, the
+  // next account signed in on this device synced with it for up to 15 minutes:
+  // it downloaded the previous account's rows into its own copy (found on a
+  // device), and could have uploaded them into the new account afterwards.
+  invalidateSyncJwt()
   if (c) {
     notifyLifecycle()
     previousStop = c.stop()

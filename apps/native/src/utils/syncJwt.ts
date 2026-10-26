@@ -38,13 +38,26 @@ import { syncLog } from './syncLog'
 let _jwt:       string | null = null
 let _jwtExpiry: number        = 0
 
+/** The account (`sub` claim) a PostgREST JWT was issued for; null when unreadable. */
+export function jwtSubject(jwt: string): string | null {
+  try {
+    const part = jwt.split('.')[1]
+    if (!part) return null
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((part.length + 3) % 4)
+    const json = JSON.parse(globalThis.atob(b64)) as { sub?: unknown }
+    return typeof json.sub === 'string' ? json.sub : null
+  } catch {
+    return null
+  }
+}
+
 async function fetchToken(): Promise<Response> {
   return fetch(`${API_BASE}/api/auth/token`, {
     headers: { Origin: API_BASE, ...(await authHeaders()) },
   })
 }
 
-/** Forget the cached JWT (the server rejected it), so the next call fetches a new one. */
+/** Forget the cached JWT (rejected by the server, or the account changed), so the next call fetches a new one. */
 export function invalidateSyncJwt(): void {
   _jwt = null
   _jwtExpiry = 0
