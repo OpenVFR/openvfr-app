@@ -484,110 +484,111 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
       {legs.length === 0 ? (
         <p className={css.hint}>Click the map to add the next waypoint</p>
       ) : (
-        <div className={
-          hasAnyWca && takeoffTime && hasAnyEte ? css.plogWcaEteEta :
-          hasAnyWca && hasAnyEte               ? css.plogWcaEte :
-          hasAnyWca                            ? css.plogWca :
-          takeoffTime && hasAnyEte             ? css.plogEteEta :
-          hasAnyEte                            ? css.plogEte :
-          css.plog
-        }>
-          {/* Column headings (outside the scroll body, so they stay put). */}
-          <div className={`${css.row} ${css.headRow}`} role="row">
-            <div className={css.headWp} title="Leg start">From</div>
-            <div title="Leg properties" />
-            <div className={css.headWp} title="Leg end">To</div>
-            <div className={css.head} title="Magnetic track">MT</div>
-            {hasAnyWca && <div className={`${css.head} ${css.headCenter}`} title="Wind correction angle (heading = MT + WCA)">WCA</div>}
-            <div className={css.head} title="True track">TT</div>
-            <div className={`${css.head} ${css.headRight} ${css.headDist}`} title="Leg distance">Dist</div>
-            <div className={`${css.head} ${css.headRight} ${css.headLvl}`} title="Planned altitude, ft (the ALT row below is the alternate aerodrome)">Lvl</div>
-            {hasAnyEte && <div className={`${css.head} ${css.headRight} ${css.headEte}`} title="Estimated time en route (h:mm)">ETE</div>}
-            {takeoffTime && hasAnyEte && <div className={`${css.head} ${css.headRight} ${css.headEta}`} title="Estimated time of arrival (UTC)">ETA</div>}
-          </div>
-          <div className={legs.length > 10 ? css.plogBodyScroll : css.plogBody}>
-            {legs.map((leg, i) => {
-              const ete = legEtes[i]
-              const eta = legEtas[i]
-              const hasOverride = !!(legOverrides[i]?.altFt || legOverrides[i]?.speedKts || legOverrides[i]?.windDir || legOverrides[i]?.windSpd)
-              return (
-                <div
-                  key={i}
-                  className={`${css.row}${activeLeg === i ? ` ${css.rowActive}` : ''}${overIdx === i ? ` ${css.rowDragOver}` : ''}`}
-                  onDragOver={(e) => { e.preventDefault(); if (overIdx !== i) setOverIdx(i) }}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    if (dragIdx != null) onReplace(moveWaypoint(waypoints, dragIdx, i))
-                    setDragIdx(null); setOverIdx(null)
-                  }}
-                  onDragEnd={() => { setDragIdx(null); setOverIdx(null) }}
-                >
-                  <div
-                    className={css.wp}
-                    draggable
-                    title="Drag to reorder"
-                    onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(i) }}
-                  >{leg.fromName}{tafWarnIcaos.includes(leg.fromName) && <span className={css.tafWarn} title="TAF: trend change due within 3 h">{' \u26a0'}</span>}</div>
-                  <div
-                    className={`${css.arrow}${hasOverride ? ` ${css.arrowSet}` : ''}${legIsBelowMsa(i) ? ` ${css.arrowMsa}` : ''} ${css.arrowBtn}`}
-                    title={legIsBelowMsa(i)
-                      ? `Planned ${legPlannedAlt(i).toLocaleString('en-US')} ft is below this leg's MSA of ${legMsa[i].toLocaleString('en-US')} ft. Edit leg properties`
-                      : legMsa[i] > 0 ? `MSA ${legMsa[i].toLocaleString('en-US')} ft. Edit leg properties` : 'Edit leg properties'}
-                    onClick={() => setActiveLeg(i === activeLeg ? null : i)}
-                  >→</div>
-                  <div
-                    className={css.wp}
-                    draggable={i === legs.length - 1}
-                    title={i === legs.length - 1 ? 'Drag to reorder' : undefined}
-                    onDragStart={i === legs.length - 1 ? (e) => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(i + 1) } : undefined}
-                  >{leg.toName}{tafWarnIcaos.includes(leg.toName) && <span className={css.tafWarn} title="TAF: trend change due within 3 h">{' \u26a0'}</span>}</div>
-                  <div className={css.brg}>{String(Math.round(leg.magBrg)).padStart(3, '0')}°M</div>
-                  {hasAnyWca && (
-                    <div className={css.wca}>
-                      {legWcas[i] != null && Math.abs(legWcas[i]!) >= 1
-                        ? (legWcas[i]! > 0 ? `+${legWcas[i]}` : String(legWcas[i])) + '°'
-                        : ''}
-                    </div>
-                  )}
-                  <div className={css.brgTrue}>{String(Math.round(leg.brg)).padStart(3, '0')}°T</div>
-                  <div className={css.dist}>{nmToDisplay(leg.dist, units.distance).toFixed(1)} {distLabel(units.distance)}</div>
-                  <div
-                    className={`${css.lvl}${legOverrides[i]?.altFt ? ` ${css.lvlSet}` : ''}`}
-                    title={legOverrides[i]?.altFt ? 'Planned level for this leg (set on the leg)' : 'Planned level for this leg (route level)'}
-                  >{legPlannedAlt(i).toLocaleString('en-US')}'</div>
-                  {hasAnyEte && (
-                    <div className={css.ete} title={legSpeedTip(i)}>
-                      {ete != null
-                        ? `${Math.floor(ete)}:${String(Math.round((ete % 1) * 60)).padStart(2, '0')}`
-                        : '—'}
-                    </div>
-                  )}
-                  {takeoffTime && hasAnyEte && (
-                    <div className={css.eta}>
-                      {eta ? fmtUtc(eta) : '—'}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-          <div className={css.total}>
-            <div className={css.totalLabel}>Total</div>
-            <div /><div />
-            <div />{hasAnyWca && <div />}<div />
-            <div className={css.dist}>{nmToDisplay(totalNm, units.distance).toFixed(1)} {distLabel(units.distance)}</div>
-            <div />
-            {hasAnyEte && (
-              <div className={css.ete}>
-                {Math.floor(totalEteMin)}:{String(Math.round((totalEteMin % 1) * 60)).padStart(2, '0')}
-              </div>
-            )}
-            {takeoffTime && hasAnyEte && (
-              <div className={css.eta}>
-                {legEtas[legEtas.length - 1] ? fmtUtc(legEtas[legEtas.length - 1]!) : '—'}
-              </div>
-            )}
-          </div>
+        /* Pilot-log layout: one row per route point, the leg data on the row
+           of the point it leads to. A table, so columns size to their content
+           and never overlap; the name column takes what is left (ellipsis).
+           Optional columns drop out as the pane narrows (container queries
+           in the CSS): TT first, then ETA, then WCA. */
+        <div className={legs.length > 10 ? css.plogScroll : undefined}>
+          <table className={css.plogTable}>
+            <thead>
+              <tr>
+                <th className={css.thWp} title="Route point">Waypoint</th>
+                <th title="Leg properties" />
+                <th className={css.thNum} title="Magnetic track, °">MT</th>
+                {hasAnyWca && <th className={`${css.thNum} ${css.colWca}`} title="Wind correction angle, ° (heading = MT + WCA)">WCA</th>}
+                <th className={`${css.thNum} ${css.colTt}`} title="True track, °">TT</th>
+                <th className={css.thNum} title={`Leg distance, ${distLabel(units.distance)}`}>{distLabel(units.distance)}</th>
+                <th className={css.thNum} title="Planned altitude, ft (the ALT row below is the alternate aerodrome)">Lvl</th>
+                {hasAnyEte && <th className={css.thNum} title="Estimated time en route (h:mm)">ETE</th>}
+                {takeoffTime && hasAnyEte && <th className={`${css.thNum} ${css.colEta}`} title="Estimated time of arrival (UTC)">ETA</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {waypoints.map((wp, w) => {
+                const i = w - 1            // leg ending at this point (-1: departure row)
+                const leg = i >= 0 ? legs[i] : null
+                const ete = i >= 0 ? legEtes[i] : null
+                const eta = i >= 0 ? legEtas[i] : null
+                const name = w === 0 ? (legs[0]?.fromName ?? wp.name ?? 'WP1') : (leg?.toName ?? wp.name ?? `WP${w + 1}`)
+                const hasOverride = i >= 0 && !!(legOverrides[i]?.altFt || legOverrides[i]?.speedKts || legOverrides[i]?.windDir || legOverrides[i]?.windSpd)
+                return (
+                  <tr
+                    key={w}
+                    className={`${activeLeg === i && i >= 0 ? css.rowActive : ''}${overIdx === w ? ` ${css.rowDragOver}` : ''}`}
+                    onDragOver={(e) => { e.preventDefault(); if (overIdx !== w) setOverIdx(w) }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      if (dragIdx != null) onReplace(moveWaypoint(waypoints, dragIdx, w))
+                      setDragIdx(null); setOverIdx(null)
+                    }}
+                    onDragEnd={() => { setDragIdx(null); setOverIdx(null) }}
+                  >
+                    <td
+                      className={css.wp}
+                      draggable
+                      title={`${name}: drag to reorder`}
+                      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(w) }}
+                    >{name}{tafWarnIcaos.includes(name) && <span className={css.tafWarn} title="TAF: trend change due within 3 h">{' \u26a0'}</span>}</td>
+                    <td className={css.btnCell}>
+                      {leg && (
+                        <div
+                          className={`${css.arrow}${hasOverride ? ` ${css.arrowSet}` : ''}${legIsBelowMsa(i) ? ` ${css.arrowMsa}` : ''} ${css.arrowBtn}`}
+                          title={(legIsBelowMsa(i)
+                            ? `Planned ${legPlannedAlt(i).toLocaleString('en-US')} ft is below this leg's MSA of ${legMsa[i].toLocaleString('en-US')} ft. `
+                            : legMsa[i] > 0 ? `MSA ${legMsa[i].toLocaleString('en-US')} ft. ` : '') + `Edit leg ${leg.fromName} \u2192 ${leg.toName}`}
+                          onClick={() => setActiveLeg(i === activeLeg ? null : i)}
+                        >{'\u2192'}</div>
+                      )}
+                    </td>
+                    <td className={css.brg}>{leg ? String(Math.round(leg.magBrg)).padStart(3, '0') : ''}</td>
+                    {hasAnyWca && (
+                      <td className={`${css.wca} ${css.colWca}`}>
+                        {leg && legWcas[i] != null && Math.abs(legWcas[i]!) >= 1
+                          ? (legWcas[i]! > 0 ? `+${legWcas[i]}` : String(legWcas[i]))
+                          : ''}
+                      </td>
+                    )}
+                    <td className={`${css.brgTrue} ${css.colTt}`}>{leg ? String(Math.round(leg.brg)).padStart(3, '0') : ''}</td>
+                    <td className={css.dist}>{leg ? nmToDisplay(leg.dist, units.distance).toFixed(1) : ''}</td>
+                    <td
+                      className={`${css.lvl}${i >= 0 && legOverrides[i]?.altFt ? ` ${css.lvlSet}` : ''}`}
+                      title={i >= 0 ? (legOverrides[i]?.altFt ? 'Planned level for this leg (set on the leg)' : 'Planned level for this leg (route level)') : undefined}
+                    >{leg ? legPlannedAlt(i).toLocaleString('en-US') : ''}</td>
+                    {hasAnyEte && (
+                      <td className={css.ete} title={leg ? legSpeedTip(i) : undefined}>
+                        {leg ? (ete != null ? `${Math.floor(ete)}:${String(Math.round((ete % 1) * 60)).padStart(2, '0')}` : '\u2014') : ''}
+                      </td>
+                    )}
+                    {takeoffTime && hasAnyEte && (
+                      <td className={`${css.eta} ${css.colEta}`}>{leg ? (eta ? fmtUtc(eta) : '\u2014') : fmtUtc(takeoffTime)}</td>
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+            <tfoot>
+              <tr className={css.total}>
+                <td className={css.totalLabel}>Total</td>
+                <td />
+                <td />
+                {hasAnyWca && <td className={css.colWca} />}
+                <td className={css.colTt} />
+                <td className={css.dist}>{nmToDisplay(totalNm, units.distance).toFixed(1)}</td>
+                <td />
+                {hasAnyEte && (
+                  <td className={css.ete}>
+                    {Math.floor(totalEteMin)}:{String(Math.round((totalEteMin % 1) * 60)).padStart(2, '0')}
+                  </td>
+                )}
+                {takeoffTime && hasAnyEte && (
+                  <td className={`${css.eta} ${css.colEta}`}>
+                    {legEtas[legEtas.length - 1] ? fmtUtc(legEtas[legEtas.length - 1]!) : '\u2014'}
+                  </td>
+                )}
+              </tr>
+            </tfoot>
+          </table>
         </div>
       )}
 

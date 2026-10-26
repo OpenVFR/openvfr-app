@@ -1,4 +1,6 @@
 .panel {
+  /* The pilot-log table drops columns by this container's width. */
+  container: routeplan / inline-size;
   background: transparent;
   padding: 0;
   -webkit-user-select: none;
@@ -118,59 +120,25 @@
   margin: 0;
 }
 
-.plog {
-  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 38px 62px 40px;
+/* ── Pilot-log table ─────────────────────────────────────────────────────
+   A real table: columns size to their content and can never overlap; the
+   waypoint column takes the remaining width (width:100% + max-width:0 lets
+   its text ellipsise). Optional columns drop out as the pane narrows. */
+.plogTable {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
 }
-
-.plogWca {
-  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 32px 38px 62px 40px;
-}
-
-.plogEte {
-  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 38px 62px 40px 48px;
-}
-
-.plogWcaEte {
-  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 32px 38px 62px 40px 48px;
-}
-
-.plogEteEta {
-  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 38px 62px 40px 48px 52px;
-}
-
-.plogWcaEteEta {
-  --grid-cols: minmax(0,1fr) 20px minmax(0,1fr) 46px 32px 38px 62px 40px 48px 52px;
-}
-
-.plogBody {
-  /* normal, no scroll */
-}
-
-.plogBodyScroll {
-  max-height: calc(10 * 27px);
+.plogScroll {
+  max-height: calc(11 * 26px);
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }
-
-.row {
-  display: grid;
-  grid-template-columns: var(--grid-cols);
-  border-top: 1px solid var(--border-subtle);
-  align-items: center;
-}
-
-.row:first-child {
-  border-top: none;
-}
-
-/* Column headings: same grid as the rows, same paddings as the cells below. */
-.headRow {
-  border-top: none;
-  border-bottom: 1px solid var(--border-default);
-}
-.head,
-.headWp {
+.plogTable th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-elevated);
   color: var(--text-faint);
   font-size: 9px;
   font-weight: 700;
@@ -178,15 +146,21 @@
   text-transform: uppercase;
   padding: 4px 4px 3px;
   white-space: nowrap;
+  border-bottom: 1px solid var(--border-default);
   cursor: default;
 }
-.headWp { padding-left: 12px; }
-.headCenter { text-align: center; padding: 4px 2px 3px; }
-.headRight { text-align: right; }
-.headDist { padding-right: 6px; }
-.headLvl { padding-right: 2px; }
-.headEte { padding-right: 6px; }
-.headEta { padding-right: 12px; }
+.thWp { text-align: left; padding-left: 12px !important; }
+.thNum { text-align: right; }
+.plogTable th:last-child,
+.plogTable td:last-child { padding-right: 10px; }
+.plogTable tbody tr { border-top: 1px solid var(--border-subtle); }
+.plogTable tbody tr:first-child { border-top: none; }
+.btnCell { width: 20px; padding: 0 2px; }
+
+/* Narrower pane: true track first, then ETA, then WCA go. */
+@container routeplan (max-width: 380px) { .colTt { display: none; } }
+@container routeplan (max-width: 330px) { .colEta { display: none; } }
+@container routeplan (max-width: 290px) { .colWca { display: none; } }
 
 .rowActive {
   background: rgba(96, 165, 250, 0.08);
@@ -209,7 +183,10 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
+  /* Takes the table's spare width; max-width:0 lets the name ellipsise
+     instead of widening the table. */
+  width: 100%;
+  max-width: 0;
   cursor: grab;
 }
 
@@ -429,10 +406,7 @@
 .altClear:hover { color: var(--text-secondary); }
 
 .total {
-  display: grid;
-  grid-template-columns: var(--grid-cols);
   border-top: 1px solid var(--border-strong);
-  align-items: center;
 }
 
 .totalLabel {
