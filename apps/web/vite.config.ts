@@ -169,7 +169,6 @@ export default defineConfig({
       'maplibre-gl',
       'pmtiles',
       '@protomaps/basemaps',
-      'recharts',
       'rxdb',
       'rxdb/plugins/storage-dexie',
       'rxdb/plugins/dev-mode',

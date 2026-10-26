@@ -66,9 +66,8 @@ export function useFlightLog(
    *  receives any simulated position is marked `simulated` (kept in this
    *  browser, never synced, left out of totals). */
   simulation:     { simulated: boolean; record: boolean } = { simulated: false, record: false },
-): { activeLogId: string | null; liveTrack: TrackPoint[] } {
+): { activeLogId: string | null } {
   const [activeLogId, setActiveLogId] = useState<string | null>(null)
-  const [liveTrack,   setLiveTrack]   = useState<TrackPoint[]>([])
   // Close out logs left in progress by a previous session (tab/app closed
   // mid-flight, so finishLog never ran). Runs once, before recording can start.
   useEffect(() => { void recoverOrphanedLogs() }, [])
@@ -145,7 +144,6 @@ export function useFlightLog(
         simulated:     false,
       }
       setActiveLogId(null)
-      setLiveTrack([])
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flyingMode])
@@ -219,7 +217,6 @@ export function useFlightLog(
         })
         s.lastTrackMs = now
         s.dirty       = true
-        setLiveTrack([...s.track])
       }
       if (s.dirty && !s.flushTimer) {
         s.flushTimer = setTimeout(() => {
@@ -267,7 +264,6 @@ export function useFlightLog(
         })
         s.lastTrackMs = now
         s.dirty       = true
-        setLiveTrack([...s.track])
       }
 
       if (s.dirty && !s.flushTimer) {
@@ -330,7 +326,6 @@ export function useFlightLog(
                 simulated:     false,
               }
               setActiveLogId(null)
-              setLiveTrack([])
             }, parkTimeoutMs)
           }
         }
@@ -342,7 +337,7 @@ export function useFlightLog(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position, flyingMode])
 
-  return { activeLogId, liveTrack }
+  return { activeLogId }
 }
 
 // ── RxDB helpers (fire-and-forget) ───────────────────────────────────────────

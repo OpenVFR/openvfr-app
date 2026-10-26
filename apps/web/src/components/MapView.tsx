@@ -88,7 +88,6 @@ import { useVicinityAerodromes } from '../hooks/useVicinityAerodromes'
 import { useNearbyFrequencies } from '../hooks/useNearbyFrequencies'
 import VicinityBriefPanel from './VicinityBriefPanel'
 import { useGpsVerticalSpeed } from '../hooks/useGpsVerticalSpeed'
-import LiveTrackChart from './LiveTrackChart'
 import {
   recenterNeeded, chooseAutoZoom, createFocusTracker, distNm, AUTO_ZOOM_PREFERRED,
   FOLLOW_RETURN_MS, FOLLOW_LOOKAHEAD_RATIO, followCountdownSecs, type FollowSnapshot,
@@ -871,7 +870,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     [chartPos?.altFt, chartPos?.speedKts, selectedAircraftProfile?.cruiseIas],
   )
 
-  // Update the profile-cursor map marker when the VirtualRadar / LiveTrackChart hover changes.
+  // Update the profile-cursor map marker when the VirtualRadar hover changes.
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady) return
@@ -1202,8 +1201,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
     map.setLayoutProperty('terrain-color', 'visibility', 'visible')
   }, [terrainColoring, mapReady, flyingMode, gpsPosition?.altFt, basemapMode])
 
-  // Flight log — live in-flight track
-  const { liveTrack } = useFlightLog(
+  // Flight log: records the in-flight track
+  useFlightLog(
     flyingMode !== 'off' ? gpsPosition : null,
     flyingMode,
     selectedAircraftId ?? '',
@@ -5038,7 +5037,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           </div>
         ) : flyingMode !== 'off' ? (
           // Flying without a planned route: show forward-looking profile along current heading.
-          // Falls back to the live track chart while the first look-ahead route is initialising.
+          // Nothing until the first position gives the look-ahead its start and track.
           lookaheadWaypoints.length >= 2 ? (
             <div className={css.vrRow}>
               <VirtualRadar
@@ -5060,11 +5059,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
                 crosshairDistNm={profileCursorNm}
               />
             </div>
-          ) : (
-            <div className={css.vrRow}>
-              <LiveTrackChart track={liveTrack} />
-            </div>
-          )
+          ) : null
         ) : null}
 
       </div>
