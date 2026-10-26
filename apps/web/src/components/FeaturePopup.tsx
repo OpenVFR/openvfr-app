@@ -273,9 +273,11 @@ function TrafficBody({ f }: { f: TrafficFeature }) {
 interface Props {
   feature: PointFeature
   onClose: () => void
+  /** Route button (navaids, reporting points): "Start route here", "Add to route", "Direct to"... */
+  routeAction?: { label: string; onClick: () => void }
 }
 
-export default function FeaturePopup({ feature: f, onClose }: Props) {
+export default function FeaturePopup({ feature: f, onClose, routeAction }: Props) {
   let header: React.ReactNode
   let body: React.ReactNode
 
@@ -306,6 +308,9 @@ export default function FeaturePopup({ feature: f, onClose }: Props) {
     <div className={css.panel}>
       <div className={css.header}>
         {header}
+        {routeAction && (
+          <button className={css.routeBtn} onClick={routeAction.onClick}>{routeAction.label}</button>
+        )}
         <button className={css.close} onClick={onClose} aria-label="Close">✕</button>
       </div>
       {body}

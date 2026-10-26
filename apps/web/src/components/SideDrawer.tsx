@@ -32,7 +32,7 @@ import css from './SideDrawer.module.css'
 export type ActiveInfo =
   | { kind: 'aerodrome'; props: AerodromeFeatureProps; lng: number; lat: number }
   | { kind: 'airspace';  features: AirspaceFeature[]; regionalNotams?: RegionalNotamHit[]; focusKey?: string }
-  | { kind: 'point';     feature: PointFeature }
+  | { kind: 'point';     feature: PointFeature; routeWp?: RouteWaypoint }
   | { kind: 'whatshere'; items: WhatsHereItem[]; airspaceFeatures: AirspaceFeature[]; lng: number; lat: number }
   | null
 
@@ -77,10 +77,10 @@ interface Props {
   // Route plan
   waypoints: RouteWaypoint[]
   legOverrides: LegOverride[]
-  /** Add-points mode: map clicks append route points. */
-  planningMode: boolean
-  /** Toggles add-points mode; undefined while flying (not offered then). */
-  onTogglePlanningMode?: () => void
+  /** The route's end is selected: clicks on map features append them. */
+  extending: boolean
+  /** Stops extending the route (Done). */
+  onStopExtending: () => void
   onUndo: () => void
   onRedo?: () => void
   canUndo?: boolean
@@ -195,7 +195,7 @@ function SideDrawer({
   isOnline,
   checking,
   onRefresh,
-  waypoints, legOverrides, planningMode, onTogglePlanningMode,
+  waypoints, legOverrides, extending, onStopExtending,
   onUndo, onRedo, canUndo, canRedo, onClear, onReplace, onLoadRoute, activeRouteId, onActiveRouteIdChange, onSetLegOverride, onSetWaypointNote,
   onAddToRoute, onInsertInRoute,
   selectedAircraftId, selectedAircraftProfile, tafWarnIcaos, onSelectAircraft,
@@ -303,6 +303,12 @@ function SideDrawer({
   const toggle = (s: Section) => setExpanded(p => ({ ...p, [s]: !p[s] }))
 
   const hasRoute = waypoints.length > 0
+  // Route action in a feature's popup: on the ground it starts or extends
+  // the route (map clicks on features then keep extending it); in flight it
+  // flies there from the present position.
+  const routeActionFor = (wp: RouteWaypoint, rejoin: boolean): { label: string; onClick: () => void } => inFlightRoute
+    ? { label: directToLabel(wp), onClick: () => onDirectTo(wp, rejoin) }
+    : { label: hasRoute ? 'Add to route' : 'Start route here', onClick: () => onAddToRoute(wp) }
   // Computed once here (not inline in JSX) so the section header's count
   // badge and the panel body agree -- both must reflect the SAME filtered
   // list, not the badge showing the unfiltered total while the body below
@@ -343,6 +349,7 @@ function SideDrawer({
                       regionalNotams={regionalNotams}
                       routeWaypoints={waypoints}
                       onShowNotamOnMap={onShowNotamOnMap}
+                      routeAction={routeActionFor({ lng: activeInfo.lng, lat: activeInfo.lat, name: activeInfo.props.icao }, false)}
                     />
                   )}
                   {activeInfo.kind === 'airspace' && (
@@ -357,6 +364,7 @@ function SideDrawer({
                     <FeaturePopup
                       feature={activeInfo.feature}
                       onClose={onCloseInfo}
+                      routeAction={activeInfo.routeWp ? routeActionFor(activeInfo.routeWp, true) : undefined}
                     />
                   )}
                   {activeInfo.kind === 'whatshere' && (
@@ -381,14 +389,14 @@ function SideDrawer({
             <button className={css.sectionHeader} onClick={() => toggle('route')}>
               <span>{SECTION_LABELS.route}</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {onTogglePlanningMode && (
+                {extending && (
                   <span
                     role="button"
-                    className={`${css.planPill} ${planningMode ? css.planPillActive : ''}`}
-                    title={planningMode ? 'Stop adding points by clicking the map' : 'Click the map to add route points'}
-                    onClick={(e) => { e.stopPropagation(); onTogglePlanningMode() }}
+                    className={`${css.planPill} ${css.planPillActive}`}
+                    title="Stop adding points (or click empty map, or press Esc)"
+                    onClick={(e) => { e.stopPropagation(); onStopExtending() }}
                   >
-                    {planningMode ? 'Done adding' : '+ Add points'}
+                    Done
                   </span>
                 )}
                 <span className={css.chevron}>{expanded.route ? '▾' : '▸'}</span>
@@ -430,11 +438,10 @@ function SideDrawer({
                     />
                   ) : (
                     <div className={css.routeEmpty}>
-                      <p>No route. {onTogglePlanningMode ? 'Add points by clicking the map, or open a saved route.' : 'Use Direct To, or open a saved route.'}</p>
+                      <p>{inFlightRoute
+                        ? 'No route. Use Direct To, or open a saved route.'
+                        : 'No route. Click an aerodrome or navaid on the map and choose "Start route here", search above, or open a saved route.'}</p>
                       <div className={css.routeEmptyActions}>
-                        {onTogglePlanningMode && !planningMode && (
-                          <button onClick={onTogglePlanningMode}>+ Add points on map</button>
-                        )}
                         {canUndo && (
                           <button onClick={onUndo} title="Undo last route change (Ctrl+Z)">↶ Undo</button>
                         )}

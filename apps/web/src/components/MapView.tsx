@@ -16,7 +16,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   IconCurrentLocation, IconCurrentLocationFilled, IconHome, IconPlaneDeparture, IconPlaneArrival,
   IconRulerMeasure, IconSearch, IconNews, IconMapPinPlus,
-  IconPencil, IconMagnet, IconMagnetOff, IconZoomScan, IconArrowBigRight,
+  IconMagnet, IconMagnetOff, IconZoomScan, IconArrowBigRight,
 } from '@tabler/icons-react'
 
 // Map control button glyphs (Tabler Icons). The imperative MapLibre buttons
@@ -370,6 +370,12 @@ const noop = () => {}
 // Stable empty list for alert categories the pilot turned off.
 const NO_ALERTS: never[] = []
 
+/** Route point for a clicked navaid / reporting point (popup's route action). */
+function pointRouteWp(feat: maplibregl.MapGeoJSONFeature, name: string): RouteWaypoint {
+  const [lng, lat] = (feat.geometry as { type: 'Point'; coordinates: [number, number] }).coordinates
+  return { lng, lat, name }
+}
+
 /** How long a tapped leg stays unlocked for dragging in flight. */
 const LEG_UNLOCK_MS = 10_000
 /** Pointer travel (px) before a press on the route counts as a drag. */
@@ -393,7 +399,7 @@ const DRAG_ROUTE_FILL = 'rgba(34,211,238,0.18)'
 type ActivePopup =
   | { kind: 'aerodrome'; props: AerodromeFeatureProps; lng: number; lat: number; x: number; y: number }
   | { kind: 'airspace';  features: AirspaceFeature[]; regionalNotams?: RegionalNotamHit[]; focusKey?: string; x: number; y: number }
-  | { kind: 'point';     feature: PointFeature;        x: number; y: number }
+  | { kind: 'point';     feature: PointFeature;        routeWp?: RouteWaypoint; x: number; y: number }
   | { kind: 'whatshere'; items: WhatsHereItem[]; airspaceFeatures: AirspaceFeature[]; lng: number; lat: number; x: number; y: number }
 
 // Apply altitude ceiling filter to all airspace layers on a ready map.
@@ -480,7 +486,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const locateBtnRef = useRef<HTMLButtonElement | null>(null)
   const locateClickRef = useRef<() => void>(() => {})
   const pendingLocateCenterRef = useRef(false)
-  const planningModeRef = useRef(false)
+  const extendingRef = useRef(false)
   const routeWaypointsRef = useRef<RouteWaypoint[]>([])
   const rulerModeRef = useRef(false)
   const rulerPointsRef = useRef<RouteWaypoint[]>([])
@@ -491,7 +497,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // set by their own handlers and fall back to this. While the map is being
   // panned the cursor is 'grabbing' whichever tool is active (dragstart/end).
   const baseCursor = (): string =>
-    (rulerModeRef.current || planningModeRef.current || placingUserWpRef.current) ? 'crosshair' : ''
+    (rulerModeRef.current || extendingRef.current || placingUserWpRef.current) ? 'crosshair' : ''
   const hasInitialCenteredRef = useRef(false)
   // Non-null while a midpoint drag-insert is in progress.
   // `moved` turns true once the pointer leaves DRAG_SLOP_PX around
@@ -582,10 +588,14 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const appliedRegionRef = useRef<string | null>(null)
   const { key: countriesKey } = useActiveCountries()
   const [basemapMode, setBasemapMode] = useState<'vector' | 'satellite'>('vector')
-  // "Add points" mode: map clicks append route points. Moving points and
-  // reshaping legs needs no mode on the ground (undo is the safety net); in
-  // flight a leg has to be tapped first (see unlockedLeg).
-  const [planningMode, setPlanningMode] = useState(false)
+  // Extending the route: its end point is selected, and clicks on map
+  // features (aerodromes, navaids, reporting points...) append them. Starts
+  // when a route is started or added to from a popup or search, or when the
+  // route's last point is clicked; ends on a click on empty map, Esc, Done or
+  // clicking the end again. Ground only. Moving points and reshaping legs
+  // needs no mode on the ground (undo is the safety net); in flight a leg
+  // has to be tapped first (see unlockedLeg).
+  const [extending, setExtending] = useState(false)
   const [rulerMode, setRulerMode] = useState(false)
   const [rulerPoints, setRulerPoints] = useState<RouteWaypoint[]>([])
   const [placingUserWp, setPlacingUserWp] = useState(false)
@@ -625,6 +635,19 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const [autoFlyMode, setAutoFlyMode] = useAutoFlyMode()
   const [alternate, setAlternate] = useAlternate()
   const [routeWaypoints, setRouteWaypoints, legOverrides, setLegOverrides, loadRouteIntoMap, routeAircraftId, setRouteAircraftId, activeRouteId, setActiveRouteId, routeUndo] = usePersistedRoute()
+  // Stop extending; a lone start point is not a route, so it goes too.
+  const finishExtending = useCallback(() => {
+    setExtending(false)
+    if (routeWaypointsRef.current.length === 1) setRouteWaypoints([])
+  }, [setRouteWaypoints])
+  const finishExtendingRef = useRef(finishExtending)
+  finishExtendingRef.current = finishExtending
+  useEffect(() => {
+    if (!extending) return
+    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') finishExtendingRef.current() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [extending])
   // Computed once here (not inside SideDrawer) so VirtualRadar's wind-arrow/
   // cloud-layer overlay and SideDrawer's Weather-Along-Route panel share the
   // same fetched station list instead of each independently hitting
@@ -667,7 +690,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const initialRouteFitRef = useRef(false)
   useEffect(() => {
     const map = mapRef.current
-    if (!mapReady || !map || initialRouteFitRef.current || routeWaypoints.length < 2) return
+    if (!mapReady || !map || initialRouteFitRef.current) return
+    // A route the user is building in this session (it has undo history)
+    // was not restored: never jump the map while they plan it.
+    if (routeUndo.canUndo) { initialRouteFitRef.current = true; return }
+    if (routeWaypoints.length < 2) return
     initialRouteFitRef.current = true
     const lngs = routeWaypoints.map((w) => w.lng)
     const lats = routeWaypoints.map((w) => w.lat)
@@ -675,7 +702,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
       { padding: 80, maxZoom: 13, duration: 800 },
     )
-  }, [mapReady, routeWaypoints])
+  }, [mapReady, routeWaypoints, routeUndo.canUndo])
 
   // ── Go Flying (GPS / simulation) ─────────────────────────────────────────
   const {
@@ -1820,6 +1847,15 @@ export default function MapView({ auth }: { auth: AuthState }) {
           'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 6, ['case', ['get', 'endpoint'], 2.5, 0], 8, 2.5],
         },
       })
+      // Selected route end while extending the route (filter set from
+      // `extending`; matches nothing otherwise).
+      map.addLayer({
+        id: 'route-end-selected',
+        type: 'circle',
+        source: 'route-points',
+        filter: ['==', ['get', 'seq'], -1],
+        paint: { 'circle-radius': 14, 'circle-color': DRAG_ROUTE_FILL, 'circle-stroke-width': 2.5, 'circle-stroke-color': DRAG_ROUTE_COLOR },
+      })
       map.addLayer({
         id: 'route-waypoints-label',
         type: 'symbol',
@@ -2256,6 +2292,19 @@ export default function MapView({ auth }: { auth: AuthState }) {
         if (dragI) { previewInsert(dragI, e); return }
         const dragM = dragMoveRef.current
         if (dragM) { previewMove(dragM, e); return }
+
+        // Extending the route: a dashed line from the route's end to the
+        // pointer shows where the next click would go.
+        if (extendingRef.current) {
+          const wps = routeWaypointsRef.current
+          const end = wps[wps.length - 1]
+          if (end) {
+            ;(map.getSource('route-drag-preview') as GeoJSONSource | undefined)?.setData({
+              type: 'FeatureCollection',
+              features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: [[end.lng, end.lat], [e.lngLat.lng, e.lngLat.lat]] }, properties: {} }],
+            })
+          }
+        }
 
         // Aircraft drag-to-reposition (sim mode): live preview follows cursor.
         if (aircraftDragRef.current) {
@@ -3009,7 +3058,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       // nearly the whole map is covered by airspace and they should not block this.
       if (flyingModeRef.current === 'sim' &&
           !rulerModeRef.current &&
-          !planningModeRef.current &&
+          !extendingRef.current &&
           !placingUserWpRef.current) {
         const hits = map.queryRenderedFeatures(e.point, { layers: [...POINT_LAYERS, 'user-waypoints-circle'] })
         if (hits.length === 0) {
@@ -3018,14 +3067,21 @@ export default function MapView({ auth }: { auth: AuthState }) {
         }
       }
 
-      // ── 0a0. Tap the route's last point outside editing → start extending
-      // the route (same as the Plan toggle): the next taps append waypoints.
-      if (!planningModeRef.current && !rulerModeRef.current &&
-          !placingUserWpRef.current && flyingModeRef.current === 'off' && map.getLayer('route-waypoints-circle')) {
+      // ── 0a0. Route's last point (ground): select it to extend the route
+      // from there, or deselect it when already extending.
+      if (!rulerModeRef.current && !placingUserWpRef.current &&
+          flyingModeRef.current === 'off' && map.getLayer('route-waypoints-circle')) {
         const n = routeWaypointsRef.current.length
-        const hit = map.queryRenderedFeatures(e.point, { layers: ['route-waypoints-circle'] })
-          .find((f) => (f.properties?.seq as number) === n)
-        if (n >= 1 && hit) { setPlanningMode(true); return }
+        const pad = 6
+        const hitEnd = n >= 1 && map.queryRenderedFeatures(
+          [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]],
+          { layers: ['route-waypoints-circle'] },
+        ).some((f) => (f.properties?.seq as number) === n)
+        if (hitEnd) {
+          if (extendingRef.current) finishExtendingRef.current()
+          else { setActivePopup(null); setExtending(true) }
+          return
+        }
       }
 
       // ── 0a. Ruler mode — set measurement point A or B ────────────────────
@@ -3046,8 +3102,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
         return
       }
 
-      // ── 0c. Planning mode — add waypoint (snapped to nearby feature or raw) ──
-      if (planningModeRef.current) {
+      // ── 0c. Extending the route: a click on an aerodrome, navaid,
+      // reporting point, place or obstacle appends it (several nearby: a
+      // picker); a click on empty map stops extending. Free points come from
+      // dragging a leg, so a stray click never adds one.
+      if (extendingRef.current) {
         setActivePopup(null)
         const SNAP_PX = 20
         const snapBox: [maplibregl.PointLike, maplibregl.PointLike] = [
@@ -3055,10 +3114,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           [e.point.x + SNAP_PX, e.point.y + SNAP_PX],
         ]
         const hits = map.queryRenderedFeatures(snapBox, { layers: SNAP_LAYERS })
-
-        // Same rule as a drag drop: nothing nearby = raw point; one
-        // feature = snap to it; several = picker (aerodromes first, exact
-        // clicked position last).
+        const last = routeWaypointsRef.current[routeWaypointsRef.current.length - 1]
         const seen = new Set<string>()
         const real: SnapCandidate[] = []
         for (const feat of hits) {
@@ -3066,18 +3122,19 @@ export default function MapView({ auth }: { auth: AuthState }) {
           const name = extractSnapName(feat)
           const kind = extractSnapKind(feat)
           const key = `${kind}:${name}:${geom.coordinates[1].toFixed(5)}:${geom.coordinates[0].toFixed(5)}`
-          if (!seen.has(key)) {
+          const wp = { lng: geom.coordinates[0], lat: geom.coordinates[1], name }
+          // The route's own end is not a new point.
+          if (!seen.has(key) && !(last && samePoint(last, wp))) {
             seen.add(key)
-            real.push({ kind, icon: snapIconName(kind, (feat.properties as Record<string, unknown>)?.kind), displayName: extractSnapDisplayName(feat), waypoint: { lng: geom.coordinates[0], lat: geom.coordinates[1], name } })
+            real.push({ kind, icon: snapIconName(kind, (feat.properties as Record<string, unknown>)?.kind), displayName: extractSnapDisplayName(feat), waypoint: wp })
           }
         }
-        const raw = { lng: e.lngLat.lng, lat: e.lngLat.lat }
-        if (real.length <= 1) {
-          const wp = real[0]?.waypoint ?? raw
-          setRouteWaypoints((prev) => [...prev, wp])
+        if (real.length === 0) {
+          finishExtendingRef.current()
+        } else if (real.length === 1) {
+          setRouteWaypoints((prev) => [...prev, real[0].waypoint])
         } else {
-          const candidates = sortSnapCandidates([...real, { kind: 'PT', waypoint: raw }], raw)
-          setSnapPicker({ candidates, x: e.point.x, y: e.point.y })
+          setSnapPicker({ candidates: sortSnapCandidates(real, e.lngLat), x: e.point.x, y: e.point.y })
         }
         return
       }
@@ -3230,6 +3287,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
               has_dme:      Boolean(p.has_dme),
               elevation_ft: p.elevation_ft != null ? Number(p.elevation_ft) : null,
             },
+            routeWp: pointRouteWp(feat, String(p.id ?? '')),
             x: e.point.x,
             y: e.point.y,
           })
@@ -3243,6 +3301,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
               wp_type:   String(p.wp_type ?? ''),
               aerodrome: p.aerodrome ? String(p.aerodrome) : null,
             },
+            routeWp: pointRouteWp(feat, String(p.id ?? '')),
             x: e.point.x,
             y: e.point.y,
           })
@@ -3753,10 +3812,10 @@ export default function MapView({ auth }: { auth: AuthState }) {
     // (with the Layers panel showing satellite selected) until manually toggled.
   }, [basemapMode, mapReady])
 
-  // Sync planningMode → ref so the click handler closure always reads current value.
+  // Sync extending → ref so the click handler closure always reads current value.
   useEffect(() => {
-    planningModeRef.current = planningMode
-  }, [planningMode])
+    extendingRef.current = extending
+  }, [extending])
 
   // Sync routeWaypoints → ref so the contextmenu handler closure always reads current value.
   useEffect(() => {
@@ -3766,8 +3825,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Ruler and route editing are mutually exclusive: turning editing on (from
   // the tools menu or anywhere else) switches the ruler off and clears it.
   useEffect(() => {
-    if (planningMode) { setRulerMode(false); setRulerPoints([]) }
-  }, [planningMode])
+    if (extending) { setRulerMode(false); setRulerPoints([]) }
+  }, [extending])
 
   // Sync ruler state → refs.
   useEffect(() => {
@@ -3788,6 +3847,38 @@ export default function MapView({ auth }: { auth: AuthState }) {
     try { localStorage.setItem('ovfr:uwp:folderVis', JSON.stringify(folderVisibility)) } catch { /* quota */ }
   }, [folderVisibility])
 
+  // Keep the map's top edge anchored when its height changes (the bottom
+  // pane opens as soon as a route has two points): MapLibre keeps the
+  // centre, which would slide everything half the pane height up between
+  // two clicks of route planning. Not in flight, where the follow logic
+  // owns the camera.
+  useEffect(() => {
+    const map = mapRef.current
+    const el = containerRef.current
+    if (!map || !mapReady || !el) return
+    let lastH = el.clientHeight
+    const ro = new ResizeObserver(() => {
+      const h = el.clientHeight
+      const dh = h - lastH
+      lastH = h
+      if (dh === 0 || flyingModeRef.current !== 'off') return
+      map.resize()
+      map.panBy([0, dh / 2], { duration: 0 })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [mapReady])
+
+  // Extending: ring on the route's end; rubber-band line cleared when done.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady || !map.getLayer('route-end-selected')) return
+    map.setFilter('route-end-selected', ['==', ['get', 'seq'], extending ? routeWaypoints.length : -1])
+    if (!extending) {
+      ;(map.getSource('route-drag-preview') as GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: [] })
+    }
+  }, [extending, routeWaypoints.length, mapReady])
+
   // Highlight of the leg unlocked for dragging in flight.
   useEffect(() => {
     const map = mapRef.current
@@ -3801,14 +3892,14 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const map = mapRef.current
     if (map) map.getCanvas().style.cursor = baseCursor()
     if (map && mapReady) {
-      const editMode = planningMode
+      const editMode = extending
       // Dashed while adding points, solid when viewing the route.
       map.setPaintProperty('route-line-layer', 'line-dasharray', editMode ? [4, 2] : undefined)
       // Midpoint handles and leg labels are mutually exclusive.
       map.setLayoutProperty('route-midpoints-layer', 'visibility', editMode ? 'visible' : 'none')
       for (const id of LEG_LABEL_LAYERS) map.setLayoutProperty(id, 'visibility', editMode ? 'none' : 'visible')
     }
-  }, [planningMode, rulerMode, placingUserWp, mapReady])
+  }, [extending, rulerMode, placingUserWp, mapReady])
 
   // Sync route waypoints → MapLibre GeoJSON sources.
   useEffect(() => {
@@ -4159,7 +4250,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     flyingModeRef.current = flyingMode
     if (flyingMode !== 'off') {
       setFollowAircraft(true)
-      setPlanningMode(false)
+      setExtending(false)
       autoZoomPhaseRef.current = 'idle'  // ready to detect takeoff
       autoZoomTargetRef.current = null
       setTrackedPoint(null)
@@ -4528,7 +4619,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     if (activePopup.kind === 'airspace')
       return { kind: 'airspace' as const, features: activePopup.features, regionalNotams: activePopup.regionalNotams, focusKey: activePopup.focusKey }
     if (activePopup.kind === 'point')
-      return { kind: 'point' as const, feature: activePopup.feature }
+      return { kind: 'point' as const, feature: activePopup.feature, routeWp: activePopup.routeWp }
     if (activePopup.kind === 'whatshere')
       return { kind: 'whatshere' as const, items: activePopup.items, airspaceFeatures: activePopup.airspaceFeatures, lng: activePopup.lng, lat: activePopup.lat }
     return null
@@ -4576,17 +4667,17 @@ export default function MapView({ auth }: { auth: AuthState }) {
     onRefresh: refreshManifest,
     waypoints: routeWaypoints,
     legOverrides,
-    planningMode,
+    extending,
     // Adding points by clicking the map is a planning tool: not offered in
     // flight (the route menus and Direct To cover changes there).
-    onTogglePlanningMode: flyingMode === 'off' ? () => setPlanningMode((m) => !m) : undefined,
+    onStopExtending: finishExtending,
     onUndo: routeUndo.undo,
     onRedo: routeUndo.redo,
     canUndo: routeUndo.canUndo,
     canRedo: routeUndo.canRedo,
     // Close the route: off the map and unlinked from its saved copy (which
     // stays in the library). Undoable.
-    onClear: () => { setRouteWaypoints([]); setActiveRouteId(''); setPlanningMode(false) },
+    onClear: () => { setRouteWaypoints([]); setActiveRouteId(''); setExtending(false) },
     onReplace: (wps: RouteWaypoint[]) => setRouteWaypoints(wps),
     onLoadRoute: (wps: RouteWaypoint[], ovr: LegOverride[], aircraftId?: string) => {
       loadRouteIntoMap(wps, ovr, aircraftId)
@@ -4624,7 +4715,12 @@ export default function MapView({ auth }: { auth: AuthState }) {
         next[wpIdx] = { ...next[wpIdx], note: note || undefined }
         return next
       }),
-    onAddToRoute: (wp: RouteWaypoint) => setRouteWaypoints(p => [...p, wp]),
+    // Start / extend the route from a popup, search or place: on the ground
+    // the new end stays selected, so further map clicks keep extending.
+    onAddToRoute: (wp: RouteWaypoint) => {
+      setRouteWaypoints(p => [...p, wp])
+      if (flyingMode === 'off') { setExtending(true); setActivePopup(null) }
+    },
     // Insert after route point `afterIdx` (-1 = at the start). The split leg's
     // overrides carry over to the first half, same as dragging a leg.
     onInsertInRoute: (wp: RouteWaypoint, afterIdx: number) => {
@@ -4689,6 +4785,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
             onApply={routeUndo.applyEditSession}
           />
         )}
+        {extending && (
+          <div className={css.extendHint} role="status">
+            Click aerodromes, navaids or reporting points to add them. Click empty map or press Esc when done.
+          </div>
+        )}
         {routeHint && !routeUndo.editSessionActive && (
           <div className={css.routeHint} role="status">{routeHint}</div>
         )}
@@ -4707,15 +4808,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
           ]
           const toolItems: ToolItem[] = [
             { id: 'ruler', label: 'Ruler', description: 'Measure distance and bearing: tap two points on the map. Tap again to switch off and clear.', icon: <IconRulerMeasure {...CTRL_ICON} />, active: rulerMode,
-              onSelect: () => { if (rulerMode) setRulerPoints([]); else setPlanningMode(false); setRulerMode(!rulerMode) } },
+              onSelect: () => { if (rulerMode) setRulerPoints([]); else setExtending(false); setRulerMode(!rulerMode) } },
           ]
-          // Adding points by clicking the map (planning only; dragging points
-          // and legs needs no mode on the ground, and a tapped leg in flight).
-          if (!flying) toolItems.push({ id: 'edit', label: planningMode ? 'Done adding' : 'Add points',
-            description: planningMode
-              ? 'Stop adding route points by clicking the map'
-              : 'Click the map to add route points at the end of the route. Points and legs can always be dragged; Ctrl+Z undoes.',
-            icon: <IconPencil {...CTRL_ICON} />, active: planningMode, onSelect: () => setPlanningMode(m => !m) })
           // Place route points exactly where they are dropped, even next to a POI:
           // the touch counterpart of holding Alt while dragging.
           if (!flying && routeWaypoints.length > 0) toolItems.push({
@@ -5060,7 +5154,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             }}
             onAddToRoute={(wp) => {
               setRouteWaypoints(p => [...p, wp])
-              setPlanningMode(true)
+              if (flyingMode === 'off') setExtending(true)
             }}
             onClose={() => setShowFindDest(false)}
           />

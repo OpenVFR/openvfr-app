@@ -140,6 +140,9 @@ interface Props {
   authed: boolean
   onSetHome: (icao: string, name: string, lng: number, lat: number) => void
   onClose: () => void
+  /** Route button in the header ("Start route here", "Add to route", "Direct to"
+   *  ...); omitted where the popup is embedded elsewhere. */
+  routeAction?: { label: string; onClick: () => void }
   /**
    * Reports the current wind-derived per-end favored/severity state so the
    * map's 'runway-threshold-label' layer can highlight the same favored
@@ -322,7 +325,7 @@ function uniqueContacts(contacts: Contact[]): Contact[] {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function AerodromePopup({
-  props: p, lng, lat, isHome, authed, onSetHome, onClose, onRunwayWind, forcedTab,
+  props: p, lng, lat, isHome, authed, onSetHome, onClose, onRunwayWind, forcedTab, routeAction,
   regionalNotams, routeWaypoints, onShowNotamOnMap,
 }: Props) {
   const fuelList = p.fuel ?? []
@@ -643,6 +646,9 @@ export default function AerodromePopup({
               <div className={css.notamHint}>⏰ Active NOTAM may have changed opening hours — check NOTAMs tab</div>
             )}
           </div>
+          {routeAction && (
+            <button className={css.routeBtn} onClick={routeAction.onClick}>{routeAction.label}</button>
+          )}
           <ShareAerodromeButton icao={p.icao} name={p.name} />
           <button
             className={`${css.homeBtn} ${isHome ? css.homeBtnActive : ''}`}

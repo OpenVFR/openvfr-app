@@ -42,6 +42,22 @@
   white-space: nowrap;
 }
 
+/* Route action ("Start route here" / "Add to route" / "Direct to"). */
+.routeBtn {
+  flex-shrink: 0;
+  margin-left: auto;
+  background: none;
+  border: 1px solid #e040fb;
+  border-radius: 4px;
+  color: #e040fb;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.routeBtn:hover { background: rgba(224, 64, 251, 0.12); }
+
 .close {
   background: none;
   border: none;
