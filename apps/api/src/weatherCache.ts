@@ -13,7 +13,11 @@
  *     timeout and log an error, which turned one slow upstream into a burst of
  *     timeouts and error lines.
  * - Failures are logged as one summary line per `logWindowMs` instead of one
- *   line per request.
+ *   line per request. The line is an error only when the upstream is mostly
+ *   down (at least `errorMinFailures` failed calls in the window, and more
+ *   failed than answered); the odd timeout or 502, mostly bridged by the
+ *   cache, is logged as info. The production log watcher alerts on every
+ *   error line (stderr), and a single slow METAR is not worth a page.
  *
  * No I/O of its own: the upstream fetch, clock and logger are injected, so the
  * behaviour is unit-tested (weatherCache.test.ts).
@@ -41,7 +45,9 @@ export interface WeatherCacheOptions {
   failBackoffMs?: number
   maxEntries?: number
   logWindowMs?: number
-  log?: (line: string) => void
+  /** Failed calls in one window from which a mostly-failing upstream is logged as an error. */
+  errorMinFailures?: number
+  log?: (line: string, level: 'info' | 'error') => void
 }
 
 export function createWeatherCache(opts: WeatherCacheOptions) {
@@ -51,7 +57,9 @@ export function createWeatherCache(opts: WeatherCacheOptions) {
   const failBackoffMs = opts.failBackoffMs ?? 60_000
   const maxEntries = opts.maxEntries ?? 5000
   const logWindowMs = opts.logWindowMs ?? 60_000
-  const log = opts.log ?? ((line: string) => console.warn(line))
+  const errorMinFailures = opts.errorMinFailures ?? 5
+  // stdout for info, stderr only for real outages (see the header).
+  const log = opts.log ?? ((line: string, level: 'info' | 'error') => (level === 'error' ? console.error(line) : console.log(line)))
 
   const cache = new Map<string, { data: WxData; fetchedAt: number }>()
   const failedUntil = new Map<string, number>()
@@ -60,13 +68,14 @@ export function createWeatherCache(opts: WeatherCacheOptions) {
   // Failure summary for the current log window.
   let windowStart = 0
   let failures = 0
+  let successes = 0
   let staleServed = 0
   const reasons = new Map<string, number>()
   const stations = new Set<string>()
 
   function noteFailure(icao: string, reason: string, servedStale: boolean) {
     const t = now()
-    if (failures === 0) windowStart = t
+    if (failures === 0) { windowStart = t; successes = 0 }
     failures++
     if (servedStale) staleServed++
     reasons.set(reason, (reasons.get(reason) ?? 0) + 1)
@@ -79,8 +88,9 @@ export function createWeatherCache(opts: WeatherCacheOptions) {
     if (failures === 0) return
     if (!force && now() - windowStart < logWindowMs) return
     const why = [...reasons.entries()].map(([r, n]) => `${r} x${n}`).join(', ')
-    log(`[weather] upstream failed ${failures}x for ${stations.size} station(s) in the last ${Math.round((now() - windowStart) / 1000)} s (${why}); ${staleServed} answered from older cached reports`)
-    failures = 0; staleServed = 0; reasons.clear(); stations.clear()
+    const level = failures >= errorMinFailures && failures > successes ? 'error' : 'info'
+    log(`[weather] upstream failed ${failures}x for ${stations.size} station(s), answered ${successes}x, in the last ${Math.round((now() - windowStart) / 1000)} s (${why}); ${staleServed} answered from older cached reports`, level)
+    failures = 0; successes = 0; staleServed = 0; reasons.clear(); stations.clear()
   }
 
   function remember(icao: string, data: WxData) {
@@ -117,6 +127,7 @@ export function createWeatherCache(opts: WeatherCacheOptions) {
       if (!allowMiss()) return { kind: 'limited' }
       pending = opts.fetchUpstream(icao).then((r) => {
         if (r.failed.length === 0) {
+          successes++
           failedUntil.delete(icao)
           remember(icao, r.data)
           return r

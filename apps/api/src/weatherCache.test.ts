@@ -6,11 +6,12 @@ function setup(opts: { fail?: boolean } = {}) {
   let t = 1_000_000
   const calls: string[] = []
   const logs: string[] = []
+  const levels: string[] = []
   let mode: 'ok' | 'fail' | 'partial' = opts.fail ? 'fail' : 'ok'
   let n = 0
   const cache = createWeatherCache({
     now: () => t,
-    log: (l) => logs.push(l),
+    log: (l, level) => { logs.push(l); levels.push(level) },
     fetchUpstream: async (icao): Promise<WxUpstreamResult> => {
       calls.push(icao)
       n++
@@ -20,7 +21,7 @@ function setup(opts: { fail?: boolean } = {}) {
     },
   })
   return {
-    cache, calls, logs,
+    cache, calls, logs, levels,
     advance: (ms: number) => { t += ms },
     setMode: (m: typeof mode) => { mode = m },
   }
@@ -116,4 +117,27 @@ test('failures are logged as one summary line per minute', async () => {
   assert.equal(s.logs.length, 1)
   assert.match(s.logs[0]!, /upstream failed 4x for 4 station\(s\)/)
   assert.match(s.logs[0]!, /TimeoutError x4/)
+  // A handful of failures is not an outage: info, not an error line.
+  assert.equal(s.levels[0], 'info')
+})
+
+test('an upstream that is mostly down is logged as an error', async () => {
+  const s = setup({ fail: true })
+  for (const icao of ['ESSA', 'ESGG', 'ESSB', 'ESOW', 'ESMS', 'ESNN']) await s.cache.get(icao, allow)
+  s.advance(61_000)
+  s.cache.flushLog()
+  assert.equal(s.levels[0], 'error')
+  assert.match(s.logs[0]!, /failed 6x .*answered 0x/)
+})
+
+test('failures among mostly answered calls stay info', async () => {
+  const s = setup()
+  for (const icao of ['ESSA', 'ESGG', 'ESSB']) await s.cache.get(icao, allow)
+  s.setMode('fail')
+  for (const icao of ['ESOW', 'ESMS', 'ESNN', 'ESDF', 'ESMK']) await s.cache.get(icao, allow)
+  s.setMode('ok')
+  for (const icao of ['ESGT', 'ESGP', 'ESMQ', 'ESMX', 'ESOK', 'ESND']) await s.cache.get(icao, allow)
+  s.cache.flushLog()
+  assert.match(s.logs[0]!, /failed 5x .*answered 6x/)
+  assert.equal(s.levels[0], 'info')
 })
