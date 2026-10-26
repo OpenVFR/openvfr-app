@@ -71,8 +71,17 @@ export const waypointRows: RowSpec<UserWaypointDocType> = {
   }),
 }
 
+/**
+ * Whether a local flight log may go to the server: completed, and not
+ * recorded from a simulator. The in-progress log and simulated logs never
+ * leave the device -- the cloud logbook holds real flights only.
+ */
+export function isSyncableLog(l: { endedAt: number; simulated?: boolean }): boolean {
+  return l.endedAt > 0 && l.simulated !== true
+}
+
 // Upload-only on the server (no UPDATE grant): a completed log never changes.
-// The in-progress log never leaves the device (platform list() filters it).
+// Platform list() filters with isSyncableLog.
 export const flightLogRows: RowSpec<FlightLogDocType> = {
   table: 'user_flight_logs',
   immutable: true,

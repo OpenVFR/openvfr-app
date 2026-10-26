@@ -49,6 +49,13 @@
   user-select: none;
 }
 
+/* Simulated flight (not synced, not in totals). */
+.simBadge {
+  color: var(--status-warn);
+  font-weight: 700;
+  margin-right: 4px;
+}
+
 .itemTitle {
   display: block;
   color: var(--text-primary);

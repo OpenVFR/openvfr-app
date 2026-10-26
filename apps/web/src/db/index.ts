@@ -274,6 +274,9 @@ export type FlightLogDocType = {
   distanceNm:       number   // accumulated great-circle distance
   maxAltFt:         number   // highest GPS alt recorded
   updatedAt:        number
+  /** Recorded from a simulator ("Log simulated flights" on): kept in this
+   *  browser, never synced, left out of totals. Absent = real flight. */
+  simulated?:       boolean
 }
 
 export type TrackPoint = {
@@ -287,7 +290,7 @@ export type TrackPoint = {
 
 const flightLogSchema: RxJsonSchema<FlightLogDocType> = {
   title: 'flight_log',
-  version: 0,
+  version: 1,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -302,6 +305,7 @@ const flightLogSchema: RxJsonSchema<FlightLogDocType> = {
     distanceNm:    { type: 'number' },
     maxAltFt:      { type: 'number' },
     updatedAt:     { type: 'number' },
+    simulated:     { type: 'boolean' },
   },
   required: ['id', 'startedAt', 'endedAt', 'aircraftId', 'registration',
              'trackJson', 'departureIcao', 'arrivalIcao',
@@ -382,7 +386,13 @@ export function getDb(): Promise<OpenVfrDb> {
         user_waypoints:    { schema: userWaypointSchema },
         tile_manifest:     { schema: tileManifestSchema },
         settings:          { schema: settingsSchema },
-        flight_logs:       { schema: flightLogSchema },
+        flight_logs:       {
+          schema: flightLogSchema,
+          migrationStrategies: {
+            // v0 → v1: optional `simulated` (absent = a real flight)
+            1: (oldDoc) => ({ ...oldDoc }),
+          },
+        },
       }).then(() => db)
     )
   }

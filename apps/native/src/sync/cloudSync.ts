@@ -23,7 +23,7 @@ import {
   SyncCoordinator, TableSync, queuePendingDelete,
   type SyncStatus, type SyncTable, type TableAdapter, type SyncStorage, type SyncTransport,
 } from '@open-vfr/shared/cloudSync'
-import { routeRows, aircraftRows, waypointRows, flightLogRows } from '@open-vfr/shared/cloudSyncRows'
+import { routeRows, aircraftRows, waypointRows, flightLogRows, isSyncableLog } from '@open-vfr/shared/cloudSyncRows'
 import {
   routes as routesDb, aircraft as aircraftDb, waypoints as waypointsDb, flightLogs as flightLogsDb,
 } from '../db'
@@ -60,7 +60,8 @@ const waypointAdapter: TableAdapter<UserWaypointDocType> = {
 const flightLogAdapter: TableAdapter<FlightLogDocType> = {
   ...flightLogRows,
   // The in-progress log never leaves the device.
-  list:    async () => (await flightLogsDb.listForSync()).filter(l => l.endedAt > 0),
+  // Completed, real flights only: the in-progress log and simulated logs stay here.
+  list:    async () => (await flightLogsDb.listForSync()).filter(isSyncableLog),
   apply:   rows => flightLogsDb.applyRemote(rows),
   remove:  rows => flightLogsDb.removeRemote(rows),
   restamp: rows => flightLogsDb.restampRemote(rows),

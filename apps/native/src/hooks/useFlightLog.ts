@@ -11,7 +11,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import * as Crypto from 'expo-crypto'
-import { trimParkedTail } from '@open-vfr/shared/flightLogStats'
+import { trimParkedTail, simulatedFixAction } from '@open-vfr/shared/flightLogStats'
 import { flightLogs as flightLogsDb } from '../db'
 import type { TrackPoint, FlightLogDocType } from '../types/db'
 import type { GpsPosition, FlyingMode } from '../utils/gpsTypes'
@@ -50,6 +50,12 @@ export function useFlightLog(
   thr:            { takeoffKts: number; landedKts: number } = { takeoffKts: TAKEOFF_SPD_KTS, landedKts: LANDING_SPD_KTS },
   /** Set to true right before an AUTO stop of flying mode: a log parked between circuits is then left to the park timer. A manual stop (ref false) closes it at once. Reset by the hook. */
   deferCloseRef?: { current: boolean },
+  /** `simulated`: `position` comes from a simulator (Simulate mode, X-Plane /
+   *  UDP / WebSocket input), not the device GPS. `record`: the "Record
+   *  simulated flights" setting. Simulated positions are ignored unless
+   *  `record` is on; a log that receives any simulated position is marked
+   *  `simulated` (kept on the device, never synced, left out of totals). */
+  simulation:     { simulated: boolean; record: boolean } = { simulated: false, record: false },
 ): { activeLogId: string | null; liveTrack: TrackPoint[] } {
   const [activeLogId, setActiveLogId] = useState<string | null>(null)
   const [liveTrack,   setLiveTrack]   = useState<TrackPoint[]>([])
@@ -70,10 +76,11 @@ export function useFlightLog(
     flushTimer:    ReturnType<typeof setTimeout> | null
     parkTimer:     ReturnType<typeof setTimeout> | null
     dirty:         boolean
+    simulated:     boolean
   }>({
     phase: 'idle', logId: null, takeoffTicks: 0, landingTicks: 0, flightStartMs: 0,
     track: [], lastTrackMs: 0, distanceNm: 0, maxAltFt: 0, prevLat: 0, prevLng: 0,
-    departureIcao: '', flushTimer: null, parkTimer: null, dirty: false,
+    departureIcao: '', flushTimer: null, parkTimer: null, dirty: false, simulated: false,
   })
 
   useEffect(() => {
@@ -86,14 +93,14 @@ export function useFlightLog(
       if (deferCloseRef) deferCloseRef.current = false
       if (defer && s.phase === 'taxiing' && s.logId && s.parkTimer && parkTimeoutMs > 0) return
       if ((s.phase === 'flying' || s.phase === 'taxiing') && s.logId) {
-        finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '', thr.landedKts)
+        finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '', thr.landedKts, s.simulated)
       }
       if (s.flushTimer) clearTimeout(s.flushTimer)
       if (s.parkTimer)  clearTimeout(s.parkTimer)
       stateRef.current = {
         phase: 'idle', logId: null, takeoffTicks: 0, landingTicks: 0, flightStartMs: 0,
         track: [], lastTrackMs: 0, distanceNm: 0, maxAltFt: 0, prevLat: 0, prevLng: 0,
-        departureIcao: '', flushTimer: null, parkTimer: null, dirty: false,
+        departureIcao: '', flushTimer: null, parkTimer: null, dirty: false, simulated: false,
       }
       setActiveLogId(null)
       setLiveTrack([])
@@ -101,11 +108,23 @@ export function useFlightLog(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flyingMode])
 
+  const simulationRef = useRef(simulation)
+  simulationRef.current = simulation
+
   useEffect(() => {
     if (!position || flyingMode === 'off') return
+    const sim = simulationRef.current
+    const simAction = simulatedFixAction(sim, stateRef.current.logId ? stateRef.current.simulated : null)
+    if (simAction === 'ignore') return
 
     const s   = stateRef.current
     const now = Date.now()
+    // A simulated position joining a log recorded so far from GPS taints it:
+    // the logbook must never hold a real-looking flight with simulated track.
+    if (simAction === 'mark' && s.logId) {
+      s.simulated = true
+      void patchLog(s.logId, { simulated: true })
+    }
 
     if (s.phase === 'idle') {
       if (position.speedKts >= thr.takeoffKts) {
@@ -116,8 +135,9 @@ export function useFlightLog(
           s.track = []; s.lastTrackMs = 0; s.distanceNm = 0
           s.maxAltFt = position.altFt; s.prevLat = position.lat; s.prevLng = position.lng
           s.departureIcao = nearestIcao ?? ''; s.dirty = true
+          s.simulated = sim.simulated
           setActiveLogId(id)
-          createLog(id, now, aircraftId, registration, s.departureIcao)
+          createLog(id, now, aircraftId, registration, s.departureIcao, sim.simulated)
         }
       } else {
         s.takeoffTicks = 0
@@ -139,7 +159,7 @@ export function useFlightLog(
       if (s.dirty && !s.flushTimer) {
         s.flushTimer = setTimeout(() => {
           if (s.logId && s.dirty) {
-            flushLog(s.logId, s.track, s.distanceNm, s.maxAltFt)
+            flushLog(s.logId, s.track, s.distanceNm, s.maxAltFt, s.simulated)
             s.dirty = false; s.flushTimer = null
           }
         }, FLUSH_INTERVAL_MS)
@@ -173,7 +193,7 @@ export function useFlightLog(
       if (s.dirty && !s.flushTimer) {
         s.flushTimer = setTimeout(() => {
           if (s.logId && s.dirty) {
-            flushLog(s.logId, s.track, s.distanceNm, s.maxAltFt)
+            flushLog(s.logId, s.track, s.distanceNm, s.maxAltFt, s.simulated)
             s.dirty = false; s.flushTimer = null
           }
         }, FLUSH_INTERVAL_MS)
@@ -187,7 +207,7 @@ export function useFlightLog(
 
           if (parkTimeoutMs === 0) {
             if (s.logId) {
-              finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '', thr.landedKts)
+              finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '', thr.landedKts, s.simulated)
               setActiveLogId(null)
             }
             s.logId = null; s.phase = 'idle'; s.takeoffTicks = 0; s.landingTicks = 0
@@ -198,11 +218,11 @@ export function useFlightLog(
               const cs = stateRef.current
               if (cs.phase !== 'taxiing' || !cs.logId) return
               if (cs.flushTimer) clearTimeout(cs.flushTimer)
-              finishLog(cs.logId, cs.track, cs.distanceNm, cs.maxAltFt, arrivalIcao, thr.landedKts)
+              finishLog(cs.logId, cs.track, cs.distanceNm, cs.maxAltFt, arrivalIcao, thr.landedKts, cs.simulated)
               stateRef.current = {
                 phase: 'idle', logId: null, takeoffTicks: 0, landingTicks: 0, flightStartMs: 0,
                 track: [], lastTrackMs: 0, distanceNm: 0, maxAltFt: 0, prevLat: 0, prevLng: 0,
-                departureIcao: '', flushTimer: null, parkTimer: null, dirty: false,
+                departureIcao: '', flushTimer: null, parkTimer: null, dirty: false, simulated: false,
               }
               setActiveLogId(null)
               setLiveTrack([])
@@ -223,12 +243,14 @@ export function useFlightLog(
 
 async function createLog(
   id: string, startedAt: number, aircraftId: string, registration: string, departureIcao: string,
+  simulated: boolean,
 ): Promise<void> {
   try {
     await flightLogsDb.upsert({
       id, startedAt, endedAt: 0, aircraftId, registration,
       trackJson: '[]', departureIcao, arrivalIcao: '', distanceNm: 0, maxAltFt: 0,
       updatedAt: startedAt,
+      ...(simulated ? { simulated: true } : {}),
     })
   } catch { /* silently swallow — log is nice-to-have, not critical */ }
 }
@@ -241,13 +263,19 @@ async function patchLog(id: string, patch: Partial<FlightLogDocType>): Promise<v
   } catch { /* silently swallow */ }
 }
 
-async function flushLog(id: string, track: TrackPoint[], distanceNm: number, maxAltFt: number): Promise<void> {
-  await patchLog(id, { trackJson: JSON.stringify(track), distanceNm, maxAltFt, updatedAt: Date.now() })
+// `simulated` is written with every flush/finish, not only once: a patch is
+// read-modify-write, so a single fire-and-forget flag write could be lost to
+// a concurrent flush that read the log before it.
+const simFlag = (simulated: boolean): Partial<FlightLogDocType> => (simulated ? { simulated: true } : {})
+
+async function flushLog(id: string, track: TrackPoint[], distanceNm: number, maxAltFt: number, simulated = false): Promise<void> {
+  await patchLog(id, { trackJson: JSON.stringify(track), distanceNm, maxAltFt, updatedAt: Date.now(), ...simFlag(simulated) })
 }
 
 async function finishLog(
   id: string, track: TrackPoint[], distanceNm: number, maxAltFt: number, arrivalIcao: string,
   landedKts: number = LANDING_SPD_KTS,
+  simulated = false,
 ): Promise<void> {
   // Drop the points recorded while parked waiting for the park timer, and end
   // the log at the last real movement instead of when the timer fired.
@@ -255,7 +283,7 @@ async function finishLog(
   const endedAt = trimmed !== track && trimmed.length > 0 ? trimmed[trimmed.length - 1].ts : Date.now()
   await patchLog(id, {
     endedAt, trackJson: JSON.stringify(trimmed), distanceNm, maxAltFt, arrivalIcao,
-    updatedAt: Date.now(),
+    updatedAt: Date.now(), ...simFlag(simulated),
   })
 }
 

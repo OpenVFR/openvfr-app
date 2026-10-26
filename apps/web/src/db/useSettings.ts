@@ -550,6 +550,34 @@ export function useParkTimeout(): [ParkTimeoutOption, (v: ParkTimeoutOption) => 
 }
 
 // ---------------------------------------------------------------------------
+// useRecordSimulatedFlights — also log flights flown with the keyboard or an
+// external simulator (for testing). Off (default): simulated positions never
+// create a log. Such logs are tagged SIM, stay in this browser (never
+// synced) and are left out of totals. Persisted to RxDB.
+// ---------------------------------------------------------------------------
+const RECORD_SIM_KEY = 'ovfr:recordSimulatedFlights'
+
+export function useRecordSimulatedFlights(): [boolean, (v: boolean) => void] {
+  const [val, setValState] = useState(false)
+
+  useEffect(() => {
+    getDb().then(async (db) => {
+      const doc = await db.settings.findOne(RECORD_SIM_KEY).exec()
+      if (doc) setValState(doc.value === 'true')
+    }).catch(() => {})
+  }, [])
+
+  const setVal = useCallback((v: boolean) => {
+    setValState(v)
+    getDb().then(async (db) => {
+      await db.settings.upsert({ id: RECORD_SIM_KEY, value: String(v) })
+    }).catch(() => {})
+  }, [])
+
+  return [val, setVal]
+}
+
+// ---------------------------------------------------------------------------
 // useAutoFlyMode — 'off' | 'ask' | 'auto': whether takeoff / landing detected
 // from position fixes starts / stops flying mode (ask = show a prompt).
 // Persisted to RxDB; default 'ask'.

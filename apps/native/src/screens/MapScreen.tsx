@@ -799,6 +799,8 @@ function MapScreenForCountry() {
     parseParkTimeout(settings.parkTimeoutSec) * 1000,
     flyThresholds,
     deferLogCloseRef,
+    // Simulate mode or X-Plane / UDP / WebSocket input (activePosition is not the GPS fix).
+    { simulated: simPosition != null || simFlight.position != null, record: settings.recordSimulatedFlights },
   )
   // Finalize + upload logs orphaned by a previous session that was closed
   // mid-flight (otherwise they stay "Recording…" forever, unviewable/unsynced).

@@ -63,6 +63,8 @@ interface Props {
   trafficVertFilter: TrafficVertFilter
   onTrafficVertFilterChange: (v: TrafficVertFilter) => void
   parkTimeout: ParkTimeoutOption
+  recordSimulatedFlights: boolean
+  onRecordSimulatedFlightsChange: (v: boolean) => void
   onParkTimeoutChange: (v: ParkTimeoutOption) => void
   autoFlyMode: AutoFlyMode
   onAutoFlyModeChange: (v: AutoFlyMode) => void
@@ -183,7 +185,7 @@ function SideDrawer({
   airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange,
   terrainColoring, onTerrainColoringChange,
   trafficVertFilter, onTrafficVertFilterChange,
-  parkTimeout, onParkTimeoutChange, autoFlyMode, onAutoFlyModeChange,
+  parkTimeout, onParkTimeoutChange, recordSimulatedFlights, onRecordSimulatedFlightsChange, autoFlyMode, onAutoFlyModeChange,
   inFlight,
   manifest,
   isOnline,
@@ -565,7 +567,7 @@ function SideDrawer({
             </button>
             {expanded.settings && (
               <div className={css.sectionBody}>
-                <SettingsPanel units={units} onUnitsChange={onUnitsChange} countries={countries} selectedCountries={selectedCountries} onSelectedCountriesChange={onSelectedCountriesChange} theme={theme} onThemeChange={onThemeChange} trajectoryMode={trajectoryMode} onTrajectoryModeChange={onTrajectoryModeChange} airspaceWarnLookahead={airspaceWarnLookahead} onAirspaceWarnLookaheadChange={onAirspaceWarnLookaheadChange} airspaceWarnVerticalFt={airspaceWarnVerticalFt} onAirspaceWarnVerticalFtChange={onAirspaceWarnVerticalFtChange} trafficVertFilter={trafficVertFilter} onTrafficVertFilterChange={onTrafficVertFilterChange} parkTimeout={parkTimeout} onParkTimeoutChange={onParkTimeoutChange} autoFlyMode={autoFlyMode} onAutoFlyModeChange={onAutoFlyModeChange} inFlight={inFlight} manifest={manifest} isOnline={isOnline} checking={checking} onRefresh={onRefresh} />
+                <SettingsPanel units={units} onUnitsChange={onUnitsChange} countries={countries} selectedCountries={selectedCountries} onSelectedCountriesChange={onSelectedCountriesChange} theme={theme} onThemeChange={onThemeChange} trajectoryMode={trajectoryMode} onTrajectoryModeChange={onTrajectoryModeChange} airspaceWarnLookahead={airspaceWarnLookahead} onAirspaceWarnLookaheadChange={onAirspaceWarnLookaheadChange} airspaceWarnVerticalFt={airspaceWarnVerticalFt} onAirspaceWarnVerticalFtChange={onAirspaceWarnVerticalFtChange} trafficVertFilter={trafficVertFilter} onTrafficVertFilterChange={onTrafficVertFilterChange} parkTimeout={parkTimeout} onParkTimeoutChange={onParkTimeoutChange} recordSimulatedFlights={recordSimulatedFlights} onRecordSimulatedFlightsChange={onRecordSimulatedFlightsChange} autoFlyMode={autoFlyMode} onAutoFlyModeChange={onAutoFlyModeChange} inFlight={inFlight} manifest={manifest} isOnline={isOnline} checking={checking} onRefresh={onRefresh} />
               </div>
             )}
           </div>

@@ -20,8 +20,8 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
-import { getDb, type TrackPoint } from '../db'
-import { trimParkedTail } from '@open-vfr/shared/flightLogStats'
+import { getDb, type TrackPoint, type FlightLogDocType } from '../db'
+import { trimParkedTail, simulatedFixAction } from '@open-vfr/shared/flightLogStats'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { FlyingMode } from '../utils/gpsTypes'
 
@@ -60,6 +60,12 @@ export function useFlightLog(
   thr:            { takeoffKts: number; landedKts: number } = { takeoffKts: TAKEOFF_SPD_KTS, landedKts: LANDING_SPD_KTS },
   /** Set to true right before an AUTO stop of flying mode: a log parked between circuits is then left to the park timer. A manual stop (ref false) closes it at once. Reset by the hook. */
   deferCloseRef?: { current: boolean },
+  /** `simulated`: `position` comes from the keyboard or an external simulator,
+   *  not the device GPS. `record`: the "Log simulated flights" setting.
+   *  Simulated positions are ignored unless `record` is on; a log that
+   *  receives any simulated position is marked `simulated` (kept in this
+   *  browser, never synced, left out of totals). */
+  simulation:     { simulated: boolean; record: boolean } = { simulated: false, record: false },
 ): { activeLogId: string | null; liveTrack: TrackPoint[] } {
   const [activeLogId, setActiveLogId] = useState<string | null>(null)
   const [liveTrack,   setLiveTrack]   = useState<TrackPoint[]>([])
@@ -84,6 +90,7 @@ export function useFlightLog(
     flushTimer:    ReturnType<typeof setTimeout> | null
     parkTimer:     ReturnType<typeof setTimeout> | null
     dirty:         boolean
+    simulated:     boolean
   }>({
     phase:         'idle',
     logId:         null,
@@ -100,6 +107,7 @@ export function useFlightLog(
     flushTimer:    null,
     parkTimer:     null,
     dirty:         false,
+    simulated:     false,
   })
 
   // Reset everything when flying mode goes off.
@@ -114,7 +122,7 @@ export function useFlightLog(
       if (defer && s.phase === 'taxiing' && s.logId && s.parkTimer && parkTimeoutMs > 0) return
       // If we were mid-flight (or parked with no park timer), close the log immediately.
       if ((s.phase === 'flying' || s.phase === 'taxiing') && s.logId) {
-        finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '', thr.landedKts)
+        finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '', thr.landedKts, s.simulated)
       }
       if (s.flushTimer) clearTimeout(s.flushTimer)
       if (s.parkTimer)  clearTimeout(s.parkTimer)
@@ -134,6 +142,7 @@ export function useFlightLog(
         flushTimer:    null,
         parkTimer:     null,
         dirty:         false,
+        simulated:     false,
       }
       setActiveLogId(null)
       setLiveTrack([])
@@ -142,11 +151,23 @@ export function useFlightLog(
   }, [flyingMode])
 
   // Process each position update.
+  const simulationRef = useRef(simulation)
+  simulationRef.current = simulation
+
   useEffect(() => {
     if (!position || flyingMode === 'off') return
+    const sim = simulationRef.current
+    const simAction = simulatedFixAction(sim, stateRef.current.logId ? stateRef.current.simulated : null)
+    if (simAction === 'ignore') return
 
     const s   = stateRef.current
     const now = Date.now()
+    // A simulated position joining a log recorded so far from GPS taints it:
+    // the logbook must never hold a real-looking flight with simulated track.
+    if (simAction === 'mark' && s.logId) {
+      s.simulated = true
+      void markSimulated(s.logId)
+    }
 
     // ── Idle: new-session takeoff detection ──────────────────────────────
     if (s.phase === 'idle') {
@@ -165,8 +186,9 @@ export function useFlightLog(
           s.prevLng       = position.lng
           s.departureIcao = nearestIcao ?? ''
           s.dirty         = true
+          s.simulated     = sim.simulated
           setActiveLogId(id)
-          createLog(id, now, aircraftId, registration, s.departureIcao)
+          createLog(id, now, aircraftId, registration, s.departureIcao, sim.simulated)
         }
       } else {
         s.takeoffTicks = 0
@@ -202,7 +224,7 @@ export function useFlightLog(
       if (s.dirty && !s.flushTimer) {
         s.flushTimer = setTimeout(() => {
           if (s.logId && s.dirty) {
-            flushLog(s.logId, s.track, s.distanceNm, s.maxAltFt)
+            flushLog(s.logId, s.track, s.distanceNm, s.maxAltFt, s.simulated)
             s.dirty      = false
             s.flushTimer = null
           }
@@ -251,7 +273,7 @@ export function useFlightLog(
       if (s.dirty && !s.flushTimer) {
         s.flushTimer = setTimeout(() => {
           if (s.logId && s.dirty) {
-            flushLog(s.logId, s.track, s.distanceNm, s.maxAltFt)
+            flushLog(s.logId, s.track, s.distanceNm, s.maxAltFt, s.simulated)
             s.dirty      = false
             s.flushTimer = null
           }
@@ -271,7 +293,7 @@ export function useFlightLog(
           if (parkTimeoutMs === 0) {
             // Option A — close immediately, split per leg.
             if (s.logId) {
-              finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '', thr.landedKts)
+              finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '', thr.landedKts, s.simulated)
               setActiveLogId(null)
             }
             s.logId        = null
@@ -288,7 +310,7 @@ export function useFlightLog(
               const cs = stateRef.current
               if (cs.phase !== 'taxiing' || !cs.logId) return
               if (cs.flushTimer) { clearTimeout(cs.flushTimer) }
-              finishLog(cs.logId, cs.track, cs.distanceNm, cs.maxAltFt, arrivalIcao, thr.landedKts)
+              finishLog(cs.logId, cs.track, cs.distanceNm, cs.maxAltFt, arrivalIcao, thr.landedKts, cs.simulated)
               stateRef.current = {
                 phase:         'idle',
                 logId:         null,
@@ -305,6 +327,7 @@ export function useFlightLog(
                 flushTimer:    null,
                 parkTimer:     null,
                 dirty:         false,
+                simulated:     false,
               }
               setActiveLogId(null)
               setLiveTrack([])
@@ -330,10 +353,12 @@ async function createLog(
   aircraftId:   string,
   registration: string,
   departureIcao: string,
+  simulated:    boolean,
 ): Promise<void> {
   try {
     const db = await getDb()
     await db.flight_logs.insert({
+      ...simFlag(simulated),
       id,
       startedAt,
       endedAt:       0,
@@ -349,11 +374,23 @@ async function createLog(
   } catch { /* silently swallow — log is nice-to-have, not critical */ }
 }
 
+// `simulated` is written with every flush/finish, not only once, so a lost
+// or conflicting single write can never leave a simulated log looking real.
+const simFlag = (simulated: boolean): Partial<FlightLogDocType> => (simulated ? { simulated: true } : {})
+
+async function markSimulated(id: string): Promise<void> {
+  try {
+    const doc = await (await getDb()).flight_logs.findOne(id).exec()
+    await doc?.incrementalPatch({ simulated: true })
+  } catch { /* the next flush writes it too */ }
+}
+
 async function flushLog(
   id:         string,
   track:      TrackPoint[],
   distanceNm: number,
   maxAltFt:   number,
+  simulated = false,
 ): Promise<void> {
   try {
     const db  = await getDb()
@@ -364,6 +401,7 @@ async function flushLog(
       distanceNm,
       maxAltFt,
       updatedAt:  Date.now(),
+      ...simFlag(simulated),
     })
   } catch { /* silently swallow */ }
 }
@@ -375,6 +413,7 @@ async function finishLog(
   maxAltFt:    number,
   arrivalIcao: string,
   landedKts:   number = LANDING_SPD_KTS,
+  simulated = false,
 ): Promise<void> {
   try {
     const db  = await getDb()
@@ -393,6 +432,7 @@ async function finishLog(
       maxAltFt,
       arrivalIcao,
       updatedAt:   Date.now(),
+      ...simFlag(simulated),
     })
   } catch { /* silently swallow */ }
 }

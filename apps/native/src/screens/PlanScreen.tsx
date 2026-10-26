@@ -1206,6 +1206,7 @@ export function PlanScreen() {
                 <View key={log.id} style={[styles.aircraftRow, isActive && styles.aircraftRowActive]}>
                   <View style={styles.aircraftInfo}>
                     <Text style={styles.aircraftName}>
+                      {log.simulated && <Text style={styles.simBadge}>SIM </Text>}
                       {log.departureIcao || '?'} → {log.arrivalIcao || (isCompleted ? '?' : '— in progress')}
                     </Text>
                     <Text style={styles.aircraftMeta}>
@@ -1365,6 +1366,8 @@ function makeStyles(theme: ScaledTheme) {
   aircraftName: { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '600' },
   aircraftMeta: { color: theme.textFaint, fontSize: theme.textXs, marginTop: 2 },
   categoryBadge: { color: theme.textFaint, fontSize: 9, fontWeight: '700' },
+  /** Simulated flight (not synced, not in totals). */
+  simBadge: { color: theme.statusWarn, fontSize: theme.textXs, fontWeight: '700' },
 
   placeFolderHdr: { flexDirection: 'row', alignItems: 'center', gap: theme.space1, paddingVertical: theme.space1, marginTop: theme.space1 },
   placeFolderTxt: { color: theme.textMuted, fontSize: theme.textXs, fontWeight: '700', textTransform: 'uppercase', flex: 1 },

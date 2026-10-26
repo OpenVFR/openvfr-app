@@ -105,6 +105,8 @@ describe('trackToGeoJson', () => {
 })
 
 import { logTotals, logPeriodStart } from './flightLogStats'
+import { isSyncableLog } from './cloudSyncRows'
+import { simulatedFixAction } from './flightLogStats'
 describe('logTotals / logPeriodStart', () => {
   const st = (airborneMs: number, landings: number) => ({ airborneMs, landings } as LogStats)
   it('sums with fallback to recorded span', () => {
@@ -115,10 +117,45 @@ describe('logTotals / logPeriodStart', () => {
     ])
     expect(t).toEqual({ logs: 3, airborneMs: 67_000, landings: 2, distanceNm: 16 })
   })
+  it('leaves simulated logs out', () => {
+    const t = logTotals([
+      { startedAt: 0, endedAt: 1000, distanceNm: 10, stats: st(60_000, 2) },
+      { startedAt: 0, endedAt: 9000, distanceNm: 99, stats: st(9_000, 9), simulated: true },
+      { startedAt: 0, endedAt: 2000, distanceNm: 1, stats: null, simulated: false },
+    ])
+    expect(t).toEqual({ logs: 2, airborneMs: 62_000, landings: 2, distanceNm: 11 })
+  })
+  it('isSyncableLog: completed real logs only', () => {
+    expect(isSyncableLog({ endedAt: 5 })).toBe(true)
+    expect(isSyncableLog({ endedAt: 5, simulated: false })).toBe(true)
+    expect(isSyncableLog({ endedAt: 0 })).toBe(false)
+    expect(isSyncableLog({ endedAt: 5, simulated: true })).toBe(false)
+  })
   it('period starts', () => {
     const now = Date.UTC(2026, 5, 15)
     expect(logPeriodStart('all', now)).toBe(0)
     expect(logPeriodStart('30d', now)).toBe(now - 30 * 86_400_000)
     expect(new Date(logPeriodStart('year', now)).getMonth()).toBe(0)
+  })
+})
+
+describe('simulatedFixAction', () => {
+  const real = { simulated: false, record: false }
+  const simOff = { simulated: true, record: false }
+  const simOn = { simulated: true, record: true }
+  it('real GPS fixes are always recorded', () => {
+    expect(simulatedFixAction(real, null)).toBe('record')
+    expect(simulatedFixAction({ simulated: false, record: true }, false)).toBe('record')
+    expect(simulatedFixAction(real, true)).toBe('record')
+  })
+  it('simulated fixes are ignored while the setting is off, even with a log open', () => {
+    expect(simulatedFixAction(simOff, null)).toBe('ignore')
+    expect(simulatedFixAction(simOff, false)).toBe('ignore')
+    expect(simulatedFixAction(simOff, true)).toBe('ignore')
+  })
+  it('with the setting on, a simulated fix marks an open real log', () => {
+    expect(simulatedFixAction(simOn, null)).toBe('record')   // starts a new (simulated) log
+    expect(simulatedFixAction(simOn, false)).toBe('mark')
+    expect(simulatedFixAction(simOn, true)).toBe('record')
   })
 })

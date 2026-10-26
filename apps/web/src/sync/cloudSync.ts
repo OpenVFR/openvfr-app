@@ -24,7 +24,7 @@ import {
   type Tombstone, type Restamp,
 } from '@open-vfr/shared/cloudSync'
 import {
-  routeRows, aircraftRows, waypointRows, flightLogRows, settingRows, type SyncedSetting,
+  routeRows, aircraftRows, waypointRows, flightLogRows, settingRows, isSyncableLog, type SyncedSetting,
 } from '@open-vfr/shared/cloudSyncRows'
 import { getDb, type OpenVfrDb } from '../db'
 import type {
@@ -192,9 +192,11 @@ function adapters(db: OpenVfrDb): TableAdapter<unknown>[] {
   }
   const logs: TableAdapter<FlightLogDocType> = {
     ...(flightLogRows as TableAdapter<FlightLogDocType>),
-    // The in-progress log never leaves the device.
+    // Completed, real flights only: the in-progress log and simulated logs
+    // never leave the device.
     list: async () => (await db.flight_logs.find({ selector: { endedAt: { $gt: 0 } } }).exec())
-      .map(d => plain(d.toJSON() as FlightLogDocType)),
+      .map(d => plain(d.toJSON() as FlightLogDocType))
+      .filter(isSyncableLog),
     ...versionedOps('user_flight_logs', db.flight_logs),
   }
   return [routes, aircraft, waypoints, settings, logs] as TableAdapter<unknown>[]
@@ -267,7 +269,8 @@ export function installChangeCapture(): Promise<void> {
       marker: d => d.value,
       onLocalEdit: d => setSettingTime(d.id, Date.now()),
     })
-    watch('user_flight_logs', db.flight_logs, { marker: d => d.updatedAt, skip: d => !d.endedAt })
+    // Skips edits AND deletes of logs that never sync (in progress, simulated).
+    watch('user_flight_logs', db.flight_logs, { marker: d => d.updatedAt, skip: d => !isSyncableLog(d) })
   })()
   return captureInstalled
 }

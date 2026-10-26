@@ -46,6 +46,8 @@ interface Props {
   onTrafficVertFilterChange:   (v: TrafficVertFilter) => void
   parkTimeout:                 ParkTimeoutOption
   onParkTimeoutChange:         (v: ParkTimeoutOption) => void
+  recordSimulatedFlights:      boolean
+  onRecordSimulatedFlightsChange: (v: boolean) => void
   autoFlyMode:                 AutoFlyMode
   onAutoFlyModeChange:         (v: AutoFlyMode) => void
   /** True when aircraft is airborne (GS ≥ 30 kts); data-load controls are locked. */
@@ -85,7 +87,7 @@ function MsaMarginsSettings() {
   )
 }
 
-export default function SettingsPanel({ units, onUnitsChange, countries, selectedCountries, onSelectedCountriesChange, theme, onThemeChange, trajectoryMode, onTrajectoryModeChange, airspaceWarnLookahead, onAirspaceWarnLookaheadChange, airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange, trafficVertFilter, onTrafficVertFilterChange, parkTimeout, onParkTimeoutChange, autoFlyMode, onAutoFlyModeChange, inFlight, onClose, manifest, isOnline = true, checking = false, onRefresh }: Props) {
+export default function SettingsPanel({ units, onUnitsChange, countries, selectedCountries, onSelectedCountriesChange, theme, onThemeChange, trajectoryMode, onTrajectoryModeChange, airspaceWarnLookahead, onAirspaceWarnLookaheadChange, airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange, trafficVertFilter, onTrafficVertFilterChange, parkTimeout, onParkTimeoutChange, recordSimulatedFlights, onRecordSimulatedFlightsChange, autoFlyMode, onAutoFlyModeChange, inFlight, onClose, manifest, isOnline = true, checking = false, onRefresh }: Props) {
   return (
     <div className={css.panel}>
       <div className={css.header}>
@@ -236,6 +238,22 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
               onClick={() => onParkTimeoutChange(v)}
               title={v === 0 ? 'Each touch-and-go creates a separate flight log' : `Keep one flight log if airborne again within ${v / 60} min of landing`}
             >{parkTimeoutLabel(v)}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className={css.section}>
+        <span className={css.label}>Log simulated flights</span>
+        <div className={css.optionsRow}>
+          {([false, true] as const).map(v => (
+            <button
+              key={String(v)}
+              className={`${css.opt}${recordSimulatedFlights === v ? ` ${css.optActive}` : ''}`}
+              onClick={() => onRecordSimulatedFlightsChange(v)}
+              title={v
+                ? 'Also log keyboard / external simulator flights (for testing). They are tagged SIM, stay in this browser and are left out of totals.'
+                : 'Simulator flights are not logged'}
+            >{v ? 'On' : 'Off'}</button>
           ))}
         </div>
       </div>

@@ -15,6 +15,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { flightLogs as flightLogsDb } from '../db'
 import type { FlightLogDocType } from '../types/db'
 import { notifyLocalChange, notifyLocalDelete, syncNow, useTableSync } from '../sync/cloudSync'
+import { isSyncableLog } from '@open-vfr/shared/cloudSyncRows'
 export function useFlightLogSync() {
   const { status, localVersion } = useTableSync('user_flight_logs')
   const [logs, setLogs] = useState<FlightLogDocType[]>([])
@@ -31,18 +32,28 @@ export function useFlightLogSync() {
     await refresh()
   }, [refresh])
 
-  /** A log finished (or was imported): upload it soon. */
+  /** A log finished (or was imported): upload it soon (simulated logs never are). */
   const pushLog = useCallback(async (doc: FlightLogDocType) => {
     await refresh()
-    if (doc.endedAt > 0) notifyLocalChange('user_flight_logs')
+    if (isSyncableLog(doc)) notifyLocalChange('user_flight_logs')
   }, [refresh])
 
-  /** Delete locally now; the server delete is queued until it succeeds. */
+  /** Delete locally now; the server delete is queued until it succeeds.
+   *  A simulated log was never uploaded, so it has no server copy to delete. */
   const deleteLog = useCallback(async (id: string) => {
+    const simulated = (await flightLogsDb.getAll()).find(l => l.id === id)?.simulated === true
     await flightLogsDb.delete(id)
     await refresh()
-    await notifyLocalDelete('user_flight_logs', id)
+    if (!simulated) await notifyLocalDelete('user_flight_logs', id)
   }, [refresh])
 
-  return { syncState: status, logs, refresh, pull, pushLog, deleteLog }
+  /** Remove every completed simulated log from this device. Returns how many. */
+  const deleteSimulatedLogs = useCallback(async (): Promise<number> => {
+    const sims = (await flightLogsDb.getAll()).filter(l => l.simulated === true && l.endedAt > 0)
+    for (const l of sims) await flightLogsDb.delete(l.id)
+    await refresh()
+    return sims.length
+  }, [refresh])
+
+  return { syncState: status, logs, refresh, pull, pushLog, deleteLog, deleteSimulatedLogs }
 }

@@ -202,13 +202,37 @@ export interface LogTotals {
   distanceNm: number
 }
 
-/** Sum over logs. Airborne time falls back to the recorded span when no flight was detected, matching the list rows. */
-export function logTotals(items: { startedAt: number; endedAt: number; distanceNm: number; stats: LogStats | null }[]): LogTotals {
-  const t: LogTotals = { logs: items.length, airborneMs: 0, landings: 0, distanceNm: 0 }
-  for (const it of items) {
+/**
+ * Sum over logs. Airborne time falls back to the recorded span when no flight
+ * was detected, matching the list rows. Simulated logs are not flights and
+ * are left out entirely.
+ */
+export function logTotals(items: { startedAt: number; endedAt: number; distanceNm: number; stats: LogStats | null; simulated?: boolean }[]): LogTotals {
+  const real = items.filter((it) => it.simulated !== true)
+  const t: LogTotals = { logs: real.length, airborneMs: 0, landings: 0, distanceNm: 0 }
+  for (const it of real) {
     t.airborneMs += it.stats && it.stats.airborneMs > 0 ? it.stats.airborneMs : Math.max(0, it.endedAt - it.startedAt)
     t.landings   += it.stats?.landings ?? 0
     t.distanceNm += it.distanceNm
   }
   return t
+}
+
+/**
+ * What a flight-log recorder does with one position fix (web and native
+ * useFlightLog). `openLogSimulated`: null when no log is open, else whether
+ * the open log is already marked simulated.
+ *  - 'ignore': a simulated fix while "Log simulated flights" is off -- it
+ *    never starts or extends a log.
+ *  - 'mark':   record it, and first mark the open log simulated -- a log
+ *    that received any simulated fix must never look like a real flight.
+ *  - 'record': record it as is.
+ */
+export function simulatedFixAction(
+  sim: { simulated: boolean; record: boolean },
+  openLogSimulated: boolean | null,
+): 'ignore' | 'mark' | 'record' {
+  if (!sim.simulated) return 'record'
+  if (!sim.record) return 'ignore'
+  return openLogSimulated === false ? 'mark' : 'record'
 }

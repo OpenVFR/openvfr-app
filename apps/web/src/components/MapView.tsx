@@ -100,7 +100,7 @@ import type { RouteWaypoint } from '../utils/routeCalc'
 import { magneticBearingDeg, bearingDeg, advancePosition } from '../utils/routeCalc'
 import { legLabelVariants } from '@open-vfr/shared/legLabels'
 import { usePersistedRoute } from '../db/useRouteDb'
-import { useHomeAirfield, useUnits, useAlternate, useTheme, useAutoZoom, useTrajectoryMode, useAirspaceWarnLookahead, useAirspaceWarnVerticalFt, useTerrainColoring, useTrafficVertFilter, useLayerVisibility, useAirspaceCeiling, useSelectedAircraftId, useParkTimeout, useAutoFlyMode } from '../db/useSettings'
+import { useHomeAirfield, useUnits, useAlternate, useTheme, useAutoZoom, useTrajectoryMode, useAirspaceWarnLookahead, useAirspaceWarnVerticalFt, useTerrainColoring, useTrafficVertFilter, useLayerVisibility, useAirspaceCeiling, useSelectedAircraftId, useParkTimeout, useAutoFlyMode, useRecordSimulatedFlights } from '../db/useSettings'
 import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import { useUserWaypoints } from '../db/useUserWaypoints'
 import { nextPlaceName } from '../utils/places'
@@ -640,6 +640,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const [terrainColoring, setTerrainColoring] = useTerrainColoring()
   const [trafficVertFilter, setTrafficVertFilter] = useTrafficVertFilter()
   const [parkTimeout, setParkTimeout] = useParkTimeout()
+  const [recordSimulatedFlights, setRecordSimulatedFlights] = useRecordSimulatedFlights()
   const [autoFlyMode, setAutoFlyMode] = useAutoFlyMode()
   const [alternate, _setAlternate] = useAlternate()
   const [routeWaypoints, setRouteWaypoints, legOverrides, setLegOverrides, loadRouteIntoMap, routeAircraftId, setRouteAircraftId, activeRouteId, setActiveRouteId, routeUndo] = usePersistedRoute()
@@ -1221,6 +1222,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
     parkTimeout * 1000,
     flyThresholds,
     deferLogCloseRef,
+    // Keyboard ('sim') and external ('ext') simulators are not the device GPS.
+    { simulated: flyingMode === 'sim' || flyingMode === 'ext', record: recordSimulatedFlights },
   )
 
   // ── ADS-B traffic (OpenSky Network via server SSE) ──────────────────────
@@ -4385,6 +4388,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
     onTrafficVertFilterChange: setTrafficVertFilter,
     parkTimeout,
     onParkTimeoutChange: setParkTimeout,
+    recordSimulatedFlights,
+    onRecordSimulatedFlightsChange: setRecordSimulatedFlights,
     autoFlyMode,
     onAutoFlyModeChange: setAutoFlyMode,
     inFlight: flyingMode !== 'off' && (gpsPosition?.speedKts ?? 0) >= 30,

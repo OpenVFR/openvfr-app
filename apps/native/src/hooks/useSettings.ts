@@ -22,6 +22,10 @@ export type AppSettings = {
   autoFlyMode:  AutoFlyMode
   /** Seconds on the ground after landing before the flight log closes; 0 = one log per leg. */
   parkTimeoutSec: ParkTimeoutOption
+  /** Also log flights flown in Simulate mode or from an external simulator
+   *  (for testing). Off: simulated positions never create a log. Such logs
+   *  are tagged SIM, stay on this device and are left out of totals. */
+  recordSimulatedFlights: boolean
   trajectoryNm: number
   /** Horizontal lookahead in minutes for airspace penetration warnings */
   airspaceWarnLookaheadMin: number
@@ -75,6 +79,7 @@ const DEFAULTS: AppSettings = {
   autoZoom:            true,
   autoFlyMode:         'ask',
   parkTimeoutSec:      PARK_TIMEOUT_DEFAULT,
+  recordSimulatedFlights: false,
   trajectoryNm:        5,
   airspaceWarnLookaheadMin: 5,
   airspaceWarnVerticalFt:   500,

@@ -28,6 +28,7 @@ import { useAerodromeElevation } from '../hooks/useAerodromeElevation'
 import { useNearestAerodrome } from '../hooks/useNearestAerodrome'
 import { useCountries } from '../hooks/useCountries'
 import { useFlightActive } from '../utils/flightActive'
+import { useFlightLogSync } from '../hooks/useFlightLogSync'
 import { qnhFromStationPressure } from '@open-vfr/shared/baroAltitude'
 import * as Location from 'expo-location'
 import { API_BASE, TILE_BASE } from '../config'
@@ -52,6 +53,18 @@ export function SettingsScreen() {
   const insets               = useSafeAreaInsets()
   const { settings, update } = useSettingsContext()
   const { state, signOut, registerPasskey, requestAccountDeletion } = useAuthContext()
+  const { logs: flightLogs, deleteSimulatedLogs } = useFlightLogSync()
+  const simulatedLogCount = flightLogs.filter(l => l.simulated === true && l.endedAt > 0).length
+  const confirmDeleteSimulated = useCallback(() => {
+    Alert.alert(
+      'Delete simulated flight logs',
+      `Remove ${simulatedLogCount} simulated log${simulatedLogCount === 1 ? '' : 's'} from this device? Real flights are not affected.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => { void deleteSimulatedLogs() } },
+      ],
+    )
+  }, [simulatedLogCount, deleteSimulatedLogs])
   const [deleteBusy, setDeleteBusy] = useState(false)
   // Hidden diagnostics: tap the Version row 5 times to reveal the sync log.
   const versionTaps = useRef(0)
@@ -249,6 +262,20 @@ export function SettingsScreen() {
           value={parseParkTimeout(settings.parkTimeoutSec)}
           onChange={(v) => update({ parkTimeoutSec: v })}
         />
+        {/* For testing: simulated flights are tagged SIM, stay on this device
+            (never synced) and are left out of the flight totals. */}
+        <RowToggle
+          label="Log simulated flights"
+          left="Off"
+          right="On"
+          value={settings.recordSimulatedFlights === true}
+          onToggle={v => update({ recordSimulatedFlights: v })}
+        />
+        {simulatedLogCount > 0 && (
+          <TouchableOpacity onPress={confirmDeleteSimulated} accessibilityLabel="Delete simulated flight logs">
+            <InfoRow label="Simulated logs" value={`Delete ${simulatedLogCount} ›`} />
+          </TouchableOpacity>
+        )}
       </Section>
 
 

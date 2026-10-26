@@ -54,6 +54,17 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
     return logs.filter(l => l.doc.startedAt >= from && (!reg || l.doc.registration === reg))
   }, [logs, period, reg])
   const totals = useMemo(() => logTotals(shown.map(l => ({ ...l.doc, stats: l.stats }))), [shown])
+  const simulatedCount = useMemo(() => logs.filter(l => l.doc.simulated === true).length, [logs])
+
+  // Simulated logs never reached the server, so removing them queues no
+  // server delete (the sync's change capture skips them).
+  async function handleDeleteSimulated() {
+    if (!window.confirm(`Delete ${simulatedCount} simulated flight log${simulatedCount === 1 ? '' : 's'} from this browser? Real flights are not affected.`)) return
+    const db = await getDb()
+    const sims = await db.flight_logs.find({ selector: { endedAt: { $gt: 0 } } }).exec()
+    await Promise.all(sims.filter(d => d.simulated === true).map(d => d.remove()))
+    if (selectedLogId && logs.some(l => l.doc.id === selectedLogId && l.doc.simulated)) onClear()
+  }
 
   async function handleDelete(id: string) {
     const db = await getDb()
@@ -134,6 +145,11 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
           <button className={css.clearBtn} onClick={onClear}>Clear track</button>
         </div>
       )}
+      {simulatedCount > 0 && (
+        <div className={css.clearRow}>
+          <button className={css.clearBtn} onClick={handleDeleteSimulated}>Delete simulated ({simulatedCount})</button>
+        </div>
+      )}
       <div className={css.filters}>
         <select className={css.filterSel} value={period} onChange={e => setPeriod(e.target.value as LogPeriod)} aria-label="Period">
           {LOG_PERIODS.map(p => <option key={p} value={p}>{LOG_PERIOD_LABEL[p]}</option>)}
@@ -157,7 +173,10 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
           return (
             <div key={log.id} className={`${css.item} ${isActive ? css.itemActive : ''}`}>
               <div className={css.itemInfo}>
-                <span className={css.itemTitle}>{depArr}</span>
+                <span className={css.itemTitle}>
+                  {log.simulated && <span className={css.simBadge} title="Simulated flight: kept in this browser, not synced, not in totals">SIM</span>}
+                  {depArr}
+                </span>
                 <div className={css.itemMeta}>
                   <span className={css.itemMetaVal}>{fmt(log.startedAt)}</span>
                   <span className={css.itemMetaVal}>{log.distanceNm.toFixed(1)} NM</span>

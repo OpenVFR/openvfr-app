@@ -104,4 +104,8 @@ export type FlightLogDocType = {
   distanceNm:    number
   maxAltFt:      number
   updatedAt:     number
+  /** Recorded from simulator positions (Simulate mode or an external
+   *  simulator), only when the "Record simulated flights" setting is on.
+   *  Kept on the device: never synced, left out of totals. Absent = real. */
+  simulated?:    boolean
 }
