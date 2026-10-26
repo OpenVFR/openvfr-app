@@ -124,6 +124,11 @@ describe('log summaries', () => {
     expect(flownSpeedScale(pts)).toEqual({ topKts: 120, ticks: [0, 60, 120] })
     expect(flownSpeedRuns(pts)).toHaveLength(2)
   })
+
+  it('ignores the odd speed spike when sizing the scale', () => {
+    const pts = flightLogProfile(straight(300).map((p, i) => ({ ...p, spdKts: i === 150 ? 800 : 95 })))!.points
+    expect(flownSpeedScale(pts).topKts).toBe(120)
+  })
 })
 
 describe('airspace along the flown line', () => {

@@ -307,10 +307,15 @@ export function flownGaps(points: readonly FlownPoint[]): { count: number; large
   return { count, largestMs }
 }
 
-/** Ground-speed axis for the speed line: top rounded up to 20 kt with some headroom, three ticks. */
+/**
+ * Ground-speed axis for the speed line: top rounded up to 20 kt with some headroom, three ticks.
+ * Sized on the 99th percentile, not the maximum: speeds derived from positions (files without
+ * a speed of their own) have the odd spike from a jumpy fix, which would squash the whole line.
+ * A spike above the top is drawn clipped at the chart's top edge.
+ */
 export function flownSpeedScale(points: readonly FlownPoint[]): { topKts: number; ticks: number[] } {
-  let max = 0
-  for (const p of points) if (Number.isFinite(p.spdKts) && p.spdKts > max) max = p.spdKts
+  const spd = points.map((p) => p.spdKts).filter((v) => Number.isFinite(v)).sort((a, b) => a - b)
+  const max = spd.length > 0 ? spd[Math.min(spd.length - 1, Math.floor(spd.length * 0.99))] : 0
   const topKts = Math.max(40, Math.ceil((max * 1.1) / 20) * 20)
   return { topKts, ticks: [0, topKts / 2, topKts] }
 }

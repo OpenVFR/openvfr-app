@@ -881,14 +881,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
       return
     }
     let coord: { lng: number; lat: number } | null = null
-    let props: Record<string, unknown> = {}
-    // Past-log review takes priority: cursor must follow the flown track, not the planned route.
-    // It is drawn as the aircraft, pointing along the recorded track.
-    if (selectedLogProfile) {
-      coord = flownCoordinateAt(selectedLogProfile.points, profileCursorNm)
-      const p = flownPointAt(selectedLogProfile.points, profileCursorNm)
-      props = { kind: 'aircraft', trackDeg: p?.trkDeg ?? 0 }
-    } else if (lookaheadWaypoints.length >= 2) {
+    // (A viewed flight log drives the marker directly, see setLogCursor below.)
+    if (selectedLogProfile) return
+    if (lookaheadWaypoints.length >= 2) {
       // Hovering the look-ahead chart: place cursor on the map ahead of the aircraft.
       coord = coordinateAlongRouteNm(lookaheadWaypoints, profileCursorNm)
     } else if (routeWaypoints.length >= 2) {
@@ -897,12 +892,33 @@ export default function MapView({ auth }: { auth: AuthState }) {
     if (coord) {
       src.setData({
         type: 'FeatureCollection',
-        features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [coord.lng, coord.lat] }, properties: props }],
+        features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [coord.lng, coord.lat] }, properties: {} }],
       })
     } else {
       src.setData({ type: 'FeatureCollection', features: [] })
     }
   }, [profileCursorNm, routeWaypoints, selectedLogProfile, lookaheadWaypoints, mapReady])
+
+  // Flight-log inspection moves the map marker straight on the map source, not through React
+  // state: as state, every step of a drag re-rendered this whole view (hundreds of ms on a long
+  // log). Drawn as the aircraft, pointing along the recorded track.
+  const selectedLogProfileRef = useRef(selectedLogProfile)
+  selectedLogProfileRef.current = selectedLogProfile
+  const setLogCursor = useCallback((nm: number | null) => {
+    const map = mapRef.current
+    const src = map?.getSource('profile-cursor') as GeoJSONSource | undefined
+    const prof = selectedLogProfileRef.current
+    if (!src) return
+    const coord = nm != null && prof ? flownCoordinateAt(prof.points, nm) : null
+    if (!coord || !prof || nm == null) { src.setData({ type: 'FeatureCollection', features: [] }); return }
+    const p = flownPointAt(prof.points, nm)
+    src.setData({
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [coord.lng, coord.lat] }, properties: { kind: 'aircraft', trackDeg: p?.trkDeg ?? 0 } }],
+    })
+  }, [])
+  // Another log (or none): its marker starts hidden until the new one is inspected.
+  useEffect(() => { setLogCursor(null) }, [selectedLogProfile, setLogCursor])
 
   // Swap the aircraft map icon whenever the selected profile (or map readiness) changes.
   // The styledata handler handles the basemap-swap case via selectedAircraftProfileRef.
@@ -5038,7 +5054,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
               units={units}
               airspaceCeilingFt={ceilingFt}
               aircraftProfile={selectedAircraftProfile}
-              onHoverDistNm={setProfileCursorNm}
+              onHoverDistNm={setLogCursor}
               onClose={closeSelectedLog}
             />
           </div>
