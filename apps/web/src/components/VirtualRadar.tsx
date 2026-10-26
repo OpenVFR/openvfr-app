@@ -8,7 +8,9 @@ import {
 import {
   symbolGroundY, LIMITING_LABEL_MERGE_PX, POI_SCALE, poiCenterY, SKY_TOP, SKY_BOTTOM, PLAN_COLOR, MSA_COLOR, GROUND_COLOR, GROUND_OUTLINE, CORRIDOR_FILL, CORRIDOR_OUTLINE, CORRIDOR_OUTLINE_WIDTH,
   DANGER_COLOR, DANGER_TEXT, PHASE_SHORT_COLOR, WIND_LABEL_COLOR, windAloftFit, terrainGradientStops, phaseLabelText,
+  FLOWN_COLOR, FLOWN_GAP_COLOR,
 } from '@open-vfr/shared/radarStyle'
+import { flownAltitudeAt, flownIndexAt, flownLineParts, formatElapsed, type FlownPoint } from '@open-vfr/shared/flightLogProfile'
 import { airspaceOutlines, airspaceChips, layoutAirspaceChips } from '@open-vfr/shared/airspaceOutline'
 import {
   cloudLayerPaths, cloudLayerLabel, cloudGlyphHeight, cloudOpacityForOffset, cloudReportOffRouteNm,
@@ -142,6 +144,13 @@ interface Props {
    *  (default true). Off for the ruler and the look-ahead: only a planned route has a
    *  corridor the pilot set out to fly. The MSA still uses it either way. */
   corridorBand?: boolean
+  /** Flight-log review: `waypoints` is the simplified recorded track and these are the recorded
+   *  points along it (see @open-vfr/shared/flightLogProfile). The chart then draws the flown
+   *  altitude instead of a plan (no leg editing, no forecast winds) and the hover readout gives
+   *  time, altitude and ground speed at the recorded point under the cursor. */
+  flown?: FlownPoint[]
+  /** Shows a close button in the header. */
+  onClose?: () => void
 }
 
 /** Per-sample series the chart lines and the hover readout are drawn from. */
@@ -407,11 +416,15 @@ function renderYAxis(L: ProfileChartLayout, yTicks: number[]) {
  * re-renders this overlay, never the chart underneath; also reports the
  * hovered distance to the parent (map crosshair) once per sample change.
  */
-const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDistNm }: {
+const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDistNm, flown, silhouette }: {
   layout: ProfileChartLayout
   series: ProfileSeries
   onHoverDistNm?: (distNm: number | null) => void
+  /** Flight-log review: the cursor snaps to the nearest recorded point and reads it out. */
+  flown?: FlownPoint[]
+  silhouette?: ReturnType<typeof getAircraftSilhouette>
 }) {
+  // Index into flown (log review) or series.distNms (route).
   const [idx, setIdx] = useState<number | null>(null)
   const lastIdxRef = useRef<number | null>(null)
   const onHoverRef = useRef(onHoverDistNm)
@@ -421,11 +434,11 @@ const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDist
     if (next === lastIdxRef.current) return
     lastIdxRef.current = next
     setIdx(next)
-    onHoverRef.current?.(next == null ? null : series.distNms[next])
-  }, [series])
+    onHoverRef.current?.(next == null ? null : flown ? flown[next].distNm : series.distNms[next])
+  }, [series, flown])
 
   // A new series invalidates the sample index.
-  useEffect(() => () => { lastIdxRef.current = null; setIdx(null) }, [series])
+  useEffect(() => () => { lastIdxRef.current = null; setIdx(null) }, [series, flown])
 
   // Listen on the chart container (the layer's parent), not on this layer: the leg drag
   // layer sits on top and its hit area around the planned level line swallows pointer
@@ -438,16 +451,59 @@ const HoverOverlay = memo(function HoverOverlay({ layout: L, series, onHoverDist
     const move = (e: PointerEvent) => {
       const px = e.clientX - host.getBoundingClientRect().left
       if (px < L.plotLeft || px > L.plotRight) { update(null); return }
-      update(nearestSampleIndex(series.distNms, L.nmAtX(px)))
+      const nm = L.nmAtX(px)
+      if (flown) {
+        update(flown.length > 0 ? flownIndexAt(flown, nm) : null)
+      } else update(nearestSampleIndex(series.distNms, nm))
     }
     const leave = () => update(null)
     host.addEventListener('pointermove', move)
     host.addEventListener('pointerleave', leave)
     return () => { host.removeEventListener('pointermove', move); host.removeEventListener('pointerleave', leave) }
-  }, [L, series, update])
+  }, [L, series, update, flown])
 
   let content: ReactNode = null
-  if (idx != null && idx < series.distNms.length) {
+  const fp = flown && idx != null ? flown[idx] : undefined
+  if (fp) {
+    // Recorded point: aircraft on the flown line, readout of time, altitude, ground speed, height above ground.
+    const x = L.xOf(fp.distNm)
+    const si = nearestSampleIndex(series.distNms, fp.distNm)
+    const gnd = series.ground?.[si]
+    const msa = series.msa?.[si] ?? 0
+    const alt = Number.isFinite(fp.altFt) ? fp.altFt : null
+    const y = alt != null ? L.yOf(Math.max(L.yMin, Math.min(L.yMax, alt))) : null
+    const rows: { label: string; value: string; color?: string }[] = [
+      { label: 'Time', value: formatElapsed(fp.elapsedMs) },
+      { label: 'Alt', value: alt != null ? formatAltitudeFt(Math.round(alt)) : '\u2014', color: FLOWN_COLOR },
+      { label: 'GS', value: Number.isFinite(fp.spdKts) ? `${Math.round(fp.spdKts)} kt` : '\u2014' },
+    ]
+    if (alt != null && gnd != null) rows.push({ label: 'AGL', value: formatAltitudeFt(alt - gnd), color: GROUND_COLOR })
+    if (msa > 0) rows.push({ label: 'MSA', value: formatAltitudeFt(msa), color: alt != null && alt < msa ? DANGER_TEXT : MSA_COLOR })
+    const flip = x > L.contentW - 130
+    content = (
+      <>
+        <svg className={css.hoverSvg} width={L.contentW} height={chartHeightOf(L)} aria-hidden>
+          <line x1={x} y1={L.plotTop} x2={x} y2={L.plotBottom} stroke="var(--text-faint)" strokeWidth={1} />
+          {y != null && silhouette && (
+            <g transform={`translate(${x},${y})`}>
+              {silhouette.map((part, i) => <path key={i} d={part.d} fill={part.fill ?? 'white'} opacity={part.opacity} stroke="rgba(0,0,0,0.6)" strokeWidth={0.5} />)}
+            </g>
+          )}
+        </svg>
+        <div
+          className={css.tooltip}
+          style={flip ? { right: L.contentW - x + 14, top: L.plotTop } : { left: x + 14, top: L.plotTop }}
+        >
+          {rows.map((r) => (
+            <div key={r.label} className={css.tooltipRow}>
+              <span className={css.tooltipLabel} style={r.color ? { color: r.color } : undefined}>{r.label}</span>
+              <span className={css.tooltipVal}>{r.value}</span>
+            </div>
+          ))}
+        </div>
+      </>
+    )
+  } else if (!flown && idx != null && idx < series.distNms.length) {
     const x = L.xOf(series.distNms[idx])
     const rows: { label: string; ft: number; color: string }[] = []
     const plan = series.plannedAlts[idx]
@@ -687,7 +743,9 @@ function VirtualRadar({
   waypoints, legOverrides, units = DEFAULT_UNITS, title, onHoverDistNm, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, crosshairDistNm,
   crossTrackNm, weatherStations, airspaceCeilingFt, onLegLevelChange, followAircraft, corridorBand = true,
+  flown, onClose,
 }: Props) {
+  const logMode = flown != null
   const [legDrag, setLegDrag] = useState<LegDragState | null>(null)
   const dragging = legDrag !== null
   // A route change or a lock mid-drag must not leave a stale preview behind.
@@ -875,9 +933,10 @@ function VirtualRadar({
     [msaTerrain, msaMargins, msaObstacles],
   )
   // Per-leg MSA floor: the whole leg corridor incl. the circles around its ends.
+  // (Not for a flight log: its path has no legs to set a level on.)
   const legMsaFloors = useMemo(
-    () => legCorridorMsaFt(waypoints, mefGrids, msaMargins, msaObstacles),
-    [waypoints, mefGrids, msaMargins, msaObstacles],
+    () => (logMode ? [] : legCorridorMsaFt(waypoints, mefGrids, msaMargins, msaObstacles)),
+    [waypoints, mefGrids, msaMargins, msaObstacles, logMode],
   )
   const getMsa = useMemo(() => getMsaLookup(msaPts), [msaPts])
 
@@ -949,6 +1008,24 @@ function VirtualRadar({
     if (!profile) return null
     // Without a ground line but with a grid-made MSA the path and the MSA line are still sampled.
     const gridOnly = terrainPts.length === 0 && msaTerrain.fromGridOnly
+    if (flown) {
+      // Flight log: the flown altitude takes the plan's place. Sampled at the terrain samples
+      // (readout, scale); the line itself and its below-MSA stretches use every recorded point.
+      const base = terrainPts.length > 0 ? terrainPts : gridOnly ? msaTerrain.pts : null
+      const distNms = base ? base.map((p) => p.distNm) : flown.map((p) => p.distNm)
+      const alts = distNms.map((d) => { const a = flownAltitudeAt(flown, d); return Number.isFinite(a) ? a : 0 })
+      const msaKnown = terrainPts.length > 0 || gridOnly
+      const pts = flown.filter((p) => Number.isFinite(p.altFt))
+      return {
+        distNms,
+        plannedAlts: alts,
+        ground: terrainPts.length > 0 ? terrainPts.map((p) => p.elevFt) : null,
+        msa: msaKnown ? distNms.map((d) => getMsa(d)) : null,
+        belowMsa: msaKnown
+          ? belowMsaRuns({ distNms: pts.map((p) => p.distNm), plannedAlts: pts.map((p) => p.altFt), getMsa, totalNm: profile.totalNm })
+          : [],
+      }
+    }
     if (terrainPts.length > 0 || gridOnly) {
       const base = terrainPts.length > 0 ? terrainPts : msaTerrain.pts
       const distNms = base.map((p) => p.distNm)
@@ -974,7 +1051,7 @@ function VirtualRadar({
       msa: null,
       belowMsa: [],
     }
-  }, [profile, terrainPts, msaTerrain, perf, getMsa])
+  }, [profile, terrainPts, msaTerrain, perf, getMsa, flown])
 
   // While a leg level is dragged: the path the aircraft would fly at that level (climbs and descents
   // included), so the effect on the whole route is visible before the change is committed.
@@ -988,6 +1065,9 @@ function VirtualRadar({
     const alts = projectFlightPath(withLegLevel(profile.altitudeProfile, legDrag.leg, level), profile.totalNm, perf ?? DEFAULT_PERF_MODEL, series.distNms, dep, arr)
     return series.distNms.map((d, i) => ({ distNm: d, altFt: alts[i] }))
   }, [profile, series, legDrag, terrainPts, msaTerrain, perf, aircraftProfile?.cruiseAltFt])
+
+  // Flight log: the flown line in continuous stretches plus the recording gaps between them.
+  const flownParts = useMemo(() => (flown ? flownLineParts(flown) : null), [flown])
 
   // Inputs of the drag layer, kept stable so a drag step only re-renders the layer, not rebuilds these.
   const plannedPts = useMemo(() => (series ? series.distNms.map((d, i) => ({ distNm: d, altFt: series.plannedAlts[i] })) : []), [series])
@@ -1008,10 +1088,10 @@ function VirtualRadar({
   // The scale follows the path actually drawn (with climbs and descents the
   // aircraft's performance allows), not the requested levels: a short leg at
   // 7500 ft is never reached, and a 10000 ft axis over a 3400 ft line is noise.
-  const plannedPeakFt = useMemo(
-    () => (series && series.plannedAlts.length > 0 ? Math.max(...series.plannedAlts) : (profile?.maxPlannedAltFt ?? 0)),
-    [series, profile],
-  )
+  const plannedPeakFt = useMemo(() => {
+    if (flown) return flown.reduce((m, p) => (Number.isFinite(p.altFt) ? Math.max(m, p.altFt) : m), 0)
+    return series && series.plannedAlts.length > 0 ? Math.max(...series.plannedAlts) : (profile?.maxPlannedAltFt ?? 0)
+  }, [series, profile, flown])
   const yMaxFull = useMemo(
     () => (profile ? profileYMax(plannedPeakFt, corridorPts.length > 0 ? corridorPts : terrainPts) : 10000),
     [profile, plannedPeakFt, corridorPts, terrainPts],
@@ -1034,7 +1114,9 @@ function VirtualRadar({
   // Winds aloft at the standard levels up to the chart top, one column every
   // ~20 NM, so the best level for the wind is visible at a glance. Model data
   // (Open-Meteo), nominal ISA height of each pressure level.
-  const { columns: windAloft, status: windAloftStatus } = useWindAloftAlongRoute(waypoints, profile?.totalNm ?? 0, yMax, showWindAloft)
+  // Not for a flight log: today's forecast says nothing about a past flight.
+  const windOn = showWindAloft && !logMode
+  const { columns: windAloft, status: windAloftStatus } = useWindAloftAlongRoute(waypoints, profile?.totalNm ?? 0, yMax, windOn)
 
   const unitPerNm = nmToDisplay(1, units.distance)
   const layout = useMemo(() => (profile && wrapW > 0
@@ -1142,7 +1224,7 @@ function VirtualRadar({
     for (const [i, m] of weatherMarks.entries()) {
       if (m.wind) winds.set(`st-${i}`, { distNm: m.distNm, wind: { dirDeg: m.wind.dirDeg ?? null, speedKt: m.wind.speedKt, calm: !!m.wind.calm }, priority: 0 })
     }
-    if (showWindAloft) {
+    if (windOn) {
       const stationNms = weatherMarks.filter((m) => m.wind).map((m) => m.distNm)
       for (const [ci, col] of windAloft.entries()) {
         const g = col.levels.find((l) => l.surface)
@@ -1174,14 +1256,15 @@ function VirtualRadar({
       barbs: placed.map((pl) => ({ ...pl, wind: winds.get(pl.key)!.wind, text: labelOf(winds.get(pl.key)!.wind), model: pl.key.startsWith('gr-') })),
       tickLabelShown,
     }
-  }, [layout, weatherMarks, windAloft, showWindAloft, xTicks])
+  }, [layout, weatherMarks, windAloft, windOn, xTicks])
 
   // Waypoint-name label collision avoidance on the real label rectangles
   // (see @open-vfr/shared/profileLabels): names are variable-width and the
   // destination label is right-aligned to its line. The destination always
   // wins; the departure is skipped (it sits on the altitude axis).
   const visibleWaypointTicks = useMemo(() => {
-    if (!profile || !layout) return []
+    // A flight log's path vertices are simplification points, not waypoints.
+    if (!profile || !layout || logMode) return []
     const ticks = profile.waypointTicks
     const lastIdx = ticks.length - 1
     const rects = ticks.map((t, i) => {
@@ -1192,7 +1275,7 @@ function VirtualRadar({
         : { left: x + LINE_LABEL_INSET, right: x + LINE_LABEL_INSET + w }
     })
     return pickWaypointLabels(rects, layout.plotLeft).map((i) => ({ tick: ticks[i], isLast: i === lastIdx }))
-  }, [profile, layout])
+  }, [profile, layout, logMode])
 
   // Auto-follow the aircraft while flying, mirroring native: if its marker
   // has scrolled near/out of the visible window, re-center on it. Skipped
@@ -1488,7 +1571,7 @@ function VirtualRadar({
         {/* ── Winds aloft: barbs at each standard pressure level's nominal
             altitude, one column every ~20 NM (useWindAloftAlongRoute). Model
             forecast, so drawn dimmer than the station barbs. */}
-        {showWindAloft && windAloft.flatMap((col, ci) => col.levels.map((lv) => {
+        {windOn && windAloft.flatMap((col, ci) => col.levels.map((lv) => {
           // Surface (10 m) wind is part of the wind row under the x axis.
           if (lv.surface || lv.altFt > yMax * 0.96 || lv.altFt < yMin) return null
           const edge = Math.min(WIND_ALOFT_EDGE_PX, L.plotW / 2)
@@ -1545,6 +1628,20 @@ function VirtualRadar({
 
         {/* ── Planned altitude line, MSA, below-MSA stretches in red ── */}
         <clipPath id="plan-clip"><rect x={L.plotLeft} y={L.plotTop} width={L.plotW} height={L.plotH + 4} /></clipPath>
+        {flownParts && (
+          <g clipPath="url(#plan-clip)" pointerEvents="none">
+            {flownParts.runs.map((run, i) => {
+              const d = polylinePath(run, L.xOf, L.yOf)
+              return (
+                <g key={`flown-${i}`}>
+                  <path d={d} fill="none" stroke="rgba(0,0,0,0.7)" strokeWidth={5} strokeLinejoin="round" />
+                  <path d={d} fill="none" stroke={FLOWN_COLOR} strokeWidth={2.75} strokeLinejoin="round" />
+                </g>
+              )
+            })}
+          </g>
+        )}
+        {!logMode && (<>
         <path d={plannedPath} clipPath="url(#plan-clip)" fill="none" stroke="rgba(0,0,0,0.7)" strokeWidth={5} strokeLinejoin="round" opacity={dragging ? 0.18 : 1} />
         <path d={plannedPath} clipPath="url(#plan-clip)" fill="none" stroke={PLAN_COLOR} strokeWidth={2.75} strokeLinejoin="round" opacity={dragging ? 0.18 : 1} />
         {/* Turn points: white dots with a dark rim where one leg ends and the next begins. */}
@@ -1583,10 +1680,19 @@ function VirtualRadar({
             </g>
           )
         })}
+        </>)}
         {showMsa && msaPath && <path d={msaPath} fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth={3.5} />}
         {showMsa && msaPath && <path d={msaPath} fill="none" stroke={MSA_COLOR} strokeWidth={1.75} strokeDasharray="6 3" />}
         {!dragging && series.belowMsa.map((run, i) => (
           <path key={`below-${i}`} d={polylinePath(run, L.xOf, L.yOf)} fill="none" stroke={DANGER_COLOR} strokeWidth={2.5} />
+        ))}
+        {/* Recording gaps: nothing is known in between, so a dashed bridge and a dot at each end. */}
+        {flownParts?.gaps.map(([a, b], i) => (
+          <g key={`gap-${i}`} pointerEvents="none">
+            <line x1={L.xOf(a.distNm)} y1={L.yOf(a.altFt)} x2={L.xOf(b.distNm)} y2={L.yOf(b.altFt)} stroke={FLOWN_GAP_COLOR} strokeWidth={2} strokeDasharray="3 3" />
+            <circle cx={L.xOf(a.distNm)} cy={L.yOf(a.altFt)} r={3.5} fill={FLOWN_GAP_COLOR} stroke="#000" strokeWidth={1} />
+            <circle cx={L.xOf(b.distNm)} cy={L.yOf(b.altFt)} r={3.5} fill={FLOWN_GAP_COLOR} stroke="#000" strokeWidth={1} />
+          </g>
         ))}
 
         {/* ── Labels on top of every line (plan, MSA, below-MSA): chips, then obstacle names ── */}
@@ -1616,7 +1722,7 @@ function VirtualRadar({
         </text>
       </>
     )
-  }, [profile, layout, series, yMax, yMin, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, showMsa, windAloft, iconMarkup, visibleWaypointTicks, units.distance, dragging, obstacleMarks, landmarkMarks, poiMarks, unreached, legSpanList, phaseMarks])
+  }, [profile, layout, series, yMax, yMin, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, showMsa, windAloft, iconMarkup, visibleWaypointTicks, units.distance, dragging, obstacleMarks, landmarkMarks, poiMarks, unreached, legSpanList, phaseMarks, flownParts, logMode, windOn])
 
   if (!profile || !series || series.distNms.length === 0) return null
 
@@ -1688,7 +1794,7 @@ function VirtualRadar({
     <div className={`${css.panel} ${collapsed ? css.collapsed : ''}`}>
       {/* ── Header ─────────────────────────────────────────────────── */}
       <div className={css.header}>
-        <span className={css.title}>{title ?? 'VIRTUAL RADAR'}</span>
+        <span className={css.title}>{title ?? (logMode ? 'FLIGHT LOG' : 'VIRTUAL RADAR')}</span>
         <span className={css.totalDist}>
           {nmToDisplay(profile.totalNm, units.distance).toFixed(1)} {distLabel(units.distance)}
         </span>
@@ -1714,7 +1820,7 @@ function VirtualRadar({
         )}
         {/* Winds aloft came back incomplete (Open-Meteo throttled or offline):
             say so instead of silently drawing fewer barbs. */}
-        {showWindAloft && windAloftStatus !== 'ok' && (
+        {windOn && windAloftStatus !== 'ok' && (
           <span
             className={css.windStatus}
             title={windAloftStatus === 'retrying'
@@ -1744,13 +1850,15 @@ function VirtualRadar({
         >
           OBST
         </button>
-        <button
-          className={`${css.projToggleBtn} ${showWindAloft ? css.projToggleOn : ''}`}
-          onClick={() => setShowWindAloft((v) => !v)}
-          title={showWindAloft ? 'Hide winds aloft' : 'Show winds aloft at several levels'}
-        >
-          WIND
-        </button>
+        {!logMode && (
+          <button
+            className={`${css.projToggleBtn} ${showWindAloft ? css.projToggleOn : ''}`}
+            onClick={() => setShowWindAloft((v) => !v)}
+            title={showWindAloft ? 'Hide winds aloft' : 'Show winds aloft at several levels'}
+          >
+            WIND
+          </button>
+        )}
         <button
           className={css.collapseBtn}
           onClick={() => setCollapsed((c) => !c)}
@@ -1758,6 +1866,9 @@ function VirtualRadar({
         >
           {collapsed ? '▲' : '▼'}
         </button>
+        {onClose && (
+          <button className={css.collapseBtn} onClick={onClose} title="Close the flight log" aria-label="Close the flight log">✕</button>
+        )}
       </div>
 
       {/* ── Chart ──────────────────────────────────────────────────── */}
@@ -1775,12 +1886,12 @@ function VirtualRadar({
                   <svg width={MARGIN.left} height={chartH}>{renderYAxis(L, yTicks)}</svg>
                 </div>
               )}
-              <svg className={css.chartSvg} width={L.contentW} height={chartH} role="img" aria-label="Vertical profile of the route">
+              <svg className={css.chartSvg} width={L.contentW} height={chartH} role="img" aria-label={logMode ? 'Vertical profile of the flown track' : 'Vertical profile of the route'}>
                 {scene}
                 {live}
               </svg>
-              <HoverOverlay layout={L} series={series} onHoverDistNm={onHoverDistNm} />
-              {profile && series && (
+              <HoverOverlay layout={L} series={series} onHoverDistNm={onHoverDistNm} flown={flown} silhouette={silhouette} />
+              {profile && series && !logMode && (
                 <LegDragLayer
                   layout={L}
                   spans={legSpanList}

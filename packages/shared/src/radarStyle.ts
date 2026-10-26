@@ -26,6 +26,10 @@ export const poiCenterY = (groundY: number, plotBottom: number) => Math.min(grou
 export const SKY_TOP = '#2c4468'
 export const SKY_BOTTOM = '#6b92b8'
 export const PLAN_COLOR = '#e040fb'
+/** A viewed flight log's flown track: the same violet on the map line and the profile line. */
+export const FLOWN_COLOR = '#a78bfa'
+/** Recording gap in a viewed flight log (no data): dashed bridge plus a dot at each end. */
+export const FLOWN_GAP_COLOR = '#ef4444'
 export const MSA_COLOR = '#ffb454'
 /** Light green: the ground's label colour (hover readout). */
 export const GROUND_COLOR = '#e4f0b8'

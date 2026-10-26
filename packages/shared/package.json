@@ -35,6 +35,7 @@
     "./subAreas": "./src/subAreas.ts",
     "./autoFlyDetect": "./src/autoFlyDetect.ts",
     "./flightLogStats": "./src/flightLogStats.ts",
+    "./flightLogProfile": "./src/flightLogProfile.ts",
     "./parkTimeout": "./src/parkTimeout.ts",
     "./otpAutoSubmit": "./src/otpAutoSubmit.ts",
     "./terrainDem": "./src/terrainDem.ts",

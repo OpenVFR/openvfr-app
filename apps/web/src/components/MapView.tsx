@@ -1,4 +1,6 @@
 import { trackToGeoJson } from '@open-vfr/shared/flightLogStats'
+import { flightLogProfile, flownCoordinateAt } from '@open-vfr/shared/flightLogProfile'
+import { FLOWN_COLOR, FLOWN_GAP_COLOR } from '@open-vfr/shared/radarStyle'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as maplibregl from 'maplibre-gl'
 import { createPortal } from 'react-dom'
@@ -443,26 +445,8 @@ function extractSnapDisplayName(feat: maplibregl.MapGeoJSONFeature): string {
   return extractSnapName(feat)
 }
 
-/** Interpolate a lat/lng at `targetNm` cumulative distance along a recorded track. */
-function coordAlongTrack(track: TrackPoint[], targetNm: number): { lng: number; lat: number } {
-  const NM_PER_DEG_LAT = 60.0
-  let cumDist = 0
-  for (let i = 1; i < track.length; i++) {
-    const dLat = (track[i].lat - track[i - 1].lat) * NM_PER_DEG_LAT
-    const dLng = (track[i].lng - track[i - 1].lng) * NM_PER_DEG_LAT *
-      Math.cos((track[i - 1].lat + track[i].lat) * 0.5 * Math.PI / 180)
-    const segDist = Math.sqrt(dLat * dLat + dLng * dLng)
-    if (cumDist + segDist >= targetNm) {
-      const t = segDist > 0 ? (targetNm - cumDist) / segDist : 0
-      return {
-        lat: track[i - 1].lat + t * (track[i].lat - track[i - 1].lat),
-        lng: track[i - 1].lng + t * (track[i].lng - track[i - 1].lng),
-      }
-    }
-    cumDist += segDist
-  }
-  return { lat: track[track.length - 1].lat, lng: track[track.length - 1].lng }
-}
+/** A viewed flight log has no planned levels. Stable reference: the profile chart is memoised. */
+const NO_LEG_OVERRIDES: LegOverride[] = []
 
 /** Short kind badge for disambiguation picker. */
 function extractSnapKind(feat: maplibregl.MapGeoJSONFeature): string {
@@ -808,6 +792,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Historical log track — declared here so the cursor effect below can reference it
   const [selectedLogId,    setSelectedLogId]    = useState<string | null>(null)
   const [selectedLogTrack, setSelectedLogTrack] = useState<TrackPoint[]>([])
+  // The viewed log as a profile path (simplified track) plus every recorded point on its distance axis.
+  const selectedLogProfile = useMemo(() => flightLogProfile(selectedLogTrack), [selectedLogTrack])
+  const closeSelectedLog = useCallback(() => setSelectedLogId(null), [])
 
   // ── Look-ahead VirtualRadar for unplanned flight ──────────────────────────
   // While flying without a planned route, synthesise a 2-waypoint route from
@@ -895,9 +882,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
       return
     }
     let coord: { lng: number; lat: number } | null = null
-    // Past-log review takes priority: cursor must follow the violet track, not the planned route.
-    if (selectedLogTrack.length >= 2) {
-      coord = coordAlongTrack(selectedLogTrack, profileCursorNm)
+    // Past-log review takes priority: cursor must follow the flown track, not the planned route.
+    if (selectedLogProfile) {
+      coord = flownCoordinateAt(selectedLogProfile.points, profileCursorNm)
     } else if (lookaheadWaypoints.length >= 2) {
       // Hovering the look-ahead chart: place cursor on the map ahead of the aircraft.
       coord = coordinateAlongRouteNm(lookaheadWaypoints, profileCursorNm)
@@ -912,7 +899,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     } else {
       src.setData({ type: 'FeatureCollection', features: [] })
     }
-  }, [profileCursorNm, routeWaypoints, selectedLogTrack, lookaheadWaypoints, mapReady])
+  }, [profileCursorNm, routeWaypoints, selectedLogProfile, lookaheadWaypoints, mapReady])
 
   // Swap the aircraft map icon whenever the selected profile (or map readiness) changes.
   // The styledata handler handles the basemap-swap case via selectedAircraftProfileRef.
@@ -1943,7 +1930,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         type: 'line',
         source: 'past-track',
         filter: ['==', ['get', 'kind'], 'track'],
-        paint: { 'line-color': '#a78bfa', 'line-width': 2.5, 'line-opacity': 0.9 },
+        paint: { 'line-color': FLOWN_COLOR, 'line-width': 2.5, 'line-opacity': 0.9 },
       })
       // Recording gaps (GPS loss): dashed red bridge, not a believable line.
       map.addLayer({
@@ -1951,7 +1938,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         type: 'line',
         source: 'past-track',
         filter: ['==', ['get', 'kind'], 'gap'],
-        paint: { 'line-color': '#ef4444', 'line-width': 2.5, 'line-opacity': 0.9, 'line-dasharray': [1.5, 2] },
+        paint: { 'line-color': FLOWN_GAP_COLOR, 'line-width': 2.5, 'line-opacity': 0.9, 'line-dasharray': [1.5, 2] },
       })
 
       // Panning: 'grabbing' regardless of the tool cursor, restored on release.
@@ -4932,7 +4919,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       {/* Bottom pane: instruments / sim buttons / ruler strip + Virtual Radar.
           The splitter on its top edge sets the chart height. */}
       <div className={css.bottomPane}>
-        {(showRulerProfile || (selectedLogId && selectedLogTrack.length > 0) || (routeVisible && routeWaypoints.length >= 2) || flyingMode !== 'off') && <VrResizeGrip />}
+        {(showRulerProfile || (selectedLogId && selectedLogProfile) || (routeVisible && routeWaypoints.length >= 2) || flyingMode !== 'off') && <VrResizeGrip />}
         {/* ── In-flight instruments (GoFlyingPanel) — own grid row ──────── */}
         {flyingMode !== 'off' && gpsPosition && (
           <div className={css.gfpRow}>
@@ -5011,11 +4998,22 @@ export default function MapView({ auth }: { auth: AuthState }) {
               weatherStations={rulerWeatherStations}
             />
           </div>
-        ) : selectedLogId && selectedLogTrack.length > 0 ? (
-          // Past-log review: show the recorded track chart, even when a planned route exists.
+        ) : selectedLogId && selectedLogProfile ? (
+          // Past-log review: the profile along the flown track (terrain, MSA, airspace,
+          // obstacles) with the recorded altitude, even when a planned route exists.
           // The route stays visible on the map but the bottom panel belongs to the flight log.
           <div className={css.vrRow}>
-            <LiveTrackChart track={selectedLogTrack} onHoverDistNm={setProfileCursorNm} />
+            <VirtualRadar
+              corridorBand={false}
+              waypoints={selectedLogProfile.path}
+              legOverrides={NO_LEG_OVERRIDES}
+              flown={selectedLogProfile.points}
+              units={units}
+              airspaceCeilingFt={ceilingFt}
+              aircraftProfile={selectedAircraftProfile}
+              onHoverDistNm={setProfileCursorNm}
+              onClose={closeSelectedLog}
+            />
           </div>
         ) : routeVisible && routeWaypoints.length >= 2 ? (
           // An inactive route is hidden from the map, so it gets no radar either.
