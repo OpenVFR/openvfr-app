@@ -36,6 +36,7 @@ import { EUROPEAN_REGIONS, isSupportedRegion } from '@open-vfr/shared/regions'
 import { currentAiracCycle } from '@open-vfr/shared/airac'
 import { countryPipelineDetail, countrySummaries, isPipelineJob, PIPELINE_JOBS, queuePipelineJob, queuedCount } from './pipeline.js'
 import { externalApiUsage } from './externalProxy.js'
+import { RateLimiter } from './rateLimiter.js'
 
 const MAX_QUEUED_JOBS = 20
 
@@ -45,14 +46,9 @@ if (ACCESS_CONFIG) console.log(`[admin] Cloudflare Access required (${ACCESS_CON
 
 const RATE_PER_MIN = Number(process.env['ADMIN_RATE_PER_MIN'] ?? 120)
 
-const hits = new Map<string, number[]>() // admin user id -> request timestamps (last 60 s)
+const adminLimiter = new RateLimiter([{ windowMs: 60_000, max: RATE_PER_MIN }]) // keyed by admin user id
 function rateLimited(userId: string): boolean {
-  const now = Date.now()
-  const recent = (hits.get(userId) ?? []).filter(t => now - t < 60_000)
-  if (recent.length >= RATE_PER_MIN) { hits.set(userId, recent); return true }
-  recent.push(now)
-  hits.set(userId, recent)
-  return false
+  return adminLimiter.take(userId).waitS > 0
 }
 
 type AdminEnv = { Variables: { adminEmail: string; adminHeaders: Headers } }
@@ -72,6 +68,8 @@ const requireAdmin: MiddlewareHandler<AdminEnv> = async (c, next) => {
   if (!session?.user) return c.json({ error: 'Unauthenticated' }, 401)
   const { id, email, role } = session.user as { id: string; email: string; role?: string | null }
   if (role !== 'admin') return c.json({ error: 'Forbidden' }, 403)
+  // Before the second-factor checks (DB / JWKS work), so a flood is cheap to refuse.
+  if (rateLimited(id)) return c.json({ error: 'Too many requests' }, 429)
 
   // Past this point the caller is a confirmed admin, so specific codes are
   // safe to return (the UI uses them to explain what to do).
@@ -91,8 +89,6 @@ const requireAdmin: MiddlewareHandler<AdminEnv> = async (c, next) => {
       return c.json({ error: 'Register a passkey on this account first', code: 'passkey_required' }, 403)
     }
   }
-
-  if (rateLimited(id)) return c.json({ error: 'Too many requests' }, 429)
 
   c.set('adminEmail', email.toLowerCase())
   c.set('adminHeaders', c.req.raw.headers)

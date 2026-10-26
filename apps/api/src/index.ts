@@ -24,6 +24,7 @@
 
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
 import { streamSSE } from 'hono/streaming'
 import OpenAI, { toFile } from 'openai'
 import { writeFileSync, createReadStream, unlinkSync } from 'node:fs'
@@ -41,6 +42,8 @@ import { auth, isReviewAccountEmail } from './auth'
 import { admin } from './admin'
 import { mountExternalProxies } from './externalProxy'
 import { createDemElevation, parseDemSources } from './demElevation'
+import { RateLimiter, limitFromEnv } from './rateLimiter'
+import { BodyTooLarge, readLimitedFormData, looksLikePdf } from './upload'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -50,6 +53,10 @@ const AZURE_API_KEY    = process.env['AZURE_OPENAI_API_KEY']    ?? ''
 const AZURE_DEPLOYMENT = process.env['AZURE_OPENAI_DEPLOYMENT'] ?? 'gpt-4o'
 const PORT             = Number(process.env['PORT'] ?? 5200)
 const MAX_FILE_MB      = 50
+/** Whole multipart request for /api/poh-extract: the file plus form overhead. */
+const POH_BODY_LIMIT   = (MAX_FILE_MB + 1) * 1024 * 1024
+/** Every other /api/* request carries small JSON (auth, admin) or nothing. */
+const API_BODY_LIMIT   = 1024 * 1024
 
 // ---------------------------------------------------------------------------
 // System prompt
@@ -104,6 +111,20 @@ if (AZURE_ENDPOINT && AZURE_API_KEY) {
 // ---------------------------------------------------------------------------
 const app = new Hono()
 
+// Request body cap for every /api/* route, enforced before any handler reads
+// the body (Content-Length up front, chunked bodies while streaming), so a
+// client can't make the server buffer an arbitrarily large body. POH upload
+// has its own larger cap, applied only after its auth check (see below), so
+// an anonymous caller can't make it buffer 50 MB either.
+const apiBodyLimit = bodyLimit({
+  maxSize: API_BODY_LIMIT,
+  onError: (c) => c.json({ error: 'Request body too large.' }, 413),
+})
+app.use('/api/*', async (c, next) => {
+  if (c.req.path === '/api/poh-extract') return next()
+  return apiBodyLimit(c, next)
+})
+
 app.get('/health', (c) => c.json({ ok: true }))
 
 // ---------------------------------------------------------------------------
@@ -147,9 +168,12 @@ app.get('/api/version', (c) => c.json({
 //     keytool -list -v -keystore release.keystore
 //   or from Play Console → Setup → App integrity → SHA-256 certificate fingerprint.
 // ---------------------------------------------------------------------------
+// Unconfigured = 404, not a placeholder file: a well-formed association with
+// a fake team id / fingerprint looks valid to the OS and fails confusingly.
 app.get('/.well-known/apple-app-site-association', (c) => {
-  const teamId = process.env['APPLE_TEAM_ID'] ?? 'XXXXXXXXXX'
-  const bundle = process.env['IOS_BUNDLE_ID']  ?? 'org.openvfr.app'
+  const teamId = process.env['APPLE_TEAM_ID']?.trim()
+  const bundle = process.env['IOS_BUNDLE_ID']?.trim() || 'org.openvfr.app'
+  if (!teamId) return c.json({ error: 'Not found' }, 404)
   return c.json({
     webcredentials: {
       apps: [`${teamId}.${bundle}`],
@@ -158,8 +182,11 @@ app.get('/.well-known/apple-app-site-association', (c) => {
 })
 
 app.get('/.well-known/assetlinks.json', (c) => {
-  const pkg         = process.env['ANDROID_PACKAGE']            ?? 'org.openvfr.app'
-  const fingerprint = process.env['ANDROID_SHA256_FINGERPRINT'] ?? 'AA:BB:CC:DD'
+  const pkg          = process.env['ANDROID_PACKAGE']?.trim() || 'org.openvfr.app'
+  // Comma-separated: one per signing cert (Play App Signing key, upload key).
+  const fingerprints = (process.env['ANDROID_SHA256_FINGERPRINT'] ?? '')
+    .split(',').map((f) => f.trim()).filter(Boolean)
+  if (fingerprints.length === 0) return c.json({ error: 'Not found' }, 404)
   return c.json([{
     relation: [
       'delegate_permission/common.handle_all_urls',
@@ -168,7 +195,7 @@ app.get('/.well-known/assetlinks.json', (c) => {
     target: {
       namespace:               'android_app',
       package_name:            pkg,
-      sha256_cert_fingerprints: [fingerprint],
+      sha256_cert_fingerprints: fingerprints,
     },
   }])
 })
@@ -183,7 +210,10 @@ app.get('/api/auth/token', async (c) => {
 
   const secret = process.env['BETTER_AUTH_SECRET']!
   const now    = Math.floor(Date.now() / 1000)
-  const exp    = now + 3600 // 1 hour
+  // Short-lived: PostgREST can't see a ban, sign-out or account deletion, so
+  // this lifetime is how long such a token keeps working. Clients refetch
+  // shortly before expiresAt.
+  const exp    = now + 15 * 60
 
   // Build a minimal HS256 JWT that PostgREST will accept.
   const header  = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url')
@@ -250,28 +280,34 @@ const POH_DAILY_LIMIT   = Number(process.env['POH_DAILY_LIMIT']   ?? 20)
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS  = 24 * HOUR_MS
 
-const pohUsage = new Map<string, number[]>() // userId -> timestamps (ms) of attempts, last 24h
+const pohLimiter = new RateLimiter([
+  { windowMs: HOUR_MS, max: POH_HOURLY_LIMIT },
+  { windowMs: DAY_MS,  max: POH_DAILY_LIMIT },
+])
 
-function checkPohRateLimit(userId: string): { allowed: true } | { allowed: false, retryAfterSeconds: number, reason: string } {
-  const now = Date.now()
-  const timestamps = (pohUsage.get(userId) ?? []).filter(t => now - t < DAY_MS)
-
-  const lastHour = timestamps.filter(t => now - t < HOUR_MS)
-  if (lastHour.length >= POH_HOURLY_LIMIT) {
-    const oldestInWindow = Math.min(...lastHour)
-    const retryAfterSeconds = Math.ceil((oldestInWindow + HOUR_MS - now) / 1000)
-    return { allowed: false, retryAfterSeconds, reason: `Hourly limit of ${POH_HOURLY_LIMIT} POH extractions reached.` }
-  }
-  if (timestamps.length >= POH_DAILY_LIMIT) {
-    const oldestInWindow = Math.min(...timestamps)
-    const retryAfterSeconds = Math.ceil((oldestInWindow + DAY_MS - now) / 1000)
-    return { allowed: false, retryAfterSeconds, reason: `Daily limit of ${POH_DAILY_LIMIT} POH extractions reached.` }
-  }
-
-  timestamps.push(now)
-  pohUsage.set(userId, timestamps)
-  return { allowed: true }
+/**
+ * `record: false` only checks (cheap early reject before reading the upload);
+ * `record: true` checks again and charges one extraction -- called once the
+ * upload is validated, so a wrong file type or an oversized upload doesn't
+ * use up the user's quota.
+ */
+function checkPohRateLimit(userId: string, record: boolean): { allowed: true } | { allowed: false, retryAfterSeconds: number, reason: string } {
+  const r = record ? pohLimiter.take(userId) : pohLimiter.check(userId)
+  if (r.waitS === 0) return { allowed: true }
+  const reason = r.limit?.windowMs === HOUR_MS
+    ? `Hourly limit of ${POH_HOURLY_LIMIT} POH extractions reached.`
+    : `Daily limit of ${POH_DAILY_LIMIT} POH extractions reached.`
+  return { allowed: false, retryAfterSeconds: r.waitS, reason }
 }
+
+function pohLimitResponse(c: import('hono').Context, r: { retryAfterSeconds: number, reason: string }): Response {
+  c.header('Retry-After', String(r.retryAfterSeconds))
+  return c.json(
+    { error: `${r.reason} Try again in ${Math.ceil(r.retryAfterSeconds / 60)} min.`, retryAfterSeconds: r.retryAfterSeconds },
+    429,
+  )
+}
+
 
 app.post('/api/poh-extract', async (c) => {
   if (!openai) {
@@ -288,20 +324,18 @@ app.post('/api/poh-extract', async (c) => {
     return c.json({ error: 'Authentication required.' }, 401)
   }
 
-  const rateCheck = checkPohRateLimit(session.user.id)
-  if (!rateCheck.allowed) {
-    return c.json(
-      { error: `${rateCheck.reason} Try again in ${Math.ceil(rateCheck.retryAfterSeconds / 60)} min.`, retryAfterSeconds: rateCheck.retryAfterSeconds },
-      429,
-    )
-  }
+  const rateCheck = checkPohRateLimit(session.user.id, false)
+  if (!rateCheck.allowed) return pohLimitResponse(c, rateCheck)
 
-  // ── Parse multipart body ────────────────────────────────────────────────
-  let file: File | string | undefined
+  // ── Parse multipart body (size-capped while streaming) ─────────────────
+  let file: FormDataEntryValue | null
   try {
-    const body = await c.req.parseBody()
-    file = body['file']
-  } catch {
+    const body = await readLimitedFormData(c.req.raw, POH_BODY_LIMIT)
+    file = body.get('file')
+  } catch (err) {
+    if (err instanceof BodyTooLarge) {
+      return c.json({ error: `File too large — maximum is ${MAX_FILE_MB} MB.` }, 413)
+    }
     return c.json({ error: 'Failed to parse request body.' }, 400)
   }
 
@@ -321,8 +355,18 @@ app.post('/api/poh-extract', async (c) => {
     return c.json({ error: 'Only PDF files are accepted.' }, 400)
   }
 
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  if (!looksLikePdf(bytes)) {
+    return c.json({ error: 'Only PDF files are accepted.' }, 400)
+  }
+
+  // Charge the quota only now, for a valid upload (re-checked: a parallel
+  // request may have used the last slot meanwhile).
+  const charge = checkPohRateLimit(session.user.id, true)
+  if (!charge.allowed) return pohLimitResponse(c, charge)
+
   const tmpPath = join(tmpdir(), `poh-${randomUUID()}.pdf`)
-  writeFileSync(tmpPath, Buffer.from(await file.arrayBuffer()))
+  writeFileSync(tmpPath, bytes)
   const fileName = file.name
 
   // ── Stream SSE back to client ───────────────────────────────────────────
@@ -515,8 +559,10 @@ const sseConnections = new Map<string, number>()
 app.get('/api/traffic/stream', async (c) => {
   const user = await requireSession(c)
   if (!user) return c.json({ error: 'Authentication required.' }, 401)
-  if (!trafficConfig.available) {
-    return c.json({ error: 'OpenSky credentials not configured on this server.' }, 503)
+  // Either feed is enough: an OGN-only deployment (no OpenSky credentials)
+  // still streams gliders/FLARM traffic.
+  if (!trafficConfig.available && !trafficConfig.ognAvailable) {
+    return c.json({ error: 'Traffic is not configured on this server.' }, 503)
   }
 
   const open = sseConnections.get(user.id) ?? 0
@@ -599,58 +645,106 @@ mountExternalProxies(app, requireSession, undefined, {
 // Weather — GET /api/weather?icao=ESSA
 // Proxies to aviationweather.gov (free, no API key required).
 // Returns { metar: string | null, taf: string | null }.
-// Server-side 5-minute cache keyed by uppercase ICAO.
+// Server-side 5-minute cache keyed by uppercase ICAO (bounded, oldest
+// dropped first); identical concurrent misses share one upstream call.
 // Client IP is never forwarded upstream.
+// Auth: session. Rate limit: per-user hourly + daily cap on cache MISSES
+// (hits are free), so one account can't walk the ICAO space and burn the
+// shared upstream allowance. Normal use (popups, route weather, the map's
+// weather highlight) stays far below it.
 // ---------------------------------------------------------------------------
-const wxCache = new Map<string, { data: { metar: string | null; taf: string | null }; expiresAt: number }>()
+type WxData = { metar: string | null; taf: string | null }
+const wxCache = new Map<string, { data: WxData; expiresAt: number }>()
+const wxInflight = new Map<string, Promise<{ data: WxData; complete: boolean }>>()
 const WX_TTL_MS = 5 * 60 * 1000
+const WX_CACHE_MAX = 5000
+const WX_TIMEOUT_MS = 10_000
+const wxMissLimiter = new RateLimiter([
+  { windowMs: HOUR_MS, max: limitFromEnv('WX_HOURLY_LIMIT', 600) },
+  { windowMs: DAY_MS,  max: limitFromEnv('WX_DAILY_LIMIT', 3000) },
+])
+
+async function fetchWxUpstream(icao: string): Promise<{ data: WxData; complete: boolean }> {
+  const headers = { 'User-Agent': 'open-vfr/1.0', 'Accept': 'application/json' }
+  const signal = AbortSignal.timeout(WX_TIMEOUT_MS)
+  const [metarResp, tafResp] = await Promise.all([
+    fetch(`https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&hours=3`, { headers, signal }),
+    fetch(`https://aviationweather.gov/api/data/taf?ids=${icao}&format=json`, { headers, signal }),
+  ])
+  // 204 = no report for this station: a valid, cacheable answer. Any other
+  // non-2xx is an upstream failure -- served, but not cached, so a brief
+  // outage doesn't read as "no METAR" for the next 5 minutes.
+  const fine = (r: Response) => r.ok || r.status === 204
+  if (!fine(metarResp) && !fine(tafResp)) {
+    throw new Error(`upstream HTTP metar=${metarResp.status} taf=${tafResp.status}`)
+  }
+  if (!fine(metarResp) || !fine(tafResp)) {
+    console.warn(`[weather] upstream HTTP metar=${metarResp.status} taf=${tafResp.status} for ${icao}`)
+  }
+
+  let metar: string | null = null
+  let taf: string | null = null
+
+  if (metarResp.ok) {
+    const text = await metarResp.text()
+    if (text.trim()) {
+      try {
+        const arr = JSON.parse(text) as { rawOb?: string }[]
+        metar = arr[0]?.rawOb ?? null
+      } catch (parseErr) {
+        console.error(`[weather] METAR JSON parse failed for ${icao}:`, parseErr)
+      }
+    }
+  }
+  if (tafResp.ok) {
+    const text = await tafResp.text()
+    if (text.trim()) {
+      try {
+        const arr = JSON.parse(text) as { rawTAF?: string }[]
+        taf = arr[0]?.rawTAF ?? null
+      } catch (parseErr) {
+        console.error(`[weather] TAF JSON parse failed for ${icao}:`, parseErr)
+      }
+    }
+  }
+
+  return { data: { metar, taf }, complete: fine(metarResp) && fine(tafResp) }
+}
 
 app.get('/api/weather', async (c) => {
-  if (!(await requireSession(c))) return c.json({ error: 'Authentication required.' }, 401)
+  const user = await requireSession(c)
+  if (!user) return c.json({ error: 'Authentication required.' }, 401)
   const icao = (c.req.query('icao') ?? '').toUpperCase().trim()
   if (!/^[A-Z]{4}$/.test(icao)) return c.json({ error: 'Invalid ICAO identifier' }, 400)
 
   const cached = wxCache.get(icao)
   if (cached && Date.now() < cached.expiresAt) return c.json(cached.data)
 
-  const headers = { 'User-Agent': 'open-vfr/1.0', 'Accept': 'application/json' }
+  let pending = wxInflight.get(icao)
+  if (!pending) {
+    const limit = wxMissLimiter.take(user.id)
+    if (limit.waitS > 0) {
+      c.header('Retry-After', String(Math.min(limit.waitS, 3600)))
+      return c.json({ error: 'Weather request limit reached. Try again later.' }, 429)
+    }
+    pending = fetchWxUpstream(icao).then((r) => {
+      if (r.complete) {
+        wxCache.delete(icao)
+        wxCache.set(icao, { data: r.data, expiresAt: Date.now() + WX_TTL_MS })
+        // Map iterates in insertion order: drop the oldest beyond the cap.
+        for (const k of wxCache.keys()) {
+          if (wxCache.size <= WX_CACHE_MAX) break
+          wxCache.delete(k)
+        }
+      }
+      return r
+    }).finally(() => wxInflight.delete(icao))
+    wxInflight.set(icao, pending)
+  }
   try {
-    const [metarResp, tafResp] = await Promise.all([
-      fetch(`https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&hours=3`, { headers }),
-      fetch(`https://aviationweather.gov/api/data/taf?ids=${icao}&format=json`, { headers }),
-    ])
-
-    let metar: string | null = null
-    let taf: string | null = null
-
-    if (metarResp.ok) {
-      const text = await metarResp.text()
-      if (text.trim()) {
-        try {
-          const arr = JSON.parse(text) as { rawOb?: string }[]
-          metar = arr[0]?.rawOb ?? null
-        } catch (parseErr) {
-          console.error(`[weather] METAR JSON parse failed for ${icao}:`, parseErr)
-        }
-      }
-    }
-    if (tafResp.ok) {
-      const text = await tafResp.text()
-      if (text.trim()) {
-        try {
-          const arr = JSON.parse(text) as { rawTAF?: string }[]
-          taf = arr[0]?.rawTAF ?? null
-        } catch (parseErr) {
-          console.error(`[weather] TAF JSON parse failed for ${icao}:`, parseErr)
-        }
-      }
-    }
-
-    const data = { metar, taf }
-    wxCache.set(icao, { data, expiresAt: Date.now() + WX_TTL_MS })
-    return c.json(data)
+    return c.json((await pending).data)
   } catch (err) {
-    console.error('[weather] fetch failed:', err)
+    console.error('[weather] fetch failed:', (err as Error)?.name, (err as Error)?.message)
     return c.json({ error: 'Weather service unavailable' }, 502)
   }
 })

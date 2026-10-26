@@ -172,6 +172,12 @@ const INTERVAL_S    = Math.max(
   ),
 )
 
+/** Upper bound per OpenSky request (body included). Without it one hung
+ *  request stalls the poll loop for good: _polling stays true, so
+ *  ensurePolling() never restarts it. poll() catches the abort and retries
+ *  on the normal schedule. */
+const FETCH_TIMEOUT_MS = 30_000
+
 const OPENSKY_TOKEN_URL = 'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token'
 const OPENSKY_STATES_URL = 'https://opensky-network.org/api/states/all'
 
@@ -195,6 +201,7 @@ async function getToken(): Promise<string> {
     method:  'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body:    body.toString(),
+    signal:  AbortSignal.timeout(FETCH_TIMEOUT_MS),
   })
 
   if (!res.ok) {
@@ -328,6 +335,7 @@ async function poll(): Promise<number> {
 
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
+      signal:  AbortSignal.timeout(FETCH_TIMEOUT_MS),
     })
 
     if (res.status === 429) {

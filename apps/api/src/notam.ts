@@ -391,6 +391,7 @@ async function getNmsToken(): Promise<string> {
       'Authorization': `Basic ${Buffer.from(`${NMS_CLIENT_ID}:${NMS_CLIENT_SECRET}`).toString('base64')}`,
     },
     body: 'grant_type=client_credentials',
+    signal: AbortSignal.timeout(NMS_TOKEN_TIMEOUT_MS),
   })
   if (!resp.ok) throw new Error(`NMS auth failed: HTTP ${resp.status}`)
   const json = await resp.json() as { access_token?: string; expires_in?: string | number }
@@ -681,7 +682,22 @@ function pruneCache(): number {
   return removed
 }
 
+// A hung NMS request must not stall the poller forever, nor may the next
+// interval tick start a second pull on top of one still running (two delta
+// pulls racing on _lastPollAt, or two bulk pulls against the 1-per-24 h cap).
+// The data timeout is generous: a cold-start bootstrap pull is large.
+const NMS_TOKEN_TIMEOUT_MS = 30_000
+const NMS_DATA_TIMEOUT_MS  = 180_000
+let _pollRunning = false
+let _militaryPollRunning = false
+
 async function pollOnce(): Promise<void> {
+  if (_pollRunning) return
+  _pollRunning = true
+  try { await pollOnceUnguarded() } finally { _pollRunning = false }
+}
+
+async function pollOnceUnguarded(): Promise<void> {
   if (!notamConfig.available) return
 
   const wasBootstrap = !_lastPollAt
@@ -696,6 +712,7 @@ async function pollOnce(): Promise<void> {
         'Authorization':     `Bearer ${token}`,
         'nmsResponseFormat': 'GEOJSON',
       },
+      signal: AbortSignal.timeout(NMS_DATA_TIMEOUT_MS),
     })
     if (!resp.ok) {
       console.warn(`[notam] NMS poll HTTP ${resp.status} (${wasBootstrap ? 'bootstrap' : 'delta'})`)
@@ -786,6 +803,12 @@ async function pollOnce(): Promise<void> {
  * NOTAMs always cover the same countries.
  */
 async function pollMilitaryOnce(): Promise<void> {
+  if (_militaryPollRunning) return
+  _militaryPollRunning = true
+  try { await pollMilitaryOnceUnguarded() } finally { _militaryPollRunning = false }
+}
+
+async function pollMilitaryOnceUnguarded(): Promise<void> {
   if (!notamConfig.available) return
 
   try {
@@ -795,6 +818,7 @@ async function pollMilitaryOnce(): Promise<void> {
         'Authorization':     `Bearer ${token}`,
         'nmsResponseFormat': 'GEOJSON',
       },
+      signal: AbortSignal.timeout(NMS_DATA_TIMEOUT_MS),
     })
     if (!resp.ok) {
       // A 429 here almost always means the 1-bulk-pull-per-24h cap (e.g.

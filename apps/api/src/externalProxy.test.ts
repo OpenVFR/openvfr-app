@@ -187,11 +187,23 @@ test('anonymous callers: tight per-IP cap and a capped share of the upstream bud
   assert.equal(calls.length, 4)
 })
 
-test('anonymous mode env parsing defaults to limited', () => {
-  assert.equal(anonymousModeFromEnv(undefined), 'limited')
-  assert.equal(anonymousModeFromEnv(''), 'limited')
+test('anonymous mode env parsing defaults to off and fails closed', () => {
+  assert.equal(anonymousModeFromEnv(undefined), 'off')
+  assert.equal(anonymousModeFromEnv(''), 'off')
   assert.equal(anonymousModeFromEnv(' OFF '), 'off')
-  assert.equal(anonymousModeFromEnv('yes'), 'limited')
+  assert.equal(anonymousModeFromEnv('yes'), 'off')
+  assert.equal(anonymousModeFromEnv(' Limited '), 'limited')
+})
+
+test('closing an hour forgets callers with no miss in the last 24 h', () => {
+  const s = newProxyState()
+  const h0 = Date.UTC(2026, 0, 2, 10, 0, 0)
+  const stats = { hourStart: h0, byOutcome: {}, users: new Set<string>(), anonymousIps: new Set<string>(), history: [] as HourSnapshot[] }
+  s.userMisses.set('gone', [h0 - 25 * 3_600_000])
+  s.userMisses.set('recent', [h0 - 25 * 3_600_000, h0 - 3_600_000])
+  s.userMisses.set('empty', [])
+  rotateHour(OPEN_METEO, s, stats, h0 + 3_600_000, false)
+  assert.deepEqual([...s.userMisses.keys()], ['recent'])
 })
 
 test('Open-Meteo cost: locations x variables/10 x days/14, rounded up', () => {

@@ -12,12 +12,11 @@
  * script asking for a different coordinate each time could exhaust a whole
  * day in minutes. Here requests are tied to a session, and:
  *
- *  - TRANSITION: requests without a session are still served while app
- *    builds that predate this proxy are in use (they send no session on
- *    these paths), but per client IP with tight caps and a capped share of
- *    the upstream budget, so they can't starve signed-in users. Set
- *    EXTERNAL_PROXY_ANONYMOUS=off to require a session (401) once those
- *    builds are gone;
+ *  - requests without a session get 401 (EXTERNAL_PROXY_ANONYMOUS=off, the
+ *    default). EXTERNAL_PROXY_ANONYMOUS=limited serves them per client IP
+ *    with tight caps and a capped share of the upstream budget, so they
+ *    can't starve signed-in users -- only for a deployment that still has
+ *    app builds predating the session requirement in use;
  *
  *  - only the endpoint and query parameters the apps actually send are
  *    accepted (no open relay), with bounded coordinate counts;
@@ -562,15 +561,15 @@ export async function handleProxy(
 }
 
 /**
- * Requests without a session. 'limited' (default): served with the tight
- * per-IP caps and capped share of the upstream budget in spec.anonymous --
- * a TRANSITION mode, because app builds from before this proxy existed
- * (installed native apps, open web tabs) send no session on these paths.
- * 'off': 401, the end state once those builds are gone.
- * Env: EXTERNAL_PROXY_ANONYMOUS=limited|off.
+ * Requests without a session. 'off' (default): 401 -- every current app
+ * build sends a session on these paths. 'limited': served with the tight
+ * per-IP caps and capped share of the upstream budget in spec.anonymous, a
+ * transition mode for app builds from before this proxy existed (they send
+ * no session here). Anything other than 'limited' means 'off', so a typo
+ * fails closed. Env: EXTERNAL_PROXY_ANONYMOUS=off|limited.
  */
 export function anonymousModeFromEnv(v: string | undefined): 'limited' | 'off' {
-  return (v ?? '').trim().toLowerCase() === 'off' ? 'off' : 'limited'
+  return (v ?? '').trim().toLowerCase() === 'limited' ? 'limited' : 'off'
 }
 
 /** Mounts both proxies on the Hono app. */
@@ -644,6 +643,11 @@ export function rotateHour(spec: ProxySpec, s: ProxyState, stats: UsageStats, no
   if (hourOf(now) === stats.hourStart) return
   const end = stats.hourStart + HOUR_MS
   s.upstreamCalls = pruneWindow(s.upstreamCalls, now, DAY_MS)
+  // Callers (user ids, anonymous IPs) with no miss left in the last 24 h:
+  // forget them, or every one-off caller stays in memory for good.
+  for (const [key, ts] of s.userMisses) {
+    if (ts.length === 0 || now - ts[ts.length - 1]! >= DAY_MS) s.userMisses.delete(key)
+  }
   stats.history.push({
     hourStart: new Date(stats.hourStart).toISOString(),
     outcomes: stats.byOutcome,

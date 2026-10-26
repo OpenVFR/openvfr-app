@@ -19,6 +19,7 @@ import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/a
 import { sendEmail }  from './mailer.js'
 import { pool }        from './db.js'
 import { ACCESS_CONFIG } from './accessJwt.js'
+import { RateLimiter, limitFromEnv } from './rateLimiter.js'
 
 // ---------------------------------------------------------------------------
 // Validate required env vars at startup (fail fast, not on first request).
@@ -97,6 +98,49 @@ if (!SECRET || SECRET.length < 32) {
 if (!BASE_URL) {
   throw new Error('BETTER_AUTH_URL must be set (e.g. https://api.your-domain.example)')
 }
+// docker-compose.yml's local-dev fallback secret is public (it's in this
+// repo). It also signs PostgREST JWTs, so anyone could mint tokens for any
+// user's data. Refuse it for any deployment served over https -- local dev
+// runs on http://localhost and keeps working without a .env.
+export const DEV_FALLBACK_SECRET = 'dev_secret_change_in_production_32ch'
+if (SECRET === DEV_FALLBACK_SECRET && BASE_URL.startsWith('https://')) {
+  throw new Error('BETTER_AUTH_SECRET is the public docker-compose dev default; set a random 32+ char secret (e.g. `openssl rand -base64 48`)')
+}
+
+// ---------------------------------------------------------------------------
+// Daily caps on sign-in code emails, on top of better-auth's per-minute rule
+// (rateLimit.customRules below). Per client IP: stops one source from using
+// us as a mail cannon / exhausting the mail provider quota slowly. Per
+// address: stops anyone (from many IPs) flooding one inbox. Fixed-code
+// accounts never get an email and are exempt.
+// ---------------------------------------------------------------------------
+const DAY_MS = 24 * 60 * 60 * 1000
+const otpSendsPerIp = new RateLimiter([
+  { windowMs: DAY_MS, max: limitFromEnv('OTP_SENDS_PER_IP_DAILY', 30) },
+])
+const otpSendsPerEmail = new RateLimiter([
+  { windowMs: DAY_MS, max: limitFromEnv('OTP_SENDS_PER_EMAIL_DAILY', 10) },
+])
+
+/** Same trusted client-IP headers as advanced.ipAddress below; null when absent (local dev). */
+function trustedClientIp(headers: Headers | undefined): string | null {
+  return headers?.get('cf-connecting-ip')?.trim() || headers?.get('x-real-ip')?.trim() || null
+}
+
+function enforceOtpSendCaps(headers: Headers | undefined, email: string): void {
+  if (fixedOtpFor(email)) return
+  const ip = trustedClientIp(headers)
+  // Check both before recording either, so a refusal doesn't charge the other.
+  const blocked = (ip && otpSendsPerIp.check(ip).waitS > 0) || otpSendsPerEmail.check(email).waitS > 0
+  if (blocked) {
+    throw APIError.from('TOO_MANY_REQUESTS', {
+      message: 'Too many sign-in codes requested today. Try again later or sign in with a passkey.',
+      code: 'OTP_DAILY_LIMIT',
+    })
+  }
+  if (ip) otpSendsPerIp.record(ip)
+  otpSendsPerEmail.record(email)
+}
 
 // ---------------------------------------------------------------------------
 // better-auth instance
@@ -135,6 +179,11 @@ export const auth = betterAuth({
         if (isReviewAccountEmail(session?.user.email)) {
           throw APIError.from('FORBIDDEN', { message: 'Passkeys are disabled for this account', code: 'PASSKEY_DISABLED' })
         }
+      }
+      if (ctx.path === '/email-otp/send-verification-otp') {
+        const email = (ctx.body as { email?: unknown } | undefined)?.email
+        if (typeof email === 'string') enforceOtpSendCaps(ctx.headers, email.trim().toLowerCase())
+        return
       }
       if (ACCESS_CONFIG) return
       if (ctx.path !== '/sign-in/email-otp') return

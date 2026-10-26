@@ -101,6 +101,11 @@ services:
       - APP_REVIEW_TEST_EMAIL=${APP_REVIEW_TEST_EMAIL:-}
       - APP_REVIEW_TEST_OTP=${APP_REVIEW_TEST_OTP:-}
       - APP_TEST_ACCOUNTS=${APP_TEST_ACCOUNTS:-}
+      - OTP_SENDS_PER_IP_DAILY=${OTP_SENDS_PER_IP_DAILY:-30}
+      - OTP_SENDS_PER_EMAIL_DAILY=${OTP_SENDS_PER_EMAIL_DAILY:-10}
+      - WX_HOURLY_LIMIT=${WX_HOURLY_LIMIT:-600}
+      - WX_DAILY_LIMIT=${WX_DAILY_LIMIT:-3000}
+      - EXTERNAL_PROXY_ANONYMOUS=${EXTERNAL_PROXY_ANONYMOUS:-off}
       - ADMIN_MAX_SESSION_HOURS=${ADMIN_MAX_SESSION_HOURS:-12}
       - CF_ACCESS_TEAM_DOMAIN=${CF_ACCESS_TEAM_DOMAIN:-}
       - CF_ACCESS_AUD=${CF_ACCESS_AUD:-}
@@ -125,6 +130,9 @@ services:
     environment:
       PGRST_DB_URI: postgresql://openvfr:openvfr_dev@db:5432/openvfr
       PGRST_JWT_SECRET: ${BETTER_AUTH_SECRET:-dev_secret_change_in_production_32ch}
+      # Must match the `aud` the api puts in its tokens (/api/auth/token), so
+      # a token signed with the shared secret for anything else is refused.
+      PGRST_JWT_AUD: postgrest
       PGRST_DB_ANON_ROLE: anon
       PGRST_DB_SCHEMA: public
       PGRST_SERVER_PORT: "3001"

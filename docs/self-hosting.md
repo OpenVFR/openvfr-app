@@ -158,7 +158,20 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
 `apps/web/.env.example` for the clients) and fill in; see
 `docker-compose.yml` for the full list and defaults:
 
-- `BETTER_AUTH_SECRET` — 32+ character random secret
+- `BETTER_AUTH_SECRET` — 32+ character random secret. It also signs the
+  PostgREST JWTs, so it guards all user data. The api refuses to start with
+  the public `docker-compose.yml` dev default when `BETTER_AUTH_URL` is
+  `https://`.
+- `OTP_SENDS_PER_IP_DAILY` / `OTP_SENDS_PER_EMAIL_DAILY` — optional, daily
+  caps on sign-in code emails per client IP (default 30) and per address
+  (default 10), on top of better-auth's 3/min per IP. Fixed-code test /
+  review accounts are exempt.
+- `WX_HOURLY_LIMIT` / `WX_DAILY_LIMIT` — optional, per-user caps on
+  `/api/weather` cache misses (default 600 / 3000).
+- `APPLE_TEAM_ID`, `ANDROID_SHA256_FINGERPRINT` (comma-separated, one per
+  signing cert) — only when this API itself serves the passkey association
+  files on the RP ID host; unset, `/.well-known/apple-app-site-association`
+  and `/.well-known/assetlinks.json` answer 404.
 - `BETTER_AUTH_URL` / `BETTER_AUTH_APP_ORIGIN` — your deployed origin(s)
 - `APP_MIN_VERSION` — optional, defaults to `0.0.0` (always satisfied, i.e.
   a no-op). Backs `GET /api/version`, which the native app's force-update
@@ -246,7 +259,7 @@ Admins see account metadata and aggregate counts only -- never routes,
 positions or flight logs. Banning uses better-auth's admin plugin: it
 revokes the user's sessions and blocks sign-in while `banned` is set
 (optional expiry). A ban is stored on the user row, so deleting the account
-removes it. An already-issued PostgREST JWT stays valid until its 1 h expiry.
+removes it. An already-issued PostgREST JWT stays valid until its 15 min expiry.
 
 ## 4. Production deployment notes
 
@@ -294,6 +307,11 @@ removes it. An already-issued PostgREST JWT stays valid until its 1 h expiry.
   single-origin case (proxies `/api/auth`, `/rest`, `/api/weather`,
   `/api/notam` to the API service; serves `/tiles/*` and hashed JS/CSS
   assets with appropriate caching).
+- Request body size in your reverse proxy: `/rest/` needs at least 17 MB
+  (a flight log is uploaded in one request; its 1 Hz track passes nginx's
+  1 MB default after about 2 h of flight, and the database caps one track
+  at 16 MiB), `/api/poh-extract` at least 51 MB (50 MB PDF). The API itself
+  caps every other `/api/*` body at 1 MB.
 - `/api/open-meteo/` (model wind, Open-Meteo) and `/api/elevation/`
   (terrain, OpenTopoData) are relayed by the API server
   (`apps/api/src/externalProxy.ts`): session required, per-user caps, a
@@ -304,9 +322,10 @@ removes it. An already-issued PostgREST JWT stays valid until its 1 h expiry.
   two paths to the API like `docker/nginx.conf` does: not straight to the
   third-party hosts, and without an nginx cache (it would answer cached
   requests without the session check). `EXTERNAL_PROXY_ANONYMOUS` (API
-  server env): `limited` (default) still serves requests without a session,
-  with tight per-IP caps and a capped share of the upstream budget, for app
-  builds that predate the session requirement; `off` answers them 401.
+  server env): `off` (default) answers requests without a session 401;
+  `limited` still serves them, with tight per-IP caps and a capped share of
+  the upstream budget, only for app builds that predate the session
+  requirement. Any other value means `off`.
 - Terrain does not depend on OpenTopoData's small free budget alone: whenever
   it can't answer at once (the caller's hourly/daily cap used up, the
   server-wide budget used up or paused after a 429/503, a queue longer than
