@@ -75,6 +75,9 @@ interface Props {
   onAddToRoute: (wp: RouteWaypoint) => void
   onSaveUserWaypoint: (name: string, lng: number, lat: number) => void
   onClose: () => void
+  /** Route action for the clicked position itself (a free route point):
+   *  "Start route here", "Add to route", or "Direct to" in flight. */
+  pointAction?: { label: string; onClick: () => void }
   /** In flight only: replaces +Route with Direct to / Take shortcut and Track. */
   flight?: {
     /** "Direct to" or "Take shortcut" for this point. */
@@ -87,7 +90,7 @@ interface Props {
 
 export default function WhatsHerePopup({
   items, airspaceFeatures, lng, lat,
-  onAddToRoute, onSaveUserWaypoint, onClose, flight,
+  onAddToRoute, onSaveUserWaypoint, onClose, flight, pointAction,
 }: Props) {
   const [airspaceOpen, setAirspaceOpen] = useState(true)
   const [saveName, setSaveName] = useState<string | null>(null)
@@ -177,6 +180,11 @@ export default function WhatsHerePopup({
       {/* Save as user waypoint */}
       {saveName === null ? (
         <div className={css.footer}>
+          {pointAction && (
+            <button className={css.saveBtn} onClick={() => { pointAction.onClick(); onClose() }}>
+              + {pointAction.label} (this point)
+            </button>
+          )}
           <button className={css.saveBtn} onClick={() => setSaveName('')}>
             📍 Save Place
           </button>

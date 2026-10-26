@@ -377,6 +377,7 @@ function SideDrawer({
                       onSaveUserWaypoint={onSaveHereUserWaypoint}
                       onClose={onCloseInfo}
                       flight={inFlightRoute ? { directLabel: directToLabel, onDirectTo, onTrack: onTrackPoint } : undefined}
+                      pointAction={routeActionFor({ lng: activeInfo.lng, lat: activeInfo.lat }, true)}
                     />
                   )}
                 </div>

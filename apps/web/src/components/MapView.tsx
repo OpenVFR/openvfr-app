@@ -3104,8 +3104,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
 
       // ── 0c. Extending the route: a click on an aerodrome, navaid,
       // reporting point, place or obstacle appends it (several nearby: a
-      // picker); a click on empty map stops extending. Free points come from
-      // dragging a leg, so a stray click never adds one.
+      // picker); a click on empty map stops extending, so a stray click never
+      // adds a point. Free points: Alt+click, "What's Here?" (right-click /
+      // long-press) "Add to route (this point)", or dragging a leg.
       if (extendingRef.current) {
         setActivePopup(null)
         const SNAP_PX = 20
@@ -3129,12 +3130,17 @@ export default function MapView({ auth }: { auth: AuthState }) {
             real.push({ kind, icon: snapIconName(kind, (feat.properties as Record<string, unknown>)?.kind), displayName: extractSnapDisplayName(feat), waypoint: wp })
           }
         }
-        if (real.length === 0) {
+        const raw = { lng: e.lngLat.lng, lat: e.lngLat.lat }
+        if (e.originalEvent.altKey) {
+          // Alt+click: a free point exactly here, ignoring nearby features.
+          setRouteWaypoints((prev) => [...prev, raw])
+        } else if (real.length === 0) {
           finishExtendingRef.current()
         } else if (real.length === 1) {
           setRouteWaypoints((prev) => [...prev, real[0].waypoint])
         } else {
-          setSnapPicker({ candidates: sortSnapCandidates(real, e.lngLat), x: e.point.x, y: e.point.y })
+          // Several nearby: the picker, with the exact clicked position last.
+          setSnapPicker({ candidates: sortSnapCandidates([...real, { kind: 'PT', waypoint: raw }], e.lngLat), x: e.point.x, y: e.point.y })
         }
         return
       }
@@ -4787,7 +4793,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         )}
         {extending && (
           <div className={css.extendHint} role="status">
-            Click aerodromes, navaids or reporting points to add them. Click empty map or press Esc when done.
+            Click aerodromes, navaids or reporting points to add them. For any other point: Alt+click, or right-click / long-press. Click empty map or press Esc when done.
           </div>
         )}
         {routeHint && !routeUndo.editSessionActive && (
