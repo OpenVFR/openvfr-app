@@ -1873,22 +1873,10 @@ export function VerticalProfile({
     currentDistNm, currentAltFt, currentVSpeedFpm,
     ticks: trajectoryEndTick ? [...trajectoryTicks, trajectoryEndTick] : trajectoryTicks, getMsa,
   }), [currentDistNm, currentAltFt, currentVSpeedFpm, trajectoryTicks, trajectoryEndTick, getMsa])
-  const trajectoryLine = useMemo(() => {
-    const pts = vspeedTrajectory.points
-    if (pts.length < 2) return { segments: [] as { path: string; below: boolean }[], dots: [] as { x: number; y: number; below: boolean }[], attitude: vspeedTrajectory.attitude, estimated: vspeedTrajectory.estimated }
-    const withXY = pts.map((p) => ({ ...p, x: xOf(p.distNm), y: yOf(p.altFt) }))
-    const segments = withXY.slice(1).map((p, i) => {
-      const prev = withXY[i]
-      return {
-        path: `M${prev.x.toFixed(1)},${prev.y.toFixed(1)} L${p.x.toFixed(1)},${p.y.toFixed(1)}`,
-        below: prev.below || p.below,
-      }
-    })
-    return { segments, dots: withXY.slice(1).map((p) => ({ x: p.x, y: p.y, below: p.below })), attitude: vspeedTrajectory.attitude, estimated: vspeedTrajectory.estimated }
-  }, [vspeedTrajectory, xOf, yOf])
+  // (Pixel mapping and path strings: ownLayer below.)
   const trajectoryAttitudeColor =
-    trajectoryLine.attitude === 'climb'   ? 'rgba(34,197,94,0.85)'  :
-    trajectoryLine.attitude === 'descent' ? 'rgba(248,113,113,0.85)' :
+    vspeedTrajectory.attitude === 'climb'   ? 'rgba(34,197,94,0.85)'  :
+    vspeedTrajectory.attitude === 'descent' ? 'rgba(248,113,113,0.85)' :
                                              'rgba(255,255,255,0.55)'
 
   // Aircraft pitch tilt — nose up on climb, nose down on descent (visual flourish)
@@ -1901,6 +1889,41 @@ export function VerticalProfile({
       a && { x: xOf(a.distNm), y: yOf(a.altFt) }, b && { x: xOf(b.distNm), y: yOf(b.altFt) }, vspeedTrajectory.estimated,
     )
   }, [vspeedTrajectory, xOf, yOf])
+
+  // Aircraft-dependent layer, drawn relative to the aircraft. react-native-svg
+  // on Android re-rasterises an Svg into a fresh bitmap (in software, on the UI
+  // thread) whenever any of its props change: with absolute coordinates that
+  // happened on every position tick (~60 ms on the tablet for the full route
+  // width). Here the Svg content only holds offsets from the aircraft, rounded
+  // to whole pixels, and a plain wrapper View is moved instead: at steady speed,
+  // altitude and vertical speed the Svg props stay identical, so a tick costs a
+  // view move and no redraw.
+  const ownLayer = useMemo(() => {
+    if (currentDistNm == null) return null
+    const ax  = xOf(currentDistNm)
+    const PAD = 24
+    const rx  = (x: number) => Math.round(x - ax) + PAD
+    const ry  = (y: number) => Math.round(y * 2) / 2
+    const ticks = trajectoryTickNms.map((d) => rx(xOf(d)))
+    const pts = vspeedTrajectory.points.length >= 2
+      ? vspeedTrajectory.points.map((p) => ({ x: rx(xOf(p.distNm)), y: ry(yOf(p.altFt)), below: p.below }))
+      : []
+    const segments = pts.slice(1).map((p, i) => ({
+      path: `M${pts[i].x},${pts[i].y} L${p.x},${p.y}`,
+      below: pts[i].below || p.below,
+    }))
+    const dots = pts.slice(1)
+    const maxX = Math.max(PAD, ...ticks, ...dots.map((p) => p.x))
+    return {
+      left: ax - PAD,
+      // Snapped so the Svg size does not change with small speed changes.
+      w: Math.ceil((maxX + PAD) / 64) * 64,
+      ticks, segments, dots,
+      acX: PAD,
+      acY: currentAltFt != null ? ry(yOf(currentAltFt)) : null,
+      pitch: Math.round(pitchDeg),
+    }
+  }, [currentDistNm, currentAltFt, xOf, yOf, trajectoryTickNms, vspeedTrajectory, pitchDeg])
 
   // Category-shaped marker (fixed-wing/glider/helicopter/gyrocopter) instead
   // of always the same generic single-engine-airplane silhouette — see
@@ -2108,12 +2131,15 @@ export function VerticalProfile({
                 />
 
               </Svg>
-              {/* Aircraft-dependent parts live in their own Svg: the (large) static chart above
-                  then never changes, so a position tick only redraws this small layer. */}
-              <Svg width={contentW} height={chartH} style={{ position: 'absolute', left: 0, top: 0 }} pointerEvents="none">
+              {/* Aircraft-dependent parts: own Svg in coordinates relative to the
+                  aircraft (see ownLayer); the wrapper View moves, the Svg content
+                  only changes when speed, altitude or vertical speed change. */}
+              {ownLayer && (
+              <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: ownLayer.w, height: chartH, transform: [{ translateX: ownLayer.left }] }}>
+              <Svg width={ownLayer.w} height={chartH}>
                 {/* ── Trajectory ticks ─────────────────────────────────── */}
-                {trajectoryTickNms.map((d, i) => (
-                  <SvgLine key={`traj-${i}`} x1={xOf(d)} y1={MARGIN_T} x2={xOf(d)} y2={MARGIN_T + plotH}
+                {ownLayer.ticks.map((x, i) => (
+                  <SvgLine key={`traj-${i}`} x1={x} y1={MARGIN_T} x2={x} y2={MARGIN_T + plotH}
                     stroke="rgba(250,204,21,0.70)" strokeWidth={1} strokeDasharray="3,3" />
                 ))}
 
@@ -2125,31 +2151,30 @@ export function VerticalProfile({
                      the planned line's performance-model path (which
                      models the level-off/climb schedule from departure;
                      this one follows the live vertical speed). */}
-                {trajectoryLine.segments.map((seg, i) => (
+                {ownLayer.segments.map((seg, i) => (
                   <Path key={`trajseg-${i}`} d={seg.path} fill="none"
                     stroke={seg.below ? DANGER_COLOR : trajectoryAttitudeColor}
-                    strokeWidth={seg.below ? 2.25 : 1.75} strokeDasharray="1,2" opacity={trajectoryLine.estimated ? 0.6 : 1} />
+                    strokeWidth={seg.below ? 2.25 : 1.75} strokeDasharray="1,2" opacity={vspeedTrajectory.estimated ? 0.6 : 1} />
                 ))}
-                {trajectoryLine.dots.map((p, i) => (
+                {ownLayer.dots.map((p, i) => (
                   <Circle key={`trajdot-${i}`} cx={p.x} cy={p.y} r={p.below ? 3 : 2.5}
-                    fill={p.below ? DANGER_COLOR : trajectoryAttitudeColor} opacity={trajectoryLine.estimated ? 0.6 : 1} />
+                    fill={p.below ? DANGER_COLOR : trajectoryAttitudeColor} opacity={vspeedTrajectory.estimated ? 0.6 : 1} />
                 ))}
 
                 {/* ── Live position marker + aircraft silhouette ──────── */}
-                {currentDistNm != null && (
-                  <SvgLine x1={xOf(currentDistNm)} y1={MARGIN_T} x2={xOf(currentDistNm)} y2={MARGIN_T + plotH}
-                    stroke="rgba(255,255,255,0.40)" strokeWidth={1} strokeDasharray="3,3" />
-                )}
-                {currentDistNm != null && currentAltFt != null && (
-                  <G transform={`translate(${xOf(currentDistNm)}, ${yOf(currentAltFt)}) rotate(${-pitchDeg})`}>
+                <SvgLine x1={ownLayer.acX} y1={MARGIN_T} x2={ownLayer.acX} y2={MARGIN_T + plotH}
+                  stroke="rgba(255,255,255,0.40)" strokeWidth={1} strokeDasharray="3,3" />
+                {ownLayer.acY != null && (
+                  <G transform={`translate(${ownLayer.acX}, ${ownLayer.acY}) rotate(${-ownLayer.pitch})`}>
                     <Circle r={13} fill="rgba(34,197,94,0.18)" />
                     {silhouette.map((part, i) => (
                       <Path key={`ac-part-${i}`} d={part.d} fill={part.fill ?? '#ffffff'} fillOpacity={part.opacity} />
                     ))}
                   </G>
                 )}
-
               </Svg>
+              </View>
+              )}
 
               {/* ── Overlay: obstacle icons, waypoint/axis text (RN Text for crispness) ──
                   Airspace band class/ceiling chips removed for now — no dedup
