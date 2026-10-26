@@ -3922,11 +3922,15 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const leg = unlockedLeg ?? (flyingMode === 'off' ? selectedLeg : null)
     map.setFilter('route-leg-unlocked', ['==', ['get', 'legIndex'], leg ?? -1])
   }, [unlockedLeg, selectedLeg, flyingMode, mapReady])
-  // A selected leg that no longer exists (route shortened), or a flight
-  // starting, closes the leg editor.
+  // A selected leg that no longer exists (route shortened) closes the leg
+  // editor, and so does a flight starting or ending (a fresh context). In
+  // flight the editor can still be opened from the route table: an explicit
+  // edit (level, wind, note), not a drag, so the leg lock does not apply.
   useEffect(() => {
-    if (selectedLeg != null && (flyingMode !== 'off' || selectedLeg > routeWaypoints.length - 2)) setSelectedLeg(null)
-  }, [selectedLeg, flyingMode, routeWaypoints.length])
+    if (selectedLeg != null && selectedLeg > routeWaypoints.length - 2) setSelectedLeg(null)
+  }, [selectedLeg, routeWaypoints.length])
+  const flyingNowForLeg = flyingMode !== 'off'
+  useEffect(() => { setSelectedLeg(null) }, [flyingNowForLeg])
 
   // Add-points mode: line style, midpoint handles; also re-applies the idle
   // cursor for the active tool (see baseCursor).
