@@ -113,6 +113,7 @@ import { iasToTas } from '@open-vfr/shared/airspeed'
 import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
 import { RulerHeaderStart, RulerHeaderEnd, RouteHeaderStart } from '../components/RulerHeaderStats'
 import { flightLogProfile, flownCoordinateAt, flownPointAt } from '@open-vfr/shared/flightLogProfile'
+import { parseLogRoute, type FlightLogRoute } from '@open-vfr/shared/flightLogRoute'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation, useIsFocused } from '@react-navigation/native'
 import IconClipboardList from '@tabler/icons-react-native/IconClipboardList'
@@ -451,6 +452,8 @@ function MapScreenForCountry() {
   const showRulerProfile    = rulerMode && rulerPoints.length === 2
   // The viewed log as a profile path (simplified track) plus every recorded point on its distance axis.
   const selectedLogProfile = useMemo(() => flightLogProfile(selectedTrack), [selectedTrack])
+  // Route planned for the viewed log (stored with it when it was recorded), for the planned-level line.
+  const selectedLogRoute = useMemo(() => parseLogRoute(selectedLog?.routeJson), [selectedLog?.routeJson])
   const showLogProfile  = !showRulerProfile && !!selectedLog && selectedLogProfile != null
   // Gated on routeVisible: an inactive route is hidden from the map, so its
   // profile must close too (also when leaving ruler mode, which would
@@ -777,6 +780,11 @@ function MapScreenForCountry() {
   const { syncState: logSyncState, pushLog } = useFlightLogSync()
   // Set just before an AUTO stop so useFlightLog leaves a parked log to its park timer.
   const deferLogCloseRef = React.useRef(false)
+  // The route being flown, kept with a new flight log (only a route shown on the map counts).
+  const plannedRouteRef = React.useRef<FlightLogRoute | null>(null)
+  plannedRouteRef.current = routeVisible && waypoints.length >= 2
+    ? { waypoints, legOverrides, aircraftId: settings.selectedAircraftId ?? undefined }
+    : null
   const { activeLogId } = useFlightLog(
     flightModeStatus !== 'off' ? activePosition : null,
     flightModeStatus,
@@ -788,6 +796,7 @@ function MapScreenForCountry() {
     deferLogCloseRef,
     // Simulate mode or X-Plane / UDP / WebSocket input (activePosition is not the GPS fix).
     { simulated: simPosition != null || simFlight.position != null, record: settings.recordSimulatedFlights },
+    plannedRouteRef,
   )
   // Finalize + upload logs orphaned by a previous session that was closed
   // mid-flight (otherwise they stay "Recording…" forever, unviewable/unsynced).
@@ -1923,6 +1932,7 @@ function MapScreenForCountry() {
           onClose={clearView}
           closeLabel="Close the flight log"
           jumpToTs={logJumpTs}
+          plannedRoute={selectedLogRoute}
           height={profileHeight}
           onHeightChange={setProfileHeight}
           onHoverDistNm={handleProfileHover}

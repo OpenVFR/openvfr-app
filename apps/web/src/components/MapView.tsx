@@ -1,5 +1,6 @@
 import { trackToGeoJson } from '@open-vfr/shared/flightLogStats'
 import { flightLogProfile, flownCoordinateAt, flownPointAt } from '@open-vfr/shared/flightLogProfile'
+import { parseLogRoute, type FlightLogRoute } from '@open-vfr/shared/flightLogRoute'
 import { FLOWN_COLOR, FLOWN_GAP_COLOR } from '@open-vfr/shared/radarStyle'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as maplibregl from 'maplibre-gl'
@@ -791,6 +792,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Historical log track — declared here so the cursor effect below can reference it
   const [selectedLogId,    setSelectedLogId]    = useState<string | null>(null)
   const [selectedLogTrack, setSelectedLogTrack] = useState<TrackPoint[]>([])
+  // Route planned for the viewed log (stored with it when it was recorded), for the planned-level line.
+  const [selectedLogRoute, setSelectedLogRoute] = useState<FlightLogRoute | null>(null)
   // The viewed log as a profile path (simplified track) plus every recorded point on its distance axis.
   const selectedLogProfile = useMemo(() => flightLogProfile(selectedLogTrack), [selectedLogTrack])
   const closeSelectedLog = useCallback(() => setSelectedLogId(null), [])
@@ -1227,6 +1230,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
     map.setLayoutProperty('terrain-color', 'visibility', 'visible')
   }, [terrainColoring, mapReady, flyingMode, gpsPosition?.altFt, basemapMode])
 
+  // The route being flown, kept with a new flight log (only a route shown on the map counts).
+  const plannedRouteRef = useRef<FlightLogRoute | null>(null)
+  plannedRouteRef.current = routeVisible && routeWaypoints.length >= 2
+    ? { waypoints: routeWaypoints, legOverrides, aircraftId: selectedAircraftId ?? undefined }
+    : null
   // Flight log: records the in-flight track
   useFlightLog(
     flyingMode !== 'off' ? gpsPosition : null,
@@ -1239,6 +1247,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     deferLogCloseRef,
     // Keyboard ('sim') and external ('ext') simulators are not the device GPS.
     { simulated: flyingMode === 'sim' || flyingMode === 'ext', record: recordSimulatedFlights },
+    plannedRouteRef,
   )
 
   // ── ADS-B traffic (OpenSky Network via server SSE) ──────────────────────
@@ -1471,6 +1480,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const src = map.getSource('past-track') as GeoJSONSource | undefined
     if (!selectedLogId) {
       setSelectedLogTrack([])
+      setSelectedLogRoute(null)
       src?.setData({ type: 'FeatureCollection', features: [] })
       return
     }
@@ -1478,6 +1488,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       if (!doc) return
       const track: TrackPoint[] = JSON.parse(doc.trackJson)
       setSelectedLogTrack(track)
+      setSelectedLogRoute(parseLogRoute(doc.routeJson))
       if (track.length < 2) return
       src?.setData(trackToGeoJson(track))
       const lngs = track.map(p => p.lng)
@@ -5063,6 +5074,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
               onHoverDistNm={setLogCursor}
               onClose={closeSelectedLog}
               jumpToTs={logJumpTs}
+              plannedRoute={selectedLogRoute}
             />
           </div>
         ) : routeVisible && routeWaypoints.length >= 2 ? (

@@ -12,8 +12,9 @@ import {
 } from '@open-vfr/shared/radarStyle'
 import {
   flownAltitudeAt, flownIndexAt, flownLineParts, formatElapsed, formatUtcTime, flownGaps, flownSpeedScale, flownSpeedRuns,
-  flownAirspaceAt, flownAirspaceEntries, splitBelowMsaNearFields, type FlownPoint,
+  flownAirspaceAt, flownAirspaceEntries, splitBelowMsaNearFields, flownCoordinateAt, type FlownPoint,
 } from '@open-vfr/shared/flightLogProfile'
+import { plannedAltitudesAlongTrack, type FlightLogRoute } from '@open-vfr/shared/flightLogRoute'
 import { airspaceOutlines, airspaceChips, layoutAirspaceChips } from '@open-vfr/shared/airspaceOutline'
 import {
   cloudLayerPaths, cloudLayerLabel, cloudGlyphHeight, cloudOpacityForOffset, cloudReportOffRouteNm,
@@ -161,6 +162,9 @@ interface Props {
   onClose?: () => void
   /** Flight log: inspect the recorded point closest to this time (an event picked in the Logs list); `n` makes a repeat pick count. */
   jumpToTs?: { ts: number; n: number } | null
+  /** Flight log: the route planned for it (stored with the log); its planned level is drawn
+   *  faintly where the flown track ran within 2 NM of the route. */
+  plannedRoute?: FlightLogRoute | null
 }
 
 /** Per-sample series the chart lines and the hover readout are drawn from. */
@@ -532,7 +536,7 @@ const TAP_MAX_MS = 350
  * while it is moved and after a touch, so it can be read without hovering.
  * Reports the inspected distance for the map marker from the first interaction on.
  */
-const FlownScrubOverlay = memo(function FlownScrubOverlay({ layout: L, series, flown, bands, silhouette, onHoverDistNm, jumpTo }: {
+const FlownScrubOverlay = memo(function FlownScrubOverlay({ layout: L, series, flown, bands, silhouette, onHoverDistNm, jumpTo, planned }: {
   layout: ProfileChartLayout
   series: ProfileSeries
   flown: FlownPoint[]
@@ -542,6 +546,8 @@ const FlownScrubOverlay = memo(function FlownScrubOverlay({ layout: L, series, f
   onHoverDistNm?: (distNm: number | null) => void
   /** Move the aircraft to this point (an event picked in the list); `n` makes a repeat pick count. */
   jumpTo?: { index: number; n: number } | null
+  /** Planned level per series sample (route stored with the log); null off the route. */
+  planned?: (number | null)[] | null
 }) {
   const totalNm = flown.length > 0 ? flown[flown.length - 1].distNm : 0
   // Idle position: the middle of the flight, so the aircraft is visible and clear of the departure clutter.
@@ -687,6 +693,8 @@ const FlownScrubOverlay = memo(function FlownScrubOverlay({ layout: L, series, f
     ]
     if (altKnown && gnd != null) rows.push({ label: 'AGL', value: formatAltitudeFt(alt - gnd), color: GROUND_COLOR })
     if (msa > 0) rows.push({ label: 'MSA', value: formatAltitudeFt(msa), color: altKnown && alt < msa ? DANGER_TEXT : MSA_COLOR })
+    const plan = planned?.[si]
+    if (plan != null) rows.push({ label: 'Plan', value: formatAltitudeFt(plan), color: PLAN_COLOR })
     for (const b of altKnown ? flownAirspaceAt(bands, fp.distNm, alt).slice(0, 2) : []) {
       rows.push({ label: b.class, value: b.name })
     }
@@ -926,7 +934,7 @@ function VirtualRadar({
   waypoints, legOverrides, units = DEFAULT_UNITS, title, onHoverDistNm, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, crosshairDistNm,
   crossTrackNm, weatherStations, airspaceCeilingFt, onLegLevelChange, followAircraft, corridorBand = true,
-  flown, onClose, jumpToTs,
+  flown, onClose, jumpToTs, plannedRoute,
 }: Props) {
   const logMode = flown != null
   const [legDrag, setLegDrag] = useState<LegDragState | null>(null)
@@ -1267,6 +1275,20 @@ function VirtualRadar({
 
   // Flight log: the flown line in continuous stretches plus the recording gaps between them.
   const flownParts = useMemo(() => (flown ? flownLineParts(flown) : null), [flown])
+  // Planned level along the flown track (at the chart's samples), null where the track left the route.
+  const flownPlanned = useMemo(() => {
+    if (!flown || !plannedRoute || !series) return null
+    const samples = series.distNms.map((d) => flownCoordinateAt(flown, d) ?? { lat: 0, lng: 0 })
+    const alts = plannedAltitudesAlongTrack(plannedRoute, samples, perf, aircraftProfile?.cruiseAltFt || undefined)
+    const runs: { distNm: number; altFt: number }[][] = []
+    let cur: { distNm: number; altFt: number }[] = []
+    alts.forEach((a, i) => {
+      if (a == null) { if (cur.length > 1) runs.push(cur); cur = []; return }
+      cur.push({ distNm: series.distNms[i], altFt: a })
+    })
+    if (cur.length > 1) runs.push(cur)
+    return { runs, alts }
+  }, [flown, plannedRoute, series, perf, aircraftProfile?.cruiseAltFt])
   const flownSpeed = useMemo(() => (flown ? { scale: flownSpeedScale(flown), runs: flownSpeedRuns(flown) } : null), [flown])
   const flownGapInfo = useMemo(() => (flown ? flownGaps(flown) : null), [flown])
   const flownEntries = useMemo(() => (flown && profile ? flownAirspaceEntries(flown, profile.airspaceBands) : []), [flown, profile])
@@ -1850,6 +1872,11 @@ function VirtualRadar({
             </g>
           )
         })()}
+        {/* Planned level (route stored with the log), faint and dashed, under the flown line. */}
+        {flownPlanned?.runs.map((run, i) => (
+          <path key={`fplan-${i}`} d={polylinePath(run, L.xOf, L.yOf)} clipPath="url(#plan-clip)" fill="none"
+            stroke={PLAN_COLOR} strokeWidth={2} strokeDasharray="7 4" opacity={0.55} pointerEvents="none" />
+        ))}
         {flownParts && (
           <g clipPath="url(#plan-clip)" pointerEvents="none">
             {flownParts.runs.map((run, i) => {
@@ -1947,7 +1974,7 @@ function VirtualRadar({
         </text>
       </>
     )
-  }, [profile, layout, series, yMax, yMin, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, showMsa, windAloft, iconMarkup, visibleWaypointTicks, units.distance, dragging, obstacleMarks, landmarkMarks, poiMarks, unreached, legSpanList, phaseMarks, flownParts, logMode, windOn, flownSpeed, showSpeed])
+  }, [profile, layout, series, yMax, yMin, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, showMsa, windAloft, iconMarkup, visibleWaypointTicks, units.distance, dragging, obstacleMarks, landmarkMarks, poiMarks, unreached, legSpanList, phaseMarks, flownParts, logMode, windOn, flownSpeed, showSpeed, flownPlanned])
 
   if (!profile || !series || series.distNms.length === 0) {
     // A flight log shows its panel at once: building its profile (map data, terrain) takes a moment.
@@ -2155,7 +2182,7 @@ function VirtualRadar({
                 {live}
               </svg>
               {flown
-                ? <FlownScrubOverlay layout={L} series={series} flown={flown} bands={profile.airspaceBands} silhouette={silhouette} onHoverDistNm={onHoverDistNm} jumpTo={jumpTo} />
+                ? <FlownScrubOverlay layout={L} series={series} flown={flown} bands={profile.airspaceBands} silhouette={silhouette} onHoverDistNm={onHoverDistNm} jumpTo={jumpTo} planned={flownPlanned?.alts} />
                 : <HoverOverlay layout={L} series={series} onHoverDistNm={onHoverDistNm} />}
               {profile && series && !logMode && (
                 <LegDragLayer

@@ -19,6 +19,7 @@
  * Returns `activeLogId` (string | null) so other components can know a log is recording.
  */
 
+import { logRouteJson, type FlightLogRoute } from '@open-vfr/shared/flightLogRoute'
 import { useState, useEffect, useRef } from 'react'
 import { getDb, type TrackPoint, type FlightLogDocType } from '../db'
 import { trimParkedTail, simulatedFixAction } from '@open-vfr/shared/flightLogStats'
@@ -66,6 +67,9 @@ export function useFlightLog(
    *  receives any simulated position is marked `simulated` (kept in this
    *  browser, never synced, left out of totals). */
   simulation:     { simulated: boolean; record: boolean } = { simulated: false, record: false },
+  /** The route planned at the moment (read when a log starts): stored with the log so its
+   *  profile can show the planned level. A ref, so a route edit does not re-run the hook. */
+  plannedRouteRef?: { current: FlightLogRoute | null },
 ): { activeLogId: string | null } {
   const [activeLogId, setActiveLogId] = useState<string | null>(null)
   // Close out logs left in progress by a previous session (tab/app closed
@@ -186,7 +190,7 @@ export function useFlightLog(
           s.dirty         = true
           s.simulated     = sim.simulated
           setActiveLogId(id)
-          createLog(id, now, aircraftId, registration, s.departureIcao, sim.simulated)
+          createLog(id, now, aircraftId, registration, s.departureIcao, sim.simulated, logRouteJson(plannedRouteRef?.current))
         }
       } else {
         s.takeoffTicks = 0
@@ -349,11 +353,13 @@ async function createLog(
   registration: string,
   departureIcao: string,
   simulated:    boolean,
+  routeJson?:   string,
 ): Promise<void> {
   try {
     const db = await getDb()
     await db.flight_logs.insert({
       ...simFlag(simulated),
+      ...(routeJson ? { routeJson } : {}),
       id,
       startedAt,
       endedAt:       0,

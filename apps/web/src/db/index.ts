@@ -277,6 +277,8 @@ export type FlightLogDocType = {
   /** Recorded from a simulator ("Log simulated flights" on): kept in this
    *  browser, never synced, left out of totals. Absent = real flight. */
   simulated?:       boolean
+  /** Planned route at the time of the flight (FlightLogRoute as JSON, @open-vfr/shared/flightLogRoute); absent when none. */
+  routeJson?:       string
 }
 
 export type TrackPoint = {
@@ -290,7 +292,7 @@ export type TrackPoint = {
 
 const flightLogSchema: RxJsonSchema<FlightLogDocType> = {
   title: 'flight_log',
-  version: 1,
+  version: 2,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -306,6 +308,7 @@ const flightLogSchema: RxJsonSchema<FlightLogDocType> = {
     maxAltFt:      { type: 'number' },
     updatedAt:     { type: 'number' },
     simulated:     { type: 'boolean' },
+    routeJson:     { type: 'string', maxLength: 1_048_576 },
   },
   required: ['id', 'startedAt', 'endedAt', 'aircraftId', 'registration',
              'trackJson', 'departureIcao', 'arrivalIcao',
@@ -391,6 +394,8 @@ export function getDb(): Promise<OpenVfrDb> {
           migrationStrategies: {
             // v0 → v1: optional `simulated` (absent = a real flight)
             1: (oldDoc) => ({ ...oldDoc }),
+            // v1 → v2: optional `routeJson` (planned route; absent = none)
+            2: (oldDoc) => ({ ...oldDoc }),
           },
         },
       }).then(() => db)

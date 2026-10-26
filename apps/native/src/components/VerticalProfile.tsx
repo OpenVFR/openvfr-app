@@ -72,8 +72,9 @@ import {
 } from '@open-vfr/shared/radarStyle'
 import {
   flownAltitudeAt, flownIndexAt, flownLineParts, formatElapsed, formatUtcTime, flownGaps, flownSpeedScale, flownSpeedRuns,
-  flownAirspaceAt, flownAirspaceEntries, splitBelowMsaNearFields, type FlownPoint, type FlownBand,
+  flownAirspaceAt, flownAirspaceEntries, splitBelowMsaNearFields, flownCoordinateAt, type FlownPoint, type FlownBand,
 } from '@open-vfr/shared/flightLogProfile'
+import { plannedAltitudesAlongTrack, type FlightLogRoute } from '@open-vfr/shared/flightLogRoute'
 import { createValueStore, useStoreValue, type ValueStore } from '../utils/valueStore'
 import {
   profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, profileYMin, liveAltitudeWindow, declutterMarks, obstacleOpacity, isLimitingObstacle, altitudeTicksFrom, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
@@ -210,6 +211,9 @@ interface Props {
   flown?: FlownPoint[]
   /** Flight log: inspect the recorded point closest to this time (an event picked in the Logs list); `n` makes a repeat pick count. */
   jumpToTs?: { ts: number; n: number } | null
+  /** Flight log: the route planned for it (stored with the log); its planned level is drawn
+   *  faintly where the flown track ran within 2 NM of the route. */
+  plannedRoute?: FlightLogRoute | null
 }
 
 // ---------------------------------------------------------------------------
@@ -661,6 +665,7 @@ const ProfileAStatic = React.memo(function ProfileAStatic({
   logMode,
   flownDraw,
   showSpeed,
+  flownPlannedPath,
   arrElevFt,
   contentW,
   depElevFt,
@@ -701,6 +706,10 @@ const ProfileAStatic = React.memo(function ProfileAStatic({
                 {flownDraw && showSpeed && flownDraw.speed !== '' && (
                   <Path d={flownDraw.speed} clipPath="url(#plan-clip)" fill="none" stroke={FLOWN_SPEED_COLOR} strokeWidth={1.5} strokeDasharray="5,3" opacity={0.85} />
                 )}
+                {/* Flight log: the planned level (route stored with the log), faint and dashed. */}
+                {flownPlannedPath ? (
+                  <Path d={flownPlannedPath} clipPath="url(#plan-clip)" fill="none" stroke={PLAN_COLOR} strokeOpacity={0.55} strokeWidth={2} strokeDasharray="7,4" />
+                ) : null}
                 {/* Flight log: the recorded altitude instead of a plan. */}
                 {flownDraw && flownDraw.runs !== '' && (
                   <>
@@ -1158,13 +1167,15 @@ const FlownAircraftGlyph = React.memo(function FlownAircraftGlyph({ silhouette }
 
 /** Readout of the inspected point, at the top of the chart viewport on the side away from the
  *  aircraft (it covered the aircraft and the end of the line when fixed to the right). */
-function FlownReadout({ store, flown, bands, terrainPts, getMsa, styles, xOf, scrollXRef, viewportW }: {
+function FlownReadout({ store, flown, bands, terrainPts, getMsa, styles, xOf, scrollXRef, viewportW, planned }: {
   store: ValueStore<FlownInspect>
   flown: FlownPoint[]
   bands: FlownBand[]
   xOf: (nm: number) => number
   scrollXRef: { current: number }
   viewportW: number
+  /** Planned level per terrain sample (route stored with the log); null off the route. */
+  planned?: { alts: (number | null)[]; distNms: number[] } | null
   terrainPts: TerrainPoint[]
   getMsa: (nm: number) => number
   styles: ReturnType<typeof makeStyles>
@@ -1194,6 +1205,12 @@ function FlownReadout({ store, flown, bands, terrainPts, getMsa, styles, xOf, sc
   ]
   if (altKnown && terrainPts.length > 0) rows.push({ label: 'AGL', value: `${Math.round(p.altFt - terrainAt(terrainPts, p.distNm))} ft`, color: GROUND_COLOR })
   if (msa > 0) rows.push({ label: 'MSA', value: `${Math.round(msa)} ft`, color: altKnown && p.altFt < msa ? DANGER_TEXT : MSA_COLOR })
+  if (planned && planned.distNms.length > 0) {
+    let k = 0
+    for (let j = 1; j < planned.distNms.length; j++) if (Math.abs(planned.distNms[j] - p.distNm) < Math.abs(planned.distNms[k] - p.distNm)) k = j
+    const plan = planned.alts[k]
+    if (plan != null) rows.push({ label: 'PLAN', value: `${Math.round(plan)} ft`, color: PLAN_COLOR })
+  }
   // Airspace the aircraft was in (limits as drawn: for review, not proof of an infringement).
   for (const b of altKnown ? flownAirspaceAt(bands, p.distNm, p.altFt).slice(0, 2) : []) rows.push({ label: b.class, value: b.name })
   return (
@@ -1215,7 +1232,7 @@ export function VerticalProfile({
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
   crossTrackNm, weatherStations,
   height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm, onLegLevelChange, followAircraft, corridorBand = true,
-  flown, jumpToTs,
+  flown, jumpToTs, plannedRoute,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const logMode = flown != null
@@ -2134,6 +2151,22 @@ export function VerticalProfile({
     }
   }, [flown, terrainPts, msaTerrain, getMsa, totalNm, xOf, yOf, plotH, waypoints, poiSets, profile])
 
+  // Planned level along the flown track (route stored with the log), at the terrain samples;
+  // null where the track left the route.
+  const flownPlanned = useMemo(() => {
+    if (!flown || !plannedRoute || pathSamples.length === 0) return null
+    const samples = pathSamples.map((p) => flownCoordinateAt(flown, p.distNm) ?? { lat: 0, lng: 0 })
+    const alts = plannedAltitudesAlongTrack(plannedRoute, samples, perf, aircraftProfile?.cruiseAltFt || undefined)
+    const runs: { distNm: number; altFt: number }[][] = []
+    let cur: { distNm: number; altFt: number }[] = []
+    alts.forEach((a, i) => {
+      if (a == null) { if (cur.length > 1) runs.push(cur); cur = []; return }
+      cur.push({ distNm: pathSamples[i].distNm, altFt: a })
+    })
+    if (cur.length > 1) runs.push(cur)
+    return { path: runs.map((r) => polylinePath(r, xOf, yOf)).join(' '), alts, distNms: pathSamples.map((p) => p.distNm) }
+  }, [flown, plannedRoute, pathSamples, perf, aircraftProfile?.cruiseAltFt, xOf, yOf])
+
   // Opened from an event in the Logs list: inspect the recorded point at that time (aircraft,
   // readout and map marker there, chart scrolled to it).
   useEffect(() => {
@@ -2468,6 +2501,7 @@ export function VerticalProfile({
                   logMode={logMode}
                   flownDraw={flownDraw}
                   showSpeed={showSpeed}
+                  flownPlannedPath={flownPlanned?.path ?? ''}
                   windAloft={windAloft}
                   arrElevFt={arrElevFt}
                   contentW={contentW}
@@ -2606,7 +2640,7 @@ export function VerticalProfile({
                   <SvgLine x1={1} y1={0} x2={1} y2={plotH} stroke="rgba(250,204,21,0.85)" strokeWidth={1.5} strokeDasharray="4,3" />
                 </Svg>
               </Animated.View>
-              {flown && <FlownReadout store={flownStore} flown={flown} bands={profile.airspaceBands} terrainPts={terrainPts} getMsa={getMsa} styles={styles} xOf={xOf} scrollXRef={scrollXRef} viewportW={chartW} />}
+              {flown && <FlownReadout store={flownStore} flown={flown} bands={profile.airspaceBands} terrainPts={terrainPts} getMsa={getMsa} styles={styles} xOf={xOf} scrollXRef={scrollXRef} viewportW={chartW} planned={flownPlanned} />}
               </View>
               </GestureDetector>
               {/* Pinned Y-axis tick labels — rendered outside the scrollable

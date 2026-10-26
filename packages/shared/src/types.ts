@@ -108,4 +108,6 @@ export type FlightLogDocType = {
    *  simulator), only when the "Record simulated flights" setting is on.
    *  Kept on the device: never synced, left out of totals. Absent = real. */
   simulated?:    boolean
+  /** Planned route at the time of the flight (FlightLogRoute as JSON); absent when none. */
+  routeJson?:    string
 }

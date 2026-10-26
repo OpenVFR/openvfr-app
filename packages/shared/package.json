@@ -37,6 +37,7 @@
     "./flightLogStats": "./src/flightLogStats.ts",
     "./flightLogProfile": "./src/flightLogProfile.ts",
     "./flightLogEvents": "./src/flightLogEvents.ts",
+    "./flightLogRoute": "./src/flightLogRoute.ts",
     "./parkTimeout": "./src/parkTimeout.ts",
     "./otpAutoSubmit": "./src/otpAutoSubmit.ts",
     "./terrainDem": "./src/terrainDem.ts",

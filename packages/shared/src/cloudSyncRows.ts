@@ -80,11 +80,13 @@ export function isSyncableLog(l: { endedAt: number; simulated?: boolean }): bool
   return l.endedAt > 0 && l.simulated !== true
 }
 
-// Upload-only on the server (no UPDATE grant): a completed log never changes.
+// Editable by the owner since migration 20261110000000 (aircraft, merge,
+// planned route); new logs still go up as plain inserts (insertNewRows), so
+// they keep uploading to a server without that migration.
 // Platform list() filters with isSyncableLog.
 export const flightLogRows: RowSpec<FlightLogDocType> = {
   table: 'user_flight_logs',
-  immutable: true,
+  insertNewRows: true,
   uploadBatch: 1,     // tracks can be hundreds of KB each
   downloadBatch: 10,
   version: byId,
@@ -100,6 +102,7 @@ export const flightLogRows: RowSpec<FlightLogDocType> = {
     distanceNm:    Number(r.distance_nm ?? 0),
     maxAltFt:      Number(r.max_alt_ft ?? 0),
     updatedAt:     ts(r.updated_at),
+    ...(typeof r.route_json === 'string' && r.route_json ? { routeJson: r.route_json } : {}),
   } : null,
   toServer: (l, userId) => ({
     id:             l.id,
@@ -116,6 +119,9 @@ export const flightLogRows: RowSpec<FlightLogDocType> = {
     // and the log would never upload.
     max_alt_ft:     l.maxAltFt != null && Number.isFinite(l.maxAltFt) ? Math.round(l.maxAltFt) : null,
     updated_at:     iso(l.updatedAt),
+    // Only when there is a route: a server without the column (before migration
+    // 20261110000000) would refuse every log otherwise.
+    ...(l.routeJson ? { route_json: l.routeJson } : {}),
   }),
 }
 

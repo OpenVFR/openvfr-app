@@ -132,11 +132,12 @@ BEGIN
   INSERT INTO user_flight_logs (id, user_id, ended_at, updated_at) VALUES (lg, 'zz-sync-test-1', now(), now())
     ON CONFLICT DO NOTHING;
   ASSERT (SELECT updated_at FROM user_flight_logs WHERE id = lg) = now() - interval '1 hour', 'duplicate log ignored';
-  BEGIN
-    UPDATE user_flight_logs SET registration = 'X' WHERE id = lg;
-    RAISE EXCEPTION 'UPDATE on user_flight_logs must be denied';
-  EXCEPTION WHEN insufficient_privilege THEN NULL;
-  END;
+  -- Logs are editable by their owner since 20261110000000_flight_log_updates,
+  -- under the same last-write-wins guard as the other tables.
+  UPDATE user_flight_logs SET registration = 'OLD', updated_at = now() - interval '2 hours' WHERE id = lg;
+  ASSERT (SELECT registration FROM user_flight_logs WHERE id = lg) = '', 'older log update skipped';
+  UPDATE user_flight_logs SET registration = 'X', updated_at = now() WHERE id = lg;
+  ASSERT (SELECT registration FROM user_flight_logs WHERE id = lg) = 'X', 'newer log update applied';
   PERFORM sync_delete('user_flight_logs', lg::text, now());
   ASSERT EXISTS (SELECT 1 FROM user_sync_tombstones WHERE table_name = 'user_flight_logs'), 'log tombstone';
   RAISE NOTICE 'ok: flight logs';

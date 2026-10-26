@@ -129,11 +129,12 @@ class Device {
   storage!: SyncStorage
   sync: TableSync<Doc>
 
-  constructor(server: FakeServer, opts: { immutable?: boolean; table?: 'user_routes' | 'user_flight_logs' } = {}) {
+  constructor(server: FakeServer, opts: { immutable?: boolean; insertNewRows?: boolean; table?: 'user_routes' | 'user_flight_logs' } = {}) {
     const table = opts.table ?? 'user_routes'
     const adapter: TableAdapter<Doc> = {
       table,
       immutable: opts.immutable,
+      insertNewRows: opts.insertNewRows,
       uploadBatch: 2,
       list: async () => [...this.docs.values()],
       version: d => ({ id: d.id, updatedAt: d.updatedAt }),
@@ -371,6 +372,40 @@ describe('TableSync two-way', () => {
       expect(await a.sync.hasUnsynced()).toBe(expected === 'error')
       expect([...server.tables.get('user_routes')!.keys()].sort()).toEqual(['r1', 'r3'])
     }
+  })
+
+  it('insertNewRows: new rows go up as inserts, edits as upserts (an insert-only server still takes new rows)', async () => {
+    const server = new FakeServer()
+    const a = new Device(server, { table: 'user_flight_logs', insertNewRows: true })
+    const prefers: string[] = []
+    let insertOnly = true
+    const orig = server.fetch
+    server.fetch = async (url, init) => {
+      if (init?.method === 'POST' && !String(url).includes('/rpc/')) {
+        const prefer = (init.headers as Record<string, string>).Prefer ?? ''
+        prefers.push(prefer.split(',')[0])
+        // A server without the UPDATE grant refuses any upsert (ON CONFLICT DO UPDATE needs it).
+        if (insertOnly && prefer.includes('merge-duplicates')) return new Response('{"code":"42501"}', { status: 403 })
+      }
+      return orig(url, init)
+    }
+    a.edit('l1', 'flight', tick())
+    expect((await a.sync.run()).status).toBe('ok')
+    expect(prefers).toEqual(['resolution=ignore-duplicates'])
+    expect(server.tables.get('user_flight_logs')!.get('l1')!.name).toBe('flight')
+    // Edited while the server is still insert-only: refused (shown as not synced), new rows unaffected.
+    a.edit('l1', 'renamed', tick())
+    a.edit('l2', 'second', tick())
+    await a.sync.run()
+    expect(server.tables.get('user_flight_logs')!.has('l2')).toBe(true)
+    expect(a.sync.rejected.has('l1')).toBe(true)
+    // After the migration: the edit goes up as an upsert.
+    insertOnly = false
+    a.edit('l1', 'renamed again', tick())
+    await a.sync.run()
+    expect(server.tables.get('user_flight_logs')!.get('l1')!.name).toBe('renamed again')
+    expect(prefers.at(-1)).toBe('resolution=merge-duplicates')
+    expect(a.sync.rejected.size).toBe(0)
   })
 
   it('remembers rows the server refused, with the reason, until they upload or are deleted', async () => {

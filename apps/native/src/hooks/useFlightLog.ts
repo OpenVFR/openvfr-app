@@ -9,6 +9,7 @@
  * the repeated comments; only the RxDB→AsyncStorage adapter differs).
  */
 
+import { logRouteJson, type FlightLogRoute } from '@open-vfr/shared/flightLogRoute'
 import { useState, useEffect, useRef } from 'react'
 import * as Crypto from 'expo-crypto'
 import { trimParkedTail, simulatedFixAction } from '@open-vfr/shared/flightLogStats'
@@ -56,6 +57,9 @@ export function useFlightLog(
    *  `record` is on; a log that receives any simulated position is marked
    *  `simulated` (kept on the device, never synced, left out of totals). */
   simulation:     { simulated: boolean; record: boolean } = { simulated: false, record: false },
+  /** The route planned at the moment (read when a log starts): stored with the log so its
+   *  profile can show the planned level. A ref, so a route edit does not re-run the hook. */
+  plannedRouteRef?: { current: FlightLogRoute | null },
 ): { activeLogId: string | null } {
   const [activeLogId, setActiveLogId] = useState<string | null>(null)
 
@@ -135,7 +139,7 @@ export function useFlightLog(
           s.departureIcao = nearestIcao ?? ''; s.dirty = true
           s.simulated = sim.simulated
           setActiveLogId(id)
-          createLog(id, now, aircraftId, registration, s.departureIcao, sim.simulated)
+          createLog(id, now, aircraftId, registration, s.departureIcao, sim.simulated, logRouteJson(plannedRouteRef?.current))
         }
       } else {
         s.takeoffTicks = 0
@@ -239,6 +243,7 @@ export function useFlightLog(
 async function createLog(
   id: string, startedAt: number, aircraftId: string, registration: string, departureIcao: string,
   simulated: boolean,
+  routeJson?: string,
 ): Promise<void> {
   try {
     await flightLogsDb.upsert({
@@ -246,6 +251,7 @@ async function createLog(
       trackJson: '[]', departureIcao, arrivalIcao: '', distanceNm: 0, maxAltFt: 0,
       updatedAt: startedAt,
       ...(simulated ? { simulated: true } : {}),
+      ...(routeJson ? { routeJson } : {}),
     })
   } catch { /* silently swallow — log is nice-to-have, not critical */ }
 }

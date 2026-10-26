@@ -129,6 +129,11 @@ export interface RowSpec<L> {
   /** Server column identifying a row for clients: 'key' for user_settings. */
   idColumn?:      'id' | 'key'
   immutable?:     boolean
+  /** Rows the server does not have yet go up as plain inserts (ON CONFLICT DO NOTHING, which
+   *  needs no UPDATE privilege); only rows it already has are sent as upserts. Lets a table that
+   *  became editable keep accepting new rows from this client on a server that is still
+   *  insert-only (flight logs before migration 20261110000000). */
+  insertNewRows?: boolean
   downloadBatch?: number
   uploadBatch?:   number
   version(l: L): RowVersion
@@ -444,11 +449,23 @@ export class TableSync<L> {
     await this.request('DELETE', `${this.table}?${this.idCol}=eq.${encodeURIComponent(id)}`)
   }
 
-  /** Upload rows; returns how many failed in a way worth retrying. */
-  private async upload(rows: L[]): Promise<number> {
+  /** Upload rows; returns how many failed in a way worth retrying. `onServer`: ids the server
+   *  already has (insertNewRows tables send only those as upserts). */
+  private async upload(rows: L[], onServer?: ReadonlySet<string>): Promise<number> {
+    const { adapter } = this
+    if (adapter.insertNewRows && onServer && !adapter.immutable) {
+      const fresh = rows.filter(r => !onServer.has(adapter.version(r).id))
+      const edited = rows.filter(r => onServer.has(adapter.version(r).id))
+      return (fresh.length ? await this.uploadAs(fresh, 'resolution=ignore-duplicates') : 0)
+        + (edited.length ? await this.uploadAs(edited, 'resolution=merge-duplicates') : 0)
+    }
+    return this.uploadAs(rows, adapter.immutable ? 'resolution=ignore-duplicates' : 'resolution=merge-duplicates')
+  }
+
+  private async uploadAs(rows: L[], resolution: string): Promise<number> {
     const { adapter } = this
     const path = `${adapter.table}?on_conflict=${adapter.idColumn === 'key' ? 'user_id,key' : 'id'}&select=${this.idCol},updated_at`
-    const prefer = `${adapter.immutable ? 'resolution=ignore-duplicates' : 'resolution=merge-duplicates'},return=representation`
+    const prefer = `${resolution},return=representation`
     const timeoutMs = 4 * (this.transport.timeoutMs ?? 30_000)
     let failed = 0
     for (const batch of chunks(rows, adapter.uploadBatch ?? 50)) {
@@ -463,7 +480,7 @@ export class TableSync<L> {
         if (err instanceof OfflineError) throw err
         if (batch.length > 1) {
           // One bad row fails the whole batch: retry singly to isolate it.
-          for (const r of batch) failed += await this.upload([r])
+          for (const r of batch) failed += await this.uploadAs([r], resolution)
           continue
         }
         const id = adapter.version(batch[0]).id
@@ -556,7 +573,7 @@ export class TableSync<L> {
           changedLocal = true
         }
       }
-      const failed = plan.upload.length ? await this.upload(plan.upload) : 0
+      const failed = plan.upload.length ? await this.upload(plan.upload, new Set(server.map(s => s.id))) : 0
 
       if (plan.download.length || plan.upload.length || plan.removeLocal.length) {
         this.log(`down ${plan.download.length}, up ${plan.upload.length - failed}/${plan.upload.length}, removed ${plan.removeLocal.length}`)
