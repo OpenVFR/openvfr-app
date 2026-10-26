@@ -267,4 +267,15 @@
   font-size: 11px;
 }
 
+/* The chart stays dark in every theme and the readout's row labels use the chart's
+   line colours (plan, flown, MSA, ground), which are made for a dark background.
+   In the light theme the readout would turn white and those labels unreadable,
+   so it keeps the dark look of the chart it sits on. */
+:global(:root[data-theme="light"]) .tooltip {
+  background: rgba(12, 16, 26, 0.95);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+:global(:root[data-theme="light"]) .tooltipLabel { color: #b8c0cc; }
+:global(:root[data-theme="light"]) .tooltipVal { color: #e8edf5; }
+
 .projToggleBtn:disabled { opacity: 0.35; cursor: default; }
