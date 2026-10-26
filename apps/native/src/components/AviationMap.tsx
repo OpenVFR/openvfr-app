@@ -71,6 +71,7 @@ import { useWindGrid } from '../hooks/useWindGrid'
 import { useResilientTileData } from '../hooks/useResilientTileData'
 import { LogManager } from '@maplibre/maplibre-react-native'
 import { useStoreValue, type ValueStore } from '../utils/valueStore'
+import { FLOWN_COLOR, FLOWN_GAP_COLOR } from '@open-vfr/shared/radarStyle'
 
 // Suppress the PMTiles header-race transient error at cold start -- same
 // benign race web's MapView.tsx suppresses in its map.on('error', ...)
@@ -216,10 +217,10 @@ export type AviationMapProps = {
   activeRouteId?: string
   /** Changes whenever a whole route is loaded or re-shown: fit the camera to it. */
   routeFitNonce?: number
-  /** Map-side crosshair marker driven by a chart hover/scrub (VerticalProfile
-   *  or PastTrackChart touch-drag) — [lng, lat], or null to hide. A store so
+  /** Map-side marker driven by a chart scrub (VerticalProfile touch-drag); see
+   *  ProfileCursor. null hides it. A store so
    *  scrub updates re-render only the marker layer, not the whole map. */
-  profileCursorStore?: ValueStore<[number, number] | null>
+  profileCursorStore?: ValueStore<ProfileCursor | null>
   /** 'time' = marks at 1/3/5 min ahead; 'nm' = marks at 1/3/5 NM ahead */
   trajectoryMode?: 'time' | 'nm'
   onFeatureTap?:  (features: Feature[], lngLat: [number, number]) => void
@@ -691,20 +692,53 @@ export function clearProtomapsStyleCache() { _protomapsStyle = null }
 // math needed.
 /** Yellow marker for a chart scrub position. Subscribes to the cursor store
  *  itself so scrub updates re-render only this source, not AviationMap. */
-function ProfileCursorLayer({ store }: { store: ValueStore<[number, number] | null> }) {
+/** Map marker for a point scrubbed in the vertical profile. `trackDeg` set = a flight-log
+ *  inspection: drawn as the aircraft pointing along the recorded track, on a yellow halo so it
+ *  is not mistaken for the live position. Otherwise a plain yellow ring. */
+export type ProfileCursor = { lngLat: [number, number]; trackDeg?: number }
+
+function ProfileCursorLayer({ store }: { store: ValueStore<ProfileCursor | null> }) {
   const cursor = useStoreValue(store)
   if (!cursor) return null
+  const aircraft = cursor.trackDeg != null
   return (
-    <GeoJSONSource id="profile-cursor-src" data={{ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: cursor } }] }}>
+    <GeoJSONSource id="profile-cursor-src" data={{ type: 'FeatureCollection', features: [{ type: 'Feature', properties: { aircraft: aircraft ? 1 : 0, trackDeg: cursor.trackDeg ?? 0 }, geometry: { type: 'Point', coordinates: cursor.lngLat } }] }}>
+      {/* Both layers always mounted (filtered), never toggled by remounting: MapLibre RN throws on a changed id. */}
       <Layer
         id="profile-cursor-circle"
         type="circle"
+        filter={['==', ['get', 'aircraft'], 0]}
         paint={{
           'circle-radius': 8,
           'circle-color': '#facc15',
           'circle-opacity': 0.35,
           'circle-stroke-width': 2,
           'circle-stroke-color': '#facc15',
+        }}
+      />
+      <Layer
+        id="profile-cursor-aircraft-halo"
+        type="circle"
+        filter={['==', ['get', 'aircraft'], 1]}
+        paint={{
+          'circle-radius': 16,
+          'circle-color': '#facc15',
+          'circle-opacity': 0.25,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#facc15',
+        }}
+      />
+      <Layer
+        id="profile-cursor-aircraft"
+        type="symbol"
+        filter={['==', ['get', 'aircraft'], 1]}
+        layout={{
+          'icon-image':              'aircraft-icon',
+          'icon-rotate':             ['get', 'trackDeg'],
+          'icon-rotation-alignment': 'map',
+          'icon-allow-overlap':      true,
+          'icon-ignore-placement':   true,
+          'icon-size':               0.6,
         }}
       />
     </GeoJSONSource>
@@ -2985,13 +3019,13 @@ export function AviationMap({
               id="past-track-line"
               type="line"
               filter={['==', ['get', 'kind'], 'track']}
-              paint={{ 'line-color': '#a78bfa', 'line-width': 3, 'line-opacity': 0.85 }}
+              paint={{ 'line-color': FLOWN_COLOR, 'line-width': 3, 'line-opacity': 0.85 }}
             />
             <Layer
               id="past-track-gap-line"
               type="line"
               filter={['==', ['get', 'kind'], 'gap']}
-              paint={{ 'line-color': '#ef4444', 'line-width': 3, 'line-opacity': 0.9, 'line-dasharray': [1.5, 2] }}
+              paint={{ 'line-color': FLOWN_GAP_COLOR, 'line-width': 3, 'line-opacity': 0.9, 'line-dasharray': [1.5, 2] }}
             />
           </GeoJSONSource>
         )}

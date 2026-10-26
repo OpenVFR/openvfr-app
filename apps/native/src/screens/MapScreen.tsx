@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as KeepAwake from 'expo-keep-awake'
 import type { Feature, FeatureCollection, Point } from 'geojson'
 
-import { AviationMap }       from '../components/AviationMap'
+import { AviationMap, type ProfileCursor } from '../components/AviationMap'
 import { MapDisplaySheet, LAYER_DEFAULTS } from '../components/MapDisplaySheet'
 import { VicinityBriefSheet } from '../components/VicinityBriefSheet'
 import { FindDestinationSheet } from '../components/FindDestinationSheet'
@@ -112,7 +112,7 @@ import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
 import { iasToTas } from '@open-vfr/shared/airspeed'
 import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
 import { RulerHeaderStart, RulerHeaderEnd, RouteHeaderStart } from '../components/RulerHeaderStats'
-import { PastTrackChart } from '../components/PastTrackChart'
+import { flightLogProfile, flownCoordinateAt, flownPointAt } from '@open-vfr/shared/flightLogProfile'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation } from '@react-navigation/native'
 import IconClipboardList from '@tabler/icons-react-native/IconClipboardList'
@@ -140,7 +140,6 @@ import { useAutoCruiseLevel } from '../hooks/useAutoCruiseLevel'
 import { useAltitudeSource } from '../hooks/useAltitudeSource'
 import { useVarioContext } from '../context/VarioContext'
 import { useFlightLogViewContext } from '../context/FlightLogViewContext'
-import type { TrackPoint } from '../types/db'
 import { useWind }           from '../hooks/useWind'
 import { useSimFlight }      from '../hooks/useSimFlight'
 import { FlightModeSheet, type FlightModeStatus } from '../components/FlightModeSheet'
@@ -202,29 +201,6 @@ function notamItemRing(n: NotamItem): number[][] | undefined {
   return undefined
 }
 
-/** Interpolate a lat/lng at a given cumulative distance (NM) along a raw GPS
- *  track (not a RouteWaypoint route — that's what coordinateAlongRouteNm is
- *  for). Mirrors web's local coordAlongTrack in MapView.tsx. Used to place
- *  the profile-cursor map marker while scrubbing a viewed flight log. */
-function coordAlongTrack(track: TrackPoint[], targetNm: number): { lng: number; lat: number } {
-  const NM_PER_DEG_LAT = 60.0
-  let cumDist = 0
-  for (let i = 1; i < track.length; i++) {
-    const dLat = (track[i].lat - track[i - 1].lat) * NM_PER_DEG_LAT
-    const dLng = (track[i].lng - track[i - 1].lng) * NM_PER_DEG_LAT *
-      Math.cos((track[i - 1].lat + track[i].lat) * 0.5 * Math.PI / 180)
-    const segDist = Math.sqrt(dLat * dLat + dLng * dLng)
-    if (cumDist + segDist >= targetNm) {
-      const t = segDist > 0 ? (targetNm - cumDist) / segDist : 0
-      return {
-        lat: track[i - 1].lat + t * (track[i].lat - track[i - 1].lat),
-        lng: track[i - 1].lng + t * (track[i].lng - track[i - 1].lng),
-      }
-    }
-    cumDist += segDist
-  }
-  return { lat: track[track.length - 1].lat, lng: track[track.length - 1].lng }
-}
 
 // Stable empty input for the ruler's useWeatherAlongRoute instance while the
 // ruler profile is hidden -- a fresh [] per render would re-run its effect.
@@ -239,6 +215,9 @@ const NO_ALERTS: never[] = []
  * cleanly. The picker is locked in flight (utils/flightActive), so this
  * never remounts mid-flight.
  */
+/** A viewed flight log has no planned levels. Stable reference: the profile memoises on it. */
+const NO_LEG_OVERRIDES: never[] = []
+
 export function MapScreen() {
   const { country, ready } = useActiveCountry()
   if (!ready) return null
@@ -469,12 +448,14 @@ function MapScreenForCountry() {
   // -- an active ad-hoc measurement is a more deliberate, momentary action
   // than reviewing a log or the standing planned route.
   const showRulerProfile    = rulerMode && rulerPoints.length === 2
-  const showPastTrackChart  = !showRulerProfile && !!selectedLog && selectedTrack.length >= 2
+  // The viewed log as a profile path (simplified track) plus every recorded point on its distance axis.
+  const selectedLogProfile = useMemo(() => flightLogProfile(selectedTrack), [selectedTrack])
+  const showLogProfile  = !showRulerProfile && !!selectedLog && selectedLogProfile != null
   // Gated on routeVisible: an inactive route is hidden from the map, so its
   // profile must close too (also when leaving ruler mode, which would
   // otherwise fall through to the hidden route's chart).
-  const showPlannedProfile   = !showRulerProfile && !showPastTrackChart && routeVisible && waypoints.length >= 2
-  const showLookaheadProfile = !showRulerProfile && !showPastTrackChart && !showPlannedProfile && lookaheadWaypoints.length >= 2
+  const showPlannedProfile   = !showRulerProfile && !showLogProfile && routeVisible && waypoints.length >= 2
+  const showLookaheadProfile = !showRulerProfile && !showLogProfile && !showPlannedProfile && lookaheadWaypoints.length >= 2
 
   // Aircraft's live progress along the synthesised look-ahead route.
   // Previously hardcoded to 0 when passed to VerticalProfile, which pinned
@@ -507,12 +488,12 @@ function MapScreenForCountry() {
 
   const [profileHeight, setProfileHeight] = useState(DEFAULT_CHART_H)
   const [mapAreaH, setMapAreaH] = useState<number | null>(null)
-  // Chart-scrub → map crosshair sync (VerticalProfile/PastTrackChart touch-drag)
+  // Chart-scrub → map crosshair sync (VerticalProfile touch-drag)
   // Map-side marker for a chart scrub, as [lng, lat]. Kept in a store, not
   // state: it changes several times a second while a chart is dragged, and
   // as MapScreen state every change re-rendered the whole screen. Only
   // AviationMap's cursor layer subscribes.
-  const profileCursorStore = useMemo(() => createValueStore<[number, number] | null>(null), [])
+  const profileCursorStore = useMemo(() => createValueStore<ProfileCursor | null>(null), [])
   // Map bearing for the compass button (a store: it changes on every frame of a
   // rotate gesture and only the button needs it) and a request counter that
   // sends the map back to north.
@@ -532,10 +513,10 @@ function MapScreenForCountry() {
   const PROFILE_CHROME_H = 22 + 34  // drag handle + header row
   // Nothing stacked under the map -> it also bleeds under the bottom inset.
   const bottomStackPresent = flying || simFlight.active
-    || showRulerProfile || showPlannedProfile || showLookaheadProfile || showPastTrackChart
+    || showRulerProfile || showPlannedProfile || showLookaheadProfile || showLogProfile
   const bottomStackH = GAUGES_BAR_H
     + (simFlight.active ? SIM_PANEL_H : 0)
-    + ((showRulerProfile || showPlannedProfile || showLookaheadProfile || showPastTrackChart) ? PROFILE_CHROME_H + profileHeight : 0)
+    + ((showRulerProfile || showPlannedProfile || showLookaheadProfile || showLogProfile) ? PROFILE_CHROME_H + profileHeight : 0)
   // Right-side button column/row anchored from the TOP (below the status
   // bar / notch), stacking down in portrait or leftward in landscape from
   // that fixed upper-right point -- rather than bottom-anchored and growing
@@ -1353,7 +1334,7 @@ function MapScreenForCountry() {
   }), [userWaypoints])
 
   // Map-line coords for the viewed flight log (selectedLog/selectedTrack
-  // sourced above near showPastTrackChart)
+  // sourced above near showLogProfile)
   const pastTrack = useMemo<[number, number][]>(
     () => selectedTrack.map(p => [p.lng, p.lat] as [number, number]),
     [selectedTrack],
@@ -1361,27 +1342,29 @@ function MapScreenForCountry() {
   const pastTrackGeoJson = useMemo(() => trackToGeoJson(selectedTrack) as FeatureCollection, [selectedTrack])
 
   // Chart scrub distance (NM) -> map marker, along whichever line the visible
-  // chart shows: ruler, viewed past log (mirrors showPastTrackChart's own
+  // chart shows: ruler, viewed past log (mirrors showLogProfile's own
   // priority), look-ahead, then the planned route.
-  const profileCursorFor = useCallback((nm: number): [number, number] | null => {
+  const profileCursorFor = useCallback((nm: number): ProfileCursor | null => {
     if (showRulerProfile) {
       const c = coordinateAlongRouteNm(rulerPoints, nm)
-      return [c.lng, c.lat]
+      return { lngLat: [c.lng, c.lat] }
     }
-    if (showPastTrackChart) {
-      const c = coordAlongTrack(selectedTrack, nm)
-      return [c.lng, c.lat]
+    if (showLogProfile && selectedLogProfile) {
+      // Flight log: the aircraft at the inspected point, pointing along the recorded track.
+      const c = flownCoordinateAt(selectedLogProfile.points, nm)
+      const p = flownPointAt(selectedLogProfile.points, nm)
+      return c ? { lngLat: [c.lng, c.lat], trackDeg: p?.trkDeg ?? 0 } : null
     }
     if (showLookaheadProfile && lookaheadWaypoints.length >= 2) {
       const c = coordinateAlongRouteNm(lookaheadWaypoints, nm)
-      return [c.lng, c.lat]
+      return { lngLat: [c.lng, c.lat] }
     }
     if (showPlannedProfile && waypoints.length >= 2) {
       const c = coordinateAlongRouteNm(waypoints, nm)
-      return [c.lng, c.lat]
+      return { lngLat: [c.lng, c.lat] }
     }
     return null
-  }, [showRulerProfile, rulerPoints, showPastTrackChart, selectedTrack, showLookaheadProfile, lookaheadWaypoints, showPlannedProfile, waypoints])
+  }, [showRulerProfile, rulerPoints, showLogProfile, selectedLogProfile, showLookaheadProfile, lookaheadWaypoints, showPlannedProfile, waypoints])
   const handleProfileHover = useCallback((nm: number | null) => {
     profileCursorStore.set(nm == null ? null : profileCursorFor(nm))
   }, [profileCursorStore, profileCursorFor])
@@ -1925,9 +1908,18 @@ function MapScreenForCountry() {
         />
       )}
 
-      {showPastTrackChart && (
-        <PastTrackChart
-          track={selectedTrack}
+      {showLogProfile && selectedLogProfile && (
+        <VerticalProfile
+          corridorBand={false}
+          waypoints={selectedLogProfile.path}
+          legOverrides={NO_LEG_OVERRIDES}
+          flown={selectedLogProfile.points}
+          units={settings.units}
+          airspaceCeilingFt={settings.airspaceCeilingFt}
+          msaMargins={settings.msaMargins}
+          aircraftProfile={aircraftProfile}
+          onClose={clearView}
+          closeLabel="Close the flight log"
           height={profileHeight}
           onHeightChange={setProfileHeight}
           onHoverDistNm={handleProfileHover}
@@ -1937,7 +1929,7 @@ function MapScreenForCountry() {
       {/* Convenience "show profile" arrow — only visible when the panel is
           collapsed, since dragging back up from a fully-collapsed 0px handle
           can be fiddly to grab precisely. */}
-      {(showRulerProfile || showPlannedProfile || showLookaheadProfile || showPastTrackChart) && profileHeight <= COLLAPSE_THRESHOLD && (
+      {(showRulerProfile || showPlannedProfile || showLookaheadProfile || showLogProfile) && profileHeight <= COLLAPSE_THRESHOLD && (
         <TouchableOpacity
           style={[styles.showProfileBtn, { bottom: GAUGES_BAR_H + (simFlight.active ? SIM_PANEL_H : 0) + scaledTheme.space1 }]}
           onPress={() => setProfileHeight(DEFAULT_CHART_H)}
