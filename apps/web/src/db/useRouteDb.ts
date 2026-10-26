@@ -11,7 +11,9 @@ const LS_KEY   = 'openvfr.route'
 type WaypointSetter = (updater: RouteWaypoint[] | ((prev: RouteWaypoint[]) => RouteWaypoint[])) => void
 type OverrideSetter = (updater: LegOverride[]  | ((prev: LegOverride[])  => LegOverride[]))  => void
 
-interface RouteSnapshot { waypoints: RouteWaypoint[]; legOverrides: LegOverride[] }
+/** `linkedRouteId`: the saved route the working route was linked to at the
+ *  time, so undoing "Close route" brings the link back too. */
+interface RouteSnapshot { waypoints: RouteWaypoint[]; legOverrides: LegOverride[]; linkedRouteId?: string }
 
 /** Undo/redo for edits to the working route. History is cleared whenever a
  *  different route is loaded, so undo never crosses into another route
@@ -73,16 +75,20 @@ export function usePersistedRoute(): [
   const sessionArmedRef = useRef(false)
   const [editSessionActive, setEditSessionActive] = useState(false)
 
+  const currentSnap = (): RouteSnapshot => ({
+    waypoints: waypointsRef.current, legOverrides: legOverridesRef.current, linkedRouteId: activeRouteIdRef.current,
+  })
+
   const recordHistory = useCallback(() => {
     if (sessionArmedRef.current && !sessionRef.current) {
       sessionRef.current = {
-        snap: { waypoints: waypointsRef.current, legOverrides: legOverridesRef.current },
+        snap: currentSnap(),
         history: historyRef.current,
       }
       setEditSessionActive(true)
     }
     historyRef.current = recordChange(historyRef.current,
-      { waypoints: waypointsRef.current, legOverrides: legOverridesRef.current }, Date.now())
+      currentSnap(), Date.now())
     setHistoryVersion(v => v + 1)
   }, [])
 
@@ -172,19 +178,26 @@ export function usePersistedRoute(): [
     legOverridesRef.current = snap.legOverrides
     setWaypointsState(snap.waypoints)
     setLegOverridesState(snap.legOverrides)
+    // Undo/redo only ever restores a link, never removes one: an unlinked
+    // route that gets back a snapshot taken while linked (undoing "Close
+    // route") is linked again; a route saved since keeps its new link.
+    if (snap.linkedRouteId && !activeRouteIdRef.current) {
+      activeRouteIdRef.current = snap.linkedRouteId
+      setActiveRouteIdState(snap.linkedRouteId)
+    }
     persist(snap.waypoints, snap.legOverrides)
     setHistoryVersion(v => v + 1)
   }, [persist])
 
   const undo = useCallback(() => {
-    const r = undoStep(historyRef.current, { waypoints: waypointsRef.current, legOverrides: legOverridesRef.current })
+    const r = undoStep(historyRef.current, currentSnap())
     if (!r) return
     historyRef.current = r.history
     applySnapshot(r.state)
   }, [applySnapshot])
 
   const redo = useCallback(() => {
-    const r = redoStep(historyRef.current, { waypoints: waypointsRef.current, legOverrides: legOverridesRef.current })
+    const r = redoStep(historyRef.current, currentSnap())
     if (!r) return
     historyRef.current = r.history
     applySnapshot(r.state)

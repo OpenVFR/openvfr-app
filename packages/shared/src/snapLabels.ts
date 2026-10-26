@@ -6,7 +6,7 @@
 
 /** Label for the always-available "use the exact point you dropped/tapped,
  *  don't snap to anything nearby" entry in the disambiguation picker. */
-export const CURRENT_POSITION_LABEL = 'Current position'
+export const CURRENT_POSITION_LABEL = 'This exact point'
 
 /** Readable label for an obstacle's `kind` property (se-obstacles.geojson). */
 export const OBSTACLE_KIND_LABEL: Record<string, string> = {

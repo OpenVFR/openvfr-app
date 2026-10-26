@@ -529,7 +529,7 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, waypoints, tafWarn
            of the point it leads to. A table, so columns size to their content
            and never overlap; the name column takes what is left (ellipsis).
            Optional columns drop out as the pane narrows (container queries
-           in the CSS): ETA first, then TT, then WCA. */
+           in the CSS): ETA first, then TT, then MH. */
         <div className={legs.length > 10 ? css.plogScroll : undefined}>
           <table className={css.plogTable}>
             <thead>
@@ -537,7 +537,7 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, waypoints, tafWarn
                 <th className={css.thWp} title="Route point">Waypoint</th>
                 <th title="Leg properties" />
                 <th className={css.thNum} title="Magnetic track, °">MT</th>
-                {hasAnyWca && <th className={`${css.thNum} ${css.colWca}`} title="Wind correction angle, ° (heading = MT + WCA)">WCA</th>}
+                {hasAnyWca && <th className={`${css.thNum} ${css.colWca}`} title="Magnetic heading to fly, ° (MT corrected for wind; the WCA is in the cell's tooltip)">MH</th>}
                 <th className={`${css.thNum} ${css.colTt}`} title="True track, °">TT</th>
                 <th className={css.thNum} title={`Leg distance, ${distLabel(units.distance)}`}>{distLabel(units.distance)}</th>
                 <th className={css.thNum} title="Planned altitude, ft (the ALT row below is the alternate aerodrome)">Lvl</th>
@@ -591,9 +591,12 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, waypoints, tafWarn
                       title={leg ? trackTip(leg.magBrg, leg.brg, legWcas[i]) : undefined}
                     >{leg ? String(Math.round(leg.magBrg)).padStart(3, '0') : ''}</td>
                     {hasAnyWca && (
-                      <td className={`${css.wca} ${css.colWca}`}>
-                        {leg && legWcas[i] != null && Math.abs(legWcas[i]!) >= 1
-                          ? (legWcas[i]! > 0 ? `+${legWcas[i]}` : String(legWcas[i]))
+                      <td
+                        className={`${css.wca} ${css.colWca}`}
+                        title={leg && legWcas[i] != null ? `Wind correction ${legWcas[i]! > 0 ? '+' : ''}${legWcas[i]}°` : undefined}
+                      >
+                        {leg && legWcas[i] != null
+                          ? String(((Math.round(leg.magBrg + legWcas[i]!) % 360) + 360) % 360).padStart(3, '0')
                           : ''}
                       </td>
                     )}

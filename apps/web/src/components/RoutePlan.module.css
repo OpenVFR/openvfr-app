@@ -158,7 +158,7 @@
 .btnCell { width: 14px; padding: 0 2px; text-align: center; }
 
 /* Narrower pane: ETA first (ETE + departure time give it, and widening
-   the pane shows it), then true track, then WCA go. */
+   the pane shows it), then true track, then magnetic heading go. */
 @container routeplan (max-width: 380px) { .colEta { display: none; } }
 @container routeplan (max-width: 330px) { .colTt { display: none; } }
 @container routeplan (max-width: 290px) { .colWca { display: none; } }
@@ -215,13 +215,14 @@
 }
 
 /* Wind Correction Angle — shown between °M and °T when global/per-leg wind is set */
+/* Magnetic heading (MT + WCA), shown when wind is known. */
 .wca {
   color: var(--accent-orange);
-  font-size: 10px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
-  padding: 5px 2px;
+  padding: 5px 4px;
   white-space: nowrap;
-  text-align: center;
+  text-align: right;
 }
 
 .dist {

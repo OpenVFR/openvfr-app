@@ -3935,13 +3935,17 @@ export default function MapView({ auth }: { auth: AuthState }) {
     if (map) map.getCanvas().style.cursor = baseCursor()
     if (map && mapReady) {
       const editMode = extending
-      // Dashed while adding points, solid when viewing the route.
-      map.setPaintProperty('route-line-layer', 'line-dasharray', editMode ? [4, 2] : undefined)
+      // Dashed while adding points or while route changes are not yet
+      // applied (the Editing route banner shows) -- a draft look that matches
+      // the banner; solid once applied or cancelled. Not in flight, where the
+      // line must stay as easy to see as possible.
+      const draft = editMode || (routeUndo.editSessionActive && flyingMode === 'off')
+      map.setPaintProperty('route-line-layer', 'line-dasharray', draft ? [4, 2] : undefined)
       // Midpoint handles and leg labels are mutually exclusive.
       map.setLayoutProperty('route-midpoints-layer', 'visibility', editMode ? 'visible' : 'none')
       for (const id of LEG_LABEL_LAYERS) map.setLayoutProperty(id, 'visibility', editMode ? 'none' : 'visible')
     }
-  }, [extending, rulerMode, placingUserWp, mapReady])
+  }, [extending, rulerMode, placingUserWp, mapReady, routeUndo.editSessionActive, flyingMode])
 
   // Sync route waypoints → MapLibre GeoJSON sources.
   useEffect(() => {

@@ -5,6 +5,7 @@ import RoutePlan from './RoutePlan'
 import PreflightWarnings from './PreflightWarnings'
 import RouteLibrary from './RouteLibrary'
 import AircraftLibrary from './AircraftLibrary'
+import AircraftChip from './AircraftChip'
 import FuelPlan from './FuelPlan'
 import FindFeature, { type FindResult } from './FindFeature'
 import AccountBadge from './AccountBadge'
@@ -131,7 +132,9 @@ type Section = keyof typeof SECTION_LABELS
 
 const MIN_WIDTH = 220
 const MAX_WIDTH = 520
-const DEFAULT_WIDTH = 272
+// Wide enough for the route table to show waypoint, MT, MH, distance, level
+// and ETE side by side (narrower panes drop MH; see RoutePlan.module.css).
+const DEFAULT_WIDTH = 300
 
 const LS_OPEN     = 'ovfr:drawer:open'
 const LS_WIDTH    = 'ovfr:drawer:width'
@@ -301,16 +304,7 @@ function SideDrawer({
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {/* The aircraft sets the plan's speeds, fuel and levels, so it
                     sits with the route; the Aircraft section manages profiles. */}
-                <span
-                  role="button"
-                  className={`${css.acChip}${selectedAircraftProfile ? '' : ` ${css.acChipNone}`}`}
-                  title={selectedAircraftProfile
-                    ? `Aircraft for this plan: ${selectedAircraftProfile.name}. Click to change.`
-                    : 'No aircraft: pick one for speeds, fuel and times en route'}
-                  onClick={(e) => { e.stopPropagation(); showAircraft() }}
-                >
-                  {selectedAircraftProfile ? (selectedAircraftProfile.registration || selectedAircraftProfile.name) : 'No aircraft'} {'\u25be'}
-                </span>
+                <AircraftChip selected={selectedAircraftProfile} onSelect={onSelectAircraft} onManage={showAircraft} />
                 {extending && (
                   <span
                     role="button"
