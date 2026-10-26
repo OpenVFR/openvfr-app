@@ -157,9 +157,10 @@
 .plogTable tbody tr:first-child { border-top: none; }
 .btnCell { width: 20px; padding: 0 2px; }
 
-/* Narrower pane: true track first, then ETA, then WCA go. */
-@container routeplan (max-width: 380px) { .colTt { display: none; } }
-@container routeplan (max-width: 330px) { .colEta { display: none; } }
+/* Narrower pane: ETA first (ETE + departure time give it, and widening
+   the pane shows it), then true track, then WCA go. */
+@container routeplan (max-width: 380px) { .colEta { display: none; } }
+@container routeplan (max-width: 330px) { .colTt { display: none; } }
 @container routeplan (max-width: 290px) { .colWca { display: none; } }
 
 .rowActive {

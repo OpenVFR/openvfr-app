@@ -497,7 +497,7 @@ export default function RoutePlan({ waypoints, tafWarnIcaos = [], legOverrides, 
            of the point it leads to. A table, so columns size to their content
            and never overlap; the name column takes what is left (ellipsis).
            Optional columns drop out as the pane narrows (container queries
-           in the CSS): TT first, then ETA, then WCA. */
+           in the CSS): ETA first, then TT, then WCA. */
         <div className={legs.length > 10 ? css.plogScroll : undefined}>
           <table className={css.plogTable}>
             <thead>
