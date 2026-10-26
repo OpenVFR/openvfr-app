@@ -12,7 +12,7 @@
  * done by react-native-passkey against the same server endpoints.
  */
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authClient } from '../utils/authClient'
 import { getSessionToken, clearSessionToken } from '../utils/sessionToken'
@@ -187,7 +187,15 @@ export function useAuth() {
     return true
   }, [])
 
+  // One sign-out at a time (a repeated tap would wipe and stop sync in parallel).
+  const signingOutRef = useRef(false)
   const signOut = useCallback(async () => {
+    if (signingOutRef.current) return
+    signingOutRef.current = true
+    try { await signOutOnce() } finally { signingOutRef.current = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  const signOutOnce = async () => {
     console.log('[auth] signOut')
     // Offline (or the server failing) must not block signing out locally:
     // a rejected request used to skip everything below, leaving the token
@@ -204,7 +212,7 @@ export function useAuth() {
     await stopCloudSync()
     await wipePrivateLocalData()
     setState({ status: 'unauthenticated' })
-  }, [])
+  }
 
   // Request permanent account deletion, required by Apple App Review Guideline
   // 5.1.1(v) and Google Play's account-deletion requirement (see apps/api/src

@@ -320,9 +320,12 @@ export async function stopCloudSync(): Promise<void> {
 
 /** Try to send everything; true when nothing local is left unsynced. */
 export async function flushBeforeSignOut(): Promise<boolean> {
-  if (!coordinator) return true
-  await coordinator.syncAll()
-  return !(await coordinator.hasUnsynced())
+  // Held locally: a sign-out that finished meanwhile stops sync and clears the
+  // module variable while this one is still waiting.
+  const c = coordinator
+  if (!c) return true
+  await c.syncAll()
+  return !(await c.hasUnsynced())
 }
 
 /** Run a round now (all tables, or one). */

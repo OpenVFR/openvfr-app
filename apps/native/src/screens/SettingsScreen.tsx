@@ -99,8 +99,15 @@ export function SettingsScreen() {
   // Sign-out wipes this device's copy of routes, aircraft, waypoints and
   // flight logs. Send what has not reached the server first, and ask before
   // throwing away anything that still could not be sent (e.g. offline).
+  // Sending unsynced data first can take a few seconds: show it, and ignore
+  // repeated taps meanwhile (each used to start its own sign-out).
+  const [signingOut, setSigningOut] = useState(false)
   const handleSignOut = useCallback(async () => {
-    if (await flushBeforeSignOut()) { void signOut(); return }
+    if (signingOut) return
+    setSigningOut(true)
+    let flushed = false
+    try { flushed = await flushBeforeSignOut() } finally { setSigningOut(false) }
+    if (flushed) { void signOut(); return }
     Alert.alert(
       'Unsynced changes',
       'Some routes, aircraft, waypoints or flight logs on this device have not reached the cloud yet (no connection?). Signing out deletes them from this device.',
@@ -109,7 +116,7 @@ export function SettingsScreen() {
         { text: 'Sign out anyway', style: 'destructive', onPress: () => { void signOut() } },
       ],
     )
-  }, [signOut])
+  }, [signOut, signingOut])
 
   const handleDeleteAccount = useCallback(() => {
     Alert.alert(
@@ -604,8 +611,8 @@ export function SettingsScreen() {
               <Text style={styles.rowLabel}>Register passkey on this device</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={[styles.row, styles.pressable]} onPress={handleSignOut}>
-            <Text style={[styles.rowLabel, { color: theme.statusDanger }]}>Sign out</Text>
+          <TouchableOpacity style={[styles.row, styles.pressable]} onPress={handleSignOut} disabled={signingOut}>
+            <Text style={[styles.rowLabel, { color: theme.statusDanger }]}>{signingOut ? 'Signing out\u2026' : 'Sign out'}</Text>
           </TouchableOpacity>
           {deleteSent ? (
             <View style={styles.row}>

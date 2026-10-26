@@ -8,7 +8,7 @@
  *   const { user, loading, sendOtp, signInOtp, signInPasskey, registerPasskey, signOut } = useAuth()
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createAuthClient } from 'better-auth/client'
 import { emailOTPClient }   from 'better-auth/client/plugins'
 import { passkeyClient }    from '@better-auth/passkey/client'
@@ -192,7 +192,15 @@ export function useAuth(): AuthState {
     if (result?.error) throw new Error(result.error.message ?? 'Failed to request account deletion')
   }, [])
 
+  // One sign-out at a time: a repeated click while the first is still sending
+  // unsynced data would run the whole sequence again in parallel.
+  const signingOutRef = useRef(false)
   const signOut = useCallback(async () => {
+    if (signingOutRef.current) return
+    signingOutRef.current = true
+    try { await signOutOnce() } finally { signingOutRef.current = false }
+  }, [])
+  const signOutOnce = async () => {
     // Sign-out wipes this browser's copy of the account's data: send what has
     // not reached the server yet, and ask before dropping what still can't be.
     if (!(await flushBeforeSignOut()) && !window.confirm(
@@ -212,7 +220,7 @@ export function useAuth(): AuthState {
     flagWipeOnSignOut()
     await clearApiResponseCaches()
     setUser(null)
-  }, [])
+  }
 
   return { user, loading, sendOtp, signInOtp, signInPasskey, registerPasskey, listPasskeys, deletePasskey, updateUser, requestAccountDeletion, signOut }
 }
