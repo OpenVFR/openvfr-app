@@ -214,3 +214,34 @@ export function followCountdownSecs(returnAtMs: number | null, nowMs: number): n
   const left = returnAtMs - nowMs
   return left > 0 ? Math.ceil(left / 1000) : null
 }
+
+/** An own-ship fix reduced to what is drawn: the aircraft symbol and its trajectory. */
+export interface OwnshipFix { lat: number; lng: number; speedKts: number; trackDeg: number }
+
+/** Own-ship is redrawn once it has moved this many dp on screen. */
+export const OWNSHIP_MIN_MOVE_DP = 8
+/** ...or its track changed this much (degrees). */
+export const OWNSHIP_MIN_TRACK_DEG = 2
+/** Trajectory is not drawn below this speed (kt), see the map's trajectory source. */
+const OWNSHIP_TRAJECTORY_MIN_KTS = 5
+
+/**
+ * Does the own-ship symbol / trajectory need a new map update?
+ *
+ * Every update of a map source makes the map re-render at display rate for a
+ * good part of a second, and a fix arrives every second. At cruise zoom a second of
+ * flight is about one dp on screen, so most updates would change nothing the pilot can
+ * see: skip them until the aircraft has visibly moved or turned, which at wide zoom
+ * is every few seconds and at close zoom every fix.
+ */
+export function ownshipUpdateNeeded(prev: OwnshipFix | null, next: OwnshipFix, zoom: number): boolean {
+  if (!prev) return true
+  if ((prev.speedKts < OWNSHIP_TRAJECTORY_MIN_KTS) !== (next.speedKts < OWNSHIP_TRAJECTORY_MIN_KTS)) return true
+  if (angleDiff(prev.trackDeg, next.trackDeg) >= OWNSHIP_MIN_TRACK_DEG) return true
+  // The trajectory's tick marks scale with speed.
+  if (Math.abs(prev.speedKts - next.speedKts) > Math.max(3, 0.05 * prev.speedKts)) return true
+  const mpp = metersPerDp(next.lat, zoom)
+  const dEast = (next.lng - prev.lng) * Math.cos((next.lat * Math.PI) / 180) * 111_320
+  const dNorth = (next.lat - prev.lat) * M_PER_DEG_LAT
+  return Math.hypot(dEast, dNorth) / mpp >= OWNSHIP_MIN_MOVE_DP
+}

@@ -293,7 +293,11 @@ export function usePositionAlerts(
 
   // ── Prune expired notifications every second (unrelated to position ticks,
   // kept as its own interval — see useAirspaceNotifications.ts original) ───
+  // Only ticks while a notification is showing: an always-on 1 s timer woke the
+  // JS thread every second for nothing (battery).
+  const hasNotifications = airspaceNotifications.length > 0
   useEffect(() => {
+    if (!hasNotifications) return
     const timer = setInterval(() => {
       const now = Date.now()
       setAirspaceNotifications(prev => {
@@ -302,7 +306,7 @@ export function usePositionAlerts(
       })
     }, 1_000)
     return () => clearInterval(timer)
-  }, [])
+  }, [hasNotifications])
 
   // ── Single combined evaluation pass per position tick ───────────────────
   // Computes all four categories, then commits at most ONE state update per

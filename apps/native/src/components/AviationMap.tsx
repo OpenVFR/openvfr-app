@@ -58,7 +58,7 @@ import {
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { MapOrientation } from '../utils/gpsTypes'
 import {
-  recenterNeeded, chooseAutoZoom, createFocusTracker, distNm, AUTO_ZOOM_PREFERRED, FOLLOW_LOOKAHEAD_RATIO,
+  recenterNeeded, chooseAutoZoom, createFocusTracker, distNm, ownshipUpdateNeeded, AUTO_ZOOM_PREFERRED, FOLLOW_LOOKAHEAD_RATIO,
   type FollowSnapshot,
 } from '@open-vfr/shared/followZoom'
 import type { RouteWaypoint } from '../utils/routeCalc'
@@ -1582,6 +1582,23 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
 })
 
 
+// Layer props for the layers that sit on per-tick sources: module constants, so a re-render
+// hands the map the same objects instead of new ones.
+const AIRCRAFT_LAYOUT = {
+  'icon-image':              'aircraft-icon',
+  'icon-rotate':             ['get', 'trackDeg'],
+  'icon-rotation-alignment': 'map',
+  'icon-allow-overlap':      true,
+  'icon-ignore-placement':   true,
+  'icon-size':               0.5,
+} as any
+const TRAJ_LINE_FILTER = ['==', ['get', 'type'], 'line'] as any
+const TRAJ_TICK_FILTER = ['==', ['get', 'type'], 'tick'] as any
+const TRAJ_PAINT = { 'line-color': '#facc15', 'line-width': 3, 'line-opacity': 0.9 } as any
+
+/** Minimum gap between handled onRegionIsChanging reports (ms). */
+const REGION_CHANGING_MIN_MS = 120
+
 export function AviationMap({
   gpsPosition,
   simActive = false,
@@ -2050,6 +2067,17 @@ export function AviationMap({
       }
     }
   }, [onUserPan, onAutoZoomPausedChange])
+  // While the camera animates, the map reports every rendered frame (display
+  // refresh rate, 60-90 Hz). Each report crossed into JS to update the scale pill
+  // and compass, which kept the JS thread busy for no visible gain: handle at most
+  // ~8 per second. The final position still arrives through onRegionDidChange.
+  const lastRegionChangingAtRef = useRef(0)
+  const handleRegionChanging = useCallback((e: NativeSyntheticEvent<ViewStateChangeEvent>) => {
+    const now = Date.now()
+    if (now - lastRegionChangingAtRef.current < REGION_CHANGING_MIN_MS) return
+    lastRegionChangingAtRef.current = now
+    handleRegionChange(e)
+  }, [handleRegionChange])
 
   // Seed camForWind from the last-known camera state as soon as Wind
   // Arrows is enabled, instead of waiting for the first real pan/zoom to
@@ -2801,14 +2829,21 @@ export function AviationMap({
   // stays planted at the stale pre-drag midpoint, showing as a stray extra
   // marker near (not on) the actively-dragged waypoint.
   const legMidpointWps = withPreview(waypoints, dragPreview)
-  const aircraftFC  = gpsPosition && showAircraft ? aircraftGeoJSON(gpsPosition) : null
+  // The aircraft symbol and trajectory only change on the map once the aircraft has visibly
+  // moved (see ownshipUpdateNeeded): each source update costs the map most of a second of
+  // full-rate rendering, a big share of the battery use in flight.
+  const ownshipRef = useRef<GpsPosition | null>(null)
+  if (!gpsPosition) ownshipRef.current = null
+  else if (!ownshipRef.current || ownshipUpdateNeeded(ownshipRef.current, gpsPosition, camStateRef.current.zoom)) { ownshipRef.current = gpsPosition }
+  const ownship = ownshipRef.current
+  const aircraftFC  = useMemo(() => (ownship && showAircraft ? aircraftGeoJSON(ownship) : null), [ownship, showAircraft])
 
   // Trajectory: main line + 3 perpendicular tick marks (matches web)
   const trajectoryFC: FeatureCollection = useMemo(() => {
-    if (!gpsPosition || gpsPosition.speedKts < 5) {
+    if (!ownship || ownship.speedKts < 5) {
       return { type: 'FeatureCollection', features: [] }
     }
-    const { lat, lng, speedKts, trackDeg } = gpsPosition
+    const { lat, lng, speedKts, trackDeg } = ownship
     const spd  = speedKts
     // Mark distances in NM
     const marks = trajectoryMode === 'time'
@@ -2839,7 +2874,7 @@ export function AviationMap({
         ...ticks,
       ],
     }
-  }, [gpsPosition, trajectoryNm, trajectoryMode])
+  }, [ownship, trajectoryNm, trajectoryMode])
 
   // Coarse own altitude for the terrain-colour reference (100 ft steps): the
   // memoized static layers must not see every position tick.
@@ -2854,7 +2889,7 @@ export function AviationMap({
         ref={mapRef}
         style={StyleSheet.absoluteFill}
         onRegionDidChange={handleRegionChange}
-        onRegionIsChanging={handleRegionChange}
+        onRegionIsChanging={handleRegionChanging}
         mapStyle={basemapMode === 'satellite' ? SATELLITE_STYLE as any : getProtomapsStyle() as any}
         onPress={handleMapPress}
         onLongPress={handleMapLongPress}
@@ -2956,18 +2991,8 @@ export function AviationMap({
                 {/* ── Trajectory line + tick marks ──────────────── */}
         {trajectoryFC.features.length > 0 && (
           <GeoJSONSource id="trajectory-src" data={trajectoryFC}>
-            <Layer
-              id="trajectory-line"
-              type="line"
-              filter={['==', ['get', 'type'], 'line']}
-              paint={{ 'line-color': '#facc15', 'line-width': 3, 'line-opacity': 0.9 }}
-            />
-            <Layer
-              id="trajectory-ticks"
-              type="line"
-              filter={['==', ['get', 'type'], 'tick']}
-              paint={{ 'line-color': '#facc15', 'line-width': 3, 'line-opacity': 0.9 }}
-            />
+            <Layer id="trajectory-line" type="line" filter={TRAJ_LINE_FILTER} paint={TRAJ_PAINT} />
+            <Layer id="trajectory-ticks" type="line" filter={TRAJ_TICK_FILTER} paint={TRAJ_PAINT} />
           </GeoJSONSource>
         )}
 
@@ -3431,18 +3456,7 @@ export function AviationMap({
 
         {aircraftFC && (
           <GeoJSONSource id="aircraft-src" data={aircraftFC}>
-            <Layer
-              id="aircraft-symbol"
-              type="symbol"
-              layout={{
-                'icon-image':              'aircraft-icon',
-                'icon-rotate':             ['get', 'trackDeg'],
-                'icon-rotation-alignment': 'map',
-                'icon-allow-overlap':      true,
-                'icon-ignore-placement':   true,
-                'icon-size':               0.5,
-              }}
-            />
+            <Layer id="aircraft-symbol" type="symbol" layout={AIRCRAFT_LAYOUT} />
           </GeoJSONSource>
         )}
 

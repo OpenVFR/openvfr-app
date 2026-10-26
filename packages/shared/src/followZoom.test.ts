@@ -154,3 +154,19 @@ describe('followCountdownSecs', () => {
     expect(followCountdownSecs(null, 0)).toBeNull()
   })
 })
+
+import { ownshipUpdateNeeded } from './followZoom'
+describe('ownshipUpdateNeeded', () => {
+  const a = { lat: 60, lng: 17, speedKts: 90, trackDeg: 90 }
+  const east = (m: number) => ({ ...a, lng: a.lng + m / (111_320 * Math.cos(60 * Math.PI / 180)) })
+  it('always updates the first fix', () => expect(ownshipUpdateNeeded(null, a, 11)).toBe(true))
+  it('skips a second of flight at cruise zoom (about 1 dp)', () => expect(ownshipUpdateNeeded(a, east(46), 11)).toBe(false))
+  it('updates once it has moved several dp at that zoom', () => expect(ownshipUpdateNeeded(a, east(200), 11)).toBe(true))
+  it('updates every second at close zoom', () => expect(ownshipUpdateNeeded(a, east(46), 15)).toBe(true))
+  it('updates on a turn, a speed change or crossing the trajectory speed', () => {
+    expect(ownshipUpdateNeeded(a, { ...a, trackDeg: 93 }, 11)).toBe(true)
+    expect(ownshipUpdateNeeded(a, { ...a, speedKts: 100 }, 11)).toBe(true)
+    expect(ownshipUpdateNeeded({ ...a, speedKts: 3 }, { ...a, speedKts: 6 }, 11)).toBe(true)
+  })
+  it('ignores jitter in track below 2 degrees', () => expect(ownshipUpdateNeeded(a, { ...a, trackDeg: 91 }, 11)).toBe(false))
+})

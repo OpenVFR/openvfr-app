@@ -203,7 +203,8 @@ export function useNearbyFrequencies(position: GpsPosition | null): NearbyAerodr
       })
     }
     results.sort((a, b) => a.distNm - b.distNm)
-    const sig = results.map(r => `${r.icao}:${r.distNm.toFixed(2)}`).join('|')
+    // One decimal = what the readout shows; finer made every second's movement a state change (an extra MapScreen render).
+    const sig = results.map(r => `${r.icao}:${r.distNm.toFixed(1)}`).join('|')
     if (sig !== lastSigRef.current) {
       lastSigRef.current = sig
       setNearby(results)

@@ -56,9 +56,8 @@ export function useFlightLog(
    *  `record` is on; a log that receives any simulated position is marked
    *  `simulated` (kept on the device, never synced, left out of totals). */
   simulation:     { simulated: boolean; record: boolean } = { simulated: false, record: false },
-): { activeLogId: string | null; liveTrack: TrackPoint[] } {
+): { activeLogId: string | null } {
   const [activeLogId, setActiveLogId] = useState<string | null>(null)
-  const [liveTrack,   setLiveTrack]   = useState<TrackPoint[]>([])
 
   const stateRef = useRef<{
     phase:         'idle' | 'flying' | 'taxiing'
@@ -103,7 +102,6 @@ export function useFlightLog(
         departureIcao: '', flushTimer: null, parkTimer: null, dirty: false, simulated: false,
       }
       setActiveLogId(null)
-      setLiveTrack([])
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flyingMode])
@@ -154,7 +152,6 @@ export function useFlightLog(
       if (now - s.lastTrackMs >= TRACK_INTERVAL_MS) {
         s.track.push({ lat: position.lat, lng: position.lng, altFt: position.altFt, spdKts: position.speedKts, trkDeg: position.trackDeg, ts: now })
         s.lastTrackMs = now; s.dirty = true
-        setLiveTrack([...s.track])
       }
       if (s.dirty && !s.flushTimer) {
         s.flushTimer = setTimeout(() => {
@@ -187,7 +184,6 @@ export function useFlightLog(
       if (now - s.lastTrackMs >= TRACK_INTERVAL_MS) {
         s.track.push({ lat: position.lat, lng: position.lng, altFt: position.altFt, spdKts: position.speedKts, trkDeg: position.trackDeg, ts: now })
         s.lastTrackMs = now; s.dirty = true
-        setLiveTrack([...s.track])
       }
 
       if (s.dirty && !s.flushTimer) {
@@ -225,8 +221,7 @@ export function useFlightLog(
                 departureIcao: '', flushTimer: null, parkTimer: null, dirty: false, simulated: false,
               }
               setActiveLogId(null)
-              setLiveTrack([])
-            }, parkTimeoutMs)
+                    }, parkTimeoutMs)
           }
         }
       } else {
@@ -236,7 +231,7 @@ export function useFlightLog(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position, flyingMode])
 
-  return { activeLogId, liveTrack }
+  return { activeLogId }
 }
 
 // ── AsyncStorage helpers (fire-and-forget) ─────────────────────────────────

@@ -635,6 +635,7 @@ const RadarBackdrop = React.memo(function RadarBackdrop(P: BackdropProps) {
 /** Planned line, turn points, MSA, wind barbs, chips and waypoint ticks inside the chart Svg. Independent of the aircraft position, memoized so a position tick does not rebuild ~hundreds of Svg elements; keep its props stable. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ProfileAStatic = React.memo(function ProfileAStatic({
+  xTicks,
   arrElevFt,
   contentW,
   depElevFt,
@@ -808,6 +809,11 @@ const ProfileAStatic = React.memo(function ProfileAStatic({
                     stroke="rgba(255,255,255,0.16)" strokeWidth={1} />
                 ))}
 
+                {/* ── X-axis distance ticks ────────────────────────────── */}
+                {xTicks.map((d: number, i: number) => (
+                  <SvgLine key={`xt-${i}`} x1={xOf(d)} y1={MARGIN_T + plotH} x2={xOf(d)} y2={MARGIN_T + plotH + 3}
+                    stroke="rgba(255,255,255,0.25)" strokeWidth={1} />
+                ))}
     </>
   )
 })
@@ -2067,6 +2073,7 @@ export function VerticalProfile({
                 />
 
                 <ProfileAStatic
+                  xTicks={xTicks}
                   windAloft={windAloft}
                   arrElevFt={arrElevFt}
                   contentW={contentW}
@@ -2100,6 +2107,10 @@ export function VerticalProfile({
                   yOf={yOf}
                 />
 
+              </Svg>
+              {/* Aircraft-dependent parts live in their own Svg: the (large) static chart above
+                  then never changes, so a position tick only redraws this small layer. */}
+              <Svg width={contentW} height={chartH} style={{ position: 'absolute', left: 0, top: 0 }} pointerEvents="none">
                 {/* ── Trajectory ticks ─────────────────────────────────── */}
                 {trajectoryTickNms.map((d, i) => (
                   <SvgLine key={`traj-${i}`} x1={xOf(d)} y1={MARGIN_T} x2={xOf(d)} y2={MARGIN_T + plotH}
@@ -2138,11 +2149,6 @@ export function VerticalProfile({
                   </G>
                 )}
 
-                {/* ── X-axis distance ticks ────────────────────────────── */}
-                {xTicks.map((d, i) => (
-                  <SvgLine key={`xt-${i}`} x1={xOf(d)} y1={MARGIN_T + plotH} x2={xOf(d)} y2={MARGIN_T + plotH + 3}
-                    stroke="rgba(255,255,255,0.25)" strokeWidth={1} />
-                ))}
               </Svg>
 
               {/* ── Overlay: obstacle icons, waypoint/axis text (RN Text for crispness) ──
