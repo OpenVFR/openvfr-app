@@ -5,6 +5,8 @@ import {
   type LogStats, type LogPeriod,
 } from '@open-vfr/shared/flightLogStats'
 import { getDb, type FlightLogDocType, type TrackPoint } from '../db'
+import { useSyncRejected } from '../sync/cloudSync'
+import SyncRefusedNote from './SyncRefusedNote'
 import css from './FlightLogs.module.css'
 
 interface Props {
@@ -39,6 +41,7 @@ function landingsLabel(st: LogStats): string {
 
 export default function FlightLogs({ selectedLogId, onSelect, onClear, importAircraft }: Props) {
   const [logs, setLogs] = useState<{ doc: FlightLogDocType; stats: LogStats | null }[]>([])
+  const refusedLogs = useSyncRejected('user_flight_logs')
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [importMsg, setImportMsg] = useState<string | null>(null)
@@ -187,6 +190,7 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
                   {log.maxAltFt > 0 && <span className={css.itemMetaVal}>max {Math.round(log.maxAltFt).toLocaleString()} ft</span>}
                   {stats && stats.gapCount > 0 && <span className={css.itemMetaVal} title="GPS track has gaps">⚠ gaps</span>}
                 </div>
+                <SyncRefusedNote row={refusedLogs.get(log.id)} />
               </div>
               <div className={css.itemActions}>
                 {deleteId === log.id ? (

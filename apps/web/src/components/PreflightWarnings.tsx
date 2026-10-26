@@ -141,15 +141,15 @@ function computeWarnings(
     })
   }
 
-  // ── 0. Aircraft profile referenced by this route no longer exists ──────
-  // (route.aircraftId set, but no matching aircraft_profiles doc — e.g. the
-  // profile was deleted on another device after this route was saved with it)
+  // ── 0. Aircraft profile referenced by this route is not here ───────────
+  // (route.aircraftId set, but no matching aircraft_profiles doc: deleted, or
+  // made on another device and never synced, e.g. refused by the server)
   if (aircraftId && !aircraft) {
     warnings.push({
       level:  'warn',
       code:   'aircraft-profile-missing',
-      title:  'Aircraft profile no longer exists',
-      detail: 'This route was planned with an aircraft profile that has since been deleted. Fuel and weight & balance calculations are unavailable until you pick a different aircraft.',
+      title:  'Aircraft not found',
+      detail: 'This route was planned with an aircraft that is not in your account or on this device: it was deleted, or made on another device and never reached the server (that device\'s aircraft list says so). Fuel and weight & balance calculations are unavailable until you pick an aircraft.',
     })
   }
 

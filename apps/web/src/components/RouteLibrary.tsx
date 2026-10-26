@@ -6,6 +6,8 @@ import { isRouteDirty } from '@open-vfr/shared/routeDirty'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
 import { suggestRouteName } from '@open-vfr/shared/suggestRouteName'
+import { useSyncRejected } from '../sync/cloudSync'
+import SyncRefusedNote from './SyncRefusedNote'
 import css from './RouteLibrary.module.css'
 
 // ---------------------------------------------------------------------------
@@ -53,6 +55,10 @@ function aircraftLabel(p: { name: string; registration: string }): string {
 // Component
 // ---------------------------------------------------------------------------
 
+/** A route's aircraft is not in this account: deleted, or made on another device and never synced there. */
+const MISSING_AIRCRAFT_HINT =
+  'The aircraft this route was saved with is not in your account or on this device. It was deleted, or it was made on another device and never reached the server (see that device\'s aircraft list). Load the route and pick an aircraft to fix it.'
+
 export default function RouteLibrary({
   currentWaypoints, currentLegOverrides, currentAircraftId, onLoad, onClear,
   activeRouteId, onActiveRouteIdChange,
@@ -70,6 +76,7 @@ export default function RouteLibrary({
   // each saved route's stored aircraftId into a display badge, and to detect
   // when loading a route switches the active aircraft (see doLoad below).
   const { profiles: aircraftProfiles } = useAircraftProfiles()
+  const refusedRoutes = useSyncRejected('user_routes')
   // Reflects the last restUpsert/restDelete result across the whole app (not
   // just routes) -- 'idle' unless a push genuinely failed. Shown here rather
   // than as a persistent icon since a healthy sync needs no attention; only
@@ -349,10 +356,11 @@ export default function RouteLibrary({
                       return p ? (
                         <span className={css.itemAircraft}> · {aircraftLabel(p)}</span>
                       ) : (
-                        <span className={`${css.itemAircraft} ${css.itemAircraftMissing}`} title="Aircraft profile was deleted"> · ⚠ missing aircraft</span>
+                        <span className={`${css.itemAircraft} ${css.itemAircraftMissing}`} title={MISSING_AIRCRAFT_HINT}> · ⚠ aircraft not found</span>
                       )
                     })()}
                   </span>
+                  <SyncRefusedNote row={refusedRoutes.get(r.id)} />
                 </div>
               )}
               <div className={css.itemActions}>

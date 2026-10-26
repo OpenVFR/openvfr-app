@@ -23,6 +23,8 @@ import { routes as routeDb } from '../db'
 import type { RouteDocType, LegOverride, AircraftProfileDocType } from '../types/db'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { SyncStatus } from '@open-vfr/shared/cloudSync'
+import { useSyncRejected } from '../sync/cloudSync'
+import { SyncRefusedNote } from './SyncRefusedNote'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { NativeSheet, useSheetMaxHeight } from './NativeSheet'
 import { distanceNm } from '../utils/routeCalc'
@@ -81,6 +83,7 @@ export function RouteLibrarySheet({
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const sheetMaxH = useSheetMaxHeight()
+  const refusedRoutes = useSyncRejected('user_routes')
   const [internalOpen, setInternalOpen] = useState(false)
   const open    = controlledOpen ?? internalOpen
   const setOpen = onOpenChange ?? setInternalOpen
@@ -440,11 +443,14 @@ export function RouteLibrarySheet({
                           {route.waypoints.length} WP · {dist.toFixed(0)} NM · {fmtDate(route.updatedAt)}
                           {route.aircraftId ? (() => {
                             const p = aircraftProfiles.find(p => p.id === route.aircraftId)
+                            // Not in this account or on this device: deleted, or made on another
+                            // device and never synced there (that device's list says why).
                             return p
                               ? ` · ${p.registration.trim() || p.name}`
-                              : ' · ⚠ missing aircraft'
+                              : ' · ⚠ aircraft not found'
                           })() : ''}
                         </Text>
+                        <SyncRefusedNote row={refusedRoutes.get(route.id)} />
                       </>
                     )}
                   </TouchableOpacity>

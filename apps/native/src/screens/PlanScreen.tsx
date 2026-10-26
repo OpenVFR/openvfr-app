@@ -17,6 +17,8 @@ import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
   ScrollView, TextInput, Share, RefreshControl, Alert,
 } from 'react-native'
+import { useSyncRejected } from '../sync/cloudSync'
+import { SyncRefusedNote } from '../components/SyncRefusedNote'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
@@ -141,6 +143,7 @@ export function PlanScreen() {
 
   // Aircraft profiles — synced with cloud (user_aircraft_profiles) when authenticated
   const { profiles, pull: pullAircraft, pushAircraft, deleteAircraft } = useAircraftSync()
+  const refusedAircraft = useSyncRejected('user_aircraft_profiles')
   const [aircraftRefreshing, setAircraftRefreshing] = useState(false)
   const handleAircraftRefresh = async () => { setAircraftRefreshing(true); try { await pullAircraft() } finally { setAircraftRefreshing(false) } }
   const selectedId = settings.selectedAircraftId || null
@@ -213,6 +216,7 @@ export function PlanScreen() {
   // Flight logs — auto-recorded on the map (GPS takeoff/landing detection),
   // synced to cloud (upload-only + cross-device pull) when authenticated.
   const { logs, pull: pullLogs, deleteLog, pushLog, refresh: refreshLogs } = useFlightLogSync()
+  const refusedLogs = useSyncRejected('user_flight_logs')
   const { selectedLog, viewLog, clearView } = useFlightLogViewContext()
   const navigation = useNavigation()
   const [logDeleteId, setLogDeleteId] = useState<string | null>(null)
@@ -893,6 +897,7 @@ export function PlanScreen() {
                     <Text style={styles.aircraftMeta}>
                       {p.icaoType} · {p.cruiseIas} kt{p.category !== 'GLIDER' ? ` · ${p.fuelBurnLhr.toFixed(1)} L/hr` : ''}
                     </Text>
+                    <SyncRefusedNote row={refusedAircraft.get(p.id)} />
                   </TouchableOpacity>
                   <View style={styles.aircraftActions}>
                     {active && <Ionicons name="checkmark-circle" size={16} color={theme.accentBlue} style={{ marginRight: 4 }} />}
@@ -1213,6 +1218,7 @@ export function PlanScreen() {
                       {new Date(log.startedAt).toLocaleString()} · {log.distanceNm.toFixed(0)} NM · {log.registration}
                       {isCompleted ? ` · ${logInfo(log).summary}` : ''}
                     </Text>
+                    <SyncRefusedNote row={refusedLogs.get(log.id)} />
                   </View>
                   <View style={styles.aircraftActions}>
                     {!isCompleted ? (

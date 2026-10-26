@@ -20,7 +20,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { AppState } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
-  SyncCoordinator, TableSync, queuePendingDelete,
+  SyncCoordinator, TableSync, queuePendingDelete, type RejectedRow,
   type SyncStatus, type SyncTable, type TableAdapter, type SyncStorage, type SyncTransport,
 } from '@open-vfr/shared/cloudSync'
 import { routeRows, aircraftRows, waypointRows, flightLogRows, isSyncableLog } from '@open-vfr/shared/cloudSyncRows'
@@ -191,4 +191,36 @@ export function useTableSync(table: SyncTable): { status: SyncStatus; localVersi
     return t.subscribe(r => { if (r?.changedLocal) setLocalVersion(v => v + 1) })
   }, [c, table])
   return { status, localVersion }
+}
+
+// ─── Rows the server refused (shown in the lists) ───────────────────────────
+
+const rejectedCache = new Map<SyncTable, { key: string; map: ReadonlyMap<string, RejectedRow> }>()
+const NO_REJECTED: ReadonlyMap<string, RejectedRow> = new Map()
+
+/** A stable snapshot (same object while nothing changed), as useSyncExternalStore requires. */
+function rejectedSnapshot(c: SyncCoordinator | null, table: SyncTable): ReadonlyMap<string, RejectedRow> {
+  const live = c?.get(table)?.rejected
+  if (!live || live.size === 0) return NO_REJECTED
+  const key = [...live.values()].map((r) => `${r.id}:${r.reason}`).join('|')
+  const cached = rejectedCache.get(table)
+  if (cached && cached.key === key) return cached.map
+  const map = new Map(live)
+  rejectedCache.set(table, { key, map })
+  return map
+}
+
+/**
+ * Local rows of `table` the server refused for good (too large, account limit):
+ * they exist on this device only. Lists show a note on those rows.
+ */
+export function useSyncRejected(table: SyncTable): ReadonlyMap<string, RejectedRow> {
+  const c = useSyncExternalStore(
+    (cb) => { lifecycleListeners.add(cb); return () => { lifecycleListeners.delete(cb) } },
+    () => coordinator,
+  )
+  return useSyncExternalStore(
+    (cb) => c?.subscribe(cb) ?? (() => {}),
+    () => rejectedSnapshot(c, table),
+  )
 }

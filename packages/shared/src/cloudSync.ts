@@ -163,6 +163,38 @@ export interface SyncResult {
   message?:     string
 }
 
+/** Why the server refused a row for good (see rejectionReason). */
+export type RejectionReason = 'too-large' | 'quota' | 'refused'
+
+/** A local row the server refused permanently: it stays on this device only. */
+export interface RejectedRow {
+  table:  SyncTable
+  id:     string
+  reason: RejectionReason
+  /** The server's answer, for logs and support. */
+  detail: string
+}
+
+/**
+ * Classify a permanent upload refusal from the server's answer: a size cap
+ * (`*_size_chk` check constraints), the per-account row limit ("quota
+ * exceeded", raised as check_violation) or anything else (schema mismatch).
+ */
+export function rejectionReason(detail: string): RejectionReason {
+  if (/quota exceeded/i.test(detail)) return 'quota'
+  if (/_size_chk|value too long|too large/i.test(detail)) return 'too-large'
+  return 'refused'
+}
+
+/** Short user-facing text for a refused row. */
+export function rejectionText(reason: RejectionReason): string {
+  switch (reason) {
+    case 'too-large': return 'Not synced: too large for the server'
+    case 'quota':     return 'Not synced: account limit reached'
+    default:          return 'Not synced: refused by the server'
+  }
+}
+
 class OfflineError extends Error {}
 class HttpError extends Error {
   constructor(readonly status: number, message: string) { super(message) }
@@ -232,7 +264,8 @@ export class TableSync<L> {
   private listeners = new Set<(r: SyncResult | null) => void>()
   private tombstonesMissingLogged = false
   private rpcDeleteMissing = false
-  private rejectedLogged = new Set<string>()
+  /** Rows the server refused for good, by id. Kept in memory: re-tried (and re-found) every round. */
+  private rejectedRows = new Map<string, RejectedRow>()
 
   constructor(
     readonly adapter: TableAdapter<L>,
@@ -242,6 +275,8 @@ export class TableSync<L> {
   ) {}
 
   get table(): SyncTable { return this.adapter.table }
+  /** Local rows the server refused for good (they stay on this device only). */
+  get rejected(): ReadonlyMap<string, RejectedRow> { return this.rejectedRows }
   get isRunning(): boolean { return this.running !== null }
   private get idCol() { return this.adapter.idColumn ?? 'id' }
   private log(...a: unknown[]) { this.transport.log?.(`[sync ${this.adapter.table}]`, ...a) }
@@ -422,6 +457,8 @@ export class TableSync<L> {
           body: batch.map(r => adapter.toServer(r, this.userId)), prefer, timeoutMs,
         })
         await this.adoptStored(batch, await res.json().catch(() => []) as Record<string, unknown>[])
+        // Accepted now (edited down, limit raised): no longer refused.
+        for (const r of batch) this.rejectedRows.delete(adapter.version(r).id)
       } catch (err) {
         if (err instanceof OfflineError) throw err
         if (batch.length > 1) {
@@ -433,9 +470,10 @@ export class TableSync<L> {
         const message = err instanceof Error ? err.message : String(err)
         if (isPermanent(err)) {
           // Retrying cannot help (row too large, schema mismatch): log it
-          // once and stop counting it as unsynced.
-          if (!this.rejectedLogged.has(id)) this.log('server rejected row, not retrying', id, message)
-          this.rejectedLogged.add(id)
+          // once, stop counting it as unsynced, and keep it for the UI so the
+          // user learns the row exists on this device only.
+          if (!this.rejectedRows.has(id)) this.log('server rejected row, not retrying', id, message)
+          this.rejectedRows.set(id, { table: adapter.table, id, reason: rejectionReason(message), detail: message })
         } else {
           this.log('upload failed', id, message)
           failed++
@@ -487,6 +525,11 @@ export class TableSync<L> {
       const server = serverRows.map(r => ({ id: String(r[this.idCol]), updatedAt: parseTs(r.updated_at) }))
       const tombstones = await this.fetchTombstones()
       const local = await adapter.list()
+      // A refused row deleted locally is no longer a problem.
+      if (this.rejectedRows.size) {
+        const ids = new Set(local.map(l => adapter.version(l).id))
+        for (const id of [...this.rejectedRows.keys()]) if (!ids.has(id)) this.rejectedRows.delete(id)
+      }
 
       // 3. Plan.
       const plan = planSync({
@@ -562,6 +605,11 @@ export class SyncCoordinator {
 
   get<L>(table: SyncTable): TableSync<L> | undefined {
     return this.tables.get(table) as TableSync<L> | undefined
+  }
+
+  /** Local rows the server refused for good, all tables. */
+  rejected(): RejectedRow[] {
+    return [...this.tables.values()].flatMap(t => [...t.rejected.values()])
   }
 
   /** Overall state for a status indicator: worst of all tables. */

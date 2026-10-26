@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
+  rejectionReason,
   planSync, TableSync, SyncCoordinator, queuePendingDelete,
   type TableAdapter, type SyncStorage, type SyncTransport, type Tombstone,
 } from './cloudSync'
@@ -370,6 +371,42 @@ describe('TableSync two-way', () => {
       expect(await a.sync.hasUnsynced()).toBe(expected === 'error')
       expect([...server.tables.get('user_routes')!.keys()].sort()).toEqual(['r1', 'r3'])
     }
+  })
+
+  it('remembers rows the server refused, with the reason, until they upload or are deleted', async () => {
+    const server = new FakeServer()
+    const a = new Device(server)
+    a.edit('r1', 'a', tick()); a.edit('big', 'b', tick())
+    const orig = server.fetch
+    let refuse = true
+    server.fetch = async (url, init) => {
+      if (refuse && init?.method === 'POST' && String(init.body).includes('"big"')) {
+        return new Response('{"code":"23514","message":"new row for relation \\"user_routes\\" violates check constraint \\"user_routes_size_chk\\""}', { status: 400 })
+      }
+      return orig(url, init)
+    }
+    expect((await a.sync.run()).status).toBe('ok')
+    expect([...a.sync.rejected.keys()]).toEqual(['big'])
+    expect(a.sync.rejected.get('big')!.reason).toBe('too-large')
+    // Edited down / limit raised: accepted on a later round, no longer listed.
+    refuse = false
+    a.edit('big', 'smaller', tick())
+    await a.sync.run()
+    expect(a.sync.rejected.size).toBe(0)
+    // Refused again, then deleted on this device: dropped from the list.
+    refuse = true
+    a.edit('big2', 'x', tick()); a.edit('big', 'big again', tick())
+    await a.sync.run()
+    expect(a.sync.rejected.has('big')).toBe(true)
+    a.docs.delete('big')
+    await a.sync.run()
+    expect(a.sync.rejected.has('big')).toBe(false)
+  })
+
+  it('classifies refusals', () => {
+    expect(rejectionReason('violates check constraint "user_aircraft_profiles_size_chk"')).toBe('too-large')
+    expect(rejectionReason('quota exceeded: at most 500 rows in user_aircraft_profiles')).toBe('quota')
+    expect(rejectionReason('column "x" does not exist')).toBe('refused')
   })
 
   it('a delete followed by a re-create keeps device order even when the device clock is behind', async () => {

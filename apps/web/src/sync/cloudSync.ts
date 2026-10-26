@@ -19,13 +19,14 @@
 
 import type { RxCollection, RxChangeEvent } from 'rxdb'
 import {
-  SyncCoordinator, TableSync, queuePendingDelete,
+  SyncCoordinator, TableSync, queuePendingDelete, type RejectedRow,
   type SyncStatus, type SyncTable, type TableAdapter, type SyncStorage, type SyncTransport,
   type Tombstone, type Restamp,
 } from '@open-vfr/shared/cloudSync'
 import {
   routeRows, aircraftRows, waypointRows, flightLogRows, settingRows, isSyncableLog, type SyncedSetting,
 } from '@open-vfr/shared/cloudSyncRows'
+import { useSyncExternalStore } from 'react'
 import { getDb, type OpenVfrDb } from '../db'
 import type {
   RouteDocType, AircraftProfileDocType, UserWaypointDocType, FlightLogDocType,
@@ -343,4 +344,29 @@ export function subscribeCloudSync(fn: () => void): () => void {
 /** Forget settings modification times (local data wiped / account changed). */
 export function clearSyncLocalState(): void {
   localStorage.removeItem(SETTINGS_TIMES_KEY)
+}
+
+// ─── Rows the server refused (shown in the lists) ───────────────────────────
+
+const rejectedCache = new Map<SyncTable, { key: string; map: ReadonlyMap<string, RejectedRow> }>()
+const NO_REJECTED: ReadonlyMap<string, RejectedRow> = new Map()
+
+/** A stable snapshot (same object while nothing changed), as useSyncExternalStore requires. */
+function rejectedSnapshot(c: SyncCoordinator | null, table: SyncTable): ReadonlyMap<string, RejectedRow> {
+  const live = c?.get(table)?.rejected
+  if (!live || live.size === 0) return NO_REJECTED
+  const key = [...live.values()].map((r) => `${r.id}:${r.reason}`).join('|')
+  const cached = rejectedCache.get(table)
+  if (cached && cached.key === key) return cached.map
+  const map = new Map(live)
+  rejectedCache.set(table, { key, map })
+  return map
+}
+
+/**
+ * Local rows of `table` the server refused for good (too large, account limit):
+ * they exist on this device only. Lists show a note on those rows.
+ */
+export function useSyncRejected(table: SyncTable): ReadonlyMap<string, RejectedRow> {
+  return useSyncExternalStore(subscribeCloudSync, () => rejectedSnapshot(coordinator, table))
 }

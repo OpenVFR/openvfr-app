@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import type { AircraftProfileDocType, AircraftCategory } from '../db/index'
 import { extractPohViaServer, RateLimitError } from '../utils/pohExtract'
+import { useSyncRejected } from '../sync/cloudSync'
+import SyncRefusedNote from './SyncRefusedNote'
 import css from './AircraftLibrary.module.css'
 
 // ---------------------------------------------------------------------------
@@ -184,6 +186,7 @@ export default function AircraftLibrary({
   onSelect?: (id: string | null) => void
 }) {
   const { profiles, saveProfile, deleteProfile, duplicateProfile } = useAircraftProfiles()
+  const refusedAircraft = useSyncRejected('user_aircraft_profiles')
 
   // 'list' | 'new' | edit-id
   const [mode,      setMode]      = useState<'list' | 'new' | string>('list')
@@ -378,6 +381,7 @@ export default function AircraftLibrary({
                     {p.registration || '—'} · {p.icaoType || '—'} · {p.cruiseIas} kts
                     {HAS_FUEL(p.category ?? 'SEP') && <> · {p.fuelBurnLhr} L/h</>}
                   </span>
+                  <SyncRefusedNote row={refusedAircraft.get(p.id)} />
                 </div>
                 <div className={css.itemActions}>
                   {deleteId === p.id ? (
