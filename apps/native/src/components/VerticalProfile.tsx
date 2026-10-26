@@ -25,7 +25,7 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback, useSyncExternalStore } from 'react'
 import {
-  View, Text, TouchableOpacity, StyleSheet, Image, PanResponder, type LayoutChangeEvent,
+  View, Text, TouchableOpacity, StyleSheet, Image, PanResponder, ScrollView, type LayoutChangeEvent,
 } from 'react-native'
 import { GestureDetector, usePanGesture, usePinchGesture, useSimultaneousGestures } from 'react-native-gesture-handler'
 import Animated, { useSharedValue, useAnimatedStyle, withDecay, cancelAnimation } from 'react-native-reanimated'
@@ -33,7 +33,7 @@ import { scheduleOnRN } from 'react-native-worklets'
 import Svg, { ClipPath, Rect, Path, Line as SvgLine, Circle, Defs, LinearGradient, Stop, G, Text as SvgText } from 'react-native-svg'
 
 import type { RouteWaypoint, LegOverride, AircraftProfileDocType } from '../types/db'
-import { type Units, DEFAULT_UNITS, nmToDisplay } from '../utils/units'
+import { type Units, DEFAULT_UNITS, nmToDisplay, distLabel } from '../utils/units'
 import {
   buildVirtualRadarProfile,
   applyTerrainToBands,
@@ -68,7 +68,14 @@ import {
 import {
   symbolGroundY, LIMITING_LABEL_MERGE_PX, POI_SCALE, poiCenterY, SKY_TOP, SKY_BOTTOM, PLAN_COLOR, MSA_COLOR, GROUND_OUTLINE, CORRIDOR_FILL, CORRIDOR_OUTLINE, CORRIDOR_OUTLINE_WIDTH,
   DANGER_COLOR, DANGER_TEXT, PHASE_SHORT_COLOR, WIND_LABEL_COLOR, windAloftFit, terrainGradientStops, phaseLabelText,
+  FLOWN_COLOR, FLOWN_GAP_COLOR, GROUND_COLOR, FLOWN_SPEED_COLOR, FLOWN_NEAR_FIELD_COLOR, FLOWN_NEAR_FIELD_NM,
 } from '@open-vfr/shared/radarStyle'
+import {
+  flownAltitudeAt, flownIndexAt, flownLineParts, formatElapsed, formatUtcTime, flownGaps, flownSpeedScale, flownSpeedRuns,
+  flownAirspaceAt, flownAirspaceEntries, splitBelowMsaNearFields, flownEvents, type FlownPoint, type FlownBand, type FlownEvent,
+} from '@open-vfr/shared/flightLogProfile'
+import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
+import { createValueStore, useStoreValue, type ValueStore } from '../utils/valueStore'
 import {
   profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, profileYMin, liveAltitudeWindow, declutterMarks, obstacleOpacity, isLimitingObstacle, altitudeTicksFrom, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
   waterBandTopFt,
@@ -196,6 +203,12 @@ interface Props {
    *  (default true). Off for the ruler and the look-ahead: only a planned route has a
    *  corridor the pilot set out to fly. The MSA still uses it either way. */
   corridorBand?: boolean
+  /** Flight-log review: `waypoints` is the simplified recorded track and these are the
+   *  recorded points along it (@open-vfr/shared/flightLogProfile). The chart then draws the
+   *  flown altitude instead of a plan (no leg editing, waypoint lines or forecast winds), and
+   *  an aircraft on the line can be dragged (or a spot tapped) to read time, altitude and
+   *  ground speed there. Mirrors web's VirtualRadar `flown` mode. */
+  flown?: FlownPoint[]
 }
 
 // ---------------------------------------------------------------------------
@@ -644,6 +657,10 @@ const RadarBackdrop = React.memo(function RadarBackdrop(P: BackdropProps) {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ProfileAStatic = React.memo(function ProfileAStatic({
   xTicks,
+  logMode,
+  flownDraw,
+  showSpeed,
+  flownEventList,
   arrElevFt,
   contentW,
   depElevFt,
@@ -680,6 +697,18 @@ const ProfileAStatic = React.memo(function ProfileAStatic({
     <>
                 {/* ── Planned altitude line (dark outline under it), clipped to the plot ── */}
                 <Defs><ClipPath id="plan-clip"><Rect x={MARGIN_L} y={MARGIN_T} width={plotW} height={plotH + 4} /></ClipPath></Defs>
+                {/* Flight log: ground speed on its own scale (0 at the plot bottom), under the altitude line. */}
+                {flownDraw && showSpeed && flownDraw.speed !== '' && (
+                  <Path d={flownDraw.speed} clipPath="url(#plan-clip)" fill="none" stroke={FLOWN_SPEED_COLOR} strokeWidth={1.5} strokeDasharray="5,3" opacity={0.85} />
+                )}
+                {/* Flight log: the recorded altitude instead of a plan. */}
+                {flownDraw && flownDraw.runs !== '' && (
+                  <>
+                    <Path d={flownDraw.runs} clipPath="url(#plan-clip)" fill="none" stroke="rgba(0,0,0,0.7)" strokeWidth={5} strokeLinejoin="round" />
+                    <Path d={flownDraw.runs} clipPath="url(#plan-clip)" fill="none" stroke={FLOWN_COLOR} strokeWidth={2.75} strokeLinejoin="round" />
+                  </>
+                )}
+                {!logMode && (<>
                 <Path d={plannedPath} clipPath="url(#plan-clip)" fill="none" stroke="rgba(0,0,0,0.7)" strokeWidth={5} strokeLinejoin="round" opacity={dragging ? 0.18 : 1} />
                 <Path d={plannedPath} clipPath="url(#plan-clip)" fill="none" stroke={PLAN_COLOR} strokeWidth={2.75} strokeLinejoin="round" opacity={dragging ? 0.18 : 1} />
                 {/* Turn points: white dots with a dark rim where one leg ends and the next begins. */}
@@ -711,6 +740,7 @@ const ProfileAStatic = React.memo(function ProfileAStatic({
                     {p.pl && renderHaloText(p.pl.left, p.pl.baseline, p.text, p.short ? PHASE_SHORT_COLOR : '#fff', 11, 1, 'start', { weight: '700' })}
                   </G>
                 ))}
+                </>)}
 
                 {/* ── MSA dashed line (dark underlay), after the plan so it stays visible ── */}
                 {showMsa && msaPath !== '' && <Path d={msaPath} fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth={3.5} />}
@@ -755,9 +785,28 @@ const ProfileAStatic = React.memo(function ProfileAStatic({
                 })()}
 
                 {/* ── Below-MSA stretches of the planned line ─────────── */}
-                {!dragging && projDangerPath && (
+                {!dragging && !logMode && projDangerPath && (
                   <Path d={projDangerPath} fill="none" stroke={DANGER_COLOR} strokeWidth={2.5} />
                 )}
+                {flownDraw && flownDraw.below !== '' && (
+                  <Path d={flownDraw.below} fill="none" stroke={DANGER_COLOR} strokeWidth={2.5} />
+                )}
+                {flownDraw && flownDraw.belowNear !== '' && (
+                  <Path d={flownDraw.belowNear} fill="none" stroke={FLOWN_NEAR_FIELD_COLOR} strokeWidth={2.5} />
+                )}
+                {/* Takeoffs, landings, touch-and-goes and airspace entries: a small dot on the flown line. */}
+                {(flownEventList as FlownEvent[] | undefined)?.filter((e) => e.kind !== 'gap' && Number.isFinite(e.point.altFt)).map((e, i) => (
+                  <Circle key={`ev-${i}`} cx={xOf(e.point.distNm)} cy={yOf(e.point.altFt)} r={4}
+                    fill={e.kind === 'airspace' ? '#93c5fd' : '#fff'} stroke="#000" strokeWidth={1.25} />
+                ))}
+                {/* Recording gaps: nothing known in between, so a dashed bridge and a dot at each end. */}
+                {flownDraw?.gaps.map((g: { x1: number; y1: number; x2: number; y2: number }, i: number) => (
+                  <G key={`gap-${i}`}>
+                    <SvgLine x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke={FLOWN_GAP_COLOR} strokeWidth={2} strokeDasharray="3,3" />
+                    <Circle cx={g.x1} cy={g.y1} r={3.5} fill={FLOWN_GAP_COLOR} stroke="#000" strokeWidth={1} />
+                    <Circle cx={g.x2} cy={g.y2} r={3.5} fill={FLOWN_GAP_COLOR} stroke="#000" strokeWidth={1} />
+                  </G>
+                ))}
 
                 {/* ── Labels on top of every line (plan, MSA, below-MSA): chips, then obstacle / aerodrome names ── */}
                 {/* Label chips: class letter (or designator) + first radio
@@ -812,7 +861,8 @@ const ProfileAStatic = React.memo(function ProfileAStatic({
                 })}
 
                 {/* ── Waypoint ticks ──────────────────────────────────── */}
-                {profile.waypointTicks.map((tick: any, i: any) => i === 0 ? null : (
+                {/* (A flight log's path vertices are simplification points, not waypoints.) */}
+                {!logMode && profile.waypointTicks.map((tick: any, i: any) => i === 0 ? null : (
                   <SvgLine key={`wp-${i}`} x1={xOf(tick.distNm)} y1={MARGIN_T} x2={xOf(tick.distNm)} y2={MARGIN_T + plotH}
                     stroke="rgba(255,255,255,0.16)" strokeWidth={1} />
                 ))}
@@ -1037,6 +1087,8 @@ const ProfileDStatic = React.memo(function ProfileDStatic({
 
 
 const NO_SAMPLES: TerrainPoint[] = []
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const NO_WAYPOINT_TICKS: any[] = []
 
 /** Keeps the previous array while the numbers are unchanged, so memoized children see a stable prop. */
 function useStableList(next: number[]): number[] {
@@ -1045,13 +1097,138 @@ function useStableList(next: number[]): number[] {
   return ref.current
 }
 
+// ---------------------------------------------------------------------------
+// Flight-log inspection (flown mode)
+// ---------------------------------------------------------------------------
+
+/** Inspected recorded point; `touched` = the user has moved it (the map marker starts then). */
+type FlownInspect = { idx: number; touched: boolean }
+/** Grab radius around the flight-log aircraft (px): a touch starting inside it scrubs, not pans. */
+const FLOWN_HANDLE_R = 30
+/** While scrubbing, a finger this close to a chart edge (px) scrolls the chart along. */
+const FLOWN_EDGE_PX = 36
+const FLOWN_EDGE_STEP_PX = 12
+const FLOWN_TAP_SLOP_PX = 8
+const FLOWN_TAP_MAX_MS = 350
+/** Route chart that scrolls: holding a finger still this long (ms) starts scrubbing instead of panning. */
+const ROUTE_HOLD_MS = 300
+
+/** The aircraft on the flown line at the inspected point (content coordinates, scrolls with the chart).
+ *  Also publishes its position to the gesture worklet, which decides whether a touch grabbed it.
+ *  A small fixed Svg in a View moved with a transform: moving it never re-rasterises an Svg
+ *  (see AGENTS.md, "an <Svg> that changes per tick must be small"). */
+function FlownAircraft({ store, flown, xOf, yOf, yMin, yMax, silhouette, acX, acY }: {
+  store: ValueStore<FlownInspect>
+  flown: FlownPoint[]
+  xOf: (nm: number) => number
+  yOf: (ft: number) => number
+  yMin: number
+  yMax: number
+  silhouette: ReturnType<typeof getAircraftSilhouette>
+  acX: { value: number }
+  acY: { value: number }
+}) {
+  const { idx } = useStoreValue(store)
+  const p = flown[idx]
+  const alt = p ? flownAltitudeAt(flown, p.distNm) : NaN
+  const x = p ? xOf(p.distNm) : -1000
+  const y = Number.isFinite(alt) ? yOf(Math.max(yMin, Math.min(yMax, alt))) : MARGIN_T + 20
+  useEffect(() => { acX.value = x; acY.value = y }, [x, y, acX, acY])
+  if (!p) return null
+  const R = FLOWN_AIRCRAFT_BOX / 2
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: FLOWN_AIRCRAFT_BOX, height: FLOWN_AIRCRAFT_BOX, transform: [{ translateX: Math.round(x - R) }, { translateY: Math.round(y - R) }] }}>
+      <FlownAircraftGlyph silhouette={silhouette} />
+    </View>
+  )
+}
+
+const FLOWN_AIRCRAFT_BOX = 40
+
+/** The glyph itself: identical props while dragging, so its Svg is drawn once. */
+const FlownAircraftGlyph = React.memo(function FlownAircraftGlyph({ silhouette }: { silhouette: ReturnType<typeof getAircraftSilhouette> }) {
+  const R = FLOWN_AIRCRAFT_BOX / 2
+  return (
+    <Svg width={FLOWN_AIRCRAFT_BOX} height={FLOWN_AIRCRAFT_BOX}>
+      <G transform={`translate(${R}, ${R})`}>
+        {/* Finger-sized grab target; the dashed ring shows it can be picked up. */}
+        <Circle r={18} fill="#ffffff" fillOpacity={0.1} stroke="#ffffff" strokeOpacity={0.55} strokeWidth={1} strokeDasharray="3,3" />
+        {silhouette.map((part, i) => (
+          <Path key={`fa-${i}`} d={part.d} fill={part.fill ?? '#ffffff'} fillOpacity={part.opacity} stroke="#000000" strokeOpacity={0.7} strokeWidth={0.6} />
+        ))}
+      </G>
+    </Svg>
+  )
+})
+
+/** Readout of the inspected point, fixed to the top right of the chart viewport. */
+function FlownReadout({ store, flown, bands, terrainPts, getMsa, styles }: {
+  store: ValueStore<FlownInspect>
+  flown: FlownPoint[]
+  bands: FlownBand[]
+  terrainPts: TerrainPoint[]
+  getMsa: (nm: number) => number
+  styles: ReturnType<typeof makeStyles>
+}) {
+  const { idx, touched } = useStoreValue(store)
+  const p = flown[idx]
+  if (!touched || !p) {
+    return (
+      <View style={styles.flownReadout} pointerEvents="none">
+        <Text style={styles.flownHint}>Drag the aircraft, or tap the chart, to inspect</Text>
+      </View>
+    )
+  }
+  const altKnown = Number.isFinite(p.altFt)
+  const msa = getMsa(p.distNm)
+  const rows: { label: string; value: string; color?: string }[] = [
+    { label: 'TIME', value: formatElapsed(p.elapsedMs) },
+    { label: 'UTC', value: formatUtcTime(p.ts) },
+    { label: 'ALT', value: altKnown ? `${Math.round(p.altFt)} ft` : '\u2014', color: FLOWN_COLOR },
+    { label: 'GS', value: Number.isFinite(p.spdKts) ? `${Math.round(p.spdKts)} kt` : '\u2014', color: FLOWN_SPEED_COLOR },
+  ]
+  if (altKnown && terrainPts.length > 0) rows.push({ label: 'AGL', value: `${Math.round(p.altFt - terrainAt(terrainPts, p.distNm))} ft`, color: GROUND_COLOR })
+  if (msa > 0) rows.push({ label: 'MSA', value: `${Math.round(msa)} ft`, color: altKnown && p.altFt < msa ? DANGER_TEXT : MSA_COLOR })
+  // Airspace the aircraft was in (limits as drawn: for review, not proof of an infringement).
+  for (const b of altKnown ? flownAirspaceAt(bands, p.distNm, p.altFt).slice(0, 2) : []) rows.push({ label: b.class, value: b.name })
+  return (
+    <View style={styles.flownReadout} pointerEvents="none">
+      {rows.map((r) => (
+        <View key={r.label} style={styles.flownRow}>
+          <Text style={[styles.flownLabel, r.color ? { color: r.color } : null]}>{r.label}</Text>
+          <Text style={styles.flownValue}>{r.value}</Text>
+        </View>
+      ))}
+    </View>
+  )
+}
+
 export function VerticalProfile({
   waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, msaMargins, title, headerStart, headerEnd, onClose, closeLabel, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
   crossTrackNm, weatherStations,
   height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm, onLegLevelChange, followAircraft, corridorBand = true,
+  flown,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
+  const logMode = flown != null
+  // Flight log: the inspected recorded point (starts mid-flight, untouched) in a store, so moving
+  // it re-renders only the aircraft and the readout, not the whole chart.
+  const flownStore = useMemo(
+    () => createValueStore<FlownInspect>({ idx: flown ? flownIndexAt(flown, (flown[flown.length - 1]?.distNm ?? 0) / 2) : 0, touched: false }),
+    [flown],
+  )
+  const flownRef = useRef(flown); flownRef.current = flown
+  const flownModeSV = useSharedValue(logMode)
+  useEffect(() => { flownModeSV.value = logMode }, [logMode, flownModeSV])
+  const acXSV = useSharedValue(-1000)
+  const acYSV = useSharedValue(-1000)
+  const flownScrubSV = useSharedValue(0)
+  // Route chart wider than the panel: 0 undecided, 1 scrubbing (after a short hold), 2 panning.
+  const routeScrubSV = useSharedValue(0)
+  const flownMoveSV = useSharedValue(0)
+  const flownBeginSV = useSharedValue({ t: 0, x: 0 })
+  const chartWSV = useSharedValue(0)
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(null)
@@ -1066,6 +1243,8 @@ export function VerticalProfile({
   const [showMsa, setShowMsa] = usePersistedFlag('ovfr:vr:msa', true)
   // Obstacle labels (short tip altitude / name beside each limiting obstacle); the symbols stay either way.
   const [showObstLabels, setShowObstLabels] = usePersistedFlag('ovfr:vr:obst', true)
+  // Flight log: the ground-speed line (own scale; exact values in the readout either way).
+  const [showSpeed, setShowSpeed] = usePersistedFlag('ovfr:vr:gs', true)
   const [chartW,      setChartW]      = useState(0)
   // Horizontal scroll offset into the (possibly wider-than-panel) chart
   // content — see MIN_PX_PER_NM above. 0 when the route fits the panel.
@@ -1181,7 +1360,8 @@ export function VerticalProfile({
     // The downloaded hillshade DEM stands in for the API offline; for the
     // look-ahead (asked again every few seconds) it goes first, so flying
     // costs the shared elevation budget nothing when it is downloaded.
-    fetchTerrainProfileShared(waypoints, API_BASE, controller.signal, getOfflineDem(), { preferLookup: !!followAircraft })
+    // A flight log is sampled densely from the downloaded DEM (~0.5 NM, free per sample).
+    fetchTerrainProfileShared(waypoints, API_BASE, controller.signal, getOfflineDem(), { preferLookup: !!followAircraft || logMode, denseLookup: logMode })
       .then((pts) => {
         lastTerrainRef.current = { wps: waypoints, pts }
         setTerrainPts(pts)
@@ -1242,9 +1422,10 @@ export function VerticalProfile({
     [msaTerrain, msaMargins, msaObstacles],
   )
   // Per-leg MSA floor: the whole leg corridor incl. the circles around its ends.
+  // (Not for a flight log: its path has no legs to set a level on.)
   const legMsaFloors = useMemo(
-    () => legCorridorMsaFt(waypoints, mefGrids, msaMargins, msaObstacles),
-    [waypoints, mefGrids, msaMargins, msaObstacles],
+    () => (logMode ? [] : legCorridorMsaFt(waypoints, mefGrids, msaMargins, msaObstacles)),
+    [waypoints, mefGrids, msaMargins, msaObstacles, logMode],
   )
   const getMsa = useMemo(() => getMsaLookup(msaPts), [msaPts])
 
@@ -1259,10 +1440,13 @@ export function VerticalProfile({
       terrainPts.map(p => p.distNm), terrainPts[0].elevFt, terrainPts[terrainPts.length - 1].elevFt,
     )
   }, [perf, profile, terrainPts])
+  // Flight log: the recorded altitudes take the plan's place for the scale.
+  const flownAlts = useMemo(() => (flown ? flown.filter((p) => Number.isFinite(p.altFt)).map((p) => p.altFt) : null), [flown])
   const plannedPeakFt = useMemo(() => {
     if (!profile) return 0
+    if (flownAlts) return flownAlts.reduce((m, a) => Math.max(m, a), 0)
     return plannedAlts.length > 0 ? Math.max(...plannedAlts) : profile.maxPlannedAltFt
-  }, [profile, plannedAlts])
+  }, [profile, plannedAlts, flownAlts])
   const yMaxFull = useMemo(
     () => (profile ? profileYMax(plannedPeakFt, corridorPts.length > 0 ? corridorPts : terrainPts) : 10000),
     [profile, plannedPeakFt, corridorPts, terrainPts],
@@ -1278,12 +1462,14 @@ export function VerticalProfile({
   const yMin = useMemo(() => {
     if (liveWindow) return liveWindow.yMin
     if (!profile) return 0
-    return profileYMin(terrainPts.map((p) => p.elevFt), plannedAlts, yMax)
-  }, [profile, terrainPts, plannedAlts, yMax, liveWindow])
+    return profileYMin(terrainPts.map((p) => p.elevFt), flownAlts ?? plannedAlts, yMax)
+  }, [profile, terrainPts, plannedAlts, flownAlts, yMax, liveWindow])
 
   const totalNm = profile?.totalNm ?? 0
   // Winds aloft at the standard levels up to the chart top, one column every ~20 NM.
-  const { columns: windAloft, status: windAloftStatus } = useWindAloftAlongRoute(waypoints, totalNm, yMax, showWindAloft)
+  // Not for a flight log: today's forecast says nothing about a past flight.
+  const windOn = showWindAloft && !logMode
+  const { columns: windAloft, status: windAloftStatus } = useWindAloftAlongRoute(waypoints, totalNm, yMax, windOn)
   // Content (not panel) plot width: never below what the panel offers, but
   // grows past it once the route needs more than MIN_PX_PER_NM per NM to
   // stay legible (see MIN_PX_PER_NM comment above). contentW
@@ -1493,9 +1679,11 @@ export function VerticalProfile({
   //     a crosshair marker on the map (native equivalent of web's pointer
   //     hover readout).
   //  2. Pan — when the route is wider than the panel (MIN_PX_PER_NM,
-  //     above), the same one-finger drag scrolls the content, with a fling
-  //     (decay) on release. One gesture drives both, so the two forms of
-  //     horizontal drag never race two gesture systems.
+  //     above), a drag scrolls the content, with a fling (decay) on release.
+  //     A scrollable chart scrubs only after the finger was held still for
+  //     ROUTE_HOLD_MS (noticed on its first move after that); a flight log
+  //     scrubs by dragging its aircraft. One gesture drives all of it, so
+  //     the forms of horizontal drag never race two gesture systems.
   // Runs on the UI thread: scroll offset and crosshair are shared values
   // read by animated styles, so dragging never re-renders the chart. The
   // map crosshair is reported to JS at most every HOVER_REPORT_MS.
@@ -1549,14 +1737,26 @@ export function VerticalProfile({
   // finger. Keep only the newest value and deliver it on the next frame.
   const pendingHoverRef = useRef<{ nm: number | null } | null>(null)
   const reportHover = useCallback((nm: number | null) => {
+    // Flight log: a release (null) must not replace a pending tap or drag position.
+    if (nm == null && flownRef.current) return
     const idle = pendingHoverRef.current == null
     pendingHoverRef.current = { nm }
     if (idle) requestAnimationFrame(() => {
       const v = pendingHoverRef.current
       pendingHoverRef.current = null
-      if (v) onHoverDistNmRef.current?.(v.nm)
+      if (!v) return
+      const fl = flownRef.current
+      if (fl) {
+        // Flight log: the aircraft stays where it was left.
+        if (v.nm == null || fl.length === 0) return
+        const idx = flownIndexAt(fl, v.nm)
+        flownStore.set({ idx, touched: true })
+        onHoverDistNmRef.current?.(fl[idx].distNm)
+        return
+      }
+      onHoverDistNmRef.current?.(v.nm)
     })
-  }, [])
+  }, [flownStore])
   const dragStarted   = useCallback(() => { draggingRef.current = true }, [])
   const dragEnded     = useCallback(() => { draggingRef.current = false }, [])
   const scrollSettled = useCallback((x: number, panned: boolean) => {
@@ -1626,9 +1826,22 @@ export function VerticalProfile({
       'worklet'
       cancelAnimation(scrollX)
       dragStartX.value = scrollX.value
-      hoverX.value = e.x
       const tNm = totalNmSV.value, pW = plotWSV.value
-      if (tNm > 0 && pW > 0) {
+      // Flight log: a touch on the aircraft (or anywhere when the chart does not scroll) moves it;
+      // elsewhere the drag only pans and a tap moves the aircraft there (see onFinalize).
+      flownMoveSV.value = 0
+      flownBeginSV.value = { t: Date.now(), x: e.x }
+      if (flownModeSV.value) {
+        const dx = e.x + scrollX.value - acXSV.value, dy = e.y - acYSV.value
+        flownScrubSV.value = (dx * dx + dy * dy <= FLOWN_HANDLE_R * FLOWN_HANDLE_R || maxScrollXSV.value <= 0) ? 1 : 0
+      }
+      // Route on a scrollable chart: a drag pans; holding still for a moment first scrubs instead
+      // (a drag both panning and scrubbing moved the chart under the finger, so the inspected
+      // point never changed). A chart that fits the panel scrubs straight away.
+      routeScrubSV.value = maxScrollXSV.value > 0 ? 0 : 1
+      const reportNow = flownModeSV.value ? flownScrubSV.value === 1 : routeScrubSV.value === 1
+      hoverX.value = reportNow ? e.x : -1
+      if (reportNow && tNm > 0 && pW > 0) {
         scheduleOnRN(reportHover, Math.max(0, Math.min(tNm, ((e.x + scrollX.value - MARGIN_L) / pW) * tNm)))
       }
       lastHoverReport.value = Date.now()
@@ -1671,6 +1884,51 @@ export function VerticalProfile({
         }
         if (legModeSV.value === 1) { scheduleOnRN(legDragMove, e.translationY); return }
       }
+      flownMoveSV.value = Math.max(flownMoveSV.value, Math.abs(e.translationX), Math.abs(e.translationY))
+      if (!flownModeSV.value && routeScrubSV.value !== 1) {
+        if (routeScrubSV.value === 0) {
+          if (flownMoveSV.value > FLOWN_TAP_SLOP_PX) routeScrubSV.value = 2
+          else if (Date.now() - flownBeginSV.value.t >= ROUTE_HOLD_MS) routeScrubSV.value = 1
+        }
+        if (routeScrubSV.value === 2) {
+          scrollX.value = Math.max(0, Math.min(maxScrollXSV.value, dragStartX.value - e.translationX))
+          return
+        }
+        if (routeScrubSV.value === 0) return
+      }
+      if (!flownModeSV.value && routeScrubSV.value === 1) {
+        // Scrubbing a route: the chart stays put, except at its edges, where it scrolls along.
+        const vw = chartWSV.value
+        if (e.x < FLOWN_EDGE_PX) scrollX.value = Math.max(0, scrollX.value - FLOWN_EDGE_STEP_PX)
+        else if (vw > 0 && e.x > vw - FLOWN_EDGE_PX) scrollX.value = Math.min(maxScrollXSV.value, scrollX.value + FLOWN_EDGE_STEP_PX)
+        hoverX.value = e.x
+        const now = Date.now()
+        if (now - lastHoverReport.value >= HOVER_REPORT_MS) {
+          lastHoverReport.value = now
+          const tNm = totalNmSV.value, pW = plotWSV.value
+          if (tNm > 0 && pW > 0) scheduleOnRN(reportHover, Math.max(0, Math.min(tNm, ((e.x + scrollX.value - MARGIN_L) / pW) * tNm)))
+        }
+        return
+      }
+      if (flownModeSV.value) {
+        if (flownScrubSV.value === 0) {
+          // Not on the aircraft: pan only.
+          scrollX.value = Math.max(0, Math.min(maxScrollXSV.value, dragStartX.value - e.translationX))
+          return
+        }
+        // Moving the aircraft: the chart stays put, except held at an edge, where it scrolls along.
+        const vw = chartWSV.value
+        if (e.x < FLOWN_EDGE_PX) scrollX.value = Math.max(0, scrollX.value - FLOWN_EDGE_STEP_PX)
+        else if (vw > 0 && e.x > vw - FLOWN_EDGE_PX) scrollX.value = Math.min(maxScrollXSV.value, scrollX.value + FLOWN_EDGE_STEP_PX)
+        hoverX.value = e.x
+        const now = Date.now()
+        if (now - lastHoverReport.value >= HOVER_REPORT_MS) {
+          lastHoverReport.value = now
+          const tNm = totalNmSV.value, pW = plotWSV.value
+          if (tNm > 0 && pW > 0) scheduleOnRN(reportHover, Math.max(0, Math.min(tNm, ((e.x + scrollX.value - MARGIN_L) / pW) * tNm)))
+        }
+        return
+      }
       scrollX.value = Math.max(0, Math.min(maxScrollXSV.value, dragStartX.value - e.translationX))
       hoverX.value = e.x
       const now = Date.now()
@@ -1686,7 +1944,8 @@ export function VerticalProfile({
       'worklet'
       // Fling: keep scrolling with the release velocity, slowing to a stop,
       // clamped to the route's ends.
-      if (maxScrollXSV.value > 0 && Math.abs(e.velocityX) > 50) {
+      const scrubbing = flownModeSV.value ? flownScrubSV.value === 1 : routeScrubSV.value === 1
+      if (maxScrollXSV.value > 0 && Math.abs(e.velocityX) > 50 && !scrubbing) {
         const panned = scrollX.value !== dragStartX.value
         scrollX.value = withDecay(
           { velocity: -e.velocityX, clamp: [0, maxScrollXSV.value], deceleration: 0.997 },
@@ -1697,6 +1956,13 @@ export function VerticalProfile({
     onFinalize: (e) => {
       'worklet'
       if (legModeSV.value === 1) scheduleOnRN(legDragEnd, !e.canceled)
+      // Flight log: a tap away from the aircraft moves it there.
+      if (flownModeSV.value && flownScrubSV.value === 0 && !e.canceled
+        && flownMoveSV.value < FLOWN_TAP_SLOP_PX && Date.now() - flownBeginSV.value.t <= FLOWN_TAP_MAX_MS) {
+        const tNm = totalNmSV.value, pW = plotWSV.value
+        if (tNm > 0 && pW > 0) scheduleOnRN(reportHover, Math.max(0, Math.min(tNm, ((flownBeginSV.value.x + scrollX.value - MARGIN_L) / pW) * tNm)))
+      }
+      flownScrubSV.value = 0
       legHitSV.value = -1
       legModeSV.value = 0
       hoverX.value = -1
@@ -1831,6 +2097,48 @@ export function VerticalProfile({
       .join(' ')
   }, [projAlts, pathSamples, getMsa, totalNm, xOf, yOf])
 
+  // Flight log: flown line in continuous runs, recording gaps, and its below-MSA stretches.
+  const flownDraw = useMemo(() => {
+    if (!flown) return null
+    const { runs, gaps } = flownLineParts(flown)
+    const pts = flown.filter((p) => Number.isFinite(p.altFt))
+    const msaKnown = terrainPts.length > 0 || msaTerrain.fromGridOnly
+    // No endpoint allowance (a log starts and ends on the ground); low near an aerodrome on the
+    // track, or the log's own start and end, is amber instead of red.
+    const belowRuns = msaKnown
+      ? belowMsaRuns({ distNms: pts.map((p) => p.distNm), plannedAlts: pts.map((p) => p.altFt), getMsa, totalNm, suppressNm: 0 })
+      : []
+    const fieldNms = [0, flown[flown.length - 1]?.distNm ?? 0,
+      ...collectRoutePois(waypoints, poiSets).filter((p) => p.kind === 'aerodrome' && p.lateralNm <= 1.5).map((p) => p.distNm)]
+    const split = splitBelowMsaNearFields(belowRuns, fieldNms, FLOWN_NEAR_FIELD_NM)
+    const speedScale = flownSpeedScale(flown)
+    const ys = (k: number) => MARGIN_T + plotH - (k / speedScale.topKts) * plotH
+    return {
+      runs: runs.map((r) => polylinePath(r, xOf, yOf)).join(' '),
+      gaps: gaps.map(([a, b]) => ({ x1: xOf(a.distNm), y1: yOf(a.altFt), x2: xOf(b.distNm), y2: yOf(b.altFt) })),
+      below: split.away.map((r) => polylinePath(r, xOf, yOf)).join(' '),
+      belowNear: split.nearField.map((r) => polylinePath(r, xOf, yOf)).join(' '),
+      speed: flownSpeedRuns(flown).map((r) => 'M' + r.map((p) => `${xOf(p.distNm).toFixed(1)},${ys(p.spdKts).toFixed(1)}`).join(' L')).join(' '),
+      speedTopKts: speedScale.topKts,
+      gapInfo: flownGaps(flown),
+      entries: profile ? flownAirspaceEntries(flown, profile.airspaceBands).length : 0,
+    }
+  }, [flown, terrainPts, msaTerrain, getMsa, totalNm, xOf, yOf, plotH, waypoints, poiSets, profile])
+
+  // Events of the flight (takeoff, landing, touch-and-go, GPS lost, airspace entered), as chips under
+  // the chart; a tap moves the aircraft there and scrolls the chart to it.
+  const flownEventList = useMemo(() => {
+    if (!flown || !profile) return [] as FlownEvent[]
+    const t = autoFlyThresholds(aircraftProfile?.takeoffSpeedKts, aircraftProfile?.category)
+    return flownEvents(flown, profile.airspaceBands, { takeoffKts: t.takeoffKts, landedKts: t.landedKts })
+  }, [flown, profile, aircraftProfile])
+  const jumpToEvent = useCallback((e: FlownEvent) => {
+    flownStore.set({ idx: e.index, touched: true })
+    onHoverDistNmRef.current?.(e.point.distNm)
+    const target = Math.max(0, Math.min(maxScrollX, xOf(e.point.distNm) - chartW / 2))
+    setScroll(target)
+  }, [flownStore, maxScrollX, xOf, chartW, setScroll])
+
   // Hit segments for the leg level drag: the drawn planned line (climbs and
   // descents included), each piece assigned to the leg it lies in. Flat
   // [leg, x0, y0, x1, y1, ...] in content px, read by the gesture worklet.
@@ -1945,7 +2253,9 @@ export function VerticalProfile({
 
   const onChartLayout = useCallback((e: LayoutChangeEvent) => {
     setChartW(e.nativeEvent.layout.width)
-  }, [])
+    chartWSV.value = e.nativeEvent.layout.width
+  }, [chartWSV])
+
 
 
   const yTicks = useStableList(altitudeTicksFrom(yMax, yMin))
@@ -1991,8 +2301,30 @@ export function VerticalProfile({
     }
   }, [weatherMarks, windAloft, plotW, contentW, xOf, xTicks])
 
-  if (!profile || profile.totalNm === 0) return null
-  return (
+  if (!profile || profile.totalNm === 0) {
+    // A flight log shows its panel at once: building its profile (map data, terrain) takes a moment.
+    if (!logMode) return null
+    return (
+      <View style={[styles.panel, collapsed && styles.panelCollapsed]}>
+        <View style={styles.dragHandle} {...panResponder.panHandlers}>
+          <View style={styles.headerSide}><Text style={styles.logTitle}>FLIGHT LOG</Text></View>
+          <View style={styles.dragGrip} />
+          <View style={[styles.headerSide, styles.headerSideEnd]}>
+            {onClose && (
+              <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ left: 8, right: 8 }} accessibilityLabel={closeLabel ?? 'Close'}>
+                <Ionicons name="close" size={16} color={theme.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+        {!collapsed && (
+          <View style={[styles.chartWrap, styles.flownLoading, { height: chartH }]}>
+            <Text style={styles.flownLoadingTxt}>Building the profile along the flown track…</Text>
+          </View>
+        )}
+      </View>
+    )
+  }  return (
     <View style={[styles.panel, collapsed && styles.panelCollapsed]}>
       {/* Drag handle + header merged into one compact row — title text and
           the separate header row were removed entirely to reclaim vertical
@@ -2001,14 +2333,22 @@ export function VerticalProfile({
           is absolutely centred so the WIND toggle can sit at the right edge
           of the same row without fighting it for layout space. */}
       <View style={styles.dragHandle} {...panResponder.panHandlers}>
-        <View style={styles.headerSide}>{headerStart}</View>
+        <View style={styles.headerSide}>
+          {headerStart ?? (logMode ? (
+            <Text style={styles.logTitle} numberOfLines={1}>
+              FLIGHT LOG <Text style={styles.logDist}>{nmToDisplay(totalNm, units.distance).toFixed(1)} {distLabel(units.distance)}</Text>
+              {flownDraw && flownDraw.gapInfo.count > 0 ? <Text style={styles.logWarn}>{`  ⚠ ${flownDraw.gapInfo.count} gap${flownDraw.gapInfo.count > 1 ? 's' : ''}, ${formatElapsed(flownDraw.gapInfo.largestMs)}`}</Text> : null}
+              {flownDraw && flownDraw.entries > 0 ? `  · ${flownDraw.entries} airspace` : ''}
+            </Text>
+          ) : null)}
+        </View>
         <View style={styles.dragGrip} />
         <View style={[styles.headerSide, styles.headerSideEnd]}>
           {headerEnd}
           {/* Winds aloft came back incomplete (Open-Meteo throttled or
               offline): say so instead of silently drawing fewer barbs.
               Mirrors web's VirtualRadar. */}
-          {showWindAloft && windAloftStatus !== 'ok' && (
+          {windOn && windAloftStatus !== 'ok' && (
             <Text style={styles.windStatusTxt} numberOfLines={1}>
               {windAloftStatus === 'retrying' ? 'Winds: retrying\u2026' : 'Winds unavailable'}
             </Text>
@@ -2028,12 +2368,23 @@ export function VerticalProfile({
           >
             <Text style={[styles.projBtnTxt, showObstLabels && styles.projBtnTxtOn]}>OBST</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.projBtn, showWindAloft && styles.projBtnOn]}
-            onPress={() => setShowWindAloft(v => !v)}
-          >
-            <Text style={[styles.projBtnTxt, showWindAloft && styles.projBtnTxtOn]}>WIND</Text>
-          </TouchableOpacity>
+          {logMode && (
+            <TouchableOpacity
+              style={[styles.projBtn, showSpeed && styles.projBtnOn]}
+              onPress={() => setShowSpeed(v => !v)}
+              accessibilityLabel={showSpeed ? 'Hide the ground-speed line' : 'Show the ground speed along the flight'}
+            >
+              <Text style={[styles.projBtnTxt, showSpeed && styles.projBtnTxtOn]}>{showSpeed && flownDraw ? `GS 0\u2013${flownDraw.speedTopKts}` : 'GS'}</Text>
+            </TouchableOpacity>
+          )}
+          {!logMode && (
+            <TouchableOpacity
+              style={[styles.projBtn, showWindAloft && styles.projBtnOn]}
+              onPress={() => setShowWindAloft(v => !v)}
+            >
+              <Text style={[styles.projBtnTxt, showWindAloft && styles.projBtnTxtOn]}>WIND</Text>
+            </TouchableOpacity>
+          )}
           {onClose && (
             <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ left: 8, right: 8 }} accessibilityLabel={closeLabel ?? 'Close'}>
               <Ionicons name="close" size={16} color={theme.textSecondary} />
@@ -2107,6 +2458,10 @@ export function VerticalProfile({
 
                 <ProfileAStatic
                   xTicks={xTicks}
+                  logMode={logMode}
+                  flownDraw={flownDraw}
+                  showSpeed={showSpeed}
+                  flownEventList={flownEventList}
                   windAloft={windAloft}
                   arrElevFt={arrElevFt}
                   contentW={contentW}
@@ -2185,6 +2540,9 @@ export function VerticalProfile({
               </Svg>
               </View>
               )}
+              {flown && (
+                <FlownAircraft store={flownStore} flown={flown} xOf={xOf} yOf={yOf} yMin={yMin} yMax={yMax} silhouette={silhouette} acX={acXSV} acY={acYSV} />
+              )}
 
               {/* ── Overlay: obstacle icons, waypoint/axis text (RN Text for crispness) ──
                   Airspace band class/ceiling chips removed for now — no dedup
@@ -2211,7 +2569,7 @@ export function VerticalProfile({
                   profile={profile}
                   styles={styles}
                   totalNm={totalNm}
-                  visibleWaypointTicks={visibleWaypointTicks}
+                  visibleWaypointTicks={logMode ? NO_WAYPOINT_TICKS : visibleWaypointTicks}
                   xOf={xOf}
                   yMax={yMax}
                   yOf={yOf}
@@ -2242,6 +2600,7 @@ export function VerticalProfile({
                   <SvgLine x1={1} y1={0} x2={1} y2={plotH} stroke="rgba(250,204,21,0.85)" strokeWidth={1.5} strokeDasharray="4,3" />
                 </Svg>
               </Animated.View>
+              {flown && <FlownReadout store={flownStore} flown={flown} bands={profile.airspaceBands} terrainPts={terrainPts} getMsa={getMsa} styles={styles} />}
               </View>
               </GestureDetector>
               {/* Pinned Y-axis tick labels — rendered outside the scrollable
@@ -2268,6 +2627,21 @@ export function VerticalProfile({
             </>
           )}
         </View>
+      )}
+      {logMode && !collapsed && flownEventList.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.eventsRow}>
+          {flownEventList.map((e, i) => (
+            <TouchableOpacity
+              key={`${e.kind}-${e.index}-${i}`}
+              style={[styles.eventChip, e.kind === 'gap' && styles.eventChipWarn]}
+              onPress={() => jumpToEvent(e)}
+              accessibilityLabel={`${e.label} at ${formatElapsed(e.point.elapsedMs)}`}
+            >
+              <Text style={styles.eventTime}>{formatElapsed(e.point.elapsedMs)}</Text>
+              <Text style={styles.eventLabel}>{e.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       )}
     </View>
   )
@@ -2339,6 +2713,87 @@ function makeStyles(theme: ScaledTheme) {
     fontWeight: '700',
   },
   projBtnTxtOn: { color: '#00dcff' },
+  logTitle: {
+    color:      theme.textSecondary,
+    fontSize:   10,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+  },
+  logWarn: {
+    color:      theme.statusWarn,
+    fontWeight: '700',
+  },
+  logDist: {
+    color:      FLOWN_COLOR,
+    fontWeight: '700',
+  },
+  // Readout of the inspected flight-log point. Always dark: it sits on the chart, which is
+  // dark in every theme, and its labels use the chart's line colours.
+  flownReadout: {
+    position:        'absolute',
+    top:             MARGIN_T + 2,
+    right:           4,
+    backgroundColor: 'rgba(12,16,26,0.92)',
+    borderColor:     'rgba(255,255,255,0.22)',
+    borderWidth:     1,
+    borderRadius:    4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  flownRow: {
+    flexDirection: 'row',
+    alignItems:    'baseline',
+  },
+  flownLabel: {
+    color:      '#b8c0cc',
+    fontSize:   9,
+    fontWeight: '700',
+    minWidth:   32,
+  },
+  flownValue: {
+    color:      '#e8edf5',
+    fontSize:   11,
+    fontWeight: '600',
+  },
+  eventsRow: {
+    flexDirection:     'row',
+    gap:               theme.space1,
+    paddingHorizontal: theme.space2,
+    paddingVertical:   theme.space1,
+  },
+  eventChip: {
+    flexDirection:     'row',
+    gap:               4,
+    alignItems:        'center',
+    paddingHorizontal: theme.space2,
+    paddingVertical:   3,
+    borderRadius:      10,
+    borderWidth:       1,
+    borderColor:       theme.borderDefault,
+  },
+  eventChipWarn: {
+    borderColor: 'rgba(239,68,68,0.6)',
+  },
+  eventTime: {
+    color:    theme.textSecondary,
+    fontSize: 11,
+  },
+  eventLabel: {
+    color:    theme.textPrimary,
+    fontSize: 11,
+  },
+  flownLoading: {
+    alignItems:     'center',
+    justifyContent: 'center',
+  },
+  flownLoadingTxt: {
+    color:    theme.textSecondary,
+    fontSize: 12,
+  },
+  flownHint: {
+    color:      '#e8edf5',
+    fontSize:   10,
+  },
   windStatusTxt: {
     color:      theme.textSecondary,
     fontSize:   9,
