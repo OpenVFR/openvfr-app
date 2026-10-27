@@ -7,7 +7,8 @@ sidebar:
 
 OpenVFR is a free, open-source Electronic Flight Bag (EFB) for VFR pilots:
 airspace awareness, terrain and obstacle profiles, aviation charts and
-route planning, built on open data. No account is required to use it.
+route planning, built on open data. It is free; you sign in with a free
+account (a passkey or an email code).
 
 > **Situational awareness only.** OpenVFR is not certified by any aviation
 > authority and must not be used as a primary means of navigation or for
@@ -16,16 +17,34 @@ route planning, built on open data. No account is required to use it.
 
 ## Where to start
 
-- [Getting started](./getting-started.md): open the app and find your way around
+**New here**
+- [Getting started](./getting-started.md)
+- [How it all fits together](./how-it-fits-together.md)
+- [Web app and native app](./platforms.md)
+
+**Planning**
 - [Map and layers](./map-and-layers.md)
 - [Planning a route](./planning-a-route.md)
+- [Saved routes and places](./routes-and-places.md)
+- [Aircraft and fuel](./aircraft-and-fuel.md)
+- [Virtual Radar and vertical profile](./virtual-radar.md)
+- [Aerodromes and briefing](./aerodromes-and-briefing.md)
+- [Weather and NOTAMs](./weather-and-notams.md)
+
+**Flying**
 - [Flying mode and alerts](./flying-and-alerts.md)
 - [Flight logs](./flight-logs.md)
-- [Weather and NOTAMs](./weather-and-notams.md)
-- [Data sources](./data-sources.md)
-- [Web app and native app](./platforms.md): what each platform has
-- [How it all fits together](./how-it-fits-together.md)
+- [Air traffic](./air-traffic.md)
+- [Simulators and devices](./simulators-and-devices.md)
+
+**Setup and reference**
+- [Offline use and data updates](./offline-and-data.md)
+- [Account and sync](./account-and-sync.md)
+- [Settings reference](./settings.md)
 - [Feature index](./features.md)
+- [Troubleshooting](./troubleshooting.md)
+- [Glossary](./glossary.md)
+- [Data sources](./data-sources.md)
 - [FAQ](./faq.md)
 
 ## Status

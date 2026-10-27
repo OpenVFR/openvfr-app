@@ -23,7 +23,10 @@ for data you have already loaded.
 - Turn on flying mode to follow your GPS position and get alerts. See
   [Flying mode and alerts](./flying-and-alerts.md).
 
-## Accounts and sync
+## Sign in
 
-An account is optional. Without one, your routes, aircraft and settings are
-stored on your device. With one, they can be synced between devices.
+On first start you sign in with a passkey (your device's fingerprint, face
+or PIN) or with a one-time code sent to your email. You also give a display
+name. There is no password and no payment. Your routes, aircraft, places,
+logs and settings are kept on your device and synced between your devices.
+See [Account and sync](./account-and-sync.md).

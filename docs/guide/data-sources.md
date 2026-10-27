@@ -2,7 +2,7 @@
 title: Data sources
 description: Where OpenVFR gets its data, and its licences.
 sidebar:
-  order: 8
+  order: 22
 ---
 
 OpenVFR is built on open data. The full, current list with licences is on

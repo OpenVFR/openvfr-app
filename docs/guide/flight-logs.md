@@ -2,7 +2,7 @@
 title: Flight logs
 description: Automatic flight logs, review on the profile, and GPX export and import.
 sidebar:
-  order: 6
+  order: 12
 ---
 
 In flying mode, OpenVFR records a log of the flight: takeoff, landing,

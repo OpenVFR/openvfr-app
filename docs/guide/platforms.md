@@ -2,7 +2,7 @@
 title: Web app and native app
 description: Which features are on the web app, Android and iOS, and where they differ.
 sidebar:
-  order: 10
+  order: 18
 ---
 
 OpenVFR comes as a web app (PWA) and as an Android and iOS app. They share
@@ -91,7 +91,7 @@ Legend: **Yes** = available, **Partial** = available with differences
 | QNH from nearby stations, field QNH, baro prompt | No | Yes | Altitude reference handling is native only. |
 | Simulator: keyboard or touch | Yes | Yes | Web: keyboard simulator. Native: touch simulator. |
 | Simulator: X-Plane / MSFS | Partial | Yes | Web needs a WebSocket bridge. Native connects over UDP or WebSocket directly. |
-| GDL90 receivers (for example SkyEcho, iLevil) | No | Partial | *To confirm* what native decodes. |
+| GDL90 receivers (portable ADS-B receivers) | No | Partial | *To confirm* what native decodes. |
 
 ## Account
 
@@ -99,7 +99,7 @@ Legend: **Yes** = available, **Partial** = available with differences
 |---|---|---|---|
 | Passkey sign-in | Yes | Yes | |
 | Email one-time code sign-in | Yes | Yes | |
-| Works without an account | Yes | Yes | Data stays on the device. |
+| Local data kept on the device | Yes | Yes | Routes, aircraft and settings are stored locally and synced. |
 | Sync of routes, aircraft, places, logs, settings | Yes | Yes | |
 
 ## Where the platforms differ in how they work
@@ -118,5 +118,7 @@ Legend: **Yes** = available, **Partial** = available with differences
 - **Updates.** The web app updates itself when you reload. Native updates
   come through the app store.
 
-See [Flying mode and alerts](./flying-and-alerts.md) and
-[Planning a route](./planning-a-route.md) for how the shared features work.
+See [Flying mode and alerts](./flying-and-alerts.md),
+[Planning a route](./planning-a-route.md) and
+[Simulators and devices](./simulators-and-devices.md) for how the features
+work, and the [feature index](./features.md) for the full list.
