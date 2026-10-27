@@ -2957,6 +2957,14 @@ export function AviationMap({
     : legDragPreview ? [legDragPreview.legIndex]
     : []
   const ghostLegs   = routeDragActive ? onlyLegs(routeLegsGeoJSON(waypoints), ghostLegIdx) : null
+  // Chevron source: only changes when the route or the set of legs being
+  // dragged changes, not on every drag move (see the chevron layer).
+  const ghostLegKey = ghostLegIdx.join(',')
+  const chevronLegs = useMemo(() => {
+    const fc = routeLegsGeoJSON(waypoints)
+    const skip = ghostLegKey ? ghostLegKey.split(',').map(Number) : []
+    return skip.length ? { ...fc, features: fc.features.filter((f) => !skip.includes(f.properties?.legIndex as number)) } : fc
+  }, [waypoints, ghostLegKey])
   const dropPoint   = dragPreview ?? legDragPreview
   const dropPointFC: FeatureCollection | null = routeDragActive && dropPoint
     ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [dropPoint.lng, dropPoint.lat] }, properties: { label: dropPoint.snapHint ?? '' } }] }
@@ -2966,10 +2974,14 @@ export function AviationMap({
   // leg and flipped so they never read upside-down. Mirrors web's
   // route-leg-labels source.
   const legLabelsFC = useMemo<FeatureCollection | null>(() => {
-    if (!showLegLabels || routeDragActive || waypoints.length < 2) return null
+    if (!showLegLabels || waypoints.length < 2) return null
+    // While dragging only the labels of the legs being changed go: hiding
+    // them all freed space the chevrons then jumped into on every leg.
+    const skip = ghostLegKey ? ghostLegKey.split(',').map(Number) : []
     return {
       type: 'FeatureCollection',
-      features: waypoints.slice(0, -1).map((from, i) => {
+      features: waypoints.slice(0, -1).flatMap((from, i) => {
+        if (skip.includes(i)) return []
         const to = waypoints[i + 1]
         const v = legLabelVariants({
           magHdgDeg: magneticBearingDeg(from, to),
@@ -2977,14 +2989,14 @@ export function AviationMap({
           speedKts:  legIasKts?.[i],
           unit:      distanceUnit,
         })
-        return {
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: [[from.lng, from.lat], [to.lng, to.lat]] },
+        return [{
+          type: 'Feature' as const,
+          geometry: { type: 'LineString' as const, coordinates: [[from.lng, from.lat], [to.lng, to.lat]] },
           properties: { labelFull: v.full, labelMid: v.mid, labelShort: v.short },
-        }
+        }]
       }),
     }
-  }, [showLegLabels, routeDragActive, waypoints, legIasKts, distanceUnit])
+  }, [showLegLabels, ghostLegKey, waypoints, legIasKts, distanceUnit])
   // Leg-midpoint drag handles must track a waypoint's live drag position too
   // — otherwise the handle for a leg touching the waypoint being dragged
   // stays planted at the stale pre-drag midpoint, showing as a stray extra
@@ -3278,22 +3290,6 @@ export function AviationMap({
               key="route-legs-line" id="route-legs-line" type="line"
               paint={{ 'line-color': ['case', ['boolean', ['get', 'preview'], false], DRAG_ROUTE_COLOR, theme.accentMagenta], 'line-width': ROUTE_LINE_WIDTH, 'line-dasharray': [6, 3] }}
             />
-            {/* Direction chevrons along each leg. A text glyph placed along
-                the line needs no image asset; keep-upright off so the
-                chevron always points in the direction of flight. Skipped
-                automatically on legs too short for the spacing. */}
-            <Layer
-              key="route-legs-dir" id="route-legs-dir" type="symbol"
-              layout={{
-                'symbol-placement': 'line', 'symbol-spacing': ROUTE_CHEVRON_SPACING_PX,
-                'text-field': '>', 'text-size': 16, 'text-font': ['Noto Sans Medium'],
-                'text-rotation-alignment': 'map', 'text-pitch-alignment': 'map', 'text-keep-upright': false,
-                // Give way to the leg labels (upper layer, placed first);
-                // never push anything else aside.
-                'text-allow-overlap': false, 'text-ignore-placement': true, 'text-padding': 2,
-              }}
-              paint={{ 'text-color': ['case', ['boolean', ['get', 'preview'], false], DRAG_ROUTE_COLOR, theme.accentMagenta], 'text-halo-color': theme.surfaceBase, 'text-halo-width': 1.5 }}
-            />
             {/* In-flight unlocked leg: a wide glow under the dashes while
                 it can be dragged. */}
             {unlockedLeg != null && (
@@ -3309,6 +3305,29 @@ export function AviationMap({
                 paint={{ 'line-color': '#000000', 'line-opacity': 0.01, 'line-width': 22 }}
               />
             )}
+          </GeoJSONSource>
+          {/* Direction chevrons in their own source, fed from the route as
+              it is (not the drag preview) minus the legs being changed: the
+              chevrons on every other leg stay put while a point is dragged.
+              Re-feeding the preview on every move re-placed all of them, so
+              they jumped about along the whole route. */}
+          <GeoJSONSource id="route-chevrons-src" data={chevronLegs}>
+            {/* Direction chevrons along each leg. A text glyph placed along
+                the line needs no image asset; keep-upright off so the
+                chevron always points in the direction of flight. Skipped
+                automatically on legs too short for the spacing. */}
+            <Layer
+              key="route-legs-dir" id="route-legs-dir" type="symbol"
+              layout={{
+                'symbol-placement': 'line', 'symbol-spacing': ROUTE_CHEVRON_SPACING_PX,
+                'text-field': '>', 'text-size': 16, 'text-font': ['Noto Sans Medium'],
+                'text-rotation-alignment': 'map', 'text-pitch-alignment': 'map', 'text-keep-upright': false,
+                // Give way to the leg labels (upper layer, placed first);
+                // never push anything else aside.
+                'text-allow-overlap': false, 'text-ignore-placement': true, 'text-padding': 2,
+              }}
+              paint={{ 'text-color': theme.accentMagenta, 'text-halo-color': theme.surfaceBase, 'text-halo-width': 1.5 }}
+            />
           </GeoJSONSource>
           </>
         )}
