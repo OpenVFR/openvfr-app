@@ -244,6 +244,32 @@ const AXIS_FONT = 11
 /** Waypoint-name label font (px); its box is ~6.8 px per character (12 px semibold), capped. */
 const WP_LABEL_FONT = 12
 const wpLabelWidth = waypointLabelWidth
+const WP_LABEL_H = 12
+
+/** Where each waypoint-name label sits along the chart's top edge: clamped
+ *  inside the plot (the destination's label must not overflow and be clipped
+ *  to its first letter), and dropped below an airspace chip it would sit on.
+ *  Shared by the labels and by the wind barbs, which keep clear of them. */
+function layoutWpLabels<T extends { name: string; distNm: number }>(
+  ticks: T[],
+  chips: { px: number; py: number; w: number; h: number }[],
+  xOf: (nm: number) => number,
+  totalNm: number,
+): { tick: T; w: number; left: number; top: number; nearRight: boolean }[] {
+  return ticks.map((tick) => {
+    const w = wpLabelWidth(tick.name)
+    const left = Math.max(0, Math.min(xOf(totalNm) - w - 2, xOf(tick.distNm) + 2))
+    const nearRight = xOf(tick.distNm) + 2 + w > xOf(totalNm) - 2
+    let top = MARGIN_T
+    for (let guard = 0; guard < 4; guard++) {
+      const hit = chips.find((c) =>
+        left < c.px + c.w && c.px < left + w && top < c.py + c.h && c.py < top + WP_LABEL_H)
+      if (!hit) break
+      top = hit.py + hit.h + 1
+    }
+    return { tick, w, left, top, nearRight }
+  })
+}
 
 /** Minimum gap (ms) between scrub-position reports to the parent (map
  *  crosshair): each report re-renders the map screen on the JS thread. */
@@ -641,6 +667,7 @@ const RadarBackdrop = React.memo(function RadarBackdrop(P: BackdropProps) {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ProfileAStatic = React.memo(function ProfileAStatic({
   xTicks,
+  visibleWaypointTicks,
   logMode,
   flownDraw,
   showSpeed,
@@ -745,8 +772,14 @@ const ProfileAStatic = React.memo(function ProfileAStatic({
                 {/* Winds aloft: barbs at each standard pressure level's nominal
                     altitude (model forecast), mirrors web's VirtualRadar. */}
                 {(() => {
-                  const chipBoxes: BoxRect[] = layoutAirspaceChips(airspaceChips(profile.airspaceBands, yMax), xOf, yOf)
-                    .map((c) => ({ left: c.px, right: c.px + c.w, top: c.py, bottom: c.py + c.h }))
+                  const chips = layoutAirspaceChips(airspaceChips(profile.airspaceBands, yMax), xOf, yOf)
+                  // Keep clear of the airspace chips and of the waypoint names
+                  // along the top edge (a barb label used to sit on WP7's).
+                  const chipBoxes: BoxRect[] = [
+                    ...chips.map((c) => ({ left: c.px, right: c.px + c.w, top: c.py, bottom: c.py + c.h })),
+                    ...layoutWpLabels(visibleWaypointTicks, chips, xOf, totalNm)
+                      .map((l) => ({ left: l.left, right: l.left + l.w, top: l.top, bottom: l.top + WP_LABEL_H + 2 })),
+                  ]
                   return windAloft.flatMap((col: any, ci: any) => col.levels.map((lv: any) => {
                   // Surface (10 m) wind is part of the wind row under the x axis.
                   if (lv.surface || lv.altFt > yMax * 0.96 || lv.altFt < yMin) return null
@@ -984,22 +1017,7 @@ const ProfileCStatic = React.memo(function ProfileCStatic({
                   // (chips can reach the plot's top edge, where the
                   // waypoint-name row lives).
                   const chips = layoutAirspaceChips(airspaceChips(profile.airspaceBands, yMax), xOf, yOf)
-                  const WP_LABEL_H = 12
-                  return visibleWaypointTicks.map((tick: any) => {
-                    // Clamp so the destination's label (sitting exactly at the
-                    // right edge of the *content* — not the panel, since this
-                    // whole overlay scrolls with the Svg — doesn't overflow
-                    // past contentW and get clipped to just its first letter.
-                    const w = wpLabelWidth(tick.name)
-                    const left = Math.max(0, Math.min(xOf(totalNm) - w - 2, xOf(tick.distNm) + 2))
-                    const nearRight = xOf(tick.distNm) + 2 + w > xOf(totalNm) - 2
-                    let top = MARGIN_T
-                    for (let guard = 0; guard < 4; guard++) {
-                      const hit = chips.find((c) =>
-                        left < c.px + c.w && c.px < left + w && top < c.py + c.h && c.py < top + WP_LABEL_H)
-                      if (!hit) break
-                      top = hit.py + hit.h + 1
-                    }
+                  return layoutWpLabels(visibleWaypointTicks, chips, xOf, totalNm).map(({ tick, w, left, top, nearRight }) => {
                     return (
                       <Text
                         key={`wpl-${tick.distNm}-${tick.name}`}
@@ -2491,6 +2509,7 @@ export function VerticalProfile({
 
                 <ProfileAStatic
                   xTicks={xTicks}
+                  visibleWaypointTicks={logMode ? NO_WAYPOINT_TICKS : visibleWaypointTicks}
                   logMode={logMode}
                   flownDraw={flownDraw}
                   showSpeed={showSpeed}

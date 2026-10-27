@@ -1554,6 +1554,14 @@ function VirtualRadar({
   // the MSA is named in red; a crowd collapses to dots (highest first keeps its
   // pictogram). Landmarks thin out the same way, lower priority.
   // Airspace chip boxes for the leg-drag layer (its below-MSA shortcut keeps clear of them).
+  // Waypoint names along the chart's top edge: wind-aloft barbs keep clear
+  // of them (a barb label used to sit on a waypoint's name).
+  const wpLabelBoxes = useMemo((): BoxRect[] => (layout ? visibleWaypointTicks.map(({ tick, isLast }) => {
+    const x = layout.xOf(tick.distNm)
+    const w = waypointLabelWidth(tick.name)
+    const left = isLast ? x - LINE_LABEL_INSET - w : x + LINE_LABEL_INSET
+    return { left, right: left + w, top: layout.plotTop + LINE_LABEL_INSET, bottom: layout.plotTop + LINE_LABEL_INSET + 16 }
+  }) : []), [visibleWaypointTicks, layout])
   const chipBoxes = useMemo((): BoxRect[] => (profile && layout
     ? layoutAirspaceChips(airspaceChips(profile.airspaceBands, yMax), layout.xOf, layout.yOf).map((c) => ({ left: c.px, right: c.px + c.w, top: c.py, bottom: c.py + c.h }))
     : []), [profile, layout, yMax])
@@ -1826,7 +1834,7 @@ function VirtualRadar({
           const cy = L.yOf(lv.altFt)
           const label = lv.speedKts === 0 ? 'CALM' : `${String(lv.dirDeg).padStart(3, '0')}°/${lv.speedKts}`
           // Keep clear of the airspace chips: label right, else left, else barb only.
-          const fit = windAloftFit(cx, cy, Math.ceil(label.length * 6.8), chipBoxes, { left: L.plotLeft, right: L.plotRight })
+          const fit = windAloftFit(cx, cy, Math.ceil(label.length * 6.8), [...chipBoxes, ...wpLabelBoxes], { left: L.plotLeft, right: L.plotRight })
           if (!fit.barb) return null
           return (
             <g key={`windaloft-${ci}-${lv.altFt}`} aria-hidden="true">
