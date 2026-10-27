@@ -17,6 +17,7 @@
     "./lookaheadTerrain": "./src/lookaheadTerrain.ts",
     "./pointElevation": "./src/pointElevation.ts",
     "./msaMargins": "./src/msaMargins.ts",
+    "./preflightWarnings": "./src/preflightWarnings.ts",
     "./mefGrid": "./src/mefGrid.ts",
     "./routePois": "./src/routePois.ts",
     "./obstacleSymbol": "./src/obstacleSymbol.ts",
