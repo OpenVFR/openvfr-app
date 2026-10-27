@@ -235,10 +235,6 @@ export type AviationMapProps = {
   /** Fired when an existing waypoint is drag-released near 2+ snap targets —
    *  caller should show a disambiguation picker; picking calls onWaypointMove. */
   onWaypointMoveCandidates?: (index: number, candidates: SnapCandidate[]) => void
-  /** Fired on a long-hold-in-place (no movement) on an existing route
-   *  waypoint's drag handle — caller should offer to remove it from the
-   *  route (mirrors web's stationary-tap-in-adjust-mode WpActionMenu). */
-  onWaypointLongPress?: (index: number, lat: number, lng: number) => void
   /** Remove a route point: used when a dragged point is dropped onto its
    *  neighbour (a zero-length leg otherwise). */
   onWaypointRemove?: (index: number) => void
@@ -503,11 +499,6 @@ const DRAG_LIFT_PX = 72
  *  route point, nothing for a leg handle. Without it the lift above moved a
  *  point by DRAG_LIFT_PX on every still long-press. */
 const DRAG_SLOP_PX = 12
-/** A drag handle takes the touch as soon as it starts. Released sooner than
- *  this without moving, it was a tap (the point's bubble, as for a tap on a
- *  point without a handle); held longer, a long-press (full menu). Same as
- *  Android's long-press timeout. */
-const HANDLE_TAP_MAX_MS = 500
 const pastSlop = (d: { start?: [number, number]; moved?: boolean }, point: [number, number]): boolean => {
   if (d.moved) return true
   if (!d.start) { d.start = point; return false }
@@ -1744,7 +1735,6 @@ export function AviationMap({
   onLongPress,
   onWaypointMove,
   onWaypointMoveCandidates,
-  onWaypointLongPress,
   onWaypointRemove,
   onRouteEndTap,
   onWaypointPress,
@@ -2207,7 +2197,7 @@ export function AviationMap({
   // Drag state — driven by WaypointDragAnnotation's native ViewAnnotation
   // drag events (lngLat reported directly by the map SDK, no manual
   // projection/unprojection needed; see WaypointDragAnnotation comment above).
-  const dragRef = useRef<{ wpIndex: number; lat: number; lng: number; start?: [number, number]; moved?: boolean; at?: number } | null>(null)
+  const dragRef = useRef<{ wpIndex: number; lat: number; lng: number; start?: [number, number]; moved?: boolean } | null>(null)
   const [dragging, setDragging] = useState(false)
   // Live preview position while dragging — rendered locally only. Committing
   // every pointer-move frame to onWaypointMove (which persists to AsyncStorage
@@ -2238,7 +2228,7 @@ export function AviationMap({
   onRouteDragStartRef.current = onRouteDragStart
   const startDrag = useCallback((wpIndex: number, lat: number, lng: number) => {
     onRouteDragStartRef.current?.()
-    dragRef.current = { wpIndex, lat, lng, at: Date.now() }
+    dragRef.current = { wpIndex, lat, lng }
     setDragging(true)
   }, [])
   // Set true by releaseDrag, consumed (and cleared) by the very next
@@ -2345,21 +2335,9 @@ export function AviationMap({
     if (!d || !preview || !d.moved) {
       dragPreviewRef.current = null
       setDragPreview(null)
-      // No movement happened between touch-down and release — the native
-      // SDK's draggable-symbol gesture only calls onDragStart at all after
-      // its own internal long-press-to-engage recognizer fires (see
-      // MLRNPointAnnotation.kt / SymbolManager), so reaching here with `d`
-      // set already implies a deliberate hold, not an accidental tap — no
-      // extra timing check needed. This is the "remove from route" gesture
-      // (mirrors web's stationary-tap-in-adjust-mode → WpActionMenu).
-      // A short press is a tap (the handle took the touch, so the map never
-      // saw it): the point's bubble, as for a tap on a point without a
-      // handle. Held longer: the long-press menu.
-      if (d && Date.now() - (d.at ?? 0) < HANDLE_TAP_MAX_MS && onWaypointPressRef.current) {
-        pressRoutePoint(d.wpIndex, point)
-      } else if (d) {
-        onWaypointLongPress?.(d.wpIndex, d.lat, d.lng)
-      }
+      // Pressed without moving (the handle took the touch, so the map never
+      // saw it): a tap or a long-press both show the point's bubble.
+      if (d) pressRoutePoint(d.wpIndex, point)
       return
     }
     const wpIndex = d.wpIndex
@@ -2420,7 +2398,7 @@ export function AviationMap({
         onWaypointMoveCandidates(wpIndex, candidates)
       })
       .catch(() => commit({ lat: preview.lat, lng: preview.lng }))
-  }, [onWaypointMove, onWaypointMoveCandidates, onWaypointLongPress, onWaypointRemove, liftedLngLat, snapCandidatesAt, resetDragHandles])
+  }, [onWaypointMove, onWaypointMoveCandidates, onWaypointRemove, liftedLngLat, snapCandidatesAt, resetDragHandles, pressRoutePoint])
 
   // Leg-midpoint drag-insert state — same native-ViewAnnotation-drag pattern
   // as waypoint move above, but commits via onLegInsert(Candidates) instead
@@ -2916,13 +2894,13 @@ export function AviationMap({
       // once actual finger movement is detected), so it falls straight
       // through to this generic map long-press instead of
       // WaypointDragAnnotation's/LegMidpointAnnotation's own onDragStart/
-      // onDragEnd. Check for a route-pts-circle hit first (→
-      // onWaypointLongPress / Remove-from-Route menu), then a route-legs-hit
+      // onDragEnd. Check for a route-pts-circle hit first (→ the point's
+      // bubble, same as a tap), then a route-legs-hit
       // hit (→ suppressed entirely — "Add to Route" makes no sense on a
       // point already part of the route, and there's no long-press action
       // defined for a leg yet), and only fall back to the bare-point
       // Add-to-Route/Save-Waypoint menu when neither matches.
-      if (mapRef.current && (onWaypointLongPress || onLegTap)) {
+      if (mapRef.current && (onWaypointPress || onLegTap)) {
         Promise.all([
           mapRef.current.queryRenderedFeatures(
             [[point[0] - SNAP_PX, point[1] - SNAP_PX], [point[0] + SNAP_PX, point[1] + SNAP_PX]],
@@ -2934,8 +2912,8 @@ export function AviationMap({
           ),
         ]).then(([wpHits, legHits]) => {
           const wpIndex = wpHits[0]?.properties?.wpIndex
-          if (typeof wpIndex === 'number' && onWaypointLongPress) {
-            onWaypointLongPress(wpIndex, lat, lng)
+          if (typeof wpIndex === 'number') {
+            pressRoutePoint(wpIndex, [point[0], point[1]])
             return
           }
           if (legHits.length > 0) return
@@ -2953,7 +2931,7 @@ export function AviationMap({
       if (!onLongPress) return
       onLongPress({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: {} })
     },
-    [onLongPress, onWaypointMove, onWaypointLongPress, onLegTap],
+    [onLongPress, onWaypointMove, onWaypointPress, onLegTap, pressRoutePoint],
   )
 
   // While a point is being dragged only the legs it touches change: those

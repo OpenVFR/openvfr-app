@@ -1185,8 +1185,8 @@ function MapScreenForCountry() {
   const [selectedPoint, setSelectedPoint] = useState<number | null>(null)
   useEffect(() => { setSelectedLeg(null); setSelectedPoint(null) }, [waypoints, flyingActive])
   // Small bubble anchored above the tapped route point (its quick actions)
-  // or leg (what to do next), instead of a sheet over the map. A long-press
-  // on a point opens the full menu (wpActionMenu).
+  // or leg (what to do next), instead of a sheet over the map (a long-press
+  // on a point shows the same bubble).
   // How far the map extends above the overlay container (under the status
   // bar): map press points are offset by it (AviationMap bleedTop).
   const mapBleedTopRef = React.useRef(insets.top)
@@ -1437,22 +1437,8 @@ function MapScreenForCountry() {
     setSnapPicker({ candidates, onPick: (wp) => insertWaypoint(afterIndex, wp) })
   }, [insertWaypoint])
 
-  // Long-hold-in-place on a route waypoint's drag handle — mirrors web's
-  // stationary-tap-in-adjust-mode → WpActionMenu (Direct To / Remove /
-  // Cancel), NOT the generic bare-point Save Waypoint popup. Previously this
-  // routed into longPressMenu (Save Waypoint only, no Remove) — indistinguishable
-  // from long-pressing empty map, so grabbing a route waypoint and releasing
-  // without noticeable movement (a very easy accidental gesture) surfaced a
-  // confusing "Save Waypoint" prompt instead of a route-waypoint action.
-  // Also opened by a plain tap on a route point (not the route end on the
-  // ground, which extends the route). The map feature under the point
-  // (aerodrome, navaid, reporting point) is kept for the menu's Details.
-  const [wpActionMenu, setWpActionMenu] = useState<{ lat: number; lng: number; wpIdx: number; info?: { features: Feature[]; lngLat: [number, number] } } | null>(null)
-  // Point indices shift on any route change: close the menu.
-  useEffect(() => { setWpActionMenu(null) }, [waypoints])
-  const handleWaypointLongPress = useCallback((index: number, lat: number, lng: number) => {
-    setWpActionMenu({ lat, lng, wpIdx: index })
-  }, [])
+  // Tap or long-press on a route point: its bubble (routePopover). There is
+  // no separate bigger menu: the bubble holds every point action.
   const handleWaypointPress = useCallback((index: number, _lat: number, _lng: number, features: Feature[], tapLngLat: [number, number], screenPoint: [number, number]) => {
     const under = features.filter(f => {
       const p = f.properties ?? {}
@@ -1523,8 +1509,8 @@ function MapScreenForCountry() {
   useEffect(() => { profileCursorStore.set(null) }, [profileCursorFor, profileCursorStore])
 
   // Long-press menu — offers "Save Waypoint" for any long-pressed map point
-  // (a long-press on a route point opens that point's menu instead, see
-  // handleWaypointLongPress). It also offers this exact point for the route:
+  // (a long-press on a route point shows that point's bubble instead, see
+  // handleWaypointPress). It also offers this exact point for the route:
   // on the ground "Add to route (this point)" / "Start route here" (taps
   // while extending snap to map features, so this is how a free point is
   // added), in flight "Direct to here".
@@ -1688,7 +1674,6 @@ function MapScreenForCountry() {
           onLongPress={handleLongPress}
           onWaypointMove={handleWaypointMove}
           onWaypointMoveCandidates={handleWaypointMoveCandidates}
-          onWaypointLongPress={handleWaypointLongPress}
           // A dragged point dropped onto its neighbour is removed. A tap on a
           // point opens its menu (Details / Direct to / Remove).
           onWaypointRemove={removeWaypoint}
@@ -1710,7 +1695,6 @@ function MapScreenForCountry() {
           editLocked={flyingActive || !editSessionActive || extending}
           unlockedLeg={flyingActive ? unlockedLeg : selectedLeg}
           unlockedPoint={flyingActive ? selectedPoint
-            : wpActionMenu ? wpActionMenu.wpIdx
             : selectedPoint != null ? selectedPoint
             : extending && waypoints.length > 0 ? waypoints.length - 1 : null}
           selectedPoint={selectedPoint}
@@ -1813,46 +1797,6 @@ function MapScreenForCountry() {
             />
           )
         })()}
-
-        {/* Full route point menu: long-press on a route point (the
-            bubble above holds the quick actions for a tap). */}
-        {wpActionMenu && (
-          <View style={styles.longPressMenu}>
-            <Text style={styles.longPressMenuCoord}>
-              {waypoints[wpActionMenu.wpIdx]?.name ?? `WP${wpActionMenu.wpIdx + 1}`} · route point {wpActionMenu.wpIdx + 1}
-            </Text>
-            {wpActionMenu.info && (
-              <TouchableOpacity
-                style={styles.longPressMenuBtn}
-                onPress={() => { const i = wpActionMenu.info!; setWpActionMenu(null); void handleFeatureTap(i.features, i.lngLat) }}
-              >
-                <Ionicons name="information-circle-outline" size={16} color={theme.accentBlue} />
-                <Text style={styles.longPressMenuBtnTxt}>Details</Text>
-              </TouchableOpacity>
-            )}
-            {/* In flight, only points not yet passed: the one being flown
-                to (Direct to) or any after it (Take shortcut). */}
-            {flyingActive && activePosition && wpActionMenu.wpIdx >= activeWpIdx && waypoints[wpActionMenu.wpIdx] && (
-              <TouchableOpacity
-                style={styles.longPressMenuBtn}
-                onPress={() => { flyDirect(waypoints[wpActionMenu.wpIdx]); setWpActionMenu(null) }}
-              >
-                <Ionicons name="airplane-outline" size={16} color={theme.accentBlue} />
-                <Text style={styles.longPressMenuBtnTxt}>{directToLabel(waypoints[wpActionMenu.wpIdx])}</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={styles.longPressMenuBtn}
-              onPress={() => { removeWaypoint(wpActionMenu.wpIdx); setWpActionMenu(null) }}
-            >
-              <Ionicons name="close-outline" size={16} color={theme.accentBlue} />
-              <Text style={styles.longPressMenuBtnTxt}>Remove</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.longPressMenuCancel} onPress={() => setWpActionMenu(null)}>
-              <Text style={styles.longPressMenuCancelTxt}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        )}
 
         {/* Save-waypoint name prompt — rendered as a proper Modal (not an
             absolute overlay on top of the MapLibre surface) so Android's
