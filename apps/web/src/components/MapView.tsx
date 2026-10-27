@@ -379,6 +379,9 @@ function pointRouteWp(feat: maplibregl.MapGeoJSONFeature, name: string): RouteWa
 
 /** How long a tapped leg stays unlocked for dragging in flight. */
 const LEG_UNLOCK_MS = 10_000
+/** After the start-up route fit, a map resize within this long (the bottom
+ *  pane opening) re-fits the route rather than keeping the top edge. */
+const STARTUP_FIT_SETTLE_MS = 3000
 /** Pointer travel (px) before a press on the route counts as a drag. */
 const DRAG_SLOP_PX = 6
 /** Touch drags place the point this far above the finger (~5 mm). */
@@ -699,21 +702,27 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const [mapReady, setMapReady] = useState(false)
   // Map opened with a route already restored from storage: fit it into view once.
   const initialRouteFitRef = useRef(false)
+  // The start-up route fit, so a layout change right after it (the bottom
+  // pane opening) can fit the route again instead of cutting it off.
+  const startupFitRef = useRef<{ bounds: [[number, number], [number, number]]; at: number } | null>(null)
   useEffect(() => {
     const map = mapRef.current
-    if (!mapReady || !map || initialRouteFitRef.current) return
+    // Wait until the stored route has been read: before that the route is
+    // empty and the home-airfield centring would win the race.
+    if (!mapReady || !map || initialRouteFitRef.current || !routeUndo.loaded) return
+    initialRouteFitRef.current = true
     // A route the user is building in this session (it has undo history)
     // was not restored: never jump the map while they plan it.
-    if (routeUndo.canUndo) { initialRouteFitRef.current = true; return }
-    if (routeWaypoints.length < 2) return
-    initialRouteFitRef.current = true
+    if (routeUndo.canUndo || routeWaypoints.length < 2) return
     const lngs = routeWaypoints.map((w) => w.lng)
     const lats = routeWaypoints.map((w) => w.lat)
-    map.fitBounds(
-      [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-      { padding: 80, maxZoom: 13, duration: 800 },
-    )
-  }, [mapReady, routeWaypoints, routeUndo.canUndo])
+    // Instant: an animated fit was cancelled by any other start-up camera
+    // change (the home-airfield jump, layout settling), so a reload often
+    // stayed on the last position instead of showing the route.
+    const bounds: [[number, number], [number, number]] = [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]]
+    map.fitBounds(bounds, { padding: 80, maxZoom: 13, duration: 0 })
+    startupFitRef.current = { bounds, at: Date.now() }
+  }, [mapReady, routeWaypoints, routeUndo.canUndo, routeUndo.loaded])
 
   // ── Go Flying (GPS / simulation) ─────────────────────────────────────────
   const {
@@ -3748,15 +3757,17 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Only fires once (ref guard) and only when both homeAirfield and mapReady are set.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !mapReady || hasInitialCenteredRef.current || !homeAirfield) return
+    // Decided once the stored route has been read: a restored route is
+    // fitted into view instead (initialRouteFitRef). Checking before that
+    // saw an empty route, jumped home and cancelled the route fit.
+    if (!map || !mapReady || hasInitialCenteredRef.current || !homeAirfield || !routeUndo.loaded) return
     hasInitialCenteredRef.current = true
-    // A restored route is fitted into view instead (initialRouteFitRef).
-    if (routeWaypointsRef.current.length >= 2) return
+    if (routeWaypoints.length >= 2) return
     // Instant: an animated fly was cancelled by any camera change during
     // start-up (layout settling, a restored route fit), so a reload often
     // stayed on the last position / country centre instead.
     map.jumpTo({ center: [homeAirfield.lng, homeAirfield.lat], zoom: 11 })
-  }, [homeAirfield, mapReady])
+  }, [homeAirfield, mapReady, routeUndo.loaded, routeWaypoints.length])
 
   // Sync visibility toggles → MapLibre
   // basemapMode is also a dependency: terrain is hidden in satellite mode.
@@ -3923,6 +3934,14 @@ export default function MapView({ auth }: { auth: AuthState }) {
       lastH = h
       if (dh === 0 || flyingModeRef.current !== 'off') return
       map.resize()
+      // Right after the start-up route fit the bottom pane is still opening
+      // (it appears once a route is loaded): fit the route again into the
+      // final map size, otherwise its far end ends up under the pane.
+      const fit = startupFitRef.current
+      if (fit && Date.now() - fit.at < STARTUP_FIT_SETTLE_MS) {
+        map.fitBounds(fit.bounds, { padding: 80, maxZoom: 13, duration: 0 })
+        return
+      }
       // Never during a camera animation: an instant pan cancels it (it cut
       // the start-up fly to the home airfield short when the layout settled).
       if (map.isMoving()) return

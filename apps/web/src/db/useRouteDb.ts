@@ -27,6 +27,8 @@ export interface RouteUndo {
    *  stays open for every later edit, ends on apply (keep, unsaved) or cancel
    *  (restore the route and history from before the first edit). */
   editSessionActive: boolean
+  /** The stored working route has been read (or found missing) after start-up. */
+  loaded: boolean
   setEditSessionArmed: (armed: boolean) => void
   applyEditSession: () => void
   cancelEditSession: () => void
@@ -46,6 +48,7 @@ export function usePersistedRoute(): [
   RouteUndo,
 ] {
   const [waypoints, setWaypointsState]       = useState<RouteWaypoint[]>([])
+  const [loaded, setLoaded]                  = useState(false)
   const [legOverrides, setLegOverridesState] = useState<LegOverride[]>([])
   const [aircraftId, setAircraftIdState]     = useState<string>('')
   // Id of the saved route (routes collection row) the working route was
@@ -126,7 +129,7 @@ export function usePersistedRoute(): [
         const raw = localStorage.getItem(LS_KEY)
         if (raw) setWaypointsState(JSON.parse(raw) as RouteWaypoint[])
       } catch { /* ignore */ }
-    })
+    }).finally(() => setLoaded(true))
   }, [])
 
   const persist = useCallback((wps: RouteWaypoint[], ovr: LegOverride[], acId?: string, routeId?: string) => {
@@ -261,7 +264,7 @@ export function usePersistedRoute(): [
     {
       undo, redo,
       canUndo: historyRef.current.past.length > 0, canRedo: historyRef.current.future.length > 0,
-      editSessionActive, setEditSessionArmed, applyEditSession, cancelEditSession,
+      editSessionActive, loaded, setEditSessionArmed, applyEditSession, cancelEditSession,
     },
   ] as const
 }
