@@ -1190,11 +1190,20 @@ function MapScreenForCountry() {
     return () => clearTimeout(t)
   }, [unlockedLeg])
   useEffect(() => { setUnlockedLeg(null) }, [waypoints, flyingActive])
+  // In flight a tapped route point unlocks the same way, for LEG_UNLOCK_MS.
+  useEffect(() => {
+    if (!flyingActive || selectedPoint == null) return
+    const t = setTimeout(() => setSelectedPoint(null), LEG_UNLOCK_MS)
+    return () => clearTimeout(t)
+  }, [flyingActive, selectedPoint])
+  // A leg or point is unlocked for dragging in flight (pauses follow).
+  const flightUnlock = flyingActive && (unlockedLeg != null || selectedPoint != null)
   // Extending is a ground-only mode.
   useEffect(() => { if (flyingActive) setExtending(false) }, [flyingActive])
   const handleLegPress = useCallback((leg: number) => {
     if (flyingActive) {
       setUnlockedLeg(leg)
+      setSelectedPoint(null)
       setRouteHint('Leg unlocked for 10 s: drag its points or the middle handle')
       return
     }
@@ -1248,7 +1257,7 @@ function MapScreenForCountry() {
   // depth exceeded". setFollowGps(false) is a no-op once already false.
   const followReturnTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const followReturnArmableRef = React.useRef(false)
-  followReturnArmableRef.current = flightModeStatus !== 'off' && unlockedLeg == null
+  followReturnArmableRef.current = flightModeStatus !== 'off' && !flightUnlock
   const clearFollowReturn = useCallback(() => {
     if (followReturnTimerRef.current) { clearTimeout(followReturnTimerRef.current); followReturnTimerRef.current = null }
     followReturnAtStore.set(null)
@@ -1272,18 +1281,18 @@ function MapScreenForCountry() {
   // Cancel a pending return when following resumes some other way, the
   // flight ends, a leg is unlocked for editing, or the screen unmounts.
   useEffect(() => {
-    if (followGps || flightModeStatus === 'off' || unlockedLeg != null) clearFollowReturn()
-  }, [followGps, flightModeStatus, unlockedLeg, clearFollowReturn])
+    if (followGps || flightModeStatus === 'off' || flightUnlock) clearFollowReturn()
+  }, [followGps, flightModeStatus, flightUnlock, clearFollowReturn])
   useEffect(() => clearFollowReturn, [clearFollowReturn])
   // An unlocked leg stops the map following the aircraft (it would slide
   // away under the finger); once the leg locks again the usual return to
   // follow is armed.
   const hadUnlockedLegRef = React.useRef(false)
   useEffect(() => {
-    if (unlockedLeg != null) { hadUnlockedLegRef.current = true; setFollowGps(false); return }
+    if (flightUnlock) { hadUnlockedLegRef.current = true; setFollowGps(false); return }
     if (hadUnlockedLegRef.current && flightModeStatus !== 'off') handleUserPan()
     hadUnlockedLegRef.current = false
-  }, [unlockedLeg, flightModeStatus, handleUserPan])
+  }, [flightUnlock, flightModeStatus, handleUserPan])
   // Drag handles: all of them on the ground; in flight only the unlocked leg's.
   const routeEditLocked = flyingActive
 
@@ -1431,7 +1440,14 @@ function MapScreenForCountry() {
     setWpActionMenu({ lat, lng, wpIdx: index, info: under.length ? { features: under, lngLat: tapLngLat } : undefined })
     // Ground: the tapped point is selected for dragging (until the route
     // changes or a tap misses the route), menu or not.
-    if (!flyingActive) { setSelectedPoint(index); setSelectedLeg(null) }
+    // The tapped point can be dragged (ringed): on the ground until the route
+    // changes or a tap misses the route, in flight for LEG_UNLOCK_MS.
+    setSelectedPoint(index)
+    setSelectedLeg(null)
+    if (flyingActive) {
+      setUnlockedLeg(null)
+      setRouteHint('Point unlocked for 10 s: drag it to move it')
+    }
   }, [flyingActive])
 
   const { waypoints: userWaypoints, saveWaypoint } = useUserWaypointContext()
@@ -1669,11 +1685,11 @@ function MapScreenForCountry() {
           // lot to find the next one. Flight: only the unlocked leg.
           editLocked={flyingActive || !editSessionActive || extending}
           unlockedLeg={flyingActive ? unlockedLeg : selectedLeg}
-          unlockedPoint={flyingActive ? null
+          unlockedPoint={flyingActive ? selectedPoint
             : wpActionMenu ? wpActionMenu.wpIdx
             : selectedPoint != null ? selectedPoint
             : extending && waypoints.length > 0 ? waypoints.length - 1 : null}
-          selectedPoint={flyingActive ? null : selectedPoint}
+          selectedPoint={selectedPoint}
           planningMode={extending}
           extendingEnd={extending && waypoints.length > 0}
           onPlanTap={handlePlanTap}
