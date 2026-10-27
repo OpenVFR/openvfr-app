@@ -3749,7 +3749,12 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const map = mapRef.current
     if (!map || !mapReady || hasInitialCenteredRef.current || !homeAirfield) return
     hasInitialCenteredRef.current = true
-    map.flyTo({ center: [homeAirfield.lng, homeAirfield.lat], zoom: 11, duration: 1200 })
+    // A restored route is fitted into view instead (initialRouteFitRef).
+    if (routeWaypointsRef.current.length >= 2) return
+    // Instant: an animated fly was cancelled by any camera change during
+    // start-up (layout settling, a restored route fit), so a reload often
+    // stayed on the last position / country centre instead.
+    map.jumpTo({ center: [homeAirfield.lng, homeAirfield.lat], zoom: 11 })
   }, [homeAirfield, mapReady])
 
   // Sync visibility toggles → MapLibre
@@ -3917,6 +3922,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
       lastH = h
       if (dh === 0 || flyingModeRef.current !== 'off') return
       map.resize()
+      // Never during a camera animation: an instant pan cancels it (it cut
+      // the start-up fly to the home airfield short when the layout settled).
+      if (map.isMoving()) return
       map.panBy([0, dh / 2], { duration: 0 })
     })
     ro.observe(el)
