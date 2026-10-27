@@ -594,8 +594,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Extending the route: its end point is selected, and clicks on map
   // features (aerodromes, navaids, reporting points...) append them. Starts
   // when a route is started or added to from a popup or search, or when the
-  // route's last point is clicked; ends on a click on empty map, Esc, Done or
-  // clicking the end again. Ground only. Moving points and reshaping legs
+  // route's last point is clicked; ends on Esc, Done or clicking the end
+  // again (a click on empty map adds that exact spot, see 0c). Ground only. Moving points and reshaping legs
   // needs no mode on the ground (undo is the safety net); in flight a leg
   // has to be tapped first (see unlockedLeg).
   const [extending, setExtending] = useState(false)
@@ -3138,9 +3138,10 @@ export default function MapView({ auth }: { auth: AuthState }) {
 
       // ── 0c. Extending the route: a click on an aerodrome, navaid,
       // reporting point, place or obstacle appends it (several nearby: a
-      // picker); a click on empty map stops extending, so a stray click never
-      // adds a point. Free points: Alt+click, "What's Here?" (right-click /
-      // long-press) "Add to route (this point)", or dragging a leg.
+      // picker); a click on empty map appends that exact spot (a mouse click
+      // lands where it is aimed; undo is in the edit banner). Alt+click
+      // always takes the exact spot, even next to a feature. Esc / Done or a
+      // click on the route's end stops.
       if (extendingRef.current) {
         setActivePopup(null)
         const SNAP_PX = 20
@@ -3169,7 +3170,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           // Alt+click: a free point exactly here, ignoring nearby features.
           setRouteWaypoints((prev) => [...prev, raw])
         } else if (real.length === 0) {
-          finishExtendingRef.current()
+          setRouteWaypoints((prev) => [...prev, raw])
         } else if (real.length === 1) {
           setRouteWaypoints((prev) => [...prev, real[0].waypoint])
         } else {
@@ -4895,7 +4896,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
         {activeInfo && <FeatureCard info={activeInfo} {...cardProps} />}
         {extending && (
           <div className={css.extendHint} role="status">
-            Click aerodromes, navaids or reporting points to add them. For any other point: Alt+click, or right-click / long-press. Click empty map or press Esc when done.
+            <span>Click to add points. Aerodromes, navaids and reporting points snap; elsewhere the spot itself is added (Alt+click: never snap).</span>
+            <button type="button" className={css.extendDone} onClick={() => finishExtending()} title="Stop adding points (Esc)">Done</button>
           </div>
         )}
         {routeHint && !routeUndo.editSessionActive && (

@@ -313,7 +313,7 @@ function SideDrawer({
                   <span
                     role="button"
                     className={`${css.planPill} ${css.planPillActive}`}
-                    title="Stop adding points (or click empty map, or press Esc)"
+                    title="Stop adding points (or press Esc)"
                     onClick={(e) => { e.stopPropagation(); onStopExtending() }}
                   >
                     Done
