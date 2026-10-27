@@ -16,11 +16,18 @@ export const symbolGroundY = (_tipY: number, groundY: number, plotBottom: number
 /** Limiting obstacles closer than this (px) share a single label. */
 export const LIMITING_LABEL_MERGE_PX = 160
 
-/** Aerodrome / navaid / reporting-point symbols are drawn this much larger than their base size. */
-export const POI_SCALE = 1.45
+/** Aerodrome / navaid / reporting-point symbols: drawn at their base size (5 px radius). They are
+ *  context along the route, not the subject of the chart, so they stay small and quiet: a light
+ *  dark outline instead of a heavy halo, a thin pale edge and a slightly see-through fill. */
+export const POI_SCALE = 1
+export const POI_HALO_COLOR = 'rgba(0,0,0,0.45)'
+export const POI_HALO_WIDTH = 2
+export const POI_EDGE_COLOR = 'rgba(255,255,255,0.75)'
+export const POI_EDGE_WIDTH = 0.75
+export const POI_FILL_OPACITY = 0.8
 /** Centre (px) of a POI symbol: it stands on the ground line instead of being centred on it, where
  *  the ground fill would cover its lower half and the axis would cut it off. */
-export const poiCenterY = (groundY: number, plotBottom: number) => Math.min(groundY - 7, plotBottom - 8)
+export const poiCenterY = (groundY: number, plotBottom: number) => Math.min(groundY - 5, plotBottom - 6)
 
 /** Plot background, top → bottom. Mid-tone so red/steel obstacles and white clouds all contrast. */
 export const SKY_TOP = '#2c4468'

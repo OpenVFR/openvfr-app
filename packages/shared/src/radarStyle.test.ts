@@ -10,8 +10,8 @@ describe('symbolGroundY', () => {
 })
 describe('poiCenterY', () => {
   it('stands on the ground line and stays inside the plot', () => {
-    expect(poiCenterY(200, 300)).toBe(193)
-    expect(poiCenterY(299, 300)).toBe(292)
+    expect(poiCenterY(200, 300)).toBe(195)
+    expect(poiCenterY(299, 300)).toBe(294)
   })
 })
 describe('terrainGradientStops', () => {

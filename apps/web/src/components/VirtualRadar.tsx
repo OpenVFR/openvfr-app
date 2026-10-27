@@ -6,7 +6,7 @@ import {
   type BoxRect, type LabelRequest, type PlacedLabel,
 } from '@open-vfr/shared/profileLabels'
 import {
-  symbolGroundY, LIMITING_LABEL_MERGE_PX, POI_SCALE, poiCenterY, SKY_TOP, SKY_BOTTOM, PLAN_COLOR, MSA_COLOR, GROUND_COLOR, GROUND_OUTLINE, CORRIDOR_FILL, CORRIDOR_OUTLINE, CORRIDOR_OUTLINE_WIDTH,
+  symbolGroundY, LIMITING_LABEL_MERGE_PX, POI_SCALE, POI_HALO_COLOR, POI_HALO_WIDTH, POI_EDGE_COLOR, POI_EDGE_WIDTH, POI_FILL_OPACITY, poiCenterY, SKY_TOP, SKY_BOTTOM, PLAN_COLOR, MSA_COLOR, GROUND_COLOR, GROUND_OUTLINE, CORRIDOR_FILL, CORRIDOR_OUTLINE, CORRIDOR_OUTLINE_WIDTH,
   DANGER_COLOR, DANGER_TEXT, PHASE_SHORT_COLOR, WIND_LABEL_COLOR, windAloftFit, terrainGradientStops, phaseLabelText,
   FLOWN_COLOR, FLOWN_GAP_COLOR, FLOWN_SPEED_COLOR, FLOWN_NEAR_FIELD_COLOR, FLOWN_NEAR_FIELD_NM,
 } from '@open-vfr/shared/radarStyle'
@@ -277,16 +277,17 @@ function renderShape(shape: SymbolPrim[]): ReactNode {
 
 /** Aerodrome / navaid / reporting-point symbol; `halo` = the dark outline pass drawn first. */
 function renderPoiSymbol(m: { kind: string; subtype: string; towered: boolean; cx: number; cy: number }, halo: boolean) {
-  const stroke = halo ? 'rgba(0,0,0,0.8)' : '#fff'
-  const sw = halo ? 4 : 1.25
-  const col = (c: string) => (halo ? 'rgba(0,0,0,0.8)' : c)
+  const stroke = halo ? POI_HALO_COLOR : POI_EDGE_COLOR
+  const sw = halo ? POI_HALO_WIDTH : POI_EDGE_WIDTH
+  const col = (c: string) => (halo ? 'none' : c)
+  const fo = halo ? 1 : POI_FILL_OPACITY
   if (m.kind === 'aerodrome') {
     return m.subtype === 'HP'
-      ? <rect x={m.cx - 4} y={m.cy - 4} width={8} height={8} rx={1.5} fill={col('#f472b6')} stroke={stroke} strokeWidth={sw} />
-      : <circle cx={m.cx} cy={m.cy} r={5} fill={col(m.towered ? '#c084fc' : '#60a5fa')} stroke={stroke} strokeWidth={sw} />
+      ? <rect x={m.cx - 4} y={m.cy - 4} width={8} height={8} rx={1.5} fill={col('#f472b6')} fillOpacity={fo} stroke={stroke} strokeWidth={sw} />
+      : <circle cx={m.cx} cy={m.cy} r={5} fill={col(m.towered ? '#c084fc' : '#60a5fa')} fillOpacity={fo} stroke={stroke} strokeWidth={sw} />
   }
-  if (m.kind === 'navaid') return <path d={`M${m.cx},${m.cy - 5} L${m.cx + 5},${m.cy} L${m.cx},${m.cy + 5} L${m.cx - 5},${m.cy} Z`} fill={col('#34d399')} stroke={stroke} strokeWidth={sw} />
-  if (m.kind === 'reporting') return <path d={`M${m.cx},${m.cy - 5} L${m.cx + 4.5},${m.cy + 3} L${m.cx - 4.5},${m.cy + 3} Z`} fill={col('#facc15')} stroke={stroke} strokeWidth={sw} />
+  if (m.kind === 'navaid') return <path d={`M${m.cx},${m.cy - 5} L${m.cx + 5},${m.cy} L${m.cx},${m.cy + 5} L${m.cx - 5},${m.cy} Z`} fill={col('#34d399')} fillOpacity={fo} stroke={stroke} strokeWidth={sw} />
+  if (m.kind === 'reporting') return <path d={`M${m.cx},${m.cy - 5} L${m.cx + 4.5},${m.cy + 3} L${m.cx - 4.5},${m.cy + 3} Z`} fill={col('#facc15')} fillOpacity={fo} stroke={stroke} strokeWidth={sw} />
   return null
 }
 
