@@ -5,6 +5,7 @@
 
 import React, { useRef, useCallback, useMemo, useEffect, useState } from 'react'
 import { NOTAM_OBSTACLE_MIN_ZOOM } from '@open-vfr/shared/notamMapLayers'
+import { aerodromeIconImage, aerodromeIconRotate } from '@open-vfr/shared/aerodromeSymbol'
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Linking, useWindowDimensions } from 'react-native'
 import {
   Map,
@@ -1411,8 +1412,12 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
               id="aerodromes-circle"
               layout={{
                 visibility: showAerodromes ? 'visible' : 'none',
-                'icon-image': ['match', ['get', 'type'], 'HP', 'ad-heliport', 'ad-airport'],
-                'icon-size': ['interpolate', ['linear'], ['zoom'], 6, 0.3, 10, 0.45, 13, 0.6],
+                // Circle + main runway turned to its true bearing (see
+                // @open-vfr/shared/aerodromeSymbol, same as web).
+                'icon-image': aerodromeIconImage as any,
+                'icon-rotate': aerodromeIconRotate as any,
+                'icon-rotation-alignment': 'map',
+                'icon-size': ['interpolate', ['linear'], ['zoom'], 6, 0.38, 10, 0.55, 13, 0.7],
                 'icon-allow-overlap': true,
                 'icon-ignore-placement': true,
               }}
@@ -3681,6 +3686,23 @@ export function AviationMap({
           'wp-rp':            require('../../assets/poi_icons/wp-rp.png'),
           'ad-airport':       require('../../assets/poi_icons/ad-airport.png'),
           'ad-heliport':      require('../../assets/poi_icons/ad-heliport.png'),
+          'ad-civ-hard':      require('../../assets/poi_icons/ad-civ-hard.png'),
+          'ad-civ-soft':      require('../../assets/poi_icons/ad-civ-soft.png'),
+          'ad-civ-none':      require('../../assets/poi_icons/ad-civ-none.png'),
+          'ad-civ-open-hard': require('../../assets/poi_icons/ad-civ-open-hard.png'),
+          'ad-civ-open-soft': require('../../assets/poi_icons/ad-civ-open-soft.png'),
+          'ad-civ-open-none': require('../../assets/poi_icons/ad-civ-open-none.png'),
+          'ad-mil-hard':      require('../../assets/poi_icons/ad-mil-hard.png'),
+          'ad-mil-soft':      require('../../assets/poi_icons/ad-mil-soft.png'),
+          'ad-mil-none':      require('../../assets/poi_icons/ad-mil-none.png'),
+          'ad-joint-hard':    require('../../assets/poi_icons/ad-joint-hard.png'),
+          'ad-joint-soft':    require('../../assets/poi_icons/ad-joint-soft.png'),
+          'ad-joint-none':    require('../../assets/poi_icons/ad-joint-none.png'),
+          'ad-minor-hard':    require('../../assets/poi_icons/ad-minor-hard.png'),
+          'ad-minor-soft':    require('../../assets/poi_icons/ad-minor-soft.png'),
+          'ad-minor-none':    require('../../assets/poi_icons/ad-minor-none.png'),
+          'ad-closed':        require('../../assets/poi_icons/ad-closed.png'),
+          'ad-heliport-mil':  require('../../assets/poi_icons/ad-heliport-mil.png'),
           // Traffic silhouettes -- id-for-id parity with web's TRAFFIC_ICON_ENTRIES
           // (apps/web/src/utils/trafficIcons.ts), pre-rasterized by
           // scripts/gen-aircraft-icons.mjs since native can't recolor SVGs

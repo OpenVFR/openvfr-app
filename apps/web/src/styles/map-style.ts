@@ -3,6 +3,7 @@ import { layers, LIGHT } from '@protomaps/basemaps'
 import { COPERNICUS_GLO30_NOTICE } from '@open-vfr/shared/attributionSources'
 import { AIRSPACE_COLORS as AC, CONTROLLED_CLASSES, ZONE_TYPES, controlledStyle } from '@open-vfr/shared/airspaceColors'
 import { AERODROME_COLORS, NAVAID_COLORS, WAYPOINT_COLORS, OBSTACLE_COLORS, RUNWAY_COLORS } from '@open-vfr/shared/featureColors'
+import { aerodromeIconImage, aerodromeIconRotate } from '@open-vfr/shared/aerodromeSymbol'
 import {
   RUNWAY_LABEL_DEFAULT_SIZE,
   RUNWAY_LABEL_DEFAULT_OPACITY,
@@ -1645,24 +1646,23 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
       // Symbol layer using canvas-drawn icons registered by registerAerodromeImages()
       // in MapView's styledata handler.  Icons drawn at 2× for HiDPI.
       //
-      // Image IDs (defined in src/utils/aerodromeIcons.ts):
-      //   ad-airport   Blue circle + crosshair  — AD and AH types
-      //   ad-heliport  Purple circle + H        — HP type
+      // Chart symbol: circle + main runway turned to its true bearing,
+      // filled/open = controlled/uncontrolled, red = military, red ring =
+      // joint, faint = private/ultralight/glider (@open-vfr/shared/aerodromeSymbol,
+      // images in src/utils/aerodromeIcons.ts).
       {
         id: 'aerodromes-icon',
         type: 'symbol',
         source: 'ofm-aerodromes',
         layout: {
-          'icon-image': [
-            'match', ['get', 'type'],
-            'HP', 'ad-heliport',
-                  'ad-airport',   // AD, AH, and any unknown type
-          ],
+          'icon-image': aerodromeIconImage as ExpressionSpecification,
+          'icon-rotate': aerodromeIconRotate as ExpressionSpecification,
+          'icon-rotation-alignment': 'map',
           'icon-size': [
             'interpolate', ['linear'], ['zoom'],
-            6, 0.45,
-            10, 0.65,
-            13, 0.85,
+            6, 0.55,
+            10, 0.8,
+            13, 1,
           ],
           'icon-allow-overlap': true,
           'icon-ignore-placement': false,

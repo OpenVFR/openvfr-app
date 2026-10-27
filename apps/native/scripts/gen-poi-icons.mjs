@@ -34,10 +34,15 @@ const ICONS = [
   // Aerodromes (SZ2=56)
   ['ad-airport',  '#1a56db', 56],
   ['ad-heliport', '#9333ea', 56],
+  ['ad-heliport-mil', '#b91c1c', 56, 'ad-heliport'],
+  // Runway chart symbols (web scripts/gen-aerodrome-icons.mjs; own colours)
+  ...['civ', 'civ-open', 'mil', 'joint', 'minor'].flatMap((k) =>
+    ['hard', 'soft', 'none'].map((b) => [`ad-${k}-${b}`, '#1a56db', 56])),
+  ['ad-closed', '#64748b', 56],
 ]
 
-for (const [id, color, sizePx] of ICONS) {
-  const svgPath = join(SRC_DIR, `${id}.svg`)
+for (const [id, color, sizePx, src = id] of ICONS) {
+  const svgPath = join(SRC_DIR, `${src}.svg`)
   let svg = readFileSync(svgPath, 'utf8')
 
   // Same recolor injection as web's registerColoredSvgIcon: fill covers the
