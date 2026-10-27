@@ -305,6 +305,12 @@ export type AviationMapProps = {
   /** While editLocked, this one leg (and its two end points) can still be
    *  dragged: the in-flight per-leg unlock. Highlighted on the map. */
   unlockedLeg?: number | null
+  /** While editLocked, this route point can still be dragged (ground: the
+   *  point whose menu is open, or the route end while extending). */
+  unlockedPoint?: number | null
+  /** A tap outside planning mode that hit neither a route point nor a leg
+   *  (clears a selected leg). */
+  onRouteMiss?: () => void
   /** Ring the route's last point: the route is being extended from it. */
   extendingEnd?: boolean
   /** Fired when a plan-mode tap resolves to exactly one waypoint (raw
@@ -1743,6 +1749,8 @@ export function AviationMap({
   planningMode = false,
   editLocked = false,
   unlockedLeg = null,
+  unlockedPoint = null,
+  onRouteMiss,
   extendingEnd = false,
   onPlanTap,
   onPlanCandidates,
@@ -2813,13 +2821,14 @@ export function AviationMap({
           if (typeof idx === 'number' && handleRoutePoint(idx)) return
           const leg = legHits[0]?.properties?.legIndex
           if (typeof leg === 'number' && onLegPress) { onLegPress(leg); return }
+          onRouteMiss?.()
           handleFeatures()
         }).catch(() => handleFeatures())
         return
       }
       handleFeatures()
     },
-    [onFeatureTap, onLegTap, planningMode, onPlanTap, onPlanCandidates, onPlanEmptyTap, onWaypointMove, onWaypointRemove, onRouteEndTap, onWaypointPress, onLegPress, waypoints, rulerMode, rulerPoints, onRulerTap],
+    [onFeatureTap, onLegTap, planningMode, onPlanTap, onPlanCandidates, onPlanEmptyTap, onWaypointMove, onWaypointRemove, onRouteEndTap, onWaypointPress, onLegPress, onRouteMiss, waypoints, rulerMode, rulerPoints, onRulerTap],
   )
 
   const handleMapLongPress = useCallback(
@@ -2886,11 +2895,11 @@ export function AviationMap({
   // original legs are drawn as a faded ghost and the legs as they would be
   // after the drop in the drag colour; the rest of the route stays as is.
   const routeDragActive = (dragging && !!dragPreview) || (legDragging && !!legDragPreview)
-  // Which drag handles exist: all of them when unlocked (ground), otherwise
-  // only the unlocked leg's midpoint and its two end points (in flight).
+  // Which drag handles exist: all of them without editLocked, otherwise only
+  // the unlocked/selected leg's midpoint and two end points, and unlockedPoint.
   const legEditable = (leg: number) => !editLocked || unlockedLeg === leg
   const pointEditable = (wp: number) =>
-    !editLocked || (unlockedLeg != null && (wp === unlockedLeg || wp === unlockedLeg + 1))
+    !editLocked || wp === unlockedPoint || (unlockedLeg != null && (wp === unlockedLeg || wp === unlockedLeg + 1))
   // Indices of the would-be legs touching the dragged point.
   const previewLegs = !routeDragActive ? []
     : dragPreview ? [dragPreview.wpIndex - 1, dragPreview.wpIndex]

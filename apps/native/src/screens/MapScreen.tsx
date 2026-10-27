@@ -1165,12 +1165,19 @@ function MapScreenForCountry() {
   const [snapPicker, setSnapPicker] = useState<{ candidates: SnapCandidate[]; onPick: (wp: RouteWaypoint) => void } | null>(null)
 
   // ── Route-edit lock ─────────────────────────────────────────────────────
-  // On the ground every route point and leg midpoint can be dragged (undo
-  // and the edit banner are the safety net). In flight the route is locked
-  // against stray touches, one leg at a time: tapping a leg unlocks just
-  // that leg (and its two end points) for LEG_UNLOCK_MS; any route change
-  // or flight start/stop locks it again. Explicit actions (route point menu,
-  // Direct To) need no unlock. Same model as web's MapView.tsx.
+  // Drag handles only exist on what was tapped first. On Android the map
+  // library hands a touch to a draggable handle the moment it starts on it
+  // (no hold), so always-present handles turned ordinary pans near the route
+  // into drags. Hence, unlike web (mouse), on touch:
+  //  - ground: tapping a leg selects it (glow; its middle and two end
+  //    points draggable) until the route changes or the map is tapped
+  //    elsewhere; a point is draggable while its menu is open, and the
+  //    route end while extending;
+  //  - flight: tapping a leg unlocks it the same way for LEG_UNLOCK_MS.
+  // Any route change or flight start/stop clears it. Explicit actions (route
+  // point menu, Direct To) need no unlock.
+  const [selectedLeg, setSelectedLeg] = useState<number | null>(null)
+  useEffect(() => { setSelectedLeg(null) }, [waypoints, flyingActive])
   const [unlockedLeg, setUnlockedLeg] = useState<number | null>(null)
   useEffect(() => {
     if (unlockedLeg == null) return
@@ -1181,9 +1188,15 @@ function MapScreenForCountry() {
   // Extending is a ground-only mode.
   useEffect(() => { if (flyingActive) setExtending(false) }, [flyingActive])
   const handleLegPress = useCallback((leg: number) => {
-    setUnlockedLeg(leg)
-    setRouteHint('Leg unlocked for 10 s: drag its points or the middle handle')
-  }, [])
+    if (flyingActive) {
+      setUnlockedLeg(leg)
+      setRouteHint('Leg unlocked for 10 s: drag its points or the middle handle')
+      return
+    }
+    setSelectedLeg(leg)
+    setRouteHint('Leg selected: drag its middle to add a point, or its end points. Tap the map to finish.')
+  }, [flyingActive])
+  const handleRouteMiss = useCallback(() => { setSelectedLeg(null) }, [])
 
   // ── Location button: 'off' | 'passive' outside flight (Follow is the
   // flight-mode followGps state). Passive draws the own-position dot via
@@ -1399,6 +1412,8 @@ function MapScreenForCountry() {
   // ground, which extends the route). The map feature under the point
   // (aerodrome, navaid, reporting point) is kept for the menu's Details.
   const [wpActionMenu, setWpActionMenu] = useState<{ lat: number; lng: number; wpIdx: number; info?: { features: Feature[]; lngLat: [number, number] } } | null>(null)
+  // Point indices shift on any route change: close the menu.
+  useEffect(() => { setWpActionMenu(null) }, [waypoints])
   const handleWaypointLongPress = useCallback((index: number, lat: number, lng: number) => {
     setWpActionMenu({ lat, lng, wpIdx: index })
   }, [])
@@ -1632,13 +1647,18 @@ function MapScreenForCountry() {
           onWaypointPress={handleWaypointPress}
           // Tap the route's last point on the ground: start (or stop) extending it.
           onRouteEndTap={flyingActive ? undefined : () => { if (extending) finishExtending(); else setExtending(true) }}
-          // In flight a tapped leg unlocks for LEG_UNLOCK_MS.
-          onLegPress={flyingActive ? handleLegPress : undefined}
+          // A tapped leg becomes draggable (ground: selected; flight: unlocked
+          // for LEG_UNLOCK_MS). A tap off the route clears the selection.
+          onLegPress={handleLegPress}
+          onRouteMiss={handleRouteMiss}
           onLegTap={handleLegTap}
           onLegInsert={handleLegInsert}
           onLegInsertCandidates={handleLegInsertCandidates}
-          editLocked={routeEditLocked}
-          unlockedLeg={unlockedLeg}
+          editLocked
+          unlockedLeg={flyingActive ? unlockedLeg : selectedLeg}
+          unlockedPoint={flyingActive ? null
+            : wpActionMenu ? wpActionMenu.wpIdx
+            : extending && waypoints.length > 0 ? waypoints.length - 1 : null}
           planningMode={extending}
           extendingEnd={extending && waypoints.length > 0}
           onPlanTap={handlePlanTap}
@@ -1646,7 +1666,7 @@ function MapScreenForCountry() {
           onPlanEmptyTap={handlePlanEmptyTap}
           // Labels hide while extending or with a leg unlocked, so the
           // route under the finger stays clear.
-          showLegLabels={!extending && unlockedLeg == null}
+          showLegLabels={!extending && unlockedLeg == null && selectedLeg == null}
           legIasKts={legIasKts}
           pastTrack={pastTrack}
           screenFocused={screenFocused}
