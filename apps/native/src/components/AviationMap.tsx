@@ -249,11 +249,13 @@ export type AviationMapProps = {
    *  route end while onRouteEndTap is set): open the point's menu. Gets the
    *  tapped map features too, so the menu can show the feature under the
    *  point (aerodrome, navaid...). */
-  onWaypointPress?: (index: number, lat: number, lng: number, features: Feature[], tapLngLat: [number, number]) => void
+  onWaypointPress?: (index: number, lat: number, lng: number, features: Feature[], tapLngLat: [number, number], screenPoint: [number, number]) => void
   /** Fired on a tap on a route leg outside planning mode (used in flight to
    *  unlock that leg). Without it a leg tap falls through to the features
    *  underneath; outside planning mode a tap never inserts a point. */
-  onLegPress?: (legIndex: number) => void
+  onLegPress?: (legIndex: number, screenPoint: [number, number]) => void
+  /** A route point or leg handle drag started (hide any popover on it). */
+  onRouteDragStart?: () => void
   /** Fired when a planning-mode tap has nothing to snap to. Without it the
    *  exact tapped position is added. */
   onPlanEmptyTap?: (wp: RouteWaypoint) => void
@@ -1753,6 +1755,7 @@ export function AviationMap({
   unlockedLeg = null,
   unlockedPoint = null,
   onRouteMiss,
+  onRouteDragStart,
   extendingEnd = false,
   selectedPoint = null,
   onPlanTap,
@@ -2207,13 +2210,26 @@ export function AviationMap({
 
   // Committing a drag move / release — used by each WaypointDragAnnotation's
   // own onDragStart/onDrag/onDragEnd callbacks below.
+  const onRouteDragStartRef = useRef(onRouteDragStart)
+  onRouteDragStartRef.current = onRouteDragStart
   const startDrag = useCallback((wpIndex: number, lat: number, lng: number) => {
+    onRouteDragStartRef.current?.()
     dragRef.current = { wpIndex, lat, lng }
     setDragging(true)
   }, [])
   // Set true by releaseDrag, consumed (and cleared) by the very next
   // handleMapPress call — see releaseDrag comment.
   const suppressNextPressRef = useRef(false)
+  // The touch-up that ends a drag (or a still long-press) reaches the map as
+  // a tap right away; only that one is swallowed. Cleared shortly after, so
+  // a later real tap is never eaten (e.g. after a long-press opened a menu
+  // and the menu was closed elsewhere, the next map tap did nothing).
+  const suppressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const suppressNextPress = useCallback(() => {
+    suppressNextPressRef.current = true
+    if (suppressTimerRef.current) clearTimeout(suppressTimerRef.current)
+    suppressTimerRef.current = setTimeout(() => { suppressNextPressRef.current = false }, 400)
+  }, [])
   // Time the last waypoint/leg drag ended. The map's own long-press
   // recognizer can fire while the finger pauses mid-drag, or just after
   // release (after suppressNextPressRef was already consumed by the tap),
@@ -2300,7 +2316,7 @@ export function AviationMap({
     // ViewAnnotation only owns the move stream, not the final click), which
     // would otherwise open the waypoint's tap popup right after a drag.
     // Suppress exactly the next handleMapPress call.
-    suppressNextPressRef.current = true
+    suppressNextPress()
     lastDragEndRef.current = Date.now()
     if (!d || !preview || !d.moved) {
       dragPreviewRef.current = null
@@ -2409,6 +2425,7 @@ export function AviationMap({
     if (previewClearPendingRef.current) clearPreviewsNow()
   }, [waypoints, clearPreviewsNow])
   const startLegDrag = useCallback((legIndex: number) => {
+    onRouteDragStartRef.current?.()
     legDragRef.current = { legIndex }
     setLegDragging(true)
   }, [])
@@ -2430,7 +2447,7 @@ export function AviationMap({
     const preview = legDragPreviewRef.current
     legDragRef.current = null
     setLegDragging(false)
-    suppressNextPressRef.current = true
+    suppressNextPress()
     lastDragEndRef.current = Date.now()
     if (!d || !preview || !d.moved) { clearPreviewsNow(); return }
     // Keep drawing the inserted point until the new route arrives (or the
@@ -2801,7 +2818,8 @@ export function AviationMap({
                 { layers: SNAP_LAYERS },
               ).catch(() => [] as Feature[])
             : Promise.resolve([] as Feature[])
-          void under.then(fs => onWaypointPress(wpIndex, wp.lat, wp.lng, fs as Feature[], tap))
+          const sp: [number, number] = pt ? [pt[0], pt[1]] : [0, 0]
+          void under.then(fs => onWaypointPress(wpIndex, wp.lat, wp.lng, fs as Feature[], tap, sp))
           return true
         }
         return false
@@ -2847,7 +2865,7 @@ export function AviationMap({
           const idx = hits[0]?.properties?.wpIndex
           if (typeof idx === 'number' && handleRoutePoint(idx)) return
           const leg = legHits[0]?.properties?.legIndex
-          if (typeof leg === 'number' && onLegPress) { onLegPress(leg); return }
+          if (typeof leg === 'number' && onLegPress) { onLegPress(leg, [pressPoint[0], pressPoint[1]]); return }
           onRouteMiss?.()
           handleFeatures()
         }).catch(() => handleFeatures())

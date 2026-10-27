@@ -104,6 +104,7 @@ import { useUserWaypointContext } from '../context/UserWaypointContext'
 import { useMapFocus } from '../context/MapFocusContext'
 import { useHomeAirfield }      from '../hooks/useHomeAirfield'
 import { useSettingsContext } from '../context/SettingsContext'
+import { MapPopover, type MapPopoverAction } from '../components/MapPopover'
 import { RouteEditBanner } from '../components/RouteEditBanner'
 import { CompassButton } from '../components/CompassButton'
 import { FollowCountdown } from '../components/FollowCountdown'
@@ -1183,6 +1184,18 @@ function MapScreenForCountry() {
   // selected leg's ends.
   const [selectedPoint, setSelectedPoint] = useState<number | null>(null)
   useEffect(() => { setSelectedLeg(null); setSelectedPoint(null) }, [waypoints, flyingActive])
+  // Small bubble anchored above the tapped route point (its quick actions)
+  // or leg (what to do next), instead of a sheet over the map. A long-press
+  // on a point opens the full menu (wpActionMenu).
+  // How far the map extends above the overlay container (under the status
+  // bar): map press points are offset by it (AviationMap bleedTop).
+  const mapBleedTopRef = React.useRef(insets.top)
+  mapBleedTopRef.current = insets.top
+  const [routePopover, setRoutePopover] = useState<
+    | { kind: 'point'; wpIdx: number; x: number; y: number; info?: { features: Feature[]; lngLat: [number, number] } }
+    | { kind: 'leg'; leg: number; x: number; y: number; text: string }
+    | null>(null)
+  useEffect(() => { setRoutePopover(null) }, [waypoints, flyingActive])
   const [unlockedLeg, setUnlockedLeg] = useState<number | null>(null)
   useEffect(() => {
     if (unlockedLeg == null) return
@@ -1200,18 +1213,27 @@ function MapScreenForCountry() {
   const flightUnlock = flyingActive && (unlockedLeg != null || selectedPoint != null)
   // Extending is a ground-only mode.
   useEffect(() => { if (flyingActive) setExtending(false) }, [flyingActive])
-  const handleLegPress = useCallback((leg: number) => {
-    if (flyingActive) {
-      setUnlockedLeg(leg)
-      setSelectedPoint(null)
-      setRouteHint('Leg unlocked for 10 s: drag its points or the middle handle')
-      return
-    }
-    setSelectedLeg(leg)
+  const handleLegPress = useCallback((leg: number, screenPoint?: [number, number]) => {
+    const text = flyingActive
+      ? 'Unlocked for 10 s: drag its middle, ends or level'
+      : 'Drag its middle to add a point, or its ends'
+    if (flyingActive) setUnlockedLeg(leg)
+    else setSelectedLeg(leg)
     setSelectedPoint(null)
-    setRouteHint('Leg selected: drag its middle to add a point, or its end points. Tap the map to finish.')
+    // A bubble at the tapped spot; a tap on the profile has no map spot, so
+    // the hint pill says it there.
+    // Map coordinates start under the status bar (the map bleeds under it),
+    // the overlay container below it.
+    if (screenPoint) { setRoutePopover({ kind: 'leg', leg, x: screenPoint[0], y: screenPoint[1] - mapBleedTopRef.current, text }); setRouteHint(null) }
+    else { setRoutePopover(null); setRouteHint(flyingActive ? 'Leg unlocked for 10 s: drag its level, middle or ends' : text) }
   }, [flyingActive])
-  const handleRouteMiss = useCallback(() => { setSelectedLeg(null); setSelectedPoint(null) }, [])
+  const handleRouteMiss = useCallback(() => { setSelectedLeg(null); setSelectedPoint(null); setRoutePopover(null) }, [])
+  // The leg bubble is a hint: it goes after a few seconds (the selection stays).
+  useEffect(() => {
+    if (routePopover?.kind !== 'leg') return
+    const t = setTimeout(() => setRoutePopover(p => (p?.kind === 'leg' ? null : p)), 4000)
+    return () => clearTimeout(t)
+  }, [routePopover])
 
   // ── Location button: 'off' | 'passive' outside flight (Follow is the
   // flight-mode followGps state). Passive draws the own-position dot via
@@ -1263,6 +1285,7 @@ function MapScreenForCountry() {
     followReturnAtStore.set(null)
   }, [followReturnAtStore])
   const handleUserPan = useCallback(() => {
+    setRoutePopover(null)
     setFollowGps(false)
     setLocCentred(false)
     clearFollowReturn()
@@ -1430,23 +1453,25 @@ function MapScreenForCountry() {
   const handleWaypointLongPress = useCallback((index: number, lat: number, lng: number) => {
     setWpActionMenu({ lat, lng, wpIdx: index })
   }, [])
-  const handleWaypointPress = useCallback((index: number, lat: number, lng: number, features: Feature[], tapLngLat: [number, number]) => {
+  const handleWaypointPress = useCallback((index: number, _lat: number, _lng: number, features: Feature[], tapLngLat: [number, number], screenPoint: [number, number]) => {
     const under = features.filter(f => {
       const p = f.properties ?? {}
       return f.geometry?.type === 'Point' && p.featureType !== 'wp' && p.featureType !== 'leg' && !p.notamId && !p.cluster_id
     })
-    setWpActionMenu({ lat, lng, wpIdx: index, info: under.length ? { features: under, lngLat: tapLngLat } : undefined })
-    // Ground: the tapped point is selected for dragging (until the route
-    // changes or a tap misses the route), menu or not.
-    // The tapped point can be dragged (ringed): on the ground until the route
-    // changes or a tap misses the route, in flight for LEG_UNLOCK_MS.
+    // The tapped point is ringed and can be dragged: on the ground until the
+    // route changes or a tap misses the route, in flight for LEG_UNLOCK_MS.
+    // Its quick actions sit in a small bubble above it.
     setSelectedPoint(index)
     setSelectedLeg(null)
-    if (flyingActive) {
-      setUnlockedLeg(null)
-      setRouteHint('Point unlocked for 10 s: drag it to move it')
-    }
+    setRouteHint(null)
+    if (flyingActive) setUnlockedLeg(null)
+    setRoutePopover({ kind: 'point', wpIdx: index, x: screenPoint[0], y: screenPoint[1] - mapBleedTopRef.current, info: under.length ? { features: under, lngLat: tapLngLat } : undefined })
   }, [flyingActive])
+  // The point bubble goes with the selection (flight unlock expiring, a tap
+  // elsewhere, another leg tapped).
+  useEffect(() => {
+    if (routePopover?.kind === 'point' && selectedPoint !== routePopover.wpIdx) setRoutePopover(null)
+  }, [selectedPoint, routePopover])
 
   const { waypoints: userWaypoints, saveWaypoint } = useUserWaypointContext()
   const userWaypointsFC = useMemo<FeatureCollection>(() => ({
@@ -1668,6 +1693,7 @@ function MapScreenForCountry() {
           // point opens its menu (Details / Direct to / Remove).
           onWaypointRemove={removeWaypoint}
           onWaypointPress={handleWaypointPress}
+          onRouteDragStart={() => setRoutePopover(null)}
           // Tap the route's last point on the ground: start (or stop) extending it.
           onRouteEndTap={flyingActive ? undefined : () => { if (extending) finishExtending(); else setExtending(true) }}
           // A tapped leg becomes draggable (ground: selected; flight: unlocked
@@ -1758,8 +1784,38 @@ function MapScreenForCountry() {
           </View>
         )}
 
-        {/* Route point menu: tap or long-press on a route point (mirrors
-            web's WpActionMenu). */}
+        {/* Quick bubble above a tapped route point / leg (see routePopover). */}
+        {routePopover?.kind === 'leg' && (
+          <MapPopover x={routePopover.x} y={routePopover.y} text={routePopover.text} testID="route-leg-popover" />
+        )}
+        {routePopover?.kind === 'point' && waypoints[routePopover.wpIdx] && (() => {
+          const idx = routePopover.wpIdx
+          const wp = waypoints[idx]
+          const info = routePopover.info
+          const actions: MapPopoverAction[] = []
+          if (info) actions.push({ key: 'details', icon: 'information-circle-outline', accessibilityLabel: 'Details',
+            onPress: () => { setRoutePopover(null); void handleFeatureTap(info.features, info.lngLat) } })
+          if (flyingActive && activePosition && idx >= activeWpIdx) {
+            const label = directToLabel(wp)
+            actions.push({ key: 'direct', icon: 'airplane-outline', label: label === 'Take shortcut' ? 'Shortcut' : 'Direct', accessibilityLabel: label,
+              onPress: () => { setRoutePopover(null); flyDirect(wp) } })
+          }
+          actions.push({ key: 'remove', icon: 'trash-outline', accessibilityLabel: 'Remove from route', danger: true,
+            onPress: () => { setRoutePopover(null); removeWaypoint(idx) } })
+          return (
+            <MapPopover
+              x={routePopover.x} y={routePopover.y}
+              title={wp.name ?? `WP${idx + 1}`}
+              // In flight the point is draggable for LEG_UNLOCK_MS only: say so.
+              text={flyingActive ? 'unlocked 10 s' : undefined}
+              actions={actions}
+              testID="route-point-popover"
+            />
+          )
+        })()}
+
+        {/* Full route point menu: long-press on a route point (the
+            bubble above holds the quick actions for a tap). */}
         {wpActionMenu && (
           <View style={styles.longPressMenu}>
             <Text style={styles.longPressMenuCoord}>
