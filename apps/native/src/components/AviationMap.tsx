@@ -503,6 +503,11 @@ const DRAG_LIFT_PX = 72
  *  route point, nothing for a leg handle. Without it the lift above moved a
  *  point by DRAG_LIFT_PX on every still long-press. */
 const DRAG_SLOP_PX = 12
+/** A drag handle takes the touch as soon as it starts. Released sooner than
+ *  this without moving, it was a tap (the point's bubble, as for a tap on a
+ *  point without a handle); held longer, a long-press (full menu). Same as
+ *  Android's long-press timeout. */
+const HANDLE_TAP_MAX_MS = 500
 const pastSlop = (d: { start?: [number, number]; moved?: boolean }, point: [number, number]): boolean => {
   if (d.moved) return true
   if (!d.start) { d.start = point; return false }
@@ -836,7 +841,12 @@ const WaypointDragAnnotation = React.memo(function WaypointDragAnnotation({
       onDrag={handleDrag}
       onDragEnd={handleDragEnd}
     >
-      <View collapsable={false} style={{ width: HALF * 2, height: HALF * 2, backgroundColor: 'transparent' }} />
+      <View collapsable={false} style={{ width: HALF * 2, height: HALF * 2, backgroundColor: 'transparent' }}>
+        {/* A real (invisible) subview: an annotation whose view has no
+            children falls back to the SDK's default pink pin, which showed
+            next to route points while one was pressed. */}
+        <View collapsable={false} style={{ width: 1, height: 1, opacity: 0.01, backgroundColor: '#000' }} />
+      </View>
     </ViewAnnotation>
   )
 })
@@ -2197,7 +2207,7 @@ export function AviationMap({
   // Drag state — driven by WaypointDragAnnotation's native ViewAnnotation
   // drag events (lngLat reported directly by the map SDK, no manual
   // projection/unprojection needed; see WaypointDragAnnotation comment above).
-  const dragRef = useRef<{ wpIndex: number; lat: number; lng: number; start?: [number, number]; moved?: boolean } | null>(null)
+  const dragRef = useRef<{ wpIndex: number; lat: number; lng: number; start?: [number, number]; moved?: boolean; at?: number } | null>(null)
   const [dragging, setDragging] = useState(false)
   // Live preview position while dragging — rendered locally only. Committing
   // every pointer-move frame to onWaypointMove (which persists to AsyncStorage
@@ -2210,11 +2220,25 @@ export function AviationMap({
 
   // Committing a drag move / release — used by each WaypointDragAnnotation's
   // own onDragStart/onDrag/onDragEnd callbacks below.
+  // A press on route point `wpIndex` at screen `point` (map coordinates):
+  // reports it with the map features under the point (aerodrome, navaid...),
+  // for the caller's bubble. Used by a map tap and a short press on a handle.
+  const onWaypointPressRef = useRef(onWaypointPress)
+  onWaypointPressRef.current = onWaypointPress
+  const pressRoutePoint = useCallback((wpIndex: number, point: [number, number]) => {
+    const cb = onWaypointPressRef.current
+    const wp = dragWaypointsRef.current[wpIndex]
+    if (!cb || !wp) return
+    const map = mapRef.current
+    const box: [[number, number], [number, number]] = [[point[0] - SNAP_PX, point[1] - SNAP_PX], [point[0] + SNAP_PX, point[1] + SNAP_PX]]
+    const under = map ? map.queryRenderedFeatures(box, { layers: SNAP_LAYERS }).catch(() => [] as Feature[]) : Promise.resolve([] as Feature[])
+    void under.then(fs => cb(wpIndex, wp.lat, wp.lng, fs as Feature[], [wp.lng, wp.lat], [point[0], point[1]]))
+  }, [])
   const onRouteDragStartRef = useRef(onRouteDragStart)
   onRouteDragStartRef.current = onRouteDragStart
   const startDrag = useCallback((wpIndex: number, lat: number, lng: number) => {
     onRouteDragStartRef.current?.()
-    dragRef.current = { wpIndex, lat, lng }
+    dragRef.current = { wpIndex, lat, lng, at: Date.now() }
     setDragging(true)
   }, [])
   // Set true by releaseDrag, consumed (and cleared) by the very next
@@ -2328,7 +2352,12 @@ export function AviationMap({
       // set already implies a deliberate hold, not an accidental tap — no
       // extra timing check needed. This is the "remove from route" gesture
       // (mirrors web's stationary-tap-in-adjust-mode → WpActionMenu).
-      if (d) {
+      // A short press is a tap (the handle took the touch, so the map never
+      // saw it): the point's bubble, as for a tap on a point without a
+      // handle. Held longer: the long-press menu.
+      if (d && Date.now() - (d.at ?? 0) < HANDLE_TAP_MAX_MS && onWaypointPressRef.current) {
+        pressRoutePoint(d.wpIndex, point)
+      } else if (d) {
         onWaypointLongPress?.(d.wpIndex, d.lat, d.lng)
       }
       return
@@ -2806,20 +2835,11 @@ export function AviationMap({
           onRouteEndTap()
           return true
         }
-        const wp = waypoints[wpIndex]
-        if (onWaypointPress && wp) {
-          // The press payload only carries the route source's own feature, so
-          // ask the map for what lies under the point (aerodrome, navaid...).
-          const tap = (payload as PressEvent).lngLat as [number, number]
-          const pt = (payload as PressEvent).point
-          const under = pt && mapRef.current
-            ? mapRef.current.queryRenderedFeatures(
-                [[pt[0] - SNAP_PX, pt[1] - SNAP_PX], [pt[0] + SNAP_PX, pt[1] + SNAP_PX]],
-                { layers: SNAP_LAYERS },
-              ).catch(() => [] as Feature[])
-            : Promise.resolve([] as Feature[])
-          const sp: [number, number] = pt ? [pt[0], pt[1]] : [0, 0]
-          void under.then(fs => onWaypointPress(wpIndex, wp.lat, wp.lng, fs as Feature[], tap, sp))
+        const pt = (payload as PressEvent).point
+        if (onWaypointPress && waypoints[wpIndex] && pt) {
+          // The press payload only carries the route source's own feature:
+          // pressRoutePoint asks the map for what lies under the point.
+          pressRoutePoint(wpIndex, [pt[0], pt[1]])
           return true
         }
         return false
