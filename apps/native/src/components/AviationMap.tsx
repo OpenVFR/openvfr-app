@@ -1773,7 +1773,6 @@ export function AviationMap({
   bleedBottom = 0,
   flyToTarget,
 }: AviationMapProps) {
-  const dragStyles = useThemedStyles(makeDragStyles)
   const cameraRef   = useRef<CameraRef>(null)
   const notamPointsSourceRef = useRef<GeoJSONSourceRef>(null)
   // Resolved once per mount (cheap sync fs `.exists` checks) — uses cached local
@@ -3719,45 +3718,7 @@ export function AviationMap({
         ))}
       </NativeSheet>
 
-      {/* Drag indicator overlay */}
-      {dragging && (
-        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-          <View style={dragStyles.hint}>
-            <View style={dragStyles.dot} />
-            <View style={dragStyles.label}><View style={dragStyles.labelBg}><View style={dragStyles.labelText} /></View></View>
-          </View>
-        </View>
-      )}
     </View>
   )
 }
 
-function makeDragStyles(theme: ScaledTheme) {
- return {
-  hint: {
-    position:       'absolute',
-    bottom:         80,
-    alignSelf:      'center',
-    alignItems:     'center',
-    gap:            6,
-  },
-  dot: {
-    width:           16,
-    height:          16,
-    borderRadius:    8,
-    backgroundColor: '#f472b6',
-    borderWidth:     2,
-    borderColor:     '#fff',
-  },
-  label: {},
-  labelBg: {
-    backgroundColor: 'rgba(10,14,22,0.80)',
-    borderRadius:    6,
-    paddingHorizontal: 8,
-    paddingVertical:   3,
-  },
-  labelText: {
-    // placeholder — actual text omitted since we can't use dynamic hooks here
-  },
-} as const
-}
