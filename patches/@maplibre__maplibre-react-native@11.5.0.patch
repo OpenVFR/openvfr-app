@@ -83,6 +83,21 @@ index b38e97a9b0b00fc33be626a93c1e9eab20b3089f..275018eac41d5478191c3c890c52c682
          }
      }
  
+diff --git a/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt b/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt
+index b088909a48c4265219e4e95c529f6c0a63ae7e11..8c5ccad464a94bdae17f50a2c79f5040014a9957 100644
+--- a/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt
++++ b/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt
+@@ -559,6 +559,10 @@ open class MLRNMapView(
+     fun createSymbolManager(style: Style) {
+         symbolManager = SymbolManager(this, this.mapLibreMap!!, style)
+         symbolManager!!.setIconAllowOverlap(true)
++        // Annotations (e.g. invisible drag handles over route points and leg
++        // midpoints) must not take part in label collision: their boxes hid
++        // the map's own labels (route point names, leg labels) under them.
++        symbolManager!!.setIconIgnorePlacement(true)
+         symbolManager!!.addClickListener { symbol ->
+             onPointAnnotationClick(symbol)
+             true
 diff --git a/ios/components/annotations/point-annotation/MLRNPointAnnotation.m b/ios/components/annotations/point-annotation/MLRNPointAnnotation.m
 index 71ee64d14f2892373cfb4556dfd35ee3c005f4ce..024269e454bd44277374fafc5226aef557bf46a0 100644
 --- a/ios/components/annotations/point-annotation/MLRNPointAnnotation.m
