@@ -227,7 +227,9 @@ export type AviationMapProps = {
   /** 'time' = marks at 1/3/5 min ahead; 'nm' = marks at 1/3/5 NM ahead */
   trajectoryMode?: 'time' | 'nm'
   onFeatureTap?:  (features: Feature[], lngLat: [number, number]) => void
-  onLongPress?:   (feature: Feature) => void
+  /** Long-press on the map (not on the route): the spot, and its screen
+   *  point in map coordinates (for a bubble there). */
+  onLongPress?:   (feature: Feature, screenPoint?: [number, number]) => void
   /** Called when a route waypoint is dragged to a new position */
   onWaypointMove?: (index: number, pos: { lat: number; lng: number }) => void
   /** Called when a route leg is tapped — insert waypoint after legIndex */
@@ -2920,16 +2922,16 @@ export function AviationMap({
           // A drag may have started while the queries ran.
           if (dragGuarded()) return
           if (onLongPress) {
-            onLongPress({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: {} })
+            onLongPress({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: {} }, [point[0], point[1]])
           }
         }).catch(() => {
           if (dragGuarded()) return
-          if (onLongPress) onLongPress({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: {} })
+          if (onLongPress) onLongPress({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: {} }, [point[0], point[1]])
         })
         return
       }
       if (!onLongPress) return
-      onLongPress({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: {} })
+      onLongPress({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: {} }, [point[0], point[1]])
     },
     [onLongPress, onWaypointMove, onWaypointPress, onLegTap, pressRoutePoint],
   )

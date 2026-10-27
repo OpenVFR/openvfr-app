@@ -907,7 +907,10 @@ function MapScreenForCountry() {
     }
   }, [status])
 
+  // Closes the long-press bubble from callbacks declared before its state.
+  const setLongPressMenuRef = React.useRef<(v: null) => void>(() => {})
   const handleFeatureTap = useCallback(async (features: Feature[], tapLngLat: [number, number]) => {
+    setLongPressMenuRef.current(null)
     // First non-airspace, non-route feature — checked BEFORE the airspace
     // point-in-polygon query below. Aerodromes/navaids/waypoints/obstacles
     // very often sit physically inside their own ATZ/CTR polygon, so querying
@@ -1227,7 +1230,7 @@ function MapScreenForCountry() {
     if (screenPoint) { setRoutePopover({ kind: 'leg', leg, x: screenPoint[0], y: screenPoint[1] - mapBleedTopRef.current, text }); setRouteHint(null) }
     else { setRoutePopover(null); setRouteHint(flyingActive ? 'Leg unlocked for 10 s: drag its level, middle or ends' : text) }
   }, [flyingActive])
-  const handleRouteMiss = useCallback(() => { setSelectedLeg(null); setSelectedPoint(null); setRoutePopover(null) }, [])
+  const handleRouteMiss = useCallback(() => { setSelectedLeg(null); setSelectedPoint(null); setRoutePopover(null); setLongPressMenuRef.current(null) }, [])
   // The leg bubble is a hint: it goes after a few seconds (the selection stays).
   useEffect(() => {
     if (routePopover?.kind !== 'leg') return
@@ -1286,6 +1289,7 @@ function MapScreenForCountry() {
   }, [followReturnAtStore])
   const handleUserPan = useCallback(() => {
     setRoutePopover(null)
+    setLongPressMenuRef.current(null)
     setFollowGps(false)
     setLocCentred(false)
     clearFollowReturn()
@@ -1450,6 +1454,7 @@ function MapScreenForCountry() {
     setSelectedPoint(index)
     setSelectedLeg(null)
     setRouteHint(null)
+    setLongPressMenuRef.current(null)
     if (flyingActive) setUnlockedLeg(null)
     setRoutePopover({ kind: 'point', wpIdx: index, x: screenPoint[0], y: screenPoint[1] - mapBleedTopRef.current, info: under.length ? { features: under, lngLat: tapLngLat } : undefined })
   }, [flyingActive])
@@ -1514,23 +1519,46 @@ function MapScreenForCountry() {
   // on the ground "Add to route (this point)" / "Start route here" (taps
   // while extending snap to map features, so this is how a free point is
   // added), in flight "Direct to here".
-  const [longPressMenu, setLongPressMenu] = useState<{ lat: number; lng: number } | null>(null)
-  const [savingWpAt,    setSavingWpAt]    = useState<{ lat: number; lng: number } | null>(null)
+  // A bubble at the long-pressed spot (x/y in the overlay's coordinates).
+  // After Save it says what was saved, with Rename.
+  const [longPressMenu, setLongPressMenu] = useState<{ lat: number; lng: number; x: number; y: number; saved?: { id: string; name: string } } | null>(null)
+  useEffect(() => { setLongPressMenu(null) }, [flyingActive])
+  setLongPressMenuRef.current = setLongPressMenu
+  // Name prompt for a place: a new one, or renaming `id` (just saved from the bubble).
+  const [savingWpAt,    setSavingWpAt]    = useState<{ lat: number; lng: number; id?: string } | null>(null)
   const [wpSaveName,    setWpSaveName]    = useState('')
 
-  const handleLongPress = useCallback((feature: Feature) => {
+  const handleLongPress = useCallback((feature: Feature, screenPoint?: [number, number]) => {
     if (feature.geometry.type === 'Point') {
       const [lng, lat] = (feature.geometry as Point).coordinates
-      setLongPressMenu({ lat, lng })
+      setRoutePopover(null)
+      setLongPressMenu({ lat, lng, x: screenPoint?.[0] ?? 200, y: (screenPoint?.[1] ?? 300) - mapBleedTopRef.current })
     }
   }, [])
+  // Save the long-pressed spot as a place straight away (auto name, no
+  // typing, e.g. in flight); the bubble then offers Rename.
+  const handleQuickSavePlace = useCallback(() => {
+    const m = longPressMenu
+    if (!m) return
+    const id = Crypto.randomUUID()
+    const name = nextPlaceName(userWaypoints.map(w => w.name))
+    void saveWaypoint({ id, name, lat: m.lat, lng: m.lng, folder: '', updatedAt: Date.now() })
+    setLongPressMenu({ ...m, saved: { id, name } })
+  }, [longPressMenu, userWaypoints, saveWaypoint])
+  // The saved-confirmation bubble goes after a few seconds.
+  useEffect(() => {
+    if (!longPressMenu?.saved) return
+    const t = setTimeout(() => setLongPressMenu(p => (p?.saved ? null : p)), 5000)
+    return () => clearTimeout(t)
+  }, [longPressMenu])
 
   const handleConfirmSaveWaypoint = useCallback(() => {
     if (!savingWpAt) return
     // Blank name -> auto "Place N" so saving needs no typing (e.g. in flight).
     const name = wpSaveName.trim() || nextPlaceName(userWaypoints.map(w => w.name))
     saveWaypoint({
-      id:        Crypto.randomUUID(),
+      // Renaming the place just saved from the bubble keeps its id.
+      id:        savingWpAt.id ?? Crypto.randomUUID(),
       name,
       lat:       savingWpAt.lat,
       lng:       savingWpAt.lng,
@@ -1730,43 +1758,33 @@ function MapScreenForCountry() {
         {/* Long-press action menu — bare-point long-press offers a choice
             instead of silently adding to route (matches web's right-click
             context-menu pattern, adapted to touch). */}
-        {longPressMenu && (
-          <View style={styles.longPressMenu}>
-            <Text style={styles.longPressMenuCoord}>
-              {longPressMenu.lat.toFixed(5)}, {longPressMenu.lng.toFixed(5)}
-            </Text>
-            <TouchableOpacity
-              style={styles.longPressMenuBtn}
-              onPress={() => { setSavingWpAt(longPressMenu); setLongPressMenu(null); setWpSaveName('') }}
-            >
-              <Ionicons name="bookmark-outline" size={16} color={theme.accentBlue} />
-              <Text style={styles.longPressMenuBtnTxt}>Save Place</Text>
-            </TouchableOpacity>
-            {/* Ground: this exact point goes on the end of the route (a free
-                point; taps while extending snap to map features). Flight:
-                fly direct to it, rejoining the route if it lies near a leg ahead. */}
-            {flyingActive ? (activePosition && (
-              <TouchableOpacity
-                style={styles.longPressMenuBtn}
-                onPress={() => { flyDirect({ lat: longPressMenu.lat, lng: longPressMenu.lng }, true); setLongPressMenu(null) }}
-              >
-                <Ionicons name="airplane-outline" size={16} color={theme.accentBlue} />
-                <Text style={styles.longPressMenuBtnTxt}>Direct to here</Text>
-              </TouchableOpacity>
-            )) : (
-              <TouchableOpacity
-                style={styles.longPressMenuBtn}
-                onPress={() => { addWaypoint({ lat: longPressMenu.lat, lng: longPressMenu.lng }); setExtending(true); setLongPressMenu(null) }}
-              >
-                <Ionicons name="add-circle-outline" size={16} color={theme.accentBlue} />
-                <Text style={styles.longPressMenuBtnTxt}>{waypoints.length ? 'Add to route (this point)' : 'Start route here'}</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={styles.longPressMenuCancel} onPress={() => setLongPressMenu(null)}>
-              <Text style={styles.longPressMenuCancelTxt}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        {longPressMenu && (longPressMenu.saved ? (
+          <MapPopover
+            x={longPressMenu.x} y={longPressMenu.y}
+            text={`Saved as ${longPressMenu.saved.name}`}
+            actions={[{ key: 'rename', icon: 'create-outline', label: 'Rename', accessibilityLabel: 'Rename the saved place',
+              onPress: () => { const m = longPressMenu; setLongPressMenu(null); setWpSaveName(m.saved!.name); setSavingWpAt({ lat: m.lat, lng: m.lng, id: m.saved!.id }) } }]}
+            testID="map-spot-popover"
+          />
+        ) : (
+          <MapPopover
+            x={longPressMenu.x} y={longPressMenu.y}
+            actions={[
+              { key: 'save', icon: 'bookmark-outline', label: 'Save', accessibilityLabel: 'Save this spot as a place', onPress: handleQuickSavePlace },
+              // Ground: this exact point goes on the end of the route (taps
+              // while extending snap to map features, so this is how a free
+              // point is added). Flight: fly direct to it, rejoining the
+              // route if it lies near a leg ahead.
+              ...(flyingActive
+                ? (activePosition ? [{ key: 'direct', icon: 'airplane-outline' as const, label: 'Direct', accessibilityLabel: 'Direct to here',
+                    onPress: () => { const m = longPressMenu; setLongPressMenu(null); flyDirect({ lat: m.lat, lng: m.lng }, true) } }] : [])
+                : [{ key: 'route', icon: 'add-circle-outline' as const, label: waypoints.length ? 'Add to route' : 'Start route',
+                    accessibilityLabel: waypoints.length ? 'Add this exact point to the end of the route' : 'Start a route here',
+                    onPress: () => { const m = longPressMenu; setLongPressMenu(null); addWaypoint({ lat: m.lat, lng: m.lng }); setExtending(true) } }]),
+            ]}
+            testID="map-spot-popover"
+          />
+        ))}
 
         {/* Quick bubble above a tapped route point / leg (see routePopover). */}
         {routePopover?.kind === 'leg' && (
