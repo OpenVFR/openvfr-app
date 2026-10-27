@@ -188,6 +188,8 @@ function SideDrawer({
   // there the pane overlays the map. Later visits restore the saved state.
   const [open, setOpen]         = useState(() => lsGet(LS_OPEN, typeof window === 'undefined' || window.innerWidth >= 700))
   const [width, setWidth]       = useState(() => lsGet(LS_WIDTH, DEFAULT_WIDTH))
+  // Bumped by the empty route's Search row: focuses the search box above.
+  const [searchFocusNonce, setSearchFocusNonce] = useState(0)
   const [expanded, setExpanded] = useState<Record<Section, boolean>>(() =>
     lsGet(LS_EXPANDED, { route: false, preflight: false, fuel: false, flightLogs: false, aircraft: false, userWaypoints: false, layers: false, settings: false })
   )
@@ -295,7 +297,7 @@ function SideDrawer({
       )}
       <div className={`${css.drawer} ${open ? '' : css.drawerClosed}`}>
         <div className={css.searchBar}>
-          <FindFeature onResult={onFlyTo} onAddToRoute={onAddToRoute} routeWaypoints={waypoints} onInsertInRoute={onInsertInRoute} places={userWaypoints} onSavePlace={(lng, lat) => onSaveHereUserWaypoint('', lng, lat)} />
+          <FindFeature focusNonce={searchFocusNonce} onResult={onFlyTo} onAddToRoute={onAddToRoute} routeWaypoints={waypoints} onInsertInRoute={onInsertInRoute} places={userWaypoints} onSavePlace={(lng, lat) => onSaveHereUserWaypoint('', lng, lat)} />
         </div>
         <div className={css.scroll}>
 
@@ -358,17 +360,33 @@ function SideDrawer({
                     />
                   ) : (
                     <div className={css.routeEmpty}>
-                      <p>{inFlightRoute
-                        ? 'No route. Use Direct To, or open a saved route.'
-                        : 'No route. Click an aerodrome or navaid on the map and choose "Start route here", search above, or open a saved route.'}</p>
+                      <p className={css.routeEmptyTitle}>{inFlightRoute ? 'No route. Use Direct To, or open a saved route.' : 'No route yet'}</p>
+                      {/* Ways to start one, as pane rows (not loose buttons):
+                          search, filtered aerodrome finder; the map itself is
+                          the third way (hint below). */}
                       <div className={css.routeEmptyActions}>
                         {!inFlightRoute && (
-                          <button onClick={onFindDestination} title="Aerodromes by fuel, surface, runway length and distance; + starts the route there">Find a destination</button>
+                          <button className={css.routeEmptyAction} onClick={() => setSearchFocusNonce(n => n + 1)}
+                            title="Type an aerodrome, navaid, reporting point, place or coordinate in the search box; its + starts the route">
+                            <span className={css.routeEmptyIcon} aria-hidden="true">⌕</span>
+                            <span><b>Search</b><small>aerodrome, navaid, point or coordinate</small></span>
+                          </button>
+                        )}
+                        {!inFlightRoute && (
+                          <button className={css.routeEmptyAction} onClick={onFindDestination}
+                            title="Aerodromes by fuel, surface, runway length and distance; + starts the route there">
+                            <span className={css.routeEmptyIcon} aria-hidden="true">◎</span>
+                            <span><b>Find a destination</b><small>by fuel, runway and distance</small></span>
+                          </button>
                         )}
                         {canUndo && (
-                          <button onClick={onUndo} title="Undo last route change (Ctrl+Z)">↶ Undo</button>
+                          <button className={css.routeEmptyAction} onClick={onUndo} title="Undo last route change (Ctrl+Z)">
+                            <span className={css.routeEmptyIcon} aria-hidden="true">↶</span>
+                            <span><b>Undo</b><small>bring the last route back</small></span>
+                          </button>
                         )}
                       </div>
+                      {!inFlightRoute && <p className={css.routeEmptyHint}>Or click an aerodrome or navaid on the map and choose Start route here.</p>}
                     </div>
                   )}
                 </RouteLibrary>

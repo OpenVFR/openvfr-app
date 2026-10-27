@@ -154,16 +154,55 @@
 
 /* Route section without a route: short how-to plus actions. */
 .routeEmpty {
-  padding: 4px 12px 6px;
+  padding: 6px 12px 8px;
   color: var(--text-muted);
   font-size: 11px;
 }
-.routeEmpty p { margin: 0 0 6px; }
+.routeEmptyTitle {
+  margin: 0 0 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+/* Ways to start a route: full-width rows in the pane's own style. */
 .routeEmptyActions {
   display: flex;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
 }
-.routeEmptyActions button { font-size: 11px; }
+.routeEmptyAction {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+.routeEmptyAction:hover {
+  background: var(--surface-active);
+  border-color: var(--border-strong);
+}
+.routeEmptyAction b { display: block; font-size: 12px; font-weight: 600; }
+.routeEmptyAction small { display: block; font-size: 10.5px; color: var(--text-muted); }
+.routeEmptyIcon {
+  width: 22px;
+  flex: 0 0 22px;
+  text-align: center;
+  font-size: 15px;
+  color: var(--accent-blue);
+}
+.routeEmptyHint {
+  margin: 8px 0 0;
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
 
 .sectionBody {
   padding-bottom: 8px;

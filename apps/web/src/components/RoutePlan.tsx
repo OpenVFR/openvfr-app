@@ -419,9 +419,6 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
       <div className={css.header}>
         <span className={css.title}>Waypoints</span>
         <div className={css.actions}>
-          {onFindDestination && (
-            <button className={css.btn} title="Find a destination: aerodromes by fuel, surface, runway length and distance; + adds one to the route" onClick={onFindDestination}>Find dest.</button>
-          )}
           <button className={css.btn} title="Type the whole route, e.g. ESOS ESGG ESSA (to add a single point, use the search at the top)" onClick={() => { setShowKb(s => !s); setTimeout(() => kbRef.current?.focus(), 50) }}>⌨</button>
           <button className={css.btn} onClick={onUndo} disabled={!canUndo} title="Undo last route change (Ctrl+Z)">↶</button>
           {onRedo && <button className={css.btn} onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">↷</button>}
@@ -429,6 +426,10 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
             <button className={css.btn} title="More actions" onClick={() => setShowMenu(s => !s)}>⋯</button>
             {showMenu && (
               <div className={css.menu}>
+                {onFindDestination && (
+                  <button className={css.menuItem} title="Aerodromes by fuel, surface, runway length and distance; + adds one to the route"
+                    onClick={() => { onFindDestination(); setShowMenu(false) }}>◎ Find a destination…</button>
+                )}
                 <button className={css.menuItem} onClick={() => { onReplace([...waypoints].reverse()); setShowMenu(false) }} disabled={waypoints.length < 2}>⇄ Reverse</button>
                 <button className={css.menuItem} onClick={() => { exportGpx(waypoints); setShowMenu(false) }} disabled={waypoints.length < 2}>↓ GPX</button>
                 <button className={css.menuItem} onClick={() => { exportKml(waypoints); setShowMenu(false) }} disabled={waypoints.length < 2}>↓ KML</button>

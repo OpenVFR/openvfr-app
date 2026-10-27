@@ -15,6 +15,8 @@ export type FindResult = {
 }
 
 interface Props {
+  /** Bump to focus the search box (e.g. from the empty route's "Search"). */
+  focusNonce?: number
   onResult: (r: FindResult) => void
   onAddToRoute?: (wp: { lng: number; lat: number; name?: string }) => void
   /** Current route points + insert callback: adds an "insert at position" button. */
@@ -154,7 +156,7 @@ function searchPlaces(q: string, places: Props['places']): FindResult[] {
     .map(p => ({ kind: 'PL' as const, id: p.id, name: p.name, sub: p.folder || 'Saved place', lng: p.lng, lat: p.lat }))
 }
 
-export default function FindFeature({ onResult, onAddToRoute, routeWaypoints, onInsertInRoute, places, onSavePlace }: Props) {
+export default function FindFeature({ focusNonce = 0, onResult, onAddToRoute, routeWaypoints, onInsertInRoute, places, onSavePlace }: Props) {
   const [query, setQuery]       = useState('')
   const [results, setResults]   = useState<FindResult[]>([])
   const [active, setActive]     = useState(0)
@@ -163,6 +165,8 @@ export default function FindFeature({ onResult, onAddToRoute, routeWaypoints, on
   const [insertIdx, setInsertIdx] = useState<number | null>(null)
   const inputRef                = useRef<HTMLInputElement>(null)
   const wrapRef                 = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { if (focusNonce > 0) inputRef.current?.focus() }, [focusNonce])
 
   // Keyboard shortcut: / or Ctrl+F focuses the search bar
   useEffect(() => {
