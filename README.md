@@ -2,8 +2,8 @@
 
 OpenVFR is a free, open-source Electronic Flight Bag (EFB) for VFR pilots —
 real-time airspace awareness, terrain and obstacle profiles, and aviation
-charts, built entirely on open data. No account required, no paywalls, no
-lock-in.
+charts, built entirely on open data. No paywalls and no lock-in. A free
+account is required: sign in with a passkey or an email code.
 
 [![CI](https://github.com/OpenVFR/openvfr-app/actions/workflows/ci.yml/badge.svg)](https://github.com/OpenVFR/openvfr-app/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)

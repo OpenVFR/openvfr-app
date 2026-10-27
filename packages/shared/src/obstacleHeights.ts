@@ -6,10 +6,10 @@
  * unknown height used to mean "tip = ground", i.e. the structure silently did
  * not exist for the MSA. We now assume a typical height per kind, mark it as
  * an estimate (dashed outline on the chart) and use it as a conservative
- * floor. The reference planner does the same with one figure (300 ft).
+ * floor.
  *
  * Estimates are the medians of the known heights in the Swedish data, rounded,
- * with 91 m (300 ft, the reference planner's figure) for generic masts.
+ * with 91 m (300 ft) for generic masts.
  */
 
 export const ESTIMATED_HEIGHT_M: Readonly<Record<string, number>> = {

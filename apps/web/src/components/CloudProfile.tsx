@@ -1,10 +1,9 @@
 /**
  * CloudProfile — vertical cloud-layer altitude chart.
  *
- * Visual parity target: public METAR/TAF sites plot cloud layers on a
- * vertical ft-scale with an icon at each layer's base, instead of a plain
- * text list. Adapted (not cloned) to this app's narrow side-panel width: a
- * compact vertical strip with gridlines every 1,000 ft and a small cloud
+ * Plots cloud layers on a vertical ft-scale with an icon at each layer's
+ * base, instead of a plain text list. Sized for this app's narrow side
+ * panel: a compact vertical strip with gridlines every 1,000 ft and a small cloud
  * icon + cover/altitude label at each reported layer, sized to sit under
  * the Wx tab's tile grid.
  */

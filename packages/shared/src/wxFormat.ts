@@ -62,8 +62,7 @@ const CLOUD_COVER_LABEL: Record<ParsedCloudLayer['cover'], string> = {
   OVC: 'Overcast',
 }
 
-/** "38m ago" / "2h 05m ago" freshness readout for an observation time,
- *  same purpose as a public METAR/TAF site's age-since-observation label.
+/** "38m ago" / "2h 05m ago" freshness readout for an observation time (age since observation).
  *  Returns null for a future/unresolvable timestamp rather than showing a
  *  nonsensical negative age. */
 export function fmtObsAge(obsMs: number | null, nowMs = Date.now()): string | null {
@@ -78,8 +77,7 @@ export function fmtObsAge(obsMs: number | null, nowMs = Date.now()): string | nu
 }
 
 /** Plain-English translation of a decoded METAR, one short sentence per
- *  reported group -- mirrors a public METAR/TAF site's narrative summary,
- *  sized to fit this app's compact side-panel width (array of short lines
+ *  reported group, sized to fit this app's compact side-panel width (array of short lines
  *  instead of one long paragraph). */
 export function metarNarrative(metar: MetarDecoded): string[] {
   const lines: string[] = []
@@ -122,8 +120,8 @@ export function metarNarrative(metar: MetarDecoded): string[] {
 }
 
 /** One headline phrase for a cloud layer set — picks the most significant
- *  (highest-cover) layer, same "one summary word" convention public METAR/TAF
- *  sites use per hour instead of listing every layer. */
+ *  (highest-cover) layer: one summary word per hour instead of listing every
+ *  layer. */
 export function skyCover(clouds: ParsedCloudLayer[]): 'CLR' | 'FEW' | 'SCT' | 'BKN' | 'OVC' {
   if (clouds.length === 0) return 'CLR'
   const rank: Record<ParsedCloudLayer['cover'], number> = { FEW: 1, SCT: 2, BKN: 3, OVC: 4 }

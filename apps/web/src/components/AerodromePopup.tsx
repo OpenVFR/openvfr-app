@@ -1012,10 +1012,9 @@ export default function AerodromePopup({
                         <WindSpeedGauge wind={effectiveWind} tone={windTone(effectiveWind)} />
                       </div>
 
-                      {/* Colour-coded metric tiles — mirrors a public METAR/TAF
-                          site's at-a-glance tile grid, but each tile's colour is
-                          driven by its own metric threshold (not one shared
-                          flight-rule colour for the whole card). */}
+                      {/* Colour-coded metric tiles: an at-a-glance grid where each
+                          tile's colour is driven by its own metric threshold (not
+                          one shared flight-rule colour for the whole card). */}
                       <div className={css.wxTileGrid}>
                         <div className={`${css.wxTile} ${css[`wxTile${windTone(effectiveWind)}`]}`}>
                           <span className={css.wxTileLabel}>Wind{windIsModelled ? ' (modelled)' : ''}</span>
@@ -1062,8 +1061,7 @@ export default function AerodromePopup({
                         <CloudProfile clouds={parseMetarClouds(metar.clouds)} />
                       )}
 
-                      {/* Plain-English narrative — same purpose as a public
-                          METAR/TAF site's translated-to-prose summary. */}
+                      {/* Plain-English narrative: the METAR translated to prose. */}
                       <p className={css.wxNarrative}>
                         {metarNarrative(metar).join(' ')}
                       </p>

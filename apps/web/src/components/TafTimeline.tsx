@@ -1,10 +1,9 @@
 /**
  * TafTimeline — hour-by-hour decoded TAF table.
  *
- * Visual parity target: public METAR/TAF sites present a TAF as a
- * horizontally-scrolling per-hour table (flight-rule pill / sky icon+label /
- * visibility / ceiling / wind arrow+speed) rather than raw period groups.
- * This slices the already-parsed TafPeriod[] (buildTafTimeline, resolved the
+ * A horizontally-scrolling per-hour table (flight-rule pill / sky icon+label /
+ * visibility / ceiling / wind arrow+speed), easier to scan than raw period
+ * groups. This slices the already-parsed TafPeriod[] (buildTafTimeline, resolved the
  * same way the chart's "current instant" TAF resolution works) into hourly
  * columns and renders that table. Complements, doesn't replace, the raw TAF
  * text and the FM/BECMG/TEMPO period cards shown alongside it.

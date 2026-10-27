@@ -29,8 +29,7 @@ export async function fetchWx(
 }
 
 // ── Nearest-station fallback ─────────────────────────────────────────────────
-// Mirrors the "nearest available report" behaviour of public METAR/TAF sites:
-// small/uncontrolled aerodromes rarely have their own AWOS/ATIS station, so
+// Nearest available report: small/uncontrolled aerodromes rarely have their own AWOS/ATIS station, so
 // when the requested ICAO has neither a METAR nor a TAF, fall through to the
 // closest candidate that does. Sequential (not parallel) by design -- this
 // only ever fires for the minority of airports with no local report, and
@@ -266,8 +265,7 @@ export interface MetarDecoded {
   /** Observation time resolved to an epoch ms against `referenceMs` (day-of-
    *  month + HH:MM from the DDHHMMZ group has no year/month of its own) --
    *  null if the raw METAR carried no recognisable time group. Powers an
-   *  "Xm ago" freshness readout the way public METAR/TAF sites show next to
-   *  the raw observation time. */
+   *  "Xm ago" freshness readout next to the raw observation time. */
   obsMs:      number | null
 }
 

@@ -1,8 +1,7 @@
 /**
  * Full-height obstacle symbols for the Virtual Radar: a building, mast,
  * chimney, wind turbine or water tower drawn from the ground up to its real
- * tip altitude, so the chart shows how tall it is (the same idea as the
- * reference planner, which stretches the symbol to the obstacle's height).
+ * tip altitude, so the chart shows how tall it is.
  *
  * Pure geometry in chart pixels; web renders it as SVG elements, native as
  * react-native-svg elements. Obstacles shorter than MIN_FULL_HEIGHT_PX stay a

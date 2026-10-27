@@ -15,10 +15,10 @@ export type MsaMargins = {
 }
 
 /**
- * Defaults and limits follow the reference planner's warning thresholds
- * (WarningThresholdOptions): vertical terrain clearance 800 ft, vertical
- * obstacle clearance 1000 ft, each 300-2000 ft; abeam distance 5 NM (its
- * obstacle value; it uses 4 NM for terrain, we use one abeam for both) in 1-10 NM.
+ * Defaults and limits: vertical terrain clearance 800 ft, vertical obstacle
+ * clearance 1000 ft, each adjustable between 300 and 2000 ft; abeam distance
+ * 5 NM (one value for both terrain and obstacles), adjustable between 1 and
+ * 10 NM.
  */
 export const DEFAULT_MSA_MARGINS: MsaMargins = {
   abeamNm: 5.0,

@@ -256,8 +256,7 @@ export interface TafHourSlice {
  * way the chart's "current instant" resolution works — just repeated at
  * `stepHours` intervals instead of evaluated once "now". This is what
  * powers an hour-by-hour forecast table (time / flight-rule / wind / vis /
- * ceiling per column), mirroring how public METAR/TAF sites present a TAF
- * as a timeline instead of raw period groups.
+ * ceiling per column), a timeline instead of raw period groups.
  */
 export function buildTafTimeline(
   periods: TafPeriod[] | null,

@@ -4,10 +4,10 @@
  * (VerticalProfile.tsx); the gesture and drawing live in each app.
  *
  * Rules:
- * - The level follows the finger 1:1 (the line you grab stays under it). The
- *   reference planner moves it at a quarter (up) / half (down) of the travel;
- *   on a phone that made the level run away from the finger and made lowering
- *   it a long drag, so we do not copy that part.
+ * - The level follows the finger 1:1 (the line you grab stays under it). Moving
+ *   the level at a fraction of the finger travel (a quarter up, half down)
+ *   makes it run away from the finger on a phone and makes lowering it a
+ *   long drag, so it is 1:1.
  * - The drag starts from the altitude drawn under the finger, not from the
  *   leg's requested level: a level the aircraft cannot reach on that distance
  *   sits far above the drawn line and made the line jump to the top.

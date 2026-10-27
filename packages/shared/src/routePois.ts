@@ -4,10 +4,9 @@
  * inside which it is drawn (a busy towered field is relevant further out than
  * a reporting point), instead of one corridor for everything.
  *
- * Distances follow the reference planner's per-type thresholds
- * (VirtualRadarSpotEntityLayer: aerodromes 5 / 3 / 0 NM by traffic type,
- * reporting points 2 NM), adapted to our data: we have no traffic-type
- * field, so towered aerodromes stand in for the busy ones.
+ * Distances are per type (aerodromes 5 / 3 / 0 NM by traffic type,
+ * reporting points 2 NM). We have no traffic-type field, so towered
+ * aerodromes stand in for the busy ones.
  */
 
 import length from '@turf/length'

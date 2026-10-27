@@ -1,5 +1,5 @@
 /**
- * useLegForecastWind — forecast wind per route leg (SkyDemon-style): evaluated
+ * useLegForecastWind — forecast wind per route leg: evaluated
  * for each leg's midpoint, altitude and expected time, recomputed whenever the
  * route / altitude / takeoff time changes. Manual per-leg overrides are applied
  * by the caller and win over this.

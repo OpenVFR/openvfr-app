@@ -1,13 +1,9 @@
 /**
  * WindGauges — graphical wind-direction/runway compass + wind-speed dial.
  *
- * Visual parity target: public METAR/TAF reference sites show two round
- * gauges (a compass with the active runway drawn across it, and a speed
- * dial) rather than plain text. This is our own from-scratch SVG
- * implementation of the same idea, not a pixel clone (see AGENTS.md — never
- * describe/copy a competing product's own asset, only the general
- * technique: a compass rose + runway bar + a speed dial are generic
- * aviation-weather UI conventions, not any one site's IP).
+ * Two round gauges instead of plain text: a compass with the active runway
+ * drawn across it, and a speed dial. A from-scratch SVG implementation of
+ * generic aviation-weather conventions.
  *
  * Pure presentational — all inputs are already-decoded values, no fetching.
  */
@@ -104,9 +100,7 @@ export function WindCompassGauge({ wind, runway, tone, favoredEndDesignator }: C
 
         {/* Runway -- drawn as an actual strip (filled rounded rectangle +
             dashed centerline + threshold caps), not just a bare line, so it
-            reads as a runway at a glance the way a public METAR/TAF site's
-            own runway diagram does (own from-scratch shape, not a copy --
-            see file doc comment / AGENTS.md). headingDeg is threshold[0]'s
+            reads as a runway at a glance. headingDeg is threshold[0]'s
             OWN bearing field, which per the data's convention (see
             MapView.tsx's buildCentrelines comment and
             @open-vfr/shared/runwayWind) points AWAY from threshold[0]

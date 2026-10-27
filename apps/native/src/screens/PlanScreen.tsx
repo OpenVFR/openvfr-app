@@ -456,7 +456,7 @@ export function PlanScreen() {
   const legIsBelowMsa = (i: number) =>
     msaSpans[i] != null && legBelowMsa(msaSpans[i], msaTotalNm, legPlannedAlt(i), legMsa[i] ?? 0)
 
-  // Forecast wind per leg (SkyDemon-style): leg midpoint, altitude and expected time
+  // Forecast wind per leg: leg midpoint, altitude and expected time
   // (takeoff time, or now when unset, plus still-air time flown so far). Per-leg manual
   // wind and the global wind take precedence over it.
   const legWindQueries = useMemo<LegWindQuery[]>(() => {

@@ -1495,8 +1495,8 @@ export function computeVspeedTrajectory(opts: {
   const { currentDistNm, currentAltFt, currentVSpeedFpm, ticks, getMsa } = opts
   const LEVEL_VSPEED_FPM = 100
   // Unknown vertical speed is drawn as level flight, flagged `estimated` so the
-  // renderer can show it as an assumption (the reference planner does the same:
-  // it always draws the line and treats a missing rate as 0).
+  // renderer can show it as an assumption (the line is always drawn and a
+  // missing rate is treated as 0).
   const estimated = currentVSpeedFpm == null || !Number.isFinite(currentVSpeedFpm)
   const vs = estimated ? 0 : currentVSpeedFpm!
   const attitude: 'climb' | 'descent' | 'level' =

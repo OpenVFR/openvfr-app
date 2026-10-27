@@ -2,8 +2,7 @@
  * useRouteWinds — the effective wind on every leg of the route, in one place so
  * the route table, fuel plan and pre-flight check all agree.
  *
- * Per leg: manual leg override → manual global wind → forecast (SkyDemon-style:
- * evaluated at the leg midpoint, altitude and expected time).
+ * Per leg: manual leg override → manual global wind → forecast (evaluated at the leg midpoint, altitude and expected time).
  */
 
 import { useMemo } from 'react'

@@ -521,7 +521,7 @@ Each route leg must show the WCA alongside the magnetic heading (e.g. `093°M / 
 
 #### Wind source per leg
 
-Wind is a function of (time, position, level), modelled on SkyDemon's `GetWind`, and is never frozen into a leg. Effective wind per leg, in priority order:
+Wind is a function of (time, position, level) and is never frozen into a leg. Effective wind per leg, in priority order:
 
 1. **Manual leg wind** (`LegOverride.windDir/windSpd`, set in the leg panel). Only wind the pilot actually typed is saved; "Reset to forecast" drops it.
 2. **Manual global wind** (WND row, applies to all legs). While set, the forecast is not fetched.

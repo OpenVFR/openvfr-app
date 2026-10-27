@@ -1,7 +1,7 @@
 /**
  * Forecast wind for a point / altitude / TIME (Open-Meteo hourly series).
  *
- * Mirrors SkyDemon's model: wind is a function of (time, position, level),
+ * Wind is a function of (time, position, level),
  * evaluated for the planned takeoff time + time into the flight, never frozen
  * into the leg. A manual per-leg override (handled by the caller) wins.
  *

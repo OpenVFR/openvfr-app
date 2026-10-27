@@ -133,7 +133,7 @@ export interface NotamMapFeatures {
    * Obstacle NOTAMs (Q-code OB.. or OL..: new obstacle, obstacle lights out of
    * service): hundreds of windmill/mast pins that bury everything else when
    * zoomed out. Own source, drawn only when zoomed in
-   * (NOTAM_OBSTACLE_MIN_ZOOM), like SkyDemon culls them above 1:750,000.
+   * (NOTAM_OBSTACLE_MIN_ZOOM), so they are culled when zoomed out (about 1:750,000).
    */
   obstacles: Feature<Point>[]
 }
