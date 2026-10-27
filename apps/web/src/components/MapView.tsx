@@ -5387,7 +5387,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
               trajectoryMode={trajectoryMode}
               onHoverDistNm={setProfileCursorNm}
               crosshairDistNm={profileCursorNm}
-              onLegLevelChange={flyingMode === 'off' ? handleLegLevelChange : undefined}
+              // Leg levels: every leg on the ground; in flight only the
+              // unlocked leg (clicked on the map or on this chart) for LEG_UNLOCK_MS.
+              onLegLevelChange={handleLegLevelChange}
+              levelEditLeg={flyingMode === 'off' ? undefined : unlockedLeg}
+              onLegTap={flyingMode === 'off' ? undefined : (leg) => setUnlockedLeg(leg)}
             />
           </div>
         ) : flyingMode !== 'off' ? (

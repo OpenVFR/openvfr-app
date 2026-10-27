@@ -146,6 +146,11 @@ interface Props {
   /** Enables dragging a leg up/down to change its planned level. `null` clears
    *  the leg's override (route level). Omit while the route is locked. */
   onLegLevelChange?: (legIndex: number, altFt: number | null) => void
+  /** With onLegLevelChange: only this leg's level can be dragged (in flight,
+   *  the unlocked leg); undefined = every leg, null = none. */
+  levelEditLeg?: number | null
+  /** A click on a leg's line that cannot be dragged (in flight: unlock that leg). */
+  onLegTap?: (legIndex: number) => void
   /** The chart follows the aircraft's altitude (no planned route: look-ahead). The scale is
    *  a window around the aircraft instead of fitting a plan. */
   followAircraft?: boolean
@@ -770,7 +775,7 @@ const LEG_HIT_HALF_PX = 12
 
 type LegDragState = { leg: number; startAlt: number; startY: number; cand: number | null; shown: number; moved: boolean }
 
-function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilingFt, legOverrides, plannedPts, previewPts, chipBoxes, onLegLevelChange, drag, setDrag }: {
+function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilingFt, legOverrides, plannedPts, previewPts, chipBoxes, onLegLevelChange, levelEditLeg, onLegTap, drag, setDrag }: {
   layout: ProfileChartLayout
   spans: LegSpan[]
   legMsa: number[]
@@ -788,6 +793,8 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
   chipBoxes: BoxRect[]
   /** Undefined while route editing is locked: targets then only explain how to unlock. */
   onLegLevelChange?: (legIndex: number, altFt: number | null) => void
+  levelEditLeg?: number | null
+  onLegTap?: (legIndex: number) => void
   drag: LegDragState | null
   setDrag: (d: LegDragState | null) => void
 }) {
@@ -899,21 +906,23 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
         const x1 = L.xOf(s.fromNm), x2 = L.xOf(s.toNm)
         const y = yClamped(s.altFt)
         const below = legBelowMsa(s, totalNm, s.altFt, legMsa[i] ?? 0)
+        const editable = !!onLegLevelChange && (levelEditLeg === undefined || levelEditLeg === i)
         return (
           <g key={`hit-${i}`}>
             <path
               className={css.legHit}
-              style={onLegLevelChange ? undefined : { pointerEvents: 'none' }}
+              style={editable || onLegTap ? (editable ? undefined : { cursor: 'pointer' }) : { pointerEvents: 'none' }}
               d={hitPath(s, y)}
               strokeWidth={LEG_HIT_HALF_PX * 2}
-              onPointerDown={(e) => begin(e, i, s)}
-              onPointerMove={move}
-              onPointerUp={(e) => end(e, true)}
-              onPointerCancel={(e) => end(e, false)}
+              onPointerDown={editable ? (e) => begin(e, i, s) : undefined}
+              onPointerMove={editable ? move : undefined}
+              onPointerUp={editable ? (e) => end(e, true) : undefined}
+              onPointerCancel={editable ? (e) => end(e, false) : undefined}
+              onClick={!editable && onLegTap ? () => onLegTap(i) : undefined}
             >
-              <title>Drag up or down to change this leg&apos;s level</title>
+              <title>{editable ? 'Drag up or down to change this leg\'s level' : 'Click to unlock this leg for 10 s, then drag its level'}</title>
             </path>
-            {onLegLevelChange && !drag && below && x2 - x1 > 80 && (() => {
+            {editable && !drag && below && x2 - x1 > 80 && (() => {
               // Above the line, else below it, else (when both are taken by airspace chips) none; the leg can still be dragged.
               const cx = (x1 + x2) / 2
               const spot = [y - 30, y + 14].find((top) => top > L.plotTop && top + 16 < L.plotBottom
@@ -940,14 +949,14 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
 function VirtualRadar({
   waypoints, legOverrides, units = DEFAULT_UNITS, title, onHoverDistNm, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, crosshairDistNm,
-  crossTrackNm, weatherStations, airspaceCeilingFt, onLegLevelChange, followAircraft, corridorBand = true,
+  crossTrackNm, weatherStations, airspaceCeilingFt, onLegLevelChange, levelEditLeg, onLegTap, followAircraft, corridorBand = true,
   flown, onClose, jumpToTs, plannedRoute,
 }: Props) {
   const logMode = flown != null
   const [legDrag, setLegDrag] = useState<LegDragState | null>(null)
   const dragging = legDrag !== null
   // A route change or a lock mid-drag must not leave a stale preview behind.
-  useEffect(() => { setLegDrag(null) }, [waypoints, onLegLevelChange == null])
+  useEffect(() => { setLegDrag(null) }, [waypoints, onLegLevelChange == null, levelEditLeg])
 
   const chartWrapRef = useRef<HTMLDivElement | null>(null)
   const [wrapW, setWrapW] = useState(0)
@@ -2085,9 +2094,14 @@ function VirtualRadar({
             {flownEntries.length} airspace entr{flownEntries.length > 1 ? 'ies' : 'y'}
           </span>
         )}
-        {onLegLevelChange && (
+        {onLegLevelChange && levelEditLeg === undefined && (
           <span className={css.dragHint} title="Press a leg on the chart and drag up or down to change its level">
             drag a leg to set its level
+          </span>
+        )}
+        {onLegLevelChange && levelEditLeg !== undefined && (
+          <span className={css.dragHint} title="In flight a leg's level is locked. Click a leg (here or on the map) to unlock it for 10 s, then drag it up or down.">
+            {levelEditLeg == null ? 'click a leg to unlock its level' : `leg ${levelEditLeg + 1} unlocked: drag its level`}
           </span>
         )}
         {terrainFailed && terrainPts.length === 0 && (
@@ -2204,6 +2218,8 @@ function VirtualRadar({
                   previewPts={dragPreviewPts}
                   chipBoxes={chipBoxes}
                   onLegLevelChange={onLegLevelChange}
+                  levelEditLeg={levelEditLeg}
+                  onLegTap={onLegTap}
                   drag={legDrag}
                   setDrag={setLegDrag}
                 />

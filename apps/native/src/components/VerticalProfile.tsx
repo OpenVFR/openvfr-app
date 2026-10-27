@@ -170,6 +170,11 @@ interface Props {
   /** Enables dragging a leg up/down to change its planned level; `null` clears
    *  the leg's override (route level). Omit while route editing is locked. */
   onLegLevelChange?: (legIndex: number, altFt: number | null) => void
+  /** With onLegLevelChange: only this leg's level can be dragged (in flight,
+   *  the unlocked leg); undefined = every leg, null = none. */
+  levelEditLeg?: number | null
+  /** A tap on a leg's drawn line (in flight: unlock that leg). */
+  onLegTap?: (legIndex: number) => void
   /** The chart follows the aircraft's altitude (no planned route: look-ahead). The scale is a
    *  window around the aircraft instead of fitting a plan. */
   followAircraft?: boolean
@@ -1205,7 +1210,7 @@ export function VerticalProfile({
   waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, msaMargins, title, headerStart, headerEnd, onClose, closeLabel, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
   crossTrackNm, weatherStations,
-  height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm, onLegLevelChange, followAircraft, corridorBand = true,
+  height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm, onLegLevelChange, levelEditLeg, onLegTap, followAircraft, corridorBand = true,
   flown, jumpToTs, plannedRoute,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
@@ -1766,6 +1771,9 @@ export function VerticalProfile({
   const legSegsSV = useSharedValue<number[]>([])
   const legEnabledSV = useSharedValue(false)
   const legHitSV = useSharedValue(-1)
+  // Leg whose level may be dragged: -1 = every leg, -2 = none, else that leg.
+  const legEditOnlySV = useSharedValue(-1)
+  const legTapSV = useSharedValue(false)
   const legModeSV = useSharedValue(0)   // 0 undecided, 1 level drag, 2 normal pan
   // The drag lives in a small external store, not React state: a drag step then re-renders only the overlay
   // that subscribes to it, not this whole chart (obstacles, winds, labels), which cost ~50-80 ms per step.
@@ -1807,6 +1815,9 @@ export function VerticalProfile({
     const moved = cur.moved || Math.abs(dy) >= DRAG_MIN_MOVE_PX
     if (shown !== cur.shown || cand !== cur.cand || moved !== cur.moved) dragStore.set({ ...cur, shown, cand, moved })
   }, [])
+  const onLegTapRef = useRef(onLegTap)
+  onLegTapRef.current = onLegTap
+  const reportLegTap = useCallback((leg: number) => { onLegTapRef.current?.(leg) }, [])
   const legDragEnd = useCallback((success: boolean) => {
     const cur = dragStore.get()
     dragStore.set(null)
@@ -1868,7 +1879,8 @@ export function VerticalProfile({
     },
     onUpdate: (e) => {
       'worklet'
-      if (legHitSV.value >= 0) {
+      const legDraggable = legHitSV.value >= 0 && (legEditOnlySV.value === -1 || legEditOnlySV.value === legHitSV.value)
+      if (legDraggable) {
         if (legModeSV.value === 0) {
           const ay = Math.abs(e.translationY), ax = Math.abs(e.translationX)
           if (ay > 8 && ay > ax) {
@@ -1954,6 +1966,11 @@ export function VerticalProfile({
     onFinalize: (e) => {
       'worklet'
       if (legModeSV.value === 1) scheduleOnRN(legDragEnd, !e.canceled)
+      // A tap on a leg's line (no drag): report it (in flight: unlock the leg).
+      else if (legTapSV.value && legHitSV.value >= 0 && !flownModeSV.value
+        && flownMoveSV.value < FLOWN_TAP_SLOP_PX && Date.now() - flownBeginSV.value.t <= FLOWN_TAP_MAX_MS) {
+        scheduleOnRN(reportLegTap, legHitSV.value)
+      }
       // Flight log: a tap away from the aircraft moves it there.
       // (Not gated on e.canceled: a quick tap that never moved ends the pan gesture as
       // cancelled / failed, which is exactly the tap we want.)
@@ -2157,8 +2174,10 @@ export function VerticalProfile({
   // descents included), each piece assigned to the leg it lies in. Flat
   // [leg, x0, y0, x1, y1, ...] in content px, read by the gesture worklet.
   useEffect(() => {
-    legEnabledSV.value = !!onLegLevelChange
-    if (!onLegLevelChange || !profile || profile.altitudeProfile.length === 0 || legSpanList.length === 0) {
+    legEnabledSV.value = !!onLegLevelChange || !!onLegTap
+    legEditOnlySV.value = !onLegLevelChange ? -2 : levelEditLeg === undefined ? -1 : levelEditLeg === null ? -2 : levelEditLeg
+    legTapSV.value = !!onLegTap
+    if (!legEnabledSV.value || !profile || profile.altitudeProfile.length === 0 || legSpanList.length === 0) {
       legSegsSV.value = []
       return
     }
@@ -2172,7 +2191,7 @@ export function VerticalProfile({
       out.push(leg, xOf(line[k].distNm), yClamp(line[k].altFt), xOf(line[k + 1].distNm), yClamp(line[k + 1].altFt))
     }
     legSegsSV.value = out
-  }, [onLegLevelChange, profile, perf, depElevFt, arrElevFt, xOf, yOf, plotH, legSpanList, legEnabledSV, legSegsSV])
+  }, [onLegLevelChange, levelEditLeg, onLegTap, profile, perf, depElevFt, arrElevFt, xOf, yOf, plotH, legSpanList, legEnabledSV, legSegsSV, legEditOnlySV, legTapSV])
 
   // Trajectory ticks ahead of current position — near ticks fixed at 1/3,
   // far tick uses trajectoryNm (mirrors AviationMap's on-map trajectory line

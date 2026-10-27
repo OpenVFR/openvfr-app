@@ -1293,8 +1293,6 @@ function MapScreenForCountry() {
     if (hadUnlockedLegRef.current && flightModeStatus !== 'off') handleUserPan()
     hadUnlockedLegRef.current = false
   }, [flightUnlock, flightModeStatus, handleUserPan])
-  // Drag handles: all of them on the ground; in flight only the unlocked leg's.
-  const routeEditLocked = flyingActive
 
   // Leg level dragged in the vertical profile: null clears the leg's override
   // so it falls back to the route level.
@@ -2073,7 +2071,11 @@ function MapScreenForCountry() {
         <VerticalProfile
           waypoints={waypoints}
           legOverrides={legOverrides}
-          onLegLevelChange={routeEditLocked ? undefined : handleLegLevelChange}
+          // Leg levels: on the ground every leg can be dragged; in flight only
+          // the unlocked leg (tapped on the map or here) for LEG_UNLOCK_MS.
+          onLegLevelChange={handleLegLevelChange}
+          levelEditLeg={flyingActive ? unlockedLeg : undefined}
+          onLegTap={flyingActive ? handleLegPress : undefined}
           units={settings.units}
           airspaceCeilingFt={settings.airspaceCeilingFt}
           msaMargins={settings.msaMargins}
