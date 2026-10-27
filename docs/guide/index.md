@@ -23,6 +23,9 @@ route planning, built on open data. No account is required to use it.
 - [Flight logs](./flight-logs.md)
 - [Weather and NOTAMs](./weather-and-notams.md)
 - [Data sources](./data-sources.md)
+- [Web app and native app](./platforms.md): what each platform has
+- [How it all fits together](./how-it-fits-together.md)
+- [Feature index](./features.md)
 - [FAQ](./faq.md)
 
 ## Status
