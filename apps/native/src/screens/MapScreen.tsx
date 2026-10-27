@@ -1172,7 +1172,9 @@ function MapScreenForCountry() {
   //  - ground: tapping a leg selects it (glow; its middle and two end
   //    points draggable) until the route changes or the map is tapped
   //    elsewhere; a point is draggable while its menu is open, and the
-  //    route end while extending;
+  //    route end while extending. Once the edit banner is up (and not
+  //    while adding points) every handle is live: the user is editing and
+  //    undo is one tap away;
   //  - flight: tapping a leg unlocks it the same way for LEG_UNLOCK_MS.
   // Any route change or flight start/stop clears it. Explicit actions (route
   // point menu, Direct To) need no unlock.
@@ -1654,7 +1656,11 @@ function MapScreenForCountry() {
           onLegTap={handleLegTap}
           onLegInsert={handleLegInsert}
           onLegInsertCandidates={handleLegInsertCandidates}
-          editLocked
+          // Ground, once the edit banner is up (an edit is open, undo is one
+          // tap away): every handle is live and shown, so further changes need
+          // no tap first. Not while adding points, where the map is panned a
+          // lot to find the next one. Flight: only the unlocked leg.
+          editLocked={flyingActive || !editSessionActive || extending}
           unlockedLeg={flyingActive ? unlockedLeg : selectedLeg}
           unlockedPoint={flyingActive ? null
             : wpActionMenu ? wpActionMenu.wpIdx
