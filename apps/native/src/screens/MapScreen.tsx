@@ -1401,9 +1401,19 @@ function MapScreenForCountry() {
   // from long-pressing empty map, so grabbing a route waypoint and releasing
   // without noticeable movement (a very easy accidental gesture) surfaced a
   // confusing "Save Waypoint" prompt instead of a route-waypoint action.
-  const [wpActionMenu, setWpActionMenu] = useState<{ lat: number; lng: number; wpIdx: number } | null>(null)
+  // Also opened by a plain tap on a route point (not the route end on the
+  // ground, which extends the route). The map feature under the point
+  // (aerodrome, navaid, reporting point) is kept for the menu's Details.
+  const [wpActionMenu, setWpActionMenu] = useState<{ lat: number; lng: number; wpIdx: number; info?: { features: Feature[]; lngLat: [number, number] } } | null>(null)
   const handleWaypointLongPress = useCallback((index: number, lat: number, lng: number) => {
     setWpActionMenu({ lat, lng, wpIdx: index })
+  }, [])
+  const handleWaypointPress = useCallback((index: number, lat: number, lng: number, features: Feature[], tapLngLat: [number, number]) => {
+    const under = features.filter(f => {
+      const p = f.properties ?? {}
+      return f.geometry?.type === 'Point' && p.featureType !== 'wp' && p.featureType !== 'leg' && !p.notamId && !p.cluster_id
+    })
+    setWpActionMenu({ lat, lng, wpIdx: index, info: under.length ? { features: under, lngLat: tapLngLat } : undefined })
   }, [])
 
   const { waypoints: userWaypoints, saveWaypoint } = useUserWaypointContext()
@@ -1622,10 +1632,10 @@ function MapScreenForCountry() {
           onWaypointMove={handleWaypointMove}
           onWaypointMoveCandidates={handleWaypointMoveCandidates}
           onWaypointLongPress={handleWaypointLongPress}
-          // Ground: double-tap a point removes it. In flight a tap opens the
-          // point's menu instead (no one-gesture removal while airborne).
-          onWaypointRemove={flyingActive ? undefined : removeWaypoint}
-          onWaypointPress={flyingActive ? handleWaypointLongPress : undefined}
+          // A dragged point dropped onto its neighbour is removed. A tap on a
+          // point opens its menu (Details / Direct to / Remove).
+          onWaypointRemove={removeWaypoint}
+          onWaypointPress={handleWaypointPress}
           // Tap the route's last point on the ground: start (or stop) extending it.
           onRouteEndTap={flyingActive ? undefined : () => { if (extending) finishExtending(); else setExtending(true) }}
           // In flight a tapped leg unlocks for LEG_UNLOCK_MS.
@@ -1705,13 +1715,22 @@ function MapScreenForCountry() {
           </View>
         )}
 
-        {/* Route-waypoint action menu \u2014 stationary grab-and-release on an
-            existing route waypoint (mirrors web's WpActionMenu). */}
+        {/* Route point menu: tap or long-press on a route point (mirrors
+            web's WpActionMenu). */}
         {wpActionMenu && (
           <View style={styles.longPressMenu}>
             <Text style={styles.longPressMenuCoord}>
-              WP {wpActionMenu.wpIdx + 1}
+              {waypoints[wpActionMenu.wpIdx]?.name ?? `WP${wpActionMenu.wpIdx + 1}`} · route point {wpActionMenu.wpIdx + 1}
             </Text>
+            {wpActionMenu.info && (
+              <TouchableOpacity
+                style={styles.longPressMenuBtn}
+                onPress={() => { const i = wpActionMenu.info!; setWpActionMenu(null); void handleFeatureTap(i.features, i.lngLat) }}
+              >
+                <Ionicons name="information-circle-outline" size={16} color={theme.accentBlue} />
+                <Text style={styles.longPressMenuBtnTxt}>Details</Text>
+              </TouchableOpacity>
+            )}
             {/* In flight, only points not yet passed: the one being flown
                 to (Direct to) or any after it (Take shortcut). */}
             {flyingActive && activePosition && wpActionMenu.wpIdx >= activeWpIdx && waypoints[wpActionMenu.wpIdx] && (
