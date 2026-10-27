@@ -604,6 +604,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const [selectedLeg, setSelectedLeg] = useState<number | null>(null)
   const selectedLegRef = useRef<number | null>(null)
   useEffect(() => { selectedLegRef.current = selectedLeg }, [selectedLeg])
+  // Read by the touch drag handlers (wired once at map init).
+  const editSessionActiveRef = useRef(false)
   const [rulerMode, setRulerMode] = useState(false)
   const [rulerPoints, setRulerPoints] = useState<RouteWaypoint[]>([])
   const [placingUserWp, setPlacingUserWp] = useState(false)
@@ -785,6 +787,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // before the first change, until Apply / Keep. Starting or ending a
   // flight closes the session, so a revert never crosses that boundary.
   const { setEditSessionArmed, applyEditSession } = routeUndo
+  editSessionActiveRef.current = routeUndo.editSessionActive
   useEffect(() => { setEditSessionArmed(true) }, [setEditSessionArmed])
   const flyingNow = flyingMode !== 'off'
   useEffect(() => { applyEditSession() }, [flyingNow, applyEditSession])
@@ -2100,6 +2103,21 @@ export default function MapView({ auth }: { auth: AuthState }) {
         const u = unlockedLegRef.current
         return u != null && (wp === u || wp === u + 1)
       }
+      // Touch on the ground: a finger pan that starts on the route must not
+      // edit it by surprise (a mouse drag on the line is deliberate, a finger
+      // pan is not). Until an edit is open, only the leg selected by a tap
+      // (and its end points) can be dragged; once the edit banner is up
+      // (and not while adding points) everything can. Same rule as native.
+      const touchFreeEdit = () => editSessionActiveRef.current && !extendingRef.current
+      const touchLegDraggable = (leg: number) => legDraggable(leg) &&
+        (flyingModeRef.current !== 'off' || touchFreeEdit() || selectedLegRef.current === leg)
+      const touchPointDraggable = (wp: number) => {
+        if (!pointDraggable(wp)) return false
+        if (flyingModeRef.current !== 'off' || touchFreeEdit()) return true
+        const s = selectedLegRef.current
+        if (s != null && (wp === s || wp === s + 1)) return true
+        return extendingRef.current && wp === routeWaypointsRef.current.length - 1
+      }
       let lockedPress = false
       const noteLockedPress = () => { lockedPress = flyingModeRef.current !== 'off' && !editBlocked() }
       map.on('dragstart', () => {
@@ -2461,7 +2479,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         const seq = feat?.properties?.seq as number
         const wpIndex = seq - 1
         if (wpIndex < 0) return
-        if (!pointDraggable(wpIndex)) { noteLockedPress(); return }
+        if (!touchPointDraggable(wpIndex)) { noteLockedPress(); return }
         e.preventDefault()
         e.originalEvent.stopPropagation()
         suppressNextClickRef.current = true
@@ -2475,7 +2493,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         const feat = e.features?.[0]
         const legIndex = feat?.properties?.legIndex as number ?? -1
         if (legIndex < 0) return
-        if (!legDraggable(legIndex)) { noteLockedPress(); return }
+        if (!touchLegDraggable(legIndex)) { noteLockedPress(); return }
         e.preventDefault()
         e.originalEvent.stopPropagation()
         dragInsertRef.current = { legIndex, cur: e.lngLat, moved: false, startPt: e.point }
@@ -2497,7 +2515,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         const handles = ['route-waypoints-circle', 'route-midpoints-layer'].filter((id) => map.getLayer(id))
         if (map.queryRenderedFeatures(e.point, { layers: handles }).length > 0) return
         const legIndex = nearestLegIndex(e.lngLat.lng, e.lngLat.lat, wps)
-        if (!legDraggable(legIndex)) { noteLockedPress(); return }
+        if (!touchLegDraggable(legIndex)) { noteLockedPress(); return }
         e.preventDefault()
         e.originalEvent.stopPropagation()
         suppressNextClickRef.current = true
