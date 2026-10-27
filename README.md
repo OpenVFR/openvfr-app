@@ -39,6 +39,7 @@ db/
   migrations/  PostgreSQL + PostGIS schema (applied via dbmate)
 docker/      Dockerfiles + nginx/Martin config for self-hosting
 docs/        Architecture reference and self-hosting guide
+  guide/     Pilot-facing user guide (markdown, published on the project website)
 ```
 
 Map/aviation data (basemap, airspace, aerodromes, navaids, obstacles,

@@ -12,6 +12,7 @@
 - [ ] No personal or deployment-specific identifiers (domains, LAN IPs, local
       paths, emails, build-account names/IDs) and no references to private repos
 - [ ] Docs / README / `.env.example` updated for any env var, config, or script change
+- [ ] User-visible change? Matching page in `docs/guide/` updated
 - [ ] New dependency? License checked against `OSS-POLICY.md`
 - [ ] New API endpoint? Auth + rate-limit stance stated (see `AGENTS.md`
       "Server API Security Baseline")

@@ -6,6 +6,7 @@ European VFR Electronic Flight Bag (EFB).
 Architecture reference: [`docs/architecture.md`](docs/architecture.md)
 Self-hosting / data pipeline: [`docs/self-hosting.md`](docs/self-hosting.md)
 Styling & React conventions: [`docs/styling.md`](docs/styling.md)
+Pilot-facing user guide (markdown, rendered on the project website): [`docs/guide/`](docs/guide/README.md)
 Contribution norms (commit style, PR expectations, licensing): [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
 ---
@@ -22,6 +23,7 @@ Contribution norms (commit style, PR expectations, licensing): [`CONTRIBUTING.md
   - Build-account identifiers (EAS project ID/owner, Apple team ID, Android signing fingerprints) go through env vars — `apps/native/app.config.js` for Expo, `.env.example` placeholders for the rest. `app.json` and `eas.json` stay account-agnostic.
 - **Never reference files or paths in private repositories** (the sibling infra repo or any other). Public readers can't follow them, and the reference rots silently. State the relevant fact inline (a bbox, a rate limit, a schedule) or point at `docs/self-hosting.md` / `docs/architecture.md`. The one exception is this file's own maintainer note in the Server API Security Baseline below, which exists precisely to warn that the private repo has its own review rules.
 - **Scratch/handoff notes are not repo files.** Investigation logs, agent handoff documents, TODO dumps, etc. live in a gitignored `.scratch/` directory, never at the repo root. If a finding is worth keeping, it becomes a gotcha in this file or a section in `docs/`, reviewed like code.
+- **User-visible change = update `docs/guide/` in the same PR.** The user guide is plain markdown (frontmatter `title`/`description`/`sidebar.order`, relative links, see `docs/guide/README.md`); the website renders it. No site tooling lives in this repo.
 - **Docs follow code in the same change.** Any change to an env var, config default, trusted-origin list, script name, or CLI flag updates every README/`docs/` mention and the relevant `.env.example` in the same PR. Stale docs describing behavior that no longer exists have already happened here once.
 - **Everything is public.** Comments, commit messages, PR text, and workflow logs are read by strangers. Write for them: no internal shorthand, no "as discussed", no references to private conversations or chats.
 - **Follow [`CONTRIBUTING.md`](CONTRIBUTING.md)** for commit message format, PR expectations, and dependency/data licensing review before any change.
@@ -50,6 +52,7 @@ db/
   migrations/  PostgreSQL + PostGIS schema (dbmate)
 docker/      Dockerfiles + nginx/Martin config
 docs/        Architecture reference, self-hosting guide, styling conventions
+  guide/     Pilot-facing user guide (plain markdown; the website build pulls it in)
 ```
 
 Full file-by-file map (component responsibilities, MapLibre source/layer IDs,

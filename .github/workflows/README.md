@@ -1,5 +1,9 @@
 # Mobile build/publish workflows
 
+`docs-publish.yml` — on changes to `docs/guide/**` on `main`, POSTs the
+`DOCS_DEPLOY_HOOK_URL` secret (a deploy hook of the website build that renders
+the user guide). No-op when the secret is unset.
+
 `build-android.yml` / `build-ios.yml` — build `apps/native` with
 `eas build --local`, uploading the `.apk`/`.aab`/`.ipa` as a GitHub Actions
 artifact, optionally submitting straight to the Play Store internal track /

@@ -1,0 +1,27 @@
+name: Publish user guide
+
+# The user guide (docs/guide) is rendered by the project website build, which
+# pulls this folder in. This workflow asks that build to run again when the
+# guide changes. Skipped when no hook URL is configured (forks, self-hosters).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/guide/**'
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    name: Trigger website rebuild
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call deploy hook
+        env:
+          DOCS_DEPLOY_HOOK_URL: ${{ secrets.DOCS_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$DOCS_DEPLOY_HOOK_URL" ]; then
+            echo "DOCS_DEPLOY_HOOK_URL not set; skipping."
+            exit 0
+          fi
+          curl --fail --silent --show-error -X POST "$DOCS_DEPLOY_HOOK_URL"
