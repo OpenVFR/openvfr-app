@@ -125,7 +125,6 @@ import IconSettings from '@tabler/icons-react-native/IconSettings'
 import IconSearch from '@tabler/icons-react-native/IconSearch'
 import IconHome from '@tabler/icons-react-native/IconHome'
 import IconRulerMeasure from '@tabler/icons-react-native/IconRulerMeasure'
-import IconPencil from '@tabler/icons-react-native/IconPencil'
 import IconNavigation from '@tabler/icons-react-native/IconNavigation'
 import IconMapPinPlus from '@tabler/icons-react-native/IconMapPinPlus'
 import IconPlaneDeparture from '@tabler/icons-react-native/IconPlaneDeparture'
@@ -1104,9 +1103,10 @@ function MapScreenForCountry() {
     : { lat: 59.33, lng: 18.07 }
   // Extending the route: its last point is selected (ringed) and taps on
   // map features (aerodromes, navaids, reporting points...) append them.
-  // Started by tapping the route's last point, Add to route (feature card,
-  // Find destination, long-press menu) or Map tools > Add points; ended by
-  // Done, tapping the end again, the ruler, or a flight starting. Ground
+  // Started by tapping the route's last point or Add to route (aerodrome
+  // pill, feature sheet, Find a Destination, long-press menu), as on web
+  // (no tools-menu entry); ended by Done, tapping the end again, the ruler,
+  // or a flight starting. Ground
   // only. Moving points and legs needs no mode on the ground (undo and the
   // edit banner are the safety net); in flight a leg is tapped first (see
   // unlockedLeg).
@@ -1329,12 +1329,6 @@ function MapScreenForCountry() {
     { id: 'tools', label: 'Map tools', items: [
       { id: 'ruler', label: 'Ruler', description: 'Measure distance and bearing: tap two points on the map. Tap again to switch off and clear.',
         icon: toolIcon(IconRulerMeasure), active: rulerMode, onSelect: () => { if (!rulerMode) finishExtending(); setRulerMode(!rulerMode); setRulerPoints([]) } },
-      ...(!toolFlying ? [{ id: 'extend', label: waypoints.length ? 'Add points' : 'Start route',
-        description: extending
-          ? 'Stop adding points to the route'
-          : 'Tap aerodromes, navaids and reporting points to add them to the end of the route. Points and legs can always be dragged; undo is in the edit banner.',
-        icon: toolIcon(IconPencil), active: extending,
-        onSelect: () => { if (extending) finishExtending(); else setExtending(true) } }] : []),
       ...(toolFlying ? [{ id: 'drop', label: 'Drop point', description: 'Save your current position as a place in the "Dropped in Flight" folder',
         icon: toolIcon(IconMapPinPlus),
         onSelect: () => {
