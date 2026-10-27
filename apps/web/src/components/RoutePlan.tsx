@@ -1,4 +1,4 @@
-import { Fragment, useState, useRef, useEffect } from 'react'
+import { Fragment, useState, useRef, useEffect, useContext } from 'react'
 import { bearingDeg, magneticBearingDeg, distanceNm, type RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
 import { routeToGpx, gpxToRoute } from '@open-vfr/shared/gpx'
@@ -11,6 +11,7 @@ import { useLegMsa } from '../hooks/useLegMsa'
 import { legBelowMsa, legMsaApplies } from '@open-vfr/shared/legLevelDrag'
 import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
 import css from './RoutePlan.module.css'
+import { RouteCloseContext } from './routeCloseContext'
 
 // ---------------------------------------------------------------------------
 // Reorder helper — moves the waypoint at `from` to position `to`.
@@ -23,10 +24,15 @@ function moveWaypoint(arr: RouteWaypoint[], from: number, to: number): RouteWayp
   return next
 }
 
+/** Degrees as three digits, 0..359 ("007"). */
+function fmtDeg(d: number): string {
+  return String(((Math.round(d) % 360) + 360) % 360).padStart(3, '0')
+}
+
 /** Hover text on a leg's MT cell: all track/heading values for the leg, so
  *  true track stays reachable when its column is hidden in a narrow pane. */
 function trackTip(mt: number, tt: number, wca: number | null | undefined): string {
-  const f = (d: number) => String(((Math.round(d) % 360) + 360) % 360).padStart(3, '0') + '\u00b0'
+  const f = (d: number) => fmtDeg(d) + '\u00b0'
   const parts = [`Magnetic track ${f(mt)}`, `true track ${f(tt)}`]
   if (wca != null) parts.push(`magnetic heading ${f(mt + wca)} (WCA ${wca > 0 ? '+' : ''}${wca}\u00b0)`)
   return parts.join(', ')
@@ -211,6 +217,8 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
   const [showKb, setShowKb] = useState(false)
   const [localLeg, setLocalLeg] = useState<number | null>(null)
   const activeLeg = selectedLeg !== undefined ? selectedLeg : localLeg
+  // Inside RouteLibrary: close through its unsaved-changes check.
+  const closeRoute = useContext(RouteCloseContext)
   const setActiveLeg = onSelectLeg ?? setLocalLeg
   // Inline altitude edit in the Lvl cell: leg index being edited + draft text.
   const [lvlEdit, setLvlEdit] = useState<{ leg: number; text: string } | null>(null)
@@ -223,10 +231,21 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
   // Esc closes the leg editor.
   useEffect(() => {
     if (activeLeg == null) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setActiveLeg(null) }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      // Esc in a field (a leg editor input, the level input) cancels that
+      // field, not the whole editor and its draft.
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+      // Consumed: one Esc closes one thing (see MapView's Esc handlers).
+      e.preventDefault()
+      setActiveLeg(null)
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [activeLeg, setActiveLeg])
+  const startLvlEdit = (leg: number) =>
+    setLvlEdit({ leg, text: legOverrides[leg]?.altFt != null ? String(legOverrides[leg]!.altFt) : '' })
   const commitLvl = () => {
     if (!lvlEdit) return
     const { leg, text } = lvlEdit
@@ -435,7 +454,8 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
                 <button className={css.menuItem} onClick={() => { exportKml(waypoints); setShowMenu(false) }} disabled={waypoints.length < 2}>↓ KML</button>
                 <button className={css.menuItem} onClick={() => { gpxInputRef.current?.click(); setShowMenu(false) }}>↑ Import GPX</button>
                 <hr className={css.menuDivider} />
-                <button className={`${css.menuItem} ${css.menuItemDanger}`} onClick={() => { onClear(); setShowMenu(false) }}>✕ Close route</button>
+                <button className={`${css.menuItem} ${css.menuItemDanger}`} title="Take the route off the map (a saved route stays in Saved routes); asks first when there are unsaved changes"
+                  onClick={() => { setShowMenu(false); (closeRoute ?? onClear)() }}>✕ Close route</button>
               </div>
             )}
           </div>
@@ -570,35 +590,39 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
                     >{name}{tafWarnIcaos.includes(name) && <span className={css.tafWarn} title="TAF: trend change due within 3 h">{' \u26a0'}</span>}</td>
                     <td className={css.btnCell}>
                       {leg && (
-                        <span
+                        // The keyboard way into the leg editor (the row click is for the mouse).
+                        <button
+                          type="button"
                           className={`${css.chev}${open ? ` ${css.chevOpen}` : ''}${hasOverride ? ` ${css.chevSet}` : ''}${legIsBelowMsa(i) ? ` ${css.chevMsa}` : ''}`}
+                          aria-expanded={open}
+                          aria-label={`Leg ${leg.fromName} to ${leg.toName}: ${open ? 'close editor' : 'edit level, speed, wind and note'}${legIsBelowMsa(i) ? ' (below MSA)' : hasOverride ? ' (own level, speed or wind)' : ''}`}
                           title={legIsBelowMsa(i)
                             ? `Planned ${legPlannedAlt(i).toLocaleString('en-US')} ft is below this leg's MSA of ${legMsa[i].toLocaleString('en-US')} ft`
                             : hasOverride ? 'This leg has its own level, speed or wind' : undefined}
-                          aria-hidden={!legIsBelowMsa(i) && !hasOverride}
-                        >{'\u203a'}</span>
+                          onClick={(e) => { e.stopPropagation(); setActiveLeg(open ? null : i) }}
+                        >{'\u203a'}</button>
                       )}
                     </td>
                     <td
                       className={css.brg}
                       title={leg ? trackTip(leg.magBrg, leg.brg, legWcas[i]) : undefined}
-                    >{leg ? String(Math.round(leg.magBrg)).padStart(3, '0') : ''}</td>
+                    >{leg ? fmtDeg(leg.magBrg) : ''}</td>
                     {hasAnyWca && (
                       <td
                         className={`${css.wca} ${css.colWca}`}
                         title={leg && legWcas[i] != null ? `Wind correction ${legWcas[i]! > 0 ? '+' : ''}${legWcas[i]}°` : undefined}
                       >
                         {leg && legWcas[i] != null
-                          ? String(((Math.round(leg.magBrg + legWcas[i]!) % 360) + 360) % 360).padStart(3, '0')
+                          ? fmtDeg(leg.magBrg + legWcas[i]!)
                           : ''}
                       </td>
                     )}
-                    <td className={`${css.brgTrue} ${css.colTt}`}>{leg ? String(Math.round(leg.brg)).padStart(3, '0') : ''}</td>
+                    <td className={`${css.brgTrue} ${css.colTt}`}>{leg ? fmtDeg(leg.brg) : ''}</td>
                     <td className={css.dist}>{leg ? nmToDisplay(leg.dist, units.distance).toFixed(1) : ''}</td>
                     <td
                       className={`${css.lvl}${leg ? ` ${css.lvlEditable}` : ''}${i >= 0 && legOverrides[i]?.altFt ? ` ${css.lvlSet}` : ''}${leg && legIsBelowMsa(i) ? ` ${css.lvlMsa}` : ''}`}
                       title={leg ? `${legOverrides[i]?.altFt ? 'Level set on this leg' : 'Route level'}${legIsBelowMsa(i) ? `, below MSA ${legMsa[i].toLocaleString('en-US')} ft` : ''}. Click to type a new level (empty = route level).` : undefined}
-                      onClick={leg ? (e) => { e.stopPropagation(); setLvlEdit({ leg: i, text: legOverrides[i]?.altFt != null ? String(legOverrides[i]!.altFt) : '' }) } : undefined}
+                      onClick={leg ? (e) => { e.stopPropagation(); startLvlEdit(i) } : undefined}
                     >
                       {leg && lvlEdit?.leg === i ? (
                         <input
@@ -616,7 +640,14 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
                           }}
                           onBlur={commitLvl}
                         />
-                      ) : leg ? legPlannedAlt(i).toLocaleString('en-US') : ''}
+                      ) : leg ? (
+                        <button
+                          type="button"
+                          className={css.lvlBtn}
+                          aria-label={`Level ${legPlannedAlt(i).toLocaleString('en-US')} ft, leg ${leg.fromName} to ${leg.toName}: change`}
+                          onClick={(e) => { e.stopPropagation(); startLvlEdit(i) }}
+                        >{legPlannedAlt(i).toLocaleString('en-US')}</button>
+                      ) : ''}
                     </td>
                     {hasAnyEte && (
                       <td className={css.ete} title={leg ? legSpeedTip(i) : undefined}>

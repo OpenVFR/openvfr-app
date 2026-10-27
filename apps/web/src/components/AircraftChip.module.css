@@ -4,6 +4,9 @@
 }
 
 .chip {
+  background: none;
+  font-family: inherit;
+  line-height: normal;
   padding: 2px 7px;
   border-radius: 10px;
   border: 1px solid var(--border-default);

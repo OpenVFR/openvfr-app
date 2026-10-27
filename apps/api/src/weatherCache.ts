@@ -65,7 +65,10 @@ export function createWeatherCache(opts: WeatherCacheOptions) {
   const failedUntil = new Map<string, number>()
   const inflight = new Map<string, Promise<WxUpstreamResult>>()
 
-  // Failure summary for the current log window.
+  // Upstream summary for the current log window. A window opens on the first
+  // upstream call of either outcome, so answered calls before a failure count
+  // too (100 good calls then 5 timeouts is a hiccup, not an outage).
+  let windowOpen = false
   let windowStart = 0
   let failures = 0
   let successes = 0
@@ -73,20 +76,31 @@ export function createWeatherCache(opts: WeatherCacheOptions) {
   const reasons = new Map<string, number>()
   const stations = new Set<string>()
 
+  function openWindow() {
+    if (!windowOpen) { windowOpen = true; windowStart = now() }
+  }
+
+  function noteSuccess() {
+    flushLog(false)
+    openWindow()
+    successes++
+  }
+
   function noteFailure(icao: string, reason: string, servedStale: boolean) {
-    const t = now()
-    if (failures === 0) { windowStart = t; successes = 0 }
+    flushLog(false)
+    openWindow()
     failures++
     if (servedStale) staleServed++
     reasons.set(reason, (reasons.get(reason) ?? 0) + 1)
     stations.add(icao)
-    flushLog(false)
   }
 
   /** Writes the summary once the window is over (or `force`). */
   function flushLog(force: boolean) {
-    if (failures === 0) return
+    if (!windowOpen) return
     if (!force && now() - windowStart < logWindowMs) return
+    windowOpen = false
+    if (failures === 0) { successes = 0; return }
     const why = [...reasons.entries()].map(([r, n]) => `${r} x${n}`).join(', ')
     const level = failures >= errorMinFailures && failures > successes ? 'error' : 'info'
     log(`[weather] upstream failed ${failures}x for ${stations.size} station(s), answered ${successes}x, in the last ${Math.round((now() - windowStart) / 1000)} s (${why}); ${staleServed} answered from older cached reports`, level)
@@ -127,7 +141,7 @@ export function createWeatherCache(opts: WeatherCacheOptions) {
       if (!allowMiss()) return { kind: 'limited' }
       pending = opts.fetchUpstream(icao).then((r) => {
         if (r.failed.length === 0) {
-          successes++
+          noteSuccess()
           failedUntil.delete(icao)
           remember(icao, r.data)
           return r

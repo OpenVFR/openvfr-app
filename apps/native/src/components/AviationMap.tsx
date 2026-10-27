@@ -247,8 +247,8 @@ export type AviationMapProps = {
   /** Fired on a tap on a route point outside planning mode (other than the
    *  route end while onRouteEndTap is set): open the point's menu. Gets the
    *  tapped map features too, so the menu can show the feature under the
-   *  point (aerodrome, navaid...). */
-  onWaypointPress?: (index: number, lat: number, lng: number, features: Feature[], tapLngLat: [number, number], screenPoint: [number, number]) => void
+   *  point (aerodrome, navaid...). `lngLat`: the route point's position. */
+  onWaypointPress?: (index: number, features: Feature[], lngLat: [number, number], screenPoint: [number, number]) => void
   /** Fired on a tap on a route leg outside planning mode (used in flight to
    *  unlock that leg). Without it a leg tap falls through to the features
    *  underneath; outside planning mode a tap never inserts a point. */
@@ -296,12 +296,11 @@ export type AviationMapProps = {
    *  every map tap adds a waypoint (snapped to a nearby feature within a
    *  screen-pixel radius when unambiguous) instead of opening feature popups. */
   planningMode?: boolean
-  /** Disables waypoint/leg-midpoint drag entirely regardless of
-   *  onWaypointMove/onLegInsert being set — used while flying so an
-   *  accidental touch while panning the map can never move a leg. The
-   *  caller (MapScreen.tsx) sets this true whenever airborne and gates it
-   *  off only via an explicit "Adjust Route" toggle, mirroring web's
-   *  MapView.tsx routeAdjustMode gating on the route-line drag handlers. */
+  /** Disables waypoint/leg-midpoint drag regardless of
+   *  onWaypointMove/onLegInsert being set, so a touch while panning can never
+   *  move the route. MapScreen sets it in flight, on the ground until an edit
+   *  is open (a leg or point was tapped first), and while extending; the
+   *  exceptions are unlockedLeg / unlockedPoint below. */
   editLocked?: boolean
   /** While editLocked, this one leg (and its two end points) can still be
    *  dragged: the in-flight per-leg unlock. Highlighted on the map. */
@@ -322,10 +321,6 @@ export type AviationMapProps = {
   /** Fired when a plan-mode tap is near 2+ candidate snap targets — caller
    *  should show a disambiguation picker anchored at screenPoint. */
   onPlanCandidates?: (candidates: SnapCandidate[], screenPoint: [number, number]) => void
-  /** Show the drawn route (line + waypoint pins). Defaults to true — set
-   *  false to hide an existing route without clearing its waypoints
-   *  (route activate/deactivate). */
-  routeVisible?: boolean
   /** Per-leg label (magnetic heading + IAS) drawn along each leg, mirrors
    *  web's route-leg-labels layer. */
   showLegLabels?: boolean
@@ -583,14 +578,11 @@ const AIRSPACE_RESTRICTED_LABEL_TEXT_FIELD: any = [
 // Route GeoJSON helpers — per-leg and per-waypoint features with index props
 // ---------------------------------------------------------------------------
 
-/** One LineString per leg, each with { featureType:'leg', legIndex:i } */
-// lat/lng: lifted drop position used for rendering and the commit.
-// fingerLat/fingerLng: the raw position the native drag reports (where the
-// invisible hit-target symbol actually is); fed back to that annotation so
-// React and the native side agree on where it is.
-// snapHint: label of the feature the lifted point currently snaps to (lat/lng
-// are then that feature's position), undefined when it is a free point.
-type DragPreview = { wpIndex: number; lat: number; lng: number; fingerLat?: number; fingerLng?: number; snapHint?: string } | null
+// Point drag preview. lat/lng: lifted drop position used for rendering and
+// the commit. snapHint: label of the feature the lifted point currently
+// snaps to (lat/lng are then that feature's position), undefined when it is
+// a free point.
+type DragPreview = { wpIndex: number; lat: number; lng: number; snapHint?: string } | null
 type LegDragPreviewT = { legIndex: number; lat: number; lng: number; snapHint?: string } | null
 
 /** Live snap while dragging: the position the preview should use (the
@@ -604,13 +596,8 @@ function resolveLiveSnap(candidates: SnapCandidate[], raw: { lat: number; lng: n
 }
 
 
-function withPreview(wps: RouteWaypoint[], preview: DragPreview): RouteWaypoint[] {
-  if (!preview) return wps
-  return wps.map((w, i) => (i === preview.wpIndex ? { ...w, lat: preview.lat, lng: preview.lng } : w))
-}
-
-function routeLegsGeoJSON(wps0: RouteWaypoint[], preview: DragPreview = null): FeatureCollection {
-  const wps = withPreview(wps0, preview)
+/** One LineString per leg, each with { featureType:'leg', legIndex:i } */
+function routeLegsGeoJSON(wps: RouteWaypoint[]): FeatureCollection {
   if (wps.length < 2) return { type: 'FeatureCollection', features: [] }
   return {
     type: 'FeatureCollection',
@@ -628,8 +615,33 @@ function onlyLegs(fc: FeatureCollection, indices: number[]): FeatureCollection {
 }
 
 /** One Point per waypoint with { featureType:'wp', wpIndex:i } */
-function routePointsGeoJSON(wps0: RouteWaypoint[], preview: DragPreview = null): FeatureCollection {
-  const wps = withPreview(wps0, preview)
+/**
+ * One async job at a time, latest input wins: inputs queued while a job runs
+ * replace each other, and the newest runs when it returns. Each input carries
+ * its own `alive` check (e.g. "this drag is still the current one"), so a
+ * job for a drag that has ended is dropped without dropping the first move of
+ * the next drag. Drag events come faster than the snap queries answer, and
+ * every stale query was wasted native work.
+ */
+function useLatestOnly<T>() {
+  const busyRef = useRef(false)
+  const pendingRef = useRef<{ input: T; alive: () => boolean; work: (input: T) => Promise<unknown> } | null>(null)
+  return useCallback((input: T, alive: () => boolean, work: (input: T) => Promise<unknown>) => {
+    pendingRef.current = { input, alive, work }
+    if (busyRef.current) return
+    const run = () => {
+      const job = pendingRef.current
+      pendingRef.current = null
+      // Only the newest input is ever queued: a dead one has no successor.
+      if (!job || !job.alive()) { busyRef.current = false; return }
+      busyRef.current = true
+      job.work(job.input).then(run, run)
+    }
+    run()
+  }, [])
+}
+
+function routePointsGeoJSON(wps: RouteWaypoint[]): FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: wps.map((w, i) => ({
@@ -1798,7 +1810,6 @@ export function AviationMap({
   selectedPoint = null,
   onPlanTap,
   onPlanCandidates,
-  routeVisible = true,
   showLegLabels = false,
   legLabelHiddenLeg = null,
   legIasKts,
@@ -2268,7 +2279,7 @@ export function AviationMap({
     const map = mapRef.current
     const box: [[number, number], [number, number]] = [[point[0] - SNAP_PX, point[1] - SNAP_PX], [point[0] + SNAP_PX, point[1] + SNAP_PX]]
     const under = map ? map.queryRenderedFeatures(box, { layers: SNAP_LAYERS }).catch(() => [] as Feature[]) : Promise.resolve([] as Feature[])
-    void under.then(fs => cb(wpIndex, wp.lat, wp.lng, fs as Feature[], [wp.lng, wp.lat], [point[0], point[1]]))
+    void under.then(fs => cb(wpIndex, fs as Feature[], [wp.lng, wp.lat], [point[0], point[1]]))
   }, [])
   const onRouteDragStartRef = useRef(onRouteDragStart)
   onRouteDragStartRef.current = onRouteDragStart
@@ -2342,38 +2353,26 @@ export function AviationMap({
   // Latest-wins guard: unproject is async, and a slow answer for an older
   // move must not overwrite a newer one.
   const dragSeqRef = useRef(0)
-  // One snap query (unproject + queryRenderedFeatures) in flight at a time:
-  // moves arriving meanwhile only keep the latest position, which is queried
-  // when the running one returns. Drag events come faster than the queries
-  // answer, and every stale query was wasted native work.
-  const moveBusyRef = useRef(false)
-  const movePendingRef = useRef<{ lat: number; lng: number; point: [number, number] } | null>(null)
+  // One snap query (unproject + queryRenderedFeatures) in flight at a time,
+  // latest move wins (useLatestOnly).
+  const queueMove = useLatestOnly<{ lat: number; lng: number; point: [number, number] }>()
   const moveDrag = useCallback((lat: number, lng: number, point: [number, number]) => {
     const d = dragRef.current
     if (!d || !pastSlop(d, point)) return
-    movePendingRef.current = { lat, lng, point }
-    if (moveBusyRef.current) return
-    const run = () => {
-      const m = movePendingRef.current
-      movePendingRef.current = null
-      if (!m || dragRef.current !== d) { moveBusyRef.current = false; return }
-      moveBusyRef.current = true
+    queueMove({ lat, lng, point }, () => dragRef.current === d, (m) => {
       const seq = ++dragSeqRef.current
       // Live snap: the preview (route line, drop ring, hint) follows the
       // feature the point would snap to, so the user sees the result before
       // lifting the finger.
-      Promise.all([liftedLngLat(m.point, m.lat, m.lng), snapCandidatesAt(m.point, d.wpIndex)]).then(([lifted, candidates]) => {
-        if (seq === dragSeqRef.current && dragRef.current === d) {
-          const snap = resolveLiveSnap(candidates, lifted)
-          const nb = neighbourAtDrop(dragWaypointsRef.current, d.wpIndex, snap)
-          if (nb >= 0) snap.snapHint = `Remove ${dragWaypointsRef.current[d.wpIndex]?.name ?? `WP${d.wpIndex + 1}`}`
-          setDragPreview({ wpIndex: d.wpIndex, ...snap, fingerLat: m.lat, fingerLng: m.lng })
-        }
-        run()
-      }, () => run())
-    }
-    run()
-  }, [liftedLngLat, snapCandidatesAt, setDragPreview])
+      return Promise.all([liftedLngLat(m.point, m.lat, m.lng), snapCandidatesAt(m.point, d.wpIndex)]).then(([lifted, candidates]) => {
+        if (seq !== dragSeqRef.current || dragRef.current !== d) return
+        const snap = resolveLiveSnap(candidates, lifted)
+        const nb = neighbourAtDrop(dragWaypointsRef.current, d.wpIndex, snap)
+        if (nb >= 0) snap.snapHint = `Remove ${dragWaypointsRef.current[d.wpIndex]?.name ?? `WP${d.wpIndex + 1}`}`
+        setDragPreview({ wpIndex: d.wpIndex, ...snap })
+      })
+    })
+  }, [queueMove, liftedLngLat, snapCandidatesAt, setDragPreview])
   // Drag handles are native views that keep wherever the finger dropped them.
   // When a drop changes nothing (cancelled picker, dropped back on its own
   // leg end), their coordinate prop is unchanged so nothing moves them back;
@@ -2496,6 +2495,11 @@ export function AviationMap({
   useEffect(() => {
     if (previewClearPendingRef.current) clearPreviewsNow()
   }, [waypoints, clearPreviewsNow])
+  // No timer may fire into an unmounted map (MapScreen remounts per country).
+  useEffect(() => () => {
+    if (previewClearPendingRef.current) clearTimeout(previewClearPendingRef.current)
+    if (suppressTimerRef.current) clearTimeout(suppressTimerRef.current)
+  }, [])
   const startLegDrag = useCallback((legIndex: number) => {
     onRouteDragStartRef.current?.()
     legDragRef.current = { legIndex }
@@ -2503,28 +2507,18 @@ export function AviationMap({
   }, [])
   const legDragSeqRef = useRef(0)
   // Same one-query-in-flight rule as moveDrag.
-  const legMoveBusyRef = useRef(false)
-  const legMovePendingRef = useRef<{ lat: number; lng: number; point: [number, number] } | null>(null)
+  const queueLegMove = useLatestOnly<{ lat: number; lng: number; point: [number, number] }>()
   const moveLegDrag = useCallback((lat: number, lng: number, point: [number, number]) => {
     const d = legDragRef.current
     if (!d || !pastSlop(d, point)) return
-    legMovePendingRef.current = { lat, lng, point }
-    if (legMoveBusyRef.current) return
-    const run = () => {
-      const m = legMovePendingRef.current
-      legMovePendingRef.current = null
-      if (!m || legDragRef.current !== d) { legMoveBusyRef.current = false; return }
-      legMoveBusyRef.current = true
+    queueLegMove({ lat, lng, point }, () => legDragRef.current === d, (m) => {
       const seq = ++legDragSeqRef.current
-      Promise.all([liftedLngLat(m.point, m.lat, m.lng), snapCandidatesAt(m.point)]).then(([lifted, candidates]) => {
-        if (seq === legDragSeqRef.current && legDragRef.current === d) {
-          setLegDragPreview({ legIndex: d.legIndex, ...resolveLiveSnap(candidates, lifted) })
-        }
-        run()
-      }, () => run())
-    }
-    run()
-  }, [liftedLngLat, snapCandidatesAt, setLegDragPreview])
+      return Promise.all([liftedLngLat(m.point, m.lat, m.lng), snapCandidatesAt(m.point)]).then(([lifted, candidates]) => {
+        if (seq !== legDragSeqRef.current || legDragRef.current !== d) return
+        setLegDragPreview({ legIndex: d.legIndex, ...resolveLiveSnap(candidates, lifted) })
+      })
+    })
+  }, [queueLegMove, liftedLngLat, snapCandidatesAt, setLegDragPreview])
   const releaseLegDrag = useCallback((point: [number, number]) => {
     resetDragHandles()
     const d = legDragRef.current
@@ -2695,7 +2689,6 @@ export function AviationMap({
   const lastFollowRef = useRef<FollowSnapshot | null>(null)
   const focusTrackerRef = useRef(createFocusTracker())
   const focusKeyRef = useRef('')
-  const routeVisibleRef = useRef(routeVisible); routeVisibleRef.current = routeVisible
   // Anything that changes where / how the map should sit forces the next move.
   useEffect(() => { lastFollowRef.current = null }, [followGps, mapOrientation, activeWpIdx, autoZoom, viewW, viewH])
   // Resuming auto-zoom, or turning it off and on, clears a manual-zoom pause.
@@ -2738,8 +2731,7 @@ export function AviationMap({
     let zoom: number | undefined
     let centre: [number, number] = [pos.lng, pos.lat]
     if (autoZoom && !autoZoomPausedRef.current) {
-      const route = routeVisibleRef.current ? wps : []
-      const focus = focusTrackerRef.current.update({ pos, speedKts: gpsPosition.speedKts, route, parkedKts: AUTO_ZOOM_RESET_KTS })
+      const focus = focusTrackerRef.current.update({ pos, speedKts: gpsPosition.speedKts, route: wps, parkedKts: AUTO_ZOOM_RESET_KTS })
       if (focus) {
         focusKeyRef.current = focus.key
         const near = distNm(pos, focus.focus) <= focus.nearNm
@@ -3343,7 +3335,7 @@ export function AviationMap({
         )}
 
         {/* ── Planned Route ──────────────────────────────── */}
-        {waypoints.length >= 2 && routeVisible && (
+        {waypoints.length >= 2 && (
           <>
           {/* Original legs being replaced, faded, while a point is dragged. */}
           {ghostLegs && (
@@ -3407,7 +3399,7 @@ export function AviationMap({
           </>
         )}
 
-        {legLabelsFC && routeVisible && (
+        {legLabelsFC && (
           <GeoJSONSource id="route-leg-labels-src" data={legLabelsFC}>
             {/* Three variants of the same label, richest on top: each is
                 placed along the leg only if it fits the leg's on-screen
@@ -3431,9 +3423,9 @@ export function AviationMap({
         )}
 
         {/* Live drag preview (legs to the would-be point, drop ring, snap name). */}
-        {routeVisible && <RouteDragPreviewLayer store={dragPreviewStore} waypoints={waypoints} />}
+        <RouteDragPreviewLayer store={dragPreviewStore} waypoints={waypoints} />
 
-        {waypoints.length >= 1 && routeVisible && (
+        {waypoints.length >= 1 && (
           <GeoJSONSource id="route-pts-src" data={routePoints} onPress={onWaypointMove ? () => {} : undefined}>
             <Layer
               key="route-pts-casing" id="route-pts-casing" type="circle"
@@ -3765,7 +3757,7 @@ export function AviationMap({
             above) — the native SDK owns the visual position while a drag is
             in progress regardless of the lngLat prop we pass on re-render,
             so there's no need to hide/swap the active one. */}
-        {onLegInsert && routeVisible && waypoints.length >= 2 && legMidpointWps.slice(0, -1).map((from, i) => {
+        {onLegInsert && waypoints.length >= 2 && legMidpointWps.slice(0, -1).map((from, i) => {
           if (!legEditable(i)) return null
           const to = legMidpointWps[i + 1]
           return (

@@ -9,6 +9,7 @@
  *  • "Cancel"
  */
 import type { RouteWaypoint } from '../utils/routeCalc'
+import { DIRECT_ACTION_LABELS } from '@open-vfr/shared/routeNavigation'
 import css from './WpActionMenu.module.css'
 
 interface Props {
@@ -65,7 +66,7 @@ export default function WpActionMenu({
             className={css.item}
             onClick={() => { onDirectTo(wpIdx); onClose() }}
           >
-            ✈ {wpIdx > activeWpIdx ? 'Take shortcut' : 'Direct to'}
+            ✈ {DIRECT_ACTION_LABELS[wpIdx > activeWpIdx ? 'shortcut' : 'direct'].long}
           </button>
         )}
 

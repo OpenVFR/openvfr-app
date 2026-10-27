@@ -3,8 +3,8 @@
  * turned to the runway's true bearing. Shared by the web and native map
  * layers so both pick the same image for the same aerodrome.
  *
- * Uses the flat properties the data pipeline adds to every aerodrome
- * (openvfr-infra scripts/aerodrome_symbol.py):
+ * Uses flat properties of each aerodrome feature in the aerodromes dataset
+ * (style expressions cannot search the nested runway list):
  *   rwy_brg    0..179, true bearing of the main runway (absent: no runway data)
  *   rwy_paved  main runway has a hard surface
  *   ad_use     civil | military | joint | private | ultralight | glider | closed
@@ -27,11 +27,15 @@ export const AERODROME_SYMBOL_IDS: string[] = [
   'ad-closed',
 ]
 
-/** Symbol colours, also used to tint the heliport images. */
+/** Symbol colours: the single source for the generated images
+ *  (apps/web/scripts/gen-aerodrome-icons.mjs, apps/native/scripts/gen-poi-icons.mjs)
+ *  and the tint of the heliport images. */
 export const AERODROME_SYMBOL_COLORS = {
   civil: '#1a56db',
   military: '#b91c1c',
   heliport: '#9333ea',
+  /** private / ultralight / glider / closed */
+  minor: '#64748b',
 }
 
 /** Style expression: the image id for an aerodrome feature. */

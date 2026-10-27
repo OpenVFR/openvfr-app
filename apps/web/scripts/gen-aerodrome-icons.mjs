@@ -19,12 +19,11 @@
 import { writeFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import { AERODROME_SYMBOL_COLORS } from '@open-vfr/shared/aerodromeSymbol'
 
 const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'poi_icons')
 
-const CIVIL = '#1a56db'
-const MILITARY = '#b91c1c'
-const MINOR = '#64748b'
+const { civil: CIVIL, military: MILITARY, minor: MINOR } = AERODROME_SYMBOL_COLORS
 const EDGE = '#ffffff'
 
 const KINDS = {

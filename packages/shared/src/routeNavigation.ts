@@ -132,6 +132,34 @@ export function shortcutTargetIndex(waypoints: RouteWaypoint[], activeLeg: numbe
   return -1
 }
 
+/** How a Direct To on a point reads: a turning point further along the
+ *  route is a shortcut (the rest of the route stays), anything else is a
+ *  plain direct. */
+export type DirectActionKind = 'shortcut' | 'direct'
+
+export function directActionKind(waypoints: RouteWaypoint[], activeLeg: number, target: LatLng): DirectActionKind {
+  return shortcutTargetIndex(waypoints, activeLeg, target) >= 0 ? 'shortcut' : 'direct'
+}
+
+/** Button text per kind: `long` for menus and cards, `short` for small pills. */
+export const DIRECT_ACTION_LABELS: Record<DirectActionKind, { long: string; short: string }> = {
+  direct:   { long: 'Direct to',     short: 'Direct' },
+  shortcut: { long: 'Take shortcut', short: 'Shortcut' },
+}
+
+/** In flight, how long a tapped leg / point stays unlocked for dragging
+ *  (both apps; hint texts show LEG_UNLOCK_S). */
+export const LEG_UNLOCK_MS = 10_000
+export const LEG_UNLOCK_S = LEG_UNLOCK_MS / 1000
+
+/** Default for RouteDirectInput.rejoinMaxNm (both apps). */
+export const DEFAULT_REJOIN_MAX_NM = 2
+
+/** Name of the present-position point a Direct To inserts: "Pos 1432Z". */
+export function presentPositionName(now: Date): string {
+  return `Pos ${String(now.getUTCHours()).padStart(2, '0')}${String(now.getUTCMinutes()).padStart(2, '0')}Z`
+}
+
 export type RouteDirectKind =
   /** Target is a turning point further along: the legs before it are skipped. */
   | 'shortcut'
@@ -155,9 +183,11 @@ export interface RouteDirectInput {
    * aerodromes, which end the route.
    */
   rejoin?: boolean
-  /** Maximum distance (NM) from a leg ahead for `rejoin` to apply. */
+  /** Maximum distance (NM) from a leg ahead for `rejoin` to apply
+   *  (default DEFAULT_REJOIN_MAX_NM). */
   rejoinMaxNm?: number
-  /** Name given to the inserted present-position point. */
+  /** Name given to the inserted present-position point (apps pass
+   *  presentPositionName(now); default 'Position'). */
   positionName?: string
 }
 
@@ -198,13 +228,14 @@ export function routeDirect(input: RouteDirectInput): RouteDirectResult {
     return {
       kind: 'shortcut',
       waypoints: [...headWps, ...wps.slice(j)],
-      legOverrides: [...headOvr, inherited, ...ovr.slice(j)].slice(0, headWps.length + wps.length - j - 1),
+      // Overrides of the legs from the target on (legs j .. wps.length-2).
+      legOverrides: [...headOvr, inherited, ...ovr.slice(j, wps.length - 1)],
       activeLeg: fromLeg,
     }
   }
 
   if (input.rejoin) {
-    const maxNm = input.rejoinMaxNm ?? 5
+    const maxNm = input.rejoinMaxNm ?? DEFAULT_REJOIN_MAX_NM
     let k = -1
     let kd = Infinity
     for (let i = L; i < wps.length - 1; i++) {
@@ -215,7 +246,8 @@ export function routeDirect(input: RouteDirectInput): RouteDirectResult {
       return {
         kind: 'divert',
         waypoints: [...headWps, target, ...wps.slice(k + 1)],
-        legOverrides: [...headOvr, inherited, ovr[k] ?? {}, ...ovr.slice(k + 1)].slice(0, headWps.length + wps.length - k - 1),
+        // Target -> wps[k+1] keeps leg k's overrides, then legs k+1 .. wps.length-2.
+        legOverrides: [...headOvr, inherited, ovr[k] ?? {}, ...ovr.slice(k + 1, wps.length - 1)],
         activeLeg: fromLeg,
       }
     }

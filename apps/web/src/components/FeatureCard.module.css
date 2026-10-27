@@ -40,3 +40,6 @@
     border-bottom: none;
   }
 }
+
+/* Focused on open (see FeatureCard): no ring for a mouse/map click. */
+.card:focus:not(:focus-visible) { outline: none; }

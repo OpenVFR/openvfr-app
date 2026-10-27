@@ -57,8 +57,9 @@ export function MapPopover({ x, y, title, text, actions = [], testID }: {
             key={a.key}
             style={styles.action}
             onPress={a.onPress}
-            hitSlop={6}
-            accessibilityLabel={a.accessibilityLabel}
+            hitSlop={{ top: 6, bottom: 6, left: 2, right: 2 }}
+            accessibilityRole="button"
+            accessibilityLabel={a.accessibilityLabel ?? a.label}
             testID={`${testID ?? 'popover'}-${a.key}`}
           >
             <Ionicons name={a.icon} size={18} color={a.danger ? '#f87171' : '#22d3ee'} />
@@ -83,7 +84,8 @@ function makeStyles(theme: ScaledTheme) {
     },
     title: { color: '#e5e7eb', fontSize: theme.textSm, fontWeight: '700' as const, maxWidth: 140 },
     text: { color: '#e5e7eb', fontSize: theme.textXs, fontWeight: '600' as const, maxWidth: 260 },
-    action: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 4, paddingHorizontal: 4, height: BUBBLE_H },
+    // At least 44 wide (touch target guidance), icon-only actions included.
+    action: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 4, paddingHorizontal: 8, minWidth: 44, height: BUBBLE_H },
     actionTxt: { color: '#22d3ee', fontSize: theme.textXs, fontWeight: '700' as const },
     dangerTxt: { color: '#f87171' },
     tail: {

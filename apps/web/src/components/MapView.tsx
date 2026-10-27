@@ -59,7 +59,7 @@ import { buildRunwayWindHighlight, effectiveMagBrg, type RunwayWindEnd } from '@
 import { computeAtcStatus, isNotamAtcRelated, isNotamHoursChangeRelated, type HoursEntry as AtcHoursEntry } from '@open-vfr/shared/atcStatus'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
 import { chooseSnapTarget, sortSnapCandidates, snapHintText, neighbourAtDrop } from '@open-vfr/shared/snapChoice'
-import { navigatingLeg, routeDirect, samePoint, shortcutTargetIndex } from '@open-vfr/shared/routeNavigation'
+import { navigatingLeg, routeDirect, samePoint, directActionKind, DIRECT_ACTION_LABELS, presentPositionName, LEG_UNLOCK_MS } from '@open-vfr/shared/routeNavigation'
 import { AERODROME_COLORS } from '@open-vfr/shared/featureColors'
 import { fetchAerodromeNotamTexts, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { API_BASE_URL } from '../utils/env'
@@ -78,7 +78,7 @@ import { countryDatasetSource, loadCountryGeojson } from '@open-vfr/shared/count
 import { useActiveCountries } from '../utils/countryData'
 import { snapIconName, formatObstacleName, formatLandmarkName, obstacleWaypointName } from '@open-vfr/shared/snapLabels'
 import { type PointFeature } from './FeaturePopup'
-import type { WhatsHereItem } from './WhatsHerePopup'
+import type { WhatsHereItem, RouteAction } from './WhatsHerePopup'
 import SnapPicker, { type SnapCandidate } from './SnapPicker'
 import RouteEditBanner from './RouteEditBanner'
 import VirtualRadar from './VirtualRadar'
@@ -377,8 +377,6 @@ function pointRouteWp(feat: maplibregl.MapGeoJSONFeature, name: string): RouteWa
   return { lng, lat, name }
 }
 
-/** How long a tapped leg stays unlocked for dragging in flight. */
-const LEG_UNLOCK_MS = 10_000
 /** After the start-up route fit, a map resize within this long (the bottom
  *  pane opening) re-fits the route rather than keeping the top edge. */
 const STARTUP_FIT_SETTLE_MS = 3000
@@ -513,6 +511,10 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const dragMoveRef = useRef<{ wpIndex: number; cur: maplibregl.LngLat; moved: boolean; startPt?: { x: number; y: number } } | null>(null)
   // Long-press timer for leg-line touch (fires at 500 ms, auto-inserts WP).
   const legLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // A touch on the route armed one of its own handlers (point drag, leg
+  // drag / long-press menu): the synthesized contextmenu of that long press
+  // is theirs. Otherwise a long press on the route opens What's Here?.
+  const routeTouchArmedRef = useRef(false)
   // Suppresses the next map click event after a drag-move mousedown fires.
   const suppressNextClickRef = useRef(false)
   const [visibility, setVisibilityGroup] = useLayerVisibility()
@@ -527,6 +529,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
       if (e.key !== 'Escape' || e.defaultPrevented) return
       const t = e.target as HTMLElement | null
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+      // Consumed: one Esc closes one thing (card, leg editor, extending).
+      e.preventDefault()
       setActivePopup(null)
     }
     window.addEventListener('keydown', onKey)
@@ -658,7 +662,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
   finishExtendingRef.current = finishExtending
   useEffect(() => {
     if (!extending) return
-    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') finishExtendingRef.current() }
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key !== 'Escape' || ev.defaultPrevented) return
+      const t = ev.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+      ev.preventDefault()
+      finishExtendingRef.current()
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [extending])
@@ -799,6 +809,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
   editSessionActiveRef.current = routeUndo.editSessionActive
   useEffect(() => { setEditSessionArmed(true) }, [setEditSessionArmed])
   const flyingNow = flyingMode !== 'off'
+  // Touch-first device (no Alt, no click): hint texts say "tap".
+  const coarsePointer = useMemo(() => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches, [])
   useEffect(() => { applyEditSession() }, [flyingNow, applyEditSession])
 
   // Leg level dragged in the Virtual Radar: null clears the leg's override so
@@ -1011,11 +1023,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const flyDirect = (target: RouteWaypoint, rejoin = false) => {
     const pos = gpsPosition
     if (!pos) return
-    const t = new Date()
-    const hhmm = `${String(t.getUTCHours()).padStart(2, '0')}${String(t.getUTCMinutes()).padStart(2, '0')}`
     const r = routeDirect({
       waypoints: routeWaypoints, legOverrides, activeLeg, position: pos, target, rejoin,
-      rejoinMaxNm: 2, positionName: `Pos ${hhmm}Z`,
+      positionName: presentPositionName(new Date()),
     })
     setRouteWaypoints(r.waypoints)
     setLegOverrides(r.legOverrides)
@@ -1025,7 +1035,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Label for the Direct To action on `target`: a point further along the
   // route is a shortcut (the rest of the route stays).
   const directToLabel = (target: { lat: number; lng: number }) =>
-    shortcutTargetIndex(routeWaypoints, activeLeg, target) >= 0 ? 'Take shortcut' : 'Direct to'
+    DIRECT_ACTION_LABELS[directActionKind(routeWaypoints, activeLeg, target)].long
   const removeWaypointAtRef = useRef(removeWaypointAt)
   removeWaypointAtRef.current = removeWaypointAt
   const flyingModeRef   = useRef<FlyingMode>('off')
@@ -2361,12 +2371,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
         }
       }
 
-      // Returns the 0-based index of the route leg closest to (lng, lat).
-      // Uses simple Euclidean distance in lng/lat space — fine for the short
-      // tap-accuracy distances involved here.
-      const nearestLegIndex = (lng: number, lat: number, wps: RouteWaypoint[]): number =>
-        Math.max(0, navigatingLeg(wps, { lng, lat }))
-
       const commitDrag = (e: DragEvent) => {
         // ── Commit drag-move (existing waypoint repositioned) ─────────────
         const dragM = dragMoveRef.current
@@ -2493,6 +2497,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         e.originalEvent.stopPropagation()
         suppressNextClickRef.current = true
         dragMoveRef.current = { wpIndex, cur: e.lngLat, moved: false, startPt: e.point }
+        routeTouchArmedRef.current = true
         map.dragPan.disable()
       })
 
@@ -2506,6 +2511,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         e.preventDefault()
         e.originalEvent.stopPropagation()
         dragInsertRef.current = { legIndex, cur: e.lngLat, moved: false, startPt: e.point }
+        routeTouchArmedRef.current = true
         map.dragPan.disable()
       })
 
@@ -2523,12 +2529,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
         if (wps.length < 2 || !onRouteLine(e.point)) return
         const handles = ['route-waypoints-circle', 'route-midpoints-layer'].filter((id) => map.getLayer(id))
         if (map.queryRenderedFeatures(e.point, { layers: handles }).length > 0) return
-        const legIndex = nearestLegIndex(e.lngLat.lng, e.lngLat.lat, wps)
+        const legIndex = Math.max(0, navigatingLeg(wps, e.lngLat))
         if (!touchLegDraggable(legIndex)) { noteLockedPress(); return }
         e.preventDefault()
         e.originalEvent.stopPropagation()
         suppressNextClickRef.current = true
         dragInsertRef.current = { legIndex, cur: e.lngLat, moved: false, startPt: e.point }
+        routeTouchArmedRef.current = true
         map.dragPan.disable()
         // Long-press: show a context menu instead of auto-inserting.
         // The menu offers: Insert here / Append to end / Take Shortcut.
@@ -2577,6 +2584,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
       // ── Touch: commit drag on finger-lift ──────────────────────────────
       // lngLat is unreliable on touchend (finger lifted), so use last stored cur.
       map.on('touchend', () => {
+        // Reset after this gesture's contextmenu (fired during the press).
+        setTimeout(() => { routeTouchArmedRef.current = false }, 0)
         clearLegLongPress()
         if (!dragInsertRef.current && !dragMoveRef.current) return
         const cur = dragMoveRef.current?.cur ?? dragInsertRef.current?.cur
@@ -3535,15 +3544,17 @@ export default function MapView({ auth }: { auth: AuthState }) {
         }
         return
       }
-      // On the ground the route's own touch handlers own long-presses on it
-      // (point drag, leg menu).
-      if (fromTouch && routeHits.length > 0) {
+      // On the ground the route's own touch handlers own a long press on it
+      // when they armed (selected leg / its points: drag, leg menu). On a
+      // leg not being edited they did not: fall through to What's Here?.
+      if (fromTouch && routeHits.length > 0 && routeTouchArmedRef.current) {
         e.preventDefault()
         return
       }
 
-      // Right-click on a route point removes it.
-      if (wpHits.length > 0) {
+      // Right-click on a route point removes it (never a touch long press:
+      // that reaches here only on a point not being edited, see above).
+      if (wpHits.length > 0 && !fromTouch) {
         const seq = (wpHits[0].properties as { seq: number }).seq
         setRouteWaypoints(routeWaypointsRef.current.filter((_, i) => i !== seq - 1))
         e.preventDefault()
@@ -3927,13 +3938,15 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const map = mapRef.current
     const el = containerRef.current
     if (!map || !mapReady || !el) return
+    // On MapLibre's own resize (its container observer): it has already
+    // resized the map, so a fit here uses the new size, and there is no
+    // second resize per layout change.
     let lastH = el.clientHeight
-    const ro = new ResizeObserver(() => {
+    const onResize = () => {
       const h = el.clientHeight
       const dh = h - lastH
       lastH = h
       if (dh === 0 || flyingModeRef.current !== 'off') return
-      map.resize()
       // Right after the start-up route fit the bottom pane is still opening
       // (it appears once a route is loaded): fit the route again into the
       // final map size, otherwise its far end ends up under the pane.
@@ -3946,9 +3959,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
       // the start-up fly to the home airfield short when the layout settled).
       if (map.isMoving()) return
       map.panBy([0, dh / 2], { duration: 0 })
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
+    }
+    map.on('resize', onResize)
+    return () => { map.off('resize', onResize) }
   }, [mapReady])
 
   // Extending: ring on the route's end; rubber-band line cleared when done.
@@ -3975,8 +3988,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   useEffect(() => {
     if (selectedLeg != null && selectedLeg > routeWaypoints.length - 2) setSelectedLeg(null)
   }, [selectedLeg, routeWaypoints.length])
-  const flyingNowForLeg = flyingMode !== 'off'
-  useEffect(() => { setSelectedLeg(null) }, [flyingNowForLeg])
+  useEffect(() => { setSelectedLeg(null) }, [flyingNow])
 
   // Add-points mode: line style, midpoint handles; also re-applies the idle
   // cursor for the active tool (see baseCursor).
@@ -3984,16 +3996,15 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const map = mapRef.current
     if (map) map.getCanvas().style.cursor = baseCursor()
     if (map && mapReady) {
-      const editMode = extending
       // Dashed while adding points or while route changes are not yet
       // applied (the Editing route banner shows) -- a draft look that matches
       // the banner; solid once applied or cancelled. Not in flight, where the
       // line must stay as easy to see as possible.
-      const draft = editMode || (routeUndo.editSessionActive && flyingMode === 'off')
+      const draft = extending || (routeUndo.editSessionActive && flyingMode === 'off')
       map.setPaintProperty('route-line-layer', 'line-dasharray', draft ? [4, 2] : undefined)
       // Midpoint handles and leg labels are mutually exclusive.
-      map.setLayoutProperty('route-midpoints-layer', 'visibility', editMode ? 'visible' : 'none')
-      for (const id of LEG_LABEL_LAYERS) map.setLayoutProperty(id, 'visibility', editMode ? 'none' : 'visible')
+      map.setLayoutProperty('route-midpoints-layer', 'visibility', extending ? 'visible' : 'none')
+      for (const id of LEG_LABEL_LAYERS) map.setLayoutProperty(id, 'visibility', extending ? 'none' : 'visible')
     }
   }, [extending, rulerMode, placingUserWp, mapReady, routeUndo.editSessionActive, flyingMode])
 
@@ -4722,6 +4733,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // Stable props for the memoised drawer: function props are wrapped so inline
   // closures don't defeat memo; data props change identity only when they change.
   const tafWarnIcaos = useMemo(() => tafChangeIcaos(routeWeatherStations), [routeWeatherStations])
+  // Flying with a fix: route actions on features fly there (Direct to).
+  const inFlightRoute = flyingNow && !!gpsPosition
   const drawerProps = useStableProps({
     tafWarnIcaos,
     visibility,
@@ -4848,7 +4861,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
       const finalName = name.trim() || nextPlaceName(userWaypoints.map(w => w.name))
       saveUserWaypoint({ name: finalName, lng, lat, folder: '' }).catch(console.error)
     },
-    inFlightRoute: flyingMode !== 'off' && !!gpsPosition,
+    inFlightRoute,
     auth,
     onOpenProfile: () => setProfileOpen(true),
   })
@@ -4859,9 +4872,14 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const map = mapRef.current
     const el = containerRef.current
     if (!map || !el || !activePopup || flyingMode !== 'off') return
-    const w = el.clientWidth
-    if (w <= 700) return
-    const cardLeft = w - 60 - Math.min(400, w - 140)
+    // Measured, so this follows FeatureCard.module.css. On narrow screens
+    // the card is a full-width bottom sheet: no sideways room to gain.
+    const card = el.parentElement?.querySelector<HTMLElement>('[data-feature-card]')
+    if (!card) return
+    const mapBox = el.getBoundingClientRect()
+    const cardBox = card.getBoundingClientRect()
+    if (cardBox.left - mapBox.left < 10) return
+    const cardLeft = cardBox.left - mapBox.left
     const margin = 40
     if (activePopup.x > cardLeft - margin) map.panBy([activePopup.x - (cardLeft - margin) + 20, 0], { duration: 300 })
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4869,7 +4887,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
 
   // Clicked-feature card beside the map (see FeatureCard). Stable props, so
   // the memoised card skips the per-GPS-tick re-renders of this component.
-  const inFlightRoute = flyingMode !== 'off' && !!gpsPosition
   const cardProps = useStableProps({
     onClose: () => setActivePopup(null),
     isHome: (icao: string) => homeAirfield?.icao === icao,
@@ -4882,17 +4899,15 @@ export default function MapView({ auth }: { auth: AuthState }) {
     onShowNotamOnMap: handleShowNotamOnMap,
     // The route button on a feature: start / extend the route on the ground
     // (map clicks on features then keep extending it); in flight, fly there.
-    routeActionFor: (wp: RouteWaypoint, rejoin: boolean) => inFlightRoute
-      ? { label: directToLabel(wp), onClick: () => flyDirect(wp, rejoin) }
-      : { label: routeWaypoints.length > 0 ? 'Add to route' : 'Start route here', onClick: () => drawerProps.onAddToRoute(wp) },
-    onAddToRoute: drawerProps.onAddToRoute,
+    routeActionFor: (wp: RouteWaypoint, rejoin: boolean): RouteAction => inFlightRoute
+      ? { kind: 'direct', label: directToLabel(wp), onClick: () => flyDirect(wp, rejoin) }
+      : { kind: 'route', label: routeWaypoints.length > 0 ? 'Add to route' : 'Start route here', onClick: () => drawerProps.onAddToRoute(wp) },
     onSaveHereUserWaypoint: drawerProps.onSaveHereUserWaypoint,
-    inFlight: inFlightRoute,
-    directToLabel,
-    onDirectTo: (wp: RouteWaypoint, rejoin: boolean) => flyDirect(wp, rejoin),
-    onTrackPoint: (wp: RouteWaypoint, kind: TrackedPoint['kind']) =>
-      setTrackedPoint({ lat: wp.lat, lng: wp.lng, name: wp.name ?? 'Point', kind }),
-    routeKey: `${routeWaypoints.length}:${activeLeg}`,
+    onTrackPoint: inFlightRoute
+      ? (wp: RouteWaypoint, kind: TrackedPoint['kind']) => setTrackedPoint({ lat: wp.lat, lng: wp.lng, name: wp.name ?? 'Point', kind })
+      : undefined,
+    routeKey: `${routeWaypoints.length}:${activeLeg}:${inFlightRoute}`,
+    homeIcao: homeAirfield?.icao ?? null,
   })
 
   return (
@@ -4915,7 +4930,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
         {activeInfo && <FeatureCard info={activeInfo} {...cardProps} />}
         {extending && (
           <div className={css.extendHint} role="status">
-            <span>Click to add points. Aerodromes, navaids and reporting points snap; elsewhere the spot itself is added (Alt+click: never snap).</span>
+            <span>{coarsePointer
+              ? 'Tap to add points. Aerodromes, navaids and reporting points snap; elsewhere the spot itself is added.'
+              : 'Click to add points. Aerodromes, navaids and reporting points snap; elsewhere the spot itself is added (Alt+click: never snap).'}</span>
             <button type="button" className={css.extendDone} onClick={() => finishExtending()} title="Stop adding points (Esc)">Done</button>
           </div>
         )}

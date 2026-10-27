@@ -72,26 +72,29 @@ interface Props {
   airspaceFeatures: AirspaceFeature[]
   lng: number
   lat: number
-  onAddToRoute: (wp: RouteWaypoint) => void
   onSaveUserWaypoint: (name: string, lng: number, lat: number) => void
   onClose: () => void
-  /** Route action for the clicked position itself (a free route point):
-   *  "Start route here", "Add to route", or "Direct to" in flight. */
-  pointAction?: { label: string; onClick: () => void }
-  /** In flight only: replaces +Route with Direct to / Take shortcut and Track. */
-  flight?: {
-    /** "Direct to" or "Take shortcut" for this point. */
-    directLabel: (wp: RouteWaypoint) => string
-    /** `rejoin`: an en-route fix (rejoin the route after it) rather than a destination. */
-    onDirectTo: (wp: RouteWaypoint, rejoin: boolean) => void
-    onTrack: (wp: RouteWaypoint, kind: 'aerodrome' | 'navaid' | 'waypoint') => void
-  }
+  /** The route action for a point (each row, and the clicked position
+   *  itself): start / add on the ground, Direct to / Take shortcut in flight.
+   *  `rejoin`: an en-route fix (rejoin the route after it) rather than a destination. */
+  routeActionFor: (wp: RouteWaypoint, rejoin: boolean) => RouteAction
+  /** In flight only: rows also offer Track. */
+  onTrack?: (wp: RouteWaypoint, kind: 'aerodrome' | 'navaid' | 'waypoint') => void
+}
+
+/** A point's route button. `kind` 'route' = add to / start the route (ground),
+ *  'direct' = fly there now (flight). */
+export interface RouteAction {
+  kind: 'route' | 'direct'
+  label: string
+  onClick: () => void
 }
 
 export default function WhatsHerePopup({
   items, airspaceFeatures, lng, lat,
-  onAddToRoute, onSaveUserWaypoint, onClose, flight, pointAction,
+  routeActionFor, onTrack, onSaveUserWaypoint, onClose,
 }: Props) {
+  const pointAction = routeActionFor({ lng, lat }, true)
   const [airspaceOpen, setAirspaceOpen] = useState(true)
   const [saveName, setSaveName] = useState<string | null>(null)
   // Opened on a feature itself (a place, say): its own row already has the
@@ -112,36 +115,30 @@ export default function WhatsHerePopup({
         <ul className={css.list}>
           {items.map((item, i) => {
             const wp = whatsHereRouteWaypoint(item)
+            const action = wp ? routeActionFor(wp, item.kind !== 'aerodrome') : null
             return (
               <li key={i} className={css.row}>
                 <span className={`${css.badge} ${css[`kind_${item.kind}`]}`}>
                   {KIND_BADGE[item.kind]}
                 </span>
                 <span className={css.rowLabel}>{itemLabel(item)}</span>
-                {wp && flight && (<>
+                {wp && action && (
                   <button
                     className={css.addBtn}
-                    onClick={() => { flight.onDirectTo(wp, item.kind !== 'aerodrome'); onClose() }}
-                    title="Fly there from your present position (legs already flown stay in the route)"
+                    onClick={() => { action.onClick(); onClose() }}
+                    title={action.kind === 'direct' ? 'Fly there from your present position (legs already flown stay in the route)' : action.label}
+                    aria-label={action.label}
                   >
-                    {flight.directLabel(wp)}
+                    {action.kind === 'direct' ? action.label : '+Route'}
                   </button>
+                )}
+                {wp && onTrack && (
                   <button
                     className={css.addBtn}
-                    onClick={() => { flight.onTrack(wp, item.kind === 'aerodrome' || item.kind === 'navaid' ? item.kind : 'waypoint'); onClose() }}
+                    onClick={() => { onTrack(wp, item.kind === 'aerodrome' || item.kind === 'navaid' ? item.kind : 'waypoint'); onClose() }}
                     title="Show distance and bearing to this point in the position report (the route is unchanged)"
                   >
                     Track
-                  </button>
-                </>)}
-                {wp && !flight && (
-                  <button
-                    className={css.addBtn}
-                    onClick={() => { onAddToRoute(wp); onClose() }}
-                    title="Add to route"
-                    aria-label="Add to route"
-                  >
-                    +Route
                   </button>
                 )}
               </li>
@@ -183,9 +180,9 @@ export default function WhatsHerePopup({
       {/* Save as user waypoint */}
       {saveName === null ? (
         <div className={css.footer}>
-          {pointAction && !pointIsItem && (
+          {!pointIsItem && (
             <button className={css.saveBtn} onClick={() => { pointAction.onClick(); onClose() }}>
-              + {pointAction.label} (this point)
+              {pointAction.kind === 'route' ? '+ ' : '\u2708 '}{pointAction.label} (this point)
             </button>
           )}
           <button className={css.saveBtn} onClick={() => setSaveName('')}>

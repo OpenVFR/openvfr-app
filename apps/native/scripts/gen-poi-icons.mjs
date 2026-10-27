@@ -6,6 +6,7 @@ import { Resvg } from '@resvg/resvg-js'
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import { AERODROME_SYMBOL_COLORS as AD, AERODROME_SYMBOL_IDS } from '@open-vfr/shared/aerodromeSymbol'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const SRC_DIR = join(__dirname, '..', '..', 'web', 'public', 'poi_icons')
@@ -32,13 +33,12 @@ const ICONS = [
   ['wp-mrp',  '#0ca678', 48],
   ['wp-rp',   '#20c997', 48],
   // Aerodromes (SZ2=56)
-  ['ad-airport',  '#1a56db', 56],
-  ['ad-heliport', '#9333ea', 56],
-  ['ad-heliport-mil', '#b91c1c', 56, 'ad-heliport'],
-  // Runway chart symbols (web scripts/gen-aerodrome-icons.mjs; own colours)
-  ...['civ', 'civ-open', 'mil', 'joint', 'minor'].flatMap((k) =>
-    ['hard', 'soft', 'none'].map((b) => [`ad-${k}-${b}`, '#1a56db', 56])),
-  ['ad-closed', '#64748b', 56],
+  ['ad-airport',  AD.civil, 56],
+  ['ad-heliport', AD.heliport, 56],
+  ['ad-heliport-mil', AD.military, 56, 'ad-heliport'],
+  // Runway chart symbols (web scripts/gen-aerodrome-icons.mjs): colours are
+  // in the SVGs, the tint only fills unset parts.
+  ...AERODROME_SYMBOL_IDS.map((id) => [id, AD.civil, 56]),
 ]
 
 for (const [id, color, sizePx, src = id] of ICONS) {

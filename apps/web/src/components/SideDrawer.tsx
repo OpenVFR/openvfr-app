@@ -303,25 +303,29 @@ function SideDrawer({
 
           {/* ── Route: the working route, as a document (name, Save, Open) ── */}
           <div className={css.section}>
-            <button className={css.sectionHeader} onClick={() => toggle('route')}>
-              <span>{SECTION_LABELS.route}</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {/* The aircraft sets the plan's speeds, fuel and levels, so it
-                    sits with the route; the Aircraft section manages profiles. */}
-                <AircraftChip selected={selectedAircraftProfile} onSelect={onSelectAircraft} onManage={showAircraft} />
-                {extending && (
-                  <span
-                    role="button"
-                    className={`${css.planPill} ${css.planPillActive}`}
-                    title="Stop adding points (or press Esc)"
-                    onClick={(e) => { e.stopPropagation(); onStopExtending() }}
-                  >
-                    Done
-                  </span>
-                )}
-                <span className={css.chevron}>{expanded.route ? '▾' : '▸'}</span>
-              </span>
-            </button>
+            {/* A row, not one button: the aircraft chip and Done are controls
+                of their own and must not sit inside the toggle button. */}
+            <div className={`${css.sectionHeader} ${css.sectionHeaderRow}`} onClick={(e) => { if (e.target === e.currentTarget) toggle('route') }}>
+              <button type="button" className={css.sectionToggle} aria-expanded={expanded.route} onClick={() => toggle('route')}>
+                {SECTION_LABELS.route}
+              </button>
+              {/* The aircraft sets the plan's speeds, fuel and levels, so it
+                  sits with the route; the Aircraft section manages profiles. */}
+              <AircraftChip selected={selectedAircraftProfile} onSelect={onSelectAircraft} onManage={showAircraft} />
+              {extending && (
+                <button
+                  type="button"
+                  className={`${css.planPill} ${css.planPillActive}`}
+                  title="Stop adding points (or press Esc)"
+                  onClick={onStopExtending}
+                >
+                  Done
+                </button>
+              )}
+              <button type="button" className={`${css.sectionToggle} ${css.chevron}`} tabIndex={-1} aria-hidden="true" onClick={() => toggle('route')}>
+                {expanded.route ? '▾' : '▸'}
+              </button>
+            </div>
             {expanded.route && (
               <div className={css.sectionBody}>
                 <RouteLibrary

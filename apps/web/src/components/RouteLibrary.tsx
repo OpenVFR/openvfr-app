@@ -9,6 +9,7 @@ import { suggestRouteName } from '@open-vfr/shared/suggestRouteName'
 import { useSyncRejected } from '../sync/cloudSync'
 import SyncRefusedNote from './SyncRefusedNote'
 import css from './RouteLibrary.module.css'
+import { RouteCloseContext } from './routeCloseContext'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -317,7 +318,7 @@ export default function RouteLibrary({
         </div>
       ) : null}
 
-      {children && <div className={css.body}>{children}</div>}
+      {children && <div className={css.body}><RouteCloseContext.Provider value={requestNew}>{children}</RouteCloseContext.Provider></div>}
 
       {/* ── Saved routes: open one into the working route ──────────── */}
       <button

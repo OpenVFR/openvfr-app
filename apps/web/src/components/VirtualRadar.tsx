@@ -51,6 +51,7 @@ import type { AircraftProfileDocType } from '../db/index'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 import { layoutWindRow, tickLabelsClearOfWindRow, type WindRowItem } from '@open-vfr/shared/windRow'
 import { useWindAloftAlongRoute } from '../hooks/useWindAloftAlongRoute'
+import { LEG_UNLOCK_S } from '@open-vfr/shared/routeNavigation'
 import css from './VirtualRadar.module.css'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { useActiveCountries } from '../utils/countryData'
@@ -908,11 +909,14 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
         const y = yClamped(s.altFt)
         const below = legBelowMsa(s, totalNm, s.altFt, legMsa[i] ?? 0)
         const editable = !!onLegLevelChange && (levelEditLeg === undefined || levelEditLeg === i)
+        // Editable: the drag handlers own the pointer. Locked but tappable
+        // (in flight): a click unlocks it. Neither: clicks pass through.
+        const hitStyle = editable ? undefined : onLegTap ? { cursor: 'pointer' } : { pointerEvents: 'none' as const }
         return (
           <g key={`hit-${i}`}>
             <path
               className={css.legHit}
-              style={editable || onLegTap ? (editable ? undefined : { cursor: 'pointer' }) : { pointerEvents: 'none' }}
+              style={hitStyle}
               d={hitPath(s, y)}
               strokeWidth={LEG_HIT_HALF_PX * 2}
               onPointerDown={editable ? (e) => begin(e, i, s) : undefined}
@@ -921,7 +925,7 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
               onPointerCancel={editable ? (e) => end(e, false) : undefined}
               onClick={!editable && onLegTap ? () => onLegTap(i) : undefined}
             >
-              <title>{editable ? 'Drag up or down to change this leg\'s level' : 'Click to unlock this leg for 10 s, then drag its level'}</title>
+              <title>{editable ? 'Drag up or down to change this leg\'s level' : `Click to unlock this leg for ${LEG_UNLOCK_S} s, then drag its level`}</title>
             </path>
             {editable && !drag && below && x2 - x1 > 80 && (() => {
               // Above the line, else below it, else (when both are taken by airspace chips) none; the leg can still be dragged.
@@ -2109,7 +2113,7 @@ function VirtualRadar({
           </span>
         )}
         {onLegLevelChange && levelEditLeg !== undefined && (
-          <span className={css.dragHint} title="In flight a leg's level is locked. Click a leg (here or on the map) to unlock it for 10 s, then drag it up or down.">
+          <span className={css.dragHint} title={`In flight a leg's level is locked. Click a leg (here or on the map) to unlock it for ${LEG_UNLOCK_S} s, then drag it up or down.`}>
             {levelEditLeg == null ? 'click a leg to unlock its level' : `leg ${levelEditLeg + 1} unlocked: drag its level`}
           </span>
         )}

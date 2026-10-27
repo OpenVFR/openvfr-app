@@ -41,7 +41,8 @@ import { NativeSheet }        from '../components/NativeSheet'
 import { useAircraftSync }    from '../hooks/useAircraftSync'
 import type { AircraftProfileDocType } from '../types/db'
 import { useFlightLogSync } from '../hooks/useFlightLogSync'
-import { flightLogs as flightLogsDb } from '../db'
+import { flightLogs as flightLogsDb, routes as routeDb } from '../db'
+import { isRouteDirty } from '@open-vfr/shared/routeDirty'
 import { useFlightLogViewContext } from '../context/FlightLogViewContext'
 import { useTakeoffTime, useAlternate, useGlobalWind } from '../hooks/usePlanningSettings'
 import { getAerodromeLookup } from '../utils/aerodromeLookup'
@@ -529,9 +530,25 @@ export function PlanScreen() {
   // ── Actions ──────────────────────────────────────────────────────────────
   const handleRemove = (index: number) => removeWaypoint(index)
 
-  const handleClear = () => {
+  // Close the working route (the saved copy stays in the library). Asks
+  // first when it differs from its saved copy (or was never saved), like
+  // loading another route does: the unsaved edits would be lost.
+  const handleClear = async () => {
     if (waypoints.length === 0) return
-    clearRoute()
+    const saved = activeRouteId ? (await routeDb.getAll()).find(r => r.id === activeRouteId) : undefined
+    const dirty = isRouteDirty(
+      { waypoints, legOverrides, aircraftId: selectedId ?? '' },
+      saved ? { waypoints: saved.waypoints, legOverrides: saved.legOverrides ?? [], aircraftId: saved.aircraftId ?? '' } : undefined,
+    )
+    if (!dirty) { clearRoute(); return }
+    Alert.alert(
+      'Close route?',
+      saved ? `Unsaved changes to "${saved.name}" will be lost.` : 'This route has not been saved and will be lost.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Close without saving', style: 'destructive', onPress: () => clearRoute() },
+      ],
+    )
   }
 
   const handleExportGpx = async () => {
@@ -672,7 +689,7 @@ export function PlanScreen() {
         {waypoints.length > 0 && (
           <TouchableOpacity
             style={styles.moreMenuItem}
-            onPress={() => { setMoreMenuOpen(false); handleClear() }}
+            onPress={() => { setMoreMenuOpen(false); void handleClear() }}
           >
             <Ionicons name="close-circle-outline" size={16} color={theme.textSecondary} />
             <Text style={styles.moreMenuItemTxt}>Close route</Text>

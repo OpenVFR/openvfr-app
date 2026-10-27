@@ -138,6 +138,26 @@ test('failures among mostly answered calls stay info', async () => {
   s.setMode('ok')
   for (const icao of ['ESGT', 'ESGP', 'ESMQ', 'ESMX', 'ESOK', 'ESND']) await s.cache.get(icao, allow)
   s.cache.flushLog()
+  // Answered calls count across the whole window, before the failures too.
+  assert.match(s.logs[0]!, /failed 5x .*answered 9x/)
+  assert.equal(s.levels[0], 'info')
+})
+
+test('failures at the end of a mostly answered window stay info', async () => {
+  const s = setup()
+  for (const icao of ['ESSA', 'ESGG', 'ESSB', 'ESOW', 'ESMS', 'ESNN']) await s.cache.get(icao, allow)
+  s.setMode('fail')
+  for (const icao of ['ESDF', 'ESMK', 'ESGT', 'ESGP', 'ESMQ']) await s.cache.get(icao, allow)
+  s.cache.flushLog()
   assert.match(s.logs[0]!, /failed 5x .*answered 6x/)
   assert.equal(s.levels[0], 'info')
+})
+
+test('a window with only answered calls logs nothing', async () => {
+  const s = setup()
+  await s.cache.get('ESSA', allow)
+  s.advance(61_000)
+  await s.cache.get('ESGG', allow)
+  s.cache.flushLog()
+  assert.equal(s.logs.length, 0)
 })

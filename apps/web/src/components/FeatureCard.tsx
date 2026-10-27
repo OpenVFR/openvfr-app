@@ -1,10 +1,10 @@
-import { memo } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import type { RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import AerodromePopup, { type AerodromeFeatureProps } from './AerodromePopup'
 import AirspacePopup, { type AirspaceFeature, type RegionalNotamHit } from './AirspacePopup'
 import FeaturePopup, { type PointFeature } from './FeaturePopup'
-import WhatsHerePopup, { type WhatsHereItem } from './WhatsHerePopup'
+import WhatsHerePopup, { type WhatsHereItem, type RouteAction } from './WhatsHerePopup'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import css from './FeatureCard.module.css'
 
@@ -14,8 +14,6 @@ export type ActiveInfo =
   | { kind: 'airspace';  features: AirspaceFeature[]; regionalNotams?: RegionalNotamHit[]; focusKey?: string }
   | { kind: 'point';     feature: PointFeature; routeWp?: RouteWaypoint }
   | { kind: 'whatshere'; items: WhatsHereItem[]; airspaceFeatures: AirspaceFeature[]; lng: number; lat: number }
-
-type RouteAction = { label: string; onClick: () => void }
 
 interface Props {
   info: ActiveInfo
@@ -28,19 +26,19 @@ interface Props {
   regionalNotams?: NotamItem[]
   routeWaypoints: RouteWaypoint[]
   onShowNotamOnMap?: (notam: NotamItem) => void
-  /** The route button for a point: start / add on the ground, Direct to in flight.
+  /** The one route action for a point, used by every card kind: start / add
+   *  on the ground, Direct to / Take shortcut in flight.
    *  `rejoin`: an en-route fix rather than a destination. */
   routeActionFor: (wp: RouteWaypoint, rejoin: boolean) => RouteAction
-  onAddToRoute: (wp: RouteWaypoint) => void
   onSaveHereUserWaypoint: (name: string, lng: number, lat: number) => void
-  /** Flying with a fix: What's Here? rows offer Direct to / Track instead of +Route. */
-  inFlight: boolean
-  directToLabel: (wp: RouteWaypoint) => string
-  onDirectTo: (wp: RouteWaypoint, rejoin: boolean) => void
-  onTrackPoint: (wp: RouteWaypoint, kind: 'aerodrome' | 'navaid' | 'waypoint') => void
+  /** In flight only (undefined on the ground): What's Here? rows add Track. */
+  onTrackPoint?: (wp: RouteWaypoint, kind: 'aerodrome' | 'navaid' | 'waypoint') => void
   /** Not read: changes re-render the memoised card so route button labels
    *  ("Start route here" / "Add to route" / "Take shortcut") stay current. */
   routeKey?: string
+  /** Not read: the home airfield, so the card's "Home" button re-renders
+   *  when it changes (isHome is a stable wrapper). */
+  homeIcao?: string | null
 }
 
 /**
@@ -52,12 +50,24 @@ interface Props {
  */
 function FeatureCard({
   info, onClose, isHome, authed, onSetHome, onRunwayWind, regionalNotams, routeWaypoints,
-  onShowNotamOnMap, routeActionFor, onAddToRoute, onSaveHereUserWaypoint,
-  inFlight, directToLabel, onDirectTo, onTrackPoint,
+  onShowNotamOnMap, routeActionFor, onSaveHereUserWaypoint, onTrackPoint,
 }: Props) {
-  const flight = inFlight ? { directLabel: directToLabel, onDirectTo, onTrack: onTrackPoint } : undefined
+  // Keyboard / screen reader: the card takes focus when it opens from the
+  // map (so it is found), and gives it back when it closes. Not when opened
+  // while typing somewhere (search): focus stays in that field.
+  const cardRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null
+    const typing = !!before && (before.tagName === 'INPUT' || before.tagName === 'TEXTAREA' || before.isContentEditable)
+    if (!typing) cardRef.current?.focus({ preventScroll: true })
+    return () => {
+      // Closed with focus in the card (now gone: focus fell to <body>).
+      const lost = !document.activeElement || document.activeElement === document.body
+      if (!typing && lost && before?.isConnected) before.focus({ preventScroll: true })
+    }
+  }, [])
   return (
-    <aside className={css.card} aria-label="Selected map feature">
+    <aside ref={cardRef} tabIndex={-1} className={css.card} aria-label="Selected map feature" data-feature-card="">
       <div className={css.scroll}>
         {info.kind === 'aerodrome' && (
           <AerodromePopup
@@ -97,11 +107,10 @@ function FeatureCard({
             airspaceFeatures={info.airspaceFeatures}
             lng={info.lng}
             lat={info.lat}
-            onAddToRoute={onAddToRoute}
+            routeActionFor={routeActionFor}
+            onTrack={onTrackPoint}
             onSaveUserWaypoint={onSaveHereUserWaypoint}
             onClose={onClose}
-            flight={flight}
-            pointAction={routeActionFor({ lng: info.lng, lat: info.lat }, true)}
           />
         )}
       </div>

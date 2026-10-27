@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { navigatingLeg, routeDirect, distanceToSegmentNm, shortcutTargetIndex } from './routeNavigation'
+import { navigatingLeg, routeDirect, distanceToSegmentNm, shortcutTargetIndex, presentPositionName, directActionKind } from './routeNavigation'
 
 // 0.1° lat = 6 NM. A dog-leg route: north, then east, then north again.
 const A = { lat: 59.0, lng: 18.0, name: 'A' }
@@ -92,6 +92,14 @@ describe('shortcutTargetIndex', () => {
     expect(shortcutTargetIndex(route, 1, C)).toBe(2)
     expect(shortcutTargetIndex(route, 1, A)).toBe(-1)
     expect(shortcutTargetIndex(route, -1, C)).toBe(-1)
+  })
+})
+
+describe('presentPositionName / directActionKind', () => {
+  it('names the point by UTC time and tells shortcuts from directs', () => {
+    expect(presentPositionName(new Date(Date.UTC(2026, 0, 1, 7, 5)))).toBe('Pos 0705Z')
+    expect(directActionKind(route, 0, C)).toBe('shortcut')
+    expect(directActionKind(route, 0, { lat: 0, lng: 0 })).toBe('direct')
   })
 })
 

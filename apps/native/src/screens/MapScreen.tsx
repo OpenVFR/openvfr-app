@@ -55,8 +55,6 @@ import { FOLLOW_RETURN_MS } from '@open-vfr/shared/followZoom'
 const EDIT_BANNER_H = 44
 /** Height of the route hint pill (two lines) plus a gap. */
 const ROUTE_HINT_H = 64
-/** How long a tapped leg stays unlocked for dragging in flight. */
-const LEG_UNLOCK_MS = 10_000
 
 const LANDMARK_LABELS: Record<string, string> = {
   church: 'Church',
@@ -150,7 +148,7 @@ import { useSimFlight }      from '../hooks/useSimFlight'
 import { FlightModeSheet, type FlightModeStatus } from '../components/FlightModeSheet'
 import { SimControlPanel }   from '../components/SimControlPanel'
 import { advancePosition, distanceNm, bearingDeg } from '../utils/routeCalc'
-import { navigatingLeg, routeDirect, samePoint, shortcutTargetIndex } from '@open-vfr/shared/routeNavigation'
+import { navigatingLeg, routeDirect, samePoint, directActionKind, DIRECT_ACTION_LABELS, presentPositionName, LEG_UNLOCK_MS, LEG_UNLOCK_S } from '@open-vfr/shared/routeNavigation'
 import { useAlternate } from '../hooks/usePlanningSettings'
 import { createValueStore } from '../utils/valueStore'
 import type { RouteWaypoint } from '../types/db'
@@ -575,22 +573,24 @@ function MapScreenForCountry() {
   // working route (flown legs kept; see routeDirect). One undo step; the
   // route-changed banner offers Revert.
   const [alternate, setAlternate] = useAlternate()
+  // The position is read from a ref: flyDirect stays the same function across
+  // GPS ticks (it only needs the position when pressed).
+  const activePositionRef = React.useRef(activePosition)
+  activePositionRef.current = activePosition
   const flyDirect = useCallback((target: RouteWaypoint, rejoin = false) => {
-    const pos = activePosition
+    const pos = activePositionRef.current
     if (!pos) return
-    const t = new Date()
-    const hhmm = `${String(t.getUTCHours()).padStart(2, '0')}${String(t.getUTCMinutes()).padStart(2, '0')}`
     const r = routeDirect({
       waypoints, legOverrides, activeLeg, position: pos, target, rejoin,
-      rejoinMaxNm: 2, positionName: `Pos ${hhmm}Z`,
+      positionName: presentPositionName(new Date()),
     })
     replaceRoute(r.waypoints, r.legOverrides)
     // Diverting to the alternate makes it the destination.
     if (alternate && samePoint(alternate, target)) setAlternate(null)
-  }, [activePosition, waypoints, legOverrides, activeLeg, replaceRoute, alternate, setAlternate])
-  // A point further along the route is a shortcut (the rest of the route stays).
-  const directToLabel = (target: { lat: number; lng: number }) =>
-    shortcutTargetIndex(waypoints, activeLeg, target) >= 0 ? 'Take shortcut' : 'Direct to'
+  }, [waypoints, legOverrides, activeLeg, replaceRoute, alternate, setAlternate])
+  // A point further along the route is a shortcut (the rest of the route
+  // stays); labels per kind come from DIRECT_ACTION_LABELS.
+  const directKind = (target: { lat: number; lng: number }) => directActionKind(waypoints, activeLeg, target)
 
   // Waypoint reminder — fire when activeWpIdx changes while flying, if the
   // new active-leg destination has a pilot-entered free-text note.
@@ -907,10 +907,13 @@ function MapScreenForCountry() {
     }
   }, [status])
 
-  // Closes the long-press bubble from callbacks declared before its state.
-  const setLongPressMenuRef = React.useRef<(v: null) => void>(() => {})
+  // Map long-press bubble at the pressed spot (x/y in the overlay's
+  // coordinates): Save place / Add to route / Direct to here. After Save it
+  // says what was saved, with Rename. Declared here: the tap handlers below
+  // close it.
+  const [longPressMenu, setLongPressMenu] = useState<{ lat: number; lng: number; x: number; y: number; saved?: { id: string; name: string }; saveFailed?: boolean } | null>(null)
   const handleFeatureTap = useCallback(async (features: Feature[], tapLngLat: [number, number]) => {
-    setLongPressMenuRef.current(null)
+    setLongPressMenu(null)
     // First non-airspace, non-route feature — checked BEFORE the airspace
     // point-in-polygon query below. Aerodromes/navaids/waypoints/obstacles
     // very often sit physically inside their own ATZ/CTR polygon, so querying
@@ -1218,7 +1221,7 @@ function MapScreenForCountry() {
   useEffect(() => { if (flyingActive) setExtending(false) }, [flyingActive])
   const handleLegPress = useCallback((leg: number, screenPoint?: [number, number]) => {
     const text = flyingActive
-      ? 'Unlocked for 10 s: drag its middle, ends or level'
+      ? `Unlocked for ${LEG_UNLOCK_S} s: drag its middle, ends or level`
       : 'Drag its middle to add a point, or its ends'
     if (flyingActive) setUnlockedLeg(leg)
     else setSelectedLeg(leg)
@@ -1228,9 +1231,9 @@ function MapScreenForCountry() {
     // Map coordinates start under the status bar (the map bleeds under it),
     // the overlay container below it.
     if (screenPoint) { setRoutePopover({ kind: 'leg', leg, x: screenPoint[0], y: screenPoint[1] - mapBleedTopRef.current, text }); setRouteHint(null) }
-    else { setRoutePopover(null); setRouteHint(flyingActive ? 'Leg unlocked for 10 s: drag its level, middle or ends' : text) }
+    else { setRoutePopover(null); setRouteHint(flyingActive ? `Leg unlocked for ${LEG_UNLOCK_S} s: drag its level, middle or ends` : text) }
   }, [flyingActive])
-  const handleRouteMiss = useCallback(() => { setSelectedLeg(null); setSelectedPoint(null); setRoutePopover(null); setLongPressMenuRef.current(null) }, [])
+  const handleRouteMiss = useCallback(() => { setSelectedLeg(null); setSelectedPoint(null); setRoutePopover(null); setLongPressMenu(null) }, [])
   // The leg bubble is a hint: it goes after a few seconds (the selection stays).
   useEffect(() => {
     if (routePopover?.kind !== 'leg') return
@@ -1289,7 +1292,7 @@ function MapScreenForCountry() {
   }, [followReturnAtStore])
   const handleUserPan = useCallback(() => {
     setRoutePopover(null)
-    setLongPressMenuRef.current(null)
+    setLongPressMenu(null)
     setFollowGps(false)
     setLocCentred(false)
     clearFollowReturn()
@@ -1443,7 +1446,7 @@ function MapScreenForCountry() {
 
   // Tap or long-press on a route point: its bubble (routePopover). There is
   // no separate bigger menu: the bubble holds every point action.
-  const handleWaypointPress = useCallback((index: number, _lat: number, _lng: number, features: Feature[], tapLngLat: [number, number], screenPoint: [number, number]) => {
+  const handleWaypointPress = useCallback((index: number, features: Feature[], lngLat: [number, number], screenPoint: [number, number]) => {
     const under = features.filter(f => {
       const p = f.properties ?? {}
       return f.geometry?.type === 'Point' && p.featureType !== 'wp' && p.featureType !== 'leg' && !p.notamId && !p.cluster_id
@@ -1454,9 +1457,9 @@ function MapScreenForCountry() {
     setSelectedPoint(index)
     setSelectedLeg(null)
     setRouteHint(null)
-    setLongPressMenuRef.current(null)
+    setLongPressMenu(null)
     if (flyingActive) setUnlockedLeg(null)
-    setRoutePopover({ kind: 'point', wpIdx: index, x: screenPoint[0], y: screenPoint[1] - mapBleedTopRef.current, info: under.length ? { features: under, lngLat: tapLngLat } : undefined })
+    setRoutePopover({ kind: 'point', wpIdx: index, x: screenPoint[0], y: screenPoint[1] - mapBleedTopRef.current, info: under.length ? { features: under, lngLat } : undefined })
   }, [flyingActive])
   // The point bubble goes with the selection (flight unlock expiring, a tap
   // elsewhere, another leg tapped).
@@ -1519,11 +1522,7 @@ function MapScreenForCountry() {
   // on the ground "Add to route (this point)" / "Start route here" (taps
   // while extending snap to map features, so this is how a free point is
   // added), in flight "Direct to here".
-  // A bubble at the long-pressed spot (x/y in the overlay's coordinates).
-  // After Save it says what was saved, with Rename.
-  const [longPressMenu, setLongPressMenu] = useState<{ lat: number; lng: number; x: number; y: number; saved?: { id: string; name: string } } | null>(null)
   useEffect(() => { setLongPressMenu(null) }, [flyingActive])
-  setLongPressMenuRef.current = setLongPressMenu
   // Name prompt for a place: a new one, or renaming `id` (just saved from the bubble).
   const [savingWpAt,    setSavingWpAt]    = useState<{ lat: number; lng: number; id?: string } | null>(null)
   const [wpSaveName,    setWpSaveName]    = useState('')
@@ -1542,8 +1541,14 @@ function MapScreenForCountry() {
     if (!m) return
     const id = Crypto.randomUUID()
     const name = nextPlaceName(userWaypoints.map(w => w.name))
-    void saveWaypoint({ id, name, lat: m.lat, lng: m.lng, folder: '', updatedAt: Date.now() })
-    setLongPressMenu({ ...m, saved: { id, name } })
+    // Confirm only once it is stored: a failed write must not read as saved.
+    saveWaypoint({ id, name, lat: m.lat, lng: m.lng, folder: '', updatedAt: Date.now() }).then(
+      () => setLongPressMenu(p => (p && p.lat === m.lat && p.lng === m.lng ? { ...m, saved: { id, name } } : p)),
+      (err) => {
+        console.warn('[place] save failed', err)
+        setLongPressMenu(p => (p && p.lat === m.lat && p.lng === m.lng ? { ...m, saveFailed: true } : p))
+      },
+    )
   }, [longPressMenu, userWaypoints, saveWaypoint])
   // The saved-confirmation bubble goes after a few seconds.
   useEffect(() => {
@@ -1772,6 +1777,7 @@ function MapScreenForCountry() {
         ) : (
           <MapPopover
             x={longPressMenu.x} y={longPressMenu.y}
+            text={longPressMenu.saveFailed ? 'Could not save. Try again.' : undefined}
             actions={[
               { key: 'save', icon: 'bookmark-outline', label: 'Save', accessibilityLabel: 'Save this spot as a place', onPress: handleQuickSavePlace },
               // Ground: this exact point goes on the end of the route (taps
@@ -1801,8 +1807,8 @@ function MapScreenForCountry() {
           if (info) actions.push({ key: 'details', icon: 'information-circle-outline', accessibilityLabel: 'Details',
             onPress: () => { setRoutePopover(null); void handleFeatureTap(info.features, info.lngLat) } })
           if (flyingActive && activePosition && idx >= activeWpIdx) {
-            const label = directToLabel(wp)
-            actions.push({ key: 'direct', icon: 'airplane-outline', label: label === 'Take shortcut' ? 'Shortcut' : 'Direct', accessibilityLabel: label,
+            const labels = DIRECT_ACTION_LABELS[directKind(wp)]
+            actions.push({ key: 'direct', icon: 'airplane-outline', label: labels.short, accessibilityLabel: labels.long,
               onPress: () => { setRoutePopover(null); flyDirect(wp) } })
           }
           actions.push({ key: 'remove', icon: 'trash-outline', accessibilityLabel: 'Remove from route', danger: true,
@@ -1812,7 +1818,7 @@ function MapScreenForCountry() {
               x={routePopover.x} y={routePopover.y}
               title={wp.name ?? `WP${idx + 1}`}
               // In flight the point is draggable for LEG_UNLOCK_MS only: say so.
-              text={flyingActive ? 'unlocked 10 s' : undefined}
+              text={flyingActive ? `unlocked ${LEG_UNLOCK_S} s` : undefined}
               actions={actions}
               testID="route-point-popover"
             />
@@ -1830,7 +1836,7 @@ function MapScreenForCountry() {
           testID="save-waypoint-sheet"
         >
           <View style={{ paddingHorizontal: scaledTheme.space4, paddingTop: scaledTheme.space3, gap: scaledTheme.space2 }}>
-          <Text style={styles.longPressMenuCoord}>
+          <Text style={styles.savePromptCoord}>
             Save place at {savingWpAt?.lat.toFixed(5)}, {savingWpAt?.lng.toFixed(5)}
           </Text>
           <TextInput
@@ -1844,11 +1850,11 @@ function MapScreenForCountry() {
             onSubmitEditing={handleConfirmSaveWaypoint}
           />
           <View style={{ flexDirection: 'row', gap: scaledTheme.space2 }}>
-            <TouchableOpacity style={styles.longPressMenuBtn} onPress={handleConfirmSaveWaypoint}>
-              <Text style={styles.longPressMenuBtnTxt}>Save</Text>
+            <TouchableOpacity style={styles.savePromptBtn} onPress={handleConfirmSaveWaypoint}>
+              <Text style={styles.savePromptBtnTxt}>Save</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.longPressMenuCancel} onPress={() => { setSavingWpAt(null); setWpSaveName('') }}>
-              <Text style={styles.longPressMenuCancelTxt}>Cancel</Text>
+            <TouchableOpacity style={styles.savePromptCancel} onPress={() => { setSavingWpAt(null); setWpSaveName('') }}>
+              <Text style={styles.savePromptCancelTxt}>Cancel</Text>
             </TouchableOpacity>
           </View>
           </View>
@@ -2213,8 +2219,8 @@ function MapScreenForCountry() {
           const wp: RouteWaypoint = { lat: aerodromeFeature.lat, lng: aerodromeFeature.lng, name: aerodromeFeature.icao || aerodromeFeature.name }
           if (flyingActive) {
             if (!activePosition) return undefined
-            const label = directToLabel(wp)
-            return { short: label === 'Take shortcut' ? 'Shortcut' : 'Direct', label, icon: 'airplane' as const, onPress: () => flyDirect(wp) }
+            const labels = DIRECT_ACTION_LABELS[directKind(wp)]
+            return { short: labels.short, label: labels.long, icon: 'airplane' as const, onPress: () => flyDirect(wp) }
           }
           return waypoints.length
             ? { short: 'Route', label: 'Add to the end of the route', icon: 'add' as const, onPress: () => { addWaypoint(wp); setExtending(true) } }
@@ -2232,7 +2238,7 @@ function MapScreenForCountry() {
         // Ground: append and keep extending from it. Flight: Direct To (a
         // navaid / reporting point / place is an en-route fix: rejoin after it).
         addLabel={flyingActive
-          ? (featureInfo?.lngLat ? directToLabel({ lng: featureInfo.lngLat[0], lat: featureInfo.lngLat[1] }) : 'Direct to')
+          ? DIRECT_ACTION_LABELS[featureInfo?.lngLat ? directKind({ lng: featureInfo.lngLat[0], lat: featureInfo.lngLat[1] }) : 'direct'].long
           : waypoints.length ? '+ Add to route' : '+ Start route here'}
         onAddToRoute={(lngLat, name) => {
           const wp = { lng: lngLat[0], lat: lngLat[1], name }
@@ -2249,21 +2255,14 @@ function makeStyles(theme: ScaledTheme) {
   container:    { flex: 1, backgroundColor: theme.surfaceBase },
   mapContainer: { flex: 1 },
   statusScrim: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 60, backgroundColor: 'rgba(10,14,22,0.35)' },
-  longPressMenu: {
-    position: 'absolute', left: 16, right: 16, bottom: 24,
-    backgroundColor: theme.surfaceSheet, borderRadius: theme.radiusMd,
-    borderWidth: 1, borderColor: theme.borderSubtle,
-    padding: theme.space3, gap: theme.space2,
-    overflow: 'hidden',
-  },
-  longPressMenuCoord: { color: theme.textMuted, fontSize: theme.textXs, marginBottom: theme.space1 },
-  longPressMenuBtn: {
+  savePromptCoord: { color: theme.textMuted, fontSize: theme.textXs, marginBottom: theme.space1 },
+  savePromptBtn: {
     flexDirection: 'row', alignItems: 'center', gap: theme.space2,
     paddingVertical: theme.space2, paddingHorizontal: theme.space2,
   },
-  longPressMenuBtnTxt:    { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '600' },
-  longPressMenuCancel:    { paddingVertical: theme.space2, paddingHorizontal: theme.space2, alignItems: 'center' },
-  longPressMenuCancelTxt: { color: theme.textMuted, fontSize: theme.textSm },
+  savePromptBtnTxt:    { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '600' },
+  savePromptCancel:    { paddingVertical: theme.space2, paddingHorizontal: theme.space2, alignItems: 'center' },
+  savePromptCancelTxt: { color: theme.textMuted, fontSize: theme.textSm },
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
   modalBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' },
   modalSheet: {

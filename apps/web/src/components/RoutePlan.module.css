@@ -141,8 +141,9 @@
   position: sticky;
   top: 0;
   background: var(--surface-elevated);
-  color: var(--text-faint);
-  font-size: 9px;
+  /* --text-muted: readable contrast (AA) at this small size. */
+  color: var(--text-muted);
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -160,10 +161,10 @@
 .btnCell { width: 14px; padding: 0 2px; text-align: center; }
 
 /* Narrower pane: ETA first (ETE + departure time give it, and widening
-   the pane shows it), then true track, then magnetic heading go. */
+   the pane shows it), then true track. The magnetic heading (what is
+   flown) always stays; the open leg editor repeats the true track. */
 @container routeplan (max-width: 380px) { .colEta { display: none; } }
 @container routeplan (max-width: 330px) { .colTt { display: none; } }
-@container routeplan (max-width: 290px) { .colWca { display: none; } }
 
 .rowActive {
   background: rgba(96, 165, 250, 0.08);
@@ -174,9 +175,6 @@
   outline: 1px dashed rgba(96, 165, 250, 0.6);
   outline-offset: -1px;
 }
-
-/* Chip has its own always-on styling now (see .arrow above); the old
-   hover-only colour bump is superseded and no longer needed. */
 
 .wp {
   color: var(--text-primary);
@@ -216,7 +214,6 @@
   white-space: nowrap;
 }
 
-/* Wind Correction Angle — shown between °M and °T when global/per-leg wind is set */
 /* Magnetic heading (MT + WCA), shown when wind is known. */
 .wca {
   color: var(--accent-orange);
@@ -389,6 +386,12 @@
    level / speed / wind, red when the planned level is below MSA. */
 .chev {
   display: inline-block;
+  /* A button (opens the leg editor): no button chrome. */
+  background: none;
+  border: none;
+  padding: 2px;
+  font-family: inherit;
+  cursor: pointer;
   color: var(--text-faint);
   font-size: 13px;
   line-height: 1;
@@ -398,9 +401,17 @@
 .chevSet { color: var(--accent-blue-bright); }
 .chevMsa { color: var(--accent-red); }
 
-/* Level cell: click to type a new level. */
+/* Level cell: click to type a new level (the value is a button). */
 .lvlEditable { cursor: text; }
-.lvlEditable:hover { text-decoration: underline dotted; text-underline-offset: 2px; }
+.lvlBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: text;
+}
+.lvlBtn:hover { text-decoration: underline dotted; text-underline-offset: 2px; }
 .lvlMsa { color: var(--accent-red); }
 .lvlInput {
   width: 52px;
