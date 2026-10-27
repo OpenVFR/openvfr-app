@@ -207,6 +207,8 @@ export const MIN_CHART_H      = 0
 export const MAX_CHART_H      = 400
 export const COLLAPSE_THRESHOLD = 24   // below this, treat as "collapsed"
 const MARGIN_L  = 34   // room for FL/alt ticks
+/** Half the drawn width of the aircraft silhouette (incl. its halo), px. */
+const AC_GLYPH_HALF_W = 14
 const MARGIN_R  = 10
 const MARGIN_T  = 10
 const MARGIN_B  = 30   // tick labels + the wind-barb row under the x axis
@@ -1688,7 +1690,8 @@ export function VerticalProfile({
     if (currentDistNm == null || !scrollable || draggingRef.current) return
     if (Date.now() < manualPanUntilRef.current) return
     const markerX = xOf(currentDistNm)
-    const EDGE = 40
+    // Re-centre before the aircraft reaches the pinned altitude axis.
+    const EDGE = MARGIN_L + AC_GLYPH_HALF_W + 6
     const x = scrollXRef.current
     if (markerX < x + EDGE || markerX > x + chartW - EDGE) {
       setScroll(Math.max(0, Math.min(maxScrollX, markerX - chartW / 2)))
@@ -2289,6 +2292,10 @@ export function VerticalProfile({
       w: Math.ceil((maxX + PAD) / 64) * 64,
       ticks, segments, dots,
       acX: PAD,
+      // The silhouette (about 14 px either side) is kept clear of the pinned
+      // altitude axis at the chart's left edge: near the departure it would
+      // otherwise be half hidden. The dashed position line stays exact.
+      glyphX: PAD + Math.max(0, MARGIN_L + AC_GLYPH_HALF_W - ax),
       acY: currentAltFt != null ? ry(yOf(currentAltFt)) : null,
       pitch: Math.round(pitchDeg),
     }
@@ -2548,53 +2555,6 @@ export function VerticalProfile({
                 />
 
               </Svg>
-              {/* Aircraft-dependent parts: own Svg in coordinates relative to the
-                  aircraft (see ownLayer); the wrapper View moves, the Svg content
-                  only changes when speed, altitude or vertical speed change. */}
-              {ownLayer && (
-              <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: ownLayer.w, height: chartH, transform: [{ translateX: ownLayer.left }] }}>
-              <Svg width={ownLayer.w} height={chartH}>
-                {/* ── Trajectory ticks ─────────────────────────────────── */}
-                {ownLayer.ticks.map((x, i) => (
-                  <SvgLine key={`traj-${i}`} x1={x} y1={MARGIN_T} x2={x} y2={MARGIN_T + plotH}
-                    stroke="rgba(250,204,21,0.70)" strokeWidth={1} strokeDasharray="3,3" />
-                ))}
-
-                {/* ── Vertical-speed-aware trajectory line ────────────────
-                     Climb/descent/level colour follows the *current* vspeed,
-                     linearly extrapolated to each distance tick above —
-                     distinct from the yellow dashed distance/time ticks
-                     (which stay purely horizontal reference marks) and from
-                     the planned line's performance-model path (which
-                     models the level-off/climb schedule from departure;
-                     this one follows the live vertical speed). */}
-                {ownLayer.segments.map((seg, i) => (
-                  <Path key={`trajseg-${i}`} d={seg.path} fill="none"
-                    stroke={seg.below ? DANGER_COLOR : trajectoryAttitudeColor}
-                    strokeWidth={seg.below ? 2.25 : 1.75} strokeDasharray="1,2" opacity={vspeedTrajectory.estimated ? 0.6 : 1} />
-                ))}
-                {ownLayer.dots.map((p, i) => (
-                  <Circle key={`trajdot-${i}`} cx={p.x} cy={p.y} r={p.below ? 3 : 2.5}
-                    fill={p.below ? DANGER_COLOR : trajectoryAttitudeColor} opacity={vspeedTrajectory.estimated ? 0.6 : 1} />
-                ))}
-
-                {/* ── Live position marker + aircraft silhouette ──────── */}
-                <SvgLine x1={ownLayer.acX} y1={MARGIN_T} x2={ownLayer.acX} y2={MARGIN_T + plotH}
-                  stroke="rgba(255,255,255,0.40)" strokeWidth={1} strokeDasharray="3,3" />
-                {ownLayer.acY != null && (
-                  <G transform={`translate(${ownLayer.acX}, ${ownLayer.acY}) rotate(${-ownLayer.pitch})`}>
-                    <Circle r={13} fill="rgba(34,197,94,0.18)" />
-                    {silhouette.map((part, i) => (
-                      <Path key={`ac-part-${i}`} d={part.d} fill={part.fill ?? '#ffffff'} fillOpacity={part.opacity} />
-                    ))}
-                  </G>
-                )}
-              </Svg>
-              </View>
-              )}
-              {flown && (
-                <FlownAircraft store={flownStore} flown={flown} xOf={xOf} yOf={yOf} yMin={yMin} yMax={yMax} silhouette={silhouette} acX={acXSV} acY={acYSV} />
-              )}
 
               {/* ── Overlay: obstacle icons, waypoint/axis text (RN Text for crispness) ──
                   Airspace band class/ceiling chips removed for now — no dedup
@@ -2643,6 +2603,54 @@ export function VerticalProfile({
                   xTicks={xTicks}
                 />
               </View>
+              {/* Drawn after the obstacle / label overlay: the aircraft is on top.
+                  Aircraft-dependent parts: own Svg in coordinates relative to the
+                  aircraft (see ownLayer); the wrapper View moves, the Svg content
+                  only changes when speed, altitude or vertical speed change. */}
+              {ownLayer && (
+              <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: ownLayer.w, height: chartH, transform: [{ translateX: ownLayer.left }] }}>
+              <Svg width={ownLayer.w} height={chartH}>
+                {/* ── Trajectory ticks ─────────────────────────────────── */}
+                {ownLayer.ticks.map((x, i) => (
+                  <SvgLine key={`traj-${i}`} x1={x} y1={MARGIN_T} x2={x} y2={MARGIN_T + plotH}
+                    stroke="rgba(250,204,21,0.70)" strokeWidth={1} strokeDasharray="3,3" />
+                ))}
+
+                {/* ── Vertical-speed-aware trajectory line ────────────────
+                     Climb/descent/level colour follows the *current* vspeed,
+                     linearly extrapolated to each distance tick above —
+                     distinct from the yellow dashed distance/time ticks
+                     (which stay purely horizontal reference marks) and from
+                     the planned line's performance-model path (which
+                     models the level-off/climb schedule from departure;
+                     this one follows the live vertical speed). */}
+                {ownLayer.segments.map((seg, i) => (
+                  <Path key={`trajseg-${i}`} d={seg.path} fill="none"
+                    stroke={seg.below ? DANGER_COLOR : trajectoryAttitudeColor}
+                    strokeWidth={seg.below ? 2.25 : 1.75} strokeDasharray="1,2" opacity={vspeedTrajectory.estimated ? 0.6 : 1} />
+                ))}
+                {ownLayer.dots.map((p, i) => (
+                  <Circle key={`trajdot-${i}`} cx={p.x} cy={p.y} r={p.below ? 3 : 2.5}
+                    fill={p.below ? DANGER_COLOR : trajectoryAttitudeColor} opacity={vspeedTrajectory.estimated ? 0.6 : 1} />
+                ))}
+
+                {/* ── Live position marker + aircraft silhouette ──────── */}
+                <SvgLine x1={ownLayer.acX} y1={MARGIN_T} x2={ownLayer.acX} y2={MARGIN_T + plotH}
+                  stroke="rgba(255,255,255,0.40)" strokeWidth={1} strokeDasharray="3,3" />
+                {ownLayer.acY != null && (
+                  <G transform={`translate(${ownLayer.glyphX}, ${ownLayer.acY}) rotate(${-ownLayer.pitch})`}>
+                    <Circle r={13} fill="rgba(34,197,94,0.18)" />
+                    {silhouette.map((part, i) => (
+                      <Path key={`ac-part-${i}`} d={part.d} fill={part.fill ?? '#ffffff'} fillOpacity={part.opacity} />
+                    ))}
+                  </G>
+                )}
+              </Svg>
+              </View>
+              )}
+              {flown && (
+                <FlownAircraft store={flownStore} flown={flown} xOf={xOf} yOf={yOf} yMin={yMin} yMax={yMax} silhouette={silhouette} acX={acXSV} acY={acYSV} />
+              )}
               </Animated.View>
               {/* Scrub crosshair: fixed to the viewport, positioned on the
                   UI thread (crosshairStyle) so it tracks the finger without
