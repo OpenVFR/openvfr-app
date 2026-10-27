@@ -327,9 +327,11 @@ export type AviationMapProps = {
    *  (route activate/deactivate). */
   routeVisible?: boolean
   /** Per-leg label (magnetic heading + IAS) drawn along each leg, mirrors
-   *  web's route-leg-labels layer. Hidden while planning/adjusting so the
-   *  midpoint drag handles are not covered. */
+   *  web's route-leg-labels layer. */
   showLegLabels?: boolean
+  /** Leg whose label is left out (the selected / unlocked leg: its label
+   *  would sit on its own drag handle and hint bubble). */
+  legLabelHiddenLeg?: number | null
   /** Planned IAS per leg (kt), index = leg; undefined entries show the
    *  heading only. */
   legIasKts?: (number | undefined)[]
@@ -1798,6 +1800,7 @@ export function AviationMap({
   onPlanCandidates,
   routeVisible = true,
   showLegLabels = false,
+  legLabelHiddenLeg = null,
   legIasKts,
   rulerMode = false,
   rulerPoints,
@@ -3049,6 +3052,7 @@ export function AviationMap({
     // While dragging only the labels of the legs being changed go: hiding
     // them all freed space the chevrons then jumped into on every leg.
     const skip = ghostLegKey ? ghostLegKey.split(',').map(Number) : []
+    if (legLabelHiddenLeg != null) skip.push(legLabelHiddenLeg)
     return {
       type: 'FeatureCollection',
       features: waypoints.slice(0, -1).flatMap((from, i) => {
@@ -3067,7 +3071,7 @@ export function AviationMap({
         }]
       }),
     }
-  }, [showLegLabels, ghostLegKey, waypoints, legIasKts, distanceUnit])
+  }, [showLegLabels, legLabelHiddenLeg, ghostLegKey, waypoints, legIasKts, distanceUnit])
   // Leg-midpoint drag handles must track a waypoint's live drag position too
   // — otherwise the handle for a leg touching the waypoint being dragged
   // stays planted at the stale pre-drag midpoint, showing as a stray extra

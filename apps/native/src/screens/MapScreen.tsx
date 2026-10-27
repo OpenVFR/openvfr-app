@@ -1733,7 +1733,10 @@ function MapScreenForCountry() {
           onPlanEmptyTap={handlePlanEmptyTap}
           // Labels hide while extending or with a leg unlocked, so the
           // route under the finger stays clear.
-          showLegLabels={!extending && unlockedLeg == null && selectedLeg == null}
+          // Only the selected leg's own label goes (it would cover its
+          // handle); the others stay readable while editing.
+          showLegLabels={!extending}
+          legLabelHiddenLeg={unlockedLeg ?? selectedLeg}
           legIasKts={legIasKts}
           pastTrack={pastTrack}
           screenFocused={screenFocused}
