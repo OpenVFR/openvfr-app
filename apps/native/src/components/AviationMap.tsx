@@ -313,6 +313,8 @@ export type AviationMapProps = {
   onRouteMiss?: () => void
   /** Ring the route's last point: the route is being extended from it. */
   extendingEnd?: boolean
+  /** Ring this route point: selected for editing (tap on the ground). */
+  selectedPoint?: number | null
   /** Fired when a plan-mode tap resolves to exactly one waypoint (raw
    *  coordinate or a single unambiguous snap target). */
   onPlanTap?: (wp: RouteWaypoint) => void
@@ -1752,6 +1754,7 @@ export function AviationMap({
   unlockedPoint = null,
   onRouteMiss,
   extendingEnd = false,
+  selectedPoint = null,
   onPlanTap,
   onPlanCandidates,
   routeVisible = true,
@@ -2326,8 +2329,10 @@ export function AviationMap({
     // — a visible flicker. Instead, dragPreview and the commit both clear/
     // apply together once the real answer is known.
     const commit = (wp: RouteWaypoint) => {
-      dragPreviewRef.current = null
-      setDragPreview(null)
+      // The preview stays until the changed route comes back as the
+      // `waypoints` prop (clearPreviewOnRoute), so the line never shows the
+      // old route for a frame in between.
+      clearPreviewOnRoute()
       // Dropped onto the previous/next point: remove instead of leaving a
       // zero-length leg.
       if (neighbourAtDrop(dragWaypointsRef.current, wpIndex, wp) >= 0 && onWaypointRemove) {
@@ -2384,6 +2389,25 @@ export function AviationMap({
   const [legDragPreview, setLegDragPreview] = useState<LegDragPreviewT>(null)
   const legDragPreviewRef = useRef<LegDragPreviewT>(null)
 
+  // Clear the drag previews once the edited route arrives as the
+  // `waypoints` prop (or after a short fallback when nothing changes, e.g. a
+  // picker cancelled), instead of at release: clearing first drew the old
+  // route for a frame, so the line jumped back before landing.
+  const previewClearPendingRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clearPreviewsNow = useCallback(() => {
+    if (previewClearPendingRef.current) { clearTimeout(previewClearPendingRef.current); previewClearPendingRef.current = null }
+    dragPreviewRef.current = null
+    setDragPreview(null)
+    legDragPreviewRef.current = null
+    setLegDragPreview(null)
+  }, [])
+  const clearPreviewOnRoute = useCallback(() => {
+    if (previewClearPendingRef.current) clearTimeout(previewClearPendingRef.current)
+    previewClearPendingRef.current = setTimeout(clearPreviewsNow, 1500)
+  }, [clearPreviewsNow])
+  useEffect(() => {
+    if (previewClearPendingRef.current) clearPreviewsNow()
+  }, [waypoints, clearPreviewsNow])
   const startLegDrag = useCallback((legIndex: number) => {
     legDragRef.current = { legIndex }
     setLegDragging(true)
@@ -2405,12 +2429,13 @@ export function AviationMap({
     const d = legDragRef.current
     const preview = legDragPreviewRef.current
     legDragRef.current = null
-    legDragPreviewRef.current = null
     setLegDragging(false)
-    setLegDragPreview(null)
     suppressNextPressRef.current = true
     lastDragEndRef.current = Date.now()
-    if (!d || !preview || !d.moved) return
+    if (!d || !preview || !d.moved) { clearPreviewsNow(); return }
+    // Keep drawing the inserted point until the new route arrives (or the
+    // fallback clears it when nothing is inserted).
+    clearPreviewOnRoute()
     const legIndex = d.legIndex
     legDragSeqRef.current++
     const fallbackRaw: RouteWaypoint = { lat: preview.lat, lng: preview.lng }
@@ -2424,15 +2449,17 @@ export function AviationMap({
         const wps = dragWaypointsRef.current
         const onEnd = (wp: RouteWaypoint) => neighbourAtDrop(wps, legIndex, wp) === legIndex + 1 || neighbourAtDrop(wps, legIndex + 1, wp) === legIndex
         const real = all.filter((c) => !onEnd(c.waypoint))
-        if (all.length > 0 && real.length === 0) return
-        if (real.length === 0) { if (!onEnd(raw)) onLegInsert?.(legIndex, raw); return }
+        if (all.length > 0 && real.length === 0) { clearPreviewsNow(); return }
+        if (real.length === 0) { if (!onEnd(raw)) onLegInsert?.(legIndex, raw); else clearPreviewsNow(); return }
         if (real.length === 1) { onLegInsert?.(legIndex, real[0].waypoint); return }
         const candidates = sortSnapCandidates([...real, { kind: 'PT', waypoint: raw }], raw)
         if (!onLegInsertCandidates) { onLegInsert?.(legIndex, candidates[0]?.waypoint ?? raw); return }
+        // Picker: back to the route as it is until a choice is made.
+        clearPreviewsNow()
         onLegInsertCandidates(legIndex, candidates)
       })
       .catch(() => onLegInsert?.(legIndex, fallbackRaw))
-  }, [onLegInsert, onLegInsertCandidates, liftedLngLat, snapCandidatesAt, resetDragHandles])
+  }, [onLegInsert, onLegInsertCandidates, liftedLngLat, snapCandidatesAt, resetDragHandles, clearPreviewsNow, clearPreviewOnRoute])
 
   // Fly to home airfield once when initialCenter first resolves (async ICAO lookup)
   const homeCenteredRef = useRef(false)
@@ -2905,7 +2932,7 @@ export function AviationMap({
     : dragPreview ? [dragPreview.wpIndex - 1, dragPreview.wpIndex]
     : legDragPreview ? [legDragPreview.legIndex, legDragPreview.legIndex + 1]
     : []
-  const routeLegs   = tagLegs(routeLegsGeoJSON(legDragging ? withInserted(waypoints, legDragPreview) : waypoints, dragPreview), previewLegs)
+  const routeLegs   = tagLegs(routeLegsGeoJSON(legDragPreview ? withInserted(waypoints, legDragPreview) : waypoints, dragPreview), previewLegs)
   // Original legs being replaced: both legs at a moved point, the one leg
   // being split at a midpoint drag.
   const ghostLegIdx = !routeDragActive ? []
@@ -3334,10 +3361,10 @@ export function AviationMap({
               }}
             />
             {/* The route is being extended from its last point. */}
-            {extendingEnd && (
+            {(extendingEnd || selectedPoint != null) && (
               <Layer
                 key="route-end-selected" id="route-end-selected" type="circle"
-                filter={['==', ['get', 'wpIndex'], waypoints.length - 1]}
+                filter={['==', ['get', 'wpIndex'], extendingEnd ? waypoints.length - 1 : (selectedPoint ?? -1)]}
                 paint={{ 'circle-radius': 15, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-width': 3, 'circle-stroke-color': DRAG_ROUTE_COLOR }}
               />
             )}

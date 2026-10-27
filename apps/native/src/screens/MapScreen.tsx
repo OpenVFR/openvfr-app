@@ -1179,7 +1179,10 @@ function MapScreenForCountry() {
   // Any route change or flight start/stop clears it. Explicit actions (route
   // point menu, Direct To) need no unlock.
   const [selectedLeg, setSelectedLeg] = useState<number | null>(null)
-  useEffect(() => { setSelectedLeg(null) }, [waypoints, flyingActive])
+  // Route point selected by a tap (ground): draggable and ringed, like a
+  // selected leg's ends.
+  const [selectedPoint, setSelectedPoint] = useState<number | null>(null)
+  useEffect(() => { setSelectedLeg(null); setSelectedPoint(null) }, [waypoints, flyingActive])
   const [unlockedLeg, setUnlockedLeg] = useState<number | null>(null)
   useEffect(() => {
     if (unlockedLeg == null) return
@@ -1196,9 +1199,10 @@ function MapScreenForCountry() {
       return
     }
     setSelectedLeg(leg)
+    setSelectedPoint(null)
     setRouteHint('Leg selected: drag its middle to add a point, or its end points. Tap the map to finish.')
   }, [flyingActive])
-  const handleRouteMiss = useCallback(() => { setSelectedLeg(null) }, [])
+  const handleRouteMiss = useCallback(() => { setSelectedLeg(null); setSelectedPoint(null) }, [])
 
   // ── Location button: 'off' | 'passive' outside flight (Follow is the
   // flight-mode followGps state). Passive draws the own-position dot via
@@ -1425,7 +1429,10 @@ function MapScreenForCountry() {
       return f.geometry?.type === 'Point' && p.featureType !== 'wp' && p.featureType !== 'leg' && !p.notamId && !p.cluster_id
     })
     setWpActionMenu({ lat, lng, wpIdx: index, info: under.length ? { features: under, lngLat: tapLngLat } : undefined })
-  }, [])
+    // Ground: the tapped point is selected for dragging (until the route
+    // changes or a tap misses the route), menu or not.
+    if (!flyingActive) { setSelectedPoint(index); setSelectedLeg(null) }
+  }, [flyingActive])
 
   const { waypoints: userWaypoints, saveWaypoint } = useUserWaypointContext()
   const userWaypointsFC = useMemo<FeatureCollection>(() => ({
@@ -1664,7 +1671,9 @@ function MapScreenForCountry() {
           unlockedLeg={flyingActive ? unlockedLeg : selectedLeg}
           unlockedPoint={flyingActive ? null
             : wpActionMenu ? wpActionMenu.wpIdx
+            : selectedPoint != null ? selectedPoint
             : extending && waypoints.length > 0 ? waypoints.length - 1 : null}
+          selectedPoint={flyingActive ? null : selectedPoint}
           planningMode={extending}
           extendingEnd={extending && waypoints.length > 0}
           onPlanTap={handlePlanTap}
