@@ -1416,7 +1416,13 @@ function MapScreenForCountry() {
   // banner offers Undo / Redo and a one-tap revert to the route as it was
   // before the first change, until Apply / Keep. Starting or ending a
   // flight closes the session, so a revert never crosses that boundary.
-  useEffect(() => { setEditSessionArmed(true) }, [setEditSessionArmed])
+  // Only while the map is the focused screen: edits made in the flight plan
+  // (Plan screen stacks above the map) must not open a session, or the banner
+  // would be up on return. Leaving the map keeps its open edits (Apply).
+  useEffect(() => {
+    setEditSessionArmed(screenFocused)
+    if (!screenFocused) applyEditSession()
+  }, [screenFocused, setEditSessionArmed, applyEditSession])
   useEffect(() => { applyEditSession() }, [flyingActive, applyEditSession])
 
   const handlePlanTap = useCallback((wp: RouteWaypoint) => {
