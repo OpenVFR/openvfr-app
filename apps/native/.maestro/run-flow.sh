@@ -21,6 +21,9 @@ raw="$(mktemp -d)"
 trap 'rm -rf "$raw"' EXIT
 mkdir -p "$out"
 
+# Crash reports newer than this belong to this run (see the end).
+touch "$raw/.started"
+
 status=0
 maestro "$@" test --test-output-dir="$raw" "$here/screenshots.yaml" || status=$?
 
@@ -78,5 +81,19 @@ while IFS= read -r -d '' f; do
   echo "::error::app crashed during the flow -- $out/debug/crash-report.txt"
   head -c 4000 "$f"; echo
 done < <(find "$raw" -path '*/logs/*' -name 'crash-report.txt' -print0)
+
+# iOS simulator: Maestro does not always notice the app died (the flow just
+# fails on the next assertion, with the home screen showing). The simulator
+# writes the app's crash report to the host's DiagnosticReports; keep the
+# ones written during this flow. Like crash-report.txt they hold stacks, not
+# typed text.
+if [ "$status" != 0 ] && [ -d "$HOME/Library/Logs/DiagnosticReports" ]; then
+  while IFS= read -r -d '' f; do
+    mkdir -p "$out/debug"
+    cp "$f" "$out/debug/"
+    echo "::error::app crashed during the flow -- $out/debug/$(basename "$f")"
+    head -c 4000 "$f"; echo
+  done < <(find "$HOME/Library/Logs/DiagnosticReports" -maxdepth 1 -name 'OpenVFR*.ips' -newer "$raw/.started" -print0)
+fi
 
 exit "$status"

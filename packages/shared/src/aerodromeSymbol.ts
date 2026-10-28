@@ -38,14 +38,21 @@ export const AERODROME_SYMBOL_COLORS = {
   minor: '#64748b',
 }
 
-/** Style expression: the image id for an aerodrome feature. */
+/**
+ * Style expression: the image id for an aerodrome feature.
+ *
+ * Every `case` condition here is a plain comparison or `has`, never `!`,
+ * `all` or `any`: MapLibre iOS converts layer expressions through
+ * NSExpression, and in a `case` with more than one condition it drops any
+ * compound condition (the layer then throws "Invalid property value" and the
+ * app aborts when the map style loads). See ./iosSafeExpression.ts.
+ */
 export const aerodromeIconImage: unknown[] = [
   'case',
   ['==', ['get', 'type'], 'HP'],
   ['case', ['==', ['get', 'ad_use'], 'military'], 'ad-heliport-mil', 'ad-heliport'],
-  // Data built before the symbol properties existed: keep the plain symbol.
-  ['!', ['has', 'ad_use']], 'ad-airport',
   ['==', ['get', 'ad_use'], 'closed'], 'ad-closed',
+  ['has', 'ad_use'],
   [
     'concat', 'ad-',
     [
@@ -56,8 +63,10 @@ export const aerodromeIconImage: unknown[] = [
       ['case', ['==', ['get', 'towered'], true], 'civ', 'civ-open'],
     ],
     '-',
-    ['case', ['!', ['has', 'rwy_brg']], 'none', ['==', ['get', 'rwy_paved'], true], 'hard', 'soft'],
+    ['case', ['has', 'rwy_brg'], ['case', ['==', ['get', 'rwy_paved'], true], 'hard', 'soft'], 'none'],
   ],
+  // Data built before the symbol properties existed: keep the plain symbol.
+  'ad-airport',
 ]
 
 /** Style expression: icon rotation (clockwise degrees), with
