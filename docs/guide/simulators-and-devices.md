@@ -49,11 +49,11 @@ WebSocket bridge only. The bridge script is `nmea-ws-bridge.mjs` in the
 External simulator flights are not logged unless *Log simulated flights* is
 on.
 
-## External GPS and receivers (native)
+## External GPS and receivers
 
-Native can read GDL90 data (for example from a portable ADS-B receiver over
-its Wi-Fi on UDP 4000) as a source of position and traffic. *Support and
-exact behaviour of receiver inputs may vary by device.*
+Portable ADS-B or FLARM receivers (GDL90 over Wi-Fi, FLARM dongles) are
+not supported as a position or traffic source yet. Traffic comes from the
+OpenVFR server. See [Air traffic](./air-traffic.md).
 
 ## Barometer and vario (native)
 

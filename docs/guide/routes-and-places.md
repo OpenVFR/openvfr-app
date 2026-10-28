@@ -12,14 +12,14 @@ restored when you reopen the app, even if you never save it.
 
 Route actions (the **⋯** menu in the planning panel):
 
-- **Find a destination** (see [Aerodromes and briefing](./aerodromes-and-briefing.md)).
+- **Find a destination** (web menu; on native from the map tools; see [Aerodromes and briefing](./aerodromes-and-briefing.md)).
 - **Reverse** the route.
-- **Export** as GPX or KML.
+- **Export** as GPX (web also KML).
 - **Import** a GPX file.
 - **Close route** takes it off the map. A saved route stays in Saved
   routes, and you are asked first if there are unsaved changes.
 
-Other editing tools: type the whole route as text (for example
+Other editing tools: type the whole route as text (web, for example
 `ESOS ESGG ESSA`), undo and redo (Ctrl+Z and Ctrl+Shift+Z on the web), and
 reorder waypoints by dragging them in the route table.
 

@@ -16,8 +16,7 @@ Legend: **Yes** = available, **Partial** = available with differences
 
 > **Maintainers:** this table is the single place to record parity. A change
 > that adds, removes or alters a feature on one platform updates its row in
-> the same PR. Rows marked *to confirm* were read from the code and still
-> need a check on a device.
+> the same PR. The table was checked against the code, not yet on devices.
 
 ## Map and data
 
@@ -42,12 +41,12 @@ Legend: **Yes** = available, **Partial** = available with differences
 | Feature | Web | Native | Note |
 |---|---|---|---|
 | Build a route by tapping the map, with snapping | Yes | Yes | |
-| Type a whole route as text (for example `ESOS ESGG ESSA`) | Yes | Partial | *To confirm* on native. |
+| Type a whole route as text (for example `ESOS ESGG ESSA`) | Yes | No | On native, add points by tapping, searching or Find destination. |
 | Undo / redo route changes | Yes | Yes | Web also has keyboard shortcuts. |
 | Per-leg heading, wind correction, time | Yes | Yes | |
 | Forecast wind per leg, manual wind override | Yes | Yes | |
 | Fuel plan for a chosen aircraft | Yes | Yes | |
-| Pre-flight warnings (airspace, below MSA, fuel) | Yes | Partial | Web has a dedicated warnings panel. *To confirm* what native shows. |
+| Pre-flight warnings (airspace, below MSA, fuel) | Yes | Partial | Web has a dedicated warnings panel with all three checks. Native marks a leg below its MSA in red and warns when fuel required exceeds the tank, but has no airspace check in the plan. |
 | Alternate destination | Yes | Yes | |
 | Aircraft profiles | Yes | Yes | |
 | Saved routes, routes sync | Yes | Yes | |
@@ -57,7 +56,9 @@ Legend: **Yes** = available, **Partial** = available with differences
 | "What's here" popup on a map point | Yes | No | Native shows its own popover with Save / Direct / Route actions. |
 | Weather and winds along the route | Yes | Yes | |
 | Vertical profile (terrain, airspace, cloud) | Yes | Yes | Web: Virtual Radar, resizable. Native: vertical profile. |
-| Export route as GPX | Yes | Yes | Web downloads a file; native opens the share sheet. |
+| Export route as GPX, import GPX | Yes | Yes | Web downloads a file; native opens the share sheet. |
+| Export route as KML | Yes | No | |
+| Reverse route | Yes | Yes | |
 
 ## Weather and NOTAMs
 
@@ -91,7 +92,7 @@ Legend: **Yes** = available, **Partial** = available with differences
 | QNH from nearby stations, field QNH, baro prompt | No | Yes | Altitude reference handling is native only. |
 | Simulator: keyboard or touch | Yes | Yes | Web: keyboard simulator. Native: touch simulator. |
 | Simulator: X-Plane / MSFS | Partial | Yes | Web needs a WebSocket bridge. Native connects over UDP or WebSocket directly. |
-| GDL90 receivers (portable ADS-B receivers) | No | Partial | *To confirm* what native decodes. |
+| GDL90 receivers (portable ADS-B receivers) | No | No | Not supported yet. |
 
 ## Account
 

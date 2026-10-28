@@ -7,8 +7,8 @@ sidebar:
 
 ## Building the route
 
-Add waypoints by tapping or clicking the map, by searching, or by typing
-the whole route as text (for example `ESOS ESGG ESSA`). Other ways:
+Add waypoints by tapping or clicking the map, by searching, or (web)
+by typing the whole route as text (for example `ESOS ESGG ESSA`). Other ways:
 
 - **From a card:** add an aerodrome, navaid, waypoint or place to the route.
 - **Find a destination** (see [Aerodromes and briefing](./aerodromes-and-briefing.md)).
@@ -92,7 +92,9 @@ pre-flight check still flags them).
 
 ## Pre-flight checks
 
-The check lists, in a warning panel:
+On the web app the check lists, in a warning panel (native marks legs
+below their MSA in red and warns when fuel is short, but has no airspace
+check in the plan):
 
 - **Airspace:** the planned level enters a controlled or restricted
   airspace (class C, D, restricted and TRA).
@@ -116,4 +118,4 @@ The plan can show weather and winds aloft along the route. See
 ## Saving and sharing
 
 See [Saved routes and places](./routes-and-places.md) for saving, loading,
-GPX and KML.
+GPX (web also KML).
