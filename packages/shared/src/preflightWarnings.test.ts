@@ -79,3 +79,32 @@ describe('airspace at the departure / arrival aerodrome', () => {
     expect(isEndpointSurfaceAirspace(ctr({ openStart: true, lowerAgl: true, lower_ft: 2300 }) as never, 50, pts)).toBe(false)
   })
 })
+
+describe('airspace categories and levels', () => {
+  const band = (over: object) => ({ class: 'D', type: 'CTA', name: 'X', lower_ft: 0, upper_ft: 4000, entryNm: 10, exitNm: 20, ...over })
+  const run = (b: object, levels?: never) =>
+    computeWarnings(profile({ airspaceBands: [b] as never }), [], undefined, [], [], undefined, false, undefined, undefined, [], levels)
+
+  it('warns for class A as danger', () => {
+    const w = run(band({ class: 'A' }))
+    expect(w[0].level).toBe('danger')
+  })
+  it('warns for class B as a warning', () => {
+    expect(run(band({ class: 'B' }))[0].level).toBe('warn')
+  })
+  it('skips class E by default, shows it when set to alert', () => {
+    expect(run(band({ class: 'E' }))).toEqual([])
+    expect(run(band({ class: 'E' }), { restricted: 'alert', classA: 'alert', controlled: 'alert', classEF: 'alert', zones: 'info', activity: 'info' } as never)[0].level).toBe('warn')
+  })
+  it('shows zones as info by default', () => {
+    const w = run(band({ class: 'G', type: 'RMZ', name: 'Local RMZ' }))
+    expect(w.map((x) => x.level)).toEqual(['info'])
+    expect(w[0].title).toContain('RMZ')
+  })
+  it('ignores plain class G / FIR', () => {
+    expect(run(band({ class: 'G', type: 'FIR' }))).toEqual([])
+  })
+  it('honours ignore for controlled airspace', () => {
+    expect(run(band({ class: 'D' }), { restricted: 'alert', classA: 'alert', controlled: 'ignore', classEF: 'ignore', zones: 'info', activity: 'info' } as never)).toEqual([])
+  })
+})

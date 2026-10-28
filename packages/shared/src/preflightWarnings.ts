@@ -11,13 +11,15 @@
 import { DEFAULT_MSA_MARGINS, type MsaMargins } from './msaMargins'
 import { terrainAt, type VirtualRadarProfile, type MsaPoint, type AirspaceCrossSection, type TerrainPoint } from './virtualRadarCalc'
 import { computeFuelPlan } from './fuelCalc'
+import { airspaceCategory, DEFAULT_AIRSPACE_LEVELS, type AirspaceAlertLevels, type AirspaceCategory } from './airspaceAlertLevel'
 import type { RouteWaypoint, LegOverride, AircraftProfileDocType } from './types'
 
 // ---------------------------------------------------------------------------
 // Warning types
 // ---------------------------------------------------------------------------
 
-export type WarningLevel = 'danger' | 'warn'
+/** `info` is an airspace category the pilot set to "info": shown blue, never a problem. */
+export type WarningLevel = 'danger' | 'warn' | 'info'
 
 export interface PreflightWarning {
   level:  WarningLevel
@@ -30,8 +32,16 @@ export interface PreflightWarning {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const CONTROLLED_CLASSES = new Set(['C', 'D'])
 const RESTRICTED_CLASSES = new Set(['R', 'TRA'])
+const ZONE_NAMES = ['ATZ', 'RMZ', 'TMZ']
+const ACTIVITY_CLASSES = new Set(['GLDR', 'MODEL'])
+const RED_CATEGORIES = new Set<AirspaceCategory>(['restricted', 'classA'])
+
+/** Airspace worth checking: ICAO classes A-F, restricted, zones, glider/model. Plain class G / FIR is not. */
+function isCheckedAirspace(cls: string, type: string): boolean {
+  return /^[A-F]$/.test(cls) || RESTRICTED_CLASSES.has(cls) || ACTIVITY_CLASSES.has(cls)
+    || ZONE_NAMES.includes(cls) || ZONE_NAMES.includes(type)
+}
 const DEFAULT_ALT_FT = 3500
 const SUPPRESS_DEP_ARR_NM = 5  // ignore MSA violations within 5 NM of dep/arr
 
@@ -93,6 +103,7 @@ export function computeWarnings(
   legWinds?: ({ dirDeg: number; speedKts: number } | null)[],
   margins: MsaMargins = DEFAULT_MSA_MARGINS,
   terrainPts: TerrainPoint[] = [],
+  airspaceLevels: AirspaceAlertLevels = DEFAULT_AIRSPACE_LEVELS,
 ): PreflightWarning[] {
   const warnings: PreflightWarning[] = []
 
@@ -126,9 +137,10 @@ export function computeWarnings(
   // The route can cross one airspace twice (it is one band per crossing): warn once per airspace and vertical extent.
   const penetrationSeen = new Set<string>()
   for (const band of profile.airspaceBands) {
-    const isDangerous =
-      CONTROLLED_CLASSES.has(band.class) || RESTRICTED_CLASSES.has(band.class)
-    if (!isDangerous) continue
+    if (!isCheckedAirspace(band.class, band.type)) continue
+    const category = airspaceCategory(band.class, band.type)
+    const setting = airspaceLevels[category]
+    if (setting === 'ignore') continue
     if (isEndpointSurfaceAirspace(band, profile.totalNm, terrainPts)) continue
 
     // Sample planned altitude at the midpoint of the airspace crossing
@@ -140,8 +152,10 @@ export function computeWarnings(
       const seenKey = `${band.class}|${band.name}|${band.lower_ft}|${band.upper_ft}`
       if (penetrationSeen.has(seenKey)) continue
       penetrationSeen.add(seenKey)
-      const level = RESTRICTED_CLASSES.has(band.class) ? 'danger' : 'warn'
-      const classLabel = band.type === 'CTR' ? `Class ${band.class} CTR` : `Class ${band.class}`
+      const level: WarningLevel = setting === 'info' ? 'info' : RED_CATEGORIES.has(category) ? 'danger' : 'warn'
+      const classLabel = /^[A-F]$/.test(band.class)
+        ? (band.type === 'CTR' ? `Class ${band.class} CTR` : `Class ${band.class}`)
+        : (band.type || band.class)
       warnings.push({
         level,
         code:   'airspace-penetration',

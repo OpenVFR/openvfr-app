@@ -4,7 +4,7 @@
  * Renders the warnings from `computeWarnings` (shared with native).
  */
 
-import { useMsaMargins } from '../db/useSettings'
+import { useMsaMargins, useAlertBanners } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { computeWarnings, type PreflightWarning } from '@open-vfr/shared/preflightWarnings'
 import { computePrompts } from '@open-vfr/shared/preflightPrompts'
@@ -135,6 +135,8 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
   }, [routeKey])
 
   const [msaMargins] = useMsaMargins()
+  const [alertBanners] = useAlertBanners()
+  const airspaceLevels = alertBanners.airspaceLevels
   const abeamNm = resolveMsaMargins(msaMargins).abeamNm
   const rawProfile = useMemo<VirtualRadarProfile | null>(() => {
     if (waypoints.length < 2 || !airspaceGeo || !obstacleGeo) return null
@@ -159,8 +161,8 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
 
   const warnings = useMemo<PreflightWarning[]>(() => {
     if (!profile) return []
-    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, resolveMsaMargins(msaMargins), terrainPts)
-  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, msaMargins, terrainPts])
+    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, resolveMsaMargins(msaMargins), terrainPts, airspaceLevels)
+  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, msaMargins, terrainPts, airspaceLevels])
 
   const prompts = useMemo(
     () => computePrompts({ waypoints, legWinds, windsLoading }),
@@ -177,7 +179,7 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
         <p className={css.loading}>Checking route…</p>
       )}
 
-      {!loading && warnings.length === 0 && (
+      {!loading && !warnings.some((w) => w.level !== 'info') && (
         <div className={css.ok}>
           <span className={css.okIcon}>✓</span>
           No issues found
@@ -187,10 +189,10 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
       {warnings.map((w, i) => (
         <div
           key={`${w.code}-${i}`}
-          className={`${css.card} ${w.level === 'danger' ? css.danger : css.warn}`}
+          className={`${css.card} ${w.level === 'danger' ? css.danger : w.level === 'info' ? css.info : css.warn}`}
         >
           <div className={css.cardTitle}>
-            <span className={css.cardIcon}>{w.level === 'danger' ? '✕' : '!'}</span>
+            <span className={css.cardIcon}>{w.level === 'danger' ? '✕' : w.level === 'info' ? 'i' : '!'}</span>
             {w.title}
           </div>
           <div className={css.cardDetail}>{w.detail}</div>
