@@ -647,7 +647,7 @@ function routePointsGeoJSON(wps: RouteWaypoint[]): FeatureCollection {
     features: wps.map((w, i) => ({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [w.lng, w.lat] },
-      properties: { featureType: 'wp', wpIndex: i, name: w.name ?? `WP${i + 1}`, endpoint: i === 0 || i === wps.length - 1 },
+      properties: { featureType: 'wp', wpIndex: i, name: w.name ?? `WP${i + 1}`, snapped: !!w.name, endpoint: i === 0 || i === wps.length - 1 },
     })),
   }
 }
@@ -1446,7 +1446,16 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
                 visibility: showAerodromes ? 'visible' : 'none',
                 'text-field': ['get', 'icao'],
                 'text-size': 11,
-                'text-offset': [0, 1.3],
+                // Anchor the label's top edge below the icon. Icon image is 56 px (pixelRatio 1) = 56 px * icon-size tall
+                // (centred on the point), so offset = (~24 * icon-size) / 11 px text.
+                // Old centre-anchored [0, 1.3] put the text over the icon at higher zooms.
+                'text-anchor': 'top',
+                'text-offset': [
+                  'interpolate', ['linear'], ['zoom'],
+                  8, ['literal', [0, 1.2]],
+                  10, ['literal', [0, 1.4]],
+                  13, ['literal', [0, 1.7]],
+                ] as any,
                 'text-font': ['Noto Sans Regular'],
               }}
               paint={{
@@ -3460,9 +3469,11 @@ export function AviationMap({
             )}
             <Layer
               key="route-pts-label" id="route-pts-label" type="symbol"
-              // Zoomed out, only the start/end names are drawn; intermediate
-              // names reappear from zoom 8 (same rule on web).
-              layout={{ 'text-field': ['step', ['zoom'], ['case', ['get', 'endpoint'], ['get', 'name'], ''], 8, ['get', 'name']], 'text-size': 11, 'text-offset': [0, -1.6], 'text-font': ['Noto Sans Medium'] }}
+              // Zoomed out, only the start/end names are drawn; from zoom 8 only
+              // free points (WP1...) get a label here: a snapped point (aerodrome,
+              // navaid, VRP) already carries its own label from zoom 8, so a
+              // second one would just duplicate it.
+              layout={{ 'text-field': ['step', ['zoom'], ['case', ['get', 'endpoint'], ['get', 'name'], ''], 8, ['case', ['get', 'snapped'], '', ['get', 'name']]], 'text-size': 11, 'text-offset': [0, -1.6], 'text-font': ['Noto Sans Medium'] }}
               paint={{ 'text-color': theme.accentMagenta, 'text-halo-color': theme.surfaceBase, 'text-halo-width': 1.5 }}
             />
           </GeoJSONSource>
