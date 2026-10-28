@@ -275,42 +275,44 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
               <Text style={styles.notamHint}>⏰ Active NOTAM may have changed opening hours — see NOTAMs</Text>
             )}
           </View>
-          {routeAction && feature.lat != null && feature.lng != null && (
-            <TouchableOpacity
-              onPress={() => { routeAction.onPress(); onClose() }}
-              style={styles.routeActionBtn}
-              accessibilityLabel={routeAction.label}
-              testID="aerodrome-route-action"
-            >
-              <Ionicons name={routeAction.icon} size={14} color="#0b1220" />
-              <Text style={styles.routeActionTxt}>{routeAction.short}</Text>
+          <View style={styles.headerActions}>
+            {routeAction && feature.lat != null && feature.lng != null && (
+              <TouchableOpacity
+                onPress={() => { routeAction.onPress(); onClose() }}
+                style={styles.routeActionBtn}
+                accessibilityLabel={routeAction.label}
+                testID="aerodrome-route-action"
+              >
+                <Ionicons name={routeAction.icon} size={14} color="#0b1220" />
+                <Text style={styles.routeActionTxt}>{routeAction.short}</Text>
+              </TouchableOpacity>
+            )}
+            {!!feature.icao && (
+              <TouchableOpacity
+                onPress={() => {
+                  const url = aerodromeShareUrl(feature.icao)
+                  // `message` carries the URL too: Android ignores `url`.
+                  Share.share({ title: `${feature.icao} ${feature.name}`.trim(), message: [`${feature.icao} ${feature.name}`.trim(), url].join('\n'), url }).catch(() => {})
+                }}
+                style={styles.closeBtn}
+                accessibilityLabel="Share link to this aerodrome"
+              >
+                <Ionicons name="share-outline" size={20} color={theme.textMuted} />
+              </TouchableOpacity>
+            )}
+            {!!feature.icao && (
+              <TouchableOpacity
+                onPress={() => update({ homeAirfield: isHome ? '' : feature.icao.toUpperCase() })}
+                style={styles.closeBtn}
+                accessibilityLabel={isHome ? 'Home airfield (tap to clear)' : 'Set as home airfield'}
+              >
+                <Ionicons name={isHome ? 'home' : 'home-outline'} size={20} color={isHome ? theme.accentBlue : theme.textMuted} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+              <Ionicons name="close" size={22} color={theme.textMuted} />
             </TouchableOpacity>
-          )}
-          {!!feature.icao && (
-            <TouchableOpacity
-              onPress={() => {
-                const url = aerodromeShareUrl(feature.icao)
-                // `message` carries the URL too: Android ignores `url`.
-                Share.share({ title: `${feature.icao} ${feature.name}`.trim(), message: [`${feature.icao} ${feature.name}`.trim(), url].join('\n'), url }).catch(() => {})
-              }}
-              style={styles.closeBtn}
-              accessibilityLabel="Share link to this aerodrome"
-            >
-              <Text style={styles.closeTxt}>⇪</Text>
-            </TouchableOpacity>
-          )}
-          {!!feature.icao && (
-            <TouchableOpacity
-              onPress={() => update({ homeAirfield: isHome ? '' : feature.icao.toUpperCase() })}
-              style={styles.closeBtn}
-              accessibilityLabel={isHome ? 'Home airfield (tap to clear)' : 'Set as home airfield'}
-            >
-              <Ionicons name={isHome ? 'home' : 'home-outline'} size={18} color={isHome ? theme.accentBlue : theme.textMuted} />
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Text style={styles.closeTxt}>✕</Text>
-          </TouchableOpacity>
+          </View>
         </View>
       )}
       fixedTop={(
@@ -543,13 +545,14 @@ function makeStyles(theme: ScaledTheme) {
     fontSize: theme.textSm,
     marginTop: 2,
   },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: theme.space1 },
   closeBtn: {
-    padding: theme.space2,
+    width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
   },
   routeActionBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
     paddingHorizontal: theme.space2, paddingVertical: theme.space1,
-    marginRight: theme.space1,
+    height: 32,
     borderRadius: theme.radiusFull, backgroundColor: theme.accentBlue,
   },
   routeActionTxt: { color: '#0b1220', fontSize: theme.textXs, fontWeight: '700' },
