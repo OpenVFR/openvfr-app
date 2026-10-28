@@ -286,6 +286,9 @@ export function LoginScreen() {
         {busy && <ActivityIndicator color={theme.textMuted} testID="login-progress" />}
 
         {shownError && <Text style={styles.error} testID="login-error">{shownError}</Text>}
+        {shownError && error && shownError !== error && /passkey|credential|challenge|authentication/i.test(error) && (
+          <Text style={styles.errorDetail} testID="login-error-detail" selectable>Details: {error}</Text>
+        )}
 
       </View>
       {!!SITE_BASE && (
@@ -423,6 +426,11 @@ function makeStyles(theme: ScaledTheme) {
   error: {
     color:     theme.statusDanger,
     fontSize:  theme.textSm,
+    textAlign: 'center',
+  },
+  errorDetail: {
+    color:     theme.textFaint,
+    fontSize:  theme.textXs,
     textAlign: 'center',
   },
   hint: {
