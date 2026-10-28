@@ -25,8 +25,11 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback, useSyncExternalStore } from 'react'
 import {
-  View, Text, TouchableOpacity, StyleSheet, Image, PanResponder, type LayoutChangeEvent,
+  View, Text, TouchableOpacity, StyleSheet, Image, PanResponder, useWindowDimensions, type LayoutChangeEvent,
 } from 'react-native'
+import IconMountain from '@tabler/icons-react-native/IconMountain'
+import IconBuildingBroadcastTower from '@tabler/icons-react-native/IconBuildingBroadcastTower'
+import IconWind from '@tabler/icons-react-native/IconWind'
 import { GestureDetector, usePanGesture, usePinchGesture, useSimultaneousGestures } from 'react-native-gesture-handler'
 import Animated, { useSharedValue, useAnimatedStyle, withDecay, cancelAnimation } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
@@ -1235,6 +1238,8 @@ export function VerticalProfile({
   flown, jumpToTs, plannedRoute,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
+  // Narrow phones: the three toggles become icons so none is clipped.
+  const iconToggles = useWindowDimensions().width < 400
   const logMode = flown != null
   // Flight log: the inspected recorded point (starts mid-flight, untouched) in a store, so moving
   // it re-renders only the aircraft and the readout, not the whole chart.
@@ -2418,14 +2423,18 @@ export function VerticalProfile({
             onPress={() => setShowMsa(v => !v)}
             accessibilityLabel={showMsa ? 'Hide the minimum safe altitude line' : 'Show the minimum safe altitude line'}
           >
-            <Text style={[styles.projBtnTxt, showMsa && styles.projBtnTxtOn]}>MSA</Text>
+            {iconToggles
+              ? <IconMountain size={14} color={showMsa ? '#00dcff' : theme.textMuted} />
+              : <Text style={[styles.projBtnTxt, showMsa && styles.projBtnTxtOn]}>MSA</Text>}
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.projBtn, showObstLabels && styles.projBtnOn]}
             onPress={() => setShowObstLabels(v => !v)}
             accessibilityLabel={showObstLabels ? 'Hide obstacle height labels' : 'Show height labels on the obstacles near your level'}
           >
-            <Text style={[styles.projBtnTxt, showObstLabels && styles.projBtnTxtOn]}>OBST</Text>
+            {iconToggles
+              ? <IconBuildingBroadcastTower size={14} color={showObstLabels ? '#00dcff' : theme.textMuted} />
+              : <Text style={[styles.projBtnTxt, showObstLabels && styles.projBtnTxtOn]}>OBST</Text>}
           </TouchableOpacity>
           {logMode && (
             <TouchableOpacity
@@ -2440,8 +2449,11 @@ export function VerticalProfile({
             <TouchableOpacity
               style={[styles.projBtn, showWindAloft && styles.projBtnOn]}
               onPress={() => setShowWindAloft(v => !v)}
+              accessibilityLabel={showWindAloft ? 'Hide winds aloft' : 'Show winds aloft'}
             >
-              <Text style={[styles.projBtnTxt, showWindAloft && styles.projBtnTxtOn]}>WIND</Text>
+              {iconToggles
+              ? <IconWind size={14} color={showWindAloft ? '#00dcff' : theme.textMuted} />
+              : <Text style={[styles.projBtnTxt, showWindAloft && styles.projBtnTxtOn]}>WIND</Text>}
             </TouchableOpacity>
           )}
           {onClose && (
