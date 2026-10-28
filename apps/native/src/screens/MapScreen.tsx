@@ -1348,7 +1348,19 @@ function MapScreenForCountry() {
     setExtending(false)
     setSnapPicker(null)
     if (waypoints.length === 1) removeWaypoint(0)
-  }, [waypoints.length, removeWaypoint])
+    // Done also closes the edit session (the banner's tick): leaving it open
+    // with extending off made taps on the map open info popups while the
+    // "Editing" banner still looked active.
+    if (editSessionActive) applyEditSession()
+  }, [waypoints.length, removeWaypoint, editSessionActive, applyEditSession])
+  // Banner Apply / Cancel also leave extend mode, so no stale hint pill stays.
+  const cancelEditAndStopExtending = useCallback(() => { setExtending(false); setSnapPicker(null); cancelEditSession() }, [cancelEditSession])
+  // One banner for the whole edit: it shows during an edit session and while
+  // adding points (extending), so there is no separate hint pill with its own
+  // Done. Its tick ends add mode and keeps the changes; its cross discards.
+  const editBannerShown = editSessionActive || extending
+  const bannerApply = useCallback(() => { if (extending) finishExtending(); else applyEditSession() }, [extending, finishExtending, applyEditSession])
+  const bannerCancel = useCallback(() => { if (editSessionActive) cancelEditAndStopExtending(); else finishExtending() }, [editSessionActive, cancelEditAndStopExtending, finishExtending])
   const toolIcon = (Icon: import("@tabler/icons-react-native").Icon) => (color: string) => <Icon size={22} strokeWidth={2} color={color} />
   const navigation = useNavigation()
   const toolGroups: ToolGroupDef[] = [
@@ -1875,12 +1887,12 @@ function MapScreenForCountry() {
           planningNotice={planningNotice}
           onDismissPlanning={dismissPlanningNotice}
           // Below the route edit banner and the route hint pill (top left).
-          topInset={(editSessionActive ? EDIT_BANNER_H : 0) + (extending || routeHint ? ROUTE_HINT_H : 0)}
+          topInset={(editBannerShown ? EDIT_BANNER_H : 0) + (routeHint ? ROUTE_HINT_H : 0)}
         />
 
         {/* Viewed flight log banner — Logs segment "View" action on PlanScreen */}
         {selectedLog && (
-          <View style={[styles.pastTrackBanner, { top: scaledTheme.space2 + (editSessionActive ? EDIT_BANNER_H : 0) }]}>
+          <View style={[styles.pastTrackBanner, { top: scaledTheme.space2 + (editBannerShown ? EDIT_BANNER_H : 0) }]}>
             <Ionicons name="navigate-outline" size={13} color="#c4b5fd" />
             <Text style={styles.pastTrackBannerTxt} numberOfLines={1}>
               {selectedLog.departureIcao || '?'} → {selectedLog.arrivalIcao || '?'} · {selectedLog.distanceNm.toFixed(0)} NM
@@ -1893,7 +1905,7 @@ function MapScreenForCountry() {
 
         {/* Outdated-AIRAC warning -- non-blocking, stacked under the log banner */}
         {outdatedAirac.length > 0 && dismissedAiracKey !== outdatedAiracKey && (
-          <View style={[styles.pastTrackBanner, styles.airacBanner, { top: scaledTheme.space2 + (editSessionActive ? EDIT_BANNER_H : 0) + (selectedLog ? 44 : 0) }]}>
+          <View style={[styles.pastTrackBanner, styles.airacBanner, { top: scaledTheme.space2 + (editBannerShown ? EDIT_BANNER_H : 0) + (selectedLog ? 44 : 0) }]}>
             <Ionicons name="warning-outline" size={13} color={theme.statusWarn} />
             <Text style={styles.pastTrackBannerTxt} numberOfLines={2}>
               Airspace data outdated — {outdatedAirac.map(o => `${o.country.toUpperCase()} AIRAC ${o.cycle}`).join(', ')} (current {currentAirac}). Verify against official AIP.
@@ -2032,37 +2044,29 @@ function MapScreenForCountry() {
 
       {/* Route edit session: opens on the first edit in planning mode, stays
           for every change, then Apply keeps them (unsaved) or Cancel restores. */}
-      {editSessionActive && (
+      {editBannerShown && (
         <RouteEditBanner
           // Same top offset and height as the toolbar buttons on the right, and
           // below the status bar (only the map may bleed under it).
           top={topRightTopOffset}
-          label={flyingActive ? 'Route changed' : 'Editing'}
+          label={flyingActive ? 'Route changed' : extending ? 'Add points' : 'Editing'}
           cancelLabel={flyingActive ? 'Revert: restore the route as it was before these changes' : 'Cancel changes'}
           applyLabel={flyingActive ? 'Keep the changes' : 'Apply changes'}
           canUndo={canUndo} canRedo={canRedo}
           onUndo={undoRoute} onRedo={redoRoute}
-          onCancel={cancelEditSession} onApply={applyEditSession}
+          onCancel={bannerCancel} onApply={bannerApply}
         />
       )}
 
-      {/* Extending the route: what a tap does, and Done. A short hint
-          (leg unlocked, missed tap) replaces the text for a few seconds. */}
-      {(extending || routeHint) && (
+      {/* Short hint (leg unlocked, missed tap, empty route) under the edit banner. */}
+      {(routeHint || (extending && !waypoints.length)) && (
         <View
-          style={[styles.routeHintPill, { top: topRightTopOffset + (editSessionActive ? EDIT_BANNER_H : 0) }]}
+          style={[styles.routeHintPill, { top: topRightTopOffset + (editBannerShown ? EDIT_BANNER_H : 0) }]}
           testID="route-hint"
         >
           <Text style={styles.routeHintTxt} numberOfLines={2}>
-            {routeHint ?? (waypoints.length
-              ? 'Tap aerodromes or points to add them to the route'
-              : 'Tap an aerodrome or point to start the route')}
+            {routeHint ?? 'Tap an aerodrome or point to start the route'}
           </Text>
-          {extending && (
-            <TouchableOpacity onPress={finishExtending} hitSlop={8} style={styles.routeHintDone} testID="route-extend-done" accessibilityLabel="Done adding points">
-              <Text style={styles.routeHintDoneTxt}>Done</Text>
-            </TouchableOpacity>
-          )}
         </View>
       )}
 
