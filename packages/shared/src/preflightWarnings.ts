@@ -11,6 +11,7 @@
 import { DEFAULT_MSA_MARGINS, type MsaMargins } from './msaMargins'
 import { terrainAt, type VirtualRadarProfile, type MsaPoint, type AirspaceCrossSection, type TerrainPoint } from './virtualRadarCalc'
 import { computeFuelPlan } from './fuelCalc'
+import { legSpans, legMsaList, legBelowMsa } from './legLevelDrag'
 import { airspaceCategory, DEFAULT_AIRSPACE_LEVELS, type AirspaceAlertLevels, type AirspaceCategory } from './airspaceAlertLevel'
 import type { RouteWaypoint, LegOverride, AircraftProfileDocType } from './types'
 
@@ -21,11 +22,15 @@ import type { RouteWaypoint, LegOverride, AircraftProfileDocType } from './types
 /** `info` is an airspace category the pilot set to "info": shown blue, never a problem. */
 export type WarningLevel = 'danger' | 'warn' | 'info'
 
+/** A one-tap remedy a warning can offer. */
+export type WarningFix = { kind: 'raise-leg'; legIndex: number; altFt: number }
+
 export interface PreflightWarning {
   level:  WarningLevel
   code:   string
   title:  string
   detail: string
+  fix?:   WarningFix
 }
 
 // ---------------------------------------------------------------------------
@@ -43,7 +48,6 @@ function isCheckedAirspace(cls: string, type: string): boolean {
     || ZONE_NAMES.includes(cls) || ZONE_NAMES.includes(type)
 }
 const DEFAULT_ALT_FT = 3500
-const SUPPRESS_DEP_ARR_NM = 5  // ignore MSA violations within 5 NM of dep/arr
 
 /** Floor within this height of the ground counts as "surface level". */
 const SURFACE_FLOOR_FT = 100
@@ -165,25 +169,27 @@ export function computeWarnings(
     }
   }
 
-  // ── 2. Below Minimum Safe Altitude ──────────────────────────────────────
+  // ── 2. Below Minimum Safe Altitude, leg by leg ──────────────────────────
+  // A leg lying wholly within 5 NM of departure/arrival is skipped (climb-out
+  // and approach are normal below MSA). The fix raises the leg to its MSA,
+  // rounded up to 100 ft.
   if (msaPts.length > 0 && profile.totalNm > 0) {
-    let belowMsa = false
-    // Sample every 0.5 NM; skip within SUPPRESS_DEP_ARR_NM of dep/arr
-    const step = 0.5
-    for (let d = SUPPRESS_DEP_ARR_NM; d <= profile.totalNm - SUPPRESS_DEP_ARR_NM; d += step) {
-      const msa     = msaAt(msaPts, d)
-      const planned = plannedAltAt(profile, d)
-      if (msa > 0 && planned < msa) {
-        belowMsa = true
-        break
-      }
-    }
-    if (belowMsa) {
+    const spans = legSpans(profile.altitudeProfile)
+    const legMsa = legMsaList(spans, msaPts, (d) => msaAt(msaPts, d))
+    const legName = (i: number) => waypoints[i]?.name || `WP ${i + 1}`
+    const clearance = `terrain + ${margins.terrainClearanceFt.toLocaleString('en-US')} ft within ${margins.abeamNm} NM, obstacles + ${margins.obstacleClearanceFt.toLocaleString('en-US')} ft`
+    const below = spans
+      .map((span, i) => ({ span, msa: legMsa[i] }))
+      .filter(({ span, msa }) => legBelowMsa(span, profile.totalNm, span.altFt, msa))
+    for (const { span, msa } of below) {
+      const i = span.legIndex
+      const required = Math.ceil(msa / 100) * 100
       warnings.push({
         level:  'danger',
         code:   'below-msa',
-        title:  'Route segment below Minimum Safe Altitude',
-        detail: `Planned altitude on one or more legs falls below the minimum safe altitude (terrain + ${margins.terrainClearanceFt.toLocaleString('en-US')} ft within ${margins.abeamNm} NM, obstacles + ${margins.obstacleClearanceFt.toLocaleString('en-US')} ft). Check Virtual Radar.`,
+        title:  `Leg ${legName(i)} → ${legName(i + 1)} below Minimum Safe Altitude`,
+        detail: `Planned ${Math.round(span.altFt).toLocaleString('en-US')} ft, minimum safe ${required.toLocaleString('en-US')} ft (${clearance}). Check Virtual Radar.`,
+        fix:    { kind: 'raise-leg', legIndex: i, altFt: required },
       })
     }
   }

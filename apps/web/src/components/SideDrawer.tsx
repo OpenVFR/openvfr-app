@@ -414,6 +414,7 @@ function SideDrawer({
                     aircraftId={selectedAircraftId}
                     legWinds={routeWinds.effective}
                     windsLoading={routeWinds.loading}
+                    onSetLegOverride={onSetLegOverride}
                   />
                 </div>
               )}

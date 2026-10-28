@@ -541,7 +541,7 @@ Wind is a function of (time, position, level) and is never frozen into a leg. Ef
 
 The side drawer's "Pre-flight Check" section (`PreflightWarnings.tsx`) renders two groups, both computed by pure functions in `packages/shared` so native can reuse them:
 
-- **Warnings** (`preflightWarnings.ts`, red/yellow): airspace penetration (classes A–F, restricted, zones and glider/model areas, each following the Settings → Alert banners category level: alert = red/yellow, info = blue, ignore = hidden; ignoring surface-level airspace the route starts or ends in, such as the departure CTR), below minimum safe altitude, fuel, plus notices for missing terrain data or a missing aircraft profile. Only these decide "No issues found".
+- **Warnings** (`preflightWarnings.ts`, red/yellow): airspace penetration (classes A–F, restricted, zones and glider/model areas, each following the Settings → Alert banners category level: alert = red/yellow, info = blue, ignore = hidden; ignoring surface-level airspace the route starts or ends in, such as the departure CTR), below minimum safe altitude (one warning per leg, naming it, with a one-tap "Raise to" fix), fuel, plus notices for missing terrain data or a missing aircraft profile. Only these decide "No issues found".
 - **Prompts** (`preflightPrompts.ts`, blue, informational): wind unavailable on some leg (waits for the forecast), route appears to cross a national border (a flight plan may be needed), and a UK-only General Aviation Report reminder for UK ↔ abroad. A waypoint's country comes from its ICAO location indicator, else from a region box it alone falls in; unknown points are skipped, so a prompt can be missed but is never invented.
 
 ### Sunrise / Sunset Awareness

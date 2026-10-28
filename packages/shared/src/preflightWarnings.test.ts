@@ -40,11 +40,42 @@ describe('computeWarnings', () => {
     expect(computeWarnings(profile({ airspaceBands: [band] as never }), [], undefined, [], [])[0].level).toBe('danger')
   })
 
-  it('flags below-MSA only outside the 5 NM dep/arr window', () => {
-    const inWindow = [{ distNm: 0, msaFt: 0 }, { distNm: 1, msaFt: 4000 }, { distNm: 4, msaFt: 0 }]
-    expect(codes(computeWarnings(profile(), inWindow, undefined, [], []))).toEqual([])
-    const enroute = [{ distNm: 0, msaFt: 0 }, { distNm: 20, msaFt: 4000 }, { distNm: 30, msaFt: 0 }]
-    expect(codes(computeWarnings(profile(), enroute, undefined, [], []))).toEqual(['below-msa'])
+  describe('below MSA, per leg', () => {
+    const wps = [
+      { lat: 59, lng: 18, name: 'ESSA' }, { lat: 59.5, lng: 18, name: 'ALPHA' },
+      { lat: 60, lng: 18, name: 'BRAVO' }, { lat: 60.5, lng: 18, name: 'ESOW' },
+    ]
+    // three 20 NM legs, 3000 ft planned
+    const legs = profile({
+      totalNm: 60,
+      altitudeProfile: [
+        { distNm: 0, altFt: 3000 }, { distNm: 20, altFt: 3000 },
+        { distNm: 20, altFt: 3000 }, { distNm: 40, altFt: 3000 },
+        { distNm: 40, altFt: 3000 }, { distNm: 60, altFt: 3000 },
+      ] as never,
+    })
+    const msa = (m: number[]) => [10, 30, 50].map((d, i) => ({ distNm: d, msaFt: m[i] }))
+
+    it('names only the leg that is too low and offers a raise', () => {
+      const w = computeWarnings(legs, msa([0, 3450, 0]), undefined, wps, [])
+      expect(codes(w)).toEqual(['below-msa'])
+      expect(w[0].title).toContain('ALPHA → BRAVO')
+      expect(w[0].detail).toContain('3,500 ft')
+      expect(w[0].fix).toEqual({ kind: 'raise-leg', legIndex: 1, altFt: 3500 })
+    })
+    it('gives one warning per low leg', () => {
+      expect(codes(computeWarnings(legs, msa([3600, 3600, 0]), undefined, wps, []))).toEqual(['below-msa', 'below-msa'])
+    })
+    it('does not flag a leg at or above MSA', () => {
+      expect(computeWarnings(legs, msa([3000, 2000, 0]), undefined, wps, [])).toEqual([])
+    })
+    it('ignores a short leg wholly inside the 5 NM window', () => {
+      const short = profile({
+        totalNm: 4,
+        altitudeProfile: [{ distNm: 0, altFt: 500 }, { distNm: 4, altFt: 500 }] as never,
+      })
+      expect(computeWarnings(short, [{ distNm: 0, msaFt: 2000 }], undefined, wps, [])).toEqual([])
+    })
   })
 
   it('warns when the route aircraft is missing', () => {

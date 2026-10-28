@@ -80,9 +80,11 @@ interface Props {
   legWinds?:    ({ dirDeg: number; speedKts: number } | null)[]
   /** Wind forecast still loading: the missing-wind prompt waits. */
   windsLoading?: boolean
+  /** Applies a warning's one-tap fix (raise a leg to its MSA). */
+  onSetLegOverride?: (idx: number, override: LegOverride) => void
 }
 
-export default function PreflightWarnings({ waypoints, legOverrides, aircraft, aircraftId, legWinds, windsLoading }: Props) {
+export default function PreflightWarnings({ waypoints, legOverrides, aircraft, aircraftId, legWinds, windsLoading, onSetLegOverride }: Props) {
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(_airspaceGeo)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(_obstacleGeo)
   const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(_landmarkGeo)
@@ -196,6 +198,18 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
             {w.title}
           </div>
           <div className={css.cardDetail}>{w.detail}</div>
+          {w.fix?.kind === 'raise-leg' && onSetLegOverride && (
+            <button
+              type="button"
+              className={css.fixBtn}
+              onClick={() => {
+                const fix = w.fix
+                if (fix?.kind === 'raise-leg') onSetLegOverride(fix.legIndex, { ...(legOverrides[fix.legIndex] ?? {}), altFt: fix.altFt })
+              }}
+            >
+              Raise to {w.fix.altFt.toLocaleString('en-US')} ft
+            </button>
+          )}
         </div>
       ))}
 
