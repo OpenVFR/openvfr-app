@@ -36,6 +36,9 @@ Scope is optional but encouraged for larger areas (`map`, `native`, `api`,
   filler. Reviewers need to evaluate the change quickly.
 - Add/update tests for any behavior change, and screenshots/recordings for
   UI changes.
+- User-visible change? Update the matching page in [`docs/guide/`](docs/guide/README.md)
+  in the same PR (see its README for the page format). A feature that exists
+  on only one platform also updates `docs/guide/platforms.md`.
 - Squash-merge is used by default — commit history within a PR doesn't need
   to be pristine, but the PR title becomes the squashed commit message, so
   make sure it follows the Conventional Commits format above.

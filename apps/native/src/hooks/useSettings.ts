@@ -58,7 +58,7 @@ export type AppSettings = {
   qnhAuto: boolean
   /** Explicit pilot opt-in for using the phone's internal barometric sensor
    *  (tier 1 altitude source) — default OFF, gated behind a safety warning
-   *  in Settings (see native/docs/ble-vario-plan.md §5.1). Phone barometers
+   *  in Settings (see docs/native-ble-vario.md). Phone barometers
    *  measure pocket/cabin pressure, not true static pressure, and can be
    *  meaningfully inaccurate depending on how the device is carried. */
   useInternalBarometer: boolean

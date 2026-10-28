@@ -4,7 +4,7 @@
  * bridge. Owns only I/O; all parsing/checksums/command-building delegate
  * to the shared, pure @open-vfr/shared/blueflyVario module.
  *
- * See native/docs/ble-vario-plan.md §2 and native/ble-pressure.md §1-2 for
+ * See docs/native-ble-vario.md and docs/native-ble-vario.md §1-2 for
  * the full protocol/connection-sequence rationale.
  */
 
@@ -20,14 +20,14 @@ export const BLUEFLY_RX_CHAR_UUID = '49535343-8841-43F4-A8D4-ECBE34729BB3'  // w
 // present even when the GATT UART service UUID above is NOT in the scan
 // record (serviceUUIDs: null on that unit). Far more vendor-distinctive than
 // the generic 49535343-... UART-bridge service (shared by unrelated modules)
-// or the mutable advertised name. See native/docs/ble-vario-plan.md.
+// or the mutable advertised name. See docs/native-ble-vario.md.
 export const BLUEFLY_ADV_SERVICE_DATA_UUID = '0000feda-0000-1000-8000-00805f9b34fb'
 
 const NAME_PREFIX     = 'Bluefly'
 const REQUEST_MTU     = 512
 const SETTLE_DELAY_MS = 600
 
-// Telemetry config per ble-pressure.md §3.1: $BFX (mode 6) @ 5Hz — the
+// Telemetry config per docs/native-ble-vario.md §3.1: $BFX (mode 6) @ 5Hz — the
 // doc's own recommendation, "to balance firmware Kalman filtering with
 // battery life and JS execution overhead." We still run our own Kalman
 // filter (packages/shared/src/baroKalman.ts) on the sentence's pressurePa
@@ -111,7 +111,7 @@ export class BlueFlyBleManager {
     return () => { this.manager.stopDeviceScan() }
   }
 
-  /** Connect + negotiate MTU/priority + discover services, per ble-pressure.md §1.2. */
+  /** Connect + negotiate MTU/priority + discover services, per docs/native-ble-vario.md §1.2. */
   async connect(deviceId: string): Promise<void> {
     this.manager.stopDeviceScan()
     // Clean up any previous (possibly half-dead) session before reconnecting.
@@ -156,7 +156,7 @@ export class BlueFlyBleManager {
       },
     )
 
-    // Explicitly (re)configure the device to $BFX @ 5Hz per ble-pressure.md
+    // Explicitly (re)configure the device to $BFX @ 5Hz per docs/native-ble-vario.md
     // §3.1 — don't rely on whatever mode/rate it was previously left in.
     // Non-fatal if it fails.
     try {

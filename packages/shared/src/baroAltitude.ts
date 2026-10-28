@@ -4,7 +4,7 @@
  * external BlueFly Vario (BLE) — both feed raw pressure readings through
  * the same ISA/QNH formula here rather than duplicating it.
  *
- * See native/docs/ble-vario-plan.md §0/§1 for the full design rationale.
+ * See docs/native-ble-vario.md for the full design rationale.
  */
 
 const FT_PER_M = 3.28084

@@ -6,7 +6,7 @@
  * way with useSimInput (two independent instances was a real bug).
  *
  * No opt-in gate here — BlueFly is a real external instrument, unlike the
- * internal phone sensor (see native/docs/ble-vario-plan.md §0/§3c).
+ * internal phone sensor (see docs/native-ble-vario.md).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'

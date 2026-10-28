@@ -1,4 +1,4 @@
-# AI Agent Specification: BlueFly Vario BLE Integration
+# BlueFly vario BLE integration (specification)
 
 ## Objective
 Implement native Bluetooth Low Energy (BLE) integration for the **BlueFly Vario** barometric pressure sensor in a React Native EFB application. The goal is to establish a robust, background-resilient connection, parse streaming ASCII telemetry, validate checksums, and convert barometric pressure into accurate QNH-adjustable altitude and vertical speed (vario) data.

@@ -2,7 +2,7 @@
  * useAltitudeSource — the actual priority chooser combining GPS + (gated)
  * internal barometer + (Context-provided) BlueFly Vario state into one
  * altitude reading, via the shared pickBestAltitudeSource() (§1/§3b of
- * native/docs/ble-vario-plan.md).
+ * docs/native-ble-vario.md).
  *
  * Priority: BlueFly BLE (tier 2, connected) > internal barometer (tier 1,
  * opt-in) > GPS (tier 0). Vario is never gated behind an opt-in — it's a

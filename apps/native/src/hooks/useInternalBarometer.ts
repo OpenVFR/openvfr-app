@@ -1,6 +1,6 @@
 /**
  * useInternalBarometer — wraps expo-sensors' Barometer for tier-1 altitude
- * source (native/docs/ble-vario-plan.md §3a). Pure hardware-availability +
+ * source (docs/native-ble-vario.md). Pure hardware-availability +
  * raw-pressure probe — has no opinion on the opt-in safety gate; that lives
  * in useAltitudeSource.ts, which only reads this hook's output when
  * settings.useInternalBarometer is true.

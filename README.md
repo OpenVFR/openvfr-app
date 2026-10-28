@@ -38,7 +38,7 @@ packages/
 db/
   migrations/  PostgreSQL + PostGIS schema (applied via dbmate)
 docker/      Dockerfiles + nginx/Martin config for self-hosting
-docs/        Architecture reference and self-hosting guide
+docs/        Architecture reference, self-hosting guide, conventions (index: docs/README.md)
   guide/     Pilot-facing user guide (markdown, published on the project website)
 ```
 
@@ -47,6 +47,12 @@ landmarks, terrain) is **not included in this repository** — it's large,
 regenerated on an AIRAC/refresh cadence, and produced by a separate data
 pipeline. See [`docs/self-hosting.md`](docs/self-hosting.md) for how to
 generate it yourself.
+
+## Documentation
+
+- **Using the app:** the user guide at [openvfr.org/docs](https://openvfr.org/docs)
+  (sources in [`docs/guide/`](docs/guide/README.md)).
+- **Contributing and running it yourself:** see [`docs/README.md`](docs/README.md).
 
 ## Getting started
 

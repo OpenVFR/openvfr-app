@@ -5,7 +5,7 @@
  * builders. Pure, platform-agnostic — all BLE I/O lives in the native-only
  * BlueFlyBleManager (native/src/utils/BlueFlyBleManager.ts).
  *
- * See native/docs/ble-vario-plan.md §1/§2 for the full design rationale.
+ * See docs/native-ble-vario.md for the full design rationale.
  */
 
 import { pressureToAltitudeFt } from './baroAltitude'

@@ -3,7 +3,7 @@
  * barometric pressure sensor streams, used instead of trusting a vario's
  * onboard "vario_cms"/"vario" telemetry field directly.
  *
- * Rationale (see conversation in native/ble-pressure.md context): some
+ * Rationale (see docs/native-ble-vario.md): some
  * firmwares report a "filtered" pressure field but an unfiltered/noisy
  * derivative for climb rate. Rather than depend on that, run our own
  * constant-velocity Kalman filter directly on raw pressure samples at the
