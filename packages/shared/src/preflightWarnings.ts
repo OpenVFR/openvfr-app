@@ -212,6 +212,8 @@ export function computeWarnings(
       const level: WarningLevel = setting === 'info' ? 'info' : RED_CATEGORIES.has(category) ? 'danger' : 'warn'
       const classLabel = /^[A-F]$/.test(band.class)
         ? (band.type === 'CTR' ? `Class ${band.class} CTR` : `Class ${band.class}`)
+        : band.class === 'R' ? 'Restricted / danger area'
+        : band.class === 'TRA' ? 'TRA'
         : (band.type || band.class)
       warnings.push({
         level,
@@ -300,6 +302,8 @@ export function computeWarnings(
     }
   }
 
-  return warnings
+  // Most serious first (stable within a level, so route order is kept).
+  const rank: Record<WarningLevel, number> = { danger: 0, warn: 1, info: 2 }
+  return warnings.sort((a, b) => rank[a.level] - rank[b.level])
 }
 

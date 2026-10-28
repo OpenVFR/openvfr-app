@@ -183,3 +183,16 @@ describe('airfield proximity', () => {
     expect(airfieldProximity(prof(1500), wps, fc(field('ESKX', 59.5, 18.01, 100), field('ESKX', 59.51, 18.01, 100)))).toHaveLength(1)
   })
 })
+
+describe('ordering and labels', () => {
+  it('lists danger before warn before info', () => {
+    const bands = [
+      { class: 'G', type: 'RMZ', name: 'Z', lower_ft: 0, upper_ft: 4000, entryNm: 5, exitNm: 8 },
+      { class: 'D', type: 'CTA', name: 'D1', lower_ft: 0, upper_ft: 4000, entryNm: 10, exitNm: 12 },
+      { class: 'R', type: 'R', name: 'ESR1 TEST', lower_ft: 0, upper_ft: 4000, entryNm: 20, exitNm: 25 },
+    ]
+    const w = computeWarnings(profile({ airspaceBands: bands as never }), [], undefined, [], [])
+    expect(w.map((x) => x.level)).toEqual(['danger', 'warn', 'info'])
+    expect(w[0].title).toContain('Restricted / danger area')
+  })
+})
