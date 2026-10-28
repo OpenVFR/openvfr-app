@@ -144,6 +144,7 @@ export async function passkeySignIn(): Promise<PasskeyOutcome> {
   // Strip clientExtensionResults like the web client does; the server only reads the core fields.
   const { clientExtensionResults: _ext, ...response } = assertion as PasskeyGetResult & { clientExtensionResults?: unknown }
   const res = await verify<SessionResponse>('/passkey/verify-authentication', { response }, opts.cookie, false)
+  if ('error' in res) syncLog('[passkey] server rejected the assertion', res.error)
   if ('error' in res) return { ok: false, cancelled: false, message: res.error }
   return { ok: true, user: toUser(res.data) }
 }

@@ -34,6 +34,12 @@ function friendlyError(raw: string | null): string | null {
   if (/invalid email/.test(m)) return 'That does not look like an email address. Check it and try again.'
   if (/invalid|incorrect|expired/.test(m)) return 'That code is invalid or has expired. Request a new one.'
   if (/too many|rate/.test(m)) return 'Too many attempts. Wait a minute and try again.'
+  // Server-side verify failures. Must come before the generic "not found" below,
+  // which says "no passkey on this device" -- wrong when a passkey WAS used
+  // (e.g. from another phone via the QR code) and the server rejected it.
+  if (/challenge not found/.test(m)) return 'Passkey sign-in took too long or was interrupted. Try again.'
+  if (/^passkey not found/.test(m)) return 'That passkey is not registered with OpenVFR. Continue with email, then add one in Settings.'
+  if (/authentication failed/.test(m)) return 'Passkey sign-in failed. Try again or use an email code.'
   if (/no (passkey|credential)|not found|no_passkey/.test(m))
     return 'No passkey found on this device. Continue with email, then add one in Settings.'
   if (/passkey|credential|webauthn/.test(m))
