@@ -413,6 +413,7 @@ function SideDrawer({
                     aircraft={selectedAircraftProfile}
                     aircraftId={selectedAircraftId}
                     legWinds={routeWinds.effective}
+                    windsLoading={routeWinds.loading}
                   />
                 </div>
               )}

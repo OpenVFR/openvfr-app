@@ -18,6 +18,7 @@
     "./pointElevation": "./src/pointElevation.ts",
     "./msaMargins": "./src/msaMargins.ts",
     "./preflightWarnings": "./src/preflightWarnings.ts",
+    "./preflightPrompts": "./src/preflightPrompts.ts",
     "./mefGrid": "./src/mefGrid.ts",
     "./routePois": "./src/routePois.ts",
     "./obstacleSymbol": "./src/obstacleSymbol.ts",

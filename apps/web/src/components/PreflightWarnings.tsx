@@ -7,6 +7,7 @@
 import { useMsaMargins } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { computeWarnings, type PreflightWarning } from '@open-vfr/shared/preflightWarnings'
+import { computePrompts } from '@open-vfr/shared/preflightPrompts'
 import { obstacleTipsForMsa } from '@open-vfr/shared/obstacleHeights'
 import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
 import { useMefGrids } from '../hooks/useMefGrids'
@@ -77,9 +78,11 @@ interface Props {
   aircraftId?:  string
   /** Effective wind per leg (override > global > forecast), for the fuel check. */
   legWinds?:    ({ dirDeg: number; speedKts: number } | null)[]
+  /** Wind forecast still loading: the missing-wind prompt waits. */
+  windsLoading?: boolean
 }
 
-export default function PreflightWarnings({ waypoints, legOverrides, aircraft, aircraftId, legWinds }: Props) {
+export default function PreflightWarnings({ waypoints, legOverrides, aircraft, aircraftId, legWinds, windsLoading }: Props) {
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(_airspaceGeo)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(_obstacleGeo)
   const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(_landmarkGeo)
@@ -159,6 +162,11 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
     return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, resolveMsaMargins(msaMargins))
   }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, msaMargins])
 
+  const prompts = useMemo(
+    () => computePrompts({ waypoints, legWinds, windsLoading }),
+    [waypoints, legWinds, windsLoading],
+  )
+
   const loading = !terrainDone && waypoints.length >= 2
 
   if (waypoints.length < 2) return null
@@ -186,6 +194,16 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
             {w.title}
           </div>
           <div className={css.cardDetail}>{w.detail}</div>
+        </div>
+      ))}
+
+      {prompts.map((p) => (
+        <div key={p.code} className={`${css.card} ${css.info}`}>
+          <div className={css.cardTitle}>
+            <span className={css.cardIcon}>i</span>
+            {p.title}
+          </div>
+          <div className={css.cardDetail}>{p.detail}</div>
         </div>
       ))}
     </div>

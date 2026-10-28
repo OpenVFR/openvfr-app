@@ -537,6 +537,13 @@ Wind is a function of (time, position, level) and is never frozen into a leg. Ef
 
 `useRouteWinds` (web, owned by `SideDrawer`) and `PlanScreen` (native) compute the effective wind once per route/altitude/speed/takeoff-time change (debounced). The route table, `computeFuelPlan(..., legWinds)` and the pre-flight fuel check all use the same values, so ETE and fuel agree. The FCST button clears the 30-min cache and re-fetches.
 
+### Pre-flight check
+
+The side drawer's "Pre-flight Check" section (`PreflightWarnings.tsx`) renders two groups, both computed by pure functions in `packages/shared` so native can reuse them:
+
+- **Warnings** (`preflightWarnings.ts`, red/yellow): airspace penetration, below minimum safe altitude, fuel, plus notices for missing terrain data or a missing aircraft profile. Only these decide "No issues found".
+- **Prompts** (`preflightPrompts.ts`, blue, informational): wind unavailable on some leg (waits for the forecast), route appears to cross a national border (a flight plan may be needed), and a UK-only General Aviation Report reminder for UK ↔ abroad. A waypoint's country comes from its ICAO location indicator, else from a region box it alone falls in; unknown points are skipped, so a prompt can be missed but is never invented.
+
 ### Sunrise / Sunset Awareness
 
 Displayed in the aerodrome popup for destination/alternate aerodromes. Use an astronomical formula (no external API) — e.g. the `suncalc` npm package (BSD-2). Highlight ETAs within ±30 min of civil sunset in amber: European VFR at night requires either a night rating or the flight to end before sunset + 30 min.
