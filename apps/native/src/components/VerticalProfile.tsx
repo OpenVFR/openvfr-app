@@ -2715,16 +2715,27 @@ function makeStyles(theme: ScaledTheme) {
   // content either slot holds.
   headerSide: {
     flex:              1,
+    minWidth:          0,
     flexDirection:     'row',
     alignItems:        'center',
     paddingHorizontal: theme.space2,
     gap:               theme.space2,
     overflow:          'hidden',
   },
+  // The toggles must never be clipped on a narrow phone: the end slot takes
+  // the width it needs and the start slot (readout) gives way. The grip is
+  // absolutely centred (it may sit behind a button on the narrowest screens).
   headerSideEnd: {
+    flex:           0,
+    flexShrink:     0,
+    overflow:       'visible',
     justifyContent: 'flex-end',
   },
   dragGrip: {
+    position:        'absolute',
+    alignSelf:       'center',
+    left:            '50%',
+    marginLeft:      -24,
     width:           48,
     height:          5,
     borderRadius:    3,
