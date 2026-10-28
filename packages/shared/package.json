@@ -19,6 +19,7 @@
     "./msaMargins": "./src/msaMargins.ts",
     "./preflightWarnings": "./src/preflightWarnings.ts",
     "./preflightPrompts": "./src/preflightPrompts.ts",
+    "./preflightNotams": "./src/preflightNotams.ts",
     "./mefGrid": "./src/mefGrid.ts",
     "./routePois": "./src/routePois.ts",
     "./obstacleSymbol": "./src/obstacleSymbol.ts",

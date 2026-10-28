@@ -415,6 +415,8 @@ function SideDrawer({
                     legWinds={routeWinds.effective}
                     windsLoading={routeWinds.loading}
                     onSetLegOverride={onSetLegOverride}
+                    onSelectLeg={onSelectLeg}
+                    onShowOnMap={(lng, lat) => onFlyTo({ kind: 'LL', id: '', name: '', sub: '', lng, lat })}
                   />
                 </div>
               )}

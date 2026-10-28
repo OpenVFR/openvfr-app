@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeWarnings, isEndpointSurfaceAirspace } from './preflightWarnings'
+import { computeWarnings, isEndpointSurfaceAirspace, airfieldProximity } from './preflightWarnings'
 import type { VirtualRadarProfile } from './virtualRadarCalc'
 
 function profile(over: Partial<VirtualRadarProfile> = {}): VirtualRadarProfile {
@@ -114,7 +114,7 @@ describe('airspace at the departure / arrival aerodrome', () => {
 describe('airspace categories and levels', () => {
   const band = (over: object) => ({ class: 'D', type: 'CTA', name: 'X', lower_ft: 0, upper_ft: 4000, entryNm: 10, exitNm: 20, ...over })
   const run = (b: object, levels?: never) =>
-    computeWarnings(profile({ airspaceBands: [b] as never }), [], undefined, [], [], undefined, false, undefined, undefined, [], levels)
+    computeWarnings(profile({ airspaceBands: [b] as never }), [], undefined, [], [], undefined, false, undefined, undefined, levels ? { airspaceLevels: levels } : {})
 
   it('warns for class A as danger', () => {
     const w = run(band({ class: 'A' }))
@@ -137,5 +137,49 @@ describe('airspace categories and levels', () => {
   })
   it('honours ignore for controlled airspace', () => {
     expect(run(band({ class: 'D' }), { restricted: 'alert', classA: 'alert', controlled: 'ignore', classEF: 'ignore', zones: 'info', activity: 'info' } as never)).toEqual([])
+  })
+})
+
+describe('airfield proximity', () => {
+  // Route runs due north along lng 18 from lat 59 to 60 (60 NM).
+  const wps = [{ lat: 59, lng: 18, name: 'ESSA' }, { lat: 60, lng: 18, name: 'ESOW' }]
+  const field = (icao: string, lat: number, lng: number, elevation_ft: number | undefined, type = 'AD') => ({
+    type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] },
+    properties: { icao, name: icao, type, elevation_ft },
+  })
+  const fc = (...f: object[]) => ({ type: 'FeatureCollection', features: f }) as never
+  const prof = (alt: number) => profile({
+    totalNm: 60, altitudeProfile: [{ distNm: 0, altFt: alt }, { distNm: 60, altFt: alt }] as never,
+  })
+  const run = (alt: number, aero: never) =>
+    computeWarnings(prof(alt), [], undefined, wps, [], undefined, false, undefined, undefined, { aerodromes: aero })
+
+  it('flags a field within 1 NM of the track at low level', () => {
+    const w = run(1500, fc(field('ESKX', 59.5, 18.01, 100)))
+    expect(codes(w)).toEqual(['airfield-proximity'])
+    expect(w[0].level).toBe('warn')
+    expect(w[0].title).toContain('ESKX')
+  })
+  it('ignores a field more than 1 NM off the track', () => {
+    expect(run(1500, fc(field('ESKX', 59.5, 18.1, 100)))).toEqual([])
+  })
+  it('ignores a pass higher than 1,500 ft above the field', () => {
+    expect(run(2000, fc(field('ESKX', 59.5, 18.01, 100)))).toEqual([])
+  })
+  it('ignores the route\'s own ends, a named waypoint and heliports', () => {
+    expect(run(500, fc(field('ESSA', 59.0, 18.0, 100), field('ESOW', 60.0, 18.0, 100)))).toEqual([])
+    expect(run(1500, fc(field('ESKX', 59.5, 18.0, 100, 'HP')))).toEqual([])
+    const via = [wps[0], { lat: 59.5, lng: 18, name: 'ESKX' }, wps[1]]
+    expect(airfieldProximity(prof(1500), via, fc(field('ESKX', 59.5, 18.0, 100)))).toEqual([])
+  })
+  it('skips a field with no known height when there is no terrain', () => {
+    expect(run(1500, fc(field('ESKX', 59.5, 18.01, undefined)))).toEqual([])
+  })
+  it('uses terrain when the field has no elevation', () => {
+    const pts = [{ distNm: 0, elevFt: 100 }, { distNm: 60, elevFt: 100 }] as never
+    expect(airfieldProximity(prof(1500), wps, fc(field('ESKX', 59.5, 18.01, undefined)), pts)).toHaveLength(1)
+  })
+  it('lists each field once', () => {
+    expect(airfieldProximity(prof(1500), wps, fc(field('ESKX', 59.5, 18.01, 100), field('ESKX', 59.51, 18.01, 100)))).toHaveLength(1)
   })
 })

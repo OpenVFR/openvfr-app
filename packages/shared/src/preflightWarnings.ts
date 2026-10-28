@@ -11,6 +11,10 @@
 import { DEFAULT_MSA_MARGINS, type MsaMargins } from './msaMargins'
 import { terrainAt, type VirtualRadarProfile, type MsaPoint, type AirspaceCrossSection, type TerrainPoint } from './virtualRadarCalc'
 import { computeFuelPlan } from './fuelCalc'
+import { collectRoutePois } from './routePois'
+import { routeNotamAreas, notamSummary } from './preflightNotams'
+import { notamTitle } from './notamQCode'
+import type { NotamItem } from './fetchNotam'
 import { legSpans, legMsaList, legBelowMsa } from './legLevelDrag'
 import { airspaceCategory, DEFAULT_AIRSPACE_LEVELS, type AirspaceAlertLevels, type AirspaceCategory } from './airspaceAlertLevel'
 import type { RouteWaypoint, LegOverride, AircraftProfileDocType } from './types'
@@ -31,6 +35,10 @@ export interface PreflightWarning {
   title:  string
   detail: string
   fix?:   WarningFix
+  /** Where on the route this applies (NM along it), so a client can show it on the map. */
+  focusNm?: number
+  /** The leg it concerns, when it is about one. */
+  legIndex?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -96,6 +104,51 @@ function msaAt(msaPts: MsaPoint[], distNm: number): number {
 // Warning computation
 // ---------------------------------------------------------------------------
 
+/** Optional inputs: each check that needs one is skipped without it. */
+export interface PreflightExtras {
+  terrainPts?:     TerrainPoint[]
+  airspaceLevels?: AirspaceAlertLevels
+  /** Aerodrome points (GeoJSON) for the airfield proximity check. */
+  aerodromes?:     GeoJSON.FeatureCollection | null
+  /** Regional NOTAMs for the NOTAM restricted-area check; `airspace` leaves out charted areas. */
+  notams?:         readonly NotamItem[]
+  airspace?:       GeoJSON.FeatureCollection | null
+  nowMs?:          number
+}
+
+/** Lateral distance and height above the field inside which a pass is flagged. */
+export const PROXIMITY_LATERAL_NM = 1
+export const PROXIMITY_ABOVE_FIELD_FT = 1500
+/** Aerodromes this close to the route's first or last point are its own ends, not a near miss. */
+const PROXIMITY_END_MARGIN_NM = 1
+
+/**
+ * Aerodromes the route passes within PROXIMITY_LATERAL_NM of at or below
+ * PROXIMITY_ABOVE_FIELD_FT above the field, other than the route's own
+ * waypoints and its two ends. Heliports are not flagged.
+ */
+export function airfieldProximity(
+  profile: VirtualRadarProfile,
+  waypoints: RouteWaypoint[],
+  aerodromes: GeoJSON.FeatureCollection,
+  terrainPts: TerrainPoint[] = [],
+): { label: string; distNm: number; lateralNm: number; plannedFt: number; elevationFt: number }[] {
+  const out: { label: string; distNm: number; lateralNm: number; plannedFt: number; elevationFt: number }[] = []
+  const seen = new Set<string>()
+  for (const poi of collectRoutePois(waypoints, { aerodromes })) {
+    if (poi.kind !== 'aerodrome' || poi.subtype === 'HP' || !poi.label || seen.has(poi.label)) continue
+    if (poi.lateralNm > PROXIMITY_LATERAL_NM) continue
+    if (poi.distNm < PROXIMITY_END_MARGIN_NM || poi.distNm > profile.totalNm - PROXIMITY_END_MARGIN_NM) continue
+    const elevationFt = poi.elevationFt ?? (terrainPts.length > 0 ? Math.max(0, terrainAt(terrainPts, poi.distNm)) : null)
+    if (elevationFt == null) continue   // unknown field height: cannot judge
+    const plannedFt = plannedAltAt(profile, poi.distNm)
+    if (plannedFt > elevationFt + PROXIMITY_ABOVE_FIELD_FT) continue
+    seen.add(poi.label)
+    out.push({ label: poi.label, distNm: poi.distNm, lateralNm: poi.lateralNm, plannedFt, elevationFt })
+  }
+  return out
+}
+
 export function computeWarnings(
   profile:  VirtualRadarProfile,
   msaPts:   MsaPoint[],
@@ -106,9 +159,9 @@ export function computeWarnings(
   terrainFailed = false,
   legWinds?: ({ dirDeg: number; speedKts: number } | null)[],
   margins: MsaMargins = DEFAULT_MSA_MARGINS,
-  terrainPts: TerrainPoint[] = [],
-  airspaceLevels: AirspaceAlertLevels = DEFAULT_AIRSPACE_LEVELS,
+  extras: PreflightExtras = {},
 ): PreflightWarning[] {
+  const { terrainPts = [], airspaceLevels = DEFAULT_AIRSPACE_LEVELS, aerodromes, notams, airspace, nowMs } = extras
   const warnings: PreflightWarning[] = []
 
   // ── Terrain unavailable: the MSA check below is silently skipped and AGL
@@ -165,6 +218,22 @@ export function computeWarnings(
         code:   'airspace-penetration',
         title:  `${classLabel} penetration — ${band.name}`,
         detail: `Planned altitude ${planned.toLocaleString()} ft enters ${band.lower_ft.toLocaleString()}–${band.upper_ft.toLocaleString()} ft`,
+        focusNm: midNm,
+      })
+    }
+  }
+
+  // ── 1b. Restricted areas created by NOTAM ───────────────────────────────
+  if (notams && notams.length > 0 && waypoints.length >= 2) {
+    for (const a of routeNotamAreas({ notams, waypoints, airspace, nowMs })) {
+      const planned = plannedAltAt(profile, a.alongNm)
+      if (planned < a.lowerFt || planned > a.upperFt) continue
+      warnings.push({
+        level:  'danger',
+        code:   'notam-airspace',
+        title:  `${notamTitle(a.notam)} on route`,
+        detail: `About ${Math.round(a.alongNm)} NM along the route, planned ${Math.round(planned).toLocaleString('en-US')} ft. ${notamSummary(a.notam)}`,
+        focusNm: a.alongNm,
       })
     }
   }
@@ -190,6 +259,21 @@ export function computeWarnings(
         title:  `Leg ${legName(i)} → ${legName(i + 1)} below Minimum Safe Altitude`,
         detail: `Planned ${Math.round(span.altFt).toLocaleString('en-US')} ft, minimum safe ${required.toLocaleString('en-US')} ft (${clearance}). Check Virtual Radar.`,
         fix:    { kind: 'raise-leg', legIndex: i, altFt: required },
+        focusNm: (span.fromNm + span.toNm) / 2,
+        legIndex: i,
+      })
+    }
+  }
+
+  // ── 2b. Airfield proximity ──────────────────────────────────────────────
+  if (aerodromes && waypoints.length >= 2) {
+    for (const a of airfieldProximity(profile, waypoints, aerodromes, terrainPts)) {
+      warnings.push({
+        level:  'warn',
+        code:   'airfield-proximity',
+        title:  `Passes close to ${a.label}`,
+        detail: `${a.lateralNm.toFixed(1)} NM from the track at ${Math.round(a.distNm)} NM, planned ${Math.round(a.plannedFt).toLocaleString('en-US')} ft over a field at ${Math.round(a.elevationFt).toLocaleString('en-US')} ft: expect circuit and arriving or departing traffic.`,
+        focusNm: a.distNm,
       })
     }
   }

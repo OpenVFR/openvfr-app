@@ -8,6 +8,10 @@ import { useMsaMargins, useAlertBanners } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { computeWarnings, type PreflightWarning } from '@open-vfr/shared/preflightWarnings'
 import { computePrompts } from '@open-vfr/shared/preflightPrompts'
+import { notamRegionsFor } from '@open-vfr/shared/notamRegionScope'
+import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
+import { useCountries } from '../hooks/useCountries'
+import { useRegionalNotams } from '../hooks/useRegionalNotams'
 import { obstacleTipsForMsa } from '@open-vfr/shared/obstacleHeights'
 import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
 import { useMefGrids } from '../hooks/useMefGrids'
@@ -18,6 +22,7 @@ import {
   terrainForMsa,
   applyTerrainToBands,
   terrainAt,
+  coordinateAlongRouteNm,
   type VirtualRadarProfile,
   type MsaPoint,
   type TerrainPoint,
@@ -36,6 +41,7 @@ import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/country
 let _airspaceGeo: GeoJSON.FeatureCollection | null = null
 let _obstacleGeo: GeoJSON.FeatureCollection | null = null
 let _landmarkGeo: GeoJSON.FeatureCollection | null = null
+let _aerodromeGeo: GeoJSON.FeatureCollection | null = null
 let _geoKey = ''
 
 function loadGeoJson() {
@@ -45,6 +51,7 @@ function loadGeoJson() {
     _airspaceGeo = null
     _obstacleGeo = null
     _landmarkGeo = null
+    _aerodromeGeo = null
   }
   const key = _geoKey
   if (!_airspaceGeo) {
@@ -61,6 +68,11 @@ function loadGeoJson() {
     // Masts, chimneys etc. count towards the MSA like the chart does.
     loadCountryGeojson('landmarks')
       .then((d) => { if (key === _geoKey) _landmarkGeo = d })
+      .catch(() => { /* offline */ })
+  }
+  if (!_aerodromeGeo) {
+    loadCountryGeojson('aerodromes')
+      .then((d) => { if (key === _geoKey) _aerodromeGeo = d })
       .catch(() => { /* offline */ })
   }
 }
@@ -82,12 +94,17 @@ interface Props {
   windsLoading?: boolean
   /** Applies a warning's one-tap fix (raise a leg to its MSA). */
   onSetLegOverride?: (idx: number, override: LegOverride) => void
+  /** Centres the map on a point (a warning's place on the route). */
+  onShowOnMap?: (lng: number, lat: number) => void
+  /** Selects a leg in the route table (also highlights it on the map). */
+  onSelectLeg?: (leg: number | null) => void
 }
 
-export default function PreflightWarnings({ waypoints, legOverrides, aircraft, aircraftId, legWinds, windsLoading, onSetLegOverride }: Props) {
+export default function PreflightWarnings({ waypoints, legOverrides, aircraft, aircraftId, legWinds, windsLoading, onSetLegOverride, onShowOnMap, onSelectLeg }: Props) {
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(_airspaceGeo)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(_obstacleGeo)
   const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(_landmarkGeo)
+  const [aerodromeGeo, setAerodromeGeo] = useState<GeoJSON.FeatureCollection | null>(_aerodromeGeo)
   const [terrainPts,  setTerrainPts]  = useState<TerrainPoint[]>([])
   const [terrainDone, setTerrainDone] = useState(false)
   const [terrainFailed, setTerrainFailed] = useState(false)
@@ -100,7 +117,8 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
       if (_airspaceGeo && !airspaceGeo) setAirspaceGeo(_airspaceGeo)
       if (_obstacleGeo && !obstacleGeo) setObstacleGeo(_obstacleGeo)
       if (_landmarkGeo && !landmarkGeo) setLandmarkGeo(_landmarkGeo)
-      if (_airspaceGeo && _obstacleGeo && _landmarkGeo) clearInterval(id)
+      if (_aerodromeGeo && !aerodromeGeo) setAerodromeGeo(_aerodromeGeo)
+      if (_airspaceGeo && _obstacleGeo && _landmarkGeo && _aerodromeGeo) clearInterval(id)
     }, 200)
     return () => clearInterval(id)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -150,6 +168,15 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
     [rawProfile, terrainPts],
   )
 
+  // Regional NOTAMs for the countries the route touches (restricted areas a NOTAM creates).
+  const { selected: selectedRegions } = useCountries()
+  const notamRegions = useMemo(
+    () => notamRegionsFor({ selected: selectedRegions, route: waypoints }),
+    [selectedRegions, waypoints],
+  )
+  const regionalNotams = useRegionalNotams(waypoints.length >= 2, notamRegions)
+  const vfrNotams = useMemo(() => regionalNotams.filter((n) => !isIfrOnly(n)), [regionalNotams])
+
   const mefGrids = useMefGrids()
   // Fetched terrain, or (once the fetch failed) route samples from the terrain grid.
   const msaTerrain = useMemo(
@@ -163,8 +190,8 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
 
   const warnings = useMemo<PreflightWarning[]>(() => {
     if (!profile) return []
-    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, resolveMsaMargins(msaMargins), terrainPts, airspaceLevels)
-  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, msaMargins, terrainPts, airspaceLevels])
+    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, resolveMsaMargins(msaMargins), { terrainPts, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo })
+  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, msaMargins, terrainPts, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo])
 
   const prompts = useMemo(
     () => computePrompts({ waypoints, legWinds, windsLoading }),
@@ -198,6 +225,19 @@ export default function PreflightWarnings({ waypoints, legOverrides, aircraft, a
             {w.title}
           </div>
           <div className={css.cardDetail}>{w.detail}</div>
+          {w.focusNm != null && onShowOnMap && (
+            <button
+              type="button"
+              className={css.fixBtn}
+              onClick={() => {
+                if (w.legIndex != null) onSelectLeg?.(w.legIndex)
+                const pt = coordinateAlongRouteNm(waypoints, w.focusNm ?? 0)
+                onShowOnMap(pt.lng, pt.lat)
+              }}
+            >
+              Show on map
+            </button>
+          )}
           {w.fix?.kind === 'raise-leg' && onSetLegOverride && (
             <button
               type="button"
