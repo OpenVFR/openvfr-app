@@ -156,6 +156,11 @@ appId: org.openvfr.app
     id: map-tool-dest
 - waitForAnimationToEnd:
     timeout: 10000
+# A shot taken before the sheet opened was identical to 01-map once.
+- extendedWaitUntil:
+    visible:
+      id: find-destination-close
+    timeout: 20000
 - takeScreenshot: 03-find-destination
 - tapOn:
     id: find-destination-close

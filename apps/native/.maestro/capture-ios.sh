@@ -27,6 +27,8 @@ while IFS='|' read -r name re size <&3; do
   [ -n "$type" ] && [ "$type" != null ] || { echo "::error::no simulator type matching $re"; exit 1; }
   echo "== $name: $type on $runtime"
 
+  # Free the previous device's RAM/CPU before booting the next one.
+  xcrun simctl shutdown all || true
   udid=$(xcrun simctl create "shots-$name" "$type" "$runtime")
   xcrun simctl boot "$udid"
   xcrun simctl bootstatus "$udid" -b
@@ -37,7 +39,22 @@ while IFS='|' read -r name re size <&3; do
 
   out="$out_root/$name"
   mkdir -p "$out"
-  bash "$here/run-flow.sh" "$out" --device "$udid"
+  # A cold simulator on a loaded runner sometimes never gets Maestro's XCTest
+  # driver up ("iOS driver not ready in time", seen on the iPad after a ~9 min
+  # boot). Retry once on a fresh boot, but only when no shot was taken, so a
+  # real flow failure still fails fast.
+  if ! bash "$here/run-flow.sh" "$out" --device "$udid"; then
+    if ls "$out"/*.png >/dev/null 2>&1; then exit 1; fi
+    echo "::warning::$name: flow produced no shots; rebooting simulator and retrying once"
+    pkill -f xcodebuild || true
+    xcrun simctl shutdown "$udid" || true
+    xcrun simctl boot "$udid"
+    xcrun simctl bootstatus "$udid" -b
+    xcrun simctl status_bar "$udid" override \
+      --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
+      --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
+    bash "$here/run-flow.sh" "$out" --device "$udid"
+  fi
 
   want="${size/x/ x }"
   for f in "$out"/*.png; do
