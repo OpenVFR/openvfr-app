@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeWarnings } from './preflightWarnings'
+import { computeWarnings, isEndpointSurfaceAirspace } from './preflightWarnings'
 import type { VirtualRadarProfile } from './virtualRadarCalc'
 
 function profile(over: Partial<VirtualRadarProfile> = {}): VirtualRadarProfile {
@@ -53,5 +53,29 @@ describe('computeWarnings', () => {
 
   it('warns when terrain is unavailable', () => {
     expect(codes(computeWarnings(profile(), [], undefined, [], [], undefined, true))).toEqual(['terrain-unavailable'])
+  })
+})
+
+describe('airspace at the departure / arrival aerodrome', () => {
+  const ctr = (over: object) => ({ class: 'D', type: 'CTR', name: 'Home CTR', lower_ft: 0, upper_ft: 4000, entryNm: 0, exitNm: 6, ...over })
+  const run = (band: object, totalNm = 50) =>
+    computeWarnings(profile({ totalNm, airspaceBands: [band] as never }), [], undefined, [], [])
+
+  it('skips a surface-level CTR the route starts in', () => {
+    expect(run(ctr({ openStart: true, lowerAgl: true }))).toEqual([])
+  })
+  it('skips a surface-level CTR the route ends in', () => {
+    expect(run(ctr({ entryNm: 44, exitNm: 50, openEnd: true, lowerAgl: true }))).toEqual([])
+  })
+  it('still warns for a TMA above the departure aerodrome', () => {
+    expect(codes(run(ctr({ type: 'TMA', name: 'Big TMA', lower_ft: 2500, upper_ft: 4000, openStart: true, lowerAgl: true })))).toEqual(['airspace-penetration'])
+  })
+  it('still warns for a CTR crossed en route', () => {
+    expect(codes(run(ctr({ entryNm: 20, exitNm: 30 })))).toEqual(['airspace-penetration'])
+  })
+  it('uses terrain: an AGL floor lifted to ground counts as surface', () => {
+    const pts = [{ distNm: 0, elevFt: 800 }, { distNm: 50, elevFt: 800 }] as never
+    expect(isEndpointSurfaceAirspace(ctr({ openStart: true, lowerAgl: true, lower_ft: 800 }) as never, 50, pts)).toBe(true)
+    expect(isEndpointSurfaceAirspace(ctr({ openStart: true, lowerAgl: true, lower_ft: 2300 }) as never, 50, pts)).toBe(false)
   })
 })

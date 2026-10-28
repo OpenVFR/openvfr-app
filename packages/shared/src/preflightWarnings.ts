@@ -9,7 +9,7 @@
  */
 
 import { DEFAULT_MSA_MARGINS, type MsaMargins } from './msaMargins'
-import type { VirtualRadarProfile, MsaPoint } from './virtualRadarCalc'
+import { terrainAt, type VirtualRadarProfile, type MsaPoint, type AirspaceCrossSection, type TerrainPoint } from './virtualRadarCalc'
 import { computeFuelPlan } from './fuelCalc'
 import type { RouteWaypoint, LegOverride, AircraftProfileDocType } from './types'
 
@@ -34,6 +34,29 @@ const CONTROLLED_CLASSES = new Set(['C', 'D'])
 const RESTRICTED_CLASSES = new Set(['R', 'TRA'])
 const DEFAULT_ALT_FT = 3500
 const SUPPRESS_DEP_ARR_NM = 5  // ignore MSA violations within 5 NM of dep/arr
+
+/** Floor within this height of the ground counts as "surface level". */
+const SURFACE_FLOOR_FT = 100
+
+/**
+ * Airspace the route starts or ends inside, reaching down to the ground
+ * (a CTR/ATZ over the departure or arrival aerodrome). The pilot operates
+ * there by definition, so listing it on every flight from a controlled
+ * aerodrome would be noise. Airspace that only starts higher up (a TMA
+ * above the aerodrome) is still checked.
+ */
+export function isEndpointSurfaceAirspace(
+  band: Pick<AirspaceCrossSection, 'lower_ft' | 'lowerAgl' | 'openStart' | 'openEnd' | 'entryNm' | 'exitNm'>,
+  totalNm: number,
+  terrainPts: TerrainPoint[] = [],
+): boolean {
+  const atStart = !!band.openStart || band.entryNm <= 0.05
+  const atEnd   = !!band.openEnd   || band.exitNm >= totalNm - 0.05
+  if (!atStart && !atEnd) return false
+  const ground = (d: number) => (terrainPts.length > 0 ? Math.max(0, terrainAt(terrainPts, d)) : 0)
+  const floorAtGround = (d: number) => band.lower_ft <= ground(d) + SURFACE_FLOOR_FT
+  return (atStart && floorAtGround(0)) || (atEnd && floorAtGround(totalNm))
+}
 
 /** Return planned altitude at a given route distance using the step-function profile. */
 function plannedAltAt(profile: VirtualRadarProfile, distNm: number): number {
@@ -69,6 +92,7 @@ export function computeWarnings(
   terrainFailed = false,
   legWinds?: ({ dirDeg: number; speedKts: number } | null)[],
   margins: MsaMargins = DEFAULT_MSA_MARGINS,
+  terrainPts: TerrainPoint[] = [],
 ): PreflightWarning[] {
   const warnings: PreflightWarning[] = []
 
@@ -105,6 +129,7 @@ export function computeWarnings(
     const isDangerous =
       CONTROLLED_CLASSES.has(band.class) || RESTRICTED_CLASSES.has(band.class)
     if (!isDangerous) continue
+    if (isEndpointSurfaceAirspace(band, profile.totalNm, terrainPts)) continue
 
     // Sample planned altitude at the midpoint of the airspace crossing
     const midNm    = (band.entryNm + band.exitNm) / 2
