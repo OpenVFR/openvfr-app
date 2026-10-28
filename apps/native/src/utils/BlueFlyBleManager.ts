@@ -4,7 +4,7 @@
  * bridge. Owns only I/O; all parsing/checksums/command-building delegate
  * to the shared, pure @open-vfr/shared/blueflyVario module.
  *
- * See docs/native-ble-vario.md and docs/native-ble-vario.md §1-2 for
+ * See docs/native-ble-vario.md §1-2 for
  * the full protocol/connection-sequence rationale.
  */
 
