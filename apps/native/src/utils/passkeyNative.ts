@@ -134,6 +134,7 @@ export async function passkeySignIn(): Promise<PasskeyOutcome> {
   const opts = await getOptions<PasskeyGetRequest>('/passkey/generate-authenticate-options', false)
   if ('error' in opts) return { ok: false, cancelled: false, message: opts.error }
 
+  const t0 = Date.now()
   let assertion: PasskeyGetResult
   try {
     assertion = await Passkey.get(opts.data)
@@ -144,8 +145,15 @@ export async function passkeySignIn(): Promise<PasskeyOutcome> {
   // Strip clientExtensionResults like the web client does; the server only reads the core fields.
   const { clientExtensionResults: _ext, ...response } = assertion as PasskeyGetResult & { clientExtensionResults?: unknown }
   const res = await verify<SessionResponse>('/passkey/verify-authentication', { response }, opts.cookie, false)
-  if ('error' in res) syncLog('[passkey] server rejected the assertion', res.error)
-  if ('error' in res) return { ok: false, cancelled: false, message: res.error }
+  if ('error' in res) {
+    // Challenge not found = the server could not match the challenge cookie.
+    // Say whether we had one and how long the sheet / QR flow took (the
+    // server drops the challenge after 300 s), names only, never values.
+    const names = opts.cookie?.split(';').map(c => c.split('=')[0]?.trim()).join(',')
+    const detail = `${res.error} [cookie: ${names || 'none'}; ${Math.round((Date.now() - t0) / 1000)}s after options]`
+    syncLog('[passkey] server rejected the assertion', detail)
+    return { ok: false, cancelled: false, message: detail }
+  }
   return { ok: true, user: toUser(res.data) }
 }
 
