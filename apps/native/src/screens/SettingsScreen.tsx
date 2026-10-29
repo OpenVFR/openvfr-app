@@ -38,6 +38,7 @@ import { refreshTileManifest, getCachedTileManifest, onTileManifestChanged } fro
 import { airacDataStatus, relativeTime, type AiracDataStatus } from '@open-vfr/shared/airac'
 import { theme, useThemedStyles, useScaledTheme, type ScaledTheme, type ThemeName } from '../styles/theme'
 import { FULL_CREDITS_LINK } from '@open-vfr/shared/attributionSources'
+import { SPONSOR } from '@open-vfr/shared/sponsor'
 import { useOfflineSummary } from './OfflineDataScreen'
 import * as Application from 'expo-application'
 import { listPasskeys, deletePasskey, type RegisteredPasskey } from '../utils/passkeyNative'
@@ -626,6 +627,10 @@ export function SettingsScreen() {
         <TouchableOpacity style={[styles.row, styles.pressable]} onPress={() => Linking.openURL(FULL_CREDITS_LINK.url)}>
           <Text style={styles.rowLabel}>Data sources &amp; licences</Text>
           <Text style={styles.infoValue}>{'\u203a'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.row, styles.pressable]} onPress={() => Linking.openURL(SPONSOR.url)}>
+          <Text style={styles.rowLabel}>Supported by</Text>
+          <Text style={styles.infoValue} numberOfLines={1}>{SPONSOR.name}  {'\u203a'}</Text>
         </TouchableOpacity>
         {!!SITE_BASE && (
           <>

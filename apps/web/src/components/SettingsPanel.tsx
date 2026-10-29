@@ -11,6 +11,7 @@ import { airacDataStatus, relativeTime } from '@open-vfr/shared/airac'
 import { describeGpsAltitudeReference, gpsAltitudeReferenceStatus, subscribeGpsAltitudeReference } from '@open-vfr/shared/gpsAltitudeReference'
 import { FULL_CREDITS_LINK } from '@open-vfr/shared/attributionSources'
 import { SITE_BASE_URL } from '../utils/env'
+import { SPONSOR } from '@open-vfr/shared/sponsor'
 
 /** Whether GPS altitudes are geoid-corrected, and whether that was verified
  *  on the ground (@open-vfr/shared/gpsAltitudeReference). */
@@ -403,6 +404,13 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
             }
           }}
         >Repair &amp; reload</button>
+      </div>
+
+      <div className={css.section}>
+        <span className={css.label}>Supported by</span>
+        <nav className={css.aboutLinks} aria-label="Sponsor">
+          <a href={SPONSOR.url} target="_blank" rel="noopener noreferrer">{SPONSOR.name}</a>
+        </nav>
       </div>
 
       {/* Credits for every data source are also behind the map's (i) button. */}
