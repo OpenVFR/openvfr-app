@@ -287,7 +287,7 @@ export function SettingsScreen() {
 
       {/* ── Navigation ────────────────────────────────────────────── */}
             {/* ── Airspace Warnings ─────────────────────────────── */}
-      <Section title="Airspace Warnings">
+      <Section title="Airspace Warnings" collapsible>
         <RowStep
           label="Horizontal lookahead"
           value={settings.airspaceWarnLookaheadMin}
@@ -325,7 +325,7 @@ export function SettingsScreen() {
         />
       </Section>
 
-      <Section title="Alert banners">
+      <Section title="Alert banners" collapsible>
         <RowToggle
           label="Obstacles ahead"
           left="Off" right="On"
@@ -379,7 +379,7 @@ export function SettingsScreen() {
       </Section>
 
       {/* ── Vario / Barometric Altitude ──────────────────────────── */}
-      <Section title="Vario">
+      <Section title="Vario" collapsible>
         <View style={styles.row}>
           <Text style={styles.rowLabel}>Internal barometer</Text>
           {internalBaro.availability === 'unavailable' ? (
@@ -555,7 +555,7 @@ export function SettingsScreen() {
       </Section>
 
       {/* ── Simulator ───────────────────────────────── */}
-      <Section title="Simulator">
+      <Section title="Simulator" collapsible>
         <View style={styles.row}>
           <Text style={styles.rowLabel}>X-Plane / MSFS</Text>
           <SimConnectSheet
@@ -731,12 +731,28 @@ function CountriesSection() {
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** Settings group. `collapsible` ones start closed (tap the title to open) to keep the screen short. */
+function Section({ title, children, collapsible = false }: { title: string; children: React.ReactNode; collapsible?: boolean }) {
   const sectionStyles = useThemedStyles(makeSectionStyles)
+  const [open, setOpen] = useState(!collapsible)
   return (
     <View style={sectionStyles.container}>
-      <Text style={sectionStyles.title}>{title.toUpperCase()}</Text>
-      <View style={sectionStyles.card}>{children}</View>
+      {collapsible ? (
+        <TouchableOpacity
+          style={sectionStyles.titleRow}
+          onPress={() => setOpen(o => !o)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+          accessibilityLabel={`${title}, ${open ? 'expanded' : 'collapsed'}`}
+          hitSlop={{ top: 6, bottom: 6 }}
+        >
+          <Text style={[sectionStyles.title, sectionStyles.titleFlex]}>{title.toUpperCase()}</Text>
+          <Text style={sectionStyles.title}>{open ? '▾' : '▸'}</Text>
+        </TouchableOpacity>
+      ) : (
+        <Text style={sectionStyles.title}>{title.toUpperCase()}</Text>
+      )}
+      {open && <View style={sectionStyles.card}>{children}</View>}
     </View>
   )
 }
@@ -1264,6 +1280,15 @@ function makeSectionStyles(theme: ScaledTheme) {
     letterSpacing: 0.8,
     paddingHorizontal: theme.space1,
     marginBottom: theme.space1,
+  },
+  titleRow: {
+    flexDirection: 'row' as const,
+    alignItems:    'center' as const,
+    marginBottom:  theme.space1,
+  },
+  titleFlex: {
+    flex:         1,
+    marginBottom: 0,
   },
   card: {
     backgroundColor: theme.surfacePanel,
