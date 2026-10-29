@@ -30,8 +30,10 @@
 
 .section {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 4px 8px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -58,9 +60,20 @@
 
 .optionsRow {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-top: 4px;
 }
+
+.aboutLinks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px 12px;
+  font-size: 11px;
+}
+.aboutLinks a { color: var(--text-muted); text-decoration: underline; }
+.aboutLinks a:hover { color: var(--text-primary, inherit); }
 
 .opt {
   background: var(--surface-hover);

@@ -37,6 +37,7 @@ import { API_BASE, TILE_BASE, SITE_BASE } from '../config'
 import { refreshTileManifest, getCachedTileManifest, onTileManifestChanged } from '@open-vfr/shared/tileManifest'
 import { airacDataStatus, relativeTime, type AiracDataStatus } from '@open-vfr/shared/airac'
 import { theme, useThemedStyles, useScaledTheme, type ScaledTheme, type ThemeName } from '../styles/theme'
+import { FULL_CREDITS_LINK } from '@open-vfr/shared/attributionSources'
 import { useOfflineSummary } from './OfflineDataScreen'
 import * as Application from 'expo-application'
 import { listPasskeys, deletePasskey, type RegisteredPasskey } from '../utils/passkeyNative'
@@ -621,8 +622,11 @@ export function SettingsScreen() {
             value={`${Application.nativeApplicationVersion ?? '0.1.0'}${Application.nativeBuildVersion ? ` (${Application.nativeBuildVersion})` : ''}`}
           />
         </TouchableOpacity>
-        <InfoRow label="Obstacles"      value="OpenAIP (CC BY-NC 4.0)" />
-        <InfoRow label="Basemap"        value="Protomaps / OSM (ODbL)" />
+        {/* Every source and licence: the map's (i) list, plus the full page. */}
+        <TouchableOpacity style={[styles.row, styles.pressable]} onPress={() => Linking.openURL(FULL_CREDITS_LINK.url)}>
+          <Text style={styles.rowLabel}>Data sources &amp; licences</Text>
+          <Text style={styles.infoValue}>{'\u203a'}</Text>
+        </TouchableOpacity>
         {!!SITE_BASE && (
           <>
             <TouchableOpacity style={[styles.row, styles.pressable]} onPress={() => Linking.openURL(`${SITE_BASE}/privacy`)}>

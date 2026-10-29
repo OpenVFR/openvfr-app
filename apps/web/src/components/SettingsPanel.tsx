@@ -9,6 +9,8 @@ import RegionSelector from './RegionSelector'
 import type { AvailableCountry } from '@open-vfr/shared/countries'
 import { airacDataStatus, relativeTime } from '@open-vfr/shared/airac'
 import { describeGpsAltitudeReference, gpsAltitudeReferenceStatus, subscribeGpsAltitudeReference } from '@open-vfr/shared/gpsAltitudeReference'
+import { FULL_CREDITS_LINK } from '@open-vfr/shared/attributionSources'
+import { SITE_BASE_URL } from '../utils/env'
 
 /** Whether GPS altitudes are geoid-corrected, and whether that was verified
  *  on the ground (@open-vfr/shared/gpsAltitudeReference). */
@@ -390,6 +392,20 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
             }
           }}
         >Repair &amp; reload</button>
+      </div>
+
+      {/* Credits for every data source are also behind the map's (i) button. */}
+      <div className={css.section}>
+        <span className={css.label}>About</span>
+        <nav className={css.aboutLinks} aria-label="About">
+          <a href={FULL_CREDITS_LINK.url} target="_blank" rel="noopener noreferrer">Data sources &amp; licences</a>
+          {SITE_BASE_URL && (
+            <>
+              <a href={`${SITE_BASE_URL}/privacy`} target="_blank" rel="noopener noreferrer">Privacy</a>
+              <a href={`${SITE_BASE_URL}/terms`} target="_blank" rel="noopener noreferrer">Terms &amp; Disclaimer</a>
+            </>
+          )}
+        </nav>
       </div>
     </div>
   )
