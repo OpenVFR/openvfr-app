@@ -8,6 +8,7 @@ import {
   View, Text, Switch, ScrollView, TextInput,
   TouchableOpacity, Alert, Modal, Pressable,
 } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
 import Slider from '@react-native-community/slider'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -731,28 +732,38 @@ function CountriesSection() {
   )
 }
 
-/** Settings group. `collapsible` ones start closed (tap the title to open) to keep the screen short. */
+/**
+ * Settings group. `collapsible` ones start closed and look like a tappable row
+ * (card with the title and a chevron), the same pattern as the other rows that
+ * open something; opened, the chevron points down and the content follows
+ * inside the same card. (React Native has no accordion component.)
+ */
 function Section({ title, children, collapsible = false }: { title: string; children: React.ReactNode; collapsible?: boolean }) {
   const sectionStyles = useThemedStyles(makeSectionStyles)
   const [open, setOpen] = useState(!collapsible)
+  if (!collapsible) {
+    return (
+      <View style={sectionStyles.container}>
+        <Text style={sectionStyles.title}>{title.toUpperCase()}</Text>
+        <View style={sectionStyles.card}>{children}</View>
+      </View>
+    )
+  }
   return (
     <View style={sectionStyles.container}>
-      {collapsible ? (
+      <View style={sectionStyles.card}>
         <TouchableOpacity
-          style={sectionStyles.titleRow}
+          style={[sectionStyles.headerRow, open && sectionStyles.headerRowOpen]}
           onPress={() => setOpen(o => !o)}
           accessibilityRole="button"
           accessibilityState={{ expanded: open }}
-          accessibilityLabel={`${title}, ${open ? 'expanded' : 'collapsed'}`}
-          hitSlop={{ top: 6, bottom: 6 }}
+          accessibilityLabel={title}
         >
-          <Text style={[sectionStyles.title, sectionStyles.titleFlex]}>{title.toUpperCase()}</Text>
-          <Text style={sectionStyles.title}>{open ? '▾' : '▸'}</Text>
+          <Text style={sectionStyles.headerTitle}>{title}</Text>
+          <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={18} color={theme.textMuted} />
         </TouchableOpacity>
-      ) : (
-        <Text style={sectionStyles.title}>{title.toUpperCase()}</Text>
-      )}
-      {open && <View style={sectionStyles.card}>{children}</View>}
+        {open && children}
+      </View>
     </View>
   )
 }
@@ -850,13 +861,13 @@ function RowParkTimeout({
 }: { value: ParkTimeoutOption; onChange: (v: ParkTimeoutOption) => void }) {
   const styles = useThemedStyles(makeStyles)
   return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>Log split timeout</Text>
-      <View style={styles.segmented}>
+    <View style={[styles.row, styles.rowStacked]}>
+      <Text style={[styles.rowLabel, { flex: 0 }]}>Log split timeout</Text>
+      <View style={[styles.segmented, styles.segmentedFull]}>
         {PARK_TIMEOUT_OPTIONS.map((v) => (
           <TouchableOpacity
             key={v}
-            style={[styles.seg, value === v && styles.segActive]}
+            style={[styles.seg, styles.segFlex, value === v && styles.segActive]}
             onPress={() => onChange(v)}
             accessibilityLabel={`Log split timeout ${parkTimeoutLabel(v)}`}
           >
@@ -1257,6 +1268,21 @@ function makeStyles(theme: ScaledTheme) {
   segActive: {
     backgroundColor: theme.accentBlue,
   },
+  // Six options do not fit beside the label on a small phone: label on its own
+  // line, the control full width below it with equal-width segments.
+  rowStacked: {
+    flexDirection:  'column',
+    alignItems:     'stretch',
+    justifyContent: 'center',
+    gap:            theme.space2,
+  },
+  segmentedFull: {
+    alignSelf: 'stretch',
+  },
+  segFlex: {
+    flex:       1,
+    alignItems: 'center',
+  },
   segText: {
     color:    theme.textMuted,
     fontSize: theme.textXs,
@@ -1281,14 +1307,22 @@ function makeSectionStyles(theme: ScaledTheme) {
     paddingHorizontal: theme.space1,
     marginBottom: theme.space1,
   },
-  titleRow: {
-    flexDirection: 'row' as const,
-    alignItems:    'center' as const,
-    marginBottom:  theme.space1,
+  headerRow: {
+    flexDirection:     'row' as const,
+    alignItems:        'center' as const,
+    justifyContent:    'space-between' as const,
+    paddingVertical:   theme.space3,
+    paddingHorizontal: theme.space3,
+    minHeight:         48,
   },
-  titleFlex: {
-    flex:         1,
-    marginBottom: 0,
+  headerRowOpen: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.borderSubtle,
+  },
+  headerTitle: {
+    color:      theme.textPrimary,
+    fontSize:   theme.textSm,
+    fontWeight: '600' as const,
   },
   card: {
     backgroundColor: theme.surfacePanel,
