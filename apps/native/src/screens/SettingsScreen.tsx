@@ -6,7 +6,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import {
   View, Text, Switch, ScrollView, TextInput,
-  TouchableOpacity, Alert, Modal, Pressable,
+  TouchableOpacity, Alert, Modal, Pressable, Linking,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import Slider from '@react-native-community/slider'
@@ -33,11 +33,13 @@ import { useFlightActive } from '../utils/flightActive'
 import { useFlightLogSync } from '../hooks/useFlightLogSync'
 import { qnhFromStationPressure } from '@open-vfr/shared/baroAltitude'
 import * as Location from 'expo-location'
-import { API_BASE, TILE_BASE } from '../config'
+import { API_BASE, TILE_BASE, SITE_BASE } from '../config'
 import { refreshTileManifest, getCachedTileManifest, onTileManifestChanged } from '@open-vfr/shared/tileManifest'
 import { airacDataStatus, relativeTime, type AiracDataStatus } from '@open-vfr/shared/airac'
 import { theme, useThemedStyles, useScaledTheme, type ScaledTheme, type ThemeName } from '../styles/theme'
 import { useOfflineSummary } from './OfflineDataScreen'
+import * as Application from 'expo-application'
+import { listPasskeys, deletePasskey, type RegisteredPasskey } from '../utils/passkeyNative'
 
 const UI_SCALE_OPTIONS = [0.85, 0.9, 1.0, 1.1, 1.2, 1.3, 1.45, 1.6]
 
@@ -88,11 +90,29 @@ export function SettingsScreen() {
     return () => { cancelled = true }
   }, [signedIn])
 
+  // Registered passkeys (which devices can sign in with one), newest first.
+  const [passkeys, setPasskeys] = useState<RegisteredPasskey[]>([])
+  const refreshPasskeys = useCallback(async () => { setPasskeys(await listPasskeys()) }, [])
+  useEffect(() => { if (signedIn && passkeyAllowed) void refreshPasskeys() }, [signedIn, passkeyAllowed, refreshPasskeys])
+
   const handleRegisterPasskey = useCallback(async () => {
     const res = await registerPasskey()
-    if (res.ok) Alert.alert('Passkey added', 'You can now sign in with a passkey on this device.')
-    else if (!res.cancelled) Alert.alert('Could not add passkey', res.message ?? 'Unknown error')
-  }, [registerPasskey])
+    if (res.ok) {
+      Alert.alert('Passkey added', 'You can now sign in with a passkey on this device.')
+      void refreshPasskeys()
+    } else if (!res.cancelled) Alert.alert('Could not add passkey', res.message ?? 'Unknown error')
+  }, [registerPasskey, refreshPasskeys])
+
+  const handleDeletePasskey = useCallback((pk: RegisteredPasskey) => {
+    Alert.alert(
+      'Remove passkey?',
+      `${pk.name || 'This passkey'} will no longer sign in to OpenVFR. You can add it again later.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => { void deletePasskey(pk.id).then(refreshPasskeys) } },
+      ],
+    )
+  }, [refreshPasskeys])
 
   // Sign-out wipes this device's copy of routes, aircraft, waypoints and
   // flight logs. Send what has not reached the server first, and ask before
@@ -377,6 +397,7 @@ export function SettingsScreen() {
           value={(settings.trajectoryMode ?? 'time') === 'nm'}
           onToggle={(v) => update({ trajectoryMode: v ? 'nm' : 'time' })}
         />
+        <GpsAltitudeReferenceRow />
       </Section>
 
       {/* ── Vario / Barometric Altitude ──────────────────────────── */}
@@ -570,6 +591,7 @@ export function SettingsScreen() {
 
       <Section title="Country">
         <CountriesSection />
+        <AiracStatusRows data={dataStatus} />
       </Section>
 
       <Section title="Offline Data">
@@ -594,19 +616,30 @@ export function SettingsScreen() {
             if (versionTaps.current >= 5) setShowDiag(true)
           }}
         >
-          <InfoRow label="Version"        value="0.1.0" />
+          <InfoRow
+            label="Version"
+            value={`${Application.nativeApplicationVersion ?? '0.1.0'}${Application.nativeBuildVersion ? ` (${Application.nativeBuildVersion})` : ''}`}
+          />
         </TouchableOpacity>
-        <InfoRow label="Server"         value={API_BASE} />
-        <GpsAltitudeReferenceRow />
-        <AiracStatusRows data={dataStatus} />
         <InfoRow label="Obstacles"      value="OpenAIP (CC BY-NC 4.0)" />
         <InfoRow label="Basemap"        value="Protomaps / OSM (ODbL)" />
-        {state.status === 'authenticated' && (
-          <InfoRow label="Signed in as" value={state.user.email} />
+        {!!SITE_BASE && (
+          <>
+            <TouchableOpacity style={[styles.row, styles.pressable]} onPress={() => Linking.openURL(`${SITE_BASE}/privacy`)}>
+              <Text style={styles.rowLabel}>Privacy policy</Text>
+              <Text style={styles.infoValue}>{'\u203a'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.row, styles.pressable]} onPress={() => Linking.openURL(`${SITE_BASE}/terms`)}>
+              <Text style={styles.rowLabel}>Terms & disclaimer</Text>
+              <Text style={styles.infoValue}>{'\u203a'}</Text>
+            </TouchableOpacity>
+          </>
         )}
+        {/* Tap Version 5 times: for testers and bug reports, not for pilots. */}
+        {showDiag && <InfoRow label="Server" value={API_BASE} />}
         {showDiag && (
           <TouchableOpacity onPress={() => Alert.alert('Sync log', getSyncLog())}>
-            <InfoRow label="Diagnostics" value="Sync log ›" />
+            <InfoRow label="Diagnostics" value="Sync log \u203a" />
           </TouchableOpacity>
         )}
       </Section>
@@ -614,9 +647,21 @@ export function SettingsScreen() {
       {/* ── Account ───────────────────────────────────────────── */}
       {state.status === 'authenticated' && (
         <Section title="Account">
+          <InfoRow label="Signed in as" value={state.user.email} />
+          {passkeyAllowed && passkeys.map(pk => (
+            <TouchableOpacity key={pk.id} style={[styles.row, styles.pressable]} onPress={() => handleDeletePasskey(pk)}
+              accessibilityLabel={`Passkey ${pk.name || ''}, tap to remove`}>
+              <Text style={styles.rowLabel} numberOfLines={1}>
+                {'\u{1F511} '}{pk.name || 'Passkey'}
+              </Text>
+              <Text style={styles.infoValue}>
+                {pk.createdAt ? new Date(pk.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : ''}  {'\u2715'}
+              </Text>
+            </TouchableOpacity>
+          ))}
           {passkeyAllowed && (
             <TouchableOpacity style={[styles.row, styles.pressable]} onPress={handleRegisterPasskey}>
-              <Text style={styles.rowLabel}>Register passkey on this device</Text>
+              <Text style={styles.rowLabel}>Add a passkey for this device</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity style={[styles.row, styles.pressable]} onPress={handleSignOut} disabled={signingOut}>

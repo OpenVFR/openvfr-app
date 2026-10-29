@@ -180,3 +180,33 @@ export async function passkeyRegister(name?: string): Promise<PasskeyOutcome> {
   if ('error' in res) return { ok: false, cancelled: false, message: res.error }
   return { ok: true, user: toUser(res.data) }
 }
+
+// ---------------------------------------------------------------------------
+// Passkey management (Settings -> Account)
+// ---------------------------------------------------------------------------
+
+export type RegisteredPasskey = { id: string; name: string | null; createdAt: string | null; deviceType: string | null }
+
+/** The signed-in user's registered passkeys, newest first. Empty on any error (offline). */
+export async function listPasskeys(): Promise<RegisteredPasskey[]> {
+  const { data, error } = await authClient.$fetch<RegisteredPasskey[]>('/passkey/list-user-passkeys', {
+    method: 'GET',
+    headers: await authHeaders(),
+    credentials: 'omit',
+    throw: false,
+  })
+  if (error || !Array.isArray(data)) return []
+  return [...data].sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
+}
+
+/** Remove one registered passkey (the credential on the device stays, but no longer signs in). */
+export async function deletePasskey(id: string): Promise<boolean> {
+  const { error } = await authClient.$fetch('/passkey/delete-passkey', {
+    method: 'POST',
+    body: { id },
+    headers: await authHeaders(),
+    credentials: 'omit',
+    throw: false,
+  })
+  return !error
+}

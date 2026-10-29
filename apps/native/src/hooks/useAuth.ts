@@ -16,6 +16,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authClient } from '../utils/authClient'
 import { getSessionToken, clearSessionToken } from '../utils/sessionToken'
+import * as Device from 'expo-device'
 import { passkeySignIn, passkeyRegister, isPasskeySupported } from '../utils/passkeyNative'
 import { claimLocalData, wipePrivateLocalData } from '../utils/userScope'
 import { stopCloudSync } from '../sync/cloudSync'
@@ -66,6 +67,11 @@ async function settle<T>(call: Promise<T>): Promise<T | { data: null; error: { m
       : (e instanceof Error && e.message) || 'Network request failed'
     return { data: null, error: { message } }
   }
+}
+
+/** Label for a newly registered passkey, so the list in Settings says which device it is. */
+function deviceLabel(): string | undefined {
+  return Device.deviceName || Device.modelName || undefined
 }
 
 export function useAuth() {
@@ -237,7 +243,7 @@ export function useAuth() {
   const registerPasskey = useCallback(async (): Promise<{ ok: boolean; cancelled?: boolean; message?: string }> => {
     setError(null)
     console.log('[auth] registerPasskey')
-    const res = await passkeyRegister()
+    const res = await passkeyRegister(deviceLabel())
     if (!res.ok) {
       if (res.cancelled) { console.log('[auth] registerPasskey cancelled'); return { ok: false, cancelled: true } }
       console.warn('[auth] registerPasskey error', res.message)
