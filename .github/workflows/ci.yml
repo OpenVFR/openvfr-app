@@ -102,3 +102,15 @@ jobs:
         with:
           args: --offline --include-fragments --no-progress 'docs/guide/**/*.md'
           fail: true
+
+  docs-settings:
+    name: Check settings.md matches code defaults
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      # No install needed: plain node script reading source files.
+      - name: Compare setting defaults with docs/guide/settings.md
+        run: node scripts/check-settings-docs.mjs

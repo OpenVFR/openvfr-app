@@ -42,7 +42,7 @@ Legend: **Yes** = available, **Partial** = available with differences
 |---|---|---|---|
 | Build a route by tapping the map, with snapping | Yes | Yes | |
 | Type a whole route as text (for example `ESOS ESGG ESSA`) | Yes | No | On native, add points by tapping, searching or Find destination. |
-| Undo / redo route changes | Yes | Yes | Web also has keyboard shortcuts. |
+| Undo / redo route changes | Yes | Yes | Web also has [keyboard shortcuts](./keyboard-shortcuts.md). |
 | Per-leg heading, wind correction, time | Yes | Yes | |
 | Forecast wind per leg, manual wind override | Yes | Yes | |
 | Fuel plan for a chosen aircraft | Yes | Yes | |

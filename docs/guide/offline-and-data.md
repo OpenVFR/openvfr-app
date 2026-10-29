@@ -55,7 +55,7 @@ for the active country so the app works without a connection.
 
 ## Repair
 
-On the web app, **Settings → App files → Repair and reload** clears the
+On the web app, **Settings → App → App files → Repair & reload** clears the
 cached app and map data and re-downloads it. Your routes, aircraft, places,
 logs and settings are kept. Use it if the app starts oddly or the map is
 broken. It needs a connection and is not available in flight.

@@ -8,7 +8,7 @@ sidebar:
 ## The map is empty or broken
 
 - Check your connection and reload. If it stays broken on the web app, use
-  **Settings → App files → Repair and reload**. Your routes, aircraft,
+  **Settings → App → App files → Repair & reload**. Your routes, aircraft,
   places, logs and settings are kept.
 - On native, check **Settings → Offline data**: a download that was
   interrupted can leave incomplete data. Update the offline data again.
@@ -65,7 +65,7 @@ explains. Sign out and in again if sync seems stuck.
 
 See [Flying mode and alerts](./flying-and-alerts.md): alerts wait 2 s,
 merge, and can be muted by the planned-course option or by a category set
-to Info or Ignore. Check **Settings → Alert banners**.
+to Info or Ignore. Check **Settings → Alert banners** (web: **Warnings & margins**).
 
 ## I cannot change a route, or turn on satellite, in flight
 

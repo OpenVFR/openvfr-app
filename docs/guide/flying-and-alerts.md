@@ -111,7 +111,7 @@ designed to stay quiet:
 - **Recent alerts:** a "↺ N recent" pill under the stack lists everything
   from the last 30 minutes (time in UTC, newest first).
 
-Under **Settings → Alert banners** you can switch banner types off and set
+On native, **Settings → Alert banners** (on the web, **Settings → Warnings & margins**) lets you switch banner types off and set
 the warning level per airspace category.
 
 > Alerts are an aid to awareness. They can be late, missing or wrong (for

@@ -19,13 +19,25 @@ The map combines a basemap with aviation layers. Open the layer panel (the
 | Group | Layers |
 |---|---|
 | Airspace | CTR, TMA / CTA, RMZ / ATZ / TMZ, Restricted / Danger / TRA, Glider / Model areas, Regional NOTAMs |
-| Points | VOR, NDB, MRP (reporting points), VFR waypoints, Aerodromes, Runways and taxiways, Obstacles, Landmarks, Your places |
+| Points | VOR, NDB, MRP (reporting points), VFR waypoints, Aerodromes, Runways and taxiways, Obstacles, Landmarks, Your places (web) |
 | Terrain | Land use, Hillshade (relief), Contour lines, Terrain colour |
 | Live | Air traffic |
 | Weather | Wind arrows |
 
-Your choices are remembered. On native the layers are grouped in the Map
-display sheet; on the web in the layer panel.
+Your choices are remembered. On native the layers are grouped in the **Map
+display** sheet (sections Basemap, Airspace Ceiling, Airspace, Points,
+Terrain, Weather, Live); on the web in the **Layers** panel (sections
+Basemap, Altitude Filter, Airspace, Navigation, Terrain, Traffic, Weather).
+
+When you first open the app, Glider / Model areas, Hillshade, Contour
+lines, Terrain colour, Air traffic and Wind arrows are off; everything else
+listed above is on. On the web, VFR waypoints are also off to begin with.
+
+Differences on native: VOR and NDB are one **Navaids** toggle, reporting
+points and VFR waypoints are one **Waypoints** toggle (on by default), and
+there is no separate toggle for your places.
+
+![Web app: the Layers panel with basemap, altitude filter and layer toggles](./images/web-layers-panel.png)
 
 ## Airspace
 
@@ -71,6 +83,8 @@ landmarks and your places by name or code. You can also type a coordinate
 there.
 
 ## Map tools
+
+![Web app: the map tools menu](./images/web-map-tools-menu.png)
 
 The tools menu groups:
 

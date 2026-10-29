@@ -28,7 +28,7 @@ with the nearest aerodrome preferred.
 - Dropping a waypoint onto the point before or after it **removes** it
   instead of leaving a zero-length leg.
 - **Reorder** waypoints by dragging them in the route table.
-- **Undo and redo** any route change.
+- **Undo and redo** any route change (web: Ctrl+Z, Ctrl+Shift+Z; see [Keyboard shortcuts](./keyboard-shortcuts.md)).
 - **Reverse** the route from the menu.
 - In flight, editing is locked unless you tap a leg first. See
   [Saved routes and places](./routes-and-places.md).
@@ -119,3 +119,21 @@ The plan can show weather and winds aloft along the route. See
 
 See [Saved routes and places](./routes-and-places.md) for saving, loading,
 GPX (web also KML).
+
+## The Plan screen on native
+
+On native, planning has its own screen with four segments along the top:
+
+- **Route:** the route table with wind (manual, global or forecast), takeoff
+  time (UTC), alternate, the pre-flight warnings above, **Raise to MSA** and
+  the fuel plan. The **⋯** button in the header opens the route actions
+  (route library, export, import, reverse, close route).
+- **Aircraft:** your aircraft profiles. **Add Aircraft…** creates one; each
+  profile can be selected, edited, duplicated and deleted. See
+  [Aircraft and fuel](./aircraft-and-fuel.md).
+- **Places:** your saved places in folders. Search, add by coordinates,
+  import and export GPX, and per place: add to the route, insert into the
+  route, start a new route from it, show on the map, edit or delete. See
+  [Saved routes and places](./routes-and-places.md).
+- **Logs:** your flight logs, with import and export of GPX, a period and
+  aircraft filter, and joining. See [Flight logs](./flight-logs.md).

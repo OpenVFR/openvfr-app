@@ -9,13 +9,21 @@ Settings are on the web app's Settings panel and on native's Settings
 screen. Both sync with your account. Where the platforms differ, it is
 noted.
 
+On the web app the Settings panel is grouped under fold-away titles:
+**Warnings & margins** (airspace warnings, alert banners, vertical buffer,
+traffic filter, MSA margins), **Flying**, **Data** and **App**. Native uses
+sections named Units, Display, Flying mode, Airspace Warnings, Alert
+banners, Navigation, Vario, Simulator, Country, Offline Data and About.
+
+![Web app: the Settings panel](./images/web-settings-panel.png)
+
 ## Units and display
 
 | Setting | Options | Default | Notes |
 |---|---|---|---|
 | Distance | NM, km | NM | |
 | Speed | kt, km/h | kt | |
-| Theme | Dark, Light, High contrast | Dark | |
+| Theme | Dark, Light, High contrast (shown as Hi-Con) | Dark | |
 | UI scale (native) | multiplier | 1.0 | For kneeboard or dashboard mounts viewed from a distance |
 | Country | one of the available countries | | Switches map and data. See [Offline use](./offline-and-data.md) |
 
@@ -24,7 +32,7 @@ noted.
 | Setting | Options | Default | Notes |
 |---|---|---|---|
 | Auto flying mode | Off, Ask, Auto | Ask | See [Flying mode and alerts](./flying-and-alerts.md) |
-| Auto zoom | on, off | on | |
+| Auto zoom | on, off | on | Web: toggle in the map tools menu while following |
 | Log split timeout | Per leg, 1, 2, 5, 10, 30 min | 5 min | How long a log stays open after landing. See [Flight logs](./flight-logs.md) |
 | Log simulated flights | on, off | off | See [Simulators and devices](./simulators-and-devices.md) |
 | Trajectory mode | Time, Distance | Time | Forward ticks on the map and profile |
@@ -61,10 +69,10 @@ See [Virtual Radar and vertical profile](./virtual-radar.md).
 
 | Setting | Notes |
 |---|---|
-| Airspace ceiling | Default 9,500 ft. See [Map and layers](./map-and-layers.md) |
+| Airspace ceiling | Default 9,500 ft. Web: Layers → Altitude Filter. See [Map and layers](./map-and-layers.md) |
 | Layer visibility | Remembered per layer |
 | Terrain colour reference altitude | Default 2,000 ft |
-| Traffic vertical filter (web) | 1,000, 2,000, 3,000, 5,000 (default), 10,000 ft or all |
+| Traffic vertical filter (web) | 1,000, 2,000, 3,000, 5,000 (default), 10,000 ft or all (shown as ±1k … ±10k, All) |
 | Home airfield | Set from an aerodrome card |
 
 ## Sensors (native)
