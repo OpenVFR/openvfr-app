@@ -156,6 +156,9 @@ and links to the website's full credits page,
 Each dataset carries its own license and attribution terms — see
 individual source licenses before reuse.
 
+Code dependencies: every npm package that ships in the apps, with its licence
+text, is listed in [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md).
+
 > **License note:** OpenAIP's CC BY-NC 4.0 term applies to a component of
 > this app's data, not its code. It restricts *commercial use of that
 > data*, independent of the MIT-licensed source code. If OpenVFR or any

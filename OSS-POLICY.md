@@ -34,7 +34,8 @@ the shipped app) may be reviewed case by case.
 * Used exactly as packaged (e.g. via npm/NuGet), unmodified.
 * Dynamically linked / used as a separate module at runtime — not
   statically embedded or forked into this repository.
-* Clearly documented in `NOTICE` or equivalent attribution file.
+* Clearly documented in `NOTICE` or equivalent attribution file
+  ([THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md), generated).
 
 ## 5. Data licensing
 
@@ -50,3 +51,11 @@ CC-BY-NC data cannot be bundled with a commercial-adjacent product).
 Before adding a new dependency, contributors should check its declared
 license against sections 2–4 above. When in doubt, open an issue tagged
 `license-review` before merging.
+
+## 7. Notices
+
+[THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md) lists every npm package that
+ships in the web and native apps, with the licence texts those licences require.
+It is generated (`node scripts/third-party-notices.mjs`, on Linux), checked in CI
+(`--check`, which also rejects GPL/AGPL/SSPL), and published at
+openvfr.org/licences. Regenerate it whenever dependencies change.
