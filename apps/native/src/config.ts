@@ -13,6 +13,7 @@ import {
   getActiveCountries, countryDatasetFile, countryArchiveFile, type CountryDataset,
 } from '@open-vfr/shared/countryData'
 import { DEFAULT_REGION_CODE } from '@open-vfr/shared/regions'
+import { ACTIVE_ENVIRONMENT, STAGING } from './environment'
 
 const devBase =
   Platform.OS === 'android'
@@ -23,9 +24,16 @@ const devBase =
     ? (process.env.EXPO_PUBLIC_API_BASE_ANDROID ?? 'http://localhost:5200')
     : 'http://localhost:5200'
 
-/** Base URL of the open-vfr API server (auth, weather, NOTAM). Override via EXPO_PUBLIC_API_BASE. */
-export const API_BASE: string =
-  (process.env.EXPO_PUBLIC_API_BASE ?? '') || devBase
+// Staging (environment.ts) replaces the production/dev bases below when it is
+// the active environment. Read once at startup: switching takes effect at the
+// next app start.
+const isStaging = ACTIVE_ENVIRONMENT === 'staging'
+
+/** Base URL of the open-vfr API server (auth, weather, NOTAM). Override via EXPO_PUBLIC_API_BASE
+ *  (EXPO_PUBLIC_STAGING_API_BASE when the staging environment is active). */
+export const API_BASE: string = isStaging
+  ? STAGING.apiBase
+  : (process.env.EXPO_PUBLIC_API_BASE ?? '') || devBase
 
 /** Base URL for static GeoJSON tile files (served by Vite in dev, nginx in prod).
  *  Defaults to `${API_BASE}/tiles` (matches the local Docker/Vite dev
@@ -34,6 +42,7 @@ export const API_BASE: string =
  *  bucket domain (no /tiles suffix -- files sit at the bucket root there).
  *  Override via EXPO_PUBLIC_TILE_BASE. */
 export const TILE_BASE: string =
+  (isStaging && STAGING.tileBase) ||
   (process.env.EXPO_PUBLIC_TILE_BASE ?? '') || `${API_BASE}/tiles`
 
 /** Optional public web-app URL (e.g. `https://example.org/`). When set,
@@ -41,7 +50,9 @@ export const TILE_BASE: string =
  *  the web app understands the same `?ad=` params. When unset, links use
  *  the app's own `openvfr://` scheme (only openable where the app is
  *  installed). Override via EXPO_PUBLIC_WEB_BASE. */
-export const WEB_BASE: string = process.env.EXPO_PUBLIC_WEB_BASE ?? ''
+export const WEB_BASE: string = isStaging
+  ? STAGING.webBase
+  : process.env.EXPO_PUBLIC_WEB_BASE ?? ''
 
 /** Optional public site origin hosting the privacy policy (`/privacy`) and
  *  terms (`/terms`), linked from the login screen footer. When unset the
@@ -61,8 +72,9 @@ export const SITE_BASE: string = (process.env.EXPO_PUBLIC_SITE_BASE ?? '').repla
  * account for the local docker-compose `api` service.
  * Override via EXPO_PUBLIC_TRAFFIC_BASE.
  */
-export const TRAFFIC_BASE: string =
-  (process.env.EXPO_PUBLIC_TRAFFIC_BASE ?? '') || API_BASE
+export const TRAFFIC_BASE: string = isStaging
+  ? STAGING.trafficBase || API_BASE
+  : (process.env.EXPO_PUBLIC_TRAFFIC_BASE ?? '') || API_BASE
 
 /** Base URL for Martin vector tile server.
  *  Dev: TILE_BASE with its port swapped to :5100 (requires `adb reverse tcp:5100 tcp:5100`).

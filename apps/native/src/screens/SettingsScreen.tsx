@@ -47,6 +47,8 @@ const UI_SCALE_OPTIONS = [0.85, 0.9, 1.0, 1.1, 1.2, 1.3, 1.45, 1.6]
 
 import { getSyncLog } from '../utils/syncLog'
 import { flushBeforeSignOut } from '../sync/cloudSync'
+import { ACTIVE_ENVIRONMENT, appEnvironmentLabel } from '../environment'
+import { useEnvironmentSwitch } from '../components/EnvironmentSwitch'
 
 export function SettingsScreen() {
   const scaledTheme          = useScaledTheme()
@@ -70,8 +72,10 @@ export function SettingsScreen() {
     )
   }, [simulatedLogCount, deleteSimulatedLogs])
   const [deleteBusy, setDeleteBusy] = useState(false)
-  // Hidden diagnostics: tap the Version row 5 times to reveal the sync log.
+  // Hidden diagnostics: tap the Version row 5 times to reveal the sync log
+  // and (builds with a staging server) the production/staging picker.
   const versionTaps = useRef(0)
+  const envSwitch = useEnvironmentSwitch()
   const [showDiag, setShowDiag] = useState(false)
   const [deleteSent, setDeleteSent] = useState(false)
   // Shared app-tester account can't have passkeys; server says so. Default
@@ -649,7 +653,13 @@ export function SettingsScreen() {
           </>
         )}
         {/* Tap Version 5 times: for testers and bug reports, not for pilots. */}
-        {showDiag && <InfoRow label="Server" value={API_BASE} />}
+        {showDiag && (envSwitch.available ? (
+          <TouchableOpacity onPress={envSwitch.openPicker} testID="settings-server">
+            <InfoRow label="Server" value={`${appEnvironmentLabel(ACTIVE_ENVIRONMENT)} \u00b7 ${API_BASE} \u203a`} />
+          </TouchableOpacity>
+        ) : (
+          <InfoRow label="Server" value={API_BASE} />
+        ))}
         {showDiag && (
           <TouchableOpacity onPress={() => Alert.alert('Sync log', getSyncLog())}>
             <InfoRow label="Diagnostics" value="Sync log \u203a" />

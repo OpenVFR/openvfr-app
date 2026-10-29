@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // scripts/apply-headers-env.mjs
 //
-// Rewrites the CSP `connect-src` in dist/_headers to the API and tile
-// origins this build was made for, run after `vite build` (wired into
+// Rewrites the CSP `connect-src` in dist/_headers to the API, tile and
+// status-document origins this build was made for, run after `vite build` (wired into
 // `pnpm build`).
 //
 // public/_headers lists the official production origins. A build that talks
@@ -40,6 +40,7 @@ const originOf = (name) => {
 const REPLACE = [
   ['https://api.openvfr.org', originOf('VITE_API_BASE_URL')],
   ['https://tiles.openvfr.org', originOf('VITE_TILES_BASE_URL')],
+  ['https://status.openvfr.org', originOf('VITE_STATUS_URL')],
 ]
 
 let text = readFileSync(file, 'utf8')

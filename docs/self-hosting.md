@@ -173,6 +173,12 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   files on the RP ID host; unset, `/.well-known/apple-app-site-association`
   and `/.well-known/assetlinks.json` answer 404.
 - `BETTER_AUTH_URL` / `BETTER_AUTH_APP_ORIGIN` — your deployed origin(s)
+- `BETTER_AUTH_COOKIE_DOMAIN` — optional, parent domain for the session
+  cookie (e.g. `.example.org`) when the app and api are on different
+  subdomains. `BETTER_AUTH_COOKIE_PREFIX` — optional cookie name prefix
+  (default `better-auth`); give each deployment that shares a parent cookie
+  domain its own prefix, or the browser sends both deployments'
+  same-named session cookies to each.
 - `APP_MIN_VERSION` — optional, defaults to `0.0.0` (always satisfied, i.e.
   a no-op). Backs `GET /api/version`, which the native app's force-update
   gate (`apps/native/src/hooks/useForceUpdate.ts`) checks on every launch.

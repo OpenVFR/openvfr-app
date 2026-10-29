@@ -30,6 +30,8 @@
     // but avoids a 404-on-refresh trap if routing is ever added later.
     "not_found_handling": "single-page-application"
   },
+  // Second deployment of the same build output (`wrangler deploy --env
+  // staging`); its api origin comes from build-time VITE_* variables.
   "env": {
     "staging": {
       "name": "openvfr-app-staging",

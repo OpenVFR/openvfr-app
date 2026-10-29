@@ -50,6 +50,12 @@ const RP_ID = process.env['BETTER_AUTH_RP_ID'] || new URL(APP_ORIGIN).hostname
 // set by api.<domain> is also sent to app.<domain>. Unset = same-origin only.
 const COOKIE_DOMAIN = process.env['BETTER_AUTH_COOKIE_DOMAIN'] || ''
 
+// Cookie name prefix (default 'better-auth'). Two deployments sharing one
+// parent cookie domain must use different prefixes: the browser sends both
+// deployments' cookies to every host under that domain, and with equal names
+// one deployment could read the other's session.
+const COOKIE_PREFIX = process.env['BETTER_AUTH_COOKIE_PREFIX']?.trim() || ''
+
 // Local-dev origins (Vite dev server, Android emulator loopback, LAN device
 // testing). NEVER trusted in production -- an attacker page on any of these
 // literal origins is unlikely, but there's no reason to widen the CSRF/origin
@@ -233,6 +239,7 @@ export const auth = betterAuth({
     ...(COOKIE_DOMAIN ? {
       crossSubDomainCookies: { enabled: true, domain: COOKIE_DOMAIN },
     } : {}),
+    ...(COOKIE_PREFIX ? { cookiePrefix: COOKIE_PREFIX } : {}),
     // Cookie flags for the cross-subdomain (app.<d> -> api.<d>) fetches with
     // credentials: 'include'. Only meaningful over https, i.e. prod.
     ...(IS_PROD ? { defaultCookieAttributes: { secure: true, httpOnly: true, sameSite: 'lax' as const } } : {}),

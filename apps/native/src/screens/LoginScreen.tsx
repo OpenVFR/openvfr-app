@@ -20,6 +20,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { shouldAutoSubmitOtp } from '@open-vfr/shared/otpAutoSubmit'
 import { useAuthContext } from '../context/AuthContext'
 import { SITE_BASE } from '../config'
+import { ACTIVE_ENVIRONMENT, appEnvironmentLabel } from '../environment'
+import { useEnvironmentSwitch, useNextEnvironment, promptRestart } from '../components/EnvironmentSwitch'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 /** Map raw auth/network errors to short, actionable text. null = stay silent. */
@@ -92,6 +94,19 @@ export function LoginScreen() {
 
   const shownError = friendlyError(error)
 
+  // Hidden server picker (production / staging, environment.ts): tap the logo
+  // 7 times. While a saved switch waits for the app restart, sign-in is
+  // blocked: it would still go to the old server.
+  const { available: envSwitchAvailable, openPicker, requestSwitch } = useEnvironmentSwitch()
+  const nextEnv = useNextEnvironment()
+  const restartPending = nextEnv !== ACTIVE_ENVIRONMENT
+  const logoTaps = React.useRef(0)
+  const onLogoTap = () => {
+    if (!envSwitchAvailable) return
+    logoTaps.current += 1
+    if (logoTaps.current >= 7) { logoTaps.current = 0; openPicker() }
+  }
+
   // try/finally: a rejected auth call must never leave the screen on its
   // spinner with every button disabled (useAuth settles the known rejections,
   // this guards the rest).
@@ -133,10 +148,12 @@ export function LoginScreen() {
       <View style={[styles.body, { paddingBottom: (keyboardOpen ? 0 : insets.bottom) + scaledTheme.space4 }]}>
       <View style={styles.brand} onLayout={(e) => setBrandH(e.nativeEvent.layout.height)}>
         {logoSize > 0 && (
-          <Image
-            source={require('../../assets/icon.png')}
-            style={[styles.logoImg, { width: logoSize, height: logoSize, borderRadius: logoSize / 2 }]}
-          />
+          <TouchableOpacity activeOpacity={1} onPress={onLogoTap} accessible={false} testID="login-logo">
+            <Image
+              source={require('../../assets/icon.png')}
+              style={[styles.logoImg, { width: logoSize, height: logoSize, borderRadius: logoSize / 2 }]}
+            />
+          </TouchableOpacity>
         )}
         {showTitle && <Text style={styles.logo}>OpenVFR</Text>}
         {showTitle && !keyboardOpen && (
@@ -145,7 +162,21 @@ export function LoginScreen() {
       </View>
       <View style={styles.card}>
 
-        {needsName && (
+        {restartPending && (
+          <>
+            <Text style={styles.label} testID="login-restart-pending">
+              Switching to {appEnvironmentLabel(nextEnv)}: close OpenVFR completely and open it again, then sign in.
+            </Text>
+            <TouchableOpacity style={styles.btn} onPress={() => promptRestart(nextEnv)}>
+              <Text style={styles.btnText}>How to restart</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.backBtn} onPress={() => requestSwitch(ACTIVE_ENVIRONMENT)}>
+              <Text style={styles.backBtnText}>Stay on {appEnvironmentLabel(ACTIVE_ENVIRONMENT)}</Text>
+            </TouchableOpacity>
+          </>
+        )}
+
+        {!restartPending && needsName && (
           <>
             <Text style={styles.label}>One last thing: what should we call you?</Text>
             <TextInput
@@ -174,7 +205,7 @@ export function LoginScreen() {
           </>
         )}
 
-        {!needsName && step === 'choose' && (
+        {!restartPending && !needsName && step === 'choose' && (
           <>
             {/* ── Passkey (hidden when the OS has no passkey support) ── */}
             {passkeySupported && (<>
@@ -239,7 +270,7 @@ export function LoginScreen() {
           </>
         )}
 
-        {!needsName && step === 'otp' && (
+        {!restartPending && !needsName && step === 'otp' && (
           <>
             <Text style={styles.label}>OTP code sent, check your email.</Text>
             <TextInput

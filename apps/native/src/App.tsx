@@ -36,6 +36,7 @@ import { AppNavigator }  from './navigation'
 import { LoginScreen }   from './screens/LoginScreen'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from './styles/theme'
 import { useForceUpdate } from './hooks/useForceUpdate'
+import { EnvironmentBanner, useEnvironmentDeepLink } from './components/EnvironmentSwitch'
 
 function AppShell() {
   const styles = useThemedStyles(makeStyles)
@@ -43,6 +44,8 @@ function AppShell() {
   // Cloud sync of routes, aircraft, waypoints and flight logs for the
   // signed-in account (see sync/cloudSync.ts).
   useCloudSyncLifecycle(state.status === 'authenticated' ? state.user.id : null)
+  // openvfr://environment/<id> -> switch production/staging (environment.ts).
+  useEnvironmentDeepLink()
 
   React.useEffect(() => {
     if (SCREENSHOT_MODE && Platform.OS === 'android') {
@@ -61,6 +64,7 @@ function AppShell() {
         )}
         {(state.status === 'unauthenticated' || (state.status === 'authenticated' && !state.user.name)) && <LoginScreen />}
         {state.status === 'authenticated' && !!state.user.name && <AppNavigator />}
+        <EnvironmentBanner />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   )
