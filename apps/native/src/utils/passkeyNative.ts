@@ -73,6 +73,10 @@ async function getOptions<T>(path: string, auth: boolean): Promise<Fetched<T>> {
   const { data, error } = await authClient.$fetch<T>(path, {
     method: 'GET',
     headers,
+    // Challenge cookie is carried by hand (toCookieHeader below). Keep the
+    // native cookie jar out of it: on iOS it would add its own Cookie header
+    // next to ours, and the server then fails to read the challenge.
+    credentials: 'omit',
     throw: false,
     onResponse: (ctx) => { cookie = toCookieHeader(ctx.response.headers.get('set-cookie')) },
   })
@@ -89,6 +93,7 @@ async function verify<T>(
     method: 'POST',
     body,
     headers,
+    credentials: 'omit',  // only the cookie we pass by hand, see getOptions
     throw: false,
   })
   if (error || !data) return { error: error?.message ?? 'Verification failed' }
