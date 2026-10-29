@@ -9,7 +9,7 @@ import RegionSelector from './RegionSelector'
 import type { AvailableCountry } from '@open-vfr/shared/countries'
 import { airacDataStatus, relativeTime } from '@open-vfr/shared/airac'
 import { describeGpsAltitudeReference, gpsAltitudeReferenceStatus, subscribeGpsAltitudeReference } from '@open-vfr/shared/gpsAltitudeReference'
-import { FULL_CREDITS_LINK } from '@open-vfr/shared/attributionSources'
+import { FULL_CREDITS_LINK, OPEN_SOURCE_LICENCES_LINK } from '@open-vfr/shared/attributionSources'
 import { SITE_BASE_URL } from '../utils/env'
 import { SPONSOR } from '@open-vfr/shared/sponsor'
 
@@ -418,6 +418,7 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
         <span className={css.label}>About</span>
         <nav className={css.aboutLinks} aria-label="About">
           <a href={FULL_CREDITS_LINK.url} target="_blank" rel="noopener noreferrer">Data sources &amp; licences</a>
+          <a href={OPEN_SOURCE_LICENCES_LINK.url} target="_blank" rel="noopener noreferrer">{OPEN_SOURCE_LICENCES_LINK.name}</a>
           {SITE_BASE_URL && (
             <>
               <a href={`${SITE_BASE_URL}/privacy`} target="_blank" rel="noopener noreferrer">Privacy</a>

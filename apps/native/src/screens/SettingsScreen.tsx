@@ -37,7 +37,7 @@ import { API_BASE, TILE_BASE, SITE_BASE } from '../config'
 import { refreshTileManifest, getCachedTileManifest, onTileManifestChanged } from '@open-vfr/shared/tileManifest'
 import { airacDataStatus, relativeTime, type AiracDataStatus } from '@open-vfr/shared/airac'
 import { theme, useThemedStyles, useScaledTheme, type ScaledTheme, type ThemeName } from '../styles/theme'
-import { FULL_CREDITS_LINK } from '@open-vfr/shared/attributionSources'
+import { FULL_CREDITS_LINK, OPEN_SOURCE_LICENCES_LINK } from '@open-vfr/shared/attributionSources'
 import { SPONSOR } from '@open-vfr/shared/sponsor'
 import { useOfflineSummary } from './OfflineDataScreen'
 import * as Application from 'expo-application'
@@ -626,6 +626,10 @@ export function SettingsScreen() {
         {/* Every source and licence: the map's (i) list, plus the full page. */}
         <TouchableOpacity style={[styles.row, styles.pressable]} onPress={() => Linking.openURL(FULL_CREDITS_LINK.url)}>
           <Text style={styles.rowLabel}>Data sources &amp; licences</Text>
+          <Text style={styles.infoValue}>{'\u203a'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.row, styles.pressable]} onPress={() => Linking.openURL(OPEN_SOURCE_LICENCES_LINK.url)}>
+          <Text style={styles.rowLabel}>{OPEN_SOURCE_LICENCES_LINK.name}</Text>
           <Text style={styles.infoValue}>{'\u203a'}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.row, styles.pressable]} onPress={() => Linking.openURL(SPONSOR.url)}>

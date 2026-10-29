@@ -30,6 +30,15 @@ export const FULL_CREDITS_LINK: AttributionSource = {
   url: 'https://openvfr.org/credits',
 }
 
+/**
+ * Settings -> About (web + native): the open-source packages in the apps with
+ * their licences. Rendered by the site from THIRD-PARTY-NOTICES.md.
+ */
+export const OPEN_SOURCE_LICENCES_LINK = {
+  name: 'Open-source licences',
+  url: 'https://openvfr.org/licences',
+} as const
+
 export interface AttributionSource {
   name: string
   note: string
