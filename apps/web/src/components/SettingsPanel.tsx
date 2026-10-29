@@ -214,6 +214,8 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
         </div>
       </div>
 
+      <details className={css.group}>
+        <summary className={css.groupTitle}>Warnings &amp; margins</summary>
       <div className={css.section}>
         <span className={css.label}>Airspace warning</span>
         <div className={css.optionsRow}>
@@ -227,8 +229,6 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
           ))}
         </div>
       </div>
-
-      <MsaMarginsSettings />
 
       <AlertBannerSettings />
 
@@ -262,6 +262,11 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
         </div>
       </div>
 
+      <MsaMarginsSettings />
+      </details>
+
+      <details className={css.group}>
+        <summary className={css.groupTitle}>Flying</summary>
       <div className={css.section}>
         <span className={css.label}>Auto flying mode</span>
         <div className={css.optionsRow}>
@@ -307,7 +312,10 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
           ))}
         </div>
       </div>
+      </details>
 
+      <details className={css.group}>
+        <summary className={css.groupTitle}>Data</summary>
       {manifest && Object.keys(manifest.countries).length > 0 && (
         <div className={`${css.section} ${css.sectionColumn}`}>
           <div className={css.dataHeader}>
@@ -374,7 +382,10 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
       )}
 
       <GpsAltitudeReferenceRow />
+      </details>
 
+      <details className={css.group}>
+        <summary className={css.groupTitle}>App</summary>
       <div className={css.section}>
         <span className={css.label}>App files</span>
         <button
@@ -407,6 +418,8 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
           )}
         </nav>
       </div>
+      </details>
+
     </div>
   )
 }

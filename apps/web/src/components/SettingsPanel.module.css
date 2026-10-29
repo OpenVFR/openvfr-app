@@ -337,3 +337,23 @@
   width: 100%;
   accent-color: var(--accent-blue);
 }
+
+/* Collapsible groups: the long settings list starts with the basics open and
+   the rest folded away behind their titles. */
+.group { border-top: 1px solid var(--border-subtle); }
+.groupTitle {
+  cursor: pointer;
+  list-style: none;
+  padding: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary, inherit);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+.groupTitle::-webkit-details-marker { display: none; }
+.groupTitle::after { content: '\25B8'; color: var(--text-muted); }
+.group[open] > .groupTitle::after { content: '\25BE'; }
+.group[open] > .groupTitle { border-bottom: 1px solid var(--border-subtle); }
