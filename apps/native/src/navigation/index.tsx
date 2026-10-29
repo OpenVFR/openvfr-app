@@ -12,12 +12,14 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { MapScreen }      from '../screens/MapScreen'
 import { PlanScreen }     from '../screens/PlanScreen'
 import { SettingsScreen } from '../screens/SettingsScreen'
+import { OfflineDataScreen } from '../screens/OfflineDataScreen'
 import { theme } from '../styles/theme'
 
 export type RootStackParamList = {
   Map:      undefined
   Plan:     undefined
   Settings: undefined
+  OfflineData: undefined
 }
 
 const Stack = createNativeStackNavigator<RootStackParamList>()
@@ -42,6 +44,11 @@ export function AppNavigator() {
           name="Settings"
           component={SettingsScreen}
           options={{ ...headerOptions, title: 'Settings' }}
+        />
+        <Stack.Screen
+          name="OfflineData"
+          component={OfflineDataScreen}
+          options={{ ...headerOptions, title: 'Offline data' }}
         />
       </Stack.Navigator>
     </NavigationContainer>
