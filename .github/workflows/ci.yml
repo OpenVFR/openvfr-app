@@ -53,6 +53,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # THIRD-PARTY-NOTICES.md (licence notices for the shipped npm packages)
+      # is generated from the lockfile. Regenerate on Linux:
+      #   node scripts/third-party-notices.mjs
+      # (platform-specific optional packages differ on macOS/Windows.) Also
+      # fails on a licence OSS-POLICY.md does not allow.
+      - name: Third-party notices up to date
+        run: node scripts/third-party-notices.mjs --check
+
       - name: Build web app
         run: pnpm --filter web build
 
