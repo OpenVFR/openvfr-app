@@ -37,6 +37,7 @@ import { LoginScreen }   from './screens/LoginScreen'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from './styles/theme'
 import { useForceUpdate } from './hooks/useForceUpdate'
 import { EnvironmentBanner, useEnvironmentDeepLink } from './components/EnvironmentSwitch'
+import { SystemMessages } from './components/SystemMessages'
 
 function AppShell() {
   const styles = useThemedStyles(makeStyles)
@@ -64,6 +65,7 @@ function AppShell() {
         )}
         {(state.status === 'unauthenticated' || (state.status === 'authenticated' && !state.user.name)) && <LoginScreen />}
         {state.status === 'authenticated' && !!state.user.name && <AppNavigator />}
+        <SystemMessages />
         <EnvironmentBanner />
       </SafeAreaProvider>
     </GestureHandlerRootView>

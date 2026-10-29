@@ -267,6 +267,42 @@ revokes the user's sessions and blocks sign-in while `banned` is set
 (optional expiry). A ban is stored on the user row, so deleting the account
 removes it. An already-issued PostgREST JWT stays valid until its 15 min expiry.
 
+### Operator notices (optional)
+
+The apps can show notices such as planned maintenance or an outage. They are
+read from a small public JSON document configured at build time
+(`VITE_STATUS_URL` for web, `EXPO_PUBLIC_STATUS_URL` for native; unset = no
+notices). Host it **apart from the api** (object storage, CDN, static host)
+so it stays reachable when the api is down, with CORS allowing your web
+app's origin and a short cache lifetime (about a minute). Add its origin to
+the web app's CSP `connect-src` (`apps/web/public/_headers`; the build
+rewrites the listed origins from `VITE_STATUS_URL`).
+
+```json
+{
+  "version": 1,
+  "messages": [{
+    "id": "2026-11-15-maintenance",
+    "severity": "warning",
+    "title": "Planned maintenance",
+    "body": "Sign-in and sync unavailable 06:00-07:00 UTC. Maps and offline data keep working.",
+    "startsAt": "2026-11-15T05:00:00Z",
+    "endsAt": "2026-11-15T07:00:00Z",
+    "platforms": ["web", "android", "ios"],
+    "url": "https://example.org/status"
+  }]
+}
+```
+
+`severity` is `info`, `warning` or `critical`; only `id`, `severity` and
+`title` are required. A notice shows between `startsAt` and `endsAt` (each
+optional); `info`/`warning` can be dismissed per `id`, `critical` stays
+until `endsAt`. `platforms`, `minAppVersion` and `maxAppVersion` narrow who
+sees it. Text is plain (no HTML) and length-limited; invalid entries are
+ignored. Rules and limits: `packages/shared/src/systemMessages.ts`. The apps
+re-fetch every 10 minutes and when brought to the foreground, and keep the
+last copy for offline use.
+
 ## 4. Production deployment notes
 
 - Serve the web app's `dist/` output (or the `docker/Dockerfile` image)

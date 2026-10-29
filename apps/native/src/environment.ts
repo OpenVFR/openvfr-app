@@ -29,6 +29,8 @@ export const STAGING = {
   /** Empty = the staging api. */
   trafficBase: trimUrl(process.env.EXPO_PUBLIC_STAGING_TRAFFIC_BASE),
   webBase:     trimUrl(process.env.EXPO_PUBLIC_STAGING_WEB_BASE),
+  /** Operator notices document for this backend (empty = none). */
+  statusUrl:   (process.env.EXPO_PUBLIC_STAGING_STATUS_URL ?? '').trim(),
 } as const
 
 export const STAGING_AVAILABLE = STAGING.apiBase !== ''

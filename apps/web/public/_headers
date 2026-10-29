@@ -13,7 +13,7 @@
 # VITE_API_BASE_URL / VITE_TILES_BASE_URL, so keep them literally as written.
 /*
   X-Robots-Tag: noindex, nofollow
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.openvfr.org https://tiles.openvfr.org https://cdn.jsdelivr.net https://server.arcgisonline.com; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.openvfr.org https://tiles.openvfr.org https://status.openvfr.org https://cdn.jsdelivr.net https://server.arcgisonline.com; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=()

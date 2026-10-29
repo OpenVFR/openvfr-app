@@ -3,6 +3,7 @@ import MapView from './components/MapView'
 import LoginPanel from './components/LoginPanel'
 import UpdatePrompt from './components/UpdatePrompt'
 import TileUpdatePrompt from './components/TileUpdatePrompt'
+import SystemMessages from './components/SystemMessages'
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
 import { repairAppFiles } from './utils/repairApp'
@@ -56,6 +57,8 @@ function AppInner() {
 }
 
 export default function App() {
-  return <ErrorBoundary><AppInner /></ErrorBoundary>
+  // Notices render outside AppInner so they also show while the session
+  // check is pending (e.g. when the api is down) and on the sign-in panel.
+  return <ErrorBoundary><AppInner /><SystemMessages /></ErrorBoundary>
 }
 

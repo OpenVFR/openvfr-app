@@ -42,6 +42,7 @@
     "./parkTimeout": "./src/parkTimeout.ts",
     "./otpAutoSubmit": "./src/otpAutoSubmit.ts",
     "./appEnvironment": "./src/appEnvironment.ts",
+    "./systemMessages": "./src/systemMessages.ts",
     "./terrainDem": "./src/terrainDem.ts",
     "./attributionSources": "./src/attributionSources.ts",
     "./sponsor": "./src/sponsor.ts",

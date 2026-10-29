@@ -54,6 +54,14 @@ export const WEB_BASE: string = isStaging
   ? STAGING.webBase
   : process.env.EXPO_PUBLIC_WEB_BASE ?? ''
 
+/** Optional URL of the operator notices document (planned maintenance,
+ *  outages; @open-vfr/shared/systemMessages), hosted apart from the api so it
+ *  stays reachable when the api is down. Empty = no notices.
+ *  EXPO_PUBLIC_STATUS_URL (EXPO_PUBLIC_STAGING_STATUS_URL on the second backend). */
+export const STATUS_URL: string = isStaging
+  ? STAGING.statusUrl
+  : (process.env.EXPO_PUBLIC_STATUS_URL ?? '').trim()
+
 /** Optional public site origin hosting the privacy policy (`/privacy`) and
  *  terms (`/terms`), linked from the login screen footer. When unset the
  *  footer links are hidden. Set via EXPO_PUBLIC_SITE_BASE (no trailing slash). */

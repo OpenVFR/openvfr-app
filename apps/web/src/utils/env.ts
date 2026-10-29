@@ -23,3 +23,8 @@ export const TILES_BASE_URL: string = (import.meta.env.VITE_TILES_BASE_URL as st
 // linked from the sign-in panel footer. Empty (default) hides those links.
 export const SITE_BASE_URL: string =
   ((import.meta.env.VITE_SITE_BASE_URL as string | undefined) ?? '').replace(/\/+$/, '')
+
+// STATUS_URL — optional URL of the operator notices document (planned
+// maintenance, outages; @open-vfr/shared/systemMessages). Hosted apart from
+// the api so it stays reachable when the api is down. Empty (default) = off.
+export const STATUS_URL: string = ((import.meta.env.VITE_STATUS_URL as string | undefined) ?? '').trim()

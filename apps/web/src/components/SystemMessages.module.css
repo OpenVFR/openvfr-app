@@ -1,0 +1,80 @@
+/* Operator notices (planned maintenance, outages). Top centre like the
+   app-update toast, but below it so both can show at once; narrow enough to
+   leave the corner controls free. */
+.stack {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9990;
+  width: min(560px, calc(100vw - 120px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.notice {
+  pointer-events: auto;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-left-width: 4px;
+  border-radius: 10px;
+  box-shadow: var(--shadow-heavy, 0 8px 32px rgba(0, 0, 0, 0.65));
+  padding: 8px 10px 8px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.info { border-left-color: var(--accent-blue); }
+.warning { border-left-color: var(--status-warn); }
+.critical { border-left-color: var(--status-danger); }
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.title {
+  flex: 1;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.body {
+  margin: 6px 0 0;
+  white-space: pre-line;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.link {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--accent-blue);
+}
+
+.btn {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 0 2px;
+  white-space: nowrap;
+}
+.btn:hover { color: var(--text-primary); }
+
+.more {
+  pointer-events: auto;
+  align-self: center;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 10px;
+}
