@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && node scripts/remove-tiles-from-dist.mjs",
+    "build": "tsc -b && vite build && node scripts/remove-tiles-from-dist.mjs && node scripts/apply-headers-env.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "test": "vitest run",
