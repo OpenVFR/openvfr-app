@@ -12,7 +12,13 @@
   //
   // Deploy command (set in the Cloudflare dashboard's project settings,
   // or run manually): npx wrangler deploy
-  // Build command (runs first, produces ./apps/web/dist): pnpm install && pnpm build
+  // Build command (runs first, produces ./apps/web/dist): pnpm run build
+  //
+  // A second, staging deployment of the same build uses `env.staging`:
+  //   npx wrangler deploy --env staging
+  // It is a separate Worker (openvfr-app-staging) so it can have its own
+  // build variables (VITE_API_BASE_URL etc.: the API origin is baked in at
+  // build time) and its own custom domain, which is set in the dashboard.
   //
   "name": "openvfr-app",
   "compatibility_date": "2025-01-01",
@@ -23,5 +29,15 @@
     // (no react-router / deep-linked paths), so this has no effect today,
     // but avoids a 404-on-refresh trap if routing is ever added later.
     "not_found_handling": "single-page-application"
+  },
+  "env": {
+    "staging": {
+      "name": "openvfr-app-staging",
+      // Not inherited from the top level: repeat it.
+      "assets": {
+        "directory": "./apps/web/dist",
+        "not_found_handling": "single-page-application"
+      }
+    }
   }
 }
