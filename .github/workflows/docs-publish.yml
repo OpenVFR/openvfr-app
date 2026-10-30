@@ -2,13 +2,15 @@ name: Publish user guide
 
 # The user guide (docs/guide) is rendered by the project website build, which
 # pulls this folder in. This workflow asks that build to run again when the
-# guide changes. Skipped when no hook URL is configured (forks, self-hosters).
+# guide (or the licence notices) change on `release`, the branch the website
+# shows (staging `main` is ahead of what is published). Skipped when no hook URL is configured (forks, self-hosters).
 
 on:
   push:
-    branches: [main]
+    branches: [release]
     paths:
       - 'docs/guide/**'
+      - 'THIRD-PARTY-NOTICES.md'
   workflow_dispatch:
 
 jobs:
