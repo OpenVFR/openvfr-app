@@ -37,6 +37,7 @@
     "./autoFlyDetect": "./src/autoFlyDetect.ts",
     "./flightLogStats": "./src/flightLogStats.ts",
     "./flightLogAerodromes": "./src/flightLogAerodromes.ts",
+    "./flightLogResume": "./src/flightLogResume.ts",
     "./flightLogProfile": "./src/flightLogProfile.ts",
     "./flightLogEvents": "./src/flightLogEvents.ts",
     "./flightLogRoute": "./src/flightLogRoute.ts",

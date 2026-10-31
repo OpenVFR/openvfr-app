@@ -7,15 +7,23 @@
  * Detection thresholds/timings and phase state machine are identical to web —
  * see web's useFlightLog.ts for the full behavioural writeup (this file omits
  * the repeated comments; only the RxDB→AsyncStorage adapter differs).
+ *
+ * Native differences: departure / arrival are named from the track ends
+ * (aerodrome or saved place within 2 NM, @open-vfr/shared/flightLogAerodromes),
+ * and a log a previous session left unfinished can be carried on by the next
+ * takeoff close by (recoverOrphanedLogs, @open-vfr/shared/flightLogResume).
  */
 
 import { logRouteJson, type FlightLogRoute } from '@open-vfr/shared/flightLogRoute'
 import { useState, useEffect, useRef } from 'react'
 import * as Crypto from 'expo-crypto'
 import { trimParkedTail, simulatedFixAction } from '@open-vfr/shared/flightLogStats'
-import { missingLogAerodromes } from '@open-vfr/shared/flightLogAerodromes'
+import { logPlaceNear, missingLogAerodromes, type LogAerodrome, type LogPlace } from '@open-vfr/shared/flightLogAerodromes'
+import { canResumeLog, resumableUntil, type ResumePoint } from '@open-vfr/shared/flightLogResume'
+import { isSyncableLog } from '@open-vfr/shared/cloudSyncRows'
 import { getAerodromes } from './useNearbyFrequencies'
-import { flightLogs as flightLogsDb } from '../db'
+import { notifyLocalChange } from '../sync/cloudSync'
+import { flightLogs as flightLogsDb, waypoints as userWaypointsDb } from '../db'
 import type { TrackPoint, FlightLogDocType } from '../types/db'
 import type { GpsPosition, FlyingMode } from '../utils/gpsTypes'
 
@@ -47,7 +55,6 @@ export function useFlightLog(
   flyingMode:     FlyingMode,
   aircraftId:     string,
   registration:   string,
-  nearestIcao:    string | null,
   parkTimeoutMs:  number = PARK_TIMEOUT_MS,
   /** Takeoff / landed ground speeds (kt); from the aircraft profile via autoFlyThresholds(). */
   thr:            { takeoffKts: number; landedKts: number } = { takeoffKts: TAKEOFF_SPD_KTS, landedKts: LANDING_SPD_KTS },
@@ -98,7 +105,7 @@ export function useFlightLog(
       if (deferCloseRef) deferCloseRef.current = false
       if (defer && s.phase === 'taxiing' && s.logId && s.parkTimer && parkTimeoutMs > 0) return
       if ((s.phase === 'flying' || s.phase === 'taxiing') && s.logId) {
-        finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '', thr.landedKts, s.simulated)
+        finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, thr.landedKts, s.simulated)
       }
       if (s.flushTimer) clearTimeout(s.flushTimer)
       if (s.parkTimer)  clearTimeout(s.parkTimer)
@@ -134,14 +141,28 @@ export function useFlightLog(
       if (position.speedKts >= thr.takeoffKts) {
         s.takeoffTicks++
         if (s.takeoffTicks >= TAKEOFF_CONFIRM_TICKS) {
+          // A log the app could not finish (closed or stopped between circuits
+          // or in the air) and that ended close by, not long ago: carry it on.
+          const resumed = takeResumableLog(position, now, thr.landedKts, parkTimeoutMs, sim.simulated)
+          if (resumed) {
+            s.phase = 'flying'; s.logId = resumed.id; s.flightStartMs = now
+            s.track = resumed.track; s.lastTrackMs = 0; s.distanceNm = resumed.distanceNm
+            s.maxAltFt = Math.max(resumed.maxAltFt, position.altFt); s.prevLat = position.lat; s.prevLng = position.lng
+            s.departureIcao = resumed.departureIcao; s.dirty = true
+            s.simulated = resumed.simulated
+            setActiveLogId(resumed.id)
+            return
+          }
+          // Anything else starts a new log; an unfinished one waiting is closed now.
+          void closeResumableLog()
           const id = newId()
           s.phase = 'flying'; s.logId = id; s.flightStartMs = now
           s.track = []; s.lastTrackMs = 0; s.distanceNm = 0
           s.maxAltFt = position.altFt; s.prevLat = position.lat; s.prevLng = position.lng
-          s.departureIcao = nearestIcao ?? ''; s.dirty = true
+          s.departureIcao = ''; s.dirty = true
           s.simulated = sim.simulated
           setActiveLogId(id)
-          createLog(id, now, aircraftId, registration, s.departureIcao, sim.simulated, logRouteJson(plannedRouteRef?.current))
+          createLog(id, now, aircraftId, registration, { lat: position.lat, lng: position.lng }, sim.simulated, logRouteJson(plannedRouteRef?.current))
         }
       } else {
         s.takeoffTicks = 0
@@ -209,18 +230,17 @@ export function useFlightLog(
 
           if (parkTimeoutMs === 0) {
             if (s.logId) {
-              finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '', thr.landedKts, s.simulated)
+              finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, thr.landedKts, s.simulated)
               setActiveLogId(null)
             }
             s.logId = null; s.phase = 'idle'; s.takeoffTicks = 0; s.landingTicks = 0
           } else {
             s.phase = 'taxiing'; s.takeoffTicks = 0; s.landingTicks = 0
-            const arrivalIcao = nearestIcao ?? ''
             s.parkTimer = setTimeout(() => {
               const cs = stateRef.current
               if (cs.phase !== 'taxiing' || !cs.logId) return
               if (cs.flushTimer) clearTimeout(cs.flushTimer)
-              finishLog(cs.logId, cs.track, cs.distanceNm, cs.maxAltFt, arrivalIcao, thr.landedKts, cs.simulated)
+              finishLog(cs.logId, cs.track, cs.distanceNm, cs.maxAltFt, thr.landedKts, cs.simulated)
               stateRef.current = {
                 phase: 'idle', logId: null, takeoffTicks: 0, landingTicks: 0, flightStartMs: 0,
                 track: [], lastTrackMs: 0, distanceNm: 0, maxAltFt: 0, prevLat: 0, prevLng: 0,
@@ -242,12 +262,27 @@ export function useFlightLog(
 
 // ── AsyncStorage helpers (fire-and-forget) ─────────────────────────────────
 
+/** Aerodromes and the user's saved places, for naming a log's ends. Null when neither could be read. */
+async function namingData(timeoutMs = 20_000): Promise<{ aerodromes: LogAerodrome[]; places: LogPlace[] } | null> {
+  const [aerodromes, places] = await Promise.all([
+    getAerodromes(timeoutMs),
+    userWaypointsDb.getAll().then(ws => ws.map(w => ({ name: w.name, lat: w.lat, lng: w.lng }))).catch(() => []),
+  ])
+  if (!aerodromes && places.length === 0) return null
+  return { aerodromes: aerodromes ?? [], places }
+}
+
 async function createLog(
-  id: string, startedAt: number, aircraftId: string, registration: string, departureIcao: string,
+  id: string, startedAt: number, aircraftId: string, registration: string, at: { lat: number; lng: number },
   simulated: boolean,
   routeJson?: string,
 ): Promise<void> {
   try {
+    // Departure: the aerodrome (or saved place) the takeoff roll is on. Short
+    // wait: the log must exist before the first track save; a blank departure
+    // is filled from the track when the log closes.
+    const naming = await namingData(3_000)
+    const departureIcao = naming ? logPlaceNear(at.lat, at.lng, naming.aerodromes, naming.places) : ''
     await flightLogsDb.upsert({
       id, startedAt, endedAt: 0, aircraftId, registration,
       trackJson: '[]', departureIcao, arrivalIcao: '', distanceNm: 0, maxAltFt: 0,
@@ -276,7 +311,7 @@ async function flushLog(id: string, track: TrackPoint[], distanceNm: number, max
 }
 
 async function finishLog(
-  id: string, track: TrackPoint[], distanceNm: number, maxAltFt: number, arrivalIcao: string,
+  id: string, track: TrackPoint[], distanceNm: number, maxAltFt: number,
   landedKts: number = LANDING_SPD_KTS,
   simulated = false,
 ): Promise<void> {
@@ -285,13 +320,13 @@ async function finishLog(
   const trimmed = trimParkedTail(track, landedKts)
   const endedAt = trimmed !== track && trimmed.length > 0 ? trimmed[trimmed.length - 1].ts : Date.now()
   await patchLog(id, {
-    endedAt, trackJson: JSON.stringify(trimmed), distanceNm, maxAltFt, arrivalIcao,
+    endedAt, trackJson: JSON.stringify(trimmed), distanceNm, maxAltFt,
     updatedAt: Date.now(), ...simFlag(simulated),
   })
-  // No aerodrome known at the landing moment (data not loaded yet): work it
-  // out from where the track ends. A second, separate write, so the log is
-  // closed at once even when the aerodrome data takes a while.
-  if (!arrivalIcao) await fillAerodromes(id, landedKts)
+  // Arrival (and a departure not known at takeoff) from where the track ends:
+  // only on the ground at an aerodrome or saved place. A second write, so the
+  // log is closed at once even when the aerodrome data takes a while.
+  await fillAerodromes(id, landedKts)
 }
 
 /** Fill a log's missing departure / arrival from its track ends. True when it changed the log. */
@@ -299,11 +334,11 @@ async function fillAerodromes(id: string, landedKts: number = LANDING_SPD_KTS): 
   try {
     const log = await flightLogsDb.get(id)
     if (!log || log.endedAt === 0 || (log.departureIcao && log.arrivalIcao)) return false
-    const aerodromes = await getAerodromes()
-    if (!aerodromes) return false
+    const naming = await namingData()
+    if (!naming) return false
     let track: TrackPoint[] = []
     try { track = JSON.parse(log.trackJson || '[]') } catch { return false }
-    const patch = missingLogAerodromes(log, track, aerodromes, landedKts)
+    const patch = missingLogAerodromes(log, track, naming.aerodromes, landedKts, naming.places)
     if (!patch.departureIcao && !patch.arrivalIcao) return false
     await flightLogsDb.patch(id, { ...patch, updatedAt: Math.max(Date.now(), log.updatedAt + 1) })
     return true
@@ -312,29 +347,100 @@ async function fillAerodromes(id: string, landedKts: number = LANDING_SPD_KTS): 
   }
 }
 
+// ── Unfinished log from a previous session ─────────────────────────────────
+
 /**
- * Close out logs left in progress (endedAt === 0) by a previous session — the
- * app was killed or closed before the log was finished (mid-flight, or parked
- * while the park timer was still running: Android may stop the app in the
- * background). Call once at startup, before any new recording can begin.
- * Each orphan gets the same finish as a normal close: the parked tail is
- * trimmed and the log ends at the last real movement. Orphans with no track
- * at all are removed.
+ * The log a previous session left unfinished that may still be carried on
+ * (see @open-vfr/shared/flightLogResume): kept open until `until`, then
+ * closed. One at a time, module-wide: the app records one log at a time.
+ */
+let resumable: {
+  id: string; last: ResumePoint; until: number; landedKts: number
+  track: TrackPoint[]; distanceNm: number; maxAltFt: number; departureIcao: string; simulated: boolean
+} | null = null
+
+/** Hand over the waiting unfinished log when this takeoff / fast fix continues it. */
+function takeResumableLog(
+  position: GpsPosition, now: number, landedKts: number, parkTimeoutMs: number, simulated: boolean,
+): typeof resumable {
+  const r = resumable
+  if (!r || r.simulated !== simulated) return null
+  if (!canResumeLog(r.last, { lat: position.lat, lng: position.lng, ts: now }, landedKts, parkTimeoutMs)) return null
+  resumable = null
+  return r
+}
+
+/**
+ * Close the waiting unfinished log (its time is up, or a flight elsewhere
+ * started): finished like a normal close, then uploaded. Returns it, or null
+ * when none was waiting.
+ */
+export async function closeResumableLog(): Promise<FlightLogDocType | null> {
+  const r = resumable
+  if (!r) return null
+  resumable = null
+  try {
+    const log = await flightLogsDb.get(r.id)
+    if (!log || log.endedAt > 0) return null
+    const trimmed = trimParkedTail(r.track, r.landedKts)
+    const endedAt = Math.max(trimmed[trimmed.length - 1]?.ts ?? 0, log.startedAt + 1)
+    await flightLogsDb.patch(r.id, { endedAt, trackJson: JSON.stringify(trimmed), updatedAt: Date.now() })
+    await fillAerodromes(r.id, r.landedKts)
+    const done = await flightLogsDb.get(r.id)
+    if (done && isSyncableLog(done)) notifyLocalChange('user_flight_logs')
+    return done ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Logs left unfinished (endedAt === 0) by a previous session: the app was
+ * closed or stopped before the log was finished (in the air, or parked while
+ * the park timer ran; Android may stop the app in the background). Call once
+ * at startup, before any new recording can begin.
+ *
+ * The most recent one that may still be carried on (canResumeLog: parked,
+ * within the split timeout; or in the air, within 10 minutes) stays open:
+ * a takeoff close to where it ended continues it. `resumeUntil` says when to
+ * call closeResumableLog() if that does not happen. Every other one is closed
+ * like a normal close (parked tail trimmed, ends at the last real movement);
+ * one with no track at all is removed.
  *
  * Then every finished log still missing its departure or arrival gets them
- * from its track ends (missingLogAerodromes). This repairs logs recovered
- * before this existed, and fills GPX imports. Returns the logs that changed
- * (to upload).
+ * from its track ends (missingLogAerodromes, aerodromes and saved places).
+ * This repairs logs closed before this existed, and fills GPX imports.
+ * `changed` = the logs to upload.
  */
-export async function recoverOrphanedLogs(landedKts: number = LANDING_SPD_KTS): Promise<FlightLogDocType[]> {
+export async function recoverOrphanedLogs(
+  landedKts: number = LANDING_SPD_KTS,
+  parkTimeoutMs: number = PARK_TIMEOUT_MS,
+): Promise<{ changed: FlightLogDocType[]; resumeUntil: number | null }> {
   const changed = new Set<string>()
+  const now = Date.now()
   try {
-    const all = await flightLogsDb.getAll()
-    for (const log of all) {
+    const orphans: { log: FlightLogDocType; track: TrackPoint[] }[] = []
+    for (const log of await flightLogsDb.getAll()) {
       if (log.endedAt > 0) continue
+      if (resumable?.id === log.id) continue
       let track: TrackPoint[] = []
       try { track = JSON.parse(log.trackJson || '[]') } catch { /* corrupt → treat as empty */ }
       if (track.length === 0) { await flightLogsDb.delete(log.id); continue }
+      orphans.push({ log, track })
+    }
+    // Newest first: only the latest flight can still be going on.
+    orphans.sort((a, b) => b.track[b.track.length - 1].ts - a.track[a.track.length - 1].ts)
+    for (const [i, { log, track }] of orphans.entries()) {
+      const lastPt = track[track.length - 1]
+      const last = { lat: lastPt.lat, lng: lastPt.lng, spdKts: lastPt.spdKts, ts: lastPt.ts }
+      const until = resumableUntil(last, landedKts, parkTimeoutMs)
+      if (i === 0 && !resumable && until > now) {
+        resumable = {
+          id: log.id, last, until, landedKts, track, distanceNm: log.distanceNm, maxAltFt: log.maxAltFt,
+          departureIcao: log.departureIcao, simulated: log.simulated === true,
+        }
+        continue
+      }
       const trimmed = trimParkedTail(track, landedKts)
       const endedAt = Math.max(trimmed[trimmed.length - 1].ts || 0, log.startedAt + 1)
       await flightLogsDb.upsert({ ...log, endedAt, trackJson: JSON.stringify(trimmed), updatedAt: Date.now() })
@@ -345,5 +451,5 @@ export async function recoverOrphanedLogs(landedKts: number = LANDING_SPD_KTS): 
   } catch { /* best-effort */ }
   const out: FlightLogDocType[] = []
   for (const id of changed) { const d = await flightLogsDb.get(id); if (d) out.push(d) }
-  return out
+  return { changed: out, resumeUntil: resumable?.until ?? null }
 }

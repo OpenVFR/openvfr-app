@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { aerodromeNear, logEndAerodromes, missingLogAerodromes, normalizeLogPlace } from './flightLogAerodromes'
+import { aerodromeNear, logEndAerodromes, logPlaceNear, missingLogAerodromes, normalizeLogPlace } from './flightLogAerodromes'
 
 // Two aerodromes ~20 NM apart.
 const AD = [
@@ -68,5 +68,18 @@ describe('logEndAerodromes', () => {
   it('suggests the aerodromes at both ends, also when still moving', () => {
     const t = [at(56.8, 14.3, 60), at(56.93, 14.731, 40)]
     expect(logEndAerodromes(t, AD)).toEqual({ departure: 'ESMI', arrival: 'ESMX' })
+  })
+})
+
+describe('logPlaceNear (saved places)', () => {
+  const strip = { name: 'Farm strip', lat: 57.3, lng: 15.0 }
+  it('names a saved place when no aerodrome is in range', () => {
+    expect(missingLogAerodromes({ departureIcao: 'ESMI', arrivalIcao: '' }, [at(56.8, 14.3, 60), at(57.3005, 15.0, 0)], AD, 20, [strip]))
+      .toEqual({ arrivalIcao: 'Farm strip' })
+  })
+  it('a nearer saved place wins over an aerodrome further away, not when on the aerodrome', () => {
+    const nextTo = { name: 'Private strip', lat: 56.83, lng: 14.3 }  // 1.8 NM from ESMI
+    expect(logPlaceNear(56.828, 14.3, AD, [nextTo])).toBe('Private strip')
+    expect(logPlaceNear(56.801, 14.3, AD, [nextTo])).toBe('ESMI')
   })
 })

@@ -95,7 +95,7 @@ import { useSimContext }     from '../context/SimContext'
 import { useNearbyFrequencies } from '../hooks/useNearbyFrequencies'
 import { useLivePlog } from '../hooks/useLivePlog'
 import { LivePlogPanel } from '../components/LivePlogPanel'
-import { useFlightLog, recoverOrphanedLogs } from '../hooks/useFlightLog'
+import { useFlightLog, recoverOrphanedLogs, closeResumableLog } from '../hooks/useFlightLog'
 import { useFlightLogSync } from '../hooks/useFlightLogSync'
 import { useAuthContext } from '../context/AuthContext'
 import { useUserWaypointContext } from '../context/UserWaypointContext'
@@ -819,7 +819,6 @@ function MapScreenForCountry() {
     flightModeStatus,
     settings.selectedAircraftId ?? '',
     aircraftProfile?.registration ?? '',
-    nearbyFreqs[0]?.icao ?? null,
     parseParkTimeout(settings.parkTimeoutSec) * 1000,
     flyThresholds,
     deferLogCloseRef,
@@ -827,11 +826,20 @@ function MapScreenForCountry() {
     { simulated: simPosition != null || simFlight.position != null, record: settings.recordSimulatedFlights },
     plannedRouteRef,
   )
-  // Finalize + upload logs orphaned by a previous session that was closed
-  // mid-flight (otherwise they stay "Recording…" forever, unviewable/unsynced).
-  // Also fills missing departure / arrival aerodromes from the track.
+  // Finish + upload logs a previous session left unfinished (otherwise they
+  // would stay "Recording…" forever, unviewable and not synced). Also fills missing departure / arrival aerodromes from the track. The
+  // latest unfinished log may still be carried on by a takeoff close by
+  // (until resumeUntil); closeResumableLog() finishes it after that.
   useEffect(() => {
-    recoverOrphanedLogs(flyThresholds.landedKts).then(docs => docs.forEach(d => { void pushLog(d) }))
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let live = true
+    recoverOrphanedLogs(flyThresholds.landedKts, parseParkTimeout(settings.parkTimeoutSec) * 1000).then(({ changed, resumeUntil }) => {
+      changed.forEach(d => { void pushLog(d) })
+      if (live && resumeUntil !== null) {
+        timer = setTimeout(() => { void closeResumableLog() }, Math.max(0, resumeUntil - Date.now()))
+      }
+    })
+    return () => { live = false; if (timer) clearTimeout(timer) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   // Aircraft profiles, for asking which one flew a log recorded without one.

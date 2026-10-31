@@ -24,12 +24,26 @@ aircraft anyway (for example started automatically), the app asks which
 aircraft flew it once the log is finished, on the ground. One tap sets it
 on the log and selects it for the next flights.
 
-Departure and arrival are the aerodromes at takeoff and landing. If the app
-was closed before a log was finished, it finishes the log at the next start
-and works out a missing departure or arrival from where the track starts
-and ends: only within 2 NM of an aerodrome, and for the arrival only when
-the aircraft had stopped there. A flight that ended in the air (lost GPS)
-or in a field keeps **?**.
+Departure and arrival are where the flight started and ended. In the mobile
+app that is the aerodrome within 2 NM of the takeoff and of the place you
+stopped after landing, or else one of your saved places within 2 NM (a farm
+strip saved under Places gets its own name). A flight that ended in the air
+(lost GPS) or away from both keeps **?**; use **Rename** for those.
+
+## When the app was closed during a flight
+
+If the mobile app is closed or stopped before a log is finished (between
+circuits, or in the air), the next start does not split the flight:
+
+- Parked when it stopped: a takeoff within 2 NM before the **Log split
+  timeout** runs out continues the same log, as if the app had stayed open.
+  With *Per leg*, the log is finished at once.
+- In the air when it stopped: within 10 minutes, flying mode starting again
+  near where the log broke off continues it. The time in between shows as a
+  recording gap.
+
+Otherwise the log is finished at its last movement, and named from where it
+started and ended.
 
 ## The log list
 
