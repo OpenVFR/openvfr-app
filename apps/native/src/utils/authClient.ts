@@ -34,6 +34,18 @@ export const authClient = createAuthClient({
     // timeout. Turn it into an error the screen can show and the user can
     // retry. Generous, since passkey and session calls share this client.
     timeout: 30_000,
+    // Send the stored session token on every request, getSession() on app
+    // start included. Session restore used to depend on the native cookie
+    // jar holding the session cookie: true after email OTP sign-in, but the
+    // passkey calls run with `credentials: 'omit'` (utils/passkeyNative.ts),
+    // so after a passkey sign-in the jar had no session cookie and the next
+    // app start came up signed out although the token was in secure storage.
+    // The server's bearer() plugin turns this header into the session cookie
+    // (and it wins over a stale jar cookie). No token = no header.
+    auth: {
+      type: 'Bearer',
+      token: async () => (await getSessionToken()) ?? undefined,
+    },
     headers: {
       // React Native fetch omits Origin (browser-only concept). better-auth
       // requires it for CSRF protection — send the API base as the origin so
