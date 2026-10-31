@@ -43,6 +43,7 @@ import { admin } from './admin'
 import { effectiveMinBuilds, isAppPlatform, minBuildRows, MIN_VERSION, parseBuild, recordLaunch } from './appVersion'
 import { mountExternalProxies } from './externalProxy'
 import { createDemElevation, parseDemSources } from './demElevation'
+import { createWxGrid, parseWxGridSources } from './wxGrid'
 import { RateLimiter, limitFromEnv } from './rateLimiter'
 import { BodyTooLarge, readLimitedFormData, looksLikePdf } from './upload'
 import { createWeatherCache, type WxUpstreamResult } from './weatherCache'
@@ -640,7 +641,24 @@ const demElevation = createDemElevation({
   tilesBaseUrl: (process.env['TILES_BASE_URL'] ?? '').trim().replace(/\/+$/, ''),
   countries: async () => (await getAvailableCountries())?.map((c) => c.code) ?? null,
 })
+// Model wind/weather comes from this deployment's precomputed per-country
+// weather grids wherever they cover the request (see ./wxGrid.ts):
+// WX_GRID_SOURCES unset = <TILES_BASE_URL>/wx/<cc>/latest.json for the
+// available countries, `off`, or a list of pointer/grid URLs / file paths.
+const wxGrid = createWxGrid({
+  sources: parseWxGridSources(process.env['WX_GRID_SOURCES']),
+  tilesBaseUrl: (process.env['TILES_BASE_URL'] ?? '').trim().replace(/\/+$/, ''),
+  countries: async () => (await getAvailableCountries())?.map((c) => c.code) ?? null,
+})
 mountExternalProxies(app, requireSession, undefined, {
+  'open-meteo': wxGrid && {
+    answer: (_endpoint, q) => wxGrid.answer(q, q.get('latitude') ?? '', q.get('longitude') ?? ''),
+    // Grid answers cost no third-party budget; caps only stop abuse (a map
+    // view is one request per pan/zoom, the in-flight gauge a few per minute).
+    perUser: { hourly: 3000, daily: 20000 },
+    anonymous: { hourly: 200, daily: 1000 },
+    status: wxGrid.status,
+  },
   elevation: demElevation && {
     answer: (_endpoint, q) => demElevation(q.get('locations') ?? ''),
     // Local answers cost no third-party budget; caps only stop abuse

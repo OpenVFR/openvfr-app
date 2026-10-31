@@ -496,9 +496,16 @@ function limitReached(spec: ProxySpec, caller: Caller, waitS: number): Response 
  * array in request order. If any location can't be served (not even
  * stale), the whole request gets 429/503 -- the apps fall back to their own
  * last good values and retry later, now with the rest cached here.
+ *
+ * With a local source (Open-Meteo: precomputed per-country weather grids,
+ * wxGrid.ts), locations it can answer are served from it before anything
+ * is asked upstream: they cost no upstream budget and are not cached here
+ * (the grid is its own cache). Its own generous per-caller cap, charged
+ * once per request, only stops abuse.
  */
 async function handlePerLocation(
   spec: ProxySpec, s: ProxyState, caller: Caller, endpoint: string, q: URLSearchParams, now: () => number,
+  local?: LocalSource | null,
 ): Promise<Response> {
   const lats = q.get('latitude')!.split(','), lngs = q.get('longitude')!.split(',')
   const rest = new URLSearchParams()
@@ -513,11 +520,28 @@ async function handlePerLocation(
   const waiting: Promise<void>[] = []
   const toFetch: typeof locs = []
   const seen = new Set<string>()
+  const misses: typeof locs = []
   for (const l of locs) {
     if (seen.has(l.key)) continue
     seen.add(l.key)
     const hit = s.cache.get(l.key)
     if (hit && isFresh(hit, spec, t)) { fresh.set(l.key, hit.body); continue }
+    misses.push(l)
+  }
+  let fromLocal = 0
+  if (local && misses.length > 0 && localCapOpen(s, local, caller, t)) {
+    const answers = await Promise.all(misses.map((l) => {
+      const one = new URLSearchParams(rest)
+      one.set('latitude', l.la)
+      one.set('longitude', l.lo)
+      return local.answer(endpoint, one).catch(() => null)
+    }))
+    answers.forEach((b, i) => { if (b) { fresh.set(misses[i]!.key, b); fromLocal++ } })
+    if (fromLocal > 0) takeUserMiss(s, spec, localCapKey(caller), t, caller.kind === 'user' ? local.perUser : local.anonymous)
+  }
+  for (const l of misses) {
+    if (fresh.has(l.key)) continue
+    const hit = s.cache.get(l.key)
     if (hit && isUsableStale(hit, spec, t)) stale.set(l.key, hit.body)
     const pend = s.inflightLoc.get(l.key)
     if (pend) { waiting.push(pend.then((b) => { if (b) fresh.set(l.key, b) })); continue }
@@ -579,9 +603,10 @@ async function handlePerLocation(
   }
   const body = lats.length === 1 ? parts[0]! : `[${parts.join(',')}]`
   if (usedStale) return json(body, 200, { 'Cache-Control': 'no-store', 'X-Cache': 'STALE' })
+  const xCache = toFetch.length > 0 || waiting.length > 0 ? 'MISS' : fromLocal === seen.size ? 'LOCAL' : 'HIT'
   return json(body, 200, {
     'Cache-Control': `private, max-age=${Math.round(spec.freshMs / 1000)}`,
-    'X-Cache': toFetch.length === 0 && waiting.length === 0 ? 'HIT' : 'MISS',
+    'X-Cache': xCache,
   })
 }
 
@@ -597,6 +622,8 @@ export interface LocalSource {
   answer: (endpoint: string, q: URLSearchParams) => Promise<string | null>
   perUser: { hourly: number; daily: number }
   anonymous: { hourly: number; daily: number }
+  /** State for the admin API (e.g. which grid files are in use), counts only. */
+  status?: () => unknown
 }
 
 /** Longest upstream queue wait accepted before answering locally instead. */
@@ -654,7 +681,7 @@ export async function handleProxy(
   }
   const invalid = spec.validate(endpoint, q)
   if (invalid) return json(JSON.stringify({ error: true, reason: invalid }), 400)
-  if (spec.perLocation) return handlePerLocation(spec, s, caller, endpoint, q, now)
+  if (spec.perLocation) return handlePerLocation(spec, s, caller, endpoint, q, now, local)
 
   const key = cacheKey(spec, endpoint, q)
   const t = now()
@@ -727,7 +754,7 @@ export function mountExternalProxies(
   for (const spec of [OPEN_METEO, ELEVATION]) {
     const state = newProxyState()
     const stats = newUsageStats(Date.now())
-    registry.push({ spec, state, stats, anonymousMode })
+    registry.push({ spec, state, stats, anonymousMode, local: locals[spec.name] ?? null })
     app.get(`${spec.prefix}*`, async (c) => {
       rotateHour(spec, state, stats, Date.now())
       const user = await requireSession(c)
@@ -807,7 +834,7 @@ export function rotateHour(spec: ProxySpec, s: ProxyState, stats: UsageStats, no
   stats.anonymousIps = new Set()
 }
 
-const registry: { spec: ProxySpec; state: ProxyState; stats: UsageStats; anonymousMode: 'limited' | 'off' }[] = []
+const registry: { spec: ProxySpec; state: ProxyState; stats: UsageStats; anonymousMode: 'limited' | 'off'; local: LocalSource | null }[] = []
 const processStartedAt = new Date().toISOString()
 
 /** Aggregate usage of one relay for the admin API (counts only, no ids). */
@@ -829,9 +856,11 @@ export interface ExternalApiUsage {
   currentHour: Omit<HourSnapshot, 'upstreamCalls'> & { upstreamCalls: number }
   /** Closed clock hours, oldest first (up to 48). */
   hours: HourSnapshot[]
+  /** The local source's own state (LocalSource.status), when it has one. */
+  local?: unknown
 }
 
-export function usageSnapshot(spec: ProxySpec, s: ProxyState, stats: UsageStats, anonymousMode: 'limited' | 'off', now: number): ExternalApiUsage {
+export function usageSnapshot(spec: ProxySpec, s: ProxyState, stats: UsageStats, anonymousMode: 'limited' | 'off', now: number, local?: LocalSource | null): ExternalApiUsage {
   rotateHour(spec, s, stats, now)
   const calls = s.upstreamCalls
   const count = (win: number) => round1(ledgerSum(calls, now, win))
@@ -856,6 +885,7 @@ export function usageSnapshot(spec: ProxySpec, s: ProxyState, stats: UsageStats,
       upstreamCalls: round1(ledgerSum(calls, now, DAY_MS, stats.hourStart)),
     },
     hours: [...stats.history],
+    ...(local?.status ? { local: local.status() } : {}),
   }
 }
 
@@ -863,7 +893,7 @@ const round1 = (n: number) => Math.round(n * 10) / 10
 
 /** Usage of every mounted relay (GET /api/admin/external-apis). */
 export function externalApiUsage(now = Date.now()): ExternalApiUsage[] {
-  return registry.map((r) => usageSnapshot(r.spec, r.state, r.stats, r.anonymousMode, now))
+  return registry.map((r) => usageSnapshot(r.spec, r.state, r.stats, r.anonymousMode, now, r.local))
 }
 
 function countResponse(stats: UsageStats, res: Response): void {

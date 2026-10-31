@@ -404,6 +404,33 @@ last copy for offline use.
   the Range requirement on the tile host above applies here too. The set is
   re-read every hour (every 2 minutes after the registry or an archive
   could not be read), so new countries and rebuilt archives are picked up.
+- Model wind/weather does not have to depend on Open-Meteo's free budget
+  either: the API answers `/api/open-meteo/` locations from precomputed
+  per-country **weather grids** (`apps/api/src/wxGrid.ts`) whenever a grid
+  holds the exact request (`X-Cache: LOCAL`, no upstream budget, own
+  per-user cap of 3 000/h, 20 000/day). The apps only ever ask for points on
+  a 0.05° lattice (`snapCoord`) or at aerodrome coordinates, in knots and
+  unix time, so a finite set of points per country covers every in-country
+  request; points outside every grid, other request shapes and grids older
+  than 2 h go the normal relay way (cache, then upstream). A grid is an
+  `OVWX` file (layout documented at the top of `wxGrid.ts`): Open-Meteo's
+  answers for every lattice point inside the country plus a sea/border
+  buffer and for each aerodrome — `minutely_15` slots of the surface bundle
+  and all pressure-level winds (Open-Meteo's `current` is the `minutely_15`
+  value of the current slot), and hourly wind per level from 00:00 UTC
+  yesterday for 17 days — produced by a scheduled job of your own against a
+  self-hosted Open-Meteo instance (`ghcr.io/open-meteo/open-meteo` in remote
+  mode answers exactly like the public API with its default model
+  selection; self-hosting has no call limits and no commercial-use
+  restriction). Publish each build under a new file name and then a pointer
+  `{"file": "<name>.wxg"}` next to it; the API re-reads pointers every 2
+  minutes and reads grids with Range requests (same `206` rule as above).
+  `WX_GRID_SOURCES` (API server env): unset =
+  `<TILES_BASE_URL>/wx/<cc>/latest.json` for every available country
+  (nothing when `TILES_BASE_URL` is unset; a missing pointer just means no
+  grid for that country); `off`; or a comma-separated list of pointer and/or
+  `.wxg` URLs / absolute file paths. The admin External APIs data shows
+  which grid each country uses and its age.
   Open-Meteo's free tier is for
   non-commercial use only (open-meteo.com/en/terms); a commercial
   deployment needs an Open-Meteo API subscription.
