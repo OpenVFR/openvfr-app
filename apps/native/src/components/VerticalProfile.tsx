@@ -1190,8 +1190,10 @@ function FlownReadout({ store, flown, bands, terrainPts, getMsa, styles, xOf, sc
   // left a stale offset behind on Fabric, stretching the box across the chart).
   const rowStyle = [styles.flownReadoutRow, { justifyContent: aircraftOnRight ? 'flex-start' as const : 'flex-end' as const }]
   if (!touched || !p) {
+    // The hint sits at the foot of the plot, centred: at the top it covered
+    // the aerodrome names and frequencies of the label row.
     return (
-      <View style={rowStyle} pointerEvents="none">
+      <View style={styles.flownHintRow} pointerEvents="none">
         <View style={styles.flownReadout}>
           <Text style={styles.flownHint}>Drag the aircraft, or tap the chart, to inspect</Text>
         </View>
@@ -1275,6 +1277,11 @@ export function VerticalProfile({
   // Flight log: the ground-speed line (own scale; exact values in the readout either way).
   const [showSpeed, setShowSpeed] = usePersistedFlag('ovfr:vr:gs', true)
   const [chartW,      setChartW]      = useState(0)
+  // Header widths, to hide the centred grip when the toggles reach the middle
+  // (narrow phone in log mode: the grip was drawn across the first toggle).
+  const [headerW,     setHeaderW]     = useState(0)
+  const [headerEndW,  setHeaderEndW]  = useState(0)
+  const gripFits = headerW === 0 || headerW - headerEndW > headerW / 2 + 32
   // Horizontal scroll offset into the (possibly wider-than-panel) chart
   // content — see MIN_PX_PER_NM above. 0 when the route fits the panel.
   // Horizontal scroll offset (px) and scrub-crosshair position (viewport px,
@@ -2396,7 +2403,7 @@ export function VerticalProfile({
           [planned/look-ahead] wasn't worth a dedicated text row). The grip
           is absolutely centred so the WIND toggle can sit at the right edge
           of the same row without fighting it for layout space. */}
-      <View style={styles.dragHandle} {...panResponder.panHandlers}>
+      <View style={styles.dragHandle} {...panResponder.panHandlers} onLayout={e => setHeaderW(e.nativeEvent.layout.width)}>
         <View style={styles.headerSide}>
           {headerStart ?? (logMode ? (
             <Text style={styles.logTitle} numberOfLines={1}>
@@ -2406,8 +2413,8 @@ export function VerticalProfile({
             </Text>
           ) : null)}
         </View>
-        <View style={styles.dragGrip} />
-        <View style={[styles.headerSide, styles.headerSideEnd]}>
+        {gripFits && <View style={styles.dragGrip} />}
+        <View style={[styles.headerSide, styles.headerSideEnd]} onLayout={e => setHeaderEndW(e.nativeEvent.layout.width)}>
           {headerEnd}
           {/* Winds aloft came back incomplete (Open-Meteo throttled or
               offline): say so instead of silently drawing fewer barbs.
@@ -2504,12 +2511,9 @@ export function VerticalProfile({
               {/* Scroll hint — only shown once the route is
                   wider than the panel (MIN_PX_PER_NM above). No longer needs
                   to dodge the off-track badge — that now sits on its own row
-                  well below this one instead of sharing top:2. */}
-              {scrollable && (
-                <View style={styles.scrollHintWrap} pointerEvents="none">
-                  <Text style={styles.scrollHintTxt}>↔ scroll</Text>
-                </View>
-              )}
+                  well below this one instead of sharing top:2. It is drawn
+                  after the chart (further down), so the chart cannot paint
+                  over it. */}
               {/* Scrollable clip window — width pinned to the panel (chartW);
                   the wider content view inside is translated by -scrollX
                   on the UI thread (contentStyle).
@@ -2697,6 +2701,12 @@ export function VerticalProfile({
                   </Text>
                 ))}
               </View>
+              {/* Scroll hint (see above). Not in a flight log: its own hint says how to move along it. */}
+              {scrollable && !flown && (
+                <View style={styles.scrollHintWrap} pointerEvents="none">
+                  <Text style={styles.scrollHintTxt}>↔ scroll</Text>
+                </View>
+              )}
             </>
           )}
         </View>
@@ -2839,6 +2849,14 @@ function makeStyles(theme: ScaledTheme) {
   flownHint: {
     color:      '#e8edf5',
     fontSize:   10,
+  },
+  flownHintRow: {
+    position:       'absolute',
+    bottom:         MARGIN_B + 4,
+    left:           MARGIN_L + 4,
+    right:          4,
+    flexDirection:  'row',
+    justifyContent: 'center',
   },
   windStatusTxt: {
     color:      theme.textSecondary,
