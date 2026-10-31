@@ -13,11 +13,12 @@
  * Flight logs are the exception: one key per log (`ovfr:flight_log:<id>`).
  * The in-progress log is saved every few seconds during a flight, and with a
  * single array key every save re-read and re-wrote every past flight's track
- * too (about 1 MB/s of storage traffic with a modest logbook). Tracks are
- * trimmed to the most recent 2,000 points.
+ * too (about 1 MB/s of storage traffic with a modest logbook). A track longer
+ * than MAX_TRACK_POINTS is stored at a lower resolution (see trimTrack).
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { thinTrack } from '@open-vfr/shared/flightLogStats'
 import type {
   RouteDocType,
   AircraftProfileDocType,
@@ -214,16 +215,40 @@ export const settings = {
 // ---------------------------------------------------------------------------
 // Flight Logs
 // ---------------------------------------------------------------------------
-const MAX_TRACK_POINTS = 2_000
+/**
+ * Points kept per log: about 2 h at the 1 s recording rate. A stored point is
+ * ~150 bytes, so a log stays near 1.2 MB, under the 2 MB a single Android
+ * SQLite row read can return.
+ */
+const MAX_TRACK_POINTS = 8_000
 
-// Guard track size: trim to last MAX_TRACK_POINTS
+// Guard track size. A longer track is thinned evenly (thinTrack), so a long
+// flight keeps its takeoff at a lower resolution. This used to keep only the
+// most recent 2,000 points (33 min), which cut off the start of longer flights.
 function trimTrack(doc: FlightLogDocType): FlightLogDocType {
   if (!doc.trackJson) return doc
   try {
     const pts: TrackPoint[] = JSON.parse(doc.trackJson)
-    if (pts.length > MAX_TRACK_POINTS) return { ...doc, trackJson: JSON.stringify(pts.slice(-MAX_TRACK_POINTS)) }
+    if (pts.length > MAX_TRACK_POINTS) return { ...doc, trackJson: JSON.stringify(thinTrack(pts, MAX_TRACK_POINTS)) }
   } catch { /* leave as-is */ }
   return doc
+}
+
+// Every screen holding a list of logs (Plan -> Logs, the map) keeps its own
+// copy; they subscribe here so a log recorded or finished on the map shows up
+// in the list right away, not only after the app restarts.
+const logListeners = new Set<() => void>()
+/** Run `cb` after any change to the stored logs (except in-flight track saves). Returns unsubscribe. */
+export function onFlightLogsChanged(cb: () => void): () => void {
+  logListeners.add(cb)
+  return () => { logListeners.delete(cb) }
+}
+function notifyLogsChanged(): void {
+  for (const cb of logListeners) { try { cb() } catch { /* a listener must not break a write */ } }
+}
+/** Run a log write under the lock, then tell the listeners (also after a failed write: harmless re-read). */
+function logWrite(fn: () => Promise<void>, notify = true): Promise<void> {
+  return withLock(LOGS_LOCK, fn).finally(() => { if (notify) notifyLogsChanged() })
 }
 
 // One lock for every flight-log operation (they are cheap now: one key each).
@@ -283,17 +308,20 @@ export const flightLogs = {
     withLock(LOGS_LOCK, () => readLog(id)).catch(() => undefined),
 
   upsert: (doc: FlightLogDocType): Promise<void> =>
-    withLock(LOGS_LOCK, async () => { await migrateLogs(); await writeLog(trimTrack(doc)) }),
+    logWrite(async () => { await migrateLogs(); await writeLog(trimTrack(doc)) }),
 
-  /** Merge `patch` into the stored log (no-op when it does not exist). Reads and writes only this log. */
-  patch: (id: string, patch: Partial<FlightLogDocType>): Promise<void> =>
-    withLock(LOGS_LOCK, async () => {
+  /**
+   * Merge `patch` into the stored log (no-op when it does not exist). Reads and writes only this log.
+   * `quiet`: do not notify the log lists (the track save every few seconds in flight).
+   */
+  patch: (id: string, patch: Partial<FlightLogDocType>, opts?: { quiet?: boolean }): Promise<void> =>
+    logWrite(async () => {
       const existing = await readLog(id)
       if (existing) await writeLog(trimTrack({ ...existing, ...patch, id }))
-    }),
+    }, !opts?.quiet),
 
   delete: (id: string): Promise<void> =>
-    withLock(LOGS_LOCK, async () => { await migrateLogs(); await AsyncStorage.removeItem(logKey(id)) }),
+    logWrite(async () => { await migrateLogs(); await AsyncStorage.removeItem(logKey(id)) }),
 
   /** Remove every stored log (sign-out / account switch). */
   wipeAll: async (): Promise<void> => {
@@ -301,6 +329,7 @@ export const flightLogs = {
     const keys = (await AsyncStorage.getAllKeys()).filter(k => k.startsWith(FLIGHT_LOG_KEY_PREFIX))
     if (keys.length > 0) await AsyncStorage.removeMany(keys)
     logsMigrated = null
+    notifyLogsChanged()
   },
 
   // Cloud sync, same rules as the array collections above (local edit newer than the server wins).
@@ -308,7 +337,7 @@ export const flightLogs = {
 
   applyRemote: (rows: FlightLogDocType[]): Promise<void> => {
     if (rows.length === 0) return Promise.resolve()
-    return withLock(LOGS_LOCK, async () => {
+    return logWrite(async () => {
       await migrateLogs()
       const current = await AsyncStorage.getMany(rows.map(r => logKey(r.id)))
       const entries: Record<string, string> = {}
@@ -324,7 +353,7 @@ export const flightLogs = {
 
   removeRemote: (rows: { id: string; deletedAt: number }[]): Promise<void> => {
     if (rows.length === 0) return Promise.resolve()
-    return withLock(LOGS_LOCK, async () => {
+    return logWrite(async () => {
       await migrateLogs()
       const current = await AsyncStorage.getMany(rows.map(r => logKey(r.id)))
       const drop: string[] = []

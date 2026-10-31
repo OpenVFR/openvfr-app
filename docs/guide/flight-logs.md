@@ -22,6 +22,11 @@ totals line sums flights, airborne time, landings and distance for what is
 shown. GPS gaps are marked, and a log broken by a GPS loss can be joined
 with the next part.
 
+A flight shows in the list from takeoff, as *Recording…*, and becomes a
+finished log when the split timeout after landing runs out. In the mobile
+app, a track longer than about two hours is stored with fewer points (the
+whole flight stays, from takeoff to landing, at a coarser spacing).
+
 ## Editing a log
 
 - **Aircraft flown:** each log has an aircraft menu. Pick one of your

@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { flightLogs as flightLogsDb } from '../db'
+import { flightLogs as flightLogsDb, onFlightLogsChanged } from '../db'
 import type { FlightLogDocType } from '../types/db'
 import { notifyLocalChange, notifyLocalDelete, syncNow, useTableSync } from '../sync/cloudSync'
 import { isSyncableLog } from '@open-vfr/shared/cloudSyncRows'
@@ -25,6 +25,17 @@ export function useFlightLogSync() {
   }, [])
 
   useEffect(() => { void refresh() }, [refresh, localVersion])
+  // A log started, finished, edited or deleted anywhere in the app (the map
+  // records them, the Logs list shows them): reload, so a new flight appears
+  // in the list without an app restart. Coalesced: one write burst, one read.
+  useEffect(() => {
+    let pending: ReturnType<typeof setTimeout> | null = null
+    const off = onFlightLogsChanged(() => {
+      if (pending) return
+      pending = setTimeout(() => { pending = null; void refresh() }, 250)
+    })
+    return () => { off(); if (pending) clearTimeout(pending) }
+  }, [refresh])
 
   /** Run a sync round now (pull-to-refresh on the Logs segment). */
   const pull = useCallback(async () => {

@@ -256,10 +256,10 @@ async function createLog(
   } catch { /* silently swallow — log is nice-to-have, not critical */ }
 }
 
-async function patchLog(id: string, patch: Partial<FlightLogDocType>): Promise<void> {
+async function patchLog(id: string, patch: Partial<FlightLogDocType>, quiet = false): Promise<void> {
   try {
     // Reads and writes only this log (runs every FLUSH_INTERVAL_MS in flight).
-    await flightLogsDb.patch(id, patch)
+    await flightLogsDb.patch(id, patch, { quiet })
   } catch { /* silently swallow */ }
 }
 
@@ -269,7 +269,8 @@ async function patchLog(id: string, patch: Partial<FlightLogDocType>): Promise<v
 const simFlag = (simulated: boolean): Partial<FlightLogDocType> => (simulated ? { simulated: true } : {})
 
 async function flushLog(id: string, track: TrackPoint[], distanceNm: number, maxAltFt: number, simulated = false): Promise<void> {
-  await patchLog(id, { trackJson: JSON.stringify(track), distanceNm, maxAltFt, updatedAt: Date.now(), ...simFlag(simulated) })
+  // Quiet: the log lists need not reload every few seconds in flight.
+  await patchLog(id, { trackJson: JSON.stringify(track), distanceNm, maxAltFt, updatedAt: Date.now(), ...simFlag(simulated) }, true)
 }
 
 async function finishLog(

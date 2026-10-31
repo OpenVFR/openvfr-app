@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeLogStats, trimParkedTail, formatLogDuration, type LogTrackPoint, type LogStats } from './flightLogStats'
+import { computeLogStats, trimParkedTail, thinTrack, formatLogDuration, type LogTrackPoint, type LogStats } from './flightLogStats'
 
 const THR = { takeoffKts: 30, landedKts: 20 }
 
@@ -157,5 +157,29 @@ describe('simulatedFixAction', () => {
     expect(simulatedFixAction(simOn, null)).toBe('record')   // starts a new (simulated) log
     expect(simulatedFixAction(simOn, false)).toBe('mark')
     expect(simulatedFixAction(simOn, true)).toBe('record')
+  })
+})
+
+describe('thinTrack', () => {
+  const pts = (n: number) => Array.from({ length: n }, (_, i) => i)
+
+  it('leaves a track that fits unchanged', () => {
+    const t = pts(10)
+    expect(thinTrack(t, 10)).toBe(t)
+  })
+
+  it('keeps the first and last points of a long track (takeoff and landing survive)', () => {
+    const out = thinTrack(pts(7201), 2000)
+    expect(out.length).toBeLessThanOrEqual(2000)
+    expect(out[0]).toBe(0)
+    expect(out[out.length - 1]).toBe(7200)
+  })
+
+  it('thins evenly instead of cutting one end', () => {
+    const out = thinTrack(pts(3000), 2000)
+    expect(out.length).toBe(1501)
+    // Even spacing over the whole flight: the early part is still there.
+    expect(out.slice(0, 3)).toEqual([0, 2, 4])
+    expect(out[out.length - 1]).toBe(2999)
   })
 })

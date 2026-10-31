@@ -136,6 +136,24 @@ export function trimParkedTail<T extends LogTrackPoint>(track: T[], landedKts: n
   return end + 1 < track.length ? track.slice(0, end + 1) : track
 }
 
+/**
+ * Cap a track at `maxPoints` by lowering its resolution evenly (every other
+ * point, repeated until it fits), never by cutting off one end: a long flight
+ * keeps its takeoff and its landing. The first and last points always stay.
+ * Returns the track unchanged when it already fits.
+ */
+export function thinTrack<T>(track: T[], maxPoints: number): T[] {
+  if (maxPoints < 2 || track.length <= maxPoints) return track
+  let out = track
+  while (out.length > maxPoints) {
+    const last = out[out.length - 1]
+    const next = out.filter((_, i) => i % 2 === 0)
+    if (next[next.length - 1] !== last) next.push(last)
+    out = next
+  }
+  return out
+}
+
 /** "1h 05m" / "42m" / "<1m". */
 export function formatLogDuration(ms: number): string {
   const mins = Math.round(ms / 60_000)
