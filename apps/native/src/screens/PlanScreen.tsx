@@ -21,6 +21,8 @@ import { useSyncRejected } from '../sync/cloudSync'
 import { SyncRefusedNote } from '../components/SyncRefusedNote'
 import { LogEventsList } from '../components/LogEventsList'
 import { mergeCandidates, mergeLogs } from '@open-vfr/shared/flightLogRoute'
+import { logEndAerodromes, normalizeLogPlace, LOG_PLACE_MAX_CHARS } from '@open-vfr/shared/flightLogAerodromes'
+import { getAerodromes } from '../hooks/useNearbyFrequencies'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
@@ -314,6 +316,38 @@ export function PlanScreen() {
       await pushLog({ ...current, ...patch })
     } catch (e) {
       Alert.alert('Could not change the aircraft', e instanceof Error ? e.message : String(e))
+    }
+  }
+  // Departure / arrival being edited (one log at a time), with the aerodromes
+  // at the track's ends as one-tap suggestions.
+  const [logPlaceEdit, setLogPlaceEdit] = useState<{ id: string; dep: string; arr: string; sugDep: string; sugArr: string } | null>(null)
+  const openLogPlaceEdit = (log: (typeof logs)[number]) => {
+    setLogPlaceEdit({ id: log.id, dep: log.departureIcao, arr: log.arrivalIcao, sugDep: '', sugArr: '' })
+    void (async () => {
+      const aerodromes = await getAerodromes(10_000)
+      if (!aerodromes) return
+      let track: { lat: number; lng: number; spdKts: number }[] = []
+      try { track = JSON.parse(log.trackJson || '[]') } catch { return }
+      const s = logEndAerodromes(track, aerodromes)
+      setLogPlaceEdit(p => p && p.id === log.id ? { ...p, sugDep: s.departure, sugArr: s.arrival } : p)
+    })()
+  }
+  /** Save a corrected departure / arrival (syncs as an edit of the log, like the aircraft). */
+  const handleSaveLogPlaces = async () => {
+    const edit = logPlaceEdit
+    if (!edit) return
+    setLogPlaceEdit(null)
+    try {
+      const current = await flightLogsDb.get(edit.id)
+      if (!current) return
+      const departureIcao = normalizeLogPlace(edit.dep)
+      const arrivalIcao = normalizeLogPlace(edit.arr)
+      if (departureIcao === current.departureIcao && arrivalIcao === current.arrivalIcao) return
+      const patch = { departureIcao, arrivalIcao, updatedAt: Math.max(Date.now(), current.updatedAt + 1) }
+      await flightLogsDb.patch(edit.id, patch)
+      await pushLog({ ...current, ...patch })
+    } catch (e) {
+      Alert.alert('Could not rename the flight', e instanceof Error ? e.message : String(e))
     }
   }
   /**
@@ -1349,9 +1383,52 @@ export function PlanScreen() {
                             {'\u2708'} {logAircraftLabel(log)} {logAircraftOpen === log.id ? '\u25be' : '\u25b8'}
                           </Text>
                         )}
+                        <Text style={styles.logEventsToggle} onPress={() => logPlaceEdit?.id === log.id ? setLogPlaceEdit(null) : openLogPlaceEdit(log)}
+                          accessibilityRole="button" accessibilityLabel="Rename: departure and arrival">
+                          {'\u270e'} Rename
+                        </Text>
                         {mergeNext.has(log.id) && (
                           <Text style={styles.logEventsToggle} onPress={() => handleMergeLog(log)} accessibilityRole="button">Join with next part</Text>
                         )}
+                      </View>
+                    )}
+                    {isCompleted && logPlaceEdit?.id === log.id && (
+                      <View style={styles.logPlaceEdit} testID="log-place-edit">
+                        {(['dep', 'arr'] as const).map(k => {
+                          const sug = k === 'dep' ? logPlaceEdit.sugDep : logPlaceEdit.sugArr
+                          return (
+                            <View key={k} style={styles.logPlaceRow}>
+                              <Text style={styles.logPlaceLabel}>{k === 'dep' ? 'From' : 'To'}</Text>
+                              <TextInput
+                                style={styles.logPlaceInput}
+                                value={logPlaceEdit[k]}
+                                onChangeText={v => setLogPlaceEdit(p => p && { ...p, [k]: v })}
+                                placeholder="ICAO or name"
+                                placeholderTextColor={theme.textFaint}
+                                autoCapitalize="characters"
+                                autoCorrect={false}
+                                maxLength={LOG_PLACE_MAX_CHARS}
+                                returnKeyType="done"
+                                onSubmitEditing={() => void handleSaveLogPlaces()}
+                                accessibilityLabel={k === 'dep' ? 'Departure' : 'Arrival'}
+                              />
+                              {!!sug && sug !== normalizeLogPlace(logPlaceEdit[k]) && (
+                                <TouchableOpacity style={styles.placeChip} onPress={() => setLogPlaceEdit(p => p && { ...p, [k]: sug })}
+                                  accessibilityLabel={`Use ${sug}`}>
+                                  <Text style={styles.placeChipTxt}>{sug}</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          )
+                        })}
+                        <View style={styles.logPlaceRow}>
+                          <TouchableOpacity style={[styles.placeChip, styles.placeChipOn]} onPress={() => void handleSaveLogPlaces()}>
+                            <Text style={styles.placeChipTxt}>Save</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.placeChip} onPress={() => setLogPlaceEdit(null)}>
+                            <Text style={styles.placeChipTxt}>Cancel</Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
                     )}
                     {isCompleted && logAircraftOpen === log.id && (
@@ -1539,6 +1616,14 @@ function makeStyles(theme: ScaledTheme) {
   logFilterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space1, marginBottom: theme.space2 },
   logEventsToggle: { color: theme.textSecondary, fontSize: theme.textXs, marginTop: theme.space1 },
   logTools: { flexDirection: 'row', flexWrap: 'wrap', columnGap: theme.space3 },
+  logPlaceEdit: { gap: theme.space1, marginTop: theme.space1 },
+  logPlaceRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space2 },
+  logPlaceLabel: { color: theme.textSecondary, fontSize: theme.textXs, width: theme.scale(32) },
+  logPlaceInput: {
+    flex: 1, maxWidth: theme.scale(180), color: theme.textPrimary, fontSize: theme.textSm,
+    borderWidth: 1, borderColor: theme.borderDefault, borderRadius: theme.radiusSm,
+    paddingHorizontal: theme.space2, paddingVertical: theme.space1,
+  },
   importBox: { gap: theme.space1, padding: theme.space2, marginBottom: theme.space2, borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.borderDefault },
   placeChipTxt: { color: theme.textMuted, fontSize: theme.textXs },
 

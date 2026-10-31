@@ -12,6 +12,7 @@ import { flightLogEventsForLog } from '@open-vfr/shared/flightLogEvents'
 import { formatElapsed, formatUtcTime, type FlownEvent } from '@open-vfr/shared/flightLogProfile'
 import { mergeCandidates, mergeLogs } from '@open-vfr/shared/flightLogRoute'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { logEndAerodromes, normalizeLogPlace, LOG_PLACE_MAX_CHARS, type LogAerodrome } from '@open-vfr/shared/flightLogAerodromes'
 import type { AircraftProfileDocType } from '../db'
 import css from './FlightLogs.module.css'
 
@@ -88,6 +89,41 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
   const [logs, setLogs] = useState<{ doc: FlightLogDocType; stats: LogStats | null }[]>([])
   const refusedLogs = useSyncRejected('user_flight_logs')
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  // Departure / arrival being edited (one log at a time), with the aerodromes
+  // at the track's ends as one-click suggestions.
+  const [placeEdit, setPlaceEdit] = useState<{ id: string; dep: string; arr: string; sugDep: string; sugArr: string } | null>(null)
+  function openPlaceEdit(log: FlightLogDocType) {
+    setPlaceEdit({ id: log.id, dep: log.departureIcao, arr: log.arrivalIcao, sugDep: '', sugArr: '' })
+    void loadCountryGeojson('aerodromes').then((fc) => {
+      const aerodromes: LogAerodrome[] = []
+      for (const f of fc.features) {
+        if (f.geometry?.type !== 'Point') continue
+        const [lng, lat] = f.geometry.coordinates as [number, number]
+        aerodromes.push({ icao: String(f.properties?.['icao'] ?? ''), lat, lng })
+      }
+      let track: TrackPoint[] = []
+      try { track = JSON.parse(log.trackJson || '[]') } catch { return }
+      const s = logEndAerodromes(track, aerodromes)
+      setPlaceEdit(p => p && p.id === log.id ? { ...p, sugDep: s.departure, sugArr: s.arrival } : p)
+    }).catch(() => { /* no suggestions offline */ })
+  }
+  /** Save a corrected departure / arrival (syncs as an edit of the log, like the aircraft). */
+  async function savePlaceEdit() {
+    const edit = placeEdit
+    if (!edit) return
+    setPlaceEdit(null)
+    try {
+      const db = await getDb()
+      const doc = await db.flight_logs.findOne(edit.id).exec()
+      if (!doc) return
+      const departureIcao = normalizeLogPlace(edit.dep)
+      const arrivalIcao = normalizeLogPlace(edit.arr)
+      if (departureIcao === doc.departureIcao && arrivalIcao === doc.arrivalIcao) return
+      await doc.incrementalPatch({ departureIcao, arrivalIcao, updatedAt: Math.max(Date.now(), doc.updatedAt + 1) })
+    } catch (err) {
+      setImportMsg(`Could not rename the flight: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
   const fileRef = useRef<HTMLInputElement>(null)
   const [importMsg, setImportMsg] = useState<string | null>(null)
   // A picked GPX file waiting for its aircraft (a GPX file carries none): confirmed in a small row.
@@ -341,6 +377,10 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
                       <option value="">{log.aircraftId && !aircraftProfiles.some(p => p.id === log.aircraftId) ? (log.registration || 'Unknown aircraft') : 'No aircraft'}</option>
                       {aircraftProfiles.map(p => <option key={p.id} value={p.id}>{p.registration || p.name}</option>)}
                     </select>
+                    <button className={css.eventsToggle} onClick={() => placeEdit?.id === log.id ? setPlaceEdit(null) : openPlaceEdit(log)}
+                      title="Correct the departure and arrival" aria-expanded={placeEdit?.id === log.id}>
+                      {'\u270e'} Rename
+                    </button>
                     {mergeNext.has(log.id) && (
                       <button className={css.eventsToggle} onClick={() => void handleMerge(log.id)}
                         title="The recording broke off (GPS lost or the app closed) and the next log continues this flight: join them">
@@ -348,6 +388,28 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
                       </button>
                     )}
                   </div>
+                )}
+                {placeEdit?.id === log.id && (
+                  <form className={css.placeEdit} onSubmit={(e) => { e.preventDefault(); void savePlaceEdit() }}>
+                    {(['dep', 'arr'] as const).map(k => {
+                      const sug = k === 'dep' ? placeEdit.sugDep : placeEdit.sugArr
+                      return (
+                        <label key={k} className={css.placeEditRow}>
+                          <span>{k === 'dep' ? 'From' : 'To'}</span>
+                          <input value={placeEdit[k]} maxLength={LOG_PLACE_MAX_CHARS} placeholder="ICAO or name"
+                            aria-label={k === 'dep' ? 'Departure' : 'Arrival'} autoFocus={k === 'dep'}
+                            onChange={e => { const v = e.target.value; setPlaceEdit(p => p && { ...p, [k]: v }) }} />
+                          {!!sug && sug !== normalizeLogPlace(placeEdit[k]) && (
+                            <button type="button" className={css.eventsToggle} onClick={() => setPlaceEdit(p => p && { ...p, [k]: sug })}>{sug}</button>
+                          )}
+                        </label>
+                      )
+                    })}
+                    <div className={css.placeEditRow}>
+                      <button type="submit" className={css.viewBtn}>Save</button>
+                      <button type="button" className={css.viewBtn} onClick={() => setPlaceEdit(null)}>Cancel</button>
+                    </div>
+                  </form>
                 )}
                 <SyncRefusedNote row={refusedLogs.get(log.id)} />
                 {eventsOpen.has(log.id) && (

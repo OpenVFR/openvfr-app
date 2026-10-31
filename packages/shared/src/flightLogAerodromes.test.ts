@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { aerodromeNear, missingLogAerodromes } from './flightLogAerodromes'
+import { aerodromeNear, logEndAerodromes, missingLogAerodromes, normalizeLogPlace } from './flightLogAerodromes'
 
 // Two aerodromes ~20 NM apart.
 const AD = [
@@ -46,5 +46,27 @@ describe('missingLogAerodromes', () => {
   it('does nothing without a track or aerodrome data', () => {
     expect(missingLogAerodromes({}, [], AD, 20)).toEqual({})
     expect(missingLogAerodromes({}, round, [], 20)).toEqual({})
+  })
+})
+
+describe('normalizeLogPlace', () => {
+  it('upper-cases an aerodrome code', () => {
+    expect(normalizeLogPlace(' esmi ')).toBe('ESMI')
+  })
+  it('keeps a typed name as written, spaces collapsed', () => {
+    expect(normalizeLogPlace('  Farm   strip Ljungby ')).toBe('Farm strip Ljungby')
+  })
+  it('caps the length', () => {
+    expect(normalizeLogPlace('x'.repeat(100))).toHaveLength(30)
+  })
+  it('blank stays blank', () => {
+    expect(normalizeLogPlace('   ')).toBe('')
+  })
+})
+
+describe('logEndAerodromes', () => {
+  it('suggests the aerodromes at both ends, also when still moving', () => {
+    const t = [at(56.8, 14.3, 60), at(56.93, 14.731, 40)]
+    expect(logEndAerodromes(t, AD)).toEqual({ departure: 'ESMI', arrival: 'ESMX' })
   })
 })

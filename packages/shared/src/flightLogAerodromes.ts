@@ -12,6 +12,19 @@
  * nearest airfield miles away.
  */
 
+/** Longest departure / arrival a user can type (the server allows 64 bytes). */
+export const LOG_PLACE_MAX_CHARS = 30
+
+/**
+ * A departure / arrival typed by the user: trimmed, inner spaces collapsed,
+ * cut to LOG_PLACE_MAX_CHARS. An aerodrome code (2-4 letters / digits, e.g.
+ * `esmi`) is upper-cased; anything else (a farm strip's name) is kept as typed.
+ */
+export function normalizeLogPlace(input: string): string {
+  const s = input.replace(/\s+/g, ' ').trim().slice(0, LOG_PLACE_MAX_CHARS).trim()
+  return /^[a-z0-9]{2,4}$/i.test(s) ? s.toUpperCase() : s
+}
+
 /** An end of the track must be this close to the aerodrome reference point. */
 export const LOG_AERODROME_MAX_NM = 2
 
@@ -36,6 +49,19 @@ export function aerodromeNear(lat: number, lng: number, aerodromes: readonly Log
     if (d <= bestD) { bestD = d; best = a.icao }
   }
   return best
+}
+
+/**
+ * Aerodromes near a log's start and end (within LOG_AERODROME_MAX_NM, any
+ * speed), as suggestions when the user names them by hand.
+ */
+export function logEndAerodromes(
+  track: readonly LogEndPoint[], aerodromes: readonly LogAerodrome[],
+): { departure: string; arrival: string } {
+  if (track.length === 0) return { departure: '', arrival: '' }
+  const first = track[0]!
+  const last = track[track.length - 1]!
+  return { departure: aerodromeNear(first.lat, first.lng, aerodromes), arrival: aerodromeNear(last.lat, last.lng, aerodromes) }
 }
 
 /**

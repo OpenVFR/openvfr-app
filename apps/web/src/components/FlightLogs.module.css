@@ -205,3 +205,26 @@
   padding: 0 2px;
   max-width: 140px;
 }
+.placeEdit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.placeEditRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+.placeEditRow > span { width: 28px; }
+.placeEditRow input {
+  font-size: 11px;
+  width: 140px;
+  background: none;
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 1px 4px;
+}

@@ -48,6 +48,10 @@ whole flight stays, from takeoff to landing, at a coarser spacing).
 - **Aircraft flown:** each log has an aircraft menu. Pick one of your
   aircraft profiles, or *No aircraft*, to set or correct it. The change
   syncs to your other devices.
+- **Rename:** **✎ Rename** edits the departure and arrival (an
+  aerodrome code such as `ESMI`, or a name such as a farm strip, up to 30
+  characters). The aerodromes where the track starts and ends are offered
+  with one tap. The change syncs to your other devices.
 - **Events:** the **Events** toggle lists takeoffs, landings, touch-and-gos,
   lost GPS and airspace entered, with times. Pick one to open the log at
   that point.
