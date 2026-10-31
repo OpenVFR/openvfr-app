@@ -179,14 +179,28 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   (default `better-auth`); give each deployment that shares a parent cookie
   domain its own prefix, or the browser sends both deployments'
   same-named session cookies to each.
-- `APP_MIN_VERSION` — optional, defaults to `0.0.0` (always satisfied, i.e.
-  a no-op). Backs `GET /api/version`, which the native app's force-update
-  gate (`apps/native/src/hooks/useForceUpdate.ts`) checks on every launch.
-  Bump this in the same deploy that ships a backend change old app
-  binaries can no longer talk to; the app then triggers a *blocking*
-  platform update flow (Play Core immediate update on Android, a
-  non-cancellable App Store alert on iOS) rather than a custom modal —
-  both platforms have their own accepted mechanism for this.
+- **Force-update gate.** `GET /api/version` tells the native apps the
+  oldest build still allowed per platform (`minBuild.android`,
+  `minBuild.ios`: Android versionCode / iOS build number). The app checks it
+  on launch and on every return to the foreground
+  (`apps/native/src/hooks/useForceUpdate.ts`); below it, the app is replaced
+  by a blocking **Update required** page (on Android, Google Play's
+  immediate in-app update is offered first). A block is never newly imposed
+  while the device moves at flying speed, and offline the app keeps
+  working. Raise the minimum in the same deploy that ships a backend change
+  older builds can no longer talk to.
+  - Set it from the admin dashboard (**App versions**: `GET`/`POST
+    /api/admin/app-versions`, stored in the `app_min_build` table). The
+    dashboard also lists the builds that launched since the api started,
+    with counts, so you see what a new minimum would block. Takes effect
+    within about a minute, no restart.
+  - `APP_MIN_BUILD_ANDROID` / `APP_MIN_BUILD_IOS` — optional defaults used
+    while the dashboard has not set a value (unset = `0` = no minimum).
+  - `APP_MIN_VERSION` — optional semver floor, defaults to `0.0.0` (no-op).
+    Read by app builds from before build-number support (they only offer
+    the store's own update flow, which can be dismissed); newer builds check
+    it too. Prefer the build minimum: the version name is not raised with
+    every build.
 - `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_KEY` — optional, enables POH
   PDF auto-fill (`/api/poh-extract`); the app works without it
 - `OPENSKY_CLIENT_ID` / `OPENSKY_CLIENT_SECRET` — optional, enables live
@@ -228,7 +242,8 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
 ### Admin API
 
 `/api/admin/*` (user list, sign-up/activity stats, ban/unban, enabling
-countries, per-country data status and pipeline runs) is a JSON API
+countries, per-country data status and pipeline runs, external-API relay
+usage, minimum native app build) is a JSON API
 for an operator dashboard. This repo ships only the API; the admin web UI is
 deployed separately on its own origin, so script on the main app's origin can
 never drive it. Set `ADMIN_APP_ORIGIN` to that UI's origin (e.g.

@@ -117,7 +117,9 @@ Legend: **Yes** = available, **Partial** = available with differences
 - **Files.** The web app downloads files (GPX). Native opens the system
   share sheet.
 - **Updates.** The web app updates itself when you reload. Native updates
-  come through the app store.
+  come through the app store; a version the server no longer supports asks
+  you to update before it can be used (see
+  [Troubleshooting](./troubleshooting.md#install-update-and-reset)).
 
 See [Flying mode and alerts](./flying-and-alerts.md),
 [Planning a route](./planning-a-route.md) and

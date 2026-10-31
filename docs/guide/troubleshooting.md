@@ -76,7 +76,11 @@ satellite basemap is planning-only. Stop flying mode to change them.
 
 - **Web app update:** a prompt appears when a new version is ready. Accept
   it, or reload.
-- **Native:** update from the store.
+- **Native:** update from the store. When the server no longer supports
+  your installed version, the app shows **Update required** and cannot be
+  used until you update; **Update** opens the store (on Android, Google
+  Play's in-app update when it can). This never starts while you are
+  flying, and without a connection the app keeps working.
 - **Delete everything:** see [Account and sync](./account-and-sync.md).
 
 Still stuck? Open an issue in the project's GitHub repository.

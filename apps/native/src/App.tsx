@@ -36,6 +36,7 @@ import { AppNavigator }  from './navigation'
 import { LoginScreen }   from './screens/LoginScreen'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from './styles/theme'
 import { useForceUpdate } from './hooks/useForceUpdate'
+import { UpdateRequired } from './components/UpdateRequired'
 import { EnvironmentBanner, useEnvironmentDeepLink } from './components/EnvironmentSwitch'
 import { SystemMessages } from './components/SystemMessages'
 
@@ -81,10 +82,14 @@ function UserScoped({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  // Fires on every cold launch, before anything else renders -- if the
-  // running build is below the backend's supported floor, this triggers a
-  // blocking platform update flow (see useForceUpdate.ts's header comment).
-  useForceUpdate()
+  // Checked on launch and on every return to the foreground: below the
+  // server's minimum build, the blocking UpdateRequired page replaces the
+  // whole app (see useForceUpdate.ts's header comment). Replaces, not
+  // covers: a native map view could draw above an overlay on Android. A
+  // block is never newly imposed at flying speed, so nothing in flight is
+  // torn down; an open flight log is closed by the orphan recovery later.
+  const forceUpdate = useForceUpdate()
+  if (forceUpdate.required) return <UpdateRequired onUpdate={forceUpdate.openUpdate} />
 
   return (
     <ErrorBoundary>

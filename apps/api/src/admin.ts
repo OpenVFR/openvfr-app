@@ -20,7 +20,7 @@
  *     the trusted-origins list (same list better-auth uses).
  *   - DATA: aggregate counts + account metadata from the ba_* tables only,
  *     plus in-memory aggregate counters of this process (external-API relay
- *     usage). No user content (routes, positions, flight logs) and no IP
+ *     usage, app launches per build). No user content (routes, positions, flight logs) and no IP
  *     addresses are exposed; the api_app role couldn't read user content anyway.
  *   - BANS: better-auth admin plugin (auth.api.banUser / unbanUser), called
  *     server-side; the plugin's own HTTP endpoints are not exposed.
@@ -37,6 +37,7 @@ import { currentAiracCycle } from '@open-vfr/shared/airac'
 import { countryPipelineDetail, countrySummaries, isPipelineJob, PIPELINE_JOBS, queuePipelineJob, queuedCount } from './pipeline.js'
 import { externalApiUsage } from './externalProxy.js'
 import { RateLimiter } from './rateLimiter.js'
+import { APP_PLATFORMS, envMinBuilds, isAppPlatform, MAX_BUILD, minBuildRows, parseBuild, seenBuilds, setMinBuild } from './appVersion.js'
 
 const MAX_QUEUED_JOBS = 20
 
@@ -333,5 +334,34 @@ admin.post('/countries/:code', async (c) => {
   `, [code, body.enabled])
   invalidateCountries()
   console.log(`[admin] ${c.get('adminEmail')} ${body.enabled ? 'enabled' : 'disabled'} country ${code}`)
+  return c.json({ ok: true })
+})
+
+// GET /api/admin/app-versions -- minimum native app build per platform (the
+// force-update gate behind /api/version) and the builds seen launching since
+// the api started (counts only; reported by the apps themselves, unauthenticated).
+admin.get('/app-versions', async (c) => {
+  const rows = await minBuildRows()
+  const env = envMinBuilds()
+  const platforms = Object.fromEntries(APP_PLATFORMS.map((p) => {
+    const row = rows?.find((r) => r.platform === p)
+    return [p, row
+      ? { minBuild: row.minBuild, source: 'dashboard', updatedAt: row.updatedAt, updatedBy: row.updatedBy, envDefault: env[p] }
+      : { minBuild: env[p], source: 'env', updatedAt: null, updatedBy: null, envDefault: env[p] }]
+  }))
+  return c.json({ platforms, stored: rows !== null, seen: seenBuilds() })
+})
+
+// POST /api/admin/app-versions { platform: 'android' | 'ios', minBuild: number }
+// -- set the minimum build. Apps below it are blocked within about a minute
+// (api cache) at their next launch or return to the foreground.
+admin.post('/app-versions', async (c) => {
+  const body = await c.req.json().catch(() => null) as { platform?: unknown; minBuild?: unknown } | null
+  const minBuild = typeof body?.minBuild === 'number' ? parseBuild(body.minBuild) : null
+  if (!isAppPlatform(body?.platform) || minBuild === null) {
+    return c.json({ error: `Body must be { platform: 'android' | 'ios', minBuild: whole number 0-${MAX_BUILD} }` }, 400)
+  }
+  await setMinBuild(body.platform, minBuild, c.get('adminEmail'))
+  console.log(`[admin] ${c.get('adminEmail')} set minimum ${body.platform} build to ${minBuild}`)
   return c.json({ ok: true })
 })

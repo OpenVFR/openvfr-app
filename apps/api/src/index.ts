@@ -40,6 +40,7 @@ import { randomUUID } from 'node:crypto'
 import { createHmac } from 'node:crypto'
 import { auth, isReviewAccountEmail } from './auth'
 import { admin } from './admin'
+import { effectiveMinBuilds, isAppPlatform, minBuildRows, MIN_VERSION, parseBuild, recordLaunch } from './appVersion'
 import { mountExternalProxies } from './externalProxy'
 import { createDemElevation, parseDemSources } from './demElevation'
 import { RateLimiter, limitFromEnv } from './rateLimiter'
@@ -131,21 +132,28 @@ app.get('/health', (c) => c.json({ ok: true }))
 // ---------------------------------------------------------------------------
 // /api/version — force-update gate
 //
-// Native app checks this on launch (see apps/native/src/hooks/useForceUpdate.ts)
-// and compares its own build version against APP_MIN_VERSION. If the running
-// app is older, it triggers a *blocking* platform update flow (Play Core
-// IMMEDIATE on Android, forced App Store alert on iOS) instead of a custom
-// modal -- both platforms' accepted mechanism for this, not a bespoke one.
+// The native app checks this on launch and when it returns to the foreground
+// (apps/native/src/hooks/useForceUpdate.ts). Below its platform's `minBuild`
+// (or `minVersion`) it shows a blocking "Update required" page; on Android
+// the Play immediate-update flow is offered first.
 //
-// Bump APP_MIN_VERSION in the same deploy that ships a backend change the
-// old app binary can no longer talk to (breaking API/schema change) --
-// this endpoint has no way to know that on its own, it just echoes config.
-// Leave unset (defaults to '0.0.0') when no client compatibility break is
-// in flight -- that value is always satisfied, so the check is a no-op.
+// Raise the minimum build (admin dashboard, "App versions") in the same
+// deploy that ships a backend change old app builds can no longer talk to.
+// This endpoint cannot know that on its own. See appVersion.ts.
+//
+// `?platform=android&build=57` (sent by the app) is counted per build in
+// memory for the dashboard; anything else in those parameters is ignored.
 // ---------------------------------------------------------------------------
-app.get('/api/version', (c) => c.json({
-  minVersion: process.env['APP_MIN_VERSION'] ?? '0.0.0',
-}))
+app.get('/api/version', async (c) => {
+  const platform = c.req.query('platform')
+  const build = parseBuild(c.req.query('build'))
+  if (isAppPlatform(platform) && build !== null) recordLaunch(platform, build)
+  c.header('Cache-Control', 'no-store')
+  return c.json({
+    minVersion: MIN_VERSION,
+    minBuild: effectiveMinBuilds(await minBuildRows()),
+  })
+})
 
 // ---------------------------------------------------------------------------
 // /.well-known — required for native passkeys
