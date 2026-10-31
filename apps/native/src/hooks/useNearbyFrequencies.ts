@@ -135,6 +135,18 @@ function loadOnce(onLoad: (data: CachedAerodrome[]) => void) {
 }
 
 /**
+ * The loaded aerodromes (icao, name, position), loading them if needed. Null
+ * when they could not be loaded within `timeoutMs` (offline, no data).
+ */
+export function getAerodromes(timeoutMs = 20_000): Promise<{ icao: string; name: string; lat: number; lng: number }[] | null> {
+  if (_cache) return Promise.resolve(_cache)
+  return new Promise(resolve => {
+    const t = setTimeout(() => resolve(null), timeoutMs)
+    loadOnce(data => { clearTimeout(t); resolve(data) })
+  })
+}
+
+/**
  * Re-fetch in the background if the cache is older than REFRESH_MS, notifying
  * `onUpdate` only if the fetch succeeds. Safe to call repeatedly (e.g. from a
  * setInterval) — no-ops while a fetch is already in flight or cache is fresh.

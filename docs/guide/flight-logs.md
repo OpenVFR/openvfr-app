@@ -15,6 +15,22 @@ split timeout** (Per leg, 1, 2, 5 (default), 10 or 30 minutes). If you take
 off again within it, the same log continues. Time spent parked waiting for
 the timer is trimmed from the end of the log.
 
+## Aircraft and aerodromes
+
+A log records the aircraft selected when it starts. In the mobile app, the
+flight mode sheet shows your aircraft profiles: tap one to select it, and a
+warning says when none is selected. If a flight is logged without an
+aircraft anyway (for example started automatically), the app asks which
+aircraft flew it once the log is finished, on the ground. One tap sets it
+on the log and selects it for the next flights.
+
+Departure and arrival are the aerodromes at takeoff and landing. If the app
+was closed before a log was finished, it finishes the log at the next start
+and works out a missing departure or arrival from where the track starts
+and ends: only within 2 NM of an aerodrome, and for the arrival only when
+the aircraft had stopped there. A flight that ended in the air (lost GPS)
+or in a field keeps **?**.
+
 ## The log list
 
 Filter by period (all, 30 days, 90 days, this year) and by aircraft. A
@@ -69,3 +85,5 @@ airspace shown is as drawn, for review, not as proof of an infringement.
 
 Export a log as GPX, or import a GPX file that has timed track points. You
 choose the aircraft on import. Importing the same flight twice is refused.
+In the mobile app, an imported log gets its departure and arrival from the
+track, as above.

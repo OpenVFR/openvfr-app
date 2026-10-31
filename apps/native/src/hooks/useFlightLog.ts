@@ -13,6 +13,8 @@ import { logRouteJson, type FlightLogRoute } from '@open-vfr/shared/flightLogRou
 import { useState, useEffect, useRef } from 'react'
 import * as Crypto from 'expo-crypto'
 import { trimParkedTail, simulatedFixAction } from '@open-vfr/shared/flightLogStats'
+import { missingLogAerodromes } from '@open-vfr/shared/flightLogAerodromes'
+import { getAerodromes } from './useNearbyFrequencies'
 import { flightLogs as flightLogsDb } from '../db'
 import type { TrackPoint, FlightLogDocType } from '../types/db'
 import type { GpsPosition, FlyingMode } from '../utils/gpsTypes'
@@ -286,17 +288,46 @@ async function finishLog(
     endedAt, trackJson: JSON.stringify(trimmed), distanceNm, maxAltFt, arrivalIcao,
     updatedAt: Date.now(), ...simFlag(simulated),
   })
+  // No aerodrome known at the landing moment (data not loaded yet): work it
+  // out from where the track ends. A second, separate write, so the log is
+  // closed at once even when the aerodrome data takes a while.
+  if (!arrivalIcao) await fillAerodromes(id, landedKts)
+}
+
+/** Fill a log's missing departure / arrival from its track ends. True when it changed the log. */
+async function fillAerodromes(id: string, landedKts: number = LANDING_SPD_KTS): Promise<boolean> {
+  try {
+    const log = await flightLogsDb.get(id)
+    if (!log || log.endedAt === 0 || (log.departureIcao && log.arrivalIcao)) return false
+    const aerodromes = await getAerodromes()
+    if (!aerodromes) return false
+    let track: TrackPoint[] = []
+    try { track = JSON.parse(log.trackJson || '[]') } catch { return false }
+    const patch = missingLogAerodromes(log, track, aerodromes, landedKts)
+    if (!patch.departureIcao && !patch.arrivalIcao) return false
+    await flightLogsDb.patch(id, { ...patch, updatedAt: Math.max(Date.now(), log.updatedAt + 1) })
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
  * Close out logs left in progress (endedAt === 0) by a previous session — the
- * app was killed or closed mid-flight, so finishLog never ran. Call once at
- * startup, before any new recording can begin. Each orphan is ended at its last
- * recorded track point (falling back to its last update time); orphans with no
- * track at all are removed. Returns the logs that were finalized.
+ * app was killed or closed before the log was finished (mid-flight, or parked
+ * while the park timer was still running: Android may stop the app in the
+ * background). Call once at startup, before any new recording can begin.
+ * Each orphan gets the same finish as a normal close: the parked tail is
+ * trimmed and the log ends at the last real movement. Orphans with no track
+ * at all are removed.
+ *
+ * Then every finished log still missing its departure or arrival gets them
+ * from its track ends (missingLogAerodromes). This repairs logs recovered
+ * before this existed, and fills GPX imports. Returns the logs that changed
+ * (to upload).
  */
-export async function recoverOrphanedLogs(): Promise<FlightLogDocType[]> {
-  const recovered: FlightLogDocType[] = []
+export async function recoverOrphanedLogs(landedKts: number = LANDING_SPD_KTS): Promise<FlightLogDocType[]> {
+  const changed = new Set<string>()
   try {
     const all = await flightLogsDb.getAll()
     for (const log of all) {
@@ -304,11 +335,15 @@ export async function recoverOrphanedLogs(): Promise<FlightLogDocType[]> {
       let track: TrackPoint[] = []
       try { track = JSON.parse(log.trackJson || '[]') } catch { /* corrupt → treat as empty */ }
       if (track.length === 0) { await flightLogsDb.delete(log.id); continue }
-      const endedAt = Math.max(track[track.length - 1].ts || 0, log.startedAt + 1)
-      const fixed: FlightLogDocType = { ...log, endedAt, updatedAt: Date.now() }
-      await flightLogsDb.upsert(fixed)
-      recovered.push(fixed)
+      const trimmed = trimParkedTail(track, landedKts)
+      const endedAt = Math.max(trimmed[trimmed.length - 1].ts || 0, log.startedAt + 1)
+      await flightLogsDb.upsert({ ...log, endedAt, trackJson: JSON.stringify(trimmed), updatedAt: Date.now() })
+      changed.add(log.id)
     }
+    const missing = (await flightLogsDb.getAll()).filter(l => l.endedAt > 0 && (!l.departureIcao || !l.arrivalIcao))
+    for (const log of missing) if (await fillAerodromes(log.id, landedKts)) changed.add(log.id)
   } catch { /* best-effort */ }
-  return recovered
+  const out: FlightLogDocType[] = []
+  for (const id of changed) { const d = await flightLogsDb.get(id); if (d) out.push(d) }
+  return out
 }

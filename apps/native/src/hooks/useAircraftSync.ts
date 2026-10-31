@@ -39,5 +39,5 @@ export function useAircraftSync() {
     await notifyLocalDelete('user_aircraft_profiles', id)
   }, [refresh])
 
-  return { syncState: status, profiles, pull, pushAircraft, deleteAircraft }
+  return { syncState: status, profiles, refresh, pull, pushAircraft, deleteAircraft }
 }

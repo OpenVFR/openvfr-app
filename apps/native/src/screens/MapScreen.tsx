@@ -108,6 +108,9 @@ import { CompassButton } from '../components/CompassButton'
 import { FollowCountdown } from '../components/FollowCountdown'
 import type { MapOrientation } from '../utils/gpsTypes'
 import { AutoFlyBanner } from '../components/AutoFlyBanner'
+import { LogAircraftBanner } from '../components/LogAircraftBanner'
+import { useAircraftSync } from '../hooks/useAircraftSync'
+import type { FlightLogDocType } from '../types/db'
 import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
 import { trackToGeoJson } from '@open-vfr/shared/flightLogStats'
 import { parseParkTimeout } from '@open-vfr/shared/parkTimeout'
@@ -803,7 +806,7 @@ function MapScreenForCountry() {
   // Flight log recording — auto takeoff/landing detection, mirrors web's
   // useFlightLog wiring in MapView.tsx exactly (gate position on flying mode,
   // pass nearest aerodrome ICAO for departure/arrival tagging).
-  const { syncState: logSyncState, pushLog } = useFlightLogSync()
+  const { syncState: logSyncState, pushLog, logs: storedLogs } = useFlightLogSync()
   // Set just before an AUTO stop so useFlightLog leaves a parked log to its park timer.
   const deferLogCloseRef = React.useRef(false)
   // The route being flown, kept with a new flight log (a closed route is gone, so any route counts).
@@ -826,20 +829,51 @@ function MapScreenForCountry() {
   )
   // Finalize + upload logs orphaned by a previous session that was closed
   // mid-flight (otherwise they stay "Recording…" forever, unviewable/unsynced).
+  // Also fills missing departure / arrival aerodromes from the track.
   useEffect(() => {
-    recoverOrphanedLogs().then(docs => docs.forEach(d => { void pushLog(d) }))
+    recoverOrphanedLogs(flyThresholds.landedKts).then(docs => docs.forEach(d => { void pushLog(d) }))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  // Aircraft profiles, for asking which one flew a log recorded without one.
+  const { profiles: aircraftProfiles, refresh: refreshAircraft } = useAircraftSync()
+  // Profiles added or renamed in Plan show here when the map is back in view.
+  useEffect(() => { if (screenFocused) void refreshAircraft() }, [screenFocused, refreshAircraft])
+  const aircraftChoices = useMemo(
+    () => aircraftProfiles.map(p => ({ id: p.id, label: p.registration || p.name })),
+    [aircraftProfiles],
+  )
+  // The finished log to ask about. Its label is read from the stored logs, so
+  // an arrival filled in after closing shows up.
+  const [untaggedLog, setUntaggedLog] = useState<FlightLogDocType | null>(null)
+  const logRouteLabel = (l: FlightLogDocType) => `${l.departureIcao || '?'} \u2192 ${l.arrivalIcao || '?'}`
   const prevLogIdRef = React.useRef<string | null>(null)
   useEffect(() => {
     if (prevLogIdRef.current && !activeLogId) {
       const finishedId = prevLogIdRef.current
       flightLogsDb.get(finishedId).then(doc => {
-        if (doc && doc.endedAt > 0) pushLog(doc)
+        if (!doc || doc.endedAt === 0) return
+        pushLog(doc)
+        if (!doc.aircraftId && !doc.simulated) setUntaggedLog(doc)
       })
     }
     prevLogIdRef.current = activeLogId
   }, [activeLogId, pushLog])
+  /** Set the aircraft on the just-finished log, and select it for the next flights. */
+  const handleTagLogAircraft = useCallback(async (aircraftId: string) => {
+    const log = untaggedLog
+    setUntaggedLog(null)
+    const ac = aircraftProfiles.find(p => p.id === aircraftId)
+    if (!log || !ac) return
+    void update({ selectedAircraftId: ac.id })
+    try {
+      // Re-read: the arrival may have been filled in since.
+      const current = await flightLogsDb.get(log.id)
+      if (!current) return
+      const patch = { aircraftId: ac.id, registration: ac.registration ?? '', updatedAt: Math.max(Date.now(), current.updatedAt + 1) }
+      await flightLogsDb.patch(log.id, patch)
+      await pushLog({ ...current, ...patch })
+    } catch { /* the aircraft can still be set from the log list */ }
+  }, [untaggedLog, aircraftProfiles, update, pushLog])
 
   const handleStartGpsFly = useCallback(() => {
     if (simFlight.active) simFlight.stop()
@@ -2019,6 +2053,10 @@ function MapScreenForCountry() {
           onStop={handleStopFlight}
           open={showModePicker}
           onOpenChange={setShowModePicker}
+          aircraftChoices={aircraftChoices}
+          selectedAircraftId={settings.selectedAircraftId || ''}
+          onSelectAircraft={(id) => void update({ selectedAircraftId: id })}
+          onAddAircraft={() => { setShowModePicker(false); navigation.navigate('Plan' as never) }}
         />
         <View style={stackGap}>
           <TouchableOpacity
@@ -2045,6 +2083,15 @@ function MapScreenForCountry() {
           top={scaledTheme.space3}
           onAccept={autoFly.accept}
           onDismiss={autoFly.dismiss}
+        />
+      )}
+      {!autoFly.suggestion && untaggedLog && aircraftChoices.length > 0 && flightModeStatus !== 'sim' && (
+        <LogAircraftBanner
+          route={logRouteLabel(storedLogs.find(l => l.id === untaggedLog.id) ?? untaggedLog)}
+          choices={aircraftChoices}
+          top={scaledTheme.space3}
+          onPick={handleTagLogAircraft}
+          onDismiss={() => setUntaggedLog(null)}
         />
       )}
 

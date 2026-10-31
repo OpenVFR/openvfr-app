@@ -33,9 +33,19 @@ interface Props {
   /** Controlled open state (map toolbar menu); omit for the built-in trigger button. */
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  /** Aircraft profiles to pick from (the selected one goes into the flight log). */
+  aircraftChoices?: { id: string; label: string }[]
+  /** '' = none selected. */
+  selectedAircraftId?: string
+  onSelectAircraft?: (id: string) => void
+  /** Open the place where aircraft profiles are created (no profiles yet). */
+  onAddAircraft?: () => void
 }
 
-export function FlightModeSheet({ status, onStartGps, onStartSim, onStop, open: openProp, onOpenChange }: Props) {
+export function FlightModeSheet({
+  status, onStartGps, onStartSim, onStop, open: openProp, onOpenChange,
+  aircraftChoices = [], selectedAircraftId = '', onSelectAircraft, onAddAircraft,
+}: Props) {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const [openState, setOpenState] = useState(false)
@@ -78,6 +88,41 @@ export function FlightModeSheet({ status, onStartGps, onStartSim, onStop, open: 
         )}
 
         <View style={styles.body}>
+          {onSelectAircraft && (
+            <View style={styles.aircraft} testID="flight-mode-aircraft">
+              <Text style={styles.aircraftTitle}>Aircraft</Text>
+              {aircraftChoices.length === 0 ? (
+                <TouchableOpacity onPress={onAddAircraft} disabled={!onAddAircraft}>
+                  <Text style={styles.aircraftWarn}>
+                    No aircraft profile yet: flight logs will not say which aircraft flew.
+                    {onAddAircraft ? ' Add one in Plan \u2192 Aircraft.' : ''}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <>
+                  <View style={styles.chips}>
+                    {aircraftChoices.map(c => {
+                      const on = c.id === selectedAircraftId
+                      return (
+                        <TouchableOpacity key={c.id} style={[styles.chip, on && styles.chipOn]}
+                          onPress={() => onSelectAircraft(on ? '' : c.id)}
+                          accessibilityState={{ selected: on }} testID={`flight-mode-aircraft-${c.id}`}>
+                          <Text style={[styles.chipText, on && styles.chipTextOn]}>{c.label}</Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                  {!aircraftChoices.some(c => c.id === selectedAircraftId) && (
+                    <Text style={styles.aircraftWarn}>
+                      No aircraft selected: the flight log will not say which aircraft flew, and takeoff and
+                      landing are detected at default speeds.
+                    </Text>
+                  )}
+                </>
+              )}
+            </View>
+          )}
+
           <TouchableOpacity
             style={[styles.card, status === 'gps' && styles.cardActive]}
             onPress={() => { onStartGps(); setOpen(false) }}
@@ -186,6 +231,18 @@ function makeStyles(theme: ScaledTheme) {
     padding: theme.space4,
     gap:     theme.space3,
   },
+  aircraft: { gap: theme.space2 },
+  aircraftTitle: { color: theme.textSecondary, fontSize: theme.textXs, fontWeight: '600' as const },
+  aircraftWarn: { color: theme.statusWarn, fontSize: theme.textXs },
+  chips: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: theme.space2 },
+  chip: {
+    paddingHorizontal: theme.space3, paddingVertical: theme.space1,
+    borderRadius: theme.radiusFull, borderWidth: 1, borderColor: theme.borderDefault,
+    backgroundColor: theme.surfaceOverlay,
+  },
+  chipOn: { borderColor: theme.accentBlue, backgroundColor: 'rgba(59,130,246,0.15)' },
+  chipText: { color: theme.textSecondary, fontSize: theme.textSm },
+  chipTextOn: { color: theme.accentBlue, fontWeight: '600' as const },
   card: {
     flexDirection:   'row' as const,
     gap:             theme.space3,
