@@ -367,7 +367,11 @@ last copy for offline use.
   server env): `off` (default) answers requests without a session 401;
   `limited` still serves them, with tight per-IP caps and a capped share of
   the upstream budget, only for app builds that predate the session
-  requirement. Any other value means `off`.
+  requirement. Any other value means `off`. `OPEN_METEO_MAX_IN_FLIGHT`
+  (1-4, default 2): Open-Meteo requests the relay keeps in flight at once;
+  the free API processes one request per IP at a time and rejects more than
+  five pending, so lower it to 1 if other software shares your public IP
+  and the api logs `429 (Too many concurrent requests)`.
 - Terrain does not depend on OpenTopoData's small free budget alone: whenever
   it can't answer at once (the caller's hourly/daily cap used up, the
   server-wide budget used up or paused after a 429/503, a queue longer than

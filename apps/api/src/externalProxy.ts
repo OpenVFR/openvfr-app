@@ -24,8 +24,11 @@
  *    7 days), identical concurrent misses share one upstream call;
  *  - each user has an hourly + daily cap on cache MISSES (hits are free);
  *  - the server keeps total upstream calls under the free-tier limits
- *    (minimum spacing + per-minute/hour/day budgets), and a 429/503 from
- *    upstream pauses all calls to it (Retry-After, else backoff);
+ *    (at most `maxInFlight` upstream requests at a time, minimum spacing,
+ *    per-minute/hour/day budgets, and the provider's own X-RateLimit-*
+ *    answer when it sends one), and a 429/503 from upstream pauses all
+ *    calls to it (Retry-After, else backoff; one burst of parallel failures
+ *    is one incident, not an escalation per request);
  *  - when upstream can't be asked (paused, over budget, failing), the last
  *    good response is served if it is recent enough (Open-Meteo 1 h, terrain
  *    30 days), else 503 with Retry-After -- which the apps' own gate
@@ -59,7 +62,11 @@ export interface ProxySpec {
    *  caps per client IP, and the most upstream calls per day they may cause
    *  in total, so they can never use up the budget signed-in users need. */
   anonymous: { perIpHourly: number; perIpDaily: number; upstreamDaily: number }
-  upstream: { minIntervalMs: number; perMinute: number; hourly: number; daily: number }
+  /** maxInFlight: upstream requests in progress at once. Open-Meteo's free
+   *  API processes ONE request per IP at a time and answers 429 "Too many
+   *  concurrent requests" above 5 pending; every user's misses used to go
+   *  out in parallel, so three cold map views were enough to trip it. */
+  upstream: { minIntervalMs: number; maxInFlight: number; perMinute: number; hourly: number; daily: number }
   timeoutMs: number
 }
 
@@ -68,19 +75,34 @@ const HOUR_MS = 60 * MINUTE_MS
 const DAY_MS = 24 * HOUR_MS
 /** Upstream pauses longer than this are reported to the client instead of waited out. */
 const MAX_PAUSE_REPORT_S = 3600
-/** Longest a request waits for an upstream slot (minIntervalMs spacing). */
+/** Longest a request waits for an upstream slot (minIntervalMs spacing, maxInFlight). */
 const MAX_QUEUE_MS = 10_000
+/** After a concurrency rejection: pause this long (jittered) and run one
+ *  request at a time for CONCURRENCY_BACKOFF_MS. Not a quota incident. */
+const CONCURRENCY_PAUSE_MS = 1_500
+const CONCURRENCY_BACKOFF_MS = 60_000
+/** Env override for Open-Meteo's in-flight cap (1..4; 2 default). */
+function inFlightFromEnv(v: string | undefined, dflt: number): number {
+  const n = Number(v)
+  return Number.isInteger(n) && n >= 1 && n <= 4 ? n : dflt
+}
 
 const COORD = /^-?\d{1,3}(\.\d{1,6})?$/
 // Open-Meteo variable names, e.g. wind_speed_10m, wind_direction_925hPa.
 const VARS = /^[A-Za-z0-9_]{1,40}(,[A-Za-z0-9_]{1,40}){0,24}$/
 
-/** Open-Meteo cost of one request in calls (see OPEN_METEO.weight). Exported for tests. */
+/**
+ * Open-Meteo cost of one request in API calls, as its rate-limiting docs
+ * define it: per location max(1, V/10 x max(1, D/14)), fractional, summed
+ * over locations. V = variables over current + hourly (a variable in both
+ * counts twice), D = forecast days (7 when absent) + past days. Exported for
+ * tests.
+ */
 export function openMeteoWeight(q: URLSearchParams): number {
   const locations = (q.get('latitude') ?? '').split(',').filter(Boolean).length || 1
   const vars = ['current', 'hourly'].reduce((n, k) => n + (q.get(k)?.split(',').filter(Boolean).length ?? 0), 0)
   const days = Number(q.get('forecast_days') ?? 7) + Number(q.get('past_days') ?? 0)
-  return Math.ceil(locations * Math.max(1, vars / 10) * Math.max(1, days / 14))
+  return locations * Math.max(1, (vars / 10) * Math.max(1, days / 14))
 }
 
 function coordList(v: string | null, max: number, lo: number, hi: number): boolean {
@@ -115,12 +137,8 @@ export const OPEN_METEO: ProxySpec = {
     if (tf != null && !['unixtime', 'iso8601'].includes(tf)) return 'timeformat: unixtime|iso8601'
     return null
   },
-  // Matches the apps' own refetch rule (currentExpiresAt: next 15-min value);
-  // the stale window matches their 1 h failure-only fallback.
-  // Open-Meteo counts a request with N locations as N calls, more than 10
-  // variables or more than 14 days as proportionally more (pricing FAQ:
-  // fractional counts; its cost calculator takes variables, time span and
-  // locations). Rounded up so a budget is never under-counted.
+  // Open-Meteo's own weight formula (openMeteoWeight); the X-RateLimit-Cost
+  // it reports replaces the estimate in the ledger once the answer is in.
   weight: (_endpoint, q) => openMeteoWeight(q),
   perLocation: true,
   // Fallback only: per location, freshness follows the data
@@ -132,8 +150,11 @@ export const OPEN_METEO: ProxySpec = {
   // In weighted calls. One map view of the wind grid is up to ~36 locations.
   perUser: { hourly: 600, daily: 2000 },
   anonymous: { perIpHourly: 100, perIpDaily: 300, upstreamDaily: 1500 },
-  // Free tier: 600/min, 5 000/h, 10 000/day per IP (weighted) -- with a margin.
-  upstream: { minIntervalMs: 0, perMinute: 400, hourly: 4000, daily: 9000 },
+  // Free tier: 600/min, 5 000/h, 10 000/day per IP (weighted) -- with a
+  // margin. In flight: the free API serves one request per IP at a time and
+  // queues up to four more; two in flight hide the round trip and leave
+  // room for anything else on this IP. Env OPEN_METEO_MAX_IN_FLIGHT=1..4.
+  upstream: { minIntervalMs: 0, maxInFlight: inFlightFromEnv(process.env['OPEN_METEO_MAX_IN_FLIGHT'], 2), perMinute: 400, hourly: 4000, daily: 9000 },
   timeoutMs: 15_000,
 }
 
@@ -165,7 +186,7 @@ export const ELEVATION: ProxySpec = {
   perUser: { hourly: 120, daily: 400 },
   anonymous: { perIpHourly: 20, perIpDaily: 60, upstreamDaily: 150 },
   // Public OpenTopoData: max 1 call/s, 1 000/day.
-  upstream: { minIntervalMs: 1100, perMinute: 50, hourly: 400, daily: 900 },
+  upstream: { minIntervalMs: 1100, maxInFlight: 1, perMinute: 50, hourly: 400, daily: 900 },
   timeoutMs: 20_000,
 }
 
@@ -193,6 +214,14 @@ export function openMeteoFreshUntil(elementJson: string, at: number): number | u
   return undefined
 }
 
+/** One upstream call in the budget ledger: when, and its weight in API calls
+ *  (the local estimate, replaced by the provider's reported cost). */
+export interface LedgerEntry { t: number; w: number }
+
+/** What the provider last said about our quota (Open-Meteo X-RateLimit-*):
+ *  the window with the fewest calls left, after that request's charge. */
+export interface ObservedQuota { remaining: number; limit: number | null; windowS: number | null; resetAt: number; seenAt: number }
+
 export interface ProxyState {
   cache: Map<string, CacheEntry>
   cacheBytes: number
@@ -200,16 +229,29 @@ export interface ProxyState {
   /** Per-location fetches in progress (perLocation specs): element JSON or null. */
   inflightLoc: Map<string, Promise<string | null>>
   userMisses: Map<string, number[]>
-  upstreamCalls: number[]
+  upstreamCalls: LedgerEntry[]
   /** Upstream calls caused by requests without a session (last 24 h). */
   anonUpstreamCalls: number[]
   pausedUntil: number
+  /** When pausedUntil was last raised: throttled answers to requests sent
+   *  before it belong to the same incident and must not escalate again. */
+  pausedAt: number
   consecutiveThrottles: number
   nextSlotAt: number
+  /** Upstream requests in progress, and callers waiting for one of the maxInFlight slots. */
+  inFlight: number
+  slotWaiters: { go: () => void }[]
+  /** Until when the in-flight cap is reduced to 1 (after a concurrency rejection). */
+  singleFileUntil: number
+  observed: ObservedQuota | null
 }
 
 export function newProxyState(): ProxyState {
-  return { cache: new Map(), cacheBytes: 0, inflight: new Map(), inflightLoc: new Map(), userMisses: new Map(), upstreamCalls: [], anonUpstreamCalls: [], pausedUntil: 0, consecutiveThrottles: 0, nextSlotAt: 0 }
+  return {
+    cache: new Map(), cacheBytes: 0, inflight: new Map(), inflightLoc: new Map(), userMisses: new Map(),
+    upstreamCalls: [], anonUpstreamCalls: [], pausedUntil: 0, pausedAt: -Infinity, consecutiveThrottles: 0, nextSlotAt: 0,
+    inFlight: 0, slotWaiters: [], singleFileUntil: 0, observed: null,
+  }
 }
 
 type Upstream =
@@ -230,6 +272,19 @@ function pruneWindow(ts: number[], now: number, win: number): number[] {
   return i ? ts.slice(i) : ts
 }
 
+function pruneLedger(es: LedgerEntry[], now: number, win: number): LedgerEntry[] {
+  let i = 0
+  while (i < es.length && now - es[i]!.t >= win) i++
+  return i ? es.slice(i) : es
+}
+
+/** Weighted calls in the ledger within `win` of `now` (optionally from `since`). */
+function ledgerSum(es: LedgerEntry[], now: number, win: number, since = -Infinity): number {
+  let sum = 0
+  for (const e of es) if (now - e.t < win && e.t >= since) sum += e.w
+  return sum
+}
+
 function putCache(s: ProxyState, spec: ProxySpec, key: string, body: string, now: number, freshUntil?: number): void {
   const old = s.cache.get(key)
   if (old) { s.cacheBytes -= old.bytes; s.cache.delete(key) }
@@ -244,19 +299,74 @@ function putCache(s: ProxyState, spec: ProxySpec, key: string, body: string, now
   }
 }
 
-/** Seconds until an upstream call of `weight` fits the budgets (0 = now). Exported for tests. */
+/**
+ * Seconds until an upstream call of `weight` fits the budgets (0 = now):
+ * the pause after a 429/503, our own per-minute/hour/day ledger, and the
+ * remaining quota the provider last reported (until that window resets).
+ * Exported for tests.
+ */
 export function upstreamWaitS(s: ProxyState, spec: ProxySpec, now: number, weight = 1): number {
-  s.upstreamCalls = pruneWindow(s.upstreamCalls, now, DAY_MS)
+  s.upstreamCalls = pruneLedger(s.upstreamCalls, now, DAY_MS)
   const calls = s.upstreamCalls
   const waits: number[] = [Math.max(0, s.pausedUntil - now)]
   const windows: [number, number][] = [[MINUTE_MS, spec.upstream.perMinute], [HOUR_MS, spec.upstream.hourly], [DAY_MS, spec.upstream.daily]]
   for (const [win, max] of windows) {
-    const inWin = calls.filter((t) => now - t < win)
     if (weight > max) { waits.push(win); continue }
-    // Entries are unit calls (a weighted call is pushed `weight` times).
-    if (inWin.length + weight > max) waits.push(inWin[inWin.length + weight - max - 1]! + win - now)
+    const inWin = calls.filter((e) => now - e.t < win)
+    let used = inWin.reduce((n, e) => n + e.w, 0)
+    if (used + weight <= max) continue
+    // Wait until enough of the oldest entries have left the window.
+    for (const e of inWin) {
+      used -= e.w
+      if (used + weight <= max) { waits.push(e.t + win - now); break }
+    }
   }
+  const o = s.observed
+  if (o && now < o.resetAt && o.remaining < weight) waits.push(o.resetAt - now)
   return Math.ceil(Math.max(...waits) / 1000)
+}
+
+function inFlightLimit(s: ProxyState, spec: ProxySpec, now: number): number {
+  return now < s.singleFileUntil ? 1 : spec.upstream.maxInFlight
+}
+
+/** Take one of the maxInFlight slots; false when none came free within MAX_QUEUE_MS. */
+function acquireInFlight(s: ProxyState, spec: ProxySpec, now: () => number): Promise<boolean> {
+  if (s.inFlight < inFlightLimit(s, spec, now())) { s.inFlight++; return Promise.resolve(true) }
+  return new Promise<boolean>((resolve) => {
+    const waiter = { go: () => { clearTimeout(timer); s.inFlight++; resolve(true) } }
+    const timer = setTimeout(() => {
+      const i = s.slotWaiters.indexOf(waiter)
+      if (i >= 0) { s.slotWaiters.splice(i, 1); resolve(false) }
+    }, MAX_QUEUE_MS)
+    timer.unref?.()
+    s.slotWaiters.push(waiter)
+  })
+}
+
+function releaseInFlight(s: ProxyState, spec: ProxySpec, now: () => number): void {
+  s.inFlight--
+  while (s.slotWaiters.length > 0 && s.inFlight < inFlightLimit(s, spec, now())) s.slotWaiters.shift()!.go()
+}
+
+/** Open-Meteo's X-RateLimit-* answer, when complete enough to act on. Exported for tests. */
+export function readObservedQuota(h: Headers, now: number): ObservedQuota | null {
+  const remaining = Number(h.get('X-RateLimit-Remaining'))
+  const reset = Number(h.get('X-RateLimit-Reset'))
+  if (!h.has('X-RateLimit-Remaining') || !Number.isFinite(remaining) || !Number.isFinite(reset) || reset <= 0) return null
+  const limit = Number(h.get('X-RateLimit-Limit')), windowS = Number(h.get('X-RateLimit-Window'))
+  return {
+    remaining: Math.max(0, remaining),
+    limit: h.has('X-RateLimit-Limit') && Number.isFinite(limit) ? limit : null,
+    windowS: h.has('X-RateLimit-Window') && Number.isFinite(windowS) ? windowS : null,
+    resetAt: reset * 1000,
+    seenAt: now,
+  }
+}
+
+function noteObservedQuota(s: ProxyState, h: Headers, now: number): void {
+  const o = readObservedQuota(h, now)
+  if (o) s.observed = o
 }
 
 async function callUpstream(s: ProxyState, spec: ProxySpec, url: string, weight: number, now: () => number): Promise<Upstream> {
@@ -266,38 +376,71 @@ async function callUpstream(s: ProxyState, spec: ProxySpec, url: string, weight:
   if (slot - now() > MAX_QUEUE_MS) return { kind: 'unavailable', retryAfterS: Math.ceil((slot - now()) / 1000) }
   s.nextSlotAt = slot + spec.upstream.minIntervalMs
   if (slot > now()) await new Promise((r) => setTimeout(r, slot - now()))
-  const wait = upstreamWaitS(s, spec, now(), weight)
-  if (wait > 0) return { kind: 'unavailable', retryAfterS: wait }
-  for (let i = 0; i < weight; i++) s.upstreamCalls.push(now())
-  let res: Response
+  // Concurrency: at most maxInFlight requests to the provider at once; the
+  // rest wait their turn here (bounded), instead of queueing at the provider
+  // where more than a handful pending is a 429 for everyone.
+  if (!(await acquireInFlight(s, spec, now))) return { kind: 'unavailable', retryAfterS: 5 }
   try {
-    res = await fetch(url, { headers: { 'User-Agent': 'open-vfr/1.0', Accept: 'application/json' }, signal: AbortSignal.timeout(spec.timeoutMs) })
-  } catch (err) {
-    console.error(`[${spec.name}] upstream fetch failed:`, (err as Error)?.name, (err as Error)?.message)
-    return { kind: 'unavailable', retryAfterS: 10 }
-  }
-  const body = await res.text().catch(() => '')
-  if (res.ok) {
-    s.consecutiveThrottles = 0
-    return { kind: 'ok', body }
-  }
-  if (res.status === 429 || res.status === 503) {
-    let reason = ''
+    // Checked AFTER taking the slot: a request that just failed may have
+    // paused the relay or reported an exhausted quota in the meantime.
+    const wait = upstreamWaitS(s, spec, now(), weight)
+    if (wait > 0) return { kind: 'unavailable', retryAfterS: wait }
+    const entry: LedgerEntry = { t: now(), w: weight }
+    s.upstreamCalls.push(entry)
+    const sentAt = now()
+    let res: Response
     try {
-      const j = JSON.parse(body) as { reason?: unknown; error?: unknown }
-      reason = String(j.reason ?? j.error ?? '')
-    } catch { /* not JSON */ }
-    const delay = throttleDelayMs(s.consecutiveThrottles++, res.headers.get('Retry-After'), reason, now(), Math.random())
-    s.pausedUntil = Math.max(s.pausedUntil, now() + delay)
-    console.warn(`[${spec.name}] upstream ${res.status} (${reason.slice(0, 120)}): pausing ${Math.round(delay / 1000)} s`)
-    return { kind: 'unavailable', retryAfterS: Math.ceil(delay / 1000) }
+      res = await fetch(url, { headers: { 'User-Agent': 'open-vfr/1.0', Accept: 'application/json' }, signal: AbortSignal.timeout(spec.timeoutMs) })
+    } catch (err) {
+      console.error(`[${spec.name}] upstream fetch failed:`, (err as Error)?.name, (err as Error)?.message)
+      return { kind: 'unavailable', retryAfterS: 10 }
+    }
+    const body = await res.text().catch(() => '')
+    noteObservedQuota(s, res.headers, now())
+    if (res.ok) {
+      // The provider's own charge for this request, when it reports one.
+      const cost = Number(res.headers.get('X-RateLimit-Cost'))
+      if (res.headers.has('X-RateLimit-Cost') && Number.isFinite(cost) && cost >= 0) entry.w = cost
+      s.consecutiveThrottles = 0
+      return { kind: 'ok', body }
+    }
+    if (res.status === 429 || res.status === 503) {
+      let reason = ''
+      try {
+        const j = JSON.parse(body) as { reason?: unknown; error?: unknown }
+        reason = String(j.reason ?? j.error ?? '')
+      } catch { /* not JSON */ }
+      if (res.status === 429 && /concurrent/i.test(reason)) {
+        // Too many pending requests on this IP (something else shares it, or
+        // the cap is too high): not a quota incident. Short pause, then run
+        // one at a time for a while. Not charged by the provider.
+        entry.w = 0
+        const delay = Math.round(CONCURRENCY_PAUSE_MS * (1 + Math.random()))
+        s.pausedUntil = Math.max(s.pausedUntil, now() + delay)
+        s.singleFileUntil = now() + CONCURRENCY_BACKOFF_MS
+        console.warn(`[${spec.name}] upstream 429 (${reason.slice(0, 120)}): pausing ${delay} ms, single file for ${CONCURRENCY_BACKOFF_MS / 1000} s`)
+        return { kind: 'unavailable', retryAfterS: Math.ceil(delay / 1000) }
+      }
+      // Parallel requests that were already out when the pause began all
+      // fail together: one incident, counted once (the apps' gate does the
+      // same). Without this, five parallel failures went 5 s -> 15 s ->
+      // 45 s -> 2 min -> 5 min in one burst.
+      const sameIncident = sentAt <= s.pausedAt
+      const attempt = sameIncident ? Math.max(0, s.consecutiveThrottles - 1) : s.consecutiveThrottles++
+      const delay = throttleDelayMs(attempt, res.headers.get('Retry-After'), reason, now(), Math.random())
+      if (now() + delay > s.pausedUntil) { s.pausedUntil = now() + delay; s.pausedAt = now() }
+      console.warn(`[${spec.name}] upstream ${res.status} (${reason.slice(0, 120)}): pausing ${Math.round(delay / 1000)} s${sameIncident ? ' (same incident)' : ''}`)
+      return { kind: 'unavailable', retryAfterS: Math.ceil(delay / 1000) }
+    }
+    if (res.status >= 500) {
+      console.error(`[${spec.name}] upstream HTTP ${res.status}: ${body.slice(0, 200)}`)
+      return { kind: 'unavailable', retryAfterS: 10 }
+    }
+    // 4xx other than 429: the request itself is wrong; pass it through.
+    return { kind: 'client-error', status: res.status, body }
+  } finally {
+    releaseInFlight(s, spec, now)
   }
-  if (res.status >= 500) {
-    console.error(`[${spec.name}] upstream HTTP ${res.status}: ${body.slice(0, 200)}`)
-    return { kind: 'unavailable', retryAfterS: 10 }
-  }
-  // 4xx other than 429: the request itself is wrong; pass it through.
-  return { kind: 'client-error', status: res.status, body }
 }
 
 /** Per-user miss quota. Returns seconds to wait, or 0 (and records the miss). Exported for tests. */
@@ -642,7 +785,7 @@ function newUsageStats(now: number): UsageStats {
 export function rotateHour(spec: ProxySpec, s: ProxyState, stats: UsageStats, now: number, log = true): void {
   if (hourOf(now) === stats.hourStart) return
   const end = stats.hourStart + HOUR_MS
-  s.upstreamCalls = pruneWindow(s.upstreamCalls, now, DAY_MS)
+  s.upstreamCalls = pruneLedger(s.upstreamCalls, now, DAY_MS)
   // Callers (user ids, anonymous IPs) with no miss left in the last 24 h:
   // forget them, or every one-off caller stays in memory for good.
   for (const [key, ts] of s.userMisses) {
@@ -653,7 +796,7 @@ export function rotateHour(spec: ProxySpec, s: ProxyState, stats: UsageStats, no
     outcomes: stats.byOutcome,
     users: stats.users.size,
     anonymousIps: stats.anonymousIps.size,
-    upstreamCalls: s.upstreamCalls.filter((t) => t >= stats.hourStart && t < end).length,
+    upstreamCalls: round1(s.upstreamCalls.filter((e) => e.t >= stats.hourStart && e.t < end).reduce((n, e) => n + e.w, 0)),
   })
   if (stats.history.length > HISTORY_HOURS) stats.history.splice(0, stats.history.length - HISTORY_HOURS)
   // Hourly usage line, to size the plan from real numbers (no user ids or IPs logged).
@@ -678,6 +821,10 @@ export interface ExternalApiUsage {
   anonymous: { last24h: number; dailyCap: number }
   perUserCap: { hourly: number; daily: number }
   pausedUntil: string | null
+  /** Quota as the provider last reported it (Open-Meteo X-RateLimit-*): null until seen or once reset. */
+  providerQuota: { remaining: number; limit: number | null; windowS: number | null; resetAt: string } | null
+  /** Upstream requests in progress and waiting for an in-flight slot. */
+  inFlight: { active: number; queued: number; max: number }
   cache: { entries: number; bytes: number }
   currentHour: Omit<HourSnapshot, 'upstreamCalls'> & { upstreamCalls: number }
   /** Closed clock hours, oldest first (up to 48). */
@@ -687,7 +834,8 @@ export interface ExternalApiUsage {
 export function usageSnapshot(spec: ProxySpec, s: ProxyState, stats: UsageStats, anonymousMode: 'limited' | 'off', now: number): ExternalApiUsage {
   rotateHour(spec, s, stats, now)
   const calls = s.upstreamCalls
-  const count = (win: number) => calls.filter((t) => now - t < win).length
+  const count = (win: number) => round1(ledgerSum(calls, now, win))
+  const o = s.observed && now < s.observed.resetAt ? s.observed : null
   return {
     name: spec.name,
     anonymousMode,
@@ -697,17 +845,21 @@ export function usageSnapshot(spec: ProxySpec, s: ProxyState, stats: UsageStats,
     anonymous: { last24h: s.anonUpstreamCalls.filter((t) => now - t < DAY_MS).length, dailyCap: spec.anonymous.upstreamDaily },
     perUserCap: { ...spec.perUser },
     pausedUntil: s.pausedUntil > now ? new Date(s.pausedUntil).toISOString() : null,
+    providerQuota: o ? { remaining: o.remaining, limit: o.limit, windowS: o.windowS, resetAt: new Date(o.resetAt).toISOString() } : null,
+    inFlight: { active: s.inFlight, queued: s.slotWaiters.length, max: inFlightLimit(s, spec, now) },
     cache: { entries: s.cache.size, bytes: s.cacheBytes },
     currentHour: {
       hourStart: new Date(stats.hourStart).toISOString(),
       outcomes: { ...stats.byOutcome },
       users: stats.users.size,
       anonymousIps: stats.anonymousIps.size,
-      upstreamCalls: calls.filter((t) => t >= stats.hourStart).length,
+      upstreamCalls: round1(ledgerSum(calls, now, DAY_MS, stats.hourStart)),
     },
     hours: [...stats.history],
   }
 }
+
+const round1 = (n: number) => Math.round(n * 10) / 10
 
 /** Usage of every mounted relay (GET /api/admin/external-apis). */
 export function externalApiUsage(now = Date.now()): ExternalApiUsage[] {
@@ -722,11 +874,13 @@ function countResponse(stats: UsageStats, res: Response): void {
 /** One summary line for the last hour, then reset. Exported for tests. */
 export function usageLine(spec: ProxySpec, s: ProxyState, stats: UsageStats, now: number): string {
   const calls = s.upstreamCalls
-  const lastHour = calls.filter((t) => now - t < HOUR_MS).length
-  const lastDay = calls.filter((t) => now - t < DAY_MS).length
+  const lastHour = round1(ledgerSum(calls, now, HOUR_MS))
+  const lastDay = round1(ledgerSum(calls, now, DAY_MS))
   const outcomes = Object.entries(stats.byOutcome).map(([k, v]) => `${k}=${v}`).join(' ') || 'none'
+  const o = s.observed
+  const quota = o ? `; provider quota left ${o.remaining}${o.limit != null ? `/${o.limit}` : ''}${o.windowS ? ` (${o.windowS} s window)` : ''}` : ''
   return `[${spec.name}] last hour: requests ${outcomes}; users ${stats.users.size}, anonymous IPs ${stats.anonymousIps.size}; ` +
-    `upstream calls (weighted) hour ${lastHour}/${spec.upstream.hourly}, 24 h ${lastDay}/${spec.upstream.daily}; ` +
+    `upstream calls (weighted) hour ${lastHour}/${spec.upstream.hourly}, 24 h ${lastDay}/${spec.upstream.daily}${quota}; ` +
     `cache ${s.cache.size} entries, ${Math.round(s.cacheBytes / 1024)} KiB`
 }
 

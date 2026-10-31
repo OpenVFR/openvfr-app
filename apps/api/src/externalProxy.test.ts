@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { handleProxy, newProxyState, takeUserMiss, upstreamWaitS, anonymousModeFromEnv, openMeteoWeight, openMeteoFreshUntil, usageLine, rotateHour, usageSnapshot, type HourSnapshot, OPEN_METEO, ELEVATION, type ProxySpec, type ProxyState } from './externalProxy.js'
+import { handleProxy, newProxyState, takeUserMiss, upstreamWaitS, anonymousModeFromEnv, openMeteoWeight, openMeteoFreshUntil, readObservedQuota, usageLine, rotateHour, usageSnapshot, type HourSnapshot, OPEN_METEO, ELEVATION, type ProxySpec, type ProxyState } from './externalProxy.js'
 
 const realFetch = globalThis.fetch
 let calls: string[] = []
@@ -206,18 +206,27 @@ test('closing an hour forgets callers with no miss in the last 24 h', () => {
   assert.deepEqual([...s.userMisses.keys()], ['recent'])
 })
 
-test('Open-Meteo cost: locations x variables/10 x days/14, rounded up', () => {
+test('Open-Meteo cost: per location max(1, V/10 x max(1, D/14)), fractional, summed', () => {
   const w = (qs: string) => openMeteoWeight(new URLSearchParams(qs))
+  const v = (n: number) => Array.from({ length: n }, (_, i) => `v${i}`).join(',')
   assert.equal(w('latitude=1&longitude=1&current=a,b&forecast_days=1'), 1)
   assert.equal(w('latitude=1,2,3&longitude=1,2,3&current=a,b&forecast_days=1'), 3)
   // 12 variables at 25 locations (winds-aloft batch): 25 x 1.2 = 30
-  assert.equal(w(`latitude=${Array(25).fill(1)}&longitude=${Array(25).fill(1)}&current=${'v,'.repeat(11)}v&forecast_days=1`), 30)
-  // 16 + 1 days of hourly data: 17/14 per location
-  assert.equal(w('latitude=1,2&longitude=1,2&hourly=a,b&forecast_days=16&past_days=1'), 3)
+  assert.equal(w(`latitude=${Array(25).fill(1)}&longitude=${Array(25).fill(1)}&current=${v(12)}&forecast_days=1`), 30)
+  // Few variables over a long range stay at the minimum: 2 vars x 17 days = 0.2 x 1.21 < 1.
+  assert.equal(w('latitude=1,2&longitude=1,2&hourly=a,b&forecast_days=16&past_days=1'), 2)
+  // The provider's own examples (api-rate-limiting.md); 7 days when forecast_days is absent.
+  assert.equal(w(`latitude=1&longitude=1&hourly=${v(5)}`), 1)
+  assert.equal(w(`latitude=1&longitude=1&hourly=${v(15)}`), 1.5)
+  assert.equal(w(`latitude=1,2,3&longitude=1,2,3&hourly=${v(15)}`), 4.5)
+  assert.equal(w(`latitude=1&longitude=1&hourly=${v(10)}&forecast_days=16&past_days=2`), 18 / 14)
+  assert.equal(w(`latitude=1&longitude=1&hourly=a&forecast_days=16&past_days=2`), 1)
+  // A variable in both current and hourly counts twice.
+  assert.equal(w(`latitude=1&longitude=1&current=${v(10)}&hourly=${v(10)}`), 2)
 })
 
 test('weighted calls count against the upstream budget and user caps', async () => {
-  const spec: ProxySpec = { ...OPEN_METEO, perUser: { hourly: 30, daily: 100 }, upstream: { minIntervalMs: 0, perMinute: 40, hourly: 1000, daily: 1000 } }
+  const spec: ProxySpec = { ...OPEN_METEO, perUser: { hourly: 30, daily: 100 }, upstream: { minIntervalMs: 0, maxInFlight: 2, perMinute: 40, hourly: 1000, daily: 1000 } }
   const s = newProxyState()
   const many = (base: number) => Array.from({ length: 25 }, (_, i) => (base + i / 100).toFixed(2)).join(',')
   const q = (base: number) => `?latitude=${many(base)}&longitude=${many(10)}&current=wind_speed_10m&forecast_days=1`
@@ -250,17 +259,19 @@ test('per location: a current reading stays fresh until the next 15-min value is
 test('usage line summarises the hour without ids', () => {
   const s = newProxyState()
   const t = 50_000_000
-  s.upstreamCalls = [t - 2 * 3_600_000, t - 1000, t - 500]
+  s.upstreamCalls = [{ t: t - 2 * 3_600_000, w: 1 }, { t: t - 1000, w: 1 }, { t: t - 500, w: 1.5 }]
   const line = usageLine(OPEN_METEO, s, { hourStart: t, byOutcome: { HIT: 7, MISS: 2 }, users: new Set(['secret-user']), anonymousIps: new Set(['9.9.9.9']), history: [] }, t)
-  assert.match(line, /HIT=7 MISS=2; users 1, anonymous IPs 1; upstream calls \(weighted\) hour 2\/4000, 24 h 3\/9000/)
+  assert.match(line, /HIT=7 MISS=2; users 1, anonymous IPs 1; upstream calls \(weighted\) hour 2\.5\/4000, 24 h 3\.5\/9000; cache/)
   assert.doesNotMatch(line, /secret-user|9\.9\.9\.9/)
+  s.observed = { remaining: 4321, limit: 5000, windowS: 3600, resetAt: t + 1000, seenAt: t }
+  assert.match(usageLine(OPEN_METEO, s, { hourStart: t, byOutcome: {}, users: new Set(), anonymousIps: new Set(), history: [] }, t), /provider quota left 4321\/5000 \(3600 s window\)/)
 })
 
 test('clock-hour snapshots and the admin usage view (counts only)', () => {
   const s = newProxyState()
   const h0 = Date.UTC(2026, 0, 1, 10, 0, 0)
   const stats = { hourStart: h0, byOutcome: { HIT: 3, MISS: 1 }, users: new Set(['u1', 'u2']), anonymousIps: new Set(['1.2.3.4']), history: [] as HourSnapshot[] }
-  s.upstreamCalls = [h0 + 1000, h0 + 2000, h0 + 3_700_000]   // 2 in 10:00, 1 in 11:00
+  s.upstreamCalls = [{ t: h0 + 1000, w: 1 }, { t: h0 + 2000, w: 1 }, { t: h0 + 3_700_000, w: 1 }]   // 2 in 10:00, 1 in 11:00
   s.anonUpstreamCalls = [h0 + 1000]
   rotateHour(OPEN_METEO, s, stats, h0 + 30 * 60_000, false)   // same hour: no-op
   assert.equal(stats.history.length, 0)
@@ -272,17 +283,128 @@ test('clock-hour snapshots and the admin usage view (counts only)', () => {
   assert.equal(u.upstream.last24h, 3)
   assert.deepEqual(u.anonymous, { last24h: 1, dailyCap: 1500 })
   assert.deepEqual(u.budget, { perMinute: 400, hourly: 4000, daily: 9000 })
+  assert.equal(u.providerQuota, null)
+  assert.deepEqual(u.inFlight, { active: 0, queued: 0, max: OPEN_METEO.upstream.maxInFlight })
   assert.doesNotMatch(JSON.stringify(u), /u1|u2|1\.2\.3\.4/)
 })
 
 test('server-wide upstream budget', () => {
-  const spec: ProxySpec = { ...OPEN_METEO, upstream: { minIntervalMs: 0, perMinute: 2, hourly: 3, daily: 4 } }
+  const spec: ProxySpec = { ...OPEN_METEO, upstream: { minIntervalMs: 0, maxInFlight: 2, perMinute: 2, hourly: 3, daily: 4 } }
   const s = newProxyState()
   const t = 9_000_000
-  s.upstreamCalls = [t - 1000, t - 500]
+  const at = (...ts: number[]) => ts.map((x) => ({ t: x, w: 1 }))
+  s.upstreamCalls = at(t - 1000, t - 500)
   assert.ok(upstreamWaitS(s, spec, t) > 0 && upstreamWaitS(s, spec, t) <= 60)
-  s.upstreamCalls = [t - 3_000_000, t - 2_000_000, t - 120_000]
+  s.upstreamCalls = at(t - 3_000_000, t - 2_000_000, t - 120_000)
   assert.ok(upstreamWaitS(s, spec, t) > 60)
-  s.upstreamCalls = [t - 7_200_000]
+  s.upstreamCalls = at(t - 7_200_000)
   assert.equal(upstreamWaitS(s, spec, t), 0)
+  // Fractional weights add up: 0.5 + 1.5 used of 2 per minute -> 0.5 more
+  // fits once the oldest leaves (30 s), 0.6 only once both have (59 s).
+  s.upstreamCalls = [{ t: t - 30_000, w: 0.5 }, { t: t - 1000, w: 1.5 }]
+  assert.equal(upstreamWaitS(s, spec, t, 0.5), 30)
+  assert.equal(upstreamWaitS(s, spec, t, 0.6), 59)
+})
+
+test('upstream: at most maxInFlight requests at a time; the rest wait their turn', async () => {
+  const spec: ProxySpec = { ...OPEN_METEO, upstream: { ...OPEN_METEO.upstream, maxInFlight: 2 } }
+  const s = newProxyState()
+  let active = 0, peak = 0
+  const pending: (() => void)[] = []
+  globalThis.fetch = (async (u: string | URL) => {
+    calls.push(String(u))
+    active++; peak = Math.max(peak, active)
+    await new Promise<void>((r) => pending.push(r))
+    active--
+    return echo(String(u))
+  }) as typeof fetch
+  const q = (lat: string) => `?latitude=${lat}&longitude=17.70&current=wind_speed_10m&forecast_days=1`
+  const rs = ['61.00', '61.05', '61.10', '61.15', '61.20'].map((la, i) => handleProxy(spec, s, `u${i}`, '/api/open-meteo/forecast', q(la)))
+  await new Promise((r) => setTimeout(r, 5))
+  assert.equal(calls.length, 2)
+  assert.equal(s.slotWaiters.length, 3)
+  while (pending.length > 0 || calls.length < 5) {
+    pending.shift()?.()
+    await new Promise((r) => setTimeout(r, 2))
+  }
+  const res = await Promise.all(rs)
+  assert.deepEqual(res.map((r) => r.status), [200, 200, 200, 200, 200])
+  assert.equal(calls.length, 5)
+  assert.equal(peak, 2)
+  assert.equal(s.inFlight, 0)
+})
+
+test('upstream: parallel throttled answers are one incident, not an escalating series', async () => {
+  const s = newProxyState()
+  let t = 2_000_000
+  const now = () => t
+  const pending: (() => void)[] = []
+  globalThis.fetch = (async (u: string | URL) => {
+    calls.push(String(u))
+    await new Promise<void>((r) => pending.push(r))
+    return new Response('{"error":true,"reason":"the service is overloaded"}', { status: 503 })
+  }) as typeof fetch
+  const q = (lat: string) => `?latitude=${lat}&longitude=17.70&current=wind_speed_10m&forecast_days=1`
+  const rs = ['62.00', '62.05'].map((la, i) => om(s, q(la), `u${i}`, now))
+  await new Promise((r) => setTimeout(r, 5))
+  assert.equal(calls.length, 2)                       // both out before either failed
+  pending.forEach((r) => r())
+  const res = await Promise.all(rs)
+  assert.deepEqual(res.map((r) => r.status), [503, 503])
+  assert.equal(s.consecutiveThrottles, 1)             // one incident
+  // First backoff step: 5 s base, jittered within [2.5 s, 5 s] -- never the 15 s second step.
+  assert.ok(s.pausedUntil - t >= 2_500 && s.pausedUntil - t <= 5_000, `paused ${s.pausedUntil - t} ms`)
+  // A later throttle (sent after the pause began) does escalate.
+  t = s.pausedUntil + 1
+  globalThis.fetch = (async (u: string | URL) => { calls.push(String(u)); return new Response('{"error":true,"reason":"the service is overloaded"}', { status: 503 }) }) as typeof fetch
+  await om(s, q('62.10'), 'u9', now)
+  assert.equal(s.consecutiveThrottles, 2)
+  assert.ok(s.pausedUntil - t >= 7_500 && s.pausedUntil - t <= 15_000)
+})
+
+test('upstream: a concurrency rejection pauses briefly and goes single file, no quota backoff', async () => {
+  const s = newProxyState()
+  let t = 3_000_000
+  const now = () => t
+  reply = () => new Response('{"error":true,"reason":"Too many concurrent requests"}', { status: 429 })
+  const r = await om(s, Q, 'u', now)
+  assert.equal(r.status, 503)
+  assert.equal(s.consecutiveThrottles, 0)
+  assert.ok(s.pausedUntil - t >= 1_500 && s.pausedUntil - t <= 3_000, `paused ${s.pausedUntil - t} ms`)
+  assert.equal(s.singleFileUntil, t + 60_000)
+  assert.equal(s.upstreamCalls.reduce((n, e) => n + e.w, 0), 0)   // not charged
+  const u = usageSnapshot(OPEN_METEO, s, { hourStart: t - (t % 3_600_000), byOutcome: {}, users: new Set(), anonymousIps: new Set(), history: [] }, 'off', t)
+  assert.equal(u.inFlight.max, 1)
+  t += 61_000
+  assert.equal(usageSnapshot(OPEN_METEO, s, { hourStart: t - (t % 3_600_000), byOutcome: {}, users: new Set(), anonymousIps: new Set(), history: [] }, 'off', t).inFlight.max, OPEN_METEO.upstream.maxInFlight)
+})
+
+test('upstream: the provider\'s reported cost and remaining quota steer the budget', async () => {
+  const s = newProxyState()
+  let t = Date.UTC(2026, 0, 1, 10, 0, 0)
+  const now = () => t
+  const resetAt = Math.floor(t / 1000) + 600
+  const headers = (cost: string, remaining: string) => ({ 'X-RateLimit-Cost': cost, 'X-RateLimit-Limit': '5000', 'X-RateLimit-Remaining': remaining, 'X-RateLimit-Window': '3600', 'X-RateLimit-Reset': String(resetAt) })
+  reply = () => new Response('{"ok":1,"lat":"59.30"}', { status: 200, headers: headers('2.5', '40') })
+  assert.equal((await om(s, Q, 'u', now)).status, 200)
+  assert.deepEqual(s.upstreamCalls.map((e) => e.w), [2.5])        // estimate 1 replaced by the reported cost
+  // Enough left for a 1-call request; the next answer says 0.5 left.
+  reply = () => new Response('{"ok":1,"lat":"59.35"}', { status: 200, headers: headers('1', '0.5') })
+  assert.equal((await om(s, Q.replace('59.30', '59.35'), 'u', now)).status, 200)
+  assert.equal(calls.length, 2)
+  // Below the next request's weight: nothing goes upstream until the window resets.
+  const r = await om(s, Q.replace('59.30', '59.40'), 'u', now)
+  assert.equal(r.status, 503)
+  assert.equal(Number(r.headers.get('Retry-After')), 600)
+  assert.equal(calls.length, 2)
+  const u = usageSnapshot(OPEN_METEO, s, { hourStart: t, byOutcome: {}, users: new Set(), anonymousIps: new Set(), history: [] }, 'off', t)
+  assert.deepEqual(u.providerQuota, { remaining: 0.5, limit: 5000, windowS: 3600, resetAt: new Date(resetAt * 1000).toISOString() })
+  assert.equal(u.upstream.lastHour, 3.5)
+  t = resetAt * 1000 + 1
+  assert.equal((await om(s, Q.replace('59.30', '59.40'), 'u', now)).status, 200)
+  assert.equal(calls.length, 3)
+  // Headers absent or partial: ignored.
+  assert.equal(readObservedQuota(new Headers(), t), null)
+  assert.equal(readObservedQuota(new Headers({ 'X-RateLimit-Remaining': '5' }), t), null)
+  assert.deepEqual(readObservedQuota(new Headers({ 'X-RateLimit-Remaining': '5', 'X-RateLimit-Reset': '100' }), t), { remaining: 5, limit: null, windowS: null, resetAt: 100_000, seenAt: t })
 })
