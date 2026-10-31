@@ -624,7 +624,7 @@ export function SettingsScreen() {
         >
           <InfoRow
             label="Version"
-            value={`${Application.nativeApplicationVersion ?? '0.1.0'}${Application.nativeBuildVersion ? ` (${Application.nativeBuildVersion})` : ''}`}
+            value={`${Application.nativeApplicationVersion ?? '?'}${Application.nativeBuildVersion ? ` (${Application.nativeBuildVersion})` : ''}`}
           />
         </TouchableOpacity>
         {/* Every source and licence: the map's (i) list, plus the full page. */}
