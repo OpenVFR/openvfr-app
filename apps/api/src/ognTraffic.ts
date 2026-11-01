@@ -146,6 +146,7 @@ const FPM_RE = /([+-]\d+)fpm/
 // Position precision enhancement: !Wab! adds a third decimal to the lat (a)
 // and lon (b) minutes.
 const DAO_RE = /!W(\d)(\d)!/
+const FL_RE = /\bFL(-?\d+(?:\.\d+)?)\b/
 // ADS-B relayed by OGN receivers: `A3:SAS093` = emitter category (set A,
 // same numbers as OpenSky's category 1-7) and flight callsign.
 const ADSB_RE = /\bA(\d):(\S+)/
@@ -189,7 +190,11 @@ export function parseLine(line: string, nowS: number): TrafficState | null {
   const lon = ew === 'W' ? -lonDeg : lonDeg
 
   const altFt = parseInt(altFtS, 10)
-  const altM = altFt * 0.3048
+  // A= is the GNSS altitude. ADS-B relays also carry the pressure altitude
+  // as FLnnn.nn; FLARM has none, so A= stands in for both.
+  const geoAltM = altFt * 0.3048
+  const flMatch = FL_RE.exec(comment)
+  const altM = flMatch ? parseFloat(flMatch[1]!) * 100 * 0.3048 : geoAltM
   const speedKn = speedKnS != null ? parseInt(speedKnS, 10) : null
   const velocityMs = speedKn != null ? speedKn * 0.5144 : null
   // APRS course: 001-360, 000 = unknown. Without a track, clients must not
@@ -221,6 +226,7 @@ export function parseLine(line: string, nowS: number): TrafficState | null {
     lat,
     lon,
     altM,
+    geoAltM,
     velocityMs,
     trackDeg,
     vertRateMs,

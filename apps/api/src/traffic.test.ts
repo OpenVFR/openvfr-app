@@ -20,6 +20,9 @@ test('OGN-relayed ADS-B: ICAO address, flight callsign and category from the A<n
   assert.equal(s.trackDeg, 173)
   assert.equal(s.posTime, NOW)
   assert.equal(s.source, 'ogn')
+  // A= is GNSS, FL118.47 the pressure altitude.
+  assert.ok(Math.abs(s.geoAltM! - 12066 * 0.3048) < 1e-9)
+  assert.ok(Math.abs(s.altM! - 11847 * 0.3048) < 1e-6)
   // !W86! adds 0.008' / 0.006' to the minutes.
   assert.ok(Math.abs(s.lat! - (59 + 1.318 / 60)) < 1e-9)
   assert.ok(Math.abs(s.lon! - (18 + 11.866 / 60)) < 1e-9)
@@ -35,6 +38,7 @@ test('FLARM tow plane (id0A): namespaced id, source call as label, light categor
   assert.equal(s.callsign, 'FLRDDA5BA')
   assert.equal(s.category, 1)
   assert.equal(s.trackDeg, 268)
+  assert.equal(s.altM, s.geoAltM)
   assert.ok(Math.abs(s.velocityMs! - 54 * 0.5144) < 1e-9)
 })
 
@@ -57,7 +61,7 @@ test('OGN filter defaults to the whole bbox, circle only when centre is set', ()
 
 function state(p: Partial<TrafficState>): TrafficState {
   return {
-    icao24: 'abc123', callsign: null, lat: 59, lon: 18, altM: 300, velocityMs: 50, trackDeg: 90,
+    icao24: 'abc123', callsign: null, lat: 59, lon: 18, altM: 300, geoAltM: 330, velocityMs: 50, trackDeg: 90,
     vertRateMs: 0, onGround: false, lastContact: NOW, posTime: NOW, category: null, source: 'opensky', ...p,
   }
 }

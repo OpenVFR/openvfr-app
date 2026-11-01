@@ -75,8 +75,14 @@ export interface TrafficState {
   lat:          number | null
   /** Longitude degrees WGS-84. Null if no recent position. */
   lon:          number | null
-  /** Barometric altitude metres. Null if unknown. */
+  /** Barometric (pressure, 1013.25 hPa) altitude metres. Null if unknown. */
   altM:         number | null
+  /**
+   * GNSS altitude metres. Null if unknown. Compare THIS with own GPS
+   * altitude: pressure altitude is off by ~30 ft per hPa of QNH difference,
+   * so on a high-pressure day low traffic reads below sea level.
+   */
+  geoAltM:      number | null
   /** Ground speed m/s. Null if unknown. */
   velocityMs:   number | null
   /** True track degrees clockwise from north. Null if unknown. */
@@ -324,6 +330,7 @@ export function mergeTrafficStates(opensky: TrafficState[], ogn: Iterable<Traffi
     byIcao.set(key, prev ? {
       ...s,
       callsign: s.callsign ?? prev.callsign,
+      geoAltM:  s.geoAltM ?? prev.geoAltM,
       category: s.category || prev.category,
       onGround: prev.onGround && (s.velocityMs ?? 0) < 25,
     } : s)
@@ -389,6 +396,7 @@ async function poll(): Promise<number> {
         lat:         typeof s[6] === 'number' ? s[6] : null,
         lon:         typeof s[5] === 'number' ? s[5] : null,
         altM:        typeof s[7] === 'number' ? s[7] : null,
+        geoAltM:     typeof s[13] === 'number' ? s[13] : null,
         velocityMs:  typeof s[9] === 'number' ? s[9] : null,
         trackDeg:    typeof s[10] === 'number' ? s[10] : null,
         vertRateMs:  typeof s[11] === 'number' ? s[11] : null,

@@ -28,6 +28,7 @@
     "./airspaceAlertLevel": "./src/airspaceAlertLevel.ts",
     "./airspaceAlertSummary": "./src/airspaceAlertSummary.ts",
     "./alertLog": "./src/alertLog.ts",
+    "./trafficState": "./src/trafficState.ts",
     "./alertStack": "./src/alertStack.ts",
     "./alertStability": "./src/alertStability.ts",
     "./terrainCache": "./src/terrainCache.ts",

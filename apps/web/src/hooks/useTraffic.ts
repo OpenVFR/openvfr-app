@@ -12,13 +12,14 @@
  *           this device's clock via the batch's polledAt so clock skew
  *           between server and device does not matter)
  *      d  = velocity_ms × Δt (metres)  →  converted to degrees lat/lon
- *      alt = altM + vertRate_ms × Δt
+ *      alt = GNSS (else pressure) altitude + vertRate_ms × Δt
  *  - Targets last seen, or last positioned, > STALE_S seconds ago are removed
  *  - No-op when traffic is not available on the server (graceful silence)
  */
 
 import { useEffect, useRef, useState } from 'react'
 import { API_BASE_URL } from '../utils/env'
+import { trafficOnGround, trafficAltitudeM } from '@open-vfr/shared/trafficState'
 
 // ── Types exported to consumers ───────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ export interface TrafficTarget {
   callsign:  string | null
   lat:       number
   lon:       number
-  /** Barometric altitude in feet. */
+  /** Altitude in feet: GNSS when the feed has it, else pressure altitude. */
   altFt:     number
   /** Ground speed in knots. */
   speedKts:  number
@@ -53,6 +54,9 @@ const STALE_S = 180
 /** If no SSE message arrives within this many seconds, clear all targets (server offline). */
 const WATCHDOG_S = 130
 
+/** Longest time a target's vertical rate is extrapolated (seconds). */
+const VERT_DR_MAX_S = 30
+
 /** Earth radius in metres. */
 const EARTH_R_M = 6_371_008.8
 
@@ -64,6 +68,8 @@ interface RawState {
   lat:         number
   lon:         number
   altM:        number | null
+  /** GNSS altitude metres; absent from older servers. */
+  geoAltM?:    number | null
   velocityMs:  number | null
   trackDeg:    number | null
   vertRateMs:  number | null
@@ -94,20 +100,22 @@ function deadReckon(stored: StoredTarget, nowS: number, ownAltFt: number | null)
   const { raw, posAt } = stored
   const dt = Math.min(STALE_S, Math.max(0, nowS - posAt))  // seconds since the position was measured
 
-  // ── Altitude first — needed to detect stale onGround=false after landing ──
-  // Freeze altitude for transponder-reported ground targets; dead-reckon otherwise.
-  const altM = raw.onGround
-    ? (raw.altM ?? 0)
-    : (raw.altM ?? 0) + (raw.vertRateMs ?? 0) * dt
-  // Clamp to 0 ft for nominally-airborne targets: OpenSky sometimes keeps
-  // onGround=false for a full poll interval after touchdown. The descent vert-rate
-  // drives the extrapolated altitude negative; clamp detects that the aircraft
-  // has effectively landed.
-  const altFt = Math.max(raw.onGround ? -9999 : 0, altM / 0.3048)
+  // On ground only by the reported flag, and only while slow (see
+  // trafficOnGround). This used to also count any altitude <= 0 as landed,
+  // which hid low airborne traffic: pressure altitude is below 0 near the
+  // coast on a high-pressure day, and a missing altitude read as 0.
+  const speedKtsRaw = raw.velocityMs != null ? raw.velocityMs / 0.5144 : null
+  const effectivelyOnGround = trafficOnGround(raw.onGround, speedKtsRaw)
 
-  // Treat as on-ground if the transponder says so OR if dead-reckoning has
-  // driven altitude to 0 (aircraft has landed; transponder not yet updated).
-  const effectivelyOnGround = raw.onGround || altFt <= 0
+  // GNSS altitude when known (comparable with own GPS altitude). The
+  // vertical rate is extrapolated for VERT_DR_MAX_S at most: a long gap
+  // with a descent rate would otherwise put the target far below where it
+  // levelled off.
+  const baseAltM = trafficAltitudeM(raw.altM, raw.geoAltM) ?? 0
+  const altM = effectivelyOnGround
+    ? baseAltM
+    : baseAltM + (raw.vertRateMs ?? 0) * Math.min(dt, VERT_DR_MAX_S)
+  const altFt = altM / 0.3048
 
   // ── Position extrapolation (airborne only) ────────────────────────────────
   let lat = raw.lat

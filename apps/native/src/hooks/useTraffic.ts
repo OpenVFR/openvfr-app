@@ -33,6 +33,7 @@ import type { FeatureCollection, Feature, Point } from 'geojson'
 import { TRAFFIC_BASE } from '../config'
 import { authHeaders } from '../utils/authClient'
 import { selectTrafficIcon } from '../utils/trafficIcons'
+import { trafficOnGround, trafficAltitudeM } from '@open-vfr/shared/trafficState'
 
 // ── Types (mirrors server TrafficState) ───────────────────────────────────────
 
@@ -42,6 +43,8 @@ interface RawState {
   lat:         number | null
   lon:         number | null
   altM:        number | null
+  /** GNSS altitude metres; absent from older servers. */
+  geoAltM?:    number | null
   velocityMs:  number | null
   trackDeg:    number | null
   vertRateMs:  number | null
@@ -169,13 +172,19 @@ export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: 
 
         let [lat, lon] = [s.lat, s.lon]
         const velMs = s.velocityMs ?? 0
+        // Ground flag only while slow: portable ADS-B units in ultralights
+        // and gyroplanes guess air/ground from speed (see trafficOnGround).
+        const onGround = trafficOnGround(s.onGround, s.velocityMs != null ? s.velocityMs * 1.944 : null)
         // No track (some OGN targets): leave it where it was heard instead
         // of moving it due north.
-        if (velMs > 0 && s.trackDeg != null && !s.onGround) {
+        if (velMs > 0 && s.trackDeg != null && !onGround) {
           ;[lat, lon] = advancePosition(lat, lon, velMs, s.trackDeg, dt)
         }
 
-        const altFt    = s.altM != null ? s.altM * 3.281 : null
+        // GNSS altitude when known: comparable with own GPS altitude, unlike
+        // pressure altitude (off by ~30 ft per hPa of QNH difference).
+        const altM     = trafficAltitudeM(s.altM, s.geoAltM)
+        const altFt    = altM != null ? altM * 3.281 : null
         const relAltFt = altFt != null && ownAltFt != null ? altFt - ownAltFt : null
         const urg      = urgency(lat, lon, relAltFt, ownLat, ownLon)
 
@@ -189,7 +198,7 @@ export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: 
             speedKts:  s.velocityMs != null ? Math.round(s.velocityMs * 1.944) : null,
             trackDeg:  s.trackDeg != null ? Math.round(s.trackDeg) : null,
             vertFpm:   s.vertRateMs != null ? Math.round(s.vertRateMs * 197) : null,
-            onGround:  s.onGround,
+            onGround,
             relAltFt:  relAltFt != null ? Math.round(relAltFt) : null,
             urgency:   urg,
             category:  s.category,
