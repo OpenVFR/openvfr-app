@@ -161,6 +161,8 @@ import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../sty
 import { isLowMemoryDevice } from '../utils/deviceMemory'
 import { NativeSheet } from '../components/NativeSheet'
 import { BaroPromptModal } from '../components/BaroPromptModal'
+/** Height above the spot from which the highest ground around is checked (see groundMaxFt). */
+const GROUND_MAX_CHECK_FROM_FT = 100
 
 function isAerodrome(p: Record<string, unknown>) {
   // `icao` alone isn't a safe discriminator -- a real minority of aerodromes
@@ -929,10 +931,16 @@ function MapScreenForCountry() {
 
   // Takeoff / landing detection from the always-on GPS fix. Simulator flights
   // never auto start or stop (fix is null while the sim drives).
-  // Only looked up while it can matter: not flying, moving at speed.
+  // Highest ground around the fix, looked up only when it can decide a
+  // start: not flying, at start speed, and already 100 ft above the ground
+  // at the spot (the GPS-height gauge's lookup, `agl`). A car almost never
+  // is, so driving costs no extra elevation requests; a takeoff costs one or
+  // two (shared free elevation API budget, see apps/api externalProxy.ts).
   const groundMaxFt = useGroundMaxElevation(
     simFlight.active ? null : position,
-    !flying && (settings.autoFlyMode ?? 'ask') !== 'off' && (position?.speedKts ?? 0) >= flyThresholds.landedKts,
+    !flying && !simFlight.active && (settings.autoFlyMode ?? 'ask') !== 'off'
+      && position != null && position.speedKts >= flyThresholds.airborneKts
+      && agl != null && position.altFt - agl >= GROUND_MAX_CHECK_FROM_FT,
   )
   const autoFly = useAutoFlyDetect(
     settings.autoFlyMode ?? 'ask',
