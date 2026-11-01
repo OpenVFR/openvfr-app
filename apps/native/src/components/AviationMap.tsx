@@ -25,7 +25,8 @@ import {
 } from '@maplibre/maplibre-react-native'
 import type { NativeSyntheticEvent } from 'react-native'
 import type { PressEvent, PressEventWithFeatures } from '@maplibre/maplibre-react-native'
-import type { Feature, FeatureCollection } from 'geojson'
+import type { Feature, FeatureCollection, Point } from 'geojson'
+import { rankTapCandidates } from '@open-vfr/shared/tapPick'
 import type { ViewStateChangeEvent } from '@maplibre/maplibre-react-native'
 import { WAYPOINT_COLORS, RUNWAY_COLORS, AERODROME_COLORS } from '@open-vfr/shared/featureColors'
 import { computeAtcStatus, isNotamAtcRelated, isNotamHoursChangeRelated, type HoursEntry as AtcHoursEntry } from '@open-vfr/shared/atcStatus'
@@ -490,6 +491,8 @@ function buildSnapCandidates(hits: Feature[]): SnapCandidate[] {
 }
 
 const SNAP_PX = 20
+/** Only aerodrome features carry `runways` (same test as MapScreen's isAerodrome). */
+const AERODROME_TAP_PROPS = (p: Record<string, unknown>) => p.runways !== undefined
 /** Half-size of the box searched for a tapped traffic symbol (the icon is small). */
 const TRAFFIC_TAP_PX = 22
 // While a route point is being dragged the effective drop position is the
@@ -2908,9 +2911,40 @@ export function AviationMap({
       }
 
       const handleFeatures = () => {
-        if (!('features' in payload) || payload.features.length === 0) return
-        const fs = payload.features as Feature[]
-        const f  = fs[0]
+        const fromPress = 'features' in payload ? payload.features as Feature[] : []
+        const pt = (payload as PressEvent).point
+        const ll0 = (payload as PressEvent).lngLat
+        if (!mapRef.current || !pt || !ll0) { dispatchFeatures(fromPress); return }
+        // The press payload only holds the features of the top-most pressable
+        // source under the finger (Android), in drawing order -- reporting
+        // points are drawn above aerodromes, so zoomed out a tap on an
+        // aerodrome opened its reporting point. Ask the map for every point
+        // around the tap and put the one the finger meant first
+        // (rankTapCandidates: nearest, aerodromes weighted for their larger
+        // symbol). Airspace / NOTAM features from the payload follow.
+        const box: [[number, number], [number, number]] =
+          [[pt[0] - SNAP_PX, pt[1] - SNAP_PX], [pt[0] + SNAP_PX, pt[1] + SNAP_PX]]
+        mapRef.current.queryRenderedFeatures(box, { layers: SNAP_LAYERS })
+          .then((hits) => {
+            const points = rankTapCandidates(
+              (hits as Feature[]).filter(f => f.geometry?.type === 'Point').map(f => {
+                const [lng, lat] = (f.geometry as Point).coordinates as [number, number]
+                return { item: f, lng, lat, isAerodrome: AERODROME_TAP_PROPS(f.properties ?? {}) }
+              }),
+              ll0[0], ll0[1],
+            )
+            if (points.length === 0) { dispatchFeatures(fromPress); return }
+            // Keep a NOTAM cluster tap (handled below) when it is what the press hit first.
+            const cluster = fromPress[0]?.properties?.cluster_id !== undefined ? [fromPress[0]!] : []
+            const rest = fromPress.filter(f => f.geometry?.type !== 'Point' || f.properties?.notamId)
+            dispatchFeatures([...cluster, ...points, ...rest])
+          })
+          .catch(() => dispatchFeatures(fromPress))
+      }
+
+      const dispatchFeatures = (fs: Feature[]) => {
+        if (fs.length === 0) return
+        const f  = fs[0]!
         const p  = f.properties ?? {}
 
         // Extract tap coordinates from the event

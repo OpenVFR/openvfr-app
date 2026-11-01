@@ -137,6 +137,7 @@ import { useNotamAirspaceMatch } from '../hooks/useNotamAirspaceMatch'
 import { notamMapFeatures, matchedAirspaceFeatures, notamsInWindow, NOTAM_MAP_HORIZON_MS, NOTAM_OBSTACLE_MIN_ZOOM } from '@open-vfr/shared/notamMapLayers'
 import { makeCirclePolygon } from '@open-vfr/shared/geoCircle'
 import { registerTrafficIcons, selectTrafficIcon } from '../utils/trafficIcons'
+import { rankTapCandidates } from '@open-vfr/shared/tapPick'
 import GoFlyingPanel from './GoFlyingPanel'
 import { NotificationCenter } from './NotificationCenter'
 import AirfieldBriefPanel from './AirfieldBriefPanel'
@@ -3328,10 +3329,22 @@ export default function MapView({ auth }: { auth: AuthState }) {
         [e.point.x - pad, e.point.y - pad],
         [e.point.x + pad, e.point.y + pad],
       ]
-      const pointHits = map.queryRenderedFeatures(hitBox, { layers: POINT_LAYERS })
+      // Nearest to the click, aerodromes weighted for their larger symbol
+      // (rankTapCandidates). The map returns hits in drawing order, and
+      // reporting points draw above aerodromes: zoomed out, a click on an
+      // aerodrome used to open its reporting point instead.
+      const pointHits = rankTapCandidates(
+        map.queryRenderedFeatures(hitBox, { layers: POINT_LAYERS })
+          .filter(f => f.geometry.type === 'Point')
+          .map(f => {
+            const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
+            return { item: f, lng, lat, isAerodrome: AERODROME_LAYERS.includes(f.layer.id) }
+          }),
+        e.lngLat.lng, e.lngLat.lat,
+      )
 
       if (pointHits.length > 0) {
-        const feat    = pointHits[0]
+        const feat    = pointHits[0]!
         const p       = feat.properties as Record<string, unknown>
         const layerId = feat.layer.id
 
