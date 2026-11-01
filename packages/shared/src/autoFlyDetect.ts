@@ -6,9 +6,14 @@
  * (prompt the pilot, or act directly when the setting is 'auto').
  *
  *  - Not flying: ground speed >= AIRBORNE_SPD_KTS for AIRBORNE_CONFIRM_FIXES
- *    consecutive accurate fixes -> 'suggest-start'. Fires once; re-arms only
- *    after speed drops below LANDED_SPD_KTS (a car on a motorway or a train
- *    gives one dismissable suggestion, not a nag).
+ *    consecutive accurate fixes AND evidence of being in the air ->
+ *    'suggest-start'. Evidence: GPS altitude at least AIRBORNE_AGL_FT above
+ *    the terrain under the fix, or, while terrain is unknown, at least that
+ *    much above the lowest altitude of the last CLIMB_WINDOW_MS. Speed alone
+ *    is not enough: a car or a train easily runs faster than a light
+ *    aircraft's takeoff speed, and with the setting on 'auto' a drive
+ *    started a flight and its log. No altitude at all = no start. Fires
+ *    once; re-arms only after speed drops below LANDED_SPD_KTS.
  *  - Flying: after the aircraft was seen at >= TAKEOFF_SPD_KTS and at least
  *    MIN_AIRBORNE_MS have passed, ground speed < LANDED_SPD_KTS for
  *    LANDED_CONFIRM_FIXES consecutive fixes -> 'suggest-stop'.
@@ -30,6 +35,11 @@ export const LANDED_CONFIRM_FIXES  = 10
 export const MIN_AIRBORNE_MS       = 60_000
 /** Fixes less accurate than this are ignored for start detection. */
 export const MAX_ACCURACY_M        = 100
+/** Height above terrain (ft) that proves the aircraft is in the air. Well
+ *  above GPS altitude noise and terrain model error; no road gets there. */
+export const AIRBORNE_AGL_FT       = 300
+/** Without terrain: the climb (ft) above the lowest altitude seen this long. */
+export const CLIMB_WINDOW_MS       = 5 * 60_000
 
 /** Speed thresholds (kt) for one aircraft. */
 export interface AutoFlyThresholds {
@@ -65,6 +75,10 @@ export interface AutoFlyFix {
   speedKts: number
   /** Horizontal accuracy in metres; 0/unknown is treated as acceptable. */
   accuracyM: number
+  /** GPS altitude, ft above sea level; null/undefined = unknown. */
+  altFt?: number | null
+  /** Terrain elevation under the fix, ft above sea level; null/undefined = unknown. */
+  groundFt?: number | null
   /** Epoch ms. */
   t: number
 }
@@ -76,12 +90,24 @@ export interface AutoFlyState {
   /** Start suggestion already emitted (or user stopped mid-air); waits for a slow fix. */
   suppressed: boolean
   wasFlying: boolean
+  /** Recent accurate altitudes while not flying (for the climb check without terrain). */
+  altHistory: { t: number; altFt: number }[]
 }
 
 export type AutoFlyEvent = 'suggest-start' | 'suggest-stop' | null
 
 export function initialAutoFlyState(): AutoFlyState {
-  return { fastFixes: 0, slowFixes: 0, airborneSince: null, suppressed: false, wasFlying: false }
+  return { fastFixes: 0, slowFixes: 0, airborneSince: null, suppressed: false, wasFlying: false, altHistory: [] }
+}
+
+/** Altitude evidence that the fix is in the air (see the module doc). Exported for tests. */
+export function seemsAirborne(
+  altFt: number | null, groundFt: number | null | undefined, history: { altFt: number }[],
+): boolean {
+  if (altFt === null) return false
+  if (groundFt != null && Number.isFinite(groundFt)) return altFt - groundFt >= AIRBORNE_AGL_FT
+  if (history.length === 0) return false
+  return altFt - Math.min(...history.map(h => h.altFt)) >= AIRBORNE_AGL_FT
 }
 
 export function stepAutoFly(
@@ -96,7 +122,7 @@ export function stepAutoFly(
   // Mode transitions: entering flight clears start tracking; leaving it while
   // still fast must not immediately re-suggest a start.
   if (flying && !s.wasFlying) {
-    s.fastFixes = 0; s.slowFixes = 0; s.airborneSince = null
+    s.fastFixes = 0; s.slowFixes = 0; s.airborneSince = null; s.altHistory = []
   }
   if (!flying && s.wasFlying) {
     s.fastFixes = 0; s.slowFixes = 0; s.airborneSince = null; s.suppressed = true
@@ -107,11 +133,15 @@ export function stepAutoFly(
 
   if (!flying) {
     const accurate = !(fix.accuracyM > MAX_ACCURACY_M)
+    const alt = fix.altFt != null && Number.isFinite(fix.altFt) ? fix.altFt : null
+    if (alt !== null && accurate) {
+      s.altHistory = [...s.altHistory.filter(h => fix.t - h.t <= CLIMB_WINDOW_MS), { t: fix.t, altFt: alt }]
+    }
     if (fix.speedKts < thr.landedKts) {
       s.fastFixes = 0; s.suppressed = false
     } else if (fix.speedKts >= thr.airborneKts && accurate) {
       s.fastFixes += 1
-      if (s.fastFixes >= AIRBORNE_CONFIRM_FIXES && !s.suppressed) {
+      if (s.fastFixes >= AIRBORNE_CONFIRM_FIXES && !s.suppressed && seemsAirborne(alt, fix.groundFt, s.altHistory)) {
         s.suppressed = true
         event = 'suggest-start'
       }

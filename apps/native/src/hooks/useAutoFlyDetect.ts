@@ -18,6 +18,9 @@ export function useAutoFlyDetect(
   flying: boolean,
   actions: { start: () => void; stop: () => void },
   thresholds: AutoFlyThresholds = DEFAULT_AUTO_FLY_THRESHOLDS,
+  /** Terrain elevation (ft AMSL) under the fix; null = unknown. A start
+   *  needs the aircraft well above it (see @open-vfr/shared/autoFlyDetect). */
+  groundFt: number | null = null,
 ): { suggestion: 'start' | 'stop' | null; dismiss: () => void; accept: () => void } {
   const stateRef = useRef<AutoFlyState>(initialAutoFlyState())
   const actionsRef = useRef(actions)
@@ -25,6 +28,9 @@ export function useAutoFlyDetect(
   // Ref, not a dep: a new thresholds object must not re-run the detector and double-count a fix.
   const thresholdsRef = useRef(thresholds)
   thresholdsRef.current = thresholds
+  // Ref for the same reason: a new terrain sample must not count as a fix.
+  const groundRef = useRef(groundFt)
+  groundRef.current = groundFt
   const [suggestion, setSuggestion] = useState<'start' | 'stop' | null>(null)
 
   useEffect(() => { setSuggestion(null) }, [flying])
@@ -32,7 +38,10 @@ export function useAutoFlyDetect(
 
   useEffect(() => {
     if (mode === 'off' || !fix) return
-    const r = stepAutoFly(stateRef.current, { speedKts: fix.speedKts, accuracyM: fix.accuracy, t: Date.now() }, flying, thresholdsRef.current)
+    const r = stepAutoFly(stateRef.current, {
+      speedKts: fix.speedKts, accuracyM: fix.accuracy, t: Date.now(),
+      altFt: fix.altFt, groundFt: groundRef.current,
+    }, flying, thresholdsRef.current)
     stateRef.current = r.state
     if (!r.event) return
     const which = r.event === 'suggest-start' ? 'start' : 'stop'

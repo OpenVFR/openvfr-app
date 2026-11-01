@@ -9,6 +9,8 @@
  * permission was already granted and startup auto-enables Passive).
  */
 import { useEffect, useState } from 'react'
+import { ellipsoidToMslM } from '@open-vfr/shared/geoid'
+import { gpsAltitudeReference } from '@open-vfr/shared/gpsAltitudeReference'
 
 export interface PassivePosition {
   lat: number
@@ -18,6 +20,8 @@ export interface PassivePosition {
   headingDeg: number | null
   /** Ground speed in knots; null when the device doesn't report one. */
   speedKts: number | null
+  /** Altitude ft above sea level (same correction as Go Flying); null when not reported. */
+  altFt: number | null
 }
 
 const LS_LAST = 'ovfr:lastPosition'
@@ -46,6 +50,11 @@ export function usePassivePosition(active: boolean): { position: PassivePosition
           accuracyM: p.coords.accuracy,
           headingDeg: p.coords.heading !== null && !Number.isNaN(p.coords.heading) ? p.coords.heading : null,
           speedKts: p.coords.speed !== null && Number.isFinite(p.coords.speed) ? p.coords.speed * 1.943844 : null,
+          // Takeoff detection needs it (see @open-vfr/shared/autoFlyDetect).
+          altFt: p.coords.altitude == null || !Number.isFinite(p.coords.altitude) ? null
+            : (gpsAltitudeReference() === 'ellipsoid'
+              ? ellipsoidToMslM(p.coords.altitude, p.coords.latitude, p.coords.longitude)
+              : p.coords.altitude) * 3.28084,
         }
         setPosition(pos)
         // Throttled: a watch can fire every second.

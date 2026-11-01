@@ -20,6 +20,7 @@ import * as Crypto from 'expo-crypto'
 import { trimParkedTail, simulatedFixAction } from '@open-vfr/shared/flightLogStats'
 import { logPlaceNear, missingLogAerodromes, type LogAerodrome, type LogPlace } from '@open-vfr/shared/flightLogAerodromes'
 import { canResumeLog, resumableUntil, type ResumePoint } from '@open-vfr/shared/flightLogResume'
+import { takeoffRun, trimPreroll } from '@open-vfr/shared/flightLogPreroll'
 import { isSyncableLog } from '@open-vfr/shared/cloudSyncRows'
 import { getAerodromes } from './useNearbyFrequencies'
 import { notifyLocalChange } from '../sync/cloudSync'
@@ -122,6 +123,20 @@ export function useFlightLog(
   const simulationRef = useRef(simulation)
   simulationRef.current = simulation
 
+  // The last few minutes of real GPS fixes, kept even with flying mode off:
+  // takeoff is only detected well above the terrain, and a new log is
+  // started from the takeoff roll found here (@open-vfr/shared/flightLogPreroll).
+  const prerollRef = useRef<TrackPoint[]>([])
+  useEffect(() => {
+    if (!position || simulationRef.current.simulated) return
+    const now = Date.now()
+    const buf = prerollRef.current
+    if (buf.length > 0 && now - buf[buf.length - 1]!.ts < TRACK_INTERVAL_MS) return
+    prerollRef.current = trimPreroll([...buf, {
+      lat: position.lat, lng: position.lng, altFt: position.altFt, spdKts: position.speedKts, trkDeg: position.trackDeg, ts: now,
+    }], now)
+  }, [position])
+
   useEffect(() => {
     if (!position || flyingMode === 'off') return
     const sim = simulationRef.current
@@ -156,13 +171,21 @@ export function useFlightLog(
           // Anything else starts a new log; an unfinished one waiting is closed now.
           void closeResumableLog()
           const id = newId()
+          // Start at the takeoff roll, not at detection (simulated flights
+          // have no real fixes kept, so they start here).
+          const roll = sim.simulated ? [] : takeoffRun(prerollRef.current, thr.landedKts)
+          let dist = 0
+          for (let i = 1; i < roll.length; i++) dist += quickDistNm(roll[i - 1]!.lat, roll[i - 1]!.lng, roll[i]!.lat, roll[i]!.lng)
+          const first = roll[0] ?? { lat: position.lat, lng: position.lng, ts: now }
+          const last = roll[roll.length - 1]
           s.phase = 'flying'; s.logId = id; s.flightStartMs = now
-          s.track = []; s.lastTrackMs = 0; s.distanceNm = 0
-          s.maxAltFt = position.altFt; s.prevLat = position.lat; s.prevLng = position.lng
+          s.track = [...roll]; s.lastTrackMs = last?.ts ?? 0; s.distanceNm = dist
+          s.maxAltFt = Math.max(position.altFt, ...roll.map(p => p.altFt))
+          s.prevLat = last?.lat ?? position.lat; s.prevLng = last?.lng ?? position.lng
           s.departureIcao = ''; s.dirty = true
           s.simulated = sim.simulated
           setActiveLogId(id)
-          createLog(id, now, aircraftId, registration, { lat: position.lat, lng: position.lng }, sim.simulated, logRouteJson(plannedRouteRef?.current))
+          createLog(id, first.ts, aircraftId, registration, { lat: first.lat, lng: first.lng }, sim.simulated, logRouteJson(plannedRouteRef?.current))
         }
       } else {
         s.takeoffTicks = 0

@@ -1,11 +1,17 @@
 import { describe, it, expect } from 'vitest'
 import { initialAutoFlyState, stepAutoFly, autoFlyThresholds, type AutoFlyState, type AutoFlyThresholds } from './autoFlyDetect'
 
-function run(speeds: number[], flying: boolean, st = initialAutoFlyState(), t0 = 0, dt = 1000, acc = 10, thr?: AutoFlyThresholds) {
+// Default: 1000 ft above 100 ft terrain, i.e. clearly in the air.
+const AIR = { altFt: 1100, groundFt: 100 }
+
+function run(
+  speeds: number[], flying: boolean, st = initialAutoFlyState(), t0 = 0, dt = 1000, acc = 10, thr?: AutoFlyThresholds,
+  alt: (i: number) => { altFt?: number | null; groundFt?: number | null } = () => AIR,
+) {
   const events: (string | null)[] = []
   let state: AutoFlyState = st
   speeds.forEach((s, i) => {
-    const r = stepAutoFly(state, { speedKts: s, accuracyM: acc, t: t0 + i * dt }, flying, thr)
+    const r = stepAutoFly(state, { speedKts: s, accuracyM: acc, t: t0 + i * dt, ...alt(i) }, flying, thr)
     state = r.state
     if (r.event) events.push(r.event)
   })
@@ -44,6 +50,30 @@ describe('autoFlyDetect', () => {
   })
   it('never suggests stop if never airborne', () => {
     expect(run(Array(100).fill(0), true, initialAutoFlyState(), 0, 5000).events).toEqual([])
+  })
+})
+
+describe('autoFlyDetect: speed alone is not a flight', () => {
+  it('a car on a road (on the terrain) never starts, however fast', () => {
+    expect(run(Array(600).fill(70), false, initialAutoFlyState(), 0, 1000, 10, undefined,
+      () => ({ altFt: 160, groundFt: 120 })).events).toEqual([])
+  })
+  it('starts once 300 ft above the terrain', () => {
+    // Climbing 10 ft per fix from the runway at 100 ft.
+    const r = run(Array(60).fill(60), false, initialAutoFlyState(), 0, 1000, 10, undefined,
+      i => ({ altFt: 100 + i * 10, groundFt: 100 }))
+    expect(r.events).toEqual(['suggest-start'])
+  })
+  it('without terrain: a 300 ft climb counts, a flat drive does not', () => {
+    const noGround = (alt: (i: number) => number) => (i: number) => ({ altFt: alt(i), groundFt: null })
+    expect(run(Array(600).fill(70), false, initialAutoFlyState(), 0, 1000, 10, undefined,
+      noGround(i => 200 + (i % 20))).events).toEqual([])
+    expect(run(Array(60).fill(60), false, initialAutoFlyState(), 0, 1000, 10, undefined,
+      noGround(i => 200 + i * 10)).events).toEqual(['suggest-start'])
+  })
+  it('no altitude, no start', () => {
+    expect(run(Array(60).fill(80), false, initialAutoFlyState(), 0, 1000, 10, undefined,
+      () => ({ altFt: null })).events).toEqual([])
   })
 })
 

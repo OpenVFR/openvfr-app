@@ -934,6 +934,9 @@ function MapScreenForCountry() {
     flying && !simFlight.active,
     { start: handleStartGpsFly, stop: () => { deferLogCloseRef.current = true; handleStopFlight() } },
     flyThresholds,
+    // Terrain under the live fix (the GPS-height gauge's lookup): a start
+    // needs the aircraft 300 ft above it, so a fast drive is not a takeoff.
+    simFlight.active ? null : agl,
   )
 
   // Auto-start GPS on mount — request permission once, then watch position

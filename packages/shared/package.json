@@ -30,6 +30,7 @@
     "./alertLog": "./src/alertLog.ts",
     "./trafficState": "./src/trafficState.ts",
     "./tapPick": "./src/tapPick.ts",
+    "./flightLogPreroll": "./src/flightLogPreroll.ts",
     "./alertStack": "./src/alertStack.ts",
     "./alertStability": "./src/alertStability.ts",
     "./terrainCache": "./src/terrainCache.ts",

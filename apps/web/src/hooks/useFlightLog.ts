@@ -23,6 +23,7 @@ import { logRouteJson, type FlightLogRoute } from '@open-vfr/shared/flightLogRou
 import { useState, useEffect, useRef } from 'react'
 import { getDb, type TrackPoint, type FlightLogDocType } from '../db'
 import { trimParkedTail, simulatedFixAction } from '@open-vfr/shared/flightLogStats'
+import { takeoffRun } from '@open-vfr/shared/flightLogPreroll'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { FlyingMode } from '../utils/gpsTypes'
 
@@ -70,6 +71,10 @@ export function useFlightLog(
   /** The route planned at the moment (read when a log starts): stored with the log so its
    *  profile can show the planned level. A ref, so a route edit does not re-run the hook. */
   plannedRouteRef?: { current: FlightLogRoute | null },
+  /** The last few minutes of real fixes, also from before flying mode started
+   *  (MapView fills it). A new log starts at the takeoff roll found there:
+   *  takeoff is only detected well above the terrain. */
+  prerollRef?: { current: TrackPoint[] },
 ): { activeLogId: string | null } {
   const [activeLogId, setActiveLogId] = useState<string | null>(null)
   // Close out logs left in progress by a previous session (tab/app closed
@@ -177,20 +182,25 @@ export function useFlightLog(
         s.takeoffTicks++
         if (s.takeoffTicks >= TAKEOFF_CONFIRM_TICKS) {
           const id = newId()
+          // Start at the takeoff roll, not at detection (not for simulators).
+          const roll = sim.simulated ? [] : takeoffRun(prerollRef?.current ?? [], thr.landedKts)
+          let dist = 0
+          for (let i = 1; i < roll.length; i++) dist += quickDistNm(roll[i - 1]!.lat, roll[i - 1]!.lng, roll[i]!.lat, roll[i]!.lng)
+          const last = roll[roll.length - 1]
           s.phase         = 'flying'
           s.logId         = id
           s.flightStartMs = now
-          s.track         = []
-          s.lastTrackMs   = 0
-          s.distanceNm    = 0
-          s.maxAltFt      = position.altFt
-          s.prevLat       = position.lat
-          s.prevLng       = position.lng
+          s.track         = [...roll]
+          s.lastTrackMs   = last?.ts ?? 0
+          s.distanceNm    = dist
+          s.maxAltFt      = Math.max(position.altFt, ...roll.map(p => p.altFt))
+          s.prevLat       = last?.lat ?? position.lat
+          s.prevLng       = last?.lng ?? position.lng
           s.departureIcao = nearestIcao ?? ''
           s.dirty         = true
           s.simulated     = sim.simulated
           setActiveLogId(id)
-          createLog(id, now, aircraftId, registration, s.departureIcao, sim.simulated, logRouteJson(plannedRouteRef?.current))
+          createLog(id, roll[0]?.ts ?? now, aircraftId, registration, s.departureIcao, sim.simulated, logRouteJson(plannedRouteRef?.current))
         }
       } else {
         s.takeoffTicks = 0

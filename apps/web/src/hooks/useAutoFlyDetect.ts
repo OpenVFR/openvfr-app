@@ -12,7 +12,14 @@ import {
   type AutoFlyMode, type AutoFlyState, type AutoFlyThresholds,
 } from '@open-vfr/shared/autoFlyDetect'
 
-export interface AutoFlyFixInput { speedKts: number | null; accuracyM: number }
+export interface AutoFlyFixInput {
+  speedKts: number | null
+  accuracyM: number
+  /** GPS altitude ft AMSL; null = unknown (then no start is suggested). */
+  altFt: number | null
+  /** Terrain elevation ft AMSL under the fix; null = unknown. */
+  groundFt: number | null
+}
 
 export function useAutoFlyDetect(
   mode: AutoFlyMode,
@@ -35,7 +42,7 @@ export function useAutoFlyDetect(
 
   useEffect(() => {
     if (mode === 'off' || !fix || fix.speedKts === null) return
-    const r = stepAutoFly(stateRef.current, { speedKts: fix.speedKts, accuracyM: fix.accuracyM, t: Date.now() }, flying, thresholdsRef.current)
+    const r = stepAutoFly(stateRef.current, { speedKts: fix.speedKts, accuracyM: fix.accuracyM, altFt: fix.altFt, groundFt: fix.groundFt, t: Date.now() }, flying, thresholdsRef.current)
     stateRef.current = r.state
     if (!r.event) return
     const which = r.event === 'suggest-start' ? 'start' : 'stop'

@@ -138,6 +138,7 @@ import { notamMapFeatures, matchedAirspaceFeatures, notamsInWindow, NOTAM_MAP_HO
 import { makeCirclePolygon } from '@open-vfr/shared/geoCircle'
 import { registerTrafficIcons, selectTrafficIcon } from '../utils/trafficIcons'
 import { rankTapCandidates } from '@open-vfr/shared/tapPick'
+import { trimPreroll } from '@open-vfr/shared/flightLogPreroll'
 import GoFlyingPanel from './GoFlyingPanel'
 import { NotificationCenter } from './NotificationCenter'
 import AirfieldBriefPanel from './AirfieldBriefPanel'
@@ -1049,9 +1050,11 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // detector on unrelated re-renders and over-count fixes.
   const autoFlyFix = useMemo(() => (
     flyingMode === 'off' && passivePos
-      ? { speedKts: passivePos.speedKts, accuracyM: passivePos.accuracyM }
+      // No terrain lookup runs on the ground here: the start needs a 300 ft
+      // climb within a few minutes instead (see @open-vfr/shared/autoFlyDetect).
+      ? { speedKts: passivePos.speedKts, accuracyM: passivePos.accuracyM, altFt: passivePos.altFt, groundFt: null }
       : flyingMode === 'gps' && gpsPosition
-        ? { speedKts: gpsPosition.speedKts, accuracyM: gpsPosition.accuracy }
+        ? { speedKts: gpsPosition.speedKts, accuracyM: gpsPosition.accuracy, altFt: gpsPosition.altFt, groundFt: null }
         : null
   ), [flyingMode, passivePos, gpsPosition])
   // Takeoff / landing speeds from the selected aircraft (category default when unset).
@@ -1059,6 +1062,19 @@ export default function MapView({ auth }: { auth: AuthState }) {
     () => autoFlyThresholds(selectedAircraftProfile?.takeoffSpeedKts, selectedAircraftProfile?.category),
     [selectedAircraftProfile?.takeoffSpeedKts, selectedAircraftProfile?.category],
   )
+  // Recent real fixes (on the ground: the passive position) for useFlightLog
+  // to start a log at the takeoff roll (@open-vfr/shared/flightLogPreroll).
+  const prerollRef = useRef<TrackPoint[]>([])
+  useEffect(() => {
+    const p = flyingMode === 'off' ? passivePos : flyingMode === 'gps' ? gpsPosition : null
+    if (!p || p.speedKts == null) return
+    const now = Date.now()
+    const buf = prerollRef.current
+    if (buf.length > 0 && now - buf[buf.length - 1]!.ts < 1000) return
+    const altFt = 'altFt' in p && p.altFt != null ? p.altFt : 0
+    const trkDeg = 'trackDeg' in p ? p.trackDeg : ('headingDeg' in p ? p.headingDeg ?? 0 : 0)
+    prerollRef.current = trimPreroll([...buf, { lat: p.lat, lng: p.lng, altFt, spdKts: p.speedKts, trkDeg, ts: now }], now)
+  }, [flyingMode, passivePos, gpsPosition])
   // Set just before an AUTO stop so useFlightLog leaves a parked log to its park timer.
   const deferLogCloseRef = useRef(false)
   const autoFly = useAutoFlyDetect(
@@ -1331,6 +1347,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     // Keyboard ('sim') and external ('ext') simulators are not the device GPS.
     { simulated: flyingMode === 'sim' || flyingMode === 'ext', record: recordSimulatedFlights },
     plannedRouteRef,
+    prerollRef,
   )
 
   // ── ADS-B traffic (OpenSky Network via server SSE) ──────────────────────
