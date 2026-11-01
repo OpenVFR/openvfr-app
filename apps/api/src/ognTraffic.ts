@@ -57,7 +57,7 @@
  */
 
 import net from 'node:net'
-import { BBOX, hasActiveConsumers, updateOgnState, pruneAndBroadcastOgn, type TrafficState } from './traffic'
+import { BBOX, hasActiveConsumers, onConsumerActivity, updateOgnState, pruneAndBroadcastOgn, type TrafficState } from './traffic'
 import { startDdbPrivacyRefresh, isTrackingOptedOut } from './ognDdbPrivacy'
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -329,6 +329,10 @@ export function startOgnRelay(): void {
     if (hasActiveConsumers()) connect()
     else disconnect()
   }, OGN_IDLE_CHECK_MS)
+  // Connect on the first consumer request instead of the next idle-watcher
+  // tick. connect() is a no-op while a socket is open; while a reconnect
+  // after an error is pending, leave it to that timer.
+  onConsumerActivity(() => { if (!_reconnectTimer) connect() })
 
   _broadcastTimer = setInterval(() => {
     if (_socket) pruneAndBroadcastOgn(OGN_STALE_S)

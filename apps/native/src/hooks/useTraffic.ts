@@ -64,6 +64,11 @@ interface TrafficBatch {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const POLL_INTERVAL_MS  = 70_000   // slightly above server's 65 s OpenSky poll
+/** Next try while the server has no fresh data (feeds just woke up, or offline). */
+const RETRY_INTERVAL_MS = 10_000
+/** A batch older than this is left over from before the server's feeds slept
+ *  (device clock vs server clock; a large skew only means slower retries). */
+const FRESH_BATCH_MAX_AGE_S = 120
 const STALE_S           = 180
 // 2 s, not 1 s: every traffic source update makes MapLibre redraw at display
 // rate for ~0.65 s, and a target at 120 kt moves only ~120 m in 2 s.
@@ -130,13 +135,15 @@ export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: 
   ownRef.current = { ownAltFt, ownLat, ownLon }
 
   // ── Poll server ───────────────────────────────────────────────────────────
-  const poll = useCallback(async () => {
+  /** True when the server returned a batch built recently (live traffic). */
+  const poll = useCallback(async (): Promise<boolean> => {
     try {
       const r = await fetch(`${TRAFFIC_BASE}/api/traffic/latest`, { headers: await authHeaders() })
-      if (!r.ok) return
+      if (!r.ok) return false
       const data = await r.json() as TrafficBatch
       if (data.polledAt > 0) { batchRef.current = data; receivedAtRef.current = Date.now() / 1000 }
-    } catch { /* server offline — keep last batch */ }
+      return data.polledAt > 0 && Date.now() / 1000 - data.polledAt <= FRESH_BATCH_MAX_AGE_S
+    } catch { return false /* server offline -- keep the last batch */ }
   }, [])
 
   useEffect(() => {
@@ -145,9 +152,19 @@ export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: 
       setFc({ type: 'FeatureCollection', features: [] })
       return
     }
-    poll()
-    const pollTimer = setInterval(poll, POLL_INTERVAL_MS)
-    return () => clearInterval(pollTimer)
+    // Retry soon until a fresh batch arrives, then every POLL_INTERVAL_MS.
+    // The server's feeds sleep while nobody watches: the first request after
+    // turning the layer on can come back empty or hours old, and waiting the
+    // full interval for the next try looked like a layer that never loads.
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const run = async () => {
+      const fresh = await poll()
+      if (cancelled) return
+      timer = setTimeout(run, fresh ? POLL_INTERVAL_MS : RETRY_INTERVAL_MS)
+    }
+    void run()
+    return () => { cancelled = true; if (timer) clearTimeout(timer) }
   }, [enabled, poll])
 
   // ── Dead-reckon at 2 s ────────────────────────────────────────────────────

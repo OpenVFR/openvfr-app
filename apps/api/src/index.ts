@@ -28,7 +28,7 @@ import { bodyLimit } from 'hono/body-limit'
 import { streamSSE } from 'hono/streaming'
 import OpenAI, { toFile } from 'openai'
 import { writeFileSync, createReadStream, unlinkSync } from 'node:fs'
-import { trafficConfig, registerClient, startTrafficPoller, getLatestBatch, touchActivity } from './traffic'
+import { trafficConfig, registerClient, startTrafficPoller, getFreshBatch, touchActivity } from './traffic'
 import { startOgnRelay } from './ognTraffic'
 import { startNotamPoller, getNotamsForIcao, getRegionalNotams, getAerodromeNotamTexts } from './notam'
 import { parseRegionsParam } from '@open-vfr/shared/notamRegionScope'
@@ -544,7 +544,9 @@ app.get('/api/traffic/config', async (c) => {
 app.get('/api/traffic/latest', async (c) => {
   if (!(await requireSession(c))) return c.json({ error: 'Authentication required.' }, 401)
   touchActivity()
-  const batch = getLatestBatch()
+  // Up to 10 s for fresh data when the feeds were idle: the first poll after
+  // a quiet period otherwise returned nothing usable (see getFreshBatch).
+  const batch = await getFreshBatch(10_000)
   if (!batch) return c.json({ polledAt: 0, states: [] })
   return c.json(batch)
 })

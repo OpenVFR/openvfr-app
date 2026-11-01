@@ -270,6 +270,36 @@ let _lastActivityAt = 0
 export function touchActivity(): void {
   _lastActivityAt = Date.now()
   ensurePolling()
+  for (const fn of _activityListeners) fn()
+}
+
+/** Called on every consumer touch. ognTraffic.ts uses it to open its socket
+ *  at once instead of on its next idle-watcher tick (up to 20 s later). */
+const _activityListeners: (() => void)[] = []
+export function onConsumerActivity(fn: () => void): void {
+  _activityListeners.push(fn)
+}
+
+/** A batch this old was built before the feeds went idle: not live traffic. */
+const FRESH_BATCH_MAX_AGE_S = INTERVAL_S + 30
+
+function batchIsFresh(b: TrafficBatch | null, nowS: number): boolean {
+  return b != null && nowS - b.polledAt <= FRESH_BATCH_MAX_AGE_S
+}
+
+/**
+ * The latest batch, waiting up to maxWaitMs for a fresh one when the feeds
+ * were idle (no batch yet, or one left over from before they went to
+ * sleep). Without this, the first native /latest request after a quiet
+ * period only woke the poller and got an empty or hours-old batch back;
+ * the app then showed no traffic until its next poll ~70 s later.
+ */
+export async function getFreshBatch(maxWaitMs: number): Promise<TrafficBatch | null> {
+  const deadline = Date.now() + maxWaitMs
+  while (!batchIsFresh(_lastBatch, Date.now() / 1000) && Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 250))
+  }
+  return _lastBatch
 }
 
 /** Exported: ognTraffic.ts's own idle watcher gates its persistent APRS-IS
