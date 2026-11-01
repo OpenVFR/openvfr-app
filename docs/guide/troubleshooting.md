@@ -28,6 +28,17 @@ unavailable when the weather service is busy: the last good value is
 shown when there is one. Station weather, METAR and the model-based
 *Weather station* are separate sources: if one has nothing, try the other.
 
+## An aircraft I can see is not on the traffic layer
+
+The traffic layer shows aircraft that broadcast their position: ADS-B
+(received by the OpenSky Network and by Open Glider Network ground
+stations) and FLARM / OGN trackers (Open Glider Network). An aircraft with
+only a Mode S or Mode C transponder sends no position, and one low over the
+ground can be out of range of every receiver, so it does not appear. Other
+traffic services can show such aircraft from their own receiver networks
+or by multilateration; this layer cannot. Never rely on it to see traffic:
+it is an aid to lookout, not a replacement.
+
 ## Forecast wind is missing
 
 The forecast covers about the next 16 days from now. Outside that, or

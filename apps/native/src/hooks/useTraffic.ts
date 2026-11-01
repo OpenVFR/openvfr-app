@@ -47,6 +47,8 @@ interface RawState {
   vertRateMs:  number | null
   onGround:    boolean
   lastContact: number | null
+  /** Unix seconds (server clock) the position was measured; absent from older servers. */
+  posTime?:    number | null
   category:    number | null
   source:      'opensky' | 'ogn'
 }
@@ -114,6 +116,9 @@ interface Options {
 
 export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: Options): FeatureCollection {
   const batchRef    = useRef<TrafficBatch | null>(null)
+  // Device-clock unix seconds when batchRef's batch arrived: positions are
+  // dead-reckoned on this clock, so server/device clock skew does not matter.
+  const receivedAtRef = useRef(0)
   const [fc, setFc] = useState<FeatureCollection>({ type: 'FeatureCollection', features: [] })
   // Own position via refs so a GPS fix does not tear down and restart the
   // dead-reckon timer (that used to happen on every fix, i.e. ~1 Hz, which
@@ -127,7 +132,7 @@ export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: 
       const r = await fetch(`${TRAFFIC_BASE}/api/traffic/latest`, { headers: await authHeaders() })
       if (!r.ok) return
       const data = await r.json() as TrafficBatch
-      if (data.polledAt > 0) batchRef.current = data
+      if (data.polledAt > 0) { batchRef.current = data; receivedAtRef.current = Date.now() / 1000 }
     } catch { /* server offline — keep last batch */ }
   }, [])
 
@@ -154,14 +159,20 @@ export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: 
 
       for (const s of batch.states) {
         if (!s.lat || !s.lon) continue
-        if (s.lastContact && nowS - s.lastContact > STALE_S) continue
+        // Seconds since the position was measured: its age when the batch
+        // was built (the batch is rebuilt every few seconds, an OpenSky
+        // position only once per poll) plus the time since it arrived.
+        const dt = Math.max(0, batch.polledAt - (s.posTime ?? s.lastContact ?? batch.polledAt))
+          + Math.max(0, nowS - receivedAtRef.current)
+        // Too old to extrapolate: the aircraft may be anywhere by now.
+        if (dt > STALE_S) continue
 
-        const dt = nowS - batch.polledAt
         let [lat, lon] = [s.lat, s.lon]
         const velMs = s.velocityMs ?? 0
-        const trk   = s.trackDeg   ?? 0
-        if (velMs > 0 && trk != null && !s.onGround) {
-          ;[lat, lon] = advancePosition(lat, lon, velMs, trk, dt)
+        // No track (some OGN targets): leave it where it was heard instead
+        // of moving it due north.
+        if (velMs > 0 && s.trackDeg != null && !s.onGround) {
+          ;[lat, lon] = advancePosition(lat, lon, velMs, s.trackDeg, dt)
         }
 
         const altFt    = s.altM != null ? s.altM * 3.281 : null

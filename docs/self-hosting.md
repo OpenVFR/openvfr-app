@@ -204,7 +204,13 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
 - `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_KEY` — optional, enables POH
   PDF auto-fill (`/api/poh-extract`); the app works without it
 - `OPENSKY_CLIENT_ID` / `OPENSKY_CLIENT_SECRET` — optional, enables live
-  ADS-B traffic overlay
+  ADS-B traffic overlay. `OPENSKY_BBOX` (south,west,north,east) sets the
+  area.
+- `OGN_ENABLED` — default `true`: merges Open Glider Network traffic
+  (FLARM, and ADS-B heard by OGN ground receivers) into the same overlay;
+  no credentials needed. It covers the `OPENSKY_BBOX` rectangle unless both
+  `OGN_FILTER_LAT` and `OGN_FILTER_LON` are set, which switch it to a circle
+  of `OGN_FILTER_RADIUS_KM` (default 350) around that point.
 - `NMS_CLIENT_ID` / `NMS_CLIENT_SECRET` — optional, enables NOTAM lookup
   via the FAA's NOTAM Management Service (NMS-API). **No self-service
   signup** — request credentials by emailing 7-AWA-NAIMES@faa.gov or

@@ -85,8 +85,16 @@ export interface TrafficState {
   vertRateMs:   number | null
   /** Whether the transponder reports the aircraft is on the ground. */
   onGround:     boolean
-  /** Unix timestamp (seconds) of last OpenSky position update. */
+  /** Unix timestamp (seconds) of the last message from this aircraft (any kind). */
   lastContact:  number | null
+  /**
+   * Unix timestamp (seconds) the lat/lon above was measured. Clients
+   * dead-reckon from THIS, not from the batch's polledAt: the batch is
+   * rebroadcast every few seconds (OGN ticker), while an OpenSky position
+   * only changes once per poll and can already be some seconds old when
+   * polled. Null when unknown (clients fall back to polledAt).
+   */
+  posTime:      number | null
   /**
    * ICAO ADS-B emitter category (state vector index 17).
    * 0=no info  1=light  2=small  3=large  4=HVL/B757  5=heavy
@@ -291,23 +299,40 @@ const _ognStates = new Map<string, TrafficState>()
 
 /**
  * Union OpenSky + OGN into one broadcast batch, deduped by icao24.
+ * Exported for tests.
  *
- * Dedup rule: if the SAME icao24 is reported by both feeds (this only
- * happens for OGN targets whose FLARM/OGN-tracker "id" field carries
- * address-type=ICAO — see ognTraffic.ts), prefer OpenSky's own state. Both
- * ultimately describe the same aircraft's ADS-B-derived position; OpenSky's
- * feed is the canonical one for anything transponder-equipped. Targets only
- * OGN can see (gliders, tow planes, many ultralights without ADS-B) pass
- * through union'd in, tagged source:'ogn'.
+ * Dedup rule: if the SAME icao24 is reported by both feeds (OGN targets
+ * whose "id" field carries address-type=ICAO — mostly ADS-B relayed by OGN
+ * ground receivers, see ognTraffic.ts), keep the state with the NEWER
+ * position. OpenSky's is up to one poll interval old by design and can be
+ * minutes old for low-level traffic its receivers barely hear; an OGN
+ * receiver near the airfield may have heard the same aircraft seconds ago.
+ * Ties go to OpenSky (it carries the on-ground flag). Targets only OGN can
+ * see (gliders, tow planes, ultralights without ADS-B) pass through, tagged
+ * source:'ogn'.
  */
-function recomputeAndBroadcast(): void {
-  const openskyIcaos = new Set(_openskyStates.map(s => s.icao24.toLowerCase()))
-  const merged: TrafficState[] = [..._openskyStates]
-  for (const s of _ognStates.values()) {
-    if (openskyIcaos.has(s.icao24.toLowerCase())) continue
-    merged.push(s)
+export function mergeTrafficStates(opensky: TrafficState[], ogn: Iterable<TrafficState>): TrafficState[] {
+  const byIcao = new Map<string, TrafficState>()
+  for (const s of opensky) byIcao.set(s.icao24.toLowerCase(), s)
+  const age = (s: TrafficState) => s.posTime ?? s.lastContact ?? 0
+  for (const s of ogn) {
+    const key = s.icao24.toLowerCase()
+    const prev = byIcao.get(key)
+    if (prev && age(prev) >= age(s)) continue
+    // OGN has no on-ground flag and often no category / callsign: keep what
+    // OpenSky knew about the same aircraft (on ground only while still slow).
+    byIcao.set(key, prev ? {
+      ...s,
+      callsign: s.callsign ?? prev.callsign,
+      category: s.category || prev.category,
+      onGround: prev.onGround && (s.velocityMs ?? 0) < 25,
+    } : s)
   }
-  _lastBatch = { polledAt: Math.floor(Date.now() / 1000), states: merged }
+  return [...byIcao.values()]
+}
+
+function recomputeAndBroadcast(): void {
+  _lastBatch = { polledAt: Math.floor(Date.now() / 1000), states: mergeTrafficStates(_openskyStates, _ognStates.values()) }
   broadcast(_lastBatch)
 }
 
@@ -331,7 +356,9 @@ async function poll(): Promise<number> {
   try {
     const token = await getToken()
     const [latMin, lonMin, latMax, lonMax] = BBOX
-    const url = `${OPENSKY_STATES_URL}?lamin=${latMin}&lomin=${lonMin}&lamax=${latMax}&lomax=${lonMax}`
+    // extended=1: adds the emitter category (index 17). Without it every
+    // target came back category-less and drew as the generic icon.
+    const url = `${OPENSKY_STATES_URL}?lamin=${latMin}&lomin=${lonMin}&lamax=${latMax}&lomax=${lonMax}&extended=1`
 
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
@@ -367,6 +394,7 @@ async function poll(): Promise<number> {
         vertRateMs:  typeof s[11] === 'number' ? s[11] : null,
         onGround:    Boolean(s[8]),
         lastContact: typeof s[4] === 'number' ? s[4] : null,
+        posTime:     typeof s[3] === 'number' ? s[3] : typeof s[4] === 'number' ? s[4] : null,
         category:    typeof s[17] === 'number' ? s[17] : null,
         source:      'opensky' as const,
       }))

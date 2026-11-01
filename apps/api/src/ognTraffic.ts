@@ -15,8 +15,9 @@
  *    one long-lived TCP connection that the server holds open and the
  *    network pushes position reports down as they happen.
  *  - A server-side geographic filter is baked into the login line itself
- *    (`filter r/lat/lon/radius_km`) so aprs.glidernet.org only sends
- *    packets for the configured region — no full-network firehose, no
+ *    (`filter a/north/west/south/east`, the OPENSKY_BBOX area, or
+ *    `filter r/lat/lon/radius_km` when overridden) so aprs.glidernet.org
+ *    only sends packets for the configured region — no full-network firehose, no
  *    client-side geo filtering needed.
  *  - Idle-gated exactly like OpenSky's poller: the socket only connects
  *    while hasActiveConsumers() is true (an open web SSE connection, or a
@@ -32,8 +33,10 @@
  *
  * Env vars (all optional):
  *   OGN_ENABLED            'false' to disable entirely (default: enabled)
- *   OGN_FILTER_LAT/LON     APRS-IS filter centre (default: OPENSKY_BBOX midpoint)
- *   OGN_FILTER_RADIUS_KM   APRS-IS filter radius, km (default: 350)
+ *   OGN_FILTER_LAT/LON     APRS-IS circle filter centre. Unset (default): the
+ *                          whole OPENSKY_BBOX rectangle is used instead.
+ *   OGN_FILTER_RADIUS_KM   circle radius, km (default 350; only used with
+ *                          OGN_FILTER_LAT/LON)
  *   OGN_APRS_HOST/PORT     APRS-IS server (default: aprs.glidernet.org:14580)
  *
  * OGN-flavoured APRS aircraft beacon (see
@@ -64,18 +67,34 @@ const ENABLED = process.env['OGN_ENABLED'] !== 'false'
 const APRS_HOST = process.env['OGN_APRS_HOST'] ?? 'aprs.glidernet.org'
 const APRS_PORT = parseInt(process.env['OGN_APRS_PORT'] ?? '14580', 10)
 
-function bboxCenter(bbox: [number, number, number, number]): [number, number] {
+/**
+ * APRS-IS server-side filter for the login line. Exported for tests.
+ *
+ * Default: an area filter covering the same rectangle as OPENSKY_BBOX, so
+ * both feeds see the same region. This used to be a 350 km circle around
+ * the bbox centre, which for the default Sweden box (55-69.5 N) only
+ * reached ~59-65 N: OGN traffic (FLARM gliders and tow planes, and ADS-B
+ * that OGN ground receivers hear at low level near airfields) in the whole
+ * south of the country was never received.
+ *
+ * A circle is used only when both OGN_FILTER_LAT and OGN_FILTER_LON are set.
+ * (Empty strings count as unset: docker-compose passes `${VAR:-}` as ''.)
+ */
+export function ognFilter(
+  bbox: [number, number, number, number],
+  env: Record<string, string | undefined>,
+): string {
+  const lat = parseFloat(env['OGN_FILTER_LAT'] || '')
+  const lon = parseFloat(env['OGN_FILTER_LON'] || '')
+  if (Number.isFinite(lat) && Number.isFinite(lon)) {
+    const radius = parseInt(env['OGN_FILTER_RADIUS_KM'] || '350', 10)
+    return `r/${lat}/${lon}/${Number.isFinite(radius) && radius > 0 ? radius : 350}`
+  }
   const [latMin, lonMin, latMax, lonMax] = bbox
-  return [(latMin + latMax) / 2, (lonMin + lonMax) / 2]
+  return `a/${latMax}/${lonMin}/${latMin}/${lonMax}`
 }
 
-const [DEFAULT_LAT, DEFAULT_LON] = bboxCenter(BBOX)
-
-// (process.env[...] || '') rather than ?? -- docker-compose passes empty-string
-// defaults for unset vars (${VAR:-}), which ?? would NOT treat as "unset".
-const FILTER_LAT = parseFloat(process.env['OGN_FILTER_LAT'] || String(DEFAULT_LAT))
-const FILTER_LON = parseFloat(process.env['OGN_FILTER_LON'] || String(DEFAULT_LON))
-const FILTER_RADIUS_KM = parseInt(process.env['OGN_FILTER_RADIUS_KM'] || '350', 10)
+const FILTER = ognFilter(BBOX, process.env)
 
 /** How stale (seconds) an OGN target can be before it's pruned from the merged batch. Shorter than OpenSky's 180s STALE_S since OGN targets update far more frequently (every few seconds vs. OpenSky's ~65s poll). */
 const OGN_STALE_S = 120
@@ -121,11 +140,18 @@ const FLARM_TYPE_TO_CATEGORY: Record<number, number> = {
 // Header: SRCCALL>DST,path...:BODY  — split on the first ':' after '>'.
 const HEADER_RE = /^([^>]+)>[^:]*:(.*)$/
 // Body: /HHMMSSh DDMM.mmN <symtable> DDDMM.mmE <symcode> [course/speed] /A=altft <comment>
-const BODY_RE = /^[/=]\d{6}h(\d{2})(\d{2}\.\d{2})([NS])(.)(\d{3})(\d{2}\.\d{2})([EW])(.)(?:(\d{3})\/(\d{3}))?\/A=(\d{6})(.*)$/
+const BODY_RE = /^[/=]\d{6}h(\d{2})(\d{2}\.\d{2})([NS])(.)(\d{3})(\d{2}\.\d{2})([EW])(.)(?:(\d{3})\/(\d{3}))?\/A=(-?\d{5,6})(.*)$/
 const ID_RE = /\bid([0-9A-Fa-f]{2})([0-9A-Fa-f]{6})\b/
 const FPM_RE = /([+-]\d+)fpm/
+// Position precision enhancement: !Wab! adds a third decimal to the lat (a)
+// and lon (b) minutes.
+const DAO_RE = /!W(\d)(\d)!/
+// ADS-B relayed by OGN receivers: `A3:SAS093` = emitter category (set A,
+// same numbers as OpenSky's category 1-7) and flight callsign.
+const ADSB_RE = /\bA(\d):(\S+)/
 
-function parseLine(line: string, nowS: number): TrafficState | null {
+/** Parses one APRS-IS line into a traffic state (null = not an aircraft beacon). Exported for tests. */
+export function parseLine(line: string, nowS: number): TrafficState | null {
   if (!line || line.startsWith('#')) return null
 
   const hm = HEADER_RE.exec(line)
@@ -137,7 +163,7 @@ function parseLine(line: string, nowS: number): TrafficState | null {
   if (!bm) return null  // receiver status/metric beacons don't match — filtered out naturally
 
   const [
-    , latDegS, latMinS, ns, , lonDegS, lonMinS, ew, , , speedKnS, altFtS, comment,
+    , latDegS, latMinS, ns, , lonDegS, lonMinS, ew, , courseS, speedKnS, altFtS, comment,
   ] = bm
   if (!latDegS || !latMinS || !ns || !lonDegS || !lonMinS || !ew || !altFtS || comment === undefined) return null
 
@@ -154,8 +180,11 @@ function parseLine(line: string, nowS: number): TrafficState | null {
   const category = FLARM_TYPE_TO_CATEGORY[flarmType] ?? 0
   if (category < 0) return null  // static obstacle — not a traffic target
 
-  const latDeg = parseFloat(latDegS) + parseFloat(latMinS) / 60
-  const lonDeg = parseFloat(lonDegS) + parseFloat(lonMinS) / 60
+  const dao = DAO_RE.exec(comment)
+  const latMin = parseFloat(latMinS) + (dao ? parseInt(dao[1]!, 10) / 1000 : 0)
+  const lonMin = parseFloat(lonMinS) + (dao ? parseInt(dao[2]!, 10) / 1000 : 0)
+  const latDeg = parseFloat(latDegS) + latMin / 60
+  const lonDeg = parseFloat(lonDegS) + lonMin / 60
   const lat = ns === 'S' ? -latDeg : latDeg
   const lon = ew === 'W' ? -lonDeg : lonDeg
 
@@ -163,25 +192,37 @@ function parseLine(line: string, nowS: number): TrafficState | null {
   const altM = altFt * 0.3048
   const speedKn = speedKnS != null ? parseInt(speedKnS, 10) : null
   const velocityMs = speedKn != null ? speedKn * 0.5144 : null
+  // APRS course: 001-360, 000 = unknown. Without a track, clients must not
+  // dead-reckon (they used to move every OGN target due north).
+  const course = courseS != null ? parseInt(courseS, 10) : 0
+  const trackDeg = course > 0 ? course % 360 : null
 
   const fpmMatch = FPM_RE.exec(comment)
   const vertRateMs = fpmMatch?.[1] != null ? parseInt(fpmMatch[1], 10) * 0.3048 / 60 : null
 
   // addressType 1 = ICAO — this OGN target's address IS a real ICAO24, so it
   // can dedup directly against an OpenSky state with the same icao24 (see
-  // traffic.ts's recomputeAndBroadcast()). Anything else (FLARM/OGN-tracker/
+  // traffic.ts's mergeTrafficStates()). Anything else (FLARM/OGN-tracker/
   // unknown addressing) gets a namespaced id so it can never collide with an
   // unrelated aircraft's real ICAO24 that happens to share the same hex.
   const icao24 = addressType === 1 ? addrHex.toLowerCase() : `ogn-${addrHex.toLowerCase()}`
 
+  // ICAO-addressed (mostly ADS-B heard by an OGN receiver): the source call
+  // is just "ICA" + address, so use the flight callsign from the A<n>: field,
+  // or none (the OpenSky state of the same aircraft may have one). Others
+  // (FLARM / OGN trackers) keep the source call as their only label.
+  const adsb = ADSB_RE.exec(comment)
+  const callsign = addressType === 1 ? (adsb?.[2] ?? null) : (srcCall.trim() || null)
+  const adsbCategory = adsb ? parseInt(adsb[1]!, 10) : 0
+
   return {
     icao24,
-    callsign: srcCall.trim() || null,
+    callsign,
     lat,
     lon,
     altM,
     velocityMs,
-    trackDeg: null,  // course field exists but omitted from BODY_RE destructure above (not currently surfaced); could add if needed
+    trackDeg,
     vertRateMs,
     // OGN doesn't report an explicit on-ground flag like OpenSky's state
     // vector does — always false. Minor cosmetic gap vs. OpenSky targets:
@@ -189,7 +230,8 @@ function parseLine(line: string, nowS: number): TrafficState | null {
     // styling until it stops transmitting and goes stale.
     onGround: false,
     lastContact: nowS,
-    category,
+    posTime: nowS,
+    category: adsbCategory > 0 ? adsbCategory : category,
     source: 'ogn',
   }
 }
@@ -205,7 +247,7 @@ let _broadcastTimer: ReturnType<typeof setInterval> | null = null
 function connect(): void {
   if (_socket || !ENABLED) return
 
-  console.log(`[ogn] Connecting to ${APRS_HOST}:${APRS_PORT} (filter r/${FILTER_LAT}/${FILTER_LON}/${FILTER_RADIUS_KM})`)
+  console.log(`[ogn] Connecting to ${APRS_HOST}:${APRS_PORT} (filter ${FILTER})`)
   const socket = net.createConnection({ host: APRS_HOST, port: APRS_PORT })
   _socket = socket
   _lineBuf = ''
@@ -214,7 +256,7 @@ function connect(): void {
     // Unauthenticated (pass -1) read-only login — OGN's APRS-IS is free/open,
     // no account needed. Callsign just needs to be a plausible-looking APRS
     // ident; doesn't need to be registered.
-    const login = `user OPENVFR pass -1 vers openvfr 1.0 filter r/${FILTER_LAT}/${FILTER_LON}/${FILTER_RADIUS_KM}\r\n`
+    const login = `user OPENVFR pass -1 vers openvfr 1.0 filter ${FILTER}\r\n`
     socket.write(login)
     console.log('[ogn] Connected, login sent')
   })
@@ -275,7 +317,7 @@ export function startOgnRelay(): void {
     return
   }
   startDdbPrivacyRefresh()
-  console.log(`[ogn] Relay ready — will connect on first consumer activity (idle-gated), region centre (${FILTER_LAT}, ${FILTER_LON}) r=${FILTER_RADIUS_KM}km`)
+  console.log(`[ogn] Relay ready — will connect on first consumer activity (idle-gated), filter ${FILTER}`)
 
   _idleCheckTimer = setInterval(() => {
     if (hasActiveConsumers()) connect()

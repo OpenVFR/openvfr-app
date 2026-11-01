@@ -8,10 +8,12 @@
  *  - One SSE connection per browser tab
  *  - Server polls OpenSky once per ~65 s for the whole region, broadcasts to all clients
  *  - Client dead-reckons each target's position at 1 s intervals between batches:
- *      Δt = now − polledAt
+ *      Δt = now − time the position was measured (state posTime, mapped to
+ *           this device's clock via the batch's polledAt so clock skew
+ *           between server and device does not matter)
  *      d  = velocity_ms × Δt (metres)  →  converted to degrees lat/lon
  *      alt = altM + vertRate_ms × Δt
- *  - Targets last seen > STALE_S seconds ago are removed
+ *  - Targets last seen, or last positioned, > STALE_S seconds ago are removed
  *  - No-op when traffic is not available on the server (graceful silence)
  */
 
@@ -67,21 +69,30 @@ interface RawState {
   vertRateMs:  number | null
   onGround:    boolean
   lastContact: number | null
+  /** Unix seconds (server clock) the position was measured; absent from older servers. */
+  posTime?:    number | null
   category:    number | null
   source:      'opensky' | 'ogn'
 }
 
 interface StoredTarget {
   raw:       RawState
-  /** Unix seconds when this raw state was snapshotted by the server. */
-  polledAt:  number
+  /** Device-clock unix seconds when this target was last in a batch. */
+  seenAt:    number
+  /** Device-clock unix seconds when its position was measured. */
+  posAt:     number
+}
+
+/** Gone from the feed, or its last position is too old to extrapolate. */
+function isStale(stored: StoredTarget, nowS: number): boolean {
+  return nowS - stored.seenAt > STALE_S || nowS - stored.posAt > STALE_S
 }
 
 // ── Dead-reckoning helper ─────────────────────────────────────────────────────
 
 function deadReckon(stored: StoredTarget, nowS: number, ownAltFt: number | null): TrafficTarget {
-  const { raw, polledAt } = stored
-  const dt = Math.max(0, nowS - polledAt)  // seconds since poll
+  const { raw, posAt } = stored
+  const dt = Math.min(STALE_S, Math.max(0, nowS - posAt))  // seconds since the position was measured
 
   // ── Altitude first — needed to detect stale onGround=false after landing ──
   // Freeze altitude for transponder-reported ground targets; dead-reckon otherwise.
@@ -103,7 +114,9 @@ function deadReckon(stored: StoredTarget, nowS: number, ownAltFt: number | null)
   let lon = raw.lon
   const vel = raw.velocityMs ?? 0
   const trk = raw.trackDeg  ?? 0
-  if (vel > 0.5 && !effectivelyOnGround) {
+  // No track (some OGN targets): leave it where it was heard instead of
+  // moving it due north.
+  if (vel > 0.5 && raw.trackDeg != null && !effectivelyOnGround) {
     const d = (vel * dt) / EARTH_R_M  // angular distance radians
     const trkRad = trk * Math.PI / 180
     const lat1   = lat  * Math.PI / 180
@@ -156,7 +169,7 @@ export function useTraffic(opts: UseTrafficOptions = {}): TrafficTarget[] {
   const ownAltRef = useRef(ownAltFt)
   useEffect(() => { ownAltRef.current = ownAltFt }, [ownAltFt])
 
-  // Map from icao24 → stored target (raw state + polledAt)
+  // Map from icao24 → stored target (raw state + when seen / positioned)
   const storeRef = useRef(new Map<string, StoredTarget>())
 
   const [targets, setTargets] = useState<TrafficTarget[]>([])
@@ -223,16 +236,19 @@ export function useTraffic(opts: UseTrafficOptions = {}): TrafficTarget[] {
             }
             const polledAt = batch.polledAt
             const store = storeRef.current
+            const nowS = Date.now() / 1000
 
             for (const s of batch.states) {
               if (s.lat == null || s.lon == null) continue
-              store.set(s.icao24, { raw: s, polledAt })
+              // The batch is rebroadcast every few seconds while an OpenSky
+              // position only changes once per poll: dead-reckon from when
+              // the position was measured, not from when the batch was sent.
+              const ageS = Math.max(0, polledAt - (s.posTime ?? polledAt))
+              store.set(s.icao24, { raw: s, seenAt: nowS, posAt: nowS - ageS })
             }
 
-            // Remove targets not in this batch that are now stale
-            const nowS = Date.now() / 1000
             for (const [id, stored] of store) {
-              if (nowS - stored.polledAt > STALE_S) store.delete(id)
+              if (isStale(stored, nowS)) store.delete(id)
             }
           } catch { /* ignore malformed events */ }
         }
@@ -254,7 +270,7 @@ export function useTraffic(opts: UseTrafficOptions = {}): TrafficTarget[] {
           const store = storeRef.current
           const result: TrafficTarget[] = []
           for (const [, stored] of store) {
-            if (nowS - stored.polledAt > STALE_S) continue
+            if (isStale(stored, nowS)) continue
             result.push(deadReckon(stored, nowS, ownAltRef.current))
           }
           setTargets(result)

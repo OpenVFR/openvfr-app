@@ -79,9 +79,9 @@ services:
       - OPENSKY_BBOX=${OPENSKY_BBOX:-55.0,10.0,69.5,24.5}
       - OPENSKY_POLL_INTERVAL_S=${OPENSKY_POLL_INTERVAL_S:-65}
       # OGN (Open Glider Network) APRS-IS relay -- free/unmetered, no credentials
-      # needed. Defaults to the same region as OPENSKY_BBOX above (see
-      # bboxCenter() in apps/api/src/ognTraffic.ts); override independently
-      # if the desired OGN coverage area differs from OpenSky's.
+      # needed. Covers the same rectangle as OPENSKY_BBOX above (see
+      # ognFilter() in apps/api/src/ognTraffic.ts); set OGN_FILTER_LAT and
+      # OGN_FILTER_LON (+ OGN_FILTER_RADIUS_KM) to use a circle instead.
       - OGN_ENABLED=${OGN_ENABLED:-true}
       - OGN_FILTER_LAT=${OGN_FILTER_LAT:-}
       - OGN_FILTER_LON=${OGN_FILTER_LON:-}
