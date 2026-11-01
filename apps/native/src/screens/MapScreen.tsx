@@ -113,6 +113,7 @@ import { LogAircraftBanner } from '../components/LogAircraftBanner'
 import { useAircraftSync } from '../hooks/useAircraftSync'
 import type { FlightLogDocType } from '../types/db'
 import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
+import { useGroundMaxElevation } from '../hooks/useGroundMaxElevation'
 import { trackToGeoJson } from '@open-vfr/shared/flightLogStats'
 import { parseParkTimeout } from '@open-vfr/shared/parkTimeout'
 import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
@@ -928,15 +929,20 @@ function MapScreenForCountry() {
 
   // Takeoff / landing detection from the always-on GPS fix. Simulator flights
   // never auto start or stop (fix is null while the sim drives).
+  // Only looked up while it can matter: not flying, moving at speed.
+  const groundMaxFt = useGroundMaxElevation(
+    simFlight.active ? null : position,
+    !flying && (settings.autoFlyMode ?? 'ask') !== 'off' && (position?.speedKts ?? 0) >= flyThresholds.landedKts,
+  )
   const autoFly = useAutoFlyDetect(
     settings.autoFlyMode ?? 'ask',
     simFlight.active ? null : position,
     flying && !simFlight.active,
     { start: handleStartGpsFly, stop: () => { deferLogCloseRef.current = true; handleStopFlight() } },
     flyThresholds,
-    // Terrain under the live fix (the GPS-height gauge's lookup): a start
-    // needs the aircraft 300 ft above it, so a fast drive is not a takeoff.
-    simFlight.active ? null : agl,
+    // Highest ground around the live fix: a start needs the aircraft 200 ft
+    // above it, so a fast drive (also over a bridge) is not a takeoff.
+    simFlight.active ? null : groundMaxFt,
   )
 
   // Auto-start GPS on mount — request permission once, then watch position

@@ -56,8 +56,8 @@ offline, still air is used. Enter a wind by hand if you need one.
 
 Check **Settings → Auto flying mode** (it must not be Off) and the
 aircraft's **Takeoff speed**. On the web app, location must be on before
-takeoff. The start needs you about 300 ft above the ground, so it comes a little
-after liftoff; a phone that reports no altitude never starts by itself.
+takeoff. The start needs you about 200 ft above the highest ground nearby (300 ft of
+climb on the web app), so it comes a little after liftoff; a phone that reports no altitude never starts by itself.
 
 ## Altitude looks wrong
 

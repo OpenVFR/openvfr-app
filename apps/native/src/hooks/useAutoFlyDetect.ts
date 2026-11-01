@@ -18,7 +18,7 @@ export function useAutoFlyDetect(
   flying: boolean,
   actions: { start: () => void; stop: () => void },
   thresholds: AutoFlyThresholds = DEFAULT_AUTO_FLY_THRESHOLDS,
-  /** Terrain elevation (ft AMSL) under the fix; null = unknown. A start
+  /** Highest terrain (ft AMSL) around the fix (useGroundMaxElevation); null = unknown. A start
    *  needs the aircraft well above it (see @open-vfr/shared/autoFlyDetect). */
   groundFt: number | null = null,
 ): { suggestion: 'start' | 'stop' | null; dismiss: () => void; accept: () => void } {

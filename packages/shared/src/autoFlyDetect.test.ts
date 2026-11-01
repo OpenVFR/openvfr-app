@@ -58,7 +58,18 @@ describe('autoFlyDetect: speed alone is not a flight', () => {
     expect(run(Array(600).fill(70), false, initialAutoFlyState(), 0, 1000, 10, undefined,
       () => ({ altFt: 160, groundFt: 120 })).events).toEqual([])
   })
-  it('starts once 300 ft above the terrain', () => {
+  it('a bridge / embankment below the highest ground around never starts', () => {
+    // 150 ft above the river, but the hills around are higher.
+    expect(run(Array(600).fill(70), false, initialAutoFlyState(), 0, 1000, 10, undefined,
+      () => ({ altFt: 250, groundFt: 260 })).events).toEqual([])
+  })
+  it('starts once 200 ft above the highest ground around', () => {
+    const at = (alt: number) => run(Array(10).fill(60), false, initialAutoFlyState(), 0, 1000, 10, undefined,
+      () => ({ altFt: alt, groundFt: 100 })).events
+    expect(at(290)).toEqual([])
+    expect(at(300)).toEqual(['suggest-start'])
+  })
+  it('starts while climbing from the runway', () => {
     // Climbing 10 ft per fix from the runway at 100 ft.
     const r = run(Array(60).fill(60), false, initialAutoFlyState(), 0, 1000, 10, undefined,
       i => ({ altFt: 100 + i * 10, groundFt: 100 }))

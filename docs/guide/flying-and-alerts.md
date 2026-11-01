@@ -61,7 +61,7 @@ Flying mode can start and stop itself from takeoff and landing. Under
 
 | | Rule |
 |---|---|
-| Start suggestion | Ground speed at or above the start speed on 5 fixes in a row (accuracy 100 m or better), while not flying, and at least 300 ft above the ground. Speed alone is not enough, so driving or a train ride does not start a flight. Where the app has no terrain data it needs a 300 ft climb within a few minutes instead. It fires once and re-arms after speed falls below the landed speed. |
+| Start suggestion | Ground speed at or above the start speed on 5 fixes in a row (accuracy 100 m or better), while not flying, and at least 200 ft above the highest ground within about 500 m. Speed alone is not enough, so driving (also over a bridge) or a train ride does not start a flight. Where the app has no terrain data (the web app on the ground) it needs a 300 ft climb within a few minutes instead. It fires once and re-arms after speed falls below the landed speed. |
 | Stop suggestion | After the aircraft was seen at takeoff speed and 60 s have passed: ground speed below the landed speed on 10 fixes in a row. A slow spell right after takeoff does not trigger it. |
 | After a manual stop | No new start suggestion until speed drops below the landed speed. |
 
@@ -69,8 +69,8 @@ The three speeds come from the aircraft's **Takeoff speed** `V`: takeoff
 = V, start = V + 10 kt, landed = two thirds of V (at least 10 kt). With the
 default 30 kt that is 40, 30 and 20 kt. See [Aircraft and fuel](./aircraft-and-fuel.md).
 
-The start comes about half a minute to a minute after liftoff, once you
-are 300 ft up. The flight log still starts at the takeoff roll: the app
+The start comes some 20 to 60 seconds after liftoff, once you are clear
+of the ground around you. The flight log still starts at the takeoff roll: the app
 keeps the last few minutes of positions and puts the roll in front of it.
 
 Only GPS flying mode is started or stopped this way, not simulators or

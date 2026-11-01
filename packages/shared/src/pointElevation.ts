@@ -43,3 +43,50 @@ export async function pointElevationFt(
     return null
   }
 }
+
+/** Points sampled around the position by areaMaxElevationFt: centre, and two rings. */
+function areaPoints(lat: number, lng: number, radiusM: number): [number, number][] {
+  const dLat = radiusM / 111_320
+  const dLng = dLat / Math.max(0.1, Math.cos((lat * Math.PI) / 180))
+  const pts: [number, number][] = [[lat, lng]]
+  for (const f of [0.5, 1]) {
+    for (let k = 0; k < 8; k++) {
+      const a = (k * Math.PI) / 4
+      pts.push([lat + f * dLat * Math.cos(a), lng + f * dLng * Math.sin(a)])
+    }
+  }
+  return pts
+}
+
+/**
+ * Highest ground (ft AMSL) within about `radiusM` of a point: the centre and
+ * 16 points on two rings. A cautious "terrain" for deciding whether a fix is
+ * in the air: a road along a valley, on an embankment or a bridge sits below
+ * the highest ground around it, so a margin above this does not mistake it
+ * for flight. One elevation API request (multi-point) when there is no DEM.
+ * null when nothing answered.
+ */
+export async function areaMaxElevationFt(
+  lat: number,
+  lng: number,
+  radiusM: number,
+  opts: Parameters<typeof pointElevationFt>[2],
+): Promise<number | null> {
+  const pts = areaPoints(lat, lng, radiusM)
+  if (opts.dem) {
+    const vals = await Promise.all(pts.map(([a, b]) => opts.dem!.elevationFt(a, b).catch(() => null)))
+    const ok = vals.filter((v): v is number => v != null)
+    if (ok.length > 0) return Math.max(...ok)
+  }
+  try {
+    const params = new URLSearchParams({ locations: pts.map(([a, b]) => `${a.toFixed(5)},${b.toFixed(5)}`).join('|') })
+    const headers = opts.headers ? await opts.headers() : undefined
+    const r = await fetchWithRetry(`${opts.baseUrl}/api/elevation/eudem25m?${params.toString()}`, headers ? { headers } : undefined, { retryStatuses: [502, 504] })
+    if (!r.ok) return null
+    const data = await r.json() as { results?: { elevation: number | null }[]; status?: string }
+    const ms = data.status === 'OK' ? (data.results ?? []).map(x => x.elevation).filter((v): v is number => v != null) : []
+    return ms.length === 0 ? null : Math.round(Math.max(...ms) * FT_PER_M)
+  } catch {
+    return null
+  }
+}

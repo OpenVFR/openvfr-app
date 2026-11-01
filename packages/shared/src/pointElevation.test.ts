@@ -1,32 +1,15 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
-import { pointElevationFt } from './pointElevation'
+import { describe, it, expect } from 'vitest'
+import { areaMaxElevationFt } from './pointElevation'
 
-describe('pointElevationFt', () => {
-  const realFetch = globalThis.fetch
-  afterEach(() => { globalThis.fetch = realFetch })
-  const api = (status = 200, elevation: number | null = 100) => {
-    const fn = vi.fn(async (_u: string, _init?: RequestInit) =>
-      new Response(JSON.stringify({ status: 'OK', results: [{ elevation }] }), { status }))
-    globalThis.fetch = fn as unknown as typeof fetch
-    return fn
-  }
-
-  it('DEM first: no API call when it has a value', async () => {
-    const f = api()
-    expect(await pointElevationFt(60, 15, { dem: { elevationFt: async () => 500 }, baseUrl: '' })).toBe(500)
-    expect(f).not.toHaveBeenCalled()
+describe('areaMaxElevationFt', () => {
+  it('the highest of the sampled points, from the DEM', async () => {
+    // Ground rises to the north: 100 ft at the centre, 400 ft 500 m north.
+    const dem = { elevationFt: async (lat: number) => Math.round(100 + (lat - 59) * 111_320 / 500 * 300) }
+    const ft = await areaMaxElevationFt(59, 18, 500, { dem: dem as never, baseUrl: 'http://x' })
+    expect(ft).toBe(400)
   })
-
-  it('no DEM value (or no DEM): API, with the extra headers', async () => {
-    const f = api()
-    const ft = await pointElevationFt(60, 15, { dem: { elevationFt: async () => null }, baseUrl: 'https://api.x', headers: async () => ({ Authorization: 'Bearer t' }) })
-    expect(ft).toBe(328)
-    expect(f.mock.calls[0]![0]).toContain('https://api.x/api/elevation/eudem25m?locations=60.00000%2C15.00000')
-    expect((f.mock.calls[0]![1]!.headers as Record<string, string>).Authorization).toBe('Bearer t')
-  })
-
-  it('DEM read error and API refusal: null, never throws', async () => {
-    api(429)
-    expect(await pointElevationFt(60, 15, { dem: { elevationFt: async () => { throw new Error('x') } }, baseUrl: '' })).toBeNull()
+  it('a hill beside a valley road counts', async () => {
+    const dem = { elevationFt: async (_lat: number, lng: number) => (lng > 18.005 ? 500 : 100) }
+    expect(await areaMaxElevationFt(59, 18, 500, { dem: dem as never, baseUrl: 'http://x' })).toBe(500)
   })
 })

@@ -8,8 +8,9 @@
  *  - Not flying: ground speed >= AIRBORNE_SPD_KTS for AIRBORNE_CONFIRM_FIXES
  *    consecutive accurate fixes AND evidence of being in the air ->
  *    'suggest-start'. Evidence: GPS altitude at least AIRBORNE_AGL_FT above
- *    the terrain under the fix, or, while terrain is unknown, at least that
- *    much above the lowest altitude of the last CLIMB_WINDOW_MS. Speed alone
+ *    the highest ground within ~500 m of the fix (pointElevation's
+ *    areaMaxElevationFt), or, while terrain is unknown, at least CLIMB_FT
+ *    above the lowest altitude of the last CLIMB_WINDOW_MS. Speed alone
  *    is not enough: a car or a train easily runs faster than a light
  *    aircraft's takeoff speed, and with the setting on 'auto' a drive
  *    started a flight and its log. No altitude at all = no start. Fires
@@ -35,10 +36,14 @@ export const LANDED_CONFIRM_FIXES  = 10
 export const MIN_AIRBORNE_MS       = 60_000
 /** Fixes less accurate than this are ignored for start detection. */
 export const MAX_ACCURACY_M        = 100
-/** Height above terrain (ft) that proves the aircraft is in the air. Well
- *  above GPS altitude noise and terrain model error; no road gets there. */
-export const AIRBORNE_AGL_FT       = 300
-/** Without terrain: the climb (ft) above the lowest altitude seen this long. */
+/** Height (ft) above the HIGHEST ground around the fix that proves the
+ *  aircraft is in the air. Measuring from the highest ground (not the spot)
+ *  already absorbs bridges, embankments and valley roads, so the margin
+ *  only has to cover GPS altitude noise (phones: up to ~150 ft). */
+export const AIRBORNE_AGL_FT       = 200
+/** Without terrain: the climb (ft) above the lowest altitude seen in
+ *  CLIMB_WINDOW_MS. Larger: hilly roads climb, and GPS noise counts twice. */
+export const CLIMB_FT              = 300
 export const CLIMB_WINDOW_MS       = 5 * 60_000
 
 /** Speed thresholds (kt) for one aircraft. */
@@ -77,7 +82,7 @@ export interface AutoFlyFix {
   accuracyM: number
   /** GPS altitude, ft above sea level; null/undefined = unknown. */
   altFt?: number | null
-  /** Terrain elevation under the fix, ft above sea level; null/undefined = unknown. */
+  /** Highest terrain around the fix (~500 m), ft above sea level; null/undefined = unknown. */
   groundFt?: number | null
   /** Epoch ms. */
   t: number
@@ -107,7 +112,7 @@ export function seemsAirborne(
   if (altFt === null) return false
   if (groundFt != null && Number.isFinite(groundFt)) return altFt - groundFt >= AIRBORNE_AGL_FT
   if (history.length === 0) return false
-  return altFt - Math.min(...history.map(h => h.altFt)) >= AIRBORNE_AGL_FT
+  return altFt - Math.min(...history.map(h => h.altFt)) >= CLIMB_FT
 }
 
 export function stepAutoFly(
