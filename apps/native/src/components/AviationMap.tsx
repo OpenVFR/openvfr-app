@@ -490,6 +490,8 @@ function buildSnapCandidates(hits: Feature[]): SnapCandidate[] {
 }
 
 const SNAP_PX = 20
+/** Half-size of the box searched for a tapped traffic symbol (the icon is small). */
+const TRAFFIC_TAP_PX = 22
 // While a route point is being dragged the effective drop position is the
 // finger position shifted UP by this many screen points, so the point being
 // placed stays visible above the fingertip instead of under it.
@@ -2799,6 +2801,10 @@ export function AviationMap({
     }
   }, [followGps])
 
+  // Read by handleMapPress: only look for a tapped aircraft while any is drawn.
+  const hasTrafficRef = useRef(false)
+  hasTrafficRef.current = (trafficFC?.features.length ?? 0) > 0
+
   const handleMapPress = useCallback(
     (e: NativeSyntheticEvent<PressEvent | PressEventWithFeatures>) => {
       if (suppressNextPressRef.current) {
@@ -2928,26 +2934,46 @@ export function AviationMap({
       }
 
       const pressPoint = (payload as PressEvent).point
-      if (!planningMode && pressPoint && mapRef.current && waypoints.length > 0
-          && (onRouteEndTap || onWaypointPress || onLegPress)) {
+      const handleRouteOrFeatures = () => {
+        if (!planningMode && pressPoint && mapRef.current && waypoints.length > 0
+            && (onRouteEndTap || onWaypointPress || onLegPress)) {
+          const box: [[number, number], [number, number]] =
+            [[pressPoint[0] - SNAP_PX, pressPoint[1] - SNAP_PX], [pressPoint[0] + SNAP_PX, pressPoint[1] + SNAP_PX]]
+          Promise.all([
+            mapRef.current.queryRenderedFeatures(box, { layers: ['route-pts-circle'] }),
+            onLegPress && waypoints.length >= 2
+              ? mapRef.current.queryRenderedFeatures(box, { layers: ['route-legs-hit'] })
+              : Promise.resolve([]),
+          ]).then(([hits, legHits]) => {
+            const idx = hits[0]?.properties?.wpIndex
+            if (typeof idx === 'number' && handleRoutePoint(idx)) return
+            const leg = legHits[0]?.properties?.legIndex
+            if (typeof leg === 'number' && onLegPress) { onLegPress(leg, [pressPoint[0], pressPoint[1]]); return }
+            onRouteMiss?.()
+            handleFeatures()
+          }).catch(() => handleFeatures())
+          return
+        }
+        handleFeatures()
+      }
+
+      // Traffic first: aircraft are drawn above everything, but the press
+      // payload only carries the features of the topmost pressable source
+      // under the finger (on Android), and the NOTAM / route sources mount
+      // later and can sit above it -- so ask the map for traffic directly.
+      const ll = (payload as PressEvent).lngLat
+      if (hasTrafficRef.current && pressPoint && ll && mapRef.current) {
         const box: [[number, number], [number, number]] =
-          [[pressPoint[0] - SNAP_PX, pressPoint[1] - SNAP_PX], [pressPoint[0] + SNAP_PX, pressPoint[1] + SNAP_PX]]
-        Promise.all([
-          mapRef.current.queryRenderedFeatures(box, { layers: ['route-pts-circle'] }),
-          onLegPress && waypoints.length >= 2
-            ? mapRef.current.queryRenderedFeatures(box, { layers: ['route-legs-hit'] })
-            : Promise.resolve([]),
-        ]).then(([hits, legHits]) => {
-          const idx = hits[0]?.properties?.wpIndex
-          if (typeof idx === 'number' && handleRoutePoint(idx)) return
-          const leg = legHits[0]?.properties?.legIndex
-          if (typeof leg === 'number' && onLegPress) { onLegPress(leg, [pressPoint[0], pressPoint[1]]); return }
-          onRouteMiss?.()
-          handleFeatures()
-        }).catch(() => handleFeatures())
+          [[pressPoint[0] - TRAFFIC_TAP_PX, pressPoint[1] - TRAFFIC_TAP_PX], [pressPoint[0] + TRAFFIC_TAP_PX, pressPoint[1] + TRAFFIC_TAP_PX]]
+        mapRef.current.queryRenderedFeatures(box, { layers: ['traffic-symbols'] })
+          .then((hits) => {
+            if (hits.length > 0 && onFeatureTap) { onFeatureTap([hits[0] as Feature], [ll[0], ll[1]]); return }
+            handleRouteOrFeatures()
+          })
+          .catch(() => handleRouteOrFeatures())
         return
       }
-      handleFeatures()
+      handleRouteOrFeatures()
     },
     [onFeatureTap, onLegTap, planningMode, onPlanTap, onPlanCandidates, onPlanEmptyTap, onWaypointMove, onWaypointRemove, onRouteEndTap, onWaypointPress, onLegPress, onRouteMiss, waypoints, rulerMode, rulerPoints, onRulerTap],
   )
@@ -3299,7 +3325,10 @@ export function AviationMap({
             parachutists, UAVs, and airliners now render distinctly instead
             of all being the same dot. */}
         {trafficFC && trafficFC.features.length > 0 && (
-          <GeoJSONSource id="traffic-src" data={trafficFC}>
+          // onPress (a no-op): a source only adds its features to the map's
+          // press payload when it has a press handler -- without it a tap on
+          // an aircraft never reached handleFeatureTap.
+          <GeoJSONSource id="traffic-src" data={trafficFC} onPress={() => {}}>
             {([[1, '#22c55e'], [2, '#eab308'], [3, '#ef4444']] as const).map(([u, c]) => (
               <Layer
                 key={u}

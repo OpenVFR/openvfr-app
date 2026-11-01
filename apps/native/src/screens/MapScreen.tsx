@@ -29,6 +29,7 @@ import { AirspacePopup }     from '../components/AirspacePopup'
 import type { AirspaceFeatureProps, RegionalNotamHit } from '../components/AirspacePopup'
 import { FeaturePopup }      from '../components/FeaturePopup'
 import type { FeatureInfo }  from '../components/FeaturePopup'
+import { isTrafficFeature, trafficFeatureInfo } from '../utils/trafficInfo'
 import { useGps }            from '../hooks/useGps'
 import { useRouteContext } from '../context/RouteContext'
 import { SnapPicker, type SnapCandidate } from '../components/SnapPicker'
@@ -1025,6 +1026,14 @@ function MapScreenForCountry() {
 
     if (feature) {
       const p = feature.properties ?? {}
+
+      // Traffic symbol: drawn above everything else, so it wins over an
+      // aerodrome or point it happens to be flying over.
+      if (isTrafficFeature(p) && feature.geometry.type === 'Point') {
+        const [lng, lat] = (feature.geometry as Point).coordinates
+        setFeatureInfo(trafficFeatureInfo(p, [lng, lat]))
+        return
+      }
 
       if (isAerodrome(p)) {
         const aeroCoords = feature.geometry.type === 'Point'

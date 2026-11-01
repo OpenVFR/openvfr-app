@@ -48,6 +48,7 @@ export interface TrafficFeature {
   relAltFt: number | null
   category: number | null
   onGround: boolean
+  source:   'opensky' | 'ogn'
 }
 
 export interface RegionalNotamFeature {
@@ -222,7 +223,7 @@ function TrafficHeader({ f }: { f: TrafficFeature }) {
     <div className={css.headerContent}>
       <span className={css.bigId}>{f.callsign ?? f.icao24}</span>
       {f.callsign && <span className={css.typeTag}>{f.icao24.toUpperCase()}</span>}
-      <span className={css.typeTag}>ADS-B</span>
+      <span className={css.typeTag}>{f.source === 'ogn' ? 'FLARM' : 'ADS-B'}</span>
     </div>
   )
 }
@@ -261,7 +262,7 @@ function TrafficBody({ f }: { f: TrafficFeature }) {
           <span className={css.value}>{CATEGORY_LABEL[f.category] ?? `Cat ${f.category}`}</span>
         </div>
       )}
-      <div className={css.source}>© OpenSky Network</div>
+      <div className={css.source}>{f.source === 'ogn' ? '© Open Glider Network' : '© OpenSky Network'}</div>
     </div>
   )
 }

@@ -71,6 +71,10 @@ altitude. Use it as a hint, not as a clearance tool.
 - **Navaids, waypoints, obstacles, landmarks, your places:** a card with
   its details and a button to add it to the route.
 - **Airspace:** the limits and class.
+- **Air traffic:** callsign, altitude (and height relative to you when
+  you have a GPS fix), speed, track, vertical rate, category and the data
+  source. The details are a snapshot taken at the tap; they do not update
+  while the card is open.
 - **Anywhere else:** on the web app the **What's here** popup lists
   everything under the point; on native a small popover offers to save the
   spot as a place, fly direct to it, or start or extend a route there.

@@ -1,5 +1,5 @@
 /**
- * FeaturePopup — info popup for obstacles and navaids tapped on the map.
+ * FeaturePopup — info popup for obstacles, navaids and traffic tapped on the map.
  */
 
 import React from 'react'
@@ -11,7 +11,7 @@ import { useThemedStyles, type ScaledTheme } from '../styles/theme'
 // through AirspacePopup's regionalNotams rows instead (see MapScreen.tsx's
 // handleFeatureTap notamHits collection), matching web's fef381a commit
 // which removed the equivalent parallel path in FeaturePopup.tsx there.
-export type FeatureKind = 'navaid' | 'obstacle' | 'waypoint' | null
+export type FeatureKind = 'navaid' | 'obstacle' | 'waypoint' | 'traffic' | null
 
 export interface FeatureInfo {
   kind:     FeatureKind
@@ -35,6 +35,7 @@ const KIND_ICON: Record<NonNullable<FeatureKind>, string> = {
   navaid:   '📡',
   obstacle: '⚠️',
   waypoint: '📍',
+  traffic:  '✈️',
 }
 
 export function FeaturePopup({ feature, onClose, onAddToRoute, addLabel = '+ Add to route' }: Props) {

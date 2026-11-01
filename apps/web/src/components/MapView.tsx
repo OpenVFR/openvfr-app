@@ -3084,6 +3084,47 @@ export default function MapView({ auth }: { auth: AuthState }) {
       // Suppress click immediately following a waypoint drag-move mousedown.
       if (suppressNextClickRef.current) { suppressNextClickRef.current = false; return }
 
+      // ── T. Traffic symbol click — show aircraft details ─────────────────
+      // Checked before the route / sim-target handlers below: traffic is
+      // drawn on top of everything, and an aircraft flying along the route
+      // line used to unlock the leg (in flight) or set the sim target
+      // instead of opening its details. Ruler, placing a saved place and
+      // extending the route keep the tap: a moving aircraft is no fix.
+      if (!rulerModeRef.current && !placingUserWpRef.current && !extendingRef.current &&
+          map.getLayer('traffic-symbols')) {
+        const pad = 12
+        const trafficHits = map.queryRenderedFeatures(
+          [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]],
+          { layers: ['traffic-symbols'] },
+        )
+        if (trafficHits.length > 0) {
+          const p = trafficHits[0].properties as Record<string, unknown>
+          const icao24 = String(p.icao24 ?? '')
+          const target = trafficTargetsRef.current.find(t => t.icao24 === icao24)
+          if (target) {
+            setActivePopup({
+              kind: 'point',
+              feature: {
+                kind:     'traffic',
+                icao24:   target.icao24,
+                callsign: target.callsign,
+                altFt:    target.altFt,
+                speedKts: target.speedKts,
+                trackDeg: target.trackDeg,
+                vertFpm:  target.vertFpm,
+                relAltFt: target.relAltFt,
+                category: target.category,
+                onGround: target.onGround,
+                source:   target.source,
+              },
+              x: e.point.x,
+              y: e.point.y,
+            })
+            return
+          }
+        }
+      }
+
       // In flight: tapping a route point opens its action menu; tapping a
       // leg unlocks that leg (and its end points) for dragging for a few
       // seconds -- the in-flight guard against stray touches.
@@ -3212,39 +3253,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         }
       }
 
-      // ── 0d. Traffic symbol click — show aircraft details ────────────────
-      {
-        const pad = 12
-        const trafficHits = map.queryRenderedFeatures(
-          [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]],
-          { layers: ['traffic-symbols'] },
-        )
-        if (trafficHits.length > 0) {
-          const p = trafficHits[0].properties as Record<string, unknown>
-          const icao24 = String(p.icao24 ?? '')
-          const target = trafficTargetsRef.current.find(t => t.icao24 === icao24)
-          if (target) {
-            setActivePopup({
-              kind: 'point',
-              feature: {
-                kind:     'traffic',
-                icao24:   target.icao24,
-                callsign: target.callsign,
-                altFt:    target.altFt,
-                speedKts: target.speedKts,
-                trackDeg: target.trackDeg,
-                vertFpm:  target.vertFpm,
-                relAltFt: target.relAltFt,
-                category: target.category,
-                onGround: target.onGround,
-              },
-              x: e.point.x,
-              y: e.point.y,
-            })
-            return
-          }
-        }
-      }
+      // ── 0d. Traffic symbol click: handled first (step T above). ─────────
 
       // ── 0e. (formerly) Regional NOTAM circle/polygon click — REMOVED as an
       // exclusive, click-blocking layer. Large ad-hoc NOTAM areas used to
