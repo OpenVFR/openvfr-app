@@ -116,7 +116,7 @@ import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
 import { useGroundMaxElevation } from '../hooks/useGroundMaxElevation'
 import { trackToGeoJson } from '@open-vfr/shared/flightLogStats'
 import { parseParkTimeout } from '@open-vfr/shared/parkTimeout'
-import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
+import { autoFlyThresholds, CLIMB_WINDOW_MS } from '@open-vfr/shared/autoFlyDetect'
 import { iasToTas } from '@open-vfr/shared/airspeed'
 import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
 import { RulerHeaderStart, RulerHeaderEnd, RouteHeaderStart } from '../components/RulerHeaderStats'
@@ -161,7 +161,7 @@ import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../sty
 import { isLowMemoryDevice } from '../utils/deviceMemory'
 import { NativeSheet } from '../components/NativeSheet'
 import { BaroPromptModal } from '../components/BaroPromptModal'
-/** Height above the spot from which the highest ground around is checked (see groundMaxFt). */
+/** Climb (ft) from which the highest ground around is checked (see groundMaxFt). */
 const GROUND_MAX_CHECK_FROM_FT = 100
 
 function isAerodrome(p: Record<string, unknown>) {
@@ -308,7 +308,9 @@ function MapScreenForCountry() {
     }).catch(() => { layersLoadedRef.current = true })
   }, [])
 
-  const agl  = useTerrainElevation(activePosition)
+  // Flying: refreshed as the aircraft moves (gauge, alerts). Not flying: only
+  // sampled standing still, for the GPS altitude reference check.
+  const agl  = useTerrainElevation(activePosition, flying || simFlight.active || simPosition != null)
   // Verify the GPS altitude reference (ellipsoid vs sea level) against the
   // terrain under real GPS fixes -- never simulator positions. The check
   // itself only takes stationary, accurate, spaced samples.
@@ -932,15 +934,25 @@ function MapScreenForCountry() {
   // Takeoff / landing detection from the always-on GPS fix. Simulator flights
   // never auto start or stop (fix is null while the sim drives).
   // Highest ground around the fix, looked up only when it can decide a
-  // start: not flying, at start speed, and already 100 ft above the ground
-  // at the spot (the GPS-height gauge's lookup, `agl`). A car almost never
-  // is, so driving costs no extra elevation requests; a takeoff costs one or
-  // two (shared free elevation API budget, see apps/api externalProxy.ts).
+  // start: not flying, at start speed, and already GROUND_MAX_CHECK_FROM_FT
+  // above the lowest altitude of the last few minutes (a takeoff climbs that
+  // within a minute; a drive on level roads never does). Driving costs no
+  // elevation requests; a takeoff one or two (shared free elevation API
+  // budget, see apps/api externalProxy.ts).
+  const recentAltRef = React.useRef<{ t: number; altFt: number }[]>([])
+  if (position && !flying) {
+    const t = Date.now()
+    const buf = recentAltRef.current
+    if (buf.length === 0 || t - buf[buf.length - 1]!.t >= 1000) {
+      recentAltRef.current = [...buf.filter(h => t - h.t <= CLIMB_WINDOW_MS), { t, altFt: position.altFt }]
+    }
+  }
+  const lowestRecentAltFt = recentAltRef.current.length ? Math.min(...recentAltRef.current.map(h => h.altFt)) : null
   const groundMaxFt = useGroundMaxElevation(
     simFlight.active ? null : position,
     !flying && !simFlight.active && (settings.autoFlyMode ?? 'ask') !== 'off'
       && position != null && position.speedKts >= flyThresholds.airborneKts
-      && agl != null && position.altFt - agl >= GROUND_MAX_CHECK_FROM_FT,
+      && lowestRecentAltFt != null && position.altFt - lowestRecentAltFt >= GROUND_MAX_CHECK_FROM_FT,
   )
   const autoFly = useAutoFlyDetect(
     settings.autoFlyMode ?? 'ask',
