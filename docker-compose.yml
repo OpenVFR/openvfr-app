@@ -94,6 +94,10 @@ services:
       # ELEVATION_DEM_SOURCES = off. See docs/self-hosting.md.
       - TILES_BASE_URL=${TILES_BASE_URL:-}
       - ELEVATION_DEM_SOURCES=${ELEVATION_DEM_SOURCES:-}
+      # Model wind/weather from your own per-country weather grids for
+      # in-country points (apps/api/src/wxGrid.ts). Unset = auto from
+      # TILES_BASE_URL (<cc>/latest.json under wx/), `off`, or a list.
+      - WX_GRID_SOURCES=${WX_GRID_SOURCES:-}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-dev_secret_change_in_production_32ch}
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:5173}
       - BETTER_AUTH_APP_ORIGIN=${BETTER_AUTH_APP_ORIGIN:-http://localhost:5173}

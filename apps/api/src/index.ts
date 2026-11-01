@@ -636,10 +636,12 @@ app.get('/api/traffic/stream', async (c) => {
 // OpenTopoData can't answer at once (see ./demElevation.ts):
 // ELEVATION_DEM_SOURCES unset = <TILES_BASE_URL>/<cc>-hillshade.pmtiles for
 // the available countries, `off`, or a list of archive URLs / file paths.
+const tilesBaseUrl = (process.env['TILES_BASE_URL'] ?? '').trim().replace(/\/+$/, '')
+const availableCountryCodes = async () => (await getAvailableCountries())?.map((c) => c.code) ?? null
 const demElevation = createDemElevation({
   sources: parseDemSources(process.env['ELEVATION_DEM_SOURCES']),
-  tilesBaseUrl: (process.env['TILES_BASE_URL'] ?? '').trim().replace(/\/+$/, ''),
-  countries: async () => (await getAvailableCountries())?.map((c) => c.code) ?? null,
+  tilesBaseUrl,
+  countries: availableCountryCodes,
 })
 // Model wind/weather comes from this deployment's precomputed per-country
 // weather grids wherever they cover the request (see ./wxGrid.ts):
@@ -647,8 +649,8 @@ const demElevation = createDemElevation({
 // available countries, `off`, or a list of pointer/grid URLs / file paths.
 const wxGrid = createWxGrid({
   sources: parseWxGridSources(process.env['WX_GRID_SOURCES']),
-  tilesBaseUrl: (process.env['TILES_BASE_URL'] ?? '').trim().replace(/\/+$/, ''),
-  countries: async () => (await getAvailableCountries())?.map((c) => c.code) ?? null,
+  tilesBaseUrl,
+  countries: availableCountryCodes,
 })
 mountExternalProxies(app, requireSession, undefined, {
   'open-meteo': wxGrid && {

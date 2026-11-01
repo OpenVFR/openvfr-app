@@ -417,19 +417,27 @@ last copy for offline use.
   answers for every lattice point inside the country plus a sea/border
   buffer and for each aerodrome — `minutely_15` slots of the surface bundle
   and all pressure-level winds (Open-Meteo's `current` is the `minutely_15`
-  value of the current slot), and hourly wind per level from 00:00 UTC
-  yesterday for 17 days — produced by a scheduled job of your own against a
+  value of the current slot), and optionally hourly wind per level from
+  00:00 UTC yesterday for 17 days (route-planning forecast wind; without it
+  those few requests use the upstream budget) — produced by a scheduled job of your own against a
   self-hosted Open-Meteo instance (`ghcr.io/open-meteo/open-meteo` in remote
   mode answers exactly like the public API with its default model
   selection; self-hosting has no call limits and no commercial-use
   restriction). Publish each build under a new file name and then a pointer
   `{"file": "<name>.wxg"}` next to it; the API re-reads pointers every 2
   minutes and reads grids with Range requests (same `206` rule as above).
+  Serve the pointer with `Cache-Control: no-cache` or a max-age of at most
+  ~60 s, and make sure your tile host / CDN does not override that with a
+  long edge TTL: a pointer cached for hours keeps the API on an old grid,
+  which it stops using after 2 h (requests then go upstream again). The
+  `.wxg` files themselves never change and may be cached like the other
+  versioned tile files.
   `WX_GRID_SOURCES` (API server env): unset =
   `<TILES_BASE_URL>/wx/<cc>/latest.json` for every available country
   (nothing when `TILES_BASE_URL` is unset; a missing pointer just means no
   grid for that country); `off`; or a comma-separated list of pointer and/or
-  `.wxg` URLs / absolute file paths. The admin External APIs data shows
+  `.wxg` http(s) URLs / absolute file paths (relative paths are ignored with
+  a warning; the same rule applies to `ELEVATION_DEM_SOURCES`). The admin External APIs data shows
   which grid each country uses and its age.
   Open-Meteo's free tier is for
   non-commercial use only (open-meteo.com/en/terms); a commercial

@@ -39,11 +39,14 @@
  * the header/directory and the blocks a request touches are fetched.
  */
 
-import { inflateSync } from 'node:zlib'
+import { inflate } from 'node:zlib'
+import { promisify } from 'node:util'
 import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { RangeSource } from '@open-vfr/shared/terrainDem'
-import { HttpRangeSource, FileRangeSource } from './demElevation'
+import { HttpRangeSource, FileRangeSource, parseLocalSources } from './demElevation'
+
+const inflateAsync = promisify(inflate)
 
 const MAGIC = 'OVWX'
 const VERSION = 1
@@ -58,6 +61,12 @@ export const MAX_GRID_AGE_MS = 2 * 60 * 60 * 1000
 /** Inflated blocks kept in memory, across all files. */
 const BLOCK_CACHE_BYTES = 48 * 1024 * 1024
 const POINTER_TIMEOUT_MS = 10_000
+/** Longest a request waits for the very first refresh before going upstream. */
+const FIRST_REFRESH_WAIT_MS = 2_000
+/** Sanity caps on what a file may make us read or allocate. */
+const MAX_HEADER_BYTES = 4 * 1024 * 1024
+const MAX_DIR_BYTES = 4 * 1024 * 1024
+const MAX_BLOCK_BYTES = 16 * 1024 * 1024
 /** Extra points (aerodromes) also answer requests this close (~50 m): the
  *  web map hands out feature coordinates quantized to its tile grid, so the
  *  4 decimals it sends move with the zoom level. Same aerodrome, same
@@ -100,8 +109,45 @@ function cachePut(key: string, b: Block): void {
   }
 }
 
+/** Block loads in progress, keyed like the cache: concurrent readers of one
+ *  block (a map view's points mostly share one tile) share one read + inflate. */
+const blockLoads = new Map<string, Promise<Block>>()
+
 /** Test-only. */
-export function __clearWxBlockCache(): void { blockCache.clear(); blockCacheBytes = 0 }
+export function __clearWxBlockCache(): void { blockCache.clear(); blockCacheBytes = 0; blockLoads.clear() }
+
+/** True when a grid is too old to answer from (its builder stopped). */
+export function gridTooOld(h: GridHeader, nowMs: number): boolean {
+  return nowMs - h.generatedAt * 1000 > MAX_GRID_AGE_MS
+}
+
+/** Tiles in the lattice and blocks per group (tiles + extra-point blocks). */
+function blockLayout(h: GridHeader): { ntlat: number; ntlon: number; nblocks: number } {
+  const ntlat = Math.ceil(h.nlat / h.tile), ntlon = Math.ceil(h.nlon / h.tile)
+  return { ntlat, ntlon, nblocks: ntlat * ntlon + Math.ceil(h.points.length / (h.tile * h.tile)) }
+}
+
+const isInt = (x: unknown, lo: number, hi: number): x is number => typeof x === 'number' && Number.isInteger(x) && x >= lo && x <= hi
+
+/** Throws unless the header is complete and within sane bounds. Exported for tests. */
+export function validateHeader(h: unknown): asserts h is GridHeader {
+  const x = h as Partial<GridHeader> | null
+  const bad = (what: string) => { throw new Error(`wx grid: invalid header (${what})`) }
+  if (!x || typeof x !== 'object') bad('not an object')
+  if (typeof x!.generatedAt !== 'number' || !Number.isFinite(x!.generatedAt) || x!.generatedAt <= 0) bad('generatedAt')
+  if (typeof x!.step !== 'number' || !(x!.step > 0 && x!.step <= 1)) bad('step')
+  if (!isInt(x!.tile, 1, 64)) bad('tile')
+  if (!isInt(x!.nlat, 1, 20000) || !isInt(x!.nlon, 1, 20000)) bad('nlat/nlon')
+  if (!isInt(x!.lat0i, -1e6, 1e6) || !isInt(x!.lon0i, -1e6, 1e6)) bad('lat0i/lon0i')
+  if (!Array.isArray(x!.points) || x!.points.length > 100_000 || !x!.points.every((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]))) bad('points')
+  if (!Array.isArray(x!.groups) || x!.groups.length === 0 || x!.groups.length > 64) bad('groups')
+  for (const g of x!.groups!) {
+    if (!g || (g.kind !== 'minutely_15' && g.kind !== 'hourly') || typeof g.id !== 'string') bad('group kind/id')
+    if (!isInt(g.t0, 0, 2 ** 40) || !isInt(g.dt, 1, 86400) || !isInt(g.nt, 1, 10000)) bad(`group ${g.id} time axis`)
+    if (!Array.isArray(g.vars) || g.vars.length === 0 || g.vars.length > 64 ||
+      !g.vars.every((v) => typeof v?.name === 'string' && isInt(v.scale, 1, 1_000_000))) bad(`group ${g.id} vars`)
+  }
+}
 
 /** Inverse of the writer's delta coding + byte shuffle. Exported for tests. */
 export function decodeStream(buf: Uint8Array, n: number): Int16Array {
@@ -116,10 +162,13 @@ export function decodeStream(buf: Uint8Array, n: number): Int16Array {
 
 /** Parses one inflated block. Exported for tests. */
 export function parseBlock(raw: Uint8Array, nvals: number): Block {
+  if (raw.byteLength < 4) throw new Error('wx grid: truncated block')
   const dv = new DataView(raw.buffer, raw.byteOffset, raw.byteLength)
   const nslots = dv.getUint16(0, true), nrows = dv.getUint16(2, true)
   let o = 4
+  if (raw.byteLength < o + 13 * nslots) throw new Error('wx grid: truncated block')
   const idx = raw.slice(o, o + nslots); o += nslots
+  for (const r of idx) if (r !== NO_ROW && r >= nrows) throw new Error('wx grid: row index out of range')
   const meta = new Float32Array(nslots * 3)
   for (let k = 0; k < nslots * 3; k++) meta[k] = dv.getFloat32(o + 4 * k, true)
   o += 12 * nslots
@@ -156,13 +205,13 @@ export class WxGridFile {
   private readonly ntlon: number
   private readonly nblocks: number
   private readonly pointIdx: Map<string, number>
+  /** Set by close(): reads return null instead of touching the source again. */
+  private closed = false
 
   private constructor(readonly name: string, private readonly source: RangeSource, header: GridHeader, dir: DataView) {
     this.header = header
     this.dir = dir
-    this.ntlat = Math.ceil(header.nlat / header.tile)
-    this.ntlon = Math.ceil(header.nlon / header.tile)
-    this.nblocks = this.ntlat * this.ntlon + Math.ceil(header.points.length / (header.tile * header.tile))
+    ;({ ntlat: this.ntlat, ntlon: this.ntlon, nblocks: this.nblocks } = blockLayout(header))
     this.pointIdx = new Map(header.points.map((p, k) => [pointKey(p[0], p[1]), k]))
   }
 
@@ -174,11 +223,13 @@ export class WxGridFile {
     const version = dv.getUint16(4, true)
     if (magic !== MAGIC || version !== VERSION) throw new Error(`wx grid ${name}: not an OVWX v${VERSION} file`)
     const hlen = dv.getUint32(8, true)
+    if (hlen > MAX_HEADER_BYTES) throw new Error(`wx grid ${name}: header of ${hlen} bytes refused`)
     const head = 12 + hlen <= first.byteLength ? first : new Uint8Array((await source.getBytes(0, 12 + hlen)).data)
-    const header = JSON.parse(new TextDecoder().decode(head.subarray(12, 12 + hlen))) as GridHeader
-    const ntiles = Math.ceil(header.nlat / header.tile) * Math.ceil(header.nlon / header.tile)
-    const nblocks = ntiles + Math.ceil(header.points.length / (header.tile * header.tile))
-    const dirLen = nblocks * header.groups.length * 8
+    if (head.byteLength < 12 + hlen) throw new Error(`wx grid ${name}: short header`)
+    const header: unknown = JSON.parse(new TextDecoder().decode(head.subarray(12, 12 + hlen)))
+    validateHeader(header)
+    const dirLen = blockLayout(header).nblocks * header.groups.length * 8
+    if (dirLen > MAX_DIR_BYTES) throw new Error(`wx grid ${name}: directory of ${dirLen} bytes refused`)
     const dirBuf = new Uint8Array((await source.getBytes(12 + hlen, dirLen)).data)
     if (dirBuf.byteLength !== dirLen) throw new Error(`wx grid ${name}: short directory`)
     return new WxGridFile(name, source, header, new DataView(dirBuf.buffer, dirBuf.byteOffset, dirBuf.byteLength))
@@ -186,10 +237,30 @@ export class WxGridFile {
 
   /** Releases the file handle (local files) and this file's cached blocks. */
   async close(): Promise<void> {
+    this.closed = true
     for (const [k, b] of blockCache) {
       if (k.startsWith(`${this.name}|`)) { blockCache.delete(k); blockCacheBytes -= b.bytes }
     }
-    await (this.source as { close?: () => Promise<void> }).close?.()
+    if (this.source instanceof FileRangeSource) await this.source.close()
+  }
+
+  /** Reads, inflates and parses one block; at most once at a time per block. */
+  private loadBlock(key: string, off: number, len: number, nvals: number, nslots: number): Promise<Block> {
+    let p = blockLoads.get(key)
+    if (!p) {
+      p = (async () => {
+        if (len > MAX_BLOCK_BYTES) throw new Error(`wx grid ${this.name}: block of ${len} bytes refused`)
+        const data = new Uint8Array((await this.source.getBytes(off, len)).data)
+        if (data.byteLength !== len) throw new Error(`wx grid ${this.name}: short block read`)
+        // Upper bound of the inflated block: header, index, meta, every slot its own row.
+        const maxOut = 4 + 13 * nslots + 2 * nslots * nvals
+        const b = parseBlock(new Uint8Array(await inflateAsync(data, { maxOutputLength: maxOut })), nvals)
+        if (!this.closed) cachePut(key, b)
+        return b
+      })().finally(() => blockLoads.delete(key))
+      blockLoads.set(key, p)
+    }
+    return p
   }
 
   /** [block, slot] of a point, or null when the file has no such point. */
@@ -217,6 +288,7 @@ export class WxGridFile {
 
   /** Values of one group at one point: meta + row (nvars*nt int16), or null (not covered). */
   async read(g: number, lat: number, lon: number): Promise<{ meta: [number, number, number]; row: Int16Array } | null> {
+    if (this.closed) return null
     const s = this.slotOf(lat, lon)
     if (!s) return null
     const [block, slot] = s
@@ -226,13 +298,7 @@ export class WxGridFile {
     const grp = this.header.groups[g]!
     const nvals = grp.vars.length * grp.nt
     const key = `${this.name}|${g}|${block}`
-    let b = cacheGet(key)
-    if (!b) {
-      const data = new Uint8Array((await this.source.getBytes(off, len)).data)
-      if (data.byteLength !== len) throw new Error(`wx grid ${this.name}: short block read`)
-      b = parseBlock(new Uint8Array(inflateSync(data)), nvals)
-      cachePut(key, b)
-    }
+    const b = cacheGet(key) ?? await this.loadBlock(key, off, len, nvals, this.header.tile * this.header.tile)
     const r = b.idx[slot]
     if (r == null || r === NO_ROW) return null
     return { meta: [b.meta[3 * slot]!, b.meta[3 * slot + 1]!, b.meta[3 * slot + 2]!], row: b.rows.subarray(r * nvals, (r + 1) * nvals) }
@@ -258,7 +324,7 @@ function value(x: number, scale: number): string {
  */
 export async function answerFromFile(f: WxGridFile, q: URLSearchParams, lat: number, lon: number, nowMs: number): Promise<string | null> {
   const h = f.header
-  if (nowMs - h.generatedAt * 1000 > MAX_GRID_AGE_MS) return null
+  if (gridTooOld(h, nowMs)) return null
   // The file holds knots and unix times, which is what the apps ask for.
   if (q.get('wind_speed_unit') !== 'kn' || (q.get('timeformat') ?? 'iso8601') !== 'unixtime') return null
   const current = q.get('current'), hourly = q.get('hourly')
@@ -305,13 +371,10 @@ export async function answerFromFile(f: WxGridFile, q: URLSearchParams, lat: num
     `"timezone":"GMT","timezone_abbreviation":"GMT","elevation":${Number.isFinite(el) ? float32Text(el) : 'null'},${block}}`
 }
 
-/** Parses WX_GRID_SOURCES. Exported for tests. */
-export function parseWxGridSources(v: string | undefined): 'auto' | 'off' | string[] {
-  const s = (v ?? '').trim()
-  if (s === '' || s.toLowerCase() === 'auto') return 'auto'
-  if (s.toLowerCase() === 'off') return 'off'
-  return s.split(',').map((x) => x.trim()).filter(Boolean)
-}
+/** Parses WX_GRID_SOURCES (same rules as ELEVATION_DEM_SOURCES). Exported for tests. */
+export const parseWxGridSources = (v: string | undefined) => parseLocalSources(v, 'WX_GRID_SOURCES')
+
+const GRID_FILE = /\.wxg$/i
 
 const isUrl = (s: string) => /^https?:\/\//i.test(s)
 
@@ -321,7 +384,7 @@ async function readPointer(location: string): Promise<{ file: string }> {
       .then((r) => { if (!r.ok) throw Object.assign(new Error(`HTTP ${r.status}`), { notFound: r.status === 404 }); return r.text() })
     : await readFile(location, 'utf8')
   const p = JSON.parse(text) as { file?: unknown }
-  if (typeof p.file !== 'string' || !/^[A-Za-z0-9._-]+\.wxg$/.test(p.file)) throw new Error('pointer has no valid "file"')
+  if (typeof p.file !== 'string' || !/^[A-Za-z0-9._-]+$/.test(p.file) || !GRID_FILE.test(p.file)) throw new Error('pointer has no valid "file"')
   return { file: p.file }
 }
 
@@ -331,7 +394,10 @@ function resolveNext(location: string, file: string): string {
 
 export interface WxGridStatus {
   files: { country: string; file: string; generatedAt: string; ageMin: number; usable: boolean }[]
+  /** Sources that could not be read (a real problem). */
   errors: string[]
+  /** Sources with no grid published (yet): expected for countries without one. */
+  missing: string[]
   blockCache: { blocks: number; bytes: number }
 }
 
@@ -351,9 +417,17 @@ export function createWxGrid(opts: {
   if (opts.sources === 'off') return null
   if (opts.sources === 'auto' && !opts.tilesBaseUrl) return null
   const now = opts.now ?? Date.now
-  const open = opts.open ?? ((loc: string) => WxGridFile.open(loc, isUrl(loc) ? new HttpRangeSource(loc) : new FileRangeSource(loc)))
+  const open = opts.open ?? ((loc: string) => WxGridFile.open(loc, isUrl(loc)
+    ? new HttpRangeSource(loc, fetch, { maxBytes: MAX_BLOCK_BYTES, label: 'wx grid' })
+    : new FileRangeSource(loc)))
   let files = new Map<string, WxGridFile>()   // source location -> current file
   let errors: string[] = []
+  let missingNow: string[] = []
+  // Dropped files are closed one refresh later, so requests still reading
+  // them (answer() iterates across awaits) finish first.
+  let retired: WxGridFile[] = []
+  // Read failures are logged once per file, not per request.
+  const readFailed = new Set<string>()
   // Logged on change only: the production log watcher alerts on every stderr line.
   let lastProblems = ''
   const stale = new Set<string>()
@@ -370,12 +444,14 @@ export function createWxGrid(opts: {
     } else {
       locations = opts.sources as string[]
     }
+    for (const f of retired) void f.close()
+    retired = []
     const next = new Map<string, WxGridFile>()
     const errs: string[] = []
     const missing: string[] = []
     await Promise.all(locations.map(async (loc) => {
       try {
-        const target = /\.wxg$/i.test(loc) ? loc : resolveNext(loc, (await readPointer(loc)).file)
+        const target = GRID_FILE.test(loc) ? loc : resolveNext(loc, (await readPointer(loc)).file)
         const prev = files.get(loc)
         // Files are immutable: same name = same content, keep the opened one.
         next.set(loc, prev && prev.name === target ? prev : await open(target))
@@ -389,7 +465,8 @@ export function createWxGrid(opts: {
     }))
     const before = new Set([...files.values()].map((f) => f.name))
     const after = new Set([...next.values()].map((f) => f.name))
-    for (const f of files.values()) if (!after.has(f.name)) void f.close()
+    retired = [...files.values()].filter((f) => !after.has(f.name))
+    for (const f of retired) readFailed.delete(f.name)
     for (const f of next.values()) if (!before.has(f.name)) console.log(`[wx-grid] using ${f.name} (${f.header.country}, generated ${new Date(f.header.generatedAt * 1000).toISOString()})`)
     const problems = errs.join('; ')
     if (problems !== lastProblems) {
@@ -399,19 +476,26 @@ export function createWxGrid(opts: {
     }
     // A grid ageing out means its builder stopped: say so once, and once when it recovers.
     for (const f of next.values()) {
-      const old = now() - f.header.generatedAt * 1000 > MAX_GRID_AGE_MS
+      const old = gridTooOld(f.header, now())
       if (old && !stale.has(f.name)) { stale.add(f.name); console.warn(`[wx-grid] ${f.name} (${f.header.country}) is older than ${MAX_GRID_AGE_MS / 3600_000} h and no newer grid is published: these requests use Open-Meteo upstream again`) }
     }
     for (const n of [...stale]) if (![...next.values()].some((f) => f.name === n)) stale.delete(n)
     files = next
-    errors = [...errs, ...missing.map((l) => `${l}: no grid published`)]
+    errors = errs
+    missingNow = missing
     ready = true
     nextAt = now() + REFRESH_MS
   }
   const ensure = async () => {
     if (now() < nextAt) return
     refreshing ??= refresh().finally(() => { refreshing = null })
-    if (!ready) await refreshing
+    // First refresh: wait a little, never long (a slow tile host must not
+    // stall requests; they go upstream until the grids are known).
+    if (!ready) {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      await Promise.race([refreshing, new Promise<void>((r) => { timer = setTimeout(r, FIRST_REFRESH_WAIT_MS) })])
+      clearTimeout(timer)
+    }
   }
 
   return {
@@ -425,7 +509,10 @@ export function createWxGrid(opts: {
           const a = await answerFromFile(f, q, la, lo, t)
           if (a) return a
         } catch (err) {
-          console.warn(`[wx-grid] read failed (${f.name}):`, (err as Error)?.message)
+          if (!readFailed.has(f.name)) {
+            readFailed.add(f.name)
+            console.warn(`[wx-grid] read failed (${f.name}), answering upstream instead:`, (err as Error)?.message)
+          }
         }
       }
       return null
@@ -438,15 +525,17 @@ export function createWxGrid(opts: {
           file: f.name,
           generatedAt: new Date(f.header.generatedAt * 1000).toISOString(),
           ageMin: Math.round((t - f.header.generatedAt * 1000) / 60000),
-          usable: t - f.header.generatedAt * 1000 <= MAX_GRID_AGE_MS,
+          usable: !gridTooOld(f.header, t),
         })),
         errors: [...errors],
+        missing: [...missingNow],
         blockCache: { blocks: blockCache.size, bytes: blockCacheBytes },
       }
     },
     async close() {
-      await Promise.all([...files.values()].map((f) => f.close()))
+      await Promise.all([...files.values(), ...retired].map((f) => f.close()))
       files = new Map()
+      retired = []
     },
   }
 }

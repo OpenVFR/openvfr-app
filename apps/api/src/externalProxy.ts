@@ -39,6 +39,7 @@
 
 import type { Context } from 'hono'
 import { throttleDelayMs, currentExpiresAt } from '@open-vfr/shared/openMeteo'
+import type { WxGridStatus } from './wxGrid'
 
 export interface ProxySpec {
   name: string
@@ -443,11 +444,19 @@ async function callUpstream(s: ProxyState, spec: ProxySpec, url: string, weight:
   }
 }
 
+/** Entries of an ascending timestamp list newer than `since` (binary search:
+ *  caps run up to 20 000 per day, so no per-request filtering). */
+function countSince(ts: number[], since: number): number {
+  let lo = 0, hi = ts.length
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (ts[mid]! > since) hi = mid; else lo = mid + 1 }
+  return ts.length - lo
+}
+
 /** Per-user miss quota. Returns seconds to wait, or 0 (and records the miss). Exported for tests. */
 export function takeUserMiss(s: ProxyState, spec: ProxySpec, userId: string, now: number, limits = spec.perUser, weight = 1): number {
   const ts = pruneWindow(s.userMisses.get(userId) ?? [], now, DAY_MS)
-  const lastHour = ts.filter((t) => now - t < HOUR_MS)
-  if (lastHour.length + weight > limits.hourly) { s.userMisses.set(userId, ts); return Math.ceil(((lastHour[0] ?? now) + HOUR_MS - now) / 1000) }
+  const inHour = countSince(ts, now - HOUR_MS)
+  if (inHour + weight > limits.hourly) { s.userMisses.set(userId, ts); return Math.ceil(((ts[ts.length - inHour] ?? now) + HOUR_MS - now) / 1000) }
   if (ts.length + weight > limits.daily) { s.userMisses.set(userId, ts); return Math.ceil(((ts[0] ?? now) + DAY_MS - now) / 1000) }
   for (let i = 0; i < weight; i++) ts.push(now)
   s.userMisses.set(userId, ts)
@@ -501,7 +510,9 @@ function limitReached(spec: ProxySpec, caller: Caller, waitS: number): Response 
  * wxGrid.ts), locations it can answer are served from it before anything
  * is asked upstream: they cost no upstream budget and are not cached here
  * (the grid is its own cache). Its own generous per-caller cap, charged
- * once per request, only stops abuse.
+ * once per request, only stops abuse. X-Cache: MISS when anything went (or
+ * waited for) upstream, else LOCAL when any location came from the local
+ * source (the rest from this cache), else HIT.
  */
 async function handlePerLocation(
   spec: ProxySpec, s: ProxyState, caller: Caller, endpoint: string, q: URLSearchParams, now: () => number,
@@ -537,7 +548,7 @@ async function handlePerLocation(
       return local.answer(endpoint, one).catch(() => null)
     }))
     answers.forEach((b, i) => { if (b) { fresh.set(misses[i]!.key, b); fromLocal++ } })
-    if (fromLocal > 0) takeUserMiss(s, spec, localCapKey(caller), t, caller.kind === 'user' ? local.perUser : local.anonymous)
+    if (fromLocal > 0) chargeLocal(s, spec, local, caller, t)
   }
   for (const l of misses) {
     if (fresh.has(l.key)) continue
@@ -603,7 +614,7 @@ async function handlePerLocation(
   }
   const body = lats.length === 1 ? parts[0]! : `[${parts.join(',')}]`
   if (usedStale) return json(body, 200, { 'Cache-Control': 'no-store', 'X-Cache': 'STALE' })
-  const xCache = toFetch.length > 0 || waiting.length > 0 ? 'MISS' : fromLocal === seen.size ? 'LOCAL' : 'HIT'
+  const xCache = toFetch.length > 0 || waiting.length > 0 ? 'MISS' : fromLocal > 0 ? 'LOCAL' : 'HIT'
   return json(body, 200, {
     'Cache-Control': `private, max-age=${Math.round(spec.freshMs / 1000)}`,
     'X-Cache': xCache,
@@ -622,8 +633,8 @@ export interface LocalSource {
   answer: (endpoint: string, q: URLSearchParams) => Promise<string | null>
   perUser: { hourly: number; daily: number }
   anonymous: { hourly: number; daily: number }
-  /** State for the admin API (e.g. which grid files are in use), counts only. */
-  status?: () => unknown
+  /** State for the admin API (which grid files are in use), counts only. */
+  status?: () => WxGridStatus
 }
 
 /** Longest upstream queue wait accepted before answering locally instead. */
@@ -633,11 +644,20 @@ function localCapKey(caller: Caller): string {
   return caller.kind === 'user' ? `local:${caller.id}` : `local:anon:${caller.ip}`
 }
 
+function localLimits(local: LocalSource, caller: Caller): { hourly: number; daily: number } {
+  return caller.kind === 'user' ? local.perUser : local.anonymous
+}
+
+/** Charge one local answer to the caller's local cap. */
+function chargeLocal(s: ProxyState, spec: ProxySpec, local: LocalSource, caller: Caller, t: number): void {
+  takeUserMiss(s, spec, localCapKey(caller), t, localLimits(local, caller))
+}
+
 /** True when the caller still has room under its local cap (read only, charges nothing). */
 function localCapOpen(s: ProxyState, local: LocalSource, caller: Caller, t: number): boolean {
-  const limits = caller.kind === 'user' ? local.perUser : local.anonymous
-  const ts = (s.userMisses.get(localCapKey(caller)) ?? []).filter((x) => t - x < DAY_MS)
-  return ts.filter((x) => t - x < HOUR_MS).length < limits.hourly && ts.length < limits.daily
+  const limits = localLimits(local, caller)
+  const ts = s.userMisses.get(localCapKey(caller)) ?? []
+  return countSince(ts, t - HOUR_MS) < limits.hourly && countSince(ts, t - DAY_MS) < limits.daily
 }
 
 /**
@@ -656,7 +676,7 @@ function localAnswerer(spec: ProxySpec, s: ProxyState, local: LocalSource, calle
     }
     const b = await body
     if (!b) return null
-    if (charge) takeUserMiss(s, spec, localCapKey(caller), t, caller.kind === 'user' ? local.perUser : local.anonymous)
+    if (charge) chargeLocal(s, spec, local, caller, t)
     // Terrain does not change; a day is enough for repeat views and the web service worker.
     return json(b, 200, { 'Cache-Control': 'private, max-age=86400', 'X-Cache': 'LOCAL' })
   }
@@ -857,7 +877,7 @@ export interface ExternalApiUsage {
   /** Closed clock hours, oldest first (up to 48). */
   hours: HourSnapshot[]
   /** The local source's own state (LocalSource.status), when it has one. */
-  local?: unknown
+  local?: WxGridStatus
 }
 
 export function usageSnapshot(spec: ProxySpec, s: ProxyState, stats: UsageStats, anonymousMode: 'limited' | 'off', now: number, local?: LocalSource | null): ExternalApiUsage {

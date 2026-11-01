@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import type { RangeSource } from '@open-vfr/shared/terrainDem'
 import {
   WxGridFile, answerFromFile, createWxGrid, decodeStream, float32Text, latticeIndex, parseWxGridSources,
-  MAX_GRID_AGE_MS, __clearWxBlockCache, type GridHeader, type GridGroup,
+  parseBlock, validateHeader, MAX_GRID_AGE_MS, __clearWxBlockCache, type GridHeader, type GridGroup,
 } from './wxGrid.js'
 import { handleProxy, newProxyState, OPEN_METEO } from './externalProxy.js'
 
@@ -75,10 +75,11 @@ function encodeFile(h: GridHeader, blocks: (Slot[] | undefined)[][]): Buffer {
 
 class MemSource implements RangeSource {
   reads = 0
-  constructor(private readonly buf: Buffer, private readonly key = 'mem') {}
+  constructor(private readonly buf: Buffer, private readonly key = 'mem', private readonly delayMs = 0) {}
   getKey() { return this.key }
   async getBytes(offset: number, length: number) {
     this.reads++
+    if (this.delayMs) await new Promise((r) => setTimeout(r, this.delayMs))
     const s = this.buf.subarray(offset, Math.min(this.buf.length, offset + length))
     return { data: s.buffer.slice(s.byteOffset, s.byteOffset + s.byteLength) as ArrayBuffer }
   }
@@ -247,6 +248,55 @@ test('blocks are read once and then served from memory', async () => {
   assert.equal(src.reads - opened, 1)
 })
 
+test('concurrent reads of one cold block share a single read', async () => {
+  const src = new MemSource(fixture(), 'mem', 20)
+  const f = await WxGridFile.open('se.wxg', src)
+  const opened = src.reads
+  const pts = [[59.3, 17.7], [59.35, 17.75], [59.4, 17.8], [59.45, 17.85], [59.5, 17.9]] as const
+  const out = await Promise.all(pts.map(([a, b]) => answerFromFile(f, q(CUR), a, b, NOW)))
+  assert.ok(out.every(Boolean))
+  assert.equal(src.reads - opened, 1)
+})
+
+test('validateHeader rejects incomplete or absurd headers', () => {
+  assert.doesNotThrow(() => validateHeader(header))
+  for (const bad of [
+    { ...header, generatedAt: undefined },
+    { ...header, generatedAt: 'x' },
+    { ...header, tile: 0 },
+    { ...header, nlat: -1 },
+    { ...header, groups: [] },
+    { ...header, groups: [{ ...current, dt: 0 }] },
+    { ...header, groups: [{ ...current, vars: [{ name: 'x', scale: 0 }] }] },
+    { ...header, points: [[1]] },
+  ]) assert.throws(() => validateHeader(bad), /invalid header/)
+})
+
+test('a file with an invalid header is not opened', async () => {
+  const f = fixture()
+  const bad = encodeFile({ ...header, generatedAt: Number.NaN }, [[], []])
+  assert.ok(f.length > 0)
+  await assert.rejects(WxGridFile.open('bad.wxg', new MemSource(bad)), /invalid header/)
+})
+
+test('parseBlock rejects row indexes past the stored rows', () => {
+  const raw = Buffer.alloc(4 + 2 + 24)
+  raw.writeUInt16LE(2, 0) // 2 slots
+  raw.writeUInt16LE(0, 2) // 0 rows
+  raw[4] = 0               // slot 0 -> row 0, which does not exist
+  raw[5] = 255
+  assert.throws(() => parseBlock(new Uint8Array(raw), 4), /row index out of range/)
+})
+
+test('a closed file answers nothing and touches its source no more', async () => {
+  const src = new MemSource(fixture())
+  const f = await WxGridFile.open('se.wxg', src)
+  await f.close()
+  const before = src.reads
+  assert.equal(await answerFromFile(f, q(CUR), 59.3, 17.7, NOW), null)
+  assert.equal(src.reads, before)
+})
+
 test('rejects files that are not OVWX v1', async () => {
   const bad = fixture()
   bad.write('XXXX', 0, 'latin1')
@@ -257,6 +307,10 @@ test('parseWxGridSources', () => {
   assert.equal(parseWxGridSources(undefined), 'auto')
   assert.equal(parseWxGridSources(' OFF '), 'off')
   assert.deepEqual(parseWxGridSources('/a/latest.json, https://x/wx/se/latest.json'), ['/a/latest.json', 'https://x/wx/se/latest.json'])
+  // Relative paths would resolve against the process cwd: dropped.
+  const realWarn = console.warn
+  console.warn = () => {}
+  try { assert.deepEqual(parseWxGridSources('wx/latest.json,/b/latest.json'), ['/b/latest.json']) } finally { console.warn = realWarn }
 })
 
 // ── live set + relay ─────────────────────────────────────────────────────────
@@ -279,6 +333,7 @@ test('createWxGrid follows the pointer to the current file', async () => {
   assert.ok(await grid.answer(params, '59.30', '17.70'))
   await new Promise((r) => setTimeout(r, 50)) // the refresh runs in the background
   assert.equal(grid.status().errors.length, 1)
+  assert.deepEqual(grid.status().missing, [])
   // Logged once, not on every refresh.
   const warns: string[] = []
   const realWarn = console.warn
@@ -299,6 +354,23 @@ test('createWxGrid follows the pointer to the current file', async () => {
   await new Promise((r) => setTimeout(r, 50))
   assert.equal(grid.status().files[0]!.file, join(dir, 'se-2.wxg'))
   await grid.close()
+})
+
+test('a missing pointer is reported as missing, not as an error', async () => {
+  const grid = createWxGrid({ sources: [join(dir, 'nope', 'latest.json')], tilesBaseUrl: '', countries: async () => null, now: () => NOW })!
+  assert.equal(await grid.answer(q(CUR), '59.30', '17.70'), null)
+  assert.deepEqual(grid.status().errors, [])
+  assert.equal(grid.status().missing.length, 1)
+})
+
+test('the first refresh does not hold requests for long', async () => {
+  const grid = createWxGrid({
+    sources: [join(dir, 'slow.wxg')], tilesBaseUrl: '', countries: async () => null, now: () => NOW,
+    open: () => new Promise(() => {}), // a tile host that never answers
+  })!
+  const t0 = Date.now()
+  assert.equal(await grid.answer(q(CUR), '59.30', '17.70'), null)
+  assert.ok(Date.now() - t0 < 4000)
 })
 
 test('auto mode without TILES_BASE_URL, and off, are disabled', () => {
@@ -336,6 +408,10 @@ test('relay: grid locations cost no upstream call, the rest are fetched', async 
     assert.ok('current' in els[2]!)
     // Grid answers don't touch the user's upstream quota.
     assert.equal((s.userMisses.get('u1') ?? []).length, 1)
+    // Now cached + grid, nothing upstream: labelled LOCAL.
+    const again = await handleProxy(OPEN_METEO, s, 'u1', '/api/open-meteo/forecast', `?latitude=62.00,59.40&longitude=15.00,17.80&${CUR}`, () => NOW, local)
+    assert.equal(again.headers.get('X-Cache'), 'LOCAL')
+    assert.equal(calls.length, 1)
   } finally {
     await grid.close()
     globalThis.fetch = realFetch

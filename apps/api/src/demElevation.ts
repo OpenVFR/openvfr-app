@@ -32,6 +32,7 @@
  */
 
 import { open, type FileHandle } from 'node:fs/promises'
+import { isAbsolute } from 'node:path'
 import { PmtilesDem, EtagMismatch, type RangeSource, type RangeResponse } from '@open-vfr/shared/terrainDem'
 import { countryArchiveFile } from '@open-vfr/shared/countryData'
 
@@ -42,14 +43,26 @@ const RANGE_TIMEOUT_MS = 10_000
 /** A PMTiles header/directory/tile read is at most a few hundred KB. */
 const MAX_RANGE_BYTES = 4 * 1024 * 1024
 
-/** Range reads over HTTP that refuse anything but a 206 of the requested size. Exported for tests. */
+/** Range reads over HTTP that refuse anything but a 206 of the requested size.
+ *  `maxBytes` caps a single read, `label` prefixes errors (the weather grid
+ *  reuses this with its own). Exported for tests. */
 export class HttpRangeSource implements RangeSource {
-  constructor(private readonly url: string, private readonly fetchImpl: typeof fetch = fetch) {}
+  private readonly maxBytes: number
+  private readonly label: string
+
+  constructor(
+    private readonly url: string,
+    private readonly fetchImpl: typeof fetch = fetch,
+    opts: { maxBytes?: number; label?: string } = {},
+  ) {
+    this.maxBytes = opts.maxBytes ?? MAX_RANGE_BYTES
+    this.label = opts.label ?? 'dem'
+  }
 
   getKey(): string { return this.url }
 
   async getBytes(offset: number, length: number, signal?: AbortSignal, etag?: string): Promise<RangeResponse> {
-    if (length > MAX_RANGE_BYTES) throw new Error(`dem: range of ${length} bytes refused`)
+    if (length > this.maxBytes) throw new Error(`${this.label}: range of ${length} bytes refused`)
     const headers: Record<string, string> = { Range: `bytes=${offset}-${offset + length - 1}`, 'User-Agent': 'open-vfr/1.0' }
     const timeout = AbortSignal.timeout(RANGE_TIMEOUT_MS)
     const res = await this.fetchImpl(this.url, { headers, signal: signal ? AbortSignal.any([signal, timeout]) : timeout })
@@ -58,13 +71,13 @@ export class HttpRangeSource implements RangeSource {
     if (newEtag?.startsWith('W/')) newEtag = null
     if (etag && newEtag && newEtag !== etag) {
       await res.body?.cancel().catch(() => {})
-      throw new EtagMismatch(`dem: ${this.url} changed (ETag ${etag} -> ${newEtag})`)
+      throw new EtagMismatch(`${this.label}: ${this.url} changed (ETag ${etag} -> ${newEtag})`)
     }
     // Anything but a slice (200 = the whole archive) is cancelled unread.
     const declared = Number(res.headers.get('Content-Length') ?? NaN)
     if (res.status !== 206 || (Number.isFinite(declared) && declared > length)) {
       await res.body?.cancel().catch(() => {})
-      throw new Error(`dem: ${this.url} answered HTTP ${res.status} (Content-Length ${res.headers.get('Content-Length') ?? '?'}) to a ${length}-byte Range request`)
+      throw new Error(`${this.label}: ${this.url} answered HTTP ${res.status} (Content-Length ${res.headers.get('Content-Length') ?? '?'}) to a ${length}-byte Range request`)
     }
     // No Content-Length: read with a cap.
     const chunks: Uint8Array[] = []
@@ -75,7 +88,7 @@ export class HttpRangeSource implements RangeSource {
         const { done, value } = await reader.read()
         if (done) break
         total += value.byteLength
-        if (total > length) { await reader.cancel().catch(() => {}); throw new Error(`dem: ${this.url} sent more than the ${length} bytes asked for`) }
+        if (total > length) { await reader.cancel().catch(() => {}); throw new Error(`${this.label}: ${this.url} sent more than the ${length} bytes asked for`) }
         chunks.push(value)
       }
     }
@@ -164,13 +177,24 @@ export async function demAnswer(dems: readonly DemArchive[], locations: string):
   })
 }
 
-/** Parses ELEVATION_DEM_SOURCES. Exported for tests. */
-export function parseDemSources(v: string | undefined): 'auto' | 'off' | string[] {
+/**
+ * Parses a local-source list env var (ELEVATION_DEM_SOURCES, WX_GRID_SOURCES):
+ * unset/`auto` = derive from the tile host, `off`, or a comma-separated list
+ * of http(s) URLs and absolute paths. Relative paths are dropped with a
+ * warning (they would resolve against the process cwd). Exported for tests.
+ */
+export function parseLocalSources(v: string | undefined, envName = 'sources'): 'auto' | 'off' | string[] {
   const s = (v ?? '').trim()
   if (s === '' || s.toLowerCase() === 'auto') return 'auto'
   if (s.toLowerCase() === 'off') return 'off'
-  return s.split(',').map((x) => x.trim()).filter(Boolean)
+  const list = s.split(',').map((x) => x.trim()).filter(Boolean)
+  const bad = list.filter((x) => !/^https?:\/\//i.test(x) && !isAbsolute(x))
+  if (bad.length) console.warn(`[${envName}] ignored (not an http(s) URL or absolute path): ${bad.join(', ')}`)
+  return list.filter((x) => !bad.includes(x))
 }
+
+/** Parses ELEVATION_DEM_SOURCES (see parseLocalSources). Exported for tests. */
+export const parseDemSources = (v: string | undefined) => parseLocalSources(v, 'ELEVATION_DEM_SOURCES')
 
 /** One archive of the set: its DEM reader and the source behind it. */
 export type Archive = { dem: PmtilesDem; source: HttpRangeSource | FileRangeSource }
