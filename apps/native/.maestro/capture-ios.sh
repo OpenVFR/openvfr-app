@@ -1,30 +1,67 @@
-#!/usr/bin/env bash
-# Boots the App Store's required simulator sizes on a macOS runner and runs
+# Boots the simulators the App Store listing needs on a macOS runner and runs
 # the shared Maestro flow on each.
 #
 # Usage: capture-ios.sh <path/to/App.app> <out-root>
-#   Writes <out-root>/iphone-6.9/*.png (1320x2868),
-#          <out-root>/iphone-6.5/*.png (1284x2778; iPhone 14 Plus) and
-#          <out-root>/ipad-13/*.png    (2064x2752)
+#   Writes <out-root>/iphone-6.3/*.png     (1206x2622; one iPhone size is enough:
+#                                           Apple scales it down for the other iPhones)
+#          <out-root>/ipad-13/*.png        (2064x2752)
+#          <out-root>/iphone-duo-cover/*.png (1398x2034, folded, outer display)
+#          <out-root>/iphone-duo-inner/*.png (2007x2853, unfolded, inner display)
+#   (App Store Connect also takes 1179x2556 for 6.1" and 2622x1206-style
+#   landscape sizes; the sizes above are the ones this script verifies.)
+#
+# The Duo needs Xcode 27.1 and its iOS 27.1 runtime; on a runner without it
+# the Duo step is skipped with a warning unless REQUIRE_DUO=1.
 set -euo pipefail
 
 app="$1" out_root="$2"
 here="$(cd "$(dirname "$0")" && pwd)"
-
-runtime=$(xcrun simctl list runtimes -j \
-  | jq -r '[.runtimes[] | select(.platform == "iOS" and .isAvailable)] | sort_by(.version | split(".") | map(tonumber)) | last | .identifier')
-[ -n "$runtime" ] && [ "$runtime" != null ] || { echo "::error::no iOS simulator runtime on runner"; exit 1; }
 
 device_type() {
   xcrun simctl list devicetypes -j \
     | jq -r --arg re "$1" '[.devicetypes[] | select(.name | test($re))] | sort_by(.name) | last | .identifier'
 }
 
-# name | device-type regex | expected WxH
-# Read on fd 3: maestro/simctl would otherwise consume the heredoc via stdin.
-while IFS='|' read -r name re size <&3; do
+# Newest available runtime that supports the device type ("iOS 27.1 only
+# supports iPhone Duo" on the Xcode 27 runner image, so one global "latest
+# runtime" cannot be used for every device).
+runtime_for() {
+  xcrun simctl list runtimes -j \
+    | jq -r --arg t "$1" '[.runtimes[] | select(.platform == "iOS" and .isAvailable and ((.supportedDeviceTypes // []) | map(.identifier) | index($t)))]
+        | sort_by(.version | split(".") | map(tonumber)) | last | .identifier'
+}
+
+status_bar() {
+  xcrun simctl status_bar "$1" override \
+    --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
+    --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 || \
+    echo "::warning::status_bar override failed (not supported on this device)"
+}
+
+# check_sizes <dir> <WxH> [<WxH>...]: every PNG must be one of the sizes.
+check_sizes() {
+  local dir="$1"; shift
+  local f ok w
+  for f in "$dir"/*.png; do
+    ok=0
+    for w in "$@"; do file "$f" | grep -q "${w/x/ x }" && ok=1; done
+    [ "$ok" = 1 ] || { echo "::error::$f is none of $*: $(file -b "$f")"; return 1; }
+  done
+}
+
+capture() { # name regex sizes(space separated) [duo]
+  local name="$1" re="$2" sizes="$3" duo="${4:-}"
+  local type runtime udid out
   type=$(device_type "$re")
-  [ -n "$type" ] && [ "$type" != null ] || { echo "::error::no simulator type matching $re"; exit 1; }
+  if [ -z "$type" ] || [ "$type" = null ]; then
+    if [ -n "$duo" ] && [ "${REQUIRE_DUO:-0}" != 1 ]; then echo "::warning::no simulator type matching $re (needs Xcode 27.1); skipping $name"; return 0; fi
+    echo "::error::no simulator type matching $re"; return 1
+  fi
+  runtime=$(runtime_for "$type")
+  if [ -z "$runtime" ] || [ "$runtime" = null ]; then
+    if [ -n "$duo" ] && [ "${REQUIRE_DUO:-0}" != 1 ]; then echo "::warning::no iOS runtime supports $type; skipping $name"; return 0; fi
+    echo "::error::no iOS runtime supports $type"; return 1
+  fi
   echo "== $name: $type on $runtime"
 
   # Free the previous device's RAM/CPU before booting the next one.
@@ -32,40 +69,55 @@ while IFS='|' read -r name re size <&3; do
   udid=$(xcrun simctl create "shots-$name" "$type" "$runtime")
   xcrun simctl boot "$udid"
   xcrun simctl bootstatus "$udid" -b
-  xcrun simctl status_bar "$udid" override \
-    --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
-    --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
+  status_bar "$udid"
   xcrun simctl install "$udid" "$app"
 
   out="$out_root/$name"
   mkdir -p "$out"
+  if [ -n "$duo" ]; then
+    export HINGE_DEVICE="$udid"
+    export DUO_INNER_OUT="$out_root/iphone-duo-inner"
+    # First call builds hinge's helper; closed = cover display, where Maestro works.
+    hinge close && sleep 3
+  else
+    unset DUO_INNER_OUT || true
+  fi
+
   # A cold simulator on a loaded runner sometimes never gets Maestro's XCTest
   # driver up ("iOS driver not ready in time", seen on the iPad after a ~9 min
   # boot). Retry once on a fresh boot, but only when no shot was taken, so a
   # real flow failure still fails fast.
   if ! bash "$here/run-flow.sh" "$out" --device "$udid"; then
-    if ls "$out"/*.png >/dev/null 2>&1; then exit 1; fi
+    if ls "$out"/*.png >/dev/null 2>&1; then return 1; fi
     echo "::warning::$name: flow produced no shots; rebooting simulator and retrying once"
     pkill -f xcodebuild || true
     xcrun simctl shutdown "$udid" || true
     xcrun simctl boot "$udid"
     xcrun simctl bootstatus "$udid" -b
-    xcrun simctl status_bar "$udid" override \
-      --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
-      --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
+    status_bar "$udid"
+    [ -z "$duo" ] || { hinge close && sleep 3; }
     bash "$here/run-flow.sh" "$out" --device "$udid"
   fi
 
-  want="${size/x/ x }"
-  for f in "$out"/*.png; do
-    file "$f" | grep -q "$want" || { echo "::error::$f is not $size: $(file -b "$f")"; exit 1; }
-  done
+  # shellcheck disable=SC2086
+  check_sizes "$out" $sizes
   ls -l "$out"
+  if [ -n "$duo" ]; then
+    ls "$DUO_INNER_OUT"/*.png >/dev/null 2>&1 || { echo "::error::no inner-display screenshots were captured"; return 1; }
+    check_sizes "$DUO_INNER_OUT" 2007x2853 2853x2007
+    ls -l "$DUO_INNER_OUT"
+    unset DUO_INNER_OUT HINGE_DEVICE
+  fi
 
   xcrun simctl shutdown "$udid"
   xcrun simctl delete "$udid"
-done 3<<'EOF'
-iphone-6.9|^iPhone [0-9]+ Pro Max$|1320x2868
-iphone-6.5|^iPhone 14 Plus$|1284x2778
-ipad-13|^iPad Pro 13-inch|2064x2752
-EOF
+}
+
+# Each flow signs in as the same account, one device at a time.
+capture iphone-6.3 '^iPhone [0-9]+ Pro$' '1206x2622 1179x2556'
+capture ipad-13 '^iPad Pro 13-inch' '2064x2752'
+
+if xcrun simctl list devicetypes | grep -q 'iPhone Duo'; then
+  command -v hinge >/dev/null || brew install artemnovichkov/tap/hinge
+fi
+capture iphone-duo-cover '^iPhone Duo$' '1398x2034 2034x1398' duo

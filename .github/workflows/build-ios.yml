@@ -6,7 +6,7 @@ name: Build iOS
 #   - This is a public repo: GitHub Actions minutes are unlimited/free on
 #     GitHub-hosted runners, macOS included. EAS Build's cloud queue is
 #     the opposite -- the free tier caps at 15 iOS builds/month with low
-#     priority. Building on this (free, unlimited) macos-latest runner
+#     priority. Building on this (free, unlimited) xcode-27 runner
 #     instead of dispatching to EAS's (quota-limited) cloud avoids that
 #     ceiling entirely.
 #   - `--local` still only talks to EAS's servers to fetch the managed
@@ -20,7 +20,9 @@ name: Build iOS
 #   - `appVersionSource: remote` (apps/native/eas.json) lets EAS own
 #     the build number, replacing the manual "diff last build version"
 #     dance.
-#   - macos-latest GitHub runner images ship Xcode, CocoaPods, and
+#   - The `xcode-27` GitHub runner image (macOS 27, Xcode 27.1 default; the
+#     iOS 27 SDK is required for the iPhone Duo's full inner display and for
+#     the UIKit scene life cycle SDK 58 generates) ships Xcode, CocoaPods, and
 #     fastlane preinstalled, which `--local` requires (see
 #     docs/build-reference/local-builds limitations: no `fastlane`/
 #     `cocoapods`/`image` eas.json overrides, no caching -- you own the
@@ -46,7 +48,7 @@ on:
 
 jobs:
   build_ios:
-    runs-on: macos-latest
+    runs-on: xcode-27
     timeout-minutes: 60
     defaults:
       run:

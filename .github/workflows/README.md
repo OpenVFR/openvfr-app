@@ -77,7 +77,8 @@ Both are already the default path here, not a separate flow:
 
 - Android: `ubuntu-latest` — GitHub's runner image ships a preinstalled
   Android SDK/NDK; the workflow adds a pinned JDK via `setup-java`.
-- iOS: `macos-latest` — GitHub's runner image ships Xcode, CocoaPods, and
+- iOS: `xcode-27` — GitHub's Xcode 27 runner image (macOS 27, Xcode 27.1; the
+  iOS 27 SDK is required for the iPhone Duo and the scene life cycle) ships Xcode, CocoaPods, and
   fastlane, all required by `--local` (see
   [local build limitations](https://docs.expo.dev/build-reference/local-builds/#limitations):
   no `node`/`yarn`/`fastlane`/`cocoapods`/`ndk`/`image` overrides from
@@ -152,14 +153,23 @@ a single platform can be tested without building both:
 
 | Artifact | Runner | Size (px) | Store slot |
 |---|---|---|---|
-| `screenshots-ios/iphone-6.9` | macos-latest simulator, newest `iPhone * Pro Max` | 1320x2868 | App Store iPhone 6.9" (only required iPhone size) |
-| `screenshots-ios/iphone-6.5` | macos-latest simulator, `iPhone 14 Plus` | 1284x2778 | App Store iPhone 6.5" slot (rejects 6.9" sizes) |
-| `screenshots-ios/ipad-13` | macos-latest simulator, newest `iPad Pro 13-inch` | 2064x2752 | App Store iPad 13" (required: `supportsTablet: true`) |
+| `screenshots-ios/iphone-6.3` | xcode-27 simulator, newest `iPhone * Pro` | 1206x2622 | App Store iPhone 6.3" (one iPhone size is enough; 1179x2556 for 6.1" is also accepted by the size check) |
+| `screenshots-ios/iphone-duo-cover` | xcode-27 simulator, `iPhone Duo` folded | 1398x2034 | App Store iPhone Duo, outer display |
+| `screenshots-ios/iphone-duo-inner` | same simulator, unfolded after every shot (`hinge`) | 2007x2853 | App Store iPhone Duo, inner display |
+| `screenshots-ios/ipad-13` | xcode-27 simulator, newest `iPad Pro 13-inch` | 2064x2752 | App Store iPad 13" (required: `supportsTablet: true`) |
 | `screenshots-android-phone` | ubuntu emulator | 1080x1920 | Play phone |
 | `screenshots-android-tablet-7` | ubuntu emulator | 1200x1920 | Play 7" tablet |
 | `screenshots-android-tablet-10` | ubuntu emulator | 1600x2560 | Play 10" tablet |
 
 How it works:
+
+- iPhone Duo: Maestro's taps always land on the cover display, so the flow runs
+  folded (cover shots). After every `takeScreenshot` it pauses
+  (`.maestro/duo-pause.yaml`) while `run-flow.sh` unfolds the simulator with
+  [`hinge`](https://github.com/artemnovichkov/hinge) (simctl has no fold
+  command), captures the inner display and folds it again, so the inner shot is
+  the same app state after a live resize. Skipped with a warning when the
+  runner has no iPhone Duo (set `REQUIRE_DUO=1` to fail instead).
 
 - `preflight` pulls the `production` EAS environment and curls the API
   (`/health`), tile and basemap hosts from the runner
