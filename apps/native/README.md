@@ -6,7 +6,7 @@ React Native (bare Expo) app — the native companion to the open-vfr PWA.
 
 | Concern | Library |
 |---|---|
-| Framework | Expo SDK 56 (bare workflow — no EAS required) |
+| Framework | Expo SDK 58 (React Native 0.88; Continuous Native Generation — no EAS required) |
 | Map engine | `@maplibre/maplibre-react-native` v11 → MapLibre GL Native |
 | Basemap | OpenFreeMap (free, no API key, ODbL) |
 | Aviation data | GeoJSON served from the open-vfr web/API server |

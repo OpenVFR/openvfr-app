@@ -13,10 +13,10 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@better-auth/passkey": "1.7.10",
+    "@better-auth/passkey": "1.7.15",
     "@open-vfr/shared": "workspace:*",
     "@protomaps/basemaps": "5.7.2",
-    "@tabler/icons-react": "^3.49.0",
+    "@tabler/icons-react": "^3.50.0",
     "@turf/along": "^7.4.0",
     "@turf/boolean-intersects": "^7.4.0",
     "@turf/boolean-point-in-polygon": "^7.4.0",
@@ -24,11 +24,11 @@
     "@turf/length": "^7.4.0",
     "@turf/line-intersect": "^7.4.0",
     "@turf/nearest-point-on-line": "^7.4.0",
-    "better-auth": "1.7.10",
-    "dexie": "4.4.6",
+    "better-auth": "1.7.15",
+    "dexie": "4.4.7",
     "fflate": "^0.8.3",
     "geomagnetism": "0.2.0",
-    "maplibre-gl": "6.14.0",
+    "maplibre-gl": "6.16.0",
     "pmtiles": "4.5.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -41,7 +41,7 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
     "typescript": "7.0.2",
-    "vite": "8.3.4",
+    "vite": "8.3.5",
     "vite-plugin-pwa": "2.0.0",
     "vitest": "^5.0.5"
   }

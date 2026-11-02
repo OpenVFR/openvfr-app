@@ -16,17 +16,15 @@ config.resolver.assetExts.push('geojson')
 //   - No symlinks (Windows-safe)
 //
 // A custom resolveRequest is used (rather than plain extraNodeModules)
-// because Metro (bundled with Expo SDK 57+) no longer auto-appends source
+// because Metro (bundled with Expo SDK 57+/58) no longer auto-appends source
 // extensions (.ts) when substituting an extraNodeModules-mapped path for a
 // package-prefixed subpath import — it now requires an exact file match.
 // Resolving to the exact .ts file here sidesteps that ambiguity entirely.
 //
-// NOTE: this fixes the live Metro dev server (`expo start`, `expo run:android`
-// — the normal dev workflow, confirmed working). The one-shot static bundler
-// (`expo export` / `expo export:embed`, only used by the `build:apk:prod`
-// release script) still fails with "Failed to get the SHA-1 for: ..." for
-// files under packages/shared/src — an unresolved Metro/Expo SDK 57 crawler
-// regression for source outside native/. Tracked in the maintainers' todo.
+// Verified on Expo SDK 58 (Metro 0.84+): both the dev server and the one-shot
+// static bundler (`expo export`, used for release builds) resolve and bundle
+// files under packages/shared/src; the old "Failed to get the SHA-1" failure
+// seen on SDK 57 no longer occurs.
 // ---------------------------------------------------------------------------
 const sharedRoot = path.resolve(config.projectRoot, '../../packages/shared')
 const sharedSrc = path.resolve(sharedRoot, 'src')
@@ -55,6 +53,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
 // When Metro resolves imports from packages/shared/src/, it won't find
 // node_modules there. Point it at native/node_modules as the fallback.
 config.resolver.nodeModulesPaths = [
+  ...(config.resolver.nodeModulesPaths ?? []),
   path.resolve(__dirname, 'node_modules'),
 ]
 

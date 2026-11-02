@@ -14,7 +14,7 @@
  * Appended to the generated android/app/build.gradle (gitignored, regenerated
  * by `expo prebuild`).
  */
-const { withAppBuildGradle } = require('@expo/config-plugins')
+const { withAppBuildGradle } = require('expo/config-plugins')
 
 module.exports = function withAndroidNativeDebugSymbols(config) {
   return withAppBuildGradle(config, (config) => {

@@ -32,7 +32,7 @@
  * -- a single app-module `lintOptions` override would NOT reach the
  * library subprojects that were actually OOMing.
  */
-const { withProjectBuildGradle } = require('@expo/config-plugins')
+const { withProjectBuildGradle } = require('expo/config-plugins')
 
 module.exports = function withAndroidDisableLintVital(config) {
   return withProjectBuildGradle(config, (config) => {

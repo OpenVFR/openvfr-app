@@ -6,7 +6,7 @@ allowBuilds:
   esbuild: true
   workerd: true
 
-# apps/native stays on react 19.2.x (RN 0.86's bundled renderer is 19.2.3;
+# apps/native stays on react 19.2.x (RN 0.88 bundled renderer;
 # react 19.3 is only adopted by apps/web). Expo's optional react-dom peer
 # (@expo/router-server, web-only, never bundled into the native app) would
 # otherwise auto-install react-dom 19.3, whose own peer then mismatches
@@ -14,8 +14,8 @@ allowBuilds:
 overrides:
   "@expo/router-server>react-dom": "19.2.8"
   # Optional peer of react-native's CLI plugin: keep it on the same line as
-  # react-native (0.86.x) instead of floating to the newest release.
-  "@react-native/metro-config": "0.86.3"
+  # react-native (0.88.x) instead of floating to the newest release.
+  "@react-native/metro-config": "0.88.1"
   # sp-react-native-in-app-updates pins underscore 1.12 (DoS in _.flatten/_.isEqual).
   underscore: "^1.13.8"
   # openai (api) pulls undici <7.30.1: DoS via excessive content-encodings /
@@ -25,6 +25,6 @@ overrides:
   fast-uri: "^3.1.9"
 
 patchedDependencies:
-  '@expo/ui@57.0.26': patches/@expo__ui@57.0.26.patch
-  '@maplibre/maplibre-react-native@11.5.0': patches/@maplibre__maplibre-react-native@11.5.0.patch
+  '@expo/ui@58.0.26': patches/@expo__ui@58.0.26.patch
+  '@maplibre/maplibre-react-native@11.5.1': patches/@maplibre__maplibre-react-native@11.5.1.patch
   react-native-svg@15.16.0: patches/react-native-svg@15.16.0.patch
