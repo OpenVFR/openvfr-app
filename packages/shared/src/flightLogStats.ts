@@ -259,3 +259,38 @@ export function simulatedFixAction(
   if (!sim.record) return 'ignore'
   return openLogSimulated === false ? 'mark' : 'record'
 }
+
+/** Points the live flown trail is drawn with at most (see liveTrailGeoJson). */
+export const LIVE_TRAIL_MAX_POINTS = 2000
+
+/**
+ * Map geometry for the trail behind the aircraft in flight: the active log's
+ * track, drawn like a viewed log (`track` stretches, dashed `gap` bridges
+ * across recording gaps). The log holds a point a second, so it is thinned to
+ * `maxPoints` -- per continuous stretch, after finding the gaps: thinning the
+ * whole track first would space normal points further apart than GAP_MIN_MS
+ * on a long flight and draw gaps that never happened.
+ */
+export function liveTrailGeoJson(track: LogMapPoint[], maxPoints: number = LIVE_TRAIL_MAX_POINTS): { type: 'FeatureCollection'; features: LineFeature[] } {
+  const features: LineFeature[] = []
+  if (track.length < 2) return { type: 'FeatureCollection', features }
+  const stretches: LogMapPoint[][] = []
+  let cur: LogMapPoint[] = [track[0]!]
+  for (let i = 1; i < track.length; i++) {
+    if (track[i]!.ts - track[i - 1]!.ts > GAP_MIN_MS) { stretches.push(cur); cur = [] }
+    cur.push(track[i]!)
+  }
+  stretches.push(cur)
+  stretches.forEach((s, k) => {
+    if (k > 0) {
+      const a = stretches[k - 1]![stretches[k - 1]!.length - 1]!
+      const b = s[0]!
+      features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[a.lng, a.lat], [b.lng, b.lat]] }, properties: { kind: 'gap' } })
+    }
+    if (s.length < 2) return
+    const budget = Math.max(2, Math.round(maxPoints * s.length / track.length))
+    const pts = thinTrack(s, budget)
+    features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: pts.map(p => [p.lng, p.lat]) }, properties: { kind: 'track' } })
+  })
+  return { type: 'FeatureCollection', features }
+}

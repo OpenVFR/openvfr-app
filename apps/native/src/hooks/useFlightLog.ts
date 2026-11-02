@@ -15,7 +15,7 @@
  */
 
 import { logRouteJson, type FlightLogRoute } from '@open-vfr/shared/flightLogRoute'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import * as Crypto from 'expo-crypto'
 import { trimParkedTail, simulatedFixAction } from '@open-vfr/shared/flightLogStats'
 import { logPlaceNear, missingLogAerodromes, type LogAerodrome, type LogPlace } from '@open-vfr/shared/flightLogAerodromes'
@@ -70,7 +70,13 @@ export function useFlightLog(
   /** The route planned at the moment (read when a log starts): stored with the log so its
    *  profile can show the planned level. A ref, so a route edit does not re-run the hook. */
   plannedRouteRef?: { current: FlightLogRoute | null },
-): { activeLogId: string | null } {
+): {
+  activeLogId: string | null
+  /** The track to draw behind the aircraft: the open log's, else the last
+   *  log closed while flying mode stayed on (after landing). null after
+   *  flying mode stops. The live array: read it, never change it. */
+  liveTrack: () => TrackPoint[] | null
+} {
   const [activeLogId, setActiveLogId] = useState<string | null>(null)
 
   const stateRef = useRef<{
@@ -96,8 +102,13 @@ export function useFlightLog(
     departureIcao: '', flushTimer: null, parkTimer: null, dirty: false, simulated: false,
   })
 
+  // Track of the last log closed while flying mode stayed on: still drawn
+  // as the trail after landing, until flying mode stops or a new log opens.
+  const lastTrailRef = useRef<TrackPoint[] | null>(null)
+
   useEffect(() => {
     if (flyingMode === 'off') {
+      lastTrailRef.current = null
       const s = stateRef.current
       // Auto-stopped on landing while parked between circuits: leave the log open
       // and let the park timer close it, so a restart within the timeout continues
@@ -253,6 +264,7 @@ export function useFlightLog(
 
           if (parkTimeoutMs === 0) {
             if (s.logId) {
+              lastTrailRef.current = s.track
               finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, thr.landedKts, s.simulated)
               setActiveLogId(null)
             }
@@ -263,6 +275,7 @@ export function useFlightLog(
               const cs = stateRef.current
               if (cs.phase !== 'taxiing' || !cs.logId) return
               if (cs.flushTimer) clearTimeout(cs.flushTimer)
+              lastTrailRef.current = cs.track
               finishLog(cs.logId, cs.track, cs.distanceNm, cs.maxAltFt, thr.landedKts, cs.simulated)
               stateRef.current = {
                 phase: 'idle', logId: null, takeoffTicks: 0, landingTicks: 0, flightStartMs: 0,
@@ -280,7 +293,11 @@ export function useFlightLog(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position, flyingMode])
 
-  return { activeLogId }
+  const liveTrack = useCallback((): TrackPoint[] | null => {
+    const s = stateRef.current
+    return s.logId ? s.track : lastTrailRef.current
+  }, [])
+  return { activeLogId, liveTrack }
 }
 
 // ── AsyncStorage helpers (fire-and-forget) ─────────────────────────────────

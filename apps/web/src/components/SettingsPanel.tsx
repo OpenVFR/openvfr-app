@@ -26,7 +26,7 @@ function GpsAltitudeReferenceRow() {
     </div>
   )
 }
-import { useMsaMargins, useAlertBanners } from '../db/useSettings'
+import { useMsaMargins, useAlertBanners, useFlownTrail } from '../db/useSettings'
 import { AIRSPACE_CATEGORIES, type AlertLevel } from '@open-vfr/shared/airspaceAlertLevel'
 import { DEFAULT_MSA_MARGINS, MSA_ABEAM_RANGE_NM, MSA_CLEARANCE_RANGE_FT } from '@open-vfr/shared/msaMargins'
 import { repairAppFiles } from '../utils/repairApp'
@@ -137,6 +137,7 @@ function MsaMarginsSettings() {
 }
 
 export default function SettingsPanel({ units, onUnitsChange, countries, selectedCountries, onSelectedCountriesChange, theme, onThemeChange, trajectoryMode, onTrajectoryModeChange, airspaceWarnLookahead, onAirspaceWarnLookaheadChange, airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange, trafficVertFilter, onTrafficVertFilterChange, parkTimeout, onParkTimeoutChange, recordSimulatedFlights, onRecordSimulatedFlightsChange, autoFlyMode, onAutoFlyModeChange, inFlight, onClose, manifest, isOnline = true, checking = false, onRefresh }: Props) {
+  const [flownTrail, setFlownTrail] = useFlownTrail()
   return (
     <div className={css.panel}>
       <div className={css.header}>
@@ -212,6 +213,21 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
             onClick={() => onTrajectoryModeChange('dist')}
             title="Trajectory ticks at 2, 5, 10 NM ahead"
           >NM</button>
+        </div>
+      </div>
+
+      <div className={css.section}>
+        <span className={css.label}>Flown trail</span>
+        <div className={css.options}>
+          <button
+            className={`${css.opt}${!flownTrail ? ` ${css.optActive}` : ''}`}
+            onClick={() => setFlownTrail(false)}
+          >Off</button>
+          <button
+            className={`${css.opt}${flownTrail ? ` ${css.optActive}` : ''}`}
+            onClick={() => setFlownTrail(true)}
+            title="In flying mode, draw where you have flown behind the aircraft"
+          >On</button>
         </div>
       </div>
 

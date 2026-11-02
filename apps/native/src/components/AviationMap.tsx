@@ -266,6 +266,8 @@ export type AviationMapProps = {
    *  — caller should show a disambiguation picker; picking calls onLegInsert. */
   onLegInsertCandidates?: (afterIndex: number, candidates: SnapCandidate[]) => void
   trafficFC?:     FeatureCollection
+  /** Flown trail behind the aircraft (active log, liveTrailGeoJson); null = none. */
+  liveTrailFC?:   FeatureCollection | null
   /** User-saved waypoints (from UserWaypointContext) — shown as bookmark pins,
    *  independent of the planned route. */
   userWaypointsFC?: FeatureCollection
@@ -490,6 +492,8 @@ function buildSnapCandidates(hits: Feature[]): SnapCandidate[] {
   return out
 }
 
+/** Empty data for always-mounted sources. */
+const EMPTY_FC: FeatureCollection = { type: 'FeatureCollection', features: [] }
 const SNAP_PX = 20
 /** Only aerodrome features carry `runways` (same test as MapScreen's isAerodrome). */
 const AERODROME_TAP_PROPS = (p: Record<string, unknown>) => p.runways !== undefined
@@ -1808,6 +1812,7 @@ export function AviationMap({
   onLegInsert,
   onLegInsertCandidates,
   trafficFC,
+  liveTrailFC = null,
   userWaypointsFC,
   notamCirclesFC,
   notamPointsFC,
@@ -3541,6 +3546,28 @@ export function AviationMap({
             />
           </GeoJSONSource>
         )}
+
+        {/* ── Flown trail (active flight log) ─────────────────────────
+            Above the route (flying on track would hide it under the route
+            line), below user waypoints, NOTAMs, traffic and the aircraft.
+            Same colours as a viewed log; recording gaps dashed. Always
+            mounted (empty when off): re-adding a removed source id is
+            fragile in MapLibre Native. */}
+        <GeoJSONSource id="live-trail-src" data={liveTrailFC ?? EMPTY_FC}>
+          <Layer
+            id="live-trail-line"
+            type="line"
+            filter={['==', ['get', 'kind'], 'track']}
+            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+            paint={{ 'line-color': FLOWN_COLOR, 'line-width': 3, 'line-opacity': 0.85 }}
+          />
+          <Layer
+            id="live-trail-gap-line"
+            type="line"
+            filter={['==', ['get', 'kind'], 'gap']}
+            paint={{ 'line-color': FLOWN_GAP_COLOR, 'line-width': 3, 'line-opacity': 0.9, 'line-dasharray': [1.5, 2] }}
+          />
+        </GeoJSONSource>
 
         {/* ── Saved user waypoints (independent of planned route) ───── */}
         {userWaypointsFC && userWaypointsFC.features.length > 0 && (

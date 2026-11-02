@@ -403,6 +403,12 @@ export function SettingsScreen() {
           value={(settings.trajectoryMode ?? 'time') === 'nm'}
           onToggle={(v) => update({ trajectoryMode: v ? 'nm' : 'time' })}
         />
+        <RowToggle
+          label="Flown trail"
+          left="Off" right="On"
+          value={settings.showFlownTrail ?? true}
+          onToggle={v => update({ showFlownTrail: v })}
+        />
         <GpsAltitudeReferenceRow />
       </Section>
 

@@ -35,6 +35,11 @@ While flying mode is on:
   map returns to your aircraft after a short countdown. A **Resume** button
   brings it back at once.
 - **Orientation:** north up, track up, or course up (tap the compass).
+- **Flown trail:** a line behind the aircraft showing where you have flown
+  since takeoff, the same track the flight log records. A stretch where the
+  GPS was lost is drawn dashed. It stays after landing until you stop
+  flying mode. Turn it off under **Settings → Flown trail**. With the
+  simulator it only shows when simulated flights are logged.
 - **Pilot log:** the route table with live ETA and actual arrival times, a
   progress bar on the current leg, upcoming frequencies (looking ahead
   about 10 minutes) and nearby VOR and NDB frequencies. See

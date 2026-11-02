@@ -20,7 +20,7 @@
  */
 
 import { logRouteJson, type FlightLogRoute } from '@open-vfr/shared/flightLogRoute'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { getDb, type TrackPoint, type FlightLogDocType } from '../db'
 import { trimParkedTail, simulatedFixAction } from '@open-vfr/shared/flightLogStats'
 import { takeoffRun } from '@open-vfr/shared/flightLogPreroll'
@@ -75,7 +75,13 @@ export function useFlightLog(
    *  (MapView fills it). A new log starts at the takeoff roll found there:
    *  takeoff is only detected well above the terrain. */
   prerollRef?: { current: TrackPoint[] },
-): { activeLogId: string | null } {
+): {
+  activeLogId: string | null
+  /** The track to draw behind the aircraft: the open log's, else the last
+   *  log closed while flying mode stayed on (after landing). null after
+   *  flying mode stops. The live array: read it, never change it. */
+  liveTrack: () => TrackPoint[] | null
+} {
   const [activeLogId, setActiveLogId] = useState<string | null>(null)
   // Close out logs left in progress by a previous session (tab/app closed
   // mid-flight, so finishLog never ran). Runs once, before recording can start.
@@ -118,9 +124,14 @@ export function useFlightLog(
     simulated:     false,
   })
 
+  // Track of the last log closed while flying mode stayed on: still drawn
+  // as the trail after landing, until flying mode stops or a new log opens.
+  const lastTrailRef = useRef<TrackPoint[] | null>(null)
+
   // Reset everything when flying mode goes off.
   useEffect(() => {
     if (flyingMode === 'off') {
+      lastTrailRef.current = null
       const s = stateRef.current
       // Auto-stopped on landing while parked between circuits: leave the log open
       // and let the park timer close it, so a restart within the timeout continues
@@ -303,6 +314,7 @@ export function useFlightLog(
           if (parkTimeoutMs === 0) {
             // Option A — close immediately, split per leg.
             if (s.logId) {
+              lastTrailRef.current = s.track
               finishLog(s.logId, s.track, s.distanceNm, s.maxAltFt, nearestIcao ?? '', thr.landedKts, s.simulated)
               setActiveLogId(null)
             }
@@ -320,6 +332,7 @@ export function useFlightLog(
               const cs = stateRef.current
               if (cs.phase !== 'taxiing' || !cs.logId) return
               if (cs.flushTimer) { clearTimeout(cs.flushTimer) }
+              lastTrailRef.current = cs.track
               finishLog(cs.logId, cs.track, cs.distanceNm, cs.maxAltFt, arrivalIcao, thr.landedKts, cs.simulated)
               stateRef.current = {
                 phase:         'idle',
@@ -351,7 +364,11 @@ export function useFlightLog(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position, flyingMode])
 
-  return { activeLogId }
+  const liveTrack = useCallback((): TrackPoint[] | null => {
+    const s = stateRef.current
+    return s.logId ? s.track : lastTrailRef.current
+  }, [])
+  return { activeLogId, liveTrack }
 }
 
 // ── RxDB helpers (fire-and-forget) ───────────────────────────────────────────

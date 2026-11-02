@@ -37,6 +37,7 @@ banners, Navigation, Vario, Simulator, Country, Offline Data and About.
 | Log simulated flights | on, off | off | See [Simulators and devices](./simulators-and-devices.md) |
 | Trajectory mode | Time, Distance | Time | Forward ticks on the map and profile |
 | Trajectory lookahead | 2, 5, 10 (min or NM) | | |
+| Flown trail | Off, On | On | Line behind the aircraft in flying mode (the flight log's track) |
 
 ## Airspace warnings
 

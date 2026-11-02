@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeLogStats, trimParkedTail, thinTrack, formatLogDuration, type LogTrackPoint, type LogStats } from './flightLogStats'
+import { computeLogStats, trimParkedTail, thinTrack, formatLogDuration, liveTrailGeoJson, type LogTrackPoint, type LogStats } from './flightLogStats'
 
 const THR = { takeoffKts: 30, landedKts: 20 }
 
@@ -181,5 +181,24 @@ describe('thinTrack', () => {
     // Even spacing over the whole flight: the early part is still there.
     expect(out.slice(0, 3)).toEqual([0, 2, 4])
     expect(out[out.length - 1]).toBe(2999)
+  })
+})
+
+describe('liveTrailGeoJson', () => {
+  const pt = (i: number, ts: number) => ({ lat: 59 + i * 1e-4, lng: 18, altFt: 1000, spdKts: 90, ts })
+  it('a long flight thinned to the budget draws no false gaps', () => {
+    // 10 h at 1 Hz: even thinning alone would space points > 30 s apart.
+    const track = Array.from({ length: 36_000 }, (_, i) => pt(i, i * 1000))
+    const fc = liveTrailGeoJson(track, 2000)
+    expect(fc.features.filter(f => f.properties.kind === 'gap')).toHaveLength(0)
+    expect(fc.features[0]!.geometry.coordinates.length).toBeLessThanOrEqual(2001)
+  })
+  it('a real gap is a dashed bridge between two stretches', () => {
+    const track = [pt(0, 0), pt(1, 1000), pt(2, 2000), pt(3, 62_000), pt(4, 63_000)]
+    const kinds = liveTrailGeoJson(track).features.map(f => f.properties.kind)
+    expect(kinds).toEqual(['track', 'gap', 'track'])
+  })
+  it('nothing for fewer than two points', () => {
+    expect(liveTrailGeoJson([pt(0, 0)]).features).toEqual([])
   })
 })

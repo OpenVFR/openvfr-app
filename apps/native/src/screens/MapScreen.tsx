@@ -114,7 +114,7 @@ import { useAircraftSync } from '../hooks/useAircraftSync'
 import type { FlightLogDocType } from '../types/db'
 import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
 import { useGroundMaxElevation } from '../hooks/useGroundMaxElevation'
-import { trackToGeoJson } from '@open-vfr/shared/flightLogStats'
+import { trackToGeoJson, liveTrailGeoJson } from '@open-vfr/shared/flightLogStats'
 import { parseParkTimeout } from '@open-vfr/shared/parkTimeout'
 import { autoFlyThresholds, CLIMB_WINDOW_MS } from '@open-vfr/shared/autoFlyDetect'
 import { iasToTas } from '@open-vfr/shared/airspeed'
@@ -161,6 +161,8 @@ import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../sty
 import { isLowMemoryDevice } from '../utils/deviceMemory'
 import { NativeSheet } from '../components/NativeSheet'
 import { BaroPromptModal } from '../components/BaroPromptModal'
+/** How often the flown trail is rebuilt from the active log (ms). */
+const TRAIL_REFRESH_MS = 5_000
 /** Climb (ft) from which the highest ground around is checked (see groundMaxFt). */
 const GROUND_MAX_CHECK_FROM_FT = 100
 
@@ -820,7 +822,7 @@ function MapScreenForCountry() {
   plannedRouteRef.current = waypoints.length >= 2
     ? { waypoints, legOverrides, aircraftId: settings.selectedAircraftId ?? undefined }
     : null
-  const { activeLogId } = useFlightLog(
+  const { activeLogId, liveTrack } = useFlightLog(
     flightModeStatus !== 'off' ? activePosition : null,
     flightModeStatus,
     settings.selectedAircraftId ?? '',
@@ -832,6 +834,18 @@ function MapScreenForCountry() {
     { simulated: simPosition != null || simFlight.position != null, record: settings.recordSimulatedFlights },
     plannedRouteRef,
   )
+  // Flown trail behind the aircraft: the active log's track, rebuilt every
+  // TRAIL_REFRESH_MS (this screen re-renders on every fix while flying; the
+  // map source is only replaced when the bucket changes). Thinned with gaps
+  // drawn dashed, like a viewed log (liveTrailGeoJson).
+  const trailBucket = flightModeStatus !== 'off' && (settings.showFlownTrail ?? true)
+    ? Math.floor(Date.now() / TRAIL_REFRESH_MS) : -1
+  const liveTrailFC = useMemo(() => {
+    if (trailBucket < 0) return null
+    const t = liveTrack()
+    return t && t.length > 1 ? liveTrailGeoJson(t) as FeatureCollection : null
+  // activeLogId: a new log replaces the trail at once, not at the next bucket.
+  }, [trailBucket, activeLogId, liveTrack])
   // Finish + upload logs a previous session left unfinished (otherwise they
   // would stay "Recording…" forever, unviewable and not synced). Also fills missing departure / arrival aerodromes from the track. The
   // latest unfinished log may still be carried on by a takeoff close by
@@ -1844,6 +1858,7 @@ function MapScreenForCountry() {
           pastTrack={pastTrack}
           screenFocused={screenFocused}
           pastTrackGeoJson={pastTrackGeoJson}
+          liveTrailFC={liveTrailFC}
           profileCursorStore={profileCursorStore}
           rulerMode={rulerMode}
           rulerPoints={rulerPoints}

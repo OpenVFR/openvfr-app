@@ -80,6 +80,7 @@ Legend: **Yes** = available, **Partial** = available with differences
 | Auto start and stop from takeoff and landing | Yes | Yes | |
 | Direct to | Yes | Yes | |
 | Auto zoom while flying | Yes | Yes | |
+| Flown trail behind the aircraft | Yes | Yes | |
 | Alert stack: airspace, obstacles, aerodrome nearby | Yes | Yes | Same rules and settings. |
 | Recent-alerts list | Yes | Yes | |
 | Drop a point at your position | Yes | Yes | Saved in the "Dropped in Flight" folder. |

@@ -257,6 +257,44 @@ export function useAutoZoom(): [boolean, (v: boolean) => void] {
 }
 
 // ---------------------------------------------------------------------------
+// useFlownTrail — draw the flown track (active flight log) behind the
+// aircraft in flying mode. Persisted to RxDB; defaults true. One value shared
+// by every component using the hook (Settings toggle and the map), without
+// threading it through the drawer's props.
+// ---------------------------------------------------------------------------
+const FLOWN_TRAIL_KEY = 'flown_trail'
+let flownTrail = true
+let flownTrailLoaded = false
+const flownTrailListeners = new Set<(v: boolean) => void>()
+
+export function useFlownTrail(): [boolean, (v: boolean) => void] {
+  const [on, setOn] = useState<boolean>(flownTrail)
+
+  useEffect(() => {
+    flownTrailListeners.add(setOn)
+    setOn(flownTrail)
+    if (!flownTrailLoaded) {
+      flownTrailLoaded = true
+      getDb().then(async (db) => {
+        const doc = await db.settings.findOne(FLOWN_TRAIL_KEY).exec()
+        if (doc) { flownTrail = doc.value !== 'false'; flownTrailListeners.forEach(fn => fn(flownTrail)) }
+      }).catch(() => {})
+    }
+    return () => { flownTrailListeners.delete(setOn) }
+  }, [])
+
+  const set = useCallback((v: boolean) => {
+    flownTrail = v
+    flownTrailListeners.forEach(fn => fn(v))
+    getDb().then(async (db) => {
+      await db.settings.upsert({ id: FLOWN_TRAIL_KEY, value: String(v) })
+    }).catch(() => {})
+  }, [])
+
+  return [on, set]
+}
+
+// ---------------------------------------------------------------------------
 // useTrajectoryMode — 'time' (minutes ahead) or 'dist' (NM ahead).
 // Persisted to RxDB; defaults 'time'.
 // ---------------------------------------------------------------------------

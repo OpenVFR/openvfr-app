@@ -45,6 +45,8 @@ export type AppSettings = {
   msaMargins: MsaMargins
   /** Trajectory mode: project N minutes ahead (time) or fixed NM (nm) */
   trajectoryMode: 'time' | 'nm'
+  /** In flying mode, draw the flown track (the active log) behind the aircraft. */
+  showFlownTrail: boolean
   /** GaugesBar GPS gauge: show GPS HGT (above ground) instead of GPS ALT (above sea level) (tap to toggle) */
   showAltitudeAgl: boolean
   /** GaugesBar ALT gauge: show current QNH (hPa) instead of the altitude in ft (tap to toggle) */
@@ -100,6 +102,7 @@ const DEFAULTS: AppSettings = {
   alertAirspaceLevels:      {},
   msaMargins:               DEFAULT_MSA_MARGINS,
   trajectoryMode:           'time',
+  showFlownTrail:           true,
   showAltitudeAgl:          false,
   showQnhOnPaltGauge:       false,
   showLocalTime:            false,

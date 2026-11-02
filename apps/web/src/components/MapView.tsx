@@ -1,4 +1,4 @@
-import { trackToGeoJson } from '@open-vfr/shared/flightLogStats'
+import { trackToGeoJson, liveTrailGeoJson } from '@open-vfr/shared/flightLogStats'
 import { flightLogProfile, flownCoordinateAt, flownPointAt } from '@open-vfr/shared/flightLogProfile'
 import { parseLogRoute, type FlightLogRoute } from '@open-vfr/shared/flightLogRoute'
 import { FLOWN_COLOR, FLOWN_GAP_COLOR } from '@open-vfr/shared/radarStyle'
@@ -103,7 +103,7 @@ import type { RouteWaypoint } from '../utils/routeCalc'
 import { magneticBearingDeg, bearingDeg, advancePosition } from '../utils/routeCalc'
 import { legLabelVariants } from '@open-vfr/shared/legLabels'
 import { usePersistedRoute } from '../db/useRouteDb'
-import { useHomeAirfield, useUnits, useAlternate, useTheme, useAutoZoom, useTrajectoryMode, useAirspaceWarnLookahead, useAirspaceWarnVerticalFt, useTerrainColoring, useTrafficVertFilter, useLayerVisibility, useAirspaceCeiling, useSelectedAircraftId, useParkTimeout, useAutoFlyMode, useRecordSimulatedFlights, useAlertBanners } from '../db/useSettings'
+import { useHomeAirfield, useUnits, useAlternate, useTheme, useAutoZoom, useTrajectoryMode, useAirspaceWarnLookahead, useAirspaceWarnVerticalFt, useTerrainColoring, useTrafficVertFilter, useLayerVisibility, useAirspaceCeiling, useSelectedAircraftId, useParkTimeout, useAutoFlyMode, useRecordSimulatedFlights, useAlertBanners, useFlownTrail } from '../db/useSettings'
 import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import { useUserWaypoints } from '../db/useUserWaypoints'
 import { nextPlaceName } from '../utils/places'
@@ -1335,7 +1335,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     ? { waypoints: routeWaypoints, legOverrides, aircraftId: selectedAircraftId ?? undefined }
     : null
   // Flight log: records the in-flight track
-  useFlightLog(
+  const { liveTrack } = useFlightLog(
     flyingMode !== 'off' ? gpsPosition : null,
     flyingMode,
     selectedAircraftId ?? '',
@@ -1349,6 +1349,23 @@ export default function MapView({ auth }: { auth: AuthState }) {
     plannedRouteRef,
     prerollRef,
   )
+  // Flown trail behind the aircraft: the active log's track, pushed to the
+  // map every 5 s while flying (and once at once when the mode / setting
+  // changes). Thinned with gaps dashed, like a viewed log (liveTrailGeoJson).
+  const [flownTrail] = useFlownTrail()
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    const push = () => {
+      const src = map.getSource('live-trail') as GeoJSONSource | undefined
+      const t = flyingMode !== 'off' && flownTrail ? liveTrack() : null
+      src?.setData(t && t.length > 1 ? liveTrailGeoJson(t) : { type: 'FeatureCollection', features: [] })
+    }
+    push()
+    if (flyingMode === 'off' || !flownTrail) return
+    const timer = setInterval(push, 5_000)
+    return () => clearInterval(timer)
+  }, [flyingMode, flownTrail, mapReady, liveTrack])
 
   // ── ADS-B traffic (OpenSky Network via server SSE) ──────────────────────
   const trafficEnabled = (visibility['traffic'] ?? false) && !!auth.user
@@ -2093,6 +2110,29 @@ export default function MapView({ auth }: { auth: AuthState }) {
         id: 'past-track-gap-layer',
         type: 'line',
         source: 'past-track',
+        filter: ['==', ['get', 'kind'], 'gap'],
+        paint: { 'line-color': FLOWN_GAP_COLOR, 'line-width': 2.5, 'line-opacity': 0.9, 'line-dasharray': [1.5, 2] },
+      })
+
+      // ── Flown trail (active flight log, in flying mode) ───────────────────
+      // Added after the route layers and before the aircraft symbol: above
+      // the route (flying on track would hide it), below the aircraft.
+      map.addSource('live-trail', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      })
+      map.addLayer({
+        id: 'live-trail-layer',
+        type: 'line',
+        source: 'live-trail',
+        filter: ['==', ['get', 'kind'], 'track'],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': FLOWN_COLOR, 'line-width': 2.5, 'line-opacity': 0.85 },
+      })
+      map.addLayer({
+        id: 'live-trail-gap-layer',
+        type: 'line',
+        source: 'live-trail',
         filter: ['==', ['get', 'kind'], 'gap'],
         paint: { 'line-color': FLOWN_GAP_COLOR, 'line-width': 2.5, 'line-opacity': 0.9, 'line-dasharray': [1.5, 2] },
       })
