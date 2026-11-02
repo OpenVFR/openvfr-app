@@ -87,9 +87,11 @@ export function isUpdateRequired(info: VersionInfo, build: number | null = curBu
 /** True when the last known position says the device is moving at flying speed. */
 async function probablyFlying(): Promise<boolean> {
   try {
-    // timeout 0: the last known fix, never waits for a new one.
+    // timeout 0: the last known fix, never waits for a new one. Android returns
+    // it whatever its age (maxCachedAge is not applied), so check the age here.
     const fix = await Location.getPosition({ maxCachedAge: FIX_MAX_AGE_MS / 1000, timeout: 0 })
-    return (fix?.speed ?? 0) > FLYING_SPEED_MS
+    if (!fix || Date.now() - fix.timestamp > FIX_MAX_AGE_MS) return false
+    return (fix.speed ?? 0) > FLYING_SPEED_MS
   } catch {
     return false  // no permission / no fix
   }

@@ -81,7 +81,7 @@ jobs:
       # Config, Metro and peer-dependency sanity for the installed SDK.
       - name: Expo Doctor
         working-directory: apps/native
-        run: npx --yes expo-doctor@latest
+        run: npx --yes expo-doctor@1.21.5
 
       # The release bundle path (Metro + the @open-vfr/shared resolver in
       # metro.config.js) for both platforms, without a native build.

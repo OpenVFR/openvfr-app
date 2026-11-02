@@ -3,10 +3,10 @@
  * ellipsoid (needs the geoid correction, ./geoid.ts) or already above mean
  * sea level? Decided by the platform by default and VERIFIED on the ground.
  *
-
- * (Native apps: expo-location `next` `altitude` is ellipsoidal on both platforms, see ./gpsAltitude.ts. Web: below.)
- * Default: Android (and Android browsers) report ellipsoidal heights, iOS
- * reports altitude above sea level (see ./geoid.ts). If a future Android,
+ * Default: native apps (expo-location `next` `altitude`, see ./gpsAltitude.ts)
+ * report heights above the ellipsoid on both platforms; on the web, Android
+ * browsers report ellipsoidal heights and other browsers sea level
+ * (./geoid.ts gpsAltitudeIsEllipsoidal). If a future OS,
  * browser or location-library version changed that silently, correcting
  * anyway would put every GPS altitude 60-125 ft too LOW over the Nordics --
  * so the app checks it against ground truth:
@@ -103,7 +103,7 @@ let lastSampleAt = -Infinity
 const listeners = new Set<() => void>()
 
 /**
- * Set the platform default (from ./geoid.ts gpsAltitudeIsEllipsoidal) and
+ * Set the platform default (native: ellipsoid; web: ./geoid.ts gpsAltitudeIsEllipsoidal) and
  * load a stored verdict if it was made in the same environment, e.g.
  * `android 34 app 1.4.0` or a browser user agent. Call once at startup.
  */
@@ -220,7 +220,7 @@ export function observeGroundSample(s: GroundSample): void {
   if (ref !== platformDefault) {
     console.warn(`[gps-altitude] this device's GPS altitude is ${ref === 'msl' ? 'already above mean sea level' : 'above the WGS-84 ellipsoid'}, ` +
       `not ${platformDefault === 'msl' ? 'sea level' : 'ellipsoidal'} as assumed for the platform (median offset ${verdict.medianOffsetM} m, geoid ${verdict.geoidM} m, ` +
-      `${verdict.samples} samples, ${environment}). Using the measured reference; update gpsAltitudeIsEllipsoidal in @open-vfr/shared/geoid.`)
+      `${verdict.samples} samples, ${environment}). Using the measured reference; update the default (native: apps/native/index.js, web: gpsAltitudeIsEllipsoidal in @open-vfr/shared/geoid).`)
   }
   void Promise.resolve(kv?.setItem(STORAGE_KEY, JSON.stringify(verdict))).catch(() => {})
   notify()
