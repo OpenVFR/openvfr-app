@@ -13,8 +13,8 @@ on native it is the **vertical profile**. They show the same thing.
 It works in three situations:
 
 - **Planning:** the profile of your route.
-- **Flying:** the same profile with your aircraft on it, and a short
-  forecast of where you are heading.
+- **Flying:** what lies ahead of your aircraft (see Live view below), with
+  the whole route one tap away.
 - **Reviewing a flight log:** the flown track, drawn on the same chart. See
   [Flight logs](./flight-logs.md).
 
@@ -72,12 +72,25 @@ map) to unlock it for a short time.
 
 ## Live view
 
-In flying mode your aircraft is drawn on the chart at its altitude and
-position along the route. The chart keeps your altitude in view, and a
-forward trajectory shows ticks a few minutes or miles ahead (set the
-interval in Settings: time or distance). If you wander more than 3 NM off
-the route, the chart says so, because it is then showing a route you are no
-longer on.
+In flying mode the chart shows the path ahead of your aircraft, about the
+next 12 minutes at your ground speed (at least 10 NM), with your aircraft
+near the left edge at its altitude:
+
+- **On your route** (within about 1 NM of it): the rest of the route from
+  where you are, round its turns, so the ground, airspace and obstacles after
+  the next waypoint are already on the chart. The title says **Route ahead**
+  and the planned levels are drawn.
+- **Off your route, past its end, or without a route:** a straight line
+  along your track. The title says **Look-ahead** (**Off route** when you
+  have a route but have left it by more than about 2 NM).
+
+**Whole route** in the chart's header shows the full route from start to
+destination with your aircraft on it, as when planning; **Ahead** goes back.
+In that view, if you wander more than 3 NM off the route the chart says so,
+because it is then showing a route you are no longer on.
+
+A forward trajectory shows ticks a few minutes or miles ahead (set the
+interval in Settings: time or distance).
 
 ## MSA and margins
 

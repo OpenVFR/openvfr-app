@@ -51,6 +51,23 @@
   border-top: 1px solid var(--border-default);
 }
 
+/* In-flight profile header: switch between the path ahead and the whole route. */
+.vrViewToggle {
+  margin-left: 8px;
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 1px 6px;
+  line-height: 1.4;
+}
+.vrViewToggle:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+
 /* ── Data update notification banner ─────────────────────────────────────── */
 .updateBanner {
   position:       absolute;

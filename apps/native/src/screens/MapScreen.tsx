@@ -114,11 +114,13 @@ import { useAircraftSync } from '../hooks/useAircraftSync'
 import type { FlightLogDocType } from '../types/db'
 import { useAutoFlyDetect } from '../hooks/useAutoFlyDetect'
 import { trackToGeoJson, liveTrailGeoJson } from '@open-vfr/shared/flightLogStats'
+import { nextPathAhead, pathAheadLegOverrides, type PathAheadState } from '@open-vfr/shared/pathAhead'
 import { parseParkTimeout } from '@open-vfr/shared/parkTimeout'
 import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
 import { iasToTas } from '@open-vfr/shared/airspeed'
 import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
 import { RulerHeaderStart, RulerHeaderEnd, RouteHeaderStart } from '../components/RulerHeaderStats'
+import { ProfileViewToggle } from '../components/ProfileViewToggle'
 import { flightLogProfile, flownCoordinateAt, flownPointAt } from '@open-vfr/shared/flightLogProfile'
 import { parseLogRoute, type FlightLogRoute } from '@open-vfr/shared/flightLogRoute'
 import { Ionicons } from '@expo/vector-icons'
@@ -155,7 +157,7 @@ import { advancePosition, distanceNm, bearingDeg } from '../utils/routeCalc'
 import { navigatingLeg, routeDirect, samePoint, directActionKind, DIRECT_ACTION_LABELS, presentPositionName, LEG_UNLOCK_MS, LEG_UNLOCK_S } from '@open-vfr/shared/routeNavigation'
 import { useAlternate } from '../hooks/usePlanningSettings'
 import { createValueStore } from '../utils/valueStore'
-import type { RouteWaypoint } from '../types/db'
+import type { RouteWaypoint, LegOverride } from '../types/db'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { isLowMemoryDevice } from '../utils/deviceMemory'
 import { NativeSheet } from '../components/NativeSheet'
@@ -408,46 +410,27 @@ function MapScreenForCountry() {
     activePosition?.trackDeg, activePosition?.accuracy, bestAltFt,
   ])
 
-  // ── Look-ahead VerticalRadar for unplanned flight ──────────────────
-  // While flying without a planned route, synthesise a 2-waypoint route from
-  // the current GPS position along the current ground track for LOOKAHEAD_NM.
-  // Recomputed when heading changes ≥10°, position moves ≥1 NM, or 20 s elapse.
-  // (Tightened from ≥15°/≥3 NM/60 s — that was stale enough that obstacles
-  // near the aircraft's current position, and the chart's own position
-  // marker, visibly lagged reality for up to a minute/3 NM while flying.)
-  const LOOKAHEAD_NM = 30
-  const [lookaheadWaypoints, setLookaheadWaypoints]   = useState<RouteWaypoint[]>([])
-  const [lookaheadHeadingDeg, setLookaheadHeadingDeg] = useState(0)
-  const lookaheadRef = React.useRef<{ lat: number; lng: number; trackDeg: number; ts: number }>(
-    { lat: 0, lng: 0, trackDeg: -999, ts: 0 },
-  )
+  // ── In-flight profile: the path ahead of the aircraft ─────────────────
+  // In flight the profile shows what lies ahead (@open-vfr/shared/pathAhead):
+  // the remaining planned route from the aircraft while on it (turns
+  // included), else a straight line along the track. The whole route (A to
+  // B, aircraft moving along it) is one tap away (showWholeRoute); it was the
+  // default and kept the aircraft pinned to one end of a route it was not
+  // flying. Rebuilt per nextPathAhead's thresholds (each rebuild refetches
+  // the profile's terrain), not on every fix.
+  const [aheadState, setAheadState] = useState<PathAheadState | null>(null)
+  const [showWholeRoute, setShowWholeRoute] = useState(false)
   React.useEffect(() => {
-    // Mirrors web's MapView.tsx gating exactly (flyingMode === 'off' check
-    // first) — without this, the look-ahead route (and therefore the
-    // VerticalProfile chart) appeared as soon as GPS produced a position,
-    // even before the pilot started a flight (flightModeStatus === 'off').
-    if ((!flying && !simFlight.active) || waypoints.length >= 2 || !activePosition) {
-      if (lookaheadWaypoints.length > 0) setLookaheadWaypoints([])
+    // Mirrors web's gating: only in flight (GPS or simulator), not as soon
+    // as GPS produces a position on the ground.
+    if ((!flying && !simFlight.active) || !activePosition) {
+      setAheadState(null)
+      if (!flying && !simFlight.active) setShowWholeRoute(false)
       return
     }
-    const last   = lookaheadRef.current
-    const now    = Date.now()
-    const dPos   = distanceNm({ lat: last.lat, lng: last.lng }, { lat: activePosition.lat, lng: activePosition.lng })
-    const rawDHdg = Math.abs(activePosition.trackDeg - last.trackDeg)
-    const dHdg   = Math.min(rawDHdg, 360 - rawDHdg)
-    const dTime  = now - last.ts
-    if (last.ts > 0 && dPos < 1 && dHdg < 10 && dTime < 20_000) return
-    const end = advancePosition(activePosition.lat, activePosition.lng, activePosition.trackDeg, LOOKAHEAD_NM)
-    lookaheadRef.current = { lat: activePosition.lat, lng: activePosition.lng, trackDeg: activePosition.trackDeg, ts: now }
-    setLookaheadWaypoints([
-      { lat: activePosition.lat, lng: activePosition.lng, name: 'Position' },
-      { lat: end.lat,            lng: end.lng,            name: `Hdg ${Math.round(activePosition.trackDeg)}°` },
-    ])
-    setLookaheadHeadingDeg(activePosition.trackDeg)
-  // activePosition reference changes every tick — only re-run when the values
-  // that matter for the threshold check change, not on every position update.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waypoints.length, activePosition, flying, simFlight.active])
+    setAheadState(prev => nextPathAhead(prev, waypoints, activePosition, Date.now()))
+  }, [waypoints, activePosition, flying, simFlight.active])
+  const aheadPath = aheadState?.path ?? null
 
   // Viewed flight log track (Logs segment "View" action on PlanScreen) —
   // takes priority over the live/lookahead profile: reviewing a past flight
@@ -464,37 +447,37 @@ function MapScreenForCountry() {
   // Route planned for the viewed log (stored with it when it was recorded), for the planned-level line.
   const selectedLogRoute = useMemo(() => parseLogRoute(selectedLog?.routeJson), [selectedLog?.routeJson])
   const showLogProfile  = !showRulerProfile && !!selectedLog && selectedLogProfile != null
-  const showPlannedProfile   = !showRulerProfile && !showLogProfile && waypoints.length >= 2
-  const showLookaheadProfile = !showRulerProfile && !showLogProfile && !showPlannedProfile && lookaheadWaypoints.length >= 2
+  const inFlightProfile      = !showRulerProfile && !showLogProfile && flyingActive
+  const showPlannedProfile   = !showRulerProfile && !showLogProfile && waypoints.length >= 2 && (!flyingActive || showWholeRoute)
+  const showLookaheadProfile = inFlightProfile && !showPlannedProfile && aheadPath != null
+  const aheadWaypoints = aheadPath?.waypoints ?? NO_WAYPOINTS
 
-  // Aircraft's live progress along the synthesised look-ahead route.
-  // Previously hardcoded to 0 when passed to VerticalProfile, which pinned
-  // the marker at the route-start point forever — lookaheadWaypoints[0] is
-  // only re-snapped to the current position every 1 NM/10°/20 s, so between
-  // snaps the aircraft visibly moves along the ground but the chart marker
-  // stayed frozen at the left edge. Recomputing live against the (possibly
-  // slightly stale) lookahead line keeps the marker tracking real motion,
-  // since the aircraft continues along the same track the line was
-  // extended from.
+  // Aircraft's live progress along the path ahead: the path is only rebuilt
+  // per nextPathAhead's thresholds, so between rebuilds the marker moves
+  // along it from just behind the left edge.
   const lookaheadDistNm = showLookaheadProfile && activePosition
-    ? distanceAlongRouteNm(lookaheadWaypoints, activePosition)
+    ? distanceAlongRouteNm(aheadWaypoints, activePosition)
     : 0
 
-  // Rounded to the nearest 50 ft / 5 kt so this memo (and everything
-  // downstream that keys off legOverrides — VerticalProfile's profile/
-  // yMax/path useMemos) doesn't recompute on every sub-unit GPS/sim jitter.
-  // MUST stay a stable array reference across renders where the rounded
-  // values haven't changed — a fresh `[{...}]` literal here defeated every
-  // downstream useMemo (they saw a "new" legOverrides every render) and,
-  // under a burst of rapid position updates (sim stepper taps), compounded
-  // into a render storm that tripped React's "Maximum update depth
-  // exceeded" safety limit.
+  // Planned levels per leg of the path ahead: the route leg's where it lies
+  // on the route, the current altitude and speed elsewhere. Rounded to the
+  // nearest 50 ft / 5 kt so this memo (and everything downstream that keys
+  // off legOverrides -- VerticalProfile's profile/yMax/path useMemos) does not
+  // recompute on every sub-unit GPS/sim jitter; a fresh array every render
+  // once compounded into a render storm ("Maximum update depth exceeded").
   const lookaheadAltFt   = Math.round((bestAltFt ?? activePosition?.altFt ?? 1000) / 50) * 50
   const lookaheadSpeedKts = Math.round((activePosition?.speedKts || 90) / 5) * 5
   const lookaheadLegOverrides = React.useMemo(
-    () => [{ altFt: lookaheadAltFt, speedKts: lookaheadSpeedKts }],
-    [lookaheadAltFt, lookaheadSpeedKts],
+    // Empty entries (route legs without their own level) mean the default level,
+    // like gaps in the route's own legOverrides (computeProfile: `?? {}`).
+    () => (aheadPath ? pathAheadLegOverrides(aheadPath, legOverrides, { altFt: lookaheadAltFt, speedKts: lookaheadSpeedKts }) as LegOverride[] : []),
+    [aheadPath, legOverrides, lookaheadAltFt, lookaheadSpeedKts],
   )
+  // The path ends on the ground only where it reaches the planned destination.
+  const aheadAirborneEnds = React.useMemo(() => ({
+    start: true,
+    end: !(aheadPath?.onRoute && aheadWaypoints[aheadWaypoints.length - 1] === waypoints[waypoints.length - 1]),
+  }), [aheadPath, aheadWaypoints, waypoints])
 
   const [profileHeight, setProfileHeight] = useState(DEFAULT_CHART_H)
   const [mapAreaH, setMapAreaH] = useState<number | null>(null)
@@ -1587,8 +1570,8 @@ function MapScreenForCountry() {
       const p = flownPointAt(selectedLogProfile.points, nm)
       return c ? { lngLat: [c.lng, c.lat], trackDeg: p?.trkDeg ?? 0 } : null
     }
-    if (showLookaheadProfile && lookaheadWaypoints.length >= 2) {
-      const c = coordinateAlongRouteNm(lookaheadWaypoints, nm)
+    if (showLookaheadProfile && aheadWaypoints.length >= 2) {
+      const c = coordinateAlongRouteNm(aheadWaypoints, nm)
       return { lngLat: [c.lng, c.lat] }
     }
     if (showPlannedProfile && waypoints.length >= 2) {
@@ -1596,7 +1579,7 @@ function MapScreenForCountry() {
       return { lngLat: [c.lng, c.lat] }
     }
     return null
-  }, [showRulerProfile, rulerPoints, showLogProfile, selectedLogProfile, showLookaheadProfile, lookaheadWaypoints, showPlannedProfile, waypoints])
+  }, [showRulerProfile, rulerPoints, showLogProfile, selectedLogProfile, showLookaheadProfile, aheadWaypoints, showPlannedProfile, waypoints])
   const handleProfileHover = useCallback((nm: number | null) => {
     profileCursorStore.set(nm == null ? null : profileCursorFor(nm))
   }, [profileCursorStore, profileCursorFor])
@@ -2202,6 +2185,9 @@ function MapScreenForCountry() {
           msaMargins={settings.msaMargins}
           aircraftProfile={aircraftProfile}
           headerStart={<RouteHeaderStart waypoints={waypoints} legOverrides={legOverrides} units={settings.units} cruiseKts={aircraftProfile?.cruiseIas} cruiseAltFt={aircraftProfile?.cruiseAltFt} />}
+          headerEnd={flyingActive ? (
+            <ProfileViewToggle label="Ahead" accessibilityLabel="Show the path ahead of the aircraft" onPress={() => setShowWholeRoute(false)} />
+          ) : undefined}
           currentDistNm={currentDistNm}
           currentAltFt={bestAltFt ?? undefined}
           currentSpeedKts={activePosition?.speedKts}
@@ -2216,12 +2202,18 @@ function MapScreenForCountry() {
         />
       )}
 
-      {showLookaheadProfile && (
+      {showLookaheadProfile && aheadPath && (
         <VerticalProfile
-          title={`LOOK-AHEAD · TRK ${Math.round(lookaheadHeadingDeg)}°`}
-          followAircraft
-          corridorBand={false}
-          waypoints={lookaheadWaypoints}
+          title={aheadPath.onRoute
+            ? `ROUTE AHEAD · TRK ${Math.round(aheadPath.trackDeg)}°`
+            : `${waypoints.length >= 2 ? 'OFF ROUTE · ' : ''}LOOK-AHEAD · TRK ${Math.round(aheadPath.trackDeg)}°`}
+          followAircraft={!aheadPath.onRoute}
+          corridorBand={aheadPath.onRoute}
+          airborneEnds={aheadAirborneEnds}
+          headerEnd={waypoints.length >= 2 ? (
+            <ProfileViewToggle label="Whole route" accessibilityLabel="Show the whole planned route" onPress={() => setShowWholeRoute(true)} />
+          ) : undefined}
+          waypoints={aheadWaypoints}
           legOverrides={lookaheadLegOverrides}
           units={settings.units}
           airspaceCeilingFt={settings.airspaceCeilingFt}

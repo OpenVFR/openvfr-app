@@ -32,6 +32,7 @@ import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
 import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
 import { carryLookaheadTerrain } from '@open-vfr/shared/lookaheadTerrain'
+import { plannedLineEnds } from '@open-vfr/shared/pathAhead'
 import { obstacleSymbol, polyPath, primStyle, obstacleXScale, MIN_FULL_HEIGHT_PX, type SymbolPrim } from '@open-vfr/shared/obstacleSymbol'
 import { effectiveHeight, obstacleTipsForMsa, limitingObstacleLabel, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
 import { legSpans, legMsaList, legBelowMsa, dragShownFt, withLegLevel, altAtY, unreachedLegs, verticalPhaseMarks, LEVEL_STEP_FT, DRAG_MIN_MOVE_PX, type LegSpan } from '@open-vfr/shared/legLevelDrag'
@@ -155,6 +156,11 @@ interface Props {
   /** The chart follows the aircraft's altitude (no planned route: look-ahead). The scale is
    *  a window around the aircraft instead of fitting a plan. */
   followAircraft?: boolean
+  /** The path starts / ends in the air (the in-flight path ahead): the planned-level line
+   *  starts / ends at the first / last planned level, not on the ground (plannedLineEnds). */
+  airborneEnds?: { start: boolean; end: boolean }
+  /** Extra control at the right end of the header (e.g. the path-ahead / whole-route switch). */
+  headerAction?: React.ReactNode
   /** Draw the band of highest ground within the abeam distance behind the ground line
    *  (default true). Off for the ruler and the look-ahead: only a planned route has a
    *  corridor the pilot set out to fly. The MSA still uses it either way. */
@@ -954,7 +960,7 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
 function VirtualRadar({
   waypoints, legOverrides, units = DEFAULT_UNITS, title, onHoverDistNm, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, crosshairDistNm,
-  crossTrackNm, weatherStations, airspaceCeilingFt, onLegLevelChange, levelEditLeg, onLegTap, followAircraft, corridorBand = true,
+  crossTrackNm, weatherStations, airspaceCeilingFt, onLegLevelChange, levelEditLeg, onLegTap, followAircraft, airborneEnds, headerAction, corridorBand = true,
   flown, onClose, jumpToTs, plannedRoute,
 }: Props) {
   const logMode = flown != null
@@ -1260,8 +1266,9 @@ function VirtualRadar({
       // Departure / arrival elevation from the first and last terrain sample,
       // so the planned path starts and ends on the ground rather than at 0 ft
       // (0 ft when only the grid is available: its cell maxima are not ground).
-      const depElevFt = gridOnly ? 0 : (terrainPts[0]?.elevFt ?? 0)
-      const arrElevFt = gridOnly ? 0 : (terrainPts[terrainPts.length - 1]?.elevFt ?? 0)
+      const { startFt: depElevFt, endFt: arrElevFt } = plannedLineEnds(
+        gridOnly ? 0 : (terrainPts[0]?.elevFt ?? 0), gridOnly ? 0 : (terrainPts[terrainPts.length - 1]?.elevFt ?? 0),
+        profile.altitudeProfile, airborneEnds)
       // Climb/descent follow the aircraft's performance (generic model without one).
       const plannedAlts = projectFlightPath(profile.altitudeProfile, profile.totalNm, perf ?? DEFAULT_PERF_MODEL, distNms, depElevFt, arrElevFt)
       return {
@@ -1279,7 +1286,7 @@ function VirtualRadar({
       msa: null,
       belowMsa: [],
     }
-  }, [profile, terrainPts, msaTerrain, perf, getMsa, flown, logFieldNms])
+  }, [profile, terrainPts, msaTerrain, perf, getMsa, flown, logFieldNms, airborneEnds])
 
   // While a leg level is dragged: the path the aircraft would fly at that level (climbs and descents
   // included), so the effect on the whole route is visible before the change is committed.
@@ -1287,12 +1294,13 @@ function VirtualRadar({
     if (!profile || !series || !legDrag?.moved) return null
     const gridOnly = terrainPts.length === 0 && msaTerrain.fromGridOnly
     if (terrainPts.length === 0 && !gridOnly) return null
-    const dep = gridOnly ? 0 : (terrainPts[0]?.elevFt ?? 0)
-    const arr = gridOnly ? 0 : (terrainPts[terrainPts.length - 1]?.elevFt ?? 0)
+    const { startFt: dep, endFt: arr } = plannedLineEnds(
+      gridOnly ? 0 : (terrainPts[0]?.elevFt ?? 0), gridOnly ? 0 : (terrainPts[terrainPts.length - 1]?.elevFt ?? 0),
+      profile.altitudeProfile, airborneEnds)
     const level = legDrag.cand ?? (aircraftProfile?.cruiseAltFt || 3500)
     const alts = projectFlightPath(withLegLevel(profile.altitudeProfile, legDrag.leg, level), profile.totalNm, perf ?? DEFAULT_PERF_MODEL, series.distNms, dep, arr)
     return series.distNms.map((d, i) => ({ distNm: d, altFt: alts[i] }))
-  }, [profile, series, legDrag, terrainPts, msaTerrain, perf, aircraftProfile?.cruiseAltFt])
+  }, [profile, series, legDrag, terrainPts, msaTerrain, perf, aircraftProfile?.cruiseAltFt, airborneEnds])
 
   // Flight log: the flown line in continuous stretches plus the recording gaps between them.
   const flownParts = useMemo(() => (flown ? flownLineParts(flown) : null), [flown])
@@ -2091,6 +2099,7 @@ function VirtualRadar({
         <span className={css.totalDist}>
           {nmToDisplay(profile.totalNm, units.distance).toFixed(1)} {distLabel(units.distance)}
         </span>
+        {headerAction}
         {logMode && (
           <span className={css.dragHint} title="Drag the aircraft along the flown line, or tap a spot on the chart, to read time, altitude and speed there">
             drag the aircraft to inspect

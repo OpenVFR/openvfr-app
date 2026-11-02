@@ -62,6 +62,7 @@ import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
 import { obstacleSymbol, polyPath, primStyle, obstacleXScale } from '@open-vfr/shared/obstacleSymbol'
 import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
 import { carryLookaheadTerrain } from '@open-vfr/shared/lookaheadTerrain'
+import { plannedLineEnds } from '@open-vfr/shared/pathAhead'
 import { effectiveHeight, obstacleTipsForMsa, limitingObstacleLabel, FT_PER_M } from '@open-vfr/shared/obstacleHeights'
 import { useMefGrids } from '../hooks/useMefGrids'
 import {
@@ -125,6 +126,9 @@ interface Props {
    *  readout (e.g. Map Ruler distance/track) inside the panel's own chrome
    *  instead of as a separate floating overlay. */
   headerStart?: React.ReactNode
+  /** The path starts / ends in the air (the in-flight path ahead): the planned-level line
+   *  starts / ends at the first / last planned level, not on the ground (plannedLineEnds). */
+  airborneEnds?: { start: boolean; end: boolean }
   headerEnd?: React.ReactNode
   /** Renders a close (X) button at the far right of the header row, after
    *  the WIND toggle. */
@@ -1233,7 +1237,7 @@ function FlownReadout({ store, flown, bands, terrainPts, getMsa, styles, xOf, sc
 }
 
 export function VerticalProfile({
-  waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, msaMargins, title, headerStart, headerEnd, onClose, closeLabel, aircraftProfile,
+  waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, msaMargins, title, headerStart, headerEnd, onClose, closeLabel, aircraftProfile, airborneEnds,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
   crossTrackNm, weatherStations,
   height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm, onLegLevelChange, levelEditLeg, onLegTap, followAircraft, corridorBand = true,
@@ -1820,9 +1824,10 @@ export function VerticalProfile({
   // far): shown as a dashed marker instead of silently ignored.
   const unreached = useMemo(() => {
     if (!profile || profile.altitudeProfile.length === 0) return []
-    const line = plannedAltitudeLine(profile.altitudeProfile, profile.totalNm, perf, terrainPts[0]?.elevFt ?? 0, terrainPts[terrainPts.length - 1]?.elevFt ?? 0)
+    const ends = plannedLineEnds(terrainPts[0]?.elevFt ?? 0, terrainPts[terrainPts.length - 1]?.elevFt ?? 0, profile.altitudeProfile, airborneEnds)
+    const line = plannedAltitudeLine(profile.altitudeProfile, profile.totalNm, perf, ends.startFt, ends.endFt)
     return unreachedLegs(legSpanList, line)
-  }, [profile, perf, terrainPts, legSpanList])
+  }, [profile, perf, terrainPts, legSpanList, airborneEnds])
   const legPxPerFt = (yOf(0) - yOf(10000)) / 10000
   const legCeilingFt = Math.min(aircraftProfile?.serviceCeilingFt || 50_000, Math.round(yMax / 100) * 100)
   const legFallbackAltFt = aircraftProfile?.cruiseAltFt || 3500
@@ -2048,9 +2053,11 @@ export function VerticalProfile({
     transform: [{ translateX: Math.max(0, hoverX.value) }],
   }))
 
-  // Departure/arrival elevation from first/last terrain sample (aerodrome elevation proxy)
-  const depElevFt = terrainPts[0]?.elevFt ?? 0
-  const arrElevFt = terrainPts[terrainPts.length - 1]?.elevFt ?? 0
+  // Departure/arrival elevation from first/last terrain sample (aerodrome elevation proxy);
+  // the planned level instead where the path starts / ends in the air.
+  const { startFt: depElevFt, endFt: arrElevFt } = plannedLineEnds(
+    terrainPts[0]?.elevFt ?? 0, terrainPts[terrainPts.length - 1]?.elevFt ?? 0,
+    profile?.altitudeProfile ?? [], airborneEnds)
 
   // Planned altitude at each terrain sample -- same model as plannedPath
   // (generic performance when no aircraft is selected), used to flag the

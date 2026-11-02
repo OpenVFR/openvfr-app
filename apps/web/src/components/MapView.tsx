@@ -139,6 +139,7 @@ import { makeCirclePolygon } from '@open-vfr/shared/geoCircle'
 import { registerTrafficIcons, selectTrafficIcon } from '../utils/trafficIcons'
 import { rankTapCandidates } from '@open-vfr/shared/tapPick'
 import { trimPreroll } from '@open-vfr/shared/flightLogPreroll'
+import { nextPathAhead, pathAheadLegOverrides, type PathAheadState } from '@open-vfr/shared/pathAhead'
 import GoFlyingPanel from './GoFlyingPanel'
 import { NotificationCenter } from './NotificationCenter'
 import AirfieldBriefPanel from './AirfieldBriefPanel'
@@ -865,44 +866,32 @@ export default function MapView({ auth }: { auth: AuthState }) {
     setLogJumpTs((j) => (atTs != null ? { ts: atTs, n: (j?.n ?? 0) + 1 } : null))
   }, [])
 
-  // ── Look-ahead VirtualRadar for unplanned flight ──────────────────────────
-  // While flying without a planned route, synthesise a 2-waypoint route from
-  // the current GPS position along the current ground track for LOOKAHEAD_NM.
-  // Recomputed when heading changes ≥10°, position moves ≥1 NM, or 20 s elapse.
-  // (Tightened from ≥15°/≥3 NM/60 s — that was stale enough that obstacles
-  // near the aircraft's current position, and the chart's own position
-  // marker, visibly lagged reality for up to a minute/3 NM while flying.)
-  // The terrain fetch inside VirtualRadar is auto-aborted/restarted on route change.
-  const LOOKAHEAD_NM = 30
-  const [lookaheadWaypoints,   setLookaheadWaypoints]   = useState<RouteWaypoint[]>([])
-  const [lookaheadHeadingDeg,  setLookaheadHeadingDeg]  = useState(0)
-  const lookaheadRef = useRef<{ lat: number; lng: number; trackDeg: number; ts: number }>(
-    { lat: 0, lng: 0, trackDeg: -999, ts: 0 },
-  )
+  // ── In-flight profile: the path ahead of the aircraft ───────────────────────
+  // In flight the profile shows what lies ahead (@open-vfr/shared/pathAhead):
+  // the remaining planned route from the aircraft while on it (turns
+  // included), else a straight line along the track. The whole route (A to
+  // B, aircraft moving along it) is one click away (showWholeRoute); it was
+  // the default and kept the aircraft pinned to one end of a route it was not
+  // flying. Rebuilt per nextPathAhead's thresholds; the terrain fetch inside
+  // VirtualRadar restarts on each rebuild.
+  const [aheadState, setAheadState] = useState<PathAheadState | null>(null)
+  const [showWholeRoute, setShowWholeRoute] = useState(false)
   useEffect(() => {
-    if (flyingMode === 'off' || routeWaypoints.length >= 2 || !gpsPosition) {
-      if (lookaheadWaypoints.length > 0) setLookaheadWaypoints([])
+    if (flyingMode === 'off' || !gpsPosition) {
+      setAheadState(null)
+      if (flyingMode === 'off') setShowWholeRoute(false)
       return
     }
-    const last   = lookaheadRef.current
-    const now    = Date.now()
-    const dPos   = distanceNm({ lat: last.lat, lng: last.lng }, { lat: gpsPosition.lat, lng: gpsPosition.lng })
-    const rawDHdg = Math.abs(gpsPosition.trackDeg - last.trackDeg)
-    const dHdg   = Math.min(rawDHdg, 360 - rawDHdg)
-    const dTime  = now - last.ts
-    // Skip update if nothing significant changed yet
-    if (last.ts > 0 && dPos < 1 && dHdg < 10 && dTime < 20_000) return
-    const end = advancePosition(gpsPosition.lat, gpsPosition.lng, gpsPosition.trackDeg, LOOKAHEAD_NM)
-    lookaheadRef.current = { lat: gpsPosition.lat, lng: gpsPosition.lng, trackDeg: gpsPosition.trackDeg, ts: now }
-    setLookaheadWaypoints([
-      { lat: gpsPosition.lat, lng: gpsPosition.lng, name: 'Position' },
-      { lat: end.lat,         lng: end.lng,         name: `Hdg ${Math.round(gpsPosition.trackDeg)}°` },
-    ])
-    setLookaheadHeadingDeg(gpsPosition.trackDeg)
-  // gpsPosition reference changes every tick — only re-run when the values that
-  // matter for the threshold check change, not on every position update.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flyingMode, routeWaypoints.length, gpsPosition])
+    setAheadState(prev => nextPathAhead(prev, routeWaypoints, gpsPosition, Date.now()))
+  }, [flyingMode, routeWaypoints, gpsPosition])
+  const aheadPath = aheadState?.path ?? null
+  const aheadWaypoints = useMemo(() => aheadPath?.waypoints ?? [], [aheadPath])
+  // The path ends on the ground only where it reaches the planned destination.
+  const aheadAirborneEnds = useMemo(() => ({
+    start: true,
+    end: !(aheadPath?.onRoute && aheadWaypoints[aheadWaypoints.length - 1] === routeWaypoints[routeWaypoints.length - 1]),
+  }), [aheadPath, aheadWaypoints, routeWaypoints])
+  const showAheadProfile = flyingMode !== 'off' && !(showWholeRoute && routeWaypoints.length >= 2)
   // NM along the planned route where the aircraft currently is — drives the
   // live position marker on the VirtualRadar chart. Only computed during flight.
   // The profile chart (hundreds of SVG nodes) is by far the most expensive
@@ -922,23 +911,22 @@ export default function MapView({ auth }: { auth: AuthState }) {
     return routeCrossTrackNm(routeWaypoints, chartPos)
   }, [flyingMode, chartPos, routeWaypoints])
 
-  // Aircraft's live progress along the synthesised look-ahead route.
-  // Previously hardcoded to 0 when passed to VirtualRadar, which pinned the
-  // marker at the route-start point forever — lookaheadWaypoints[0] is only
-  // re-snapped to the current position every 1 NM/10°/20 s, so between
-  // snaps the aircraft visibly moves along the ground but the chart marker
-  // stayed frozen at the left edge. Recomputing live against the (possibly
-  // slightly stale) lookahead line keeps the marker tracking real motion,
-  // since the aircraft continues along the same track the line was
-  // extended from.
-  const lookaheadDistNm = useMemo(() => {
-    if (!chartPos || lookaheadWaypoints.length < 2) return 0
-    return distanceAlongRouteNm(lookaheadWaypoints, chartPos)
-  }, [chartPos, lookaheadWaypoints])
-  const lookaheadLegOverrides = useMemo(
-    () => [{ altFt: chartPos?.altFt ?? 1000, speedKts: chartPos?.speedKts || (selectedAircraftProfile?.cruiseIas ? iasToTas(selectedAircraftProfile.cruiseIas, chartPos?.altFt ?? 1000) : 90) }] as LegOverride[],
-    [chartPos?.altFt, chartPos?.speedKts, selectedAircraftProfile?.cruiseIas],
-  )
+  // Aircraft's live progress along the path ahead: the path is only rebuilt
+  // per nextPathAhead's thresholds, so between rebuilds the marker moves along
+  // it from just behind the left edge.
+  const aheadDistNm = useMemo(() => {
+    if (!chartPos || aheadWaypoints.length < 2) return 0
+    return distanceAlongRouteNm(aheadWaypoints, chartPos)
+  }, [chartPos, aheadWaypoints])
+  // Planned levels per leg of the path ahead: the route leg's where it lies on
+  // the route, the current altitude and speed elsewhere.
+  const aheadLegOverrides = useMemo(() => {
+    if (!aheadPath) return [] as LegOverride[]
+    const here = { altFt: chartPos?.altFt ?? 1000, speedKts: chartPos?.speedKts || (selectedAircraftProfile?.cruiseIas ? iasToTas(selectedAircraftProfile.cruiseIas, chartPos?.altFt ?? 1000) : 90) } as LegOverride
+    // Empty entries (route legs without their own level) mean the default
+    // level, like gaps in the route's own legOverrides (computeProfile: `?? {}`).
+    return pathAheadLegOverrides(aheadPath, legOverrides, here) as LegOverride[]
+  }, [aheadPath, legOverrides, chartPos?.altFt, chartPos?.speedKts, selectedAircraftProfile?.cruiseIas])
 
   // Update the profile-cursor map marker when the VirtualRadar hover changes.
   useEffect(() => {
@@ -953,9 +941,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
     let coord: { lng: number; lat: number } | null = null
     // (A viewed flight log drives the marker directly, see setLogCursor below.)
     if (selectedLogProfile) return
-    if (lookaheadWaypoints.length >= 2) {
-      // Hovering the look-ahead chart: place cursor on the map ahead of the aircraft.
-      coord = coordinateAlongRouteNm(lookaheadWaypoints, profileCursorNm)
+    if (showAheadProfile && aheadWaypoints.length >= 2) {
+      // Hovering the path-ahead chart: place cursor on the map ahead of the aircraft.
+      coord = coordinateAlongRouteNm(aheadWaypoints, profileCursorNm)
     } else if (routeWaypoints.length >= 2) {
       coord = coordinateAlongRouteNm(routeWaypoints, profileCursorNm)
     }
@@ -967,7 +955,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     } else {
       src.setData({ type: 'FeatureCollection', features: [] })
     }
-  }, [profileCursorNm, routeWaypoints, selectedLogProfile, lookaheadWaypoints, mapReady])
+  }, [profileCursorNm, routeWaypoints, selectedLogProfile, aheadWaypoints, showAheadProfile, mapReady])
 
   // Flight-log inspection moves the map marker straight on the map source, not through React
   // state: as state, every step of a drag re-rendered this whole view (hundreds of ms on a long
@@ -5502,7 +5490,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
               plannedRoute={selectedLogRoute}
             />
           </div>
-        ) : routeWaypoints.length >= 2 ? (
+        ) : routeWaypoints.length >= 2 && !showAheadProfile ? (
           <div className={css.vrRow}>
             <VirtualRadar
               waypoints={routeWaypoints}
@@ -5524,23 +5512,31 @@ export default function MapView({ auth }: { auth: AuthState }) {
               onLegLevelChange={handleLegLevelChange}
               levelEditLeg={flyingMode === 'off' ? undefined : unlockedLeg}
               onLegTap={flyingMode === 'off' ? undefined : (leg) => setUnlockedLeg(leg)}
+              headerAction={flyingMode !== 'off' ? (
+                <button className={css.vrViewToggle} onClick={() => setShowWholeRoute(false)}
+                  title="Show the path ahead of the aircraft">Ahead</button>
+              ) : undefined}
             />
           </div>
-        ) : flyingMode !== 'off' ? (
-          // Flying without a planned route: show forward-looking profile along current heading.
-          // A one-line note until the first position gives the look-ahead its start and track.
-          lookaheadWaypoints.length >= 2 ? (
+        ) : showAheadProfile ? (
+          // In flight: the path ahead of the aircraft (route ahead while on the
+          // route, else straight along the track). A one-line note until the
+          // first position gives it a start and a track.
+          aheadPath && aheadWaypoints.length >= 2 ? (
             <div className={css.vrRow}>
               <VirtualRadar
-                title={`LOOK-AHEAD · TRK ${Math.round(lookaheadHeadingDeg)}°`}
-                followAircraft
-                corridorBand={false}
-                waypoints={lookaheadWaypoints}
-                legOverrides={lookaheadLegOverrides}
+                title={aheadPath.onRoute
+                  ? `ROUTE AHEAD · TRK ${Math.round(aheadPath.trackDeg)}°`
+                  : `${routeWaypoints.length >= 2 ? 'OFF ROUTE · ' : ''}LOOK-AHEAD · TRK ${Math.round(aheadPath.trackDeg)}°`}
+                followAircraft={!aheadPath.onRoute}
+                corridorBand={aheadPath.onRoute}
+                airborneEnds={aheadAirborneEnds}
+                waypoints={aheadWaypoints}
+                legOverrides={aheadLegOverrides}
                 units={units}
                 airspaceCeilingFt={ceilingFt}
                 aircraftProfile={selectedAircraftProfile}
-                currentDistNm={lookaheadDistNm}
+                currentDistNm={aheadDistNm}
                 currentAltFt={chartPos?.altFt}
                 currentSpeedKts={chartPos?.speedKts}
                 currentVSpeedFpm={chartVSpeedFpm ?? undefined}
@@ -5548,6 +5544,10 @@ export default function MapView({ auth }: { auth: AuthState }) {
                 trajectoryMode={trajectoryMode}
                 onHoverDistNm={setProfileCursorNm}
                 crosshairDistNm={profileCursorNm}
+                headerAction={routeWaypoints.length >= 2 ? (
+                  <button className={css.vrViewToggle} onClick={() => setShowWholeRoute(true)}
+                    title="Show the whole planned route">Whole route</button>
+                ) : undefined}
               />
             </div>
           ) : (
