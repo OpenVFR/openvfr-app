@@ -6,7 +6,7 @@
     ],
     "name": "OpenVFR",
     "slug": "open-vfr",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
