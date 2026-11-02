@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Dimensions } from 'react-native'
+import { useWindowDimensions } from 'react-native'
 import type { FeatureCollection } from 'geojson'
 import { fetchWindGrid, cachedWindGrid, type WindGridPoint } from '@open-vfr/shared/windGrid'
 import { API_BASE } from '../config'
@@ -37,8 +37,7 @@ export interface CamState {
 }
 
 /** Approximate viewport lat/lng bounds from center+zoom (Web Mercator, 256px tiles). */
-function approxBounds(cam: CamState) {
-  const { width, height } = Dimensions.get('window')
+function approxBounds(cam: CamState, width: number, height: number) {
   const degPerTileLng = 360 / Math.pow(2, cam.zoom)
   const lngSpan = (width / 256) * degPerTileLng
   // Latitude span approximated the same way near the current latitude
@@ -58,6 +57,8 @@ function approxBounds(cam: CamState) {
 export function useWindGrid(cam: CamState | null, enabled: boolean, altFt: number | null): FeatureCollection {
   const [fc, setFc] = useState<FeatureCollection>(EMPTY_FC)
   const lastFetchKeyRef = useRef<string>('')
+  // Reactive: window resizes on fold/unfold, split-screen, iPhone Mirroring.
+  const { width, height } = useWindowDimensions()
 
   useEffect(() => {
     if (!enabled || !cam) {
@@ -70,13 +71,13 @@ export function useWindGrid(cam: CamState | null, enabled: boolean, altFt: numbe
     // every pan/zoom frame (onRegionIsChanging), so a plain effect-per-
     // render would refetch constantly. Round enough to dedupe near-
     // identical positions without missing genuine viewport moves.
-    const key = `${cam.lat.toFixed(2)},${cam.lng.toFixed(2)},${cam.zoom.toFixed(1)}`
+    const key = `${cam.lat.toFixed(2)},${cam.lng.toFixed(2)},${cam.zoom.toFixed(1)},${Math.round(width)}x${Math.round(height)},${altFt ?? ''}`
     if (key === lastFetchKeyRef.current) return
 
     let cancelled = false
     const timer = setTimeout(() => {
       lastFetchKeyRef.current = key
-      const bounds = approxBounds(cam)
+      const bounds = approxBounds(cam, width, height)
       // Cached points first (also drops the previous zoom tier at once), then the missing ones.
       setFc(toFc(cachedWindGrid(bounds, altFt)))
       fetchWindGrid(bounds, altFt, { baseUrl: API_BASE })
@@ -100,7 +101,7 @@ export function useWindGrid(cam: CamState | null, enabled: boolean, altFt: numbe
       cancelled = true
       clearTimeout(timer)
     }
-  }, [cam, enabled, altFt])
+  }, [cam, enabled, altFt, width, height])
 
   return fc
 }
