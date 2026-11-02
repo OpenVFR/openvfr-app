@@ -120,7 +120,7 @@ import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
 import { iasToTas } from '@open-vfr/shared/airspeed'
 import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
 import { RulerHeaderStart, RulerHeaderEnd, RouteHeaderStart } from '../components/RulerHeaderStats'
-import { ProfileViewToggle } from '../components/ProfileViewToggle'
+import { ProfileViewToggle, ProfileModeLabel } from '../components/ProfileViewToggle'
 import { flightLogProfile, flownCoordinateAt, flownPointAt } from '@open-vfr/shared/flightLogProfile'
 import { parseLogRoute, type FlightLogRoute } from '@open-vfr/shared/flightLogRoute'
 import { Ionicons } from '@expo/vector-icons'
@@ -2210,6 +2210,10 @@ function MapScreenForCountry() {
           followAircraft={!aheadPath.onRoute}
           corridorBand={aheadPath.onRoute}
           airborneEnds={aheadAirborneEnds}
+          headerStart={<ProfileModeLabel
+            text={aheadPath.onRoute ? 'ROUTE AHEAD'
+              : `${waypoints.length >= 2 ? 'OFF ROUTE' : 'LOOK-AHEAD'} · TRK ${String(Math.round(aheadPath.trackDeg)).padStart(3, '0')}°`}
+            warn={!aheadPath.onRoute && waypoints.length >= 2} />}
           headerEnd={waypoints.length >= 2 ? (
             <ProfileViewToggle label="Whole route" accessibilityLabel="Show the whole planned route" onPress={() => setShowWholeRoute(true)} />
           ) : undefined}

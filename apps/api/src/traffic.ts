@@ -293,6 +293,17 @@ const FRESH_BATCH_MAX_AGE_S = INTERVAL_S + 30
 let _openskyOkAt = 0
 /** Epoch ms until which OpenSky can't produce (failed poll, 429 backoff). */
 let _openskyBlockedUntil = 0
+/** Epoch ms the OGN socket connected (0 = not connected). */
+let _ognConnectedAt = 0
+/** How long OGN must have been connected before its batch counts as live:
+ *  the first rebuild after connecting can come within a second, holding only
+ *  the first few aircraft of the burst the server sends after login. */
+const OGN_WARMUP_MS = 5_000
+
+/** ognTraffic.ts reports its socket state (connected now / closed). */
+export function setOgnConnected(connected: boolean): void {
+  _ognConnectedAt = connected ? Date.now() : 0
+}
 
 function openskyCanPoll(): boolean {
   return Boolean(CLIENT_ID && CLIENT_SECRET) && Date.now() >= _openskyBlockedUntil
@@ -311,7 +322,9 @@ function anyFeedCanProduce(): boolean {
  */
 export function batchIsFresh(b: TrafficBatch | null, nowS: number = Date.now() / 1000): boolean {
   if (!b || nowS - b.polledAt > FRESH_BATCH_MAX_AGE_S) return false
-  return !openskyCanPoll() || nowS - _openskyOkAt <= FRESH_BATCH_MAX_AGE_S
+  if (openskyCanPoll()) return nowS - _openskyOkAt <= FRESH_BATCH_MAX_AGE_S
+  // OGN alone: built after OGN had been connected for OGN_WARMUP_MS.
+  return _ognConnectedAt > 0 && b.polledAt * 1000 >= _ognConnectedAt + OGN_WARMUP_MS
 }
 
 /** /latest requests waiting for a fresh batch; settled by settleWaiters(). */

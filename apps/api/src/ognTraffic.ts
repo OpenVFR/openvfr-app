@@ -57,7 +57,7 @@
  */
 
 import net from 'node:net'
-import { BBOX, hasActiveConsumers, onConsumerActivity, updateOgnState, pruneAndBroadcastOgn, type TrafficState } from './traffic'
+import { BBOX, hasActiveConsumers, onConsumerActivity, setOgnConnected, updateOgnState, pruneAndBroadcastOgn, type TrafficState } from './traffic'
 import { startDdbPrivacyRefresh, isTrackingOptedOut } from './ognDdbPrivacy'
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -264,6 +264,7 @@ function connect(): void {
     // ident; doesn't need to be registered.
     const login = `user OPENVFR pass -1 vers openvfr 1.0 filter ${FILTER}\r\n`
     socket.write(login)
+    setOgnConnected(true)
     console.log('[ogn] Connected, login sent')
   })
 
@@ -298,6 +299,7 @@ function connect(): void {
     // (clearing _socket would orphan it, and reconnecting would open a third).
     if (_socket !== socket) return
     _socket = null
+    setOgnConnected(false)
     if (hasActiveConsumers()) {
       _reconnectTimer = setTimeout(() => { _reconnectTimer = null; connect() }, RECONNECT_DELAY_MS)
     }
@@ -310,6 +312,7 @@ function disconnect(): void {
     console.log('[ogn] No active consumers — disconnecting APRS-IS socket')
     _socket.destroy()
     _socket = null
+    setOgnConnected(false)
   }
 }
 
