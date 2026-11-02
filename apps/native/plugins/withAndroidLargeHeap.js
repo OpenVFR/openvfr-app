@@ -30,7 +30,7 @@
  * read). largeHeap is still worth keeping as genuine headroom for the
  * legitimate working set, but is no longer load-bearing for that crash.
  */
-const { withAndroidManifest } = require('@expo/config-plugins')
+const { withAndroidManifest } = require('expo/config-plugins')
 
 module.exports = function withAndroidLargeHeap(config) {
   return withAndroidManifest(config, (config) => {

@@ -37,7 +37,7 @@
  * this is the documented way), and a one-line install call in
  * MainApplication.onCreate (withMainApplication). Both idempotent.
  */
-const { withMainApplication, withDangerousMod, withAppBuildGradle } = require('@expo/config-plugins')
+const { withMainApplication, withDangerousMod, withAppBuildGradle } = require('expo/config-plugins')
 const fs = require('fs')
 const path = require('path')
 

@@ -132,7 +132,7 @@ services:
   # Not exposed on any host port in prod — proxy it behind your own reverse
   # proxy at /rest/ if deploying publicly.
   postgrest:
-    image: postgrest/postgrest:v16.4
+    image: postgrest/postgrest:v16.5
     depends_on:
       db:
         condition: service_healthy

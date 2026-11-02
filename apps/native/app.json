@@ -11,11 +11,6 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "scheme": "openvfr",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0a0e16"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "org.openvfr.app",
@@ -61,7 +56,9 @@
       "@maplibre/maplibre-react-native",
       [
         "expo-sensors",
-        { "motionPermission": "OpenVFR uses the barometer (motion sensor) for altitude and vertical speed." }
+        {
+          "motionPermission": "OpenVFR uses the barometer (motion sensor) for altitude and vertical speed."
+        }
       ],
       [
         "expo-location",
@@ -85,7 +82,9 @@
       "expo-sharing",
       [
         "expo-secure-store",
-        { "faceIDPermission": false }
+        {
+          "faceIDPermission": false
+        }
       ],
       "./plugins/withMapLibreHttpGuard",
       "./plugins/withMapLibreHttpGuardIos",
@@ -93,7 +92,14 @@
       "./plugins/withAndroidDisableLintVital",
       "./plugins/withAndroidGradleHeap",
       "./plugins/withAndroidNativeDebugSymbols",
-      "expo-splash-screen"
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0a0e16"
+        }
+      ]
     ]
   }
 }

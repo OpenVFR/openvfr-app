@@ -41,7 +41,7 @@
  *   - This machine cannot compile Swift; the code is checked by the iOS CI
  *     build. Keep it plain Foundation for that reason.
  */
-const { withAppDelegate } = require('@expo/config-plugins')
+const { withAppDelegate } = require('expo/config-plugins')
 
 const MARK_INSTALL = '// withMapLibreHttpGuardIos: install'
 const MARK_TYPES = '// withMapLibreHttpGuardIos: guard types (generated -- do not edit, see plugins/withMapLibreHttpGuardIos.js)'
