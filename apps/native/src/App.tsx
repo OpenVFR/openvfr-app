@@ -4,7 +4,7 @@
 
 import React from 'react'
 import { StatusBar } from 'expo-status-bar'
-import * as NavigationBar from 'expo-navigation-bar'
+import { NavigationBar } from 'expo-navigation-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { KeyboardProvider } from 'react-native-keyboard-controller'
@@ -52,7 +52,7 @@ function AppShell() {
 
   React.useEffect(() => {
     if (SCREENSHOT_MODE && Platform.OS === 'android') {
-      void NavigationBar.setVisibilityAsync('hidden').catch(() => {})
+      NavigationBar.setHidden(true)
     }
   }, [])
 

@@ -138,8 +138,8 @@ export function useEnvironmentDeepLink(): void {
   requestRef.current = requestSwitch
   useEffect(() => {
     if (!STAGING_AVAILABLE || !ENVIRONMENT_DEEP_LINK) return
-    const handle = (url: string | null) => {
-      const target = parseEnvironmentLink(url)
+    const handle = (url: string | null | undefined) => {
+      const target = parseEnvironmentLink(url ?? null)
       if (target) requestRef.current(target)
     }
     Linking.getInitialURL().then(handle).catch(() => {})
@@ -166,7 +166,7 @@ export function EnvironmentBanner() {
       testID="environment-banner"
       style={{
         position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1000, elevation: 1000,
-        paddingTop: insets.top, backgroundColor: pending ? '#7c2d12' : '#b45309',
+        paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right, backgroundColor: pending ? '#7c2d12' : '#b45309',
       }}
     >
       <Text style={{ color: '#ffffff', fontSize: 11, fontWeight: '700', textAlign: 'center', paddingVertical: 2 }}>

@@ -21,15 +21,15 @@ import { AppState } from 'react-native'
 import { addLocationListener, setLocationRequest, stopBackgroundLocation } from '../tasks/locationTask'
 import { GPS_REQUESTS, gpsTier, isMoving, type GpsFixLike, type GpsTier } from '@open-vfr/shared/gpsPolicy'
 import type { GpsPosition } from '../utils/gpsTypes'
-import { ellipsoidToMslM } from '@open-vfr/shared/geoid'
+import { mslAltitudeFromFix } from '@open-vfr/shared/gpsAltitude'
 import { gpsAltitudeReference } from '@open-vfr/shared/gpsAltitudeReference'
 
-// Android reports GPS altitude above the WGS-84 ellipsoid (60-125 ft above
-// sea level over the Nordics); iOS already reports it above mean sea level.
-// The platform default is set at startup (index.js) and verified on the
-// ground (@open-vfr/shared/gpsAltitudeReference), so a platform change is
-// caught instead of correcting twice. Read per fix: the verdict can arrive
-// mid-session.
+// Altitude: expo-location's `next` Position carries `altitude` (above the
+// WGS-84 ellipsoid, both platforms) and `mslAltitude` (the OS's own sea-level
+// height: iOS always, Android 14+). The OS value is used when present, else
+// the ellipsoidal height minus the EGM96 geoid (@open-vfr/shared/geoid).
+// gpsAltitudeReference() is the on-ground check of the `altitude` field, read
+// per fix because the verdict can arrive mid-session.
 
 export type GpsStatus = 'idle' | 'requesting' | 'active' | 'denied' | 'unavailable'
 
@@ -93,6 +93,7 @@ export function useGps(opts: { paused?: boolean } = {}): UseGpsResult {
   const tierRef         = useRef<GpsTier | null>(null)
   const prevFixRef      = useRef<GpsFixLike | null>(null)
   const backgroundRef   = useRef(false)
+  const failureRef      = useRef<'foreground-denied' | 'unavailable'>('foreground-denied')
 
   const applyTier = useCallback(async (): Promise<boolean> => {
     if (!activeRef.current) return true
@@ -106,7 +107,9 @@ export function useGps(opts: { paused?: boolean } = {}): UseGpsResult {
     // Set only once the request is running: a refused or failed start leaves no tier claimed, so the
     // next fix or tier change tries again instead of believing it is already applied.
     try {
-      const ok = (await setLocationRequest(GPS_REQUESTS[tier])) === 'ok'
+      const result = await setLocationRequest(GPS_REQUESTS[tier])
+      if (result !== 'ok') failureRef.current = result
+      const ok = result === 'ok'
       tierRef.current = ok && activeRef.current ? tier : null  // stopped while the request was starting
       return ok
     } catch (err) {
@@ -138,34 +141,37 @@ export function useGps(opts: { paused?: boolean } = {}): UseGpsResult {
     if (!ok) {
       activeRef.current = false
       tierRef.current = null
-      setStatus('denied')
+      setStatus(failureRef.current === 'unavailable' ? 'unavailable' : 'denied')
       return
     }
     setStatus('active')
 
     unsubscribeRef.current = addLocationListener((loc) => {
-      const coords = loc.coords
-      const speedKts = coords.speed != null ? coords.speed * 1.943844 : 0  // m/s -> kts
+      const lat = loc.coordinates.latitude
+      const lng = loc.coordinates.longitude
+      const speedKts = loc.speed != null ? loc.speed * 1.943844 : 0  // m/s -> kts
       // Movement drives the tier even while a simulator has the position paused.
-      const fixLike: GpsFixLike = { lat: coords.latitude, lng: coords.longitude, speedKts, accuracyM: coords.accuracy ?? 0, tMs: loc.timestamp ?? Date.now() }
+      const fixLike: GpsFixLike = { lat, lng, speedKts, accuracyM: loc.horizontalAccuracy ?? 0, tMs: loc.timestamp ?? Date.now() }
       if (isMoving(prevFixRef.current, fixLike)) lastMovedRef.current = Date.now()
       prevFixRef.current = fixLike
       void applyTier()
       if (pausedRef.current) return
-      if (speedKts >= MIN_SPEED_FOR_TRACK_KTS && coords.heading != null) {
-        lastStableTrackRef.current = coords.heading
+      if (speedKts >= MIN_SPEED_FOR_TRACK_KTS && loc.heading != null) {
+        lastStableTrackRef.current = loc.heading
       }
+      const alt = mslAltitudeFromFix(
+        { altitude: loc.altitude, mslAltitude: loc.mslAltitude, lat, lng },
+        gpsAltitudeReference(),
+      )
       const next: GpsPosition = {
-        lat:      coords.latitude,
-        lng:      coords.longitude,
-        altFt:    coords.altitude != null
-          ? (gpsAltitudeReference() === 'ellipsoid' ? ellipsoidToMslM(coords.altitude, coords.latitude, coords.longitude) : coords.altitude) * M_TO_FT
-          : 0,
-        ...(coords.altitude != null ? { rawAltM: coords.altitude } : {}),
-        ...(coords.altitudeAccuracy != null ? { altAccuracyM: coords.altitudeAccuracy } : {}),
+        lat,
+        lng,
+        altFt:    alt ? alt.mslM * M_TO_FT : 0,
+        ...(loc.altitude != null ? { rawAltM: loc.altitude } : {}),
+        ...(loc.verticalAccuracy != null ? { altAccuracyM: loc.verticalAccuracy } : {}),
         speedKts,
         trackDeg: lastStableTrackRef.current,
-        accuracy: coords.accuracy ?? 0,
+        accuracy: loc.horizontalAccuracy ?? 0,
       }
       setPosition((prev) => (prev && sameFix(prev, next) ? prev : next))
     })

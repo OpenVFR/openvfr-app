@@ -40,7 +40,7 @@ export function OfflineDataScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.space5 }]}
+      contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.space5, paddingLeft: insets.left, paddingRight: insets.right }]}
     >
       <View style={styles.card}>
         <OfflineDataBody />

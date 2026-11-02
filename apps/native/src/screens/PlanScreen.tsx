@@ -681,7 +681,7 @@ export function PlanScreen() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+    <View style={[styles.container, { paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]}>
       {segment === 'route' && (
         <RouteLibrarySheet
           waypoints={waypoints}

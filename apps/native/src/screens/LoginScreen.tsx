@@ -180,7 +180,7 @@ export function LoginScreen() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: kbHeight }]}>
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: kbHeight, paddingLeft: insets.left, paddingRight: insets.right }]}>
       <View style={[styles.body, { paddingBottom: (keyboardOpen ? 0 : insets.bottom) + scaledTheme.space4 }]}>
       <View style={styles.brand} onLayout={(e) => setBrandH(e.nativeEvent.layout.height)}>
         {logoSize > 0 && (

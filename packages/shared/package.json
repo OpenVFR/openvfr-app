@@ -80,6 +80,7 @@
     "./units":     "./src/units.ts",
     "./gpsTypes":  "./src/gpsTypes.ts",
     "./geoid":     "./src/geoid.ts",
+    "./gpsAltitude": "./src/gpsAltitude.ts",
     "./gpsAltitudeReference": "./src/gpsAltitudeReference.ts",
     "./sunCalc":   "./src/sunCalc.ts",
     "./fetchWind": "./src/fetchWind.ts",

@@ -10,7 +10,7 @@
  * accessibility hint (screen readers), and long-press shows it inline.
  */
 
-import React, { useRef, useState, type ReactNode } from 'react'
+import React, { useRef, useState, type ComponentRef, type ReactNode } from 'react'
 import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native'
 import IconGridDots from '@tabler/icons-react-native/IconGridDots'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -44,7 +44,7 @@ export function MapToolbar({ groups }: { groups: ToolGroupDef[] }) {
   // Landscape has the width but not the height: lay the sections out side by side
   // (more columns) and scroll if it still doesn't fit, instead of running off the bottom.
   const landscape = winW > winH
-  const btnRef = useRef<View>(null)
+  const btnRef = useRef<ComponentRef<typeof View>>(null)
   const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null)
   const [hint, setHint] = useState<string | null>(null)
 

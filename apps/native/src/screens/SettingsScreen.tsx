@@ -33,7 +33,7 @@ import { useCountries } from '../hooks/useCountries'
 import { useFlightActive } from '../utils/flightActive'
 import { useFlightLogSync } from '../hooks/useFlightLogSync'
 import { qnhFromStationPressure } from '@open-vfr/shared/baroAltitude'
-import * as Location from 'expo-location'
+import { Location } from 'expo-location/next'
 import { API_BASE, TILE_BASE, SITE_BASE } from '../config'
 import { refreshTileManifest, getCachedTileManifest, onTileManifestChanged } from '@open-vfr/shared/tileManifest'
 import { airacDataStatus, relativeTime, type AiracDataStatus } from '@open-vfr/shared/airac'
@@ -207,8 +207,8 @@ export function SettingsScreen() {
   useFocusEffect(useCallback(() => {
     // Always fetch — used both for auto-QNH (when enabled) and to suggest
     // the nearest aerodrome for QNH self-calibration below.
-    Location.getLastKnownPositionAsync().then((loc) => {
-      if (loc) setSettingsPos({ lat: loc.coords.latitude, lng: loc.coords.longitude })
+    Location.getPosition({ timeout: 0 }).then((loc) => {
+      if (loc) setSettingsPos({ lat: loc.coordinates.latitude, lng: loc.coordinates.longitude })
     }).catch(() => {})
   }, []))
   // Prefer a live simulator fix over the device's real GPS — otherwise, while
@@ -265,7 +265,7 @@ export function SettingsScreen() {
     <>
     <ScrollView
       style={styles.container}
-      contentContainerStyle={[styles.content, { paddingTop: scaledTheme.space4, paddingBottom: insets.bottom + scaledTheme.space5 }]}
+      contentContainerStyle={[styles.content, { paddingTop: scaledTheme.space4, paddingBottom: insets.bottom + scaledTheme.space5, paddingLeft: insets.left, paddingRight: insets.right }]}
     >
 
       {/* ── Units ─────────────────────────────────────────────────── */}
