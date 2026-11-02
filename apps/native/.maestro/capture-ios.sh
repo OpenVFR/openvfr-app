@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Boots the simulators the App Store listing needs on a macOS runner and runs
 # the shared Maestro flow on each.
 #
@@ -117,7 +118,9 @@ capture() { # name regex sizes(space separated) [duo]
 capture iphone-6.3 '^iPhone [0-9]+ Pro$' '1206x2622 1179x2556'
 capture ipad-13 '^iPad Pro 13-inch' '2064x2752'
 
-if xcrun simctl list devicetypes | grep -q 'iPhone Duo'; then
-  command -v hinge >/dev/null || brew install artemnovichkov/tap/hinge
+# `hinge` is installed by the workflow (pinned commit, before any secret is
+# pulled); without it the Duo cannot be folded.
+if xcrun simctl list devicetypes | grep -q 'iPhone Duo' && ! command -v hinge >/dev/null; then
+  echo "::error::hinge is not on PATH (see the 'Install hinge' step in screenshots.yml)"; exit 1
 fi
 capture iphone-duo-cover '^iPhone Duo$' '1398x2034 2034x1398' duo

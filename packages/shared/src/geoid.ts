@@ -2,14 +2,15 @@
  * geoid — height of the geoid (mean sea level) above the WGS-84 ellipsoid,
  * and the correction from GPS ellipsoidal height to altitude AMSL.
  *
- * Why: Android (`Location.getAltitude()`, passed through by expo-location)
- * and the browser Geolocation API report altitude above the WGS-84
- * ELLIPSOID, not above sea level. Over the Nordics the geoid lies 18-38 m
+ * Why: the native `altitude` of expo-location's `next` API (Android and iOS)
+ * and the browser Geolocation API on Android report altitude above the
+ * WGS-84 ELLIPSOID, not above sea level. Over the Nordics the geoid lies 18-38 m
  * above the ellipsoid (EGM96: Stockholm ~23 m, Malmö/Göteborg ~35 m, Oslo
  * ~38 m), so those altitudes read 60-125 ft too high -- the dangerous
  * direction for height above ground, terrain/obstacle and airspace-floor
- * margins. iOS (`CLLocation.altitude`) already reports altitude above mean
- * sea level and must NOT be corrected.
+ * margins. Native fixes also carry the OS's own sea-level height
+ * (`mslAltitude`), which needs no correction: see ./gpsAltitude.ts. iOS
+ * browsers report sea level already and must NOT be corrected.
  *
  * Data: EGM96 (public domain, NGA/NASA) on a 0.5 deg grid over Europe
  * (lat 34..72 N, lon 25 W..45 E), see ./geoidGrid.ts and
@@ -82,12 +83,10 @@ export function ellipsoidToMslM(heightM: number, lat: number, lng: number): numb
 }
 
 /**
- * Whether this platform's GPS altitude is above the ellipsoid (and so needs
- * ellipsoidToMslM): Android, and browsers on Android (the Geolocation API
- * passes Android's value through). iOS reports altitude above mean sea
- * level already.
+ * Web only: whether this browser's Geolocation altitude is above the
+ * ellipsoid (and so needs ellipsoidToMslM): browsers on Android pass Android's
+ * value through; others report sea level. Native apps use ./gpsAltitude.ts.
  */
-export function gpsAltitudeIsEllipsoidal(platform: { os?: string; userAgent?: string }): boolean {
-  if (platform.os) return platform.os === 'android'
+export function gpsAltitudeIsEllipsoidal(platform: { userAgent?: string }): boolean {
   return /android/i.test(platform.userAgent ?? '')
 }

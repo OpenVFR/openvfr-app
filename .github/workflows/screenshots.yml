@@ -319,6 +319,16 @@ jobs:
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      # `hinge` folds the iPhone Duo simulator (simctl cannot). Built from a
+      # pinned commit of a third-party repo (v0.3.0), here, before any secret
+      # (EXPO_TOKEN, the test account) is available to a step.
+      - name: Install hinge (pinned)
+        working-directory: .
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/artemnovichkov/hinge.git "$RUNNER_TEMP/hinge"
+          git -C "$RUNNER_TEMP/hinge" checkout --quiet afb8f0bd277cb12187f0844a79542cbac35e7385
+          echo "$RUNNER_TEMP/hinge/bin" >> "$GITHUB_PATH"
       # macOS runners egress from different IP ranges than ubuntu ones --
       # re-check here instead of trusting the preflight job.
       - name: Check data hosts reachable from runner

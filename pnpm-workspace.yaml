@@ -6,13 +6,12 @@ allowBuilds:
   esbuild: true
   workerd: true
 
-# apps/native stays on react 19.2.x (RN 0.88 bundled renderer;
-# react 19.3 is only adopted by apps/web). Expo's optional react-dom peer
-# (@expo/router-server, web-only, never bundled into the native app) would
-# otherwise auto-install react-dom 19.3, whose own peer then mismatches
-# native's react 19.2.x.
+# Expo's optional react-dom peer (@expo/router-server, web-only, never bundled
+# into the native app) is pinned to the same line as apps/native's react
+# (19.3.0, RN 0.88's peer), so it cannot pull a react-dom whose own peer
+# mismatches it.
 overrides:
-  "@expo/router-server>react-dom": "19.2.8"
+  "@expo/router-server>react-dom": "19.3.0"
   # Optional peer of react-native's CLI plugin: keep it on the same line as
   # react-native (0.88.x) instead of floating to the newest release.
   "@react-native/metro-config": "0.88.1"
