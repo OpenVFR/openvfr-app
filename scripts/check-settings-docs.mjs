@@ -92,6 +92,7 @@ expectCell('Auto flying mode', 2, cap(constant('packages/shared/src/autoFlyDetec
 expectCell('Auto zoom', 2, nativeVal('autoZoom') ? 'on' : 'off', 'default');
 expectCell('Auto zoom', 2, webDefault(/useState<boolean>\((true|false)\)/, 'autoZoom') === 'true' ? 'on' : 'off', 'default (web)');
 expectCell('Log simulated flights', 2, nativeVal('recordSimulatedFlights') ? 'on' : 'off', 'default');
+expectCell('Flown trail', 2, cap(nativeVal('showFlownTrail') ? 'on' : 'off'), 'default');
 expectCell('Trajectory mode', 2, nativeVal('trajectoryMode') === 'time' ? 'Time' : 'Distance', 'default');
 expectCell('Trajectory mode', 2, webDefault(/useState<TrajectoryMode>\('(\w+)'\)/, 'trajectory') === 'time' ? 'Time' : 'Distance', 'default (web)');
 
@@ -171,7 +172,7 @@ const covered = new Set([
   'theme', 'uiScale', 'autoFlyMode', 'autoZoom', 'recordSimulatedFlights', 'trajectoryMode', 'parkTimeoutSec',
   'airspaceWarnLookaheadMin', 'airspaceWarnVerticalFt', 'alertObstacles', 'alertAerodromes', 'alertAirspaceEvents',
   'alertSuppressOnCourse', 'msaMargins', 'airspaceCeilingFt', 'terrainColorRefAltFt', 'useInternalBarometer',
-  'showAltitudeAgl', 'showQnhOnPaltGauge', 'showLocalTime', 'qnhHpa', 'qnhAuto', 'varioAutoConnectId', 'units',
+  'showAltitudeAgl', 'showQnhOnPaltGauge', 'showLocalTime', 'showFlownTrail', 'qnhHpa', 'qnhAuto', 'varioAutoConnectId', 'units',
   // Documented in prose / not a user-facing default:
   'homeAirfield', 'selectedAircraftId', 'alertAirspaceLevels', 'trajectoryNm', 'baroPromptSeen',
 ]);
