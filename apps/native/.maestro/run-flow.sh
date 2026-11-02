@@ -24,8 +24,43 @@ mkdir -p "$out"
 # Crash reports newer than this belong to this run (see the end).
 touch "$raw/.started"
 
+# iPhone Duo (capture-ios.sh): Maestro only drives the COVER display (its taps
+# land there whatever the posture), so the flow runs folded and pauses after
+# every shot (duo-pause.yaml). While it waits, this watcher unfolds the device,
+# captures the inner display with `hinge` (https://github.com/artemnovichkov/hinge,
+# since simctl has no fold command), and folds it again, so the inner-display
+# shot shows exactly the same app state, after a live fold/unfold resize.
+# Enabled by DUO_INNER_OUT=<dir>; HINGE_DEVICE must name the simulator.
+export MAESTRO_DUO="${MAESTRO_DUO:-0}"
+watcher=""
+if [ -n "${DUO_INNER_OUT:-}" ]; then
+  export MAESTRO_DUO=1
+  mkdir -p "$DUO_INNER_OUT"
+  (
+    seen=" "
+    while [ ! -e "$raw/.flow-done" ]; do
+      while IFS= read -r -d '' f; do
+        n="$(basename "$f" .png)"
+        case "$n" in _*) continue ;; esac
+        case "$seen" in *" $n "*) continue ;; esac
+        seen="$seen$n "
+        sleep 1                                   # let Maestro finish writing the PNG
+        hinge open && sleep 3 \
+          && hinge screenshot "$DUO_INNER_OUT/$n.png" \
+          || echo "::warning::inner-display capture of $n failed"
+        hinge close || true
+        sleep 3
+      done < <(find "$raw" -path '*/takeScreenshot/*' -name '*.png' -print0 2>/dev/null)
+      sleep 1
+    done
+  ) &
+  watcher=$!
+fi
+
 status=0
 maestro "$@" test --test-output-dir="$raw" "$here/screenshots.yaml" || status=$?
+touch "$raw/.flow-done"
+[ -z "$watcher" ] || wait "$watcher" || true
 
 while IFS= read -r -d '' f; do
   case "$(basename "$f")" in
