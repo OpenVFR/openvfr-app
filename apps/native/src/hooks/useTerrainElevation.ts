@@ -21,6 +21,7 @@ import type { GpsPosition } from '../utils/gpsTypes'
 import { pointElevationFt } from '@open-vfr/shared/pointElevation'
 import { getOfflineDem } from '../utils/terrainDem'
 import { authHeaders } from '../utils/authClient'
+import { quickDistNm } from '@open-vfr/shared/quickDist'
 
 const MIN_MOVE_NM     = 0.3
 const MIN_INTERVAL_MS = 15_000
@@ -33,11 +34,6 @@ const STALE_AGE_MS    = 5 * 60_000
 
 type Sample = { elevFt: number; lat: number; lng: number; at: number }
 
-function quickDistNm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const dLat = (lat2 - lat1) * 60
-  const dLng = (lng2 - lng1) * 60 * Math.cos((lat1 + lat2) * 0.5 * Math.PI / 180)
-  return Math.sqrt(dLat * dLat + dLng * dLng)
-}
 
 /** Below this ground speed (kt) the device counts as standing still. */
 const STILL_KTS = 3

@@ -2915,38 +2915,7 @@ export function AviationMap({
         return false
       }
 
-      const handleFeatures = () => {
-        const fromPress = 'features' in payload ? payload.features as Feature[] : []
-        const pt = (payload as PressEvent).point
-        const ll0 = (payload as PressEvent).lngLat
-        if (!mapRef.current || !pt || !ll0) { dispatchFeatures(fromPress); return }
-        // The press payload only holds the features of the top-most pressable
-        // source under the finger (Android), in drawing order -- reporting
-        // points are drawn above aerodromes, so zoomed out a tap on an
-        // aerodrome opened its reporting point. Ask the map for every point
-        // around the tap and put the one the finger meant first
-        // (rankTapCandidates: nearest, aerodromes weighted for their larger
-        // symbol). Airspace / NOTAM features from the payload follow.
-        const box: [[number, number], [number, number]] =
-          [[pt[0] - SNAP_PX, pt[1] - SNAP_PX], [pt[0] + SNAP_PX, pt[1] + SNAP_PX]]
-        mapRef.current.queryRenderedFeatures(box, { layers: SNAP_LAYERS })
-          .then((hits) => {
-            const points = rankTapCandidates(
-              (hits as Feature[]).filter(f => f.geometry?.type === 'Point').map(f => {
-                const [lng, lat] = (f.geometry as Point).coordinates as [number, number]
-                return { item: f, lng, lat, isAerodrome: AERODROME_TAP_PROPS(f.properties ?? {}) }
-              }),
-              ll0[0], ll0[1],
-            )
-            if (points.length === 0) { dispatchFeatures(fromPress); return }
-            // Keep a NOTAM cluster tap (handled below) when it is what the press hit first.
-            const cluster = fromPress[0]?.properties?.cluster_id !== undefined ? [fromPress[0]!] : []
-            const rest = fromPress.filter(f => f.geometry?.type !== 'Point' || f.properties?.notamId)
-            dispatchFeatures([...cluster, ...points, ...rest])
-          })
-          .catch(() => dispatchFeatures(fromPress))
-      }
-
+      // Feature popup (or NOTAM cluster zoom) for the features of a tap.
       const dispatchFeatures = (fs: Feature[]) => {
         if (fs.length === 0) return
         const f  = fs[0]!
@@ -2972,47 +2941,53 @@ export function AviationMap({
         onFeatureTap?.(fs, tapLngLat)
       }
 
+      const fromPress = 'features' in payload ? payload.features as Feature[] : []
       const pressPoint = (payload as PressEvent).point
-      const handleRouteOrFeatures = () => {
-        if (!planningMode && pressPoint && mapRef.current && waypoints.length > 0
-            && (onRouteEndTap || onWaypointPress || onLegPress)) {
-          const box: [[number, number], [number, number]] =
-            [[pressPoint[0] - SNAP_PX, pressPoint[1] - SNAP_PX], [pressPoint[0] + SNAP_PX, pressPoint[1] + SNAP_PX]]
-          Promise.all([
-            mapRef.current.queryRenderedFeatures(box, { layers: ['route-pts-circle'] }),
-            onLegPress && waypoints.length >= 2
-              ? mapRef.current.queryRenderedFeatures(box, { layers: ['route-legs-hit'] })
-              : Promise.resolve([]),
-          ]).then(([hits, legHits]) => {
-            const idx = hits[0]?.properties?.wpIndex
-            if (typeof idx === 'number' && handleRoutePoint(idx)) return
-            const leg = legHits[0]?.properties?.legIndex
-            if (typeof leg === 'number' && onLegPress) { onLegPress(leg, [pressPoint[0], pressPoint[1]]); return }
-            onRouteMiss?.()
-            handleFeatures()
-          }).catch(() => handleFeatures())
-          return
-        }
-        handleFeatures()
-      }
-
-      // Traffic first: aircraft are drawn above everything, but the press
-      // payload only carries the features of the topmost pressable source
-      // under the finger (on Android), and the NOTAM / route sources mount
-      // later and can sit above it -- so ask the map for traffic directly.
       const ll = (payload as PressEvent).lngLat
-      if (hasTrafficRef.current && pressPoint && ll && mapRef.current) {
-        const box: [[number, number], [number, number]] =
-          [[pressPoint[0] - TRAFFIC_TAP_PX, pressPoint[1] - TRAFFIC_TAP_PX], [pressPoint[0] + TRAFFIC_TAP_PX, pressPoint[1] + TRAFFIC_TAP_PX]]
-        mapRef.current.queryRenderedFeatures(box, { layers: ['traffic-symbols'] })
-          .then((hits) => {
-            if (hits.length > 0 && onFeatureTap) { onFeatureTap([hits[0] as Feature], [ll[0], ll[1]]); return }
-            handleRouteOrFeatures()
-          })
-          .catch(() => handleRouteOrFeatures())
-        return
-      }
-      handleRouteOrFeatures()
+      const map = mapRef.current
+      if (!map || !pressPoint || !ll) { dispatchFeatures(fromPress); return }
+
+      // One round of map queries for everything a tap can mean, run together
+      // (each is a bridge call), then picked by priority:
+      //  1. traffic: drawn above everything, but the press payload only holds
+      //     the top-most pressable source under the finger (Android), and the
+      //     NOTAM / route sources can sit above it;
+      //  2. a route point, then a route leg (outside planning mode);
+      //  3. point features, nearest first (rankTapCandidates: aerodromes
+      //     weighted for their larger symbol -- the payload is in drawing
+      //     order, and reporting points draw above aerodromes), then the
+      //     payload's airspace / NOTAM features.
+      const boxOf = (px: number): [[number, number], [number, number]] =>
+        [[pressPoint[0] - px, pressPoint[1] - px], [pressPoint[0] + px, pressPoint[1] + px]]
+      const none = Promise.resolve([] as Feature[])
+      const routeTaps = !planningMode && waypoints.length > 0 && (onRouteEndTap || onWaypointPress || onLegPress)
+      Promise.all([
+        hasTrafficRef.current ? map.queryRenderedFeatures(boxOf(TRAFFIC_TAP_PX), { layers: ['traffic-symbols'] }) : none,
+        routeTaps ? map.queryRenderedFeatures(boxOf(SNAP_PX), { layers: ['route-pts-circle'] }) : none,
+        routeTaps && onLegPress && waypoints.length >= 2 ? map.queryRenderedFeatures(boxOf(SNAP_PX), { layers: ['route-legs-hit'] }) : none,
+        map.queryRenderedFeatures(boxOf(SNAP_PX), { layers: SNAP_LAYERS }),
+      ]).then(([trafficHits, ptHits, legHits, pointHits]) => {
+        if (trafficHits.length > 0 && onFeatureTap) { onFeatureTap([trafficHits[0] as Feature], [ll[0], ll[1]]); return }
+        if (routeTaps) {
+          const idx = ptHits[0]?.properties?.wpIndex
+          if (typeof idx === 'number' && handleRoutePoint(idx)) return
+          const leg = legHits[0]?.properties?.legIndex
+          if (typeof leg === 'number' && onLegPress) { onLegPress(leg, [pressPoint[0], pressPoint[1]]); return }
+          onRouteMiss?.()
+        }
+        const points = rankTapCandidates(
+          (pointHits as Feature[]).filter(f => f.geometry?.type === 'Point').map(f => {
+            const [lng, lat] = (f.geometry as Point).coordinates as [number, number]
+            return { item: f, lng, lat, isAerodrome: AERODROME_TAP_PROPS(f.properties ?? {}) }
+          }),
+          ll[0], ll[1],
+        )
+        if (points.length === 0) { dispatchFeatures(fromPress); return }
+        // Keep a NOTAM cluster tap (dispatchFeatures) when it is what the press hit first.
+        const cluster = fromPress[0]?.properties?.cluster_id !== undefined ? [fromPress[0]!] : []
+        const rest = fromPress.filter(f => f.geometry?.type !== 'Point' || f.properties?.notamId)
+        dispatchFeatures([...cluster, ...points, ...rest])
+      }).catch(() => dispatchFeatures(fromPress))
     },
     [onFeatureTap, onLegTap, planningMode, onPlanTap, onPlanCandidates, onPlanEmptyTap, onWaypointMove, onWaypointRemove, onRouteEndTap, onWaypointPress, onLegPress, onRouteMiss, waypoints, rulerMode, rulerPoints, onRulerTap],
   )

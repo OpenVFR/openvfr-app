@@ -134,6 +134,8 @@ export interface TrafficConfig {
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const CLIENT_ID     = process.env['OPENSKY_CLIENT_ID']     ?? ''
+/** Same switch as ognTraffic.ts / trafficConfig.ognAvailable. */
+const OGN_ENABLED   = process.env['OGN_ENABLED'] !== 'false'
 const CLIENT_SECRET = process.env['OPENSKY_CLIENT_SECRET'] ?? ''
 
 // Parse bbox from env — four comma-separated floats.  Default = Sweden.
@@ -267,6 +269,8 @@ const IDLE_TIMEOUT_MS = 90_000  // slightly above native's 70 s poll interval
 
 let _lastActivityAt = 0
 
+const _activityListeners: (() => void)[] = []
+
 export function touchActivity(): void {
   _lastActivityAt = Date.now()
   ensurePolling()
@@ -275,31 +279,69 @@ export function touchActivity(): void {
 
 /** Called on every consumer touch. ognTraffic.ts uses it to open its socket
  *  at once instead of on its next idle-watcher tick (up to 20 s later). */
-const _activityListeners: (() => void)[] = []
 export function onConsumerActivity(fn: () => void): void {
   _activityListeners.push(fn)
 }
 
-/** A batch this old was built before the feeds went idle: not live traffic. */
+// ── Freshness (for /api/traffic/latest) ─────────────────────────────────────
+
+/** Older than this (or no OpenSky poll that recent) = left over from before
+ *  the feeds went idle, not live traffic. */
 const FRESH_BATCH_MAX_AGE_S = INTERVAL_S + 30
 
-function batchIsFresh(b: TrafficBatch | null, nowS: number): boolean {
-  return b != null && nowS - b.polledAt <= FRESH_BATCH_MAX_AGE_S
+/** Unix s of the last completed OpenSky poll. */
+let _openskyOkAt = 0
+/** Epoch ms until which OpenSky can't produce (failed poll, 429 backoff). */
+let _openskyBlockedUntil = 0
+
+function openskyCanPoll(): boolean {
+  return Boolean(CLIENT_ID && CLIENT_SECRET) && Date.now() >= _openskyBlockedUntil
+}
+
+/** Whether any feed can still produce a fresh batch. */
+function anyFeedCanProduce(): boolean {
+  return openskyCanPoll() || OGN_ENABLED
 }
 
 /**
- * The latest batch, waiting up to maxWaitMs for a fresh one when the feeds
- * were idle (no batch yet, or one left over from before they went to
- * sleep). Without this, the first native /latest request after a quiet
- * period only woke the poller and got an empty or hours-old batch back;
- * the app then showed no traffic until its next poll ~70 s later.
+ * Fresh = built recently AND, while OpenSky can poll, after a completed
+ * OpenSky poll. The OGN ticker rebuilds the batch every 5 s as soon as its
+ * socket exists (before any data), so polledAt alone would call an empty
+ * just-woken batch fresh. Exported for tests.
  */
-export async function getFreshBatch(maxWaitMs: number): Promise<TrafficBatch | null> {
-  const deadline = Date.now() + maxWaitMs
-  while (!batchIsFresh(_lastBatch, Date.now() / 1000) && Date.now() < deadline) {
-    await new Promise(r => setTimeout(r, 250))
-  }
-  return _lastBatch
+export function batchIsFresh(b: TrafficBatch | null, nowS: number = Date.now() / 1000): boolean {
+  if (!b || nowS - b.polledAt > FRESH_BATCH_MAX_AGE_S) return false
+  return !openskyCanPoll() || nowS - _openskyOkAt <= FRESH_BATCH_MAX_AGE_S
+}
+
+/** /latest requests waiting for a fresh batch; settled by settleWaiters(). */
+const _freshWaiters = new Set<() => void>()
+
+/** Wakes the waiting /latest requests once there is nothing more to wait for. */
+function settleWaiters(): void {
+  if (_freshWaiters.size === 0) return
+  if (!batchIsFresh(_lastBatch) && anyFeedCanProduce()) return
+  for (const done of [..._freshWaiters]) done()
+}
+
+/**
+ * The latest batch and whether it is fresh, waiting up to maxWaitMs for a
+ * fresh one when the feeds were idle (no batch yet, or one left over from
+ * before they went to sleep). Without this, the first native /latest request
+ * after a quiet period only woke the poller and got an empty or hours-old
+ * batch back; the app then showed no traffic until its next poll ~70 s
+ * later. Answers at once when no feed can produce (no OpenSky credentials or
+ * OpenSky failing / backing off, and OGN disabled). Woken by the batch
+ * updates, no polling loop.
+ */
+export function getFreshBatch(maxWaitMs: number): Promise<{ batch: TrafficBatch | null; fresh: boolean }> {
+  const answer = () => ({ batch: _lastBatch, fresh: batchIsFresh(_lastBatch) })
+  if (batchIsFresh(_lastBatch) || !anyFeedCanProduce()) return Promise.resolve(answer())
+  return new Promise((resolve) => {
+    const done = () => { clearTimeout(timer); _freshWaiters.delete(done); resolve(answer()) }
+    const timer = setTimeout(done, maxWaitMs)
+    _freshWaiters.add(done)
+  })
 }
 
 /** Exported: ognTraffic.ts's own idle watcher gates its persistent APRS-IS
@@ -371,6 +413,7 @@ export function mergeTrafficStates(opensky: TrafficState[], ogn: Iterable<Traffi
 function recomputeAndBroadcast(): void {
   _lastBatch = { polledAt: Math.floor(Date.now() / 1000), states: mergeTrafficStates(_openskyStates, _ognStates.values()) }
   broadcast(_lastBatch)
+  settleWaiters()
 }
 
 /** Called by ognTraffic.ts on every parsed APRS-IS aircraft beacon. Map write only — no broadcast per packet. */
@@ -405,11 +448,15 @@ async function poll(): Promise<number> {
     if (res.status === 429) {
       const retryAfter = parseInt(res.headers.get('X-Rate-Limit-Retry-After-Seconds') ?? '120', 10)
       console.warn(`[traffic] Rate limited — backing off ${retryAfter} s`)
+      _openskyBlockedUntil = Date.now() + retryAfter * 1000
+      settleWaiters()
       return retryAfter * 1000
     }
 
     if (!res.ok) {
       console.error(`[traffic] Poll failed: ${res.status}`)
+      _openskyBlockedUntil = Date.now() + INTERVAL_S * 1000
+      settleWaiters()
       return INTERVAL_S * 1000
     }
 
@@ -438,12 +485,16 @@ async function poll(): Promise<number> {
       }))
 
     _openskyStates = states
+    _openskyOkAt = Math.floor(Date.now() / 1000)
+    _openskyBlockedUntil = 0
     recomputeAndBroadcast()
     console.log(`[traffic] Polled ${states.length} OpenSky targets (+${_ognStates.size} OGN), broadcast to ${_clients.size} clients`)
     return INTERVAL_S * 1000
 
   } catch (err) {
     console.error('[traffic] Poll error:', err instanceof Error ? err.message : String(err))
+    _openskyBlockedUntil = Date.now() + INTERVAL_S * 1000
+    settleWaiters()
     return INTERVAL_S * 1000
   }
 }
@@ -483,7 +534,7 @@ export const trafficConfig: TrafficConfig = {
   // No credential gate -- OGN's APRS-IS feed is free/unmetered by design.
   // Only an explicit opt-out disables it (self-hosters without outbound
   // access to aprs.glidernet.org:14580, or who simply don't want it).
-  ognAvailable: process.env['OGN_ENABLED'] !== 'false',
+  ognAvailable: OGN_ENABLED,
 }
 
 /**

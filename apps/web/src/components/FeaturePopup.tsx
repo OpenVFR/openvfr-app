@@ -1,5 +1,6 @@
 import type React from 'react'
 import css from './FeaturePopup.module.css'
+import { TRAFFIC_CATEGORY_LABEL, trafficDeviceLabel, trafficNetworkLabel } from '@open-vfr/shared/trafficState'
 
 // ── Feature type definitions ──────────────────────────────────────────────────
 // Each variant carries only the properties available in its GeoJSON source.
@@ -211,19 +212,13 @@ function LandmarkBody({ f }: { f: LandmarkFeature }) {
   )
 }
 
-const CATEGORY_LABEL: Record<number, string> = {
-  0: 'No info', 1: 'Light', 2: 'Small', 3: 'Large', 4: 'B757-class',
-  5: 'Heavy', 6: 'High-perf', 7: 'Rotorcraft', 8: 'Glider',
-  9: 'Lighter-than-air', 10: 'Parachutist', 11: 'Ultralight',
-  12: 'Ultralight', 13: 'UAV', 14: 'Space vehicle',
-}
 
 function TrafficHeader({ f }: { f: TrafficFeature }) {
   return (
     <div className={css.headerContent}>
       <span className={css.bigId}>{f.callsign ?? f.icao24}</span>
       {f.callsign && <span className={css.typeTag}>{f.icao24.toUpperCase()}</span>}
-      <span className={css.typeTag}>{f.source === 'ogn' ? 'FLARM' : 'ADS-B'}</span>
+      <span className={css.typeTag}>{trafficDeviceLabel(f.icao24)}</span>
     </div>
   )
 }
@@ -259,10 +254,10 @@ function TrafficBody({ f }: { f: TrafficFeature }) {
       {f.category !== null && f.category > 0 && (
         <div className={css.row}>
           <span className={css.label}>Category</span>
-          <span className={css.value}>{CATEGORY_LABEL[f.category] ?? `Cat ${f.category}`}</span>
+          <span className={css.value}>{TRAFFIC_CATEGORY_LABEL[f.category] ?? `Cat ${f.category}`}</span>
         </div>
       )}
-      <div className={css.source}>{f.source === 'ogn' ? '© Open Glider Network' : '© OpenSky Network'}</div>
+      <div className={css.source}>© {trafficNetworkLabel(f.source)}</div>
     </div>
   )
 }

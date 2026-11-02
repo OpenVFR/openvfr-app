@@ -27,6 +27,7 @@ import { notifyLocalChange } from '../sync/cloudSync'
 import { flightLogs as flightLogsDb, waypoints as userWaypointsDb } from '../db'
 import type { TrackPoint, FlightLogDocType } from '../types/db'
 import type { GpsPosition, FlyingMode } from '../utils/gpsTypes'
+import { quickDistNm } from '@open-vfr/shared/quickDist'
 
 const TAKEOFF_SPD_KTS        = 30
 const LANDING_SPD_KTS        = 20
@@ -36,13 +37,7 @@ const MIN_FLIGHT_DURATION_MS = 30_000
 const FLUSH_INTERVAL_MS      = 10_000
 const TRACK_INTERVAL_MS      = 1_000
 const PARK_TIMEOUT_MS        = 5 * 60 * 1000
-const NM_PER_DEGREE_LAT      = 60.0
 
-function quickDistNm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const dLat = (lat2 - lat1) * NM_PER_DEGREE_LAT
-  const dLng = (lng2 - lng1) * NM_PER_DEGREE_LAT * Math.cos((lat1 + lat2) * 0.5 * Math.PI / 180)
-  return Math.sqrt(dLat * dLat + dLng * dLng)
-}
 
 // user_flight_logs.id is a Postgres UUID column — must be a real UUID, not
 // an arbitrary string, or every cloud push 400s ("invalid input syntax for
@@ -70,6 +65,11 @@ export function useFlightLog(
   /** The route planned at the moment (read when a log starts): stored with the log so its
    *  profile can show the planned level. A ref, so a route edit does not re-run the hook. */
   plannedRouteRef?: { current: FlightLogRoute | null },
+  /** The device GPS fix whatever the flying mode (null while a simulator
+   *  drives). `position` above is only passed in flying mode, but the
+   *  takeoff roll happens before flying mode starts (takeoff is detected
+   *  well above the terrain), so the roll buffer is fed from this. */
+  gpsFix: GpsPosition | null = null,
 ): {
   activeLogId: string | null
   /** The track to draw behind the aircraft: the open log's, else the last
@@ -134,19 +134,20 @@ export function useFlightLog(
   const simulationRef = useRef(simulation)
   simulationRef.current = simulation
 
-  // The last few minutes of real GPS fixes, kept even with flying mode off:
-  // takeoff is only detected well above the terrain, and a new log is
-  // started from the takeoff roll found here (@open-vfr/shared/flightLogPreroll).
+  // The last few minutes of device GPS fixes, kept with flying mode off too
+  // (from `gpsFix`, not the mode-gated `position`): takeoff is only detected
+  // well above the terrain, and a new log is started from the takeoff roll
+  // found here (@open-vfr/shared/flightLogPreroll).
   const prerollRef = useRef<TrackPoint[]>([])
   useEffect(() => {
-    if (!position || simulationRef.current.simulated) return
+    if (!gpsFix) return
     const now = Date.now()
     const buf = prerollRef.current
     if (buf.length > 0 && now - buf[buf.length - 1]!.ts < TRACK_INTERVAL_MS) return
     prerollRef.current = trimPreroll([...buf, {
-      lat: position.lat, lng: position.lng, altFt: position.altFt, spdKts: position.speedKts, trkDeg: position.trackDeg, ts: now,
+      lat: gpsFix.lat, lng: gpsFix.lng, altFt: gpsFix.altFt, spdKts: gpsFix.speedKts, trkDeg: gpsFix.trackDeg, ts: now,
     }], now)
-  }, [position])
+  }, [gpsFix])
 
   useEffect(() => {
     if (!position || flyingMode === 'off') return

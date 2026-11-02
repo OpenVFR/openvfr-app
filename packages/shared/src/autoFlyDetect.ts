@@ -105,6 +105,19 @@ export function initialAutoFlyState(): AutoFlyState {
   return { fastFixes: 0, slowFixes: 0, airborneSince: null, suppressed: false, wasFlying: false, altHistory: [] }
 }
 
+/**
+ * Lowest altitude (ft) the detector saw within `windowMs` before `nowMs`
+ * (from its own altitude window, CLIMB_WINDOW_MS at most); null when none.
+ * Hosts use it to decide when an expensive terrain lookup could matter.
+ */
+export function lowestRecentAltFt(state: AutoFlyState, nowMs: number, windowMs: number = CLIMB_WINDOW_MS): number | null {
+  let low: number | null = null
+  for (const h of state.altHistory) {
+    if (nowMs - h.t <= windowMs && (low === null || h.altFt < low)) low = h.altFt
+  }
+  return low
+}
+
 /** Altitude evidence that the fix is in the air (see the module doc). Exported for tests. */
 export function seemsAirborne(
   altFt: number | null, groundFt: number | null | undefined, history: { altFt: number }[],

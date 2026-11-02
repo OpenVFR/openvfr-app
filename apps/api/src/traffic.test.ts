@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseLine, ognFilter } from './ognTraffic.js'
-import { mergeTrafficStates, type TrafficState } from './traffic.js'
+import { mergeTrafficStates, getFreshBatch, batchIsFresh, type TrafficState } from './traffic.js'
 
 const NOW = 1_800_000_000
 
@@ -84,4 +84,12 @@ test('merge: an older OGN state does not replace OpenSky; OGN-only targets are a
   assert.equal(m.length, 2)
   assert.equal(m.find(s => s.icao24 === 'abc123')!.source, 'opensky')
   assert.ok(m.some(s => s.icao24 === 'ogn-dda5ba'))
+})
+
+test('getFreshBatch: with nothing fresh it answers by its deadline, not fresh', async () => {
+  assert.equal(batchIsFresh(null), false)
+  const t0 = Date.now()
+  const r = await getFreshBatch(50)
+  assert.equal(r.fresh, false)
+  assert.ok(Date.now() - t0 < 1000)
 })

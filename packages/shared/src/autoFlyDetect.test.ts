@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { initialAutoFlyState, stepAutoFly, autoFlyThresholds, type AutoFlyState, type AutoFlyThresholds } from './autoFlyDetect'
+import { initialAutoFlyState, stepAutoFly, autoFlyThresholds, lowestRecentAltFt, type AutoFlyState, type AutoFlyThresholds } from './autoFlyDetect'
 
 // Default: 1000 ft above 100 ft terrain, i.e. clearly in the air.
 const AIR = { altFt: 1100, groundFt: 100 }
@@ -113,5 +113,14 @@ describe('autoFlyThresholds', () => {
     r = run([90], true, initialAutoFlyState(), 0, 1000, 10, fast)
     r = run(Array(15).fill(50), true, r.state, 70_000, 1000, 10, fast)
     expect(r.events).toEqual([])
+  })
+})
+
+describe('lowestRecentAltFt', () => {
+  it('lowest altitude within the window only', () => {
+    const r = run([60, 60, 60], false, initialAutoFlyState(), 0, 60_000, 10, undefined, i => ({ altFt: [100, 300, 200][i]!, groundFt: 0 }))
+    expect(lowestRecentAltFt(r.state, 120_000, 5 * 60_000)).toBe(100)
+    expect(lowestRecentAltFt(r.state, 120_000, 60_000)).toBe(200)
+    expect(lowestRecentAltFt(initialAutoFlyState(), 0)).toBe(null)
   })
 })

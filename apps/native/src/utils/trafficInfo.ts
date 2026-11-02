@@ -5,13 +5,7 @@
  */
 
 import type { FeatureInfo } from '../components/FeaturePopup'
-
-const CATEGORY_LABEL: Record<number, string> = {
-  0: 'No info', 1: 'Light', 2: 'Small', 3: 'Large', 4: 'B757-class',
-  5: 'Heavy', 6: 'High-perf', 7: 'Rotorcraft', 8: 'Glider',
-  9: 'Lighter-than-air', 10: 'Parachutist', 11: 'Ultralight',
-  12: 'Ultralight', 13: 'UAV', 14: 'Space vehicle',
-}
+import { TRAFFIC_CATEGORY_LABEL, trafficDeviceLabel, trafficNetworkLabel } from '@open-vfr/shared/trafficState'
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 
@@ -30,7 +24,6 @@ export function trafficFeatureInfo(p: Record<string, unknown>, lngLat: [number, 
   const trackDeg = num(p.trackDeg)
   const vertFpm  = num(p.vertFpm)
   const category = num(p.category)
-  const ogn      = p.source === 'ogn'
 
   const vertArrow = vertFpm == null ? '' : vertFpm > 100 ? ' ↑' : vertFpm < -100 ? ' ↓' : ' →'
   const signed = (n: number) => `${n > 0 ? '+' : ''}${n.toLocaleString()}`
@@ -40,8 +33,8 @@ export function trafficFeatureInfo(p: Record<string, unknown>, lngLat: [number, 
     speedKts != null ? { label: 'Speed', value: `${speedKts} kt` } : null,
     trackDeg != null ? { label: 'Track', value: `${trackDeg}°` } : null,
     !onGround && vertFpm != null ? { label: 'Vert rate', value: `${signed(vertFpm)} fpm` } : null,
-    category != null && category > 0 ? { label: 'Category', value: CATEGORY_LABEL[category] ?? `Cat ${category}` } : null,
-    { label: 'Source', value: ogn ? 'FLARM (Open Glider Network)' : 'ADS-B (OpenSky Network)' },
+    category != null && category > 0 ? { label: 'Category', value: TRAFFIC_CATEGORY_LABEL[category] ?? `Cat ${category}` } : null,
+    { label: 'Source', value: `${trafficDeviceLabel(icao24)} (${trafficNetworkLabel(typeof p.source === 'string' ? p.source : undefined)})` },
   ]
 
   return {

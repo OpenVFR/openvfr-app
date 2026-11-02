@@ -546,9 +546,11 @@ app.get('/api/traffic/latest', async (c) => {
   touchActivity()
   // Up to 10 s for fresh data when the feeds were idle: the first poll after
   // a quiet period otherwise returned nothing usable (see getFreshBatch).
-  const batch = await getFreshBatch(10_000)
-  if (!batch) return c.json({ polledAt: 0, states: [] })
-  return c.json(batch)
+  // `fresh` (judged on the server's clock) tells the app whether to poll
+  // again soon or at its normal interval.
+  const { batch, fresh } = await getFreshBatch(10_000)
+  if (!batch) return c.json({ polledAt: 0, states: [], fresh: false })
+  return c.json({ ...batch, fresh })
 })
 
 // ---------------------------------------------------------------------------

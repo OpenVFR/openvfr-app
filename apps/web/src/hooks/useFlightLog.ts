@@ -26,6 +26,7 @@ import { trimParkedTail, simulatedFixAction } from '@open-vfr/shared/flightLogSt
 import { takeoffRun } from '@open-vfr/shared/flightLogPreroll'
 import type { GpsPosition } from '../utils/gpsTypes'
 import type { FlyingMode } from '../utils/gpsTypes'
+import { quickDistNm } from '@open-vfr/shared/quickDist'
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const TAKEOFF_SPD_KTS        = 30      // GS threshold for takeoff detection
@@ -36,14 +37,8 @@ const MIN_FLIGHT_DURATION_MS = 30_000  // 30 s minimum flight to record
 const FLUSH_INTERVAL_MS      = 10_000  // flush to RxDB every 10 s
 const TRACK_INTERVAL_MS      = 1_000   // record a track point at most every 1 s
 const PARK_TIMEOUT_MS        = 5 * 60 * 1000  // 5 min parked → close log; 0 = split per leg
-const NM_PER_DEGREE_LAT      = 60.0
 
 // ── Great-circle distance (fast approximation, adequate for incremental sum) ──
-function quickDistNm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const dLat = (lat2 - lat1) * NM_PER_DEGREE_LAT
-  const dLng = (lng2 - lng1) * NM_PER_DEGREE_LAT * Math.cos((lat1 + lat2) * 0.5 * Math.PI / 180)
-  return Math.sqrt(dLat * dLat + dLng * dLng)
-}
 
 // ── UUID helper ──────────────────────────────────────────────────────────────
 function newId(): string {

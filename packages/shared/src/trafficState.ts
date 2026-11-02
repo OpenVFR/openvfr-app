@@ -28,3 +28,26 @@ export function trafficOnGround(reportedOnGround: boolean, speedKts: number | nu
 export function trafficAltitudeM(baroM: number | null, geoM: number | null | undefined): number | null {
   return geoM ?? baroM
 }
+
+/** ICAO ADS-B emitter categories (the numbers both feeds use) as shown to the pilot. */
+export const TRAFFIC_CATEGORY_LABEL: Readonly<Record<number, string>> = {
+  0: 'No info', 1: 'Light', 2: 'Small', 3: 'Large', 4: 'B757-class',
+  5: 'Heavy', 6: 'High-perf', 7: 'Rotorcraft', 8: 'Glider',
+  9: 'Lighter-than-air', 10: 'Parachutist', 11: 'Ultralight',
+  12: 'Ultralight', 13: 'UAV', 14: 'Space vehicle',
+}
+
+/**
+ * How the target was tracked: 'FLARM' for FLARM / OGN-tracker devices (their
+ * ids are namespaced `ogn-` by the api), 'ADS-B' for an ICAO address --
+ * including ADS-B that an OGN ground station relayed, which arrives with
+ * source 'ogn' but is still a transponder.
+ */
+export function trafficDeviceLabel(icao24: string): 'FLARM' | 'ADS-B' {
+  return icao24.startsWith('ogn-') ? 'FLARM' : 'ADS-B'
+}
+
+/** The network the position came from, for attribution. */
+export function trafficNetworkLabel(source: 'opensky' | 'ogn' | string | undefined): string {
+  return source === 'ogn' ? 'Open Glider Network' : 'OpenSky Network'
+}

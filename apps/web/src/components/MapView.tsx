@@ -252,8 +252,9 @@ function buildCentrelines(
   return { type: 'FeatureCollection', features }
 }
 
-// All clickable point-feature layers — hover cursor + click dispatch.
-// Ordered by priority: aerodromes first, then navaids, waypoints, obstacles, landmarks.
+// All clickable point-feature layers — hover cursor + click dispatch. Which
+// hit a click opens is decided by rankTapCandidates (nearest, aerodromes
+// weighted for their larger symbol), not by this order.
 const POINT_LAYERS = [
   'aerodromes-icon',
   'aerodromes-label',
@@ -1066,14 +1067,22 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // to start a log at the takeoff roll (@open-vfr/shared/flightLogPreroll).
   const prerollRef = useRef<TrackPoint[]>([])
   useEffect(() => {
-    const p = flyingMode === 'off' ? passivePos : flyingMode === 'gps' ? gpsPosition : null
-    if (!p || p.speedKts == null) return
+    // Fields per source. A fix without altitude or speed is skipped: these
+    // points become the start of a log, and an invented 0 ft would show in
+    // its profile and stats.
+    const fix = flyingMode === 'off' && passivePos
+      ? (passivePos.altFt == null || passivePos.speedKts == null ? null : {
+          lat: passivePos.lat, lng: passivePos.lng, altFt: passivePos.altFt,
+          spdKts: passivePos.speedKts, trkDeg: passivePos.headingDeg ?? 0,
+        })
+      : flyingMode === 'gps' && gpsPosition
+        ? { lat: gpsPosition.lat, lng: gpsPosition.lng, altFt: gpsPosition.altFt, spdKts: gpsPosition.speedKts, trkDeg: gpsPosition.trackDeg }
+        : null
+    if (!fix) return
     const now = Date.now()
     const buf = prerollRef.current
     if (buf.length > 0 && now - buf[buf.length - 1]!.ts < 1000) return
-    const altFt = 'altFt' in p && p.altFt != null ? p.altFt : 0
-    const trkDeg = 'trackDeg' in p ? p.trackDeg : ('headingDeg' in p ? p.headingDeg ?? 0 : 0)
-    prerollRef.current = trimPreroll([...buf, { lat: p.lat, lng: p.lng, altFt, spdKts: p.speedKts, trkDeg, ts: now }], now)
+    prerollRef.current = trimPreroll([...buf, { ...fix, ts: now }], now)
   }, [flyingMode, passivePos, gpsPosition])
   // Set just before an AUTO stop so useFlightLog leaves a parked log to its park timer.
   const deferLogCloseRef = useRef(false)
@@ -3310,8 +3319,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
           return
         }
       }
-
-      // ── 0d. Traffic symbol click: handled first (step T above). ─────────
 
       // ── 0e. (formerly) Regional NOTAM circle/polygon click — REMOVED as an
       // exclusive, click-blocking layer. Large ad-hoc NOTAM areas used to

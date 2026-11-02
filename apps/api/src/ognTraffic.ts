@@ -293,6 +293,10 @@ function connect(): void {
 
   socket.on('close', () => {
     console.log('[ogn] Socket closed')
+    // A socket disconnect() already dropped closes asynchronously; by then a
+    // consumer request may have opened its replacement. Leave that one alone
+    // (clearing _socket would orphan it, and reconnecting would open a third).
+    if (_socket !== socket) return
     _socket = null
     if (hasActiveConsumers()) {
       _reconnectTimer = setTimeout(() => { _reconnectTimer = null; connect() }, RECONNECT_DELAY_MS)

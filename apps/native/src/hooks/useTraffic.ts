@@ -1,6 +1,9 @@
 /**
  * useTraffic (native) — polls /api/traffic/latest every 70 s and dead-reckons
- * aircraft positions at 2 s intervals between polls.
+ * aircraft positions at 2 s intervals between polls. Right after the layer is
+ * turned on the server's feeds may still be waking up: while it answers
+ * `fresh: false` the hook asks again sooner (10 s, doubling up to the normal
+ * 70 s), see the poll effect.
  *
  * Mirrors the web useTraffic hook but uses polling instead of SSE.
  *
@@ -59,16 +62,18 @@ interface RawState {
 interface TrafficBatch {
   polledAt: number
   states:   RawState[]
+  /** Server's own verdict (its clock): built from live feeds. Absent from
+   *  older servers -- treated as fresh (plain 70 s polling, as before). */
+  fresh?:   boolean
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const POLL_INTERVAL_MS  = 70_000   // slightly above server's 65 s OpenSky poll
 /** Next try while the server has no fresh data (feeds just woke up, or offline). */
+/** First retry while the server has no fresh data (feeds waking up, or
+ *  offline); doubles each time up to POLL_INTERVAL_MS. */
 const RETRY_INTERVAL_MS = 10_000
-/** A batch older than this is left over from before the server's feeds slept
- *  (device clock vs server clock; a large skew only means slower retries). */
-const FRESH_BATCH_MAX_AGE_S = 120
 const STALE_S           = 180
 // 2 s, not 1 s: every traffic source update makes MapLibre redraw at display
 // rate for ~0.65 s, and a target at 120 kt moves only ~120 m in 2 s.
@@ -142,7 +147,9 @@ export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: 
       if (!r.ok) return false
       const data = await r.json() as TrafficBatch
       if (data.polledAt > 0) { batchRef.current = data; receivedAtRef.current = Date.now() / 1000 }
-      return data.polledAt > 0 && Date.now() / 1000 - data.polledAt <= FRESH_BATCH_MAX_AGE_S
+      // Freshness is the server's call (its clock, its poll interval): no
+      // device clock skew involved.
+      return data.polledAt > 0 && data.fresh !== false
     } catch { return false /* server offline -- keep the last batch */ }
   }, [])
 
@@ -158,10 +165,15 @@ export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: 
     // full interval for the next try looked like a layer that never loads.
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | null = null
+    let retryMs = RETRY_INTERVAL_MS
     const run = async () => {
       const fresh = await poll()
       if (cancelled) return
-      timer = setTimeout(run, fresh ? POLL_INTERVAL_MS : RETRY_INTERVAL_MS)
+      // Stale or failed: 10 s, 20 s, 40 s, then the normal interval -- a
+      // server that can't produce (feeds down) is not hammered.
+      const next = fresh ? POLL_INTERVAL_MS : Math.min(retryMs, POLL_INTERVAL_MS)
+      retryMs = fresh ? RETRY_INTERVAL_MS : retryMs * 2
+      timer = setTimeout(run, next)
     }
     void run()
     return () => { cancelled = true; if (timer) clearTimeout(timer) }
