@@ -9,7 +9,6 @@ import { setApiAuthHeaders } from '@open-vfr/shared/apiAuth'
 import { authHeaders } from './src/utils/authClient'
 import { Platform } from 'react-native'
 import * as Application from 'expo-application'
-import { gpsAltitudeIsEllipsoidal } from '@open-vfr/shared/geoid'
 import { initGpsAltitudeReference } from '@open-vfr/shared/gpsAltitudeReference'
 import { TILE_BASE } from './src/config'
 import App from './src/App'
@@ -36,11 +35,12 @@ void enableCachePersistence(AsyncStorage)
 // Shared fetch code without its own headers parameter (Open-Meteo gate,
 // terrain profile) authenticates with the bearer token: RN has no cookie jar.
 setApiAuthHeaders(authHeaders)
-// GPS altitude reference (ellipsoid vs mean sea level): platform default,
-// verified on the ground and re-checked after an OS or app update -- see
+// GPS altitude reference of expo-location's `next` `altitude` field: the
+// ellipsoid on both platforms (the OS's own sea-level value arrives separately
+// as `mslAltitude`). Verified on the ground and re-checked after an OS or app update -- see
 // @open-vfr/shared/gpsAltitudeReference.
 void initGpsAltitudeReference({
-  platformDefault: gpsAltitudeIsEllipsoidal({ os: Platform.OS }) ? 'ellipsoid' : 'msl',
+  platformDefault: 'ellipsoid',
   environment: `${Platform.OS} ${Platform.Version} app ${Application.nativeApplicationVersion ?? '?'} (${Application.nativeBuildVersion ?? '?'})`,
   store: AsyncStorage,
 })

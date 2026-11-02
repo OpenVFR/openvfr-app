@@ -27,7 +27,7 @@ function fileRangeSource(file: File): RangeSource {
       const handle = file.open()
       try {
         handle.offset = offset
-        const bytes = handle.readBytes(Math.min(length, size - offset))
+        const bytes = await handle.readBytes(Math.min(length, size - offset))
         return { data: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) }
       } finally {
         handle.close()

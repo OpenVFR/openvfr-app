@@ -138,7 +138,7 @@ import IconPlaneArrival from '@tabler/icons-react-native/IconPlaneArrival'
 import IconZoomScan from '@tabler/icons-react-native/IconZoomScan'
 import IconListDetails from '@tabler/icons-react-native/IconListDetails'
 import { MapToolbar, type ToolGroupDef } from '../components/MapToolbar'
-import * as Location from 'expo-location'
+import { Location } from 'expo-location/next'
 import * as Crypto from 'expo-crypto'
 import { GaugesBar }         from '../components/GaugesBar'
 import { distanceAlongRouteNm, coordinateAlongRouteNm, routeCrossTrackNm } from '@open-vfr/shared/virtualRadarCalc'
@@ -1197,7 +1197,7 @@ function MapScreenForCountry() {
   const flyingRef = React.useRef(false)
   useEffect(() => { flyingRef.current = flightModeStatus !== 'off' }, [flightModeStatus])
   useEffect(() => {
-    const handle = (url: string | null) => {
+    const handle = (url: string | null | undefined) => {
       if (!url || flyingRef.current) return
       const q = url.indexOf('?')
       const link = parseMapLink(q >= 0 ? url.slice(q) : '')
@@ -1311,14 +1311,14 @@ function MapScreenForCountry() {
   useEffect(() => {
     // Permission already granted -> show the dot at startup (no prompt,
     // camera untouched). Otherwise nothing until the user taps.
-    Location.getForegroundPermissionsAsync()
+    Location.getForegroundPermissions()
       .then(p => { if (p.status === 'granted') setLocMode(m => (m === 'off' ? 'passive' : m)) })
       .catch(() => {})
   }, [])
   const handleLocate = useCallback(async () => {
     if (flightModeStatus !== 'off') { setFollowGps(true); return }
-    let perm = await Location.getForegroundPermissionsAsync()
-    if (perm.status !== 'granted' && perm.canAskAgain) perm = await Location.requestForegroundPermissionsAsync()
+    let perm = await Location.getForegroundPermissions()
+    if (perm.status !== 'granted' && perm.canAskAgain) perm = await Location.requestForegroundPermissions()
     if (perm.status !== 'granted') {
       setLocMode('off')
       Alert.alert('Location unavailable', 'Allow location access for OpenVFR in system settings to show your position.')
@@ -1326,9 +1326,9 @@ function MapScreenForCountry() {
     }
     setLocMode('passive')
     try {
-      const pos = (await Location.getLastKnownPositionAsync({ maxAge: 60_000 }))
-        ?? (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }))
-      if (pos) { setFindDestFlyTarget({ lat: pos.coords.latitude, lng: pos.coords.longitude, nonce: Date.now() }); setLocCentred(true) }
+      // A fix younger than a minute, else wait up to 15 s for a new one.
+      const pos = await Location.getPosition({ maxCachedAge: 60, timeout: 15 })
+      if (pos) { setFindDestFlyTarget({ lat: pos.coordinates.latitude, lng: pos.coordinates.longitude, nonce: Date.now() }); setLocCentred(true) }
     } catch { /* no fix yet -- the dot appears once one arrives */ }
   }, [flightModeStatus])
 
@@ -1728,7 +1728,7 @@ function MapScreenForCountry() {
   }, [terrainMemoryLocked, layers.hillshade, layers.contours, layers.terrainColor, handleLayerChange])
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]}>
       {/* Map renders edge to edge, under the status bar; this faint band keeps
           the status icons legible on a light map. */}
       {insets.top > 0 && <View pointerEvents="none" style={[styles.statusScrim, { height: insets.top }]} />}

@@ -32,7 +32,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppState, Linking, Platform } from 'react-native'
 import * as Application from 'expo-application'
-import * as Location from 'expo-location'
+import { Location } from 'expo-location/next'
 import SpInAppUpdates, { IAUUpdateKind, IAUInstallStatus, IAUAvailabilityStatus, type StatusUpdateEvent } from 'sp-react-native-in-app-updates'
 import { API_BASE } from '../config'
 
@@ -87,8 +87,9 @@ export function isUpdateRequired(info: VersionInfo, build: number | null = curBu
 /** True when the last known position says the device is moving at flying speed. */
 async function probablyFlying(): Promise<boolean> {
   try {
-    const fix = await Location.getLastKnownPositionAsync({ maxAge: FIX_MAX_AGE_MS })
-    return (fix?.coords.speed ?? 0) > FLYING_SPEED_MS
+    // timeout 0: the last known fix, never waits for a new one.
+    const fix = await Location.getPosition({ maxCachedAge: FIX_MAX_AGE_MS / 1000, timeout: 0 })
+    return (fix?.speed ?? 0) > FLYING_SPEED_MS
   } catch {
     return false  // no permission / no fix
   }

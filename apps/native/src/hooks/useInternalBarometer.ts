@@ -13,7 +13,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Barometer } from 'expo-sensors'
-import type { EventSubscription } from 'expo-modules-core'
+import type { EventSubscription } from 'expo'
 import { PhoneVarioFilter } from '@open-vfr/shared/phoneVario'
 
 export type BaroAvailability = 'checking' | 'available' | 'unavailable'

@@ -149,7 +149,7 @@ export function SystemMessages() {
       pointerEvents="box-none"
       style={{
         position: 'absolute', top: insets.top + (ACTIVE_ENVIRONMENT === 'staging' ? 22 : 6),
-        left: 10, right: 64, zIndex: 990, elevation: 990, gap: 6,
+        left: insets.left + 10, right: insets.right + 64, zIndex: 990, elevation: 990, gap: 6,
       }}
     >
       {shown.map(m => <Notice key={m.id} m={m} onDismiss={() => dismiss(m.id)} />)}

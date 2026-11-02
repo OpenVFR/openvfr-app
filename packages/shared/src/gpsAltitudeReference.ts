@@ -3,6 +3,8 @@
  * ellipsoid (needs the geoid correction, ./geoid.ts) or already above mean
  * sea level? Decided by the platform by default and VERIFIED on the ground.
  *
+
+ * (Native apps: expo-location `next` `altitude` is ellipsoidal on both platforms, see ./gpsAltitude.ts. Web: below.)
  * Default: Android (and Android browsers) report ellipsoidal heights, iOS
  * reports altitude above sea level (see ./geoid.ts). If a future Android,
  * browser or location-library version changed that silently, correcting
