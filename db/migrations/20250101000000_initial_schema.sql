@@ -14,7 +14,19 @@
 -- Executed once when the PostGIS container is first created.
 -- Run: docker compose up  (the db service mounts this at initdb.d/)
 
-CREATE EXTENSION IF NOT EXISTS postgis;
+-- Guarded instead of a bare `CREATE EXTENSION IF NOT EXISTS`: on Azure Database
+-- for PostgreSQL Flexible Server a hook refuses CREATE EXTENSION for anyone but
+-- azure_pg_admin members BEFORE Postgres reaches the IF NOT EXISTS check, so a
+-- non-superuser owner could never re-run it, even with PostGIS already installed
+-- (by the admin, per the server's azure.extensions allow-list). Install it first
+-- there; everywhere else the owner creates it here as before.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'postgis') THEN
+    CREATE EXTENSION postgis;
+  END IF;
+END
+$$;
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- NOTE: OSM landuse polygons (farmland, residential, commercial, industrial)
