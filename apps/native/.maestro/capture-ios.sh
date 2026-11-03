@@ -80,6 +80,10 @@ capture() { # name regex sizes(space separated) [duo]
     export DUO_INNER_OUT="$out_root/iphone-duo-inner"
     # First call builds hinge's helper; closed = cover display, where Maestro works.
     hinge close && sleep 3
+    # What Maestro will face: posture + a capture of the active display.
+    mkdir -p "$out/debug"
+    hinge posture || true
+    hinge screenshot "$out/debug/_duo-boot.png" || true
   else
     unset DUO_INNER_OUT || true
   fi
