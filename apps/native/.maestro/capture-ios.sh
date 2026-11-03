@@ -76,14 +76,20 @@ capture() { # name regex sizes(space separated) [duo]
   out="$out_root/$name"
   mkdir -p "$out"
   if [ -n "$duo" ]; then
-    export HINGE_DEVICE="$udid"
+    export DUOCTL_UDID="$udid"
     export DUO_INNER_OUT="$out_root/iphone-duo-inner"
-    # First call builds hinge's helper; closed = cover display, where Maestro works.
-    hinge close && sleep 3
-    # What Maestro will face: posture + a capture of the active display.
     mkdir -p "$out/debug"
-    hinge posture || true
-    hinge screenshot "$out/debug/_duo-boot.png" || true
+    # The simulator boots unfolded (SpringBoard on the inner display). Fold it:
+    # Maestro only drives the cover display. Then one full unfold/refold cycle
+    # before the flow, as a smoke test of the whole mechanism (the first call
+    # also compiles duoctl's in-simulator helper): a simulator that cannot
+    # switch screens fails here, in seconds, instead of mid-flow.
+    duoctl state
+    duoctl close
+    duoctl open && { duoctl rotate portrait || true; } && duoctl screenshot "$out/debug/_duo-inner-boot.png"
+    duoctl close
+    duoctl state
+    duoctl screenshot "$out/debug/_duo-cover-boot.png"
   else
     unset DUO_INNER_OUT || true
   fi
@@ -100,7 +106,7 @@ capture() { # name regex sizes(space separated) [duo]
     xcrun simctl boot "$udid"
     xcrun simctl bootstatus "$udid" -b
     status_bar "$udid"
-    [ -z "$duo" ] || { hinge close && sleep 3; }
+    [ -z "$duo" ] || duoctl close
     bash "$here/run-flow.sh" "$out" --device "$udid"
   fi
 
@@ -111,22 +117,19 @@ capture() { # name regex sizes(space separated) [duo]
     ls "$DUO_INNER_OUT"/*.png >/dev/null 2>&1 || { echo "::error::no inner-display screenshots were captured"; return 1; }
     check_sizes "$DUO_INNER_OUT" 2007x2853 2853x2007
     ls -l "$DUO_INNER_OUT"
-    unset DUO_INNER_OUT HINGE_DEVICE
+    unset DUO_INNER_OUT DUOCTL_UDID
   fi
 
   xcrun simctl shutdown "$udid"
   xcrun simctl delete "$udid"
 }
 
-# `hinge` is installed by the workflow (pinned commit, before any secret is
-# pulled); without it the Duo cannot be folded.
-if xcrun simctl list devicetypes | grep -q 'iPhone Duo' && ! command -v hinge >/dev/null; then
-  echo "::error::hinge is not on PATH (see the 'Install hinge' step in screenshots.yml)"; exit 1
-fi
-# Fail in seconds, not after ~40 min of iPhone/iPad captures: hinge must run
-# (the first call also compiles its helper with Xcode's clang).
+# `duoctl` is installed by the workflow (pinned commit, before any secret is
+# pulled); without it the Duo cannot be folded. Checked first so a broken
+# install fails in seconds, not after ~40 min of iPhone/iPad captures.
 if xcrun simctl list devicetypes | grep -q 'iPhone Duo'; then
-  hinge --version >/dev/null || { echo "::error::hinge does not run"; exit 1; }
+  command -v duoctl >/dev/null || { echo "::error::duoctl is not on PATH (see the 'Install duoctl' step in screenshots.yml)"; exit 1; }
+  duoctl --help >/dev/null || { echo "::error::duoctl does not run (python3 missing?)"; exit 1; }
 fi
 
 # Each flow signs in as the same account, one device at a time.

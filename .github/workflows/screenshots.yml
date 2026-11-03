@@ -323,16 +323,20 @@ jobs:
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-      # `hinge` folds the iPhone Duo simulator (simctl cannot). Built from a
-      # pinned commit of a third-party repo (v0.3.0), here, before any secret
-      # (EXPO_TOKEN, the test account) is available to a step.
-      - name: Install hinge (pinned)
+      # `duoctl` folds the iPhone Duo simulator (simctl cannot) and captures
+      # whichever display is showing. Pinned commit (v0.2.1) of a third-party
+      # repo, installed here before any secret (EXPO_TOKEN, the test account)
+      # is available to a step. Chosen over `hinge`: it moves the hinge in a
+      # sweep (an instant jump leaves the iOS 27.1 simulator unable to switch
+      # screens, which is what run 41607636869 hit) and reads the active screen
+      # back after every change.
+      - name: Install duoctl (pinned)
         working-directory: .
         run: |
           set -euo pipefail
-          git clone --quiet https://github.com/artemnovichkov/hinge.git "$RUNNER_TEMP/hinge"
-          git -C "$RUNNER_TEMP/hinge" checkout --quiet afb8f0bd277cb12187f0844a79542cbac35e7385
-          echo "$RUNNER_TEMP/hinge/bin" >> "$GITHUB_PATH"
+          git clone --quiet https://github.com/skarol/duoctl.git "$RUNNER_TEMP/duoctl"
+          git -C "$RUNNER_TEMP/duoctl" checkout --quiet c6ff3e961a9858fb061907448e702d7d1617dc4a
+          echo "$RUNNER_TEMP/duoctl/skills/duoctl/scripts" >> "$GITHUB_PATH"
       # macOS runners egress from different IP ranges than ubuntu ones --
       # re-check here instead of trusting the preflight job.
       - name: Check data hosts reachable from runner

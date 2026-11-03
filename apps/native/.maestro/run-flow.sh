@@ -27,10 +27,13 @@ touch "$raw/.started"
 # iPhone Duo (capture-ios.sh): Maestro only drives the COVER display (its taps
 # land there whatever the posture), so the flow runs folded and pauses after
 # every shot (duo-pause.yaml). While it waits, this watcher unfolds the device,
-# captures the inner display with `hinge` (https://github.com/artemnovichkov/hinge,
+# captures the inner display with `duoctl` (https://github.com/skarol/duoctl,
 # since simctl has no fold command), and folds it again, so the inner-display
 # shot shows exactly the same app state, after a live fold/unfold resize.
-# Enabled by DUO_INNER_OUT=<dir>; HINGE_DEVICE must name the simulator.
+# duoctl sweeps the hinge (a jump wedges the iOS 27.1 simulator) and waits for
+# the other display to take over, so no fixed sleeps are needed around it; the
+# cover's portrait is the inner display's landscape, hence the rotate.
+# Enabled by DUO_INNER_OUT=<dir>; DUOCTL_UDID must name the simulator.
 export MAESTRO_DUO="${MAESTRO_DUO:-0}"
 watcher=""
 if [ -n "${DUO_INNER_OUT:-}" ]; then
@@ -46,10 +49,11 @@ if [ -n "${DUO_INNER_OUT:-}" ]; then
         seen="$seen$n "
         sleep 1                                   # let Maestro finish writing the PNG
         t0=$(date +%s)
-        if hinge open && sleep 3 && hinge screenshot "$DUO_INNER_OUT/$n.png"; then :
-        else echo "::warning::inner-display capture of $n failed"; fi
-        hinge close || true
-        sleep 3
+        if duoctl open && { duoctl rotate portrait || echo "::warning::inner display stayed landscape for $n"; } \
+            && sleep 1 && duoctl screenshot "$DUO_INNER_OUT/$n.png"; then :
+        else echo "::warning::inner-display capture of $n failed"; duoctl state || true; fi
+        duoctl close || { echo "::error::could not fold the Duo back: Maestro's next taps will miss"; duoctl state || true; }
+        sleep 1
         el=$(( $(date +%s) - t0 ))
         echo "duo inner capture of $n took ${el}s (flow pauses 30s)"
         [ "$el" -lt 28 ] || echo "::warning::inner capture of $n took ${el}s, close to the flow's 30 s pause: Maestro may resume while unfolded"
