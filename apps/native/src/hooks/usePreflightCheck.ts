@@ -27,6 +27,7 @@ import { loadObstacles, loadLandmarks } from './useAutoCruiseLevel'
 import { useMefGrids } from './useMefGrids'
 import { useCountries } from './useCountries'
 import { useRegionalNotams } from './useRegionalNotams'
+import { useSettled, ROUTE_SETTLE_MS } from './useSettled'
 import { useSettingsContext } from '../context/SettingsContext'
 import { useAuthContext } from '../context/AuthContext'
 import type { RouteWaypoint, LegOverride, AircraftProfileDocType } from '../types/db'
@@ -39,19 +40,6 @@ export interface PreflightCheck {
   /** Terrain and the data files are still loading. */
   loading:  boolean
 }
-
-/** Value that follows `value` only after it has been still for `ms`. */
-function useSettled<T>(value: T, ms: number): T {
-  const [v, setV] = useState(value)
-  useEffect(() => {
-    const t = setTimeout(() => setV(value), ms)
-    return () => clearTimeout(t)
-  }, [value, ms])
-  return v
-}
-
-/** The route must be still this long before the (heavy) check runs: dragging a leg or undo/redo changes it many times a second. */
-const SETTLE_MS = 700
 
 export function usePreflightCheck(opts: {
   waypoints: RouteWaypoint[]
@@ -66,9 +54,9 @@ export function usePreflightCheck(opts: {
   // Only while the plan screen is in front (the tab stays mounted behind the map), and only once the route has settled.
   const focused = useIsFocused()
   const enabled = opts.enabled && focused
-  const waypoints = useSettled(opts.waypoints, SETTLE_MS)
-  const legOverrides = useSettled(opts.legOverrides, SETTLE_MS)
-  const legWinds = useSettled(opts.legWinds, SETTLE_MS)
+  const waypoints = useSettled(opts.waypoints, ROUTE_SETTLE_MS)
+  const legOverrides = useSettled(opts.legOverrides, ROUTE_SETTLE_MS)
+  const legWinds = useSettled(opts.legWinds, ROUTE_SETTLE_MS)
   const { settings } = useSettingsContext()
   const { state: authState } = useAuthContext()
   const { selected: selectedCountries } = useCountries()

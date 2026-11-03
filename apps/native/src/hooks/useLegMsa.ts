@@ -6,6 +6,8 @@
  * on the route, and the user's margins. See web hooks/useLegMsa.ts.
  */
 import { useEffect, useMemo, useState } from 'react'
+import { useIsFocused } from '@react-navigation/native'
+import { useSettled, ROUTE_SETTLE_MS } from './useSettled'
 import {
   buildVirtualRadarProfile, computeMsaProfile, terrainForMsa, legCorridorMsaFt,
   getMsaLookup, terrainAt, type TerrainPoint,
@@ -25,7 +27,14 @@ const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', feature
 export type LegMsa = { legMsa: number[]; spans: LegSpan[]; totalNm: number }
 const NONE: LegMsa = { legMsa: [], spans: [], totalNm: 0 }
 
-export function useLegMsa(waypoints: RouteWaypoint[], margins: Partial<MsaMargins>): LegMsa {
+export function useLegMsa(liveWaypoints: RouteWaypoint[], margins: Partial<MsaMargins>): LegMsa {
+  // The plan screen stays mounted behind the map: wait for the route to be still
+  // (dragging a leg, undo/redo) and for the screen to be in front before the work.
+  const focused = useIsFocused()
+  const settled = useSettled(liveWaypoints, ROUTE_SETTLE_MS)
+  const [shown, setShown] = useState(settled)
+  useEffect(() => { if (focused) setShown(settled) }, [focused, settled])
+  const waypoints = shown
   const [terrain, setTerrain] = useState<TerrainPoint[]>([])
   const [failed, setFailed] = useState(false)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(null)
