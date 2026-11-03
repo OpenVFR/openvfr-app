@@ -155,7 +155,7 @@ a single platform can be tested without building both:
 |---|---|---|---|
 | `screenshots-ios/iphone-6.3` | xcode-27 simulator, newest `iPhone * Pro` | 1206x2622 | App Store iPhone 6.3" (one iPhone size is enough; 1179x2556 for 6.1" is also accepted by the size check) |
 | `screenshots-ios/iphone-duo-cover` | xcode-27 simulator, `iPhone Duo` folded | 1398x2034 | App Store iPhone Duo, outer display |
-| `screenshots-ios/iphone-duo-inner` | same simulator, unfolded after every shot (`hinge`) | 2007x2853 | App Store iPhone Duo, inner display |
+| `screenshots-ios/iphone-duo-inner` | same simulator, unfolded after every shot (`duoctl`) | 2007x2853 | App Store iPhone Duo, inner display |
 | `screenshots-ios/ipad-13` | xcode-27 simulator, newest `iPad Pro 13-inch` | 2064x2752 | App Store iPad 13" (required: `supportsTablet: true`) |
 | `screenshots-android-phone` | ubuntu emulator | 1080x1920 | Play phone |
 | `screenshots-android-tablet-7` | ubuntu emulator | 1200x1920 | Play 7" tablet |
@@ -166,9 +166,12 @@ How it works:
 - iPhone Duo: Maestro's taps always land on the cover display, so the flow runs
   folded (cover shots). After every `takeScreenshot` it pauses
   (`.maestro/duo-pause.yaml`) while `run-flow.sh` unfolds the simulator with
-  [`hinge`](https://github.com/artemnovichkov/hinge) (simctl has no fold
-  command), captures the inner display and folds it again, so the inner shot is
-  the same app state after a live resize. Skipped with a warning when the
+  [`duoctl`](https://github.com/skarol/duoctl) (simctl has no fold command; the
+  hinge must be swept, not jumped, or the iOS 27.1 simulator stops switching
+  screens), rotates the inner display to portrait, captures it and folds the
+  device again, so the inner shot is the same app state after a live resize.
+  Known limit: Maestro's own taps only reach the cover display, so the flow can
+  never run unfolded. Skipped with a warning when the
   runner has no iPhone Duo (set `REQUIRE_DUO=1` to fail instead).
 
 - `preflight` pulls the `production` EAS environment and curls the API
