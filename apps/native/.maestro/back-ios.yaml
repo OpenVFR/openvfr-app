@@ -1,0 +1,27 @@
+# Leaves a pushed screen (Plan / Settings) on iOS. The native header back button
+# is labelled with the previous screen's title ("Map") on older iOS, "Back" on
+# some, and on iOS 26+ it is an icon-only glass button whose label Maestro does
+# not always see (run 41542550423: `tapOn: "Map"` failed on iOS 27). Try the
+# labels, then the interactive-pop edge swipe, until the map toolbar is back.
+appId: org.openvfr.app
+---
+- tapOn:
+    text: "Map"
+    optional: true
+- runFlow:
+    when:
+      notVisible:
+        id: map-tools-open
+    commands:
+      - tapOn:
+          text: "Back"
+          optional: true
+- runFlow:
+    when:
+      notVisible:
+        id: map-tools-open
+    commands:
+      - swipe:
+          start: 1%, 50%
+          end: 75%, 50%
+          duration: 400
