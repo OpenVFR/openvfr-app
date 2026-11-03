@@ -12,7 +12,7 @@ import { flightLogEventsForLog } from '@open-vfr/shared/flightLogEvents'
 import { formatElapsed, formatUtcTime, type FlownEvent } from '@open-vfr/shared/flightLogProfile'
 import { mergeCandidates, mergeLogs } from '@open-vfr/shared/flightLogRoute'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
-import { logEndAerodromes, normalizeLogPlace, LOG_PLACE_MAX_CHARS, type LogAerodrome } from '@open-vfr/shared/flightLogAerodromes'
+import { logEndAerodromes, normalizeLogPlace, LOG_PLACE_MAX_CHARS, type LogAerodrome, type LogPlace } from '@open-vfr/shared/flightLogAerodromes'
 import type { AircraftProfileDocType } from '../db'
 import css from './FlightLogs.module.css'
 
@@ -25,6 +25,29 @@ const EVENT_ICON: Record<FlownEvent['kind'], string> = {
  * worked out when opened: the track is parsed and the airspace it crosses looked
  * up only then. Picking one opens the log on the map at that moment.
  */
+/** Aerodromes with a code, from the country aerodrome layer (rejects offline). */
+async function loadLogAerodromes(): Promise<LogAerodrome[]> {
+  const fc = await loadCountryGeojson('aerodromes')
+  const aerodromes: LogAerodrome[] = []
+  for (const f of fc.features) {
+    if (f.geometry?.type !== 'Point') continue
+    const [lng, lat] = f.geometry.coordinates as [number, number]
+    aerodromes.push({ icao: String(f.properties?.['icao'] ?? ''), lat, lng })
+  }
+  return aerodromes
+}
+
+/** What names a take-off or landing: the aerodromes, and the user's own saved places. */
+async function loadEventNaming(): Promise<{ aerodromes: LogAerodrome[]; places: LogPlace[] } | null> {
+  const [aerodromes, places] = await Promise.all([
+    loadLogAerodromes().catch(() => [] as LogAerodrome[]),
+    getDb().then(db => db.user_waypoints.find().exec())
+      .then(ws => ws.map(w => ({ name: w.name, lat: w.lat, lng: w.lng })))
+      .catch(() => [] as LogPlace[]),
+  ])
+  return aerodromes.length === 0 && places.length === 0 ? null : { aerodromes, places }
+}
+
 function LogEvents({ log, aircraft, onPick }: {
   log: FlightLogDocType
   aircraft?: AircraftProfileDocType
@@ -33,7 +56,7 @@ function LogEvents({ log, aircraft, onPick }: {
   const [events, setEvents] = useState<FlownEvent[] | null>(null)
   useEffect(() => {
     let cancelled = false
-    void flightLogEventsForLog(log, aircraft, () => loadCountryGeojson('airspace'))
+    void flightLogEventsForLog(log, aircraft, () => loadCountryGeojson('airspace'), loadEventNaming)
       .then((ev) => { if (!cancelled) setEvents(ev) })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -94,13 +117,7 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
   const [placeEdit, setPlaceEdit] = useState<{ id: string; dep: string; arr: string; sugDep: string; sugArr: string } | null>(null)
   function openPlaceEdit(log: FlightLogDocType) {
     setPlaceEdit({ id: log.id, dep: log.departureIcao, arr: log.arrivalIcao, sugDep: '', sugArr: '' })
-    void loadCountryGeojson('aerodromes').then((fc) => {
-      const aerodromes: LogAerodrome[] = []
-      for (const f of fc.features) {
-        if (f.geometry?.type !== 'Point') continue
-        const [lng, lat] = f.geometry.coordinates as [number, number]
-        aerodromes.push({ icao: String(f.properties?.['icao'] ?? ''), lat, lng })
-      }
+    void loadLogAerodromes().then((aerodromes) => {
       let track: TrackPoint[] = []
       try { track = JSON.parse(log.trackJson || '[]') } catch { return }
       const s = logEndAerodromes(track, aerodromes)

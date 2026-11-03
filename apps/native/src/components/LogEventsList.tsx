@@ -6,6 +6,7 @@
 import React, { useEffect, useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { flightLogEventsForLog } from '@open-vfr/shared/flightLogEvents'
+import { namingData } from '../hooks/useFlightLog'
 import { formatElapsed, type FlownEvent } from '@open-vfr/shared/flightLogProfile'
 import type { AircraftProfileDocType, FlightLogDocType } from '../types/db'
 import { getTileUrls } from '../config'
@@ -24,7 +25,7 @@ export function LogEventsList({ log, aircraft, onPick }: {
   const [events, setEvents] = useState<FlownEvent[] | null>(null)
   useEffect(() => {
     let cancelled = false
-    void flightLogEventsForLog(log, aircraft, () => loadGeoJsonOnce(getTileUrls().airspace))
+    void flightLogEventsForLog(log, aircraft, () => loadGeoJsonOnce(getTileUrls().airspace), () => namingData(5_000))
       .then((ev) => { if (!cancelled) setEvents(ev) })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps

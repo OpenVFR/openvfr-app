@@ -67,7 +67,12 @@ whole flight stays, from takeoff to landing, at a coarser spacing).
   characters). The aerodromes where the track starts and ends are offered
   with one tap. The change syncs to your other devices.
 - **Events:** the **Events** toggle lists takeoffs, landings, touch-and-gos,
-  lost GPS and airspace entered, with times. Pick one to open the log at
+  lost GPS and airspace entered, with times. Takeoffs and landings name the
+  place, for example "Takeoff from ESMI" and "Landing at ESMS": the nearest
+  aerodrome within 2 NM, else one of your saved places. Away from both they
+  stay plain. The names come from the aerodrome and place data on your
+  device, so a flight with a stop is readable even though the log is named
+  only from where it started and ended. Pick an event to open the log at
   that point.
 - **Delete:** the delete button asks you to confirm with a tick or cross.
   Deleting removes the log from your account on every device.

@@ -304,7 +304,7 @@ export function useFlightLog(
 // ── AsyncStorage helpers (fire-and-forget) ─────────────────────────────────
 
 /** Aerodromes and the user's saved places, for naming a log's ends. Null when neither could be read. */
-async function namingData(timeoutMs = 20_000): Promise<{ aerodromes: LogAerodrome[]; places: LogPlace[] } | null> {
+export async function namingData(timeoutMs = 20_000): Promise<{ aerodromes: LogAerodrome[]; places: LogPlace[] } | null> {
   const [aerodromes, places] = await Promise.all([
     getAerodromes(timeoutMs),
     userWaypointsDb.getAll().then(ws => ws.map(w => ({ name: w.name, lat: w.lat, lng: w.lng }))).catch(() => []),
