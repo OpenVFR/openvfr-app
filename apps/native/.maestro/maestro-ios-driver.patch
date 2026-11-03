@@ -1,0 +1,199 @@
+diff -ruN orig/maestro-driver-ios.xcodeproj/project.pbxproj new/maestro-driver-ios.xcodeproj/project.pbxproj
+--- a/maestro-ios-xctest-runner/maestro-driver-ios.xcodeproj/project.pbxproj	2026-11-03 23:07:03.617238021 +0100
++++ b/maestro-ios-xctest-runner/maestro-driver-ios.xcodeproj/project.pbxproj	2026-11-03 23:07:03.639871276 +0100
+@@ -1204,7 +1204,7 @@
+ 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+ 				GCC_WARN_UNUSED_FUNCTION = YES;
+ 				GCC_WARN_UNUSED_VARIABLE = YES;
+-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
++				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+ 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+ 				MTL_FAST_MATH = YES;
+ 				ONLY_ACTIVE_ARCH = YES;
+@@ -1258,7 +1258,7 @@
+ 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+ 				GCC_WARN_UNUSED_FUNCTION = YES;
+ 				GCC_WARN_UNUSED_VARIABLE = YES;
+-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
++				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+ 				MTL_ENABLE_DEBUG_INFO = NO;
+ 				MTL_FAST_MATH = YES;
+ 				SDKROOT = iphoneos;
+@@ -1283,7 +1283,7 @@
+ 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+ 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+ 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
++				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+ 					"@executable_path/Frameworks",
+@@ -1312,7 +1312,7 @@
+ 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+ 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+ 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
++				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+ 					"@executable_path/Frameworks",
+@@ -1391,7 +1391,7 @@
+ 					"$(SRCROOT)/maestro-driver-iosUITests/PrivateHeaders/XCTest",
+ 				);
+ 				INFOPLIST_FILE = "maestro-driver-iosTests/Info.plist";
+-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
++				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+ 					"@executable_path/Frameworks",
+@@ -1422,7 +1422,7 @@
+ 				INFOPLIST_FILE = MaestroDriverLib/Info.plist;
+ 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+ 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
++				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+ 					"@executable_path/Frameworks",
+@@ -1453,7 +1453,7 @@
+ 				INFOPLIST_FILE = MaestroDriverLib/Info.plist;
+ 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+ 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
++				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+ 					"@executable_path/Frameworks",
+@@ -1475,7 +1475,7 @@
+ 				CODE_SIGN_STYLE = Automatic;
+ 				CURRENT_PROJECT_VERSION = 1;
+ 				GENERATE_INFOPLIST_FILE = YES;
+-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
++				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+ 					"@executable_path/Frameworks",
+@@ -1497,7 +1497,7 @@
+ 				CODE_SIGN_STYLE = Automatic;
+ 				CURRENT_PROJECT_VERSION = 1;
+ 				GENERATE_INFOPLIST_FILE = YES;
+-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
++				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+ 					"@executable_path/Frameworks",
+@@ -1526,7 +1526,7 @@
+ 					"$(SRCROOT)/maestro-driver-iosUITests/PrivateHeaders/XCTest",
+ 				);
+ 				INFOPLIST_FILE = "maestro-driver-iosTests/Info.plist";
+-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
++				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+ 					"@executable_path/Frameworks",
+diff -ruN orig/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift new/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift
+--- a/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift	2026-11-03 23:07:03.618938278 +0100
++++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift	2026-11-03 23:07:03.639643776 +0100
+@@ -24,6 +24,17 @@
+         } ?? RunningApp.springboardBundleId
+     }
+     
++    /// Bundle id of the app under test, passed by the host through the
++    /// `TEST_RUNNER_MAESTRO_FOREGROUND_APP` environment variable (xcodebuild strips
++    /// the prefix). On the iPhone Duo simulator (iOS 27.1) `activeAppsInfo()` can
++    /// leave the foreground app out while it is running, focal and on screen; the
++    /// driver then returns SpringBoard's hierarchy and every lookup fails. When set,
++    /// this app is checked directly as a fallback.
++    static let foregroundAppHint: String? = {
++        let v = ProcessInfo.processInfo.environment["MAESTRO_FOREGROUND_APP"] ?? ""
++        return v.isEmpty ? nil : v
++    }()
++
+     static func getForegroundApp() -> XCUIApplication? {
+         let runningAppIds = XCUIApplication.activeAppsInfo().compactMap { $0["bundleId"] as? String }
+         
+@@ -34,9 +45,20 @@
+         // a splash screen). Snapshotting it then throws "Application ... is not running", which callers
+         // escalate as a fatal AppCrash. Returning nil instead lets callers fall back to the springboard hierarchy
+         // and retry.
+-        return runningAppIds
+-            .map { XCUIApplication(bundleIdentifier: $0) }
+-            .first { $0.state == .runningForeground }
++        if let app = runningAppIds
++            .map({ XCUIApplication(bundleIdentifier: $0) })
++            .first(where: { $0.state == .runningForeground }) {
++            return app
++        }
++        if let hint = foregroundAppHint, !runningAppIds.contains(hint) {
++            let app = XCUIApplication(bundleIdentifier: hint)
++            if app.state == .runningForeground {
++                NSLog("activeAppsInfo() did not list \(hint) but it is running in the foreground; using it")
++                return app
++            }
++            NSLog("Foreground app hint \(hint) is not in the foreground (state \(app.state.rawValue))")
++        }
++        return nil
+     }
+     
+ }
+diff -ruN orig/maestro-driver-iosUITests/Routes/XCTestHTTPServer.swift new/maestro-driver-iosUITests/Routes/XCTestHTTPServer.swift
+--- a/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/XCTestHTTPServer.swift	2026-11-03 23:07:03.618944578 +0100
++++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/XCTestHTTPServer.swift	2026-11-03 23:07:03.639674496 +0100
+@@ -35,9 +35,25 @@
+         
+         for route in Route.allCases {
+             let handler = await RouteHandlerFactory.createRouteHandler(route: route)
+-            await server.appendRoute(route.toHTTPRoute(), to: handler)
++            await server.appendRoute(route.toHTTPRoute(), to: IssueReportingHandler(handler: handler))
+         }
+         
+         try await server.run()
+     }
+ }
++
++/// An XCTest issue recorded while a request is handled (e.g. a transient
++/// accessibility failure while snapshotting SpringBoard's status bars, see
++/// mobile-dev-inc/Maestro#3538) used to unwind `testHttpServer` and take the
++/// whole driver down. The test case below keeps the issue instead of failing;
++/// this wrapper turns it into an error response for that one request.
++@MainActor
++struct IssueReportingHandler: HTTPHandler {
++    let handler: HTTPHandler
++
++    func handleRequest(_ request: HTTPRequest) async throws -> HTTPResponse {
++        let issues = XCTestIssues.count
++        let response = try await handler.handleRequest(request)
++        return XCTestIssues.count == issues ? response : AppError(message: XCTestIssues.latest).httpResponse
++    }
++}
+diff -ruN orig/maestro-driver-iosUITests/maestro_driver_iosUITests.swift new/maestro-driver-iosUITests/maestro_driver_iosUITests.swift
+--- a/maestro-ios-xctest-runner/maestro-driver-iosUITests/maestro_driver_iosUITests.swift	2026-11-03 23:07:03.619014613 +0100
++++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/maestro_driver_iosUITests.swift	2026-11-03 23:07:03.639700675 +0100
+@@ -29,11 +29,27 @@
+         try await server.start()
+     }
+ 
++    /// Keep serving after an XCTest issue (see IssueReportingHandler).
++    override func record(_ issue: XCTIssue) {
++        XCTestIssues.record(issue)
++    }
++
+     override class func tearDown() {
+         logger.trace("tearDown")
+     }
+ }
+ 
++enum XCTestIssues {
++    private(set) static var count = 0
++    private(set) static var latest = ""
++
++    static func record(_ issue: XCTIssue) {
++        count += 1
++        latest = issue.compactDescription
++        NSLog("Kept serving after XCTest issue: \(latest)")
++    }
++}
++
+ /// Pure-logic tests for `SwipeRouteHandlerV2.classify`. No app is launched, so these run on the
+ /// simulator's test runtime without touching a device. The XCUITest error inputs below are the
+ /// real domain/code/message observed in production for the DoorDash swipeV2 failures.
