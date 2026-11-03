@@ -125,8 +125,16 @@ if [ "$status" != 0 ] && ! login_failed; then
   if [ -n "$udid" ] && command -v xcrun >/dev/null; then
     echo "--- simulator log (last 10 min, OpenVFR process / app lifecycle) ---"
     xcrun simctl spawn "$udid" log show --last 10m --style compact \
-      --predicate 'process == "OpenVFR" OR eventMessage CONTAINS "org.openvfr.app" OR (process == "SpringBoard" AND (eventMessage CONTAINS "exit" OR eventMessage CONTAINS "terminat" OR eventMessage CONTAINS "crash"))' \
-      2>/dev/null | grep -viE "^\s*$" | tail -120 | tee "$out/debug/simulator-log.txt" || true
+      --predicate 'process == "OpenVFR" OR process CONTAINS "maestro" OR eventMessage CONTAINS "org.openvfr.app" OR (process == "SpringBoard" AND (eventMessage CONTAINS "exit" OR eventMessage CONTAINS "terminat" OR eventMessage CONTAINS "crash"))' \
+      2>/dev/null | grep -viE "^\s*$|compose failure" > "$out/debug/simulator-log.txt" || true
+    # Maestro's XCTest driver decides which app's hierarchy to return from
+    # XCUIApplication.activeAppsInfo() + state == runningForeground; on the
+    # iPhone Duo (run 41651367223) it returned SpringBoard while OpenVFR was
+    # the foreground, focal app. Its own log lines show what it saw.
+    grep -E "Detected running apps|No foreground app|View hierarchy snapshot|Process exited|Calculated state for app<org.openvfr" "$out/debug/simulator-log.txt" | tail -40 || true
+    echo "(full filtered log: debug/simulator-log.txt, $(wc -l < "$out/debug/simulator-log.txt") lines)"
+    # The display Maestro should be looking at, as pixels.
+    if [ -n "${DUOCTL_UDID:-}" ]; then duoctl state || true; duoctl screenshot "$out/debug/_duo-at-failure.png" || true; fi
     # Crash reports written inside the simulator (not only the host's folder).
     simdir=$(xcrun simctl list devices -j | python3 -c "import sys,json;d=[x for r in json.load(sys.stdin)['devices'].values() for x in r if x['udid']=='$udid'];print(d[0]['dataPath'] if d else '')" 2>/dev/null)
     if [ -n "$simdir" ]; then
