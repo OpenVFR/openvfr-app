@@ -96,10 +96,10 @@ appId: org.openvfr.app
 # Load the account's saved route into the working route, so the map and
 # Flight Plan shots show it. Saved routes sync down after sign-in, hence the
 # generous wait for the first library row.
-- tapOn:
-    id: map-tools-open
-- tapOn:
-    id: map-tool-plan
+- runFlow:
+    file: open-tool.yaml
+    env:
+      TOOL: map-tool-plan
 - tapOn:
     id: plan-more-open
 - tapOn:
@@ -159,10 +159,10 @@ appId: org.openvfr.app
 
 # Find a Destination sheet, view only: nothing is added to the route. Aerodromes
 # load on the sheet's first open, so give them a moment before the shot.
-- tapOn:
-    id: map-tools-open
-- tapOn:
-    id: map-tool-dest
+- runFlow:
+    file: open-tool.yaml
+    env:
+      TOOL: map-tool-dest
 - waitForAnimationToEnd:
     timeout: 10000
 # A shot taken before the sheet opened was identical to 01-map once.
@@ -180,10 +180,10 @@ appId: org.openvfr.app
 - waitForAnimationToEnd:
     timeout: 5000
 
-- tapOn:
-    id: map-tools-open
-- tapOn:
-    id: map-tool-plan
+- runFlow:
+    file: open-tool.yaml
+    env:
+      TOOL: map-tool-plan
 - waitForAnimationToEnd:
     timeout: 10000
 - takeScreenshot: 04-flight-plan
@@ -206,10 +206,10 @@ appId: org.openvfr.app
     commands:
       # Native header back button / edge swipe, see back-ios.yaml.
       - runFlow: back-ios.yaml
-- tapOn:
-    id: map-tools-open
-- tapOn:
-    id: map-tool-go
+- runFlow:
+    file: open-tool.yaml
+    env:
+      TOOL: map-tool-go
 # Let the flight-mode sheet finish its presentation animation before tapping:
 # on iOS it is a SwiftUI sheet, and tapping while the card is still sliding
 # in lands on stale coordinates (the scrim), dismissing the sheet without
@@ -229,10 +229,10 @@ appId: org.openvfr.app
       notVisible:
         id: sim-stop
     commands:
-      - tapOn:
-          id: map-tools-open
-      - tapOn:
-          id: map-tool-go
+      - runFlow:
+          file: open-tool.yaml
+          env:
+            TOOL: map-tool-go
       - waitForAnimationToEnd:
           timeout: 5000
       - tapOn:

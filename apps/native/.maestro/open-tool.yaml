@@ -1,0 +1,22 @@
+# Opens the map tools menu and taps one entry: TOOL = the entry's id
+# (map-tool-plan, ...). The menu is a Modal anchored with measureInWindow; on
+# the iPhone Duo's cover display the first tap on the toolbar button was seen
+# not to produce the entry (run 41594138887), so open it again once if the
+# entry is not there.
+appId: org.openvfr.app
+---
+- tapOn:
+    id: map-tools-open
+- waitForAnimationToEnd:
+    timeout: 3000
+- runFlow:
+    when:
+      notVisible:
+        id: ${TOOL}
+    commands:
+      - tapOn:
+          id: map-tools-open
+      - waitForAnimationToEnd:
+          timeout: 3000
+- tapOn:
+    id: ${TOOL}
