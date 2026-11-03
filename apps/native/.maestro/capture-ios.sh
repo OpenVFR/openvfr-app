@@ -50,6 +50,38 @@ check_sizes() {
   done
 }
 
+# run_flow <out> <udid> [duo]: run-flow.sh with Maestro's stock driver, or,
+# for the Duo when the workflow built one (MAESTRO_DUO_XCTESTRUN), with the
+# patched XCTest driver: started here with `xcodebuild test-without-building`
+# on a fixed port, Maestro told to use it (USE_XCODE_TEST_RUNNER) instead of
+# installing its own. The runner is started just after Maestro checks the
+# port is free and before it starts waiting for it (up to 120 s), then killed
+# when the flow ends. TEST_RUNNER_* variables reach the runner without the
+# prefix; MAESTRO_FOREGROUND_APP is the patch's foreground-app fallback.
+run_flow() {
+  local out="$1" udid="$2" duo="${3:-}" port=22087 status=0 runner=""
+  if [ -z "$duo" ] || [ -z "${MAESTRO_DUO_XCTESTRUN:-}" ]; then
+    bash "$here/run-flow.sh" "$out" --device "$udid"
+    return
+  fi
+  mkdir -p "$out/debug"
+  (
+    sleep 2
+    TEST_RUNNER_PORT=$port TEST_RUNNER_MAESTRO_FOREGROUND_APP=org.openvfr.app \
+      xcodebuild test-without-building -xctestrun "$MAESTRO_DUO_XCTESTRUN" \
+        -destination "id=$udid" -derivedDataPath "$(mktemp -d)" \
+        > "$out/debug/patched-driver-xcodebuild.log" 2>&1
+  ) &
+  runner=$!
+  USE_XCODE_TEST_RUNNER=1 bash "$here/run-flow.sh" "$out" --device "$udid" --driver-host-port "$port" || status=$?
+  kill "$runner" 2>/dev/null || true
+  pkill -f "test-without-building -xctestrun $MAESTRO_DUO_XCTESTRUN" 2>/dev/null || true
+  xcrun simctl terminate "$udid" dev.mobile.maestro-driver-iosUITests.xctrunner 2>/dev/null || true
+  # The patched driver's own decisions (NSLog goes to the xcodebuild output).
+  grep -E "Detected running apps|did not list|hint .* is not|Kept serving|No foreground app" "$out/debug/patched-driver-xcodebuild.log" | tail -30 || true
+  return "$status"
+}
+
 capture() { # name regex sizes(space separated) [duo]
   local name="$1" re="$2" sizes="$3" duo="${4:-}"
   local type runtime udid out
@@ -98,7 +130,7 @@ capture() { # name regex sizes(space separated) [duo]
   # driver up ("iOS driver not ready in time", seen on the iPad after a ~9 min
   # boot). Retry once on a fresh boot, but only when no shot was taken, so a
   # real flow failure still fails fast.
-  if ! bash "$here/run-flow.sh" "$out" --device "$udid"; then
+  if ! run_flow "$out" "$udid" "$duo"; then
     if ls "$out"/*.png >/dev/null 2>&1; then return 1; fi
     echo "::warning::$name: flow produced no shots; rebooting simulator and retrying once"
     pkill -f xcodebuild || true
@@ -107,7 +139,7 @@ capture() { # name regex sizes(space separated) [duo]
     xcrun simctl bootstatus "$udid" -b
     status_bar "$udid"
     [ -z "$duo" ] || duoctl close
-    bash "$here/run-flow.sh" "$out" --device "$udid"
+    run_flow "$out" "$udid" "$duo"
   fi
 
   # shellcheck disable=SC2086

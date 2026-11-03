@@ -33,6 +33,8 @@ concurrency:
 
 env:
   MAESTRO_VERSION: 2.10.0
+  # iOS job (the patched Duo driver is built from the same tag, see below).
+  MAESTRO_IOS_VERSION: 2.12.1
 
 jobs:
   # Fail fast (before ~30 min of native builds) if the runner can't reach
@@ -319,7 +321,7 @@ jobs:
         # Newer than the Android job's: 2.11+ is being tried for the iPhone Duo
         # (Maestro 2.10 could not reliably see the app on its cover display).
         env:
-          MAESTRO_VERSION: 2.12.1
+          MAESTRO_VERSION: ${{ env.MAESTRO_IOS_VERSION }}
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
@@ -337,6 +339,30 @@ jobs:
           git clone --quiet https://github.com/skarol/duoctl.git "$RUNNER_TEMP/duoctl"
           git -C "$RUNNER_TEMP/duoctl" checkout --quiet c6ff3e961a9858fb061907448e702d7d1617dc4a
           echo "$RUNNER_TEMP/duoctl/skills/duoctl/scripts" >> "$GITHUB_PATH"
+      # Maestro's bundled XCTest driver loses track of the foreground app on the
+      # iPhone Duo (runs 41651367223, 41711875057: the app stays focal on the
+      # cover display, the driver answers with SpringBoard's hierarchy). Build
+      # the driver from Maestro's source at the CLI's own tag with a small
+      # patch (apps/native/.maestro/maestro-ios-driver.patch): a foreground-app
+      # fallback to the app under test, and keep serving after an XCTest issue
+      # (mobile-dev-inc/Maestro#3538). Only the Duo capture uses it
+      # (capture-ios.sh); iPhone and iPad keep the stock driver. Still before
+      # any secret is pulled.
+      - name: Build patched Maestro iOS driver (Duo)
+        working-directory: .
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --branch cli-${MAESTRO_IOS_VERSION} https://github.com/mobile-dev-inc/Maestro.git "$RUNNER_TEMP/maestro-src"
+          git -C "$RUNNER_TEMP/maestro-src" apply --verbose "$GITHUB_WORKSPACE/apps/native/.maestro/maestro-ios-driver.patch"
+          xcodebuild build-for-testing \
+            -project "$RUNNER_TEMP/maestro-src/maestro-ios-xctest-runner/maestro-driver-ios.xcodeproj" \
+            -scheme maestro-driver-ios \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/maestro-driver" \
+            ARCHS=arm64 CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E "error|warning: .*\.swift|BUILD|Build" | tail -30; test "${PIPESTATUS[0]}" = 0
+          xctestrun=$(find "$RUNNER_TEMP/maestro-driver/Build/Products" -name '*.xctestrun' | head -n1)
+          [ -n "$xctestrun" ] || { echo "::error::no .xctestrun produced"; exit 1; }
+          echo "MAESTRO_DUO_XCTESTRUN=$xctestrun" >> "$GITHUB_ENV"
       # macOS runners egress from different IP ranges than ubuntu ones --
       # re-check here instead of trusting the preflight job.
       - name: Check data hosts reachable from runner

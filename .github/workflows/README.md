@@ -171,7 +171,14 @@ How it works:
   screens), rotates the inner display to portrait, captures it and folds the
   device again, so the inner shot is the same app state after a live resize.
   Known limit: Maestro's own taps only reach the cover display, so the flow can
-  never run unfolded. Skipped with a warning when the
+  never run unfolded. Maestro's stock XCTest driver also loses track of the
+  foreground app on the Duo (it answers with SpringBoard's hierarchy while the
+  app is on screen), so the iOS job builds the driver from Maestro's source at
+  the CLI's tag with `.maestro/maestro-ios-driver.patch` (foreground-app
+  fallback to the app under test; keep serving after an XCTest issue,
+  mobile-dev-inc/Maestro#3538) and the Duo capture runs on it
+  (`capture-ios.sh` `run_flow`). iPhone and iPad use the stock driver. Drop
+  the patch once Maestro ships foldable support (their PRs #3670 / #3621). Skipped with a warning when the
   runner has no iPhone Duo (set `REQUIRE_DUO=1` to fail instead).
 
 - `preflight` pulls the `production` EAS environment and curls the API

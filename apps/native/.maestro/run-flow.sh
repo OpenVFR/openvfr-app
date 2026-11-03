@@ -125,7 +125,7 @@ if [ "$status" != 0 ] && ! login_failed; then
   if [ -n "$udid" ] && command -v xcrun >/dev/null; then
     echo "--- simulator log (last 10 min, OpenVFR process / app lifecycle) ---"
     xcrun simctl spawn "$udid" log show --last 10m --style compact \
-      --predicate 'process == "OpenVFR" OR process CONTAINS "maestro" OR eventMessage CONTAINS "org.openvfr.app" OR (process == "SpringBoard" AND (eventMessage CONTAINS "exit" OR eventMessage CONTAINS "terminat" OR eventMessage CONTAINS "crash"))' \
+      --predicate 'process == "OpenVFR" OR process CONTAINS "maestro" OR process CONTAINS "iosUITests" OR eventMessage CONTAINS "org.openvfr.app" OR (process == "SpringBoard" AND (eventMessage CONTAINS "exit" OR eventMessage CONTAINS "terminat" OR eventMessage CONTAINS "crash"))' \
       2>/dev/null | grep -viE "^\s*$|compose failure" > "$out/debug/simulator-log.txt" || true
     # Maestro's XCTest driver decides which app's hierarchy to return from
     # XCUIApplication.activeAppsInfo() + state == runningForeground; on the
