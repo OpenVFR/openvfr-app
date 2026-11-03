@@ -316,6 +316,10 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
       - name: Install Maestro
+        # Newer than the Android job's: 2.11+ is being tried for the iPhone Duo
+        # (Maestro 2.10 could not reliably see the app on its cover display).
+        env:
+          MAESTRO_VERSION: 2.12.1
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
