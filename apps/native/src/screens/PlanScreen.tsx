@@ -20,6 +20,9 @@ import {
 import { useSyncRejected } from '../sync/cloudSync'
 import { SyncRefusedNote } from '../components/SyncRefusedNote'
 import { LogEventsList } from '../components/LogEventsList'
+import { PreflightCheckCard } from '../components/PreflightCheckCard'
+import { usePreflightCheck } from '../hooks/usePreflightCheck'
+import { coordinateAlongRouteNm } from '@open-vfr/shared/virtualRadarCalc'
 import { mergeCandidates, mergeLogs } from '@open-vfr/shared/flightLogRoute'
 import { logEndAerodromes, normalizeLogPlace, LOG_PLACE_MAX_CHARS } from '@open-vfr/shared/flightLogAerodromes'
 import { getAerodromes } from '../hooks/useNearbyFrequencies'
@@ -564,6 +567,23 @@ export function PlanScreen() {
     return computeFuelPlan(waypoints, legOverrides, profile, legWinds)
   }, [profile, waypoints, legOverrides, wind, forecastWinds])
 
+  // Pre-flight check: effective wind per leg (leg override > global > forecast), like the route table.
+  const effectiveLegWinds = useMemo(() => forecastWinds.map((fw, i) => {
+    const o = legOverrides[i]
+    if (o?.windDir != null && o?.windSpd != null) return { dirDeg: o.windDir, speedKts: o.windSpd }
+    return wind ? { dirDeg: wind.dirDeg, speedKts: wind.speedKts } : fw
+  }), [forecastWinds, legOverrides, wind])
+  const preflight = usePreflightCheck({
+    waypoints, legOverrides, aircraft: profile, aircraftId: selectedId,
+    legWinds: effectiveLegWinds, windsLoading: forecastLoading, enabled: segment === 'route',
+  })
+  const showWarningOnMap = (w: { focusNm?: number; legIndex?: number }) => {
+    if (w.focusNm == null) return
+    const pt = coordinateAlongRouteNm(waypoints, w.focusNm)
+    focusMap(pt.lat, pt.lng, 12)
+    navigation.navigate('Map' as never)
+  }
+
   // ── Actions ──────────────────────────────────────────────────────────────
   const handleRemove = (index: number) => removeWaypoint(index)
 
@@ -965,6 +985,17 @@ export function PlanScreen() {
               <Row label="ETA dest" value={fmtEta(takeoffMins, totalMins)} accent />
             )}
           </View>
+        )}
+
+        {/* ── Pre-flight check ────────────────────────────────────── */}
+        {waypoints.length >= 2 && (
+          <PreflightCheckCard
+            warnings={preflight.warnings}
+            prompts={preflight.prompts}
+            loading={preflight.loading}
+            onShowOnMap={showWarningOnMap}
+            onRaiseLeg={(i, altFt) => setLegOverride(i, { ...(legOverrides[i] ?? {}), altFt })}
+          />
         )}
 
         {/* ── Fuel plan ───────────────────────────────────────────── */}
