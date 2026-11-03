@@ -1,11 +1,11 @@
 # Used by screenshots.yaml on the iPhone Duo only (MAESTRO_DUO=1): holds the
 # flow still while run-flow.sh unfolds the simulator, captures the inner
-# display and folds it again (about 12 s). Nothing named like this ever exists,
+# display and folds it again (about 12 s, 30 s allowed). Nothing named like this ever exists,
 # so the wait simply times out -- `optional` makes that the success path.
 appId: org.openvfr.app
 ---
 - extendedWaitUntil:
     visible:
       id: "duo-pause-never-visible"
-    timeout: 20000
+    timeout: 30000
     optional: true

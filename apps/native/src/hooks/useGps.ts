@@ -22,7 +22,7 @@ import { addLocationListener, setLocationRequest, stopBackgroundLocation } from 
 import { GPS_REQUESTS, gpsTier, isMoving, type GpsFixLike, type GpsTier } from '@open-vfr/shared/gpsPolicy'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { mslAltitudeFromFix } from '@open-vfr/shared/gpsAltitude'
-import { gpsAltitudeReference } from '@open-vfr/shared/gpsAltitudeReference'
+import { gpsAltitudeReference, noteGpsAltitudeSource } from '@open-vfr/shared/gpsAltitudeReference'
 
 // Altitude: expo-location's `next` Position carries `altitude` (above the
 // WGS-84 ellipsoid, both platforms) and `mslAltitude` (the OS's own sea-level
@@ -163,6 +163,7 @@ export function useGps(opts: { paused?: boolean } = {}): UseGpsResult {
         { altitude: loc.altitude, mslAltitude: loc.mslAltitude, lat, lng },
         gpsAltitudeReference(),
       )
+      if (alt) noteGpsAltitudeSource(alt.source)
       const next: GpsPosition = {
         lat,
         lng,
