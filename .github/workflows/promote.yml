@@ -4,6 +4,9 @@ name: Promote to release
 # but only when CI passed on that exact commit and `release` is an ancestor
 # of it (no merge commits, no force). Cloudflare Workers Builds then builds
 # `release`. Run it from the Actions tab: "Run workflow".
+#
+# After release has moved, `main` is tagged with the NEXT minor (v0.3.x -> v0.4.0) so that main is always
+# one minor ahead of what runs in production. The image builds (openvfr-infra) count commits since that tag.
 
 on:
   workflow_dispatch:
@@ -26,6 +29,7 @@ jobs:
           ref: main
           fetch-depth: 0
       - name: Check CI passed on main and release can fast-forward
+        id: check
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -43,13 +47,35 @@ jobs:
           fi
           if [ "$(git rev-parse origin/release)" = "$sha" ]; then
             echo "release is already at $sha; nothing to do."
+            echo "moved=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
       - name: Fast-forward release
+        if: steps.check.outputs.moved != 'false'
         run: git push origin HEAD:refs/heads/release
       - name: Publish the user guide
+        if: steps.check.outputs.moved != 'false'
         # Pushes made with the workflow token do not start other workflows
         # (docs-publish listens to pushes on release), so start it explicitly.
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run docs-publish.yml --ref release
+      - name: Start the next minor on main
+        if: steps.check.outputs.moved != 'false'
+        # Last, so a problem here never blocks the release itself.
+        run: |
+          set -euo pipefail
+          current=$(git describe --tags --match 'v[0-9]*.[0-9]*.[0-9]*' --abbrev=0 HEAD 2>/dev/null || true)
+          if [ -z "$current" ]; then
+            echo "::error::No v<major>.<minor>.<patch> tag on main, so the next minor is unknown. Tag main once (git tag v0.3.0 <sha> && git push origin v0.3.0), then tag the next minor by hand."
+            exit 1
+          fi
+          IFS=. read -r major minor _ <<<"${current#v}"
+          next="v${major}.$((minor + 1)).0"
+          if git rev-parse -q --verify "refs/tags/$next" >/dev/null; then
+            echo "$next already exists; nothing to do."
+            exit 0
+          fi
+          git tag "$next" HEAD
+          git push origin "$next"
+          echo "main now starts $next (production runs the ${current#v} line)."
