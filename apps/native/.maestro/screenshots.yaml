@@ -123,10 +123,8 @@ appId: org.openvfr.app
     when:
       platform: iOS
     commands:
-      # Native header back button; its accessibility label is the previous
-      # screen's title.
-      - tapOn:
-          text: "Map"
+      # Native header back button / edge swipe, see back-ios.yaml.
+      - runFlow: back-ios.yaml
 - extendedWaitUntil:
     visible:
       id: map-tools-open
@@ -206,10 +204,8 @@ appId: org.openvfr.app
     when:
       platform: iOS
     commands:
-      # Native header back button; its accessibility label is the previous
-      # screen's title.
-      - tapOn:
-          text: "Map"
+      # Native header back button / edge swipe, see back-ios.yaml.
+      - runFlow: back-ios.yaml
 - tapOn:
     id: map-tools-open
 - tapOn:
