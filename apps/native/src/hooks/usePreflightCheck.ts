@@ -6,6 +6,7 @@
  * web panel does (see apps/web/src/components/PreflightWarnings.tsx).
  */
 import { useEffect, useMemo, useState } from 'react'
+import { useIsFocused } from '@react-navigation/native'
 import {
   buildVirtualRadarProfile, computeMsaProfile, terrainForMsa, applyTerrainToBands, terrainAt,
   type TerrainPoint, type VirtualRadarProfile, type MsaPoint,
@@ -39,6 +40,19 @@ export interface PreflightCheck {
   loading:  boolean
 }
 
+/** Value that follows `value` only after it has been still for `ms`. */
+function useSettled<T>(value: T, ms: number): T {
+  const [v, setV] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms)
+    return () => clearTimeout(t)
+  }, [value, ms])
+  return v
+}
+
+/** The route must be still this long before the (heavy) check runs: dragging a leg or undo/redo changes it many times a second. */
+const SETTLE_MS = 700
+
 export function usePreflightCheck(opts: {
   waypoints: RouteWaypoint[]
   legOverrides: LegOverride[]
@@ -48,7 +62,13 @@ export function usePreflightCheck(opts: {
   windsLoading: boolean
   enabled: boolean
 }): PreflightCheck {
-  const { waypoints, legOverrides, aircraft, aircraftId, legWinds, windsLoading, enabled } = opts
+  const { aircraft, aircraftId, windsLoading } = opts
+  // Only while the plan screen is in front (the tab stays mounted behind the map), and only once the route has settled.
+  const focused = useIsFocused()
+  const enabled = opts.enabled && focused
+  const waypoints = useSettled(opts.waypoints, SETTLE_MS)
+  const legOverrides = useSettled(opts.legOverrides, SETTLE_MS)
+  const legWinds = useSettled(opts.legWinds, SETTLE_MS)
   const { settings } = useSettingsContext()
   const { state: authState } = useAuthContext()
   const { selected: selectedCountries } = useCountries()

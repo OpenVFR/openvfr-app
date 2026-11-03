@@ -100,7 +100,24 @@ interface Props {
   onSelectLeg?: (leg: number | null) => void
 }
 
-export default function PreflightWarnings({ waypoints, legOverrides, aircraft, aircraftId, legWinds, windsLoading, onSetLegOverride, onShowOnMap, onSelectLeg }: Props) {
+/** Value that follows `value` only after it has been still for `ms`. */
+function useSettled<T>(value: T, ms: number): T {
+  const [v, setV] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms)
+    return () => clearTimeout(t)
+  }, [value, ms])
+  return v
+}
+
+/** Dragging a point or undo/redo changes the route many times a second; the check waits until it is still. */
+const SETTLE_MS = 500
+
+export default function PreflightWarnings(props: Props) {
+  const { aircraft, aircraftId, windsLoading, onSetLegOverride, onShowOnMap, onSelectLeg } = props
+  const waypoints = useSettled(props.waypoints, SETTLE_MS)
+  const legOverrides = useSettled(props.legOverrides, SETTLE_MS)
+  const legWinds = useSettled(props.legWinds, SETTLE_MS)
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(_airspaceGeo)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(_obstacleGeo)
   const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(_landmarkGeo)
