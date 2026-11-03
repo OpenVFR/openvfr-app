@@ -79,28 +79,34 @@ CREATE TABLE IF NOT EXISTS data_loads (
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- PostgreSQL roles for PostgREST
--- `anon`          — unauthenticated requests; read-only access to aviation data
--- `authenticated` — JWT-verified requests; full CRUD on own user data
+-- `openvfr_anon`          — unauthenticated requests; read-only access to aviation data
+-- `openvfr_authenticated` — JWT-verified requests; full CRUD on own user data
 -- Guards use DO blocks so re-running init.sql never fails on existing roles.
+--
+-- ALL role names carry the `openvfr_` prefix (also in later migrations). Roles belong to the whole
+-- Postgres server, not to one database, and this database may share its server with another project:
+-- a plain `anon` or `authenticator` could already exist there, and the guards below would then silently
+-- reuse (and the later migrations would re-grant and re-password) somebody else's role. Prefixed names
+-- cannot collide.
 -- ════════════════════════════════════════════════════════════════════════════
 
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'anon') THEN
-    CREATE ROLE anon NOLOGIN;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'openvfr_anon') THEN
+    CREATE ROLE openvfr_anon NOLOGIN;
   END IF;
 END $$;
 
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticated') THEN
-    CREATE ROLE authenticated NOLOGIN;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'openvfr_authenticated') THEN
+    CREATE ROLE openvfr_authenticated NOLOGIN;
   END IF;
 END $$;
 
 -- Allow PostgREST to switch into these roles (it connects as openvfr).
-GRANT anon        TO openvfr;
-GRANT authenticated TO openvfr;
+GRANT openvfr_anon        TO openvfr;
+GRANT openvfr_authenticated TO openvfr;
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- better-auth tables  (prefix: ba_)
@@ -244,7 +250,7 @@ CREATE INDEX IF NOT EXISTS user_flight_logs_user_id_idx ON user_flight_logs (use
 -- ════════════════════════════════════════════════════════════════════════════
 -- Row-Level Security
 -- All user tables are locked to their owner via the JWT sub claim injected
--- by PostgREST as request.jwt.claims.  The `authenticated` role can only
+-- by PostgREST as request.jwt.claims.  The `openvfr_authenticated` role can only
 -- see / modify its own rows.
 -- ════════════════════════════════════════════════════════════════════════════
 
@@ -300,24 +306,24 @@ CREATE POLICY user_flight_logs_delete ON user_flight_logs
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- GRANT privileges
--- anon: read-only access to aviation/reference data only (no user tables)
--- authenticated: full CRUD on own user tables (flight_logs: INSERT+SELECT+DELETE, no UPDATE)
+-- openvfr_anon: read-only access to aviation/reference data only (no user tables)
+-- openvfr_authenticated: full CRUD on own user tables (flight_logs: INSERT+SELECT+DELETE, no UPDATE)
 -- ════════════════════════════════════════════════════════════════════════════
 
-GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT USAGE ON SCHEMA public TO openvfr_anon, openvfr_authenticated;
 
 -- Aviation reference data — readable by everyone (incl. unauthenticated map loads)
 -- landuse and aeroway_lines both retired (see NOTE comments above) -- only
 -- data_loads remains a live table here.
 GRANT SELECT ON data_loads
-  TO anon, authenticated;
+  TO openvfr_anon, openvfr_authenticated;
 
--- User data — authenticated users only
+-- User data — signed-in users only (role openvfr_authenticated)
 GRANT SELECT, INSERT, UPDATE, DELETE
   ON user_routes, user_aircraft_profiles, user_waypoints, user_settings
-  TO authenticated;
+  TO openvfr_authenticated;
 
-GRANT SELECT, INSERT, DELETE ON user_flight_logs TO authenticated;
+GRANT SELECT, INSERT, DELETE ON user_flight_logs TO openvfr_authenticated;
 
 -- migrate:down
 
@@ -343,17 +349,17 @@ DROP TABLE IF EXISTS ba_session;
 DROP TABLE IF EXISTS ba_user;
 
 -- DROP OWNED BY revokes every privilege granted TO these roles (e.g. the
--- GRANT USAGE ON SCHEMA public TO anon, authenticated above, which survives
+-- GRANT USAGE ON SCHEMA public TO openvfr_anon, openvfr_authenticated above, which survives
 -- the table DROPs since the schema itself isn't dropped) -- without this,
 -- DROP ROLE fails with "role ... cannot be dropped because some objects
 -- depend on it" (2BP01).
-DROP OWNED BY anon;
-DROP OWNED BY authenticated;
+DROP OWNED BY openvfr_anon;
+DROP OWNED BY openvfr_authenticated;
 
-REVOKE anon FROM openvfr;
-REVOKE authenticated FROM openvfr;
-DROP ROLE IF EXISTS anon;
-DROP ROLE IF EXISTS authenticated;
+REVOKE openvfr_anon FROM openvfr;
+REVOKE openvfr_authenticated FROM openvfr;
+DROP ROLE IF EXISTS openvfr_anon;
+DROP ROLE IF EXISTS openvfr_authenticated;
 
 DROP TABLE IF EXISTS data_loads;
 

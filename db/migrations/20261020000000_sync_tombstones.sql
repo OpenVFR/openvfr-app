@@ -69,8 +69,8 @@ ALTER TABLE user_sync_tombstones ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS user_sync_tombstones_own ON user_sync_tombstones;
 CREATE POLICY user_sync_tombstones_own ON user_sync_tombstones
   FOR SELECT USING (auth_user_id() = user_id);
-GRANT SELECT ON user_sync_tombstones TO authenticated;
-REVOKE ALL ON user_sync_tombstones FROM anon, martin_ro;
+GRANT SELECT ON user_sync_tombstones TO openvfr_authenticated;
+REVOKE ALL ON user_sync_tombstones FROM openvfr_anon, openvfr_martin;
 
 -- Rows already stamped in the future (a device with a fast clock, before
 -- this migration) would make every later edit of them lose against the
@@ -186,11 +186,11 @@ BEGIN
     USING p_id;
   PERFORM set_config('sync.deleted_at', '', true);
 END $$;
--- Only signed-in users may call it. martin_ro receives EXECUTE on new
+-- Only signed-in users may call it. openvfr_martin receives EXECUTE on new
 -- functions through default privileges (least_privilege_roles); take it back.
 -- The trigger functions cannot be called directly (they return trigger).
-REVOKE ALL ON FUNCTION sync_delete(TEXT, TEXT, TIMESTAMPTZ) FROM PUBLIC, anon, martin_ro;
-GRANT EXECUTE ON FUNCTION sync_delete(TEXT, TEXT, TIMESTAMPTZ) TO authenticated;
+REVOKE ALL ON FUNCTION sync_delete(TEXT, TEXT, TIMESTAMPTZ) FROM PUBLIC, openvfr_anon, openvfr_martin;
+GRANT EXECUTE ON FUNCTION sync_delete(TEXT, TEXT, TIMESTAMPTZ) TO openvfr_authenticated;
 
 -- Make the new objects visible to a running PostgREST without a restart.
 NOTIFY pgrst, 'reload schema';

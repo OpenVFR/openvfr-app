@@ -48,23 +48,23 @@ CREATE INDEX IF NOT EXISTS pipeline_jobs_recent
 
 -- api: reads history; may only queue a request (job, country, who). It
 -- cannot set status/trigger/result columns, so it can never fake a run.
-GRANT SELECT ON pipeline_jobs TO api_app;
-GRANT INSERT (job, country, requested_by) ON pipeline_jobs TO api_app;
-GRANT USAGE ON SEQUENCE pipeline_jobs_id_seq TO api_app;
+GRANT SELECT ON pipeline_jobs TO openvfr_api;
+GRANT INSERT (job, country, requested_by) ON pipeline_jobs TO openvfr_api;
+GRANT USAGE ON SEQUENCE pipeline_jobs_id_seq TO openvfr_api;
 
 -- api: per-dataset load metadata (cycle, last success, row count) for the
 -- admin UI's country detail.
-GRANT SELECT ON data_loads TO api_app;
+GRANT SELECT ON data_loads TO openvfr_api;
 
 -- cron: records runs, picks up queued requests, prunes old history.
-GRANT SELECT, INSERT, UPDATE, DELETE ON pipeline_jobs TO cron_app;
-GRANT USAGE, SELECT ON SEQUENCE pipeline_jobs_id_seq TO cron_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON pipeline_jobs TO openvfr_cron;
+GRANT USAGE, SELECT ON SEQUENCE pipeline_jobs_id_seq TO openvfr_cron;
 
 -- Log tails may contain server paths: not for PostgREST clients or the
--- tile server (martin_ro gets SELECT on new tables by default privileges).
-REVOKE ALL ON pipeline_jobs FROM anon, authenticated, martin_ro;
+-- tile server (openvfr_martin gets SELECT on new tables by default privileges).
+REVOKE ALL ON pipeline_jobs FROM openvfr_anon, openvfr_authenticated, openvfr_martin;
 
 -- migrate:down
 
-REVOKE SELECT ON data_loads FROM api_app;
+REVOKE SELECT ON data_loads FROM openvfr_api;
 DROP TABLE IF EXISTS pipeline_jobs;

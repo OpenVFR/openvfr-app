@@ -140,7 +140,7 @@ services:
       # Must match the `aud` the api puts in its tokens (/api/auth/token), so
       # a token signed with the shared secret for anything else is refused.
       PGRST_JWT_AUD: postgrest
-      PGRST_DB_ANON_ROLE: anon
+      PGRST_DB_ANON_ROLE: openvfr_anon
       PGRST_DB_SCHEMA: public
       PGRST_SERVER_PORT: "3001"
       PGRST_LOG_LEVEL: warn

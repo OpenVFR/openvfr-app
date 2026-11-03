@@ -20,7 +20,7 @@
 --     the same fix sync_record_tombstone() already has: on a pooled
 --     connection that has served a PostgREST request the setting can be ''
 --     outside a request.
---   * martin_ro (tile server) never needs user data: revoke what the blanket
+--   * openvfr_martin (tile server) never needs user data: revoke what the blanket
 --     SELECT ON ALL TABLES grant in the least-privilege migration gave it.
 --     RLS already hid every row from it; this removes the grant itself.
 -- ════════════════════════════════════════════════════════════════════════════
@@ -31,10 +31,10 @@ $$;
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'martin_ro') THEN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'openvfr_martin') THEN
     REVOKE ALL ON user_routes, user_aircraft_profiles, user_waypoints, user_settings,
                   user_flight_logs, user_sync_tombstones
-      FROM martin_ro;
+      FROM openvfr_martin;
   END IF;
 END $$;
 
@@ -144,4 +144,4 @@ CREATE OR REPLACE FUNCTION auth_user_id() RETURNS TEXT LANGUAGE sql STABLE AS $$
   SELECT current_setting('request.jwt.claims', true)::json->>'sub'
 $$;
 
--- martin_ro's grants on the user tables are not restored: it never needed them.
+-- openvfr_martin's grants on the user tables are not restored: it never needed them.

@@ -43,17 +43,17 @@ ON CONFLICT (code) DO NOTHING;
 -- api: reads the registry (/api/countries); the admin router
 -- (PUT /api/admin/countries/:code) enables/disables. It cannot mark data
 -- ready -- only the pipeline knows that.
-GRANT SELECT ON countries TO api_app;
-GRANT INSERT (code, enabled, enabled_at, updated_at) ON countries TO api_app;
-GRANT UPDATE (enabled, enabled_at, updated_at) ON countries TO api_app;
+GRANT SELECT ON countries TO openvfr_api;
+GRANT INSERT (code, enabled, enabled_at, updated_at) ON countries TO openvfr_api;
+GRANT UPDATE (enabled, enabled_at, updated_at) ON countries TO openvfr_api;
 
 -- cron: reads the registry, reports readiness/errors. Cannot enable or
 -- disable a country.
-GRANT SELECT ON countries TO cron_app;
-GRANT UPDATE (tiles_ready_at, last_error, updated_at) ON countries TO cron_app;
+GRANT SELECT ON countries TO openvfr_cron;
+GRANT UPDATE (tiles_ready_at, last_error, updated_at) ON countries TO openvfr_cron;
 
 -- Not for PostgREST clients or the tile server.
-REVOKE ALL ON countries FROM anon, authenticated, martin_ro;
+REVOKE ALL ON countries FROM openvfr_anon, openvfr_authenticated, openvfr_martin;
 
 -- migrate:down
 

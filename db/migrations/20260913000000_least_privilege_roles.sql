@@ -23,98 +23,98 @@
 -- maintenance only. No long-running service should use it anymore.
 -- ════════════════════════════════════════════════════════════════════════════
 
--- ── authenticator: PostgREST's connection role ──────────────────────────────
+-- ── openvfr_authenticator: PostgREST's connection role ──────────────────────────────
 -- NOINHERIT: holds no privileges of its own; PostgREST issues SET ROLE
--- anon / authenticated per request, and that is the ONLY thing it can
+-- openvfr_anon / openvfr_authenticated per request, and that is the ONLY thing it can
 -- switch to. Any other `role` claim in a JWT fails the SET ROLE.
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticator') THEN
-    CREATE ROLE authenticator LOGIN NOINHERIT;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'openvfr_authenticator') THEN
+    CREATE ROLE openvfr_authenticator LOGIN NOINHERIT;
   END IF;
 END $$;
-GRANT anon          TO authenticator;
-GRANT authenticated TO authenticator;
+GRANT openvfr_anon          TO openvfr_authenticator;
+GRANT openvfr_authenticated TO openvfr_authenticator;
 
 -- openvfr no longer needs to impersonate the request roles (it's superuser
 -- anyway, so this GRANT was only ever meaningful for PostgREST).
-REVOKE anon          FROM openvfr;
-REVOKE authenticated FROM openvfr;
+REVOKE openvfr_anon          FROM openvfr;
+REVOKE openvfr_authenticated FROM openvfr;
 
--- ── martin_ro: tile server, read-only ───────────────────────────────────────
+-- ── openvfr_martin: tile server, read-only ───────────────────────────────────────
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'martin_ro') THEN
-    CREATE ROLE martin_ro LOGIN;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'openvfr_martin') THEN
+    CREATE ROLE openvfr_martin LOGIN;
   END IF;
 END $$;
-GRANT USAGE ON SCHEMA public TO martin_ro;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO martin_ro;
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO martin_ro;
+GRANT USAGE ON SCHEMA public TO openvfr_martin;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO openvfr_martin;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO openvfr_martin;
 -- Future tables/functions created by openvfr (migrations) stay readable.
 ALTER DEFAULT PRIVILEGES FOR ROLE openvfr IN SCHEMA public
-  GRANT SELECT ON TABLES TO martin_ro;
+  GRANT SELECT ON TABLES TO openvfr_martin;
 ALTER DEFAULT PRIVILEGES FOR ROLE openvfr IN SCHEMA public
-  GRANT EXECUTE ON FUNCTIONS TO martin_ro;
+  GRANT EXECUTE ON FUNCTIONS TO openvfr_martin;
 
 -- Martin must never see user data even though it's SELECT-only: user_*
--- tables are RLS-protected and martin_ro has no request.jwt.claims, so
+-- tables are RLS-protected and openvfr_martin has no request.jwt.claims, so
 -- auth_user_id() is NULL and every policy evaluates false -- but the ba_*
 -- auth tables have no RLS at all. Revoke those explicitly.
 REVOKE ALL ON ba_user, ba_session, ba_account, ba_verification, ba_passkey
-  FROM martin_ro;
+  FROM openvfr_martin;
 
--- ── api_app: Hono API / better-auth ─────────────────────────────────────────
+-- ── openvfr_api: Hono API / better-auth ─────────────────────────────────────────
 -- better-auth's Kysely adapter only touches the ba_* tables (pre-created by
 -- the initial migration; better-auth never DDLs at runtime here). User data
--- tables are reached exclusively through PostgREST, so api_app gets nothing
+-- tables are reached exclusively through PostgREST, so openvfr_api gets nothing
 -- on them.
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'api_app') THEN
-    CREATE ROLE api_app LOGIN;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'openvfr_api') THEN
+    CREATE ROLE openvfr_api LOGIN;
   END IF;
 END $$;
-GRANT USAGE ON SCHEMA public TO api_app;
+GRANT USAGE ON SCHEMA public TO openvfr_api;
 GRANT SELECT, INSERT, UPDATE, DELETE
   ON ba_user, ba_session, ba_account, ba_verification, ba_passkey
-  TO api_app;
+  TO openvfr_api;
 
--- ── cron_app: scheduled data-refresh jobs ───────────────────────────────────
+-- ── openvfr_cron: scheduled data-refresh jobs ───────────────────────────────────
 -- cron_*.py only touch data_loads (record_static_load.py). No spatial
 -- tables exist in Postgres anymore.
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'cron_app') THEN
-    CREATE ROLE cron_app LOGIN;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'openvfr_cron') THEN
+    CREATE ROLE openvfr_cron LOGIN;
   END IF;
 END $$;
-GRANT USAGE ON SCHEMA public TO cron_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON data_loads TO cron_app;
-GRANT USAGE, SELECT ON SEQUENCE data_loads_id_seq TO cron_app;
+GRANT USAGE ON SCHEMA public TO openvfr_cron;
+GRANT SELECT, INSERT, UPDATE, DELETE ON data_loads TO openvfr_cron;
+GRANT USAGE, SELECT ON SEQUENCE data_loads_id_seq TO openvfr_cron;
 
 -- migrate:down
 
-REVOKE ALL ON data_loads FROM cron_app;
-REVOKE ALL ON SEQUENCE data_loads_id_seq FROM cron_app;
-REVOKE USAGE ON SCHEMA public FROM cron_app;
-DROP ROLE IF EXISTS cron_app;
+REVOKE ALL ON data_loads FROM openvfr_cron;
+REVOKE ALL ON SEQUENCE data_loads_id_seq FROM openvfr_cron;
+REVOKE USAGE ON SCHEMA public FROM openvfr_cron;
+DROP ROLE IF EXISTS openvfr_cron;
 
-REVOKE ALL ON ba_user, ba_session, ba_account, ba_verification, ba_passkey FROM api_app;
-REVOKE USAGE ON SCHEMA public FROM api_app;
-DROP ROLE IF EXISTS api_app;
+REVOKE ALL ON ba_user, ba_session, ba_account, ba_verification, ba_passkey FROM openvfr_api;
+REVOKE USAGE ON SCHEMA public FROM openvfr_api;
+DROP ROLE IF EXISTS openvfr_api;
 
 ALTER DEFAULT PRIVILEGES FOR ROLE openvfr IN SCHEMA public
-  REVOKE SELECT ON TABLES FROM martin_ro;
+  REVOKE SELECT ON TABLES FROM openvfr_martin;
 ALTER DEFAULT PRIVILEGES FOR ROLE openvfr IN SCHEMA public
-  REVOKE EXECUTE ON FUNCTIONS FROM martin_ro;
-REVOKE ALL ON ALL TABLES IN SCHEMA public FROM martin_ro;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM martin_ro;
-REVOKE USAGE ON SCHEMA public FROM martin_ro;
-DROP ROLE IF EXISTS martin_ro;
+  REVOKE EXECUTE ON FUNCTIONS FROM openvfr_martin;
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM openvfr_martin;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM openvfr_martin;
+REVOKE USAGE ON SCHEMA public FROM openvfr_martin;
+DROP ROLE IF EXISTS openvfr_martin;
 
-GRANT anon          TO openvfr;
-GRANT authenticated TO openvfr;
-REVOKE anon          FROM authenticator;
-REVOKE authenticated FROM authenticator;
-DROP ROLE IF EXISTS authenticator;
+GRANT openvfr_anon          TO openvfr;
+GRANT openvfr_authenticated TO openvfr;
+REVOKE openvfr_anon          FROM openvfr_authenticator;
+REVOKE openvfr_authenticated FROM openvfr_authenticator;
+DROP ROLE IF EXISTS openvfr_authenticator;

@@ -35,7 +35,7 @@ DROP POLICY IF EXISTS user_flight_logs_update ON user_flight_logs;
 CREATE POLICY user_flight_logs_update ON user_flight_logs
   FOR UPDATE USING (auth_user_id() = user_id) WITH CHECK (auth_user_id() = user_id);
 
-GRANT UPDATE ON user_flight_logs TO authenticated;
+GRANT UPDATE ON user_flight_logs TO openvfr_authenticated;
 
 NOTIFY pgrst, 'reload schema';
 
@@ -45,7 +45,7 @@ NOTIFY pgrst, 'reload schema';
 -- recovered by applying the migration again (clients only send a route for
 -- logs recorded with one, and keep their local copy until a newer server
 -- version replaces it).
-REVOKE UPDATE ON user_flight_logs FROM authenticated;
+REVOKE UPDATE ON user_flight_logs FROM openvfr_authenticated;
 DROP POLICY IF EXISTS user_flight_logs_update ON user_flight_logs;
 
 ALTER TABLE user_flight_logs DROP CONSTRAINT IF EXISTS user_flight_logs_size_chk;

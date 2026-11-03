@@ -324,6 +324,28 @@ ignored. Rules and limits: `packages/shared/src/systemMessages.ts`. The apps
 re-fetch every 10 minutes and when brought to the foreground, and keep the
 last copy for offline use.
 
+### Upgrading a database created before the `openvfr_` role prefix
+
+The database roles were renamed so they cannot collide with another project's roles on a shared Postgres server
+(roles belong to the whole server, not to one database): `anon`, `authenticated`, `authenticator`, `api_app`,
+`cron_app`, `martin_ro` became `openvfr_anon`, `openvfr_authenticated`, `openvfr_authenticator`, `openvfr_api`,
+`openvfr_cron`, `openvfr_martin`. The migrations were edited in place, and `dbmate` does not re-run migrations it
+already applied, so an existing database keeps the old names. Either start over (local development:
+`docker compose down -v`) or rename the roles once, as the `openvfr` superuser, **on a server that holds nothing but
+this database** (grants, policies and memberships follow the role):
+
+```sql
+ALTER ROLE anon          RENAME TO openvfr_anon;
+ALTER ROLE authenticated RENAME TO openvfr_authenticated;
+ALTER ROLE authenticator RENAME TO openvfr_authenticator;
+ALTER ROLE api_app       RENAME TO openvfr_api;      -- only if your database has it
+ALTER ROLE cron_app      RENAME TO openvfr_cron;     -- only if your database has it
+ALTER ROLE martin_ro     RENAME TO openvfr_martin;   -- only if your database has it
+```
+
+Then set `PGRST_DB_ANON_ROLE=openvfr_anon` for PostgREST and use the new role names in the connection URLs of the
+api, PostgREST and cron (and re-set their passwords: renaming clears an MD5 password).
+
 ## 4. Production deployment notes
 
 - Serve the web app's `dist/` output (or the `docker/Dockerfile` image)

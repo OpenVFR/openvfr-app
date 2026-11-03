@@ -6,7 +6,7 @@
 --
 -- Run as the migration owner (superuser) against a migrated database. One
 -- transaction, rolled back: nothing is left behind. Requests are made the way
--- PostgREST makes them (SET ROLE authenticator -> authenticated + claims).
+-- PostgREST makes them (SET ROLE openvfr_authenticator -> openvfr_authenticated + claims).
 -- Success prints "flight_log_updates: all checks passed".
 
 \set ON_ERROR_STOP on
@@ -16,9 +16,9 @@ INSERT INTO ba_user (id, name, email, "emailVerified", "createdAt", "updatedAt")
   ('zz-log-test-1', 't1', 'zz-log-test-1@example.invalid', true, now(), now()),
   ('zz-log-test-2', 't2', 'zz-log-test-2@example.invalid', true, now(), now());
 
-SET LOCAL ROLE authenticator;
-SET LOCAL ROLE authenticated;
-SELECT set_config('request.jwt.claims', '{"sub":"zz-log-test-1","role":"authenticated"}', true);
+SET LOCAL ROLE openvfr_authenticator;
+SET LOCAL ROLE openvfr_authenticated;
+SELECT set_config('request.jwt.claims', '{"sub":"zz-log-test-1","role":"openvfr_authenticated"}', true);
 
 DO $$
 DECLARE log_id uuid; refused boolean; n int;
@@ -63,7 +63,7 @@ BEGIN
 END $$;
 
 -- Another user cannot see or change it.
-SELECT set_config('request.jwt.claims', '{"sub":"zz-log-test-2","role":"authenticated"}', true);
+SELECT set_config('request.jwt.claims', '{"sub":"zz-log-test-2","role":"openvfr_authenticated"}', true);
 DO $$
 DECLARE n int;
 BEGIN

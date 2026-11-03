@@ -1,11 +1,11 @@
 -- Checks for migration 20261101000000_user_data_limits (per-user size caps,
--- row-count quotas, auth_user_id() with empty claims, martin_ro revokes).
+-- row-count quotas, auth_user_id() with empty claims, openvfr_martin revokes).
 --
 --   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/tests/user_data_limits.test.sql
 --
 -- Run as the migration owner (superuser) against a migrated database. One
 -- transaction, rolled back: nothing is left behind. Requests are made the
--- way PostgREST makes them (SET ROLE authenticator -> authenticated + claims).
+-- way PostgREST makes them (SET ROLE openvfr_authenticator -> openvfr_authenticated + claims).
 -- Success prints "user_data_limits: all checks passed".
 
 \set ON_ERROR_STOP on
@@ -19,17 +19,17 @@ INSERT INTO ba_user (id, name, email, "emailVerified", "createdAt", "updatedAt")
 DO $$
 DECLARE t text;
 BEGIN
-  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'martin_ro') THEN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'openvfr_martin') THEN
     FOREACH t IN ARRAY ARRAY['user_routes', 'user_aircraft_profiles', 'user_waypoints', 'user_settings', 'user_flight_logs', 'user_sync_tombstones']
     LOOP
-      ASSERT NOT has_table_privilege('martin_ro', t, 'SELECT'), format('martin_ro must not read %s', t);
+      ASSERT NOT has_table_privilege('openvfr_martin', t, 'SELECT'), format('openvfr_martin must not read %s', t);
     END LOOP;
   END IF;
-  RAISE NOTICE 'ok: martin_ro has no access to user tables';
+  RAISE NOTICE 'ok: openvfr_martin has no access to user tables';
 END $$;
 
-SET LOCAL ROLE authenticator;
-SET LOCAL ROLE authenticated;
+SET LOCAL ROLE openvfr_authenticator;
+SET LOCAL ROLE openvfr_authenticated;
 
 -- ── auth_user_id() with an empty claims setting ─────────────────────────────
 SELECT set_config('request.jwt.claims', '', true);
@@ -40,7 +40,7 @@ BEGIN
   RAISE NOTICE 'ok: auth_user_id() tolerates empty claims';
 END $$;
 
-SELECT set_config('request.jwt.claims', '{"sub":"zz-limit-test-1","role":"authenticated"}', true);
+SELECT set_config('request.jwt.claims', '{"sub":"zz-limit-test-1","role":"openvfr_authenticated"}', true);
 
 -- ── Size caps ───────────────────────────────────────────────────────────────
 DO $$
@@ -118,7 +118,7 @@ BEGIN
 END $$;
 
 -- Another user's quota is independent.
-SELECT set_config('request.jwt.claims', '{"sub":"zz-limit-test-2","role":"authenticated"}', true);
+SELECT set_config('request.jwt.claims', '{"sub":"zz-limit-test-2","role":"openvfr_authenticated"}', true);
 DO $$
 BEGIN
   INSERT INTO user_aircraft_profiles (user_id) VALUES ('zz-limit-test-2');

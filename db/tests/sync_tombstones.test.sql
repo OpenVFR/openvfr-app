@@ -6,8 +6,8 @@
 -- Run as the migration owner (superuser) against a migrated database. Every
 -- statement runs in ONE transaction that ends in ROLLBACK: nothing is left
 -- behind, so it is safe on a restored copy of production data. Requests are
--- made the way PostgREST makes them: SET ROLE authenticator, then
--- SET ROLE authenticated / anon with request.jwt.claims for the user.
+-- made the way PostgREST makes them: SET ROLE openvfr_authenticator, then
+-- SET ROLE openvfr_authenticated / openvfr_anon with request.jwt.claims for the user.
 -- Any failed check aborts with an error; success prints
 -- "sync_tombstones: all checks passed".
 
@@ -19,7 +19,7 @@ INSERT INTO ba_user (id, name, email, "emailVerified", "createdAt", "updatedAt")
   ('zz-sync-test-1', 't1', 'zz-sync-test-1@example.invalid', true, now(), now()),
   ('zz-sync-test-2', 't2', 'zz-sync-test-2@example.invalid', true, now(), now());
 
--- Act as PostgREST: authenticator, then the request role + claims.
+-- Act as PostgREST: openvfr_authenticator, then the request role + claims.
 CREATE TEMP TABLE _ctx (k text PRIMARY KEY, v text);
 GRANT ALL ON _ctx TO PUBLIC;
 INSERT INTO _ctx VALUES
@@ -29,9 +29,9 @@ INSERT INTO _ctx VALUES
   ('log', '00000000-0000-4000-8000-000000000004'),
   ('w1', '00000000-0000-4000-8000-000000000005');
 
-SET LOCAL ROLE authenticator;
-SET LOCAL ROLE authenticated;
-SELECT set_config('request.jwt.claims', '{"sub":"zz-sync-test-1","role":"authenticated"}', true);
+SET LOCAL ROLE openvfr_authenticator;
+SET LOCAL ROLE openvfr_authenticated;
+SELECT set_config('request.jwt.claims', '{"sub":"zz-sync-test-1","role":"openvfr_authenticated"}', true);
 
 -- ── Last write wins ─────────────────────────────────────────────────────────
 DO $$
@@ -167,7 +167,7 @@ BEGIN
 END $$;
 
 -- ── Isolation between users ─────────────────────────────────────────────────
-SELECT set_config('request.jwt.claims', '{"sub":"zz-sync-test-2","role":"authenticated"}', true);
+SELECT set_config('request.jwt.claims', '{"sub":"zz-sync-test-2","role":"openvfr_authenticated"}', true);
 DO $$
 DECLARE r1 uuid := (SELECT v FROM _ctx WHERE k = 'r1');
 BEGIN
@@ -196,40 +196,40 @@ BEGIN
   RAISE NOTICE 'ok: isolation';
 END $$;
 
--- anon: no tombstones, no sync_delete
-SET LOCAL ROLE anon;
-SELECT set_config('request.jwt.claims', '{"role":"anon"}', true);
+-- openvfr_anon: no tombstones, no sync_delete
+SET LOCAL ROLE openvfr_anon;
+SELECT set_config('request.jwt.claims', '{"role":"openvfr_anon"}', true);
 DO $$
 BEGIN
   BEGIN
     PERFORM 1 FROM user_sync_tombstones;
-    RAISE EXCEPTION 'anon must not read tombstones';
+    RAISE EXCEPTION 'openvfr_anon must not read tombstones';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
   BEGIN
     PERFORM sync_delete('user_routes', gen_random_uuid()::text, now());
-    RAISE EXCEPTION 'anon must not call sync_delete';
+    RAISE EXCEPTION 'openvfr_anon must not call sync_delete';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
-  RAISE NOTICE 'ok: anon denied';
+  RAISE NOTICE 'ok: openvfr_anon denied';
 END $$;
 
--- ── As owner: cross-checks, martin_ro, retention, account deletion ──────────
+-- ── As owner: cross-checks, openvfr_martin, retention, account deletion ──────────
 RESET ROLE;
 SELECT set_config('request.jwt.claims', '', true);
 DO $$
 DECLARE r1 uuid := (SELECT v FROM _ctx WHERE k = 'r1');
 BEGIN
   ASSERT EXISTS (SELECT 1 FROM user_routes WHERE id = r1), 'user 2 must not be able to delete user 1 rows';
-  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'martin_ro') THEN
-    ASSERT NOT has_table_privilege('martin_ro', 'user_sync_tombstones', 'SELECT'), 'martin_ro must not read tombstones';
-    ASSERT NOT has_function_privilege('martin_ro', 'sync_delete(text,text,timestamptz)', 'EXECUTE'), 'martin_ro must not call sync_delete';
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'openvfr_martin') THEN
+    ASSERT NOT has_table_privilege('openvfr_martin', 'user_sync_tombstones', 'SELECT'), 'openvfr_martin must not read tombstones';
+    ASSERT NOT has_function_privilege('openvfr_martin', 'sync_delete(text,text,timestamptz)', 'EXECUTE'), 'openvfr_martin must not call sync_delete';
   END IF;
-  ASSERT NOT has_function_privilege('anon', 'sync_delete(text,text,timestamptz)', 'EXECUTE'), 'anon must not call sync_delete';
-  ASSERT has_function_privilege('authenticated', 'sync_delete(text,text,timestamptz)', 'EXECUTE'), 'authenticated may call sync_delete';
-  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticator') THEN
-    ASSERT pg_has_role('authenticator', 'authenticated', 'MEMBER'), 'authenticator must be able to become authenticated';
-    ASSERT NOT has_table_privilege('authenticator', 'user_sync_tombstones', 'SELECT'), 'authenticator itself holds nothing';
+  ASSERT NOT has_function_privilege('openvfr_anon', 'sync_delete(text,text,timestamptz)', 'EXECUTE'), 'openvfr_anon must not call sync_delete';
+  ASSERT has_function_privilege('openvfr_authenticated', 'sync_delete(text,text,timestamptz)', 'EXECUTE'), 'openvfr_authenticated may call sync_delete';
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'openvfr_authenticator') THEN
+    ASSERT pg_has_role('openvfr_authenticator', 'openvfr_authenticated', 'MEMBER'), 'openvfr_authenticator must be able to become openvfr_authenticated';
+    ASSERT NOT has_table_privilege('openvfr_authenticator', 'user_sync_tombstones', 'SELECT'), 'openvfr_authenticator itself holds nothing';
   END IF;
 
   -- deletes without JWT claims (API connection, account deletion, admin) leave no tombstone
@@ -241,9 +241,9 @@ BEGIN
     VALUES ('zz-sync-test-1', 'user_routes', 'ancient', now() - interval '400 days');
   RAISE NOTICE 'ok: privileges';
 END $$;
-SET LOCAL ROLE authenticator;
-SET LOCAL ROLE authenticated;
-SELECT set_config('request.jwt.claims', '{"sub":"zz-sync-test-1","role":"authenticated"}', true);
+SET LOCAL ROLE openvfr_authenticator;
+SET LOCAL ROLE openvfr_authenticated;
+SELECT set_config('request.jwt.claims', '{"sub":"zz-sync-test-1","role":"openvfr_authenticated"}', true);
 DO $$
 BEGIN
   PERFORM sync_delete('user_routes', (SELECT v FROM _ctx WHERE k = 'r1'), now());

@@ -23,10 +23,10 @@ CREATE TABLE IF NOT EXISTS app_min_build (
 );
 
 -- api: reads it for /api/version, writes it from the admin router.
-GRANT SELECT, INSERT, UPDATE ON app_min_build TO api_app;
+GRANT SELECT, INSERT, UPDATE ON app_min_build TO openvfr_api;
 
 -- Not for PostgREST clients, the pipeline or the tile server.
-REVOKE ALL ON app_min_build FROM anon, authenticated, martin_ro;
+REVOKE ALL ON app_min_build FROM openvfr_anon, openvfr_authenticated, openvfr_martin;
 
 -- migrate:down
 

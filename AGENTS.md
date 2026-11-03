@@ -182,13 +182,22 @@ Reference implementation: `/api/poh-extract` in `apps/api/src/index.ts`.
 **Admin API (`/api/admin/*`, `apps/api/src/admin.ts`).** API only -- the admin web UI is deployed separately on its own origin (`ADMIN_APP_ORIGIN`); when set, any request with another `Origin` is rejected, so the main app's origin (which shares the session cookie) can't drive it. Auth = session whose `ba_user.role = 'admin'` (set by hand in the DB; no endpoint grants it) + a session younger than `ADMIN_MAX_SESSION_HOURS` (default 12) + a second factor: either a valid Cloudflare Access JWT matching the admin's email (`accessJwt.ts`, when `CF_ACCESS_TEAM_DOMAIN`/`CF_ACCESS_AUD` are set; OTP sign-in then allowed) or, by default, a registered passkey with OTP sign-in refused for admins (`auth.ts` hooks). Per-admin rate limit, `no-store`. Reads only `ba_*` tables -- keep it aggregate/metadata-only (no IPs, no route/position/flight-log content). Bans use better-auth's `admin` plugin (`banUser`/`unbanUser` called server-side; the plugin's own HTTP endpoints, incl. impersonation, are 404'd at `/api/auth/admin/*`). Any new admin route must be added to that router so it inherits the guard.
 
 6. **The api does NOT connect as a superuser.** Production runs it as the
-   `api_app` role (`db/migrations/20260913000000_least_privilege_roles.sql`),
+   `openvfr_api` role (`db/migrations/20260913000000_least_privilege_roles.sql`),
    which only has CRUD on the `ba_*` auth tables. PostgREST connects as
-   `authenticator` (NOINHERIT) and can only `SET ROLE anon|authenticated`.
-   Any new table the api reads/writes directly needs an explicit `GRANT`
-   to `api_app` in the same migration that creates it, or prod fails with
-   `permission denied` while dev (superuser `openvfr_dev`) keeps working.
-   User data still goes through PostgREST + RLS, not the api.
+   `openvfr_authenticator` (NOINHERIT) and can only `SET ROLE
+   openvfr_anon|openvfr_authenticated`. Any new table the api reads/writes
+   directly needs an explicit `GRANT` to `openvfr_api` in the same migration
+   that creates it, or prod fails with `permission denied` while dev
+   (superuser `openvfr_dev`) keeps working. User data still goes through
+   PostgREST + RLS, not the api.
+   **Every database role carries the `openvfr_` prefix** (`openvfr_anon`,
+   `openvfr_authenticated`, `openvfr_authenticator`, `openvfr_api`,
+   `openvfr_cron`, `openvfr_martin`). Roles belong to the whole Postgres server, and
+   production shares its server with another project whose `anon` and
+   `authenticator` already exist: an unprefixed `CREATE ROLE` would silently
+   reuse and re-grant theirs. `apps/api/src/pgRoles.test.ts` fails on any
+   unprefixed role in the migrations; the role named in the api's PostgREST
+   token (`pgRoles.ts`) must be one a migration creates.
 7. **Client IP:** better-auth is configured (`auth.ts`) to trust only
    `cf-connecting-ip` / `x-real-ip`, which the infra nginx sets from
    Cloudflare's edge header. Never read `x-forwarded-for` for anything
