@@ -1,15 +1,24 @@
 name: Promote to release
 
-# Manual button: fast-forward `release` (production) to the tip of `main`,
-# but only when CI passed on that exact commit and `release` is an ancestor
-# of it (no merge commits, no force). Cloudflare Workers Builds then builds
-# `release`. Run it from the Actions tab: "Run workflow".
+# Manual button: fast-forward `release` (production) to a commit of `main`, but only when CI passed on that
+# exact commit and `release` is an ancestor of it (no merge commits, no force). Cloudflare Workers Builds then
+# builds `release`. Run it from the Actions tab: "Run workflow".
 #
-# After release has moved, `main` is tagged with the NEXT minor (v0.3.x -> v0.4.0) so that main is always
-# one minor ahead of what runs in production. The image builds (openvfr-infra) count commits since that tag.
+# Normally this is started by the Release workflow in the infrastructure repo, which passes the commit the
+# production images were built from, so the web app and the api always ship the same code. By hand, leave `ref`
+# empty to release the tip of main.
+#
+# After release has moved, the released commit is tagged with the NEXT minor (v0.3.x -> v0.4.0) so that main is
+# always one minor ahead of what runs in production. The image builds count commits since that tag.
 
 on:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit to release (full or short sha, must be on main). Empty = the tip of main."
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -21,28 +30,32 @@ concurrency:
 
 jobs:
   promote:
-    name: Fast-forward release to main
+    name: Fast-forward release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
-      - name: Check CI passed on main and release can fast-forward
+
+      - name: Check the commit, CI and that release can fast-forward
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_REF: ${{ inputs.ref }}
         run: |
-          sha=$(git rev-parse HEAD)
-          echo "main is $sha"
+          set -euo pipefail
+          git fetch origin release
+          if [ -z "$INPUT_REF" ]; then sha=$(git rev-parse HEAD); else sha=$(git rev-parse --verify "${INPUT_REF}^{commit}"); fi
+          echo "releasing $sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "::error::$sha is not on main."
+            exit 1
+          fi
           ok=$(gh run list --workflow ci.yml --commit "$sha" --status success --json databaseId --jq 'length')
           if [ "$ok" -lt 1 ]; then
             echo "::error::CI has not passed on $sha. Wait for it, or fix main first."
-            exit 1
-          fi
-          git fetch origin release
-          if ! git merge-base --is-ancestor origin/release "$sha"; then
-            echo "::error::release has commits that are not on main (hotfix?). Merge release into main first."
             exit 1
           fi
           if [ "$(git rev-parse origin/release)" = "$sha" ]; then
@@ -50,9 +63,17 @@ jobs:
             echo "moved=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          if ! git merge-base --is-ancestor origin/release "$sha"; then
+            echo "::error::release is not an ancestor of $sha (a hotfix on release, or $sha is older than what is released). Merge release into main first, or pick a newer commit."
+            exit 1
+          fi
+
       - name: Fast-forward release
         if: steps.check.outputs.moved != 'false'
-        run: git push origin HEAD:refs/heads/release
+        env:
+          SHA: ${{ steps.check.outputs.sha }}
+        run: git push origin "$SHA:refs/heads/release"
+
       - name: Publish the user guide
         if: steps.check.outputs.moved != 'false'
         # Pushes made with the workflow token do not start other workflows
@@ -60,14 +81,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run docs-publish.yml --ref release
+
       - name: Start the next minor on main
-        if: steps.check.outputs.moved != 'false'
-        # Last, so a problem here never blocks the release itself.
+        # Runs even when release did not move, so a run that died after the push can be repeated to create the
+        # missing tag. Safe to repeat: the tags created here are ANNOTATED and ignored when the current line is
+        # worked out, so the same commit always yields the same next minor. Last, so it never blocks the release.
+        if: steps.check.outcome == 'success'
+        env:
+          SHA: ${{ steps.check.outputs.sha }}
         run: |
           set -euo pipefail
-          current=$(git describe --tags --match 'v[0-9]*.[0-9]*.[0-9]*' --abbrev=0 HEAD 2>/dev/null || true)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Annotated tags already on this commit were made by this workflow: the line is the nearest tag without them.
+          exclude=()
+          while read -r kind name; do [ "$kind" = tag ] && exclude+=("--exclude=$name"); done < <(git for-each-ref --points-at "$SHA" --format='%(objecttype) %(refname:short)' 'refs/tags/v*')
+          current=$(git describe --tags --match 'v[0-9]*.[0-9]*.[0-9]*' "${exclude[@]}" --abbrev=0 "$SHA" 2>/dev/null || true)
           if [ -z "$current" ]; then
-            echo "::error::No v<major>.<minor>.<patch> tag on main, so the next minor is unknown. Tag main once (git tag v0.3.0 <sha> && git push origin v0.3.0), then tag the next minor by hand."
+            echo "::error::No v<major>.<minor>.<patch> tag at or before $SHA, so the next minor is unknown. Tag main once (git tag v0.3.0 <sha> && git push origin v0.3.0), then tag the next minor by hand."
             exit 1
           fi
           IFS=. read -r major minor _ <<<"${current#v}"
@@ -76,6 +107,6 @@ jobs:
             echo "$next already exists; nothing to do."
             exit 0
           fi
-          git tag "$next" HEAD
+          git tag -a "$next" -m "Next minor after ${current#v}: created by Promote to release for ${SHA:0:7}" "$SHA"
           git push origin "$next"
-          echo "main now starts $next (production runs the ${current#v} line)."
+          echo "main now continues as $next after ${SHA:0:7} (production runs the ${current#v} line)."
