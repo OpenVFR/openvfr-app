@@ -116,6 +116,26 @@ if [ "$status" != 0 ] && ! login_failed; then
   # downloading the artifact.
   echo "--- accessibility ids / labels on screen at the failure ---"
   grep -oE '"(accessibilityText|resource-id|text)" *: *"[^"]+"' "$out/debug/hierarchy.json" | sort -u | head -80 || true
+  # iOS simulator: when the hierarchy is SpringBoard (the app is gone), the
+  # simulator's own log says why -- crash, jetsam, watchdog, or a launch that
+  # never happened. Filtered to our process and SpringBoard's app lifecycle
+  # lines; the OTP is never on this path (login failures are excluded above).
+  udid=""
+  for ((i = 1; i <= $#; i++)); do [ "${!i}" = "--device" ] && { j=$((i + 1)); udid="${!j}"; }; done
+  if [ -n "$udid" ] && command -v xcrun >/dev/null; then
+    echo "--- simulator log (last 10 min, OpenVFR process / app lifecycle) ---"
+    xcrun simctl spawn "$udid" log show --last 10m --style compact \
+      --predicate 'process == "OpenVFR" OR eventMessage CONTAINS "org.openvfr.app" OR (process == "SpringBoard" AND (eventMessage CONTAINS "exit" OR eventMessage CONTAINS "terminat" OR eventMessage CONTAINS "crash"))' \
+      2>/dev/null | grep -viE "^\s*$" | tail -120 | tee "$out/debug/simulator-log.txt" || true
+    # Crash reports written inside the simulator (not only the host's folder).
+    simdir=$(xcrun simctl list devices -j | python3 -c "import sys,json;d=[x for r in json.load(sys.stdin)['devices'].values() for x in r if x['udid']=='$udid'];print(d[0]['dataPath'] if d else '')" 2>/dev/null)
+    if [ -n "$simdir" ]; then
+      find "$simdir/Library/Logs" "$HOME/Library/Logs/DiagnosticReports" -maxdepth 3 \( -name 'OpenVFR*.ips' -o -name 'OpenVFR*.crash' \) -newer "$raw/.started" 2>/dev/null | while read -r f; do
+        mkdir -p "$out/debug"; cp "$f" "$out/debug/"
+        echo "::error::app crashed during the flow -- $out/debug/$(basename "$f")"; head -c 3000 "$f"; echo
+      done
+    fi
+  fi
 fi
 
 # Maestro writes logs/crash-report.txt only when the app under test crashed:
