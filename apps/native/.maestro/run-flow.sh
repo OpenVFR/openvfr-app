@@ -104,6 +104,11 @@ fi
 if [ "$status" != 0 ] && ! login_failed; then
   mkdir -p "$out/debug"
   maestro "$@" hierarchy > "$out/debug/hierarchy.json" 2>&1 || true
+  # Also list the ids and labels in the job log (never run for login failures,
+  # where the OTP is on screen), so a missing element is diagnosable without
+  # downloading the artifact.
+  echo "--- accessibility ids / labels on screen at the failure ---"
+  grep -oE '"(accessibilityText|resource-id|text)" *: *"[^"]+"' "$out/debug/hierarchy.json" | sort -u | head -80 || true
 fi
 
 # Maestro writes logs/crash-report.txt only when the app under test crashed:
