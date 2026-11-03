@@ -126,7 +126,7 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
   }
   const fileRef = useRef<HTMLInputElement>(null)
   const [importMsg, setImportMsg] = useState<string | null>(null)
-  // A picked GPX file waiting for its aircraft (a GPX file carries none): confirmed in a small row.
+  // A picked GPX file waiting for its aircraft (our own export names its registration, which picks the match): confirmed in a small row.
   const [pendingImport, setPendingImport] = useState<{ doc: FlightLogDocType; aircraftId: string } | null>(null)
   const { profiles: aircraftProfiles } = useAircraftProfiles()
   // Logs whose events are open in the list.
@@ -225,9 +225,12 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
       // Same start and end as an existing log = the same flight imported twice.
       const dup = await db.flight_logs.findOne({ selector: { startedAt: doc.startedAt, endedAt: doc.endedAt } }).exec()
       if (dup) { setImportMsg('This flight is already in your logs.'); return }
-      // Ask which aircraft flew it (the selected one preselected); a log's aircraft is set once.
+      // Ask which aircraft flew it; a log's aircraft is set once. The file's registration (our own export) picks
+      // the matching aircraft, else the selected one is preselected.
+      const reg = doc.registration.trim().toUpperCase()
+      const match = reg ? aircraftProfiles.find(p => p.registration.trim().toUpperCase() === reg) : undefined
       setImportMsg(null)
-      setPendingImport({ doc, aircraftId: importAircraft?.id ?? '' })
+      setPendingImport({ doc, aircraftId: match?.id ?? importAircraft?.id ?? '' })
     } catch (err) {
       setImportMsg(err instanceof Error ? err.message : 'Could not import this GPX file.')
     }
@@ -240,7 +243,7 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
     setPendingImport(null)
     try {
       const db = await getDb()
-      await db.flight_logs.insert({ ...doc, aircraftId: ac?.id ?? '', registration: ac?.registration ?? '', updatedAt: Date.now() })
+      await db.flight_logs.insert({ ...doc, aircraftId: ac?.id ?? '', registration: ac?.registration || doc.registration, updatedAt: Date.now() })
       setImportMsg(`Imported ${doc.distanceNm.toFixed(1)} NM flight${ac ? ` (${ac.registration || ac.name})` : ''}.`)
     } catch (err) {
       setImportMsg(err instanceof Error ? err.message : 'Could not import this GPX file.')

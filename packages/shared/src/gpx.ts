@@ -165,12 +165,24 @@ const FT_TO_M = 0.3048
 /** A hole longer than this starts a new <trkseg>, so viewers don't draw a straight line across a GPS dropout. */
 const TRKSEG_GAP_MS = 30_000
 
+/** What a flight log carries besides its track; all optional, written as `ovfr:` extensions and a `<rte>`. */
+export type GpxLogMeta = {
+  departureIcao?: string
+  arrivalIcao?:   string
+  registration?:  string
+  /** The route planned for the flight (a log's `routeJson`, already parsed). */
+  route?: { name?: string; waypoints: RouteWaypoint[]; legOverrides?: unknown[] } | null
+}
+
 /**
  * Serialise a recorded track. Altitude is exported in metres (GPX <ele>), time
  * as ISO 8601 UTC. Ground speed (kt) and track (deg) have no GPX 1.1 field, so
- * they ride in <extensions>; other tools ignore them, gpxToTrack reads them back.
+ * they ride in <extensions> (one decimal); other tools ignore them, gpxToTrack
+ * reads them back. `meta` adds the flight's airports, registration and planned
+ * route: the route is a normal `<rte>` (any viewer shows it), the rest are
+ * `ovfr:` extensions on the `<trk>`.
  */
-export function trackToGpx(points: GpxTrackPoint[], name = 'Flight'): string {
+export function trackToGpx(points: GpxTrackPoint[], name = 'Flight', meta: GpxLogMeta = {}): string {
   const segs: GpxTrackPoint[][] = []
   for (const p of points) {
     const cur = segs[segs.length - 1]
@@ -183,21 +195,44 @@ export function trackToGpx(points: GpxTrackPoint[], name = 'Flight'): string {
         .map((p) => {
           const ele  = Number.isFinite(p.altFt) ? `<ele>${(p.altFt * FT_TO_M).toFixed(1)}</ele>` : ''
           const time = `<time>${new Date(p.ts).toISOString()}</time>`
-          const ext  = `<extensions><ovfr:spd xmlns:ovfr="${OVFR_NS}">${Math.round(p.spdKts)}</ovfr:spd><ovfr:trk xmlns:ovfr="${OVFR_NS}">${Math.round(p.trkDeg)}</ovfr:trk></extensions>`
+          const ext  = `<extensions><ovfr:spd>${round1(p.spdKts)}</ovfr:spd><ovfr:trk>${round1(p.trkDeg)}</ovfr:trk></extensions>`
           return `      <trkpt lat="${p.lat}" lon="${p.lng}">${ele}${time}${ext}</trkpt>`
         })
         .join('\n')
       return `    <trkseg>\n${pts}\n    </trkseg>`
     })
     .join('\n')
+
+  const trkExt = [
+    meta.departureIcao ? `<ovfr:departure>${xmlEscape(meta.departureIcao)}</ovfr:departure>` : '',
+    meta.arrivalIcao   ? `<ovfr:arrival>${xmlEscape(meta.arrivalIcao)}</ovfr:arrival>`       : '',
+    meta.registration  ? `<ovfr:registration>${xmlEscape(meta.registration)}</ovfr:registration>` : '',
+  ].join('')
+  const route = meta.route && meta.route.waypoints.length >= 2 ? routeBlock(meta.route) : ''
+
   return `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="open-vfr" xmlns="${GPX_NS}">
-  <trk>
+<gpx version="1.1" creator="open-vfr" xmlns="${GPX_NS}" xmlns:ovfr="${OVFR_NS}">
+${route}  <trk>
     <name>${xmlEscape(name)}</name>
-${body}
+${trkExt ? `    <extensions>${trkExt}</extensions>\n` : ''}${body}
   </trk>
 </gpx>
 `
+}
+
+function round1(n: number): number {
+  return Number.isFinite(n) ? Math.round(n * 10) / 10 : 0
+}
+
+/** The planned route as a `<rte>`; leg overrides (level, speed, wind per leg) are one `ovfr:` JSON element. */
+function routeBlock(r: NonNullable<GpxLogMeta['route']>): string {
+  const pts = r.waypoints
+    .map((w) => `    <rtept lat="${w.lat}" lon="${w.lng}">${w.name ? `<name>${xmlEscape(w.name)}</name>` : ''}</rtept>`)
+    .join('\n')
+  const ov = r.legOverrides && r.legOverrides.length > 0
+    ? `    <extensions><ovfr:legOverrides>${xmlEscape(JSON.stringify(r.legOverrides))}</ovfr:legOverrides></extensions>\n`
+    : ''
+  return `  <rte>\n    <name>${xmlEscape(r.name ?? 'Planned route')}</name>\n${ov}${pts}\n  </rte>\n`
 }
 
 /** Read a track back (own export or any GPX with <trk>). Missing speed/track become 0; points without a time are skipped. */
@@ -275,27 +310,51 @@ export function trackDistanceNm(points: { lat: number; lng: number }[]): number 
 export function gpxToFlightLog(xml: string, id: string, now: number = Date.now()): {
   id: string; startedAt: number; endedAt: number; aircraftId: string; registration: string
   trackJson: string; departureIcao: string; arrivalIcao: string; distanceNm: number; maxAltFt: number; updatedAt: number
+  routeJson?: string
 } {
   const { points } = gpxToTrack(xml)
   if (points.length < 2) throw new Error('GPX track needs at least two points with a time')
+  // Airports and registration are our own extensions on the <trk>; a <rte> (ours or any tool's) is the planned route.
+  const trk = extractBlocks(xml, 'trk')[0] ?? ''
+  const routeJson = routeJsonFromGpx(xml)
   return {
     id,
     startedAt:     points[0].ts,
     endedAt:       points[points.length - 1].ts,
     aircraftId:    '',
-    registration:  '',
+    registration:  extractTag(trk, 'ovfr:registration') ?? '',
     trackJson:     JSON.stringify(points),
-    departureIcao: '',
-    arrivalIcao:   '',
+    departureIcao: extractTag(trk, 'ovfr:departure') ?? '',
+    arrivalIcao:   extractTag(trk, 'ovfr:arrival') ?? '',
     distanceNm:    trackDistanceNm(points),
     maxAltFt:      Math.round(Math.max(0, ...points.map((p) => p.altFt))),
     updatedAt:     now,
+    ...(routeJson ? { routeJson } : {}),
   }
+}
+
+/** A log's `routeJson` ({name?, waypoints, legOverrides}) from the file's first <rte> with two points; undefined when none. */
+function routeJsonFromGpx(xml: string): string | undefined {
+  if (extractBlocks(xml, 'rte').length === 0) return undefined
+  const { name, waypoints } = gpxToRoute(xml)
+  if (waypoints.length < 2) return undefined
+  let legOverrides: unknown[] = []
+  try {
+    const raw = extractTag(extractBlocks(xml, 'rte')[0], 'ovfr:legOverrides')
+    const parsed = raw ? JSON.parse(raw) : []
+    if (Array.isArray(parsed)) legOverrides = parsed
+  } catch { /* unreadable overrides: none */ }
+  return JSON.stringify({
+    name,
+    waypoints: waypoints.map((w) => ({ lat: w.lat, lng: w.lng, ...(w.name ? { name: w.name } : {}) })),
+    legOverrides,
+  })
 }
 
 /** GPX file (name + content) for a stored flight log document. Throws if the track is empty or unreadable. */
 export function flightLogToGpx(log: {
   startedAt: number; departureIcao: string; arrivalIcao: string; registration: string; trackJson: string
+  routeJson?: string | null
 }): { filename: string; xml: string } {
   const points = JSON.parse(log.trackJson || '[]') as GpxTrackPoint[]
   if (!Array.isArray(points) || points.length === 0) throw new Error('This log has no track points')
@@ -304,5 +363,13 @@ export function flightLogToGpx(log: {
   const stem = [route, log.registration, date].filter(Boolean).join('_').replace(/[^A-Za-z0-9_-]+/g, '')
   const title = [[log.departureIcao, log.arrivalIcao].filter(Boolean).join(' → '), log.registration, date]
     .filter(Boolean).join(' · ')
-  return { filename: `${stem || 'flight'}.gpx`, xml: trackToGpx(points, title) }
+  let planned: GpxLogMeta['route'] = null
+  try {
+    const r = log.routeJson ? JSON.parse(log.routeJson) : null
+    if (r && Array.isArray(r.waypoints)) planned = { name: r.name, waypoints: r.waypoints, legOverrides: Array.isArray(r.legOverrides) ? r.legOverrides : [] }
+  } catch { /* unreadable planned route: export the track without it */ }
+  return {
+    filename: `${stem || 'flight'}.gpx`,
+    xml: trackToGpx(points, title, { departureIcao: log.departureIcao, arrivalIcao: log.arrivalIcao, registration: log.registration, route: planned }),
+  }
 }

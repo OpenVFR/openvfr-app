@@ -50,7 +50,8 @@ describe('flightLogToGpx', () => {
   })
 })
 
-import { gpxToFlightLog, trackDistanceNm } from './gpx'
+import { gpxToFlightLog, gpxToRoute, trackDistanceNm } from './gpx'
+import { flightLogEvents } from './flightLogEvents'
 describe('gpxToFlightLog', () => {
   // A foreign GPX: no extensions, no speed. 1 point/s heading north at ~60 kt
   // (0.01667 NM/s = 0.000278 deg lat/s).
@@ -89,5 +90,77 @@ describe('gpxToFlightLog', () => {
 
   it('trackDistanceNm', () => {
     expect(trackDistanceNm([{ lat: 59, lng: 18 }, { lat: 60, lng: 18 }])).toBeCloseTo(60, 3)
+  })
+})
+
+describe('a flight log through GPX and back', () => {
+  const route = {
+    name: 'ESSA-ESSB',
+    waypoints: [{ lat: 59.65, lng: 17.92, name: 'ESSA' }, { lat: 59.5, lng: 17.5 }, { lat: 59.35, lng: 18.07, name: 'ESSB & co <1>' }],
+    legOverrides: [{ altFt: 3000, speedKts: 95 }, { windDir: 270, windSpd: 12 }],
+  }
+  const log = {
+    startedAt: Date.UTC(2026, 0, 1, 10), departureIcao: 'ESSA', arrivalIcao: 'ESSB', registration: 'SE-ABC',
+    trackJson: JSON.stringify(pts(Date.UTC(2026, 0, 1, 10), 20)), routeJson: JSON.stringify(route),
+  }
+
+  it('keeps airports, registration and the planned route', () => {
+    const doc = gpxToFlightLog(flightLogToGpx(log).xml, 'new-id')
+    expect(doc.departureIcao).toBe('ESSA')
+    expect(doc.arrivalIcao).toBe('ESSB')
+    expect(doc.registration).toBe('SE-ABC')
+    expect(JSON.parse(doc.routeJson!)).toEqual(route)
+  })
+
+  it('writes the route as a plain <rte> that other tools can read', () => {
+    const { xml } = flightLogToGpx(log)
+    const r = gpxToRoute(xml)
+    expect(r.name).toBe('ESSA-ESSB')
+    expect(r.waypoints).toHaveLength(3)
+    expect(r.waypoints[2].name).toBe('ESSB & co <1>')
+  })
+
+  it('declares the namespace once and keeps the track points', () => {
+    const { xml } = flightLogToGpx(log)
+    expect(xml.match(/xmlns:ovfr=/g)).toHaveLength(1)
+    const doc = gpxToFlightLog(xml, 'x')
+    expect(JSON.parse(doc.trackJson)).toHaveLength(20)
+    expect(doc.startedAt).toBe(log.startedAt)
+  })
+
+  it('a log without a route or airports exports and imports without them', () => {
+    const doc = gpxToFlightLog(flightLogToGpx({ ...log, departureIcao: '', arrivalIcao: '', registration: '', routeJson: undefined }).xml, 'x')
+    expect(doc.routeJson).toBeUndefined()
+    expect([doc.departureIcao, doc.arrivalIcao, doc.registration]).toEqual(['', '', ''])
+  })
+
+  it('an unreadable stored route does not stop the export', () => {
+    const { xml } = flightLogToGpx({ ...log, routeJson: '{not json' })
+    expect(gpxToFlightLog(xml, 'x').routeJson).toBeUndefined()
+  })
+
+  it('a foreign file with a <rte> imports it as the planned route', () => {
+    const foreign = `<gpx version="1.1"><rte><name>R</name><rtept lat="1" lon="2"/><rtept lat="3" lon="4"/></rte><trk><trkseg>${
+      [0, 1].map((i) => `<trkpt lat="${59 + i}" lon="18"><time>${new Date(Date.UTC(2026, 0, 1, 10, 0, i)).toISOString()}</time></trkpt>`).join('')
+    }</trkseg></trk></gpx>`
+    expect(JSON.parse(gpxToFlightLog(foreign, 'x').routeJson!).waypoints).toHaveLength(2)
+  })
+})
+
+describe('events after a GPX round trip', () => {
+  // Take off, fly, land: speeds ramp across the 40/30 kt thresholds so rounding could move the events.
+  const t0 = Date.UTC(2026, 0, 1, 10)
+  const track: GpxTrackPoint[] = Array.from({ length: 120 }, (_, i) => {
+    const spd = i < 20 ? i * 4.13 : i < 100 ? 95.37 : Math.max(0, 95.37 - (i - 100) * 5.77)
+    return { lat: 59 + i * 0.0007, lng: 18, altFt: i < 20 ? 100 : i < 100 ? 100 + (i - 20) * 12.3 : 100, spdKts: spd, trkDeg: 0, ts: t0 + i * 1000 }
+  })
+  const thr = { takeoffKts: 40, landedKts: 30 }
+
+  it('finds the same events from the exported track as from the original', () => {
+    const before = flightLogEvents(track, null, thr)
+    const doc = gpxToFlightLog(flightLogToGpx({ startedAt: t0, departureIcao: '', arrivalIcao: '', registration: '', trackJson: JSON.stringify(track) }).xml, 'x')
+    const after = flightLogEvents(JSON.parse(doc.trackJson), null, thr)
+    expect(before.length).toBeGreaterThan(0)
+    expect(after.map((e) => [e.kind, e.ts])).toEqual(before.map((e) => [e.kind, e.ts]))
   })
 })

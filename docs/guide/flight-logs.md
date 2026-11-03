@@ -101,7 +101,16 @@ airspace shown is as drawn, for review, not as proof of an infringement.
 
 ## GPX
 
-Export a log as GPX, or import a GPX file that has timed track points. You
-choose the aircraft on import. Importing the same flight twice is refused.
-In the mobile app, an imported log gets its departure and arrival from the
-track, as above.
+Export a log as GPX, or import a GPX file that has timed track points.
+
+A file exported from OpenVFR carries the whole log: the track, the departure
+and arrival, the registration, and the route you had planned (as a normal
+route, so other apps show it too). Importing it gives the same log back, and
+the aircraft with that registration is preselected. Other apps may drop the
+OpenVFR-specific parts when they save a file again; the track and the route
+stay. A file from another app has the track only (and its route, if it has
+one); the departure and arrival then come from the track in the mobile app,
+as above.
+
+You choose the aircraft on import. Importing the same flight twice is
+refused.

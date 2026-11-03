@@ -241,7 +241,7 @@ export function PlanScreen() {
     () => logTotals(shownLogs.filter(l => l.endedAt > 0).map(l => ({ ...l, stats: logInfo(l).stats }))),
     [shownLogs],
   )
-  // A picked GPX file waiting for its aircraft (a GPX file carries none), chosen in a row of chips.
+  // A picked GPX file waiting for its aircraft (our own export names its registration, which picks the match), chosen in a row of chips.
   const [pendingImport, setPendingImport] = useState<{ doc: ReturnType<typeof gpxToFlightLog>; aircraftId: string } | null>(null)
   const handleImportLog = async () => {
     try {
@@ -253,8 +253,11 @@ export function PlanScreen() {
         Alert.alert('Already imported', 'This flight is already in your logs.')
         return
       }
-      // The selected aircraft is preselected; a log's aircraft is set once, here.
-      setPendingImport({ doc, aircraftId: profile?.id ?? '' })
+      // A log's aircraft is set once, here. The file's registration (our own export) picks the matching aircraft,
+      // else the selected one is preselected.
+      const reg = doc.registration.trim().toUpperCase()
+      const match = reg ? profiles.find(p => p.registration.trim().toUpperCase() === reg) : undefined
+      setPendingImport({ doc, aircraftId: match?.id ?? profile?.id ?? '' })
     } catch (e) {
       Alert.alert('Import failed', e instanceof Error ? e.message : 'Could not read this GPX file.')
     }
@@ -262,7 +265,7 @@ export function PlanScreen() {
   const confirmImportLog = async () => {
     if (!pendingImport) return
     const ac = profiles.find(p => p.id === pendingImport.aircraftId)
-    const doc = { ...pendingImport.doc, aircraftId: ac?.id ?? '', registration: ac?.registration ?? '', updatedAt: Date.now() }
+    const doc = { ...pendingImport.doc, aircraftId: ac?.id ?? '', registration: ac?.registration || pendingImport.doc.registration, updatedAt: Date.now() }
     setPendingImport(null)
     try {
       await flightLogsDb.upsert(doc)
