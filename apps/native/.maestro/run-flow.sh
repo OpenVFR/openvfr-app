@@ -45,11 +45,14 @@ if [ -n "${DUO_INNER_OUT:-}" ]; then
         case "$seen" in *" $n "*) continue ;; esac
         seen="$seen$n "
         sleep 1                                   # let Maestro finish writing the PNG
-        hinge open && sleep 3 \
-          && hinge screenshot "$DUO_INNER_OUT/$n.png" \
-          || echo "::warning::inner-display capture of $n failed"
+        t0=$(date +%s)
+        if hinge open && sleep 3 && hinge screenshot "$DUO_INNER_OUT/$n.png"; then :
+        else echo "::warning::inner-display capture of $n failed"; fi
         hinge close || true
         sleep 3
+        el=$(( $(date +%s) - t0 ))
+        echo "duo inner capture of $n took ${el}s (flow pauses 30s)"
+        [ "$el" -lt 28 ] || echo "::warning::inner capture of $n took ${el}s, close to the flow's 30 s pause: Maestro may resume while unfolded"
       done < <(find "$raw" -path '*/takeScreenshot/*' -name '*.png' -print0 2>/dev/null)
       sleep 1
     done

@@ -1137,17 +1137,17 @@ function GpsAltitudeReferenceRow() {
   const d = describeGpsAltitudeReference(st, (iso) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }))
   return (
     <TouchableOpacity onPress={() => Alert.alert('GPS altitude', d.detail)}>
-      <InfoRow label="GPS altitude" value={`${d.mismatch ? '\u26a0 ' : ''}${d.value} \u203a`} />
+      <InfoRow label="GPS altitude" value={`${d.mismatch ? '\u26a0 ' : ''}${d.value} \u203a`} wrap />
     </TouchableOpacity>
   )
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value, wrap }: { label: string; value: string; wrap?: boolean }) {
   const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={[styles.rowValue, styles.infoValue]} numberOfLines={1}>{value}</Text>
+      <Text style={[styles.rowValue, styles.infoValue, wrap && styles.infoValueWrap]} numberOfLines={wrap ? undefined : 1}>{value}</Text>
     </View>
   )
 }
@@ -1247,6 +1247,12 @@ function makeStyles(theme: ScaledTheme) {
     fontWeight: '400',
     maxWidth:   200,
     textAlign:  'right',
+  },
+  // Long values (the GPS altitude status) wrap onto several lines instead of
+  // being cut off, and never take more than ~60% of the row on a small screen.
+  infoValueWrap: {
+    flexShrink: 1,
+    maxWidth:   '60%',
   },
   deviceStatusValue: {
     fontSize: theme.textXs,

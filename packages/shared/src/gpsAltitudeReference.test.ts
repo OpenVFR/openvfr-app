@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   classifyOffsets, initGpsAltitudeReference, gpsAltitudeReference, gpsAltitudeReferenceStatus, describeGpsAltitudeReference,
-  observeGroundSample, __resetGpsAltitudeReferenceForTests, type GroundSample,
+  observeGroundSample, noteGpsAltitudeSource, __resetGpsAltitudeReferenceForTests, type GroundSample,
 } from './gpsAltitudeReference'
 
 // Arlanda: EGM96 geoid ~23.2 m.
@@ -88,6 +88,16 @@ describe('ground check', () => {
     expect(d.mismatch).toBe(true)
     expect(d.detail).toMatch(/differs from what the platform is known to report/)
     warn.mockRestore()
+  })
+
+  it('says so when the phone supplies the sea-level altitude', async () => {
+    await initGpsAltitudeReference({ platformDefault: 'ellipsoid', environment: 'x' })
+    noteGpsAltitudeSource('os-msl')
+    const d = describeGpsAltitudeReference(gpsAltitudeReferenceStatus())
+    expect(d.value).toBe('Sea level \u00b7 from the phone')
+    expect(d.mismatch).toBe(false)
+    noteGpsAltitudeSource('geoid')
+    expect(describeGpsAltitudeReference(gpsAltitudeReferenceStatus()).value).toBe('Geoid-corrected \u00b7 not verified yet')
   })
 
   it('does not decide where the geoid height is unknown or small', async () => {

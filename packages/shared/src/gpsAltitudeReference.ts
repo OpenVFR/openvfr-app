@@ -97,6 +97,8 @@ let platformDefault: GpsAltitudeRef = 'msl'
 let environment = ''
 let kv: KeyValueStore | null = null
 let verdict: GpsAltitudeRefVerdict | null = null
+/** How the latest real fix's altitude was obtained (native only, see ./gpsAltitude.ts). */
+let lastSource: 'os-msl' | 'geoid' | 'raw' | null = null
 let offsets: number[] = []
 let geoidSum = 0
 let lastSampleAt = -Infinity
@@ -124,6 +126,18 @@ export async function initGpsAltitudeReference(opts: {
   notify()
 }
 
+/**
+ * Native: record how the altitude of the latest real fix was obtained
+ * ('os-msl' = the OS's own sea-level height, 'geoid' = ellipsoidal minus the
+ * EGM96 geoid, 'raw' = used as reported). Only notifies on a change, so it is
+ * cheap to call per fix. Shown in the settings line.
+ */
+export function noteGpsAltitudeSource(source: 'os-msl' | 'geoid' | 'raw'): void {
+  if (source === lastSource) return
+  lastSource = source
+  notify()
+}
+
 /** Reference to apply to raw GPS altitudes now. */
 export function gpsAltitudeReference(): GpsAltitudeRef {
   return verdict?.ref ?? platformDefault
@@ -135,6 +149,8 @@ export function gpsAltitudeReferenceStatus(): {
   source: 'verified' | 'platform-default'
   platformDefault: GpsAltitudeRef
   verdict: GpsAltitudeRefVerdict | null
+  /** Native: how the latest fix's altitude was obtained, null before the first fix / on the web. */
+  lastSource: 'os-msl' | 'geoid' | 'raw' | null
   pendingSamples: number
   /** Median raw-minus-terrain offset (m) of the pending samples, null if none. */
   pendingMedianM: number | null
@@ -143,7 +159,7 @@ export function gpsAltitudeReferenceStatus(): {
 } {
   const n = offsets.length
   return {
-    ref: gpsAltitudeReference(), source: verdict ? 'verified' : 'platform-default', platformDefault, verdict,
+    ref: gpsAltitudeReference(), source: verdict ? 'verified' : 'platform-default', platformDefault, verdict, lastSource,
     pendingSamples: n,
     pendingMedianM: n ? Math.round(classifyOffsets(offsets, geoidSum / n).medianM * 10) / 10 : null,
     pendingGeoidM: n ? Math.round((geoidSum / n) * 10) / 10 : null,
@@ -159,8 +175,21 @@ export function describeGpsAltitudeReference(
   st: ReturnType<typeof gpsAltitudeReferenceStatus>,
   fmtDate: (iso: string) => string = (iso) => iso.slice(0, 10),
 ): { value: string; detail: string; mismatch: boolean } {
-  const what = st.ref === 'ellipsoid' ? 'Geoid-corrected' : 'Sea level'
   const v = st.verdict
+  if (st.lastSource === 'os-msl') {
+    // The phone's own sea-level height is in use: nothing is corrected by the
+    // app. The on-ground check still runs on the raw (ellipsoidal) height,
+    // which only matters as the fallback if the OS stops supplying MSL.
+    return {
+      value: 'Sea level \u00b7 from the phone',
+      detail: 'The phone reports GPS altitude above mean sea level itself (iOS, Android 14 and newer), and the app uses that value as it is. '
+        + (st.ref === 'ellipsoid'
+          ? 'Without it (older Android) the app subtracts the geoid height from the height above the WGS-84 ellipsoid.'
+          : 'Without it the raw GPS height is used as reported.'),
+      mismatch: false,
+    }
+  }
+  const what = st.ref === 'ellipsoid' ? 'Geoid-corrected' : 'Sea level'
   const mismatch = !!v && v.ref !== st.platformDefault
   const value = v ? `${what} \u00b7 verified ${fmtDate(v.checkedAt)}` : `${what} \u00b7 not verified yet`
   const how = st.ref === 'ellipsoid'
@@ -228,6 +257,6 @@ export function observeGroundSample(s: GroundSample): void {
 
 /** Test-only reset. */
 export function __resetGpsAltitudeReferenceForTests(): void {
-  platformDefault = 'msl'; environment = ''; kv = null; verdict = null
+  platformDefault = 'msl'; environment = ''; kv = null; verdict = null; lastSource = null
   offsets = []; geoidSum = 0; lastSampleAt = -Infinity; listeners.clear()
 }

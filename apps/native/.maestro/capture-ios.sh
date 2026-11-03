@@ -114,13 +114,19 @@ capture() { # name regex sizes(space separated) [duo]
   xcrun simctl delete "$udid"
 }
 
-# Each flow signs in as the same account, one device at a time.
-capture iphone-6.3 '^iPhone [0-9]+ Pro$' '1206x2622 1179x2556'
-capture ipad-13 '^iPad Pro 13-inch' '2064x2752'
-
 # `hinge` is installed by the workflow (pinned commit, before any secret is
 # pulled); without it the Duo cannot be folded.
 if xcrun simctl list devicetypes | grep -q 'iPhone Duo' && ! command -v hinge >/dev/null; then
   echo "::error::hinge is not on PATH (see the 'Install hinge' step in screenshots.yml)"; exit 1
 fi
+# Fail in seconds, not after ~40 min of iPhone/iPad captures: hinge must run
+# (the first call also compiles its helper with Xcode's clang).
+if xcrun simctl list devicetypes | grep -q 'iPhone Duo'; then
+  hinge --version >/dev/null || { echo "::error::hinge does not run"; exit 1; }
+fi
+
+# Each flow signs in as the same account, one device at a time.
+capture iphone-6.3 '^iPhone [0-9]+ Pro$' '1206x2622 1179x2556'
+capture ipad-13 '^iPad Pro 13-inch' '2064x2752'
+
 capture iphone-duo-cover '^iPhone Duo$' '1398x2034 2034x1398' duo
