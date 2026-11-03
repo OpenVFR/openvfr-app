@@ -82,7 +82,7 @@
  *   NMS_API_HOST=https://api-nms.aim.faa.gov/nmsapi
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { notamInRegions, regionScope, type RegionScopeInput } from '@open-vfr/shared/notamRegionScope'
@@ -656,7 +656,13 @@ function saveCacheToDisk(): void {
       lastMilitaryPullAt: _lastMilitaryPullAt,
       entries: [..._cache.entries()].map(([icao, byId]) => [icao, [...byId.entries()]]),
     }
-    writeFileSync(NMS_CACHE_FILE, JSON.stringify(payload))
+    // Write beside the file, then rename over it: a restart or deploy that kills the process mid-write
+    // leaves the previous complete file (the rename is atomic on the same volume), never a truncated one.
+    // A truncated cache is read as "unreadable", which would repeat the worldwide bootstrap AND the
+    // MILITARY pull (its 1-per-24-h state lives in this file), the pattern that gets an NMS account throttled.
+    const tmp = `${NMS_CACHE_FILE}.tmp`
+    writeFileSync(tmp, JSON.stringify(payload))
+    renameSync(tmp, NMS_CACHE_FILE)
     _lastSavedAt = Date.now()
   } catch (e) {
     // Non-fatal -- worst case, next restart re-bootstraps instead of
@@ -904,6 +910,18 @@ export function startNotamPoller(): void {
   }
   if (firstDelayMs === 0) kick()
   else setTimeout(kick, firstDelayMs).unref?.()
+}
+
+/** Test hooks for the disk cache (see notamCache.test.ts); not used by the server. */
+export const _cacheTesting = {
+  save: () => saveCacheToDisk(),
+  load: () => loadCacheFromDisk(),
+  entryCount: () => [..._cache.values()].reduce((n, m) => n + m.size, 0),
+  setMilitaryPull: (iso: string | null) => { _lastMilitaryPullAt = iso },
+  militaryPull: () => _lastMilitaryPullAt,
+  seed: (icao: string, id: string, n: unknown) => { const m = _cache.get(icao) ?? new Map<string, NmsNotam>(); m.set(id, n as NmsNotam); _cache.set(icao, m) },
+  reset: () => { _cache.clear(); _lastMilitaryPullAt = null; _lastPollAt = null },
+  file: NMS_CACHE_FILE,
 }
 
 export function stopNotamPoller(): void {
