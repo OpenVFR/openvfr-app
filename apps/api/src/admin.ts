@@ -21,7 +21,7 @@
  *   - DATA: aggregate counts + account metadata from the ba_* tables only,
  *     plus in-memory aggregate counters of this process (external-API relay
  *     usage, app launches per build). No user content (routes, positions, flight logs) and no IP
- *     addresses are exposed; the api_app role couldn't read user content anyway.
+ *     addresses are exposed; the openvfr_api role couldn't read user content anyway.
  *   - BANS: better-auth admin plugin (auth.api.banUser / unbanUser), called
  *     server-side; the plugin's own HTTP endpoints are not exposed.
  *   - Responses are `Cache-Control: no-store`.

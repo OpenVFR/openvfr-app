@@ -1,6 +1,6 @@
 /**
  * Shared PostgreSQL pool for the api (better-auth adapter + admin queries).
- * Connects as the least-privilege `api_app` role in production.
+ * Connects as the least-privilege `openvfr_api` role in production.
  */
 import pg from 'pg'
 

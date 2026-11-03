@@ -40,6 +40,8 @@ import { randomUUID } from 'node:crypto'
 import { createHmac } from 'node:crypto'
 import { auth, isReviewAccountEmail } from './auth'
 import { admin } from './admin'
+import { AUTHENTICATED_ROLE, assertAuthenticatedRoleExists } from './pgRoles'
+import { pool as dbPool } from './db'
 import { effectiveMinBuilds, isAppPlatform, minBuildRows, MIN_VERSION, parseBuild, recordLaunch } from './appVersion'
 import { mountExternalProxies } from './externalProxy'
 import { createDemElevation, parseDemSources } from './demElevation'
@@ -232,7 +234,8 @@ app.get('/api/auth/token', async (c) => {
     // Must match PostgREST's PGRST_JWT_AUD so a token minted here can't be
     // replayed against anything else that happens to share the HS256 secret.
     aud:  'postgrest',
-    role: 'authenticated',
+    // The PostgREST request role (SET ROLE); created by the migrations, see pgRoles.ts.
+    role: AUTHENTICATED_ROLE,
     email: session.user.email,
     iat:  now,
     exp,
@@ -855,6 +858,7 @@ app.get('/api/countries', async (c) => {
 // ---------------------------------------------------------------------------
 serve({ fetch: app.fetch, port: PORT }, () => {
   console.log(`open-vfr API server listening on port ${PORT}`)
+  void assertAuthenticatedRoleExists(dbPool)
   if (!AZURE_ENDPOINT || !AZURE_API_KEY) {
     console.warn('WARNING: Azure OpenAI not configured — /api/poh-extract will return 503')
   }
