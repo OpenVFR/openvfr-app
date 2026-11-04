@@ -78,7 +78,9 @@ run_flow() {
   pkill -f "test-without-building -xctestrun $MAESTRO_DUO_XCTESTRUN" 2>/dev/null || true
   xcrun simctl terminate "$udid" dev.mobile.maestro-driver-iosUITests.xctrunner 2>/dev/null || true
   # The patched driver's own decisions (NSLog goes to the xcodebuild output).
-  grep -E "Foreground app|Kept serving|No foreground app" "$out/debug/patched-driver-xcodebuild.log" | sort | uniq -c | sort -rn | head -20 || true
+  echo "--- patched driver: foreground-app decisions (message, count) ---"
+  grep -E "Foreground app hint|Foreground app fallback|Detected running apps|Kept serving|No foreground app found" "$out/debug/patched-driver-xcodebuild.log" \
+    | sed -E 's/^.*Runner\[[0-9:]+\] //' | sort | uniq -c | sort -rn | head -15 || true
   return "$status"
 }
 
