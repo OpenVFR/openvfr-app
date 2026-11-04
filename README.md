@@ -137,6 +137,8 @@ and links to the website's full credits page,
 * **[OpenAIP](https://www.openaip.net/)** — airspace and obstacle data.
   Licensed **CC BY-NC 4.0 — non-commercial use only.** This restricts
   commercial use of the combined app; see § License note below.
+* **[Länsstyrelserna – Vindbrukskollen](https://vbk.lansstyrelsen.se/)** — wind turbine heights and positions in Sweden (CC0 1.0; named as the source).
+* **[LFV](https://daim.lfv.se/echarts/dronechart/API/)** — en-route obstacle data in Sweden: masts, towers, chimneys (CC BY 4.0 as published for LFV's open geodata services).
 * **[OpenFlightMaps](https://www.openflightmaps.org/)** — VFR chart
   layers. Licensed ODbL.
 * **[Copernicus DEM GLO-30](https://registry.opendata.aws/copernicus-dem/)**
