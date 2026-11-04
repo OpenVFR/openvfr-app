@@ -91,31 +91,41 @@ diff -ruN orig/maestro-driver-ios.xcodeproj/project.pbxproj new/maestro-driver-i
  				LD_RUNPATH_SEARCH_PATHS = (
  					"$(inherited)",
  					"@executable_path/Frameworks",
+diff -ruN orig/maestro-driver-iosUITests/Routes/Handlers/LaunchAppHandler.swift new/maestro-driver-iosUITests/Routes/Handlers/LaunchAppHandler.swift
+--- a/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/Handlers/LaunchAppHandler.swift	2026-11-03 23:07:03.618635847 +0100
++++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/Handlers/LaunchAppHandler.swift	2026-11-04 11:17:38.102241812 +0100
+@@ -17,6 +17,7 @@
+         
+         NSLog("[Start] Launching app with bundle ID: \(requestBody.bundleId)")
+         XCUIApplication(bundleIdentifier: requestBody.bundleId).activate()
++        RunningApp.lastForegroundAppId = requestBody.bundleId
+         NSLog("[Done] Launching app with bundle ID: \(requestBody.bundleId)")
+ 
+         
 diff -ruN orig/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift new/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift
 --- a/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift	2026-11-03 23:07:03.618938278 +0100
-+++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift	2026-11-04 09:47:55.324759044 +0100
-@@ -24,6 +24,20 @@
++++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift	2026-11-04 11:17:38.101984937 +0100
+@@ -24,6 +24,19 @@
          } ?? RunningApp.springboardBundleId
      }
      
-+    /// Bundle id of the app under test, passed by the host through the runner's
-+    /// environment (`MAESTRO_FOREGROUND_APP`, set in the .xctestrun or as
-+    /// `TEST_RUNNER_MAESTRO_FOREGROUND_APP` to xcodebuild). On the iPhone Duo
-+    /// simulator (iOS 27.1) `activeAppsInfo()` leaves the foreground app out, or
-+    /// lists it with a state other than `.runningForeground`, while it is running,
-+    /// focal and on screen; the driver then returns SpringBoard's hierarchy and
-+    /// every lookup fails. When set, this app is used as a fallback whenever it
-+    /// is running at all.
-+    static let foregroundAppHint: String? = {
++    /// The app under test, for the iPhone Duo simulator (iOS 27.1): there
++    /// `activeAppsInfo()` leaves the foreground app out, or lists it with a state
++    /// other than `.runningForeground`, while it is running, focal and on screen.
++    /// The driver then returns SpringBoard's hierarchy and every lookup fails.
++    /// Remembered from the last successful lookup and from launchApp, and read
++    /// from the runner's environment (`MAESTRO_FOREGROUND_APP`) when set; used as
++    /// a fallback whenever that app is still running.
++    static var lastForegroundAppId: String? = {
 +        let v = ProcessInfo.processInfo.environment["MAESTRO_FOREGROUND_APP"] ?? ""
-+        NSLog("Foreground app hint: \(v.isEmpty ? "(none)" : v)")
++        NSLog("Foreground app hint from environment: \(v.isEmpty ? "(none)" : v)")
 +        return v.isEmpty ? nil : v
 +    }()
 +
      static func getForegroundApp() -> XCUIApplication? {
          let runningAppIds = XCUIApplication.activeAppsInfo().compactMap { $0["bundleId"] as? String }
          
-@@ -34,9 +48,23 @@
+@@ -34,9 +47,24 @@
          // a splash screen). Snapshotting it then throws "Application ... is not running", which callers
          // escalate as a fatal AppCrash. Returning nil instead lets callers fall back to the springboard hierarchy
          // and retry.
@@ -125,12 +135,13 @@ diff -ruN orig/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift new/maes
 +        if let app = runningAppIds
 +            .map({ XCUIApplication(bundleIdentifier: $0) })
 +            .first(where: { $0.state == .runningForeground }) {
++            if app.bundleID != springboardBundleId { lastForegroundAppId = app.bundleID }
 +            return app
 +        }
-+        guard let hint = foregroundAppHint else { return nil }
-+        let app = XCUIApplication(bundleIdentifier: hint)
++        guard let id = lastForegroundAppId else { return nil }
++        let app = XCUIApplication(bundleIdentifier: id)
 +        let state = app.state
-+        NSLog("Foreground app fallback: \(hint) listed=\(runningAppIds.contains(hint)) state=\(state.rawValue)")
++        NSLog("Foreground app fallback: \(id) listed=\(runningAppIds.contains(id)) state=\(state.rawValue)")
 +        switch state {
 +        case .runningForeground, .runningBackground, .runningBackgroundSuspended:
 +            // .runningBackground is what the Duo reports for the focal app on the
