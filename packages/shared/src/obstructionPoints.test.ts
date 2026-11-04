@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { FeatureCollection } from 'geojson'
 import { buildObstructionPoints, obstructionTipFt } from './obstructionPoints'
+import { ESTIMATED_HEIGHT_M } from './obstacleHeights'
 
 const fc = (props: Record<string, unknown>[]): FeatureCollection => ({
   type: 'FeatureCollection',
@@ -15,7 +16,7 @@ describe('buildObstructionPoints', () => {
   })
   it('estimates a missing height instead of treating the tip as ground', () => {
     const [p] = buildObstructionPoints(fc([{ kind: 'wind_turbine', elevation_ft: 100 }]), null, [])
-    expect(p.tipFt).toBe(100 + Math.round(135 * 3.28084))
+    expect(p.tipFt).toBe(100 + Math.round(ESTIMATED_HEIGHT_M.wind_turbine * 3.28084))
     expect(p.estimated).toBe(true)
   })
   it('keeps landmarks without a ground grid, relative to the aircraft ground', () => {
