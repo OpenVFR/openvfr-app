@@ -17,8 +17,9 @@ Open the aircraft list from the planning panel. You can:
 - **Create** a new aircraft, or **duplicate** an existing one as a start.
 - **Edit** or **delete** (with a confirmation step).
 - **Select** the aircraft used for the current route. Tap again to deselect.
-- **Import from a POH:** upload the performance pages as a PDF and the app
-  proposes values. Fields it could not find are flagged with a `?`: always
+- **Import from a POH (web only):** upload the performance pages as a PDF and
+  the app proposes values. The mobile app has no PDF import: create the
+  aircraft on the web and it appears on your phone through sync. Fields it could not find are flagged with a `?`: always
   check those against your own documentation. Importing needs an account
   and sends the document to a cloud service for extraction.
 
