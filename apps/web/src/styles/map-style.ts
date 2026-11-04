@@ -72,6 +72,44 @@ export const MARTIN_URL: string = (() => {
 // addSource swap -- PMTiles url-based vector sources have no setTiles()).
 // Per-country Protomaps detail basemap (z7-12), <cc>-basemap.pmtiles.
 // Swapped with the active country like landuse/hillshade/contours.
+/**
+ * Obstacle visibility by height: at each zoom stop, obstacles lower than the height (metres AGL) are hidden. Roughly SkyDemon's
+ * rule (200 ft / 300 ft / 500 ft at 1:100k / 1:250k / 1:500k), converted to metres and to our zoom levels. Unknown height = shown.
+ */
+export const OBSTACLE_MIN_HEIGHT_BY_ZOOM: ReadonlyArray<{ zoom: number; minHeightM: number; size: number }> = [
+  { zoom: 8,    minHeightM: 150, size: 0.35 },
+  { zoom: 9,    minHeightM: 90,  size: 0.40 },
+  { zoom: 10.5, minHeightM: 60,  size: 0.55 },
+  { zoom: 11.5, minHeightM: 0,   size: 0.65 },
+  { zoom: 13,   minHeightM: 0,   size: 0.80 },
+  { zoom: 15,   minHeightM: 0,   size: 1.00 },
+]
+
+/** `icon-size` expression for the obstacle layer: a zoom interpolation whose stops are 0 for obstacles under the stop's threshold. */
+export function obstacleIconSize(): unknown[] {
+  const height = ['to-number', ['get', 'height_m'], 0]
+  const stops = OBSTACLE_MIN_HEIGHT_BY_ZOOM.flatMap(({ zoom, minHeightM, size }) => [
+    zoom,
+    minHeightM <= 0
+      ? size
+      : ['case', ['<=', height, 0], size, ['>=', height, minHeightM], size, 0],
+  ])
+  return ['interpolate', ['linear'], ['zoom'], ...stops]
+}
+
+/** Obstacle label: AMSL feet and/or height AGL in feet, each only when known. */
+export function obstacleLabelText(): unknown[] {
+  const amsl = ['to-number', ['get', 'elevation_ft'], 0]
+  const agl = ['round', ['*', ['to-number', ['get', 'height_m'], 0], 3.28084]]
+  return [
+    'case',
+    ['all', ['>', amsl, 0], ['>', agl, 0]], ['concat', ['to-string', amsl], "' (", ['to-string', agl], "' AGL)"],
+    ['>', amsl, 0], ['concat', ['to-string', amsl], "'"],
+    ['>', agl, 0], ['concat', ['to-string', agl], "' AGL"],
+    '',
+  ]
+}
+
 export function getBasemapSource(country: string) {
   return {
     type: 'vector' as const,
@@ -730,7 +768,9 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
         type: 'geojson',
         data: countryGeojsonUrl(country, 'obstacles'),
         attribution:
-          '© <a href="https://www.openaip.net">openAIP</a> (CC BY-NC 4.0)',
+          '© <a href="https://www.openaip.net">openAIP</a> (CC BY-NC 4.0)' +
+          ' · <a href="https://vbk.lansstyrelsen.se/">Länsstyrelserna</a> (Vindbrukskollen, CC0)' +
+          ' · <a href="https://www.lfv.se">LFV</a> (CC BY 4.0)',
       },
 
       // Layer 8 — OSM visual landmarks (churches, masts, windmills, water towers, chimneys)
@@ -1728,8 +1768,10 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
       // ── Layer 13: Obstacles (wind turbines, towers, chimneys) ─────────────
       // Symbol layer using canvas-drawn icons registered by registerObstacleImages()
       // in MapView's styledata handler. Icons are rendered at 2× for HiDPI.
-      // Shown from zoom 9 — 3 600+ features means we suppress them at overview
-      // zoom levels where they'd form an indistinct mass across Sweden.
+      // Visibility by height and zoom (like SkyDemon's scale rule: it hides obstacles under 200 ft at scales below 1:100k, under
+      // 300 ft below 1:250k, under 500 ft below 1:500k): the file has 6 000+ features, most of them turbines, which would form an
+      // indistinct mass over Sweden at overview zooms. See OBSTACLE_MIN_HEIGHT_BY_ZOOM. An obstacle with an UNKNOWN height
+      // (height_m 0) is never hidden: a pilot must not read "not shown" as "small".
       //
       // Image IDs (defined in src/utils/obstacleIcons.ts):
       //   obs-wind-turbine  obs-tower  obs-chimney  obs-building  obs-water-tower  obs-other
@@ -1737,7 +1779,7 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
         id: 'obstacles-circle',
         type: 'symbol',
         source: 'openaip-obstacles',
-        minzoom: 9,
+        minzoom: 8,
         layout: {
           'icon-image': [
             'match', ['get', 'kind'],
@@ -1748,14 +1790,9 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
             'water_tower',  'obs-water-tower',
                             'obs-other',
           ],
-          // Scale icons with zoom; at z9 they're small dots, at z14 full-size.
-          'icon-size': [
-            'interpolate', ['linear'], ['zoom'],
-            9, 0.40,
-            11, 0.60,
-            13, 0.80,
-            15, 1.00,
-          ],
+          // Icon size grows with zoom (small dots at z8-9, full size at z15); at each zoom stop an obstacle shorter than that
+          // stop's threshold gets size 0 (between stops the size ramps up, so it fades in rather than popping).
+          'icon-size': obstacleIconSize(),
           'icon-allow-overlap': true,
           'icon-padding': 0,
           'icon-anchor': 'center',
@@ -1763,15 +1800,15 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
       },
 
       // ── Layer 13b: Obstacle elevation labels (zoom 12+) ───────────────────
-      // Show elevation in feet (AMSL) — the number pilots need for obstacle
-      // clearance planning. Only rendered at high zoom to keep the map clean.
+      // Elevation in feet (AMSL, for altitude planning) and height above ground (AGL, to judge size), each only when known (an
+      // added obstacle may lack AMSL, and height_m 0 means unknown). Only rendered at high zoom to keep the map clean.
       {
         id: 'obstacles-label',
         type: 'symbol',
         source: 'openaip-obstacles',
         minzoom: 12,
         layout: {
-          'text-field': ['concat', ['to-string', ['get', 'elevation_ft']], "'"],
+          'text-field': obstacleLabelText(),
           'text-font': ['Noto Sans Regular'],
           'text-size': 9,
           'text-anchor': 'top',
