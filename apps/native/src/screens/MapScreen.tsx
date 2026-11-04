@@ -521,6 +521,11 @@ function MapScreenForCountry() {
   // upward, which put the topmost (first) button at a height that shifted
   // whenever the bottom stack (profile/gauges) changed size.
   const topRightTopOffset = insets.top + scaledTheme.space2
+  // Absolutely positioned overlays are placed from the container's edge, not
+  // inside its safe-area padding, so add the side insets themselves (the
+  // iPhone Duo cover's system rail on the right; notches in landscape).
+  const edgeLeft  = insets.left + scaledTheme.space2
+  const edgeRight = insets.right + scaledTheme.space2
   // Portrait: cap how far the column can grow down so it never reaches the
   // profile/gauges stack at the true screen bottom; scrolls if it would.
   const topRightBottomOffset = bottomStackH + 8 + 24 + scaledTheme.space2
@@ -538,7 +543,7 @@ function MapScreenForCountry() {
   // clear of the profile chart / off the top of the screen. Capped to the
   // screen width (minus margins) so it never runs off the left edge either.
   const isLandscape = windowWidth > windowHeight
-  const topRightMaxWidth = Math.max(160, windowWidth - scaledTheme.space2 * 2)
+  const topRightMaxWidth = Math.max(160, windowWidth - edgeLeft - edgeRight)
   const stackGap = isLandscape ? { marginLeft: scaledTheme.space2 } : { marginBottom: scaledTheme.space2 }
 
   const nearbyFreqs   = useNearbyFrequencies(activePosition)
@@ -2013,8 +2018,8 @@ function MapScreenForCountry() {
         style={[
           styles.topRight,
           isLandscape
-            ? { top: topRightTopOffset, maxWidth: topRightMaxWidth }
-            : { top: topRightTopOffset, maxHeight: topRightMaxHeight },
+            ? { top: topRightTopOffset, right: edgeRight, maxWidth: topRightMaxWidth }
+            : { top: topRightTopOffset, right: edgeRight, maxHeight: topRightMaxHeight },
         ]}
         pointerEvents="box-none"
       >
@@ -2147,6 +2152,7 @@ function MapScreenForCountry() {
           // Same top offset and height as the toolbar buttons on the right, and
           // below the status bar (only the map may bleed under it).
           top={topRightTopOffset}
+          left={edgeLeft}
           label={flyingActive ? 'Route changed' : extending ? 'Add points' : 'Editing'}
           cancelLabel={flyingActive ? 'Revert: restore the route as it was before these changes' : 'Cancel changes'}
           applyLabel={flyingActive ? 'Keep the changes' : 'Apply changes'}
@@ -2159,7 +2165,7 @@ function MapScreenForCountry() {
       {/* Short hint (leg unlocked, missed tap, empty route) under the edit banner. */}
       {(routeHint || (extending && !waypoints.length)) && (
         <View
-          style={[styles.routeHintPill, { top: topRightTopOffset + (editBannerShown ? EDIT_BANNER_H : 0) }]}
+          style={[styles.routeHintPill, { top: topRightTopOffset + (editBannerShown ? EDIT_BANNER_H : 0), left: edgeLeft }]}
           testID="route-hint"
         >
           <Text style={styles.routeHintTxt} numberOfLines={2}>
