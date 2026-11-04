@@ -47,6 +47,7 @@ import { mountExternalProxies } from './externalProxy'
 import { createDemElevation, parseDemSources } from './demElevation'
 import { createWxGrid, parseWxGridSources } from './wxGrid'
 import { RateLimiter, limitFromEnv } from './rateLimiter'
+import { pohUsageLine } from './pohUsage'
 import { BodyTooLarge, readLimitedFormData, looksLikePdf } from './upload'
 import { createWeatherCache, type WxUpstreamResult } from './weatherCache'
 
@@ -429,6 +430,7 @@ app.post('/api/poh-extract', async (c) => {
       })
 
       let response
+      const modelStart = Date.now()
       try {
         response = await openai!.responses.create(buildRequest(true))
       } catch (err) {
@@ -440,6 +442,8 @@ app.post('/api/poh-extract', async (c) => {
           throw err
         }
       }
+
+      console.log(pohUsageLine(response.usage, fileMb, Date.now() - modelStart))
 
       // Extract output text — try SDK convenience property first, then walk the
       // output array manually (the project-scoped endpoint nests it differently).
