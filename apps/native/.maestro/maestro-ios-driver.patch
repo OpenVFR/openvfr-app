@@ -104,8 +104,25 @@ diff -ruN orig/maestro-driver-iosUITests/Routes/Handlers/LaunchAppHandler.swift 
          
 diff -ruN orig/maestro-driver-iosUITests/Routes/Handlers/ViewHierarchyHandler.swift new/maestro-driver-iosUITests/Routes/Handlers/ViewHierarchyHandler.swift
 --- a/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/Handlers/ViewHierarchyHandler.swift	2026-11-03 23:07:03.618724132 +0100
-+++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/Handlers/ViewHierarchyHandler.swift	2026-11-04 13:48:08.003942120 +0100
-@@ -98,6 +98,17 @@
++++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/Handlers/ViewHierarchyHandler.swift	2026-11-04 15:46:34.307306633 +0100
+@@ -94,10 +94,34 @@
+                 && abs(deviceHeight - appWidth) < 1.0
+ 
+             if isSameAreaDifferentOrientation {
++                // iPhone Duo cover display (iOS 27.1): the app reports interface
++                // orientation 0 (unknown) and XCTest then leaves its frames in the
++                // display's native space, which is landscape while SpringBoard and
++                // the screen are portrait. Taps at those coordinates land off the
++                // right edge, in the system rail, and open Control Center (run
++                // 41832441388). Turn the frames upright: upright x = native y,
++                // upright y = height - native x. An iPad in landscape reports a
++                // real orientation (3/4) and keeps the old behaviour.
++                if deviceWidth < deviceHeight, appWidth > appHeight, DuoGeometry.interfaceOrientation(of: foregroundApp) == 0 {
++                    NSLog("Rotating app frames upright: app orientation unknown, native \(appWidth)x\(appHeight) on a \(deviceWidth)x\(deviceHeight) screen")
++                    let upright = DuoGeometry.rotateUpright(appHierarchy, nativeWidth: appWidth)
++                    return AXElement(children: [upright, AXElement(children: statusBars), safariWebViewHierarchy].compactMap { $0 })
++                }
+                 NSLog("Skipping offset adjustment: device and app frames are same size but different orientation")
                  return AXElement(children: [appHierarchy, AXElement(children: statusBars), safariWebViewHierarchy].compactMap { $0 })
              }
  
@@ -123,6 +140,68 @@ diff -ruN orig/maestro-driver-iosUITests/Routes/Handlers/ViewHierarchyHandler.sw
              let offsetX = deviceWidth - appWidth
              let offsetY = deviceHeight - appHeight
              let offset = WindowOffset(offsetX: offsetX, offsetY: offsetY)
+@@ -462,3 +486,40 @@
+         ]
+     }
+ }
++
++/// iPhone Duo cover-display geometry (see ViewHierarchyHandler.getAppViewHierarchy).
++enum DuoGeometry {
++    /// The app's own interface orientation (UIInterfaceOrientation raw value; 0 = unknown),
++    /// read through KVC like XCTest's own tooling; -1 when unavailable.
++    static func interfaceOrientation(of app: XCUIApplication) -> Int {
++        let object = app as NSObject
++        guard object.responds(to: NSSelectorFromString("interfaceOrientation")),
++              let n = object.value(forKey: "interfaceOrientation") as? NSNumber else { return -1 }
++        return n.intValue
++    }
++
++    /// Rotates a hierarchy whose frames are in a landscape native space (width `nativeWidth`)
++    /// into the upright portrait space: x' = y, y' = nativeWidth - (x + width), sizes swapped.
++    static func rotateUpright(_ element: AXElement, nativeWidth: Double) -> AXElement {
++        let f = element.frame
++        let x = f["X"] ?? 0, y = f["Y"] ?? 0, w = f["Width"] ?? 0, h = f["Height"] ?? 0
++        let frame: AXFrame = ["X": y, "Y": nativeWidth - (x + w), "Width": h, "Height": w]
++        return AXElement(
++            identifier: element.identifier,
++            frame: frame,
++            value: element.value,
++            title: element.title,
++            label: element.label,
++            elementType: element.elementType,
++            enabled: element.enabled,
++            horizontalSizeClass: element.horizontalSizeClass,
++            verticalSizeClass: element.verticalSizeClass,
++            placeholderValue: element.placeholderValue,
++            selected: element.selected,
++            hasFocus: element.hasFocus,
++            displayID: element.displayID,
++            windowContextID: element.windowContextID,
++            children: element.children?.map { rotateUpright($0, nativeWidth: nativeWidth) } ?? []
++        )
++    }
++}
+diff -ruN orig/maestro-driver-iosUITests/Routes/Helpers/ScreenSizeHelper.swift new/maestro-driver-iosUITests/Routes/Helpers/ScreenSizeHelper.swift
+--- a/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/Helpers/ScreenSizeHelper.swift	2026-11-03 23:07:03.618748692 +0100
++++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/Helpers/ScreenSizeHelper.swift	2026-11-04 15:46:04.113739358 +0100
+@@ -35,7 +35,16 @@
+                 return (Float(size.width), Float(size.height))
+             }
+ 
+-            let screenSize = CGSize(width: width, height: height)
++            var screenSize = CGSize(width: width, height: height)
++            // iPhone Duo cover: the app's frame is in the display's landscape native
++            // space (orientation unknown) while the screen is portrait; taps and the
++            // device size must use the screen's (see ViewHierarchyHandler).
++            let sb = XCUIApplication(bundleIdentifier: springboardBundleId).frame.size
++            if width > height, sb.width < sb.height, abs(width - Double(sb.height)) < 1, abs(height - Double(sb.width)) < 1,
++               DuoGeometry.interfaceOrientation(of: app) == 0 {
++                NSLog("Screen size: app frame is native landscape \(width)x\(height) with orientation unknown; using SpringBoard's \(sb.width)x\(sb.height)")
++                screenSize = sb
++            }
+             let size = (Float(screenSize.width), Float(screenSize.height))
+ 
+             // Cache results
 diff -ruN orig/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift new/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift
 --- a/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift	2026-11-03 23:07:03.618938278 +0100
 +++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift	2026-11-04 11:17:38.101984937 +0100
