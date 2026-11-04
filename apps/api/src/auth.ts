@@ -215,7 +215,7 @@ export const auth = betterAuth({
     window:  60,
     max:     60,
     customRules: {
-      // Every send = one Brevo email on our account. 3/min/IP is plenty for
+      // Every send = one billed email on our account. 3/min/IP is plenty for
       // a human retrying a typo; stops an IP from using us as a mail cannon.
       '/email-otp/send-verification-otp': { window: 60, max: 3 },
       // 6-digit code, 10-minute life: better-auth caps attempts per code
@@ -322,8 +322,8 @@ export const auth = betterAuth({
       generateOTP: ({ email }) => {
         return fixedOtpFor(email) ?? undefined
       },
-      // Sent via Brevo (see mailer.ts). Falls back to a console log when
-      // BREVO_API_KEY / BREVO_SENDER_EMAIL are unset, e.g. in local dev.
+      // Sent via Azure Communication Services (see mailer.ts). Falls back to a console log when
+      // no email provider is configured, e.g. in local dev.
       sendVerificationOTP: async ({ email, otp }) => {
         // Skip sending for the review account — reviewer never sees this
         // email, they type the fixed code straight from review notes.

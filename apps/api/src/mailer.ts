@@ -1,19 +1,29 @@
 /**
- * Transactional email via Brevo (https://developers.brevo.com/docs/send-a-transactional-email).
+ * Transactional email. Provider is chosen by which credentials are set:
+ *   1. ACS_CONNECTION_STRING -> Azure Communication Services Email (used in Azure deployments)
+ *   2. BREVO_API_KEY         -> Brevo (https://developers.brevo.com/docs/send-a-transactional-email),
+ *                               handy for local dev / self-hosting without Azure
+ *   3. neither               -> log to the console, nothing is sent
+ *
+ * Azure Communication Services Email
+ * (https://learn.microsoft.com/azure/communication-services/quickstarts/email/send-email).
+ * Plain REST with the resource's access key (HMAC-SHA256), no SDK dependency.
  *
  * Required env vars:
- *   BREVO_API_KEY          Brevo API key (Settings → SMTP & API → API Keys)
+ *   ACS_CONNECTION_STRING   `endpoint=https://<name>.communication.azure.com/;accesskey=<key>`
+ *   EMAIL_SENDER_ADDRESS    A sender address on a verified domain of the linked Email Service
+ *                           (e.g. noreply@your-domain.example). The display name is a property
+ *                           of the sender username in Azure, not sent here.
+ *
+ * Brevo env vars:
+ *   BREVO_API_KEY          API key (Settings → SMTP & API → API Keys)
  *   BREVO_SENDER_EMAIL     Verified sender address (Settings → Senders)
  *   BREVO_SENDER_NAME      Optional display name, defaults to "OpenVFR"
- *
- * When BREVO_API_KEY is unset, sendEmail() logs to the console instead of
- * calling the API — this keeps local dev working without credentials.
  */
 
-const BREVO_API_KEY      = process.env['BREVO_API_KEY'] ?? ''
-const BREVO_SENDER_EMAIL = process.env['BREVO_SENDER_EMAIL'] ?? 'noreply@your-domain.example'
-const BREVO_SENDER_NAME  = process.env['BREVO_SENDER_NAME'] ?? 'OpenVFR'
-const BREVO_API_URL      = 'https://api.brevo.com/v3/smtp/email'
+import { createHash, createHmac } from 'node:crypto'
+
+const API_VERSION = '2023-03-31'
 
 export interface SendEmailOptions {
   to: string
@@ -24,31 +34,99 @@ export interface SendEmailOptions {
   html?: string
 }
 
-/**
- * Send a transactional email via the Brevo API.
- * Throws if the API call fails so callers can decide how to handle it.
- */
-export async function sendEmail({ to, subject, text, html }: SendEmailOptions): Promise<void> {
-  if (!BREVO_API_KEY) {
-    console.log(`[mailer] BREVO_API_KEY not set — skipping send. Would have sent to ${to}: ${subject}`)
-    return
-  }
+export interface AcsConnection {
+  /** Origin without trailing slash, e.g. https://x.communication.azure.com */
+  endpoint: string
+  accessKey: string
+}
 
-  const res = await fetch(BREVO_API_URL, {
+/** Parse `endpoint=...;accesskey=...` (the accesskey is base64: it can contain `=`). */
+export function parseConnectionString(cs: string): AcsConnection {
+  let endpoint = ''
+  let accessKey = ''
+  for (const part of cs.split(';')) {
+    const i = part.indexOf('=')
+    if (i < 0) continue
+    const k = part.slice(0, i).trim().toLowerCase()
+    const v = part.slice(i + 1).trim()
+    if (k === 'endpoint') endpoint = v.replace(/\/+$/, '')
+    else if (k === 'accesskey') accessKey = v
+  }
+  if (!endpoint || !accessKey) throw new Error('ACS_CONNECTION_STRING needs endpoint= and accesskey=')
+  return { endpoint, accessKey }
+}
+
+/** Headers ACS requires: x-ms-date, x-ms-content-sha256 and the HMAC Authorization. */
+export function signRequest(
+  conn: AcsConnection,
+  method: string,
+  pathAndQuery: string,
+  body: string,
+  date: Date = new Date(),
+): Record<string, string> {
+  const host = new URL(conn.endpoint).host
+  const utcNow = date.toUTCString()
+  const contentHash = createHash('sha256').update(body).digest('base64')
+  const stringToSign = `${method.toUpperCase()}\n${pathAndQuery}\n${utcNow};${host};${contentHash}`
+  const signature = createHmac('sha256', Buffer.from(conn.accessKey, 'base64')).update(stringToSign).digest('base64')
+  return {
+    'x-ms-date': utcNow,
+    'x-ms-content-sha256': contentHash,
+    Authorization: `HMAC-SHA256 SignedHeaders=x-ms-date;host;x-ms-content-sha256&Signature=${signature}`,
+  }
+}
+
+/** Send via the configured provider. Throws on API failure so callers can decide how to handle it. */
+export async function sendEmail(opts: SendEmailOptions): Promise<void> {
+  if (process.env['ACS_CONNECTION_STRING']) return sendViaAcs(opts)
+  if (process.env['BREVO_API_KEY']) return sendViaBrevo(opts)
+  console.log(`[mailer] no ACS_CONNECTION_STRING or BREVO_API_KEY set — skipping send. Would have sent to ${opts.to}: ${opts.subject}`)
+}
+
+async function sendViaAcs({ to, subject, text, html }: SendEmailOptions): Promise<void> {
+  const connectionString = process.env['ACS_CONNECTION_STRING'] ?? ''
+  const sender = process.env['EMAIL_SENDER_ADDRESS'] ?? ''
+  if (!sender) throw new Error('EMAIL_SENDER_ADDRESS must be set when ACS_CONNECTION_STRING is set')
+
+  const conn = parseConnectionString(connectionString)
+  const pathAndQuery = `/emails:send?api-version=${API_VERSION}`
+  const body = JSON.stringify({
+    senderAddress: sender,
+    recipients: { to: [{ address: to }] },
+    content: { subject, ...(html ? { html } : { plainText: text ?? '' }) },
+  })
+
+  const res = await fetch(conn.endpoint + pathAndQuery, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...signRequest(conn, 'POST', pathAndQuery, body) },
+    body,
+  })
+
+  // 202 Accepted: ACS queues the message (delivery status is in its own logs).
+  if (!res.ok) {
+    const resBody = await res.text().catch(() => '')
+    throw new Error(`ACS email send failed (${res.status}): ${resBody}`)
+  }
+}
+
+async function sendViaBrevo({ to, subject, text, html }: SendEmailOptions): Promise<void> {
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
       accept: 'application/json',
-      'api-key': BREVO_API_KEY,
+      'api-key': process.env['BREVO_API_KEY'] ?? '',
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      sender: { name: BREVO_SENDER_NAME, email: BREVO_SENDER_EMAIL },
+      sender: {
+        name: process.env['BREVO_SENDER_NAME'] ?? 'OpenVFR',
+        email: process.env['BREVO_SENDER_EMAIL'] ?? 'noreply@your-domain.example',
+      },
       to: [{ email: to }],
       subject,
       ...(html ? { htmlContent: html } : { textContent: text ?? '' }),
     }),
   })
-
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     throw new Error(`Brevo send failed (${res.status}): ${body}`)
