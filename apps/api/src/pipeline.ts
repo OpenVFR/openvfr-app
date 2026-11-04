@@ -7,7 +7,7 @@
  *
  * Read-only except for queueing a run; the pipeline itself does the work.
  */
-import { countryArchiveFile, countryDatasetFile } from '@open-vfr/shared/countryData'
+import { countryArchiveFile, countryDatasetFile, countryMefFile } from '@open-vfr/shared/countryData'
 import { pool } from './db.js'
 
 /**
@@ -175,7 +175,9 @@ interface RunRow {
 
 /** Everything the admin UI shows for one country. */
 export async function countryPipelineDetail(cc: string, registry: { enabled: boolean; ready: boolean }) {
-  const expected = DATASETS.map(d => d.file(cc))
+  // Files with no data_loads row and no refresh job: the grid maximum elevation file is built once with the
+  // country (prepare-tiles) and listed as required by cron_backfill, so it is expected, not "unexpected".
+  const expected = [...DATASETS.map(d => d.file(cc)), countryMefFile(cc)]
   const [loads, runs, latest, files] = await Promise.all([
     pool.query<LoadRow>(
       `SELECT dataset, airac_cycle, loaded_at, row_count FROM data_loads WHERE country = $1`, [cc]),
