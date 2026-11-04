@@ -505,7 +505,7 @@ function SideDrawer({
             </button>
             {expanded.layers && (
               <div className={css.sectionBody}>
-                <LayerPanel visibility={visibility} onChange={onVisibilityChange} terrainColoring={terrainColoring} onTerrainColoringChange={onTerrainColoringChange} inFlight={inFlight} basemapMode={basemapMode} onBasemapModeChange={onBasemapModeChange} satelliteLocked={satelliteLocked} ceilingFt={ceilingFt} onCeilingChange={onCeilingChange} />
+                <LayerPanel visibility={visibility} onChange={onVisibilityChange} terrainColoring={terrainColoring} onTerrainColoringChange={onTerrainColoringChange} inFlight={inFlight} basemapMode={basemapMode} onBasemapModeChange={onBasemapModeChange} satelliteLocked={satelliteLocked} ceilingFt={ceilingFt} onCeilingChange={onCeilingChange} trafficVertFilter={trafficVertFilter} onTrafficVertFilterChange={onTrafficVertFilterChange} />
               </div>
             )}
           </div>
@@ -518,7 +518,7 @@ function SideDrawer({
             </button>
             {expanded.settings && (
               <div className={css.sectionBody}>
-                <SettingsPanel units={units} onUnitsChange={onUnitsChange} countries={countries} selectedCountries={selectedCountries} onSelectedCountriesChange={onSelectedCountriesChange} theme={theme} onThemeChange={onThemeChange} trajectoryMode={trajectoryMode} onTrajectoryModeChange={onTrajectoryModeChange} airspaceWarnLookahead={airspaceWarnLookahead} onAirspaceWarnLookaheadChange={onAirspaceWarnLookaheadChange} airspaceWarnVerticalFt={airspaceWarnVerticalFt} onAirspaceWarnVerticalFtChange={onAirspaceWarnVerticalFtChange} trafficVertFilter={trafficVertFilter} onTrafficVertFilterChange={onTrafficVertFilterChange} parkTimeout={parkTimeout} onParkTimeoutChange={onParkTimeoutChange} recordSimulatedFlights={recordSimulatedFlights} onRecordSimulatedFlightsChange={onRecordSimulatedFlightsChange} autoFlyMode={autoFlyMode} onAutoFlyModeChange={onAutoFlyModeChange} inFlight={inFlight} manifest={manifest} isOnline={isOnline} checking={checking} onRefresh={onRefresh} />
+                <SettingsPanel units={units} onUnitsChange={onUnitsChange} countries={countries} selectedCountries={selectedCountries} onSelectedCountriesChange={onSelectedCountriesChange} theme={theme} onThemeChange={onThemeChange} trajectoryMode={trajectoryMode} onTrajectoryModeChange={onTrajectoryModeChange} airspaceWarnLookahead={airspaceWarnLookahead} onAirspaceWarnLookaheadChange={onAirspaceWarnLookaheadChange} airspaceWarnVerticalFt={airspaceWarnVerticalFt} onAirspaceWarnVerticalFtChange={onAirspaceWarnVerticalFtChange} parkTimeout={parkTimeout} onParkTimeoutChange={onParkTimeoutChange} recordSimulatedFlights={recordSimulatedFlights} onRecordSimulatedFlightsChange={onRecordSimulatedFlightsChange} autoFlyMode={autoFlyMode} onAutoFlyModeChange={onAutoFlyModeChange} inFlight={inFlight} manifest={manifest} isOnline={isOnline} checking={checking} onRefresh={onRefresh} />
               </div>
             )}
           </div>

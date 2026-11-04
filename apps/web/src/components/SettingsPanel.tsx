@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { parkTimeoutLabel } from '@open-vfr/shared/parkTimeout'
 import type { Units } from '../utils/units'
 import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
-import type { Theme, TrajectoryMode, AirspaceWarnLookahead, TrafficVertFilter, ParkTimeoutOption } from '../db/useSettings'
-import { AIRSPACE_WARN_LOOKAHEAD_OPTIONS, AIRSPACE_WARN_VERTICAL_MIN, AIRSPACE_WARN_VERTICAL_MAX, AIRSPACE_WARN_VERTICAL_STEP, TRAFFIC_VERT_FILTER_OPTIONS, PARK_TIMEOUT_OPTIONS } from '../db/useSettings'
+import type { Theme, TrajectoryMode, AirspaceWarnLookahead, ParkTimeoutOption } from '../db/useSettings'
+import { AIRSPACE_WARN_LOOKAHEAD_OPTIONS, AIRSPACE_WARN_VERTICAL_MIN, AIRSPACE_WARN_VERTICAL_MAX, AIRSPACE_WARN_VERTICAL_STEP, PARK_TIMEOUT_OPTIONS } from '../db/useSettings'
 import type { DataManifest } from '../hooks/useDataManifest'
 import RegionSelector from './RegionSelector'
 import type { AvailableCountry } from '@open-vfr/shared/countries'
@@ -46,8 +46,6 @@ interface Props {
   onAirspaceWarnLookaheadChange: (v: AirspaceWarnLookahead) => void
   airspaceWarnVerticalFt:       number
   onAirspaceWarnVerticalFtChange: (v: number) => void
-  trafficVertFilter:           TrafficVertFilter
-  onTrafficVertFilterChange:   (v: TrafficVertFilter) => void
   parkTimeout:                 ParkTimeoutOption
   onParkTimeoutChange:         (v: ParkTimeoutOption) => void
   recordSimulatedFlights:      boolean
@@ -136,7 +134,7 @@ function MsaMarginsSettings() {
   )
 }
 
-export default function SettingsPanel({ units, onUnitsChange, countries, selectedCountries, onSelectedCountriesChange, theme, onThemeChange, trajectoryMode, onTrajectoryModeChange, airspaceWarnLookahead, onAirspaceWarnLookaheadChange, airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange, trafficVertFilter, onTrafficVertFilterChange, parkTimeout, onParkTimeoutChange, recordSimulatedFlights, onRecordSimulatedFlightsChange, autoFlyMode, onAutoFlyModeChange, inFlight, onClose, manifest, isOnline = true, checking = false, onRefresh }: Props) {
+export default function SettingsPanel({ units, onUnitsChange, countries, selectedCountries, onSelectedCountriesChange, theme, onThemeChange, trajectoryMode, onTrajectoryModeChange, airspaceWarnLookahead, onAirspaceWarnLookaheadChange, airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange, parkTimeout, onParkTimeoutChange, recordSimulatedFlights, onRecordSimulatedFlightsChange, autoFlyMode, onAutoFlyModeChange, inFlight, onClose, manifest, isOnline = true, checking = false, onRefresh }: Props) {
   const [flownTrail, setFlownTrail] = useFlownTrail()
   return (
     <div className={css.panel}>
@@ -263,20 +261,6 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
           onChange={e => onAirspaceWarnVerticalFtChange(Number(e.target.value))}
           title={airspaceWarnVerticalFt === 0 ? 'Only warn based on climb/descent rate projection' : `Warn when within ${airspaceWarnVerticalFt} ft of an airspace floor/ceiling, regardless of climb rate`}
         />
-      </div>
-
-      <div className={css.section}>
-        <span className={css.label}>Traffic vertical filter</span>
-        <div className={css.optionsRow}>
-          {TRAFFIC_VERT_FILTER_OPTIONS.map(v => (
-            <button
-              key={v}
-              className={`${css.opt}${trafficVertFilter === v ? ` ${css.optActive}` : ''}`}
-              onClick={() => onTrafficVertFilterChange(v)}
-              title={v === 0 ? 'Show all traffic regardless of altitude' : `Hide traffic more than ${v.toLocaleString()} ft above or below current altitude`}
-            >{v === 0 ? 'All' : `±${v >= 1000 ? `${v / 1000}k` : v}`}</button>
-          ))}
-        </div>
       </div>
 
       <MsaMarginsSettings />

@@ -123,11 +123,13 @@ function urgency(
 interface Options {
   enabled:   boolean
   ownAltFt:  number | null
+  /** Hide targets further than this above/below own altitude; 0 = show all. */
+  vertFilterFt?: number
   ownLat?:   number | null
   ownLon?:   number | null
 }
 
-export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: Options): FeatureCollection {
+export function useTraffic({ enabled, ownAltFt, vertFilterFt = 0, ownLat = null, ownLon = null }: Options): FeatureCollection {
   const batchRef    = useRef<TrafficBatch | null>(null)
   // Device-clock unix seconds when batchRef's batch arrived: positions are
   // dead-reckoned on this clock, so server/device clock skew does not matter.
@@ -136,8 +138,8 @@ export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: 
   // Own position via refs so a GPS fix does not tear down and restart the
   // dead-reckon timer (that used to happen on every fix, i.e. ~1 Hz, which
   // starved / jittered the timer).
-  const ownRef = useRef({ ownAltFt, ownLat, ownLon })
-  ownRef.current = { ownAltFt, ownLat, ownLon }
+  const ownRef = useRef({ ownAltFt, ownLat, ownLon, vertFilterFt })
+  ownRef.current = { ownAltFt, ownLat, ownLon, vertFilterFt }
 
   // ── Poll server ───────────────────────────────────────────────────────────
   /** True when the server returned a batch built recently (live traffic). */
@@ -185,7 +187,7 @@ export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: 
     const timer = setInterval(() => {
       const batch = batchRef.current
       if (!batch) return
-      const { ownAltFt, ownLat, ownLon } = ownRef.current
+      const { ownAltFt, ownLat, ownLon, vertFilterFt } = ownRef.current
       const nowS = Date.now() / 1000
       const features: Feature<Point>[] = []
 
@@ -215,6 +217,7 @@ export function useTraffic({ enabled, ownAltFt, ownLat = null, ownLon = null }: 
         const altM     = trafficAltitudeM(s.altM, s.geoAltM)
         const altFt    = altM != null ? altM * 3.281 : null
         const relAltFt = altFt != null && ownAltFt != null ? altFt - ownAltFt : null
+        if (vertFilterFt > 0 && relAltFt != null && Math.abs(relAltFt) > vertFilterFt) continue
         const urg      = urgency(lat, lon, relAltFt, ownLat, ownLon)
 
         features.push({

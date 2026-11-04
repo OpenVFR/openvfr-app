@@ -651,6 +651,7 @@ function MapScreenForCountry() {
   const trafficFC = useTraffic({
     enabled:  layers.traffic && mapReady,
     ownAltFt: positionForAlerts?.altFt ?? null,
+    vertFilterFt: settings.trafficVertFilterFt,
     ownLat:   activePosition?.lat   ?? null,
     ownLon:   activePosition?.lng   ?? null,
   })
@@ -2053,6 +2054,8 @@ function MapScreenForCountry() {
             ceilingFt={settings.airspaceCeilingFt}
             onLayerChange={handleLayerChange}
             onCeilingChange={(ft) => update({ airspaceCeilingFt: ft })}
+            trafficVertFilterFt={settings.trafficVertFilterFt}
+            onTrafficVertFilterChange={(ft) => update({ trafficVertFilterFt: ft })}
             terrainColorRefAltFt={settings.terrainColorRefAltFt}
             onTerrainColorRefAltFtChange={(ft) => update({ terrainColorRefAltFt: ft })}
             inFlight={!!activePosition && activePosition.altFt > 0}

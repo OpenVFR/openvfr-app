@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import { NativeSheet } from './NativeSheet'
 import { AltitudeSlider } from './AltitudeSlider'
+import { TRAFFIC_VERT_FILTER_OPTIONS, type TrafficVertFilter } from '../hooks/useSettings'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
 import { AERODROME_COLORS, NAVAID_COLORS, WAYPOINT_COLORS, OBSTACLE_COLORS } from '@open-vfr/shared/featureColors'
@@ -153,6 +154,8 @@ interface Props {
    *  same pattern as satelliteLocked above. */
   terrainMemoryLocked?: boolean
   onCeilingChange:  (ft: number) => void
+  trafficVertFilterFt: TrafficVertFilter
+  onTrafficVertFilterChange: (ft: TrafficVertFilter) => void
   /** Reference altitude (ft MSL) for the terrain colour-relief bands --
    *  same concept as web's SettingsPanel terrainColoring.refAltFt, now
    *  living alongside the toggle itself instead of a separate settings
@@ -166,6 +169,7 @@ interface Props {
 
 export function MapDisplaySheet({
   layers, ceilingFt, onLayerChange, onCeilingChange,
+  trafficVertFilterFt, onTrafficVertFilterChange,
   terrainColorRefAltFt, onTerrainColorRefAltFtChange, inFlight, satelliteLocked,
   terrainMemoryLocked,
 }: Props) {
@@ -309,6 +313,26 @@ export function MapDisplaySheet({
               <LayerRow key={g.key} label={g.label} color={g.color}
                 on={layers[g.key]} onToggle={() => onLayerChange(g.key, !layers[g.key])} />
             ))}
+            {layers.traffic && (
+              <>
+                <Text style={styles.basemapNote}>Traffic vertical filter (± own altitude)</Text>
+                <View style={styles.basemapRow}>
+                  {TRAFFIC_VERT_FILTER_OPTIONS.map(v => (
+                    <TouchableOpacity
+                      key={v}
+                      style={[styles.basemapBtn, trafficVertFilterFt === v && styles.basemapBtnActive]}
+                      onPress={() => onTrafficVertFilterChange(v)}
+                      accessibilityState={{ selected: trafficVertFilterFt === v }}
+                      testID={`traffic-vert-${v}`}
+                    >
+                      <Text style={[styles.basemapTxt, trafficVertFilterFt === v && styles.basemapTxtActive]}>
+                        {v === 0 ? 'All' : `±${v >= 1000 ? `${v / 1000}k` : v}`}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
 
             <View style={{ height: 16 }} />
           </View>

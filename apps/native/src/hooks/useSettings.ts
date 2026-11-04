@@ -12,11 +12,16 @@ import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
 import { PARK_TIMEOUT_DEFAULT, type ParkTimeoutOption } from '@open-vfr/shared/parkTimeout'
 import { DEFAULT_MSA_MARGINS, type MsaMargins } from '@open-vfr/shared/msaMargins'
 
+/** Hide traffic more than N ft above/below own altitude; 0 = show all. Same options as web. */
+export const TRAFFIC_VERT_FILTER_OPTIONS = [1000, 2000, 3000, 5000, 10000, 0] as const
+export type TrafficVertFilter = (typeof TRAFFIC_VERT_FILTER_OPTIONS)[number]
+
 export type AppSettings = {
   units:        Units
   homeAirfield: string
   selectedAircraftId: string
   airspaceCeilingFt: number
+  trafficVertFilterFt: TrafficVertFilter
   autoZoom:     boolean
   /** Takeoff / landing detection starts / stops flight mode: off, ask (prompt) or auto. */
   autoFlyMode:  AutoFlyMode
@@ -88,6 +93,7 @@ const DEFAULTS: AppSettings = {
   homeAirfield:        '',
   selectedAircraftId:  '',
   airspaceCeilingFt:   9_500,
+  trafficVertFilterFt: 5000,
   autoZoom:            true,
   autoFlyMode:         'ask',
   parkTimeoutSec:      PARK_TIMEOUT_DEFAULT,
