@@ -365,7 +365,8 @@ app.post('/api/poh-extract', async (c) => {
   // nobody a quota, and a slot taken here is always given back in the finally of the stream below.
   const slot = pohGuards.tryAcquire()
   if (!slot.allowed) return pohLimitResponse(c, slot)
-  const charge = pohGuards.charge(session.user.id)
+  const chargedAt = Date.now()
+  const charge = pohGuards.charge(session.user.id, chargedAt)
   if (!charge.allowed) { slot.release(); return pohLimitResponse(c, charge) }
 
   const tmpPath = join(tmpdir(), `poh-${randomUUID()}.pdf`)
@@ -499,6 +500,8 @@ app.post('/api/poh-extract', async (c) => {
         const retryMatch = /retry.?after[:\s]+(\d+)/i.exec(msg)
         const retrySecs = retryMatch?.[1] ? parseInt(retryMatch[1], 10) + 5 : 65
         console.error('[poh-extract] Rate limit (retrySecs=%d):', retrySecs, msg)
+        // Nothing was extracted: do not count it against the user's hourly/daily quota.
+        pohGuards.refund(session.user.id, chargedAt)
         await stream.writeSSE({ data: JSON.stringify({
           error: `POH extraction service is busy. Retry in ${retrySecs} seconds.`,
           retryAfterSeconds: retrySecs,

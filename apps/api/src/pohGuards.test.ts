@@ -131,3 +131,12 @@ test('a large document is over the default limit', () => {
   assert.equal(n, 400)
   assert.ok(n! > cfg().maxPages)
 })
+
+test('refund gives a charge back so it no longer counts', () => {
+  const g = new PohGuards({ hourlyPerUser: 1, dailyPerUser: 5, dailyGlobal: 50, maxConcurrent: 2, maxPages: 250, maxOutputTokens: 16000 })
+  const at = Date.now()
+  assert.equal(g.charge('u', at).allowed, true)
+  assert.equal(g.charge('u', at + 1).allowed, false)
+  g.refund('u', at)
+  assert.equal(g.charge('u', at + 2).allowed, true)
+})

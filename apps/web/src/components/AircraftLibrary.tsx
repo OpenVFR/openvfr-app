@@ -198,6 +198,7 @@ export default function AircraftLibrary({
   // POH import state
   const pohInputRef       = useRef<HTMLInputElement>(null)
   const pohFileRef        = useRef<File | null>(null)
+  const pohRetriesRef     = useRef(0)
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [pohState,     setPohState]     = useState<'idle' | 'extracting' | 'querying' | 'done' | 'error' | 'retrying'>('idle')
   const [pohError,     setPohError]     = useState('')
@@ -286,7 +287,9 @@ export default function AircraftLibrary({
     } catch (err) {
       if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null }
       const msg = err instanceof Error ? err.message : 'POH extraction failed.'
-      if (err instanceof RateLimitError && pohFileRef.current) {
+      if (err instanceof RateLimitError && pohFileRef.current && err.retryAfterSeconds <= 120 && pohRetriesRef.current < 3) {
+        pohRetriesRef.current += 1
+        setPohError(msg)
         // Auto-retry after the server-suggested countdown (per-minute limit only;
         // daily exhaustion does not include retryAfterSeconds and falls through
         // to the error state below).
@@ -315,6 +318,7 @@ export default function AircraftLibrary({
     e.target.value = ''
     if (!file) return
     pohFileRef.current = file
+    pohRetriesRef.current = 0
     await runExtraction(file)
   }
 
@@ -444,7 +448,7 @@ export default function AircraftLibrary({
         <p className={css.pohError}>{pohError}</p>
       )}
       {pohState === 'retrying' && (
-        <p className={css.pohRetrying}>Rate limited — retrying in {pohCountdown}s… (or click ⏱ to pick a new file)</p>
+        <p className={css.pohRetrying}>{pohError || 'Rate limited.'} Retrying in {pohCountdown}s… (or click ⏱ to pick a new file)</p>
       )}
       {pohState === 'done' && (
         <p className={css.pohSuccess}>

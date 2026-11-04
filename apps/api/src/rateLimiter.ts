@@ -69,6 +69,15 @@ export class RateLimiter {
     if (++this.records % SWEEP_EVERY === 0) this.sweep(now)
   }
 
+  /** Undo one hit recorded at exactly `at` (e.g. a charge for work that never ran). No-op if not found. */
+  unrecord(key: string, at: number): void {
+    const ts = this.hits.get(key)
+    if (!ts) return
+    const i = ts.indexOf(at)
+    if (i >= 0) ts.splice(i, 1)
+    if (ts.length === 0) this.hits.delete(key)
+  }
+
   /** check() and, when allowed, record(). */
   take(key: string, now = Date.now(), weight = 1): LimitResult {
     const r = this.check(key, now, weight)

@@ -103,6 +103,12 @@ export class PohGuards {
     return { allowed: true }
   }
 
+  /** Give back a charge(userId, at) when the model refused the work (upstream 429): the user got nothing. */
+  refund(userId: string, at: number): void {
+    this.perUser.unrecord(userId, at)
+    this.global.unrecord(GLOBAL_KEY, at)
+  }
+
   get inFlight(): number {
     return this.running
   }
