@@ -29,7 +29,7 @@ describe('obstacleTipsForMsa', () => {
       () => 200,
     )
     expect(tips.map((t) => t.estimated)).toEqual([true, true, false])
-    expect(tips[0].elevationFt).toBe(Math.round(200 + 135 * FT_PER_M))
+    expect(tips[0].elevationFt).toBe(Math.round(200 + 200 * FT_PER_M))
     expect(tips[1].elevationFt).toBe(Math.round(200 + 91 * FT_PER_M))
     expect(tips[2].elevationFt).toBe(Math.round(200 + 40 * FT_PER_M))
   })

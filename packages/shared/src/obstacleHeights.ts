@@ -9,11 +9,12 @@
  * floor.
  *
  * Estimates are the medians of the known heights in the Swedish data, rounded,
- * with 91 m (300 ft) for generic masts.
+ * with 91 m (300 ft) for generic masts. Wind turbines: 200 m tip (new ones are 230-290 m, but the existing fleet is mixed, from ~100 m up;
+ * the few recorded heights are mostly old, shorter turbines).
  */
 
 export const ESTIMATED_HEIGHT_M: Readonly<Record<string, number>> = {
-  wind_turbine: 135,
+  wind_turbine: 200,
   tower: 91,
   mast: 91,
   chimney: 55,
