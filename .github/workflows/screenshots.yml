@@ -291,12 +291,13 @@ jobs:
     needs: [preflight, android]
     if: ${{ !cancelled() && inputs.platform != 'android' && (inputs.platform == 'ios' || needs.android.result == 'success') }}
     runs-on: xcode-27
-    # ~28 min simulator build + ~45 min capture (three simulators; the iPad
-    # one takes ~5 min to boot and ~14 min to run the flow, the Duo adds a
-    # fold/unfold cycle after every shot). A 60-minute
+    # ~28 min simulator build + ~5 min Duo driver build + ~60 min capture
+    # (three simulators; the iPad one takes ~5 min to boot and ~14 min to run
+    # the flow, the Duo adds a fold/unfold cycle after every shot and may
+    # retry once). Run 41852327356 was cancelled at 90 min in the Duo retry. A 60-minute
     # ceiling once cancelled the job during the artifact upload, after every
     # screenshot had already been taken.
-    timeout-minutes: 90
+    timeout-minutes: 120
     defaults:
       run:
         working-directory: apps/native

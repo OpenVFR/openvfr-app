@@ -116,6 +116,24 @@ if [ "$status" != 0 ] && ! login_failed; then
   # downloading the artifact.
   echo "--- accessibility ids / labels on screen at the failure ---"
   grep -oE '"(accessibilityText|resource-id|text)" *: *"[^"]+"' "$out/debug/hierarchy.json" | sort -u | head -80 || true
+  # Where Maestro thinks the app's own elements are (bounds), to check the
+  # driver's coordinate space on the iPhone Duo against the screenshot.
+  echo "--- bounds of identified elements ---"
+  python3 - "$out/debug/hierarchy.json" <<'PY' || true
+import json, sys
+try:
+    tree = json.load(open(sys.argv[1]))
+except Exception as e:
+    print("unreadable hierarchy:", e); sys.exit(0)
+def walk(n):
+    a = n.get("attributes", {}) if isinstance(n, dict) else {}
+    rid = a.get("resource-id") or ""
+    if rid and not rid.startswith(("cc-", "bolt", "Page", "wifi")):
+        print(f"{rid:32} bounds={a.get('bounds')}")
+    for c in (n.get("children") or []) if isinstance(n, dict) else []:
+        walk(c)
+walk(tree)
+PY
   # iOS simulator: when the hierarchy is SpringBoard (the app is gone), the
   # simulator's own log says why -- crash, jetsam, watchdog, or a launch that
   # never happened. Filtered to our process and SpringBoard's app lifecycle

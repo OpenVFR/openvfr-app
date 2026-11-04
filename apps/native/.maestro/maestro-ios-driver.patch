@@ -104,8 +104,8 @@ diff -ruN orig/maestro-driver-iosUITests/Routes/Handlers/LaunchAppHandler.swift 
          
 diff -ruN orig/maestro-driver-iosUITests/Routes/Handlers/ViewHierarchyHandler.swift new/maestro-driver-iosUITests/Routes/Handlers/ViewHierarchyHandler.swift
 --- a/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/Handlers/ViewHierarchyHandler.swift	2026-11-03 23:07:03.618724132 +0100
-+++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/Handlers/ViewHierarchyHandler.swift	2026-11-04 15:46:34.307306633 +0100
-@@ -94,10 +94,34 @@
++++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/Handlers/ViewHierarchyHandler.swift	2026-11-04 17:34:04.206099639 +0100
+@@ -94,10 +94,37 @@
                  && abs(deviceHeight - appWidth) < 1.0
  
              if isSameAreaDifferentOrientation {
@@ -115,10 +115,13 @@ diff -ruN orig/maestro-driver-iosUITests/Routes/Handlers/ViewHierarchyHandler.sw
 +                // the screen are portrait. Taps at those coordinates land off the
 +                // right edge, in the system rail, and open Control Center (run
 +                // 41832441388). Turn the frames upright: upright x = native y,
-+                // upright y = height - native x. An iPad in landscape reports a
-+                // real orientation (3/4) and keeps the old behaviour.
-+                if deviceWidth < deviceHeight, appWidth > appHeight, DuoGeometry.interfaceOrientation(of: foregroundApp) == 0 {
-+                    NSLog("Rotating app frames upright: app orientation unknown, native \(appWidth)x\(appHeight) on a \(deviceWidth)x\(deviceHeight) screen")
++                // upright y = height - native x. (iPads in landscape hit the same
++                // frame shape; they run Maestro's stock driver, not this one.)
++                // Only the iPhone Duo capture runs this patched driver, so the
++                // orientation value is logged, not required (run 41852327356:
++                // it was not 0 / not readable, and the rotation never ran).
++                if deviceWidth < deviceHeight, appWidth > appHeight {
++                    NSLog("Rotating app frames upright: app interfaceOrientation=\(DuoGeometry.interfaceOrientation(of: foregroundApp)), device orientation=\(XCUIDevice.shared.orientation.rawValue), app frame \(appFrame), native \(appWidth)x\(appHeight) on a \(deviceWidth)x\(deviceHeight) screen")
 +                    let upright = DuoGeometry.rotateUpright(appHierarchy, nativeWidth: appWidth)
 +                    return AXElement(children: [upright, AXElement(children: statusBars), safariWebViewHierarchy].compactMap { $0 })
 +                }
@@ -140,7 +143,7 @@ diff -ruN orig/maestro-driver-iosUITests/Routes/Handlers/ViewHierarchyHandler.sw
              let offsetX = deviceWidth - appWidth
              let offsetY = deviceHeight - appHeight
              let offset = WindowOffset(offsetX: offsetX, offsetY: offsetY)
-@@ -462,3 +486,40 @@
+@@ -462,3 +489,40 @@
          ]
      }
  }
@@ -183,8 +186,8 @@ diff -ruN orig/maestro-driver-iosUITests/Routes/Handlers/ViewHierarchyHandler.sw
 +}
 diff -ruN orig/maestro-driver-iosUITests/Routes/Helpers/ScreenSizeHelper.swift new/maestro-driver-iosUITests/Routes/Helpers/ScreenSizeHelper.swift
 --- a/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/Helpers/ScreenSizeHelper.swift	2026-11-03 23:07:03.618748692 +0100
-+++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/Helpers/ScreenSizeHelper.swift	2026-11-04 15:46:04.113739358 +0100
-@@ -35,7 +35,16 @@
++++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/Helpers/ScreenSizeHelper.swift	2026-11-04 17:34:04.206295768 +0100
+@@ -35,7 +35,15 @@
                  return (Float(size.width), Float(size.height))
              }
  
@@ -194,9 +197,8 @@ diff -ruN orig/maestro-driver-iosUITests/Routes/Helpers/ScreenSizeHelper.swift n
 +            // space (orientation unknown) while the screen is portrait; taps and the
 +            // device size must use the screen's (see ViewHierarchyHandler).
 +            let sb = XCUIApplication(bundleIdentifier: springboardBundleId).frame.size
-+            if width > height, sb.width < sb.height, abs(width - Double(sb.height)) < 1, abs(height - Double(sb.width)) < 1,
-+               DuoGeometry.interfaceOrientation(of: app) == 0 {
-+                NSLog("Screen size: app frame is native landscape \(width)x\(height) with orientation unknown; using SpringBoard's \(sb.width)x\(sb.height)")
++            if width > height, sb.width < sb.height, abs(width - Double(sb.height)) < 1, abs(height - Double(sb.width)) < 1 {
++                NSLog("Screen size: app frame is native landscape \(width)x\(height) (interfaceOrientation=\(DuoGeometry.interfaceOrientation(of: app))); using SpringBoard's \(sb.width)x\(sb.height)")
 +                screenSize = sb
 +            }
              let size = (Float(screenSize.width), Float(screenSize.height))
