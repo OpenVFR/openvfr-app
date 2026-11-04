@@ -1,6 +1,6 @@
 diff -ruN orig/maestro-driver-ios.xcodeproj/project.pbxproj new/maestro-driver-ios.xcodeproj/project.pbxproj
 --- a/maestro-ios-xctest-runner/maestro-driver-ios.xcodeproj/project.pbxproj	2026-11-03 23:07:03.617238021 +0100
-+++ b/maestro-ios-xctest-runner/maestro-driver-ios.xcodeproj/project.pbxproj	2026-11-03 23:07:03.639871276 +0100
++++ b/maestro-ios-xctest-runner/maestro-driver-ios.xcodeproj/project.pbxproj	2026-11-04 09:48:14.220535352 +0100
 @@ -1204,7 +1204,7 @@
  				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
  				GCC_WARN_UNUSED_FUNCTION = YES;
@@ -93,26 +93,29 @@ diff -ruN orig/maestro-driver-ios.xcodeproj/project.pbxproj new/maestro-driver-i
  					"@executable_path/Frameworks",
 diff -ruN orig/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift new/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift
 --- a/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift	2026-11-03 23:07:03.618938278 +0100
-+++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift	2026-11-03 23:07:03.639643776 +0100
-@@ -24,6 +24,17 @@
++++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift	2026-11-04 09:47:55.324759044 +0100
+@@ -24,6 +24,20 @@
          } ?? RunningApp.springboardBundleId
      }
      
-+    /// Bundle id of the app under test, passed by the host through the
-+    /// `TEST_RUNNER_MAESTRO_FOREGROUND_APP` environment variable (xcodebuild strips
-+    /// the prefix). On the iPhone Duo simulator (iOS 27.1) `activeAppsInfo()` can
-+    /// leave the foreground app out while it is running, focal and on screen; the
-+    /// driver then returns SpringBoard's hierarchy and every lookup fails. When set,
-+    /// this app is checked directly as a fallback.
++    /// Bundle id of the app under test, passed by the host through the runner's
++    /// environment (`MAESTRO_FOREGROUND_APP`, set in the .xctestrun or as
++    /// `TEST_RUNNER_MAESTRO_FOREGROUND_APP` to xcodebuild). On the iPhone Duo
++    /// simulator (iOS 27.1) `activeAppsInfo()` leaves the foreground app out, or
++    /// lists it with a state other than `.runningForeground`, while it is running,
++    /// focal and on screen; the driver then returns SpringBoard's hierarchy and
++    /// every lookup fails. When set, this app is used as a fallback whenever it
++    /// is running at all.
 +    static let foregroundAppHint: String? = {
 +        let v = ProcessInfo.processInfo.environment["MAESTRO_FOREGROUND_APP"] ?? ""
++        NSLog("Foreground app hint: \(v.isEmpty ? "(none)" : v)")
 +        return v.isEmpty ? nil : v
 +    }()
 +
      static func getForegroundApp() -> XCUIApplication? {
          let runningAppIds = XCUIApplication.activeAppsInfo().compactMap { $0["bundleId"] as? String }
          
-@@ -34,9 +45,20 @@
+@@ -34,9 +48,23 @@
          // a splash screen). Snapshotting it then throws "Application ... is not running", which callers
          // escalate as a fatal AppCrash. Returning nil instead lets callers fall back to the springboard hierarchy
          // and retry.
@@ -124,21 +127,24 @@ diff -ruN orig/maestro-driver-iosUITests/Routes/XCTest/RunningApp.swift new/maes
 +            .first(where: { $0.state == .runningForeground }) {
 +            return app
 +        }
-+        if let hint = foregroundAppHint, !runningAppIds.contains(hint) {
-+            let app = XCUIApplication(bundleIdentifier: hint)
-+            if app.state == .runningForeground {
-+                NSLog("activeAppsInfo() did not list \(hint) but it is running in the foreground; using it")
-+                return app
-+            }
-+            NSLog("Foreground app hint \(hint) is not in the foreground (state \(app.state.rawValue))")
++        guard let hint = foregroundAppHint else { return nil }
++        let app = XCUIApplication(bundleIdentifier: hint)
++        let state = app.state
++        NSLog("Foreground app fallback: \(hint) listed=\(runningAppIds.contains(hint)) state=\(state.rawValue)")
++        switch state {
++        case .runningForeground, .runningBackground, .runningBackgroundSuspended:
++            // .runningBackground is what the Duo reports for the focal app on the
++            // cover display; snapshotting it works.
++            return app
++        default:
++            return nil
 +        }
-+        return nil
      }
      
  }
 diff -ruN orig/maestro-driver-iosUITests/Routes/XCTestHTTPServer.swift new/maestro-driver-iosUITests/Routes/XCTestHTTPServer.swift
 --- a/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/XCTestHTTPServer.swift	2026-11-03 23:07:03.618944578 +0100
-+++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/XCTestHTTPServer.swift	2026-11-03 23:07:03.639674496 +0100
++++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/Routes/XCTestHTTPServer.swift	2026-11-04 09:48:14.220306053 +0100
 @@ -35,9 +35,25 @@
          
          for route in Route.allCases {
@@ -168,7 +174,7 @@ diff -ruN orig/maestro-driver-iosUITests/Routes/XCTestHTTPServer.swift new/maest
 +}
 diff -ruN orig/maestro-driver-iosUITests/maestro_driver_iosUITests.swift new/maestro-driver-iosUITests/maestro_driver_iosUITests.swift
 --- a/maestro-ios-xctest-runner/maestro-driver-iosUITests/maestro_driver_iosUITests.swift	2026-11-03 23:07:03.619014613 +0100
-+++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/maestro_driver_iosUITests.swift	2026-11-03 23:07:03.639700675 +0100
++++ b/maestro-ios-xctest-runner/maestro-driver-iosUITests/maestro_driver_iosUITests.swift	2026-11-04 09:48:14.220336954 +0100
 @@ -29,11 +29,27 @@
          try await server.start()
      }

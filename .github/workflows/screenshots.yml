@@ -362,6 +362,11 @@ jobs:
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E "error|warning: .*\.swift|BUILD|Build" | tail -30; test "${PIPESTATUS[0]}" = 0
           xctestrun=$(find "$RUNNER_TEMP/maestro-driver/Build/Products" -name '*.xctestrun' | head -n1)
           [ -n "$xctestrun" ] || { echo "::error::no .xctestrun produced"; exit 1; }
+          # The patch's foreground-app fallback reads this from the runner's
+          # environment; pin it in the xctestrun (TEST_RUNNER_* on the xcodebuild
+          # command line did not reach the runner on run 41732640233).
+          /usr/libexec/PlistBuddy -c "Add :maestro-driver-iosUITests:EnvironmentVariables:MAESTRO_FOREGROUND_APP string org.openvfr.app" "$xctestrun"
+          /usr/libexec/PlistBuddy -c "Print :maestro-driver-iosUITests:EnvironmentVariables:MAESTRO_FOREGROUND_APP" "$xctestrun"
           echo "MAESTRO_DUO_XCTESTRUN=$xctestrun" >> "$GITHUB_ENV"
       # macOS runners egress from different IP ranges than ubuntu ones --
       # re-check here instead of trusting the preflight job.
