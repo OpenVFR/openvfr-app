@@ -48,6 +48,7 @@ import { createDemElevation, parseDemSources } from './demElevation'
 import { createWxGrid, parseWxGridSources } from './wxGrid'
 import { RateLimiter, limitFromEnv } from './rateLimiter'
 import { pohUsageLine } from './pohUsage'
+import { PohGuards, pohGuardConfigFromEnv, countPdfPages } from './pohGuards'
 import { BodyTooLarge, readLimitedFormData, looksLikePdf } from './upload'
 import { createWeatherCache, type WxUpstreamResult } from './weatherCache'
 
@@ -284,44 +285,21 @@ async function requireSession(c: import('hono').Context): Promise<{ id: string }
 }
 
 // ---------------------------------------------------------------------------
-// POH extraction rate limiting — each call costs real Azure OpenAI money, so
-// gate behind auth and cap per-user usage. In-memory sliding window is fine
-// for a single-instance server; move to a shared store (Redis, DB) if this
-// server ever scales to multiple instances.
+// POH extraction guards. Every call sends a whole PDF to a paid model in one request, so cost is bounded here and not
+// only by the deployment's capacity: per-user hourly/daily limits, a daily limit over ALL users (sign-up is open),
+// a cap on extractions running at once, a page limit per PDF and a cap on answer tokens. See ./pohGuards.
+// In memory (one api instance); a restart resets the counters.
 // ---------------------------------------------------------------------------
-const POH_HOURLY_LIMIT = Number(process.env['POH_HOURLY_LIMIT'] ?? 5)
-const POH_DAILY_LIMIT   = Number(process.env['POH_DAILY_LIMIT']   ?? 20)
+const pohGuards = new PohGuards(pohGuardConfigFromEnv())
+
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS  = 24 * HOUR_MS
 
-const pohLimiter = new RateLimiter([
-  { windowMs: HOUR_MS, max: POH_HOURLY_LIMIT },
-  { windowMs: DAY_MS,  max: POH_DAILY_LIMIT },
-])
-
-/**
- * `record: false` only checks (cheap early reject before reading the upload);
- * `record: true` checks again and charges one extraction -- called once the
- * upload is validated, so a wrong file type or an oversized upload doesn't
- * use up the user's quota.
- */
-function checkPohRateLimit(userId: string, record: boolean): { allowed: true } | { allowed: false, retryAfterSeconds: number, reason: string } {
-  const r = record ? pohLimiter.take(userId) : pohLimiter.check(userId)
-  if (r.waitS === 0) return { allowed: true }
-  const reason = r.limit?.windowMs === HOUR_MS
-    ? `Hourly limit of ${POH_HOURLY_LIMIT} POH extractions reached.`
-    : `Daily limit of ${POH_DAILY_LIMIT} POH extractions reached.`
-  return { allowed: false, retryAfterSeconds: r.waitS, reason }
-}
-
-function pohLimitResponse(c: import('hono').Context, r: { retryAfterSeconds: number, reason: string }): Response {
+function pohLimitResponse(c: import('hono').Context, r: { status: 429 | 503, retryAfterSeconds: number, reason: string }): Response {
   c.header('Retry-After', String(r.retryAfterSeconds))
-  return c.json(
-    { error: `${r.reason} Try again in ${Math.ceil(r.retryAfterSeconds / 60)} min.`, retryAfterSeconds: r.retryAfterSeconds },
-    429,
-  )
+  const wait = r.retryAfterSeconds >= 120 ? `${Math.ceil(r.retryAfterSeconds / 60)} min` : `${r.retryAfterSeconds} s`
+  return c.json({ error: `${r.reason} Try again in ${wait}.`, retryAfterSeconds: r.retryAfterSeconds }, r.status)
 }
-
 
 app.post('/api/poh-extract', async (c) => {
   if (!openai) {
@@ -338,8 +316,8 @@ app.post('/api/poh-extract', async (c) => {
     return c.json({ error: 'Authentication required.' }, 401)
   }
 
-  const rateCheck = checkPohRateLimit(session.user.id, false)
-  if (!rateCheck.allowed) return pohLimitResponse(c, rateCheck)
+  const early = pohGuards.precheck(session.user.id)
+  if (!early.allowed) return pohLimitResponse(c, early)
 
   // ── Parse multipart body (size-capped while streaming) ─────────────────
   let file: FormDataEntryValue | null
@@ -374,13 +352,24 @@ app.post('/api/poh-extract', async (c) => {
     return c.json({ error: 'Only PDF files are accepted.' }, 400)
   }
 
-  // Charge the quota only now, for a valid upload (re-checked: a parallel
-  // request may have used the last slot meanwhile).
-  const charge = checkPohRateLimit(session.user.id, true)
-  if (!charge.allowed) return pohLimitResponse(c, charge)
+  // Pages bound the size of the model request far better than megabytes do (a scanned manual can be hundreds of pages
+  // in 50 MB). Unknown (null: an unusual encoding) falls back to the size cap above. Not charged.
+  const pages = countPdfPages(bytes)
+  if (pages !== null && pages > pohGuards.config.maxPages) {
+    return c.json({
+      error: `This PDF has ${pages} pages; the limit is ${pohGuards.config.maxPages}. Upload only the pages with limitations, weight and balance, and performance.`,
+    }, 413)
+  }
+
+  // A place among the running extractions first, then the charge (user and global, together): a refusal costs
+  // nobody a quota, and a slot taken here is always given back in the finally of the stream below.
+  const slot = pohGuards.tryAcquire()
+  if (!slot.allowed) return pohLimitResponse(c, slot)
+  const charge = pohGuards.charge(session.user.id)
+  if (!charge.allowed) { slot.release(); return pohLimitResponse(c, charge) }
 
   const tmpPath = join(tmpdir(), `poh-${randomUUID()}.pdf`)
-  writeFileSync(tmpPath, bytes)
+  try { writeFileSync(tmpPath, bytes) } catch (e) { slot.release(); throw e }
   const fileName = file.name
 
   // ── Stream SSE back to client ───────────────────────────────────────────
@@ -410,6 +399,8 @@ app.post('/api/poh-extract', async (c) => {
       // specific error.
       const buildRequest = (withTemperature: boolean) => ({
         model: AZURE_DEPLOYMENT,
+        // The answer is one small JSON object; the cap stops a reasoning model from spending without bound.
+        max_output_tokens: pohGuards.config.maxOutputTokens,
         ...(withTemperature ? { temperature: 0 } : {}),
         input: [
           {
@@ -526,6 +517,7 @@ app.post('/api/poh-extract', async (c) => {
       await stream.writeSSE({ data: JSON.stringify({ error: clientMsg }) })
 
     } finally {
+      slot.release()
       try { unlinkSync(tmpPath) } catch { /* ignore */ }
       if (uploadedFileId) {
         try { await openai!.files.delete(uploadedFileId) } catch { /* ignore */ }

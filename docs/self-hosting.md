@@ -202,7 +202,16 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
     it too. Prefer the build minimum: the version name is not raised with
     every build.
 - `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_KEY` — optional, enables POH
-  PDF auto-fill (`/api/poh-extract`); the app works without it
+  PDF auto-fill (`/api/poh-extract`); the app works without it.
+  `AZURE_OPENAI_DEPLOYMENT` names the model deployment. Each extraction sends
+  the whole PDF to the model in one request and costs real money, so it is
+  guarded: login required, and these limits, all optional positive integers:
+  `POH_DAILY_LIMIT` (5) and `POH_HOURLY_LIMIT` (3) per user,
+  `POH_GLOBAL_DAILY_LIMIT` (50) over all users (sign-up is open, so per-user
+  limits alone do not bound the total), `POH_MAX_CONCURRENT` (2) running at
+  once, `POH_MAX_PAGES` (250) per PDF and `POH_MAX_OUTPUT_TOKENS` (16000) for
+  the answer. The counters are in memory, so a restart resets them. Each
+  extraction writes one log line with its token usage and time.
 - `OPENSKY_CLIENT_ID` / `OPENSKY_CLIENT_SECRET` — optional, enables live
   ADS-B traffic overlay. `OPENSKY_BBOX` (south,west,north,east) sets the
   area.
