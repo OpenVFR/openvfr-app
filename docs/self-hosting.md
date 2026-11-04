@@ -235,8 +235,10 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   `notam.ts` runs a single shared background poller (not a call per user
   request) specifically to respect this; do not add per-request calls to
   NMS-API elsewhere.
-- `BREVO_API_KEY` — optional, enables transactional email for auth OTP
-  codes; without it, OTP codes are logged to the server console (fine for
+- `ACS_CONNECTION_STRING` + `EMAIL_SENDER_ADDRESS` — optional, enable
+  transactional email (Azure Communication Services Email) for auth OTP
+  codes (or `BREVO_API_KEY` + `BREVO_SENDER_EMAIL` for Brevo instead, used
+  when no connection string is set); without either, OTP codes are logged to the server console (fine for
   self-hosted/single-user use)
 - `TILES_BASE_URL` — optional, your public tile host (e.g.
   `https://tiles.example.org`); the admin country detail checks
