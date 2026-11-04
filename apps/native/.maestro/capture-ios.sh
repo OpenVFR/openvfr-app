@@ -79,7 +79,7 @@ run_flow() {
   xcrun simctl terminate "$udid" dev.mobile.maestro-driver-iosUITests.xctrunner 2>/dev/null || true
   # The patched driver's own decisions (NSLog goes to the xcodebuild output).
   echo "--- patched driver: foreground-app decisions (message, count) ---"
-  grep -E "Foreground app hint|Foreground app fallback|Detected running apps|Kept serving|No foreground app found" "$out/debug/patched-driver-xcodebuild.log" \
+  grep -E "Foreground app hint|Foreground app fallback|Detected running apps|Kept serving|No foreground app found|Adjusting view hierarchy|Skipping offset|Snapshot failure|App orientation is" "$out/debug/patched-driver-xcodebuild.log" \
     | sed -E 's/^.*Runner\[[0-9:]+\] //' | sort | uniq -c | sort -rn | head -15 || true
   return "$status"
 }
