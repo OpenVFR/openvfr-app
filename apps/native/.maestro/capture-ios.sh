@@ -17,6 +17,8 @@ set -euo pipefail
 
 app="$1" out_root="$2"
 here="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=duo-lib.sh
+. "$here/duo-lib.sh"
 
 device_type() {
   xcrun simctl list devicetypes -j \
@@ -119,10 +121,9 @@ capture() { # name regex sizes(space separated) [duo]
     # also compiles duoctl's in-simulator helper): a simulator that cannot
     # switch screens fails here, in seconds, instead of mid-flow.
     duoctl state
-    duoctl close
-    duoctl open && { duoctl rotate portrait || true; } && duoctl screenshot "$out/debug/_duo-inner-boot.png"
-    duoctl close
-    duoctl state
+    duo_fold
+    duo_inner_shot "$out/debug/_duo-inner-boot.png"
+    duo_fold
     duoctl screenshot "$out/debug/_duo-cover-boot.png"
   else
     unset DUO_INNER_OUT || true
@@ -140,7 +141,7 @@ capture() { # name regex sizes(space separated) [duo]
     xcrun simctl boot "$udid"
     xcrun simctl bootstatus "$udid" -b
     status_bar "$udid"
-    [ -z "$duo" ] || duoctl close
+    [ -z "$duo" ] || duo_fold
     run_flow "$out" "$udid" "$duo"
   fi
 

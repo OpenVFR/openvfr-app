@@ -17,6 +17,8 @@ set -euo pipefail
 
 out="$1"; shift
 here="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=duo-lib.sh
+. "$here/duo-lib.sh"
 raw="$(mktemp -d)"
 trap 'rm -rf "$raw"' EXIT
 mkdir -p "$out"
@@ -49,10 +51,9 @@ if [ -n "${DUO_INNER_OUT:-}" ]; then
         seen="$seen$n "
         sleep 1                                   # let Maestro finish writing the PNG
         t0=$(date +%s)
-        if duoctl open && { duoctl rotate portrait || echo "::warning::inner display stayed landscape for $n"; } \
-            && sleep 1 && duoctl screenshot "$DUO_INNER_OUT/$n.png"; then :
-        else echo "::warning::inner-display capture of $n failed"; duoctl state || true; fi
-        duoctl close || { echo "::error::could not fold the Duo back: Maestro's next taps will miss"; duoctl state || true; }
+        duo_inner_shot "$DUO_INNER_OUT/$n.png" \
+          || { echo "::warning::inner-display capture of $n failed"; duoctl state || true; }
+        duo_fold || { echo "::error::could not fold the Duo back: Maestro's next taps will miss"; duoctl state || true; }
         sleep 1
         el=$(( $(date +%s) - t0 ))
         echo "duo inner capture of $n took ${el}s (flow pauses 30s)"
