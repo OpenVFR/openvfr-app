@@ -10,14 +10,22 @@
  * coastal waters that stays ~25 NM from Sweden.
  *
  * Extracted, in order of preference:
- *   1. polygons: runs of >= 3 coordinates joined by "-" (closed if needed);
- *      several runs -> MultiPolygon (several areas in one NOTAM);
+ *   1. polygons: a run of >= 3 coordinates joined by "-" / "," that is an
+ *      area (introduced by WITHIN / BOUNDED BY / AREA ..., or closed on its
+ *      first vertex, or ending "point of origin"); a run without either is a
+ *      list of points (obstacles, a route) and stays out. Edges can be arcs
+ *      ("CLOCKWISE ARC RADIUS r CENTRED ON c TO": densified, and dropped
+ *      when the stated radius disagrees with the real distance) and
+ *      "ALONG THE STATE BORDER / COASTLINE TO" links (drawn as straight
+ *      edges for now). Several rings -> MultiPolygon;
  *   2. a single circle: "<r> NM RADIUS OF/CENTRED ON <coord>",
- *      "RADIUS <r> NM CENTRED ON <coord>", "<coord> RADIUS <r> NM", ...;
+ *      "RADIUS <r> NM CENTRED ON <coord>", "<coord> RADIUS <r> NM", ... A
+ *      circle introduced by EXCLUDING / EXCEPT is a cut-out, reported in
+ *      `excluded`, not a second area;
  *   3. a precise point: "PSN <coord>" (obstacles; the Q-line centre is
  *      rounded to whole minutes, ~1 NM).
- * Not handled (Q-line circle stays): arcs, "along the border", lines
- * between two points, areas named only by designator.
+ * Not handled (Q-line circle stays): lines between two points, areas named
+ * only by designator.
  *
  * Every result is sanity-checked against the Q-line circle so a stray
  * coordinate in the text (a reference point, a phone-number-like token)
@@ -86,19 +94,35 @@ function maskCoords(t: string, cs: Coord[]): { masked: string; cs: Coord[] } {
   return { masked, cs: pos }
 }
 
-// Boundary segment along an arc, between two vertices:
+// Boundary segment along an arc, between two vertices. The radius may come
+// before or after the centre, or be missing; "ALONG" is optional:
 //   A ALONG A (COUNTER/ANTI-)CLOCKWISE ARC (RADIUS 8NM WITH CENTRE <c>) TO B
-const ARC = new RegExp(String.raw`ALONG\s+(?:AN?\s+|THE\s+)?(CLOCKWISE|COUNTER[- ]?CLOCKWISE|ANTI[- ]?CLOCKWISE)\s+ARC\s*\(?\s*(?:WITH\s+)?(?:A\s+)?RADIUS\s+(?:OF\s+)?${UNIT}\s*,?\s*(?:WITH\s+)?(?:CENTRE|CENTER|CENTRED ON|CENTERED ON)\s*(?:AT|ON)?\s*${TOK}\s*\)?\s*TO`, 'g')
+//   A - CLOCKWISE ARC OF A CIRCLE CENTRED ON <c> RADIUS 5 NM TO B
+const ARC_DIR = String.raw`(?:ALONG\s+)?(?:AN?\s+|THE\s+)?(CLOCKWISE|COUNTER[- ]?CLOCKWISE|ANTI[- ]?CLOCKWISE)\s+ARC(?:\s+OF\s+(?:A\s+)?CIRCLE)?`
+const ARC_RADIUS = String.raw`(?:WITH\s+)?(?:A\s+)?RADIUS\s+(?:OF\s+)?${UNIT}`
+const ARC_CENTRE = String.raw`(?:WITH\s+)?(?:CENTRE|CENTER|CENTRED|CENTERED)\s*(?:AT|ON)?\s*${TOK}`
+const ARC = new RegExp(
+  // groups: 1 direction | radius first: 2 value, 3 unit, 4 token | centre first: 5 token, 6 value, 7 unit
+  String.raw`${ARC_DIR}\s*\(?\s*(?:${ARC_RADIUS}\s*,?\s*${ARC_CENTRE}|${ARC_CENTRE}\s*,?\s*(?:${ARC_RADIUS})?)\s*\)?\s*TO`,
+  'g',
+)
 
 const BORDER_LINK = /^\s*[-\u2013,]?\s*(?:THEN\s+)?(?:ALONG\s+(?:THE\s+)?)?(?:[A-Z]+\s+)?(?:STATE|NATIONAL|INTERNATIONAL|COUNTRY|FIR)?\s*(?:BORDER|BOUNDARY|BDRY|COASTLINE|COAST)(?:\s+LINE)?(?:\s+OF\s+[A-Z]{1,20})?\s*(?:TO\s+)?(?:POINT\s*)?[-\u2013,]?\s*$/
 
-interface ArcClause { start: number; end: number; clockwise: boolean; lat: number; lon: number }
+interface ArcClause { start: number; end: number; clockwise: boolean; lat: number; lon: number; radiusNm: number | null }
 
 function arcClauses(t: string, cs: Coord[]): ArcClause[] {
   const out: ArcClause[] = []
   for (const m of t.matchAll(ARC)) {
-    const c = cs[Number(m[4])]!
-    out.push({ start: m.index!, end: m.index! + m[0].length, clockwise: m[1] === 'CLOCKWISE', lat: c.lat, lon: c.lon })
+    // Radius first (groups 2-4) or centre first (groups 5-7).
+    const tok = m[4] ?? m[5]
+    const c = cs[Number(tok)]!
+    const [v, u] = m[4] !== undefined ? [m[2], m[3]] : [m[6], m[7]]
+    out.push({
+      start: m.index!, end: m.index! + m[0].length,
+      clockwise: m[1] === 'CLOCKWISE', lat: c.lat, lon: c.lon,
+      radiusNm: v && u ? toNm(v, u) : null,
+    })
   }
   return out
 }
@@ -129,9 +153,12 @@ const AREA_INTENT = /\b(?:WITHIN|WI|BOUNDED\s+BY|ENCLOSED\s+BY|DEFINED\s+BY|LATE
 // After the last vertex: "TO THE POINT OF ORIGIN" closes the ring explicitly.
 const ORIGIN_AFTER = /^\s*[-\u2013,;]?\s*(?:TO\s+(?:THE\s+)?)?(?:POINT\s+OF\s+ORIGIN|ORIGIN|START(?:ING)?\s+POINT)\b/
 
+/** Largest accepted gap between an arc's stated radius and the real distance to its centre. */
+const ARC_RADIUS_TOLERANCE_NM = 1
+
 const sameVertex = (a: Coord, b: Coord) => Math.abs(a.lat - b.lat) < 1e-5 && Math.abs(a.lon - b.lon) < 1e-5
 
-interface Rings { rings: number[][][]; unclosed: number }
+interface Rings { rings: number[][][]; unclosed: number; arcMismatch: boolean; arcs: ArcClause[] }
 
 function polygons(t: string, all: Coord[]): Rings {
   const arcs = arcClauses(t, all)
@@ -139,6 +166,7 @@ function polygons(t: string, all: Coord[]): Rings {
   const cs = all.filter(c => !arcs.some(a => c.start >= a.start && c.end <= a.end))
   const rings: number[][][] = []
   let unclosed = 0
+  let arcMismatch = false
   let ring: number[][] = []
   let vertices = 0
   let first: Coord | null = null
@@ -168,7 +196,11 @@ function polygons(t: string, all: Coord[]): Rings {
       const gap = t.slice(prev.end, c.start)
         .replace(/\([^()]*\)/g, ' ').replace(/\b(?:PSN|POSN|POINT)\b\s*:?/g, ' ')
       const arc = arcs.find(a => a.start >= prev!.end && a.end <= c.start)
-      if (arc && /^\s*$/.test(t.slice(prev.end, arc.start)) && /^\s*$/.test(t.slice(arc.end, c.start))) {
+      if (arc && /^\s*[-\u2013,]?\s*$/.test(t.slice(prev.end, arc.start)) && /^\s*$/.test(t.slice(arc.end, c.start))) {
+        // The stated radius must match the real distance from both ends to
+        // the centre; a miss of more than ~1 NM means a wrong centre (or
+        // radius) and the shape cannot be trusted.
+        if (arc.radiusNm !== null && [prev, c].some(p => Math.abs(distNm(p.lat, p.lon, arc.lat, arc.lon) - arc.radiusNm!) > ARC_RADIUS_TOLERANCE_NM)) arcMismatch = true
         ring.push(...arcPoints(prev, c, arc))
       } else if (/^\s*BACK\s+TO\s*$/.test(gap) && first) {
         ring.push([c.lon, c.lat]); vertices++; prev = c
@@ -193,7 +225,7 @@ function polygons(t: string, all: Coord[]): Rings {
     if (vertices > 1 && sameVertex(first, c)) flush(true)
   }
   flush(false)
-  return { rings, unclosed }
+  return { rings, unclosed, arcMismatch, arcs }
 }
 
 function toNm(value: string, unit: string): number {
@@ -220,6 +252,14 @@ const CIRCLE_COORD_FIRST = new RegExp(String.raw`${TOK}\s*(?:\([^)]{0,80}\))?\s*
 const EXCLUDE_BEFORE = /(?:EXCLUDING|EXCLUDE|EXCEPT(?:ING)?|NOT\s+INCLUDING|EXCL)\W*(?:(?:THE|AN?)\s+)?(?:AREA\s+)?(?:WITHIN\s+)?$/
 
 /** Circles in the text: `main` are areas, `excluded` are cut-outs of them. */
+/** Text with the arc clauses blanked: their radius/centre are not circles. */
+function withoutArcs(t: string, arcs: ArcClause[]): string {
+  let out = ''
+  let at = 0
+  for (const a of arcs) { out += t.slice(at, a.start) + ' ARC '; at = a.end }
+  return out + t.slice(at)
+}
+
 function circles(t: string, cs: Coord[]): { main: TextCircle[]; excluded: TextCircle[] } {
   const main: TextCircle[] = []
   const excluded: TextCircle[] = []
@@ -288,11 +328,15 @@ export function notamTextGeometry(
 
   const found = coords(t)
   const { masked: mt, cs } = maskCoords(t, found)
-  const rings = polygons(mt, cs).rings.filter(r => r.every(([lon, lat]) => inQ(lat!, lon!)))
+  const poly = polygons(mt, cs)
+  // A wrong arc centre/radius: no text geometry at all (the Q-line circle stays),
+  // and the arc's own "RADIUS r CENTRED ON c" must not be read as a circle.
+  if (poly.arcMismatch) return none
+  const rings = poly.rings.filter(r => r.every(([lon, lat]) => inQ(lat!, lon!)))
   if (rings.length === 1) return { ...none, polygon: { type: 'Polygon', coordinates: [rings[0]!] } }
   if (rings.length > 1) return { ...none, polygon: { type: 'MultiPolygon', coordinates: rings.map(r => [r]) } }
 
-  const { main, excluded } = circles(mt, cs)
+  const { main, excluded } = circles(withoutArcs(mt, poly.arcs), cs)
   const cc = main.filter(c => inQ(c.lat, c.lon))
   if (cc.length === 1) return { ...none, circle: cc[0]!, ...(excluded.length ? { excluded } : {}) }
   // Several areas ("AREA 1: 1.45KM RADIUS OF ..., AREA 2: ..."): one polygon each.

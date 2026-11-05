@@ -184,3 +184,32 @@ describe('notamTextGeometry: excluding circles', () => {
     expect(notamTextGeometry('1 NM RADIUS OF 593900N 0175600E AND 2 NM RADIUS OF 594000N 0175700E', null).polygon?.type).toBe('MultiPolygon')
   })
 })
+
+describe('notamTextGeometry: arcs', () => {
+  const arcText = (radius: string, word = 'CLOCKWISE ARC RADIUS') =>
+    `570500N 0120000E - ${word} ${radius} CENTRED ON 570000N 0120000E TO 570000N 0120911E - 565500N 0120911E - 565500N 0120000E - 570500N 0120000E`
+  const ring = (t: string, q: { lat: number; lon: number; radiusNm: number } | null = null) => {
+    const g = notamTextGeometry(t, q)
+    return g.polygon?.type === 'Polygon' ? g.polygon.coordinates[0]! : null
+  }
+  it('fixture 11: clockwise quarter arc without ALONG, radius before the centre', () => {
+    const r = ring(arcText('5 NM'))!
+    expect(r.length).toBeGreaterThan(10)
+    expect(r[0]).toEqual(r[r.length - 1])
+    // arc bulges NE of the chord: some point is ~5 NM from the centre, none is the centre
+    const d = (p: number[]) => Math.hypot((p[1]! - 57), (p[0]! - 12) * Math.cos(57 * Math.PI / 180)) * 60
+    expect(r.slice(1, 9).every(p => Math.abs(d(p) - 5) < 0.2)).toBe(true)
+  })
+  it('fixture 12: stated 8 NM but real 5 NM -> no polygon, Q-line circle stays, no circle at the centre', () => {
+    const g = notamTextGeometry(arcText('8 NM'), { lat: 57.0, lon: 12.1, radiusNm: 8 })
+    expect(g).toEqual({ polygon: null, circle: null, point: null })
+  })
+  it('anti-clockwise, radius after the centre, "OF A CIRCLE"', () => {
+    const t = '570500N 0120000E - ANTICLOCKWISE ARC OF A CIRCLE CENTRED ON 570000N 0120000E RADIUS 5 NM TO 570000N 0115049E - 565500N 0115049E - 565500N 0120000E - 570500N 0120000E'
+    expect(ring(t)!.length).toBeGreaterThan(10)
+    expect(ring(t.replace('RADIUS 5 NM', 'RADIUS 9 NM'))).toBeNull()
+  })
+  it('arc without a stated radius is accepted', () => {
+    expect(ring(arcText('').replace('RADIUS  ', ''))).not.toBeNull()
+  })
+})
