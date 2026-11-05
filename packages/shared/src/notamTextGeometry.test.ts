@@ -213,3 +213,23 @@ describe('notamTextGeometry: arcs', () => {
     expect(ring(arcText('').replace('RADIUS  ', ''))).not.toBeNull()
   })
 })
+
+describe('notamTextGeometry: written-out units', () => {
+  const radius = (t: string) => notamTextGeometry(t, null).circle?.radiusNm
+  it('fixture 2: metres', () => {
+    const g = notamTextGeometry('RADIUS 500 METRES CENTRED ON 593900N 0175600E', null)
+    expect(g.circle?.lat).toBeCloseTo(59.65, 5)
+    expect(g.circle?.lon).toBeCloseTo(17.933333, 5)
+    expect(g.circle?.radiusNm).toBeCloseTo(0.27, 3)
+  })
+  it('fixture 3: nautical miles', () => {
+    expect(radius('WITHIN 3 NAUTICAL MILES RADIUS OF 593900N 0175600E')).toBe(3)
+    expect(radius('RADIUS 1 NAUTICAL MILE CENTRED ON 593900N 0175600E')).toBe(1)
+  })
+  it('kilometres, meters, statute miles', () => {
+    expect(radius('2 KILOMETRES RADIUS OF 593900N 0175600E')).toBeCloseTo(1.08, 2)
+    expect(radius('RADIUS 500 METERS AROUND 593900N 0175600E')).toBeCloseTo(0.27, 3)
+    expect(radius('2 STATUTE MILES RADIUS OF 593900N 0175600E')).toBeCloseTo(1.74, 2)
+    expect(radius('3 SM RADIUS OF 593900N 0175600E')).toBeCloseTo(2.61, 2)
+  })
+})

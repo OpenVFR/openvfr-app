@@ -45,7 +45,10 @@ export interface NotamTextGeometry {
   excluded?: TextCircle[]
 }
 
-const UNIT = String.raw`(\d+(?:[.,]\d+)?)\s?(NM|KM|M)\b`
+// Distance units: NM, NAUTICAL MILE(S), KM, KILOMETRE(S)/KILOMETER(S), M,
+// METRE(S)/METER(S), SM, STATUTE MILE(S). Only ever read next to a RADIUS /
+// AROUND / CENTRED keyword, so a bare "M" is never taken for a distance on its own.
+const UNIT = String.raw`(\d+(?:[.,]\d+)?)\s?(NAUTICAL\s+MILES?|NM|KILOMET(?:RE|ER)S?|KM|STATUTE\s+MILES?|SM|METRES?|METERS?|M)\b`
 // Optional word before a coordinate: PSN, POSN, POSITION, POINT, COORD(INATES), with ":".
 const KW = String.raw`(?:(?:PSN|POSN|POSITION|POINT|COORD(?:INATES)?)\s*:?\s*)?`
 
@@ -230,7 +233,10 @@ function polygons(t: string, all: Coord[]): Rings {
 
 function toNm(value: string, unit: string): number {
   const v = Number(value.replace(',', '.'))
-  return unit === 'NM' ? v : unit === 'KM' ? v / 1.852 : v / 1852
+  if (/^(?:NM|NAUTICAL)/.test(unit)) return v
+  if (/^(?:KM|KILOMET)/.test(unit)) return v / 1.852
+  if (/^(?:SM|STATUTE)/.test(unit)) return (v * 1609.344) / 1852
+  return v / 1852
 }
 
 const CENTRE = String.raw`(?:CENTRED|CENTERED|CENTRE|CENTER)(?:\s+(?:ON|AT))?`
