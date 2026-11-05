@@ -10,7 +10,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import Slider from '@react-native-community/slider'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useContentInsets } from '../hooks/useContentInsets'
 
 import { useSettingsContext } from '../context/SettingsContext'
 import { AIRSPACE_CATEGORIES, resolveAirspaceLevels, type AlertLevel } from '@open-vfr/shared/airspaceAlertLevel'
@@ -53,7 +53,7 @@ import { useEnvironmentSwitch } from '../components/EnvironmentSwitch'
 export function SettingsScreen() {
   const scaledTheme          = useScaledTheme()
   const styles                = useThemedStyles(makeStyles)
-  const insets               = useSafeAreaInsets()
+  const insets               = useContentInsets()
   const navigation           = useNavigation()
   const offline              = useOfflineSummary()
   const { settings, update } = useSettingsContext()

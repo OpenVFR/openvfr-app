@@ -16,7 +16,7 @@ import {
   ActivityIndicator, Keyboard, Platform, useWindowDimensions, Linking,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useContentInsets } from '../hooks/useContentInsets'
 import { shouldAutoSubmitOtp } from '@open-vfr/shared/otpAutoSubmit'
 import { useAuthContext } from '../context/AuthContext'
 import { SITE_BASE } from '../config'
@@ -68,7 +68,7 @@ function useKeyboardHeight(): number {
 
 export function LoginScreen() {
   const styles = useThemedStyles(makeStyles)
-  const insets                           = useSafeAreaInsets()
+  const insets                           = useContentInsets()
   const scaledTheme                      = useScaledTheme()
   const { width, height }                = useWindowDimensions()
   // No scrolling: the form and footer keep their natural (theme-scaled) size and
