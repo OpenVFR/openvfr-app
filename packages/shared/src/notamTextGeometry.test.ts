@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { notamTextGeometry, normalizeNotamText, pointInNotamArea, hasNotamArea } from './notamTextGeometry'
+import { notamTextGeometry, notamAreaQualifier, normalizeNotamText, pointInNotamArea, hasNotamArea } from './notamTextGeometry'
 
 // Real NOTAM texts (NMS-API, AIRAC 2610), line breaks as received.
 const DE_NVG = "MON-THU, DAILY SS+30 - 23:00, EXCEPT GERMAN HOLIDAYS NVG\nTRAINING OF MIL HELICOPTERS WITH LIGHT AMPLIFYING DEVICES DISPLAYING \nNO OR MNM LIGHTING TO AND WI FOLLOWING BALTIC SEA AREA: 545000N010000\n0E-543000N0120000E-545500N0125000E-545500N0142200E-534000N0142200E-54\n2700N0130000E-540000N0105000E-542400N0110700E-541900N0104200E-543200N\n0100000E\n-545000N0100000E ONLY WITHIN GERMAN TERRITORY. AIRSPACE CAT C/D AND \nALL ED-R ARE EXCLUDED."
@@ -162,5 +162,25 @@ describe('notamTextGeometry: rings need area intent or closure', () => {
   })
   it('"point of origin" closes an open run', () => {
     expect(ringsOf('571200N 0120030E - 571800N 0121500E - 570500N 0122000E - TO THE POINT OF ORIGIN')).toHaveLength(1)
+  })
+})
+
+describe('notamTextGeometry: excluding circles', () => {
+  const t = '5 NM RADIUS OF 593900N 0175600E, EXCLUDING 1 NM RADIUS OF 594000N 0175700E'
+  it('fixture 4: one circle, the exclusion is not a second area', () => {
+    const g = notamTextGeometry(t, null)
+    expect(g.polygon).toBeNull()
+    expect(g.circle).toEqual({ lat: expect.closeTo(59.65, 4), lon: expect.closeTo(17.9333, 3), radiusNm: 5 })
+    expect(g.excluded).toHaveLength(1)
+    expect(g.excluded![0]!.radiusNm).toBe(1)
+  })
+  it('EXCEPT / NOT INCLUDING work too, and the area note names the cut-out', () => {
+    for (const w of ['EXCEPT', 'NOT INCLUDING']) {
+      expect(notamTextGeometry(t.replace('EXCLUDING', w), null).circle?.radiusNm).toBe(5)
+    }
+    expect(notamAreaQualifier(t)).toBe('Excluding 1 NM radius around 594000N0175700E')
+  })
+  it('two plain circles are still two areas', () => {
+    expect(notamTextGeometry('1 NM RADIUS OF 593900N 0175600E AND 2 NM RADIUS OF 594000N 0175700E', null).polygon?.type).toBe('MultiPolygon')
   })
 })

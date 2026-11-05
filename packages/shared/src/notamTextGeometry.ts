@@ -24,7 +24,7 @@
  * can never move a NOTAM somewhere unrelated.
  */
 import type { NotamPolygonGeometry } from './notamCoverageArea'
-import { findCoordinates } from './coordinateParse'
+import { findCoordinates, formatCoordinate } from './coordinateParse'
 
 export interface TextCircle { lat: number; lon: number; radiusNm: number }
 export interface TextPoint  { lat: number; lon: number }
@@ -33,6 +33,8 @@ export interface NotamTextGeometry {
   polygon: NotamPolygonGeometry | null
   circle: TextCircle | null
   point: TextPoint | null
+  /** Circles cut out of the area ("EXCLUDING 1 NM RADIUS OF ..."); not drawn as areas. */
+  excluded?: TextCircle[]
 }
 
 const UNIT = String.raw`(\d+(?:[.,]\d+)?)\s?(NM|KM|M)\b`
@@ -213,21 +215,25 @@ const CIRCLE_PATTERNS: RegExp[] = [
 // <c> RADIUS 2NM / PSN <c> WITH A RADIUS OF 500M / PSN <c> RADIUS 0,25NM (coordinate first)
 const CIRCLE_COORD_FIRST = new RegExp(String.raw`${TOK}\s*(?:\([^)]{0,80}\))?\s*,?\s*(?:WITH\s+)?(?:A\s+)?(?:RADIUS|RAD)\s+(?:OF\s+)?(?:UP\s+TO\s+)?${UNIT}`, 'g')
 
-function circles(t: string, cs: Coord[]): TextCircle[] {
-  const out: TextCircle[] = []
+// A circle introduced by one of these is cut out of the area, not a second area:
+// "5 NM RADIUS OF A, EXCLUDING 1 NM RADIUS OF B".
+const EXCLUDE_BEFORE = /(?:EXCLUDING|EXCLUDE|EXCEPT(?:ING)?|NOT\s+INCLUDING|EXCL)\W*(?:(?:THE|AN?)\s+)?(?:AREA\s+)?(?:WITHIN\s+)?$/
+
+/** Circles in the text: `main` are areas, `excluded` are cut-outs of them. */
+function circles(t: string, cs: Coord[]): { main: TextCircle[]; excluded: TextCircle[] } {
+  const main: TextCircle[] = []
+  const excluded: TextCircle[] = []
+  const add = (index: number, c: Coord, radiusNm: number) => {
+    const circle = { lat: c.lat, lon: c.lon, radiusNm }
+    ;(EXCLUDE_BEFORE.test(t.slice(Math.max(0, index - 40), index)) ? excluded : main).push(circle)
+  }
   for (const re of CIRCLE_PATTERNS) {
-    for (const m of t.matchAll(re)) {
-      const c = cs[Number(m[3])]!
-      out.push({ lat: c.lat, lon: c.lon, radiusNm: toNm(m[1]!, m[2]!) })
-    }
+    for (const m of t.matchAll(re)) add(m.index!, cs[Number(m[3])]!, toNm(m[1]!, m[2]!))
   }
-  for (const m of t.matchAll(CIRCLE_COORD_FIRST)) {
-    const c = cs[Number(m[1])]!
-    out.push({ lat: c.lat, lon: c.lon, radiusNm: toNm(m[2]!, m[3]!) })
-  }
-  const uniq = new Map(out.filter(c => plausible(c.lat, c.lon) && c.radiusNm > 0 && c.radiusNm <= 200)
-    .map(c => [`${c.lat.toFixed(4)},${c.lon.toFixed(4)},${c.radiusNm.toFixed(3)}`, c]))
-  return [...uniq.values()]
+  for (const m of t.matchAll(CIRCLE_COORD_FIRST)) add(m.index!, cs[Number(m[1])]!, toNm(m[2]!, m[3]!))
+  const uniq = (list: TextCircle[]) => [...new Map(list.filter(c => plausible(c.lat, c.lon) && c.radiusNm > 0 && c.radiusNm <= 200)
+    .map(c => [`${c.lat.toFixed(4)},${c.lon.toFixed(4)},${c.radiusNm.toFixed(3)}`, c])).values()]
+  return { main: uniq(main), excluded: uniq(excluded) }
 }
 
 const PSN = new RegExp(String.raw`\b(?:PSN|POSN|POSITION)\s*:?\s*${TOK}`, 'g')
@@ -286,8 +292,9 @@ export function notamTextGeometry(
   if (rings.length === 1) return { ...none, polygon: { type: 'Polygon', coordinates: [rings[0]!] } }
   if (rings.length > 1) return { ...none, polygon: { type: 'MultiPolygon', coordinates: rings.map(r => [r]) } }
 
-  const cc = circles(mt, cs).filter(c => inQ(c.lat, c.lon))
-  if (cc.length === 1) return { ...none, circle: cc[0]! }
+  const { main, excluded } = circles(mt, cs)
+  const cc = main.filter(c => inQ(c.lat, c.lon))
+  if (cc.length === 1) return { ...none, circle: cc[0]!, ...(excluded.length ? { excluded } : {}) }
   // Several areas ("AREA 1: 1.45KM RADIUS OF ..., AREA 2: ..."): one polygon each.
   if (cc.length > 1) return { ...none, polygon: { type: 'MultiPolygon', coordinates: cc.map(c => [circleRing(c)]) } }
 
@@ -319,6 +326,13 @@ export function notamAreaQualifier(text: string | null | undefined): string | nu
     const y = i >= 0 ? x.slice(i) : /\b(?:EXCLUDED|EXCEPTED)\b/.test(x) ? x : ''
     if (!y || y.length > 200 || /\d{4,6}[NS]\s*\d{5,7}[EW]/.test(y)) continue
     out.push(y.charAt(0) + y.slice(1).toLowerCase())
+  }
+  // "5 NM RADIUS OF A, EXCLUDING 1 NM RADIUS OF B": only A is drawn; say what is cut out.
+  const t = normalizeNotamText(text)
+  const { masked, cs } = maskCoords(t, coords(t))
+  for (const c of circles(masked, cs).excluded) {
+    const at = formatCoordinate(c.lat, c.lon, { style: 'COMPACT', hemi: 'trailing', lngFirst: false, compactSeconds: true })
+    out.push(`Excluding ${+c.radiusNm.toFixed(2)} NM radius around ${at}`)
   }
   return out.length > 0 ? out.join('. ') : null
 }
