@@ -34,13 +34,21 @@ touch "$raw/.started"
 # shot shows exactly the same app state, after a live fold/unfold resize.
 # duoctl sweeps the hinge (a jump wedges the iOS 27.1 simulator) and waits for
 # the other display to take over, so no fixed sleeps are needed around it; the
-# cover's portrait is the inner display's landscape, hence the rotate.
+# cover's portrait is the inner display's landscape, hence the rotate. The
+# flow waits for the watcher through a localhost handshake (duo-pause.yaml).
 # Enabled by DUO_INNER_OUT=<dir>; DUOCTL_UDID must name the simulator.
 export MAESTRO_DUO="${MAESTRO_DUO:-0}"
 watcher=""
 if [ -n "${DUO_INNER_OUT:-}" ]; then
   export MAESTRO_DUO=1
-  mkdir -p "$DUO_INNER_OUT"
+  mkdir -p "$DUO_INNER_OUT" "$raw/.duo-done"
+  # duo-pause.yaml polls this until the watcher has folded back after the
+  # latest shot (an unfold + rotate + fold took 12 s on one run, 119 s on
+  # another, so no fixed pause fits).
+  { read -r sync_pid; read -r sync_port; } < <(duo_sync_server "$raw" "$raw/.duo-done")
+  [ -n "${sync_port:-}" ] || { echo "::error::Duo sync server did not start"; exit 1; }
+  trap 'kill "$sync_pid" 2>/dev/null || true; rm -rf "$raw"' EXIT
+  export MAESTRO_DUO_SYNC="http://127.0.0.1:$sync_port"
   (
     seen=" "
     while [ ! -e "$raw/.flow-done" ]; do
@@ -55,9 +63,8 @@ if [ -n "${DUO_INNER_OUT:-}" ]; then
           || { echo "::warning::inner-display capture of $n failed"; duoctl state || true; }
         duo_fold || { echo "::error::could not fold the Duo back: Maestro's next taps will miss"; duoctl state || true; }
         sleep 1
-        el=$(( $(date +%s) - t0 ))
-        echo "duo inner capture of $n took ${el}s (flow pauses 30s)"
-        [ "$el" -lt 28 ] || echo "::warning::inner capture of $n took ${el}s, close to the flow's 30 s pause: Maestro may resume while unfolded"
+        touch "$raw/.duo-done/$n"                 # releases duo-pause.yaml
+        echo "duo inner capture of $n took $(( $(date +%s) - t0 ))s"
       done < <(find "$raw" -path '*/takeScreenshot/*' -name '*.png' -print0 2>/dev/null)
       sleep 1
     done
