@@ -18,6 +18,7 @@ import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { applyNotamRelevance, relevantFirPrefixes, relevanceHiddenNote } from '@open-vfr/shared/notamRelevance'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
 import NotamViewControls from './NotamViewControls'
+import NotamBody from './NotamBody'
 import ctlCss from './NotamViewControls.module.css'
 import RegionalNotamsPanel from './RegionalNotamsPanel'
 import { sunriseSunset, fmtSunTime } from '../utils/sunCalc'
@@ -1319,7 +1320,7 @@ export default function AerodromePopup({
                     <span className={css.notamChevron}>{expanded ? '▴' : '▾'}</span>
                   </button>
                   {expanded && (
-                    <pre className={css.notamText}>{notamText(n, textView)}</pre>
+                    <pre className={css.notamText}><NotamBody text={notamText(n, textView)} /></pre>
                   )}
                 </div>
               )

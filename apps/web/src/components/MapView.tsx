@@ -130,6 +130,7 @@ import { useCountries } from '../hooks/useCountries'
 import { usePassivePosition, readLastPosition, geolocationAlreadyGranted } from '../hooks/usePassivePosition'
 import { useNotamVfrOnly } from '../hooks/useNotamPrefs'
 import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
+import { getNotamCoordinateFocus, subscribeNotamCoordinateFocus, clearNotamCoordinateFocus } from '@open-vfr/shared/notamCoordinateFocus'
 import { notamRegionsFor, regionsForIcaos } from '@open-vfr/shared/notamRegionScope'
 import { useNotamWarnings } from '../hooks/useNotamWarnings'
 import { useNotamNotifications } from '../hooks/useNotamNotifications'
@@ -927,6 +928,27 @@ export default function MapView({ auth }: { auth: AuthState }) {
     // level, like gaps in the route's own legOverrides (computeProfile: `?? {}`).
     return pathAheadLegOverrides(aheadPath, legOverrides, here) as LegOverride[]
   }, [aheadPath, legOverrides, chartPos?.altFt, chartPos?.speedKts, selectedAircraftProfile?.cruiseIas])
+
+  // A coordinate tapped in a NOTAM's text: mark it, and bring it into view when
+  // it is off screen. The marker clears itself after a few seconds.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const draw = (f: { lat: number; lng: number } | null) => {
+      const src = map.getSource('notam-coordinate-highlight') as GeoJSONSource | undefined
+      if (!src) return
+      clearTimeout(timer)
+      if (!f) { src.setData({ type: 'FeatureCollection', features: [] }); return }
+      src.setData({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [f.lng, f.lat] }, properties: {} }] })
+      if (!map.getBounds().contains([f.lng, f.lat])) map.easeTo({ center: [f.lng, f.lat], zoom: Math.max(map.getZoom(), 10), duration: 800 })
+      timer = setTimeout(clearNotamCoordinateFocus, 8000)
+    }
+    const current = getNotamCoordinateFocus()
+    if (current) draw(current)
+    const off = subscribeNotamCoordinateFocus(draw)
+    return () => { off(); clearTimeout(timer) }
+  }, [mapReady])
 
   // Update the profile-cursor map marker when the VirtualRadar hover changes.
   useEffect(() => {
@@ -3032,6 +3054,31 @@ export default function MapView({ auth }: { auth: AuthState }) {
           'icon-ignore-placement':   true,
           'icon-size':               0.6,
         },
+      })
+
+      // ── NOTAM coordinate marker ──────────────────────────────────────────────
+      // One point, set when a coordinate in a NOTAM's text is tapped (see
+      // notamCoordinateFocus); cleared after a few seconds.
+      map.addSource('notam-coordinate-highlight', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      })
+      map.addLayer({
+        id: 'notam-coordinate-highlight-ring',
+        type: 'circle',
+        source: 'notam-coordinate-highlight',
+        paint: {
+          'circle-radius': 14,
+          'circle-color': 'rgba(230,73,128,0.18)',
+          'circle-stroke-color': '#e64980',
+          'circle-stroke-width': 3,
+        },
+      })
+      map.addLayer({
+        id: 'notam-coordinate-highlight-dot',
+        type: 'circle',
+        source: 'notam-coordinate-highlight',
+        paint: { 'circle-radius': 3.5, 'circle-color': '#e64980' },
       })
 
       // ── Terrain colour-relief (DEM elevation bands) ──────────────────────────

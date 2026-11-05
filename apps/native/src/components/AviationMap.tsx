@@ -73,6 +73,7 @@ import { useWindGrid } from '../hooks/useWindGrid'
 import { useResilientTileData } from '../hooks/useResilientTileData'
 import { LogManager } from '@maplibre/maplibre-react-native'
 import { createValueStore, useStoreValue, type ValueStore } from '../utils/valueStore'
+import { getNotamCoordinateFocus, subscribeNotamCoordinateFocus, clearNotamCoordinateFocus, type NotamCoordinateFocus } from '@open-vfr/shared/notamCoordinateFocus'
 import { FLOWN_COLOR, FLOWN_GAP_COLOR } from '@open-vfr/shared/radarStyle'
 
 // Suppress the PMTiles header-race transient error at cold start -- same
@@ -830,6 +831,21 @@ function ProfileCursorLayer({ store }: { store: ValueStore<ProfileCursor | null>
           'icon-size':               0.6,
         }}
       />
+    </GeoJSONSource>
+  )
+}
+
+/** Marker for a coordinate tapped in a NOTAM's text (clears itself after a few seconds). */
+function NotamCoordinateLayer({ focus }: { focus: NotamCoordinateFocus | null }) {
+  if (!focus) return null
+  return (
+    <GeoJSONSource id="notam-coordinate-src" data={{ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [focus.lng, focus.lat] } }] }}>
+      <Layer
+        id="notam-coordinate-ring"
+        type="circle"
+        paint={{ 'circle-radius': 14, 'circle-color': '#e64980', 'circle-opacity': 0.2, 'circle-stroke-width': 3, 'circle-stroke-color': '#e64980' }}
+      />
+      <Layer id="notam-coordinate-dot" type="circle" paint={{ 'circle-radius': 3.5, 'circle-color': '#e64980' }} />
     </GeoJSONSource>
   )
 }
@@ -2587,6 +2603,21 @@ export function AviationMap({
     })
   }, [initialCenter, initialZoom])
 
+  // A coordinate tapped in a NOTAM's text: mark it and bring the camera there.
+  const [notamCoordFocus, setNotamCoordFocus] = useState<NotamCoordinateFocus | null>(getNotamCoordinateFocus())
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const onFocus = (f: NotamCoordinateFocus | null) => {
+      clearTimeout(timer)
+      setNotamCoordFocus(f)
+      if (!f) return
+      cameraRef.current?.flyTo({ center: [f.lng, f.lat], zoom: 11, duration: 800 })
+      timer = setTimeout(clearNotamCoordinateFocus, 8000)
+    }
+    const off = subscribeNotamCoordinateFocus(onFocus)
+    return () => { off(); clearTimeout(timer) }
+  }, [])
+
   // Fly to a Find-a-Destination row tap.
   useEffect(() => {
     if (!flyToTarget) return
@@ -3255,6 +3286,7 @@ export function AviationMap({
         />
 
         {profileCursorStore && <ProfileCursorLayer store={profileCursorStore} />}
+        <NotamCoordinateLayer focus={notamCoordFocus} />
 
                 {/* ── Past flight log track (Logs segment "View") ──── */}
         {pastTrack && pastTrack.length > 1 && (

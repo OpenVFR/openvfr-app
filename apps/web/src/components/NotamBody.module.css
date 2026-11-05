@@ -1,0 +1,12 @@
+/* A coordinate inside NOTAM text: reads as text, shows it is tappable. */
+.coord {
+  all: unset;
+  display: inline;
+  cursor: pointer;
+  color: var(--accent-blue-bright);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  white-space: pre-wrap;
+}
+.coord:hover { text-decoration-style: solid; }
+.coord:focus-visible { outline: 2px solid var(--accent-blue-bright); outline-offset: 1px; border-radius: 2px; }

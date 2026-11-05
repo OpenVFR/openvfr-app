@@ -18,6 +18,7 @@ import css from './RegionalNotamsPanel.module.css'
 import { notamStatus } from '@open-vfr/shared/notamValidity'
 import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
+import NotamBody from './NotamBody'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
 
 interface Props {
@@ -137,7 +138,7 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, r
                 {previewText(n.text)}
               </button>
             )}
-            {expanded && <pre className={css.text}>{notamText(n, textView)}</pre>}
+            {expanded && <pre className={css.text}><NotamBody text={notamText(n, textView)} /></pre>}
           </div>
         )
       })}

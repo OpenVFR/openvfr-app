@@ -36,6 +36,7 @@ import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { applyNotamRelevance, relevantFirPrefixes, relevanceHiddenNote } from '@open-vfr/shared/notamRelevance'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
 import NotamViewControls from './NotamViewControls'
+import NotamBody from './NotamBody'
 
 interface Props {
   notams:       NotamItem[]
@@ -128,7 +129,7 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
                 <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}{notamStatus(n).state === 'scheduled' ? ' · off schedule now' : ''}</Text>
               )}
               {!expanded && <Text style={styles.notamPreview} numberOfLines={1}>{previewText(n.text)}</Text>}
-              {expanded && <Text style={[styles.notamText, textView === 'raw' && styles.rawText]}>{notamText(n, textView)}</Text>}
+              {expanded && <Text style={[styles.notamText, textView === 'raw' && styles.rawText]}><NotamBody text={notamText(n, textView)} /></Text>}
             </TouchableOpacity>
           )
         })}
@@ -189,7 +190,7 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
                 {!expanded && (
                   <Text style={styles.otherNotamPreview} numberOfLines={1}>{previewText(n.text)}</Text>
                 )}
-                {expanded && <Text style={[styles.otherNotamText, textView === 'raw' && styles.rawText]}>{notamText(n, textView)}</Text>}
+                {expanded && <Text style={[styles.otherNotamText, textView === 'raw' && styles.rawText]}><NotamBody text={notamText(n, textView)} /></Text>}
               </TouchableOpacity>
             )
           })}

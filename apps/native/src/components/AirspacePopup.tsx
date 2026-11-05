@@ -18,6 +18,7 @@ import { notamTitle } from '@open-vfr/shared/notamQCode'
 import { notamStatus } from '@open-vfr/shared/notamValidity'
 import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
+import NotamBody from './NotamBody'
 import { NativeSheet } from './NativeSheet'
 import NotamViewControls from './NotamViewControls'
 
@@ -470,7 +471,7 @@ export function AirspacePopup({ features, regionalNotams = [], onClose }: Props)
                             {notamTitle(gn)}{gn.effective ? ` · ${fmtNotamDate(gn.effective)}` : ''}{gn.expires ? ` – ${fmtNotamDate(gn.expires)}` : ''}
                           </Text>
                         )}
-                        <Text style={[styles.notamText, textView === 'raw' && { fontFamily: 'monospace' }]}>{notamText(gn, textView)}</Text>
+                        <Text style={[styles.notamText, textView === 'raw' && { fontFamily: 'monospace' }]}><NotamBody text={notamText(gn, textView)} /></Text>
                       </View>
                     ))}
                   </View>

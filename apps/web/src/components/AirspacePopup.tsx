@@ -9,6 +9,7 @@ import { notamStatus, fmtUtcClock } from '@open-vfr/shared/notamValidity'
 import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
 import NotamViewControls from './NotamViewControls'
+import NotamBody from './NotamBody'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -536,7 +537,7 @@ export default function AirspacePopup({ features, regionalNotams = NO_NOTAM_HITS
                               {group.length > 1 && (
                                 <div><strong>{notamTitle(gn)}</strong>{gn.effective && <span> · {fmtNotamDate(gn.effective)}</span>}{gn.expires && <span> – {fmtNotamDate(gn.expires)}</span>}</div>
                               )}
-                              {notamText(gn, textView)}
+                              <NotamBody text={notamText(gn, textView)} />
                             </div>
                           ))}
                         </div>
@@ -624,7 +625,7 @@ export default function AirspacePopup({ features, regionalNotams = NO_NOTAM_HITS
                         <strong>{notamTitle(n)}</strong>
                         {n.effective && <span> · {fmtNotamDate(n.effective)}</span>}
                         {n.expires && <span> – {fmtNotamDate(n.expires)}</span>}
-                        <div style={{ whiteSpace: 'pre-line' }}>{notamText(n, textView)}</div>
+                        <div style={{ whiteSpace: 'pre-line' }}><NotamBody text={notamText(n, textView)} /></div>
                       </div>
                     ))}
                   </div>
