@@ -14,10 +14,11 @@
 import type { NotamItem } from './fetchNotam'
 import { notamTitle } from './notamQCode'
 import { notamAreaQualifier } from './notamTextGeometry'
+import { formatNotamVertical } from './notamVertical'
 
 export type NotamTextView = 'short' | 'full' | 'raw'
 
-type N = Pick<NotamItem, 'id' | 'text' | 'effective' | 'expires'> & Partial<Pick<NotamItem, 'qCode' | 'affectedFir' | 'icao'>>
+type N = Pick<NotamItem, 'id' | 'text' | 'effective' | 'expires'> & Partial<Pick<NotamItem, 'qCode' | 'affectedFir' | 'icao' | 'vertical'>>
 
 /** ISO timestamp -> ICAO B)/C) form "YYMMDDHHMM" (UTC). */
 export function icaoDateTime(iso: string | null | undefined): string | null {
@@ -61,7 +62,11 @@ export function notamShortText(n: N): string {
   // The one-line view drops everything after the first sentence, including
   // what limits the drawn area ("only within German territory", exclusions).
   const limit = notamAreaQualifier(n.text)
-  return limit && !base.toUpperCase().includes(limit.toUpperCase()) ? `${base} [${limit}]` : base
+  const area = limit && !base.toUpperCase().includes(limit.toUpperCase()) ? `${base} [${limit}]` : base
+  // Floor/ceiling read from the text or items F)/G); the Q-line default
+  // ("000/999") says little and stays out of the one-liner.
+  const vertical = n.vertical && n.vertical.source !== 'qline' ? formatNotamVertical(n.vertical) : null
+  return vertical ? `${area} · ${vertical}` : area
 }
 
 export function notamFullText(n: N): string {
@@ -71,7 +76,9 @@ export function notamFullText(n: N): string {
   const to = isPermanent(n.expires) ? 'PERM' : humanUtc(n.expires)
   if (from || to) lines.push(`Valid ${from ?? '—'} – ${to ?? 'until further notice'}${f?.estimated ? ' (EST)' : ''}`)
   if (f?.schedule) lines.push(`Schedule: ${f.schedule}`)
-  if (f?.lowerLimit || f?.upperLimit) lines.push(`Vertical: ${f.lowerLimit ?? '—'} – ${f.upperLimit ?? '—'}`)
+  const vertical = formatNotamVertical(n.vertical)
+  if (vertical) lines.push(`Vertical: ${vertical}${n.vertical!.source === 'qline' ? ' (Q-line)' : ''}`)
+  else if (f?.lowerLimit || f?.upperLimit) lines.push(`Vertical: ${f.lowerLimit ?? '—'} – ${f.upperLimit ?? '—'}`)
   lines.push('')
   lines.push(n.text)
   return lines.join('\n').replace(/^\n+/, '')

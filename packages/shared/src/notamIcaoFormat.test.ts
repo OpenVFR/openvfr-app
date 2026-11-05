@@ -64,3 +64,18 @@ describe('icaoDateTime', () => {
   it('formats UTC YYMMDDHHMM', () => expect(icaoDateTime('2026-01-02T03:04:00Z')).toBe('2601020304'))
   it('invalid', () => expect(icaoDateTime('x')).toBeNull())
 })
+
+describe('vertical limits in the text views', () => {
+  const base = { id: 'A1/26', text: 'CRANE ERECTED.', effective: null, expires: null }
+  const pair = { floor: { ref: 'AGL' as const, ft: 0 }, ceiling: { ref: 'AMSL' as const, ft: 2000 } }
+  it('short view appends limits read from the text, full view has a Vertical line', () => {
+    const n = { ...base, vertical: { source: 'text' as const, pairs: [pair] } }
+    expect(notamShortText(n)).toContain('· GND – 2000 FT AMSL')
+    expect(notamFullText(n)).toContain('Vertical: GND – 2000 FT AMSL')
+  })
+  it('Q-line limits are marked and left out of the short view', () => {
+    const n = { ...base, vertical: { source: 'qline' as const, pairs: [pair] } }
+    expect(notamShortText(n)).not.toContain('GND')
+    expect(notamFullText(n)).toContain('Vertical: GND – 2000 FT AMSL (Q-line)')
+  })
+})

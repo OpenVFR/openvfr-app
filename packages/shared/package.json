@@ -129,7 +129,8 @@
     "./notamRegionScope": "./src/notamRegionScope.ts",
     "./countries": "./src/countries.ts",
     "./countryData": "./src/countryData.ts",
-    "./notamTextGeometry": "./src/notamTextGeometry.ts"
+    "./notamTextGeometry": "./src/notamTextGeometry.ts",
+    "./notamVertical": "./src/notamVertical.ts"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.16",

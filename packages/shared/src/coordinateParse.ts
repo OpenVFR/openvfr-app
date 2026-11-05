@@ -51,20 +51,20 @@ function parseAxis(tokens: string[], maxDeg: number): AxisValue | null {
 
   // Only the last component may carry a fractional part.
   for (let i = 0; i < tokens.length - 1; i++) {
-    if (tokens[i].includes('.')) return null
+    if (tokens[i]!.includes('.')) return null
   }
 
   if (tokens.length === 1) {
-    const intPart = tokens[0].split('.')[0]
+    const intPart = tokens[0]!.split('.')[0]!
     // Degrees never need 4+ integer digits, so that's the compact form.
-    if (intPart.length >= 4) return parseCompact(tokens[0], maxDeg)
-    const v = parseFloat(tokens[0])
+    if (intPart.length >= 4) return parseCompact(tokens[0]!, maxDeg)
+    const v = parseFloat(tokens[0]!)
     return v <= maxDeg ? { value: v, style: 'DD' } : null
   }
 
-  const deg = parseInt(tokens[0], 10)
-  const min = parseFloat(tokens[1])
-  const sec = tokens.length === 3 ? parseFloat(tokens[2]) : 0
+  const deg = parseInt(tokens[0]!, 10)
+  const min = parseFloat(tokens[1]!)
+  const sec = tokens.length === 3 ? parseFloat(tokens[2]!) : 0
   if (min >= 60 || sec >= 60) return null
   const value = deg + min / 60 + sec / 3600
   if (value > maxDeg) return null
@@ -74,7 +74,8 @@ function parseAxis(tokens: string[], maxDeg: number): AxisValue | null {
 /** DDMM[.m] / DDMMSS[.s] (lat) or DDDMM[.m] / DDDMMSS[.s] (lon). */
 function parseCompact(token: string, maxDeg: number): AxisValue | null {
   const degDigits = maxDeg === 90 ? 2 : 3
-  const [intPart, frac] = token.split('.')
+  const [intPartRaw, frac] = token.split('.')
+  const intPart = intPartRaw!
   const rest = intPart.length - degDigits
   if (rest !== 2 && rest !== 4) return null
   const fracStr = frac ? `.${frac}` : ''
@@ -118,7 +119,7 @@ export function parseCoordinate(input: string): ParsedCoordinate | null {
   if (letterIdx.length !== 2) return null
   if (tokens.some(t => t.includes('-'))) return null // letters OR signs, not both
 
-  const [a, b] = letterIdx
+  const a = letterIdx[0]!, b = letterIdx[1]!
   let g1: string[]
   let g2: string[]
   let hemi: 'leading' | 'trailing'
@@ -134,8 +135,8 @@ export function parseCoordinate(input: string): ParsedCoordinate | null {
     return null
   }
 
-  const l1 = tokens[a]
-  const l2 = tokens[b]
+  const l1 = tokens[a]!
+  const l2 = tokens[b]!
   const isLat = (l: string) => l === 'N' || l === 'S'
   if (isLat(l1) === isLat(l2)) return null
 
@@ -162,8 +163,9 @@ function parseSigned(tokens: string[]): ParsedCoordinate | null {
   if (tokens.length % 2 !== 0) return null
   const half = tokens.length / 2
   const split = (g: string[]): { neg: boolean; toks: string[] } | null => {
-    const neg = g[0].startsWith('-')
-    const toks = [neg ? g[0].slice(1) : g[0], ...g.slice(1)]
+    const g0 = g[0]!
+    const neg = g0.startsWith('-')
+    const toks = [neg ? g0.slice(1) : g0, ...g.slice(1)]
     if (toks.some(t => t.includes('-'))) return null
     return { neg, toks }
   }

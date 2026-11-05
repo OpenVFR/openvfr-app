@@ -4,6 +4,7 @@
  */
 
 import { fetchWithRetry } from './fetchWithRetry'
+import type { NotamVertical } from './notamVertical'
 
 export type NotamPolygonGeometry =
   | { type: 'Polygon'; coordinates: number[][][] }
@@ -66,6 +67,9 @@ export interface NotamItem {
   // cross-border military exercise areas. Takes priority over lat/lon/
   // radiusNm below when both would otherwise apply.
   polygon: NotamPolygonGeometry | null
+  // Vertical limits, one floor/ceiling pair per drawn area -- see
+  // notamVertical.ts. Optional: older API deployments predate it.
+  vertical?: NotamVertical | null
   // Geo fields (see apps/api/src/notam.ts) -- present only when NMS-API
   // supplied a coordinates+radius pair, used to render an ad-hoc circle for
   // NOTAMs without a corresponding charted airspace polygon.

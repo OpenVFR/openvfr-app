@@ -88,6 +88,7 @@ import { gunzipSync } from 'node:zlib'
 import { notamInRegions, regionScope, type RegionScopeInput } from '@open-vfr/shared/notamRegionScope'
 import { EUROPEAN_REGIONS } from '@open-vfr/shared/regions'
 import { notamTextGeometry } from '@open-vfr/shared/notamTextGeometry'
+import { notamVertical, type NotamVertical } from '@open-vfr/shared/notamVertical'
 import { prepareOutline, type PreparedOutline } from '@open-vfr/shared/notamCoverageArea'
 import countryOutlinesJson from './country-outlines.json' with { type: 'json' }
 
@@ -171,6 +172,11 @@ export interface NotamItem {
   // Q-line point). Mutually exclusive with lat/lon/radiusNm below (polygon
   // wins, see geometryOf()). null for point/circle/textual-only NOTAMs.
   polygon: NotamPolygonGeometry | null
+  // Vertical limits as typed values, one floor/ceiling pair per drawn area:
+  // items F)/G), else "VERTICAL LIMITS:" sections of the text (only when
+  // their number equals the number of areas), else the Q-line flight levels.
+  // See @open-vfr/shared/notamVertical. null when none could be read.
+  vertical: NotamVertical | null
   // Geo fields: a circle or position stated in the text when there is one,
   // else the Q-line coordinates+radius (DMS like "5939N01756E" + NM) -- used to
   // render an ad-hoc circle for NOTAMs that don't correspond to a charted
@@ -286,6 +292,7 @@ interface NotamGeometry {
   lon:       number | null
   radiusNm:  number | null
   qRadiusNm: number | null
+  vertical:  NotamVertical | null
 }
 
 // Parse every cached record's text geometry off the request path (after
@@ -339,7 +346,7 @@ function geometryOf(n: NmsNotam): NotamGeometry {
   const areaSubject = !qc || ((qc[1] === 'R' || qc[1] === 'W') && !NOT_IN_FORCE.has(qc.slice(3, 5)))
   const qArea = radiusGiven && !bogus && areaSubject
 
-  let out: NotamGeometry
+  let out: Omit<NotamGeometry, 'vertical'>
   const polygon = extractNotamPolygon(n.geometry)
   if (polygon) {
     out = { polygon, lat: null, lon: null, radiusNm: null, qRadiusNm }
@@ -356,8 +363,12 @@ function geometryOf(n: NmsNotam): NotamGeometry {
       qRadiusNm,
     }
   }
-  _geometryMemo.set(n, out)
-  return out
+  // One vertical pair per drawn area: a ring per polygon part, else one.
+  const areas = out.polygon ? (out.polygon.type === 'Polygon' ? 1 : out.polygon.coordinates.length) : 1
+  const full: NotamGeometry = { ...out, vertical: notamVertical({ text: n.text ?? '', icao: icaoFieldsFor(n) }, areas) }
+  out = full
+  _geometryMemo.set(n, full)
+  return full
 }
 
 function inIngestScope(n: NmsNotam): boolean {
@@ -1016,6 +1027,7 @@ function activeItems(raw: Iterable<NmsNotam>): NotamItem[] {
       firWide:        !polygon && radiusGiven && radiusNm >= 999,
       icao:           icaoFieldsFor(n),
       polygon,
+      vertical:       g.vertical,
       // Polygon (from the text, or NMS) wins over point/circle; a text
       // circle/position wins over the Q-line envelope -- see geometryOf().
       lat:            g.lat,
