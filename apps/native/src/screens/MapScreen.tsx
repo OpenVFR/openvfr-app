@@ -10,7 +10,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { View, TouchableOpacity, Text, Alert, TextInput, ScrollView, useWindowDimensions, Linking } from 'react-native'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useContentInsets } from '../hooks/useContentInsets'
 import * as KeepAwake from 'expo-keep-awake'
 import type { Feature, FeatureCollection, Point } from 'geojson'
 
@@ -240,7 +240,7 @@ export function MapScreen() {
 function MapScreenForCountry() {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
-  const insets                                = useSafeAreaInsets()
+  const insets                                = useContentInsets()
   const { width: windowWidth, height: windowHeight } = useWindowDimensions()
   const { simStatus, simPosition, startUdp, startWs, stopSim } = useSimContext()
   // Internal touch-controlled flight simulation (useSimFlight) — distinct
@@ -522,10 +522,12 @@ function MapScreenForCountry() {
   // whenever the bottom stack (profile/gauges) changed size.
   const topRightTopOffset = insets.top + scaledTheme.space2
   // Absolutely positioned overlays are placed from the container's edge, not
-  // inside its safe-area padding, so add the side insets themselves (the
-  // iPhone Duo cover's system rail on the right; notches in landscape).
+  // inside its safe-area padding, so add the side insets themselves (notches
+  // in landscape). The top-right buttons sit in the clock's row, so they also
+  // keep clear of the iPhone Duo cover's rail, which the map runs under
+  // (useContentInsets).
   const edgeLeft  = insets.left + scaledTheme.space2
-  const edgeRight = insets.right + scaledTheme.space2
+  const edgeRight = insets.right + insets.railRight + scaledTheme.space2
   // Portrait: cap how far the column can grow down so it never reaches the
   // profile/gauges stack at the true screen bottom; scrolls if it would.
   const topRightBottomOffset = bottomStackH + 8 + 24 + scaledTheme.space2

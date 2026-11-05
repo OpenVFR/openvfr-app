@@ -18,7 +18,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { AppIcon } from '../components/AppIcon'
 import { SponsorLogo } from '../components/SponsorLogo'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useContentInsets } from '../hooks/useContentInsets'
 import { SPONSOR } from '@open-vfr/shared/sponsor'
 import { shouldAutoSubmitOtp } from '@open-vfr/shared/otpAutoSubmit'
 import { useAuthContext } from '../context/AuthContext'
@@ -76,7 +76,7 @@ function useKeyboardHeight(): number {
 
 export function LoginScreen() {
   const styles = useThemedStyles(makeStyles)
-  const insets                           = useSafeAreaInsets()
+  const insets                           = useContentInsets()
   const scaledTheme                      = useScaledTheme()
   const { width, height }                = useWindowDimensions()
   // No scrolling: the form and footer keep their natural (theme-scaled) size and

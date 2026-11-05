@@ -7,7 +7,7 @@
 import React, { useState, useCallback } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useContentInsets } from '../hooks/useContentInsets'
 
 import { TILE_BASE } from '../config'
 import { refreshTileManifest } from '@open-vfr/shared/tileManifest'
@@ -36,7 +36,7 @@ export function useOfflineSummary(): { value: string; outdated: boolean } {
 
 export function OfflineDataScreen() {
   const styles = useThemedStyles(makeStyles)
-  const insets = useSafeAreaInsets()
+  const insets = useContentInsets()
   return (
     <ScrollView
       style={styles.container}

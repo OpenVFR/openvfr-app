@@ -26,7 +26,7 @@ import { coordinateAlongRouteNm } from '@open-vfr/shared/virtualRadarCalc'
 import { mergeCandidates, mergeLogs } from '@open-vfr/shared/flightLogRoute'
 import { logEndAerodromes, normalizeLogPlace, LOG_PLACE_MAX_CHARS } from '@open-vfr/shared/flightLogAerodromes'
 import { getAerodromes } from '../hooks/useNearbyFrequencies'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useContentInsets } from '../hooks/useContentInsets'
 import { useNavigation } from '@react-navigation/native'
 import { AppIcon, type AppIconName } from '../components/AppIcon'
 import { ClearableTextInput } from '../components/ClearableTextInput'
@@ -136,7 +136,7 @@ function logInfo(log: LogLike): { stats: LogStats | null; summary: string } {
 export function PlanScreen() {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
-  const insets = useSafeAreaInsets()
+  const insets = useContentInsets()
   const { waypoints, legOverrides, addWaypoint, insertWaypoint, removeWaypoint, clearRoute, setWaypoints, moveWaypoint, reverseRoute, setLegOverride, activeRouteId, setActiveRouteId } = useRouteContext()
   const { settings, update } = useSettingsContext()
   const routeWx = useWeatherAlongRoute(waypoints)
