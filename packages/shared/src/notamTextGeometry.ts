@@ -119,23 +119,46 @@ function arcPoints(a: Coord, b: Coord, c: ArcClause): number[][] {
   return pts
 }
 
-function polygons(t: string, all: Coord[]): number[][][] {
+// An open run of vertices is a ring only after one of these ("WITHIN <c> - <c> - <c>",
+// "AREA: ...", "BOUNDED BY ...", "LATERAL LIMITS ...", "THE FOLLOWING POINTS ...").
+// Without one -- or a closing vertex -- a coordinate list is a list of points
+// (an obstacle list, a route), not an area.
+const AREA_INTENT = /\b(?:WITHIN|WI|BOUNDED\s+BY|ENCLOSED\s+BY|DEFINED\s+BY|LATERAL\s+LIMITS?|AREA|(?:THE\s+)?FOLLOWING\s+(?:POINTS|COORDINATES)|AS\s+FOLLOWS?)\b/
+// After the last vertex: "TO THE POINT OF ORIGIN" closes the ring explicitly.
+const ORIGIN_AFTER = /^\s*[-\u2013,;]?\s*(?:TO\s+(?:THE\s+)?)?(?:POINT\s+OF\s+ORIGIN|ORIGIN|START(?:ING)?\s+POINT)\b/
+
+const sameVertex = (a: Coord, b: Coord) => Math.abs(a.lat - b.lat) < 1e-5 && Math.abs(a.lon - b.lon) < 1e-5
+
+interface Rings { rings: number[][][]; unclosed: number }
+
+function polygons(t: string, all: Coord[]): Rings {
   const arcs = arcClauses(t, all)
   // An arc's centre is not a boundary vertex.
   const cs = all.filter(c => !arcs.some(a => c.start >= a.start && c.end <= a.end))
   const rings: number[][][] = []
+  let unclosed = 0
   let ring: number[][] = []
   let vertices = 0
   let first: Coord | null = null
   let prev: Coord | null = null
-  const flush = () => {
-    if (vertices >= 3 && ring.length >= 3) {
-      const [f, l] = [ring[0]!, ring[ring.length - 1]!]
-      if (f[0] !== l[0] || f[1] !== l[1]) ring.push([f[0]!, f[1]!])
-      rings.push(ring)
+  let before = 0 // end of the coordinate before the run's first one
+  let intent = false
+  const flush = (closed: boolean) => {
+    // Distinct vertices: a closing repeat of the first does not count.
+    const distinct = closed ? vertices - 1 : vertices
+    if (distinct >= 3 && ring.length >= 3) {
+      const open = !closed && !intent && !(prev && ORIGIN_AFTER.test(t.slice(prev.end, prev.end + 60)))
+      if (open) {
+        unclosed++
+      } else {
+        const [f, l] = [ring[0]!, ring[ring.length - 1]!]
+        if (f[0] !== l[0] || f[1] !== l[1]) ring.push([f[0]!, f[1]!])
+        rings.push(ring)
+      }
     }
     ring = []; vertices = 0; first = null; prev = null
   }
+  let lastEnd = 0
   for (const c of cs) {
     if (prev) {
       // Commentary between vertices -- "(0.7NM E MESTO ...)" reference
@@ -146,21 +169,29 @@ function polygons(t: string, all: Coord[]): number[][][] {
       if (arc && /^\s*$/.test(t.slice(prev.end, arc.start)) && /^\s*$/.test(t.slice(arc.end, c.start))) {
         ring.push(...arcPoints(prev, c, arc))
       } else if (/^\s*BACK\s+TO\s*$/.test(gap) && first) {
-        ring.push([c.lon, c.lat]); prev = c
-        flush(); continue // closed explicitly
+        ring.push([c.lon, c.lat]); vertices++; prev = c
+        flush(true); lastEnd = c.end; continue // closed explicitly
       } else if (!/^\s*[-\u2013,;]?\s*(?:\d{1,2}\s*[.):]\s*)?$/.test(gap) && !BORDER_LINK.test(gap)) {
         // continues on "-", ",", whitespace, numbered lists ("1. c 2. c")
         // and "STATE BORDER" / "ALONG THE COASTLINE TO" links (drawn
         // straight -- coarser than the real border, still the right area)
-        flush()
+        flush(false)
       }
     }
-    if (!first) first = c
+    if (!first) {
+      first = c
+      before = lastEnd
+      intent = AREA_INTENT.test(t.slice(Math.max(before, c.start - 80), c.start))
+    }
     ring.push([c.lon, c.lat]); vertices++
     prev = c
+    lastEnd = c.end
+    // Back on the first vertex: this ring is done, even when only dashes
+    // separate it from the next one.
+    if (vertices > 1 && sameVertex(first, c)) flush(true)
   }
-  flush()
-  return rings
+  flush(false)
+  return { rings, unclosed }
 }
 
 function toNm(value: string, unit: string): number {
@@ -251,7 +282,7 @@ export function notamTextGeometry(
 
   const found = coords(t)
   const { masked: mt, cs } = maskCoords(t, found)
-  const rings = polygons(mt, cs).filter(r => r.every(([lon, lat]) => inQ(lat!, lon!)))
+  const rings = polygons(mt, cs).rings.filter(r => r.every(([lon, lat]) => inQ(lat!, lon!)))
   if (rings.length === 1) return { ...none, polygon: { type: 'Polygon', coordinates: [rings[0]!] } }
   if (rings.length > 1) return { ...none, polygon: { type: 'MultiPolygon', coordinates: rings.map(r => [r]) } }
 

@@ -45,7 +45,7 @@ const EXPECTED_SHAPE: Record<string, string> = {
   'C3521/26': 'polygon:33',
   'X8933/26': 'multi:11+10',
   'D7011/26': 'multi:7+13+13',
-  'D5173/26': 'multi:3+3',    // KNOWN LIMITATION: banner-towing ROUTES (A -> coast -> B), drawn as degenerate polygons
+  'D5173/26': 'none',        // banner-towing ROUTES (A -> coast -> B -> A): 2 distinct vertices are a line, not an area; Q-line circle stays
   'F2450/26': 'point',
   'D7523/26': 'point',        // "0205330.39N" (N for E) is read as E
   'E0075/26': 'point',        // western longitude

@@ -136,3 +136,31 @@ describe('notamTextGeometry: one coordinate scanner', () => {
     expect(notamTextGeometry('CRANE PSN 780000N 0150000E', null).point?.lat).toBeCloseTo(78, 5)
   })
 })
+
+describe('notamTextGeometry: rings need area intent or closure', () => {
+  const ringsOf = (t: string) => {
+    const g = notamTextGeometry(t, null)
+    return g.polygon ? (g.polygon.type === 'Polygon' ? [g.polygon.coordinates[0]!] : g.polygon.coordinates.map(p => p[0]!)) : []
+  }
+  it('fixture 1: bounded area, closed on its first vertex', () => {
+    const r = ringsOf('AREA BOUNDED BY 593922N 0175612E - 594100N 0180000E - 593700N 0180100E - 593922N 0175612E')
+    expect(r).toHaveLength(1)
+    expect(r[0]).toHaveLength(4)
+  })
+  it('fixture 5: an obstacle list is not a polygon', () => {
+    const g = notamTextGeometry('OBST 551234N 0141234E, 551300N 0141300E, 551400N 0141400E ERECTED', null)
+    expect(g.polygon).toBeNull()
+  })
+  it('fixture 14: two rings joined only by dashes', () => {
+    const r = ringsOf('5712N 01200E - 5718N 01215E - 5705N 01220E - 5712N 01200E - 5800N 01300E - 5810N 01310E - 5805N 01320E - 5800N 01300E')
+    expect(r.map(x => x.length)).toEqual([4, 4])
+  })
+  it('fixture 15: open run after WITHIN is a ring, without area word it is not', () => {
+    const c = '571200N 0120030E - 571800N 0121500E - 570500N 0122000E'
+    expect(ringsOf(`WITHIN ${c}`)).toHaveLength(1)
+    expect(ringsOf(c)).toHaveLength(0)
+  })
+  it('"point of origin" closes an open run', () => {
+    expect(ringsOf('571200N 0120030E - 571800N 0121500E - 570500N 0122000E - TO THE POINT OF ORIGIN')).toHaveLength(1)
+  })
+})
