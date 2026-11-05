@@ -534,10 +534,13 @@ function MapScreenForCountry() {
   // Prefer the measured height of the map area (flex:1, i.e. exactly the space
   // above the profile/gauges stack) over the constant-based estimate, which
   // over-reserved ~120dp and clipped Flight Mode / Locate off the column.
+  // On the iPhone Duo cover the info pill and compass (bottom right) move left
+  // of the rail, under this column: end the column above them.
+  const cornerReserve = insets.railRight > 0 ? 8 + 32 + (flyingActive ? 8 + 44 : 0) : 0
   const topRightMaxHeight = Math.max(
     120,
     mapAreaH != null
-      ? mapAreaH - scaledTheme.space2 * 2
+      ? mapAreaH - scaledTheme.space2 * 2 - cornerReserve
       : windowHeight - topRightTopOffset - topRightBottomOffset,
   )
   // Landscape has width to spare but not height -- lay the same controls
@@ -1854,6 +1857,7 @@ function MapScreenForCountry() {
           onMapReady={handleMapReady}
           bleedTop={insets.top}
           bleedBottom={bottomStackPresent ? 0 : insets.bottom}
+          overlayRight={insets.railRight}
         />
 
         {snapPicker && (
@@ -1977,6 +1981,7 @@ function MapScreenForCountry() {
           onDismissPlanning={dismissPlanningNotice}
           // Below the route edit banner and the route hint pill (top left).
           topInset={(editBannerShown ? EDIT_BANNER_H : 0) + (routeHint ? ROUTE_HINT_H : 0)}
+          rightInset={insets.railRight}
         />
 
         {/* Viewed flight log banner — Logs segment "View" action on PlanScreen */}

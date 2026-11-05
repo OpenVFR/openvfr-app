@@ -362,6 +362,9 @@ export type AviationMapProps = {
    *  (compass, info bar) are moved clear of those areas. */
   bleedTop?: number
   bleedBottom?: number
+  /** Keeps the info bar and compass this far from the right edge (the iPhone
+   *  Duo cover's rail, which the map itself runs under). */
+  overlayRight?: number
   /** Pan/zoom the camera to a point — e.g. Find-a-Destination panel's row
    *  tap. `nonce` must change on every request (even repeat taps on the
    *  same aerodrome) since [lat,lng] alone wouldn't re-trigger the effect. */
@@ -1952,6 +1955,7 @@ export const AviationMap = React.memo(function AviationMap({
   onMapReady,
   bleedTop = 0,
   bleedBottom = 0,
+  overlayRight = 0,
   flyToTarget,
 }: AviationMapProps) {
   const cameraRef   = useRef<CameraRef>(null)
@@ -4006,6 +4010,7 @@ export const AviationMap = React.memo(function AviationMap({
       <MapInfoBar
         ref={infoBarRef}
         bottomOffset={bleedBottom}
+        rightOffset={overlayRight}
         above={mapCornerSlot}
         ceilingFt={airspaceCeilingFt}
         windLabel={showWind ? windLabel : undefined}

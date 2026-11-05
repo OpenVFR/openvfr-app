@@ -758,7 +758,7 @@ export function PlanScreen() {
       </NativeSheet>
 
       {/* Segmented sub-nav */}
-      <View style={styles.segmentRow}>
+      <View style={[styles.segmentRow, { paddingRight: insets.railRight }]}>
         {SEGMENTS.map(s => (
           <TouchableOpacity
             key={s.key}

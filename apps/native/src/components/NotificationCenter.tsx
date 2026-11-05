@@ -137,6 +137,9 @@ interface Props {
   /** Extra space to leave at the top (the route edit banner and route hint
    *  sit there), so neither covers the other. */
   topInset?:             number
+  /** Extra space to leave at the right edge (the iPhone Duo cover's rail,
+   *  which the map runs under while the control column keeps clear of it). */
+  rightInset?:           number
 }
 
 const AUTO_DISMISS_MS = 30_000
@@ -148,7 +151,7 @@ export function NotificationCenter({
   airfieldAlerts, onDismissAirfield,
   airspaceNotifications, ceilingMsg,
   reminderNote, onDismissReminder,
-  planningNotice, onDismissPlanning, topInset = 0,
+  planningNotice, onDismissPlanning, topInset = 0, rightInset = 0,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const scaledTheme = useScaledTheme()
@@ -168,8 +171,8 @@ export function NotificationCenter({
   // never hidden underneath them.
   const { width: winW, height: winH } = useWindowDimensions()
   const controlsInset = winW > winH
-    ? { top: CONTROLS_SIZE + 24 + topInset }
-    : { right: CONTROLS_SIZE + 24, top: scaledTheme.space2 + topInset }
+    ? { top: CONTROLS_SIZE + 24 + topInset, right: scaledTheme.space4 + rightInset }
+    : { right: CONTROLS_SIZE + 24 + rightInset, top: scaledTheme.space2 + topInset }
 
   const items: Item[] = []
 

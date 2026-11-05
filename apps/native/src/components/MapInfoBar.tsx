@@ -34,12 +34,14 @@ interface Props {
   onToggleWindSurface?: () => void
   /** Extra distance above the bottom edge, when the map bleeds under the bottom inset. */
   bottomOffset?: number
+  /** Extra distance from the right edge (the iPhone Duo cover's rail). */
+  rightOffset?: number
   /** Stacked directly above the pill, right-aligned (the compass button). */
   above?: React.ReactNode
 }
 
 export const MapInfoBar = forwardRef<MapInfoBarHandle, Props>(function MapInfoBar(
-  { ceilingFt, distanceUnit, initialCamera, onInfoPress, windLabel, windSurface, onToggleWindSurface, bottomOffset = 0, above }, ref,
+  { ceilingFt, distanceUnit, initialCamera, onInfoPress, windLabel, windSurface, onToggleWindSurface, bottomOffset = 0, rightOffset = 0, above }, ref,
 ) {
   const styles = useThemedStyles(makeStyles)
   const [cam, setCam] = useState(initialCamera)
@@ -65,7 +67,7 @@ export const MapInfoBar = forwardRef<MapInfoBarHandle, Props>(function MapInfoBa
   const altLabel = `SFC \u2013 ${unlimited ? 'UNL' : ftToLabel(ceilingFt)}`
 
   return (
-    <View style={[styles.wrap, { bottom: 8 + bottomOffset }]} pointerEvents="box-none">
+    <View style={[styles.wrap, { bottom: 8 + bottomOffset, right: 8 + rightOffset }]} pointerEvents="box-none">
     {above}
     <View style={styles.bar} pointerEvents="box-none">
       <TouchableOpacity
