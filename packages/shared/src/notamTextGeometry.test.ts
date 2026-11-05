@@ -110,3 +110,29 @@ describe('pointInNotamArea', () => {
     expect(hasNotamArea({ lat: 59.65, lon: 17.92, radiusNm: null })).toBe(false)
   })
 })
+
+describe('notamTextGeometry: one coordinate scanner', () => {
+  it('fixtures 6-9: notations in the text reach the geometry', () => {
+    for (const c of ['593922N 0175612E', '59°39\'22"N 017°56\'12"E', '59 39 22 N 017 56 12 E', 'N593922 E0175612', '593922N 175612E']) {
+      const g = notamTextGeometry(`CRANE PSN ${c} 90FT`, null)
+      expect(g.point?.lat).toBeCloseTo(59.656111, 5)
+      expect(g.point?.lon).toBeCloseTo(17.936667, 5)
+    }
+    const d = notamTextGeometry('1 NM RADIUS OF 5939.5N 01756.2E', null)
+    expect(d.circle?.lat).toBeCloseTo(59.658333, 5)
+  })
+  it('fixture 10: minutes >= 60 never become geometry', () => {
+    expect(notamTextGeometry('PSN 596122N 0175612E', null).point).toBeNull()
+  })
+  it('fixture 19: coordinate split by a line break', () => {
+    const g = notamTextGeometry('CRANE PSN 545000N010000\n0E', null)
+    expect(g.point).toEqual({ lat: expect.closeTo(54.8333, 3), lon: 10 })
+  })
+  it('fixture 20: coordinate far from the Q-line circle -> nothing', () => {
+    const g = notamTextGeometry('CRANE PSN 593922N 0175612E', { lat: 52, lon: 4, radiusNm: 5 })
+    expect(g).toEqual({ polygon: null, circle: null, point: null })
+  })
+  it('plausibility box reaches Svalbard', () => {
+    expect(notamTextGeometry('CRANE PSN 780000N 0150000E', null).point?.lat).toBeCloseTo(78, 5)
+  })
+})

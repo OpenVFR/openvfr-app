@@ -107,3 +107,68 @@ describe('formatCoordinate — echo typed style', () => {
     expect(formatCoordinate(59.99999999, 18, f)).toBe("60° 00.000'N 018° 00.000'E")
   })
 })
+
+import { findCoordinates } from './coordinateParse'
+
+describe('findCoordinates', () => {
+  const one = (t: string) => {
+    const r = findCoordinates(t)
+    expect(r).toHaveLength(1)
+    return r[0]!
+  }
+  it('fixture 6: decimal minutes', () => {
+    const c = one('5939.5N 01756.2E')
+    expect(c.lat).toBeCloseTo(59.658333, 5)
+    expect(c.lng).toBeCloseTo(17.936667, 5)
+  })
+  it('fixture 7: spaced, degree-mark and hemisphere-first DMS', () => {
+    for (const t of ['59°39\'22"N 017°56\'12"E', '59 39 22 N 017 56 12 E', 'N593922 E0175612', 'N 59 39 22 E 017 56 12', 'N59°39\'22" E017°56\'12"']) {
+      const c = one(t)
+      expect(c.lat).toBeCloseTo(59.656111, 5)
+      expect(c.lng).toBeCloseTo(17.936667, 5)
+    }
+  })
+  it('degree-mark decimal minutes', () => {
+    const c = one('59°07.38\'N 018°27.36\'E')
+    expect(c.lat).toBeCloseTo(59.123, 4)
+    expect(c.lng).toBeCloseTo(18.456, 4)
+  })
+  it('fixture 8: decimal comma on seconds', () => {
+    const c = one('593922,5N 0175612,5E')
+    expect(c.lat).toBeCloseTo(59.65625, 5)
+    expect(c.lng).toBeCloseTo(17.936806, 5)
+  })
+  it('fixture 9: longitude missing its leading zero', () => {
+    const c = one('593922N 175612E')
+    expect(c.lat).toBeCloseTo(59.656111, 5)
+    expect(c.lng).toBeCloseTo(17.936667, 5)
+  })
+  it('fixture 10: minutes >= 60 rejected, neighbours kept', () => {
+    expect(findCoordinates('596122N 0175612E')).toEqual([])
+    const r = findCoordinates('596122N 0175612E - 593922N 0175612E')
+    expect(r).toHaveLength(1)
+    expect(r[0]!.start).toBe(19)
+    expect(findCoordinates('593961N 0175612E')).toEqual([])
+  })
+  it('fixture 18: numbers that are not coordinates', () => {
+    expect(findCoordinates('TEL 0046 70 123 456 FAX 070.123')).toEqual([])
+    expect(findCoordinates('RWY 09 WIND 250.5 KT 118.105 MHZ')).toEqual([])
+    const c = one('5939N 01756E')
+    expect(c.lat).toBeCloseTo(59.65, 5)
+    expect(c.lng).toBeCloseTo(17.933333, 5)
+  })
+  it('southern / western hemispheres', () => {
+    const c = one('335000S 0701500W')
+    expect(c.lat).toBeCloseTo(-33.8333, 3)
+    expect(c.lng).toBeCloseTo(-70.25, 3)
+  })
+  it('reports offsets for each match in a list', () => {
+    const t = 'OBST 551234N 0141234E, 551300N 0141300E.'
+    const r = findCoordinates(t)
+    expect(r.map(c => t.slice(c.start, c.end))).toEqual(['551234N 0141234E', '551300N 0141300E'])
+  })
+  it('no glued letters or digits at either end', () => {
+    expect(findCoordinates('5939N 01756EZ')).toEqual([])
+    expect(findCoordinates('15939N 01756E')).toEqual([])
+  })
+})

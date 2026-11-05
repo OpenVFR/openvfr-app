@@ -24,6 +24,7 @@
  * can never move a NOTAM somewhere unrelated.
  */
 import type { NotamPolygonGeometry } from './notamCoverageArea'
+import { findCoordinates } from './coordinateParse'
 
 export interface TextCircle { lat: number; lon: number; radiusNm: number }
 export interface TextPoint  { lat: number; lon: number }
@@ -34,23 +35,15 @@ export interface NotamTextGeometry {
   point: TextPoint | null
 }
 
-// DDMM[SS[.s]]N DDDMM[SS[.s]]E, optional whitespace between lat and lon.
-// Seconds may carry decimals with "." or "," ("275505,30N").
-const COORD_SRC = String.raw`(\d{2})(\d{2})(\d{2}(?:[.,]\d+)?)?([NS])\s*(\d{3})(\d{2})(\d{2}(?:[.,]\d+)?)?([EW])`
-const COORD = new RegExp(COORD_SRC, 'g')
 const UNIT = String.raw`(\d+(?:[.,]\d+)?)\s?(NM|KM|M)\b`
 // Optional word before a coordinate: PSN, POSN, POSITION, POINT, COORD(INATES), with ":".
 const KW = String.raw`(?:(?:PSN|POSN|POSITION|POINT|COORD(?:INATES)?)\s*:?\s*)?`
 
 interface Coord { lat: number; lon: number; start: number; end: number }
 
-function toDeg(d: string, m: string, s: string | undefined, hemi: string): number {
-  const v = Number(d) + Number(m) / 60 + (s ? Number(s.replace(',', '.')) / 3600 : 0)
-  return hemi === 'S' || hemi === 'W' ? -v : v
-}
-
 function plausible(lat: number, lon: number): boolean {
-  return lat >= 25 && lat <= 75 && lon >= -35 && lon <= 50
+  // Upper latitude reaches Svalbard (~80N).
+  return lat >= 25 && lat <= 82 && lon >= -35 && lon <= 50
 }
 
 /**
@@ -63,50 +56,47 @@ export function normalizeNotamText(text: string): string {
   return text.replace(/(\d)[\r\n]+(\d)/g, '$1$2').replace(/[\r\n]+/g, ' ').toUpperCase()
 }
 
-// Typos seen in live NOTAMs, accepted so a polygon keeps all its vertices
-// (the Q-line check in notamTextGeometry() still rejects wild positions):
-//   - longitude missing its leading zero: "501710N070521E" (DDMMSS = 6 digits)
-//   - longitude hemisphere typed as N/S: "520715.38N 0205330.39N"
-const COORD_TYPO_SRC = [
-  String.raw`(\d{2})(\d{2})(\d{2})([NS])\s*0?(\d{2})(\d{2})(\d{2})(?![\d.,])([EW])`,
-  String.raw`(\d{2})(\d{2})(\d{2}(?:[.,]\d+)?)([NS])\s*(\d{3})(\d{2})(\d{2}(?:[.,]\d+)?)(N)(?![A-Z])`,
-]
-
+/**
+ * Coordinates of a normalised text, found by the shared scanner
+ * (`findCoordinates`: every notation, minutes/seconds range-checked, each
+ * rejected on its own), minus positions outside the plausibility box.
+ */
 function coords(t: string): Coord[] {
-  const out: Coord[] = []
-  const add = (m: RegExpMatchArray, typo: boolean) => {
-    const [, la1, la2, la3, ns, lo1, lo2, lo3, ew] = m
-    const lat = toDeg(la1!, la2!, la3, ns!)
-    // Typo variants: the longitude is E (the only hemisphere we cover) --
-    // except an explicit W, which keeps its sign.
-    const lon = toDeg(lo1!, lo2!, lo3, typo && ew === 'N' ? 'E' : ew!)
-    if (Number(la2) >= 60 || Number(lo2) >= 60 || !plausible(lat, lon)) return
-    const start = m.index!, end = start + m[0].length
-    if (out.some(o => start < o.end && end > o.start)) return
-    out.push({ lat, lon, start, end })
-  }
-  for (const m of t.matchAll(COORD)) add(m, false)
-  for (const src of COORD_TYPO_SRC) for (const m of t.matchAll(new RegExp(src, 'g'))) add(m, true)
-  return out.sort((a, b) => a.start - b.start)
+  return findCoordinates(t)
+    .filter(c => plausible(c.lat, c.lng))
+    .map(c => ({ lat: c.lat, lon: c.lng, start: c.start, end: c.end }))
+}
+
+/**
+ * Replace each coordinate by a "\u0001<n>\u0002" token so the circle / arc
+ * patterns can name "a coordinate" without repeating a notation: one
+ * scanner, many patterns. `cs[n]` is the coordinate behind token n.
+ */
+const TOK = String.raw`\u0001(\d+)\u0002`
+function maskCoords(t: string, cs: Coord[]): { masked: string; cs: Coord[] } {
+  let masked = ''
+  let at = 0
+  cs.forEach((c, i) => { masked += t.slice(at, c.start) + `\u0001${i}\u0002`; at = c.end })
+  masked += t.slice(at)
+  // Positions in the masked text (what the clause patterns report).
+  const pos = [...masked.matchAll(new RegExp(TOK, 'g'))]
+    .map(m => ({ ...cs[Number(m[1])]!, start: m.index!, end: m.index! + m[0].length }))
+  return { masked, cs: pos }
 }
 
 // Boundary segment along an arc, between two vertices:
 //   A ALONG A (COUNTER/ANTI-)CLOCKWISE ARC (RADIUS 8NM WITH CENTRE <c>) TO B
-const ARC = new RegExp(String.raw`ALONG\s+(?:AN?\s+|THE\s+)?(CLOCKWISE|COUNTER[- ]?CLOCKWISE|ANTI[- ]?CLOCKWISE)\s+ARC\s*\(?\s*(?:WITH\s+)?(?:A\s+)?RADIUS\s+(?:OF\s+)?${UNIT}\s*,?\s*(?:WITH\s+)?(?:CENTRE|CENTER|CENTRED ON|CENTERED ON)\s*(?:AT|ON)?\s*${COORD_SRC}\s*\)?\s*TO`, 'g')
+const ARC = new RegExp(String.raw`ALONG\s+(?:AN?\s+|THE\s+)?(CLOCKWISE|COUNTER[- ]?CLOCKWISE|ANTI[- ]?CLOCKWISE)\s+ARC\s*\(?\s*(?:WITH\s+)?(?:A\s+)?RADIUS\s+(?:OF\s+)?${UNIT}\s*,?\s*(?:WITH\s+)?(?:CENTRE|CENTER|CENTRED ON|CENTERED ON)\s*(?:AT|ON)?\s*${TOK}\s*\)?\s*TO`, 'g')
 
 const BORDER_LINK = /^\s*[-\u2013,]?\s*(?:THEN\s+)?(?:ALONG\s+(?:THE\s+)?)?(?:[A-Z]+\s+)?(?:STATE|NATIONAL|INTERNATIONAL|COUNTRY|FIR)?\s*(?:BORDER|BOUNDARY|BDRY|COASTLINE|COAST)(?:\s+LINE)?(?:\s+OF\s+[A-Z]{1,20})?\s*(?:TO\s+)?(?:POINT\s*)?[-\u2013,]?\s*$/
 
 interface ArcClause { start: number; end: number; clockwise: boolean; lat: number; lon: number }
 
-function arcClauses(t: string): ArcClause[] {
+function arcClauses(t: string, cs: Coord[]): ArcClause[] {
   const out: ArcClause[] = []
   for (const m of t.matchAll(ARC)) {
-    const [, dir, , , la1, la2, la3, ns, lo1, lo2, lo3, ew] = m
-    out.push({
-      start: m.index!, end: m.index! + m[0].length,
-      clockwise: dir === 'CLOCKWISE',
-      lat: toDeg(la1!, la2!, la3, ns!), lon: toDeg(lo1!, lo2!, lo3, ew!),
-    })
+    const c = cs[Number(m[4])]!
+    out.push({ start: m.index!, end: m.index! + m[0].length, clockwise: m[1] === 'CLOCKWISE', lat: c.lat, lon: c.lon })
   }
   return out
 }
@@ -130,7 +120,7 @@ function arcPoints(a: Coord, b: Coord, c: ArcClause): number[][] {
 }
 
 function polygons(t: string, all: Coord[]): number[][][] {
-  const arcs = arcClauses(t)
+  const arcs = arcClauses(t, all)
   // An arc's centre is not a boundary vertex.
   const cs = all.filter(c => !arcs.some(a => c.start >= a.start && c.end <= a.end))
   const rings: number[][][] = []
@@ -179,42 +169,43 @@ function toNm(value: string, unit: string): number {
 }
 
 const CENTRE = String.raw`(?:CENTRED|CENTERED|CENTRE|CENTER)(?:\s+(?:ON|AT))?`
+// Each pattern: capture groups (value, unit, token).
 const CIRCLE_PATTERNS: RegExp[] = [
   // 0.5NM RADIUS OF <c> / 1NM RADIUS CENTERED ON <c> / 2 KM RADIUS AROUND PSN <c>
   // / 1050M RADIUS CENTERED ON COORD: <c> / 300M (0.16NM) RADIUS CENTRED ON <c>
-  new RegExp(String.raw`${UNIT}\s*(?:\([^)]{0,20}\))?\s+RADIUS\s+(?:OF\s+|AROUND\s+|${CENTRE}\s+)?${KW}${COORD_SRC}`, 'g'),
+  new RegExp(String.raw`${UNIT}\s*(?:\([^)]{0,20}\))?\s+RADIUS\s+(?:OF\s+|AROUND\s+|${CENTRE}\s+)?${KW}${TOK}`, 'g'),
   // RADIUS (OF) 1.5NM CENTERED ON <c> / CIRCLE RADIUS 2NM CENTERED ON POINT <c>
-  new RegExp(String.raw`RADIUS\s+(?:OF\s+)?${UNIT}\s*,?\s*(?:WITH\s+)?(?:${CENTRE}|AROUND)\s*${KW}${COORD_SRC}`, 'g'),
+  new RegExp(String.raw`RADIUS\s+(?:OF\s+)?${UNIT}\s*,?\s*(?:WITH\s+)?(?:${CENTRE}|AROUND)\s*${KW}${TOK}`, 'g'),
   // 1NM AROUND <c> / WI 2.5NM OF PSN <c>
-  new RegExp(String.raw`${UNIT}\s+(?:AROUND|OF|${CENTRE})\s+${KW}${COORD_SRC}`, 'g'),
+  new RegExp(String.raw`${UNIT}\s+(?:AROUND|OF|${CENTRE})\s+${KW}${TOK}`, 'g'),
 ]
 // <c> RADIUS 2NM / PSN <c> WITH A RADIUS OF 500M / PSN <c> RADIUS 0,25NM (coordinate first)
-const CIRCLE_COORD_FIRST = new RegExp(String.raw`${COORD_SRC}\s*(?:\([^)]{0,80}\))?\s*,?\s*(?:WITH\s+)?(?:A\s+)?(?:RADIUS|RAD)\s+(?:OF\s+)?(?:UP\s+TO\s+)?${UNIT}`, 'g')
+const CIRCLE_COORD_FIRST = new RegExp(String.raw`${TOK}\s*(?:\([^)]{0,80}\))?\s*,?\s*(?:WITH\s+)?(?:A\s+)?(?:RADIUS|RAD)\s+(?:OF\s+)?(?:UP\s+TO\s+)?${UNIT}`, 'g')
 
-function circles(t: string): TextCircle[] {
+function circles(t: string, cs: Coord[]): TextCircle[] {
   const out: TextCircle[] = []
   for (const re of CIRCLE_PATTERNS) {
     for (const m of t.matchAll(re)) {
-      const [, v, u, la1, la2, la3, ns, lo1, lo2, lo3, ew] = m
-      out.push({ lat: toDeg(la1!, la2!, la3, ns!), lon: toDeg(lo1!, lo2!, lo3, ew!), radiusNm: toNm(v!, u!) })
+      const c = cs[Number(m[3])]!
+      out.push({ lat: c.lat, lon: c.lon, radiusNm: toNm(m[1]!, m[2]!) })
     }
   }
   for (const m of t.matchAll(CIRCLE_COORD_FIRST)) {
-    const [, la1, la2, la3, ns, lo1, lo2, lo3, ew, v, u] = m
-    out.push({ lat: toDeg(la1!, la2!, la3, ns!), lon: toDeg(lo1!, lo2!, lo3, ew!), radiusNm: toNm(v!, u!) })
+    const c = cs[Number(m[1])]!
+    out.push({ lat: c.lat, lon: c.lon, radiusNm: toNm(m[2]!, m[3]!) })
   }
   const uniq = new Map(out.filter(c => plausible(c.lat, c.lon) && c.radiusNm > 0 && c.radiusNm <= 200)
     .map(c => [`${c.lat.toFixed(4)},${c.lon.toFixed(4)},${c.radiusNm.toFixed(3)}`, c]))
   return [...uniq.values()]
 }
 
-const PSN = new RegExp(String.raw`\b(?:PSN|POSN|POSITION)\s*:?\s*${COORD_SRC}`, 'g')
+const PSN = new RegExp(String.raw`\b(?:PSN|POSN|POSITION)\s*:?\s*${TOK}`, 'g')
 
-function points(t: string): TextPoint[] {
+function points(t: string, cs: Coord[]): TextPoint[] {
   const uniq = new Map<string, TextPoint>()
   for (const m of t.matchAll(PSN)) {
-    const [, la1, la2, la3, ns, lo1, lo2, lo3, ew] = m
-    const p = { lat: toDeg(la1!, la2!, la3, ns!), lon: toDeg(lo1!, lo2!, lo3, ew!) }
+    const c = cs[Number(m[1])]!
+    const p = { lat: c.lat, lon: c.lon }
     if (plausible(p.lat, p.lon)) uniq.set(`${p.lat.toFixed(4)},${p.lon.toFixed(4)}`, p)
   }
   return [...uniq.values()]
@@ -258,17 +249,18 @@ export function notamTextGeometry(
   const inQ = (lat: number, lon: number) =>
     !checkQ || distNm(lat, lon, q.lat, q.lon) <= tol(q.radiusNm!)
 
-  const cs = coords(t)
-  const rings = polygons(t, cs).filter(r => r.every(([lon, lat]) => inQ(lat!, lon!)))
+  const found = coords(t)
+  const { masked: mt, cs } = maskCoords(t, found)
+  const rings = polygons(mt, cs).filter(r => r.every(([lon, lat]) => inQ(lat!, lon!)))
   if (rings.length === 1) return { ...none, polygon: { type: 'Polygon', coordinates: [rings[0]!] } }
   if (rings.length > 1) return { ...none, polygon: { type: 'MultiPolygon', coordinates: rings.map(r => [r]) } }
 
-  const cc = circles(t).filter(c => inQ(c.lat, c.lon))
+  const cc = circles(mt, cs).filter(c => inQ(c.lat, c.lon))
   if (cc.length === 1) return { ...none, circle: cc[0]! }
   // Several areas ("AREA 1: 1.45KM RADIUS OF ..., AREA 2: ..."): one polygon each.
   if (cc.length > 1) return { ...none, polygon: { type: 'MultiPolygon', coordinates: cc.map(c => [circleRing(c)]) } }
 
-  const ps = points(t).filter(p => inQ(p.lat, p.lon))
+  const ps = points(mt, cs).filter(p => inQ(p.lat, p.lon))
   if (ps.length === 1) return { ...none, point: ps[0]! }
   if (ps.length > 1) return none
   // A single bare coordinate in the whole text ("CAPTIVE BALLOON: c",
