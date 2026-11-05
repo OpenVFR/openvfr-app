@@ -18,7 +18,7 @@ import { formatNotamVertical } from './notamVertical'
 
 export type NotamTextView = 'short' | 'full' | 'raw'
 
-type N = Pick<NotamItem, 'id' | 'text' | 'effective' | 'expires'> & Partial<Pick<NotamItem, 'qCode' | 'affectedFir' | 'icao' | 'vertical'>>
+type N = Pick<NotamItem, 'id' | 'text' | 'effective' | 'expires'> & Partial<Pick<NotamItem, 'qCode' | 'affectedFir' | 'icao' | 'vertical' | 'areaApproximate'>>
 
 /** ISO timestamp -> ICAO B)/C) form "YYMMDDHHMM" (UTC). */
 export function icaoDateTime(iso: string | null | undefined): string | null {
@@ -61,7 +61,7 @@ export function notamShortText(n: N): string {
   const base = title === n.id ? `${n.id} · ${lead}` : `${title} — ${lead}`
   // The one-line view drops everything after the first sentence, including
   // what limits the drawn area ("only within German territory", exclusions).
-  const limit = notamAreaQualifier(n.text)
+  const limit = notamAreaQualifier(n.text, { approximate: n.areaApproximate })
   const area = limit && !base.toUpperCase().includes(limit.toUpperCase()) ? `${base} [${limit}]` : base
   // Floor/ceiling read from the text or items F)/G); the Q-line default
   // ("000/999") says little and stays out of the one-liner.

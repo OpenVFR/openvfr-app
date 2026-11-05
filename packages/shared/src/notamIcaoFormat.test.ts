@@ -79,3 +79,11 @@ describe('vertical limits in the text views', () => {
     expect(notamFullText(n)).toContain('Vertical: GND – 2000 FT AMSL (Q-line)')
   })
 })
+
+describe('approximate border edges', () => {
+  it('the short view says so when an edge along a border was drawn straight', () => {
+    const n = { id: 'A2/26', text: 'AREA ACTIVE.', effective: null, expires: null, areaApproximate: true }
+    expect(notamShortText(n)).toContain('[Edges along a border or coastline are approximate]')
+    expect(notamShortText({ ...n, areaApproximate: false })).not.toContain('approximate')
+  })
+})

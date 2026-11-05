@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { prepareBorderRings } from './notamBorder'
 import { notamTextGeometry, notamAreaQualifier, ringSelfIntersects, normalizeNotamText, pointInNotamArea, hasNotamArea } from './notamTextGeometry'
 
 // Real NOTAM texts (NMS-API, AIRAC 2610), line breaks as received.
@@ -257,5 +258,36 @@ describe('notamTextGeometry: reason codes and self-intersection', () => {
   })
   it('no reason when there is simply nothing to find', () => {
     expect(notamTextGeometry('RWY 09 CLOSED DUE WIP', null)).toEqual({ polygon: null, circle: null, point: null })
+  })
+})
+
+describe('notamTextGeometry: border-following edges', () => {
+  const T = '571200N 0120030E - 571800N 0121500E - ALONG THE STATE BORDER TO 570500N 0122000E - 570000N 0120500E - 571200N 0120030E. VERTICAL LIMITS: GND - 2000 FT AMSL'
+  // Border runs A=(57.3,12.25) -> bend (57.2,12.40) -> B=(57.0833,12.3333); the text's own rounded
+  // vertices (571800N 0121500E, 570500N 0122000E) lie within 2 NM of it.
+  const A = [12.25, 57.3], M = [12.4, 57.2], B = [12.3333, 57.0833]
+  const rings = prepareBorderRings({ XX: [[[A, M, B, [12.0, 56.0], [11.0, 56.0], [11.0, 58.0], A]]] })
+  const ring = (g: ReturnType<typeof notamTextGeometry>) => (g.polygon!.type === 'Polygon' ? g.polygon!.coordinates[0]! : [])
+
+  it('fixture 13 without an outline: straight edge, flagged approximate; note says so', () => {
+    const g = notamTextGeometry(T, null)
+    expect(ring(g)).toHaveLength(5)
+    expect(g.approximate).toBe(true)
+    expect(notamAreaQualifier(T, { approximate: true })).toBe('Edges along a border or coastline are approximate')
+    expect(notamAreaQualifier(T)).toBeNull()
+  })
+  it('fixture 13 with an outline: the edge follows the border', () => {
+    const g = notamTextGeometry(T, null, { borderRings: rings })
+    expect(g.approximate).toBeUndefined()
+    const r = ring(g)
+    expect(r).toHaveLength(6)
+    expect(r).toContainEqual(M)
+    expect(r[0]).toEqual(r[r.length - 1])
+  })
+  it('an endpoint far from the outline: straight and approximate', () => {
+    const far = T.replace('571800N 0121500E', '575000N 0121500E')
+    const g = notamTextGeometry(far, null, { borderRings: rings })
+    expect(g.approximate).toBe(true)
+    expect(ring(g)).toHaveLength(5)
   })
 })

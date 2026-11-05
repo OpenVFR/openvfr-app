@@ -89,6 +89,7 @@ import { notamInRegions, regionScope, type RegionScopeInput } from '@open-vfr/sh
 import { EUROPEAN_REGIONS } from '@open-vfr/shared/regions'
 import { notamTextGeometry } from '@open-vfr/shared/notamTextGeometry'
 import { notamVertical, type NotamVertical } from '@open-vfr/shared/notamVertical'
+import { prepareBorderRings, type OutlineSet } from '@open-vfr/shared/notamBorder'
 import { prepareOutline, type PreparedOutline } from '@open-vfr/shared/notamCoverageArea'
 import countryOutlinesJson from './country-outlines.json' with { type: 'json' }
 
@@ -99,6 +100,10 @@ const COUNTRY_OUTLINES: Record<string, PreparedOutline> = Object.fromEntries(
   Object.entries(countryOutlinesJson as unknown as Record<string, number[][][][]>)
     .map(([code, mp]) => [code, prepareOutline(mp)]),
 )
+
+// The same outlines as border rings, for text edges like "ALONG THE STATE
+// BORDER TO ..." (see @open-vfr/shared/notamBorder).
+const BORDER_RINGS = prepareBorderRings(countryOutlinesJson as unknown as OutlineSet)
 
 const _regionScopes = new Map<string, ReturnType<typeof regionScope>>()
 function scopeFor(code: string): ReturnType<typeof regionScope> {
@@ -177,6 +182,10 @@ export interface NotamItem {
   // their number equals the number of areas), else the Q-line flight levels.
   // See @open-vfr/shared/notamVertical. null when none could be read.
   vertical: NotamVertical | null
+  // True when an edge "along the border / coastline" of the text polygon could
+  // not be followed and is drawn straight: the area is right, that edge is
+  // approximate. Absent otherwise.
+  areaApproximate?: true
   // Geo fields: a circle or position stated in the text when there is one,
   // else the Q-line coordinates+radius (DMS like "5939N01756E" + NM) -- used to
   // render an ad-hoc circle for NOTAMs that don't correspond to a charted
@@ -293,6 +302,7 @@ interface NotamGeometry {
   radiusNm:  number | null
   qRadiusNm: number | null
   vertical:  NotamVertical | null
+  approximate?: true
 }
 
 // Parse every cached record's text geometry off the request path (after
@@ -351,8 +361,8 @@ function geometryOf(n: NmsNotam): NotamGeometry {
   if (polygon) {
     out = { polygon, lat: null, lon: null, radiusNm: null, qRadiusNm }
   } else {
-    const t = notamTextGeometry(n.text, geo ? { lat: geo.lat, lon: geo.lon, radiusNm: qRadiusNm } : null)
-    if (t.polygon) out = { polygon: t.polygon, lat: null, lon: null, radiusNm: null, qRadiusNm }
+    const t = notamTextGeometry(n.text, geo ? { lat: geo.lat, lon: geo.lon, radiusNm: qRadiusNm } : null, { borderRings: BORDER_RINGS })
+    if (t.polygon) out = { polygon: t.polygon, lat: null, lon: null, radiusNm: null, qRadiusNm, ...(t.approximate ? { approximate: true as const } : {}) }
     else if (t.circle) out = { polygon: null, lat: t.circle.lat, lon: t.circle.lon, radiusNm: t.circle.radiusNm, qRadiusNm }
     else if (t.point) out = { polygon: null, lat: t.point.lat, lon: t.point.lon, radiusNm: qArea ? qRadiusNm : null, qRadiusNm }
     else out = {
@@ -1028,6 +1038,7 @@ function activeItems(raw: Iterable<NmsNotam>): NotamItem[] {
       icao:           icaoFieldsFor(n),
       polygon,
       vertical:       g.vertical,
+      ...(g.approximate ? { areaApproximate: true as const } : {}),
       // Polygon (from the text, or NMS) wins over point/circle; a text
       // circle/position wins over the Q-line envelope -- see geometryOf().
       lat:            g.lat,

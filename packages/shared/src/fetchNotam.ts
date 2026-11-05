@@ -70,6 +70,9 @@ export interface NotamItem {
   // Vertical limits, one floor/ceiling pair per drawn area -- see
   // notamVertical.ts. Optional: older API deployments predate it.
   vertical?: NotamVertical | null
+  // A border/coastline edge of `polygon` is drawn straight (see
+  // notamTextGeometry's `approximate`). Optional / absent otherwise.
+  areaApproximate?: boolean
   // Geo fields (see apps/api/src/notam.ts) -- present only when NMS-API
   // supplied a coordinates+radius pair, used to render an ad-hoc circle for
   // NOTAMs without a corresponding charted airspace polygon.

@@ -16,8 +16,9 @@
  *      list of points (obstacles, a route) and stays out. Edges can be arcs
  *      ("CLOCKWISE ARC RADIUS r CENTRED ON c TO": densified, and dropped
  *      when the stated radius disagrees with the real distance) and
- *      "ALONG THE STATE BORDER / COASTLINE TO" links (drawn as straight
- *      edges for now). Several rings -> MultiPolygon;
+ *      "ALONG THE STATE BORDER / COASTLINE TO" links (walked along a
+ *      country outline when the caller passes one and the way is
+ *      unambiguous, else drawn straight and flagged `approximate`). Several rings -> MultiPolygon;
  *   2. a single circle: "<r> NM RADIUS OF/CENTRED ON <coord>",
  *      "RADIUS <r> NM CENTRED ON <coord>", "<coord> RADIUS <r> NM", ... A
  *      circle introduced by EXCLUDING / EXCEPT is a cut-out, reported in
@@ -33,6 +34,7 @@
  */
 import type { NotamPolygonGeometry } from './notamCoverageArea'
 import { findCoordinates, formatCoordinate } from './coordinateParse'
+import { followOutline, type BorderRing } from './notamBorder'
 
 export interface TextCircle { lat: number; lon: number; radiusNm: number }
 export interface TextPoint  { lat: number; lon: number }
@@ -45,13 +47,19 @@ export interface NotamTextGeometry {
   excluded?: TextCircle[]
   /** Why no geometry came out of text that looked like it had some; absent when there was nothing to find. */
   reason?: NotamTextReason
+  /**
+   * True when an edge "along the border / coastline" was drawn as a straight
+   * line (no outline given, an endpoint off the outline, or both ways round
+   * about equally long): the area is right, that edge is not.
+   */
+  approximate?: true
 }
 
 /**
  * Typed reasons for an empty result (a Q-line circle is used instead):
  *   unclosed          a coordinate run with no area phrase and no closing vertex
  *   arc-radius-mismatch  an arc's stated radius disagrees with its centre
- *   border-unresolved a border edge could not be followed (reserved: border edges are still drawn straight)
+ *   border-unresolved reserved: an edge that cannot be followed is drawn straight and flagged `approximate`, which keeps the area
  *   outside-qline     every shape lies far outside the Q-line circle
  *   multiple-radii    several radii around one centre: no way to tell which is the area
  *   self-intersecting every ring crosses itself
@@ -192,15 +200,16 @@ const ARC_RADIUS_TOLERANCE_NM = 1
 
 const sameVertex = (a: Coord, b: Coord) => Math.abs(a.lat - b.lat) < 1e-5 && Math.abs(a.lon - b.lon) < 1e-5
 
-interface Rings { rings: number[][][]; unclosed: number; arcMismatch: boolean; arcs: ArcClause[] }
+interface Rings { rings: number[][][]; unclosed: number; arcMismatch: boolean; arcs: ArcClause[]; approximate: boolean }
 
-function polygons(t: string, all: Coord[]): Rings {
+function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]): Rings {
   const arcs = arcClauses(t, all)
   // An arc's centre is not a boundary vertex.
   const cs = all.filter(c => !arcs.some(a => c.start >= a.start && c.end <= a.end))
   const rings: number[][][] = []
   let unclosed = 0
   let arcMismatch = false
+  let approximate = false
   let ring: number[][] = []
   let vertices = 0
   let first: Coord | null = null
@@ -239,10 +248,14 @@ function polygons(t: string, all: Coord[]): Rings {
       } else if (/^\s*BACK\s+TO\s*$/.test(gap) && first) {
         ring.push([c.lon, c.lat]); vertices++; prev = c
         flush(true); lastEnd = c.end; continue // closed explicitly
-      } else if (!/^\s*[-\u2013,;]?\s*(?:\d{1,2}\s*[.):]\s*)?$/.test(gap) && !BORDER_LINK.test(gap)) {
+      } else if (BORDER_LINK.test(gap)) {
+        // "STATE BORDER" / "ALONG THE COASTLINE TO" link: follow the outline
+        // when we have one and the way is unambiguous, else draw it straight
+        // (coarser than the real border, still the right area) and say so.
+        const along = borderRings ? followOutline([prev.lon, prev.lat], [c.lon, c.lat], borderRings) : null
+        if (along) ring.push(...along); else approximate = true
+      } else if (!/^\s*[-\u2013,;]?\s*(?:\d{1,2}\s*[.):]\s*)?$/.test(gap)) {
         // continues on "-", ",", whitespace, numbered lists ("1. c 2. c")
-        // and "STATE BORDER" / "ALONG THE COASTLINE TO" links (drawn
-        // straight -- coarser than the real border, still the right area)
         flush(false)
       }
     }
@@ -259,7 +272,7 @@ function polygons(t: string, all: Coord[]): Rings {
     if (vertices > 1 && sameVertex(first, c)) flush(true)
   }
   flush(false)
-  return { rings, unclosed, arcMismatch, arcs }
+  return { rings, unclosed, arcMismatch, arcs, approximate }
 }
 
 function toNm(value: string, unit: string): number {
@@ -352,6 +365,7 @@ function distNm(aLat: number, aLon: number, bLat: number, bLon: number): number 
 export function notamTextGeometry(
   text: string | null | undefined,
   q?: { lat: number; lon: number; radiusNm: number | null } | null,
+  opts?: { borderRings?: readonly BorderRing[] },
 ): NotamTextGeometry {
   const none: NotamTextGeometry = { polygon: null, circle: null, point: null }
   if (!text) return none
@@ -365,7 +379,7 @@ export function notamTextGeometry(
 
   const found = coords(t)
   const { masked: mt, cs } = maskCoords(t, found)
-  const poly = polygons(mt, cs)
+  const poly = polygons(mt, cs, opts?.borderRings)
   // A wrong arc centre/radius: no text geometry at all (the Q-line circle stays),
   // and the arc's own "RADIUS r CENTRED ON c" must not be read as a circle.
   if (poly.arcMismatch) return { ...none, reason: 'arc-radius-mismatch' }
@@ -376,8 +390,9 @@ export function notamTextGeometry(
   const rings = simple.filter(r => r.every(([lon, lat]) => inQ(lat!, lon!)))
   if (simple.length > 0 && rings.length === 0) reason ??= 'outside-qline'
   if (rings.length === 0 && poly.unclosed > 0) reason ??= 'unclosed'
-  if (rings.length === 1) return { ...none, polygon: { type: 'Polygon', coordinates: [rings[0]!] } }
-  if (rings.length > 1) return { ...none, polygon: { type: 'MultiPolygon', coordinates: rings.map(r => [r]) } }
+  const approx = poly.approximate ? { approximate: true as const } : {}
+  if (rings.length === 1) return { ...none, polygon: { type: 'Polygon', coordinates: [rings[0]!] }, ...approx }
+  if (rings.length > 1) return { ...none, polygon: { type: 'MultiPolygon', coordinates: rings.map(r => [r]) }, ...approx }
 
   const { main, excluded } = circles(withoutArcs(mt, poly.arcs), cs)
   const cc = main.filter(c => inQ(c.lat, c.lon))
@@ -413,7 +428,7 @@ export function notamTextGeometry(
  * circle as-is (clipping needs outlines we don't ship), so clients show
  * this as a note next to the area. null when there is none.
  */
-export function notamAreaQualifier(text: string | null | undefined): string | null {
+export function notamAreaQualifier(text: string | null | undefined, opts?: { approximate?: boolean }): string | null {
   if (!text) return null
   const ONLY = /\bONLY\s+(?:WITHIN|IN|OVER|INSIDE)\b/
   const sentences = normalizeNotamText(text).split(/\.(?=\s|$)/).map(x => x.replace(/\s+/g, ' ').trim())
@@ -433,6 +448,7 @@ export function notamAreaQualifier(text: string | null | undefined): string | nu
     const at = formatCoordinate(c.lat, c.lon, { style: 'COMPACT', hemi: 'trailing', lngFirst: false, compactSeconds: true })
     out.push(`Excluding ${+c.radiusNm.toFixed(2)} NM radius around ${at}`)
   }
+  if (opts?.approximate) out.push('Edges along a border or coastline are approximate')
   return out.length > 0 ? out.join('. ') : null
 }
 
