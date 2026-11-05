@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { notamTextGeometry, notamAreaQualifier, normalizeNotamText, pointInNotamArea, hasNotamArea } from './notamTextGeometry'
+import { notamTextGeometry, notamAreaQualifier, ringSelfIntersects, normalizeNotamText, pointInNotamArea, hasNotamArea } from './notamTextGeometry'
 
 // Real NOTAM texts (NMS-API, AIRAC 2610), line breaks as received.
 const DE_NVG = "MON-THU, DAILY SS+30 - 23:00, EXCEPT GERMAN HOLIDAYS NVG\nTRAINING OF MIL HELICOPTERS WITH LIGHT AMPLIFYING DEVICES DISPLAYING \nNO OR MNM LIGHTING TO AND WI FOLLOWING BALTIC SEA AREA: 545000N010000\n0E-543000N0120000E-545500N0125000E-545500N0142200E-534000N0142200E-54\n2700N0130000E-540000N0105000E-542400N0110700E-541900N0104200E-543200N\n0100000E\n-545000N0100000E ONLY WITHIN GERMAN TERRITORY. AIRSPACE CAT C/D AND \nALL ED-R ARE EXCLUDED."
@@ -130,7 +130,7 @@ describe('notamTextGeometry: one coordinate scanner', () => {
   })
   it('fixture 20: coordinate far from the Q-line circle -> nothing', () => {
     const g = notamTextGeometry('CRANE PSN 593922N 0175612E', { lat: 52, lon: 4, radiusNm: 5 })
-    expect(g).toEqual({ polygon: null, circle: null, point: null })
+    expect(g).toEqual({ polygon: null, circle: null, point: null, reason: 'outside-qline' })
   })
   it('plausibility box reaches Svalbard', () => {
     expect(notamTextGeometry('CRANE PSN 780000N 0150000E', null).point?.lat).toBeCloseTo(78, 5)
@@ -202,7 +202,7 @@ describe('notamTextGeometry: arcs', () => {
   })
   it('fixture 12: stated 8 NM but real 5 NM -> no polygon, Q-line circle stays, no circle at the centre', () => {
     const g = notamTextGeometry(arcText('8 NM'), { lat: 57.0, lon: 12.1, radiusNm: 8 })
-    expect(g).toEqual({ polygon: null, circle: null, point: null })
+    expect(g).toEqual({ polygon: null, circle: null, point: null, reason: 'arc-radius-mismatch' })
   })
   it('anti-clockwise, radius after the centre, "OF A CIRCLE"', () => {
     const t = '570500N 0120000E - ANTICLOCKWISE ARC OF A CIRCLE CENTRED ON 570000N 0120000E RADIUS 5 NM TO 570000N 0115049E - 565500N 0115049E - 565500N 0120000E - 570500N 0120000E'
@@ -231,5 +231,31 @@ describe('notamTextGeometry: written-out units', () => {
     expect(radius('RADIUS 500 METERS AROUND 593900N 0175600E')).toBeCloseTo(0.27, 3)
     expect(radius('2 STATUTE MILES RADIUS OF 593900N 0175600E')).toBeCloseTo(1.74, 2)
     expect(radius('3 SM RADIUS OF 593900N 0175600E')).toBeCloseTo(2.61, 2)
+  })
+})
+
+describe('notamTextGeometry: reason codes and self-intersection', () => {
+  const reason = (t: string, q: { lat: number; lon: number; radiusNm: number } | null = null) => notamTextGeometry(t, q).reason
+  it('unclosed: a coordinate list with no area intent', () => {
+    expect(reason('OBST 551234N 0141234E, 551300N 0141300E, 551400N 0141400E ERECTED')).toBe('unclosed')
+  })
+  it('self-intersecting: a bow-tie ring is dropped', () => {
+    const bow = 'AREA 570000N 0120000E - 571000N 0121000E - 571000N 0120000E - 570000N 0121000E - 570000N 0120000E'
+    const g = notamTextGeometry(bow, null)
+    expect(g.polygon).toBeNull()
+    expect(g.reason).toBe('self-intersecting')
+  })
+  it('a simple ring is not flagged; a valid ring beside a bad one survives', () => {
+    expect(ringSelfIntersects([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])).toBe(false)
+    expect(ringSelfIntersects([[0, 0], [1, 1], [1, 0], [0, 1], [0, 0]])).toBe(true)
+    const t = 'AREA 570000N 0120000E - 571000N 0121000E - 571000N 0120000E - 570000N 0121000E - 570000N 0120000E AREA 580000N 0120000E - 581000N 0120000E - 581000N 0121000E - 580000N 0120000E'
+    expect(notamTextGeometry(t, null).polygon?.type).toBe('Polygon')
+  })
+  it('multiple-radii: several radii around one centre', () => {
+    const g = notamTextGeometry('1 NM RADIUS OF 593900N 0175600E AND 3 NM RADIUS OF 593900N 0175600E', null)
+    expect(g).toEqual({ polygon: null, circle: null, point: null, reason: 'multiple-radii' })
+  })
+  it('no reason when there is simply nothing to find', () => {
+    expect(notamTextGeometry('RWY 09 CLOSED DUE WIP', null)).toEqual({ polygon: null, circle: null, point: null })
   })
 })

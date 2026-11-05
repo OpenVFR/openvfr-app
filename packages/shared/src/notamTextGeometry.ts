@@ -43,6 +43,37 @@ export interface NotamTextGeometry {
   point: TextPoint | null
   /** Circles cut out of the area ("EXCLUDING 1 NM RADIUS OF ..."); not drawn as areas. */
   excluded?: TextCircle[]
+  /** Why no geometry came out of text that looked like it had some; absent when there was nothing to find. */
+  reason?: NotamTextReason
+}
+
+/**
+ * Typed reasons for an empty result (a Q-line circle is used instead):
+ *   unclosed          a coordinate run with no area phrase and no closing vertex
+ *   arc-radius-mismatch  an arc's stated radius disagrees with its centre
+ *   border-unresolved a border edge could not be followed (reserved: border edges are still drawn straight)
+ *   outside-qline     every shape lies far outside the Q-line circle
+ *   multiple-radii    several radii around one centre: no way to tell which is the area
+ *   self-intersecting every ring crosses itself
+ */
+export type NotamTextReason =
+  | 'unclosed' | 'arc-radius-mismatch' | 'border-unresolved' | 'outside-qline' | 'multiple-radii' | 'self-intersecting'
+
+/** True when a closed [lon, lat] ring crosses itself (edges sharing an end vertex don't count). */
+export function ringSelfIntersects(ring: number[][]): boolean {
+  const n = ring.length - 1 // closing vertex repeats the first
+  if (n < 4) return false
+  const cross = (a: number[], b: number[], c: number[]) => (b[0]! - a[0]!) * (c[1]! - a[1]!) - (b[1]! - a[1]!) * (c[0]! - a[0]!)
+  for (let i = 0; i < n; i++) {
+    const a = ring[i]!, b = ring[i + 1]!
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue // adjacent through the closing vertex
+      const c = ring[j]!, d = ring[j + 1]!
+      const d1 = cross(a, b, c), d2 = cross(a, b, d), d3 = cross(c, d, a), d4 = cross(c, d, b)
+      if (d1 * d2 < 0 && d3 * d4 < 0) return true
+    }
+  }
+  return false
 }
 
 // Distance units: NM, NAUTICAL MILE(S), KM, KILOMETRE(S)/KILOMETER(S), M,
@@ -337,24 +368,42 @@ export function notamTextGeometry(
   const poly = polygons(mt, cs)
   // A wrong arc centre/radius: no text geometry at all (the Q-line circle stays),
   // and the arc's own "RADIUS r CENTRED ON c" must not be read as a circle.
-  if (poly.arcMismatch) return none
-  const rings = poly.rings.filter(r => r.every(([lon, lat]) => inQ(lat!, lon!)))
+  if (poly.arcMismatch) return { ...none, reason: 'arc-radius-mismatch' }
+  // First thing that went wrong, reported if nothing else is found.
+  let reason: NotamTextReason | undefined
+  const simple = poly.rings.filter(r => !ringSelfIntersects(r))
+  if (poly.rings.length > 0 && simple.length === 0) reason = 'self-intersecting'
+  const rings = simple.filter(r => r.every(([lon, lat]) => inQ(lat!, lon!)))
+  if (simple.length > 0 && rings.length === 0) reason ??= 'outside-qline'
+  if (rings.length === 0 && poly.unclosed > 0) reason ??= 'unclosed'
   if (rings.length === 1) return { ...none, polygon: { type: 'Polygon', coordinates: [rings[0]!] } }
   if (rings.length > 1) return { ...none, polygon: { type: 'MultiPolygon', coordinates: rings.map(r => [r]) } }
 
   const { main, excluded } = circles(withoutArcs(mt, poly.arcs), cs)
   const cc = main.filter(c => inQ(c.lat, c.lon))
+  if (main.length > 0 && cc.length === 0) reason ??= 'outside-qline'
   if (cc.length === 1) return { ...none, circle: cc[0]!, ...(excluded.length ? { excluded } : {}) }
-  // Several areas ("AREA 1: 1.45KM RADIUS OF ..., AREA 2: ..."): one polygon each.
-  if (cc.length > 1) return { ...none, polygon: { type: 'MultiPolygon', coordinates: cc.map(c => [circleRing(c)]) } }
+  if (cc.length > 1) {
+    // Several radii around one centre cannot be told apart (inner zone? outer
+    // envelope?): refuse rather than draw nested copies.
+    const [c0] = cc
+    if (cc.every(c => Math.abs(c.lat - c0!.lat) < 1e-4 && Math.abs(c.lon - c0!.lon) < 1e-4)) return { ...none, reason: 'multiple-radii' }
+    // Several areas ("AREA 1: 1.45KM RADIUS OF ..., AREA 2: ..."): one polygon each.
+    return { ...none, polygon: { type: 'MultiPolygon', coordinates: cc.map(c => [circleRing(c)]) } }
+  }
 
-  const ps = points(mt, cs).filter(p => inQ(p.lat, p.lon))
+  const allPs = points(mt, cs)
+  const ps = allPs.filter(p => inQ(p.lat, p.lon))
+  if (allPs.length > 0 && ps.length === 0) reason ??= 'outside-qline'
   if (ps.length === 1) return { ...none, point: ps[0]! }
-  if (ps.length > 1) return none
+  if (ps.length > 1) return reason ? { ...none, reason } : none
   // A single bare coordinate in the whole text ("CAPTIVE BALLOON: c",
   // "LASER: c") is the subject's position.
-  if (cs.length === 1 && inQ(cs[0]!.lat, cs[0]!.lon)) return { ...none, point: { lat: cs[0]!.lat, lon: cs[0]!.lon } }
-  return none
+  if (cs.length === 1) {
+    if (inQ(cs[0]!.lat, cs[0]!.lon)) return { ...none, point: { lat: cs[0]!.lat, lon: cs[0]!.lon } }
+    reason ??= 'outside-qline'
+  }
+  return reason ? { ...none, reason } : none
 }
 
 /**
