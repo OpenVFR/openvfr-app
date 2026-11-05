@@ -258,7 +258,8 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
 - `CHART_DOCUMENT_HOSTS` — optional, experimental. Comma-separated hostnames
   of official chart publishers whose PDFs `/api/charts/document` may pass
   through to the web app (in-app viewer and map overlay of charts listed in
-  `<cc>-charts.json`, see docs/architecture.md "Charts index"). Empty =
+  `<cc>-charts.json`, which the API reads from `TILES_BASE_URL`; see
+  docs/architecture.md "Charts index"). Empty, or `TILES_BASE_URL` unset =
   endpoint disabled. Limits: `CHART_DOCUMENT_MAX_MB` (20),
   `CHART_DOCUMENT_HOURLY_LIMIT` (120) / `CHART_DOCUMENT_DAILY_LIMIT` (600)
   per user, `CHART_DOCUMENT_CACHE_MB` (100, shared in-memory). The web

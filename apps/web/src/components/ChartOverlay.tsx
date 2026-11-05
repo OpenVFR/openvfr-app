@@ -45,7 +45,7 @@ export default function ChartOverlay({ map }: { map: maplibregl.Map | null }) {
     setStatus('loading')
     ;(async () => {
       try {
-        const doc = await loadChartDocument(overlay.chart.url)
+        const doc = await loadChartDocument(overlay.country, overlay.chart.id)
         const canvas = document.createElement('canvas')
         await renderChartPage(doc, overlay.chart.georef!.page, canvas, { maxPx: RENDER_MAX_PX, crop })
         if (cancelled) return

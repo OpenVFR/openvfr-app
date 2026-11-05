@@ -1,5 +1,5 @@
 /**
- * GET /api/charts/document?url=<official document URL>
+ * GET /api/charts/document/:country/:chartId
  *
  * EXPERIMENTAL. Pass-through for official, freely published chart documents
  * (aeronautical information publications) listed in a deployment's charts
@@ -10,6 +10,12 @@
  * document hosts generally send no CORS headers, so the browser cannot
  * fetch them directly. Native apps fetch directly and don't use this.
  *
+ * The client names a chart, never a URL: the document URL comes from the
+ * same published index the app reads (`<TILES_BASE_URL>/<cc>-charts.json`,
+ * located through `manifest.json` by content hash, re-checked every few
+ * minutes). So only documents the operator's index lists can be fetched,
+ * and serving a stored copy later would need no client change.
+ *
  * What it is not: a general proxy or a mirror. The document is passed
  * through byte for byte from the publisher, only for hosts the operator has
  * explicitly allowed, and the response is never altered.
@@ -17,7 +23,9 @@
  * Security (AGENTS.md "Server API Security Baseline"):
  *   - auth: session required (401) -- it spends this server's bandwidth
  *   - per-user rate limit: hourly + daily sliding window (429)
- *   - input caps: https only, host must be in CHART_DOCUMENT_HOSTS (exact
+ *   - input caps: country and chart id by pattern; the chart must be in the
+ *     published index and the index must allow viewing (`display.document`);
+ *     its URL must still pass: https only, host in CHART_DOCUMENT_HOSTS (exact
  *     match), no credentials/ports, path must end in .pdf; at most one
  *     redirect, and only to another allowed host; response size capped
  *     before and while reading; body must start with %PDF-
@@ -26,9 +34,10 @@
  *   - served with `Content-Security-Policy: sandbox` and nosniff so a
  *     document opened directly can't run anything in this origin
  *
- * Disabled (404) unless CHART_DOCUMENT_HOSTS is set.
+ * Disabled (404) unless CHART_DOCUMENT_HOSTS and TILES_BASE_URL are set.
  *
  * Env:
+ *   TILES_BASE_URL               tile host the charts index is published on
  *   CHART_DOCUMENT_HOSTS         comma-separated hostnames, e.g. "aip.example.org"
  *   CHART_DOCUMENT_MAX_MB        per-document cap (default 20)
  *   CHART_DOCUMENT_HOURLY_LIMIT  per user (default 120)
@@ -37,9 +46,14 @@
  */
 
 import { Hono, type Context } from 'hono'
+import { CHART_ID, findChart, parseChartsIndex, type ChartsIndex } from '@open-vfr/shared/chartsIndex'
 
 export interface ChartDocumentConfig {
   hosts: Set<string>
+  /** Tile host the `<cc>-charts.json` index is published on ('' = disabled). */
+  tilesBaseUrl: string
+  /** How long a loaded index is trusted before the manifest is checked again. */
+  indexTtlMs: number
   maxBytes: number
   hourlyLimit: number
   dailyLimit: number
@@ -55,6 +69,8 @@ export function chartDocumentConfigFromEnv(env: NodeJS.ProcessEnv = process.env)
   }
   return {
     hosts: new Set((env['CHART_DOCUMENT_HOSTS'] ?? '').split(',').map(h => h.trim().toLowerCase()).filter(Boolean)),
+    tilesBaseUrl: (env['TILES_BASE_URL'] ?? '').trim().replace(/\/+$/, ''),
+    indexTtlMs: 10 * 60 * 1000,
     maxBytes: num('CHART_DOCUMENT_MAX_MB', 20) * 1024 * 1024,
     hourlyLimit: num('CHART_DOCUMENT_HOURLY_LIMIT', 120),
     dailyLimit: num('CHART_DOCUMENT_DAILY_LIMIT', 600),
@@ -181,6 +197,78 @@ export async function fetchDocument(url: URL, cfg: ChartDocumentConfig, fetchImp
   throw new UpstreamError('too many redirects', 502)
 }
 
+const INDEX_MAX_BYTES = 16 * 1024 * 1024
+const MANIFEST_MAX_BYTES = 4 * 1024 * 1024
+/** A chart id missing from a fresh-enough index triggers at most one reload per this interval. */
+const MISS_RELOAD_MS = 60 * 1000
+
+async function fetchJson(url: string, maxBytes: number, cfg: ChartDocumentConfig, fetchImpl: typeof fetch): Promise<unknown> {
+  const res = await fetchImpl(url, { signal: AbortSignal.timeout(cfg.timeoutMs), headers: { Accept: 'application/json' } })
+  if (res.status !== 200) throw new UpstreamError(`HTTP ${res.status} for ${url}`, 502)
+  return JSON.parse(new TextDecoder().decode(await readCapped(res, maxBytes)))
+}
+
+/**
+ * The published charts index per country. Located through the tile host's
+ * manifest (content hash -> versioned URL, the way the apps fetch it, so a
+ * stale edge copy of the bare URL is never used) and reloaded only when the
+ * hash changes. A failed reload keeps serving the last good index.
+ */
+export function createChartIndexResolver(cfg: ChartDocumentConfig, fetchImpl: typeof fetch = fetch, now: () => number = Date.now) {
+  const cache = new Map<string, { index: ChartsIndex | null; sha: string | null; at: number }>()
+  const inflight = new Map<string, Promise<ChartsIndex | null>>()
+
+  async function reload(cc: string): Promise<ChartsIndex | null> {
+    const name = `${cc}-charts.json`
+    const prev = cache.get(cc)
+    try {
+      const manifest = await fetchJson(`${cfg.tilesBaseUrl}/manifest.json`, MANIFEST_MAX_BYTES, cfg, fetchImpl) as
+        { files?: Record<string, { sha256?: unknown }> }
+      const sha = manifest?.files?.[name]?.sha256
+      if (typeof sha !== 'string' || !/^[0-9a-f]{64}$/.test(sha)) {
+        cache.set(cc, { index: null, sha: null, at: now() })      // not published for this country
+        return null
+      }
+      if (prev && prev.sha === sha) {
+        prev.at = now()
+        return prev.index
+      }
+      const index = parseChartsIndex(await fetchJson(`${cfg.tilesBaseUrl}/${name}?v=${sha.slice(0, 12)}`, INDEX_MAX_BYTES, cfg, fetchImpl))
+      const ok = index && index.country === cc ? index : null
+      cache.set(cc, { index: ok, sha, at: now() })
+      return ok
+    } catch (err) {
+      console.error('[charts/document] index reload failed', { country: cc, error: err instanceof Error ? err.message : String(err) })
+      if (prev) return prev.index                                  // keep serving the last good one
+      throw err
+    }
+  }
+
+  function load(cc: string): Promise<ChartsIndex | null> {
+    let p = inflight.get(cc)
+    if (!p) {
+      p = reload(cc).finally(() => inflight.delete(cc))
+      inflight.set(cc, p)
+    }
+    return p
+  }
+
+  return {
+    /** The chart's document URL and display permission, or null when the index doesn't list it. */
+    async resolve(cc: string, chartId: string): Promise<{ url: string; document: boolean } | null> {
+      const hit = cache.get(cc)
+      let index = hit && now() - hit.at < cfg.indexTtlMs ? hit.index : await load(cc)
+      let found = index ? findChart(index, chartId) : null
+      const at = cache.get(cc)?.at ?? 0
+      if (!found && now() - at >= MISS_RELOAD_MS) {               // maybe published since: look once more
+        index = await load(cc)
+        found = index ? findChart(index, chartId) : null
+      }
+      return found && index ? { url: found.chart.url, document: index.display.document } : null
+    },
+  }
+}
+
 export function chartDocumentRoutes(opts: {
   requireUser: (c: Context) => Promise<{ id: string } | null>
   config?: ChartDocumentConfig
@@ -192,16 +280,31 @@ export function chartDocumentRoutes(opts: {
   const inflight = new Map<string, Promise<Uint8Array>>()
   const app = new Hono()
 
-  app.get('/document', async (c) => {
-    if (cfg.hosts.size === 0) return c.json({ error: 'Not found' }, 404)
+  const indexes = createChartIndexResolver(cfg, opts.fetchImpl)
+
+  app.get('/document/:country/:chartId', async (c) => {
+    if (cfg.hosts.size === 0 || !cfg.tilesBaseUrl) return c.json({ error: 'Not found' }, 404)
     const user = await opts.requireUser(c)
     if (!user) return c.json({ error: 'Authentication required.' }, 401)
-    const checked = checkDocumentUrl(c.req.query('url'), cfg.hosts)
-    if ('error' in checked) return c.json({ error: 'Document not available.' }, 400)
+    const cc = c.req.param('country')
+    const chartId = c.req.param('chartId')
+    if (!/^[a-z]{2}$/.test(cc) || !CHART_ID.test(chartId)) return c.json({ error: 'Document not available.' }, 400)
     const rate = limit(user.id)
     if (!rate.allowed) {
       c.header('Retry-After', String(rate.retryAfterSeconds))
       return c.json({ error: 'Too many document requests. Try again later.', retryAfterSeconds: rate.retryAfterSeconds }, 429)
+    }
+    let entry: { url: string; document: boolean } | null
+    try {
+      entry = await indexes.resolve(cc, chartId)
+    } catch {
+      return c.json({ error: 'Charts are unavailable right now.' }, 503)
+    }
+    if (!entry || !entry.document) return c.json({ error: 'Document not found.' }, 404)
+    const checked = checkDocumentUrl(entry.url, cfg.hosts)
+    if ('error' in checked) {
+      console.error('[charts/document] index lists a document this server may not fetch', { country: cc, chartId, url: entry.url, reason: checked.error })
+      return c.json({ error: 'Document not found.' }, 404)
     }
 
     const key = checked.url.toString()

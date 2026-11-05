@@ -78,17 +78,19 @@ export class ChartDocumentError extends Error {
 const DOC_CACHE_MAX = 6
 const docCache = new Map<string, Promise<PDFDocumentProxy>>()
 
-/** The official document, fetched through the API pass-through; a few
- *  recently used documents stay open. */
-export function loadChartDocument(documentUrl: string): Promise<PDFDocumentProxy> {
-  const hit = docCache.get(documentUrl)
+/** The official document of one chart edition, fetched through the API
+ *  pass-through (by country and chart id); a few recently used documents
+ *  stay open. */
+export function loadChartDocument(country: string, chartId: string): Promise<PDFDocumentProxy> {
+  const cacheKey = `${country}/${chartId}`
+  const hit = docCache.get(cacheKey)
   if (hit) {
-    docCache.delete(documentUrl)
-    docCache.set(documentUrl, hit)
+    docCache.delete(cacheKey)
+    docCache.set(cacheKey, hit)
     return hit
   }
   const p = (async () => {
-    const res = await fetch(chartDocumentProxyUrl(API_BASE_URL, documentUrl), { credentials: 'include' })
+    const res = await fetch(chartDocumentProxyUrl(API_BASE_URL, country, chartId), { credentials: 'include' })
     if (!res.ok) {
       const msg = res.status === 401 ? 'Sign in to view charts in the app.'
         : res.status === 429 ? 'Too many chart requests, try again later.'
@@ -100,8 +102,8 @@ export function loadChartDocument(documentUrl: string): Promise<PDFDocumentProxy
     const pdfjs = await loadPdfjs()
     return pdfjs.getDocument({ data }).promise
   })()
-  p.catch(() => { if (docCache.get(documentUrl) === p) docCache.delete(documentUrl) })
-  docCache.set(documentUrl, p)
+  p.catch(() => { if (docCache.get(cacheKey) === p) docCache.delete(cacheKey) })
+  docCache.set(cacheKey, p)
   while (docCache.size > DOC_CACHE_MAX) {
     const [oldest, op] = docCache.entries().next().value as [string, Promise<PDFDocumentProxy>]
     docCache.delete(oldest)
@@ -135,6 +137,8 @@ export async function renderChartPage(
 
 export interface ChartSelection {
   chart: ChartEntry
+  /** Country of the charts index (the API resolves the document per country). */
+  country: string
   icao: string
   attribution: string
   cycle: string | null

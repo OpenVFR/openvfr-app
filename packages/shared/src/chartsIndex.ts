@@ -15,6 +15,12 @@
  * Documents are always fetched from the publisher (directly, or through the
  * API's pass-through endpoint where the browser can't fetch cross-origin),
  * never altered or republished.
+ *
+ * Editions: a chart's `id` names one edition (it changes when the publisher
+ * issues a new one), `key` names the chart across editions. `effective` is
+ * the edition's effective date and `sha256`/`bytes` describe the document
+ * when the producer downloaded it -- enough for an offline copy to tell
+ * "current", "a newer edition exists" and "no longer published".
  */
 
 export type ChartKind = 'VAC' | 'ADC' | 'PDC' | 'GMC' | 'IAC' | 'SID' | 'STAR' | 'AREA' | 'OBST' | 'OTHER'
@@ -38,11 +44,19 @@ export interface ChartGeoref {
 }
 
 export interface ChartEntry {
+  /** One edition of the chart. */
   id: string
+  /** The chart across editions (same aerodrome, kind and document). */
+  key?: string
   title: string
   kind: ChartKind
   /** The publisher's own document URL. */
   url: string
+  /** Effective date of this edition (YYYY-MM-DD). */
+  effective?: string
+  /** SHA-256 (hex) and size of this edition's document, when known. */
+  sha256?: string
+  bytes?: number
   georef?: ChartGeoref
 }
 
@@ -85,6 +99,12 @@ export const CHART_KIND_LABEL: Record<ChartKind, string> = {
 
 /** Kinds shown without expanding (the rest sit behind "More charts"). */
 export const VFR_CHART_KINDS: ReadonlySet<ChartKind> = new Set(['VAC', 'ADC', 'PDC', 'GMC'])
+
+/** Chart ids go into API paths: short and URL-safe. */
+export const CHART_ID = /^[A-Za-z0-9_-]{1,64}$/
+const CHART_KEY = /^[A-Za-z0-9_-]{1,120}$/
+const DATE = /^\d{4}-\d{2}-\d{2}$/
+const SHA256 = /^[0-9a-f]{64}$/
 
 function isHttpsUrl(v: unknown): v is string {
   if (typeof v !== 'string') return false
@@ -155,7 +175,16 @@ export function parseChartsIndex(raw: unknown): ChartsIndex | null {
       if (!isHttpsUrl(c['url']) || typeof c['title'] !== 'string') continue
       const kind = KINDS.includes(c['kind'] as ChartKind) ? c['kind'] as ChartKind : 'OTHER'
       const georef = index.display.overlay ? parseGeoref(c['georef']) : undefined
-      charts.push({ id: String(c['id'] ?? c['url']), title: c['title'], kind, url: c['url'], ...(georef ? { georef } : {}) })
+      const id = String(c['id'] ?? '')
+      if (!CHART_ID.test(id)) continue
+      charts.push({
+        id, title: c['title'], kind, url: c['url'],
+        ...(typeof c['key'] === 'string' && CHART_KEY.test(c['key']) ? { key: c['key'] } : {}),
+        ...(typeof c['effective'] === 'string' && DATE.test(c['effective']) ? { effective: c['effective'] } : {}),
+        ...(typeof c['sha256'] === 'string' && SHA256.test(c['sha256']) ? { sha256: c['sha256'] } : {}),
+        ...(Number.isInteger(c['bytes']) && (c['bytes'] as number) > 0 ? { bytes: c['bytes'] as number } : {}),
+        ...(georef ? { georef } : {}),
+      })
     }
     index.aerodromes[icao] = {
       name: typeof ad['name'] === 'string' ? ad['name'] : undefined,
@@ -167,6 +196,8 @@ export function parseChartsIndex(raw: unknown): ChartsIndex | null {
 }
 
 export interface AerodromeCharts {
+  /** Country of the index the charts came from (the API resolves documents per country). */
+  country: string
   icao: string
   charts: ChartEntry[]
   infoUrl: string | null
@@ -182,7 +213,7 @@ export function chartsForAerodrome(indexes: readonly ChartsIndex[], icao: string
     if (!ad) continue
     const order = (k: ChartKind) => CHART_KIND_ORDER.indexOf(k)
     const charts = [...ad.charts].sort((a, b) => order(a.kind) - order(b.kind))
-    return { icao, charts, infoUrl: ad.info_url ?? null, source: idx.source, cycle: idx.cycle, display: idx.display }
+    return { country: idx.country, icao, charts, infoUrl: ad.info_url ?? null, source: idx.source, cycle: idx.cycle, display: idx.display }
   }
   return null
 }
@@ -194,9 +225,23 @@ export function overlayGeometry(g: ChartGeoref): { corners: [LngLat, LngLat, Lng
   return { corners: g.corners, crop: [0, 0, 1, 1] }
 }
 
-/** URL of the API's pass-through endpoint for an official document. */
-export function chartDocumentProxyUrl(apiBaseUrl: string, documentUrl: string): string {
-  return `${apiBaseUrl}/api/charts/document?url=${encodeURIComponent(documentUrl)}`
+/**
+ * URL of the API's pass-through endpoint for a chart's document. The API
+ * looks the chart up in the same published index by id, so the client never
+ * names a URL (and the API could serve a stored copy later without a client
+ * change).
+ */
+export function chartDocumentProxyUrl(apiBaseUrl: string, country: string, chartId: string): string {
+  return `${apiBaseUrl}/api/charts/document/${encodeURIComponent(country)}/${encodeURIComponent(chartId)}`
+}
+
+/** A chart of the index by edition id. */
+export function findChart(index: ChartsIndex, chartId: string): { icao: string; chart: ChartEntry } | null {
+  for (const [icao, ad] of Object.entries(index.aerodromes)) {
+    const chart = ad.charts.find(c => c.id === chartId)
+    if (chart) return { icao, chart }
+  }
+  return null
 }
 
 /**

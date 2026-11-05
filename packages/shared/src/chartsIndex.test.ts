@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  parseChartsIndex, chartsForAerodrome, overlayGeometry, chartDocumentProxyUrl, chartDocumentHosts,
+  parseChartsIndex, chartsForAerodrome, overlayGeometry, chartDocumentProxyUrl, chartDocumentHosts, findChart,
 } from './chartsIndex'
 
 const corners = [[12.4, 57.0], [13.3, 57.0], [13.3, 56.4], [12.4, 56.4]]
@@ -25,6 +25,11 @@ function sample(overrides: Record<string, unknown> = {}) {
           { id: 'x', title: 'Not https', kind: 'ADC', url: 'http://aip.example/adc.pdf' },
           { id: 'y', title: 'Script', kind: 'ADC', url: 'javascript:alert(1)' },
           { id: 'z', title: 'Odd kind', kind: 'WHATEVER', url: 'https://other.example/z.pdf' },
+          { id: 'bad/id', title: 'Id unfit for a path', kind: 'ADC', url: 'https://aip.example/q.pdf' },
+          { id: 'e', key: 'XXTT-adc-adc', title: 'ADC', kind: 'ADC', url: 'https://aip.example/adc2.pdf',
+            effective: '2026-01-22', sha256: 'a'.repeat(64), bytes: 123456 },
+          { id: 'f', key: 'has space', title: 'Bad edition data', kind: 'ADC', url: 'https://aip.example/adc3.pdf',
+            effective: '22 Jan', sha256: 'xyz', bytes: -1 },
         ],
       },
       'not an icao': { charts: [] },
@@ -39,9 +44,17 @@ describe('parseChartsIndex', () => {
     expect(idx.country).toBe('xx')
     expect(Object.keys(idx.aerodromes)).toEqual(['XXTT'])
     const charts = idx.aerodromes['XXTT']!.charts
-    expect(charts.map(c => c.id)).toEqual(['b', 'a', 'z'])
+    expect(charts.map(c => c.id)).toEqual(['b', 'a', 'z', 'e', 'f'])
     expect(charts[2]!.kind).toBe('OTHER')
     expect(charts[1]!.georef?.crop).toEqual(crop)
+  })
+
+  it('keeps edition data only when well-formed', () => {
+    const charts = parseChartsIndex(sample())!.aerodromes['XXTT']!.charts
+    const e = charts.find(c => c.id === 'e')!
+    expect([e.key, e.effective, e.sha256, e.bytes]).toEqual(['XXTT-adc-adc', '2026-01-22', 'a'.repeat(64), 123456])
+    const f = charts.find(c => c.id === 'f')!
+    expect([f.key, f.effective, f.sha256, f.bytes]).toEqual([undefined, undefined, undefined, undefined])
   })
 
   it('rejects files that are not a charts index', () => {
@@ -67,7 +80,8 @@ describe('helpers', () => {
 
   it('sorts VFR charts first', () => {
     const ad = chartsForAerodrome([idx], 'XXTT')!
-    expect(ad.charts.map(c => c.kind)).toEqual(['VAC', 'IAC', 'OTHER'])
+    expect(ad.charts.map(c => c.kind)).toEqual(['VAC', 'ADC', 'ADC', 'IAC', 'OTHER'])
+    expect(ad.country).toBe('xx')
     expect(ad.display.overlay).toBe(true)
     expect(chartsForAerodrome([idx], 'YYYY')).toBeNull()
   })
@@ -78,9 +92,14 @@ describe('helpers', () => {
     expect(overlayGeometry({ ...g, crop: undefined, crop_corners: undefined })).toEqual({ corners, crop: [0, 0, 1, 1] })
   })
 
-  it('builds the pass-through URL and host list', () => {
-    expect(chartDocumentProxyUrl('', 'https://aip.example/a b.pdf'))
-      .toBe('/api/charts/document?url=https%3A%2F%2Faip.example%2Fa%20b.pdf')
+  it('builds the pass-through URL from country and chart id, and the host list', () => {
+    expect(chartDocumentProxyUrl('', 'xx', 'a')).toBe('/api/charts/document/xx/a')
+    expect(chartDocumentProxyUrl('https://api.example', 'xx', 'a_b-1')).toBe('https://api.example/api/charts/document/xx/a_b-1')
     expect(chartDocumentHosts(idx)).toEqual(['aip.example', 'other.example'])
+  })
+
+  it('finds a chart by edition id', () => {
+    expect(findChart(idx, 'a')).toMatchObject({ icao: 'XXTT', chart: { url: 'https://aip.example/vac.pdf' } })
+    expect(findChart(idx, 'nope')).toBeNull()
   })
 })

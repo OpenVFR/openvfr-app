@@ -314,11 +314,16 @@ entries and non-https URLs).
       "name": "Testville",
       "info_url": "https://...",                // publisher's page for the aerodrome
       "charts": [{
-        "id": "a1b2c3", "title": "VAC - ICAO",
+        "id": "a1b2c3",                         // this edition ([A-Za-z0-9_-], used in API paths)
+        "key": "XXTT-vac-xxtt-vac",             // optional: the chart across editions
+        "title": "VAC - ICAO",
         "kind": "VAC",                         // VAC ADC PDC GMC IAC SID STAR AREA OBST OTHER
         "url": "https://.../XXTT VAC.pdf",      // the publisher's own document
+        "effective": "2026-01-22",              // optional: this edition's effective date
+        "sha256": "...", "bytes": 720372,       // optional: this edition's document
         "georef": {                             // optional, only if display.overlay
-          "method": "graticule", "page": 1, "page_size_pt": [595, 842],
+          "method": "graticule",                // or "control_points" (placed by hand)
+          "page": 1, "page_size_pt": [595, 842],
           "corners": [[lon, lat] x4],           // whole page: TL, TR, BR, BL
           "crop": [0.05, 0.12, 0.95, 0.77],     // map frame as page fractions (l, t, r, b)
           "crop_corners": [[lon, lat] x4],      // map frame: TL, TR, BR, BL
@@ -340,15 +345,26 @@ the CSP (`connect-src` doesn't list `blob:`/`data:`). pdf.js is loaded on
 first use only. Documents are always the publisher's own, never altered or
 stored server-side beyond a short in-memory cache.
 
+**Editions:** `id` changes with every new edition of a chart, `key` stays.
+`effective`, `sha256` and `bytes` describe the edition, so an offline copy
+(planned on native) can tell "current", "a newer edition exists" (same `key`,
+other `id`) and "no longer published" (`key` gone). A device keeps its old
+copy until the new one is downloaded.
+
 **API pass-through:** publishers' document hosts don't send CORS headers, so
-the web app fetches PDF bytes through `GET /api/charts/document?url=...`
-(`apps/api/src/chartDocuments.ts`): session required, per-user hourly/daily
-limits, exact-match host allow-list `CHART_DOCUMENT_HOSTS` (endpoint returns
-404 while it is empty), https + `.pdf` only, at most one redirect and only to
-an allowed host, size cap, body must start with `%PDF-`, served with
-`Content-Security-Policy: sandbox`. Only list hosts of officially, freely
-published documents whose terms allow this. Native apps (planned) fetch the
-documents directly and don't need it.
+the web app fetches PDF bytes through `GET /api/charts/document/:country/:chartId`
+(`apps/api/src/chartDocuments.ts`). The client names a chart, never a URL:
+the API looks it up in the same published index (`<TILES_BASE_URL>/<cc>-charts.json`,
+found through `manifest.json` by content hash and re-checked every 10 minutes;
+a failed reload keeps the last good index), so only documents the index lists
+can be fetched, and serving a stored copy later would need no client change.
+Further: session required, per-user hourly/daily limits, the index must allow
+viewing (`display.document`), exact-match host allow-list `CHART_DOCUMENT_HOSTS`
+(endpoint returns 404 while it or `TILES_BASE_URL` is empty), https + `.pdf`
+only, at most one redirect and only to an allowed host, size cap, body must
+start with `%PDF-`, served with `Content-Security-Policy: sandbox`. Only list
+hosts of officially, freely published documents whose terms allow this.
+Native apps (planned) fetch the documents directly and don't need it.
 
 ### G. Dynamic Data — DuckDB (Phase 4, not yet implemented)
 

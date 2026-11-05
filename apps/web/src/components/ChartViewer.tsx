@@ -26,7 +26,7 @@ export default function ChartViewer() {
     setDoc(null); setError(null); setPage(1); setZoom(0)
     if (!viewer) return
     let cancelled = false
-    loadChartDocument(viewer.chart.url)
+    loadChartDocument(viewer.country, viewer.chart.id)
       .then(d => { if (!cancelled) setDoc(d) })
       .catch(e => { if (!cancelled) setError(e instanceof ChartDocumentError ? e.message : 'The chart could not be loaded.') })
     return () => { cancelled = true }

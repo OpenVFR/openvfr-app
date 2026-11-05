@@ -23,7 +23,7 @@ interface Props {
 
 function ChartRow({ chart, ad, authed }: { chart: ChartEntry; ad: AerodromeCharts; authed: boolean }) {
   const ui = useChartUi()
-  const sel: ChartSelection = { chart, icao: ad.icao, attribution: ad.source.attribution, cycle: ad.cycle }
+  const sel: ChartSelection = { chart, country: ad.country, icao: ad.icao, attribution: ad.source.attribution, cycle: ad.cycle }
   const onMap = ui.overlay?.chart.id === chart.id
   const canView = ad.display.document && authed
   const canOverlay = ad.display.overlay && !!chart.georef && authed

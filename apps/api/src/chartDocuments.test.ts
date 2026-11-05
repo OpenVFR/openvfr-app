@@ -1,13 +1,32 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  checkDocumentUrl, createRateLimiter, createByteCache, fetchDocument, chartDocumentRoutes,
+  checkDocumentUrl, createRateLimiter, createByteCache, fetchDocument, chartDocumentRoutes, createChartIndexResolver,
   type ChartDocumentConfig,
 } from './chartDocuments.js'
 
 const hosts = new Set(['aip.example.org'])
+const TILES = 'https://tiles.example.org'
 const cfg: ChartDocumentConfig = {
-  hosts, maxBytes: 1024, hourlyLimit: 3, dailyLimit: 5, cacheBytes: 10_000, cacheTtlMs: 60_000, timeoutMs: 5_000,
+  hosts, tilesBaseUrl: TILES, indexTtlMs: 600_000,
+  maxBytes: 1024, hourlyLimit: 3, dailyLimit: 5, cacheBytes: 10_000, cacheTtlMs: 60_000, timeoutMs: 5_000,
+}
+const SHA = 'ab'.repeat(32)
+
+function chartsIndex(charts: Array<Record<string, unknown>>, display = { document: true, overlay: true }) {
+  return {
+    schema: 'openvfr.charts/1', country: 'xx', cycle: '2026-10-29', source: { name: 'Example AIP', url: 'https://aip.example.org/' },
+    display, aerodromes: { XXTT: { name: 'T', charts } },
+  }
+}
+
+/** Tile host serving a manifest + versioned charts index, and the document host. */
+function tileHost(index: unknown, extra: Record<string, () => Response> = {}, sha = SHA) {
+  return {
+    [`${TILES}/manifest.json`]: () => Response.json({ files: { 'xx-charts.json': { sha256: sha } } }),
+    [`${TILES}/xx-charts.json?v=${sha.slice(0, 12)}`]: () => Response.json(index),
+    ...extra,
+  }
 }
 const PDF = new TextEncoder().encode('%PDF-1.7 test document')
 
@@ -73,27 +92,65 @@ test('fetch: passes a PDF through, refuses non-PDF, size cap and foreign redirec
 test('route: disabled, auth, validation, rate limit, caching, headers', async () => {
   const calls: string[] = []
   const doc = 'https://aip.example.org/charts/VAC.pdf'
-  const f = fakeFetch({ [doc]: () => new Response(PDF) }, calls)
+  const index = chartsIndex([
+    { id: 'vac1', title: 'VAC', kind: 'VAC', url: doc },
+    { id: 'evil', title: 'Elsewhere', kind: 'ADC', url: 'https://evil.example/x.pdf' },
+  ])
+  const f = fakeFetch(tileHost(index, { [doc]: () => new Response(PDF) }), calls)
   const user = { id: 'u1' }
   const app = chartDocumentRoutes({ requireUser: async () => user, config: cfg, fetchImpl: f })
-  const get = (url: string) => app.request(`/document?url=${encodeURIComponent(url)}`)
+  const get = (path: string) => app.request(`/document/${path}`)
 
   const off = chartDocumentRoutes({ requireUser: async () => user, config: { ...cfg, hosts: new Set() }, fetchImpl: f })
-  assert.equal((await off.request(`/document?url=${encodeURIComponent(doc)}`)).status, 404)
+  assert.equal((await off.request('/document/xx/vac1')).status, 404)
+  const noTiles = chartDocumentRoutes({ requireUser: async () => user, config: { ...cfg, tilesBaseUrl: '' }, fetchImpl: f })
+  assert.equal((await noTiles.request('/document/xx/vac1')).status, 404)
   const anon = chartDocumentRoutes({ requireUser: async () => null, config: cfg, fetchImpl: f })
-  assert.equal((await anon.request(`/document?url=${encodeURIComponent(doc)}`)).status, 401)
-  assert.equal((await get('https://evil.example/x.pdf')).status, 400)
+  assert.equal((await anon.request('/document/xx/vac1')).status, 401)
+  assert.equal((await get('XX/vac1')).status, 400)            // bad country (not counted)
+  assert.equal((await get('xx/a.b')).status, 400)             // bad id (not counted)
+  assert.equal((await app.request('/document?url=' + encodeURIComponent(doc))).status, 404)   // the URL form is gone
 
-  const res = await get(doc)
+  const res = await get('xx/vac1')
   assert.equal(res.status, 200)
   assert.equal(res.headers.get('content-type'), 'application/pdf')
   assert.match(res.headers.get('content-security-policy') ?? '', /sandbox/)
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff')
   assert.deepEqual(new Uint8Array(await res.arrayBuffer()), PDF)
-  assert.equal((await get(doc)).status, 200)
-  assert.equal(calls.length, 1) // second request served from cache
-  assert.equal((await get(doc)).status, 200) // 3rd counted request (the 400 above isn't counted)
-  const limited = await get(doc) // 4th: over the hourly limit of 3
+  assert.equal((await get('xx/evil')).status, 404)            // listed, but its host isn't allowed
+  assert.equal((await get('xx/vac1')).status, 200)            // 3rd counted request, from both caches
+  assert.equal(calls.filter(u => u === doc).length, 1)
+  assert.equal(calls.filter(u => u.endsWith('/manifest.json')).length, 1)
+  const limited = await get('xx/vac1')                        // 4th: over the hourly limit of 3
   assert.equal(limited.status, 429)
   assert.ok(Number(limited.headers.get('retry-after')) > 0)
+})
+
+test('index resolver: by manifest hash, unknown ids, viewing not allowed, stale on failure', async () => {
+  let t = 0
+  const now = () => t
+  const calls: string[] = []
+  let routes = tileHost(chartsIndex([{ id: 'vac1', title: 'VAC', kind: 'VAC', url: 'https://aip.example.org/v.pdf' }]))
+  const f = fakeFetch(new Proxy({}, { get: (_, k: string) => routes[k as keyof typeof routes] }), calls)
+  const r = createChartIndexResolver(cfg, f, now)
+
+  assert.deepEqual(await r.resolve('xx', 'vac1'), { url: 'https://aip.example.org/v.pdf', document: true })
+  assert.equal(await r.resolve('yy', 'vac1'), null)                       // no index published for yy
+  assert.equal(await r.resolve('xx', 'nope'), null)                       // fresh index: no extra reload
+  assert.equal(calls.filter(u => u.includes('xx-charts')).length, 1)
+
+  t = 61_000                                                              // a miss after a minute looks again
+  const sha2 = 'cd'.repeat(32)
+  routes = tileHost(chartsIndex([{ id: 'new2', title: 'VAC', kind: 'VAC', url: 'https://aip.example.org/w.pdf' }]), {}, sha2)
+  assert.deepEqual(await r.resolve('xx', 'new2'), { url: 'https://aip.example.org/w.pdf', document: true })
+
+  t = 2_000_000                                                           // TTL over, tile host down: keep the last index
+  routes = {} as typeof routes
+  assert.deepEqual(await r.resolve('xx', 'new2'), { url: 'https://aip.example.org/w.pdf', document: true })
+
+  const r2 = createChartIndexResolver(cfg, fakeFetch(tileHost(chartsIndex(
+    [{ id: 'vac1', title: 'VAC', kind: 'VAC', url: 'https://aip.example.org/v.pdf' }], { document: false, overlay: false }))), now)
+  assert.deepEqual(await r2.resolve('xx', 'vac1'), { url: 'https://aip.example.org/v.pdf', document: false })
+  const r3 = createChartIndexResolver(cfg, fakeFetch({}), now)
+  await assert.rejects(r3.resolve('xx', 'vac1'))                          // nothing cached and the host is down
 })
