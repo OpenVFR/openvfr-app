@@ -119,7 +119,7 @@ server list uses LAN discovery, which never sees an adb tunnel). Metro's cache
 is cleared automatically when you switch between `metro:local` and
 `metro:prod`; pass `--clear` (`pnpm metro:prod -- --clear`) to force it.
 
-`metro:local` also reverses ports 5200/5174/5100 and
+`metro:local` also reverses ports 5200/5174 and
 injects `EXPO_PUBLIC_API_BASE=http://localhost:5200` /
 `EXPO_PUBLIC_TILE_BASE=http://localhost:5174/tiles` via `cross-env` — no
 `.env` file editing required (`config.ts`'s tile URL builders append no
