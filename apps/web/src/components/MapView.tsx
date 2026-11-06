@@ -2812,7 +2812,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           'icon-rotation-alignment':   'map',
           'icon-allow-overlap':        true,
           'icon-ignore-placement':     true,
-          'icon-size':                 0.75,
+          'icon-size':                 ['interpolate', ['linear'], ['zoom'], 5, 0.5, 9, 0.65, 13, 0.75],
         },
       })
 

@@ -1762,7 +1762,7 @@ const AIRCRAFT_LAYOUT = {
   'icon-rotation-alignment': 'map',
   'icon-allow-overlap':      true,
   'icon-ignore-placement':   true,
-  'icon-size':               0.5,
+  'icon-size':               ['interpolate', ['linear'], ['zoom'], 5, 0.35, 9, 0.45, 13, 0.5],
 } as any
 const TRAJ_LINE_FILTER = ['==', ['get', 'type'], 'line'] as any
 const TRAJ_TICK_FILTER = ['==', ['get', 'type'], 'tick'] as any
