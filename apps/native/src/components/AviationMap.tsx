@@ -2625,15 +2625,25 @@ export function AviationMap({
     return () => { off(); clearTimeout(timer) }
   }, [])
 
-  // Fly to a Find-a-Destination row tap.
+  // Fly to a requested point (Find-a-Destination row, "Show on map" from the plan
+  // screen). The request often comes from another screen while the map is covered,
+  // and a camera move issued then is lost: wait until the map screen is in front and
+  // the style has loaded, after a short settle for the navigation transition. Each
+  // request flies once. It also counts as the start-up centring.
+  const flownRef = useRef<typeof flyToTarget>(null)
   useEffect(() => {
-    if (!flyToTarget) return
-    cameraRef.current?.flyTo({
-      center: [flyToTarget.lng, flyToTarget.lat],
-      zoom:   flyToTarget.zoom ?? 13,
-      duration: 1400,
-    })
-  }, [flyToTarget])
+    if (!flyToTarget || !screenFocused || !styleLoaded || flownRef.current === flyToTarget) return
+    homeCenteredRef.current = true
+    const t = setTimeout(() => {
+      flownRef.current = flyToTarget
+      cameraRef.current?.flyTo({
+        center: [flyToTarget.lng, flyToTarget.lat],
+        zoom:   flyToTarget.zoom ?? 13,
+        duration: 1400,
+      })
+    }, 350)
+    return () => clearTimeout(t)
+  }, [flyToTarget, screenFocused, styleLoaded])
 
   // Fit camera to a viewed flight log's track bounds whenever it's selected
   // (or changes) — Logs segment "View" action on PlanScreen. The log is picked
@@ -2696,11 +2706,15 @@ export function AviationMap({
   // Map opened with a route already in place (cold start restore, or the map
   // mounted after the route was loaded): fit once as soon as it has 2+ points.
   const initialFitDoneRef = useRef(false)
+  const flyToTargetRef = useRef(flyToTarget)
+  flyToTargetRef.current = flyToTarget
   useEffect(() => {
     // Wait for the first full render: fitBounds before the map has a size
     // computes a wrong (far too wide) zoom.
     if (readyStage < 1 || initialFitDoneRef.current || !waypoints || waypoints.length < 2) return
     initialFitDoneRef.current = true
+    // A point was asked for (e.g. "Show on map" on a pre-flight warning): that move wins.
+    if (flyToTargetRef.current) return
     homeCenteredRef.current = true
     fitRoute(waypoints)
   }, [waypoints, fitRoute, readyStage])
