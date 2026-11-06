@@ -3389,7 +3389,7 @@ export function AviationMap({
                 type="circle"
                 filter={['==', ['get', 'urgency'], u] as any}
                 paint={{
-                  'circle-radius': 11,
+                  'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 7, 9, 9, 13, 11] as any,
                   'circle-color': c,
                   'circle-opacity': 0.35,
                   'circle-stroke-color': c,
@@ -3403,7 +3403,8 @@ export function AviationMap({
               type="symbol"
               layout={{
                 'icon-image': ['coalesce', ['get', 'iconId'], 'traffic-icon-a0'],
-                'icon-size': 0.5,
+                // Shrinks when zoomed out so a busy sky does not bury the map.
+                'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.3, 9, 0.4, 13, 0.5],
                 'icon-rotate': ['get', 'trackDeg'],
                 'icon-rotation-alignment': 'map',
                 'icon-allow-overlap': true,

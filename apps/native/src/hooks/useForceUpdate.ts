@@ -143,6 +143,17 @@ async function offerOptionalUpdate(): Promise<void> {
     const cur = Platform.OS === 'android' && curBuild !== null ? String(curBuild) : curVersion
     const r = await iau.checkNeedsUpdate({ curVersion: cur })
     if (!r.shouldUpdate) return
+    if (Platform.OS === 'android') {
+      // Flexible updates only download; the app must trigger the install itself
+      // once Play reports DOWNLOADED (11), else clicking "Update" does nothing.
+      const onStatus = (e: { status?: number }) => {
+        if (e?.status === 11) {
+          iau.removeStatusUpdateListener(onStatus as any)
+          void iau.installUpdate()
+        }
+      }
+      iau.addStatusUpdateListener(onStatus as any)
+    }
     await iau.startUpdate(Platform.select({
       android: { updateType: IAUUpdateKind.FLEXIBLE },
       ios: { forceUpgrade: false },

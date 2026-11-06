@@ -1920,7 +1920,7 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
         filter: ['!=', ['get', 'onGround'], true],
         layout: { visibility: 'none' },
         paint: {
-          'circle-radius': 11,
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 7, 9, 9, 13, 11],
           'circle-color': [
             'match', ['get', 'urgency'],
             1, '#22c55e',   // green  — close   (< 3 NM / < 3000 ft)
@@ -1963,7 +1963,7 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
           // iconId is pre-computed in MapView using selectTrafficIcon()
           // (category + speed → specific silhouette). Falls back to a0.
           'icon-image': ['coalesce', ['get', 'iconId'], 'traffic-icon-a0'],
-          'icon-size': 1,
+          'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.6, 9, 0.8, 13, 1],
           'icon-rotate': ['get', 'trackDeg'],
           'icon-rotation-alignment': 'map',
           'icon-allow-overlap': true,
