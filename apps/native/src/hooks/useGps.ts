@@ -2,12 +2,14 @@
  * useGps — wraps the background-capable location task to produce a stream
  * of GpsPosition values.
  *
- * Uses expo-task-manager + expo-location's startLocationUpdatesAsync (via
- * ../tasks/locationTask) instead of plain watchPositionAsync — plain
- * foreground watches get suspended by the OS as soon as the screen locks or
- * the app backgrounds, which silently killed flight-log recording and moving-
- * map tracking mid-flight. The background task + Android foreground-service
- * notification keep GPS fixes flowing continuously regardless of screen state.
+ * The request follows what the pilot is doing (@open-vfr/shared/gpsPolicy,
+ * applied through ../tasks/locationTask): while a GPS flight is on, expo-task-
+ * manager's startLocationUpdatesAsync with an Android foreground service keeps
+ * GPS fixes flowing regardless of screen state (plain foreground watches get
+ * suspended by the OS as soon as the screen locks or the app backgrounds, which
+ * silently killed flight-log recording and moving-map tracking mid-flight). On
+ * the ground there is no service, the request is cheap once the device has been
+ * still for two minutes, and nothing is requested in the background.
  *
  * Matches the GpsPosition type used in the web project (src/utils/gpsTypes.ts)
  * so all shared navigation utilities (routeCalc, fuelCalc, etc.) can be used
@@ -15,7 +17,9 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { addLocationListener, startBackgroundLocation, stopBackgroundLocation } from '../tasks/locationTask'
+import { AppState } from 'react-native'
+import { addLocationListener, setLocationRequest, stopBackgroundLocation } from '../tasks/locationTask'
+import { GPS_REQUESTS, gpsTier, isMoving, type GpsFixLike, type GpsTier } from '@open-vfr/shared/gpsPolicy'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { ellipsoidToMslM } from '@open-vfr/shared/geoid'
 import { gpsAltitudeReference } from '@open-vfr/shared/gpsAltitudeReference'
@@ -36,6 +40,8 @@ export type UseGpsResult = {
   start:     () => Promise<void>
   /** Stop watching GPS and release the background task. */
   stop:      () => void
+  /** Tell the hook whether a flight is in progress: only then is the foreground service (and best accuracy at 1 Hz with the screen off) used. */
+  setFlying: (flying: boolean) => void
 }
 
 const M_TO_FT = 3.28084
@@ -79,10 +85,33 @@ export function useGps(opts: { paused?: boolean } = {}): UseGpsResult {
   const lastStableTrackRef       = useRef(0)
   const unsubscribeRef           = useRef<(() => void) | null>(null)
 
+  // What the device is asked for follows the situation (see gpsPolicy): the
+  // flight tier (foreground service) only while flying, otherwise a fast tier for
+  // two minutes after opening the app or the last movement, then a cheap one.
+  const flyingRef       = useRef(false)
+  const lastMovedRef    = useRef<number | null>(null)
+  const tierRef         = useRef<GpsTier | null>(null)
+  const prevFixRef      = useRef<GpsFixLike | null>(null)
+  const backgroundRef   = useRef(false)
+
+  const applyTier = useCallback(async (): Promise<boolean> => {
+    if (!activeRef.current) return true
+    const tier = gpsTier({ flying: flyingRef.current, lastMovedAtMs: lastMovedRef.current, nowMs: Date.now() })
+    // Off the ground-tier request while the app is in the background and no flight is running.
+    if (backgroundRef.current && tier !== 'flight') {
+      if (tierRef.current !== null) { tierRef.current = null; await stopBackgroundLocation().catch(() => {}) }
+      return true
+    }
+    if (tierRef.current === tier) return true
+    tierRef.current = tier
+    return (await setLocationRequest(GPS_REQUESTS[tier])) === 'ok'
+  }, [])
+
   const stop = useCallback(() => {
     unsubscribeRef.current?.()
     unsubscribeRef.current = null
     activeRef.current = false
+    tierRef.current = null
     setStatus('idle')
     stopBackgroundLocation().catch(() => {})
   }, [])
@@ -92,19 +121,28 @@ export function useGps(opts: { paused?: boolean } = {}): UseGpsResult {
 
     setStatus('requesting')
 
-    const result = await startBackgroundLocation()
-    if (result !== 'ok') {
+    // Opening the app counts as movement: the fast tier for the first two minutes.
+    lastMovedRef.current = Date.now()
+    prevFixRef.current = null
+    activeRef.current = true
+    const ok = await applyTier()
+    if (!ok) {
+      activeRef.current = false
+      tierRef.current = null
       setStatus('denied')
       return
     }
-
-    activeRef.current = true
     setStatus('active')
 
     unsubscribeRef.current = addLocationListener((loc) => {
-      if (pausedRef.current) return
       const coords = loc.coords
       const speedKts = coords.speed != null ? coords.speed * 1.943844 : 0  // m/s -> kts
+      // Movement drives the tier even while a simulator has the position paused.
+      const fixLike: GpsFixLike = { lat: coords.latitude, lng: coords.longitude, speedKts, accuracyM: coords.accuracy ?? 0, tMs: loc.timestamp ?? Date.now() }
+      if (isMoving(prevFixRef.current, fixLike)) lastMovedRef.current = Date.now()
+      prevFixRef.current = fixLike
+      void applyTier()
+      if (pausedRef.current) return
       if (speedKts >= MIN_SPEED_FOR_TRACK_KTS && coords.heading != null) {
         lastStableTrackRef.current = coords.heading
       }
@@ -122,7 +160,28 @@ export function useGps(opts: { paused?: boolean } = {}): UseGpsResult {
       }
       setPosition((prev) => (prev && sameFix(prev, next) ? prev : next))
     })
-  }, [])
+  }, [applyTier])
+
+  const setFlying = useCallback((flying: boolean) => {
+    flyingRef.current = flying
+    // Leaving a flight: count it as movement so the fast tier covers the taxi in.
+    if (!flying) lastMovedRef.current = Date.now()
+    void applyTier()
+  }, [applyTier])
+
+  // The ground tiers use no foreground service, so nothing is asked of the
+  // receiver while the app is in the background (a pilot who has put the tablet
+  // away). Back in the foreground it counts as movement: fast tier again.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      const bg = state !== 'active'
+      if (bg === backgroundRef.current) return
+      backgroundRef.current = bg
+      if (!bg) lastMovedRef.current = Date.now()
+      void applyTier()
+    })
+    return () => sub.remove()
+  }, [applyTier])
 
   // Clean up on unmount — release the listener, but deliberately do NOT stop
   // the background task itself here: MapScreen mounts/unmounts this hook
@@ -132,5 +191,5 @@ export function useGps(opts: { paused?: boolean } = {}): UseGpsResult {
   // background tracking.
   useEffect(() => () => { unsubscribeRef.current?.() }, [])
 
-  return { position, status, start, stop }
+  return { position, status, start, stop, setFlying }
 }

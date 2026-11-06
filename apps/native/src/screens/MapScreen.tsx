@@ -34,6 +34,7 @@ import { useGps }            from '../hooks/useGps'
 import { useRouteContext } from '../context/RouteContext'
 import { SnapPicker, type SnapCandidate } from '../components/SnapPicker'
 import { useTraffic }        from '../hooks/useTraffic'
+import { useAppActive }      from '../hooks/useAppActive'
 import { useRegionalNotams } from '../hooks/useRegionalNotams'
 import { useNotamAirspaceMatch } from '../hooks/useNotamAirspaceMatch'
 import { notamMapFeatures, matchedAirspaceFeatures, notamsInWindow, NOTAM_MAP_HORIZON_MS } from '@open-vfr/shared/notamMapLayers'
@@ -248,7 +249,7 @@ function MapScreenForCountry() {
   // external sim > internal touch sim > real GPS.
   const simFlight = useSimFlight()
   // Real fixes are not needed while a simulator drives the position.
-  const { position, status, start, stop }     = useGps({ paused: simPosition != null || simFlight.active })
+  const { position, status, start, stop, setFlying: setGpsFlying } = useGps({ paused: simPosition != null || simFlight.active })
   const activePosition = simPosition ?? simFlight.position ?? position
   const { waypoints, legOverrides, addWaypoint, insertWaypoint, updateWaypoint, removeWaypoint,
            replaceRoute, activeRouteId, routeFitNonce,
@@ -278,6 +279,8 @@ function MapScreenForCountry() {
   const [rulerPoints, setRulerPoints] = useState<RouteWaypoint[]>([])
 
   const [flying, setFlying]           = useState(false)
+  // Best accuracy at 1 Hz with a foreground service only while a GPS flight is on (see @open-vfr/shared/gpsPolicy).
+  React.useEffect(() => { setGpsFlying(flying) }, [flying, setGpsFlying])
   const [followGps, setFollowGps]     = useState(false)
   const [mapOrientation, setMapOrientation] = useState<MapOrientation>('north')
   // Map-layer toggle visibility. Persisted to AsyncStorage under the same
@@ -337,7 +340,9 @@ function MapScreenForCountry() {
   const [mapReady, setMapReady] = useState(false)
   const handleMapReady = useCallback(() => setMapReady(true), [])
 
-  const wind = useWind(activePosition, mapReady)
+  // Screen-only polling pauses while the app is in the background (a flight with the screen off).
+  const appActive = useAppActive()
+  const wind = useWind(activePosition, mapReady && appActive)
 
   // Airspace vertical-proximity warnings and traffic altitude comparisons
   // must use the best available altitude (BlueFly baro > internal baro >
@@ -649,7 +654,7 @@ function MapScreenForCountry() {
   }, [activePosition, bestAltFt, settings.airspaceCeilingFt, flyingActive])
 
   const trafficStore = useTraffic({
-    enabled:  layers.traffic && mapReady,
+    enabled:  layers.traffic && mapReady && appActive,
     ownAltFt: positionForAlerts?.altFt ?? null,
     vertFilterFt: settings.trafficVertFilterFt,
     ownLat:   activePosition?.lat   ?? null,
@@ -686,7 +691,7 @@ function MapScreenForCountry() {
     }),
     [selectedCountries, waypoints, notamPosLat, notamPosLng],
   )
-  const regionalNotamsAll = useRegionalNotams(authenticated && mapReady, notamRegions)
+  const regionalNotamsAll = useRegionalNotams(authenticated && mapReady && appActive, notamRegions)
   const { vfrOnly: notamVfrOnly } = useNotamPrefs()
   const regionalNotams = React.useMemo(
     () => (notamVfrOnly ? regionalNotamsAll.filter(n => !isIfrOnly(n)) : regionalNotamsAll),

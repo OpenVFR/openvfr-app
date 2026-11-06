@@ -55,6 +55,15 @@ OpenVFR runs for hours in a cockpit, on a tablet or phone that is often on batte
 6. **Do not unmount a native view during a gesture.** Removing a `ViewAnnotation` (a drag handle) or a map source or layer while the user drags it loses the native drag-end event: the drop never happens and the preview stays on the map. Keep it mounted and change its data. For the same reason prefer always-mounted layers with empty data to mounting and unmounting layers as data comes and goes.
 7. **Reuse what another hook already computed.** Do not recompute terrain, MSA or a profile in a second hook for the same route (`usePreflightCheck` takes the terrain and MSA from `useLegMsa`).
 
+**Battery rules** (the receiver, the screen, the radio and wake-ups cost more than any one CPU number):
+
+- **The GPS request follows what the pilot is doing** (`@open-vfr/shared/gpsPolicy`, see `docs/architecture.md` "GPS power tiers"). The foreground service and best accuracy at 1 Hz exist only while a GPS flight is on; on the ground the app uses a fast tier for two minutes after opening or movement, then a balanced 10 s request, and nothing at all in the background. Never start a foreground service, a wake lock or a continuous request "just in case", and never leave one running after the thing that needed it has ended.
+- **The screen stays awake only while flying.** Planning, browsing and the settings screens let it sleep.
+- **Pause what only feeds the screen when the screen is not on it.** Polls and timers that exist to update the display (traffic, wind, NOTAM lists, tickers) pause while the app is in the background (`useAppActive`) and fetch at once on return. Work that must continue with the screen off (flight recording, the GPS fix itself) belongs to the flight tier only.
+- **Sensors are opt-in and rate-limited.** The barometer, BLE scans and any new sensor are off until the pilot turns them on or starts the thing that needs them, run at the lowest rate that is useful (1 Hz for altitude), and are released when done. BLE scans have a timeout.
+- **Fewer, longer, shared network calls.** Poll at the slowest interval that is still correct (minutes for NOTAMs and system messages), share one poller per source, cache, and batch points into one request. Each wake-up of the radio costs more than the bytes.
+- **Check with the device, not by reading code:** `adb shell dumpsys location` (which requests the app holds, their priority and interval), `dumpsys notification` (no "tracking flight" notification on the ground), `dumpsys sensorservice` (which sensors are active), `dumpsys power` (wake locks), and the thread CPU numbers below with the screen off.
+
 **How to measure** (do this before saying a change is fast or battery-friendly, and put the numbers in the PR):
 
 - Build a release APK: in `apps/native/android`, `./gradlew app:assembleRelease -PreactNativeArchitectures=arm64-v8a -x lint -x test` with `EXPO_PUBLIC_API_BASE` and `EXPO_PUBLIC_TILE_BASE` set and a 4 GB Gradle heap (`"-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g"`, the default 2 GB runs out of memory in the dex merge), then `adb install -r`.

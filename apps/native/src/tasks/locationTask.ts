@@ -14,13 +14,16 @@
  * task can also be re-invoked if the app is relaunched headlessly by the OS.
  *
  * Consumers subscribe via addLocationListener() instead of directly calling
- * Location.watchPositionAsync — this makes the background task the single
- * source of truth for position updates whether the app is foregrounded or not.
+ * Location.watchPositionAsync — this is the single source of truth for position
+ * updates. The request follows the pilot's situation (gpsPolicy): the
+ * background task with its foreground service runs only while flying; on the
+ * ground a cheaper foreground watch is used.
  */
 
 import { PermissionsAndroid, Platform } from 'react-native'
 import * as Location from 'expo-location'
 import * as TaskManager from 'expo-task-manager'
+import type { GpsRequestSpec } from '@open-vfr/shared/gpsPolicy'
 
 export const LOCATION_TASK_NAME = 'ovfr-background-location'
 
@@ -44,64 +47,106 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   }
 })
 
-let started = false
+/**
+ * What is currently running: the background task (foreground service) or a
+ * foreground-only watch, and the request it was started with. Switching tier
+ * (see @open-vfr/shared/gpsPolicy) stops one and starts the other, so the
+ * foreground service and its "tracking flight" notification exist only while
+ * flying.
+ */
+// Tier changes can arrive faster than the native calls finish (a fix every second,
+// each re-checking the tier): run them one at a time, in order.
+let chain: Promise<unknown> = Promise.resolve()
+function serial<T>(fn: () => Promise<T>): Promise<T> {
+  const next = chain.then(fn, fn)
+  chain = next.catch(() => {})
+  return next
+}
 
-export async function startBackgroundLocation(): Promise<'ok' | 'foreground-denied'> {
+let current: { key: string; service: boolean; watch: Location.LocationSubscription | null } | null = null
+
+const ACCURACY: Record<GpsRequestSpec['accuracy'], Location.Accuracy> = {
+  best:     Location.Accuracy.BestForNavigation,
+  balanced: Location.Accuracy.Balanced,
+}
+
+async function ensurePermissions(withNotification: boolean): Promise<boolean> {
   // Foreground ("while using the app") permission only. Gate the request on
   // the current status: once answered, a repeat request can't show a dialog
   // and only returns the settled status (or, on some Android versions,
   // redirects to the Settings screen), which is jarring on every launch.
   let fg = await Location.getForegroundPermissionsAsync()
   if (fg.status === 'undetermined') fg = await Location.requestForegroundPermissionsAsync()
-  if (fg.status !== 'granted') return 'foreground-denied'
+  if (fg.status !== 'granted') return false
 
   // Android 13+: the foreground service's notification is hidden (and the
   // service invisible to the pilot) unless POST_NOTIFICATIONS is granted, and
   // the system does not prompt for it on its own. Ask once; a refusal only
-  // hides the notification, tracking still works.
-  if (Platform.OS === 'android' && Number(Platform.Version) >= 33) {
+  // hides the notification, tracking still works. Only the flight tier has a
+  // service, so only then.
+  if (withNotification && Platform.OS === 'android' && Number(Platform.Version) >= 33) {
     await PermissionsAndroid.request('android.permission.POST_NOTIFICATIONS').catch(() => {})
   }
+  return true
+}
 
-  // Background ("all the time") permission is deliberately NOT requested.
-  // Continuous tracking with the screen locked or the app in the background
-  // comes from the foreground service below on Android (expo-location only
-  // requires background permission when no foreground service is used) and
-  // from UIBackgroundModes: location on iOS, both started while the app is
-  // in use. Since Android 11 a background request can't show a dialog at
-  // all -- it sends the pilot to the system Location permission screen,
-  // right after they approved the normal dialog. app.json also blocks
-  // ACCESS_BACKGROUND_LOCATION from the manifest, which Google Play would
-  // otherwise require a separate background-location declaration for.
+async function stopCurrent(): Promise<void> {
+  const c = current
+  current = null
+  if (c?.watch) c.watch.remove()
+  const running = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false)
+  if (running) await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => {})
+}
 
-  const alreadyStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false)
-  // A registration left over from a previous process (swiped away, crashed)
-  // survives in expo-task-manager but its foreground service does not, so the
-  // OS location provider keeps feeding a task with no notification and the app
-  // can be killed in the background. `started` is false in a fresh process, so
-  // restart it to get the service (and its notification) back.
-  if (alreadyStarted && !started) {
-    await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => {})
-  }
-  if (!alreadyStarted || !started) {
+/**
+ * Ask the device for positions as `spec` says; a no-op when that is already
+ * what is running. Background ("all the time") permission is deliberately NOT
+ * requested: continuous tracking with the screen locked comes from the
+ * foreground service on Android (expo-location only requires background
+ * permission when no foreground service is used) and from
+ * UIBackgroundModes: location on iOS, both started while the app is in use.
+ * Since Android 11 a background request can't show a dialog at all -- it sends
+ * the pilot to the system Location permission screen, right after they
+ * approved the normal dialog. app.json also blocks ACCESS_BACKGROUND_LOCATION
+ * from the manifest, which Google Play would otherwise require a separate
+ * background-location declaration for.
+ */
+export function setLocationRequest(spec: GpsRequestSpec): Promise<'ok' | 'foreground-denied'> {
+  return serial(() => applyRequest(spec))
+}
+
+async function applyRequest(spec: GpsRequestSpec): Promise<'ok' | 'foreground-denied'> {
+  const key = JSON.stringify(spec)
+  if (current?.key === key) return 'ok'
+  if (!(await ensurePermissions(spec.foregroundService))) return 'foreground-denied'
+  await stopCurrent()
+
+  if (spec.foregroundService) {
     await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-      accuracy:         Location.Accuracy.BestForNavigation,
-      timeInterval:     1_000,
-      distanceInterval: 0,
+      accuracy:         ACCURACY[spec.accuracy],
+      timeInterval:     spec.timeIntervalMs,
+      distanceInterval: spec.distanceIntervalM,
       showsBackgroundLocationIndicator: true,
       foregroundService: {
         notificationTitle: 'OpenVFR — tracking flight',
         notificationBody:  'GPS tracking continues while the app is in the background.',
       },
     })
+    current = { key, service: true, watch: null }
+  } else {
+    const watch = await Location.watchPositionAsync(
+      {
+        accuracy:         ACCURACY[spec.accuracy],
+        timeInterval:     spec.timeIntervalMs,
+        distanceInterval: spec.distanceIntervalM,
+      },
+      (loc) => { for (const cb of listeners) cb(loc) },
+    )
+    current = { key, service: false, watch }
   }
-  started = true
   return 'ok'
 }
 
-export async function stopBackgroundLocation(): Promise<void> {
-  if (!started) return
-  const running = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false)
-  if (running) await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME)
-  started = false
+export function stopBackgroundLocation(): Promise<void> {
+  return serial(() => stopCurrent())
 }

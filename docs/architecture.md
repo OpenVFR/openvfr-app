@@ -508,7 +508,7 @@ The three speeds come from the selected aircraft's **Takeoff speed** (`takeoffSp
 
 Each completed log can be exported as GPX (`trackToGpx` / `flightLogToGpx` in `packages/shared/src/gpx.ts`; web downloads the file, native opens the share sheet). Altitude is in metres, time is UTC, and ground speed and track (one decimal) ride in `<extensions>`; a recording gap starts a new `<trkseg>`. The file also carries the log's departure, arrival and registration as `ovfr:` extensions on the `<trk>` (the namespace is declared once, on `<gpx>`) and the planned route (`routeJson`) as a plain `<rte>` before it, with the leg overrides as one `ovfr:legOverrides` JSON element. A GPX file with a timed `<trk>` can be imported as a new log (`gpxToFlightLog`): start/end, distance and max altitude come from the track, ground speed and track are derived from the movement when the file has none, departure, arrival, registration and the planned route are read from our extensions and the `<rte>` when present (a file from another tool has none of them: departure and arrival stay blank, native fills them afterwards from the track ends, see below; its `<rte>` still becomes the planned route), and the user picks the aircraft that flew it before it is saved (the one with the file's registration preselected, else the selected one). Events are not stored, so they are recomputed from the imported track; `gpxTrack.test.ts` checks they come out identical after a round trip. Importing the same flight twice (same start and end) is refused.
 
-Only GPS flying mode is auto-started or auto-stopped; simulator and external-feed flights never are. On web the pre-flight position comes from the passive location dot (`usePassivePosition`), so detection only works while location is on (automatic at startup when permission was already granted). Native's GPS runs from launch, so opening the app already in the air prompts on the first fast fix. The setting is persisted per platform (web: RxDB `ovfr:autoFlyMode`; native: `autoFlyMode` in app settings). The flight-log detection in `useFlightLog` runs separately and only once flying mode is on.
+Only GPS flying mode is auto-started or auto-stopped; simulator and external-feed flights never are. On web the pre-flight position comes from the passive location dot (`usePassivePosition`), so detection only works while location is on (automatic at startup when permission was already granted). Native's GPS runs from launch at best accuracy (1 Hz) for the first two minutes (and for two minutes after any movement or after the app returns to the foreground), so opening the app already in the air, or starting a takeoff roll right away, prompts on the first fast fix; see "GPS power tiers" below. The setting is persisted per platform (web: RxDB `ovfr:autoFlyMode`; native: `autoFlyMode` in app settings). The flight-log detection in `useFlightLog` runs separately and only once flying mode is on.
 
 ### In-flight Vertical Profile: the Path Ahead
 
@@ -540,6 +540,18 @@ Wind is a function of (time, position, level) and is never frozen into a leg. Ef
 ### Virtual Radar obstacles
 
 The minimum safe altitude looks at obstacles across the whole abeam corridor (5 NM either side by default, adjustable 1-10 NM), but the chart draws an obstacle only when it is within `OBSTACLE_DISPLAY_NM` (2 NM, `@open-vfr/shared/profileChart`) of the route line, or when it is the obstacle that sets the MSA at its position (always drawn and labelled). Between 1 NM and the display limit it fades to 65 %. A wind farm off to the side therefore no longer fills the chart with turbines nobody can see from the cockpit, while an obstacle that raises the MSA is never hidden. Web and native use the same rule.
+
+### GPS power tiers (native)
+
+The receiver and a foreground service are among the biggest battery drains, so what native asks the device for follows what the pilot is doing (`@open-vfr/shared/gpsPolicy`, applied by `useGps` / `tasks/locationTask.ts`):
+
+| Tier | When | Request | Foreground service |
+|---|---|---|---|
+| `flight` | a GPS flight is on | best accuracy, 1 Hz | yes ("tracking flight" notification; recording and the map survive a locked screen) |
+| `ground-active` | not flying, for 2 minutes after the app opens or returns to the foreground, or while moving (fix speed ≥ 4 kt, or a displacement beyond the position jitter) | best accuracy, 1 Hz | no |
+| `ground-idle` | stationary | balanced accuracy, every 10 s or 15 m | no |
+
+While the app is in the background and no flight is on, nothing is requested at all. Before this, GPS and the service ran at 1 Hz from launch until the app was swiped away, with a "tracking flight" notification while only planning. Screen-only polling (live traffic, wind, regional NOTAMs) also pauses while the app is in the background (`useAppActive`) and fetches again on return. The screen is kept awake only while flying; the internal barometer is opt-in. Check a change with `adb shell dumpsys location` (the app's requests and their priority and interval), `dumpsys notification` (no service notification on the ground) and `dumpsys sensorservice`.
 
 ### Pre-flight check
 

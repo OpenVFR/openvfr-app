@@ -21,6 +21,7 @@
     "./preflightPrompts": "./src/preflightPrompts.ts",
     "./preflightNotams": "./src/preflightNotams.ts",
     "./routeSettle": "./src/routeSettle.ts",
+    "./gpsPolicy": "./src/gpsPolicy.ts",
     "./sharedPoll": "./src/sharedPoll.ts",
     "./mefGrid": "./src/mefGrid.ts",
     "./routePois": "./src/routePois.ts",
