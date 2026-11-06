@@ -53,7 +53,20 @@ NOTAMs come from the worldwide NOTAM service. Coverage depends on that
 source: it is not a substitute for official national NOTAM and AIP sources.
 
 - **On the map:** regional NOTAMs with a position and radius are drawn as
-  circles you can switch on in the layers.
+  circles you can switch on in the layers. When the text itself describes the
+  area (a list of corner points, an arc, a circle around a point), that shape
+  is drawn instead of the coarse circle from the NOTAM header. A coordinate
+  list without a closed outline, such as a list of obstacles, is not an area
+  and is not drawn as one. "Excluding" circles are named in the note, not
+  drawn as a second area. Where an edge runs along a border or coastline and
+  the outline cannot be followed with confidence, the edge is drawn straight
+  and the note says it is approximate.
+- **Height limits:** the floor and ceiling (for example `GND – 2000 FT AMSL`)
+  are read from the vertical-limit fields or the text and shown in the NOTAM
+  list. If a NOTAM has several areas but the text does not give one pair of
+  limits per area, the limits from the header (flight levels) are shown.
+- **Coordinates in the text** are tappable: tap one to mark that point on the
+  map.
 - **Per aerodrome:** the NOTAM tab of the aerodrome card.
 - **Regional list:** notices for the whole FIR that have no useful
   position. Only the FIRs that cover your position, route or aerodrome are
