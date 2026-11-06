@@ -522,6 +522,8 @@ const DRAG_LONG_PRESS_GUARD_MS = 800
 // left in place, faded, while dragging).
 // Drag preview / drop ring colour. Cyan: the edit accent, and unlike orange it
 // does not merge with the orange obstacle icons the drag snaps onto.
+/** A drag with no touch activity for this long is taken as lost (its release never arrived). */
+const DRAG_IDLE_ABANDON_MS = 10_000
 const DRAG_ROUTE_COLOR = '#22d3ee'
 const DRAG_ROUTE_FILL = 'rgba(34,211,238,0.18)'
 // Screen distance between direction chevrons along a route leg (same on web).
@@ -755,19 +757,24 @@ type DragPreviewState = { wp: DragPreview; leg: LegDragPreviewT }
 function RouteDragPreviewLayer({ store, waypoints }: { store: ValueStore<DragPreviewState>; waypoints: RouteWaypoint[] }) {
   const { wp, leg } = useStoreValue(store)
   const p = wp ?? leg
-  if (!p) return null
-  const at: [number, number] = [p.lng, p.lat]
-  const ends: (RouteWaypoint | undefined)[] = wp
+  // Always mounted, with empty data when there is no drag: unmounting the sources
+  // and layers at the end of a drag could leave them behind on the native map
+  // (a stuck preview line, ring and snap hint that only an app restart removed).
+  const ends: (RouteWaypoint | undefined)[] = !p ? [] : wp
     ? [waypoints[wp.wpIndex - 1], waypoints[wp.wpIndex + 1]]
     : [waypoints[leg!.legIndex], waypoints[leg!.legIndex + 1]]
+  const at: [number, number] = p ? [p.lng, p.lat] : [0, 0]
   const legs: FeatureCollection = {
     type: 'FeatureCollection',
-    features: ends.filter((e): e is RouteWaypoint => !!e).map((e) => ({
+    features: !p ? [] : ends.filter((e): e is RouteWaypoint => !!e).map((e) => ({
       type: 'Feature', properties: {},
       geometry: { type: 'LineString', coordinates: [[e.lng, e.lat], at] },
     })),
   }
-  const drop: FeatureCollection = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: at }, properties: { label: p.snapHint ?? '' } }] }
+  const drop: FeatureCollection = {
+    type: 'FeatureCollection',
+    features: !p ? [] : [{ type: 'Feature', geometry: { type: 'Point', coordinates: at }, properties: { label: p.snapHint ?? '' } }],
+  }
   return (
     <>
       <GeoJSONSource id="route-drag-legs-src" data={legs}>
@@ -2325,7 +2332,13 @@ export function AviationMap({
   }, [])
   const onRouteDragStartRef = useRef(onRouteDragStart)
   onRouteDragStartRef.current = onRouteDragStart
+  // Last touch activity of a point/leg drag, and the recovery for a drag whose
+  // release never arrived (see abandonStaleDrag below).
+  const dragActivityRef = useRef(0)
+  const abandonStaleDragRef = useRef<() => void>(() => {})
   const startDrag = useCallback((wpIndex: number, lat: number, lng: number) => {
+    abandonStaleDragRef.current()
+    dragActivityRef.current = Date.now()
     onRouteDragStartRef.current?.()
     dragRef.current = { wpIndex, lat, lng }
     setDragging(true)
@@ -2401,6 +2414,7 @@ export function AviationMap({
   const moveDrag = useCallback((lat: number, lng: number, point: [number, number]) => {
     const d = dragRef.current
     if (!d || !pastSlop(d, point)) return
+    dragActivityRef.current = Date.now()
     queueMove({ lat, lng, point }, () => dragRef.current === d, (m) => {
       const seq = ++dragSeqRef.current
       // Live snap: the preview (route line, drop ring, hint) follows the
@@ -2543,16 +2557,47 @@ export function AviationMap({
     if (suppressTimerRef.current) clearTimeout(suppressTimerRef.current)
   }, [])
   const startLegDrag = useCallback((legIndex: number) => {
+    abandonStaleDragRef.current()
+    dragActivityRef.current = Date.now()
     onRouteDragStartRef.current?.()
     legDragRef.current = { legIndex }
     setLegDragging(true)
   }, [])
+  // A drag whose touch-up never reached us (a busy JS thread, an interrupted
+  // gesture) left its preview line, drop ring and snap hint on the map for good,
+  // and the next drag started from that state. This puts everything back: the
+  // previews go, the drag counts as over, the handles return to the route. Runs
+  // when a new drag or a tap on the map starts, when the screen is left, and when
+  // a "drag" has had no touch activity for a long time.
+  const abandonStaleDrag = useCallback(() => {
+    const shown = dragPreviewStore.get()
+    if (!dragRef.current && !legDragRef.current && !dragPreviewRef.current && !legDragPreviewRef.current && !shown.wp && !shown.leg) return
+    dragRef.current = null
+    legDragRef.current = null
+    setDragging(false)
+    setLegDragging(false)
+    dragSeqRef.current++
+    legDragSeqRef.current++
+    clearPreviewsNow()
+    dragPreviewStore.set({ wp: null, leg: null })
+    resetDragHandles()
+  }, [clearPreviewsNow, resetDragHandles, dragPreviewStore])
+  abandonStaleDragRef.current = abandonStaleDrag
+  useEffect(() => { if (!screenFocused) abandonStaleDrag() }, [screenFocused, abandonStaleDrag])
+  useEffect(() => {
+    if (!dragging && !legDragging) return
+    const t = setInterval(() => {
+      if (Date.now() - dragActivityRef.current > DRAG_IDLE_ABANDON_MS) abandonStaleDrag()
+    }, 2000)
+    return () => clearInterval(t)
+  }, [dragging, legDragging, abandonStaleDrag])
   const legDragSeqRef = useRef(0)
   // Same one-query-in-flight rule as moveDrag.
   const queueLegMove = useLatestOnly<{ lat: number; lng: number; point: [number, number] }>()
   const moveLegDrag = useCallback((lat: number, lng: number, point: [number, number]) => {
     const d = legDragRef.current
     if (!d || !pastSlop(d, point)) return
+    dragActivityRef.current = Date.now()
     queueLegMove({ lat, lng, point }, () => legDragRef.current === d, (m) => {
       const seq = ++legDragSeqRef.current
       return Promise.all([liftedLngLat(m.point, m.lat, m.lng), snapCandidatesAt(m.point)]).then(([lifted, candidates]) => {
@@ -2871,6 +2916,8 @@ export function AviationMap({
         suppressNextPressRef.current = false
         return
       }
+      // A tap while a drag or its preview is still up means that drag has ended.
+      abandonStaleDrag()
       const payload = e.nativeEvent
 
       // ── Planning mode — every tap adds a waypoint, snapped to a nearby
@@ -3041,7 +3088,7 @@ export function AviationMap({
         dispatchFeatures([...cluster, ...points, ...rest])
       }).catch(() => dispatchFeatures(fromPress))
     },
-    [onFeatureTap, onLegTap, planningMode, onPlanTap, onPlanCandidates, onPlanEmptyTap, onWaypointMove, onWaypointRemove, onRouteEndTap, onWaypointPress, onLegPress, onRouteMiss, waypoints, rulerMode, rulerPoints, onRulerTap],
+    [onFeatureTap, onLegTap, planningMode, onPlanTap, onPlanCandidates, onPlanEmptyTap, onWaypointMove, onWaypointRemove, onRouteEndTap, onWaypointPress, onLegPress, onRouteMiss, waypoints, rulerMode, rulerPoints, onRulerTap, abandonStaleDrag],
   )
 
   const handleMapLongPress = useCallback(
