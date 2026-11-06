@@ -140,6 +140,12 @@ interface Props {
   /** Extra space to leave at the right edge (the iPhone Duo cover's rail,
    *  which the map runs under while the control column keeps clear of it). */
   rightInset?:           number
+  /** The map controls run as a row along the top (landscape, or a map too
+   *  short for the column): reserve their height instead of their width. */
+  controlsRow?:          boolean
+  /** Full cards to show before the rest become one-line chips (fewer on a
+   *  short map, so the stack does not cover the profile below it). */
+  maxCards?:             number
 }
 
 const AUTO_DISMISS_MS = 30_000
@@ -151,7 +157,7 @@ export function NotificationCenter({
   airfieldAlerts, onDismissAirfield,
   airspaceNotifications, ceilingMsg,
   reminderNote, onDismissReminder,
-  planningNotice, onDismissPlanning, topInset = 0, rightInset = 0,
+  planningNotice, onDismissPlanning, topInset = 0, rightInset = 0, controlsRow, maxCards,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const scaledTheme = useScaledTheme()
@@ -170,7 +176,7 @@ export function NotificationCenter({
   // portrait and along the top in landscape. Reserve their space so cards are
   // never hidden underneath them.
   const { width: winW, height: winH } = useWindowDimensions()
-  const controlsInset = winW > winH
+  const controlsInset = (controlsRow ?? winW > winH)
     ? { top: CONTROLS_SIZE + 24 + topInset, right: scaledTheme.space4 + rightInset }
     : { right: CONTROLS_SIZE + 24 + rightInset, top: scaledTheme.space2 + topInset }
 
@@ -308,7 +314,7 @@ export function NotificationCenter({
   // Debounce first (no flicker at trigger edges), then split into a few full
   // cards and one-line chips.
   const { visible: stable, forget } = useStableItems(items.map(withPolicy))
-  const { cards, chips, overflow } = layoutAlertStack(stable.map(i => ({ ...i, tier: i.tier as AlertTier })))
+  const { cards, chips, overflow } = layoutAlertStack(stable.map(i => ({ ...i, tier: i.tier as AlertTier })), maxCards)
   // Recently shown but no longer on screen: a muted pill opens the list.
   const history = useAlertLog([...cards, ...chips])
   const [historyOpen, setHistoryOpen] = useState(false)
