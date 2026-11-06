@@ -1,5 +1,5 @@
 /**
- * StatusScrim — faint band under the status bar so its icons stay legible on
+ * StatusScrim — faint downward-fading band under the status bar so its icons stay legible on
  * a light map that runs underneath it.
  *
  * On a regular iPhone the band spans the full width of the top inset. On
@@ -15,7 +15,12 @@ import React from 'react'
 import { StyleSheet, View, useWindowDimensions } from 'react-native'
 import { ReservedRegionsProvider, useReservedRegions } from 'react-native-reserved-regions'
 
-const COLOR = 'rgba(10,14,22,0.35)'
+// Dark at the top edge, clear at the bottom: the status icons stay legible
+// without a visible band edge across the map.
+const GRADIENT = 'linear-gradient(to bottom, rgba(10,14,22,0.45), rgba(10,14,22,0.25) 60%, rgba(10,14,22,0))'
+// The Duo's status block sits in the top-right corner: fade towards the map
+// on both of its open sides.
+const CORNER_GRADIENT = 'linear-gradient(to bottom left, rgba(10,14,22,0.5), rgba(10,14,22,0.25) 55%, rgba(10,14,22,0))'
 
 function Band({ height }: { height: number }) {
   const { width } = useWindowDimensions()
@@ -35,8 +40,6 @@ function Band({ height }: { height: number }) {
           key={i}
           style={[styles.region, {
             left: r.frame.x, width: r.frame.width, height: r.frame.height,
-            borderBottomLeftRadius: r.frame.x > 0 ? 16 : 0,
-            borderBottomRightRadius: r.frame.x + r.frame.width < width ? 16 : 0,
           }]}
         />
       ))}
@@ -55,6 +58,6 @@ export function StatusScrim({ height }: { height: number }) {
 
 const styles = StyleSheet.create({
   provider: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 60 },
-  full:     { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: COLOR },
-  region:   { position: 'absolute', top: 0, backgroundColor: COLOR },
+  full:     { position: 'absolute', top: 0, left: 0, right: 0, backgroundImage: GRADIENT },
+  region:   { position: 'absolute', top: 0, backgroundImage: CORNER_GRADIENT },
 })
