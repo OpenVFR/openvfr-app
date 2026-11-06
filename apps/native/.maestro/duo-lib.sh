@@ -61,14 +61,30 @@ PY
   echo "$pid"; cat "$portfile"; echo; rm -f "$portfile"
 }
 
-# duo_fold: device upright again, then fold onto the cover (retried once).
+# duo_fold: device upright again, then fold onto the cover. The simulator
+# sometimes keeps the inner display active at 0° (run 42201797952, both
+# folds); a full reopen and a slower close usually unsticks it.
 duo_fold() {
   if duoctl state 2>/dev/null | grep -q '"activeScreen": "inner"'; then
     duoctl rotate landscape >/dev/null || echo "::warning::could not turn the Duo back upright before folding"
   fi
   duoctl close && return 0
-  echo "::warning::the cover did not take over after folding; retrying"
+  echo "::warning::the cover did not take over after folding; reopening and closing slowly"
   duoctl state || true
+  duoctl open >/dev/null || true
   sleep 2
-  duoctl close
+  duoctl close --duration 2 && return 0
+  sleep 3
+  duoctl close --duration 3
+}
+
+# duo_reboot <udid>: last resort when folding is stuck -- a fresh boot starts
+# folded on the cover.
+duo_reboot() {
+  echo "::warning::Duo stuck unfolded; rebooting the simulator"
+  xcrun simctl shutdown "$1" || true
+  xcrun simctl boot "$1"
+  xcrun simctl bootstatus "$1" -b
+  status_bar "$1"
+  duo_fold
 }
