@@ -17,3 +17,6 @@
 - [ ] New API endpoint? Auth + rate-limit stance stated (see `AGENTS.md`
       "Server API Security Baseline")
 - [ ] UI change? Screenshot or recording attached (web and/or native)
+- [ ] Touches the map, Virtual Radar, a timer/animation/poller or anything updated by the GPS position?
+      Idle and in-flight cost checked on a release build, numbers in the description (see `AGENTS.md`
+      "Performance and Battery")

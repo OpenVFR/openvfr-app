@@ -30,6 +30,40 @@ Contribution norms (commit style, PR expectations, licensing): [`CONTRIBUTING.md
 
 ---
 
+## Performance and Battery (Non-Negotiable)
+
+OpenVFR runs for hours in a cockpit, on a tablet or phone that is often on battery or a small power supply, in direct sun where heat throttles the CPU, and a pilot looks at it for a second at a time. A laggy, hot or battery-hungry app is a safety problem and a reason for pilots to stop using it. Treat performance and battery use like correctness: a change that makes either worse needs a reason, and a feature is not done until it has been measured on a device.
+
+**Principles**
+
+- **Idle must be idle.** When nothing changes, nothing runs: no timers, animations, polls or re-renders. Every always-on timer, animation, listener or poll costs battery for the whole flight. Prefer events to polling; start work only while the thing that shows it is visible or switched on, and stop it when the screen is left or the app goes to the background. (React Native keeps a frame callback running every frame for as long as certain timers and animations exist, so a stray `setInterval` is not free.)
+- **An update costs in proportion to what changed.** A GPS fix (about 1 Hz), a traffic poll (every 2 s), a weather or wind fetch must re-render only the pieces that show that data, never the whole screen, the map or the chart.
+- **Work in proportion to what the pilot can use.** Filter big datasets (airspace, obstacles, landmarks, tiles) by corridor or viewport and do not draw or compute what cannot matter. The Virtual Radar draws obstacles only near the route or when they set the MSA, for this reason.
+- **Show something fast, never a blank panel.** Parse and build heavy data after first paint, build a chart once when all its inputs have arrived, and show a placeholder ("Loading profile…") instead of an empty area.
+- **One poller per data source.** Share polling between screens (`@open-vfr/shared/sharedPoll`), cache, back off when offline, and never add a second poller for data another part of the app already fetches.
+- **Debug builds are 5 to 10 times slower than release builds.** Never judge speed from a dev client or Metro. Measure a release build.
+
+**Reference figures** (mid-range Android tablet, release build; do not make them worse without a reason): cold start to map under 4 s and Virtual Radar by about 7 s; ground idle about 8 % of one core on the UI thread and 1 to 2 % on the JS thread; simulated flight about 10 % UI and 11 to 17 % JS; about 700 MB resident memory.
+
+**Rules that came from real regressions**
+
+1. **Fast-changing data does not belong in screen state.** Anything updating at 1 Hz or faster that only a small component draws (traffic, drag preview, chart scrub cursor) lives in a `createValueStore` (`src/utils/valueStore.ts`) read with `useStoreValue` by that component. Held in `MapScreen` state, live traffic alone re-rendered the whole map every 2 s and took about 15 % of the JS thread.
+2. **Memoized heavy children need stable props.** `AviationMap` and `VerticalProfile` are `React.memo`. An inline arrow function, object or JSX element passed to them defeats it silently; use `useCallback` / `useMemo`. In a dev build, wrap the child in `React.Profiler` and log which props changed between renders to find the culprit.
+3. **No JS-driven animation on the map.** `<UserLocation>` animates every fix with a 1 s JS `Animated.timing` unless you pass `animated={false}`; that kept the JS thread busy at 10 to 25 renders per second. Any `Animated` value without the native driver, or a `GeoJSONSource` driven by `AnimatedPoint`, does the same.
+4. **Few SVG elements, not many.** On Android every `react-native-svg` element costs time on the UI thread. Merge the primitives of many obstacle or landmark symbols into a few paths (`batchSymbolPaths` in `@open-vfr/shared/obstacleSymbol`) instead of one element per primitive.
+5. **Settle, hold, and gate heavy work.** Derived work that reacts to route edits (airspace profile, MSA, the pre-flight check) waits until the route has been still for `ROUTE_SETTLE_MS` (`useSettled`) so a leg drag or undo/redo does not recompute on every step. Screens that stay mounted behind the map (the plan screen) must not recompute while hidden: pass `hold` to `useSettled` (or gate on `useIsFocused`) and keep the last result.
+6. **Do not unmount a native view during a gesture.** Removing a `ViewAnnotation` (a drag handle) or a map source or layer while the user drags it loses the native drag-end event: the drop never happens and the preview stays on the map. Keep it mounted and change its data. For the same reason prefer always-mounted layers with empty data to mounting and unmounting layers as data comes and goes.
+7. **Reuse what another hook already computed.** Do not recompute terrain, MSA or a profile in a second hook for the same route (`usePreflightCheck` takes the terrain and MSA from `useLegMsa`).
+
+**How to measure** (do this before saying a change is fast or battery-friendly, and put the numbers in the PR):
+
+- Build a release APK: in `apps/native/android`, `./gradlew app:assembleRelease -PreactNativeArchitectures=arm64-v8a -x lint -x test` with `EXPO_PUBLIC_API_BASE` and `EXPO_PUBLIC_TILE_BASE` set and a 4 GB Gradle heap (`"-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g"`, the default 2 GB runs out of memory in the dex merge), then `adb install -r`.
+- CPU by thread: `adb shell top -H -b -n 2 -d 5` and read the app's `mqt_v_js` (JS), main (UI) and `RenderThread` lines, once on the ground and once during Simulate.
+- Frames: `adb shell dumpsys gfxinfo org.openvfr.app reset`, wait, then read it again (frames, janky frames, "Slow UI thread", GPU percentiles).
+- What is slow: record a perfetto trace (`adb shell perfetto -o /data/misc/perfetto-traces/t.pftrace -t 15s sched view gfx input am wm`), pull it and query it with `trace_processor` (slices per thread; the main thread's `Record View#draw()` and `animation` slices). CPU call-stack sampling works through the `linux.perf` data source on this class of device.
+- Which component re-renders and why: a temporary `React.Profiler` wrapper plus a "which props changed" log in a dev build. Temporary instrumentation is never committed.
+- Wake and unlock the device first (`adb shell svc power stayon usb`, then turn it back off), or the screen sleeps mid-measurement.
+
 ## Project Identity
 
 - **Stack:** React PWA + Vite (TypeScript, CSS Modules) → React Native (Expo) for the native app

@@ -45,6 +45,11 @@ Scope is optional but encouraged for larger areas (`map`, `native`, `api`,
 - If you touched an env var, config default, script, or CLI flag, update
   every README / `docs/` mention and the matching `.env.example` in the
   same PR. Docs that describe removed behavior are treated as bugs.
+- Performance and battery use are requirements, not polish. A change that adds
+  work on the hot path (map, Virtual Radar, anything that updates with the GPS
+  position, a timer, an animation or a poller) needs a measurement from a
+  release build, not a dev client. Rules and how to measure:
+  [`AGENTS.md`](AGENTS.md), "Performance and Battery".
 - Fill in the PR template checklist — it mirrors the hard rules below.
 
 ## Flight-critical changes
