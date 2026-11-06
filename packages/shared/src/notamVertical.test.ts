@@ -94,3 +94,17 @@ describe('notamVertical', () => {
     expect(verticalLimitAltitudeFt({ ref: 'AMSL', ft: 1500 }, 800)).toBe(1500)
   })
 })
+
+describe('stricter pairing', () => {
+  it('limits far apart in the text are not one pair', () => {
+    expect(parseVerticalSection('GND AND SOME TEXT WELL IN BETWEEN AND THEN 2000FT AMSL')).toBeNull()
+    expect(parseVerticalSection('GND TO 2000FT AMSL')).not.toBeNull()
+  })
+  it('bare MSL is 0 ft AMSL', () => {
+    expect(parseVerticalSection('MSL - 500FT AGL')).toEqual({ floor: { ref: 'AMSL', ft: 0 }, ceiling: { ref: 'AGL', ft: 500 } })
+    expect(parseVerticalLimit('2000FT MSL')).toEqual({ ref: 'AMSL', ft: 2000 })
+  })
+  it('shared unit with a slash: 800/1500FT AMSL', () => {
+    expect(parseVerticalSection('800/1500FT AMSL')).toEqual({ floor: { ref: 'AMSL', ft: 800 }, ceiling: { ref: 'AMSL', ft: 1500 } })
+  })
+})

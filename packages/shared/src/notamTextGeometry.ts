@@ -60,6 +60,7 @@ export interface NotamTextGeometry {
 /**
  * Typed reasons for an empty result (a Q-line circle is used instead):
  *   unclosed          a coordinate run with no area phrase and no closing vertex
+ *   arc-unsupported   the text names an arc / clockwise edge we could not read (the ring would be drawn with a wrong straight edge)
  *   arc-radius-mismatch  an arc's stated radius disagrees with its centre
  *   border-unresolved a border edge could not be followed: returned next to the polygon (drawn straight, flagged `approximate`)
  *   outside-qline     every shape lies far outside the Q-line circle
@@ -67,7 +68,7 @@ export interface NotamTextGeometry {
  *   self-intersecting every ring crosses itself
  */
 export type NotamTextReason =
-  | 'unclosed' | 'arc-radius-mismatch' | 'border-unresolved' | 'outside-qline' | 'multiple-radii' | 'self-intersecting'
+  | 'unclosed' | 'arc-radius-mismatch' | 'arc-unsupported' | 'border-unresolved' | 'outside-qline' | 'multiple-radii' | 'self-intersecting'
 
 /** True when a closed [lon, lat] ring crosses itself (edges sharing an end vertex don't count). */
 export function ringSelfIntersects(ring: number[][]): boolean {
@@ -202,7 +203,7 @@ const ARC_RADIUS_TOLERANCE_NM = 1
 
 const sameVertex = (a: Coord, b: Coord) => Math.abs(a.lat - b.lat) < 1e-5 && Math.abs(a.lon - b.lon) < 1e-5
 
-interface Rings { rings: number[][][]; unclosed: number; unclosedRuns: Coord[][]; arcMismatch: boolean; arcs: ArcClause[]; approximate: boolean }
+interface Rings { rings: number[][][]; unclosed: number; unclosedRuns: Coord[][]; arcMismatch: boolean; arcs: ArcClause[]; approximate: boolean; blocked: boolean; closedRings: number }
 
 function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]): Rings {
   const arcs = arcClauses(t, all)
@@ -214,6 +215,8 @@ function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]):
   let runCoords: Coord[] = []
   let arcMismatch = false
   let approximate = false
+  let blocked = false
+  let closedRings = 0
   let ring: number[][] = []
   let vertices = 0
   let first: Coord | null = null
@@ -232,6 +235,7 @@ function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]):
         const [f, l] = [ring[0]!, ring[ring.length - 1]!]
         if (f[0] !== l[0] || f[1] !== l[1]) ring.push([f[0]!, f[1]!])
         rings.push(ring)
+        if (closed) closedRings++
       }
     }
     ring = []; vertices = 0; first = null; prev = null; runCoords = []
@@ -261,6 +265,11 @@ function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]):
         if (along) ring.push(...along); else approximate = true
       } else if (!/^\s*[-\u2013,;]?\s*(?:\d{1,2}\s*[.):]\s*)?$/.test(gap)) {
         // continues on "-", ",", whitespace, numbered lists ("1. c 2. c")
+        // An edge along something we cannot follow (a river, a road) or an
+        // exception inside the boundary: the vertices on either side are not
+        // the whole shape. Refuse rather than draw the pieces.
+        if (vertices >= 2 && gap.length <= 100 && /\b(?:ALONG|FOLLOW(?:ING)?\s+(?:THE\s+)?(?:RIVER|ROAD|RAILWAY|COAST|SHORE)|COAST|SHORE|RIVER|ROAD|EXCEPT|EXCLUDING)\b/.test(gap)
+            && !/\bFOLLOWING\s+(?:POINTS|COORDINATES)\b/.test(gap)) blocked = true
         flush(false)
       }
     }
@@ -277,7 +286,7 @@ function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]):
     if (vertices > 1 && sameVertex(first, c)) flush(true)
   }
   flush(false)
-  return { rings, unclosed, unclosedRuns, arcMismatch, arcs, approximate }
+  return { rings, unclosed, unclosedRuns, arcMismatch, arcs, approximate, blocked, closedRings }
 }
 
 function toNm(value: string, unit: string): number {
@@ -405,6 +414,12 @@ export function notamTextGeometry(
   // A wrong arc centre/radius: no text geometry at all (the Q-line circle stays),
   // and the arc's own "RADIUS r CENTRED ON c" must not be read as a circle.
   if (poly.arcMismatch) return { ...none, reason: 'arc-radius-mismatch' }
+  // An arc / clockwise edge we did not read: the polygon would have a wrong straight edge.
+  if (found.length >= 3 && (mt.match(/\bARC\b/g)?.length ?? 0) + (mt.match(/\bCLOCKWISE\b|ANTICLOCKWISE|COUNTER[- ]?CLOCKWISE/g)?.length ?? 0) > poly.arcs.length * 2) {
+    return { ...none, reason: 'arc-unsupported' }
+  }
+  // A ring broken by an edge along a feature we cannot follow: refuse the whole text shape.
+  if (poly.blocked && poly.closedRings === 0) return { ...none, reason: 'border-unresolved' }
   // First thing that went wrong, reported if nothing else is found.
   let reason: NotamTextReason | undefined
   const simple = poly.rings.filter(r => !ringSelfIntersects(r))

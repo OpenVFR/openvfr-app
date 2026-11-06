@@ -314,3 +314,24 @@ describe('notamTextGeometry: LAT/LONG lists (fixture 17) and border reason', () 
     expect(g.reason).toBe('border-unresolved')
   })
 })
+
+describe('notamTextGeometry: fail safe on edges we cannot draw', () => {
+  const g = (t: string) => notamTextGeometry(t, null)
+  it('an edge along a river / road / exception does not leave pieces behind', () => {
+    for (const mid of ['ALONG THE RIVER TO', 'EXCEPT HOSPITAL AREA']) {
+      const r = g(`AREA 571200N 0120030E - 571800N 0121500E - ${mid} 570500N 0122000E - 570000N 0120500E - 571200N 0120030E`)
+      expect(r.polygon).toBeNull()
+      expect(r.points).toBeUndefined()
+      expect(r.reason).toBe('border-unresolved')
+    }
+  })
+  it('an arc we could not read refuses the shape instead of drawing a wrong edge', () => {
+    const uk = 'AREA BETWEEN 570000N 0120000E AND 570500N 0120500E ANTICLOCKWISE ALONG A CIRCLE RADIUS 5NM CENTRED 570000N 0120500E - 565500N 0120000E - 570000N 0120000E'
+    expect(g(uk)).toEqual({ polygon: null, circle: null, point: null, reason: 'arc-unsupported' })
+    const noDir = 'AREA 570500N 0120000E - ARC RADIUS 5 NM CENTRED ON 570000N 0120000E TO 570000N 0120911E - 565500N 0120911E - 565500N 0120000E - 570500N 0120000E'
+    expect(g(noDir).reason).toBe('arc-unsupported')
+  })
+  it('a readable arc is still fine', () => {
+    expect(g('570500N 0120000E - CLOCKWISE ARC RADIUS 5 NM CENTRED ON 570000N 0120000E TO 570000N 0120911E - 565500N 0120911E - 565500N 0120000E - 570500N 0120000E').polygon).not.toBeNull()
+  })
+})

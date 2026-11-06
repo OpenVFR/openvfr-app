@@ -43,19 +43,21 @@ const ATOM = new RegExp(
   String.raw`\b(SFC|GND|GROUND|SURFACE)\b` +                       // 1 surface
   String.raw`|\b(UNL|UNLIMITED)\b` +                                // 2 unlimited
   String.raw`|\bFL\s*(\d{2,3})\b` +                                 // 3 flight level
-  String.raw`|(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\s*(FT|METRES?|METERS?|M)?\b(?:\s*(AMSL|MSL|AGL|ASFC|AAL))?`, // 4 value, 5 unit, 6 ref
+  String.raw`|(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\s*(FT|METRES?|METERS?|M)?\b(?:\s*(AMSL|MSL|AGL|ASFC|AAL))?` + // 4 value, 5 unit, 6 ref
+  String.raw`|\b(MSL)\b`, // 7 bare mean sea level = 0 ft AMSL
   'g',
 )
 
-interface Atom { limit: VerticalLimit | null; value?: number; unit?: 'FT' | 'M'; ref?: VerticalRef; at: number }
+interface Atom { limit: VerticalLimit | null; value?: number; unit?: 'FT' | 'M'; ref?: VerticalRef; at: number; end: number }
 
 function atoms(s: string): Atom[] {
   const out: Atom[] = []
   for (const m of s.toUpperCase().matchAll(ATOM)) {
-    const at = m.index!
-    if (m[1]) out.push({ limit: { ref: 'AGL', ft: 0 }, at })
-    else if (m[2]) out.push({ limit: { ref: 'FL', ft: 99900, unlimited: true }, at })
-    else if (m[3]) out.push({ limit: { ref: 'FL', ft: Number(m[3]) * 100 }, at })
+    const at = m.index!, end = at + m[0].length
+    if (m[1]) out.push({ limit: { ref: 'AGL', ft: 0 }, at, end })
+    else if (m[7]) out.push({ limit: { ref: 'AMSL', ft: 0 }, at, end })
+    else if (m[2]) out.push({ limit: { ref: 'FL', ft: 99900, unlimited: true }, at, end })
+    else if (m[3]) out.push({ limit: { ref: 'FL', ft: Number(m[3]) * 100 }, at, end })
     else if (m[4]) {
       const digits = m[4]
       // "1.500" / "1,500" with FT or M and exactly three digits after the separator: thousands.
@@ -64,7 +66,7 @@ function atoms(s: string): Atom[] {
       const unit = m[5] ? (m[5] === 'FT' ? 'FT' : 'M') : undefined
       const r = m[6]
       const ref = r === 'AGL' || r === 'ASFC' || r === 'AAL' ? 'AGL' : r ? 'AMSL' : undefined
-      out.push({ limit: null, value, unit, ref, at })
+      out.push({ limit: null, value, unit, ref, at, end })
     }
   }
   // "400-700FT AMSL": a value without unit/reference takes them from the next one.
@@ -93,9 +95,13 @@ export function parseVerticalLimit(s: string | null | undefined): VerticalLimit 
 
 /** "GND - 1800FT AMSL" -> floor/ceiling; a lone value is a ceiling. null when unreadable. */
 export function parseVerticalSection(s: string): VerticalPair | null {
+  const src = s.toUpperCase()
   const a = atoms(s)
   if (a.length < 1 || a.length > 2 || a.some(x => !x.limit)) return null
   if (a.length === 1) return { floor: null, ceiling: a[0]!.limit }
+  // The two limits of one pair sit next to each other ("GND - 2000FT AMSL");
+  // text in between means they belong to different statements: refuse.
+  if (src.slice(a[0]!.end, a[1]!.at).replace(/[-\u2013/\s]+/g, ' ').trim().length >= 15) return null
   let [lo, hi] = [a[0]!.limit!, a[1]!.limit!]
   // "3000FT AMSL / 1000FT AMSL": same reference, written upper first.
   if (lo.ref === hi.ref && lo.ft > hi.ft) [lo, hi] = [hi, lo]
