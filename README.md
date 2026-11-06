@@ -37,7 +37,7 @@ packages/
              colour palettes, fetch helpers, types)
 db/
   migrations/  PostgreSQL + PostGIS schema (applied via dbmate)
-docker/      Dockerfiles + nginx/Martin config for self-hosting
+docker/      Dockerfiles + nginx config for self-hosting
 docs/        Architecture reference, self-hosting guide, conventions (index: docs/README.md)
   guide/     Pilot-facing user guide (markdown, published on the project website)
 ```
@@ -58,7 +58,7 @@ generate it yourself.
 
 ```sh
 pnpm install
-docker compose up -d db martin api postgrest   # backend services
+docker compose up -d db api postgrest   # backend services
 pnpm dev                                        # web app on :5173
 ```
 

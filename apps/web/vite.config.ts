@@ -265,7 +265,7 @@ export default defineConfig({
         ...devApiOrigin,
         // Overridable via VITE_DEV_API_TARGET so local dev can point at a
         // running API instance instead of requiring the full docker-compose
-        // stack (db/martin/api/postgrest) just to verify a frontend-only
+        // stack (db/api/postgrest) just to verify a frontend-only
         // change -- same reasoning as '/api/traffic' above, opt-in via env
         // rather than changing the default for everyone else.
         target: DEV_API_TARGET || 'http://localhost:5200',

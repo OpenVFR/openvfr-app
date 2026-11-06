@@ -51,20 +51,6 @@ const AIRSPACE_RESTRICTED_LABEL_TEXT_FIELD = [
   ['get', 'upper'],
 ] as unknown as ExpressionSpecification
 
-// ── Martin tile server ────────────────────────────────────────────────────────
-// URL is injected via VITE_MARTIN_URL at build/dev time.
-// In production VITE_MARTIN_URL=/martin (a relative path). MapLibre passes
-// tile URLs to its internal web worker which calls new Request(url) — workers
-// have no base URL to resolve relative paths against, so the request fails.
-// Resolve against location.origin at runtime to guarantee absolute URLs.
-export const MARTIN_URL: string = (() => {
-  const raw = (import.meta.env.VITE_MARTIN_URL as string | undefined) ?? 'http://localhost:5100'
-  if (raw.startsWith('/') && typeof location !== 'undefined') {
-    return location.origin + raw
-  }
-  return raw
-})()
-
 // Static per-country landuse PMTiles source spec (object storage, tiled by
 // tippecanoe -- see docs/self-hosting.md). Replaces the old Martin-backed
 // getLanduseUrl(). Exported so
@@ -523,7 +509,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
   {
     id: 'runways',
     // OFM runway centre-lines with width-accurate rendering + threshold labels.
-    // Also includes OSM taxiways/aprons served from PostGIS via Martin.
+    // Also includes OSM taxiways/aprons (static per-country GeoJSON).
     label: 'Runways & taxiways',
     cssClass: 'groupRunways',
     layerIds: [
@@ -572,7 +558,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
   },
   {
     id: 'terrain',
-    // OSM landuse polygons served from PostGIS via Martin tile server.
+    // OSM landuse polygons (static per-country PMTiles).
     // Farmland (cream), wetland (pale blue), residential/commercial/industrial.
     // Fills the gap left by Protomaps landcover which fades out at z11+.
     label: 'Terrain (landuse)',
@@ -755,9 +741,6 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
       },
 
       // Layer 7 — OpenAIP obstacles (wind turbines, towers, chimneys, buildings)
-      // Served by Martin from PostGIS obstacles table.
-      // Loaded per-country via: scripts/load_obstacles.sh <code>
-      //
       // Properties: kind, name, elevation_m, height_m, elevation_ft
       //   kind = wind_turbine | tower | chimney | building | other
       // Retired from Martin/PostGIS -- served as a static file from object

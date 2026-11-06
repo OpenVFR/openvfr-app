@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # dev.sh — Start the openvfr-app development environment.
 #
-# Docker services (PostGIS, Martin, Hono API, PostgREST) run in containers.
+# Docker services (PostGIS, Hono API, PostgREST) run in containers.
 # The Vite dev server runs on the host so HMR works natively.
 #
 # Usage:
@@ -14,8 +14,8 @@
 
 set -euo pipefail
 
-echo "[dev] Starting PostGIS, Martin, API, and PostgREST containers..."
-docker compose up -d db martin api postgrest
+echo "[dev] Starting PostGIS, API, and PostgREST containers..."
+docker compose up -d db api postgrest
 
 echo "[dev] Waiting for PostGIS to be healthy..."
 until docker compose exec -T db pg_isready -U openvfr -d openvfr -q 2>/dev/null; do
