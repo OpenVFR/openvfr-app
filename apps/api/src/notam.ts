@@ -187,7 +187,7 @@ export interface NotamItem {
   // approximate. Absent otherwise.
   areaApproximate?: true
   // Separate positions listed in the text (obstacles, a LAT/LONG list); the
-  // maps draw each as a point. lat/lon/radiusNm then hold the Q-line centre.
+  // maps draw each as a point. lat/lon then hold the Q-line centre (no radius).
   points?: { lat: number; lon: number }[]
   // Geo fields: a circle or position stated in the text when there is one,
   // else the Q-line coordinates+radius (DMS like "5939N01756E" + NM) -- used to
@@ -381,7 +381,6 @@ function geometryOf(n: NmsNotam): NotamGeometry {
   // One vertical pair per drawn area: a ring per polygon part, else one.
   const areas = out.polygon ? (out.polygon.type === 'Polygon' ? 1 : out.polygon.coordinates.length) : 1
   const full: NotamGeometry = { ...out, vertical: notamVertical({ text: n.text ?? '', icao: icaoFieldsFor(n) }, areas) }
-  out = full
   _geometryMemo.set(n, full)
   return full
 }

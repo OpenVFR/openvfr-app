@@ -14,8 +14,6 @@
  * converted with 3.28084 and rounded; thousands separators ("1.500FT") are
  * stripped. "UNL" is FL999 with `unlimited: true`.
  */
-import { effectiveLimitFt } from './airspaceAltitude'
-
 export type VerticalRef = 'AGL' | 'AMSL' | 'FL'
 
 export interface VerticalLimit {
@@ -171,12 +169,4 @@ export function formatNotamVertical(v: NotamVertical | null | undefined): string
   if (!v || v.pairs.length === 0) return null
   const parts = v.pairs.map(p => `${p.floor ? formatVerticalLimit(p.floor) : '…'} – ${p.ceiling ? formatVerticalLimit(p.ceiling) : '…'}`)
   return [...new Set(parts)].join(' / ')
-}
-
-/**
- * A limit as an altitude (ft, comparable with own QNH altitude). AGL limits
- * are lifted by `terrainFt` when known; same rule as charted airspace.
- */
-export function verticalLimitAltitudeFt(l: VerticalLimit, terrainFt?: number | null): number {
-  return effectiveLimitFt(l.ref === 'AGL' ? 'AGL' : l.ref === 'FL' ? 'FL' : 'AMSL', l.ft, terrainFt)
 }

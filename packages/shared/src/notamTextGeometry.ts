@@ -205,7 +205,38 @@ const ARC_RADIUS_TOLERANCE_NM = 1
 
 const sameVertex = (a: Coord, b: Coord) => Math.abs(a.lat - b.lat) < 1e-5 && Math.abs(a.lon - b.lon) < 1e-5
 
-interface Rings { rings: number[][][]; unclosed: number; unclosedRuns: Coord[][]; arcMismatch: boolean; arcs: ArcClause[]; approximate: boolean; blocked: boolean; closedRings: number; routes: Coord[][] }
+interface Rings {
+  /** Closed rings ([lon, lat]), including rings accepted as open with area intent. */
+  rings: number[][][]
+  /** Open runs of 3+ vertices that were not an area (no area phrase, no closure). */
+  unclosed: number
+  /** The coordinates of those runs (an obstacle list becomes points). */
+  unclosedRuns: Coord[][]
+  /** An arc's stated radius disagrees with its centre. */
+  arcMismatch: boolean
+  arcs: ArcClause[]
+  /** An edge "along the border" was drawn straight. */
+  approximate: boolean
+  /** A boundary was broken by an edge along a river / road or an exception. */
+  blocked: boolean
+  /** Rings that closed explicitly (first vertex repeated, "back to"). */
+  closedRings: number
+  /** Two-position routes ("A along the coast to B"): corridors, not areas. */
+  routes: Coord[][]
+}
+
+/**
+ * True when the text names more arcs than the arc patterns read. Every arc
+ * clause we parse contains the word ARC once and one direction word (CLOCKWISE,
+ * ANTICLOCKWISE, COUNTER-CLOCKWISE), so each parsed arc accounts for two
+ * mentions; anything beyond that is an arc written in a form we do not
+ * understand (no direction word, a circle described between two points).
+ */
+function hasUnreadArc(t: string, arcs: readonly ArcClause[]): boolean {
+  const mentions = (t.match(/\bARC\b/g)?.length ?? 0)
+    + (t.match(/\b(?:ANTI[- ]?|COUNTER[- ]?)?CLOCKWISE\b/g)?.length ?? 0)
+  return mentions > arcs.length * 2
+}
 
 function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]): Rings {
   const arcs = arcClauses(t, all)
@@ -225,7 +256,6 @@ function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]):
   let vertices = 0
   let first: Coord | null = null
   let prev: Coord | null = null
-  let before = 0 // end of the coordinate before the run's first one
   let intent = false
   const flush = (closed: boolean) => {
     // Distinct vertices: a closing repeat of the first does not count.
@@ -285,8 +315,8 @@ function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]):
     }
     if (!first) {
       first = c
-      before = lastEnd
-      intent = AREA_INTENT.test(t.slice(Math.max(before, c.start - 80), c.start))
+      // Area intent: an area phrase between the previous coordinate and this run's first, at most 80 chars back.
+      intent = AREA_INTENT.test(t.slice(Math.max(lastEnd, c.start - 80), c.start))
     }
     ring.push([c.lon, c.lat]); vertices++; runCoords.push(c)
     prev = c
@@ -325,7 +355,6 @@ const CIRCLE_COORD_FIRST = new RegExp(String.raw`${TOK}\s*(?:\([^)]{0,80}\))?\s*
 // "5 NM RADIUS OF A, EXCLUDING 1 NM RADIUS OF B".
 const EXCLUDE_BEFORE = /(?:EXCLUDING|EXCLUDE|EXCEPT(?:ING)?|NOT\s+INCLUDING|EXCL)\W*(?:(?:THE|AN?)\s+)?(?:AREA\s+)?(?:WITHIN\s+)?$/
 
-/** Circles in the text: `main` are areas, `excluded` are cut-outs of them. */
 /** Text with the arc clauses blanked: their radius/centre are not circles. */
 function withoutArcs(t: string, arcs: ArcClause[]): string {
   let out = ''
@@ -334,6 +363,7 @@ function withoutArcs(t: string, arcs: ArcClause[]): string {
   return out + t.slice(at)
 }
 
+/** Circles in the text: `main` are areas, `excluded` are cut-outs of them. */
 function circles(t: string, cs: Coord[]): { main: TextCircle[]; excluded: TextCircle[] } {
   const main: TextCircle[] = []
   const excluded: TextCircle[] = []
@@ -439,7 +469,7 @@ export function notamTextGeometry(
   // and the arc's own "RADIUS r CENTRED ON c" must not be read as a circle.
   if (poly.arcMismatch) return { ...none, reason: 'arc-radius-mismatch' }
   // An arc / clockwise edge we did not read: the polygon would have a wrong straight edge.
-  if (found.length >= 3 && (mt.match(/\bARC\b/g)?.length ?? 0) + (mt.match(/\bCLOCKWISE\b|ANTICLOCKWISE|COUNTER[- ]?CLOCKWISE/g)?.length ?? 0) > poly.arcs.length * 2) {
+  if (found.length >= 3 && hasUnreadArc(mt, poly.arcs)) {
     return { ...none, reason: 'arc-unsupported' }
   }
   // A ring broken by an edge along a feature we cannot follow: refuse the whole text shape.
@@ -454,6 +484,8 @@ export function notamTextGeometry(
   const rings = simple.filter(r => r.every(([lon, lat]) => inQ(lat!, lon!)))
   if (simple.length > 0 && rings.length === 0) reason ??= 'outside-qline'
   if (rings.length === 0 && poly.unclosed > 0) reason ??= 'unclosed'
+  // The reason describes the returned polygon: a straight border edge. (Reasons noted above
+  // belong to candidate shapes that were dropped; they only matter when nothing is returned.)
   const approx = poly.approximate ? { approximate: true as const, reason: 'border-unresolved' as const } : {}
   if (rings.length === 1) return { ...none, polygon: { type: 'Polygon', coordinates: [rings[0]!] }, ...approx }
   if (rings.length > 1) return { ...none, polygon: { type: 'MultiPolygon', coordinates: rings.map(r => [r]) }, ...approx }
@@ -473,7 +505,7 @@ export function notamTextGeometry(
 
   // A coordinate list that is not an area (obstacles, a route's fixes) or a
   // "LAT a b c LONG x y z" list: separate positions, drawn as points.
-  const listed = [...poly.unclosedRuns.flat().map(c => ({ lat: c.lat, lon: c.lon })), ...latLongList(mt)]
+  const listed = [...poly.unclosedRuns.flat().map(c => ({ lat: c.lat, lon: c.lon })), ...latLongList(t)]
   const listPts = [...new Map(listed.filter(p => plausible(p.lat, p.lon) && inQ(p.lat, p.lon))
     .map(p => [`${p.lat.toFixed(5)},${p.lon.toFixed(5)}`, p])).values()].slice(0, MAX_LIST_POINTS)
   if (listPts.length >= 2 && simple.length === 0) return { ...none, points: listPts }
@@ -484,7 +516,7 @@ export function notamTextGeometry(
   const routeLines = [...new Map(poly.routes.filter(r => r.every(c => plausible(c.lat, c.lon) && inQ(c.lat, c.lon)))
     .map(r => [`${r[0]!.lat.toFixed(4)},${r[0]!.lon.toFixed(4)},${r[1]!.lat.toFixed(4)},${r[1]!.lon.toFixed(4)}`, r])).values()]
   if (routeLines.length > 0 && simple.length === 0) {
-    return { ...none, polygon: { type: 'MultiPolygon', coordinates: routeLines.map(r => [corridorRing(r[0]!, r[1]!)]) }, approximate: true, corridor: true, reason: 'border-unresolved' }
+    return { ...none, polygon: { type: 'MultiPolygon', coordinates: routeLines.map(r => [corridorRing(r[0]!, r[1]!)]) }, approximate: true, corridor: true }
   }
 
   const allPs = points(mt, cs)
@@ -511,7 +543,8 @@ export function notamTextGeometry(
 export function notamAreaQualifier(text: string | null | undefined, opts?: { approximate?: boolean }): string | null {
   if (!text) return null
   const ONLY = /\bONLY\s+(?:WITHIN|IN|OVER|INSIDE)\b/
-  const sentences = normalizeNotamText(text).split(/\.(?=\s|$)/).map(x => x.replace(/\s+/g, ' ').trim())
+  const t = normalizeNotamText(text)
+  const sentences = t.split(/\.(?=\s|$)/).map(x => x.replace(/\s+/g, ' ').trim())
   const out: string[] = []
   for (const x of sentences) {
     if (!x) continue
@@ -522,11 +555,14 @@ export function notamAreaQualifier(text: string | null | undefined, opts?: { app
     out.push(y.charAt(0) + y.slice(1).toLowerCase())
   }
   // "5 NM RADIUS OF A, EXCLUDING 1 NM RADIUS OF B": only A is drawn; say what is cut out.
-  const t = normalizeNotamText(text)
-  const { masked, cs } = maskCoords(t, coords(t))
-  for (const c of circles(masked, cs).excluded) {
-    const at = formatCoordinate(c.lat, c.lon, { style: 'COMPACT', hemi: 'trailing', lngFirst: false, compactSeconds: true })
-    out.push(`Excluding ${+c.radiusNm.toFixed(2)} NM radius around ${at}`)
+  // This runs for every NOTAM row on every render, so skip the coordinate scan
+  // unless the text has an exclusion word at all.
+  if (/\b(?:EXCLUDING|EXCLUDE|EXCEPT|EXCEPTING|NOT\s+INCLUDING|EXCL)\b/.test(t)) {
+    const { masked, cs } = maskCoords(t, coords(t))
+    for (const c of circles(masked, cs).excluded) {
+      const at = formatCoordinate(c.lat, c.lon, { style: 'COMPACT', hemi: 'trailing', lngFirst: false, compactSeconds: true })
+      out.push(`Excluding ${+c.radiusNm.toFixed(2)} NM radius around ${at}`)
+    }
   }
   if (opts?.approximate) out.push('Edges along a border or coastline are approximate')
   return out.length > 0 ? out.join('. ') : null

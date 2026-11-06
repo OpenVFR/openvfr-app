@@ -937,8 +937,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
     let timer: ReturnType<typeof setTimeout> | undefined
     const draw = (f: { lat: number; lng: number } | null) => {
       const src = map.getSource('notam-coordinate-highlight') as GeoJSONSource | undefined
-      if (!src) return
       clearTimeout(timer)
+      // No source (yet): drop the focus now, so it is not replayed on a later mount.
+      if (!src) { if (f) clearNotamCoordinateFocus(); return }
       if (!f) { src.setData({ type: 'FeatureCollection', features: [] }); return }
       src.setData({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [f.lng, f.lat] }, properties: {} }] })
       if (!map.getBounds().contains([f.lng, f.lat])) map.easeTo({ center: [f.lng, f.lat], zoom: Math.max(map.getZoom(), 10), duration: 800 })

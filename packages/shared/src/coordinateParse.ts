@@ -282,13 +282,13 @@ const axisSpaced = (degW: number) =>
 // [digits,frac,hemi,digits,frac,hemi] / [hemi,digits,frac,hemi,digits,frac].
 //
 // The trailing compact pattern also accepts a longitude hemisphere typed "N"
-// (seen in live data: "0205330N"), read as E; word boundaries keep it from
-// swallowing the next token.
+// (seen in live data: "0205330N"), read as E -- only after a full 7-digit
+// longitude, so two adjacent latitudes ("593900N 594000N") never pair up.
 const NOT_BEFORE = String.raw`(?<![\dA-Z])(?<!\d[.,])`
 const AFTER = String.raw`(?![\dA-Z])`
 const SCAN: { re: RegExp; kind: 'compact-trail' | 'compact-lead' | 'dms-trail' | 'dms-lead'; style: CoordStyle }[] = [
   { kind: 'compact-trail', style: 'COMPACT',
-    re: new RegExp(String.raw`(?<!\d)(?<!\d[.,])(\d{4}|\d{6})(${FRAC})\s*([NS])\s*(\d{4,7})(${FRAC})\s*([EWN])${AFTER}`, 'g') },
+    re: new RegExp(String.raw`(?<!\d)(?<!\d[.,])(\d{4}|\d{6})(${FRAC})\s*([NS])\s*(\d{4,7})(${FRAC})\s*([EW]|(?<=(?<!\d)\d{7}(?:[.,]\d+)?\s*)N)${AFTER}`, 'g') },
   { kind: 'compact-lead', style: 'COMPACT',
     re: new RegExp(String.raw`${NOT_BEFORE}([NS])\s*(\d{4}|\d{6})(${FRAC})\s*[,;]?\s*([EW])\s*(\d{4,7})(${FRAC})(?![\d])`, 'g') },
   { kind: 'dms-trail', style: 'DMS',
@@ -338,7 +338,9 @@ function dmsAxis(d: string, m: string, s: string | undefined, isLat: boolean): n
  * Case-insensitive; offsets refer to the string as given.
  */
 export function findCoordinates(text: string): FoundCoordinate[] {
-  const src = text.toUpperCase() // same length for ASCII/NOTAM text
+  // Length-preserving upper-casing (ASCII only): offsets must index into `text`.
+  // String.toUpperCase would expand characters like the German sharp s.
+  const src = text.replace(/[a-z]/g, c => c.toUpperCase())
   const cands: FoundCoordinate[] = []
   for (const { re, kind, style } of SCAN) {
     for (const m of src.matchAll(re)) {

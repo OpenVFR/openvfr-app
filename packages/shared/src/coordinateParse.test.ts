@@ -172,3 +172,18 @@ describe('findCoordinates', () => {
     expect(findCoordinates('15939N 01756E')).toEqual([])
   })
 })
+
+describe('findCoordinates: robustness', () => {
+  it('two adjacent latitudes are not one coordinate; a full longitude typed N still is', () => {
+    expect(findCoordinates('LAT 593900N 594000N LONG')).toEqual([])
+    const c = findCoordinates('520715N 0205330N')
+    expect(c).toHaveLength(1)
+    expect(c[0]!.lng).toBeCloseTo(20.8917, 3)
+    expect(findCoordinates('593900N 594000N 0175600E').map(x => x.lat)).toEqual([expect.closeTo(59.6667, 3)])
+  })
+  it('offsets stay valid when the text has characters that upper-case to more than one', () => {
+    const t = 'STRASSE ß 593922N0175612E ÆØ 593922N0175612E'
+    const r = findCoordinates(t)
+    expect(r.map(c => t.slice(c.start, c.end))).toEqual(['593922N0175612E', '593922N0175612E'])
+  })
+})

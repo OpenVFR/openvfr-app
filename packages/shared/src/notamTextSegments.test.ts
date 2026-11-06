@@ -19,6 +19,12 @@ describe('splitNotamTextCoordinates', () => {
     expect(c.map(x => x.text)).toEqual(['545000N010000\n0E', '543000N0120000E'])
     expect(c[0]).toMatchObject({ lat: expect.closeTo(54.8333, 3), lng: 10 })
   })
+  it('keeps every character when the text has ß or ligatures before a coordinate', () => {
+    const t = 'STRASSE ß ﬁ 593922N0175612E TAIL'
+    const s = splitNotamTextCoordinates(t)
+    expect(s.map(x => x.text).join('')).toBe(t)
+    expect(s.filter(x => x.kind === 'coordinate').map(x => x.text)).toEqual(['593922N0175612E'])
+  })
   it('text without coordinates is one plain segment; empty gives none', () => {
     expect(splitNotamTextCoordinates('RWY 09 CLOSED')).toEqual([{ kind: 'text', text: 'RWY 09 CLOSED' }])
     expect(splitNotamTextCoordinates('')).toEqual([])

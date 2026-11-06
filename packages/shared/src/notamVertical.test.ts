@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   parseVerticalLimit, parseVerticalSection, verticalSectionsFromText, notamVertical,
-  formatNotamVertical, verticalLimitAltitudeFt,
+  formatNotamVertical,
 } from './notamVertical'
 
 const AGL0 = { ref: 'AGL', ft: 0 }
@@ -88,10 +88,6 @@ describe('notamVertical', () => {
     const v = notamVertical({ text: 'X', icao: { lowerFl: '000', upperFl: '999' } }, 1)!
     expect(formatNotamVertical(v)).toBe('GND – UNL')
     expect(formatNotamVertical(notamVertical({ text: 'X', icao: { lowerFl: '010', upperFl: '095' } }, 1))).toBe('FL010 – FL095')
-  })
-  it('altitude helper lifts AGL by terrain only', () => {
-    expect(verticalLimitAltitudeFt({ ref: 'AGL', ft: 1500 }, 800)).toBe(2300)
-    expect(verticalLimitAltitudeFt({ ref: 'AMSL', ft: 1500 }, 800)).toBe(1500)
   })
 })
 

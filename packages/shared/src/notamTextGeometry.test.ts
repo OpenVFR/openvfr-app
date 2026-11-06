@@ -343,6 +343,7 @@ describe('notamTextGeometry: routes and leftovers', () => {
     expect(r.polygon?.type).toBe('MultiPolygon')
     expect(r.approximate).toBe(true)
     expect(r.corridor).toBe(true)
+    expect(r.reason).toBeUndefined()
   })
   it('two obstacle positions joined by a dash are not a route', () => {
     const r = g('OBST 551234N 0141234E - 551300N 0141300E ERECTED')
@@ -354,5 +355,15 @@ describe('notamTextGeometry: routes and leftovers', () => {
     const r = g(t)
     expect(r.polygon).toBeNull()
     expect(r.reason).toBe('unclosed')
+  })
+})
+
+describe('notamTextGeometry: adjacent latitudes are not a coordinate', () => {
+  it('LAT list: the latitudes stay separate, also below 50N', () => {
+    for (const [la1, la2, lo] of [['593900N', '594000N', '0175600E 0175700E'], ['483900N', '484000N', '0075600E 0075700E']]) {
+      const g = notamTextGeometry(`LAT ${la1} ${la2} LONG ${lo}`, null)
+      expect(g.points).toHaveLength(2)
+      expect(g.reason).toBeUndefined()
+    }
   })
 })

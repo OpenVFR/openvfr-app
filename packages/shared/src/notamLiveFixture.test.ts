@@ -72,8 +72,8 @@ describe('live NOTAM fixture', () => {
       if (t.reason) reasons[n.id] = t.reason
     }
     // B3442/26 ("ALONG STATE BDRY OF CR") keeps its polygon but one edge is drawn straight.
-    // D5173/26: the banner-towing routes are corridors around straight lines, so approximate too.
-    expect(reasons).toEqual({ 'B3442/26': 'border-unresolved', 'D5173/26': 'border-unresolved' })
+    // D5173/26 (banner-towing routes) is a corridor: approximate, but not a refused shape, so no reason.
+    expect(reasons).toEqual({ 'B3442/26': 'border-unresolved' })
   })
   it('item D schedules: all live samples parse', () => {
     const bad = fx.schedules.filter(s => !parseNotamSchedule({ itemD: s, effective: '2026-10-01T00:00:00Z' }))

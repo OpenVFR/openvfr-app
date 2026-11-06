@@ -6,7 +6,7 @@
  * inherits its style.
  */
 import React, { useMemo } from 'react'
-import { Text } from 'react-native'
+import { StyleSheet, Text } from 'react-native'
 import { splitNotamTextCoordinates } from '@open-vfr/shared/notamTextSegments'
 import { focusNotamCoordinate } from '@open-vfr/shared/notamCoordinateFocus'
 
@@ -19,7 +19,7 @@ export default function NotamBody({ text }: { text: string }) {
         : (
           <Text
             key={i}
-            style={{ color: '#7dd3fc', textDecorationLine: 'underline' }}
+            style={styles.coord}
             accessibilityRole="button"
             accessibilityLabel="Show this point on the map"
             onPress={() => focusNotamCoordinate({ lat: s.lat, lng: s.lng })}
@@ -28,3 +28,8 @@ export default function NotamBody({ text }: { text: string }) {
     </>
   )
 }
+
+const styles = StyleSheet.create({
+  // Same light blue as the map's other tappable text.
+  coord: { color: '#7dd3fc', textDecorationLine: 'underline' },
+})

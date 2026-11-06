@@ -836,10 +836,17 @@ function ProfileCursorLayer({ store }: { store: ValueStore<ProfileCursor | null>
 }
 
 /** Marker for a coordinate tapped in a NOTAM's text (clears itself after a few seconds). */
-function NotamCoordinateLayer({ focus }: { focus: NotamCoordinateFocus | null }) {
-  if (!focus) return null
+const NotamCoordinateLayer = React.memo(function NotamCoordinateLayer({ focus }: { focus: NotamCoordinateFocus | null }) {
+  // Always mounted (empty when nothing is focused): the data object only changes with the focus,
+  // not on every parent render, and the source is not re-created per focus.
+  const data = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: focus
+      ? [{ type: 'Feature' as const, properties: {}, geometry: { type: 'Point' as const, coordinates: [focus.lng, focus.lat] } }]
+      : [],
+  }), [focus?.seq]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <GeoJSONSource id="notam-coordinate-src" data={{ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [focus.lng, focus.lat] } }] }}>
+    <GeoJSONSource id="notam-coordinate-src" data={data}>
       <Layer
         id="notam-coordinate-ring"
         type="circle"
@@ -848,7 +855,7 @@ function NotamCoordinateLayer({ focus }: { focus: NotamCoordinateFocus | null })
       <Layer id="notam-coordinate-dot" type="circle" paint={{ 'circle-radius': 3.5, 'circle-color': '#e64980' }} />
     </GeoJSONSource>
   )
-}
+})
 
 const WaypointDragAnnotation = React.memo(function WaypointDragAnnotation({
   wpIndex, lat, lng, onGrab, onMove, onRelease,
