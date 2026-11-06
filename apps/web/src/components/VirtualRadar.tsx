@@ -24,7 +24,7 @@ import { CLOUD_COLORS } from '@open-vfr/shared/featureColors'
 import type { ParsedCloudLayer } from '@open-vfr/shared/fetchWx'
 import {
   profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, profileYMin, liveAltitudeWindow, altitudeTicksFrom, formatAltitudeTick, formatAltitudeFt, distanceTicks,
-  polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, declutterMarks, obstacleOpacity, isLimitingObstacle, waterBandTopFt, type ProfileChartLayout,
+  polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, declutterMarks, obstacleOpacity, obstacleShownOnChart, isLimitingObstacle, waterBandTopFt, type ProfileChartLayout,
 } from '@open-vfr/shared/profileChart'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { useMsaMargins } from '../db/useSettings'
@@ -1586,19 +1586,21 @@ function VirtualRadar({
     // Symbols at the very start/end of the route are kept fully inside the plot
     // instead of being half cut off at its edge.
     const clampX = (x: number, half: number) => Math.max(L.xOf(0) + half, Math.min(L.xOf(L.totalNm) - half, x))
-    const obs = profile.obstacles.map((o, i) => {
+    const obs = profile.obstacles.flatMap((o, i) => {
       const baseFt = Math.max(o.elevationFt, terrainAt(terrainPts, o.distNm))
       // Unknown height: the per-kind estimate (dashed on the chart, and the same
       // figure the MSA uses, see obstacleHeights.ts).
       const eh = effectiveHeight(o.kind, o.heightM)
       const tipFt = Math.round(baseFt + eh.heightM * FT_PER_M)
       const limiting = isLimitingObstacle(tipFt, margins.obstacleClearanceFt, getMsa(o.distNm))
-      return {
+      // Only what is near the route, or what sets the MSA (see OBSTACLE_DISPLAY_NM).
+      if (!obstacleShownOnChart(o.lateralNm, limiting, margins.abeamNm)) return []
+      return [{
         key: `obs-${i}`, kind: o.kind, cx: clampX(L.xOf(o.distNm), 8), cy: L.yOf(tipFt), groundY: L.yOf(Math.max(0, baseFt)),
         opacity: obstacleOpacity(o.lateralNm, margins.abeamNm) * (eh.estimated ? 0.85 : 1), limiting,
         priority: limiting ? 1e9 + tipFt : tipFt, full: false, estimated: eh.estimated,
         label: limiting && showObstLabels ? limitingObstacleLabel(o.kind, o.name, tipFt, eh.estimated) : '', labelPos: undefined as PlacedLabel | undefined, leader: false,
-      }
+      }]
     })
     mergeNearbyLabels(obs, LIMITING_LABEL_MERGE_PX)
     const obsFull = declutterMarks(obs.map((m) => ({ id: m.key, x: m.cx, priority: m.priority })), OBSTACLE_MIN_GAP_PX)

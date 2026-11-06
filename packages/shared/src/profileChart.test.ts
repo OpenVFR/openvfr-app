@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  profileChartLayout, profileYMax, declutterMarks, obstacleOpacity, isLimitingObstacle, altitudeTicks, formatAltitudeTick, formatAltitudeFt, distanceTicks,
+  profileChartLayout, profileYMax, declutterMarks, obstacleOpacity, obstacleShownOnChart, obstacleDisplayNm, isLimitingObstacle, altitudeTicks, formatAltitudeTick, formatAltitudeFt, distanceTicks,
   polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, clampProfileZoom, scrollAfterZoom, MAX_PROFILE_PX_PER_NM, profileYMin, altitudeTicksFrom, waterBandTopFt,
 } from './profileChart'
 
@@ -139,12 +139,28 @@ describe('declutterMarks', () => {
 })
 
 describe('obstacleOpacity', () => {
-  it('is full near the line and fades to 65 % at the abeam limit', () => {
+  it('is full near the line and fades to 65 % at the display limit (2 NM, or the abeam limit if smaller)', () => {
     expect(obstacleOpacity(0.4, 5)).toBe(1)
     expect(obstacleOpacity(1, 5)).toBe(1)
-    expect(obstacleOpacity(5, 5)).toBeCloseTo(0.65)
-    expect(obstacleOpacity(3, 5)).toBeCloseTo(0.825)
+    expect(obstacleOpacity(2, 5)).toBeCloseTo(0.65)
+    expect(obstacleOpacity(1.5, 5)).toBeCloseTo(0.825)
+    expect(obstacleOpacity(4, 5)).toBeCloseTo(0.65)   // a limiting obstacle farther out stays at the floor
     expect(obstacleOpacity(2, 1)).toBe(1)
+  })
+})
+
+describe('obstacleShownOnChart', () => {
+  it('shows what is near the route and hides what is farther unless it sets the MSA', () => {
+    expect(obstacleShownOnChart(0.5, false, 5)).toBe(true)
+    expect(obstacleShownOnChart(2, false, 5)).toBe(true)
+    expect(obstacleShownOnChart(2.1, false, 5)).toBe(false)
+    expect(obstacleShownOnChart(4.5, false, 5)).toBe(false)
+    expect(obstacleShownOnChart(4.5, true, 5)).toBe(true)    // limiting: always shown
+  })
+  it('never looks farther than the abeam limit', () => {
+    expect(obstacleDisplayNm(5)).toBe(2)
+    expect(obstacleDisplayNm(1)).toBe(1)
+    expect(obstacleShownOnChart(1.5, false, 1)).toBe(false)
   })
 })
 

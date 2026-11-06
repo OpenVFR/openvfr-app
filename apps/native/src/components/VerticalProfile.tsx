@@ -81,7 +81,7 @@ import {
 import { plannedAltitudesAlongTrack, type FlightLogRoute } from '@open-vfr/shared/flightLogRoute'
 import { createValueStore, useStoreValue, type ValueStore } from '../utils/valueStore'
 import {
-  profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, profileYMin, liveAltitudeWindow, declutterMarks, obstacleOpacity, isLimitingObstacle, altitudeTicksFrom, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
+  profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, profileYMin, liveAltitudeWindow, declutterMarks, obstacleOpacity, obstacleShownOnChart, isLimitingObstacle, altitudeTicksFrom, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
   waterBandTopFt,
 } from '@open-vfr/shared/profileChart'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
@@ -1558,23 +1558,25 @@ export const VerticalProfile = React.memo(function VerticalProfile({
     // aerodrome on the last waypoint) are kept fully inside the plot instead of
     // being half cut off at its edge.
     const clampX = (x: number, half: number) => Math.max(xOf(0) + half, Math.min(xOf(totalNm) - half, x))
-    const obs = (profile?.obstacles ?? []).map((o, i) => {
+    const obs = (profile?.obstacles ?? []).flatMap((o, i) => {
       const baseFt = Math.max(o.elevationFt, terrainAt(terrainPts, o.distNm))
       // Unknown height: the per-kind estimate (dashed, and the same figure the
       // MSA uses, see obstacleHeights.ts).
       const eh = effectiveHeight(o.kind, o.heightM)
       const tipFt = Math.round(baseFt + eh.heightM * FT_PER_M)
       const limiting = isLimitingObstacle(tipFt, margins.obstacleClearanceFt, getMsa(o.distNm))
+      // Only what is near the route, or what sets the MSA (see OBSTACLE_DISPLAY_NM).
+      if (!obstacleShownOnChart(o.lateralNm, limiting, margins.abeamNm)) return []
       const cx = clampX(xOf(o.distNm), 8), cy = yOf(tipFt), groundY = yOf(Math.max(0, baseFt))
       // The symbol spans the true tip altitude down to the real ground (symbolGroundY).
       const symY = symbolGroundY(cy, groundY, plotBottom)
-      return {
+      return [{
         key: `obs-${i}`, kind: o.kind, cx, cy, groundY,
         opacity: obstacleOpacity(o.lateralNm, margins.abeamNm) * (eh.estimated ? 0.85 : 1), limiting,
         priority: limiting ? 1e9 + tipFt : tipFt, full: false, estimated: eh.estimated,
         label: limiting && showObstLabels ? limitingObstacleLabel(o.kind, o.name, tipFt, eh.estimated) : '', labelPos: undefined as PlacedLabel | undefined, leader: false,
         symY, shape: obstacleSymbol(o.kind, cx, cy, symY, eh.estimated),
-      }
+      }]
     })
     // Limiting obstacles close together (a wind farm) share one label ("+1").
     mergeNearbyLabels(obs, LIMITING_LABEL_MERGE_PX)

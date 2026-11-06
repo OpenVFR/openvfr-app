@@ -537,6 +537,10 @@ Wind is a function of (time, position, level) and is never frozen into a leg. Ef
 
 `useRouteWinds` (web, owned by `SideDrawer`) and `PlanScreen` (native) compute the effective wind once per route/altitude/speed/takeoff-time change (debounced). The route table, `computeFuelPlan(..., legWinds)` and the pre-flight fuel check all use the same values, so ETE and fuel agree. The FCST button clears the 30-min cache and re-fetches.
 
+### Virtual Radar obstacles
+
+The minimum safe altitude looks at obstacles across the whole abeam corridor (5 NM either side by default, adjustable 1-10 NM), but the chart draws an obstacle only when it is within `OBSTACLE_DISPLAY_NM` (2 NM, `@open-vfr/shared/profileChart`) of the route line, or when it is the obstacle that sets the MSA at its position (always drawn and labelled). Between 1 NM and the display limit it fades to 65 %. A wind farm off to the side therefore no longer fills the chart with turbines nobody can see from the cockpit, while an obstacle that raises the MSA is never hidden. Web and native use the same rule.
+
 ### Pre-flight check
 
 The side drawer's "Pre-flight Check" section (`PreflightWarnings.tsx`) renders two groups, both computed by pure functions in `packages/shared` so native can reuse them:

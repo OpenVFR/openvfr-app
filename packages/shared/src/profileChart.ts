@@ -268,11 +268,27 @@ export function declutterMarks(
 }
 
 /** Obstacles near the route line are drawn at full strength, those out to the
- *  abeam limit fade towards 65 % so the ones that matter stand out (but stay readable). */
+ *  display limit fade towards 65 % so the ones that matter stand out (but stay readable). */
 export const OBSTACLE_FULL_STRENGTH_NM = 1
+/**
+ * How far off the route line an obstacle is drawn on the chart. The MSA looks
+ * at the whole abeam corridor (5 NM by default), but a pilot flying the route
+ * sees, and can meet, only what is near it: a wind farm 4 NM to the side filled
+ * the chart with turbines nobody could see from the cockpit. Beyond this
+ * distance an obstacle is drawn only when it sets the MSA (see isLimitingObstacle).
+ */
+export const OBSTACLE_DISPLAY_NM = 2
+export function obstacleDisplayNm(abeamNm: number): number {
+  return Math.min(abeamNm, OBSTACLE_DISPLAY_NM)
+}
+/** Whether to draw an obstacle: it is near the route, or it is what sets the MSA. */
+export function obstacleShownOnChart(lateralNm: number, limiting: boolean, abeamNm: number): boolean {
+  return limiting || lateralNm <= obstacleDisplayNm(abeamNm)
+}
 export function obstacleOpacity(lateralNm: number, abeamNm: number): number {
-  if (lateralNm <= OBSTACLE_FULL_STRENGTH_NM || abeamNm <= OBSTACLE_FULL_STRENGTH_NM) return 1
-  const f = Math.min(1, (lateralNm - OBSTACLE_FULL_STRENGTH_NM) / (abeamNm - OBSTACLE_FULL_STRENGTH_NM))
+  const limit = obstacleDisplayNm(abeamNm)
+  if (lateralNm <= OBSTACLE_FULL_STRENGTH_NM || limit <= OBSTACLE_FULL_STRENGTH_NM) return 1
+  const f = Math.min(1, (lateralNm - OBSTACLE_FULL_STRENGTH_NM) / (limit - OBSTACLE_FULL_STRENGTH_NM))
   return 1 - 0.35 * f
 }
 
