@@ -121,9 +121,9 @@ capture() { # name regex sizes(space separated) [duo]
     # also compiles duoctl's in-simulator helper): a simulator that cannot
     # switch screens fails here, in seconds, instead of mid-flow.
     duoctl state
-    duo_fold
-    duo_inner_shot "$out/debug/_duo-inner-boot.png"
-    duo_fold
+    duo_fold || duo_reboot "$udid"
+    duo_inner_shot "$out/debug/_duo-inner-boot.png" || echo "::warning::boot smoke: inner-display capture failed"
+    duo_fold || duo_reboot "$udid"
     duoctl screenshot "$out/debug/_duo-cover-boot.png"
   else
     unset DUO_INNER_OUT || true
@@ -141,7 +141,7 @@ capture() { # name regex sizes(space separated) [duo]
     xcrun simctl boot "$udid"
     xcrun simctl bootstatus "$udid" -b
     status_bar "$udid"
-    [ -z "$duo" ] || duo_fold
+    [ -z "$duo" ] || duo_fold || duo_reboot "$udid"
     run_flow "$out" "$udid" "$duo"
   fi
 
