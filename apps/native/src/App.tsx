@@ -59,7 +59,13 @@ function AppShell() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
-        <StatusBar style="light" hidden={SCREENSHOT_MODE} />
+        {/* iPhone Duo: keep the status bar horizontal at the top instead of in
+            iOS's vertical rail. The map is full screen with its own control
+            column; the rail pushed that column left of a large clock block.
+            Apple allows opting out per screen for layouts that horizontal
+            bars serve better (preferredVerticalBarBehavior); the map screen
+            stays mounted under every other screen, so it applies app-wide. */}
+        <StatusBar style="light" hidden={SCREENSHOT_MODE} verticalBarBehaviorIOS="disabled" />
         {state.status === 'loading' && (
           <View style={styles.splash}>
             <ActivityIndicator color={theme.accentBlue} size="large" />

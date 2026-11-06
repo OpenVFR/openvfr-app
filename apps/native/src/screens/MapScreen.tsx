@@ -552,8 +552,16 @@ function MapScreenForCountry() {
   // clear of the profile chart / off the top of the screen. Capped to the
   // screen width (minus margins) so it never runs off the left edge either.
   const isLandscape = windowWidth > windowHeight
+  // A map too short for the button column (short screens with profile and
+  // simulator open) lays the buttons out as a row along the top, like
+  // landscape, instead of a clipped scrolling column. The column's height is
+  // measured while it is a column; growing the map again switches back.
+  const [columnContentH, setColumnContentH] = useState(0)
+  const controlsRow = isLandscape || (columnContentH > 0 && columnContentH > topRightMaxHeight + 1)
+  // Short map: one full alert card, the rest as one-line chips.
+  const alertMaxCards = mapAreaH != null && mapAreaH < 260 ? 1 : undefined
   const topRightMaxWidth = Math.max(160, windowWidth - edgeLeft - edgeRight)
-  const stackGap = isLandscape ? { marginLeft: scaledTheme.space2 } : { marginBottom: scaledTheme.space2 }
+  const stackGap = controlsRow ? { marginLeft: scaledTheme.space2 } : { marginBottom: scaledTheme.space2 }
 
   const nearbyFreqs   = useNearbyFrequencies(activePosition)
   const homeCoord     = useHomeAirfield(settings.homeAirfield)
@@ -1986,6 +1994,8 @@ function MapScreenForCountry() {
           // Below the route edit banner and the route hint pill (top left).
           topInset={(editBannerShown ? EDIT_BANNER_H : 0) + (routeHint ? ROUTE_HINT_H : 0)}
           rightInset={insets.railRight}
+          controlsRow={controlsRow}
+          maxCards={alertMaxCards}
         />
 
         {/* Viewed flight log banner — Logs segment "View" action on PlanScreen */}
@@ -2028,19 +2038,20 @@ function MapScreenForCountry() {
       <View
         style={[
           styles.topRight,
-          isLandscape
+          controlsRow
             ? { top: topRightTopOffset, right: edgeRight, maxWidth: topRightMaxWidth }
             : { top: topRightTopOffset, right: edgeRight, maxHeight: topRightMaxHeight },
         ]}
         pointerEvents="box-none"
       >
       <ScrollView
-        horizontal={isLandscape}
-        style={isLandscape ? { maxWidth: topRightMaxWidth } : { maxHeight: topRightMaxHeight }}
+        horizontal={controlsRow}
+        style={controlsRow ? { maxWidth: topRightMaxWidth } : { maxHeight: topRightMaxHeight }}
         contentContainerStyle={{
-          flexDirection: isLandscape ? 'row-reverse' : 'column',
-          alignItems: isLandscape ? 'center' : 'flex-end',
+          flexDirection: controlsRow ? 'row-reverse' : 'column',
+          alignItems: controlsRow ? 'center' : 'flex-end',
         }}
+        onContentSizeChange={(_w, h) => { if (!controlsRow) setColumnContentH(h) }}
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
         pointerEvents="box-none"
