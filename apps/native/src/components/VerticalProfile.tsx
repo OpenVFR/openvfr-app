@@ -25,7 +25,7 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback, useSyncExternalStore } from 'react'
 import {
-  View, Text, TouchableOpacity, StyleSheet, Image, PanResponder, useWindowDimensions, type LayoutChangeEvent,
+  View, Text, TouchableOpacity, StyleSheet, Image, PanResponder, ActivityIndicator, useWindowDimensions, type LayoutChangeEvent,
 } from 'react-native'
 import IconMountain from '@tabler/icons-react-native/IconMountain'
 import IconBuildingBroadcastTower from '@tabler/icons-react-native/IconBuildingBroadcastTower'
@@ -1267,6 +1267,11 @@ export const VerticalProfile = React.memo(function VerticalProfile({
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(null)
+  // The landmark file is optional: the chart waits for it to settle (loaded or failed) so it renders once.
+  const [landmarksSettled, setLandmarksSettled] = useState(false)
+  // Airspace or obstacle data that could not be loaded: the chart cannot be built.
+  const [profileDataFailed, setProfileDataFailed] = useState(false)
+  const chartShownOnceRef = useRef(false)
   // Aerodromes, reporting points and navaids along the route (own distances per kind).
   const [poiSets, setPoiSets] = useState<{ aerodromes: GeoJSON.FeatureCollection | null; reporting: GeoJSON.FeatureCollection | null; navaids: GeoJSON.FeatureCollection | null }>({ aerodromes: null, reporting: null, navaids: null })
   const [terrainPts, setTerrainPts]   = useState<TerrainPoint[]>([])
@@ -1361,9 +1366,9 @@ export const VerticalProfile = React.memo(function VerticalProfile({
   // accepts water as undefined, so the chart just omits lake crossings. See
   // AGENTS.md ("Large GeoJSON must never go through fetch() on native").
   useEffect(() => {
-    loadGeoJsonOnce(getTileUrls().airspace).then(setAirspaceGeo).catch(() => {})
-    loadGeoJsonOnce(getTileUrls().obstacles).then(setObstacleGeo).catch(() => {})
-    loadGeoJsonOnce(getTileUrls().landmarks).then(setLandmarkGeo).catch(() => { /* optional layer — offline-safe no-op */ })
+    loadGeoJsonOnce(getTileUrls().airspace).then(setAirspaceGeo).catch(() => setProfileDataFailed(true))
+    loadGeoJsonOnce(getTileUrls().obstacles).then(setObstacleGeo).catch(() => setProfileDataFailed(true))
+    loadGeoJsonOnce(getTileUrls().landmarks).then(setLandmarkGeo).catch(() => { /* optional layer — offline-safe no-op */ }).finally(() => setLandmarksSettled(true))
     {
       const none = () => null
       Promise.all([
@@ -2381,6 +2386,40 @@ export const VerticalProfile = React.memo(function VerticalProfile({
     }
   }, [weatherMarks, windAloft, plotW, contentW, xOf, xTicks])
 
+  // Until the terrain, airspace and obstacle data are all in, show a placeholder instead of an empty
+  // black panel, and build the chart once instead of piece by piece as each file arrives.
+  // Only before the first chart: a later route edit refetches terrain, and the chart stays up meanwhile.
+  const terrainPending = terrainPts.length === 0 && !terrainFailed
+  if (profile && !terrainPending && landmarksSettled) chartShownOnceRef.current = true
+  if (!logMode && !chartShownOnceRef.current && waypoints.length >= 2 && (!profile || terrainPending || !landmarksSettled)) {
+    return (
+      <View style={[styles.panel, collapsed && styles.panelCollapsed]}>
+        <View style={styles.dragHandle} {...panResponder.panHandlers}>
+          <View style={styles.headerSide}>{headerStart}</View>
+          <View style={styles.dragGrip} />
+          <View style={[styles.headerSide, styles.headerSideEnd]} />
+        </View>
+        {!collapsed && (
+          <View style={[styles.chartWrap, styles.profileLoading, { height: chartH }]}>
+            {profileDataFailed ? (
+              <>
+                <Ionicons name="cloud-offline-outline" size={22} color={theme.textFaint} />
+                <Text style={styles.profileLoadingTitle}>Profile data unavailable</Text>
+                <Text style={styles.profileLoadingSub}>Airspace or obstacle data could not be loaded. Check the connection or download the area for offline use.</Text>
+              </>
+            ) : (
+              <>
+                <ActivityIndicator size="small" color={theme.accentBlue} />
+                <Text style={styles.profileLoadingTitle}>Loading profile…</Text>
+                <Text style={styles.profileLoadingSub}>Terrain, airspace and obstacles along the route</Text>
+              </>
+            )}
+          </View>
+        )}
+      </View>
+    )
+  }
+
   if (!profile || profile.totalNm === 0) {
     // A flight log shows its panel at once: building its profile (map data, terrain) takes a moment.
     if (!logMode) return null
@@ -2850,6 +2889,22 @@ function makeStyles(theme: ScaledTheme) {
   flownLoading: {
     alignItems:     'center',
     justifyContent: 'center',
+  },
+  profileLoading: {
+    alignItems:     'center',
+    justifyContent: 'center',
+    gap:            6,
+    paddingHorizontal: 24,
+  },
+  profileLoadingTitle: {
+    color:      theme.textPrimary,
+    fontSize:   13,
+    fontWeight: '600',
+  },
+  profileLoadingSub: {
+    color:     theme.textFaint,
+    fontSize:  11,
+    textAlign: 'center',
   },
   flownLoadingTxt: {
     color:    theme.textSecondary,

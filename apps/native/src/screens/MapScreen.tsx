@@ -648,7 +648,7 @@ function MapScreenForCountry() {
     setCeilingEscalatedMsg(`Ceiling raised to ${newCeiling.toLocaleString()} ft`)
   }, [activePosition, bestAltFt, settings.airspaceCeilingFt, flyingActive])
 
-  const trafficFC = useTraffic({
+  const trafficStore = useTraffic({
     enabled:  layers.traffic && mapReady,
     ownAltFt: positionForAlerts?.altFt ?? null,
     vertFilterFt: settings.trafficVertFilterFt,
@@ -1761,7 +1761,7 @@ function MapScreenForCountry() {
           windLabel={windOverlay.label}
           windSurface={windSurface}
           onToggleWindSurface={toggleWindSurface}
-          trafficFC={trafficFC}
+          trafficStore={trafficStore}
           notamCirclesFC={notamCirclesFC}
           notamPointsFC={notamPointsFC}
           notamObstaclesFC={notamObstaclesFC}

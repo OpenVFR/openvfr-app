@@ -31,7 +31,8 @@
  * Returns a GeoJSON FeatureCollection ready to drop into a MapLibre source.
  */
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useMemo, useCallback } from 'react'
+import { createValueStore, type ValueStore } from '../utils/valueStore'
 import type { FeatureCollection, Feature, Point } from 'geojson'
 import { TRAFFIC_BASE } from '../config'
 import { authHeaders } from '../utils/authClient'
@@ -129,12 +130,19 @@ interface Options {
   ownLon?:   number | null
 }
 
-export function useTraffic({ enabled, ownAltFt, vertFilterFt = 0, ownLat = null, ownLon = null }: Options): FeatureCollection {
+const EMPTY_TRAFFIC: FeatureCollection = { type: 'FeatureCollection', features: [] }
+
+/**
+ * The traffic is held in a store, not in React state: it changes every 2 s, and as
+ * MapScreen state every change re-rendered the whole screen and the map (about 15 %
+ * of the JS thread at idle). Only the traffic layer subscribes to it.
+ */
+export function useTraffic({ enabled, ownAltFt, vertFilterFt = 0, ownLat = null, ownLon = null }: Options): ValueStore<FeatureCollection> {
   const batchRef    = useRef<TrafficBatch | null>(null)
   // Device-clock unix seconds when batchRef's batch arrived: positions are
   // dead-reckoned on this clock, so server/device clock skew does not matter.
   const receivedAtRef = useRef(0)
-  const [fc, setFc] = useState<FeatureCollection>({ type: 'FeatureCollection', features: [] })
+  const store = useMemo(() => createValueStore<FeatureCollection>(EMPTY_TRAFFIC), [])
   // Own position via refs so a GPS fix does not tear down and restart the
   // dead-reckon timer (that used to happen on every fix, i.e. ~1 Hz, which
   // starved / jittered the timer).
@@ -158,7 +166,7 @@ export function useTraffic({ enabled, ownAltFt, vertFilterFt = 0, ownLat = null,
   useEffect(() => {
     if (!enabled) {
       batchRef.current = null
-      setFc({ type: 'FeatureCollection', features: [] })
+      store.set(EMPTY_TRAFFIC)
       return
     }
     // Retry soon until a fresh batch arrives, then every POLL_INTERVAL_MS.
@@ -179,7 +187,7 @@ export function useTraffic({ enabled, ownAltFt, vertFilterFt = 0, ownLat = null,
     }
     void run()
     return () => { cancelled = true; if (timer) clearTimeout(timer) }
-  }, [enabled, poll])
+  }, [enabled, poll, store])
 
   // ── Dead-reckon at 2 s ────────────────────────────────────────────────────
   useEffect(() => {
@@ -246,12 +254,11 @@ export function useTraffic({ enabled, ownAltFt, vertFilterFt = 0, ownLat = null,
 
       // Empty -> empty: keep the old object so MapScreen does not re-render
       // and the map source is not re-uploaded every second for nothing.
-      setFc(prev => (features.length === 0 && prev.features.length === 0)
-        ? prev
-        : { type: 'FeatureCollection', features })
+      if (features.length === 0 && store.get().features.length === 0) return
+      store.set({ type: 'FeatureCollection', features })
     }, DEAD_RECKON_MS)
     return () => clearInterval(timer)
-  }, [enabled])
+  }, [enabled, store])
 
-  return fc
+  return store
 }

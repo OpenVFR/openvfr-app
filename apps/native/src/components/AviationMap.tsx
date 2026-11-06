@@ -266,7 +266,8 @@ export type AviationMapProps = {
   /** Fired when a leg-midpoint drag-insert is near 2+ candidate snap targets
    *  — caller should show a disambiguation picker; picking calls onLegInsert. */
   onLegInsertCandidates?: (afterIndex: number, candidates: SnapCandidate[]) => void
-  trafficFC?:     FeatureCollection
+  /** Live traffic, in a store so its 2 s updates re-render only the traffic layer (see useTraffic). */
+  trafficStore?:  ValueStore<FeatureCollection>
   /** Flown trail behind the aircraft (active log, liveTrailGeoJson); null = none. */
   liveTrailFC?:   FeatureCollection | null
   /** User-saved waypoints (from UserWaypointContext) — shown as bookmark pins,
@@ -747,6 +748,59 @@ export function clearProtomapsStyleCache() { _protomapsStyle = null }
  *  inspection: drawn as the aircraft pointing along the recorded track, on a yellow halo so it
  *  is not mistaken for the live position. Otherwise a plain yellow ring. */
 export type ProfileCursor = { lngLat: [number, number]; trackDeg?: number }
+
+/** Live aircraft traffic. Subscribes to the traffic store itself, so each 2 s update re-renders only
+ *  this layer, not the map. Always mounted (empty data when there is none). */
+function TrafficLayer({ store }: { store: ValueStore<FeatureCollection> }) {
+  const trafficFC = useStoreValue(store)
+  return (
+    // onPress (a no-op): a source only adds its features to the map's press payload when it has a
+    // press handler -- without it a tap on an aircraft never reached handleFeatureTap.
+    <GeoJSONSource id="traffic-src" data={trafficFC} onPress={() => {}}>
+      {([[1, '#22c55e'], [2, '#eab308'], [3, '#ef4444']] as const).map(([u, c]) => (
+        <Layer
+          key={u}
+          id={`traffic-urgency-ring-${u}`}
+          type="circle"
+          filter={['==', ['get', 'urgency'], u] as any}
+          paint={{
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 7, 9, 9, 13, 11] as any,
+            'circle-color': c,
+            'circle-opacity': 0.35,
+            'circle-stroke-color': c,
+            'circle-stroke-width': 1.5,
+            'circle-stroke-opacity': 0.8,
+          }}
+        />
+      ))}
+      <Layer
+        id="traffic-symbols"
+        type="symbol"
+        layout={{
+          'icon-image': ['coalesce', ['get', 'iconId'], 'traffic-icon-a0'],
+          // Shrinks when zoomed out so a busy sky does not bury the map.
+          'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.3, 9, 0.4, 13, 0.5] as any,
+          'icon-rotate': ['get', 'trackDeg'],
+          'icon-rotation-alignment': 'map',
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'text-field': ['coalesce', ['get', 'callsign'], ['get', 'icao24']],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 9,
+          'text-anchor': 'top',
+          'text-offset': [0, 0.8],
+          'text-allow-overlap': false,
+        }}
+        paint={{
+          'icon-opacity': 0.9,
+          'text-color': '#ffffff',
+          'text-halo-color': 'rgba(0,0,0,0.7)',
+          'text-halo-width': 1,
+        }}
+      />
+    </GeoJSONSource>
+  )
+}
 
 /** Live drag preview: where a dragged route point (or a point being inserted
  *  into a leg) would land, with the legs to it and the name of what it snaps
@@ -1841,7 +1895,7 @@ export const AviationMap = React.memo(function AviationMap({
   onLegTap,
   onLegInsert,
   onLegInsertCandidates,
-  trafficFC,
+  trafficStore,
   liveTrailFC = null,
   userWaypointsFC,
   notamCirclesFC,
@@ -2908,7 +2962,7 @@ export const AviationMap = React.memo(function AviationMap({
 
   // Read by handleMapPress: only look for a tapped aircraft while any is drawn.
   const hasTrafficRef = useRef(false)
-  hasTrafficRef.current = (trafficFC?.features.length ?? 0) > 0
+  hasTrafficRef.current = (trafficStore?.get().features.length ?? 0) > 0
 
   const handleMapPress = useCallback(
     (e: NativeSyntheticEvent<PressEvent | PressEventWithFeatures>) => {
@@ -3299,7 +3353,7 @@ export const AviationMap = React.memo(function AviationMap({
         // MapLibre's own compass is off: CompassButton (MapScreen) replaces it.
         compass={false}
       >
-        {showOwnPosition && <UserLocation accuracy heading minDisplacement={5} />}
+        {showOwnPosition && <UserLocation animated={false} accuracy heading minDisplacement={5} />}
         <Camera
           ref={cameraRef}
           // Preserve camera position across an auto-retry remount (key bump
@@ -3438,54 +3492,7 @@ export const AviationMap = React.memo(function AviationMap({
             plain-circle-only rendering -- gliders, helicopters, balloons,
             parachutists, UAVs, and airliners now render distinctly instead
             of all being the same dot. */}
-        {trafficFC && trafficFC.features.length > 0 && (
-          // onPress (a no-op): a source only adds its features to the map's
-          // press payload when it has a press handler -- without it a tap on
-          // an aircraft never reached handleFeatureTap.
-          <GeoJSONSource id="traffic-src" data={trafficFC} onPress={() => {}}>
-            {([[1, '#22c55e'], [2, '#eab308'], [3, '#ef4444']] as const).map(([u, c]) => (
-              <Layer
-                key={u}
-                id={`traffic-urgency-ring-${u}`}
-                type="circle"
-                filter={['==', ['get', 'urgency'], u] as any}
-                paint={{
-                  'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 7, 9, 9, 13, 11] as any,
-                  'circle-color': c,
-                  'circle-opacity': 0.35,
-                  'circle-stroke-color': c,
-                  'circle-stroke-width': 1.5,
-                  'circle-stroke-opacity': 0.8,
-                }}
-              />
-            ))}
-            <Layer
-              id="traffic-symbols"
-              type="symbol"
-              layout={{
-                'icon-image': ['coalesce', ['get', 'iconId'], 'traffic-icon-a0'],
-                // Shrinks when zoomed out so a busy sky does not bury the map.
-                'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.3, 9, 0.4, 13, 0.5],
-                'icon-rotate': ['get', 'trackDeg'],
-                'icon-rotation-alignment': 'map',
-                'icon-allow-overlap': true,
-                'icon-ignore-placement': true,
-                'text-field': ['coalesce', ['get', 'callsign'], ['get', 'icao24']],
-                'text-font': ['Noto Sans Regular'],
-                'text-size': 9,
-                'text-anchor': 'top',
-                'text-offset': [0, 0.8],
-                'text-allow-overlap': false,
-              }}
-              paint={{
-                'icon-opacity': 0.9,
-                'text-color': '#ffffff',
-                'text-halo-color': 'rgba(0,0,0,0.7)',
-                'text-halo-width': 1,
-              }}
-            />
-          </GeoJSONSource>
-        )}
+        {trafficStore && <TrafficLayer store={trafficStore} />}
 
         {/* ── Planned Route ──────────────────────────────── */}
         {waypoints.length >= 2 && (
