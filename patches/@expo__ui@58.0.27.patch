@@ -106,116 +106,41 @@ index 9ca09321e7068ced9a490fdd06dac7a2d8ec3949..e562f2dc1a0aa7e3190a4b7bafacb911
      Children(UIComposableScope(), filter = { !isSlotView(it) })
    }
  
-diff --git a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt.rej b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt.rej
-new file mode 100644
-index 0000000000000000000000000000000000000000..9724b41d52986c4a66808490af7380c969f73685
---- /dev/null
-+++ b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt.rej
-@@ -0,0 +1,107 @@
-+--- android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
-++++ android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
-+@@ -6,6 +6,8 @@ import android.app.Activity
-+ import android.app.Dialog
-+ import android.content.Context
-+ import android.graphics.Color
-++import android.util.Log
-++import android.util.Log
-+ import android.view.KeyEvent
-+ import android.view.inputmethod.InputMethodManager
-+ import androidx.compose.material3.BottomSheetDefaults
-+@@ -18,12 +20,17 @@ import androidx.compose.material3.rememberModalBottomSheetState
-+ import androidx.compose.runtime.Composable
-+ import androidx.compose.runtime.DisposableEffect
-+ import androidx.compose.runtime.LaunchedEffect
-++import androidx.compose.runtime.remember
-+ import androidx.compose.runtime.rememberCoroutineScope
-+ import androidx.compose.ui.graphics.Color as ComposeColor
-+ import androidx.compose.ui.graphics.luminance
-+ import androidx.compose.ui.graphics.takeOrElse
-+ import androidx.compose.ui.platform.LocalView
-+ import androidx.compose.ui.window.DialogWindowProvider
-++import androidx.core.view.ViewCompat
-++import androidx.core.view.WindowCompat
-++import androidx.core.view.WindowInsetsCompat
-++import androidx.core.view.WindowInsetsControllerCompat
-+ import expo.modules.kotlin.records.Field
-+ import expo.modules.kotlin.records.Record
-+ import expo.modules.kotlin.types.OptimizedRecord
-+@@ -94,6 +101,69 @@ private fun ForwardKeyEventsToActivity(activity: Activity?) {
-+   }
-+ }
-+ 
-++/**
-++ * [ModalBottomSheet] opens in its own dialog window, and system-bar visibility is per window: an
-++ * activity in immersive mode (system bars hidden via WindowInsetsController) gets the status bar,
-++ * navigation bar and (on large screens) the taskbar back the moment a sheet opens. Mirror the
-++ * activity's state onto the dialog window so a fullscreen app stays fullscreen while a sheet is
-++ * up. No-op when the activity shows its bars.
-++ *
-++ * The activity's state is read once, during the sheet's first composition. That runs before the
-++ * dialog window is shown (Material3 composes the sheet content in setContent, then shows the
-++ * dialog from an effect), so the activity's insets still describe what the app asked for: once
-++ * the dialog has focus and the system shows the bars for it, every window's insets report them
-++ * visible and the information is gone. The hide is re-applied whenever the dialog window's insets
-++ * report the bars visible again, which covers the system re-showing them after focus changes.
-++ */
-++@Composable
-++private fun MatchActivitySystemBars(activity: Activity?) {
-++  val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window ?: return
-++  val activityWindow = activity?.window ?: return
-++
-++  val hiddenTypes = remember(activityWindow) {
-++    val insets = ViewCompat.getRootWindowInsets(activityWindow.decorView)
-++    var types = 0
-++    if (insets != null && !insets.isVisible(WindowInsetsCompat.Type.statusBars())) {
-++      types = types or WindowInsetsCompat.Type.statusBars()
-++    }
-++    if (insets != null && !insets.isVisible(WindowInsetsCompat.Type.navigationBars())) {
-++      types = types or WindowInsetsCompat.Type.navigationBars()
-++    }
-++    Log.i(SYSTEM_BARS_TAG, "activity hides system bar types=$types")
-++    types
-++  }
-++  if (hiddenTypes == 0) {
-++    return
-++  }
-++
-++  DisposableEffect(dialogWindow, hiddenTypes) {
-++    val decorView = dialogWindow.decorView
-++    val controller = WindowCompat.getInsetsController(dialogWindow, decorView)
-++    fun hide() {
-++      controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-++      controller.hide(hiddenTypes)
-++    }
-++    WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
-++    hide()
-++    ViewCompat.setOnApplyWindowInsetsListener(decorView) { view, insets ->
-++      // isVisible(mask) is true only when every type in the mask is visible; check them one by one.
-++      val reappeared = listOf(WindowInsetsCompat.Type.statusBars(), WindowInsetsCompat.Type.navigationBars())
-++        .any { type -> (hiddenTypes and type) != 0 && insets.isVisible(type) }
-++      if (reappeared) {
-++        Log.i(SYSTEM_BARS_TAG, "dialog window shows hidden system bars again, re-hiding")
-++        hide()
-++      }
-++      // Keep the decor view's own handling (system bar background views, child dispatch).
-++      ViewCompat.onApplyWindowInsets(view, insets)
-++    }
-++    onDispose {
-++      ViewCompat.setOnApplyWindowInsetsListener(decorView, null)
-++    }
-++  }
-++}
-++
-++private const val SYSTEM_BARS_TAG = "ExpoUISheetSystemBars"
-++
-+ @Composable
-+ fun FunctionalComposableScope.ModalBottomSheetContent(
-+   props: ModalBottomSheetViewProps,
-+@@ -177,6 +247,7 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
-+     modifier = ModifierRegistry.applyModifiers(props.modifiers, appContext, composableScope, globalEventDispatcher)
-+   ) {
-+     ForwardKeyEventsToActivity(appContext.currentActivity)
-++    MatchActivitySystemBars(appContext.currentActivity)
-+     Children(UIComposableScope(), filter = { !isSlotView(it) })
-+   }
-+ 
+diff --git a/ios/BottomSheetView.swift b/ios/BottomSheetView.swift
+index b331018ac492033c951ab5d51add0a98292e0989..ca1aad3e06c0482cd9db1a134b2f7f6846ef703b 100644
+--- a/ios/BottomSheetView.swift
++++ b/ios/BottomSheetView.swift
+@@ -94,7 +94,7 @@ struct BottomSheetView: ExpoSwiftUI.View {
+   }
+ 
+   @ViewBuilder
+-  private var presentedContent: some View {
++  private var backgroundedContent: some View {
+     if let background = props.children?.slot("presentationBackground") {
+       sheetContent.presentationBackground { background }
+     } else {
+@@ -102,6 +102,24 @@ struct BottomSheetView: ExpoSwiftUI.View {
+     }
+   }
+ 
++  // OpenVFR patch: the app keeps iPhone Duo's status bar horizontal
++  // (expo-status-bar verticalBarBehaviorIOS="disabled"), but that only reaches
++  // plain UIKit view controllers: a SwiftUI sheet's hosting controller brings
++  // the vertical rail back and insets the sheet content by it. Opt the sheet
++  // out as well.
++  @ViewBuilder
++  private var presentedContent: some View {
++    #if canImport(UIKit, _version: 9127.0.85)
++    if #available(iOS 27.1, tvOS 27.1, *) {
++      backgroundedContent.toolbarVerticalBehavior(.disabled)
++    } else {
++      backgroundedContent
++    }
++    #else
++    backgroundedContent
++    #endif
++  }
++
+   @ViewBuilder
+   private var anchor: some View {
+     if let anchorView = props.children?.slot("anchor") {
