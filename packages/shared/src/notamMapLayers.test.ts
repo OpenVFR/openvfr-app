@@ -129,6 +129,7 @@ describe('vertical limits and listed points on the map', () => {
   const v = (floorFt: number | null) => ({ source: 'text' as const, pairs: [{ floor: floorFt === null ? null : { ref: 'AMSL' as const, ft: floorFt }, ceiling: null }] })
   it('hides a NOTAM whose floor is above the ceiling filter, keeps unknown and lower ones', () => {
     expect(notamAboveCeiling({ vertical: v(8000) }, 5000)).toBe(true)
+    expect(notamAboveCeiling({ vertical: v(5400) }, 5000)).toBe(false) // inside the 500 ft margin
     expect(notamAboveCeiling({ vertical: v(3000) }, 5000)).toBe(false)
     expect(notamAboveCeiling({ vertical: v(null) }, 5000)).toBe(false)
     expect(notamAboveCeiling({}, 5000)).toBe(false)

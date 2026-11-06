@@ -79,6 +79,7 @@ export function notamFullText(n: N): string {
   const vertical = formatNotamVertical(n.vertical)
   if (vertical) lines.push(`Vertical: ${vertical}${n.vertical!.source === 'qline' ? ' (Q-line)' : ''}`)
   else if (f?.lowerLimit || f?.upperLimit) lines.push(`Vertical: ${f.lowerLimit ?? '—'} – ${f.upperLimit ?? '—'}`)
+  if (n.areaApproximate) lines.push('Note: edges along a border or coastline are drawn straight (approximate)')
   lines.push('')
   lines.push(n.text)
   return lines.join('\n').replace(/^\n+/, '')

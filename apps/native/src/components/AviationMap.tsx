@@ -3639,7 +3639,14 @@ export function AviationMap({
             />
             <Layer
               id="notam-polygons-border" type="line"
+              filter={['!=', ['get', 'approximate'], true]}
               paint={{ 'line-color': '#e64980', 'line-width': 1.5, 'line-opacity': 0.85 }}
+            />
+            {/* Edge along a border/coastline drawn straight: dashed. */}
+            <Layer
+              id="notam-polygons-border-approx" type="line"
+              filter={['==', ['get', 'approximate'], true]}
+              paint={{ 'line-color': '#e64980', 'line-width': 1.5, 'line-opacity': 0.85, 'line-dasharray': [3, 2] }}
             />
           </GeoJSONSource>
         )}

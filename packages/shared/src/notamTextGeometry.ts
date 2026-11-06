@@ -43,6 +43,8 @@ export interface NotamTextGeometry {
   polygon: NotamPolygonGeometry | null
   circle: TextCircle | null
   point: TextPoint | null
+  /** Routes drawn as corridors ("A THEN ALONG THE COAST TO B"): the polygon is a corridor around the straight line, so `approximate` is set. */
+  corridor?: true
   /** Several separate positions (an obstacle list, a LAT/LONG list): drawn as points, not an area. */
   points?: TextPoint[]
   /** Circles cut out of the area ("EXCLUDING 1 NM RADIUS OF ..."); not drawn as areas. */
@@ -203,7 +205,7 @@ const ARC_RADIUS_TOLERANCE_NM = 1
 
 const sameVertex = (a: Coord, b: Coord) => Math.abs(a.lat - b.lat) < 1e-5 && Math.abs(a.lon - b.lon) < 1e-5
 
-interface Rings { rings: number[][][]; unclosed: number; unclosedRuns: Coord[][]; arcMismatch: boolean; arcs: ArcClause[]; approximate: boolean; blocked: boolean; closedRings: number }
+interface Rings { rings: number[][][]; unclosed: number; unclosedRuns: Coord[][]; arcMismatch: boolean; arcs: ArcClause[]; approximate: boolean; blocked: boolean; closedRings: number; routes: Coord[][] }
 
 function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]): Rings {
   const arcs = arcClauses(t, all)
@@ -217,6 +219,8 @@ function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]):
   let approximate = false
   let blocked = false
   let closedRings = 0
+  let linked = false // the run has an "along the border / coast" link
+  const routes: Coord[][] = []
   let ring: number[][] = []
   let vertices = 0
   let first: Coord | null = null
@@ -226,6 +230,11 @@ function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]):
   const flush = (closed: boolean) => {
     // Distinct vertices: a closing repeat of the first does not count.
     const distinct = closed ? vertices - 1 : vertices
+    // Two distinct positions (A - B, A - B - A): a route, not an area.
+    if (distinct === 2 && runCoords.length >= 2 && (closed || linked)) {
+      const a = runCoords[0]!, b = runCoords.find(c => !sameVertex(c, a))
+      if (b) routes.push([a, b])
+    }
     if (distinct >= 3 && ring.length >= 3) {
       const open = !closed && !intent && !(prev && ORIGIN_AFTER.test(t.slice(prev.end, prev.end + 60)))
       if (open) {
@@ -238,7 +247,7 @@ function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]):
         if (closed) closedRings++
       }
     }
-    ring = []; vertices = 0; first = null; prev = null; runCoords = []
+    ring = []; vertices = 0; first = null; prev = null; runCoords = []; linked = false
   }
   let lastEnd = 0
   for (const c of cs) {
@@ -261,6 +270,7 @@ function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]):
         // "STATE BORDER" / "ALONG THE COASTLINE TO" link: follow the outline
         // when we have one and the way is unambiguous, else draw it straight
         // (coarser than the real border, still the right area) and say so.
+        linked = true
         const along = borderRings ? followOutline([prev.lon, prev.lat], [c.lon, c.lat], borderRings) : null
         if (along) ring.push(...along); else approximate = true
       } else if (!/^\s*[-\u2013,;]?\s*(?:\d{1,2}\s*[.):]\s*)?$/.test(gap)) {
@@ -286,7 +296,7 @@ function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]):
     if (vertices > 1 && sameVertex(first, c)) flush(true)
   }
   flush(false)
-  return { rings, unclosed, unclosedRuns, arcMismatch, arcs, approximate, blocked, closedRings }
+  return { rings, unclosed, unclosedRuns, arcMismatch, arcs, approximate, blocked, closedRings, routes }
 }
 
 function toNm(value: string, unit: string): number {
@@ -371,6 +381,20 @@ function distNm(aLat: number, aLon: number, bLat: number, bLon: number): number 
 
 const MAX_LIST_POINTS = 60
 
+/** Half-width (NM) of the corridor drawn around a two-position route. */
+const CORRIDOR_HALF_WIDTH_NM = 1
+
+/** Rectangle ([lon, lat], closed) around the line a-b, CORRIDOR_HALF_WIDTH_NM each side. */
+function corridorRing(a: Coord, b: Coord): number[][] {
+  const kx = Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180)
+  const dx = (b.lon - a.lon) * kx * 60, dy = (b.lat - a.lat) * 60 // NM
+  const len = Math.hypot(dx, dy) || 1
+  const nx = (-dy / len) * CORRIDOR_HALF_WIDTH_NM, ny = (dx / len) * CORRIDOR_HALF_WIDTH_NM
+  const pt = (c: Coord, s: number) => [c.lon + (s * nx) / (60 * kx), c.lat + (s * ny) / 60]
+  const ring = [pt(a, 1), pt(b, 1), pt(b, -1), pt(a, -1)]
+  return [...ring, ring[0]!]
+}
+
 /** "LAT 593900N 594000N LONG 0175600E 0175700E": the n-th latitude pairs with the n-th longitude. */
 const LAT_LONG = /\bLAT(?:ITUDES?)?\s*:?\s*((?:\d{4,6}(?:[.,]\d+)?\s*[NS][\s,;]*)+)(?:AND\s+)?\bLONG(?:ITUDES?)?\s*:?\s*((?:\d{5,7}(?:[.,]\d+)?\s*[EW][\s,;]*)+)/g
 function latLongList(t: string): TextPoint[] {
@@ -424,6 +448,9 @@ export function notamTextGeometry(
   let reason: NotamTextReason | undefined
   const simple = poly.rings.filter(r => !ringSelfIntersects(r))
   if (poly.rings.length > 0 && simple.length === 0) reason = 'self-intersecting'
+  // A closed ring next to a further open run of 3+ vertices: the text describes
+  // more than we drew (a second area, a corridor). Do not show half of it.
+  if (poly.rings.length > 0 && poly.unclosed > 0) return { ...none, reason: 'unclosed' }
   const rings = simple.filter(r => r.every(([lon, lat]) => inQ(lat!, lon!)))
   if (simple.length > 0 && rings.length === 0) reason ??= 'outside-qline'
   if (rings.length === 0 && poly.unclosed > 0) reason ??= 'unclosed'
@@ -451,6 +478,14 @@ export function notamTextGeometry(
     .map(p => [`${p.lat.toFixed(5)},${p.lon.toFixed(5)}`, p])).values()].slice(0, MAX_LIST_POINTS)
   if (listPts.length >= 2 && simple.length === 0) return { ...none, points: listPts }
   if (listed.length > 0 && listPts.length === 0 && reason === 'unclosed') reason = 'outside-qline'
+
+  // Routes between two positions (banner towing, mass movements): a corridor
+  // around the straight line, flagged approximate -- the real track bends.
+  const routeLines = [...new Map(poly.routes.filter(r => r.every(c => plausible(c.lat, c.lon) && inQ(c.lat, c.lon)))
+    .map(r => [`${r[0]!.lat.toFixed(4)},${r[0]!.lon.toFixed(4)},${r[1]!.lat.toFixed(4)},${r[1]!.lon.toFixed(4)}`, r])).values()]
+  if (routeLines.length > 0 && simple.length === 0) {
+    return { ...none, polygon: { type: 'MultiPolygon', coordinates: routeLines.map(r => [corridorRing(r[0]!, r[1]!)]) }, approximate: true, corridor: true, reason: 'border-unresolved' }
+  }
 
   const allPs = points(mt, cs)
   const ps = allPs.filter(p => inQ(p.lat, p.lon))

@@ -45,7 +45,7 @@ const EXPECTED_SHAPE: Record<string, string> = {
   'C3521/26': 'polygon:33',
   'X8933/26': 'multi:11+10',
   'D7011/26': 'multi:7+13+13',
-  'D5173/26': 'none',        // banner-towing ROUTES (A -> coast -> B -> A): 2 distinct vertices are a line, not an area; Q-line circle stays
+  'D5173/26': 'multi:5+5',  // banner-towing ROUTES (A -> coast -> B -> A): a corridor around each straight route line, flagged approximate
   'F2450/26': 'point',
   'D7523/26': 'point',        // "0205330.39N" (N for E) is read as E
   'E0075/26': 'point',        // western longitude
@@ -72,8 +72,8 @@ describe('live NOTAM fixture', () => {
       if (t.reason) reasons[n.id] = t.reason
     }
     // B3442/26 ("ALONG STATE BDRY OF CR") keeps its polygon but one edge is drawn straight.
-    // Nothing else is refused (D5173/26's two-vertex route lines are not a shape at all).
-    expect(reasons).toEqual({ 'B3442/26': 'border-unresolved' })
+    // D5173/26: the banner-towing routes are corridors around straight lines, so approximate too.
+    expect(reasons).toEqual({ 'B3442/26': 'border-unresolved', 'D5173/26': 'border-unresolved' })
   })
   it('item D schedules: all live samples parse', () => {
     const bad = fx.schedules.filter(s => !parseNotamSchedule({ itemD: s, effective: '2026-10-01T00:00:00Z' }))

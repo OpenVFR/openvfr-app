@@ -132,6 +132,7 @@
     "./notamTextGeometry": "./src/notamTextGeometry.ts",
     "./notamVertical": "./src/notamVertical.ts",
     "./notamBorder": "./src/notamBorder.ts",
+    "./notamFrequency": "./src/notamFrequency.ts",
     "./notamTextSegments": "./src/notamTextSegments.ts",
     "./notamCoordinateFocus": "./src/notamCoordinateFocus.ts"
   },

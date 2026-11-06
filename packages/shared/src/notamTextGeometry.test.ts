@@ -335,3 +335,24 @@ describe('notamTextGeometry: fail safe on edges we cannot draw', () => {
     expect(g('570500N 0120000E - CLOCKWISE ARC RADIUS 5 NM CENTRED ON 570000N 0120000E TO 570000N 0120911E - 565500N 0120911E - 565500N 0120000E - 570500N 0120000E').polygon).not.toBeNull()
   })
 })
+
+describe('notamTextGeometry: routes and leftovers', () => {
+  const g = (t: string) => notamTextGeometry(t, null)
+  it('a route A - coast - B - A is a corridor, approximate', () => {
+    const r = g('ROUTE EAST: 541217N 0154050E THEN ALONG THE COASTLINE TO POINT 543243N 0163206E 541217N 0154050E')
+    expect(r.polygon?.type).toBe('MultiPolygon')
+    expect(r.approximate).toBe(true)
+    expect(r.corridor).toBe(true)
+  })
+  it('two obstacle positions joined by a dash are not a route', () => {
+    const r = g('OBST 551234N 0141234E - 551300N 0141300E ERECTED')
+    expect(r.polygon).toBeNull()
+    expect(r.corridor).toBeUndefined()
+  })
+  it('a closed ring beside a further open run is refused (half a shape is worse)', () => {
+    const t = 'AREA 571200N 0120030E - 571800N 0121500E - 570500N 0122000E - 571200N 0120030E. OBSTACLES 580000N 0130000E - 581000N 0130000E - 581000N 0131000E'
+    const r = g(t)
+    expect(r.polygon).toBeNull()
+    expect(r.reason).toBe('unclosed')
+  })
+})

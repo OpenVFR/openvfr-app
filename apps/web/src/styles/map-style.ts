@@ -470,7 +470,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     // apps/api/src/notam.ts's getRegionalNotams() and useRegionalNotams.ts.
     label: 'Regional NOTAMs',
     cssClass: 'groupNotamCircles',
-    layerIds: ['notam-circles-fill', 'notam-circles-border', 'notam-polygons-fill', 'notam-polygons-border', 'notam-matched-airspace-fill', 'notam-matched-airspace-border', 'notam-points-cluster', 'notam-points-cluster-count', 'notam-points-unclustered', 'notam-points-label', 'notam-obstacles-unclustered'],
+    layerIds: ['notam-circles-fill', 'notam-circles-border', 'notam-polygons-fill', 'notam-polygons-border', 'notam-polygons-border-approx', 'notam-matched-airspace-fill', 'notam-matched-airspace-border', 'notam-points-cluster', 'notam-points-cluster-count', 'notam-points-unclustered', 'notam-points-label', 'notam-obstacles-unclustered'],
     defaultOn: true,
     section: 'Airspace',
   },

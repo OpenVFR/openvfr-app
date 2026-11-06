@@ -65,8 +65,12 @@ source: it is not a substitute for official national NOTAM and AIP sources.
   are read from the vertical-limit fields or the text and shown in the NOTAM
   list. If a NOTAM has several areas but the text does not give one pair of
   limits per area, the limits from the header (flight levels) are shown.
-- **Height filter:** a NOTAM whose floor is above the airspace altitude
-  filter (Layers) is not drawn on the map, and stays in the lists. A NOTAM
+- **Dashed outline:** a NOTAM area with an edge along a border or coastline
+  that could not be followed is outlined dashed: that edge is approximate.
+  A route such as banner towing "A along the coast to B" is drawn as a
+  narrow corridor (1 NM each side) around the straight line, also dashed.
+- **Height filter:** a NOTAM whose floor is more than 500 ft above the airspace
+  altitude filter (Layers) is not drawn on the map, and stays in the lists. A NOTAM
   with unknown limits is always drawn.
 - **Lists of positions** (obstacles, `LAT … LONG …` lists) are drawn as one
   pin per position, not as an area.

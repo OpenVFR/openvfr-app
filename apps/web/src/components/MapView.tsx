@@ -2899,10 +2899,25 @@ export default function MapView({ auth }: { auth: AuthState }) {
         id: 'notam-polygons-border',
         type: 'line',
         source: 'notam-polygons',
+        filter: ['!=', ['get', 'approximate'], true],
         paint: {
           'line-color': '#e64980',
           'line-width': 1.5,
           'line-opacity': 0.85,
+        },
+      })
+      // A polygon with an edge along a border/coastline that is drawn straight:
+      // dashed, so it is not mistaken for an exact shape.
+      map.addLayer({
+        id: 'notam-polygons-border-approx',
+        type: 'line',
+        source: 'notam-polygons',
+        filter: ['==', ['get', 'approximate'], true],
+        paint: {
+          'line-color': '#e64980',
+          'line-width': 1.5,
+          'line-opacity': 0.85,
+          'line-dasharray': [3, 2],
         },
       })
 

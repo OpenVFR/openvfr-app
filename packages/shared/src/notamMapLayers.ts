@@ -22,6 +22,7 @@ import type { NotamItem } from './fetchNotam'
 import { extractDesignators } from './notamDesignator'
 import { makeCirclePolygon } from './geoCircle'
 import { isOffSchedule } from './notamSchedule'
+import { ALT_REF_UNCERTAIN_MARGIN_FT } from './airspaceAltitude'
 
 type AreaGeometry = Polygon | MultiPolygon
 
@@ -122,6 +123,8 @@ function featureProps(n: NotamItem, radiusNm: number | null) {
     classification: n.classification,
     icaoLocation:   n.icaoLocation,
     radiusNm,
+    // A border/coastline edge is drawn straight: the maps outline it dashed.
+    approximate:    n.areaApproximate === true,
   }
 }
 
@@ -175,7 +178,10 @@ export const NOTAM_MAP_HORIZON_MS = 3 * 3_600_000
 export function notamAboveCeiling(n: Pick<NotamItem, 'vertical'>, ceilingFt: number): boolean {
   const pairs = n.vertical?.pairs
   if (!pairs || pairs.length === 0) return false
-  return pairs.every(p => !!p.floor && !p.floor.unlimited && p.floor.ft > ceilingFt)
+  // Flight levels (1013 hPa) and QNH altitudes can differ by ~1000 ft, and the
+  // ceiling filter's own reference is not known here: hide only when the floor
+  // clears the ceiling by the same uncertainty margin the alerts use.
+  return pairs.every(p => !!p.floor && !p.floor.unlimited && p.floor.ft > ceilingFt + ALT_REF_UNCERTAIN_MARGIN_FT)
 }
 
 export function notamMapFeatures(
