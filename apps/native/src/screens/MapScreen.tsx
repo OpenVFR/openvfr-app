@@ -484,7 +484,10 @@ function MapScreenForCountry() {
     end: !(aheadPath?.onRoute && aheadWaypoints[aheadWaypoints.length - 1] === waypoints[waypoints.length - 1]),
   }), [aheadPath, aheadWaypoints, waypoints])
 
-  const [profileHeight, setProfileHeight] = useState(DEFAULT_CHART_H)
+  // Short screens (the iPhone Duo cover is 678 pt tall) start with a lower
+  // chart, so the map above profile + simulator keeps room for its controls.
+  const defaultProfileH = windowHeight < 720 ? 180 : DEFAULT_CHART_H
+  const [profileHeight, setProfileHeight] = useState(defaultProfileH)
   const [mapAreaH, setMapAreaH] = useState<number | null>(null)
   // Chart-scrub → map crosshair sync (VerticalProfile touch-drag)
   // Map-side marker for a chart scrub, as [lng, lat]. Kept in a store, not
@@ -2299,7 +2302,7 @@ function MapScreenForCountry() {
       {(showRulerProfile || showPlannedProfile || showLookaheadProfile || showLogProfile) && profileHeight <= COLLAPSE_THRESHOLD && (
         <TouchableOpacity
           style={[styles.showProfileBtn, { bottom: GAUGES_BAR_H + (simFlight.active ? SIM_PANEL_H : 0) + scaledTheme.space1 }]}
-          onPress={() => setProfileHeight(DEFAULT_CHART_H)}
+          onPress={() => setProfileHeight(defaultProfileH)}
         >
           <Ionicons name="chevron-up" size={18} color={theme.textPrimary} />
         </TouchableOpacity>
