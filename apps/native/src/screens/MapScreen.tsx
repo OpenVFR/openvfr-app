@@ -138,6 +138,7 @@ import IconPlaneArrival from '@tabler/icons-react-native/IconPlaneArrival'
 import IconZoomScan from '@tabler/icons-react-native/IconZoomScan'
 import IconListDetails from '@tabler/icons-react-native/IconListDetails'
 import { MapToolbar, type ToolGroupDef } from '../components/MapToolbar'
+import { StatusScrim } from '../components/StatusScrim'
 import { Location } from 'expo-location/next'
 import * as Crypto from 'expo-crypto'
 import { GaugesBar }         from '../components/GaugesBar'
@@ -1744,7 +1745,7 @@ function MapScreenForCountry() {
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]}>
       {/* Map renders edge to edge, under the status bar; this faint band keeps
           the status icons legible on a light map. */}
-      {insets.top > 0 && <View pointerEvents="none" style={[styles.statusScrim, { height: insets.top }]} />}
+      <StatusScrim height={insets.top} />
       <BaroPromptModal />
       <View style={styles.mapContainer} onLayout={(e) => setMapAreaH(Math.round(e.nativeEvent.layout.height))}>
         <AviationMap
@@ -2384,7 +2385,6 @@ function makeStyles(theme: ScaledTheme) {
  return {
   container:    { flex: 1, backgroundColor: theme.surfaceBase },
   mapContainer: { flex: 1 },
-  statusScrim: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 60, backgroundColor: 'rgba(10,14,22,0.35)' },
   savePromptCoord: { color: theme.textMuted, fontSize: theme.textXs, marginBottom: theme.space1 },
   savePromptBtn: {
     flexDirection: 'row', alignItems: 'center', gap: theme.space2,
