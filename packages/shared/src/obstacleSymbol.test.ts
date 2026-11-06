@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { obstacleSymbol, polyPath, MIN_FULL_HEIGHT_PX } from './obstacleSymbol'
+import { obstacleSymbol, polyPath, MIN_FULL_HEIGHT_PX, batchSymbolPaths, type SymbolPrim } from './obstacleSymbol'
 
 describe('obstacleSymbol', () => {
   it('is null for obstacles too short to draw at full height', () => {
@@ -34,5 +34,60 @@ describe('obstacleSymbol', () => {
   })
   it('polyPath closes the path', () => {
     expect(polyPath([[0, 0], [1, 2], [3, 4]])).toBe('M0.0,0.0 L1.0,2.0 L3.0,4.0 Z')
+  })
+})
+
+describe('batchSymbolPaths', () => {
+  const rect = (x: number, fill = '#fff'): SymbolPrim => ({ t: 'rect', x, y: 0, w: 4, h: 20, fill })
+  const shade = (x: number): SymbolPrim => ({ t: 'rect', x, y: 0, w: 1, h: 20, fill: 'rgba(0,0,0,0.3)' })
+
+  it('merges the same layer and paint of many marks into one path', () => {
+    const marks = Array.from({ length: 50 }, (_, i) => ({ cx: i * 10, scaleX: 1, shape: [rect(i * 10), shade(i * 10 + 3)] }))
+    const paths = batchSymbolPaths(marks)
+    expect(paths).toHaveLength(2)                       // layer 0 body, layer 1 shade
+    expect(paths[0].d.split('Z').length - 1).toBe(50)   // 50 rects in one path
+  })
+
+  it('keeps a mark\'s own drawing order: layer 0 before layer 1', () => {
+    const paths = batchSymbolPaths([{ cx: 0, scaleX: 1, shape: [rect(0), shade(3)] }])
+    expect(paths.map((p) => p.fill)).toEqual(['#fff', 'rgba(0,0,0,0.3)'])
+  })
+
+  it('keeps different paints apart', () => {
+    const paths = batchSymbolPaths([
+      { cx: 0, scaleX: 1, shape: [rect(0, '#aaa')] },
+      { cx: 10, scaleX: 1, shape: [rect(10, '#bbb')] },
+      { cx: 20, scaleX: 1, opacity: 0.85, shape: [rect(20, '#aaa')] },
+    ])
+    expect(paths).toHaveLength(3)
+  })
+
+  it('widens a symbol around its centre', () => {
+    const [p] = batchSymbolPaths([{ cx: 10, scaleX: 2, shape: [{ t: 'rect', x: 8, y: 0, w: 4, h: 10, fill: '#fff' }] }])
+    expect(p.d).toBe('M6.0,0.0 L14.0,0.0 L14.0,10.0 L6.0,10.0 Z')
+  })
+
+  it('draws lines stroke-only and polygons and circles as closed paths', () => {
+    const paths = batchSymbolPaths([{
+      cx: 0, scaleX: 1,
+      shape: [
+        { t: 'line', x1: 0, y1: 0, x2: 5, y2: 5, stroke: '#000', w: 2 },
+        { t: 'poly', pts: [[0, 0], [4, 0], [2, 3]], fill: '#f00' },
+        { t: 'circle', cx: 0, cy: 0, r: 3, fill: '#0f0' },
+      ],
+    }])
+    expect(paths[0]).toMatchObject({ line: true, fill: 'none', stroke: '#000', strokeWidth: 2, d: 'M0.0,0.0 L5.0,5.0' })
+    expect(paths[1].d).toBe('M0.0,0.0 L4.0,0.0 L2.0,3.0 Z')
+    expect(paths[2].d).toContain('A3.0,3.0')
+  })
+
+  it('flags an estimated symbol lighter and outlines it in its own colour', () => {
+    const [p] = batchSymbolPaths([{ cx: 0, scaleX: 1, shape: [{ ...rect(0, '#abc'), dash: true }] }])
+    expect(p.fillOpacity).toBe(0.7)
+    expect(p.stroke).toBe('#abc')
+  })
+
+  it('skips marks without a shape', () => {
+    expect(batchSymbolPaths([{ cx: 0, scaleX: 1, shape: null }, { cx: 1, scaleX: 1 }])).toEqual([])
   })
 })

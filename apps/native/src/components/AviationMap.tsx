@@ -1778,7 +1778,7 @@ const TRAJ_PAINT = { 'line-color': '#facc15', 'line-width': 3, 'line-opacity': 0
 /** Minimum gap between handled onRegionIsChanging reports (ms). */
 const REGION_CHANGING_MIN_MS = 120
 
-export function AviationMap({
+export const AviationMap = React.memo(function AviationMap({
   gpsPosition,
   simActive = false,
   waypoints = [],
@@ -3995,5 +3995,4 @@ export function AviationMap({
 
     </View>
   )
-}
-
+})

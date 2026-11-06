@@ -59,7 +59,7 @@ import {
 import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import { legSpans, legMsaList, legBelowMsa, dragShownFt, withLegLevel, altAtY, unreachedLegs, verticalPhaseMarks, LEVEL_STEP_FT, DRAG_MIN_MOVE_PX, type LegSpan } from '@open-vfr/shared/legLevelDrag'
 import { collectRoutePois, poiBaseFt } from '@open-vfr/shared/routePois'
-import { obstacleSymbol, polyPath, primStyle, obstacleXScale } from '@open-vfr/shared/obstacleSymbol'
+import { obstacleSymbol, batchSymbolPaths, obstacleXScale } from '@open-vfr/shared/obstacleSymbol'
 import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
 import { carryLookaheadTerrain } from '@open-vfr/shared/lookaheadTerrain'
 import { plannedLineEnds } from '@open-vfr/shared/pathAhead'
@@ -918,6 +918,14 @@ const ProfileCStatic = React.memo(function ProfileCStatic({
   yMax,
   yOf,
 }: any) {
+  // One path per layer and paint instead of an element per primitive of every obstacle (see batchSymbolPaths).
+  const shapePaths = useMemo(
+    () => batchSymbolPaths([
+      ...landmarkMarks.map((m: any) => ({ cx: m.cx, shape: m.shape, opacity: m.estimated ? 0.85 : 1, scaleX: 1 })),
+      ...obstacleMarks.map((m: any) => ({ cx: m.cx, shape: m.shape, opacity: m.opacity, scaleX: obstacleXScale(m.kind) })),
+    ]),
+    [landmarkMarks, obstacleMarks],
+  )
   return (
     <>
                 {obstacleMarks.map((m: any) => {
@@ -977,26 +985,18 @@ const ProfileCStatic = React.memo(function ProfileCStatic({
                     navaid / reporting-point symbols, one layer. Dashed = height is an assumption, not data.
                     Obstacle shapes are widened (not heightened: height is data) for legibility. */}
                 <Svg width={contentW} height={chartH} style={{ position: 'absolute', left: 0, top: 0 }} pointerEvents="none">
-                  {[...landmarkMarks.map((m: any) => ({ ...m, opacity: m.estimated ? 0.85 : 1, scaleX: 1 })), ...obstacleMarks.map((m: any) => ({ ...m, scaleX: obstacleXScale(m.kind) }))].map((m) => m.shape ? (
-                    // Opacity on each shape, not on a <G> (see renderHaloText).
-                    <G key={`shape-${m.key}`}>
-                      <G transform={`translate(${m.cx} 0) scale(${m.scaleX} 1) translate(${-m.cx} 0)`}>
-                        {m.shape.map((p: any, k: any) => {
-                          const op = m.opacity ?? 1
-                          if (p.t === 'rect') {
-                            const st = primStyle(p)
-                            return <Rect key={k} x={p.x} y={p.y} width={p.w} height={p.h} fill={st.fill} fillOpacity={st.fillOpacity} stroke={st.stroke} strokeWidth={1} opacity={op} />
-                          }
-                          if (p.t === 'poly') {
-                            const st = primStyle(p)
-                            return <Path key={k} d={polyPath(p.pts)} fill={st.fill} fillOpacity={st.fillOpacity} stroke={st.stroke} strokeWidth={1} opacity={op} />
-                          }
-                          if (p.t === 'line') return <SvgLine key={k} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.stroke} strokeWidth={p.w} strokeLinecap="round" opacity={op} />
-                          return <Circle key={k} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill} opacity={op} />
-                        })}
-                      </G>
-                    </G>
-                  ) : null)}
+                  {shapePaths.map((sp) => (
+                    <Path
+                      key={sp.key}
+                      d={sp.d}
+                      fill={sp.fill}
+                      fillOpacity={sp.fillOpacity}
+                      stroke={sp.stroke}
+                      strokeWidth={sp.strokeWidth}
+                      strokeLinecap={sp.line ? 'round' : undefined}
+                      opacity={sp.opacity}
+                    />
+                  ))}
                   {poiMarks.map((m: any) => (
                     <G key={m.key} transform={`translate(${m.cx} ${m.cy}) scale(${POI_SCALE}) translate(${-m.cx} ${-m.cy})`}>
                       {/* dark halo pass under the coloured symbol, so it holds up on any sky or ground */}
@@ -1236,7 +1236,7 @@ function FlownReadout({ store, flown, bands, terrainPts, getMsa, styles, xOf, sc
   )
 }
 
-export function VerticalProfile({
+export const VerticalProfile = React.memo(function VerticalProfile({
   waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, msaMargins, title, headerStart, headerEnd, onClose, closeLabel, aircraftProfile, airborneEnds,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
   crossTrackNm, weatherStations,
@@ -2720,7 +2720,7 @@ export function VerticalProfile({
       )}
     </View>
   )
-}
+})
 
 function makeStyles(theme: ScaledTheme) {
  return {

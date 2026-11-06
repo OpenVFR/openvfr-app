@@ -1415,6 +1415,34 @@ function MapScreenForCountry() {
   const editBannerShown = editSessionActive || extending
   const bannerApply = useCallback(() => { if (extending) finishExtending(); else applyEditSession() }, [extending, finishExtending, applyEditSession])
   const bannerCancel = useCallback(() => { if (editSessionActive) cancelEditAndStopExtending(); else finishExtending() }, [editSessionActive, cancelEditAndStopExtending, finishExtending])
+
+  // Props of the big memoized children (map, vertical profile) that were new objects or
+  // functions on every MapScreen render, so a GPS tick or a traffic poll re-rendered them
+  // whole. Same behaviour, stable identity.
+  const toggleWindSurface = useCallback(() => setWindSurface((v) => !v), [])
+  const closeRoutePopover = useCallback(() => setRoutePopover(null), [])
+  const onRouteEndTap = useMemo(
+    () => (flyingActive ? undefined : () => { if (extending) finishExtending(); else setExtending(true) }),
+    [flyingActive, extending, finishExtending],
+  )
+  const mapCornerSlot = useMemo(() => (
+    <CompassButton
+      bearingStore={bearingStore}
+      orientation={mapOrientation}
+      canToggle={flyingActive}
+      onResetNorth={() => { setMapOrientation('north'); setResetNorthNonce((n) => n + 1) }}
+      onNextOrientation={() => {
+        if (mapOrientation === 'north') setMapOrientation('track')
+        else if (mapOrientation === 'track' && waypoints.length >= 2) setMapOrientation('course')
+        else { setMapOrientation('north'); setResetNorthNonce((n) => n + 1) }
+      }}
+    />
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [bearingStore, mapOrientation, flyingActive, waypoints.length])
+  const routeHeaderStart = useMemo(
+    () => <RouteHeaderStart waypoints={waypoints} legOverrides={legOverrides} units={settings.units} cruiseKts={aircraftProfile?.cruiseIas} cruiseAltFt={aircraftProfile?.cruiseAltFt} />,
+    [waypoints, legOverrides, settings.units, aircraftProfile?.cruiseIas, aircraftProfile?.cruiseAltFt],
+  )
   const toolIcon = (Icon: import("@tabler/icons-react-native").Icon) => (color: string) => <Icon size={22} strokeWidth={2} color={color} />
   const navigation = useNavigation()
   const toolGroups: ToolGroupDef[] = [
@@ -1732,7 +1760,7 @@ function MapScreenForCountry() {
           windAltFt={windOverlay.altFt}
           windLabel={windOverlay.label}
           windSurface={windSurface}
-          onToggleWindSurface={() => setWindSurface((v) => !v)}
+          onToggleWindSurface={toggleWindSurface}
           trafficFC={trafficFC}
           notamCirclesFC={notamCirclesFC}
           notamPointsFC={notamPointsFC}
@@ -1762,19 +1790,7 @@ function MapScreenForCountry() {
           resetNorthNonce={resetNorthNonce}
           // Compass sits bottom right, just above the scale pill (inside the map
           // area, so it follows the profile panel up and down).
-          mapCornerSlot={(
-            <CompassButton
-              bearingStore={bearingStore}
-              orientation={mapOrientation}
-              canToggle={flyingActive}
-              onResetNorth={() => { setMapOrientation('north'); setResetNorthNonce((n) => n + 1) }}
-              onNextOrientation={() => {
-                if (mapOrientation === 'north') setMapOrientation('track')
-                else if (mapOrientation === 'track' && waypoints.length >= 2) setMapOrientation('course')
-                else { setMapOrientation('north'); setResetNorthNonce((n) => n + 1) }
-              }}
-            />
-          )}
+          mapCornerSlot={mapCornerSlot}
           onFeatureTap={handleFeatureTap as (features: Feature[], lngLat: [number,number]) => void}
           onLongPress={handleLongPress}
           onWaypointMove={handleWaypointMove}
@@ -1783,9 +1799,9 @@ function MapScreenForCountry() {
           // point opens its menu (Details / Direct to / Remove).
           onWaypointRemove={removeWaypoint}
           onWaypointPress={handleWaypointPress}
-          onRouteDragStart={() => setRoutePopover(null)}
+          onRouteDragStart={closeRoutePopover}
           // Tap the route's last point on the ground: start (or stop) extending it.
-          onRouteEndTap={flyingActive ? undefined : () => { if (extending) finishExtending(); else setExtending(true) }}
+          onRouteEndTap={onRouteEndTap}
           // A tapped leg becomes draggable (ground: selected; flight: unlocked
           // for LEG_UNLOCK_MS). A tap off the route clears the selection.
           onLegPress={handleLegPress}
@@ -2187,7 +2203,7 @@ function MapScreenForCountry() {
           airspaceCeilingFt={settings.airspaceCeilingFt}
           msaMargins={settings.msaMargins}
           aircraftProfile={aircraftProfile}
-          headerStart={<RouteHeaderStart waypoints={waypoints} legOverrides={legOverrides} units={settings.units} cruiseKts={aircraftProfile?.cruiseIas} cruiseAltFt={aircraftProfile?.cruiseAltFt} />}
+          headerStart={routeHeaderStart}
           headerEnd={flyingActive ? (
             <ProfileViewToggle label="Ahead" accessibilityLabel="Show the path ahead of the aircraft" onPress={() => setShowWholeRoute(false)} />
           ) : undefined}

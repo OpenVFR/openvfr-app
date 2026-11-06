@@ -155,3 +155,76 @@ function obstacleSymbolSolid(kind: string, cx: number, tipY: number, groundY: nu
 export function polyPath(pts: [number, number][]): string {
   return 'M' + pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' L') + ' Z'
 }
+
+/** One merged path of a batch: every primitive of the same layer and paint, from many obstacles. */
+export type BatchedPath = {
+  key: string
+  d: string
+  fill: string
+  fillOpacity: number
+  stroke?: string
+  strokeWidth: number
+  opacity: number
+  /** A stroke-only path made of lines (round caps). */
+  line?: boolean
+}
+
+const n1 = (v: number): string => v.toFixed(1)
+
+/**
+ * Many symbols as a few paths. Drawing each primitive of each obstacle as its
+ * own element (a wind turbine is about eight) made a long route a thousand
+ * react-native-svg elements and about a second per render on a tablet. Here the
+ * primitives of all marks that share a layer (their index in the symbol) and a
+ * paint become one path, so a mark's own drawing order (shade over steel) holds
+ * and the element count no longer grows with the number of obstacles.
+ * `scaleX` widens a symbol around its centre `cx` (thin masts are stretched).
+ */
+export function batchSymbolPaths(
+  marks: readonly { cx: number; shape?: readonly SymbolPrim[] | null; opacity?: number; scaleX: number }[],
+): BatchedPath[] {
+  const layers: Map<string, BatchedPath & { parts: string[] }>[] = []
+  for (const m of marks) {
+    if (!m.shape) continue
+    const op = m.opacity ?? 1
+    const sx = (x: number): number => m.cx + (x - m.cx) * m.scaleX
+    m.shape.forEach((p, k) => {
+      const layer = (layers[k] ??= new Map())
+      let key: string
+      let paint: Omit<BatchedPath, 'key' | 'd'>
+      let part: string
+      if (p.t === 'line') {
+        paint = { fill: 'none', fillOpacity: 1, stroke: p.stroke, strokeWidth: p.w, opacity: op, line: true }
+        key = `l|${p.stroke}|${p.w}|${op}`
+        part = `M${n1(sx(p.x1))},${n1(p.y1)} L${n1(sx(p.x2))},${n1(p.y2)}`
+      } else {
+        const fill = p.fill
+        const fillOpacity = p.dash ? ESTIMATED_FILL_OPACITY : 1
+        const stroke = p.t === 'circle' ? undefined : (p.stroke ?? (p.dash ? p.fill : undefined))
+        paint = { fill, fillOpacity, stroke, strokeWidth: 1, opacity: op }
+        key = `s|${fill}|${fillOpacity}|${stroke ?? ''}|${op}`
+        if (p.t === 'rect') {
+          const x0 = sx(p.x), x1 = sx(p.x + p.w), y0 = p.y, y1 = p.y + p.h
+          part = `M${n1(x0)},${n1(y0)} L${n1(x1)},${n1(y0)} L${n1(x1)},${n1(y1)} L${n1(x0)},${n1(y1)} Z`
+        } else if (p.t === 'poly') {
+          part = 'M' + p.pts.map(([x, y]) => `${n1(sx(x))},${n1(y)}`).join(' L') + ' Z'
+        } else {
+          const rx = p.r * m.scaleX
+          part = `M${n1(p.cx - rx)},${n1(p.cy)} A${n1(rx)},${n1(p.r)} 0 1,0 ${n1(p.cx + rx)},${n1(p.cy)} A${n1(rx)},${n1(p.r)} 0 1,0 ${n1(p.cx - rx)},${n1(p.cy)} Z`
+        }
+      }
+      const hit = layer.get(key)
+      if (hit) hit.parts.push(part)
+      else layer.set(key, { key: `${k}|${key}`, d: '', ...paint, parts: [part] })
+    })
+  }
+  const out: BatchedPath[] = []
+  for (const layer of layers) {
+    if (!layer) continue
+    for (const e of layer.values()) {
+      const { parts, ...rest } = e
+      out.push({ ...rest, d: parts.join(' ') })
+    }
+  }
+  return out
+}
