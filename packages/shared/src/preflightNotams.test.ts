@@ -27,6 +27,10 @@ describe('routeNotamAreas', () => {
   it('ignores a circle off the route', () => {
     expect(routeNotamAreas({ notams: [notam({ lon: 19 })], waypoints: wps })).toEqual([])
   })
+  it.each(['QRTCD', 'QRTCN', 'QRTCC', 'QRRAW'])('ignores a NOTAM that is not in force (%s)', (qCode) => {
+    const polygon = { type: 'Polygon', coordinates: [[[17.9, 59.4], [18.1, 59.4], [18.1, 59.6], [17.9, 59.6], [17.9, 59.4]]] } as never
+    expect(routeNotamAreas({ notams: [notam({ qCode, polygon, lat: null, lon: null, radiusNm: null })], waypoints: wps })).toEqual([])
+  })
   it('ignores NOTAMs that are not restricted-area subjects', () => {
     expect(routeNotamAreas({ notams: [notam({ qCode: 'QMRLC' })], waypoints: wps })).toEqual([])
   })

@@ -23,6 +23,8 @@ import { nearestRoutePoint } from './notamRouteFilter'
 import type { RouteWaypoint } from './types'
 
 const RESTRICTED_SUBJECTS = ['RT', 'RD', 'RP', 'RR']
+/** Q-code conditions of a NOTAM that is not in force (withdrawn, cancelled, completed, deactivated, trigger): not an area to avoid. */
+const NOT_IN_FORCE = new Set(['TT', 'AW', 'CD', 'CC', 'CN'])
 
 export interface RouteNotamArea {
   notam: NotamItem
@@ -33,8 +35,9 @@ export interface RouteNotamArea {
 }
 
 const flToFt = (fl: string | null | undefined, fallback: number): number => {
+  if (fl == null || fl === '') return fallback
   const n = Number(fl)
-  return Number.isFinite(n) && fl != null && fl !== '' ? n * 100 : fallback
+  return Number.isFinite(n) ? n * 100 : fallback
 }
 
 function ringCentre(g: Polygon | MultiPolygon): { lat: number; lng: number } {
@@ -57,7 +60,7 @@ export function routeNotamAreas(opts: {
   const nowMs = opts.nowMs ?? Date.now()
   const restricted = notamsInWindow(notams, nowMs, nowMs + NOTAM_MAP_HORIZON_MS).filter((n) => {
     const q = (n.qCode ?? '').toUpperCase().replace(/^Q/, '')
-    return RESTRICTED_SUBJECTS.some((s) => q.startsWith(s))
+    return RESTRICTED_SUBJECTS.includes(q.slice(0, 2)) && !NOT_IN_FORCE.has(q.slice(2, 4))
   })
   if (restricted.length === 0) return []
 

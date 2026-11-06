@@ -8,6 +8,7 @@ import { useMsaMargins, useAlertBanners } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { computeWarnings, type PreflightWarning } from '@open-vfr/shared/preflightWarnings'
 import { computePrompts } from '@open-vfr/shared/preflightPrompts'
+import { ROUTE_SETTLE_MS } from '@open-vfr/shared/routeSettle'
 import { notamRegionsFor } from '@open-vfr/shared/notamRegionScope'
 import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
 import { useCountries } from '../hooks/useCountries'
@@ -35,46 +36,35 @@ import css from './PreflightWarnings.module.css'
 import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
 
 // ---------------------------------------------------------------------------
-// Module-level GeoJSON cache (loaded once, same pattern as VirtualRadar)
+// Data files: one load per file and country selection, shared by every mount.
+// A file that fails to load is reported (the check that needs it did not run),
+// not treated as empty, and is fetched again the next time the panel opens.
 // ---------------------------------------------------------------------------
 
-let _airspaceGeo: GeoJSON.FeatureCollection | null = null
-let _obstacleGeo: GeoJSON.FeatureCollection | null = null
-let _landmarkGeo: GeoJSON.FeatureCollection | null = null
-let _aerodromeGeo: GeoJSON.FeatureCollection | null = null
-let _geoKey = ''
+type GeoKind = 'airspace' | 'obstacles' | 'landmarks' | 'aerodromes'
+const _geo: Partial<Record<GeoKind, { key: string; p: Promise<GeoJSON.FeatureCollection> }>> = {}
+const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 
-function loadGeoJson() {
-  // A new country selection drops the cached data.
-  if (_geoKey !== activeCountriesKey()) {
-    _geoKey = activeCountriesKey()
-    _airspaceGeo = null
-    _obstacleGeo = null
-    _landmarkGeo = null
-    _aerodromeGeo = null
-  }
-  const key = _geoKey
-  if (!_airspaceGeo) {
-    loadCountryGeojson('airspace')
-      .then((d) => { if (key === _geoKey) _airspaceGeo = d })
-      .catch(() => { /* offline */ })
-  }
-  if (!_obstacleGeo) {
-    loadCountryGeojson('obstacles')
-      .then((d) => { if (key === _geoKey) _obstacleGeo = d })
-      .catch(() => { /* offline */ })
-  }
-  if (!_landmarkGeo) {
-    // Masts, chimneys etc. count towards the MSA like the chart does.
-    loadCountryGeojson('landmarks')
-      .then((d) => { if (key === _geoKey) _landmarkGeo = d })
-      .catch(() => { /* offline */ })
-  }
-  if (!_aerodromeGeo) {
-    loadCountryGeojson('aerodromes')
-      .then((d) => { if (key === _geoKey) _aerodromeGeo = d })
-      .catch(() => { /* offline */ })
-  }
+function loadGeo(kind: GeoKind): Promise<GeoJSON.FeatureCollection> {
+  const key = activeCountriesKey()   // a new country selection drops the cached data
+  const cur = _geo[kind]
+  if (cur && cur.key === key) return cur.p
+  const p = loadCountryGeojson(kind)
+  p.catch(() => { if (_geo[kind]?.p === p) delete _geo[kind] })
+  _geo[kind] = { key, p }
+  return p
+}
+
+function useGeo(kind: GeoKind): { fc: GeoJSON.FeatureCollection | null; failed: boolean } {
+  const [state, setState] = useState<{ fc: GeoJSON.FeatureCollection | null; failed: boolean }>({ fc: null, failed: false })
+  useEffect(() => {
+    let alive = true
+    loadGeo(kind)
+      .then((fc) => { if (alive) setState({ fc, failed: false }) })
+      .catch(() => { if (alive) setState({ fc: null, failed: true }) })
+    return () => { alive = false }
+  }, [kind])
+  return state
 }
 
 // ---------------------------------------------------------------------------
@@ -110,36 +100,24 @@ function useSettled<T>(value: T, ms: number): T {
   return v
 }
 
-/** Dragging a point or undo/redo changes the route many times a second; the check waits until it is still. */
-const SETTLE_MS = 500
-
 export default function PreflightWarnings(props: Props) {
-  const { aircraft, aircraftId, windsLoading, onSetLegOverride, onShowOnMap, onSelectLeg } = props
-  const waypoints = useSettled(props.waypoints, SETTLE_MS)
-  const legOverrides = useSettled(props.legOverrides, SETTLE_MS)
-  const legWinds = useSettled(props.legWinds, SETTLE_MS)
-  const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(_airspaceGeo)
-  const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(_obstacleGeo)
-  const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(_landmarkGeo)
-  const [aerodromeGeo, setAerodromeGeo] = useState<GeoJSON.FeatureCollection | null>(_aerodromeGeo)
+  const { aircraft, aircraftId, onSetLegOverride, onShowOnMap, onSelectLeg } = props
+  // Dragging a point or undo/redo changes the route many times a second; the check waits until it is still.
+  const waypoints = useSettled(props.waypoints, ROUTE_SETTLE_MS)
+  const legOverrides = useSettled(props.legOverrides, ROUTE_SETTLE_MS)
+  const legWinds = useSettled(props.legWinds, ROUTE_SETTLE_MS)
+  const windsLoading = useSettled(props.windsLoading, ROUTE_SETTLE_MS)
+  const airspace = useGeo('airspace')
+  const obstacles = useGeo('obstacles')
+  const landmarks = useGeo('landmarks')
+  const aerodromes = useGeo('aerodromes')
+  const airspaceGeo = airspace.fc ?? (airspace.failed ? EMPTY_FC : null)
+  const obstacleGeo = obstacles.fc ?? (obstacles.failed ? EMPTY_FC : null)
+  const landmarkGeo = landmarks.fc ?? (landmarks.failed ? EMPTY_FC : null)
+  const aerodromeGeo = aerodromes.fc
   const [terrainPts,  setTerrainPts]  = useState<TerrainPoint[]>([])
   const [terrainDone, setTerrainDone] = useState(false)
   const [terrainFailed, setTerrainFailed] = useState(false)
-
-  // Prime module-level cache on first mount
-  useEffect(() => {
-    loadGeoJson()
-    // Poll until cache is populated (typically one tick after fetch resolves)
-    const id = setInterval(() => {
-      if (_airspaceGeo && !airspaceGeo) setAirspaceGeo(_airspaceGeo)
-      if (_obstacleGeo && !obstacleGeo) setObstacleGeo(_obstacleGeo)
-      if (_landmarkGeo && !landmarkGeo) setLandmarkGeo(_landmarkGeo)
-      if (_aerodromeGeo && !aerodromeGeo) setAerodromeGeo(_aerodromeGeo)
-      if (_airspaceGeo && _obstacleGeo && _landmarkGeo && _aerodromeGeo) clearInterval(id)
-    }, 200)
-    return () => clearInterval(id)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   // Fetch terrain + MSA whenever the route changes
   const routeKey = waypoints
@@ -205,10 +183,18 @@ export default function PreflightWarnings(props: Props) {
     [msaTerrain, msaMargins, profile],
   )
 
+  const unavailable = useMemo(() => {
+    const u: NonNullable<Parameters<typeof computeWarnings>[9]>['unavailable'] = {}
+    if (airspace.failed) u.airspace = 'failed'
+    if (obstacles.failed || landmarks.failed) u.obstacles = 'failed'
+    if (aerodromes.failed) u.aerodromes = 'failed'
+    return u
+  }, [airspace.failed, obstacles.failed, landmarks.failed, aerodromes.failed])
+
   const warnings = useMemo<PreflightWarning[]>(() => {
     if (!profile) return []
-    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, resolveMsaMargins(msaMargins), { terrainPts, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo })
-  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, msaMargins, terrainPts, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo])
+    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, resolveMsaMargins(msaMargins), { terrainPts, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable })
+  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, msaMargins, terrainPts, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, unavailable])
 
   const prompts = useMemo(
     () => computePrompts({ waypoints, legWinds, windsLoading }),
@@ -261,7 +247,7 @@ export default function PreflightWarnings(props: Props) {
               className={css.fixBtn}
               onClick={() => {
                 const fix = w.fix
-                if (fix?.kind === 'raise-leg') onSetLegOverride(fix.legIndex, { ...(legOverrides[fix.legIndex] ?? {}), altFt: fix.altFt })
+                if (fix?.kind === 'raise-leg') onSetLegOverride(fix.legIndex, { ...(props.legOverrides[fix.legIndex] ?? {}), altFt: fix.altFt })
               }}
             >
               Raise to {w.fix.altFt.toLocaleString('en-US')} ft

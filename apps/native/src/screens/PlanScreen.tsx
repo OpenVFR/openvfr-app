@@ -491,7 +491,8 @@ export function PlanScreen() {
   // Cruise IAS — from profile or fallback to 90 kts. Converted to TAS at each leg's altitude below.
   const cruiseIas = profile?.cruiseIas ?? 90
   const cruiseAltFt = profile?.cruiseAltFt || 3500
-  const { legMsa, spans: msaSpans, totalNm: msaTotalNm } = useLegMsa(waypoints, settings.msaMargins)
+  const legMsaData = useLegMsa(waypoints, settings.msaMargins)
+  const { legMsa, spans: msaSpans, totalNm: msaTotalNm } = legMsaData
   const legPlannedAlt = (i: number) => legOverrides[i]?.altFt ?? cruiseAltFt
   const legIsBelowMsa = (i: number) =>
     msaSpans[i] != null && legBelowMsa(msaSpans[i], msaTotalNm, legPlannedAlt(i), legMsa[i] ?? 0)
@@ -568,18 +569,20 @@ export function PlanScreen() {
   }, [profile, waypoints, legOverrides, wind, forecastWinds])
 
   // Pre-flight check: effective wind per leg (leg override > global > forecast), like the route table.
-  const effectiveLegWinds = useMemo(() => forecastWinds.map((fw, i) => {
+  // One entry per leg, whatever the forecast has loaded (it is empty while a global wind is set).
+  const effectiveLegWinds = useMemo(() => waypoints.slice(0, -1).map((_, i) => {
     const o = legOverrides[i]
     if (o?.windDir != null && o?.windSpd != null) return { dirDeg: o.windDir, speedKts: o.windSpd }
-    return wind ? { dirDeg: wind.dirDeg, speedKts: wind.speedKts } : fw
-  }), [forecastWinds, legOverrides, wind])
+    return wind ? { dirDeg: wind.dirDeg, speedKts: wind.speedKts } : forecastWinds[i] ?? null
+  }), [waypoints, forecastWinds, legOverrides, wind])
   const preflight = usePreflightCheck({
-    waypoints, legOverrides, aircraft: profile, aircraftId: selectedId,
+    msa: legMsaData, legOverrides, aircraft: profile, aircraftId: selectedId,
     legWinds: effectiveLegWinds, windsLoading: forecastLoading, enabled: segment === 'route',
   })
-  const showWarningOnMap = (w: { focusNm?: number; legIndex?: number }) => {
+  // Projected onto the route the warnings were computed for, not the live one.
+  const showWarningOnMap = (w: { focusNm?: number }) => {
     if (w.focusNm == null) return
-    const pt = coordinateAlongRouteNm(waypoints, w.focusNm)
+    const pt = coordinateAlongRouteNm(preflight.waypoints, w.focusNm)
     focusMap(pt.lat, pt.lng, 12)
     navigation.navigate('Map' as never)
   }

@@ -26,7 +26,10 @@ const _geoJsonCache = new Map<string, Promise<GeoJSON.FeatureCollection>>()
 export function loadGeoJsonOnce(url: string): Promise<GeoJSON.FeatureCollection> {
   let p = _geoJsonCache.get(url)
   if (!p) {
-    p = fetch(url).then(r => r.json())
+    p = fetch(url).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`)
+      return r.json()
+    })
     p.catch(() => { _geoJsonCache.delete(url) })   // allow retry on next mount if it failed
     _geoJsonCache.set(url, p)
   }

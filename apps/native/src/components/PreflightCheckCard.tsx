@@ -35,7 +35,9 @@ export function PreflightCheckCard({ warnings, prompts, loading, onShowOnMap, on
         </View>
       )}
       {!loading && !problems && <Text style={styles.ok}>✓ No issues found</Text>}
-      {warnings.map((w, i) => (
+      {warnings.map((w, i) => {
+        const fix = w.fix
+        return (
         <View key={`${w.code}-${i}`} style={[styles.item, { borderLeftColor: edge(w.level) }]}>
           <Text style={styles.itemTitle}>
             <Text style={{ color: edge(w.level) }}>{w.level === 'danger' ? '✕ ' : w.level === 'info' ? 'i ' : '! '}</Text>
@@ -48,14 +50,15 @@ export function PreflightCheckCard({ warnings, prompts, loading, onShowOnMap, on
                 <Text style={styles.btnTxt}>Show on map</Text>
               </TouchableOpacity>
             )}
-            {w.fix?.kind === 'raise-leg' && (
-              <TouchableOpacity onPress={() => w.fix?.kind === 'raise-leg' && onRaiseLeg(w.fix.legIndex, w.fix.altFt)} style={styles.btn} accessibilityRole="button">
-                <Text style={styles.btnTxt}>Raise to {w.fix.altFt.toLocaleString('en-US')} ft</Text>
+            {fix?.kind === 'raise-leg' && (
+              <TouchableOpacity onPress={() => onRaiseLeg(fix.legIndex, fix.altFt)} style={styles.btn} accessibilityRole="button">
+                <Text style={styles.btnTxt}>Raise to {fix.altFt.toLocaleString('en-US')} ft</Text>
               </TouchableOpacity>
             )}
           </View>
         </View>
-      ))}
+        )
+      })}
       {prompts.map((p) => (
         <View key={p.code} style={[styles.item, { borderLeftColor: theme.statusInfo }]}>
           <Text style={styles.itemTitle}><Text style={{ color: theme.statusInfo }}>i </Text>{p.title}</Text>

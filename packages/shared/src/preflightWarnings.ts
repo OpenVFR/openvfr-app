@@ -1,17 +1,22 @@
 /**
  * Pre-flight route warnings: pure computation shared by the web and native apps.
  *
- * Checks:
- *   1. Airspace penetration — planned altitude enters Class C / D / R / TRA
- *   2. Below Minimum Safe Altitude (outside the 5 NM departure/arrival window)
- *   3. Fuel — minimum fuel exceeds (or nearly exceeds) the aircraft's available fuel
- *   plus data-availability notices (terrain, missing aircraft profile).
+ * Checks (see docs/architecture.md, "Pre-flight check"):
+ *   - airspace penetration by category (classes A-F, restricted, zones, glider/model),
+ *     each following the Alert / Info / Ignore setting; surface airspace at the
+ *     route's own ends (a CTR/ATZ over departure or arrival) is skipped, except
+ *     restricted areas
+ *   - restricted areas created by NOTAM (preflightNotams.ts)
+ *   - below Minimum Safe Altitude, one warning per leg, with a "raise" fix
+ *   - airfield proximity
+ *   - fuel
+ *   - notices for data that is missing, so "No issues found" never hides a check that did not run
  */
 
 import { DEFAULT_MSA_MARGINS, type MsaMargins } from './msaMargins'
-import { terrainAt, type VirtualRadarProfile, type MsaPoint, type AirspaceCrossSection, type TerrainPoint } from './virtualRadarCalc'
+import { terrainAt, getMsaLookup, type VirtualRadarProfile, type MsaPoint, type AirspaceCrossSection, type TerrainPoint } from './virtualRadarCalc'
 import { computeFuelPlan } from './fuelCalc'
-import { collectRoutePois } from './routePois'
+import { collectRoutePois, poiBaseFt } from './routePois'
 import { routeNotamAreas, notamSummary } from './preflightNotams'
 import { notamTitle } from './notamQCode'
 import type { NotamItem } from './fetchNotam'
@@ -90,16 +95,6 @@ function plannedAltAt(profile: VirtualRadarProfile, distNm: number): number {
   return alt
 }
 
-/** Return lowest MSA value at a given route distance. */
-function msaAt(msaPts: MsaPoint[], distNm: number): number {
-  let msa = 0
-  for (const p of msaPts) {
-    if (p.distNm <= distNm) msa = p.msaFt
-    else break
-  }
-  return msa
-}
-
 // ---------------------------------------------------------------------------
 // Warning computation
 // ---------------------------------------------------------------------------
@@ -114,6 +109,8 @@ export interface PreflightExtras {
   notams?:         readonly NotamItem[]
   airspace?:       GeoJSON.FeatureCollection | null
   nowMs?:          number
+  /** Data that could not be loaded: the checks that need it did not run, and the card says so. */
+  unavailable?:    Partial<Record<'airspace' | 'obstacles' | 'aerodromes' | 'notams', string>>
 }
 
 /** Lateral distance and height above the field inside which a pass is flagged. */
@@ -127,20 +124,29 @@ const PROXIMITY_END_MARGIN_NM = 1
  * PROXIMITY_ABOVE_FIELD_FT above the field, other than the route's own
  * waypoints and its two ends. Heliports are not flagged.
  */
+export interface AirfieldPass {
+  label: string
+  distNm: number
+  lateralNm: number
+  plannedFt: number
+  elevationFt: number
+}
+
 export function airfieldProximity(
   profile: VirtualRadarProfile,
   waypoints: RouteWaypoint[],
   aerodromes: GeoJSON.FeatureCollection,
   terrainPts: TerrainPoint[] = [],
-): { label: string; distNm: number; lateralNm: number; plannedFt: number; elevationFt: number }[] {
-  const out: { label: string; distNm: number; lateralNm: number; plannedFt: number; elevationFt: number }[] = []
+): AirfieldPass[] {
+  const out: AirfieldPass[] = []
   const seen = new Set<string>()
   for (const poi of collectRoutePois(waypoints, { aerodromes })) {
     if (poi.kind !== 'aerodrome' || poi.subtype === 'HP' || !poi.label || seen.has(poi.label)) continue
     if (poi.lateralNm > PROXIMITY_LATERAL_NM) continue
     if (poi.distNm < PROXIMITY_END_MARGIN_NM || poi.distNm > profile.totalNm - PROXIMITY_END_MARGIN_NM) continue
-    const elevationFt = poi.elevationFt ?? (terrainPts.length > 0 ? Math.max(0, terrainAt(terrainPts, poi.distNm)) : null)
-    if (elevationFt == null) continue   // unknown field height: cannot judge
+    // Unknown field height and no terrain: cannot judge.
+    if (poi.elevationFt == null && terrainPts.length === 0) continue
+    const elevationFt = poiBaseFt(poi, terrainAt(terrainPts, poi.distNm))
     const plannedFt = plannedAltAt(profile, poi.distNm)
     if (plannedFt > elevationFt + PROXIMITY_ABOVE_FIELD_FT) continue
     seen.add(poi.label)
@@ -161,7 +167,7 @@ export function computeWarnings(
   margins: MsaMargins = DEFAULT_MSA_MARGINS,
   extras: PreflightExtras = {},
 ): PreflightWarning[] {
-  const { terrainPts = [], airspaceLevels = DEFAULT_AIRSPACE_LEVELS, aerodromes, notams, airspace, nowMs } = extras
+  const { terrainPts = [], airspaceLevels = DEFAULT_AIRSPACE_LEVELS, aerodromes, notams, airspace, nowMs, unavailable } = extras
   const warnings: PreflightWarning[] = []
 
   // ── Terrain unavailable: the MSA check below is silently skipped and AGL
@@ -176,6 +182,23 @@ export function computeWarnings(
         ? 'No elevation data for this route: the Minimum Safe Altitude check uses the terrain maximum grid (highest terrain per ~460 m cell, so conservative) and airspace limits given above ground (AGL) are checked at their raw height.'
         : 'No elevation data for this route: the Minimum Safe Altitude check was skipped and airspace limits given above ground (AGL) are checked at their raw height.',
     })
+  }
+
+  // ── Route data that did not load: those checks did not run ──────────────
+  if (unavailable?.airspace || unavailable?.obstacles) {
+    const what = [unavailable.airspace && 'airspace', unavailable.obstacles && 'obstacles and landmarks'].filter(Boolean).join(' and ')
+    warnings.push({
+      level:  'warn',
+      code:   'route-data-unavailable',
+      title:  `Route data unavailable: ${what}`,
+      detail: `The ${what} file could not be loaded, so ${unavailable.airspace ? 'airspace' : ''}${unavailable.airspace && unavailable.obstacles ? ' and ' : ''}${unavailable.obstacles ? 'obstacle clearance' : ''} was not checked. Check the connection or download the area for offline use.`,
+    })
+  }
+  if (unavailable?.aerodromes) {
+    warnings.push({ level: 'info', code: 'aerodromes-unavailable', title: 'Aerodrome data unavailable', detail: 'Airfield proximity was not checked.' })
+  }
+  if (unavailable?.notams) {
+    warnings.push({ level: 'info', code: 'notams-unavailable', title: 'NOTAM restricted areas not checked', detail: unavailable.notams })
   }
 
   // ── 0. Aircraft profile referenced by this route is not here ───────────
@@ -198,7 +221,8 @@ export function computeWarnings(
     const category = airspaceCategory(band.class, band.type)
     const setting = airspaceLevels[category]
     if (setting === 'ignore') continue
-    if (isEndpointSurfaceAirspace(band, profile.totalNm, terrainPts)) continue
+    // A restricted area around the route's end is still a restricted area.
+    if (category !== 'restricted' && isEndpointSurfaceAirspace(band, profile.totalNm, terrainPts)) continue
 
     // Sample planned altitude at the midpoint of the airspace crossing
     const midNm    = (band.entryNm + band.exitNm) / 2
@@ -246,7 +270,7 @@ export function computeWarnings(
   // rounded up to 100 ft.
   if (msaPts.length > 0 && profile.totalNm > 0) {
     const spans = legSpans(profile.altitudeProfile)
-    const legMsa = legMsaList(spans, msaPts, (d) => msaAt(msaPts, d))
+    const legMsa = legMsaList(spans, msaPts, getMsaLookup(msaPts))
     const legName = (i: number) => waypoints[i]?.name || `WP ${i + 1}`
     const clearance = `terrain + ${margins.terrainClearanceFt.toLocaleString('en-US')} ft within ${margins.abeamNm} NM, obstacles + ${margins.obstacleClearanceFt.toLocaleString('en-US')} ft`
     const below = spans

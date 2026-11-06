@@ -196,3 +196,19 @@ describe('ordering and labels', () => {
     expect(w[0].title).toContain('Restricted / danger area')
   })
 })
+
+describe('restricted areas at the route ends, and missing data', () => {
+  it('still warns for a surface restricted area the route starts in', () => {
+    const band = { class: 'R', type: 'R', name: 'ESR9 TEST', lower_ft: 0, upper_ft: 4000, entryNm: 0, exitNm: 6, openStart: true, lowerAgl: true }
+    const w = computeWarnings(profile({ airspaceBands: [band] as never }), [], undefined, [], [])
+    expect(w.map((x) => x.code)).toEqual(['airspace-penetration'])
+  })
+  it('says which route data is missing, so no data is not read as all clear', () => {
+    const w = computeWarnings(profile(), [], undefined, [], [], undefined, false, undefined, undefined,
+      { unavailable: { airspace: 'x', obstacles: 'x', aerodromes: 'x', notams: 'Sign in' } })
+    expect(w.map((x) => [x.code, x.level])).toEqual([
+      ['route-data-unavailable', 'warn'], ['aerodromes-unavailable', 'info'], ['notams-unavailable', 'info'],
+    ])
+    expect(w[0].title).toContain('airspace and obstacles')
+  })
+})

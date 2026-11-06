@@ -20,6 +20,8 @@
     "./preflightWarnings": "./src/preflightWarnings.ts",
     "./preflightPrompts": "./src/preflightPrompts.ts",
     "./preflightNotams": "./src/preflightNotams.ts",
+    "./routeSettle": "./src/routeSettle.ts",
+    "./sharedPoll": "./src/sharedPoll.ts",
     "./mefGrid": "./src/mefGrid.ts",
     "./routePois": "./src/routePois.ts",
     "./obstacleSymbol": "./src/obstacleSymbol.ts",
