@@ -2014,6 +2014,8 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
         id: 'wind-arrows-icon',
         type: 'symbol',
         source: 'wind-grid',
+        // Calm (below 3 kt rounds to the 0 kt barb, a ring): nothing to read, so nothing is drawn.
+        filter: ['>=', ['get', 'speedKts'], 3],
         layout: {
           visibility: 'none',
           'icon-image': [

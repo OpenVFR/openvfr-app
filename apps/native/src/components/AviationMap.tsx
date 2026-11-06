@@ -3213,7 +3213,11 @@ export const AviationMap = React.memo(function AviationMap({
   const ghostLegIdx: number[] = !activeDrag ? [] : activeDrag.kind === 'wp' ? [activeDrag.index - 1, activeDrag.index] : [activeDrag.index]
   // Which drag handles exist: all of them without editLocked, otherwise only
   // the unlocked/selected leg's midpoint and two end points, and unlockedPoint.
-  const legEditable = (leg: number) => !ghostLegIdx.includes(leg) && (!editLocked || unlockedLeg === leg)
+  // While a POINT is dragged the legs it touches change, so their midpoint handles go. While a LEG is
+  // dragged its own handle must stay mounted: removing the native view mid-drag lost the drag-end event, so
+  // the drop never happened and the preview stayed on the map.
+  const legEditable = (leg: number) =>
+    !(activeDrag?.kind === 'wp' && ghostLegIdx.includes(leg)) && (!editLocked || unlockedLeg === leg)
   const pointEditable = (wp: number) =>
     !editLocked || wp === unlockedPoint || (unlockedLeg != null && (wp === unlockedLeg || wp === unlockedLeg + 1))
   // While dragging, the route sources show the route as it is: the legs
@@ -3802,6 +3806,8 @@ export const AviationMap = React.memo(function AviationMap({
           <Layer
             id="wind-arrows-icon"
             type="symbol"
+            // Calm (below 3 kt rounds to the 0 kt barb, a ring): nothing to read, so nothing is drawn.
+            filter={['>=', ['get', 'speedKts'], 3] as any}
             layout={{
               visibility: showWind ? 'visible' : 'none',
               'icon-image': [

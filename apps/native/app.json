@@ -91,6 +91,7 @@
       "./plugins/withMapLibreHttpGuardIos",
       "./plugins/withAndroidLargeHeap",
       "./plugins/withAndroidDisableLintVital",
+      "./plugins/withAndroidGradleHeap",
       "./plugins/withAndroidNativeDebugSymbols",
       "expo-splash-screen"
     ]
