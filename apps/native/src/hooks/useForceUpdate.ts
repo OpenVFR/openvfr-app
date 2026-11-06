@@ -33,7 +33,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppState, Linking, Platform } from 'react-native'
 import * as Application from 'expo-application'
 import * as Location from 'expo-location'
-import SpInAppUpdates, { IAUUpdateKind } from 'sp-react-native-in-app-updates'
+import SpInAppUpdates, { IAUUpdateKind, IAUInstallStatus, IAUAvailabilityStatus, type StatusUpdateEvent } from 'sp-react-native-in-app-updates'
 import { API_BASE } from '../config'
 
 /** Minimal `major.minor.patch` comparator (app.json's `version` is a plain triplet). */
@@ -134,6 +134,23 @@ export async function openUpdate(): Promise<boolean> {
   return false
 }
 
+/** A flexible update Play has finished downloading, waiting for a safe moment to restart into it. */
+let downloadedUpdate: SpInAppUpdates | null = null
+
+/** Restart into the downloaded update, unless the device is moving at flying speed (retried on the next check on the ground). */
+async function installDownloadedUpdate(): Promise<void> {
+  // Taken synchronously, so the status listener and check() cannot both install.
+  const iau = downloadedUpdate
+  if (!iau) return
+  downloadedUpdate = null
+  try {
+    if (await probablyFlying()) { downloadedUpdate = iau; return }
+    iau.installUpdate()
+  } catch {
+    downloadedUpdate = iau  // native module / activity not ready: retry on the next check
+  }
+}
+
 /** Store nudge for an optional update (once per launch, dismissible). */
 async function offerOptionalUpdate(): Promise<void> {
   try {
@@ -142,23 +159,49 @@ async function offerOptionalUpdate(): Promise<void> {
     // iOS: the App Store lookup reports the version name.
     const cur = Platform.OS === 'android' && curBuild !== null ? String(curBuild) : curVersion
     const r = await iau.checkNeedsUpdate({ curVersion: cur })
+    if (Platform.OS === 'android' && (r.other as { updateAvailability?: number } | undefined)?.updateAvailability === IAUAvailabilityStatus.DEVELOPER_TRIGGERED) {
+      // An update this app started earlier is in progress or already downloaded (the app was
+      // closed before the listener below could install it). completeUpdate does nothing
+      // unless the download has finished.
+      downloadedUpdate = iau
+      void installDownloadedUpdate()
+      return
+    }
     if (!r.shouldUpdate) return
+    let cleanup = () => {}
     if (Platform.OS === 'android') {
       // Flexible updates only download; the app must trigger the install itself
-      // once Play reports DOWNLOADED (11), else clicking "Update" does nothing.
-      const onStatus = (e: { status?: number }) => {
-        if (e?.status === 11) {
-          iau.removeStatusUpdateListener(onStatus as any)
-          void iau.installUpdate()
+      // once Play reports DOWNLOADED, else clicking "Update" does nothing.
+      // completeUpdate() restarts the app at once, so it goes through
+      // installDownloadedUpdate (never while flying; retried on the next ground check).
+      const onStatus = (e: StatusUpdateEvent) => {
+        if (e?.status === IAUInstallStatus.DOWNLOADED) {
+          cleanup()
+          downloadedUpdate = iau
+          void installDownloadedUpdate()
+        } else if (e?.status === IAUInstallStatus.FAILED || e?.status === IAUInstallStatus.CANCELED || e?.status === IAUInstallStatus.INSTALLED) {
+          cleanup()
         }
       }
-      iau.addStatusUpdateListener(onStatus as any)
+      // The dialog being dismissed reports here, not as a status event.
+      const onResult = (result: number) => { if (Number(result) === IAUInstallStatus.CANCELED) cleanup() }
+      cleanup = () => {
+        iau.removeStatusUpdateListener(onStatus)
+        iau.removeIntentSelectionListener(onResult as any)
+      }
+      iau.addStatusUpdateListener(onStatus)
+      iau.addIntentSelectionListener(onResult as any)
     }
-    await iau.startUpdate(Platform.select({
-      android: { updateType: IAUUpdateKind.FLEXIBLE },
-      ios: { forceUpgrade: false },
-      default: {},
-    }) as any)
+    try {
+      await iau.startUpdate(Platform.select({
+        android: { updateType: IAUUpdateKind.FLEXIBLE },
+        ios: { forceUpgrade: false },
+        default: {},
+      }) as any)
+    } catch (e) {
+      cleanup()  // not a Play install / offline: no download will follow
+      throw e
+    }
   } catch { /* cancelled / no store / offline: try again next launch */ }
 }
 
@@ -172,6 +215,7 @@ export function useForceUpdate(): { required: boolean; openUpdate: () => Promise
   const check = useCallback(async () => {
     if (Date.now() - lastCheck.current < MIN_CHECK_INTERVAL_MS) return
     lastCheck.current = Date.now()
+    void installDownloadedUpdate()
     const info = await fetchRequirements()
     if (!info) return
     const need = isUpdateRequired(info)
