@@ -65,6 +65,11 @@ source: it is not a substitute for official national NOTAM and AIP sources.
   are read from the vertical-limit fields or the text and shown in the NOTAM
   list. If a NOTAM has several areas but the text does not give one pair of
   limits per area, the limits from the header (flight levels) are shown.
+- **Height filter:** a NOTAM whose floor is above the airspace altitude
+  filter (Layers) is not drawn on the map, and stays in the lists. A NOTAM
+  with unknown limits is always drawn.
+- **Lists of positions** (obstacles, `LAT … LONG …` lists) are drawn as one
+  pin per position, not as an area.
 - **Coordinates in the text** are tappable: tap one to mark that point on the
   map.
 - **Per aerodrome:** the NOTAM tab of the aerodrome card.

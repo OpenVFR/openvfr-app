@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { FeatureCollection } from 'geojson'
 import type { NotamItem } from './fetchNotam'
-import { buildAirspaceIndex, matchNotamsToAirspace, notamMapFeatures, matchedAirspaceFeatures, notamsInWindow } from './notamMapLayers'
+import { buildAirspaceIndex, matchNotamsToAirspace, notamMapFeatures, matchedAirspaceFeatures, notamsInWindow, notamAboveCeiling } from './notamMapLayers'
 import { extractDesignators } from './notamDesignator'
 
 const sq = (x: number): GeoJSON.Polygon => ({ type: 'Polygon', coordinates: [[[x, 0], [x + 1, 0], [x + 1, 1], [x, 1], [x, 0]]] })
@@ -121,5 +121,25 @@ describe('obstacle NOTAMs', () => {
     ], new Set())
     expect(f.obstacles.map(x => x.properties!['nmsId'])).toEqual(['o1', 'o2'])
     expect(f.points.map(x => x.properties!['nmsId'])).toEqual(['n1'])
+  })
+})
+
+describe('vertical limits and listed points on the map', () => {
+  const base = { id: 'X1/26', nmsId: 'n1', text: 'T', effective: null, expires: null, classification: null, icaoLocation: null, polygon: null, lat: 57, lon: 12, radiusNm: 2 } as NotamItem
+  const v = (floorFt: number | null) => ({ source: 'text' as const, pairs: [{ floor: floorFt === null ? null : { ref: 'AMSL' as const, ft: floorFt }, ceiling: null }] })
+  it('hides a NOTAM whose floor is above the ceiling filter, keeps unknown and lower ones', () => {
+    expect(notamAboveCeiling({ vertical: v(8000) }, 5000)).toBe(true)
+    expect(notamAboveCeiling({ vertical: v(3000) }, 5000)).toBe(false)
+    expect(notamAboveCeiling({ vertical: v(null) }, 5000)).toBe(false)
+    expect(notamAboveCeiling({}, 5000)).toBe(false)
+    const hi = { ...base, vertical: v(8000) }
+    expect(notamMapFeatures([hi], new Set(), undefined, { ceilingFt: 5000 }).circles).toHaveLength(0)
+    expect(notamMapFeatures([hi], new Set()).circles).toHaveLength(1)
+  })
+  it('listed points draw one pin each instead of the Q-line centre', () => {
+    const n = { ...base, radiusNm: null, qCode: 'QOBCE', points: [{ lat: 55.2, lon: 14.2 }, { lat: 55.3, lon: 14.3 }] } as NotamItem
+    const f = notamMapFeatures([n], new Set())
+    expect(f.obstacles).toHaveLength(2)
+    expect(f.points).toHaveLength(0)
   })
 })

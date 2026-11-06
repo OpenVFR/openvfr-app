@@ -43,9 +43,11 @@ export interface NotamTextGeometry {
   polygon: NotamPolygonGeometry | null
   circle: TextCircle | null
   point: TextPoint | null
+  /** Several separate positions (an obstacle list, a LAT/LONG list): drawn as points, not an area. */
+  points?: TextPoint[]
   /** Circles cut out of the area ("EXCLUDING 1 NM RADIUS OF ..."); not drawn as areas. */
   excluded?: TextCircle[]
-  /** Why no geometry came out of text that looked like it had some; absent when there was nothing to find. */
+  /** Why no geometry came out of text that looked like it had some; also `border-unresolved` next to a polygon with a straight border edge. */
   reason?: NotamTextReason
   /**
    * True when an edge "along the border / coastline" was drawn as a straight
@@ -59,7 +61,7 @@ export interface NotamTextGeometry {
  * Typed reasons for an empty result (a Q-line circle is used instead):
  *   unclosed          a coordinate run with no area phrase and no closing vertex
  *   arc-radius-mismatch  an arc's stated radius disagrees with its centre
- *   border-unresolved reserved: an edge that cannot be followed is drawn straight and flagged `approximate`, which keeps the area
+ *   border-unresolved a border edge could not be followed: returned next to the polygon (drawn straight, flagged `approximate`)
  *   outside-qline     every shape lies far outside the Q-line circle
  *   multiple-radii    several radii around one centre: no way to tell which is the area
  *   self-intersecting every ring crosses itself
@@ -200,7 +202,7 @@ const ARC_RADIUS_TOLERANCE_NM = 1
 
 const sameVertex = (a: Coord, b: Coord) => Math.abs(a.lat - b.lat) < 1e-5 && Math.abs(a.lon - b.lon) < 1e-5
 
-interface Rings { rings: number[][][]; unclosed: number; arcMismatch: boolean; arcs: ArcClause[]; approximate: boolean }
+interface Rings { rings: number[][][]; unclosed: number; unclosedRuns: Coord[][]; arcMismatch: boolean; arcs: ArcClause[]; approximate: boolean }
 
 function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]): Rings {
   const arcs = arcClauses(t, all)
@@ -208,6 +210,8 @@ function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]):
   const cs = all.filter(c => !arcs.some(a => c.start >= a.start && c.end <= a.end))
   const rings: number[][][] = []
   let unclosed = 0
+  const unclosedRuns: Coord[][] = []
+  let runCoords: Coord[] = []
   let arcMismatch = false
   let approximate = false
   let ring: number[][] = []
@@ -223,13 +227,14 @@ function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]):
       const open = !closed && !intent && !(prev && ORIGIN_AFTER.test(t.slice(prev.end, prev.end + 60)))
       if (open) {
         unclosed++
+        unclosedRuns.push(runCoords)
       } else {
         const [f, l] = [ring[0]!, ring[ring.length - 1]!]
         if (f[0] !== l[0] || f[1] !== l[1]) ring.push([f[0]!, f[1]!])
         rings.push(ring)
       }
     }
-    ring = []; vertices = 0; first = null; prev = null
+    ring = []; vertices = 0; first = null; prev = null; runCoords = []
   }
   let lastEnd = 0
   for (const c of cs) {
@@ -264,7 +269,7 @@ function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]):
       before = lastEnd
       intent = AREA_INTENT.test(t.slice(Math.max(before, c.start - 80), c.start))
     }
-    ring.push([c.lon, c.lat]); vertices++
+    ring.push([c.lon, c.lat]); vertices++; runCoords.push(c)
     prev = c
     lastEnd = c.end
     // Back on the first vertex: this ring is done, even when only dashes
@@ -272,7 +277,7 @@ function polygons(t: string, all: Coord[], borderRings?: readonly BorderRing[]):
     if (vertices > 1 && sameVertex(first, c)) flush(true)
   }
   flush(false)
-  return { rings, unclosed, arcMismatch, arcs, approximate }
+  return { rings, unclosed, unclosedRuns, arcMismatch, arcs, approximate }
 }
 
 function toNm(value: string, unit: string): number {
@@ -355,6 +360,23 @@ function distNm(aLat: number, aLon: number, bLat: number, bLon: number): number 
   return Math.hypot((aLat - bLat) * 60, (aLon - bLon) * kx)
 }
 
+const MAX_LIST_POINTS = 60
+
+/** "LAT 593900N 594000N LONG 0175600E 0175700E": the n-th latitude pairs with the n-th longitude. */
+const LAT_LONG = /\bLAT(?:ITUDES?)?\s*:?\s*((?:\d{4,6}(?:[.,]\d+)?\s*[NS][\s,;]*)+)(?:AND\s+)?\bLONG(?:ITUDES?)?\s*:?\s*((?:\d{5,7}(?:[.,]\d+)?\s*[EW][\s,;]*)+)/g
+function latLongList(t: string): TextPoint[] {
+  const out: TextPoint[] = []
+  for (const m of t.matchAll(LAT_LONG)) {
+    const las = m[1]!.match(/\d{4,6}(?:[.,]\d+)?\s*[NS]/g) ?? [], los = m[2]!.match(/\d{5,7}(?:[.,]\d+)?\s*[EW]/g) ?? []
+    if (las.length !== los.length) continue // refuse a list whose halves differ in length
+    las.forEach((la, i) => {
+      const f = findCoordinates(`${la} ${los[i]}`)
+      if (f.length === 1) out.push({ lat: f[0]!.lat, lon: f[0]!.lng })
+    })
+  }
+  return out
+}
+
 /**
  * Area described in the NOTAM text, checked against the Q-line circle
  * (`qLat/qLon/qRadiusNm`, when known and not the 999 NM whole-FIR
@@ -390,7 +412,7 @@ export function notamTextGeometry(
   const rings = simple.filter(r => r.every(([lon, lat]) => inQ(lat!, lon!)))
   if (simple.length > 0 && rings.length === 0) reason ??= 'outside-qline'
   if (rings.length === 0 && poly.unclosed > 0) reason ??= 'unclosed'
-  const approx = poly.approximate ? { approximate: true as const } : {}
+  const approx = poly.approximate ? { approximate: true as const, reason: 'border-unresolved' as const } : {}
   if (rings.length === 1) return { ...none, polygon: { type: 'Polygon', coordinates: [rings[0]!] }, ...approx }
   if (rings.length > 1) return { ...none, polygon: { type: 'MultiPolygon', coordinates: rings.map(r => [r]) }, ...approx }
 
@@ -406,6 +428,14 @@ export function notamTextGeometry(
     // Several areas ("AREA 1: 1.45KM RADIUS OF ..., AREA 2: ..."): one polygon each.
     return { ...none, polygon: { type: 'MultiPolygon', coordinates: cc.map(c => [circleRing(c)]) } }
   }
+
+  // A coordinate list that is not an area (obstacles, a route's fixes) or a
+  // "LAT a b c LONG x y z" list: separate positions, drawn as points.
+  const listed = [...poly.unclosedRuns.flat().map(c => ({ lat: c.lat, lon: c.lon })), ...latLongList(mt)]
+  const listPts = [...new Map(listed.filter(p => plausible(p.lat, p.lon) && inQ(p.lat, p.lon))
+    .map(p => [`${p.lat.toFixed(5)},${p.lon.toFixed(5)}`, p])).values()].slice(0, MAX_LIST_POINTS)
+  if (listPts.length >= 2 && simple.length === 0) return { ...none, points: listPts }
+  if (listed.length > 0 && listPts.length === 0 && reason === 'unclosed') reason = 'outside-qline'
 
   const allPs = points(mt, cs)
   const ps = allPs.filter(p => inQ(p.lat, p.lon))

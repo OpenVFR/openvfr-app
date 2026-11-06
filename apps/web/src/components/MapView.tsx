@@ -1486,8 +1486,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // @open-vfr/shared/notamMapLayers, shared with native. Properties carry
   // enough to reconstruct a RegionalNotamFeature on click without a re-fetch.
   const notamFeatures = useMemo(
-    () => notamMapFeatures(mapNotams, matchedNotamIds),
-    [mapNotams, matchedNotamIds],
+    () => notamMapFeatures(mapNotams, matchedNotamIds, undefined, { ceilingFt }),
+    [mapNotams, matchedNotamIds, ceilingFt],
   )
   useEffect(() => {
     const map = mapRef.current

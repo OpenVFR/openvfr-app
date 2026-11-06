@@ -151,6 +151,7 @@ describe('notamTextGeometry: rings need area intent or closure', () => {
   it('fixture 5: an obstacle list is not a polygon', () => {
     const g = notamTextGeometry('OBST 551234N 0141234E, 551300N 0141300E, 551400N 0141400E ERECTED', null)
     expect(g.polygon).toBeNull()
+    expect(g.points).toHaveLength(3)
   })
   it('fixture 14: two rings joined only by dashes', () => {
     const r = ringsOf('5712N 01200E - 5718N 01215E - 5705N 01220E - 5712N 01200E - 5800N 01300E - 5810N 01310E - 5805N 01320E - 5800N 01300E')
@@ -237,8 +238,14 @@ describe('notamTextGeometry: written-out units', () => {
 
 describe('notamTextGeometry: reason codes and self-intersection', () => {
   const reason = (t: string, q: { lat: number; lon: number; radiusNm: number } | null = null) => notamTextGeometry(t, q).reason
-  it('unclosed: a coordinate list with no area intent', () => {
-    expect(reason('OBST 551234N 0141234E, 551300N 0141300E, 551400N 0141400E ERECTED')).toBe('unclosed')
+  it('unclosed: a coordinate list with no area intent becomes points, no reason needed', () => {
+    const g = notamTextGeometry('OBST 551234N 0141234E, 551300N 0141300E, 551400N 0141400E ERECTED', null)
+    expect(g.polygon).toBeNull()
+    expect(g.points).toHaveLength(3)
+    expect(g.reason).toBeUndefined()
+  })
+  it('unclosed list outside the Q-line circle: nothing, with the reason', () => {
+    expect(reason('OBST 551234N 0141234E, 551300N 0141300E, 551400N 0141400E ERECTED', { lat: 40, lon: 0, radiusNm: 5 })).toBe('outside-qline')
   })
   it('self-intersecting: a bow-tie ring is dropped', () => {
     const bow = 'AREA 570000N 0120000E - 571000N 0121000E - 571000N 0120000E - 570000N 0121000E - 570000N 0120000E'
@@ -289,5 +296,21 @@ describe('notamTextGeometry: border-following edges', () => {
     const g = notamTextGeometry(far, null, { borderRings: rings })
     expect(g.approximate).toBe(true)
     expect(ring(g)).toHaveLength(5)
+  })
+})
+
+describe('notamTextGeometry: LAT/LONG lists (fixture 17) and border reason', () => {
+  it('fixture 17: three positions', () => {
+    const g = notamTextGeometry('LAT 593900N 594000N 594100N LONG 0175600E 0175700E 0175800E', null)
+    expect(g.points).toHaveLength(3)
+    expect(g.points![1]).toEqual({ lat: expect.closeTo(59.6667, 4), lon: expect.closeTo(17.95, 4) })
+  })
+  it('lists of different length are refused', () => {
+    expect(notamTextGeometry('LAT 593900N 594000N LONG 0175600E 0175700E 0175800E', null).points).toBeUndefined()
+  })
+  it('a straight border edge reports border-unresolved next to the polygon', () => {
+    const g = notamTextGeometry('AREA 571200N 0120030E - 571800N 0121500E - ALONG THE STATE BORDER TO 570500N 0122000E - 571200N 0120030E', null)
+    expect(g.polygon).not.toBeNull()
+    expect(g.reason).toBe('border-unresolved')
   })
 })

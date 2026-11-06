@@ -73,6 +73,8 @@ export interface NotamItem {
   // A border/coastline edge of `polygon` is drawn straight (see
   // notamTextGeometry's `approximate`). Optional / absent otherwise.
   areaApproximate?: boolean
+  // Separate positions listed in the text (see notamTextGeometry's `points`).
+  points?: { lat: number; lon: number }[]
   // Geo fields (see apps/api/src/notam.ts) -- present only when NMS-API
   // supplied a coordinates+radius pair, used to render an ad-hoc circle for
   // NOTAMs without a corresponding charted airspace polygon.

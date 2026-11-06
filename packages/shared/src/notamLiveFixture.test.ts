@@ -63,7 +63,7 @@ describe('live NOTAM fixture', () => {
       expect(shape(n)).toBe(EXPECTED_SHAPE[n.id])
     })
   }
-  it('reason codes: no live sample is refused for a reason', () => {
+  it('reason codes: only the straight border edge is reported', () => {
     const reasons: Record<string, string | undefined> = {}
     for (const n of fx.notams) {
       const g = qpos(n.qCoordinates ?? null)
@@ -71,8 +71,9 @@ describe('live NOTAM fixture', () => {
       const t = notamTextGeometry(n.text, g ? { ...g, radiusNm: Number.isFinite(r) ? r : null } : null)
       if (t.reason) reasons[n.id] = t.reason
     }
-    // None of the live samples is refused (D5173/26's two-vertex route lines are not a shape at all).
-    expect(reasons).toEqual({})
+    // B3442/26 ("ALONG STATE BDRY OF CR") keeps its polygon but one edge is drawn straight.
+    // Nothing else is refused (D5173/26's two-vertex route lines are not a shape at all).
+    expect(reasons).toEqual({ 'B3442/26': 'border-unresolved' })
   })
   it('item D schedules: all live samples parse', () => {
     const bad = fx.schedules.filter(s => !parseNotamSchedule({ itemD: s, effective: '2026-10-01T00:00:00Z' }))

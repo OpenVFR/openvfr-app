@@ -167,10 +167,22 @@ export interface NotamTimeWindow {
 /** Default look-ahead for "in force soon": flights are short, schedules are by the hour. */
 export const NOTAM_MAP_HORIZON_MS = 3 * 3_600_000
 
+/**
+ * True when every vertical pair of the NOTAM starts above `ceilingFt` (the
+ * airspace-ceiling filter: areas starting above it are hidden). Unknown limits
+ * never hide a NOTAM. AGL floors are compared as given (no terrain here).
+ */
+export function notamAboveCeiling(n: Pick<NotamItem, 'vertical'>, ceilingFt: number): boolean {
+  const pairs = n.vertical?.pairs
+  if (!pairs || pairs.length === 0) return false
+  return pairs.every(p => !!p.floor && !p.floor.unlimited && p.floor.ft > ceilingFt)
+}
+
 export function notamMapFeatures(
   notams: readonly NotamItem[],
   matchedNotamIds: ReadonlySet<string>,
   window?: NotamTimeWindow,
+  opts?: { ceilingFt?: number },
 ): NotamMapFeatures {
   const circles: Feature<Polygon>[] = []
   const polygons: Feature<AreaGeometry>[] = []
@@ -180,7 +192,15 @@ export function notamMapFeatures(
     // Scheduled NOTAMs (item D / leading E text) that are off for the whole
     // window aren't drawn -- still listed, with an "off schedule" note.
     if (window && isOffSchedule(n, window.fromMs, window.toMs)) continue
-    if (n.polygon) {
+    // Starts above the altitude filter: listed, not drawn.
+    if (opts?.ceilingFt !== undefined && notamAboveCeiling(n, opts.ceilingFt)) continue
+    if (n.points && n.points.length > 0 && !n.polygon) {
+      // Listed positions (obstacles): one pin each, in place of the Q-line centre.
+      for (const p of n.points) {
+        const f: Feature<Point> = { type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] }, properties: featureProps(n, null) }
+        ;(isObstacle(n) ? obstacles : points).push(f)
+      }
+    } else if (n.polygon) {
       polygons.push({ type: 'Feature', geometry: n.polygon, properties: featureProps(n, null) })
     } else if (n.lat !== null && n.lon !== null) {
       if (n.radiusNm !== null && n.radiusNm > 0) {

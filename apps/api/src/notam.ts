@@ -186,6 +186,9 @@ export interface NotamItem {
   // not be followed and is drawn straight: the area is right, that edge is
   // approximate. Absent otherwise.
   areaApproximate?: true
+  // Separate positions listed in the text (obstacles, a LAT/LONG list); the
+  // maps draw each as a point. lat/lon/radiusNm then hold the Q-line centre.
+  points?: { lat: number; lon: number }[]
   // Geo fields: a circle or position stated in the text when there is one,
   // else the Q-line coordinates+radius (DMS like "5939N01756E" + NM) -- used to
   // render an ad-hoc circle for NOTAMs that don't correspond to a charted
@@ -303,6 +306,7 @@ interface NotamGeometry {
   qRadiusNm: number | null
   vertical:  NotamVertical | null
   approximate?: true
+  points?: { lat: number; lon: number }[]
 }
 
 // Parse every cached record's text geometry off the request path (after
@@ -363,6 +367,7 @@ function geometryOf(n: NmsNotam): NotamGeometry {
   } else {
     const t = notamTextGeometry(n.text, geo ? { lat: geo.lat, lon: geo.lon, radiusNm: qRadiusNm } : null, { borderRings: BORDER_RINGS })
     if (t.polygon) out = { polygon: t.polygon, lat: null, lon: null, radiusNm: null, qRadiusNm, ...(t.approximate ? { approximate: true as const } : {}) }
+    else if (t.points) out = { polygon: null, lat: geo && !bogus ? geo.lat : null, lon: geo && !bogus ? geo.lon : null, radiusNm: null, qRadiusNm, points: t.points }
     else if (t.circle) out = { polygon: null, lat: t.circle.lat, lon: t.circle.lon, radiusNm: t.circle.radiusNm, qRadiusNm }
     else if (t.point) out = { polygon: null, lat: t.point.lat, lon: t.point.lon, radiusNm: qArea ? qRadiusNm : null, qRadiusNm }
     else out = {
@@ -1039,6 +1044,7 @@ function activeItems(raw: Iterable<NmsNotam>): NotamItem[] {
       polygon,
       vertical:       g.vertical,
       ...(g.approximate ? { areaApproximate: true as const } : {}),
+      ...(g.points ? { points: g.points } : {}),
       // Polygon (from the text, or NMS) wins over point/circle; a text
       // circle/position wins over the Q-line envelope -- see geometryOf().
       lat:            g.lat,

@@ -741,8 +741,8 @@ function MapScreenForCountry() {
   const notamAirspaceMatchesRef = React.useRef(notamAirspaceMatches)
   useEffect(() => { notamAirspaceMatchesRef.current = notamAirspaceMatches }, [notamAirspaceMatches])
   const notamFeatures = useMemo(
-    () => notamMapFeatures(mapNotams, matchedNotamIds),
-    [mapNotams, matchedNotamIds],
+    () => notamMapFeatures(mapNotams, matchedNotamIds, undefined, { ceilingFt: settings.airspaceCeilingFt }),
+    [mapNotams, matchedNotamIds, settings.airspaceCeilingFt],
   )
   const emptyFC = { type: 'FeatureCollection' as const, features: [] }
   const notamCirclesFC = useMemo(
