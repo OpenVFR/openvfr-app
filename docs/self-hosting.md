@@ -15,13 +15,13 @@ them where the app expects them.
 
 ```sh
 pnpm install
-docker compose up -d db martin api postgrest
+docker compose up -d db api postgrest
 pnpm dev
 ```
 
 See the root [README.md](../README.md) and [`apps/native/README.md`](../apps/native/README.md)
 for web/native dev details, and `docker-compose.yml` for the full service
-list (PostGIS, Martin tile server, Hono API, PostgREST).
+list (PostGIS, Hono API, PostgREST).
 
 ## 2. Generate the map/aviation data
 

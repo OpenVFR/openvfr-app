@@ -36,13 +36,6 @@ RUN pnpm rebuild esbuild
 
 COPY . .
 
-# VITE_MARTIN_URL controls which URL the bundled JS uses to reach the Martin
-# tile server. In production this is set to /martin so nginx can proxy it
-# internally. In dev, the default http://localhost:3000 is used via the
-# fallback in apps/web/src/styles/map-style.ts.
-ARG VITE_MARTIN_URL
-ENV VITE_MARTIN_URL=${VITE_MARTIN_URL}
-
 RUN pnpm --filter web build
 
 # ── Stage 2: Serve ────────────────────────────────────────────────────────────

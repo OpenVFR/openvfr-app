@@ -3998,7 +3998,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         }
       })
 
-      // OSM landuse-fill comes from Martin (separate source), not Protomaps —
+      // OSM landuse-fill comes from its own PMTiles source, not Protomaps —
       // must be hidden separately in satellite mode.
       if (map.getLayer('landuse-fill')) {
         map.setLayoutProperty('landuse-fill', 'visibility', isSat ? 'none' : 'visible')

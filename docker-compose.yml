@@ -13,8 +13,6 @@ services:
     # container. The container is only used for CI/Linux parity testing.
     environment:
       - NODE_ENV=development
-      # Martin tile server URL — accessed by the *browser*, so use localhost (host port).
-      - VITE_MARTIN_URL=http://localhost:5100
     # Vite runs on the host (`pnpm dev`) — only start this container when
     # explicitly needed: docker compose --profile app up app
     profiles:
@@ -39,21 +37,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-
-  # ── Martin vector tile server ───────────────────────────────────────────────
-  # Exposes PostGIS function sources as /rpc/<fn>/{z}/{x}/{y}
-  martin:
-    image: ghcr.io/maplibre/martin:1.16.1
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      MARTIN_PG_URL: postgresql://openvfr:openvfr_dev@db:5432/openvfr
-    volumes:
-      - ./docker/martin.yaml:/config/martin.yaml:ro
-    command: ["--config", "/config/martin.yaml"]
-    ports:
-      - "5100:3000"
 
   # ── Hono API server ─────────────────────────────────────────────────────────
   # Serves POST /api/poh-extract — uploads PDF to Azure OpenAI Files API, returns JSON via SSE.

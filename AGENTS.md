@@ -80,7 +80,7 @@ OpenVFR runs for hours in a cockpit, on a tablet or phone that is often on batte
 - **Map tiles:** PMTiles (single-file archive, HTTP Range Requests, no tile server)
 - **Aviation data:** Static GeoJSON/PMTiles files, not included in this repo — see `docs/self-hosting.md`
 - **Local DB:** RxDB via IndexedDB (web); AsyncStorage (native)
-- **Backend:** Hono API (`apps/api`) + PostgreSQL/PostGIS + PostgREST + Martin tile server (dynamic data only)
+- **Backend:** Hono API (`apps/api`) + PostgreSQL/PostGIS + PostgREST
 
 ## Repository layout
 
@@ -93,7 +93,7 @@ packages/
   shared/    Code shared between apps/web and apps/native
 db/
   migrations/  PostgreSQL + PostGIS schema (dbmate)
-docker/      Dockerfiles + nginx/Martin config
+docker/      Dockerfiles + nginx config
 docs/        Architecture reference, self-hosting guide, styling conventions
   guide/     Pilot-facing user guide (plain markdown; the website build pulls it in)
 ```
@@ -235,7 +235,7 @@ Reference implementation: `/api/poh-extract` in `apps/api/src/index.ts`.
    PostgREST + RLS, not the api.
    **Every database role carries the `openvfr_` prefix** (`openvfr_anon`,
    `openvfr_authenticated`, `openvfr_authenticator`, `openvfr_api`,
-   `openvfr_cron`, `openvfr_martin`). Roles belong to the whole Postgres server, and
+   `openvfr_cron`; `openvfr_martin` existed until Martin was retired). Roles belong to the whole Postgres server, and
    production shares its server with another project whose `anon` and
    `authenticator` already exist: an unprefixed `CREATE ROLE` would silently
    reuse and re-grant theirs. `apps/api/src/pgRoles.test.ts` fails on any

@@ -84,26 +84,6 @@ export const TRAFFIC_BASE: string = isStaging
   ? STAGING.trafficBase || API_BASE
   : (process.env.EXPO_PUBLIC_TRAFFIC_BASE ?? '') || API_BASE
 
-/** Base URL for Martin vector tile server.
- *  Dev: TILE_BASE with its port swapped to :5100 (requires `adb reverse tcp:5100 tcp:5100`).
- *  Prod: nginx proxies Martin at /martin (see docker-compose.yml + docker/nginx.conf),
- *  so when TILE_BASE has no explicit port (e.g. a bare https:// domain) the port-swap
- *  regex can't match — append /martin instead. Without this branch MARTIN_BASE silently
- *  fell back to TILE_BASE unchanged, and MapLibre would request landuse tiles from the
- *  web app's root and get back HTML, producing "unknown pbf field type exception".
- *  Override via EXPO_PUBLIC_MARTIN_BASE.
- *
- *  Currently unused — landuse (the last consumer) moved to LANDUSE_PMTILES_URL
- *  below (static R2 file, retired from Postgres/Martin). Kept, not deleted:
- *  Martin still exists as a service for genuinely-dynamic future data
- *  (NOTAM/METAR/live airspace activation, user-generated content), so this
- *  constant will have a real consumer again once one of those ships. */
-export const MARTIN_BASE: string =
-  (process.env.EXPO_PUBLIC_MARTIN_BASE ?? '') ||
-  (/:(\d{4,5})(\/|$)/.test(TILE_BASE)
-    ? TILE_BASE.replace(/:(\d{4,5})(\/|$)/, ':5100$2')
-    : `${TILE_BASE.replace(/\/$/, '')}/martin`)
-
 /**
  * GeoJSON tile URLs — same files served by the web project.
  *
@@ -168,7 +148,7 @@ export function getTileUrls(): Record<TileKey, string> {
 
 /**
  * Landuse PMTiles URL — retired from Postgres/Martin (was
- * `${MARTIN_BASE}/landuse_tiles/{z}/{x}/{y}?country=SE`), now a static
+ * a Martin MVT endpoint, `/martin/landuse_tiles/{z}/{x}/{y}?country=SE`), now a static
  * per-country .pmtiles file from object storage, same pattern as
  * `createProtomapsStyle`'s basemap.pmtiles below. See
  * apps/web/src/styles/map-style.ts `getLanduseSource()` and

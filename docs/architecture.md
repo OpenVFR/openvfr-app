@@ -13,14 +13,13 @@ Deep-reference document for the project's technical design. Covers the full tech
 | **Map Tile Format** | PMTiles (Cloud-Optimized, HTTP Range Requests) | PMTiles |
 | **Tile Storage** | Server-side static file (nginx) / OPFS (offline) | Device File System |
 | **Aviation Data** | Static GeoJSON files served by Vite / nginx | *Same* |
-| **Landuse / Landcover** | PostGIS + Martin MVT tiles (`osm-landuse` vector source) | *Same* |
+| **Landuse / Landcover** | Static per-country PMTiles (`osm-landuse` vector source) | *Same* |
 | **Local DB (Relational)** | RxDB via IndexedDB | AsyncStorage (RxDB-via-SQLite deferred — see `docs/native.md` §7) |
 | **Backend DB** | PostgreSQL + PostGIS (docker-compose `db` service) | *Same* |
 | **Backend API** | **Hono active** (POH extraction proxy on port 5200); PostgREST + better-auth deferred to Phase 6 | *Same* |
 | **Data Harmonization** | *(planned Phase 4)* DuckDB (NOTAM/METAR ETL pipelines) | *Same* |
-| **Tile Server** | Martin (Rust, PostGIS → MVT; `landuse_tiles` function active) | *Same* |
 
-**Partially active:** PostgreSQL + PostGIS + Martin are running via docker-compose for the `osm-landuse` vector tile layer. All other aviation data (airspace, aerodromes, navaids, obstacles, landmarks) remains static GeoJSON for now. A **Hono API server** (`api` service, port 5200) is also active: it proxies POH PDF uploads to the Gemini File API and returns structured aircraft performance data.
+**Map data is static:** every map layer (basemap, airspace, aerodromes, navaids, obstacles, landmarks, landuse) is pre-built PMTiles/GeoJSON on object storage. Martin, the former MVT tile server, is retired: no layer used it any more. A **Hono API server** (`api` service, port 5200) is also active: it proxies POH PDF uploads to the Gemini File API and returns structured aircraft performance data.
 
 **Hosting decision (supersedes the Phase 1.7 assumption below that Martin/PostGIS eventually serves *all* aviation layers):** bulk, AIRAC-cadence data (basemap, airspace, obstacles, navaids, waypoints, runways, and landuse once tiled) is pre-rendered to static PMTiles/GeoJSON and served from object storage/a CDN — zero egress cost regardless of read volume, which a live Martin/PostGIS tile server serving these same bulk layers would not have. Martin/PostGIS stays live and self-hosted **only** for genuinely dynamic data: NOTAM/METAR-TAF, temporary/live-toggled airspace activation, and user-generated content (custom minor-airport fields, noise-sensitive/DND zones, circuit patterns). See [`docs/self-hosting.md`](self-hosting.md) for how to generate and serve the static data yourself.
 
@@ -37,8 +36,7 @@ User auth and cloud sync are deferred to Phase 6. The **Hono service is already 
 ```
 PostgreSQL + PostGIS  (existing db service)
   ├── PostgREST        — auto-generated REST API over aviation/user tables
-  ├── better-auth      — auth middleware (manages its own tables in same PG)
-  └── Martin           — existing MVT tile server (unchanged)
+  └── better-auth      — auth middleware (manages its own tables in same PG)
 
 Hono (TypeScript)      — thin HTTP gateway; mounts better-auth + proxies PostgREST
 nginx                  — reverse proxy in front of everything
@@ -60,7 +58,7 @@ This project uses self-hosted PostgreSQL + PostGIS (already running) with PostgR
 React PWA
   → better-auth/react → Hono (auth endpoints)  → PostgreSQL (better-auth tables)
   → fetch/RxDB sync  → Hono → PostgREST        → PostgreSQL (user_routes, aircraft_profiles …)
-  → MapLibre sources → Martin (tile endpoints) → PostgreSQL (landuse, aeroway_lines …)
+  → MapLibre sources → static PMTiles/GeoJSON on object storage
 ```
 
 ### Cloud sync
@@ -204,23 +202,19 @@ api:5200 (Hono — not on a public host port in production; accessed via nginx)
 
 | File | Purpose |
 |---|---|
-| `docker-compose.yml` | Service definitions for `db`, `martin`, `api`, `postgrest`, and an optional `app` (CI/Linux parity) container |
+| `docker-compose.yml` | Service definitions for `db`, `api`, `postgrest`, and an optional `app` (CI/Linux parity) container |
 | `docker/nginx.conf` | Reverse-proxy config: security headers, CSP, Range-header passthrough for PMTiles, `/api/*`/`/rest/*` proxying |
-| `docker/Dockerfile` | Two-stage build: `pnpm --filter web build`, then serves `dist/` via `nginx:1.30-alpine`. Accepts `ARG VITE_MARTIN_URL` baked into the bundle at build time |
+| `docker/Dockerfile` | Two-stage build: `pnpm --filter web build`, then serves `dist/` via `nginx:1.30-alpine` |
 | `docker/Dockerfile.server` | `node:24-alpine`, Corepack pnpm, installs `apps/api` deps via the root workspace, runs `tsx src/index.ts` |
 | `apps/api/src/index.ts` | Hono app: `GET /health`, `POST /api/poh-extract` (Azure OpenAI proxy), better-auth handler |
 
 ### Security posture
 
 - Secrets (`POSTGRES_PASSWORD`, `AZURE_OPENAI_API_KEY`, `BETTER_AUTH_SECRET`, etc.) are sourced from your own `.env`/environment — never hardcoded. The `api` service returns 503 for POH import if Azure OpenAI credentials are absent, so the app still runs without that feature enabled.
-- **`db` and `martin` have no public `ports:` entries in a production deploy** — unreachable from the host; only your reverse proxy should expose `api`/`app`/`postgrest`.
+- **`db` has no public `ports:` entry in a production deploy** — unreachable from the host; only your reverse proxy should expose `api`/`app`/`postgrest`.
 - **`server_tokens off`** in nginx — no version disclosure in headers or error pages.
 - **Security headers** set once in the `server {}` block to guarantee inheritance (adding `add_header` in any `location {}` would silently drop the parent headers): `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: geolocation=(self), microphone=(), camera=()` (self: Go Flying and the Passive location mode use the Geolocation API), and a `Content-Security-Policy` covering MapLibre's inline styles + PMTiles WebWorker (`blob:`) + ESRI/Protomaps CDN `connect-src`.
 - **PMTiles Range passthrough:** `proxy_set_header Range`, `proxy_pass_header Content-Range/Accept-Ranges` must stay explicit wherever tiles are proxied — a naive proxy silently drops these, breaking PMTiles random-access reads.
-
-### `VITE_MARTIN_URL` build arg
-
-In dev, the fallback in `apps/web/src/styles/map-style.ts` defaults to `http://localhost:3000`. In a single-origin production build, pass `VITE_MARTIN_URL=/martin` as a build arg so the bundled JS hits `/martin/…`, which nginx proxies to the internal Martin container — no CORS, no exposed port.
 
 ---
 
@@ -331,7 +325,7 @@ docker compose --profile tools run --rm --entrypoint "" data-prep sh -c "..."
 # Run prepare-tiles (strips Windows CRLF)
 docker compose --profile tools run --rm --entrypoint "" data-prep sh -c "tr -d '\r' < scripts/prepare-tiles.sh | bash"
 
-# Load a region into PostGIS (db + martin must be running: docker compose up -d db martin)
+# Load a region into PostGIS (db must be running: docker compose up -d db)
 docker compose --profile tools run --rm data-prep bash scripts/load_region.sh se 55.3,10.9,69.1,24.2
 ```
 
@@ -441,7 +435,7 @@ OFM data is stale when `airac_cycle` doesn't match the current AIRAC (new cycle 
 
 | Tool | Status | Notes |
 |---|---|---|
-| **Martin** (Rust tile server) | Available, currently no live function sources | Serves PostGIS polygons as per-viewport MVT. `docker/martin.yaml` + `martin` service in docker-compose. **Scope:** limited to genuinely dynamic layers (NOTAM/METAR-TAF, live airspace activation, user-generated content) — bulk OFM aviation data (airspace, aerodromes, navaids, obstacles, landuse) is served as static PMTiles/GeoJSON from object storage instead. |
+| **Martin** (Rust tile server) | Retired | Served PostGIS polygons as per-viewport MVT. Removed once every layer moved to static PMTiles/GeoJSON; bring it back only for genuinely dynamic layers (NOTAM/METAR-TAF, live airspace activation). |
 | **PostGIS** | ✅ Active — `landuse` table + GIST indexes + MVT function | Schema lives in `db/migrations/` (dbmate) applied via `scripts/migrate.sh up`; run once after `docker compose up -d db` and after pulling any new migration. Future additions are the small dynamic/user-generated tables above, not the full bulk OFM dataset. |
 | **DuckDB spatial** | Planned Phase 4 | Batch ETL for NOTAM JSON + METAR/TAF from NOAA API. Tabular/JSON sources that benefit from SQL aggregation. **Not** used for OSM PBF (osmium is faster for that). |
 | **osmium-tool** | Planned Phase 1.7 | Fast C++ PBF streaming tool for filtering Geofabrik extracts by tag. Replaces Overpass for landmarks + landuse once added to data-prep container. |
