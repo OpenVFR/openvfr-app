@@ -11,16 +11,16 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "run:android": "expo run:android",
-    "build:android:device": "adb reverse tcp:8081 tcp:8081&&adb reverse tcp:5200 tcp:5200&&adb reverse tcp:5174 tcp:5174&&adb reverse tcp:5100 tcp:5100&&expo run:android",
+    "build:android:device": "adb reverse tcp:8081 tcp:8081&&adb reverse tcp:5200 tcp:5200&&adb reverse tcp:5174 tcp:5174&&expo run:android",
     "run:ios": "expo run:ios",
     "prebuild": "expo prebuild",
     "prebuild:clean": "expo prebuild --clean",
-    "adb:reverse": "adb reverse tcp:8081 tcp:8081 && adb reverse tcp:5200 tcp:5200 && adb reverse tcp:5174 tcp:5174 && adb reverse tcp:5100 tcp:5100 && echo All ports reversed",
+    "adb:reverse": "adb reverse tcp:8081 tcp:8081 && adb reverse tcp:5200 tcp:5200 && adb reverse tcp:5174 tcp:5174 && echo All ports reversed",
     "metro:local": "node scripts/dev-device.mjs --local",
     "metro:prod": "node scripts/dev-device.mjs",
     "build:apk:prod": "bash scripts/build-prod-apk.sh"
   },
-  "packageManager": "pnpm@12.6.0",
+  "packageManager": "pnpm@12.18.0",
   "expo": {
     "install": {
       "exclude": [
@@ -53,8 +53,8 @@
     }
   },
   "dependencies": {
-    "@better-auth/passkey": "1.7.15",
-    "@expo/ui": "~58.0.26",
+    "@better-auth/passkey": "1.7.17",
+    "@expo/ui": "~58.0.27",
     "@maplibre/maplibre-gl-style-spec": "26.5.1",
     "@maplibre/maplibre-react-native": "^11.5.1",
     "@open-vfr/shared": "workspace:*",
@@ -71,9 +71,9 @@
     "@turf/length": "^7.4.0",
     "@turf/line-intersect": "^7.4.0",
     "@turf/nearest-point-on-line": "^7.4.0",
-    "better-auth": "1.7.15",
+    "better-auth": "1.7.17",
     "buffer": "^6.0.3",
-    "expo": "~58.0.22",
+    "expo": "~58.0.23",
     "expo-application": "^58.1.2",
     "expo-crypto": "~58.0.7",
     "expo-dev-client": "~58.0.18",
@@ -86,8 +86,8 @@
     "expo-navigation-bar": "~58.0.4",
     "expo-secure-store": "~58.0.2",
     "expo-sensors": "~58.0.4",
-    "expo-sharing": "~58.0.21",
-    "expo-splash-screen": "~58.0.12",
+    "expo-sharing": "~58.0.22",
+    "expo-splash-screen": "~58.0.13",
     "expo-status-bar": "~58.0.4",
     "expo-system-ui": "~58.0.7",
     "expo-task-manager": "~58.0.13",
@@ -102,7 +102,7 @@
     "react-native-passkey": "^3.6.2",
     "react-native-reanimated": "4.7.1",
     "react-native-reserved-regions": "~0.2.0",
-    "react-native-safe-area-context": "^5.11.0",
+    "react-native-safe-area-context": "^5.11.1",
     "react-native-screens": "^4.30.1",
     "react-native-svg": "^15.16.0",
     "react-native-udp": "^4.1.7",
@@ -116,7 +116,7 @@
     "@types/node": "26.6.6",
     "@types/react": "~19.3.0",
     "babel-plugin-module-resolver": "^5.0.3",
-    "babel-preset-expo": "~58.0.23",
+    "babel-preset-expo": "~58.0.24",
     "cross-env": "^10.1.0",
     "typescript": "~7.0.2"
   }

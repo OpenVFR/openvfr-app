@@ -24,7 +24,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 const args = new Set(process.argv.slice(2))
 const local = args.has('--local')
 const PORT = 8081
-const REVERSE_PORTS = local ? [PORT, 5200, 5174, 5100] : [PORT]
+const REVERSE_PORTS = local ? [PORT, 5200, 5174] : [PORT]
 
 const appJson = JSON.parse(readFileSync(new URL('../app.json', import.meta.url), 'utf8')).expo
 const PACKAGE = appJson.android?.package
