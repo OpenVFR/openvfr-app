@@ -6,7 +6,7 @@
 
 import { useMsaMargins, useAlertBanners } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
-import { computeWarnings, type PreflightWarning } from '@open-vfr/shared/preflightWarnings'
+import { computeWarnings, type PreflightUnavailable, type PreflightWarning } from '@open-vfr/shared/preflightWarnings'
 import { computePrompts } from '@open-vfr/shared/preflightPrompts'
 import { ROUTE_SETTLE_MS } from '@open-vfr/shared/routeSettle'
 import { notamRegionsFor } from '@open-vfr/shared/notamRegionScope'
@@ -82,6 +82,8 @@ interface Props {
   legWinds?:    ({ dirDeg: number; speedKts: number } | null)[]
   /** Wind forecast still loading: the missing-wind prompt waits. */
   windsLoading?: boolean
+  /** Signed in: the NOTAM check needs the account (the endpoint answers 401 otherwise). */
+  signedIn?:    boolean
   /** Applies a warning's one-tap fix (raise a leg to its MSA). */
   onSetLegOverride?: (idx: number, override: LegOverride) => void
   /** Centres the map on a point (a warning's place on the route). */
@@ -169,7 +171,7 @@ export default function PreflightWarnings(props: Props) {
     () => notamRegionsFor({ selected: selectedRegions, route: waypoints }),
     [selectedRegions, waypoints],
   )
-  const regional = useRegionalNotamsState(waypoints.length >= 2, notamRegions)
+  const regional = useRegionalNotamsState(waypoints.length >= 2 && !!props.signedIn, notamRegions)
   const regionalNotams = regional.notams
   const vfrNotams = useMemo(() => regionalNotams.filter((n) => !isIfrOnly(n)), [regionalNotams])
 
@@ -185,13 +187,14 @@ export default function PreflightWarnings(props: Props) {
   )
 
   const unavailable = useMemo(() => {
-    const u: NonNullable<Parameters<typeof computeWarnings>[9]>['unavailable'] = {}
-    if (airspace.failed) u.airspace = 'failed'
-    if (obstacles.failed || landmarks.failed) u.obstacles = 'failed'
-    if (aerodromes.failed) u.aerodromes = 'failed'
-    if (regional.failed) u.notams = 'The NOTAM service could not be reached, so restricted areas created by NOTAM were not checked.'
+    const u: PreflightUnavailable = {}
+    if (airspace.failed) u.airspace = true
+    if (obstacles.failed || landmarks.failed) u.obstacles = true
+    if (aerodromes.failed) u.aerodromes = true
+    if (!props.signedIn) u.notams = 'Sign in to check restricted areas created by NOTAM.'
+    else if (regional.failed) u.notams = 'The NOTAM service could not be reached, so restricted areas created by NOTAM were not checked.'
     return u
-  }, [airspace.failed, obstacles.failed, landmarks.failed, aerodromes.failed, regional.failed])
+  }, [airspace.failed, obstacles.failed, landmarks.failed, aerodromes.failed, regional.failed, props.signedIn])
 
   const warnings = useMemo<PreflightWarning[]>(() => {
     if (!profile) return []
@@ -220,7 +223,9 @@ export default function PreflightWarnings(props: Props) {
         </div>
       )}
 
-      {warnings.map((w, i) => (
+      {warnings.map((w, i) => {
+        const fix = w.fix
+        return (
         <div
           key={`${w.code}-${i}`}
           className={`${css.card} ${w.level === 'danger' ? css.danger : w.level === 'info' ? css.info : css.warn}`}
@@ -243,20 +248,18 @@ export default function PreflightWarnings(props: Props) {
               Show on map
             </button>
           )}
-          {w.fix?.kind === 'raise-leg' && onSetLegOverride && (
+          {fix?.kind === 'raise-leg' && onSetLegOverride && (
             <button
               type="button"
               className={css.fixBtn}
-              onClick={() => {
-                const fix = w.fix
-                if (fix?.kind === 'raise-leg') onSetLegOverride(fix.legIndex, { ...(props.legOverrides[fix.legIndex] ?? {}), altFt: fix.altFt })
-              }}
+              onClick={() => onSetLegOverride(fix.legIndex, { ...(props.legOverrides[fix.legIndex] ?? {}), altFt: fix.altFt })}
             >
-              Raise to {w.fix.altFt.toLocaleString('en-US')} ft
+              Raise to {fix.altFt.toLocaleString('en-US')} ft
             </button>
           )}
         </div>
-      ))}
+        )
+      })}
 
       {prompts.map((p) => (
         <div key={p.code} className={`${css.card} ${css.info}`}>

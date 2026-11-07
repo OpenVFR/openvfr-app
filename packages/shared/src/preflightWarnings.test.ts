@@ -205,7 +205,7 @@ describe('restricted areas at the route ends, and missing data', () => {
   })
   it('says which route data is missing, so no data is not read as all clear', () => {
     const w = computeWarnings(profile(), [], undefined, [], [], undefined, false, undefined, undefined,
-      { unavailable: { airspace: 'x', obstacles: 'x', aerodromes: 'x', notams: 'Sign in' } })
+      { unavailable: { airspace: true, obstacles: true, aerodromes: true, notams: 'Sign in' } })
     expect(w.map((x) => [x.code, x.level])).toEqual([
       ['route-data-unavailable', 'warn'], ['aerodromes-unavailable', 'info'], ['notams-unavailable', 'info'],
     ])

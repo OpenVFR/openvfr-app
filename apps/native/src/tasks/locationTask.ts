@@ -63,7 +63,7 @@ function serial<T>(fn: () => Promise<T>): Promise<T> {
   return next
 }
 
-let current: { key: string; service: boolean; watch: Location.LocationSubscription | null } | null = null
+let current: { key: string; watch: Location.LocationSubscription | null } | null = null
 
 const ACCURACY: Record<GpsRequestSpec['accuracy'], Location.Accuracy> = {
   best:     Location.Accuracy.BestForNavigation,
@@ -132,7 +132,7 @@ async function applyRequest(spec: GpsRequestSpec): Promise<'ok' | 'foreground-de
         notificationBody:  'GPS tracking continues while the app is in the background.',
       },
     })
-    current = { key, service: true, watch: null }
+    current = { key, watch: null }
   } else {
     const watch = await Location.watchPositionAsync(
       {
@@ -142,7 +142,7 @@ async function applyRequest(spec: GpsRequestSpec): Promise<'ok' | 'foreground-de
       },
       (loc) => { for (const cb of listeners) cb(loc) },
     )
-    current = { key, service: false, watch }
+    current = { key, watch }
   }
   return 'ok'
 }

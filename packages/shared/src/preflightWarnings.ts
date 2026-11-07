@@ -110,7 +110,16 @@ export interface PreflightExtras {
   airspace?:       GeoJSON.FeatureCollection | null
   nowMs?:          number
   /** Data that could not be loaded: the checks that need it did not run, and the card says so. */
-  unavailable?:    Partial<Record<'airspace' | 'obstacles' | 'aerodromes' | 'notams', string>>
+  unavailable?:    PreflightUnavailable
+}
+
+/** Checks that did not run. The first three are flags (the card words them itself); `notams` is the
+ *  reason shown verbatim, since it differs: signed out, or the service could not be reached. */
+export interface PreflightUnavailable {
+  airspace?:   boolean
+  obstacles?:  boolean
+  aerodromes?: boolean
+  notams?:     string
 }
 
 /** Lateral distance and height above the field inside which a pass is flagged. */

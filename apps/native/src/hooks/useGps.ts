@@ -103,8 +103,17 @@ export function useGps(opts: { paused?: boolean } = {}): UseGpsResult {
       return true
     }
     if (tierRef.current === tier) return true
-    tierRef.current = tier
-    return (await setLocationRequest(GPS_REQUESTS[tier])) === 'ok'
+    // Set only once the request is running: a refused or failed start leaves no tier claimed, so the
+    // next fix or tier change tries again instead of believing it is already applied.
+    try {
+      const ok = (await setLocationRequest(GPS_REQUESTS[tier])) === 'ok'
+      tierRef.current = ok && activeRef.current ? tier : null  // stopped while the request was starting
+      return ok
+    } catch (err) {
+      tierRef.current = null
+      console.warn('[useGps] location request failed:', err)
+      return false
+    }
   }, [])
 
   const stop = useCallback(() => {

@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useIsFocused } from '@react-navigation/native'
 import { buildVirtualRadarProfile, applyTerrainToBands, type VirtualRadarProfile } from '@open-vfr/shared/virtualRadarCalc'
-import { computeWarnings, type PreflightWarning } from '@open-vfr/shared/preflightWarnings'
+import { computeWarnings, type PreflightUnavailable, type PreflightWarning } from '@open-vfr/shared/preflightWarnings'
 import { computePrompts, type PreflightPrompt } from '@open-vfr/shared/preflightPrompts'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { resolveAirspaceLevels } from '@open-vfr/shared/airspaceAlertLevel'
@@ -21,8 +21,9 @@ import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
 import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
 import { getTileUrls } from '../config'
 import { loadGeoJsonOnce } from '../utils/geoJsonCache'
+import { useAppActive } from './useAppActive'
 import { useCountries } from './useCountries'
-import { useRegionalNotams } from './useRegionalNotams'
+import { useRegionalNotamsState } from './useRegionalNotams'
 import { useSettled, ROUTE_SETTLE_MS } from './useSettled'
 import type { LegMsa } from './useLegMsa'
 import { useSettingsContext } from '../context/SettingsContext'
@@ -102,22 +103,25 @@ export function usePreflightCheck(opts: {
     () => notamRegionsFor({ selected: selectedCountries, route: waypoints }),
     [selectedCountries, waypoints],
   )
-  const regionalNotams = useRegionalNotams(active && signedIn, notamRegions)
+  const appActive = useAppActive()
+  const regional = useRegionalNotamsState(active && signedIn && appActive, notamRegions)
+  const regionalNotams = regional.notams
   const vfrNotams = useMemo(() => regionalNotams.filter((n) => !isIfrOnly(n)), [regionalNotams])
 
   const warnings = useMemo<PreflightWarning[]>(() => {
     if (!profile || !msa.ready) return []
-    const unavailable: NonNullable<Parameters<typeof computeWarnings>[9]>['unavailable'] = {}
-    if (airspaceFailed) unavailable.airspace = 'failed'
-    if (msa.obstaclesFailed) unavailable.obstacles = 'failed'
-    if (aerodromesFailed) unavailable.aerodromes = 'failed'
+    const unavailable: PreflightUnavailable = {}
+    if (airspaceFailed) unavailable.airspace = true
+    if (msa.obstaclesFailed) unavailable.obstacles = true
+    if (aerodromesFailed) unavailable.aerodromes = true
     if (!signedIn) unavailable.notams = 'Sign in to check restricted areas created by NOTAM.'
+    else if (regional.failed) unavailable.notams = 'The NOTAM service could not be reached, so restricted areas created by NOTAM were not checked.'
     return computeWarnings(
       profile, msa.msaPts, aircraft ?? undefined, waypoints, legOverrides, aircraftId ?? undefined,
       msa.terrainFailed, legWinds, resolveMsaMargins(margins),
       { terrainPts: msa.terrain, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable },
     )
-  }, [profile, msa, aircraft, waypoints, legOverrides, aircraftId, legWinds, margins, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, airspaceFailed, aerodromesFailed, signedIn])
+  }, [profile, msa, aircraft, waypoints, legOverrides, aircraftId, legWinds, margins, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, airspaceFailed, aerodromesFailed, signedIn, regional.failed])
 
   const prompts = useMemo(
     () => computePrompts({ waypoints, legWinds, windsLoading }),

@@ -84,7 +84,9 @@ export function useLegMsa(liveWaypoints: RouteWaypoint[], margins: Partial<MsaMa
     // Fetched terrain, or (once the fetch failed, e.g. offline without the hillshade DEM)
     // route samples from the terrain grid.
     const t = terrainForMsa(waypoints, terrain, grids, margins, failed)
-    if (!profile || t.pts.length === 0) return { ...NONE, waypoints, obstaclesFailed }
+    if (!profile) return { ...NONE, waypoints, obstaclesFailed }
+    // No terrain at all (fetch failed, no grid): the check is final, without an MSA.
+    if (t.pts.length === 0) return { ...NONE, waypoints, obstaclesFailed, terrainFailed: failed, ready: doneKey === routeKey }
     const obstacles = obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(t.pts, d))
     const msaPts = computeMsaProfile(t.pts, margins, obstacles, t.corridorFt)
     const spans = legSpans(profile.altitudeProfile)

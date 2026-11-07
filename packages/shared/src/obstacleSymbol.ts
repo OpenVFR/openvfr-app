@@ -198,9 +198,10 @@ export function batchSymbolPaths(
         key = `l|${p.stroke}|${p.w}|${op}`
         part = `M${n1(sx(p.x1))},${n1(p.y1)} L${n1(sx(p.x2))},${n1(p.y2)}`
       } else {
-        const fill = p.fill
-        const fillOpacity = p.dash ? ESTIMATED_FILL_OPACITY : 1
-        const stroke = p.t === 'circle' ? undefined : (p.stroke ?? (p.dash ? p.fill : undefined))
+        // Circles have never had an outline; rect and poly follow the shared rule (primStyle).
+        const { fill, fillOpacity, stroke } = p.t === 'circle'
+          ? { fill: p.fill, fillOpacity: p.dash ? ESTIMATED_FILL_OPACITY : 1, stroke: undefined }
+          : primStyle(p)
         paint = { fill, fillOpacity, stroke, strokeWidth: 1, opacity: op }
         key = `s|${fill}|${fillOpacity}|${stroke ?? ''}|${op}`
         if (p.t === 'rect') {

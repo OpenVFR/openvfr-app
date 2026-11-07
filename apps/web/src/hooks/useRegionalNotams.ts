@@ -28,7 +28,8 @@ export function useRegionalNotams(enabled: boolean, regions: string[]): NotamIte
   return useRegionalNotamsState(enabled, regions).notams
 }
 
-/** Like useRegionalNotams, plus `failed`: the latest request failed (cleared on the next success). */
+/** Like useRegionalNotams, plus `failed`: no list has arrived yet and the request failed. A list that
+ *  arrived earlier stays in use, so a later failed refresh is not a failure. */
 export function useRegionalNotamsState(enabled: boolean, regions: string[]): { notams: NotamItem[]; failed: boolean } {
   // Stable key: a new array with the same codes must not restart polling.
   const regionsKey = [...new Set(regions)].sort().join(',')
@@ -36,13 +37,15 @@ export function useRegionalNotamsState(enabled: boolean, regions: string[]): { n
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
-    if (!enabled) { setNotams((prev) => (prev.length ? NO_NOTAMS : prev)); setFailed(false); return }
+    setFailed(false)
+    if (!enabled) { setNotams((prev) => (prev.length ? NO_NOTAMS : prev)); return }
+    let got = false
     return subscribePoll(
       `web-notam:${regionsKey}`,
       async () => (await fetchRegionalNotams(API_BASE_URL, undefined, undefined, regionsKey ? regionsKey.split(',') : undefined)).notams,
       POLL_INTERVAL_MS,
-      (d) => { setNotams(d); setFailed(false) },
-      () => setFailed(true),
+      (d) => { got = true; setNotams(d); setFailed(false) },
+      () => { if (!got) setFailed(true) },
     )
   }, [enabled, regionsKey])
 
