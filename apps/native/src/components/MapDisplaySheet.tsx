@@ -16,7 +16,8 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import { NativeSheet } from './NativeSheet'
 import { AltitudeSlider } from './AltitudeSlider'
-import { TRAFFIC_VERT_FILTER_OPTIONS, type TrafficVertFilter } from '../hooks/useSettings'
+import { TrafficFilterSlider } from './TrafficFilterSlider'
+import { type TrafficVertFilter } from '../hooks/useSettings'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
 import { AERODROME_COLORS, NAVAID_COLORS, WAYPOINT_COLORS, OBSTACLE_COLORS } from '@open-vfr/shared/featureColors'
@@ -156,6 +157,8 @@ interface Props {
   onCeilingChange:  (ft: number) => void
   trafficVertFilterFt: TrafficVertFilter
   onTrafficVertFilterChange: (ft: TrafficVertFilter) => void
+  /** Flying mode on: the traffic filter is active. */
+  flyingActive: boolean
   /** Reference altitude (ft MSL) for the terrain colour-relief bands --
    *  same concept as web's SettingsPanel terrainColoring.refAltFt, now
    *  living alongside the toggle itself instead of a separate settings
@@ -169,7 +172,7 @@ interface Props {
 
 export function MapDisplaySheet({
   layers, ceilingFt, onLayerChange, onCeilingChange,
-  trafficVertFilterFt, onTrafficVertFilterChange,
+  trafficVertFilterFt, onTrafficVertFilterChange, flyingActive,
   terrainColorRefAltFt, onTerrainColorRefAltFtChange, inFlight, satelliteLocked,
   terrainMemoryLocked,
 }: Props) {
@@ -315,21 +318,8 @@ export function MapDisplaySheet({
             ))}
             {layers.traffic && (
               <>
-                <Text style={styles.basemapNote}>Traffic vertical filter (± own altitude)</Text>
-                <View style={styles.basemapRow}>
-                  {TRAFFIC_VERT_FILTER_OPTIONS.map(v => (
-                    <TouchableOpacity
-                      key={v}
-                      style={[styles.basemapBtn, trafficVertFilterFt === v && styles.basemapBtnActive]}
-                      onPress={() => onTrafficVertFilterChange(v)}
-                      accessibilityState={{ selected: trafficVertFilterFt === v }}
-                      testID={`traffic-vert-${v}`}
-                    >
-                      <Text style={[styles.basemapTxt, trafficVertFilterFt === v && styles.basemapTxtActive]}>
-                        {v === 0 ? 'All' : `±${v >= 1000 ? `${v / 1000}k` : v}`}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                <View style={styles.sliderWrap}>
+                  <TrafficFilterSlider value={trafficVertFilterFt} onChange={onTrafficVertFilterChange} flying={flyingActive} />
                 </View>
               </>
             )}

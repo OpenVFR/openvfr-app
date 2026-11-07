@@ -11,7 +11,7 @@ noted.
 
 On the web app the Settings panel is grouped under fold-away titles:
 **Warnings & margins** (airspace warnings, alert banners, vertical buffer,
-traffic filter, MSA margins), **Flying**, **Data** and **App**. Native uses
+MSA margins), **Flying**, **Data** and **App**. Native uses
 sections named Units, Display, Flying mode, Airspace Warnings, Alert
 banners, Navigation, Vario, Simulator, Country, Offline Data and About.
 
@@ -73,7 +73,7 @@ See [Virtual Radar and vertical profile](./virtual-radar.md).
 | Airspace ceiling | Default 9,500 ft. Web: Layers → Altitude Filter. See [Map and layers](./map-and-layers.md) |
 | Layer visibility | Remembered per layer |
 | Terrain colour reference altitude | Default 2,000 ft |
-| Traffic vertical filter | 1,000, 2,000, 3,000, 5,000 (default), 10,000 ft or all (shown as ±1k … ±10k, All) |
+| Traffic vertical filter | Slider under Air traffic in Layers (web) and Map display (native): ±1,000 to ±10,000 ft in 500 ft steps (default ±5,000) or All; applies in flying mode only |
 | Home airfield | Set from an aerodrome card |
 
 ## Sensors (native)

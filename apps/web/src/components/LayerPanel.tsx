@@ -1,6 +1,7 @@
 import { LAYER_GROUPS } from '../styles/map-style'
-import { TRAFFIC_VERT_FILTER_OPTIONS, type TerrainColoringSettings, type TrafficVertFilter } from '../db/useSettings'
+import { type TerrainColoringSettings, type TrafficVertFilter } from '../db/useSettings'
 import AltitudeSlider from './AltitudeSlider'
+import TrafficFilterSlider from './TrafficFilterSlider'
 import css from './LayerPanel.module.css'
 
 export type BasemapMode = 'vector' | 'satellite'
@@ -21,9 +22,11 @@ interface Props {
   onCeilingChange: (ft: number) => void
   trafficVertFilter: TrafficVertFilter
   onTrafficVertFilterChange: (v: TrafficVertFilter) => void
+  /** Flying mode on: the traffic filter is active. */
+  flyingActive: boolean
 }
 
-export default function LayerPanel({ visibility, onChange, terrainColoring, onTerrainColoringChange, inFlight, basemapMode, onBasemapModeChange, satelliteLocked, ceilingFt, onCeilingChange, trafficVertFilter, onTrafficVertFilterChange }: Props) {
+export default function LayerPanel({ visibility, onChange, terrainColoring, onTerrainColoringChange, inFlight, basemapMode, onBasemapModeChange, satelliteLocked, ceilingFt, onCeilingChange, trafficVertFilter, onTrafficVertFilterChange, flyingActive }: Props) {
   let lastSection = ''
   return (
     <div className={css.panel}>
@@ -87,20 +90,7 @@ export default function LayerPanel({ visibility, onChange, terrainColoring, onTe
             {/* Hide traffic more than N ft above/below own altitude. */}
             {group.id === 'traffic' && on && (
               <>
-                <div className={css.sectionNote}>Traffic vertical filter (± own altitude)</div>
-                <div className={css.segmented} role="radiogroup" aria-label="Traffic vertical filter">
-                  {TRAFFIC_VERT_FILTER_OPTIONS.map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      role="radio"
-                      aria-checked={trafficVertFilter === v}
-                      className={`${css.segment}${trafficVertFilter === v ? ` ${css.segmentActive}` : ''}`}
-                      onClick={() => onTrafficVertFilterChange(v)}
-                      title={v === 0 ? 'Show all traffic regardless of altitude' : `Hide traffic more than ${v.toLocaleString()} ft above or below current altitude`}
-                    >{v === 0 ? 'All' : `±${v >= 1000 ? `${v / 1000}k` : v}`}</button>
-                  ))}
-                </div>
+                <TrafficFilterSlider value={trafficVertFilter} onChange={onTrafficVertFilterChange} flying={flyingActive} />
               </>
             )}
             {/* Terrain colour bands (relative to reference altitude) — grouped

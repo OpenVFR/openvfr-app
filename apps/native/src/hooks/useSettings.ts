@@ -12,9 +12,12 @@ import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
 import { PARK_TIMEOUT_DEFAULT, type ParkTimeoutOption } from '@open-vfr/shared/parkTimeout'
 import { DEFAULT_MSA_MARGINS, type MsaMargins } from '@open-vfr/shared/msaMargins'
 
-/** Hide traffic more than N ft above/below own altitude; 0 = show all. Same options as web. */
-export const TRAFFIC_VERT_FILTER_OPTIONS = [1000, 2000, 3000, 5000, 10000, 0] as const
-export type TrafficVertFilter = (typeof TRAFFIC_VERT_FILTER_OPTIONS)[number]
+/** Hide traffic more than N ft above/below own altitude (flying mode only); 0 = show all. Same options as web. */
+export const TRAFFIC_VERT_FILTER_OPTIONS: readonly number[] = [
+  ...Array.from({ length: 19 }, (_, i) => 1000 + i * 500),
+  0,
+]
+export type TrafficVertFilter = number
 
 export type AppSettings = {
   units:        Units

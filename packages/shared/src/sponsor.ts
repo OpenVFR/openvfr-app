@@ -4,5 +4,5 @@
  */
 export const SPONSOR = {
   name: 'Sk\u00e5nska Gyrokopterklubben',
-  url: 'https://gyroflyg.se',
+  url: 'https://gyroflyg.se/en',
 } as const

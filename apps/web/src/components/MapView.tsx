@@ -1554,12 +1554,16 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const proximate = new Set<string>()
     const features = trafficTargets
       .filter(t => {
-        if (trafficVertFilter === 0 || ownAlt === null) return true
+        // Only while flying: otherwise show all traffic (use it like a flight radar).
+        if (!flyingNow || trafficVertFilter === 0 || ownAlt === null) return true
         if (t.relAltFt === null) return true
         return Math.abs(t.relAltFt) <= trafficVertFilter
       })
       .map(t => {
-        const urgency = getUrgency(t.lat, t.lon, t.relAltFt)
+        // Not flying: flight-radar view. No proximity colours or beeps, and the
+        // label shows the target's own altitude instead of one relative to you.
+        const relAltFt = flyingNow ? t.relAltFt : null
+        const urgency = flyingNow ? getUrgency(t.lat, t.lon, relAltFt) : 0
         if (urgency === 3) proximate.add(t.icao24)
         return {
           type: 'Feature' as const,
@@ -1572,7 +1576,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             trackDeg:  t.trackDeg,
             vertFpm:   t.vertFpm,
             onGround:  t.onGround,
-            ...(t.relAltFt !== null ? { relAltFt: t.relAltFt } : {}),
+            ...(relAltFt !== null ? { relAltFt } : {}),
             category:  t.category ?? 0,
             urgency,
             iconId:    selectTrafficIcon(t.category, t.speedKts ?? 0),
@@ -1608,7 +1612,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         osc.onended = () => ctx.close()
       } catch { /* audio not available */ }
     }
-  }, [trafficTargets, mapReady, gpsPosition, trafficVertFilter])
+  }, [trafficTargets, mapReady, gpsPosition, trafficVertFilter, flyingNow])
 
   // Post-flight track viewer — selected historical log (state declared above near profileCursorNm)
   useEffect(() => {
@@ -4898,6 +4902,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     onTerrainColoringChange: setTerrainColoring,
     trafficVertFilter,
     onTrafficVertFilterChange: setTrafficVertFilter,
+    flyingActive: flyingNow,
     parkTimeout,
     onParkTimeoutChange: setParkTimeout,
     recordSimulatedFlights,

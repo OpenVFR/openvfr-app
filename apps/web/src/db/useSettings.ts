@@ -435,11 +435,16 @@ export function useTerrainColoring(): [TerrainColoringSettings, (v: TerrainColor
 
 // ---------------------------------------------------------------------------
 // useTrafficVertFilter — hide traffic targets more than N feet above/below
-// current ownship altitude. Default 5000 ft. 0 = off (show all).
+// current ownship altitude (flying mode only; all traffic is shown otherwise).
+// Default 5000 ft. 0 = off (show all).
 // Persisted to RxDB.
 // ---------------------------------------------------------------------------
-export const TRAFFIC_VERT_FILTER_OPTIONS = [1000, 2000, 3000, 5000, 10000, 0] as const
-export type TrafficVertFilter = (typeof TRAFFIC_VERT_FILTER_OPTIONS)[number]
+/** Vertical traffic filter steps: 1,000 to 10,000 ft in 500 ft steps, then 0 = All (no filtering). */
+export const TRAFFIC_VERT_FILTER_OPTIONS: readonly number[] = [
+  ...Array.from({ length: 19 }, (_, i) => 1000 + i * 500),
+  0,
+]
+export type TrafficVertFilter = number
 const TRAFFIC_VERT_FILTER_KEY = 'ovfr:trafficVertFilter'
 
 export function useTrafficVertFilter(): [TrafficVertFilter, (v: TrafficVertFilter) => void] {

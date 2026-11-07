@@ -49,6 +49,8 @@ interface Props {
   onTerrainColoringChange: (v: TerrainColoringSettings) => void
   trafficVertFilter: TrafficVertFilter
   onTrafficVertFilterChange: (v: TrafficVertFilter) => void
+  /** Flying mode on (traffic filter active). */
+  flyingActive: boolean
   parkTimeout: ParkTimeoutOption
   recordSimulatedFlights: boolean
   onRecordSimulatedFlightsChange: (v: boolean) => void
@@ -163,7 +165,7 @@ function SideDrawer({
   airspaceWarnLookahead, onAirspaceWarnLookaheadChange,
   airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange,
   terrainColoring, onTerrainColoringChange,
-  trafficVertFilter, onTrafficVertFilterChange,
+  trafficVertFilter, onTrafficVertFilterChange, flyingActive,
   parkTimeout, onParkTimeoutChange, recordSimulatedFlights, onRecordSimulatedFlightsChange, autoFlyMode, onAutoFlyModeChange,
   inFlight,
   manifest,
@@ -510,7 +512,7 @@ function SideDrawer({
             </button>
             {expanded.layers && (
               <div className={css.sectionBody}>
-                <LayerPanel visibility={visibility} onChange={onVisibilityChange} terrainColoring={terrainColoring} onTerrainColoringChange={onTerrainColoringChange} inFlight={inFlight} basemapMode={basemapMode} onBasemapModeChange={onBasemapModeChange} satelliteLocked={satelliteLocked} ceilingFt={ceilingFt} onCeilingChange={onCeilingChange} trafficVertFilter={trafficVertFilter} onTrafficVertFilterChange={onTrafficVertFilterChange} />
+                <LayerPanel visibility={visibility} onChange={onVisibilityChange} terrainColoring={terrainColoring} onTerrainColoringChange={onTerrainColoringChange} inFlight={inFlight} basemapMode={basemapMode} onBasemapModeChange={onBasemapModeChange} satelliteLocked={satelliteLocked} ceilingFt={ceilingFt} onCeilingChange={onCeilingChange} trafficVertFilter={trafficVertFilter} onTrafficVertFilterChange={onTrafficVertFilterChange} flyingActive={flyingActive} />
               </div>
             )}
           </div>

@@ -2077,6 +2077,7 @@ function MapScreenForCountry() {
             onCeilingChange={(ft) => update({ airspaceCeilingFt: ft })}
             trafficVertFilterFt={settings.trafficVertFilterFt}
             onTrafficVertFilterChange={(ft) => update({ trafficVertFilterFt: ft })}
+            flyingActive={flyingActive}
             terrainColorRefAltFt={settings.terrainColorRefAltFt}
             onTerrainColorRefAltFtChange={(ft) => update({ terrainColorRefAltFt: ft })}
             inFlight={!!activePosition && activePosition.altFt > 0}

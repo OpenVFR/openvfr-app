@@ -1971,9 +1971,15 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
           'text-field': [
             'concat',
             ['coalesce', ['get', 'callsign'], ['get', 'icao24']],
-            // Only show relative altitude when ownship GPS is available (property absent otherwise)
+            // Flying with a fix: altitude relative to you (+1.5 = 1,500 ft above).
+            // Otherwise (relAltFt absent): the target's own altitude, flight-radar style.
             ['case',
-              ['!', ['has', 'relAltFt']], '',
+              ['!', ['has', 'relAltFt']],
+              ['case',
+                ['==', ['typeof', ['get', 'altFt']], 'number'],
+                ['concat', '\n', ['to-string', ['*', ['round', ['/', ['get', 'altFt'], 100]], 100]], ' ft'],
+                '',
+              ],
               ['>', ['get', 'relAltFt'], 0],
               ['concat', '\n+', ['to-string', ['/', ['round', ['/', ['get', 'relAltFt'], 100]], 10]]],
               ['concat', '\n', ['to-string', ['/', ['round', ['/', ['get', 'relAltFt'], 100]], 10]]],

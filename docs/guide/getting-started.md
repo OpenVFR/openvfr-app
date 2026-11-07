@@ -7,10 +7,14 @@ sidebar:
 
 ## Open the app
 
-OpenVFR runs in the browser as a progressive web app (PWA), and there is an
-Android and iOS app. The web app can be installed from your browser's
-"Install" or "Add to Home Screen" menu, after which it also works offline
-for data you have already loaded.
+OpenVFR runs in the browser as a progressive web app (PWA) at
+[app.openvfr.org](https://app.openvfr.org), and there is an Android and iOS
+app, both in open beta: join on
+[TestFlight](https://testflight.apple.com/join/vVKK3cUK) (iOS) or
+[Google Play](https://play.google.com/store/apps/details?id=org.openvfr.app)
+(Android). The web app can be installed from your browser's "Install" or
+"Add to Home Screen" menu, after which it also works offline for data you
+have already loaded.
 
 ## The basics
 

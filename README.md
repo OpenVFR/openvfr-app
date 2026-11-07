@@ -8,7 +8,7 @@ account is required: sign in with a passkey or an email code.
 [![CI](https://github.com/OpenVFR/openvfr-app/actions/workflows/ci.yml/badge.svg)](https://github.com/OpenVFR/openvfr-app/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-**Status: alpha.** Sweden-first data coverage; APIs, data formats, and UI
+**Status: beta.** Sweden-first data coverage; APIs, data formats, and UI
 are still changing. Released under the [MIT License](./LICENSE).
 
 ## ⚠️ Situational awareness only
@@ -71,9 +71,13 @@ Full architecture reference: [`docs/architecture.md`](docs/architecture.md).
 
 ## Rollout
 
-- **Web app** launches first — in **Sweden**, before expanding to the
-  Nordics and other major European countries.
-- **Android and iOS** apps follow shortly after the web app.
+- **Web app** is live in beta at [app.openvfr.org](https://app.openvfr.org),
+  in **Sweden** first, before expanding to the Nordics (Denmark and Finland,
+  perhaps Norway) and other major European countries.
+- **Android and iOS** apps are in open beta:
+  [TestFlight](https://testflight.apple.com/join/vVKK3cUK) (iOS),
+  [Google Play](https://play.google.com/store/apps/details?id=org.openvfr.app)
+  (Android).
 
 ## Data & attribution
 
@@ -210,8 +214,9 @@ attribution.
 ## Stay in the loop
 
 - Website: [openvfr.org](https://openvfr.org)
-- Join the waitlist / become an early adopter (especially in Sweden — beta
-  testers wanted): [openvfr.org/#waitlist](https://openvfr.org/#waitlist)
+- Try the web app: [app.openvfr.org](https://app.openvfr.org)
+- Get news, or ask for your country (beta testers in Sweden especially
+  welcome): [openvfr.org/#waitlist](https://openvfr.org/#waitlist)
 
 ## Contributing
 

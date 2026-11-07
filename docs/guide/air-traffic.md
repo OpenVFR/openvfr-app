@@ -25,10 +25,18 @@ Symbols follow the aircraft type (for example light aircraft, helicopter or
 glider) and whether it is airborne or on the ground. Tap a symbol to see
 its details.
 
-## Filtering by altitude (web)
+## Filtering by altitude
 
-In the web app's Settings you can hide traffic far above or below you:
-1,000, 2,000, 3,000, 5,000 (default) or 10,000 ft, or show all.
+With Air Traffic on, a **Traffic vertical filter** slider appears under it
+(in Layers on the web, in Map display on the native app). Drag it to hide
+traffic far above or below you, from ±1,000 to ±10,000 ft in 500 ft steps
+(default ±5,000 ft), or All.
+
+The filter works in flying mode, relative to your altitude. When you are not
+flying, all traffic is shown, so you can use the map like a flight radar. On
+the web, each target is then labelled with its own altitude (for example
+4,500 ft) instead of the difference to you, and proximity colours and beeps
+are off.
 
 ## Limits
 

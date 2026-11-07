@@ -27,7 +27,7 @@ Legend: **Yes** = available, **Partial** = available with differences
 | Terrain colour bands (relative to a reference altitude) | Yes | Yes | Marked experimental on native. |
 | Wind arrows | Yes | Yes | |
 | Air traffic (ADS-B and glider/FLARM sources) | Yes | Yes | |
-| Traffic vertical filter (hide traffic far above/below you) | Yes | No | Web setting only. |
+| Traffic vertical filter (hide traffic far above/below you) | Yes | Yes | A slider under Air traffic: Layers on web, Map display on native. Applies in flying mode; all traffic shows otherwise. |
 | Altitude ceiling slider for airspace | Yes | Yes | |
 | Satellite basemap | Yes | Yes | Not available while flying. |
 | Themes: dark, light, high contrast | Yes | Yes | |
