@@ -20,7 +20,7 @@ export function RouteEditBanner({
   /** Distance from the top of the screen: pass the toolbar's own offset
    *  (below the status bar) so the banner lines up with the menu button. */
   top: number
-  /** Distance from the left edge (default theme.space2); pass the safe-area
+  /** Distance from the left edge (default: the bar's own margin); pass the safe-area
    *  inset plus margin: absolute children ignore the parent's padding. */
   left?: number
   /** Short state text before the buttons, e.g. "Route changed" in flight. */
@@ -37,7 +37,7 @@ export function RouteEditBanner({
 }) {
   const styles = useThemedStyles(makeStyles)
   return (
-    <View style={[styles.bar, left != null ? { top, left } : { top }]} testID="route-edit-banner">
+    <View style={[styles.bar, { top, ...(left != null ? { left } : {}) }]} testID="route-edit-banner">
       {label ? <Text style={styles.label} numberOfLines={1}>{label}</Text> : null}
       <TouchableOpacity onPress={onUndo} disabled={!canUndo} hitSlop={8} accessibilityLabel="Undo">
         <AppIcon name="undo" size={18} color={canUndo ? theme.textPrimary : theme.textFaint} />

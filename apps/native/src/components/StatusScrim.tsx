@@ -11,7 +11,7 @@
  * Android cutouts don't match, so everything else keeps the full-width band.
  */
 
-import React from 'react'
+import React, { memo } from 'react'
 import { StyleSheet, View, useWindowDimensions } from 'react-native'
 import { ReservedRegionsProvider, useReservedRegions } from 'react-native-reserved-regions'
 
@@ -47,14 +47,15 @@ function Band({ height }: { height: number }) {
   )
 }
 
-export function StatusScrim({ height }: { height: number }) {
+// Memoised: MapScreen re-renders on every GPS tick and the only prop is a number.
+export const StatusScrim = memo(function StatusScrim({ height }: { height: number }) {
   if (height <= 0) return null
   return (
     <ReservedRegionsProvider pointerEvents="none" style={styles.provider}>
       <Band height={height} />
     </ReservedRegionsProvider>
   )
-}
+})
 
 const styles = StyleSheet.create({
   provider: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 60 },

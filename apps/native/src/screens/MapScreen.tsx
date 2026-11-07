@@ -106,7 +106,7 @@ import { useHomeAirfield }      from '../hooks/useHomeAirfield'
 import { useSettingsContext } from '../context/SettingsContext'
 import { MapPopover, type MapPopoverAction } from '../components/MapPopover'
 import { RouteEditBanner } from '../components/RouteEditBanner'
-import { CompassButton } from '../components/CompassButton'
+import { CompassButton, COMPASS_BUTTON_SIZE } from '../components/CompassButton'
 import { FollowCountdown } from '../components/FollowCountdown'
 import type { MapOrientation } from '../utils/gpsTypes'
 import { AutoFlyBanner } from '../components/AutoFlyBanner'
@@ -119,7 +119,7 @@ import { nextPathAhead, pathAheadLegOverrides, type PathAheadState } from '@open
 import { parseParkTimeout } from '@open-vfr/shared/parkTimeout'
 import { autoFlyThresholds } from '@open-vfr/shared/autoFlyDetect'
 import { iasToTas } from '@open-vfr/shared/airspeed'
-import { VerticalProfile, DEFAULT_CHART_H, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
+import { VerticalProfile, defaultChartHeight, COLLAPSE_THRESHOLD } from '../components/VerticalProfile'
 import { RulerHeaderStart, RulerHeaderEnd, RouteHeaderStart } from '../components/RulerHeaderStats'
 import { ProfileViewToggle, ProfileModeLabel } from '../components/ProfileViewToggle'
 import { flightLogProfile, flownCoordinateAt, flownPointAt } from '@open-vfr/shared/flightLogProfile'
@@ -139,6 +139,7 @@ import IconZoomScan from '@tabler/icons-react-native/IconZoomScan'
 import IconListDetails from '@tabler/icons-react-native/IconListDetails'
 import { MapToolbar, type ToolGroupDef } from '../components/MapToolbar'
 import { StatusScrim } from '../components/StatusScrim'
+import { MAP_INFO_BAR_BOTTOM_MARGIN, MAP_INFO_BAR_H, MAP_INFO_BAR_GAP } from '../components/MapInfoBar'
 import { Location } from 'expo-location/next'
 import * as Crypto from 'expo-crypto'
 import { GaugesBar }         from '../components/GaugesBar'
@@ -487,7 +488,7 @@ function MapScreenForCountry() {
 
   // Short screens (the iPhone Duo cover is 678 pt tall) start with a lower
   // chart, so the map above profile + simulator keeps room for its controls.
-  const defaultProfileH = windowHeight < 720 ? 180 : DEFAULT_CHART_H
+  const defaultProfileH = defaultChartHeight(windowHeight)
   const [profileHeight, setProfileHeight] = useState(defaultProfileH)
   const [mapAreaH, setMapAreaH] = useState<number | null>(null)
   // Chart-scrub → map crosshair sync (VerticalProfile touch-drag)
@@ -540,7 +541,9 @@ function MapScreenForCountry() {
   // over-reserved ~120dp and clipped Flight Mode / Locate off the column.
   // On the iPhone Duo cover the info pill and compass (bottom right) move left
   // of the rail, under this column: end the column above them.
-  const cornerReserve = insets.railRight > 0 ? 8 + 32 + (flyingActive ? 8 + 44 : 0) : 0
+  const cornerReserve = insets.railRight > 0
+    ? MAP_INFO_BAR_BOTTOM_MARGIN + MAP_INFO_BAR_H + (flyingActive ? MAP_INFO_BAR_GAP + COMPASS_BUTTON_SIZE : 0)
+    : 0
   const topRightMaxHeight = Math.max(
     120,
     mapAreaH != null
@@ -557,7 +560,13 @@ function MapScreenForCountry() {
   // landscape, instead of a clipped scrolling column. The column's height is
   // measured while it is a column; growing the map again switches back.
   const [columnContentH, setColumnContentH] = useState(0)
-  const controlsRow = isLandscape || (columnContentH > 0 && columnContentH > topRightMaxHeight + 1)
+  // Measured only while it is a column, so forget it when the buttons change
+  // (the stale height would keep a shrunk column in row mode). No decision
+  // until the map's own height is known: the cap before that is an estimate.
+  const columnHasPlog = flyingActive && waypoints.length >= 2
+  useEffect(() => { setColumnContentH(0) }, [flyingActive, columnHasPlog])
+  const controlsRow = isLandscape
+    || (mapAreaH != null && columnContentH > 0 && columnContentH > topRightMaxHeight + 1)
   // Short map: one full alert card, the rest as one-line chips.
   const alertMaxCards = mapAreaH != null && mapAreaH < 260 ? 1 : undefined
   const topRightMaxWidth = Math.max(160, windowWidth - edgeLeft - edgeRight)

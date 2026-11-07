@@ -12,13 +12,14 @@
  * Landscape notches (left and right insets) are left as they are.
  */
 
-import { useWindowDimensions } from 'react-native'
+import { Platform, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets, type EdgeInsets } from 'react-native-safe-area-context'
 
 export function useContentInsets(): EdgeInsets & { railRight: number } {
   const insets = useSafeAreaInsets()
   const { width, height } = useWindowDimensions()
-  const sideRail = height > width && insets.right > 0 && insets.left === 0
+  // iOS only: an Android display cutout reported on one side must keep its inset.
+  const sideRail = Platform.OS === 'ios' && height > width && insets.right > 0 && insets.left === 0
   return sideRail
     ? { ...insets, right: 0, railRight: insets.right }
     : { ...insets, railRight: 0 }

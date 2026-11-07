@@ -61,9 +61,13 @@ if [ -n "${DUO_INNER_OUT:-}" ]; then
         t0=$(date +%s)
         duo_inner_shot "$DUO_INNER_OUT/$n.png" \
           || { echo "::warning::inner-display capture of $n failed"; duoctl state || true; }
-        duo_fold || { echo "::error::could not fold the Duo back: Maestro's next taps will miss"; duoctl state || true; }
-        sleep 1
-        touch "$raw/.duo-done/$n"                 # releases duo-pause.yaml
+        if duo_fold; then
+          sleep 1
+          touch "$raw/.duo-done/$n"               # releases duo-pause.yaml
+        else
+          echo "::error::could not fold the Duo back after $n: stopping the flow instead of tapping the wrong display"; duoctl state || true
+          touch "$raw/.duo-done/$n.failed"        # duo-pause.yaml fails on it
+        fi
         echo "duo inner capture of $n took $(( $(date +%s) - t0 ))s"
       done < <(find "$raw" -path '*/takeScreenshot/*' -name '*.png' -print0 2>/dev/null)
       sleep 1

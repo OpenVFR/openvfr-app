@@ -18,6 +18,12 @@ import { MAX_FT, ftToLabel } from './AltitudeSlider'
 const MAX_BAR_DP = 60
 const MIN_UPDATE_MS = 100
 
+/** Gap between the pill and the map's bottom edge, dp. */
+export const MAP_INFO_BAR_BOTTOM_MARGIN = 8
+/** Height of the pill (one text row + padding) and the gap above it, dp. */
+export const MAP_INFO_BAR_H = 32
+export const MAP_INFO_BAR_GAP = 8
+
 export interface MapInfoBarHandle {
   setCamera: (lat: number, zoom: number) => void
 }
@@ -67,7 +73,7 @@ export const MapInfoBar = forwardRef<MapInfoBarHandle, Props>(function MapInfoBa
   const altLabel = `SFC \u2013 ${unlimited ? 'UNL' : ftToLabel(ceilingFt)}`
 
   return (
-    <View style={[styles.wrap, { bottom: 8 + bottomOffset, right: 8 + rightOffset }]} pointerEvents="box-none">
+    <View style={[styles.wrap, { bottom: MAP_INFO_BAR_BOTTOM_MARGIN + bottomOffset, right: 8 + rightOffset }]} pointerEvents="box-none">
     {above}
     <View style={styles.bar} pointerEvents="box-none">
       <TouchableOpacity
@@ -108,7 +114,7 @@ const makeStyles = (t: ScaledTheme) => ({
     right: 8,
     zIndex: 20,
     alignItems: 'flex-end' as const,
-    gap: 8,
+    gap: MAP_INFO_BAR_GAP,
   },
   bar: {
     flexDirection: 'row' as const,
