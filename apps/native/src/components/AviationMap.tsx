@@ -15,7 +15,6 @@ import {
   RasterDEMSource,
   Layer,
   Images,
-  UserLocation,
   ViewAnnotation,
   type CameraRef,
   type MapRef,
@@ -748,6 +747,35 @@ export function clearProtomapsStyleCache() { _protomapsStyle = null }
  *  inspection: drawn as the aircraft pointing along the recorded track, on a yellow halo so it
  *  is not mistaken for the live position. Otherwise a plain yellow ring. */
 export type ProfileCursor = { lngLat: [number, number]; trackDeg?: number }
+
+/** The device's own position outside flight: accuracy circle and dot, drawn from the position the app
+ *  already tracks. (The map library's UserLocation holds a second, faster location request of its own,
+ *  which defeats the slow ground power tier -- see gpsPolicy.) */
+function OwnPositionDot({ pos }: { pos: GpsPosition | null | undefined }) {
+  const fc = useMemo<FeatureCollection>(() => (pos
+    ? { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [pos.lng, pos.lat] } }] }
+    : EMPTY_FC), [pos?.lat, pos?.lng])
+  // Accuracy radius in metres -> pixels: metres per pixel at zoom 0 is 156543 * cos(lat), halving per zoom.
+  const r0 = pos && pos.accuracy > 0 ? pos.accuracy / (156543.03 * Math.cos((pos.lat * Math.PI) / 180)) : 0
+  return (
+    <GeoJSONSource id="own-position-src" data={fc}>
+      <Layer
+        id="own-position-accuracy"
+        type="circle"
+        paint={{
+          'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 0, r0, 22, r0 * 4194304] as any,
+          'circle-color': '#3b82f6',
+          'circle-opacity': 0.15,
+        }}
+      />
+      <Layer
+        id="own-position-dot"
+        type="circle"
+        paint={{ 'circle-radius': 7, 'circle-color': '#3b82f6', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5 }}
+      />
+    </GeoJSONSource>
+  )
+}
 
 /** Live aircraft traffic. Subscribes to the traffic store itself, so each 2 s update re-renders only
  *  this layer, not the map. Always mounted (empty data when there is none). */
@@ -3357,7 +3385,7 @@ export const AviationMap = React.memo(function AviationMap({
         // MapLibre's own compass is off: CompassButton (MapScreen) replaces it.
         compass={false}
       >
-        {showOwnPosition && <UserLocation animated={false} accuracy heading minDisplacement={5} />}
+        {showOwnPosition && <OwnPositionDot pos={gpsPosition} />}
         <Camera
           ref={cameraRef}
           // Preserve camera position across an auto-retry remount (key bump
