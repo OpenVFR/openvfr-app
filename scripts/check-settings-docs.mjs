@@ -33,7 +33,10 @@ const objField = (file, name, field) => {
 const list = (file, name) => {
   const m = read(file).match(new RegExp(`export const ${name}[^=]*=\\s*\\[([^\\]]*)\\]`));
   if (!m) throw new Error(`list ${name} not found in ${file}`);
-  return m[1].split(',').map((s) => num(s.trim())).filter((n) => !Number.isNaN(n));
+  const gen = m[1].match(/Array\.from\(\{ length: (\d+) \}, \(_, i\) => (\d+) \+ i \* (\d+)\)/);
+  const generated = gen ? Array.from({ length: Number(gen[1]) }, (_, i) => Number(gen[2]) + i * Number(gen[3])) : [];
+  const rest = m[1].replace(/\.\.\.Array\.from\(\{[^}]*\}, [^\n]*\),/, '');
+  return [...generated, ...rest.split(',').map((s) => num(s.trim())).filter((n) => !Number.isNaN(n))];
 };
 
 const defaultsBlock = nativeSrc.match(/const DEFAULTS: AppSettings = \{([\s\S]*?)\n\}/)?.[1];

@@ -73,7 +73,7 @@ See [Virtual Radar and vertical profile](./virtual-radar.md).
 | Airspace ceiling | Default 9,500 ft. Web: Layers → Altitude Filter. See [Map and layers](./map-and-layers.md) |
 | Layer visibility | Remembered per layer |
 | Terrain colour reference altitude | Default 2,000 ft |
-| Traffic vertical filter | Slider under Air traffic in Layers (web) and Map display (native): ±1,000 to ±10,000 ft in 500 ft steps (default ±5,000) or All; applies in flying mode only |
+| Traffic vertical filter | Slider under Air traffic in Layers (web) and Map display (native): 1,000, 1,500, 2,000, 2,500, 3,000, 3,500, 4,000, 4,500, 5,000 (default), 5,500, 6,000, 6,500, 7,000, 7,500, 8,000, 8,500, 9,000, 9,500, 10,000 ft or all (±, 500 ft steps); applies in flying mode only |
 | Home airfield | Set from an aerodrome card |
 
 ## Sensors (native)
