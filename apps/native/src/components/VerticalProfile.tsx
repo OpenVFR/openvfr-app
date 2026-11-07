@@ -210,6 +210,11 @@ interface Props {
 // bottom margin, under the x axis, so the top margin only needs room for
 // the top tick label and the waypoint-name row.
 export const DEFAULT_CHART_H  = 240
+/** Screens shorter than this (dp: iPhone SE, the Duo cover) start with a lower chart. */
+export const SHORT_SCREEN_H     = 720
+export const DEFAULT_CHART_H_SHORT = 180
+/** The default chart height for a window of this height. */
+export const defaultChartHeight = (windowH: number) => windowH < SHORT_SCREEN_H ? DEFAULT_CHART_H_SHORT : DEFAULT_CHART_H
 export const MIN_CHART_H      = 0
 export const MAX_CHART_H      = 400
 export const COLLAPSE_THRESHOLD = 24   // below this, treat as "collapsed"

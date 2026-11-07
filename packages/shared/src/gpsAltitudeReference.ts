@@ -27,6 +27,7 @@
  */
 
 import type { KeyValueStore } from './persistedCache'
+import type { GpsAltitudeSource } from './gpsAltitude'
 import { geoidHeightM } from './geoid'
 
 export type GpsAltitudeRef = 'ellipsoid' | 'msl'
@@ -98,7 +99,7 @@ let environment = ''
 let kv: KeyValueStore | null = null
 let verdict: GpsAltitudeRefVerdict | null = null
 /** How the latest real fix's altitude was obtained (native only, see ./gpsAltitude.ts). */
-let lastSource: 'os-msl' | 'geoid' | 'raw' | null = null
+let lastSource: GpsAltitudeSource | null = null
 let offsets: number[] = []
 let geoidSum = 0
 let lastSampleAt = -Infinity
@@ -132,7 +133,7 @@ export async function initGpsAltitudeReference(opts: {
  * EGM96 geoid, 'raw' = used as reported). Only notifies on a change, so it is
  * cheap to call per fix. Shown in the settings line.
  */
-export function noteGpsAltitudeSource(source: 'os-msl' | 'geoid' | 'raw'): void {
+export function noteGpsAltitudeSource(source: GpsAltitudeSource): void {
   if (source === lastSource) return
   lastSource = source
   notify()
@@ -150,7 +151,7 @@ export function gpsAltitudeReferenceStatus(): {
   platformDefault: GpsAltitudeRef
   verdict: GpsAltitudeRefVerdict | null
   /** Native: how the latest fix's altitude was obtained, null before the first fix / on the web. */
-  lastSource: 'os-msl' | 'geoid' | 'raw' | null
+  lastSource: GpsAltitudeSource | null
   pendingSamples: number
   /** Median raw-minus-terrain offset (m) of the pending samples, null if none. */
   pendingMedianM: number | null

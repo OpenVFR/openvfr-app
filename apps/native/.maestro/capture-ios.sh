@@ -34,13 +34,6 @@ runtime_for() {
         | sort_by(.version | split(".") | map(tonumber)) | last | .identifier'
 }
 
-status_bar() {
-  xcrun simctl status_bar "$1" override \
-    --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
-    --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 || \
-    echo "::warning::status_bar override failed (not supported on this device)"
-}
-
 # check_sizes <dir> <WxH> [<WxH>...]: every PNG must be one of the sizes.
 check_sizes() {
   local dir="$1"; shift
@@ -58,8 +51,10 @@ check_sizes() {
 # on a fixed port, Maestro told to use it (USE_XCODE_TEST_RUNNER) instead of
 # installing its own. The runner is started just after Maestro checks the
 # port is free and before it starts waiting for it (up to 120 s), then killed
-# when the flow ends. TEST_RUNNER_* variables reach the runner without the
-# prefix; MAESTRO_FOREGROUND_APP is the patch's foreground-app fallback.
+# when the flow ends. The patch's foreground-app fallback
+# (MAESTRO_FOREGROUND_APP) is pinned into the xctestrun by the workflow's
+# "Build patched Maestro iOS driver" step: TEST_RUNNER_* on the xcodebuild
+# command line did not reach the runner for it.
 run_flow() {
   local out="$1" udid="$2" duo="${3:-}" port=22087 status=0 runner=""
   if [ -z "$duo" ] || [ -z "${MAESTRO_DUO_XCTESTRUN:-}" ]; then
@@ -69,7 +64,7 @@ run_flow() {
   mkdir -p "$out/debug"
   (
     sleep 2
-    TEST_RUNNER_PORT=$port TEST_RUNNER_MAESTRO_FOREGROUND_APP=org.openvfr.app \
+    TEST_RUNNER_PORT=$port \
       xcodebuild test-without-building -xctestrun "$MAESTRO_DUO_XCTESTRUN" \
         -destination "id=$udid" -derivedDataPath "$(mktemp -d)" \
         > "$out/debug/patched-driver-xcodebuild.log" 2>&1

@@ -75,12 +75,15 @@ export function CompassButton({
   )
 }
 
+/** Edge of the round button, dp. */
+export const COMPASS_BUTTON_SIZE = 40
+
 function makeStyles(t: ScaledTheme) {
   return {
     btn: {
-      width:           40,
-      height:          40,
-      borderRadius:    20,
+      width:           COMPASS_BUTTON_SIZE,
+      height:          COMPASS_BUTTON_SIZE,
+      borderRadius:    COMPASS_BUTTON_SIZE / 2,
       backgroundColor: t.surfaceSheet,
       borderWidth:     1,
       borderColor:     t.borderDefault,

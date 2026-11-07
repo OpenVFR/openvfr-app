@@ -30,7 +30,7 @@ import type { StableTiming } from '@open-vfr/shared/alertStability'
 import { useStableItems } from '../hooks/useStableItems'
 import { useAlertLog } from '../hooks/useAlertLog'
 import { alertLogTime } from '@open-vfr/shared/alertLog'
-import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native'
+import { View, Text, TouchableOpacity } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
 import Animated, {
@@ -141,8 +141,9 @@ interface Props {
    *  which the map runs under while the control column keeps clear of it). */
   rightInset?:           number
   /** The map controls run as a row along the top (landscape, or a map too
-   *  short for the column): reserve their height instead of their width. */
-  controlsRow?:          boolean
+   *  short for the column): reserve their height instead of their width.
+   *  MapScreen owns that decision. */
+  controlsRow:           boolean
   /** Full cards to show before the rest become one-line chips (fewer on a
    *  short map, so the stack does not cover the profile below it). */
   maxCards?:             number
@@ -175,8 +176,7 @@ export function NotificationCenter({
   // Map control buttons sit above this stack (zIndex 50) on the right edge in
   // portrait and along the top in landscape. Reserve their space so cards are
   // never hidden underneath them.
-  const { width: winW, height: winH } = useWindowDimensions()
-  const controlsInset = (controlsRow ?? winW > winH)
+  const controlsInset = controlsRow
     ? { top: CONTROLS_SIZE + 24 + topInset, right: scaledTheme.space4 + rightInset }
     : { right: CONTROLS_SIZE + 24 + rightInset, top: scaledTheme.space2 + topInset }
 

@@ -18,7 +18,9 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { AppState } from 'react-native'
-import { addLocationListener, setLocationRequest, stopBackgroundLocation } from '../tasks/locationTask'
+import {
+  addLocationErrorListener, addLocationListener, setLocationRequest, stopBackgroundLocation,
+} from '../tasks/locationTask'
 import { GPS_REQUESTS, gpsTier, isMoving, type GpsFixLike, type GpsTier } from '@open-vfr/shared/gpsPolicy'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { mslAltitudeFromFix } from '@open-vfr/shared/gpsAltitude'
@@ -146,7 +148,11 @@ export function useGps(opts: { paused?: boolean } = {}): UseGpsResult {
     }
     setStatus('active')
 
-    unsubscribeRef.current = addLocationListener((loc) => {
+    // A dead watcher (provider switched off) must not leave the status 'active'
+    // with no fixes; the next fix flips it back.
+    const unsubscribeError = addLocationErrorListener(() => setStatus('unavailable'))
+    const unsubscribePosition = addLocationListener((loc) => {
+      setStatus((s) => (s === 'unavailable' ? 'active' : s))
       const lat = loc.coordinates.latitude
       const lng = loc.coordinates.longitude
       const speedKts = loc.speed != null ? loc.speed * 1.943844 : 0  // m/s -> kts
@@ -176,6 +182,7 @@ export function useGps(opts: { paused?: boolean } = {}): UseGpsResult {
       }
       setPosition((prev) => (prev && sameFix(prev, next) ? prev : next))
     })
+    unsubscribeRef.current = () => { unsubscribeError(); unsubscribePosition() }
   }, [applyTier])
 
   const setFlying = useCallback((flying: boolean) => {
