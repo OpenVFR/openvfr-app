@@ -150,9 +150,10 @@ export function useGps(opts: { paused?: boolean } = {}): UseGpsResult {
 
     // A dead watcher (provider switched off) must not leave the status 'active'
     // with no fixes; the next fix flips it back.
-    const unsubscribeError = addLocationErrorListener(() => setStatus('unavailable'))
+    let degraded = false
+    const unsubscribeError = addLocationErrorListener(() => { degraded = true; setStatus('unavailable') })
     const unsubscribePosition = addLocationListener((loc) => {
-      setStatus((s) => (s === 'unavailable' ? 'active' : s))
+      if (degraded) { degraded = false; setStatus('active') }  // only after an error: no state call per fix
       const lat = loc.coordinates.latitude
       const lng = loc.coordinates.longitude
       const speedKts = loc.speed != null ? loc.speed * 1.943844 : 0  // m/s -> kts
