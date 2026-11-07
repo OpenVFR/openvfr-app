@@ -12,7 +12,7 @@ import { ROUTE_SETTLE_MS } from '@open-vfr/shared/routeSettle'
 import { notamRegionsFor } from '@open-vfr/shared/notamRegionScope'
 import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
 import { useCountries } from '../hooks/useCountries'
-import { useRegionalNotams } from '../hooks/useRegionalNotams'
+import { useRegionalNotamsState } from '../hooks/useRegionalNotams'
 import { obstacleTipsForMsa } from '@open-vfr/shared/obstacleHeights'
 import { fetchTerrainProfileShared } from '@open-vfr/shared/terrainCache'
 import { useMefGrids } from '../hooks/useMefGrids'
@@ -169,7 +169,8 @@ export default function PreflightWarnings(props: Props) {
     () => notamRegionsFor({ selected: selectedRegions, route: waypoints }),
     [selectedRegions, waypoints],
   )
-  const regionalNotams = useRegionalNotams(waypoints.length >= 2, notamRegions)
+  const regional = useRegionalNotamsState(waypoints.length >= 2, notamRegions)
+  const regionalNotams = regional.notams
   const vfrNotams = useMemo(() => regionalNotams.filter((n) => !isIfrOnly(n)), [regionalNotams])
 
   const mefGrids = useMefGrids()
@@ -188,8 +189,9 @@ export default function PreflightWarnings(props: Props) {
     if (airspace.failed) u.airspace = 'failed'
     if (obstacles.failed || landmarks.failed) u.obstacles = 'failed'
     if (aerodromes.failed) u.aerodromes = 'failed'
+    if (regional.failed) u.notams = 'The NOTAM service could not be reached, so restricted areas created by NOTAM were not checked.'
     return u
-  }, [airspace.failed, obstacles.failed, landmarks.failed, aerodromes.failed])
+  }, [airspace.failed, obstacles.failed, landmarks.failed, aerodromes.failed, regional.failed])
 
   const warnings = useMemo<PreflightWarning[]>(() => {
     if (!profile) return []

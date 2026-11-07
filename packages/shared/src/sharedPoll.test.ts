@@ -45,4 +45,13 @@ describe('subscribePoll', () => {
     expect(fetcher.mock.calls.length).toBeGreaterThanOrEqual(3)
     off()
   })
+
+  it('reports a failed request to error listeners', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const onError = vi.fn()
+    const off = subscribePoll('k5', async () => { throw new Error('x') }, 1000, () => {}, onError)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onError).toHaveBeenCalledTimes(1)
+    off()
+  })
 })

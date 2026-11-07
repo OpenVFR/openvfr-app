@@ -25,19 +25,26 @@ const POLL_INTERVAL_MS = 5 * 60 * 1000 // 5 min -- server refreshes ~every 3.3 m
 const NO_NOTAMS: NotamItem[] = []
 
 export function useRegionalNotams(enabled: boolean, regions: string[]): NotamItem[] {
+  return useRegionalNotamsState(enabled, regions).notams
+}
+
+/** Like useRegionalNotams, plus `failed`: the latest request failed (cleared on the next success). */
+export function useRegionalNotamsState(enabled: boolean, regions: string[]): { notams: NotamItem[]; failed: boolean } {
   // Stable key: a new array with the same codes must not restart polling.
   const regionsKey = [...new Set(regions)].sort().join(',')
   const [notams, setNotams] = useState<NotamItem[]>(NO_NOTAMS)
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
-    if (!enabled) { setNotams((prev) => (prev.length ? NO_NOTAMS : prev)); return }
+    if (!enabled) { setNotams((prev) => (prev.length ? NO_NOTAMS : prev)); setFailed(false); return }
     return subscribePoll(
       `web-notam:${regionsKey}`,
       async () => (await fetchRegionalNotams(API_BASE_URL, undefined, undefined, regionsKey ? regionsKey.split(',') : undefined)).notams,
       POLL_INTERVAL_MS,
-      setNotams,
+      (d) => { setNotams(d); setFailed(false) },
+      () => setFailed(true),
     )
   }, [enabled, regionsKey])
 
-  return notams
+  return { notams, failed }
 }
