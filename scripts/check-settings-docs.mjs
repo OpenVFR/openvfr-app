@@ -136,7 +136,8 @@ expectIncludes('Terrain colour reference altitude', `Default ${ft(nativeVal('ter
 const tv = list('apps/web/src/db/useSettings.ts', 'TRAFFIC_VERT_FILTER_OPTIONS');
 const tvDefault = num(webDefault(/useState<TrafficVertFilter>\((\d+)\)/, 'traffic filter'));
 const tvText = tv.filter((n) => n > 0).map((n) => (n === tvDefault ? `${n.toLocaleString('en-US')} (default)` : n.toLocaleString('en-US'))).join(', ') + ' ft or all';
-expectIncludes('Traffic vertical filter (web)', tvText, 'options/default');
+expectIncludes('Traffic vertical filter', tvText, 'options/default');
+if (nativeVal('trafficVertFilterFt') !== tvDefault) fail('native trafficVertFilterFt default differs from web');
 
 // Sensors
 expectCell('Internal barometer', 1, nativeVal('useInternalBarometer') ? 'on' : 'off', 'default');
@@ -172,7 +173,7 @@ const covered = new Set([
   'theme', 'uiScale', 'autoFlyMode', 'autoZoom', 'recordSimulatedFlights', 'trajectoryMode', 'parkTimeoutSec',
   'airspaceWarnLookaheadMin', 'airspaceWarnVerticalFt', 'alertObstacles', 'alertAerodromes', 'alertAirspaceEvents',
   'alertSuppressOnCourse', 'msaMargins', 'airspaceCeilingFt', 'terrainColorRefAltFt', 'useInternalBarometer',
-  'showAltitudeAgl', 'showQnhOnPaltGauge', 'showLocalTime', 'showFlownTrail', 'qnhHpa', 'qnhAuto', 'varioAutoConnectId', 'units',
+  'showAltitudeAgl', 'showQnhOnPaltGauge', 'showLocalTime', 'showFlownTrail', 'trafficVertFilterFt', 'qnhHpa', 'qnhAuto', 'varioAutoConnectId', 'units',
   // Documented in prose / not a user-facing default:
   'homeAirfield', 'selectedAircraftId', 'alertAirspaceLevels', 'trajectoryNm', 'baroPromptSeen',
 ]);
