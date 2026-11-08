@@ -13,6 +13,12 @@ import css from './PasskeyPrompt.module.css'
 
 const PASSKEY_SUPPORTED = typeof window !== 'undefined' && 'PublicKeyCredential' in window
 
+/** The offer promises fingerprint / face / screen lock, so it needs a built-in authenticator, not just WebAuthn. */
+async function platformAuthenticatorAvailable(): Promise<boolean> {
+  try { return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable() }
+  catch { return false }
+}
+
 export default function PasskeyPrompt({ auth }: { auth: AuthState }) {
   const userId = auth.user?.id ?? null
   const [prompt, setPrompt] = useState<PasskeyPromptState | null>(null)
@@ -28,7 +34,12 @@ export default function PasskeyPrompt({ auth }: { auth: AuthState }) {
       let offer: PasskeyPromptState | null = null
       try {
         const saved = loadPromptState(userId)
-        if (shouldOfferPasskey(saved, Date.now()) && await fetchPasskeyAllowed() && (await listPasskeys()).length === 0) offer = saved
+        if (
+          shouldOfferPasskey(saved, Date.now()) &&
+          await platformAuthenticatorAvailable() &&
+          await fetchPasskeyAllowed() &&
+          (await listPasskeys()).length === 0
+        ) offer = saved
       } catch { /* offline or unexpected: stay silent */ }
       if (!alive) return          // aborted before deciding: leave the flag for the next run
       consumeOtpSignIn()
