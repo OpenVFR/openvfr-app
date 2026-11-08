@@ -13,7 +13,7 @@
 
 import React, { memo } from 'react'
 import { StyleSheet, View, useWindowDimensions } from 'react-native'
-import { ReservedRegionsProvider, useReservedRegions } from 'react-native-reserved-regions'
+import { useReservedRegions } from 'react-native-reserved-regions'
 
 // Dark at the top edge, clear at the bottom: the status icons stay legible
 // without a visible band edge across the map.
@@ -50,10 +50,11 @@ function Band({ height }: { height: number }) {
 // Memoised: MapScreen re-renders on every GPS tick and the only prop is a number.
 export const StatusScrim = memo(function StatusScrim({ height }: { height: number }) {
   if (height <= 0) return null
+  // Needs a ReservedRegionsProvider above it (MapScreen's).
   return (
-    <ReservedRegionsProvider pointerEvents="none" style={styles.provider}>
+    <View pointerEvents="none" style={styles.provider}>
       <Band height={height} />
-    </ReservedRegionsProvider>
+    </View>
   )
 })
 

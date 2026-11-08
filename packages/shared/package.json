@@ -81,6 +81,7 @@
     "./gpsTypes":  "./src/gpsTypes.ts",
     "./geoid":     "./src/geoid.ts",
     "./gpsAltitude": "./src/gpsAltitude.ts",
+    "./reservedRegions": "./src/reservedRegions.ts",
     "./gpsAltitudeReference": "./src/gpsAltitudeReference.ts",
     "./sunCalc":   "./src/sunCalc.ts",
     "./fetchWind": "./src/fetchWind.ts",

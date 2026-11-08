@@ -139,6 +139,8 @@ import IconZoomScan from '@tabler/icons-react-native/IconZoomScan'
 import IconListDetails from '@tabler/icons-react-native/IconListDetails'
 import { MapToolbar, type ToolGroupDef } from '../components/MapToolbar'
 import { StatusScrim } from '../components/StatusScrim'
+import { ReservedRegionsProvider, useReservedRegions } from 'react-native-reserved-regions'
+import { occlusionBottomOver } from '@open-vfr/shared/reservedRegions'
 import { MAP_INFO_BAR_BOTTOM_MARGIN, MAP_INFO_BAR_H, MAP_INFO_BAR_GAP } from '../components/MapInfoBar'
 import { Location } from 'expo-location/next'
 import * as Crypto from 'expo-crypto'
@@ -236,8 +238,19 @@ const NO_LEG_OVERRIDES: never[] = []
 export function MapScreen() {
   const { country, ready } = useActiveCountry()
   if (!ready) return null
-  return <MapScreenForCountry key={country} />
+  // One provider over the whole screen: its frames share the map screen's
+  // coordinate space (status block, camera and fold on iPhone Duo).
+  return (
+    <ReservedRegionsProvider pointerEvents="box-none" style={{ flex: 1 }}>
+      <MapScreenForCountry key={country} />
+    </ReservedRegionsProvider>
+  )
 }
+
+/** Width of the right-hand control column (an icon button) and how far down from the top
+ *  a reserved region still counts as "in the way" of it, dp. */
+const CONTROL_COLUMN_W = 48
+const TOP_ZONE_H = 240
 
 function MapScreenForCountry() {
   const scaledTheme = useScaledTheme()
@@ -525,7 +538,6 @@ function MapScreenForCountry() {
   // that fixed upper-right point -- rather than bottom-anchored and growing
   // upward, which put the topmost (first) button at a height that shifted
   // whenever the bottom stack (profile/gauges) changed size.
-  const topRightTopOffset = insets.top + scaledTheme.space2
   // Absolutely positioned overlays are placed from the container's edge, not
   // inside its safe-area padding, so add the side insets themselves (notches
   // in landscape). The top-right buttons sit in the clock's row, so they also
@@ -533,6 +545,15 @@ function MapScreenForCountry() {
   // (useContentInsets).
   const edgeLeft  = insets.left + scaledTheme.space2
   const edgeRight = insets.right + insets.railRight + scaledTheme.space2
+  // Where the controls start: below the status bar (top inset) and below any
+  // reserved region in their way (iOS 27.1: the status block / Dynamic Island,
+  // which grows with a Live Activity, and the camera cut-out).
+  const reservedRegions = useReservedRegions()
+  const controlsX1 = windowWidth - edgeRight
+  const topRightTopOffset = Math.max(
+    insets.top,
+    occlusionBottomOver(reservedRegions, controlsX1 - CONTROL_COLUMN_W, controlsX1, TOP_ZONE_H),
+  ) + scaledTheme.space2
   // Portrait: cap how far the column can grow down so it never reaches the
   // profile/gauges stack at the true screen bottom; scrolls if it would.
   const topRightBottomOffset = bottomStackH + 8 + 24 + scaledTheme.space2
