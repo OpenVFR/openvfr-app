@@ -45,15 +45,6 @@ export const TILE_BASE: string =
   (isStaging && STAGING.tileBase) ||
   (process.env.EXPO_PUBLIC_TILE_BASE ?? '') || `${API_BASE}/tiles`
 
-/** Optional public web-app URL (e.g. `https://example.org/`). When set,
- *  shared aerodrome links point at the web app -- openable by anyone, and
- *  the web app understands the same `?ad=` params. When unset, links use
- *  the app's own `openvfr://` scheme (only openable where the app is
- *  installed). Override via EXPO_PUBLIC_WEB_BASE. */
-export const WEB_BASE: string = isStaging
-  ? STAGING.webBase
-  : process.env.EXPO_PUBLIC_WEB_BASE ?? ''
-
 /** Optional URL of the operator notices document (planned maintenance,
  *  outages; @open-vfr/shared/systemMessages), hosted apart from the api so it
  *  stays reachable when the api is down. Empty = no notices.

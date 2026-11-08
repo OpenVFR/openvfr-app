@@ -108,7 +108,7 @@ The compass button shows where north is. In flying mode, tapping it cycles
 **North up**, **Track up**, and **Course up** (when the route has a leg).
 Off flying mode, it re-aligns a rotated map to north.
 
-## Share a link
+## Open a link
 
 A link can open the app on an aerodrome (`?ad=ESSB`) or at a position
 (`?c=5939N01756E&z=11`). Malformed parts of a link are ignored.

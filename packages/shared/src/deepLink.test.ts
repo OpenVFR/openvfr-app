@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseMapLink, hasMapLink, stripMapLinkParams, buildAerodromeLink, buildPositionLink } from './deepLink'
+import { parseMapLink, hasMapLink, stripMapLinkParams } from './deepLink'
 
 describe('parseMapLink', () => {
   it('aerodrome', () => {
@@ -23,18 +23,7 @@ describe('parseMapLink', () => {
   })
 })
 
-describe('link building / stripping', () => {
-  it('round-trips aerodrome', () => {
-    const url = buildAerodromeLink('https://example.org/app/?foo=1', 'essb')
-    expect(url).toBe('https://example.org/app/?ad=ESSB')
-    expect(parseMapLink(new URL(url).search)).toEqual({ ad: 'ESSB' })
-  })
-  it('round-trips position', () => {
-    const url = buildPositionLink('https://example.org/', 59.123456, 18.654321, 11.26)
-    const l = parseMapLink(new URL(url).search)
-    expect(l.center).toEqual({ lat: 59.12346, lng: 18.65432 })
-    expect(l.zoom).toBe(11.3)
-  })
+describe('link stripping', () => {
   it('strips only owned params', () => {
     expect(stripMapLinkParams('https://example.org/?ad=ESSB&z=9&keep=1#h')).toBe('https://example.org/?keep=1#h')
   })

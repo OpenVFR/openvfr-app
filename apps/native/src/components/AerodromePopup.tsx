@@ -15,7 +15,7 @@
 import React, { useEffect, useState } from 'react'
 import { Ionicons } from '@expo/vector-icons'
 import {
-  View, Text, ScrollView, TouchableOpacity, Share,
+  View, Text, ScrollView, TouchableOpacity,
 } from 'react-native'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { computeRunwayWind, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
@@ -29,15 +29,7 @@ import { deriveWxDisplay } from '../utils/deriveWxDisplay'
 import { Section, FR_COLOR } from './AerodromeBriefShared'
 import AerodromeWxSection from './AerodromeWxSection'
 import AerodromeNotamSection, { useNotamLists } from './AerodromeNotamSection'
-import { buildAerodromeLink } from '@open-vfr/shared/deepLink'
 import { NativeSheet } from './NativeSheet'
-import { WEB_BASE } from '../config'
-
-/** Link that opens this aerodrome: the web app when WEB_BASE is configured
- *  (openable by anyone), else the app's own scheme. */
-function aerodromeShareUrl(icao: string): string {
-  return buildAerodromeLink(WEB_BASE || 'openvfr://map', icao)
-}
 
 interface Frequency {
   service:  string
@@ -285,19 +277,6 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
               >
                 <Ionicons name={routeAction.icon} size={14} color="#0b1220" />
                 <Text style={styles.routeActionTxt}>{routeAction.short}</Text>
-              </TouchableOpacity>
-            )}
-            {!!feature.icao && (
-              <TouchableOpacity
-                onPress={() => {
-                  const url = aerodromeShareUrl(feature.icao)
-                  // `message` carries the URL too: Android ignores `url`.
-                  Share.share({ title: `${feature.icao} ${feature.name}`.trim(), message: [`${feature.icao} ${feature.name}`.trim(), url].join('\n'), url }).catch(() => {})
-                }}
-                style={styles.closeBtn}
-                accessibilityLabel="Share link to this aerodrome"
-              >
-                <Ionicons name="share-outline" size={20} color={theme.textMuted} />
               </TouchableOpacity>
             )}
             {!!feature.icao && (

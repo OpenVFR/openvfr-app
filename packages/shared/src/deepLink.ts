@@ -1,5 +1,5 @@
 /**
- * Shareable map links: parse/build the query-string state that lets a link
+ * Shareable map links: parse the query-string state that lets a link
  * open the app directly on an aerodrome or a map position.
  *
  *   ?ad=ESSB                 open aerodrome ESSB (fly there + details)
@@ -55,21 +55,5 @@ export const MAP_LINK_PARAMS = ['ad', 'c', 'z'] as const
 export function stripMapLinkParams(url: string): string {
   const u = new URL(url)
   for (const k of MAP_LINK_PARAMS) u.searchParams.delete(k)
-  return u.toString()
-}
-
-/** `baseUrl` = app origin + path, e.g. `${location.origin}${location.pathname}`. */
-export function buildAerodromeLink(baseUrl: string, icao: string): string {
-  const u = new URL(baseUrl)
-  u.search = ''
-  u.searchParams.set('ad', icao.toUpperCase())
-  return u.toString()
-}
-
-export function buildPositionLink(baseUrl: string, lat: number, lng: number, zoom?: number): string {
-  const u = new URL(baseUrl)
-  u.search = ''
-  u.searchParams.set('c', `${lat.toFixed(5)},${lng.toFixed(5)}`)
-  if (zoom !== undefined) u.searchParams.set('z', String(Math.round(zoom * 10) / 10))
   return u.toString()
 }

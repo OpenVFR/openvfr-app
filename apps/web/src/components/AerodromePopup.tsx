@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import css from './AerodromePopup.module.css'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
-import { buildAerodromeLink } from '@open-vfr/shared/deepLink'
 import { fetchWxResolved, decodeMetar, parseMetarWind, parseMetarClouds, type WxResolved, type WxStationCandidate, type ParsedWind } from '../utils/fetchWx'
 import { fetchAmbientWx, type AmbientWx } from '@open-vfr/shared/fetchWind'
 import { parseTaf, tafChangeSoon, type TafPeriod } from '@open-vfr/shared/parseTaf'
@@ -93,41 +92,6 @@ export interface AerodromeFeatureProps {
   hours_of_operation?: HoursEntry[]
   handling_facilities?: string[]
   passenger_facilities?: string[]
-}
-
-/** Share (native share sheet) or copy a link that opens this aerodrome.
- *  navigator.share rejects with AbortError when the user cancels the sheet
- *  -- that's not a failure, so no clipboard fallback in that case. */
-function ShareAerodromeButton({ icao, name }: { icao: string; name: string }) {
-  const [copied, setCopied] = useState(false)
-  if (!icao) return null
-  const onShare = async () => {
-    const url = buildAerodromeLink(`${window.location.origin}${window.location.pathname}`, icao)
-    if (typeof navigator.share === 'function') {
-      try { await navigator.share({ title: `${icao} ${name}`.trim(), url }); return }
-      catch (e) { if ((e as DOMException)?.name === 'AbortError') return }
-    }
-    try {
-      await navigator.clipboard.writeText(url)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch { /* clipboard blocked (insecure context / permissions) */ }
-  }
-  return (
-    <button
-      className={css.homeBtn}
-      onClick={onShare}
-      title={copied ? 'Link copied' : 'Share link to this aerodrome'}
-      aria-label="Share link to this aerodrome"
-    >
-      {copied ? '✓' : (
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-          <line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/>
-        </svg>
-      )}
-    </button>
-  )
 }
 
 interface Props {
@@ -647,8 +611,7 @@ export default function AerodromePopup({
               <div className={css.notamHint}>⏰ Active NOTAM may have changed opening hours — check NOTAMs tab</div>
             )}
           </div>
-          <ShareAerodromeButton icao={p.icao} name={p.name} />
-          <button
+                    <button
             className={`${css.homeBtn} ${isHome ? css.homeBtnActive : ''}`}
             onClick={() => onSetHome(p.icao, p.name, lng, lat)}
             title={isHome ? 'Home airfield' : 'Set as home airfield'}

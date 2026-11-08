@@ -28,7 +28,6 @@ export const STAGING = {
   tileBase:    trimUrl(process.env.EXPO_PUBLIC_STAGING_TILE_BASE),
   /** Empty = the staging api. */
   trafficBase: trimUrl(process.env.EXPO_PUBLIC_STAGING_TRAFFIC_BASE),
-  webBase:     trimUrl(process.env.EXPO_PUBLIC_STAGING_WEB_BASE),
   /** Operator notices document for this backend (empty = none). */
   statusUrl:   (process.env.EXPO_PUBLIC_STAGING_STATUS_URL ?? '').trim(),
 } as const

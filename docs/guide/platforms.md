@@ -34,7 +34,7 @@ Legend: **Yes** = available, **Partial** = available with differences
 | UI scale | No | Yes | Native setting. |
 | Country / region selection | Yes | Yes | Web: region selector. Native: Country section in Settings. |
 | Offline use | Partial | Partial | Web caches in the browser. Native has an Offline data section in Settings. See below. |
-| Share link to an aerodrome or position | Yes | Yes | |
+| Open a link to an aerodrome or position | Yes | Yes | `?ad=` / `?c=` links open the app on that place. |
 
 ## Planning
 

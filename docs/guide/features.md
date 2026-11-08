@@ -14,7 +14,7 @@ see [Web app and native app](./platforms.md).
 - Aerodromes, runways, navaids, reporting points, VFR waypoints, obstacles, landmarks, your places.
 - Terrain: land use, hillshade, contour lines, terrain colour.
 - Wind arrows. Air traffic. [Air traffic](./air-traffic.md)
-- Search by name, coordinate or bearing and distance, and share links.
+- Search by name, coordinate or bearing and distance, and open links that point at an aerodrome or position.
 - Ruler, compass and orientation, map info bar and credits.
 - What's here (web) and the tap popover (native).
 
