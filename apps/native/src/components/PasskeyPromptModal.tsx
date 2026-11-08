@@ -8,6 +8,8 @@ import { Modal, View, Text, TouchableOpacity, ActivityIndicator } from 'react-na
 import { Ionicons } from '@expo/vector-icons'
 import { shouldOfferPasskey, canOfferNever, type PasskeyPromptState } from '@open-vfr/shared/passkeyPrompt'
 import { useAuthContext } from '../context/AuthContext'
+import { useSettingsContext } from '../context/SettingsContext'
+import { useInternalBarometer } from '../hooks/useInternalBarometer'
 import { API_BASE } from '../config'
 import { authHeaders } from '../utils/authClient'
 import { listPasskeys } from '../utils/passkeyNative'
@@ -17,6 +19,13 @@ import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 export function PasskeyPromptModal() {
   const { state, registerPasskey, passkeySupported } = useAuthContext()
   const styles = useThemedStyles(makeStyles)
+  // First run shows the barometer offer too; never stack two sheets. Wait until
+  // it is answered or the device has no sensor.
+  const { settings, loaded } = useSettingsContext()
+  const baro = useInternalBarometer(false)
+  const baroOfferPending =
+    !loaded || baro.availability === 'checking' ||
+    (!settings.baroPromptSeen && !settings.useInternalBarometer && baro.availability === 'available')
   const userId = state.status === 'authenticated' ? state.user.id : null
   const [prompt, setPrompt] = useState<PasskeyPromptState | null>(null)
   const [busy, setBusy] = useState(false)
@@ -40,7 +49,7 @@ export function PasskeyPromptModal() {
     return () => { alive = false }
   }, [userId, passkeySupported])
 
-  if (!prompt || !userId) return null
+  if (!prompt || !userId || baroOfferPending) return null
 
   const close = (never = false) => {
     if (!done) void recordDismissal(userId, prompt, never)
