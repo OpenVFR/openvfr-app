@@ -16,7 +16,10 @@ You sign in with:
    if the app is closed while you fetch the code from your mail app, reopen it
    and enter the same code.
 
-After signing in with a code you can register a passkey from your profile.
+After signing in with a code, OpenVFR offers to set up a passkey so the next
+sign-in is one tap. Choosing **Not now** asks again at the next code sign-in,
+then at most once a month; from the second time there is also **Don't ask
+again**. You can add a passkey at any time from your profile.
 On first sign-in you also choose a display name.
 
 There is no password and no payment.

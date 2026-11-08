@@ -13,6 +13,7 @@ import { createAuthClient } from 'better-auth/client'
 import { emailOTPClient }   from 'better-auth/client/plugins'
 import { passkeyClient }    from '@better-auth/passkey/client'
 import { API_BASE_URL } from '../utils/env'
+import { markOtpSignIn, consumeOtpSignIn } from '../utils/passkeyPrompt'
 import { flagWipeOnSignOut } from '../db/userScope'
 import { flushBeforeSignOut, stopCloudSync } from '../sync/cloudSync'
 
@@ -130,7 +131,10 @@ export function useAuth(): AuthState {
   const signInOtp = useCallback(async (email: string, otp: string) => {
     const result = await authClient.signIn.emailOtp({ email, otp })
     if (result.error) throw new Error(result.error.message ?? 'Invalid code')
+    // Flag before the session refresh: the offer mounts as soon as the user is set.
+    markOtpSignIn()
     if (!(await refreshSession(true))) {
+      consumeOtpSignIn()
       throw new Error('Code accepted, but the browser did not keep the session. Check that cookies are allowed for the API host and that the app and API share a domain.')
     }
   }, [refreshSession])

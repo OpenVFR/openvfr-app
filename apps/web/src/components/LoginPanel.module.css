@@ -51,50 +51,11 @@
   margin: 4px 0 0;
 }
 
-.divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-}
-
-.divider::before,
-.divider::after {
-  content: '';
-  flex: 1;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--border-strong);
-}
-
-/* Passkey block: button + hint directly beneath it */
-.passkeyBlock {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.passkeyHint {
-  font-size: 11px;
-  color: var(--text-faint);
-  text-align: center;
-  line-height: 1.4;
-}
-
 .keyIcon {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
   color: var(--accent-yellow);
-}
-
-.emailStack {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
 }
 
 .emailRow {
@@ -310,4 +271,65 @@
 
 .footer a:hover {
   color: var(--text-secondary);
+}
+
+/* Passkey-first layout: "or" line, email field with a send arrow, sponsor credit */
+
+.orText {
+  margin: -6px 0 0;
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+.sendBtn {
+  flex-shrink: 0;
+  width: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent-blue);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.sendBtn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.sendBtn:focus-visible {
+  outline: 2px solid var(--accent-blue-bright);
+  outline-offset: 2px;
+}
+
+.sendBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.sponsor {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.sponsor img {
+  border-radius: 50%;
+}
+
+.sponsor strong {
+  color: #fff500;
+  font-weight: 600;
+}
+
+.sponsor:hover span {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }

@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
+import { SPONSOR } from '@open-vfr/shared/sponsor'
 import { shouldAutoSubmitOtp } from '@open-vfr/shared/otpAutoSubmit'
 import type { AuthState } from '../hooks/useAuth'
 import { SITE_BASE_URL } from '../utils/env'
@@ -190,28 +191,24 @@ export default function LoginPanel({ auth }: Props) {
           <>
         {PASSKEY_SUPPORTED && (
           <>
-            {/* Passkey — primary */}
-            <div className={styles.passkeyBlock}>
-              <button
-                className={styles.btnOutline}
-                onClick={() => void handlePasskey()}
-                disabled={busy}
-              >
-                <svg className={styles.keyIcon} viewBox="0 0 24 24" aria-hidden="true">
-                  <path fill="currentColor" d="M7 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm5.65-4A6 6 0 1 0 12.65 14H17v4h4v-4h2v-4H12.65Z" />
-                </svg>
-                Sign in with passkey
-              </button>
-              <p className={styles.passkeyHint}>Needs a passkey set up on this device.</p>
-            </div>
-
-            <div className={styles.divider}>OR</div>
+            {/* Passkey first: one tap, no typing */}
+            <button
+              className={styles.btnOutline}
+              onClick={() => void handlePasskey()}
+              disabled={busy}
+            >
+              <svg className={styles.keyIcon} viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="currentColor" d="M7 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm5.65-4A6 6 0 1 0 12.65 14H17v4h4v-4h2v-4H12.65Z" />
+              </svg>
+              Sign in with passkey
+            </button>
+            {step === 'email' && <p className={styles.orText}>or get a code by email</p>}
           </>
         )}
 
-        {/* Email OTP — fallback, two steps */}
+        {/* Email code: field with a send arrow, then the code step */}
         {step === 'email' ? (
-          <div className={styles.emailStack}>
+          <div className={styles.emailRow}>
             <input
               className={styles.emailInput}
               type="email"
@@ -224,11 +221,15 @@ export default function LoginPanel({ auth }: Props) {
               disabled={busy}
             />
             <button
-              className={styles.btnOutline}
+              className={styles.sendBtn}
               onClick={() => void handleSendOtp()}
               disabled={busy || !email.trim()}
+              aria-label="Send sign-in code"
+              title="Send sign-in code"
             >
-              Continue with email
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                <path fill="currentColor" d="M12 4l-1.4 1.4 5.6 5.6H4v2h12.2l-5.6 5.6L12 20l8-8z" />
+              </svg>
             </button>
           </div>
         ) : (
@@ -298,6 +299,11 @@ export default function LoginPanel({ auth }: Props) {
             Sign in once — your routes, aircraft, and settings sync across all your devices.
           </p>
         )}
+
+        <a className={styles.sponsor} href={SPONSOR.url} target="_blank" rel="noopener noreferrer">
+          <img src="/sponsor-sgk.png" alt="" width={22} height={22} />
+          <span>Supported by <strong>{SPONSOR.name}</strong> ›</span>
+        </a>
 
         {SITE_BASE_URL && (
           <nav className={styles.footer} aria-label="Legal">

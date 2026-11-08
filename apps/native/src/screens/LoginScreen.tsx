@@ -18,6 +18,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { SPONSOR } from '@open-vfr/shared/sponsor'
 import { shouldAutoSubmitOtp } from '@open-vfr/shared/otpAutoSubmit'
 import { useAuthContext } from '../context/AuthContext'
 import { SITE_BASE } from '../config'
@@ -240,7 +241,7 @@ export function LoginScreen() {
 
         {!restartPending && !needsName && step === 'choose' && (
           <>
-            {/* ── Passkey (hidden when the OS has no passkey support) ── */}
+            {/* ── Passkey first: one tap, no typing (hidden when the OS has no passkey support) ── */}
             {passkeySupported && (<>
             <TouchableOpacity
               style={[styles.btn, styles.btnSecondary, busy && styles.btnDisabled]}
@@ -251,55 +252,49 @@ export function LoginScreen() {
               disabled={busy}
             >
               <View style={styles.btnRow}>
-                <Ionicons name="key" size={22} color="#FACC15" />
-                <Text style={styles.btnText} numberOfLines={1} adjustsFontSizeToFit>
-                  Sign in with passkey
-                </Text>
+                <Ionicons name="key" size={22} color={theme.accentBlue} />
+                <Text style={styles.btnText} numberOfLines={1} adjustsFontSizeToFit>Sign in with passkey</Text>
               </View>
             </TouchableOpacity>
-            <Text style={styles.hint} numberOfLines={1} adjustsFontSizeToFit>
-              Needs a passkey set up on this device.
-            </Text>
-
-            <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>OR</Text>
-              <View style={styles.dividerLine} />
-            </View>
+            <Text style={styles.orText}>or get a code by email</Text>
             </>)}
 
-            {/* ── Email OTP ────────────────────────────────────────── */}
-            <TextInput
-              style={styles.input}
-              testID="login-email"
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Email address"
-              accessibilityLabel="Email address"
-              placeholderTextColor={theme.textFaint}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="email"
-              textContentType="emailAddress"
-              returnKeyType="send"
-              onSubmitEditing={handleSendOtp}
-              // Both inputs: a focus selects the old value so typing replaces
-              // it, and iOS shows its clear button. Besides the UX, the store
-              // screenshot flow (apps/native/.maestro/login.yaml) relies on the
-              // clear button: its erase command only deletes backwards from
-              // the caret, which a tap into the field puts mid-text.
-              selectTextOnFocus
-              clearButtonMode="while-editing"
-            />
-            <TouchableOpacity
-              style={[styles.btn, styles.btnSecondary, (busy || !email.trim()) && styles.btnDisabled]}
-              testID="login-send-otp"
-              onPress={handleSendOtp}
-              disabled={busy || !email.trim()}
-            >
-              <Text style={styles.btnText}>Continue with email</Text>
-            </TouchableOpacity>
+            {/* ── Email OTP: field with a send arrow ───────────────── */}
+            <View style={styles.emailRow}>
+              <TextInput
+                style={[styles.input, styles.emailInput]}
+                testID="login-email"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="Email address"
+                accessibilityLabel="Email address"
+                placeholderTextColor={theme.textFaint}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="email"
+                textContentType="emailAddress"
+                returnKeyType="send"
+                onSubmitEditing={handleSendOtp}
+                // Both inputs: a focus selects the old value so typing replaces
+                // it, and iOS shows its clear button. Besides the UX, the store
+                // screenshot flow (apps/native/.maestro/login.yaml) relies on the
+                // clear button: its erase command only deletes backwards from
+                // the caret, which a tap into the field puts mid-text.
+                selectTextOnFocus
+                clearButtonMode="while-editing"
+              />
+              <TouchableOpacity
+                style={[styles.sendBtn, (busy || !email.trim()) && styles.btnDisabled]}
+                testID="login-send-otp"
+                accessibilityRole="button"
+                accessibilityLabel="Send sign-in code"
+                onPress={handleSendOtp}
+                disabled={busy || !email.trim()}
+              >
+                <Ionicons name="arrow-forward" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
           </>
         )}
 
@@ -355,17 +350,25 @@ export function LoginScreen() {
         )}
 
       </View>
-      {!!SITE_BASE && (
       <View style={styles.footer}>
-        <Text style={styles.footerLink} onPress={() => Linking.openURL(`${SITE_BASE}/privacy`)}>
-          Privacy
-        </Text>
-        <Text style={styles.footerDot}>·</Text>
-        <Text style={styles.footerLink} onPress={() => Linking.openURL(`${SITE_BASE}/terms`)}>
-          Terms & Disclaimer
-        </Text>
+        <TouchableOpacity style={styles.sponsorRow} onPress={() => Linking.openURL(SPONSOR.url)} accessibilityRole="link" accessibilityLabel={`Supported by ${SPONSOR.name}`}>
+          <Image source={require('../../assets/sponsor-sgk.png')} style={styles.sponsorLogo} />
+          <Text style={styles.sponsorText}>
+            Supported by <Text style={styles.sponsorName}>{SPONSOR.name}</Text> {'\u203a'}
+          </Text>
+        </TouchableOpacity>
+        {!!SITE_BASE && (
+        <View style={styles.footerLinks}>
+          <Text style={styles.footerLink} onPress={() => Linking.openURL(`${SITE_BASE}/privacy`)}>
+            Privacy
+          </Text>
+          <Text style={styles.footerDot}>·</Text>
+          <Text style={styles.footerLink} onPress={() => Linking.openURL(`${SITE_BASE}/terms`)}>
+            Terms & Disclaimer
+          </Text>
+        </View>
+        )}
       </View>
-      )}
       </View>
     </View>
   )
@@ -425,6 +428,26 @@ function makeStyles(theme: ScaledTheme) {
     color:             theme.textPrimary,
     fontSize:          theme.textSm,
   },
+  emailRow: {
+    flexDirection: 'row',
+    alignItems:    'stretch',
+    gap:           theme.space2,
+  },
+  emailInput: {
+    flex: 1,
+  },
+  sendBtn: {
+    backgroundColor: theme.accentBlue,
+    borderRadius:    theme.radiusMd,
+    minWidth:        56,
+    alignItems:      'center',
+    justifyContent:  'center',
+  },
+  orText: {
+    color:     theme.textFaint,
+    fontSize:  theme.textXs,
+    textAlign: 'center',
+  },
   otpInput: {
     textAlign:    'center',
     fontSize:     theme.textXl,
@@ -460,25 +483,6 @@ function makeStyles(theme: ScaledTheme) {
     fontSize:   theme.textSm,
     fontWeight: '600',
   },
-  dividerRow: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    gap:            theme.space3,
-    marginVertical: theme.space3,
-  },
-  dividerLine: {
-    flex:            1,
-    height:          2,
-    borderRadius:    1,
-    backgroundColor: theme.textFaint,
-    opacity:         0.6,
-  },
-  dividerText: {
-    color:         theme.textSecondary,
-    fontSize:      theme.textSm,
-    fontWeight:    '700',
-    letterSpacing: 2,
-  },
   backBtn: {
     alignItems: 'center',
     padding:    theme.space2,
@@ -497,18 +501,40 @@ function makeStyles(theme: ScaledTheme) {
     fontSize:  theme.textXs,
     textAlign: 'center',
   },
-  hint: {
-    color:     theme.textFaint,
-    fontSize:  theme.textXs,
-    textAlign: 'center',
-    marginTop: -theme.space1,
-  },
   footer: {
+    alignItems: 'center',
+    gap:        theme.space1,
+    marginTop:  theme.space3,
+  },
+  footerLinks: {
     flexDirection:  'row',
     justifyContent: 'center',
     alignItems:     'center',
     gap:            theme.space2,
-    marginTop:      theme.space3,
+  },
+  sponsorRow: {
+    flexDirection: 'row',
+    alignItems:    'center',
+    gap:           theme.space2,
+    padding:       theme.space1,
+  },
+  sponsorLogo: {
+    width:        theme.textXs * 2,
+    height:       theme.textXs * 2,
+    borderRadius: theme.textXs,
+  },
+  sponsorText: {
+    color:    theme.textSecondary,
+    fontSize: theme.textXs,
+  },
+  sponsorName: {
+    color:      '#FFF500',
+    fontWeight: '600',
+  },
+  passkeyText: {
+    color:    theme.textSecondary,
+    fontSize: theme.textSm,
+    fontWeight: '600',
   },
   footerLink: {
     color:              theme.textMuted,

@@ -38,6 +38,7 @@ import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from './styl
 import { useForceUpdate } from './hooks/useForceUpdate'
 import { UpdateRequired } from './components/UpdateRequired'
 import { EnvironmentBanner, useEnvironmentDeepLink } from './components/EnvironmentSwitch'
+import { PasskeyPromptModal } from './components/PasskeyPromptModal'
 import { SystemMessages } from './components/SystemMessages'
 
 function AppShell() {
@@ -66,6 +67,7 @@ function AppShell() {
         )}
         {(state.status === 'unauthenticated' || (state.status === 'authenticated' && !state.user.name)) && <LoginScreen />}
         {state.status === 'authenticated' && !!state.user.name && <AppNavigator />}
+        {state.status === 'authenticated' && !!state.user.name && <PasskeyPromptModal />}
         <SystemMessages />
         <EnvironmentBanner />
       </SafeAreaProvider>

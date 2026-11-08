@@ -1,0 +1,78 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.card {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  padding: 24px;
+  width: min(380px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: center;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--accent-red);
+}
+
+.primary,
+.secondary {
+  min-height: 44px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary {
+  border: none;
+  background: var(--accent-blue);
+  color: #fff;
+}
+
+.secondary {
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.primary:disabled,
+.secondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.never {
+  background: none;
+  border: none;
+  padding: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}

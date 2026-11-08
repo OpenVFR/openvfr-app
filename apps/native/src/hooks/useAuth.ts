@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authClient } from '../utils/authClient'
 import { getSessionToken, clearSessionToken } from '../utils/sessionToken'
 import * as Device from 'expo-device'
+import { markOtpSignIn } from '../utils/passkeyPrompt'
 import { passkeySignIn, passkeyRegister, isPasskeySupported } from '../utils/passkeyNative'
 import { claimLocalData, wipePrivateLocalData } from '../utils/userScope'
 import { stopCloudSync } from '../sync/cloudSync'
@@ -146,6 +147,7 @@ export function useAuth() {
     if (data?.user) {
       console.log('[auth] signed in as', data.user.email)
       await claimLocalData(data.user.id)
+      markOtpSignIn()
       setState({
         status: 'authenticated',
         user: { id: data.user.id, email: data.user.email, name: data.user.name ?? null },

@@ -54,6 +54,7 @@
     "./flightLogRoute": "./src/flightLogRoute.ts",
     "./parkTimeout": "./src/parkTimeout.ts",
     "./otpAutoSubmit": "./src/otpAutoSubmit.ts",
+    "./passkeyPrompt": "./src/passkeyPrompt.ts",
     "./appEnvironment": "./src/appEnvironment.ts",
     "./systemMessages": "./src/systemMessages.ts",
     "./terrainDem": "./src/terrainDem.ts",
