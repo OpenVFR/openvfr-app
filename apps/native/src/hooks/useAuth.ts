@@ -19,6 +19,7 @@ import { getSessionToken, clearSessionToken } from '../utils/sessionToken'
 import * as Device from 'expo-device'
 import { markOtpSignIn, consumeOtpSignIn } from '@open-vfr/shared/passkeyPrompt'
 import { passkeySignIn, passkeyRegister, isPasskeySupported } from '../utils/passkeyNative'
+import { clearPendingOtp } from '../utils/pendingOtp'
 import { claimLocalData, wipePrivateLocalData } from '../utils/userScope'
 import { stopCloudSync } from '../sync/cloudSync'
 
@@ -148,6 +149,7 @@ export function useAuth() {
       console.log('[auth] signed in as', data.user.email)
       await claimLocalData(data.user.id)
       markOtpSignIn()
+      void clearPendingOtp()
       setState({
         status: 'authenticated',
         user: { id: data.user.id, email: data.user.email, name: data.user.name ?? null },
@@ -170,6 +172,7 @@ export function useAuth() {
       console.log('[auth] signed in via passkey as', res.user.email)
       await claimLocalData(res.user.id)
       await AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(res.user)).catch(() => {})
+      void clearPendingOtp()
       setState({ status: 'authenticated', user: res.user })
     }
     return true
@@ -205,6 +208,7 @@ export function useAuth() {
       // A code sign-in that never reached the offer (signed out before naming the
       // account) must not hand its offer to whoever signs in next.
       consumeOtpSignIn()
+      void clearPendingOtp()
       // Offline (or the server failing) must not block signing out locally:
       // a rejected request used to skip everything below, leaving the token
       // and this account's private data on the device.

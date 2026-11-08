@@ -30,8 +30,7 @@ import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../sty
 // The code step survives the OS killing the app while the pilot is in the mail
 // app: email + send time are kept for as long as the emailed code is valid
 // (API expiresIn = 600 s), so the code in the mail still works after a restart.
-const PENDING_OTP_KEY = 'login.pendingOtp'
-const PENDING_OTP_TTL_MS = 10 * 60 * 1000
+import { PENDING_OTP_KEY, PENDING_OTP_TTL_MS, clearPendingOtp } from '../utils/pendingOtp'
 
 /** Map raw auth/network errors to short, actionable text. null = stay silent. */
 function friendlyError(raw: string | null): string | null {
@@ -121,11 +120,11 @@ export function LoginScreen() {
   }, [])
   // Any successful sign-in (code, passkey, restored session) ends the pending code step.
   useEffect(() => {
-    if (state.status === 'authenticated') void AsyncStorage.removeItem(PENDING_OTP_KEY).catch(() => {})
+    if (state.status === 'authenticated') void clearPendingOtp()
   }, [state.status])
   const leaveOtpStep = () => {
     setStep('choose'); setOtp('')
-    void AsyncStorage.removeItem(PENDING_OTP_KEY).catch(() => {})
+    void clearPendingOtp()
   }
 
   // Hidden server picker (production / staging, environment.ts): tap the logo
