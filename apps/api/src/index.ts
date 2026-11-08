@@ -38,7 +38,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createHmac } from 'node:crypto'
-import { auth, isReviewAccountEmail, PASSKEY_ORIGINS } from './auth'
+import { auth, isReviewAccountEmail } from './auth'
 import { admin } from './admin'
 import { AUTHENTICATED_ROLE, assertAuthenticatedRoleExists } from './pgRoles'
 import { pool as dbPool } from './db'
@@ -265,23 +265,6 @@ app.get('/api/auth/account-flags', async (c) => {
 // exposed over HTTP; /api/admin calls them server-side. Must precede the catch-all.
 app.all('/api/auth/admin/*', (c) => c.json({ error: 'Not found' }, 404))
 
-// Passkey verify calls: when the origin the platform put in clientDataJSON is
-// not allowed, better-auth only answers a generic "Authentication failed".
-// Log the offending origin (Android: android:apk-key-hash:... of the signing
-// cert) so the operator can add it to ANDROID_PASSKEY_ORIGIN.
-app.post('/api/auth/passkey/verify-*', async (c) => {
-  try {
-    const body = await c.req.raw.clone().json() as { response?: { response?: { clientDataJSON?: string } } }
-    const raw = body?.response?.response?.clientDataJSON
-    if (raw) {
-      const origin = (JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as { origin?: string }).origin
-      if (origin && !PASSKEY_ORIGINS.includes(origin)) {
-        console.warn(`[passkey] rejected: client origin "${origin}" is not in the allowed WebAuthn origins (for Android add it to ANDROID_PASSKEY_ORIGIN and its cert fingerprint to ANDROID_SHA256_FINGERPRINT)`)
-      }
-    }
-  } catch { /* diagnostics only */ }
-  return auth.handler(c.req.raw)
-})
 app.all('/api/auth/*', (c) => auth.handler(c.req.raw))
 
 // Admin API (/api/admin/*) -- own auth (role 'admin'), rate limit and Origin

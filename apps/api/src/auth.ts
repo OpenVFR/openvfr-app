@@ -161,15 +161,6 @@ export const TRUSTED_ORIGINS: string[] = [
   ...(ADMIN_APP_ORIGIN ? [ADMIN_APP_ORIGIN] : []),
 ]
 
-/** Every WebAuthn origin the passkey plugin accepts (see the `passkey()` call below). */
-export const PASSKEY_ORIGINS: string[] = Array.from(new Set([
-  APP_ORIGIN,
-  `https://${RP_ID}`,
-  ...(ADMIN_APP_ORIGIN ? [ADMIN_APP_ORIGIN] : []),
-  ...(process.env['ANDROID_PASSKEY_ORIGIN'] ?? '')
-    .split(',').map(o => o.trim()).filter(Boolean),
-]))
-
 export const auth = betterAuth({
   secret:  SECRET,
   baseURL: BASE_URL,
@@ -312,7 +303,13 @@ export const auth = betterAuth({
       //              debug/dev-build key) -- comma-separated in
       //              ANDROID_PASSKEY_ORIGIN. Must mirror the fingerprint list
       //              in assetlinks.json (see .env.example).
-      origin: PASSKEY_ORIGINS,
+      origin: Array.from(new Set([
+        APP_ORIGIN,
+        `https://${RP_ID}`,
+        ...(ADMIN_APP_ORIGIN ? [ADMIN_APP_ORIGIN] : []),
+        ...(process.env['ANDROID_PASSKEY_ORIGIN'] ?? '')
+          .split(',').map(o => o.trim()).filter(Boolean),
+      ])),
       schema: { passkey: { modelName: 'ba_passkey' } },
     }),
     emailOTP({

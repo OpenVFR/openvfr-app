@@ -6,14 +6,15 @@
 import React, { useEffect, useState } from 'react'
 import { Modal, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { shouldOfferPasskey, canOfferNever, type PasskeyPromptState } from '@open-vfr/shared/passkeyPrompt'
+import {
+  shouldOfferPasskey, canOfferNever, peekOtpSignIn, consumeOtpSignIn, type PasskeyPromptState,
+} from '@open-vfr/shared/passkeyPrompt'
 import { useAuthContext } from '../context/AuthContext'
 import { useSettingsContext } from '../context/SettingsContext'
 import { useInternalBarometer } from '../hooks/useInternalBarometer'
-import { API_BASE } from '../config'
-import { authHeaders } from '../utils/authClient'
 import { listPasskeys } from '../utils/passkeyNative'
-import { consumeOtpSignIn, loadPromptState, recordDismissal } from '../utils/passkeyPrompt'
+import { fetchPasskeyAllowed, loadPromptState, recordDismissal } from '../utils/passkeyPrompt'
+import { baroOfferVisible } from './BaroPromptModal'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 export function PasskeyPromptModal() {
@@ -23,9 +24,7 @@ export function PasskeyPromptModal() {
   // it is answered or the device has no sensor.
   const { settings, loaded } = useSettingsContext()
   const baro = useInternalBarometer(false)
-  const baroOfferPending =
-    !loaded || baro.availability === 'checking' ||
-    (!settings.baroPromptSeen && !settings.useInternalBarometer && baro.availability === 'available')
+  const baroOfferPending = !loaded || baro.availability === 'checking' || baroOfferVisible(settings, loaded, baro.availability)
   const userId = state.status === 'authenticated' ? state.user.id : null
   const [prompt, setPrompt] = useState<PasskeyPromptState | null>(null)
   const [busy, setBusy] = useState(false)
@@ -33,18 +32,17 @@ export function PasskeyPromptModal() {
   const [done, setDone] = useState(false)
 
   useEffect(() => {
-    if (!userId || !passkeySupported || !consumeOtpSignIn()) return
+    if (!userId || !passkeySupported || !peekOtpSignIn()) return
     let alive = true
     void (async () => {
+      let offer: PasskeyPromptState | null = null
       try {
         const saved = await loadPromptState(userId)
-        if (!shouldOfferPasskey(saved, Date.now())) return
-        // Accounts that cannot hold passkeys (shared test/review accounts).
-        const flags = await fetch(`${API_BASE}/api/auth/account-flags`, { headers: await authHeaders() })
-        if (flags.ok && (await flags.json() as { passkeyAllowed?: boolean }).passkeyAllowed === false) return
-        if ((await listPasskeys()).length > 0) return
-        if (alive) setPrompt(saved)
+        if (shouldOfferPasskey(saved, Date.now()) && await fetchPasskeyAllowed() && (await listPasskeys()).length === 0) offer = saved
       } catch { /* offline or unexpected: stay silent, Settings still has it */ }
+      if (!alive) return          // aborted before deciding: leave the flag for the next run
+      consumeOtpSignIn()
+      if (offer) setPrompt(offer)
     })()
     return () => { alive = false }
   }, [userId, passkeySupported])
@@ -67,7 +65,7 @@ export function PasskeyPromptModal() {
   }
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={() => close()}>
+    <Modal visible transparent animationType="fade" onRequestClose={() => { if (!busy) close() }}>
       <View style={styles.backdrop}>
         <View style={styles.card} testID="passkey-prompt">
           <Ionicons name="key" size={32} color={theme.accentBlue} />

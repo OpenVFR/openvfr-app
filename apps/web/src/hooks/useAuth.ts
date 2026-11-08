@@ -13,7 +13,7 @@ import { createAuthClient } from 'better-auth/client'
 import { emailOTPClient }   from 'better-auth/client/plugins'
 import { passkeyClient }    from '@better-auth/passkey/client'
 import { API_BASE_URL } from '../utils/env'
-import { markOtpSignIn, consumeOtpSignIn } from '../utils/passkeyPrompt'
+import { markOtpSignIn, consumeOtpSignIn } from '@open-vfr/shared/passkeyPrompt'
 import { flagWipeOnSignOut } from '../db/userScope'
 import { flushBeforeSignOut, stopCloudSync } from '../sync/cloudSync'
 

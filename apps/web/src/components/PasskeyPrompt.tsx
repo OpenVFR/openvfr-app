@@ -4,10 +4,11 @@
  * @open-vfr/shared/passkeyPrompt; Settings keeps the permanent entry.
  */
 import { useEffect, useState } from 'react'
-import { shouldOfferPasskey, canOfferNever, type PasskeyPromptState } from '@open-vfr/shared/passkeyPrompt'
+import {
+  shouldOfferPasskey, canOfferNever, peekOtpSignIn, consumeOtpSignIn, type PasskeyPromptState,
+} from '@open-vfr/shared/passkeyPrompt'
 import type { AuthState } from '../hooks/useAuth'
-import { API_BASE_URL } from '../utils/env'
-import { consumeOtpSignIn, loadPromptState, recordDismissal } from '../utils/passkeyPrompt'
+import { fetchPasskeyAllowed, loadPromptState, recordDismissal } from '../utils/passkeyPrompt'
 import css from './PasskeyPrompt.module.css'
 
 const PASSKEY_SUPPORTED = typeof window !== 'undefined' && 'PublicKeyCredential' in window
@@ -19,23 +20,22 @@ export default function PasskeyPrompt({ auth }: { auth: AuthState }) {
   const [message, setMessage] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
+  const { listPasskeys } = auth
   useEffect(() => {
-    if (!userId || !PASSKEY_SUPPORTED || !consumeOtpSignIn()) return
+    if (!userId || !PASSKEY_SUPPORTED || !peekOtpSignIn()) return
     let alive = true
     void (async () => {
+      let offer: PasskeyPromptState | null = null
       try {
         const saved = loadPromptState(userId)
-        if (!shouldOfferPasskey(saved, Date.now())) return
-        // Accounts that cannot hold passkeys (shared test/review accounts).
-        const res = await fetch(`${API_BASE_URL}/api/auth/account-flags`, { credentials: 'include' })
-        if (res.ok && (await res.json() as { passkeyAllowed?: boolean }).passkeyAllowed === false) return
-        if ((await auth.listPasskeys()).length > 0) return
-        if (alive) setPrompt(saved)
+        if (shouldOfferPasskey(saved, Date.now()) && await fetchPasskeyAllowed() && (await listPasskeys()).length === 0) offer = saved
       } catch { /* offline or unexpected: stay silent */ }
+      if (!alive) return          // aborted before deciding: leave the flag for the next run
+      consumeOtpSignIn()
+      if (offer) setPrompt(offer)
     })()
     return () => { alive = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId])
+  }, [userId, listPasskeys])
 
   if (!prompt || !userId) return null
 

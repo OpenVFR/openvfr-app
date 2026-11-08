@@ -48,3 +48,15 @@ export function parsePasskeyPromptState(raw: string | null | undefined): Passkey
     }
   } catch { return INITIAL_PASSKEY_PROMPT_STATE }
 }
+
+/** Storage key for one account's prompt state (same on web and native). */
+export const passkeyPromptStorageKey = (userId: string): string => `ovfr:passkeyPrompt:${userId}`
+
+// One-shot "a code sign-in just succeeded" flag, so restoring a stored session
+// at start never triggers the offer. Read it with peek and consume it only
+// once the decision is final: effects can run twice (StrictMode) or be
+// aborted before they decide.
+let otpSignInPending = false
+export function markOtpSignIn(): void { otpSignInPending = true }
+export function peekOtpSignIn(): boolean { return otpSignInPending }
+export function consumeOtpSignIn(): void { otpSignInPending = false }

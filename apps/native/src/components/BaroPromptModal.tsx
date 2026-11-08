@@ -9,19 +9,24 @@
 import React from 'react'
 import { Modal, View, Text, TouchableOpacity, Platform } from 'react-native'
 import { useSettingsContext } from '../context/SettingsContext'
-import { useInternalBarometer } from '../hooks/useInternalBarometer'
+import { useInternalBarometer, type BaroAvailability } from '../hooks/useInternalBarometer'
 import { useThemedStyles, type ScaledTheme } from '../styles/theme'
+
+/** Whether the first-run barometer offer is showing. Other first-run offers wait on this. */
+export function baroOfferVisible(
+  settings: { baroPromptSeen?: boolean; useInternalBarometer?: boolean },
+  loaded: boolean,
+  availability: BaroAvailability,
+): boolean {
+  return loaded && !settings.baroPromptSeen && !settings.useInternalBarometer && availability === 'available'
+}
 
 export function BaroPromptModal() {
   const { settings, update, loaded } = useSettingsContext()
   const baro = useInternalBarometer(false)
   const styles = useThemedStyles(makeStyles)
 
-  const visible =
-    loaded &&
-    !settings.baroPromptSeen &&
-    !settings.useInternalBarometer &&
-    baro.availability === 'available'
+  const visible = baroOfferVisible(settings, loaded, baro.availability)
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={() => update({ baroPromptSeen: true })}>

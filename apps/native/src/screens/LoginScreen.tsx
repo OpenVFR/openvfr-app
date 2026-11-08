@@ -106,7 +106,8 @@ export function LoginScreen() {
     let alive = true
     AsyncStorage.getItem(PENDING_OTP_KEY).then((raw) => {
       if (!alive || !raw) return
-      const p = JSON.parse(raw) as { email?: string; sentAt?: number }
+      let p: { email?: string; sentAt?: number } = {}
+      try { p = JSON.parse(raw) as typeof p } catch { /* corrupt: dropped below */ }
       if (p.email && p.sentAt && Date.now() - p.sentAt < PENDING_OTP_TTL_MS) {
         setEmail(p.email)
         setStep('otp')
@@ -116,6 +117,10 @@ export function LoginScreen() {
     }).catch(() => { /* start at the email step */ })
     return () => { alive = false }
   }, [])
+  // Any successful sign-in (code, passkey, restored session) ends the pending code step.
+  useEffect(() => {
+    if (state.status === 'authenticated') void AsyncStorage.removeItem(PENDING_OTP_KEY).catch(() => {})
+  }, [state.status])
   const leaveOtpStep = () => {
     setStep('choose'); setOtp('')
     void AsyncStorage.removeItem(PENDING_OTP_KEY).catch(() => {})
@@ -163,9 +168,7 @@ export function LoginScreen() {
     if (!code) return
     setBusy(true)
     try {
-      if (await verifyOtp(email.trim().toLowerCase(), code)) {
-        void AsyncStorage.removeItem(PENDING_OTP_KEY).catch(() => {})
-      }
+      await verifyOtp(email.trim().toLowerCase(), code)
     } finally { setBusy(false) }
   }
 
@@ -529,11 +532,6 @@ function makeStyles(theme: ScaledTheme) {
   },
   sponsorName: {
     color:      '#FFF500',
-    fontWeight: '600',
-  },
-  passkeyText: {
-    color:    theme.textSecondary,
-    fontSize: theme.textSm,
     fontWeight: '600',
   },
   footerLink: {
