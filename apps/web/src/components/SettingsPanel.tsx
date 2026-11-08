@@ -389,6 +389,10 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
       <details className={css.group}>
         <summary className={css.groupTitle}>App</summary>
       <div className={css.section}>
+        <span className={css.label}>Version</span>
+        <span className={css.value}>{__APP_VERSION__}</span>
+      </div>
+      <div className={css.section}>
         <span className={css.label}>App files</span>
         <button
           className={css.opt}

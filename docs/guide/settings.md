@@ -89,5 +89,6 @@ See [Virtual Radar and vertical profile](./virtual-radar.md).
 
 ## Data and account
 
+The app version is at the bottom of Settings: *About* on the phone app, *App* in the web app. Quote it when reporting a problem.
 Data versions, offline data and repair: see [Offline use](./offline-and-data.md).
 Profile, passkeys, sign out and delete: see [Account and sync](./account-and-sync.md).

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -41,7 +42,11 @@ const devApiOrigin = DEV_API_ORIGIN
 const DEV_TILES_TARGET   = env['VITE_DEV_TILES_TARGET']   || ''
 const DEV_TRAFFIC_TARGET = env['VITE_DEV_TRAFFIC_TARGET'] || DEV_API_TARGET || ''
 
+// Shown under Settings -> App (same number as the native app's About).
+const APP_VERSION = (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }).version
+
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(APP_VERSION) },
   plugins: [
     // Hard stop: VITE_DEV_API_ORIGIN is a dev-server-only sign-in workaround
     // (see DEV_API_ORIGIN above). It has no meaning in a build, so a build that
