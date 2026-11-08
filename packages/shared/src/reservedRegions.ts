@@ -30,3 +30,22 @@ export function occlusionBottomOver(
   }
   return bottom
 }
+
+/**
+ * The compact status block of iPhone Duo (iOS 27.1): one occlusion in a
+ * corner of the top edge, as tall as the top inset and well short of the full
+ * width, so the rest of the top strip is free. null on every other device
+ * (regular phones draw status text across the whole top strip) and when the
+ * system reports nothing.
+ */
+export function statusBlockRegion(
+  regions: readonly ReservedRegionLike[], topInset: number, windowWidth: number,
+): RegionFrame | null {
+  if (topInset <= 0) return null
+  for (const r of regions) {
+    if (r.kind !== 'occlusion') continue
+    const f = r.frame
+    if (f.y <= 1 && f.height >= topInset - 2 && f.width < windowWidth * 0.8) return f
+  }
+  return null
+}

@@ -140,7 +140,7 @@ import IconListDetails from '@tabler/icons-react-native/IconListDetails'
 import { MapToolbar, type ToolGroupDef } from '../components/MapToolbar'
 import { StatusScrim } from '../components/StatusScrim'
 import { ReservedRegionsProvider, useReservedRegions } from 'react-native-reserved-regions'
-import { occlusionBottomOver } from '@open-vfr/shared/reservedRegions'
+import { occlusionBottomOver, statusBlockRegion } from '@open-vfr/shared/reservedRegions'
 import { MAP_INFO_BAR_BOTTOM_MARGIN, MAP_INFO_BAR_H, MAP_INFO_BAR_GAP } from '../components/MapInfoBar'
 import { Location } from 'expo-location/next'
 import * as Crypto from 'expo-crypto'
@@ -251,6 +251,9 @@ export function MapScreen() {
  *  a reserved region still counts as "in the way" of it, dp. */
 const CONTROL_COLUMN_W = 48
 const TOP_ZONE_H = 240
+/** The strip left of the status block must hold about three buttons to take them. */
+const STRIP_MIN_W = 150
+const CONTROL_BTN = 40
 
 function MapScreenForCountry() {
   const scaledTheme = useScaledTheme()
@@ -586,7 +589,14 @@ function MapScreenForCountry() {
   // until the map's own height is known: the cap before that is an estimate.
   const columnHasPlog = flyingActive && waypoints.length >= 2
   useEffect(() => { setColumnContentH(0) }, [flyingActive, columnHasPlog])
-  const controlsRow = isLandscape
+  // iPhone Duo: the status bar is one compact block in a corner of the top
+  // edge, the rest of that strip is free. The control buttons live there, as a
+  // row left of the block, so the right edge and everything below the strip is
+  // map instead of a button column.
+  const statusBlock = statusBlockRegion(reservedRegions, insets.top, windowWidth)
+  const stripW = statusBlock ? statusBlock.x - edgeLeft - scaledTheme.space2 : 0
+  const controlsInStrip = statusBlock != null && stripW >= STRIP_MIN_W
+  const controlsRow = controlsInStrip || isLandscape
     || (mapAreaH != null && columnContentH > 0 && columnContentH > topRightMaxHeight + 1)
   // Short map: one full alert card, the rest as one-line chips.
   const alertMaxCards = mapAreaH != null && mapAreaH < 260 ? 1 : undefined
@@ -2024,7 +2034,7 @@ function MapScreenForCountry() {
           // Below the route edit banner and the route hint pill (top left).
           topInset={(editBannerShown ? EDIT_BANNER_H : 0) + (routeHint ? ROUTE_HINT_H : 0)}
           rightInset={insets.railRight}
-          controlsRow={controlsRow}
+          controls={controlsInStrip ? 'none' : controlsRow ? 'row' : 'column'}
           maxCards={alertMaxCards}
         />
 
@@ -2068,9 +2078,15 @@ function MapScreenForCountry() {
       <View
         style={[
           styles.topRight,
-          controlsRow
-            ? { top: topRightTopOffset, right: edgeRight, maxWidth: topRightMaxWidth }
-            : { top: topRightTopOffset, right: edgeRight, maxHeight: topRightMaxHeight },
+          controlsInStrip && statusBlock
+            ? {
+                top: Math.max(scaledTheme.space2, (statusBlock.height - CONTROL_BTN) / 2),
+                right: windowWidth - statusBlock.x + scaledTheme.space2,
+                maxWidth: stripW,
+              }
+            : controlsRow
+              ? { top: topRightTopOffset, right: edgeRight, maxWidth: topRightMaxWidth }
+              : { top: topRightTopOffset, right: edgeRight, maxHeight: topRightMaxHeight },
         ]}
         pointerEvents="box-none"
       >

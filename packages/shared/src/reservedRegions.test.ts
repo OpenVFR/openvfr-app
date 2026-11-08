@@ -30,3 +30,20 @@ describe('occlusionBottomOver', () => {
     expect(occlusionBottomOver([], 0, 400, 240)).toBe(0)
   })
 })
+
+import { statusBlockRegion } from './reservedRegions'
+
+describe('statusBlockRegion', () => {
+  it('finds the Duo status block (200x82 in the top-right corner)', () => {
+    expect(statusBlockRegion(COVER, 82, 466)).toEqual({ x: 266, y: 0, width: 200, height: 82 })
+  })
+  it('ignores the camera cut-out (below the top edge, shorter than the inset)', () => {
+    expect(statusBlockRegion([COVER[0]!], 82, 466)).toBeNull()
+  })
+  it('is null for a full-width region, no inset, or no regions', () => {
+    const wide: ReservedRegionLike[] = [{ kind: 'occlusion', frame: { x: 0, y: 0, width: 466, height: 82 } }]
+    expect(statusBlockRegion(wide, 82, 466)).toBeNull()
+    expect(statusBlockRegion(COVER, 0, 466)).toBeNull()
+    expect(statusBlockRegion([], 82, 466)).toBeNull()
+  })
+})

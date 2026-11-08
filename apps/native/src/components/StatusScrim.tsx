@@ -14,6 +14,7 @@
 import React, { memo } from 'react'
 import { StyleSheet, View, useWindowDimensions } from 'react-native'
 import { useReservedRegions } from 'react-native-reserved-regions'
+import { statusBlockRegion } from '@open-vfr/shared/reservedRegions'
 
 // Dark at the top edge, clear at the bottom: the status icons stay legible
 // without a visible band edge across the map.
@@ -24,27 +25,9 @@ const CORNER_GRADIENT = 'linear-gradient(to bottom left, rgba(10,14,22,0.5), rgb
 
 function Band({ height }: { height: number }) {
   const { width } = useWindowDimensions()
-  const status = useReservedRegions().filter(r =>
-    r.kind === 'occlusion'
-    && r.frame.y <= 1
-    && r.frame.height >= height - 2
-    && r.frame.width < width * 0.8,
-  )
-  if (status.length === 0) {
-    return <View style={[styles.full, { height }]} />
-  }
-  return (
-    <>
-      {status.map((r, i) => (
-        <View
-          key={i}
-          style={[styles.region, {
-            left: r.frame.x, width: r.frame.width, height: r.frame.height,
-          }]}
-        />
-      ))}
-    </>
-  )
+  const block = statusBlockRegion(useReservedRegions(), height, width)
+  if (!block) return <View style={[styles.full, { height }]} />
+  return <View style={[styles.region, { left: block.x, width: block.width, height: block.height }]} />
 }
 
 // Memoised: MapScreen re-renders on every GPS tick and the only prop is a number.

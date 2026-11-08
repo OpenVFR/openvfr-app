@@ -140,10 +140,11 @@ interface Props {
   /** Extra space to leave at the right edge (the iPhone Duo cover's rail,
    *  which the map runs under while the control column keeps clear of it). */
   rightInset?:           number
-  /** The map controls run as a row along the top (landscape, or a map too
-   *  short for the column): reserve their height instead of their width.
-   *  MapScreen owns that decision. */
-  controlsRow:           boolean
+  /** Where the map controls are, so the cards keep clear of them: a column down
+   *  the right edge, a row along the top (landscape, or a map too short for the
+   *  column), or 'none' when they sit in the status bar's free strip (iPhone
+   *  Duo). MapScreen owns that decision. */
+  controls:              'column' | 'row' | 'none'
   /** Full cards to show before the rest become one-line chips (fewer on a
    *  short map, so the stack does not cover the profile below it). */
   maxCards?:             number
@@ -158,7 +159,7 @@ export function NotificationCenter({
   airfieldAlerts, onDismissAirfield,
   airspaceNotifications, ceilingMsg,
   reminderNote, onDismissReminder,
-  planningNotice, onDismissPlanning, topInset = 0, rightInset = 0, controlsRow, maxCards,
+  planningNotice, onDismissPlanning, topInset = 0, rightInset = 0, controls, maxCards,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const scaledTheme = useScaledTheme()
@@ -176,9 +177,11 @@ export function NotificationCenter({
   // Map control buttons sit above this stack (zIndex 50) on the right edge in
   // portrait and along the top in landscape. Reserve their space so cards are
   // never hidden underneath them.
-  const controlsInset = controlsRow
+  const controlsInset = controls === 'row'
     ? { top: CONTROLS_SIZE + 24 + topInset, right: scaledTheme.space4 + rightInset }
-    : { right: CONTROLS_SIZE + 24 + rightInset, top: scaledTheme.space2 + topInset }
+    : controls === 'column'
+      ? { right: CONTROLS_SIZE + 24 + rightInset, top: scaledTheme.space2 + topInset }
+      : { right: scaledTheme.space4 + rightInset, top: scaledTheme.space2 + topInset }
 
   const items: Item[] = []
 
