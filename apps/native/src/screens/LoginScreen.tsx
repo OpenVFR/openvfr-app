@@ -192,7 +192,7 @@ export function LoginScreen() {
             />
           </TouchableOpacity>
         )}
-        {showTitle && <Text style={styles.logo}>OpenVFR</Text>}
+        {showTitle && <Text style={styles.logo}><Text style={styles.logoOpen}>Open</Text>VFR</Text>}
         {showTitle && !keyboardOpen && (
           <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit>Open-Source VFR Flight Planning & Navigation</Text>
         )}
@@ -353,25 +353,28 @@ export function LoginScreen() {
         )}
 
       </View>
-      <View style={styles.footer}>
-        <TouchableOpacity style={styles.sponsorRow} onPress={() => Linking.openURL(SPONSOR.url)} accessibilityRole="link" accessibilityLabel={`Supported by ${SPONSOR.name}`}>
-          <Image source={require('../../assets/sponsor-sgk.png')} style={styles.sponsorLogo} />
-          <Text style={styles.sponsorText}>
-            Supported by <Text style={styles.sponsorName}>{SPONSOR.name}</Text> {'\u203a'}
-          </Text>
-        </TouchableOpacity>
-        {!!SITE_BASE && (
-        <View style={styles.footerLinks}>
-          <Text style={styles.footerLink} onPress={() => Linking.openURL(`${SITE_BASE}/privacy`)}>
-            Privacy
-          </Text>
-          <Text style={styles.footerDot}>·</Text>
-          <Text style={styles.footerLink} onPress={() => Linking.openURL(`${SITE_BASE}/terms`)}>
-            Terms & Disclaimer
-          </Text>
+      {/* Hidden while the keyboard is up: the form needs the room, the credit and legal links return with the keyboard closed. */}
+      {!keyboardOpen && (
+        <View style={styles.footer}>
+          <TouchableOpacity style={styles.sponsorRow} onPress={() => Linking.openURL(SPONSOR.url)} accessibilityRole="link" accessibilityLabel={`Supported by ${SPONSOR.name}`}>
+            <Image source={require('../../assets/sponsor-sgk.png')} style={styles.sponsorLogo} />
+            <Text style={styles.sponsorText}>
+              Supported by <Text style={styles.sponsorName}>{SPONSOR.name}</Text> {'\u203a'}
+            </Text>
+          </TouchableOpacity>
+          {!!SITE_BASE && (
+          <View style={styles.footerLinks}>
+            <Text style={styles.footerLink} onPress={() => Linking.openURL(`${SITE_BASE}/privacy`)}>
+              Privacy
+            </Text>
+            <Text style={styles.footerDot}>·</Text>
+            <Text style={styles.footerLink} onPress={() => Linking.openURL(`${SITE_BASE}/terms`)}>
+              Terms & Disclaimer
+            </Text>
+          </View>
+          )}
         </View>
-        )}
-      </View>
+      )}
       </View>
     </View>
   )
@@ -410,6 +413,9 @@ function makeStyles(theme: ScaledTheme) {
     fontWeight: '700',
     textAlign:  'center',
   },
+  logoOpen: {
+    color: theme.accentBlueBright,
+  },
   subtitle: {
     color:        theme.textMuted,
     fontSize:     theme.textSm,
@@ -437,12 +443,14 @@ function makeStyles(theme: ScaledTheme) {
     gap:           theme.space2,
   },
   emailInput: {
-    flex: 1,
+    flex:            1,
+    minHeight:       48,
+    paddingVertical: theme.space2,
   },
   sendBtn: {
     backgroundColor: theme.accentBlue,
     borderRadius:    theme.radiusMd,
-    minWidth:        56,
+    minWidth:        48,
     alignItems:      'center',
     justifyContent:  'center',
   },

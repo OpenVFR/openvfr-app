@@ -7,8 +7,8 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
+import { IconKey, IconArrowRight } from '@tabler/icons-react'
 import { SPONSOR } from '@open-vfr/shared/sponsor'
-import { IconKey } from '@tabler/icons-react'
 import { shouldAutoSubmitOtp } from '@open-vfr/shared/otpAutoSubmit'
 import type { AuthState } from '../hooks/useAuth'
 import { SITE_BASE_URL } from '../utils/env'
@@ -158,7 +158,7 @@ export default function LoginPanel({ auth }: Props) {
         {/* Logo / title */}
         <div className={styles.logo}>
           <img src="/pwa-512x512.png" alt="" className={styles.logoImg} width={512} height={512} />
-          <h1>OpenVFR</h1>
+          <h1><span className={styles.wordmarkOpen}>Open</span>VFR</h1>
           <p>Open-Source VFR Flight Planning & Navigation</p>
         </div>
 
@@ -198,7 +198,7 @@ export default function LoginPanel({ auth }: Props) {
               onClick={() => void handlePasskey()}
               disabled={busy}
             >
-              <IconKey className={styles.keyIcon} size={18} aria-hidden="true" />
+              <IconKey className={styles.keyIcon} size={22} aria-hidden="true" />
               Sign in with passkey
             </button>
             {step === 'email' && <p className={styles.orText}>or get a code by email</p>}
@@ -226,9 +226,7 @@ export default function LoginPanel({ auth }: Props) {
               aria-label="Send sign-in code"
               title="Send sign-in code"
             >
-              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-                <path fill="currentColor" d="M12 4l-1.4 1.4 5.6 5.6H4v2h12.2l-5.6 5.6L12 20l8-8z" />
-              </svg>
+              <IconArrowRight size={22} aria-hidden="true" />
             </button>
           </div>
         ) : (

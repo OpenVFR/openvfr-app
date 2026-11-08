@@ -52,10 +52,10 @@
 }
 
 .keyIcon {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   flex-shrink: 0;
-  color: var(--accent-yellow);
+  color: var(--accent-blue);
 }
 
 .emailRow {
@@ -332,4 +332,9 @@
 .sponsor:hover span {
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+/* Wordmark: "Open" in the accent colour, "VFR" in the text colour (same as the website header) */
+.wordmarkOpen {
+  color: var(--accent-blue-bright);
 }
