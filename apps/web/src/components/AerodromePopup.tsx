@@ -612,7 +612,7 @@ export default function AerodromePopup({
               <div className={css.notamHint}>⏰ Active NOTAM may have changed opening hours — check NOTAMs tab</div>
             )}
           </div>
-                    <button
+          <button
             className={`${css.homeBtn} ${isHome ? css.homeBtnActive : ''}`}
             onClick={() => onSetHome(p.icao, p.name, lng, lat)}
             title={isHome ? 'Home airfield' : 'Set as home airfield'}

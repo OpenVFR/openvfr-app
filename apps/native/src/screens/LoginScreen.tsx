@@ -102,6 +102,7 @@ export function LoginScreen() {
   const [busy, setBusy]                  = useState(false)
 
   const shownError = friendlyError(error)
+  const normalizedEmail = email.trim().toLowerCase()
 
   useEffect(() => {
     let alive = true
@@ -152,10 +153,10 @@ export function LoginScreen() {
     if (!email.trim()) return
     setBusy(true)
     let ok = false
-    try { ok = await sendOtp(email.trim().toLowerCase()) } finally { setBusy(false) }
+    try { ok = await sendOtp(normalizedEmail) } finally { setBusy(false) }
     if (ok) {
       setStep('otp')
-      AsyncStorage.setItem(PENDING_OTP_KEY, JSON.stringify({ email: email.trim().toLowerCase(), sentAt: Date.now() })).catch(() => {})
+      AsyncStorage.setItem(PENDING_OTP_KEY, JSON.stringify({ email: normalizedEmail, sentAt: Date.now() })).catch(() => {})
     }
   }
 
@@ -168,9 +169,7 @@ export function LoginScreen() {
   const handleVerifyOtp = async (code: string = otp.trim()) => {
     if (!code) return
     setBusy(true)
-    try {
-      await verifyOtp(email.trim().toLowerCase(), code)
-    } finally { setBusy(false) }
+    try { await verifyOtp(normalizedEmail, code) } finally { setBusy(false) }
   }
 
   // Auto sign-in only when autofill/paste fills exactly 6 digits in one go;
