@@ -29,6 +29,7 @@ import { getAerodromes } from '../hooks/useNearbyFrequencies'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
 import { AppIcon, type AppIconName } from '../components/AppIcon'
+import { ClearableTextInput } from '../components/ClearableTextInput'
 import * as Crypto from 'expo-crypto'
 
 import { useRouteContext } from '../context/RouteContext'
@@ -1181,7 +1182,7 @@ export function PlanScreen() {
           </View>
 
           {userWaypoints.length > 0 && (
-            <TextInput
+            <ClearableTextInput
               style={[styles.numberInput, { marginBottom: scaledTheme.space2 }]}
               value={placeQuery}
               onChangeText={setPlaceQuery}
@@ -1189,7 +1190,6 @@ export function PlanScreen() {
               placeholderTextColor={theme.textFaint}
               autoCapitalize="none"
               autoCorrect={false}
-              clearButtonMode="while-editing"
             />
           )}
           {userWaypoints.length === 0 ? (

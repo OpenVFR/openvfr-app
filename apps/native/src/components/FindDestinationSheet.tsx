@@ -11,7 +11,7 @@
  */
 
 import React from 'react'
-import { View, Text, TouchableOpacity, TextInput, FlatList } from 'react-native'
+import { View, Text, TouchableOpacity, FlatList } from 'react-native'
 import Slider from '@react-native-community/slider'
 import { AppIcon } from './AppIcon'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -21,6 +21,7 @@ import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
 import { parseBearingDistance, pointFromBearingDistance, describeBearingDistance } from '@open-vfr/shared/bearingDistance'
 import { parseCoordinate, formatCoordinate } from '@open-vfr/shared/coordinateParse'
 import { NativeSheet, useSheetMaxHeight } from './NativeSheet'
+import { ClearableTextInput } from './ClearableTextInput'
 import {
   parseAerodromesGeoJson, filterAndSortAerodromes, computeGlideRangeNm,
   aerodromeToWaypoint, hasAvgas, hasJet, isHard, isGrass, fmtBrg, fmtDist,
@@ -213,7 +214,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
       >
 
         <View style={styles.filters}>
-          <TextInput
+          <ClearableTextInput
             style={styles.search}
             value={search}
             onChangeText={setSearch}
@@ -264,72 +265,80 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
           </View>
         </View>
 
-        {(coord || bdTarget) && (() => {
-          const goTo = coord
-            ? { lat: coord.lat, lng: coord.lng, label: formatCoordinate(coord.lat, coord.lng, coord.format) }
-            : bdTarget!
-          return (
-          <View style={styles.row}>
-            <TouchableOpacity
-              style={styles.rowMain}
-              onPress={() => { onFlyTo(goTo.lat, goTo.lng); setOpen(false) }}
-            >
-              <View style={styles.rowTop}>
-                <Text style={styles.rowIcao}>Go to</Text>
-                <Text style={styles.rowName} numberOfLines={1}>{goTo.label}</Text>
-              </View>
-            </TouchableOpacity>
-            {onSavePlace && (
-              <TouchableOpacity
-                style={styles.addBtn}
-                onPress={() => { onSavePlace(goTo.lat, goTo.lng); setSearch('') }}
-                accessibilityLabel="Save as place"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <AppIcon name="bookmark" size={16} color={theme.textPrimary} />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={styles.addBtn}
-              onPress={() => onAddToRoute({ lat: goTo.lat, lng: goTo.lng })}
-              accessibilityLabel={directTo ? 'Direct to this position' : 'Add to route'}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <AppIcon name={addIcon} size={18} color={theme.textPrimary} />
-            </TouchableOpacity>
-          </View>
-          )
-        })()}
-
-        {placeMatches.map(p => (
-          <React.Fragment key={p.id}>
-          <View style={styles.row}>
-            <TouchableOpacity style={styles.rowMain} onPress={() => { onFlyTo(p.lat, p.lng); setOpen(false) }}>
-              <View style={styles.rowTop}>
-                <AppIcon name="bookmarkFilled" size={13} color={theme.accentYellow} />
-                <Text style={styles.rowName} numberOfLines={1}>{p.name}</Text>
-              </View>
-              <Text style={styles.rowNav}>{p.folder ? p.folder : 'Saved place'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.addBtn}
-              onPress={() => onAddToRoute({ lat: p.lat, lng: p.lng, name: p.name })}
-              accessibilityLabel={`${addVerb} ${p.name}`}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <AppIcon name={addIcon} size={18} color={theme.textPrimary} />
-            </TouchableOpacity>
-            {insertBtn(p.id, p.name)}
-          </View>
-          {renderInsert(p.id, { lat: p.lat, lng: p.lng, name: p.name })}
-          </React.Fragment>
-        ))}
-
         <FlatList
           data={sorted}
           keyExtractor={a => a.icao}
           renderItem={renderRow}
-          style={[styles.list, { maxHeight: sheetMaxH - 200 }]}
+          // First tap on a row button must act, not just dismiss the keyboard.
+          keyboardShouldPersistTaps="handled"
+          // Fixed height, not maxHeight: the sheet sizes itself to its content, so
+          // a list that shrinks while the search narrows made the whole sheet
+          // jump. The "Go to" and saved-place rows scroll inside the list too.
+          style={[styles.list, { height: sheetMaxH - 200 }]}
+          ListHeaderComponent={(
+            <>
+              {(coord || bdTarget) && (() => {
+                const goTo = coord
+                  ? { lat: coord.lat, lng: coord.lng, label: formatCoordinate(coord.lat, coord.lng, coord.format) }
+                  : bdTarget!
+                return (
+                <View style={styles.row}>
+                  <TouchableOpacity
+                    style={styles.rowMain}
+                    onPress={() => { onFlyTo(goTo.lat, goTo.lng); setOpen(false) }}
+                  >
+                    <View style={styles.rowTop}>
+                      <Text style={styles.rowIcao}>Go to</Text>
+                      <Text style={styles.rowName} numberOfLines={1}>{goTo.label}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  {onSavePlace && (
+                    <TouchableOpacity
+                      style={styles.addBtn}
+                      onPress={() => { onSavePlace(goTo.lat, goTo.lng); setSearch('') }}
+                      accessibilityLabel="Save as place"
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <AppIcon name="bookmark" size={16} color={theme.textPrimary} />
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={styles.addBtn}
+                    onPress={() => onAddToRoute({ lat: goTo.lat, lng: goTo.lng })}
+                    accessibilityLabel={directTo ? 'Direct to this position' : 'Add to route'}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <AppIcon name={addIcon} size={18} color={theme.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+                )
+              })()}
+
+              {placeMatches.map(p => (
+                <React.Fragment key={p.id}>
+                <View style={styles.row}>
+                  <TouchableOpacity style={styles.rowMain} onPress={() => { onFlyTo(p.lat, p.lng); setOpen(false) }}>
+                    <View style={styles.rowTop}>
+                      <AppIcon name="bookmarkFilled" size={13} color={theme.accentYellow} />
+                      <Text style={styles.rowName} numberOfLines={1}>{p.name}</Text>
+                    </View>
+                    <Text style={styles.rowNav}>{p.folder ? p.folder : 'Saved place'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.addBtn}
+                    onPress={() => onAddToRoute({ lat: p.lat, lng: p.lng, name: p.name })}
+                    accessibilityLabel={`${addVerb} ${p.name}`}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <AppIcon name={addIcon} size={18} color={theme.textPrimary} />
+                  </TouchableOpacity>
+                  {insertBtn(p.id, p.name)}
+                </View>
+                {renderInsert(p.id, { lat: p.lat, lng: p.lng, name: p.name })}
+                </React.Fragment>
+              ))}
+            </>
+          )}
           ListEmptyComponent={
             <Text style={styles.empty}>
               {aerodromes.length === 0 ? 'Loading…' : 'No aerodromes match your filters'}
