@@ -35,7 +35,7 @@ import { Passkey } from 'react-native-passkey'
 import type {
   PasskeyCreateRequest, PasskeyCreateResult, PasskeyGetRequest, PasskeyGetResult,
 } from 'react-native-passkey'
-import { authClient, authHeaders } from './authClient'
+import { authClient } from './authClient'
 import { syncLog } from './syncLog'
 
 export type PasskeyUser = { id: string; email: string; name: string | null }
@@ -67,12 +67,13 @@ function toCookieHeader(setCookie: string | null): string | undefined {
 
 type Fetched<T> = { data: T; cookie?: string } | { error: string }
 
-async function getOptions<T>(path: string, auth: boolean): Promise<Fetched<T>> {
+async function getOptions<T>(path: string): Promise<Fetched<T>> {
   let cookie: string | undefined
-  const headers: Record<string, string> = auth ? await authHeaders() : {}
   const { data, error } = await authClient.$fetch<T>(path, {
     method: 'GET',
-    headers,
+    // No Authorization header here: authClient adds the stored session token
+    // itself. Passing it again joins both into "Bearer x, Bearer x", which the
+    // server rejects (401) -- that broke every signed-in passkey call.
     // Challenge cookie is carried by hand (toCookieHeader below). Keep the
     // native cookie jar out of it: on iOS it would add its own Cookie header
     // next to ours, and the server then fails to read the challenge.
@@ -85,9 +86,9 @@ async function getOptions<T>(path: string, auth: boolean): Promise<Fetched<T>> {
 }
 
 async function verify<T>(
-  path: string, body: unknown, cookie: string | undefined, auth: boolean,
+  path: string, body: unknown, cookie: string | undefined,
 ): Promise<{ data: T } | { error: string }> {
-  const headers: Record<string, string> = auth ? await authHeaders() : {}
+  const headers: Record<string, string> = {}
   if (cookie) headers['Cookie'] = cookie
   const { data, error } = await authClient.$fetch<T>(path, {
     method: 'POST',
@@ -136,7 +137,7 @@ function toUser(r: SessionResponse | null | undefined): PasskeyUser | null {
 
 /** Sign in with an existing passkey. Resolves with the signed-in user on success. */
 export async function passkeySignIn(): Promise<PasskeyOutcome> {
-  const opts = await getOptions<PasskeyGetRequest>('/passkey/generate-authenticate-options', false)
+  const opts = await getOptions<PasskeyGetRequest>('/passkey/generate-authenticate-options')
   if ('error' in opts) return { ok: false, cancelled: false, message: opts.error }
 
   const t0 = Date.now()
@@ -149,7 +150,7 @@ export async function passkeySignIn(): Promise<PasskeyOutcome> {
 
   // Strip clientExtensionResults like the web client does; the server only reads the core fields.
   const { clientExtensionResults: _ext, ...response } = assertion as PasskeyGetResult & { clientExtensionResults?: unknown }
-  const res = await verify<SessionResponse>('/passkey/verify-authentication', { response }, opts.cookie, false)
+  const res = await verify<SessionResponse>('/passkey/verify-authentication', { response }, opts.cookie)
   if ('error' in res) {
     // Challenge not found = the server could not match the challenge cookie.
     // Say whether we had one and how long the sheet / QR flow took (the
@@ -164,7 +165,7 @@ export async function passkeySignIn(): Promise<PasskeyOutcome> {
 
 /** Register a new passkey for the currently signed-in user. */
 export async function passkeyRegister(name?: string): Promise<PasskeyOutcome> {
-  const opts = await getOptions<PasskeyCreateRequest>('/passkey/generate-register-options', true)
+  const opts = await getOptions<PasskeyCreateRequest>('/passkey/generate-register-options')
   if ('error' in opts) return { ok: false, cancelled: false, message: opts.error }
 
   let attestation: PasskeyCreateResult
@@ -176,7 +177,7 @@ export async function passkeyRegister(name?: string): Promise<PasskeyOutcome> {
 
   const { clientExtensionResults: _ext, ...response } = attestation as PasskeyCreateResult & { clientExtensionResults?: unknown }
   const body = name ? { response, name } : { response }
-  const res = await verify<SessionResponse>('/passkey/verify-registration', body, opts.cookie, true)
+  const res = await verify<SessionResponse>('/passkey/verify-registration', body, opts.cookie)
   if ('error' in res) return { ok: false, cancelled: false, message: res.error }
   return { ok: true, user: toUser(res.data) }
 }
@@ -191,7 +192,6 @@ export type RegisteredPasskey = { id: string; name: string | null; createdAt: st
 export async function listPasskeys(): Promise<RegisteredPasskey[]> {
   const { data, error } = await authClient.$fetch<RegisteredPasskey[]>('/passkey/list-user-passkeys', {
     method: 'GET',
-    headers: await authHeaders(),
     credentials: 'omit',
     throw: false,
   })
@@ -204,7 +204,6 @@ export async function deletePasskey(id: string): Promise<boolean> {
   const { error } = await authClient.$fetch('/passkey/delete-passkey', {
     method: 'POST',
     body: { id },
-    headers: await authHeaders(),
     credentials: 'omit',
     throw: false,
   })
