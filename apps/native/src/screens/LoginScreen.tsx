@@ -16,7 +16,7 @@ import {
   ActivityIndicator, Keyboard, Platform, useWindowDimensions, Linking,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from '../components/AppIcon'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { SPONSOR } from '@open-vfr/shared/sponsor'
 import { shouldAutoSubmitOtp } from '@open-vfr/shared/otpAutoSubmit'
@@ -255,7 +255,7 @@ export function LoginScreen() {
               disabled={busy}
             >
               <View style={styles.btnRow}>
-                <Ionicons name="key" size={22} color={theme.accentBlue} />
+                <AppIcon name="key" size={22} color={theme.accentBlue} />
                 <Text style={styles.btnText} numberOfLines={1} adjustsFontSizeToFit>Sign in with passkey</Text>
               </View>
             </TouchableOpacity>
@@ -295,7 +295,7 @@ export function LoginScreen() {
                 onPress={handleSendOtp}
                 disabled={busy || !email.trim()}
               >
-                <Ionicons name="arrow-forward" size={24} color="#fff" />
+                <AppIcon name="arrowRight" size={24} color="#fff" />
               </TouchableOpacity>
             </View>
           </>

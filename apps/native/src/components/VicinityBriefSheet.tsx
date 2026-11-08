@@ -29,7 +29,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from './AppIcon'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import type { GpsPosition } from '../utils/gpsTypes'
@@ -128,7 +128,7 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
     <>
       {!controlled && (
         <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)} activeOpacity={0.85}>
-          <Ionicons name="newspaper-outline" size={19} color={theme.accentBlue} />
+          <AppIcon name="news" size={19} color={theme.accentBlue} />
           {badgeCount > 0 && (
             <View style={styles.badge}>
               <Text style={styles.badgeTxt}>{badgeCount}</Text>

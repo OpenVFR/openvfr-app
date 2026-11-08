@@ -28,6 +28,7 @@ import type { AirfieldProximityAlert } from '../hooks/useAirfieldProximity'
 import type { NotamAlert } from '../hooks/useNotamWarnings'
 import type { NotamNotification } from '../hooks/useNotamNotifications'
 import css from './NotificationCenter.module.css'
+import { IconX } from '@tabler/icons-react'
 
 type Severity = 'red' | 'yellow' | 'blue'
 
@@ -333,7 +334,7 @@ export function NotificationCenter({
                 className={css.dismiss}
                 onClick={dismissOf(item)}
                 aria-label="Dismiss"
-              >✕</button>
+              ><IconX size={14} aria-hidden="true" /></button>
             )}
           </div>
           <div className={css.title}>{item.title}</div>
@@ -350,7 +351,7 @@ export function NotificationCenter({
           <span className={css.chipTitle}>{item.chipTitle ?? item.title}</span>
           {(item.status || item.short) && <span className={css.chipShort}>{item.status ?? item.short}</span>}
           {item.dismissible && item.onDismiss && (
-            <button className={css.chipDismiss} onClick={dismissOf(item)} aria-label="Dismiss">✕</button>
+            <button className={css.chipDismiss} onClick={dismissOf(item)} aria-label="Dismiss"><IconX size={14} aria-hidden="true" /></button>
           )}
         </div>
       ))}

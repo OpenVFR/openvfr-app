@@ -4,6 +4,7 @@ import type { NavaidFeature, WaypointFeature, ObstacleFeature, LandmarkFeature }
 import type { AirspaceFeature } from './AirspacePopup'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import css from './WhatsHerePopup.module.css'
+import { IconChevronDown, IconChevronRight, IconX } from '@tabler/icons-react'
 
 // ── Item type union ───────────────────────────────────────────────────────────
 
@@ -107,7 +108,7 @@ export default function WhatsHerePopup({
       <div className={css.header}>
         <span className={css.title}>What's Here?</span>
         <span className={css.coords}>{dmmStr(lat, true)} {dmmStr(lng, false)}</span>
-        <button className={css.close} onClick={onClose} aria-label="Close">✕</button>
+        <button className={css.close} onClick={onClose} aria-label="Close"><IconX size={14} aria-hidden="true" /></button>
       </div>
 
       {/* Point features */}
@@ -152,7 +153,7 @@ export default function WhatsHerePopup({
         <div className={css.airspace}>
           <button className={css.airspaceToggle} onClick={() => setAirspaceOpen(o => !o)}>
             <span>Airspace ({airspaceFeatures.length})</span>
-            <span className={css.chevron}>{airspaceOpen ? '▾' : '▸'}</span>
+            <span className={css.chevron}>{airspaceOpen ? <IconChevronDown size={14} aria-hidden="true" /> : <IconChevronRight size={14} aria-hidden="true" />}</span>
           </button>
           {airspaceOpen && (
             <ul className={css.airspaceList}>
@@ -218,7 +219,7 @@ export default function WhatsHerePopup({
           >
             Save
           </button>
-          <button className={css.saveCancel} onClick={() => setSaveName(null)}>✕</button>
+          <button className={css.saveCancel} onClick={() => setSaveName(null)}><IconX size={14} aria-hidden="true" /></button>
         </div>
       )}
     </div>

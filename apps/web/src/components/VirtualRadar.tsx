@@ -60,6 +60,7 @@ import { OBSTACLE_ICON_DEFS, OBSTACLE_ICON_FALLBACK_DEF } from '../utils/obstacl
 import { LANDMARK_ICON_DEFS } from '../utils/landmarkIcons'
 import { loadColoredSvgMarkup } from '../utils/svgIconLoader'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
+import { IconX } from '@tabler/icons-react'
 
 // Don't compress a long route down to fit the panel width: below this
 // pixel density (per display unit, NM or km) the chart becomes horizontally
@@ -2022,7 +2023,7 @@ function VirtualRadar({
       <div className={css.panel}>
         <div className={css.header}>
           <span className={css.title}>{title ?? 'FLIGHT LOG'}</span>
-          {onClose && <button className={css.collapseBtn} onClick={onClose} title="Close the flight log" aria-label="Close the flight log">✕</button>}
+          {onClose && <button className={css.collapseBtn} onClick={onClose} title="Close the flight log" aria-label="Close the flight log"><IconX size={14} aria-hidden="true" /></button>}
         </div>
         <div className={css.loadingMsg} style={{ height: chartH }}>Building the profile along the flown track…</div>
       </div>
@@ -2203,7 +2204,7 @@ function VirtualRadar({
           {collapsed ? '▲' : '▼'}
         </button>
         {onClose && (
-          <button className={css.collapseBtn} onClick={onClose} title="Close the flight log" aria-label="Close the flight log">✕</button>
+          <button className={css.collapseBtn} onClick={onClose} title="Close the flight log" aria-label="Close the flight log"><IconX size={14} aria-hidden="true" /></button>
         )}
       </div>
 

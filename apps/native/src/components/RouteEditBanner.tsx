@@ -9,7 +9,7 @@
 
 import React from 'react'
 import { View, Text, TouchableOpacity } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from './AppIcon'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 export function RouteEditBanner({
@@ -37,16 +37,16 @@ export function RouteEditBanner({
     <View style={[styles.bar, { top }]} testID="route-edit-banner">
       {label ? <Text style={styles.label} numberOfLines={1}>{label}</Text> : null}
       <TouchableOpacity onPress={onUndo} disabled={!canUndo} hitSlop={8} accessibilityLabel="Undo">
-        <Ionicons name="arrow-undo" size={18} color={canUndo ? theme.textPrimary : theme.textFaint} />
+        <AppIcon name="undo" size={18} color={canUndo ? theme.textPrimary : theme.textFaint} />
       </TouchableOpacity>
       <TouchableOpacity onPress={onRedo} disabled={!canRedo} hitSlop={8} accessibilityLabel="Redo">
-        <Ionicons name="arrow-redo" size={18} color={canRedo ? theme.textPrimary : theme.textFaint} />
+        <AppIcon name="redo" size={18} color={canRedo ? theme.textPrimary : theme.textFaint} />
       </TouchableOpacity>
       <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} hitSlop={6} testID="route-edit-cancel" accessibilityLabel={cancelLabel}>
-        <Ionicons name="close" size={18} color={theme.textPrimary} />
+        <AppIcon name="close" size={18} color={theme.textPrimary} />
       </TouchableOpacity>
       <TouchableOpacity style={styles.applyBtn} onPress={onApply} hitSlop={6} testID="route-edit-apply" accessibilityLabel={applyLabel}>
-        <Ionicons name="checkmark" size={18} color="#0b1220" />
+        <AppIcon name="check" size={18} color="#0b1220" />
       </TouchableOpacity>
     </View>
   )

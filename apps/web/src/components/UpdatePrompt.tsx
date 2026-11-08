@@ -1,5 +1,6 @@
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import css from './UpdatePrompt.module.css'
+import { IconX } from '@tabler/icons-react'
 
 // How often to poll for a new service worker when the app is open.
 // Installed Android PWAs are often resumed from memory rather than cold-started,
@@ -55,7 +56,7 @@ export default function UpdatePrompt() {
         onClick={() => setNeedRefresh(false)}
         aria-label="Dismiss update notification"
       >
-        ✕
+        <IconX size={14} aria-hidden="true" />
       </button>
     </div>
   )

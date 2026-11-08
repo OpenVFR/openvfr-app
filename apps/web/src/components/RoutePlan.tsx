@@ -12,6 +12,7 @@ import { legBelowMsa, legMsaApplies } from '@open-vfr/shared/legLevelDrag'
 import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
 import css from './RoutePlan.module.css'
 import { RouteCloseContext } from './routeCloseContext'
+import { IconX } from '@tabler/icons-react'
 
 // ---------------------------------------------------------------------------
 // Reorder helper — moves the waypoint at `from` to position `to`.
@@ -494,7 +495,7 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
           }}
         />
         {takeoffTime && (
-          <button className={css.depClear} title="Clear departure time" onClick={() => setTakeoffTime(null)}>✕</button>
+          <button className={css.depClear} title="Clear departure time" onClick={() => setTakeoffTime(null)}><IconX size={14} aria-hidden="true" /></button>
         )}
       </div>
       {/* ── Global Wind ──────────────────────────────────────────────── */}
@@ -532,7 +533,7 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
           </>
         )}
         {globalWind && (
-          <button className={css.depClear} title="Clear manual wind (use forecast)" onClick={() => { setWndDir(''); setWndSpd(''); setGlobalWind(null) }}>✕</button>
+          <button className={css.depClear} title="Clear manual wind (use forecast)" onClick={() => { setWndDir(''); setWndSpd(''); setGlobalWind(null) }}><IconX size={14} aria-hidden="true" /></button>
         )}
       </div>
       {legs.length === 0 ? (
@@ -729,7 +730,7 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
                   const d = distanceNm(dest, alternate)
                   return <span className={css.altDist}>{nmToDisplay(d, units.distance).toFixed(1)} {distLabel(units.distance)}</span>
                 })()}
-                <button className={css.altClear} title="Remove alternate" onClick={() => setAlternate(null)}>✕</button>
+                <button className={css.altClear} title="Remove alternate" onClick={() => setAlternate(null)}><IconX size={14} aria-hidden="true" /></button>
               </>
             ) : (
               <>

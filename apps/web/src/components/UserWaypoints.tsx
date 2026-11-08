@@ -4,6 +4,7 @@ import type { RouteWaypoint } from '../utils/routeCalc'
 import { waypointsToGpx, gpxToWaypoints } from '@open-vfr/shared/gpx'
 import { nextPlaceName } from '../utils/places'
 import css from './UserWaypoints.module.css'
+import { IconX } from '@tabler/icons-react'
 
 // ── GPX helpers ───────────────────────────────────────────────────────────────
 
@@ -384,7 +385,7 @@ export default function UserWaypoints({
                       title={confirmDeleteId === wp.id ? 'Click again to delete' : 'Delete'}
                       aria-label={confirmDeleteId === wp.id ? 'Confirm delete place' : 'Delete place'}
                     >
-                      {confirmDeleteId === wp.id ? 'Delete?' : '✕'}
+                      {confirmDeleteId === wp.id ? 'Delete?' : <IconX size={14} aria-hidden="true" />}
                     </button>
                   </div>
                 </li>

@@ -20,7 +20,7 @@
  */
 import React, { useEffect } from 'react'
 import { View, TouchableOpacity, StyleSheet } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon, type AppIconName } from '../components/AppIcon'
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs'
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
@@ -29,12 +29,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { theme, useScaledTheme } from '../styles/theme'
 import { useTabBarCollapsed } from '../context/TabBarContext'
 
-type IoniconName = React.ComponentProps<typeof Ionicons>['name']
 
-const TAB_ICONS: Record<string, { active: IoniconName; inactive: IoniconName }> = {
-  Map:      { active: 'map',      inactive: 'map-outline'      },
-  Plan:     { active: 'airplane', inactive: 'airplane-outline' },
-  Settings: { active: 'settings', inactive: 'settings-outline' },
+const TAB_ICONS: Record<string, { active: AppIconName; inactive: AppIconName }> = {
+  Map:      { active: 'map',      inactive: 'map'      },
+  Plan:     { active: 'planeFilled', inactive: 'plane' },
+  Settings: { active: 'settingsFilled', inactive: 'settings' },
 }
 
 const COLLAPSED_EXTRA = 4   // dp: bar height above the bottom inset when collapsed
@@ -139,14 +138,11 @@ export function CollapsibleTabBar({ state, descriptors, navigation }: BottomTabB
                 accessibilityLabel={options.tabBarAccessibilityLabel ?? label}
                 testID={options.tabBarButtonTestID}
               >
-                <Ionicons
-                  name={icons ? (focused ? icons.active : icons.inactive) : 'ellipse-outline'}
+                <AppIcon
+                  name={icons ? (focused ? icons.active : icons.inactive) : 'circle'}
                   size={scaledTheme.scale(20)}
                   color={color}
-                  // Glyph box is wider than the font's advance on some
-                  // densities; give it room so the right edge isn't clipped.
-                  style={{ width: scaledTheme.scale(28), textAlign: 'center' }}
-                  allowFontScaling={false}
+                  style={{ width: scaledTheme.scale(28) }}
                 />
               </TouchableOpacity>
               </Animated.View>

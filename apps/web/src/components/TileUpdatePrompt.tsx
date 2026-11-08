@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { startTileManifestPolling, onTileManifestChanged } from '@open-vfr/shared/tileManifest'
 import { TILES_BASE_URL } from '../utils/env'
 import css from './UpdatePrompt.module.css'
+import { IconX } from '@tabler/icons-react'
 
 /**
  * Shows a non-intrusive toast when the tile data on R2 has actually changed
@@ -48,7 +49,7 @@ export default function TileUpdatePrompt() {
         onClick={() => setAvailable(false)}
         aria-label="Dismiss tile update notification"
       >
-        ✕
+        <IconX size={14} aria-hidden="true" />
       </button>
     </div>
   )

@@ -10,6 +10,7 @@ import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
 import NotamViewControls from './NotamViewControls'
 import NotamBody from './NotamBody'
+import { IconX } from '@tabler/icons-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -416,7 +417,7 @@ export default function AirspacePopup({ features, regionalNotams = NO_NOTAM_HITS
           )}
         </span>
         <span className={css.utcClock} title="Current time (UTC)">{fmtUtcClock(now)}</span>
-        <button className={css.close} onClick={onClose} aria-label="Close">✕</button>
+        <button className={css.close} onClick={onClose} aria-label="Close"><IconX size={14} aria-hidden="true" /></button>
       </div>
 
       {/* ── Body: altitude strip + rows ────────────────────────────────── */}

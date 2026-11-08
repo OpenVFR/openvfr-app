@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import css from './SnapPicker.module.css'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { CURRENT_POSITION_LABEL } from '@open-vfr/shared/snapLabels'
+import { IconX } from '@tabler/icons-react'
 
 export type SnapCandidate = {
   waypoint: RouteWaypoint
@@ -80,7 +81,7 @@ export default function SnapPicker({ candidates, x, y, onPick, onClose }: Props)
           ))}
           <li>
             <button className={css.item} onClick={onClose}>
-              <span className={`${css.badge} ${css.badgeCancel}`}>✕</span>
+              <span className={`${css.badge} ${css.badgeCancel}`}><IconX size={14} aria-hidden="true" /></span>
               <span className={`${css.name} ${css.nameCancel}`}>Cancel</span>
             </button>
           </li>

@@ -28,7 +28,7 @@ import { logEndAerodromes, normalizeLogPlace, LOG_PLACE_MAX_CHARS } from '@open-
 import { getAerodromes } from '../hooks/useNearbyFrequencies'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
+import { AppIcon, type AppIconName } from '../components/AppIcon'
 import * as Crypto from 'expo-crypto'
 
 import { useRouteContext } from '../context/RouteContext'
@@ -63,11 +63,11 @@ import { computeFuelPlan } from '../utils/fuelCalc'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 type Segment = 'route' | 'aircraft' | 'waypoints' | 'logs'
-const SEGMENTS: { key: Segment; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
-  { key: 'route',     label: 'Route',     icon: 'navigate-outline' },
-  { key: 'aircraft',  label: 'Aircraft',  icon: 'airplane-outline' },
-  { key: 'waypoints', label: 'Places', icon: 'pin-outline' },
-  { key: 'logs',      label: 'Logs',      icon: 'list-outline' },
+const SEGMENTS: { key: Segment; label: string; icon: AppIconName }[] = [
+  { key: 'route',     label: 'Route',     icon: 'navigate' },
+  { key: 'aircraft',  label: 'Aircraft',  icon: 'plane' },
+  { key: 'waypoints', label: 'Places', icon: 'pin' },
+  { key: 'logs',      label: 'Logs',      icon: 'list' },
 ]
 
 // ── Wind correction angle (WCA) ───────────────────────────────────────────
@@ -671,7 +671,7 @@ export function PlanScreen() {
                 Close route. There is no Active/Inactive switch: the route
                 on screen is the one working route; one not wanted is closed. */}
             <TouchableOpacity onPress={() => setMoreMenuOpen(true)} testID="plan-more-open" style={styles.moreBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="ellipsis-horizontal" size={14} color={theme.accentBlue} />
+              <AppIcon name="more" size={14} color={theme.accentBlue} />
             </TouchableOpacity>
         </View>
       ) : undefined,
@@ -718,7 +718,7 @@ export function PlanScreen() {
           onPress={() => { setMoreMenuOpen(false); setLibraryOpen(true) }}
           testID="plan-open-library"
         >
-          <Ionicons name="folder-outline" size={16} color={theme.textSecondary} />
+          <AppIcon name="folder" size={16} color={theme.textSecondary} />
           <Text style={styles.moreMenuItemTxt}>Route Library…</Text>
         </TouchableOpacity>
         {waypoints.length >= 2 && (
@@ -726,7 +726,7 @@ export function PlanScreen() {
             style={styles.moreMenuItem}
             onPress={() => { setMoreMenuOpen(false); handleExportGpx() }}
           >
-            <Ionicons name="download-outline" size={16} color={theme.textSecondary} />
+            <AppIcon name="download" size={16} color={theme.textSecondary} />
             <Text style={styles.moreMenuItemTxt}>Export GPX</Text>
           </TouchableOpacity>
         )}
@@ -734,7 +734,7 @@ export function PlanScreen() {
           style={styles.moreMenuItem}
           onPress={() => { setMoreMenuOpen(false); handleImportRouteGpx() }}
         >
-          <Ionicons name="cloud-upload-outline" size={16} color={theme.textSecondary} />
+          <AppIcon name="cloudUpload" size={16} color={theme.textSecondary} />
           <Text style={styles.moreMenuItemTxt}>Import GPX</Text>
         </TouchableOpacity>
         {waypoints.length >= 2 && (
@@ -742,7 +742,7 @@ export function PlanScreen() {
             style={styles.moreMenuItem}
             onPress={() => { setMoreMenuOpen(false); reverseRoute() }}
           >
-            <Ionicons name="swap-vertical-outline" size={16} color={theme.textSecondary} />
+            <AppIcon name="swapVertical" size={16} color={theme.textSecondary} />
             <Text style={styles.moreMenuItemTxt}>Reverse Route</Text>
           </TouchableOpacity>
         )}
@@ -751,7 +751,7 @@ export function PlanScreen() {
             style={styles.moreMenuItem}
             onPress={() => { setMoreMenuOpen(false); void handleClear() }}
           >
-            <Ionicons name="close-circle-outline" size={16} color={theme.textSecondary} />
+            <AppIcon name="closeCircle" size={16} color={theme.textSecondary} />
             <Text style={styles.moreMenuItemTxt}>Close route</Text>
           </TouchableOpacity>
         )}
@@ -766,9 +766,9 @@ export function PlanScreen() {
             onPress={() => setSegment(s.key)}
           >
             {s.key === 'route' ? (
-              <MaterialCommunityIcons name="map-marker-path" size={18} color={segment === s.key ? theme.accentBlue : theme.textMuted} />
+              <AppIcon name="route" size={18} color={segment === s.key ? theme.accentBlue : theme.textMuted} />
             ) : (
-              <Ionicons name={s.icon} size={18} color={segment === s.key ? theme.accentBlue : theme.textMuted} />
+              <AppIcon name={s.icon} size={18} color={segment === s.key ? theme.accentBlue : theme.textMuted} />
             )}
             <Text style={[styles.segmentTxt, segment === s.key && styles.segmentTxtActive]}>{s.label}</Text>
           </TouchableOpacity>
@@ -880,10 +880,10 @@ export function PlanScreen() {
               <View style={styles.wpRow}>
                 <View style={styles.reorderCol}>
                   <TouchableOpacity disabled={index === 0} onPress={() => moveWaypoint(index, index - 1)}>
-                    <Ionicons name="chevron-up" size={14} color={index === 0 ? theme.textFaint : theme.textMuted} />
+                    <AppIcon name="chevronUp" size={14} color={index === 0 ? theme.textFaint : theme.textMuted} />
                   </TouchableOpacity>
                   <TouchableOpacity disabled={index === waypoints.length - 1} onPress={() => moveWaypoint(index, index + 1)}>
-                    <Ionicons name="chevron-down" size={14} color={index === waypoints.length - 1 ? theme.textFaint : theme.textMuted} />
+                    <AppIcon name="chevronDown" size={14} color={index === waypoints.length - 1 ? theme.textFaint : theme.textMuted} />
                   </TouchableOpacity>
                 </View>
                 <View style={styles.badge}>
@@ -907,7 +907,7 @@ export function PlanScreen() {
                   onPress={() => openLegProps(index)}
                   accessibilityLabel={`Edit leg ${index + 1} properties`}
                 >
-                  <Ionicons name="arrow-down" size={14} color={hasOverride ? theme.accentBlue : theme.textFaint} />
+                  <AppIcon name="arrowDown" size={14} color={hasOverride ? theme.accentBlue : theme.textFaint} />
                   <View style={styles.legStats}>
                     <Text style={styles.legDist}>
                       {nmToDisplay(leg.distNm, units.distance).toFixed(1)} {distLabel(units.distance)}
@@ -923,7 +923,7 @@ export function PlanScreen() {
                       <Text style={styles.legWca}>WCA {leg.wca > 0 ? '+' : ''}{Math.round(leg.wca)}°</Text>
                     )}
                   </View>
-                  <Ionicons name="create-outline" size={14} color={hasOverride ? theme.accentBlue : theme.textFaint} />
+                  <AppIcon name="edit" size={14} color={hasOverride ? theme.accentBlue : theme.textFaint} />
                 </TouchableOpacity>
               )}
               {activeLeg === index && leg && (
@@ -1038,7 +1038,7 @@ export function PlanScreen() {
           refreshControl={<RefreshControl refreshing={aircraftRefreshing} onRefresh={handleAircraftRefresh} tintColor={theme.accentBlue} />}
         >
           <TouchableOpacity style={styles.saveBtn} onPress={openNewAircraft}>
-            <Ionicons name="add-circle-outline" size={14} color={theme.accentBlue} />
+            <AppIcon name="addCircle" size={14} color={theme.accentBlue} />
             <Text style={styles.saveBtnTxt}>Add Aircraft…</Text>
           </TouchableOpacity>
           <View style={{ height: scaledTheme.space2 }} />
@@ -1064,26 +1064,26 @@ export function PlanScreen() {
                     <SyncRefusedNote row={refusedAircraft.get(p.id)} />
                   </TouchableOpacity>
                   <View style={styles.aircraftActions}>
-                    {active && <Ionicons name="checkmark-circle" size={16} color={theme.accentBlue} style={{ marginRight: 4 }} />}
+                    {active && <AppIcon name="checkCircleFilled" size={16} color={theme.accentBlue} style={{ marginRight: 4 }} />}
                     {aircraftDeleteId === p.id ? (
                       <>
                         <TouchableOpacity style={styles.removeBtn} onPress={() => handleDeleteAircraft(p.id)}>
-                          <Ionicons name="checkmark" size={16} color={theme.statusDanger} />
+                          <AppIcon name="check" size={16} color={theme.statusDanger} />
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.removeBtn} onPress={() => setAircraftDeleteId(null)}>
-                          <Ionicons name="close" size={16} color={theme.textMuted} />
+                          <AppIcon name="close" size={16} color={theme.textMuted} />
                         </TouchableOpacity>
                       </>
                     ) : (
                       <>
                         <TouchableOpacity style={styles.removeBtn} onPress={() => openEditAircraft(p)}>
-                          <Ionicons name="pencil-outline" size={14} color={theme.textMuted} />
+                          <AppIcon name="edit" size={14} color={theme.textMuted} />
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.removeBtn} onPress={() => handleDuplicateAircraft(p)}>
-                          <Ionicons name="copy-outline" size={14} color={theme.textMuted} />
+                          <AppIcon name="copy" size={14} color={theme.textMuted} />
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.removeBtn} onPress={() => setAircraftDeleteId(p.id)}>
-                          <Ionicons name="trash-outline" size={14} color={theme.statusDanger} />
+                          <AppIcon name="trash" size={14} color={theme.statusDanger} />
                         </TouchableOpacity>
                       </>
                     )}
@@ -1126,7 +1126,7 @@ export function PlanScreen() {
                   Tip: long-press anywhere on the map to save that point as a place.
                 </Text>
                 <TouchableOpacity style={styles.saveBtn} onPress={() => setSavingWp(true)}>
-                  <Ionicons name="add-circle-outline" size={14} color={theme.accentBlue} />
+                  <AppIcon name="addCircle" size={14} color={theme.accentBlue} />
                   <Text style={styles.saveBtnTxt}>Enter coordinates manually…</Text>
                 </TouchableOpacity>
               </View>
@@ -1206,7 +1206,7 @@ export function PlanScreen() {
               <View key={g.folder || '__none'}>
                 {(placeGroups.length > 1 || g.folder) && (
                   <View style={styles.placeFolderHdr}>
-                    <Ionicons name="folder-outline" size={13} color={theme.textMuted} />
+                    <AppIcon name="folder" size={13} color={theme.textMuted} />
                     <Text style={styles.placeFolderTxt}>{g.folder || 'Unfiled'}</Text>
                     <Text style={styles.placeFolderCount}>{g.items.length}</Text>
                   </View>
@@ -1220,22 +1220,22 @@ export function PlanScreen() {
                         style={styles.placeHead}
                         onPress={() => { setOpenPlaceId(open ? null : wp.id); setEditPlaceId(null); setDelPlaceId(null); setInsertPlaceId(null) }}
                       >
-                        <Ionicons name="bookmark" size={16} color={theme.accentYellow} />
+                        <AppIcon name="bookmarkFilled" size={16} color={theme.accentYellow} />
                         <View style={styles.aircraftInfo}>
                           <Text style={styles.aircraftName}>{wp.name}</Text>
                           <Text style={styles.aircraftMeta}>{wp.lat.toFixed(4)}, {wp.lng.toFixed(4)}</Text>
                         </View>
-                        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={14} color={theme.textMuted} />
+                        <AppIcon name={open ? 'chevronUp' : 'chevronDown'} size={14} color={theme.textMuted} />
                       </TouchableOpacity>
                       {open && !editing && (
                         <View style={styles.placeActions}>
                           <TouchableOpacity style={styles.placeAction} onPress={() => appendToRoute(wp)}>
-                            <Ionicons name="add-circle-outline" size={15} color={theme.accentBlue} />
+                            <AppIcon name="addCircle" size={15} color={theme.accentBlue} />
                             <Text style={styles.placeActionTxt}>Add to route</Text>
                           </TouchableOpacity>
                           {waypoints.length > 0 && (
                             <TouchableOpacity style={styles.placeAction} onPress={() => setInsertPlaceId(insertPlaceId === wp.id ? null : wp.id)}>
-                              <Ionicons name="return-down-forward-outline" size={15} color={theme.accentBlue} />
+                              <AppIcon name="turnRight" size={15} color={theme.accentBlue} />
                               <Text style={styles.placeActionTxt}>Insert into route…</Text>
                             </TouchableOpacity>
                           )}
@@ -1252,15 +1252,15 @@ export function PlanScreen() {
                             </View>
                           )}
                           <TouchableOpacity style={styles.placeAction} onPress={() => startRouteAt(wp)}>
-                            <MaterialCommunityIcons name="map-marker-path" size={15} color={theme.accentBlue} />
+                            <AppIcon name="route" size={15} color={theme.accentBlue} />
                             <Text style={styles.placeActionTxt}>New route from here</Text>
                           </TouchableOpacity>
                           <TouchableOpacity style={styles.placeAction} onPress={() => showPlaceOnMap(wp)}>
-                            <Ionicons name="map-outline" size={15} color={theme.accentBlue} />
+                            <AppIcon name="map" size={15} color={theme.accentBlue} />
                             <Text style={styles.placeActionTxt}>Show on map</Text>
                           </TouchableOpacity>
                           <TouchableOpacity style={styles.placeAction} onPress={() => beginEditPlace(wp)}>
-                            <Ionicons name="create-outline" size={15} color={theme.accentBlue} />
+                            <AppIcon name="edit" size={15} color={theme.accentBlue} />
                             <Text style={styles.placeActionTxt}>Edit</Text>
                           </TouchableOpacity>
                           {delPlaceId === wp.id ? (
@@ -1268,12 +1268,12 @@ export function PlanScreen() {
                               style={styles.placeAction}
                               onPress={() => { deleteWaypoint(wp.id); setDelPlaceId(null); setOpenPlaceId(null) }}
                             >
-                              <Ionicons name="trash" size={15} color={theme.statusDanger} />
+                              <AppIcon name="trash" size={15} color={theme.statusDanger} />
                               <Text style={[styles.placeActionTxt, { color: theme.statusDanger }]}>Tap again to delete</Text>
                             </TouchableOpacity>
                           ) : (
                             <TouchableOpacity style={styles.placeAction} onPress={() => setDelPlaceId(wp.id)}>
-                              <Ionicons name="trash-outline" size={15} color={theme.statusDanger} />
+                              <AppIcon name="trash" size={15} color={theme.statusDanger} />
                               <Text style={[styles.placeActionTxt, { color: theme.statusDanger }]}>Delete</Text>
                             </TouchableOpacity>
                           )}
@@ -1488,22 +1488,22 @@ export function PlanScreen() {
                     ) : logDeleteId === log.id ? (
                       <>
                         <TouchableOpacity style={styles.removeBtn} onPress={() => { void deleteLog(log.id); if (isActive) clearView(); setLogDeleteId(null) }}>
-                          <Ionicons name="checkmark" size={16} color={theme.statusDanger} />
+                          <AppIcon name="check" size={16} color={theme.statusDanger} />
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.removeBtn} onPress={() => setLogDeleteId(null)}>
-                          <Ionicons name="close" size={16} color={theme.textMuted} />
+                          <AppIcon name="close" size={16} color={theme.textMuted} />
                         </TouchableOpacity>
                       </>
                     ) : (
                       <>
                         <TouchableOpacity style={styles.removeBtn} onPress={() => handleViewLog(log)}>
-                          <Ionicons name={isActive ? 'eye-off-outline' : 'eye-outline'} size={16} color={isActive ? theme.accentBlue : theme.textMuted} />
+                          <AppIcon name={isActive ? 'eyeOff' : 'eye'} size={16} color={isActive ? theme.accentBlue : theme.textMuted} />
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.removeBtn} onPress={() => void handleExportLog(log)} accessibilityLabel="Export flight as GPX">
-                          <Ionicons name="share-outline" size={16} color={theme.textMuted} />
+                          <AppIcon name="share" size={16} color={theme.textMuted} />
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.removeBtn} onPress={() => setLogDeleteId(log.id)}>
-                          <Ionicons name="trash-outline" size={14} color={theme.statusDanger} />
+                          <AppIcon name="trash" size={14} color={theme.statusDanger} />
                         </TouchableOpacity>
                       </>
                     )}

@@ -18,6 +18,7 @@ import type { RouteWaypoint } from '../utils/routeCalc'
 import { distanceNm, bearingDeg } from '../utils/routeCalc'
 import css from './DirectToPanel.module.css'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { IconX } from '@tabler/icons-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -159,7 +160,7 @@ export default function DirectToPanel({
               ⬡ Glide range: {glideRangeNm.toFixed(0)} NM
             </span>
           )}
-          <button className={css.closeBtn} onClick={onClose}>✕</button>
+          <button className={css.closeBtn} onClick={onClose}><IconX size={14} aria-hidden="true" /></button>
         </div>
 
         {/* ── Filters ────────────────────────────────────────────────── */}

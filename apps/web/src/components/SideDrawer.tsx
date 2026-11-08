@@ -22,6 +22,7 @@ import type { DataManifest } from '../hooks/useDataManifest'
 import { useTakeoffTime, useGlobalWind } from '../db/useSettings'
 import { useRouteWinds } from '../hooks/useRouteWinds'
 import css from './SideDrawer.module.css'
+import { IconChevronDown, IconChevronRight, IconMenu2, IconX } from '@tabler/icons-react'
 
 interface Props {
   // Map controls
@@ -325,7 +326,7 @@ function SideDrawer({
                 </button>
               )}
               <button type="button" className={`${css.sectionToggle} ${css.chevron}`} tabIndex={-1} aria-hidden="true" onClick={() => toggle('route')}>
-                {expanded.route ? '▾' : '▸'}
+                {expanded.route ? <IconChevronDown size={14} aria-hidden="true" /> : <IconChevronRight size={14} aria-hidden="true" />}
               </button>
             </div>
             {expanded.route && (
@@ -405,7 +406,7 @@ function SideDrawer({
             <div className={css.section}>
               <button className={css.sectionHeader} onClick={() => toggle('preflight')}>
                 <span>{SECTION_LABELS.preflight}</span>
-                <span className={css.chevron}>{expanded.preflight ? '▾' : '▸'}</span>
+                <span className={css.chevron}>{expanded.preflight ? <IconChevronDown size={14} aria-hidden="true" /> : <IconChevronRight size={14} aria-hidden="true" />}</span>
               </button>
               {expanded.preflight && (
                 <div className={css.sectionBody}>
@@ -431,7 +432,7 @@ function SideDrawer({
             <div className={css.section}>
               <button className={css.sectionHeader} onClick={() => toggle('fuel')}>
                 <span>{SECTION_LABELS.fuel}</span>
-                <span className={css.chevron}>{expanded.fuel ? '▾' : '▸'}</span>
+                <span className={css.chevron}>{expanded.fuel ? <IconChevronDown size={14} aria-hidden="true" /> : <IconChevronRight size={14} aria-hidden="true" />}</span>
               </button>
               {expanded.fuel && (
                 <div className={css.sectionBody}>
@@ -450,7 +451,7 @@ function SideDrawer({
           <div className={css.section}>
             <button className={css.sectionHeader} onClick={() => toggle('userWaypoints')}>
               <span>{SECTION_LABELS.userWaypoints}</span>
-              <span className={css.chevron}>{expanded.userWaypoints ? '▾' : '▸'}</span>
+              <span className={css.chevron}>{expanded.userWaypoints ? <IconChevronDown size={14} aria-hidden="true" /> : <IconChevronRight size={14} aria-hidden="true" />}</span>
             </button>
             {expanded.userWaypoints && (
               <div className={css.sectionBody}>
@@ -477,7 +478,7 @@ function SideDrawer({
           <div className={css.section}>
             <button ref={aircraftRef} className={css.sectionHeader} onClick={() => toggle('aircraft')}>
               <span>{SECTION_LABELS.aircraft}</span>
-              <span className={css.chevron}>{expanded.aircraft ? '▾' : '▸'}</span>
+              <span className={css.chevron}>{expanded.aircraft ? <IconChevronDown size={14} aria-hidden="true" /> : <IconChevronRight size={14} aria-hidden="true" />}</span>
             </button>
             {expanded.aircraft && (
               <div className={css.sectionBody}>
@@ -490,7 +491,7 @@ function SideDrawer({
           <div className={css.section}>
             <button className={css.sectionHeader} onClick={() => toggle('flightLogs')}>
               <span>{SECTION_LABELS.flightLogs}</span>
-              <span className={css.chevron}>{expanded.flightLogs ? '▾' : '▸'}</span>
+              <span className={css.chevron}>{expanded.flightLogs ? <IconChevronDown size={14} aria-hidden="true" /> : <IconChevronRight size={14} aria-hidden="true" />}</span>
             </button>
             {expanded.flightLogs && (
               <div className={css.sectionBody}>
@@ -508,7 +509,7 @@ function SideDrawer({
           <div className={css.section}>
             <button className={css.sectionHeader} onClick={() => toggle('layers')}>
               <span>{SECTION_LABELS.layers}</span>
-              <span className={css.chevron}>{expanded.layers ? '▾' : '▸'}</span>
+              <span className={css.chevron}>{expanded.layers ? <IconChevronDown size={14} aria-hidden="true" /> : <IconChevronRight size={14} aria-hidden="true" />}</span>
             </button>
             {expanded.layers && (
               <div className={css.sectionBody}>
@@ -521,7 +522,7 @@ function SideDrawer({
           <div className={css.section}>
             <button className={css.sectionHeader} onClick={() => toggle('settings')}>
               <span>{SECTION_LABELS.settings}</span>
-              <span className={css.chevron}>{expanded.settings ? '▾' : '▸'}</span>
+              <span className={css.chevron}>{expanded.settings ? <IconChevronDown size={14} aria-hidden="true" /> : <IconChevronRight size={14} aria-hidden="true" />}</span>
             </button>
             {expanded.settings && (
               <div className={css.sectionBody}>
@@ -542,7 +543,7 @@ function SideDrawer({
           title={open ? 'Close menu' : 'Open menu'}
           aria-label={open ? 'Close menu' : 'Open menu'}
         >
-          {open ? '✕' : '☰'}
+          {open ? <IconX size={18} aria-hidden="true" /> : <IconMenu2 size={18} aria-hidden="true" />}
         </button>
       </div>
 

@@ -5,6 +5,7 @@ import type { WindAloft } from '@open-vfr/shared/fetchWind'
 import type { GlobalWind } from '../db/useSettings'
 import css from './LegPropsPanel.module.css'
 import { iasToTas } from '@open-vfr/shared/airspeed'
+import { IconX } from '@tabler/icons-react'
 
 interface Props {
   legIndex: number
@@ -140,7 +141,7 @@ export default function LegPropsPanel({
       <div className={css.header}>
         <span className={css.title}>Leg {legIndex + 1}</span>
         <span className={css.route}>{fromName} → {toName}</span>
-        <button className={css.close} onClick={onClose} title="Close">✕</button>
+        <button className={css.close} onClick={onClose} title="Close"><IconX size={14} aria-hidden="true" /></button>
       </div>
 
       {/* Read-only info row */}

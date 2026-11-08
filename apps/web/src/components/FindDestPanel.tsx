@@ -26,6 +26,7 @@ import {
   aerodromeToWaypoint, hasAvgas, hasJet, isHard, isGrass, fmtBrg, fmtDist,
   type AerodromeEntry, type FuelFilter, type SurfaceFilter,
 } from '@open-vfr/shared/findDestination'
+import { IconX } from '@tabler/icons-react'
 
 interface Centre {
   lat: number
@@ -95,7 +96,7 @@ export default function FindDestPanel({
           {glideRangeNm !== null && (
             <span className={css.glideNote}>⬡ Glide {glideRangeNm.toFixed(0)} NM</span>
           )}
-          <button className={css.closeBtn} onClick={onClose}>✕</button>
+          <button className={css.closeBtn} onClick={onClose}><IconX size={14} aria-hidden="true" /></button>
         </div>
 
         {/* Filters */}

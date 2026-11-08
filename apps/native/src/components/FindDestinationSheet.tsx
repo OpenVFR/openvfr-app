@@ -13,7 +13,7 @@
 import React from 'react'
 import { View, Text, TouchableOpacity, TextInput, FlatList } from 'react-native'
 import Slider from '@react-native-community/slider'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from './AppIcon'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { getTileUrls } from '../config'
 import type { AircraftProfileDocType } from '../db'
@@ -65,7 +65,7 @@ const SURF_OPTS: { v: SurfaceFilter; label: string }[] = [
 ]
 
 export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyTo, onAddToRoute, directTo = false, routePoints, onInsertInRoute, places, onSavePlace, open: openProp, onOpenChange }: Props) {
-  const addIcon = directTo ? 'navigate' as const : 'add' as const
+  const addIcon = directTo ? 'navigateFilled' as const : 'add' as const
   const addVerb = directTo ? 'Direct to' : 'Add to route:'
   const styles = useThemedStyles(makeStyles)
   const sheetMaxH = useSheetMaxHeight()
@@ -96,7 +96,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
       accessibilityLabel={`Insert ${label} into route`}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
     >
-      <Ionicons name="git-merge-outline" size={16} color={theme.textPrimary} />
+      <AppIcon name="merge" size={16} color={theme.textPrimary} />
     </TouchableOpacity>
   ) : null
   const [search, setSearch] = React.useState('')
@@ -178,7 +178,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
         accessibilityLabel={`${addVerb} ${a.icao}`}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <Ionicons name={addIcon} size={18} color={theme.textPrimary} />
+        <AppIcon name={addIcon} size={18} color={theme.textPrimary} />
       </TouchableOpacity>
       {insertBtn(a.icao, a.icao)}
     </View>
@@ -190,7 +190,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
     <>
       {!controlled && (
         <TouchableOpacity style={styles.trigger} activeOpacity={0.85} onPress={() => setOpen(true)} testID="find-destination-open" accessibilityLabel="Find a destination">
-          <Ionicons name="search-outline" size={20} color={theme.textSecondary} />
+          <AppIcon name="search" size={20} color={theme.textSecondary} />
         </TouchableOpacity>
       )}
 
@@ -206,7 +206,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
               <Text style={styles.glideNote}>⬡ Glide {glideRangeNm.toFixed(0)} NM</Text>
             )}
             <TouchableOpacity onPress={() => setOpen(false)} testID="find-destination-close" accessibilityLabel="Close" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close" size={18} color={theme.textMuted} />
+              <AppIcon name="close" size={18} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
         )}
@@ -286,7 +286,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
                 accessibilityLabel="Save as place"
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="bookmark-outline" size={16} color={theme.textPrimary} />
+                <AppIcon name="bookmark" size={16} color={theme.textPrimary} />
               </TouchableOpacity>
             )}
             <TouchableOpacity
@@ -295,7 +295,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
               accessibilityLabel={directTo ? 'Direct to this position' : 'Add to route'}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name={addIcon} size={18} color={theme.textPrimary} />
+              <AppIcon name={addIcon} size={18} color={theme.textPrimary} />
             </TouchableOpacity>
           </View>
           )
@@ -306,7 +306,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
           <View style={styles.row}>
             <TouchableOpacity style={styles.rowMain} onPress={() => { onFlyTo(p.lat, p.lng); setOpen(false) }}>
               <View style={styles.rowTop}>
-                <Ionicons name="bookmark" size={13} color={theme.accentYellow} />
+                <AppIcon name="bookmarkFilled" size={13} color={theme.accentYellow} />
                 <Text style={styles.rowName} numberOfLines={1}>{p.name}</Text>
               </View>
               <Text style={styles.rowNav}>{p.folder ? p.folder : 'Saved place'}</Text>
@@ -317,7 +317,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
               accessibilityLabel={`${addVerb} ${p.name}`}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name={addIcon} size={18} color={theme.textPrimary} />
+              <AppIcon name={addIcon} size={18} color={theme.textPrimary} />
             </TouchableOpacity>
             {insertBtn(p.id, p.name)}
           </View>

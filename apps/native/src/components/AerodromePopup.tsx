@@ -13,7 +13,7 @@
  */
 
 import React, { useEffect, useState } from 'react'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from './AppIcon'
 import {
   View, Text, ScrollView, TouchableOpacity,
 } from 'react-native'
@@ -170,7 +170,7 @@ interface Props {
   /** Route action in the header: on the ground add to / start the route,
    *  in flight Direct To / Take shortcut. `short` is the pill text, `label`
    *  the full description (accessibility). Closes the popup after. */
-  routeAction?: { short: string; label: string; icon: 'add' | 'airplane'; onPress: () => void }
+  routeAction?: { short: string; label: string; icon: 'add' | 'planeFilled'; onPress: () => void }
 }
 
 export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams, routeWaypoints, routeAction }: Props) {
@@ -275,7 +275,7 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
                 accessibilityLabel={routeAction.label}
                 testID="aerodrome-route-action"
               >
-                <Ionicons name={routeAction.icon} size={14} color="#0b1220" />
+                <AppIcon name={routeAction.icon} size={14} color="#0b1220" />
                 <Text style={styles.routeActionTxt}>{routeAction.short}</Text>
               </TouchableOpacity>
             )}
@@ -285,11 +285,11 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
                 style={styles.closeBtn}
                 accessibilityLabel={isHome ? 'Home airfield (tap to clear)' : 'Set as home airfield'}
               >
-                <Ionicons name={isHome ? 'home' : 'home-outline'} size={20} color={isHome ? theme.accentBlue : theme.textMuted} />
+                <AppIcon name={isHome ? 'homeFilled' : 'home'} size={20} color={isHome ? theme.accentBlue : theme.textMuted} />
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={22} color={theme.textMuted} />
+              <AppIcon name="close" size={22} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
         </View>

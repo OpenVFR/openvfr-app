@@ -5,7 +5,7 @@
 
 import React from 'react'
 import { View, Text, TouchableOpacity } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from './AppIcon'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 export function AutoFlyBanner({ kind, top, onAccept, onDismiss }: {
@@ -17,7 +17,7 @@ export function AutoFlyBanner({ kind, top, onAccept, onDismiss }: {
   const styles = useThemedStyles(makeStyles)
   return (
     <View style={[styles.bar, { top }]} testID="auto-fly-banner" accessibilityRole="alert">
-      <Ionicons name={kind === 'start' ? 'airplane-outline' : 'airplane'} size={18} color={theme.textPrimary} />
+      <AppIcon name={kind === 'start' ? 'plane' : 'planeFilled'} size={18} color={theme.textPrimary} />
       <Text style={styles.text} numberOfLines={1}>
         {kind === 'start' ? 'Airborne? Start flying mode' : 'Landed? Stop flying mode'}
       </Text>
@@ -25,7 +25,7 @@ export function AutoFlyBanner({ kind, top, onAccept, onDismiss }: {
         <Text style={styles.acceptText}>{kind === 'start' ? 'Start' : 'Stop'}</Text>
       </TouchableOpacity>
       <TouchableOpacity onPress={onDismiss} hitSlop={8} accessibilityLabel="Dismiss" testID="auto-fly-dismiss">
-        <Ionicons name="close" size={18} color={theme.textFaint} />
+        <AppIcon name="close" size={18} color={theme.textFaint} />
       </TouchableOpacity>
     </View>
   )

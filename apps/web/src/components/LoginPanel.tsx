@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { SPONSOR } from '@open-vfr/shared/sponsor'
+import { IconKey } from '@tabler/icons-react'
 import { shouldAutoSubmitOtp } from '@open-vfr/shared/otpAutoSubmit'
 import type { AuthState } from '../hooks/useAuth'
 import { SITE_BASE_URL } from '../utils/env'
@@ -197,9 +198,7 @@ export default function LoginPanel({ auth }: Props) {
               onClick={() => void handlePasskey()}
               disabled={busy}
             >
-              <svg className={styles.keyIcon} viewBox="0 0 24 24" aria-hidden="true">
-                <path fill="currentColor" d="M7 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm5.65-4A6 6 0 1 0 12.65 14H17v4h4v-4h2v-4H12.65Z" />
-              </svg>
+              <IconKey className={styles.keyIcon} size={18} aria-hidden="true" />
               Sign in with passkey
             </button>
             {step === 'email' && <p className={styles.orText}>or get a code by email</p>}

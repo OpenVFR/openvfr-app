@@ -16,8 +16,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   IconCurrentLocation, IconCurrentLocationFilled, IconHome, IconPlaneDeparture, IconPlaneArrival,
   IconRulerMeasure, IconSearch, IconNews, IconMapPinPlus,
-  IconZoomScan, IconArrowBigRight,
-} from '@tabler/icons-react'
+  IconZoomScan, IconArrowBigRight, IconX } from '@tabler/icons-react'
 
 // Map control button glyphs (Tabler Icons). The imperative MapLibre buttons
 // take innerHTML, hence static markup; MapToolbar takes the elements directly.
@@ -5167,7 +5166,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           >
             Reload
           </button>
-          <button className={css.updateBannerDismiss} onClick={markSeen} aria-label="Dismiss">✕</button>
+          <button className={css.updateBannerDismiss} onClick={markSeen} aria-label="Dismiss"><IconX size={14} aria-hidden="true" /></button>
         </div>
       )}
 
@@ -5186,7 +5185,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           >
             {checking ? 'Checking…' : 'Check for update'}
           </button>
-          <button className={css.updateBannerDismiss} onClick={() => setDismissedAiracKey(outdatedAiracKey)} aria-label="Dismiss">✕</button>
+          <button className={css.updateBannerDismiss} onClick={() => setDismissedAiracKey(outdatedAiracKey)} aria-label="Dismiss"><IconX size={14} aria-hidden="true" /></button>
         </div>
       )}
 

@@ -8,12 +8,12 @@
 
 import React from 'react'
 import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon, type AppIconName } from './AppIcon'
 import { useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 export interface MapPopoverAction {
   key: string
-  icon: React.ComponentProps<typeof Ionicons>['name']
+  icon: AppIconName
   /** Short text next to the icon (optional; icon-only otherwise). */
   label?: string
   accessibilityLabel: string
@@ -62,7 +62,7 @@ export function MapPopover({ x, y, title, text, actions = [], testID }: {
             accessibilityLabel={a.accessibilityLabel ?? a.label}
             testID={`${testID ?? 'popover'}-${a.key}`}
           >
-            <Ionicons name={a.icon} size={18} color={a.danger ? '#f87171' : '#22d3ee'} />
+            <AppIcon name={a.icon} size={18} color={a.danger ? '#f87171' : '#22d3ee'} />
             {a.label ? <Text style={[styles.actionTxt, a.danger && styles.dangerTxt]}>{a.label}</Text> : null}
           </TouchableOpacity>
         ))}

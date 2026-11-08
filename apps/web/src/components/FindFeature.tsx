@@ -4,6 +4,7 @@ import css from './FindFeature.module.css'
 import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
 import { parseBearingDistance, pointFromBearingDistance, describeBearingDistance } from '@open-vfr/shared/bearingDistance'
 import { parseCoordinate, formatCoordinate } from '@open-vfr/shared/coordinateParse'
+import { IconX } from '@tabler/icons-react'
 
 export type FindResult = {
   kind: 'AD' | 'VOR' | 'NDB' | 'MRP' | 'RP' | 'LL' | 'PL'
@@ -254,7 +255,7 @@ export default function FindFeature({ focusNonce = 0, onResult, onAddToRoute, ro
           spellCheck={false}
         />
         {query && (
-          <button className={css.clear} onClick={() => { setQuery(''); setResults([]); setDropRect(null) }}>✕</button>
+          <button className={css.clear} onClick={() => { setQuery(''); setResults([]); setDropRect(null) }}><IconX size={14} aria-hidden="true" /></button>
         )}
       </div>
 

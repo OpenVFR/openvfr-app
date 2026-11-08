@@ -124,7 +124,7 @@ import { RulerHeaderStart, RulerHeaderEnd, RouteHeaderStart } from '../component
 import { ProfileViewToggle, ProfileModeLabel } from '../components/ProfileViewToggle'
 import { flightLogProfile, flownCoordinateAt, flownPointAt } from '@open-vfr/shared/flightLogProfile'
 import { parseLogRoute, type FlightLogRoute } from '@open-vfr/shared/flightLogRoute'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from '../components/AppIcon'
 import { useNavigation, useIsFocused } from '@react-navigation/native'
 import IconClipboardList from '@tabler/icons-react-native/IconClipboardList'
 import IconSettings from '@tabler/icons-react-native/IconSettings'
@@ -1864,7 +1864,7 @@ function MapScreenForCountry() {
           <MapPopover
             x={longPressMenu.x} y={longPressMenu.y}
             text={`Saved as ${longPressMenu.saved.name}`}
-            actions={[{ key: 'rename', icon: 'create-outline', label: 'Rename', accessibilityLabel: 'Rename the saved place',
+            actions={[{ key: 'rename', icon: 'edit', label: 'Rename', accessibilityLabel: 'Rename the saved place',
               onPress: () => { const m = longPressMenu; setLongPressMenu(null); setWpSaveName(m.saved!.name); setSavingWpAt({ lat: m.lat, lng: m.lng, id: m.saved!.id }) } }]}
             testID="map-spot-popover"
           />
@@ -1873,15 +1873,15 @@ function MapScreenForCountry() {
             x={longPressMenu.x} y={longPressMenu.y}
             text={longPressMenu.saveFailed ? 'Could not save. Try again.' : undefined}
             actions={[
-              { key: 'save', icon: 'bookmark-outline', label: 'Save', accessibilityLabel: 'Save this spot as a place', onPress: handleQuickSavePlace },
+              { key: 'save', icon: 'bookmark', label: 'Save', accessibilityLabel: 'Save this spot as a place', onPress: handleQuickSavePlace },
               // Ground: this exact point goes on the end of the route (taps
               // while extending snap to map features, so this is how a free
               // point is added). Flight: fly direct to it, rejoining the
               // route if it lies near a leg ahead.
               ...(flyingActive
-                ? (activePosition ? [{ key: 'direct', icon: 'airplane-outline' as const, label: 'Direct', accessibilityLabel: 'Direct to here',
+                ? (activePosition ? [{ key: 'direct', icon: 'plane' as const, label: 'Direct', accessibilityLabel: 'Direct to here',
                     onPress: () => { const m = longPressMenu; setLongPressMenu(null); flyDirect({ lat: m.lat, lng: m.lng }, true) } }] : [])
-                : [{ key: 'route', icon: 'add-circle-outline' as const, label: waypoints.length ? 'Add to route' : 'Start route',
+                : [{ key: 'route', icon: 'addCircle' as const, label: waypoints.length ? 'Add to route' : 'Start route',
                     accessibilityLabel: waypoints.length ? 'Add this exact point to the end of the route' : 'Start a route here',
                     onPress: () => { const m = longPressMenu; setLongPressMenu(null); addWaypoint({ lat: m.lat, lng: m.lng }); setExtending(true) } }]),
             ]}
@@ -1898,14 +1898,14 @@ function MapScreenForCountry() {
           const wp = waypoints[idx]
           const info = routePopover.info
           const actions: MapPopoverAction[] = []
-          if (info) actions.push({ key: 'details', icon: 'information-circle-outline', accessibilityLabel: 'Details',
+          if (info) actions.push({ key: 'details', icon: 'info', accessibilityLabel: 'Details',
             onPress: () => { setRoutePopover(null); void handleFeatureTap(info.features, info.lngLat) } })
           if (flyingActive && activePosition && idx >= activeWpIdx) {
             const labels = DIRECT_ACTION_LABELS[directKind(wp)]
-            actions.push({ key: 'direct', icon: 'airplane-outline', label: labels.short, accessibilityLabel: labels.long,
+            actions.push({ key: 'direct', icon: 'plane', label: labels.short, accessibilityLabel: labels.long,
               onPress: () => { setRoutePopover(null); flyDirect(wp) } })
           }
-          actions.push({ key: 'remove', icon: 'trash-outline', accessibilityLabel: 'Remove from route', danger: true,
+          actions.push({ key: 'minus', icon: 'trash', accessibilityLabel: 'Remove from route', danger: true,
             onPress: () => { setRoutePopover(null); removeWaypoint(idx) } })
           return (
             <MapPopover
@@ -1975,12 +1975,12 @@ function MapScreenForCountry() {
         {/* Viewed flight log banner — Logs segment "View" action on PlanScreen */}
         {selectedLog && (
           <View style={[styles.pastTrackBanner, { top: scaledTheme.space2 + (editBannerShown ? EDIT_BANNER_H : 0) }]}>
-            <Ionicons name="navigate-outline" size={13} color="#c4b5fd" />
+            <AppIcon name="navigate" size={13} color="#c4b5fd" />
             <Text style={styles.pastTrackBannerTxt} numberOfLines={1}>
               {selectedLog.departureIcao || '?'} → {selectedLog.arrivalIcao || '?'} · {selectedLog.distanceNm.toFixed(0)} NM
             </Text>
             <TouchableOpacity onPress={clearView} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close" size={15} color={theme.textMuted} />
+              <AppIcon name="close" size={15} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
         )}
@@ -1988,15 +1988,15 @@ function MapScreenForCountry() {
         {/* Outdated-AIRAC warning -- non-blocking, stacked under the log banner */}
         {outdatedAirac.length > 0 && dismissedAiracKey !== outdatedAiracKey && (
           <View style={[styles.pastTrackBanner, styles.airacBanner, { top: scaledTheme.space2 + (editBannerShown ? EDIT_BANNER_H : 0) + (selectedLog ? 44 : 0) }]}>
-            <Ionicons name="warning-outline" size={13} color={theme.statusWarn} />
+            <AppIcon name="warning" size={13} color={theme.statusWarn} />
             <Text style={styles.pastTrackBannerTxt} numberOfLines={2}>
               Airspace data outdated — {outdatedAirac.map(o => `${o.country.toUpperCase()} AIRAC ${o.cycle}`).join(', ')} (current {currentAirac}). Verify against official AIP.
             </Text>
             <TouchableOpacity onPress={recheckAirac} disabled={airacChecking} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="refresh" size={15} color={airacChecking ? theme.textFaint : theme.textMuted} />
+              <AppIcon name="refresh" size={15} color={airacChecking ? theme.textFaint : theme.textMuted} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setDismissedAiracKey(outdatedAiracKey)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close" size={15} color={theme.textMuted} />
+              <AppIcon name="close" size={15} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
         )}
@@ -2111,8 +2111,8 @@ function MapScreenForCountry() {
             onLongPress={() => { if (flightModeStatus === 'off') setLocMode('off') }}
             accessibilityLabel={flightModeStatus !== 'off' ? (followGps ? 'Following aircraft' : 'Map not following. Tap to re-centre on aircraft') : locMode === 'passive' ? 'Centre on my position. Long-press to turn location off.' : 'Show my position'}
           >
-            <Ionicons
-              name={(flightModeStatus !== 'off' ? followGps : locMode === 'passive') ? 'locate' : 'locate-outline'}
+            <AppIcon
+              name={(flightModeStatus !== 'off' ? followGps : locMode === 'passive') ? 'locateFilled' : 'locate'}
               size={18}
               color={(flightModeStatus !== 'off' ? followGps : locMode === 'passive' && locCentred) ? theme.accentBlue : theme.textPrimary}
             />
@@ -2289,7 +2289,7 @@ function MapScreenForCountry() {
           style={[styles.showProfileBtn, { bottom: GAUGES_BAR_H + (simFlight.active ? SIM_PANEL_H : 0) + scaledTheme.space1 }]}
           onPress={() => setProfileHeight(DEFAULT_CHART_H)}
         >
-          <Ionicons name="chevron-up" size={18} color={theme.textPrimary} />
+          <AppIcon name="chevronUp" size={18} color={theme.textPrimary} />
         </TouchableOpacity>
       )}
 
@@ -2335,7 +2335,7 @@ function MapScreenForCountry() {
           if (flyingActive) {
             if (!activePosition) return undefined
             const labels = DIRECT_ACTION_LABELS[directKind(wp)]
-            return { short: labels.short, label: labels.long, icon: 'airplane' as const, onPress: () => flyDirect(wp) }
+            return { short: labels.short, label: labels.long, icon: 'planeFilled' as const, onPress: () => flyDirect(wp) }
           }
           return waypoints.length
             ? { short: 'Route', label: 'Add to the end of the route', icon: 'add' as const, onPress: () => { addWaypoint(wp); setExtending(true) } }

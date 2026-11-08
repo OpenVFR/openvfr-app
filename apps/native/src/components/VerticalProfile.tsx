@@ -101,7 +101,7 @@ import { getTileUrls, API_BASE } from '../config'
 import { getOfflineDem } from '../utils/terrainDem'
 import { loadGeoJsonOnce } from '../utils/geoJsonCache'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from './AppIcon'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 
 // GeoJSON files are loaded once per app lifetime: see ../utils/geoJsonCache.ts.
@@ -2403,7 +2403,7 @@ export const VerticalProfile = React.memo(function VerticalProfile({
           <View style={[styles.chartWrap, styles.profileLoading, { height: chartH }]}>
             {profileDataFailed ? (
               <>
-                <Ionicons name="cloud-offline-outline" size={22} color={theme.textFaint} />
+                <AppIcon name="cloudOff" size={22} color={theme.textFaint} />
                 <Text style={styles.profileLoadingTitle}>Profile data unavailable</Text>
                 <Text style={styles.profileLoadingSub}>Airspace or obstacle data could not be loaded. Check the connection or download the area for offline use.</Text>
               </>
@@ -2431,7 +2431,7 @@ export const VerticalProfile = React.memo(function VerticalProfile({
           <View style={[styles.headerSide, styles.headerSideEnd]}>
             {onClose && (
               <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ left: 8, right: 8 }} accessibilityLabel={closeLabel ?? 'Close'}>
-                <Ionicons name="close" size={16} color={theme.textSecondary} />
+                <AppIcon name="close" size={16} color={theme.textSecondary} />
               </TouchableOpacity>
             )}
           </View>
@@ -2513,7 +2513,7 @@ export const VerticalProfile = React.memo(function VerticalProfile({
           )}
           {onClose && (
             <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ left: 8, right: 8 }} accessibilityLabel={closeLabel ?? 'Close'}>
-              <Ionicons name="close" size={16} color={theme.textSecondary} />
+              <AppIcon name="close" size={16} color={theme.textSecondary} />
             </TouchableOpacity>
           )}
         </View>

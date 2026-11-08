@@ -5,7 +5,7 @@
  */
 import React, { useEffect, useState } from 'react'
 import { Modal, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from './AppIcon'
 import {
   shouldOfferPasskey, canOfferNever, peekOtpSignIn, consumeOtpSignIn, type PasskeyPromptState,
 } from '@open-vfr/shared/passkeyPrompt'
@@ -68,7 +68,7 @@ export function PasskeyPromptModal() {
     <Modal visible transparent animationType="fade" onRequestClose={() => { if (!busy) close() }}>
       <View style={styles.backdrop}>
         <View style={styles.card} testID="passkey-prompt">
-          <Ionicons name="key" size={32} color={theme.accentBlue} />
+          <AppIcon name="key" size={32} color={theme.accentBlue} />
           {done ? (
             <>
               <Text style={styles.title}>Passkey added</Text>

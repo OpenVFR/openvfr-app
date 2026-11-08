@@ -18,7 +18,7 @@ import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ActivityIndicator,
 } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from './AppIcon'
 import type { SimStatus } from '../hooks/useSimInput'
 import { NativeSheet } from './NativeSheet'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -46,8 +46,8 @@ export function SimConnectSheet({ simStatus, onStartUdp, onStartWs, onStop }: Pr
         style={[styles.trigger, connected && styles.triggerActive, error && styles.triggerError]}
         onPress={() => setOpen(true)}
       >
-        <Ionicons
-          name="game-controller-outline"
+        <AppIcon
+          name="gamepad"
           size={20}
           color={connected ? theme.accentBlue : error ? theme.statusDanger : theme.textSecondary}
         />
@@ -61,7 +61,7 @@ export function SimConnectSheet({ simStatus, onStartUdp, onStartWs, onStop }: Pr
           <View style={styles.header}>
             <Text style={styles.title}>Simulator / External GPS</Text>
             <TouchableOpacity onPress={() => setOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close" size={18} color={theme.textMuted} />
+              <AppIcon name="close" size={18} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
         )}
@@ -95,7 +95,7 @@ export function SimConnectSheet({ simStatus, onStartUdp, onStartWs, onStop }: Pr
           {/* Mode A — UDP */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <Ionicons name="wifi-outline" size={16} color={theme.accentBlue} />
+              <AppIcon name="wifi" size={16} color={theme.accentBlue} />
               <Text style={styles.cardTitle}>UDP Auto-detect</Text>
               <View style={styles.badge}><Text style={styles.badgeTxt}>Recommended</Text></View>
             </View>
@@ -116,7 +116,7 @@ export function SimConnectSheet({ simStatus, onStartUdp, onStartWs, onStop }: Pr
           {/* Mode B — WebSocket bridge */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <Ionicons name="link-outline" size={16} color={theme.textMuted} />
+              <AppIcon name="link" size={16} color={theme.textMuted} />
               <Text style={styles.cardTitle}>WebSocket Bridge</Text>
               <View style={[styles.badge, styles.badgeFallback]}><Text style={styles.badgeTxt}>Fallback</Text></View>
             </View>

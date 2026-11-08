@@ -34,6 +34,7 @@ import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride, AircraftProfileDocType } from '../db/index'
 import css from './PreflightWarnings.module.css'
 import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
+import { IconCheck } from '@tabler/icons-react'
 
 // ---------------------------------------------------------------------------
 // Data files: one load per file and country selection, shared by every mount.
@@ -218,7 +219,7 @@ export default function PreflightWarnings(props: Props) {
 
       {!loading && !warnings.some((w) => w.level !== 'info') && (
         <div className={css.ok}>
-          <span className={css.okIcon}>✓</span>
+          <span className={css.okIcon}><IconCheck size={14} aria-hidden="true" /></span>
           No issues found
         </div>
       )}

@@ -25,7 +25,7 @@
 
 import React, { useState } from 'react'
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from './AppIcon'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { fmtNotamDate, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
@@ -185,7 +185,7 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
                   <Text style={styles.otherNotamPeriod} numberOfLines={1}>
                     {fmtNotamDate(n.effective)}{n.expires ? ` – ${fmtNotamDate(n.expires)}` : ''}
                   </Text>
-                  <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.textFaint} />
+                  <AppIcon name={expanded ? 'chevronUp' : 'chevronDown'} size={14} color={theme.textFaint} />
                 </View>
                 {!expanded && (
                   <Text style={styles.otherNotamPreview} numberOfLines={1}>{previewText(n.text)}</Text>

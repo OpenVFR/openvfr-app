@@ -31,7 +31,7 @@ import { useStableItems } from '../hooks/useStableItems'
 import { useAlertLog } from '../hooks/useAlertLog'
 import { alertLogTime } from '@open-vfr/shared/alertLog'
 import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from './AppIcon'
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
 import Animated, {
   useAnimatedStyle,
@@ -331,7 +331,7 @@ export function NotificationCenter({
                     onPress={dismiss}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <Ionicons name="close" size={14} color={accent} />
+                    <AppIcon name="close" size={14} color={accent} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -356,7 +356,7 @@ export function NotificationCenter({
                   onPress={dismiss}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Ionicons name="close" size={12} color={accent} />
+                  <AppIcon name="close" size={12} color={accent} />
                 </TouchableOpacity>
               )}
             </View>

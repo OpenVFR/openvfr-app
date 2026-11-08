@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { isDismissible, type SystemMessage } from '@open-vfr/shared/systemMessages'
 import { useSystemMessages } from '../hooks/useSystemMessages'
 import css from './SystemMessages.module.css'
+import { IconX } from '@tabler/icons-react'
 
 const SEVERITY_LABEL: Record<SystemMessage['severity'], string> = {
   info: 'Notice',
@@ -27,7 +28,7 @@ function Notice({ m, onDismiss }: { m: SystemMessage; onDismiss: () => void }) {
           </button>
         )}
         {isDismissible(m) && (
-          <button className={css.btn} onClick={onDismiss} aria-label={`Dismiss: ${m.title}`}>✕</button>
+          <button className={css.btn} onClick={onDismiss} aria-label={`Dismiss: ${m.title}`}><IconX size={14} aria-hidden="true" /></button>
         )}
       </div>
       {open && m.body && <p className={css.body}>{m.body}</p>}

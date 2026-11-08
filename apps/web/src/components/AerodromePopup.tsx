@@ -25,6 +25,7 @@ import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from
 import { API_BASE_URL } from '../utils/env'
 import { loadStations as loadStationsShared, type StationRecord } from '@open-vfr/shared/wxStations'
 import { countryDatasetSource } from '@open-vfr/shared/countryData'
+import { IconChevronDown, IconChevronUp, IconHome, IconHomeFilled, IconX } from '@tabler/icons-react'
 
 // ── Types matching the GeoJSON properties schema ─────────────────────────────
 
@@ -617,13 +618,10 @@ export default function AerodromePopup({
             title={isHome ? 'Home airfield' : 'Set as home airfield'}
             aria-label={isHome ? 'Home airfield' : 'Set as home airfield'}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill={isHome ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-              <polyline points="9 22 9 12 15 12 15 22"/>
-            </svg>
+            {isHome ? <IconHomeFilled size={14} aria-hidden="true" /> : <IconHome size={14} aria-hidden="true" />}
           </button>
           <button className={css.closeBtn} onClick={onClose} aria-label="Close">
-            ✕
+            <IconX size={14} aria-hidden="true" />
           </button>
         </div>
 
@@ -1043,7 +1041,7 @@ export default function AerodromePopup({
                         onClick={() => setTafExpanded((v) => !v)}
                         aria-expanded={String(tafExpanded) as 'true' | 'false'}
                       >
-                        TAF {tafExpanded ? '▴' : '▾'}
+                        TAF {tafExpanded ? <IconChevronUp size={14} aria-hidden="true" /> : <IconChevronDown size={14} aria-hidden="true" />}
                       </button>
                       {tafChangeSoon(wx.taf) && (
                         <span className={css.tafChange}>{'\u26a0'} Trend change due within 3 h</span>
@@ -1280,7 +1278,7 @@ export default function AerodromePopup({
                   >
                     <span className={css.notamId}>{notamTitle(n)}</span>
                     {eff && <span className={css.notamPeriod}>{eff}{exp ? ` – ${exp}` : ''}</span>}
-                    <span className={css.notamChevron}>{expanded ? '▴' : '▾'}</span>
+                    <span className={css.notamChevron}>{expanded ? <IconChevronUp size={14} aria-hidden="true" /> : <IconChevronDown size={14} aria-hidden="true" />}</span>
                   </button>
                   {expanded && (
                     <pre className={css.notamText}><NotamBody text={notamText(n, textView)} /></pre>

@@ -10,6 +10,7 @@ import { useSyncRejected } from '../sync/cloudSync'
 import SyncRefusedNote from './SyncRefusedNote'
 import css from './RouteLibrary.module.css'
 import { RouteCloseContext } from './routeCloseContext'
+import { IconCheck, IconChevronDown, IconChevronRight, IconX } from '@tabler/icons-react'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -326,7 +327,7 @@ export default function RouteLibrary({
         onClick={() => setShowSaved((v) => !v)}
         aria-expanded={showSaved}
       >
-        {showSaved ? '▾' : '▸'} {hasCurrent ? 'Open another route' : 'Saved routes'} ({routes.length})
+        {showSaved ? <IconChevronDown size={14} aria-hidden="true" /> : <IconChevronRight size={14} aria-hidden="true" />} {hasCurrent ? 'Open another route' : 'Saved routes'} ({routes.length})
       </button>
       {showSaved && (<>
       {/* ── Search + sort (shown when > 5 saved routes) ─────────────── */}
@@ -388,13 +389,13 @@ export default function RouteLibrary({
               <div className={css.itemActions}>
                 {deleteConfirmId === r.id ? (
                   <>
-                    <button className={`${css.iconBtn} ${css.iconBtnDanger}`} onClick={() => confirmDelete(r.id)} title="Confirm delete">✓</button>
-                    <button className={css.iconBtn} onClick={() => setDeleteConfirmId(null)} title="Cancel">✕</button>
+                    <button className={`${css.iconBtn} ${css.iconBtnDanger}`} onClick={() => confirmDelete(r.id)} title="Confirm delete"><IconCheck size={14} aria-hidden="true" /></button>
+                    <button className={css.iconBtn} onClick={() => setDeleteConfirmId(null)} title="Cancel"><IconX size={14} aria-hidden="true" /></button>
                   </>
                 ) : (
                   <>
                     <button className={css.iconBtn} onClick={() => requestLoad(r.id)} title="Load route">↳</button>
-                    <button className={`${css.iconBtn} ${css.iconBtnDanger}`} onClick={() => setDeleteConfirmId(r.id)} title="Delete route">✕</button>
+                    <button className={`${css.iconBtn} ${css.iconBtnDanger}`} onClick={() => setDeleteConfirmId(r.id)} title="Delete route"><IconX size={14} aria-hidden="true" /></button>
                   </>
                 )}
               </div>

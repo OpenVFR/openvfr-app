@@ -5,6 +5,7 @@ import { computeMapScale, type MapScale } from '@open-vfr/shared/mapScale'
 import { MAX_FT, ftToLabel } from './AltitudeSlider'
 import type { Units } from '../utils/units'
 import css from './MapInfoBar.module.css'
+import { IconInfoCircle } from '@tabler/icons-react'
 
 /**
  * Bottom-right map status pill: info (i) button, active airspace altitude
@@ -74,9 +75,7 @@ export default function MapInfoBar({ map, ceilingFt, units, windLabel, windSurfa
           title="Map data & attribution"
           aria-label="Map data & attribution"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
-          </svg>
+          <IconInfoCircle size={14} aria-hidden="true" />
         </button>
         <span
           className={`${css.alt}${unlimited ? '' : ` ${css.altFiltered}`}`}

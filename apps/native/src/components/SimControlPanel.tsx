@@ -17,7 +17,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { View, Text, TouchableOpacity, useWindowDimensions, type LayoutChangeEvent } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from './AppIcon'
 import { LANDSCAPE_COMPACT } from './GaugesBar'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
@@ -141,14 +141,14 @@ export const SimControlPanel = React.memo(function SimControlPanel({ speedKts, a
   return (
     <View style={[styles.panel, compact < 1 && { paddingVertical: scaled.space1 / 2 }]}>
       <View style={styles.header}>
-        <Ionicons name="game-controller-outline" size={14} color={theme.accentBlue} />
+        <AppIcon name="gamepad" size={14} color={theme.accentBlue} />
         <Text style={styles.headerTxt}>SIMULATION</Text>
         <TouchableOpacity style={styles.advBtn} onPress={onAdvance} hitSlop={6}>
-          <Ionicons name="play-skip-forward-outline" size={14} color={theme.accentBlue} />
+          <AppIcon name="skipForward" size={14} color={theme.accentBlue} />
           <Text style={[styles.advTxt, { fontSize: labelSize }]} allowFontScaling={false}>+1NM</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={onStop} hitSlop={8} testID="sim-stop">
-          <Ionicons name="close-circle" size={18} color={theme.statusDanger} />
+          <AppIcon name="closeCircleFilled" size={18} color={theme.statusDanger} />
         </TouchableOpacity>
       </View>
 
@@ -160,13 +160,13 @@ export const SimControlPanel = React.memo(function SimControlPanel({ speedKts, a
               <Text style={[styles.gaugeLabel, { fontSize: labelSize }]} allowFontScaling={false}>{c.label}</Text>
               <View style={styles.stepperRow}>
                 <StepperButton size={btn} onPressIn={v.minus} onPressOut={v.onOut}>
-                  <Ionicons name="remove" size={Math.round(btn * 0.6)} color={theme.textPrimary} />
+                  <AppIcon name="minus" size={Math.round(btn * 0.6)} color={theme.textPrimary} />
                 </StepperButton>
                 <Text style={[styles.gaugeVal, { fontSize: valueSize }]} allowFontScaling={false} numberOfLines={1}>
                   {v.text}<Text style={[styles.gaugeUnit, { fontSize: unitSize }]}>{v.unit}</Text>
                 </Text>
                 <StepperButton size={btn} onPressIn={v.plus} onPressOut={v.onOut}>
-                  <Ionicons name="add" size={Math.round(btn * 0.6)} color={theme.textPrimary} />
+                  <AppIcon name="add" size={Math.round(btn * 0.6)} color={theme.textPrimary} />
                 </StepperButton>
               </View>
             </View>

@@ -8,7 +8,7 @@ import {
   View, Text, Switch, ScrollView, TextInput,
   TouchableOpacity, Alert, Modal, Pressable, Linking,
 } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from '../components/AppIcon'
 import Slider from '@react-native-community/slider'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -834,7 +834,7 @@ function Section({ title, children, collapsible = false }: { title: string; chil
           accessibilityLabel={title}
         >
           <Text style={sectionStyles.headerTitle}>{title}</Text>
-          <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={18} color={theme.textMuted} />
+          <AppIcon name={open ? 'chevronDown' : 'chevronRight'} size={18} color={theme.textMuted} />
         </TouchableOpacity>
         {open && children}
       </View>

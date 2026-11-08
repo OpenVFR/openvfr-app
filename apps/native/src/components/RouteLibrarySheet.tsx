@@ -11,7 +11,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, TextInput,
   FlatList, ActivityIndicator, RefreshControl, Alert,
 } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from './AppIcon'
 import * as Crypto from 'expo-crypto'
 import * as FileSystem from 'expo-file-system'
 import * as DocumentPicker from 'expo-document-picker'
@@ -279,18 +279,18 @@ export function RouteLibrarySheet({
   const syncIcon = syncState === 'syncing' ? (
     <ActivityIndicator size={12} color={theme.accentBlue} />
   ) : syncState === 'error' ? (
-    <Ionicons name="cloud-offline-outline" size={14} color={theme.statusDanger} />
+    <AppIcon name="cloudOff" size={14} color={theme.statusDanger} />
   ) : syncState === 'offline' ? (
-    <Ionicons name="cloud-offline-outline" size={14} color={theme.textFaint} />
+    <AppIcon name="cloudOff" size={14} color={theme.textFaint} />
   ) : (
-    <Ionicons name="cloud-done-outline" size={14} color={theme.statusOk} />
+    <AppIcon name="cloudDone" size={14} color={theme.statusOk} />
   )
 
   return (
     <>
       {!hideTrigger && (
         <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)}>
-          <Ionicons name="folder-outline" size={18} color={theme.textSecondary} />
+          <AppIcon name="folder" size={18} color={theme.textSecondary} />
         </TouchableOpacity>
       )}
 
@@ -303,7 +303,7 @@ export function RouteLibrarySheet({
           <View style={styles.header}>
             <Text style={styles.title}>Route Library</Text>
             <TouchableOpacity onPress={handleImportGpx} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginRight: scaledTheme.space2 }}>
-              <Ionicons name="download-outline" size={16} color={theme.textSecondary} />
+              <AppIcon name="download" size={16} color={theme.textSecondary} />
             </TouchableOpacity>
             <View style={styles.syncBadge}>
               {syncIcon}
@@ -315,7 +315,7 @@ export function RouteLibrarySheet({
               </Text>
             </View>
             <TouchableOpacity onPress={() => setOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close" size={18} color={theme.textMuted} />
+              <AppIcon name="close" size={18} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
         )}
@@ -360,14 +360,14 @@ export function RouteLibrarySheet({
                       <Text style={styles.saveConfirmTxt}>Save</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => setSaveAsOpen(false)}>
-                      <Ionicons name="close" size={16} color={theme.textMuted} />
+                      <AppIcon name="close" size={16} color={theme.textMuted} />
                     </TouchableOpacity>
                   </View>
                 )}
               </>
             ) : !saving ? (
               <TouchableOpacity style={styles.saveBtn} onPress={() => { setSaveName(suggestedName); setSaving(true) }}>
-                <Ionicons name="save-outline" size={14} color={theme.accentBlue} />
+                <AppIcon name="save" size={14} color={theme.accentBlue} />
                 <Text style={styles.saveBtnTxt}>Save current route…</Text>
               </TouchableOpacity>
             ) : (
@@ -386,7 +386,7 @@ export function RouteLibrarySheet({
                   <Text style={styles.saveConfirmTxt}>Save</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => setSaving(false)}>
-                  <Ionicons name="close" size={16} color={theme.textMuted} />
+                  <AppIcon name="close" size={16} color={theme.textMuted} />
                 </TouchableOpacity>
               </View>
             )}
@@ -396,7 +396,7 @@ export function RouteLibrarySheet({
         {/* Transient "switched aircraft" confirmation */}
         {switchMsg && (
           <View style={styles.switchNote}>
-            <Ionicons name="checkmark-circle-outline" size={13} color={theme.accentBlue} />
+            <AppIcon name="checkCircle" size={13} color={theme.accentBlue} />
             <Text style={styles.switchNoteTxt}>{switchMsg}</Text>
           </View>
         )}
@@ -404,7 +404,7 @@ export function RouteLibrarySheet({
         {/* Route list */}
         {routes.length === 0 ? (
           <View style={styles.empty}>
-            <Ionicons name="map-outline" size={32} color={theme.textFaint} />
+            <AppIcon name="map" size={32} color={theme.textFaint} />
             <Text style={styles.emptyTxt}>No saved routes</Text>
             <Text style={styles.emptyHint}>Save the current route to build your library.</Text>
           </View>
@@ -433,7 +433,7 @@ export function RouteLibrarySheet({
                           <Text style={styles.renameSave}>Save</Text>
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => setRenaming(null)}>
-                          <Ionicons name="close" size={14} color={theme.textMuted} />
+                          <AppIcon name="close" size={14} color={theme.textMuted} />
                         </TouchableOpacity>
                       </View>
                     ) : (
@@ -457,16 +457,16 @@ export function RouteLibrarySheet({
                   {!isRenaming && (
                     <View style={styles.routeActions}>
                       <TouchableOpacity style={styles.actionBtn} onPress={() => handleExportGpx(route)}>
-                        <Ionicons name="share-outline" size={14} color={theme.textMuted} />
+                        <AppIcon name="share" size={14} color={theme.textMuted} />
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.actionBtn}
                         onPress={() => { setRenaming(route.id); setRenameTxt(route.name) }}
                       >
-                        <Ionicons name="pencil-outline" size={14} color={theme.textMuted} />
+                        <AppIcon name="edit" size={14} color={theme.textMuted} />
                       </TouchableOpacity>
                       <TouchableOpacity style={styles.actionBtn} onPress={() => handleDelete(route)}>
-                        <Ionicons name="trash-outline" size={14} color={theme.statusDanger} />
+                        <AppIcon name="trash" size={14} color={theme.statusDanger} />
                       </TouchableOpacity>
                     </View>
                   )}

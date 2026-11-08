@@ -24,7 +24,7 @@ import {
   View, Text, TouchableOpacity, ScrollView, useWindowDimensions, Keyboard, Platform,
   type StyleProp, type ViewStyle,
 } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from './AppIcon'
 import BottomSheet, { type BottomSheetMethods } from '@expo/ui/community/bottom-sheet'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { theme, useThemedStyles } from '../styles/theme'
@@ -130,7 +130,7 @@ export function NativeSheet({
                   testID={closeTestID ?? (testID ? `${testID}-close` : undefined)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Ionicons name="close" size={18} color={theme.textMuted} />
+                  <AppIcon name="close" size={18} color={theme.textMuted} />
                 </TouchableOpacity>
               </View>
             </View>

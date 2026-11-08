@@ -13,7 +13,7 @@ import React from 'react'
 import {
   View, Text, TouchableOpacity, TextInput,
 } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from './AppIcon'
 import { NativeSheet } from './NativeSheet'
 import { AltitudeSlider } from './AltitudeSlider'
 import { TrafficFilterSlider } from './TrafficFilterSlider'
@@ -187,7 +187,7 @@ export function MapDisplaySheet({
     <>
       {/* Trigger button */}
       <TouchableOpacity style={styles.trigger} activeOpacity={0.85} onPress={() => setOpen(true)} testID="map-display-open" accessibilityLabel="Map display">
-        <Ionicons name="layers-outline" size={20} color={theme.textSecondary} />
+        <AppIcon name="layers" size={20} color={theme.textSecondary} />
       </TouchableOpacity>
 
       {/* Native bottom sheet (Compose ModalBottomSheet / SwiftUI sheet) --

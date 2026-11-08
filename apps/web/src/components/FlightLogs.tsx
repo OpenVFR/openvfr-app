@@ -15,6 +15,7 @@ import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { logEndAerodromes, normalizeLogPlace, LOG_PLACE_MAX_CHARS, type LogAerodrome, type LogPlace } from '@open-vfr/shared/flightLogAerodromes'
 import type { AircraftProfileDocType } from '../db'
 import css from './FlightLogs.module.css'
+import { IconCheck, IconX } from '@tabler/icons-react'
 
 const EVENT_ICON: Record<FlownEvent['kind'], string> = {
   takeoff: '\u2197', landing: '\u2198', 'touch-and-go': '\u21c4', gap: '\u26a0', airspace: '\u25a3',
@@ -439,8 +440,8 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
               <div className={css.itemActions}>
                 {deleteId === log.id ? (
                   <>
-                    <button className={`${css.viewBtn} ${css.viewBtnDanger}`} onClick={() => handleDelete(log.id)} title="Confirm delete">✓</button>
-                    <button className={css.viewBtn} onClick={() => setDeleteId(null)} title="Cancel">✕</button>
+                    <button className={`${css.viewBtn} ${css.viewBtnDanger}`} onClick={() => handleDelete(log.id)} title="Confirm delete"><IconCheck size={14} aria-hidden="true" /></button>
+                    <button className={css.viewBtn} onClick={() => setDeleteId(null)} title="Cancel"><IconX size={14} aria-hidden="true" /></button>
                   </>
                 ) : (
                   <>
@@ -451,7 +452,7 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
                       {isActive ? 'Hide' : 'View'}
                     </button>
                     <button className={css.viewBtn} title="Export as GPX" onClick={() => handleExport(log)}>GPX</button>
-                    <button className={`${css.viewBtn} ${css.viewBtnDanger}`} title="Delete" onClick={() => setDeleteId(log.id)}>✕</button>
+                    <button className={`${css.viewBtn} ${css.viewBtnDanger}`} title="Delete" onClick={() => setDeleteId(log.id)}><IconX size={14} aria-hidden="true" /></button>
                   </>
                 )}
               </div>

@@ -5,6 +5,7 @@ import { extractPohViaServer, RateLimitError } from '../utils/pohExtract'
 import { useSyncRejected } from '../sync/cloudSync'
 import SyncRefusedNote from './SyncRefusedNote'
 import css from './AircraftLibrary.module.css'
+import { IconCheck, IconX } from '@tabler/icons-react'
 
 // ---------------------------------------------------------------------------
 // Category metadata
@@ -390,8 +391,8 @@ export default function AircraftLibrary({
                 <div className={css.itemActions}>
                   {deleteId === p.id ? (
                     <>
-                      <button className={`${css.iconBtn} ${css.iconBtnDanger}`} onClick={() => handleDelete(p.id)} title="Confirm delete">✓</button>
-                      <button className={css.iconBtn} onClick={() => setDeleteId(null)} title="Cancel">✕</button>
+                      <button className={`${css.iconBtn} ${css.iconBtnDanger}`} onClick={() => handleDelete(p.id)} title="Confirm delete"><IconCheck size={14} aria-hidden="true" /></button>
+                      <button className={css.iconBtn} onClick={() => setDeleteId(null)} title="Cancel"><IconX size={14} aria-hidden="true" /></button>
                     </>
                   ) : (
                     <>
@@ -402,7 +403,7 @@ export default function AircraftLibrary({
                       >✈</button>
                       <button className={css.iconBtn} title="Edit" onClick={() => setMode(p.id)}>✎</button>
                       <button className={css.iconBtn} title="Duplicate" onClick={() => duplicateProfile(p.id)}>⎘</button>
-                      <button className={`${css.iconBtn} ${css.iconBtnDanger}`} title="Delete" onClick={() => setDeleteId(p.id)}>✕</button>
+                      <button className={`${css.iconBtn} ${css.iconBtnDanger}`} title="Delete" onClick={() => setDeleteId(p.id)}><IconX size={14} aria-hidden="true" /></button>
                     </>
                   )}
                 </div>
@@ -440,7 +441,7 @@ export default function AircraftLibrary({
           >
           {pohState === 'extracting' || pohState === 'querying' ? <span className={css.pohSpinner} /> : pohState === 'retrying' ? '⏱' : pohState === 'done' ? '✓' : '📄'}
           </button>
-          <button className={css.iconBtn} title="Back to list" onClick={() => setMode('list')}>✕</button>
+          <button className={css.iconBtn} title="Back to list" onClick={() => setMode('list')}><IconX size={14} aria-hidden="true" /></button>
         </div>
       </div>
 

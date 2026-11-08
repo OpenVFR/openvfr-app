@@ -10,6 +10,7 @@ import { useState, useEffect, useRef } from 'react'
 import type { AuthState, PasskeyInfo } from '../hooks/useAuth'
 import { API_BASE_URL } from '../utils/env'
 import styles from './ProfilePanel.module.css'
+import { IconX } from '@tabler/icons-react'
 
 interface Props {
   auth:    AuthState
@@ -132,7 +133,7 @@ export default function ProfilePanel({ auth, onClose }: Props) {
         {/* Header */}
         <div className={styles.header}>
           <h2 className={styles.title}>Profile</h2>
-          <button className={styles.closeBtn} onClick={onClose} type="button" aria-label="Close">✕</button>
+          <button className={styles.closeBtn} onClick={onClose} type="button" aria-label="Close"><IconX size={14} aria-hidden="true" /></button>
         </div>
 
         {/* Email (read-only) */}

@@ -44,6 +44,7 @@ import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { filterNotamsNearRoute } from '@open-vfr/shared/notamRouteFilter'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import type { RouteWaypoint } from '../utils/routeCalc'
+import { IconX } from '@tabler/icons-react'
 
 const SVC_COLOR: Record<string, string> = {
   TWR: '#3b82f6', AFIS: '#3b82f6', APP: '#8b5cf6', DEP: '#8b5cf6',
@@ -114,7 +115,7 @@ export default function VicinityBriefPanel({
       <div className={css.panel} onClick={(e) => e.stopPropagation()}>
         <div className={css.header}>
           <span className={css.title}>Airfield Brief</span>
-          <button className={css.closeBtn} onClick={onClose}>✕</button>
+          <button className={css.closeBtn} onClick={onClose}><IconX size={14} aria-hidden="true" /></button>
         </div>
 
         <div className={css.tabBar}>

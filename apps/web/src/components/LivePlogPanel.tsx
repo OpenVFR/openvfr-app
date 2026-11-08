@@ -11,6 +11,7 @@
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LivePlogData } from '../hooks/useLivePlog'
 import css from './LivePlogPanel.module.css'
+import { IconX } from '@tabler/icons-react'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ export default function LivePlogPanel({ waypoints, activeWpIdx, plogData, onClos
       {/* Header */}
       <div className={css.header}>
         <span className={css.title}>PILOT LOG</span>
-        <button className={css.closeBtn} onClick={onClose} title="Close pilot log">✕</button>
+        <button className={css.closeBtn} onClick={onClose} title="Close pilot log"><IconX size={14} aria-hidden="true" /></button>
       </div>
 
       {/* Route table */}

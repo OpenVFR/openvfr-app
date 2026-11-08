@@ -1,6 +1,7 @@
 import type React from 'react'
 import css from './FeaturePopup.module.css'
 import { TRAFFIC_CATEGORY_LABEL, trafficDeviceLabel, trafficNetworkLabel } from '@open-vfr/shared/trafficState'
+import { IconX } from '@tabler/icons-react'
 
 // ── Feature type definitions ──────────────────────────────────────────────────
 // Each variant carries only the properties available in its GeoJSON source.
@@ -307,7 +308,7 @@ export default function FeaturePopup({ feature: f, onClose, routeAction }: Props
         {routeAction && (
           <button className={css.routeBtn} onClick={routeAction.onClick}>{routeAction.label}</button>
         )}
-        <button className={css.close} onClick={onClose} aria-label="Close">✕</button>
+        <button className={css.close} onClick={onClose} aria-label="Close"><IconX size={14} aria-hidden="true" /></button>
       </div>
       {body}
     </div>

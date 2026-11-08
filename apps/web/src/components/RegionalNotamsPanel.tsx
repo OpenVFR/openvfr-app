@@ -20,6 +20,7 @@ import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
 import NotamBody from './NotamBody'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
+import { IconChevronDown, IconChevronUp } from '@tabler/icons-react'
 
 interface Props {
   notams: NotamItem[]
@@ -120,7 +121,7 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, r
                 {offSchedule && <span className={css.offBadge} title="Inside its validity dates, but outside its daily/weekly schedule right now">OFF SCHEDULE</span>}
                 <span className={css.id}>{notamTitle(n)}</span>
                 <span className={css.period}>{eff}{exp ? ` – ${exp}` : ''}</span>
-                <span className={css.chevron}>{expanded ? '▴' : '▾'}</span>
+                <span className={css.chevron}>{expanded ? <IconChevronUp size={14} aria-hidden="true" /> : <IconChevronDown size={14} aria-hidden="true" />}</span>
               </button>
               {hasGeo && (
                 <button

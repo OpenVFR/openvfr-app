@@ -31,6 +31,7 @@ import { AIRSPACE_CATEGORIES, type AlertLevel } from '@open-vfr/shared/airspaceA
 import { DEFAULT_MSA_MARGINS, MSA_ABEAM_RANGE_NM, MSA_CLEARANCE_RANGE_FT } from '@open-vfr/shared/msaMargins'
 import { repairAppFiles } from '../utils/repairApp'
 import css from './SettingsPanel.module.css'
+import { IconX } from '@tabler/icons-react'
 
 interface Props {
   units:             Units
@@ -140,7 +141,7 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
     <div className={css.panel}>
       <div className={css.header}>
         <span className={css.title}>Settings</span>
-        {onClose && <button className={css.close} onClick={onClose} title="Close">✕</button>}
+        {onClose && <button className={css.close} onClick={onClose} title="Close"><IconX size={14} aria-hidden="true" /></button>}
       </div>
 
       <div className={css.section}>

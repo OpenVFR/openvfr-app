@@ -10,7 +10,7 @@
 
 import React from 'react'
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from './AppIcon'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 export function LogAircraftBanner({ route, choices, top, onPick, onDismiss }: {
@@ -25,12 +25,12 @@ export function LogAircraftBanner({ route, choices, top, onPick, onDismiss }: {
   return (
     <View style={[styles.bar, { top }]} testID="log-aircraft-banner" accessibilityRole="alert">
       <View style={styles.head}>
-        <Ionicons name="airplane-outline" size={16} color={theme.textPrimary} />
+        <AppIcon name="plane" size={16} color={theme.textPrimary} />
         <Text style={styles.text} numberOfLines={2}>
           Flight {route} logged without an aircraft. Which one did you fly?
         </Text>
         <TouchableOpacity onPress={onDismiss} hitSlop={8} accessibilityLabel="Dismiss" testID="log-aircraft-dismiss">
-          <Ionicons name="close" size={18} color={theme.textFaint} />
+          <AppIcon name="close" size={18} color={theme.textFaint} />
         </TouchableOpacity>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>

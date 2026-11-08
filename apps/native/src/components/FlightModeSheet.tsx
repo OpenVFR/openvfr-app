@@ -20,7 +20,7 @@
 import React, { useState } from 'react'
 import { View, Text, TouchableOpacity } from 'react-native'
 import { NativeSheet } from './NativeSheet'
-import { Ionicons } from '@expo/vector-icons'
+import { AppIcon } from './AppIcon'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 export type FlightModeStatus = 'off' | 'gps' | 'sim'
@@ -62,8 +62,8 @@ export function FlightModeSheet({
           onPress={() => setOpen(true)}
           testID="flight-mode-open"
         >
-          <Ionicons
-            name={status === 'sim' ? 'game-controller-outline' : 'airplane-outline'}
+          <AppIcon
+            name={status === 'sim' ? 'gamepad' : 'plane'}
             size={19}
             color={active ? theme.accentBlue : theme.textSecondary}
           />
@@ -128,7 +128,7 @@ export function FlightModeSheet({
             onPress={() => { onStartGps(); setOpen(false) }}
             disabled={status === 'gps'}
           >
-            <Ionicons name="airplane-outline" size={scaledTheme.scale(20)} color={theme.accentBlue} />
+            <AppIcon name="plane" size={scaledTheme.scale(20)} color={theme.accentBlue} />
             <View style={styles.cardText}>
               <Text style={styles.cardTitle}>Fly</Text>
               <Text style={styles.cardDesc}>Use real GPS position. Keeps the screen awake and follows your aircraft.</Text>
@@ -141,7 +141,7 @@ export function FlightModeSheet({
             disabled={status === 'sim'}
             testID="flight-mode-start-sim"
           >
-            <Ionicons name="game-controller-outline" size={scaledTheme.scale(20)} color={theme.accentPurple} />
+            <AppIcon name="gamepad" size={scaledTheme.scale(20)} color={theme.accentPurple} />
             <View style={styles.cardText}>
               <Text style={styles.cardTitle}>Simulate</Text>
               <Text style={styles.cardDesc}>
