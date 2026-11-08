@@ -408,10 +408,13 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
       </div>
 
       <div className={css.section}>
-        <span className={css.label}>Supported by</span>
-        <nav className={css.aboutLinks} aria-label="Sponsor">
-          <a href={SPONSOR.url} target="_blank" rel="noopener noreferrer">{SPONSOR.name}</a>
-        </nav>
+        <a className={css.sponsor} href={SPONSOR.url} target="_blank" rel="noopener noreferrer" aria-label={`Supported by ${SPONSOR.name}`}>
+          <img src="/sponsor-sgk.png" alt="" width={32} height={32} />
+          <span className={css.sponsorText}>
+            <span className={css.sponsorLabel}>Supported by</span>
+            <span className={css.sponsorName}>{SPONSOR.name}</span>
+          </span>
+        </a>
       </div>
 
       {/* Credits for every data source are also behind the map's (i) button. */}

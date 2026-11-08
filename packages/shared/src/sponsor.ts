@@ -1,5 +1,5 @@
 /**
- * The club that supports OpenVFR, credited in Settings -> About (web + native)
+ * The club that supports OpenVFR, credited on the login screen and in Settings -> About (web + native)
  * and on the website (openvfr-site: Sponsors.astro, Footer.astro).
  */
 export const SPONSOR = {

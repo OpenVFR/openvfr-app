@@ -6,7 +6,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import {
   View, Text, Switch, ScrollView, TextInput,
-  TouchableOpacity, Alert, Modal, Pressable, Linking,
+  TouchableOpacity, Alert, Modal, Pressable, Linking, Image,
 } from 'react-native'
 import { AppIcon } from '../components/AppIcon'
 import Slider from '@react-native-community/slider'
@@ -643,8 +643,12 @@ export function SettingsScreen() {
           <Text style={styles.infoValue}>{'\u203a'}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.row, styles.pressable]} onPress={() => Linking.openURL(SPONSOR.url)}>
-          <Text style={styles.rowLabel}>Supported by</Text>
-          <Text style={styles.infoValue} numberOfLines={1}>{SPONSOR.name}  {'\u203a'}</Text>
+          <Image source={require('../../assets/sponsor-sgk.png')} style={styles.sponsorLogo} />
+          <View style={styles.sponsorText}>
+            <Text style={styles.rowLabel}>Supported by</Text>
+            <Text style={styles.sponsorName} numberOfLines={1}>{SPONSOR.name}</Text>
+          </View>
+          <Text style={styles.infoValue}>{'\u203a'}</Text>
         </TouchableOpacity>
         {!!SITE_BASE && (
           <>
@@ -1241,6 +1245,21 @@ function makeStyles(theme: ScaledTheme) {
     color:    theme.textPrimary,
     fontSize: theme.textXs,
     fontWeight: '500',
+  },
+  sponsorLogo: {
+    width:        36,
+    height:       36,
+    borderRadius: 18,
+  },
+  sponsorText: {
+    flex:             1,
+    gap:              1,
+    marginHorizontal: theme.space3,
+  },
+  sponsorName: {
+    color:      '#FFF500',
+    fontSize:   theme.textSm,
+    fontWeight: '600',
   },
   infoValue: {
     color:    theme.textMuted,
