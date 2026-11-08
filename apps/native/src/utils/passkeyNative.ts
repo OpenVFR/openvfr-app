@@ -188,15 +188,20 @@ export async function passkeyRegister(name?: string): Promise<PasskeyOutcome> {
 
 export type RegisteredPasskey = { id: string; name: string | null; createdAt: string | null; deviceType: string | null }
 
-/** The signed-in user's registered passkeys, newest first. Empty on any error (offline). */
-export async function listPasskeys(): Promise<RegisteredPasskey[]> {
+/** The signed-in user's registered passkeys, newest first; null when the list could not be read (offline, server error). */
+export async function fetchPasskeys(): Promise<RegisteredPasskey[] | null> {
   const { data, error } = await authClient.$fetch<RegisteredPasskey[]>('/passkey/list-user-passkeys', {
     method: 'GET',
     credentials: 'omit',
     throw: false,
   })
-  if (error || !Array.isArray(data)) return []
+  if (error || !Array.isArray(data)) return null
   return [...data].sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
+}
+
+/** Like fetchPasskeys, but an unreadable list shows as empty (for the Settings list). */
+export async function listPasskeys(): Promise<RegisteredPasskey[]> {
+  return (await fetchPasskeys()) ?? []
 }
 
 /** Remove one registered passkey (the credential on the device stays, but no longer signs in). */

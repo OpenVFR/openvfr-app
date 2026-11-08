@@ -1,5 +1,5 @@
 /**
- * Tripwire: never pass `authHeaders()` into `authClient.$fetch`.
+ * Tripwire: never use `authHeaders()` in a file that calls `authClient.$fetch`.
  *
  * The native auth client already sends the stored session token itself
  * (`fetchOptions.auth` in apps/native/src/utils/authClient.ts). better-fetch
@@ -30,20 +30,16 @@ describe('native auth client calls', () => {
     expect(h.get('authorization')).toBe('Bearer a, Bearer a')
   })
 
-  it('no authClient.$fetch call passes authHeaders()', () => {
-    const offenders: string[] = []
-    for (const file of sources(NATIVE_SRC)) {
-      const text = readFileSync(file, 'utf8')
-      let i = text.indexOf('authClient.$fetch')
-      while (i !== -1) {
-        // The options object follows the call; its headers sit within a few lines.
-        const window = text.slice(i, i + 600)
-        const end = window.search(/\n\}\)|\n  \}\)|\n    \}\)/)
-        const call = end === -1 ? window : window.slice(0, end)
-        if (/authHeaders\(/.test(call)) offenders.push(file.replace(NATIVE_SRC, 'apps/native/src'))
-        i = text.indexOf('authClient.$fetch', i + 1)
-      }
-    }
+  it('no file that uses authClient.$fetch also uses authHeaders()', () => {
+    // File level on purpose: the original bug built the headers first
+    // (`const headers = auth ? await authHeaders() : {}`) and passed the variable,
+    // which a per-call text scan misses. Plain fetch() callers may use authHeaders().
+    const offenders = sources(NATIVE_SRC)
+      .filter((file) => {
+        const text = readFileSync(file, 'utf8')
+        return text.includes('authClient.$fetch') && /\bauthHeaders\b/.test(text)
+      })
+      .map((file) => file.replace(NATIVE_SRC, 'apps/native/src'))
     expect(offenders).toEqual([])
   })
 })

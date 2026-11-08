@@ -17,7 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authClient } from '../utils/authClient'
 import { getSessionToken, clearSessionToken } from '../utils/sessionToken'
 import * as Device from 'expo-device'
-import { markOtpSignIn } from '@open-vfr/shared/passkeyPrompt'
+import { markOtpSignIn, consumeOtpSignIn } from '@open-vfr/shared/passkeyPrompt'
 import { passkeySignIn, passkeyRegister, isPasskeySupported } from '../utils/passkeyNative'
 import { claimLocalData, wipePrivateLocalData } from '../utils/userScope'
 import { stopCloudSync } from '../sync/cloudSync'
@@ -202,6 +202,9 @@ export function useAuth() {
     signingOutRef.current = true
     try {
       console.log('[auth] signOut')
+      // A code sign-in that never reached the offer (signed out before naming the
+      // account) must not hand its offer to whoever signs in next.
+      consumeOtpSignIn()
       // Offline (or the server failing) must not block signing out locally:
       // a rejected request used to skip everything below, leaving the token
       // and this account's private data on the device.

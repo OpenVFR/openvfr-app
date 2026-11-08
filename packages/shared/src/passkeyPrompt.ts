@@ -4,8 +4,8 @@
  * The offer is made right after a successful email-code sign-in, to accounts
  * with no passkey yet. A dismissal is remembered per account on the device:
  * the next code sign-in asks again, after that at most once per
- * PASSKEY_PROMPT_COOLDOWN_MS. From the second dismissal on the offer carries a
- * "Don't ask again" choice, which stops it for good (Settings still has the
+ * PASSKEY_PROMPT_COOLDOWN_MS. From the second offer on (after one dismissal) it
+ * carries a "Don't ask again" choice, which stops it for good (Settings still has the
  * Add a passkey row).
  */
 export const PASSKEY_PROMPT_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000
@@ -27,7 +27,7 @@ export function shouldOfferPasskey(s: PasskeyPromptState, now: number): boolean 
   return now - s.lastAt >= PASSKEY_PROMPT_COOLDOWN_MS
 }
 
-/** The "Don't ask again" choice is shown from the second dismissal on. */
+/** The "Don't ask again" choice is shown from the second offer on, i.e. after one dismissal. */
 export function canOfferNever(s: PasskeyPromptState): boolean {
   return s.dismissed >= 1
 }
@@ -60,3 +60,44 @@ let otpSignInPending = false
 export function markOtpSignIn(): void { otpSignInPending = true }
 export function peekOtpSignIn(): boolean { return otpSignInPending }
 export function consumeOtpSignIn(): void { otpSignInPending = false }
+
+export type PasskeyOfferDeps = {
+  /** The account's saved prompt state. */
+  loadState: () => PasskeyPromptState | Promise<PasskeyPromptState>
+  /** The platform can hold a passkey (e.g. a built-in authenticator). Omit when always true. */
+  platformReady?: () => Promise<boolean>
+  /** False for accounts that cannot hold passkeys (shared test / review accounts). */
+  accountAllowed: () => Promise<boolean>
+  /** How many passkeys the account has; null = could not tell (offline, server error). */
+  countPasskeys: () => Promise<number | null>
+  onOffer: (state: PasskeyPromptState) => void
+  now?: () => number
+}
+
+/**
+ * Decide whether to offer a passkey right after a code sign-in, once. Returns the
+ * effect cleanup. The order matters and is easy to get wrong, so both apps use
+ * this: peek the one-shot flag, decide, and consume the flag only when the run was
+ * not aborted (StrictMode runs effects twice). Any failed check means no offer: an
+ * unknown passkey count must never read as "none".
+ */
+export function startPasskeyOffer(deps: PasskeyOfferDeps): () => void {
+  if (!peekOtpSignIn()) return () => {}
+  let alive = true
+  void (async () => {
+    let offer: PasskeyPromptState | null = null
+    try {
+      const saved = await deps.loadState()
+      if (
+        shouldOfferPasskey(saved, (deps.now ?? Date.now)()) &&
+        (deps.platformReady ? await deps.platformReady() : true) &&
+        await deps.accountAllowed() &&
+        (await deps.countPasskeys()) === 0
+      ) offer = saved
+    } catch { /* unexpected: stay silent, Settings still has the entry */ }
+    if (!alive) return          // aborted before deciding: leave the flag for the next run
+    consumeOtpSignIn()
+    if (offer) deps.onOffer(offer)
+  })()
+  return () => { alive = false }
+}

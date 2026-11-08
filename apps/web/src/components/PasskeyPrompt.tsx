@@ -4,9 +4,7 @@
  * @open-vfr/shared/passkeyPrompt; Settings keeps the permanent entry.
  */
 import { useEffect, useState } from 'react'
-import {
-  shouldOfferPasskey, canOfferNever, peekOtpSignIn, consumeOtpSignIn, type PasskeyPromptState,
-} from '@open-vfr/shared/passkeyPrompt'
+import { canOfferNever, startPasskeyOffer, type PasskeyPromptState } from '@open-vfr/shared/passkeyPrompt'
 import type { AuthState } from '../hooks/useAuth'
 import { fetchPasskeyAllowed, loadPromptState, recordDismissal } from '../utils/passkeyPrompt'
 import css from './PasskeyPrompt.module.css'
@@ -28,24 +26,14 @@ export default function PasskeyPrompt({ auth }: { auth: AuthState }) {
 
   const { listPasskeys } = auth
   useEffect(() => {
-    if (!userId || !PASSKEY_SUPPORTED || !peekOtpSignIn()) return
-    let alive = true
-    void (async () => {
-      let offer: PasskeyPromptState | null = null
-      try {
-        const saved = loadPromptState(userId)
-        if (
-          shouldOfferPasskey(saved, Date.now()) &&
-          await platformAuthenticatorAvailable() &&
-          await fetchPasskeyAllowed() &&
-          (await listPasskeys()).length === 0
-        ) offer = saved
-      } catch { /* offline or unexpected: stay silent */ }
-      if (!alive) return          // aborted before deciding: leave the flag for the next run
-      consumeOtpSignIn()
-      if (offer) setPrompt(offer)
-    })()
-    return () => { alive = false }
+    if (!userId || !PASSKEY_SUPPORTED) return
+    return startPasskeyOffer({
+      loadState: () => loadPromptState(userId),
+      platformReady: platformAuthenticatorAvailable,
+      accountAllowed: fetchPasskeyAllowed,
+      countPasskeys: async () => { try { return (await listPasskeys()).length } catch { return null } },
+      onOffer: setPrompt,
+    })
   }, [userId, listPasskeys])
 
   if (!prompt || !userId) return null
@@ -62,8 +50,10 @@ export default function PasskeyPrompt({ auth }: { auth: AuthState }) {
       setDone(true)
     } catch (err) {
       const msg = err instanceof Error ? err.message : ''
-      // Browsers report "cancelled" and failures alike; treat as "Not now".
-      if (/cancel|abort|not allowed/i.test(msg)) close()
+      // Only an explicit cancel counts as "Not now". The browser's NotAllowedError
+      // ("timed out or was not allowed") also covers a timeout or a policy denial:
+      // show it and leave the back-off state alone.
+      if (/cancel|abort/i.test(msg)) close()
       else setMessage(msg || 'Could not set up the passkey.')
     } finally { setBusy(false) }
   }

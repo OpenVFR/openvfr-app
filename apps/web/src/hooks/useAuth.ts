@@ -202,6 +202,8 @@ export function useAuth(): AuthState {
   const signOut = useCallback(async () => {
     if (signingOutRef.current) return
     signingOutRef.current = true
+    // A code sign-in that never reached the offer must not hand it to the next account.
+    consumeOtpSignIn()
     try {
       // Sign-out wipes this browser's copy of the account's data: send what has
       // not reached the server yet, and ask before dropping what still can't be.

@@ -6,13 +6,11 @@
 import React, { useEffect, useState } from 'react'
 import { Modal, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native'
 import { AppIcon } from './AppIcon'
-import {
-  shouldOfferPasskey, canOfferNever, peekOtpSignIn, consumeOtpSignIn, type PasskeyPromptState,
-} from '@open-vfr/shared/passkeyPrompt'
+import { canOfferNever, startPasskeyOffer, type PasskeyPromptState } from '@open-vfr/shared/passkeyPrompt'
 import { useAuthContext } from '../context/AuthContext'
 import { useSettingsContext } from '../context/SettingsContext'
 import { useInternalBarometer } from '../hooks/useInternalBarometer'
-import { listPasskeys } from '../utils/passkeyNative'
+import { fetchPasskeys } from '../utils/passkeyNative'
 import { fetchPasskeyAllowed, loadPromptState, recordDismissal } from '../utils/passkeyPrompt'
 import { baroOfferVisible } from './BaroPromptModal'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -32,19 +30,13 @@ export function PasskeyPromptModal() {
   const [done, setDone] = useState(false)
 
   useEffect(() => {
-    if (!userId || !passkeySupported || !peekOtpSignIn()) return
-    let alive = true
-    void (async () => {
-      let offer: PasskeyPromptState | null = null
-      try {
-        const saved = await loadPromptState(userId)
-        if (shouldOfferPasskey(saved, Date.now()) && await fetchPasskeyAllowed() && (await listPasskeys()).length === 0) offer = saved
-      } catch { /* offline or unexpected: stay silent, Settings still has it */ }
-      if (!alive) return          // aborted before deciding: leave the flag for the next run
-      consumeOtpSignIn()
-      if (offer) setPrompt(offer)
-    })()
-    return () => { alive = false }
+    if (!userId || !passkeySupported) return
+    return startPasskeyOffer({
+      loadState: () => loadPromptState(userId),
+      accountAllowed: fetchPasskeyAllowed,
+      countPasskeys: async () => (await fetchPasskeys())?.length ?? null,
+      onOffer: setPrompt,
+    })
   }, [userId, passkeySupported])
 
   if (!prompt || !userId || baroOfferPending) return null
