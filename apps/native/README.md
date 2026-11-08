@@ -198,6 +198,22 @@ from environment variables.
 | `native/.env` | Default — set this to your own deployed production API/tile host |
 | `native/.env.local` | Local override — takes precedence over `.env` |
 
+### Second backend (staging) in release builds
+
+A build made with `EXPO_PUBLIC_STAGING_API_BASE` set can switch between the
+default backend and that one, so a release can be tested on the signed store
+binary (passkeys, for one, depend on the signing certificate). Only these two
+build-time backends are possible, never a typed URL.
+
+- **Where to set it:** the EAS environment for the profile you ship
+  (`eas env:create` or the project's Environment variables page), not in git.
+- **Switching:** tap the logo 7 times on the login screen, or the Version row 5
+  times in Settings. Switching signs out, asks before deleting unsynced local
+  data, and takes effect at the next app start; a banner shows while on staging.
+- **`openvfr://environment/<id>` links** are accepted only in development builds
+  and in builds made with `EXPO_PUBLIC_ENVIRONMENT_DEEPLINK=1`. Leave it off for
+  store builds: anyone can send a link, and a switch signs the app out.
+
 ### Local development (physical device)
 
 `native/.env.local` (created automatically — edit if your LAN IP changes):

@@ -3,7 +3,8 @@
  *
  *  - useEnvironmentSwitch(): the hidden picker + the switch flow (sign out
  *    first when signed in, save, ask for a restart).
- *  - useEnvironmentDeepLink(): `openvfr://environment/<id>` asks to switch.
+ *  - useEnvironmentDeepLink(): `openvfr://environment/<id>` asks to switch
+ *    (development and opted-in test builds only, see ENVIRONMENT_DEEP_LINK).
  *  - <EnvironmentBanner />: always visible while running on staging, or
  *    while a switch waits for the restart.
  */
@@ -119,6 +120,15 @@ export function useEnvironmentSwitch() {
   return { available: STAGING_AVAILABLE, requestSwitch, openPicker }
 }
 
+/**
+ * The deep link is for testers: anyone can send a link, and switching signs the
+ * app out. Released builds keep only the hidden picker (tap the logo 7 times on
+ * the login screen, or the Version row 5 times in Settings); development builds,
+ * and builds made with EXPO_PUBLIC_ENVIRONMENT_DEEPLINK=1 (e.g. an internal
+ * preview profile), also accept `openvfr://environment/<id>`.
+ */
+const ENVIRONMENT_DEEP_LINK = __DEV__ || process.env.EXPO_PUBLIC_ENVIRONMENT_DEEPLINK === '1'
+
 /** `openvfr://environment/staging` | `/production`: asks before switching. */
 export function useEnvironmentDeepLink(): void {
   const { requestSwitch } = useEnvironmentSwitch()
@@ -127,7 +137,7 @@ export function useEnvironmentDeepLink(): void {
   const requestRef = useRef(requestSwitch)
   requestRef.current = requestSwitch
   useEffect(() => {
-    if (!STAGING_AVAILABLE) return
+    if (!STAGING_AVAILABLE || !ENVIRONMENT_DEEP_LINK) return
     const handle = (url: string | null) => {
       const target = parseEnvironmentLink(url)
       if (target) requestRef.current(target)
