@@ -15,6 +15,7 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Image,
   ActivityIndicator, Keyboard, Platform, useWindowDimensions, Linking,
 } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { shouldAutoSubmitOtp } from '@open-vfr/shared/otpAutoSubmit'
@@ -23,6 +24,12 @@ import { SITE_BASE } from '../config'
 import { ACTIVE_ENVIRONMENT, appEnvironmentLabel } from '../environment'
 import { useEnvironmentSwitch, useNextEnvironment, promptRestart } from '../components/EnvironmentSwitch'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
+
+// The code step survives the OS killing the app while the pilot is in the mail
+// app: email + send time are kept for as long as the emailed code is valid
+// (API expiresIn = 600 s), so the code in the mail still works after a restart.
+const PENDING_OTP_KEY = 'login.pendingOtp'
+const PENDING_OTP_TTL_MS = 10 * 60 * 1000
 
 /** Map raw auth/network errors to short, actionable text. null = stay silent. */
 function friendlyError(raw: string | null): string | null {
@@ -94,6 +101,25 @@ export function LoginScreen() {
 
   const shownError = friendlyError(error)
 
+  useEffect(() => {
+    let alive = true
+    AsyncStorage.getItem(PENDING_OTP_KEY).then((raw) => {
+      if (!alive || !raw) return
+      const p = JSON.parse(raw) as { email?: string; sentAt?: number }
+      if (p.email && p.sentAt && Date.now() - p.sentAt < PENDING_OTP_TTL_MS) {
+        setEmail(p.email)
+        setStep('otp')
+      } else {
+        void AsyncStorage.removeItem(PENDING_OTP_KEY)
+      }
+    }).catch(() => { /* start at the email step */ })
+    return () => { alive = false }
+  }, [])
+  const leaveOtpStep = () => {
+    setStep('choose'); setOtp('')
+    void AsyncStorage.removeItem(PENDING_OTP_KEY).catch(() => {})
+  }
+
   // Hidden server picker (production / staging, environment.ts): tap the logo
   // 7 times. While a saved switch waits for the app restart, sign-in is
   // blocked: it would still go to the old server.
@@ -120,7 +146,10 @@ export function LoginScreen() {
     setBusy(true)
     let ok = false
     try { ok = await sendOtp(email.trim().toLowerCase()) } finally { setBusy(false) }
-    if (ok) setStep('otp')
+    if (ok) {
+      setStep('otp')
+      AsyncStorage.setItem(PENDING_OTP_KEY, JSON.stringify({ email: email.trim().toLowerCase(), sentAt: Date.now() })).catch(() => {})
+    }
   }
 
   const handleSaveName = async () => {
@@ -132,7 +161,11 @@ export function LoginScreen() {
   const handleVerifyOtp = async (code: string = otp.trim()) => {
     if (!code) return
     setBusy(true)
-    try { await verifyOtp(email.trim().toLowerCase(), code) } finally { setBusy(false) }
+    try {
+      if (await verifyOtp(email.trim().toLowerCase(), code)) {
+        void AsyncStorage.removeItem(PENDING_OTP_KEY).catch(() => {})
+      }
+    } finally { setBusy(false) }
   }
 
   // Auto sign-in only when autofill/paste fills exactly 6 digits in one go;
@@ -304,7 +337,7 @@ export function LoginScreen() {
             <TouchableOpacity
               style={[styles.backBtn, busy && styles.btnDisabled]}
               disabled={busy}
-              onPress={() => { setStep('choose'); setOtp('') }}
+              onPress={leaveOtpStep}
             >
               <Text style={styles.backBtnText}>← Use a different email</Text>
             </TouchableOpacity>

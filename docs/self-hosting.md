@@ -172,6 +172,20 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   signing cert) — only when this API itself serves the passkey association
   files on the RP ID host; unset, `/.well-known/apple-app-site-association`
   and `/.well-known/assetlinks.json` answer 404.
+- `ANDROID_PASSKEY_ORIGIN` — comma-separated `android:apk-key-hash:<base64url
+  SHA-256 of a signing cert>` values, one per cert an Android build may be
+  signed or reported with. Keep it the same set as the SHA-256 fingerprints in
+  `assetlinks.json`. List every cert in the app's history, not only the
+  current one: after a signing-key rotation, Android can report the hash of an
+  older cert. A missing one makes passkey sign-in and registration fail with
+  "Authentication failed", and the API log says
+  `Unexpected authentication response origin "android:apk-key-hash:…"` with the
+  exact value to add. Convert a hex fingerprint with
+  `python3 -c "import base64,sys;print(base64.urlsafe_b64encode(bytes.fromhex(sys.argv[1].replace(':',''))).rstrip(b'=').decode())" <SHA256>`.
+  When a cert is added, also add its colon-separated hex SHA-256 to
+  `ANDROID_SHA256_FINGERPRINT` wherever `assetlinks.json` is generated (the
+  product site's build environment, or this API's env when it serves the file
+  itself), and rebuild that site. Both lists must hold the same certs.
 - `BETTER_AUTH_URL` / `BETTER_AUTH_APP_ORIGIN` — your deployed origin(s)
 - `BETTER_AUTH_COOKIE_DOMAIN` — optional, parent domain for the session
   cookie (e.g. `.example.org`) when the app and api are on different

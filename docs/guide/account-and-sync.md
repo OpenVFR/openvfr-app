@@ -12,7 +12,9 @@ You sign in with:
 1. **A passkey** (preferred): your device's fingerprint, face or PIN. No
    password to remember.
 2. **An email code** (fallback): enter your email, then the 6-digit code
-   you receive.
+   you receive. On the phone app the code step is remembered for 10 minutes:
+   if the app is closed while you fetch the code from your mail app, reopen it
+   and enter the same code.
 
 After signing in with a code you can register a passkey from your profile.
 On first sign-in you also choose a display name.
