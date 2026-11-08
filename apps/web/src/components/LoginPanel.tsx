@@ -9,6 +9,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { IconKey, IconArrowRight } from '@tabler/icons-react'
 import { SPONSOR } from '@open-vfr/shared/sponsor'
+import SponsorLogo from './SponsorLogo'
 import { shouldAutoSubmitOtp } from '@open-vfr/shared/otpAutoSubmit'
 import type { AuthState } from '../hooks/useAuth'
 import { SITE_BASE_URL } from '../utils/env'
@@ -298,8 +299,8 @@ export default function LoginPanel({ auth }: Props) {
         )}
 
         <a className={styles.sponsor} href={SPONSOR.url} target="_blank" rel="noopener noreferrer">
-          <img src="/sponsor-sgk.png" alt="" width={22} height={22} />
-          <span>Supported by <strong>{SPONSOR.name}</strong> ›</span>
+          <SponsorLogo size={22} />
+          <span>Supported by <strong style={{ color: SPONSOR.color }}>{SPONSOR.name}</strong> ›</span>
         </a>
 
         {SITE_BASE_URL && (

@@ -5,4 +5,6 @@
 export const SPONSOR = {
   name: 'Sk\u00e5nska Gyrokopterklubben',
   url: 'https://gyroflyg.se/en',
+  /** The club's yellow, used for its name next to the logo. */
+  color: '#FFF500',
 } as const

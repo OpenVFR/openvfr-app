@@ -17,6 +17,7 @@ import {
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { AppIcon } from '../components/AppIcon'
+import { SponsorLogo } from '../components/SponsorLogo'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { SPONSOR } from '@open-vfr/shared/sponsor'
 import { shouldAutoSubmitOtp } from '@open-vfr/shared/otpAutoSubmit'
@@ -357,7 +358,7 @@ export function LoginScreen() {
       {!keyboardOpen && (
         <View style={styles.footer}>
           <TouchableOpacity style={styles.sponsorRow} onPress={() => Linking.openURL(SPONSOR.url)} accessibilityRole="link" accessibilityLabel={`Supported by ${SPONSOR.name}`}>
-            <Image source={require('../../assets/sponsor-sgk.png')} style={styles.sponsorLogo} />
+            <SponsorLogo size={theme.textXs * 2} />
             <Text style={styles.sponsorText}>
               Supported by <Text style={styles.sponsorName}>{SPONSOR.name}</Text> {'\u203a'}
             </Text>
@@ -529,17 +530,12 @@ function makeStyles(theme: ScaledTheme) {
     gap:           theme.space2,
     padding:       theme.space1,
   },
-  sponsorLogo: {
-    width:        theme.textXs * 2,
-    height:       theme.textXs * 2,
-    borderRadius: theme.textXs,
-  },
   sponsorText: {
     color:    theme.textSecondary,
     fontSize: theme.textXs,
   },
   sponsorName: {
-    color:      '#FFF500',
+    color:      SPONSOR.color,
     fontWeight: '600',
   },
   footerLink: {

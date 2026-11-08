@@ -365,10 +365,9 @@
   gap: 10px;
   text-decoration: none;
 }
-.sponsor img { border-radius: 50%; flex-shrink: 0; }
 .sponsorText { display: flex; flex-direction: column; gap: 1px; text-align: left; }
 .sponsorLabel { color: var(--text-muted); font-size: 11px; }
-.sponsorName { color: #fff500; font-size: 12px; font-weight: 600; }
+.sponsorName { font-size: 12px; font-weight: 600; }
 .sponsor:hover .sponsorName { text-decoration: underline; text-underline-offset: 2px; }
 
 .value { font-size: 12px; color: var(--text-muted); }

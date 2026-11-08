@@ -12,6 +12,7 @@ import { describeGpsAltitudeReference, gpsAltitudeReferenceStatus, subscribeGpsA
 import { FULL_CREDITS_LINK, OPEN_SOURCE_LICENCES_LINK } from '@open-vfr/shared/attributionSources'
 import { SITE_BASE_URL } from '../utils/env'
 import { SPONSOR } from '@open-vfr/shared/sponsor'
+import SponsorLogo from './SponsorLogo'
 
 /** Whether GPS altitudes are geoid-corrected, and whether that was verified
  *  on the ground (@open-vfr/shared/gpsAltitudeReference). */
@@ -413,10 +414,10 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
 
       <div className={css.section}>
         <a className={css.sponsor} href={SPONSOR.url} target="_blank" rel="noopener noreferrer" aria-label={`Supported by ${SPONSOR.name}`}>
-          <img src="/sponsor-sgk.png" alt="" width={32} height={32} />
+          <SponsorLogo size={32} />
           <span className={css.sponsorText}>
             <span className={css.sponsorLabel}>Supported by</span>
-            <span className={css.sponsorName}>{SPONSOR.name}</span>
+            <span className={css.sponsorName} style={{ color: SPONSOR.color }}>{SPONSOR.name}</span>
           </span>
         </a>
       </div>
