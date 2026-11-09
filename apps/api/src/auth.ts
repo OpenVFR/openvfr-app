@@ -148,6 +148,26 @@ function enforceOtpSendCaps(headers: Headers | undefined, email: string): void {
   otpSendsPerEmail.record(email)
 }
 
+// Session lifetimes. Web (cookie): 30 days sliding. Native (bearer token): 365
+// days sliding, like SkyDemon, so pilots aren't signed out between seasons.
+const WEB_SESSION_S    = 60 * 60 * 24 * 30
+const NATIVE_SESSION_S = 60 * 60 * 24 * 365
+/** Request header the native app sends on every auth call (utils/authClient.ts). */
+const NATIVE_CLIENT_HEADER = 'x-openvfr-client'
+/**
+ * True for a sign-in from the native app. The header is self-declared, so it
+ * is only honoured when no browser fingerprint is present: browsers always add
+ * Sec-Fetch-* headers to fetch/XHR and page JS cannot set or remove them, while
+ * React Native sends none. A script (curl) can still claim it, but it must
+ * complete its own OTP/passkey sign-in first, so it only lengthens its own
+ * session. The decision is stored on the session row (ba_session.client) at
+ * creation and read from there afterwards, never from later requests.
+ */
+function isNativeSignIn(ctx: { headers?: Headers; request?: Request } | null | undefined): boolean {
+  const h = ctx?.headers ?? ctx?.request?.headers
+  return h?.get(NATIVE_CLIENT_HEADER) === 'native' && !h.has('sec-fetch-site') && !h.has('sec-fetch-mode')
+}
+
 // ---------------------------------------------------------------------------
 // better-auth instance
 // ---------------------------------------------------------------------------
@@ -200,6 +220,20 @@ export const auth = betterAuth({
       if (rows[0]?.role === 'admin') {
         throw APIError.from('BAD_REQUEST', { message: 'Invalid OTP', code: 'INVALID_OTP' })
       }
+    }),
+    // Sliding window for native sessions (see `session` above): on every
+    // validated /get-session, push expiresAt back out to 365 days once it has
+    // slipped more than a day (also undoes better-auth's own 30-day refresh).
+    after: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== '/get-session') return
+      const returned = ctx.context.returned as { session?: { token: string; client?: string | null; expiresAt: Date | string } } | null | undefined
+      const sess = returned?.session
+      if (!sess || sess.client !== 'native') return
+      const target = Date.now() + NATIVE_SESSION_S * 1000
+      if (target - new Date(sess.expiresAt).getTime() < 24 * 60 * 60 * 1000) return
+      await ctx.context.internalAdapter.updateSession(sess.token, {
+        expiresAt: new Date(target), updatedAt: new Date(),
+      })
     }),
   },
 
@@ -278,7 +312,27 @@ export const auth = betterAuth({
       },
     },
   },
-  session:      { modelName: 'ba_session' },
+  // better-auth has one global expiresIn (web: 30 days) and refreshes only in
+  // the last (expiresIn - updateAge) of a session, so native sessions get their
+  // 365 days from databaseHooks (create) and are re-extended on use by the
+  // /get-session hook in `hooks.after` below.
+  session: {
+    modelName: 'ba_session',
+    expiresIn: WEB_SESSION_S,
+    updateAge: 60 * 60 * 24,
+    additionalFields: {
+      client: { type: 'string', required: false, input: false },
+    },
+  },
+  databaseHooks: {
+    session: {
+      create: {
+        before: async (session, ctx) => (isNativeSignIn(ctx)
+          ? { data: { ...session, client: 'native', expiresAt: new Date(Date.now() + NATIVE_SESSION_S * 1000) } }
+          : undefined),
+      },
+    },
+  },
   account:      { modelName: 'ba_account' },
   verification: { modelName: 'ba_verification' },
 

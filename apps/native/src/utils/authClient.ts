@@ -51,6 +51,8 @@ export const authClient = createAuthClient({
       // requires it for CSRF protection — send the API base as the origin so
       // it matches the server's trustedOrigins list.
       Origin: API_BASE,
+      // Lets the server give native sessions a longer (365 day) lifetime than web.
+      'x-openvfr-client': 'native',
     },
     // BUG FIX (found live: /api/traffic/latest silently returning nothing on
     // device — Air Traffic toggle showed zero aircraft with no error). The
