@@ -46,7 +46,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
           cache: pnpm
 
       - name: Install dependencies
@@ -120,7 +120,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
       # No install needed: plain node script reading source files.
       - name: Compare setting defaults with docs/guide/settings.md
         run: node scripts/check-settings-docs.mjs

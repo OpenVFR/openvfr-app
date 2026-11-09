@@ -16,7 +16,7 @@
     "@better-auth/passkey": "1.7.17",
     "@open-vfr/shared": "workspace:*",
     "@protomaps/basemaps": "5.7.2",
-    "@tabler/icons-react": "^3.50.0",
+    "@tabler/icons-react": "^3.51.0",
     "@turf/along": "^7.4.0",
     "@turf/boolean-intersects": "^7.4.0",
     "@turf/boolean-point-in-polygon": "^7.4.0",

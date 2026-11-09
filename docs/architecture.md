@@ -205,7 +205,7 @@ api:5200 (Hono — not on a public host port in production; accessed via nginx)
 | `docker-compose.yml` | Service definitions for `db`, `api`, `postgrest`, and an optional `app` (CI/Linux parity) container |
 | `docker/nginx.conf` | Reverse-proxy config: security headers, CSP, Range-header passthrough for PMTiles, `/api/*`/`/rest/*` proxying |
 | `docker/Dockerfile` | Two-stage build: `pnpm --filter web build`, then serves `dist/` via `nginx:1.30-alpine` |
-| `docker/Dockerfile.server` | `node:24-alpine`, Corepack pnpm, installs `apps/api` deps via the root workspace, runs `tsx src/index.ts` |
+| `docker/Dockerfile.server` | `node:26-alpine`, Corepack pnpm, installs `apps/api` deps via the root workspace, runs `tsx src/index.ts` |
 | `apps/api/src/index.ts` | Hono app: `GET /health`, `POST /api/poh-extract` (Azure OpenAI proxy), better-auth handler |
 
 ### Security posture

@@ -1,4 +1,4 @@
-FROM node:24-alpine
+FROM node:26-alpine
 
 WORKDIR /app
 
@@ -9,11 +9,13 @@ WORKDIR /app
 # a container, so force non-interactive mode throughout.
 ENV CI=true
 
-# Corepack picks the exact pnpm version pinned in the root package.json's
-# `packageManager` field. Never `corepack prepare pnpm@latest` here: that
-# floats to whatever npm's `latest` tag is (a new major can land there
-# at any time) instead of the version the lockfile was written with.
-RUN corepack enable
+# Node 25+ no longer bundles Corepack, so install the exact pnpm version the
+# root package.json's `packageManager` field pins (never `pnpm@latest`: a new
+# major can land there at any time instead of the version the lockfile was
+# written with).
+COPY package.json /tmp/pm/package.json
+RUN npm install -g "pnpm@$(node -p "require('/tmp/pm/package.json').packageManager.split('@')[1].split('+')[0]")" \
+ && rm -rf /tmp/pm
 
 # Install dependencies in a separate layer for Docker cache efficiency.
 # node_modules is populated here; the bind mount in docker-compose.yml
@@ -25,6 +27,7 @@ COPY apps/web/package.json apps/web/package.json
 COPY apps/native/package.json apps/native/package.json
 COPY apps/api/package.json apps/api/package.json
 COPY packages/shared/package.json packages/shared/package.json
+COPY patches patches
 RUN pnpm install --frozen-lockfile || pnpm install
 
 EXPOSE 5173

@@ -26,4 +26,4 @@ overrides:
 patchedDependencies:
   '@expo/ui@58.0.27': patches/@expo__ui@58.0.27.patch
   '@maplibre/maplibre-react-native@11.5.1': patches/@maplibre__maplibre-react-native@11.5.1.patch
-  react-native-svg@15.16.0: patches/react-native-svg@15.16.0.patch
+  react-native-svg@15.16.1: patches/react-native-svg@15.16.1.patch

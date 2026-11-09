@@ -1,5 +1,5 @@
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
-FROM node:24-alpine AS builder
+FROM node:26-alpine AS builder
 
 WORKDIR /app
 
@@ -11,11 +11,13 @@ WORKDIR /app
 # non-interactively throughout.
 ENV CI=true
 
-# Corepack picks the exact pnpm version pinned in the root package.json's
-# `packageManager` field. Never `corepack prepare pnpm@latest` here: that
-# floats to whatever npm's `latest` tag is (a new major can land there
-# at any time) instead of the version the lockfile was written with.
-RUN corepack enable
+# Node 25+ no longer bundles Corepack, so install the exact pnpm version the
+# root package.json's `packageManager` field pins (never `pnpm@latest`: a new
+# major can land there at any time instead of the version the lockfile was
+# written with).
+COPY package.json /tmp/pm/package.json
+RUN npm install -g "pnpm@$(node -p "require('/tmp/pm/package.json').packageManager.split('@')[1].split('+')[0]")" \
+ && rm -rf /tmp/pm
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # Copy EVERY workspace member's manifest before installing -- pnpm computes
@@ -29,6 +31,7 @@ COPY apps/web/package.json ./apps/web/
 COPY apps/native/package.json ./apps/native/
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
+COPY patches ./patches
 # pnpm (v10+) blocks all install scripts by default; --ignore-scripts bypasses the
 # check, then we rebuild only esbuild so its platform binary is downloaded.
 RUN pnpm install --frozen-lockfile --ignore-scripts || pnpm install --ignore-scripts
