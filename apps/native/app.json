@@ -92,6 +92,7 @@
       "./plugins/withAndroidLargeHeap",
       "./plugins/withAndroidDisableLintVital",
       "./plugins/withAndroidGradleHeap",
+      "./plugins/withAndroidR8",
       "./plugins/withAndroidNativeDebugSymbols",
       "expo-splash-screen"
     ]
