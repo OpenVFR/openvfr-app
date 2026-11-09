@@ -1798,13 +1798,6 @@ function MapScreenForCountry() {
       {/* Map renders edge to edge, under the status bar; this faint band keeps
           the status icons legible on a light map. */}
       <StatusScrim height={insets.top} />
-      {/* TEMP debug (iPhone Duo status block position): remove after diagnosis. */}
-      {reservedRegions.length > 0 && (
-        <Text pointerEvents="none" style={{ position: 'absolute', left: 4, bottom: 120, zIndex: 999, color: '#0f0', backgroundColor: '#000a', fontSize: 11 }}>
-          {`win ${Math.round(windowWidth)}x${Math.round(windowHeight)} ins t${Math.round(insets.top)} l${Math.round(insets.left)} r${Math.round(insets.right)} b${Math.round(insets.bottom)} rail${Math.round(insets.railRight)}\n`
-            + reservedRegions.map(r => `${r.kind} ${Math.round(r.frame.x)},${Math.round(r.frame.y)} ${Math.round(r.frame.width)}x${Math.round(r.frame.height)}`).join('\n')}
-        </Text>
-      )}
       <BaroPromptModal />
       <View style={styles.mapContainer} onLayout={(e) => setMapAreaH(Math.round(e.nativeEvent.layout.height))}>
         <AviationMap
