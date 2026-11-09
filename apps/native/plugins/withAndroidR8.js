@@ -8,7 +8,7 @@
  */
 const fs = require('fs')
 const path = require('path')
-const { withGradleProperties, withDangerousMod } = require('@expo/config-plugins')
+const { withGradleProperties, withDangerousMod } = require('expo/config-plugins')
 const setGradleProperty = require('./setGradleProperty')
 
 const PROPS = {
