@@ -253,6 +253,7 @@ const CONTROL_COLUMN_W = 48
 const TOP_ZONE_H = 240
 /** The strip left of the status block must hold about three buttons to take them. */
 const STRIP_MIN_W = 150
+const CONTROLS_IN_STRIP = false
 const CONTROL_BTN = 40
 
 function MapScreenForCountry() {
@@ -553,8 +554,11 @@ function MapScreenForCountry() {
   // which grows with a Live Activity, and the camera cut-out).
   const reservedRegions = useReservedRegions()
   const controlsX1 = windowWidth - edgeRight
+  // iPhone Duo cover: the clock is a vertical block in the rail on the right,
+  // the strip left of it is free, so the controls start at the very top
+  // instead of below a status-bar-sized inset.
   const topRightTopOffset = Math.max(
-    insets.top,
+    insets.railRight > 0 ? 0 : insets.top,
     occlusionBottomOver(reservedRegions, controlsX1 - CONTROL_COLUMN_W, controlsX1, TOP_ZONE_H),
   ) + scaledTheme.space2
   // Portrait: cap how far the column can grow down so it never reaches the
@@ -590,12 +594,12 @@ function MapScreenForCountry() {
   const columnHasPlog = flyingActive && waypoints.length >= 2
   useEffect(() => { setColumnContentH(0) }, [flyingActive, columnHasPlog])
   // iPhone Duo: the status bar is one compact block in a corner of the top
-  // edge, the rest of that strip is free. The control buttons live there, as a
-  // row left of the block, so the right edge and everything below the strip is
-  // map instead of a button column.
+  // edge. The control buttons could live in the free strip beside it as a row,
+  // but they stay a vertical column like on every other device
+  // (CONTROLS_IN_STRIP off); the column starts below the block.
   const statusBlock = statusBlockRegion(reservedRegions, insets.top, windowWidth)
   const stripW = statusBlock ? statusBlock.x - edgeLeft - scaledTheme.space2 : 0
-  const controlsInStrip = statusBlock != null && stripW >= STRIP_MIN_W
+  const controlsInStrip = CONTROLS_IN_STRIP && statusBlock != null && stripW >= STRIP_MIN_W
   const controlsRow = controlsInStrip || isLandscape
     || (mapAreaH != null && columnContentH > 0 && columnContentH > topRightMaxHeight + 1)
   // Short map: one full alert card, the rest as one-line chips.

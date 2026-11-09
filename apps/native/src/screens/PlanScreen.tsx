@@ -15,7 +15,7 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  ScrollView, TextInput, Share, RefreshControl, Alert,
+  ScrollView, TextInput, Share, RefreshControl, Alert, Platform,
 } from 'react-native'
 import { useSyncRejected } from '../sync/cloudSync'
 import { SyncRefusedNote } from '../components/SyncRefusedNote'
@@ -672,7 +672,7 @@ export function PlanScreen() {
                 Close route. There is no Active/Inactive switch: the route
                 on screen is the one working route; one not wanted is closed. */}
             <TouchableOpacity onPress={() => setMoreMenuOpen(true)} testID="plan-more-open" style={styles.moreBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <AppIcon name="more" size={14} color={theme.accentBlue} />
+              <AppIcon name="more" size={Platform.OS === 'ios' ? 22 : 14} color={Platform.OS === 'ios' ? theme.textPrimary : theme.accentBlue} />
             </TouchableOpacity>
         </View>
       ) : undefined,
@@ -1567,7 +1567,10 @@ function makeStyles(theme: ScaledTheme) {
   moreBtn: {
     width: theme.scale(26), height: theme.scale(26),
     alignItems: 'center', justifyContent: 'center',
-    borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.accentBlue,
+    // iOS 26 already wraps header buttons in a glass circle: no extra box.
+    ...(Platform.OS === 'ios'
+      ? { width: theme.scale(32), height: theme.scale(32) }
+      : { borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.accentBlue }),
   },
   headerBtnTxt: { color: theme.accentBlue, fontSize: theme.textXs, fontWeight: '700' },
   clearBtn:    { color: theme.accentRed, fontSize: theme.textSm },
