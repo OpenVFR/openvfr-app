@@ -249,10 +249,11 @@ export function useAuth() {
     return true
   }, [])
 
+  const email = state.status === 'authenticated' ? state.user.email : undefined
   const registerPasskey = useCallback(async (): Promise<{ ok: boolean; cancelled?: boolean; message?: string }> => {
     setError(null)
     console.log('[auth] registerPasskey')
-    const res = await passkeyRegister(deviceLabel())
+    const res = await passkeyRegister(deviceLabel(), email)
     if (!res.ok) {
       if (res.cancelled) { console.log('[auth] registerPasskey cancelled'); return { ok: false, cancelled: true } }
       console.warn('[auth] registerPasskey error', res.message)
@@ -261,7 +262,7 @@ export function useAuth() {
     }
     console.log('[auth] passkey registered')
     return { ok: true }
-  }, [])
+  }, [email])
 
   return { state, error, sendOtp, verifyOtp, signInWithPasskey, registerPasskey, updateName, requestAccountDeletion, signOut, passkeySupported: isPasskeySupported() }
 }

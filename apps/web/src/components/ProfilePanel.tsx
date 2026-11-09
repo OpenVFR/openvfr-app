@@ -3,7 +3,7 @@
  *
  * Sections:
  *   • Display name (editable inline)
- *   • Passkeys — list with revoke + register new
+ *   • Passkeys — list with rename + revoke, register new
  */
 
 import { useState, useEffect, useRef } from 'react'
@@ -27,10 +27,10 @@ export default function ProfilePanel({ auth, onClose }: Props) {
   const [pkLoading,   setPkLoading]   = useState(true)
   const [pkError,     setPkError]     = useState<string | null>(null)
 
-  const [registering, setRegistering] = useState(false)
-  const [pkName,      setPkName]      = useState('')
   const [pkBusy,      setPkBusy]      = useState(false)
-  const pkNameRef = useRef<HTMLInputElement>(null)
+  const skipBlurSave = useRef(false)
+  const [editingId,   setEditingId]   = useState<string | null>(null)
+  const [editName,    setEditName]    = useState('')
 
   const [deleteConfirming, setDeleteConfirming] = useState(false)
   const [deleteBusy,       setDeleteBusy]       = useState(false)
@@ -54,11 +54,6 @@ export default function ProfilePanel({ auth, onClose }: Props) {
       .finally(() => setPkLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // Focus passkey name input when registering step opens.
-  useEffect(() => {
-    if (registering) pkNameRef.current?.focus()
-  }, [registering])
 
   // Close on Escape.
   useEffect(() => {
@@ -84,13 +79,10 @@ export default function ProfilePanel({ auth, onClose }: Props) {
   }
 
   const handleRegisterPasskey = async () => {
-    const name = pkName.trim()
     setPkBusy(true)
-    setRegistering(false)
-    setPkName('')
     setPkError(null)
     try {
-      await auth.registerPasskey(name || undefined)
+      await auth.registerPasskey()
       // Refresh the list.
       const updated = await auth.listPasskeys()
       setPasskeys(updated)
@@ -112,6 +104,21 @@ export default function ProfilePanel({ auth, onClose }: Props) {
       setDeleteError(err instanceof Error ? err.message : 'Failed to request account deletion')
     } finally {
       setDeleteBusy(false)
+    }
+  }
+
+  // Enter and blur save; Escape cancels. An empty or unchanged name is a cancel.
+  const handleRenamePasskey = async (id: string) => {
+    const trimmed = editName.trim()
+    const current = passkeys.find(p => p.id === id)?.name ?? ''
+    setEditingId(null)
+    if (!trimmed || trimmed === current) return
+    setPkError(null)
+    try {
+      await auth.renamePasskey(id, trimmed)
+      setPasskeys(prev => prev.map(p => p.id === id ? { ...p, name: trimmed } : p))
+    } catch (err) {
+      setPkError(err instanceof Error ? err.message : 'Failed to rename')
     }
   }
 
@@ -177,38 +184,12 @@ export default function ProfilePanel({ auth, onClose }: Props) {
         <div className={styles.section}>
           <div className={styles.passkeyHeader}>
             <p className={styles.label}>Passkeys</p>
-            {passkeyAllowed && !registering && !pkBusy && (
-              <button className={styles.btnAdd} onClick={() => setRegistering(true)} type="button">
+            {passkeyAllowed && !pkBusy && (
+              <button className={styles.btnAdd} onClick={() => void handleRegisterPasskey()} type="button">
                 + Add passkey
               </button>
             )}
           </div>
-
-          {registering && (
-            <div className={styles.registerBlock}>
-              <input
-                ref={pkNameRef}
-                className={styles.pkNameInput}
-                type="text"
-                placeholder="e.g. DELL laptop, Samsung phone"
-                maxLength={50}
-                value={pkName}
-                onChange={(e) => setPkName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter')  void handleRegisterPasskey()
-                  if (e.key === 'Escape') { setRegistering(false); setPkName('') }
-                }}
-              />
-              <div className={styles.registerActions}>
-                <button className={styles.btnSave} onClick={() => void handleRegisterPasskey()} type="button">
-                  Register
-                </button>
-                <button className={styles.btnCancel} onClick={() => { setRegistering(false); setPkName('') }} type="button">
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
 
           {pkBusy && <p className={styles.statusMsg}>Waiting for passkey…</p>}
           {pkError && <p className={styles.errorMsg}>{pkError}</p>}
@@ -222,7 +203,33 @@ export default function ProfilePanel({ auth, onClose }: Props) {
               {passkeys.map((pk) => (
                 <li key={pk.id} className={styles.passkeyItem}>
                   <div className={styles.passkeyInfo}>
-                    <span className={styles.passkeyName}>{pk.name ?? 'Unnamed passkey'}</span>
+                    {editingId === pk.id ? (
+                      <input
+                        className={styles.pkNameInput}
+                        value={editName}
+                        autoFocus
+                        maxLength={60}
+                        aria-label="Passkey name"
+                        onChange={e => setEditName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { skipBlurSave.current = true; void handleRenamePasskey(pk.id) }
+                          if (e.key === 'Escape') { e.stopPropagation(); skipBlurSave.current = true; setEditingId(null) }
+                        }}
+                        onBlur={() => {
+                          if (skipBlurSave.current) { skipBlurSave.current = false; return }
+                          void handleRenamePasskey(pk.id)
+                        }}
+                      />
+                    ) : (
+                      <button
+                        className={styles.passkeyNameBtn}
+                        onClick={() => { setEditingId(pk.id); setEditName(pk.name ?? '') }}
+                        type="button"
+                        aria-label={`Rename passkey ${pk.name ?? ''}`}
+                      >
+                        {pk.name ?? 'Unnamed passkey'} ✎
+                      </button>
+                    )}
                     {pk.createdAt && (
                       <span className={styles.passkeyDate}>
                         Added {pk.createdAt.toLocaleDateString('sv-SE')}

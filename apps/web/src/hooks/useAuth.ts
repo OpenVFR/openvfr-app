@@ -44,6 +44,18 @@ export interface AuthUser {
   name:  string
 }
 
+/** Staging (app-staging.<domain>) shares the RP ID with prod, so its passkeys need telling apart in the picker. */
+const isStagingHost = (): boolean => /(^|[.-])staging\./.test(window.location.hostname)
+const stagingLabel = (s: string): string => (isStagingHost() ? `${s} (staging)` : s)
+
+/** Default passkey label, e.g. "Chrome on Windows". */
+function deviceLabel(): string {
+  const ua = navigator.userAgent
+  const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser'
+  const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Windows/.test(ua) ? 'Windows' : /Mac/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : ''
+  return os ? `${browser} on ${os}` : browser
+}
+
 export interface PasskeyInfo {
   id:         string
   name:       string | null
@@ -60,7 +72,9 @@ export interface AuthState {
   /** Sign in with a stored passkey (WebAuthn) via explicit browser modal. */
   signInPasskey:   () => Promise<void>
   /** Register a new passkey for the currently signed-in user. */
-  registerPasskey: (name?: string) => Promise<void>
+  registerPasskey: () => Promise<void>
+  /** Rename a passkey (the label shown in the list). */
+  renamePasskey:   (id: string, name: string) => Promise<void>
   /** List all passkeys for the current user. */
   listPasskeys:    () => Promise<PasskeyInfo[]>
   /** Delete a passkey by ID. */
@@ -157,8 +171,11 @@ export function useAuth(): AuthState {
     await refreshSession(true)
   }, [refreshSession])
 
-  const registerPasskey = useCallback(async (name?: string) => {
-    const result = await authClient.passkey.addPasskey({ name: name?.trim() || 'OpenVFR passkey' })
+  const registerPasskey = useCallback(async () => {
+    // better-auth sends `name` to the browser as the WebAuthn user.name (the
+    // account label in the passkey picker), so it must be the account (email),
+    // not the device label. The label is stored afterwards via rename.
+    const result = await authClient.passkey.addPasskey({ name: user?.email ? stagingLabel(user.email) : undefined })
     if (result?.error) {
       const { code, message } = result.error as { code?: string; message?: string }
       if (code === 'SESSION_NOT_FRESH' || /not fresh/i.test(message ?? '')) {
@@ -166,6 +183,20 @@ export function useAuth(): AuthState {
       }
       throw new Error(message ?? 'Passkey registration failed')
     }
+    const id = (result?.data as { id?: string } | null | undefined)?.id
+    const name = stagingLabel(deviceLabel())
+    if (id) {
+      // The passkey exists either way; only its list label is at stake.
+      const renamed = await authClient.passkey.updatePasskey({ id, name }).catch(() => null)
+      if (!renamed || renamed.error) throw new Error('Passkey added, but naming it failed. Click its name to rename it.')
+    }
+  }, [user?.email])
+
+  const renamePasskey = useCallback(async (id: string, name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) throw new Error('Name cannot be empty')
+    const result = await authClient.passkey.updatePasskey({ id, name: trimmed })
+    if (result?.error) throw new Error(result.error.message ?? 'Failed to rename passkey')
   }, [])
 
   const updateUser = useCallback(async (data: { name: string }) => {
@@ -229,5 +260,5 @@ export function useAuth(): AuthState {
     }
   }, [])
 
-  return { user, loading, sendOtp, signInOtp, signInPasskey, registerPasskey, listPasskeys, deletePasskey, updateUser, requestAccountDeletion, signOut }
+  return { user, loading, sendOtp, signInOtp, signInPasskey, registerPasskey, renamePasskey, listPasskeys, deletePasskey, updateUser, requestAccountDeletion, signOut }
 }

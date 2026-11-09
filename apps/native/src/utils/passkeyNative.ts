@@ -37,6 +37,10 @@ import type {
 } from 'react-native-passkey'
 import { authClient } from './authClient'
 import { syncLog } from './syncLog'
+import { ACTIVE_ENVIRONMENT } from '../environment'
+
+const isStaging = ACTIVE_ENVIRONMENT === 'staging'
+const stagingLabel = (s: string): string => (isStaging ? `${s} (staging)` : s)
 
 export type PasskeyUser = { id: string; email: string; name: string | null }
 
@@ -67,10 +71,11 @@ function toCookieHeader(setCookie: string | null): string | undefined {
 
 type Fetched<T> = { data: T; cookie?: string } | { error: string }
 
-async function getOptions<T>(path: string): Promise<Fetched<T>> {
+async function getOptions<T>(path: string, query?: Record<string, string>): Promise<Fetched<T>> {
   let cookie: string | undefined
   const { data, error } = await authClient.$fetch<T>(path, {
     method: 'GET',
+    query,
     // No Authorization header here: authClient adds the stored session token
     // itself. Passing it again joins both into "Bearer x, Bearer x", which the
     // server rejects (401) -- that broke every signed-in passkey call.
@@ -156,16 +161,26 @@ export async function passkeySignIn(): Promise<PasskeyOutcome> {
     // Say whether we had one and how long the sheet / QR flow took (the
     // server drops the challenge after 300 s), names only, never values.
     const names = opts.cookie?.split(';').map(c => c.split('=')[0]?.trim()).join(',')
-    const detail = `${res.error} [cookie: ${names || 'none'}; ${Math.round((Date.now() - t0) / 1000)}s after options]`
+    const credId = (response as { id?: string }).id?.slice(0, 16) ?? '?'
+    const detail = `${res.error} [cred: ${credId}; cookie: ${names || 'none'}; ${Math.round((Date.now() - t0) / 1000)}s after options]`
     syncLog('[passkey] server rejected the assertion', detail)
     return { ok: false, cancelled: false, message: detail }
   }
   return { ok: true, user: toUser(res.data) }
 }
 
-/** Register a new passkey for the currently signed-in user. */
-export async function passkeyRegister(name?: string): Promise<PasskeyOutcome> {
-  const opts = await getOptions<PasskeyCreateRequest>('/passkey/generate-register-options')
+/**
+ * Register a new passkey for the currently signed-in user.
+ * `accountName` (email) is the WebAuthn user.name the system picker shows as
+ * the account label; staging gets a suffix because staging and prod share one
+ * RP ID and so one picker. `deviceName` is only the stored passkey label.
+ */
+export async function passkeyRegister(deviceName?: string, accountName?: string): Promise<PasskeyOutcome> {
+  const label = deviceName?.trim() || 'OpenVFR passkey'
+  const name = stagingLabel(label)
+  // Without an account name, omit the query: better-auth then falls back to the user's own name.
+  const query = accountName ? { name: stagingLabel(accountName) } : undefined
+  const opts = await getOptions<PasskeyCreateRequest>('/passkey/generate-register-options', query)
   if ('error' in opts) return { ok: false, cancelled: false, message: opts.error }
 
   let attestation: PasskeyCreateResult
@@ -176,7 +191,7 @@ export async function passkeyRegister(name?: string): Promise<PasskeyOutcome> {
   }
 
   const { clientExtensionResults: _ext, ...response } = attestation as PasskeyCreateResult & { clientExtensionResults?: unknown }
-  const body = name ? { response, name } : { response }
+  const body = { response, name }
   const res = await verify<SessionResponse>('/passkey/verify-registration', body, opts.cookie)
   if ('error' in res) return { ok: false, cancelled: false, message: res.error }
   return { ok: true, user: toUser(res.data) }
@@ -202,6 +217,17 @@ export async function fetchPasskeys(): Promise<RegisteredPasskey[] | null> {
 /** Like fetchPasskeys, but an unreadable list shows as empty (for the Settings list). */
 export async function listPasskeys(): Promise<RegisteredPasskey[]> {
   return (await fetchPasskeys()) ?? []
+}
+
+/** Rename one registered passkey (the label in the Settings list). */
+export async function renamePasskey(id: string, name: string): Promise<boolean> {
+  const { error } = await authClient.$fetch('/passkey/update-passkey', {
+    method: 'POST',
+    body: { id, name },
+    credentials: 'omit',
+    throw: false,
+  })
+  return !error
 }
 
 /** Remove one registered passkey (the credential on the device stays, but no longer signs in). */

@@ -42,7 +42,7 @@ import { FULL_CREDITS_LINK, OPEN_SOURCE_LICENCES_LINK } from '@open-vfr/shared/a
 import { SPONSOR } from '@open-vfr/shared/sponsor'
 import { useOfflineSummary } from './OfflineDataScreen'
 import * as Application from 'expo-application'
-import { listPasskeys, deletePasskey, type RegisteredPasskey } from '../utils/passkeyNative'
+import { listPasskeys, deletePasskey, renamePasskey, type RegisteredPasskey } from '../utils/passkeyNative'
 
 const UI_SCALE_OPTIONS = [0.85, 0.9, 1.0, 1.1, 1.2, 1.3, 1.45, 1.6]
 
@@ -109,6 +109,20 @@ export function SettingsScreen() {
       void refreshPasskeys()
     } else if (!res.cancelled) Alert.alert('Could not add passkey', res.message ?? 'Unknown error')
   }, [registerPasskey, refreshPasskeys])
+
+  // Tap a passkey: rename it or remove it (Alert.prompt is iOS-only, hence a modal).
+  const [editingPk, setEditingPk] = useState<RegisteredPasskey | null>(null)
+  const [pkNameDraft, setPkNameDraft] = useState('')
+  const openPasskey = useCallback((pk: RegisteredPasskey) => { setEditingPk(pk); setPkNameDraft(pk.name ?? '') }, [])
+  const savePasskeyName = useCallback(async () => {
+    const pk = editingPk
+    const name = pkNameDraft.trim()
+    if (!pk || !name) return  // empty: keep the modal open (Save is disabled too)
+    setEditingPk(null)
+    if (name === pk.name) return
+    if (await renamePasskey(pk.id, name)) void refreshPasskeys()
+    else Alert.alert('Could not rename passkey', 'Check your connection and try again.')
+  }, [editingPk, pkNameDraft, refreshPasskeys])
 
   const handleDeletePasskey = useCallback((pk: RegisteredPasskey) => {
     Alert.alert(
@@ -683,16 +697,49 @@ export function SettingsScreen() {
         <Section title="Account">
           <InfoRow label="Signed in as" value={state.user.email} />
           {passkeyAllowed && passkeys.map(pk => (
-            <TouchableOpacity key={pk.id} style={[styles.row, styles.pressable]} onPress={() => handleDeletePasskey(pk)}
-              accessibilityLabel={`Passkey ${pk.name || ''}, tap to remove`}>
+            <TouchableOpacity key={pk.id} style={[styles.row, styles.pressable]} onPress={() => openPasskey(pk)}
+              accessibilityLabel={`Passkey ${pk.name || ''}, tap to rename or remove`}>
               <Text style={styles.rowLabel} numberOfLines={1}>
                 {'\u{1F511} '}{pk.name || 'Passkey'}
               </Text>
               <Text style={styles.infoValue}>
-                {pk.createdAt ? new Date(pk.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : ''}  {'\u2715'}
+                {pk.createdAt ? new Date(pk.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : ''}  {'\u270E'}
               </Text>
             </TouchableOpacity>
           ))}
+          <Modal visible={editingPk != null} transparent animationType="fade" onRequestClose={() => setEditingPk(null)}>
+            <Pressable style={styles.dropdownBackdrop} onPress={() => setEditingPk(null)} accessibilityLabel="Close">
+              <Pressable style={styles.dropdownMenu} onPress={() => {}}>
+                <TextInput
+                  style={styles.textInput}
+                  value={pkNameDraft}
+                  onChangeText={setPkNameDraft}
+                  placeholder="Passkey name"
+                  maxLength={60}
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={() => void savePasskeyName()}
+                  accessibilityLabel="Passkey name"
+                />
+                <TouchableOpacity
+                  style={[styles.dropdownItem, !pkNameDraft.trim() && { opacity: 0.4 }]}
+                  onPress={() => void savePasskeyName()}
+                  disabled={!pkNameDraft.trim()}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !pkNameDraft.trim() }}
+                >
+                  <Text style={styles.dropdownItemText}>Save name</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.dropdownItem}
+                  onPress={() => { const pk = editingPk; setEditingPk(null); if (pk) handleDeletePasskey(pk) }}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.dropdownItemText, { color: theme.statusDanger }]}>Remove passkey</Text>
+                </TouchableOpacity>
+              </Pressable>
+            </Pressable>
+          </Modal>
           {passkeyAllowed && (
             <TouchableOpacity style={[styles.row, styles.pressable]} onPress={handleRegisterPasskey}>
               <Text style={styles.rowLabel}>Add a passkey for this device</Text>
