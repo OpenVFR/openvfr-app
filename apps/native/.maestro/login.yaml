@@ -58,6 +58,7 @@ appId: org.openvfr.app
     condition: ${maestro.copiedText == MAESTRO_TEST_EMAIL}
     label: "Email field holds the test account address"
 
+- runFlow: dismiss-keyboard-dialog.yaml
 - tapOn:
     id: login-send-otp
 - extendedWaitUntil:
@@ -73,6 +74,9 @@ appId: org.openvfr.app
       notVisible:
         id: login-otp
     commands:
+      # The dialog can also open while the send is in flight (typing is what
+      # triggers it): clear it before looking for the send button again.
+      - runFlow: dismiss-keyboard-dialog.yaml
       - runFlow:
           when:
             visible:
@@ -100,6 +104,7 @@ appId: org.openvfr.app
           timeout: 30000
 
 # --- Code --------------------------------------------------------------------
+- runFlow: dismiss-keyboard-dialog.yaml
 - evalScript: ${output.loginAttempt = 0}
 - repeat:
     times: 4
