@@ -34,7 +34,7 @@ import { pool } from './db.js'
 import { invalidateCountries } from './countries.js'
 import { EUROPEAN_REGIONS, isSupportedRegion } from '@open-vfr/shared/regions'
 import { currentAiracCycle } from '@open-vfr/shared/airac'
-import { countryPipelineDetail, countrySummaries, isPipelineJob, PIPELINE_JOBS, queuePipelineJob, queuedCount } from './pipeline.js'
+import { countryPipelineDetail, countrySummaries, isPipelineJob, jobAppliesTo, PIPELINE_JOBS, queuePipelineJob, queuedCount } from './pipeline.js'
 import { externalApiUsage } from './externalProxy.js'
 import { RateLimiter } from './rateLimiter.js'
 import { APP_PLATFORMS, envMinBuilds, isAppPlatform, MAX_BUILD, minBuildRows, parseBuild, seenBuilds, setMinBuild } from './appVersion.js'
@@ -304,6 +304,7 @@ admin.post('/countries/:code/jobs', async (c) => {
     'SELECT enabled, tiles_ready_at FROM countries WHERE code = $1', [code])
   const r = rows[0]
   if (!r?.enabled) return c.json({ error: 'Country is not enabled' }, 409)
+  if (!jobAppliesTo(job, code)) return c.json({ error: 'This job has no data source for this country' }, 409)
   const ready = !!r.tiles_ready_at
   if (PIPELINE_JOBS[job].when === 'ready' && !ready) return c.json({ error: 'Country has no built data yet; request a full build instead' }, 409)
   if (PIPELINE_JOBS[job].when === 'pending' && ready) return c.json({ error: 'Country is already built; request individual refreshes instead' }, 409)

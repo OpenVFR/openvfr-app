@@ -15,21 +15,30 @@ import { pool } from './db.js'
  * writes to pipeline_jobs; a self-hosted pipeline that wants retry buttons
  * picks up queued rows with these ids. `when`: 'ready' = refresh of a
  * country whose data exists; 'pending' = first build of an enabled country
- * that has none yet (or whose build failed).
+ * that has none yet (or whose build failed). `countries`: the job only applies to these (it has a data source
+ * for them alone); without it the job applies to every country.
  */
 export const PIPELINE_JOBS = {
-  ofmx:         { label: 'Aviation data (AIRAC)', when: 'ready' },
-  sup_airspace: { label: 'Temporary areas (AIP SUP)', when: 'ready' },
-  obstacles:    { label: 'Obstacles',             when: 'ready' },
-  landmarks:    { label: 'Landmarks',             when: 'ready' },
-  water:        { label: 'Water',                 when: 'ready' },
-  aeroways:     { label: 'Aeroways',              when: 'ready' },
-  landuse:      { label: 'Landuse',               when: 'ready' },
-  basemap:      { label: 'Basemap',               when: 'ready' },
-  build:        { label: 'Full build',            when: 'pending' },
-} as const satisfies Record<string, { label: string; when: 'ready' | 'pending' }>
+  ofmx:         { label: 'Aviation data (AIRAC)',     when: 'ready' },
+  // AIP supplement areas added to the airspace file; only Sweden has a source so far (LFV DAIM), keep in sync
+  // with the pipeline's sup_airspace_ext.py FETCHERS.
+  sup_airspace: { label: 'Temporary areas (AIP SUP)', when: 'ready', countries: ['se'] },
+  obstacles:    { label: 'Obstacles',                 when: 'ready' },
+  landmarks:    { label: 'Landmarks',                 when: 'ready' },
+  water:        { label: 'Water',                     when: 'ready' },
+  aeroways:     { label: 'Aeroways',                  when: 'ready' },
+  landuse:      { label: 'Landuse',                   when: 'ready' },
+  basemap:      { label: 'Basemap',                   when: 'ready' },
+  build:        { label: 'Full build',                when: 'pending' },
+} as const satisfies Record<string, { label: string; when: 'ready' | 'pending'; countries?: readonly string[] }>
 
 export type PipelineJob = keyof typeof PIPELINE_JOBS
+
+/** False for a job that has no data source for this country (see `countries`). */
+export function jobAppliesTo(job: PipelineJob, cc: string): boolean {
+  const countries: readonly string[] | undefined = (PIPELINE_JOBS[job] as { countries?: readonly string[] }).countries
+  return !countries || countries.includes(cc)
+}
 
 export function isPipelineJob(v: unknown): v is PipelineJob {
   return typeof v === 'string' && Object.hasOwn(PIPELINE_JOBS, v)
@@ -37,7 +46,8 @@ export function isPipelineJob(v: unknown): v is PipelineJob {
 
 /**
  * Every per-country dataset: its data_loads name, file, and the job that
- * refreshes it (null = only produced by a full build: terrain).
+ * refreshes it (null = only produced by a full build: terrain). The `airspace` file is also changed by
+ * `sup_airspace` (AIP supplement areas added after each OFMX build); `job` names the one that builds it.
  */
 const DATASETS: { id: string; file: (cc: string) => string; job: PipelineJob | null }[] = [
   { id: 'airspace',          file: cc => countryDatasetFile(cc, 'airspace'),         job: 'ofmx' },
@@ -214,7 +224,7 @@ export async function countryPipelineDetail(cc: string, registry: { enabled: boo
       return {
         id, label: def.label,
         // Same rule as POST .../jobs: refreshes need built data, a build needs an enabled country without it.
-        allowed: registry.enabled && (def.when === 'ready' ? registry.ready : !registry.ready),
+        allowed: registry.enabled && jobAppliesTo(id, cc) && (def.when === 'ready' ? registry.ready : !registry.ready),
         last: last ? run(last) : null,
       }
     }),
