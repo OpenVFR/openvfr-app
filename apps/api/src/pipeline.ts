@@ -18,14 +18,15 @@ import { pool } from './db.js'
  * that has none yet (or whose build failed).
  */
 export const PIPELINE_JOBS = {
-  ofmx:      { label: 'Aviation data (AIRAC)', when: 'ready' },
-  obstacles: { label: 'Obstacles',             when: 'ready' },
-  landmarks: { label: 'Landmarks',             when: 'ready' },
-  water:     { label: 'Water',                 when: 'ready' },
-  aeroways:  { label: 'Aeroways',              when: 'ready' },
-  landuse:   { label: 'Landuse',               when: 'ready' },
-  basemap:   { label: 'Basemap',               when: 'ready' },
-  build:     { label: 'Full build',            when: 'pending' },
+  ofmx:         { label: 'Aviation data (AIRAC)', when: 'ready' },
+  sup_airspace: { label: 'Temporary areas (AIP SUP)', when: 'ready' },
+  obstacles:    { label: 'Obstacles',             when: 'ready' },
+  landmarks:    { label: 'Landmarks',             when: 'ready' },
+  water:        { label: 'Water',                 when: 'ready' },
+  aeroways:     { label: 'Aeroways',              when: 'ready' },
+  landuse:      { label: 'Landuse',               when: 'ready' },
+  basemap:      { label: 'Basemap',               when: 'ready' },
+  build:        { label: 'Full build',            when: 'pending' },
 } as const satisfies Record<string, { label: string; when: 'ready' | 'pending' }>
 
 export type PipelineJob = keyof typeof PIPELINE_JOBS

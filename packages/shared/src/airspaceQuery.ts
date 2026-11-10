@@ -69,10 +69,10 @@ export async function queryAirspaceAtPoint(
   for (const f of _cache ?? []) {
     const geom = f.geometry as (Polygon | MultiPolygon | null)
     if (!geom || (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon')) continue
-    if (!pointInPolygon(lat, lng, geom)) continue
-
     const p    = (f.properties ?? {}) as Record<string, unknown>
     if (airspaceEnded(p)) continue
+    if (!pointInPolygon(lat, lng, geom)) continue
+
     const ring = geom.type === 'Polygon' ? geom.coordinates[0] : geom.coordinates[0][0]
     out.push({
       class:       airspaceDisplayClass(String(p.class ?? ''), String(p.type ?? '')),

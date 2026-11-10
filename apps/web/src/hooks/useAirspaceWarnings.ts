@@ -154,7 +154,7 @@ export function useAirspaceWarnings(
           const g = f.geometry
           if (g.type !== 'Polygon' && g.type !== 'MultiPolygon') continue
           const p = f.properties as Record<string, unknown>
-          if (airspaceEnded(p)) continue
+          if (airspaceEnded(p)) continue   // judged at load time, see airspaceInForce
           const type     = String(p['type']  ?? '')
           const cls      = airspaceDisplayClass(String(p['class'] ?? ''), type)
           const name     = String(p['name']  ?? '')
