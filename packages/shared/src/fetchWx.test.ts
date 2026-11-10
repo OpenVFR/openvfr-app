@@ -10,6 +10,24 @@ function mockResponse(status: number, body: unknown): Response {
   } as unknown as Response
 }
 
+describe('fetchWx', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('trims and upper-cases like the server before the check', async () => {
+    const fetchMock = vi.fn(async () => mockResponse(200, { metar: null, taf: null }))
+    vi.stubGlobal('fetch', fetchMock)
+    await fetchWx(' esms ', 'https://x')
+    expect((fetchMock.mock.calls[0] as unknown[])[0]).toBe('https://x/api/weather?icao=ESMS')
+  })
+
+  it('does not call the API for a pseudo-ICAO', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchWx('ESTAGA')).rejects.toThrow(/not an ICAO code/)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
 describe('fetchWxNearest', () => {
   afterEach(() => {
     vi.unstubAllGlobals()

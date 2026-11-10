@@ -10,7 +10,7 @@ import { WindCompassGauge, WindSpeedGauge, type RunwayHeading } from './WindGaug
 import { visTone, ceilingTone, windTone, fmtVis, fmtWind, fmtObsAge, metarNarrative } from '@open-vfr/shared/wxFormat'
 import TafTimeline from './TafTimeline'
 import CloudProfile from './CloudProfile'
-import { fetchNotams, fmtNotamDate, type NotamItem } from '../utils/fetchNotam'
+import { fetchNotams, fmtNotamDate, NotamNoIcaoError, type NotamItem } from '../utils/fetchNotam'
 import { filterNotamsNearRoute, filterAndSortNotamsNearRoute, DEFAULT_ROUTE_NOTAM_BUFFER_NM, DEFAULT_VICINITY_NOTAM_NM, type RoutePoint } from '@open-vfr/shared/notamRouteFilter'
 import { printBriefingDoc } from '../utils/printBriefing'
 import { notamText } from '@open-vfr/shared/notamIcaoFormat'
@@ -445,7 +445,9 @@ export default function AerodromePopup({
       .then((data) => { setNotams(data.notams); setNotamLoading(false) })
       .catch((err) => {
         if ((err as Error).name !== 'AbortError') {
-          setNotamError('NOTAM service unavailable')
+          setNotamError(err instanceof NotamNoIcaoError
+            ? 'NOTAMs are not available for this aerodrome (no ICAO code)'
+            : 'NOTAM service unavailable')
           setNotamLoading(false)
         }
       })
