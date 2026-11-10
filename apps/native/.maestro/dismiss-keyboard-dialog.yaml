@@ -1,0 +1,18 @@
+# Dismisses the keyboard app's own first-use dialogs, if one is showing.
+#
+# The Android tablet emulator's Google keyboard (Gboard) can ask "Using Google
+# Translate" (the text typed into its translate box is sent to Google) the
+# first time a field is typed into. The dialog is a window of its own on top
+# of the app: Maestro then sees only the dialog, and every tap on the app
+# fails with "Element not found" (seen on the tablet-7 capture, login send
+# button). Cancel keeps the translate feature off, which a capture never
+# uses. Nothing happens when no dialog is showing, and on iOS.
+appId: org.openvfr.app
+---
+- runFlow:
+    when:
+      visible:
+        text: "Using Google Translate"
+    commands:
+      - tapOn:
+          text: "Cancel"
