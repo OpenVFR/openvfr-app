@@ -35,6 +35,7 @@ import { Passkey } from 'react-native-passkey'
 import type {
   PasskeyCreateRequest, PasskeyCreateResult, PasskeyGetRequest, PasskeyGetResult,
 } from 'react-native-passkey'
+import { passkeyRequestErrorMessage, type PasskeyRequestError } from '@open-vfr/shared/passkeyErrors'
 import { authClient } from './authClient'
 import { syncLog } from './syncLog'
 import { ACTIVE_ENVIRONMENT } from '../environment'
@@ -69,7 +70,9 @@ function toCookieHeader(setCookie: string | null): string | undefined {
   return pairs.length ? pairs.join('; ') : undefined
 }
 
-type Fetched<T> = { data: T; cookie?: string } | { error: string }
+/** `fail` keeps the server's status and code, so registration can word a stale or invalid session. */
+type Failed = { error: string; fail: PasskeyRequestError }
+type Fetched<T> = { data: T; cookie?: string } | Failed
 
 async function getOptions<T>(path: string, query?: Record<string, string>): Promise<Fetched<T>> {
   let cookie: string | undefined
@@ -86,13 +89,13 @@ async function getOptions<T>(path: string, query?: Record<string, string>): Prom
     throw: false,
     onResponse: (ctx) => { cookie = toCookieHeader(ctx.response.headers.get('set-cookie')) },
   })
-  if (error || !data) return { error: error?.message ?? 'Could not reach the server' }
+  if (error || !data) return { error: error?.message ?? 'Could not reach the server', fail: error ?? {} }
   return { data, cookie }
 }
 
 async function verify<T>(
   path: string, body: unknown, cookie: string | undefined,
-): Promise<{ data: T } | { error: string }> {
+): Promise<{ data: T } | Failed> {
   const headers: Record<string, string> = {}
   if (cookie) headers['Cookie'] = cookie
   const { data, error } = await authClient.$fetch<T>(path, {
@@ -102,7 +105,7 @@ async function verify<T>(
     credentials: 'omit',  // only the cookie we pass by hand, see getOptions
     throw: false,
   })
-  if (error || !data) return { error: error?.message ?? 'Verification failed' }
+  if (error || !data) return { error: error?.message ?? 'Verification failed', fail: error ?? {} }
   return { data }
 }
 
@@ -181,7 +184,7 @@ export async function passkeyRegister(deviceName?: string, accountName?: string)
   // Without an account name, omit the query: better-auth then falls back to the user's own name.
   const query = accountName ? { name: stagingLabel(accountName) } : undefined
   const opts = await getOptions<PasskeyCreateRequest>('/passkey/generate-register-options', query)
-  if ('error' in opts) return { ok: false, cancelled: false, message: opts.error }
+  if ('error' in opts) return { ok: false, cancelled: false, message: passkeyRequestErrorMessage(opts.fail, opts.error) }
 
   let attestation: PasskeyCreateResult
   try {
@@ -193,7 +196,7 @@ export async function passkeyRegister(deviceName?: string, accountName?: string)
   const { clientExtensionResults: _ext, ...response } = attestation as PasskeyCreateResult & { clientExtensionResults?: unknown }
   const body = { response, name }
   const res = await verify<SessionResponse>('/passkey/verify-registration', body, opts.cookie)
-  if ('error' in res) return { ok: false, cancelled: false, message: res.error }
+  if ('error' in res) return { ok: false, cancelled: false, message: passkeyRequestErrorMessage(res.fail, res.error) }
   return { ok: true, user: toUser(res.data) }
 }
 

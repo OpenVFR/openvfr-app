@@ -14,6 +14,7 @@ import { emailOTPClient }   from 'better-auth/client/plugins'
 import { passkeyClient }    from '@better-auth/passkey/client'
 import { API_BASE_URL } from '../utils/env'
 import { markOtpSignIn, consumeOtpSignIn } from '@open-vfr/shared/passkeyPrompt'
+import { passkeyRequestErrorMessage } from '@open-vfr/shared/passkeyErrors'
 import { flagWipeOnSignOut } from '../db/userScope'
 import { flushBeforeSignOut, stopCloudSync } from '../sync/cloudSync'
 
@@ -177,11 +178,7 @@ export function useAuth(): AuthState {
     // not the device label. The label is stored afterwards via rename.
     const result = await authClient.passkey.addPasskey({ name: user?.email ? stagingLabel(user.email) : undefined })
     if (result?.error) {
-      const { code, message } = result.error as { code?: string; message?: string }
-      if (code === 'SESSION_NOT_FRESH' || /not fresh/i.test(message ?? '')) {
-        throw new Error('For security, adding a passkey needs a recent sign-in. Sign out, sign in again with an email code, then retry.')
-      }
-      throw new Error(message ?? 'Passkey registration failed')
+      throw new Error(passkeyRequestErrorMessage(result.error as { status?: number; code?: string; message?: string }, 'Passkey registration failed'))
     }
     const id = (result?.data as { id?: string } | null | undefined)?.id
     const name = stagingLabel(deviceLabel())
