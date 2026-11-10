@@ -2,9 +2,13 @@ import { describe, it, expect } from 'vitest'
 import { obstacleSymbol, polyPath, MIN_FULL_HEIGHT_PX, batchSymbolPaths, type SymbolPrim } from './obstacleSymbol'
 
 describe('obstacleSymbol', () => {
-  it('is null for obstacles too short to draw at full height', () => {
-    expect(obstacleSymbol('building', 100, 92, 100)).toBeNull()                        // 8 px
-    expect(obstacleSymbol('tower', 100, 100 - (MIN_FULL_HEIGHT_PX - 1), 100)).toBeNull()
+  it('draws obstacles too short for a full shape at the minimum height, on the ground', () => {
+    for (const kind of ['building', 'tower', 'wind_turbine']) {
+      const p = obstacleSymbol(kind, 100, 98, 100)!
+      const ys = p.flatMap((x) => x.t === 'line' ? [x.y1, x.y2] : x.t === 'poly' ? x.pts.map((q) => q[1]) : x.t === 'rect' ? [x.y, x.y + x.h] : [])
+      expect(Math.max(...ys)).toBeCloseTo(100)
+      expect(Math.min(...ys)).toBeGreaterThanOrEqual(100 - MIN_FULL_HEIGHT_PX - 0.01)
+    }
   })
   it('draws a building as a rectangle from tip to ground', () => {
     const p = obstacleSymbol('building', 50, 20, 100)!

@@ -4,8 +4,8 @@
  * tip altitude, so the chart shows how tall it is.
  *
  * Pure geometry in chart pixels; web renders it as SVG elements, native as
- * react-native-svg elements. Obstacles shorter than MIN_FULL_HEIGHT_PX stay a
- * small pictogram (callers draw the old icon for them).
+ * react-native-svg elements. Obstacles shorter than MIN_FULL_HEIGHT_PX are drawn
+ * at that minimum height, standing on the ground.
  */
 
 export type SymbolPrim =
@@ -14,7 +14,7 @@ export type SymbolPrim =
   | { t: 'poly'; pts: [number, number][]; fill: string; stroke?: string; dash?: boolean }
   | { t: 'circle'; cx: number; cy: number; r: number; fill: string; dash?: boolean }
 
-/** Below this on-screen height the full shape is just a smudge: use the icon. */
+/** Minimum on-screen height of a symbol: below this the shape is just a smudge. */
 export const MIN_FULL_HEIGHT_PX = 10
 
 // Mid-tone sky and green / blue ground: light fills with a dark outline read on both.
@@ -49,7 +49,7 @@ export function primStyle(p: Extract<SymbolPrim, { t: 'rect' | 'poly' }>): { fil
   return { fill: p.fill, fillOpacity: p.dash ? ESTIMATED_FILL_OPACITY : 1, stroke: p.stroke ?? (p.dash ? p.fill : undefined) }
 }
 
-/** Shape of one obstacle, or null when it is too short for a full-height drawing.
+/** Shape of one obstacle (at least MIN_FULL_HEIGHT_PX tall, null only for non-finite input).
  *  `estimated`: the height is an assumption, every primitive is flagged `dash` so
  *  the renderer draws it a little lighter. */
 export function obstacleSymbol(kind: string, cx: number, tipY: number, groundY: number, estimated = false): SymbolPrim[] | null {
@@ -58,9 +58,13 @@ export function obstacleSymbol(kind: string, cx: number, tipY: number, groundY: 
   return prims
 }
 
-function obstacleSymbolSolid(kind: string, cx: number, tipY: number, groundY: number): SymbolPrim[] | null {
-  const h = groundY - tipY
-  if (!(h >= MIN_FULL_HEIGHT_PX)) return null
+function obstacleSymbolSolid(kind: string, cxIn: number, tipYIn: number, groundY: number): SymbolPrim[] | null {
+  const cx = cxIn
+  // Too short for a legible shape: still the same shape (never the map pictogram, which on the chart
+  // reads as an aeroplane on a stalk), at minimum height standing on the ground.
+  if (!Number.isFinite(tipYIn) || !Number.isFinite(groundY)) return null
+  const h = Math.max(MIN_FULL_HEIGHT_PX, groundY - tipYIn)
+  const tipY = groundY - h
   const prims: SymbolPrim[] = []
 
   switch (kind) {
