@@ -12,6 +12,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { AlertPosition } from './useAirspaceWarnings'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { airspaceEnded } from '@open-vfr/shared/airspaceInForce'
 import { useActiveCountries } from '../utils/countryData'
 import { altitudeForLimit, effectiveLimitFt, insideBand } from '@open-vfr/shared/airspaceAltitude'
 import { airspaceDisplayClass } from '@open-vfr/shared/airspaceColors'
@@ -114,6 +115,7 @@ export function useAirspaceNotifications(position: AlertPosition | null): {
           const g = f.geometry
           if (g.type !== 'Polygon' && g.type !== 'MultiPolygon') continue
           const p        = f.properties as Record<string, unknown>
+          if (airspaceEnded(p)) continue
           const type     = String(p['type']  ?? '')
           const cls      = airspaceDisplayClass(String(p['class'] ?? ''), type)
           const name     = String(p['name']  ?? '')

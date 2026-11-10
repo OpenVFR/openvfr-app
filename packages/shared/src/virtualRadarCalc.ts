@@ -57,6 +57,7 @@ import { iasToTas } from './airspeed'
 import { apiAuthHeaders } from './apiAuth'
 import { AIRSPACE_COLORS, CONTROLLED_CLASSES, airspaceDisplayClass, controlledStyle } from './airspaceColors'
 import { limitIsAgl } from './airspaceAltitude'
+import { airspaceEnded } from './airspaceInForce'
 import type { ElevationLookup } from './terrainDem'
 import { fetchWithRetry } from './fetchWithRetry'
 
@@ -481,6 +482,7 @@ export function buildVirtualRadarProfile(
 
     const p = feature.properties as AirspaceProps
     if (!p) continue
+    if (airspaceEnded(p)) continue
 
     const lowerFt = Number(p.lower_ft ?? 0)
     const upperFt = Number(p.upper_ft ?? 0)

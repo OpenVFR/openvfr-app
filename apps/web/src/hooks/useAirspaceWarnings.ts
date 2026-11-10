@@ -30,6 +30,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { filterDismissed } from '@open-vfr/shared/alertDismiss'
+import { airspaceEnded } from '@open-vfr/shared/airspaceInForce'
 import { onPlannedCourse } from '@open-vfr/shared/plannedCourse'
 import { applyAirspaceLevel, DEFAULT_AIRSPACE_LEVELS, type AirspaceAlertLevels } from '@open-vfr/shared/airspaceAlertLevel'
 import type { RouteWaypoint } from '../utils/routeCalc'
@@ -153,6 +154,7 @@ export function useAirspaceWarnings(
           const g = f.geometry
           if (g.type !== 'Polygon' && g.type !== 'MultiPolygon') continue
           const p = f.properties as Record<string, unknown>
+          if (airspaceEnded(p)) continue
           const type     = String(p['type']  ?? '')
           const cls      = airspaceDisplayClass(String(p['class'] ?? ''), type)
           const name     = String(p['name']  ?? '')

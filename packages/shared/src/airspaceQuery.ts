@@ -19,6 +19,7 @@
 import type { Polygon, MultiPolygon, Feature, FeatureCollection } from 'geojson'
 import { pointInPolygon } from './airspaceGeometry'
 import { airspaceDisplayClass } from './airspaceColors'
+import { airspaceEnded } from './airspaceInForce'
 import type { DatasetSource } from './countryData'
 
 export interface AirspaceQueryFeature {
@@ -71,6 +72,7 @@ export async function queryAirspaceAtPoint(
     if (!pointInPolygon(lat, lng, geom)) continue
 
     const p    = (f.properties ?? {}) as Record<string, unknown>
+    if (airspaceEnded(p)) continue
     const ring = geom.type === 'Polygon' ? geom.coordinates[0] : geom.coordinates[0][0]
     out.push({
       class:       airspaceDisplayClass(String(p.class ?? ''), String(p.type ?? '')),

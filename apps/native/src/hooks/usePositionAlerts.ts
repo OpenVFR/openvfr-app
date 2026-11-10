@@ -40,6 +40,7 @@ import type { GpsPosition } from '../utils/gpsTypes'
 import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
 import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, obstructionAlertsSig, obstructionReachNm, obstructionThreatDistNm, obstructionRiskAltFt, OBSTRUCTION_VERTICAL_BUFFER_FT, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
 import { filterDismissed } from '@open-vfr/shared/alertDismiss'
+import { airspaceEnded } from '@open-vfr/shared/airspaceInForce'
 import { updateClimbRate, type ClimbState } from '@open-vfr/shared/climbRate'
 import { onPlannedCourse } from '@open-vfr/shared/plannedCourse'
 import { applyAirspaceLevel, DEFAULT_AIRSPACE_LEVELS, type AirspaceAlertLevels } from '@open-vfr/shared/airspaceAlertLevel'
@@ -143,6 +144,7 @@ function loadAirspaceOnce(cb: (f: AirspaceFeature[]) => void) {
         const g = f.geometry
         if (g.type !== 'Polygon' && g.type !== 'MultiPolygon') continue
         const p = f.properties as Record<string, unknown>
+        if (airspaceEnded(p)) continue
         const type = String(p.type ?? ''); const cls = airspaceDisplayClass(String(p.class ?? ''), type)
         if (!cls && !type) continue
         const name = String(p.name ?? '')
