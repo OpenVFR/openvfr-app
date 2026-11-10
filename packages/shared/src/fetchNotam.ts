@@ -87,16 +87,25 @@ export interface NotamResult {
   notams: NotamItem[]
 }
 
+/** The aerodrome has no real ICAO code, so the per-airport NOTAM lookup does not apply (not an outage). */
+export class NotamNoIcaoError extends Error {
+  constructor(icao: string) {
+    super(`NOTAM lookup needs a 4-letter ICAO code (${icao})`)
+    this.name = 'NotamNoIcaoError'
+  }
+}
+
 export async function fetchNotams(
   icao: string,
   baseUrl = '',
   signal?: AbortSignal,
   headers?: Record<string, string>,
 ): Promise<NotamResult> {
-  // The API only serves real 4-letter ICAO codes (400 otherwise). Some dataset aerodromes carry a longer
-  // pseudo-ICAO (e.g. ESTAGA); fail here instead of sending a request that is certain to 400.
-  if (!/^[A-Z]{4}$/.test(icao)) throw new Error(`NOTAM fetch failed: not an ICAO code (${icao})`)
-  const url = `${baseUrl}/api/notam?icao=${encodeURIComponent(icao)}`
+  // The API only serves real 4-letter ICAO codes (400 otherwise; it trims and upper-cases first, so do the
+  // same). Some dataset aerodromes carry a longer pseudo-ICAO (e.g. ESTAGA): no request, a distinct error.
+  const code = icao.trim().toUpperCase()
+  if (!/^[A-Z]{4}$/.test(code)) throw new NotamNoIcaoError(icao)
+  const url = `${baseUrl}/api/notam?icao=${encodeURIComponent(code)}`
   // Retries transient network blips / 502-504 -- see fetchWithRetry.ts. A
   // 503 that persists past retries still falls through to the empty-result
   // fallback below, same as before -- a single brief 503 no longer

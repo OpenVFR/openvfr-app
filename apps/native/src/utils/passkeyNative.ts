@@ -71,7 +71,9 @@ function toCookieHeader(setCookie: string | null): string | undefined {
 }
 
 /** `fail` keeps the server's status and code, so registration can word a stale or invalid session. */
-type Failed = { error: string; fail: PasskeyRequestError }
+type Failed = { fail: PasskeyRequestError }
+/** The server's own text, or `fallback` when the request never got an answer. */
+const failText = (f: Failed, fallback: string): string => f.fail.message || fallback
 type Fetched<T> = { data: T; cookie?: string } | Failed
 
 async function getOptions<T>(path: string, query?: Record<string, string>): Promise<Fetched<T>> {
@@ -89,7 +91,7 @@ async function getOptions<T>(path: string, query?: Record<string, string>): Prom
     throw: false,
     onResponse: (ctx) => { cookie = toCookieHeader(ctx.response.headers.get('set-cookie')) },
   })
-  if (error || !data) return { error: error?.message ?? 'Could not reach the server', fail: error ?? {} }
+  if (error || !data) return { fail: error ?? {} }
   return { data, cookie }
 }
 
@@ -105,7 +107,7 @@ async function verify<T>(
     credentials: 'omit',  // only the cookie we pass by hand, see getOptions
     throw: false,
   })
-  if (error || !data) return { error: error?.message ?? 'Verification failed', fail: error ?? {} }
+  if (error || !data) return { fail: error ?? {} }
   return { data }
 }
 
@@ -146,7 +148,7 @@ function toUser(r: SessionResponse | null | undefined): PasskeyUser | null {
 /** Sign in with an existing passkey. Resolves with the signed-in user on success. */
 export async function passkeySignIn(): Promise<PasskeyOutcome> {
   const opts = await getOptions<PasskeyGetRequest>('/passkey/generate-authenticate-options')
-  if ('error' in opts) return { ok: false, cancelled: false, message: opts.error }
+  if ('fail' in opts) return { ok: false, cancelled: false, message: failText(opts, 'Could not reach the server') }
 
   const t0 = Date.now()
   let assertion: PasskeyGetResult
@@ -159,13 +161,13 @@ export async function passkeySignIn(): Promise<PasskeyOutcome> {
   // Strip clientExtensionResults like the web client does; the server only reads the core fields.
   const { clientExtensionResults: _ext, ...response } = assertion as PasskeyGetResult & { clientExtensionResults?: unknown }
   const res = await verify<SessionResponse>('/passkey/verify-authentication', { response }, opts.cookie)
-  if ('error' in res) {
+  if ('fail' in res) {
     // Challenge not found = the server could not match the challenge cookie.
     // Say whether we had one and how long the sheet / QR flow took (the
     // server drops the challenge after 300 s), names only, never values.
     const names = opts.cookie?.split(';').map(c => c.split('=')[0]?.trim()).join(',')
     const credId = (response as { id?: string }).id?.slice(0, 16) ?? '?'
-    const detail = `${res.error} [cred: ${credId}; cookie: ${names || 'none'}; ${Math.round((Date.now() - t0) / 1000)}s after options]`
+    const detail = `${failText(res, 'Verification failed')} [cred: ${credId}; cookie: ${names || 'none'}; ${Math.round((Date.now() - t0) / 1000)}s after options]`
     syncLog('[passkey] server rejected the assertion', detail)
     return { ok: false, cancelled: false, message: detail }
   }
@@ -184,7 +186,7 @@ export async function passkeyRegister(deviceName?: string, accountName?: string)
   // Without an account name, omit the query: better-auth then falls back to the user's own name.
   const query = accountName ? { name: stagingLabel(accountName) } : undefined
   const opts = await getOptions<PasskeyCreateRequest>('/passkey/generate-register-options', query)
-  if ('error' in opts) return { ok: false, cancelled: false, message: passkeyRequestErrorMessage(opts.fail, opts.error) }
+  if ('fail' in opts) return { ok: false, cancelled: false, message: passkeyRequestErrorMessage(opts.fail, 'Could not reach the server') }
 
   let attestation: PasskeyCreateResult
   try {
@@ -196,7 +198,7 @@ export async function passkeyRegister(deviceName?: string, accountName?: string)
   const { clientExtensionResults: _ext, ...response } = attestation as PasskeyCreateResult & { clientExtensionResults?: unknown }
   const body = { response, name }
   const res = await verify<SessionResponse>('/passkey/verify-registration', body, opts.cookie)
-  if ('error' in res) return { ok: false, cancelled: false, message: passkeyRequestErrorMessage(res.fail, res.error) }
+  if ('fail' in res) return { ok: false, cancelled: false, message: passkeyRequestErrorMessage(res.fail, 'Verification failed') }
   return { ok: true, user: toUser(res.data) }
 }
 
