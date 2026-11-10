@@ -51,7 +51,7 @@ export const ATTRIBUTION_SOURCES: readonly AttributionSource[] = [
   { name: 'OpenFlightMaps', note: 'Airspace, aerodromes, navaids, waypoints and runways (ODbL)', url: 'https://www.openflightmaps.org/' },
   { name: 'OpenAIP', note: 'Obstacles, plus airspace and aerodromes where OpenFlightMaps has gaps (CC BY-NC 4.0 \u2014 non-commercial use only)', url: 'https://www.openaip.net/' },
   { name: 'Länsstyrelserna \u00b7 Vindbrukskollen', note: 'Wind turbine heights and positions in Sweden (CC0 1.0; the county administrative boards ask to be named as the source)', url: 'https://vbk.lansstyrelsen.se/' },
-  { name: 'LFV', note: 'En-route obstacle data in Sweden: heights and elevations of masts, towers, chimneys (CC BY 4.0 as published for LFV\u2019s open geodata services)', url: 'https://daim.lfv.se/echarts/dronechart/API/' },
+  { name: 'LFV', note: 'En-route obstacle data in Sweden (heights and elevations of masts, towers, chimneys) and temporary restricted/danger areas set up by AIP supplements (CC BY 4.0 as published for LFV\u2019s open geodata services)', url: 'https://daim.lfv.se/echarts/dronechart/API/' },
   { name: 'Copernicus DEM GLO-30', note: `Hillshade, contour lines, offline terrain \u2014 ${COPERNICUS_GLO30_NOTICE}`, url: 'https://doi.org/10.5270/ESA-c5d3d65' },
   { name: 'ESRI', note: 'Satellite imagery basemap toggle (proprietary, ESRI terms apply)', url: 'https://www.esri.com/en-us/legal/terms/full-master-agreement' },
   { name: 'OpenSky Network', note: 'Live air traffic (ADS-B)', url: 'https://opensky-network.org/' },
