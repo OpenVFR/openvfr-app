@@ -93,6 +93,9 @@ export async function fetchNotams(
   signal?: AbortSignal,
   headers?: Record<string, string>,
 ): Promise<NotamResult> {
+  // The API only serves real 4-letter ICAO codes (400 otherwise). Some dataset aerodromes carry a longer
+  // pseudo-ICAO (e.g. ESTAGA); fail here instead of sending a request that is certain to 400.
+  if (!/^[A-Z]{4}$/.test(icao)) throw new Error(`NOTAM fetch failed: not an ICAO code (${icao})`)
   const url = `${baseUrl}/api/notam?icao=${encodeURIComponent(icao)}`
   // Retries transient network blips / 502-504 -- see fetchWithRetry.ts. A
   // 503 that persists past retries still falls through to the empty-result
