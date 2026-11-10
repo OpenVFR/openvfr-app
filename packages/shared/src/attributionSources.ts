@@ -48,8 +48,8 @@ export interface AttributionSource {
 export const ATTRIBUTION_SOURCES: readonly AttributionSource[] = [
   { name: 'Protomaps', note: 'Vector basemap tiles, fonts, sprites (BSD-3-Clause)', url: 'https://protomaps.com/' },
   { name: 'OpenStreetMap', note: 'Basemap + landuse data (\u00a9 OpenStreetMap contributors, ODbL)', url: 'https://www.openstreetmap.org/copyright' },
-  { name: 'OpenFlightMaps', note: 'VFR chart / airspace layers (ODbL)', url: 'https://www.openflightmaps.org/' },
-  { name: 'OpenAIP', note: 'Airspace and obstacle data (CC BY-NC 4.0 \u2014 non-commercial use only)', url: 'https://www.openaip.net/' },
+  { name: 'OpenFlightMaps', note: 'Airspace, aerodromes, navaids, waypoints and runways (ODbL)', url: 'https://www.openflightmaps.org/' },
+  { name: 'OpenAIP', note: 'Obstacles, plus airspace and aerodromes where OpenFlightMaps has gaps (CC BY-NC 4.0 \u2014 non-commercial use only)', url: 'https://www.openaip.net/' },
   { name: 'Länsstyrelserna \u00b7 Vindbrukskollen', note: 'Wind turbine heights and positions in Sweden (CC0 1.0; the county administrative boards ask to be named as the source)', url: 'https://vbk.lansstyrelsen.se/' },
   { name: 'LFV', note: 'En-route obstacle data in Sweden: heights and elevations of masts, towers, chimneys (CC BY 4.0 as published for LFV\u2019s open geodata services)', url: 'https://daim.lfv.se/echarts/dronechart/API/' },
   { name: 'Copernicus DEM GLO-30', note: `Hillshade, contour lines, offline terrain \u2014 ${COPERNICUS_GLO30_NOTICE}`, url: 'https://doi.org/10.5270/ESA-c5d3d65' },
