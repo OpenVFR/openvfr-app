@@ -17,6 +17,8 @@ import { useSettingsContext } from '../context/SettingsContext'
 import { AIRSPACE_CATEGORIES, resolveAirspaceLevels, type AlertLevel } from '@open-vfr/shared/airspaceAlertLevel'
 import { useAuthContext }     from '../context/AuthContext'
 import { authHeaders } from '../utils/authClient'
+import { useAssistantMcpUrl } from '../hooks/useAssistantMcpUrl'
+import { AssistantHelpModal } from '../components/AssistantHelpModal'
 import { useSimContext }      from '../context/SimContext'
 import { SimConnectSheet }    from '../components/SimConnectSheet'
 import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
@@ -83,6 +85,8 @@ export function SettingsScreen() {
   // true (also when offline) -- the server enforces it regardless.
   const [passkeyAllowed, setPasskeyAllowed] = useState(true)
   const signedIn = state.status === 'authenticated'
+  const assistantUrl = useAssistantMcpUrl(signedIn)
+  const [assistantHelpOpen, setAssistantHelpOpen] = useState(false)
   useEffect(() => {
     if (!signedIn) return
     let cancelled = false
@@ -744,6 +748,15 @@ export function SettingsScreen() {
             <TouchableOpacity style={[styles.row, styles.pressable]} onPress={handleRegisterPasskey}>
               <Text style={styles.rowLabel}>Add a passkey for this device</Text>
             </TouchableOpacity>
+          )}
+          {assistantUrl && (
+            <>
+              <TouchableOpacity style={[styles.row, styles.pressable]} onPress={() => setAssistantHelpOpen(true)}>
+                <Text style={styles.rowLabel}>Use your AI assistant</Text>
+                <Text style={styles.infoValue}>{'\u203a'}</Text>
+              </TouchableOpacity>
+              <AssistantHelpModal visible={assistantHelpOpen} topic="general" mcpUrl={assistantUrl} onClose={() => setAssistantHelpOpen(false)} />
+            </>
           )}
           <TouchableOpacity style={[styles.row, styles.pressable]} onPress={handleSignOut} disabled={signingOut}>
             <Text style={[styles.rowLabel, { color: theme.statusDanger }]}>{signingOut ? 'Signing out\u2026' : 'Sign out'}</Text>

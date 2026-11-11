@@ -49,6 +49,8 @@ import type { AircraftProfileDocType } from '../types/db'
 import { useFlightLogSync } from '../hooks/useFlightLogSync'
 import { flightLogs as flightLogsDb, routes as routeDb } from '../db'
 import { isRouteDirty } from '@open-vfr/shared/routeDirty'
+import { useAssistantMcpUrl } from '../hooks/useAssistantMcpUrl'
+import { AssistantHelpModal } from '../components/AssistantHelpModal'
 import { useFlightLogViewContext } from '../context/FlightLogViewContext'
 import { useTakeoffTime, useAlternate, useGlobalWind } from '../hooks/usePlanningSettings'
 import { getAerodromeLookup } from '../utils/aerodromeLookup'
@@ -698,12 +700,20 @@ export function PlanScreen() {
     setWpName(''); setWpFolder(''); setWpLat(''); setWpLng(''); setSavingWp(false)
   }
 
+  // The native app is sign-in only; the server decides whether this account is offered the assistant.
+  const assistantUrl = useAssistantMcpUrl(true)
+  const [assistantHelpOpen, setAssistantHelpOpen] = useState(false)
   // Standard native header: back button + title come from the navigator; the
   // route actions live in its right slot.
   React.useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: segment === 'route' ? () => (
         <View style={styles.headerActions}>
+            {assistantUrl && (
+              <TouchableOpacity onPress={() => setAssistantHelpOpen(true)} testID="plan-assistant-help" accessibilityLabel="Use your AI assistant" style={styles.moreBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <AppIcon name="sparkles" size={Platform.OS === 'ios' ? 22 : 14} color={Platform.OS === 'ios' ? theme.textPrimary : theme.accentBlue} />
+              </TouchableOpacity>
+            )}
             {/* Overflow menu -- Route Library / Export / Import / Reverse /
                 Close route. There is no Active/Inactive switch: the route
                 on screen is the one working route; one not wanted is closed. */}
@@ -718,6 +728,7 @@ export function PlanScreen() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]}>
+      {assistantUrl && <AssistantHelpModal visible={assistantHelpOpen} topic="route" mcpUrl={assistantUrl} onClose={() => setAssistantHelpOpen(false)} />}
       {segment === 'route' && (
         <RouteLibrarySheet
           waypoints={waypoints}

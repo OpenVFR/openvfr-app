@@ -65,6 +65,7 @@ import IconSearch from '@tabler/icons-react-native/IconSearch'
 import IconSettings from '@tabler/icons-react-native/IconSettings'
 import IconSettingsFilled from '@tabler/icons-react-native/IconSettingsFilled'
 import IconShare from '@tabler/icons-react-native/IconShare'
+import IconSparkles from '@tabler/icons-react-native/IconSparkles'
 import IconStack2 from '@tabler/icons-react-native/IconStack2'
 import IconTrash from '@tabler/icons-react-native/IconTrash'
 import IconWifi from '@tabler/icons-react-native/IconWifi'
@@ -124,6 +125,7 @@ const ICONS = {
   save: IconDeviceFloppy,
   search: IconSearch,
   settings: IconSettings,
+  sparkles: IconSparkles,
   settingsFilled: IconSettingsFilled,
   share: IconShare,
   skipForward: IconPlayerSkipForward,

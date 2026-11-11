@@ -11,6 +11,8 @@ import FuelPlan from './FuelPlan'
 import FindFeature, { type FindResult } from './FindFeature'
 import AccountBadge from './AccountBadge'
 import type { AuthState } from '../hooks/useAuth'
+import AssistantHelp from './AssistantHelp'
+import { useAssistantMcpUrl } from '../hooks/useAssistantMcpUrl'
 import type { AvailableCountry } from '@open-vfr/shared/countries'
 import UserWaypoints from './UserWaypoints'
 import FlightLogs from './FlightLogs'
@@ -192,6 +194,8 @@ function SideDrawer({
   onOpenProfile,
 }: Props) {
   const activeRouteReview = useSavedRouteReview(activeRouteId)
+  // The assistant help shows only when the server offers the connection to this account.
+  const assistantUrl = useAssistantMcpUrl(!!auth.user)
   // First visit: the pane starts open (so what it offers is visible) with
   // every section folded to its header. Phone-sized screens start closed:
   // there the pane overlays the map. Later visits restore the saved state.
@@ -321,6 +325,7 @@ function SideDrawer({
               {/* The aircraft sets the plan's speeds, fuel and levels, so it
                   sits with the route; the Aircraft section manages profiles. */}
               <AircraftChip selected={selectedAircraftProfile} onSelect={onSelectAircraft} onManage={showAircraft} />
+              <AssistantHelp topic="route" mcpUrl={assistantUrl} />
               {extending && (
                 <button
                   type="button"
@@ -492,6 +497,7 @@ function SideDrawer({
             </button>
             {expanded.aircraft && (
               <div className={css.sectionBody}>
+                {assistantUrl && <div className={css.assistantRow}><AssistantHelp topic="aircraft" mcpUrl={assistantUrl} /></div>}
                 <AircraftLibrary selectedId={selectedAircraftId} onSelect={onSelectAircraft} />
               </div>
             )}
@@ -505,6 +511,7 @@ function SideDrawer({
             </button>
             {expanded.flightLogs && (
               <div className={css.sectionBody}>
+                {assistantUrl && <div className={css.assistantRow}><AssistantHelp topic="logbook" mcpUrl={assistantUrl} /></div>}
                 <FlightLogs
                   selectedLogId={selectedLogId}
                   onSelect={onSelectLog}

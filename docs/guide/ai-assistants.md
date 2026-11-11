@@ -11,6 +11,15 @@ assistant reads the same data the app uses and answers in its own words.
 The connection is available when your OpenVFR server offers it; your account
 panel then has an **AI assistants** section.
 
+## Where it appears in the app
+
+When your account is offered the assistant connection, a small sparkle
+button opens a short help with the setup steps, the connector address (copy it
+on the web; select it or use **Share address** on the phone) and example
+questions you can copy: on the web next to the aircraft chip of the route
+section and at the top of the aircraft and flight log sections, on the phone
+in the route screen's header and under **Use your AI assistant** in Settings.
+
 ## What you can ask
 
 - "Brief my saved route Bromma to Malmö."

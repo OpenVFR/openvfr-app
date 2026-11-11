@@ -1,0 +1,63 @@
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.trigger:hover { color: var(--text-primary); }
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.card {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  padding: 18px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: normal;
+}
+
+.head { display: flex; align-items: center; justify-content: space-between; }
+.title { margin: 0; font-size: 16px; color: var(--text-primary); }
+.close { background: none; border: 0; color: var(--text-secondary); cursor: pointer; padding: 4px; }
+.text, .steps, .note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+.steps { padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.note { font-size: 11px; color: var(--text-muted); }
+.label { margin: 4px 0 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.row { display: flex; align-items: center; gap: 8px; }
+.url {
+  flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font-size: 11px; padding: 6px 8px;
+  border-radius: 6px; border: 1px solid var(--border-default); color: var(--text-primary); user-select: all;
+}
+.btn {
+  border: 1px solid var(--border-default); background: transparent; color: var(--text-primary);
+  border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+}
+.examples { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.example {
+  width: 100%; text-align: left; font-size: 12px; line-height: 1.4; padding: 6px 8px; cursor: pointer;
+  border: 1px solid var(--border-default); border-radius: 6px; background: transparent; color: var(--text-secondary);
+}
+.example:hover { color: var(--text-primary); }

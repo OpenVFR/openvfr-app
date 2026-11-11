@@ -5,6 +5,7 @@
   "license": "MIT",
   "type": "module",
   "exports": {
+    "./assistantHelp": "./src/assistantHelp.ts",
     "./suggestRouteName": "./src/suggestRouteName.ts",
     "./bearingDistance": "./src/bearingDistance.ts",
     "./airspaceGeometry": "./src/airspaceGeometry.ts",
