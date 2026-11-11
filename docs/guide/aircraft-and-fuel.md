@@ -58,7 +58,19 @@ All speeds are indicated airspeed (IAS) in knots, fuel is in litres.
   detection. Leave 0 to use the category default. See
   [Flying mode and alerts](./flying-and-alerts.md).
 
+**Runway**
+- **Min runway** (m): the shortest runway you accept for this aircraft.
+  0 means no limit.
+- **Paved only:** only asphalt or concrete runways.
+- Both preset the filters of the destination finder, and are used when the
+  app suggests aerodromes.
+
 **Fuel**
+- **Fuel types:** the grades the engine is approved for (AVGAS 100LL,
+  AVGAS UL91, MOGAS, JET A-1). With at least one set, the destination
+  finder starts with the **Aircraft** fuel filter: aerodromes that list a
+  matching fuel. Fuel listings come from the published aerodrome data and
+  can be out of date: check the AIP or call ahead.
 - **Burn** (L/h) at cruise.
 - **Max capacity** (L), usable.
 - **Taxi / T/O** (L): start, taxi and takeoff roll.

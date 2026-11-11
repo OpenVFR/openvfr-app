@@ -27,6 +27,7 @@ import {
   type AerodromeEntry, type FuelFilter, type SurfaceFilter,
 } from '@open-vfr/shared/findDestination'
 import { IconX } from '@tabler/icons-react'
+import { FUEL_LABELS, sellsAnyFuel } from '@open-vfr/shared/fuelTypes'
 
 interface Centre {
   lat: number
@@ -54,9 +55,11 @@ export default function FindDestPanel({
 }: Props) {
   const [aerodromes, setAerodromes] = useState<AerodromeEntry[]>([])
   const [search,      setSearch]    = useState('')
-  const [minRunwayM,  setMinRunway] = useState(0)
-  const [fuelFilter,  setFuelFilter]    = useState<FuelFilter>('any')
-  const [surfFilter,  setSurfFilter]    = useState<SurfaceFilter>('any')
+  // Filters start from the active aircraft's fuel grades and runway limits.
+  const aircraftFuels = aircraftProfile?.fuelTypes ?? []
+  const [minRunwayM,  setMinRunway] = useState(() => Math.min(2000, Math.max(0, Math.round((aircraftProfile?.minRunwayM ?? 0) / 100) * 100)))
+  const [fuelFilter,  setFuelFilter]    = useState<FuelFilter>(() => aircraftFuels.length > 0 ? 'aircraft' : 'any')
+  const [surfFilter,  setSurfFilter]    = useState<SurfaceFilter>(() => aircraftProfile?.hardRunwayOnly ? 'hard' : 'any')
   const searchRef = useRef<HTMLInputElement>(null)
 
   // ── Load once ──────────────────────────────────────────────────────────────
@@ -79,10 +82,10 @@ export default function FindDestPanel({
   const sorted = useMemo(
     () => filterAndSortAerodromes(
       aerodromes, center, homeIcao,
-      { search, minRunwayM, fuelFilter, surfFilter },
+      { search, minRunwayM, fuelFilter, fuelCodes: aircraftProfile?.fuelTypes, surfFilter },
       glideRangeNm,
     ),
-    [aerodromes, center, homeIcao, minRunwayM, fuelFilter, surfFilter, search, glideRangeNm],
+    [aerodromes, center, homeIcao, minRunwayM, fuelFilter, aircraftProfile?.fuelTypes, surfFilter, search, glideRangeNm],
   )
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -112,13 +115,14 @@ export default function FindDestPanel({
           <div className={css.filterRow}>
             <span className={css.filterLabel}>Fuel</span>
             <div className={css.filterBtns}>
-              {(['any', 'avgas', 'jet'] as FuelFilter[]).map(v => (
+              {((aircraftFuels.length > 0 ? ['any', 'aircraft', 'avgas', 'jet'] : ['any', 'avgas', 'jet']) as FuelFilter[]).map(v => (
                 <button
                   key={v}
                   className={`${css.filterBtn}${fuelFilter === v ? ` ${css.filterBtnActive}` : ''}`}
+                  title={v === 'aircraft' ? `Fuel for this aircraft: ${aircraftFuels.map(c => FUEL_LABELS[c]).join(', ')}` : undefined}
                   onClick={() => setFuelFilter(v)}
                 >
-                  {v === 'any' ? 'Any' : v === 'avgas' ? 'AVGAS' : 'JET A1'}
+                  {v === 'any' ? 'Any' : v === 'aircraft' ? 'Aircraft' : v === 'avgas' ? 'AVGAS' : 'JET A1'}
                 </button>
               ))}
             </div>
@@ -172,6 +176,8 @@ export default function FindDestPanel({
                   {a.withinGlide       && <span className={css.tagGlide}>GLIDE</span>}
                   {hasAvgas(a.fuel)    && <span className={css.tagFuel}>AVGAS</span>}
                   {hasJet(a.fuel)      && <span className={css.tagFuel}>JET</span>}
+                  {sellsAnyFuel(a.fuel, ['AVGAS_UL91']) && <span className={css.tagFuel}>UL91</span>}
+                  {sellsAnyFuel(a.fuel, ['MOGAS'])      && <span className={css.tagFuel}>MOGAS</span>}
                   {isHard(a.surfaces)  && <span className={css.tagSurf}>ASPH</span>}
                   {isGrass(a.surfaces) && !isHard(a.surfaces) && <span className={css.tagSurfGrass}>GRASS</span>}
                   {a.maxRunwayM > 0    && <span className={css.tagRwy}>{a.maxRunwayM}m</span>}

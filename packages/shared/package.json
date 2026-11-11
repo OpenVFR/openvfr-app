@@ -45,6 +45,7 @@
     "./terrainCache": "./src/terrainCache.ts",
     "./airspeed": "./src/airspeed.ts",
     "./pohImport": "./src/pohImport.ts",
+    "./fuelTypes": "./src/fuelTypes.ts",
     "./windForecast": "./src/windForecast.ts",
     "./subAreas": "./src/subAreas.ts",
     "./autoFlyDetect": "./src/autoFlyDetect.ts",

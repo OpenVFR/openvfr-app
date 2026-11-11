@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildPohPrompt, parsePohReply, PohReplyError, POH_FIELDS } from './pohImport'
+import { buildPohPrompt, parsePohReply, parseFuelGrades, PohReplyError, POH_FIELDS } from './pohImport'
 
 describe('buildPohPrompt', () => {
   it('names every field and asks for pages', () => {
@@ -57,6 +57,13 @@ describe('parsePohReply', () => {
     const bad = parsePohReply('{"rocSlFpm":500,"rocCeilingFpm":600,"fuelBurnLhr":20,"descentFuelLhr":25}')
     expect(bad.warnings.rocCeilingFpm).toBeDefined()
     expect(bad.warnings.descentFuelLhr).toBeDefined()
+  })
+
+  it('reads fuel grades in the forms a POH or model writes them', () => {
+    expect(parsePohReply('{"fuelTypes":["AVGAS100LL","MOGAS"]}').fuelTypes).toEqual(['AVGAS100LL', 'MOGAS'])
+    expect(parseFuelGrades(['100LL', 'UL 91', 'unleaded EN 228', 'Jet A-1', 'kerosene'])).toEqual(['AVGAS100LL', 'AVGAS_UL91', 'MOGAS', 'JETA1'])
+    expect(parseFuelGrades('AVGAS 100LL / MOGAS')).toEqual(['AVGAS100LL', 'MOGAS'])
+    expect(parsePohReply('{"cruiseIas":100}').fuelTypes).toEqual([])
   })
 
   it('throws a pilot-readable error when there is no JSON', () => {

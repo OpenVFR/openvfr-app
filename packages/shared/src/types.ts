@@ -50,8 +50,17 @@ export type AircraftProfileDocType = {
   takeoffSpeedKts?: number
   /** Diversion reserve, minutes at cruise burn. 0/absent = 30 (standard). */
   diversionMin?: number
+  /** Fuel grades the engine is approved for. Absent/empty = not set (no fuel filter). */
+  fuelTypes?: readonly FuelCode[]
+  /** Shortest runway the pilot accepts for this aircraft, metres. 0/absent = no limit. */
+  minRunwayM?: number
+  /** Only paved (asphalt/concrete) runways. Absent = any surface. */
+  hardRunwayOnly?: boolean
   updatedAt: number
 }
+
+/** Fuel grades an aircraft profile can list. Matched against aerodrome fuel data in `fuelTypes.ts`. */
+export type FuelCode = 'AVGAS100LL' | 'AVGAS_UL91' | 'MOGAS' | 'JETA1'
 
 export type RouteDocType = {
   id: string

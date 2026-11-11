@@ -9,6 +9,8 @@
  */
 
 import { API_BASE_URL } from './env'
+import { parseFuelGrades } from '@open-vfr/shared/pohImport'
+import type { FuelCode } from '@open-vfr/shared/types'
 
 // ---------------------------------------------------------------------------
 // Error types
@@ -47,6 +49,7 @@ export type PohExtractResult = {
   bestGlideIas?:     string
   glideRatio?:       string
   takeoffSpeedKts?:  string
+  fuelTypes?:        FuelCode[]
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +159,7 @@ export async function extractPohViaServer(
           bestGlideIas:     numStr('bestGlideIas'),
           glideRatio:       numStr('glideRatio'),
           takeoffSpeedKts:  numStr('takeoffSpeedKts'),
+          fuelTypes:        parseFuelGrades(parsed['fuelTypes']),
         }
       }
     }

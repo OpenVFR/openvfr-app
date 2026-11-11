@@ -13,6 +13,8 @@
  * anything out of range is flagged for the pilot to check. Nothing is saved
  * until the pilot saves the form.
  */
+import type { FuelCode } from './types'
+import { FUEL_CODES } from './fuelTypes'
 
 /** Aircraft profile fields a POH can fill. Values are form strings. */
 export const POH_FIELDS = [
@@ -62,9 +64,10 @@ export function buildPohPrompt(): string {
     '',
     'Fields:',
     ...lines,
+    `- "fuelTypes": array of the fuel grades the engine is approved for, using only these codes: ${FUEL_CODES.map(c => `"${c}"`).join(', ')} (MOGAS = motor gasoline / unleaded car fuel; JETA1 also for diesel engines).`,
     '',
     'Answer with ONLY one JSON object in this shape, nothing else:',
-    '{"name": "...", "cruiseIas": 105, "pages": {"name": 1, "cruiseIas": 34}}',
+    '{"name": "...", "cruiseIas": 105, "fuelTypes": ["AVGAS100LL"], "pages": {"name": 1, "cruiseIas": 34}}',
   ].join('\n')
 }
 
@@ -77,6 +80,28 @@ export interface PohReply {
   missing: PohField[]
   /** Fields whose value looks wrong, with a short reason for the pilot. */
   warnings: Partial<Record<PohField, string>>
+  /** Approved fuel grades; empty when the reply named none we know. */
+  fuelTypes: FuelCode[]
+}
+
+/**
+ * Map the fuel grade names a model or a POH uses ("100LL", "Jet A-1",
+ * "UL 91", "unleaded EN 228") to our codes. Unknown names are dropped.
+ */
+export function parseFuelGrades(v: unknown): FuelCode[] {
+  const items = Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[,;/]/) : []
+  const out = new Set<FuelCode>()
+  for (const item of items) {
+    if (typeof item !== 'string') continue
+    const s = item.toUpperCase().replace(/[^A-Z0-9]/g, '')
+    if (!s) continue
+    if (s.includes('UL91') || s === 'AVGASUL91') out.add('AVGAS_UL91')
+    else if (s.includes('100')) out.add('AVGAS100LL')
+    else if (s.includes('JET') || s === 'A1' || s.includes('DIESEL')) out.add('JETA1')
+    else if (s.includes('MOGAS') || s.includes('EN228') || s.includes('UNLEADED') || s.includes('RON') || s.includes('OCT')) out.add('MOGAS')
+    else if (s === 'AVGAS') out.add('AVGAS100LL')
+  }
+  return FUEL_CODES.filter(c => out.has(c))
 }
 
 /** Thrown when a pasted reply has no usable JSON object. The message is for the pilot. */
@@ -224,8 +249,10 @@ export function parsePohReply(text: string): PohReply {
   if (rocSlFpm !== undefined && rocCeilingFpm !== undefined && rocCeilingFpm >= rocSlFpm) flag('rocCeilingFpm', 'Not below the sea-level climb rate')
   if (fuelBurnLhr !== undefined && descentFuelLhr !== undefined && descentFuelLhr > fuelBurnLhr) flag('descentFuelLhr', 'Higher than cruise fuel burn')
 
-  if (Object.keys(values).length === 0) {
+  const fuelTypes = parseFuelGrades(rec['fuelTypes'])
+
+  if (Object.keys(values).length === 0 && fuelTypes.length === 0) {
     throw new PohReplyError('The answer has none of the aircraft fields. Check that the assistant read the POH, then try again.')
   }
-  return { values, pages, missing, warnings }
+  return { values, pages, missing, warnings, fuelTypes }
 }

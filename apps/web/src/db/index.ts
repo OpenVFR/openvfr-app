@@ -3,6 +3,7 @@ import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie'
 import { RxDBMigrationSchemaPlugin } from 'rxdb/plugins/migration-schema'
 import { RxDBQueryBuilderPlugin } from 'rxdb/plugins/query-builder'
 import type { RouteWaypoint } from '../utils/routeCalc'
+import type { FuelCode } from '@open-vfr/shared/types'
 
 addRxPlugin(RxDBMigrationSchemaPlugin)
 addRxPlugin(RxDBQueryBuilderPlugin)
@@ -135,12 +136,16 @@ export type AircraftProfileDocType = {
   takeoffSpeedKts?: number
   // v4: diversion reserve minutes at cruise burn. 0/absent = 30
   diversionMin?: number
+  // v5: approved fuel grades (absent/empty = not set), runway limits
+  fuelTypes?: readonly FuelCode[]
+  minRunwayM?: number       // shortest acceptable runway, m. 0/absent = no limit
+  hardRunwayOnly?: boolean  // paved runways only
   updatedAt: number
 }
 
 const aircraftProfileSchema: RxJsonSchema<AircraftProfileDocType> = {
   title: 'aircraft_profile',
-  version: 4,
+  version: 5,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -169,6 +174,9 @@ const aircraftProfileSchema: RxJsonSchema<AircraftProfileDocType> = {
     glideRatio:       { type: 'number' },
     takeoffSpeedKts:  { type: 'number' },
     diversionMin:     { type: 'number' },
+    fuelTypes:        { type: 'array', items: { type: 'string', maxLength: 16 }, maxItems: 8 },
+    minRunwayM:       { type: 'number' },
+    hardRunwayOnly:   { type: 'boolean' },
     updatedAt:        { type: 'number' },
   },
   required: ['id', 'name', 'registration', 'icaoType', 'category', 'cruiseAltFt', 'cruiseIas',
@@ -384,6 +392,8 @@ export function getDb(): Promise<OpenVfrDb> {
             3: (oldDoc) => ({ ...oldDoc }),
             // v3 → v4: optional diversionMin (absent = 30 min)
             4: (oldDoc) => ({ ...oldDoc }),
+            // v4 → v5: optional fuelTypes, minRunwayM, hardRunwayOnly (absent = not set)
+            5: (oldDoc) => ({ ...oldDoc }),
           },
         },
         user_waypoints:    { schema: userWaypointSchema },

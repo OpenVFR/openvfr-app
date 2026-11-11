@@ -3,6 +3,8 @@ import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import type { AircraftProfileDocType, AircraftCategory } from '../db/index'
 import { extractPohViaServer, RateLimitError } from '../utils/pohExtract'
 import { POH_FIELDS, type PohField } from '@open-vfr/shared/pohImport'
+import { FUEL_CODES, FUEL_LABELS, normalizeFuelCodes } from '@open-vfr/shared/fuelTypes'
+import type { FuelCode } from '@open-vfr/shared/types'
 import PohAssistantImport from './PohAssistantImport'
 import { useSyncRejected } from '../sync/cloudSync'
 import SyncRefusedNote from './SyncRefusedNote'
@@ -61,6 +63,10 @@ type FormState = {
   bestGlideIas:     string
   glideRatio:       string
   takeoffSpeedKts:  string
+  // Fuel grades and runway limits
+  fuelTypes:        FuelCode[]
+  minRunwayM:       string
+  hardRunwayOnly:   boolean
 }
 
 const EMPTY_FORM: FormState = {
@@ -88,6 +94,9 @@ const EMPTY_FORM: FormState = {
   bestGlideIas:     '65',
   glideRatio:       '30',
   takeoffSpeedKts:  '0',
+  fuelTypes:        [],
+  minRunwayM:       '0',
+  hardRunwayOnly:   false,
 }
 
 function profileToForm(p: AircraftProfileDocType): FormState {
@@ -116,6 +125,9 @@ function profileToForm(p: AircraftProfileDocType): FormState {
     bestGlideIas:     String(p.bestGlideIas ?? 0),
     glideRatio:       String(p.glideRatio ?? 0),
     takeoffSpeedKts:  String(p.takeoffSpeedKts ?? 0),
+    fuelTypes:        normalizeFuelCodes(p.fuelTypes),
+    minRunwayM:       String(p.minRunwayM ?? 0),
+    hardRunwayOnly:   p.hardRunwayOnly === true,
   }
 }
 
@@ -135,6 +147,7 @@ function formErrors(f: FormState): Record<string, string> {
     if (parseNum(f.maxFuelL)    <= 0)         e.maxFuelL       = 'Must be > 0'
     if (parseNum(f.contingencyPct) < 0)       e.contingencyPct = 'Must be ≥ 0'
   }
+  if (parseNum(f.minRunwayM) < 0)             e.minRunwayM     = 'Must be ≥ 0'
   return e
 }
 
@@ -257,6 +270,7 @@ export default function AircraftLibrary({
     values: Partial<Record<PohField, string>>,
     warnings: Partial<Record<PohField, string>> = {},
     pages: Partial<Record<PohField, string>> = {},
+    fuelTypes: FuelCode[] = [],
   ) {
     const notes = new Map<keyof FormState, string>()
     const pageMap = new Map<keyof FormState, string>()
@@ -272,6 +286,7 @@ export default function AircraftLibrary({
     }
     setPohNotes(notes)
     setPohPages(pageMap)
+    if (fuelTypes.length > 0) patch.fuelTypes = fuelTypes
     setForm(f => ({ ...f, ...patch }))
   }
 
@@ -289,7 +304,7 @@ export default function AircraftLibrary({
         if (stage === 'extracting') setPohStage('Extracting performance data…')
       })
       pohFileRef.current = null
-      applyPohValues(result)
+      applyPohValues(result, {}, {}, result.fuelTypes ?? [])
       if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null }
       setPohState('done')
       setTimeout(() => setPohState('idle'), 3000)
@@ -336,7 +351,10 @@ export default function AircraftLibrary({
     if (Object.keys(errs).length > 0) { setErrors(errs); return }
     setSaving(true)
     try {
+      // Keep fields this form does not edit (added by a newer app version) on an existing profile.
+      const existing = mode === 'new' ? undefined : profiles.find(p => p.id === mode)
       await saveProfile({
+        ...existing,
         id:               mode === 'new' ? undefined : mode,
         name:             form.name.trim(),
         registration:     form.registration.trim().toUpperCase(),
@@ -362,6 +380,9 @@ export default function AircraftLibrary({
         bestGlideIas:     HAS_GLIDE(form.category) ? parseNum(form.bestGlideIas) : 0,
         glideRatio:       HAS_GLIDE(form.category) ? parseNum(form.glideRatio)   : 0,
         takeoffSpeedKts:  parseNum(form.takeoffSpeedKts),
+        fuelTypes:        HAS_FUEL(form.category) ? form.fuelTypes : [],
+        minRunwayM:       Math.max(0, Math.round(parseNum(form.minRunwayM))),
+        hardRunwayOnly:   form.hardRunwayOnly,
       })
       setMode('list')
     } finally {
@@ -462,7 +483,7 @@ export default function AircraftLibrary({
       {assistantOpen && (
         <PohAssistantImport
           onApply={r => {
-            applyPohValues(r.values, r.warnings, r.pages)
+            applyPohValues(r.values, r.warnings, r.pages, r.fuelTypes)
             setAssistantOpen(false)
             setPohError('')
             setPohState('idle')
@@ -515,9 +536,42 @@ export default function AircraftLibrary({
         <Field label="Cruise IAS"   unit="kts" type="number" value={form.cruiseIas}    error={errors.cruiseIas}    tooltip="Typical cruise indicated airspeed in knots. Used to calculate leg times and fuel burn." {...poh('cruiseIas')} onChange={v => set('cruiseIas', v)} />
         <Field label="Takeoff speed" unit="kts" type="number" value={form.takeoffSpeedKts} {...poh('takeoffSpeedKts')} tooltip="Ground speed at which this aircraft takes off, in knots. Used to detect takeoff and landing for auto flying mode and the flight log. 0 = default for the aircraft category." onChange={v => set('takeoffSpeedKts', v)} />
 
+        <div className={css.sectionLabel}>Runway</div>
+        <Field label="Min runway" unit="m" type="number" value={form.minRunwayM} error={errors.minRunwayM} tooltip="Shortest runway you accept for this aircraft, in metres. Used when suggesting fuel stops and destinations. 0 = no limit." onChange={v => set('minRunwayM', v)} />
+        <div className={css.field}>
+          <label className={css.fieldLabel} htmlFor="ac-hard-rwy" title="Only suggest aerodromes with an asphalt or concrete runway.">Paved only</label>
+          <input
+            id="ac-hard-rwy"
+            type="checkbox"
+            className={css.fieldCheck}
+            checked={form.hardRunwayOnly}
+            onChange={e => setForm(f => ({ ...f, hardRunwayOnly: e.target.checked }))}
+          />
+        </div>
+
         {HAS_FUEL(form.category) && (
           <>
             <div className={css.sectionLabel}>Fuel</div>
+            <div className={css.field}>
+              <span className={css.fieldLabel} title="Fuel grades the engine is approved for. Used to find aerodromes that sell a suitable fuel.">Fuel types</span>
+              <div className={css.chips} role="group" aria-label="Fuel types">
+                {FUEL_CODES.map(code => {
+                  const on = form.fuelTypes.includes(code)
+                  return (
+                    <button
+                      key={code}
+                      type="button"
+                      className={`${css.chip}${on ? ` ${css.chipActive}` : ''}`}
+                      aria-pressed={on}
+                      onClick={() => setForm(f => ({
+                        ...f,
+                        fuelTypes: on ? f.fuelTypes.filter(c => c !== code) : normalizeFuelCodes([...f.fuelTypes, code]),
+                      }))}
+                    >{FUEL_LABELS[code]}</button>
+                  )
+                })}
+              </div>
+            </div>
             <Field label="Burn"         unit="L/h" type="number" value={form.fuelBurnLhr}  error={errors.fuelBurnLhr}  tooltip="Cruise fuel consumption in litres per hour." {...poh('fuelBurnLhr')} onChange={v => set('fuelBurnLhr', v)} />
             <Field label="Max capacity" unit="L"   type="number" value={form.maxFuelL}     error={errors.maxFuelL}     tooltip="Total usable fuel capacity in litres." {...poh('maxFuelL')} onChange={v => set('maxFuelL', v)} />
             <Field label="Taxi / T/O"   unit="L"   type="number" value={form.taxiFuelL}    tooltip="Fuel used for engine start, taxi and take-off roll. Deducted before departure fuel is calculated." {...poh('taxiFuelL')} onChange={v => set('taxiFuelL', v)} />

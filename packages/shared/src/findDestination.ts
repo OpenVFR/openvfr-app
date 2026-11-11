@@ -7,7 +7,8 @@
  * runway length, and (when airborne with a known glide ratio) glide range.
  */
 
-import type { AircraftProfileDocType } from './types'
+import type { AircraftProfileDocType, FuelCode } from './types'
+import { sellsAnyFuel } from './fuelTypes'
 import { distanceNm, bearingDeg, type RouteWaypoint } from './routeCalc'
 
 export interface AerodromeEntry {
@@ -28,7 +29,8 @@ export interface AerodromeResult extends AerodromeEntry {
   withinGlide: boolean
 }
 
-export type FuelFilter    = 'any' | 'avgas' | 'jet'
+/** 'aircraft' = any grade in `FindDestFilters.fuelCodes` (the aircraft profile's fuel types). */
+export type FuelFilter    = 'any' | 'avgas' | 'jet' | 'aircraft'
 export type SurfaceFilter = 'any' | 'hard'  | 'grass'
 
 export interface FindDestCentre {
@@ -42,6 +44,8 @@ export interface FindDestFilters {
   search?:      string
   minRunwayM?:  number
   fuelFilter?:  FuelFilter
+  /** Grades used by fuelFilter 'aircraft'. */
+  fuelCodes?:   readonly FuelCode[]
   surfFilter?:  SurfaceFilter
 }
 
@@ -129,6 +133,7 @@ export function filterAndSortAerodromes(
       if (minRunwayM > 0 && a.maxRunwayM > 0 && a.maxRunwayM < minRunwayM) return false
       if (fuelFilter === 'avgas' && !hasAvgas(a.fuel)) return false
       if (fuelFilter === 'jet'   && !hasJet(a.fuel))   return false
+      if (fuelFilter === 'aircraft' && filters.fuelCodes?.length && !sellsAnyFuel(a.fuel, filters.fuelCodes)) return false
       if (surfFilter === 'hard'  && !isHard(a.surfaces))  return false
       if (surfFilter === 'grass' && !isGrass(a.surfaces)) return false
       return true

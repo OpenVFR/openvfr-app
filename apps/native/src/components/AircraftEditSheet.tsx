@@ -157,6 +157,8 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
     if (!validate()) return
     const cat = form.category
     const doc: AircraftProfileDocType = {
+      // Keep fields this sheet does not edit yet (fuel types, runway limits set on the web).
+      ...profile,
       id:               profile?.id ?? Crypto.randomUUID(),
       name:             form.name.trim(),
       registration:     form.registration.trim().toUpperCase(),
