@@ -524,7 +524,8 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
     }
 
     // ── Saved places: read, create, update (never delete) ─────────────────
-    const placeLine = (p: UserWaypointDocType) => `- ${quote(p.name, 60)}${p.folder ? ` [folder ${quote(p.folder, 40)}]` : ''}: ${fmtCoord(p.lat, p.lng)} (${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}); route point PL/${quote(p.name, 60)}`
+    const PLAIN_PLACE = /^[\p{L}\p{N}][\p{L}\p{N} .,'()+&-]*$/u
+    const placeLine = (p: UserWaypointDocType) => `- ${quote(p.name, 60)}${p.folder ? ` [folder ${quote(p.folder, 40)}]` : ''}: ${fmtCoord(p.lat, p.lng)} (${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}); ${PLAIN_PLACE.test(p.name) ? `route point PL/${p.name}` : 'name has unusual characters: ask the pilot to rename it before use in a route'}`
 
     server.registerTool('list_places', {
       annotations: { readOnlyHint: true },
@@ -563,7 +564,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
         if (verb === 'updated' && b.changed.length === 0) return text('Nothing to change.')
         await deps.savePlace(caller.userId, b.doc)
         console.log(`[mcp] place ${verb} user=${caller.userId} client=${caller.clientId} id=${b.doc.id} change=${b.changed.join(',')}`)
-        return text(`${verb === 'created' ? 'Saved place' : `Updated place (${b.changed.join(', ')})`}: ${placeLine(b.doc)}\nIt reaches the pilot's devices at the next sync. Use it in a route as PL/${quote(b.doc.name, 60)}.\n${QUOTE_NOTE}`)
+        return text(`${verb === 'created' ? 'Saved place' : `Updated place (${b.changed.join(', ')})`}: ${placeLine(b.doc)}\nIt reaches the pilot's devices at the next sync. Use it in a route as PL/${b.doc.name}.\n${QUOTE_NOTE}`)
       } catch (err) {
         if (err instanceof PlaceInputError) return fail(err.message)
         throw err
