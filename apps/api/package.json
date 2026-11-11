@@ -12,16 +12,21 @@
     "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
-    "@better-auth/passkey": "1.7.17",
+    "@better-auth/cimd": "1.7.20",
+    "@better-auth/mcp": "1.7.20",
+    "@better-auth/oauth-provider": "1.7.20",
+    "@better-auth/passkey": "1.7.20",
     "@hono/node-server": "2.1.6",
+    "@modelcontextprotocol/server": "2.4.0",
     "@open-vfr/shared": "workspace:*",
-    "better-auth": "1.7.17",
+    "better-auth": "1.7.20",
     "fflate": "^0.8.3",
     "hono": "4.13.16",
     "jose": "6.2.15",
     "openai": "7.51.0",
     "pg": "8.23.1",
-    "pmtiles": "4.5.0"
+    "pmtiles": "4.5.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "26.6.6",

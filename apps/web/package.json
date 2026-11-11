@@ -13,7 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@better-auth/passkey": "1.7.17",
+    "@better-auth/passkey": "1.7.20",
     "@open-vfr/shared": "workspace:*",
     "@protomaps/basemaps": "5.7.2",
     "@tabler/icons-react": "^3.51.0",
@@ -24,7 +24,7 @@
     "@turf/length": "^7.4.0",
     "@turf/line-intersect": "^7.4.0",
     "@turf/nearest-point-on-line": "^7.4.0",
-    "better-auth": "1.7.17",
+    "better-auth": "1.7.20",
     "dexie": "4.4.7",
     "fflate": "^0.8.3",
     "geomagnetism": "0.2.0",

@@ -10,6 +10,20 @@ allowBuilds:
 # into the native app) is pinned to the same line as apps/native's react
 # (19.3.0, RN 0.88's peer), so it cannot pull a react-dom whose own peer
 # mismatches it.
+minimumReleaseAgeExclude:
+  - "@better-auth/cimd@1.7.20"
+  - "@better-auth/core@1.7.20"
+  - "@better-auth/drizzle-adapter@1.7.20"
+  - "@better-auth/kysely-adapter@1.7.20"
+  - "@better-auth/mcp@1.7.20"
+  - "@better-auth/memory-adapter@1.7.20"
+  - "@better-auth/mongo-adapter@1.7.20"
+  - "@better-auth/oauth-provider@1.7.20"
+  - "@better-auth/passkey@1.7.20"
+  - "@better-auth/prisma-adapter@1.7.20"
+  - "@better-auth/telemetry@1.7.20"
+  - better-auth@1.7.20
+
 overrides:
   "@expo/router-server>react-dom": "19.3.0"
   # Optional peer of react-native's CLI plugin: keep it on the same line as
