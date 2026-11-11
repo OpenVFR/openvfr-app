@@ -100,7 +100,16 @@ check in the plan):
   airspace (class C, D, restricted and TRA).
 - **Below MSA:** a leg is below its minimum safe altitude (not counted near
   the departure and destination).
-- **Fuel:** the minimum fuel exceeds the aircraft's capacity.
+- **Equipment:** the route enters a TMZ and the aircraft profile says it
+  has no transponder, or an RMZ or controlled airspace (class A to D) and
+  the profile says it has no radio. Shown as a hard stop; with the
+  equipment fitted or not set, the normal airspace reminder appears.
+- **Fuel:** the minimum fuel exceeds the aircraft's capacity, per hop when
+  the route has fuel stops.
+- **Crosswind:** at the departure, destination or a fuel stop, the wind the
+  aerodrome reports now (METAR, gusts included) gives more crosswind on its
+  best runway than the aircraft's maximum demonstrated crosswind. Check
+  the forecast for your arrival time.
 
 Warnings are advice. They do not replace your own planning.
 

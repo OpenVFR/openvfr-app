@@ -4996,6 +4996,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         next[wpIdx] = { ...next[wpIdx], note: note || undefined }
         return next
       }),
+    routeWeatherStations,
     onSetWaypointFuelStop: (wpIdx: number, on: boolean) =>
       setRouteWaypoints((prev) => {
         if (!prev[wpIdx]) return prev

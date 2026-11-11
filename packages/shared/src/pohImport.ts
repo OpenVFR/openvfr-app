@@ -21,7 +21,7 @@ export const POH_FIELDS = [
   'name', 'icaoType', 'cruiseAltFt', 'cruiseIas', 'fuelBurnLhr', 'maxFuelL',
   'taxiFuelL', 'landingFuelL', 'serviceCeilingFt', 'rocSlFpm', 'rocCeilingFpm',
   'climbIas', 'climbFuelLhr', 'descentFpm', 'descentIas', 'descentFuelLhr',
-  'bestGlideIas', 'glideRatio', 'takeoffSpeedKts',
+  'bestGlideIas', 'glideRatio', 'takeoffSpeedKts', 'maxCrosswindKts',
 ] as const
 
 export type PohField = typeof POH_FIELDS[number]
@@ -48,6 +48,7 @@ const FIELD_GUIDE: Record<PohField, string> = {
   bestGlideIas:     'best glide speed in knots IAS (gliders, motor gliders, gyroplanes).',
   glideRatio:       'best glide ratio as a number, e.g. 30 for 30:1 (gliders, motor gliders, gyroplanes).',
   takeoffSpeedKts:  'rotation (VR), lift-off (VLOF) or normal take-off speed in knots.',
+  maxCrosswindKts:  'maximum demonstrated crosswind velocity in knots. Convert from km/h (×0.5400) or m/s (×1.944).',
 }
 
 /** The prompt the pilot sends to their assistant together with the POH PDF. */
@@ -176,6 +177,7 @@ const RANGES: Partial<Record<PohField, [number, number]>> = {
   bestGlideIas:     [15, 200],
   glideRatio:       [2, 80],
   takeoffSpeedKts:  [10, 150],
+  maxCrosswindKts:  [3, 45],
 }
 
 /** Parse the assistant's answer. Throws PohReplyError when it has no usable JSON. */

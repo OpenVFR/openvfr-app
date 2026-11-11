@@ -43,6 +43,7 @@ type FormState = {
   descentFpm: string; descentIas: string; descentFuelLhr: string
   bestGlideIas: string; glideRatio: string
   takeoffSpeedKts: string
+  maxCrosswindKts: string
 }
 
 const EMPTY: FormState = {
@@ -55,6 +56,7 @@ const EMPTY: FormState = {
   descentFpm: '500', descentIas: '100', descentFuelLhr: '15',
   bestGlideIas: '65', glideRatio: '30',
   takeoffSpeedKts: '0',
+  maxCrosswindKts: '0',
 }
 
 function toForm(p: AircraftProfileDocType): FormState {
@@ -71,6 +73,7 @@ function toForm(p: AircraftProfileDocType): FormState {
     descentIas: String(p.descentIas ?? 0), descentFuelLhr: String(p.descentFuelLhr ?? 0),
     bestGlideIas: String(p.bestGlideIas ?? 0), glideRatio: String(p.glideRatio ?? 0),
     takeoffSpeedKts: String(p.takeoffSpeedKts ?? 0),
+    maxCrosswindKts: String(p.maxCrosswindKts ?? 0),
   }
 }
 
@@ -184,6 +187,7 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       bestGlideIas:     HAS_GLIDE(cat) ? num(form.bestGlideIas) : 0,
       glideRatio:       HAS_GLIDE(cat) ? num(form.glideRatio)   : 0,
       takeoffSpeedKts:  num(form.takeoffSpeedKts),
+      maxCrosswindKts:  Math.max(0, num(form.maxCrosswindKts)),
       updatedAt:        Date.now(),
     }
     onSave(doc)
@@ -265,6 +269,7 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       <FieldRow label="Cruise Alt" unit="ft" value={form.cruiseAltFt} error={errors.cruiseAltFt} note={pohNotes.cruiseAltFt} numeric onChange={v => set('cruiseAltFt', v)} />
       <FieldRow label="Cruise IAS" unit="kts" value={form.cruiseIas} error={errors.cruiseIas} note={pohNotes.cruiseIas} numeric onChange={v => set('cruiseIas', v)} />
       <FieldRow label="Takeoff speed (0 = default)" unit="kts" value={form.takeoffSpeedKts} note={pohNotes.takeoffSpeedKts} numeric onChange={v => set('takeoffSpeedKts', v)} />
+      <FieldRow label="Max crosswind (0 = not set)" unit="kts" value={form.maxCrosswindKts} note={pohNotes.maxCrosswindKts} numeric onChange={v => set('maxCrosswindKts', v)} />
 
       {HAS_FUEL(form.category) && (
         <>

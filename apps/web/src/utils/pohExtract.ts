@@ -49,6 +49,7 @@ export type PohExtractResult = {
   bestGlideIas?:     string
   glideRatio?:       string
   takeoffSpeedKts?:  string
+  maxCrosswindKts?:  string
   fuelTypes?:        FuelCode[]
 }
 
@@ -159,6 +160,7 @@ export async function extractPohViaServer(
           bestGlideIas:     numStr('bestGlideIas'),
           glideRatio:       numStr('glideRatio'),
           takeoffSpeedKts:  numStr('takeoffSpeedKts'),
+          maxCrosswindKts:  numStr('maxCrosswindKts'),
           fuelTypes:        parseFuelGrades(parsed['fuelTypes']),
         }
       }

@@ -4,7 +4,7 @@ import type { AircraftProfileDocType, AircraftCategory } from '../db/index'
 import { extractPohViaServer, RateLimitError } from '../utils/pohExtract'
 import { POH_FIELDS, type PohField } from '@open-vfr/shared/pohImport'
 import { FUEL_CODES, FUEL_LABELS, normalizeFuelCodes } from '@open-vfr/shared/fuelTypes'
-import type { FuelCode } from '@open-vfr/shared/types'
+import type { FuelCode, TransponderMode } from '@open-vfr/shared/types'
 import PohAssistantImport from './PohAssistantImport'
 import { useSyncRejected } from '../sync/cloudSync'
 import SyncRefusedNote from './SyncRefusedNote'
@@ -67,6 +67,10 @@ type FormState = {
   fuelTypes:        FuelCode[]
   minRunwayM:       string
   hardRunwayOnly:   boolean
+  maxCrosswindKts:  string
+  // Equipment: '' = not set
+  transponder:      '' | TransponderMode
+  hasRadio:         '' | 'yes' | 'no'
 }
 
 const EMPTY_FORM: FormState = {
@@ -97,6 +101,9 @@ const EMPTY_FORM: FormState = {
   fuelTypes:        [],
   minRunwayM:       '0',
   hardRunwayOnly:   false,
+  maxCrosswindKts:  '0',
+  transponder:      '',
+  hasRadio:         '',
 }
 
 function profileToForm(p: AircraftProfileDocType): FormState {
@@ -128,6 +135,9 @@ function profileToForm(p: AircraftProfileDocType): FormState {
     fuelTypes:        normalizeFuelCodes(p.fuelTypes),
     minRunwayM:       String(p.minRunwayM ?? 0),
     hardRunwayOnly:   p.hardRunwayOnly === true,
+    maxCrosswindKts:  String(p.maxCrosswindKts ?? 0),
+    transponder:      p.transponder ?? '',
+    hasRadio:         p.hasRadio === true ? 'yes' : p.hasRadio === false ? 'no' : '',
   }
 }
 
@@ -383,6 +393,9 @@ export default function AircraftLibrary({
         fuelTypes:        HAS_FUEL(form.category) ? form.fuelTypes : [],
         minRunwayM:       Math.max(0, Math.round(parseNum(form.minRunwayM))),
         hardRunwayOnly:   form.hardRunwayOnly,
+        maxCrosswindKts:  Math.max(0, parseNum(form.maxCrosswindKts)),
+        transponder:      form.transponder || undefined,
+        hasRadio:         form.hasRadio === '' ? undefined : form.hasRadio === 'yes',
       })
       setMode('list')
     } finally {
@@ -538,6 +551,7 @@ export default function AircraftLibrary({
 
         <div className={css.sectionLabel}>Runway</div>
         <Field label="Min runway" unit="m" type="number" value={form.minRunwayM} error={errors.minRunwayM} tooltip="Shortest runway you accept for this aircraft, in metres. Used when suggesting fuel stops and destinations. 0 = no limit." onChange={v => set('minRunwayM', v)} />
+        <Field label="Max crosswind" unit="kts" type="number" value={form.maxCrosswindKts} tooltip="Maximum demonstrated crosswind in knots. The pre-flight check compares it with the reported wind at departure, destination and fuel stops. 0 = not set." {...poh('maxCrosswindKts')} onChange={v => set('maxCrosswindKts', v)} />
         <div className={css.field}>
           <label className={css.fieldLabel} htmlFor="ac-hard-rwy" title="Only suggest aerodromes with an asphalt or concrete runway.">Paved only</label>
           <input
@@ -547,6 +561,28 @@ export default function AircraftLibrary({
             checked={form.hardRunwayOnly}
             onChange={e => setForm(f => ({ ...f, hardRunwayOnly: e.target.checked }))}
           />
+        </div>
+
+        <div className={css.sectionLabel}>Equipment</div>
+        <div className={css.field}>
+          <label className={css.fieldLabel} htmlFor="ac-xpdr" title="Transponder fitted. Without one the pre-flight check treats a TMZ on the route as a hard stop.">Transponder</label>
+          <select id="ac-xpdr" className={css.fieldSelect} value={form.transponder}
+            onChange={e => setForm(f => ({ ...f, transponder: e.target.value as FormState['transponder'] }))}>
+            <option value="">Not set</option>
+            <option value="none">None</option>
+            <option value="A">Mode A</option>
+            <option value="C">Mode C</option>
+            <option value="S">Mode S</option>
+          </select>
+        </div>
+        <div className={css.field}>
+          <label className={css.fieldLabel} htmlFor="ac-radio" title="VHF radio fitted. Without one the pre-flight check treats an RMZ or controlled airspace (class A to D) on the route as a hard stop.">Radio</label>
+          <select id="ac-radio" className={css.fieldSelect} value={form.hasRadio}
+            onChange={e => setForm(f => ({ ...f, hasRadio: e.target.value as FormState['hasRadio'] }))}>
+            <option value="">Not set</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </select>
         </div>
 
         {HAS_FUEL(form.category) && (

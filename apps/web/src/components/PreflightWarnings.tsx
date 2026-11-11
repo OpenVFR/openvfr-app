@@ -31,6 +31,8 @@ import {
 import { getRemoteDem } from '../utils/terrainDem'
 import { API_BASE_URL } from '../utils/env'
 import type { RouteWaypoint } from '../utils/routeCalc'
+import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
+import { parseMetarWind, type ParsedWind } from '@open-vfr/shared/fetchWx'
 import type { LegOverride, AircraftProfileDocType } from '../db/index'
 import css from './PreflightWarnings.module.css'
 import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
@@ -91,6 +93,8 @@ interface Props {
   onShowOnMap?: (lng: number, lat: number) => void
   /** Selects a leg in the route table (also highlights it on the map). */
   onSelectLeg?: (leg: number | null) => void
+  /** METAR/TAF stations along the route: their own reported wind feeds the crosswind check. */
+  weatherStations?: RouteWeatherStation[]
 }
 
 /** Value that follows `value` only after it has been still for `ms`. */
@@ -197,10 +201,21 @@ export default function PreflightWarnings(props: Props) {
     return u
   }, [airspace.failed, obstacles.failed, landmarks.failed, aerodromes.failed, regional.failed, props.signedIn])
 
+  // Wind each aerodrome reports itself (not a neighbour's METAR), for the crosswind check.
+  const surfaceWinds = useMemo(() => {
+    const m = new Map<string, ParsedWind>()
+    for (const st of props.weatherStations ?? []) {
+      if (!st.metar || (st.sourceIcao && st.sourceIcao !== st.icao)) continue
+      const w = parseMetarWind(st.metar)
+      if (w) m.set(st.icao.toUpperCase(), w)
+    }
+    return m
+  }, [props.weatherStations])
+
   const warnings = useMemo<PreflightWarning[]>(() => {
     if (!profile) return []
-    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, resolveMsaMargins(msaMargins), { terrainPts, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable })
-  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, msaMargins, terrainPts, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, unavailable])
+    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, resolveMsaMargins(msaMargins), { terrainPts, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable, surfaceWinds })
+  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, msaMargins, terrainPts, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, unavailable, surfaceWinds])
 
   const prompts = useMemo(
     () => computePrompts({ waypoints, legWinds, windsLoading }),

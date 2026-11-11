@@ -56,10 +56,19 @@ export type AircraftProfileDocType = {
   minRunwayM?: number
   /** Only paved (asphalt/concrete) runways. Absent = any surface. */
   hardRunwayOnly?: boolean
+  /** Transponder fitted. Absent = not set. */
+  transponder?: TransponderMode
+  /** VHF radio fitted. Absent = not set. */
+  hasRadio?: boolean
+  /** Maximum demonstrated crosswind, kt. 0/absent = not set. */
+  maxCrosswindKts?: number
   updatedAt: number
 }
 
 /** Fuel grades an aircraft profile can list. Matched against aerodrome fuel data in `fuelTypes.ts`. */
+/** Transponder capability: none, mode A (code only), C (with pressure altitude) or S. */
+export type TransponderMode = 'none' | 'A' | 'C' | 'S'
+
 export type FuelCode = 'AVGAS100LL' | 'AVGAS_UL91' | 'MOGAS' | 'JETA1'
 
 export type RouteDocType = {

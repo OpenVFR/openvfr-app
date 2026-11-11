@@ -62,8 +62,16 @@ All speeds are indicated airspeed (IAS) in knots, fuel is in litres.
 - **Min runway** (m): the shortest runway you accept for this aircraft.
   0 means no limit.
 - **Paved only:** only asphalt or concrete runways.
+- **Max crosswind** (kt): the maximum demonstrated crosswind from the POH,
+  used by the pre-flight crosswind check. 0 means not set.
 - Both preset the filters of the destination finder, and are used when the
   app suggests aerodromes.
+
+**Equipment**
+- **Transponder** (none, mode A, C or S) and **Radio** (yes or no). Leave
+  them **Not set** if you prefer; set to none or no, the pre-flight check
+  treats a TMZ (no transponder) or an RMZ or controlled airspace (no radio)
+  on the route as a hard stop.
 
 **Fuel**
 - **Fuel types:** the grades the engine is approved for (AVGAS 100LL,

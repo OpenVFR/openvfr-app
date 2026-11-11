@@ -16,6 +16,8 @@
 import { DEFAULT_MSA_MARGINS, type MsaMargins } from './msaMargins'
 import { terrainAt, getMsaLookup, type VirtualRadarProfile, type MsaPoint, type AirspaceCrossSection, type TerrainPoint } from './virtualRadarCalc'
 import { computeTripFuelPlans } from './fuelCalc'
+import { crosswindExceedances, thresholdsByIcao, type LandingPoint } from './crosswindCheck'
+import type { ParsedWind } from './fetchWx'
 import { collectRoutePois, poiBaseFt } from './routePois'
 import { routeNotamAreas, notamSummary } from './preflightNotams'
 import { notamTitle } from './notamQCode'
@@ -109,6 +111,8 @@ export interface PreflightExtras {
   notams?:         readonly NotamItem[]
   airspace?:       GeoJSON.FeatureCollection | null
   nowMs?:          number
+  /** Reported surface wind per ICAO (the aerodrome's own METAR), for the crosswind check. */
+  surfaceWinds?:   ReadonlyMap<string, ParsedWind>
   /** Data that could not be loaded: the checks that need it did not run, and the card says so. */
   unavailable?:    PreflightUnavailable
 }
@@ -176,7 +180,7 @@ export function computeWarnings(
   margins: MsaMargins = DEFAULT_MSA_MARGINS,
   extras: PreflightExtras = {},
 ): PreflightWarning[] {
-  const { terrainPts = [], airspaceLevels = DEFAULT_AIRSPACE_LEVELS, aerodromes, notams, airspace, nowMs, unavailable } = extras
+  const { terrainPts = [], airspaceLevels = DEFAULT_AIRSPACE_LEVELS, aerodromes, notams, airspace, nowMs, unavailable, surfaceWinds } = extras
   const warnings: PreflightWarning[] = []
 
   // ── Terrain unavailable: the MSA check below is silently skipped and AGL
@@ -248,6 +252,24 @@ export function computeWarnings(
         : band.class === 'R' ? 'Restricted / danger area'
         : band.class === 'TRA' ? 'TRA'
         : (band.type || band.class)
+      // Equipment the aircraft lacks for this airspace: a hard stop, not a reminder.
+      const zone = band.class === 'TMZ' || band.type === 'TMZ' ? 'TMZ' : band.class === 'RMZ' || band.type === 'RMZ' ? 'RMZ' : null
+      const controlled = /^[A-D]$/.test(band.class)
+      const noXpdr  = aircraft?.transponder === 'none'
+      const noRadio = aircraft?.hasRadio === false
+      const lacks = zone === 'TMZ' && noXpdr ? 'a transponder'
+        : (zone === 'RMZ' || controlled) && noRadio ? 'a radio'
+        : null
+      if (lacks) {
+        warnings.push({
+          level:  'danger',
+          code:   'airspace-equipment',
+          title:  `${classLabel} ${band.name} needs ${lacks}`,
+          detail: `Planned altitude ${planned.toLocaleString()} ft enters ${band.lower_ft.toLocaleString()}–${band.upper_ft.toLocaleString()} ft. The aircraft profile has no ${lacks === 'a radio' ? 'radio' : 'transponder'}: route around it, or above or below it.`,
+          focusNm: midNm,
+        })
+        continue
+      }
       warnings.push({
         level,
         code:   'airspace-penetration',
@@ -337,6 +359,26 @@ export function computeWarnings(
           detail: `Requires ${plan.totalMinFuelL.toFixed(1)} L of ${plan.availableFuelL.toFixed(1)} L available`,
         })
       }
+    }
+  }
+
+  // ── 4. Crosswind where the route takes off or lands ───────────────────
+  // Current reports only (METAR), against the profile's maximum demonstrated crosswind.
+  if (aircraft && (aircraft.maxCrosswindKts ?? 0) > 0 && surfaceWinds && aerodromes && waypoints.length >= 2) {
+    const points: LandingPoint[] = []
+    waypoints.forEach((w, i) => {
+      if (!w.name) return
+      if (i === 0) points.push({ icao: w.name, role: 'departure' })
+      else if (i === waypoints.length - 1) points.push({ icao: w.name, role: 'destination' })
+      else if (w.fuelStop) points.push({ icao: w.name, role: 'fuel stop' })
+    })
+    for (const x of crosswindExceedances(points, surfaceWinds, thresholdsByIcao(aerodromes), aircraft.maxCrosswindKts!)) {
+      warnings.push({
+        level:  'warn',
+        code:   'crosswind',
+        title:  `Crosswind at ${x.icao} (${x.role})`,
+        detail: `Current wind ${x.windText}: ${x.crosswindKt} kt across runway ${x.runway}, the best runway, above the aircraft's ${x.limitKt} kt maximum demonstrated crosswind. Check the forecast for your arrival time.`,
+      })
     }
   }
 

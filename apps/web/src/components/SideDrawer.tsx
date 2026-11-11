@@ -4,6 +4,7 @@ import SettingsPanel from './SettingsPanel'
 import RoutePlan from './RoutePlan'
 import PreflightWarnings from './PreflightWarnings'
 import RouteLibrary from './RouteLibrary'
+import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
 import AircraftLibrary from './AircraftLibrary'
 import AircraftChip from './AircraftChip'
 import FuelPlan from './FuelPlan'
@@ -89,6 +90,8 @@ interface Props {
   onSetLegOverride: (idx: number, override: LegOverride) => void
   onSetWaypointNote: (wpIdx: number, note: string) => void
   onSetWaypointFuelStop?: (wpIdx: number, on: boolean) => void
+  /** METAR/TAF stations along the route (crosswind check in the pre-flight check). */
+  routeWeatherStations?: RouteWeatherStation[]
   // Add to route (used by WhatsHere + UserWaypoints)
   onAddToRoute: (wp: RouteWaypoint) => void
   onInsertInRoute: (wp: RouteWaypoint, afterIdx: number) => void
@@ -175,7 +178,7 @@ function SideDrawer({
   checking,
   onRefresh,
   waypoints, legOverrides, extending, onStopExtending, selectedLeg, onSelectLeg, onFindDestination,
-  onUndo, onRedo, canUndo, canRedo, onClear, onReplace, onLoadRoute, activeRouteId, onActiveRouteIdChange, onSetLegOverride, onSetWaypointNote, onSetWaypointFuelStop,
+  onUndo, onRedo, canUndo, canRedo, onClear, onReplace, onLoadRoute, activeRouteId, onActiveRouteIdChange, onSetLegOverride, onSetWaypointNote, onSetWaypointFuelStop, routeWeatherStations,
   onAddToRoute, onInsertInRoute,
   selectedAircraftId, selectedAircraftProfile, tafWarnIcaos, onSelectAircraft,
   onFlyTo,
@@ -423,6 +426,7 @@ function SideDrawer({
                     onSetLegOverride={onSetLegOverride}
                     onSelectLeg={onSelectLeg}
                     onShowOnMap={(lng, lat) => onFlyTo({ kind: 'LL', id: '', name: '', sub: '', lng, lat })}
+                    weatherStations={routeWeatherStations}
                   />
                 </div>
               )}

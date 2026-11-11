@@ -212,3 +212,38 @@ describe('restricted areas at the route ends, and missing data', () => {
     expect(w[0].title).toContain('airspace and obstacles')
   })
 })
+
+describe('aircraft equipment and crosswind', () => {
+  const ac = (over: Record<string, unknown>) => ({
+    id: 'a', name: 'T', registration: 'X', icaoType: 'C172', category: 'SEP',
+    cruiseAltFt: 3000, cruiseIas: 100, fuelBurnLhr: 0, maxFuelL: 0, taxiFuelL: 0, landingFuelL: 0,
+    holdingMin: 0, contingencyPct: 0, serviceCeilingFt: 0, rocSlFpm: 0, rocCeilingFpm: 0, climbIas: 0,
+    climbFuelLhr: 0, descentFpm: 0, descentIas: 0, descentFuelLhr: 0, bestGlideIas: 0, glideRatio: 0,
+    updatedAt: 0, ...over,
+  }) as never
+  const tmz = { class: 'TMZ', type: 'TMZ', name: 'Test TMZ', lower_ft: 0, upper_ft: 4000, entryNm: 10, exitNm: 20 }
+  const ctr = { class: 'D', type: 'CTR', name: 'Test CTR', lower_ft: 0, upper_ft: 4000, entryNm: 25, exitNm: 30 }
+
+  it('turns a TMZ crossing into a danger without a transponder', () => {
+    const w = computeWarnings(profile({ airspaceBands: [tmz] as never }), [], ac({ transponder: 'none' }), [], [])
+    expect(codes(w)).toEqual(['airspace-equipment'])
+    expect(w[0].level).toBe('danger')
+  })
+  it('keeps the normal reminder when the equipment is fitted or not set', () => {
+    expect(codes(computeWarnings(profile({ airspaceBands: [tmz] as never }), [], ac({ transponder: 'S' }), [], []))).toEqual(['airspace-penetration'])
+    expect(codes(computeWarnings(profile({ airspaceBands: [tmz] as never }), [], ac({}), [], []))).toEqual(['airspace-penetration'])
+  })
+  it('needs a radio in a control zone', () => {
+    const w = computeWarnings(profile({ airspaceBands: [ctr] as never }), [], ac({ hasRadio: false }), [], [])
+    expect(codes(w)).toEqual(['airspace-equipment'])
+  })
+  it('flags crosswind above the limit at the destination', () => {
+    const aerodromes = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [18, 60] }, properties: {
+      icao: 'ESXX', runways: [{ thresholds: [{ designator: '09', mag_brg: 90, true_brg: 90 }, { designator: '27', mag_brg: 270, true_brg: 270 }] }],
+    } }] } as never
+    const wps = [{ lat: 59, lng: 18, name: 'ESAA' }, { lat: 60, lng: 18, name: 'ESXX' }]
+    const surfaceWinds = new Map([['ESXX', { dirDeg: 180, speedKt: 22, gustKt: null, variable: false, calm: false }]])
+    const w = computeWarnings(profile(), [], ac({ maxCrosswindKts: 15 }), wps, [], undefined, false, undefined, undefined, { aerodromes, surfaceWinds })
+    expect(codes(w)).toContain('crosswind')
+  })
+})
