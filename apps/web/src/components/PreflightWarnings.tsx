@@ -32,7 +32,8 @@ import { getRemoteDem } from '../utils/terrainDem'
 import { API_BASE_URL } from '../utils/env'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
-import { parseMetarWind, type ParsedWind } from '@open-vfr/shared/fetchWx'
+import type { ParsedWind } from '@open-vfr/shared/fetchWx'
+import { metarSurfaceWind } from '@open-vfr/shared/crosswindCheck'
 import { parseMetarTempC } from '@open-vfr/shared/runwayPerformance'
 import type { LegOverride, AircraftProfileDocType } from '../db/index'
 import css from './PreflightWarnings.module.css'
@@ -208,7 +209,7 @@ export default function PreflightWarnings(props: Props) {
     const temps = new Map<string, number>()
     for (const st of props.weatherStations ?? []) {
       if (!st.metar || (st.sourceIcao && st.sourceIcao !== st.icao)) continue
-      const w = parseMetarWind(st.metar)
+      const w = metarSurfaceWind(st.metar)
       if (w) winds.set(st.icao.toUpperCase(), w)
       const t = parseMetarTempC(st.metar)
       if (t != null) temps.set(st.icao.toUpperCase(), t)

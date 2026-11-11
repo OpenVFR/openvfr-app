@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { crosswindExceedances, thresholdsByIcao } from './crosswindCheck'
+import { crosswindExceedances, thresholdsByIcao, metarSurfaceWind } from './crosswindCheck'
 import type { ParsedWind } from './fetchWx'
 
 const fc = {
@@ -16,6 +16,14 @@ const fc = {
 const ths = thresholdsByIcao(fc)
 const w = (dirDeg: number, speedKt: number, gustKt: number | null = null): ParsedWind =>
   ({ dirDeg, speedKt, gustKt, variable: false, calm: false })
+
+describe('metarSurfaceWind', () => {
+  it('finds the wind group in a whole METAR', () => {
+    expect(metarSurfaceWind('ESSB 110850Z 18020G30KT 9999 FEW030 12/05 Q1012')).toMatchObject({ dirDeg: 180, speedKt: 20, gustKt: 30 })
+    expect(metarSurfaceWind('ESSB 110850Z VRB02KT CAVOK 12/05 Q1012')?.variable).toBe(true)
+    expect(metarSurfaceWind('ESSB 110850Z 9999 Q1012')).toBeNull()
+  })
+})
 
 describe('crosswindExceedances', () => {
   it('reads thresholds', () => {

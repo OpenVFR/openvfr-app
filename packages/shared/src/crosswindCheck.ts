@@ -9,7 +9,14 @@
  * report has one. Variable or calm wind is not checked.
  */
 import { computeRunwayWind, type RunwayThresholdInput } from './runwayWind'
-import type { ParsedWind } from './fetchWx'
+import { parseMetarWind, type ParsedWind } from './fetchWx'
+
+/** Surface wind from a whole METAR (its wind group, e.g. 24012G22KT), or null. */
+export function metarSurfaceWind(raw: string | null | undefined): ParsedWind | null {
+  if (!raw) return null
+  const tok = raw.split(/\s+/).find(t => /^(\d{3}|VRB)\d{2,3}(G\d{2,3})?(KT|MPS)$/i.test(t))
+  return tok ? parseMetarWind(tok) : null
+}
 
 export interface LandingPoint {
   icao: string

@@ -62,7 +62,8 @@ import {
 import { nmToDisplay, distLabel, ktsToDisplay, displayToKts, speedLabel } from '../utils/units'
 import { computeTripFuelPlans } from '../utils/fuelCalc'
 import { setFuelStop } from '@open-vfr/shared/fuelStops'
-import { parseMetarWind, type ParsedWind } from '@open-vfr/shared/fetchWx'
+import type { ParsedWind } from '@open-vfr/shared/fetchWx'
+import { metarSurfaceWind } from '@open-vfr/shared/crosswindCheck'
 import { parseMetarTempC } from '@open-vfr/shared/runwayPerformance'
 import { FuelStopSuggest } from '../components/FuelStopSuggest'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -583,7 +584,7 @@ export function PlanScreen() {
     const temps = new Map<string, number>()
     for (const st of routeWx) {
       if (!st.metar || (st.sourceIcao && st.sourceIcao !== st.icao)) continue
-      const w = parseMetarWind(st.metar)
+      const w = metarSurfaceWind(st.metar)
       if (w) winds.set(st.icao.toUpperCase(), w)
       const t = parseMetarTempC(st.metar)
       if (t != null) temps.set(st.icao.toUpperCase(), t)
