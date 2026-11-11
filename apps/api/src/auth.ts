@@ -45,6 +45,13 @@ const IS_PROD = process.env['NODE_ENV'] === 'production'
 // still need it, by open Dynamic Client Registration (rate limited; such a
 // client can only ever get tokens for the MCP endpoint, and only after the
 // user signs in and approves it).
+/**
+ * Who sees the assistant parts of the apps (connector address, connected
+ * assistants): `admin` (default) = accounts with the admin role only, while the
+ * feature is being verified; `all` = every signed-in user. The endpoint itself
+ * works for whoever has the address: this is about the UI, not access control.
+ */
+export const ASSISTANT_UI_ALL = /^all$/i.test(process.env['ASSISTANT_UI'] ?? '')
 export const ASSISTANT_MCP = /^(on|true|1)$/i.test(process.env['ASSISTANT_MCP'] ?? '')
 export const MCP_RESOURCE = mcpResource(BASE_URL ?? '')
 export { SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, SCOPE_LOGS }

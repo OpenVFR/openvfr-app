@@ -38,7 +38,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createHmac } from 'node:crypto'
-import { auth, isReviewAccountEmail, ASSISTANT_MCP, MCP_RESOURCE, SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, SCOPE_LOGS, APP_ORIGIN } from './auth'
+import { auth, isReviewAccountEmail, ASSISTANT_MCP, ASSISTANT_UI_ALL, MCP_RESOURCE, SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, SCOPE_LOGS, APP_ORIGIN } from './auth'
 import { upsertUserAircraft, upsertUserRoute, userPlaces, upsertUserPlace, userFlightSummaries } from './briefingData'
 import { createMcpEndpoint } from './mcp'
 import { admin } from './admin'
@@ -252,7 +252,7 @@ app.get('/api/auth/account-flags', async (c) => {
   return c.json({
     passkeyAllowed: !isReviewAccountEmail(session.user.email),
     // Assistant connection: the MCP endpoint URL to paste into an assistant, when the server offers it.
-    assistantMcpUrl: ASSISTANT_MCP ? MCP_RESOURCE : null,
+    assistantMcpUrl: ASSISTANT_MCP && (ASSISTANT_UI_ALL || (session.user as { role?: string | null }).role === 'admin') ? MCP_RESOURCE : null,
   })
 })
 

@@ -301,6 +301,11 @@ With `ASSISTANT_MCP=on` the api lets a pilot connect their own AI assistant
 OpenVFR data: route briefings, aerodrome information, METAR/TAF and NOTAMs,
 and, if the pilot allows it, their saved routes, places and aircraft and flight summaries. Changes need their own consent.
 
+- UI visibility: `ASSISTANT_UI` is unset = only accounts with the admin role
+  see the assistant parts of the web and mobile apps (connector address,
+  connected assistants) while you verify it; `ASSISTANT_UI=all` shows them to
+  every signed-in user. The MCP endpoint itself works for anyone who has the
+  address and approves the consent, so this is not access control.
 - MCP endpoint: `<BETTER_AUTH_URL>/mcp` (POST only). Discovery documents:
   `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`
   and `/.well-known/openid-configuration` (plus their path-suffixed forms),
