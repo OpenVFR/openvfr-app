@@ -32,9 +32,16 @@ for those. Answers carry links into the app.
    example in Claude under Customize → Connectors, in ChatGPT (paid plans)
    under the connector or plugin settings, or in Gemini under Connected apps
    where your account has it.
-3. The assistant opens OpenVFR: sign in, check which assistant asks, choose
-   whether it may also read your **saved routes and aircraft**, and select
-   **Allow**.
+3. The assistant opens OpenVFR. Sign in if you are not signed in already in
+   that browser (if you are, this step is skipped), then check which assistant
+   asks, choose whether it may also read your **saved routes and aircraft**,
+   and select **Allow**.
+
+The approval page says whether OpenVFR could check who the assistant is:
+**Verified** shows the domain that published it (for example `claude.ai`);
+**Not verified** means the assistant registered itself and chose its own
+name, so only allow it if you just added it yourself. Every new connection
+is confirmed by email; if you did not make it, disconnect it (below).
 
 The assistant can only read. It cannot change your account, routes or
 aircraft, and it never sees your flight logs or position. Only connect

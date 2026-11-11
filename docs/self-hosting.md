@@ -311,7 +311,10 @@ and, if the pilot allows it, their saved routes and aircraft. It only reads.
   `<BETTER_AUTH_APP_ORIGIN>/oauth/login` and `/oauth/consent` (the SPA
   fallback must serve `index.html` there). The pilot sees the assistant's
   name and can leave out saved routes and aircraft; the account panel lists
-  connected assistants with Disconnect.
+  connected assistants with Disconnect. The consent page marks an assistant
+  as verified (its Client ID Metadata Document's domain) or not verified
+  (self-registered: shows where it sends the browser back), and every
+  approval is confirmed to the account's email address.
 - Assistants identify themselves with a Client ID Metadata Document, or
   register themselves (open Dynamic Client Registration, 10 per hour per IP).
   A registered client can only get tokens for the MCP endpoint, and only

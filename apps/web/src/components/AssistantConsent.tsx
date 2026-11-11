@@ -13,11 +13,31 @@ import styles from './AssistantConsent.module.css'
 
 const ROUTES_SCOPE = 'routes:read'
 
+/**
+ * What the server can vouch for. An assistant that publishes its identity as
+ * a Client ID Metadata Document has its https URL as client id, fetched by
+ * the server: its domain is proven. A self-registered assistant has a random
+ * id and chose its own name: only where it sends you back is known.
+ */
+export function assistantIdentity(clientId: string, redirectUri: string | null): { verifiedDomain: string | null; returnsTo: string } {
+  let verifiedDomain: string | null = null
+  if (/^https:\/\//i.test(clientId)) { try { verifiedDomain = new URL(clientId).host } catch { /* not a URL */ } }
+  let returnsTo = 'an unknown address'
+  if (redirectUri) {
+    try {
+      const u = new URL(redirectUri)
+      returnsTo = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(u.hostname) ? 'a program on this computer' : u.host
+    } catch { returnsTo = 'an app on this device' }
+  }
+  return { verifiedDomain, returnsTo }
+}
+
 export default function AssistantConsent({ userEmail }: { userEmail: string }) {
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const clientId = params.get('client_id') ?? ''
   const requested = useMemo(() => (params.get('scope') ?? '').split(' ').filter(Boolean), [params])
   const wantsRoutes = requested.includes(ROUTES_SCOPE)
+  const identity = assistantIdentity(clientId, params.get('redirect_uri'))
 
   const [client, setClient] = useState<AssistantClientInfo | null>(null)
   const [allowRoutes, setAllowRoutes] = useState(wantsRoutes)
@@ -55,16 +75,22 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
     )
   }
 
-  const name = client?.name ?? 'an AI assistant'
+  // A self-chosen name is quoted: it is only what the assistant calls itself.
+  const name = !client?.name ? 'an AI assistant' : identity.verifiedDomain ? client.name : `“${client.name}”`
   return (
     <div className={styles.page}>
       <div className={styles.card} role="dialog" aria-labelledby="consent-title">
         {client?.icon && <img className={styles.icon} src={client.icon} alt="" width={40} height={40} referrerPolicy="no-referrer" />}
         <h1 id="consent-title" className={styles.title}>Connect {name} to OpenVFR?</h1>
-        <p className={styles.text}>
-          Signed in as <strong>{userEmail}</strong>.
-          {client?.uri && <> From <span className={styles.uri}>{new URL(client.uri).host}</span>.</>}
-        </p>
+        {identity.verifiedDomain ? (
+          <p className={styles.verified}>Verified: published by <span className={styles.uri}>{identity.verifiedDomain}</span></p>
+        ) : (
+          <p className={styles.unverified}>
+            Not verified: this assistant registered itself and chose its own name.
+            It sends you back to <span className={styles.uri}>{identity.returnsTo}</span>. Only allow it if you just added it yourself.
+          </p>
+        )}
+        <p className={styles.text}>Signed in as <strong>{userEmail}</strong>.</p>
         <p className={styles.text}>It will be able to <strong>read</strong>:</p>
         <ul className={styles.list}>
           <li>route briefings, aerodrome information, METAR/TAF and NOTAMs</li>
@@ -79,8 +105,8 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
         </ul>
         <p className={styles.small}>
           It cannot change anything in your account, and it never sees your flight logs or position.
-          Disconnect it any time in your account, under AI assistants. Only connect assistants you trust:
-          OpenVFR does not check them.
+          We email you when an assistant is connected. Disconnect it any time in your account, under
+          AI assistants. Only connect assistants you trust: OpenVFR does not check what they do with your data.
         </p>
         {error && <p className={styles.error}>{error}</p>}
         <div className={styles.actions}>

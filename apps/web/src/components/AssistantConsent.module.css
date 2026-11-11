@@ -102,3 +102,15 @@
   color: var(--accent-cyan);
   font-size: 13px;
 }
+
+.verified {
+  composes: statusBoxOk from '../styles/shared.module.css';
+  margin: 0;
+  font-size: 12px;
+}
+
+.unverified {
+  composes: statusBoxWarn from '../styles/shared.module.css';
+  margin: 0;
+  font-size: 12px;
+}

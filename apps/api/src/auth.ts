@@ -201,6 +201,36 @@ export const TRUSTED_ORIGINS: string[] = [
   ...(ADMIN_APP_ORIGIN ? [ADMIN_APP_ORIGIN] : []),
 ]
 
+/**
+ * After an approved assistant connection, email the account owner: a
+ * connection they did not make (stolen session, phishing) then does not go
+ * unnoticed. Best effort: a failed email never fails the consent.
+ */
+async function notifyAssistantConnected(ctx: Parameters<Parameters<typeof createAuthMiddleware>[0]>[0]): Promise<void> {
+  try {
+    const body = (ctx.body ?? {}) as { accept?: unknown; scope?: unknown; oauth_query?: unknown }
+    const returned = ctx.context.returned as { url?: unknown } | null | undefined
+    if (body.accept !== true || !returned || typeof returned.url !== 'string') return
+    const session = await getSessionFromCtx(ctx)
+    if (!session?.user.email) return
+    const query = new URLSearchParams(typeof body.oauth_query === 'string' ? body.oauth_query : '')
+    const clientId = query.get('client_id') ?? ''
+    const scopes = (typeof body.scope === 'string' ? body.scope : query.get('scope') ?? '').split(' ')
+    const { rows } = await pool.query<{ name: string | null }>('SELECT name FROM ba_oauth_client WHERE "clientId" = $1', [clientId])
+    const name = rows[0]?.name || 'An AI assistant'
+    let who = 'not verified: it registered itself and chose its own name'
+    if (/^https:\/\//i.test(clientId)) { try { who = `verified: published by ${new URL(clientId).host}` } catch { /* keep */ } }
+    const reads = scopes.includes(SCOPE_ROUTES) ? 'briefings, aerodromes, weather and NOTAMs, and your saved routes and aircraft' : 'briefings, aerodromes, weather and NOTAMs'
+    await sendEmail({
+      to: session.user.email,
+      subject: `${name} was connected to your OpenVFR account`,
+      text: `${name} (${who}) was connected to your OpenVFR account (${session.user.email}) at ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC.\n\nIt can read: ${reads}. It cannot change anything.\n\nIf this wasn't you: open OpenVFR, your account, AI assistants, and choose Disconnect. Then sign out on your devices.`,
+    })
+  } catch (err) {
+    console.warn('[auth] assistant connection email failed:', err)
+  }
+}
+
 export const auth = betterAuth({
   secret:  SECRET,
   // The JWT plugin's own /token route would shadow nothing useful here and
@@ -248,6 +278,7 @@ export const auth = betterAuth({
     // validated /get-session, push expiresAt back out to 365 days once it has
     // slipped more than a day (also undoes better-auth's own 30-day refresh).
     after: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === '/oauth2/consent') { await notifyAssistantConnected(ctx); return }
       if (ctx.path !== '/get-session') return
       const returned = ctx.context.returned as { session?: { token: string; client?: string | null; expiresAt: Date | string } } | null | undefined
       const sess = returned?.session
