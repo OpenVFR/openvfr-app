@@ -320,6 +320,13 @@ and, if the pilot allows it, their saved routes and aircraft. It only reads.
   days. Disconnecting revokes the refresh token.
 - Tables `ba_jwks` and `ba_oauth_*` (migration `20261201000000`), used only by
   the api role.
+- Testing with a real assistant during development: local MCP clients
+  (coding assistants, the MCP SDK) can use `http://localhost`; cloud
+  assistants need a public https URL. Put a tunnel in front of the web dev
+  server (it proxies `/api`, `/mcp` and `/.well-known/*`), set
+  `BETTER_AUTH_URL` and `BETTER_AUTH_APP_ORIGIN` to the tunnel URL, give the
+  api a real `BETTER_AUTH_SECRET` (the dev default is refused on https) and
+  let Vite answer to the tunnel host with `VITE_DEV_ALLOWED_HOSTS`.
 - Limits: `MCP_HOURLY_LIMIT` / `MCP_DAILY_LIMIT` (tool calls per user, default
   120 / 600); briefing tools also count against `BRIEFING_*` and weather
   lookups against `WX_*`. Saved routes and aircraft need

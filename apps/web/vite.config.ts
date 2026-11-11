@@ -197,6 +197,13 @@ export default defineConfig({
     host: true,      // Listen on 0.0.0.0 — handy for LAN testing
     port: 5174,
     strictPort: true,
+    // Extra Host names the dev server answers to (comma-separated; a leading
+    // dot allows subdomains), e.g. `.trycloudflare.com` when a tunnel gives
+    // the dev stack a public https URL to test the assistant connection with
+    // a cloud assistant. Dev server only; unset = Vite's default (localhost).
+    ...(process.env.VITE_DEV_ALLOWED_HOSTS
+      ? { allowedHosts: process.env.VITE_DEV_ALLOWED_HOSTS.split(',').map(h => h.trim()).filter(Boolean) }
+      : {}),
     // usePolling must NOT be set when running on the host — it disables
     // native FS events (ReadDirectoryChangesW on Windows) and makes HMR
     // poll every file every 100 ms. Only enable inside Docker bind mounts.
