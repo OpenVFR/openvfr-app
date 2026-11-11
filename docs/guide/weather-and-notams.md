@@ -99,8 +99,13 @@ source: it is not a substitute for official national NOTAM and AIP sources.
 - **Short / Full / Raw:** a decoded summary, the full text with validity
   and schedule, or the ICAO item layout.
 - **Expand abbreviations** decodes ICAO shorthand in the text.
-- Tapping a NOTAM dims it for the session so you can see what you have
-  read. It stays visible.
+- **Read and hidden:** opening a NOTAM in an aerodrome's list marks it as
+  read and dims it. Inside an open NOTAM, "Hide this NOTAM" folds it under
+  "N hidden by you" (Show brings it back, Unhide undoes it). The marks are
+  stored on your device, belong to that version of the NOTAM (a re-issue
+  shows again) and only change the list: the NOTAM still counts in
+  briefings, the pre-flight check and alerts. NOTAMs that close the
+  aerodrome and warnings or restrictions on airspace cannot be hidden.
 - A banner appears when the NOTAM data is more than 1 hour old.
 
 In flying mode, NOTAM circles that you are about to enter can raise alerts.

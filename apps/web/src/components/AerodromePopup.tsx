@@ -16,6 +16,8 @@ import { printBriefingDoc } from '../utils/printBriefing'
 import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { applyNotamRelevance, relevantFirPrefixes, relevanceHiddenNote } from '@open-vfr/shared/notamRelevance'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
+import { useNotamTriage } from '../hooks/useNotamTriage'
+import { canHideNotam, splitHidden, triageKey } from '@open-vfr/shared/notamTriage'
 import NotamViewControls from './NotamViewControls'
 import NotamBody from './NotamBody'
 import ctlCss from './NotamViewControls.module.css'
@@ -371,6 +373,8 @@ export default function AerodromePopup({
   const [notamLoading, setNotamLoading] = useState(true)
   const [notamError, setNotamError] = useState<string | null>(null)
   const [expandedNotams, setExpandedNotams] = useState<Set<string>>(new Set())
+  const { triage, ...triageActions } = useNotamTriage()
+  const [showHiddenNotams, setShowHiddenNotams] = useState(false)
 
   // ── ATC status (towered airports only) ───────────────────────────────────
   // AIP-schedule-derived only (see @open-vfr/shared/atcStatus) — NOTAM text
@@ -531,7 +535,8 @@ export default function AerodromePopup({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.icao, JSON.stringify(allRunwayWindEnds)])
 
-  function toggleNotam(id: string) {
+  function toggleNotam(id: string, key?: string) {
+    if (key) triageActions.markRead(key)
     setExpandedNotams((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -1272,29 +1277,56 @@ export default function AerodromePopup({
             {!notamLoading && !notamError && ownRel.kept.length === 0 && (
               <div className={css.wxState}>No active NOTAMs</div>
             )}
-            {ownRel.kept.map((n) => {
-              // nmsId, not display id, for expand-state/React key -- see
-              // apps/api/src/notam.ts's NotamItem.nmsId comment.
-              const expanded = expandedNotams.has(n.nmsId)
-              const eff  = fmtNotamDate(n.effective)
-              const exp  = fmtNotamDate(n.expires)
+            {(() => {
+              const { shown, hidden } = splitHidden(ownRel.kept, triage)
+              const row = (n: NotamItem, isHidden: boolean) => {
+                // nmsId, not display id, for expand-state/React key -- see
+                // apps/api/src/notam.ts's NotamItem.nmsId comment.
+                const expanded = expandedNotams.has(n.nmsId)
+                const key = triageKey(n)
+                const eff  = fmtNotamDate(n.effective)
+                const exp  = fmtNotamDate(n.expires)
+                const read = triage.read.includes(key)
+                return (
+                  <div key={n.nmsId} className={`${css.notamItem} ${read || isHidden ? css.notamRead : ''}`}>
+                    <button
+                      className={css.notamToggle}
+                      onClick={() => toggleNotam(n.nmsId, key)}
+                      aria-expanded={String(expanded) as 'true' | 'false'}
+                    >
+                      <span className={css.notamId}>{notamTitle(n)}</span>
+                      {eff && <span className={css.notamPeriod}>{eff}{exp ? ` – ${exp}` : ''}</span>}
+                      <span className={css.notamChevron}>{expanded ? <IconChevronUp size={14} aria-hidden="true" /> : <IconChevronDown size={14} aria-hidden="true" />}</span>
+                    </button>
+                    {expanded && (
+                      <>
+                        <pre className={css.notamText}><NotamBody text={notamText(n, textView)} /></pre>
+                        {(isHidden || canHideNotam(n)) && (
+                          <button
+                            className={css.notamHideBtn}
+                            onClick={() => (isHidden ? triageActions.unhide(key) : triageActions.hide(key))}
+                          >
+                            {isHidden ? 'Unhide' : 'Hide this NOTAM'}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )
+              }
               return (
-                <div key={n.nmsId} className={css.notamItem}>
-                  <button
-                    className={css.notamToggle}
-                    onClick={() => toggleNotam(n.nmsId)}
-                    aria-expanded={String(expanded) as 'true' | 'false'}
-                  >
-                    <span className={css.notamId}>{notamTitle(n)}</span>
-                    {eff && <span className={css.notamPeriod}>{eff}{exp ? ` – ${exp}` : ''}</span>}
-                    <span className={css.notamChevron}>{expanded ? <IconChevronUp size={14} aria-hidden="true" /> : <IconChevronDown size={14} aria-hidden="true" />}</span>
-                  </button>
-                  {expanded && (
-                    <pre className={css.notamText}><NotamBody text={notamText(n, textView)} /></pre>
+                <>
+                  {shown.map((n) => row(n, false))}
+                  {hidden.length > 0 && (
+                    <div className={ctlCss.hiddenNote}>
+                      {hidden.length} hidden by you
+                      <button onClick={() => setShowHiddenNotams((v) => !v)}>{showHiddenNotams ? 'Fold away' : 'Show'}</button>
+                    </div>
                   )}
-                </div>
+                  {showHiddenNotams && hidden.map((n) => row(n, true))}
+                </>
               )
-            })}
+            })()}
             {ownHiddenNote && (
               <div className={ctlCss.hiddenNote}>
                 {ownHiddenNote}

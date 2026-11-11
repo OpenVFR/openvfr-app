@@ -35,6 +35,8 @@ import { Section } from './AerodromeBriefShared'
 import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { applyNotamRelevance, relevantFirPrefixes, relevanceHiddenNote } from '@open-vfr/shared/notamRelevance'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
+import { useNotamTriage } from '../hooks/useNotamTriage'
+import { canHideNotam, splitHidden, triageKey } from '@open-vfr/shared/notamTriage'
 import NotamViewControls from './NotamViewControls'
 import NotamBody from './NotamBody'
 
@@ -88,8 +90,11 @@ export function useNotamLists({ notams: allNotams, regionalNotams, routeWaypoint
 export default function AerodromeNotamSection({ notams: allNotams, notamLoading, regionalNotams, routeWaypoints, centre, icao }: Props) {
   const styles = useThemedStyles(makeStyles)
   const [expandedNotams, setExpandedNotams] = useState<Set<string>>(new Set())
+  const { triage, markRead, hide, unhide } = useNotamTriage()
+  const [showHidden, setShowHidden] = useState(false)
 
-  function toggleNotam(id: string) {
+  function toggleNotam(id: string, key?: string) {
+    if (key) markRead(key)
     setExpandedNotams((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -118,21 +123,43 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
         {!notamLoading && notams.length === 0 && (
           <Text style={styles.muted}>No NOTAMs</Text>
         )}
-        {notams.map((n) => {
-          // nmsId, not display id, for expand-state/React key -- see
-          // apps/api/src/notam.ts's NotamItem.nmsId comment.
-          const expanded = expandedNotams.has(n.nmsId)
+        {(() => {
+          const { shown, hidden } = splitHidden(notams, triage)
+          const row = (n: NotamItem, isHidden: boolean) => {
+            // nmsId, not display id, for expand-state/React key -- see
+            // apps/api/src/notam.ts's NotamItem.nmsId comment.
+            const expanded = expandedNotams.has(n.nmsId)
+            const key = triageKey(n)
+            const dim = isHidden || triage.read.includes(key)
+            return (
+              <TouchableOpacity key={n.nmsId} style={[styles.notamRow, dim && styles.notamRowRead]} onPress={() => toggleNotam(n.nmsId, key)}>
+                <Text style={styles.notamId}>{notamTitle(n)} {expanded ? '▴' : '▾'}</Text>
+                {n.effective && (
+                  <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}{notamStatus(n).state === 'scheduled' ? ` · ${notamStatus(n).label.toLowerCase()}` : ''}</Text>
+                )}
+                {!expanded && <Text style={styles.notamPreview} numberOfLines={1}>{previewText(n.text)}</Text>}
+                {expanded && <Text style={[styles.notamText, textView === 'raw' && styles.rawText]}><NotamBody text={notamText(n, textView)} /></Text>}
+                {expanded && (isHidden || canHideNotam(n)) && (
+                  <Text style={styles.hideLink} onPress={() => (isHidden ? unhide(key) : hide(key))}>
+                    {isHidden ? 'Unhide' : 'Hide this NOTAM'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )
+          }
           return (
-            <TouchableOpacity key={n.nmsId} style={styles.notamRow} onPress={() => toggleNotam(n.nmsId)}>
-              <Text style={styles.notamId}>{notamTitle(n)} {expanded ? '▴' : '▾'}</Text>
-              {n.effective && (
-                <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}{notamStatus(n).state === 'scheduled' ? ` · ${notamStatus(n).label.toLowerCase()}` : ''}</Text>
+            <>
+              {shown.map((n) => row(n, false))}
+              {hidden.length > 0 && (
+                <Text style={styles.muted}>
+                  {hidden.length} hidden by you
+                  <Text style={{ color: theme.accentBlue }} onPress={() => setShowHidden((v) => !v)}>  {showHidden ? 'Fold away' : 'Show'}</Text>
+                </Text>
               )}
-              {!expanded && <Text style={styles.notamPreview} numberOfLines={1}>{previewText(n.text)}</Text>}
-              {expanded && <Text style={[styles.notamText, textView === 'raw' && styles.rawText]}><NotamBody text={notamText(n, textView)} /></Text>}
-            </TouchableOpacity>
+              {showHidden && hidden.map((n) => row(n, true))}
+            </>
           )
-        })}
+        })()}
         {hiddenRow(ownHidden, ownRel.hiddenIfrOnly)}
       </Section>
 
@@ -213,6 +240,12 @@ function makeStyles(theme: ScaledTheme) {
     paddingVertical: theme.space2,
     borderBottomWidth: 1,
     borderBottomColor: theme.borderSubtle,
+  },
+  notamRowRead: { opacity: 0.55 },
+  hideLink: {
+    color:    theme.accentBlue,
+    fontSize: theme.textXs,
+    paddingVertical: theme.space1,
   },
   notamId: {
     color:      theme.accentBlue,
