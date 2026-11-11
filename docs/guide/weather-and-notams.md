@@ -101,7 +101,8 @@ source: it is not a substitute for official national NOTAM and AIP sources.
 - **Expand abbreviations** decodes ICAO shorthand in the text.
 - **Newest first:** an aerodrome's NOTAM list shows the most recently
   published NOTAM first. One published less than 12 hours ago is marked NEW.
-- **Read and hidden:** opening a NOTAM in an aerodrome's list marks it as
+- **Read and hidden:** opening a NOTAM in an aerodrome's list (own and "other"
+  regional NOTAMs) marks it as
   read and dims it. Inside an open NOTAM, "Hide this NOTAM" folds it under
   "N hidden by you" (Show brings it back, Unhide undoes it). The marks are
   stored on your device, belong to that version of the NOTAM (a re-issue

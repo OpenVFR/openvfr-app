@@ -18,6 +18,8 @@ import css from './RegionalNotamsPanel.module.css'
 import { notamStatus } from '@open-vfr/shared/notamValidity'
 import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
+import { useNotamTriage } from '../hooks/useNotamTriage'
+import { canHideNotam, splitHidden, triageKey } from '@open-vfr/shared/notamTriage'
 import NotamBody from './NotamBody'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
 import { IconChevronDown, IconChevronUp } from '@tabler/icons-react'
@@ -60,8 +62,11 @@ function previewText(text: string): string {
 export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, routeWaypoints, onShowOnMap }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const { textView } = useNotamPrefs()
+  const { triage, markRead, hide, unhide } = useNotamTriage()
+  const [showHidden, setShowHidden] = useState(false)
 
-  const toggle = (id: string) => {
+  const toggle = (id: string, key?: string) => {
+    if (key) markRead(key)
     setExpandedIds(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id); else next.add(id)
@@ -83,6 +88,9 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, r
         return (a.expires ?? '').localeCompare(b.expires ?? '')
       })
 
+  const split = splitHidden(sortedNotams, triage)
+  const listed = showHidden ? [...split.shown, ...split.hidden] : split.shown
+
   if (notams.length === 0) {
     return (
       <div className={css.empty}>
@@ -96,7 +104,10 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, r
       {routeFiltered && (
         <div className={css.filterNote}>Filtered to within {bufferNm}nm of planned route</div>
       )}
-      {sortedNotams.map((n) => {
+      {listed.map((n) => {
+        const key = triageKey(n)
+        const isHidden = split.hidden.includes(n)
+        const dim = isHidden || triage.read.includes(key)
         // Tracked by nmsId, not the display id -- different issuing
         // authorities reuse the same published NOTAM number (confirmed
         // live: a German and an unrelated Italian NOTAM both "M3011/26"),
@@ -110,11 +121,11 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, r
         const status = notamStatus(n)
         const offSchedule = status.state === 'scheduled'
         return (
-          <div key={n.nmsId} className={css.item}>
+          <div key={n.nmsId} className={`${css.item} ${dim ? css.read : ''}`}>
             <div className={css.toggle}>
               <button
                 className={css.toggleMain}
-                onClick={() => toggle(n.nmsId)}
+                onClick={() => toggle(n.nmsId, key)}
                 aria-expanded={String(expanded) as 'true' | 'false'}
               >
                 {n.icaoLocation && <span className={css.locBadge}>{n.icaoLocation}</span>}
@@ -136,14 +147,25 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, r
               )}
             </div>
             {!expanded && (
-              <button className={css.preview} onClick={() => toggle(n.nmsId)}>
+              <button className={css.preview} onClick={() => toggle(n.nmsId, key)}>
                 {previewText(n.text)}
               </button>
             )}
             {expanded && <pre className={css.text}><NotamBody text={notamText(n, textView)} /></pre>}
+            {expanded && (isHidden || canHideNotam(n)) && (
+              <button className={css.hideBtn} onClick={() => (isHidden ? unhide(key) : hide(key))}>
+                {isHidden ? 'Unhide' : 'Hide this NOTAM'}
+              </button>
+            )}
           </div>
         )
       })}
+      {split.hidden.length > 0 && (
+        <div className={css.hiddenNote}>
+          {split.hidden.length} hidden by you
+          <button onClick={() => setShowHidden((v) => !v)}>{showHidden ? 'Fold away' : 'Show'}</button>
+        </div>
+      )}
     </div>
   )
 }

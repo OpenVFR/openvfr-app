@@ -93,6 +93,7 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
   const [expandedNotams, setExpandedNotams] = useState<Set<string>>(new Set())
   const { triage, markRead, hide, unhide } = useNotamTriage()
   const [showHidden, setShowHidden] = useState(false)
+  const [showHiddenOther, setShowHiddenOther] = useState(false)
 
   function toggleNotam(id: string, key?: string) {
     if (key) markRead(key)
@@ -185,14 +186,21 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
           {otherNotams.length === 0 && (
             <Text style={styles.muted}>No other active regional NOTAMs</Text>
           )}
-          {otherNotams.map((n) => {
+          {(() => {
+            const split = splitHidden(otherNotams, triage)
+            const listed = showHiddenOther ? [...split.shown, ...split.hidden] : split.shown
+            return (<>
+          {listed.map((n) => {
+            const key = triageKey(n)
+            const isHidden = split.hidden.includes(n)
+            const dim = isHidden || triage.read.includes(key)
             // nmsId, not display id, for expand-state/React key -- see
             // apps/api/src/notam.ts's NotamItem.nmsId comment.
             const expanded = expandedNotams.has(n.nmsId)
             const hasGeo = n.lat !== null && n.lon !== null
             const isMilitary = n.classification === 'MILITARY'
             return (
-              <TouchableOpacity key={n.nmsId} style={styles.otherNotamRow} onPress={() => toggleNotam(n.nmsId)}>
+              <TouchableOpacity key={n.nmsId} style={[styles.otherNotamRow, dim && styles.notamRowRead]} onPress={() => toggleNotam(n.nmsId, key)}>
                 <View style={styles.otherNotamHeader}>
                   {n.icaoLocation && (
                     <View style={styles.locBadge}>
@@ -219,9 +227,22 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
                   <Text style={styles.otherNotamPreview} numberOfLines={1}>{previewText(n.text)}</Text>
                 )}
                 {expanded && <Text style={[styles.otherNotamText, textView === 'raw' && styles.rawText]}><NotamBody text={notamText(n, textView)} /></Text>}
+                {expanded && (isHidden || canHideNotam(n)) && (
+                  <Text style={styles.hideLink} onPress={() => (isHidden ? unhide(key) : hide(key))}>
+                    {isHidden ? 'Unhide' : 'Hide this NOTAM'}
+                  </Text>
+                )}
               </TouchableOpacity>
             )
           })}
+          {split.hidden.length > 0 && (
+            <Text style={styles.muted}>
+              {split.hidden.length} hidden by you
+              <Text style={{ color: theme.accentBlue }} onPress={() => setShowHiddenOther((v) => !v)}>  {showHiddenOther ? 'Fold away' : 'Show'}</Text>
+            </Text>
+          )}
+            </>)
+          })()}
           {hiddenRow(otherHidden, otherRel?.hiddenIfrOnly ?? 0)}
         </View>
       )}
