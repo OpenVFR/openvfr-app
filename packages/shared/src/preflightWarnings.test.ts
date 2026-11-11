@@ -23,6 +23,21 @@ describe('computeWarnings', () => {
     expect(computeWarnings(profile(), [], undefined, [], [])).toEqual([])
   })
 
+  it('warns when a single-engine leg is beyond gliding distance from land over the sea', () => {
+    const cols = 200, rows = 200
+    const codesArr = new Uint8Array(cols * rows)
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) codesArr[r * cols + c] = (18.5 + (c + 0.5) * 0.01) < 19.0 || (18.5 + (c + 0.5) * 0.01) > 19.6 ? 2 : 255
+    const grids = [{ codes: codesArr, cols, rows, west: 18.5, north: 60, cellLon: 0.01, cellLat: 0.005, unitFt: 100 }]
+    const wps = [{ lat: 59.5, lng: 18.8, name: 'A' }, { lat: 59.5, lng: 19.8, name: 'B' }]
+    const sep = { category: 'SEP', glideRatio: 9 } as never
+    const w = computeWarnings(profile({ altitudeProfile: [{ distNm: 0, altFt: 2500 }] }), [], sep, wps, [{}], undefined, false, undefined, undefined, { mefGrids: grids })
+    const g = w.find(x => x.code === 'water-beyond-glide')!
+    expect(g.title).toBe('Beyond gliding distance from land over the sea')
+    expect(g.detail).toMatch(/glide ratio 9:1\).*life jackets/)
+    expect(g.legIndex).toBe(0)
+    const mep = computeWarnings(profile({ altitudeProfile: [{ distNm: 0, altFt: 2500 }] }), [], { category: 'MEP', glideRatio: 9 } as never, wps, [{}], undefined, false, undefined, undefined, { mefGrids: grids })
+    expect(codes(mep)).not.toContain('water-beyond-glide')
+  })
   it('warns about a route an assistant made until the pilot saves it', () => {
     const w = computeWarnings(profile(), [], undefined, [], [], undefined, false, undefined, undefined, { routeReview: { by: 'Claude', at: 1, change: 'created' } })
     expect(codes(w)).toEqual(['route-assistant-review'])

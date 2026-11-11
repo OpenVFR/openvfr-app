@@ -23,6 +23,7 @@ import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
 import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
 import { getTileUrls } from '../config'
 import { loadGeoJsonOnce } from '../utils/geoJsonCache'
+import { useMefGrids } from './useMefGrids'
 import { useAppActive } from './useAppActive'
 import { useCountries } from './useCountries'
 import { useRegionalNotamsState } from './useRegionalNotams'
@@ -90,6 +91,9 @@ export function usePreflightCheck(opts: {
     return () => { alive = false }
   }, [active, countryTick])
 
+  // Sea for the glide-to-land check. Lakes are not loaded on native: the
+  // water file is too large for fetch() there (see VerticalProfile.tsx).
+  const mefGrids = useMefGrids()
   const margins = settings.msaMargins
   const airspaceLevels = useMemo(() => resolveAirspaceLevels(settings.alertAirspaceLevels), [settings.alertAirspaceLevels])
 
@@ -127,9 +131,9 @@ export function usePreflightCheck(opts: {
     return computeWarnings(
       profile, msa.msaPts, aircraft ?? undefined, waypoints, legOverrides, aircraftId ?? undefined,
       msa.terrainFailed, legWinds, resolveMsaMargins(margins),
-      { terrainPts: msa.terrain, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable, surfaceWinds: opts.surfaceWinds, surfaceTempsC: opts.surfaceTempsC, routeReview: opts.routeReview },
+      { terrainPts: msa.terrain, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable, surfaceWinds: opts.surfaceWinds, surfaceTempsC: opts.surfaceTempsC, routeReview: opts.routeReview, mefGrids },
     )
-  }, [profile, msa, aircraft, waypoints, legOverrides, aircraftId, legWinds, margins, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, airspaceFailed, aerodromesFailed, signedIn, regional.failed, opts.surfaceWinds, opts.surfaceTempsC, opts.routeReview])
+  }, [profile, msa, aircraft, waypoints, legOverrides, aircraftId, legWinds, margins, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, airspaceFailed, aerodromesFailed, signedIn, regional.failed, opts.surfaceWinds, opts.surfaceTempsC, opts.routeReview, mefGrids])
 
   const prompts = useMemo(
     () => computePrompts({ waypoints, legWinds, windsLoading }),

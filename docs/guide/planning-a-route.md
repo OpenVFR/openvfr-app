@@ -114,6 +114,14 @@ check in the plan):
   aerodrome reports now (METAR, gusts included) gives more crosswind on its
   best runway than the aircraft's maximum demonstrated crosswind. Check
   the forecast for your arrival time.
+- **Over water beyond gliding distance:** for a single-engine aircraft, the
+  part of the route over the sea or a large lake where it could not glide to
+  land from the planned altitude in still air. It shows how far from land
+  the route gets, the glide distance from your altitude (glide ratio from
+  the aircraft profile, or a typical one, marked as assumed), and the
+  altitude needed to reach land. Beyond gliding distance, life jackets are
+  required for everyone on board. The mobile app checks the sea only, not
+  lakes; land outside the terrain grid of your countries is not seen.
 
 Warnings are advice. They do not replace your own planning.
 

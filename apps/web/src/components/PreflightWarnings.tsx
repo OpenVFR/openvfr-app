@@ -47,7 +47,7 @@ import type { AssistantReview } from '@open-vfr/shared/types'
 // not treated as empty, and is fetched again the next time the panel opens.
 // ---------------------------------------------------------------------------
 
-type GeoKind = 'airspace' | 'obstacles' | 'landmarks' | 'aerodromes'
+type GeoKind = 'airspace' | 'obstacles' | 'landmarks' | 'aerodromes' | 'water'
 const _geo: Partial<Record<GeoKind, { key: string; p: Promise<GeoJSON.FeatureCollection> }>> = {}
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 
@@ -123,6 +123,8 @@ export default function PreflightWarnings(props: Props) {
   const obstacles = useGeo('obstacles')
   const landmarks = useGeo('landmarks')
   const aerodromes = useGeo('aerodromes')
+  // Lakes for the glide-to-land check (the sea comes from the terrain grid); missing = sea only.
+  const water = useGeo('water')
   const airspaceGeo = airspace.fc ?? (airspace.failed ? EMPTY_FC : null)
   const obstacleGeo = obstacles.fc ?? (obstacles.failed ? EMPTY_FC : null)
   const landmarkGeo = landmarks.fc ?? (landmarks.failed ? EMPTY_FC : null)
@@ -222,8 +224,8 @@ export default function PreflightWarnings(props: Props) {
 
   const warnings = useMemo<PreflightWarning[]>(() => {
     if (!profile) return []
-    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, resolveMsaMargins(msaMargins), { terrainPts, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable, surfaceWinds, surfaceTempsC, routeReview: props.routeReview })
-  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, msaMargins, terrainPts, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, unavailable, surfaceWinds, surfaceTempsC, props.routeReview])
+    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, resolveMsaMargins(msaMargins), { terrainPts, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable, surfaceWinds, surfaceTempsC, routeReview: props.routeReview, mefGrids, water: water.fc })
+  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, msaMargins, terrainPts, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, unavailable, surfaceWinds, surfaceTempsC, props.routeReview, mefGrids, water.fc])
 
   const prompts = useMemo(
     () => computePrompts({ waypoints, legWinds, windsLoading }),

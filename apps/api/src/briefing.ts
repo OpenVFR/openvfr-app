@@ -49,7 +49,7 @@ type FC = GeoJSON.FeatureCollection
 
 export interface BriefingDeps {
   /** Aerodromes, airspace, obstacles and landmarks for the route's regions. A failed load returns null. */
-  loadDataset: (kind: 'aerodromes' | 'airspace' | 'obstacles' | 'landmarks') => Promise<FC | null>
+  loadDataset: (kind: 'aerodromes' | 'airspace' | 'obstacles' | 'landmarks' | 'water') => Promise<FC | null>
   /** Terrain samples along the route from a DEM; throws or [] when it does not cover the route. */
   terrain?: (waypoints: RouteWaypoint[]) => Promise<TerrainPoint[]>
   /** Maximum-elevation grids for the route's regions (conservative terrain when the DEM fails). */
@@ -258,8 +258,8 @@ export async function buildRouteBriefing(
   const arrivalMs = etaMs[etaMs.length - 1] ?? depMs
 
   // ── Data ────────────────────────────────────────────────────────────────
-  const [aerodromesFc, airspaceFc, obstaclesFc, landmarksFc] = await Promise.all([
-    deps.loadDataset('aerodromes'), deps.loadDataset('airspace'), deps.loadDataset('obstacles'), deps.loadDataset('landmarks'),
+  const [aerodromesFc, airspaceFc, obstaclesFc, landmarksFc, waterFc] = await Promise.all([
+    deps.loadDataset('aerodromes'), deps.loadDataset('airspace'), deps.loadDataset('obstacles'), deps.loadDataset('landmarks'), deps.loadDataset('water'),
   ])
   if (!obstaclesFc) limits.push('Obstacle data could not be loaded: the minimum safe altitude covers terrain only.')
   if (!airspaceFc) limits.push('Airspace data could not be loaded: airspace not checked.')
@@ -398,6 +398,7 @@ export async function buildRouteBriefing(
       // Restricted areas created by NOTAM: those active at departure time.
       aerodromes: aerodromesFc, notams: deps.regionalNotams(), airspace: airspaceFc, nowMs: depMs,
       surfaceWinds: winds, surfaceTempsC: temps,
+      mefGrids: grids, water: waterFc,
     },
   )
     // The limits above already say what terrain was used.

@@ -26,6 +26,8 @@ import type { NotamItem } from './fetchNotam'
 import { legSpans, legMsaList, legBelowMsa } from './legLevelDrag'
 import { airspaceCategory, DEFAULT_AIRSPACE_LEVELS, type AirspaceAlertLevels, type AirspaceCategory } from './airspaceAlertLevel'
 import type { RouteWaypoint, LegOverride, AircraftProfileDocType, AssistantReview } from './types'
+import type { MefGrid } from './mefGrid'
+import { waterStretches } from './waterGlide'
 
 // ---------------------------------------------------------------------------
 // Warning types
@@ -120,6 +122,9 @@ export interface PreflightExtras {
   unavailable?:    PreflightUnavailable
   /** The saved route was written by an AI assistant and not yet saved by the pilot. */
   routeReview?:    AssistantReview | null
+  /** Maximum-elevation grids (sea = cells at sea level) and lakes, for the glide-to-land check over water. */
+  mefGrids?:       readonly MefGrid[]
+  water?:          GeoJSON.FeatureCollection | null
 }
 
 /** Checks that did not run. The first three are flags (the card words them itself); `notams` is the
@@ -185,7 +190,7 @@ export function computeWarnings(
   margins: MsaMargins = DEFAULT_MSA_MARGINS,
   extras: PreflightExtras = {},
 ): PreflightWarning[] {
-  const { terrainPts = [], airspaceLevels = DEFAULT_AIRSPACE_LEVELS, aerodromes, notams, airspace, nowMs, unavailable, surfaceWinds, surfaceTempsC, routeReview } = extras
+  const { terrainPts = [], airspaceLevels = DEFAULT_AIRSPACE_LEVELS, aerodromes, notams, airspace, nowMs, unavailable, surfaceWinds, surfaceTempsC, routeReview, mefGrids, water } = extras
   const warnings: PreflightWarning[] = []
 
   // ── Terrain unavailable: the MSA check below is silently skipped and AGL
@@ -250,6 +255,30 @@ export function computeWarnings(
       title:  'Check the route',
       detail: `${routeReview.change === 'created' ? `Made by ${routeReview.by}` : `Changed by ${routeReview.by} (${routeReview.change.join(', ')})`} through the assistant connection. Check every point, level and fuel stop on the map, then save the route.`,
     })
+  }
+
+  // ── 0d. Over water beyond gliding distance from land (single engine) ───
+  // Needs the grid (sea) or the lakes; a multi-engine aircraft is not checked.
+  if ((mefGrids?.length || water) && aircraft?.category !== 'MEP') {
+    const stretches = waterStretches({
+      waypoints, altAt: d => plannedAltAt(profile, d), grids: mefGrids ?? [], water,
+      aircraft: aircraft ? { category: aircraft.category, glideRatio: aircraft.glideRatio } : null,
+    })
+    for (const st of stretches) {
+      if (st.beyondGlideNm <= 0) continue
+      const where = st.sea ? 'the sea' : st.name || 'a lake'
+      warnings.push({
+        level:  'warn',
+        code:   'water-beyond-glide',
+        title:  `Beyond gliding distance from land over ${where}`,
+        detail: `Up to ${st.maxFromLandNm} NM from land (at NM ${Math.round(st.atNm)}); about ${st.beyondGlideNm} NM of the route is beyond gliding distance. `
+          + `From ${st.altFt.toLocaleString('en-US')} ft you glide about ${st.glideRangeNm} NM in still air (glide ratio ${st.glideRatio}:1${st.glideAssumed ? ', assumed: set it in the aircraft profile' : ''}); `
+          + `reaching land from there needs about ${st.neededFt.toLocaleString('en-US')} ft. `
+          + `${st.neededFt <= (aircraft?.serviceCeilingFt || 12_500) ? `Climb to about ${st.neededFt.toLocaleString('en-US')} ft, route` : 'Route'} closer to the shore, or carry life jackets for everyone on board (required for single-engine aircraft beyond gliding distance from land) and plan for ditching.`,
+        legIndex: st.legIndex,
+        focusNm: st.atNm,
+      })
+    }
   }
 
   // ── 1. Airspace penetration ─────────────────────────────────────────────

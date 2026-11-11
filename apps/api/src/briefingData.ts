@@ -133,7 +133,7 @@ async function fetchDataset(url: string): Promise<GeoJSON.FeatureCollection | nu
 }
 
 /** One dataset for some countries (merged); null when TILES_BASE_URL is unset or nothing loaded. */
-export async function loadCountryDataset(kind: 'aerodromes' | 'airspace' | 'obstacles' | 'landmarks' | 'navaids' | 'waypoints', countries: readonly string[]): Promise<GeoJSON.FeatureCollection | null> {
+export async function loadCountryDataset(kind: 'aerodromes' | 'airspace' | 'obstacles' | 'landmarks' | 'navaids' | 'waypoints' | 'water', countries: readonly string[]): Promise<GeoJSON.FeatureCollection | null> {
   if (!TILES_BASE_URL || countries.length === 0) return null
   const now = Date.now()
   const parts = await Promise.all(countries.map(cc => {
