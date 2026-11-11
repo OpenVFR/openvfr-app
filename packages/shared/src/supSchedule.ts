@@ -69,3 +69,20 @@ export function supScheduleLine(props: unknown, nowMs: number = Date.now()): str
   const on = nextScheduleChange(s, POS, nowMs, SUP_LOOKAHEAD_MS, true)
   return `Now: outside its scheduled hours${on !== null && within(on) ? ` (next from ${fmtUtcDayClock(on, nowMs)})` : ''}`
 }
+
+/**
+ * One status line for the area's card, led by the validity of the supplement: "Not yet in force: starts 14 Nov
+ * 11:00Z, until 19 Nov 11:00Z" / "In force until 19 Nov 11:00Z" / "Ended 10 Nov 23:59Z". Null for an area that is
+ * not from a supplement or has no usable dates. The schedule line below it says what the hours are.
+ */
+export function supValidityLine(props: unknown, nowMs: number = Date.now()): string | null {
+  const p = props as { source?: unknown; active_from?: unknown; active_until?: unknown } | null | undefined
+  if (!p || p.source !== 'sup') return null
+  const from = typeof p.active_from === 'string' ? Date.parse(p.active_from) : NaN
+  const until = typeof p.active_until === 'string' ? Date.parse(p.active_until) : NaN
+  if (Number.isFinite(from) && nowMs < from) {
+    return `Not yet in force: starts ${fmtUtcDayClock(from, nowMs)}${Number.isFinite(until) ? `, until ${fmtUtcDayClock(until, nowMs)}` : ''}`
+  }
+  if (Number.isFinite(until)) return nowMs > until ? `Ended ${fmtUtcDayClock(until, nowMs)}` : `In force until ${fmtUtcDayClock(until, nowMs)}`
+  return null
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { supScheduleItemD, supScheduleLine } from './supSchedule'
+import { supScheduleItemD, supScheduleLine, supValidityLine } from './supSchedule'
 
 const at = (iso: string) => Date.parse(iso)
 const sup = (schedule: string, from = '2026-01-01T00:00Z', until = '2027-12-31T23:59Z') =>
@@ -46,5 +46,20 @@ describe('supScheduleLine', () => {
     expect(supScheduleLine(sup('23 MAR \u2013 31 DEC H24'), at('2026-11-11T10:00:00Z'))).toBeNull()
     expect(supScheduleLine(p, at('2026-08-01T10:00:00Z'))).toBeNull()
     expect(supScheduleLine(p, at('2027-03-01T10:00:00Z'))).toBeNull()
+  })
+})
+
+describe('supValidityLine', () => {
+  const a = { source: 'sup', active_from: '2026-11-14T11:00Z', active_until: '2026-11-19T11:00Z' }
+  it('before the start', () => {
+    expect(supValidityLine(a, at('2026-11-11T12:00Z'))).toBe('Not yet in force: starts Sat 11:00Z, until 19 Nov 11:00Z')
+  })
+  it('in force', () => {
+    expect(supValidityLine(a, at('2026-11-15T12:00Z'))).toBe('In force until Thu 11:00Z')
+  })
+  it('ended and not a supplement', () => {
+    expect(supValidityLine(a, at('2026-11-20T00:00Z'))).toMatch(/^Ended /)
+    expect(supValidityLine({ active_until: a.active_until }, at('2026-11-15T12:00Z'))).toBeNull()
+    expect(supValidityLine({ source: 'sup' }, at('2026-11-15T12:00Z'))).toBeNull()
   })
 })

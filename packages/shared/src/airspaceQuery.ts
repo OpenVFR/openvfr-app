@@ -20,7 +20,7 @@ import type { Polygon, MultiPolygon, Feature, FeatureCollection } from 'geojson'
 import { pointInPolygon } from './airspaceGeometry'
 import { airspaceDisplayClass } from './airspaceColors'
 import { airspaceEnded } from './airspaceInForce'
-import { supScheduleLine } from './supSchedule'
+import { supScheduleLine, supValidityLine } from './supSchedule'
 import type { DatasetSource } from './countryData'
 
 export interface AirspaceQueryFeature {
@@ -56,11 +56,10 @@ function parseFrequencies(v: unknown): { freq_mhz: number; callsign: string; ser
   return typeof v === 'string' ? JSON.parse(v) : v as { freq_mhz: number; callsign: string; service: string }[]
 }
 
-/** The area's remarks; for an AIP supplement area with a regular schedule, led by "Now: in / outside its scheduled hours". */
+/** The area's remarks; for an AIP supplement area led by its validity ("Not yet in force: ...") and, with a regular schedule, "Now: in / outside its scheduled hours". */
 function withSupLine(p: Record<string, unknown>): string | undefined {
   const remarks = p.remarks ? String(p.remarks) : ''
-  const line = supScheduleLine(p)
-  const out = line ? (remarks ? `${line}\n${remarks}` : line) : remarks
+  const out = [supValidityLine(p), supScheduleLine(p), remarks].filter(Boolean).join('\n')
   return out || undefined
 }
 

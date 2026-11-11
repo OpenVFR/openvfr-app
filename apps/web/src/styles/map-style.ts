@@ -624,7 +624,20 @@ export const LAYER_GROUPS: LayerGroup[] = [
 // /tiles/<file> resolves to the current origin so both environments work.
 
 /** Initial style for `country` (the active country; see useCountries). */
+/** AIP SUP area whose validity has not begun (`active_from` is "YYYY-MM-DDTHH:MMZ", so ISO strings compare as text).
+ *  Judged when the style is built: a long session keeps the state of its start. Such an area stays visible
+ *  (planning ahead) but is drawn dimmer than the ones in force. */
+function supNotStarted(nowMs: number = Date.now()): ExpressionSpecification {
+  const nowIso = new Date(nowMs).toISOString().slice(0, 16) + 'Z'
+  return ['all',
+    ['==', ['get', 'source'], 'sup'],
+    ['has', 'active_from'],
+    ['>', ['string', ['get', 'active_from']], nowIso],
+  ] as unknown as ExpressionSpecification
+}
+
 export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecification {
+  const notStarted = supNotStarted()
   return ({
     version: 8,
     // Hosted glyphs/sprites -- via jsDelivr's GitHub CDN mirror rather than
@@ -1268,6 +1281,7 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
         paint: {
           'fill-color': ['case', RED_STYLE, AC.rFill, ['==', ['get', 'class'], 'TRA'], AC.traFill, AC.transparent],
           'fill-outline-color': AC.transparent,
+          'fill-opacity': ['case', notStarted, 0.35, 1],
         },
       },
       {
@@ -1279,7 +1293,7 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
           'line-color': ['case', RED_STYLE, AC.rBorder, ['==', ['get', 'class'], 'TRA'], AC.traBorder, AC.traBorder],
           'line-width': 6,
           'line-offset': 3,
-          'line-opacity': 0.24,
+          'line-opacity': ['case', notStarted, 0.1, 0.24],
         },
       },
       {
@@ -1290,6 +1304,7 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
         paint: {
           'line-color': ['case', RED_STYLE, AC.rBorder, ['==', ['get', 'class'], 'TRA'], AC.traBorder, AC.traBorder],
           'line-width': ['case', RED_STYLE, 1.8, 1.2],
+          'line-opacity': ['case', notStarted, 0.45, 1],
         },
       },
       {
@@ -1299,7 +1314,7 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
         type: 'line',
         source: 'ofm',
         filter: DANGER_FILTER,
-        paint: { 'line-color': AC.rBorder, 'line-width': 1.8, 'line-dasharray': [4, 3] },
+        paint: { 'line-color': AC.rBorder, 'line-width': 1.8, 'line-dasharray': [4, 3], 'line-opacity': ['case', notStarted, 0.45, 1] },
       },
       {
         id: 'airspace-label-restricted',
@@ -1319,6 +1334,7 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
           'text-color': ['case', RED_STYLE, AC.rBorder, ['==', ['get', 'class'], 'TRA'], AC.traBorder, AC.traBorder],
           'text-halo-color': '#ffffff',
           'text-halo-width': 1.2,
+          'text-opacity': ['case', notStarted, 0.5, 1],
         },
       },
 
