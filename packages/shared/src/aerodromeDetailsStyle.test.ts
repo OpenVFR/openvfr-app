@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DETAIL_LAYERS, staticColorLayers, layerFilter, buildDetailsMapData, CIRCUIT_LAYER_IDS } from './aerodromeDetailsStyle'
+import { DETAIL_LAYERS, staticColorLayers, layerFilter, buildDetailsMapData, circuitLabel, CIRCUIT_LAYER_IDS } from './aerodromeDetailsStyle'
 import { DETAIL_KIND_COLOR } from './aerodromeDetails'
 
 describe('aerodromeDetailsStyle', () => {
@@ -29,5 +29,12 @@ describe('aerodromeDetailsStyle', () => {
     const fc = buildDetailsMapData([], [ad])
     expect(fc.features.map(f => f.properties.role)).toEqual(['turn', 'turn', 'label'])
     expect(fc.features.every(f => f.properties.label === '')).toBe(true)
+    expect(fc.features.find(f => f.properties.role === 'label')!.properties.clabel).toBe('12 LH')
+    expect(circuitLabel('RWY 06 RH · RWY 24 LH')).toBe('06 RH · 24 LH')
+    expect(circuitLabel('RWY 30 RH · gliders')).toBe('30 RH · gliders')
+    // labels are dark on a white halo, never the (light) line colour
+    for (const id of ['ad-circuit-label', 'ad-circuit-turn-label']) {
+      expect(DETAIL_LAYERS.find(l => l.id === id)!.paint['text-color']).toBe('#0c4a6e')
+    }
   })
 })

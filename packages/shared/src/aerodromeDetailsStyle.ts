@@ -35,6 +35,11 @@ export const CIRCUIT_ZOOM = 9.5
 export const DIRECTION_ZOOM = 10.5
 export const LABEL_ZOOM = 11.5
 const FONT = ['Noto Sans Regular']
+// Circuit labels name the runway and side ("06 RH · 24 LH"): dark text on a wide white halo, readable on any base
+// map, unlike the line colour itself.
+const CIRCUIT_LABEL_FONT = ['Noto Sans Medium']
+const CIRCUIT_LABEL_COLOR = '#0c4a6e'
+const CIRCUIT_LABEL_SIZE: Expr = ['interpolate', ['linear'], ['zoom'], 11.5, 12, 14, 14]
 const CIRCUIT_WIDTH: Expr = ['interpolate', ['linear'], ['zoom'], 9.5, 1, 12, 2.5, 15, 3.5]
 const HALO = 'rgba(255,255,255,0.92)'
 
@@ -82,14 +87,15 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
       'text-keep-upright': false, 'text-allow-overlap': true, 'text-ignore-placement': true },
     paint: { 'text-color': COLOR, 'text-halo-color': 'rgba(0,0,0,0.6)', 'text-halo-width': 1 } },
   { id: 'ad-circuit-label', type: 'symbol', group: 'circuits', minzoom: LABEL_ZOOM,
-    filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['has', 'name']],
-    layout: { 'symbol-placement': 'line', 'symbol-spacing': 260, 'text-field': ['get', 'name'], 'text-font': FONT,
-      'text-size': 11, 'text-offset': [0, -0.9], 'text-keep-upright': true, 'text-max-angle': 30 },
-    paint: { 'text-color': COLOR, 'text-halo-color': HALO, 'text-halo-width': 1.6 } },
+    filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!=', ['get', 'clabel'], '']],
+    layout: { 'symbol-placement': 'line', 'symbol-spacing': 260, 'text-field': ['get', 'clabel'], 'text-font': CIRCUIT_LABEL_FONT,
+      'text-size': CIRCUIT_LABEL_SIZE, 'text-offset': [0, -1], 'text-keep-upright': true, 'text-max-angle': 30 },
+    paint: { 'text-color': CIRCUIT_LABEL_COLOR, 'text-halo-color': HALO, 'text-halo-width': 2.4, 'text-halo-blur': 0.3 } },
   { id: 'ad-circuit-turn-label', type: 'symbol', group: 'circuits', minzoom: LABEL_ZOOM,
     filter: ['all', POINT, IS_CIRCUIT, ['==', ['get', 'role'], 'label']],
-    layout: { 'text-field': ['get', 'name'], 'text-font': FONT, 'text-size': 11, 'text-anchor': 'center' },
-    paint: { 'text-color': COLOR, 'text-halo-color': HALO, 'text-halo-width': 1.6 } },
+    layout: { 'text-field': ['get', 'clabel'], 'text-font': CIRCUIT_LABEL_FONT, 'text-size': CIRCUIT_LABEL_SIZE,
+      'text-anchor': 'center' },
+    paint: { 'text-color': CIRCUIT_LABEL_COLOR, 'text-halo-color': HALO, 'text-halo-width': 2.4, 'text-halo-blur': 0.3 } },
   // Orbit flown at a holding point, around the base layer's holding symbol ("Holding points")
   { id: 'ad-holding-orbit', type: 'line', group: 'holdings', minzoom: 10, filter: ['all', LINE, IS_HOLDING],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -155,7 +161,7 @@ const idOf = (f: Feature): string | null => {
 export function buildDetailsMapData(
   details: readonly Feature<Geometry, DetailProps>[],
   aerodromes: readonly Feature[],
-): FeatureCollection<Geometry, DetailProps & { label: string }> {
+): FeatureCollection<Geometry, DetailProps & { label: string; clabel: string }> {
   const drawn = new Set(details.filter(f => f.properties.kind === 'circuit_leg' && f.geometry.type === 'LineString')
     .map(f => f.properties.aerodrome))
   const all = [...details, ...schematicCircuitFeatures(aerodromes, drawn), ...holdingOrbitFeatures(details)]
@@ -169,9 +175,15 @@ export function buildDetailsMapData(
           && (f.geometry.type === 'Point' || AREA_KINDS.has(f.properties.kind as DetailKind))
           ? [areaLabel(f.properties), f.properties.pending ? '(unreviewed)' : null].filter(Boolean).join('\n')
           : '',
+        clabel: f.properties.kind === 'circuit_leg' ? circuitLabel(f.properties.name) : '',
       },
     })),
   }
+}
+
+/** Map label of a circuit, short so it fits along the line: "RWY 06 RH · RWY 24 LH" -> "06 RH · 24 LH". */
+export function circuitLabel(name: string | null): string {
+  return (name ?? '').replace(/\bRWY\s*/gi, '').trim()
 }
 
 export { idOf as aerodromeIdOf }
