@@ -111,7 +111,10 @@ Off flying mode, it re-aligns a rotated map to north.
 ## Open a link
 
 A link can open the app on an aerodrome (`?ad=ESSB`) or at a position
-(`?c=5939N01756E&z=11`). In the web app, `?route=` followed by a saved
-route's id opens that route of your account (assistants give such links);
-if the route on the map has unsaved changes you are asked first. Malformed
-parts of a link are ignored.
+(`?c=5939N01756E&z=11`). `?route=` followed by a saved route's id opens that
+route of your account (assistants give such links); if the route on the map
+has unsaved changes you are asked first. In the mobile app the same parts
+work in an `openvfr://map?route=<id>` link, and the route opens on the Plan
+tab. A web address in a message opens in the browser, not the app: on a
+phone with the app, open the route from the route list instead (it shows
+**Check before use**). Malformed parts of a link are ignored.

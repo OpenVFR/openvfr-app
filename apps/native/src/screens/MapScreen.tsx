@@ -151,7 +151,8 @@ import { Location } from 'expo-location/next'
 import * as Crypto from 'expo-crypto'
 import { GaugesBar }         from '../components/GaugesBar'
 import { distanceAlongRouteNm, coordinateAlongRouteNm, routeCrossTrackNm } from '@open-vfr/shared/virtualRadarCalc'
-import { aircraft as aircraftDb, flightLogs as flightLogsDb } from '../db'
+import { aircraft as aircraftDb, flightLogs as flightLogsDb, routes as routeDb } from '../db'
+import { isRouteDirty } from '@open-vfr/shared/routeDirty'
 import type { AircraftProfileDocType } from '../types/db'
 import { useTerrainElevation } from '../hooks/useTerrainElevation'
 import { observeGroundSample } from '@open-vfr/shared/gpsAltitudeReference'
@@ -277,7 +278,7 @@ function MapScreenForCountry() {
   const { position, status, start, stop, setFlying: setGpsFlying } = useGps({ paused: simPosition != null || simFlight.active })
   const activePosition = simPosition ?? simFlight.position ?? position
   const { waypoints, legOverrides, addWaypoint, insertWaypoint, updateWaypoint, removeWaypoint,
-           replaceRoute, activeRouteId, routeFitNonce,
+           replaceRoute, setWaypoints, setActiveRouteId, activeRouteId, routeFitNonce,
            editSessionActive, setEditSessionArmed, applyEditSession, cancelEditSession,
            undo: undoRoute, redo: redoRoute, canUndo, canRedo, setLegOverride } = useRouteContext()
   const { settings, update }                  = useSettingsContext()
@@ -1267,6 +1268,12 @@ function MapScreenForCountry() {
   // launch URL and links opened while the app is running. Ignored while
   // flying -- follow mode owns the camera then.
   const flyingRef = React.useRef(false)
+  // For ?route=<id>, which resolves after an await: the route on the map then.
+  const routeNowRef = React.useRef({ waypoints, legOverrides, aircraftId: settings.selectedAircraftId ?? '', activeRouteId })
+  routeNowRef.current = { waypoints, legOverrides, aircraftId: settings.selectedAircraftId ?? '', activeRouteId }
+  // The link handler lives in a mount-only effect: it needs the latest settings updater, not the first.
+  const updateRef = React.useRef(update)
+  updateRef.current = update
   useEffect(() => { flyingRef.current = flightModeStatus !== 'off' }, [flightModeStatus])
   useEffect(() => {
     const handle = (url: string | null | undefined) => {
@@ -1274,6 +1281,38 @@ function MapScreenForCountry() {
       const q = url.indexOf('?')
       const link = parseMapLink(q >= 0 ? url.slice(q) : '')
       if (!hasMapLink(link)) return
+      // ?route=<id>: one of the saved routes (e.g. made by the pilot's AI
+      // assistant). It may still be on its way by sync: look for 20 s.
+      if (link.route) {
+        const id = link.route
+        void (async () => {
+          let doc = await routeDb.get(id)
+          for (let i = 0; !doc && i < 20; i++) { await new Promise(r => setTimeout(r, 1000)); doc = await routeDb.get(id) }
+          if (!doc) {
+            Alert.alert('Route not found', 'That route is not in your saved routes on this device. Sign in with the account it was saved to, or wait for sync and open the link again.')
+            return
+          }
+          const route = doc
+          const open = () => {
+            setWaypoints(route.waypoints, route.legOverrides ?? [])
+            setActiveRouteId(route.id)
+            if (route.aircraftId) void updateRef.current({ selectedAircraftId: route.aircraftId })
+            navigation.navigate('Plan' as never)
+          }
+          const cur = routeNowRef.current
+          if (cur.activeRouteId === id) { navigation.navigate('Plan' as never); return }
+          const linked = cur.activeRouteId ? await routeDb.get(cur.activeRouteId) : undefined
+          const dirty = cur.waypoints.length > 0 && isRouteDirty(
+            { waypoints: cur.waypoints, legOverrides: cur.legOverrides, aircraftId: cur.aircraftId },
+            linked ? { waypoints: linked.waypoints, legOverrides: linked.legOverrides ?? [], aircraftId: linked.aircraftId ?? '' } : undefined,
+          )
+          if (!dirty) { open(); return }
+          Alert.alert(`Open "${route.name}"?`, 'The route on the map has unsaved changes and will be replaced.', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open', style: 'destructive', onPress: open },
+          ])
+        })()
+      }
       if (link.center) setFindDestFlyTarget({ lat: link.center.lat, lng: link.center.lng, zoom: link.zoom, nonce: Date.now() })
       if (link.ad) {
         const icao = link.ad

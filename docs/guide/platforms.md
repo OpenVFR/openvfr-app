@@ -35,7 +35,7 @@ Legend: **Yes** = available, **Partial** = available with differences
 | Country / region selection | Yes | Yes | Web: region selector. Native: Country section in Settings. |
 | Offline use | Partial | Partial | Web caches in the browser. Native has an Offline data section in Settings. See below. |
 | Open a link to an aerodrome or position | Yes | Yes | `?ad=` / `?c=` links open the app on that place. |
-| Open a link to a saved route | Yes | No | `?route=` links, e.g. from an AI assistant. |
+| Open a link to a saved route | Yes | Yes | `?route=` links, e.g. from an AI assistant. On the phone only `openvfr://map?route=<id>` opens the app; a web address opens the browser. |
 
 ## Planning
 
