@@ -1816,6 +1816,7 @@ function MapScreenForCountry() {
           showAerodromes={layers.aerodromes}
           showNavaids={layers.navaids}
           showWaypoints={layers.waypoints}
+          showHoldings={layers.holdings}
           showObstacles={layers.obstacles}
           showRunways={layers.runways}
           runwayWindHighlight={runwayWindHighlight}

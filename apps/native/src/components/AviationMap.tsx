@@ -24,6 +24,7 @@ import {
 } from '@maplibre/maplibre-react-native'
 import type { NativeSyntheticEvent } from 'react-native'
 import type { PressEvent, PressEventWithFeatures } from '@maplibre/maplibre-react-native'
+import type { ExpressionSpecification } from '@maplibre/maplibre-gl-style-spec'
 import type { Feature, FeatureCollection, Point } from 'geojson'
 import { rankTapCandidates } from '@open-vfr/shared/tapPick'
 import type { ViewStateChangeEvent } from '@maplibre/maplibre-react-native'
@@ -126,6 +127,8 @@ export type AviationMapProps = {
   showAerodromes?: boolean
   showNavaids?:    boolean
   showWaypoints?:  boolean
+  /** VFR holding points (waypoints named "HOLDING ..."), own toggle like web's 'Holding points'. */
+  showHoldings?:   boolean
   showObstacles?:  boolean
   showRunways?:    boolean
   /** Wind-favored runway end for whichever aerodrome's popup is currently
@@ -383,13 +386,16 @@ export type SnapCandidate = {
   icon?: string | null
 }
 
+// Waypoints named "HOLDING ..." -- VFR holding points, published as reporting points (same test as web's map-style).
+const IS_HOLDING: ExpressionSpecification = ['==', ['slice', ['upcase', ['coalesce', ['get', 'name'], '']], 0, 8], 'HOLDING ']
+
 // Layers that are valid snap targets during route planning (mirrors web's
 // SNAP_LAYERS in MapView.tsx). Obstacles/landmarks are not useful turning
 // points but are still offered, matching web.
 const SNAP_LAYERS = [
   'aerodromes-circle',
   'navaids-circle',
-  'waypoints-mrp-circle', 'waypoints-rp-circle',
+  'waypoints-mrp-circle', 'waypoints-hold-circle', 'waypoints-rp-circle',
   'obstacles-circle',
   'landmarks-circle',
   'user-waypoints-circle',
@@ -1125,6 +1131,7 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
   showRunways,
   showTerrainColor,
   showWaypoints,
+  showHoldings,
   terrainColorRefAltFt,
   waypointsData,
   ownAltFt,
@@ -1662,16 +1669,48 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
               }}
               type="symbol"
               minzoom={8}
-              filter={['==', ['get', 'wp_type'], 'MRP']}
+              filter={['all', ['==', ['get', 'wp_type'], 'MRP'], ['!', IS_HOLDING]]}
             />
             <Layer
               id="waypoints-mrp-label"
               type="symbol"
               minzoom={9}
-              filter={['==', ['get', 'wp_type'], 'MRP']}
+              filter={['all', ['==', ['get', 'wp_type'], 'MRP'], ['!', IS_HOLDING]]}
               layout={{
                 visibility: showWaypoints ? 'visible' : 'none',
                 'text-field': ['get', 'id'],
+                'text-size': 9,
+                'text-offset': [0, 1.1],
+                'text-font': ['Noto Sans Regular'],
+              }}
+              paint={{
+                'text-color': WAYPOINT_COLORS.mrp,
+                'text-halo-color': theme.surfaceBase,
+                'text-halo-width': 1,
+              }}
+            />
+            {/* VFR holding points: orbit symbol, "HOLD WEST" (same as web's waypoints-hold layers). */}
+            <Layer
+              id="waypoints-hold-circle"
+              layout={{
+                visibility: showHoldings ? 'visible' : 'none',
+                'icon-image': 'wp-hold',
+                'icon-size': ['interpolate', ['linear'], ['zoom'], 8, 0.26, 10, 0.4, 13, 0.56],
+                'icon-allow-overlap': true,
+                'icon-ignore-placement': true,
+              }}
+              type="symbol"
+              minzoom={8}
+              filter={IS_HOLDING}
+            />
+            <Layer
+              id="waypoints-hold-label"
+              type="symbol"
+              minzoom={9}
+              filter={IS_HOLDING}
+              layout={{
+                visibility: showHoldings ? 'visible' : 'none',
+                'text-field': ['concat', 'HOLD ', ['slice', ['get', 'name'], 8]],
                 'text-size': 9,
                 'text-offset': [0, 1.1],
                 'text-font': ['Noto Sans Regular'],
@@ -1693,13 +1732,13 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
               }}
               type="symbol"
               minzoom={8}
-              filter={['==', ['get', 'wp_type'], 'RP']}
+              filter={['all', ['==', ['get', 'wp_type'], 'RP'], ['!', IS_HOLDING]]}
             />
             <Layer
               id="waypoints-rp-label"
               type="symbol"
               minzoom={9}
-              filter={['==', ['get', 'wp_type'], 'RP']}
+              filter={['all', ['==', ['get', 'wp_type'], 'RP'], ['!', IS_HOLDING]]}
               layout={{
                 visibility: showWaypoints ? 'visible' : 'none',
                 'text-field': ['get', 'id'],
@@ -1879,6 +1918,7 @@ export const AviationMap = React.memo(function AviationMap({
   showAerodromes = true,
   showNavaids    = true,
   showWaypoints  = true,
+  showHoldings   = true,
   showObstacles  = true,
   showRunways    = true,
   runwayWindHighlight = null,
@@ -3438,6 +3478,7 @@ export const AviationMap = React.memo(function AviationMap({
           showRunways={showRunways}
           showTerrainColor={showTerrainColor}
           showWaypoints={showWaypoints}
+          showHoldings={showHoldings}
           terrainColorRefAltFt={terrainColorRefAltFt}
           waypointsData={waypointsData}
           ownAltFt={ownAltFt}
@@ -3909,6 +3950,7 @@ export const AviationMap = React.memo(function AviationMap({
           'nav-ndb':          require('../../assets/poi_icons/nav-ndb.png'),
           'wp-mrp':           require('../../assets/poi_icons/wp-mrp.png'),
           'wp-rp':            require('../../assets/poi_icons/wp-rp.png'),
+          'wp-hold':          require('../../assets/poi_icons/wp-hold.png'),
           'ad-airport':       require('../../assets/poi_icons/ad-airport.png'),
           'ad-heliport':      require('../../assets/poi_icons/ad-heliport.png'),
           'ad-civ-hard':      require('../../assets/poi_icons/ad-civ-hard.png'),

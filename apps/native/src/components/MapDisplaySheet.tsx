@@ -36,6 +36,8 @@ export type LayerState = {
   aerodromes: boolean
   navaids:    boolean
   waypoints:  boolean
+  // VFR holding points ("HOLDING WEST"), drawn as an orbit -- web's 'waypointsHold' group. On by default.
+  holdings:   boolean
   obstacles:  boolean
   runways:    boolean
   // Live data
@@ -75,6 +77,7 @@ export const LAYER_DEFAULTS: LayerState = {
   aerodromes: true,
   navaids:    true,
   waypoints:  true,
+  holdings:   true,
   obstacles:  true,
   runways:    true,
   traffic:    false,
@@ -111,6 +114,7 @@ const AIRSPACE_GROUPS: Group[] = [
 const POINTS_GROUPS: Group[] = [
   { key: 'navaids',    label: 'Navaids',    color: NAVAID_COLORS.vor        },
   { key: 'waypoints',  label: 'Waypoints',  color: WAYPOINT_COLORS.mrp      },
+  { key: 'holdings',   label: 'Holding points', color: WAYPOINT_COLORS.mrp  },
   { key: 'aerodromes', label: 'Aerodromes', color: AERODROME_COLORS.default },
   { key: 'runways',    label: 'Runways',    color: '#c0d0b8'                },
   { key: 'obstacles',  label: 'Obstacles',  color: OBSTACLE_COLORS.tower    },

@@ -32,6 +32,7 @@ const ICONS = [
   ['nav-ndb', '#c05200', 48],
   ['wp-mrp',  '#0ca678', 48],
   ['wp-rp',   '#20c997', 48],
+  ['wp-hold', '#0ca678', 48],
   // Aerodromes (SZ2=56)
   ['ad-airport',  AD.civil, 56],
   ['ad-heliport', AD.heliport, 56],
