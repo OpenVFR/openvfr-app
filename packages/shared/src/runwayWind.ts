@@ -159,8 +159,12 @@ export function buildRunwayWindHighlight(
   icao: string,
   ends: RunwayWindHighlightEnd[],
 ): RunwayWindHighlightExpressions {
-  const favoredKeys = ends.filter((e) => e.favored).map((e) => `${icao}/${e.designator}`)
-  const otherKeys   = ends.filter((e) => !e.favored).map((e) => `${icao}/${e.designator}`)
+  // Unique keys: a `match` with a repeated label is rejected by MapLibre as a whole, so the highlight was lost at
+  // aerodromes with two runways of the same designator (an asphalt and a grass 12/30). The label is one per
+  // threshold designator, so an end that is favoured on one of those runways counts as favoured.
+  const favoredKeys = [...new Set(ends.filter((e) => e.favored).map((e) => `${icao}/${e.designator}`))]
+  const otherKeys   = [...new Set(ends.filter((e) => !e.favored).map((e) => `${icao}/${e.designator}`))]
+    .filter((k) => !favoredKeys.includes(k))
   const key: unknown[] = ['concat', ['get', 'icao'], '/', ['get', 'id']]
 
   if (favoredKeys.length === 0) {

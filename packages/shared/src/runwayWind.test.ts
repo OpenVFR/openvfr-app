@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { effectiveMagBrg, computeRunwayWind } from './runwayWind'
+import { effectiveMagBrg, computeRunwayWind, buildRunwayWindHighlight } from './runwayWind'
 import type { ParsedWind } from './fetchWx'
 
 function wind(dirDeg: number, speedKt: number, gustKt: number | null = null): ParsedWind {
@@ -87,5 +87,35 @@ describe('computeRunwayWind', () => {
     const e27 = ends.find((e) => e.designator === '27')!
     expect(e09.headwindKt).toBeNull()
     expect(e27.headwindKt).toBe(10)
+  })
+})
+
+describe('buildRunwayWindHighlight', () => {
+  // Every match label (array at index 2) must be unique, or MapLibre rejects the whole expression.
+  const labels = (e: unknown): string[][] => {
+    const out: string[][] = []
+    const walk = (x: unknown) => {
+      if (!Array.isArray(x)) return
+      if (x[0] === 'match' && Array.isArray(x[2])) out.push(x[2] as string[])
+      x.forEach(walk)
+    }
+    walk(e)
+    return out
+  }
+
+  it('keeps match labels unique when two runways share a designator', () => {
+    // An asphalt and a grass 12/30: both ends listed twice, 12 favoured on one of them.
+    const ends = [
+      { designator: '12', favored: true }, { designator: '30', favored: false },
+      { designator: '12', favored: false }, { designator: '30', favored: false },
+      { designator: '06', favored: false }, { designator: '24', favored: false },
+    ]
+    const e = buildRunwayWindHighlight('ESME', ends)
+    for (const expr of [e.color, e.haloColor, e.size, e.opacity]) {
+      for (const l of labels(expr)) expect(new Set(l).size).toBe(l.length)
+    }
+    expect(labels(e.color)[0]).toEqual(['ESME/12'])
+    expect(labels(e.opacity).flat()).not.toContain('ESME/12')            // favoured is not also dimmed
+    expect(new Set(labels(e.opacity).flat())).toEqual(new Set(['ESME/30', 'ESME/06', 'ESME/24']))
   })
 })
