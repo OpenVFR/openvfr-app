@@ -21,6 +21,8 @@ import { type TrafficVertFilter } from '../hooks/useSettings'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { AIRSPACE_COLORS as AC } from '@open-vfr/shared/airspaceColors'
 import { AERODROME_COLORS, NAVAID_COLORS, WAYPOINT_COLORS, OBSTACLE_COLORS } from '@open-vfr/shared/featureColors'
+import { DETAIL_KIND_COLOR } from '@open-vfr/shared/aerodromeDetails'
+import { EXPERIMENTAL_AERODROME_DETAILS } from '../config'
 
 // ---------------------------------------------------------------------------
 // Layer state — exported so MapScreen owns it
@@ -38,6 +40,8 @@ export type LayerState = {
   waypoints:  boolean
   // VFR holding points ("HOLDING WEST"), drawn as an orbit -- web's 'waypointsHold' group. On by default.
   holdings:   boolean
+  // Traffic circuits of the experimental aerodrome details -- web's 'aerodromeCircuits' group. On by default.
+  circuits:   boolean
   obstacles:  boolean
   runways:    boolean
   // Live data
@@ -78,6 +82,7 @@ export const LAYER_DEFAULTS: LayerState = {
   navaids:    true,
   waypoints:  true,
   holdings:   true,
+  circuits:   true,
   obstacles:  true,
   runways:    true,
   traffic:    false,
@@ -115,6 +120,7 @@ const POINTS_GROUPS: Group[] = [
   { key: 'navaids',    label: 'Navaids',    color: NAVAID_COLORS.vor        },
   { key: 'waypoints',  label: 'Waypoints',  color: WAYPOINT_COLORS.mrp      },
   { key: 'holdings',   label: 'Holding points', color: WAYPOINT_COLORS.mrp  },
+  ...(EXPERIMENTAL_AERODROME_DETAILS ? [{ key: 'circuits' as const, label: 'Traffic circuits', color: DETAIL_KIND_COLOR.circuit_leg }] : []),
   { key: 'aerodromes', label: 'Aerodromes', color: AERODROME_COLORS.default },
   { key: 'runways',    label: 'Runways',    color: '#c0d0b8'                },
   { key: 'obstacles',  label: 'Obstacles',  color: OBSTACLE_COLORS.tower    },

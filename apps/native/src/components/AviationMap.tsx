@@ -35,7 +35,7 @@ import { ATTRIBUTION_SOURCES, COPERNICUS_GLO30_NOTICE, FULL_CREDITS_LINK } from 
 import { MapInfoBar, type MapInfoBarHandle } from './MapInfoBar'
 import { fetchAerodromeNotamTexts } from '@open-vfr/shared/fetchNotam'
 import { regionsForIcaos } from '@open-vfr/shared/notamRegionScope'
-import { API_BASE, TILE_BASE } from '../config'
+import { API_BASE, TILE_BASE, EXPERIMENTAL_AERODROME_DETAILS, aerodromeDetailsUrl } from '../config'
 import { LIGHT } from '@protomaps/basemaps'
 import { NativeSheet } from './NativeSheet'
 import { waitForTileManifest } from '@open-vfr/shared/tileManifest'
@@ -71,6 +71,9 @@ import { OFFLINE_ASSETS, resolveUri } from '../utils/offlineCache'
 import { buildTerrainColorExpr } from '@open-vfr/shared/terrainColor'
 import { useWindGrid } from '../hooks/useWindGrid'
 import { useResilientTileData } from '../hooks/useResilientTileData'
+import { parseAerodromeDetails } from '@open-vfr/shared/aerodromeDetails'
+import { buildDetailsMapData, staticColorLayers, layerFilter } from '@open-vfr/shared/aerodromeDetailsStyle'
+import { useCircuitFocus } from '../utils/circuitFocus'
 import { LogManager } from '@maplibre/maplibre-react-native'
 import { createValueStore, useStoreValue, type ValueStore } from '../utils/valueStore'
 import { getNotamCoordinateFocus, subscribeNotamCoordinateFocus, clearNotamCoordinateFocus, type NotamCoordinateFocus } from '@open-vfr/shared/notamCoordinateFocus'
@@ -129,6 +132,8 @@ export type AviationMapProps = {
   showWaypoints?:  boolean
   /** VFR holding points (waypoints named "HOLDING ..."), own toggle like web's 'Holding points'. */
   showHoldings?:   boolean
+  /** Traffic circuits of the experimental aerodrome details (web's 'Traffic circuits'). */
+  showCircuits?:   boolean
   showObstacles?:  boolean
   showRunways?:    boolean
   /** Wind-favored runway end for whichever aerodrome's popup is currently
@@ -1095,6 +1100,46 @@ const AUTO_ZOOM_RESET_KTS = 15
  * or stable references; keep it that way or the memo stops working.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+// ── Experimental aerodrome details ──────────────────────────────────────────
+// Same layers, filters, zoom steps and runway focus as web (@open-vfr/shared/aerodromeDetailsStyle); colours are
+// fixed per layer (staticColorLayers) because iOS aborts on data-driven colours on GeoJSON layers (see below).
+const DETAIL_LAYERS_STATIC = staticColorLayers()
+
+/** The details file of the active country plus turn arrows and holding orbits built from the aerodromes data. */
+function useAerodromeDetailsData(aerodromesData: string | GeoJSON.GeoJSON, manifestReady: boolean): GeoJSON.FeatureCollection | null {
+  const [details, setDetails] = useState<ReturnType<typeof parseAerodromeDetails>>(null)
+  useEffect(() => {
+    if (!EXPERIMENTAL_AERODROME_DETAILS) return
+    let cancelled = false
+    fetch(aerodromeDetailsUrl())
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (!cancelled) setDetails(parseAerodromeDetails(j)) })
+      .catch(() => { /* optional file: absence is normal */ })
+    return () => { cancelled = true }
+  }, [manifestReady])
+  return useMemo(() => {
+    if (!EXPERIMENTAL_AERODROME_DETAILS || typeof aerodromesData !== 'object' || aerodromesData.type !== 'FeatureCollection') return null
+    return buildDetailsMapData(details?.features ?? [], aerodromesData.features) as GeoJSON.FeatureCollection
+  }, [details, aerodromesData])
+}
+
+const AerodromeDetailsLayers = React.memo(function AerodromeDetailsLayers({ data, showCircuits, showHoldings }:
+  { data: GeoJSON.FeatureCollection; showCircuits: boolean; showHoldings: boolean }) {
+  const focus = useCircuitFocus()
+  const on = { circuits: showCircuits, holdings: showHoldings, details: true }
+  return (
+    <GeoJSONSource id="aerodrome-details" onPress={() => {}} data={data}>
+      {DETAIL_LAYERS_STATIC.map(l => {
+        const props = {
+          id: l.id, type: l.type, minzoom: l.minzoom, filter: layerFilter(l, focus),
+          layout: { ...(l.layout ?? {}), visibility: on[l.group] ? 'visible' : 'none' }, paint: l.paint,
+        } as unknown as React.ComponentProps<typeof Layer>
+        return <Layer key={l.id} {...props} />
+      })}
+    </GeoJSONSource>
+  )
+})
+
 const StaticMapLayers = React.memo(function StaticMapLayers({
   aerodromesData,
   airspaceCeilingFt,
@@ -1132,6 +1177,8 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
   showTerrainColor,
   showWaypoints,
   showHoldings,
+  showCircuits,
+  detailsData,
   terrainColorRefAltFt,
   waypointsData,
   ownAltFt,
@@ -1529,6 +1576,9 @@ const StaticMapLayers = React.memo(function StaticMapLayers({
             ))}
           </GeoJSONSource>
 
+        {/* ── Aerodrome details (experimental): areas, circuits, holding orbits ── */}
+        {detailsData && <AerodromeDetailsLayers data={detailsData} showCircuits={showCircuits} showHoldings={showHoldings} />}
+
         {/* ── Aerodromes ───────────────────────────────────── */}
         <GeoJSONSource id="ofm-aerodromes" onPress={() => {}} data={aerodromesData}>
             {/* Towered-airport ATC status ring -- mirrors web map-style.ts
@@ -1919,6 +1969,7 @@ export const AviationMap = React.memo(function AviationMap({
   showNavaids    = true,
   showWaypoints  = true,
   showHoldings   = true,
+  showCircuits   = true,
   showObstacles  = true,
   showRunways    = true,
   runwayWindHighlight = null,
@@ -2041,6 +2092,7 @@ export const AviationMap = React.memo(function AviationMap({
   const runwayThresholdsData = useResilientTileData(tileUrls.runwayThresholds)
   const obstaclesData        = useResilientTileData(tileUrls.obstacles)
   const landmarksData        = useResilientTileData(tileUrls.landmarks)
+  const detailsData          = useAerodromeDetailsData(aerodromesData, manifestReady)
 
   // ── Towered-airport ATC status ring (aerodromes-atc-ring layer) ─────────
   // Cached once from tileUrls.aerodromes, independent of GeoJSONSource's own
@@ -3479,6 +3531,8 @@ export const AviationMap = React.memo(function AviationMap({
           showTerrainColor={showTerrainColor}
           showWaypoints={showWaypoints}
           showHoldings={showHoldings}
+          showCircuits={showCircuits}
+          detailsData={detailsData}
           terrainColorRefAltFt={terrainColorRefAltFt}
           waypointsData={waypointsData}
           ownAltFt={ownAltFt}

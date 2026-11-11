@@ -15,7 +15,7 @@
 import React, { useEffect, useState } from 'react'
 import { AppIcon } from './AppIcon'
 import {
-  View, Text, ScrollView, TouchableOpacity,
+  View, Text, ScrollView, TouchableOpacity, Pressable,
 } from 'react-native'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { computeRunwayWind, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
@@ -31,6 +31,10 @@ import { Section, FR_COLOR } from './AerodromeBriefShared'
 import AerodromeWxSection from './AerodromeWxSection'
 import AerodromeNotamSection, { useNotamLists } from './AerodromeNotamSection'
 import { NativeSheet } from './NativeSheet'
+import LocalInfoSection from './LocalInfoSection'
+import type { LocalInfo } from '@open-vfr/shared/aerodromeDetails'
+import { EXPERIMENTAL_AERODROME_DETAILS } from '../config'
+import { setCircuitFocus, useCircuitFocus } from '../utils/circuitFocus'
 
 interface Frequency {
   service:  string
@@ -130,6 +134,8 @@ function fmtDeclaredDistances(dd: Runway['declared_distances']): string {
 
 export interface AerodromeFeatureProps {
   icao:         string
+  /** Experimental aerodrome details: curated local information (circuits, rules, holdings, ...). */
+  local?:       LocalInfo
   name:         string
   type?:        string
   elevation_ft?: number
@@ -207,6 +213,10 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
   }, [wxLoading, feature?.icao])
 
   const runways = feature?.runways ?? []
+  // Runway focus (experimental aerodrome details) belongs to the open sheet: cleared when it closes or changes.
+  const circuitFocus = useCircuitFocus()
+  const focusOn = (d: string) => circuitFocus?.aerodrome === feature?.icao && circuitFocus?.runway === d
+  useEffect(() => () => setCircuitFocus(null), [feature?.icao])
   const { metar, effectiveWind, allRunwayWindEnds } = deriveWxDisplay(wx, runways, feature?.icao, null, wxSource, ambientWx)
 
   useEffect(() => {
@@ -372,13 +382,20 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
                             {windEnds.map((e, j) => (
                               <React.Fragment key={e.designator}>
                                 {j > 0 && <Text style={runwayStyles.slash}>/</Text>}
-                                <View style={[
-                                  runwayStyles.desigPill,
-                                  { borderColor: xwindColor(e.crosswindSeverity) },
-                                  e.favored ? { backgroundColor: theme.accentGreen, borderColor: theme.accentGreen } : null,
-                                ]}>
+                                <Pressable
+                                  disabled={!EXPERIMENTAL_AERODROME_DETAILS || !feature?.icao}
+                                  accessibilityRole="button"
+                                  accessibilityState={{ selected: focusOn(e.designator) }}
+                                  accessibilityLabel={`Runway ${e.designator}: show only its circuits on the map`}
+                                  onPress={() => feature?.icao && setCircuitFocus(focusOn(e.designator) ? null : { aerodrome: feature.icao, runway: e.designator })}
+                                  style={[
+                                    runwayStyles.desigPill,
+                                    { borderColor: xwindColor(e.crosswindSeverity) },
+                                    e.favored ? { backgroundColor: theme.accentGreen, borderColor: theme.accentGreen } : null,
+                                    focusOn(e.designator) ? runwayStyles.desigFocused : null,
+                                  ]}>
                                   <Text style={[runwayStyles.desigTxt, e.favored ? { color: '#08210f' } : null]}>{e.designator}</Text>
-                                </View>
+                                </Pressable>
                               </React.Fragment>
                             ))}
                             <Text style={runwayStyles.detail}>
@@ -414,6 +431,8 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
                   })}
                 </Section>
               )}
+
+              {EXPERIMENTAL_AERODROME_DETAILS && <LocalInfoSection info={feature?.local} />}
 
               {hours.length > 0 && (
                 <Section title="Hours of Operation">
@@ -725,6 +744,11 @@ function makeRunwayStyles(theme: ScaledTheme) {
     borderRadius:  4,
     paddingHorizontal: 5,
     paddingVertical:   1,
+  },
+  // Runway end whose circuits alone are shown on the map (experimental aerodrome details)
+  desigFocused: {
+    borderWidth: 2,
+    borderColor: '#38bdf8',
   },
   desigTxt: {
     color:      theme.textPrimary,

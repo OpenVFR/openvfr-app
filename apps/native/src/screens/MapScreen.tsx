@@ -48,7 +48,8 @@ import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { makeCirclePolygon } from '@open-vfr/shared/geoCircle'
 import { NotificationCenter } from '../components/NotificationCenter'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
-import { getTileUrls } from '../config'
+import { getTileUrls, EXPERIMENTAL_AERODROME_DETAILS } from '../config'
+import { localInfo } from '@open-vfr/shared/aerodromeDetails'
 import { parseMapLink, hasMapLink } from '@open-vfr/shared/deepLink'
 import { useDataFreshness } from '../hooks/useDataFreshness'
 
@@ -88,6 +89,7 @@ function aerodromePropsFromFeature(p: Record<string, unknown>, coords: [number, 
     passenger_facilities: p.passenger_facilities ? parse(p.passenger_facilities) : [],
     lng: coords ? coords[0] : undefined,
     lat: coords ? coords[1] : undefined,
+    ...(EXPERIMENTAL_AERODROME_DETAILS ? { local: localInfo(p) } : {}),
   }
 }
 import { settings as settingsDb } from '../db'
@@ -1817,6 +1819,7 @@ function MapScreenForCountry() {
           showNavaids={layers.navaids}
           showWaypoints={layers.waypoints}
           showHoldings={layers.holdings}
+          showCircuits={layers.circuits}
           showObstacles={layers.obstacles}
           showRunways={layers.runways}
           runwayWindHighlight={runwayWindHighlight}

@@ -400,7 +400,14 @@ circuits for it. Holding points with a curated orbit direction (`holding` points
 details file) get a circle with an arrowhead around the base layer's holding
 symbol (left = counter-clockwise), switched with "Holding points"; the
 waypoint popup and the aerodrome's local information show the direction and
-where to hold. Dashed also: outlines read off a chart (`approximate`) and values whose
+where to hold. Web and native draw the same layers: their data, filters,
+zoom steps, colours and the runway focus are defined once in
+`packages/shared/src/aerodromeDetailsStyle.ts` (native uses one fixed-colour
+layer per kind, `staticColorLayers`, because MapLibre Native on iOS aborts on
+colours computed from feature properties). Native turns the experiment on with
+`EXPO_PUBLIC_EXPERIMENTAL_AERODROME_DETAILS=true`: the same "Traffic circuits"
+and "Holding points" switches, local information in the aerodrome sheet, and
+tappable runway ends. Dashed also: outlines read off a chart (`approximate`) and values whose
 provenance says `review: "pending"` (only in local preview builds of a
 deployment's own data, labelled "unreviewed"). The aerodrome popup gets a
 "Local information" section (`LocalInfoSection`) with circuits, local rules,

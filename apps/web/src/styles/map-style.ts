@@ -11,6 +11,7 @@ import {
   RUNWAY_LABEL_DEFAULT_HALO,
 } from '@open-vfr/shared/runwayWind'
 import { TILES_BASE_URL, EXPERIMENTAL_AERODROME_DETAILS } from '../utils/env'
+import { CIRCUIT_LAYER_IDS, HOLDING_ORBIT_LAYER } from '@open-vfr/shared/aerodromeDetailsStyle'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
 import { DEFAULT_REGION_CODE } from '@open-vfr/shared/regions'
 import { countryDatasetFile, countryArchiveFile, type CountryDataset } from '@open-vfr/shared/countryData'
@@ -322,12 +323,6 @@ export const AIRSPACE_BORDER_WIDTHS: { id: string; vector: number | ExpressionSp
 const IS_HOLDING: ExpressionSpecification =
   ['==', ['slice', ['upcase', ['coalesce', ['get', 'name'], '']], 0, 8], 'HOLDING ']
 
-/** Orbit direction around holding points (experimental aerodrome details). */
-export const HOLDING_ORBIT_LAYER = 'ad-holding-orbit'
-
-/** Map layers of the experimental aerodrome circuits (added at runtime by AerodromeDetailsLayer). */
-export const CIRCUIT_LAYER_IDS = ['ad-circuit-line', 'ad-circuit-line-dashed', 'ad-circuit-turn', 'ad-circuit-chevrons',
-  'ad-circuit-label', 'ad-circuit-turn-label'] as const
 
 export const AVIATION_LABEL_LAYERS = [
   'aerodromes-label',

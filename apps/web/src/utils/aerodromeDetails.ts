@@ -8,10 +8,11 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { Feature, FeatureCollection, Geometry } from 'geojson'
 import {
-  parseAerodromeDetails, schematicCircuitFeatures, holdingOrbitFeatures, localInfo,
+  parseAerodromeDetails, localInfo,
   type DetailProps, type LocalInfo,
 } from '@open-vfr/shared/aerodromeDetails'
 import { countryFileUrl, loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { buildDetailsMapData, type CircuitFocus } from '@open-vfr/shared/aerodromeDetailsStyle'
 import { useActiveCountries } from './countryData'
 
 const cache = new Map<string, Promise<FeatureCollection<Geometry, DetailProps> | null>>()
@@ -46,11 +47,7 @@ export function useAerodromeDetailsLayer(enabled: boolean): FeatureCollection<Ge
       loadCountryGeojson('aerodromes', countries).catch(() => ({ type: 'FeatureCollection', features: [] }) as FeatureCollection),
     ]).then(([details, aerodromes]) => {
       if (cancelled) return
-      const features = details.flatMap(d => d?.features ?? [])
-      const drawn = new Set(features.filter(f => f.properties.kind === 'circuit_leg' && f.geometry.type === 'LineString')
-        .map(f => f.properties.aerodrome))
-      setFc({ type: 'FeatureCollection', features: [...features, ...schematicCircuitFeatures(aerodromes.features, drawn),
-        ...holdingOrbitFeatures(features)] })
+      setFc(buildDetailsMapData(details.flatMap(d => d?.features ?? []), aerodromes.features))
     })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -80,7 +77,7 @@ export function useLocalInfo(icao: string | undefined, enabled: boolean): LocalI
 // ── Circuit focus: the runway end tapped in the aerodrome popup ────────────────
 // While set, the map draws only that runway end's circuits at that aerodrome (other aerodromes are unaffected).
 
-export interface CircuitFocus { aerodrome: string; runway: string }
+export type { CircuitFocus }
 
 let focus: CircuitFocus | null = null
 const focusSubs = new Set<() => void>()
