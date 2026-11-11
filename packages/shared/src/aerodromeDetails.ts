@@ -190,7 +190,8 @@ export interface CircuitInfo {
   direction: 'left' | 'right' | null
   altitude_ft: number | null
   altitude_ref: string | null
-  /** Aircraft category the circuit is for (e.g. "ultralight", "glider"), null = all. */
+  /** Aircraft category the circuit is for (e.g. "ultralight", "glider", "heavy" = above a mass limit such as
+   *  MTOM 5700 kg), null = all. */
   aircraft: string | null
 }
 
@@ -265,13 +266,18 @@ export function hasLocalInfo(i: LocalInfo): boolean {
   return i.circuits.length + i.localRules.length + i.hoursRemarks.length + i.areas.length + i.reportingPoints.length > 0
 }
 
+const AIRCRAFT_LABEL: Record<string, string> = { heavy: 'aircraft over 5700 kg MTOM' }
+
+/** Circuits only for heavy aircraft are listed, not drawn: a light-aircraft pilot would read them as theirs. */
+export const isDrawnCircuit = (c: CircuitInfo): boolean => c.aircraft !== 'heavy'
+
 /** "RWY 12 · left-hand · 1300 ft · ultralight". */
 export function formatCircuit(c: CircuitInfo): string {
   return [
     `RWY ${c.runway}`,
     c.direction ? `${c.direction}-hand` : 'direction not stated',
     c.altitude_ft ? `${c.altitude_ft} ft${c.altitude_ref ? ` ${c.altitude_ref}` : ''}` : null,
-    c.aircraft,
+    c.aircraft ? (AIRCRAFT_LABEL[c.aircraft] ?? c.aircraft) : null,
   ].filter(Boolean).join(' · ')
 }
 
@@ -366,7 +372,7 @@ export function schematicCircuitFeatures(
     if (!info.circuits.length) continue
     const runways = list(p['runways']) as RunwayLike[]
     const groups = new Map<string, { first: CircuitInfo; names: string[] }>()
-    for (const c of info.circuits) {
+    for (const c of info.circuits.filter(isDrawnCircuit)) {
       const key = patternKey(runways, c)
       if (!key) continue
       const name = `RWY ${c.runway} ${SIDE[c.direction!]}`

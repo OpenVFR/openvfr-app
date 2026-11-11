@@ -87,6 +87,10 @@ describe('schematicCircuit', () => {
     const both = schematicCircuitFeatures([ad('ESME', [{ runway: '12', direction: 'right' }, { runway: '30', direction: 'right' }])], new Set())
     expect(both.map(x => [x.properties.name, x.properties.oneWay])).toEqual([['RWY 12 RH', true], ['RWY 30 RH', true]])
     expect(both.every(x => x.properties.schematic && x.properties.pending && x.properties.aerodrome === 'ESME')).toBe(true)
+    // circuits for heavy aircraft only are listed, never drawn
+    expect(schematicCircuitFeatures([ad('ESMS', [{ runway: '12', direction: 'right', aircraft: 'heavy' }])], new Set())).toEqual([])
+    expect(formatCircuit({ runway: '17', direction: 'right', altitude_ft: null, altitude_ref: null, aircraft: 'heavy' }))
+      .toBe('RWY 17 · right-hand · aircraft over 5700 kg MTOM')
     // aerodromes whose circuit is drawn in the details file get no schematic one
     expect(schematicCircuitFeatures([ad('ESXX', [{ runway: '12', direction: 'left' }])], new Set(['ESXX']))).toEqual([])
   })
