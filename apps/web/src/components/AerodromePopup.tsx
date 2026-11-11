@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import css from './AerodromePopup.module.css'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
 import { fetchWxResolved, decodeMetar, parseMetarWind, parseMetarClouds, type WxResolved, type WxStationCandidate, type ParsedWind } from '../utils/fetchWx'
@@ -21,6 +21,7 @@ import NotamBody from './NotamBody'
 import ctlCss from './NotamViewControls.module.css'
 import RegionalNotamsPanel from './RegionalNotamsPanel'
 import { sunriseSunset, fmtSunTime } from '../utils/sunCalc'
+import { aerodromeClosure, closureLabel } from '@open-vfr/shared/aerodromeClosure'
 import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from '@open-vfr/shared/atcStatus'
 import { API_BASE_URL } from '../utils/env'
 import { loadStations as loadStationsShared, type StationRecord } from '@open-vfr/shared/wxStations'
@@ -386,6 +387,7 @@ export default function AerodromePopup({
       return true
     })
     .map((n) => n.text)
+  const closure = useMemo(() => aerodromeClosure(notams, { lat, lon: lng }), [notams, lat, lng])
   const notamAtcHint = p.towered && anyNotamAtcRelated(activeNotamTexts)
   const notamHoursHint = p.towered && anyNotamHoursChangeRelated(activeNotamTexts)
 
@@ -607,6 +609,11 @@ export default function AerodromePopup({
                   </span>
                 ))}
             </div>
+            {closure && (
+              <div className={css.closureBanner} role="status">
+                ⛔ {closureLabel(closure)} — check NOTAMs tab
+              </div>
+            )}
             {notamAtcHint && (
               <div className={css.notamHint}>⚠ Active NOTAM may affect ATC/tower — check NOTAMs tab</div>
             )}

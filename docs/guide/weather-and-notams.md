@@ -77,6 +77,13 @@ source: it is not a substitute for official national NOTAM and AIP sources.
 - **Coordinates in the text** are tappable: tap one to mark that point on the
   map.
 - **Per aerodrome:** the NOTAM tab of the aerodrome card.
+- **Closed aerodrome:** an aerodrome whose own NOTAM closes it shows a red
+  line under its name, such as "Closed now until 1400Z". A closure that only
+  applies at scheduled times says "Closed at scheduled times" and is not
+  called "closed now" outside them. "Closed except ..." or "closed to ..."
+  wording shows as "Restricted". If the schedule cannot be read the card says
+  so rather than guessing. Runway closures are not shown there; they stay in
+  the NOTAM list.
 - **Regional list:** notices for the whole FIR that have no useful
   position. Only the FIRs that cover your position, route or aerodrome are
   included, so a country-wide notice from a far-away country does not clutter your

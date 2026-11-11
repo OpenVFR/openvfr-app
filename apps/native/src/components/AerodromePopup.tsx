@@ -20,6 +20,7 @@ import {
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { computeRunwayWind, type RunwayWindEnd } from '@open-vfr/shared/runwayWind'
 import { sunriseSunset, fmtSunTime } from '@open-vfr/shared/sunCalc'
+import { aerodromeClosure, closureLabel } from '@open-vfr/shared/aerodromeClosure'
 import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from '@open-vfr/shared/atcStatus'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import type { RoutePoint } from '@open-vfr/shared/notamRouteFilter'
@@ -238,6 +239,9 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
       return true
     })
     .map((n) => n.text)
+  const closure = feature.lat != null && feature.lng != null
+    ? aerodromeClosure(notams, { lat: feature.lat, lon: feature.lng })
+    : null
   const notamAtcHint = feature.towered && anyNotamAtcRelated(activeNotamTexts)
   const notamHoursHint = feature.towered && anyNotamHoursChangeRelated(activeNotamTexts)
   const atcColor = atc?.status === 'open' ? theme.statusOk : atc?.status === 'closed' ? theme.statusDanger : theme.textFaint
@@ -259,6 +263,9 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
                   ATC {atc.status === 'open' ? 'Open' : atc.status === 'closed' ? 'Closed' : '?'}
                 </Text>
               </View>
+            )}
+            {closure && (
+              <Text style={styles.closureBanner}>⛔ {closureLabel(closure)} — see NOTAMs</Text>
             )}
             {notamAtcHint && (
               <Text style={styles.notamHint}>⚠ Active NOTAM may affect ATC/tower — see NOTAMs</Text>
@@ -551,6 +558,13 @@ function makeStyles(theme: ScaledTheme) {
   atcBadgeTxt: {
     fontSize:   theme.textXs,
     fontWeight: '700',
+  },
+  closureBanner: {
+    color:    theme.statusDanger,
+    fontSize: theme.textXs,
+    fontWeight: '700',
+    marginTop: 3,
+    maxWidth: 260,
   },
   notamHint: {
     color:    theme.statusWarn,

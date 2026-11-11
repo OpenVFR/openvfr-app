@@ -120,6 +120,7 @@
     "./notamDesignator": "./src/notamDesignator.ts",
     "./notamMapLayers": "./src/notamMapLayers.ts",
     "./notamSchedule": "./src/notamSchedule.ts",
+    "./aerodromeClosure": "./src/aerodromeClosure.ts",
     "./atcStatus": "./src/atcStatus.ts",
     "./wxFormat": "./src/wxFormat.ts",
     "./wxStations": "./src/wxStations.ts",
