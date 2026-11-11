@@ -357,3 +357,38 @@
   justify-self: start;
   margin: 0;
 }
+
+.chipRanked {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  cursor: default;
+}
+
+.chipMain {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.chipRank {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.chipUp {
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border-default);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 4px;
+}
+.chipUp:hover { color: var(--text-primary); }

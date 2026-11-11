@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { parseAerodromesGeoJson, aerodromeToWaypoint, type AerodromeFeatureCollectionLike } from '@open-vfr/shared/findDestination'
 import { suggestFuelStops, type FuelStopResult, type FuelStopPlan } from '@open-vfr/shared/fuelStops'
-import { FUEL_LABELS } from '@open-vfr/shared/fuelTypes'
+import { FUEL_LABELS, preferenceLabel } from '@open-vfr/shared/fuelTypes'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride, AircraftProfileDocType } from '../db/index'
 import css from './FuelStopSuggest.module.css'
@@ -94,6 +94,7 @@ export default function FuelStopSuggest({ waypoints, legOverrides, aircraft, leg
                     <span className={css.name}>{s.aerodrome.name}</span>
                     <span className={css.meta}>
                       {s.fuels.length > 0 ? s.fuels.map(f => FUEL_LABELS[f]).join(', ') : s.aerodrome.fuel.join(', ')}
+                      {s.fuels.length > 0 && s.fuelRank > 0 && <span className={css.ppr}> ({preferenceLabel(s.fuelRank)} choice)</span>}
                       {' · '}{s.aerodrome.maxRunwayM > 0 ? `${s.aerodrome.maxRunwayM} m` : 'runway ?'}
                       {s.aerodrome.surfaces.length > 0 ? ` ${s.aerodrome.surfaces.join('/')}` : ''}
                       {' · '}{s.detourNm < 1 ? 'on track' : `+${s.detourNm.toFixed(0)} NM`}

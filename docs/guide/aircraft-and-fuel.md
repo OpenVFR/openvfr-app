@@ -75,7 +75,11 @@ All speeds are indicated airspeed (IAS) in knots, fuel is in litres.
 
 **Fuel**
 - **Fuel types:** the grades the engine is approved for (AVGAS 100LL,
-  AVGAS UL91, MOGAS, JET A-1). With at least one set, the destination
+  AVGAS UL91, MOGAS, JET A-1), in order of preference: the first is the
+  one you prefer (numbered 1), the others are approved alternatives. Tap a
+  grade to add it, tap a chosen one to remove it, and use the arrow to move
+  it up. Fuel-stop suggestions favour aerodromes with your preferred fuel
+  and say when a stop only has a later choice. With at least one set, the destination
   finder starts with the **Aircraft** fuel filter: aerodromes that list a
   matching fuel. Fuel listings come from the published aerodrome data and
   can be out of date: check the AIP or call ahead.

@@ -2,6 +2,9 @@
  * Fuel grades: the codes an aircraft profile lists, their labels, and
  * matching against the fuel codes in the aerodrome data.
  *
+ * A profile's list is in order of preference: the first grade is the one the
+ * pilot prefers, the others are approved alternatives.
+ *
  * Aerodrome data (`fuel` property of the aerodromes GeoJSON) uses codes such
  * as AVGAS, AVGAS_UL91, MOGAS, OCT91-98 (motor gasoline by octane) and A1
  * (jet fuel). Unknown codes never match.
@@ -28,7 +31,7 @@ function supplies(code: string, grade: FuelCode): boolean {
   }
 }
 
-/** Grades from `wanted` that an aerodrome with fuel codes `aerodromeFuel` sells. */
+/** Grades from `wanted` that an aerodrome with fuel codes `aerodromeFuel` sells, in `wanted`'s (preference) order. */
 export function matchingFuels(aerodromeFuel: readonly string[], wanted: readonly FuelCode[]): FuelCode[] {
   return wanted.filter(g => aerodromeFuel.some(c => supplies(c, g)))
 }
@@ -38,9 +41,28 @@ export function sellsAnyFuel(aerodromeFuel: readonly string[], wanted: readonly 
   return matchingFuels(aerodromeFuel, wanted).length > 0
 }
 
-/** Keep only known codes, in canonical order, without duplicates. */
+/**
+ * Position in the preference list of the best grade the aerodrome sells:
+ * 0 = the preferred grade, 1 = the second choice, ...; -1 when it sells none.
+ */
+export function fuelPreferenceRank(aerodromeFuel: readonly string[], wanted: readonly FuelCode[]): number {
+  return wanted.findIndex(g => aerodromeFuel.some(c => supplies(c, g)))
+}
+
+/** Keep only known codes, in the given (preference) order, without duplicates. */
 export function normalizeFuelCodes(v: unknown): FuelCode[] {
   if (!Array.isArray(v)) return []
-  const set = new Set(v.filter((x): x is string => typeof x === 'string').map(x => x.trim().toUpperCase()))
-  return FUEL_CODES.filter(c => set.has(c))
+  const known = new Set<string>(FUEL_CODES)
+  const out: FuelCode[] = []
+  for (const x of v) {
+    if (typeof x !== 'string') continue
+    const c = x.trim().toUpperCase()
+    if (known.has(c) && !out.includes(c as FuelCode)) out.push(c as FuelCode)
+  }
+  return out
+}
+
+/** "1st", "2nd", "3rd", "4th" for a 0-based preference rank. */
+export function preferenceLabel(rank: number): string {
+  return ['1st', '2nd', '3rd'][rank] ?? `${rank + 1}th`
 }

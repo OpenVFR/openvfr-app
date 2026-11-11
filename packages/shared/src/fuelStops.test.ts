@@ -101,6 +101,20 @@ describe('suggestFuelStops', () => {
     expect(suggestFuelStops(wps.map(({ fuelStop: _f, ...w }) => w), [], profile, []).status).toBe('none-found')
   })
 
+  it('prefers a stop with the preferred fuel', () => {
+    const pref = { ...profile, fuelTypes: ['MOGAS', 'AVGAS100LL'] as const }
+    const ads = [ad('AVGA', 200, 1), ad('MOGA', 205, 3, { fuel: ['MOGAS'] })]
+    const r = suggestFuelStops(route(400), [], pref, ads)
+    expect(r.status).toBe('found')
+    if (r.status !== 'found') return
+    expect(r.plans[0].stops[0].aerodrome.icao).toBe('MOGA')
+    expect(r.plans[0].stops[0].fuelRank).toBe(0)
+    expect(r.plans.find(p => p.stops[0].aerodrome.icao === 'AVGA')?.stops[0].fuelRank).toBe(1)
+    // Without a preference penalty the shorter detour wins.
+    const r2 = suggestFuelStops(route(400), [], pref, ads, undefined, { fuelRankPenaltyMin: 0 })
+    if (r2.status === 'found') expect(r2.plans[0].stops[0].aerodrome.icao).toBe('AVGA')
+  })
+
   it('reports missing profile data', () => {
     expect(suggestFuelStops(route(400), [], { ...profile, maxFuelL: 0 }, []).status).toBe('missing-profile-data')
   })

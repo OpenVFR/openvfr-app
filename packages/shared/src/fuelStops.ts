@@ -12,7 +12,8 @@
  *
  * The search is a shortest path over the route's own points plus the
  * candidate aerodromes, ordered along the route: cost = flying time plus a
- * fixed penalty per stop plus a small term that grows with the square of each
+ * fixed penalty per stop (more for a stop without the aircraft's preferred
+ * fuel) plus a small term that grows with the square of each
  * hop's time (so hops of similar length win over a stop just after take-off)
  * and a minute per litre a hop's spare fuel falls below 15 % of the tanks,
  * with at most `maxStops` new stops. Route points already marked `fuelStop`
@@ -43,12 +44,16 @@ export interface FuelStopOptions {
   maxCandidates?: number
   /** ICAO codes never suggested. */
   excludeIcaos?: readonly string[]
+  /** Minutes added per step down the aircraft's fuel preference list (2nd choice = 1 step). Default 15. */
+  fuelRankPenaltyMin?: number
 }
 
 export interface FuelStop {
   aerodrome: AerodromeEntry
-  /** Aircraft fuel grades the aerodrome lists; empty when the profile has none set. */
+  /** Aircraft fuel grades the aerodrome lists, best preferred first; empty when the profile has none set. */
   fuels: FuelCode[]
+  /** Preference rank of the best grade on offer: 0 = the aircraft's preferred fuel. 0 when no fuel types are set. */
+  fuelRank: number
   /** Index in the original route after which the stop goes. */
   insertAfter: number
   /** Extra distance the stop adds to the leg it splits, NM. */
@@ -126,6 +131,7 @@ export function suggestFuelStops(
   const maxDetourNm   = opts.maxDetourNm   ?? 25
   const maxStops      = opts.maxStops      ?? 3
   const stopPenalty   = opts.stopPenaltyMin ?? 30
+  const rankPenalty   = opts.fuelRankPenaltyMin ?? 15
   const maxPlans      = opts.maxPlans      ?? 3
   const maxCandidates = opts.maxCandidates ?? 60
   const capacity      = profile.maxFuelL
@@ -162,7 +168,7 @@ export function suggestFuelStops(
       if (d < bestDetour) { bestDetour = d; best = i }
     }
     if (best < 0 || bestDetour > maxDetourNm) continue
-    candidates.push({ aerodrome: a, fuels, insertAfter: best, detourNm: Math.max(0, bestDetour) })
+    candidates.push({ aerodrome: a, fuels, fuelRank: fuelTypesUnset ? 0 : wanted.indexOf(fuels[0]), insertAfter: best, detourNm: Math.max(0, bestDetour) })
   }
   candidates.sort((x, y) => x.detourNm - y.detourNm)
   candidates.length = Math.min(candidates.length, maxCandidates)
@@ -238,7 +244,7 @@ export function suggestFuelStops(
             const h = hop(i, j)
             if (h) {
               const thin = Math.max(0, COMFORT_L - (capacity - h.minFuelL))
-              const c = cost[s][i] + h.enrouteMins + BALANCE * h.enrouteMins * h.enrouteMins + thin + (nj.stop ? stopPenalty : 0)
+              const c = cost[s][i] + h.enrouteMins + BALANCE * h.enrouteMins * h.enrouteMins + thin + (nj.stop ? stopPenalty + rankPenalty * nj.stop.fuelRank : 0)
               if (c < cost[s2][j]) { cost[s2][j] = c; prev[s2][j] = [s, i] }
             }
           }

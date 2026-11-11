@@ -3,7 +3,7 @@ import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import type { AircraftProfileDocType, AircraftCategory } from '../db/index'
 import { extractPohViaServer, RateLimitError } from '../utils/pohExtract'
 import { POH_FIELDS, type PohField } from '@open-vfr/shared/pohImport'
-import { FUEL_CODES, FUEL_LABELS, normalizeFuelCodes } from '@open-vfr/shared/fuelTypes'
+import { FUEL_CODES, FUEL_LABELS, normalizeFuelCodes, preferenceLabel } from '@open-vfr/shared/fuelTypes'
 import type { FuelCode, TransponderMode } from '@open-vfr/shared/types'
 import PohAssistantImport from './PohAssistantImport'
 import { useSyncRejected } from '../sync/cloudSync'
@@ -601,23 +601,42 @@ export default function AircraftLibrary({
           <>
             <div className={css.sectionLabel}>Fuel</div>
             <div className={css.field}>
-              <span className={css.fieldLabel} title="Fuel grades the engine is approved for. Used to find aerodromes that sell a suitable fuel.">Fuel types</span>
-              <div className={css.chips} role="group" aria-label="Fuel types">
-                {FUEL_CODES.map(code => {
-                  const on = form.fuelTypes.includes(code)
-                  return (
+              <span className={css.fieldLabel} title="Fuel grades the engine is approved for, in order of preference: the first is the one you prefer. Used to find aerodromes that sell a suitable fuel; fuel stops with your preferred fuel rank higher.">Fuel types</span>
+              <div className={css.chips} role="group" aria-label="Fuel types, in order of preference">
+                {form.fuelTypes.map((code, idx) => (
+                  <span key={code} className={`${css.chip} ${css.chipActive} ${css.chipRanked}`}>
                     <button
-                      key={code}
                       type="button"
-                      className={`${css.chip}${on ? ` ${css.chipActive}` : ''}`}
-                      aria-pressed={on}
-                      onClick={() => setForm(f => ({
-                        ...f,
-                        fuelTypes: on ? f.fuelTypes.filter(c => c !== code) : normalizeFuelCodes([...f.fuelTypes, code]),
-                      }))}
-                    >{FUEL_LABELS[code]}</button>
-                  )
-                })}
+                      className={css.chipMain}
+                      aria-pressed={true}
+                      title={`${preferenceLabel(idx)} choice. Click to remove.`}
+                      onClick={() => setForm(f => ({ ...f, fuelTypes: f.fuelTypes.filter(c => c !== code) }))}
+                    ><span className={css.chipRank}>{idx + 1}</span>{FUEL_LABELS[code]}</button>
+                    {idx > 0 && (
+                      <button
+                        type="button"
+                        className={css.chipUp}
+                        aria-label={`Prefer ${FUEL_LABELS[code]} over ${FUEL_LABELS[form.fuelTypes[idx - 1]]}`}
+                        title="Move up (more preferred)"
+                        onClick={() => setForm(f => {
+                          const next = [...f.fuelTypes]
+                          ;[next[idx - 1], next[idx]] = [next[idx], next[idx - 1]]
+                          return { ...f, fuelTypes: next }
+                        })}
+                      >↑</button>
+                    )}
+                  </span>
+                ))}
+                {FUEL_CODES.filter(code => !form.fuelTypes.includes(code)).map(code => (
+                  <button
+                    key={code}
+                    type="button"
+                    className={css.chip}
+                    aria-pressed={false}
+                    title="Add as an approved fuel (after the ones already chosen)"
+                    onClick={() => setForm(f => ({ ...f, fuelTypes: normalizeFuelCodes([...f.fuelTypes, code]) }))}
+                  >{FUEL_LABELS[code]}</button>
+                ))}
               </div>
             </div>
             <Field label="Burn"         unit="L/h" type="number" value={form.fuelBurnLhr}  error={errors.fuelBurnLhr}  tooltip="Cruise fuel consumption in litres per hour." {...poh('fuelBurnLhr')} onChange={v => set('fuelBurnLhr', v)} />

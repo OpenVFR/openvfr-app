@@ -61,7 +61,7 @@ describe('parsePohReply', () => {
 
   it('reads fuel grades in the forms a POH or model writes them', () => {
     expect(parsePohReply('{"fuelTypes":["AVGAS100LL","MOGAS"]}').fuelTypes).toEqual(['AVGAS100LL', 'MOGAS'])
-    expect(parseFuelGrades(['100LL', 'UL 91', 'unleaded EN 228', 'Jet A-1', 'kerosene'])).toEqual(['AVGAS100LL', 'AVGAS_UL91', 'MOGAS', 'JETA1'])
+    expect(parseFuelGrades(['unleaded EN 228', 'UL 91', '100LL', 'Jet A-1', 'kerosene'])).toEqual(['MOGAS', 'AVGAS_UL91', 'AVGAS100LL', 'JETA1'])
     expect(parseFuelGrades('AVGAS 100LL / MOGAS')).toEqual(['AVGAS100LL', 'MOGAS'])
     expect(parsePohReply('{"cruiseIas":100}').fuelTypes).toEqual([])
   })

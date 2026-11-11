@@ -68,7 +68,7 @@ export function buildPohPrompt(): string {
     '',
     'Fields:',
     ...lines,
-    `- "fuelTypes": array of the fuel grades the engine is approved for, using only these codes: ${FUEL_CODES.map(c => `"${c}"`).join(', ')} (MOGAS = motor gasoline / unleaded car fuel; JETA1 also for diesel engines).`,
+    `- "fuelTypes": array of the fuel grades the engine is approved for, using only these codes: ${FUEL_CODES.map(c => `"${c}"`).join(', ')} (MOGAS = motor gasoline / unleaded car fuel; JETA1 also for diesel engines). Put the grade the document recommends first.`,
     '',
     'Answer with ONLY one JSON object in this shape, nothing else:',
     '{"name": "...", "cruiseIas": 105, "fuelTypes": ["AVGAS100LL"], "pages": {"name": 1, "cruiseIas": 34}}',
@@ -94,7 +94,7 @@ export interface PohReply {
  */
 export function parseFuelGrades(v: unknown): FuelCode[] {
   const items = Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[,;/]/) : []
-  const out = new Set<FuelCode>()
+  const out = new Set<FuelCode>()   // insertion order = order named
   for (const item of items) {
     if (typeof item !== 'string') continue
     const s = item.toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -105,7 +105,8 @@ export function parseFuelGrades(v: unknown): FuelCode[] {
     else if (s.includes('MOGAS') || s.includes('EN228') || s.includes('UNLEADED') || s.includes('RON') || s.includes('OCT')) out.add('MOGAS')
     else if (s === 'AVGAS') out.add('AVGAS100LL')
   }
-  return FUEL_CODES.filter(c => out.has(c))
+  // In the order the reply names them (a POH often lists the recommended grade first).
+  return [...out]
 }
 
 /** Thrown when a pasted reply has no usable JSON object. The message is for the pilot. */
