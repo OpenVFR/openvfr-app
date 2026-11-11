@@ -26,9 +26,14 @@ function Source({ p }: { p?: DetailProvenance }) {
   return (
     <span className={css.source}>
       {p.review === 'pending' && <span className={css.pending} title="Not reviewed yet: shown in a preview build only">unreviewed</span>}
-      {p.source_name && (p.source_url
-        ? <a href={p.source_url} target="_blank" rel="noopener noreferrer">{p.source_name}</a>
-        : p.source_name)}
+      {(p.sources?.length ? p.sources : [p]).map((q, i) => q.source_name && (
+        <span key={i} className={css.sourceItem}>
+          {i > 0 && '· '}
+          {q.source_url
+            ? <a href={q.source_url} target="_blank" rel="noopener noreferrer">{q.source_name}</a>
+            : q.source_name}
+        </span>
+      ))}
     </span>
   )
 }

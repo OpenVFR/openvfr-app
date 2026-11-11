@@ -109,6 +109,17 @@ describe('circuitTurnArrow', () => {
   })
 })
 
+describe('provenance sources', () => {
+  it('keeps every source of a merged field, https links only', () => {
+    const info = localInfo({ circuits: [], provenance: { circuits: { source_name: 'LFV eAIP Sweden', source_url: 'https://aip/x',
+      sources: [{ source_name: 'LFV eAIP Sweden', source_url: 'https://aip/x', method: 'official' },
+        { source_name: 'nsf.se', source_url: 'javascript:alert(1)', method: 'unofficial' }] } } })
+    expect(info.provenance['circuits']!.sources).toEqual([
+      { source_name: 'LFV eAIP Sweden', source_url: 'https://aip/x', method: 'official' },
+      { source_name: 'nsf.se', source_url: null, method: 'unofficial' }])
+  })
+})
+
 describe('holdings', () => {
   it('orbit: left is counter-clockwise, on a circle of ORBIT_RADIUS_NM around the point', () => {
     const c: [number, number] = [13.3275, 55.535]

@@ -94,6 +94,8 @@ export interface DetailProvenance {
   method?: string
   /** "pending": unreviewed value in a local preview build. */
   review?: 'pending'
+  /** Every source of a field merged from several (best first), when there is more than one. */
+  sources?: { source_name?: string; source_url: string | null; method?: string }[]
 }
 
 function parseProvenance(v: unknown): DetailProvenance | undefined {
@@ -105,6 +107,10 @@ function parseProvenance(v: unknown): DetailProvenance | undefined {
     source_url: url,
     ...(typeof o['method'] === 'string' ? { method: o['method'] } : {}),
     ...(o['review'] === 'pending' ? { review: 'pending' as const } : {}),
+    ...(Array.isArray(o['sources']) && o['sources'].length > 1 ? {
+      sources: o['sources'].slice(0, 8).map(parseProvenance).filter((x): x is DetailProvenance => !!x?.source_name)
+        .map(x => ({ source_name: x.source_name, source_url: x.source_url ?? null, ...(x.method ? { method: x.method } : {}) })),
+    } : {}),
   }
 }
 
