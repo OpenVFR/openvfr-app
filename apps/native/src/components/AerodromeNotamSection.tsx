@@ -126,7 +126,7 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
             <TouchableOpacity key={n.nmsId} style={styles.notamRow} onPress={() => toggleNotam(n.nmsId)}>
               <Text style={styles.notamId}>{notamTitle(n)} {expanded ? '▴' : '▾'}</Text>
               {n.effective && (
-                <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}{notamStatus(n).state === 'scheduled' ? ' · off schedule now' : ''}</Text>
+                <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}{notamStatus(n).state === 'scheduled' ? ` · ${notamStatus(n).label.toLowerCase()}` : ''}</Text>
               )}
               {!expanded && <Text style={styles.notamPreview} numberOfLines={1}>{previewText(n.text)}</Text>}
               {expanded && <Text style={[styles.notamText, textView === 'raw' && styles.rawText]}><NotamBody text={notamText(n, textView)} /></Text>}

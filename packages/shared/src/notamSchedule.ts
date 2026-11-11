@@ -293,6 +293,26 @@ export function scheduleOverlaps(
   return false
 }
 
+/**
+ * First minute at or after `fromMs` (looking up to `maxMs` ahead) where the
+ * schedule is active (`active` true) or inactive (false); null when none.
+ */
+export function nextScheduleChange(
+  s: NotamSchedule, pos: { lat: number; lon: number }, fromMs: number, maxMs: number, active: boolean,
+): number | null {
+  const MIN = 60_000
+  const at = (t: number) => scheduleOverlaps(s, t, t + MIN, pos)
+  const coarse = 15 * MIN
+  for (let t = fromMs; t <= fromMs + maxMs; t += coarse) {
+    if (at(t) !== active) continue
+    // The change happened in (t - coarse, t]: refine to the minute.
+    let lo = Math.max(fromMs, t - coarse)
+    while (lo < t && at(lo) !== active) lo += MIN
+    return lo
+  }
+  return null
+}
+
 /** Position to evaluate sun times at: the NOTAM's own point or first vertex. */
 export function notamPosition(n: {
   lat: number | null; lon: number | null

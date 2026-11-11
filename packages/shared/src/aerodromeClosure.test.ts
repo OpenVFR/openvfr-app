@@ -37,7 +37,7 @@ describe('aerodromeClosure', () => {
   it('plain closure now, until the end', () => {
     const c = aerodromeClosure([notam({})], AD, now)!
     expect(c.state).toBe('closed')
-    expect(closureLabel(c, now)).toBe('Closed now until Mon 0000Z')
+    expect(closureLabel(c, now)).toBe('Closed now until Mon 00:00Z')
   })
   it('open-ended closure', () => {
     const c = aerodromeClosure([notam({ expires: null })], AD, now)!
@@ -49,17 +49,17 @@ describe('aerodromeClosure', () => {
   it('starts soon / later than the window', () => {
     const soon = aerodromeClosure([notam({ effective: '2026-11-10T20:00:00Z' })], AD, now)!
     expect(soon.state).toBe('soon')
-    expect(closureLabel(soon, now)).toBe('Closed from 2000Z')
+    expect(closureLabel(soon, now)).toBe('Closed from 20:00Z')
     expect(aerodromeClosure([notam({ effective: '2026-11-15T20:00:00Z' })], AD, now)).toBeNull()
   })
   it('scheduled closure: closed now only inside the schedule, with its end', () => {
     const n = notam({ schedule: 'MON-FRI 1000-1400' }) // Tue 10 Nov 2026
     const inside = aerodromeClosure([n], AD, at('2026-11-10T12:00:00Z'))!
     expect(inside.state).toBe('closed')
-    expect(closureLabel(inside, at('2026-11-10T12:00:00Z'))).toBe('Closed now until 1400Z')
+    expect(closureLabel(inside, at('2026-11-10T12:00:00Z'))).toBe('Closed now until 14:00Z')
     const outside = aerodromeClosure([n], AD, at('2026-11-10T15:00:00Z'))!
     expect(outside.state).toBe('scheduled')
-    expect(closureLabel(outside, at('2026-11-10T15:00:00Z'))).toBe('Closed at scheduled times, next from Wed 1000Z')
+    expect(closureLabel(outside, at('2026-11-10T15:00:00Z'))).toBe('Closed at scheduled times, next from Wed 10:00Z')
   })
   it('unreadable schedule is never "closed now"', () => {
     const c = aerodromeClosure([notam({ schedule: 'WHEN RAINING' })], AD, now)!
@@ -75,7 +75,7 @@ describe('aerodromeClosure', () => {
   })
   it('estimated end is marked', () => {
     const c = aerodromeClosure([notam({ estimated: true, expires: '2026-11-10T18:00:00Z' })], AD, now)!
-    expect(closureLabel(c, now)).toBe('Closed now until 1800Z (est.)')
+    expect(closureLabel(c, now)).toBe('Closed now until 18:00Z (est.)')
   })
   it('prefers closed-now over scheduled, full over partial', () => {
     const a = notam({ schedule: 'MON-FRI 0600-0800', nmsId: 'a' })

@@ -76,9 +76,12 @@ source: it is not a substitute for official national NOTAM and AIP sources.
   pin per position, not as an area.
 - **Coordinates in the text** are tappable: tap one to mark that point on the
   map.
+- **Off schedule:** a NOTAM that is inside its dates but outside its daily or
+  weekly schedule (item D) is marked "Off schedule" with the next time it
+  applies, such as "Off schedule · next Wed 10:00Z".
 - **Per aerodrome:** the NOTAM tab of the aerodrome card.
 - **Closed aerodrome:** an aerodrome whose own NOTAM closes it shows a red
-  line under its name, such as "Closed now until 1400Z". A closure that only
+  line under its name, such as "Closed now until 14:00Z". A closure that only
   applies at scheduled times says "Closed at scheduled times" and is not
   called "closed now" outside them. "Closed except ..." or "closed to ..."
   wording shows as "Restricted". If the schedule cannot be read the card says

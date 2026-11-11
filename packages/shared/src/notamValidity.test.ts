@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { notamValidity, fmtUtcClock } from './notamValidity'
+import { notamValidity, notamStatus, fmtUtcClock } from './notamValidity'
 
 const now = Date.UTC(2026, 5, 10, 12, 0)
 const iso = (h: number, m = 0, day = 10) => new Date(Date.UTC(2026, 5, day, h, m)).toISOString()
@@ -26,4 +26,23 @@ describe('notamValidity', () => {
 
 describe('fmtUtcClock', () => {
   it('formats UTC', () => expect(fmtUtcClock(Date.UTC(2026, 0, 1, 7, 5))).toBe('07:05Z'))
+})
+
+describe('notamStatus with a schedule', () => {
+  const n = {
+    text: 'TEMPORARY RESTRICTED AREA ACT', effective: '2026-11-01T00:00:00Z', expires: '2026-11-30T00:00:00Z',
+    icao: { schedule: 'MON-FRI 1000-1400' }, lat: 59.65, lon: 17.93,
+  }
+  it('in force inside the schedule', () => {
+    expect(notamStatus(n, Date.parse('2026-11-10T12:00:00Z')).state).toBe('active')
+  })
+  it('off schedule says when it next applies', () => {
+    const v = notamStatus(n, Date.parse('2026-11-10T15:00:00Z'))
+    expect(v.state).toBe('scheduled')
+    expect(v.label).toBe('Off schedule · next Wed 10:00Z')
+  })
+  it('same-day next start has no weekday', () => {
+    const v = notamStatus(n, Date.parse('2026-11-10T08:00:00Z'))
+    expect(v.label).toBe('Off schedule · next 10:00Z')
+  })
 })

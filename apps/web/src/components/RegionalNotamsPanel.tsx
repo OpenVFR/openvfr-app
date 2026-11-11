@@ -107,7 +107,8 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, r
         const exp = fmtNotamDate(n.expires)
         const hasGeo = n.polygon !== null || (n.lat !== null && n.lon !== null && n.radiusNm !== null)
         const isMilitary = n.classification === 'MILITARY'
-        const offSchedule = notamStatus(n).state === 'scheduled'
+        const status = notamStatus(n)
+        const offSchedule = status.state === 'scheduled'
         return (
           <div key={n.nmsId} className={css.item}>
             <div className={css.toggle}>
@@ -118,7 +119,7 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, r
               >
                 {n.icaoLocation && <span className={css.locBadge}>{n.icaoLocation}</span>}
                 {isMilitary && <span className={css.milBadge}>MIL</span>}
-                {offSchedule && <span className={css.offBadge} title="Inside its validity dates, but outside its daily/weekly schedule right now">OFF SCHEDULE</span>}
+                {offSchedule && <span className={css.offBadge} title="Inside its validity dates, but outside its daily/weekly schedule right now">{status.label.toUpperCase()}</span>}
                 <span className={css.id}>{notamTitle(n)}</span>
                 <span className={css.period}>{eff}{exp ? ` – ${exp}` : ''}</span>
                 <span className={css.chevron}>{expanded ? <IconChevronUp size={14} aria-hidden="true" /> : <IconChevronDown size={14} aria-hidden="true" />}</span>

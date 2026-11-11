@@ -14,8 +14,8 @@
  *    "closed now" outside those times.
  */
 import type { NotamItem } from './fetchNotam'
-import { notamValidity } from './notamValidity'
-import { notamScheduleFor, scheduleOverlaps, type NotamSchedule } from './notamSchedule'
+import { fmtUtcClock, notamValidity } from './notamValidity'
+import { nextScheduleChange, notamScheduleFor, scheduleOverlaps } from './notamSchedule'
 
 export type ClosureState =
   /** In force right now. */
@@ -76,22 +76,6 @@ function isPartial(text: string): boolean {
 
 const MIN = 60_000
 
-/** First instant at or after `fromMs` (within `maxMs`) where the schedule is (`on`=true) or is not (`on`=false) active; minute precision. */
-function nextTransition(
-  s: NotamSchedule, pos: { lat: number; lon: number }, fromMs: number, maxMs: number, on: boolean,
-): number | null {
-  const at = (t: number) => scheduleOverlaps(s, t, t + MIN, pos)
-  const coarse = 15 * MIN
-  for (let t = fromMs; t <= fromMs + maxMs; t += coarse) {
-    if (at(t) !== on) continue
-    // The change happened in (t - coarse, t]: refine to the minute.
-    let lo = Math.max(fromMs, t - coarse)
-    while (lo < t && at(lo) !== on) lo += MIN
-    return lo
-  }
-  return null
-}
-
 /**
  * The most relevant closure among an aerodrome's NOTAMs: one in force now
  * beats a scheduled one, which beats one that starts soon; a full closure
@@ -142,19 +126,16 @@ function classify(
   const inForce = scheduleOverlaps(sched, nowMs, nowMs + MIN, pos)
   const text = itemD ?? 'scheduled'
   if (inForce) {
-    const off = nextTransition(sched, pos, nowMs, 48 * 3_600_000, false)
+    const off = nextScheduleChange(sched, pos, nowMs, 48 * 3_600_000, false)
     const until = off !== null ? (end !== null ? Math.min(off, end) : off) : end
     return { ...base, state: 'closed', untilMs: until, scheduleText: text }
   }
-  const on = nextTransition(sched, pos, nowMs, CLOSURE_SOON_MS * 2, true)
+  const on = nextScheduleChange(sched, pos, nowMs, CLOSURE_SOON_MS * 2, true)
   const next = on !== null && (end === null || on < end) ? on : null
   return { ...base, state: 'scheduled', untilMs: next, scheduleText: text }
 }
 
-const hhmm = (ms: number): string => {
-  const d = new Date(ms)
-  return `${String(d.getUTCHours()).padStart(2, '0')}${String(d.getUTCMinutes()).padStart(2, '0')}Z`
-}
+const hhmm = fmtUtcClock
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 /** "07:45Z" today, "Tue 07:45Z" on another day. */

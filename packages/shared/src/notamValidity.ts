@@ -9,7 +9,7 @@
  * compare two UTC timestamps against the clock in their head.
  */
 
-import { isOffSchedule } from './notamSchedule'
+import { isOffSchedule, nextScheduleChange, notamPosition, notamScheduleFor } from './notamSchedule'
 
 export type ValidityState = 'active' | 'scheduled' | 'upcoming' | 'ended' | 'unknown'
 
@@ -58,6 +58,12 @@ export function fmtUtcClock(now: number = Date.now()): string {
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}Z`
 }
 
+/** "10:00Z" on the same UTC day as `now`, else "Wed 10:00Z". */
+function fmtUtcDayClock(ms: number, now: number): string {
+  const same = Math.floor(ms / 86_400_000) === Math.floor(now / 86_400_000)
+  return same ? fmtUtcClock(ms) : `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(ms).getUTCDay()]} ${fmtUtcClock(ms)}`
+}
+
 /**
  * notamValidity plus the NOTAM's own schedule (item D / leading E text):
  * inside B)-C) but outside every scheduled period within `horizonMs` ->
@@ -71,6 +77,14 @@ export function notamStatus(
 ): ValidityStatus {
   const v = notamValidity(n.effective, n.expires, now)
   if (v.state === 'active' && isOffSchedule(n, now, now + Math.max(horizonMs, 60_000))) {
+    // When it next applies, if that is within two days: "Off schedule · next Wed 10:00Z".
+    const sched = notamScheduleFor(n)
+    const pos = notamPosition(n)
+    const next = sched && pos ? nextScheduleChange(sched, pos, now, 48 * 3_600_000, true) : null
+    const end = n.expires ? Date.parse(n.expires) : NaN
+    if (next !== null && (Number.isNaN(end) || next < end)) {
+      return { state: 'scheduled', label: `Off schedule · next ${fmtUtcDayClock(next, now)}` }
+    }
     return { state: 'scheduled', label: 'Off schedule' }
   }
   return v
