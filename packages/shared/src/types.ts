@@ -80,10 +80,31 @@ export type AircraftProfileDocType = {
   vnoKts?: number
   vneKts?: number
   vxKts?: number
+  /**
+   * Set when an AI assistant created or changed the profile through the
+   * assistant connection; cleared when the pilot saves it in the app. The app
+   * marks the aircraft "check before use" while it is set.
+   */
+  assistantReview?: AssistantReview
   updatedAt: number
 }
 
 /** Fuel grades an aircraft profile can list. Matched against aerodrome fuel data in `fuelTypes.ts`. */
+/** Who changed a profile through the assistant connection, and what. */
+/** Short text for the "check before use" mark, e.g. "Added by Claude". */
+export function assistantReviewLabel(r: AssistantReview): string {
+  return r.change === 'created' ? `Added by ${r.by}` : `Changed by ${r.by}: ${r.change.join(', ')}`
+}
+
+export interface AssistantReview {
+  /** The assistant's name (OAuth client name). */
+  by: string
+  /** Epoch ms. */
+  at: number
+  /** 'created', or the fields changed. */
+  change: 'created' | readonly string[]
+}
+
 /** Transponder capability: none, mode A (code only), C (with pressure altitude) or S. */
 export type TransponderMode = 'none' | 'A' | 'C' | 'S'
 

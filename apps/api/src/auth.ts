@@ -53,7 +53,9 @@ export const MCP_RESOURCE = `${(BASE_URL ?? '').replace(/\/+$/, '')}/mcp`
 export const SCOPE_BRIEFING = 'briefing:read'
 /** Read the user's saved routes and aircraft profiles (a separate consent). */
 export const SCOPE_ROUTES = 'routes:read'
-const MCP_SCOPES = ['openid', 'offline_access', SCOPE_BRIEFING, SCOPE_ROUTES]
+/** Create and change the user's aircraft profiles (a separate consent, off by default on the consent page). */
+export const SCOPE_AIRCRAFT_WRITE = 'aircraft:write'
+const MCP_SCOPES = ['openid', 'offline_access', SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_AIRCRAFT_WRITE]
 
 // Origin of the separately deployed admin UI (e.g. https://admin.<domain>).
 // Optional. When set it is trusted for sign-in (incl. passkeys) and is the
@@ -221,10 +223,11 @@ async function notifyAssistantConnected(ctx: Parameters<Parameters<typeof create
     let who = 'not verified: it registered itself and chose its own name'
     if (/^https:\/\//i.test(clientId)) { try { who = `verified: published by ${new URL(clientId).host}` } catch { /* keep */ } }
     const reads = scopes.includes(SCOPE_ROUTES) ? 'briefings, aerodromes, weather and NOTAMs, and your saved routes and aircraft' : 'briefings, aerodromes, weather and NOTAMs'
+    const writes = scopes.includes(SCOPE_AIRCRAFT_WRITE) ? 'It can also add and change your aircraft profiles (never delete them); each change is marked "check before use" in the app.' : 'It cannot change anything.'
     await sendEmail({
       to: session.user.email,
       subject: `${name} was connected to your OpenVFR account`,
-      text: `${name} (${who}) was connected to your OpenVFR account (${session.user.email}) at ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC.\n\nIt can read: ${reads}. It cannot change anything.\n\nIf this wasn't you: open OpenVFR, your account, AI assistants, and choose Disconnect. Then sign out on your devices.`,
+      text: `${name} (${who}) was connected to your OpenVFR account (${session.user.email}) at ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC.\n\nIt can read: ${reads}. ${writes}\n\nIf this wasn't you: open OpenVFR, your account, AI assistants, and choose Disconnect. Then sign out on your devices.`,
     })
   } catch (err) {
     console.warn('[auth] assistant connection email failed:', err)

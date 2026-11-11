@@ -38,7 +38,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createHmac } from 'node:crypto'
-import { auth, isReviewAccountEmail, ASSISTANT_MCP, MCP_RESOURCE, SCOPE_BRIEFING, SCOPE_ROUTES, APP_ORIGIN } from './auth'
+import { auth, isReviewAccountEmail, ASSISTANT_MCP, MCP_RESOURCE, SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_AIRCRAFT_WRITE, APP_ORIGIN } from './auth'
+import { upsertUserAircraft } from './briefingData'
 import { createMcpEndpoint } from './mcp'
 import { admin } from './admin'
 import { AUTHENTICATED_ROLE, assertAuthenticatedRoleExists } from './pgRoles'
@@ -843,6 +844,12 @@ if (ASSISTANT_MCP) {
     resource: MCP_RESOURCE,
     scopeBriefing: SCOPE_BRIEFING,
     scopeRoutes: SCOPE_ROUTES,
+    scopeAircraftWrite: SCOPE_AIRCRAFT_WRITE,
+    saveAircraft: upsertUserAircraft,
+    clientName: async (clientId) => {
+      const { rows } = await dbPool.query<{ name: string | null }>('SELECT name FROM ba_oauth_client WHERE "clientId" = $1', [clientId])
+      return rows[0]?.name || 'an AI assistant'
+    },
     takeBriefing: (userId) => briefingLimiter.take(userId).waitS <= 0,
     jwksUrl: `http://127.0.0.1:${PORT}/api/auth/jwks`,
   })

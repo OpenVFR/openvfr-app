@@ -65,6 +65,27 @@ export async function userRoutes(userId: string): Promise<RouteDocType[]> {
   return rows.map(r => routeRows.fromServer(r)).filter((r): r is RouteDocType => !!r)
 }
 
+/**
+ * Create or replace one of the user's aircraft profiles through PostgREST as
+ * that user (row-level security: only their own rows). Same row shape the
+ * apps sync, so the profile reaches web and native on their next sync.
+ */
+export async function upsertUserAircraft(userId: string, doc: AircraftProfileDocType): Promise<void> {
+  if (!POSTGREST_URL) throw new Error('POSTGREST_INTERNAL_URL is not set')
+  const { jwt } = mintPostgrestJwt({ id: userId }, 60)
+  const res = await fetch(`${POSTGREST_URL}/user_aircraft_profiles`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${jwt}`,
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify(aircraftRows.toServer(doc, userId)),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  })
+  if (!res.ok) throw new Error(`PostgREST user_aircraft_profiles upsert -> ${res.status} ${(await res.text()).slice(0, 200)}`)
+}
+
 /** The user's aircraft profiles. */
 export async function userAircraft(userId: string): Promise<AircraftProfileDocType[]> {
   const rows = await postgrestGet(userId, '/user_aircraft_profiles?select=*&limit=100')

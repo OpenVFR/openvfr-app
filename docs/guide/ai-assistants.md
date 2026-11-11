@@ -18,6 +18,8 @@ panel then has an **AI assistants** section.
 - "What's the weather and are there NOTAMs at ESKN?"
 - "Is the crosswind at ESGG OK for my aircraft right now?"
 - "Where can I refuel on my route to Umeå?"
+- "Add a new aircraft SE-ABC, a Cessna 182, from the attached POH."
+- "Set SE-ABC's maximum crosswind to 15 kt."
 
 A briefing gives distance, time and fuel per hop, METAR/TAF and NOTAMs at the
 departure, fuel stops and destination, and the pre-flight warnings
@@ -43,8 +45,12 @@ The approval page says whether OpenVFR could check who the assistant is:
 name, so only allow it if you just added it yourself. Every new connection
 is confirmed by email; if you did not make it, disconnect it (below).
 
-The assistant can only read. It cannot change your account, routes or
-aircraft, and it never sees your flight logs or position. Only connect
+The assistant only reads, unless you also tick **add and change your
+aircraft profiles** (never preselected). Then it can add aircraft and change
+their values, but never delete one. An aircraft an assistant added or changed
+shows **Check before use** in the aircraft list and in the pre-flight check
+until you open it in the app, compare it with the POH and save it. The
+assistant never sees your flight logs or position. Only connect
 assistants you trust: OpenVFR does not check them.
 
 ## Disconnect

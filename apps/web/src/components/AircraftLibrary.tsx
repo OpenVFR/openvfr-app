@@ -4,7 +4,7 @@ import type { AircraftProfileDocType, AircraftCategory } from '../db/index'
 import { extractPohViaServer, RateLimitError } from '../utils/pohExtract'
 import { POH_FIELDS, type PohField } from '@open-vfr/shared/pohImport'
 import { FUEL_CODES, FUEL_LABELS, normalizeFuelCodes, preferenceLabel } from '@open-vfr/shared/fuelTypes'
-import type { FuelCode, TransponderMode } from '@open-vfr/shared/types'
+import { assistantReviewLabel, type FuelCode, type TransponderMode } from '@open-vfr/shared/types'
 import PohAssistantImport from './PohAssistantImport'
 import { useSyncRejected } from '../sync/cloudSync'
 import SyncRefusedNote from './SyncRefusedNote'
@@ -398,7 +398,8 @@ export default function AircraftLibrary({
     setSaving(true)
     try {
       // Keep fields this form does not edit (added by a newer app version) on an existing profile.
-      const existing = mode === 'new' ? undefined : profiles.find(p => p.id === mode)
+      // Saving in the app is the pilot's review: an assistant's mark goes.
+      const { assistantReview: _reviewed, ...existing } = (mode === 'new' ? undefined : profiles.find(p => p.id === mode)) ?? {}
       await saveProfile({
         ...existing,
         id:               mode === 'new' ? undefined : mode,
@@ -471,6 +472,9 @@ export default function AircraftLibrary({
                   <span className={css.itemName}>
                     {p.name}
                     <span className={css.categoryBadge}>{p.category ?? 'SEP'}</span>
+                    {p.assistantReview && (
+                      <span className={css.reviewBadge} title={`${assistantReviewLabel(p.assistantReview)}. Check the values against the POH, then open and save the aircraft.`}>Check before use</span>
+                    )}
                   </span>
                   <span className={css.itemMeta}>
                     {p.registration || '—'} · {p.icaoType || '—'} · {p.cruiseIas} kts

@@ -229,6 +229,17 @@ export function computeWarnings(
     })
   }
 
+  // ── 0b. Aircraft profile written by an AI assistant, not yet reviewed ───
+  if (aircraft?.assistantReview) {
+    const r = aircraft.assistantReview
+    warnings.push({
+      level:  'warn',
+      code:   'aircraft-assistant-review',
+      title:  'Check the aircraft profile',
+      detail: `${r.change === 'created' ? `Added by ${r.by}` : `Changed by ${r.by} (${r.change.join(', ')})`} through the assistant connection. Fuel, speeds and runway checks use these values: compare them with the POH, then open and save the aircraft.`,
+    })
+  }
+
   // ── 1. Airspace penetration ─────────────────────────────────────────────
   // The route can cross one airspace twice (it is one band per crossing): warn once per airspace and vertical extent.
   const penetrationSeen = new Set<string>()

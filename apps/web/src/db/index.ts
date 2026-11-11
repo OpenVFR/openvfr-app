@@ -3,7 +3,7 @@ import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie'
 import { RxDBMigrationSchemaPlugin } from 'rxdb/plugins/migration-schema'
 import { RxDBQueryBuilderPlugin } from 'rxdb/plugins/query-builder'
 import type { RouteWaypoint } from '../utils/routeCalc'
-import type { FuelCode, TransponderMode } from '@open-vfr/shared/types'
+import type { FuelCode, TransponderMode, AssistantReview } from '@open-vfr/shared/types'
 
 addRxPlugin(RxDBMigrationSchemaPlugin)
 addRxPlugin(RxDBQueryBuilderPlugin)
@@ -160,12 +160,14 @@ export type AircraftProfileDocType = {
   vaKts?: number
   vnoKts?: number
   vneKts?: number
+  // v9: set by the assistant connection, cleared when saved in the app
+  assistantReview?: AssistantReview
   updatedAt: number
 }
 
 const aircraftProfileSchema: RxJsonSchema<AircraftProfileDocType> = {
   title: 'aircraft_profile',
-  version: 8,
+  version: 9,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -212,6 +214,7 @@ const aircraftProfileSchema: RxJsonSchema<AircraftProfileDocType> = {
     vaKts: { type: 'number' },
     vnoKts: { type: 'number' },
     vneKts: { type: 'number' },
+    assistantReview:  { type: 'object' },
     updatedAt:        { type: 'number' },
   },
   required: ['id', 'name', 'registration', 'icaoType', 'category', 'cruiseAltFt', 'cruiseIas',
@@ -439,6 +442,8 @@ export function getDb(): Promise<OpenVfrDb> {
             7: (oldDoc) => ({ ...oldDoc }),
             // v7 → v8: optional runway distances and V-speeds (absent = not set)
             8: (oldDoc) => ({ ...oldDoc }),
+            // v8 → v9: optional assistantReview (absent = not changed by an assistant)
+            9: (oldDoc) => ({ ...oldDoc }),
           },
         },
         user_waypoints:    { schema: userWaypointSchema },

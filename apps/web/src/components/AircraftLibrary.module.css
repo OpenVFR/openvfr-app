@@ -392,3 +392,11 @@
   padding: 2px 4px;
 }
 .chipUp:hover { color: var(--text-primary); }
+
+.reviewBadge {
+  composes: categoryBadge;
+  margin-left: 4px;
+  color: var(--status-warn);
+  border-color: var(--status-warn);
+  cursor: help;
+}

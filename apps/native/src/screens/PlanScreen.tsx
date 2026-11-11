@@ -62,6 +62,7 @@ import {
 import { nmToDisplay, distLabel, ktsToDisplay, displayToKts, speedLabel } from '../utils/units'
 import { computeTripFuelPlans } from '../utils/fuelCalc'
 import { setFuelStop } from '@open-vfr/shared/fuelStops'
+import { assistantReviewLabel } from '@open-vfr/shared/types'
 import type { ParsedWind } from '@open-vfr/shared/fetchWx'
 import { metarSurfaceWind } from '@open-vfr/shared/crosswindCheck'
 import { parseMetarTempC } from '@open-vfr/shared/runwayPerformance'
@@ -1122,6 +1123,9 @@ export function PlanScreen() {
                     <Text style={styles.aircraftMeta}>
                       {p.icaoType} · {p.cruiseIas} kt{p.category !== 'GLIDER' ? ` · ${p.fuelBurnLhr.toFixed(1)} L/hr` : ''}
                     </Text>
+                    {p.assistantReview && (
+                      <Text style={styles.aircraftReview}>Check before use · {assistantReviewLabel(p.assistantReview)}</Text>
+                    )}
                     <SyncRefusedNote row={refusedAircraft.get(p.id)} />
                   </TouchableOpacity>
                   <View style={styles.aircraftActions}>
@@ -1811,6 +1815,7 @@ function makeStyles(theme: ScaledTheme) {
   fuelDivider: { height: 1, backgroundColor: theme.borderSubtle, marginVertical: theme.space1 },
   fuelHopTitle: { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '600', marginTop: theme.space2, marginBottom: 2 },
   wpFuelStop: { color: theme.accentBlue, fontSize: theme.textXs, fontWeight: '700' },
+  aircraftReview: { color: theme.statusWarn, fontSize: theme.textXs, fontWeight: '600', marginTop: 2 },
   fuelStopToggle: { paddingVertical: theme.space2 },
 } as const
 }
