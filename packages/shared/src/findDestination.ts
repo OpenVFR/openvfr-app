@@ -21,6 +21,10 @@ export interface AerodromeEntry {
   surfaces:    string[]   // unique surface codes: ASPH, GRASS, CONC, SAND
   fuel:        string[]
   type:        string
+  /** Each runway's length and surface code (for "paved runway of at least N m"). */
+  runways?:    { lengthM: number; surface: string }[]
+  /** Prior permission required. */
+  ppr?:        boolean
 }
 
 export interface AerodromeResult extends AerodromeEntry {
@@ -75,11 +79,13 @@ export function parseAerodromesGeoJson(fc: AerodromeFeatureCollectionLike): Aero
     const runways = parseMaybeJsonArray<Record<string, unknown>>(p.runways)
     let maxRunwayM = 0
     const surfSet = new Set<string>()
+    const rwyList: { lengthM: number; surface: string }[] = []
     for (const rwy of runways) {
       const len = Number(rwy.length_m ?? 0)
       if (len > maxRunwayM) maxRunwayM = len
       const surf = String(rwy.surface ?? '').toUpperCase()
       if (surf) surfSet.add(surf)
+      rwyList.push({ lengthM: Number.isFinite(len) ? len : 0, surface: surf })
     }
     entries.push({
       icao:        String(p.icao  ?? ''),
@@ -91,6 +97,8 @@ export function parseAerodromesGeoJson(fc: AerodromeFeatureCollectionLike): Aero
       surfaces:    [...surfSet],
       fuel:        parseMaybeJsonArray<string>(p.fuel),
       type:        String(p.type ?? 'AD'),
+      runways:     rwyList,
+      ppr:         p.ppr === true,
     })
   }
   return entries
