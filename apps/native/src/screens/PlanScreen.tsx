@@ -989,7 +989,7 @@ export function PlanScreen() {
                   </View>
                   {index + 1 < waypoints.length - 1 && (
                     <TouchableOpacity
-                      style={styles.saveRowActions}
+                      style={styles.fuelStopToggle}
                       onPress={() => replaceRoute(setFuelStop(waypoints, index + 1, !waypoints[index + 1]?.fuelStop), legOverrides)}
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: !!waypoints[index + 1]?.fuelStop }}
@@ -1805,5 +1805,6 @@ function makeStyles(theme: ScaledTheme) {
   fuelDivider: { height: 1, backgroundColor: theme.borderSubtle, marginVertical: theme.space1 },
   fuelHopTitle: { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '600', marginTop: theme.space2, marginBottom: 2 },
   wpFuelStop: { color: theme.accentBlue, fontSize: theme.textXs, fontWeight: '700' },
+  fuelStopToggle: { paddingVertical: theme.space2 },
 } as const
 }

@@ -8,7 +8,8 @@
  * same fuel plan as the route itself (`computeFuelPlan`: taxi, climb, cruise,
  * descent, contingency and all reserves, with the leg winds), against the
  * aircraft's usable fuel. A hop is possible when its minimum required fuel
- * fits in the tanks.
+ * fits in the tanks with a small margin (`windSlack`) for the forecast on
+ * the new legs.
  *
  * The search is a shortest path over the route's own points plus the
  * candidate aerodromes, ordered along the route: cost = flying time plus a
@@ -46,6 +47,13 @@ export interface FuelStopOptions {
   excludeIcaos?: readonly string[]
   /** Minutes added per step down the aircraft's fuel preference list (2nd choice = 1 step). Default 15. */
   fuelRankPenaltyMin?: number
+  /**
+   * Share of the tanks a hop must leave unplanned, default 0.05. A hop between
+   * a stop and a route point is planned with the wind of the leg it splits;
+   * once inserted, the new legs get their own forecast, which can be a little
+   * worse. The margin keeps a suggested stop valid after insertion.
+   */
+  windSlack?: number
 }
 
 export interface FuelStop {
@@ -135,6 +143,7 @@ export function suggestFuelStops(
   const maxPlans      = opts.maxPlans      ?? 3
   const maxCandidates = opts.maxCandidates ?? 60
   const capacity      = profile.maxFuelL
+  const hopLimitL     = capacity * (1 - (opts.windSlack ?? 0.05))
 
   const trip = computeTripFuelPlans(waypoints, legOverrides, profile, legWinds)
   const tripMins = trip.reduce((s, h) => s + h.plan.enrouteMins, 0)
@@ -207,7 +216,7 @@ export function suggestFuelStops(
     pts.push(B.point)
     legs.length = pts.length - 1
     const plan = computeFuelPlan(pts, legs.map(l => legOverrides[l] ?? {}), profile, legs.map(l => legWinds?.[l]))
-    const ok = plan.enrouteMins > 0 && plan.totalMinFuelL <= capacity
+    const ok = plan.enrouteMins > 0 && plan.totalMinFuelL <= hopLimitL
     const result = ok
       ? {
           from: A.stop ? A.stop.aerodrome.icao : label(A.point, A.wp ?? 0),
