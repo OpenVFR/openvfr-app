@@ -5,7 +5,7 @@
  * optional; absence is normal and shows nothing. See
  * packages/shared/src/aerodromeDetails.ts.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { Feature, FeatureCollection, Geometry } from 'geojson'
 import {
   parseAerodromeDetails, schematicCircuitFeatures, localInfo,
@@ -74,4 +74,25 @@ export function useLocalInfo(icao: string | undefined, enabled: boolean): LocalI
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [icao, enabled, key])
   return info
+}
+
+// ── Circuit focus: the runway end tapped in the aerodrome popup ────────────────
+// While set, the map draws only that runway end's circuits at that aerodrome (other aerodromes are unaffected).
+
+export interface CircuitFocus { aerodrome: string; runway: string }
+
+let focus: CircuitFocus | null = null
+const focusSubs = new Set<() => void>()
+
+export function setCircuitFocus(f: CircuitFocus | null): void {
+  if (f?.aerodrome === focus?.aerodrome && f?.runway === focus?.runway) return
+  focus = f
+  focusSubs.forEach(s => s())
+}
+
+export function useCircuitFocus(): CircuitFocus | null {
+  return useSyncExternalStore(
+    (cb) => { focusSubs.add(cb); return () => { focusSubs.delete(cb) } },
+    () => focus,
+  )
 }

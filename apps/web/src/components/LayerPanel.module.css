@@ -106,6 +106,7 @@
 .groupActivity  { --group-color: #ca8a04; }  /* yellow  — Glider / Model */
 .groupNavaidsVOR { --group-color: #5c4ae4; } /* indigo  — VOR navaids */
 .groupNavaidsNDB { --group-color: #c05200; } /* brown   — NDB navaids */
+.groupAerodromeCircuits { --group-color: #38bdf8; } /* sky — traffic circuits (experimental) */
 .groupWaypointsMRP { --group-color: #0ca678; } /* teal  — MRP reporting points */
 .groupWaypointsHold { --group-color: #0ca678; } /* teal — VFR holding points */
 .groupWaypointsRP  { --group-color: #38d9a9; } /* light teal — RP / VFR waypoints */

@@ -121,10 +121,12 @@ export interface DetailProps {
   accuracy_m: number | null
   /** Unreviewed (local preview). */
   pending: boolean
-  /** Drawn from the circuit direction, not from a published outline. */
+  /** Drawn from the circuit direction, not from a published outline (a turn arrow, see circuitTurnArrow). */
   schematic?: boolean
-  /** Schematic circuit used by one runway direction only, so its sense can be drawn. */
-  oneWay?: boolean
+  /** Parts of a turn arrow: the curved line with its head ('turn'), or the point its label sits on ('label'). */
+  role?: 'turn' | 'label'
+  /** Runway ends the circuit is for, as "|06|24|", so the map can show only the circuits of a chosen runway. */
+  rwys?: string
   provenance?: DetailProvenance
 }
 
@@ -310,70 +312,73 @@ function findThreshold(runways: readonly RunwayLike[], c: CircuitInfo): { r: num
 }
 
 const NM = 1852
-/** Distance of the downwind leg from the runway, and how far base/crosswind lie beyond the runway ends. */
-export const SCHEMATIC_OFFSET_NM = 0.75
-export const SCHEMATIC_EXTEND_NM = 0.6
+/** Turn arrow: straight on past the departure end, then a quarter turn toward the circuit side. */
+export const TURN_STRAIGHT_NM = 0.25
+export const TURN_RADIUS_NM = 0.3
+const HEAD_NM = 0.09
 
 function metres(lat0: number): [number, number] {
   return [111_320 * Math.cos((lat0 * Math.PI) / 180), 110_540]
 }
 
-/**
- * A schematic traffic circuit for one runway direction: a rectangle on the
- * stated side (left-hand = turns to the left when taking off on `runway`),
- * downwind SCHEMATIC_OFFSET_NM from the runway, crosswind and base
- * SCHEMATIC_EXTEND_NM beyond the runway ends, as a closed line in flying order
- * (take-off end -> upwind -> crosswind -> downwind -> base -> final). Only a
- * picture of the side and sense of the circuit: never the published pattern.
- * Null when the runway or its thresholds are unknown.
- */
-export function schematicCircuit(runways: readonly RunwayLike[], c: CircuitInfo): LineString | null {
-  if (!c.direction) return null
-  const hit = findThreshold(runways, c)
-  if (hit) {
-    const t = ths(runways[hit.r]!), i = hit.i
-    const from = t[i]!, to = t[i === 0 ? 1 : 0]!
-    if (typeof from.lat !== 'number' || typeof from.lon !== 'number' || typeof to.lat !== 'number' || typeof to.lon !== 'number') return null
-    const lat0 = from.lat, lon0 = from.lon
-    const [mx, my] = metres(lat0)
-    // Local metres, take-off direction along +u, left of it along +v.
-    const ex = (to.lon - lon0) * mx, ny = (to.lat - lat0) * my
-    const len = Math.hypot(ex, ny)
-    if (len < 50) return null
-    const u: [number, number] = [ex / len, ny / len]
-    const side = c.direction === 'left' ? 1 : -1
-    const v: [number, number] = [-u[1] * side, u[0] * side]
-    const ext = SCHEMATIC_EXTEND_NM * NM, off = SCHEMATIC_OFFSET_NM * NM
-    const at = (along: number, across: number): [number, number] => [
-      lon0 + (u[0] * along + v[0] * across) / mx,
-      lat0 + (u[1] * along + v[1] * across) / my,
-    ]
-    const pts = [at(0, 0), at(len + ext, 0), at(len + ext, off), at(-ext, off), at(-ext, 0), at(0, 0)]
-    return { type: 'LineString', coordinates: pts.map(([x, y]) => [Math.round(x * 1e6) / 1e6, Math.round(y * 1e6) / 1e6]) }
-  }
-  return null
+export interface TurnArrow {
+  /** Curved line from the departure end of the runway, in flying order. */
+  arc: LineString
+  /** Arrowhead at the end of the arc (barb, tip, barb). */
+  head: LineString
+  /** Where the label goes: just beyond the tip, on the circuit side. */
+  label: [number, number]
+  /** The runway data's designator of the take-off end ("12" for an AIP's "12R"). */
+  designator: string
 }
 
-/** Which runway (index) a circuit is for, and its side relative to that runway's first threshold. Two circuits
- *  with the same key draw the same rectangle: "06 right-hand" and "24 left-hand" are one pattern flown in opposite
- *  directions. Null when the runway is unknown. */
-function patternKey(runways: readonly RunwayLike[], c: CircuitInfo): { key: string; designator: string } | null {
+/**
+ * A circuit known only by runway and direction, drawn as what it says: after take-off on `runway`, turn left/right.
+ * The arrow starts at the far (departure) end of the runway, runs TURN_STRAIGHT_NM straight on and turns through
+ * 90 degrees toward the circuit side. It never suggests a pattern size or shape. Null when the runway or its
+ * thresholds are unknown or the direction is not stated.
+ */
+export function circuitTurnArrow(runways: readonly RunwayLike[], c: CircuitInfo): TurnArrow | null {
   if (!c.direction) return null
   const hit = findThreshold(runways, c)
   if (!hit) return null
-  const leftOfFirst = (c.direction === 'left') === (hit.i === 0)
-  return { key: `${hit.r}|${leftOfFirst ? 'L' : 'R'}`, designator: hit.designator }
+  const t = ths(runways[hit.r]!)
+  const from = t[hit.i]!, to = t[hit.i === 0 ? 1 : 0]!
+  if (typeof from.lat !== 'number' || typeof from.lon !== 'number' || typeof to.lat !== 'number' || typeof to.lon !== 'number') return null
+  const lat0 = to.lat, lon0 = to.lon
+  const [mx, my] = metres(lat0)
+  const ex = (to.lon - from.lon) * mx, ny = (to.lat - from.lat) * my
+  const len = Math.hypot(ex, ny)
+  if (len < 50) return null
+  const u: [number, number] = [ex / len, ny / len]                    // take-off direction
+  const side = c.direction === 'left' ? 1 : -1
+  const v: [number, number] = [-u[1] * side, u[0] * side]            // toward the circuit side
+  const at = (along: number, across: number): [number, number] => [
+    Math.round((lon0 + (u[0] * along + v[0] * across) / mx) * 1e6) / 1e6,
+    Math.round((lat0 + (u[1] * along + v[1] * across) / my) * 1e6) / 1e6,
+  ]
+  const s = TURN_STRAIGHT_NM * NM, r = TURN_RADIUS_NM * NM, h = HEAD_NM * NM
+  const arc: [number, number][] = [at(0, 0), at(s, 0)]
+  for (let k = 1; k <= 8; k++) {
+    const a = (k / 8) * (Math.PI / 2)
+    arc.push(at(s + r * Math.sin(a), r * (1 - Math.cos(a))))
+  }
+  // tip points along +v; barbs go back toward -v, spread along ±u
+  const tipAlong = s + r, tipAcross = r
+  const head = [at(tipAlong - h * 0.6, tipAcross - h), at(tipAlong, tipAcross), at(tipAlong + h * 0.6, tipAcross - h)]
+  return { arc: { type: 'LineString', coordinates: arc }, head: { type: 'LineString', coordinates: head },
+    label: at(tipAlong, tipAcross + h * 1.4), designator: hit.designator }
 }
 
 const SIDE = { left: 'LH', right: 'RH' } as const
+const GROUP_LABEL: Record<string, string> = { glider: 'gliders', ultralight: 'ultralights', gyro: 'gyros', helicopter: 'helicopters' }
 
 /**
- * Schematic circuit features for aerodromes that state a circuit direction but
- * have no circuit drawn in the details file. `aerodromes` are the country's
- * aerodrome features; `drawn` the aerodromes that already have circuit legs.
- * Circuits that describe the same rectangle (one runway, one side) become one
- * feature named after all of them ("RWY 06 RH · RWY 24 LH"); `oneWay` is true
- * when only one runway direction uses it, so the direction can be shown.
+ * Turn arrows for aerodromes that state a circuit direction but have no circuit drawn in the details file.
+ * `aerodromes` are the country's aerodrome features; `drawn` the aerodromes that already have circuit legs.
+ * One arrow per runway end and direction ("RWY 06 RH"); aircraft categories that share it are merged, and the
+ * label names them only when no circuit for all/powered aircraft is among them ("RWY 30 RH · gliders").
+ * Each arrow is three features: arc and head (role 'turn') and a label point (role 'label').
  */
 export function schematicCircuitFeatures(
   aerodromes: readonly Feature[],
@@ -387,29 +392,27 @@ export function schematicCircuitFeatures(
     const info = localInfo(p)
     if (!info.circuits.length) continue
     const runways = list(p['runways']) as RunwayLike[]
-    const groups = new Map<string, { first: CircuitInfo; names: string[] }>()
+    const groups = new Map<string, { arrow: TurnArrow; direction: 'left' | 'right'; groups: Set<string>; forAll: boolean }>()
     for (const c of info.circuits.filter(isDrawnCircuit)) {
-      const pk = patternKey(runways, c)
-      if (!pk) continue
-      const key = pk.key
-      // named after the runway data's designator, so "12R" from one source and "12" from another read the same
-      const name = `RWY ${pk.designator} ${SIDE[c.direction!]}`
-      const g = groups.get(key)
-      if (!g) groups.set(key, { first: c, names: [name] })
-      else if (!g.names.includes(name)) g.names.push(name)     // categories share one picture
+      const arrow = circuitTurnArrow(runways, c)
+      if (!arrow) continue
+      const hit = findThreshold(runways, c)!
+      const key = `${hit.r}|${hit.i}|${c.direction}`
+      const g = groups.get(key) ?? { arrow, direction: c.direction!, groups: new Set<string>(), forAll: false }
+      const label = c.aircraft ? GROUP_LABEL[c.aircraft] : undefined
+      if (label) g.groups.add(label); else g.forAll = true
+      groups.set(key, g)
     }
+    const pending = info.provenance['circuits']?.review === 'pending'
+    const provenance = info.provenance['circuits'] ? { provenance: info.provenance['circuits'] } : {}
     for (const g of groups.values()) {
-      const geom = schematicCircuit(runways, g.first)
-      if (!geom) continue
-      out.push({
-        type: 'Feature', geometry: geom,
-        properties: {
-          aerodrome: id, kind: 'circuit_leg', name: g.names.join(' · '),
-          remarks: null, floor: null, ceiling: null, approximate: true, accuracy_m: null,
-          pending: info.provenance['circuits']?.review === 'pending', schematic: true, oneWay: g.names.length === 1,
-          ...(info.provenance['circuits'] ? { provenance: info.provenance['circuits'] } : {}),
-        },
-      })
+      const name = [`RWY ${g.arrow.designator} ${SIDE[g.direction]}`, g.forAll ? null : [...g.groups].join(', ')]
+        .filter(Boolean).join(' · ')
+      const base = { aerodrome: id, kind: 'circuit_leg' as const, name, remarks: null, floor: null, ceiling: null,
+        approximate: true, accuracy_m: null, pending, schematic: true, rwys: `|${g.arrow.designator}|`, ...provenance }
+      out.push({ type: 'Feature', geometry: g.arrow.arc, properties: { ...base, role: 'turn' } })
+      out.push({ type: 'Feature', geometry: g.arrow.head, properties: { ...base, role: 'turn' } })
+      out.push({ type: 'Feature', geometry: { type: 'Point', coordinates: g.arrow.label }, properties: { ...base, role: 'label' } })
     }
   }
   return out

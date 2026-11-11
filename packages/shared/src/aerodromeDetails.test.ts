@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  parseAerodromeDetails, localInfo, formatCircuit, formatLimits, schematicCircuit, schematicCircuitFeatures, hasLocalInfo,
-  SCHEMATIC_OFFSET_NM, type DetailFeature,
+  parseAerodromeDetails, localInfo, formatCircuit, formatLimits, circuitTurnArrow, schematicCircuitFeatures, hasLocalInfo,
+  TURN_STRAIGHT_NM, TURN_RADIUS_NM, type DetailFeature,
 } from './aerodromeDetails'
 import type { LineString } from 'geojson'
 
@@ -56,53 +56,54 @@ describe('localInfo', () => {
   })
 })
 
-describe('schematicCircuit', () => {
-  it('puts the pattern on the stated side, at the stated offset', () => {
-    const left = schematicCircuit(RWYS, { runway: '12', direction: 'left', altitude_ft: null, altitude_ref: null, aircraft: null })!
-    const right = schematicCircuit(RWYS, { runway: '12', direction: 'right', altitude_ft: null, altitude_ref: null, aircraft: null })!
-    expect(left.coordinates).toHaveLength(6)
-    expect(left.coordinates[0]).toEqual([13.325088, 55.851489])                    // starts at the take-off end
-    // Side of the downwind leg relative to the take-off direction: cross product > 0 = left.
-    const k = Math.cos((55.85 * Math.PI) / 180)
-    const side = (p: number[]) => {
-      const ux = (13.334574 - 13.325088) * k, uy = 55.846665 - 55.851489
-      return Math.sign(ux * (p[1]! - 55.851489) - uy * (p[0]! - 13.325088) * k)
-    }
-    for (const i of [2, 3]) {
-      expect(side(left.coordinates[i]!)).toBe(1)
-      expect(side(right.coordinates[i]!)).toBe(-1)
-    }
-    expect(dist(left.coordinates[2]!, left.coordinates[1]!) / 1852).toBeCloseTo(SCHEMATIC_OFFSET_NM, 2)
-    expect(schematicCircuit(RWYS, { runway: '18', direction: 'left', altitude_ft: null, altitude_ref: null, aircraft: null })).toBeNull()
-    expect(schematicCircuit(RWYS, { runway: '12', direction: null, altitude_ft: null, altitude_ref: null, aircraft: null })).toBeNull()
+const C = (runway: string, direction: 'left' | 'right' | null, aircraft: string | null = null) =>
+  ({ runway, direction, altitude_ft: null, altitude_ref: null, aircraft })
+
+describe('circuitTurnArrow', () => {
+  it('starts at the departure end and turns toward the stated side', () => {
+    const left = circuitTurnArrow(RWYS, C('12', 'left'))!
+    const right = circuitTurnArrow(RWYS, C('12', 'right'))!
+    // take-off on 12 (towards SE) departs over the 30 threshold
+    expect(left.arc.coordinates[0]).toEqual([13.334574, 55.846665])
+    expect(left.designator).toBe('12')
+    // heading ~125 deg: left of track is NE, right is SW; both tips equally far along the track
+    const tipL = left.head.coordinates[1]!, tipR = right.head.coordinates[1]!
+    expect(tipL[1]!).toBeGreaterThan(tipR[1]!)
+    expect(tipL[0]!).toBeGreaterThan(tipR[0]!)
+    // tip lies TURN_STRAIGHT + TURN_RADIUS beyond the end and TURN_RADIUS to the side
+    const d = dist(tipL, [13.334574, 55.846665]) / 1852
+    expect(d).toBeCloseTo(Math.hypot(TURN_STRAIGHT_NM + TURN_RADIUS_NM, TURN_RADIUS_NM), 1)
+    expect(circuitTurnArrow(RWYS, C('18', 'left'))).toBeNull()
+    expect(circuitTurnArrow(RWYS, C('12', null))).toBeNull()
   })
 
-  it('one picture per runway side, named after every runway direction using it', () => {
-    const ad = (icao: string, circuits: unknown[]) => ({ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [13.33, 55.85] },
-      properties: { icao, runways: RWYS, circuits, provenance: { circuits: { review: 'pending' } } } })
-    // 12 left-hand and 30 right-hand are the same rectangle (flown in opposite directions); categories share it
-    const same = schematicCircuitFeatures([ad('ESME', [{ runway: '12', direction: 'left' }, { runway: '12', direction: 'left', aircraft: 'ultralight' },
-      { runway: '30', direction: 'right' }])], new Set())
-    expect(same.map(x => [x.properties.name, x.properties.oneWay])).toEqual([['RWY 12 LH · RWY 30 RH', false]])
-    // 12 right-hand and 30 right-hand lie on opposite sides: two pictures, each with a direction
-    const both = schematicCircuitFeatures([ad('ESME', [{ runway: '12', direction: 'right' }, { runway: '30', direction: 'right' }])], new Set())
-    expect(both.map(x => [x.properties.name, x.properties.oneWay])).toEqual([['RWY 12 RH', true], ['RWY 30 RH', true]])
-    expect(both.every(x => x.properties.schematic && x.properties.pending && x.properties.aerodrome === 'ESME')).toBe(true)
+  it('one arrow per runway end and direction, categories merged and named only when not for everyone', () => {
+    const ad = (icao: string, circuits: unknown[], runways: unknown = RWYS) => ({ type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [13.33, 55.85] },
+      properties: { icao, runways, circuits, provenance: { circuits: { review: 'pending' } } } })
+    const names = (fs: DetailFeature[]) => fs.filter(f => f.properties.role === 'label').map(f => f.properties.name)
+    const fs = schematicCircuitFeatures([ad('ESME', [C('12', 'left'), C('12', 'left', 'ultralight'), C('30', 'right')])], new Set())
+    expect(names(fs)).toEqual(['RWY 12 LH', 'RWY 30 RH'])
+    expect(fs).toHaveLength(6)                                          // arc + head + label each
+    expect(fs.every(f => f.properties.schematic && f.properties.pending && f.properties.aerodrome === 'ESME')).toBe(true)
+    expect(fs.filter(f => f.properties.role === 'label').map(f => f.properties.rwys)).toEqual(['|12|', '|30|'])
+    expect(names(schematicCircuitFeatures([ad('ESME', [C('30', 'right', 'glider')])], new Set()))).toEqual(['RWY 30 RH · gliders'])
+
     // "12R"/"30R" in the AIP where the runway data says "12/30" and "12/30 GRASS": gliders on the grass strip
     const thr = (lat: number) => [{ designator: '12', lat, lon: 12.85 }, { designator: '30', lat: lat - 0.005, lon: 12.87 }]
-    const esml = { type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [12.86, 55.94] }, properties: { icao: 'ESML',
-      runways: [{ designator: '12/30', thresholds: thr(55.945) }, { designator: '12/30 GRASS', thresholds: thr(55.946) }],
-      circuits: [{ runway: '12R', direction: 'right', aircraft: 'powered' }, { runway: '30R', direction: 'right', aircraft: 'glider' },
-        { runway: '30', direction: 'left', aircraft: 'powered' }, { runway: '12', direction: 'left', aircraft: 'glider' }] } }
+    const esml = ad('ESML', [C('12R', 'right', 'powered'), C('30R', 'right', 'glider'), C('12', 'right', 'helicopter')],
+      [{ designator: '12/30', thresholds: thr(55.945) }, { designator: '12/30 GRASS', thresholds: thr(55.946) }])
     const ml = schematicCircuitFeatures([esml], new Set())
-    expect(ml.map(x => x.properties.name)).toEqual(['RWY 12 RH · RWY 30 LH', 'RWY 30 RH · RWY 12 LH'])
-    const startLat = (x: DetailFeature) => (x.geometry as LineString).coordinates[0]![1]
-    expect([startLat(ml[0]!), startLat(ml[1]!)]).toEqual([55.945, 55.941])
+    expect(names(ml)).toEqual(['RWY 12 RH', 'RWY 30 RH · gliders'])
+    const start = (f: DetailFeature) => (f.geometry as LineString).coordinates[0]![1]
+    // 12 departs over the asphalt 30 threshold, 30 (gliders) over the grass 12 threshold
+    expect(ml.filter(f => f.properties.role === 'turn' && (f.geometry as LineString).coordinates.length > 3).map(start))
+      .toEqual([55.94, 55.946])
+
     // circuits for heavy aircraft only are listed, never drawn
-    expect(schematicCircuitFeatures([ad('ESMS', [{ runway: '12', direction: 'right', aircraft: 'heavy' }])], new Set())).toEqual([])
-    expect(formatCircuit({ runway: '17', direction: 'right', altitude_ft: null, altitude_ref: null, aircraft: 'heavy' }))
-      .toBe('RWY 17 · right-hand · aircraft over 5700 kg MTOM')
-    // aerodromes whose circuit is drawn in the details file get no schematic one
-    expect(schematicCircuitFeatures([ad('ESXX', [{ runway: '12', direction: 'left' }])], new Set(['ESXX']))).toEqual([])
+    expect(schematicCircuitFeatures([ad('ESMS', [C('12', 'right', 'heavy')])], new Set())).toEqual([])
+    expect(formatCircuit(C('17', 'right', 'heavy'))).toBe('RWY 17 · right-hand · aircraft over 5700 kg MTOM')
+    // aerodromes whose circuit is drawn in the details file get no arrows
+    expect(schematicCircuitFeatures([ad('ESXX', [C('12', 'left')])], new Set(['ESXX']))).toEqual([])
   })
 })

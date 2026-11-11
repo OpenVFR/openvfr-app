@@ -10,7 +10,7 @@ import {
   RUNWAY_LABEL_DEFAULT_COLOR,
   RUNWAY_LABEL_DEFAULT_HALO,
 } from '@open-vfr/shared/runwayWind'
-import { TILES_BASE_URL } from '../utils/env'
+import { TILES_BASE_URL, EXPERIMENTAL_AERODROME_DETAILS } from '../utils/env'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
 import { DEFAULT_REGION_CODE } from '@open-vfr/shared/regions'
 import { countryDatasetFile, countryArchiveFile, type CountryDataset } from '@open-vfr/shared/countryData'
@@ -322,6 +322,10 @@ export const AIRSPACE_BORDER_WIDTHS: { id: string; vector: number | ExpressionSp
 const IS_HOLDING: ExpressionSpecification =
   ['==', ['slice', ['upcase', ['coalesce', ['get', 'name'], '']], 0, 8], 'HOLDING ']
 
+/** Map layers of the experimental aerodrome circuits (added at runtime by AerodromeDetailsLayer). */
+export const CIRCUIT_LAYER_IDS = ['ad-circuit-line', 'ad-circuit-line-dashed', 'ad-circuit-turn', 'ad-circuit-chevrons',
+  'ad-circuit-label', 'ad-circuit-turn-label'] as const
+
 export const AVIATION_LABEL_LAYERS = [
   'aerodromes-label',
   'navaids-vor-label',
@@ -494,6 +498,16 @@ export const LAYER_GROUPS: LayerGroup[] = [
     defaultOn: true,
     section: 'Navigation',
   },
+  // Traffic circuits (experimental aerodrome details): drawn circuit legs and turn arrows. The layers are added at
+  // runtime, so AerodromeDetailsLayer applies this switch itself when it adds them.
+  ...(EXPERIMENTAL_AERODROME_DETAILS ? [{
+    id: 'aerodromeCircuits',
+    label: 'Traffic circuits',
+    cssClass: 'groupAerodromeCircuits',
+    layerIds: [...CIRCUIT_LAYER_IDS],
+    defaultOn: true,
+    section: 'Navigation' as const,
+  }] : []),
   {
     id: 'waypointsHold',
     // VFR holding points ("HOLDING WEST"): where ATC sends VFR traffic to wait outside a CTR. Published as

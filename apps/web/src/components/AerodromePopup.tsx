@@ -30,6 +30,26 @@ import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from
 import { API_BASE_URL } from '../utils/env'
 import ChartsSection from './ChartsSection'
 import LocalInfoSection from './LocalInfoSection'
+import { setCircuitFocus, useCircuitFocus } from '../utils/aerodromeDetails'
+import { EXPERIMENTAL_AERODROME_DETAILS } from '../utils/env'
+
+/** A runway end ("06"). With the experimental aerodrome details it is a button: tapping it shows only that end's
+ *  circuits on the map (again to show all). */
+function RunwayEndChip({ className, title, aerodrome, designator }:
+  { className: string; title: string | undefined; aerodrome: string | null; designator: string }) {
+  const focus = useCircuitFocus()
+  if (!EXPERIMENTAL_AERODROME_DETAILS || !aerodrome) return <span className={className} title={title}>{designator}</span>
+  const on = focus?.aerodrome === aerodrome && focus.runway === designator
+  return (
+    <button type="button" className={`${className} ${css.rwyDesigBtn} ${on ? css.rwyDesigFocused : ''}`}
+      title={[title, on ? 'Showing only this runway\'s circuits: tap to show all' : 'Show only this runway\'s circuits on the map']
+        .filter(Boolean).join(' · ')}
+      aria-pressed={on}
+      onClick={() => setCircuitFocus(on ? null : { aerodrome, runway: designator })}>
+      {designator}
+    </button>
+  )
+}
 import { loadStations as loadStationsShared, type StationRecord } from '@open-vfr/shared/wxStations'
 import { countryDatasetSource } from '@open-vfr/shared/countryData'
 import { IconChevronDown, IconChevronUp, IconHome, IconHomeFilled, IconX } from '@tabler/icons-react'
@@ -341,6 +361,9 @@ export default function AerodromePopup({
   // more than one runway (e.g. ESMS: 17/35 + 11/29) need an explicit way to
   // look at a different one than whichever is longest.
   const [selectedRunwayDesig, setSelectedRunwayDesig] = useState<string | null>(null)
+  // Circuit focus belongs to the open popup: cleared when it closes or shows another aerodrome.
+  const adId = p.icao || null
+  useEffect(() => () => setCircuitFocus(null), [adId])
   useEffect(() => { setSelectedRunwayDesig(null) }, [p.icao])
 
   // ── Sunrise / Sunset ─────────────────────────────────────────────────────
@@ -742,16 +765,16 @@ export default function AerodromePopup({
                           {windEnds.map((e, i) => (
                             <span key={e.designator} style={{ display: 'flex', alignItems: 'center' }}>
                               {i > 0 && <span className={css.rwySlash}>/</span>}
-                              <span
+                              <RunwayEndChip
                                 className={`${css.rwyDesig} ${e.crosswindSeverity ? css[`rwyDesig${e.crosswindSeverity === 'strong' ? 'Strong' : e.crosswindSeverity === 'moderate' ? 'Moderate' : 'Calm'}`] : ''} ${e.favored ? css.rwyDesigFavored : ''}`}
                                 title={
                                   e.headwindKt != null
                                     ? `${e.headwindKt >= 0 ? `${e.headwindKt}kt headwind` : `${-e.headwindKt}kt tailwind`} · ${e.crosswindKt}kt crosswind`
                                     : undefined
                                 }
-                              >
-                                {e.designator}
-                              </span>
+                                aerodrome={adId}
+                                designator={e.designator}
+                              />
                             </span>
                           ))}
                         </span>

@@ -323,6 +323,18 @@
   border: 1px solid transparent;
 }
 
+/* Runway end as a button (experimental aerodrome details): tapping it shows only that end's circuits on the map. */
+.rwyDesigBtn {
+  font-family: inherit;
+  line-height: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.rwyDesigFocused {
+  outline: 2px solid var(--accent-blue, #38bdf8);
+  outline-offset: 1px;
+}
+
 /* Coloured border reflects that end's crosswind severity (calm/moderate/strong) —
    same tiers/colours as GoFlyingPanel's in-flight crosswind gauge, see runwayWind.ts. */
 .rwyDesigCalm     { border-color: var(--status-ok, #86efac); color: var(--text-primary); }

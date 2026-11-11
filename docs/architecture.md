@@ -384,15 +384,19 @@ schematic circuit: `packages/shared/src/aerodromeDetails.ts`.
 **Web:** `AerodromeDetailsLayer` draws the details from zoom 9 below the
 airspace layers (areas filled per kind with name and heights, circuit legs
 with direction chevrons, points labelled). An aerodrome that states a circuit
-direction but has no drawn circuit gets a **schematic** circuit: a dashed
-rectangle on the stated side of that runway, 0.75 NM out, never the published
-pattern. Circuits that describe the same rectangle (RWY 06 right-hand and RWY 24
-left-hand: one pattern flown both ways) are drawn once and labelled along the
-pattern with every runway direction that uses it ("RWY 06 RH · RWY 24 LH");
-direction chevrons appear only when one runway direction uses it. A circuit's runway is found by
-designator, then without an L/R/C suffix ("12R" where the runway data says "12");
-where an asphalt runway and a grass strip share a designator, glider circuits go to
-the grass strip and all others to the paved runway. Dashed also: outlines read off a chart (`approximate`) and values whose
+direction but has no drawn circuit gets a **turn arrow**: from the departure end
+of the take-off runway, 0.25 NM straight on, then a quarter turn toward the
+circuit side, labelled "RWY 06 RH" (aircraft categories named only when the
+circuit is not for everyone: "RWY 30 RH · gliders"). It says what the source
+says ("after take-off, turn right") and never suggests a pattern size or shape.
+A circuit's runway is found by designator, then without an L/R/C suffix ("12R"
+where the runway data says "12"); where an asphalt runway and a grass strip share
+a designator, glider circuits go to the grass strip and all others to the paved
+runway. Circuits gain detail with zoom (drawn legs from 9.5 with growing width,
+turn arrows and chevrons from 10.5, runway labels from 11.5), have their own
+"Traffic circuits" switch in the Layers panel, and follow the runway end tapped
+in the aerodrome popup: while one is selected, that aerodrome shows only the
+circuits for it. Dashed also: outlines read off a chart (`approximate`) and values whose
 provenance says `review: "pending"` (only in local preview builds of a
 deployment's own data, labelled "unreviewed"). The aerodrome popup gets a
 "Local information" section (`LocalInfoSection`) with circuits, local rules,
