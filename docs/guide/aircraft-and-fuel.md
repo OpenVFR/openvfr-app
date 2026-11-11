@@ -64,6 +64,25 @@ All speeds are indicated airspeed (IAS) in knots, fuel is in litres.
 - **Paved only:** only asphalt or concrete runways.
 - **Max crosswind** (kt): the maximum demonstrated crosswind from the POH,
   used by the pre-flight crosswind check. 0 means not set.
+- **T/O dist 50 ft** and **LDG dist 50 ft** (m): the POH's take-off
+  distance over a 50 ft obstacle and landing distance from 50 ft, at
+  maximum mass, sea level, standard temperature, on a paved dry runway.
+  The app scales them for each aerodrome: +10 % per 1,000 ft of
+  elevation, +10 % per 10 °C above standard temperature (when the
+  aerodrome reports its temperature), +20 % for take-off and +15 % for
+  landing on grass or another unpaved surface, then a safety factor of
+  1.33 for take-off and 1.43 for landing. Wind and slope are not counted.
+  The pre-flight check warns when the best runway at the departure,
+  destination or a fuel stop is shorter, and fuel-stop suggestions skip
+  aerodromes where the aircraft could not land and take off again. 0 means
+  not set. These are planning factors only: the POH's tables for the
+  day's mass and conditions decide.
+
+**V-speeds** (kt IAS, 0 means not set)
+- **Vs0** (stall, landing flaps), **Vs1** (stall, clean), **Vx** (best
+  angle of climb; Vy is the climb IAS), **Vfe**, **Va**, **Vno**, **Vne**.
+  The POH import fills them and marks values out of the usual order
+  (Vs0 ≤ Vs1 < Vfe ≤ Vno < Vne).
 - Both preset the filters of the destination finder, and are used when the
   app suggests aerodromes.
 

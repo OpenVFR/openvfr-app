@@ -17,6 +17,7 @@ import { DEFAULT_MSA_MARGINS, type MsaMargins } from './msaMargins'
 import { terrainAt, getMsaLookup, type VirtualRadarProfile, type MsaPoint, type AirspaceCrossSection, type TerrainPoint } from './virtualRadarCalc'
 import { computeTripFuelPlans } from './fuelCalc'
 import { crosswindExceedances, thresholdsByIcao, type LandingPoint } from './crosswindCheck'
+import { runwayShortfalls, runwaysByIcao, PERF_FACTORS, isPavedSurface, type RunwayPoint } from './runwayPerformance'
 import type { ParsedWind } from './fetchWx'
 import { collectRoutePois, poiBaseFt } from './routePois'
 import { routeNotamAreas, notamSummary } from './preflightNotams'
@@ -113,6 +114,8 @@ export interface PreflightExtras {
   nowMs?:          number
   /** Reported surface wind per ICAO (the aerodrome's own METAR), for the crosswind check. */
   surfaceWinds?:   ReadonlyMap<string, ParsedWind>
+  /** Reported temperature per ICAO (own METAR), °C, for the runway length check. */
+  surfaceTempsC?:  ReadonlyMap<string, number>
   /** Data that could not be loaded: the checks that need it did not run, and the card says so. */
   unavailable?:    PreflightUnavailable
 }
@@ -180,7 +183,7 @@ export function computeWarnings(
   margins: MsaMargins = DEFAULT_MSA_MARGINS,
   extras: PreflightExtras = {},
 ): PreflightWarning[] {
-  const { terrainPts = [], airspaceLevels = DEFAULT_AIRSPACE_LEVELS, aerodromes, notams, airspace, nowMs, unavailable, surfaceWinds } = extras
+  const { terrainPts = [], airspaceLevels = DEFAULT_AIRSPACE_LEVELS, aerodromes, notams, airspace, nowMs, unavailable, surfaceWinds, surfaceTempsC } = extras
   const warnings: PreflightWarning[] = []
 
   // ── Terrain unavailable: the MSA check below is silently skipped and AGL
@@ -378,6 +381,30 @@ export function computeWarnings(
         code:   'crosswind',
         title:  `Crosswind at ${x.icao} (${x.role})`,
         detail: `Current wind ${x.windText}: ${x.crosswindKt} kt across runway ${x.runway}, the best runway, above the aircraft's ${x.limitKt} kt maximum demonstrated crosswind. Check the forecast for your arrival time.`,
+      })
+    }
+  }
+
+  // ── 5. Runway length where the route takes off or lands ────────────────
+  // The profile's distances over 50 ft, scaled for elevation, temperature
+  // (current METAR when known), surface and a safety factor.
+  if (aircraft && ((aircraft.takeoffDist50ftM ?? 0) > 0 || (aircraft.landingDist50ftM ?? 0) > 0) && aerodromes && waypoints.length >= 2) {
+    const points: RunwayPoint[] = []
+    waypoints.forEach((w, i) => {
+      if (!w.name) return
+      if (i === 0) points.push({ icao: w.name, role: 'departure', ops: ['takeoff'] })
+      else if (i === waypoints.length - 1) points.push({ icao: w.name, role: 'destination', ops: ['landing'] })
+      else if (w.fuelStop) points.push({ icao: w.name, role: 'fuel stop', ops: ['landing', 'takeoff'] })
+    })
+    for (const x of runwayShortfalls(aircraft, points, runwaysByIcao(aerodromes), surfaceTempsC)) {
+      const what = x.op === 'takeoff' ? 'take-off' : 'landing'
+      const safety = x.op === 'takeoff' ? PERF_FACTORS.safetyTakeoff : PERF_FACTORS.safetyLanding
+      const rwy = `${x.runway.designator ? `runway ${x.runway.designator}` : 'the longest runway'} (${x.runway.lengthM} m ${isPavedSurface(x.runway.surface) ? 'paved' : (x.runway.surface.toLowerCase() || 'unknown surface')})`
+      warnings.push({
+        level:  'danger',
+        code:   'runway-short',
+        title:  `Runway short for ${what} at ${x.icao} (${x.role})`,
+        detail: `Needs about ${x.requiredM.toLocaleString('en-US')} m: the aircraft's ${what} distance over 50 ft, scaled for elevation${x.tempC != null ? `, ${x.tempC} °C` : ''}, surface and a ${safety} safety factor. Best is ${rwy}. Check the POH for today's mass and conditions.`,
       })
     }
   }

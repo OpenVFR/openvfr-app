@@ -53,6 +53,8 @@ export function usePreflightCheck(opts: {
   enabled: boolean
   /** Reported surface wind per ICAO (own METAR), for the crosswind check. */
   surfaceWinds?: ReadonlyMap<string, ParsedWind>
+  /** Reported temperature per ICAO (own METAR), °C, for the runway length check. */
+  surfaceTempsC?: ReadonlyMap<string, number>
 }): PreflightCheck {
   const { msa, aircraft, aircraftId } = opts
   const focused = useIsFocused()
@@ -122,9 +124,9 @@ export function usePreflightCheck(opts: {
     return computeWarnings(
       profile, msa.msaPts, aircraft ?? undefined, waypoints, legOverrides, aircraftId ?? undefined,
       msa.terrainFailed, legWinds, resolveMsaMargins(margins),
-      { terrainPts: msa.terrain, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable, surfaceWinds: opts.surfaceWinds },
+      { terrainPts: msa.terrain, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable, surfaceWinds: opts.surfaceWinds, surfaceTempsC: opts.surfaceTempsC },
     )
-  }, [profile, msa, aircraft, waypoints, legOverrides, aircraftId, legWinds, margins, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, airspaceFailed, aerodromesFailed, signedIn, regional.failed, opts.surfaceWinds])
+  }, [profile, msa, aircraft, waypoints, legOverrides, aircraftId, legWinds, margins, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, airspaceFailed, aerodromesFailed, signedIn, regional.failed, opts.surfaceWinds, opts.surfaceTempsC])
 
   const prompts = useMemo(
     () => computePrompts({ waypoints, legWinds, windsLoading }),

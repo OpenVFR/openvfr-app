@@ -149,12 +149,22 @@ export type AircraftProfileDocType = {
   climbFuelCeilingLhr?: number
   finalReserveMin?: number
   unusableFuelL?: number
+  // v8: runway distances over 50 ft (m) and V-speeds (kt IAS); absent = not set
+  takeoffDist50ftM?: number
+  landingDist50ftM?: number
+  vs0Kts?: number
+  vs1Kts?: number
+  vxKts?: number
+  vfeKts?: number
+  vaKts?: number
+  vnoKts?: number
+  vneKts?: number
   updatedAt: number
 }
 
 const aircraftProfileSchema: RxJsonSchema<AircraftProfileDocType> = {
   title: 'aircraft_profile',
-  version: 7,
+  version: 8,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -192,6 +202,15 @@ const aircraftProfileSchema: RxJsonSchema<AircraftProfileDocType> = {
     climbFuelCeilingLhr: { type: 'number' },
     finalReserveMin:  { type: 'number' },
     unusableFuelL:    { type: 'number' },
+    takeoffDist50ftM: { type: 'number' },
+    landingDist50ftM: { type: 'number' },
+    vs0Kts: { type: 'number' },
+    vs1Kts: { type: 'number' },
+    vxKts: { type: 'number' },
+    vfeKts: { type: 'number' },
+    vaKts: { type: 'number' },
+    vnoKts: { type: 'number' },
+    vneKts: { type: 'number' },
     updatedAt:        { type: 'number' },
   },
   required: ['id', 'name', 'registration', 'icaoType', 'category', 'cruiseAltFt', 'cruiseIas',
@@ -415,6 +434,8 @@ export function getDb(): Promise<OpenVfrDb> {
             6: (oldDoc) => ({ ...oldDoc }),
             // v6 → v7: optional climbFuelCeilingLhr, finalReserveMin, unusableFuelL (absent = not set)
             7: (oldDoc) => ({ ...oldDoc }),
+            // v7 → v8: optional runway distances and V-speeds (absent = not set)
+            8: (oldDoc) => ({ ...oldDoc }),
           },
         },
         user_waypoints:    { schema: userWaypointSchema },

@@ -49,6 +49,15 @@ type FormState = {
   climbFuelCeilingLhr: string
   unusableFuelL: string
   finalReserveMin: string
+  takeoffDist50ftM: string
+  landingDist50ftM: string
+  vs0Kts: string
+  vs1Kts: string
+  vxKts: string
+  vfeKts: string
+  vaKts: string
+  vnoKts: string
+  vneKts: string
   minRunwayM: string
   hardRunwayOnly: boolean
   fuelTypes: FuelCode[]
@@ -70,6 +79,15 @@ const EMPTY: FormState = {
   climbFuelCeilingLhr: '0',
   unusableFuelL: '0',
   finalReserveMin: '0',
+  takeoffDist50ftM: '0',
+  landingDist50ftM: '0',
+  vs0Kts: '0',
+  vs1Kts: '0',
+  vxKts: '0',
+  vfeKts: '0',
+  vaKts: '0',
+  vnoKts: '0',
+  vneKts: '0',
   minRunwayM: '0',
   hardRunwayOnly: false,
   fuelTypes: [],
@@ -95,6 +113,15 @@ function toForm(p: AircraftProfileDocType): FormState {
     climbFuelCeilingLhr: String(p.climbFuelCeilingLhr ?? 0),
     unusableFuelL: String(p.unusableFuelL ?? 0),
     finalReserveMin: String(p.finalReserveMin ?? 0),
+    takeoffDist50ftM: String(p.takeoffDist50ftM ?? 0),
+    landingDist50ftM: String(p.landingDist50ftM ?? 0),
+    vs0Kts: String(p.vs0Kts ?? 0),
+    vs1Kts: String(p.vs1Kts ?? 0),
+    vxKts: String(p.vxKts ?? 0),
+    vfeKts: String(p.vfeKts ?? 0),
+    vaKts: String(p.vaKts ?? 0),
+    vnoKts: String(p.vnoKts ?? 0),
+    vneKts: String(p.vneKts ?? 0),
     minRunwayM: String(p.minRunwayM ?? 0),
     hardRunwayOnly: p.hardRunwayOnly === true,
     fuelTypes: normalizeFuelCodes(p.fuelTypes),
@@ -218,6 +245,15 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       climbFuelCeilingLhr: HAS_ENGINE(cat) && HAS_FUEL(cat) ? Math.max(0, num(form.climbFuelCeilingLhr)) : 0,
       unusableFuelL:    HAS_FUEL(cat) ? Math.max(0, num(form.unusableFuelL)) : 0,
       finalReserveMin:  HAS_FUEL(cat) ? Math.max(0, num(form.finalReserveMin)) : 0,
+      takeoffDist50ftM: Math.max(0, num(form.takeoffDist50ftM)),
+      landingDist50ftM: Math.max(0, num(form.landingDist50ftM)),
+      vs0Kts: Math.max(0, num(form.vs0Kts)),
+      vs1Kts: Math.max(0, num(form.vs1Kts)),
+      vxKts: Math.max(0, num(form.vxKts)),
+      vfeKts: Math.max(0, num(form.vfeKts)),
+      vaKts: Math.max(0, num(form.vaKts)),
+      vnoKts: Math.max(0, num(form.vnoKts)),
+      vneKts: Math.max(0, num(form.vneKts)),
       fuelTypes:        HAS_FUEL(cat) ? form.fuelTypes : [],
       minRunwayM:       Math.max(0, Math.round(num(form.minRunwayM))),
       hardRunwayOnly:   form.hardRunwayOnly,
@@ -314,6 +350,18 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
         value={form.hardRunwayOnly ? 'hard' : 'any'}
         onChange={v => set('hardRunwayOnly', v === 'hard')}
       />
+
+      <FieldRow label="T/O distance over 50 ft (0 = not set)" unit="m" value={form.takeoffDist50ftM} note={pohNotes.takeoffDist50ftM} numeric onChange={v => set('takeoffDist50ftM', v)} />
+      <FieldRow label="LDG distance from 50 ft (0 = not set)" unit="m" value={form.landingDist50ftM} note={pohNotes.landingDist50ftM} numeric onChange={v => set('landingDist50ftM', v)} />
+
+      <SectionLabel text="V-speeds (kt IAS, 0 = not set)" />
+      <FieldRow label="Vs0 (flaps)" unit="kts" value={form.vs0Kts} note={pohNotes.vs0Kts} numeric onChange={v => set('vs0Kts', v)} />
+      <FieldRow label="Vs1 (clean)" unit="kts" value={form.vs1Kts} note={pohNotes.vs1Kts} numeric onChange={v => set('vs1Kts', v)} />
+      <FieldRow label="Vx" unit="kts" value={form.vxKts} note={pohNotes.vxKts} numeric onChange={v => set('vxKts', v)} />
+      <FieldRow label="Vfe" unit="kts" value={form.vfeKts} note={pohNotes.vfeKts} numeric onChange={v => set('vfeKts', v)} />
+      <FieldRow label="Va" unit="kts" value={form.vaKts} note={pohNotes.vaKts} numeric onChange={v => set('vaKts', v)} />
+      <FieldRow label="Vno" unit="kts" value={form.vnoKts} note={pohNotes.vnoKts} numeric onChange={v => set('vnoKts', v)} />
+      <FieldRow label="Vne" unit="kts" value={form.vneKts} note={pohNotes.vneKts} numeric onChange={v => set('vneKts', v)} />
 
       <SectionLabel text="Equipment" />
       <ChipRow

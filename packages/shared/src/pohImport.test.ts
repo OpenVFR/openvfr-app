@@ -66,6 +66,14 @@ describe('parsePohReply', () => {
     expect(parsePohReply('{"cruiseIas":100}').fuelTypes).toEqual([])
   })
 
+  it('reads runway distances and V-speeds and checks their order', () => {
+    const ok = parsePohReply('{"takeoffDist50ftM":495,"landingDist50ftM":407,"vs0Kts":48,"vs1Kts":53,"vxKts":62,"climbIas":74,"vfeKts":85,"vaKts":105,"vnoKts":129,"vneKts":163}')
+    expect(ok.values).toMatchObject({ takeoffDist50ftM: '495', vneKts: '163' })
+    expect(ok.warnings).toEqual({})
+    const bad = parsePohReply('{"vs0Kts":60,"vs1Kts":53,"vfeKts":140,"vnoKts":129,"vneKts":120}')
+    expect(Object.keys(bad.warnings).sort()).toEqual(['vfeKts', 'vnoKts', 'vs0Kts'])
+  })
+
   it('throws a pilot-readable error when there is no JSON', () => {
     expect(() => parsePohReply('Sorry, I cannot read PDFs.')).toThrow(PohReplyError)
     expect(() => parsePohReply('{"name": "C172", ')).toThrow(PohReplyError)

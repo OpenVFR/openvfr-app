@@ -106,6 +106,10 @@ check in the plan):
   equipment fitted or not set, the normal airspace reminder appears.
 - **Fuel:** the minimum fuel exceeds the aircraft's capacity, per hop when
   the route has fuel stops.
+- **Runway length:** with the aircraft's take-off and landing distances
+  set, the best runway at the departure (take-off), destination (landing)
+  or a fuel stop (both) is shorter than the scaled distance (see
+  [Aircraft and fuel](./aircraft-and-fuel.md)).
 - **Crosswind:** at the departure, destination or a fuel stop, the wind the
   aerodrome reports now (METAR, gusts included) gives more crosswind on its
   best runway than the aircraft's maximum demonstrated crosswind. Check

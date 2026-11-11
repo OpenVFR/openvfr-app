@@ -115,6 +115,14 @@ describe('suggestFuelStops', () => {
     if (r2.status === 'found') expect(r2.plans[0].stops[0].aerodrome.icao).toBe('AVGA')
   })
 
+  it('skips a stop whose runway is too short for the aircraft', () => {
+    const short = ad('SHRT', 200, 1, { runways: [{ lengthM: 600, surface: 'GRASS' }], maxRunwayM: 600, surfaces: ['GRASS'] })
+    const perf = { ...profile, minRunwayM: 0, takeoffDist50ftM: 450, landingDist50ftM: 380 }
+    // Take-off on grass: 450 x 1.2 x 1.33 = 718 m > 600 m
+    expect(suggestFuelStops(route(400), [], perf, [short]).status).toBe('none-found')
+    expect(suggestFuelStops(route(400), [], { ...perf, takeoffDist50ftM: 300, landingDist50ftM: 300 }, [short]).status).toBe('found')
+  })
+
   it('reports missing profile data', () => {
     expect(suggestFuelStops(route(400), [], { ...profile, maxFuelL: 0 }, []).status).toBe('missing-profile-data')
   })

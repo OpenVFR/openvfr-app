@@ -71,6 +71,15 @@ type FormState = {
   climbFuelCeilingLhr: string
   finalReserveMin:  string
   unusableFuelL:    string
+  takeoffDist50ftM: string
+  landingDist50ftM: string
+  vs0Kts: string
+  vs1Kts: string
+  vxKts: string
+  vfeKts: string
+  vaKts: string
+  vnoKts: string
+  vneKts: string
   // Equipment: '' = not set
   transponder:      '' | TransponderMode
   hasRadio:         '' | 'yes' | 'no'
@@ -108,6 +117,15 @@ const EMPTY_FORM: FormState = {
   climbFuelCeilingLhr: '0',
   finalReserveMin:  '0',
   unusableFuelL:    '0',
+  takeoffDist50ftM: '0',
+  landingDist50ftM: '0',
+  vs0Kts: '0',
+  vs1Kts: '0',
+  vxKts: '0',
+  vfeKts: '0',
+  vaKts: '0',
+  vnoKts: '0',
+  vneKts: '0',
   transponder:      '',
   hasRadio:         '',
 }
@@ -145,6 +163,15 @@ function profileToForm(p: AircraftProfileDocType): FormState {
     climbFuelCeilingLhr: String(p.climbFuelCeilingLhr ?? 0),
     finalReserveMin:  String(p.finalReserveMin ?? 0),
     unusableFuelL:    String(p.unusableFuelL ?? 0),
+    takeoffDist50ftM: String(p.takeoffDist50ftM ?? 0),
+    landingDist50ftM: String(p.landingDist50ftM ?? 0),
+    vs0Kts: String(p.vs0Kts ?? 0),
+    vs1Kts: String(p.vs1Kts ?? 0),
+    vxKts: String(p.vxKts ?? 0),
+    vfeKts: String(p.vfeKts ?? 0),
+    vaKts: String(p.vaKts ?? 0),
+    vnoKts: String(p.vnoKts ?? 0),
+    vneKts: String(p.vneKts ?? 0),
     transponder:      p.transponder ?? '',
     hasRadio:         p.hasRadio === true ? 'yes' : p.hasRadio === false ? 'no' : '',
   }
@@ -406,6 +433,15 @@ export default function AircraftLibrary({
         climbFuelCeilingLhr: HAS_ENGINE(form.category) && HAS_FUEL(form.category) ? Math.max(0, parseNum(form.climbFuelCeilingLhr)) : 0,
         finalReserveMin:  HAS_FUEL(form.category) ? Math.max(0, parseNum(form.finalReserveMin)) : 0,
         unusableFuelL:    HAS_FUEL(form.category) ? Math.max(0, parseNum(form.unusableFuelL)) : 0,
+        takeoffDist50ftM: Math.max(0, parseNum(form.takeoffDist50ftM)),
+        landingDist50ftM: Math.max(0, parseNum(form.landingDist50ftM)),
+        vs0Kts: Math.max(0, parseNum(form.vs0Kts)),
+        vs1Kts: Math.max(0, parseNum(form.vs1Kts)),
+        vxKts: Math.max(0, parseNum(form.vxKts)),
+        vfeKts: Math.max(0, parseNum(form.vfeKts)),
+        vaKts: Math.max(0, parseNum(form.vaKts)),
+        vnoKts: Math.max(0, parseNum(form.vnoKts)),
+        vneKts: Math.max(0, parseNum(form.vneKts)),
         transponder:      form.transponder || undefined,
         hasRadio:         form.hasRadio === '' ? undefined : form.hasRadio === 'yes',
       })
@@ -574,6 +610,18 @@ export default function AircraftLibrary({
             onChange={e => setForm(f => ({ ...f, hardRunwayOnly: e.target.checked }))}
           />
         </div>
+
+        <Field label="T/O dist 50 ft" unit="m" type="number" value={form.takeoffDist50ftM} tooltip="Take-off distance over a 50 ft obstacle from the POH, in metres, at maximum mass, sea level, standard temperature, paved dry runway. The pre-flight check scales it for elevation, temperature, surface and a 1.33 safety factor and compares it with the runway. 0 = not set." {...poh('takeoffDist50ftM')} onChange={v => set('takeoffDist50ftM', v)} />
+        <Field label="LDG dist 50 ft" unit="m" type="number" value={form.landingDist50ftM} tooltip="Landing distance from 50 ft from the POH, in metres, same conditions. Scaled like the take-off distance, with a 1.43 safety factor. 0 = not set." {...poh('landingDist50ftM')} onChange={v => set('landingDist50ftM', v)} />
+
+        <div className={css.sectionLabel}>V-speeds (kt IAS)</div>
+        <Field label="Vs0 (flaps)" unit="kts" type="number" value={form.vs0Kts} tooltip="Stall speed in landing configuration. 0 = not set." {...poh('vs0Kts')} onChange={v => set('vs0Kts', v)} />
+        <Field label="Vs1 (clean)" unit="kts" type="number" value={form.vs1Kts} tooltip="Stall speed clean. 0 = not set." {...poh('vs1Kts')} onChange={v => set('vs1Kts', v)} />
+        <Field label="Vx" unit="kts" type="number" value={form.vxKts} tooltip="Best angle of climb speed. Vy is the climb IAS below. 0 = not set." {...poh('vxKts')} onChange={v => set('vxKts', v)} />
+        <Field label="Vfe" unit="kts" type="number" value={form.vfeKts} tooltip="Maximum flap extended speed. 0 = not set." {...poh('vfeKts')} onChange={v => set('vfeKts', v)} />
+        <Field label="Va" unit="kts" type="number" value={form.vaKts} tooltip="Manoeuvring speed at maximum mass. 0 = not set." {...poh('vaKts')} onChange={v => set('vaKts', v)} />
+        <Field label="Vno" unit="kts" type="number" value={form.vnoKts} tooltip="Maximum structural cruising speed. 0 = not set." {...poh('vnoKts')} onChange={v => set('vnoKts', v)} />
+        <Field label="Vne" unit="kts" type="number" value={form.vneKts} tooltip="Never exceed speed. 0 = not set." {...poh('vneKts')} onChange={v => set('vneKts', v)} />
 
         <div className={css.sectionLabel}>Equipment</div>
         <div className={css.field}>

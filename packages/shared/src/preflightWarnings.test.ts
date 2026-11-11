@@ -237,6 +237,18 @@ describe('aircraft equipment and crosswind', () => {
     const w = computeWarnings(profile({ airspaceBands: [ctr] as never }), [], ac({ hasRadio: false }), [], [])
     expect(codes(w)).toEqual(['airspace-equipment'])
   })
+  it('flags a runway too short for landing at the destination', () => {
+    const aerodromes = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [18, 60] }, properties: {
+      icao: 'ESXX', elevation_ft: 0, runways: [{ designator: '09/27', length_m: 450, surface: 'GRASS', thresholds: [] }],
+    } }] } as never
+    const wps = [{ lat: 59, lng: 18, name: 'ESAA' }, { lat: 60, lng: 18, name: 'ESXX' }]
+    const w = computeWarnings(profile(), [], ac({ landingDist50ftM: 300 }), wps, [], undefined, false, undefined, undefined, { aerodromes })
+    // 300 x 1.15 (grass) x 1.43 = 493 m > 450 m
+    const rw = w.find(x => x.code === 'runway-short')
+    expect(rw?.level).toBe('danger')
+    expect(rw?.detail).toContain('493 m')
+  })
+
   it('flags crosswind above the limit at the destination', () => {
     const aerodromes = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [18, 60] }, properties: {
       icao: 'ESXX', runways: [{ thresholds: [{ designator: '09', mag_brg: 90, true_brg: 90 }, { designator: '27', mag_brg: 270, true_brg: 270 }] }],

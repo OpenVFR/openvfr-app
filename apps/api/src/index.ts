@@ -99,6 +99,9 @@ Return ONLY a raw JSON object with any of these keys you found (omit keys not fo
 - "bestGlideIas": best glide speed in knots (gliders / TMG / autogyros only). Convert if needed.
 - "glideRatio": best glide ratio as a number e.g. 30 for 30:1 (gliders / TMG / autogyros only).
 - "maxCrosswindKts": maximum demonstrated crosswind velocity in knots. Convert from km/h (×0.5400) or m/s (×1.944).
+- "takeoffDist50ftM": take-off distance over a 50 ft (15 m) obstacle in metres, at maximum take-off mass, sea level, standard temperature, paved dry runway, no wind. Convert from feet (×0.3048).
+- "landingDist50ftM": landing distance from 50 ft (15 m) in metres, same conditions. Convert from feet (×0.3048).
+- "vs0Kts", "vs1Kts", "vxKts", "vfeKts", "vaKts", "vnoKts", "vneKts": the V-speeds in knots IAS (Vs0 stall with full flaps, Vs1 stall clean, Vx best angle of climb, Vfe max flap extended, Va manoeuvring at max mass, Vno max structural cruising, Vne never exceed).
 - "fuelTypes": array of the fuel grades the engine is approved for, using only these codes: "AVGAS100LL", "AVGAS_UL91", "MOGAS" (motor gasoline / unleaded car fuel), "JETA1" (also for diesel engines). Put the grade the document recommends first.
 - "takeoffSpeedKts": speed at which the aircraft leaves the ground in knots — look for rotation speed (VR), lift-off speed (VLOF) or normal take-off speed. Convert from km/h (×0.5400) or mph (×0.8690).
 

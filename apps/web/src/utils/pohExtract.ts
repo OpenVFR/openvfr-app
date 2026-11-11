@@ -52,6 +52,15 @@ export type PohExtractResult = {
   glideRatio?:       string
   takeoffSpeedKts?:  string
   maxCrosswindKts?:  string
+  takeoffDist50ftM?: string
+  landingDist50ftM?: string
+  vs0Kts?: string
+  vs1Kts?: string
+  vxKts?: string
+  vfeKts?: string
+  vaKts?: string
+  vnoKts?: string
+  vneKts?: string
   fuelTypes?:        FuelCode[]
 }
 
@@ -165,6 +174,15 @@ export async function extractPohViaServer(
           glideRatio:       numStr('glideRatio'),
           takeoffSpeedKts:  numStr('takeoffSpeedKts'),
           maxCrosswindKts:  numStr('maxCrosswindKts'),
+          takeoffDist50ftM: numStr('takeoffDist50ftM'),
+          landingDist50ftM: numStr('landingDist50ftM'),
+          vs0Kts: numStr('vs0Kts'),
+          vs1Kts: numStr('vs1Kts'),
+          vxKts: numStr('vxKts'),
+          vfeKts: numStr('vfeKts'),
+          vaKts: numStr('vaKts'),
+          vnoKts: numStr('vnoKts'),
+          vneKts: numStr('vneKts'),
           fuelTypes:        parseFuelGrades(parsed['fuelTypes']),
         }
       }

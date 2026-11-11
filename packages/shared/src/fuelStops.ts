@@ -29,6 +29,7 @@ import { distanceNm, type RouteWaypoint } from './routeCalc'
 import { computeFuelPlan, computeTripFuelPlans, type FuelHop } from './fuelCalc'
 import { matchingFuels } from './fuelTypes'
 import { isHard, type AerodromeEntry } from './findDestination'
+import { runwaysAllowStop } from './runwayPerformance'
 
 type Wind = { dirDeg: number; speedKts: number } | null | undefined
 
@@ -169,6 +170,8 @@ export function suggestFuelStops(
     const fuels = fuelTypesUnset ? [] : matchingFuels(a.fuel, wanted)
     if (fuelTypesUnset ? a.fuel.length === 0 : fuels.length === 0) continue
     if (!runwayOk(a, profile.minRunwayM ?? 0, profile.hardRunwayOnly === true)) continue
+    // With take-off and landing distances in the profile: a runway long enough for both (standard temperature).
+    if (a.runways && a.runways.length > 0 && !runwaysAllowStop(profile, a.runways, a.elevationFt)) continue
 
     // Leg this aerodrome would split with the least detour.
     let best = -1, bestDetour = Infinity

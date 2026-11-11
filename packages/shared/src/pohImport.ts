@@ -23,6 +23,8 @@ export const POH_FIELDS = [
   'rocCeilingFpm', 'climbIas', 'climbFuelLhr', 'climbFuelCeilingLhr',
   'descentFpm', 'descentIas', 'descentFuelLhr',
   'bestGlideIas', 'glideRatio', 'takeoffSpeedKts', 'maxCrosswindKts',
+  'takeoffDist50ftM', 'landingDist50ftM',
+  'vs0Kts', 'vs1Kts', 'vxKts', 'vfeKts', 'vaKts', 'vnoKts', 'vneKts',
 ] as const
 
 export type PohField = typeof POH_FIELDS[number]
@@ -52,6 +54,15 @@ const FIELD_GUIDE: Record<PohField, string> = {
   glideRatio:       'best glide ratio as a number, e.g. 30 for 30:1 (gliders, motor gliders, gyroplanes).',
   takeoffSpeedKts:  'rotation (VR), lift-off (VLOF) or normal take-off speed in knots.',
   maxCrosswindKts:  'maximum demonstrated crosswind velocity in knots. Convert from km/h (×0.5400) or m/s (×1.944).',
+  takeoffDist50ftM: 'take-off distance to clear a 50 ft (15 m) obstacle in metres, at maximum take-off mass, sea level, standard temperature (15 °C), paved dry runway, no wind. Convert from feet (×0.3048).',
+  landingDist50ftM: 'landing distance from 50 ft (15 m) in metres, at maximum landing mass, sea level, standard temperature, paved dry runway, no wind. Convert from feet (×0.3048).',
+  vs0Kts:           'Vs0, stall speed in landing configuration (full flaps), knots IAS.',
+  vs1Kts:           'Vs1, stall speed clean (flaps up), knots IAS.',
+  vxKts:            'Vx, best angle of climb speed, knots IAS.',
+  vfeKts:           'Vfe, maximum flap extended speed (full flaps), knots IAS.',
+  vaKts:            'Va, manoeuvring speed at maximum mass, knots IAS.',
+  vnoKts:           'Vno, maximum structural cruising speed, knots IAS.',
+  vneKts:           'Vne, never exceed speed, knots IAS.',
 }
 
 /** The prompt the pilot sends to their assistant together with the POH PDF. */
@@ -184,6 +195,15 @@ const RANGES: Partial<Record<PohField, [number, number]>> = {
   glideRatio:       [2, 80],
   takeoffSpeedKts:  [10, 150],
   maxCrosswindKts:  [3, 45],
+  takeoffDist50ftM: [50, 3000],
+  landingDist50ftM: [50, 3000],
+  vs0Kts:           [15, 120],
+  vs1Kts:           [15, 130],
+  vxKts:            [20, 200],
+  vfeKts:           [30, 250],
+  vaKts:            [40, 300],
+  vnoKts:           [40, 350],
+  vneKts:           [50, 400],
 }
 
 /** Parse the assistant's answer. Throws PohReplyError when it has no usable JSON. */
@@ -248,6 +268,7 @@ export function parsePohReply(text: string): PohReply {
   const {
     maxFuelL, taxiFuelL, landingFuelL, cruiseAltFt, serviceCeilingFt, climbIas, cruiseIas, takeoffSpeedKts,
     rocSlFpm, rocCeilingFpm, fuelBurnLhr, descentFuelLhr,
+    vs0Kts, vs1Kts, vxKts, vfeKts, vaKts, vnoKts, vneKts,
   } = nums
   if (maxFuelL !== undefined && taxiFuelL !== undefined && taxiFuelL >= maxFuelL) flag('taxiFuelL', 'Not less than the usable fuel')
   if (maxFuelL !== undefined && landingFuelL !== undefined && landingFuelL >= maxFuelL) flag('landingFuelL', 'Not less than the usable fuel')
@@ -256,6 +277,14 @@ export function parsePohReply(text: string): PohReply {
   if (takeoffSpeedKts !== undefined && cruiseIas !== undefined && takeoffSpeedKts >= cruiseIas) flag('takeoffSpeedKts', 'Not slower than cruise speed')
   if (rocSlFpm !== undefined && rocCeilingFpm !== undefined && rocCeilingFpm >= rocSlFpm) flag('rocCeilingFpm', 'Not below the sea-level climb rate')
   if (fuelBurnLhr !== undefined && descentFuelLhr !== undefined && descentFuelLhr > fuelBurnLhr) flag('descentFuelLhr', 'Higher than cruise fuel burn')
+  // V-speed order: Vs0 <= Vs1 < Vfe <= Vno < Vne, Va < Vne, Vx <= Vy.
+  if (vs0Kts !== undefined && vs1Kts !== undefined && vs0Kts > vs1Kts) flag('vs0Kts', 'Higher than Vs1')
+  if (vs1Kts !== undefined && vfeKts !== undefined && vfeKts <= vs1Kts) flag('vfeKts', 'Not above Vs1')
+  if (vfeKts !== undefined && vnoKts !== undefined && vfeKts > vnoKts) flag('vfeKts', 'Above Vno')
+  if (vnoKts !== undefined && vneKts !== undefined && vnoKts >= vneKts) flag('vnoKts', 'Not below Vne')
+  if (vaKts !== undefined && vneKts !== undefined && vaKts >= vneKts) flag('vaKts', 'Not below Vne')
+  if (vxKts !== undefined && climbIas !== undefined && vxKts > climbIas) flag('vxKts', 'Above Vy (climb IAS)')
+  if (vs1Kts !== undefined && cruiseIas !== undefined && vs1Kts >= cruiseIas) flag('vs1Kts', 'Not below cruise speed')
 
   const fuelTypes = parseFuelGrades(rec['fuelTypes'])
 

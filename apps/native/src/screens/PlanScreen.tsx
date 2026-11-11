@@ -63,6 +63,7 @@ import { nmToDisplay, distLabel, ktsToDisplay, displayToKts, speedLabel } from '
 import { computeTripFuelPlans } from '../utils/fuelCalc'
 import { setFuelStop } from '@open-vfr/shared/fuelStops'
 import { parseMetarWind, type ParsedWind } from '@open-vfr/shared/fetchWx'
+import { parseMetarTempC } from '@open-vfr/shared/runwayPerformance'
 import { FuelStopSuggest } from '../components/FuelStopSuggest'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
@@ -577,14 +578,17 @@ export function PlanScreen() {
   const fuelShort = !!fuelHops?.some(h => h.plan.availableFuelL > 0 && h.plan.totalMinFuelL > h.plan.availableFuelL)
 
   // Wind each aerodrome on the route reports itself (own METAR), for the pre-flight crosswind check.
-  const surfaceWinds = useMemo(() => {
-    const m = new Map<string, ParsedWind>()
+  const { surfaceWinds, surfaceTempsC } = useMemo(() => {
+    const winds = new Map<string, ParsedWind>()
+    const temps = new Map<string, number>()
     for (const st of routeWx) {
       if (!st.metar || (st.sourceIcao && st.sourceIcao !== st.icao)) continue
       const w = parseMetarWind(st.metar)
-      if (w) m.set(st.icao.toUpperCase(), w)
+      if (w) winds.set(st.icao.toUpperCase(), w)
+      const t = parseMetarTempC(st.metar)
+      if (t != null) temps.set(st.icao.toUpperCase(), t)
     }
-    return m
+    return { surfaceWinds: winds, surfaceTempsC: temps }
   }, [routeWx])
 
   // Pre-flight check: effective wind per leg (leg override > global > forecast), like the route table.
@@ -598,6 +602,7 @@ export function PlanScreen() {
     msa: legMsaData, legOverrides, aircraft: profile, aircraftId: selectedId,
     legWinds: effectiveLegWinds, windsLoading: forecastLoading, enabled: segment === 'route',
     surfaceWinds,
+    surfaceTempsC,
   })
   // Projected onto the route the warnings were computed for, not the live one.
   const showWarningOnMap = (w: { focusNm?: number }) => {

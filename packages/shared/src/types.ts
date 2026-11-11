@@ -68,6 +68,18 @@ export type AircraftProfileDocType = {
   finalReserveMin?: number
   /** Unusable fuel, litres (not part of `maxFuelL`, which is usable). 0/absent = not set. */
   unusableFuelL?: number
+  /** Take-off distance over a 50 ft screen, metres (max mass, sea level, ISA, paved dry). 0/absent = not set. */
+  takeoffDist50ftM?: number
+  /** Landing distance over a 50 ft screen, metres (same conditions). 0/absent = not set. */
+  landingDist50ftM?: number
+  /** V-speeds, kt IAS. 0/absent = not set. Vy is `climbIas`. */
+  vs0Kts?: number
+  vs1Kts?: number
+  vfeKts?: number
+  vaKts?: number
+  vnoKts?: number
+  vneKts?: number
+  vxKts?: number
   updatedAt: number
 }
 
