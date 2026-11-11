@@ -111,4 +111,7 @@ Off flying mode, it re-aligns a rotated map to north.
 ## Open a link
 
 A link can open the app on an aerodrome (`?ad=ESSB`) or at a position
-(`?c=5939N01756E&z=11`). Malformed parts of a link are ignored.
+(`?c=5939N01756E&z=11`). In the web app, `?route=` followed by a saved
+route's id opens that route of your account (assistants give such links);
+if the route on the map has unsaved changes you are asked first. Malformed
+parts of a link are ignored.

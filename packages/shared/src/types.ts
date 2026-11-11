@@ -123,6 +123,12 @@ export type RouteDocType = {
    *  Lets "Save" update that same row instead of guessing by name — same
    *  convention as web's src/db/index.ts RouteDocType.linkedRouteId. */
   linkedRouteId?: string
+  /**
+   * Set when an AI assistant created or changed the route through the
+   * assistant connection ("check before use"); null once the pilot saved it
+   * in the app (sent to the server to clear the mark), absent otherwise.
+   */
+  assistantReview?: AssistantReview | null
   updatedAt: number
 }
 

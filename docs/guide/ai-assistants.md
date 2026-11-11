@@ -20,6 +20,8 @@ panel then has an **AI assistants** section.
 - "Where can I refuel on my route to Umeå?"
 - "Add a new aircraft SE-ABC, a Cessna 182, from the attached POH."
 - "Set SE-ABC's maximum crosswind to 15 kt."
+- "Plan ESSB to ESMS with SE-ABC at 3,500 ft, with a fuel stop at ESKN, and save it."
+- "On my route to Umeå, fly via ESNS and climb to 4,500 ft on the last leg."
 
 Many assistants also offer OpenVFR's **Pre-flight briefing** prompt in their
 prompt or attachment menu: pick it, give the route (a saved route name or
@@ -40,8 +42,9 @@ for those. Answers carry links into the app.
    where your account has it.
 3. The assistant opens OpenVFR. Sign in if you are not signed in already in
    that browser (if you are, this step is skipped), then check which assistant
-   asks, choose whether it may also read your **saved routes and aircraft**,
-   and select **Allow**.
+   asks, choose whether it may also read your **saved routes and aircraft**
+   (and, if it asks, change them: see below), and select **Allow**. To give a
+   connected assistant more access later, disconnect it and connect again.
 
 The approval page says whether OpenVFR could check who the assistant is:
 **Verified** shows the domain that published it (for example `claude.ai`);
@@ -49,12 +52,26 @@ The approval page says whether OpenVFR could check who the assistant is:
 name, so only allow it if you just added it yourself. Every new connection
 is confirmed by email; if you did not make it, disconnect it (below).
 
-The assistant only reads, unless you also tick **add and change your
-aircraft profiles** (never preselected). Then it can add aircraft and change
-their values, but never delete one. An aircraft an assistant added or changed
-shows **Check before use** in the aircraft list and in the pre-flight check
-until you open it in the app, compare it with the POH and save it. The
-assistant never sees your flight logs or position. Only connect
+The assistant only reads, unless you also tick **create and change your
+saved routes** or **add and change your aircraft profiles** (never
+preselected). Then it can save new routes and change routes (points,
+altitudes, speeds, fuel stops, aircraft, name), or add aircraft and change
+their values, but never delete anything. The assistant never sees your
+flight logs or position.
+
+### Routes and aircraft from an assistant
+
+Route points are aerodrome codes, navaids, reporting points (written
+`ESSB/LAVER` when several aerodromes have one with that name) or
+coordinates; OpenVFR refuses anything it does not know rather than guess.
+After each change the assistant gets the route's briefing warnings, so it can
+improve the route, and a link that opens the route in the app.
+
+A route or aircraft an assistant made or changed shows **Check before use**
+in the list and in the pre-flight check. Open it, check every point, level
+and fuel stop (or the values against the POH), and save it: that removes the
+mark. If the route was changed while you had it open, the route list says the
+map shows another version; load the saved route to see the change. Only connect
 assistants you trust: OpenVFR does not check them.
 
 ## Disconnect

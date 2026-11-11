@@ -322,3 +322,35 @@
   transition: background 0.1s;
 }
 .confirmCancel:hover { background: var(--surface-active); color: var(--text-secondary); }
+
+.reviewBadge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--status-warn);
+  border-radius: 3px;
+  color: var(--status-warn);
+  font-size: 10px;
+  line-height: 14px;
+  cursor: help;
+}
+
+.reviewNote {
+  margin: 4px 0 6px 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.reviewNote .reviewBadge {
+  margin-left: 0;
+}
+
+.linkBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-blue);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

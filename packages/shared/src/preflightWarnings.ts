@@ -25,7 +25,7 @@ import { notamTitle } from './notamQCode'
 import type { NotamItem } from './fetchNotam'
 import { legSpans, legMsaList, legBelowMsa } from './legLevelDrag'
 import { airspaceCategory, DEFAULT_AIRSPACE_LEVELS, type AirspaceAlertLevels, type AirspaceCategory } from './airspaceAlertLevel'
-import type { RouteWaypoint, LegOverride, AircraftProfileDocType } from './types'
+import type { RouteWaypoint, LegOverride, AircraftProfileDocType, AssistantReview } from './types'
 
 // ---------------------------------------------------------------------------
 // Warning types
@@ -118,6 +118,8 @@ export interface PreflightExtras {
   surfaceTempsC?:  ReadonlyMap<string, number>
   /** Data that could not be loaded: the checks that need it did not run, and the card says so. */
   unavailable?:    PreflightUnavailable
+  /** The saved route was written by an AI assistant and not yet saved by the pilot. */
+  routeReview?:    AssistantReview | null
 }
 
 /** Checks that did not run. The first three are flags (the card words them itself); `notams` is the
@@ -183,7 +185,7 @@ export function computeWarnings(
   margins: MsaMargins = DEFAULT_MSA_MARGINS,
   extras: PreflightExtras = {},
 ): PreflightWarning[] {
-  const { terrainPts = [], airspaceLevels = DEFAULT_AIRSPACE_LEVELS, aerodromes, notams, airspace, nowMs, unavailable, surfaceWinds, surfaceTempsC } = extras
+  const { terrainPts = [], airspaceLevels = DEFAULT_AIRSPACE_LEVELS, aerodromes, notams, airspace, nowMs, unavailable, surfaceWinds, surfaceTempsC, routeReview } = extras
   const warnings: PreflightWarning[] = []
 
   // ── Terrain unavailable: the MSA check below is silently skipped and AGL
@@ -237,6 +239,16 @@ export function computeWarnings(
       code:   'aircraft-assistant-review',
       title:  'Check the aircraft profile',
       detail: `${r.change === 'created' ? `Added by ${r.by}` : `Changed by ${r.by} (${r.change.join(', ')})`} through the assistant connection. Fuel, speeds and runway checks use these values: compare them with the POH, then open and save the aircraft.`,
+    })
+  }
+
+  // ── 0c. Route written by an AI assistant, not yet reviewed ──────────────
+  if (routeReview) {
+    warnings.push({
+      level:  'warn',
+      code:   'route-assistant-review',
+      title:  'Check the route',
+      detail: `${routeReview.change === 'created' ? `Made by ${routeReview.by}` : `Changed by ${routeReview.by} (${routeReview.change.join(', ')})`} through the assistant connection. Check every point, level and fuel stop on the map, then save the route.`,
     })
   }
 

@@ -46,12 +46,14 @@ export type RouteDocType = {
    *  Lets "Save" update that same row instead of guessing by name — see
    *  useRouteDb.ts's usePersistedRoute() activeRouteId. */
   linkedRouteId?: string
+  /** "Check before use" mark from the assistant connection; null once saved in the app. */
+  assistantReview?: AssistantReview | null
   updatedAt: number
 }
 
 const routeSchema: RxJsonSchema<RouteDocType> = {
   title: 'route',
-  version: 8,
+  version: 9,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -86,6 +88,7 @@ const routeSchema: RxJsonSchema<RouteDocType> = {
     },
     aircraftId: { type: 'string', maxLength: 64 },
     linkedRouteId: { type: 'string', maxLength: 64 },
+    assistantReview: { type: ['object', 'null'] },
     updatedAt: { type: 'number' },
   },
   required: ['id', 'name', 'waypoints', 'legOverrides', 'updatedAt'],
@@ -409,6 +412,8 @@ export function getDb(): Promise<OpenVfrDb> {
             7: (oldDoc) => ({ ...oldDoc }),
             // v7 → v8: optional waypoint `elevationFt` (aerodrome field elevation)
             8: (oldDoc) => ({ ...oldDoc }),
+            // v8 → v9: optional assistantReview (absent = not written by an assistant)
+            9: (oldDoc) => ({ ...oldDoc }),
           },
         },
         aircraft_profiles: {

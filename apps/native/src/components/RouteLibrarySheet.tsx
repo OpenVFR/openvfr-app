@@ -28,6 +28,7 @@ import { SyncRefusedNote } from './SyncRefusedNote'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { NativeSheet, useSheetMaxHeight } from './NativeSheet'
 import { distanceNm } from '../utils/routeCalc'
+import { assistantReviewLabel } from '@open-vfr/shared/types'
 
 interface Props {
   /** Current active route waypoints */
@@ -103,6 +104,8 @@ export function RouteLibrarySheet({
     { waypoints, legOverrides, aircraftId },
     linkedRoute ? { waypoints: linkedRoute.waypoints, legOverrides: linkedRoute.legOverrides ?? [], aircraftId: linkedRoute.aircraftId ?? '' } : undefined,
   )
+  // A route an assistant wrote can be saved unchanged: that is the pilot's review.
+  const canSave = dirty || !!linkedRoute?.assistantReview
 
   // Transient "switched aircraft" confirmation — mirrors web's
   // RouteLibrary.tsx. Loading a route whose stored aircraft differs from
@@ -179,6 +182,8 @@ export function RouteLibrarySheet({
       id: linkedRoute.id,
       name: linkedRoute.name,
       waypoints, legOverrides, aircraftId,
+      // Saving is the pilot's review of a route an assistant wrote: clear the mark (null is synced).
+      ...(linkedRoute.assistantReview ? { assistantReview: null } : {}),
       updatedAt: Date.now(),
     }
     await routeDb.upsert(doc)
@@ -333,17 +338,23 @@ export function RouteLibrarySheet({
                   </Text>
                   <View style={styles.editingActions}>
                     <TouchableOpacity
-                      style={[styles.editBtn, !dirty && styles.editBtnDisabled]}
+                      style={[styles.editBtn, !canSave && styles.editBtnDisabled]}
                       onPress={handleSaveInPlace}
-                      disabled={!dirty}
+                      disabled={!canSave}
                     >
-                      <Text style={[styles.editBtnTxt, !dirty && styles.editBtnTxtDisabled]}>Save</Text>
+                      <Text style={[styles.editBtnTxt, !canSave && styles.editBtnTxtDisabled]}>Save</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.editBtn} onPress={openSaveAs}>
                       <Text style={styles.editBtnTxt}>Save As…</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
+                {linkedRoute.assistantReview ? (
+                  <Text style={styles.reviewNote}>
+                    Check before use · {assistantReviewLabel(linkedRoute.assistantReview)}.{' '}
+                    {dirty ? 'The map shows another version: load the saved route from the list to see it.' : 'Check every point, level and fuel stop, then Save.'}
+                  </Text>
+                ) : null}
                 {saveAsOpen && (
                   <View style={styles.saveRow}>
                     <TextInput
@@ -439,6 +450,7 @@ export function RouteLibrarySheet({
                     ) : (
                       <>
                         <Text style={styles.routeName} numberOfLines={1}>{route.name}</Text>
+                        {route.assistantReview ? <Text style={styles.reviewNote}>Check before use · {assistantReviewLabel(route.assistantReview)}</Text> : null}
                         <Text style={styles.routeMeta}>
                           {route.waypoints.length} WP · {dist.toFixed(0)} NM · {fmtDate(route.updatedAt)}
                           {route.aircraftId ? (() => {
@@ -568,6 +580,7 @@ function makeStyles(theme: ScaledTheme) {
   actionBtn: { padding: theme.space2 },
   sep: { height: 1, backgroundColor: theme.borderSubtle, marginHorizontal: theme.space4 },
   renameRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space2 },
+  reviewNote: { color: theme.statusWarn, fontSize: theme.textXs, fontWeight: '600', marginTop: 2 },
   renameInput: {
     flex: 1, backgroundColor: theme.surfaceOverlay, borderWidth: 1,
     borderColor: theme.accentBlue, borderRadius: theme.radiusSm,

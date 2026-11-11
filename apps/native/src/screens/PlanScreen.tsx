@@ -62,7 +62,7 @@ import {
 import { nmToDisplay, distLabel, ktsToDisplay, displayToKts, speedLabel } from '../utils/units'
 import { computeTripFuelPlans } from '../utils/fuelCalc'
 import { setFuelStop } from '@open-vfr/shared/fuelStops'
-import { assistantReviewLabel } from '@open-vfr/shared/types'
+import { assistantReviewLabel, type AssistantReview } from '@open-vfr/shared/types'
 import type { ParsedWind } from '@open-vfr/shared/fetchWx'
 import { metarSurfaceWind } from '@open-vfr/shared/crosswindCheck'
 import { parseMetarTempC } from '@open-vfr/shared/runwayPerformance'
@@ -600,11 +600,21 @@ export function PlanScreen() {
     if (o?.windDir != null && o?.windSpd != null) return { dirDeg: o.windDir, speedKts: o.windSpd }
     return wind ? { dirDeg: wind.dirDeg, speedKts: wind.speedKts } : forecastWinds[i] ?? null
   }), [waypoints, forecastWinds, legOverrides, wind])
+  // The linked saved route's "check before use" mark (written by an AI assistant): re-read when
+  // the route tab opens, which is also after the library sheet saved it.
+  const [routeReview, setRouteReview] = useState<AssistantReview | null>(null)
+  useEffect(() => {
+    let live = true
+    if (!activeRouteId) { setRouteReview(null); return }
+    void routeDb.get(activeRouteId).then(r => { if (live) setRouteReview(r?.assistantReview ?? null) })
+    return () => { live = false }
+  }, [activeRouteId, segment, waypoints])
   const preflight = usePreflightCheck({
     msa: legMsaData, legOverrides, aircraft: profile, aircraftId: selectedId,
     legWinds: effectiveLegWinds, windsLoading: forecastLoading, enabled: segment === 'route',
     surfaceWinds,
     surfaceTempsC,
+    routeReview,
   })
   // Projected onto the route the warnings were computed for, not the live one.
   const showWarningOnMap = (w: { focusNm?: number }) => {

@@ -39,6 +39,7 @@ import type { LegOverride, AircraftProfileDocType } from '../db/index'
 import css from './PreflightWarnings.module.css'
 import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
 import { IconCheck } from '@tabler/icons-react'
+import type { AssistantReview } from '@open-vfr/shared/types'
 
 // ---------------------------------------------------------------------------
 // Data files: one load per file and country selection, shared by every mount.
@@ -97,6 +98,8 @@ interface Props {
   onSelectLeg?: (leg: number | null) => void
   /** METAR/TAF stations along the route: their own reported wind feeds the crosswind check. */
   weatherStations?: RouteWeatherStation[]
+  /** The linked saved route was written by an AI assistant and not yet saved by the pilot. */
+  routeReview?: AssistantReview | null
 }
 
 /** Value that follows `value` only after it has been still for `ms`. */
@@ -219,8 +222,8 @@ export default function PreflightWarnings(props: Props) {
 
   const warnings = useMemo<PreflightWarning[]>(() => {
     if (!profile) return []
-    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, resolveMsaMargins(msaMargins), { terrainPts, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable, surfaceWinds, surfaceTempsC })
-  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, msaMargins, terrainPts, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, unavailable, surfaceWinds, surfaceTempsC])
+    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, resolveMsaMargins(msaMargins), { terrainPts, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable, surfaceWinds, surfaceTempsC, routeReview: props.routeReview })
+  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, msaMargins, terrainPts, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, unavailable, surfaceWinds, surfaceTempsC, props.routeReview])
 
   const prompts = useMemo(
     () => computePrompts({ waypoints, legWinds, windsLoading }),

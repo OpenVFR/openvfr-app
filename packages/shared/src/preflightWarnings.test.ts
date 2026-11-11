@@ -23,6 +23,13 @@ describe('computeWarnings', () => {
     expect(computeWarnings(profile(), [], undefined, [], [])).toEqual([])
   })
 
+  it('warns about a route an assistant made until the pilot saves it', () => {
+    const w = computeWarnings(profile(), [], undefined, [], [], undefined, false, undefined, undefined, { routeReview: { by: 'Claude', at: 1, change: 'created' } })
+    expect(codes(w)).toEqual(['route-assistant-review'])
+    expect(w[0]!.detail).toMatch(/Made by Claude/)
+    expect(computeWarnings(profile(), [], undefined, [], [], undefined, false, undefined, undefined, { routeReview: null })).toEqual([])
+  })
+
   it('flags Class D penetration at planned altitude', () => {
     const band = { class: 'D', type: 'CTR', name: 'Test CTR', lower_ft: 0, upper_ft: 4000, entryNm: 10, exitNm: 20 }
     const w = computeWarnings(profile({ airspaceBands: [band] as never }), [], undefined, [], [])

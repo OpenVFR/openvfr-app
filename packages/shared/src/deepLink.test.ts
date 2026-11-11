@@ -2,6 +2,11 @@ import { describe, it, expect } from 'vitest'
 import { parseMapLink, hasMapLink, stripMapLinkParams } from './deepLink'
 
 describe('parseMapLink', () => {
+  it('saved route by id, only a UUID', () => {
+    expect(parseMapLink('?route=0F8FAD5B-D9CB-469F-A165-70867728950E').route).toBe('0f8fad5b-d9cb-469f-a165-70867728950e')
+    expect(parseMapLink('?route=current').route).toBeUndefined()
+    expect(hasMapLink(parseMapLink('?route=0f8fad5b-d9cb-469f-a165-70867728950e'))).toBe(true)
+  })
   it('aerodrome', () => {
     expect(parseMapLink('?ad=essb')).toEqual({ ad: 'ESSB' })
   })

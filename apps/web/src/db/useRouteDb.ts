@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride, RouteDocType } from './index'
 import { getDb } from './index'
+import type { AssistantReview } from '@open-vfr/shared/types'
 import { resolveSaveRouteId } from '@open-vfr/shared/resolveSaveRouteId'
 import { emptyHistory, recordChange, undo as undoStep, redo as redoStep, type UndoHistory } from '@open-vfr/shared/undoHistory'
 
@@ -327,7 +328,10 @@ export function useRouteLibrary(): RouteLibraryHook {
     // of Save on "AGENT-SYNC-TEST" created 3 separate synced rows on both
     // web and native.
     const id = resolveSaveRouteId(routeId, name, routes, ROUTE_ID) ?? crypto.randomUUID()
-    await db.routes.upsert({ id, name, waypoints, legOverrides, aircraftId: aircraftId ?? '', updatedAt: Date.now() })
+    // Saving is the pilot's review of a route an assistant wrote: the mark
+    // is cleared (null is synced; absent would leave the server's mark).
+    const marked = !!(await db.routes.findOne(id).exec())?.get('assistantReview')
+    await db.routes.upsert({ id, name, waypoints, legOverrides, aircraftId: aircraftId ?? '', ...(marked ? { assistantReview: null } : {}), updatedAt: Date.now() })
     return id
   }, [routes])
 
@@ -353,4 +357,47 @@ export function useRouteLibrary(): RouteLibraryHook {
   }, [])
 
   return { routes, saveRoute, loadRoute, deleteRoute, renameRoute }
+}
+
+/**
+ * The assistant-review mark of one saved route ('' = none), live: the
+ * pre-flight check warns while the linked route still carries it.
+ */
+export function useSavedRouteReview(id: string): AssistantReview | null {
+  const [review, setReview] = useState<AssistantReview | null>(null)
+  useEffect(() => {
+    setReview(null)
+    if (!id || id === ROUTE_ID) return
+    let unsub: (() => void) | null = null
+    let cancelled = false
+    getDb().then(db => {
+      if (cancelled) return
+      const sub = db.routes.findOne(id).$.subscribe(doc => setReview((doc?.get('assistantReview') as AssistantReview | null | undefined) ?? null))
+      unsub = () => sub.unsubscribe()
+    }).catch(console.error)
+    return () => { cancelled = true; unsub?.() }
+  }, [id])
+  return review
+}
+
+/**
+ * A saved route by id, waiting up to `waitMs` for it to arrive by sync
+ * (a link from the assistant can be opened before the first pull is done).
+ */
+export async function waitForSavedRoute(id: string, waitMs: number): Promise<RouteDocType | null> {
+  const db = await getDb()
+  return await new Promise<RouteDocType | null>((resolve) => {
+    let done = false
+    let sub: { unsubscribe: () => void } | null = null
+    const finish = (doc: RouteDocType | null) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      queueMicrotask(() => sub?.unsubscribe())
+      resolve(doc)
+    }
+    const timer = setTimeout(() => finish(null), waitMs)
+    sub = db.routes.findOne(id).$.subscribe(doc => { if (doc) finish(doc.toJSON() as RouteDocType) })
+    if (done) sub.unsubscribe()
+  })
 }

@@ -9,6 +9,7 @@
  * the plan screen is not in front; the last result stays, so coming back to an
  * unchanged route is free.
  */
+import type { AssistantReview } from '@open-vfr/shared/types'
 import type { ParsedWind } from '@open-vfr/shared/fetchWx'
 import { useEffect, useMemo, useState } from 'react'
 import { useIsFocused } from '@react-navigation/native'
@@ -55,6 +56,8 @@ export function usePreflightCheck(opts: {
   surfaceWinds?: ReadonlyMap<string, ParsedWind>
   /** Reported temperature per ICAO (own METAR), °C, for the runway length check. */
   surfaceTempsC?: ReadonlyMap<string, number>
+  /** The linked saved route was written by an AI assistant and not yet saved by the pilot. */
+  routeReview?: AssistantReview | null
 }): PreflightCheck {
   const { msa, aircraft, aircraftId } = opts
   const focused = useIsFocused()
@@ -124,9 +127,9 @@ export function usePreflightCheck(opts: {
     return computeWarnings(
       profile, msa.msaPts, aircraft ?? undefined, waypoints, legOverrides, aircraftId ?? undefined,
       msa.terrainFailed, legWinds, resolveMsaMargins(margins),
-      { terrainPts: msa.terrain, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable, surfaceWinds: opts.surfaceWinds, surfaceTempsC: opts.surfaceTempsC },
+      { terrainPts: msa.terrain, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable, surfaceWinds: opts.surfaceWinds, surfaceTempsC: opts.surfaceTempsC, routeReview: opts.routeReview },
     )
-  }, [profile, msa, aircraft, waypoints, legOverrides, aircraftId, legWinds, margins, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, airspaceFailed, aerodromesFailed, signedIn, regional.failed, opts.surfaceWinds, opts.surfaceTempsC])
+  }, [profile, msa, aircraft, waypoints, legOverrides, aircraftId, legWinds, margins, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, airspaceFailed, aerodromesFailed, signedIn, regional.failed, opts.surfaceWinds, opts.surfaceTempsC, opts.routeReview])
 
   const prompts = useMemo(
     () => computePrompts({ waypoints, legWinds, windsLoading }),

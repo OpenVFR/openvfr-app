@@ -86,6 +86,26 @@ export async function upsertUserAircraft(userId: string, doc: AircraftProfileDoc
   if (!res.ok) throw new Error(`PostgREST user_aircraft_profiles upsert -> ${res.status} ${(await res.text()).slice(0, 200)}`)
 }
 
+/**
+ * Create or replace one of the user's saved routes as that user. The review
+ * mark is written explicitly: the shared row mapping only ever clears it.
+ */
+export async function upsertUserRoute(userId: string, doc: RouteDocType): Promise<void> {
+  if (!POSTGREST_URL) throw new Error('POSTGREST_INTERNAL_URL is not set')
+  const { jwt } = mintPostgrestJwt({ id: userId }, 60)
+  const res = await fetch(`${POSTGREST_URL}/user_routes`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${jwt}`,
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify({ ...routeRows.toServer(doc, userId), assistant_review: doc.assistantReview ?? null }),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  })
+  if (!res.ok) throw new Error(`PostgREST user_routes upsert -> ${res.status} ${(await res.text()).slice(0, 200)}`)
+}
+
 /** The user's aircraft profiles. */
 export async function userAircraft(userId: string): Promise<AircraftProfileDocType[]> {
   const rows = await postgrestGet(userId, '/user_aircraft_profiles?select=*&limit=100')
@@ -110,7 +130,7 @@ async function fetchDataset(url: string): Promise<GeoJSON.FeatureCollection | nu
 }
 
 /** One dataset for some countries (merged); null when TILES_BASE_URL is unset or nothing loaded. */
-export async function loadCountryDataset(kind: 'aerodromes' | 'airspace' | 'obstacles', countries: readonly string[]): Promise<GeoJSON.FeatureCollection | null> {
+export async function loadCountryDataset(kind: 'aerodromes' | 'airspace' | 'obstacles' | 'navaids' | 'waypoints', countries: readonly string[]): Promise<GeoJSON.FeatureCollection | null> {
   if (!TILES_BASE_URL || countries.length === 0) return null
   const now = Date.now()
   const parts = await Promise.all(countries.map(cc => {

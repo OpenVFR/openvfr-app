@@ -108,7 +108,8 @@ import ProfilePanel from './ProfilePanel'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { magneticBearingDeg, bearingDeg, advancePosition } from '../utils/routeCalc'
 import { legLabelVariants } from '@open-vfr/shared/legLabels'
-import { usePersistedRoute } from '../db/useRouteDb'
+import { usePersistedRoute, waitForSavedRoute } from '../db/useRouteDb'
+import { isRouteDirty } from '@open-vfr/shared/routeDirty'
 import { useHomeAirfield, useUnits, useAlternate, useTheme, useAutoZoom, useTrajectoryMode, useAirspaceWarnLookahead, useAirspaceWarnVerticalFt, useTerrainColoring, useTrafficVertFilter, useLayerVisibility, useAirspaceCeiling, useSelectedAircraftId, useParkTimeout, useAutoFlyMode, useRecordSimulatedFlights, useAlertBanners, useFlownTrail } from '../db/useSettings'
 import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import { useUserWaypoints } from '../db/useUserWaypoints'
@@ -4468,6 +4469,12 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // map back over whatever the user has done since. Never applied while
   // flying (follow mode owns the camera then).
   const mapLinkAppliedRef = useRef(false)
+  // For ?route=<id>, which resolves after an await: the route on the map
+  // then, and how to load another (set once drawerProps exists, below).
+  const routeStateRef = useRef({ waypoints: routeWaypoints, legOverrides, aircraftId: routeAircraftId, activeRouteId })
+  routeStateRef.current = { waypoints: routeWaypoints, legOverrides, aircraftId: routeAircraftId, activeRouteId }
+  const drawerPropsRef = useRef<{ onLoadRoute: (wps: RouteWaypoint[], ovr: LegOverride[], aircraftId: string) => void } | null>(null)
+  const loadRouteRef = useRef<(wps: RouteWaypoint[], ovr: LegOverride[], aircraftId: string | undefined, id: string) => void>(() => {})
   useEffect(() => {
     const map = mapRef.current
     if (!mapReady || !map || mapLinkAppliedRef.current) return
@@ -4479,6 +4486,28 @@ export default function MapView({ auth }: { auth: AuthState }) {
     // settings often resolve after mapReady) and yanks the camera away.
     hasInitialCenteredRef.current = true
     window.history.replaceState(window.history.state, '', stripMapLinkParams(window.location.href))
+
+    // ?route=<id>: one of the user's saved routes (e.g. made by their AI
+    // assistant). It may still be on its way by sync, so wait a little.
+    if (link.route) {
+      const id = link.route
+      void waitForSavedRoute(id, 20_000).then(async (doc) => {
+        if (!doc) {
+          window.alert('That route is not in your saved routes here. Sign in with the account it was saved to, or wait for sync and open the link again.')
+          return
+        }
+        const cur = routeStateRef.current
+        if (cur.activeRouteId !== id) {
+          const linked = cur.activeRouteId ? await waitForSavedRoute(cur.activeRouteId, 1500) : null
+          const dirty = isRouteDirty(
+            { waypoints: cur.waypoints, legOverrides: cur.legOverrides, aircraftId: cur.aircraftId },
+            linked ? { waypoints: linked.waypoints, legOverrides: linked.legOverrides ?? [], aircraftId: linked.aircraftId ?? '' } : undefined,
+          )
+          if (dirty && !window.confirm(`Open the saved route "${doc.name}"? The route on the map has unsaved changes and will be replaced.`)) return
+        }
+        loadRouteRef.current(doc.waypoints, doc.legOverrides ?? [], doc.aircraftId || undefined, id)
+      })
+    }
 
     if (link.center) {
       map.jumpTo({ center: [link.center.lng, link.center.lat], zoom: link.zoom ?? 11 })
@@ -4908,6 +4937,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const tafWarnIcaos = useMemo(() => tafChangeIcaos(routeWeatherStations), [routeWeatherStations])
   // Flying with a fix: route actions on features fly there (Direct to).
   const inFlightRoute = flyingNow && !!gpsPosition
+  loadRouteRef.current = (wps, ovr, aircraftId, id) => { drawerPropsRef.current?.onLoadRoute(wps, ovr, aircraftId ?? ''); setActiveRouteId(id) }
   const drawerProps = useStableProps({
     tafWarnIcaos,
     visibility,
@@ -5047,6 +5077,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
     auth,
     onOpenProfile: () => setProfileOpen(true),
   })
+  drawerPropsRef.current = drawerProps
+
 
   // A feature clicked where the card will cover it: slide the map left so the
   // feature stays in view beside the card (desktop, not while flying).

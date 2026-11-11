@@ -14,7 +14,8 @@ export const SCOPE_BRIEFING = 'briefing:read'
 export const SCOPE_ROUTES = 'routes:read'
 /** Create and change the user's aircraft profiles (a separate consent, off by default on the consent page). */
 export const SCOPE_AIRCRAFT_WRITE = 'aircraft:write'
-export const MCP_SCOPES = ['openid', 'offline_access', SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_AIRCRAFT_WRITE]
+export const SCOPE_ROUTES_WRITE = 'routes:write'
+export const MCP_SCOPES = ['openid', 'offline_access', SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE]
 
 /** Paths better-auth rate-limits for the assistant connection (open client registration). */
 export const ASSISTANT_RATE_RULES = {

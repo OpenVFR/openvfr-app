@@ -8,10 +8,13 @@
  * assistant can start sign-in. The token's subject is the user; its scopes
  * decide what the tools may read:
  *
- *   briefing:read  public aviation data and briefings (every token)
- *   routes:read    the user's saved routes and aircraft profiles
+ *   briefing:read   public aviation data and briefings (every token)
+ *   routes:read     the user's saved routes and aircraft profiles
+ *   routes:write    create and change saved routes (never delete)
+ *   aircraft:write  create and change aircraft profiles (never delete)
  *
- * Every tool only reads. Answers are short text meant to be read out or
+ * Writes are checked like input in the app, rate-limited, logged and marked
+ * for the pilot's review ("check before use") until saved in the app. Answers are short text meant to be read out or
  * summarised, carry the data's age where it has one, link into the app, and
  * end with "not an official briefing" where they brief.
  */
@@ -35,6 +38,8 @@ import { getAvailableCountries } from './countries'
 import { getNotamsForIcao, notamStatus } from './notam'
 import { RateLimiter, limitFromEnv } from './rateLimiter'
 import { buildAircraft, AircraftInputError, CATEGORIES, NUMERIC_LIMITS, type AircraftInput, type NumericField } from './aircraftTools'
+import { buildRoute, legLines, RouteInputError, ALT_LIMITS, SPEED_LIMITS, MAX_POINTS, type RouteInput } from './routeTools'
+import { buildPointIndex, type PointIndex } from '@open-vfr/shared/routeIdentifiers'
 import type { auth as authInstance } from './auth'
 
 const HOUR_MS = 60 * 60 * 1000
@@ -46,7 +51,7 @@ const mcpLimiter = new RateLimiter([
   { windowMs: DAY_MS,  max: limitFromEnv('MCP_DAILY_LIMIT', 600) },
 ])
 
-/** Aircraft profile writes per user: few are ever needed. */
+/** Route and aircraft writes per user: few are ever needed. */
 const writeLimiter = new RateLimiter([
   { windowMs: HOUR_MS, max: limitFromEnv('MCP_WRITE_HOURLY_LIMIT', 20) },
   { windowMs: DAY_MS,  max: limitFromEnv('MCP_WRITE_DAILY_LIMIT', 60) },
@@ -115,6 +120,11 @@ export interface McpDeps {
   scopeBriefing: string
   scopeRoutes: string
   scopeAircraftWrite: string
+  scopeRoutesWrite: string
+  /** Save one of the user's routes (as the user), review mark included. */
+  saveRoute: (userId: string, doc: RouteDocType) => Promise<void>
+  /** Aerodromes, navaids and reporting points to resolve route points; null = not available. */
+  pointIndex?: () => Promise<PointIndex | null>
   /** Save one of the user's aircraft profiles (as the user). */
   saveAircraft: (userId: string, doc: AircraftProfileDocType) => Promise<void>
   /** The assistant's name for the review mark and logs. */
@@ -132,6 +142,21 @@ export interface McpDeps {
 async function allAerodromes(): Promise<GeoJSON.FeatureCollection | null> {
   const available = (await getAvailableCountries())?.map(c => c.code) ?? []
   return loadCountryDataset('aerodromes', available.length > 0 ? available : ['se'])
+}
+
+let pointIndexCache: { at: number; idx: Promise<PointIndex | null> } | null = null
+/** All served countries' points, rebuilt every hour (the datasets cache for longer). */
+function defaultPointIndex(): Promise<PointIndex | null> {
+  if (pointIndexCache && Date.now() - pointIndexCache.at < HOUR_MS) return pointIndexCache.idx
+  const idx = (async () => {
+    const available = (await getAvailableCountries())?.map(c => c.code) ?? []
+    const cc = available.length > 0 ? available : ['se']
+    const [aerodromes, navaids, waypoints] = await Promise.all((['aerodromes', 'navaids', 'waypoints'] as const).map(k => loadCountryDataset(k, cc)))
+    return aerodromes ? buildPointIndex({ aerodromes, navaids, waypoints } as never) : null
+  })()
+  pointIndexCache = { at: Date.now(), idx }
+  void idx.then(i => { if (!i) pointIndexCache = null })
+  return idx
 }
 
 function aircraftLabel(a: AircraftProfileDocType): string {
@@ -362,7 +387,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       inputSchema: z.object({ registration: z.string().min(2).max(20).describe('Registration, e.g. SE-ABC'), ...aircraftFields }),
     }, async (args) => {
       if (!canWrite) return noWrite()
-      if (writeLimiter.take(caller.userId).waitS > 0) return fail('Too many aircraft changes for now. Try again later.')
+      if (writeLimiter.take(caller.userId).waitS > 0) return fail('Too many changes for now. Try again later.')
       const existing = (await deps.briefings.userAircraft({ id: caller.userId })).find(a => a.registration.toUpperCase() === String(args.registration).trim().toUpperCase())
       if (existing) return fail(`${existing.registration} already exists. Use update_aircraft to change it.`)
       try {
@@ -380,7 +405,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       inputSchema: z.object({ aircraft: z.string().min(1).max(80).describe('Registration or name of the profile to change'), registration: z.string().min(2).max(20).optional().describe('New registration'), ...aircraftFields }),
     }, async (args) => {
       if (!canWrite) return noWrite()
-      if (writeLimiter.take(caller.userId).waitS > 0) return fail('Too many aircraft changes for now. Try again later.')
+      if (writeLimiter.take(caller.userId).waitS > 0) return fail('Too many changes for now. Try again later.')
       const existing = await findAircraft(String(args.aircraft))
       if (!existing) return fail(`No aircraft "${args.aircraft}". Use list_aircraft.`)
       try {
@@ -390,6 +415,144 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
         return await saveBuild(built, 'updated')
       } catch (err) {
         if (err instanceof AircraftInputError) return fail(err.message)
+        throw err
+      }
+    })
+
+    // ── Routes: read one, create, update (never delete) ──────────────────
+    const canRoutesWrite = caller.scopes.includes(deps.scopeRoutesWrite)
+    const noRoutesWrite = () => fail('This assistant may not create or change routes. Reconnect it and allow "create and change your saved routes", or plan the route in the OpenVFR app.')
+    const routeLink = (id: string) => `${deps.appOrigin}/?route=${encodeURIComponent(id)}`
+
+    async function findRoute(key: string): Promise<{ route: RouteDocType } | { error: Text }> {
+      const routes = (await deps.briefings.savedRoutes({ id: caller.userId })).filter(r => r.id !== 'current')
+      const k = key.trim().toLowerCase()
+      const exact = routes.find(r => r.id === key.trim()) ?? routes.find(r => r.name.toLowerCase() === k)
+      if (exact) return { route: exact }
+      const part = routes.filter(r => r.name.toLowerCase().includes(k))
+      if (part.length === 1) return { route: part[0]! }
+      if (part.length > 1) return { error: fail(`Several routes match "${key}": ${part.slice(0, 8).map(r => quote(r.name, 80)).join(', ')}. Use the full name.\n${QUOTE_NOTE}`) }
+      return { error: fail(`No saved route "${key}". Use list_saved_routes.`) }
+    }
+
+    async function aircraftFor(name: string | undefined): Promise<{ id: string; profile: AircraftProfileDocType | null } | { error: Text } | null> {
+      if (name === undefined) return null
+      if (name.trim() === '' || /^none$/i.test(name.trim())) return { id: '', profile: null }
+      const key = name.trim().toLowerCase()
+      const list = await deps.briefings.userAircraft({ id: caller.userId })
+      const a = list.find(x => x.registration.toLowerCase() === key || x.name.toLowerCase() === key)
+      return a ? { id: a.id, profile: a } : { error: fail(`No aircraft "${name}". Use list_aircraft, or leave aircraft out.`) }
+    }
+
+    // Identifiers and coordinates as they are; any other point name (typed by
+    // the pilot or imported) is outside text.
+    const pointName = (n: string) => (/^[A-Z0-9]{2,5}(\/[A-Z0-9 ]{2,20})?$|^\d+\.\d+[NS] \d+\.\d+[EW]$/.test(n) ? n : quote(n, 40))
+    function routeText(r: RouteDocType): string {
+      return `${quote(r.name, 80)}:\n${legLines(r, pointName).join('\n')}`
+    }
+
+    server.registerTool('get_route', {
+      description: "One of the pilot's saved routes in detail: every point, each leg's distance, altitude and speed, fuel stops, the aircraft, and a link that opens it in OpenVFR.",
+      annotations: { readOnlyHint: true },
+      inputSchema: z.object({ route: z.string().min(1).max(120).describe('Saved route name (or part of it) or id') }),
+    }, async ({ route }) => {
+      if (!canRoutes) return noRoutes()
+      const found = await findRoute(route)
+      if ('error' in found) return found.error
+      const r = found.route
+      const ac = await deps.briefings.aircraftById({ id: caller.userId }, r.aircraftId)
+      const review = r.assistantReview ? `\n(Check before use: ${r.assistantReview.change === 'created' ? 'made' : 'changed'} by ${r.assistantReview.by}, not yet saved by the pilot in the app.)` : ''
+      return text(`Route ${routeText(r)}\nAircraft: ${ac ? aircraftLabel(ac) : 'none'}. Open: ${routeLink(r.id)}${review}\n${QUOTE_NOTE}`)
+    })
+
+    const routeFields = {
+      altitudeFt: z.number().min(ALT_LIMITS[0]).max(ALT_LIMITS[1]).optional().describe('Cruise altitude for every leg, ft AMSL'),
+      legs: z.array(z.object({
+        leg: z.number().int().min(1).max(MAX_POINTS - 1).describe('Leg number, 1 = first point to second'),
+        altitudeFt: z.number().min(ALT_LIMITS[0]).max(ALT_LIMITS[1]).optional().describe('ft AMSL'),
+        speedKts: z.number().min(SPEED_LIMITS[0]).max(SPEED_LIMITS[1]).optional().describe('Planned IAS, kt'),
+      })).max(MAX_POINTS - 1).optional().describe('Settings for single legs (after altitudeFt)'),
+      fuelStops: z.array(z.string().max(40)).max(10).optional().describe('Points (aerodromes between departure and destination) where the aircraft lands and refuels; replaces the current set'),
+      aircraft: z.string().max(80).optional().describe('Aircraft registration or name from list_aircraft; "none" removes it'),
+    }
+    const pointsField = z.array(z.string().min(2).max(40)).min(2).max(MAX_POINTS)
+      .describe('Points in flight order: ICAO aerodrome codes (ESSB), navaid idents (ARL), reporting points as AERODROME/POINT (ESSB/LAVER), or coordinates (5939N01756E). Unknown or ambiguous points are refused, never guessed.')
+
+    async function saveRouteAndBrief(built: ReturnType<typeof buildRoute>, ac: AircraftProfileDocType | null, verb: 'created' | 'updated'): Promise<Text> {
+      await deps.saveRoute(caller.userId, built.doc)
+      console.log(`[mcp] route ${verb} user=${caller.userId} client=${caller.clientId} id=${built.doc.id} change=${built.changed.join(',')}`)
+      const lines = [
+        `${verb === 'created' ? 'Saved new route' : `Updated route (${built.changed.join(', ') || 'nothing changed'})`} ${routeText(built.doc)}`,
+        `Open it in OpenVFR: ${routeLink(built.doc.id)}`,
+        'The app marks it "check before use" until the pilot opens and saves it there; it reaches their devices at the next sync.',
+      ]
+      if (built.warnings.length) lines.push(`Check these: ${built.warnings.join('; ')}.`)
+      if (deps.takeBriefing(caller.userId)) {
+        const b = await deps.briefings.briefRoute({ id: caller.userId }, { waypoints: built.doc.waypoints, legOverrides: built.doc.legOverrides }, ac)
+        lines.push('', 'Briefing of the saved route (fix warnings with update_route):', briefingText(b))
+      } else {
+        lines.push('(Briefing limit reached: brief it later with brief_saved_route.)')
+      }
+      lines.push(QUOTE_NOTE)
+      return text(lines.join('\n'))
+    }
+
+    server.registerTool('create_route', {
+      description: 'Save a new route for the pilot in OpenVFR and brief it. Points are resolved against OpenVFR data; the answer has the legs, a link that opens the route in the app, and the briefing warnings (airspace, terrain, fuel, NOTAMs, weather) so you can improve the route with update_route. Plan VFR only; the pilot checks the route in the app before use.',
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+      inputSchema: z.object({
+        name: z.string().min(1).max(80).optional().describe('Route name; default "FROM – TO"'),
+        points: pointsField,
+        ...routeFields,
+      }),
+    }, async (args) => {
+      if (!canRoutesWrite) return noRoutesWrite()
+      if (writeLimiter.take(caller.userId).waitS > 0) return fail('Too many changes for now. Try again later.')
+      const idx = await (deps.pointIndex ?? defaultPointIndex)()
+      if (!idx) return fail('Aerodrome and navaid data is not available right now.')
+      const ac = await aircraftFor(args.aircraft)
+      if (ac && 'error' in ac) return ac.error
+      if (args.name) {
+        const clash = (await deps.briefings.savedRoutes({ id: caller.userId })).find(r => r.id !== 'current' && r.name.toLowerCase() === args.name!.trim().toLowerCase())
+        if (clash) return fail(`A route named ${quote(clash.name, 80)} exists. Use update_route to change it, or choose another name.`)
+      }
+      try {
+        const input: RouteInput = { name: args.name, points: args.points, altitudeFt: args.altitudeFt, legs: args.legs, fuelStops: args.fuelStops, aircraftId: ac?.id }
+        const built = buildRoute(input, { idx, newId: crypto.randomUUID(), by: await deps.clientName(caller.clientId), now: Date.now() })
+        return await saveRouteAndBrief(built, ac?.profile ?? null, 'created')
+      } catch (err) {
+        if (err instanceof RouteInputError) return fail(err.message)
+        throw err
+      }
+    })
+
+    server.registerTool('update_route', {
+      description: "Change one of the pilot's saved routes: new point list (points already on the route keep their settings), altitude for all or single legs, speed, fuel stops, aircraft, name. Only the given fields change. Answers with the legs, link and a new briefing. Cannot delete a route.",
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+      inputSchema: z.object({
+        route: z.string().min(1).max(120).describe('Saved route name or id'),
+        name: z.string().min(1).max(80).optional().describe('New name'),
+        points: pointsField.optional(),
+        ...routeFields,
+      }),
+    }, async (args) => {
+      if (!canRoutesWrite) return noRoutesWrite()
+      if (writeLimiter.take(caller.userId).waitS > 0) return fail('Too many changes for now. Try again later.')
+      const found = await findRoute(args.route)
+      if ('error' in found) return found.error
+      const existing = found.route
+      const idx = args.points ? await (deps.pointIndex ?? defaultPointIndex)() : buildPointIndex({})
+      if (!idx) return fail('Aerodrome and navaid data is not available right now.')
+      const ac = await aircraftFor(args.aircraft)
+      if (ac && 'error' in ac) return ac.error
+      try {
+        const input: RouteInput = { name: args.name, points: args.points, altitudeFt: args.altitudeFt, legs: args.legs, fuelStops: args.fuelStops, aircraftId: ac?.id }
+        const built = buildRoute(input, { existing, idx, newId: existing.id, by: await deps.clientName(caller.clientId), now: Date.now() })
+        if (built.changed.length === 0) return text(`Nothing to change on ${quote(existing.name, 80)}.\n${QUOTE_NOTE}`)
+        const profile = ac ? ac.profile : await deps.briefings.aircraftById({ id: caller.userId }, built.doc.aircraftId)
+        return await saveRouteAndBrief(built, profile, 'updated')
+      } catch (err) {
+        if (err instanceof RouteInputError) return fail(err.message)
         throw err
       }
     })
@@ -428,6 +591,6 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
     // Advertised in the 401 challenge: clients ask for what is listed here,
     // so list saved routes (the pilot can still leave them out on the consent
     // page) and offline_access (refresh tokens, no sign-in every hour).
-    challengeScopes: [deps.scopeBriefing, deps.scopeRoutes, deps.scopeAircraftWrite, 'offline_access'],
+    challengeScopes: [deps.scopeBriefing, deps.scopeRoutes, deps.scopeRoutesWrite, deps.scopeAircraftWrite, 'offline_access'],
   })
 }

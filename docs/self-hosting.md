@@ -331,13 +331,16 @@ and, if the pilot allows it, their saved routes and aircraft. It only reads.
   api a real `BETTER_AUTH_SECRET` (the dev default is refused on https) and
   let Vite answer to the tunnel host with `VITE_DEV_ALLOWED_HOSTS`.
 - Scopes: `briefing:read` (every token), `routes:read` (saved routes and
-  aircraft) and `aircraft:write` (create and change aircraft profiles, never
-  delete; not preselected on the consent page). Writes go through PostgREST
-  as the user, run the POH-import checks, and mark the profile
-  `assistantReview` until the pilot saves it in the app.
+  aircraft), `routes:write` (create and change saved routes) and
+  `aircraft:write` (create and change aircraft profiles); writes never
+  delete and are not preselected on the consent page. They go through
+  PostgREST as the user, run the same checks as the app (route points are
+  resolved against the aerodrome, navaid and reporting-point datasets from
+  `TILES_BASE_URL`), and mark the route (`user_routes.assistant_review`) or
+  profile (`assistantReview`) until the pilot saves it in the app.
 - Limits: `MCP_HOURLY_LIMIT` / `MCP_DAILY_LIMIT` (tool calls per user, default
-  120 / 600), `MCP_WRITE_HOURLY_LIMIT` / `MCP_WRITE_DAILY_LIMIT` (aircraft
-  writes, default 20 / 60); briefing tools also count against `BRIEFING_*` and weather
+  120 / 600), `MCP_WRITE_HOURLY_LIMIT` / `MCP_WRITE_DAILY_LIMIT` (route and
+  aircraft writes, default 20 / 60); briefing tools also count against `BRIEFING_*` and weather
   lookups against `WX_*`. Saved routes and aircraft need
   `POSTGREST_INTERNAL_URL`; briefings need `TILES_BASE_URL`.
 

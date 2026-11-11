@@ -22,6 +22,7 @@ import type { Theme, TrajectoryMode, AirspaceWarnLookahead, TerrainColoringSetti
 import type { DataManifest } from '../hooks/useDataManifest'
 import { useTakeoffTime, useGlobalWind } from '../db/useSettings'
 import { useRouteWinds } from '../hooks/useRouteWinds'
+import { useSavedRouteReview } from '../db/useRouteDb'
 import css from './SideDrawer.module.css'
 import { IconChevronDown, IconChevronRight, IconMenu2, IconX } from '@tabler/icons-react'
 
@@ -190,6 +191,7 @@ function SideDrawer({
   auth,
   onOpenProfile,
 }: Props) {
+  const activeRouteReview = useSavedRouteReview(activeRouteId)
   // First visit: the pane starts open (so what it offers is visible) with
   // every section folded to its header. Phone-sized screens start closed:
   // there the pane overlays the map. Later visits restore the saved state.
@@ -427,6 +429,7 @@ function SideDrawer({
                     onSelectLeg={onSelectLeg}
                     onShowOnMap={(lng, lat) => onFlyTo({ kind: 'LL', id: '', name: '', sub: '', lng, lat })}
                     weatherStations={routeWeatherStations}
+                    routeReview={activeRouteReview}
                   />
                 </div>
               )}

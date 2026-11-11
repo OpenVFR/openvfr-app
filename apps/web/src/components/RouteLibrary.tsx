@@ -6,6 +6,7 @@ import { isRouteDirty } from '@open-vfr/shared/routeDirty'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
 import { suggestRouteName } from '@open-vfr/shared/suggestRouteName'
+import { assistantReviewLabel } from '@open-vfr/shared/types'
 import { useSyncRejected } from '../sync/cloudSync'
 import SyncRefusedNote from './SyncRefusedNote'
 import css from './RouteLibrary.module.css'
@@ -274,12 +275,22 @@ export default function RouteLibrary({
               {dirty && <span className={css.dirtyDot} title="Unsaved changes">●</span>}
             </span>
             <div className={css.editingActions}>
-              <button className={css.btn} onClick={handleSaveInPlace} disabled={!dirty || saving} title={dirty ? 'Save changes to this route' : 'No changes to save'}>
+              <button className={css.btn} onClick={handleSaveInPlace} disabled={(!dirty && !linkedRoute.assistantReview) || saving} title={dirty ? 'Save changes to this route' : linkedRoute.assistantReview ? 'Checked: save the route and remove the "check before use" mark' : 'No changes to save'}>
                 {saving ? '…' : 'Save'}
               </button>
               <button className={css.btn} onClick={openSaveAs} disabled={saving}>Save As…</button>
             </div>
           </div>
+          {linkedRoute.assistantReview && (
+            <p className={css.reviewNote} role="status">
+              <span className={css.reviewBadge}>Check before use</span> {assistantReviewLabel(linkedRoute.assistantReview)}.{' '}
+              {dirty ? (
+                // The saved copy changed under the open one (the assistant wrote
+                // it after it was loaded): Save would put the old one back.
+                <>The map shows another version. <button className={css.linkBtn} onClick={() => requestLoad(linkedRoute.id)}>Show the saved route</button></>
+              ) : 'Check every point, level and fuel stop, then Save.'}
+            </p>
+          )}
           {saveAsOpen && (
             <div className={css.saveRow}>
               <input
@@ -372,6 +383,7 @@ export default function RouteLibrary({
               ) : (
                 <div className={css.itemInfo} onDoubleClick={() => startRename(r.id, r.name)}>
                   <span className={css.itemName}>{r.name}</span>
+                  {r.assistantReview && <span className={css.reviewBadge} title={`${assistantReviewLabel(r.assistantReview)}. Load it, check it, then save it.`}>Check before use</span>}
                   <span className={css.itemMeta}>
                     {r.waypoints.length} wpt · {timeAgo(r.updatedAt)}
                     {r.aircraftId && (() => {

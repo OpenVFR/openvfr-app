@@ -13,6 +13,7 @@ import styles from './AssistantConsent.module.css'
 
 const ROUTES_SCOPE = 'routes:read'
 const WRITE_SCOPE = 'aircraft:write'
+const ROUTES_WRITE_SCOPE = 'routes:write'
 
 /**
  * What the server can vouch for. An assistant that publishes its identity as
@@ -33,18 +34,25 @@ export function assistantIdentity(clientId: string, redirectUri: string | null):
   return { verifiedDomain, returnsTo }
 }
 
+function changesText(routes: boolean, aircraft: boolean): string {
+  const what = [routes && 'saved routes', aircraft && 'aircraft profiles'].filter(Boolean).join(' and ')
+  return what ? `Apart from ${what} it cannot change anything in your account` : 'It cannot change anything in your account'
+}
+
 export default function AssistantConsent({ userEmail }: { userEmail: string }) {
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const clientId = params.get('client_id') ?? ''
   const requested = useMemo(() => (params.get('scope') ?? '').split(' ').filter(Boolean), [params])
   const wantsRoutes = requested.includes(ROUTES_SCOPE)
   const wantsWrite = requested.includes(WRITE_SCOPE)
+  const wantsRoutesWrite = requested.includes(ROUTES_WRITE_SCOPE)
   const identity = assistantIdentity(clientId, params.get('redirect_uri'))
 
   const [client, setClient] = useState<AssistantClientInfo | null>(null)
   const [allowRoutes, setAllowRoutes] = useState(wantsRoutes)
   // Changes are never preselected: the pilot opts in.
   const [allowWrite, setAllowWrite] = useState(false)
+  const [allowRoutesWrite, setAllowRoutesWrite] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -60,6 +68,7 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
       const dropped = new Set<string>()
       if (wantsRoutes && !allowRoutes) dropped.add(ROUTES_SCOPE)
       if (wantsWrite && !allowWrite) dropped.add(WRITE_SCOPE)
+      if (wantsRoutesWrite && !allowRoutesWrite) dropped.add(ROUTES_WRITE_SCOPE)
       const scope = accept && dropped.size > 0 ? requested.filter(s => !dropped.has(s)).join(' ') : undefined
       await answerAssistantConsent(accept, scope)
     } catch (err) {
@@ -108,21 +117,31 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
             </li>
           )}
         </ul>
-        {wantsWrite && (
+        {(wantsWrite || wantsRoutesWrite) && (
           <>
-            <p className={styles.text}>It also asks to <strong>make changes</strong>:</p>
+            <p className={styles.text}>It also asks to <strong>make changes</strong> (never delete; you check each change in the app):</p>
             <ul className={styles.list}>
-              <li>
-                <label className={styles.check}>
-                  <input type="checkbox" checked={allowWrite} onChange={e => setAllowWrite(e.target.checked)} disabled={busy} />
-                  add and change your aircraft profiles (never delete; you check each change in the app)
-                </label>
-              </li>
+              {wantsRoutesWrite && (
+                <li>
+                  <label className={styles.check}>
+                    <input type="checkbox" checked={allowRoutesWrite} onChange={e => setAllowRoutesWrite(e.target.checked)} disabled={busy} />
+                    create and change your saved routes
+                  </label>
+                </li>
+              )}
+              {wantsWrite && (
+                <li>
+                  <label className={styles.check}>
+                    <input type="checkbox" checked={allowWrite} onChange={e => setAllowWrite(e.target.checked)} disabled={busy} />
+                    add and change your aircraft profiles
+                  </label>
+                </li>
+              )}
             </ul>
           </>
         )}
         <p className={styles.small}>
-          {allowWrite && wantsWrite ? 'Apart from aircraft profiles it cannot change anything in your account' : 'It cannot change anything in your account'}, and it never sees your flight logs or position.
+          {changesText(wantsRoutesWrite && allowRoutesWrite, wantsWrite && allowWrite)}, and it never sees your flight logs or position.
           We email you when an assistant is connected. Disconnect it any time in your account, under
           AI assistants. Only connect assistants you trust: OpenVFR does not check what they do with your data.
         </p>

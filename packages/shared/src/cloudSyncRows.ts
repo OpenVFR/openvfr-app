@@ -7,7 +7,7 @@
 
 import type { RowSpec } from './cloudSync'
 import type {
-  RouteDocType, AircraftProfileDocType, UserWaypointDocType, FlightLogDocType,
+  RouteDocType, AircraftProfileDocType, UserWaypointDocType, FlightLogDocType, AssistantReview,
 } from './types'
 
 const iso = (ms: number) => new Date(ms).toISOString()
@@ -20,6 +20,14 @@ const json = <T>(v: unknown, fallback: T): T => {
 const plain = <T>(doc: T): T =>
   Object.fromEntries(Object.entries(doc as Record<string, unknown>).filter(([k]) => !k.startsWith('_'))) as T
 
+/** A stored assistant-review mark, or null when absent or malformed. */
+function reviewMark(v: unknown): AssistantReview | null {
+  const o = json<Record<string, unknown> | null>(v, null)
+  if (!o || typeof o !== 'object' || typeof o['by'] !== 'string') return null
+  const change = o['change'] === 'created' ? 'created' : Array.isArray(o['change']) ? o['change'].map(String) : null
+  return change ? { by: o['by'], at: Number(o['at']) || 0, change } : null
+}
+
 const byId = <L extends { id: string; updatedAt: number }>(l: L) => ({ id: l.id, updatedAt: l.updatedAt })
 
 export const routeRows: RowSpec<RouteDocType> = {
@@ -31,6 +39,7 @@ export const routeRows: RowSpec<RouteDocType> = {
     waypoints:    json(r.waypoints, []),
     legOverrides: json(r.leg_overrides, []),
     aircraftId:   String(r.aircraft_id ?? ''),
+    ...(reviewMark(r.assistant_review) ? { assistantReview: reviewMark(r.assistant_review)! } : {}),
     updatedAt:    ts(r.updated_at),
   }),
   toServer: (r, userId) => ({
@@ -40,6 +49,10 @@ export const routeRows: RowSpec<RouteDocType> = {
     waypoints:     r.waypoints ?? [],
     leg_overrides: r.legOverrides ?? [],
     aircraft_id:   r.aircraftId ?? '',
+    // Sent only to clear a mark (null = saved by the pilot): a route that
+    // never had one leaves the column alone, so syncing also works against
+    // a server without it (migration 20261202000000).
+    ...(r.assistantReview === null ? { assistant_review: null } : {}),
     updated_at:    iso(r.updatedAt),
   }),
 }
