@@ -14,7 +14,7 @@ import { useAerodromeDetailsLayer } from '../utils/aerodromeDetails'
 
 const SOURCE = 'aerodrome-details'
 const LAYERS = ['ad-details-fill', 'ad-details-outline', 'ad-details-outline-dashed', 'ad-details-line',
-  'ad-details-line-dashed', 'ad-details-chevrons', 'ad-details-point', 'ad-details-label'] as const
+  'ad-details-line-dashed', 'ad-details-chevrons', 'ad-details-circuit-label', 'ad-details-point', 'ad-details-label'] as const
 const BELOW_LAYERS = ['airspace-fill-g', 'navaids-vor-icon', 'aerodromes-atc-ring']
 const MIN_ZOOM = 9
 const FONT = ['Noto Sans Regular']
@@ -70,11 +70,20 @@ export default function AerodromeDetailsLayer({ map }: { map: maplibregl.Map | n
       filter: ['all', line, DASHED],
       layout: { 'line-join': 'round' },
       paint: { 'line-color': COLOR, 'line-width': 2, 'line-dasharray': [2, 2] } }, before)
+    // Direction chevrons only where the sense is unambiguous: a drawn leg, or a schematic pattern used by one runway
+    // direction (06 right-hand and 24 left-hand are the same rectangle flown both ways: no arrows, the label says it).
     map.addLayer({ id: 'ad-details-chevrons', type: 'symbol', source: SOURCE, minzoom: 11,
-      filter: ['all', line, ['==', ['get', 'kind'], 'circuit_leg']],
+      filter: ['all', line, ['==', ['get', 'kind'], 'circuit_leg'],
+        ['any', ['!=', ['get', 'schematic'], true], ['==', ['get', 'oneWay'], true]]],
       layout: { 'symbol-placement': 'line', 'symbol-spacing': 90, 'text-field': '>', 'text-font': FONT, 'text-size': 14,
         'text-keep-upright': false, 'text-allow-overlap': true, 'text-ignore-placement': true },
       paint: { 'text-color': COLOR, 'text-halo-color': 'rgba(0,0,0,0.6)', 'text-halo-width': 1 } }, before)
+    // Which runway a circuit belongs to, written along it ("RWY 06 RH · RWY 24 LH"), repeated so every leg has it.
+    map.addLayer({ id: 'ad-details-circuit-label', type: 'symbol', source: SOURCE, minzoom: 11,
+      filter: ['all', line, ['==', ['get', 'kind'], 'circuit_leg'], ['has', 'name']],
+      layout: { 'symbol-placement': 'line', 'symbol-spacing': 260, 'text-field': ['get', 'name'], 'text-font': FONT,
+        'text-size': 11, 'text-offset': [0, -0.9], 'text-keep-upright': true, 'text-max-angle': 30 },
+      paint: { 'text-color': COLOR, 'text-halo-color': 'rgba(255,255,255,0.92)', 'text-halo-width': 1.6 } }, before)
     map.addLayer({ id: 'ad-details-point', type: 'circle', source: SOURCE, minzoom: MIN_ZOOM,
       filter: ['==', ['geometry-type'], 'Point'],
       paint: { 'circle-radius': 4, 'circle-color': COLOR, 'circle-stroke-color': '#0b1220', 'circle-stroke-width': 1.2,

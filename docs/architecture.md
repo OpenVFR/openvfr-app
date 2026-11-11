@@ -386,7 +386,10 @@ airspace layers (areas filled per kind with name and heights, circuit legs
 with direction chevrons, points labelled). An aerodrome that states a circuit
 direction but has no drawn circuit gets a **schematic** circuit: a dashed
 rectangle on the stated side of that runway, 0.75 NM out, never the published
-pattern. Dashed also: outlines read off a chart (`approximate`) and values whose
+pattern. Circuits that describe the same rectangle (RWY 06 right-hand and RWY 24
+left-hand: one pattern flown both ways) are drawn once and labelled along the
+pattern with every runway direction that uses it ("RWY 06 RH · RWY 24 LH");
+direction chevrons appear only when one runway direction uses it. Dashed also: outlines read off a chart (`approximate`) and values whose
 provenance says `review: "pending"` (only in local preview builds of a
 deployment's own data, labelled "unreviewed"). The aerodrome popup gets a
 "Local information" section (`LocalInfoSection`) with circuits, local rules,

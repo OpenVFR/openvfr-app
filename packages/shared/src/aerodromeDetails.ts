@@ -123,6 +123,8 @@ export interface DetailProps {
   pending: boolean
   /** Drawn from the circuit direction, not from a published outline. */
   schematic?: boolean
+  /** Schematic circuit used by one runway direction only, so its sense can be drawn. */
+  oneWay?: boolean
   provenance?: DetailProvenance
 }
 
@@ -325,10 +327,31 @@ export function schematicCircuit(runways: readonly RunwayLike[], c: CircuitInfo)
   return null
 }
 
+/** Which runway (index) a circuit is for, and its side relative to that runway's first threshold. Two circuits
+ *  with the same key draw the same rectangle: "06 right-hand" and "24 left-hand" are one pattern flown in opposite
+ *  directions. Null when the runway is unknown. */
+function patternKey(runways: readonly RunwayLike[], c: CircuitInfo): string | null {
+  if (!c.direction) return null
+  const want = c.runway.toUpperCase().replace(/^RWY\s*/, '')
+  for (let r = 0; r < runways.length; r++) {
+    const ths = (Array.isArray(runways[r]!.thresholds) ? runways[r]!.thresholds : []) as ThresholdLike[]
+    const i = ths.findIndex(t => String(t.designator ?? '').toUpperCase() === want)
+    if (i < 0 || ths.length < 2) continue
+    const leftOfFirst = (c.direction === 'left') === (i === 0)
+    return `${r}|${leftOfFirst ? 'L' : 'R'}`
+  }
+  return null
+}
+
+const SIDE = { left: 'LH', right: 'RH' } as const
+
 /**
  * Schematic circuit features for aerodromes that state a circuit direction but
  * have no circuit drawn in the details file. `aerodromes` are the country's
  * aerodrome features; `drawn` the aerodromes that already have circuit legs.
+ * Circuits that describe the same rectangle (one runway, one side) become one
+ * feature named after all of them ("RWY 06 RH · RWY 24 LH"); `oneWay` is true
+ * when only one runway direction uses it, so the direction can be shown.
  */
 export function schematicCircuitFeatures(
   aerodromes: readonly Feature[],
@@ -342,19 +365,24 @@ export function schematicCircuitFeatures(
     const info = localInfo(p)
     if (!info.circuits.length) continue
     const runways = list(p['runways']) as RunwayLike[]
-    const seen = new Set<string>()
+    const groups = new Map<string, { first: CircuitInfo; names: string[] }>()
     for (const c of info.circuits) {
-      const key = `${c.runway}|${c.direction}`
-      if (seen.has(key)) continue                     // one picture per runway direction (categories share it)
-      seen.add(key)
-      const g = schematicCircuit(runways, c)
-      if (!g) continue
+      const key = patternKey(runways, c)
+      if (!key) continue
+      const name = `RWY ${c.runway} ${SIDE[c.direction!]}`
+      const g = groups.get(key)
+      if (!g) groups.set(key, { first: c, names: [name] })
+      else if (!g.names.includes(name)) g.names.push(name)     // categories share one picture
+    }
+    for (const g of groups.values()) {
+      const geom = schematicCircuit(runways, g.first)
+      if (!geom) continue
       out.push({
-        type: 'Feature', geometry: g,
+        type: 'Feature', geometry: geom,
         properties: {
-          aerodrome: id, kind: 'circuit_leg', name: `RWY ${c.runway} ${c.direction === 'left' ? 'LH' : 'RH'}`,
+          aerodrome: id, kind: 'circuit_leg', name: g.names.join(' · '),
           remarks: null, floor: null, ceiling: null, approximate: true, accuracy_m: null,
-          pending: info.provenance['circuits']?.review === 'pending', schematic: true,
+          pending: info.provenance['circuits']?.review === 'pending', schematic: true, oneWay: g.names.length === 1,
           ...(info.provenance['circuits'] ? { provenance: info.provenance['circuits'] } : {}),
         },
       })

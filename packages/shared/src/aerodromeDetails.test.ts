@@ -76,12 +76,18 @@ describe('schematicCircuit', () => {
     expect(schematicCircuit(RWYS, { runway: '12', direction: null, altitude_ft: null, altitude_ref: null, aircraft: null })).toBeNull()
   })
 
-  it('skips aerodromes whose circuits are already drawn, one picture per runway direction', () => {
-    const ad = (icao: string) => ({ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [13.33, 55.85] },
-      properties: { icao, runways: RWYS, circuits: [{ runway: '12', direction: 'left', aircraft: null }, { runway: '12', direction: 'left', aircraft: 'ultralight' }, { runway: '30', direction: 'right' }],
-        provenance: { circuits: { review: 'pending' } } } })
-    const f = schematicCircuitFeatures([ad('ESME'), ad('ESXX')], new Set(['ESXX']))
-    expect(f.map(x => x.properties.name)).toEqual(['RWY 12 LH', 'RWY 30 RH'])
-    expect(f.every(x => x.properties.schematic && x.properties.pending && x.properties.aerodrome === 'ESME')).toBe(true)
+  it('one picture per runway side, named after every runway direction using it', () => {
+    const ad = (icao: string, circuits: unknown[]) => ({ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [13.33, 55.85] },
+      properties: { icao, runways: RWYS, circuits, provenance: { circuits: { review: 'pending' } } } })
+    // 12 left-hand and 30 right-hand are the same rectangle (flown in opposite directions); categories share it
+    const same = schematicCircuitFeatures([ad('ESME', [{ runway: '12', direction: 'left' }, { runway: '12', direction: 'left', aircraft: 'ultralight' },
+      { runway: '30', direction: 'right' }])], new Set())
+    expect(same.map(x => [x.properties.name, x.properties.oneWay])).toEqual([['RWY 12 LH · RWY 30 RH', false]])
+    // 12 right-hand and 30 right-hand lie on opposite sides: two pictures, each with a direction
+    const both = schematicCircuitFeatures([ad('ESME', [{ runway: '12', direction: 'right' }, { runway: '30', direction: 'right' }])], new Set())
+    expect(both.map(x => [x.properties.name, x.properties.oneWay])).toEqual([['RWY 12 RH', true], ['RWY 30 RH', true]])
+    expect(both.every(x => x.properties.schematic && x.properties.pending && x.properties.aerodrome === 'ESME')).toBe(true)
+    // aerodromes whose circuit is drawn in the details file get no schematic one
+    expect(schematicCircuitFeatures([ad('ESXX', [{ runway: '12', direction: 'left' }])], new Set(['ESXX']))).toEqual([])
   })
 })
