@@ -252,8 +252,9 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
 - `ACS_CONNECTION_STRING` + `EMAIL_SENDER_ADDRESS` — optional, enable
   transactional email (Azure Communication Services Email) for auth OTP
   codes (or `BREVO_API_KEY` + `BREVO_SENDER_EMAIL` for Brevo instead, used
-  when no connection string is set); without either, OTP codes are logged to the server console (fine for
-  self-hosted/single-user use)
+  when no connection string is set); without either, nothing is sent and, unless `NODE_ENV=production`,
+  each message (sign-in code, account-deletion link) is printed to the api's console instead (fine for
+  local dev and single-user self-hosting; with `NODE_ENV=production` only a warning without the code)
 - `TILES_BASE_URL` — optional, your public tile host (e.g.
   `https://tiles.example.org`); the admin country detail checks
   `manifest.json` and each country file there. Unset = that check is skipped

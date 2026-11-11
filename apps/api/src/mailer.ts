@@ -3,7 +3,10 @@
  *   1. ACS_CONNECTION_STRING -> Azure Communication Services Email (used in Azure deployments)
  *   2. BREVO_API_KEY         -> Brevo (https://developers.brevo.com/docs/send-a-transactional-email),
  *                               handy for local dev / self-hosting without Azure
- *   3. neither               -> log to the console, nothing is sent
+ *   3. neither               -> nothing is sent; outside production the message (with the sign-in
+ *                               code or link) is printed to the server console so local dev and
+ *                               single-user self-hosting can sign in, in production only a warning
+ *                               without content (a code must never end up in production logs)
  *
  * Azure Communication Services Email
  * (https://learn.microsoft.com/azure/communication-services/quickstarts/email/send-email).
@@ -80,7 +83,18 @@ export function signRequest(
 export async function sendEmail(opts: SendEmailOptions): Promise<void> {
   if (process.env['ACS_CONNECTION_STRING']) return sendViaAcs(opts)
   if (process.env['BREVO_API_KEY']) return sendViaBrevo(opts)
-  console.log(`[mailer] no ACS_CONNECTION_STRING or BREVO_API_KEY set — skipping send. Would have sent to ${opts.to}: ${opts.subject}`)
+  logUnsent(opts)
+}
+
+/** No email provider configured: print the message outside production, only a warning in production. */
+export function logUnsent(opts: SendEmailOptions, env: NodeJS.ProcessEnv = process.env, log: (s: string) => void = console.log): void {
+  if (env['NODE_ENV'] === 'production') {
+    log(`[mailer] WARNING: no ACS_CONNECTION_STRING or BREVO_API_KEY set — email to ${opts.to} ("${opts.subject}") was not sent`)
+    return
+  }
+  const body = opts.text ?? (opts.html ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  log(`[mailer] no ACS_CONNECTION_STRING or BREVO_API_KEY set — not sent (dev: printed here instead)\n` +
+      `  to: ${opts.to}\n  subject: ${opts.subject}\n  ${body.replace(/\n/g, '\n  ')}`)
 }
 
 async function sendViaAcs({ to, subject, text, html }: SendEmailOptions): Promise<void> {
