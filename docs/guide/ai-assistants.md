@@ -21,6 +21,10 @@ panel then has an **AI assistants** section.
 - "Add a new aircraft SE-ABC, a Cessna 182, from the attached POH."
 - "Set SE-ABC's maximum crosswind to 15 kt."
 
+Many assistants also offer OpenVFR's **Pre-flight briefing** prompt in their
+prompt or attachment menu: pick it, give the route (a saved route name or
+ICAO codes), and the assistant runs the briefing tools in the right order.
+
 A briefing gives distance, time and fuel per hop, METAR/TAF and NOTAMs at the
 departure, fuel stops and destination, and the pre-flight warnings
 (airspace, NOTAM areas, fuel, equipment, crosswind, runway length). Terrain

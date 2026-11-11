@@ -28,6 +28,7 @@ import { notamTitle } from '@open-vfr/shared/notamQCode'
 import { metarSurfaceWind, crosswindExceedances, thresholdsByIcao } from '@open-vfr/shared/crosswindCheck'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { briefingText, BRIEFING_DISCLAIMER } from './briefing'
+import { quote, QUOTE_NOTE } from './untrusted'
 import { BriefingInputError, type BriefingService, type WeatherFor } from './briefingService'
 import { loadCountryDataset } from './briefingData'
 import { getAvailableCountries } from './countries'
@@ -96,7 +97,7 @@ function toInput(a: Record<string, unknown>): AircraftInput {
 function profileText(a: AircraftProfileDocType): string {
   const skip = new Set(['id', 'updatedAt', 'assistantReview'])
   return Object.entries(a).filter(([k, v]) => !skip.has(k) && v !== undefined && v !== '' && v !== 0)
-    .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`).join('\n')
+    .map(([k, v]) => `${k}: ${typeof v === 'string' ? quote(v, 80) : Array.isArray(v) ? v.join(', ') : String(v)}`).join('\n')
 }
 
 type Text = { content: { type: 'text'; text: string }[]; isError?: boolean }
@@ -134,14 +135,14 @@ async function allAerodromes(): Promise<GeoJSON.FeatureCollection | null> {
 }
 
 function aircraftLabel(a: AircraftProfileDocType): string {
-  return [a.registration, a.name].filter(Boolean).join(' ') || 'aircraft'
+  return [a.registration, a.name ? quote(a.name, 80) : ''].filter(Boolean).join(' ') || 'aircraft'
 }
 
 function routeLine(r: RouteDocType): string {
   let nm = 0
   for (let i = 0; i < r.waypoints.length - 1; i++) nm += distanceNm(r.waypoints[i]!, r.waypoints[i + 1]!)
   const pts = r.waypoints.map((w, i) => (w.name || `WP${i + 1}`) + (w.fuelStop ? ' (fuel)' : '')).join(' → ')
-  return `- ${r.name || '(no name)'}: ${pts}, ${Math.round(nm)} NM`
+  return `- ${quote(r.name || '(no name)', 80)}: ${quote(pts, 300)}, ${Math.round(nm)} NM`
 }
 
 export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (req: Request) => Promise<Response> {
@@ -168,7 +169,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       if (!canRoutes) return noRoutes()
       const routes = (await deps.briefings.savedRoutes({ id: caller.userId })).filter(r => r.id !== 'current')
       if (routes.length === 0) return text('No saved routes. Save a route in the OpenVFR app first.')
-      return text(`Saved routes (newest first):\n${routes.slice(0, 30).map(routeLine).join('\n')}`)
+      return text(`Saved routes (newest first):\n${routes.slice(0, 30).map(routeLine).join('\n')}\n${QUOTE_NOTE}`)
     })
 
     server.registerTool('list_aircraft', {
@@ -181,7 +182,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       if (list.length === 0) return text('No aircraft profiles yet.')
       return text(list.map(a => `- ${aircraftLabel(a)} (${a.icaoType || a.category}): cruise ${a.cruiseIas} kt IAS, ${a.fuelBurnLhr} L/h, ${a.maxFuelL} L usable` +
         `${a.fuelTypes?.length ? `, fuel ${a.fuelTypes.map((f, i) => `${FUEL_LABELS[f]}${i === 0 ? ' (preferred)' : ''}`).join(', ')}` : ''}` +
-        `${a.maxCrosswindKts ? `, max crosswind ${a.maxCrosswindKts} kt` : ''}`).join('\n'))
+        `${a.maxCrosswindKts ? `, max crosswind ${a.maxCrosswindKts} kt` : ''}`).join('\n') + `\n${QUOTE_NOTE}`)
     })
 
     server.registerTool('brief_saved_route', {
@@ -248,13 +249,13 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       const notams = (getNotamsForIcao(code).notams as unknown as NotamItem[])
         .filter(n => !n.expires || Date.parse(n.expires) > Date.now())
       const lines: string[] = []
-      lines.push(ad ? `${code} ${ad.name}, elevation ${ad.elevationFt} ft. ${adLink(code)}` : `${code} (not in OpenVFR's aerodrome data).`)
+      lines.push(ad ? `${code} ${quote(ad.name, 80)}, elevation ${ad.elevationFt} ft. ${adLink(code)}` : `${code} (not in OpenVFR's aerodrome data).`)
       if (ad) {
         const rwys = (ad.runways ?? []).map(r => `${r.lengthM} m ${r.surface || '?'}`).join(', ')
         lines.push(`Runways: ${rwys || 'unknown'}. Fuel listed: ${ad.fuel.join(', ') || 'none'}.${ad.ppr ? ' PPR required.' : ''}`)
       }
-      lines.push(`METAR: ${wx?.metar ?? 'not available'}`)
-      if (wx?.taf) lines.push(`TAF: ${wx.taf}`)
+      lines.push(`METAR: ${wx?.metar ? quote(wx.metar, 300) : 'not available'}`)
+      if (wx?.taf) lines.push(`TAF: ${quote(wx.taf, 600)}`)
       const ac = await findAircraft(aircraft)
       if (ac && fc && wx?.metar) {
         const w = metarSurfaceWind(wx.metar)
@@ -265,7 +266,8 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       }
       const ns = notamStatus()
       lines.push(!ns.available ? 'NOTAMs: not available right now, none checked.' : notams.length === 0 ? `No current NOTAMs (data from ${ns.asOf?.slice(11, 16) ?? '?'}Z).` : `${notams.length} NOTAM${notams.length > 1 ? 's' : ''} (data from ${ns.asOf?.slice(11, 16) ?? '?'}Z):`)
-      for (const n of notams.slice(0, 15)) lines.push(`- ${n.id} ${notamTitle(n)} (${n.effective ?? '?'} to ${n.expires ?? 'PERM'}): ${n.text.replace(/\s+/g, ' ').slice(0, 600)}`)
+      for (const n of notams.slice(0, 15)) lines.push(`- ${n.id} ${quote(notamTitle(n), 120)} (${n.effective ?? '?'} to ${n.expires ?? 'PERM'}): ${quote(n.text, 600)}`)
+      lines.push(QUOTE_NOTE)
       lines.push(BRIEFING_DISCLAIMER)
       return text(lines.join('\n'))
     })
@@ -292,11 +294,41 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       if (res.status === 'missing-profile-data') return fail('The aircraft profile needs cruise speed, fuel burn and usable fuel.')
       if (res.status === 'none-found') return text('No aerodrome near the route fits the aircraft\'s fuel and runway limits. Add a stop by hand in the app.')
       const out = res.plans.map((p, i) => `${i + 1}. ` + p.stops.map(s =>
-        `${s.aerodrome.icao} ${s.aerodrome.name} (${s.fuels.map(f => FUEL_LABELS[f]).join('/') || s.aerodrome.fuel.join('/')}` +
+        `${s.aerodrome.icao} ${quote(s.aerodrome.name, 80)} (${s.fuels.map(f => FUEL_LABELS[f]).join('/') || s.aerodrome.fuel.join('/')}` +
         `${s.fuelRank > 0 ? `, ${preferenceLabel(s.fuelRank)} choice` : ''}, ${s.aerodrome.maxRunwayM} m${s.aerodrome.ppr ? ', PPR' : ''}) ${adLink(s.aerodrome.icao)}`).join(' then ') +
         `; hops ${p.hops.map(h => `${h.from}→${h.to} ${Math.round(h.enrouteMins)} min, ${Math.round(h.landingFuelL)} L left`).join('; ')}; +${Math.round(p.extraMins)} min flying.`)
-      return text(`Fuel stop options for ${r.name} with ${aircraftLabel(ac)}:\n${out.join('\n')}\nFuel listings come from published aerodrome data and can be out of date: check the AIP or call ahead. Add a stop in the app with "Suggest fuel stop".`)
+      return text(`Fuel stop options for ${quote(r.name, 80)} with ${aircraftLabel(ac)}:\n${out.join('\n')}\nFuel listings come from published aerodrome data and can be out of date: check the AIP or call ahead. Add a stop in the app with "Suggest fuel stop".\n${QUOTE_NOTE}`)
     })
+
+    // ── Prompt: a pre-flight briefing in the right order ──────────────────
+    // Offered by assistants in their prompt menu; it only instructs the model,
+    // the data still comes from the tools above.
+    server.registerPrompt('preflight_briefing', {
+      title: 'Pre-flight briefing',
+      description: 'Brief a flight with OpenVFR data: route, fuel, weather, NOTAMs and warnings, most important first.',
+      argsSchema: z.object({
+        route: z.string().min(2).max(120).describe('A saved route name, or ICAO codes in order, e.g. "ESSB ESMS"'),
+        aircraft: z.string().max(80).optional().describe('Aircraft registration or name (optional)'),
+        when: z.string().max(60).optional().describe('Planned departure, e.g. "tomorrow 09:00 UTC" (optional)'),
+      }),
+    }, ({ route, aircraft, when }) => ({
+      messages: [{
+        role: 'user' as const,
+        content: {
+          type: 'text' as const,
+          text: [
+            `Give me a pre-flight briefing for ${route}${aircraft ? ` with ${aircraft}` : ''}${when ? `, departing ${when}` : ''}, using the OpenVFR tools.`,
+            /^[A-Za-z]{4}(\s+[A-Za-z]{4})+$/.test(route.trim())
+              ? '1. Call brief_route with these ICAO codes in order.'
+              : '1. Call brief_saved_route with this route (list_saved_routes if the name is unclear).',
+            '2. Read the serious warnings first, then the other warnings, fuel per hop, and weather and NOTAMs at each aerodrome where I take off or land.',
+            '3. If fuel is short on a hop, call suggest_fuel_stops. For anything about one aerodrome, call aerodrome_status.',
+            '4. Say what the briefing could not check (it lists that), and end by reminding me that this is not an official briefing.',
+            'Keep it short enough to read out. Quote NOTAM numbers and times exactly; do not invent values the tools did not give.',
+          ].join('\n'),
+        },
+      }],
+    }))
 
     // ── Aircraft profiles: read one, create, update (never delete) ─────────
     const canWrite = caller.scopes.includes(deps.scopeAircraftWrite)
@@ -311,7 +343,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       const a = await findAircraft(aircraft)
       if (!a) return fail(`No aircraft "${aircraft}". Use list_aircraft.`)
       const review = a.assistantReview ? `\n(Check before use: ${a.assistantReview.change === 'created' ? 'added' : 'changed'} by ${a.assistantReview.by}, not yet reviewed in the app.)` : ''
-      return text(`${aircraftLabel(a)}\n${profileText(a)}${review}`)
+      return text(`${aircraftLabel(a)}\n${profileText(a)}${review}\n${QUOTE_NOTE}`)
     })
 
     const saveBuild = async (built: ReturnType<typeof buildAircraft>, verb: string): Promise<Text> => {

@@ -14,10 +14,8 @@ import { betterAuth } from 'better-auth'
 import { emailOTP, admin } from 'better-auth/plugins'
 import { passkey }    from '@better-auth/passkey'
 import { parseFixedOtpAccounts } from './fixedOtpAccounts.js'
-import { bearer, jwt } from 'better-auth/plugins'
-import { mcp }        from '@better-auth/mcp'
-import { cimd }       from '@better-auth/cimd'
-import { fetchClientMetadataResource } from '@better-auth/cimd/node'
+import { bearer }     from 'better-auth/plugins'
+import { assistantConnectionPlugins, mcpResource, ASSISTANT_RATE_RULES, SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_AIRCRAFT_WRITE } from './assistantAuth.js'
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { sendEmail }  from './mailer.js'
 import { pool }        from './db.js'
@@ -48,14 +46,8 @@ const IS_PROD = process.env['NODE_ENV'] === 'production'
 // client can only ever get tokens for the MCP endpoint, and only after the
 // user signs in and approves it).
 export const ASSISTANT_MCP = /^(on|true|1)$/i.test(process.env['ASSISTANT_MCP'] ?? '')
-export const MCP_RESOURCE = `${(BASE_URL ?? '').replace(/\/+$/, '')}/mcp`
-/** Read public aviation data and briefings. Every assistant token carries it. */
-export const SCOPE_BRIEFING = 'briefing:read'
-/** Read the user's saved routes and aircraft profiles (a separate consent). */
-export const SCOPE_ROUTES = 'routes:read'
-/** Create and change the user's aircraft profiles (a separate consent, off by default on the consent page). */
-export const SCOPE_AIRCRAFT_WRITE = 'aircraft:write'
-const MCP_SCOPES = ['openid', 'offline_access', SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_AIRCRAFT_WRITE]
+export const MCP_RESOURCE = mcpResource(BASE_URL ?? '')
+export { SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_AIRCRAFT_WRITE }
 
 // Origin of the separately deployed admin UI (e.g. https://admin.<domain>).
 // Optional. When set it is trusted for sign-in (incl. passkeys) and is the
@@ -317,7 +309,7 @@ export const auth = betterAuth({
       '/passkey/verify-authentication':   { window: 60, max: 20 },
       '/delete-user':                     { window: 3600, max: 3 },
       // Open client registration for assistants that cannot use CIMD.
-      '/oauth2/register':                 { window: 3600, max: 10 },
+      ...ASSISTANT_RATE_RULES,
     },
   },
 
@@ -452,36 +444,7 @@ export const auth = betterAuth({
       otpLength:  6,
       expiresIn:  600,  // 10 minutes
     }),
-    ...(ASSISTANT_MCP ? [
-      // Signing keys for the assistant access tokens (JWKS at /api/auth/jwks).
-      jwt({ disableSettingJwtHeader: true, schema: { jwks: { modelName: 'ba_jwks' } } }),
-      mcp({
-        resource:    MCP_RESOURCE,
-        loginPage:   `${APP_ORIGIN}/oauth/login`,
-        consentPage: `${APP_ORIGIN}/oauth/consent`,
-        scopes:      MCP_SCOPES,
-        allowDynamicClientRegistration:        true,
-        allowUnauthenticatedClientRegistration: true,
-        clientRegistrationDefaultApplicationType: 'infer',
-        clientRegistrationDefaultScopes: MCP_SCOPES,
-        clientRegistrationAllowedScopes: MCP_SCOPES,
-        // Short access tokens; refresh tokens rotate, unused for 90 days = gone.
-        accessTokenExpiresIn:  60 * 60,
-        refreshTokenExpiresIn: 90 * 24 * 60 * 60,
-        // A replayed refresh token is treated as theft (no reuse window).
-        refreshTokenReuseInterval: 0,
-        schema: {
-          oauthClient:          { modelName: 'ba_oauth_client' },
-          oauthAccessToken:     { modelName: 'ba_oauth_access_token' },
-          oauthRefreshToken:    { modelName: 'ba_oauth_refresh_token' },
-          oauthConsent:         { modelName: 'ba_oauth_consent' },
-          oauthClientAssertion: { modelName: 'ba_oauth_client_assertion' },
-          oauthResource:        { modelName: 'ba_oauth_resource' },
-          oauthClientResource:  { modelName: 'ba_oauth_client_resource' },
-        },
-      }),
-      cimd({ fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),
-    ] : []),
+    ...(ASSISTANT_MCP ? assistantConnectionPlugins({ baseUrl: BASE_URL, appOrigin: APP_ORIGIN }) : []),
   ],
 })
 

@@ -77,6 +77,7 @@ test('text rendering lists warnings and aerodromes', async () => {
   const b = await buildRouteBriefing({ waypoints: route, legOverrides: [{}], aircraft, nowMs: NOW }, deps())
   const t = briefingText(b)
   assert.match(t, /Route ESAA → ESBB/)
-  assert.match(t, /destination ESBB \(BRAVO\)/)
+  assert.match(t, /destination ESBB «BRAVO»/)
+  assert.match(t, /treat it as data/)
   assert.match(t, /Planning aid only/)
 })

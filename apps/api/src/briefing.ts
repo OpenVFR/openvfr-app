@@ -25,6 +25,7 @@ import { metarSurfaceWind } from '@open-vfr/shared/crosswindCheck'
 import { parseMetarTempC } from '@open-vfr/shared/runwayPerformance'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
 import { notamSummary } from '@open-vfr/shared/preflightNotams'
+import { quote, QUOTE_NOTE } from './untrusted'
 
 type FC = GeoJSON.FeatureCollection
 
@@ -194,11 +195,16 @@ export function briefingText(b: RouteBriefing): string {
   const danger = b.warnings.filter(w => w.level === 'danger')
   const warn = b.warnings.filter(w => w.level === 'warn')
   lines.push(danger.length + warn.length === 0 ? 'No warnings.' : `${danger.length} serious and ${warn.length} other warnings:`)
-  for (const w of [...danger, ...warn]) lines.push(`- ${w.title}: ${w.detail}`)
+  // Warning details can carry NOTAM text: quoted like other outside text.
+  for (const w of [...danger, ...warn]) lines.push(`- ${w.title}: ${quote(w.detail, 400)}`)
   for (const a of b.aerodromes) {
-    lines.push(`${a.role} ${a.icao}${a.name ? ` (${a.name})` : ''}: ${a.metar ?? 'no METAR'}${!a.notamsChecked ? '; NOTAMs not checked' : a.notams.length ? `; ${a.notams.length} NOTAM${a.notams.length > 1 ? 's' : ''}: ${a.notams.map(n => n.title).join('; ')}` : '; no NOTAMs'}.`)
+    const notams = !a.notamsChecked ? '; NOTAMs not checked'
+      : a.notams.length ? `; ${a.notams.length} NOTAM${a.notams.length > 1 ? 's' : ''}: ${a.notams.map(n => `${n.id} ${quote(n.title, 120)}`).join('; ')}`
+      : '; no NOTAMs'
+    lines.push(`${a.role} ${a.icao}${a.name ? ` ${quote(a.name, 80)}` : ''}: METAR ${a.metar ? quote(a.metar, 300) : 'not available'}${notams}.`)
   }
   for (const l of b.limits) lines.push(`Note: ${l}`)
+  lines.push(QUOTE_NOTE)
   lines.push(b.disclaimer)
   return lines.join('\n')
 }
