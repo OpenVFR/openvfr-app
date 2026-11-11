@@ -65,7 +65,7 @@ export type LegSpan = { legIndex: number; fromNm: number; toNm: number; altFt: n
 export function legSpans(altitudeProfile: readonly ProfilePoint[]): LegSpan[] {
   const out: LegSpan[] = []
   for (let i = 0; i + 1 < altitudeProfile.length; i += 2) {
-    out.push({ legIndex: i / 2, fromNm: altitudeProfile[i].distNm, toNm: altitudeProfile[i + 1].distNm, altFt: altitudeProfile[i].altFt })
+    out.push({ legIndex: i / 2, fromNm: altitudeProfile[i]!.distNm, toNm: altitudeProfile[i + 1]!.distNm, altFt: altitudeProfile[i]!.altFt })
   }
   return out
 }
@@ -158,10 +158,10 @@ export function verticalPhaseMarks(
   const out: PhaseMark[] = []
   let phase: 'up' | 'flat' | 'down' = 'flat'
   for (let i = 1; i < pathPts.length; i++) {
-    const d = pathPts[i].altFt - pathPts[i - 1].altFt
+    const d = pathPts[i]!.altFt - pathPts[i - 1]!.altFt
     const next: 'up' | 'flat' | 'down' = d > flatFt ? 'up' : d < -flatFt ? 'down' : 'flat'
     if (next === phase) continue
-    const prev = pathPts[i - 1]
+    const prev = pathPts[i - 1]!
     if (phase === 'up') out.push({ kind: 'TOC', distNm: prev.distNm, altFt: prev.altFt })
     if (next === 'down' && phase !== 'up') out.push({ kind: 'TOD', distNm: prev.distNm, altFt: prev.altFt })
     phase = next

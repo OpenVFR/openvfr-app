@@ -78,7 +78,7 @@ type CurrentJson = { current?: Record<string, number> } | { current?: Record<str
 function groupBySnappedCell(points: { lat: number; lng: number }[], indices: number[]) {
   const cells = new Map<string, { lat: number; lng: number; idx: number[] }>()
   for (const i of indices) {
-    const lat = snapCoord(points[i].lat), lng = snapCoord(points[i].lng)
+    const lat = snapCoord(points[i]!.lat), lng = snapCoord(points[i]!.lng)
     const k = `${lat}_${lng}`
     const c = cells.get(k)
     if (c) c.idx.push(i)

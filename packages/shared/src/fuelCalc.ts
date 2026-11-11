@@ -75,7 +75,7 @@ export function fuelHopRanges(waypoints: readonly { fuelStop?: boolean }[]): [nu
   const out: [number, number][] = []
   let start = 0
   for (let i = 1; i < waypoints.length - 1; i++) {
-    if (waypoints[i].fuelStop) { out.push([start, i]); start = i }
+    if (waypoints[i]!.fuelStop) { out.push([start, i]); start = i }
   }
   if (waypoints.length >= 2) out.push([start, waypoints.length - 1])
   return out
@@ -215,15 +215,15 @@ export function computeFuelPlan(
   let descentDistNm    = 0
 
   for (let i = 0; i < altSeq.length - 1; i++) {
-    const delta = altSeq[i + 1] - altSeq[i]
+    const delta = altSeq[i + 1]! - altSeq[i]!
     if (delta > 0) {
       if (hasClimbPerf(profile)) {
-        const avgRoc = avgRocBetween(altSeq[i], altSeq[i + 1], profile)
+        const avgRoc = avgRocBetween(altSeq[i]!, altSeq[i + 1]!, profile)
         if (avgRoc > 0) {
           const mins = delta / avgRoc
           totalClimbMins += mins
-          climbFuelSumL  += (mins / 60) * avgClimbBurnBetween(altSeq[i], altSeq[i + 1], profile)
-          climbDistNm    += (mins / 60) * iasToTas(profile.climbIas, (altSeq[i] + altSeq[i + 1]) / 2)
+          climbFuelSumL  += (mins / 60) * avgClimbBurnBetween(altSeq[i]!, altSeq[i + 1]!, profile)
+          climbDistNm    += (mins / 60) * iasToTas(profile.climbIas, (altSeq[i]! + altSeq[i + 1]!) / 2)
         }
       }
       // If no climb perf data: climb time = 0; treated as cruise burn (conservative)
@@ -232,7 +232,7 @@ export function computeFuelPlan(
         const mins = Math.abs(delta) / profile.descentFpm
         totalDescentMins += mins
         const descIas = profile.descentIas > 0 ? profile.descentIas : profile.cruiseIas
-        descentDistNm    += (mins / 60) * iasToTas(descIas, (altSeq[i] + altSeq[i + 1]) / 2)
+        descentDistNm    += (mins / 60) * iasToTas(descIas, (altSeq[i]! + altSeq[i + 1]!) / 2)
       }
     }
   }
@@ -243,15 +243,15 @@ export function computeFuelPlan(
   let hasAnySpeed = false
 
   for (let i = 0; i < nLegs; i++) {
-    const from = waypoints[i]
-    const to   = waypoints[i + 1]
+    const from = waypoints[i]!
+    const to   = waypoints[i + 1]!
     const dist = distanceNm(from, to)
     const ovr  = legOverrides[i] ?? {}
     const iasLeg = ovr.speedKts ?? profile.cruiseIas
 
     if (iasLeg <= 0) continue  // no speed data for this leg
     hasAnySpeed = true
-    const ias = iasToTas(iasLeg, legAlts[i])   // true airspeed at the leg altitude
+    const ias = iasToTas(iasLeg, legAlts[i]!)   // true airspeed at the leg altitude
 
     // Ground speed with wind correction (identical to RoutePlan.tsx ETE logic).
     let gs = ias

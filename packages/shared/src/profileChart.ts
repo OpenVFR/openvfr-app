@@ -217,14 +217,14 @@ export function belowMsaRuns(o: {
   const below = distNms.map((d, i) => {
     const msa = getMsa(d)
     const nearEndpoint = d < suppress || totalNm - d < suppress || landings.some(l => Math.abs(d - l) < suppress)
-    return msa > 0 && plannedAlts[i] < msa && !nearEndpoint
+    return msa > 0 && plannedAlts[i]! < msa && !nearEndpoint
   })
   const runs: { distNm: number; altFt: number }[][] = []
   let cur: { distNm: number; altFt: number }[] = []
   for (let i = 0; i < distNms.length; i++) {
     const include = below[i] || (i > 0 && below[i - 1]) || (i < below.length - 1 && below[i + 1])
     if (include) {
-      cur.push({ distNm: distNms[i], altFt: plannedAlts[i] })
+      cur.push({ distNm: distNms[i]!, altFt: plannedAlts[i]! })
     } else if (cur.length > 0) {
       runs.push(cur)
       cur = []
@@ -240,10 +240,10 @@ export function nearestSampleIndex(distNms: readonly number[], distNm: number): 
   let lo = 0, hi = distNms.length - 1
   while (hi - lo > 1) {
     const mid = (lo + hi) >> 1
-    if (distNms[mid] < distNm) lo = mid
+    if (distNms[mid]! < distNm) lo = mid
     else hi = mid
   }
-  return Math.abs(distNms[lo] - distNm) <= Math.abs(distNms[hi] - distNm) ? lo : hi
+  return Math.abs(distNms[lo]! - distNm) <= Math.abs(distNms[hi]! - distNm) ? lo : hi
 }
 
 // ── Obstacle / landmark symbols ────────────────────────────────────────────

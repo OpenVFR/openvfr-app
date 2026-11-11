@@ -57,7 +57,7 @@ export function mefFtAt(grid: MefGrid, lat: number, lng: number): number | null 
   const col = Math.floor((lng - grid.west) / grid.cellLon)
   const row = Math.floor((grid.north - lat) / grid.cellLat)
   if (row < 0 || col < 0 || row >= grid.rows || col >= grid.cols) return null
-  const c = grid.codes[row * grid.cols + col]
+  const c = grid.codes[row * grid.cols + col]!
   return c === MEF_NODATA ? null : c * grid.unitFt
 }
 
@@ -84,7 +84,7 @@ export function corridorMaxFt(grids: readonly MefGrid[], lat: number, lng: numbe
       const cy = g.north - (r + 0.5) * g.cellLat
       const dyNm = (cy - lat) * NM_PER_DEG_LAT
       for (let c = c0; c <= c1; c++) {
-        const code = g.codes[r * g.cols + c]
+        const code = g.codes[r * g.cols + c]!
         if (code === MEF_NODATA) continue
         const ft = code * g.unitFt
         if (best !== null && ft <= best) continue

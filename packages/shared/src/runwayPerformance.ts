@@ -37,7 +37,7 @@ export function parseMetarTempC(raw: string | null | undefined): number | null {
   if (!raw) return null
   const m = raw.match(/(?:^|\s)(M?\d{2})\/(M?\d{2})?(?=\s|$)/)
   if (!m) return null
-  const t = m[1]
+  const t = m[1]!
   return t.startsWith('M') ? -Number(t.slice(1)) : Number(t)
 }
 

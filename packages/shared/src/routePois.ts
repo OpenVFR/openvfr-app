@@ -54,7 +54,7 @@ function collect(
 ): void {
   for (const f of fc?.features ?? []) {
     if (f.geometry?.type !== 'Point') continue
-    const [lng, lat] = (f.geometry as Point).coordinates
+    const [lng, lat] = (f.geometry as Point).coordinates as [number, number]
     if (lng < bbox[0] || lng > bbox[2] || lat < bbox[1] || lat > bbox[3]) continue
     const props = (f.properties ?? {}) as Record<string, unknown>
     const snapped = nearestPointOnLine(line, f as Feature<Point>, { units: 'kilometers' })

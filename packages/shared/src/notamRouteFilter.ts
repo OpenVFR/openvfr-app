@@ -63,11 +63,11 @@ export interface RoutePosition {
  *  `route` (2+ points) -- see RoutePosition's own field docs. */
 export function nearestRoutePoint(point: RoutePoint, route: RoutePoint[]): RoutePosition {
   if (route.length === 0) return { lateralNm: Infinity, alongNm: 0 }
-  if (route.length === 1) return { lateralNm: distanceNm(point, route[0]), alongNm: 0 }
+  if (route.length === 1) return { lateralNm: distanceNm(point, route[0]!), alongNm: 0 }
   let best: RoutePosition = { lateralNm: Infinity, alongNm: 0 }
   let cumNm = 0
   for (let i = 0; i < route.length - 1; i++) {
-    const a = route[i], b = route[i + 1]
+    const a = route[i]!, b = route[i + 1]!
     const segNm = distanceNm(a, b)
     const { lateralNm, t } = nearestOnSegmentNm(point, a, b)
     if (lateralNm < best.lateralNm) best = { lateralNm, alongNm: cumNm + t * segNm }
@@ -101,8 +101,8 @@ interface RingGeometry {
 function exteriorRingVertices(geom: RingGeometry): RoutePoint[] {
   const rings: number[][][] = geom.type === 'Polygon'
     ? [geom.coordinates[0] as number[][]]
-    : (geom.coordinates as number[][][][]).map((poly) => poly[0])
-  return rings.flat().map(([lng, lat]) => ({ lat, lng }))
+    : (geom.coordinates as number[][][][]).map((poly) => poly[0]!)
+  return rings.flat().map(([lng, lat]) => ({ lat: lat!, lng: lng! }))
 }
 
 /**

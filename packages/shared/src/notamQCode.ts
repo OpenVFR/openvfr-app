@@ -124,7 +124,7 @@ export function normalizeQCode(raw: string | null | undefined): string | null {
 export function extractQCodeFromText(text: string | null | undefined): string | null {
   if (!text) return null
   const m = /Q\)\s*[A-Z]{4}\s*\/\s*(Q[A-Z]{4})\s*\//.exec(text)
-  return m ? m[1] : null
+  return m ? m[1]! : null
 }
 
 export function decodeQCode(raw: string | null | undefined): DecodedQCode | null {

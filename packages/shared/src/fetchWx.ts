@@ -369,7 +369,7 @@ export function parseMetarWind(raw: string | null): ParsedWind | null {
   if (raw === 'CALM') return { dirDeg: null, speedKt: 0, gustKt: null, variable: false, calm: true }
   const m = /^(\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?(KT|MPS)$/i.exec(raw)
   if (!m) return null
-  const [, dirTok, spdTok, gustTok, unit] = m
+  const [, dirTok, spdTok, gustTok, unit] = m as unknown as [string, string, string, string | undefined, string]
   const toKt = (v: number) => unit.toUpperCase() === 'MPS' ? Math.round(v * 1.94384) : v
   return {
     dirDeg:   dirTok === 'VRB' ? null : parseInt(dirTok, 10),
@@ -421,7 +421,7 @@ export function parseMetarClouds(raw: string | null): ParsedCloudLayer[] {
   for (const g of groups) {
     const m = /^(FEW|SCT|BKN|OVC)(\d{3})(CB|TCU)?$/i.exec(g)
     if (!m) continue
-    const layer: ParsedCloudLayer = { cover: m[1].toUpperCase() as ParsedCloudLayer['cover'], baseFt: parseInt(m[2], 10) * 100 }
+    const layer: ParsedCloudLayer = { cover: m[1]!.toUpperCase() as ParsedCloudLayer['cover'], baseFt: parseInt(m[2]!, 10) * 100 }
     if (m[3]) layer.type = m[3].toUpperCase() as 'CB' | 'TCU'
     layers.push(layer)
   }

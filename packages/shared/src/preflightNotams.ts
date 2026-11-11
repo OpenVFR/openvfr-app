@@ -44,7 +44,7 @@ function ringCentre(g: Polygon | MultiPolygon): { lat: number; lng: number } {
   const ring = g.type === 'Polygon' ? g.coordinates[0] : g.coordinates[0]?.[0]
   if (!ring || ring.length === 0) return { lat: 0, lng: 0 }
   let lat = 0, lng = 0
-  for (const [x, y] of ring) { lng += x; lat += y }
+  for (const [x, y] of ring) { lng += x!; lat += y! }
   return { lat: lat / ring.length, lng: lng / ring.length }
 }
 

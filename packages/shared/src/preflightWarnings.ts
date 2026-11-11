@@ -308,7 +308,7 @@ export function computeWarnings(
     const legName = (i: number) => waypoints[i]?.name || `WP ${i + 1}`
     const clearance = `terrain + ${margins.terrainClearanceFt.toLocaleString('en-US')} ft within ${margins.abeamNm} NM, obstacles + ${margins.obstacleClearanceFt.toLocaleString('en-US')} ft`
     const below = spans
-      .map((span, i) => ({ span, msa: legMsa[i] }))
+      .map((span, i) => ({ span, msa: legMsa[i]! }))
       .filter(({ span, msa }) => legBelowMsa(span, profile.totalNm, span.altFt, msa))
     for (const { span, msa } of below) {
       const i = span.legIndex

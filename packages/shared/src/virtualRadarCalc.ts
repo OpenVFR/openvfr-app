@@ -436,7 +436,7 @@ export function buildVirtualRadarProfile(
   const legDistancesNm: number[] = []
   let cumNm = 0
   for (let i = 0; i < waypoints.length - 1; i++) {
-    const segLine = lineString([[waypoints[i].lng, waypoints[i].lat], [waypoints[i + 1].lng, waypoints[i + 1].lat]])
+    const segLine = lineString([[waypoints[i]!.lng, waypoints[i]!.lat], [waypoints[i + 1]!.lng, waypoints[i + 1]!.lat]])
     const legNm = length(segLine, { units: 'kilometers' }) * 0.539957
     legDistancesNm.push(legNm)
     cumNm += legNm
@@ -448,9 +448,9 @@ export function buildVirtualRadarProfile(
   for (let i = 0; i < waypoints.length; i++) {
     waypointTicks.push({
       distNm: Math.round(cumTick * 10) / 10,
-      name: waypoints[i].name ?? `WP${i + 1}`,
+      name: waypoints[i]!.name ?? `WP${i + 1}`,
     })
-    if (i < legDistancesNm.length) cumTick += legDistancesNm[i]
+    if (i < legDistancesNm.length) cumTick += legDistancesNm[i]!
   }
 
   // ── 3. Altitude profile (step function: altitude held across each leg) ─────
@@ -461,7 +461,7 @@ export function buildVirtualRadarProfile(
   for (let i = 0; i < waypoints.length - 1; i++) {
     const override = legOverrides[i] ?? {}
     const altFt = override.altFt ?? defaultAltFt
-    const legNm = legDistancesNm[i]
+    const legNm = legDistancesNm[i]!
     // Start of this leg
     altitudeProfile.push({ distNm: Math.round(distCursor * 100) / 100, altFt })
     distCursor += legNm
@@ -517,8 +517,8 @@ export function buildVirtualRadarProfile(
 
     // Route endpoints that are themselves inside the polygon (route starts
     // and/or ends inside the airspace — no boundary crossing on that side).
-    const startInside = booleanPointInPolygon(coords[0], feature as Feature<Polygon | MultiPolygon>)
-    const endInside   = booleanPointInPolygon(coords[coords.length - 1], feature as Feature<Polygon | MultiPolygon>)
+    const startInside = booleanPointInPolygon(coords[0]!, feature as Feature<Polygon | MultiPolygon>)
+    const endInside   = booleanPointInPolygon(coords[coords.length - 1]!, feature as Feature<Polygon | MultiPolygon>)
 
     let minDistNm = crossingDistsNm.length > 0 ? Math.min(...crossingDistsNm) : Infinity
     let maxDistNm = crossingDistsNm.length > 0 ? Math.max(...crossingDistsNm) : -Infinity
@@ -557,7 +557,7 @@ export function buildVirtualRadarProfile(
     if (crossingDistsNm.length > 0) {
       const cuts = [...new Set([0, totalNm, ...crossingDistsNm.map((d) => Math.min(totalNm, Math.max(0, d)))])].sort((a, b) => a - b)
       for (let k = 0; k < cuts.length - 1; k++) {
-        const a = cuts[k], b = cuts[k + 1]
+        const a = cuts[k]!, b = cuts[k + 1]!
         if (b - a < 0.02) continue
         const mid = along(routeLine, ((a + b) / 2) / 0.539957, { units: 'kilometers' })
         if (!booleanPointInPolygon(mid, feature as Feature<Polygon | MultiPolygon>)) continue
@@ -601,7 +601,7 @@ export function buildVirtualRadarProfile(
 
   for (const feature of obstacleGeoJson.features) {
     if (feature.geometry?.type !== 'Point') continue
-    const [ptLng, ptLat] = (feature.geometry as GeoJSON.Point).coordinates
+    const [ptLng, ptLat] = (feature.geometry as GeoJSON.Point).coordinates as [number, number]
     if (!pointInBbox(ptLng, ptLat, routeBboxCorridor)) continue   // cheap nationwide-dataset reject
     const p = feature.properties as ObstacleProps
     const snapped = nearestPointOnLine(routeLine, feature as Feature<GeoJSON.Point>, { units: 'kilometers' })
@@ -628,7 +628,7 @@ export function buildVirtualRadarProfile(
 
   for (const feature of landmarkGeoJson?.features ?? []) {
     if (feature.geometry?.type !== 'Point') continue
-    const [ptLng, ptLat] = (feature.geometry as GeoJSON.Point).coordinates
+    const [ptLng, ptLat] = (feature.geometry as GeoJSON.Point).coordinates as [number, number]
     if (!pointInBbox(ptLng, ptLat, routeBboxCorridor)) continue   // cheap nationwide-dataset reject
     const p = feature.properties as LandmarkProps
     const snapped = nearestPointOnLine(routeLine, feature as Feature<GeoJSON.Point>, { units: 'kilometers' })
@@ -665,8 +665,8 @@ export function buildVirtualRadarProfile(
       crossingDistsNm.push((snapped.properties.location ?? 0) * 0.539957)
     }
 
-    const startInside = booleanPointInPolygon(coords[0], feature as Feature<Polygon | MultiPolygon>)
-    const endInside   = booleanPointInPolygon(coords[coords.length - 1], feature as Feature<Polygon | MultiPolygon>)
+    const startInside = booleanPointInPolygon(coords[0]!, feature as Feature<Polygon | MultiPolygon>)
+    const endInside   = booleanPointInPolygon(coords[coords.length - 1]!, feature as Feature<Polygon | MultiPolygon>)
 
     let minDistNm = crossingDistsNm.length > 0 ? Math.min(...crossingDistsNm) : Infinity
     let maxDistNm = crossingDistsNm.length > 0 ? Math.max(...crossingDistsNm) : -Infinity
@@ -792,14 +792,14 @@ export function plannedAltitudeLine(
 
 function interpolateVertices(verts: ProfilePoint[], d: number): number {
   for (let i = 0; i < verts.length - 1; i++) {
-    const { distNm: v1, altFt: a1 } = verts[i]
-    const { distNm: v2, altFt: a2 } = verts[i + 1]
+    const { distNm: v1, altFt: a1 } = verts[i]!
+    const { distNm: v2, altFt: a2 } = verts[i + 1]!
     if (d >= v1 && d <= v2) {
       if (v2 === v1) return a1
       return Math.round(a1 + ((d - v1) / (v2 - v1)) * (a2 - a1))
     }
   }
-  return verts[verts.length - 1].altFt
+  return verts[verts.length - 1]!.altFt
 }
 
 /**
@@ -816,7 +816,7 @@ function buildFlightVertices(
 ): ProfilePoint[] {
   const nLegs = Math.floor(altitudeProfile.length / 2)
   const cuts: number[] = []   // leg indices that end in a landing
-  for (let i = 0; i < nLegs - 1; i++) if (altitudeProfile[i * 2 + 1].landing) cuts.push(i)
+  for (let i = 0; i < nLegs - 1; i++) if (altitudeProfile[i * 2 + 1]!.landing) cuts.push(i)
   if (cuts.length === 0) return buildSegmentVertices(altitudeProfile, totalNm, perf, departureElevFt, arrivalElevFt)
 
   const out: ProfilePoint[] = []
@@ -825,13 +825,13 @@ function buildFlightVertices(
   let depElev = departureElevFt
   for (const endLeg of [...cuts, nLegs - 1]) {
     const isLast = endLeg === nLegs - 1
-    const endPt = altitudeProfile[endLeg * 2 + 1]
+    const endPt = altitudeProfile[endLeg * 2 + 1]!
     const endNm = isLast ? totalNm : endPt.distNm
     const arrElev = isLast ? arrivalElevFt : (endPt.groundFt ?? 0)
     const part = altitudeProfile.slice(firstLeg * 2, endLeg * 2 + 2).map(p => ({ distNm: p.distNm - startNm, altFt: p.altFt }))
     const verts = buildSegmentVertices(part, endNm - startNm, perf, depElev, arrElev)
     for (let k = out.length === 0 ? 0 : 1; k < verts.length; k++) {
-      out.push({ distNm: Math.round((verts[k].distNm + startNm) * 100) / 100, altFt: verts[k].altFt })
+      out.push({ distNm: Math.round((verts[k]!.distNm + startNm) * 100) / 100, altFt: verts[k]!.altFt })
     }
     firstLeg = endLeg + 1
     startNm = endNm
@@ -854,8 +854,8 @@ function buildSegmentVertices(
   const legAlts:    number[] = []
   const wpEndDists: number[] = []
   for (let i = 0; i < nLegs; i++) {
-    legAlts.push(altitudeProfile[i * 2].altFt)
-    wpEndDists.push(altitudeProfile[i * 2 + 1].distNm)
+    legAlts.push(altitudeProfile[i * 2]!.altFt)
+    wpEndDists.push(altitudeProfile[i * 2 + 1]!.distNm)
   }
 
   // Build smooth profile vertices using a state machine.
@@ -864,8 +864,8 @@ function buildSegmentVertices(
   let curDist = 0
 
   for (let i = 0; i < nLegs; i++) {
-    const legEndNm  = wpEndDists[i]
-    const targetAlt = legAlts[i]
+    const legEndNm  = wpEndDists[i]!
+    const targetAlt = legAlts[i]!
 
     if (targetAlt > curAlt) {
       // Climb immediately at the start of the leg (or continuing from before).
@@ -903,30 +903,30 @@ function buildSegmentVertices(
     // the full descent does not fit, and starting before that point used to pop every vertex: the whole
     // plan (each leg's climb) vanished and the line ran straight from departure to arrival.
     let levelReachedNm = 0
-    for (let k = verts.length - 1; k >= 0 && verts[k].altFt === curAlt; k--) levelReachedNm = verts[k].distNm
+    for (let k = verts.length - 1; k >= 0 && verts[k]!.altFt === curAlt; k--) levelReachedNm = verts[k]!.distNm
     const todNm = Math.max(totalNm - descentDist, levelReachedNm)
 
     if (todNm >= totalNm) {
       // Route is too short to complete a full descent — force arrival altitude.
-      if (verts[verts.length - 1].distNm < totalNm) {
+      if (verts[verts.length - 1]!.distNm < totalNm) {
         verts.push({ distNm: totalNm, altFt: arrivalElevFt })
       } else {
-        verts[verts.length - 1].altFt = arrivalElevFt
+        verts[verts.length - 1]!.altFt = arrivalElevFt
       }
     } else {
       // Backtrack: remove vertices strictly after the TOD so we can insert
       // a proper cruise → descent ramp.
-      while (verts.length > 1 && verts[verts.length - 1].distNm > todNm) {
+      while (verts.length > 1 && verts[verts.length - 1]!.distNm > todNm) {
         verts.pop()
       }
       // Extend cruise to TOD if the last vertex ends before it.
-      if (verts[verts.length - 1].distNm < todNm) {
+      if (verts[verts.length - 1]!.distNm < todNm) {
         verts.push({ distNm: todNm, altFt: curAlt })
       }
       // Descend to arrival elevation at the destination.
       verts.push({ distNm: totalNm, altFt: arrivalElevFt })
     }
-  } else if (verts[verts.length - 1].distNm < totalNm) {
+  } else if (verts[verts.length - 1]!.distNm < totalNm) {
     verts.push({ distNm: totalNm, altFt: arrivalElevFt })
   }
 
@@ -984,7 +984,7 @@ export async function fetchTerrainProfile(
     for (let i = 0; i < n; i++) {
       const distKm = Math.min(i * stepKm, totalKm)
       const pt     = along(routeLine, distKm, { units: 'kilometers' })
-      out.push({ distNm: distKm * 0.539957, lng: pt.geometry.coordinates[0], lat: pt.geometry.coordinates[1] })
+      out.push({ distNm: distKm * 0.539957, lng: pt.geometry.coordinates[0]!, lat: pt.geometry.coordinates[1]! })
     }
     return out
   }
@@ -1031,7 +1031,7 @@ export async function fetchTerrainProfile(
     if (data.status !== 'OK') throw new Error(`OpenTopoData: ${data.status}`)
 
     return data.results.map((r, i) => ({
-      distNm: Math.round(samples[i].distNm * 100) / 100,
+      distNm: Math.round(samples[i]!.distNm * 100) / 100,
       elevFt: Math.round((r.elevation ?? 0) * 3.28084),
     }))
   } catch (err) {
@@ -1128,7 +1128,7 @@ export function coordinateAlongRouteNm(
   // Clamp to route extents
   const clampedKm = Math.max(0, Math.min(km, totalKm))
   const pt = along(routeLine, clampedKm, { units: 'kilometers' })
-  const [lng, lat] = pt.geometry.coordinates
+  const [lng, lat] = pt.geometry.coordinates as [number, number]
   return { lng, lat }
 }
 
@@ -1406,16 +1406,16 @@ export function applyTerrainToBands<T extends {
 
 export function terrainAt(terrainPts: TerrainPoint[], distNm: number): number {
   if (terrainPts.length === 0) return 0
-  if (distNm <= terrainPts[0].distNm) return terrainPts[0].elevFt
+  if (distNm <= terrainPts[0]!.distNm) return terrainPts[0]!.elevFt
   for (let i = 0; i < terrainPts.length - 1; i++) {
-    const a = terrainPts[i], b = terrainPts[i + 1]
+    const a = terrainPts[i]!, b = terrainPts[i + 1]!
     if (distNm >= a.distNm && distNm <= b.distNm) {
       if (b.distNm === a.distNm) return a.elevFt
       const f = (distNm - a.distNm) / (b.distNm - a.distNm)
       return a.elevFt + f * (b.elevFt - a.elevFt)
     }
   }
-  return terrainPts[terrainPts.length - 1].elevFt
+  return terrainPts[terrainPts.length - 1]!.elevFt
 }
 
 // ---------------------------------------------------------------------------
@@ -1498,7 +1498,7 @@ export function computeTrajectoryEndTick(opts: {
   const farNm = Math.max(...marks.map((m) => (timeMode ? (m / 60) * currentSpeedKts! : m)))
   if (!(currentDistNm + farNm > totalNm + 1e-6)) return null
   const kept = computeTrajectoryTicks(opts)
-  if (kept.length > 0 && totalNm - kept[kept.length - 1].distNm < 0.05) return null
+  if (kept.length > 0 && totalNm - kept[kept.length - 1]!.distNm < 0.05) return null
   return { distNm: totalNm, timeMin: ((totalNm - currentDistNm) / currentSpeedKts!) * 60 }
 }
 
