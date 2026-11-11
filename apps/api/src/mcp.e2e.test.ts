@@ -256,6 +256,7 @@ test('saved places: create, list, use as a route point; names stay unique', asyn
   assert.equal((await rpc(t.access_token, 'tools/call', { name: 'create_place', arguments: { name: 'cabin', position: '59.6 17.9' } })).result?.['isError'], true)
   assert.equal((await rpc(t.access_token, 'tools/call', { name: 'create_place', arguments: { name: 'a/b', position: '59.6 17.9' } })).result?.['isError'], true)
   assert.match(toolText(await rpc(t.access_token, 'tools/call', { name: 'list_places', arguments: {} })), /Cabin.*folder.*Home/)
+  assert.match(toolText(await rpc(t.access_token, 'tools/call', { name: 'list_places', arguments: { near: 'ESSA' } })), /Cabin.*; \d+\.\d NM from «ESSA»/)
   assert.match(toolText(await rpc(t.access_token, 'tools/call', { name: 'get_place', arguments: { name: 'cab' } })), /Nearest aerodromes: ESSA/)
   const u = await rpc(t.access_token, 'tools/call', { name: 'update_place', arguments: { place: 'Cabin', position: '59.55 17.93' } })
   assert.match(toolText(u), /Updated place \(position\)/)

@@ -112,7 +112,7 @@ type Text = { content: { type: 'text'; text: string }[]; isError?: boolean }
 
 /** Planned departure for a briefing: ISO 8601 with a time zone, from an hour ago to 16 days ahead. */
 const departureField = z.string().max(40).optional()
-  .describe('Planned departure, ISO 8601 with time zone, e.g. 2026-11-12T09:30:00Z. Default: the departure set in the app if still ahead, else now. Winds, times, NOTAMs and TAFs are for this time.')
+  .describe('Planned departure, ISO 8601 with time zone, e.g. 2026-11-12T09:30:00Z. Default: the departure set in the app if still ahead, else now. Winds, times, NOTAMs and TAFs are for this time. Not stored on the route: pass it again on every call that briefs.')
 function parseDeparture(v: string | undefined): number | undefined | Text {
   if (!v) return undefined
   const t = Date.parse(v)
@@ -529,15 +529,28 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
 
     server.registerTool('list_places', {
       annotations: { readOnlyHint: true },
-      description: "List the pilot's saved places (own named positions such as a cabin, a strip or a lake) with position and folder. Use a place in create_route / update_route / points_near as PL/<name>.",
-      inputSchema: z.object({ folder: z.string().max(40).optional().describe('Only this folder'), limit: z.number().int().min(1).max(200).optional() }),
-    }, async ({ folder, limit }) => {
+      description: "List the pilot's saved places (own named positions such as a cabin, a strip or a lake) with position and folder. With near (an identifier such as ESSB, or coordinates) they are sorted by distance from it and show it in NM: use that to answer which place is closest, never estimate distances yourself. Use a place in create_route / update_route / points_near as PL/<name>.",
+      inputSchema: z.object({
+        folder: z.string().max(40).optional().describe('Only this folder'),
+        near: z.string().min(2).max(60).optional().describe('Sort by distance from this point: an identifier (ESSB, ARL) or coordinates (5939N01756E)'),
+        limit: z.number().int().min(1).max(200).optional(),
+      }),
+    }, async ({ folder, near, limit }) => {
       if (!canRoutes) return noRoutes()
       let list = await deps.places(caller.userId)
+      let dist = new Map<string, number>()
+      if (near) {
+        const idx = await (deps.pointIndex ?? defaultPointIndex)()
+        if (!idx) return fail('Aerodrome and navaid data is not available right now.')
+        const c = resolveRoutePoints([near], idx)[0]!
+        if (!c.ok) return fail(`${near}: ${c.reason}.`)
+        dist = new Map(list.map(p => [p.id, distanceNm(c.point, p)]))
+        list = [...list].sort((a, b) => dist.get(a.id)! - dist.get(b.id)!)
+      }
       if (folder !== undefined) list = list.filter(p => p.folder.toLowerCase() === folder.trim().toLowerCase())
       if (list.length === 0) return text(folder !== undefined ? `No saved places in folder "${quote(folder, 40)}".` : 'No saved places.')
       const n = limit ?? 100
-      return text(`Saved places (${list.length}):\n${list.slice(0, n).map(placeLine).join('\n')}${list.length > n ? `\n… ${list.length - n} more: narrow with folder or raise limit.` : ''}\n${QUOTE_NOTE}`)
+      return text(`Saved places (${list.length}):\n${list.slice(0, n).map(p => placeLine(p) + (dist.has(p.id) ? `; ${dist.get(p.id)!.toFixed(1)} NM from ${quote(near ?? '', 40)}` : '')).join('\n')}${list.length > n ? `\n… ${list.length - n} more: narrow with folder or raise limit.` : ''}\n${QUOTE_NOTE}`)
     })
 
     server.registerTool('get_place', {
