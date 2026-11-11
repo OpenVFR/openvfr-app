@@ -48,6 +48,14 @@ describe('legAltitudes', () => {
     expect(l!.advice).toMatchObject({ kind: 'ok', suggestedFt: 1500 })
     expect(l!.notes[0]).toMatch(/Crosses TEST CTR .* NM 12-18 .* any altitude below 2,000 ft, or fly above it/)
   })
+  it('names what sets the MSA: an obstacle top or the terrain', () => {
+    const margins = { terrainClearanceFt: 800, obstacleClearanceFt: 1000, abeamNm: 5 }
+    const tips = [{ distNm: 12, tipFt: 1480, kind: 'tower', name: 'OBS-123 - Radio mast', lateralNm: 0.8, estimated: false }]
+    const [o] = legAltitudes({ waypoints: wps, spans: [span], bands: [], legMsaFt: [2500], msaApplies: [true], terrain: flat, tips, margins })
+    expect(o!.msaCause).toBe('Radio mast (tower), top 1,480 ft, at NM 12 of the leg, 0.8 NM from the track, + 1,000 ft clearance')
+    const [t] = legAltitudes({ waypoints: wps, spans: [span], bands: [], legMsaFt: [1100], msaApplies: [true], terrain: flat, tips: [], margins })
+    expect(t!.msaCause).toBe('terrain up to 300 ft within 5 NM of the track at NM 15 of the leg, + 800 ft clearance')
+  })
   it('says so without terrain', () => {
     const [l] = legAltitudes({ waypoints: wps, spans: [span], bands: [], legMsaFt: [0], msaApplies: [true], terrain: [] })
     expect(l!.advice.kind).toBe('unknown')

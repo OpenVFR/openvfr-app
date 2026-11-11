@@ -62,6 +62,17 @@ export type LegAdvice =
   | { kind: 'conflict'; suggestedFt: number; text: string }
   | { kind: 'unknown'; text: string }
 
+/** An obstacle or landmark top along the route, for naming what sets the MSA. */
+export interface MsaTip {
+  distNm: number
+  tipFt: number
+  kind: string
+  name: string
+  /** Distance off the route line, NM (unknown for landmarks). */
+  lateralNm?: number
+  estimated: boolean
+}
+
 export interface LegAltitude {
   /** 1-based leg number. */
   leg: number
@@ -74,6 +85,8 @@ export interface LegAltitude {
   msaFt: number
   /** False near departure and destination, where flying below the MSA is normal. */
   msaApplies: boolean
+  /** What sets the MSA: the highest terrain or the obstacle top, in words (null = unknown). */
+  msaCause: string | null
   /** Lowest ground under the leg (null = unknown). */
   groundMinFt: number | null
   /** Lowest floor (above the surface) of airspace needing a clearance over the leg (null = none). */
@@ -138,6 +151,11 @@ export function legAltitudes(input: {
   msaPts?: readonly MsaPoint[]
   /** Terrain samples along the route (DEM, or the grid when that failed); [] = none. */
   terrain: readonly TerrainPoint[]
+  /** Highest grid terrain in each terrain sample's stretch of the corridor (same indexing). */
+  corridorFt?: readonly (number | null)[]
+  /** Obstacle and landmark tops along the route, and the MSA margins, to name what sets the MSA. */
+  tips?: readonly MsaTip[]
+  margins?: { terrainClearanceFt: number; obstacleClearanceFt: number; abeamNm: number }
 }): LegAltitude[] {
   const { waypoints, spans, bands } = input
   const lastLeg = spans.length - 1
@@ -151,6 +169,33 @@ export function legAltitudes(input: {
     for (const p of input.terrain) {
       if (p.distNm < s.fromNm - 0.01 || p.distNm > s.toNm + 0.01) continue
       if (groundMin === null || p.elevFt < groundMin) groundMin = p.elevFt
+    }
+
+    // ── What sets the MSA ──────────────────────────────────────────────────
+    let msaCause: string | null = null
+    if (msa > 0 && input.margins) {
+      const m = input.margins
+      let terrainMax = -1, terrainAt = 0, fromGrid = false
+      input.terrain.forEach((p, k) => {
+        if (p.distNm < s.fromNm - 0.01 || p.distNm > s.toNm + 0.01) return
+        if (p.elevFt > terrainMax) { terrainMax = p.elevFt; terrainAt = p.distNm; fromGrid = false }
+        const c = input.corridorFt?.[k]
+        if (c != null && c > terrainMax) { terrainMax = c; terrainAt = p.distNm; fromGrid = true }
+      })
+      let tip: MsaTip | null = null
+      for (const t of input.tips ?? []) {
+        if (t.distNm < s.fromNm - m.abeamNm || t.distNm > s.toNm + m.abeamNm) continue
+        if (!tip || t.tipFt > tip.tipFt) tip = t
+      }
+      const byTerrain = terrainMax >= 0 ? terrainMax + m.terrainClearanceFt : 0
+      const byTip = tip ? tip.tipFt + m.obstacleClearanceFt : 0
+      const at = (d: number) => d < s.fromNm ? 'before the start of the leg' : d > s.toNm ? 'past the end of the leg' : `at NM ${Math.round(d - s.fromNm)} of the leg`
+      if (tip && byTip >= byTerrain) {
+        const what = (tip.name.replace(/^[\w-]*\d[\w-]*\s*-\s*/, '').trim().replace(/[^\p{L}\p{N} .,/()'-]/gu, '').slice(0, 40)) || tip.kind.replace(/_/g, ' ')
+        msaCause = `${what} (${tip.kind.replace(/_/g, ' ')}), top ${fmt(tip.tipFt)}${tip.estimated ? ' (height estimated)' : ''}, ${at(tip.distNm)}${tip.lateralNm != null ? `, ${tip.lateralNm.toFixed(1)} NM from the track` : ''}, + ${fmt(m.obstacleClearanceFt)} clearance`
+      } else if (terrainMax >= 0) {
+        msaCause = `terrain up to ${fmt(Math.round(terrainMax))} within ${m.abeamNm} NM of the track ${fromGrid ? `around NM ${Math.round(terrainAt - s.fromNm)}` : at(terrainAt)}, + ${fmt(m.terrainClearanceFt)} clearance`
+      }
     }
 
     const over: LegAirspace[] = bands
@@ -258,6 +303,7 @@ export function legAltitudes(input: {
       plannedFt: s.altFt,
       msaFt: msa,
       msaApplies: applies,
+      msaCause,
       groundMinFt: groundMin,
       controlledFloorFt: floor,
       controlled, fromSurface, restricted, zones,

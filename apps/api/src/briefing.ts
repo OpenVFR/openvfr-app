@@ -217,8 +217,8 @@ export async function buildRouteBriefing(
     return forecast[i] ?? null
   })
   const windSource = allOverridden ? 'set on every leg' : input.globalWind ? 'your global wind setting' : legWinds.some(w => w) ? 'forecast at each leg\'s altitude and time' : 'none (still air)'
-  if (!legWinds.some(w => w)) limits.push('No wind known for this route: times and fuel assume still air.')
-  else if (legWinds.some(w => !w)) limits.push(`No wind for ${legWinds.filter(w => !w).length} of ${nLegs} legs: still air there.`)
+  // No wind at all: the shared "wind data unavailable" prompt says so.
+  if (legWinds.some(w => w) && legWinds.some(w => !w)) limits.push(`No wind for ${legWinds.filter(w => !w).length} of ${nLegs} legs: still air there.`)
 
   // Time over each point (ground speed with wind; ground time at fuel stops).
   const etaMs: number[] = [depMs]
@@ -374,7 +374,15 @@ export async function buildRouteBriefing(
   const legs = legAltitudes({
     waypoints, spans, bands: profile.airspaceBands, legMsaFt: legMsa, msaPts,
     msaApplies: spans.map(sp => legMsaApplies(sp, profile.totalNm)),
-    terrain: demPts.length > 0 ? demPts : msaTerrain.pts,
+    terrain: msaTerrain.pts,
+    corridorFt: msaTerrain.corridorFt,
+    margins,
+    // Same order as obstacleTipsForMsa: obstacles, then landmarks.
+    tips: tips.map((t, k) => {
+      const o = profile.obstacles[k]
+      const l = o ? undefined : profile.landmarks[k - profile.obstacles.length]
+      return { distNm: t.distNm, tipFt: t.elevationFt, estimated: t.estimated, kind: o?.kind ?? l?.kind ?? 'obstacle', name: o?.name ?? l?.name ?? '', ...(o ? { lateralNm: o.lateralNm } : {}) }
+    }),
   })
 
   const warnings = computeWarnings(
@@ -465,5 +473,6 @@ export function legLine(l: LegAltitude): string {
   const ctl = l.controlledFloorFt !== null ? `, controlled airspace from ${l.controlledFloorFt.toLocaleString('en-US')} ft` : ''
   const issues = (l.planned.length ? ` Planned: ${l.planned.join('; ')}.` : '') + (l.notes.length ? ` ${l.notes.join(' ')}` : '')
   const n = (s: string) => (/^[A-Z0-9]{2,5}(\/[A-Z0-9 ]{2,20})?$|^\d+\.\d+[NS] \d+\.\d+[EW]$/.test(s) ? s : quote(s, 40))
-  return `- Leg ${l.leg} ${n(l.from)} → ${n(l.to)}, MT ${String(l.magneticTrackDeg).padStart(3, '0')}°, ${l.lengthNm} NM: planned ${l.plannedFt.toLocaleString('en-US')} ft, ${msa}${ctl}.${issues} Suggested: ${l.advice.text}`
+  const cause = l.msaCause ? ` (set by ${l.msaCause})` : ''
+  return `- Leg ${l.leg} ${n(l.from)} → ${n(l.to)}, MT ${String(l.magneticTrackDeg).padStart(3, '0')}°, ${l.lengthNm} NM: planned ${l.plannedFt.toLocaleString('en-US')} ft, ${msa}${cause}${ctl}.${issues} Suggested: ${l.advice.text}`
 }

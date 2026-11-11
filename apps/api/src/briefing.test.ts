@@ -103,7 +103,7 @@ test('per leg: MSA from terrain, controlled airspace above, suggested altitude',
   assert.deepEqual(leg.advice, { kind: 'ok', suggestedFt: 2000, text: leg.advice.text })
   assert.match(leg.planned.join(), /inside TEST TMA/)
   const t = briefingText(b)
-  assert.match(t, /Leg 1 ESAA → ESBB, MT \d{3}°.*MSA 1,700 ft, controlled airspace from 2,500 ft/)
+  assert.match(t, /Leg 1 ESAA → ESBB, MT \d{3}°.*MSA 1,700 ft \(set by terrain up to 900 ft .*\), controlled airspace from 2,500 ft/)
   assert.ok(b.warnings.some(w => w.leg === 1), 'warnings carry their leg')
 })
 
