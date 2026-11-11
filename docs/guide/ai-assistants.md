@@ -86,6 +86,12 @@ flight logs or position.
 
 ### Routes and aircraft from an assistant
 
+Name the aircraft in your request ("plan with SE-ABC"). If you don't, the
+assistant plans with the aircraft selected in the web app (or your only
+aircraft profile) and says which; with several and none selected it asks.
+The selection made in the mobile app stays on the phone, so it is not used
+here.
+
 Route points are aerodrome codes, navaids, reporting points (written
 `ESSB/LAVER` when several aerodromes have one with that name) or
 coordinates; OpenVFR refuses anything it does not know rather than guess.

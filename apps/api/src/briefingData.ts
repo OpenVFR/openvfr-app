@@ -199,16 +199,22 @@ export interface PlanningSettings {
   /** Planned departure set in the app (epoch ms). */
   takeoffMs?: number
   globalWind?: { dirDeg: number; speedKts: number }
+  /** Aircraft selected in the app (web syncs it; native keeps it on the device). */
+  selectedAircraftId?: string
 }
 
 /** Planning settings from the user's synced settings; {} when unset or unreadable. */
 export async function userPlanningSettings(userId: string): Promise<PlanningSettings> {
   if (!POSTGREST_URL) return {}
   try {
-    const rows = await postgrestGet(userId, '/user_settings?select=key,value&key=in.(msa_margins,alert_banners,takeoff_time,global_wind)')
+    const rows = await postgrestGet(userId, '/user_settings?select=key,value&key=in.(msa_margins,alert_banners,takeoff_time,global_wind,%22ovfr:selectedAircraft%22)')
     const out: PlanningSettings = {}
     for (const r of rows) {
       const raw = String(r['value'] ?? '')
+      if (r['key'] === 'ovfr:selectedAircraft') {
+        if (raw) out.selectedAircraftId = raw
+        continue
+      }
       if (r['key'] === 'takeoff_time') {
         const t = Date.parse(raw)
         if (Number.isFinite(t)) out.takeoffMs = t

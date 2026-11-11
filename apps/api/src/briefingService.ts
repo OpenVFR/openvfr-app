@@ -70,7 +70,7 @@ export function createBriefingService(opts: {
   ): Promise<RouteBriefing> {
     const available = (await getAvailableCountries())?.map(c => c.code) ?? null
     const countries = routeCountries(route.waypoints, available)
-    const { takeoffMs, ...settings } = userDataConfigured() ? await userPlanningSettings(user.id) : {}
+    const { takeoffMs, selectedAircraftId: _sel, ...settings } = userDataConfigured() ? await userPlanningSettings(user.id) : {}
     const now = Date.now()
     // Departure: asked for, else the one set in the app if still ahead, else now.
     const departureMs = opts2.departureMs ?? (takeoffMs && takeoffMs > now - TAKEOFF_PAST_MS && takeoffMs < now + MAX_DEPARTURE_AHEAD_MS ? takeoffMs : now)
@@ -112,7 +112,20 @@ export function createBriefingService(opts: {
     return { route, briefing }
   }
 
-  return { briefRoute, briefSavedRoute, savedRoutes, aircraftById, userAircraft: (user: { id: string }) => userDataConfigured() ? userAircraft(user.id) : Promise.resolve([]) }
+  /**
+   * The aircraft to plan with when none is named: the one selected in the
+   * app, else the only profile; null with the reason otherwise.
+   */
+  async function defaultAircraft(user: { id: string }): Promise<{ aircraft: AircraftProfileDocType; why: string } | { aircraft: null; choices: AircraftProfileDocType[] }> {
+    if (!userDataConfigured()) return { aircraft: null, choices: [] }
+    const [list, s] = await Promise.all([userAircraft(user.id), userPlanningSettings(user.id)])
+    const sel = s.selectedAircraftId ? list.find(a => a.id === s.selectedAircraftId) : undefined
+    if (sel) return { aircraft: sel, why: 'the aircraft selected in the app' }
+    if (list.length === 1) return { aircraft: list[0]!, why: 'the only aircraft profile' }
+    return { aircraft: null, choices: list }
+  }
+
+  return { briefRoute, briefSavedRoute, savedRoutes, aircraftById, defaultAircraft, userAircraft: (user: { id: string }) => userDataConfigured() ? userAircraft(user.id) : Promise.resolve([]) }
 }
 
 export type BriefingService = ReturnType<typeof createBriefingService>

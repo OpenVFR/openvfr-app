@@ -70,6 +70,7 @@ before(async () => {
       savedRoutes: async () => [{ id: 'r1', name: 'Home loop', waypoints: [{ lat: 59.35, lng: 17.94, name: 'ESSB' }, { lat: 59.65, lng: 17.92, name: 'ESSA' }], legOverrides: [{}], updatedAt: 0 }],
       userAircraft: async () => [{ id: 'a1', name: 'Rotax', registration: 'SE-TST', icaoType: 'C42', category: 'MICRO', cruiseIas: 90, fuelBurnLhr: 14, maxFuelL: 60 }],
       aircraftById: async () => null,
+      defaultAircraft: async () => ({ aircraft: { id: 'a1', name: 'Rotax', registration: 'SE-TST', icaoType: 'C42', category: 'MICRO', cruiseIas: 90, fuelBurnLhr: 14, maxFuelL: 60 }, why: 'the only aircraft profile' }),
     } as never,
     weather: async () => ({ metar: 'ESSB 111020Z 24012KT CAVOK 08/03 Q1013', taf: null }),
     appOrigin: APP, resource: RESOURCE,
@@ -208,6 +209,7 @@ test('with routes:write the assistant can save a route, refused points are not g
   assert.match(toolText(bad), /XXXX: not an aerodrome/)
   const r = await rpc(t.access_token, 'tools/call', { name: 'create_route', arguments: { name: 'Hop', points: ['ESSB', 'ESSA'], altitudeFt: 2500 } })
   assert.match(toolText(r), /Saved new route «Hop»/)
+  assert.match(toolText(r), /Planned with SE-TST «Rotax» \(the only aircraft profile\)/)
   assert.match(toolText(r), /\?route=[0-9a-f-]{36}/)
   assert.equal(savedRoutes.length, 1)
   assert.equal(savedRoutes[0]!.assistantReview?.by, 'Test Assistant')

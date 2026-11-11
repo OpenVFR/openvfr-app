@@ -198,6 +198,18 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
         ?? list.find(a => `${a.registration} ${a.name}`.toLowerCase().includes(key)) ?? null
     }
 
+    /**
+     * The aircraft to plan with when the pilot named none: the one selected
+     * in the app, else the only profile. The note tells the model what was
+     * chosen, or that it should ask.
+     */
+    async function defaultAircraft(): Promise<{ profile: AircraftProfileDocType | null; note: string }> {
+      const d = await deps.briefings.defaultAircraft({ id: caller.userId })
+      if (d.aircraft) return { profile: d.aircraft, note: `Planned with ${aircraftLabel(d.aircraft)} (${d.why}). If the pilot wants another aircraft, use its registration.` }
+      if (d.choices.length > 1) return { profile: null, note: `No aircraft chosen, so no fuel or performance checks: the pilot has ${d.choices.length} aircraft (${d.choices.slice(0, 8).map(aircraftLabel).join(', ')}). Ask which one and pass it.` }
+      return { profile: null, note: 'No aircraft profile in OpenVFR: no fuel or performance checks.' }
+    }
+
     server.registerTool('list_saved_routes', {
       annotations: { readOnlyHint: true },
       description: "List the pilot's saved routes in OpenVFR (name, points, distance). Use a name with brief_saved_route or suggest_fuel_stops.",
@@ -227,7 +239,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       description: 'Pre-flight briefing of one of the pilot\'s saved routes: distance, time and fuel per hop, METAR/TAF and NOTAMs at the departure, fuel stops and destination, and warnings (airspace, NOTAM areas, fuel, equipment, crosswind, runway length). Read the warnings out first.',
       inputSchema: z.object({
         route: z.string().min(1).max(120).describe('Saved route name (or part of it) or id'),
-        aircraft: z.string().max(80).optional().describe('Aircraft registration or name; default: the route\'s own aircraft'),
+        aircraft: z.string().max(80).optional().describe('Aircraft registration or name; default: the route\'s own aircraft, else the one selected in the app'),
         departure: departureField,
       }),
     }, async ({ route, aircraft, departure }) => {
@@ -237,8 +249,19 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       if (!deps.takeBriefing(caller.userId)) return fail('Briefing limit reached for now. Try again later.')
       try {
         const ac = await findAircraft(aircraft)
-        const r = await deps.briefings.briefSavedRoute({ id: caller.userId }, route, ac?.id, dep)
-        return text(briefingText(r.briefing))
+        if (aircraft && !ac) return fail(`No aircraft "${aircraft}". Use list_aircraft.`)
+        let note = ''
+        let acId = ac?.id
+        if (!aircraft) {
+          const found = await findRoute(route)
+          if ('route' in found && !found.route.aircraftId) {
+            const d = await defaultAircraft()
+            acId = d.profile?.id
+            note = `\n${d.note}`
+          }
+        }
+        const r = await deps.briefings.briefSavedRoute({ id: caller.userId }, route, acId, dep)
+        return text(briefingText(r.briefing) + note)
       } catch (err) {
         if (err instanceof BriefingInputError) return fail(err.message)
         throw err
@@ -269,11 +292,17 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
         if (!ad) return fail(`${code} is not in OpenVFR's aerodrome data.`)
         waypoints.push({ lat: ad.lat, lng: ad.lng, name: code, elevationFt: ad.elevationFt, ...(stops.has(code) ? { fuelStop: true } : {}) })
       }
-      const ac = await findAircraft(aircraft)
+      let ac = await findAircraft(aircraft)
+      let chosen = ''
+      if (!aircraft && canRoutes) {
+        const d = await defaultAircraft()
+        ac = d.profile
+        chosen = `\n${d.note}`
+      }
       const legOverrides = waypoints.slice(0, -1).map(() => (cruiseAltFt ? { altFt: cruiseAltFt } : {}))
       const b = await deps.briefings.briefRoute({ id: caller.userId }, { waypoints, legOverrides }, ac, dep !== undefined ? { departureMs: dep } : {})
       const note = aircraft && !ac ? (canRoutes ? `\n(No aircraft named "${aircraft}" found; briefed without one.)` : '\n(Aircraft not used: no access to saved aircraft.)') : ''
-      return text(briefingText(b) + note)
+      return text(briefingText(b) + note + chosen)
     })
 
     server.registerTool('aerodrome_status', {
@@ -512,7 +541,9 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
           type: 'text' as const,
           text: [
             `Plan a VFR route from ${from} to ${to}${aircraft ? ` with ${aircraft}` : ''} in OpenVFR and save it.${wishes ? ` My wishes: ${wishes}.` : ''}`,
-            '1. Propose points (ICAO codes, navaids, reporting points as AERODROME/POINT, or coordinates) and save them with create_route' + (aircraft ? ', with the aircraft and autoFuelStops: true.' : '.'),
+            aircraft
+              ? '1. Propose points (ICAO codes, navaids, reporting points as AERODROME/POINT, or coordinates) and save them with create_route, with the aircraft and autoFuelStops: true.'
+              : '1. If I have more than one aircraft (list_aircraft), ask me which one first. Then propose points (ICAO codes, navaids, reporting points as AERODROME/POINT, or coordinates) and save them with create_route with that aircraft and autoFuelStops: true; say which aircraft you planned with.',
             '2. Call leg_altitudes. For each leg use the suggested altitude unless I asked otherwise; where the MSA reaches controlled airspace, tell me and offer the options it lists (clearance with the frequency, or route around via other points). Never plan a leg below its MSA.',
             '3. Apply the altitudes and any point changes with update_route, then read the new briefing: fix what it warns about (airspace, restricted areas, fuel) and repeat once if needed.',
             '4. Finish with a short summary: legs with altitude and why, fuel stops, open issues, and the link to the route. Say that I must check it in the app before use and that this is not an official briefing.',
@@ -544,7 +575,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
         speedKts: z.number().min(SPEED_LIMITS[0]).max(SPEED_LIMITS[1]).optional().describe('Planned IAS, kt'),
       })).max(MAX_POINTS - 1).optional().describe('Settings for single legs (after altitudeFt)'),
       fuelStops: z.array(z.string().max(40)).max(10).optional().describe('Points (aerodromes between departure and destination) where the aircraft lands and refuels; replaces the current set'),
-      aircraft: z.string().max(80).optional().describe('Aircraft registration or name from list_aircraft; "none" removes it'),
+      aircraft: z.string().max(80).optional().describe('Aircraft registration or name from list_aircraft; "none" for no aircraft. New routes without it use the aircraft selected in the app (or the only one) and say so'),
       departure: departureField,
       autoFuelStops: z.boolean().optional().describe('With an aircraft: when a hop needs more fuel than the tanks hold, insert the best fuel stop (aircraft fuel types and runway limits) and say which'),
     }
@@ -605,8 +636,14 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       if (writeLimiter.take(caller.userId).waitS > 0) return fail('Too many changes for now. Try again later.')
       const idx = await (deps.pointIndex ?? defaultPointIndex)()
       if (!idx) return fail('Aerodrome and navaid data is not available right now.')
-      const ac = await aircraftFor(args.aircraft)
+      let ac = await aircraftFor(args.aircraft)
       if (ac && 'error' in ac) return ac.error
+      let chosen = ''
+      if (args.aircraft === undefined) {
+        const d = await defaultAircraft()
+        if (d.profile) ac = { id: d.profile.id, profile: d.profile }
+        chosen = d.note
+      }
       if (args.name) {
         const clash = (await deps.briefings.savedRoutes({ id: caller.userId })).find(r => r.id !== 'current' && r.name.toLowerCase() === args.name!.trim().toLowerCase())
         if (clash) return fail(`A route named ${quote(clash.name, 80)} exists. Use update_route to change it, or choose another name.`)
@@ -614,7 +651,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       try {
         const input: RouteInput = { name: args.name, points: args.points, altitudeFt: args.altitudeFt, legs: args.legs, fuelStops: args.fuelStops, aircraftId: ac?.id }
         const built = buildRoute(input, { idx, newId: crypto.randomUUID(), by: await deps.clientName(caller.clientId), now: Date.now() })
-        const note = args.autoFuelStops ? await addFuelStops(built, ac?.profile ?? null) : ''
+        const note = [chosen, args.autoFuelStops ? await addFuelStops(built, ac?.profile ?? null) : ''].filter(Boolean).join('\n')
         return await saveRouteAndBrief(built, ac?.profile ?? null, 'created', note, dep)
       } catch (err) {
         if (err instanceof RouteInputError) return fail(err.message)
