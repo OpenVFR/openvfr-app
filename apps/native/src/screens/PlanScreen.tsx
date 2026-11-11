@@ -60,7 +60,10 @@ import {
   type LogStats, type LogPeriod,
 } from '@open-vfr/shared/flightLogStats'
 import { nmToDisplay, distLabel, ktsToDisplay, displayToKts, speedLabel } from '../utils/units'
-import { computeFuelPlan } from '../utils/fuelCalc'
+import { computeTripFuelPlans } from '../utils/fuelCalc'
+import { setFuelStop } from '@open-vfr/shared/fuelStops'
+import { parseMetarWind, type ParsedWind } from '@open-vfr/shared/fetchWx'
+import { FuelStopSuggest } from '../components/FuelStopSuggest'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 type Segment = 'route' | 'aircraft' | 'waypoints' | 'logs'
@@ -137,7 +140,7 @@ export function PlanScreen() {
   const scaledTheme = useScaledTheme()
   const styles = useThemedStyles(makeStyles)
   const insets = useContentInsets()
-  const { waypoints, legOverrides, addWaypoint, insertWaypoint, removeWaypoint, clearRoute, setWaypoints, moveWaypoint, reverseRoute, setLegOverride, activeRouteId, setActiveRouteId } = useRouteContext()
+  const { waypoints, legOverrides, addWaypoint, insertWaypoint, removeWaypoint, clearRoute, setWaypoints, replaceRoute, moveWaypoint, reverseRoute, setLegOverride, activeRouteId, setActiveRouteId } = useRouteContext()
   const { settings, update } = useSettingsContext()
   const routeWx = useWeatherAlongRoute(waypoints)
   const tafWarnIcaos = useMemo(() => tafChangeIcaos(routeWx), [routeWx])
@@ -561,13 +564,28 @@ export function PlanScreen() {
     return cumMins.map(offset => fmtEta(takeoffMins, offset))
   }, [takeoffMins, legs])
 
-  // Fuel plan
-  const fuelPlan = useMemo(() => {
-    if (!profile || waypoints.length < 2) return null
+  // Fuel plan: one hop per take-off (the route splits at points marked as fuel stops).
+  const fuelLegWinds = useMemo(
     // Legs without a manual wind use the global wind, else the forecast (same as the leg table above).
-    const legWinds = forecastWinds.map(fw => (wind ? { dirDeg: wind.dirDeg, speedKts: wind.speedKts } : fw))
-    return computeFuelPlan(waypoints, legOverrides, profile, legWinds)
-  }, [profile, waypoints, legOverrides, wind, forecastWinds])
+    () => forecastWinds.map(fw => (wind ? { dirDeg: wind.dirDeg, speedKts: wind.speedKts } : fw)),
+    [wind, forecastWinds],
+  )
+  const fuelHops = useMemo(() => {
+    if (!profile || waypoints.length < 2) return null
+    return computeTripFuelPlans(waypoints, legOverrides, profile, fuelLegWinds)
+  }, [profile, waypoints, legOverrides, fuelLegWinds])
+  const fuelShort = !!fuelHops?.some(h => h.plan.availableFuelL > 0 && h.plan.totalMinFuelL > h.plan.availableFuelL)
+
+  // Wind each aerodrome on the route reports itself (own METAR), for the pre-flight crosswind check.
+  const surfaceWinds = useMemo(() => {
+    const m = new Map<string, ParsedWind>()
+    for (const st of routeWx) {
+      if (!st.metar || (st.sourceIcao && st.sourceIcao !== st.icao)) continue
+      const w = parseMetarWind(st.metar)
+      if (w) m.set(st.icao.toUpperCase(), w)
+    }
+    return m
+  }, [routeWx])
 
   // Pre-flight check: effective wind per leg (leg override > global > forecast), like the route table.
   // One entry per leg, whatever the forecast has loaded (it is empty while a global wind is set).
@@ -579,6 +597,7 @@ export function PlanScreen() {
   const preflight = usePreflightCheck({
     msa: legMsaData, legOverrides, aircraft: profile, aircraftId: selectedId,
     legWinds: effectiveLegWinds, windsLoading: forecastLoading, enabled: segment === 'route',
+    surfaceWinds,
   })
   // Projected onto the route the warnings were computed for, not the live one.
   const showWarningOnMap = (w: { focusNm?: number }) => {
@@ -897,6 +916,9 @@ export function PlanScreen() {
                   </Text>
                   {eta && <Text style={styles.wpEta}>{eta}</Text>}
                   {wp.note ? <Text style={styles.wpNote} numberOfLines={1}>📌 {wp.note}</Text> : null}
+                  {wp.fuelStop && index > 0 && index < waypoints.length - 1 ? (
+                    <Text style={styles.wpFuelStop}>FUEL STOP · land and refuel</Text>
+                  ) : null}
                 </View>
                 <TouchableOpacity style={styles.removeBtn} onPress={() => handleRemove(index)}>
                   <Text style={styles.removeBtnText}>✕</Text>
@@ -965,6 +987,18 @@ export function PlanScreen() {
                       </TouchableOpacity>
                     )}
                   </View>
+                  {index + 1 < waypoints.length - 1 && (
+                    <TouchableOpacity
+                      style={styles.saveRowActions}
+                      onPress={() => replaceRoute(setFuelStop(waypoints, index + 1, !waypoints[index + 1]?.fuelStop), legOverrides)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: !!waypoints[index + 1]?.fuelStop }}
+                    >
+                      <Text style={styles.inputLabel}>
+                        {waypoints[index + 1]?.fuelStop ? '☑' : '☐'} Land and refuel at {waypoints[index + 1]?.name ?? `point ${index + 2}`}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                   <View style={styles.saveRowActions}>
                     <TouchableOpacity style={styles.saveConfirm} onPress={() => saveLegProps(index)}>
                       <Text style={styles.saveConfirmTxt}>Save</Text>
@@ -1003,26 +1037,46 @@ export function PlanScreen() {
         )}
 
         {/* ── Fuel plan ───────────────────────────────────────────── */}
-        {fuelPlan && (
+        {fuelHops && profile && (
           <View style={styles.fuelCard}>
             <Text style={styles.cardTitle}>Fuel Plan</Text>
-            <Row label="Taxi"         value={`${fuelPlan.taxiFuelL.toFixed(1)} L`} />
-            <Row label="Enroute"      value={`${fuelPlan.enrouteFuelL.toFixed(1)} L`} />
-            <Row label="Contingency"  value={`${fuelPlan.contingencyFuelL.toFixed(1)} L  (${fuelPlan.contingencyPct}%)`} />
-            <Row label="Reserve"      value={`${(fuelPlan.holdingFuelL + fuelPlan.landingFuelL).toFixed(1)} L`} />
-            <View style={styles.fuelDivider} />
-            <Row
-              label="Total required"
-              value={`${fuelPlan.totalMinFuelL.toFixed(1)} L`}
-              accent
-              bold
-            />
-            {fuelPlan.availableFuelL > 0 && (
-              <Row
-                label="Available"
-                value={`${fuelPlan.availableFuelL.toFixed(1)} L`}
-                accent={fuelPlan.availableFuelL >= fuelPlan.totalMinFuelL}
-                warn={fuelPlan.availableFuelL < fuelPlan.totalMinFuelL}
+            {fuelHops.map((h, k) => {
+              const fp = h.plan
+              return (
+                <View key={`${h.fromIdx}-${h.toIdx}`}>
+                  {fuelHops.length > 1 && (
+                    <Text style={styles.fuelHopTitle}>
+                      Hop {k + 1}: {waypoints[h.fromIdx]?.name ?? `WP${h.fromIdx + 1}`} → {waypoints[h.toIdx]?.name ?? `WP${h.toIdx + 1}`}{h.toIdx < waypoints.length - 1 ? ' · refuel' : ''}
+                    </Text>
+                  )}
+                  <Row label="Taxi"         value={`${fp.taxiFuelL.toFixed(1)} L`} />
+                  <Row label="Enroute"      value={`${fp.enrouteFuelL.toFixed(1)} L`} />
+                  <Row label="Contingency"  value={`${fp.contingencyFuelL.toFixed(1)} L  (${fp.contingencyPct}%)`} />
+                  <Row label="Reserve"      value={`${(fp.holdingFuelL + fp.diversionFuelL + fp.landingFuelL).toFixed(1)} L`} />
+                  {fp.finalReserveMin > 0 && (
+                    <Row label={`Final reserve (${fp.finalReserveMin} min)`} value={`${fp.finalReserveFuelL.toFixed(1)} L`} />
+                  )}
+                  <View style={styles.fuelDivider} />
+                  <Row label="Total required" value={`${fp.totalMinFuelL.toFixed(1)} L`} accent bold />
+                  {fp.availableFuelL > 0 && (
+                    <Row
+                      label="Available"
+                      value={`${fp.availableFuelL.toFixed(1)} L`}
+                      accent={fp.availableFuelL >= fp.totalMinFuelL}
+                      warn={fp.availableFuelL < fp.totalMinFuelL}
+                    />
+                  )}
+                  {fp.unusableFuelL > 0 && <Row label="Unusable (not in available)" value={`${fp.unusableFuelL.toFixed(1)} L`} />}
+                </View>
+              )
+            })}
+            {fuelShort && (
+              <FuelStopSuggest
+                waypoints={waypoints}
+                legOverrides={legOverrides}
+                aircraft={profile}
+                legWinds={fuelLegWinds}
+                onApply={(wps, ovr) => replaceRoute(wps, ovr)}
               />
             )}
           </View>
@@ -1749,5 +1803,7 @@ function makeStyles(theme: ScaledTheme) {
     letterSpacing: 0.8, marginBottom: theme.space2,
   },
   fuelDivider: { height: 1, backgroundColor: theme.borderSubtle, marginVertical: theme.space1 },
+  fuelHopTitle: { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '600', marginTop: theme.space2, marginBottom: 2 },
+  wpFuelStop: { color: theme.accentBlue, fontSize: theme.textXs, fontWeight: '700' },
 } as const
 }

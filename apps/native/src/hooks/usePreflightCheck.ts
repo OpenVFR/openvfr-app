@@ -9,6 +9,7 @@
  * the plan screen is not in front; the last result stays, so coming back to an
  * unchanged route is free.
  */
+import type { ParsedWind } from '@open-vfr/shared/fetchWx'
 import { useEffect, useMemo, useState } from 'react'
 import { useIsFocused } from '@react-navigation/native'
 import { buildVirtualRadarProfile, applyTerrainToBands, type VirtualRadarProfile } from '@open-vfr/shared/virtualRadarCalc'
@@ -50,6 +51,8 @@ export function usePreflightCheck(opts: {
   legWinds: ({ dirDeg: number; speedKts: number } | null)[]
   windsLoading: boolean
   enabled: boolean
+  /** Reported surface wind per ICAO (own METAR), for the crosswind check. */
+  surfaceWinds?: ReadonlyMap<string, ParsedWind>
 }): PreflightCheck {
   const { msa, aircraft, aircraftId } = opts
   const focused = useIsFocused()
@@ -119,9 +122,9 @@ export function usePreflightCheck(opts: {
     return computeWarnings(
       profile, msa.msaPts, aircraft ?? undefined, waypoints, legOverrides, aircraftId ?? undefined,
       msa.terrainFailed, legWinds, resolveMsaMargins(margins),
-      { terrainPts: msa.terrain, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable },
+      { terrainPts: msa.terrain, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable, surfaceWinds: opts.surfaceWinds },
     )
-  }, [profile, msa, aircraft, waypoints, legOverrides, aircraftId, legWinds, margins, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, airspaceFailed, aerodromesFailed, signedIn, regional.failed])
+  }, [profile, msa, aircraft, waypoints, legOverrides, aircraftId, legWinds, margins, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, airspaceFailed, aerodromesFailed, signedIn, regional.failed, opts.surfaceWinds])
 
   const prompts = useMemo(
     () => computePrompts({ waypoints, legWinds, windsLoading }),

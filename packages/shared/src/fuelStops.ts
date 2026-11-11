@@ -306,3 +306,33 @@ export function suggestFuelStops(
     ? { status: 'found', plans: plans.slice(0, maxPlans).map(({ cost: _c, ...p }) => p), fuelTypesUnset }
     : { status: 'none-found', fuelTypesUnset, candidates: candidates.length }
 }
+
+/**
+ * The route with a plan's stops inserted as fuel stops, as one new waypoint
+ * and leg-override list (one edit, one undo step). The split leg's override
+ * carries over to both halves, as when a point is inserted by hand.
+ */
+export function insertFuelStops(
+  waypoints:    readonly RouteWaypoint[],
+  legOverrides: readonly LegOverride[],
+  plan:         Pick<FuelStopPlan, 'stops'>,
+): { waypoints: RouteWaypoint[]; legOverrides: LegOverride[] } {
+  const wps = [...waypoints]
+  const ovr = waypoints.slice(0, -1).map((_, i) => legOverrides[i] ?? {})
+  // Last stop first so earlier positions stay valid; stops on one leg end up in route order.
+  for (const s of [...plan.stops].reverse()) {
+    const at = s.insertAfter + 1
+    wps.splice(at, 0, { lat: s.aerodrome.lat, lng: s.aerodrome.lng, name: s.aerodrome.icao, fuelStop: true })
+    ovr.splice(at, 0, { ...(ovr[s.insertAfter] ?? {}) })
+  }
+  return { waypoints: wps, legOverrides: ovr }
+}
+
+/** The route with point `index` marked (or no longer marked) as a fuel stop. Ends are never stops. */
+export function setFuelStop(waypoints: readonly RouteWaypoint[], index: number, on: boolean): RouteWaypoint[] {
+  return waypoints.map((w, i) => {
+    if (i !== index) return w
+    const { fuelStop: _f, ...rest } = w
+    return on && i > 0 && i < waypoints.length - 1 ? { ...rest, fuelStop: true } : rest
+  })
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { suggestFuelStops } from './fuelStops'
+import { suggestFuelStops, insertFuelStops, setFuelStop } from './fuelStops'
 import { computeTripFuelPlans, fuelHopRanges } from './fuelCalc'
 import type { AircraftProfileDocType } from './types'
 import type { AerodromeEntry } from './findDestination'
@@ -135,5 +135,22 @@ describe('computeTripFuelPlans', () => {
       expect(h.plan.taxiFuelL).toBe(2)
       expect(h.plan.totalMinFuelL).toBeLessThanOrEqual(60)
     }
+  })
+})
+
+describe('insertFuelStops / setFuelStop', () => {
+  it('inserts stops in route order with the split leg override copied', () => {
+    const wps = [{ ...at(0), name: 'A' }, { ...at(300), name: 'B' }]
+    const mk = (icao: string, nm: number) => ({ aerodrome: ad(icao, nm, 0), fuels: [], fuelRank: 0, insertAfter: 0, detourNm: 0 })
+    const r = insertFuelStops(wps, [{ altFt: 4500 }], { stops: [mk('S1', 100), mk('S2', 200)] })
+    expect(r.waypoints.map(w => w.name)).toEqual(['A', 'S1', 'S2', 'B'])
+    expect(r.waypoints[1].fuelStop).toBe(true)
+    expect(r.legOverrides).toEqual([{ altFt: 4500 }, { altFt: 4500 }, { altFt: 4500 }])
+  })
+  it('marks and clears, never on the ends', () => {
+    const wps = [{ ...at(0) }, { ...at(100) }, { ...at(200) }]
+    expect(setFuelStop(wps, 1, true)[1].fuelStop).toBe(true)
+    expect('fuelStop' in setFuelStop(setFuelStop(wps, 1, true), 1, false)[1]).toBe(false)
+    expect(setFuelStop(wps, 0, true)[0].fuelStop).toBeUndefined()
   })
 })

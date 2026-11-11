@@ -10,6 +10,7 @@
  * append aerodrome as a route waypoint (onAddToRoute).
  */
 
+import { sellsAnyFuel } from '@open-vfr/shared/fuelTypes'
 import React from 'react'
 import { View, Text, TouchableOpacity, FlatList } from 'react-native'
 import Slider from '@react-native-community/slider'
@@ -118,6 +119,15 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
   const [minRunwayM, setMinRunway] = React.useState(0)
   const [fuelFilter, setFuelFilter] = React.useState<FuelFilter>('any')
   const [surfFilter, setSurfFilter] = React.useState<SurfaceFilter>('any')
+  const aircraftFuels = aircraftProfile?.fuelTypes ?? []
+
+  // Each time the sheet opens, start from the active aircraft's fuel and runway limits.
+  React.useEffect(() => {
+    if (!open) return
+    setFuelFilter((aircraftProfile?.fuelTypes?.length ?? 0) > 0 ? 'aircraft' : 'any')
+    setSurfFilter(aircraftProfile?.hardRunwayOnly ? 'hard' : 'any')
+    setMinRunway(Math.min(2000, Math.max(0, Math.round((aircraftProfile?.minRunwayM ?? 0) / 100) * 100)))
+  }, [open, aircraftProfile])
 
   // ── Load once, on first open ────────────────────────────────────────────
   React.useEffect(() => {
@@ -136,10 +146,10 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
   const sorted = React.useMemo(
     () => filterAndSortAerodromes(
       aerodromes, center, homeIcao,
-      { search, minRunwayM, fuelFilter, surfFilter },
+      { search, minRunwayM, fuelFilter, fuelCodes: aircraftProfile?.fuelTypes, surfFilter },
       glideRangeNm,
     ).slice(0, 80),
-    [aerodromes, center, homeIcao, minRunwayM, fuelFilter, surfFilter, search, glideRangeNm],
+    [aerodromes, center, homeIcao, minRunwayM, fuelFilter, aircraftProfile?.fuelTypes, surfFilter, search, glideRangeNm],
   )
 
   const placeMatches = React.useMemo(() => {
@@ -165,6 +175,8 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
             {a.withinGlide && <Text style={styles.tagGlide}>GLIDE</Text>}
             {hasAvgas(a.fuel) && <Text style={styles.tag}>AVGAS</Text>}
             {hasJet(a.fuel) && <Text style={styles.tag}>JET</Text>}
+            {sellsAnyFuel(a.fuel, ['AVGAS_UL91']) && <Text style={styles.tag}>UL91</Text>}
+            {sellsAnyFuel(a.fuel, ['MOGAS']) && <Text style={styles.tag}>MOGAS</Text>}
             {isHard(a.surfaces) && <Text style={styles.tag}>ASPH</Text>}
             {isGrass(a.surfaces) && !isHard(a.surfaces) && <Text style={styles.tagGrass}>GRASS</Text>}
             {a.maxRunwayM > 0 && <Text style={styles.tag}>{a.maxRunwayM}m</Text>}
@@ -226,7 +238,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
 
           <View style={styles.filterRow}>
             <Text style={styles.filterLabel}>Fuel</Text>
-            {FUEL_OPTS.map(({ v, label }) => (
+            {(aircraftFuels.length > 0 ? [{ v: 'aircraft' as FuelFilter, label: 'Aircraft' }, ...FUEL_OPTS] : FUEL_OPTS).map(({ v, label }) => (
               <TouchableOpacity
                 key={v}
                 style={[styles.filterBtn, fuelFilter === v && styles.filterBtnActive]}

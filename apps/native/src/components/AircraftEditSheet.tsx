@@ -13,6 +13,8 @@ import {
   View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Share,
 } from 'react-native'
 import { buildPohPrompt, parsePohReply, PohReplyError, POH_FIELDS } from '@open-vfr/shared/pohImport'
+import { FUEL_CODES, FUEL_LABELS, normalizeFuelCodes, preferenceLabel } from '@open-vfr/shared/fuelTypes'
+import type { FuelCode, TransponderMode } from '@open-vfr/shared/types'
 import { AppIcon } from './AppIcon'
 import * as Crypto from 'expo-crypto'
 import type { AircraftProfileDocType, AircraftCategory } from '../types/db'
@@ -46,6 +48,12 @@ type FormState = {
   maxCrosswindKts: string
   climbFuelCeilingLhr: string
   unusableFuelL: string
+  finalReserveMin: string
+  minRunwayM: string
+  hardRunwayOnly: boolean
+  fuelTypes: FuelCode[]
+  transponder: '' | TransponderMode
+  hasRadio: '' | 'yes' | 'no'
 }
 
 const EMPTY: FormState = {
@@ -61,6 +69,12 @@ const EMPTY: FormState = {
   maxCrosswindKts: '0',
   climbFuelCeilingLhr: '0',
   unusableFuelL: '0',
+  finalReserveMin: '0',
+  minRunwayM: '0',
+  hardRunwayOnly: false,
+  fuelTypes: [],
+  transponder: '',
+  hasRadio: '',
 }
 
 function toForm(p: AircraftProfileDocType): FormState {
@@ -80,6 +94,12 @@ function toForm(p: AircraftProfileDocType): FormState {
     maxCrosswindKts: String(p.maxCrosswindKts ?? 0),
     climbFuelCeilingLhr: String(p.climbFuelCeilingLhr ?? 0),
     unusableFuelL: String(p.unusableFuelL ?? 0),
+    finalReserveMin: String(p.finalReserveMin ?? 0),
+    minRunwayM: String(p.minRunwayM ?? 0),
+    hardRunwayOnly: p.hardRunwayOnly === true,
+    fuelTypes: normalizeFuelCodes(p.fuelTypes),
+    transponder: p.transponder ?? '',
+    hasRadio: p.hasRadio === true ? 'yes' : p.hasRadio === false ? 'no' : '',
   }
 }
 
@@ -140,6 +160,7 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
           if (r.warnings[key]) notes[key] = `${r.warnings[key]}${page}, check against the POH`
         }
       }
+      if (r.fuelTypes.length > 0) patch.fuelTypes = r.fuelTypes
       setForm(f => ({ ...f, ...patch }))
       setPohNotes(notes)
       setPohError(''); setPohReply(''); setPohOpen(false); setPohDone(true)
@@ -196,6 +217,12 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       maxCrosswindKts:  Math.max(0, num(form.maxCrosswindKts)),
       climbFuelCeilingLhr: HAS_ENGINE(cat) && HAS_FUEL(cat) ? Math.max(0, num(form.climbFuelCeilingLhr)) : 0,
       unusableFuelL:    HAS_FUEL(cat) ? Math.max(0, num(form.unusableFuelL)) : 0,
+      finalReserveMin:  HAS_FUEL(cat) ? Math.max(0, num(form.finalReserveMin)) : 0,
+      fuelTypes:        HAS_FUEL(cat) ? form.fuelTypes : [],
+      minRunwayM:       Math.max(0, Math.round(num(form.minRunwayM))),
+      hardRunwayOnly:   form.hardRunwayOnly,
+      transponder:      form.transponder || undefined,
+      hasRadio:         form.hasRadio === '' ? undefined : form.hasRadio === 'yes',
       updatedAt:        Date.now(),
     }
     onSave(doc)
@@ -279,15 +306,64 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       <FieldRow label="Takeoff speed (0 = default)" unit="kts" value={form.takeoffSpeedKts} note={pohNotes.takeoffSpeedKts} numeric onChange={v => set('takeoffSpeedKts', v)} />
       <FieldRow label="Max crosswind (0 = not set)" unit="kts" value={form.maxCrosswindKts} note={pohNotes.maxCrosswindKts} numeric onChange={v => set('maxCrosswindKts', v)} />
 
+      <SectionLabel text="Runway" />
+      <FieldRow label="Min runway (0 = no limit)" unit="m" value={form.minRunwayM} numeric onChange={v => set('minRunwayM', v)} />
+      <ChipRow
+        label="Surface"
+        options={[{ v: 'any', label: 'Any' }, { v: 'hard', label: 'Paved only' }]}
+        value={form.hardRunwayOnly ? 'hard' : 'any'}
+        onChange={v => set('hardRunwayOnly', v === 'hard')}
+      />
+
+      <SectionLabel text="Equipment" />
+      <ChipRow
+        label="Transponder"
+        options={[{ v: '', label: 'Not set' }, { v: 'none', label: 'None' }, { v: 'A', label: 'A' }, { v: 'C', label: 'C' }, { v: 'S', label: 'S' }]}
+        value={form.transponder}
+        onChange={v => set('transponder', v as FormState['transponder'])}
+      />
+      <ChipRow
+        label="Radio"
+        options={[{ v: '', label: 'Not set' }, { v: 'yes', label: 'Yes' }, { v: 'no', label: 'No' }]}
+        value={form.hasRadio}
+        onChange={v => set('hasRadio', v as FormState['hasRadio'])}
+      />
+
       {HAS_FUEL(form.category) && (
         <>
           <SectionLabel text="Fuel" />
+          <Text style={styles.fieldLabel}>Fuel types, in order of preference (tap to add or remove)</Text>
+          <View style={styles.catRow}>
+            {form.fuelTypes.map((code, idx) => (
+              <View key={code} style={[styles.catChip, styles.catChipActive, styles.fuelChip]}>
+                <TouchableOpacity onPress={() => set('fuelTypes', form.fuelTypes.filter(c => c !== code))} accessibilityLabel={`${preferenceLabel(idx)} choice ${FUEL_LABELS[code]}: remove`}>
+                  <Text style={[styles.catChipTxt, styles.catChipTxtActive]}>{idx + 1} {FUEL_LABELS[code]}</Text>
+                </TouchableOpacity>
+                {idx > 0 && (
+                  <TouchableOpacity
+                    onPress={() => { const next = [...form.fuelTypes]; [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]]; set('fuelTypes', next) }}
+                    accessibilityLabel={`Prefer ${FUEL_LABELS[code]}`}
+                    hitSlop={8}
+                  >
+                    <Text style={[styles.catChipTxt, styles.catChipTxtActive]}> ↑</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+            {FUEL_CODES.filter(c => !form.fuelTypes.includes(c)).map(code => (
+              <TouchableOpacity key={code} style={styles.catChip} onPress={() => set('fuelTypes', normalizeFuelCodes([...form.fuelTypes, code]))}>
+                <Text style={styles.catChipTxt}>{FUEL_LABELS[code]}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
           <FieldRow label="Burn" unit="L/h" value={form.fuelBurnLhr} error={errors.fuelBurnLhr} note={pohNotes.fuelBurnLhr} numeric onChange={v => set('fuelBurnLhr', v)} />
           <FieldRow label="Max capacity" unit="L" value={form.maxFuelL} error={errors.maxFuelL} note={pohNotes.maxFuelL} numeric onChange={v => set('maxFuelL', v)} />
+          <FieldRow label="Unusable (not in capacity)" unit="L" value={form.unusableFuelL} note={pohNotes.unusableFuelL} numeric onChange={v => set('unusableFuelL', v)} />
           <FieldRow label="Taxi / T/O" unit="L" value={form.taxiFuelL} note={pohNotes.taxiFuelL} numeric onChange={v => set('taxiFuelL', v)} />
           <FieldRow label="Reserve LDG" unit="L" value={form.landingFuelL} note={pohNotes.landingFuelL} numeric onChange={v => set('landingFuelL', v)} />
           <FieldRow label="Holding" unit="min" value={form.holdingMin} numeric onChange={v => set('holdingMin', v)} />
           <FieldRow label="Diversion" unit="min" value={form.diversionMin} numeric onChange={v => set('diversionMin', v)} />
+          <FieldRow label="Final reserve (0 = none)" unit="min" value={form.finalReserveMin} numeric onChange={v => set('finalReserveMin', v)} />
           <FieldRow label="Contingency" unit="%" value={form.contingencyPct} numeric onChange={v => set('contingencyPct', v)} />
         </>
       )}
@@ -300,7 +376,10 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
           <FieldRow label="RoC at ceiling" unit="fpm" value={form.rocCeilingFpm} note={pohNotes.rocCeilingFpm} numeric onChange={v => set('rocCeilingFpm', v)} />
           <FieldRow label="Climb IAS" unit="kts" value={form.climbIas} note={pohNotes.climbIas} numeric onChange={v => set('climbIas', v)} />
           {HAS_FUEL(form.category) && (
-            <FieldRow label="Climb fuel burn" unit="L/h" value={form.climbFuelLhr} note={pohNotes.climbFuelLhr} numeric onChange={v => set('climbFuelLhr', v)} />
+            <>
+              <FieldRow label="Climb fuel burn" unit="L/h" value={form.climbFuelLhr} note={pohNotes.climbFuelLhr} numeric onChange={v => set('climbFuelLhr', v)} />
+              <FieldRow label="Climb burn at ceiling (0 = same)" unit="L/h" value={form.climbFuelCeilingLhr} note={pohNotes.climbFuelCeilingLhr} numeric onChange={v => set('climbFuelCeilingLhr', v)} />
+            </>
           )}
           <FieldRow label="Descent rate" unit="fpm" value={form.descentFpm} note={pohNotes.descentFpm} numeric onChange={v => set('descentFpm', v)} />
           <FieldRow label="Descent IAS" unit="kts" value={form.descentIas} note={pohNotes.descentIas} numeric onChange={v => set('descentIas', v)} />
@@ -328,6 +407,33 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       </View>
       <View style={{ height: 24 }} />
     </NativeSheet>
+  )
+}
+
+function ChipRow({ label, options, value, onChange }: {
+  label: string
+  options: { v: string; label: string }[]
+  value: string
+  onChange: (v: string) => void
+}) {
+  const styles = useThemedStyles(makeStyles)
+  return (
+    <>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <View style={styles.catRow} accessibilityRole="radiogroup" accessibilityLabel={label}>
+        {options.map(o => (
+          <TouchableOpacity
+            key={o.v}
+            style={[styles.catChip, value === o.v && styles.catChipActive]}
+            onPress={() => onChange(o.v)}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: value === o.v }}
+          >
+            <Text style={[styles.catChipTxt, value === o.v && styles.catChipTxtActive]}>{o.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </>
   )
 }
 
@@ -427,6 +533,7 @@ function makeStyles(theme: ScaledTheme) {
   catChipActive: { borderColor: theme.accentBlue, backgroundColor: 'rgba(59,130,246,0.15)' },
   catChipTxt: { color: theme.textMuted, fontSize: theme.textXs },
   catChipTxtActive: { color: theme.accentBlue, fontWeight: '600' },
+  fuelChip: { flexDirection: 'row', alignItems: 'center' },
   actions: { flexDirection: 'row', gap: theme.space2, marginTop: theme.space4 },
   btn: {
     flex: 1, alignItems: 'center', paddingVertical: 10,

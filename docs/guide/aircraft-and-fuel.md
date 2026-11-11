@@ -134,8 +134,9 @@ distance is taken off the cruise distance. If **Min required** exceeds
 ## Fuel stops
 
 A route point can be a **fuel stop**: you land there and refuel. Open the
-leg that ends at the point and tick **Land and refuel at ...**; the point
-shows **FUEL** in the route table (select it to fly through instead). The
+leg that ends at the point and tick **Land and refuel at ...** (on the
+mobile app: the leg's override panel); the point shows **FUEL** in the
+route table (on the web, select it to fly through instead). The
 fuel plan then has one part per hop, each starting with full tanks and its
 own taxi fuel and reserves, and the pre-flight check tests each hop.
 

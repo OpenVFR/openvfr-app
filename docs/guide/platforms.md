@@ -48,6 +48,7 @@ Legend: **Yes** = available, **Partial** = available with differences
 | Fuel plan for a chosen aircraft | Yes | Yes | |
 | Pre-flight warnings (airspace, below MSA, fuel) | Yes | Partial | Web has a dedicated warnings panel with all three checks. Native marks a leg below its MSA in red and warns when fuel required exceeds the tank, but has no airspace check in the plan. |
 | Alternate destination | Yes | Yes | |
+| Fuel stops: mark a point, fuel plan per hop, Suggest fuel stop | Yes | Yes | Web marks a stop in the leg editor; native in the leg's override panel. |
 | Aircraft profiles | Yes | Yes | |
 | Fill in an aircraft profile from a POH with your own AI assistant | Yes | Yes | Copy or share a prompt, paste the assistant's answer back. |
 | Fill in an aircraft profile from a POH PDF uploaded to the server | Yes | No | Web only, where the server has it configured. |
