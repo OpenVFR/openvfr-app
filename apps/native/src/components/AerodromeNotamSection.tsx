@@ -36,6 +36,7 @@ import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { applyNotamRelevance, relevantFirPrefixes, relevanceHiddenNote } from '@open-vfr/shared/notamRelevance'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
 import { useNotamTriage } from '../hooks/useNotamTriage'
+import { isNewNotam, sortNewestFirst } from '@open-vfr/shared/notamAge'
 import { canHideNotam, splitHidden, triageKey } from '@open-vfr/shared/notamTriage'
 import NotamViewControls from './NotamViewControls'
 import NotamBody from './NotamBody'
@@ -124,7 +125,7 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
           <Text style={styles.muted}>No NOTAMs</Text>
         )}
         {(() => {
-          const { shown, hidden } = splitHidden(notams, triage)
+          const { shown, hidden } = splitHidden(sortNewestFirst(notams), triage)
           const row = (n: NotamItem, isHidden: boolean) => {
             // nmsId, not display id, for expand-state/React key -- see
             // apps/api/src/notam.ts's NotamItem.nmsId comment.
@@ -133,7 +134,7 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
             const dim = isHidden || triage.read.includes(key)
             return (
               <TouchableOpacity key={n.nmsId} style={[styles.notamRow, dim && styles.notamRowRead]} onPress={() => toggleNotam(n.nmsId, key)}>
-                <Text style={styles.notamId}>{notamTitle(n)} {expanded ? '▴' : '▾'}</Text>
+                <Text style={styles.notamId}>{notamTitle(n)} {expanded ? '▴' : '▾'}{isNewNotam(n) ? '  NEW' : ''}</Text>
                 {n.effective && (
                   <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}{notamStatus(n).state === 'scheduled' ? ` · ${notamStatus(n).label.toLowerCase()}` : ''}</Text>
                 )}

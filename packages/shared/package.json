@@ -122,6 +122,7 @@
     "./notamSchedule": "./src/notamSchedule.ts",
     "./aerodromeClosure": "./src/aerodromeClosure.ts",
     "./notamTriage": "./src/notamTriage.ts",
+    "./notamAge": "./src/notamAge.ts",
     "./atcStatus": "./src/atcStatus.ts",
     "./wxFormat": "./src/wxFormat.ts",
     "./wxStations": "./src/wxStations.ts",

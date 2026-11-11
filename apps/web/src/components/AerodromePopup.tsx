@@ -17,6 +17,7 @@ import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { applyNotamRelevance, relevantFirPrefixes, relevanceHiddenNote } from '@open-vfr/shared/notamRelevance'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
 import { useNotamTriage } from '../hooks/useNotamTriage'
+import { isNewNotam, sortNewestFirst } from '@open-vfr/shared/notamAge'
 import { canHideNotam, splitHidden, triageKey } from '@open-vfr/shared/notamTriage'
 import NotamViewControls from './NotamViewControls'
 import NotamBody from './NotamBody'
@@ -1278,7 +1279,7 @@ export default function AerodromePopup({
               <div className={css.wxState}>No active NOTAMs</div>
             )}
             {(() => {
-              const { shown, hidden } = splitHidden(ownRel.kept, triage)
+              const { shown, hidden } = splitHidden(sortNewestFirst(ownRel.kept), triage)
               const row = (n: NotamItem, isHidden: boolean) => {
                 // nmsId, not display id, for expand-state/React key -- see
                 // apps/api/src/notam.ts's NotamItem.nmsId comment.
@@ -1295,6 +1296,7 @@ export default function AerodromePopup({
                       aria-expanded={String(expanded) as 'true' | 'false'}
                     >
                       <span className={css.notamId}>{notamTitle(n)}</span>
+                      {isNewNotam(n) && <span className={css.notamNew}>NEW</span>}
                       {eff && <span className={css.notamPeriod}>{eff}{exp ? ` – ${exp}` : ''}</span>}
                       <span className={css.notamChevron}>{expanded ? <IconChevronUp size={14} aria-hidden="true" /> : <IconChevronDown size={14} aria-hidden="true" />}</span>
                     </button>
