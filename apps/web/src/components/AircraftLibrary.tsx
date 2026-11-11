@@ -533,7 +533,7 @@ export default function AircraftLibrary({
             <div className={css.sectionLabel}>Climb / Descent</div>
             <Field label="Service ceiling" unit="ft"  type="number" value={form.serviceCeilingFt} tooltip="Maximum altitude where the aircraft can sustain at least 100 fpm rate of climb." {...poh('serviceCeilingFt')} onChange={v => set('serviceCeilingFt', v)} />
             <Field label="RoC at SL"       unit="fpm" type="number" value={form.rocSlFpm}         tooltip="Best rate of climb (Vy) at sea level in feet per minute. Used to project climb performance." {...poh('rocSlFpm')} onChange={v => set('rocSlFpm', v)} />
-            <Field label="RoC at ceiling"  unit="fpm" type="number" value={form.rocCeilingFpm}    tooltip="Rate of climb just below the service ceiling, typically 50–100 fpm. Used to interpolate climb performance at altitude." onChange={v => set('rocCeilingFpm', v)} />
+            <Field label="RoC at ceiling"  unit="fpm" type="number" value={form.rocCeilingFpm}    tooltip="Rate of climb just below the service ceiling, typically 50–100 fpm. Used to interpolate climb performance at altitude." {...poh('rocCeilingFpm')} onChange={v => set('rocCeilingFpm', v)} />
             <Field label="Climb IAS"       unit="kts" type="number" value={form.climbIas}         tooltip="Best rate of climb speed (Vy) in knots IAS." {...poh('climbIas')} onChange={v => set('climbIas', v)} />
             {HAS_FUEL(form.category) && (
               <Field label="Climb fuel burn" unit="L/h" type="number" value={form.climbFuelLhr} tooltip="Fuel consumption during climb in litres per hour." {...poh('climbFuelLhr')} onChange={v => set('climbFuelLhr', v)} />
@@ -541,7 +541,7 @@ export default function AircraftLibrary({
             <Field label="Descent rate" unit="fpm" type="number" value={form.descentFpm}      tooltip="Typical descent rate in feet per minute (enter as a positive number, e.g. 500)." {...poh('descentFpm')} onChange={v => set('descentFpm', v)} />
             <Field label="Descent IAS"  unit="kts" type="number" value={form.descentIas}      tooltip="Typical descent indicated airspeed in knots." {...poh('descentIas')} onChange={v => set('descentIas', v)} />
             {HAS_FUEL(form.category) && (
-              <Field label="Descent fuel burn" unit="L/h" type="number" value={form.descentFuelLhr} tooltip="Fuel consumption during descent in litres per hour." onChange={v => set('descentFuelLhr', v)} />
+              <Field label="Descent fuel burn" unit="L/h" type="number" value={form.descentFuelLhr} tooltip="Fuel consumption during descent in litres per hour." {...poh('descentFuelLhr')} onChange={v => set('descentFuelLhr', v)} />
             )}
           </>
         )}

@@ -50,6 +50,15 @@ describe('parsePohReply', () => {
     expect(r.warnings.cruiseIas).toBeUndefined()
   })
 
+  it('reads climb rate at ceiling and descent burn, and cross-checks them', () => {
+    const ok = parsePohReply('{"rocSlFpm":720,"rocCeilingFpm":100,"fuelBurnLhr":30,"descentFuelLhr":18}')
+    expect(ok.values).toMatchObject({ rocCeilingFpm: '100', descentFuelLhr: '18' })
+    expect(ok.warnings).toEqual({})
+    const bad = parsePohReply('{"rocSlFpm":500,"rocCeilingFpm":600,"fuelBurnLhr":20,"descentFuelLhr":25}')
+    expect(bad.warnings.rocCeilingFpm).toBeDefined()
+    expect(bad.warnings.descentFuelLhr).toBeDefined()
+  })
+
   it('throws a pilot-readable error when there is no JSON', () => {
     expect(() => parsePohReply('Sorry, I cannot read PDFs.')).toThrow(PohReplyError)
     expect(() => parsePohReply('{"name": "C172", ')).toThrow(PohReplyError)

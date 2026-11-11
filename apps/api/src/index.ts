@@ -88,6 +88,7 @@ Return ONLY a raw JSON object with any of these keys you found (omit keys not fo
   DO NOT confuse this with a pre-flight/take-off minimum fuel requirement (e.g. "minimum fuel for take-off", "minimum fuel quantity before flight", a pre-flight checklist minimum, or a fuel-gauge placard minimum). Those specify how much fuel must be aboard BEFORE departure — a completely different concept from a reserve that must remain AFTER landing. If the document only states a pre-flight/take-off minimum and never explicitly states a post-flight/landing reserve, omit this key entirely rather than reusing the take-off number.
 - "serviceCeilingFt": service ceiling or maximum operating altitude in feet. Convert from metres (×3.281).
 - "rocSlFpm": best rate of climb at sea level in fpm — look for Vy climb rate, ROC, rate of climb. Convert from m/s (×197) or m/min (×3.281).
+- "rocCeilingFpm": rate of climb at the service ceiling in fpm — the value the document gives, or the rate by which it defines the service ceiling (often 100 fpm); omit it otherwise.
 - "climbIas": best rate of climb speed (Vy) in knots. Convert from km/h (×0.5400) or mph (×0.8690).
 - "climbFuelLhr": fuel burn during climb in L/hr. Convert as above.
 - "descentFpm": typical descent rate in fpm, positive value. Convert from m/s (×197) or m/min (×3.281).

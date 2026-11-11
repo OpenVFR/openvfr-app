@@ -282,7 +282,7 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
           <SectionLabel text="Climb / Descent" />
           <FieldRow label="Service ceiling" unit="ft" value={form.serviceCeilingFt} note={pohNotes.serviceCeilingFt} numeric onChange={v => set('serviceCeilingFt', v)} />
           <FieldRow label="RoC at SL" unit="fpm" value={form.rocSlFpm} note={pohNotes.rocSlFpm} numeric onChange={v => set('rocSlFpm', v)} />
-          <FieldRow label="RoC at ceiling" unit="fpm" value={form.rocCeilingFpm} numeric onChange={v => set('rocCeilingFpm', v)} />
+          <FieldRow label="RoC at ceiling" unit="fpm" value={form.rocCeilingFpm} note={pohNotes.rocCeilingFpm} numeric onChange={v => set('rocCeilingFpm', v)} />
           <FieldRow label="Climb IAS" unit="kts" value={form.climbIas} note={pohNotes.climbIas} numeric onChange={v => set('climbIas', v)} />
           {HAS_FUEL(form.category) && (
             <FieldRow label="Climb fuel burn" unit="L/h" value={form.climbFuelLhr} note={pohNotes.climbFuelLhr} numeric onChange={v => set('climbFuelLhr', v)} />
@@ -290,7 +290,7 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
           <FieldRow label="Descent rate" unit="fpm" value={form.descentFpm} note={pohNotes.descentFpm} numeric onChange={v => set('descentFpm', v)} />
           <FieldRow label="Descent IAS" unit="kts" value={form.descentIas} note={pohNotes.descentIas} numeric onChange={v => set('descentIas', v)} />
           {HAS_FUEL(form.category) && (
-            <FieldRow label="Descent fuel burn" unit="L/h" value={form.descentFuelLhr} numeric onChange={v => set('descentFuelLhr', v)} />
+            <FieldRow label="Descent fuel burn" unit="L/h" value={form.descentFuelLhr} note={pohNotes.descentFuelLhr} numeric onChange={v => set('descentFuelLhr', v)} />
           )}
         </>
       )}

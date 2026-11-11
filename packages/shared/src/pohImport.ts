@@ -17,9 +17,9 @@
 /** Aircraft profile fields a POH can fill. Values are form strings. */
 export const POH_FIELDS = [
   'name', 'icaoType', 'cruiseAltFt', 'cruiseIas', 'fuelBurnLhr', 'maxFuelL',
-  'taxiFuelL', 'landingFuelL', 'serviceCeilingFt', 'rocSlFpm', 'climbIas',
-  'climbFuelLhr', 'descentFpm', 'descentIas', 'bestGlideIas', 'glideRatio',
-  'takeoffSpeedKts',
+  'taxiFuelL', 'landingFuelL', 'serviceCeilingFt', 'rocSlFpm', 'rocCeilingFpm',
+  'climbIas', 'climbFuelLhr', 'descentFpm', 'descentIas', 'descentFuelLhr',
+  'bestGlideIas', 'glideRatio', 'takeoffSpeedKts',
 ] as const
 
 export type PohField = typeof POH_FIELDS[number]
@@ -37,10 +37,12 @@ const FIELD_GUIDE: Record<PohField, string> = {
   landingFuelL:     'fixed reserve that must REMAIN IN THE TANK AT LANDING, in litres (final reserve, landing reserve). A minimum fuel for take-off or a pre-flight minimum is NOT this value: omit the field if only that is given.',
   serviceCeilingFt: 'service ceiling or maximum operating altitude in feet. Convert from metres (×3.281).',
   rocSlFpm:         'best rate of climb at sea level in ft/min. Convert from m/s (×197) or m/min (×3.281).',
+  rocCeilingFpm:    'rate of climb at the service ceiling in ft/min. Use the value the document gives, or the rate by which it defines the service ceiling (often 100 ft/min); omit it otherwise.',
   climbIas:         'best rate of climb speed (Vy) in knots IAS.',
   climbFuelLhr:     'fuel consumption during climb in litres per hour.',
   descentFpm:       'typical descent rate in ft/min, as a positive number.',
   descentIas:       'typical descent IAS in knots.',
+  descentFuelLhr:   'fuel consumption during descent in litres per hour.',
   bestGlideIas:     'best glide speed in knots IAS (gliders, motor gliders, gyroplanes).',
   glideRatio:       'best glide ratio as a number, e.g. 30 for 30:1 (gliders, motor gliders, gyroplanes).',
   takeoffSpeedKts:  'rotation (VR), lift-off (VLOF) or normal take-off speed in knots.',
@@ -140,10 +142,12 @@ const RANGES: Partial<Record<PohField, [number, number]>> = {
   landingFuelL:     [0, 500],
   serviceCeilingFt: [1000, 35000],
   rocSlFpm:         [100, 4000],
+  rocCeilingFpm:    [0, 1000],
   climbIas:         [20, 250],
   climbFuelLhr:     [1, 600],
   descentFpm:       [100, 3000],
   descentIas:       [20, 350],
+  descentFuelLhr:   [0, 500],
   bestGlideIas:     [15, 200],
   glideRatio:       [2, 80],
   takeoffSpeedKts:  [10, 150],
@@ -208,12 +212,17 @@ export function parsePohReply(text: string): PohReply {
 
   // Cross-checks between fields: each flags the field most likely wrong.
   const flag = (k: PohField, why: string) => { if (!warnings[k]) warnings[k] = why }
-  const { maxFuelL, taxiFuelL, landingFuelL, cruiseAltFt, serviceCeilingFt, climbIas, cruiseIas, takeoffSpeedKts } = nums
+  const {
+    maxFuelL, taxiFuelL, landingFuelL, cruiseAltFt, serviceCeilingFt, climbIas, cruiseIas, takeoffSpeedKts,
+    rocSlFpm, rocCeilingFpm, fuelBurnLhr, descentFuelLhr,
+  } = nums
   if (maxFuelL !== undefined && taxiFuelL !== undefined && taxiFuelL >= maxFuelL) flag('taxiFuelL', 'Not less than the usable fuel')
   if (maxFuelL !== undefined && landingFuelL !== undefined && landingFuelL >= maxFuelL) flag('landingFuelL', 'Not less than the usable fuel')
   if (cruiseAltFt !== undefined && serviceCeilingFt !== undefined && cruiseAltFt > serviceCeilingFt) flag('cruiseAltFt', 'Above the service ceiling')
   if (climbIas !== undefined && cruiseIas !== undefined && climbIas > cruiseIas) flag('climbIas', 'Faster than cruise speed')
   if (takeoffSpeedKts !== undefined && cruiseIas !== undefined && takeoffSpeedKts >= cruiseIas) flag('takeoffSpeedKts', 'Not slower than cruise speed')
+  if (rocSlFpm !== undefined && rocCeilingFpm !== undefined && rocCeilingFpm >= rocSlFpm) flag('rocCeilingFpm', 'Not below the sea-level climb rate')
+  if (fuelBurnLhr !== undefined && descentFuelLhr !== undefined && descentFuelLhr > fuelBurnLhr) flag('descentFuelLhr', 'Higher than cruise fuel burn')
 
   if (Object.keys(values).length === 0) {
     throw new PohReplyError('The answer has none of the aircraft fields. Check that the assistant read the POH, then try again.')

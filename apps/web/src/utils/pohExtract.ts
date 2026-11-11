@@ -38,10 +38,12 @@ export type PohExtractResult = {
   landingFuelL?:     string
   serviceCeilingFt?: string
   rocSlFpm?:         string
+  rocCeilingFpm?:    string
   climbIas?:         string
   climbFuelLhr?:     string
   descentFpm?:       string
   descentIas?:       string
+  descentFuelLhr?:   string
   bestGlideIas?:     string
   glideRatio?:       string
   takeoffSpeedKts?:  string
@@ -145,10 +147,12 @@ export async function extractPohViaServer(
           landingFuelL:     numStr('landingFuelL'),
           serviceCeilingFt: numStr('serviceCeilingFt'),
           rocSlFpm:         numStr('rocSlFpm'),
+          rocCeilingFpm:    numStr('rocCeilingFpm'),
           climbIas:         numStr('climbIas'),
           climbFuelLhr:     numStr('climbFuelLhr'),
           descentFpm:       numStr('descentFpm'),
           descentIas:       numStr('descentIas'),
+          descentFuelLhr:   numStr('descentFuelLhr'),
           bestGlideIas:     numStr('bestGlideIas'),
           glideRatio:       numStr('glideRatio'),
           takeoffSpeedKts:  numStr('takeoffSpeedKts'),
