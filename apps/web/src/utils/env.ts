@@ -25,6 +25,14 @@ export const TILES_BASE_URL: string = (import.meta.env.VITE_TILES_BASE_URL as st
 // (<cc>-charts.json) in the tile data, see docs/architecture.md.
 export const EXPERIMENTAL_CHARTS: boolean = import.meta.env.VITE_EXPERIMENTAL_CHARTS === 'true'
 
+// EXPERIMENTAL_AERODROME_DETAILS — local aerodrome information: areas
+// (noise-sensitive, glider, ...), circuits and reporting points on the map,
+// and a "Local information" section in the aerodrome popup. Off unless
+// VITE_EXPERIMENTAL_AERODROME_DETAILS=true; needs `<cc>-aerodrome-details.geojson`
+// and/or the local-information fields in `<cc>-aerodromes.geojson`
+// (packages/shared/src/aerodromeDetails.ts); without them nothing is shown.
+export const EXPERIMENTAL_AERODROME_DETAILS: boolean = import.meta.env.VITE_EXPERIMENTAL_AERODROME_DETAILS === 'true'
+
 // SITE_BASE_URL — optional public site origin serving /privacy and /terms,
 // linked from the sign-in panel footer. Empty (default) hides those links.
 export const SITE_BASE_URL: string =

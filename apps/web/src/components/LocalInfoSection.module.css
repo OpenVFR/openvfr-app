@@ -1,0 +1,12 @@
+.block { margin: 4px 0 8px; }
+.blockHead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.blockTitle { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.source { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text-muted); min-width: 0; }
+.source a { color: inherit; text-decoration: underline; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+.pending { padding: 0 4px; border: 1px solid #f59e0b; border-radius: 3px; color: #f59e0b; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.list { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 12px; line-height: 1.35; }
+.swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.limits { color: var(--text-muted); white-space: nowrap; }
+.sub { color: var(--text-muted); font-size: 11px; margin-left: 14px; }
+.points { font-size: 12px; }
+.note { margin-top: 2px; font-size: 10px; color: var(--text-muted); font-style: italic; }

@@ -61,8 +61,9 @@ import { chooseSnapTarget, sortSnapCandidates, snapHintText, neighbourAtDrop } f
 import { navigatingLeg, routeDirect, samePoint, directActionKind, DIRECT_ACTION_LABELS, presentPositionName, LEG_UNLOCK_MS } from '@open-vfr/shared/routeNavigation'
 import { AERODROME_COLORS } from '@open-vfr/shared/featureColors'
 import { fetchAerodromeNotamTexts, type NotamItem } from '@open-vfr/shared/fetchNotam'
-import { API_BASE_URL, EXPERIMENTAL_CHARTS } from '../utils/env'
+import { API_BASE_URL, EXPERIMENTAL_CHARTS, EXPERIMENTAL_AERODROME_DETAILS } from '../utils/env'
 import ChartOverlay from './ChartOverlay'
+import AerodromeDetailsLayer from './AerodromeDetailsLayer'
 import ChartViewer from './ChartViewer'
 import { type AerodromeFeatureProps } from './AerodromePopup'
 import { registerObstacleImages } from '../utils/obstacleIcons'
@@ -5088,6 +5089,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         )}
         <div ref={containerRef} className={css.map} />
         {EXPERIMENTAL_CHARTS && mapReady && <ChartOverlay map={mapRef.current} />}
+        {EXPERIMENTAL_AERODROME_DETAILS && mapReady && <AerodromeDetailsLayer map={mapRef.current} />}
         {EXPERIMENTAL_CHARTS && <ChartViewer />}
         {toolbarHost && createPortal((() => {
           const flying = flyingMode !== 'off'

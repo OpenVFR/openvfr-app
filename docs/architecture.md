@@ -366,6 +366,32 @@ start with `%PDF-`, served with `Content-Security-Policy: sandbox`. Only list
 hosts of officially, freely published documents whose terms allow this.
 Native apps (planned) fetch the documents directly and don't need it.
 
+### F2. Aerodrome details — local information (optional, experimental)
+
+Behind the web build flag `VITE_EXPERIMENTAL_AERODROME_DETAILS=true`. A
+deployment may publish `<cc>-aerodrome-details.geojson` (local geometry per
+aerodrome: `noise_sensitive`, `avoid_area`, `glider_area`, `parachute_area`,
+`model_area` areas with optional `floor`/`ceiling` `{ref: AGL|AMSL|FL|UNL, ft}`,
+`circuit_leg` lines, extra `reporting_point`s, `taxiway`, `parking`; each with
+`icao` or `local_id`, `name`, `remarks`, `geometry_quality`
+(`exact` | `approximate` + `accuracy_m`) and `provenance`) and add
+local-information fields to `<cc>-aerodromes.geojson`: `circuits`
+(`[{runway, direction, altitude_ft, altitude_ref, aircraft}]`), `local_rules`,
+`hours_remarks`, `areas`, `reporting_points`, with `provenance` per field.
+Absent files or fields show nothing. Parser, labels, colours and the
+schematic circuit: `packages/shared/src/aerodromeDetails.ts`.
+
+**Web:** `AerodromeDetailsLayer` draws the details from zoom 9 below the
+airspace layers (areas filled per kind with name and heights, circuit legs
+with direction chevrons, points labelled). An aerodrome that states a circuit
+direction but has no drawn circuit gets a **schematic** circuit: a dashed
+rectangle on the stated side of that runway, 0.75 NM out, never the published
+pattern. Dashed also: outlines read off a chart (`approximate`) and values whose
+provenance says `review: "pending"` (only in local preview builds of a
+deployment's own data, labelled "unreviewed"). The aerodrome popup gets a
+"Local information" section (`LocalInfoSection`) with circuits, local rules,
+hours, areas and reporting points and their sources.
+
 ### G. Dynamic Data — DuckDB (Phase 4, not yet implemented)
 
 NOTAMs and METAR/TAF will be processed by DuckDB pipelines: download raw JSON from NOAA/Eurocontrol, spatial-join against the aerodromes table in PostGIS, export as clean GeoJSON or serve via Martin. DuckDB is the right tool here because these are tabular/JSON sources that benefit from SQL aggregation and columnar filtering. DuckDB is **not** used for OSM PBF processing — `osmium` is faster for that specific task.
