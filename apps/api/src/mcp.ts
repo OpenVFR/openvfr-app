@@ -25,12 +25,12 @@ import type { AircraftProfileDocType, RouteDocType } from '@open-vfr/shared/type
 import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import { parseAerodromesGeoJson, type AerodromeFeatureCollectionLike } from '@open-vfr/shared/findDestination'
-import { suggestFuelStops } from '@open-vfr/shared/fuelStops'
+import { suggestFuelStops, insertFuelStops } from '@open-vfr/shared/fuelStops'
 import { FUEL_LABELS, preferenceLabel } from '@open-vfr/shared/fuelTypes'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
 import { metarSurfaceWind, crosswindExceedances, thresholdsByIcao } from '@open-vfr/shared/crosswindCheck'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
-import { briefingText, BRIEFING_DISCLAIMER } from './briefing'
+import { briefingText, legLine, BRIEFING_DISCLAIMER } from './briefing'
 import { quote, QUOTE_NOTE } from './untrusted'
 import { BriefingInputError, type BriefingService, type WeatherFor } from './briefingService'
 import { loadCountryDataset } from './briefingData'
@@ -451,6 +451,58 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       return `${quote(r.name, 80)}:\n${legLines(r, pointName).join('\n')}`
     }
 
+    server.registerTool('leg_altitudes', {
+      description: "Altitude planning per leg of a saved route: minimum safe altitude (terrain, obstacles and the pilot's own margins), controlled airspace over the leg (floor, ceiling, where along the leg, frequency), restricted areas, and a suggested altitude that stays clear of terrain, below controlled airspace where possible, and on a VFR semicircular level. When the MSA reaches controlled airspace it says so and lists the options (clearance or route around); it never suggests flying below the MSA. Change levels with update_route.",
+      annotations: { readOnlyHint: true },
+      inputSchema: z.object({ route: z.string().min(1).max(120).describe('Saved route name or id') }),
+    }, async ({ route }) => {
+      if (!canRoutes) return noRoutes()
+      if (!deps.takeBriefing(caller.userId)) return fail('Briefing limit reached for now. Try again later.')
+      try {
+        const r = await deps.briefings.briefSavedRoute({ id: caller.userId }, route)
+        const b = r.briefing
+        const src = b.terrainSource === 'dem' ? 'Terrain from the elevation model.' : b.terrainSource === 'grid' ? 'Terrain from the maximum-elevation grid (conservative: highest point per ~460 m cell).' : 'No terrain data: minimum safe altitudes unknown.'
+        const msaWarn = b.warnings.filter(w => /MSA|minimum safe|terrain|obstacle/i.test(`${w.title} ${w.detail}`))
+        return text([
+          `Altitudes for ${quote(r.route.name, 80)} (planned altitudes as saved; default altitude where a leg has none). ${src}`,
+          ...b.legs.map(legLine),
+          ...(msaWarn.length ? ['Related warnings:', ...msaWarn.map(w => `- ${w.leg ? `(leg ${w.leg}) ` : ''}${w.title}: ${quote(w.detail, 300)}`)] : []),
+          'Airspace data can be out of date and activity times are not checked: confirm with the AIP and NOTAMs.',
+          QUOTE_NOTE,
+          BRIEFING_DISCLAIMER,
+        ].join('\n'))
+      } catch (err) {
+        if (err instanceof BriefingInputError) return fail(err.message)
+        throw err
+      }
+    })
+
+    server.registerPrompt('plan_route', {
+      title: 'Plan a VFR route',
+      description: 'Plan and save a VFR route with OpenVFR: points, altitudes that respect terrain and controlled airspace, fuel stops, then a briefing.',
+      argsSchema: z.object({
+        from: z.string().min(2).max(40).describe('Departure, e.g. ESSB'),
+        to: z.string().min(2).max(40).describe('Destination, e.g. ESSV'),
+        aircraft: z.string().max(80).optional().describe('Aircraft registration or name (optional)'),
+        wishes: z.string().max(300).optional().describe('E.g. "stay below the TMAs", "via the coast", "max 2 h legs" (optional)'),
+      }),
+    }, ({ from, to, aircraft, wishes }) => ({
+      messages: [{
+        role: 'user' as const,
+        content: {
+          type: 'text' as const,
+          text: [
+            `Plan a VFR route from ${from} to ${to}${aircraft ? ` with ${aircraft}` : ''} in OpenVFR and save it.${wishes ? ` My wishes: ${wishes}.` : ''}`,
+            '1. Propose points (ICAO codes, navaids, reporting points as AERODROME/POINT, or coordinates) and save them with create_route' + (aircraft ? ', with the aircraft and autoFuelStops: true.' : '.'),
+            '2. Call leg_altitudes. For each leg use the suggested altitude unless I asked otherwise; where the MSA reaches controlled airspace, tell me and offer the options it lists (clearance with the frequency, or route around via other points). Never plan a leg below its MSA.',
+            '3. Apply the altitudes and any point changes with update_route, then read the new briefing: fix what it warns about (airspace, restricted areas, fuel) and repeat once if needed.',
+            '4. Finish with a short summary: legs with altitude and why, fuel stops, open issues, and the link to the route. Say that I must check it in the app before use and that this is not an official briefing.',
+            'Use only numbers the tools give; ask me instead of guessing.',
+          ].join('\n'),
+        },
+      }],
+    }))
+
     server.registerTool('get_route', {
       description: "One of the pilot's saved routes in detail: every point, each leg's distance, altitude and speed, fuel stops, the aircraft, and a link that opens it in OpenVFR.",
       annotations: { readOnlyHint: true },
@@ -474,11 +526,32 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       })).max(MAX_POINTS - 1).optional().describe('Settings for single legs (after altitudeFt)'),
       fuelStops: z.array(z.string().max(40)).max(10).optional().describe('Points (aerodromes between departure and destination) where the aircraft lands and refuels; replaces the current set'),
       aircraft: z.string().max(80).optional().describe('Aircraft registration or name from list_aircraft; "none" removes it'),
+      autoFuelStops: z.boolean().optional().describe('With an aircraft: when a hop needs more fuel than the tanks hold, insert the best fuel stop (aircraft fuel types and runway limits) and say which'),
     }
     const pointsField = z.array(z.string().min(2).max(40)).min(2).max(MAX_POINTS)
       .describe('Points in flight order: ICAO aerodrome codes (ESSB), navaid idents (ARL), reporting points as AERODROME/POINT (ESSB/LAVER), or coordinates (5939N01756E). Unknown or ambiguous points are refused, never guessed.')
 
-    async function saveRouteAndBrief(built: ReturnType<typeof buildRoute>, ac: AircraftProfileDocType | null, verb: 'created' | 'updated'): Promise<Text> {
+    /** Insert the best fuel stop plan into a built route when a hop is too long. Returns a note for the answer. */
+    async function addFuelStops(built: ReturnType<typeof buildRoute>, ac: AircraftProfileDocType | null): Promise<string> {
+      if (!ac) return 'No fuel stops added: give an aircraft for that.'
+      const fc = await allAerodromes()
+      if (!fc) return 'No fuel stops added: aerodrome data is not available right now.'
+      const res = suggestFuelStops(built.doc.waypoints, built.doc.legOverrides, ac, parseAerodromesGeoJson(fc as unknown as AerodromeFeatureCollectionLike))
+      if (res.status === 'not-needed') return `No fuel stop needed with ${aircraftLabel(ac)} (planned with the leg winds set on the route, if any).`
+      if (res.status === 'missing-profile-data') return 'No fuel stops added: the aircraft profile needs cruise speed, fuel burn and usable fuel.'
+      if (res.status === 'none-found') return 'A fuel stop is needed, but no aerodrome near the route fits the aircraft\'s fuels and runway limits: choose one yourself.'
+      const plan = res.plans[0]!
+      const next = insertFuelStops(built.doc.waypoints, built.doc.legOverrides, plan)
+      built.doc.waypoints = next.waypoints
+      built.doc.legOverrides = next.legOverrides
+      if (!built.changed.includes('fuel stops') && !built.changed.includes('created')) built.changed.push('fuel stops')
+      const review = built.doc.assistantReview
+      if (review && review.change !== 'created' && !review.change.includes('fuel stops')) built.doc.assistantReview = { ...review, change: [...review.change, 'fuel stops'] }
+      const others = res.plans.slice(1).map(p => p.stops.map(x => x.aerodrome.icao).join('+')).join(', ')
+      return `Added fuel stop${plan.stops.length > 1 ? 's' : ''} ${plan.stops.map(x => `${x.aerodrome.icao} ${quote(x.aerodrome.name, 60)} (${x.fuels.map(f => FUEL_LABELS[f]).join('/') || x.aerodrome.fuel.join('/')}, ${x.aerodrome.maxRunwayM} m${x.aerodrome.ppr ? ', PPR' : ''})`).join(' and ')}, +${Math.round(plan.extraMins)} min.${others ? ` Other options: ${others}.` : ''} Fuel listings can be out of date: the pilot should call ahead.`
+    }
+
+    async function saveRouteAndBrief(built: ReturnType<typeof buildRoute>, ac: AircraftProfileDocType | null, verb: 'created' | 'updated', note = ''): Promise<Text> {
       await deps.saveRoute(caller.userId, built.doc)
       console.log(`[mcp] route ${verb} user=${caller.userId} client=${caller.clientId} id=${built.doc.id} change=${built.changed.join(',')}`)
       const lines = [
@@ -486,14 +559,14 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
         `Open it in OpenVFR: ${routeLink(built.doc.id)}`,
         'The app marks it "check before use" until the pilot opens and saves it there; it reaches their devices at the next sync.',
       ]
+      if (note) lines.push(note)
       if (built.warnings.length) lines.push(`Check these: ${built.warnings.join('; ')}.`)
       if (deps.takeBriefing(caller.userId)) {
         const b = await deps.briefings.briefRoute({ id: caller.userId }, { waypoints: built.doc.waypoints, legOverrides: built.doc.legOverrides }, ac)
         lines.push('', 'Briefing of the saved route (fix warnings with update_route):', briefingText(b))
       } else {
-        lines.push('(Briefing limit reached: brief it later with brief_saved_route.)')
+        lines.push('(Briefing limit reached: brief it later with brief_saved_route.)', QUOTE_NOTE)
       }
-      lines.push(QUOTE_NOTE)
       return text(lines.join('\n'))
     }
 
@@ -519,7 +592,8 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       try {
         const input: RouteInput = { name: args.name, points: args.points, altitudeFt: args.altitudeFt, legs: args.legs, fuelStops: args.fuelStops, aircraftId: ac?.id }
         const built = buildRoute(input, { idx, newId: crypto.randomUUID(), by: await deps.clientName(caller.clientId), now: Date.now() })
-        return await saveRouteAndBrief(built, ac?.profile ?? null, 'created')
+        const note = args.autoFuelStops ? await addFuelStops(built, ac?.profile ?? null) : ''
+        return await saveRouteAndBrief(built, ac?.profile ?? null, 'created', note)
       } catch (err) {
         if (err instanceof RouteInputError) return fail(err.message)
         throw err
@@ -548,9 +622,10 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       try {
         const input: RouteInput = { name: args.name, points: args.points, altitudeFt: args.altitudeFt, legs: args.legs, fuelStops: args.fuelStops, aircraftId: ac?.id }
         const built = buildRoute(input, { existing, idx, newId: existing.id, by: await deps.clientName(caller.clientId), now: Date.now() })
-        if (built.changed.length === 0) return text(`Nothing to change on ${quote(existing.name, 80)}.\n${QUOTE_NOTE}`)
         const profile = ac ? ac.profile : await deps.briefings.aircraftById({ id: caller.userId }, built.doc.aircraftId)
-        return await saveRouteAndBrief(built, profile, 'updated')
+        const note = args.autoFuelStops ? await addFuelStops(built, profile) : ''
+        if (built.changed.length === 0) return text(`Nothing to change on ${quote(existing.name, 80)}.${note ? ` ${note}` : ''}\n${QUOTE_NOTE}`)
+        return await saveRouteAndBrief(built, profile, 'updated', note)
       } catch (err) {
         if (err instanceof RouteInputError) return fail(err.message)
         throw err

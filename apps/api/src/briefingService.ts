@@ -7,7 +7,8 @@ import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
 import type { LegOverride, AircraftProfileDocType, RouteDocType } from '@open-vfr/shared/types'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { buildRouteBriefing, type RouteBriefing } from './briefing'
-import { loadCountryDataset, routeCountries, userAircraft, userRoutes, userDataConfigured } from './briefingData'
+import { loadCountryDataset, loadMefGridsFor, routeCountries, userAircraft, userRoutes, userDataConfigured, userPlanningSettings } from './briefingData'
+import type { TerrainPoint } from '@open-vfr/shared/virtualRadarCalc'
 import { getNotamsForIcao, getRegionalNotams, notamStatus } from './notam'
 import { getAvailableCountries } from './countries'
 
@@ -44,14 +45,21 @@ export function parseRouteInput(body: unknown): { waypoints: RouteWaypoint[]; le
   return { waypoints, legOverrides }
 }
 
-export function createBriefingService(opts: { weather: WeatherFor }) {
+export function createBriefingService(opts: {
+  weather: WeatherFor
+  /** Terrain samples along a route from the deployment's DEM (see index.ts); absent = grid only. */
+  terrain?: (waypoints: RouteWaypoint[]) => Promise<TerrainPoint[]>
+}) {
   async function briefRoute(user: { id: string }, route: { waypoints: RouteWaypoint[]; legOverrides: LegOverride[] }, aircraft: AircraftProfileDocType | null): Promise<RouteBriefing> {
     const available = (await getAvailableCountries())?.map(c => c.code) ?? null
     const countries = routeCountries(route.waypoints, available)
+    const settings = userDataConfigured() ? await userPlanningSettings(user.id) : {}
     return buildRouteBriefing(
-      { waypoints: route.waypoints, legOverrides: route.legOverrides, aircraft, nowMs: Date.now() },
+      { waypoints: route.waypoints, legOverrides: route.legOverrides, aircraft, nowMs: Date.now(), ...settings },
       {
         loadDataset: kind => loadCountryDataset(kind, countries),
+        ...(opts.terrain ? { terrain: opts.terrain } : {}),
+        mefGrids: () => loadMefGridsFor(countries),
         // The api's NOTAM records carry the same fields the shared checks read.
         regionalNotams: () => getRegionalNotams(countries).notams as unknown as NotamItem[],
         aerodromeNotams: icao => getNotamsForIcao(icao).notams as unknown as NotamItem[],

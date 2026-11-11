@@ -22,16 +22,35 @@ panel then has an **AI assistants** section.
 - "Set SE-ABC's maximum crosswind to 15 kt."
 - "Plan ESSB to ESMS with SE-ABC at 3,500 ft, with a fuel stop at ESKN, and save it."
 - "On my route to Umeå, fly via ESNS and climb to 4,500 ft on the last leg."
+- "Which altitudes should I fly on my route to Visby? I want to stay below the TMAs where terrain allows."
 
-Many assistants also offer OpenVFR's **Pre-flight briefing** prompt in their
-prompt or attachment menu: pick it, give the route (a saved route name or
-ICAO codes), and the assistant runs the briefing tools in the right order.
+Many assistants also offer OpenVFR's prompts in their prompt or attachment
+menu: **Pre-flight briefing** (give a saved route name or ICAO codes) and
+**Plan a VFR route** (departure, destination, optionally aircraft and
+wishes such as "stay below the TMAs"); the assistant then runs the tools in
+the right order.
 
 A briefing gives distance, time and fuel per hop, METAR/TAF and NOTAMs at the
-departure, fuel stops and destination, and the pre-flight warnings
-(airspace, NOTAM areas, fuel, equipment, crosswind, runway length). Terrain
-and minimum safe altitude are not checked there: open the route in the app
-for those. Answers carry links into the app.
+departure, fuel stops and destination, the pre-flight warnings (airspace,
+NOTAM areas, terrain and minimum safe altitude, fuel, equipment, crosswind,
+runway length), each with the leg it concerns, and the altitude per leg
+(below). Your own MSA margins and airspace alert levels from Settings are
+used. Answers carry links into the app.
+
+### Altitudes per leg
+
+For each leg the assistant gets the minimum safe altitude (terrain from the
+same elevation model the app uses, or else the conservative terrain grid,
+plus obstacles and your MSA margins), the controlled airspace above it (where
+along the leg, floor, ceiling, frequency), control zones crossed, restricted
+areas, and a suggested altitude: at or above the MSA, below controlled
+airspace where possible, and on a VFR cruising level (odd thousands + 500 ft
+eastbound, even westbound, above 3,000 ft over the ground). When one altitude
+does not fit the whole leg it suggests changing level on the way; when the
+MSA reaches controlled airspace it says so and offers a clearance (with the
+frequency) or a route around it. It never suggests flying below the MSA.
+With an aircraft, a new route can also get the best fuel stop added when a
+hop is too long.
 
 ## Connect
 

@@ -48,6 +48,7 @@
     "./fuelTypes": "./src/fuelTypes.ts",
     "./fuelStops": "./src/fuelStops.ts",
     "./routeIdentifiers": "./src/routeIdentifiers.ts",
+    "./legAltitudes": "./src/legAltitudes.ts",
     "./crosswindCheck": "./src/crosswindCheck.ts",
     "./runwayPerformance": "./src/runwayPerformance.ts",
     "./windForecast": "./src/windForecast.ts",

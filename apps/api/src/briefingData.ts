@@ -13,7 +13,10 @@
  */
 import { createHmac } from 'node:crypto'
 import { routeRows, aircraftRows } from '@open-vfr/shared/cloudSyncRows'
-import { countryDatasetFile, mergeFeatureCollections } from '@open-vfr/shared/countryData'
+import { countryDatasetFile, countryMefFile, mergeFeatureCollections } from '@open-vfr/shared/countryData'
+import { parseMef, type MefGrid } from '@open-vfr/shared/mefGrid'
+import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
+import { resolveAirspaceLevels, type AirspaceAlertLevels } from '@open-vfr/shared/airspaceAlertLevel'
 import { notamRegionsFor } from '@open-vfr/shared/notamRegionScope'
 import { DEFAULT_REGION_CODES } from '@open-vfr/shared/regions'
 import type { RouteDocType, AircraftProfileDocType } from '@open-vfr/shared/types'
@@ -130,7 +133,7 @@ async function fetchDataset(url: string): Promise<GeoJSON.FeatureCollection | nu
 }
 
 /** One dataset for some countries (merged); null when TILES_BASE_URL is unset or nothing loaded. */
-export async function loadCountryDataset(kind: 'aerodromes' | 'airspace' | 'obstacles' | 'navaids' | 'waypoints', countries: readonly string[]): Promise<GeoJSON.FeatureCollection | null> {
+export async function loadCountryDataset(kind: 'aerodromes' | 'airspace' | 'obstacles' | 'landmarks' | 'navaids' | 'waypoints', countries: readonly string[]): Promise<GeoJSON.FeatureCollection | null> {
   if (!TILES_BASE_URL || countries.length === 0) return null
   const now = Date.now()
   const parts = await Promise.all(countries.map(cc => {
@@ -154,4 +157,55 @@ export function routeCountries(waypoints: readonly RouteWaypoint[], available: r
   const avail = available && available.length > 0 ? available : [...DEFAULT_REGION_CODES]
   const inScope = touched.filter(c => avail.includes(c))
   return inScope.length > 0 ? inScope : avail.slice(0, 1)
+}
+
+// ── Terrain grid (conservative MSA) ─────────────────────────────────────────
+
+const MEF_TTL_MS = 24 * 60 * 60 * 1000
+const mefCache = new Map<string, { at: number; grid: Promise<MefGrid | null> }>()
+
+/**
+ * Maximum-elevation grids (`<cc>-mef.mef`) for some countries, refreshed
+ * daily; a missing or broken file is skipped and retried on the next call.
+ */
+export async function loadMefGridsFor(countries: readonly string[]): Promise<MefGrid[]> {
+  if (!TILES_BASE_URL) return []
+  const now = Date.now()
+  const grids = await Promise.all(countries.map((cc) => {
+    const url = `${TILES_BASE_URL}/${countryMefFile(cc)}`
+    let hit = mefCache.get(url)
+    if (!hit || now - hit.at > MEF_TTL_MS) {
+      hit = {
+        at: now,
+        grid: fetch(url, { signal: AbortSignal.timeout(30_000) })
+          .then(async r => (r.ok ? parseMef(new Uint8Array(await r.arrayBuffer())) : null))
+          .catch(() => null),
+      }
+      mefCache.set(url, hit)
+      const entry = hit
+      void entry.grid.then(g => { if (!g && mefCache.get(url) === entry) mefCache.delete(url) })
+    }
+    return hit.grid
+  }))
+  return grids.filter((g): g is MefGrid => g !== null)
+}
+
+// ── The pilot's planning settings (synced) ──────────────────────────────────
+
+/** MSA margins and airspace alert levels from the user's synced settings; {} when unset or unreadable. */
+export async function userPlanningSettings(userId: string): Promise<{ msaMargins?: Partial<MsaMargins>; airspaceLevels?: AirspaceAlertLevels }> {
+  if (!POSTGREST_URL) return {}
+  try {
+    const rows = await postgrestGet(userId, '/user_settings?select=key,value&key=in.(msa_margins,alert_banners)')
+    const out: { msaMargins?: Partial<MsaMargins>; airspaceLevels?: AirspaceAlertLevels } = {}
+    for (const r of rows) {
+      const v = JSON.parse(String(r['value'] ?? 'null')) as Record<string, unknown> | null
+      if (!v || typeof v !== 'object') continue
+      if (r['key'] === 'msa_margins') out.msaMargins = resolveMsaMargins(v as Partial<MsaMargins>)
+      if (r['key'] === 'alert_banners' && v['airspaceLevels']) out.airspaceLevels = resolveAirspaceLevels(v['airspaceLevels'] as never)
+    }
+    return out
+  } catch {
+    return {}
+  }
 }

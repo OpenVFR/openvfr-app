@@ -187,7 +187,7 @@ test('tool contract, scopes and answers', async () => {
 
   // The briefing prompt is offered and points at the tools.
   const prompts = (await rpc(t.access_token, 'prompts/list')).result?.['prompts'] as { name: string }[]
-  assert.ok(prompts.some(p => p.name === 'preflight_briefing'))
+  assert.deepEqual(prompts.map(p => p.name).sort(), ['plan_route', 'preflight_briefing'])
   const p = await rpc(t.access_token, 'prompts/get', { name: 'preflight_briefing', arguments: { route: 'ESSB ESMS' } })
   assert.match(JSON.stringify(p.result), /brief_route/)
 })

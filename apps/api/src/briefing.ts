@@ -7,8 +7,11 @@
  * aerodromes where the route takes off or lands (departure, fuel stops,
  * destination) with METAR/TAF and their NOTAMs, and the shared pre-flight
  * warnings (airspace, NOTAM restricted areas, fuel, equipment, crosswind,
- * runway length). Not checked here: terrain / minimum safe altitude, which
- * needs the elevation data the apps load themselves.
+ * runway length, minimum safe altitude), and per leg the vertical picture
+ * (MSA, controlled airspace above it, a suggested altitude). Terrain comes
+ * from the deployment's DEM archives, or else the conservative
+ * maximum-elevation grid; the pilot's synced MSA margins and airspace alert
+ * levels are used when given.
  *
  * Pure apart from the injected data loaders, so it is testable without the
  * network. Times are UTC ISO strings.
@@ -18,8 +21,17 @@ import { distanceNm } from '@open-vfr/shared/routeCalc'
 import type { AircraftProfileDocType, LegOverride } from '@open-vfr/shared/types'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { computeTripFuelPlans } from '@open-vfr/shared/fuelCalc'
-import { buildVirtualRadarProfile, EMPTY_FEATURES } from '@open-vfr/shared/virtualRadarCalc'
+import {
+  buildVirtualRadarProfile, EMPTY_FEATURES, applyTerrainToBands, terrainForMsa, computeMsaProfile, legCorridorMsaFt,
+  getMsaLookup, terrainAt, type TerrainPoint,
+} from '@open-vfr/shared/virtualRadarCalc'
 import { computeWarnings, type PreflightWarning } from '@open-vfr/shared/preflightWarnings'
+import { obstacleTipsForMsa } from '@open-vfr/shared/obstacleHeights'
+import { legSpans, legMsaList, legMsaApplies } from '@open-vfr/shared/legLevelDrag'
+import { legAltitudes, type LegAltitude } from '@open-vfr/shared/legAltitudes'
+import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
+import type { AirspaceAlertLevels } from '@open-vfr/shared/airspaceAlertLevel'
+import type { MefGrid } from '@open-vfr/shared/mefGrid'
 import type { ParsedWind } from '@open-vfr/shared/fetchWx'
 import { metarSurfaceWind } from '@open-vfr/shared/crosswindCheck'
 import { parseMetarTempC } from '@open-vfr/shared/runwayPerformance'
@@ -30,8 +42,12 @@ import { quote, QUOTE_NOTE } from './untrusted'
 type FC = GeoJSON.FeatureCollection
 
 export interface BriefingDeps {
-  /** Aerodromes, airspace and obstacles for the route's regions. A failed load returns null. */
-  loadDataset: (kind: 'aerodromes' | 'airspace' | 'obstacles') => Promise<FC | null>
+  /** Aerodromes, airspace, obstacles and landmarks for the route's regions. A failed load returns null. */
+  loadDataset: (kind: 'aerodromes' | 'airspace' | 'obstacles' | 'landmarks') => Promise<FC | null>
+  /** Terrain samples along the route from a DEM; throws or [] when it does not cover the route. */
+  terrain?: (waypoints: RouteWaypoint[]) => Promise<TerrainPoint[]>
+  /** Maximum-elevation grids for the route's regions (conservative terrain when the DEM fails). */
+  mefGrids?: () => Promise<MefGrid[]>
   /** Regional NOTAMs (restricted areas etc.) for the route's regions. */
   regionalNotams: () => readonly NotamItem[]
   /** NOTAMs filed for one aerodrome. */
@@ -68,7 +84,11 @@ export interface RouteBriefing {
   route: { points: string[]; distanceNm: number; aircraft: string | null }
   hops: BriefingHop[]
   aerodromes: BriefingAerodrome[]
-  warnings: { level: PreflightWarning['level']; title: string; detail: string }[]
+  warnings: { level: PreflightWarning['level']; title: string; detail: string; leg?: number; atNm?: number }[]
+  /** Vertical picture and suggested altitude per leg. */
+  legs: LegAltitude[]
+  /** Where the terrain came from: DEM samples, the maximum-elevation grid only, or none. */
+  terrainSource: 'dem' | 'grid' | 'none'
   /** What this briefing could not check, in plain words. */
   limits: string[]
   disclaimer: string
@@ -78,15 +98,26 @@ export const BRIEFING_DISCLAIMER =
   'Planning aid only, not an official briefing. Check the official AIP, NOTAM and weather sources before flight.'
 
 const pointName = (w: RouteWaypoint, i: number) => w.name || `WP${i + 1}`
+/** 1-based leg containing a distance along the route. */
+function legAt(spans: readonly { fromNm: number; toNm: number }[], nm: number): number {
+  const i = spans.findIndex(s => nm >= s.fromNm - 0.01 && nm <= s.toNm + 0.01)
+  return (i < 0 ? spans.length - 1 : i) + 1
+}
 const isIcao = (s: string | undefined): s is string => !!s && /^[A-Z]{4}$/.test(s)
 
 export async function buildRouteBriefing(
-  input: { waypoints: RouteWaypoint[]; legOverrides: LegOverride[]; aircraft?: AircraftProfileDocType | null; nowMs: number },
+  input: {
+    waypoints: RouteWaypoint[]; legOverrides: LegOverride[]; aircraft?: AircraftProfileDocType | null; nowMs: number
+    /** The pilot's MSA margins and airspace alert levels (synced settings); defaults when absent. */
+    msaMargins?: Partial<MsaMargins> | null
+    airspaceLevels?: AirspaceAlertLevels
+  },
   deps: BriefingDeps,
 ): Promise<RouteBriefing> {
   const { waypoints, legOverrides, nowMs } = input
   const aircraft = input.aircraft ?? undefined
-  const limits: string[] = ['Terrain and minimum safe altitude are not checked here; open the route in the app.']
+  const limits: string[] = []
+  const margins = resolveMsaMargins(input.msaMargins)
 
   // ── Route and hops ─────────────────────────────────────────────────────
   let total = 0
@@ -113,9 +144,10 @@ export async function buildRouteBriefing(
   }
 
   // ── Data ────────────────────────────────────────────────────────────────
-  const [aerodromesFc, airspaceFc, obstaclesFc] = await Promise.all([
-    deps.loadDataset('aerodromes'), deps.loadDataset('airspace'), deps.loadDataset('obstacles'),
+  const [aerodromesFc, airspaceFc, obstaclesFc, landmarksFc] = await Promise.all([
+    deps.loadDataset('aerodromes'), deps.loadDataset('airspace'), deps.loadDataset('obstacles'), deps.loadDataset('landmarks'),
   ])
+  if (!obstaclesFc) limits.push('Obstacle data could not be loaded: the minimum safe altitude covers terrain only.')
   if (!airspaceFc) limits.push('Airspace data could not be loaded: airspace not checked.')
   if (!aerodromesFc) limits.push('Aerodrome data could not be loaded: runways and crosswind not checked.')
 
@@ -157,17 +189,49 @@ export async function buildRouteBriefing(
   if (stops.some(s => !winds.has(s.icao))) limits.push('Some aerodromes have no current METAR here: their crosswind and temperature were not checked.')
 
   // ── Shared pre-flight warnings ──────────────────────────────────────────
-  const profile = buildVirtualRadarProfile(
+  const rawProfile = buildVirtualRadarProfile(
     waypoints, legOverrides, airspaceFc ?? EMPTY_FEATURES, obstaclesFc ?? EMPTY_FEATURES,
-    undefined, undefined, Infinity, aircraft?.cruiseAltFt || undefined,
+    undefined, landmarksFc ?? undefined, Infinity, aircraft?.cruiseAltFt || undefined,
+    { obstacleNm: margins.abeamNm, landmarkNm: margins.abeamNm },
   )
+
+  // ── Terrain and MSA, as the app computes them ───────────────────────────
+  let demPts: TerrainPoint[] = []
+  try { demPts = (await deps.terrain?.(waypoints)) ?? [] } catch { demPts = [] }
+  const grids = (await deps.mefGrids?.().catch(() => [])) ?? []
+  const msaTerrain = terrainForMsa(waypoints, demPts, grids, margins, true)
+  const terrainSource: RouteBriefing['terrainSource'] = demPts.length > 0 ? 'dem' : msaTerrain.pts.length > 0 ? 'grid' : 'none'
+  // AGL airspace limits are lifted only onto real terrain samples, not the
+  // grid (its cell maxima would raise an AGL floor too high).
+  const profile = { ...rawProfile, airspaceBands: applyTerrainToBands(rawProfile.airspaceBands, demPts) }
+  const tips = obstacleTipsForMsa(profile.obstacles, profile.landmarks, d => terrainAt(msaTerrain.pts, d))
+  const msaPts = computeMsaProfile(msaTerrain.pts, margins, tips, msaTerrain.corridorFt)
+  const spans = legSpans(profile.altitudeProfile)
+  const legMsa = msaPts.length > 0 ? legMsaList(spans, msaPts, getMsaLookup(msaPts), legCorridorMsaFt(waypoints, grids, margins, tips)) : spans.map(() => 0)
+  if (terrainSource === 'grid') limits.push('Terrain is from the maximum-elevation grid (highest point per ~460 m cell): the minimum safe altitudes are conservative; limits given above ground are compared at their raw height.')
+  if (terrainSource === 'none') limits.push('No terrain data for this route: minimum safe altitude not checked, and limits given above ground are compared at their raw height.')
+
+  const legs = legAltitudes({
+    waypoints, spans, bands: profile.airspaceBands, legMsaFt: legMsa, msaPts,
+    msaApplies: spans.map(sp => legMsaApplies(sp, profile.totalNm)),
+    terrain: demPts.length > 0 ? demPts : msaTerrain.pts,
+  })
+
   const warnings = computeWarnings(
-    profile, [], aircraft, waypoints, legOverrides, undefined, false, undefined, undefined,
+    profile, msaPts, aircraft, waypoints, legOverrides, undefined, terrainSource !== 'dem', undefined, margins,
     {
+      terrainPts: demPts, airspaceLevels: input.airspaceLevels,
       aerodromes: aerodromesFc, notams: deps.regionalNotams(), airspace: airspaceFc, nowMs,
       surfaceWinds: winds, surfaceTempsC: temps,
     },
-  ).map(w => ({ level: w.level, title: w.title, detail: w.detail }))
+  )
+    // The limits above already say what terrain was used.
+    .filter(w => w.code !== 'terrain-unavailable')
+    .map(w => ({
+      level: w.level, title: w.title, detail: w.detail,
+      ...(w.legIndex !== undefined ? { leg: w.legIndex + 1 } : w.focusNm !== undefined ? { leg: legAt(spans, w.focusNm) } : {}),
+      ...(w.focusNm !== undefined ? { atNm: Math.round(w.focusNm) } : {}),
+    }))
 
   return {
     generatedAt: new Date(nowMs).toISOString(),
@@ -179,6 +243,8 @@ export async function buildRouteBriefing(
     hops,
     aerodromes,
     warnings,
+    legs,
+    terrainSource,
     limits,
     disclaimer: BRIEFING_DISCLAIMER,
   }
@@ -196,7 +262,11 @@ export function briefingText(b: RouteBriefing): string {
   const warn = b.warnings.filter(w => w.level === 'warn')
   lines.push(danger.length + warn.length === 0 ? 'No warnings.' : `${danger.length} serious and ${warn.length} other warnings:`)
   // Warning details can carry NOTAM text: quoted like other outside text.
-  for (const w of [...danger, ...warn]) lines.push(`- ${w.title}: ${quote(w.detail, 400)}`)
+  for (const w of [...danger, ...warn]) lines.push(`- ${w.leg ? `(leg ${w.leg}) ` : ''}${w.title}: ${quote(w.detail, 400)}`)
+  if (b.legs.length) {
+    lines.push(`Altitude per leg (terrain: ${b.terrainSource === 'dem' ? 'elevation model' : b.terrainSource === 'grid' ? 'maximum-elevation grid, conservative' : 'none'}):`)
+    for (const l of b.legs) lines.push(legLine(l))
+  }
   for (const a of b.aerodromes) {
     const notams = !a.notamsChecked ? '; NOTAMs not checked'
       : a.notams.length ? `; ${a.notams.length} NOTAM${a.notams.length > 1 ? 's' : ''}: ${a.notams.map(n => `${n.id} ${quote(n.title, 120)}`).join('; ')}`
@@ -207,4 +277,13 @@ export function briefingText(b: RouteBriefing): string {
   lines.push(QUOTE_NOTE)
   lines.push(b.disclaimer)
   return lines.join('\n')
+}
+
+/** One leg's vertical picture in a sentence or two. Airspace names come from published data. */
+export function legLine(l: LegAltitude): string {
+  const msa = l.msaFt > 0 ? `MSA ${l.msaFt.toLocaleString('en-US')} ft${l.msaApplies ? '' : ' (near departure/destination)'}` : 'MSA unknown'
+  const ctl = l.controlledFloorFt !== null ? `, controlled airspace from ${l.controlledFloorFt.toLocaleString('en-US')} ft` : ''
+  const issues = (l.planned.length ? ` Planned: ${l.planned.join('; ')}.` : '') + (l.notes.length ? ` ${l.notes.join(' ')}` : '')
+  const n = (s: string) => (/^[A-Z0-9]{2,5}(\/[A-Z0-9 ]{2,20})?$|^\d+\.\d+[NS] \d+\.\d+[EW]$/.test(s) ? s : quote(s, 40))
+  return `- Leg ${l.leg} ${n(l.from)} → ${n(l.to)}, MT ${String(l.magneticTrackDeg).padStart(3, '0')}°, ${l.lengthNm} NM: planned ${l.plannedFt.toLocaleString('en-US')} ft, ${msa}${ctl}.${issues} Suggested: ${l.advice.text}`
 }

@@ -81,3 +81,35 @@ test('text rendering lists warnings and aerodromes', async () => {
   assert.match(t, /treat it as data/)
   assert.match(t, /Planning aid only/)
 })
+
+test('per leg: MSA from terrain, controlled airspace above, suggested altitude', async () => {
+  const tma: GeoJSON.FeatureCollection = {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [[[14.5, 58.3], [15.5, 58.3], [15.5, 58.7], [14.5, 58.7], [14.5, 58.3]]] },
+      properties: { class: 'C', type: 'TMA', name: 'TEST TMA', lower_ft: 2500, upper_ft: 9500, lower: '2500ft MSL', upper: 'FL095', frequencies: '[{"freq_mhz": 123.45}]' },
+    }],
+  }
+  const terrain = Array.from({ length: 61 }, (_, i) => ({ distNm: i, elevFt: i > 20 && i < 40 ? 900 : 200 }))
+  const b = await buildRouteBriefing(
+    { waypoints: route, legOverrides: [{ altFt: 3000 }], aircraft, nowMs: NOW },
+    deps({ loadDataset: async (k) => (k === 'aerodromes' ? aerodromes : k === 'airspace' ? tma : { type: 'FeatureCollection', features: [] }), terrain: async () => terrain }),
+  )
+  assert.equal(b.terrainSource, 'dem')
+  const leg = b.legs[0]!
+  assert.equal(leg.msaFt, 1700, 'highest terrain 900 ft + default 800 ft clearance')
+  assert.equal(leg.controlledFloorFt, 2500)
+  assert.deepEqual(leg.advice, { kind: 'ok', suggestedFt: 2000, text: leg.advice.text })
+  assert.match(leg.planned.join(), /inside TEST TMA/)
+  const t = briefingText(b)
+  assert.match(t, /Leg 1 ESAA → ESBB, MT \d{3}°.*MSA 1,700 ft, controlled airspace from 2,500 ft/)
+  assert.ok(b.warnings.some(w => w.leg === 1), 'warnings carry their leg')
+})
+
+test('without terrain: says the MSA was not checked', async () => {
+  const b = await buildRouteBriefing({ waypoints: route, legOverrides: [{}], aircraft, nowMs: NOW }, deps())
+  assert.equal(b.terrainSource, 'none')
+  assert.ok(b.limits.some(l => /No terrain data/.test(l)))
+  assert.equal(b.legs[0]!.advice.kind, 'unknown')
+})

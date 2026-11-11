@@ -57,6 +57,7 @@ import { chartDocumentRoutes } from './chartDocuments'
 import { mintPostgrestJwt } from './briefingData'
 import { createBriefingService, parseRouteInput, BriefingInputError } from './briefingService'
 import { briefingText } from './briefing'
+import { demRouteTerrain } from './routeTerrain'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -784,6 +785,8 @@ const briefings = createBriefingService({
     const r = await wxCache.get(icao, () => wxMissLimiter.take(userId).waitS <= 0)
     return r.kind === 'ok' ? r.data : null
   },
+  // Terrain from the deployment's own DEM archives (no third-party budget).
+  terrain: demRouteTerrain(demElevation),
 })
 
 app.post('/api/briefing', async (c) => {
