@@ -88,6 +88,13 @@ function PlanTable({ plan }: { plan: FuelPlanData }) {
             <td className={css.label}>Landing reserve</td>
             <td className={css.value}>{fmt(plan.landingFuelL)}</td>
           </tr>
+
+          {plan.finalReserveMin > 0 && (
+            <tr>
+              <td className={css.label}>Final reserve ({plan.finalReserveMin} min)</td>
+              <td className={css.value}>{fmt(plan.finalReserveFuelL)}</td>
+            </tr>
+          )}
         </tbody>
 
         <tfoot>
@@ -101,6 +108,12 @@ function PlanTable({ plan }: { plan: FuelPlanData }) {
               {plan.availableFuelL > 0 ? fmt(plan.availableFuelL) : '—'}
             </td>
           </tr>
+          {plan.unusableFuelL > 0 && (
+            <tr>
+              <td className={css.labelSub}>Unusable (not in available)</td>
+              <td className={css.valueSub}>{fmt(plan.unusableFuelL)}</td>
+            </tr>
+          )}
         </tfoot>
       </table>
 

@@ -37,6 +37,22 @@ describe('computeFuelPlan', () => {
     expect(a.climbFuelL).toBeCloseTo((a.climbMins / 60) * 30, 6)
     expect(a.descentFuelL).toBeCloseTo((a.descentMins / 60) * 15, 6)
   })
+  it('scales climb burn towards the ceiling burn when set', () => {
+    const a = plan()
+    const b = plan({ climbFuelCeilingLhr: 20 })
+    expect(b.climbMins).toBeCloseTo(a.climbMins, 6)
+    expect(b.climbFuelL).toBeLessThan(a.climbFuelL)
+    // 0 to 5,000 ft of a 14,000 ft ceiling: burn from 30 down to 30 - 10 * 5/14, mean of the two.
+    expect(b.climbFuelL).toBeCloseTo((b.climbMins / 60) * (30 + (30 - 10 * 5000 / 14000)) / 2, 6)
+  })
+  it('adds the final reserve at cruise burn and reports unusable fuel apart', () => {
+    const a = plan()
+    const b = plan({ finalReserveMin: 30, unusableFuelL: 6 })
+    expect(b.finalReserveFuelL).toBeCloseTo(12.5, 6)
+    expect(b.totalMinFuelL).toBeCloseTo(a.totalMinFuelL + 12.5, 6)
+    expect(b.unusableFuelL).toBe(6)
+    expect(b.availableFuelL).toBe(150)
+  })
   it('a route too short for climb+descent has no cruise', () => {
     const f = computeFuelPlan([wp(59, 18), wp(59, 18.1)], [{ altFt: 9000 }] as never, base)
     expect(f.cruiseMins).toBe(0)

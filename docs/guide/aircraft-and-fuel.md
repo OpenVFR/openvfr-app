@@ -81,15 +81,21 @@ All speeds are indicated airspeed (IAS) in knots, fuel is in litres.
   can be out of date: check the AIP or call ahead.
 - **Burn** (L/h) at cruise.
 - **Max capacity** (L), usable.
+- **Unusable** (L): unusable fuel, not part of the capacity. Shown in the
+  fuel plan for reference.
 - **Taxi / T/O** (L): start, taxi and takeoff roll.
 - **Reserve LDG** (L): fixed landing reserve.
 - **Holding** (min) at cruise burn.
 - **Diversion** (min) at cruise burn. Default 30.
+- **Final reserve** (min) at cruise burn, on top of the other reserves
+  (for example 30 min for day VFR). 0 means none.
 - **Contingency** (%) of the en-route fuel.
 
 **Climb and descent**
 - **Service ceiling**, **rate of climb at sea level** and **at ceiling**,
-  **climb IAS**, optional **climb fuel burn**.
+  **climb IAS**, optional **climb fuel burn** at sea level and **climb
+  burn at ceiling** (the burn is scaled between the two with altitude; 0
+  uses the sea-level burn all the way).
 - **Descent rate** (positive number), **descent IAS**, optional **descent
   fuel burn**.
 - Without these the whole trip is treated as cruise.
@@ -111,8 +117,10 @@ For a route with an aircraft the plan lists:
 | Holding | Holding minutes at cruise burn |
 | Diversion | Diversion minutes at cruise burn |
 | Landing reserve | Fixed amount from the profile |
+| Final reserve | Final reserve minutes at cruise burn, when set |
 | **Min required** | Sum of all of the above |
 | **Available** | Maximum capacity of the aircraft |
+| Unusable | Unusable fuel, when set (not in Available) |
 
 The plan uses true airspeed at each leg's altitude and the effective wind
 of each leg, so its times match the route table. Climb and descent

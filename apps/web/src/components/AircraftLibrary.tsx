@@ -68,6 +68,9 @@ type FormState = {
   minRunwayM:       string
   hardRunwayOnly:   boolean
   maxCrosswindKts:  string
+  climbFuelCeilingLhr: string
+  finalReserveMin:  string
+  unusableFuelL:    string
   // Equipment: '' = not set
   transponder:      '' | TransponderMode
   hasRadio:         '' | 'yes' | 'no'
@@ -102,6 +105,9 @@ const EMPTY_FORM: FormState = {
   minRunwayM:       '0',
   hardRunwayOnly:   false,
   maxCrosswindKts:  '0',
+  climbFuelCeilingLhr: '0',
+  finalReserveMin:  '0',
+  unusableFuelL:    '0',
   transponder:      '',
   hasRadio:         '',
 }
@@ -136,6 +142,9 @@ function profileToForm(p: AircraftProfileDocType): FormState {
     minRunwayM:       String(p.minRunwayM ?? 0),
     hardRunwayOnly:   p.hardRunwayOnly === true,
     maxCrosswindKts:  String(p.maxCrosswindKts ?? 0),
+    climbFuelCeilingLhr: String(p.climbFuelCeilingLhr ?? 0),
+    finalReserveMin:  String(p.finalReserveMin ?? 0),
+    unusableFuelL:    String(p.unusableFuelL ?? 0),
     transponder:      p.transponder ?? '',
     hasRadio:         p.hasRadio === true ? 'yes' : p.hasRadio === false ? 'no' : '',
   }
@@ -394,6 +403,9 @@ export default function AircraftLibrary({
         minRunwayM:       Math.max(0, Math.round(parseNum(form.minRunwayM))),
         hardRunwayOnly:   form.hardRunwayOnly,
         maxCrosswindKts:  Math.max(0, parseNum(form.maxCrosswindKts)),
+        climbFuelCeilingLhr: HAS_ENGINE(form.category) && HAS_FUEL(form.category) ? Math.max(0, parseNum(form.climbFuelCeilingLhr)) : 0,
+        finalReserveMin:  HAS_FUEL(form.category) ? Math.max(0, parseNum(form.finalReserveMin)) : 0,
+        unusableFuelL:    HAS_FUEL(form.category) ? Math.max(0, parseNum(form.unusableFuelL)) : 0,
         transponder:      form.transponder || undefined,
         hasRadio:         form.hasRadio === '' ? undefined : form.hasRadio === 'yes',
       })
@@ -610,10 +622,12 @@ export default function AircraftLibrary({
             </div>
             <Field label="Burn"         unit="L/h" type="number" value={form.fuelBurnLhr}  error={errors.fuelBurnLhr}  tooltip="Cruise fuel consumption in litres per hour." {...poh('fuelBurnLhr')} onChange={v => set('fuelBurnLhr', v)} />
             <Field label="Max capacity" unit="L"   type="number" value={form.maxFuelL}     error={errors.maxFuelL}     tooltip="Total usable fuel capacity in litres." {...poh('maxFuelL')} onChange={v => set('maxFuelL', v)} />
+            <Field label="Unusable"     unit="L"   type="number" value={form.unusableFuelL} tooltip="Unusable fuel in litres, not part of the usable capacity above. Shown in the fuel plan for reference. 0 = not set." {...poh('unusableFuelL')} onChange={v => set('unusableFuelL', v)} />
             <Field label="Taxi / T/O"   unit="L"   type="number" value={form.taxiFuelL}    tooltip="Fuel used for engine start, taxi and take-off roll. Deducted before departure fuel is calculated." {...poh('taxiFuelL')} onChange={v => set('taxiFuelL', v)} />
             <Field label="Reserve LDG"  unit="L"   type="number" value={form.landingFuelL} tooltip="Fixed landing fuel reserve in litres. Always kept in reserve and never used in fuel planning." {...poh('landingFuelL')} onChange={v => set('landingFuelL', v)} />
             <Field label="Holding"      unit="min" type="number" value={form.holdingMin}   tooltip="Extra holding allowance in minutes, burned at cruise fuel rate. Added on top of trip fuel." onChange={v => set('holdingMin', v)} />
             <Field label="Diversion"    unit="min" type="number" value={form.diversionMin} tooltip="Diversion reserve in minutes, burned at cruise fuel rate (default 30)." onChange={v => set('diversionMin', v)} />
+            <Field label="Final reserve" unit="min" type="number" value={form.finalReserveMin} tooltip="Final reserve in minutes at cruise burn, added on top of the other reserves (for example 30 min day VFR). 0 = none." onChange={v => set('finalReserveMin', v)} />
             <Field label="Contingency"  unit="%"   type="number" value={form.contingencyPct} error={errors.contingencyPct} tooltip="Extra fuel as a percentage of trip fuel (e.g. 5 for 5%). EU OPS minimum is 5%." onChange={v => set('contingencyPct', v)} />
           </>
         )}
@@ -626,7 +640,10 @@ export default function AircraftLibrary({
             <Field label="RoC at ceiling"  unit="fpm" type="number" value={form.rocCeilingFpm}    tooltip="Rate of climb just below the service ceiling, typically 50–100 fpm. Used to interpolate climb performance at altitude." {...poh('rocCeilingFpm')} onChange={v => set('rocCeilingFpm', v)} />
             <Field label="Climb IAS"       unit="kts" type="number" value={form.climbIas}         tooltip="Best rate of climb speed (Vy) in knots IAS." {...poh('climbIas')} onChange={v => set('climbIas', v)} />
             {HAS_FUEL(form.category) && (
-              <Field label="Climb fuel burn" unit="L/h" type="number" value={form.climbFuelLhr} tooltip="Fuel consumption during climb in litres per hour." {...poh('climbFuelLhr')} onChange={v => set('climbFuelLhr', v)} />
+              <>
+                <Field label="Climb fuel burn" unit="L/h" type="number" value={form.climbFuelLhr} tooltip="Fuel consumption during climb at sea level in litres per hour." {...poh('climbFuelLhr')} onChange={v => set('climbFuelLhr', v)} />
+                <Field label="Climb burn at ceiling" unit="L/h" type="number" value={form.climbFuelCeilingLhr} tooltip="Fuel consumption during climb near the service ceiling in litres per hour. Climb burn is scaled between the two with altitude. 0 = same as at sea level." {...poh('climbFuelCeilingLhr')} onChange={v => set('climbFuelCeilingLhr', v)} />
+              </>
             )}
             <Field label="Descent rate" unit="fpm" type="number" value={form.descentFpm}      tooltip="Typical descent rate in feet per minute (enter as a positive number, e.g. 500)." {...poh('descentFpm')} onChange={v => set('descentFpm', v)} />
             <Field label="Descent IAS"  unit="kts" type="number" value={form.descentIas}      tooltip="Typical descent indicated airspeed in knots." {...poh('descentIas')} onChange={v => set('descentIas', v)} />

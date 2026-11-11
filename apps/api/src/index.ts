@@ -90,7 +90,9 @@ Return ONLY a raw JSON object with any of these keys you found (omit keys not fo
 - "rocSlFpm": best rate of climb at sea level in fpm — look for Vy climb rate, ROC, rate of climb. Convert from m/s (×197) or m/min (×3.281).
 - "rocCeilingFpm": rate of climb at the service ceiling in fpm — the value the document gives, or the rate by which it defines the service ceiling (often 100 fpm); omit it otherwise.
 - "climbIas": best rate of climb speed (Vy) in knots. Convert from km/h (×0.5400) or mph (×0.8690).
-- "climbFuelLhr": fuel burn during climb in L/hr. Convert as above.
+- "climbFuelLhr": fuel burn during climb at sea level in L/hr. Convert as above.
+- "climbFuelCeilingLhr": fuel burn during climb near the service ceiling in L/hr; omit it if the document gives only one climb fuel flow.
+- "unusableFuelL": unusable fuel in litres for the standard tank(s). Convert from US gal (×3.785) or UK gal (×4.546).
 - "descentFpm": typical descent rate in fpm, positive value. Convert from m/s (×197) or m/min (×3.281).
 - "descentIas": typical descent IAS in knots. Convert from km/h or mph.
 - "descentFuelLhr": fuel burn during descent in L/hr.

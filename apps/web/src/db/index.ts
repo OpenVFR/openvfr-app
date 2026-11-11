@@ -145,12 +145,16 @@ export type AircraftProfileDocType = {
   transponder?: TransponderMode
   hasRadio?: boolean
   maxCrosswindKts?: number  // max demonstrated crosswind, kt
+  // v7: climb burn at ceiling, final reserve, unusable fuel (absent = not set)
+  climbFuelCeilingLhr?: number
+  finalReserveMin?: number
+  unusableFuelL?: number
   updatedAt: number
 }
 
 const aircraftProfileSchema: RxJsonSchema<AircraftProfileDocType> = {
   title: 'aircraft_profile',
-  version: 6,
+  version: 7,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -185,6 +189,9 @@ const aircraftProfileSchema: RxJsonSchema<AircraftProfileDocType> = {
     transponder:      { type: 'string', maxLength: 4 },
     hasRadio:         { type: 'boolean' },
     maxCrosswindKts:  { type: 'number' },
+    climbFuelCeilingLhr: { type: 'number' },
+    finalReserveMin:  { type: 'number' },
+    unusableFuelL:    { type: 'number' },
     updatedAt:        { type: 'number' },
   },
   required: ['id', 'name', 'registration', 'icaoType', 'category', 'cruiseAltFt', 'cruiseIas',
@@ -406,6 +413,8 @@ export function getDb(): Promise<OpenVfrDb> {
             5: (oldDoc) => ({ ...oldDoc }),
             // v5 → v6: optional transponder, hasRadio, maxCrosswindKts (absent = not set)
             6: (oldDoc) => ({ ...oldDoc }),
+            // v6 → v7: optional climbFuelCeilingLhr, finalReserveMin, unusableFuelL (absent = not set)
+            7: (oldDoc) => ({ ...oldDoc }),
           },
         },
         user_waypoints:    { schema: userWaypointSchema },

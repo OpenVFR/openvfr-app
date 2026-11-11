@@ -44,6 +44,8 @@ type FormState = {
   bestGlideIas: string; glideRatio: string
   takeoffSpeedKts: string
   maxCrosswindKts: string
+  climbFuelCeilingLhr: string
+  unusableFuelL: string
 }
 
 const EMPTY: FormState = {
@@ -57,6 +59,8 @@ const EMPTY: FormState = {
   bestGlideIas: '65', glideRatio: '30',
   takeoffSpeedKts: '0',
   maxCrosswindKts: '0',
+  climbFuelCeilingLhr: '0',
+  unusableFuelL: '0',
 }
 
 function toForm(p: AircraftProfileDocType): FormState {
@@ -74,6 +78,8 @@ function toForm(p: AircraftProfileDocType): FormState {
     bestGlideIas: String(p.bestGlideIas ?? 0), glideRatio: String(p.glideRatio ?? 0),
     takeoffSpeedKts: String(p.takeoffSpeedKts ?? 0),
     maxCrosswindKts: String(p.maxCrosswindKts ?? 0),
+    climbFuelCeilingLhr: String(p.climbFuelCeilingLhr ?? 0),
+    unusableFuelL: String(p.unusableFuelL ?? 0),
   }
 }
 
@@ -188,6 +194,8 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       glideRatio:       HAS_GLIDE(cat) ? num(form.glideRatio)   : 0,
       takeoffSpeedKts:  num(form.takeoffSpeedKts),
       maxCrosswindKts:  Math.max(0, num(form.maxCrosswindKts)),
+      climbFuelCeilingLhr: HAS_ENGINE(cat) && HAS_FUEL(cat) ? Math.max(0, num(form.climbFuelCeilingLhr)) : 0,
+      unusableFuelL:    HAS_FUEL(cat) ? Math.max(0, num(form.unusableFuelL)) : 0,
       updatedAt:        Date.now(),
     }
     onSave(doc)

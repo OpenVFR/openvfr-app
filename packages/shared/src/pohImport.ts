@@ -19,8 +19,9 @@ import { FUEL_CODES } from './fuelTypes'
 /** Aircraft profile fields a POH can fill. Values are form strings. */
 export const POH_FIELDS = [
   'name', 'icaoType', 'cruiseAltFt', 'cruiseIas', 'fuelBurnLhr', 'maxFuelL',
-  'taxiFuelL', 'landingFuelL', 'serviceCeilingFt', 'rocSlFpm', 'rocCeilingFpm',
-  'climbIas', 'climbFuelLhr', 'descentFpm', 'descentIas', 'descentFuelLhr',
+  'unusableFuelL', 'taxiFuelL', 'landingFuelL', 'serviceCeilingFt', 'rocSlFpm',
+  'rocCeilingFpm', 'climbIas', 'climbFuelLhr', 'climbFuelCeilingLhr',
+  'descentFpm', 'descentIas', 'descentFuelLhr',
   'bestGlideIas', 'glideRatio', 'takeoffSpeedKts', 'maxCrosswindKts',
 ] as const
 
@@ -41,7 +42,9 @@ const FIELD_GUIDE: Record<PohField, string> = {
   rocSlFpm:         'best rate of climb at sea level in ft/min. Convert from m/s (×197) or m/min (×3.281).',
   rocCeilingFpm:    'rate of climb at the service ceiling in ft/min. Use the value the document gives, or the rate by which it defines the service ceiling (often 100 ft/min); omit it otherwise.',
   climbIas:         'best rate of climb speed (Vy) in knots IAS.',
-  climbFuelLhr:     'fuel consumption during climb in litres per hour.',
+  climbFuelLhr:     'fuel consumption during climb at sea level in litres per hour.',
+  climbFuelCeilingLhr: 'fuel consumption during climb near the service ceiling in litres per hour; omit it if the document gives only one climb fuel flow.',
+  unusableFuelL:    'unusable fuel in litres for the standard tank(s). Convert from US gal (×3.785) or UK gal (×4.546).',
   descentFpm:       'typical descent rate in ft/min, as a positive number.',
   descentIas:       'typical descent IAS in knots.',
   descentFuelLhr:   'fuel consumption during descent in litres per hour.',
@@ -171,6 +174,8 @@ const RANGES: Partial<Record<PohField, [number, number]>> = {
   rocCeilingFpm:    [0, 1000],
   climbIas:         [20, 250],
   climbFuelLhr:     [1, 600],
+  climbFuelCeilingLhr: [1, 600],
+  unusableFuelL:    [0, 200],
   descentFpm:       [100, 3000],
   descentIas:       [20, 350],
   descentFuelLhr:   [0, 500],

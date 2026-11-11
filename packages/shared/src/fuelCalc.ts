@@ -44,6 +44,11 @@ export type FuelPlan = {
   diversionMin: number
   /** Fixed landing/alternate reserve from aircraft profile. */
   landingFuelL: number
+  /** Final reserve at cruise burn (profile `finalReserveMin`, 0 = none). */
+  finalReserveFuelL: number
+  finalReserveMin: number
+  /** Unusable fuel from the profile: information only, not in the available fuel. */
+  unusableFuelL: number
   /** Grand total minimum required fuel (all items summed). */
   totalMinFuelL: number
   /** Maximum tank capacity from aircraft profile (0 = not set). */
@@ -116,6 +121,20 @@ function avgRocBetween(fromFt: number, toFt: number, profile: AircraftProfileDoc
   return (rocAtAlt(fromFt, profile) + rocAtAlt(toFt, profile)) / 2
 }
 
+/** Climb fuel burn (L/h) at an altitude: sea-level climb burn (or cruise burn), scaled towards the ceiling burn when set. */
+function climbBurnAt(alt: number, profile: AircraftProfileDocType): number {
+  const sl = profile.climbFuelLhr > 0 ? profile.climbFuelLhr : profile.fuelBurnLhr
+  const ceil = profile.climbFuelCeilingLhr ?? 0
+  if (ceil <= 0 || profile.serviceCeilingFt <= 0) return sl
+  const frac = Math.min(1, Math.max(0, alt / profile.serviceCeilingFt))
+  return sl + (ceil - sl) * frac
+}
+
+/** Average climb fuel burn between two altitudes (linear model, so the mean of the ends). */
+function avgClimbBurnBetween(fromFt: number, toFt: number, profile: AircraftProfileDocType): number {
+  return (climbBurnAt(fromFt, profile) + climbBurnAt(toFt, profile)) / 2
+}
+
 /** True when the profile has the fields needed for climb time calculation. Climb fuel burn is optional (falls back to cruise burn). */
 function hasClimbPerf(profile: AircraftProfileDocType): boolean {
   return profile.rocSlFpm > 0 && profile.climbIas > 0
@@ -134,6 +153,7 @@ const EMPTY_PLAN: FuelPlan = {
   taxiFuelL: 0, climbFuelL: 0, cruiseFuelL: 0, descentFuelL: 0,
   enrouteFuelL: 0, contingencyFuelL: 0, contingencyPct: 0,
   holdingFuelL: 0, holdingMin: 0, diversionFuelL: 0, diversionMin: DEFAULT_DIVERSION_MIN, landingFuelL: 0,
+  finalReserveFuelL: 0, finalReserveMin: 0, unusableFuelL: 0,
   totalMinFuelL: 0, availableFuelL: 0,
   enrouteMins: 0, climbMins: 0, descentMins: 0, cruiseMins: 0,
 }
@@ -173,6 +193,7 @@ export function computeFuelPlan(
       contingencyPct: profile.contingencyPct,
       holdingMin:     profile.holdingMin,
       availableFuelL: profile.maxFuelL,
+      unusableFuelL:  Math.max(0, profile.unusableFuelL ?? 0),
     }
   }
 
@@ -188,6 +209,7 @@ export function computeFuelPlan(
 
   // ── 2. Total climb / descent time across the full route ────────────────────
   let totalClimbMins   = 0
+  let climbFuelSumL    = 0
   let totalDescentMins = 0
   let climbDistNm      = 0
   let descentDistNm    = 0
@@ -200,6 +222,7 @@ export function computeFuelPlan(
         if (avgRoc > 0) {
           const mins = delta / avgRoc
           totalClimbMins += mins
+          climbFuelSumL  += (mins / 60) * avgClimbBurnBetween(altSeq[i], altSeq[i + 1], profile)
           climbDistNm    += (mins / 60) * iasToTas(profile.climbIas, (altSeq[i] + altSeq[i + 1]) / 2)
         }
       }
@@ -259,6 +282,7 @@ export function computeFuelPlan(
       availableFuelL: profile.maxFuelL,
       contingencyPct: profile.contingencyPct,
       holdingMin:     profile.holdingMin,
+      unusableFuelL:  Math.max(0, profile.unusableFuelL ?? 0),
     }
   }
 
@@ -271,9 +295,7 @@ export function computeFuelPlan(
   const totalEnrouteMins = totalClimbMins + totalDescentMins + cruiseMins
 
   // Fuel per phase — fall back to cruise burn if phase-specific burn is not set.
-  const climbFuelL = (totalClimbMins / 60) * (
-    profile.climbFuelLhr > 0 ? profile.climbFuelLhr : profile.fuelBurnLhr
-  )
+  const climbFuelL = climbFuelSumL
   const descentFuelL = (totalDescentMins / 60) * (
     profile.descentFuelLhr > 0 ? profile.descentFuelLhr : profile.fuelBurnLhr
   )
@@ -286,10 +308,12 @@ export function computeFuelPlan(
   const diversionFuelL   = (diversionMin / 60) * profile.fuelBurnLhr
   const taxiFuelL        = profile.taxiFuelL
   const landingFuelL     = profile.landingFuelL
+  const finalReserveMin  = Math.max(0, profile.finalReserveMin ?? 0)
+  const finalReserveFuelL = (finalReserveMin / 60) * profile.fuelBurnLhr
 
   const totalMinFuelL =
     taxiFuelL + enrouteFuelL + contingencyFuelL +
-    holdingFuelL + diversionFuelL + landingFuelL
+    holdingFuelL + diversionFuelL + landingFuelL + finalReserveFuelL
 
   return {
     taxiFuelL,
@@ -304,6 +328,9 @@ export function computeFuelPlan(
     diversionFuelL,
     diversionMin,
     landingFuelL,
+    finalReserveFuelL,
+    finalReserveMin,
+    unusableFuelL:   Math.max(0, profile.unusableFuelL ?? 0),
     totalMinFuelL,
     availableFuelL:  profile.maxFuelL,
     enrouteMins:     totalEnrouteMins,

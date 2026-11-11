@@ -62,6 +62,12 @@ export type AircraftProfileDocType = {
   hasRadio?: boolean
   /** Maximum demonstrated crosswind, kt. 0/absent = not set. */
   maxCrosswindKts?: number
+  /** Climb fuel burn at the service ceiling, L/h; burn scales with altitude from `climbFuelLhr`. 0/absent = same as sea level. */
+  climbFuelCeilingLhr?: number
+  /** Final reserve, minutes at cruise burn, on top of the other reserves. 0/absent = none. */
+  finalReserveMin?: number
+  /** Unusable fuel, litres (not part of `maxFuelL`, which is usable). 0/absent = not set. */
+  unusableFuelL?: number
   updatedAt: number
 }
 
