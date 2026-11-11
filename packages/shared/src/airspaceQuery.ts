@@ -20,6 +20,7 @@ import type { Polygon, MultiPolygon, Feature, FeatureCollection } from 'geojson'
 import { pointInPolygon } from './airspaceGeometry'
 import { airspaceDisplayClass } from './airspaceColors'
 import { airspaceEnded } from './airspaceInForce'
+import { supScheduleLine } from './supSchedule'
 import type { DatasetSource } from './countryData'
 
 export interface AirspaceQueryFeature {
@@ -55,6 +56,14 @@ function parseFrequencies(v: unknown): { freq_mhz: number; callsign: string; ser
   return typeof v === 'string' ? JSON.parse(v) : v as { freq_mhz: number; callsign: string; service: string }[]
 }
 
+/** The area's remarks; for an AIP supplement area with a regular schedule, led by "Now: in / outside its scheduled hours". */
+function withSupLine(p: Record<string, unknown>): string | undefined {
+  const remarks = p.remarks ? String(p.remarks) : ''
+  const line = supScheduleLine(p)
+  const out = line ? (remarks ? `${line}\n${remarks}` : line) : remarks
+  return out || undefined
+}
+
 /** All airspace polygons (full, untruncated geometry) containing [lng, lat]. */
 export async function queryAirspaceAtPoint(
   lng: number,
@@ -82,7 +91,7 @@ export async function queryAirspaceAtPoint(
       lower:       String(p.lower    ?? ''),
       upper_ft:    Number(p.upper_ft ?? 0),
       lower_ft:    Number(p.lower_ft ?? 0),
-      remarks:     p.remarks ? String(p.remarks) : undefined,
+      remarks:     withSupLine(p),
       frequencies: parseFrequencies(p.frequencies),
       coords:      ring,
     })

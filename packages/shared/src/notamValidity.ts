@@ -59,7 +59,7 @@ export function fmtUtcClock(now: number = Date.now()): string {
 }
 
 /** "10:00Z" on the same UTC day as `now`, else "Wed 10:00Z". */
-function fmtUtcDayClock(ms: number, now: number): string {
+export function fmtUtcDayClock(ms: number, now: number): string {
   const same = Math.floor(ms / 86_400_000) === Math.floor(now / 86_400_000)
   return same ? fmtUtcClock(ms) : `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(ms).getUTCDay()]} ${fmtUtcClock(ms)}`
 }
