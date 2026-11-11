@@ -294,6 +294,37 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   codes never expire, so treat them as secrets and use dedicated addresses.
   See `apps/api/src/fixedOtpAccounts.ts`.
 
+### Assistant connection (MCP, optional)
+
+With `ASSISTANT_MCP=on` the api lets a pilot connect their own AI assistant
+(any assistant that supports remote MCP servers with OAuth) to read
+OpenVFR data: route briefings, aerodrome information, METAR/TAF and NOTAMs,
+and, if the pilot allows it, their saved routes and aircraft. It only reads.
+
+- MCP endpoint: `<BETTER_AUTH_URL>/mcp` (POST only). Discovery documents:
+  `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`
+  and `/.well-known/openid-configuration` (plus their path-suffixed forms),
+  all on the api origin. Route them to the api in your reverse proxy
+  (`docker/nginx.conf` has the locations); they are public, `/mcp` does its
+  own token check.
+- Sign-in and consent are pages of the web app:
+  `<BETTER_AUTH_APP_ORIGIN>/oauth/login` and `/oauth/consent` (the SPA
+  fallback must serve `index.html` there). The pilot sees the assistant's
+  name and can leave out saved routes and aircraft; the account panel lists
+  connected assistants with Disconnect.
+- Assistants identify themselves with a Client ID Metadata Document, or
+  register themselves (open Dynamic Client Registration, 10 per hour per IP).
+  A registered client can only get tokens for the MCP endpoint, and only
+  after a user signs in and approves it. Access tokens last an hour; refresh
+  tokens rotate, a replayed one is refused, and unused ones expire after 90
+  days. Disconnecting revokes the refresh token.
+- Tables `ba_jwks` and `ba_oauth_*` (migration `20261201000000`), used only by
+  the api role.
+- Limits: `MCP_HOURLY_LIMIT` / `MCP_DAILY_LIMIT` (tool calls per user, default
+  120 / 600); briefing tools also count against `BRIEFING_*` and weather
+  lookups against `WX_*`. Saved routes and aircraft need
+  `POSTGREST_INTERNAL_URL`; briefings need `TILES_BASE_URL`.
+
 ### Admin API
 
 `/api/admin/*` (user list, sign-up/activity stats, ban/unban, enabling

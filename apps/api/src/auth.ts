@@ -14,7 +14,10 @@ import { betterAuth } from 'better-auth'
 import { emailOTP, admin } from 'better-auth/plugins'
 import { passkey }    from '@better-auth/passkey'
 import { parseFixedOtpAccounts } from './fixedOtpAccounts.js'
-import { bearer }     from 'better-auth/plugins'
+import { bearer, jwt } from 'better-auth/plugins'
+import { mcp }        from '@better-auth/mcp'
+import { cimd }       from '@better-auth/cimd'
+import { fetchClientMetadataResource } from '@better-auth/cimd/node'
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { sendEmail }  from './mailer.js'
 import { pool }        from './db.js'
@@ -32,8 +35,25 @@ const BASE_URL = process.env['BETTER_AUTH_URL']
 // `BETTER_AUTH_APP_ORIGIN=${BETTER_AUTH_APP_ORIGIN:-}`), not `undefined` --
 // use `||` (falls through on '' too), not `??` (only falls through on
 // null/undefined), or `new URL('')` throws ERR_INVALID_URL below.
-const APP_ORIGIN = process.env['BETTER_AUTH_APP_ORIGIN'] || BASE_URL || 'http://localhost:5173'
+export const APP_ORIGIN = process.env['BETTER_AUTH_APP_ORIGIN'] || BASE_URL || 'http://localhost:5173'
 const IS_PROD = process.env['NODE_ENV'] === 'production'
+
+// ── Assistant connection (MCP) ────────────────────────────────────────────
+// Opt-in (ASSISTANT_MCP=on): turns the api into an OAuth 2.1 authorization
+// server for the pilot's own AI assistant (an MCP client) and protects the
+// read-only MCP endpoint at <BETTER_AUTH_URL>/mcp. Sign-in and consent are
+// pages of the web app (BETTER_AUTH_APP_ORIGIN). Assistants identify
+// themselves with a Client ID Metadata Document (CIMD) or, for clients that
+// still need it, by open Dynamic Client Registration (rate limited; such a
+// client can only ever get tokens for the MCP endpoint, and only after the
+// user signs in and approves it).
+export const ASSISTANT_MCP = /^(on|true|1)$/i.test(process.env['ASSISTANT_MCP'] ?? '')
+export const MCP_RESOURCE = `${(BASE_URL ?? '').replace(/\/+$/, '')}/mcp`
+/** Read public aviation data and briefings. Every assistant token carries it. */
+export const SCOPE_BRIEFING = 'briefing:read'
+/** Read the user's saved routes and aircraft profiles (a separate consent). */
+export const SCOPE_ROUTES = 'routes:read'
+const MCP_SCOPES = ['openid', 'offline_access', SCOPE_BRIEFING, SCOPE_ROUTES]
 
 // Origin of the separately deployed admin UI (e.g. https://admin.<domain>).
 // Optional. When set it is trusted for sign-in (incl. passkeys) and is the
@@ -183,6 +203,9 @@ export const TRUSTED_ORIGINS: string[] = [
 
 export const auth = betterAuth({
   secret:  SECRET,
+  // The JWT plugin's own /token route would shadow nothing useful here and
+  // mint session JWTs with the access tokens' signing key: off.
+  ...(ASSISTANT_MCP ? { disabledPaths: ['/token'] } : {}),
   baseURL: BASE_URL,
 
   trustedOrigins: TRUSTED_ORIGINS,
@@ -259,6 +282,8 @@ export const auth = betterAuth({
       '/email-otp/check-verification-otp': { window: 60, max: 10 },
       '/passkey/verify-authentication':   { window: 60, max: 20 },
       '/delete-user':                     { window: 3600, max: 3 },
+      // Open client registration for assistants that cannot use CIMD.
+      '/oauth2/register':                 { window: 3600, max: 10 },
     },
   },
 
@@ -393,6 +418,36 @@ export const auth = betterAuth({
       otpLength:  6,
       expiresIn:  600,  // 10 minutes
     }),
+    ...(ASSISTANT_MCP ? [
+      // Signing keys for the assistant access tokens (JWKS at /api/auth/jwks).
+      jwt({ disableSettingJwtHeader: true, schema: { jwks: { modelName: 'ba_jwks' } } }),
+      mcp({
+        resource:    MCP_RESOURCE,
+        loginPage:   `${APP_ORIGIN}/oauth/login`,
+        consentPage: `${APP_ORIGIN}/oauth/consent`,
+        scopes:      MCP_SCOPES,
+        allowDynamicClientRegistration:        true,
+        allowUnauthenticatedClientRegistration: true,
+        clientRegistrationDefaultApplicationType: 'infer',
+        clientRegistrationDefaultScopes: MCP_SCOPES,
+        clientRegistrationAllowedScopes: MCP_SCOPES,
+        // Short access tokens; refresh tokens rotate, unused for 90 days = gone.
+        accessTokenExpiresIn:  60 * 60,
+        refreshTokenExpiresIn: 90 * 24 * 60 * 60,
+        // A replayed refresh token is treated as theft (no reuse window).
+        refreshTokenReuseInterval: 0,
+        schema: {
+          oauthClient:          { modelName: 'ba_oauth_client' },
+          oauthAccessToken:     { modelName: 'ba_oauth_access_token' },
+          oauthRefreshToken:    { modelName: 'ba_oauth_refresh_token' },
+          oauthConsent:         { modelName: 'ba_oauth_consent' },
+          oauthClientAssertion: { modelName: 'ba_oauth_client_assertion' },
+          oauthResource:        { modelName: 'ba_oauth_resource' },
+          oauthClientResource:  { modelName: 'ba_oauth_client_resource' },
+        },
+      }),
+      cimd({ fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),
+    ] : []),
   ],
 })
 

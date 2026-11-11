@@ -176,11 +176,11 @@ export function suggestFuelStops(
     // Leg this aerodrome would split with the least detour.
     let best = -1, bestDetour = Infinity
     for (let i = 0; i < waypoints.length - 1; i++) {
-      const d = distanceNm(waypoints[i], a) + distanceNm(a, waypoints[i + 1]) - distanceNm(waypoints[i], waypoints[i + 1])
+      const d = distanceNm(waypoints[i]!, a) + distanceNm(a, waypoints[i + 1]!) - distanceNm(waypoints[i]!, waypoints[i + 1]!)
       if (d < bestDetour) { bestDetour = d; best = i }
     }
     if (best < 0 || bestDetour > maxDetourNm) continue
-    candidates.push({ aerodrome: a, fuels, fuelRank: fuelTypesUnset ? 0 : wanted.indexOf(fuels[0]), insertAfter: best, detourNm: Math.max(0, bestDetour) })
+    candidates.push({ aerodrome: a, fuels, fuelRank: fuelTypesUnset ? 0 : wanted.indexOf(fuels[0]!), insertAfter: best, detourNm: Math.max(0, bestDetour) })
   }
   candidates.sort((x, y) => x.detourNm - y.detourNm)
   candidates.length = Math.min(candidates.length, maxCandidates)
@@ -189,7 +189,7 @@ export function suggestFuelStops(
   // ── Nodes ordered along the route ───────────────────────────────────────
   const nodes: Node[] = waypoints.map((w, k) => ({ leg: k, t: 0, point: w, wp: k }))
   for (const c of candidates) {
-    const a = waypoints[c.insertAfter], b = waypoints[c.insertAfter + 1]
+    const a = waypoints[c.insertAfter]!, b = waypoints[c.insertAfter + 1]!
     const da = distanceNm(a, c.aerodrome), db = distanceNm(c.aerodrome, b)
     nodes.push({
       leg: c.insertAfter,
@@ -200,7 +200,7 @@ export function suggestFuelStops(
   }
   nodes.sort((x, y) => x.leg - y.leg || x.t - y.t)
   /** Route points the pilot already marked as fuel stops: hops end there. */
-  const isRouteStop = (nd: Node) => nd.wp !== undefined && nd.wp > 0 && nd.wp < waypoints.length - 1 && waypoints[nd.wp].fuelStop === true
+  const isRouteStop = (nd: Node) => nd.wp !== undefined && nd.wp > 0 && nd.wp < waypoints.length - 1 && waypoints[nd.wp]!.fuelStop === true
   const startIdx = nodes.findIndex(n => n.wp === 0)
   const endIdx   = nodes.findIndex(n => n.wp === waypoints.length - 1)
 
@@ -210,12 +210,12 @@ export function suggestFuelStops(
     const key = `${u}>${v}`
     const cached = hopCache.get(key)
     if (cached !== undefined) return cached
-    const A = nodes[u], B = nodes[v]
+    const A = nodes[u]!, B = nodes[v]!
     const pts: RouteWaypoint[] = [A.point]
     const legs: number[] = [A.leg]   // original leg of each hop leg
     const firstWp = A.wp !== undefined ? A.wp + 1 : A.leg + 1
     const lastWp  = B.wp !== undefined ? B.wp - 1 : B.leg
-    for (let j = firstWp; j <= lastWp; j++) { pts.push(waypoints[j]); legs.push(j) }
+    for (let j = firstWp; j <= lastWp; j++) { pts.push(waypoints[j]!); legs.push(j) }
     pts.push(B.point)
     legs.length = pts.length - 1
     const plan = computeFuelPlan(pts, legs.map(l => legOverrides[l] ?? {}), profile, legs.map(l => legWinds?.[l]))
@@ -241,13 +241,13 @@ export function suggestFuelStops(
     // cost[s][i]: best cost reaching node i having used s stops.
     const cost = Array.from({ length: maxStops + 1 }, () => new Array<number>(n).fill(INF))
     const prev = Array.from({ length: maxStops + 1 }, () => new Array<[number, number] | null>(n).fill(null))
-    cost[0][startIdx] = 0
+    cost[0]![startIdx] = 0
     for (let i = startIdx; i < endIdx; i++) {
       for (let s = 0; s <= maxStops; s++) {
-        if (cost[s][i] === INF) continue
+        if (cost[s]![i]! === INF) continue
         // From node i, jump to the next stop or straight to the destination.
         for (let j = i + 1; j <= endIdx; j++) {
-          const nj = nodes[j]
+          const nj = nodes[j]!
           const routeStop = isRouteStop(nj)
           if (nj.stop && banned.has(nj.stop.aerodrome.icao)) continue
           if (!nj.stop && !routeStop && j !== endIdx) continue
@@ -256,8 +256,8 @@ export function suggestFuelStops(
             const h = hop(i, j)
             if (h) {
               const thin = Math.max(0, COMFORT_L - (capacity - h.minFuelL))
-              const c = cost[s][i] + h.enrouteMins + BALANCE * h.enrouteMins * h.enrouteMins + thin + (nj.stop ? stopPenalty + rankPenalty * nj.stop.fuelRank : 0)
-              if (c < cost[s2][j]) { cost[s2][j] = c; prev[s2][j] = [s, i] }
+              const c = cost[s]![i]! + h.enrouteMins + BALANCE * h.enrouteMins * h.enrouteMins + thin + (nj.stop ? stopPenalty + rankPenalty * nj.stop.fuelRank : 0)
+              if (c < cost[s2]![j]!) { cost[s2]![j] = c; prev[s2]![j] = [s, i] }
             }
           }
           // A hop cannot fly past a stop the pilot already planned.
@@ -267,21 +267,21 @@ export function suggestFuelStops(
     }
     let bestS = -1
     for (let s = 1; s <= maxStops; s++) {
-      if (cost[s][endIdx] < INF && (bestS < 0 || cost[s][endIdx] < cost[bestS][endIdx])) bestS = s
+      if (cost[s]![endIdx]! < INF && (bestS < 0 || cost[s]![endIdx]! < cost[bestS]![endIdx]!)) bestS = s
     }
     if (bestS < 0) return null
     const path: number[] = []
     let cur: [number, number] | null = [bestS, endIdx]
-    while (cur) { path.unshift(cur[1]); cur = prev[cur[0]][cur[1]] }
+    while (cur) { path.unshift(cur[1]); cur = prev[cur[0]]![cur[1]] ?? null }
     const hops: FuelStopHop[] = []
-    for (let k = 0; k < path.length - 1; k++) hops.push(hop(path[k], path[k + 1])!)
+    for (let k = 0; k < path.length - 1; k++) hops.push(hop(path[k]!, path[k + 1]!)!)
     const enrouteMins = hops.reduce((sum, h) => sum + h.enrouteMins, 0)
     return {
-      stops: path.map(i => nodes[i].stop).filter((s): s is FuelStop => !!s),
+      stops: path.map(i => nodes[i]!.stop).filter((s): s is FuelStop => !!s),
       hops,
       enrouteMins,
       extraMins: Math.max(0, enrouteMins - tripMins),
-      cost: cost[bestS][endIdx],
+      cost: cost[bestS]![endIdx]!,
     }
   }
 
@@ -301,7 +301,7 @@ export function suggestFuelStops(
     // stops found so far, until enough distinct plans are found.
     const banned = new Set<string>()
     for (let round = 0; round < maxPlans * 2 && plans.length < maxPlans; round++) {
-      const last = plans[plans.length - 1]
+      const last = plans[plans.length - 1]!
       for (const s of last.stops) {
         if (plans.length >= maxPlans) break
         add(search(new Set([...banned, s.aerodrome.icao])))

@@ -1,0 +1,43 @@
+.text {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+}
+
+.urlRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.url {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  user-select: all;
+}
+
+.help {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.help summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.help ul {
+  margin: 6px 0;
+  padding-left: 18px;
+  line-height: 1.5;
+}

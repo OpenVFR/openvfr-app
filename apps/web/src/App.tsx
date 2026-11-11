@@ -1,6 +1,8 @@
 import { Component, useEffect, type ReactNode } from 'react'
 import MapView from './components/MapView'
 import LoginPanel from './components/LoginPanel'
+import AssistantConsent from './components/AssistantConsent'
+import AssistantContinue from './components/AssistantContinue'
 import PasskeyPrompt from './components/PasskeyPrompt'
 import UpdatePrompt from './components/UpdatePrompt'
 import TileUpdatePrompt from './components/TileUpdatePrompt'
@@ -48,6 +50,16 @@ function AppInner() {
 
   // While the session check is in flight show nothing (avoids LoginPanel flash).
   if (auth.loading) return null
+
+  // Assistant connection pages (the api's OAuth provider sends the browser
+  // here): sign in if needed, then approve or deny, then back to the assistant.
+  const path = window.location.pathname
+  if (path === '/oauth/consent' || path === '/oauth/login') {
+    if (!auth.user || !auth.user.name) return <LoginPanel auth={auth} />
+    return path === '/oauth/consent'
+      ? <AssistantConsent userEmail={auth.user.email} />
+      : <AssistantContinue />
+  }
 
   return (
     <>

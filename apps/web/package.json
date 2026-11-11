@@ -13,6 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@better-auth/oauth-provider": "1.7.20",
     "@better-auth/passkey": "1.7.20",
     "@open-vfr/shared": "workspace:*",
     "@protomaps/basemaps": "5.7.2",

@@ -53,5 +53,6 @@ see [Web app and native app](./platforms.md).
 ## Setup
 - Offline data and AIRAC updates. [Offline use](./offline-and-data.md)
 - Account, passkeys, sync, delete. [Account and sync](./account-and-sync.md)
+- Ask your own AI assistant about routes, aerodromes, weather and NOTAMs. [AI assistants](./ai-assistants.md)
 - All settings. [Settings reference](./settings.md)
 - Web keyboard shortcuts. [Keyboard shortcuts](./keyboard-shortcuts.md)

@@ -1,0 +1,104 @@
+.page {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-base);
+  font-family: system-ui, sans-serif;
+  padding: 16px;
+}
+
+.card {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  width: min(440px, 100%);
+  padding: 22px 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.icon { border-radius: 8px; }
+
+.title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.uri { font-family: ui-monospace, monospace; }
+
+.list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.small {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.error {
+  composes: statusBoxDanger from '../styles/shared.module.css';
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.deny,
+.allow {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.deny {
+  background: none;
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.allow {
+  background: var(--accent-cyan);
+  border: 1px solid var(--accent-cyan);
+  color: var(--surface-base);
+}
+
+.deny:disabled,
+.allow:disabled { opacity: 0.6; cursor: default; }
+
+.link {
+  color: var(--accent-cyan);
+  font-size: 13px;
+}

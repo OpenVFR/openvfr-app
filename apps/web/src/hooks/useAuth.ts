@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createAuthClient } from 'better-auth/client'
 import { emailOTPClient }   from 'better-auth/client/plugins'
 import { passkeyClient }    from '@better-auth/passkey/client'
+import { oauthProviderClient } from '@better-auth/oauth-provider/client'
 import { API_BASE_URL } from '../utils/env'
 import { markOtpSignIn, consumeOtpSignIn } from '@open-vfr/shared/passkeyPrompt'
 import { passkeyRequestErrorMessage, type PasskeyRequestError } from '@open-vfr/shared/passkeyErrors'
@@ -33,8 +34,59 @@ const authClient = createAuthClient({
   // on different subdomains — without it, the session cookie (set with a
   // shared parent domain) wouldn't be sent on cross-subdomain requests.
   fetchOptions: { credentials: 'include' },
-  plugins: [emailOTPClient(), passkeyClient()],
+  // oauthProviderClient: on the sign-in and consent pages of an assistant
+  // connection (/oauth/login, /oauth/consent) it carries the signed
+  // authorization request through sign-in and consent, and the server then
+  // sends the browser on to the assistant.
+  plugins: [emailOTPClient(), passkeyClient(), oauthProviderClient()],
 })
+
+// ---------------------------------------------------------------------------
+// Assistant connection (OAuth consent for the pilot's AI assistant)
+// ---------------------------------------------------------------------------
+export interface AssistantClientInfo { name: string | null; uri: string | null; icon: string | null }
+export interface AssistantConsent { id: string; clientId: string; scopes: string[]; createdAt: string | null }
+
+/** Public name and links of an assistant (OAuth client), for the consent page and the connected list. */
+export async function assistantClientInfo(clientId: string): Promise<AssistantClientInfo | null> {
+  const res = await authClient.$fetch<Record<string, unknown>>('/oauth2/public-client', { method: 'GET', query: { client_id: clientId } })
+  const d = res.data
+  if (!d) return null
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
+  return { name: str(d['client_name']), uri: str(d['client_uri']), icon: str(d['logo_uri']) }
+}
+
+/** Approve or deny the pending authorization request on /oauth/consent (the server then redirects). */
+export async function answerAssistantConsent(accept: boolean, scope?: string): Promise<void> {
+  const res = await authClient.$fetch<{ url?: string; redirect_uri?: string }>('/oauth2/consent', { method: 'POST', body: { accept, ...(scope ? { scope } : {}) } })
+  if (res.error) throw new Error(res.error.message || 'Could not answer the request')
+  const next = res.data?.url ?? res.data?.redirect_uri
+  if (next) window.location.assign(next)
+}
+
+/** On /oauth/login when already signed in: resume the pending authorization request (the server redirects on). */
+export async function continueAssistantLogin(): Promise<void> {
+  const res = await authClient.$fetch<{ url?: string }>('/oauth2/continue', { method: 'POST', body: {} })
+  if (res.error) throw new Error(res.error.message || 'Could not continue')
+  if (res.data?.url) window.location.assign(res.data.url)
+}
+
+/** Assistants this account has approved. */
+export async function listAssistantConsents(): Promise<AssistantConsent[]> {
+  const res = await authClient.$fetch<unknown[]>('/oauth2/get-consents', { method: 'GET' })
+  if (res.error) throw new Error(res.error.message || 'Could not load connected assistants')
+  return (res.data ?? []).map((c) => {
+    const o = c as Record<string, unknown>
+    const scopes = Array.isArray(o['scopes']) ? (o['scopes'] as string[]) : typeof o['scopes'] === 'string' ? (o['scopes'] as string).split(' ') : []
+    return { id: String(o['id'] ?? ''), clientId: String(o['clientId'] ?? o['client_id'] ?? ''), scopes, createdAt: typeof o['createdAt'] === 'string' ? o['createdAt'] : null }
+  })
+}
+
+/** Disconnect an assistant: removes the consent, so its next use needs sign-in and approval again. */
+export async function revokeAssistantConsent(id: string): Promise<void> {
+  const res = await authClient.$fetch('/oauth2/delete-consent', { method: 'POST', body: { id } })
+  if (res.error) throw new Error(res.error.message || 'Could not disconnect')
+}
 
 // ---------------------------------------------------------------------------
 // Types

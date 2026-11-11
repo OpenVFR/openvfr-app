@@ -86,6 +86,12 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-dev_secret_change_in_production_32ch}
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:5173}
       - BETTER_AUTH_APP_ORIGIN=${BETTER_AUTH_APP_ORIGIN:-http://localhost:5173}
+      # Assistant connection (MCP + OAuth for the pilot's AI assistant): on | off (default)
+      - ASSISTANT_MCP=${ASSISTANT_MCP:-}
+      - MCP_HOURLY_LIMIT=${MCP_HOURLY_LIMIT:-}
+      - MCP_DAILY_LIMIT=${MCP_DAILY_LIMIT:-}
+      - BRIEFING_HOURLY_LIMIT=${BRIEFING_HOURLY_LIMIT:-}
+      - BRIEFING_DAILY_LIMIT=${BRIEFING_DAILY_LIMIT:-}
       - BETTER_AUTH_TRUSTED_ORIGINS=${BETTER_AUTH_TRUSTED_ORIGINS:-http://localhost:5173}
       - DATABASE_URL=postgresql://openvfr:openvfr_dev@db:5432/openvfr
       - ADMIN_APP_ORIGIN=${ADMIN_APP_ORIGIN:-}

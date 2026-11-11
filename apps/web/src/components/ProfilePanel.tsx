@@ -11,6 +11,7 @@ import type { AuthState, PasskeyInfo } from '../hooks/useAuth'
 import { API_BASE_URL } from '../utils/env'
 import styles from './ProfilePanel.module.css'
 import { IconX } from '@tabler/icons-react'
+import AssistantSection from './AssistantSection'
 
 interface Props {
   auth:    AuthState
@@ -39,10 +40,15 @@ export default function ProfilePanel({ auth, onClose }: Props) {
 
   // Shared app-tester account can't have passkeys (server enforces; this hides the UI).
   const [passkeyAllowed, setPasskeyAllowed] = useState(true)
+  // MCP address for the assistant connection, when the server offers it.
+  const [assistantMcpUrl, setAssistantMcpUrl] = useState<string | null>(null)
   useEffect(() => {
     void fetch(`${API_BASE_URL}/api/auth/account-flags`, { credentials: 'include' })
-      .then(r => (r.ok ? r.json() as Promise<{ passkeyAllowed?: boolean }> : null))
-      .then(j => { if (j?.passkeyAllowed === false) setPasskeyAllowed(false) })
+      .then(r => (r.ok ? r.json() as Promise<{ passkeyAllowed?: boolean; assistantMcpUrl?: string | null }> : null))
+      .then(j => {
+        if (j?.passkeyAllowed === false) setPasskeyAllowed(false)
+        if (typeof j?.assistantMcpUrl === 'string' && j.assistantMcpUrl) setAssistantMcpUrl(j.assistantMcpUrl)
+      })
       .catch(() => { /* keep default */ })
   }, [])
 
@@ -251,6 +257,13 @@ export default function ProfilePanel({ auth, onClose }: Props) {
         </div>
 
         <div className={styles.sectionDivider} />
+
+        {assistantMcpUrl && (
+          <>
+            <AssistantSection mcpUrl={assistantMcpUrl} />
+            <div className={styles.sectionDivider} />
+          </>
+        )}
 
         {/* Sign out */}
         <div className={styles.section}>

@@ -40,6 +40,7 @@ account (a passkey or an email code).
 **Setup and reference**
 - [Offline use and data updates](./offline-and-data.md)
 - [Account and sync](./account-and-sync.md)
+- [AI assistants](./ai-assistants.md)
 - [Settings reference](./settings.md)
 - [Feature index](./features.md)
 - [Troubleshooting](./troubleshooting.md)

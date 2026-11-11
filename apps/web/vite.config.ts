@@ -298,6 +298,11 @@ export default defineConfig({
         target: DEV_API_TARGET || 'http://localhost:5200',
         changeOrigin: true,
       },
+      // Assistant connection (ASSISTANT_MCP=on on the api): the MCP endpoint
+      // and its OAuth discovery documents live on the api origin, which in
+      // dev is this server (BETTER_AUTH_URL).
+      ...Object.fromEntries(['/mcp', '/.well-known/oauth-authorization-server', '/.well-known/oauth-protected-resource', '/.well-known/openid-configuration']
+        .map(p => [p, { ...devApiOrigin, target: DEV_API_TARGET || 'http://localhost:5200', changeOrigin: true }])),
       '/rest': {
         ...devApiOrigin,
         // Overridable via VITE_DEV_API_TARGET, same as '/api/auth' below — the

@@ -38,7 +38,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createHmac } from 'node:crypto'
-import { auth, isReviewAccountEmail } from './auth'
+import { auth, isReviewAccountEmail, ASSISTANT_MCP, MCP_RESOURCE, SCOPE_BRIEFING, SCOPE_ROUTES, APP_ORIGIN } from './auth'
+import { createMcpEndpoint } from './mcp'
 import { admin } from './admin'
 import { AUTHENTICATED_ROLE, assertAuthenticatedRoleExists } from './pgRoles'
 import { pool as dbPool } from './db'
@@ -245,7 +246,11 @@ app.get('/api/auth/token', async (c) => {
 app.get('/api/auth/account-flags', async (c) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers })
   if (!session?.user) return c.json({ error: 'Unauthenticated' }, 401)
-  return c.json({ passkeyAllowed: !isReviewAccountEmail(session.user.email) })
+  return c.json({
+    passkeyAllowed: !isReviewAccountEmail(session.user.email),
+    // Assistant connection: the MCP endpoint URL to paste into an assistant, when the server offers it.
+    assistantMcpUrl: ASSISTANT_MCP ? MCP_RESOURCE : null,
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -804,6 +809,53 @@ app.post('/api/briefing', async (c) => {
     return c.json({ error: 'Briefing failed. Try again later.' }, 502)
   }
 })
+
+// ---------------------------------------------------------------------------
+// Assistant connection (MCP) — opt-in with ASSISTANT_MCP=on (see auth.ts).
+//
+// POST /mcp: read-only MCP tools for the pilot's own AI assistant. Public
+// route by design: the MCP endpoint does its own auth -- a missing or bad
+// token gets 401 with the protected-resource metadata link (RFC 9728) so the
+// assistant can start sign-in; a valid token must be bound to this endpoint
+// and carry briefing:read. Rate limited per user (MCP_HOURLY_LIMIT /
+// MCP_DAILY_LIMIT), and the tools use the briefing and weather limits too.
+// Body capped at 1 MB like /api/*.
+//
+// /.well-known/oauth-authorization-server, /.well-known/openid-configuration
+// and /.well-known/oauth-protected-resource: public discovery documents,
+// answered by better-auth's provider plugins.
+// ---------------------------------------------------------------------------
+if (ASSISTANT_MCP) {
+  for (const path of [
+    '/.well-known/oauth-authorization-server', '/.well-known/oauth-authorization-server/*',
+    '/.well-known/openid-configuration', '/.well-known/openid-configuration/*',
+    '/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/*',
+  ]) app.on(['GET', 'HEAD'], path, (c) => auth.handler(c.req.raw))
+
+  const mcpEndpoint = createMcpEndpoint(auth, {
+    briefings,
+    weather: async (userId, icao) => {
+      if (!/^[A-Z]{4}$/.test(icao)) return null
+      const r = await wxCache.get(icao, () => wxMissLimiter.take(userId).waitS <= 0)
+      return r.kind === 'ok' ? r.data : null
+    },
+    appOrigin: APP_ORIGIN.replace(/\/+$/, ''),
+    resource: MCP_RESOURCE,
+    scopeBriefing: SCOPE_BRIEFING,
+    scopeRoutes: SCOPE_ROUTES,
+    takeBriefing: (userId) => briefingLimiter.take(userId).waitS <= 0,
+  })
+  app.post('/mcp', apiBodyLimit, async (c) => {
+    try {
+      return await mcpEndpoint(c.req.raw)
+    } catch (err) {
+      console.error('[mcp] failed:', err)
+      return c.json({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal error' }, id: null }, 500)
+    }
+  })
+  // Stateless server: no stream to open or session to end.
+  app.on(['GET', 'DELETE'], '/mcp', (c) => c.body(null, 405, { Allow: 'POST' }))
+}
 
 // ---------------------------------------------------------------------------
 // NOTAM — GET /api/notam?icao=ESSA
