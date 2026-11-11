@@ -49,7 +49,8 @@ Legend: **Yes** = available, **Partial** = available with differences
 | Pre-flight warnings (airspace, below MSA, fuel) | Yes | Partial | Web has a dedicated warnings panel with all three checks. Native marks a leg below its MSA in red and warns when fuel required exceeds the tank, but has no airspace check in the plan. |
 | Alternate destination | Yes | Yes | |
 | Aircraft profiles | Yes | Yes | |
-| Fill in an aircraft profile from a POH PDF | Yes | No | Web only. On native, enter the values by hand, or create the aircraft on the web: profiles sync. |
+| Fill in an aircraft profile from a POH with your own AI assistant | Yes | Yes | Copy or share a prompt, paste the assistant's answer back. |
+| Fill in an aircraft profile from a POH PDF uploaded to the server | Yes | No | Web only, where the server has it configured. |
 | Saved routes, routes sync | Yes | Yes | |
 | Saved places (user waypoints) and folders | Yes | Yes | |
 | Find destination by fuel, surface and runway length | Yes | Yes | |

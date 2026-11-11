@@ -44,6 +44,7 @@
     "./alertStability": "./src/alertStability.ts",
     "./terrainCache": "./src/terrainCache.ts",
     "./airspeed": "./src/airspeed.ts",
+    "./pohImport": "./src/pohImport.ts",
     "./windForecast": "./src/windForecast.ts",
     "./subAreas": "./src/subAreas.ts",
     "./autoFlyDetect": "./src/autoFlyDetect.ts",

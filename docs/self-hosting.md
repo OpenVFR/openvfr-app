@@ -216,7 +216,9 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
     it too. Prefer the build minimum: the version name is not raised with
     every build.
 - `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_KEY` — optional, enables POH
-  PDF auto-fill (`/api/poh-extract`); the app works without it.
+  PDF auto-fill (`/api/poh-extract`); the app works without it. Filling a
+  profile from a POH through the pilot's own AI assistant (copy the prompt,
+  paste the answer back) needs no server configuration and works either way.
   `AZURE_OPENAI_DEPLOYMENT` names the model deployment. Each extraction sends
   the whole PDF to the model in one request and costs real money, so it is
   guarded: login required, and these limits, all optional positive integers:

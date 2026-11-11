@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import type { AircraftProfileDocType, AircraftCategory } from '../db/index'
 import { extractPohViaServer, RateLimitError } from '../utils/pohExtract'
+import { POH_FIELDS, type PohField } from '@open-vfr/shared/pohImport'
+import PohAssistantImport from './PohAssistantImport'
 import { useSyncRejected } from '../sync/cloudSync'
 import SyncRefusedNote from './SyncRefusedNote'
 import css from './AircraftLibrary.module.css'
@@ -148,19 +150,22 @@ interface FieldProps {
   type?:    string
   placeholder?: string
   tooltip?: string
-  pohMissing?: boolean
+  /** Set after a POH import when this field needs checking (not found, or looks wrong). */
+  pohNote?: string
+  /** POH page the imported value came from. */
+  pohPage?: string
   onChange: (v: string) => void
 }
 
-function Field({ label, unit, value, error, type = 'text', placeholder, tooltip, pohMissing, onChange }: FieldProps) {
-  const tip = pohMissing
-    ? `${tooltip ?? label} — not found in POH, verify manually`
-    : tooltip ?? label
+function Field({ label, unit, value, error, type = 'text', placeholder, tooltip, pohNote, pohPage, onChange }: FieldProps) {
+  const base = tooltip ?? label
+  const page = pohPage ? ` (POH page ${pohPage})` : ''
+  const tip = pohNote ? `${base} — ${pohNote}${page}` : `${base}${page}`
   return (
-    <div className={`${css.field}${error ? ` ${css.fieldError}` : ''}${pohMissing ? ` ${css.fieldPohMissing}` : ''}`}>
+    <div className={`${css.field}${error ? ` ${css.fieldError}` : ''}${pohNote ? ` ${css.fieldPohMissing}` : ''}`}>
       <label className={css.fieldLabel} title={tip}>
         {label}{unit && <span className={css.fieldUnit}>{unit}</span>}
-        {pohMissing && <span className={css.pohMissingBadge} title="Not found in POH — verify manually">?</span>}
+        {pohNote && <span className={css.pohMissingBadge} title={`${pohNote}${page}`}>?</span>}
       </label>
       <input
         className={css.fieldInput}
@@ -207,10 +212,15 @@ export default function AircraftLibrary({
   const [pohStage,     setPohStage]     = useState('')
   const [pohElapsedSec, setPohElapsedSec] = useState(0)
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  // Extracted-but-not-found fields from the last successful POH run — surfaced
-  // as a "?" badge next to the field so the user knows to verify manually
-  // rather than silently trusting a stale/default value.
-  const [pohMissing, setPohMissing] = useState<Set<keyof FormState>>(new Set())
+  // Fields from the last POH import that need checking (not found, or a value
+  // that looks wrong) — surfaced as a "?" badge next to the field so the user
+  // verifies them rather than silently trusting a stale/default value.
+  const [pohNotes, setPohNotes] = useState<Map<keyof FormState, string>>(new Map())
+  // POH page per imported value, shown in the field's tooltip.
+  const [pohPages, setPohPages] = useState<Map<keyof FormState, string>>(new Map())
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const [assistantApplied, setAssistantApplied] = useState(false)
+  const poh = (key: keyof FormState) => ({ pohNote: pohNotes.get(key), pohPage: pohPages.get(key) })
 
   // When entering edit mode, populate form from the profile.
   // Also cancel any pending retry countdown when the user navigates away.
@@ -222,7 +232,10 @@ export default function AircraftLibrary({
       setPohState('idle'); setPohError(''); setPohCountdown(0); setPohStage(''); setPohElapsedSec(0)
       if (mode === 'new') setForm(EMPTY_FORM)
       setErrors({})
-      setPohMissing(new Set())
+      setPohNotes(new Map())
+      setPohPages(new Map())
+      setAssistantOpen(false)
+      setAssistantApplied(false)
       return
     }
     const p = profiles.find(x => x.id === mode)
@@ -233,7 +246,33 @@ export default function AircraftLibrary({
     setForm(f => ({ ...f, [key]: val }))
     setErrors(e => { const n = { ...e }; delete n[key]; return n })
     // Manual edit — user has reviewed/overridden this field, clear the badge.
-    setPohMissing(m => { if (!m.has(key)) return m; const n = new Set(m); n.delete(key); return n })
+    setPohNotes(m => { if (!m.has(key)) return m; const n = new Map(m); n.delete(key); return n })
+  }
+
+  /**
+   * Merge imported POH values into the form. Fields without a value keep the
+   * user's entry and get a "not found" note; `warnings` mark values to check.
+   */
+  function applyPohValues(
+    values: Partial<Record<PohField, string>>,
+    warnings: Partial<Record<PohField, string>> = {},
+    pages: Partial<Record<PohField, string>> = {},
+  ) {
+    const notes = new Map<keyof FormState, string>()
+    const pageMap = new Map<keyof FormState, string>()
+    const patch: Partial<FormState> = {}
+    for (const key of POH_FIELDS) {
+      const v = values[key]
+      if (v === undefined) notes.set(key, 'not found in POH, verify manually')
+      else {
+        patch[key] = v
+        if (warnings[key]) notes.set(key, `${warnings[key]}, check against the POH`)
+        if (pages[key]) pageMap.set(key, pages[key]!)
+      }
+    }
+    setPohNotes(notes)
+    setPohPages(pageMap)
+    setForm(f => ({ ...f, ...patch }))
   }
 
   async function runExtraction(file: File) {
@@ -250,38 +289,7 @@ export default function AircraftLibrary({
         if (stage === 'extracting') setPohStage('Extracting performance data…')
       })
       pohFileRef.current = null
-      // Merge extracted fields into form — skip undefined values so existing
-      // user entries are preserved.
-      const EXTRACTABLE_KEYS: (keyof FormState)[] = [
-        'name', 'icaoType', 'cruiseAltFt', 'cruiseIas', 'fuelBurnLhr', 'maxFuelL',
-        'taxiFuelL', 'landingFuelL', 'serviceCeilingFt', 'rocSlFpm', 'climbIas',
-        'climbFuelLhr', 'descentFpm', 'descentIas', 'bestGlideIas', 'glideRatio', 'takeoffSpeedKts',
-      ]
-      const missing = new Set<keyof FormState>()
-      for (const key of EXTRACTABLE_KEYS) {
-        if ((result as Record<string, unknown>)[key] === undefined) missing.add(key)
-      }
-      setPohMissing(missing)
-      setForm(f => ({
-        ...f,
-        ...(result.name             !== undefined && { name:             result.name }),
-        ...(result.icaoType         !== undefined && { icaoType:         result.icaoType }),
-        ...(result.cruiseAltFt      !== undefined && { cruiseAltFt:      result.cruiseAltFt }),
-        ...(result.cruiseIas        !== undefined && { cruiseIas:        result.cruiseIas }),
-        ...(result.fuelBurnLhr      !== undefined && { fuelBurnLhr:      result.fuelBurnLhr }),
-        ...(result.maxFuelL         !== undefined && { maxFuelL:         result.maxFuelL }),
-        ...(result.taxiFuelL        !== undefined && { taxiFuelL:        result.taxiFuelL }),
-        ...(result.landingFuelL     !== undefined && { landingFuelL:     result.landingFuelL }),
-        ...(result.serviceCeilingFt !== undefined && { serviceCeilingFt: result.serviceCeilingFt }),
-        ...(result.rocSlFpm         !== undefined && { rocSlFpm:         result.rocSlFpm }),
-        ...(result.climbIas         !== undefined && { climbIas:         result.climbIas }),
-        ...(result.climbFuelLhr     !== undefined && { climbFuelLhr:     result.climbFuelLhr }),
-        ...(result.descentFpm       !== undefined && { descentFpm:       result.descentFpm }),
-        ...(result.descentIas       !== undefined && { descentIas:       result.descentIas }),
-        ...(result.bestGlideIas     !== undefined && { bestGlideIas:     result.bestGlideIas }),
-        ...(result.glideRatio       !== undefined && { glideRatio:       result.glideRatio }),
-        ...(result.takeoffSpeedKts  !== undefined && { takeoffSpeedKts:  result.takeoffSpeedKts }),
-      }))
+      applyPohValues(result)
       if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null }
       setPohState('done')
       setTimeout(() => setPohState('idle'), 3000)
@@ -435,26 +443,43 @@ export default function AircraftLibrary({
         <div className={css.formHeaderActions}>
           <button
             className={`${css.iconBtn} ${css.pohBtn}${pohBusy ? ` ${css.pohBtnBusy}` : ''}`}
-            title="Auto-fill from POH PDF using Azure AI"
+            title="Auto-fill from POH PDF on the server"
             disabled={pohBusy}
             onClick={() => { if (countdownTimerRef.current) { clearInterval(countdownTimerRef.current); countdownTimerRef.current = null } setPohState('idle'); setPohError(''); setPohCountdown(0); pohInputRef.current?.click() }}
           >
           {pohState === 'extracting' || pohState === 'querying' ? <span className={css.pohSpinner} /> : pohState === 'retrying' ? '⏱' : pohState === 'done' ? '✓' : '📄'}
           </button>
+          <button
+            className={`${css.iconBtn}${assistantOpen ? ` ${css.iconBtnActive}` : ''}`}
+            title="Fill from POH with your own AI assistant"
+            aria-expanded={assistantOpen}
+            onClick={() => setAssistantOpen(o => !o)}
+          >AI</button>
           <button className={css.iconBtn} title="Back to list" onClick={() => setMode('list')}><IconX size={14} aria-hidden="true" /></button>
         </div>
       </div>
 
+      {assistantOpen && (
+        <PohAssistantImport
+          onApply={r => {
+            applyPohValues(r.values, r.warnings, r.pages)
+            setAssistantOpen(false)
+            setPohError('')
+            setPohState('idle')
+            setAssistantApplied(true)
+          }}
+        />
+      )}
       {pohState === 'error' && pohError && (
         <p className={css.pohError}>{pohError}</p>
       )}
       {pohState === 'retrying' && (
         <p className={css.pohRetrying}>{pohError || 'Rate limited.'} Retrying in {pohCountdown}s… (or click ⏱ to pick a new file)</p>
       )}
-      {pohState === 'done' && (
+      {(pohState === 'done' || assistantApplied) && (
         <p className={css.pohSuccess}>
           Fields populated — review and save.
-          {pohMissing.size > 0 && ' Fields marked “?” were not found in the POH — verify manually.'}
+          {pohNotes.size > 0 && ' Fields marked “?” were not found or look wrong — check them against the POH.'}
         </p>
       )}
       {(pohState === 'extracting' || pohState === 'querying') && (
@@ -466,9 +491,9 @@ export default function AircraftLibrary({
 
       <div className={css.form}>
         <div className={css.sectionLabel}>Identity</div>
-        <Field label="Name"         value={form.name}         error={errors.name}         placeholder="e.g. My Cessna 172" tooltip="Your name for this aircraft profile" onChange={v => set('name', v)} />
+        <Field label="Name"         value={form.name}         error={errors.name}         placeholder="e.g. My Cessna 172" tooltip="Your name for this aircraft profile" {...poh('name')} onChange={v => set('name', v)} />
         <Field label="Registration" value={form.registration} error={errors.registration} placeholder="SE-ABC"              tooltip="Aircraft registration mark (e.g. SE-ABC)" onChange={v => set('registration', v)} />
-        <Field label="ICAO Type"    value={form.icaoType}     placeholder="C172"                                            tooltip="ICAO type designator (e.g. C172, PA28, EC35). Used for wake turbulence category." pohMissing={pohMissing.has('icaoType')} onChange={v => set('icaoType', v)} />
+        <Field label="ICAO Type"    value={form.icaoType}     placeholder="C172"                                            tooltip="ICAO type designator (e.g. C172, PA28, EC35). Used for wake turbulence category." {...poh('icaoType')} onChange={v => set('icaoType', v)} />
 
         {/* Category selector */}
         <div className={css.field}>
@@ -486,17 +511,17 @@ export default function AircraftLibrary({
         </div>
 
         <div className={css.sectionLabel}>Performance</div>
-        <Field label="Cruise Alt"   unit="ft"  type="number" value={form.cruiseAltFt}  error={errors.cruiseAltFt}  tooltip="Typical cruising altitude in feet MSL. Used for airspace checks and flight profile projection." pohMissing={pohMissing.has('cruiseAltFt')} onChange={v => set('cruiseAltFt', v)} />
-        <Field label="Cruise IAS"   unit="kts" type="number" value={form.cruiseIas}    error={errors.cruiseIas}    tooltip="Typical cruise indicated airspeed in knots. Used to calculate leg times and fuel burn." pohMissing={pohMissing.has('cruiseIas')} onChange={v => set('cruiseIas', v)} />
-        <Field label="Takeoff speed" unit="kts" type="number" value={form.takeoffSpeedKts} pohMissing={pohMissing.has('takeoffSpeedKts')} tooltip="Ground speed at which this aircraft takes off, in knots. Used to detect takeoff and landing for auto flying mode and the flight log. 0 = default for the aircraft category." onChange={v => set('takeoffSpeedKts', v)} />
+        <Field label="Cruise Alt"   unit="ft"  type="number" value={form.cruiseAltFt}  error={errors.cruiseAltFt}  tooltip="Typical cruising altitude in feet MSL. Used for airspace checks and flight profile projection." {...poh('cruiseAltFt')} onChange={v => set('cruiseAltFt', v)} />
+        <Field label="Cruise IAS"   unit="kts" type="number" value={form.cruiseIas}    error={errors.cruiseIas}    tooltip="Typical cruise indicated airspeed in knots. Used to calculate leg times and fuel burn." {...poh('cruiseIas')} onChange={v => set('cruiseIas', v)} />
+        <Field label="Takeoff speed" unit="kts" type="number" value={form.takeoffSpeedKts} {...poh('takeoffSpeedKts')} tooltip="Ground speed at which this aircraft takes off, in knots. Used to detect takeoff and landing for auto flying mode and the flight log. 0 = default for the aircraft category." onChange={v => set('takeoffSpeedKts', v)} />
 
         {HAS_FUEL(form.category) && (
           <>
             <div className={css.sectionLabel}>Fuel</div>
-            <Field label="Burn"         unit="L/h" type="number" value={form.fuelBurnLhr}  error={errors.fuelBurnLhr}  tooltip="Cruise fuel consumption in litres per hour." pohMissing={pohMissing.has('fuelBurnLhr')} onChange={v => set('fuelBurnLhr', v)} />
-            <Field label="Max capacity" unit="L"   type="number" value={form.maxFuelL}     error={errors.maxFuelL}     tooltip="Total usable fuel capacity in litres." pohMissing={pohMissing.has('maxFuelL')} onChange={v => set('maxFuelL', v)} />
-            <Field label="Taxi / T/O"   unit="L"   type="number" value={form.taxiFuelL}    tooltip="Fuel used for engine start, taxi and take-off roll. Deducted before departure fuel is calculated." pohMissing={pohMissing.has('taxiFuelL')} onChange={v => set('taxiFuelL', v)} />
-            <Field label="Reserve LDG"  unit="L"   type="number" value={form.landingFuelL} tooltip="Fixed landing fuel reserve in litres. Always kept in reserve and never used in fuel planning." pohMissing={pohMissing.has('landingFuelL')} onChange={v => set('landingFuelL', v)} />
+            <Field label="Burn"         unit="L/h" type="number" value={form.fuelBurnLhr}  error={errors.fuelBurnLhr}  tooltip="Cruise fuel consumption in litres per hour." {...poh('fuelBurnLhr')} onChange={v => set('fuelBurnLhr', v)} />
+            <Field label="Max capacity" unit="L"   type="number" value={form.maxFuelL}     error={errors.maxFuelL}     tooltip="Total usable fuel capacity in litres." {...poh('maxFuelL')} onChange={v => set('maxFuelL', v)} />
+            <Field label="Taxi / T/O"   unit="L"   type="number" value={form.taxiFuelL}    tooltip="Fuel used for engine start, taxi and take-off roll. Deducted before departure fuel is calculated." {...poh('taxiFuelL')} onChange={v => set('taxiFuelL', v)} />
+            <Field label="Reserve LDG"  unit="L"   type="number" value={form.landingFuelL} tooltip="Fixed landing fuel reserve in litres. Always kept in reserve and never used in fuel planning." {...poh('landingFuelL')} onChange={v => set('landingFuelL', v)} />
             <Field label="Holding"      unit="min" type="number" value={form.holdingMin}   tooltip="Extra holding allowance in minutes, burned at cruise fuel rate. Added on top of trip fuel." onChange={v => set('holdingMin', v)} />
             <Field label="Diversion"    unit="min" type="number" value={form.diversionMin} tooltip="Diversion reserve in minutes, burned at cruise fuel rate (default 30)." onChange={v => set('diversionMin', v)} />
             <Field label="Contingency"  unit="%"   type="number" value={form.contingencyPct} error={errors.contingencyPct} tooltip="Extra fuel as a percentage of trip fuel (e.g. 5 for 5%). EU OPS minimum is 5%." onChange={v => set('contingencyPct', v)} />
@@ -506,15 +531,15 @@ export default function AircraftLibrary({
         {HAS_ENGINE(form.category) && (
           <>
             <div className={css.sectionLabel}>Climb / Descent</div>
-            <Field label="Service ceiling" unit="ft"  type="number" value={form.serviceCeilingFt} tooltip="Maximum altitude where the aircraft can sustain at least 100 fpm rate of climb." pohMissing={pohMissing.has('serviceCeilingFt')} onChange={v => set('serviceCeilingFt', v)} />
-            <Field label="RoC at SL"       unit="fpm" type="number" value={form.rocSlFpm}         tooltip="Best rate of climb (Vy) at sea level in feet per minute. Used to project climb performance." pohMissing={pohMissing.has('rocSlFpm')} onChange={v => set('rocSlFpm', v)} />
+            <Field label="Service ceiling" unit="ft"  type="number" value={form.serviceCeilingFt} tooltip="Maximum altitude where the aircraft can sustain at least 100 fpm rate of climb." {...poh('serviceCeilingFt')} onChange={v => set('serviceCeilingFt', v)} />
+            <Field label="RoC at SL"       unit="fpm" type="number" value={form.rocSlFpm}         tooltip="Best rate of climb (Vy) at sea level in feet per minute. Used to project climb performance." {...poh('rocSlFpm')} onChange={v => set('rocSlFpm', v)} />
             <Field label="RoC at ceiling"  unit="fpm" type="number" value={form.rocCeilingFpm}    tooltip="Rate of climb just below the service ceiling, typically 50–100 fpm. Used to interpolate climb performance at altitude." onChange={v => set('rocCeilingFpm', v)} />
-            <Field label="Climb IAS"       unit="kts" type="number" value={form.climbIas}         tooltip="Best rate of climb speed (Vy) in knots IAS." pohMissing={pohMissing.has('climbIas')} onChange={v => set('climbIas', v)} />
+            <Field label="Climb IAS"       unit="kts" type="number" value={form.climbIas}         tooltip="Best rate of climb speed (Vy) in knots IAS." {...poh('climbIas')} onChange={v => set('climbIas', v)} />
             {HAS_FUEL(form.category) && (
-              <Field label="Climb fuel burn" unit="L/h" type="number" value={form.climbFuelLhr} tooltip="Fuel consumption during climb in litres per hour." pohMissing={pohMissing.has('climbFuelLhr')} onChange={v => set('climbFuelLhr', v)} />
+              <Field label="Climb fuel burn" unit="L/h" type="number" value={form.climbFuelLhr} tooltip="Fuel consumption during climb in litres per hour." {...poh('climbFuelLhr')} onChange={v => set('climbFuelLhr', v)} />
             )}
-            <Field label="Descent rate" unit="fpm" type="number" value={form.descentFpm}      tooltip="Typical descent rate in feet per minute (enter as a positive number, e.g. 500)." pohMissing={pohMissing.has('descentFpm')} onChange={v => set('descentFpm', v)} />
-            <Field label="Descent IAS"  unit="kts" type="number" value={form.descentIas}      tooltip="Typical descent indicated airspeed in knots." pohMissing={pohMissing.has('descentIas')} onChange={v => set('descentIas', v)} />
+            <Field label="Descent rate" unit="fpm" type="number" value={form.descentFpm}      tooltip="Typical descent rate in feet per minute (enter as a positive number, e.g. 500)." {...poh('descentFpm')} onChange={v => set('descentFpm', v)} />
+            <Field label="Descent IAS"  unit="kts" type="number" value={form.descentIas}      tooltip="Typical descent indicated airspeed in knots." {...poh('descentIas')} onChange={v => set('descentIas', v)} />
             {HAS_FUEL(form.category) && (
               <Field label="Descent fuel burn" unit="L/h" type="number" value={form.descentFuelLhr} tooltip="Fuel consumption during descent in litres per hour." onChange={v => set('descentFuelLhr', v)} />
             )}
@@ -524,8 +549,8 @@ export default function AircraftLibrary({
         {HAS_GLIDE(form.category) && (
           <>
             <div className={css.sectionLabel}>Glide</div>
-            <Field label="Best glide IAS" unit="kts" type="number" value={form.bestGlideIas} tooltip="Best glide speed in knots IAS — the speed that maximises glide distance (min sink / max L/D)." pohMissing={pohMissing.has('bestGlideIas')} onChange={v => set('bestGlideIas', v)} />
-            <Field label="Glide ratio"    unit=":1"  type="number" value={form.glideRatio}   tooltip="Best glide ratio, e.g. 30 for 30:1 (30 metres forward per 1 metre of altitude lost)." pohMissing={pohMissing.has('glideRatio')} onChange={v => set('glideRatio', v)} />
+            <Field label="Best glide IAS" unit="kts" type="number" value={form.bestGlideIas} tooltip="Best glide speed in knots IAS — the speed that maximises glide distance (min sink / max L/D)." {...poh('bestGlideIas')} onChange={v => set('bestGlideIas', v)} />
+            <Field label="Glide ratio"    unit=":1"  type="number" value={form.glideRatio}   tooltip="Best glide ratio, e.g. 30 for 30:1 (30 metres forward per 1 metre of altitude lost)." {...poh('glideRatio')} onChange={v => set('glideRatio', v)} />
           </>
         )}
       </div>

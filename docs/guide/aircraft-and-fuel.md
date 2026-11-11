@@ -17,11 +17,25 @@ Open the aircraft list from the planning panel. You can:
 - **Create** a new aircraft, or **duplicate** an existing one as a start.
 - **Edit** or **delete** (with a confirmation step).
 - **Select** the aircraft used for the current route. Tap again to deselect.
-- **Import from a POH (web only):** upload the performance pages as a PDF and
-  the app proposes values. The mobile app has no PDF import: create the
-  aircraft on the web and it appears on your phone through sync. Fields it could not find are flagged with a `?`: always
-  check those against your own documentation. Importing needs an account
-  and sends the document to a cloud service for extraction.
+- **Fill from a POH with your own AI assistant (web and mobile):** in the
+  aircraft form, choose **AI** (web) or **Fill from POH with your AI
+  assistant** (mobile). Copy or share the prompt, open the AI chat assistant
+  you already use (any assistant that reads PDF files), attach the POH and
+  send the prompt. Copy the whole answer, paste it back into the form and
+  choose **Fill in the form**. The PDF goes only to your assistant, not to
+  OpenVFR, and no OpenVFR account is needed. The app checks the numbers it
+  gets: a field the answer did not contain, or a value that looks wrong
+  (out of range, or not consistent with another field, such as a reserve
+  larger than the tank), is marked for you to check. On the web the page
+  the assistant read a value from shows when you hover the field.
+- **Import a POH PDF on the server (web only, where the server offers it):**
+  upload the performance pages as a PDF and the server proposes values.
+  This needs an account and sends the document to the cloud service the
+  server is configured with. Fields it could not find are flagged with a
+  `?`.
+
+  Whichever way you import, check every value against your own
+  documentation before you save.
 
 Profiles sync between your devices when you are signed in.
 

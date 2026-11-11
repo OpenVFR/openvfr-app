@@ -1,15 +1,18 @@
 /**
  * AircraftEditSheet — create/edit an aircraft profile on-device.
  *
- * Native parity with web's AircraftLibrary.tsx form (no POH import here —
- * that stays server-proxied and web-only for now). Saves via useAircraftSync's
- * pushAircraft (local AsyncStorage + best-effort cloud upsert).
+ * Native parity with web's AircraftLibrary.tsx form. POH import here goes
+ * through the pilot's own AI assistant (share the prompt, paste the answer
+ * back); the server-side PDF extraction stays web-only. Saves via
+ * useAircraftSync's pushAircraft (local AsyncStorage + best-effort cloud
+ * upsert).
  */
 
 import React, { useEffect, useState } from 'react'
 import {
-  View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView,
+  View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Share,
 } from 'react-native'
+import { buildPohPrompt, parsePohReply, PohReplyError, POH_FIELDS } from '@open-vfr/shared/pohImport'
 import { AppIcon } from './AppIcon'
 import * as Crypto from 'expo-crypto'
 import type { AircraftProfileDocType, AircraftCategory } from '../types/db'
@@ -88,14 +91,52 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
   const styles = useThemedStyles(makeStyles)
   const [form, setForm]     = useState<FormState>(EMPTY)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  // POH import through the pilot's AI assistant.
+  const [pohOpen, setPohOpen]       = useState(false)
+  const [pohReply, setPohReply]     = useState('')
+  const [pohError, setPohError]     = useState('')
+  const [pohDone, setPohDone]       = useState(false)
+  // Per field: why the imported value needs checking (not found, looks wrong).
+  const [pohNotes, setPohNotes]     = useState<Partial<Record<keyof FormState, string>>>({})
 
   useEffect(() => {
-    if (visible) { setForm(profile ? toForm(profile) : EMPTY); setErrors({}) }
+    if (visible) {
+      setForm(profile ? toForm(profile) : EMPTY); setErrors({})
+      setPohOpen(false); setPohReply(''); setPohError(''); setPohDone(false); setPohNotes({})
+    }
   }, [visible, profile])
 
   function set<K extends keyof FormState>(key: K, val: FormState[K]) {
     setForm(f => ({ ...f, [key]: val }))
     setErrors(e => { if (!e[key]) return e; const n = { ...e }; delete n[key]; return n })
+    setPohNotes(m => { if (!m[key]) return m; const n = { ...m }; delete n[key]; return n })
+  }
+
+  function sharePohPrompt() {
+    // The share sheet lists the installed assistant apps; copying is also offered there.
+    void Share.share({ message: buildPohPrompt() })
+  }
+
+  function applyPohReply() {
+    try {
+      const r = parsePohReply(pohReply)
+      const notes: Partial<Record<keyof FormState, string>> = {}
+      const patch: Partial<FormState> = {}
+      for (const key of POH_FIELDS) {
+        const v = r.values[key]
+        const page = r.pages[key] ? ` (POH page ${r.pages[key]})` : ''
+        if (v === undefined) notes[key] = 'Not found in POH, verify'
+        else {
+          patch[key] = v
+          if (r.warnings[key]) notes[key] = `${r.warnings[key]}${page}, check against the POH`
+        }
+      }
+      setForm(f => ({ ...f, ...patch }))
+      setPohNotes(notes)
+      setPohError(''); setPohReply(''); setPohOpen(false); setPohDone(true)
+    } catch (err) {
+      setPohError(err instanceof PohReplyError ? err.message : 'Could not read the answer.')
+    }
   }
 
   function validate(): boolean {
@@ -155,10 +196,55 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       testID="aircraft-edit-sheet"
       contentContainerStyle={styles.body}
     >
+      <TouchableOpacity
+        style={styles.pohToggle}
+        onPress={() => setPohOpen(o => !o)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: pohOpen }}
+        testID="aircraft-poh-assistant"
+      >
+        <Text style={styles.pohToggleTxt}>{pohOpen ? 'Hide POH import' : 'Fill from POH with your AI assistant'}</Text>
+      </TouchableOpacity>
+      {pohOpen && (
+        <View style={styles.pohBox}>
+          <Text style={styles.pohStep}>1. Share the prompt to your AI assistant app (or copy it).</Text>
+          <TouchableOpacity style={styles.pohBtn} onPress={sharePohPrompt}>
+            <Text style={styles.btnTxt}>Share prompt</Text>
+          </TouchableOpacity>
+          <Text style={styles.pohStep}>2. In the assistant, attach the POH PDF and send the prompt.</Text>
+          <Text style={styles.pohStep}>3. Copy the whole answer and paste it here:</Text>
+          <TextInput
+            style={[styles.input, styles.pohInput]}
+            value={pohReply}
+            onChangeText={t => { setPohReply(t); setPohError('') }}
+            placeholder='{"name": "…", "cruiseIas": …}'
+            placeholderTextColor={theme.textFaint}
+            multiline
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="Answer from your AI assistant"
+          />
+          {!!pohError && <Text style={styles.fieldErr}>{pohError}</Text>}
+          <TouchableOpacity
+            style={[styles.pohBtn, styles.btnPrimary, !pohReply.trim() && styles.btnDisabled]}
+            disabled={!pohReply.trim()}
+            onPress={applyPohReply}
+          >
+            <Text style={styles.btnPrimaryTxt}>Fill in the form</Text>
+          </TouchableOpacity>
+          <Text style={styles.pohHint}>The PDF stays between you and your assistant.</Text>
+        </View>
+      )}
+      {pohDone && (
+        <Text style={styles.pohDone}>
+          Fields filled. {Object.keys(pohNotes).length > 0 ? 'Check the marked fields against the POH, then save.' : 'Check them against the POH, then save.'}
+        </Text>
+      )}
+
       <SectionLabel text="Identity" />
-      <FieldRow label="Name" value={form.name} error={errors.name} onChange={v => set('name', v)} placeholder="e.g. My Cessna 172" />
+      <FieldRow label="Name" value={form.name} error={errors.name} note={pohNotes.name} onChange={v => set('name', v)} placeholder="e.g. My Cessna 172" />
       <FieldRow label="Registration" value={form.registration} error={errors.registration} onChange={v => set('registration', v)} placeholder="SE-ABC" autoCap />
-      <FieldRow label="ICAO Type" value={form.icaoType} onChange={v => set('icaoType', v)} placeholder="C172" autoCap />
+      <FieldRow label="ICAO Type" value={form.icaoType} note={pohNotes.icaoType} onChange={v => set('icaoType', v)} placeholder="C172" autoCap />
 
       <Text style={styles.fieldLabel}>Category</Text>
       <View style={styles.catRow}>
@@ -174,17 +260,17 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       </View>
 
       <SectionLabel text="Performance" />
-      <FieldRow label="Cruise Alt" unit="ft" value={form.cruiseAltFt} error={errors.cruiseAltFt} numeric onChange={v => set('cruiseAltFt', v)} />
-      <FieldRow label="Cruise IAS" unit="kts" value={form.cruiseIas} error={errors.cruiseIas} numeric onChange={v => set('cruiseIas', v)} />
-      <FieldRow label="Takeoff speed (0 = default)" unit="kts" value={form.takeoffSpeedKts} numeric onChange={v => set('takeoffSpeedKts', v)} />
+      <FieldRow label="Cruise Alt" unit="ft" value={form.cruiseAltFt} error={errors.cruiseAltFt} note={pohNotes.cruiseAltFt} numeric onChange={v => set('cruiseAltFt', v)} />
+      <FieldRow label="Cruise IAS" unit="kts" value={form.cruiseIas} error={errors.cruiseIas} note={pohNotes.cruiseIas} numeric onChange={v => set('cruiseIas', v)} />
+      <FieldRow label="Takeoff speed (0 = default)" unit="kts" value={form.takeoffSpeedKts} note={pohNotes.takeoffSpeedKts} numeric onChange={v => set('takeoffSpeedKts', v)} />
 
       {HAS_FUEL(form.category) && (
         <>
           <SectionLabel text="Fuel" />
-          <FieldRow label="Burn" unit="L/h" value={form.fuelBurnLhr} error={errors.fuelBurnLhr} numeric onChange={v => set('fuelBurnLhr', v)} />
-          <FieldRow label="Max capacity" unit="L" value={form.maxFuelL} error={errors.maxFuelL} numeric onChange={v => set('maxFuelL', v)} />
-          <FieldRow label="Taxi / T/O" unit="L" value={form.taxiFuelL} numeric onChange={v => set('taxiFuelL', v)} />
-          <FieldRow label="Reserve LDG" unit="L" value={form.landingFuelL} numeric onChange={v => set('landingFuelL', v)} />
+          <FieldRow label="Burn" unit="L/h" value={form.fuelBurnLhr} error={errors.fuelBurnLhr} note={pohNotes.fuelBurnLhr} numeric onChange={v => set('fuelBurnLhr', v)} />
+          <FieldRow label="Max capacity" unit="L" value={form.maxFuelL} error={errors.maxFuelL} note={pohNotes.maxFuelL} numeric onChange={v => set('maxFuelL', v)} />
+          <FieldRow label="Taxi / T/O" unit="L" value={form.taxiFuelL} note={pohNotes.taxiFuelL} numeric onChange={v => set('taxiFuelL', v)} />
+          <FieldRow label="Reserve LDG" unit="L" value={form.landingFuelL} note={pohNotes.landingFuelL} numeric onChange={v => set('landingFuelL', v)} />
           <FieldRow label="Holding" unit="min" value={form.holdingMin} numeric onChange={v => set('holdingMin', v)} />
           <FieldRow label="Diversion" unit="min" value={form.diversionMin} numeric onChange={v => set('diversionMin', v)} />
           <FieldRow label="Contingency" unit="%" value={form.contingencyPct} numeric onChange={v => set('contingencyPct', v)} />
@@ -194,15 +280,15 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       {HAS_ENGINE(form.category) && (
         <>
           <SectionLabel text="Climb / Descent" />
-          <FieldRow label="Service ceiling" unit="ft" value={form.serviceCeilingFt} numeric onChange={v => set('serviceCeilingFt', v)} />
-          <FieldRow label="RoC at SL" unit="fpm" value={form.rocSlFpm} numeric onChange={v => set('rocSlFpm', v)} />
+          <FieldRow label="Service ceiling" unit="ft" value={form.serviceCeilingFt} note={pohNotes.serviceCeilingFt} numeric onChange={v => set('serviceCeilingFt', v)} />
+          <FieldRow label="RoC at SL" unit="fpm" value={form.rocSlFpm} note={pohNotes.rocSlFpm} numeric onChange={v => set('rocSlFpm', v)} />
           <FieldRow label="RoC at ceiling" unit="fpm" value={form.rocCeilingFpm} numeric onChange={v => set('rocCeilingFpm', v)} />
-          <FieldRow label="Climb IAS" unit="kts" value={form.climbIas} numeric onChange={v => set('climbIas', v)} />
+          <FieldRow label="Climb IAS" unit="kts" value={form.climbIas} note={pohNotes.climbIas} numeric onChange={v => set('climbIas', v)} />
           {HAS_FUEL(form.category) && (
-            <FieldRow label="Climb fuel burn" unit="L/h" value={form.climbFuelLhr} numeric onChange={v => set('climbFuelLhr', v)} />
+            <FieldRow label="Climb fuel burn" unit="L/h" value={form.climbFuelLhr} note={pohNotes.climbFuelLhr} numeric onChange={v => set('climbFuelLhr', v)} />
           )}
-          <FieldRow label="Descent rate" unit="fpm" value={form.descentFpm} numeric onChange={v => set('descentFpm', v)} />
-          <FieldRow label="Descent IAS" unit="kts" value={form.descentIas} numeric onChange={v => set('descentIas', v)} />
+          <FieldRow label="Descent rate" unit="fpm" value={form.descentFpm} note={pohNotes.descentFpm} numeric onChange={v => set('descentFpm', v)} />
+          <FieldRow label="Descent IAS" unit="kts" value={form.descentIas} note={pohNotes.descentIas} numeric onChange={v => set('descentIas', v)} />
           {HAS_FUEL(form.category) && (
             <FieldRow label="Descent fuel burn" unit="L/h" value={form.descentFuelLhr} numeric onChange={v => set('descentFuelLhr', v)} />
           )}
@@ -212,8 +298,8 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       {HAS_GLIDE(form.category) && (
         <>
           <SectionLabel text="Glide" />
-          <FieldRow label="Best glide IAS" unit="kts" value={form.bestGlideIas} numeric onChange={v => set('bestGlideIas', v)} />
-          <FieldRow label="Glide ratio" unit=":1" value={form.glideRatio} numeric onChange={v => set('glideRatio', v)} />
+          <FieldRow label="Best glide IAS" unit="kts" value={form.bestGlideIas} note={pohNotes.bestGlideIas} numeric onChange={v => set('bestGlideIas', v)} />
+          <FieldRow label="Glide ratio" unit=":1" value={form.glideRatio} note={pohNotes.glideRatio} numeric onChange={v => set('glideRatio', v)} />
         </>
       )}
 
@@ -235,8 +321,10 @@ function SectionLabel({ text }: { text: string }) {
   return <Text style={styles.sectionLabel}>{text}</Text>
 }
 
-function FieldRow({ label, unit, value, error, numeric, autoCap, placeholder, onChange }: {
+function FieldRow({ label, unit, value, error, note, numeric, autoCap, placeholder, onChange }: {
   label: string; unit?: string; value: string; error?: string
+  /** Why an imported POH value needs checking. */
+  note?: string
   numeric?: boolean; autoCap?: boolean; placeholder?: string
   onChange: (v: string) => void
 }) {
@@ -256,6 +344,7 @@ function FieldRow({ label, unit, value, error, numeric, autoCap, placeholder, on
         keyboardType={numeric ? 'numeric' : 'default'}
         autoCapitalize={autoCap ? 'characters' : 'none'}
       />
+      {!!note && <Text style={styles.fieldNote}>{note}</Text>}
     </View>
   )
 }
@@ -289,6 +378,25 @@ function makeStyles(theme: ScaledTheme) {
   fieldLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   fieldLabel: { color: theme.textMuted, fontSize: theme.textXs, marginBottom: 3 },
   fieldErr: { color: theme.statusDanger, fontSize: theme.textXs },
+  fieldNote: { color: theme.statusWarn, fontSize: theme.textXs, marginTop: 2 },
+  pohToggle: {
+    alignItems: 'center', paddingVertical: 8, marginBottom: theme.space2,
+    borderRadius: theme.radiusMd, borderWidth: 1, borderColor: theme.borderDefault, borderStyle: 'dashed',
+  },
+  pohToggleTxt: { color: theme.accentBlue, fontSize: theme.textSm, fontWeight: '600' },
+  pohBox: {
+    gap: theme.space2, padding: theme.space2, marginBottom: theme.space2,
+    borderRadius: theme.radiusMd, borderWidth: 1, borderColor: theme.borderDefault,
+  },
+  pohStep: { color: theme.textSecondary, fontSize: theme.textXs },
+  pohBtn: {
+    alignItems: 'center', paddingVertical: 8,
+    borderRadius: theme.radiusMd, borderWidth: 1, borderColor: theme.borderDefault,
+  },
+  pohInput: { minHeight: 90, textAlignVertical: 'top' },
+  pohHint: { color: theme.textFaint, fontSize: theme.textXs },
+  pohDone: { color: theme.statusOk, fontSize: theme.textXs, marginBottom: theme.space2 },
+  btnDisabled: { opacity: 0.5 },
   input: {
     backgroundColor: theme.surfaceOverlay, borderWidth: 1, borderColor: theme.borderDefault,
     borderRadius: theme.radiusSm, paddingHorizontal: theme.space2, paddingVertical: 7,
