@@ -472,7 +472,7 @@ export function legLine(l: LegAltitude): string {
   const msa = l.msaFt > 0 ? `MSA ${l.msaFt.toLocaleString('en-US')} ft${l.msaApplies ? '' : ' (near departure/destination)'}` : 'MSA unknown'
   const ctl = l.controlledFloorFt !== null ? `, controlled airspace from ${l.controlledFloorFt.toLocaleString('en-US')} ft` : ''
   const issues = (l.planned.length ? ` Planned: ${l.planned.join('; ')}.` : '') + (l.notes.length ? ` ${l.notes.join(' ')}` : '')
-  const n = (s: string) => (/^[A-Z0-9]{2,5}(\/[A-Z0-9 ]{2,20})?$|^\d+\.\d+[NS] \d+\.\d+[EW]$/.test(s) ? s : quote(s, 40))
+  const n = (s: string) => (/^[A-Z0-9]{2,6}(\/[A-Z0-9 ]{2,20})?$|^\d+\.\d+[NS] \d+\.\d+[EW]$/.test(s) ? s : quote(s, 40))
   const cause = l.msaCause ? ` (set by ${l.msaCause})` : ''
   return `- Leg ${l.leg} ${n(l.from)} → ${n(l.to)}, MT ${String(l.magneticTrackDeg).padStart(3, '0')}°, ${l.lengthNm} NM: planned ${l.plannedFt.toLocaleString('en-US')} ft, ${msa}${cause}${ctl}.${issues} Suggested: ${l.advice.text}`
 }

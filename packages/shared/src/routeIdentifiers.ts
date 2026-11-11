@@ -1,6 +1,8 @@
 /**
- * Resolve route point identifiers against the aerodrome, navaid and
- * waypoint data: "ESSB", "ARL", "ESNV/NORTH", "5939N01756E".
+ * Resolve route point identifiers against the aerodrome, navaid, waypoint
+ * and landmark data: "ESSB", "ARL", "ESNV/NORTH", "LM/Hassela kyrka",
+ * "5939N01756E". Landmarks are the named ones only (churches, water towers,
+ * windmills...), written LM/<name>.
  *
  * Reporting points repeat between aerodromes (NORTH exists at several), so a
  * bare name is resolved to the copy that belongs to an aerodrome named in
@@ -12,8 +14,8 @@ import type { RouteWaypoint } from './routeCalc'
 
 type FC = { features: { geometry: { type?: string; coordinates: unknown } | null; properties: Record<string, unknown> | null }[] }
 
-interface IndexedPoint {
-  kind: 'aerodrome' | 'navaid' | 'waypoint'
+export interface IndexedPoint {
+  kind: 'aerodrome' | 'navaid' | 'waypoint' | 'landmark'
   id: string
   name: string
   lat: number
@@ -27,6 +29,8 @@ export interface PointIndex {
   aerodromes: Map<string, IndexedPoint>
   navaids: Map<string, IndexedPoint[]>
   waypoints: Map<string, IndexedPoint[]>
+  /** Named landmarks by upper-case name. */
+  landmarks: Map<string, IndexedPoint[]>
 }
 
 function coords(f: FC['features'][number]): [number, number] | null {
@@ -36,8 +40,8 @@ function coords(f: FC['features'][number]): [number, number] | null {
 
 const push = (m: Map<string, IndexedPoint[]>, k: string, p: IndexedPoint) => { const l = m.get(k); if (l) l.push(p); else m.set(k, [p]) }
 
-export function buildPointIndex(sets: { aerodromes?: FC | null; navaids?: FC | null; waypoints?: FC | null }): PointIndex {
-  const idx: PointIndex = { aerodromes: new Map(), navaids: new Map(), waypoints: new Map() }
+export function buildPointIndex(sets: { aerodromes?: FC | null; navaids?: FC | null; waypoints?: FC | null; landmarks?: FC | null }): PointIndex {
+  const idx: PointIndex = { aerodromes: new Map(), navaids: new Map(), waypoints: new Map(), landmarks: new Map() }
   for (const f of sets.aerodromes?.features ?? []) {
     const c = coords(f); const p = f.properties ?? {}
     const icao = String(p['icao'] ?? '').toUpperCase()
@@ -55,10 +59,29 @@ export function buildPointIndex(sets: { aerodromes?: FC | null; navaids?: FC | n
     const ad = String(p['aerodrome'] ?? '').toUpperCase() || undefined
     if (c && id) push(idx.waypoints, id, { kind: 'waypoint', id, name: String(p['name'] ?? id), lng: c[0], lat: c[1], aerodrome: ad })
   }
+  for (const f of sets.landmarks?.features ?? []) {
+    const c = coords(f); const p = f.properties ?? {}
+    const name = String(p['name'] ?? '').trim()
+    if (c && name) push(idx.landmarks, name.toUpperCase(), { kind: 'landmark', id: name, name: String(p['kind'] ?? 'landmark'), lng: c[0], lat: c[1] })
+  }
   return idx
 }
 
+/** The identifier to write a point with in a route (what resolveRoutePoints accepts). */
+export function routeIdentifier(p: IndexedPoint): string {
+  return p.kind === 'waypoint' && p.aerodrome ? `${p.aerodrome}/${p.id}` : p.kind === 'landmark' ? `LM/${p.id}` : p.id
+}
+
 export type Resolved = { ok: true; point: RouteWaypoint } | { ok: false; token: string; reason: string }
+
+/** Degrees-minutes coordinate a route accepts, e.g. 5939N01756E. */
+export function fmtCoord(lat: number, lng: number): string {
+  const dm = (v: number, w: number) => {
+    const a = Math.abs(v), d = Math.floor(a), m = Math.round((a - d) * 60)
+    return m === 60 ? `${String(d + 1).padStart(w, '0')}00` : `${String(d).padStart(w, '0')}${String(m).padStart(2, '0')}`
+  }
+  return `${dm(lat, 2)}${lat >= 0 ? 'N' : 'S'}${dm(lng, 3)}${lng >= 0 ? 'E' : 'W'}`
+}
 
 function toWaypoint(p: IndexedPoint): RouteWaypoint {
   const name = p.kind === 'waypoint' && p.aerodrome ? `${p.aerodrome}/${p.id}` : p.id
@@ -75,6 +98,15 @@ export function resolveRoutePoints(tokens: readonly string[], idx: PointIndex): 
   return clean.map((token): Resolved => {
     const ad = idx.aerodromes.get(token)
     if (ad) return { ok: true, point: toWaypoint(ad) }
+
+    // LM/<name>: a named landmark; the same name in several places needs coordinates.
+    const lm = /^LM\/(.+)$/.exec(token)
+    if (lm) {
+      const hits = idx.landmarks.get(lm[1]!.trim()) ?? []
+      if (hits.length === 1) return { ok: true, point: toWaypoint(hits[0]!) }
+      if (hits.length > 1) return { ok: false, token, reason: `${hits.length} landmarks have this name; use the coordinates of the one you mean: ${hits.slice(0, 5).map(h => fmtCoord(h.lat, h.lng)).join(', ')}` }
+      return { ok: false, token, reason: 'no named landmark with this name in OpenVFR\'s data' }
+    }
 
     // AERODROME/POINT: a reporting point of that aerodrome.
     const slash = /^([A-Z]{4})\/(.+)$/.exec(token)

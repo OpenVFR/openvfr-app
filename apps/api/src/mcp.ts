@@ -39,7 +39,8 @@ import { getNotamsForIcao, notamStatus } from './notam'
 import { RateLimiter, limitFromEnv } from './rateLimiter'
 import { buildAircraft, AircraftInputError, CATEGORIES, NUMERIC_LIMITS, type AircraftInput, type NumericField } from './aircraftTools'
 import { buildRoute, legLines, RouteInputError, ALT_LIMITS, SPEED_LIMITS, MAX_POINTS, type RouteInput } from './routeTools'
-import { buildPointIndex, type PointIndex } from '@open-vfr/shared/routeIdentifiers'
+import { buildPointIndex, resolveRoutePoints, type PointIndex } from '@open-vfr/shared/routeIdentifiers'
+import { allPoints, pointsNearPosition, pointsNearLeg, pointsNearAirspaceEdge, type NearPoint, type PointKind } from '@open-vfr/shared/pointsNear'
 import type { auth as authInstance } from './auth'
 
 const HOUR_MS = 60 * 60 * 1000
@@ -163,8 +164,8 @@ function defaultPointIndex(): Promise<PointIndex | null> {
   const idx = (async () => {
     const available = (await getAvailableCountries())?.map(c => c.code) ?? []
     const cc = available.length > 0 ? available : ['se']
-    const [aerodromes, navaids, waypoints] = await Promise.all((['aerodromes', 'navaids', 'waypoints'] as const).map(k => loadCountryDataset(k, cc)))
-    return aerodromes ? buildPointIndex({ aerodromes, navaids, waypoints } as never) : null
+    const [aerodromes, navaids, waypoints, landmarks] = await Promise.all((['aerodromes', 'navaids', 'waypoints', 'landmarks'] as const).map(k => loadCountryDataset(k, cc)))
+    return aerodromes ? buildPointIndex({ aerodromes, navaids, waypoints, landmarks } as never) : null
   })()
   pointIndexCache = { at: Date.now(), idx }
   void idx.then(i => { if (!i) pointIndexCache = null })
@@ -494,7 +495,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
 
     // Identifiers and coordinates as they are; any other point name (typed by
     // the pilot or imported) is outside text.
-    const pointName = (n: string) => (/^[A-Z0-9]{2,5}(\/[A-Z0-9 ]{2,20})?$|^\d+\.\d+[NS] \d+\.\d+[EW]$/.test(n) ? n : quote(n, 40))
+    const pointName = (n: string) => (/^[A-Z0-9]{2,6}(\/[A-Z0-9 ]{2,20})?$|^\d+\.\d+[NS] \d+\.\d+[EW]$/.test(n) ? n : quote(n, 40))
     function routeText(r: RouteDocType): string {
       return `${quote(r.name, 80)}:\n${legLines(r, pointName).join('\n')}`
     }
@@ -544,7 +545,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
             aircraft
               ? '1. Propose points (ICAO codes, navaids, reporting points as AERODROME/POINT, or coordinates) and save them with create_route, with the aircraft and autoFuelStops: true.'
               : '1. If I have more than one aircraft (list_aircraft), ask me which one first. Then propose points (ICAO codes, navaids, reporting points as AERODROME/POINT, or coordinates) and save them with create_route with that aircraft and autoFuelStops: true; say which aircraft you planned with.',
-            '2. Call leg_altitudes. For each leg use the suggested altitude unless I asked otherwise; where the MSA reaches controlled airspace, tell me and offer the options it lists (clearance with the frequency, or route around via other points). Never plan a leg below its MSA.',
+            '2. Call leg_altitudes. For each leg use the suggested altitude unless I asked otherwise (it names what sets each MSA: mention it). Where the MSA reaches controlled airspace, tell me and offer the options it lists: a clearance (with the frequency), or a way around it, finding points with points_near (airspace name, route and leg) that have no controlled airspace above them or a higher floor. Never plan a leg below its MSA.',
             '3. Apply the altitudes and any point changes with update_route, then read the new briefing: fix what it warns about (airspace, restricted areas, fuel) and repeat once if needed.',
             '4. Finish with a short summary: legs with altitude and why, fuel stops, open issues, and the link to the route. Say that I must check it in the app before use and that this is not an official briefing.',
             'Use only numbers the tools give; ask me instead of guessing.',
@@ -552,6 +553,76 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
         },
       }],
     }))
+
+    const KIND_IN: Record<string, PointKind> = { aerodrome: 'aerodrome', navaid: 'navaid', 'reporting point': 'waypoint', landmark: 'landmark' }
+    function nearLine(p: NearPoint): string {
+      const kind = p.kind === 'waypoint' ? 'reporting point' : p.kind
+      const what = p.kind === 'landmark' ? `landmark, ${p.detail.replace(/_/g, ' ')}` : p.kind === 'waypoint' ? p.detail : `${kind}${p.detail && p.detail !== p.identifier ? ` ${quote(p.detail, 40)}` : ''}`
+      const where = p.edgeNm !== undefined ? `${Math.abs(p.edgeNm)} NM ${p.edgeNm >= 0 ? 'outside' : 'inside'} the edge`
+        : p.alongNm !== undefined ? `NM ${p.alongNm} along the leg, ${p.distNm.toFixed(1)} NM ${p.side} of track`
+        : `${p.distNm.toFixed(1)} NM away`
+      const above = p.controlledAbove
+        ? `${p.controlledAbove.floorFt <= 0 ? 'inside' : 'under'} ${p.controlledAbove.name} (class ${p.controlledAbove.cls}${p.controlledAbove.floorFt > 0 ? ` from ${p.controlledAbove.floorFt.toLocaleString('en-US')} ft` : ', from the surface'})`
+        : 'no controlled airspace above'
+      const id = /^[A-Z0-9]{2,6}(\/[A-Z0-9 ]{2,20})?$/.test(p.identifier) ? p.identifier : quote(p.identifier, 60)
+      return `- ${id} (${what}): ${where}; ${above}`
+    }
+
+    server.registerTool('points_near', {
+      description: 'Find route points near a place, along a leg of a saved route, or just outside (or inside) a named airspace, to plan a way around it: aerodromes, navaids, VFR reporting points and named landmarks (churches, water towers, windmills). Each comes with the identifier to use in create_route/update_route and the lowest controlled airspace above it, so you can pick points below a TMA floor or outside a control zone. Then check the result with leg_altitudes.',
+      annotations: { readOnlyHint: true },
+      inputSchema: z.object({
+        near: z.string().min(2).max(60).optional().describe('Centre: an identifier (ESSB, ARL, ESSB/LAVER) or coordinates (5939N01756E)'),
+        route: z.string().min(1).max(120).optional().describe('Saved route name, with leg'),
+        leg: z.number().int().min(1).max(MAX_POINTS).optional().describe('Leg number of the route (1 = first to second point)'),
+        airspace: z.string().min(2).max(60).optional().describe('Airspace name as in warnings and leg_altitudes, e.g. "STOCKHOLM F": points near its edge (with route+leg: only near that leg)'),
+        inside: z.boolean().optional().describe('With airspace: points inside it near the edge instead of outside'),
+        radiusNm: z.number().min(1).max(30).optional().describe('Search distance, NM (default 10): from the centre, the leg, or the airspace edge'),
+        kinds: z.array(z.enum(['aerodrome', 'navaid', 'reporting point', 'landmark'])).max(4).optional(),
+        limit: z.number().int().min(1).max(25).optional(),
+      }),
+    }, async (args) => {
+      const idx = await (deps.pointIndex ?? defaultPointIndex)()
+      if (!idx) return fail('Aerodrome and navaid data is not available right now.')
+      const pts = allPoints(idx)
+      const available = (await getAvailableCountries())?.map(c => c.code) ?? []
+      const airspaceFc = await loadCountryDataset('airspace', available.length > 0 ? available : ['se'])
+      const radius = args.radiusNm ?? 10
+      const kinds = args.kinds?.map(k => KIND_IN[k]!)
+      const opts = { ...(kinds ? { kinds } : {}), airspace: airspaceFc, limit: args.limit ?? 15 }
+      let leg: [RouteWaypoint, RouteWaypoint] | null = null
+      if (args.route || args.leg) {
+        if (!canRoutes) return noRoutes()
+        if (!args.route || !args.leg) return fail('Give both route and leg.')
+        const found = await findRoute(args.route)
+        if ('error' in found) return found.error
+        const w = found.route.waypoints
+        if (args.leg > w.length - 1) return fail(`That route has ${w.length - 1} legs.`)
+        leg = [w[args.leg - 1]!, w[args.leg]!]
+      }
+      let head: string
+      let list: NearPoint[]
+      if (args.airspace) {
+        if (!airspaceFc) return fail('Airspace data is not available right now.')
+        const r = pointsNearAirspaceEdge(pts, airspaceFc, args.airspace, radius, { ...opts, ...(args.inside ? { inside: true } : {}), ...(leg ? { near: leg, nearNm: 15 } : {}) })
+        if (r.matched.length === 0) return fail(`No airspace named "${args.airspace}". Use the names from warnings or leg_altitudes.`)
+        if (r.matched.length > 1) return fail(`Several airspaces match: ${r.matched.slice(0, 10).join(', ')}. Use the full name.`)
+        head = `Points ${args.inside ? 'inside' : 'outside'} ${r.matched[0]} within ${radius} NM of its edge${leg ? ` near leg ${args.leg}` : ''}:`
+        list = r.points
+      } else if (leg) {
+        head = `Points within ${radius} NM of leg ${args.leg} (${leg[0].name ?? '?'} → ${leg[1].name ?? '?'}):`
+        list = pointsNearLeg(pts, leg[0], leg[1], radius, opts)
+      } else if (args.near) {
+        const c = resolveRoutePoints([args.near], idx)[0]!
+        if (!c.ok) return fail(`${args.near}: ${c.reason}.`)
+        head = `Points within ${radius} NM of ${args.near.toUpperCase()}:`
+        list = pointsNearPosition(pts, c.point, radius, opts).filter(p => p.distNm > 0.05)
+      } else {
+        return fail('Give near, route and leg, or airspace.')
+      }
+      if (list.length === 0) return text(`${head} none found. Try a larger radiusNm or other kinds.`)
+      return text([head, ...list.map(nearLine), 'Landmarks are named buildings from OpenStreetMap: check they are visible from the air before using them as turning points.', QUOTE_NOTE].join('\n'))
+    })
 
     server.registerTool('get_route', {
       description: "One of the pilot's saved routes in detail: every point, each leg's distance, altitude and speed, fuel stops, the aircraft, and a link that opens it in OpenVFR.",
@@ -580,7 +651,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       autoFuelStops: z.boolean().optional().describe('With an aircraft: when a hop needs more fuel than the tanks hold, insert the best fuel stop (aircraft fuel types and runway limits) and say which'),
     }
     const pointsField = z.array(z.string().min(2).max(40)).min(2).max(MAX_POINTS)
-      .describe('Points in flight order: ICAO aerodrome codes (ESSB), navaid idents (ARL), reporting points as AERODROME/POINT (ESSB/LAVER), or coordinates (5939N01756E). Unknown or ambiguous points are refused, never guessed.')
+      .describe('Points in flight order: ICAO aerodrome codes (ESSB), navaid idents (ARL), reporting points as AERODROME/POINT (ESSB/LAVER), named landmarks as LM/<name> (LM/Hassela kyrka), or coordinates (5939N01756E). Use points_near to find them. Unknown or ambiguous points are refused, never guessed.')
 
     /** Insert the best fuel stop plan into a built route when a hop is too long. Returns a note for the answer. */
     async function addFuelStops(built: ReturnType<typeof buildRoute>, ac: AircraftProfileDocType | null): Promise<string> {

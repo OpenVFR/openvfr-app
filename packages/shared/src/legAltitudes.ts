@@ -191,8 +191,9 @@ export function legAltitudes(input: {
       const byTip = tip ? tip.tipFt + m.obstacleClearanceFt : 0
       const at = (d: number) => d < s.fromNm ? 'before the start of the leg' : d > s.toNm ? 'past the end of the leg' : `at NM ${Math.round(d - s.fromNm)} of the leg`
       if (tip && byTip >= byTerrain) {
-        const what = (tip.name.replace(/^[\w-]*\d[\w-]*\s*-\s*/, '').trim().replace(/[^\p{L}\p{N} .,/()'-]/gu, '').slice(0, 40)) || tip.kind.replace(/_/g, ' ')
-        msaCause = `${what} (${tip.kind.replace(/_/g, ' ')}), top ${fmt(tip.tipFt)}${tip.estimated ? ' (height estimated)' : ''}, ${at(tip.distNm)}${tip.lateralNm != null ? `, ${tip.lateralNm.toFixed(1)} NM from the track` : ''}, + ${fmt(m.obstacleClearanceFt)} clearance`
+        const named = (tip.name.replace(/^[\w-]*\d[\w-]*\s*-\s*/, '').trim().replace(/[^\p{L}\p{N} .,/()'-]/gu, '').slice(0, 40))
+        const what = named ? `${named} (${tip.kind.replace(/_/g, ' ')})` : `a ${tip.kind.replace(/_/g, ' ')}`
+        msaCause = `${what}, top ${fmt(tip.tipFt)}${tip.estimated ? ' (height estimated)' : ''}, ${at(tip.distNm)}${tip.lateralNm != null ? `, ${tip.lateralNm.toFixed(1)} NM from the track` : ''}, + ${fmt(m.obstacleClearanceFt)} clearance`
       } else if (terrainMax >= 0) {
         msaCause = `terrain up to ${fmt(Math.round(terrainMax))} within ${m.abeamNm} NM of the track ${fromGrid ? `around NM ${Math.round(terrainAt - s.fromNm)}` : at(terrainAt)}, + ${fmt(m.terrainClearanceFt)} clearance`
       }

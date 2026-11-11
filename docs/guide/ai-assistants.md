@@ -49,7 +49,8 @@ For each leg the assistant gets the minimum safe altitude (terrain from the
 same elevation model the app uses, or else the conservative terrain grid,
 plus obstacles and your MSA margins), the controlled airspace above it (where
 along the leg, floor, ceiling, frequency), control zones crossed, restricted
-areas, and a suggested altitude: at or above the MSA, below controlled
+areas, and what sets the MSA (the highest terrain, or the obstacle with its height
+and position), and a suggested altitude: at or above the MSA, below controlled
 airspace where possible, and on a VFR cruising level (odd thousands + 500 ft
 eastbound, even westbound, above 3,000 ft over the ground). When one altitude
 does not fit the whole leg it suggests changing level on the way; when the
@@ -93,8 +94,13 @@ The selection made in the mobile app stays on the phone, so it is not used
 here.
 
 Route points are aerodrome codes, navaids, reporting points (written
-`ESSB/LAVER` when several aerodromes have one with that name) or
+`ESSB/LAVER` when several aerodromes have one with that name), named
+landmarks such as churches and water towers (`LM/Hassela kyrka`) or
 coordinates; OpenVFR refuses anything it does not know rather than guess.
+To find a way around something the assistant can look up points near a
+place, along a leg, or just outside a TMA or control zone, each with the
+controlled airspace above it. Landmarks come from OpenStreetMap: check that
+one is visible from the air before turning there.
 After each change the assistant gets the route's briefing warnings, so it can
 improve the route, and a link that opens the route in the app.
 
