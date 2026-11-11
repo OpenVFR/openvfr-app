@@ -13,7 +13,7 @@ import { useEffect } from 'react'
 import type * as maplibregl from 'maplibre-gl'
 import { areaLabel, AREA_KINDS, DETAIL_KIND_COLOR, type DetailKind } from '@open-vfr/shared/aerodromeDetails'
 import { useAerodromeDetailsLayer, useCircuitFocus, type CircuitFocus } from '../utils/aerodromeDetails'
-import { CIRCUIT_LAYER_IDS } from '../styles/map-style'
+import { CIRCUIT_LAYER_IDS, HOLDING_ORBIT_LAYER } from '../styles/map-style'
 
 const SOURCE = 'aerodrome-details'
 const BELOW_LAYERS = ['airspace-fill-g', 'navaids-vor-icon', 'aerodromes-atc-ring']
@@ -32,6 +32,7 @@ const DASHED: maplibregl.ExpressionSpecification = ['any', ['get', 'approximate'
 const IS_AREA: maplibregl.ExpressionSpecification = ['in', ['get', 'kind'], ['literal', [...AREA_KINDS]]]
 const IS_CIRCUIT: Filter = ['==', ['get', 'kind'], 'circuit_leg']
 const NOT_CIRCUIT: Filter = ['!=', ['get', 'kind'], 'circuit_leg']
+const IS_HOLDING: Filter = ['==', ['get', 'kind'], 'holding']
 const LINE: Filter = ['==', ['geometry-type'], 'LineString']
 const POLY: Filter = ['==', ['geometry-type'], 'Polygon']
 const POINT: Filter = ['==', ['geometry-type'], 'Point']
@@ -46,7 +47,7 @@ const CIRCUIT_FILTERS: Record<(typeof CIRCUIT_LAYER_IDS)[number], Filter> = {
   'ad-circuit-label': ['all', LINE, IS_CIRCUIT, DRAWN, ['has', 'name']],
   'ad-circuit-turn-label': ['all', POINT, IS_CIRCUIT, ['==', ['get', 'role'], 'label']],
 }
-const OTHER_LAYERS = ['ad-details-fill', 'ad-details-outline', 'ad-details-outline-dashed', 'ad-details-line',
+const OTHER_LAYERS = [HOLDING_ORBIT_LAYER, 'ad-details-fill', 'ad-details-outline', 'ad-details-outline-dashed', 'ad-details-line',
   'ad-details-line-dashed', 'ad-details-point', 'ad-details-label'] as const
 
 /** A circuit layer's filter with the runway focus: at the focused aerodrome only circuits for that runway end
@@ -70,7 +71,8 @@ function applyCircuits(map: maplibregl.Map, visible: boolean, f: CircuitFocus | 
   }
 }
 
-export default function AerodromeDetailsLayer({ map, circuitsVisible }: { map: maplibregl.Map | null; circuitsVisible: boolean }) {
+export default function AerodromeDetailsLayer({ map, circuitsVisible, holdingsVisible }:
+  { map: maplibregl.Map | null; circuitsVisible: boolean; holdingsVisible: boolean }) {
   const fc = useAerodromeDetailsLayer(!!map)
   const focus = useCircuitFocus()
 
@@ -83,7 +85,7 @@ export default function AerodromeDetailsLayer({ map, circuitsVisible }: { map: m
         ...f,
         properties: {
           ...f.properties,
-          label: f.properties.kind !== 'circuit_leg' && (f.geometry.type === 'Point' || AREA_KINDS.has(f.properties.kind as DetailKind))
+          label: f.properties.kind !== 'circuit_leg' && f.properties.kind !== 'holding' && (f.geometry.type === 'Point' || AREA_KINDS.has(f.properties.kind as DetailKind))
             ? [areaLabel(f.properties), f.properties.pending ? '(unreviewed)' : null].filter(Boolean).join('\n')
             : '',
         },
@@ -104,11 +106,11 @@ export default function AerodromeDetailsLayer({ map, circuitsVisible }: { map: m
       filter: ['all', POLY, DASHED],
       paint: { 'line-color': COLOR, 'line-width': 1.8, 'line-dasharray': [3, 2] } }, before)
     map.addLayer({ id: 'ad-details-line', type: 'line', source: SOURCE, minzoom: MIN_ZOOM,
-      filter: ['all', LINE, NOT_CIRCUIT, ['!', DASHED]],
+      filter: ['all', LINE, NOT_CIRCUIT, ['!', IS_HOLDING], ['!', DASHED]],
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: { 'line-color': COLOR, 'line-width': 1.8 } }, before)
     map.addLayer({ id: 'ad-details-line-dashed', type: 'line', source: SOURCE, minzoom: MIN_ZOOM,
-      filter: ['all', LINE, NOT_CIRCUIT, DASHED],
+      filter: ['all', LINE, NOT_CIRCUIT, ['!', IS_HOLDING], DASHED],
       layout: { 'line-join': 'round' },
       paint: { 'line-color': COLOR, 'line-width': 1.8, 'line-dasharray': [2, 2] } }, before)
     // Circuits ("Traffic circuits" in the Layers panel): drawn legs from 9.5, turn arrows and chevrons from 10.5,
@@ -137,8 +139,13 @@ export default function AerodromeDetailsLayer({ map, circuitsVisible }: { map: m
       filter: CIRCUIT_FILTERS['ad-circuit-turn-label'],
       layout: { 'text-field': ['get', 'name'], 'text-font': FONT, 'text-size': 11, 'text-anchor': 'center' },
       paint: { 'text-color': COLOR, 'text-halo-color': 'rgba(255,255,255,0.92)', 'text-halo-width': 1.6 } }, before)
+    // Orbit flown at a holding point, around the base layer's holding symbol (switched with "Holding points").
+    map.addLayer({ id: HOLDING_ORBIT_LAYER, type: 'line', source: SOURCE, minzoom: 10,
+      filter: ['all', LINE, IS_HOLDING], layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': COLOR, 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.2, 13, 2.2],
+        'line-opacity': ['case', ['get', 'pending'], 0.7, 1] } }, before)
     map.addLayer({ id: 'ad-details-point', type: 'circle', source: SOURCE, minzoom: MIN_ZOOM,
-      filter: ['all', POINT, NOT_CIRCUIT],
+      filter: ['all', POINT, NOT_CIRCUIT, ['!', IS_HOLDING]],
       paint: { 'circle-radius': 4, 'circle-color': COLOR, 'circle-stroke-color': '#0b1220', 'circle-stroke-width': 1.2,
         'circle-opacity': ['case', ['get', 'pending'], 0.6, 1] } }, before)
     map.addLayer({ id: 'ad-details-label', type: 'symbol', source: SOURCE, minzoom: 10,
@@ -151,6 +158,9 @@ export default function AerodromeDetailsLayer({ map, circuitsVisible }: { map: m
 
   // Layers-panel switch and runway focus; also right after the layers are first added.
   useEffect(() => { if (map && fc) applyCircuits(map, circuitsVisible, focus) }, [map, fc, circuitsVisible, focus])
+  useEffect(() => {
+    if (map && fc && map.getLayer(HOLDING_ORBIT_LAYER)) map.setLayoutProperty(HOLDING_ORBIT_LAYER, 'visibility', holdingsVisible ? 'visible' : 'none')
+  }, [map, fc, holdingsVisible])
 
   useEffect(() => () => { if (map) remove(map) }, [map])
 

@@ -2,6 +2,9 @@ import type React from 'react'
 import css from './FeaturePopup.module.css'
 import { TRAFFIC_CATEGORY_LABEL, trafficDeviceLabel, trafficNetworkLabel } from '@open-vfr/shared/trafficState'
 import { IconX } from '@tabler/icons-react'
+import { orbitLabel } from '@open-vfr/shared/aerodromeDetails'
+import { useLocalInfo } from '../utils/aerodromeDetails'
+import { EXPERIMENTAL_AERODROME_DETAILS } from '../utils/env'
 
 // ── Feature type definitions ──────────────────────────────────────────────────
 // Each variant carries only the properties available in its GeoJSON source.
@@ -155,7 +158,34 @@ function WaypointBody({ f }: { f: WaypointFeature }) {
           <span className={css.value}>{f.aerodrome}</span>
         </div>
       )}
+      {EXPERIMENTAL_AERODROME_DETAILS && f.aerodrome && /^HOLDING\s/i.test(f.name) && (
+        <HoldingRows aerodrome={f.aerodrome} name={f.name.replace(/^HOLDING\s+/i, '').toUpperCase()} />
+      )}
     </div>
+  )
+}
+
+/** Orbit direction and where to hold, from the aerodrome's local information (experimental). */
+function HoldingRows({ aerodrome, name }: { aerodrome: string; name: string }) {
+  const info = useLocalInfo(aerodrome, true)
+  const h = info?.holdings.find(x => x.name.toUpperCase() === name)
+  if (!h) return null
+  const pending = info?.provenance['holdings']?.review === 'pending'
+  return (
+    <>
+      {h.direction && (
+        <div className={css.row}>
+          <span className={css.label}>Orbit</span>
+          <span className={css.value}>{orbitLabel(h.direction)}{pending ? ' (unreviewed)' : ''}</span>
+        </div>
+      )}
+      {h.description && (
+        <div className={css.row}>
+          <span className={css.label}>Hold</span>
+          <span className={css.value}>{h.description}</span>
+        </div>
+      )}
+    </>
   )
 }
 

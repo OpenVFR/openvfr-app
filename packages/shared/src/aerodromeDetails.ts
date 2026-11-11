@@ -18,11 +18,11 @@ import type { Feature, FeatureCollection, Geometry, LineString } from 'geojson'
 
 export type DetailKind =
   | 'noise_sensitive' | 'avoid_area' | 'glider_area' | 'parachute_area' | 'model_area'
-  | 'circuit_leg' | 'reporting_point' | 'taxiway' | 'parking' | 'other'
+  | 'circuit_leg' | 'reporting_point' | 'holding' | 'taxiway' | 'parking' | 'other'
 
 const KINDS: readonly DetailKind[] = [
   'noise_sensitive', 'avoid_area', 'glider_area', 'parachute_area', 'model_area',
-  'circuit_leg', 'reporting_point', 'taxiway', 'parking',
+  'circuit_leg', 'reporting_point', 'holding', 'taxiway', 'parking',
 ]
 
 /** Areas a pilot keeps out of or flies differently near. */
@@ -36,6 +36,7 @@ export const DETAIL_KIND_LABEL: Record<DetailKind, string> = {
   model_area: 'Model flying area',
   circuit_leg: 'Circuit',
   reporting_point: 'Reporting point',
+  holding: 'Holding',
   taxiway: 'Taxiway',
   parking: 'Parking',
   other: 'Other',
@@ -50,6 +51,7 @@ export const DETAIL_KIND_COLOR: Record<DetailKind, string> = {
   model_area: '#14b8a6',
   circuit_leg: '#38bdf8',
   reporting_point: '#a3e635',
+  holding: '#0ca678',
   taxiway: '#94a3b8',
   parking: '#94a3b8',
   other: '#cbd5e1',
@@ -123,6 +125,8 @@ export interface DetailProps {
   pending: boolean
   /** Drawn from the circuit direction, not from a published outline (a turn arrow, see circuitTurnArrow). */
   schematic?: boolean
+  /** Holding: the orbit flown there (left = counter-clockwise). */
+  direction?: 'left' | 'right'
   /** Parts of a turn arrow: the curved line with its head ('turn'), or the point its label sits on ('label'). */
   role?: 'turn' | 'label'
   /** Runway ends the circuit is for, as "|06|24|", so the map can show only the circuits of a chosen runway. */
@@ -178,6 +182,7 @@ export function parseAerodromeDetails(raw: unknown): FeatureCollection<Geometry,
         approximate: p['geometry_quality'] === 'approximate',
         accuracy_m: typeof p['accuracy_m'] === 'number' ? Math.round(p['accuracy_m']) : null,
         pending: provenance?.review === 'pending',
+        ...(kind === 'holding' && (p['direction'] === 'left' || p['direction'] === 'right') ? { direction: p['direction'] } : {}),
         ...(provenance ? { provenance } : {}),
       },
     })
@@ -197,6 +202,8 @@ export interface CircuitInfo {
   aircraft: string | null
 }
 
+export interface HoldingInfo { name: string; direction: 'left' | 'right' | null; description: string | null }
+
 export interface AreaInfo { kind: DetailKind; name: string | null; remark: string | null; floor: DetailLimit | null; ceiling: DetailLimit | null }
 
 export interface LocalInfo {
@@ -206,6 +213,8 @@ export interface LocalInfo {
   pprRemarks: string[]
   areas: AreaInfo[]
   reportingPoints: { name: string; remark: string | null }[]
+  /** VFR holding points ("WEST") with the orbit flown there and where to hold. */
+  holdings: HoldingInfo[]
   /** Per field: where it came from (and whether it is unreviewed). */
   provenance: Record<string, DetailProvenance>
 }
@@ -248,6 +257,15 @@ export function localInfo(props: Record<string, unknown>): LocalInfo {
   const reportingPoints = list(props['reporting_points'])
     .map(p => (p && typeof p === 'object' ? { name: text((p as Record<string, unknown>)['name'], 40), remark: text((p as Record<string, unknown>)['remark'], 200) } : null))
     .filter((p): p is { name: string; remark: string | null } => !!p?.name)
+  const holdings: HoldingInfo[] = []
+  for (const h of list(props['holdings'])) {
+    if (!h || typeof h !== 'object') continue
+    const o = h as Record<string, unknown>
+    const name = text(o['name'], 40)
+    if (!name) continue
+    holdings.push({ name, direction: o['direction'] === 'left' || o['direction'] === 'right' ? o['direction'] : null,
+      description: text(o['description'], 200) })
+  }
   const provenance: Record<string, DetailProvenance> = {}
   const prov = nested(props['provenance'])
   if (prov && typeof prov === 'object') {
@@ -257,7 +275,7 @@ export function localInfo(props: Record<string, unknown>): LocalInfo {
     }
   }
   return {
-    circuits, areas, reportingPoints, provenance,
+    circuits, areas, reportingPoints, holdings, provenance,
     localRules: strings(props['local_rules']),
     hoursRemarks: strings(props['hours_remarks']),
     pprRemarks: strings(props['ppr_remarks']),
@@ -265,7 +283,7 @@ export function localInfo(props: Record<string, unknown>): LocalInfo {
 }
 
 export function hasLocalInfo(i: LocalInfo): boolean {
-  return i.circuits.length + i.localRules.length + i.hoursRemarks.length + i.areas.length + i.reportingPoints.length > 0
+  return i.circuits.length + i.localRules.length + i.hoursRemarks.length + i.areas.length + i.reportingPoints.length + i.holdings.length > 0
 }
 
 const AIRCRAFT_LABEL: Record<string, string> = { heavy: 'aircraft over 5700 kg MTOM' }
@@ -368,6 +386,52 @@ export function circuitTurnArrow(runways: readonly RunwayLike[], c: CircuitInfo)
   const head = [at(tipAlong - h * 0.6, tipAcross - h), at(tipAlong, tipAcross), at(tipAlong + h * 0.6, tipAcross - h)]
   return { arc: { type: 'LineString', coordinates: arc }, head: { type: 'LineString', coordinates: head },
     label: at(tipAlong, tipAcross + h * 1.4), designator: hit.designator }
+}
+
+/** "left-hand orbit (counter-clockwise)". */
+export const orbitLabel = (d: 'left' | 'right'): string =>
+  d === 'left' ? 'left-hand orbit (counter-clockwise)' : 'right-hand orbit (clockwise)'
+
+/** Orbit drawn around a holding symbol: radius and the gap left open so the arrowhead reads. */
+export const ORBIT_RADIUS_NM = 0.3
+const ORBIT_SWEEP = (300 * Math.PI) / 180
+
+/**
+ * The orbit flown at a holding point, as a line around it with an arrowhead: left = counter-clockwise (turning
+ * left), right = clockwise. 300 degrees of a circle, starting south-east of the point. [arc, head].
+ */
+export function holdingOrbit(center: [number, number], direction: 'left' | 'right'): [LineString, LineString] {
+  const [lon0, lat0] = center
+  const [mx, my] = metres(lat0)
+  const r = ORBIT_RADIUS_NM * NM, h = HEAD_NM * NM
+  const sense = direction === 'left' ? 1 : -1
+  const start = direction === 'left' ? -Math.PI / 3 : (-2 * Math.PI) / 3
+  const pt = (x: number, y: number): [number, number] =>
+    [Math.round((lon0 + x / mx) * 1e6) / 1e6, Math.round((lat0 + y / my) * 1e6) / 1e6]
+  const arc: [number, number][] = []
+  for (let k = 0; k <= 24; k++) {
+    const a = start + sense * ORBIT_SWEEP * (k / 24)
+    arc.push(pt(r * Math.cos(a), r * Math.sin(a)))
+  }
+  const end = start + sense * ORBIT_SWEEP
+  const [tx, ty] = [-Math.sin(end) * sense, Math.cos(end) * sense]   // flying direction at the tip
+  const [nx, ny] = [Math.cos(end), Math.sin(end)]                     // outward
+  const tip: [number, number] = [r * Math.cos(end), r * Math.sin(end)]
+  const barb = (side: number) => pt(tip[0] - h * tx + side * 0.6 * h * nx, tip[1] - h * ty + side * 0.6 * h * ny)
+  return [{ type: 'LineString', coordinates: arc },
+    { type: 'LineString', coordinates: [barb(1), pt(tip[0], tip[1]), barb(-1)] }]
+}
+
+/** Orbit features for the holding points in a details file that state a direction (role 'turn'). */
+export function holdingOrbitFeatures(details: readonly DetailFeature[]): DetailFeature[] {
+  const out: DetailFeature[] = []
+  for (const f of details) {
+    const d = f.properties.direction
+    if (f.properties.kind !== 'holding' || !d || f.geometry.type !== 'Point') continue
+    const c = f.geometry.coordinates as [number, number]
+    for (const g of holdingOrbit([c[0], c[1]], d)) out.push({ type: 'Feature', geometry: g, properties: { ...f.properties, role: 'turn' } })
+  }
+  return out
 }
 
 const SIDE = { left: 'LH', right: 'RH' } as const

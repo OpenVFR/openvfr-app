@@ -396,7 +396,11 @@ runway. Circuits gain detail with zoom (drawn legs from 9.5 with growing width,
 turn arrows and chevrons from 10.5, runway labels from 11.5), have their own
 "Traffic circuits" switch in the Layers panel, and follow the runway end tapped
 in the aerodrome popup: while one is selected, that aerodrome shows only the
-circuits for it. Dashed also: outlines read off a chart (`approximate`) and values whose
+circuits for it. Holding points with a curated orbit direction (`holding` points in the
+details file) get a circle with an arrowhead around the base layer's holding
+symbol (left = counter-clockwise), switched with "Holding points"; the
+waypoint popup and the aerodrome's local information show the direction and
+where to hold. Dashed also: outlines read off a chart (`approximate`) and values whose
 provenance says `review: "pending"` (only in local preview builds of a
 deployment's own data, labelled "unreviewed"). The aerodrome popup gets a
 "Local information" section (`LocalInfoSection`) with circuits, local rules,

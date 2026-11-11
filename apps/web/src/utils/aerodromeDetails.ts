@@ -8,7 +8,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { Feature, FeatureCollection, Geometry } from 'geojson'
 import {
-  parseAerodromeDetails, schematicCircuitFeatures, localInfo,
+  parseAerodromeDetails, schematicCircuitFeatures, holdingOrbitFeatures, localInfo,
   type DetailProps, type LocalInfo,
 } from '@open-vfr/shared/aerodromeDetails'
 import { countryFileUrl, loadCountryGeojson } from '@open-vfr/shared/countryData'
@@ -49,7 +49,8 @@ export function useAerodromeDetailsLayer(enabled: boolean): FeatureCollection<Ge
       const features = details.flatMap(d => d?.features ?? [])
       const drawn = new Set(features.filter(f => f.properties.kind === 'circuit_leg' && f.geometry.type === 'LineString')
         .map(f => f.properties.aerodrome))
-      setFc({ type: 'FeatureCollection', features: [...features, ...schematicCircuitFeatures(aerodromes.features, drawn)] })
+      setFc({ type: 'FeatureCollection', features: [...features, ...schematicCircuitFeatures(aerodromes.features, drawn),
+        ...holdingOrbitFeatures(features)] })
     })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -7,7 +7,8 @@
  * aerodrome has no such fields.
  */
 import {
-  DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, type DetailProvenance, type LocalInfo,
+  DETAIL_KIND_COLOR, DETAIL_KIND_LABEL, formatCircuit, formatLimits, hasLocalInfo, orbitLabel, type DetailProvenance,
+  type LocalInfo,
 } from '@open-vfr/shared/aerodromeDetails'
 import { useLocalInfo } from '../utils/aerodromeDetails'
 import { EXPERIMENTAL_AERODROME_DETAILS } from '../utils/env'
@@ -69,6 +70,18 @@ function Content({ info }: { info: LocalInfo }) {
                 {DETAIL_KIND_LABEL[a.kind]}{a.name ? `: ${a.name}` : ''}
                 {formatLimits(a.floor, a.ceiling) && <span className={css.limits}> {formatLimits(a.floor, a.ceiling)}</span>}
                 {a.remark && <div className={css.sub}>{a.remark}</div>}
+              </li>
+            ))}
+          </ul>
+        </Block>
+      )}
+      {info.holdings.length > 0 && (
+        <Block title="Holding points" prov={pv['holdings']}>
+          <ul className={css.list}>
+            {info.holdings.map(h => (
+              <li key={h.name}>
+                HOLD {h.name}{h.direction ? ` · ${orbitLabel(h.direction)}` : ''}
+                {h.description && <div className={css.sub}>{h.description}</div>}
               </li>
             ))}
           </ul>

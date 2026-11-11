@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  parseAerodromeDetails, localInfo, formatCircuit, formatLimits, circuitTurnArrow, schematicCircuitFeatures, hasLocalInfo,
+  parseAerodromeDetails, localInfo, formatCircuit, formatLimits, circuitTurnArrow, schematicCircuitFeatures, hasLocalInfo, holdingOrbit,
+  holdingOrbitFeatures, ORBIT_RADIUS_NM,
   TURN_STRAIGHT_NM, TURN_RADIUS_NM, type DetailFeature,
 } from './aerodromeDetails'
 import type { LineString } from 'geojson'
@@ -105,5 +106,42 @@ describe('circuitTurnArrow', () => {
     expect(formatCircuit(C('17', 'right', 'heavy'))).toBe('RWY 17 · right-hand · aircraft over 5700 kg MTOM')
     // aerodromes whose circuit is drawn in the details file get no arrows
     expect(schematicCircuitFeatures([ad('ESXX', [C('12', 'left')])], new Set(['ESXX']))).toEqual([])
+  })
+})
+
+describe('holdings', () => {
+  it('orbit: left is counter-clockwise, on a circle of ORBIT_RADIUS_NM around the point', () => {
+    const c: [number, number] = [13.3275, 55.535]
+    const [arc, head] = holdingOrbit(c, 'left')
+    for (const p of arc.coordinates) expect(dist(p, c) / 1852).toBeCloseTo(ORBIT_RADIUS_NM, 2)
+    // signed area of the arc around the centre > 0 = counter-clockwise
+    const cross = (o: number[]) => arc.coordinates.slice(1).reduce((s, p, i) => {
+      const a = arc.coordinates[i]!; return s + (a[0]! - o[0]!) * (p[1]! - o[1]!) - (p[0]! - o[0]!) * (a[1]! - o[1]!)
+    }, 0)
+    expect(cross(c)).toBeGreaterThan(0)
+    const [arcR] = holdingOrbit(c, 'right')
+    const crossR = arcR.coordinates.slice(1).reduce((s, p, i) => {
+      const a = arcR.coordinates[i]!; return s + (a[0]! - c[0]) * (p[1]! - c[1]) - (p[0]! - c[0]) * (a[1]! - c[1])
+    }, 0)
+    expect(crossR).toBeLessThan(0)
+    expect(head.coordinates[1]).toEqual(arc.coordinates[arc.coordinates.length - 1])   // arrowhead at the arc's end
+  })
+
+  it('parses holding points and their direction, draws only those with a direction', () => {
+    const fc = parseAerodromeDetails({ type: 'FeatureCollection', features: [
+      { type: 'Feature', geometry: { type: 'Point', coordinates: [13.3275, 55.535] },
+        properties: { icao: 'ESMS', kind: 'holding', name: 'WEST', direction: 'left', remarks: 'Left circuit west of lake' } },
+      { type: 'Feature', geometry: { type: 'Point', coordinates: [13.42, 55.53] },
+        properties: { icao: 'ESMS', kind: 'holding', name: 'EAST', direction: 'up' } },
+    ] })!
+    expect(fc.features.map(f => [f.properties.kind, f.properties.direction])).toEqual([['holding', 'left'], ['holding', undefined]])
+    const orbits = holdingOrbitFeatures(fc.features)
+    expect(orbits).toHaveLength(2)
+    expect(orbits.every(o => o.properties.role === 'turn' && o.properties.name === 'WEST')).toBe(true)
+    const info = localInfo({ holdings: JSON.stringify([{ name: 'WEST', direction: 'left', description: 'Left circuit west of lake' },
+      { name: 'EAST', direction: 'x' }]) })
+    expect(info.holdings).toEqual([{ name: 'WEST', direction: 'left', description: 'Left circuit west of lake' },
+      { name: 'EAST', direction: null, description: null }])
+    expect(hasLocalInfo(info)).toBe(true)
   })
 })

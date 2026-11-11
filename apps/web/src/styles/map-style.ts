@@ -322,6 +322,9 @@ export const AIRSPACE_BORDER_WIDTHS: { id: string; vector: number | ExpressionSp
 const IS_HOLDING: ExpressionSpecification =
   ['==', ['slice', ['upcase', ['coalesce', ['get', 'name'], '']], 0, 8], 'HOLDING ']
 
+/** Orbit direction around holding points (experimental aerodrome details). */
+export const HOLDING_ORBIT_LAYER = 'ad-holding-orbit'
+
 /** Map layers of the experimental aerodrome circuits (added at runtime by AerodromeDetailsLayer). */
 export const CIRCUIT_LAYER_IDS = ['ad-circuit-line', 'ad-circuit-line-dashed', 'ad-circuit-turn', 'ad-circuit-chevrons',
   'ad-circuit-label', 'ad-circuit-turn-label'] as const
@@ -514,7 +517,8 @@ export const LAYER_GROUPS: LayerGroup[] = [
     // ordinary reporting points, but needed as much as the MRPs, so on by default and drawn as an orbit.
     label: 'Holding points',
     cssClass: 'groupWaypointsHold',
-    layerIds: ['waypoints-hold-icon', 'waypoints-hold-label'],
+    // + the orbit direction from the experimental aerodrome details (added at runtime by AerodromeDetailsLayer)
+    layerIds: ['waypoints-hold-icon', 'waypoints-hold-label', ...(EXPERIMENTAL_AERODROME_DETAILS ? [HOLDING_ORBIT_LAYER] : [])],
     defaultOn: true,
     section: 'Navigation',
   },
