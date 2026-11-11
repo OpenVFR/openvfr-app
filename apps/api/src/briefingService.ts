@@ -8,7 +8,7 @@ import type { LegOverride, AircraftProfileDocType, RouteDocType } from '@open-vf
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { buildRouteBriefing, type RouteBriefing } from './briefing'
 import { loadCountryDataset, routeCountries, userAircraft, userRoutes, userDataConfigured } from './briefingData'
-import { getNotamsForIcao, getRegionalNotams } from './notam'
+import { getNotamsForIcao, getRegionalNotams, notamStatus } from './notam'
 import { getAvailableCountries } from './countries'
 
 export type WeatherFor = (userId: string, icao: string) => Promise<{ metar: string | null; taf: string | null } | null>
@@ -55,6 +55,7 @@ export function createBriefingService(opts: { weather: WeatherFor }) {
         // The api's NOTAM records carry the same fields the shared checks read.
         regionalNotams: () => getRegionalNotams(countries).notams as unknown as NotamItem[],
         aerodromeNotams: icao => getNotamsForIcao(icao).notams as unknown as NotamItem[],
+        notamStatus,
         weather: icao => opts.weather(user.id, icao),
       },
     )

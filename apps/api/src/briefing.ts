@@ -35,6 +35,8 @@ export interface BriefingDeps {
   regionalNotams: () => readonly NotamItem[]
   /** NOTAMs filed for one aerodrome. */
   aerodromeNotams: (icao: string) => readonly NotamItem[]
+  /** Whether NOTAM data is loaded, and as of when (ISO). */
+  notamStatus?: () => { available: boolean; asOf: string | null }
   /** METAR/TAF for one aerodrome, null when not available or not allowed now. */
   weather: (icao: string) => Promise<{ metar: string | null; taf: string | null } | null>
 }
@@ -46,6 +48,8 @@ export interface BriefingAerodrome {
   metar:  string | null
   taf:    string | null
   notams: { id: string; title: string; summary: string; effective: string | null; expires: string | null }[]
+  /** False when NOTAM data was not available: `notams` is then empty but unchecked. */
+  notamsChecked: boolean
 }
 
 export interface BriefingHop {
@@ -130,6 +134,9 @@ export async function buildRouteBriefing(
     else if (i === waypoints.length - 1) stops.push({ icao: name, role: 'destination' })
     else if (w.fuelStop) stops.push({ icao: name, role: 'fuel stop' })
   })
+  const notamState = deps.notamStatus?.() ?? { available: true, asOf: null }
+  if (!notamState.available) limits.push('NOTAM data is not available right now: no NOTAMs were checked, not even restricted areas.')
+  else if (notamState.asOf && nowMs - Date.parse(notamState.asOf) > 30 * 60_000) limits.push(`NOTAM data is from ${notamState.asOf.slice(0, 16).replace('T', ' ')}Z.`)
   const winds = new Map<string, ParsedWind>()
   const temps = new Map<string, number>()
   const aerodromes: BriefingAerodrome[] = []
@@ -144,7 +151,7 @@ export async function buildRouteBriefing(
     const notams = deps.aerodromeNotams(s.icao)
       .filter(n => !n.expires || Date.parse(n.expires) > nowMs)
       .map(n => ({ id: n.id, title: notamTitle(n), summary: notamSummary(n, 200), effective: n.effective, expires: n.expires }))
-    aerodromes.push({ icao: s.icao, name: adName.get(s.icao) ?? null, role: s.role, metar: wx?.metar ?? null, taf: wx?.taf ?? null, notams })
+    aerodromes.push({ icao: s.icao, name: adName.get(s.icao) ?? null, role: s.role, metar: wx?.metar ?? null, taf: wx?.taf ?? null, notams, notamsChecked: notamState.available })
   }
   if (stops.some(s => !winds.has(s.icao))) limits.push('Some aerodromes have no current METAR here: their crosswind and temperature were not checked.')
 
@@ -189,7 +196,7 @@ export function briefingText(b: RouteBriefing): string {
   lines.push(danger.length + warn.length === 0 ? 'No warnings.' : `${danger.length} serious and ${warn.length} other warnings:`)
   for (const w of [...danger, ...warn]) lines.push(`- ${w.title}: ${w.detail}`)
   for (const a of b.aerodromes) {
-    lines.push(`${a.role} ${a.icao}${a.name ? ` (${a.name})` : ''}: ${a.metar ?? 'no METAR'}${a.notams.length ? `; ${a.notams.length} NOTAM${a.notams.length > 1 ? 's' : ''}: ${a.notams.map(n => n.title).join('; ')}` : '; no NOTAMs'}.`)
+    lines.push(`${a.role} ${a.icao}${a.name ? ` (${a.name})` : ''}: ${a.metar ?? 'no METAR'}${!a.notamsChecked ? '; NOTAMs not checked' : a.notams.length ? `; ${a.notams.length} NOTAM${a.notams.length > 1 ? 's' : ''}: ${a.notams.map(n => n.title).join('; ')}` : '; no NOTAMs'}.`)
   }
   for (const l of b.limits) lines.push(`Note: ${l}`)
   lines.push(b.disclaimer)

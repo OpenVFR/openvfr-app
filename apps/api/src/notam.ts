@@ -1054,6 +1054,15 @@ function activeItems(raw: Iterable<NmsNotam>): NotamItem[] {
   return notams
 }
 
+/**
+ * Whether NOTAM answers can be trusted as "complete": the poller is
+ * configured and has completed a poll. `asOf` is when the last successful
+ * poll started (ISO), null before the first.
+ */
+export function notamStatus(): { available: boolean; asOf: string | null } {
+  return { available: notamConfig.available && _lastPollAt !== null, asOf: _lastPollAt }
+}
+
 export function getNotamsForIcao(icao: string): NotamResponse {
   return { notams: activeNotamsFor(icao) }
 }

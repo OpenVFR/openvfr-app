@@ -844,6 +844,7 @@ if (ASSISTANT_MCP) {
     scopeBriefing: SCOPE_BRIEFING,
     scopeRoutes: SCOPE_ROUTES,
     takeBriefing: (userId) => briefingLimiter.take(userId).waitS <= 0,
+    jwksUrl: `http://127.0.0.1:${PORT}/api/auth/jwks`,
   })
   app.post('/mcp', apiBodyLimit, async (c) => {
     try {

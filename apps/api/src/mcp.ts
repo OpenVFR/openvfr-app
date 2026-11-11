@@ -31,7 +31,7 @@ import { briefingText, BRIEFING_DISCLAIMER } from './briefing'
 import { BriefingInputError, type BriefingService, type WeatherFor } from './briefingService'
 import { loadCountryDataset } from './briefingData'
 import { getAvailableCountries } from './countries'
-import { getNotamsForIcao } from './notam'
+import { getNotamsForIcao, notamStatus } from './notam'
 import { RateLimiter, limitFromEnv } from './rateLimiter'
 import type { auth as authInstance } from './auth'
 
@@ -60,6 +60,12 @@ export interface McpDeps {
   scopeRoutes: string
   /** Counts one briefing against the user's briefing limit; false = over it. */
   takeBriefing: (userId: string) => boolean
+  /**
+   * Where token verification reads the signing keys (JWKS). The api's own
+   * loopback address: its public URL may not be reachable from inside its
+   * container, and would send every key refresh out through the edge.
+   */
+  jwksUrl: string
 }
 
 async function allAerodromes(): Promise<GeoJSON.FeatureCollection | null> {
@@ -192,7 +198,8 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
           lines.push(x.length ? `Crosswind ${x[0]!.crosswindKt} kt on the best runway, above ${aircraftLabel(ac)}'s ${ac.maxCrosswindKts} kt limit.` : `Crosswind within ${aircraftLabel(ac)}'s ${ac.maxCrosswindKts} kt limit.`)
         }
       }
-      lines.push(notams.length === 0 ? 'No current NOTAMs.' : `${notams.length} NOTAM${notams.length > 1 ? 's' : ''}:`)
+      const ns = notamStatus()
+      lines.push(!ns.available ? 'NOTAMs: not available right now, none checked.' : notams.length === 0 ? `No current NOTAMs (data from ${ns.asOf?.slice(11, 16) ?? '?'}Z).` : `${notams.length} NOTAM${notams.length > 1 ? 's' : ''} (data from ${ns.asOf?.slice(11, 16) ?? '?'}Z):`)
       for (const n of notams.slice(0, 15)) lines.push(`- ${n.id} ${notamTitle(n)} (${n.effective ?? '?'} to ${n.expires ?? 'PERM'}): ${n.text.replace(/\s+/g, ' ').slice(0, 600)}`)
       lines.push(BRIEFING_DISCLAIMER)
       return text(lines.join('\n'))
@@ -252,5 +259,13 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
         extra: { sub: userId },
       },
     })
-  }, { resource: deps.resource, requiredScopes: [deps.scopeBriefing] })
+  }, {
+    resource: deps.resource,
+    jwksUrl: deps.jwksUrl,
+    requiredScopes: [deps.scopeBriefing],
+    // Advertised in the 401 challenge: clients ask for what is listed here,
+    // so list saved routes (the pilot can still leave them out on the consent
+    // page) and offline_access (refresh tokens, no sign-in every hour).
+    challengeScopes: [deps.scopeBriefing, deps.scopeRoutes, 'offline_access'],
+  })
 }

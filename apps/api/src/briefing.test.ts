@@ -66,6 +66,13 @@ test('missing data is reported, not hidden', async () => {
   assert.equal(b.aerodromes[0]!.metar, null)
 })
 
+test('says NOTAMs were not checked when the NOTAM data is missing', async () => {
+  const b = await buildRouteBriefing({ waypoints: route, legOverrides: [{}], aircraft, nowMs: NOW }, deps({ notamStatus: () => ({ available: false, asOf: null }) }))
+  assert.ok(b.limits.some(l => /no NOTAMs were checked/.test(l)))
+  assert.equal(b.aerodromes[0]!.notamsChecked, false)
+  assert.match(briefingText(b), /NOTAMs not checked/)
+})
+
 test('text rendering lists warnings and aerodromes', async () => {
   const b = await buildRouteBriefing({ waypoints: route, legOverrides: [{}], aircraft, nowMs: NOW }, deps())
   const t = briefingText(b)
