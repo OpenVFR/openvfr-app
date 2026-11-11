@@ -149,6 +149,24 @@ export function buildRoute(input: RouteInput, ctx: { existing?: RouteDocType; id
   return { doc, changed: existing ? changed : ['created'], warnings }
 }
 
+/**
+ * Indices of legs whose planned altitude this change set or changed (new
+ * legs, or an altitude different from the same leg before). Levels the pilot
+ * already accepted are not asked about again.
+ */
+export function changedLevelLegs(existing: RouteDocType | undefined, doc: RouteDocType): number[] {
+  const before = new Map<string, number | undefined>()
+  if (existing) for (let i = 0; i < existing.waypoints.length - 1; i++) before.set(legKey(existing.waypoints[i]!, existing.waypoints[i + 1]!), existing.legOverrides[i]?.altFt)
+  const out: number[] = []
+  for (let i = 0; i < doc.waypoints.length - 1; i++) {
+    const alt = doc.legOverrides[i]?.altFt
+    if (alt === undefined) continue
+    const key = legKey(doc.waypoints[i]!, doc.waypoints[i + 1]!)
+    if (!before.has(key) || before.get(key) !== alt) out.push(i)
+  }
+  return out
+}
+
 /** One line per leg for an answer: "1. ESSB → ESSA 18 NM, 2500 ft". */
 export function legLines(r: RouteDocType, fmtName: (name: string) => string = n => n): string[] {
   return r.waypoints.slice(0, -1).map((w, i) => {

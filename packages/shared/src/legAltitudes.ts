@@ -28,6 +28,10 @@ const ZONES = new Set(['TMZ', 'RMZ'])
 export const FLOOR_BUFFER_FT = 200
 /** Highest altitude suggested (VFR piston planning); airspace above is not listed. */
 const MAX_SUGGEST_FT = 12_500
+/** SERA.5005(f)(2): at least 500 ft above the ground or water and the highest obstacle within 150 m. */
+export const MIN_HEIGHT_FT = 500
+/** 150 m in NM: obstacles this close to the track count for the minimum height. */
+const MIN_HEIGHT_OBSTACLE_NM = 150 / 1852
 /** Semicircular levels apply above this height over the ground. */
 const SEMICIRCULAR_AGL_FT = 3000
 /** Parts of a leg shorter than this are not planned separately. */
@@ -87,6 +91,13 @@ export interface LegAltitude {
   msaApplies: boolean
   /** What sets the MSA: the highest terrain or the obstacle top, in words (null = unknown). */
   msaCause: string | null
+  /**
+   * Lowest legal altitude outside congested areas (SERA.5005(f)(2)): the
+   * highest ground under the track or obstacle within 150 m of it + 500 ft.
+   * Over towns the rule is 1,000 ft above the highest obstacle within 600 m,
+   * which this does not know. null = no terrain data.
+   */
+  legalMinFt: number | null
   /** Lowest ground under the leg (null = unknown). */
   groundMinFt: number | null
   /** Lowest floor (above the surface) of airspace needing a clearance over the leg (null = none). */
@@ -201,6 +212,21 @@ export function legAltitudes(input: {
       }
     }
 
+    // ── Legal minimum height (outside congested areas) ─────────────────────
+    let highest: number | null = null
+    for (const p of input.terrain) {
+      if (p.distNm < s.fromNm - 0.01 || p.distNm > s.toNm + 0.01) continue
+      if (highest === null || p.elevFt > highest) highest = p.elevFt
+    }
+    if (highest !== null) {
+      for (const t of input.tips ?? []) {
+        if (t.lateralNm === undefined || t.lateralNm > MIN_HEIGHT_OBSTACLE_NM) continue
+        if (t.distNm < s.fromNm || t.distNm > s.toNm) continue
+        if (t.tipFt > highest) highest = t.tipFt
+      }
+    }
+    const legalMinFt = highest === null ? null : Math.ceil((Math.max(0, highest) + MIN_HEIGHT_FT) / 100) * 100
+
     const over: LegAirspace[] = bands
       .filter(x => x.exitNm > s.fromNm + 0.05 && x.entryNm < s.toNm - 0.05)
       .map(x => ({
@@ -293,7 +319,7 @@ export function legAltitudes(input: {
             `ask ${c.name}${c.freq ? ` on ${c.freq}` : ''} for a clearance to fly at ${fmt(lowest)} or higher`,
             `route around it: it covers ${where(c, len)}`,
           ]
-          advice = { kind: 'conflict', suggestedFt: lowest, text: `On ${span(p.fromNm, p.toNm, len)} the MSA of ${fmt(p.msaFt)} reaches ${label(c)}: no altitude there is both safe over terrain and outside it. Options: ${opts.join('; or ')}. Never fly below the MSA to stay out of it.` }
+          advice = { kind: 'conflict', suggestedFt: lowest, text: `On ${span(p.fromNm, p.toNm, len)} the MSA of ${fmt(p.msaFt)} reaches ${label(c)}: no altitude there is both safe over terrain and outside it. Options: ${opts.join('; or ')}. Flying below the MSA is the pilot's own decision, only after hearing what sets it.` }
         }
       }
     }
@@ -316,6 +342,7 @@ export function legAltitudes(input: {
       msaFt: msa,
       msaApplies: applies,
       msaCause,
+      legalMinFt,
       groundMinFt: groundMin,
       controlledFloorFt: floor,
       controlled, fromSurface, restricted, zones,

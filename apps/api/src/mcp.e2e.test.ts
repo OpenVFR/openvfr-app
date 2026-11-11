@@ -26,6 +26,7 @@ const { PGlite } = await import('@electric-sql/pglite')
 const { PGliteDialect } = await import('kysely-pglite-dialect')
 const { assistantConnectionPlugins, mcpResource, SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE } = await import('./assistantAuth.js')
 const { buildPointIndex } = await import('@open-vfr/shared/routeIdentifiers')
+const { buildRouteBriefing } = await import('./briefing.js')
 const { createMcpEndpoint } = await import('./mcp.js')
 
 const port = await new Promise<number>((resolve) => {
@@ -70,6 +71,12 @@ before(async () => {
       savedRoutes: async () => [{ id: 'r1', name: 'Home loop', waypoints: [{ lat: 59.35, lng: 17.94, name: 'ESSB' }, { lat: 59.65, lng: 17.92, name: 'ESSA' }], legOverrides: [{}], updatedAt: 0 }],
       userAircraft: async () => [{ id: 'a1', name: 'Rotax', registration: 'SE-TST', icaoType: 'C42', category: 'MICRO', cruiseIas: 90, fuelBurnLhr: 14, maxFuelL: 60 }],
       aircraftById: async () => null,
+      // Real briefing code, no data except flat terrain at 1,200 ft: MSA 2,000 ft, legal minimum 1,700 ft.
+      briefRoute: async (_u: unknown, r: { waypoints: never[]; legOverrides: never[] }) => buildRouteBriefing(
+        { waypoints: r.waypoints, legOverrides: r.legOverrides, nowMs: Date.now() },
+        { loadDataset: async () => null, regionalNotams: () => [], aerodromeNotams: () => [], weather: async () => null,
+          terrain: async () => Array.from({ length: 21 }, (_, i) => ({ distNm: i, elevFt: 1200 })) },
+      ),
       defaultAircraft: async () => ({ aircraft: { id: 'a1', name: 'Rotax', registration: 'SE-TST', icaoType: 'C42', category: 'MICRO', cruiseIas: 90, fuelBurnLhr: 14, maxFuelL: 60 }, why: 'the only aircraft profile' }),
     } as never,
     weather: async () => ({ metar: 'ESSB 111020Z 24012KT CAVOK 08/03 Q1013', taf: null }),
@@ -217,6 +224,18 @@ test('with routes:write the assistant can save a route, refused points are not g
   assert.match(toolText(dup), /exists/)
   const up = await rpc(t.access_token, 'tools/call', { name: 'update_route', arguments: { route: 'Home loop', altitudeFt: 3500 } })
   assert.match(toolText(up), /Updated route \(levels\)/)
+
+  // Below the MSA only with the pilot's confirmation; below the legal minimum never.
+  const n = savedRoutes.length
+  const low = await rpc(t.access_token, 'tools/call', { name: 'update_route', arguments: { route: 'Home loop', altitudeFt: 1500 } })
+  assert.match(toolText(low), /Not saved\. Leg 1 at 1,500 ft is below the legal minimum height there: 1,700 ft/)
+  const ask = await rpc(t.access_token, 'tools/call', { name: 'update_route', arguments: { route: 'Home loop', altitudeFt: 1800 } })
+  assert.equal(ask.result?.['isError'], true)
+  assert.match(toolText(ask), /leg 1 at 1,800 ft is 200 ft below its MSA of 2,000 ft .*ask whether to plan below it/)
+  assert.equal(savedRoutes.length, n, 'nothing saved without confirmation')
+  const ok = await rpc(t.access_token, 'tools/call', { name: 'update_route', arguments: { route: 'Home loop', altitudeFt: 1800, belowMsaConfirmed: true } })
+  assert.match(toolText(ok), /Below the MSA as the pilot confirmed: leg 1 at 1,800 ft/)
+  assert.equal(savedRoutes.length, n + 1)
 })
 
 test('refresh tokens rotate, a replay is refused, disconnect ends access', async () => {

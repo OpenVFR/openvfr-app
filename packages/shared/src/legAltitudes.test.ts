@@ -63,6 +63,13 @@ describe('legAltitudes', () => {
     const [h] = legAltitudes({ waypoints: wps, spans: [{ ...span, altFt: 5500 }], bands: [], legMsaFt: [1300], msaApplies: [true], terrain: flat })
     expect(h!.cruisingRule).toMatch(/apply at 5,500 ft .* odd thousands/)
   })
+  it('gives the legal minimum height: highest ground or obstacle within 150 m + 500 ft', () => {
+    const tips = [{ distNm: 10, tipFt: 900, kind: 'mast', name: '', lateralNm: 0.05, estimated: false }, { distNm: 12, tipFt: 2000, kind: 'mast', name: '', lateralNm: 1, estimated: false }]
+    const [l] = legAltitudes({ waypoints: wps, spans: [span], bands: [], legMsaFt: [3000], msaApplies: [true], terrain: flat, tips })
+    expect(l!.legalMinFt).toBe(1400)
+    const [n] = legAltitudes({ waypoints: wps, spans: [span], bands: [], legMsaFt: [0], msaApplies: [true], terrain: [] })
+    expect(n!.legalMinFt).toBeNull()
+  })
   it('says so without terrain', () => {
     const [l] = legAltitudes({ waypoints: wps, spans: [span], bands: [], legMsaFt: [0], msaApplies: [true], terrain: [] })
     expect(l!.advice.kind).toBe('unknown')

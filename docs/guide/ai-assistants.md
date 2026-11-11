@@ -55,7 +55,13 @@ airspace where possible, and on a VFR cruising level (odd thousands + 500 ft
 eastbound, even westbound, above 3,000 ft over the ground). When one altitude
 does not fit the whole leg it suggests changing level on the way; when the
 MSA reaches controlled airspace it says so and offers a clearance (with the
-frequency) or a route around it. It never suggests flying below the MSA.
+frequency) or a route around it. It never suggests flying below the MSA. You can still decide to: the
+assistant then has to tell you the MSA and what sets it, and saves the lower
+level only after you confirm; the pre-flight check keeps warning about it.
+Levels below the legal minimum height (500 ft above the highest ground or
+obstacle within 150 m of the track) are not saved from an assistant; set
+those in the app. The rule over towns (1,000 ft above obstacles within
+600 m) is not checked.
 With an aircraft, a new route can also get the best fuel stop added when a
 hop is too long.
 

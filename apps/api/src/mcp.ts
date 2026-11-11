@@ -38,7 +38,7 @@ import { getAvailableCountries } from './countries'
 import { getNotamsForIcao, notamStatus } from './notam'
 import { RateLimiter, limitFromEnv } from './rateLimiter'
 import { buildAircraft, AircraftInputError, CATEGORIES, NUMERIC_LIMITS, type AircraftInput, type NumericField } from './aircraftTools'
-import { buildRoute, legLines, RouteInputError, ALT_LIMITS, SPEED_LIMITS, MAX_POINTS, type RouteInput } from './routeTools'
+import { buildRoute, legLines, changedLevelLegs, RouteInputError, ALT_LIMITS, SPEED_LIMITS, MAX_POINTS, type RouteInput } from './routeTools'
 import { buildPointIndex, resolveRoutePoints, type PointIndex } from '@open-vfr/shared/routeIdentifiers'
 import { allPoints, pointsNearPosition, pointsNearLeg, pointsNearAirspaceEdge, type NearPoint, type PointKind } from '@open-vfr/shared/pointsNear'
 import type { auth as authInstance } from './auth'
@@ -501,7 +501,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
     }
 
     server.registerTool('leg_altitudes', {
-      description: "Altitude planning per leg of a saved route (create_route and update_route answers already include the same table: call this after they returned, not in parallel): minimum safe altitude (terrain, obstacles and the pilot's own margins), controlled airspace over the leg (floor, ceiling, where along the leg, frequency), restricted areas, and a suggested altitude that stays clear of terrain, below controlled airspace where possible, and on a VFR semicircular level. When the MSA reaches controlled airspace it says so and lists the options (clearance or route around); it never suggests flying below the MSA. Change levels with update_route.",
+      description: "Altitude planning per leg of a saved route (create_route and update_route answers already include the same table: call this after they returned, not in parallel): minimum safe altitude (terrain, obstacles and the pilot's own margins), controlled airspace over the leg (floor, ceiling, where along the leg, frequency), restricted areas, and a suggested altitude that stays clear of terrain, below controlled airspace where possible, and on a VFR semicircular level. When the MSA reaches controlled airspace it says so and lists the options (clearance or route around); it never suggests flying below the MSA (the pilot may still choose to: update_route with belowMsaConfirmed after telling them the MSA and its cause). Change levels with update_route.",
       annotations: { readOnlyHint: true },
       inputSchema: z.object({ route: z.string().min(1).max(120).describe('Saved route name or id') }),
     }, async ({ route }) => {
@@ -545,7 +545,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
             aircraft
               ? '1. Propose points (ICAO codes, navaids, reporting points as AERODROME/POINT, or coordinates) and save them with create_route, with the aircraft and autoFuelStops: true.'
               : '1. If I have more than one aircraft (list_aircraft), ask me which one first. Then propose points (ICAO codes, navaids, reporting points as AERODROME/POINT, or coordinates) and save them with create_route with that aircraft and autoFuelStops: true; say which aircraft you planned with.',
-            '2. Call leg_altitudes. For each leg use the suggested altitude unless I asked otherwise (it names what sets each MSA: mention it). Where the MSA reaches controlled airspace, tell me and offer the options it lists: a clearance (with the frequency), or a way around it, finding points with points_near (airspace name, route and leg) that have no controlled airspace above them or a higher floor. Never plan a leg below its MSA.',
+            '2. Call leg_altitudes. For each leg use the suggested altitude unless I asked otherwise (it names what sets each MSA: mention it). Where the MSA reaches controlled airspace, tell me and offer the options it lists: a clearance (with the frequency), or a way around it, finding points with points_near (airspace name, route and leg) that have no controlled airspace above them or a higher floor. Do not plan a leg below its MSA unless I confirm after you told me the MSA and what sets it.',
             '3. Apply the altitudes and any point changes with update_route, then read the new briefing: fix what it warns about (airspace, restricted areas, fuel) and repeat once if needed.',
             '4. Finish with a short summary: legs with altitude and why, fuel stops, open issues, and the link to the route. Say that I must check it in the app before use and that this is not an official briefing.',
             'Use only numbers the tools give; ask me instead of guessing.',
@@ -648,6 +648,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       fuelStops: z.array(z.string().max(40)).max(10).optional().describe('Points (aerodromes between departure and destination) where the aircraft lands and refuels; replaces the current set'),
       aircraft: z.string().max(80).optional().describe('Aircraft registration or name from list_aircraft; "none" for no aircraft. New routes without it use the aircraft selected in the app (or the only one) and say so'),
       departure: departureField,
+      belowMsaConfirmed: z.boolean().optional().describe('Set only after you told the pilot a leg\'s MSA and what sets it and the pilot confirmed flying that leg below it. Without it a level below the MSA is not saved. Levels below the legal minimum height are never saved here.'),
       autoFuelStops: z.boolean().optional().describe('With an aircraft: when a hop needs more fuel than the tanks hold, insert the best fuel stop (aircraft fuel types and runway limits) and say which'),
     }
     const pointsField = z.array(z.string().min(2).max(40)).min(2).max(MAX_POINTS)
@@ -673,22 +674,41 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       return `Added fuel stop${plan.stops.length > 1 ? 's' : ''} ${plan.stops.map(x => `${x.aerodrome.icao} ${quote(x.aerodrome.name, 60)} (${x.fuels.map(f => FUEL_LABELS[f]).join('/') || x.aerodrome.fuel.join('/')}, ${x.aerodrome.maxRunwayM} m${x.aerodrome.ppr ? ', PPR' : ''})`).join(' and ')}, +${Math.round(plan.extraMins)} min.${others ? ` Other options: ${others}.` : ''} Fuel listings can be out of date: the pilot should call ahead.`
     }
 
-    async function saveRouteAndBrief(built: ReturnType<typeof buildRoute>, ac: AircraftProfileDocType | null, verb: 'created' | 'updated', note = '', departureMs?: number): Promise<Text> {
+    /**
+     * Check the levels this write sets against each leg's MSA and the legal
+     * minimum height, then save and brief. Below the legal minimum: never
+     * saved here. Below the MSA: saved only with the pilot's confirmation.
+     */
+    async function saveRouteAndBrief(
+      built: ReturnType<typeof buildRoute>, ac: AircraftProfileDocType | null, verb: 'created' | 'updated', note = '', departureMs?: number,
+      existing?: RouteDocType, belowMsaConfirmed = false,
+    ): Promise<Text> {
+      // Part of the write (rate-limited as one), not counted as a briefing.
+      const b = await deps.briefings.briefRoute({ id: caller.userId }, { waypoints: built.doc.waypoints, legOverrides: built.doc.legOverrides }, ac, departureMs !== undefined ? { departureMs } : {})
+      const set = changedLevelLegs(existing, built.doc).map(i => b.legs[i]).filter((l): l is NonNullable<typeof l> => !!l && l.msaApplies)
+      const ft = (n: number) => `${n.toLocaleString('en-US')} ft`
+      const illegal = set.filter(l => l.legalMinFt !== null && l.plannedFt < l.legalMinFt)
+      if (illegal.length) {
+        return fail(`Not saved. ${illegal.map(l => `Leg ${l.leg} at ${ft(l.plannedFt)} is below the legal minimum height there: ${ft(l.legalMinFt!)} (500 ft above the highest ground or obstacle within 150 m of the track; over towns 1,000 ft above obstacles within 600 m, which is not checked)`).join('; ')}. Choose a higher level. Lower flying (e.g. for take-off and landing) is set by the pilot in the app, not here.`)
+      }
+      const below = set.filter(l => l.msaFt > 0 && l.plannedFt < l.msaFt)
+      const describe = (l: (typeof below)[number]) => `leg ${l.leg} at ${ft(l.plannedFt)} is ${l.msaFt - l.plannedFt} ft below its MSA of ${ft(l.msaFt)}${l.msaCause ? ` (set by ${l.msaCause})` : ''}`
+      if (below.length && !belowMsaConfirmed) {
+        return fail(`Not saved: ${below.map(describe).join('; ')}. The MSA is the pilot's safety margin over terrain and obstacles, not a legal limit. Tell the pilot this, including what sets it, and ask whether to plan below it. Only if they confirm, call again with belowMsaConfirmed: true; otherwise use a level at or above the MSA.`)
+      }
       await deps.saveRoute(caller.userId, built.doc)
-      console.log(`[mcp] route ${verb} user=${caller.userId} client=${caller.clientId} id=${built.doc.id} change=${built.changed.join(',')}`)
+      console.log(`[mcp] route ${verb} user=${caller.userId} client=${caller.clientId} id=${built.doc.id} change=${built.changed.join(',')}${below.length ? ` belowMsa=${below.map(l => l.leg).join(',')}` : ''}`)
       const lines = [
         `${verb === 'created' ? 'Saved new route' : `Updated route (${built.changed.join(', ') || 'nothing changed'})`} ${routeText(built.doc)}`,
         `Open it in OpenVFR: ${routeLink(built.doc.id)}`,
         'The app marks it "check before use" until the pilot opens and saves it there; it reaches their devices at the next sync.',
       ]
       if (note) lines.push(note)
+      if (below.length) lines.push(`Below the MSA as the pilot confirmed: ${below.map(describe).join('; ')}. The app keeps showing it as a pre-flight warning.`)
+      const unknown = set.filter(l => l.msaFt <= 0)
+      if (unknown.length) lines.push(`No terrain data for leg ${unknown.map(l => l.leg).join(', ')}: its level was not checked against an MSA or the minimum height.`)
       if (built.warnings.length) lines.push(`Check these: ${built.warnings.join('; ')}.`)
-      if (deps.takeBriefing(caller.userId)) {
-        const b = await deps.briefings.briefRoute({ id: caller.userId }, { waypoints: built.doc.waypoints, legOverrides: built.doc.legOverrides }, ac, departureMs !== undefined ? { departureMs } : {})
-        lines.push('', 'Briefing of the saved route (fix warnings with update_route):', briefingText(b))
-      } else {
-        lines.push('(Briefing limit reached: brief it later with brief_saved_route.)', QUOTE_NOTE)
-      }
+      lines.push('', 'Briefing of the saved route (fix warnings with update_route):', briefingText(b))
       return text(lines.join('\n'))
     }
 
@@ -723,7 +743,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
         const input: RouteInput = { name: args.name, points: args.points, altitudeFt: args.altitudeFt, legs: args.legs, fuelStops: args.fuelStops, aircraftId: ac?.id }
         const built = buildRoute(input, { idx, newId: crypto.randomUUID(), by: await deps.clientName(caller.clientId), now: Date.now() })
         const note = [chosen, args.autoFuelStops ? await addFuelStops(built, ac?.profile ?? null) : ''].filter(Boolean).join('\n')
-        return await saveRouteAndBrief(built, ac?.profile ?? null, 'created', note, dep)
+        return await saveRouteAndBrief(built, ac?.profile ?? null, 'created', note, dep, undefined, args.belowMsaConfirmed === true)
       } catch (err) {
         if (err instanceof RouteInputError) return fail(err.message)
         throw err
@@ -757,7 +777,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
         const profile = ac ? ac.profile : await deps.briefings.aircraftById({ id: caller.userId }, built.doc.aircraftId)
         const note = args.autoFuelStops ? await addFuelStops(built, profile) : ''
         if (built.changed.length === 0) return text(`Nothing to change on ${quote(existing.name, 80)}.${note ? ` ${note}` : ''}\n${QUOTE_NOTE}`)
-        return await saveRouteAndBrief(built, profile, 'updated', note, dep)
+        return await saveRouteAndBrief(built, profile, 'updated', note, dep, existing, args.belowMsaConfirmed === true)
       } catch (err) {
         if (err instanceof RouteInputError) return fail(err.message)
         throw err
