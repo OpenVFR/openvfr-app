@@ -38,8 +38,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createHmac } from 'node:crypto'
-import { auth, isReviewAccountEmail, ASSISTANT_MCP, MCP_RESOURCE, SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, APP_ORIGIN } from './auth'
-import { upsertUserAircraft, upsertUserRoute } from './briefingData'
+import { auth, isReviewAccountEmail, ASSISTANT_MCP, MCP_RESOURCE, SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, SCOPE_LOGS, APP_ORIGIN } from './auth'
+import { upsertUserAircraft, upsertUserRoute, userPlaces, upsertUserPlace, userFlightSummaries } from './briefingData'
 import { createMcpEndpoint } from './mcp'
 import { admin } from './admin'
 import { AUTHENTICATED_ROLE, assertAuthenticatedRoleExists } from './pgRoles'
@@ -866,6 +866,10 @@ if (ASSISTANT_MCP) {
     saveAircraft: upsertUserAircraft,
     scopeRoutesWrite: SCOPE_ROUTES_WRITE,
     saveRoute: upsertUserRoute,
+    places: userPlaces,
+    savePlace: upsertUserPlace,
+    scopeLogs: SCOPE_LOGS,
+    flights: userFlightSummaries,
     clientName: async (clientId) => {
       const { rows } = await dbPool.query<{ name: string | null }>('SELECT name FROM ba_oauth_client WHERE "clientId" = $1', [clientId])
       return rows[0]?.name || 'an AI assistant'

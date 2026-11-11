@@ -5,7 +5,8 @@
  * authorization request in the URL, when the pilot's AI assistant asks to
  * connect. The pilot sees which assistant it is and what it may read, and
  * approves or denies; the server then sends the browser back to the
- * assistant. Reading saved routes and aircraft is a separate choice.
+ * assistant. Reading saved routes, places and aircraft, reading flight
+ * summaries and each kind of change are separate choices.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { assistantClientInfo, answerAssistantConsent, type AssistantClientInfo } from '../hooks/useAuth'
@@ -14,6 +15,7 @@ import styles from './AssistantConsent.module.css'
 const ROUTES_SCOPE = 'routes:read'
 const WRITE_SCOPE = 'aircraft:write'
 const ROUTES_WRITE_SCOPE = 'routes:write'
+const LOGS_SCOPE = 'logs:read'
 
 /**
  * What the server can vouch for. An assistant that publishes its identity as
@@ -35,7 +37,7 @@ export function assistantIdentity(clientId: string, redirectUri: string | null):
 }
 
 function changesText(routes: boolean, aircraft: boolean): string {
-  const what = [routes && 'saved routes', aircraft && 'aircraft profiles'].filter(Boolean).join(' and ')
+  const what = [routes && 'saved routes and places', aircraft && 'aircraft profiles'].filter(Boolean).join(' and ')
   return what ? `Apart from ${what} it cannot change anything in your account` : 'It cannot change anything in your account'
 }
 
@@ -46,6 +48,7 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
   const wantsRoutes = requested.includes(ROUTES_SCOPE)
   const wantsWrite = requested.includes(WRITE_SCOPE)
   const wantsRoutesWrite = requested.includes(ROUTES_WRITE_SCOPE)
+  const wantsLogs = requested.includes(LOGS_SCOPE)
   const identity = assistantIdentity(clientId, params.get('redirect_uri'))
 
   const [client, setClient] = useState<AssistantClientInfo | null>(null)
@@ -53,6 +56,8 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
   // Changes are never preselected: the pilot opts in.
   const [allowWrite, setAllowWrite] = useState(false)
   const [allowRoutesWrite, setAllowRoutesWrite] = useState(false)
+  // Reading flight summaries is never preselected either.
+  const [allowLogs, setAllowLogs] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -69,6 +74,7 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
       if (wantsRoutes && !allowRoutes) dropped.add(ROUTES_SCOPE)
       if (wantsWrite && !allowWrite) dropped.add(WRITE_SCOPE)
       if (wantsRoutesWrite && !allowRoutesWrite) dropped.add(ROUTES_WRITE_SCOPE)
+      if (wantsLogs && !allowLogs) dropped.add(LOGS_SCOPE)
       const scope = accept && dropped.size > 0 ? requested.filter(s => !dropped.has(s)).join(' ') : undefined
       await answerAssistantConsent(accept, scope)
     } catch (err) {
@@ -112,7 +118,15 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
             <li>
               <label className={styles.check}>
                 <input type="checkbox" checked={allowRoutes} onChange={e => setAllowRoutes(e.target.checked)} disabled={busy} />
-                your saved routes and aircraft profiles
+                your saved routes, places and aircraft profiles
+              </label>
+            </li>
+          )}
+          {wantsLogs && (
+            <li>
+              <label className={styles.check}>
+                <input type="checkbox" checked={allowLogs} onChange={e => setAllowLogs(e.target.checked)} disabled={busy} />
+                a summary of your logged flights (dates, times, aerodromes, distances)
               </label>
             </li>
           )}
@@ -125,7 +139,7 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
                 <li>
                   <label className={styles.check}>
                     <input type="checkbox" checked={allowRoutesWrite} onChange={e => setAllowRoutesWrite(e.target.checked)} disabled={busy} />
-                    create and change your saved routes
+                    create and change your saved routes and places
                   </label>
                 </li>
               )}
@@ -141,7 +155,7 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
           </>
         )}
         <p className={styles.small}>
-          {changesText(wantsRoutesWrite && allowRoutesWrite, wantsWrite && allowWrite)}, and it never sees your flight logs or position.
+          {changesText(wantsRoutesWrite && allowRoutesWrite, wantsWrite && allowWrite)}, and it never sees your position or GPS tracks{wantsLogs && allowLogs ? '' : ', or your flight logs'}.
           We email you when an assistant is connected. Disconnect it any time in your account, under
           AI assistants. Only connect assistants you trust: OpenVFR does not check what they do with your data.
         </p>

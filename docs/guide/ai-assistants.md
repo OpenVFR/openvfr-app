@@ -22,6 +22,8 @@ panel then has an **AI assistants** section.
 - "Set SE-ABC's maximum crosswind to 15 kt."
 - "Plan ESSB to ESMS with SE-ABC at 3,500 ft, with a fuel stop at ESKN, and save it."
 - "On my route to Umeå, fly via ESNS and climb to 4,500 ft on the last leg."
+- "Save my cabin at 59.50 17.93 as a place and plan a route there from ESSB."
+- "How many hours have I flown in the last 90 days, and when was my last flight?"
 - "Which altitudes should I fly on my route to Visby? I want to stay below the TMAs where terrain allows."
 
 Many assistants also offer OpenVFR's prompts in their prompt or attachment
@@ -74,8 +76,9 @@ hop is too long.
    where your account has it.
 3. The assistant opens OpenVFR. Sign in if you are not signed in already in
    that browser (if you are, this step is skipped), then check which assistant
-   asks, choose whether it may also read your **saved routes and aircraft**
-   (and, if it asks, change them: see below), and select **Allow**. To give a
+   asks, choose whether it may also read your **saved routes, places and
+   aircraft** (and, if it asks, change them or read a **summary of your logged
+   flights**: see below), and select **Allow**. To give a
    connected assistant more access later, disconnect it and connect again.
 
 The approval page says whether OpenVFR could check who the assistant is:
@@ -85,11 +88,30 @@ name, so only allow it if you just added it yourself. Every new connection
 is confirmed by email; if you did not make it, disconnect it (below).
 
 The assistant only reads, unless you also tick **create and change your
-saved routes** or **add and change your aircraft profiles** (never
+saved routes and places** or **add and change your aircraft profiles** (never
 preselected). Then it can save new routes and change routes (points,
-altitudes, speeds, fuel stops, aircraft, name), or add aircraft and change
-their values, but never delete anything. The assistant never sees your
-flight logs or position.
+altitudes, speeds, fuel stops, aircraft, name), save and change places
+(name, position, folder), or add aircraft and change their values, but
+never delete anything. The assistant never sees your position or your GPS
+tracks.
+
+### Places and flight summaries
+
+With access to saved routes it can list your **places** (the named
+positions you saved on the map) and use one as a route point, written
+`PL/<name>`. A place it saves or moves reaches your devices at the next sync;
+check its position on the map before you rely on it (unlike routes and
+aircraft, places carry no "check before use" mark). Place names must be
+unique.
+
+If you tick **a summary of your logged flights** (never preselected), the
+assistant can list your flights (date, aircraft, departure and arrival
+aerodrome, flight time, distance, highest altitude) and give totals for the
+last 30 days, 90 days and 12 months, per aircraft. It never gets the track
+or any position. It counts logged flights, not take-offs and landings, so
+whether you are current is for you and your authority to judge. Only
+flights in your OpenVFR logbook count, and only completed ones that were not
+recorded in a simulator.
 
 ### Routes and aircraft from an assistant
 

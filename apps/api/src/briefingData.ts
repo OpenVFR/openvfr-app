@@ -12,14 +12,14 @@
  *    (TILES_BASE_URL), per country, cached in memory for a few hours.
  */
 import { createHmac } from 'node:crypto'
-import { routeRows, aircraftRows } from '@open-vfr/shared/cloudSyncRows'
+import { routeRows, aircraftRows, waypointRows } from '@open-vfr/shared/cloudSyncRows'
 import { countryDatasetFile, countryMefFile, mergeFeatureCollections } from '@open-vfr/shared/countryData'
 import { parseMef, type MefGrid } from '@open-vfr/shared/mefGrid'
 import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import { resolveAirspaceLevels, type AirspaceAlertLevels } from '@open-vfr/shared/airspaceAlertLevel'
 import { notamRegionsFor } from '@open-vfr/shared/notamRegionScope'
 import { DEFAULT_REGION_CODES } from '@open-vfr/shared/regions'
-import type { RouteDocType, AircraftProfileDocType } from '@open-vfr/shared/types'
+import type { RouteDocType, AircraftProfileDocType, UserWaypointDocType } from '@open-vfr/shared/types'
 import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
 import { AUTHENTICATED_ROLE } from './pgRoles'
 
@@ -107,6 +107,62 @@ export async function upsertUserRoute(userId: string, doc: RouteDocType): Promis
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   })
   if (!res.ok) throw new Error(`PostgREST user_routes upsert -> ${res.status} ${(await res.text()).slice(0, 200)}`)
+}
+
+/** The user's saved places (the app's "waypoints"), oldest first. */
+export async function userPlaces(userId: string): Promise<UserWaypointDocType[]> {
+  const rows = await postgrestGet(userId, '/user_waypoints?select=*&order=updated_at.asc&limit=1000')
+  return rows.map(r => waypointRows.fromServer(r)).filter((w): w is UserWaypointDocType => !!w)
+}
+
+/** Create or replace one of the user's saved places as that user. */
+export async function upsertUserPlace(userId: string, doc: UserWaypointDocType): Promise<void> {
+  if (!POSTGREST_URL) throw new Error('POSTGREST_INTERNAL_URL is not set')
+  const { jwt } = mintPostgrestJwt({ id: userId }, 60)
+  const res = await fetch(`${POSTGREST_URL}/user_waypoints`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${jwt}`,
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify(waypointRows.toServer(doc, userId)),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  })
+  if (!res.ok) throw new Error(`PostgREST user_waypoints upsert -> ${res.status} ${(await res.text()).slice(0, 200)}`)
+}
+
+/** One logged flight without its GPS track. */
+export interface FlightSummary {
+  id: string
+  startedAt: number
+  endedAt: number
+  registration: string
+  aircraftId: string
+  departure: string
+  arrival: string
+  distanceNm: number
+  maxAltFt: number
+}
+
+/**
+ * The user's most recent logged flights, newest first. The track column is
+ * never selected: the assistant gets summaries, not positions.
+ */
+export async function userFlightSummaries(userId: string, limit = 1000): Promise<FlightSummary[]> {
+  const cols = 'id,started_at,ended_at,aircraft_id,registration,departure_icao,arrival_icao,distance_nm,max_alt_ft'
+  const rows = await postgrestGet(userId, `/user_flight_logs?select=${cols}&ended_at=not.is.null&order=ended_at.desc&limit=${limit}`)
+  return rows.map(r => ({
+    id: String(r['id']),
+    startedAt: r['started_at'] ? Date.parse(String(r['started_at'])) : 0,
+    endedAt: Date.parse(String(r['ended_at'])),
+    registration: String(r['registration'] ?? ''),
+    aircraftId: String(r['aircraft_id'] ?? ''),
+    departure: String(r['departure_icao'] ?? ''),
+    arrival: String(r['arrival_icao'] ?? ''),
+    distanceNm: Number(r['distance_nm'] ?? 0) || 0,
+    maxAltFt: Number(r['max_alt_ft'] ?? 0) || 0,
+  })).filter(f => Number.isFinite(f.endedAt))
 }
 
 /** The user's aircraft profiles. */

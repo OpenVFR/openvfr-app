@@ -70,7 +70,7 @@ export default function AssistantSection({ mcpUrl }: { mcpUrl: string }) {
               <div className={styles.passkeyInfo}>
                 <span className={styles.passkeyName}>{r.name}</span>
                 <span className={styles.passkeyDate}>
-                  {r.scopes.includes('routes:read') ? 'Briefings, saved routes and aircraft' : 'Briefings only'}
+                  {[r.scopes.includes('routes:read') ? 'Briefings, saved routes, places and aircraft' : 'Briefings only', r.scopes.includes('logs:read') && 'flight summaries'].filter(Boolean).join(', ')}
                   {r.createdAt ? ` · since ${new Date(r.createdAt).toLocaleDateString('sv-SE')}` : ''}
                 </span>
               </div>

@@ -299,7 +299,7 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
 With `ASSISTANT_MCP=on` the api lets a pilot connect their own AI assistant
 (any assistant that supports remote MCP servers with OAuth) to read
 OpenVFR data: route briefings, aerodrome information, METAR/TAF and NOTAMs,
-and, if the pilot allows it, their saved routes and aircraft. It only reads.
+and, if the pilot allows it, their saved routes, places and aircraft and flight summaries. Changes need their own consent.
 
 - MCP endpoint: `<BETTER_AUTH_URL>/mcp` (POST only). Discovery documents:
   `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`
@@ -310,7 +310,7 @@ and, if the pilot allows it, their saved routes and aircraft. It only reads.
 - Sign-in and consent are pages of the web app:
   `<BETTER_AUTH_APP_ORIGIN>/oauth/login` and `/oauth/consent` (the SPA
   fallback must serve `index.html` there). The pilot sees the assistant's
-  name and can leave out saved routes and aircraft; the account panel lists
+  name and can leave out saved routes and aircraft, or flight summaries; the account panel lists
   connected assistants with Disconnect. The consent page marks an assistant
   as verified (its Client ID Metadata Document's domain) or not verified
   (self-registered: shows where it sends the browser back), and every
@@ -330,9 +330,11 @@ and, if the pilot allows it, their saved routes and aircraft. It only reads.
   `BETTER_AUTH_URL` and `BETTER_AUTH_APP_ORIGIN` to the tunnel URL, give the
   api a real `BETTER_AUTH_SECRET` (the dev default is refused on https) and
   let Vite answer to the tunnel host with `VITE_DEV_ALLOWED_HOSTS`.
-- Scopes: `briefing:read` (every token), `routes:read` (saved routes and
-  aircraft), `routes:write` (create and change saved routes) and
-  `aircraft:write` (create and change aircraft profiles); writes never
+- Scopes: `briefing:read` (every token), `routes:read` (saved routes, places and
+  aircraft), `routes:write` (create and change saved routes and places),
+  `aircraft:write` (create and change aircraft profiles) and `logs:read`
+  (per-flight summaries from `user_flight_logs`, selected without the
+  `track_json` column: no GPS tracks; not preselected); writes never
   delete and are not preselected on the consent page. They go through
   PostgREST as the user, run the same checks as the app (route points are
   resolved against the aerodrome, navaid and reporting-point datasets from

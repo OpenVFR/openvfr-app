@@ -14,8 +14,11 @@ export const SCOPE_BRIEFING = 'briefing:read'
 export const SCOPE_ROUTES = 'routes:read'
 /** Create and change the user's aircraft profiles (a separate consent, off by default on the consent page). */
 export const SCOPE_AIRCRAFT_WRITE = 'aircraft:write'
+/** Create and change routes and saved places (a separate consent, off by default on the consent page). */
 export const SCOPE_ROUTES_WRITE = 'routes:write'
-export const MCP_SCOPES = ['openid', 'offline_access', SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE]
+/** Read flight summaries from the logbook: dates, times, aerodromes, distances. Never GPS tracks (a separate consent). */
+export const SCOPE_LOGS = 'logs:read'
+export const MCP_SCOPES = ['openid', 'offline_access', SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, SCOPE_LOGS]
 
 /** Paths better-auth rate-limits for the assistant connection (open client registration). */
 export const ASSISTANT_RATE_RULES = {

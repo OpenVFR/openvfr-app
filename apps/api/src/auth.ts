@@ -15,7 +15,7 @@ import { emailOTP, admin } from 'better-auth/plugins'
 import { passkey }    from '@better-auth/passkey'
 import { parseFixedOtpAccounts } from './fixedOtpAccounts.js'
 import { bearer }     from 'better-auth/plugins'
-import { assistantConnectionPlugins, mcpResource, ASSISTANT_RATE_RULES, SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE } from './assistantAuth.js'
+import { assistantConnectionPlugins, mcpResource, ASSISTANT_RATE_RULES, SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, SCOPE_LOGS } from './assistantAuth.js'
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { sendEmail }  from './mailer.js'
 import { pool }        from './db.js'
@@ -47,7 +47,7 @@ const IS_PROD = process.env['NODE_ENV'] === 'production'
 // user signs in and approves it).
 export const ASSISTANT_MCP = /^(on|true|1)$/i.test(process.env['ASSISTANT_MCP'] ?? '')
 export const MCP_RESOURCE = mcpResource(BASE_URL ?? '')
-export { SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE }
+export { SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, SCOPE_LOGS }
 
 // Origin of the separately deployed admin UI (e.g. https://admin.<domain>).
 // Optional. When set it is trusted for sign-in (incl. passkeys) and is the
@@ -214,8 +214,8 @@ async function notifyAssistantConnected(ctx: Parameters<Parameters<typeof create
     const name = rows[0]?.name || 'An AI assistant'
     let who = 'not verified: it registered itself and chose its own name'
     if (/^https:\/\//i.test(clientId)) { try { who = `verified: published by ${new URL(clientId).host}` } catch { /* keep */ } }
-    const reads = scopes.includes(SCOPE_ROUTES) ? 'briefings, aerodromes, weather and NOTAMs, and your saved routes and aircraft' : 'briefings, aerodromes, weather and NOTAMs'
-    const changes = [scopes.includes(SCOPE_ROUTES_WRITE) && 'create and change your saved routes', scopes.includes(SCOPE_AIRCRAFT_WRITE) && 'add and change your aircraft profiles'].filter(Boolean)
+    const reads = [scopes.includes(SCOPE_ROUTES) ? 'briefings, aerodromes, weather and NOTAMs, and your saved routes, places and aircraft' : 'briefings, aerodromes, weather and NOTAMs', scopes.includes(SCOPE_LOGS) && 'a summary of your logged flights (dates, times, aerodromes, distances; no GPS tracks)'].filter(Boolean).join(', and ')
+    const changes = [scopes.includes(SCOPE_ROUTES_WRITE) && 'create and change your saved routes and places', scopes.includes(SCOPE_AIRCRAFT_WRITE) && 'add and change your aircraft profiles'].filter(Boolean)
     const writes = changes.length ? `It can also ${changes.join(', and ')} (never delete); each change is marked "check before use" in the app.` : 'It cannot change anything.'
     await sendEmail({
       to: session.user.email,

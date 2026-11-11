@@ -270,11 +270,12 @@ The MCP endpoint (`apps/api/src/mcp.ts`, auth in `assistantAuth.ts`) is called b
 1. **Thin layer over shared code.** A tool calls the same functions the apps and REST endpoints use (`briefingService.ts`, `@open-vfr/shared/*`). No aviation logic that exists only in a tool.
 2. **Read-only by default.** A tool that changes anything needs its own scope (like `aircraft:write`), never preselected on the consent page (`AssistantConsent.tsx`), named in the connection email (`auth.ts`), and refused without it. No tool deletes; deletion stays in the app.
 3. **Annotations and descriptions.** Every tool sets `annotations.readOnlyHint` (writes also `destructiveHint`) and a description that says what it does, which units every number uses, and what not to invent. The e2e test fails without them.
-4. **Writes are checked and reviewable.** Bound every input (zod plus hard limits like `aircraftTools.ts`), run the same checks as the app, write through PostgREST as the user (never a table grant for the api role), log user and client, rate-limit per user, and mark the record for the pilot's review in the app (`assistantReview`).
+4. **Writes are checked and reviewable.** Bound every input (zod plus hard limits like `aircraftTools.ts`), run the same checks as the app, write through PostgREST as the user (never a table grant for the api role), log user and client, rate-limit per user, and mark the record for the pilot's review in the app (`assistantReview`). Saved places are the exception (no mark): a route that uses one is marked, and the guide says to check a place's position.
 5. **Outside text is quoted.** NOTAM texts, weather reports, names and anything else not written by this code goes through `quote()` (`untrusted.ts`), and the answer ends with `QUOTE_NOTE`. Never paste it unquoted into an answer.
 6. **Honest answers.** Say how fresh the data is, say what was not checked (missing NOTAM data, terrain), never turn "not loaded" into "none", link into the app, and end briefings with the "not an official briefing" disclaimer.
 7. **Auth is the library's.** Token checks stay in `requireMcpAuth` (audience = the MCP resource, keys from the api's loopback `jwksUrl`); tokens are never passed on to other services (PostgREST gets its own short-lived token per call). New scopes go in `assistantAuth.ts` and in the 401 challenge, or clients never ask for them.
-8. **Schema follows better-auth.** The `ba_oauth_*` / `ba_jwks` migration must match better-auth's schema; the e2e test compares them, so re-check it on every better-auth upgrade.
+8. **Logbook: summaries only.** `logs:read` gives per-flight summaries and totals (`logbook.ts`); the query never selects `track_json` and no tool returns a position. Never add one without a new scope and a new consent line.
+9. **Schema follows better-auth.** The `ba_oauth_*` / `ba_jwks` migration must match better-auth's schema; the e2e test compares them, so re-check it on every better-auth upgrade.
 
 ---
 

@@ -1,8 +1,9 @@
 /**
  * Resolve route point identifiers against the aerodrome, navaid, waypoint
  * and landmark data: "ESSB", "ARL", "ESNV/NORTH", "LM/Hassela kyrka",
- * "5939N01756E". Landmarks are the named ones only (churches, water towers,
- * windmills...), written LM/<name>.
+ * "PL/Cabin", "5939N01756E". Landmarks are the named ones only (churches,
+ * water towers, windmills...), written LM/<name>. PL/<name> is one of the
+ * pilot's own saved places.
  *
  * Reporting points repeat between aerodromes (NORTH exists at several), so a
  * bare name is resolved to the copy that belongs to an aerodrome named in
@@ -15,7 +16,7 @@ import type { RouteWaypoint } from './routeCalc'
 type FC = { features: { geometry: { type?: string; coordinates: unknown } | null; properties: Record<string, unknown> | null }[] }
 
 export interface IndexedPoint {
-  kind: 'aerodrome' | 'navaid' | 'waypoint' | 'landmark'
+  kind: 'aerodrome' | 'navaid' | 'waypoint' | 'landmark' | 'place'
   id: string
   name: string
   lat: number
@@ -31,6 +32,18 @@ export interface PointIndex {
   waypoints: Map<string, IndexedPoint[]>
   /** Named landmarks by upper-case name. */
   landmarks: Map<string, IndexedPoint[]>
+  /** The pilot's saved places by upper-case name (added per user with withPlaces). */
+  places?: Map<string, IndexedPoint[]>
+}
+
+/** A copy of the index that also knows the pilot's saved places (PL/<name>). */
+export function withPlaces(idx: PointIndex, places: readonly { name: string; lat: number; lng: number }[]): PointIndex {
+  const m = new Map<string, IndexedPoint[]>()
+  for (const p of places) {
+    const name = p.name.trim()
+    if (name) push(m, name.toUpperCase(), { kind: 'place', id: name, name, lat: p.lat, lng: p.lng })
+  }
+  return { ...idx, places: m }
 }
 
 function coords(f: FC['features'][number]): [number, number] | null {
@@ -69,7 +82,7 @@ export function buildPointIndex(sets: { aerodromes?: FC | null; navaids?: FC | n
 
 /** The identifier to write a point with in a route (what resolveRoutePoints accepts). */
 export function routeIdentifier(p: IndexedPoint): string {
-  return p.kind === 'waypoint' && p.aerodrome ? `${p.aerodrome}/${p.id}` : p.kind === 'landmark' ? `LM/${p.id}` : p.id
+  return p.kind === 'waypoint' && p.aerodrome ? `${p.aerodrome}/${p.id}` : p.kind === 'landmark' ? `LM/${p.id}` : p.kind === 'place' ? `PL/${p.id}` : p.id
 }
 
 export type Resolved = { ok: true; point: RouteWaypoint } | { ok: false; token: string; reason: string }
@@ -106,6 +119,15 @@ export function resolveRoutePoints(tokens: readonly string[], idx: PointIndex): 
       if (hits.length === 1) return { ok: true, point: toWaypoint(hits[0]!) }
       if (hits.length > 1) return { ok: false, token, reason: `${hits.length} landmarks have this name; use the coordinates of the one you mean: ${hits.slice(0, 5).map(h => fmtCoord(h.lat, h.lng)).join(', ')}` }
       return { ok: false, token, reason: 'no named landmark with this name in OpenVFR\'s data' }
+    }
+
+    // PL/<name>: one of the pilot's saved places.
+    const pl = /^PL\/(.+)$/.exec(token)
+    if (pl) {
+      const hits = idx.places?.get(pl[1]!.trim()) ?? []
+      if (hits.length === 1) return { ok: true, point: toWaypoint(hits[0]!) }
+      if (hits.length > 1) return { ok: false, token, reason: `${hits.length} saved places have this name; rename one in the app or use coordinates` }
+      return { ok: false, token, reason: idx.places ? 'no saved place with this name (list_places shows them)' : 'saved places are not available (needs access to saved routes and aircraft)' }
     }
 
     // AERODROME/POINT: a reporting point of that aerodrome.

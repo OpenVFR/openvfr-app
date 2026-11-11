@@ -21,7 +21,7 @@
 import { requireMcpAuth } from '@better-auth/mcp'
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server'
 import * as z from 'zod'
-import type { AircraftProfileDocType, RouteDocType } from '@open-vfr/shared/types'
+import type { AircraftProfileDocType, RouteDocType, UserWaypointDocType } from '@open-vfr/shared/types'
 import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import { parseAerodromesGeoJson, type AerodromeFeatureCollectionLike } from '@open-vfr/shared/findDestination'
@@ -33,13 +33,15 @@ import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { briefingText, legLine, BRIEFING_DISCLAIMER } from './briefing'
 import { quote, QUOTE_NOTE } from './untrusted'
 import { BriefingInputError, type BriefingService, type WeatherFor } from './briefingService'
-import { loadCountryDataset } from './briefingData'
+import { loadCountryDataset, type FlightSummary } from './briefingData'
+import { buildPlace, PlaceInputError } from './placeTools'
+import { flightLine, summaryLines } from './logbook'
 import { getAvailableCountries } from './countries'
 import { getNotamsForIcao, notamStatus } from './notam'
 import { RateLimiter, limitFromEnv } from './rateLimiter'
 import { buildAircraft, AircraftInputError, CATEGORIES, NUMERIC_LIMITS, type AircraftInput, type NumericField } from './aircraftTools'
 import { buildRoute, legLines, changedLevelLegs, RouteInputError, ALT_LIMITS, SPEED_LIMITS, MAX_POINTS, type RouteInput } from './routeTools'
-import { buildPointIndex, resolveRoutePoints, type PointIndex } from '@open-vfr/shared/routeIdentifiers'
+import { buildPointIndex, resolveRoutePoints, withPlaces, fmtCoord, type PointIndex } from '@open-vfr/shared/routeIdentifiers'
 import { allPoints, pointsNearPosition, pointsNearLeg, pointsNearAirspaceEdge, type NearPoint, type PointKind } from '@open-vfr/shared/pointsNear'
 import type { auth as authInstance } from './auth'
 
@@ -138,6 +140,13 @@ export interface McpDeps {
   saveRoute: (userId: string, doc: RouteDocType) => Promise<void>
   /** Aerodromes, navaids and reporting points to resolve route points; null = not available. */
   pointIndex?: () => Promise<PointIndex | null>
+  /** The user's saved places. */
+  places: (userId: string) => Promise<UserWaypointDocType[]>
+  /** Save one of the user's saved places (as the user). */
+  savePlace: (userId: string, doc: UserWaypointDocType) => Promise<void>
+  scopeLogs: string
+  /** The user's latest logged flights, newest first, without GPS tracks. */
+  flights: (userId: string) => Promise<FlightSummary[]>
   /** Save one of the user's aircraft profiles (as the user). */
   saveAircraft: (userId: string, doc: AircraftProfileDocType) => Promise<void>
   /** The assistant's name for the review mark and logs. */
@@ -190,6 +199,13 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
     const server = new McpServer({ name: 'openvfr', version: '1.0.0' })
     const canRoutes = caller.scopes.includes(deps.scopeRoutes)
     const noRoutes = () => fail('This assistant was not given access to your saved routes and aircraft. Reconnect it and allow "saved routes and aircraft".')
+
+    /** The point index plus the pilot's saved places when they allowed reading them. */
+    async function pointsIdx(): Promise<PointIndex | null> {
+      const idx = await (deps.pointIndex ?? defaultPointIndex)()
+      if (!idx || !canRoutes) return idx
+      return withPlaces(idx, await deps.places(caller.userId).catch(() => []))
+    }
 
     async function findAircraft(name?: string): Promise<AircraftProfileDocType | null> {
       if (!name || !canRoutes) return null
@@ -507,6 +523,116 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       return `${quote(r.name, 80)}:\n${legLines(r, pointName).join('\n')}`
     }
 
+    // ── Saved places: read, create, update (never delete) ─────────────────
+    const placeLine = (p: UserWaypointDocType) => `- ${quote(p.name, 60)}${p.folder ? ` [folder ${quote(p.folder, 40)}]` : ''}: ${fmtCoord(p.lat, p.lng)} (${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}); route point PL/${quote(p.name, 60)}`
+
+    server.registerTool('list_places', {
+      annotations: { readOnlyHint: true },
+      description: "List the pilot's saved places (own named positions such as a cabin, a strip or a lake) with position and folder. Use a place in create_route / update_route / points_near as PL/<name>.",
+      inputSchema: z.object({ folder: z.string().max(40).optional().describe('Only this folder'), limit: z.number().int().min(1).max(200).optional() }),
+    }, async ({ folder, limit }) => {
+      if (!canRoutes) return noRoutes()
+      let list = await deps.places(caller.userId)
+      if (folder !== undefined) list = list.filter(p => p.folder.toLowerCase() === folder.trim().toLowerCase())
+      if (list.length === 0) return text(folder !== undefined ? `No saved places in folder "${quote(folder, 40)}".` : 'No saved places.')
+      const n = limit ?? 100
+      return text(`Saved places (${list.length}):\n${list.slice(0, n).map(placeLine).join('\n')}${list.length > n ? `\n… ${list.length - n} more: narrow with folder or raise limit.` : ''}\n${QUOTE_NOTE}`)
+    })
+
+    server.registerTool('get_place', {
+      annotations: { readOnlyHint: true },
+      description: "One of the pilot's saved places: position, folder and the nearest aerodromes.",
+      inputSchema: z.object({ name: z.string().min(1).max(60).describe('Place name (or part of it) or id') }),
+    }, async ({ name }) => {
+      if (!canRoutes) return noRoutes()
+      const list = await deps.places(caller.userId)
+      const k = name.trim().toLowerCase()
+      const hits = list.filter(p => p.id === name.trim() || p.name.toLowerCase() === k)
+      const found = hits.length ? hits : list.filter(p => p.name.toLowerCase().includes(k))
+      if (found.length === 0) return fail(`No saved place "${quote(name, 60)}". Use list_places.`)
+      if (found.length > 1) return fail(`Several places match: ${found.slice(0, 8).map(p => quote(p.name, 60)).join(', ')}. Use the full name.\n${QUOTE_NOTE}`)
+      const p = found[0]!
+      const idx = await (deps.pointIndex ?? defaultPointIndex)()
+      const near = idx ? pointsNearPosition(allPoints(idx), p, 25, { kinds: ['aerodrome'], limit: 3 }) : []
+      return text(`${placeLine(p)}\nNearest aerodromes: ${near.length ? near.map(n => `${n.identifier} ${n.distNm.toFixed(1)} NM`).join(', ') : 'none within 25 NM'}.\n${QUOTE_NOTE}`)
+    })
+
+    async function savePlaceAnd(verb: 'created' | 'updated', build: () => ReturnType<typeof buildPlace>): Promise<Text> {
+      try {
+        const b = build()
+        if (verb === 'updated' && b.changed.length === 0) return text('Nothing to change.')
+        await deps.savePlace(caller.userId, b.doc)
+        console.log(`[mcp] place ${verb} user=${caller.userId} client=${caller.clientId} id=${b.doc.id} change=${b.changed.join(',')}`)
+        return text(`${verb === 'created' ? 'Saved place' : `Updated place (${b.changed.join(', ')})`}: ${placeLine(b.doc)}\nIt reaches the pilot's devices at the next sync. Use it in a route as PL/${quote(b.doc.name, 60)}.\n${QUOTE_NOTE}`)
+      } catch (err) {
+        if (err instanceof PlaceInputError) return fail(err.message)
+        throw err
+      }
+    }
+
+    server.registerTool('create_place', {
+      description: "Save a new place (name, position, optional folder) for the pilot, e.g. a cabin, a farm strip or a lake they use as a turning point. Position as coordinates (59.35 17.94) or 5921N01756E. Check the position with the pilot when it comes from a description, not coordinates.",
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+      inputSchema: z.object({ name: z.string().min(1).max(60), position: z.string().min(3).max(60), folder: z.string().max(40).optional() }),
+    }, async (args) => {
+      if (!canRoutesWrite) return noRoutesWrite()
+      if (writeLimiter.take(caller.userId).waitS > 0) return fail('Too many changes for now. Try again later.')
+      const others = await deps.places(caller.userId)
+      return savePlaceAnd('created', () => buildPlace(args, { others, newId: crypto.randomUUID(), now: Date.now() }))
+    })
+
+    server.registerTool('update_place', {
+      description: "Change one of the pilot's saved places: name, position or folder (only the given fields change; folder \"\" = unfiled). Routes already using the place keep their own copy of the position. Cannot delete a place.",
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+      inputSchema: z.object({ place: z.string().min(1).max(60).describe('Place name or id'), name: z.string().min(1).max(60).optional(), position: z.string().min(3).max(60).optional(), folder: z.string().max(40).optional() }),
+    }, async (args) => {
+      if (!canRoutesWrite) return noRoutesWrite()
+      if (writeLimiter.take(caller.userId).waitS > 0) return fail('Too many changes for now. Try again later.')
+      const others = await deps.places(caller.userId)
+      const k = args.place.trim().toLowerCase()
+      const existing = others.find(p => p.id === args.place.trim() || p.name.toLowerCase() === k)
+      if (!existing) return fail(`No saved place "${quote(args.place, 60)}". Use list_places (the name must match fully).`)
+      return savePlaceAnd('updated', () => buildPlace(args, { existing, others, newId: existing.id, now: Date.now() }))
+    })
+
+    // ── Logbook summaries (never GPS tracks) ──────────────────────────────
+    const canLogs = caller.scopes.includes(deps.scopeLogs)
+    const noLogs = () => fail('This assistant was not given access to your flight log summaries. Reconnect it and allow "summaries of your logged flights".')
+    const LOG_NOTE = 'From the pilot\'s OpenVFR logbook: only flights recorded or imported there. Counts logged flights, not take-offs and landings: licence currency and medical rules are for the pilot and the authority to judge.'
+
+    server.registerTool('list_flights', {
+      annotations: { readOnlyHint: true },
+      description: "The pilot's logged flights, newest first: date, aircraft registration, departure and arrival aerodrome, flight time, distance and highest altitude. No positions or GPS tracks.",
+      inputSchema: z.object({
+        from: z.string().max(10).optional().describe('Earliest date, YYYY-MM-DD'),
+        to: z.string().max(10).optional().describe('Latest date, YYYY-MM-DD'),
+        aircraft: z.string().max(40).optional().describe('Registration'),
+        limit: z.number().int().min(1).max(50).optional().describe('Default 20'),
+      }),
+    }, async ({ from, to, aircraft, limit }) => {
+      if (!canLogs) return noLogs()
+      const day = (v: string | undefined) => (v === undefined ? undefined : /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v)) ? Date.parse(v) : null)
+      const f = day(from), t = day(to)
+      if (f === null || t === null) return fail('Dates must be YYYY-MM-DD.')
+      let list = await deps.flights(caller.userId)
+      if (f !== undefined) list = list.filter(x => x.endedAt >= f)
+      if (t !== undefined) list = list.filter(x => x.endedAt < t + 86_400_000)
+      if (aircraft) list = list.filter(x => x.registration.toLowerCase() === aircraft.trim().toLowerCase())
+      if (list.length === 0) return text('No logged flights match.')
+      const n = limit ?? 20
+      return text(`${list.length} logged flight${list.length === 1 ? '' : 's'}, newest first:\n${list.slice(0, n).map(flightLine).join('\n')}${list.length > n ? `\n… ${list.length - n} more: narrow with from/to/aircraft or raise limit.` : ''}\n${LOG_NOTE}\n${QUOTE_NOTE}`)
+    })
+
+    server.registerTool('logbook_summary', {
+      annotations: { readOnlyHint: true },
+      description: "Totals from the pilot's logbook: last flight, flights and hours in the last 30 days, 90 days and 12 months, and per aircraft. Use it for how current or recent the pilot is.",
+      inputSchema: z.object({}),
+    }, async () => {
+      if (!canLogs) return noLogs()
+      const list = await deps.flights(caller.userId)
+      return text(`${summaryLines(list, Date.now(), list.length >= 1000).join('\n')}\n${LOG_NOTE}\n${QUOTE_NOTE}`)
+    })
+
     server.registerTool('leg_altitudes', {
       description: "Altitude planning per leg of a saved route (create_route and update_route answers already include the same table: call this after they returned, not in parallel): minimum safe altitude (terrain, obstacles and the pilot's own margins), controlled airspace over the leg (floor, ceiling, where along the leg, frequency), restricted areas, and a suggested altitude that stays clear of terrain, below controlled airspace where possible, and on a VFR semicircular level. When the MSA reaches controlled airspace it says so and lists the options (clearance or route around); it never suggests flying below the MSA (the pilot may still choose to: update_route with belowMsaConfirmed after telling them the MSA and its cause). Change levels with update_route.",
       annotations: { readOnlyHint: true },
@@ -589,7 +715,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
         limit: z.number().int().min(1).max(25).optional(),
       }),
     }, async (args) => {
-      const idx = await (deps.pointIndex ?? defaultPointIndex)()
+      const idx = await pointsIdx()
       if (!idx) return fail('Aerodrome and navaid data is not available right now.')
       const pts = allPoints(idx)
       const available = (await getAvailableCountries())?.map(c => c.code) ?? []
@@ -732,7 +858,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       const dep = parseDeparture(args.departure)
       if (isText(dep)) return dep
       if (writeLimiter.take(caller.userId).waitS > 0) return fail('Too many changes for now. Try again later.')
-      const idx = await (deps.pointIndex ?? defaultPointIndex)()
+      const idx = await pointsIdx()
       if (!idx) return fail('Aerodrome and navaid data is not available right now.')
       let ac = await aircraftFor(args.aircraft)
       if (ac && 'error' in ac) return ac.error
@@ -774,7 +900,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       const found = await findRoute(args.route)
       if ('error' in found) return found.error
       const existing = found.route
-      const idx = args.points ? await (deps.pointIndex ?? defaultPointIndex)() : buildPointIndex({})
+      const idx = args.points ? await pointsIdx() : buildPointIndex({})
       if (!idx) return fail('Aerodrome and navaid data is not available right now.')
       const ac = await aircraftFor(args.aircraft)
       if (ac && 'error' in ac) return ac.error
@@ -825,6 +951,6 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
     // Advertised in the 401 challenge: clients ask for what is listed here,
     // so list saved routes (the pilot can still leave them out on the consent
     // page) and offline_access (refresh tokens, no sign-in every hour).
-    challengeScopes: [deps.scopeBriefing, deps.scopeRoutes, deps.scopeRoutesWrite, deps.scopeAircraftWrite, 'offline_access'],
+    challengeScopes: [deps.scopeBriefing, deps.scopeRoutes, deps.scopeRoutesWrite, deps.scopeAircraftWrite, deps.scopeLogs, 'offline_access'],
   })
 }

@@ -24,7 +24,7 @@ const { bearer, emailOTP } = await import('better-auth/plugins')
 const { getMigrations } = await import('better-auth/db/migration')
 const { PGlite } = await import('@electric-sql/pglite')
 const { PGliteDialect } = await import('kysely-pglite-dialect')
-const { assistantConnectionPlugins, mcpResource, SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE } = await import('./assistantAuth.js')
+const { assistantConnectionPlugins, mcpResource, SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, SCOPE_LOGS } = await import('./assistantAuth.js')
 const { buildPointIndex } = await import('@open-vfr/shared/routeIdentifiers')
 const { buildRouteBriefing } = await import('./briefing.js')
 const { createMcpEndpoint } = await import('./mcp.js')
@@ -55,6 +55,7 @@ const auth = betterAuth({
   ],
 })
 
+const places: { id: string; name: string; lat: number; lng: number; folder: string; updatedAt: number }[] = []
 let server: { close: () => void } | null = null
 let as: Record<string, string> = {}
 let clientId = ''
@@ -85,6 +86,13 @@ before(async () => {
     saveAircraft: async (_u, doc) => { saved.push(doc) },
     scopeRoutesWrite: SCOPE_ROUTES_WRITE,
     saveRoute: async (_u, doc) => { savedRoutes.push(doc as never) },
+    places: async () => places,
+    savePlace: async (_u, doc) => { const i = places.findIndex(p => p.id === doc.id); if (i >= 0) places[i] = doc; else places.push(doc) },
+    scopeLogs: SCOPE_LOGS,
+    flights: async () => [
+      { id: 'f2', startedAt: Date.now() - 5 * 86_400_000, endedAt: Date.now() - 5 * 86_400_000 + 5_400_000, registration: 'SE-TST', aircraftId: 'a1', departure: 'ESSB', arrival: 'ESSA', distanceNm: 30.4, maxAltFt: 2400 },
+      { id: 'f1', startedAt: 0, endedAt: Date.now() - 200 * 86_400_000, registration: 'SE-TST', aircraftId: 'a1', departure: '', arrival: '', distanceNm: 10, maxAltFt: 1000 },
+    ],
     pointIndex: async () => buildPointIndex({ aerodromes: { features: [
       { geometry: { coordinates: [17.94, 59.35] }, properties: { icao: 'ESSB', elevation_ft: 47 } },
       { geometry: { coordinates: [17.92, 59.65] }, properties: { icao: 'ESSA', elevation_ft: 137 } },
@@ -106,7 +114,7 @@ async function connect(scope: string): Promise<{ access_token: string; refresh_t
   const verifier = randomBytes(32).toString('base64url')
   const authorize = new URL(as['authorization_endpoint']!)
   authorize.search = new URLSearchParams({
-    response_type: 'code', client_id: clientId, redirect_uri: REDIRECT, scope: [SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, 'offline_access'].join(' '),
+    response_type: 'code', client_id: clientId, redirect_uri: REDIRECT, scope: [SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, SCOPE_LOGS, 'offline_access'].join(' '),
     state: 's', code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', resource: RESOURCE, prompt: 'consent',
   }).toString()
   const step = await (await fetch(authorize, { headers: { cookie } })).json() as { url: string }
@@ -134,7 +142,7 @@ test('401 challenge points to the metadata and lists the scopes to ask for', asy
   assert.equal(r.status, 401)
   const h = r.headers.get('www-authenticate') ?? ''
   assert.match(h, /resource_metadata="[^"]+oauth-protected-resource\/mcp"/)
-  for (const s of [SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, 'offline_access']) assert.ok(h.includes(s), `challenge lists ${s}`)
+  for (const s of [SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, SCOPE_LOGS, 'offline_access']) assert.ok(h.includes(s), `challenge lists ${s}`)
 })
 
 test('discovery: protected resource and authorization server metadata', async () => {
@@ -171,12 +179,14 @@ test('tool contract, scopes and answers', async () => {
   }
   // Every tool that writes refuses a token without its write scope.
   const writers = tools.filter(x => x.annotations?.readOnlyHint === false)
-  assert.deepEqual(writers.map(w => w.name).sort(), ['create_aircraft', 'create_route', 'update_aircraft', 'update_route'])
+  assert.deepEqual(writers.map(w => w.name).sort(), ['create_aircraft', 'create_place', 'create_route', 'update_aircraft', 'update_place', 'update_route'])
   const writeArgs: Record<string, unknown> = {
     create_aircraft: { registration: 'SE-NEW', cruiseIas: 100, fuelBurnLhr: 30, maxFuelL: 100 },
     update_aircraft: { aircraft: 'SE-TST', hasRadio: true },
     create_route: { points: ['ESSB', 'ESSA'] },
     update_route: { route: 'Home loop', altitudeFt: 2500 },
+    create_place: { name: 'Cabin', position: '59.5 17.9' },
+    update_place: { place: 'Cabin', folder: 'x' },
   }
   for (const w of writers) {
     const r = await rpc(t.access_token, 'tools/call', { name: w.name, arguments: writeArgs[w.name] })
@@ -236,6 +246,47 @@ test('with routes:write the assistant can save a route, refused points are not g
   const ok = await rpc(t.access_token, 'tools/call', { name: 'update_route', arguments: { route: 'Home loop', altitudeFt: 1800, belowMsaConfirmed: true } })
   assert.match(toolText(ok), /Below the MSA as the pilot confirmed: leg 1 at 1,800 ft/)
   assert.equal(savedRoutes.length, n + 1)
+})
+
+test('saved places: create, list, use as a route point; names stay unique', async () => {
+  const t = await connect(`offline_access ${SCOPE_BRIEFING} ${SCOPE_ROUTES} ${SCOPE_ROUTES_WRITE}`)
+  const c = await rpc(t.access_token, 'tools/call', { name: 'create_place', arguments: { name: 'Cabin', position: '59.50 17.93', folder: 'Home' } })
+  assert.match(toolText(c), /Saved place: .*Cabin.*PL\/.*Cabin/)
+  assert.equal(places.length, 1)
+  assert.equal((await rpc(t.access_token, 'tools/call', { name: 'create_place', arguments: { name: 'cabin', position: '59.6 17.9' } })).result?.['isError'], true)
+  assert.equal((await rpc(t.access_token, 'tools/call', { name: 'create_place', arguments: { name: 'a/b', position: '59.6 17.9' } })).result?.['isError'], true)
+  assert.match(toolText(await rpc(t.access_token, 'tools/call', { name: 'list_places', arguments: {} })), /Cabin.*folder.*Home/)
+  assert.match(toolText(await rpc(t.access_token, 'tools/call', { name: 'get_place', arguments: { name: 'cab' } })), /Nearest aerodromes: ESSA/)
+  const u = await rpc(t.access_token, 'tools/call', { name: 'update_place', arguments: { place: 'Cabin', position: '59.55 17.93' } })
+  assert.match(toolText(u), /Updated place \(position\)/)
+  const n = savedRoutes.length
+  const r = await rpc(t.access_token, 'tools/call', { name: 'create_route', arguments: { name: 'To cabin', points: ['ESSB', 'PL/Cabin', 'ESSA'], altitudeFt: 2500 } })
+  assert.match(toolText(r), /Saved new route/)
+  assert.equal(savedRoutes.length, n + 1)
+  assert.equal((savedRoutes[n] as unknown as { waypoints: { lat: number }[] }).waypoints[1]!.lat, 59.55)
+  const bad = await rpc(t.access_token, 'tools/call', { name: 'create_route', arguments: { points: ['ESSB', 'PL/Nowhere'] } })
+  assert.match(toolText(bad), /no saved place with this name/)
+  // Without the routes scope: places are neither listed nor resolved.
+  const t2 = await connect(`offline_access ${SCOPE_BRIEFING}`)
+  assert.equal((await rpc(t2.access_token, 'tools/call', { name: 'list_places', arguments: {} })).result?.['isError'], true)
+  assert.equal((await rpc(t2.access_token, 'tools/call', { name: 'create_place', arguments: { name: 'X', position: '59.6 17.9' } })).result?.['isError'], true)
+})
+
+test('logbook summaries need logs:read and carry no track', async () => {
+  const no = await connect(`offline_access ${SCOPE_BRIEFING} ${SCOPE_ROUTES}`)
+  const refused = await rpc(no.access_token, 'tools/call', { name: 'list_flights', arguments: {} })
+  assert.equal(refused.result?.['isError'], true)
+  assert.match(toolText(refused), /not given access to your flight log/)
+  const t = await connect(`offline_access ${SCOPE_BRIEFING} ${SCOPE_LOGS}`)
+  const l = toolText(await rpc(t.access_token, 'tools/call', { name: 'list_flights', arguments: {} }))
+  assert.match(l, /2 logged flights/)
+  assert.match(l, /«SE-TST» «ESSB» → «ESSA», 1:30 h, 30 NM, max 2400 ft/)
+  assert.match(l, /time unknown/)
+  const s = toolText(await rpc(t.access_token, 'tools/call', { name: 'logbook_summary', arguments: {} }))
+  assert.match(s, /Last flight: .*\(4 days ago\)/)
+  assert.match(s, /Last 90 days: 1 flight, 1:30 h/)
+  assert.match(s, /Last 12 months: 2 flights/)
+  assert.equal((await rpc(t.access_token, 'tools/call', { name: 'create_place', arguments: { name: 'X', position: '59.6 17.9' } })).result?.['isError'], true)
 })
 
 test('refresh tokens rotate, a replay is refused, disconnect ends access', async () => {
