@@ -318,12 +318,17 @@ export const AIRSPACE_BORDER_WIDTHS: { id: string; vector: number | ExpressionSp
 ]
 
 // Aviation label layers whose text-halo is boosted for readability over satellite imagery.
+// Waypoints named "HOLDING …": VFR holding points, published as reporting points (OFMX type RP).
+const IS_HOLDING: ExpressionSpecification =
+  ['==', ['slice', ['upcase', ['coalesce', ['get', 'name'], '']], 0, 8], 'HOLDING ']
+
 export const AVIATION_LABEL_LAYERS = [
   'aerodromes-label',
   'navaids-vor-label',
   'navaids-ndb-label',
   'waypoints-mrp-label',
   'waypoints-rp-label',
+  'waypoints-hold-label',
   'obstacles-label',
   'landmarks-label',
   'user-waypoints-label',
@@ -486,6 +491,16 @@ export const LAYER_GROUPS: LayerGroup[] = [
     label: 'MRP (Reporting Pts)',
     cssClass: 'groupWaypointsMRP',
     layerIds: ['waypoints-mrp-icon', 'waypoints-mrp-label'],
+    defaultOn: true,
+    section: 'Navigation',
+  },
+  {
+    id: 'waypointsHold',
+    // VFR holding points ("HOLDING WEST"): where ATC sends VFR traffic to wait outside a CTR. Published as
+    // ordinary reporting points, but needed as much as the MRPs, so on by default and drawn as an orbit.
+    label: 'Holding points',
+    cssClass: 'groupWaypointsHold',
+    layerIds: ['waypoints-hold-icon', 'waypoints-hold-label'],
     defaultOn: true,
     section: 'Navigation',
   },
@@ -1513,7 +1528,7 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
         type: 'symbol',
         source: 'ofm-waypoints',
         minzoom: 8,
-        filter: ['==', ['get', 'wp_type'], 'MRP'],
+        filter: ['all', ['==', ['get', 'wp_type'], 'MRP'], ['!', IS_HOLDING]],
         layout: {
           'icon-image': 'wp-mrp',
           'icon-size': [
@@ -1529,9 +1544,45 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
         type: 'symbol',
         source: 'ofm-waypoints',
         minzoom: 9,
-        filter: ['==', ['get', 'wp_type'], 'MRP'],
+        filter: ['all', ['==', ['get', 'wp_type'], 'MRP'], ['!', IS_HOLDING]],
         layout: {
           'text-field': ['get', 'id'],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 9, 9, 12, 11],
+          'text-anchor': 'top',
+          'text-offset': [0, 0.9],
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': WAYPOINT_COLORS.mrpText,
+          'text-halo-color': WAYPOINT_COLORS.halo,
+          'text-halo-width': 1.5,
+        },
+      },
+
+      // ── Layer 10b: VFR holding points ────────────────────────────────────
+      // Any waypoint named "HOLDING …" (whatever its type): orbit symbol, label "HOLD WEST".
+      {
+        id: 'waypoints-hold-icon',
+        type: 'symbol',
+        source: 'ofm-waypoints',
+        minzoom: 8,
+        filter: IS_HOLDING,
+        layout: {
+          'icon-image': 'wp-hold',
+          'icon-size': ['interpolate', ['linear'], ['zoom'], 8, 0.55, 12, 0.85],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': false,
+        },
+      },
+      {
+        id: 'waypoints-hold-label',
+        type: 'symbol',
+        source: 'ofm-waypoints',
+        minzoom: 9,
+        filter: IS_HOLDING,
+        layout: {
+          'text-field': ['concat', 'HOLD ', ['slice', ['get', 'name'], 8]],
           'text-font': ['Noto Sans Regular'],
           'text-size': ['interpolate', ['linear'], ['zoom'], 9, 9, 12, 11],
           'text-anchor': 'top',
@@ -1552,7 +1603,7 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
         type: 'symbol',
         source: 'ofm-waypoints',
         minzoom: 9,
-        filter: ['in', ['get', 'wp_type'], ['literal', ['RP', 'ENR', 'ICAO']]],
+        filter: ['all', ['in', ['get', 'wp_type'], ['literal', ['RP', 'ENR', 'ICAO']]], ['!', IS_HOLDING]],
         layout: {
           visibility: 'none',
           'icon-image': 'wp-rp',
@@ -1569,7 +1620,7 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
         type: 'symbol',
         source: 'ofm-waypoints',
         minzoom: 10,
-        filter: ['in', ['get', 'wp_type'], ['literal', ['RP', 'ENR', 'ICAO']]],
+        filter: ['all', ['in', ['get', 'wp_type'], ['literal', ['RP', 'ENR', 'ICAO']]], ['!', IS_HOLDING]],
         layout: {
           visibility: 'none',
           'text-field': ['get', 'id'],

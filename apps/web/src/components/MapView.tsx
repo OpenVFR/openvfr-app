@@ -262,6 +262,7 @@ const POINT_LAYERS = [
   'navaids-vor-icon',
   'navaids-ndb-icon',
   'waypoints-mrp-icon',
+  'waypoints-hold-icon',
   'waypoints-rp-icon',
   'obstacles-circle',
   'landmarks-icon',
@@ -352,7 +353,7 @@ function pickClickedAirspaceRow(
 const SNAP_LAYERS = [
   'aerodromes-icon', 'aerodromes-label',
   'navaids-vor-icon', 'navaids-ndb-icon',
-  'waypoints-mrp-icon', 'waypoints-rp-icon',
+  'waypoints-mrp-icon', 'waypoints-hold-icon', 'waypoints-rp-icon',
   'obstacles-circle',
   'landmarks-icon',
   'user-waypoints-circle',
@@ -462,7 +463,7 @@ function extractSnapKind(feat: maplibregl.MapGeoJSONFeature): string {
   if (id === 'navaids-vor-icon')          return 'VOR'
   if (id === 'navaids-ndb-icon')          return 'NDB'
   if (id === 'waypoints-mrp-icon')        return 'MRP'
-  if (id === 'waypoints-rp-icon')         return 'RP'
+  if (id === 'waypoints-rp-icon' || id === 'waypoints-hold-icon') return 'RP'
   if (id === 'obstacles-circle')          return 'OBS'
   if (id === 'landmarks-icon')            return 'LMK'
   if (id === 'user-waypoints-circle')     return 'UWP'
@@ -3504,7 +3505,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
             x: e.point.x,
             y: e.point.y,
           })
-        } else if (layerId === 'waypoints-mrp-icon' || layerId === 'waypoints-rp-icon') {
+        } else if (layerId === 'waypoints-mrp-icon' || layerId === 'waypoints-rp-icon' || layerId === 'waypoints-hold-icon') {
           setActivePopup({
             kind: 'point',
             feature: {
@@ -3759,7 +3760,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
               lng: fLng, lat: fLat,
             })
           }
-        } else if (lid === 'waypoints-mrp-icon' || lid === 'waypoints-rp-icon') {
+        } else if (lid === 'waypoints-mrp-icon' || lid === 'waypoints-rp-icon' || lid === 'waypoints-hold-icon') {
           const key = `wp:${fp.id}`
           if (!seen.has(key)) {
             seen.add(key)

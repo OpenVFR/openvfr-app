@@ -107,6 +107,7 @@
 .groupNavaidsVOR { --group-color: #5c4ae4; } /* indigo  — VOR navaids */
 .groupNavaidsNDB { --group-color: #c05200; } /* brown   — NDB navaids */
 .groupWaypointsMRP { --group-color: #0ca678; } /* teal  — MRP reporting points */
+.groupWaypointsHold { --group-color: #0ca678; } /* teal — VFR holding points */
 .groupWaypointsRP  { --group-color: #38d9a9; } /* light teal — RP / VFR waypoints */
 .groupAerodromes { --group-color: #1a56db; } /* blue    — airports */
 .groupRunways    { --group-color: #64748b; } /* slate   — runways / taxiways */

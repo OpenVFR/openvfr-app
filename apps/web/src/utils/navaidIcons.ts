@@ -26,6 +26,7 @@ const ICONS: [string, string, string][] = [
   ['nav-ndb', '/poi_icons/nav-ndb.svg', '#c05200'],
   ['wp-mrp',  '/poi_icons/wp-mrp.svg',  '#0ca678'],
   ['wp-rp',   '/poi_icons/wp-rp.svg',   '#20c997'],
+  ['wp-hold', '/poi_icons/wp-hold.svg', '#0ca678'],
 ]
 
 /**
