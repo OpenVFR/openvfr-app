@@ -109,6 +109,21 @@ describe('circuitTurnArrow', () => {
   })
 })
 
+describe('drawn circuits from a club chart', () => {
+  it('keep their runway ends and sense, reject malformed ones', () => {
+    const fc = parseAerodromeDetails({ type: 'FeatureCollection', features: [
+      { type: 'Feature', geometry: { type: 'LineString', coordinates: [[12.55, 56.16], [12.56, 56.17]] },
+        properties: { icao: 'ESMH', kind: 'circuit_leg', name: 'RWY 06 RH · RWY 24 LH', rwys: '|06|24|', oneWay: false,
+          geometry_quality: 'approximate', accuracy_m: 14 } },
+      { type: 'Feature', geometry: { type: 'LineString', coordinates: [[12.55, 56.16], [12.56, 56.17]] },
+        properties: { icao: 'ESMH', kind: 'circuit_leg', rwys: "06') or 1=1", oneWay: 'no' } },
+    ] })!
+    expect(fc.features[0]!.properties).toMatchObject({ rwys: '|06|24|', oneWay: false, approximate: true, accuracy_m: 14 })
+    expect(fc.features[1]!.properties.rwys).toBeUndefined()
+    expect(fc.features[1]!.properties.oneWay).toBeUndefined()
+  })
+})
+
 describe('provenance sources', () => {
   it('keeps every source of a merged field, https links only', () => {
     const info = localInfo({ circuits: [], provenance: { circuits: { source_name: 'LFV eAIP Sweden', source_url: 'https://aip/x',

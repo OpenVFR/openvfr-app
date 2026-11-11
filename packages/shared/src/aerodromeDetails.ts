@@ -137,6 +137,8 @@ export interface DetailProps {
   role?: 'turn' | 'label'
   /** Runway ends the circuit is for, as "|06|24|", so the map can show only the circuits of a chosen runway. */
   rwys?: string
+  /** false: a drawn pattern flown both ways (06 right-hand = 24 left-hand), so no direction chevrons. */
+  oneWay?: boolean
   provenance?: DetailProvenance
 }
 
@@ -189,6 +191,9 @@ export function parseAerodromeDetails(raw: unknown): FeatureCollection<Geometry,
         accuracy_m: typeof p['accuracy_m'] === 'number' ? Math.round(p['accuracy_m']) : null,
         pending: provenance?.review === 'pending',
         ...(kind === 'holding' && (p['direction'] === 'left' || p['direction'] === 'right') ? { direction: p['direction'] } : {}),
+        // circuits read off a club chart: which runway ends use them (runway focus), and whether one sense only
+        ...(typeof p['rwys'] === 'string' && /^\|([0-9]{2}[LRC]?\|)+$/.test(p['rwys']) ? { rwys: p['rwys'] } : {}),
+        ...(typeof p['oneWay'] === 'boolean' ? { oneWay: p['oneWay'] } : {}),
         ...(provenance ? { provenance } : {}),
       },
     })

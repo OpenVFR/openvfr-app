@@ -75,7 +75,9 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
     filter: ['all', LINE, IS_CIRCUIT, ['==', ['get', 'role'], 'turn']],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': COLOR, 'line-width': CIRCUIT_WIDTH, 'line-opacity': ['case', ['get', 'pending'], 0.7, 1] } },
-  { id: 'ad-circuit-chevrons', type: 'symbol', group: 'circuits', minzoom: DIRECTION_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN],
+  // chevrons along drawn legs, unless the pattern is flown both ways (its label names both runway directions)
+  { id: 'ad-circuit-chevrons', type: 'symbol', group: 'circuits', minzoom: DIRECTION_ZOOM,
+    filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!=', ['get', 'oneWay'], false]],
     layout: { 'symbol-placement': 'line', 'symbol-spacing': 90, 'text-field': '>', 'text-font': FONT, 'text-size': 14,
       'text-keep-upright': false, 'text-allow-overlap': true, 'text-ignore-placement': true },
     paint: { 'text-color': COLOR, 'text-halo-color': 'rgba(0,0,0,0.6)', 'text-halo-width': 1 } },
