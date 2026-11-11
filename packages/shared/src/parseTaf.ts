@@ -82,7 +82,7 @@ function resolveDayHour(day: number, hour: number, minute: number, referenceMs: 
 function parseDdhhRange(tok: string, referenceMs: number): [number, number] | null {
   const m = /^(\d{2})(\d{2})\/(\d{2})(\d{2})$/.exec(tok)
   if (!m) return null
-  const [, d1, h1, d2, h2] = m
+  const [, d1 = '', h1 = '', d2 = '', h2 = ''] = m
   const from = resolveDayHour(parseInt(d1, 10), parseInt(h1, 10), 0, referenceMs)
   const to   = resolveDayHour(parseInt(d2, 10), parseInt(h2, 10), 0, referenceMs)
   return [from, to]
@@ -96,8 +96,8 @@ export function parseTaf(raw: string | null, referenceMs = Date.now()): TafPerio
   let i = 0
   if (tokens[i] === 'TAF') i++
   if (tokens[i] === 'AMD' || tokens[i] === 'COR') i++
-  if (/^[A-Z]{4}$/.test(tokens[i])) i++ // ICAO
-  if (/^\d{6}Z$/.test(tokens[i])) i++   // issue time
+  if (/^[A-Z]{4}$/.test(tokens[i]!)) i++ // ICAO
+  if (/^\d{6}Z$/.test(tokens[i]!)) i++   // issue time
   const validityTok = tokens[i]
   const validity = validityTok ? parseDdhhRange(validityTok, referenceMs) : null
   if (!validity) return null // not a recognisable TAF header — bail rather than guess
@@ -108,7 +108,7 @@ export function parseTaf(raw: string | null, referenceMs = Date.now()): TafPerio
   type RawSeg = { kind: TafPeriodKind; startTok: string | null; rangeTok: string | null; body: string[] }
   const segs: RawSeg[] = [{ kind: 'BASE', startTok: null, rangeTok: null, body: [] }]
   for (; i < tokens.length; i++) {
-    const t = tokens[i]
+    const t = tokens[i]!
     if (/^FM\d{6}$/.test(t)) {
       segs.push({ kind: 'FM', startTok: t, rangeTok: null, body: [] })
     } else if (t === 'BECMG') {
@@ -124,20 +124,20 @@ export function parseTaf(raw: string | null, referenceMs = Date.now()): TafPerio
       // since PROBnn alone (no TEMPO) has no time window of its own and
       // would otherwise never get one.
       if (tokens[i + 1] === 'TEMPO' && tokens[i + 2]) {
-        segs.push({ kind, startTok: null, rangeTok: tokens[i + 2], body: [] })
+        segs.push({ kind, startTok: null, rangeTok: tokens[i + 2] ?? null, body: [] })
         i += 2
       } else {
         segs.push({ kind, startTok: null, rangeTok: null, body: [] })
       }
     } else {
-      segs[segs.length - 1].body.push(t)
+      segs[segs.length - 1]!.body.push(t)
     }
   }
 
   // Resolve each segment's [fromMs, toMs) and wind/clouds from its body tokens.
   const withTimes: { kind: TafPeriodKind; fromMs: number; toMs: number; body: string[] }[] = []
   for (let s = 0; s < segs.length; s++) {
-    const seg = segs[s]
+    const seg = segs[s]!
     let fromMs: number
     let toMs: number
     if (seg.kind === 'BASE') {
@@ -146,7 +146,7 @@ export function parseTaf(raw: string | null, referenceMs = Date.now()): TafPerio
       toMs = validToMs
     } else if (seg.kind === 'FM' && seg.startTok) {
       const m = /^FM(\d{2})(\d{2})(\d{2})$/.exec(seg.startTok)!
-      fromMs = resolveDayHour(parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10), referenceMs)
+      fromMs = resolveDayHour(parseInt(m[1]!, 10), parseInt(m[2]!, 10), parseInt(m[3]!, 10), referenceMs)
       toMs = validToMs
     } else if (seg.rangeTok) {
       const range = parseDdhhRange(seg.rangeTok, referenceMs)
@@ -167,7 +167,7 @@ export function parseTaf(raw: string | null, referenceMs = Date.now()): TafPerio
     .filter(({ p }) => p.kind === 'BASE' || p.kind === 'FM' || p.kind === 'BECMG')
     .sort((a, b) => a.p.fromMs - b.p.fromMs)
   for (let k = 0; k < prevailingIdx.length - 1; k++) {
-    withTimes[prevailingIdx[k].idx].toMs = withTimes[prevailingIdx[k + 1].idx].fromMs
+    withTimes[prevailingIdx[k]!.idx]!.toMs = withTimes[prevailingIdx[k + 1]!.idx]!.fromMs
   }
 
   return withTimes.map(({ kind, fromMs, toMs, body }): TafPeriod => {

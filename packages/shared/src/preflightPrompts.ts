@@ -53,7 +53,7 @@ export function regionFromIcao(name: string | undefined): string | null {
   const hits = Object.entries(REGION_ICAO_PREFIXES)
     .filter(([, prefixes]) => prefixes.some((p) => name.startsWith(p)))
     .map(([code]) => code)
-  return hits.length === 1 ? hits[0] : null
+  return hits.length === 1 ? hits[0]! : null
 }
 
 /**

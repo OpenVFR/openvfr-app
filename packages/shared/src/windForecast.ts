@@ -48,20 +48,20 @@ export function interpolateWind(series: Pick<Series, 'times' | 'speed' | 'dir'>,
   const { times, speed, dir } = series
   if (times.length === 0) return null
   let i = -1
-  for (let k = 0; k < times.length; k++) { if (times[k] <= t) i = k; else break }
-  if (i < 0 || (i === times.length - 1 && t - times[i] > HOUR_S)) return null
+  for (let k = 0; k < times.length; k++) { if (times[k]! <= t) i = k; else break }
+  if (i < 0 || (i === times.length - 1 && t - times[i]! > HOUR_S)) return null
   const j = Math.min(i + 1, times.length - 1)
-  const f = j === i ? 0 : (t - times[i]) / (times[j] - times[i])
+  const f = j === i ? 0 : (t - times[i]!) / (times[j]! - times[i]!)
   const vec = (k: number) => {
-    const r = (dir[k] * Math.PI) / 180
-    return { u: -speed[k] * Math.sin(r), v: -speed[k] * Math.cos(r) }
+    const r = (dir[k]! * Math.PI) / 180
+    return { u: -speed[k]! * Math.sin(r), v: -speed[k]! * Math.cos(r) }
   }
   if (speed[i] == null || dir[i] == null || speed[j] == null || dir[j] == null) return null
   const a = vec(i), b = vec(j)
   const u = a.u + (b.u - a.u) * f
   const v = a.v + (b.v - a.v) * f
   const spd = Math.hypot(u, v)
-  const d = spd < 0.05 ? dir[i] : ((Math.atan2(-u, -v) * 180) / Math.PI + 360) % 360
+  const d = spd < 0.05 ? dir[i]! : ((Math.atan2(-u, -v) * 180) / Math.PI + 360) % 360
   return { dirDeg: Math.round(d) % 360, speedKts: Math.round(spd) }
 }
 
@@ -110,8 +110,8 @@ async function loadSeriesMany(
   for (let start = 0; start < missing.length; start += MAX_BATCH) {
     const idx = missing.slice(start, start + MAX_BATCH)
     const params = new URLSearchParams()
-    params.set('latitude',  idx.map((i) => snapCoord(pts[i].lat).toFixed(2)).join(','))
-    params.set('longitude', idx.map((i) => snapCoord(pts[i].lng).toFixed(2)).join(','))
+    params.set('latitude',  idx.map((i) => snapCoord(pts[i]!.lat).toFixed(2)).join(','))
+    params.set('longitude', idx.map((i) => snapCoord(pts[i]!.lng).toFixed(2)).join(','))
     params.set('hourly', `${speedVar},${dirVar}`)
     params.set('wind_speed_unit', 'kn')
     params.set('forecast_days', String(days))
@@ -124,7 +124,7 @@ async function loadSeriesMany(
     } catch (err) {
       if ((err as { name?: string }).name === 'AbortError') throw err
       for (const pi of idx) {
-        const hit = cache.get(seriesKey(pts[pi].lat, pts[pi].lng, level, days))
+        const hit = cache.get(seriesKey(pts[pi]!.lat, pts[pi]!.lng, level, days))
         if (hit && Date.now() < hit.expiresAt + STALE_MAX_MS) out[pi] = hit
       }
       continue
@@ -134,7 +134,7 @@ async function loadSeriesMany(
       const h = list[k]?.hourly
       if (!h?.time || !h[speedVar] || !h[dirVar]) return
       const series: Series = { times: h.time, speed: h[speedVar], dir: h[dirVar], expiresAt: Date.now() + CACHE_TTL_MS }
-      cache.set(seriesKey(pts[pi].lat, pts[pi].lng, level, days), series)
+      cache.set(seriesKey(pts[pi]!.lat, pts[pi]!.lng, level, days), series)
       markCacheDirty('windForecast')
       out[pi] = series
     })
@@ -146,7 +146,7 @@ async function loadSeriesMany(
 export async function fetchWindForecast(
   p: WindForecastPoint, baseUrl = '', signal?: AbortSignal,
 ): Promise<WindAloft | null> {
-  return (await fetchWindForecastMany([p], baseUrl, signal))[0]
+  return (await fetchWindForecastMany([p], baseUrl, signal))[0] ?? null
 }
 
 /**
@@ -167,12 +167,12 @@ export async function fetchWindForecastMany(
   })
   await Promise.all([...groups.values()].map(async (idx) => {
     // One window per group, long enough for its latest time: keeps cache keys stable.
-    const days = Math.max(...idx.map((i) => forecastDays(points[i].at)))
+    const days = Math.max(...idx.map((i) => forecastDays(points[i]!.at)))
     try {
-      const series = await loadSeriesMany(idx.map((i) => points[i]), points[idx[0]].altFt, days, baseUrl, signal)
+      const series = await loadSeriesMany(idx.map((i) => points[i]!), points[idx[0]!]!.altFt, days, baseUrl, signal)
       idx.forEach((i, k) => {
         const s = series[k]
-        out[i] = s ? interpolateWind(s, points[i].at.getTime() / 1000) : null
+        out[i] = s ? interpolateWind(s, points[i]!.at.getTime() / 1000) : null
       })
     } catch (err) {
       if ((err as { name?: string }).name === 'AbortError') throw err

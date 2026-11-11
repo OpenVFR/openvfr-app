@@ -134,6 +134,14 @@ async function waitForGate(signal: AbortSignal): Promise<void> {
   if (signal.aborted) throw abortError()
 }
 
+type Fetcher = (url: string, init: RequestInit) => Promise<Response>
+let fetcher: Fetcher | null = null
+/**
+ * Where requests go instead of the global fetch (the API server answers its
+ * own server-side briefings in-process, see apps/api). null = global fetch.
+ */
+export function setOpenMeteoFetch(f: Fetcher | null): void { fetcher = f }
+
 async function attempt(url: string, signal: AbortSignal): Promise<unknown> {
   await waitForGate(signal)
   await acquireSlot(signal)
@@ -144,7 +152,7 @@ async function attempt(url: string, signal: AbortSignal): Promise<unknown> {
     await waitForGate(signal)
     const sentAt = now()
     // Session required by the API server's proxy (apps/api externalProxy.ts).
-    res = await fetch(url, { signal, credentials: 'include', headers: await apiAuthHeaders() })
+    res = await (fetcher ?? fetch)(url, { signal, credentials: 'include', headers: await apiAuthHeaders() })
     if (!res.ok) {
       // Read the reason and close the gate BEFORE releasing the slot, or the
       // queued requests go out in the meantime.

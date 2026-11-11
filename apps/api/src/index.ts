@@ -45,7 +45,7 @@ import { admin } from './admin'
 import { AUTHENTICATED_ROLE, assertAuthenticatedRoleExists } from './pgRoles'
 import { pool as dbPool } from './db'
 import { effectiveMinBuilds, isAppPlatform, minBuildRows, MIN_VERSION, parseBuild, recordLaunch } from './appVersion'
-import { mountExternalProxies } from './externalProxy'
+import { mountExternalProxies, proxyForUser } from './externalProxy'
 import { createDemElevation, parseDemSources } from './demElevation'
 import { createWxGrid, parseWxGridSources } from './wxGrid'
 import { RateLimiter, limitFromEnv } from './rateLimiter'
@@ -55,7 +55,8 @@ import { BodyTooLarge, readLimitedFormData, looksLikePdf } from './upload'
 import { createWeatherCache, type WxUpstreamResult } from './weatherCache'
 import { chartDocumentRoutes } from './chartDocuments'
 import { mintPostgrestJwt } from './briefingData'
-import { createBriefingService, parseRouteInput, BriefingInputError } from './briefingService'
+import { createBriefingService, parseRouteInput, BriefingInputError, currentBriefingUser, MAX_DEPARTURE_AHEAD_MS } from './briefingService'
+import { setOpenMeteoFetch } from '@open-vfr/shared/openMeteo'
 import { briefingText } from './briefing'
 import { demRouteTerrain } from './routeTerrain'
 
@@ -779,6 +780,14 @@ const briefingLimiter = new RateLimiter([
   { windowMs: DAY_MS,  max: limitFromEnv('BRIEFING_DAILY_LIMIT', 150) },
 ])
 
+// Server-side briefings ask Open-Meteo through the same proxy as the apps,
+// in-process, charged to the user the briefing runs for.
+setOpenMeteoFetch(async (url) => {
+  const userId = currentBriefingUser()
+  if (!userId) return new Response(JSON.stringify({ error: true, reason: 'No user' }), { status: 401 })
+  const u = new URL(url, 'http://localhost')
+  return proxyForUser('open-meteo', userId, u.pathname, u.search)
+})
 const briefings = createBriefingService({
   weather: async (userId, icao) => {
     if (!/^[A-Z]{4}$/.test(icao)) return null
@@ -801,9 +810,15 @@ app.post('/api/briefing', async (c) => {
   try { body = await c.req.json() } catch { return c.json({ error: 'Send a JSON body.' }, 400) }
   try {
     const aircraftId = typeof body['aircraftId'] === 'string' ? body['aircraftId'] : undefined
+    // Optional planned departure (ISO 8601), an hour ago to 16 days ahead.
+    const depRaw = typeof body['departure'] === 'string' ? Date.parse(body['departure']) : NaN
+    if (body['departure'] !== undefined && !(Number.isFinite(depRaw) && depRaw > Date.now() - 3_600_000 && depRaw < Date.now() + MAX_DEPARTURE_AHEAD_MS)) {
+      return c.json({ error: 'departure: ISO 8601 time from an hour ago to 16 days ahead.' }, 400)
+    }
+    const departureMs = Number.isFinite(depRaw) ? depRaw : undefined
     const briefing = typeof body['routeId'] === 'string'
-      ? (await briefings.briefSavedRoute(user, body['routeId'], aircraftId)).briefing
-      : await briefings.briefRoute(user, parseRouteInput(body), await briefings.aircraftById(user, aircraftId))
+      ? (await briefings.briefSavedRoute(user, body['routeId'], aircraftId, departureMs)).briefing
+      : await briefings.briefRoute(user, parseRouteInput(body), await briefings.aircraftById(user, aircraftId), departureMs !== undefined ? { departureMs } : {})
     c.header('Cache-Control', 'no-store')
     if (c.req.query('format') === 'text') return c.text(briefingText(briefing))
     return c.json(briefing)

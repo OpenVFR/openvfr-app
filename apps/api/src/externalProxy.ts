@@ -855,6 +855,21 @@ export function rotateHour(spec: ProxySpec, s: ProxyState, stats: UsageStats, no
 }
 
 const registry: { spec: ProxySpec; state: ProxyState; stats: UsageStats; anonymousMode: 'limited' | 'off'; local: LocalSource | null }[] = []
+
+/**
+ * The same proxied answer for a request the server makes on a user's behalf
+ * (server-side briefings): that user's caps, the shared upstream budget and
+ * cache, counted in the usage stats. 503 before mountExternalProxies ran.
+ */
+export async function proxyForUser(name: string, userId: string, path: string, search: string): Promise<Response> {
+  const r = registry.find(x => x.spec.name === name)
+  if (!r) return json(JSON.stringify({ error: true, reason: 'Not available' }), 503)
+  rotateHour(r.spec, r.state, r.stats, Date.now())
+  const res = await handleProxy(r.spec, r.state, { kind: 'user', id: userId }, path, search, Date.now, r.local)
+  r.stats.users.add(userId)
+  countResponse(r.stats, res)
+  return res
+}
 const processStartedAt = new Date().toISOString()
 
 /** Aggregate usage of one relay for the admin API (counts only, no ids). */

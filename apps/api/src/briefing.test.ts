@@ -113,3 +113,33 @@ test('without terrain: says the MSA was not checked', async () => {
   assert.ok(b.limits.some(l => /No terrain data/.test(l)))
   assert.equal(b.legs[0]!.advice.kind, 'unknown')
 })
+
+test('departure time, forecast wind, TAF for the arrival time, daylight and prompts', async () => {
+  const dep = Date.UTC(2026, 10, 11, 14, 0)
+  const calm = await buildRouteBriefing({ waypoints: route, legOverrides: [{}], aircraft, nowMs: NOW, departureMs: dep }, deps())
+  const asked: { altFt: number; at: Date }[] = []
+  const b = await buildRouteBriefing(
+    { waypoints: route, legOverrides: [{}], aircraft, nowMs: NOW, departureMs: dep },
+    deps({
+      legWinds: async (pts) => { asked.push(...pts); return pts.map(() => ({ dirDeg: 360, speedKts: 30 })) },
+      weather: async (icao) => ({ metar: `${icao} 111350Z 36010KT CAVOK 05/01 Q1013`, taf: `TAF ${icao} 111100Z 1112/1212 36010KT 9999 SCT030 FM111430 27015KT 9999 BKN012` }),
+    }),
+  )
+  assert.equal(asked[0]!.altFt, 3000)
+  assert.ok(asked[0]!.at.getTime() > dep, 'wind asked for the time over the leg')
+  assert.ok(b.hops[0]!.enrouteMins > calm.hops[0]!.enrouteMins, 'headwind makes the hop longer')
+  assert.equal(b.departureIso, new Date(dep).toISOString())
+  const dest = b.aerodromes.find(a => a.role === 'destination')!
+  assert.ok(Date.parse(dest.atIso) > dep)
+  assert.match(dest.tafAtTime!.clouds, /BKN012/, 'TAF group in force at arrival')
+  assert.ok(b.daylight.some(d => /after sunset/.test(d)), 'November afternoon at 59N')
+  const t = briefingText(b)
+  assert.match(t, /Wind: forecast at each leg's altitude and time \(leg 1 360\/30 kt\)/)
+  assert.match(t, /DAYLIGHT: Arrival at ESBB/)
+  assert.match(t, /TAF for \d\d:\d\dZ: 270\/15 kt, BKN012/)
+})
+
+test('a route over a border prompts for the flight plan rules', async () => {
+  const b = await buildRouteBriefing({ waypoints: [{ lat: 59.35, lng: 17.94, name: 'ESSB' }, { lat: 60.2, lng: 11.1, name: 'ENGM' }], legOverrides: [{}], aircraft, nowMs: NOW }, deps())
+  assert.ok(b.prompts.some(p => /national border/.test(p.title)))
+})

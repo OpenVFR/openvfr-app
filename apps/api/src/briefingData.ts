@@ -193,16 +193,34 @@ export async function loadMefGridsFor(countries: readonly string[]): Promise<Mef
 // ── The pilot's planning settings (synced) ──────────────────────────────────
 
 /** MSA margins and airspace alert levels from the user's synced settings; {} when unset or unreadable. */
-export async function userPlanningSettings(userId: string): Promise<{ msaMargins?: Partial<MsaMargins>; airspaceLevels?: AirspaceAlertLevels }> {
+export interface PlanningSettings {
+  msaMargins?: Partial<MsaMargins>
+  airspaceLevels?: AirspaceAlertLevels
+  /** Planned departure set in the app (epoch ms). */
+  takeoffMs?: number
+  globalWind?: { dirDeg: number; speedKts: number }
+}
+
+/** Planning settings from the user's synced settings; {} when unset or unreadable. */
+export async function userPlanningSettings(userId: string): Promise<PlanningSettings> {
   if (!POSTGREST_URL) return {}
   try {
-    const rows = await postgrestGet(userId, '/user_settings?select=key,value&key=in.(msa_margins,alert_banners)')
-    const out: { msaMargins?: Partial<MsaMargins>; airspaceLevels?: AirspaceAlertLevels } = {}
+    const rows = await postgrestGet(userId, '/user_settings?select=key,value&key=in.(msa_margins,alert_banners,takeoff_time,global_wind)')
+    const out: PlanningSettings = {}
     for (const r of rows) {
-      const v = JSON.parse(String(r['value'] ?? 'null')) as Record<string, unknown> | null
+      const raw = String(r['value'] ?? '')
+      if (r['key'] === 'takeoff_time') {
+        const t = Date.parse(raw)
+        if (Number.isFinite(t)) out.takeoffMs = t
+        continue
+      }
+      const v = JSON.parse(raw || 'null') as Record<string, unknown> | null
       if (!v || typeof v !== 'object') continue
       if (r['key'] === 'msa_margins') out.msaMargins = resolveMsaMargins(v as Partial<MsaMargins>)
       if (r['key'] === 'alert_banners' && v['airspaceLevels']) out.airspaceLevels = resolveAirspaceLevels(v['airspaceLevels'] as never)
+      if (r['key'] === 'global_wind' && Number.isFinite(Number(v['dirDeg'])) && Number.isFinite(Number(v['speedKts']))) {
+        out.globalWind = { dirDeg: Number(v['dirDeg']), speedKts: Number(v['speedKts']) }
+      }
     }
     return out
   } catch {

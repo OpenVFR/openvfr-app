@@ -338,6 +338,12 @@ and, if the pilot allows it, their saved routes and aircraft. It only reads.
   resolved against the aerodrome, navaid and reporting-point datasets from
   `TILES_BASE_URL`), and mark the route (`user_routes.assistant_review`) or
   profile (`assistantReview`) until the pilot saves it in the app.
+- Server-side briefings use the same data as the apps: terrain from the DEM
+  archives (`ELEVATION_DEM_SOURCES`, no third-party call) or else the
+  `<cc>-mef.mef` grid from `TILES_BASE_URL`; forecast wind through the
+  Open-Meteo proxy in-process, counted against the user's proxy caps; METAR/TAF
+  through the weather cache; the user's synced MSA margins, airspace alert
+  levels, planned departure and global wind.
 - Limits: `MCP_HOURLY_LIMIT` / `MCP_DAILY_LIMIT` (tool calls per user, default
   120 / 600), `MCP_WRITE_HOURLY_LIMIT` / `MCP_WRITE_DAILY_LIMIT` (route and
   aircraft writes, default 20 / 60); briefing tools also count against `BRIEFING_*` and weather

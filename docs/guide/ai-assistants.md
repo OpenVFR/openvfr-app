@@ -30,8 +30,14 @@ menu: **Pre-flight briefing** (give a saved route name or ICAO codes) and
 wishes such as "stay below the TMAs"); the assistant then runs the tools in
 the right order.
 
-A briefing gives distance, time and fuel per hop, METAR/TAF and NOTAMs at the
-departure, fuel stops and destination, the pre-flight warnings (airspace,
+A briefing is for your planned departure: the time you give the assistant,
+else the departure set in the app if it is still ahead, else now. It gives
+distance, time and fuel per hop with the wind on each leg (set on the leg,
+your global wind setting, or the forecast at the leg's altitude and time),
+the time at each aerodrome, METAR, the TAF for the time you are there and
+NOTAMs in force then at the departure, fuel stops and destination, weather
+reported along the way, a daylight check (departure before sunrise, landing
+after sunset), "also check" items such as a border crossing, the pre-flight warnings (airspace,
 NOTAM areas, terrain and minimum safe altitude, fuel, equipment, crosswind,
 runway length), each with the leg it concerns, and the altitude per leg
 (below). Your own MSA margins and airspace alert levels from Settings are

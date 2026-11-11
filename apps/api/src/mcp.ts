@@ -106,6 +106,18 @@ function profileText(a: AircraftProfileDocType): string {
 }
 
 type Text = { content: { type: 'text'; text: string }[]; isError?: boolean }
+
+/** Planned departure for a briefing: ISO 8601 with a time zone, from an hour ago to 16 days ahead. */
+const departureField = z.string().max(40).optional()
+  .describe('Planned departure, ISO 8601 with time zone, e.g. 2026-11-12T09:30:00Z. Default: the departure set in the app if still ahead, else now. Winds, times, NOTAMs and TAFs are for this time.')
+function parseDeparture(v: string | undefined): number | undefined | Text {
+  if (!v) return undefined
+  const t = Date.parse(v)
+  if (!Number.isFinite(t) || !/[zZ]|[+-]\d{2}:?\d{2}$/.test(v)) return fail('departure must be ISO 8601 with a time zone, e.g. 2026-11-12T09:30:00Z.')
+  if (t < Date.now() - 3_600_000 || t > Date.now() + 16 * 86_400_000) return fail('departure must be between an hour ago and 16 days ahead.')
+  return t
+}
+const isText = (v: unknown): v is Text => typeof v === 'object' && v !== null && 'content' in v
 const text = (t: string): Text => ({ content: [{ type: 'text', text: t }] })
 const fail = (t: string): Text => ({ content: [{ type: 'text', text: t }], isError: true })
 
@@ -216,13 +228,16 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       inputSchema: z.object({
         route: z.string().min(1).max(120).describe('Saved route name (or part of it) or id'),
         aircraft: z.string().max(80).optional().describe('Aircraft registration or name; default: the route\'s own aircraft'),
+        departure: departureField,
       }),
-    }, async ({ route, aircraft }) => {
+    }, async ({ route, aircraft, departure }) => {
       if (!canRoutes) return noRoutes()
+      const dep = parseDeparture(departure)
+      if (isText(dep)) return dep
       if (!deps.takeBriefing(caller.userId)) return fail('Briefing limit reached for now. Try again later.')
       try {
         const ac = await findAircraft(aircraft)
-        const r = await deps.briefings.briefSavedRoute({ id: caller.userId }, route, ac?.id)
+        const r = await deps.briefings.briefSavedRoute({ id: caller.userId }, route, ac?.id, dep)
         return text(briefingText(r.briefing))
       } catch (err) {
         if (err instanceof BriefingInputError) return fail(err.message)
@@ -238,8 +253,11 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
         fuelStops: z.array(z.string().regex(/^[A-Za-z]{4}$/)).max(10).optional().describe('Intermediate ICAO codes where the aircraft lands and refuels'),
         aircraft: z.string().max(80).optional(),
         cruiseAltFt: z.number().int().min(500).max(20000).optional().describe('Planned cruise altitude, ft'),
+        departure: departureField,
       }),
-    }, async ({ aerodromes, fuelStops, aircraft, cruiseAltFt }) => {
+    }, async ({ aerodromes, fuelStops, aircraft, cruiseAltFt, departure }) => {
+      const dep = parseDeparture(departure)
+      if (isText(dep)) return dep
       if (!deps.takeBriefing(caller.userId)) return fail('Briefing limit reached for now. Try again later.')
       const fc = await allAerodromes()
       if (!fc) return fail('Aerodrome data is not available right now.')
@@ -253,7 +271,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       }
       const ac = await findAircraft(aircraft)
       const legOverrides = waypoints.slice(0, -1).map(() => (cruiseAltFt ? { altFt: cruiseAltFt } : {}))
-      const b = await deps.briefings.briefRoute({ id: caller.userId }, { waypoints, legOverrides }, ac)
+      const b = await deps.briefings.briefRoute({ id: caller.userId }, { waypoints, legOverrides }, ac, dep !== undefined ? { departureMs: dep } : {})
       const note = aircraft && !ac ? (canRoutes ? `\n(No aircraft named "${aircraft}" found; briefed without one.)` : '\n(Aircraft not used: no access to saved aircraft.)') : ''
       return text(briefingText(b) + note)
     })
@@ -346,7 +364,8 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
             /^[A-Za-z]{4}(\s+[A-Za-z]{4})+$/.test(route.trim())
               ? '1. Call brief_route with these ICAO codes in order.'
               : '1. Call brief_saved_route with this route (list_saved_routes if the name is unclear).',
-            '2. Read the serious warnings first, then the other warnings, fuel per hop, and weather and NOTAMs at each aerodrome where I take off or land.',
+            ...(when ? [`   Pass departure as an ISO 8601 UTC time for "${when}" (ask me if unclear): winds, times, NOTAMs and TAFs are for that time.`] : []),
+            '2. Read daylight problems and the serious warnings first, then the other warnings, fuel per hop, the altitude per leg, and weather (METAR, the TAF for the time I am there, weather along the way) and NOTAMs at each aerodrome where I take off or land. Mention the "Also check" items.',
             '3. If fuel is short on a hop, call suggest_fuel_stops. For anything about one aerodrome, call aerodrome_status.',
             '4. Say what the briefing could not check (it lists that), and end by reminding me that this is not an official briefing.',
             'Keep it short enough to read out. Quote NOTAM numbers and times exactly; do not invent values the tools did not give.',
@@ -526,6 +545,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       })).max(MAX_POINTS - 1).optional().describe('Settings for single legs (after altitudeFt)'),
       fuelStops: z.array(z.string().max(40)).max(10).optional().describe('Points (aerodromes between departure and destination) where the aircraft lands and refuels; replaces the current set'),
       aircraft: z.string().max(80).optional().describe('Aircraft registration or name from list_aircraft; "none" removes it'),
+      departure: departureField,
       autoFuelStops: z.boolean().optional().describe('With an aircraft: when a hop needs more fuel than the tanks hold, insert the best fuel stop (aircraft fuel types and runway limits) and say which'),
     }
     const pointsField = z.array(z.string().min(2).max(40)).min(2).max(MAX_POINTS)
@@ -551,7 +571,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       return `Added fuel stop${plan.stops.length > 1 ? 's' : ''} ${plan.stops.map(x => `${x.aerodrome.icao} ${quote(x.aerodrome.name, 60)} (${x.fuels.map(f => FUEL_LABELS[f]).join('/') || x.aerodrome.fuel.join('/')}, ${x.aerodrome.maxRunwayM} m${x.aerodrome.ppr ? ', PPR' : ''})`).join(' and ')}, +${Math.round(plan.extraMins)} min.${others ? ` Other options: ${others}.` : ''} Fuel listings can be out of date: the pilot should call ahead.`
     }
 
-    async function saveRouteAndBrief(built: ReturnType<typeof buildRoute>, ac: AircraftProfileDocType | null, verb: 'created' | 'updated', note = ''): Promise<Text> {
+    async function saveRouteAndBrief(built: ReturnType<typeof buildRoute>, ac: AircraftProfileDocType | null, verb: 'created' | 'updated', note = '', departureMs?: number): Promise<Text> {
       await deps.saveRoute(caller.userId, built.doc)
       console.log(`[mcp] route ${verb} user=${caller.userId} client=${caller.clientId} id=${built.doc.id} change=${built.changed.join(',')}`)
       const lines = [
@@ -562,7 +582,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       if (note) lines.push(note)
       if (built.warnings.length) lines.push(`Check these: ${built.warnings.join('; ')}.`)
       if (deps.takeBriefing(caller.userId)) {
-        const b = await deps.briefings.briefRoute({ id: caller.userId }, { waypoints: built.doc.waypoints, legOverrides: built.doc.legOverrides }, ac)
+        const b = await deps.briefings.briefRoute({ id: caller.userId }, { waypoints: built.doc.waypoints, legOverrides: built.doc.legOverrides }, ac, departureMs !== undefined ? { departureMs } : {})
         lines.push('', 'Briefing of the saved route (fix warnings with update_route):', briefingText(b))
       } else {
         lines.push('(Briefing limit reached: brief it later with brief_saved_route.)', QUOTE_NOTE)
@@ -580,6 +600,8 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       }),
     }, async (args) => {
       if (!canRoutesWrite) return noRoutesWrite()
+      const dep = parseDeparture(args.departure)
+      if (isText(dep)) return dep
       if (writeLimiter.take(caller.userId).waitS > 0) return fail('Too many changes for now. Try again later.')
       const idx = await (deps.pointIndex ?? defaultPointIndex)()
       if (!idx) return fail('Aerodrome and navaid data is not available right now.')
@@ -593,7 +615,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
         const input: RouteInput = { name: args.name, points: args.points, altitudeFt: args.altitudeFt, legs: args.legs, fuelStops: args.fuelStops, aircraftId: ac?.id }
         const built = buildRoute(input, { idx, newId: crypto.randomUUID(), by: await deps.clientName(caller.clientId), now: Date.now() })
         const note = args.autoFuelStops ? await addFuelStops(built, ac?.profile ?? null) : ''
-        return await saveRouteAndBrief(built, ac?.profile ?? null, 'created', note)
+        return await saveRouteAndBrief(built, ac?.profile ?? null, 'created', note, dep)
       } catch (err) {
         if (err instanceof RouteInputError) return fail(err.message)
         throw err
@@ -611,6 +633,8 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       }),
     }, async (args) => {
       if (!canRoutesWrite) return noRoutesWrite()
+      const dep = parseDeparture(args.departure)
+      if (isText(dep)) return dep
       if (writeLimiter.take(caller.userId).waitS > 0) return fail('Too many changes for now. Try again later.')
       const found = await findRoute(args.route)
       if ('error' in found) return found.error
@@ -625,7 +649,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
         const profile = ac ? ac.profile : await deps.briefings.aircraftById({ id: caller.userId }, built.doc.aircraftId)
         const note = args.autoFuelStops ? await addFuelStops(built, profile) : ''
         if (built.changed.length === 0) return text(`Nothing to change on ${quote(existing.name, 80)}.${note ? ` ${note}` : ''}\n${QUOTE_NOTE}`)
-        return await saveRouteAndBrief(built, profile, 'updated', note)
+        return await saveRouteAndBrief(built, profile, 'updated', note, dep)
       } catch (err) {
         if (err instanceof RouteInputError) return fail(err.message)
         throw err
