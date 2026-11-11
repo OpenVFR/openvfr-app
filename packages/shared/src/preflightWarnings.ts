@@ -404,7 +404,7 @@ export function computeWarnings(
         level:  'danger',
         code:   'runway-short',
         title:  `Runway short for ${what} at ${x.icao} (${x.role})`,
-        detail: `Needs about ${x.requiredM.toLocaleString('en-US')} m: the aircraft's ${what} distance over 50 ft, scaled for elevation${x.tempC != null ? `, ${x.tempC} °C` : ''}, surface and a ${safety} safety factor. Best is ${rwy}. Check the POH for today's mass and conditions.`,
+        detail: `Needs about ${x.requiredM.toLocaleString('en-US')} m: the aircraft's ${what} distance ${x.op === 'takeoff' ? 'over' : 'from'} 50 ft, scaled for elevation${x.tempC != null ? `, ${x.tempC} °C` : ''}, surface and a ${safety} safety factor. Best is ${rwy}. Check the POH for today's mass and conditions.`,
       })
     }
   }
