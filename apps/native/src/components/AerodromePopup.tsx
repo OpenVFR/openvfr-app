@@ -213,10 +213,14 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
   }, [wxLoading, feature?.icao])
 
   const runways = feature?.runways ?? []
-  // Runway focus (experimental aerodrome details) belongs to the open sheet: cleared when it closes or changes.
+  // Runway focus (experimental aerodrome details). The sheet covers the map, so unlike web the focus outlives it:
+  // ended by the map banner (MapScreen) or by opening another aerodrome.
   const circuitFocus = useCircuitFocus()
   const focusOn = (d: string) => circuitFocus?.aerodrome === feature?.icao && circuitFocus?.runway === d
-  useEffect(() => () => setCircuitFocus(null), [feature?.icao])
+  useEffect(() => {
+    if (feature?.icao && circuitFocus && circuitFocus.aerodrome !== feature.icao) setCircuitFocus(null)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feature?.icao])
   const { metar, effectiveWind, allRunwayWindEnds } = deriveWxDisplay(wx, runways, feature?.icao, null, wxSource, ambientWx)
 
   useEffect(() => {

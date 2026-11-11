@@ -50,6 +50,7 @@ import { NotificationCenter } from '../components/NotificationCenter'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
 import { getTileUrls, EXPERIMENTAL_AERODROME_DETAILS } from '../config'
 import { localInfo } from '@open-vfr/shared/aerodromeDetails'
+import { setCircuitFocus, useCircuitFocus } from '../utils/circuitFocus'
 import { parseMapLink, hasMapLink } from '@open-vfr/shared/deepLink'
 import { useDataFreshness } from '../hooks/useDataFreshness'
 
@@ -1296,6 +1297,7 @@ function MapScreenForCountry() {
   const { outdatedAirac, currentAirac, checking: airacChecking, recheck: recheckAirac } = useDataFreshness()
   const outdatedAiracKey = outdatedAirac.map(o => `${o.country}:${o.cycle}`).join(',')
   const [dismissedAiracKey, setDismissedAiracKey] = useState<string | null>(null)
+  const circuitFocus = useCircuitFocus()
   const [snapPicker, setSnapPicker] = useState<{ candidates: SnapCandidate[]; onPick: (wp: RouteWaypoint) => void } | null>(null)
 
   // ── Route-edit lock ─────────────────────────────────────────────────────
@@ -2074,6 +2076,21 @@ function MapScreenForCountry() {
             </TouchableOpacity>
           </View>
         )}
+
+        {/* Runway focus (experimental aerodrome details): the sheet covers the map, so the focus outlives it and
+            is ended here (or by opening another aerodrome). */}
+        {circuitFocus && (
+          <View style={[styles.pastTrackBanner, styles.circuitFocusBanner, { top: scaledTheme.space2 + (editBannerShown ? EDIT_BANNER_H : 0)
+            + (selectedLog ? 44 : 0) + (outdatedAirac.length > 0 && dismissedAiracKey !== outdatedAiracKey ? 56 : 0) }]}>
+            <Text style={styles.pastTrackBannerTxt} numberOfLines={1}>
+              {circuitFocus.aerodrome}: only RWY {circuitFocus.runway} circuits shown
+            </Text>
+            <TouchableOpacity onPress={() => setCircuitFocus(null)} accessibilityLabel="Show all circuits"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <AppIcon name="close" size={15} color={theme.textMuted} />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {/* Map controls — lower right, outside MapLibre GL surface. Offset above
@@ -2495,6 +2512,7 @@ function makeStyles(theme: ScaledTheme) {
     paddingHorizontal: theme.space3, paddingVertical: theme.space2,
   },
   airacBanner: { borderColor: theme.statusWarn },
+  circuitFocusBanner: { borderColor: '#38bdf8' },
   routeHintPill: {
     position: 'absolute', left: theme.space2, maxWidth: '72%',
     zIndex: 46,
