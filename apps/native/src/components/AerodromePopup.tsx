@@ -136,6 +136,10 @@ export interface AerodromeFeatureProps {
   icao:         string
   /** Experimental aerodrome details: curated local information (circuits, rules, holdings, ...). */
   local?:       LocalInfo
+  /** Chart symbol class; 'closed' = permanently closed (openAIP, or a curated decision). */
+  ad_use?:      string
+  /** Not in the official sources: added from a club or the airfield owner. */
+  unofficial?:  boolean
   name:         string
   type?:        string
   elevation_ft?: number
@@ -277,6 +281,12 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
                   ATC {atc.status === 'open' ? 'Open' : atc.status === 'closed' ? 'Closed' : '?'}
                 </Text>
               </View>
+            )}
+            {feature.ad_use === 'closed' && (
+              <Text style={styles.closureBanner}>⛔ Permanently closed — do not plan to land here</Text>
+            )}
+            {feature.unofficial && (
+              <Text style={styles.notamHint}>Unofficial: not in the official sources (club / airfield owner)</Text>
             )}
             {closure && (
               <Text style={styles.closureBanner}>⛔ {closureLabel(closure)} — see NOTAMs</Text>

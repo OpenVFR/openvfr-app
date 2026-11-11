@@ -90,6 +90,8 @@ function aerodromePropsFromFeature(p: Record<string, unknown>, coords: [number, 
     passenger_facilities: p.passenger_facilities ? parse(p.passenger_facilities) : [],
     lng: coords ? coords[0] : undefined,
     lat: coords ? coords[1] : undefined,
+    ad_use:       typeof p.ad_use === 'string' ? p.ad_use : undefined,
+    unofficial:   p.unofficial === true,
     ...(EXPERIMENTAL_AERODROME_DETAILS ? { local: localInfo(p) } : {}),
   }
 }

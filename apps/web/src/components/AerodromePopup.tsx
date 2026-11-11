@@ -107,6 +107,10 @@ interface HoursEntry {
 export interface AerodromeFeatureProps {
   icao: string
   name: string
+  /** Chart symbol class; 'closed' = permanently closed (openAIP, or a curated decision). */
+  ad_use?: string
+  /** Not in the official sources: added from a club or the airfield owner. */
+  unofficial?: boolean
   type: string               // 'AD' | 'HP' | 'AH'
   elevation_ft: number | null
   frequencies: Frequency[]
@@ -627,6 +631,11 @@ export default function AerodromePopup({
             )}
             <div className={css.badges}>
               {p.type === 'HP' && <span className={css.badge}>Heliport</span>}
+              {p.unofficial && (
+                <span className={css.badge} title="Not in the official sources: added from a club or the airfield owner">
+                  Unofficial
+                </span>
+              )}
               {atc && (
                 <span
                   className={`${css.badge} ${css[atc.status === 'open' ? 'atcOpen' : atc.status === 'closed' ? 'atcClosed' : 'atcUnknown']}`}
@@ -643,6 +652,11 @@ export default function AerodromePopup({
                   </span>
                 ))}
             </div>
+            {p.ad_use === 'closed' && (
+              <div className={css.closureBanner} role="status">
+                ⛔ Permanently closed — do not plan to land here
+              </div>
+            )}
             {closure && (
               <div className={css.closureBanner} role="status">
                 ⛔ {closureLabel(closure)} — check NOTAMs tab
@@ -751,7 +765,7 @@ export default function AerodromePopup({
                     .join(' / ')
                   const dims =
                     rwy.length_m != null
-                      ? `${rwy.length_m}×${rwy.width_m ?? '?'}m`
+                      ? (rwy.width_m ? `${rwy.length_m}×${rwy.width_m}m` : `${rwy.length_m} m`)
                       : ''
                   const lighting = rwy.lighting ?? []
                   const vasi = rwy.visual_approach_aids ?? []
