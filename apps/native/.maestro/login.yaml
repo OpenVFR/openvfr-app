@@ -59,6 +59,7 @@ appId: org.openvfr.app
     label: "Email field holds the test account address"
 
 - runFlow: dismiss-keyboard-dialog.yaml
+- runFlow: hide-android-keyboard.yaml
 - tapOn:
     id: login-send-otp
 - extendedWaitUntil:
@@ -96,6 +97,7 @@ appId: org.openvfr.app
             id: login-wait-for-rate-limit-window
           timeout: 65000
           optional: true
+      - runFlow: hide-android-keyboard.yaml
       - tapOn:
           id: login-send-otp
       - extendedWaitUntil:

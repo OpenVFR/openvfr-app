@@ -1,0 +1,16 @@
+# Closes the on-screen keyboard on Android so it cannot cover the button
+# about to be tapped.
+#
+# On the tablet emulator Gboard can end up in its "Text Editing" panel (the
+# 8 erase key presses / typing trigger it), which is drawn over the field's
+# row: login-send-otp is at y 1130-1226 and the panel starts at y 1150, so
+# the tap at the button's centre lands on the keyboard and the send is never
+# triggered (login-otp never appears). Not run on iOS, where hideKeyboard
+# taps around and is unreliable.
+appId: org.openvfr.app
+---
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
