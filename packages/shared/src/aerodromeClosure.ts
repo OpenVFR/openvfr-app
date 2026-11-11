@@ -14,8 +14,8 @@
  *    "closed now" outside those times.
  */
 import type { NotamItem } from './fetchNotam'
-import { fmtUtcClock, notamValidity } from './notamValidity'
-import { nextScheduleChange, notamScheduleFor, scheduleOverlaps } from './notamSchedule'
+import { fmtUtcDayClock, notamValidity } from './notamValidity'
+import { SCHEDULE_LOOKAHEAD_MS, nextScheduleChange, notamScheduleFor, scheduleOverlaps } from './notamSchedule'
 
 export type ClosureState =
   /** In force right now. */
@@ -34,8 +34,6 @@ export interface AerodromeClosure {
   untilMs: number | null
   /** The end is an estimate (C-line "EST"). */
   estimated: boolean
-  /** The NOTAM has a schedule (item D) that applies, readable or not. */
-  scheduleText: string | null
 }
 
 /** Look-ahead for a closure that has not started yet. */
@@ -46,11 +44,14 @@ const NOT_IN_FORCE = new Set(['TT', 'AW', 'CD', 'CC', 'CN'])
 
 const TEXT_CLOSED =
   /\b(?:AD|AERODROME|AIRDROME|AIRPORT|AIRFIELD|HELIPORT|HELIPAD)\b[^.\n]{0,25}\b(?:CLSD|CLOSED)\b/i
-const PARTIAL =
-  /\b(?:EXC|EXCL|EXCEPT|EXCEPTING|PPR|PERMISSION|APPROVAL)\b|\b(?:CLSD|CLOSED)\s+TO\s+(?!ALL\b)[A-Z -]{0,40}?\b(?:TFC|TRAFFIC|ACFT|AIRCRAFT|OPS|OPERATIONS|FLIGHTS?)\b/i
+/** The rest of the sentence after the closure word: that is where a limit such as "EXC ..." or "TO ..." belongs. */
+const CLOSED_CLAUSE = /\b(?:CLSD|CLOSED)\b([^.]*)/i
+const EXCEPT_REAL = /\b(?:EXC|EXCL|EXCEPT|EXCEPTING)\b(?!\s+(?:HOL|HOLS|HOLIDAYS?|PUBLIC|SAT|SUN|MON|TUE|WED|THU|FRI|\d))/i
+const CLOSED_TO = /^\s+TO\s+(?!ALL\b)[A-Z -]{0,40}?\b(?:TFC|TRAFFIC|ACFT|AIRCRAFT|OPS|OPERATIONS|FLIGHTS?)\b/i
+const PPR = /\bPPR\b/i
 
 /** Subject + condition of a Q-code ("QFALC" -> "FA"+"LC"), null without one. */
-function qParts(q: string | null | undefined): { subject: string; cond: string } | null {
+export function qParts(q: string | null | undefined): { subject: string; cond: string } | null {
   if (!q) return null
   const c = q.trim().toUpperCase()
   if (!/^Q[A-Z]{4}$/.test(c)) return null
@@ -71,7 +72,10 @@ export function isAerodromeClosureNotam(n: Pick<NotamItem, 'qCode' | 'text'>): b
 }
 
 function isPartial(text: string): boolean {
-  return PARTIAL.test(text)
+  const m = CLOSED_CLAUSE.exec(text)
+  if (!m) return false
+  const rest = m[1]!
+  return EXCEPT_REAL.test(rest) || CLOSED_TO.test(rest) || PPR.test(rest)
 }
 
 const MIN = 60_000
@@ -111,40 +115,32 @@ function classify(
 
   if (v.state === 'upcoming') {
     if (Number.isNaN(startMs) || startMs - nowMs > CLOSURE_SOON_MS) return null
-    return { ...base, state: 'soon', untilMs: startMs, scheduleText: null }
+    return { ...base, state: 'soon', untilMs: startMs }
   }
 
   const sched = notamScheduleFor(n)
   const itemD = n.icao?.schedule?.trim() || null
   if (!sched) {
     // A schedule we cannot read: say it is scheduled, do not claim "closed now" or "open".
-    if (itemD) return { ...base, state: 'scheduled', untilMs: null, scheduleText: itemD }
-    return { ...base, state: 'closed', untilMs: end, scheduleText: null }
+    if (itemD) return { ...base, state: 'scheduled', untilMs: null }
+    return { ...base, state: 'closed', untilMs: end }
   }
 
   const pos = n.lat !== null && n.lon !== null ? { lat: n.lat, lon: n.lon } : ad
   const inForce = scheduleOverlaps(sched, nowMs, nowMs + MIN, pos)
-  const text = itemD ?? 'scheduled'
   if (inForce) {
-    const off = nextScheduleChange(sched, pos, nowMs, 48 * 3_600_000, false)
+    const off = nextScheduleChange(sched, pos, nowMs, SCHEDULE_LOOKAHEAD_MS, false)
     const until = off !== null ? (end !== null ? Math.min(off, end) : off) : end
-    return { ...base, state: 'closed', untilMs: until, scheduleText: text }
+    return { ...base, state: 'closed', untilMs: until }
   }
   const on = nextScheduleChange(sched, pos, nowMs, CLOSURE_SOON_MS * 2, true)
   const next = on !== null && (end === null || on < end) ? on : null
-  return { ...base, state: 'scheduled', untilMs: next, scheduleText: text }
+  return { ...base, state: 'scheduled', untilMs: next }
 }
 
-const hhmm = fmtUtcClock
-const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const whenText = fmtUtcDayClock
 
-/** "07:45Z" today, "Tue 07:45Z" on another day. */
-function whenText(ms: number, nowMs: number): string {
-  const sameDay = Math.floor(ms / 86_400_000) === Math.floor(nowMs / 86_400_000)
-  return sameDay ? hhmm(ms) : `${DOW[new Date(ms).getUTCDay()]} ${hhmm(ms)}`
-}
-
-/** One-line pilot wording, e.g. "Closed now until 0745Z", "Closed at scheduled times". */
+/** One-line pilot wording, e.g. "Closed now until 07:45Z", "Closed at scheduled times". */
 export function closureLabel(c: AerodromeClosure, nowMs: number = Date.now()): string {
   const word = c.partial ? 'Restricted' : 'Closed'
   const est = c.estimated ? ' (est.)' : ''

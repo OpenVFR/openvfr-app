@@ -58,3 +58,13 @@
   cursor: pointer;
   padding: 0 0 0 4px;
 }
+
+.hideBtn {
+  font: inherit;
+  font-size: 10px;
+  background: none;
+  border: none;
+  color: var(--accent-blue);
+  cursor: pointer;
+  padding: 2px 0;
+}

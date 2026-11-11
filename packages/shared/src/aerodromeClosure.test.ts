@@ -37,7 +37,7 @@ describe('aerodromeClosure', () => {
   it('plain closure now, until the end', () => {
     const c = aerodromeClosure([notam({})], AD, now)!
     expect(c.state).toBe('closed')
-    expect(closureLabel(c, now)).toBe('Closed now until Mon 00:00Z')
+    expect(closureLabel(c, now)).toBe('Closed now until 30 Nov 00:00Z')
   })
   it('open-ended closure', () => {
     const c = aerodromeClosure([notam({ expires: null })], AD, now)!
@@ -72,6 +72,16 @@ describe('aerodromeClosure', () => {
     expect(closureLabel(c, now)).toMatch(/^Restricted now/)
     const t = aerodromeClosure([notam({ text: 'AD CLSD TO NON-BASED ACFT' })], AD, now)!
     expect(t.partial).toBe(true)
+  })
+  it('full closure with a request or holiday exception is not Restricted', () => {
+    const a = aerodromeClosure([notam({ text: 'AD CLSD DUE TO WIP. ACFT MAY REQUEST APPROVAL FOR EMERG LDG' })], AD, now)!
+    expect(a.partial).toBe(false)
+    const b = aerodromeClosure([notam({ text: 'AD CLSD MON-FRI 0600-1800 EXC HOL' })], AD, now)!
+    expect(b.partial).toBe(false)
+  })
+  it('a far end date shows the date', () => {
+    const c = aerodromeClosure([notam({ expires: '2026-12-01T00:00:00Z' })], AD, now)!
+    expect(closureLabel(c, now)).toBe('Closed now until 01 Dec 00:00Z')
   })
   it('estimated end is marked', () => {
     const c = aerodromeClosure([notam({ estimated: true, expires: '2026-11-10T18:00:00Z' })], AD, now)!

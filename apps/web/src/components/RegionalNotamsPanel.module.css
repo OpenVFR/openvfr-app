@@ -153,25 +153,3 @@
   opacity: 0.55;
   font-weight: 400;
 }
-
-.hideBtn,
-.hiddenNote button {
-  font: inherit;
-  font-size: 10px;
-  background: none;
-  border: none;
-  color: var(--accent-blue);
-  cursor: pointer;
-  padding: 2px 0;
-}
-
-.hiddenNote {
-  font-size: 10px;
-  font-style: italic;
-  color: var(--text-faint);
-  padding: 4px 0 2px;
-}
-
-.hiddenNote button {
-  padding-left: 4px;
-}

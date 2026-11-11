@@ -12,6 +12,8 @@
 import { fmtUtcDayClock } from './notamValidity'
 import { nextScheduleChange, parseNotamSchedule, scheduleOverlaps } from './notamSchedule'
 
+const SUP_LOOKAHEAD_MS = 4 * 86_400_000
+
 /** Sweden's middle: only used where a schedule needs a position (sun times), which these forms do not. */
 const POS = { lat: 62, lon: 15 }
 const DATE = String.raw`\d{1,2}\b(?:\s+[A-Z]{3}(?:\s+20\d{2})?)?`
@@ -26,18 +28,22 @@ export function supScheduleItemD(schedule: string): string | null {
     .replace(/\([^)]*\)/g, ' ')
     .replace(/\bDAGLIGEN\s*\/\s*/g, '')
   const parts: string[] = []
-  let prefix: string | null = null
+  let range: string | null = null   // the one date range every line must share
+  let undatedFirst = false          // a weekday line came before any date range
   for (const raw of text.split(/\n+/)) {
     const line = raw.trim()
     if (!line) continue
     const m = DATE_PREFIX.exec(line)
     const rest = (m ? line.slice(m[0].length) : line).replace(/\s+/g, ' ').trim()
     const pre = m ? m[0].replace(/[\s,]+/g, ' ').trim() : ''
-    if (!rest) { prefix = pre || prefix; continue }   // a line that is only a date range applies to the next lines
+    if (pre) {
+      if (range !== null && pre !== range) return null   // several different date ranges
+      if (undatedFirst) return null                       // that earlier line would lose the limit
+      range = pre
+    }
+    if (!rest) continue                                   // a line with only a date range applies to the lines after it
     if (!DAY_WORD.test(rest)) return null
-    const eff = pre || prefix || ''
-    if (prefix !== null && pre && pre !== prefix) return null   // several different date ranges
-    prefix = eff || null
+    if (range === null) undatedFirst = true
     parts.push(rest)
   }
   return parts.length > 0 ? parts.join(', ') : null
@@ -57,9 +63,9 @@ export function supScheduleLine(props: unknown, nowMs: number = Date.now()): str
   if (!s) return null
   const within = (t: number) => (Number.isFinite(until) ? t < until : true)
   if (scheduleOverlaps(s, nowMs, nowMs + 60_000, POS)) {
-    const off = nextScheduleChange(s, POS, nowMs, 4 * 86_400_000, false)
+    const off = nextScheduleChange(s, POS, nowMs, SUP_LOOKAHEAD_MS, false)
     return `Now: in its scheduled hours${off !== null && within(off) ? ` (until ${fmtUtcDayClock(off, nowMs)})` : ''}`
   }
-  const on = nextScheduleChange(s, POS, nowMs, 4 * 86_400_000, true)
+  const on = nextScheduleChange(s, POS, nowMs, SUP_LOOKAHEAD_MS, true)
   return `Now: outside its scheduled hours${on !== null && within(on) ? ` (next from ${fmtUtcDayClock(on, nowMs)})` : ''}`
 }

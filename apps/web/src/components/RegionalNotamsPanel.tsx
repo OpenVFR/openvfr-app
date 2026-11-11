@@ -18,8 +18,8 @@ import css from './RegionalNotamsPanel.module.css'
 import { notamStatus } from '@open-vfr/shared/notamValidity'
 import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
-import { useNotamTriage } from '../hooks/useNotamTriage'
-import { canHideNotam, splitHidden, triageKey } from '@open-vfr/shared/notamTriage'
+import { useTriagedList } from '../hooks/useTriagedList'
+import { HideNotamButton, HiddenNotamsNote } from './NotamTriageControls'
 import NotamBody from './NotamBody'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
 import { IconChevronDown, IconChevronUp } from '@tabler/icons-react'
@@ -62,11 +62,9 @@ function previewText(text: string): string {
 export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, routeWaypoints, onShowOnMap }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const { textView } = useNotamPrefs()
-  const { triage, markRead, hide, unhide } = useNotamTriage()
-  const [showHidden, setShowHidden] = useState(false)
 
   const toggle = (id: string, key?: string) => {
-    if (key) markRead(key)
+    if (key) triaged.markRead(key)
     setExpandedIds(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id); else next.add(id)
@@ -88,8 +86,7 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, r
         return (a.expires ?? '').localeCompare(b.expires ?? '')
       })
 
-  const split = splitHidden(sortedNotams, triage)
-  const listed = showHidden ? [...split.shown, ...split.hidden] : split.shown
+  const triaged = useTriagedList(sortedNotams)
 
   if (notams.length === 0) {
     return (
@@ -104,10 +101,9 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, r
       {routeFiltered && (
         <div className={css.filterNote}>Filtered to within {bufferNm}nm of planned route</div>
       )}
-      {listed.map((n) => {
-        const key = triageKey(n)
-        const isHidden = split.hidden.includes(n)
-        const dim = isHidden || triage.read.includes(key)
+      {triaged.rows.map((r) => {
+        const { n, key } = r
+        const dim = r.hidden || r.read
         // Tracked by nmsId, not the display id -- different issuing
         // authorities reuse the same published NOTAM number (confirmed
         // live: a German and an unrelated Italian NOTAM both "M3011/26"),
@@ -152,20 +148,13 @@ export default function RegionalNotamsPanel({ notams, routeFiltered, bufferNm, r
               </button>
             )}
             {expanded && <pre className={css.text}><NotamBody text={notamText(n, textView)} /></pre>}
-            {expanded && (isHidden || canHideNotam(n)) && (
-              <button className={css.hideBtn} onClick={() => (isHidden ? unhide(key) : hide(key))}>
-                {isHidden ? 'Unhide' : 'Hide this NOTAM'}
-              </button>
+            {expanded && (r.hidden || r.canHide) && (
+              <HideNotamButton hidden={r.hidden} onClick={() => triaged.toggleHidden(r)} />
             )}
           </div>
         )
       })}
-      {split.hidden.length > 0 && (
-        <div className={css.hiddenNote}>
-          {split.hidden.length} hidden by you
-          <button onClick={() => setShowHidden((v) => !v)}>{showHidden ? 'Fold away' : 'Show'}</button>
-        </div>
-      )}
+      <HiddenNotamsNote count={triaged.hiddenCount} shown={triaged.showHidden} onToggle={triaged.toggleShowHidden} />
     </div>
   )
 }

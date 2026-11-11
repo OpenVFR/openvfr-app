@@ -293,6 +293,9 @@ export function scheduleOverlaps(
   return false
 }
 
+/** How far ahead "next change" lookups for a NOTAM schedule go. */
+export const SCHEDULE_LOOKAHEAD_MS = 48 * 3_600_000
+
 /**
  * First minute at or after `fromMs` (looking up to `maxMs` ahead) where the
  * schedule is active (`active` true) or inactive (false); null when none.

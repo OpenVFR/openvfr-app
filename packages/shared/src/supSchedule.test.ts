@@ -17,6 +17,9 @@ describe('supScheduleItemD (real samples)', () => {
     expect(supScheduleItemD('10 \u2013 13 NOV, DAILY 0700 \u2013 1700')).toBe('DAILY 0700 - 1700')
     expect(supScheduleItemD('10 \u2013 11 NOV 0800 \u2013 1600')).toBeNull()
   })
+  it('a later date range does not limit an earlier undated line', () => {
+    expect(supScheduleItemD('MON 0700-1700\n01 OCT - 31 OCT, TUE 0800-1000')).toBeNull()
+  })
   it('several weekday lines under one date range', () => {
     expect(supScheduleItemD('01 JAN 2026 \u2013 31 DEC 2026\nMON-THU 0600 - 1900 (0500 - 1800)\nFRI 0600 - 1300 (0500 - 1200)'))
       .toBe('MON-THU 0600 - 1900, FRI 0600 - 1300')

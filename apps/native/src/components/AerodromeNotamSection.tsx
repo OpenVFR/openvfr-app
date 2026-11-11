@@ -23,7 +23,7 @@
  * by nmsId -- globally unique, so no collision risk between the two lists).
  */
 
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native'
 import { AppIcon } from './AppIcon'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
@@ -35,9 +35,8 @@ import { Section } from './AerodromeBriefShared'
 import { notamText } from '@open-vfr/shared/notamIcaoFormat'
 import { applyNotamRelevance, relevantFirPrefixes, relevanceHiddenNote } from '@open-vfr/shared/notamRelevance'
 import { useNotamPrefs } from '../hooks/useNotamPrefs'
-import { useNotamTriage } from '../hooks/useNotamTriage'
+import { useTriagedList } from '../hooks/useTriagedList'
 import { isNewNotam, sortNewestFirst } from '@open-vfr/shared/notamAge'
-import { canHideNotam, splitHidden, triageKey } from '@open-vfr/shared/notamTriage'
 import NotamViewControls from './NotamViewControls'
 import NotamBody from './NotamBody'
 
@@ -88,15 +87,24 @@ export function useNotamLists({ notams: allNotams, regionalNotams, routeWaypoint
   return { ownRel, otherRel, notams, otherNotams, visibleCount }
 }
 
+/** "N hidden by you  Show / Fold away" under a list using useTriagedList. */
+function HiddenNotamsNote({ list }: { list: Pick<ReturnType<typeof useTriagedList>, 'hiddenCount' | 'showHidden' | 'toggleShowHidden'> }) {
+  const styles = useThemedStyles(makeStyles)
+  if (list.hiddenCount === 0) return null
+  return (
+    <Text style={styles.muted}>
+      {list.hiddenCount} hidden by you
+      <Text style={styles.link} onPress={list.toggleShowHidden}>  {list.showHidden ? 'Fold away' : 'Show'}</Text>
+    </Text>
+  )
+}
+
 export default function AerodromeNotamSection({ notams: allNotams, notamLoading, regionalNotams, routeWaypoints, centre, icao }: Props) {
   const styles = useThemedStyles(makeStyles)
   const [expandedNotams, setExpandedNotams] = useState<Set<string>>(new Set())
-  const { triage, markRead, hide, unhide } = useNotamTriage()
-  const [showHidden, setShowHidden] = useState(false)
-  const [showHiddenOther, setShowHiddenOther] = useState(false)
 
   function toggleNotam(id: string, key?: string) {
-    if (key) markRead(key)
+    if (key) ownList.markRead(key)
     setExpandedNotams((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -107,13 +115,16 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
 
   const { ownRel, otherRel, notams, otherNotams } = useNotamLists({ notams: allNotams, regionalNotams, routeWaypoints, centre, icao })
   const { textView, setVfrOnly } = useNotamPrefs()
+  const ownSorted = useMemo(() => sortNewestFirst(notams), [notams])
+  const ownList = useTriagedList(ownSorted)
+  const otherList = useTriagedList(otherNotams ?? NONE)
   const hasRoute = !!routeWaypoints && routeWaypoints.length > 0
   const ownHidden = relevanceHiddenNote(ownRel)
   const otherHidden = otherRel ? relevanceHiddenNote(otherRel) : null
   const hiddenRow = (note: string | null, ifr: number) => note && (
     <Text style={styles.muted}>
       {note}
-      {ifr > 0 && <Text style={{ color: theme.accentBlue }} onPress={() => setVfrOnly(false)}>  Show IFR-only</Text>}
+      {ifr > 0 && <Text style={styles.link} onPress={() => setVfrOnly(false)}>  Show IFR-only</Text>}
     </Text>
   )
 
@@ -125,43 +136,27 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
         {!notamLoading && notams.length === 0 && (
           <Text style={styles.muted}>No NOTAMs</Text>
         )}
-        {(() => {
-          const { shown, hidden } = splitHidden(sortNewestFirst(notams), triage)
-          const row = (n: NotamItem, isHidden: boolean) => {
-            // nmsId, not display id, for expand-state/React key -- see
-            // apps/api/src/notam.ts's NotamItem.nmsId comment.
-            const expanded = expandedNotams.has(n.nmsId)
-            const key = triageKey(n)
-            const dim = isHidden || triage.read.includes(key)
-            return (
-              <TouchableOpacity key={n.nmsId} style={[styles.notamRow, dim && styles.notamRowRead]} onPress={() => toggleNotam(n.nmsId, key)}>
-                <Text style={styles.notamId}>{notamTitle(n)} {expanded ? '▴' : '▾'}{isNewNotam(n) ? '  NEW' : ''}</Text>
-                {n.effective && (
-                  <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}{notamStatus(n).state === 'scheduled' ? ` · ${notamStatus(n).label.toLowerCase()}` : ''}</Text>
-                )}
-                {!expanded && <Text style={styles.notamPreview} numberOfLines={1}>{previewText(n.text)}</Text>}
-                {expanded && <Text style={[styles.notamText, textView === 'raw' && styles.rawText]}><NotamBody text={notamText(n, textView)} /></Text>}
-                {expanded && (isHidden || canHideNotam(n)) && (
-                  <Text style={styles.hideLink} onPress={() => (isHidden ? unhide(key) : hide(key))}>
-                    {isHidden ? 'Unhide' : 'Hide this NOTAM'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )
-          }
+        {ownList.rows.map((r) => {
+          const { n } = r
+          // nmsId, not display id, for expand-state/React key -- see
+          // apps/api/src/notam.ts's NotamItem.nmsId comment.
+          const expanded = expandedNotams.has(n.nmsId)
+          const status = notamStatus(n)
           return (
-            <>
-              {shown.map((n) => row(n, false))}
-              {hidden.length > 0 && (
-                <Text style={styles.muted}>
-                  {hidden.length} hidden by you
-                  <Text style={{ color: theme.accentBlue }} onPress={() => setShowHidden((v) => !v)}>  {showHidden ? 'Fold away' : 'Show'}</Text>
-                </Text>
+            <TouchableOpacity key={n.nmsId} style={[styles.notamRow, (r.read || r.hidden) && styles.notamRowRead]} onPress={() => toggleNotam(n.nmsId, r.key)}>
+              <Text style={styles.notamId}>{notamTitle(n)} {expanded ? '▴' : '▾'}{isNewNotam(n) ? '  NEW' : ''}</Text>
+              {n.effective && (
+                <Text style={styles.notamDate}>{fmtNotamDate(n.effective)} → {fmtNotamDate(n.expires)}{status.state === 'scheduled' ? ` · ${status.label}` : ''}</Text>
               )}
-              {showHidden && hidden.map((n) => row(n, true))}
-            </>
+              {!expanded && <Text style={styles.notamPreview} numberOfLines={1}>{previewText(n.text)}</Text>}
+              {expanded && <Text style={[styles.notamText, textView === 'raw' && styles.rawText]}><NotamBody text={notamText(n, textView)} /></Text>}
+              {expanded && (r.hidden || r.canHide) && (
+                <Text style={styles.hideLink} onPress={() => ownList.toggleHidden(r)}>{r.hidden ? 'Unhide' : 'Hide this NOTAM'}</Text>
+              )}
+            </TouchableOpacity>
           )
-        })()}
+        })}
+        <HiddenNotamsNote list={ownList} />
         {hiddenRow(ownHidden, ownRel.hiddenIfrOnly)}
       </Section>
 
@@ -186,21 +181,15 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
           {otherNotams.length === 0 && (
             <Text style={styles.muted}>No other active regional NOTAMs</Text>
           )}
-          {(() => {
-            const split = splitHidden(otherNotams, triage)
-            const listed = showHiddenOther ? [...split.shown, ...split.hidden] : split.shown
-            return (<>
-          {listed.map((n) => {
-            const key = triageKey(n)
-            const isHidden = split.hidden.includes(n)
-            const dim = isHidden || triage.read.includes(key)
+          {otherList.rows.map((r) => {
+            const { n } = r
             // nmsId, not display id, for expand-state/React key -- see
             // apps/api/src/notam.ts's NotamItem.nmsId comment.
             const expanded = expandedNotams.has(n.nmsId)
             const hasGeo = n.lat !== null && n.lon !== null
             const isMilitary = n.classification === 'MILITARY'
             return (
-              <TouchableOpacity key={n.nmsId} style={[styles.otherNotamRow, dim && styles.notamRowRead]} onPress={() => toggleNotam(n.nmsId, key)}>
+              <TouchableOpacity key={n.nmsId} style={[styles.otherNotamRow, (r.read || r.hidden) && styles.notamRowRead]} onPress={() => toggleNotam(n.nmsId, r.key)}>
                 <View style={styles.otherNotamHeader}>
                   {n.icaoLocation && (
                     <View style={styles.locBadge}>
@@ -227,28 +216,21 @@ export default function AerodromeNotamSection({ notams: allNotams, notamLoading,
                   <Text style={styles.otherNotamPreview} numberOfLines={1}>{previewText(n.text)}</Text>
                 )}
                 {expanded && <Text style={[styles.otherNotamText, textView === 'raw' && styles.rawText]}><NotamBody text={notamText(n, textView)} /></Text>}
-                {expanded && (isHidden || canHideNotam(n)) && (
-                  <Text style={styles.hideLink} onPress={() => (isHidden ? unhide(key) : hide(key))}>
-                    {isHidden ? 'Unhide' : 'Hide this NOTAM'}
-                  </Text>
+                {expanded && (r.hidden || r.canHide) && (
+                  <Text style={styles.hideLink} onPress={() => otherList.toggleHidden(r)}>{r.hidden ? 'Unhide' : 'Hide this NOTAM'}</Text>
                 )}
               </TouchableOpacity>
             )
           })}
-          {split.hidden.length > 0 && (
-            <Text style={styles.muted}>
-              {split.hidden.length} hidden by you
-              <Text style={{ color: theme.accentBlue }} onPress={() => setShowHiddenOther((v) => !v)}>  {showHiddenOther ? 'Fold away' : 'Show'}</Text>
-            </Text>
-          )}
-            </>)
-          })()}
+          <HiddenNotamsNote list={otherList} />
           {hiddenRow(otherHidden, otherRel?.hiddenIfrOnly ?? 0)}
         </View>
       )}
     </>
   )
 }
+
+const NONE: NotamItem[] = []
 
 function makeStyles(theme: ScaledTheme) {
  return {
@@ -264,6 +246,7 @@ function makeStyles(theme: ScaledTheme) {
     borderBottomColor: theme.borderSubtle,
   },
   notamRowRead: { opacity: 0.55 },
+  link: { color: theme.accentBlue },
   hideLink: {
     color:    theme.accentBlue,
     fontSize: theme.textXs,

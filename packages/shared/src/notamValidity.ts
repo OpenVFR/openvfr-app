@@ -9,7 +9,7 @@
  * compare two UTC timestamps against the clock in their head.
  */
 
-import { isOffSchedule, nextScheduleChange, notamPosition, notamScheduleFor } from './notamSchedule'
+import { SCHEDULE_LOOKAHEAD_MS, isOffSchedule, nextScheduleChange, notamPosition, notamScheduleFor } from './notamSchedule'
 
 export type ValidityState = 'active' | 'scheduled' | 'upcoming' | 'ended' | 'unknown'
 
@@ -58,10 +58,17 @@ export function fmtUtcClock(now: number = Date.now()): string {
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}Z`
 }
 
-/** "10:00Z" on the same UTC day as `now`, else "Wed 10:00Z". */
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const DAY_MS = 86_400_000
+
+/** "10:00Z" on the same UTC day as `now`, "Wed 10:00Z" within the next 6 days, else "01 Jul 10:00Z". */
 export function fmtUtcDayClock(ms: number, now: number): string {
-  const same = Math.floor(ms / 86_400_000) === Math.floor(now / 86_400_000)
-  return same ? fmtUtcClock(ms) : `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(ms).getUTCDay()]} ${fmtUtcClock(ms)}`
+  const days = Math.floor(ms / DAY_MS) - Math.floor(now / DAY_MS)
+  if (days === 0) return fmtUtcClock(ms)
+  const d = new Date(ms)
+  if (days > 0 && days <= 6) return `${WEEKDAYS[d.getUTCDay()]} ${fmtUtcClock(ms)}`
+  return `${String(d.getUTCDate()).padStart(2, '0')} ${MONTHS[d.getUTCMonth()]} ${fmtUtcClock(ms)}`
 }
 
 /**
@@ -80,7 +87,7 @@ export function notamStatus(
     // When it next applies, if that is within two days: "Off schedule · next Wed 10:00Z".
     const sched = notamScheduleFor(n)
     const pos = notamPosition(n)
-    const next = sched && pos ? nextScheduleChange(sched, pos, now, 48 * 3_600_000, true) : null
+    const next = sched && pos ? nextScheduleChange(sched, pos, now, SCHEDULE_LOOKAHEAD_MS, true) : null
     const end = n.expires ? Date.parse(n.expires) : NaN
     if (next !== null && (Number.isNaN(end) || next < end)) {
       return { state: 'scheduled', label: `Off schedule · next ${fmtUtcDayClock(next, now)}` }

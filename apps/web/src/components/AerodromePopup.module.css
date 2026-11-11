@@ -893,16 +893,6 @@
   flex-shrink: 0;
 }
 
-.notamHideBtn {
-  font: inherit;
-  font-size: 10px;
-  background: none;
-  border: none;
-  color: var(--accent-blue);
-  cursor: pointer;
-  padding: 2px 0;
-}
-
 .notamText {
   font-size: 10px;
   font-family: monospace;

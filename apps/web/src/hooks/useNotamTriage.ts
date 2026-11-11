@@ -8,12 +8,16 @@ import { EMPTY_TRIAGE, hide, markRead, parseTriage, unhide, type NotamTriage } f
 const KEY = 'ovfr:notamTriage'
 const EVT = 'ovfr:notam-triage'
 
+/** Used only when localStorage is unavailable (private mode, quota): marks then last until the page closes. */
+let memory: NotamTriage | null = null
+
 function read(): NotamTriage {
+  if (memory) return memory
   try { return parseTriage(localStorage.getItem(KEY)) } catch { return EMPTY_TRIAGE }
 }
 
 function write(t: NotamTriage) {
-  try { localStorage.setItem(KEY, JSON.stringify(t)) } catch { /* private mode / quota: marks last for this session only */ }
+  try { localStorage.setItem(KEY, JSON.stringify(t)); memory = null } catch { memory = t }
   window.dispatchEvent(new Event(EVT))
 }
 

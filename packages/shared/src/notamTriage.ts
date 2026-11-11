@@ -12,7 +12,7 @@
  * cannot fold away what the flight depends on.
  */
 import type { NotamItem } from './fetchNotam'
-import { isAerodromeClosureNotam } from './aerodromeClosure'
+import { isAerodromeClosureNotam, qParts } from './aerodromeClosure'
 
 export interface NotamTriage {
   /** Keys, oldest first. */
@@ -30,8 +30,7 @@ export const triageKey = (n: Pick<NotamItem, 'nmsId' | 'effective'>): string => 
 /** False for NOTAMs the pilot must always see in the list. */
 export function canHideNotam(n: Pick<NotamItem, 'qCode' | 'text'>): boolean {
   if (isAerodromeClosureNotam(n)) return false
-  const q = n.qCode?.trim().toUpperCase() ?? ''
-  const subject = /^Q[A-Z]{4}$/.test(q) ? q.slice(1, 3) : ''
+  const subject = qParts(n.qCode)?.subject ?? ''
   if (subject.startsWith('W') || subject.startsWith('R')) return false
   return true
 }
