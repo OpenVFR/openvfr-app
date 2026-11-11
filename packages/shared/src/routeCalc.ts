@@ -7,6 +7,8 @@ export type RouteWaypoint = {
   note?: string
   /** Land and refuel here: the fuel plan starts a new hop with full tanks at this point. */
   fuelStop?: boolean
+  /** Field elevation, ft, when the point is an aerodrome (used where the route lands at it). */
+  elevationFt?: number
 }
 
 function toRad(deg: number) {

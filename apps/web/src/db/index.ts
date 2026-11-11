@@ -51,7 +51,7 @@ export type RouteDocType = {
 
 const routeSchema: RxJsonSchema<RouteDocType> = {
   title: 'route',
-  version: 7,
+  version: 8,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -67,6 +67,7 @@ const routeSchema: RxJsonSchema<RouteDocType> = {
           name: { type: 'string' },
           note: { type: 'string' },
           fuelStop: { type: 'boolean' },
+          elevationFt: { type: 'number' },
         },
         required: ['lng', 'lat'],
       },
@@ -403,6 +404,8 @@ export function getDb(): Promise<OpenVfrDb> {
             }),
             // v6 → v7: optional waypoint `fuelStop` (absent = fly through)
             7: (oldDoc) => ({ ...oldDoc }),
+            // v7 → v8: optional waypoint `elevationFt` (aerodrome field elevation)
+            8: (oldDoc) => ({ ...oldDoc }),
           },
         },
         aircraft_profiles: {

@@ -68,6 +68,16 @@ import { fetchWithRetry } from './fetchWithRetry'
 export type ProfilePoint = {
   distNm: number   // cumulative distance from departure
   altFt:  number   // planned altitude at this point (cruise level for the leg)
+  /** Set on a leg's end point when the route lands there (a fuel stop): the
+   *  planned path descends to the ground there and climbs out again. */
+  landing?: true
+  /** Field elevation of that landing, ft, when known. */
+  groundFt?: number
+}
+
+/** Distances (NM along the route) of the intermediate landings in a step profile. */
+export function profileLandingsNm(altitudeProfile: readonly ProfilePoint[]): number[] {
+  return altitudeProfile.filter(p => p.landing).map(p => p.distNm)
 }
 
 /** A "band" of airspace that crosses the route, for rendering as a floating band. */
@@ -456,8 +466,15 @@ export function buildVirtualRadarProfile(
     altitudeProfile.push({ distNm: Math.round(distCursor * 100) / 100, altFt })
     distCursor += legNm
     // End of this leg (same altitude — next iteration will push the new level
-    // at this same distNm creating the vertical step)
-    altitudeProfile.push({ distNm: Math.round(distCursor * 100) / 100, altFt })
+    // at this same distNm creating the vertical step). A fuel stop at the end
+    // of a leg (not the destination) is a landing.
+    const end: ProfilePoint = { distNm: Math.round(distCursor * 100) / 100, altFt }
+    const next = waypoints[i + 1]
+    if (next?.fuelStop && i + 1 < waypoints.length - 1) {
+      end.landing = true
+      if (typeof next.elevationFt === 'number') end.groundFt = next.elevationFt
+    }
+    altitudeProfile.push(end)
   }
 
   const maxPlannedAltFt = altitudeProfile.reduce((m, p) => Math.max(m, p.altFt), 0)
@@ -785,7 +802,45 @@ function interpolateVertices(verts: ProfilePoint[], d: number): number {
   return verts[verts.length - 1].altFt
 }
 
+/**
+ * Smooth planned path for the whole route. Intermediate landings (fuel stops)
+ * split it into flights that each climb from the ground and descend to it;
+ * the stop's field elevation is used when known, else 0 ft.
+ */
 function buildFlightVertices(
+  altitudeProfile:  ProfilePoint[],
+  totalNm:          number,
+  perf:             AircraftPerfModel,
+  departureElevFt:  number,
+  arrivalElevFt:    number,
+): ProfilePoint[] {
+  const nLegs = Math.floor(altitudeProfile.length / 2)
+  const cuts: number[] = []   // leg indices that end in a landing
+  for (let i = 0; i < nLegs - 1; i++) if (altitudeProfile[i * 2 + 1].landing) cuts.push(i)
+  if (cuts.length === 0) return buildSegmentVertices(altitudeProfile, totalNm, perf, departureElevFt, arrivalElevFt)
+
+  const out: ProfilePoint[] = []
+  let firstLeg = 0
+  let startNm = 0
+  let depElev = departureElevFt
+  for (const endLeg of [...cuts, nLegs - 1]) {
+    const isLast = endLeg === nLegs - 1
+    const endPt = altitudeProfile[endLeg * 2 + 1]
+    const endNm = isLast ? totalNm : endPt.distNm
+    const arrElev = isLast ? arrivalElevFt : (endPt.groundFt ?? 0)
+    const part = altitudeProfile.slice(firstLeg * 2, endLeg * 2 + 2).map(p => ({ distNm: p.distNm - startNm, altFt: p.altFt }))
+    const verts = buildSegmentVertices(part, endNm - startNm, perf, depElev, arrElev)
+    for (let k = out.length === 0 ? 0 : 1; k < verts.length; k++) {
+      out.push({ distNm: Math.round((verts[k].distNm + startNm) * 100) / 100, altFt: verts[k].altFt })
+    }
+    firstLeg = endLeg + 1
+    startNm = endNm
+    depElev = arrElev
+  }
+  return out
+}
+
+function buildSegmentVertices(
   altitudeProfile:  ProfilePoint[],
   totalNm:          number,
   perf:             AircraftPerfModel,

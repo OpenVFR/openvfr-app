@@ -175,5 +175,5 @@ export function fmtDist(nm: number): string {
 
 /** Build a RouteWaypoint from an aerodrome result — used by "add to route". */
 export function aerodromeToWaypoint(a: AerodromeEntry): RouteWaypoint {
-  return { lat: a.lat, lng: a.lng, name: a.icao }
+  return { lat: a.lat, lng: a.lng, name: a.icao, elevationFt: a.elevationFt }
 }

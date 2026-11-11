@@ -208,12 +208,15 @@ export function belowMsaRuns(o: {
   getMsa: (distNm: number) => number
   totalNm: number
   suppressNm?: number
+  /** Intermediate landings (fuel stops), NM along the route: suppressed like the ends. */
+  landingsNm?: readonly number[]
 }): { distNm: number; altFt: number }[][] {
   const { distNms, plannedAlts, getMsa, totalNm } = o
   const suppress = o.suppressNm ?? BELOW_MSA_ENDPOINT_SUPPRESS_NM
+  const landings = o.landingsNm ?? []
   const below = distNms.map((d, i) => {
     const msa = getMsa(d)
-    const nearEndpoint = d < suppress || totalNm - d < suppress
+    const nearEndpoint = d < suppress || totalNm - d < suppress || landings.some(l => Math.abs(d - l) < suppress)
     return msa > 0 && plannedAlts[i] < msa && !nearEndpoint
   })
   const runs: { distNm: number; altFt: number }[][] = []

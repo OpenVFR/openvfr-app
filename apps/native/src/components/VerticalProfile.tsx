@@ -55,6 +55,7 @@ import {
   type TerrainPoint,
   type MsaPoint,
   type AircraftPerfModel,
+  profileLandingsNm,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import { legSpans, legMsaList, legBelowMsa, dragShownFt, withLegLevel, altAtY, unreachedLegs, verticalPhaseMarks, LEVEL_STEP_FT, DRAG_MIN_MOVE_PX, type LegSpan } from '@open-vfr/shared/legLevelDrag'
@@ -2162,7 +2163,7 @@ export const VerticalProfile = React.memo(function VerticalProfile({
     if (!projAlts || pathSamples.length === 0) return ''
     // Shared with web (@open-vfr/shared/profileChart): same endpoint
     // suppression and transition points on both apps.
-    return belowMsaRuns({ distNms: pathSamples.map((p) => p.distNm), plannedAlts: projAlts, getMsa, totalNm })
+    return belowMsaRuns({ distNms: pathSamples.map((p) => p.distNm), plannedAlts: projAlts, getMsa, totalNm, landingsNm: profile ? profileLandingsNm(profile.altitudeProfile) : [] })
       .map((run) => polylinePath(run, xOf, yOf))
       .join(' ')
   }, [projAlts, pathSamples, getMsa, totalNm, xOf, yOf])
@@ -2176,7 +2177,7 @@ export const VerticalProfile = React.memo(function VerticalProfile({
     // No endpoint allowance (a log starts and ends on the ground); low near an aerodrome on the
     // track, or the log's own start and end, is amber instead of red.
     const belowRuns = msaKnown
-      ? belowMsaRuns({ distNms: pts.map((p) => p.distNm), plannedAlts: pts.map((p) => p.altFt), getMsa, totalNm, suppressNm: 0 })
+      ? belowMsaRuns({ distNms: pts.map((p) => p.distNm), plannedAlts: pts.map((p) => p.altFt), getMsa, totalNm, suppressNm: 0, landingsNm: profile ? profileLandingsNm(profile.altitudeProfile) : [] })
       : []
     const fieldNms = [0, flown[flown.length - 1]?.distNm ?? 0,
       ...collectRoutePois(waypoints, poiSets).filter((p) => p.kind === 'aerodrome' && p.lateralNm <= 1.5).map((p) => p.distNm)]

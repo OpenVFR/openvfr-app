@@ -43,6 +43,7 @@ import {
   buildVirtualRadarProfile, applyTerrainToBands, projectFlightPath, DEFAULT_PERF_MODEL, computeMsaProfile, terrainAt,
   getMsaLookup, corridorTerrainAlongRoute, legCorridorMsaFt, terrainForMsa, computeTrajectoryTicks, computeTrajectoryEndTick, computeVspeedTrajectory, trajectoryPitchDeg, projectWeatherMarks,
   type TerrainPoint, type MsaPoint, type AircraftPerfModel,
+  profileLandingsNm,
 } from '@open-vfr/shared/virtualRadarCalc'
 import { resolveStationWeather } from '@open-vfr/shared/parseTaf'
 import { getRemoteDem } from '../utils/terrainDem'
@@ -1249,7 +1250,7 @@ function VirtualRadar({
       // No endpoint allowance: a log starts and ends on the ground. Being low near an aerodrome
       // on the track (or the log's own start and end) is shown softer instead of in red.
       const runs = msaKnown
-        ? belowMsaRuns({ distNms: pts.map((p) => p.distNm), plannedAlts: pts.map((p) => p.altFt), getMsa, totalNm: profile.totalNm, suppressNm: 0 })
+        ? belowMsaRuns({ distNms: pts.map((p) => p.distNm), plannedAlts: pts.map((p) => p.altFt), getMsa, totalNm: profile.totalNm, suppressNm: 0, landingsNm: profile ? profileLandingsNm(profile.altitudeProfile) : [] })
         : []
       const split = splitBelowMsaNearFields(runs, logFieldNms, FLOWN_NEAR_FIELD_NM)
       return {
@@ -1277,7 +1278,7 @@ function VirtualRadar({
         plannedAlts,
         ground: gridOnly ? null : terrainPts.map((p) => p.elevFt),
         msa: distNms.map((d) => getMsa(d)),
-        belowMsa: belowMsaRuns({ distNms, plannedAlts, getMsa, totalNm: profile.totalNm }),
+        belowMsa: belowMsaRuns({ distNms, plannedAlts, getMsa, totalNm: profile.totalNm, landingsNm: profile ? profileLandingsNm(profile.altitudeProfile) : [] }),
       }
     }
     return {

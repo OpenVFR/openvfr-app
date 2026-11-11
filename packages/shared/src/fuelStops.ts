@@ -334,7 +334,7 @@ export function insertFuelStops(
   // Last stop first so earlier positions stay valid; stops on one leg end up in route order.
   for (const s of [...plan.stops].reverse()) {
     const at = s.insertAfter + 1
-    wps.splice(at, 0, { lat: s.aerodrome.lat, lng: s.aerodrome.lng, name: s.aerodrome.icao, fuelStop: true })
+    wps.splice(at, 0, { lat: s.aerodrome.lat, lng: s.aerodrome.lng, name: s.aerodrome.icao, fuelStop: true, elevationFt: s.aerodrome.elevationFt })
     ovr.splice(at, 0, { ...(ovr[s.insertAfter] ?? {}) })
   }
   return { waypoints: wps, legOverrides: ovr }
