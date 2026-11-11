@@ -52,6 +52,9 @@ import { PohGuards, pohGuardConfigFromEnv, countPdfPages } from './pohGuards'
 import { BodyTooLarge, readLimitedFormData, looksLikePdf } from './upload'
 import { createWeatherCache, type WxUpstreamResult } from './weatherCache'
 import { chartDocumentRoutes } from './chartDocuments'
+import { mintPostgrestJwt } from './briefingData'
+import { createBriefingService, parseRouteInput, BriefingInputError } from './briefingService'
+import { briefingText } from './briefing'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -231,31 +234,10 @@ app.get('/api/auth/token', async (c) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers })
   if (!session?.user) return c.json({ error: 'Unauthenticated' }, 401)
 
-  const secret = process.env['BETTER_AUTH_SECRET']!
-  const now    = Math.floor(Date.now() / 1000)
   // Short-lived: PostgREST can't see a ban, sign-out or account deletion, so
   // this lifetime is how long such a token keeps working. Clients refetch
   // shortly before expiresAt.
-  const exp    = now + 15 * 60
-
-  // Build a minimal HS256 JWT that PostgREST will accept.
-  const header  = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url')
-  const payload = Buffer.from(JSON.stringify({
-    sub:  session.user.id,
-    // Must match PostgREST's PGRST_JWT_AUD so a token minted here can't be
-    // replayed against anything else that happens to share the HS256 secret.
-    aud:  'postgrest',
-    // The PostgREST request role (SET ROLE); created by the migrations, see pgRoles.ts.
-    role: AUTHENTICATED_ROLE,
-    email: session.user.email,
-    iat:  now,
-    exp,
-  })).toString('base64url')
-  const sig = createHmac('sha256', secret)
-    .update(`${header}.${payload}`)
-    .digest('base64url')
-  const jwt = `${header}.${payload}.${sig}`
-
+  const { jwt, expiresAt: exp } = mintPostgrestJwt({ id: session.user.id, email: session.user.email }, 15 * 60)
   return c.json({ jwt, expiresAt: exp })
 })
 
@@ -775,6 +757,52 @@ app.get('/api/weather', async (c) => {
   }
   if (r.kind === 'unavailable') return c.json({ error: 'Weather service unavailable' }, 502)
   return c.json(r.data)
+})
+
+// ---------------------------------------------------------------------------
+// Route briefing — POST /api/briefing
+// Body: { routeId } (a saved route, by id or name) or { waypoints, legOverrides }
+// plus optional { aircraftId }; `?format=text` answers in plain text.
+// Auth required (reads the user's saved routes/aircraft through PostgREST as
+// that user). Rate limited per user: each briefing can look up weather for a
+// few aerodromes (counted against the user's weather budget too).
+// ---------------------------------------------------------------------------
+const briefingLimiter = new RateLimiter([
+  { windowMs: HOUR_MS, max: limitFromEnv('BRIEFING_HOURLY_LIMIT', 30) },
+  { windowMs: DAY_MS,  max: limitFromEnv('BRIEFING_DAILY_LIMIT', 150) },
+])
+
+const briefings = createBriefingService({
+  weather: async (userId, icao) => {
+    if (!/^[A-Z]{4}$/.test(icao)) return null
+    const r = await wxCache.get(icao, () => wxMissLimiter.take(userId).waitS <= 0)
+    return r.kind === 'ok' ? r.data : null
+  },
+})
+
+app.post('/api/briefing', async (c) => {
+  const user = await requireSession(c)
+  if (!user) return c.json({ error: 'Authentication required.' }, 401)
+  const limit = briefingLimiter.take(user.id)
+  if (limit.waitS > 0) {
+    c.header('Retry-After', String(Math.min(limit.waitS, 3600)))
+    return c.json({ error: 'Briefing limit reached. Try again later.' }, 429)
+  }
+  let body: Record<string, unknown>
+  try { body = await c.req.json() } catch { return c.json({ error: 'Send a JSON body.' }, 400) }
+  try {
+    const aircraftId = typeof body['aircraftId'] === 'string' ? body['aircraftId'] : undefined
+    const briefing = typeof body['routeId'] === 'string'
+      ? (await briefings.briefSavedRoute(user, body['routeId'], aircraftId)).briefing
+      : await briefings.briefRoute(user, parseRouteInput(body), await briefings.aircraftById(user, aircraftId))
+    c.header('Cache-Control', 'no-store')
+    if (c.req.query('format') === 'text') return c.text(briefingText(briefing))
+    return c.json(briefing)
+  } catch (err) {
+    if (err instanceof BriefingInputError) return c.json({ error: err.message }, 400)
+    console.error('[briefing] failed:', err)
+    return c.json({ error: 'Briefing failed. Try again later.' }, 502)
+  }
 })
 
 // ---------------------------------------------------------------------------

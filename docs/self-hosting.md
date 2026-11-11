@@ -168,6 +168,15 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   review accounts are exempt.
 - `WX_HOURLY_LIMIT` / `WX_DAILY_LIMIT` — optional, per-user caps on
   `/api/weather` cache misses (default 600 / 3000).
+- `BRIEFING_HOURLY_LIMIT` / `BRIEFING_DAILY_LIMIT` — optional, per-user
+  caps on route briefings (`POST /api/briefing`, default 30 / 150). A
+  briefing's weather lookups also count against the weather caps.
+- `POSTGREST_INTERNAL_URL` — optional, the api's own address for PostgREST
+  (e.g. `http://postgrest:3001` in the compose file). Route briefings read
+  the user's saved routes and aircraft through it with a short-lived token
+  for that user, so row-level security applies; the api's database role
+  keeps no access to user tables. Unset = briefings work only for routes
+  sent in the request.
 - `APPLE_TEAM_ID`, `ANDROID_SHA256_FINGERPRINT` (comma-separated, one per
   signing cert) — only when this API itself serves the passkey association
   files on the RP ID host; unset, `/.well-known/apple-app-site-association`
@@ -269,7 +278,9 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   so the documents are admin-only for real, not just hidden in the UI.
 - `TILES_BASE_URL` — optional, your public tile host (e.g.
   `https://tiles.example.org`); the admin country detail checks
-  `manifest.json` and each country file there. Unset = that check is skipped
+  `manifest.json` and each country file there, and route briefings read the
+  aerodrome, airspace and obstacle files from it. Unset = that check is
+  skipped and briefings have no airspace or aerodrome data
 - Fixed-code accounts, for sign-in without an inbox (both off by default):
   - `APP_REVIEW_TEST_EMAIL` + `APP_REVIEW_TEST_OTP` — one account for
     app-store review (both or neither).

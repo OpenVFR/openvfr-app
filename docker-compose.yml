@@ -76,6 +76,8 @@ services:
       # (apps/api/src/demElevation.ts). Unset TILES_BASE_URL + unset
       # ELEVATION_DEM_SOURCES = off. See docs/self-hosting.md.
       - TILES_BASE_URL=${TILES_BASE_URL:-}
+      # Route briefings read the user's saved routes/aircraft through PostgREST as that user.
+      - POSTGREST_INTERNAL_URL=${POSTGREST_INTERNAL_URL:-http://postgrest:3001}
       - ELEVATION_DEM_SOURCES=${ELEVATION_DEM_SOURCES:-}
       # Model wind/weather from your own per-country weather grids for
       # in-country points (apps/api/src/wxGrid.ts). Unset = auto from

@@ -486,7 +486,7 @@ export class TableSync<L> {
           for (const r of batch) failed += await this.uploadAs([r], resolution)
           continue
         }
-        const id = adapter.version(batch[0]).id
+        const id = adapter.version(batch[0]!).id
         const message = err instanceof Error ? err.message : String(err)
         if (isPermanent(err)) {
           // Retrying cannot help (row too large, schema mismatch): log it
