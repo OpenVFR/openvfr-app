@@ -10,7 +10,7 @@
  */
 import type { Feature, FeatureCollection, Geometry } from 'geojson'
 import {
-  AREA_KINDS, CIRCUIT_GROUPS, CIRCUIT_GROUP_COLOR, DETAIL_KIND_COLOR, areaLabel, holdingOrbitFeatures, schematicCircuitFeatures,
+  AREA_KINDS, CIRCUIT_GROUPS, CIRCUIT_GROUP_COLOR, DETAIL_KIND_COLOR, formatLimits, holdingOrbitFeatures, schematicCircuitFeatures,
   type DetailKind, type DetailProps,
 } from './aerodromeDetails'
 
@@ -39,6 +39,7 @@ const FONT = ['Noto Sans Regular']
 // map, unlike the line colour itself.
 const CIRCUIT_LABEL_FONT = ['Noto Sans Medium']
 const CIRCUIT_LABEL_COLOR = '#0c4a6e'
+const AREA_LABEL_COLOR = '#1f2937'
 const CIRCUIT_LABEL_SIZE: Expr = ['interpolate', ['linear'], ['zoom'], 11.5, 12, 14, 14]
 const CIRCUIT_WIDTH: Expr = ['interpolate', ['linear'], ['zoom'], 9.5, 1, 12, 2.5, 15, 3.5]
 const HALO = 'rgba(255,255,255,0.92)'
@@ -111,10 +112,11 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
     paint: { 'circle-radius': 4, 'circle-color': COLOR, 'circle-stroke-color': '#0b1220', 'circle-stroke-width': 1.2,
       'circle-opacity': ['case', ['get', 'pending'], 0.6, 1] } },
   { id: 'ad-details-label', type: 'symbol', group: 'details', minzoom: 10, filter: ['!=', ['get', 'label'], ''],
-    layout: { 'text-field': ['get', 'label'], 'text-font': FONT, 'text-size': 11, 'text-max-width': 12,
+    layout: { 'text-field': ['get', 'label'], 'text-font': CIRCUIT_LABEL_FONT, 'text-size': 12, 'text-max-width': 12,
       'text-offset': ['case', ['==', ['geometry-type'], 'Point'], ['literal', [0, 1.1]], ['literal', [0, 0]]],
       'text-anchor': ['case', ['==', ['geometry-type'], 'Point'], 'top', 'center'] },
-    paint: { 'text-color': COLOR, 'text-halo-color': HALO, 'text-halo-width': 1.6 } },
+    // Dark text on a wide white halo, as the circuit labels: the kind colours (amber, green) vanish on the base map.
+    paint: { 'text-color': AREA_LABEL_COLOR, 'text-halo-color': HALO, 'text-halo-width': 2.4, 'text-halo-blur': 0.3 } },
 ]
 
 const KINDS_OF_GROUP: Record<DetailLayerSpec['group'], DetailKind[]> = {
@@ -188,12 +190,26 @@ export function buildDetailsMapData(
         ...f.properties,
         label: f.properties.kind !== 'circuit_leg' && f.properties.kind !== 'holding'
           && (f.geometry.type === 'Point' || AREA_KINDS.has(f.properties.kind as DetailKind))
-          ? [areaLabel(f.properties), f.properties.pending ? '(unreviewed)' : null].filter(Boolean).join('\n')
+          ? [mapAreaLabel(f.properties), f.properties.pending ? '(unreviewed)' : null].filter(Boolean).join('\n')
           : '',
         clabel: f.properties.kind === 'circuit_leg' ? circuitLabel(f.properties.name) : '',
       },
     })),
   }
+}
+
+// What an area is, in English, in front of a place name taken from the source ("Central Västerås" alone says nothing).
+const AREA_KIND_LABEL: Partial<Record<string, string>> = {
+  noise_sensitive: 'Noise-sensitive area', avoid_area: 'Avoid area', glider_area: 'Glider area',
+  parachute_area: 'Parachute area', model_area: 'Model aircraft area',
+}
+
+/** Map label of an area or point: its kind in English, then the name and vertical limits. */
+export function mapAreaLabel(p: Pick<DetailProps, 'kind' | 'name' | 'floor' | 'ceiling'>): string {
+  const kind = AREA_KIND_LABEL[p.kind]
+  const name = p.name?.trim() ?? ''
+  const head = kind && name && !name.toLowerCase().includes(kind.toLowerCase().split(' ')[0]!) ? `${kind}: ${name}` : (name || kind || '')
+  return [head, formatLimits(p.floor, p.ceiling)].filter(Boolean).join('\n')
 }
 
 /** Map label of a circuit, short so it fits along the line: "RWY 06 RH · RWY 24 LH" -> "06 RH · 24 LH",

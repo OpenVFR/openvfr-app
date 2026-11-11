@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DETAIL_LAYERS, staticColorLayers, layerFilter, buildDetailsMapData, circuitLabel, CIRCUIT_LAYER_IDS } from './aerodromeDetailsStyle'
+import { DETAIL_LAYERS, staticColorLayers, layerFilter, buildDetailsMapData, circuitLabel, mapAreaLabel, CIRCUIT_LAYER_IDS } from './aerodromeDetailsStyle'
 import { DETAIL_KIND_COLOR, CIRCUIT_GROUP_COLOR, parseAerodromeDetails, schematicCircuitFeatures } from './aerodromeDetails'
 
 describe('aerodromeDetailsStyle', () => {
@@ -56,5 +56,19 @@ describe('aerodromeDetailsStyle', () => {
         { designator: '30', lat: 55.846665, lon: 13.334574 }] }] } }
     const arrows = schematicCircuitFeatures([ad], new Set()).filter(f => f.properties.role === 'label')
     expect(arrows.map(f => [f.properties.name, f.properties.aircraft])).toEqual([['RWY 12 LH · gliders', 'glider'], ['RWY 30 LH', undefined]])
+  })
+})
+
+describe('mapAreaLabel', () => {
+  it('says what the area is before a place name from the source', () => {
+    expect(mapAreaLabel({ kind: 'noise_sensitive', name: 'Central Västerås', floor: null, ceiling: null }))
+      .toBe('Noise-sensitive area: Central Västerås')
+  })
+  it('does not repeat the kind when the name already says it', () => {
+    expect(mapAreaLabel({ kind: 'noise_sensitive', name: 'Noise-sensitive area Kastberga', floor: null, ceiling: null }))
+      .toBe('Noise-sensitive area Kastberga')
+  })
+  it('falls back to the kind when there is no name', () => {
+    expect(mapAreaLabel({ kind: 'avoid_area', name: null, floor: null, ceiling: null })).toBe('Avoid area')
   })
 })
