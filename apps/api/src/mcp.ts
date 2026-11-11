@@ -501,7 +501,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
     }
 
     server.registerTool('leg_altitudes', {
-      description: "Altitude planning per leg of a saved route: minimum safe altitude (terrain, obstacles and the pilot's own margins), controlled airspace over the leg (floor, ceiling, where along the leg, frequency), restricted areas, and a suggested altitude that stays clear of terrain, below controlled airspace where possible, and on a VFR semicircular level. When the MSA reaches controlled airspace it says so and lists the options (clearance or route around); it never suggests flying below the MSA. Change levels with update_route.",
+      description: "Altitude planning per leg of a saved route (create_route and update_route answers already include the same table: call this after they returned, not in parallel): minimum safe altitude (terrain, obstacles and the pilot's own margins), controlled airspace over the leg (floor, ceiling, where along the leg, frequency), restricted areas, and a suggested altitude that stays clear of terrain, below controlled airspace where possible, and on a VFR semicircular level. When the MSA reaches controlled airspace it says so and lists the options (clearance or route around); it never suggests flying below the MSA. Change levels with update_route.",
       annotations: { readOnlyHint: true },
       inputSchema: z.object({ route: z.string().min(1).max(120).describe('Saved route name or id') }),
     }, async ({ route }) => {

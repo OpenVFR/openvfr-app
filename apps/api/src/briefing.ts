@@ -19,7 +19,7 @@
 import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
 import { distanceNm, bearingDeg } from '@open-vfr/shared/routeCalc'
 import { iasToTas } from '@open-vfr/shared/airspeed'
-import { resolveStationWeather, tafChangeSoon } from '@open-vfr/shared/parseTaf'
+import { resolveStationWeather, tafChangeSoon, parseTaf } from '@open-vfr/shared/parseTaf'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
 import { computePrompts } from '@open-vfr/shared/preflightPrompts'
 import { distanceToRouteNm } from '@open-vfr/shared/notamRouteFilter'
@@ -79,6 +79,8 @@ export interface BriefingAerodrome {
   atIso: string
   /** The TAF's forecast for that time (null = no TAF or nothing for then). */
   tafAtTime: { wind: string; clouds: string; changeSoon: boolean } | null
+  /** When the TAF ends before the aircraft is there (ISO), else null. */
+  tafEndsBeforeIso: string | null
   sunriseIso: string | null
   sunsetIso: string | null
 }
@@ -306,6 +308,10 @@ export async function buildRouteBriefing(
     aerodromes.push({
       icao: s.icao, name: adName.get(s.icao) ?? null, role: s.role, metar: wx?.metar ?? null, taf: wx?.taf ?? null, notams, notamsChecked: notamState.available,
       atIso: new Date(atMs).toISOString(),
+      tafEndsBeforeIso: (() => {
+        const end = Math.max(...(parseTaf(wx?.taf ?? null, atMs) ?? []).map(p => p.toMs))
+        return Number.isFinite(end) && end < atMs ? new Date(end).toISOString() : null
+      })(),
       tafAtTime: fc && (fc.wind || fc.clouds.length) ? { wind: fmtWind(fc.wind), clouds: fc.clouds.map(c => `${c.cover}${String(Math.round(c.baseFt / 100)).padStart(3, '0')}${c.type ?? ''}`).join(' ') || 'no cloud given', changeSoon: fc.tafChangeSoon } : null,
       sunriseIso: sun.rise?.toISOString() ?? null, sunsetIso: sun.set?.toISOString() ?? null,
     })
@@ -452,7 +458,8 @@ export function briefingText(b: RouteBriefing): string {
       : a.notams.length ? `; ${a.notams.length} NOTAM${a.notams.length > 1 ? 's' : ''}: ${a.notams.map(n => `${n.id} ${quote(n.title, 120)}`).join('; ')}`
       : '; no NOTAMs'
     const fc = (a.tafAtTime ? `; TAF for ${t(a.atIso)}: ${a.tafAtTime.wind}, ${a.tafAtTime.clouds}${a.tafAtTime.changeSoon ? ', CHANGE DUE around then' : ''}` : '')
-      + (a.taf && a.role !== 'departure' ? `; TAF ${quote(a.taf, 600)}` : a.taf ? '' : '; no TAF')
+      + (a.tafEndsBeforeIso ? `; the TAF ends at ${t(a.tafEndsBeforeIso)}, before then: no forecast for that time yet` : '')
+      + (a.taf ? `; TAF ${quote(a.taf, 600)}` : '; no TAF')
     const sun = a.role !== 'departure' && a.sunsetIso ? `; sunset ${t(a.sunsetIso)}` : ''
     lines.push(`${a.role} ${a.icao}${a.name ? ` ${quote(a.name, 80)}` : ''} at ${t(a.atIso)}: METAR ${a.metar ? quote(a.metar, 300) : 'not available'}${fc}${sun}${notams}.`)
   }
@@ -471,7 +478,7 @@ export function briefingText(b: RouteBriefing): string {
 export function legLine(l: LegAltitude): string {
   const msa = l.msaFt > 0 ? `MSA ${l.msaFt.toLocaleString('en-US')} ft${l.msaApplies ? '' : ' (near departure/destination)'}` : 'MSA unknown'
   const ctl = l.controlledFloorFt !== null ? `, controlled airspace from ${l.controlledFloorFt.toLocaleString('en-US')} ft` : ''
-  const issues = (l.planned.length ? ` Planned: ${l.planned.join('; ')}.` : '') + (l.notes.length ? ` ${l.notes.join(' ')}` : '')
+  const issues = (l.planned.length ? ` Planned: ${l.planned.join('; ')}.` : '') + ` ${l.cruisingRule}.` + (l.notes.length ? ` ${l.notes.join(' ')}` : '')
   const n = (s: string) => (/^[A-Z0-9]{2,6}(\/[A-Z0-9 ]{2,20})?$|^\d+\.\d+[NS] \d+\.\d+[EW]$/.test(s) ? s : quote(s, 40))
   const cause = l.msaCause ? ` (set by ${l.msaCause})` : ''
   return `- Leg ${l.leg} ${n(l.from)} → ${n(l.to)}, MT ${String(l.magneticTrackDeg).padStart(3, '0')}°, ${l.lengthNm} NM: planned ${l.plannedFt.toLocaleString('en-US')} ft, ${msa}${cause}${ctl}.${issues} Suggested: ${l.advice.text}`

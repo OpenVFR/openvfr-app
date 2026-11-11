@@ -99,6 +99,8 @@ export interface LegAltitude {
   zones: LegAirspace[]
   /** The planned altitude against terrain and airspace. */
   planned: string[]
+  /** Whether the VFR semicircular cruising levels apply at the planned altitude, in words. */
+  cruisingRule: string
   /** Control zones crossed at any altitude, and what to do. */
   notes: string[]
   advice: LegAdvice
@@ -231,6 +233,7 @@ export function legAltitudes(input: {
     if (msa > 0 && applies && s.altFt < msa) planned.push(`${fmt(s.altFt)} is below the MSA of ${fmt(msa)}`)
     for (const c of controlled) {
       if (s.altFt >= c.lowerFt && s.altFt < c.upperFt) planned.push(`${fmt(s.altFt)} is inside ${label(c)} on ${where(c, len)}: needs a clearance`)
+      else if (s.altFt < c.lowerFt && c.lowerFt - s.altFt < FLOOR_BUFFER_FT) planned.push(`${fmt(s.altFt)} is only ${c.lowerFt - s.altFt} ft below the floor of ${label(c)} on ${where(c, len)}: keep at least ${FLOOR_BUFFER_FT} ft below it`)
     }
     for (const r of restricted) {
       if (s.altFt >= r.lowerFt && s.altFt < r.upperFt) planned.push(`${fmt(s.altFt)} is inside ${r.name} (${r.cls}) on ${where(r, len)}: check whether it is active`)
@@ -295,7 +298,15 @@ export function legAltitudes(input: {
       }
     }
 
+    const agl = s.altFt - (groundMin ?? 0)
+    const cruisingRule = groundMin === null
+      ? 'VFR cruising levels: apply above 3,000 ft above the ground (ground height unknown here)'
+      : agl > SEMICIRCULAR_AGL_FT
+        ? `VFR cruising levels apply at ${fmt(s.altFt)} (more than 3,000 ft above the ground): magnetic track ${track}° needs ${track < 180 ? 'odd thousands + 500 ft (3,500, 5,500…)' : 'even thousands + 500 ft (4,500, 6,500…)'}`
+        : `VFR cruising levels do not apply at ${fmt(s.altFt)} (not more than 3,000 ft above the ground, lowest ground ${fmt(Math.max(0, Math.round(groundMin)))})`
+
     return {
+      cruisingRule,
       leg: s.legIndex + 1,
       from: a.name ?? `WP${s.legIndex + 1}`,
       to: b.name ?? `WP${s.legIndex + 2}`,

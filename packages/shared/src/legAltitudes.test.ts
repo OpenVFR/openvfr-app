@@ -56,6 +56,13 @@ describe('legAltitudes', () => {
     const [t] = legAltitudes({ waypoints: wps, spans: [span], bands: [], legMsaFt: [1100], msaApplies: [true], terrain: flat, tips: [], margins })
     expect(t!.msaCause).toBe('terrain up to 300 ft within 5 NM of the track at NM 15 of the leg, + 800 ft clearance')
   })
+  it('flags a level just under a floor, and says whether the cruising-level rule applies', () => {
+    const [l] = legAltitudes({ waypoints: wps, spans: [{ ...span, altFt: 2400 }], bands: [band({})], legMsaFt: [1300], msaApplies: [true], terrain: flat })
+    expect(l!.planned.join()).toMatch(/only 100 ft below the floor of TEST TMA/)
+    expect(l!.cruisingRule).toMatch(/do not apply at 2,400 ft/)
+    const [h] = legAltitudes({ waypoints: wps, spans: [{ ...span, altFt: 5500 }], bands: [], legMsaFt: [1300], msaApplies: [true], terrain: flat })
+    expect(h!.cruisingRule).toMatch(/apply at 5,500 ft .* odd thousands/)
+  })
   it('says so without terrain', () => {
     const [l] = legAltitudes({ waypoints: wps, spans: [span], bands: [], legMsaFt: [0], msaApplies: [true], terrain: [] })
     expect(l!.advice.kind).toBe('unknown')
