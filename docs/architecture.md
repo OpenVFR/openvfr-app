@@ -389,7 +389,10 @@ rectangle on the stated side of that runway, 0.75 NM out, never the published
 pattern. Circuits that describe the same rectangle (RWY 06 right-hand and RWY 24
 left-hand: one pattern flown both ways) are drawn once and labelled along the
 pattern with every runway direction that uses it ("RWY 06 RH · RWY 24 LH");
-direction chevrons appear only when one runway direction uses it. Dashed also: outlines read off a chart (`approximate`) and values whose
+direction chevrons appear only when one runway direction uses it. A circuit's runway is found by
+designator, then without an L/R/C suffix ("12R" where the runway data says "12");
+where an asphalt runway and a grass strip share a designator, glider circuits go to
+the grass strip and all others to the paved runway. Dashed also: outlines read off a chart (`approximate`) and values whose
 provenance says `review: "pending"` (only in local preview builds of a
 deployment's own data, labelled "unreviewed"). The aerodrome popup gets a
 "Local information" section (`LocalInfoSection`) with circuits, local rules,

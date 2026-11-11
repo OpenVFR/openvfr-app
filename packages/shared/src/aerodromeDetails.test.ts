@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   parseAerodromeDetails, localInfo, formatCircuit, formatLimits, schematicCircuit, schematicCircuitFeatures, hasLocalInfo,
-  SCHEMATIC_OFFSET_NM,
+  SCHEMATIC_OFFSET_NM, type DetailFeature,
 } from './aerodromeDetails'
+import type { LineString } from 'geojson'
 
 // ESME-like runway 12/30 (real thresholds), circuits as a deployment publishes them.
 const RWYS = [{ designator: '12/30', thresholds: [
@@ -87,6 +88,16 @@ describe('schematicCircuit', () => {
     const both = schematicCircuitFeatures([ad('ESME', [{ runway: '12', direction: 'right' }, { runway: '30', direction: 'right' }])], new Set())
     expect(both.map(x => [x.properties.name, x.properties.oneWay])).toEqual([['RWY 12 RH', true], ['RWY 30 RH', true]])
     expect(both.every(x => x.properties.schematic && x.properties.pending && x.properties.aerodrome === 'ESME')).toBe(true)
+    // "12R"/"30R" in the AIP where the runway data says "12/30" and "12/30 GRASS": gliders on the grass strip
+    const thr = (lat: number) => [{ designator: '12', lat, lon: 12.85 }, { designator: '30', lat: lat - 0.005, lon: 12.87 }]
+    const esml = { type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [12.86, 55.94] }, properties: { icao: 'ESML',
+      runways: [{ designator: '12/30', thresholds: thr(55.945) }, { designator: '12/30 GRASS', thresholds: thr(55.946) }],
+      circuits: [{ runway: '12R', direction: 'right', aircraft: 'powered' }, { runway: '30R', direction: 'right', aircraft: 'glider' },
+        { runway: '30', direction: 'left', aircraft: 'powered' }, { runway: '12', direction: 'left', aircraft: 'glider' }] } }
+    const ml = schematicCircuitFeatures([esml], new Set())
+    expect(ml.map(x => x.properties.name)).toEqual(['RWY 12 RH · RWY 30 LH', 'RWY 30 RH · RWY 12 LH'])
+    const startLat = (x: DetailFeature) => (x.geometry as LineString).coordinates[0]![1]
+    expect([startLat(ml[0]!), startLat(ml[1]!)]).toEqual([55.945, 55.941])
     // circuits for heavy aircraft only are listed, never drawn
     expect(schematicCircuitFeatures([ad('ESMS', [{ runway: '12', direction: 'right', aircraft: 'heavy' }])], new Set())).toEqual([])
     expect(formatCircuit({ runway: '17', direction: 'right', altitude_ft: null, altitude_ref: null, aircraft: 'heavy' }))

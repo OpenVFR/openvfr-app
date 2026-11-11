@@ -284,7 +284,30 @@ export function formatCircuit(c: CircuitInfo): string {
 // ── Schematic circuits ──────────────────────────────────────────────────────
 
 interface ThresholdLike { designator?: unknown; lat?: unknown; lon?: unknown }
-interface RunwayLike { thresholds?: unknown }
+interface RunwayLike { thresholds?: unknown; designator?: unknown; surface?: unknown }
+
+const GRASS = /\b(grass|gräs|turf|unpaved)\b/i
+const ths = (r: RunwayLike): ThresholdLike[] => (Array.isArray(r.thresholds) ? r.thresholds : []) as ThresholdLike[]
+
+/**
+ * The runway and threshold index a circuit is for, and that threshold's designator. Exact designator first,
+ * otherwise without the L/R/C suffix ("12R" in the AIP where the runway data only says "12"). When several runways
+ * carry it (an asphalt runway and a grass strip, both 12/30) gliders get the grass strip, everyone else the paved one.
+ */
+function findThreshold(runways: readonly RunwayLike[], c: CircuitInfo): { r: number; i: number; designator: string } | null {
+  const want = c.runway.toUpperCase().replace(/^RWY\s*/, '').trim()
+  const hits = (eq: (d: string) => boolean) => runways.flatMap((rw, r) => {
+    const t = ths(rw)
+    const i = t.findIndex(x => eq(String(x.designator ?? '').toUpperCase()))
+    return i >= 0 && t.length >= 2 ? [{ r, i, designator: String(t[i]!.designator).toUpperCase() }] : []
+  })
+  const bare = (d: string) => d.replace(/[LRC]$/, '')
+  const exact = hits(d => d === want)
+  const found = exact.length ? exact : hits(d => bare(d) === bare(want))
+  if (!found.length) return null
+  const grassy = (h: { r: number }) => GRASS.test(`${runways[h.r]!.designator ?? ''} ${runways[h.r]!.surface ?? ''}`)
+  return (c.aircraft === 'glider' ? found.find(grassy) : found.find(h => !grassy(h))) ?? found[0]!
+}
 
 const NM = 1852
 /** Distance of the downwind leg from the runway, and how far base/crosswind lie beyond the runway ends. */
@@ -306,12 +329,10 @@ function metres(lat0: number): [number, number] {
  */
 export function schematicCircuit(runways: readonly RunwayLike[], c: CircuitInfo): LineString | null {
   if (!c.direction) return null
-  const want = c.runway.toUpperCase().replace(/^RWY\s*/, '')
-  for (const r of runways) {
-    const ths = (Array.isArray(r.thresholds) ? r.thresholds : []) as ThresholdLike[]
-    const i = ths.findIndex(t => String(t.designator ?? '').toUpperCase() === want)
-    if (i < 0 || ths.length < 2) continue
-    const from = ths[i]!, to = ths[i === 0 ? 1 : 0]!
+  const hit = findThreshold(runways, c)
+  if (hit) {
+    const t = ths(runways[hit.r]!), i = hit.i
+    const from = t[i]!, to = t[i === 0 ? 1 : 0]!
     if (typeof from.lat !== 'number' || typeof from.lon !== 'number' || typeof to.lat !== 'number' || typeof to.lon !== 'number') return null
     const lat0 = from.lat, lon0 = from.lon
     const [mx, my] = metres(lat0)
@@ -336,17 +357,12 @@ export function schematicCircuit(runways: readonly RunwayLike[], c: CircuitInfo)
 /** Which runway (index) a circuit is for, and its side relative to that runway's first threshold. Two circuits
  *  with the same key draw the same rectangle: "06 right-hand" and "24 left-hand" are one pattern flown in opposite
  *  directions. Null when the runway is unknown. */
-function patternKey(runways: readonly RunwayLike[], c: CircuitInfo): string | null {
+function patternKey(runways: readonly RunwayLike[], c: CircuitInfo): { key: string; designator: string } | null {
   if (!c.direction) return null
-  const want = c.runway.toUpperCase().replace(/^RWY\s*/, '')
-  for (let r = 0; r < runways.length; r++) {
-    const ths = (Array.isArray(runways[r]!.thresholds) ? runways[r]!.thresholds : []) as ThresholdLike[]
-    const i = ths.findIndex(t => String(t.designator ?? '').toUpperCase() === want)
-    if (i < 0 || ths.length < 2) continue
-    const leftOfFirst = (c.direction === 'left') === (i === 0)
-    return `${r}|${leftOfFirst ? 'L' : 'R'}`
-  }
-  return null
+  const hit = findThreshold(runways, c)
+  if (!hit) return null
+  const leftOfFirst = (c.direction === 'left') === (hit.i === 0)
+  return { key: `${hit.r}|${leftOfFirst ? 'L' : 'R'}`, designator: hit.designator }
 }
 
 const SIDE = { left: 'LH', right: 'RH' } as const
@@ -373,9 +389,11 @@ export function schematicCircuitFeatures(
     const runways = list(p['runways']) as RunwayLike[]
     const groups = new Map<string, { first: CircuitInfo; names: string[] }>()
     for (const c of info.circuits.filter(isDrawnCircuit)) {
-      const key = patternKey(runways, c)
-      if (!key) continue
-      const name = `RWY ${c.runway} ${SIDE[c.direction!]}`
+      const pk = patternKey(runways, c)
+      if (!pk) continue
+      const key = pk.key
+      // named after the runway data's designator, so "12R" from one source and "12" from another read the same
+      const name = `RWY ${pk.designator} ${SIDE[c.direction!]}`
       const g = groups.get(key)
       if (!g) groups.set(key, { first: c, names: [name] })
       else if (!g.names.includes(name)) g.names.push(name)     // categories share one picture
