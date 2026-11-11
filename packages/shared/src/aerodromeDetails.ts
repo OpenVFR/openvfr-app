@@ -43,6 +43,17 @@ export const DETAIL_KIND_LABEL: Record<DetailKind, string> = {
 }
 
 /** One colour per kind (map fill/outline, list badges). */
+/** Aircraft groups that get their own circuit colour (a club map draws them in different colours too). */
+export type CircuitGroup = 'powered' | 'glider' | 'ultralight' | 'helicopter' | 'gyro'
+export const CIRCUIT_GROUPS: readonly CircuitGroup[] = ['powered', 'glider', 'ultralight', 'helicopter', 'gyro']
+export const CIRCUIT_GROUP_COLOR: Record<CircuitGroup, string> = {
+  powered: '#38bdf8',
+  glider: '#22c55e',
+  ultralight: '#f97316',
+  helicopter: '#a855f7',
+  gyro: '#eab308',
+}
+
 export const DETAIL_KIND_COLOR: Record<DetailKind, string> = {
   noise_sensitive: '#f59e0b',
   avoid_area: '#ef4444',
@@ -139,6 +150,8 @@ export interface DetailProps {
   rwys?: string
   /** false: a drawn pattern flown both ways (06 right-hand = 24 left-hand), so no direction chevrons. */
   oneWay?: boolean
+  /** Circuit for one aircraft group only (glider, ultralight, helicopter, gyro; powered = the default colour). */
+  aircraft?: string
   provenance?: DetailProvenance
 }
 
@@ -194,6 +207,8 @@ export function parseAerodromeDetails(raw: unknown): FeatureCollection<Geometry,
         // circuits read off a club chart: which runway ends use them (runway focus), and whether one sense only
         ...(typeof p['rwys'] === 'string' && /^\|([0-9]{2}[LRC]?\|)+$/.test(p['rwys']) ? { rwys: p['rwys'] } : {}),
         ...(typeof p['oneWay'] === 'boolean' ? { oneWay: p['oneWay'] } : {}),
+        ...(kind === 'circuit_leg' && typeof p['aircraft'] === 'string' && CIRCUIT_GROUPS.includes(p['aircraft'] as CircuitGroup)
+          ? { aircraft: p['aircraft'] } : {}),
         ...(provenance ? { provenance } : {}),
       },
     })
@@ -447,6 +462,7 @@ export function holdingOrbitFeatures(details: readonly DetailFeature[]): DetailF
 
 const SIDE = { left: 'LH', right: 'RH' } as const
 const GROUP_LABEL: Record<string, string> = { glider: 'gliders', ultralight: 'ultralights', gyro: 'gyros', helicopter: 'helicopters' }
+const GROUP_OF_LABEL: Record<string, CircuitGroup> = { gliders: 'glider', ultralights: 'ultralight', gyros: 'gyro', helicopters: 'helicopter' }
 
 /**
  * Turn arrows for aerodromes that state a circuit direction but have no circuit drawn in the details file.
@@ -483,8 +499,10 @@ export function schematicCircuitFeatures(
     for (const g of groups.values()) {
       const name = [`RWY ${g.arrow.designator} ${SIDE[g.direction]}`, g.forAll ? null : [...g.groups].join(', ')]
         .filter(Boolean).join(' · ')
+      const only = !g.forAll && g.groups.size === 1 ? GROUP_OF_LABEL[[...g.groups][0]!] : undefined
       const base = { aerodrome: id, kind: 'circuit_leg' as const, name, remarks: null, floor: null, ceiling: null,
-        approximate: true, accuracy_m: null, pending, schematic: true, rwys: `|${g.arrow.designator}|`, ...provenance }
+        approximate: true, accuracy_m: null, pending, schematic: true, rwys: `|${g.arrow.designator}|`,
+        ...(only ? { aircraft: only } : {}), ...provenance }
       out.push({ type: 'Feature', geometry: g.arrow.arc, properties: { ...base, role: 'turn' } })
       out.push({ type: 'Feature', geometry: g.arrow.head, properties: { ...base, role: 'turn' } })
       out.push({ type: 'Feature', geometry: { type: 'Point', coordinates: g.arrow.label }, properties: { ...base, role: 'label' } })

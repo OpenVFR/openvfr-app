@@ -10,7 +10,7 @@
  */
 import type { Feature, FeatureCollection, Geometry } from 'geojson'
 import {
-  AREA_KINDS, DETAIL_KIND_COLOR, areaLabel, holdingOrbitFeatures, schematicCircuitFeatures,
+  AREA_KINDS, CIRCUIT_GROUPS, CIRCUIT_GROUP_COLOR, DETAIL_KIND_COLOR, areaLabel, holdingOrbitFeatures, schematicCircuitFeatures,
   type DetailKind, type DetailProps,
 } from './aerodromeDetails'
 
@@ -45,6 +45,10 @@ const HALO = 'rgba(255,255,255,0.92)'
 
 const COLOR: Expr = ['match', ['get', 'kind'],
   ...Object.entries(DETAIL_KIND_COLOR).flatMap(([k, c]) => [k, c]), DETAIL_KIND_COLOR.other]
+// Circuits are coloured by the aircraft group they are for (a club map draws powered, glider and ultralight circuits
+// in different colours); no group = everyone = the powered colour.
+const CIRCUIT_COLOR: Expr = ['match', ['get', 'aircraft'],
+  ...CIRCUIT_GROUPS.filter(g => g !== 'powered').flatMap(g => [g, CIRCUIT_GROUP_COLOR[g]]), CIRCUIT_GROUP_COLOR.powered]
 const DASHED: Expr = ['any', ['get', 'approximate'], ['get', 'pending']]
 const IS_AREA: Expr = ['in', ['get', 'kind'], ['literal', [...AREA_KINDS]]]
 const IS_CIRCUIT: Expr = ['==', ['get', 'kind'], 'circuit_leg']
@@ -72,20 +76,20 @@ export const DETAIL_LAYERS: readonly DetailLayerSpec[] = [
     layout: { 'line-join': 'round' }, paint: { 'line-color': COLOR, 'line-width': 1.8, 'line-dasharray': [2, 2] } },
   // Circuits ("Traffic circuits")
   { id: 'ad-circuit-line', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!', DASHED]],
-    layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': COLOR, 'line-width': CIRCUIT_WIDTH } },
+    layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': CIRCUIT_COLOR, 'line-width': CIRCUIT_WIDTH } },
   { id: 'ad-circuit-line-dashed', type: 'line', group: 'circuits', minzoom: CIRCUIT_ZOOM, filter: ['all', LINE, IS_CIRCUIT, DRAWN, DASHED],
-    layout: { 'line-join': 'round' }, paint: { 'line-color': COLOR, 'line-width': CIRCUIT_WIDTH, 'line-dasharray': [2, 2] } },
+    layout: { 'line-join': 'round' }, paint: { 'line-color': CIRCUIT_COLOR, 'line-width': CIRCUIT_WIDTH, 'line-dasharray': [2, 2] } },
   // A circuit known only by its direction: "after take-off, turn left/right". Lighter while unreviewed.
   { id: 'ad-circuit-turn', type: 'line', group: 'circuits', minzoom: DIRECTION_ZOOM,
     filter: ['all', LINE, IS_CIRCUIT, ['==', ['get', 'role'], 'turn']],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': COLOR, 'line-width': CIRCUIT_WIDTH, 'line-opacity': ['case', ['get', 'pending'], 0.7, 1] } },
+    paint: { 'line-color': CIRCUIT_COLOR, 'line-width': CIRCUIT_WIDTH, 'line-opacity': ['case', ['get', 'pending'], 0.7, 1] } },
   // chevrons along drawn legs, unless the pattern is flown both ways (its label names both runway directions)
   { id: 'ad-circuit-chevrons', type: 'symbol', group: 'circuits', minzoom: DIRECTION_ZOOM,
     filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!=', ['get', 'oneWay'], false]],
     layout: { 'symbol-placement': 'line', 'symbol-spacing': 90, 'text-field': '>', 'text-font': FONT, 'text-size': 14,
       'text-keep-upright': false, 'text-allow-overlap': true, 'text-ignore-placement': true },
-    paint: { 'text-color': COLOR, 'text-halo-color': 'rgba(0,0,0,0.6)', 'text-halo-width': 1 } },
+    paint: { 'text-color': CIRCUIT_COLOR, 'text-halo-color': 'rgba(0,0,0,0.6)', 'text-halo-width': 1 } },
   { id: 'ad-circuit-label', type: 'symbol', group: 'circuits', minzoom: LABEL_ZOOM,
     filter: ['all', LINE, IS_CIRCUIT, DRAWN, ['!=', ['get', 'clabel'], '']],
     layout: { 'symbol-placement': 'line', 'symbol-spacing': 260, 'text-field': ['get', 'clabel'], 'text-font': CIRCUIT_LABEL_FONT,
@@ -126,6 +130,17 @@ const KINDS_OF_GROUP: Record<DetailLayerSpec['group'], DetailKind[]> = {
  */
 export function staticColorLayers(specs: readonly DetailLayerSpec[] = DETAIL_LAYERS): DetailLayerSpec[] {
   return specs.flatMap((l) => {
+    const groupKeys = [...Object.keys(l.paint)].filter(k => l.paint[k] === CIRCUIT_COLOR)
+    if (groupKeys.length) {
+      const special = CIRCUIT_GROUPS.filter(g => g !== 'powered')
+      return CIRCUIT_GROUPS.map(g => ({
+        ...l,
+        id: `${l.id}-${g}`,
+        filter: ['all', l.filter, g === 'powered' ? ['!', ['in', ['get', 'aircraft'], ['literal', special]]]
+          : ['==', ['get', 'aircraft'], g]] as Expr,
+        paint: { ...l.paint, ...Object.fromEntries(groupKeys.map(k => [k, CIRCUIT_GROUP_COLOR[g]])) },
+      }))
+    }
     const keys = [...Object.keys(l.paint)].filter(k => l.paint[k] === COLOR)
     if (!keys.length) return [l]
     return KINDS_OF_GROUP[l.group].map(kind => ({
@@ -181,9 +196,10 @@ export function buildDetailsMapData(
   }
 }
 
-/** Map label of a circuit, short so it fits along the line: "RWY 06 RH · RWY 24 LH" -> "06 RH · 24 LH". */
+/** Map label of a circuit, short so it fits along the line: "RWY 06 RH · RWY 24 LH" -> "06 RH · 24 LH",
+ *  "ESMI UL-landningsvarv" -> "UL-landningsvarv". */
 export function circuitLabel(name: string | null): string {
-  return (name ?? '').replace(/\bRWY\s*/gi, '').trim()
+  return (name ?? '').replace(/^[A-Z]{4}\s+/, '').replace(/\bRWY\s*/gi, '').trim()
 }
 
 export { idOf as aerodromeIdOf }
