@@ -433,3 +433,17 @@
   background: rgba(96, 165, 250, 0.05);
   border-bottom: 1px solid var(--border-default);
 }
+
+.fuelStopMark {
+  background: none;
+  border: none;
+  color: var(--accent-cyan);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  margin-left: 4px;
+  padding: 0 2px;
+  letter-spacing: 0.04em;
+}
+.fuelStopMark:hover { color: var(--text-primary); }

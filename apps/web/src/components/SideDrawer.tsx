@@ -88,6 +88,7 @@ interface Props {
   onActiveRouteIdChange: (id: string) => void
   onSetLegOverride: (idx: number, override: LegOverride) => void
   onSetWaypointNote: (wpIdx: number, note: string) => void
+  onSetWaypointFuelStop?: (wpIdx: number, on: boolean) => void
   // Add to route (used by WhatsHere + UserWaypoints)
   onAddToRoute: (wp: RouteWaypoint) => void
   onInsertInRoute: (wp: RouteWaypoint, afterIdx: number) => void
@@ -174,7 +175,7 @@ function SideDrawer({
   checking,
   onRefresh,
   waypoints, legOverrides, extending, onStopExtending, selectedLeg, onSelectLeg, onFindDestination,
-  onUndo, onRedo, canUndo, canRedo, onClear, onReplace, onLoadRoute, activeRouteId, onActiveRouteIdChange, onSetLegOverride, onSetWaypointNote,
+  onUndo, onRedo, canUndo, canRedo, onClear, onReplace, onLoadRoute, activeRouteId, onActiveRouteIdChange, onSetLegOverride, onSetWaypointNote, onSetWaypointFuelStop,
   onAddToRoute, onInsertInRoute,
   selectedAircraftId, selectedAircraftProfile, tafWarnIcaos, onSelectAircraft,
   onFlyTo,
@@ -357,6 +358,7 @@ function SideDrawer({
                       onFindDestination={onFindDestination}
                       onSetLegOverride={onSetLegOverride}
                       onSetWaypointNote={onSetWaypointNote}
+                      onSetWaypointFuelStop={onSetWaypointFuelStop}
                       defaultAltFt={selectedAircraftProfile?.cruiseAltFt || undefined}
                       defaultSpeedKts={selectedAircraftProfile?.cruiseIas || undefined}
                       takeoffTime={takeoffTime}
@@ -441,6 +443,7 @@ function SideDrawer({
                     legOverrides={legOverrides}
                     aircraft={selectedAircraftProfile}
                     legWinds={routeWinds.effective}
+                    onInsertInRoute={onInsertInRoute}
                   />
                 </div>
               )}

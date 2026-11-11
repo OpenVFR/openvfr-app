@@ -51,7 +51,7 @@ export type RouteDocType = {
 
 const routeSchema: RxJsonSchema<RouteDocType> = {
   title: 'route',
-  version: 6,
+  version: 7,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -66,6 +66,7 @@ const routeSchema: RxJsonSchema<RouteDocType> = {
           lat:  { type: 'number' },
           name: { type: 'string' },
           note: { type: 'string' },
+          fuelStop: { type: 'boolean' },
         },
         required: ['lng', 'lat'],
       },
@@ -367,6 +368,8 @@ export function getDb(): Promise<OpenVfrDb> {
                 return rest
               }),
             }),
+            // v6 → v7: optional waypoint `fuelStop` (absent = fly through)
+            7: (oldDoc) => ({ ...oldDoc }),
           },
         },
         aircraft_profiles: {

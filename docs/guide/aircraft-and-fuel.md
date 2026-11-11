@@ -111,5 +111,25 @@ of each leg, so its times match the route table. Climb and descent
 distance is taken off the cruise distance. If **Min required** exceeds
 **Available**, the pre-flight check warns you.
 
+## Fuel stops
+
+A route point can be a **fuel stop**: you land there and refuel. Open the
+leg that ends at the point and tick **Land and refuel at ...**; the point
+shows **FUEL** in the route table (select it to fly through instead). The
+fuel plan then has one part per hop, each starting with full tanks and its
+own taxi fuel and reserves, and the pre-flight check tests each hop.
+
+When the fuel is short, the fuel plan offers **Suggest fuel stop**. It
+looks for aerodromes within about 25 NM of the route that list a fuel your
+aircraft can use and have a runway it accepts (the aircraft's fuel types,
+minimum runway and paved-only settings), and picks the stops that split
+the trip into hops the tanks can cover. It prefers stops that add little
+flying time, hops of similar length and some spare fuel on each hop, and
+shows up to three options with each hop's time and the fuel left on
+landing. **Add to route** inserts the stops as fuel stops; one undo
+removes them again. Fuel listings come from the published aerodrome data
+and can be out of date: check the AIP, opening hours and NOTAMs, or call
+ahead.
+
 > The fuel plan is a planning aid. Compare it with your POH, weigh and
 > balance, and company or national requirements.

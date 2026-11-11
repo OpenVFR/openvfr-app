@@ -197,6 +197,8 @@ interface Props {
   /** Cruise IAS (kt) of the selected aircraft: speed for legs without their own override. */
   defaultSpeedKts?: number
   onSetWaypointNote: (wpIdx: number, note: string) => void
+  /** Mark or clear an intermediate point as a fuel stop (land and refuel). */
+  onSetWaypointFuelStop?: (wpIdx: number, on: boolean) => void
   /** Planned departure + manual wind + effective per-leg winds; owned by SideDrawer so fuel plan / pre-flight share them. */
   takeoffTime: Date | null
   setTakeoffTime: (d: Date | null) => void
@@ -211,7 +213,7 @@ interface Props {
   onSelectLeg?: (leg: number | null) => void
 }
 
-export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination, waypoints, tafWarnIcaos = [], legOverrides, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onSetLegOverride, onSetWaypointNote, defaultAltFt, defaultSpeedKts, takeoffTime, setTakeoffTime, globalWind, setGlobalWind, routeWinds }: Props) {
+export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination, waypoints, tafWarnIcaos = [], legOverrides, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onSetLegOverride, onSetWaypointNote, onSetWaypointFuelStop, defaultAltFt, defaultSpeedKts, takeoffTime, setTakeoffTime, globalWind, setGlobalWind, routeWinds }: Props) {
   const [kbInput, setKbInput] = useState('')
   const [kbError, setKbError] = useState('')
   const [kbLoading, setKbLoading] = useState(false)
@@ -588,7 +590,16 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
                       draggable
                       title={`${name}: drag to reorder`}
                       onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(w) }}
-                    >{name}{tafWarnIcaos.includes(name) && <span className={css.tafWarn} title="TAF: trend change due within 3 h">{' \u26a0'}</span>}</td>
+                    >{name}{tafWarnIcaos.includes(name) && <span className={css.tafWarn} title="TAF: trend change due within 3 h">{' \u26a0'}</span>}
+                      {wp.fuelStop && w > 0 && w < waypoints.length - 1 && (
+                        <button
+                          type="button"
+                          className={css.fuelStopMark}
+                          title={`Fuel stop: land and refuel at ${name}.${onSetWaypointFuelStop ? ' Click to fly through instead.' : ''}`}
+                          aria-label={`Fuel stop at ${name}${onSetWaypointFuelStop ? ': click to fly through instead' : ''}`}
+                          onClick={(e) => { e.stopPropagation(); onSetWaypointFuelStop?.(w, false) }}
+                        >FUEL</button>
+                      )}</td>
                     <td className={css.btnCell}>
                       {leg && (
                         // The keyboard way into the leg editor (the row click is for the mouse).
@@ -682,6 +693,8 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
                           forecastLoading={forecastLoading}
                           wpNote={waypoints[i + 1]?.note ?? ''}
                           onSaveNote={(destWpIdx, note) => onSetWaypointNote(destWpIdx, note)}
+                          fuelStop={waypoints[i + 1]?.fuelStop === true}
+                          onSetFuelStop={onSetWaypointFuelStop && i + 1 < waypoints.length - 1 ? onSetWaypointFuelStop : undefined}
                           onSave={(idx, ovr) => { onSetLegOverride(idx, ovr); setActiveLeg(null) }}
                           onClose={() => setActiveLeg(null)}
                         />

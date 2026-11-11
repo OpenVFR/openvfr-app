@@ -4996,6 +4996,13 @@ export default function MapView({ auth }: { auth: AuthState }) {
         next[wpIdx] = { ...next[wpIdx], note: note || undefined }
         return next
       }),
+    onSetWaypointFuelStop: (wpIdx: number, on: boolean) =>
+      setRouteWaypoints((prev) => {
+        if (!prev[wpIdx]) return prev
+        const next = [...prev]
+        next[wpIdx] = { ...next[wpIdx], fuelStop: on || undefined }
+        return next
+      }),
     // Start / extend the route from a popup, search or place: on the ground
     // the new end stays selected, so further map clicks keep extending.
     onAddToRoute: (wp: RouteWaypoint) => {

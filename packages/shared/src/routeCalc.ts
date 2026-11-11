@@ -5,6 +5,8 @@ export type RouteWaypoint = {
   name?: string
   /** Free-text pilot reminder shown as an alert when this turning point becomes the active leg destination. */
   note?: string
+  /** Land and refuel here: the fuel plan starts a new hop with full tanks at this point. */
+  fuelStop?: boolean
 }
 
 function toRad(deg: number) {

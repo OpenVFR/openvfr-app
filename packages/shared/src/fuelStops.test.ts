@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { suggestFuelStops } from './fuelStops'
+import { computeTripFuelPlans, fuelHopRanges } from './fuelCalc'
 import type { AircraftProfileDocType } from './types'
 import type { AerodromeEntry } from './findDestination'
 
@@ -84,7 +85,41 @@ describe('suggestFuelStops', () => {
     expect(r.plans[0].stops[0].aerodrome.icao).toBe('JETO')
   })
 
+  it('prefers hops of similar length over a stop just after take-off', () => {
+    const r = suggestFuelStops(route(400), [], profile, [ad('EARL', 165, 0), ad('MIDA', 200, 4)])
+    expect(r.status).toBe('found')
+    if (r.status !== 'found') return
+    expect(r.plans[0].stops[0].aerodrome.icao).toBe('MIDA')
+    // EARL alone is a possible stop: it lost on balance, not on range.
+    expect(suggestFuelStops(route(400), [], profile, [ad('EARL', 165, 0)]).status).toBe('found')
+  })
+
+  it('treats a route point marked as fuel stop as a landing', () => {
+    const wps = [{ ...at(0), name: 'DEP' }, { ...at(200), name: 'MIDA', fuelStop: true }, { ...at(400), name: 'DST' }]
+    expect(suggestFuelStops(wps, [], profile, []).status).toBe('not-needed')
+    // Not marked: one flight, too long.
+    expect(suggestFuelStops(wps.map(({ fuelStop: _f, ...w }) => w), [], profile, []).status).toBe('none-found')
+  })
+
   it('reports missing profile data', () => {
     expect(suggestFuelStops(route(400), [], { ...profile, maxFuelL: 0 }, []).status).toBe('missing-profile-data')
+  })
+})
+
+describe('computeTripFuelPlans', () => {
+  it('splits at fuel stops only', () => {
+    expect(fuelHopRanges([{}, {}, {}])).toEqual([[0, 2]])
+    expect(fuelHopRanges([{}, { fuelStop: true }, {}, { fuelStop: true }, {}])).toEqual([[0, 1], [1, 3], [3, 4]])
+    // A flag on the first or last point is not a stop.
+    expect(fuelHopRanges([{ fuelStop: true }, {}, { fuelStop: true }])).toEqual([[0, 2]])
+  })
+  it('plans each hop with its own taxi and reserves', () => {
+    const wps = [{ ...at(0) }, { ...at(200), fuelStop: true }, { ...at(400) }]
+    const hops = computeTripFuelPlans(wps, [{ altFt: 4000 }, { altFt: 5000 }], profile)
+    expect(hops).toHaveLength(2)
+    for (const h of hops) {
+      expect(h.plan.taxiFuelL).toBe(2)
+      expect(h.plan.totalMinFuelL).toBeLessThanOrEqual(60)
+    }
   })
 })

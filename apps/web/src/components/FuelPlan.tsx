@@ -1,8 +1,9 @@
 import { useMemo } from 'react'
-import { computeFuelPlan } from '../utils/fuelCalc'
+import { computeTripFuelPlans, type FuelPlan as FuelPlanData } from '../utils/fuelCalc'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride, AircraftProfileDocType } from '../db/index'
 import css from './FuelPlan.module.css'
+import FuelStopSuggest from './FuelStopSuggest'
 
 interface Props {
   waypoints:    RouteWaypoint[]
@@ -10,6 +11,8 @@ interface Props {
   aircraft:     AircraftProfileDocType
   /** Effective wind per leg (override > global > forecast). */
   legWinds?:    ({ dirDeg: number; speedKts: number } | null)[]
+  /** Insert a route point after index `afterIdx`; enables fuel-stop suggestions when the fuel is short. */
+  onInsertInRoute?: (wp: RouteWaypoint, afterIdx: number) => void
 }
 
 function fmt(l: number): string {
@@ -24,28 +27,13 @@ function fmtTime(mins: number): string {
   return `${h}h ${m.toString().padStart(2, '0')}min`
 }
 
-export default function FuelPlan({ waypoints, legOverrides, aircraft, legWinds }: Props) {
-  const plan = useMemo(
-    () => computeFuelPlan(waypoints, legOverrides, aircraft, legWinds),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [waypoints, legOverrides, aircraft, legWinds],
-  )
-
-  const hasSpeed = aircraft.cruiseIas > 0 ||
-    legOverrides.some((o) => (o.speedKts ?? 0) > 0)
-
+/** One hop's fuel table and margin. */
+function PlanTable({ plan }: { plan: FuelPlanData }) {
   const margin = plan.availableFuelL > 0
     ? plan.availableFuelL - plan.totalMinFuelL
     : null
-
   return (
-    <div className={css.panel}>
-      {!hasSpeed && (
-        <p className={css.hint}>
-          Set cruise speed in the aircraft profile or per-leg to compute fuel burn.
-        </p>
-      )}
-
+    <>
       <table className={css.table}>
         <tbody>
           <tr>
@@ -122,6 +110,53 @@ export default function FuelPlan({ waypoints, legOverrides, aircraft, legWinds }
             ? `✓ Margin ${fmt(margin)}`
             : `✗ Short ${fmt(-margin)}`}
         </div>
+      )}
+    </>
+  )
+}
+
+export default function FuelPlan({ waypoints, legOverrides, aircraft, legWinds, onInsertInRoute }: Props) {
+  // One hop per take-off: the route splits at points marked as fuel stops.
+  const hops = useMemo(
+    () => computeTripFuelPlans(waypoints, legOverrides, aircraft, legWinds),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [waypoints, legOverrides, aircraft, legWinds],
+  )
+
+  const hasSpeed = aircraft.cruiseIas > 0 ||
+    legOverrides.some((o) => (o.speedKts ?? 0) > 0)
+
+  const short = hops.some(h => h.plan.availableFuelL > 0 && h.plan.totalMinFuelL > h.plan.availableFuelL)
+  const pointName = (i: number) => waypoints[i]?.name || `WP${i + 1}`
+
+  return (
+    <div className={css.panel}>
+      {!hasSpeed && (
+        <p className={css.hint}>
+          Set cruise speed in the aircraft profile or per-leg to compute fuel burn.
+        </p>
+      )}
+
+      {hops.length <= 1
+        ? hops[0] && <PlanTable plan={hops[0].plan} />
+        : hops.map((h, k) => (
+            <section key={`${h.fromIdx}-${h.toIdx}`} className={css.hop} aria-label={`Hop ${k + 1}`}>
+              <div className={css.hopTitle}>
+                Hop {k + 1}: {pointName(h.fromIdx)} → {pointName(h.toIdx)}
+                {h.toIdx < waypoints.length - 1 && <span className={css.hopStop}> · refuel</span>}
+              </div>
+              <PlanTable plan={h.plan} />
+            </section>
+          ))}
+
+      {short && onInsertInRoute && (
+        <FuelStopSuggest
+          waypoints={waypoints}
+          legOverrides={legOverrides}
+          aircraft={aircraft}
+          legWinds={legWinds}
+          onInsertInRoute={onInsertInRoute}
+        />
       )}
     </div>
   )

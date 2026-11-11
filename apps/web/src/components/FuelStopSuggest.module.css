@@ -1,0 +1,118 @@
+.box {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  user-select: text;
+}
+
+.btn {
+  background: none;
+  border: 1px solid var(--accent-cyan);
+  border-radius: 4px;
+  color: var(--accent-cyan);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 4px 8px;
+  align-self: flex-start;
+}
+.btn:hover { background: var(--surface-hover); }
+.btn:disabled { opacity: 0.6; cursor: default; }
+
+.btnPrimary {
+  composes: btn;
+  padding: 2px 7px;
+  font-size: 10px;
+}
+
+.btnLink {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10px;
+  padding: 0;
+  align-self: flex-end;
+}
+.btnLink:hover { color: var(--text-primary); }
+
+.note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.error {
+  composes: statusBoxDanger from '../styles/shared.module.css';
+  margin: 0;
+}
+
+.caveat {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.plans {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.plan {
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  padding: 5px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.stop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+}
+
+.icao {
+  color: var(--accent-cyan);
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.name {
+  color: var(--text-primary);
+  font-size: 11px;
+}
+
+.meta {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.ppr {
+  color: var(--status-warn);
+}
+
+.hops {
+  display: flex;
+  flex-direction: column;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.planFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}

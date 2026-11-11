@@ -33,6 +33,10 @@ interface Props {
   wpNote?: string
   /** Called when the pilot saves or clears the destination waypoint note. */
   onSaveNote?: (destWpIdx: number, note: string) => void
+  /** Whether the destination waypoint is a fuel stop (land and refuel). */
+  fuelStop?: boolean
+  /** Set when the destination is an intermediate point; marks or clears it as a fuel stop at once. */
+  onSetFuelStop?: (destWpIdx: number, on: boolean) => void
   onSave:   (idx: number, override: LegOverride) => void
   onClose:  () => void
 }
@@ -45,7 +49,7 @@ function parseField(val: string): number | undefined {
 
 export default function LegPropsPanel({
   legIndex, fromName, toName, distNm, trueBrg, magBrg,
-  override, units = DEFAULT_UNITS, defaultAltFt, msaFt, msaApplies = true, defaultSpeedKts, globalWind, forecastWind, forecastLoading, wpNote, onSaveNote, onSave, onClose,
+  override, units = DEFAULT_UNITS, defaultAltFt, msaFt, msaApplies = true, defaultSpeedKts, globalWind, forecastWind, forecastLoading, wpNote, onSaveNote, fuelStop = false, onSetFuelStop, onSave, onClose,
 }: Props) {
   const [altFt,    setAltFt]    = useState(override.altFt    != null ? String(override.altFt)    : '')
   // Speed field is stored in kts internally; display in selected speed unit.
@@ -269,6 +273,17 @@ export default function LegPropsPanel({
           onChange={e => setNote(e.target.value)}
         />
       </div>
+
+      {onSetFuelStop && (
+        <label className={css.fuelStopRow} title="The fuel plan starts a new hop with full tanks here">
+          <input
+            type="checkbox"
+            checked={fuelStop}
+            onChange={e => onSetFuelStop(legIndex + 1, e.target.checked)}
+          />
+          Land and refuel at {toName}
+        </label>
+      )}
 
       <div className={css.footer}>
         <button className={css.btnClear} onClick={handleClear}>Clear</button>

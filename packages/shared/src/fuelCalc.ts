@@ -58,6 +58,42 @@ export type FuelPlan = {
   cruiseMins: number
 }
 
+/** One flight between take-off and the next landing to refuel. Indices are route waypoint indices. */
+export type FuelHop = {
+  fromIdx: number
+  toIdx:   number
+  plan:    FuelPlan
+}
+
+/** Waypoint index ranges split at intermediate fuel stops: [[0, s1], [s1, s2], ..., [sN, last]]. */
+export function fuelHopRanges(waypoints: readonly { fuelStop?: boolean }[]): [number, number][] {
+  const out: [number, number][] = []
+  let start = 0
+  for (let i = 1; i < waypoints.length - 1; i++) {
+    if (waypoints[i].fuelStop) { out.push([start, i]); start = i }
+  }
+  if (waypoints.length >= 2) out.push([start, waypoints.length - 1])
+  return out
+}
+
+/**
+ * Fuel plan per hop: the route split at waypoints marked `fuelStop`, each hop
+ * planned on its own (taxi, climb from the ground, descent to land, reserves)
+ * with full tanks at its start. A route without fuel stops is one hop.
+ */
+export function computeTripFuelPlans(
+  waypoints:    RouteWaypoint[],
+  legOverrides: LegOverride[],
+  profile:      AircraftProfileDocType,
+  legWinds?:    ({ dirDeg: number; speedKts: number } | null | undefined)[],
+): FuelHop[] {
+  return fuelHopRanges(waypoints).map(([a, b]) => ({
+    fromIdx: a,
+    toIdx:   b,
+    plan: computeFuelPlan(waypoints.slice(a, b + 1), legOverrides.slice(a, b), profile, legWinds?.slice(a, b)),
+  }))
+}
+
 // ---------------------------------------------------------------------------
 // Internal performance model
 // (mirrors the linear ICAO model used in virtualRadarCalc.ts)

@@ -187,3 +187,13 @@
   background: rgba(147, 197, 253, 0.30);
   color: var(--text-primary);
 }
+
+.fuelStopRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}

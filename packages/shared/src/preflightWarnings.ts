@@ -15,7 +15,7 @@
 
 import { DEFAULT_MSA_MARGINS, type MsaMargins } from './msaMargins'
 import { terrainAt, getMsaLookup, type VirtualRadarProfile, type MsaPoint, type AirspaceCrossSection, type TerrainPoint } from './virtualRadarCalc'
-import { computeFuelPlan } from './fuelCalc'
+import { computeTripFuelPlans } from './fuelCalc'
 import { collectRoutePois, poiBaseFt } from './routePois'
 import { routeNotamAreas, notamSummary } from './preflightNotams'
 import { notamTitle } from './notamQCode'
@@ -315,20 +315,25 @@ export function computeWarnings(
 
   // ── 3. Fuel ─────────────────────────────────────────────────────────────
   if (aircraft && waypoints.length >= 2) {
-    const plan = computeFuelPlan(waypoints, legOverrides, aircraft, legWinds)
-    if (plan.availableFuelL > 0) {
+    // One check per hop: the route splits at points marked as fuel stops.
+    const hops = computeTripFuelPlans(waypoints, legOverrides, aircraft, legWinds)
+    for (const { fromIdx, toIdx, plan } of hops) {
+      if (plan.availableFuelL <= 0) continue
+      const hopLabel = hops.length > 1
+        ? ` (${waypoints[fromIdx]?.name || `WP${fromIdx + 1}`} → ${waypoints[toIdx]?.name || `WP${toIdx + 1}`})`
+        : ''
       if (plan.totalMinFuelL > plan.availableFuelL) {
         warnings.push({
           level:  'danger',
           code:   'fuel-insufficient',
-          title:  'Insufficient fuel',
+          title:  `Insufficient fuel${hopLabel}`,
           detail: `Requires ${plan.totalMinFuelL.toFixed(1)} L — available ${plan.availableFuelL.toFixed(1)} L`,
         })
       } else if (plan.totalMinFuelL > plan.availableFuelL * 0.85) {
         warnings.push({
           level:  'warn',
           code:   'fuel-tight',
-          title:  'Tight fuel margin',
+          title:  `Tight fuel margin${hopLabel}`,
           detail: `Requires ${plan.totalMinFuelL.toFixed(1)} L of ${plan.availableFuelL.toFixed(1)} L available`,
         })
       }

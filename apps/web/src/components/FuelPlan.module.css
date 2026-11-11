@@ -77,3 +77,20 @@
   font-weight: 600;
   text-align: center;
 }
+
+.hop + .hop {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-default);
+}
+
+.hopTitle {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+
+.hopStop {
+  color: var(--accent-cyan);
+  font-weight: 400;
+}

@@ -12,15 +12,19 @@
  *
  * The search is a shortest path over the route's own points plus the
  * candidate aerodromes, ordered along the route: cost = flying time plus a
- * fixed penalty per stop, with at most `maxStops` stops. Alternatives are
- * found by running it again with one of the best plan's stops left out.
+ * fixed penalty per stop plus a small term that grows with the square of each
+ * hop's time (so hops of similar length win over a stop just after take-off)
+ * and a minute per litre a hop's spare fuel falls below 15 % of the tanks,
+ * with at most `maxStops` new stops. Route points already marked `fuelStop`
+ * are kept as stops. Alternatives are found by running it again with one of
+ * the best plan's stops left out.
  *
  * Pure and deterministic: no network. Weather and NOTAMs at a stop are for
  * the caller to add.
  */
 import type { AircraftProfileDocType, FuelCode, LegOverride } from './types'
 import { distanceNm, type RouteWaypoint } from './routeCalc'
-import { computeFuelPlan, type FuelPlan } from './fuelCalc'
+import { computeFuelPlan, computeTripFuelPlans, type FuelHop } from './fuelCalc'
 import { matchingFuels } from './fuelTypes'
 import { isHard, type AerodromeEntry } from './findDestination'
 
@@ -71,10 +75,12 @@ export interface FuelStopPlan {
 }
 
 export type FuelStopResult =
-  | { status: 'not-needed'; plan: FuelPlan }
+  | { status: 'not-needed'; hops: FuelHop[] }
   | { status: 'missing-profile-data' }
   | { status: 'found'; plans: FuelStopPlan[]; fuelTypesUnset: boolean }
   | { status: 'none-found'; fuelTypesUnset: boolean; candidates: number }
+
+type RankedPlan = FuelStopPlan & { cost: number }
 
 /** A point of the search: a route waypoint, or a candidate on a leg. */
 interface Node {
@@ -124,9 +130,13 @@ export function suggestFuelStops(
   const maxCandidates = opts.maxCandidates ?? 60
   const capacity      = profile.maxFuelL
 
-  const full = computeFuelPlan(waypoints, legOverrides, profile, legWinds)
-  if (full.enrouteMins <= 0) return { status: 'missing-profile-data' }
-  if (full.totalMinFuelL <= capacity) return { status: 'not-needed', plan: full }
+  const trip = computeTripFuelPlans(waypoints, legOverrides, profile, legWinds)
+  const tripMins = trip.reduce((s, h) => s + h.plan.enrouteMins, 0)
+  if (tripMins <= 0) return { status: 'missing-profile-data' }
+  if (trip.every(h => h.plan.totalMinFuelL <= capacity)) return { status: 'not-needed', hops: trip }
+  const BALANCE = 0.1 / 60   // per minute² of hop time
+  /** Spare fuel a hop should keep beyond its minimum; each litre less costs a minute. */
+  const COMFORT_L = 0.15 * capacity
 
   // ── Candidates ──────────────────────────────────────────────────────────
   const wanted = profile.fuelTypes ?? []
@@ -171,6 +181,8 @@ export function suggestFuelStops(
     })
   }
   nodes.sort((x, y) => x.leg - y.leg || x.t - y.t)
+  /** Route points the pilot already marked as fuel stops: hops end there. */
+  const isRouteStop = (nd: Node) => nd.wp !== undefined && nd.wp > 0 && nd.wp < waypoints.length - 1 && waypoints[nd.wp].fuelStop === true
   const startIdx = nodes.findIndex(n => n.wp === 0)
   const endIdx   = nodes.findIndex(n => n.wp === waypoints.length - 1)
 
@@ -205,7 +217,7 @@ export function suggestFuelStops(
 
   // ── Shortest path with a stop limit ─────────────────────────────────────
   // Nodes are in route order, so one pass in that order is enough (a DAG).
-  function search(banned: ReadonlySet<string>): FuelStopPlan | null {
+  function search(banned: ReadonlySet<string>): RankedPlan | null {
     const n = nodes.length
     const INF = Infinity
     // cost[s][i]: best cost reaching node i having used s stops.
@@ -218,14 +230,20 @@ export function suggestFuelStops(
         // From node i, jump to the next stop or straight to the destination.
         for (let j = i + 1; j <= endIdx; j++) {
           const nj = nodes[j]
+          const routeStop = isRouteStop(nj)
           if (nj.stop && banned.has(nj.stop.aerodrome.icao)) continue
-          if (!nj.stop && j !== endIdx) continue
+          if (!nj.stop && !routeStop && j !== endIdx) continue
           const s2 = nj.stop ? s + 1 : s
-          if (s2 > maxStops) continue
-          const h = hop(i, j)
-          if (!h) continue
-          const c = cost[s][i] + h.enrouteMins + (nj.stop ? stopPenalty : 0)
-          if (c < cost[s2][j]) { cost[s2][j] = c; prev[s2][j] = [s, i] }
+          if (s2 <= maxStops) {
+            const h = hop(i, j)
+            if (h) {
+              const thin = Math.max(0, COMFORT_L - (capacity - h.minFuelL))
+              const c = cost[s][i] + h.enrouteMins + BALANCE * h.enrouteMins * h.enrouteMins + thin + (nj.stop ? stopPenalty : 0)
+              if (c < cost[s2][j]) { cost[s2][j] = c; prev[s2][j] = [s, i] }
+            }
+          }
+          // A hop cannot fly past a stop the pilot already planned.
+          if (routeStop) break
         }
       }
     }
@@ -244,13 +262,14 @@ export function suggestFuelStops(
       stops: path.map(i => nodes[i].stop).filter((s): s is FuelStop => !!s),
       hops,
       enrouteMins,
-      extraMins: Math.max(0, enrouteMins - full.enrouteMins),
+      extraMins: Math.max(0, enrouteMins - tripMins),
+      cost: cost[bestS][endIdx],
     }
   }
 
-  const plans: FuelStopPlan[] = []
+  const plans: RankedPlan[] = []
   const seen = new Set<string>()
-  const add = (p: FuelStopPlan | null) => {
+  const add = (p: RankedPlan | null) => {
     if (!p) return
     const key = p.stops.map(s => s.aerodrome.icao).join(',')
     if (seen.has(key)) return
@@ -275,10 +294,9 @@ export function suggestFuelStops(
       add(more)
     }
   }
-  const rank = (p: FuelStopPlan) => p.enrouteMins + p.stops.length * stopPenalty
-  plans.sort((a, b) => rank(a) - rank(b))
+  plans.sort((a, b) => a.cost - b.cost)
 
   return plans.length > 0
-    ? { status: 'found', plans: plans.slice(0, maxPlans), fuelTypesUnset }
+    ? { status: 'found', plans: plans.slice(0, maxPlans).map(({ cost: _c, ...p }) => p), fuelTypesUnset }
     : { status: 'none-found', fuelTypesUnset, candidates: candidates.length }
 }
