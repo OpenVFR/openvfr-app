@@ -329,7 +329,14 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
       }
       lines.push(`METAR: ${wx?.metar ? quote(wx.metar, 300) : 'not available'}`)
       if (wx?.taf) lines.push(`TAF: ${quote(wx.taf, 600)}`)
-      const ac = await findAircraft(aircraft)
+      let ac = await findAircraft(aircraft)
+      let chosen = ''
+      if (!aircraft && canRoutes) {
+        const d = await defaultAircraft()
+        ac = d.profile
+        if (ac) chosen = d.note
+      }
+      if (chosen) lines.push(chosen)
       if (ac && fc && wx?.metar) {
         const w = metarSurfaceWind(wx.metar)
         if (w && ac.maxCrosswindKts) {
