@@ -355,8 +355,8 @@ and, if the pilot allows it, their saved routes, places and aircraft and flight 
   `aircraft:write` (create and change aircraft profiles; both writes need
   `routes:read` too, the consent page links them) and `logs:read`
   (per-flight summaries from `user_flight_logs`, selected without the
-  `track_json` column: no GPS tracks; not preselected); writes never
-  delete and are not preselected on the consent page. They go through
+  `track_json` column: no GPS tracks); writes never
+  delete. Every permission the assistant asks for is ticked on the consent page and can be unticked. They go through
   PostgREST as the user, run the same checks as the app (route points are
   resolved against the aerodrome, navaid and reporting-point datasets from
   `TILES_BASE_URL`), and mark the route (`user_routes.assistant_review`) or

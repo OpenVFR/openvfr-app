@@ -98,9 +98,10 @@ name, so only allow it if you just added it yourself. Every new connection
 is confirmed by email; if you did not make it, disconnect it (below).
 
 Changing anything needs reading your saved routes, places and aircraft too (the
-change tick boxes are greyed out without it). The assistant only reads, unless you also tick **create and change your
-saved routes and places** or **add and change your aircraft profiles** (never
-preselected). Then it can save new routes and change routes (points,
+change tick boxes are greyed out without it). Every permission the assistant asks
+for is ticked to begin with; untick **create and change your saved routes and
+places** or **add and change your aircraft profiles** and it only reads. With them
+ticked it can save new routes and change routes (points,
 altitudes, speeds, fuel stops, aircraft, name), save and change places
 (name, position, folder), or add aircraft and change their values, but
 never delete anything. The assistant never sees your position or your GPS
@@ -115,7 +116,7 @@ check its position on the map before you rely on it (unlike routes and
 aircraft, places carry no "check before use" mark). Place names must be
 unique.
 
-If you tick **a summary of your logged flights** (never preselected), the
+If you leave **a summary of your logged flights** ticked, the
 assistant can list your flights (date, aircraft, departure and arrival
 aerodrome, flight time, distance, highest altitude) and give totals for the
 last 30 days, 90 days and 12 months, per aircraft. It never gets the track

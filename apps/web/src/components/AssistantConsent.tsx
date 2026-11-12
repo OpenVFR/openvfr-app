@@ -52,12 +52,12 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
   const identity = assistantIdentity(clientId, params.get('redirect_uri'))
 
   const [client, setClient] = useState<AssistantClientInfo | null>(null)
+  // Everything the assistant asks for starts ticked (the pilot unticks what to hold back); each box is
+  // shown, so nothing is granted unseen.
   const [allowRoutes, setAllowRoutes] = useState(wantsRoutes)
-  // Changes are never preselected: the pilot opts in.
-  const [allowWrite, setAllowWrite] = useState(false)
-  const [allowRoutesWrite, setAllowRoutesWrite] = useState(false)
-  // Reading flight summaries is never preselected either.
-  const [allowLogs, setAllowLogs] = useState(false)
+  const [allowWrite, setAllowWrite] = useState(wantsWrite)
+  const [allowRoutesWrite, setAllowRoutesWrite] = useState(wantsRoutesWrite)
+  const [allowLogs, setAllowLogs] = useState(wantsLogs)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
