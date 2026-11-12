@@ -75,6 +75,11 @@ function useKeyboardHeight(): number {
   return kb
 }
 
+/** Open a link; a device with nothing to open it just ignores the tap instead of an unhandled rejection. */
+function openLink(url: string): void {
+  Linking.openURL(url).catch(() => {})
+}
+
 export function LoginScreen() {
   const styles = useThemedStyles(makeStyles)
   const insets                           = useContentInsets()
@@ -356,10 +361,10 @@ export function LoginScreen() {
       {/* Hidden while the keyboard is up: the form needs the room, the credit and legal links return with the keyboard closed. */}
       {!keyboardOpen && (
         <View style={styles.footer}>
-          <Text style={styles.webHint} onPress={() => Linking.openURL(WEB_APP.url)} accessibilityRole="link">
+          <Text style={styles.webHint} onPress={() => openLink(WEB_APP.url)} accessibilityRole="link">
             Also on the web at <Text style={styles.webHintLink}>{WEB_APP.host}</Text>. Your {SYNCED_DATA} are the same everywhere you sign in.
           </Text>
-          <TouchableOpacity style={styles.sponsorRow} onPress={() => Linking.openURL(SPONSOR.url)} accessibilityRole="link" accessibilityLabel={`Supported by ${SPONSOR.name}`}>
+          <TouchableOpacity style={styles.sponsorRow} onPress={() => openLink(SPONSOR.url)} accessibilityRole="link" accessibilityLabel={`Supported by ${SPONSOR.name}`}>
             <SponsorLogo size={theme.textXs * 2} />
             <Text style={styles.sponsorText}>
               Supported by <Text style={styles.sponsorName}>{SPONSOR.name}</Text> {'\u203a'}
@@ -367,11 +372,11 @@ export function LoginScreen() {
           </TouchableOpacity>
           {!!SITE_BASE && (
           <View style={styles.footerLinks}>
-            <Text style={styles.footerLink} onPress={() => Linking.openURL(`${SITE_BASE}/privacy`)}>
+            <Text style={styles.footerLink} onPress={() => openLink(`${SITE_BASE}/privacy`)}>
               Privacy
             </Text>
             <Text style={styles.footerDot}>·</Text>
-            <Text style={styles.footerLink} onPress={() => Linking.openURL(`${SITE_BASE}/terms`)}>
+            <Text style={styles.footerLink} onPress={() => openLink(`${SITE_BASE}/terms`)}>
               Terms & Disclaimer
             </Text>
           </View>
