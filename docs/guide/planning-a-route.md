@@ -167,8 +167,8 @@ On native, planning has its own screen with four segments along the top:
 
 ## ICAO flight plan
 
-With a route and an aircraft selected, **Export ICAO flight plan…** (web, in
-the side panel; mobile, in the route actions menu) opens a form with what the
+With a route and an aircraft selected, **Export ICAO flight plan…** (in the route's ⋯
+actions menu, next to GPX) opens a form with what the
 plan needs that is not in the route or the aircraft, and builds the plan as
 text:
 

@@ -356,6 +356,7 @@ function SideDrawer({
                 >
                   {hasRoute ? (
                     <RoutePlan
+                      onExportIcao={hasRoute && selectedAircraftProfile ? () => setFplOpen(true) : undefined}
                       selectedLeg={selectedLeg}
                       onSelectLeg={onSelectLeg}
                       waypoints={waypoints}
@@ -493,15 +494,6 @@ function SideDrawer({
               </div>
             )}
           </div>
-          {/* ── ICAO flight plan: a dialog, not a section ──────────── */}
-          {hasRoute && selectedAircraftProfile && (
-            <div className={css.section}>
-              <button className={css.sectionHeader} onClick={() => setFplOpen(true)} title="Build the ICAO flight plan text for this route and aircraft">
-                <span>Export ICAO flight plan…</span>
-                <span className={css.chevron}><IconChevronRight size={14} aria-hidden="true" /></span>
-              </button>
-            </div>
-          )}
           {fplOpen && hasRoute && selectedAircraftProfile && (
             <FlightPlanDialog
               waypoints={waypoints}

@@ -185,6 +185,8 @@ interface Props {
   legOverrides: LegOverride[]
   units?:       Units
   onUndo:       () => void
+  /** Opens the ICAO flight plan export; given only when a route and an aircraft are selected. */
+  onExportIcao?: () => void
   onRedo?:      () => void
   canUndo?:     boolean
   canRedo?:     boolean
@@ -213,7 +215,7 @@ interface Props {
   onSelectLeg?: (leg: number | null) => void
 }
 
-export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination, waypoints, tafWarnIcaos = [], legOverrides, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onSetLegOverride, onSetWaypointNote, onSetWaypointFuelStop, defaultAltFt, defaultSpeedKts, takeoffTime, setTakeoffTime, globalWind, setGlobalWind, routeWinds }: Props) {
+export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination, onExportIcao, waypoints, tafWarnIcaos = [], legOverrides, units = DEFAULT_UNITS, onUndo, onRedo, canUndo = false, canRedo = false, onClear, onReplace, onSetLegOverride, onSetWaypointNote, onSetWaypointFuelStop, defaultAltFt, defaultSpeedKts, takeoffTime, setTakeoffTime, globalWind, setGlobalWind, routeWinds }: Props) {
   const [kbInput, setKbInput] = useState('')
   const [kbError, setKbError] = useState('')
   const [kbLoading, setKbLoading] = useState(false)
@@ -453,6 +455,10 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
                     onClick={() => { onFindDestination(); setShowMenu(false) }}>◎ Find a destination…</button>
                 )}
                 <button className={css.menuItem} onClick={() => { onReplace([...waypoints].reverse()); setShowMenu(false) }} disabled={waypoints.length < 2}>⇄ Reverse</button>
+                {onExportIcao && (
+                  <button className={css.menuItem} title="Build the ICAO flight plan text for this route and aircraft"
+                    onClick={() => { onExportIcao(); setShowMenu(false) }} disabled={waypoints.length < 2}>↗ Export ICAO flight plan…</button>
+                )}
                 <button className={css.menuItem} onClick={() => { exportGpx(waypoints); setShowMenu(false) }} disabled={waypoints.length < 2}>↓ GPX</button>
                 <button className={css.menuItem} onClick={() => { exportKml(waypoints); setShowMenu(false) }} disabled={waypoints.length < 2}>↓ KML</button>
                 <button className={css.menuItem} onClick={() => { gpxInputRef.current?.click(); setShowMenu(false) }}>↑ Import GPX</button>
