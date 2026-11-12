@@ -49,7 +49,7 @@ type FC = GeoJSON.FeatureCollection
 
 export interface BriefingDeps {
   /** Aerodromes, airspace, obstacles and landmarks for the route's regions. A failed load returns null. */
-  loadDataset: (kind: 'aerodromes' | 'airspace' | 'obstacles' | 'landmarks' | 'water' | 'lakes') => Promise<(FC & { missingCountries?: string[] }) | null>
+  loadDataset: (kind: 'aerodromes' | 'airspace' | 'obstacles' | 'landmarks' | 'lakes') => Promise<(FC & { missingCountries?: string[] }) | null>
   /** Terrain samples along the route from a DEM; throws or [] when it does not cover the route. */
   terrain?: (waypoints: RouteWaypoint[]) => Promise<TerrainPoint[]>
   /** Maximum-elevation grids for the route's regions (conservative terrain when the DEM fails). */
@@ -266,8 +266,8 @@ export async function buildRouteBriefing(
   // ── Data ────────────────────────────────────────────────────────────────
   const [aerodromesFc, airspaceFc, obstaclesFc, landmarksFc, waterFc] = await Promise.all([
     deps.loadDataset('aerodromes'), deps.loadDataset('airspace'), deps.loadDataset('obstacles'), deps.loadDataset('landmarks'),
-    // The small lakes file; until a country has one, the large lakes of its water file.
-    deps.loadDataset('lakes').then(fc => fc ?? deps.loadDataset('water')),
+    // Large lakes (small file); a country without it is checked over the sea only.
+    deps.loadDataset('lakes'),
   ])
   const gaps = (what: string, fc: { missingCountries?: string[] } | null) => { if (fc?.missingCountries?.length) limits.push(`${what} for ${fc.missingCountries.join(', ')} could not be loaded: not checked there.`) }
   gaps('Airspace', airspaceFc); gaps('Obstacle data', obstaclesFc); gaps('Aerodrome data', aerodromesFc)

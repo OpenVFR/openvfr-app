@@ -31,7 +31,7 @@ const SUFFIX: Record<CountryDataset, string> = {
   runwayThresholds: 'runway-thresholds.geojson',
   obstacles:        'obstacles.geojson',
   landmarks:        'landmarks.geojson',
-  water:            'water.geojson',
+  water:            'water.geojson',   // every lake: no app reads it (admin dataset status, older native builds' offline download)
   // Large lakes only, simplified (a few hundred KB): what the glide check needs, instead of `water`.
   lakes:            'lakes.geojson',
   aeroways:         'aeroways.geojson',

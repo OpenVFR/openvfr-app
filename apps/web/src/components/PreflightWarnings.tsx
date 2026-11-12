@@ -4,7 +4,6 @@
  * Renders the warnings from `computeWarnings` (shared with native).
  */
 
-import { largeLakes } from '@open-vfr/shared/lakeFilter'
 import { useMsaMargins, useAlertBanners } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { computeWarnings, type PreflightUnavailable, type PreflightWarning } from '@open-vfr/shared/preflightWarnings'
@@ -48,7 +47,7 @@ import type { AssistantReview } from '@open-vfr/shared/types'
 // not treated as empty, and is fetched again the next time the panel opens.
 // ---------------------------------------------------------------------------
 
-type GeoKind = 'airspace' | 'obstacles' | 'landmarks' | 'aerodromes' | 'water' | 'lakes'
+type GeoKind = 'airspace' | 'obstacles' | 'landmarks' | 'aerodromes' | 'lakes'
 const _geo: Partial<Record<GeoKind, { key: string; p: Promise<GeoJSON.FeatureCollection> }>> = {}
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 
@@ -62,16 +61,15 @@ function loadGeo(kind: GeoKind): Promise<GeoJSON.FeatureCollection> {
   return p
 }
 
-function useGeo(kind: GeoKind, enabled = true): { fc: GeoJSON.FeatureCollection | null; failed: boolean } {
+function useGeo(kind: GeoKind): { fc: GeoJSON.FeatureCollection | null; failed: boolean } {
   const [state, setState] = useState<{ fc: GeoJSON.FeatureCollection | null; failed: boolean }>({ fc: null, failed: false })
   useEffect(() => {
-    if (!enabled) return
     let alive = true
     loadGeo(kind)
       .then((fc) => { if (alive) setState({ fc, failed: false }) })
       .catch(() => { if (alive) setState({ fc: null, failed: true }) })
     return () => { alive = false }
-  }, [kind, enabled])
+  }, [kind])
   return state
 }
 
@@ -125,11 +123,8 @@ export default function PreflightWarnings(props: Props) {
   const obstacles = useGeo('obstacles')
   const landmarks = useGeo('landmarks')
   const aerodromes = useGeo('aerodromes')
-  // Lakes for the glide-to-land check (the sea comes from the terrain grid); missing = sea only.
-  const lakesFile = useGeo('lakes')
-  // A country without the small lakes file yet: the large lakes of its water file (the rest is dropped here).
-  const water = useGeo('water', lakesFile.failed)
-  const lakes = useMemo(() => lakesFile.fc ?? (water.fc ? largeLakes(water.fc) : null), [lakesFile.fc, water.fc])
+  // Large lakes for the glide-to-land check (the sea comes from the terrain grid); a country without the file is checked over the sea only.
+  const lakes = useGeo('lakes').fc
   const airspaceGeo = airspace.fc ?? (airspace.failed ? EMPTY_FC : null)
   const obstacleGeo = obstacles.fc ?? (obstacles.failed ? EMPTY_FC : null)
   const landmarkGeo = landmarks.fc ?? (landmarks.failed ? EMPTY_FC : null)

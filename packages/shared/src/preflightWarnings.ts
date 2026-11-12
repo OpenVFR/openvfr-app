@@ -122,7 +122,7 @@ export interface PreflightExtras {
   unavailable?:    PreflightUnavailable
   /** The saved route was written by an AI assistant and not yet saved by the pilot. */
   routeReview?:    AssistantReview | null
-  /** Maximum-elevation grids (sea = cells at sea level) and lakes, for the glide-to-land check over water. */
+  /** Maximum-elevation grids (sea = cells at sea level) and the large lakes (`water`), for the glide-to-land check over water. */
   mefGrids?:       readonly MefGrid[]
   water?:          GeoJSON.FeatureCollection | null
 }

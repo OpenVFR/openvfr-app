@@ -126,10 +126,8 @@ check in the plan):
   set), so land upwind is reached less far and land downwind further.
   Beyond gliding distance, life jackets are required for everyone on board.
   Only large lakes (about 50 km² and up) are checked, from a small lakes
-  file of the country (until it has one, from the large lakes of its water
-  file). On the mobile app lakes need that small file, otherwise only the
-  sea is checked; land outside the terrain grid of your countries is not
-  seen. Gusts, turns and the time to set up a glide are not modelled.
+  file of the country; a country without one is checked over the sea only.
+  Land outside the terrain grid of your countries is not seen. Gusts, turns and the time to set up a glide are not modelled.
 
 Warnings are advice. They do not replace your own planning.
 
