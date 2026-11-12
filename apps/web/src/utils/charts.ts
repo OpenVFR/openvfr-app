@@ -1,5 +1,5 @@
 /**
- * Official charts (experimental, behind EXPERIMENTAL_CHARTS): loads the
+ * Official charts (experimental, admins only): loads the
  * optional per-country charts index (`<cc>-charts.json`, see
  * @open-vfr/shared/chartsIndex) and renders official chart PDFs with
  * pdf.js for the in-app viewer and the georeferenced map overlay.

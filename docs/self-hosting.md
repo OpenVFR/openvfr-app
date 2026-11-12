@@ -263,8 +263,7 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   endpoint disabled. Limits: `CHART_DOCUMENT_MAX_MB` (20),
   `CHART_DOCUMENT_HOURLY_LIMIT` (120) / `CHART_DOCUMENT_DAILY_LIMIT` (600)
   per user, `CHART_DOCUMENT_CACHE_MB` (100, shared in-memory). The web
-  client shows charts to everyone when built with `VITE_EXPERIMENTAL_CHARTS=true`, and to accounts with role `admin`
-  whatever the build flag says. `CHART_DOCUMENT_ADMIN_ONLY=1` makes the endpoint itself refuse every other account (403),
+  client shows charts to accounts with role `admin` only (there is no build flag). `CHART_DOCUMENT_ADMIN_ONLY=1` makes the endpoint itself refuse every other account (403),
   so the documents are admin-only for real, not just hidden in the UI.
 - `TILES_BASE_URL` — optional, your public tile host (e.g.
   `https://tiles.example.org`); the admin country detail checks
@@ -327,8 +326,8 @@ removes it. An already-issued PostgREST JWT stays valid until its 15 min expiry.
 
 ### Curated aerodrome details and their preview files (optional, experimental)
 
-If your data pipeline publishes `<cc>-aerodrome-details.geojson` (circuits, noise-sensitive areas, holdings) and the web/native
-build has `VITE_EXPERIMENTAL_AERODROME_DETAILS` / `EXPO_PUBLIC_EXPERIMENTAL_AERODROME_DETAILS` on, the app draws them. A pipeline
+If your data pipeline publishes `<cc>-aerodrome-details.geojson` (circuits, noise-sensitive areas, holdings), the
+app draws them (no build flag: without the file nothing is shown). A pipeline
 may also publish `<cc>-aerodromes.preview.geojson` and `<cc>-aerodrome-details.preview.geojson`: the same data with values that
 have not been reviewed yet, marked. The app reads them only when a signed-in **admin** switches Settings → "Curated data" to
 "Include unreviewed"; everyone else always reads the approved files. **The preview files sit on the same public tile host as every

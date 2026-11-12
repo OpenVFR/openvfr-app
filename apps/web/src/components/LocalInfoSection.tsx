@@ -1,6 +1,5 @@
 /**
- * "Local information" section of the aerodrome popup (experimental,
- * EXPERIMENTAL_AERODROME_DETAILS): circuits per runway (and aircraft
+ * "Local information" section of the aerodrome popup (experimental): circuits per runway (and aircraft
  * category), local rules, hours and PPR remarks, local areas with their
  * heights and reporting points, each with its source. Values marked
  * unreviewed exist only in a local preview build. Renders nothing when the
@@ -11,7 +10,6 @@ import {
   type LocalInfo,
 } from '@open-vfr/shared/aerodromeDetails'
 import { useLocalInfo } from '../utils/aerodromeDetails'
-import { EXPERIMENTAL_AERODROME_DETAILS } from '../utils/env'
 import css from './LocalInfoSection.module.css'
 
 interface Props {
@@ -102,8 +100,8 @@ function Content({ info }: { info: LocalInfo }) {
 }
 
 export default function LocalInfoSection({ icao, sectionClass, titleClass }: Props) {
-  const info = useLocalInfo(icao, EXPERIMENTAL_AERODROME_DETAILS)
-  if (!EXPERIMENTAL_AERODROME_DETAILS || !info || !hasLocalInfo(info)) return null
+  const info = useLocalInfo(icao, true)
+  if (!info || !hasLocalInfo(info)) return null
   return (
     <div className={sectionClass}>
       <div className={titleClass}>Local information</div>

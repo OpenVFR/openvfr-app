@@ -1,5 +1,5 @@
 /**
- * Loading for the experimental aerodrome details (EXPERIMENTAL_AERODROME_DETAILS):
+ * Loading for the experimental aerodrome details:
  * the per-country `<cc>-aerodrome-details.geojson` layer plus schematic
  * circuits, and one aerodrome's local-information fields. Both files are
  * optional; absence is normal and shows nothing. See

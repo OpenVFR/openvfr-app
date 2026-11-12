@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { setAdminSession, isAdminSession, subscribeAdminSession, chartsOpen } from './adminAccess'
+import { setAdminSession, isAdminSession, subscribeAdminSession } from './adminAccess'
 
 describe('adminAccess', () => {
   it('follows the session and tells subscribers only when it changes', () => {
@@ -18,10 +18,4 @@ describe('adminAccess', () => {
     setAdminSession(false)
   })
 
-  it('charts: the build flag opens them for everyone, an admin session where the flag is off', () => {
-    expect(chartsOpen(false, false)).toBe(false)
-    expect(chartsOpen(false, true)).toBe(true)
-    expect(chartsOpen(true, false)).toBe(true)
-    expect(chartsOpen(true, true)).toBe(true)
-  })
 })

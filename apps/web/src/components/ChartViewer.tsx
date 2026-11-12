@@ -1,6 +1,5 @@
 /**
- * In-app viewer for an official chart document (experimental,
- * EXPERIMENTAL_CHARTS). Renders the publisher's PDF page by page with pdf.js;
+ * In-app viewer for an official chart document (experimental, admins only). Renders the publisher's PDF page by page with pdf.js;
  * the document itself is never stored or altered. "Open original" always
  * links to the publisher.
  */

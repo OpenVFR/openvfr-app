@@ -1,6 +1,5 @@
 /**
- * Georeferenced official chart drawn on the map (experimental,
- * EXPERIMENTAL_CHARTS).
+ * Georeferenced official chart drawn on the map (experimental, admins only).
  *
  * The chart's map frame is rendered client-side from the publisher's PDF
  * (pdf.js) into a canvas and placed with a MapLibre `canvas` source at the

@@ -10,7 +10,7 @@ import {
   RUNWAY_LABEL_DEFAULT_COLOR,
   RUNWAY_LABEL_DEFAULT_HALO,
 } from '@open-vfr/shared/runwayWind'
-import { TILES_BASE_URL, EXPERIMENTAL_AERODROME_DETAILS } from '../utils/env'
+import { TILES_BASE_URL } from '../utils/env'
 import { CIRCUIT_LAYER_IDS, HOLDING_ORBIT_LAYER } from '@open-vfr/shared/aerodromeDetailsStyle'
 import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
 import { DEFAULT_REGION_CODE } from '@open-vfr/shared/regions'
@@ -501,14 +501,14 @@ export const LAYER_GROUPS: LayerGroup[] = [
   },
   // Traffic circuits (experimental aerodrome details): drawn circuit legs and turn arrows. The layers are added at
   // runtime, so AerodromeDetailsLayer applies this switch itself when it adds them.
-  ...(EXPERIMENTAL_AERODROME_DETAILS ? [{
+  {
     id: 'aerodromeCircuits',
     label: 'Traffic circuits',
     cssClass: 'groupAerodromeCircuits',
     layerIds: [...CIRCUIT_LAYER_IDS],
     defaultOn: true,
     section: 'Navigation' as const,
-  }] : []),
+  },
   {
     id: 'waypointsHold',
     // VFR holding points ("HOLDING WEST"): where ATC sends VFR traffic to wait outside a CTR. Published as
@@ -516,7 +516,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
     label: 'Holding points',
     cssClass: 'groupWaypointsHold',
     // + the orbit direction from the experimental aerodrome details (added at runtime by AerodromeDetailsLayer)
-    layerIds: ['waypoints-hold-icon', 'waypoints-hold-label', ...(EXPERIMENTAL_AERODROME_DETAILS ? [HOLDING_ORBIT_LAYER] : [])],
+    layerIds: ['waypoints-hold-icon', 'waypoints-hold-label', HOLDING_ORBIT_LAYER],
     defaultOn: true,
     section: 'Navigation',
   },

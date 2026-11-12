@@ -61,7 +61,7 @@ import { chooseSnapTarget, sortSnapCandidates, snapHintText, neighbourAtDrop } f
 import { navigatingLeg, routeDirect, samePoint, directActionKind, DIRECT_ACTION_LABELS, presentPositionName, LEG_UNLOCK_MS } from '@open-vfr/shared/routeNavigation'
 import { AERODROME_COLORS } from '@open-vfr/shared/featureColors'
 import { fetchAerodromeNotamTexts, type NotamItem } from '@open-vfr/shared/fetchNotam'
-import { API_BASE_URL, EXPERIMENTAL_AERODROME_DETAILS } from '../utils/env'
+import { API_BASE_URL } from '../utils/env'
 import { useChartsEnabled } from '../utils/adminAccess'
 import ChartOverlay from './ChartOverlay'
 import AerodromeDetailsLayer from './AerodromeDetailsLayer'
@@ -5119,7 +5119,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         <div ref={containerRef} className={css.map} />
         <UnreviewedBanner />
         {chartsEnabled && mapReady && <ChartOverlay map={mapRef.current} />}
-        {EXPERIMENTAL_AERODROME_DETAILS && mapReady && <AerodromeDetailsLayer map={mapRef.current} circuitsVisible={visibility['aerodromeCircuits'] ?? true}
+        {mapReady && <AerodromeDetailsLayer map={mapRef.current} circuitsVisible={visibility['aerodromeCircuits'] ?? true}
           holdingsVisible={visibility['waypointsHold'] ?? true} />}
         {chartsEnabled && <ChartViewer />}
         {toolbarHost && createPortal((() => {

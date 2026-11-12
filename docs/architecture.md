@@ -293,7 +293,7 @@ Protomaps is the correct choice for this project's constraints (open-source, no 
 
 ### F. Charts index — official charts (optional, experimental)
 
-Behind the web build flag `VITE_EXPERIMENTAL_CHARTS=true`. A deployment may
+Shown to accounts with role `admin` only (no build flag). A deployment may
 publish, next to the other per-country files, `<cc>-charts.json`: links to
 each aerodrome's **official** published charts (national AIP visual approach,
 aerodrome, ground movement, ... charts) and, where known, a georeference. How
@@ -368,7 +368,7 @@ Native apps (planned) fetch the documents directly and don't need it.
 
 ### F2. Aerodrome details — local information (optional, experimental)
 
-Behind the web build flag `VITE_EXPERIMENTAL_AERODROME_DETAILS=true`. A
+Always on, no build flag: nothing is drawn unless the files below exist (and they hold released airfields' approved values only). A
 deployment may publish `<cc>-aerodrome-details.geojson` (local geometry per
 aerodrome: `noise_sensitive`, `avoid_area`, `glider_area`, `parachute_area`,
 `model_area` areas with optional `floor`/`ceiling` `{ref: AGL|AMSL|FL|UNL, ft}`,
@@ -404,8 +404,8 @@ where to hold. Web and native draw the same layers: their data, filters,
 zoom steps, colours and the runway focus are defined once in
 `packages/shared/src/aerodromeDetailsStyle.ts` (native uses one fixed-colour
 layer per kind, `staticColorLayers`, because MapLibre Native on iOS aborts on
-colours computed from feature properties). Native turns the experiment on with
-`EXPO_PUBLIC_EXPERIMENTAL_AERODROME_DETAILS=true`: the same "Traffic circuits"
+colours computed from feature properties). Native has the same
+feature: the same "Traffic circuits"
 and "Holding points" switches, local information in the aerodrome sheet, and
 tappable runway ends. Dashed also: outlines read off a chart (`approximate`) and values whose
 provenance says `review: "pending"` (only in local preview builds of a

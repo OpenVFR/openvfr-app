@@ -27,7 +27,7 @@ import RegionalNotamsPanel from './RegionalNotamsPanel'
 import { sunriseSunset, fmtSunTime } from '../utils/sunCalc'
 import { aerodromeClosure, closureLabel } from '@open-vfr/shared/aerodromeClosure'
 import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from '@open-vfr/shared/atcStatus'
-import { API_BASE_URL, EXPERIMENTAL_AERODROME_DETAILS } from '../utils/env'
+import { API_BASE_URL } from '../utils/env'
 import ChartsSection from './ChartsSection'
 import LocalInfoSection from './LocalInfoSection'
 import { setCircuitFocus, useCircuitFocus } from '../utils/aerodromeDetails'
@@ -35,12 +35,12 @@ import { loadStations as loadStationsShared, type StationRecord } from '@open-vf
 import { countryDatasetSource } from '@open-vfr/shared/countryData'
 import { IconChevronDown, IconChevronUp, IconHome, IconHomeFilled, IconX } from '@tabler/icons-react'
 
-/** A runway end ("06"). With the experimental aerodrome details it is a button: tapping it shows only that end's
+/** A runway end ("06"). It is a button: tapping it shows only that end's
  *  circuits on the map (again to show all). */
 function RunwayEndChip({ className, title, aerodrome, designator }:
   { className: string; title: string | undefined; aerodrome: string | null; designator: string }) {
   const focus = useCircuitFocus()
-  if (!EXPERIMENTAL_AERODROME_DETAILS || !aerodrome) return <span className={className} title={title}>{designator}</span>
+  if (!aerodrome) return <span className={className} title={title}>{designator}</span>
   const on = focus?.aerodrome === aerodrome && focus.runway === designator
   return (
     <button type="button" className={`${className} ${css.rwyDesigBtn} ${on ? css.rwyDesigFocused : ''}`}

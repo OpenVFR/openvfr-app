@@ -45,11 +45,6 @@ export const TILE_BASE: string =
   (isStaging && STAGING.tileBase) ||
   (process.env.EXPO_PUBLIC_TILE_BASE ?? '') || `${API_BASE}/tiles`
 
-/** EXPERIMENTAL -- local aerodrome information (circuits, areas, holding orbits, local rules) from the
- *  `<cc>-aerodrome-details.geojson` file and curated aerodrome fields. Same as web's
- *  VITE_EXPERIMENTAL_AERODROME_DETAILS; off unless EXPO_PUBLIC_EXPERIMENTAL_AERODROME_DETAILS=true. */
-export const EXPERIMENTAL_AERODROME_DETAILS: boolean = process.env.EXPO_PUBLIC_EXPERIMENTAL_AERODROME_DETAILS === 'true'
-
 /** The active country's aerodrome details file (optional: a 404 just means no details). */
 export function aerodromeDetailsUrl(country: string = activeCountry()): string {
   return versionedTileUrl(TILE_BASE, `${country}-aerodrome-details.geojson`)

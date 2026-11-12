@@ -1,5 +1,5 @@
 /**
- * Aerodrome details on the map (experimental, EXPERIMENTAL_AERODROME_DETAILS): areas, extra reporting points,
+ * Aerodrome details on the map (experimental): areas, extra reporting points,
  * taxiways and parking; circuits in zoom steps (drawn legs, turn arrows for circuits known only by direction, runway
  * labels); orbit direction at holding points. The layers, filters and data are shared with native
  * (@open-vfr/shared/aerodromeDetailsStyle); this component only feeds them to maplibre-gl. Circuits follow the

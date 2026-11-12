@@ -33,7 +33,6 @@ import AerodromeNotamSection, { useNotamLists } from './AerodromeNotamSection'
 import { NativeSheet } from './NativeSheet'
 import LocalInfoSection from './LocalInfoSection'
 import type { LocalInfo } from '@open-vfr/shared/aerodromeDetails'
-import { EXPERIMENTAL_AERODROME_DETAILS } from '../config'
 import { setCircuitFocus, useCircuitFocus } from '../utils/circuitFocus'
 import { CIRCUIT_FOCUS_COLOR } from '@open-vfr/shared/featureColors'
 
@@ -398,7 +397,7 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
                               <React.Fragment key={e.designator}>
                                 {j > 0 && <Text style={runwayStyles.slash}>/</Text>}
                                 <Pressable
-                                  disabled={!EXPERIMENTAL_AERODROME_DETAILS || !feature?.icao}
+                                  disabled={!feature?.icao}
                                   accessibilityRole="button"
                                   accessibilityState={{ selected: focusOn(e.designator) }}
                                   accessibilityLabel={`Runway ${e.designator}: show only its circuits on the map`}
@@ -447,7 +446,7 @@ export function AerodromePopup({ feature, onClose, onRunwayWind, regionalNotams,
                 </Section>
               )}
 
-              {EXPERIMENTAL_AERODROME_DETAILS && <LocalInfoSection info={feature?.local} />}
+              <LocalInfoSection info={feature?.local} />
 
               {hours.length > 0 && (
                 <Section title="Hours of Operation">

@@ -48,7 +48,7 @@ import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { makeCirclePolygon } from '@open-vfr/shared/geoCircle'
 import { NotificationCenter } from '../components/NotificationCenter'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
-import { getTileUrls, EXPERIMENTAL_AERODROME_DETAILS } from '../config'
+import { getTileUrls } from '../config'
 import { localInfo } from '@open-vfr/shared/aerodromeDetails'
 import { setCircuitFocus, useCircuitFocus } from '../utils/circuitFocus'
 import { parseMapLink, hasMapLink } from '@open-vfr/shared/deepLink'
@@ -92,7 +92,7 @@ function aerodromePropsFromFeature(p: Record<string, unknown>, coords: [number, 
     lat: coords ? coords[1] : undefined,
     ad_use:       typeof p.ad_use === 'string' ? p.ad_use : undefined,
     unofficial:   p.unofficial === true,
-    ...(EXPERIMENTAL_AERODROME_DETAILS ? { local: localInfo(p) } : {}),
+    local: localInfo(p),
   }
 }
 import { settings as settingsDb } from '../db'

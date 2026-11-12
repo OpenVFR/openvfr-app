@@ -4,7 +4,6 @@ import { TRAFFIC_CATEGORY_LABEL, trafficDeviceLabel, trafficNetworkLabel } from 
 import { IconX } from '@tabler/icons-react'
 import { orbitLabel, type LocalAreaInfo } from '@open-vfr/shared/aerodromeDetails'
 import { useLocalInfo } from '../utils/aerodromeDetails'
-import { EXPERIMENTAL_AERODROME_DETAILS } from '../utils/env'
 
 // ── Feature type definitions ──────────────────────────────────────────────────
 // Each variant carries only the properties available in its GeoJSON source.
@@ -166,7 +165,7 @@ function WaypointBody({ f }: { f: WaypointFeature }) {
           <span className={css.value}>{f.aerodrome}</span>
         </div>
       )}
-      {EXPERIMENTAL_AERODROME_DETAILS && f.aerodrome && /^HOLDING\s/i.test(f.name) && (
+      {f.aerodrome && /^HOLDING\s/i.test(f.name) && (
         <HoldingRows aerodrome={f.aerodrome} name={f.name.replace(/^HOLDING\s+/i, '').toUpperCase()} />
       )}
     </div>

@@ -35,7 +35,7 @@ import { ATTRIBUTION_SOURCES, COPERNICUS_GLO30_NOTICE, FULL_CREDITS_LINK } from 
 import { MapInfoBar, type MapInfoBarHandle } from './MapInfoBar'
 import { fetchAerodromeNotamTexts } from '@open-vfr/shared/fetchNotam'
 import { regionsForIcaos } from '@open-vfr/shared/notamRegionScope'
-import { API_BASE, TILE_BASE, EXPERIMENTAL_AERODROME_DETAILS } from '../config'
+import { API_BASE, TILE_BASE } from '../config'
 import { LIGHT } from '@protomaps/basemaps'
 import { NativeSheet } from './NativeSheet'
 import { waitForTileManifest } from '@open-vfr/shared/tileManifest'
@@ -1113,7 +1113,7 @@ function useAerodromeDetailsData(aerodromesData: string | GeoJSON.GeoJSON, manif
   // that copy is read here too. Loaded once, after the tile manifest is ready (not once before and once after).
   const aerodromesIsUri = typeof aerodromesData === 'string'
   useEffect(() => {
-    if (!EXPERIMENTAL_AERODROME_DETAILS || !manifestReady) return
+    if (!manifestReady) return
     let cancelled = false
     // The cached copy first (downloaded with the aerodromes, so it works offline), else the server. Optional: absence is normal.
     loadAssetJson('aerodromeDetails')
@@ -1127,7 +1127,6 @@ function useAerodromeDetailsData(aerodromesData: string | GeoJSON.GeoJSON, manif
     return () => { cancelled = true }
   }, [manifestReady, aerodromesIsUri])
   return useMemo(() => {
-    if (!EXPERIMENTAL_AERODROME_DETAILS) return null
     const fc = typeof aerodromesData === 'object' && aerodromesData.type === 'FeatureCollection' ? aerodromesData : loadedAerodromes
     if (!fc) return null
     return buildDetailsMapData(details?.features ?? [], fc.features) as GeoJSON.FeatureCollection

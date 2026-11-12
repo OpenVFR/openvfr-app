@@ -1,5 +1,5 @@
 /**
- * Charts section of the aerodrome popup (experimental, EXPERIMENTAL_CHARTS):
+ * Charts section of the aerodrome popup (experimental, admins only):
  * the aerodrome's official published charts from the deployment's charts
  * index. Each chart opens at the publisher, in the in-app viewer, and -- when
  * it is georeferenced -- on the map. Renders nothing when there are no charts.

@@ -1,5 +1,5 @@
 /**
- * Local information of an aerodrome (experimental, EXPERIMENTAL_AERODROME_DETAILS): circuits per runway, local
+ * Local information of an aerodrome (experimental): circuits per runway, local
  * rules, hours, areas, holding points with their orbit, reporting points -- each with every source it came from and
  * an "unreviewed" mark in preview data. Same content as web's LocalInfoSection.tsx.
  */
