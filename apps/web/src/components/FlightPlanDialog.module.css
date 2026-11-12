@@ -17,6 +17,7 @@
 .num { width: 64px; } .txt { width: 110px; }
 .inp option { background: var(--input-option-bg); color: var(--text-primary); }
 .set { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; border: 1px solid var(--border-default); border-radius: 6px; padding: 4px 10px 8px; margin: 0; }
+.set > .grid { flex: 1 1 100%; }
 .set legend { font-size: 11px; color: var(--text-muted); padding: 0 4px; }
 .chk { display: inline-flex; align-items: center; gap: 4px; }
 .problems { border-left: 3px solid var(--accent-yellow, #e0b341); background: rgba(224, 179, 65, 0.08); padding: 6px 10px; border-radius: 0 4px 4px 0; color: var(--text-primary); }
