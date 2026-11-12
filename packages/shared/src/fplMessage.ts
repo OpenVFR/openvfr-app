@@ -156,6 +156,7 @@ export function buildFpl(input: {
   const speed = legSpeed(0), level = legLevel(0)
   // DCT joins the points, except between two points given as coordinates (ICAO Annex 2, Appendix 2, item 15 c).
   const isCoord = (p: string) => /^\d{4}[NS]\d{5}[EW]/.test(p)
+  if (mid.length === 0) problems.push('the route needs at least one point between departure and destination (LFV requires a significant point in item 15)')
   const tokens = ['DCT']
   mid.forEach((p, k) => {
     if (k > 0 && !(isCoord(p) && isCoord(mid[k - 1]!))) tokens.push('DCT')

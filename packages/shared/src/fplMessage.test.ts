@@ -136,3 +136,10 @@ describe('item 15 and 18 conventions (ICAO Annex 2, Appendix 2)', () => {
     expect(f.text.split('\n')[3]).not.toMatch(/DCT DCT|\d[EW] DCT \d{4}[NS]/)
   })
 })
+
+describe('route needs a significant point (LFV item 15)', () => {
+  it('flags a route with only departure and destination', () => {
+    const f = buildFpl({ nowMs: NOW, waypoints: [route[0]!, route[route.length - 1]!], legOverrides: [{}], aircraft, flight })
+    expect(f.problems.join(' ')).toMatch(/at least one point/)
+  })
+})
