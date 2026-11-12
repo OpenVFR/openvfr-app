@@ -91,12 +91,14 @@ export function VicinityBriefSheet({ nearby, regionalNotams, waypoints, position
   // Reset whenever the picked aerodrome changes.
   const [wxSource, setWxSource] = useState<'metar' | 'station'>('metar')
   useEffect(() => { setWxSource('metar') }, [selected?.icao])
-  // No METAR/TAF anywhere -- default to the Weather station tab instead of
-  // an empty METAR panel, without overriding a manual pick already made
-  // for this aerodrome.
+  // METAR whenever there is a METAR/TAF (own or the nearest station's); the Weather station tab only when
+  // there is none anywhere, instead of an empty METAR panel. Decided once per loaded answer, so a manual
+  // pick the user made for this aerodrome stays.
   useEffect(() => {
     if (wxLoading) return
-    if (!wx?.metar && !wx?.taf) setWxSource('station')
+    // Both ways: on an aerodrome change this first runs with the previous aerodrome's (stale) answer, which
+    // may have been empty; the run when this one's answer arrives must put METAR back.
+    setWxSource(!wx?.metar && !wx?.taf ? 'station' : 'metar')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wxLoading, selected?.icao])
 
