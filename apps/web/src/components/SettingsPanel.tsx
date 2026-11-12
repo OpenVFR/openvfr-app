@@ -28,6 +28,8 @@ function GpsAltitudeReferenceRow() {
   )
 }
 import { useMsaMargins, useAlertBanners, useFlownTrail } from '../db/useSettings'
+import { useIsAdmin } from '../utils/adminAccess'
+import { useUnreviewedPreference } from '../utils/unreviewedCurated'
 import { AIRSPACE_CATEGORIES, type AlertLevel } from '@open-vfr/shared/airspaceAlertLevel'
 import { DEFAULT_MSA_MARGINS, MSA_ABEAM_RANGE_NM, MSA_CLEARANCE_RANGE_FT } from '@open-vfr/shared/msaMargins'
 import { repairAppFiles } from '../utils/repairApp'
@@ -138,6 +140,8 @@ function MsaMarginsSettings() {
 
 export default function SettingsPanel({ units, onUnitsChange, countries, selectedCountries, onSelectedCountriesChange, theme, onThemeChange, trajectoryMode, onTrajectoryModeChange, airspaceWarnLookahead, onAirspaceWarnLookaheadChange, airspaceWarnVerticalFt, onAirspaceWarnVerticalFtChange, parkTimeout, onParkTimeoutChange, recordSimulatedFlights, onRecordSimulatedFlightsChange, autoFlyMode, onAutoFlyModeChange, inFlight, onClose, manifest, isOnline = true, checking = false, onRefresh }: Props) {
   const [flownTrail, setFlownTrail] = useFlownTrail()
+  const isAdmin = useIsAdmin()
+  const [unreviewed, setUnreviewed] = useUnreviewedPreference()
   return (
     <div className={css.panel}>
       <div className={css.header}>
@@ -230,6 +234,24 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
           >On</button>
         </div>
       </div>
+
+      {isAdmin && (
+        <div className={css.section}>
+          <span className={css.label}>Curated data (admin)</span>
+          <div className={css.options}>
+            <button
+              className={`${css.opt}${!unreviewed ? ` ${css.optActive}` : ''}`}
+              onClick={() => setUnreviewed(false)}
+              title="Only values a person has approved: what every other user sees"
+            >Approved only</button>
+            <button
+              className={`${css.opt}${unreviewed ? ` ${css.optActive}` : ''}`}
+              onClick={() => setUnreviewed(true)}
+              title="Also the values still waiting for review, marked as unreviewed. Informational layers only"
+            >Include unreviewed</button>
+          </div>
+        </div>
+      )}
 
       <details className={css.group}>
         <summary className={css.groupTitle}>Warnings &amp; margins</summary>

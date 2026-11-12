@@ -86,6 +86,7 @@ import { DETAIL_TAP_EDGE_LAYERS, DETAIL_TAP_FILL_LAYERS } from '@open-vfr/shared
 import type { WhatsHereItem, RouteAction } from './WhatsHerePopup'
 import SnapPicker, { type SnapCandidate } from './SnapPicker'
 import RouteEditBanner from './RouteEditBanner'
+import UnreviewedBanner from './UnreviewedBanner'
 import VirtualRadar from './VirtualRadar'
 import VrResizeGrip from './VrResizeGrip'
 import RulerSummaryStrip from './RulerSummaryStrip'
@@ -5116,6 +5117,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
           <AutoFlyPrompt kind={autoFly.suggestion} onAccept={autoFly.accept} onDismiss={autoFly.dismiss} />
         )}
         <div ref={containerRef} className={css.map} />
+        <UnreviewedBanner />
         {chartsEnabled && mapReady && <ChartOverlay map={mapRef.current} />}
         {EXPERIMENTAL_AERODROME_DETAILS && mapReady && <AerodromeDetailsLayer map={mapRef.current} circuitsVisible={visibility['aerodromeCircuits'] ?? true}
           holdingsVisible={visibility['waypointsHold'] ?? true} />}

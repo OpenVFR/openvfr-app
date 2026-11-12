@@ -20,6 +20,7 @@ import { DEFAULT_REGION_CODES } from './regions'
 export type CountryDataset =
   | 'airspace' | 'aerodromes' | 'navaids' | 'waypoints' | 'runways'
   | 'runwayThresholds' | 'obstacles' | 'landmarks' | 'water' | 'aeroways' | 'aerodromeDetails'
+  | 'aerodromesPreview' | 'aerodromeDetailsPreview'
 
 const SUFFIX: Record<CountryDataset, string> = {
   airspace:         'airspace.geojson',
@@ -34,6 +35,10 @@ const SUFFIX: Record<CountryDataset, string> = {
   aeroways:         'aeroways.geojson',
   // Circuits, noise-sensitive areas, holdings and club-map features (experimental, may be absent): see aerodromeDetails.ts.
   aerodromeDetails: 'aerodrome-details.geojson',
+  // The same two files with every airfield's unreviewed curated values too (marked). Only admins can switch them on (the app's
+  // Settings); never the core map behaviour reads them, only the informational layer.
+  aerodromesPreview: 'aerodromes.preview.geojson',
+  aerodromeDetailsPreview: 'aerodrome-details.preview.geojson',
 }
 
 export type CountryArchive = 'basemap' | 'landuse' | 'hillshade' | 'contours'

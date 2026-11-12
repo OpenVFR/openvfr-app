@@ -11,14 +11,16 @@ import {
   parseAerodromeDetails, localInfo,
   type DetailProps, type LocalInfo,
 } from '@open-vfr/shared/aerodromeDetails'
-import { countryFileUrl, loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { countryFileUrl, countryDatasetFile, loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { useUnreviewedShown } from './unreviewedCurated'
 import { buildDetailsMapData, type CircuitFocus } from '@open-vfr/shared/aerodromeDetailsStyle'
 import { useActiveCountries } from './countryData'
 
 const cache = new Map<string, Promise<FeatureCollection<Geometry, DetailProps> | null>>()
 
-export function loadAerodromeDetails(country: string): Promise<FeatureCollection<Geometry, DetailProps> | null> {
-  const url = countryFileUrl(`${country}-aerodrome-details.geojson`)
+/** The details file; `preview` = the one with every airfield's unreviewed values (admins only), falling back to the public file. */
+export function loadAerodromeDetails(country: string, preview = false): Promise<FeatureCollection<Geometry, DetailProps> | null> {
+  const url = countryFileUrl(countryDatasetFile(country, preview ? 'aerodromeDetailsPreview' : 'aerodromeDetails'))
   let p = cache.get(url)
   if (!p) {
     p = fetch(url)
@@ -27,7 +29,14 @@ export function loadAerodromeDetails(country: string): Promise<FeatureCollection
       .catch(() => null)
     cache.set(url, p)
   }
-  return p
+  return preview ? p.then(d => d ?? loadAerodromeDetails(country, false)) : p
+}
+
+/** The aerodromes data the informational layer reads (curated fields, schematic circuits). The preview copy has every airfield's
+ *  unreviewed values too; the map's own aerodrome symbols and routing never use it. Falls back to the public file. */
+export function loadCuratedAerodromes(countries: readonly string[], preview: boolean): Promise<FeatureCollection> {
+  if (!preview) return loadCountryGeojson('aerodromes', countries)
+  return loadCountryGeojson('aerodromesPreview', countries).catch(() => loadCountryGeojson('aerodromes', countries))
 }
 
 const idOf = (f: Feature): string | null => {
@@ -38,39 +47,41 @@ const idOf = (f: Feature): string | null => {
 /** Everything the map layer draws for the active countries: the details file plus schematic circuits. */
 export function useAerodromeDetailsLayer(enabled: boolean): FeatureCollection<Geometry, DetailProps> | null {
   const { countries, key } = useActiveCountries()
+  const preview = useUnreviewedShown()
   const [fc, setFc] = useState<FeatureCollection<Geometry, DetailProps> | null>(null)
   useEffect(() => {
     if (!enabled) { setFc(null); return }
     let cancelled = false
     Promise.all([
-      Promise.all(countries.map(loadAerodromeDetails)),
-      loadCountryGeojson('aerodromes', countries).catch(() => ({ type: 'FeatureCollection', features: [] }) as FeatureCollection),
+      Promise.all(countries.map(c => loadAerodromeDetails(c, preview))),
+      loadCuratedAerodromes(countries, preview).catch(() => ({ type: 'FeatureCollection', features: [] }) as FeatureCollection),
     ]).then(([details, aerodromes]) => {
       if (cancelled) return
       setFc(buildDetailsMapData(details.flatMap(d => d?.features ?? []), aerodromes.features))
     })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, key])
+  }, [enabled, key, preview])
   return fc
 }
 
 /** One aerodrome's local-information fields (circuits, local rules, ...) from the loaded aerodromes data. */
 export function useLocalInfo(icao: string | undefined, enabled: boolean): LocalInfo | null {
   const { countries, key } = useActiveCountries()
+  const preview = useUnreviewedShown()
   const [info, setInfo] = useState<LocalInfo | null>(null)
   useEffect(() => {
     setInfo(null)
     if (!enabled || !icao) return
     let cancelled = false
-    loadCountryGeojson('aerodromes', countries).then((fc) => {
+    loadCuratedAerodromes(countries, preview).then((fc) => {
       if (cancelled) return
       const f = fc.features.find(x => idOf(x) === icao)
       setInfo(f ? localInfo((f.properties ?? {}) as Record<string, unknown>) : null)
     }).catch(() => {})
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [icao, enabled, key])
+  }, [icao, enabled, key, preview])
   return info
 }
 
