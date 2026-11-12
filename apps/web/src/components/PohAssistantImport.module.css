@@ -1,69 +1,97 @@
 .box {
-  border: 1px solid var(--border-default);
-  border-radius: 4px;
-  padding: 6px 8px;
-  margin-bottom: 6px;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 10px;
+  padding: 4px 2px 2px;
   font-size: 11px;
   color: var(--text-secondary);
 }
 
-.steps {
+.tip {
   margin: 0;
-  padding-left: 16px;
+  padding: 6px 8px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  background: rgba(147, 197, 253, 0.08);
+  border-left: 3px solid var(--accent-blue);
+  border-radius: 0 4px 4px 0;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+
+.num {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-blue);
+  background: rgba(147, 197, 253, 0.14);
+  border: 1px solid rgba(147, 197, 253, 0.35);
+}
+
+.stepBody {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  line-height: 1.4;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
 }
+
+.stepBody > .text,
+.stepBody > .primary:last-child:not(:only-child) { align-self: stretch; }
+
+.stepTitle {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.stepText { margin: 0; line-height: 1.45; }
 
 .text {
   composes: formInput from '../styles/shared.module.css';
+  width: 100%;
+  box-sizing: border-box;
   font-size: 11px;
-  font-family: ui-monospace, monospace;
   resize: vertical;
 }
 
 .error {
   composes: statusBoxDanger from '../styles/shared.module.css';
   margin: 0;
+  align-self: stretch;
 }
 
-.actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.btn {
-  background: none;
-  border: 1px solid var(--border-strong);
+.primary {
+  background: rgba(147, 197, 253, 0.18);
+  border: 1px solid rgba(147, 197, 253, 0.35);
   border-radius: 4px;
-  color: var(--text-secondary);
+  color: var(--accent-blue);
   cursor: pointer;
   font-family: inherit;
-  font-size: 11px;
-  padding: 3px 8px;
+  font-size: 12px;
+  padding: 5px 14px;
+  transition: background 0.1s, color 0.1s;
 }
-.btn:hover { background: var(--surface-hover); color: var(--text-primary); }
-
-.btnPrimary {
-  composes: btn;
-  border-color: var(--accent-cyan);
-  color: var(--accent-cyan);
+.primary:hover:not(:disabled) {
+  background: rgba(147, 197, 253, 0.28);
+  color: var(--accent-blue-bright);
 }
-.btnPrimary:disabled { opacity: 0.5; cursor: default; }
+.primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .note {
   margin: 0;
   color: var(--text-faint);
   font-size: 10px;
   line-height: 1.4;
-}
-
-.advice {
-  margin: 0;
-  line-height: 1.4;
-  color: var(--text-primary);
 }

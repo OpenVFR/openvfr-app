@@ -9,8 +9,13 @@
  */
 
 import { API_BASE_URL } from './env'
-import { parseFuelGrades } from '@open-vfr/shared/pohImport'
-import type { FuelCode } from '@open-vfr/shared/types'
+import { parseFuelGrades, categoryFromIcaoType, POH_CATEGORIES } from '@open-vfr/shared/pohImport'
+import type { AircraftCategory, FuelCode } from '@open-vfr/shared/types'
+
+function parseCategory(v: unknown): AircraftCategory | null {
+  const t = typeof v === 'string' ? v.trim().toUpperCase() : ''
+  return t in POH_CATEGORIES ? (t as AircraftCategory) : null
+}
 
 // ---------------------------------------------------------------------------
 // Error types
@@ -32,6 +37,8 @@ export class RateLimitError extends Error {
 export type PohExtractResult = {
   name?:             string
   icaoType?:         string
+  /** The aircraft category the model named (or its ICAO type suggests). */
+  category?:         AircraftCategory
   cruiseAltFt?:      string
   cruiseIas?:        string
   fuelBurnLhr?:      string
@@ -154,6 +161,7 @@ export async function extractPohViaServer(
         return {
           name:             strVal('name'),
           icaoType:         strVal('icaoType'),
+          category:         parseCategory(parsed['category']) ?? categoryFromIcaoType(strVal('icaoType')) ?? undefined,
           cruiseAltFt:      numStr('cruiseAltFt'),
           cruiseIas:        numStr('cruiseIas'),
           fuelBurnLhr:      numStr('fuelBurnLhr'),

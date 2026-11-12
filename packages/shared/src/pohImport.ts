@@ -13,7 +13,7 @@
  * anything out of range is flagged for the pilot to check. Nothing is saved
  * until the pilot saves the form.
  */
-import type { FuelCode } from './types'
+import type { AircraftCategory, FuelCode } from './types'
 import { FUEL_CODES } from './fuelTypes'
 
 /** Aircraft profile fields a POH can fill. Values are form strings. */
@@ -66,6 +66,31 @@ const FIELD_GUIDE: Record<PohField, string> = {
 }
 
 /** The prompt the pilot sends to their assistant together with the POH PDF. */
+/** Aircraft categories a POH import can name, with the plain meaning the prompt gives the model. */
+export const POH_CATEGORIES: Record<AircraftCategory, string> = {
+  SEP:    'single-engine piston aeroplane (a conventional fixed-wing aeroplane with one piston engine)',
+  MEP:    'multi-engine piston aeroplane',
+  MICRO:  'microlight / ULM / light sport fixed-wing aeroplane',
+  GYRO:   'gyroplane / autogyro (rotor turned by the airflow, engine drives a propeller)',
+  HELI:   'helicopter',
+  TMG:    'touring motor glider',
+  GLIDER: 'glider / sailplane without an engine (or with a retractable sustainer only)',
+}
+
+/** The category an ICAO type designator suggests, when the answer gave none. Null when it says nothing. */
+export function categoryFromIcaoType(icaoType: string | undefined): AircraftCategory | null {
+  const t = (icaoType ?? '').trim().toUpperCase()
+  if (t === 'GYRO') return 'GYRO'
+  if (t === 'GLID') return 'GLIDER'
+  if (t === 'HELI') return 'HELI'
+  return null
+}
+
+function parseCategory(v: unknown): AircraftCategory | null {
+  const t = typeof v === 'string' ? v.trim().toUpperCase() : ''
+  return t in POH_CATEGORIES ? (t as AircraftCategory) : null
+}
+
 /** Why and how to pick the assistant for a POH: shown next to the prompt in the web and mobile apps. */
 export const POH_MODEL_ADVICE =
   'For the best result use a model with deep thinking (extended reasoning) that can read PDF files: POH tables, graphs and diagrams are scanned images, and a fast model reads them less reliably. Check every value against the POH.'
@@ -89,9 +114,10 @@ export function buildPohPrompt(): string {
     '',
     'Fields:',
     ...lines,
+    `- "category": what kind of aircraft this is, exactly one of ${Object.keys(POH_CATEGORIES).map(c => `"${c}"`).join(', ')}: ${Object.entries(POH_CATEGORIES).map(([c, d]) => `${c} = ${d}`).join('; ')}. Choose the most specific one that fits (a gyroplane is "GYRO", not "SEP"; a helicopter is "HELI").`,
     `- "fuelTypes": array of the fuel grades the engine is approved for, using only these codes: ${FUEL_CODES.map(c => `"${c}"`).join(', ')} (MOGAS = motor gasoline / unleaded car fuel; JETA1 also for diesel engines). Put the grade the document recommends first.`,
     '',
-    'Answer with ONLY one JSON object in this shape, nothing else:',
+    'Answer with ONLY one JSON object in this shape, nothing else, in a code block so the quotes stay plain straight quotes ("):',
     '{"name": "...", "cruiseIas": 105, "fuelTypes": ["AVGAS100LL"], "pages": {"name": 1, "cruiseIas": 34}}',
   ].join('\n')
 }
@@ -107,6 +133,8 @@ export interface PohReply {
   warnings: Partial<Record<PohField, string>>
   /** Approved fuel grades; empty when the reply named none we know. */
   fuelTypes: FuelCode[]
+  /** The aircraft category the reply named, or the one its ICAO type suggests; null when neither. */
+  category: AircraftCategory | null
 }
 
 /**
@@ -219,6 +247,21 @@ const RANGES: Partial<Record<PohField, [number, number]>> = {
   vneKts:           [50, 400],
 }
 
+/**
+ * Chat apps and terminals often turn the JSON's quotes into typographic ones
+ * (“name”: “…”) when the answer is displayed and copied. Those are not valid
+ * JSON, so a second attempt reads them as plain quotes. Undefined when that
+ * does not parse either.
+ */
+function parseWithStraightQuotes(json: string): unknown {
+  if (!/[\u201C\u201D\u201E\u201F\u2033]/.test(json)) return undefined
+  try {
+    return JSON.parse(json.replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"'))
+  } catch {
+    return undefined
+  }
+}
+
 /** Parse the assistant's answer. Throws PohReplyError when it has no usable JSON. */
 export function parsePohReply(text: string): PohReply {
   if (text.length > MAX_REPLY_CHARS) {
@@ -232,6 +275,9 @@ export function parsePohReply(text: string): PohReply {
   try {
     obj = JSON.parse(json)
   } catch {
+    obj = parseWithStraightQuotes(json)
+  }
+  if (obj === undefined) {
     throw new PohReplyError('The pasted answer is not complete or not valid JSON. Ask the assistant to answer with the JSON object only, then paste it again.')
   }
   if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
@@ -301,8 +347,9 @@ export function parsePohReply(text: string): PohReply {
 
   const fuelTypes = parseFuelGrades(rec['fuelTypes'])
 
-  if (Object.keys(values).length === 0 && fuelTypes.length === 0) {
+  const category = parseCategory(rec['category']) ?? categoryFromIcaoType(values.icaoType)
+  if (Object.keys(values).length === 0 && fuelTypes.length === 0 && !category) {
     throw new PohReplyError('The answer has none of the aircraft fields. Check that the assistant read the POH, then try again.')
   }
-  return { values, pages, missing, warnings, fuelTypes }
+  return { values, pages, missing, warnings, fuelTypes, category }
 }

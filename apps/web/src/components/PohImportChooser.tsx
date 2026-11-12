@@ -8,24 +8,22 @@ import { useState } from 'react'
 import { POH_MODEL_ADVICE } from '@open-vfr/shared/pohImport'
 import type { PohReply } from '@open-vfr/shared/pohImport'
 import { ASSISTANT_STEPS } from '@open-vfr/shared/assistantHelp'
-import { useAssistantMcpUrl } from '../hooks/useAssistantMcpUrl'
+import { useAccountFlags } from '../hooks/useAssistantMcpUrl'
 import PohAssistantImport from './PohAssistantImport'
 import css from './PohImportChooser.module.css'
 
 type Method = 'paste' | 'connect' | null
 
-export default function PohImportChooser({ signedIn, busy, onApply, onPickPdf, onClose }: {
-  signedIn: boolean
+export default function PohImportChooser({ busy, onApply, onPickPdf }: {
   /** The built-in extractor is running: its row is disabled. */
   busy: boolean
   onApply: (reply: PohReply) => void
   /** Opens the file picker of the built-in extractor. */
   onPickPdf: () => void
-  /** "Fill in by hand". */
-  onClose: () => void
 }) {
   const [method, setMethod] = useState<Method>(null)
-  const mcpUrl = useAssistantMcpUrl(signedIn)
+  const flags = useAccountFlags(true)
+  const mcpUrl = flags.assistantMcpUrl
   const [copied, setCopied] = useState(false)
   const toggle = (m: Exclude<Method, null>) => setMethod(cur => (cur === m ? null : m))
 
@@ -41,7 +39,7 @@ export default function PohImportChooser({ signedIn, busy, onApply, onPickPdf, o
         <span className={css.rowHead}><span className={css.rowName}>Use your AI assistant</span><span className={css.badge}>Recommended</span></span>
         <span className={css.rowText}>Copy a prompt, attach the POH in your assistant, paste its answer back here. Nothing is uploaded to OpenVFR.</span>
       </button>
-      {method === 'paste' && <PohAssistantImport onApply={onApply} />}
+      {method === 'paste' && <PohAssistantImport onApply={r => { setMethod(null); onApply(r) }} />}
 
       {mcpUrl && (
         <>
@@ -66,12 +64,14 @@ export default function PohImportChooser({ signedIn, busy, onApply, onPickPdf, o
         </>
       )}
 
-      <button type="button" className={`${css.row} ${css.rowLast}`} disabled={busy} onClick={onPickPdf}>
-        <span className={css.rowHead}><span className={css.rowName}>Built-in PDF extractor</span><span className={css.badgeMuted}>Last option</span></span>
-        <span className={css.rowText}>Upload the performance pages and the server proposes values. Quick, but less accurate, especially with diagrams and images. Needs an account.</span>
-      </button>
+      {/* Only where the server has the cloud model (the app needs a signed-in account anyway). */}
+      {flags.pohExtract && (
+        <button type="button" className={`${css.row} ${css.rowLast}`} disabled={busy} onClick={onPickPdf}>
+          <span className={css.rowHead}><span className={css.rowName}>Use built-in AI assistant</span><span className={css.badgeMuted}>Last option</span></span>
+          <span className={css.rowText}>Upload the performance pages and OpenVFR&apos;s own AI reads them. Quick, but less accurate, especially with diagrams and images. The PDF goes to a cloud service.</span>
+        </button>
+      )}
 
-      <button type="button" className={css.hand} onClick={onClose}>or fill in by hand</button>
     </div>
   )
 }

@@ -57,13 +57,3 @@
   border: 1px solid var(--border-default); background: transparent; color: var(--text-primary);
   border-radius: 6px; padding: 4px 9px; font: inherit; cursor: pointer;
 }
-.hand {
-  align-self: flex-start;
-  padding: 0;
-  font: inherit;
-  color: var(--text-muted);
-  background: none;
-  border: 0;
-  text-decoration: underline;
-  cursor: pointer;
-}

@@ -4,11 +4,17 @@ import { API_BASE_URL } from '../utils/env'
 export interface AccountFlags {
   /** False for the shared test account (the server refuses passkeys for it); true when unknown. */
   passkeyAllowed: boolean
+  /**
+   * The server has the built-in POH extractor (the cloud model is configured). True when an older server
+   * does not say (it has the endpoint; it answers 503 itself when the model is missing); false when it
+   * says no, or the flags could not be read.
+   */
+  pohExtract: boolean
   /** The assistant connector address, when the server offers it to this account (feature on, and the assistant UI open to this account). */
   assistantMcpUrl: string | null
 }
 
-const UNKNOWN: AccountFlags = { passkeyAllowed: true, assistantMcpUrl: null }
+const UNKNOWN: AccountFlags = { passkeyAllowed: true, pohExtract: false, assistantMcpUrl: null }
 let cached: Promise<AccountFlags> | null = null
 
 /** The account's capability flags (one request per page load, shared by every component that asks). */
@@ -18,9 +24,10 @@ export function useAccountFlags(signedIn: boolean): AccountFlags {
     if (!signedIn) { cached = null; setFlags(UNKNOWN); return }
     let live = true
     cached ??= fetch(`${API_BASE_URL}/api/auth/account-flags`, { credentials: 'include' })
-      .then(r => (r.ok ? r.json() as Promise<{ passkeyAllowed?: boolean; assistantMcpUrl?: string | null }> : null))
+      .then(r => (r.ok ? r.json() as Promise<{ passkeyAllowed?: boolean; pohExtract?: boolean; assistantMcpUrl?: string | null }> : null))
       .then((j): AccountFlags => ({
         passkeyAllowed: j?.passkeyAllowed !== false,
+        pohExtract: j ? j.pohExtract !== false : false,
         assistantMcpUrl: typeof j?.assistantMcpUrl === 'string' && j.assistantMcpUrl ? j.assistantMcpUrl : null,
       }))
       .catch(() => UNKNOWN)

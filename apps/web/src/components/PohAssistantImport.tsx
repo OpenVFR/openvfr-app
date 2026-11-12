@@ -41,40 +41,55 @@ export default function PohAssistantImport({ onApply }: { onApply: (reply: PohRe
 
   return (
     <div className={css.box} role="region" aria-label="Fill from POH with your AI assistant">
-      <p className={css.advice}>{POH_MODEL_ADVICE}</p>
-      <ol className={css.steps}>
-        <li>
-          <button type="button" className={css.btn} onClick={copyPrompt}>
-            {copied === 'ok' ? 'Prompt copied' : 'Copy prompt'}
+      <p className={css.tip}><strong>Tip:</strong> {POH_MODEL_ADVICE}</p>
+
+      <div className={css.step}>
+        <span className={css.num} aria-hidden="true">1</span>
+        <div className={css.stepBody}>
+          <p className={css.stepTitle}>Copy the prompt</p>
+          <button type="button" className={css.primary} onClick={copyPrompt}>
+            {copied === 'ok' ? 'Prompt copied ✓' : 'Copy prompt'}
           </button>
-        </li>
-        <li>Open your AI assistant (any chat assistant that reads PDFs), attach the POH PDF and paste the prompt.</li>
-        <li>Copy the assistant's whole answer and paste it here:</li>
-      </ol>
-      {copied === 'manual' && (
-        <textarea
-          ref={promptRef}
-          className={css.text}
-          readOnly
-          rows={4}
-          value={prompt}
-          aria-label="Prompt for your AI assistant"
-        />
-      )}
-      <textarea
-        className={css.text}
-        rows={4}
-        value={reply}
-        placeholder='{"name": "…", "cruiseIas": …}'
-        aria-label="Answer from your AI assistant"
-        onChange={e => { setReply(e.target.value); setError('') }}
-      />
-      {error && <p className={css.error}>{error}</p>}
-      <div className={css.actions}>
-        <button type="button" className={css.btnPrimary} disabled={!reply.trim()} onClick={apply}>
-          Fill in the form
-        </button>
+          {copied === 'manual' && (
+            <textarea
+              ref={promptRef}
+              className={css.text}
+              readOnly
+              rows={4}
+              value={prompt}
+              aria-label="Prompt for your AI assistant"
+            />
+          )}
+        </div>
       </div>
+
+      <div className={css.step}>
+        <span className={css.num} aria-hidden="true">2</span>
+        <div className={css.stepBody}>
+          <p className={css.stepTitle}>Ask your assistant</p>
+          <p className={css.stepText}>Open the AI assistant you already use (any that reads PDF files), attach the POH and paste the prompt.</p>
+        </div>
+      </div>
+
+      <div className={css.step}>
+        <span className={css.num} aria-hidden="true">3</span>
+        <div className={css.stepBody}>
+          <p className={css.stepTitle}>Paste its answer</p>
+          <textarea
+            className={css.text}
+            rows={4}
+            value={reply}
+            placeholder="Paste the whole answer here"
+            aria-label="Answer from your AI assistant"
+            onChange={e => { setReply(e.target.value); setError('') }}
+          />
+          {error && <p className={css.error}>{error}</p>}
+          <button type="button" className={css.primary} disabled={!reply.trim()} onClick={apply}>
+            Apply to the form
+          </button>
+        </div>
+      </div>
+
       <p className={css.note}>
         The PDF stays between you and your assistant. Check every value against the POH before you save.
       </p>

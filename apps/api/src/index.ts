@@ -26,6 +26,7 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { streamSSE } from 'hono/streaming'
+import { POH_CATEGORIES } from '@open-vfr/shared/pohImport'
 import OpenAI, { toFile } from 'openai'
 import { writeFileSync, createReadStream, unlinkSync } from 'node:fs'
 import { trafficConfig, registerClient, startTrafficPoller, getFreshBatch, touchActivity } from './traffic'
@@ -85,6 +86,7 @@ Return ONLY a raw JSON object with any of these keys you found (omit keys not fo
 
 - "name": aircraft model name (string, e.g. "Cessna 172S Skyhawk")
 - "icaoType": ICAO type designator (string, e.g. "C172", "GYRO", "GLID")
+- "category": what kind of aircraft this is, exactly one of ${Object.keys(POH_CATEGORIES).map(c => `"${c}"`).join(', ')}: ${Object.entries(POH_CATEGORIES).map(([c, d]) => `${c} = ${d}`).join('; ')}. Choose the most specific one that fits (a gyroplane is "GYRO", not "SEP"; a helicopter is "HELI").
 - "cruiseAltFt": typical cruise / operating altitude in feet — look for VH, cruise altitude, normal operating altitude. Convert from metres (×3.281) if needed.
 - "cruiseIas": typical cruise IAS in knots — look for VH, cruise speed, normal cruise, recommended cruise. Convert from km/h (×0.5400) or mph (×0.8690).
 - "fuelBurnLhr": cruise fuel consumption in L/hr — look for fuel flow, consumption at cruise power. Convert from US gal/hr (×3.785) or UK gal/hr (×4.546).
@@ -251,6 +253,8 @@ app.get('/api/auth/account-flags', async (c) => {
   return c.json({
     passkeyAllowed: !isReviewAccountEmail(session.user.email),
     // Assistant connection: the MCP endpoint URL to paste into an assistant, when the server offers it.
+    // The built-in POH extractor (a cloud model the server is configured with); the endpoint itself needs this same session.
+    pohExtract: openai !== null,
     assistantMcpUrl: ASSISTANT_MCP && (ASSISTANT_UI_ALL || (session.user as { role?: string | null }).role === 'admin') ? MCP_RESOURCE : null,
   })
 })

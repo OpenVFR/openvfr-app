@@ -89,3 +89,35 @@ describe('parsePohReply', () => {
     expect(() => parsePohReply('x'.repeat(60_000))).toThrow(PohReplyError)
   })
 })
+
+describe('answers copied with typographic quotes', () => {
+  it('reads curly double quotes as plain quotes (chat apps and terminals add them)', () => {
+    const r = parsePohReply('{“name”: “AutoGyro MTOsport”, “icaoType”: “GYRO”, “cruiseIas”: 65, “fuelTypes”: [“MOGAS”, “AVGAS100LL”], “pages”: {“name”: 2, “cruiseIas”: 70}}')
+    expect(r.values.name).toBe('AutoGyro MTOsport')
+    expect(r.values.cruiseIas).toBe('65')
+    expect(r.fuelTypes).toEqual(['MOGAS', 'AVGAS100LL'])
+    expect(r.pages.cruiseIas).toBe('70')
+  })
+  it('still refuses text that is not JSON even with curly quotes', () => {
+    expect(() => parsePohReply('{“name”: “x”, ')).toThrow(PohReplyError)
+    expect(() => parsePohReply('{“name” “x”}')).toThrow(/not valid JSON/)
+  })
+})
+
+describe('aircraft category in the import', () => {
+  it('asks for it in the prompt, with the most-specific rule', () => {
+    const p = buildPohPrompt()
+    expect(p).toContain('"category"')
+    expect(p).toMatch(/GYRO = gyroplane/)
+    expect(p).toMatch(/gyroplane is "GYRO", not "SEP"/)
+  })
+  it('takes the category the answer names, ignoring case, and refuses unknown ones', () => {
+    expect(parsePohReply('{"name":"X","category":"gyro"}').category).toBe('GYRO')
+    expect(parsePohReply('{"name":"X","category":"AEROPLANE"}').category).toBeNull()
+  })
+  it('falls back to the ICAO type when no category is given', () => {
+    expect(parsePohReply('{"name":"MTO","icaoType":"GYRO"}').category).toBe('GYRO')
+    expect(parsePohReply('{"name":"Std Cirrus","icaoType":"GLID"}').category).toBe('GLIDER')
+    expect(parsePohReply('{"name":"Skyhawk","icaoType":"C172"}').category).toBeNull()
+  })
+})
