@@ -210,9 +210,10 @@ export function buildFpl(input: {
   ].join('\n')
 
   // Endurance: usable fuel at the cruise burn.
-  const endurance = aircraft.fuelBurnLhr > 0 && aircraft.maxFuelL > 0 ? hhmm((aircraft.maxFuelL / aircraft.fuelBurnLhr) * 60) : ''
+  const usableL = aircraft.maxFuelL - Math.max(0, aircraft.unusableFuelL ?? 0)
+  const endurance = aircraft.fuelBurnLhr > 0 && usableL > 0 ? hhmm((usableL / aircraft.fuelBurnLhr) * 60) : ''
   if (!endurance) problems.push('endurance (needs usable fuel and fuel burn in the profile)')
-  else if (plan.enrouteMins > 0 && (aircraft.maxFuelL / aircraft.fuelBurnLhr) * 60 < eetMins) problems.push('the endurance is less than the flight time')
+  else if (plan.enrouteMins > 0 && (usableL / aircraft.fuelBurnLhr) * 60 < eetMins) problems.push('the endurance is less than the flight time')
   const d = flight.dinghies
   const supplementary = [
     `19 Endurance: ${endurance ? `E/${endurance}` : '-'}`,
