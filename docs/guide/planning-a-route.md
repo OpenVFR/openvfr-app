@@ -189,8 +189,10 @@ text:
   degrees and minutes (aerodromes by their code), the flight time (rounded up)
   with the leg winds, endurance from usable fuel and fuel burn, colour and
   markings.
-- **Level in the plan:** **VFR** (the default) writes the word VFR; **Planned
-  levels** writes the first leg's level and, after each route point where the
+- **Cruising level:** **VFR (word only)** (the default) writes the word VFR
+  (allowed for uncontrolled VFR flights; a flight that needs a level in
+  controlled airspace should use the other choice); **Altitudes from the
+  route** writes the first leg's level and, after each route point where the
   level or speed changes, the new speed and level (for example
   `/N0107A045`). Levels are written as altitudes (A, hundreds of feet on
   QNH) as you planned them. OpenVFR does not convert them to flight levels:

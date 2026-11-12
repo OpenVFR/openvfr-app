@@ -134,10 +134,10 @@ export default function FlightPlanDialog({ waypoints, legOverrides, aircraft: ai
               {(Object.keys(FLIGHT_TYPE_LABELS) as FlightType[]).map(t => <option key={t} value={t}>{t}: {FLIGHT_TYPE_LABELS[t]}</option>)}
             </select>
           </label>
-          <label className={css.lbl}>Level in the plan
+          <label className={css.lbl}>Cruising level
             <select className={css.inp} value={flight.levelMode} onChange={e => set('levelMode', e.target.value as LevelMode)}>
-              <option value="VFR">VFR (the word, no level)</option>
-              <option value="planned">Planned levels (with the changes)</option>
+              <option value="VFR">VFR (word only)</option>
+              <option value="planned">Altitudes from the route</option>
             </select>
           </label>
           <label className={css.lbl}>Off-block time (UTC)

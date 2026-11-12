@@ -128,9 +128,9 @@ export function FlightPlanSheet({ visible, onClose, waypoints, legOverrides, air
         ))}
       </View>
 
-      <Text style={styles.label}>Level in the plan</Text>
+      <Text style={styles.label}>Cruising level</Text>
       <View style={styles.row}>
-        {([['VFR', 'VFR (no level)'], ['planned', 'Planned levels']] as [LevelMode, string][]).map(([v, l]) => (
+        {([['VFR', 'VFR (word only)'], ['planned', 'Altitudes from the route']] as [LevelMode, string][]).map(([v, l]) => (
           <TouchableOpacity key={v} style={[styles.chip, flight.levelMode === v && styles.chipOn]} onPress={() => set('levelMode', v)}>
             <Text style={[styles.chipTxt, flight.levelMode === v && styles.chipTxtOn]}>{l}</Text>
           </TouchableOpacity>
