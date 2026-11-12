@@ -384,7 +384,7 @@ export default function AerodromePopup({
   const [wx, setWx] = useState<WxResolved | null>(null)
   const [wxLoading, setWxLoading] = useState(true)
   const [wxError, setWxError] = useState<string | null>(null)
-  const [tafExpanded, setTafExpanded] = useState(false)
+  const [tafExpanded, setTafExpanded] = useState(true)
   // Name of the fallback station (wx.sourceIcao), when different from p.icao.
   const [wxSourceName, setWxSourceName] = useState<string | null>(null)
   // Open-Meteo ambient reading at this aerodrome's own coordinates --
@@ -430,7 +430,7 @@ export default function AerodromePopup({
     setWx(null); setWxLoading(true); setWxError(null); setWxSourceName(null)
     setAmbientWx(null); setWxSource('metar')
     setNotams([]); setNotamLoading(true); setNotamError(null)
-    setTafExpanded(false); setExpandedNotams(new Set())
+    setTafExpanded(true); setExpandedNotams(new Set())
 
     // Weather station (Open-Meteo) tier -- always fetched, independent of
     // sign-in/METAR search below, so it's ready the instant the user

@@ -85,7 +85,7 @@ export default function AerodromeWxSection({ icao, lat, lng, elevationFt, runway
   const wxStyles = useThemedStyles(makeWxStyles)
 
   const [selectedRunwayDesig, setSelectedRunwayDesig] = useState<string | null>(null)
-  const [tafExpanded, setTafExpanded] = useState(false)
+  const [tafExpanded, setTafExpanded] = useState(true)
   const [oatStr, setOatStr] = useState('')
   const [qnhStr, setQnhStr] = useState('')
 
