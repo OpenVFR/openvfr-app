@@ -238,6 +238,7 @@ function SideDrawer({
   const [takeoffTime, setTakeoffTime] = useTakeoffTime()
   const [alternate] = useAlternate()
   const [fplOpen, setFplOpen] = useState(false)
+  const fplOpener = useRef<HTMLElement | null>(null)
   const [globalWind, setGlobalWind] = useGlobalWind()
   const routeWinds = useRouteWinds(waypoints, legOverrides, selectedAircraftProfile?.cruiseAltFt || undefined, selectedAircraftProfile?.cruiseIas || undefined, takeoffTime, globalWind)
   useEffect(() => {
@@ -356,7 +357,7 @@ function SideDrawer({
                 >
                   {hasRoute ? (
                     <RoutePlan
-                      onExportIcao={() => setFplOpen(true)}
+                      onExportIcao={(opener) => { fplOpener.current = opener; setFplOpen(true) }}
                       exportIcaoNeedsAircraft={!selectedAircraftProfile}
                       selectedLeg={selectedLeg}
                       onSelectLeg={onSelectLeg}
@@ -504,6 +505,7 @@ function SideDrawer({
               takeoffTime={takeoffTime}
               alternateIcao={alternate?.icao}
               accountName={auth.user?.name}
+              returnFocusTo={fplOpener.current}
               onClose={() => setFplOpen(false)}
             />
           )}

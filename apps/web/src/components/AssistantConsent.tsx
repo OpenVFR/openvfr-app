@@ -102,7 +102,7 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
   return (
     <div className={styles.page}>
       <div className={styles.card} role="dialog" aria-labelledby="consent-title">
-        {client?.icon && <img className={styles.icon} src={client.icon} alt="" width={40} height={40} referrerPolicy="no-referrer" />}
+        {client?.icon && identity.verifiedDomain && <img className={styles.icon} src={client.icon} alt="" width={40} height={40} referrerPolicy="no-referrer" />}
         <h1 id="consent-title" className={styles.title}>Connect {name} to OpenVFR?</h1>
         {identity.verifiedDomain ? (
           <p className={styles.verified}>Verified: published by <span className={styles.uri}>{identity.verifiedDomain}</span></p>
@@ -140,7 +140,7 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
               {wantsRoutesWrite && (
                 <li>
                   <label className={styles.check}>
-                    <input type="checkbox" checked={allowRoutesWrite} onChange={e => setAllowRoutesWrite(e.target.checked)} disabled={busy || !allowRoutes} />
+                    <input type="checkbox" checked={allowRoutes && allowRoutesWrite} onChange={e => setAllowRoutesWrite(e.target.checked)} disabled={busy || !allowRoutes} />
                     create and change your saved routes and places
                   </label>
                 </li>
@@ -148,7 +148,7 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
               {wantsWrite && (
                 <li>
                   <label className={styles.check}>
-                    <input type="checkbox" checked={allowWrite} onChange={e => setAllowWrite(e.target.checked)} disabled={busy || !allowRoutes} />
+                    <input type="checkbox" checked={allowRoutes && allowWrite} onChange={e => setAllowWrite(e.target.checked)} disabled={busy || !allowRoutes} />
                     add and change your aircraft profiles
                   </label>
                 </li>

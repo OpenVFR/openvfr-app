@@ -64,6 +64,30 @@ export interface FlightAnswers {
   pilotPhone: string
 }
 
+/** Option tables for the per-flight questions, shared by the web dialog and the mobile sheet. */
+export const FPL_SURVIVAL: readonly (readonly [string, string])[] = [['P', 'Polar'], ['D', 'Desert'], ['M', 'Maritime'], ['J', 'Jungle']]
+export const FPL_JACKETS: readonly (readonly [string, string])[] = [['L', 'Light'], ['F', 'Fluorescein'], ['U', 'UHF radio'], ['V', 'VHF radio']]
+export const FPL_RADIOS: readonly (readonly [string, string])[] = [['U', 'UHF'], ['V', 'VHF 121.5'], ['E', 'ELT']]
+
+/** What stays the same from flight to flight and is remembered on the device. */
+export const FPL_DEFAULT_KEYS = ['pilotName', 'pilotPhone', 'emergencyRadio', 'survival', 'jackets', 'dinghies'] as const
+export type FplDefaults = Pick<FlightAnswers, (typeof FPL_DEFAULT_KEYS)[number]>
+
+/** Add the value to the list, or take it out when it is there. */
+export function toggleItem<T extends string>(list: readonly T[], v: T): T[] {
+  return list.includes(v) ? list.filter(x => x !== v) : [...list, v]
+}
+
+/** Off-block time to start from: the next five-minute mark at least half an hour ahead. */
+export function defaultEobt(nowMs: number = Date.now()): Date {
+  return new Date(Math.ceil((nowMs + 30 * 60_000) / 300_000) * 300_000)
+}
+
+/** The aircraft fields the export form can change, to save back to the profile. */
+export function fplAircraftPatch(a: Pick<AircraftProfileDocType, 'registration' | 'icaoType' | 'colour' | 'transponder' | 'equipment' | 'hasRadio'>) {
+  return { registration: a.registration, icaoType: a.icaoType, colour: a.colour, transponder: a.transponder, equipment: a.equipment, hasRadio: a.hasRadio }
+}
+
 export const EMPTY_ANSWERS: Omit<FlightAnswers, 'eobt'> = {
   rules: 'V', levelMode: 'VFR', type: 'G', alternate: undefined, personsOnBoard: 1, emergencyRadio: [], survival: [], jackets: [],
   dinghies: { count: 0, capacity: 0, covered: false, colour: '' }, remarks: '', pilotName: '', pilotPhone: '',
@@ -83,13 +107,14 @@ export function fplCoordinate(lat: number, lng: number): string {
   return `${dm(lat, 2)}${lat >= 0 ? 'N' : 'S'}${dm(lng, 3)}${lng >= 0 ? 'E' : 'W'}`
 }
 
-/** Aerodromes by their ICAO code, everything else (navaids, reporting points, places) as coordinates. */
-function fplPoint(w: RouteWaypoint): string {
-  const name = (w.name ?? '').trim().toUpperCase()
-  return ICAO_AD.test(name) ? name : fplCoordinate(w.lat, w.lng)
+/** ICAO codes of the aerodromes in the aerodrome data, from the features of an aerodrome GeoJSON file. */
+export function aerodromeCodes(fc: { features?: readonly { properties?: Record<string, unknown> | null }[] } | null | undefined): Set<string> | undefined {
+  if (!fc?.features) return undefined
+  return new Set(fc.features.map(f => String(f.properties?.['icao'] ?? '').toUpperCase()).filter(c => ICAO_AD.test(c)))
 }
 
-const hhmm = (mins: number) => `${pad(Math.floor(mins / 60) % 100)}${pad(Math.round(mins % 60))}`
+/** Four digits hours and minutes from a number of minutes (rounded once, so 119.7 is 0200, never 0160). */
+const hhmm = (mins: number) => { const m = Math.round(mins); return `${pad(Math.floor(m / 60) % 100)}${pad(m % 60)}` }
 
 /**
  * Item 15 level for a planned altitude: A045 = 4,500 ft, in hundreds of feet. The app plans levels in
@@ -105,10 +130,11 @@ export const FLIGHT_LEVEL_CHECK_FT = 5000
 
 /**
  * Text the aeronautical network accepts: upper case letters and digits, space and the
- * punctuation / ( ) - + . , ' : = ?, accents removed, anything else a space.
+ * punctuation / - + . , ' : = ?, accents removed, anything else a space. Brackets are
+ * left out on purpose: a bracket inside a field would end the message early.
  */
 export function aftnText(v: string): string {
-  return v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9 /()+.,'=?:-]/g, ' ').replace(/\s+/g, ' ').trim()
+  return v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9 /+.,'=?:-]/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 export interface FplMessage {
@@ -129,6 +155,13 @@ export function buildFpl(input: {
   aircraft: AircraftProfileDocType
   legWinds?: ({ dirDeg: number; speedKts: number } | null)[]
   flight: FlightAnswers
+  /**
+   * ICAO codes of the known aerodromes. A route point is written as an aerodrome code only when it is in
+   * this set; any other point (a place, a reporting point, an aerodrome without a code) goes in as
+   * coordinates, or ZZZZ with DEP/ DEST/. Without it, any four-letter name is taken for an aerodrome
+   * and the check list says so.
+   */
+  aerodromes?: ReadonlySet<string>
   /** The time now (default: the clock), for the departure time window. */
   nowMs?: number
 }): FplMessage {
@@ -140,7 +173,9 @@ export function buildFpl(input: {
   }
   const first = waypoints[0]!, last = waypoints[waypoints.length - 1]!
   const depName = (first.name ?? '').trim().toUpperCase(), destName = (last.name ?? '').trim().toUpperCase()
-  const depOk = ICAO_AD.test(depName), destOk = ICAO_AD.test(destName)
+  const isAd = (n: string) => ICAO_AD.test(n) && (input.aerodromes ? input.aerodromes.has(n) : true)
+  const depOk = isAd(depName), destOk = isAd(destName)
+  if (!input.aerodromes && (depOk || destOk)) problems.push('the aerodrome data is not loaded, so the aerodrome codes in the plan were not verified: check them')
 
   // Cruising speed (true airspeed, knots) and level of each leg; the first leg's go in the speed/level field.
   const nLegs = waypoints.length - 1
@@ -157,7 +192,7 @@ export function buildFpl(input: {
   const mid = waypoints.slice(1, -1).map((w, k) => {
     const leg = k + 1
     const changed = legSpeed(leg) !== legSpeed(leg - 1) || legLevel(leg) !== legLevel(leg - 1)
-    return `${fplPoint(w)}${changed ? `/${legSpeed(leg)}${legLevel(leg)}` : ''}`
+    return `${isAd((w.name ?? '').trim().toUpperCase()) ? (w.name ?? '').trim().toUpperCase() : fplCoordinate(w.lat, w.lng)}${changed ? `/${legSpeed(leg)}${legLevel(leg)}` : ''}`
   })
   const speed = legSpeed(0), level = legLevel(0)
   // DCT joins the points, except between two points given as coordinates (ICAO Annex 2, Appendix 2, item 15 c).
@@ -191,7 +226,7 @@ export function buildFpl(input: {
   const ITEM18_ORDER = ['STS', 'PBN', 'NAV', 'COM', 'DAT', 'SUR', 'DEP', 'DEST', 'DOF', 'REG', 'EET', 'SEL', 'TYP', 'CODE', 'DLE', 'OPR', 'ORGN', 'PER', 'ALTN', 'RALT', 'TALT', 'RIF', 'RVR', 'RFP', 'RMK']
   const rank = (s: string) => { const i = ITEM18_ORDER.indexOf(s.split('/')[0]!); return i < 0 ? 99 : i }
   if (flight.type === 'X' && !flight.remarks.trim()) problems.push('type of flight X needs an explanation in remarks')
-  if (aftnText(flight.remarks)) other.push(`RMK/${aftnText(flight.remarks).replace(/[()]/g, ' ')}`)
+  if (aftnText(flight.remarks)) other.push(`RMK/${aftnText(flight.remarks)}`)
   other.sort((a, b) => rank(a) - rank(b))
 
   if (!ac.identification) problems.push('aircraft registration')
@@ -215,38 +250,43 @@ export function buildFpl(input: {
     `-${other.join(' ')})`,
   ].join('\n')
 
-  // Endurance: usable fuel at the cruise burn.
-  const usableL = aircraft.maxFuelL - Math.max(0, aircraft.unusableFuelL ?? 0)
-  const endurance = aircraft.fuelBurnLhr > 0 && usableL > 0 ? hhmm((usableL / aircraft.fuelBurnLhr) * 60) : ''
+  // Endurance: the fuel in the profile (maxFuelL is the usable fuel) at the cruise burn, rounded down so it is never overstated.
+  const enduranceMins = aircraft.fuelBurnLhr > 0 && aircraft.maxFuelL > 0 ? (aircraft.maxFuelL / aircraft.fuelBurnLhr) * 60 : 0
+  const endurance = enduranceMins > 0 ? hhmm(Math.floor(enduranceMins)) : ''
   if (!endurance) problems.push('endurance (needs usable fuel and fuel burn in the profile)')
-  else if (plan.enrouteMins > 0 && (usableL / aircraft.fuelBurnLhr) * 60 < eetMins) problems.push('the endurance is less than the flight time')
+  else if (plan.enrouteMins > 0 && enduranceMins < eetMins) problems.push('the endurance is less than the flight time')
+
+  // Item 19, built once; the labelled lines and the inline text both come from these fields.
   const d = flight.dinghies
-  const persons = flight.personsUnknown ? 'TBN' : pad(flight.personsOnBoard, 3)
+  const jacketLetters = FPL_JACKETS.map(([c]) => c).filter(c => (flight.jackets as readonly string[]).includes(c)).join('')
   const remarks19 = [flight.jacketsPlain && flight.jackets.length === 0 ? 'JACKETS' : '', aftnText(flight.remarks)].filter(Boolean).join(' ')
+  const phone19 = aftnText(flight.pilotPhone)
+  const f19 = {
+    E: endurance ? `E/${endurance}` : '',
+    P: `P/${flight.personsUnknown ? 'TBN' : pad(flight.personsOnBoard, 3)}`,
+    R: flight.emergencyRadio.length ? `R/${flight.emergencyRadio.join('')}` : '',
+    S: flight.survival.length ? `S/${flight.survival.join('')}` : '',
+    J: flight.jackets.length ? `J/${jacketLetters}` : '',
+    D: d.count > 0 ? ['D/' + pad(d.count), pad(d.capacity, 3), d.covered ? 'C' : '', aftnText(d.colour)].filter(Boolean).join(' ') : '',
+    A: aftnText(ac.colour) ? `A/${aftnText(ac.colour)}` : '',
+    N: remarks19 ? `N/${remarks19}` : '',
+    C: `C/${aftnText(flight.pilotName)}`,
+  }
   const supplementary = [
-    `19 Endurance: ${endurance ? `E/${endurance}` : '-'}`,
-    `Persons on board: P/${persons}`,
-    `Emergency radio: ${flight.emergencyRadio.length ? 'R/' + flight.emergencyRadio.join('') : 'none'}`,
-    `Survival equipment: ${flight.survival.length ? 'S/' + flight.survival.join('') : 'none'}`,
-    `Life jackets: ${flight.jackets.length ? 'J/' + ['L', 'F', 'U', 'V'].filter(j => (flight.jackets as readonly string[]).includes(j)).join('') : 'none'}`,
-    `Life rafts: ${d.count > 0 ? `D/${pad(d.count)} ${pad(d.capacity, 3)} ${d.covered ? 'C' : ''} ${aftnText(d.colour)}`.replace(/\s+/g, ' ').trim() : 'none'}`,
-    `Aircraft colour and markings: ${aftnText(ac.colour) ? `A/${aftnText(ac.colour)}` : '-'}`,
-    `Remarks: ${remarks19 ? `N/${remarks19}` : '-'}`,
-    `Pilot in command: C/${aftnText(flight.pilotName) || '-'}${flight.pilotPhone.trim() ? `  Tel ${flight.pilotPhone.trim()}` : ''}`,
+    `19 Endurance: ${f19.E || '-'}`,
+    `Persons on board: ${f19.P}`,
+    `Emergency radio: ${f19.R || 'none'}`,
+    `Survival equipment: ${f19.S || 'none'}`,
+    `Life jackets: ${f19.J || 'none'}`,
+    `Life rafts: ${f19.D || 'none'}`,
+    `Aircraft colour and markings: ${f19.A || '-'}`,
+    `Remarks: ${f19.N || '-'}`,
+    `Pilot in command: ${f19.C === 'C/' ? 'C/-' : f19.C}${phone19 ? `  Tel ${phone19}` : ''}`,
   ]
 
-  // For import forms that take a pasted message with item 19 inside it: the same message, item 19 before the closing bracket.
-  const item19 = [
-    [endurance ? `E/${endurance}` : '', `P/${persons}`,
-      flight.emergencyRadio.length ? `R/${flight.emergencyRadio.join('')}` : '',
-      flight.survival.length ? `S/${flight.survival.join('')}` : '',
-      flight.jackets.length ? `J/${['L', 'F', 'U', 'V'].filter(j => (flight.jackets as readonly string[]).includes(j)).join('')}` : '',
-      d.count > 0 ? `D/${pad(d.count)} ${pad(d.capacity, 3)}${d.covered ? ' C' : ''} ${aftnText(d.colour)}` : '',
-    ].filter(Boolean).join(' '),
-    aftnText(ac.colour) ? `A/${aftnText(ac.colour)}` : '',
-    remarks19 ? `N/${remarks19}` : '',
-    `C/${aftnText(flight.pilotName)}${flight.pilotPhone.trim() ? ` ${flight.pilotPhone.trim()}` : ''}`,
-  ].filter(Boolean)
-  const importText = `${text.slice(0, -1)}\n-${item19[0]}\n${item19.slice(1).join('\n')})`
+  // For import forms that take a pasted message with item 19 inside it: item 19 before the closing bracket.
+  const line1 = [f19.E, f19.P, f19.R, f19.S, f19.J, f19.D].filter(Boolean).join(' ')
+  const rest = [f19.A, f19.N, `${f19.C}${phone19 ? ` ${phone19}` : ''}`].filter(Boolean)
+  const importText = `${text.slice(0, -1)}\n-${line1}\n${rest.join('\n')})`
   return { text, importText, supplementary, problems, aircraft: ac }
 }

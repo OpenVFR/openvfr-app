@@ -58,7 +58,9 @@ export function registerFlightPlanTool(c: Ctx): void {
       dinghies: { count: a.dinghies?.count ?? 0, capacity: a.dinghies?.capacity ?? 0, covered: a.dinghies?.covered ?? false, colour: a.dinghies?.colour ?? '' },
       remarks: a.remarks ?? '',
     }
-    const fpl = buildFpl({ waypoints: route.waypoints, legOverrides: route.legOverrides, aircraft: profile, flight })
+    const known = await c.pointIndex([]).catch(() => null)
+    const aerodromes = known && 'idx' in known ? new Set(known.idx.aerodromes.keys()) : undefined
+    const fpl = buildFpl({ waypoints: route.waypoints, legOverrides: route.legOverrides, aircraft: profile, flight, ...(aerodromes ? { aerodromes } : {}) })
     if (!fpl.text) return fail(`The route has no legs to plan. ${fpl.problems.join('; ')}`)
     const lines = [
       `Draft ICAO flight plan for the saved route with ${profile.registration || profile.name}${dep === undefined ? ' (off-block time assumed about 30 minutes from now: ask the pilot)' : ''}:`,

@@ -9,6 +9,7 @@ const aircraft = {
   equipment: ['V', 'G'], transponder: 'C', colour: 'White with blue stripes',
 } as AircraftProfileDocType
 
+const AD = new Set(['ESSB', 'ESSP', 'ESSA'])
 const NOW = Date.UTC(2026, 10, 12, 9, 0)
 const flight: FlightAnswers = { ...EMPTY_ANSWERS, eobt: new Date(Date.UTC(2026, 10, 12, 10, 30)), personsOnBoard: 2, pilotName: 'Test Pilot', pilotPhone: '+46701234567', alternate: 'ESSA' }
 const route = [{ lat: 59.354, lng: 17.942, name: 'ESSB' }, { lat: 59.65, lng: 17.93, name: 'ESSB/LAVER' }, { lat: 58.6, lng: 16.9, name: 'ESSP' }]
@@ -23,7 +24,7 @@ describe('fplCoordinate', () => {
 
 describe('buildFpl', () => {
   it('builds the message for a complete flight', () => {
-    const f = buildFpl({ nowMs: NOW, waypoints: route, legOverrides: [{}, {}], aircraft, flight })
+    const f = buildFpl({ nowMs: NOW, waypoints: route, legOverrides: [{}, {}], aircraft, flight, aerodromes: AD })
     const lines = f.text.split('\n')
     expect(lines[0]).toBe('(FPL-SEABC-VG')
     expect(lines[1]).toBe('-C172/L-GV/C')
@@ -37,7 +38,7 @@ describe('buildFpl', () => {
   it('gives item 19 lines: endurance from fuel and burn, persons, colour, pilot', () => {
     const f = buildFpl({ nowMs: NOW, waypoints: route, legOverrides: [{}, {}], aircraft, flight: { ...flight, emergencyRadio: ['V', 'E'], survival: ['M'], jackets: ['L', 'F'], dinghies: { count: 1, capacity: 4, covered: true, colour: 'Yellow' } } })
     const s = f.supplementary.join('\n')
-    expect(s).toContain('E/0357')       // 150 / 38 = 3.95 h = 3 h 57 min
+    expect(s).toContain('E/0356')       // 150 / 38 = 3.947 h = 236.8 min, rounded down (never overstated)
     expect(s).toContain('P/002')
     expect(s).toContain('R/VE')
     expect(s).toContain('S/M')
@@ -158,5 +159,37 @@ describe('persons not known and plain life jackets', () => {
     expect(s).toContain('N/JACKETS')
     expect(f.importText).toMatch(/P\/TBN/)
     expect(f.problems.join(' ')).not.toMatch(/persons on board/)
+  })
+})
+
+describe('endurance and brackets', () => {
+  it('uses the profile fuel as usable fuel (unusable fuel is not taken off again) and never writes minute 60', () => {
+    // 29.95 L at 15 L/h = 119.8 min: 0159 (rounded down), not 0160 and not 0200.
+    const f = buildFpl({ nowMs: NOW, waypoints: route, legOverrides: [{}, {}], aircraft: { ...aircraft, maxFuelL: 29.95, fuelBurnLhr: 15, unusableFuelL: 2 }, flight })
+    expect(f.supplementary[0]).toBe('19 Endurance: E/0159')
+    const g = buildFpl({ nowMs: NOW, waypoints: route, legOverrides: [{}, {}], aircraft: { ...aircraft, maxFuelL: 30, fuelBurnLhr: 15, unusableFuelL: 2 }, flight })
+    expect(g.supplementary[0]).toBe('19 Endurance: E/0200')
+  })
+  it('keeps brackets out of every item 19 field, so the message cannot end early', () => {
+    const f = buildFpl({ nowMs: NOW, waypoints: route, legOverrides: [{}, {}], aircraft: { ...aircraft, colour: 'White (blue)' }, flight: { ...flight, remarks: 'a (b) c', pilotName: 'Svensson (Sven)', pilotPhone: '+46 (70) 123' } })
+    expect(f.importText.match(/\)/g)!.length).toBe(1)
+    expect(f.importText).not.toMatch(/\(.*\(/s)
+  })
+})
+
+describe('only known aerodromes are written as codes', () => {
+  const wp = [{ lat: 59.354, lng: 17.942, name: 'ESSB' }, { lat: 58.6, lng: 16.9, name: 'HOME' }]
+  it('writes a four-letter place that is not an aerodrome as ZZZZ with DEST/ coordinates', () => {
+    const f = buildFpl({ nowMs: NOW, waypoints: wp, legOverrides: [{}], aircraft, flight, aerodromes: AD })
+    const l = f.text.split('\n')
+    expect(l[2]).toBe('-ESSB1030')
+    expect(l[4]).toMatch(/^-ZZZZ\d{4}/)
+    expect(l[5]).toContain('DEST/5836N01654E')
+    expect(f.problems.join(' ')).not.toMatch(/not verified/)
+  })
+  it('without the aerodrome data it keeps the name-shape guess and says it could not verify', () => {
+    const f = buildFpl({ nowMs: NOW, waypoints: wp, legOverrides: [{}], aircraft, flight })
+    expect(f.text.split('\n')[4]).toMatch(/^-HOME\d{4}/)
+    expect(f.problems.join(' ')).toMatch(/not verified/)
   })
 })

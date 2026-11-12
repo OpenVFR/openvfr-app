@@ -168,7 +168,7 @@ interface Props {
   units?:       Units
   onUndo:       () => void
   /** Opens the ICAO flight plan export; given only when a route and an aircraft are selected. */
-  onExportIcao?: () => void
+  onExportIcao?: (opener: HTMLElement | null) => void
   /** No aircraft selected: the export entry is shown but disabled, with the reason. */
   exportIcaoNeedsAircraft?: boolean
   onRedo?:      () => void
@@ -250,6 +250,7 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [overIdx, setOverIdx] = useState<number | null>(null)
   const menuRef      = useRef<HTMLDivElement>(null)
+  const menuBtnRef   = useRef<HTMLButtonElement>(null)
   const kbRef        = useRef<HTMLInputElement>(null)
   const gpxInputRef  = useRef<HTMLInputElement>(null)
   const [alternate, setAlternate] = useAlternate()
@@ -431,7 +432,7 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
           <button className={css.btn} onClick={onUndo} disabled={!canUndo} title="Undo last route change (Ctrl+Z)">↶</button>
           {onRedo && <button className={css.btn} onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">↷</button>}
           <div className={css.menuWrap} ref={menuRef}>
-            <button className={css.btn} title="More actions" onClick={() => setShowMenu(s => !s)}>⋯</button>
+            <button ref={menuBtnRef} className={css.btn} title="More actions" aria-haspopup="menu" aria-expanded={showMenu} onClick={() => setShowMenu(s => !s)}>⋯</button>
             {showMenu && (
               <div className={css.menu}>
                 {onFindDestination && (
@@ -441,7 +442,7 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
                 <button className={css.menuItem} onClick={() => { onReplace([...waypoints].reverse()); setShowMenu(false) }} disabled={waypoints.length < 2}>⇄ Reverse</button>
                 {onExportIcao && (
                   <button className={css.menuItem} title={exportIcaoNeedsAircraft ? 'Select an aircraft first: the plan needs its speed, equipment and registration' : 'Build the ICAO flight plan text for this route and aircraft'}
-                    onClick={() => { onExportIcao(); setShowMenu(false) }} disabled={waypoints.length < 2 || !!exportIcaoNeedsAircraft}>↗ Export ICAO flight plan…{exportIcaoNeedsAircraft ? ' (select an aircraft)' : ''}</button>
+                    onClick={() => { onExportIcao(menuBtnRef.current); setShowMenu(false) }} disabled={waypoints.length < 2 || !!exportIcaoNeedsAircraft}>↗ Export ICAO flight plan…{exportIcaoNeedsAircraft ? ' (select an aircraft)' : ''}</button>
                 )}
                 <button className={css.menuItem} onClick={() => { exportGpx(waypoints); setShowMenu(false) }} disabled={waypoints.length < 2}>↓ GPX</button>
                 <button className={css.menuItem} onClick={() => { gpxInputRef.current?.click(); setShowMenu(false) }}>↑ Import GPX</button>

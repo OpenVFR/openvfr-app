@@ -23,14 +23,18 @@ export function useAccountFlags(signedIn: boolean): AccountFlags {
   useEffect(() => {
     if (!signedIn) { cached = null; setFlags(UNKNOWN); return }
     let live = true
-    cached ??= fetch(`${API_BASE_URL}/api/auth/account-flags`, { credentials: 'include' })
-      .then(r => (r.ok ? r.json() as Promise<{ passkeyAllowed?: boolean; pohExtract?: boolean; assistantMcpUrl?: string | null }> : null))
-      .then((j): AccountFlags => ({
-        passkeyAllowed: j?.passkeyAllowed !== false,
-        pohExtract: j ? j.pohExtract !== false : false,
-        assistantMcpUrl: typeof j?.assistantMcpUrl === 'string' && j.assistantMcpUrl ? j.assistantMcpUrl : null,
-      }))
-      .catch(() => UNKNOWN)
+    if (!cached) {
+      const p: Promise<AccountFlags> = fetch(`${API_BASE_URL}/api/auth/account-flags`, { credentials: 'include' })
+        .then(r => (r.ok ? r.json() as Promise<{ passkeyAllowed?: boolean; pohExtract?: boolean; assistantMcpUrl?: string | null }> : Promise.reject(new Error(`account-flags ${r.status}`))))
+        .then((j): AccountFlags => ({
+          passkeyAllowed: j?.passkeyAllowed !== false,
+          pohExtract: j ? j.pohExtract !== false : false,
+          assistantMcpUrl: typeof j?.assistantMcpUrl === 'string' && j.assistantMcpUrl ? j.assistantMcpUrl : null,
+        }))
+        // A failed read is not remembered: the next component that asks tries again.
+        .catch(() => { if (cached === p) cached = null; return UNKNOWN })
+      cached = p
+    }
     void cached.then(f => { if (live) setFlags(f) })
     return () => { live = false }
   }, [signedIn])

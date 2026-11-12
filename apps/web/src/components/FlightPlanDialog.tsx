@@ -5,10 +5,15 @@
  * here: the text is filed with the ATS service you use.
  */
 import { useEffect, useMemo, useState } from 'react'
+import { useModalFocus } from '../hooks/useModalFocus'
 import { createPortal } from 'react-dom'
 import { IconX } from '@tabler/icons-react'
 import { getDb } from '../db/index'
-import { buildFpl, EMPTY_ANSWERS, FLIGHT_RULES_LABELS, FLIGHT_TYPE_LABELS, type FlightAnswers, type FlightRules, type FlightType, type LevelMode } from '@open-vfr/shared/fplMessage'
+import { loadCountryGeojson } from '@open-vfr/shared/countryData'
+import {
+  aerodromeCodes, buildFpl, defaultEobt, EMPTY_ANSWERS, FLIGHT_RULES_LABELS, FLIGHT_TYPE_LABELS, FPL_DEFAULT_KEYS, FPL_JACKETS, FPL_RADIOS, FPL_SURVIVAL,
+  fplAircraftPatch, toggleItem, type FlightAnswers, type FlightRules, type FlightType, type FplDefaults, type LevelMode,
+} from '@open-vfr/shared/fplMessage'
 import { normaliseIcaoType } from '@open-vfr/shared/icaoFlightPlan'
 import type { AircraftProfileDocType, TransponderMode } from '@open-vfr/shared/types'
 import type { RouteWaypoint } from '../utils/routeCalc'
@@ -17,24 +22,14 @@ import css from './FlightPlanDialog.module.css'
 
 const STORE = 'openvfr.fplDefaults'
 
-/** What stays the same from flight to flight: the pilot and the aircraft's emergency equipment. */
-type Defaults = Pick<FlightAnswers, 'pilotName' | 'pilotPhone' | 'emergencyRadio' | 'survival' | 'jackets' | 'dinghies'>
-function loadDefaults(): Partial<Defaults> {
-  try { return JSON.parse(localStorage.getItem(STORE) ?? '{}') as Partial<Defaults> } catch { return {} }
-}
-
-const SURVIVAL: [string, string][] = [['P', 'Polar'], ['D', 'Desert'], ['M', 'Maritime'], ['J', 'Jungle']]
-const JACKETS: [string, string][] = [['L', 'Light'], ['F', 'Fluorescein'], ['U', 'UHF radio'], ['V', 'VHF radio']]
-const RADIOS: [string, string][] = [['U', 'UHF'], ['V', 'VHF 121.5'], ['E', 'ELT']]
-
-function toggle<T extends string>(list: readonly T[], v: T): T[] {
-  return list.includes(v) ? list.filter(x => x !== v) : [...list, v]
+function loadDefaults(): Partial<FplDefaults> {
+  try { return JSON.parse(localStorage.getItem(STORE) ?? '{}') as Partial<FplDefaults> } catch { return {} }
 }
 
 /** A local date and time input value for a Date, shown in UTC. */
 const utcInput = (d: Date) => d.toISOString().slice(0, 16)
 
-export default function FlightPlanDialog({ waypoints, legOverrides, aircraft: aircraftProp, legWinds, takeoffTime, alternateIcao, accountName, onClose }: {
+export default function FlightPlanDialog({ waypoints, legOverrides, aircraft: aircraftProp, legWinds, takeoffTime, alternateIcao, accountName, returnFocusTo, onClose }: {
   waypoints: RouteWaypoint[]
   legOverrides: LegOverride[]
   aircraft: AircraftProfileDocType
@@ -42,48 +37,72 @@ export default function FlightPlanDialog({ waypoints, legOverrides, aircraft: ai
   takeoffTime: Date | null
   alternateIcao?: string
   accountName?: string
+  /** Where focus goes when the dialog closes (the menu button that opened it). */
+  returnFocusTo?: HTMLElement | null
   onClose: () => void
 }) {
   const [flight, setFlight] = useState<FlightAnswers>(() => {
     const saved = loadDefaults()
     return {
       ...EMPTY_ANSWERS, ...saved,
-      eobt: takeoffTime ?? new Date(Math.ceil((Date.now() + 30 * 60_000) / 300_000) * 300_000),
+      eobt: takeoffTime ?? defaultEobt(),
       alternate: alternateIcao,
       pilotName: saved.pilotName || accountName || '',
     }
   })
   const [copied, setCopied] = useState('')
+  const [notice, setNotice] = useState('')
   // The aircraft as edited here: details missing for the plan can be filled in and saved to the profile.
   const [aircraft, setAircraft] = useState(aircraftProp)
   const [saved, setSaved] = useState(true)
-  const setAc = (patch: Partial<AircraftProfileDocType>) => { setAircraft(a => ({ ...a, ...patch })); setSaved(false) }
+  const [saveError, setSaveError] = useState('')
+  const setAc = (patch: Partial<AircraftProfileDocType>) => { setAircraft(a => ({ ...a, ...patch })); setSaved(false); setSaveError('') }
   async function saveAircraft() {
     try {
       const db = await getDb()
       const doc = await db.aircraft_profiles.findOne(aircraft.id).exec()
-      if (doc) await doc.patch({ registration: aircraft.registration, icaoType: aircraft.icaoType, colour: aircraft.colour, transponder: aircraft.transponder, equipment: aircraft.equipment, hasRadio: aircraft.hasRadio, updatedAt: Date.now() })
-      setSaved(true)
-    } catch { /* the plan still uses the values typed here */ }
+      if (!doc) { setSaveError('The aircraft profile was not found, so nothing was saved.'); return }
+      await doc.patch({ ...fplAircraftPatch(aircraft), updatedAt: Date.now() })
+      setSaved(true); setSaveError('')
+    } catch {
+      setSaveError('Could not save to the aircraft profile. The plan below still uses what you typed.')
+    }
   }
   const equipMode = aircraft.equipment?.length === 1 && ['N', 'S'].includes(aircraft.equipment[0]!) ? aircraft.equipment[0]! : aircraft.equipment?.length ? 'custom' : 'unset'
   const set = <K extends keyof FlightAnswers>(k: K, v: FlightAnswers[K]) => setFlight(f => ({ ...f, [k]: v }))
 
   useEffect(() => {
-    const d: Defaults = { pilotName: flight.pilotName, pilotPhone: flight.pilotPhone, emergencyRadio: flight.emergencyRadio, survival: flight.survival, jackets: flight.jackets, dinghies: flight.dinghies }
+    const d = Object.fromEntries(FPL_DEFAULT_KEYS.map(k => [k, flight[k]])) as FplDefaults
     try { localStorage.setItem(STORE, JSON.stringify(d)) } catch { /* private mode: nothing is kept */ }
   }, [flight.pilotName, flight.pilotPhone, flight.emergencyRadio, flight.survival, flight.jackets, flight.dinghies])
 
-  const fpl = useMemo(() => buildFpl({ waypoints, legOverrides, aircraft, legWinds, flight }), [waypoints, legOverrides, aircraft, legWinds, flight])
+  // The known aerodromes, so only real ones are written as codes (undefined while loading or when they could not be loaded).
+  const [aerodromes, setAerodromes] = useState<Set<string> | undefined>(undefined)
+  useEffect(() => {
+    let live = true
+    loadCountryGeojson('aerodromes').then(fc => { if (live) setAerodromes(aerodromeCodes(fc)) }).catch(() => {})
+    return () => { live = false }
+  }, [])
+  const fpl = useMemo(() => buildFpl({ waypoints, legOverrides, aircraft, legWinds, flight, ...(aerodromes ? { aerodromes } : {}) }), [waypoints, legOverrides, aircraft, legWinds, flight, aerodromes])
 
   async function copy(what: string, text: string) {
-    try { await navigator.clipboard.writeText(text); setCopied(what); setTimeout(() => setCopied(''), 1500) } catch { /* the text stays selectable */ }
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(what); setNotice('Copied.'); setTimeout(() => { setCopied(''); setNotice('') }, 1500)
+    } catch {
+      // No clipboard access: select the text so it can be copied by hand.
+      const el = document.getElementById(`fpl-out-${what}`)
+      if (el) { const r = document.createRange(); r.selectNodeContents(el); const sel = window.getSelection(); sel?.removeAllRanges(); sel?.addRange(r) }
+      setNotice('Could not copy. The text is selected: copy it by hand.')
+    }
   }
+
+  const cardRef = useModalFocus(onClose, returnFocusTo)
 
   const eobtOk = !Number.isNaN(flight.eobt.getTime())
   return createPortal(
-    <div className={css.backdrop} role="dialog" aria-modal="true" aria-labelledby="fpl-title" onClick={onClose}>
-      <div className={css.card} onClick={e => e.stopPropagation()}>
+    <div className={css.backdrop} role="dialog" aria-modal="true" aria-labelledby="fpl-title">
+      <div className={css.card} ref={cardRef}>
         <div className={css.head}>
           <h2 id="fpl-title" className={css.title}>Export ICAO flight plan</h2>
           <button type="button" className={css.close} aria-label="Close" onClick={onClose}><IconX size={16} aria-hidden="true" /></button>
@@ -121,6 +140,7 @@ export default function FlightPlanDialog({ waypoints, legOverrides, aircraft: ai
             </label>
           </div>
           {!saved && <button type="button" className={css.btn} onClick={() => void saveAircraft()}>Save to the aircraft profile</button>}
+          {saveError && <div className={css.error} role="alert">{saveError}</div>}
         </fieldset>
 
         <div className={css.grid}>
@@ -161,13 +181,13 @@ export default function FlightPlanDialog({ waypoints, legOverrides, aircraft: ai
         </div>
 
         <fieldset className={css.set}><legend>Emergency radio</legend>
-          {RADIOS.map(([c, l]) => <label key={c} className={css.chk}><input type="checkbox" checked={flight.emergencyRadio.includes(c as 'U')} onChange={() => set('emergencyRadio', toggle(flight.emergencyRadio, c as 'U'))} /> {l}</label>)}
+          {FPL_RADIOS.map(([c, l]) => <label key={c} className={css.chk}><input type="checkbox" checked={flight.emergencyRadio.includes(c as 'U')} onChange={() => set('emergencyRadio', toggleItem(flight.emergencyRadio, c as 'U'))} /> {l}</label>)}
         </fieldset>
         <fieldset className={css.set}><legend>Survival equipment</legend>
-          {SURVIVAL.map(([c, l]) => <label key={c} className={css.chk}><input type="checkbox" checked={flight.survival.includes(c as 'P')} onChange={() => set('survival', toggle(flight.survival, c as 'P'))} /> {l}</label>)}
+          {FPL_SURVIVAL.map(([c, l]) => <label key={c} className={css.chk}><input type="checkbox" checked={flight.survival.includes(c as 'P')} onChange={() => set('survival', toggleItem(flight.survival, c as 'P'))} /> {l}</label>)}
         </fieldset>
         <fieldset className={css.set}><legend>Life jackets</legend>
-          {JACKETS.map(([c, l]) => <label key={c} className={css.chk}><input type="checkbox" checked={flight.jackets.includes(c as 'L')} onChange={() => set('jackets', toggle(flight.jackets, c as 'L'))} /> {l}</label>)}
+          {FPL_JACKETS.map(([c, l]) => <label key={c} className={css.chk}><input type="checkbox" checked={flight.jackets.includes(c as 'L')} onChange={() => set('jackets', toggleItem(flight.jackets, c as 'L'))} /> {l}</label>)}
         </fieldset>
         <fieldset className={css.set}><legend>Life rafts (dinghies)</legend>
           <label className={css.chk}>Number of rafts <input className={css.num} type="number" min={0} value={flight.dinghies.count} onChange={e => set('dinghies', { ...flight.dinghies, count: Math.max(0, Number(e.target.value) || 0) })} /></label>
@@ -184,22 +204,25 @@ export default function FlightPlanDialog({ waypoints, legOverrides, aircraft: ai
         </fieldset>
 
         {fpl.problems.length > 0 && (
-          <div className={css.problems} role="status">
+          <div className={css.problems}>
+            <span className={css.srOnly} aria-live="polite">{fpl.problems.length === 1 ? '1 thing to check' : `${fpl.problems.length} things to check`}</span>
             <strong>Check before you file:</strong>
             <ul>{fpl.problems.map(p => <li key={p}>{p}</li>)}</ul>
           </div>
         )}
 
+        <div className={css.srOnly} aria-live="polite">{notice}</div>
+        {notice.startsWith('Could not') && <div className={css.error} role="alert">{notice}</div>}
         {fpl.text && (
           <>
             <div className={css.outHead}><span>Flight plan to paste into a filing form's import (item 19 inside)</span><button type="button" className={css.btn} onClick={() => void copy('imp', fpl.importText)}>{copied === 'imp' ? 'Copied' : 'Copy'}</button></div>
-            <pre className={css.out}>{fpl.importText}</pre>
+            <pre id="fpl-out-imp" className={css.out}>{fpl.importText}</pre>
             <details className={css.more}>
               <summary>More formats</summary>
               <div className={css.outHead}><span>Flight plan message</span><button type="button" className={css.btn} onClick={() => void copy('fpl', fpl.text)}>{copied === 'fpl' ? 'Copied' : 'Copy'}</button></div>
-              <pre className={css.out}>{fpl.text}</pre>
+              <pre id="fpl-out-fpl" className={css.out}>{fpl.text}</pre>
               <div className={css.outHead}><span>Item 19, for the filing form</span><button type="button" className={css.btn} onClick={() => void copy('s19', fpl.supplementary.join('\n'))}>{copied === 's19' ? 'Copied' : 'Copy'}</button></div>
-              <pre className={css.out}>{fpl.supplementary.join('\n')}</pre>
+              <pre id="fpl-out-s19" className={css.out}>{fpl.supplementary.join('\n')}</pre>
             </details>
           </>
         )}
