@@ -80,6 +80,8 @@ import { countryDatasetSource, loadCountryGeojson } from '@open-vfr/shared/count
 import { useActiveCountries } from '../utils/countryData'
 import { snapIconName, formatObstacleName, formatLandmarkName, obstacleWaypointName } from '@open-vfr/shared/snapLabels'
 import { type PointFeature } from './FeaturePopup'
+import { localAreaInfo } from '@open-vfr/shared/aerodromeDetails'
+import { DETAIL_TAP_EDGE_LAYERS, DETAIL_TAP_FILL_LAYERS } from '@open-vfr/shared/aerodromeDetailsStyle'
 import type { WhatsHereItem, RouteAction } from './WhatsHerePopup'
 import SnapPicker, { type SnapCandidate } from './SnapPicker'
 import RouteEditBanner from './RouteEditBanner'
@@ -3200,7 +3202,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     const dragActive = () => panning || !!dragMoveRef.current || !!dragInsertRef.current || !!aircraftDragRef.current
     const onEnter = () => { if (!dragActive()) map.getCanvas().style.cursor = 'pointer' }
     const onLeave = () => { if (!dragActive()) map.getCanvas().style.cursor = baseCursor() }
-    ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols', 'notam-circles-fill', 'notam-polygons-fill', 'notam-points-cluster', 'notam-points-unclustered', 'notam-obstacles-unclustered'].forEach((id) => {
+    ;[...POINT_LAYERS, ...AIRSPACE_FILL_LAYERS, ...DETAIL_TAP_EDGE_LAYERS, ...DETAIL_TAP_FILL_LAYERS, 'user-waypoints-circle', 'traffic-symbols', 'notam-circles-fill', 'notam-polygons-fill', 'notam-points-cluster', 'notam-points-unclustered', 'notam-obstacles-unclustered'].forEach((id) => {
       map.on('mouseenter', id, onEnter)
       map.on('mouseleave', id, onLeave)
     })
@@ -3576,6 +3578,22 @@ export default function MapView({ auth }: { auth: AuthState }) {
         return
       }
 
+      // ── 1c. Aerodrome local areas: a tap on a drawn edge or circuit line (noise-sensitive area outline, club circuit).
+      // The fill is handled after the airspace step below, so an airspace the area lies in still opens on a tap inside it.
+      const localEdgeLayers = DETAIL_TAP_EDGE_LAYERS.filter((id) => map.getLayer(id))
+      if (localEdgeLayers.length > 0) {
+        const pad = 7
+        const edgeHits = map.queryRenderedFeatures(
+          [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]], { layers: [...localEdgeLayers] })
+        for (const h of edgeHits) {
+          const info = localAreaInfo(h.properties as Record<string, unknown>)
+          if (info) {
+            setActivePopup({ kind: 'point', feature: { ...info, kind: 'localArea' }, x: e.point.x, y: e.point.y })
+            return
+          }
+        }
+      }
+
       // ── 2. Airspace polygons + ad-hoc regional NOTAMs (exact click point,
       // no padding) ──────────────────────────────────────────────────────
       // Independent of the altitude-ceiling filter and per-class layer
@@ -3649,6 +3667,18 @@ export default function MapView({ auth }: { auth: AuthState }) {
           y: e.point.y,
         })
         return
+      }
+
+      // ── 2b. A tap inside a local area's fill, with no airspace or NOTAM there to open instead.
+      const localFillLayers = DETAIL_TAP_FILL_LAYERS.filter((id) => map.getLayer(id))
+      if (localFillLayers.length > 0) {
+        for (const h of map.queryRenderedFeatures(e.point, { layers: [...localFillLayers] })) {
+          const info = localAreaInfo(h.properties as Record<string, unknown>)
+          if (info) {
+            setActivePopup({ kind: 'point', feature: { ...info, kind: 'localArea' }, x: e.point.x, y: e.point.y })
+            return
+          }
+        }
       }
 
       // ── 3. Empty click — leave popup open; only × button closes it ────────

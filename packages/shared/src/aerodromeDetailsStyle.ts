@@ -154,6 +154,12 @@ export function staticColorLayers(specs: readonly DetailLayerSpec[] = DETAIL_LAY
   })
 }
 
+/** Layers a tap can hit: the area edges and circuit lines first (a tap near an edge), the fill separately (a tap inside:
+ *  an airspace under it keeps priority). */
+export const DETAIL_TAP_EDGE_LAYERS = ['ad-details-outline', 'ad-details-outline-dashed', 'ad-details-line', 'ad-details-line-dashed',
+  'ad-circuit-line', 'ad-circuit-line-dashed'] as const
+export const DETAIL_TAP_FILL_LAYERS = ['ad-details-fill'] as const
+
 export const CIRCUIT_LAYER_IDS = DETAIL_LAYERS.filter(l => l.group === 'circuits').map(l => l.id)
 export const HOLDING_ORBIT_LAYER = 'ad-holding-orbit'
 
@@ -193,6 +199,9 @@ export function buildDetailsMapData(
           ? [mapAreaLabel(f.properties), f.properties.pending ? '(unreviewed)' : null].filter(Boolean).join('\n')
           : '',
         clabel: f.properties.kind === 'circuit_leg' ? circuitLabel(f.properties.name) : '',
+        // flat copies for the tap popup (a rendered feature returns nested values as JSON text)
+        limits: formatLimits(f.properties.floor, f.properties.ceiling) ?? '',
+        source: f.properties.provenance?.source_name ?? '',
       },
     })),
   }

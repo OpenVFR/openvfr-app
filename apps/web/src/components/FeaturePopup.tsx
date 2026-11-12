@@ -2,7 +2,7 @@ import type React from 'react'
 import css from './FeaturePopup.module.css'
 import { TRAFFIC_CATEGORY_LABEL, trafficDeviceLabel, trafficNetworkLabel } from '@open-vfr/shared/trafficState'
 import { IconX } from '@tabler/icons-react'
-import { orbitLabel } from '@open-vfr/shared/aerodromeDetails'
+import { orbitLabel, type LocalAreaInfo } from '@open-vfr/shared/aerodromeDetails'
 import { useLocalInfo } from '../utils/aerodromeDetails'
 import { EXPERIMENTAL_AERODROME_DETAILS } from '../utils/env'
 
@@ -66,6 +66,11 @@ export interface RegionalNotamFeature {
   radiusNm:       number | null
 }
 
+/** A noise-sensitive area, circuit line or other local area of an aerodrome (aerodrome-details layers). */
+export interface LocalAreaFeature extends LocalAreaInfo {
+  kind: 'localArea'
+}
+
 export type PointFeature =
   | NavaidFeature
   | WaypointFeature
@@ -73,6 +78,7 @@ export type PointFeature =
   | LandmarkFeature
   | TrafficFeature
   | RegionalNotamFeature
+  | LocalAreaFeature
 
 // ── Label maps ────────────────────────────────────────────────────────────────
 
@@ -293,6 +299,41 @@ function TrafficBody({ f }: { f: TrafficFeature }) {
   )
 }
 
+function LocalAreaHeader({ f }: { f: LocalAreaFeature }) {
+  return (
+    <div className={css.headerContent}>
+      <span className={css.typeTag}>{f.kindLabel}</span>
+    </div>
+  )
+}
+
+function LocalAreaBody({ f }: { f: LocalAreaFeature }) {
+  return (
+    <div className={css.body}>
+      {f.name && <div className={css.name}>{f.name}</div>}
+      {f.note && <div className={css.row}><span className={css.value}>{f.note}</span></div>}
+      {f.limits && (
+        <div className={css.row}>
+          <span className={css.label}>Limits</span>
+          <span className={css.value}>{f.limits}</span>
+        </div>
+      )}
+      <div className={css.row}>
+        <span className={css.label}>Aerodrome</span>
+        <span className={css.value}>{f.aerodrome}</span>
+      </div>
+      {f.approximate && (
+        <div className={css.row}>
+          <span className={css.label}>Outline</span>
+          <span className={css.value}>Approximate{f.accuracyM ? `, about ±${f.accuracyM} m` : ''}: drawn from a map, not surveyed</span>
+        </div>
+      )}
+      {f.pending && <div className={css.row}><span className={css.value}>Unreviewed</span></div>}
+      {f.source && <div className={css.source}>Source: {f.source}</div>}
+    </div>
+  )
+}
+
 // (former RegionalNotamHeader/RegionalNotamBody removed -- see PointFeature comment above)
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -328,6 +369,10 @@ export default function FeaturePopup({ feature: f, onClose, routeAction }: Props
     case 'traffic':
       header = <TrafficHeader f={f} />
       body   = <TrafficBody   f={f} />
+      break
+    case 'localArea':
+      header = <LocalAreaHeader f={f} />
+      body   = <LocalAreaBody   f={f} />
       break
   }
 

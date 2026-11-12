@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   parseAerodromeDetails, localInfo, formatCircuit, formatLimits, circuitTurnArrow, schematicCircuitFeatures, hasLocalInfo, holdingOrbit,
-  holdingOrbitFeatures, ORBIT_RADIUS_NM,
+  holdingOrbitFeatures, ORBIT_RADIUS_NM, localAreaInfo,
   TURN_STRAIGHT_NM, TURN_RADIUS_NM, type DetailFeature,
 } from './aerodromeDetails'
 import type { LineString } from 'geojson'
@@ -169,5 +169,25 @@ describe('holdings', () => {
     expect(info.holdings).toEqual([{ name: 'WEST', direction: 'left', description: 'Left circuit west of lake' },
       { name: 'EAST', direction: null, description: null }])
     expect(hasLocalInfo(info)).toBe(true)
+  })
+})
+
+describe('localAreaInfo', () => {
+  it('says what the area is, how exact it is and where it comes from', () => {
+    const i = localAreaInfo({ kind: 'noise_sensitive', aerodrome: 'ESSN', name: 'Lönsvik', remarks: null, approximate: true, accuracy_m: 86.4,
+      pending: true, limits: '', source: 'www.rfk.nu' })
+    expect(i).toMatchObject({ areaKind: 'noise_sensitive', kindLabel: 'Noise-sensitive area', name: 'Lönsvik', note: 'Avoid overflying.', accuracyM: 86, approximate: true, pending: true, limits: null, source: 'www.rfk.nu' })
+  })
+  it('prefers the source remark to the kind note', () => {
+    expect(localAreaInfo({ kind: 'noise_sensitive', remarks: 'avoid below 2500 ft AMSL', limits: 'GND – 2500 ft AMSL' })).toMatchObject({ note: 'avoid below 2500 ft AMSL', limits: 'GND – 2500 ft AMSL' })
+  })
+  it('reads values MapLibre returns as strings', () => {
+    expect(localAreaInfo({ kind: 'circuit_leg', name: 'RWY 07 RH · RWY 25 LH', approximate: 'true', pending: 'false', accuracy_m: '86' }))
+      .toMatchObject({ kindLabel: 'Circuit', approximate: true, pending: false, accuracyM: 86 })
+  })
+  it('has no popup for turn arrows, labels and other points', () => {
+    expect(localAreaInfo({ kind: 'circuit_leg', role: 'turn' })).toBeNull()
+    expect(localAreaInfo({ kind: 'taxiway' })).toBeNull()
+    expect(localAreaInfo(null)).toBeNull()
   })
 })

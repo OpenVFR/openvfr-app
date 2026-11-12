@@ -516,3 +516,57 @@ export function areaLabel(p: Pick<DetailProps, 'name' | 'floor' | 'ceiling'>): s
   return [p.name, formatLimits(p.floor, p.ceiling)].filter(Boolean).join('\n')
 }
 
+
+// ── What a tap on an area or circuit line says ────────────────────────────
+
+/** A short line per kind for when the source gives no remark of its own. Only what the kind itself means. */
+const KIND_NOTE: Partial<Record<DetailKind, string>> = {
+  noise_sensitive: 'Avoid overflying.',
+  avoid_area: 'Avoid this area.',
+  glider_area: 'Glider activity.',
+  parachute_area: 'Parachute jumping.',
+  model_area: 'Model aircraft flying.',
+}
+
+export interface LocalAreaInfo {
+  /** The aerodrome the area belongs to (ICAO or local id). */
+  aerodrome: string
+  /** Which kind of area or line this is. */
+  areaKind: DetailKind
+  /** "Noise-sensitive area" / "Circuit" */
+  kindLabel: string
+  name: string | null
+  /** The source's own remark, else the kind's short note. */
+  note: string | null
+  limits: string | null
+  /** The outline was read off a map or chart: `accuracyM` says how well (null = not stated). */
+  approximate: boolean
+  accuracyM: number | null
+  pending: boolean
+  source: string | null
+}
+
+/**
+ * Popup content from the properties of a rendered details feature. MapLibre hands nested values back as JSON strings and
+ * flat ones as they are, so `limits` and `source` are written flat by buildDetailsMapData. Null for features that have
+ * no popup (turn arrows, labels, extra points).
+ */
+export function localAreaInfo(p: Record<string, unknown> | null | undefined): LocalAreaInfo | null {
+  if (!p) return null
+  const kind = p['kind'] as DetailKind
+  if (!(AREA_KINDS.has(kind) || kind === 'circuit_leg') || p['role'] === 'turn' || p['role'] === 'label') return null
+  const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null)
+  const acc = Number(p['accuracy_m'])
+  return {
+    aerodrome: String(p['aerodrome'] ?? ''),
+    areaKind: kind,
+    kindLabel: DETAIL_KIND_LABEL[kind],
+    name: str(p['name']),
+    note: str(p['remarks']) ?? KIND_NOTE[kind] ?? null,
+    limits: str(p['limits']),
+    approximate: p['approximate'] === true || p['approximate'] === 'true',
+    accuracyM: Number.isFinite(acc) && acc > 0 ? Math.round(acc) : null,
+    pending: p['pending'] === true || p['pending'] === 'true',
+    source: str(p['source']),
+  }
+}
