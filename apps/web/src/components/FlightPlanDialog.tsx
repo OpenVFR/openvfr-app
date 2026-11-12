@@ -7,8 +7,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { IconX } from '@tabler/icons-react'
+import { getDb } from '../db/index'
 import { buildFpl, EMPTY_ANSWERS, FLIGHT_RULES_LABELS, FLIGHT_TYPE_LABELS, type FlightAnswers, type FlightRules, type FlightType, type LevelMode } from '@open-vfr/shared/fplMessage'
-import type { AircraftProfileDocType } from '@open-vfr/shared/types'
+import { fplAircraftItems, normaliseIcaoType } from '@open-vfr/shared/icaoFlightPlan'
+import type { AircraftProfileDocType, TransponderMode } from '@open-vfr/shared/types'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
 import css from './FlightPlanDialog.module.css'
@@ -32,7 +34,7 @@ function toggle<T extends string>(list: readonly T[], v: T): T[] {
 /** A local date and time input value for a Date, shown in UTC. */
 const utcInput = (d: Date) => d.toISOString().slice(0, 16)
 
-export default function FlightPlanDialog({ waypoints, legOverrides, aircraft, legWinds, takeoffTime, alternateIcao, accountName, onClose }: {
+export default function FlightPlanDialog({ waypoints, legOverrides, aircraft: aircraftProp, legWinds, takeoffTime, alternateIcao, accountName, onClose }: {
   waypoints: RouteWaypoint[]
   legOverrides: LegOverride[]
   aircraft: AircraftProfileDocType
@@ -52,6 +54,19 @@ export default function FlightPlanDialog({ waypoints, legOverrides, aircraft, le
     }
   })
   const [copied, setCopied] = useState('')
+  // The aircraft as edited here: details missing for the plan can be filled in and saved to the profile.
+  const [aircraft, setAircraft] = useState(aircraftProp)
+  const [saved, setSaved] = useState(true)
+  const setAc = (patch: Partial<AircraftProfileDocType>) => { setAircraft(a => ({ ...a, ...patch })); setSaved(false) }
+  async function saveAircraft() {
+    try {
+      const db = await getDb()
+      const doc = await db.aircraft_profiles.findOne(aircraft.id).exec()
+      if (doc) await doc.patch({ registration: aircraft.registration, icaoType: aircraft.icaoType, colour: aircraft.colour, transponder: aircraft.transponder, equipment: aircraft.equipment, hasRadio: aircraft.hasRadio, updatedAt: Date.now() })
+      setSaved(true)
+    } catch { /* the plan still uses the values typed here */ }
+  }
+  const equipMode = aircraft.equipment?.length === 1 && ['N', 'S'].includes(aircraft.equipment[0]!) ? aircraft.equipment[0]! : aircraft.equipment?.length ? 'custom' : 'unset'
   const set = <K extends keyof FlightAnswers>(k: K, v: FlightAnswers[K]) => setFlight(f => ({ ...f, [k]: v }))
 
   useEffect(() => {
@@ -70,10 +85,43 @@ export default function FlightPlanDialog({ waypoints, legOverrides, aircraft, le
     <div className={css.backdrop} role="dialog" aria-modal="true" aria-labelledby="fpl-title" onClick={onClose}>
       <div className={css.card} onClick={e => e.stopPropagation()}>
         <div className={css.head}>
-          <h2 id="fpl-title" className={css.title}>ICAO flight plan</h2>
+          <h2 id="fpl-title" className={css.title}>Export ICAO flight plan</h2>
           <button type="button" className={css.close} aria-label="Close" onClick={onClose}><IconX size={16} aria-hidden="true" /></button>
         </div>
-        <p className={css.note}>A draft built from your route and aircraft. Check it, then file it with the ATS service you use. Nothing is sent from OpenVFR.</p>
+        <p className={css.note}>A draft built from your route and aircraft. Fill in what is asked, check the list, then copy it into the filing service you use. Nothing is sent from OpenVFR.</p>
+
+        <details className={css.more} open={fplAircraftItems(aircraft).missing.length > 0}>
+          <summary>Aircraft details for the plan</summary>
+          <div className={css.grid}>
+            <label className={css.lbl}>Registration
+              <input className={css.inp} value={aircraft.registration} placeholder="SE-ABC" onChange={e => setAc({ registration: e.target.value.toUpperCase() })} />
+            </label>
+            <label className={css.lbl}>ICAO type (or ZZZZ)
+              <input className={css.inp} value={aircraft.icaoType ?? ''} placeholder="C172" maxLength={4} onChange={e => setAc({ icaoType: normaliseIcaoType(e.target.value) })} />
+            </label>
+            <label className={css.lbl}>Colour and markings
+              <input className={css.inp} value={aircraft.colour ?? ''} placeholder="White with blue stripes" onChange={e => setAc({ colour: e.target.value })} />
+            </label>
+            <label className={css.lbl}>Transponder
+              <select className={css.inp} value={aircraft.transponder ?? ''} onChange={e => setAc({ transponder: (e.target.value || undefined) as TransponderMode | undefined })}>
+                <option value="">Not set</option>
+                <option value="none">None</option>
+                <option value="A">Mode A</option>
+                <option value="C">Mode C</option>
+                <option value="S">Mode S</option>
+              </select>
+            </label>
+            <label className={css.lbl}>Radio / nav
+              <select className={css.inp} value={equipMode} onChange={e => { const v = e.target.value; if (v !== 'custom') setAc({ equipment: v === 'unset' ? undefined : [v], hasRadio: undefined }) }}>
+                <option value="unset">Not set</option>
+                <option value="N">None (N)</option>
+                <option value="custom" disabled>Chosen letters (edit in the aircraft profile)</option>
+                <option value="S">Standard (S)</option>
+              </select>
+            </label>
+          </div>
+          {!saved && <button type="button" className={css.btn} onClick={() => void saveAircraft()}>Save to the aircraft profile</button>}
+        </details>
 
         <div className={css.grid}>
           <label className={css.lbl}>Flight rules
@@ -101,7 +149,7 @@ export default function FlightPlanDialog({ waypoints, legOverrides, aircraft, le
               onChange={e => set('alternate', e.target.value.toUpperCase() || undefined)} />
           </label>
           <label className={css.lbl}>Persons on board
-            <input className={css.inp} type="number" min={1} value={flight.personsOnBoard}
+            <input className={css.inp} type="number" min={1} value={flight.personsOnBoard} disabled={!!flight.personsUnknown}
               onChange={e => set('personsOnBoard', Math.max(0, Math.round(Number(e.target.value) || 0)))} />
           </label>
           <label className={css.lbl}>Pilot in command
@@ -130,6 +178,11 @@ export default function FlightPlanDialog({ waypoints, legOverrides, aircraft, le
         <label className={css.lbl}>Remarks
           <input className={css.inp} value={flight.remarks} onChange={e => set('remarks', e.target.value)} />
         </label>
+        <details className={css.more}>
+          <summary>Other information</summary>
+          <label className={css.chk}><input type="checkbox" checked={!!flight.personsUnknown} onChange={e => set('personsUnknown', e.target.checked)} /> Persons on board not known yet (written TBN: tell the ATS before taxiing)</label>
+          <label className={css.chk}><input type="checkbox" checked={!!flight.jacketsPlain} onChange={e => set('jacketsPlain', e.target.checked)} /> Life jackets carried without light, fluorescein or radio (written as the remark JACKETS)</label>
+        </details>
 
         {fpl.problems.length > 0 && (
           <div className={css.problems} role="status">
@@ -140,12 +193,15 @@ export default function FlightPlanDialog({ waypoints, legOverrides, aircraft, le
 
         {fpl.text && (
           <>
-            <div className={css.outHead}><span>Flight plan message</span><button type="button" className={css.btn} onClick={() => void copy('fpl', fpl.text)}>{copied === 'fpl' ? 'Copied' : 'Copy'}</button></div>
-            <pre className={css.out}>{fpl.text}</pre>
-            <div className={css.outHead}><span>Message with item 19 inside, to paste into a filing form's import</span><button type="button" className={css.btn} onClick={() => void copy('imp', fpl.importText)}>{copied === 'imp' ? 'Copied' : 'Copy'}</button></div>
+            <div className={css.outHead}><span>Flight plan to paste into a filing form's import (item 19 inside)</span><button type="button" className={css.btn} onClick={() => void copy('imp', fpl.importText)}>{copied === 'imp' ? 'Copied' : 'Copy'}</button></div>
             <pre className={css.out}>{fpl.importText}</pre>
-            <div className={css.outHead}><span>Item 19, for the filing form</span><button type="button" className={css.btn} onClick={() => void copy('s19', fpl.supplementary.join('\n'))}>{copied === 's19' ? 'Copied' : 'Copy'}</button></div>
-            <pre className={css.out}>{fpl.supplementary.join('\n')}</pre>
+            <details className={css.more}>
+              <summary>More formats</summary>
+              <div className={css.outHead}><span>Flight plan message</span><button type="button" className={css.btn} onClick={() => void copy('fpl', fpl.text)}>{copied === 'fpl' ? 'Copied' : 'Copy'}</button></div>
+              <pre className={css.out}>{fpl.text}</pre>
+              <div className={css.outHead}><span>Item 19, for the filing form</span><button type="button" className={css.btn} onClick={() => void copy('s19', fpl.supplementary.join('\n'))}>{copied === 's19' ? 'Copied' : 'Copy'}</button></div>
+              <pre className={css.out}>{fpl.supplementary.join('\n')}</pre>
+            </details>
           </>
         )}
       </div>

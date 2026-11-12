@@ -780,7 +780,7 @@ export function PlanScreen() {
             testID="plan-open-fpl"
           >
             <AppIcon name="route" size={16} color={theme.textSecondary} />
-            <Text style={styles.moreMenuItemTxt}>ICAO flight plan…</Text>
+            <Text style={styles.moreMenuItemTxt}>Export ICAO flight plan…</Text>
           </TouchableOpacity>
         )}
         {waypoints.length >= 2 && (

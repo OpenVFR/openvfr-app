@@ -497,7 +497,7 @@ function SideDrawer({
           {hasRoute && selectedAircraftProfile && (
             <div className={css.section}>
               <button className={css.sectionHeader} onClick={() => setFplOpen(true)} title="Build the ICAO flight plan text for this route and aircraft">
-                <span>Flight Plan (ICAO)</span>
+                <span>Export ICAO flight plan…</span>
                 <span className={css.chevron}><IconChevronRight size={14} aria-hidden="true" /></span>
               </button>
             </div>

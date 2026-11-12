@@ -8,7 +8,8 @@ import { View, Text, TouchableOpacity, TextInput, Share } from 'react-native'
 import { buildFpl, EMPTY_ANSWERS, FLIGHT_RULES_LABELS, FLIGHT_TYPE_LABELS, type FlightAnswers, type FlightRules, type FlightType, type LevelMode } from '@open-vfr/shared/fplMessage'
 import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
 import type { AircraftProfileDocType, LegOverride } from '../types/db'
-import { settings as settingsDb } from '../db'
+import { settings as settingsDb, aircraft as aircraftDb } from '../db'
+import { fplAircraftItems, normaliseIcaoType } from '@open-vfr/shared/icaoFlightPlan'
 import { NativeSheet } from './NativeSheet'
 import { useThemedStyles, type ScaledTheme } from '../styles/theme'
 
@@ -31,7 +32,7 @@ function parseUtc(s: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
-export function FlightPlanSheet({ visible, onClose, waypoints, legOverrides, aircraft, legWinds, takeoffTime, alternateIcao, accountName }: {
+export function FlightPlanSheet({ visible, onClose, waypoints, legOverrides, aircraft: aircraftProp, legWinds, takeoffTime, alternateIcao, accountName }: {
   visible: boolean
   onClose: () => void
   waypoints: RouteWaypoint[]
@@ -43,6 +44,16 @@ export function FlightPlanSheet({ visible, onClose, waypoints, legOverrides, air
   accountName?: string
 }) {
   const styles = useThemedStyles(makeStyles)
+  // The aircraft as edited here: details missing for the plan can be filled in and saved to the profile.
+  const [aircraft, setAircraft] = useState(aircraftProp)
+  const [saved, setSaved] = useState(true)
+  const [showMore, setShowMore] = useState(false)
+  useEffect(() => { setAircraft(aircraftProp); setSaved(true) }, [aircraftProp])
+  const setAc = (patch: Partial<AircraftProfileDocType>) => { setAircraft(a => ({ ...a, ...patch })); setSaved(false) }
+  const saveAircraft = () => {
+    void aircraftDb.upsert({ ...aircraftProp, registration: aircraft.registration, icaoType: aircraft.icaoType, colour: aircraft.colour, transponder: aircraft.transponder, equipment: aircraft.equipment, hasRadio: aircraft.hasRadio, updatedAt: Date.now() }).then(() => setSaved(true)).catch(() => {})
+  }
+  const equipMode = aircraft.equipment?.length === 1 && ['N', 'S'].includes(aircraft.equipment[0]!) ? aircraft.equipment[0]! : aircraft.equipment?.length ? 'custom' : 'unset'
   const [flight, setFlight] = useState<FlightAnswers>(() => ({
     ...EMPTY_ANSWERS, eobt: takeoffTime ?? new Date(Math.ceil((Date.now() + 30 * 60_000) / 300_000) * 300_000), alternate: alternateIcao, pilotName: accountName ?? '',
   }))
@@ -72,8 +83,33 @@ export function FlightPlanSheet({ visible, onClose, waypoints, legOverrides, air
   )
 
   return (
-    <NativeSheet isPresented={visible} onDismiss={onClose} title="ICAO flight plan" testID="flight-plan-sheet" contentContainerStyle={styles.body}>
-      <Text style={styles.hint}>A draft built from your route and aircraft. Check it, then file it with the ATS service you use. Nothing is sent from OpenVFR.</Text>
+    <NativeSheet isPresented={visible} onDismiss={onClose} title="Export ICAO flight plan" testID="flight-plan-sheet" contentContainerStyle={styles.body}>
+      <Text style={styles.hint}>A draft built from your route and aircraft. Fill in what is asked, check the list, then share it into the filing service you use. Nothing is sent from OpenVFR.</Text>
+
+      <Text style={styles.outTitle}>Aircraft details for the plan</Text>
+      <Text style={styles.label}>Registration</Text>
+      <TextInput style={styles.input} value={aircraft.registration} autoCapitalize="characters" autoCorrect={false} onChangeText={t => setAc({ registration: t.toUpperCase() })} />
+      <Text style={styles.label}>ICAO type (or ZZZZ)</Text>
+      <TextInput style={styles.input} value={aircraft.icaoType ?? ''} autoCapitalize="characters" autoCorrect={false} maxLength={4} onChangeText={t => setAc({ icaoType: normaliseIcaoType(t) })} />
+      <Text style={styles.label}>Colour and markings</Text>
+      <TextInput style={styles.input} value={aircraft.colour ?? ''} onChangeText={t => setAc({ colour: t })} />
+      <Text style={styles.label}>Transponder</Text>
+      <View style={styles.row}>
+        {([['', 'Not set'], ['none', 'None'], ['A', 'Mode A'], ['C', 'Mode C'], ['S', 'Mode S']] as [string, string][]).map(([v, l]) => (
+          <TouchableOpacity key={l} style={[styles.chip, (aircraft.transponder ?? '') === v && styles.chipOn]} onPress={() => setAc({ transponder: (v || undefined) as AircraftProfileDocType['transponder'] })}>
+            <Text style={[styles.chipTxt, (aircraft.transponder ?? '') === v && styles.chipTxtOn]}>{l}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <Text style={styles.label}>Radio / nav{equipMode === 'custom' ? ' (chosen letters: edit in the aircraft profile)' : ''}</Text>
+      <View style={styles.row}>
+        {([['unset', 'Not set'], ['N', 'None (N)'], ['S', 'Standard (S)']] as [string, string][]).map(([v, l]) => (
+          <TouchableOpacity key={v} style={[styles.chip, equipMode === v && styles.chipOn]} onPress={() => setAc({ equipment: v === 'unset' ? undefined : [v], hasRadio: undefined })}>
+            <Text style={[styles.chipTxt, equipMode === v && styles.chipTxtOn]}>{l}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      {!saved && <TouchableOpacity style={styles.btn} onPress={saveAircraft}><Text style={styles.btnTxt}>Save to the aircraft profile</Text></TouchableOpacity>}
 
       <Text style={styles.label}>Flight rules</Text>
       <View style={styles.row}>
@@ -130,6 +166,15 @@ export function FlightPlanSheet({ visible, onClose, waypoints, legOverrides, air
       </View>
       <Text style={styles.label}>Remarks</Text>
       <TextInput style={styles.input} value={flight.remarks} onChangeText={t => set('remarks', t)} />
+      <Text style={styles.label}>Other information</Text>
+      <View style={styles.row}>
+        <TouchableOpacity style={[styles.chip, !!flight.personsUnknown && styles.chipOn]} onPress={() => set('personsUnknown', !flight.personsUnknown)} accessibilityRole="checkbox" accessibilityState={{ checked: !!flight.personsUnknown }}>
+          <Text style={[styles.chipTxt, !!flight.personsUnknown && styles.chipTxtOn]}>Persons not known yet (TBN)</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.chip, !!flight.jacketsPlain && styles.chipOn]} onPress={() => set('jacketsPlain', !flight.jacketsPlain)} accessibilityRole="checkbox" accessibilityState={{ checked: !!flight.jacketsPlain }}>
+          <Text style={[styles.chipTxt, !!flight.jacketsPlain && styles.chipTxtOn]}>Life jackets, no extras (JACKETS)</Text>
+        </TouchableOpacity>
+      </View>
 
       {fpl.problems.length > 0 && (
         <View style={styles.problems}>
@@ -139,15 +184,20 @@ export function FlightPlanSheet({ visible, onClose, waypoints, legOverrides, air
       )}
       {!!fpl.text && (
         <>
-          <Text style={styles.outTitle}>Flight plan message</Text>
-          <Text selectable style={styles.out}>{fpl.text}</Text>
-          <TouchableOpacity style={styles.btn} onPress={() => { void Share.share({ message: fpl.text }) }}><Text style={styles.btnTxt}>Share message</Text></TouchableOpacity>
-          <Text style={styles.outTitle}>Message with item 19 inside, to paste into a filing form's import</Text>
+          <Text style={styles.outTitle}>Flight plan to paste into a filing form's import (item 19 inside)</Text>
           <Text selectable style={styles.out}>{fpl.importText}</Text>
-          <TouchableOpacity style={styles.btn} onPress={() => { void Share.share({ message: fpl.importText }) }}><Text style={styles.btnTxt}>Share for import</Text></TouchableOpacity>
-          <Text style={styles.outTitle}>Item 19, for the filing form</Text>
-          <Text selectable style={styles.out}>{fpl.supplementary.join('\n')}</Text>
-          <TouchableOpacity style={styles.btn} onPress={() => { void Share.share({ message: fpl.supplementary.join('\n') }) }}><Text style={styles.btnTxt}>Share item 19</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.btn} onPress={() => { void Share.share({ message: fpl.importText }) }}><Text style={styles.btnTxt}>Share</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowMore(v => !v)}><Text style={styles.label}>{showMore ? 'Hide other formats' : 'More formats'}</Text></TouchableOpacity>
+          {showMore && (
+            <>
+              <Text style={styles.outTitle}>Flight plan message</Text>
+              <Text selectable style={styles.out}>{fpl.text}</Text>
+              <TouchableOpacity style={styles.btn} onPress={() => { void Share.share({ message: fpl.text }) }}><Text style={styles.btnTxt}>Share message</Text></TouchableOpacity>
+              <Text style={styles.outTitle}>Item 19, for the filing form</Text>
+              <Text selectable style={styles.out}>{fpl.supplementary.join('\n')}</Text>
+              <TouchableOpacity style={styles.btn} onPress={() => { void Share.share({ message: fpl.supplementary.join('\n') }) }}><Text style={styles.btnTxt}>Share item 19</Text></TouchableOpacity>
+            </>
+          )}
         </>
       )}
     </NativeSheet>

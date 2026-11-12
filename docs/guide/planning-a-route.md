@@ -167,9 +167,17 @@ On native, planning has its own screen with four segments along the top:
 
 ## ICAO flight plan
 
-With a route and an aircraft selected, **Flight Plan (ICAO)** (web, in the
-side panel) or **ICAO flight plan…** in the route actions menu (mobile) builds
-the plan as text:
+With a route and an aircraft selected, **Export ICAO flight plan…** (web, in
+the side panel; mobile, in the route actions menu) opens a form with what the
+plan needs that is not in the route or the aircraft, and builds the plan as
+text:
+
+- **Aircraft details for the plan:** registration, ICAO type, colour,
+  transponder and radio / nav. Fill in what the list says is missing and save
+  it to the aircraft profile, so you only do it once.
+- **Other information** (web, collapsed): persons on board not known yet
+  (written TBN; tell the ATS before taxiing) and life jackets carried without
+  light, fluorescein or radio (written as the remark JACKETS).
 
 - **Asked per flight:** flight rules (V, I, Y, Z), type of flight (G for
   private flying), off-block time in UTC, alternate, persons on board, your name

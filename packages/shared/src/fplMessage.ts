@@ -46,12 +46,16 @@ export interface FlightAnswers {
   /** First alternate aerodrome (ICAO), if any. */
   alternate?: string
   personsOnBoard: number
+  /** Persons on board not known yet: item 19 says TBN (to be notified); tell the ATS before taxiing. */
+  personsUnknown?: boolean
   /** Item 19 emergency radio: UHF, VHF (121.5 MHz) and ELT (ELBA). */
   emergencyRadio: readonly ('U' | 'V' | 'E')[]
   /** Item 19 survival equipment: polar, desert, maritime, jungle. */
   survival: readonly ('P' | 'D' | 'M' | 'J')[]
   /** Item 19 life jackets: with light, fluorescein, UHF, VHF. */
   jackets: readonly ('L' | 'F' | 'U' | 'V')[]
+  /** Life jackets carried without light, fluorescein or radio: written as the remark JACKETS. */
+  jacketsPlain?: boolean
   /** Item 19 dinghies: number, total capacity, covered, colour. */
   dinghies: { count: number; capacity: number; covered: boolean; colour: string }
   remarks: string
@@ -200,7 +204,7 @@ export function buildFpl(input: {
   if (Number.isNaN(ahead)) problems.push('off-block time')
   else if (ahead < 5 * 60_000 || ahead > 5 * 86_400_000) problems.push('the off-block time must be more than 5 minutes ahead and less than 5 days ahead')
   if (flight.dinghies.count > 0 && (!(flight.dinghies.capacity > 0) || !aftnText(flight.dinghies.colour))) problems.push('dinghies need a capacity and a colour')
-  if (!(flight.personsOnBoard >= 1)) problems.push('persons on board')
+  if (!flight.personsUnknown && !(flight.personsOnBoard >= 1)) problems.push('persons on board (or say they are not known yet)')
 
   const text = [
     `(FPL-${ac.identification || 'XXXXX'}-${flight.rules}${flight.type}`,
@@ -217,28 +221,30 @@ export function buildFpl(input: {
   if (!endurance) problems.push('endurance (needs usable fuel and fuel burn in the profile)')
   else if (plan.enrouteMins > 0 && (usableL / aircraft.fuelBurnLhr) * 60 < eetMins) problems.push('the endurance is less than the flight time')
   const d = flight.dinghies
+  const persons = flight.personsUnknown ? 'TBN' : pad(flight.personsOnBoard, 3)
+  const remarks19 = [flight.jacketsPlain && flight.jackets.length === 0 ? 'JACKETS' : '', aftnText(flight.remarks)].filter(Boolean).join(' ')
   const supplementary = [
     `19 Endurance: ${endurance ? `E/${endurance}` : '-'}`,
-    `Persons on board: P/${pad(flight.personsOnBoard, 3)}`,
+    `Persons on board: P/${persons}`,
     `Emergency radio: ${flight.emergencyRadio.length ? 'R/' + flight.emergencyRadio.join('') : 'none'}`,
     `Survival equipment: ${flight.survival.length ? 'S/' + flight.survival.join('') : 'none'}`,
     `Life jackets: ${flight.jackets.length ? 'J/' + ['L', 'F', 'U', 'V'].filter(j => (flight.jackets as readonly string[]).includes(j)).join('') : 'none'}`,
     `Dinghies: ${d.count > 0 ? `D/${pad(d.count)} ${pad(d.capacity, 3)} ${d.covered ? 'C' : ''} ${aftnText(d.colour)}`.replace(/\s+/g, ' ').trim() : 'none'}`,
     `Aircraft colour and markings: ${aftnText(ac.colour) ? `A/${aftnText(ac.colour)}` : '-'}`,
-    `Remarks: ${aftnText(flight.remarks) ? `N/${aftnText(flight.remarks)}` : '-'}`,
+    `Remarks: ${remarks19 ? `N/${remarks19}` : '-'}`,
     `Pilot in command: C/${aftnText(flight.pilotName) || '-'}${flight.pilotPhone.trim() ? `  Tel ${flight.pilotPhone.trim()}` : ''}`,
   ]
 
   // For import forms that take a pasted message with item 19 inside it: the same message, item 19 before the closing bracket.
   const item19 = [
-    [endurance ? `E/${endurance}` : '', `P/${pad(flight.personsOnBoard, 3)}`,
+    [endurance ? `E/${endurance}` : '', `P/${persons}`,
       flight.emergencyRadio.length ? `R/${flight.emergencyRadio.join('')}` : '',
       flight.survival.length ? `S/${flight.survival.join('')}` : '',
       flight.jackets.length ? `J/${['L', 'F', 'U', 'V'].filter(j => (flight.jackets as readonly string[]).includes(j)).join('')}` : '',
       d.count > 0 ? `D/${pad(d.count)} ${pad(d.capacity, 3)}${d.covered ? ' C' : ''} ${aftnText(d.colour)}` : '',
     ].filter(Boolean).join(' '),
     aftnText(ac.colour) ? `A/${aftnText(ac.colour)}` : '',
-    aftnText(flight.remarks) ? `N/${aftnText(flight.remarks)}` : '',
+    remarks19 ? `N/${remarks19}` : '',
     `C/${aftnText(flight.pilotName)}${flight.pilotPhone.trim() ? ` ${flight.pilotPhone.trim()}` : ''}`,
   ].filter(Boolean)
   const importText = `${text.slice(0, -1)}\n-${item19[0]}\n${item19.slice(1).join('\n')})`

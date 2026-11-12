@@ -149,3 +149,14 @@ describe('importText: item 19 inside the message', () => {
     expect(f.importText.match(/\)/g)!.length).toBe(1)
   })
 })
+
+describe('persons not known and plain life jackets', () => {
+  it('writes P/TBN and the remark JACKETS, and does not ask for a person count', () => {
+    const f = buildFpl({ nowMs: NOW, waypoints: route, legOverrides: [{}, {}], aircraft, flight: { ...flight, personsUnknown: true, personsOnBoard: 0, jacketsPlain: true, remarks: '' } })
+    const s = f.supplementary.join('\n')
+    expect(s).toContain('P/TBN')
+    expect(s).toContain('N/JACKETS')
+    expect(f.importText).toMatch(/P\/TBN/)
+    expect(f.problems.join(' ')).not.toMatch(/persons on board/)
+  })
+})
