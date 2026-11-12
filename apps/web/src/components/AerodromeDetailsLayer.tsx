@@ -10,9 +10,9 @@ import { useEffect } from 'react'
 import type * as maplibregl from 'maplibre-gl'
 import { DETAIL_LAYERS, layerFilter, type CircuitFocus } from '@open-vfr/shared/aerodromeDetailsStyle'
 import { useAerodromeDetailsLayer, useCircuitFocus } from '../utils/aerodromeDetails'
+import { OVERLAY_BELOW_LAYERS } from '../styles/map-style'
 
 const SOURCE = 'aerodrome-details'
-const BELOW_LAYERS = ['airspace-fill-g', 'navaids-vor-icon', 'aerodromes-atc-ring']
 
 function remove(map: maplibregl.Map) {
   for (const l of [...DETAIL_LAYERS].reverse()) if (map.getLayer(l.id)) map.removeLayer(l.id)
@@ -36,7 +36,7 @@ export default function AerodromeDetailsLayer({ map, circuitsVisible, holdingsVi
     if (!map || !fc) return
     const src = map.getSource(SOURCE) as maplibregl.GeoJSONSource | undefined
     if (src) { src.setData(fc as GeoJSON.FeatureCollection); return }
-    const before = BELOW_LAYERS.find(id => map.getLayer(id))
+    const before = OVERLAY_BELOW_LAYERS.find(id => map.getLayer(id))
     map.addSource(SOURCE, { type: 'geojson', data: fc as GeoJSON.FeatureCollection })
     for (const l of DETAIL_LAYERS) {
       map.addLayer({ id: l.id, type: l.type, source: SOURCE, minzoom: l.minzoom, filter: l.filter,

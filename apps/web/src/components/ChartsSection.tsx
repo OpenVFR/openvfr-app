@@ -26,7 +26,7 @@ function ChartRow({ chart, ad, authed }: { chart: ChartEntry; ad: AerodromeChart
   const sel: ChartSelection = { chart, country: ad.country, icao: ad.icao, attribution: ad.source.attribution, cycle: ad.cycle }
   const onMap = ui.overlay?.chart.id === chart.id
   const canView = ad.display.document && authed
-  const canOverlay = ad.display.overlay && !!chart.georef && authed
+  const canOverlay = ad.display.overlay && ad.display.document && !!chart.georef && authed      // the overlay fetches the PDF through the same endpoint
   return (
     <li className={css.row}>
       <span className={css.kind} title={CHART_KIND_LABEL[chart.kind]}>{chart.kind}</span>

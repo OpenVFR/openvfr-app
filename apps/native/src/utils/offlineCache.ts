@@ -23,7 +23,7 @@
 
 import { File, Directory, Paths } from 'expo-file-system'
 import { versionedTileUrl, getCachedTileManifest } from '@open-vfr/shared/tileManifest'
-import { TILE_BASE, activeCountry } from '../config'
+import { TILE_BASE, activeCountry, EXPERIMENTAL_AERODROME_DETAILS } from '../config'
 import { countryDatasetFile, countryArchiveFile, countryMefFile, type CountryDataset, type CountryArchive } from '@open-vfr/shared/countryData'
 
 export interface OfflineAsset {
@@ -120,8 +120,9 @@ export const OFFLINE_ASSETS: OfflineAsset[] = [
   dataset('landmarks',        'landmarks',        'Landmarks',             true),
   // Circuits, noise-sensitive areas, holdings and club-map features: drawn by the aerodrome details layer. Always downloaded
   // with the aerodromes (their curated fields are in that file), but may be absent: see `bundledWith`.
-  { key: 'aerodromeDetails', label: 'Aerodrome details (circuits, areas)', required: false, bundledWith: 'aerodromes',
-    get fileName() { return countryDatasetFile(activeCountry(), 'aerodromeDetails') } },
+  // Only when the layer is on in this build: no download size or storage for a layer nobody sees.
+  ...(EXPERIMENTAL_AERODROME_DETAILS ? [{ key: 'aerodromeDetails', label: 'Aerodrome details (circuits, areas)', required: false, bundledWith: 'aerodromes',
+    get fileName() { return countryDatasetFile(activeCountry(), 'aerodromeDetails') } } as OfflineAsset] : []),
   dataset('water',            'water',            'Water (Virtual Radar)', false, undefined, true),
 ]
 
@@ -322,7 +323,10 @@ export async function loadAssetJson(key: string): Promise<unknown | null> {
   if (!asset) return null
   const f = new File(getCacheDir(), asset.fileName)
   if (f.exists && (f.size ?? 0) > 0) {
-    try { return JSON.parse(f.textSync()) } catch { /* a damaged copy: fall through to the server */ }
+    try { return JSON.parse(f.textSync()) } catch {
+      // A damaged copy must not stay: isCached() would keep calling it complete and it would never be downloaded again.
+      try { f.delete() } catch { /* nothing more to do */ }
+    }
   }
   try {
     const r = await fetch(remoteUrlFor(asset.fileName))

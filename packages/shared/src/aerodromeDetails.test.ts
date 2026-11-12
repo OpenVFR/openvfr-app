@@ -48,7 +48,6 @@ describe('localInfo', () => {
     const i = localInfo(props)
     expect(i.circuits.map(formatCircuit)).toEqual(['RWY 12 · left-hand · 1300 ft QNH', 'RWY 30 · direction not stated'])
     expect(i.localRules).toEqual(['Report intentions before entering the circuit'])
-    expect(i.pprRemarks).toEqual(['PPR for night'])
     expect(formatLimits(i.areas[0]!.floor, i.areas[0]!.ceiling)).toBe('GND – FL065')
     expect(i.reportingPoints).toEqual([{ name: 'LYCKAN', remark: null }])
     expect([i.provenance['circuits']?.review, i.provenance['local_rules']?.review]).toEqual(['pending', undefined])

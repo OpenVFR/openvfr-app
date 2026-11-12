@@ -4,7 +4,7 @@
  * the local-information text); aerodrome symbols, closed flags and routing always use the public data.
  */
 import { useSyncExternalStore } from 'react'
-import { isAdminSession, subscribeAdminSession, useIsAdmin } from './adminAccess'
+import { isAdminSession, subscribeAdminSession } from './adminAccess'
 
 const KEY = 'ovfr:curated:unreviewed'
 
@@ -38,7 +38,6 @@ const subscribe = (l: () => void) => {
 
 /** Whether this session is showing unreviewed curated data. */
 export function useUnreviewedShown(): boolean {
-  useIsAdmin()
   return useSyncExternalStore(subscribe, unreviewedShown, () => false)
 }
 

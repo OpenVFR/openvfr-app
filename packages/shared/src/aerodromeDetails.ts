@@ -13,6 +13,9 @@
  */
 
 import type { Feature, FeatureCollection, Geometry, LineString } from 'geojson'
+import { CIRCUIT_GROUP_COLOR, DETAIL_KIND_COLOR } from './featureColors'
+export { CIRCUIT_GROUP_COLOR, DETAIL_KIND_COLOR }   // the palettes live in featureColors (the one source of aviation colours)
+
 
 // ── Kinds ───────────────────────────────────────────────────────────────────
 
@@ -42,31 +45,10 @@ export const DETAIL_KIND_LABEL: Record<DetailKind, string> = {
   other: 'Other',
 }
 
-/** One colour per kind (map fill/outline, list badges). */
 /** Aircraft groups that get their own circuit colour (a club map draws them in different colours too). */
 export type CircuitGroup = 'powered' | 'glider' | 'ultralight' | 'helicopter' | 'gyro'
 export const CIRCUIT_GROUPS: readonly CircuitGroup[] = ['powered', 'glider', 'ultralight', 'helicopter', 'gyro']
-export const CIRCUIT_GROUP_COLOR: Record<CircuitGroup, string> = {
-  powered: '#38bdf8',
-  glider: '#22c55e',
-  ultralight: '#f97316',
-  helicopter: '#a855f7',
-  gyro: '#eab308',
-}
 
-export const DETAIL_KIND_COLOR: Record<DetailKind, string> = {
-  noise_sensitive: '#f59e0b',
-  avoid_area: '#ef4444',
-  glider_area: '#22c55e',
-  parachute_area: '#a855f7',
-  model_area: '#14b8a6',
-  circuit_leg: '#38bdf8',
-  reporting_point: '#a3e635',
-  holding: '#0ca678',
-  taxiway: '#94a3b8',
-  parking: '#94a3b8',
-  other: '#cbd5e1',
-}
 
 // ── Vertical limits ─────────────────────────────────────────────────────────
 
@@ -236,7 +218,6 @@ export interface LocalInfo {
   circuits: CircuitInfo[]
   localRules: string[]
   hoursRemarks: string[]
-  pprRemarks: string[]
   areas: AreaInfo[]
   reportingPoints: { name: string; remark: string | null }[]
   /** VFR holding points ("WEST") with the orbit flown there and where to hold. */
@@ -304,7 +285,6 @@ export function localInfo(props: Record<string, unknown>): LocalInfo {
     circuits, areas, reportingPoints, holdings, provenance,
     localRules: strings(props['local_rules']),
     hoursRemarks: strings(props['hours_remarks']),
-    pprRemarks: strings(props['ppr_remarks']),
   }
 }
 

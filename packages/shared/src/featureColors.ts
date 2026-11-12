@@ -86,3 +86,33 @@ export const CLOUD_COLORS = {
   tcu:         'rgba(250,204,21,0.95)',   // amber — towering cumulus
   cb:          'rgba(239,68,68,0.95)',    // red — cumulonimbus
 } as const
+
+// ── Curated aerodrome details (circuits, noise areas, ...) ─────────────────────
+import type { CircuitGroup, DetailKind } from './aerodromeDetails'
+
+/** One colour per aircraft group's circuit (a club map draws them in different colours too). */
+export const CIRCUIT_GROUP_COLOR: Record<CircuitGroup, string> = {
+  powered: '#38bdf8',
+  glider: '#22c55e',
+  ultralight: '#f97316',
+  helicopter: '#a855f7',
+  gyro: '#eab308',
+}
+
+/** One colour per kind of local area (map fill/outline, list badges). */
+export const DETAIL_KIND_COLOR: Record<DetailKind, string> = {
+  noise_sensitive: '#f59e0b',
+  avoid_area: '#ef4444',
+  glider_area: '#22c55e',
+  parachute_area: '#a855f7',
+  model_area: '#14b8a6',
+  circuit_leg: '#38bdf8',
+  reporting_point: '#a3e635',
+  holding: '#0ca678',
+  taxiway: '#94a3b8',
+  parking: '#94a3b8',
+  other: '#cbd5e1',
+}
+
+/** The focused-circuit highlight (the powered-aircraft circuit colour). */
+export const CIRCUIT_FOCUS_COLOR = CIRCUIT_GROUP_COLOR.powered

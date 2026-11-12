@@ -1108,19 +1108,30 @@ const DETAIL_LAYERS_STATIC = staticColorLayers()
 /** The details file of the active country plus turn arrows and holding orbits built from the aerodromes data. */
 function useAerodromeDetailsData(aerodromesData: string | GeoJSON.GeoJSON, manifestReady: boolean): GeoJSON.FeatureCollection | null {
   const [details, setDetails] = useState<ReturnType<typeof parseAerodromeDetails>>(null)
+  const [loadedAerodromes, setLoadedAerodromes] = useState<GeoJSON.FeatureCollection | null>(null)
+  // A downloaded copy reaches the map as a file:// URI string (the renderer reads it itself); the details are built in JS, so
+  // that copy is read here too. Loaded once, after the tile manifest is ready (not once before and once after).
+  const aerodromesIsUri = typeof aerodromesData === 'string'
   useEffect(() => {
-    if (!EXPERIMENTAL_AERODROME_DETAILS) return
+    if (!EXPERIMENTAL_AERODROME_DETAILS || !manifestReady) return
     let cancelled = false
     // The cached copy first (downloaded with the aerodromes, so it works offline), else the server. Optional: absence is normal.
     loadAssetJson('aerodromeDetails')
       .then(j => { if (!cancelled) setDetails(parseAerodromeDetails(j)) })
       .catch(() => { /* optional file */ })
+    if (aerodromesIsUri) {
+      loadAssetJson('aerodromes')
+        .then(j => { if (!cancelled && j && (j as GeoJSON.FeatureCollection).type === 'FeatureCollection') setLoadedAerodromes(j as GeoJSON.FeatureCollection) })
+        .catch(() => { /* the details then have no aerodromes to attach turn arrows to: nothing is drawn */ })
+    }
     return () => { cancelled = true }
-  }, [manifestReady])
+  }, [manifestReady, aerodromesIsUri])
   return useMemo(() => {
-    if (!EXPERIMENTAL_AERODROME_DETAILS || typeof aerodromesData !== 'object' || aerodromesData.type !== 'FeatureCollection') return null
-    return buildDetailsMapData(details?.features ?? [], aerodromesData.features) as GeoJSON.FeatureCollection
-  }, [details, aerodromesData])
+    if (!EXPERIMENTAL_AERODROME_DETAILS) return null
+    const fc = typeof aerodromesData === 'object' && aerodromesData.type === 'FeatureCollection' ? aerodromesData : loadedAerodromes
+    if (!fc) return null
+    return buildDetailsMapData(details?.features ?? [], fc.features) as GeoJSON.FeatureCollection
+  }, [details, aerodromesData, loadedAerodromes])
 }
 
 const AerodromeDetailsLayers = React.memo(function AerodromeDetailsLayers({ data, showCircuits, showHoldings }:

@@ -7,6 +7,9 @@ describe('isTileGeojson', () => {
     expect(isTileGeojson(new URL('https://tiles.openvfr.org/se-aerodromes.geojson?v=abc123'))).toBe(true)
     expect(isTileGeojson(new URL('https://tiles.openvfr.org/se-aerodrome-details.geojson'))).toBe(true)
   })
+  it('matches geojson under a /tiles/ segment of a self-hosted base URL', () => {
+    expect(isTileGeojson(new URL('https://cdn.example.org/aviation/tiles/se-aerodromes.geojson'))).toBe(true)
+  })
   it('matches geojson from the same-origin /tiles/ path (dev, proxied)', () => {
     expect(isTileGeojson(new URL('https://app-staging.openvfr.org/tiles/se-airspace.geojson?v=1'))).toBe(true)
     expect(isTileGeojson(new URL('http://localhost:5174/tiles/se-aerodromes.geojson'))).toBe(true)

@@ -325,6 +325,16 @@ revokes the user's sessions and blocks sign-in while `banned` is set
 (optional expiry). A ban is stored on the user row, so deleting the account
 removes it. An already-issued PostgREST JWT stays valid until its 15 min expiry.
 
+### Curated aerodrome details and their preview files (optional, experimental)
+
+If your data pipeline publishes `<cc>-aerodrome-details.geojson` (circuits, noise-sensitive areas, holdings) and the web/native
+build has `VITE_EXPERIMENTAL_AERODROME_DETAILS` / `EXPO_PUBLIC_EXPERIMENTAL_AERODROME_DETAILS` on, the app draws them. A pipeline
+may also publish `<cc>-aerodromes.preview.geojson` and `<cc>-aerodrome-details.preview.geojson`: the same data with values that
+have not been reviewed yet, marked. The app reads them only when a signed-in **admin** switches Settings → "Curated data" to
+"Include unreviewed"; everyone else always reads the approved files. **The preview files sit on the same public tile host as every
+other file: anyone who knows the URL can download them.** The admin switch decides what the app shows, it is not access control. If
+unreviewed values must stay private, do not publish the preview files to the public host.
+
 ### Operator notices (optional)
 
 The apps can show notices such as planned maintenance or an outage. They are

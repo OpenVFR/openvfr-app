@@ -27,11 +27,13 @@ import RegionalNotamsPanel from './RegionalNotamsPanel'
 import { sunriseSunset, fmtSunTime } from '../utils/sunCalc'
 import { aerodromeClosure, closureLabel } from '@open-vfr/shared/aerodromeClosure'
 import { computeAtcStatus, anyNotamAtcRelated, anyNotamHoursChangeRelated } from '@open-vfr/shared/atcStatus'
-import { API_BASE_URL } from '../utils/env'
+import { API_BASE_URL, EXPERIMENTAL_AERODROME_DETAILS } from '../utils/env'
 import ChartsSection from './ChartsSection'
 import LocalInfoSection from './LocalInfoSection'
 import { setCircuitFocus, useCircuitFocus } from '../utils/aerodromeDetails'
-import { EXPERIMENTAL_AERODROME_DETAILS } from '../utils/env'
+import { loadStations as loadStationsShared, type StationRecord } from '@open-vfr/shared/wxStations'
+import { countryDatasetSource } from '@open-vfr/shared/countryData'
+import { IconChevronDown, IconChevronUp, IconHome, IconHomeFilled, IconX } from '@tabler/icons-react'
 
 /** A runway end ("06"). With the experimental aerodrome details it is a button: tapping it shows only that end's
  *  circuits on the map (again to show all). */
@@ -50,9 +52,6 @@ function RunwayEndChip({ className, title, aerodrome, designator }:
     </button>
   )
 }
-import { loadStations as loadStationsShared, type StationRecord } from '@open-vfr/shared/wxStations'
-import { countryDatasetSource } from '@open-vfr/shared/countryData'
-import { IconChevronDown, IconChevronUp, IconHome, IconHomeFilled, IconX } from '@tabler/icons-react'
 
 // ── Types matching the GeoJSON properties schema ─────────────────────────────
 

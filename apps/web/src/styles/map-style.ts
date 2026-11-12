@@ -224,6 +224,9 @@ export const SATELLITE_TILES = [
 
 // Layer IDs from the @protomaps/basemaps LIGHT theme — used by MapView to
 // hide the vector basemap when switching to satellite mode without a style reload.
+/** Runtime overlays (official chart, curated aerodrome details) are drawn under the first of these that exists: aviation data stays on top. */
+export const OVERLAY_BELOW_LAYERS: readonly string[] = ['airspace-fill-g', 'navaids-vor-icon', 'aerodromes-atc-ring']
+
 export const PROTOMAPS_LAYER_IDS: readonly string[] = [
   ...(layers('protomaps', LIGHT, { lang: 'sv' }) as StyleSpecification['layers'])
     .map((l) => l.id)

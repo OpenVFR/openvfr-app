@@ -32,23 +32,24 @@ export default function ChartViewer() {
     return () => { cancelled = true }
   }, [viewer])
 
+  // One render at a time on the canvas: a new page or zoom cancels the running render and waits for pdf.js to let go of it.
+  const lastRender = useRef<Promise<unknown>>(Promise.resolve())
   useEffect(() => {
     if (!doc || !canvasRef.current || !bodyRef.current) return
-    let cancelled = false
+    const ctl = new AbortController()
     // clientWidth already excludes a vertical scrollbar; minus the padding,
     // plus a little room so fit-width never shows a horizontal one.
     const width = bodyRef.current.clientWidth - 16 - 18
-    setRendering(true)
-    // Fit the page width, then zoom; device pixels for a sharp result.
-    doc.getPage(page).then(async (p) => {
-      const base = p.getViewport({ scale: 1 })
-      const scale = (width / base.width) * ZOOMS[zoom]! * (window.devicePixelRatio || 1)
-      if (cancelled || !canvasRef.current) return
-      await renderChartPage(doc, page, canvasRef.current, { maxPx: 1e9, scale })
-      canvasRef.current.style.width = `${Math.round(base.width * scale / (window.devicePixelRatio || 1))}px`
-    }).catch(() => { if (!cancelled) setError('The page could not be rendered.') })
-      .finally(() => { if (!cancelled) setRendering(false) })
-    return () => { cancelled = true }
+    setRendering(true); setError(null)
+    const mine = lastRender.current.catch(() => undefined).then(async () => {
+      const canvas = canvasRef.current
+      if (ctl.signal.aborted || !canvas) return
+      const r = await renderChartPage(doc, page, canvas, { maxPx: 1e9, fitCssWidth: width, zoom: ZOOMS[zoom]!, signal: ctl.signal })
+      canvas.style.width = `${r.cssWidth}px`
+    }).catch((e) => { if ((e as { name?: string } | null)?.name !== 'AbortError') setError('The page could not be rendered.') })
+      .finally(() => { if (!ctl.signal.aborted) setRendering(false) })
+    lastRender.current = mine
+    return () => ctl.abort()
   }, [doc, page, zoom])
 
   useEffect(() => {

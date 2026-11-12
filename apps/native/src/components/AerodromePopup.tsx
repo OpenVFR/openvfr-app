@@ -35,6 +35,7 @@ import LocalInfoSection from './LocalInfoSection'
 import type { LocalInfo } from '@open-vfr/shared/aerodromeDetails'
 import { EXPERIMENTAL_AERODROME_DETAILS } from '../config'
 import { setCircuitFocus, useCircuitFocus } from '../utils/circuitFocus'
+import { CIRCUIT_FOCUS_COLOR } from '@open-vfr/shared/featureColors'
 
 interface Frequency {
   service:  string
@@ -762,7 +763,7 @@ function makeRunwayStyles(theme: ScaledTheme) {
   // Runway end whose circuits alone are shown on the map (experimental aerodrome details)
   desigFocused: {
     borderWidth: 2,
-    borderColor: '#38bdf8',
+    borderColor: CIRCUIT_FOCUS_COLOR,
   },
   desigTxt: {
     color:      theme.textPrimary,

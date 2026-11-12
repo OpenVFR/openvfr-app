@@ -174,3 +174,17 @@ test('config: CHART_DOCUMENT_ADMIN_ONLY', async () => {
   assert.equal(chartDocumentConfigFromEnv({ CHART_DOCUMENT_ADMIN_ONLY: '0' }).adminOnly, false)
   assert.equal(chartDocumentConfigFromEnv({}).adminOnly, false)
 })
+
+test('config: an empty or invalid number means the default, never 0 (which would refuse every request)', async () => {
+  const { chartDocumentConfigFromEnv } = await import('./chartDocuments.js')
+  const c = chartDocumentConfigFromEnv({ CHART_DOCUMENT_HOURLY_LIMIT: '', CHART_DOCUMENT_DAILY_LIMIT: 'x', CHART_DOCUMENT_MAX_MB: ' ', CHART_DOCUMENT_CACHE_MB: '' })
+  assert.equal(c.hourlyLimit, 120)
+  assert.equal(c.dailyLimit, 600)
+  assert.equal(c.maxBytes, 20 * 1024 * 1024)
+  assert.equal(c.cacheBytes, 100 * 1024 * 1024)
+  assert.equal(chartDocumentConfigFromEnv({ CHART_DOCUMENT_CACHE_MB: '0' }).cacheBytes, 0)      // 0 = cache off stays possible
+})
+
+test('url check: a malformed percent escape is refused, not thrown', () => {
+  assert.deepEqual(checkDocumentUrl('https://aro.example/a%zz.pdf', new Set(['aro.example'])), { error: 'bad path encoding' })
+})

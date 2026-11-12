@@ -172,6 +172,7 @@ import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../sty
 import { isLowMemoryDevice } from '../utils/deviceMemory'
 import { NativeSheet } from '../components/NativeSheet'
 import { BaroPromptModal } from '../components/BaroPromptModal'
+import { CIRCUIT_FOCUS_COLOR } from '@open-vfr/shared/featureColors'
 /** How often the flown trail is rebuilt from the active log (ms). */
 const TRAIL_REFRESH_MS = 5_000
 
@@ -2514,7 +2515,7 @@ function makeStyles(theme: ScaledTheme) {
     paddingHorizontal: theme.space3, paddingVertical: theme.space2,
   },
   airacBanner: { borderColor: theme.statusWarn },
-  circuitFocusBanner: { borderColor: '#38bdf8' },
+  circuitFocusBanner: { borderColor: CIRCUIT_FOCUS_COLOR },
   routeHintPill: {
     position: 'absolute', left: theme.space2, maxWidth: '72%',
     zIndex: 46,

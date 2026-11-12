@@ -48,6 +48,7 @@
  */
 
 import { Hono, type Context } from 'hono'
+import { RateLimiter, limitFromEnv } from './rateLimiter.js'
 import { CHART_ID, findChart, parseChartsIndex, type ChartsIndex } from '@open-vfr/shared/chartsIndex'
 
 export interface ChartDocumentConfig {
@@ -67,18 +68,20 @@ export interface ChartDocumentConfig {
 }
 
 export function chartDocumentConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ChartDocumentConfig {
-  const num = (k: string, d: number) => {
-    const v = Number(env[k])
-    return Number.isFinite(v) && v >= 0 ? v : d
-  }
+  // An empty or invalid value means the default (Number('') is 0, which would refuse everything). Only the cache size may be 0 (= off).
+  const cacheMb = (() => {
+    const raw = env['CHART_DOCUMENT_CACHE_MB']?.trim()
+    const v = raw ? Number(raw) : NaN
+    return Number.isFinite(v) && v >= 0 ? v : 100
+  })()
   return {
     hosts: new Set((env['CHART_DOCUMENT_HOSTS'] ?? '').split(',').map(h => h.trim().toLowerCase()).filter(Boolean)),
     tilesBaseUrl: (env['TILES_BASE_URL'] ?? '').trim().replace(/\/+$/, ''),
     indexTtlMs: 10 * 60 * 1000,
-    maxBytes: num('CHART_DOCUMENT_MAX_MB', 20) * 1024 * 1024,
-    hourlyLimit: num('CHART_DOCUMENT_HOURLY_LIMIT', 120),
-    dailyLimit: num('CHART_DOCUMENT_DAILY_LIMIT', 600),
-    cacheBytes: num('CHART_DOCUMENT_CACHE_MB', 100) * 1024 * 1024,
+    maxBytes: limitFromEnv('CHART_DOCUMENT_MAX_MB', 20, env) * 1024 * 1024,
+    hourlyLimit: limitFromEnv('CHART_DOCUMENT_HOURLY_LIMIT', 120, env),
+    dailyLimit: limitFromEnv('CHART_DOCUMENT_DAILY_LIMIT', 600, env),
+    cacheBytes: cacheMb * 1024 * 1024,
     cacheTtlMs: 6 * 60 * 60 * 1000,
     timeoutMs: 30_000,
     adminOnly: /^(1|true)$/i.test((env['CHART_DOCUMENT_ADMIN_ONLY'] ?? '').trim()),
@@ -94,7 +97,9 @@ export function checkDocumentUrl(raw: string | undefined, hosts: ReadonlySet<str
   if (url.username || url.password) return { error: 'credentials not allowed' }
   if (url.port && url.port !== '443') return { error: 'port not allowed' }
   if (!hosts.has(url.hostname.toLowerCase())) return { error: 'host not allowed' }
-  if (!/\.pdf$/i.test(decodeURIComponent(url.pathname))) return { error: 'not a PDF path' }
+  let path: string
+  try { path = decodeURIComponent(url.pathname) } catch { return { error: 'bad path encoding' } }
+  if (!/\.pdf$/i.test(path)) return { error: 'not a PDF path' }
   url.hash = ''
   return { url }
 }
@@ -102,21 +107,14 @@ export function checkDocumentUrl(raw: string | undefined, hosts: ReadonlySet<str
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * HOUR_MS
 
-/** Per-user sliding-window limiter (same pattern as the POH extraction limit). */
+/** Per-user hourly + daily limit on the shared RateLimiter (idle users are evicted there). */
 export function createRateLimiter(hourly: number, daily: number, now: () => number = Date.now) {
-  const usage = new Map<string, number[]>()
+  const rl = new RateLimiter([{ windowMs: HOUR_MS, max: hourly }, { windowMs: DAY_MS, max: daily }])
   return (userId: string): { allowed: true } | { allowed: false; retryAfterSeconds: number } => {
     const t = now()
-    const stamps = (usage.get(userId) ?? []).filter(s => t - s < DAY_MS)
-    const lastHour = stamps.filter(s => t - s < HOUR_MS)
-    if (lastHour.length >= hourly) {
-      return { allowed: false, retryAfterSeconds: Math.ceil((Math.min(...lastHour) + HOUR_MS - t) / 1000) }
-    }
-    if (stamps.length >= daily) {
-      return { allowed: false, retryAfterSeconds: Math.ceil((Math.min(...stamps) + DAY_MS - t) / 1000) }
-    }
-    stamps.push(t)
-    usage.set(userId, stamps)
+    const r = rl.check(userId, t)
+    if (r.waitS > 0) return { allowed: false, retryAfterSeconds: r.waitS }
+    rl.record(userId, t)
     return { allowed: true }
   }
 }
@@ -189,11 +187,15 @@ export async function fetchDocument(url: URL, cfg: ChartDocumentConfig, fetchImp
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get('location')
       const next = loc ? checkDocumentUrl(new URL(loc, current).toString(), cfg.hosts) : { error: 'no location' }
-      if ('error' in next) throw new UpstreamError(`redirect refused: ${'error' in next ? next.error : ''} (${loc})`, 502)
+      await res.body?.cancel().catch(() => undefined)             // an unread body keeps the connection busy
+      if ('error' in next) throw new UpstreamError(`redirect refused: ${next.error} (${loc})`, 502)
       current = next.url
       continue
     }
-    if (res.status !== 200) throw new UpstreamError(`upstream HTTP ${res.status}`, res.status === 404 ? 404 : 502)
+    if (res.status !== 200) {
+      await res.body?.cancel().catch(() => undefined)
+      throw new UpstreamError(`upstream HTTP ${res.status}`, res.status === 404 ? 404 : 502)
+    }
     const body = await readCapped(res, cfg.maxBytes)
     const magic = new TextDecoder().decode(body.subarray(0, 5))
     if (magic !== '%PDF-') throw new UpstreamError('upstream body is not a PDF', 502)
@@ -209,7 +211,10 @@ const MISS_RELOAD_MS = 60 * 1000
 
 async function fetchJson(url: string, maxBytes: number, cfg: ChartDocumentConfig, fetchImpl: typeof fetch): Promise<unknown> {
   const res = await fetchImpl(url, { signal: AbortSignal.timeout(cfg.timeoutMs), headers: { Accept: 'application/json' } })
-  if (res.status !== 200) throw new UpstreamError(`HTTP ${res.status} for ${url}`, 502)
+  if (res.status !== 200) {
+    await res.body?.cancel().catch(() => undefined)
+    throw new UpstreamError(`HTTP ${res.status} for ${url}`, 502)
+  }
   return JSON.parse(new TextDecoder().decode(await readCapped(res, maxBytes)))
 }
 
@@ -244,7 +249,10 @@ export function createChartIndexResolver(cfg: ChartDocumentConfig, fetchImpl: ty
       return ok
     } catch (err) {
       console.error('[charts/document] index reload failed', { country: cc, error: err instanceof Error ? err.message : String(err) })
-      if (prev) return prev.index                                  // keep serving the last good one
+      if (prev) {                                                  // keep serving the last good one, and do not retry on every request
+        prev.at = now()
+        return prev.index
+      }
       throw err
     }
   }
@@ -331,7 +339,9 @@ export function chartDocumentRoutes(opts: {
       }
     }
 
-    const name = (decodeURIComponent(checked.url.pathname.split('/').pop() ?? 'document.pdf')
+    let last = checked.url.pathname.split('/').pop() ?? 'document.pdf'
+    try { last = decodeURIComponent(last) } catch { /* keep the raw name: it is only a suggested file name */ }
+    const name = (last
       .replace(/[^\w.\- ]+/g, '_').slice(0, 120)) || 'document.pdf'
     return new Response(body as Uint8Array<ArrayBuffer>, {
       status: 200,

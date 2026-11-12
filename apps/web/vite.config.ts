@@ -96,7 +96,7 @@ export default defineConfig({
             // Same logic as isTileGeojson() in pwa-rules.ts, which the unit test checks; keep them identical.
             // Tile data comes from the same-origin /tiles/ path (dev, proxied) or a host such as tiles.openvfr.org (production).
             urlPattern: ({ url }: { url: URL }) =>
-              url.pathname.endsWith('.geojson') && (url.pathname.startsWith('/tiles/') || url.hostname.startsWith('tiles.')),
+              url.pathname.endsWith('.geojson') && (url.pathname.includes('/tiles/') || url.hostname.startsWith('tiles.')),
             handler: 'StaleWhileRevalidate' as const,
             options: {
               cacheName: 'aviation-data',

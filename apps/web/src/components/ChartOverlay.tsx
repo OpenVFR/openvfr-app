@@ -13,12 +13,11 @@ import { useEffect, useRef, useState } from 'react'
 import type * as maplibregl from 'maplibre-gl'
 import { overlayGeometry } from '@open-vfr/shared/chartsIndex'
 import { chartUi, loadChartDocument, renderChartPage, useChartUi, ChartDocumentError } from '../utils/charts'
+import { OVERLAY_BELOW_LAYERS } from '../styles/map-style'
 import css from './ChartOverlay.module.css'
 
 const SOURCE_ID = 'chart-overlay'
 const LAYER_ID = 'chart-overlay'
-/** Drawn under the first of these that exists (aviation data stays on top). */
-const BELOW_LAYERS = ['airspace-fill-g', 'navaids-vor-icon', 'aerodromes-atc-ring']
 /** Longer side of the rendered map frame, px. ~2.5 px per PDF point at A4. */
 const RENDER_MAX_PX = 3000
 
@@ -52,7 +51,7 @@ export default function ChartOverlay({ map }: { map: maplibregl.Map | null }) {
         canvasRef.current = canvas
         removeOverlay(map)
         map.addSource(SOURCE_ID, { type: 'canvas', canvas, coordinates: corners, animate: false })
-        const before = BELOW_LAYERS.find(id => map.getLayer(id))
+        const before = OVERLAY_BELOW_LAYERS.find(id => map.getLayer(id))
         map.addLayer({
           id: LAYER_ID, type: 'raster', source: SOURCE_ID,
           paint: { 'raster-opacity': opacityRef.current, 'raster-fade-duration': 0, 'raster-resampling': 'linear' },

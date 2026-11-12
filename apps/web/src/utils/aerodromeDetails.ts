@@ -13,6 +13,7 @@ import {
 } from '@open-vfr/shared/aerodromeDetails'
 import { countryFileUrl, countryDatasetFile, loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { useUnreviewedShown } from './unreviewedCurated'
+import { loadOptionalJson } from './optionalJson'
 import { buildDetailsMapData, type CircuitFocus } from '@open-vfr/shared/aerodromeDetailsStyle'
 import { useActiveCountries } from './countryData'
 
@@ -21,14 +22,7 @@ const cache = new Map<string, Promise<FeatureCollection<Geometry, DetailProps> |
 /** The details file; `preview` = the one with every airfield's unreviewed values (admins only), falling back to the public file. */
 export function loadAerodromeDetails(country: string, preview = false): Promise<FeatureCollection<Geometry, DetailProps> | null> {
   const url = countryFileUrl(countryDatasetFile(country, preview ? 'aerodromeDetailsPreview' : 'aerodromeDetails'))
-  let p = cache.get(url)
-  if (!p) {
-    p = fetch(url)
-      .then(r => (r.ok ? r.json() : null))
-      .then(parseAerodromeDetails)
-      .catch(() => null)
-    cache.set(url, p)
-  }
+  const p = loadOptionalJson(cache, url, parseAerodromeDetails)
   return preview ? p.then(d => d ?? loadAerodromeDetails(country, false)) : p
 }
 

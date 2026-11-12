@@ -13,7 +13,8 @@ import {
   parseChartsIndex, chartsForAerodrome, chartDocumentProxyUrl,
   type ChartsIndex, type AerodromeCharts, type ChartEntry,
 } from '@open-vfr/shared/chartsIndex'
-import { countryFileUrl } from '@open-vfr/shared/countryData'
+import { countryFileUrl, countryDatasetFile } from '@open-vfr/shared/countryData'
+import { loadOptionalJson } from './optionalJson'
 import { API_BASE_URL } from './env'
 import { useActiveCountries } from './countryData'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
@@ -24,16 +25,7 @@ const indexCache = new Map<string, Promise<ChartsIndex | null>>()
 
 /** One country's charts index, or null when the deployment has none. */
 export function loadChartsIndex(country: string): Promise<ChartsIndex | null> {
-  const url = countryFileUrl(`${country}-charts.json`)
-  let p = indexCache.get(url)
-  if (!p) {
-    p = fetch(url)
-      .then(r => (r.ok ? r.json() : null))
-      .then(parseChartsIndex)
-      .catch(() => null) // optional file: absence is normal
-    indexCache.set(url, p)
-  }
-  return p
+  return loadOptionalJson(indexCache, countryFileUrl(countryDatasetFile(country, 'charts')), parseChartsIndex)   // optional file: a 404 is normal
 }
 
 /** Charts for one aerodrome across the active countries (null = none). */
@@ -112,25 +104,58 @@ export function loadChartDocument(country: string, chartId: string): Promise<PDF
   return p
 }
 
+/** The most pixels a chart canvas may have (width x height): ~64 MB of RGBA. Beyond it the canvas is drawn smaller and scaled up by CSS. */
+export const MAX_CANVAS_PIXELS = 16_000_000
+
+export interface RenderOptions {
+  maxPx: number
+  crop?: [number, number, number, number]
+  /** Absolute scale (canvas px per PDF point); else `fitCssWidth` x `zoom` x devicePixelRatio, else `maxPx`. */
+  scale?: number
+  /** Fit the page to this CSS width, times `zoom`: the page is only looked up once, here. */
+  fitCssWidth?: number
+  zoom?: number
+  /** Cancels the pdf.js render task (it would otherwise keep the canvas busy and a second render on it is refused). */
+  signal?: AbortSignal
+}
+
 /**
- * Render one page (or the crop [left, top, right, bottom] as page fractions)
- * into `canvas`, at most `maxPx` pixels on its longer side.
+ * Render one page (or the crop [left, top, right, bottom] as page fractions) into `canvas`. The canvas never exceeds
+ * MAX_CANVAS_PIXELS. Aborting `signal` cancels the render and rejects with an AbortError, after pdf.js has let go of the canvas.
+ * Returns the canvas size and the CSS width the page should be shown at when `fitCssWidth` was given.
  */
 export async function renderChartPage(
-  doc: PDFDocumentProxy, pageNumber: number, canvas: HTMLCanvasElement,
-  opts: { maxPx: number; crop?: [number, number, number, number]; scale?: number },
-): Promise<{ width: number; height: number }> {
+  doc: PDFDocumentProxy, pageNumber: number, canvas: HTMLCanvasElement, opts: RenderOptions,
+): Promise<{ width: number; height: number; cssWidth: number }> {
+  const abort = () => new DOMException('Aborted', 'AbortError')
+  if (opts.signal?.aborted) throw abort()
   const page = await doc.getPage(pageNumber)
+  if (opts.signal?.aborted) throw abort()
   const base = page.getViewport({ scale: 1 })
   const [l, t, r, b] = opts.crop ?? [0, 0, 1, 1]
   const cropW = base.width * (r - l)
   const cropH = base.height * (b - t)
-  const scale = opts.scale ?? Math.min(opts.maxPx / Math.max(cropW, cropH), 6)
+  const dpr = window.devicePixelRatio || 1
+  let scale = opts.scale ?? (opts.fitCssWidth !== undefined
+    ? (opts.fitCssWidth / base.width) * (opts.zoom ?? 1) * dpr
+    : Math.min(opts.maxPx / Math.max(cropW, cropH), 6))
+  const cssWidth = Math.round((cropW * scale) / dpr)
+  scale = Math.min(scale, Math.sqrt(MAX_CANVAS_PIXELS / (cropW * cropH)))
   const viewport = page.getViewport({ scale, offsetX: -base.width * l * scale, offsetY: -base.height * t * scale })
   canvas.width = Math.max(1, Math.round(cropW * scale))
   canvas.height = Math.max(1, Math.round(cropH * scale))
-  await page.render({ canvas, viewport }).promise
-  return { width: canvas.width, height: canvas.height }
+  const task = page.render({ canvas, viewport })
+  const onAbort = () => task.cancel()
+  opts.signal?.addEventListener('abort', onAbort, { once: true })
+  try {
+    await task.promise
+  } catch (err) {
+    if ((err as { name?: string } | null)?.name === 'RenderingCancelledException') throw abort()
+    throw err
+  } finally {
+    opts.signal?.removeEventListener('abort', onAbort)
+  }
+  return { width: canvas.width, height: canvas.height, cssWidth }
 }
 
 // ── UI state shared by the popup, viewer and map overlay ───────────────────

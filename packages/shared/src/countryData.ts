@@ -20,7 +20,7 @@ import { DEFAULT_REGION_CODES } from './regions'
 export type CountryDataset =
   | 'airspace' | 'aerodromes' | 'navaids' | 'waypoints' | 'runways'
   | 'runwayThresholds' | 'obstacles' | 'landmarks' | 'water' | 'aeroways' | 'aerodromeDetails'
-  | 'aerodromesPreview' | 'aerodromeDetailsPreview'
+  | 'aerodromesPreview' | 'aerodromeDetailsPreview' | 'charts'
 
 const SUFFIX: Record<CountryDataset, string> = {
   airspace:         'airspace.geojson',
@@ -37,6 +37,7 @@ const SUFFIX: Record<CountryDataset, string> = {
   aerodromeDetails: 'aerodrome-details.geojson',
   // The same two files with every airfield's unreviewed curated values too (marked). Only admins can switch them on (the app's
   // Settings); never the core map behaviour reads them, only the informational layer.
+  charts: 'charts.json',            // the official-charts index (not GeoJSON: read with the charts loader, not loadCountryGeojson)
   aerodromesPreview: 'aerodromes.preview.geojson',
   aerodromeDetailsPreview: 'aerodrome-details.preview.geojson',
 }
