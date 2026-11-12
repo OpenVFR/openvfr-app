@@ -79,6 +79,38 @@
   border-color: rgba(14, 116, 144, 0.6);
 }
 
+.layersWrap {
+  position: relative;
+}
+
+.layersMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  min-width: 170px;
+  padding: 4px 0;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.layersItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.layersItem:hover {
+  background: var(--border-subtle);
+}
+
 .collapseBtn {
   background: none;
   border: none;

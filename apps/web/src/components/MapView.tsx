@@ -1623,6 +1623,16 @@ export default function MapView({ auth }: { auth: AuthState }) {
     }
   }, [trafficTargets, mapReady, gpsPosition, trafficVertFilter, flyingNow])
 
+  // Traffic for the Virtual Radar: the same targets and vertical filter as the map symbols.
+  // Undefined when the traffic layer is off, which also hides the chart's Traffic entry.
+  const radarTraffic = useMemo(() => {
+    if (!trafficEnabled) return undefined
+    return trafficTargets.filter((t) => {
+      if (!flyingNow || trafficVertFilter === 0 || t.relAltFt === null) return true
+      return Math.abs(t.relAltFt) <= trafficVertFilter
+    })
+  }, [trafficEnabled, trafficTargets, trafficVertFilter, flyingNow])
+
   // Post-flight track viewer — selected historical log (state declared above near profileCursorNm)
   useEffect(() => {
     const map = mapRef.current
@@ -5649,6 +5659,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
               currentVSpeedFpm={flyingMode !== 'off' ? chartVSpeedFpm ?? undefined : undefined}
               crossTrackNm={crossTrackNm}
               weatherStations={routeWeatherStations}
+              traffic={radarTraffic}
               trajectoryMode={trajectoryMode}
               onHoverDistNm={setProfileCursorNm}
               crosshairDistNm={profileCursorNm}
@@ -5686,6 +5697,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
                 currentSpeedKts={chartPos?.speedKts}
                 currentVSpeedFpm={chartVSpeedFpm ?? undefined}
                 weatherStations={routeWeatherStations}
+                traffic={radarTraffic}
                 trajectoryMode={trajectoryMode}
                 onHoverDistNm={setProfileCursorNm}
                 crosshairDistNm={profileCursorNm}

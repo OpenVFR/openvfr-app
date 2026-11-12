@@ -110,6 +110,7 @@
     "./windRelative": "./src/windRelative.ts",
     "./runwayWind": "./src/runwayWind.ts",
     "./virtualRadarCalc": "./src/virtualRadarCalc.ts",
+    "./radarTraffic": "./src/radarTraffic.ts",
     "./airspaceOutline": "./src/airspaceOutline.ts",
     "./cloudGlyph": "./src/cloudGlyph.ts",
     "./aircraftSilhouette": "./src/aircraftSilhouette.ts",

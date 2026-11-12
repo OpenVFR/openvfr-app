@@ -2364,6 +2364,7 @@ function MapScreenForCountry() {
           currentVSpeedFpm={altitudeSource.vsFtMin ?? undefined}
           crossTrackNm={crossTrackNm}
           weatherStations={routeWeatherStations}
+          trafficStore={layers.traffic ? trafficStore : undefined}
           trajectoryMode={settings.trajectoryMode ?? 'time'}
           trajectoryNm={settings.trajectoryNm}
           height={profileHeight}
@@ -2398,6 +2399,7 @@ function MapScreenForCountry() {
           currentSpeedKts={activePosition?.speedKts}
           currentVSpeedFpm={altitudeSource.vsFtMin ?? undefined}
           weatherStations={routeWeatherStations}
+          trafficStore={layers.traffic ? trafficStore : undefined}
           trajectoryMode={settings.trajectoryMode ?? 'time'}
           trajectoryNm={settings.trajectoryNm}
           height={profileHeight}

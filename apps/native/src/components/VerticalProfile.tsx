@@ -25,11 +25,10 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback, useSyncExternalStore } from 'react'
 import {
-  View, Text, TouchableOpacity, StyleSheet, Image, PanResponder, ActivityIndicator, useWindowDimensions, type LayoutChangeEvent,
+  View, Text, TouchableOpacity, StyleSheet, Image, PanResponder, ActivityIndicator, useWindowDimensions, Dimensions, Modal, Pressable, type LayoutChangeEvent,
 } from 'react-native'
-import IconMountain from '@tabler/icons-react-native/IconMountain'
-import IconBuildingBroadcastTower from '@tabler/icons-react-native/IconBuildingBroadcastTower'
-import IconWind from '@tabler/icons-react-native/IconWind'
+import type { FeatureCollection } from 'geojson'
+import IconStack2 from '@tabler/icons-react-native/IconStack2'
 import { GestureDetector, usePanGesture, usePinchGesture, useSimultaneousGestures } from 'react-native-gesture-handler'
 import Animated, { useSharedValue, useAnimatedStyle, withDecay, cancelAnimation } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
@@ -97,6 +96,7 @@ import { windBarbColorForSpeed, windBarbGeometry } from '@open-vfr/shared/windBa
 import { layoutWindRow, tickLabelsClearOfWindRow, type WindRowItem } from '@open-vfr/shared/windRow'
 import { useWindAloftAlongRoute } from '../hooks/useWindAloftAlongRoute'
 import { usePersistedFlag } from '../utils/usePersistedFlag'
+import { projectTrafficMarks, trafficOpacity, type RadarTrafficTarget } from '@open-vfr/shared/radarTraffic'
 import { getTileUrls, API_BASE } from '../config'
 import { getOfflineDem } from '../utils/terrainDem'
 import { loadGeoJsonOnce } from '../utils/geoJsonCache'
@@ -162,6 +162,10 @@ interface Props {
    *  arrows and cloud-base layers are drawn at each station's projected
    *  along-route position. Omit to hide entirely. */
   weatherStations?: RouteWeatherStation[]
+  /** Live traffic store (the map's, already through its vertical filter). Targets inside the
+   *  abeam corridor are drawn by along-route distance and altitude; the Layers menu gets a
+   *  Traffic entry. Omit when the traffic layer is off. */
+  trafficStore?: ValueStore<FeatureCollection>
   /** Chart area height in px — controlled by the parent (draggable via the
    *  handle rendered at the top of this panel). Defaults to DEFAULT_CHART_H. */
   height?: number
@@ -663,6 +667,52 @@ const RadarBackdrop = React.memo(function RadarBackdrop(P: BackdropProps) {
   const keys: (keyof BackdropProps)[] = ['profile', 'terrainPts', 'corridorFill', 'terrainPath', 'weatherMarks', 'obstacleMarks', 'poiMarks', 'xOf', 'yOf', 'yMin', 'yMax', 'plotW', 'plotH', 'plotBottom', 'totalNm']
   return keys.every((k) => a[k] === b[k]) && a.yTicks.join() === b.yTicks.join() && a.xTicks.join() === b.xTicks.join()
 })
+
+const TRAFFIC_COLOR = '#ffd54a'
+
+/**
+ * Traffic in the corridor: an aircraft symbol at its along-route distance and altitude, pointing with or
+ * against the route, an arrow while climbing or descending, its altitude beside it. Subscribes to the map's
+ * traffic store itself, so the 2 s updates re-render only this and not the whole chart. Opacity is carried
+ * in fill/stroke alpha (see renderHaloText).
+ */
+function TrafficOverlay({ store, waypoints, totalNm, corridorNm, xOf, yOf, yMin, yMax }: {
+  store: ValueStore<FeatureCollection>; waypoints: RouteWaypoint[]; totalNm: number; corridorNm: number
+  xOf: (nm: number) => number; yOf: (ft: number) => number; yMin: number; yMax: number
+}) {
+  const fc = useStoreValue(store)
+  const marks = useMemo(() => {
+    const targets: RadarTrafficTarget[] = []
+    for (const f of fc.features) {
+      if (f.geometry.type !== 'Point') continue
+      const p = f.properties ?? {}
+      if (typeof p.altFt !== 'number') continue
+      const [lon, lat] = f.geometry.coordinates as [number, number]
+      targets.push({ icao24: String(p.icao24), callsign: (p.callsign as string | null) ?? null, lat, lon, altFt: p.altFt, trackDeg: typeof p.trackDeg === 'number' ? p.trackDeg : 0, vertFpm: typeof p.vertFpm === 'number' ? p.vertFpm : 0, onGround: p.onGround === true })
+    }
+    return projectTrafficMarks(waypoints, targets, totalNm, corridorNm)
+  }, [fc, waypoints, totalNm, corridorNm])
+  return (
+    <>
+      {marks.map((m) => {
+        const alt = m.target.altFt
+        if (alt < yMin || alt > yMax) return null
+        const x = xOf(m.distNm), y = yOf(alt)
+        const op = trafficOpacity(m.offRouteNm, corridorNm)
+        const vr = m.target.vertFpm
+        return (
+          <G key={`trf-${m.target.icao24}`} transform={`translate(${x},${y})`}>
+            <Path d="M-7,3.5 L7,0 L-7,-3.5 L-4,0 Z" transform={m.dir < 0 ? 'scale(-1,1)' : undefined} fill={TRAFFIC_COLOR} fillOpacity={op} stroke="#000" strokeOpacity={op} strokeWidth={1} strokeLinejoin="round" />
+            {Math.abs(vr) >= 300 && (
+              <Path d={vr > 0 ? 'M0,-6 L0,-13 M-3,-10 L0,-13 L3,-10' : 'M0,6 L0,13 M-3,10 L0,13 L3,10'} fill="none" stroke={TRAFFIC_COLOR} strokeOpacity={op} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+            )}
+            {renderHaloText(10, 4, String(Math.round(alt)), TRAFFIC_COLOR, 10, op, 'start', { weight: '600' })}
+          </G>
+        )
+      })}
+    </>
+  )
+}
 
 /** Planned line, turn points, MSA, wind barbs, chips and waypoint ticks inside the chart Svg. Independent of the aircraft position, memoized so a position tick does not rebuild ~hundreds of Svg elements; keep its props stable. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1231,13 +1281,12 @@ function FlownReadout({ store, flown, bands, terrainPts, getMsa, styles, xOf, sc
 export const VerticalProfile = React.memo(function VerticalProfile({
   waypoints, legOverrides, units = DEFAULT_UNITS, airspaceCeilingFt, msaMargins, title, headerStart, headerEnd, onClose, closeLabel, aircraftProfile, airborneEnds,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, trajectoryNm = 5,
-  crossTrackNm, weatherStations,
+  crossTrackNm, weatherStations, trafficStore,
   height = DEFAULT_CHART_H, onHeightChange, onHoverDistNm, onLegLevelChange, levelEditLeg, onLegTap, followAircraft, corridorBand = true,
   flown, jumpToTs, plannedRoute,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   // Narrow phones: the three toggles become icons so none is clipped.
-  const iconToggles = useWindowDimensions().width < 400
   const logMode = flown != null
   // Flight log: the inspected recorded point (starts mid-flight, untouched) in a store, so moving
   // it re-renders only the aircraft and the readout, not the whole chart.
@@ -1277,6 +1326,14 @@ export const VerticalProfile = React.memo(function VerticalProfile({
   const [showObstLabels, setShowObstLabels] = usePersistedFlag('ovfr:vr:obst', true)
   // Flight log: the ground-speed line (own scale; exact values in the readout either way).
   const [showSpeed, setShowSpeed] = usePersistedFlag('ovfr:vr:gs', true)
+  // Live traffic inside the corridor (only offered when the map's traffic layer is on).
+  const [showTraffic, setShowTraffic] = usePersistedFlag('ovfr:vr:traffic', true)
+  // The Layers menu holds the chart's toggles (there is no room for a button each).
+  const [layersAt, setLayersAt] = useState<{ top: number; right: number } | null>(null)
+  const layersBtnRef = useRef<React.ElementRef<typeof View>>(null)
+  const openLayers = useCallback(() => {
+    layersBtnRef.current?.measureInWindow((x, y, w, h) => setLayersAt({ top: y + h + 4, right: Math.max(8, Dimensions.get('window').width - (x + w)) }))
+  }, [])
   const [chartW,      setChartW]      = useState(0)
   // Header widths, to hide the centred grip when the toggles reach the middle
   // (narrow phone in log mode: the grip was drawn across the first toggle).
@@ -2452,44 +2509,17 @@ export const VerticalProfile = React.memo(function VerticalProfile({
             </Text>
           )}
           {/* Zoom along the route is by pinching the chart; the −/+ buttons did nothing visible on most routes. */}
-          <TouchableOpacity
-            style={[styles.projBtn, showMsa && styles.projBtnOn]}
-            onPress={() => setShowMsa(v => !v)}
-            accessibilityLabel={showMsa ? 'Hide the minimum safe altitude line' : 'Show the minimum safe altitude line'}
-          >
-            {iconToggles
-              ? <IconMountain size={14} color={showMsa ? '#00dcff' : theme.textMuted} />
-              : <Text style={[styles.projBtnTxt, showMsa && styles.projBtnTxtOn]}>MSA</Text>}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.projBtn, showObstLabels && styles.projBtnOn]}
-            onPress={() => setShowObstLabels(v => !v)}
-            accessibilityLabel={showObstLabels ? 'Hide obstacle height labels' : 'Show height labels on the obstacles near your level'}
-          >
-            {iconToggles
-              ? <IconBuildingBroadcastTower size={14} color={showObstLabels ? '#00dcff' : theme.textMuted} />
-              : <Text style={[styles.projBtnTxt, showObstLabels && styles.projBtnTxtOn]}>OBST</Text>}
-          </TouchableOpacity>
-          {logMode && (
+          <View ref={layersBtnRef} collapsable={false}>
             <TouchableOpacity
-              style={[styles.projBtn, showSpeed && styles.projBtnOn]}
-              onPress={() => setShowSpeed(v => !v)}
-              accessibilityLabel={showSpeed ? 'Hide the ground-speed line' : 'Show the ground speed along the flight'}
+              style={[styles.projBtn, layersAt != null && styles.projBtnOn]}
+              onPress={openLayers}
+              accessibilityRole="button"
+              accessibilityLabel="Chart layers"
+              accessibilityHint="Choose what the chart shows"
             >
-              <Text style={[styles.projBtnTxt, showSpeed && styles.projBtnTxtOn]}>{showSpeed && flownDraw ? `GS 0\u2013${flownDraw.speedTopKts}` : 'GS'}</Text>
+              <IconStack2 size={14} color={layersAt != null ? '#00dcff' : theme.textMuted} />
             </TouchableOpacity>
-          )}
-          {!logMode && (
-            <TouchableOpacity
-              style={[styles.projBtn, showWindAloft && styles.projBtnOn]}
-              onPress={() => setShowWindAloft(v => !v)}
-              accessibilityLabel={showWindAloft ? 'Hide winds aloft' : 'Show winds aloft'}
-            >
-              {iconToggles
-              ? <IconWind size={14} color={showWindAloft ? '#00dcff' : theme.textMuted} />
-              : <Text style={[styles.projBtnTxt, showWindAloft && styles.projBtnTxtOn]}>WIND</Text>}
-            </TouchableOpacity>
-          )}
+          </View>
           {onClose && (
             <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ left: 8, right: 8 }} accessibilityLabel={closeLabel ?? 'Close'}>
               <AppIcon name="close" size={16} color={theme.textSecondary} />
@@ -2497,6 +2527,32 @@ export const VerticalProfile = React.memo(function VerticalProfile({
           )}
         </View>
       </View>
+      <Modal visible={layersAt != null} transparent animationType="fade" onRequestClose={() => setLayersAt(null)}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={() => setLayersAt(null)} accessibilityLabel="Close chart layers">
+          {layersAt && (
+            <View style={[styles.layersMenu, { top: layersAt.top, right: layersAt.right }]}>
+              {([
+                { id: 'msa', label: 'Minimum safe altitude', on: showMsa, set: setShowMsa, show: true },
+                { id: 'obst', label: 'Obstacle labels', on: showObstLabels, set: setShowObstLabels, show: true },
+                { id: 'wind', label: 'Winds aloft', on: showWindAloft, set: setShowWindAloft, show: !logMode },
+                { id: 'gs', label: 'Ground speed', on: showSpeed, set: setShowSpeed, show: logMode },
+                { id: 'traffic', label: 'Traffic', on: showTraffic, set: setShowTraffic, show: !logMode && trafficStore != null },
+              ] as const).filter(it => it.show).map(it => (
+                <TouchableOpacity
+                  key={it.id}
+                  style={styles.layersItem}
+                  onPress={() => it.set(v => !v)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: it.on }}
+                >
+                  <Text style={[styles.layersBox, it.on && styles.layersBoxOn]}>{it.on ? '\u2611' : '\u2610'}</Text>
+                  <Text style={styles.layersTxt}>{it.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </Pressable>
+      </Modal>
       {/* ── Chart ──────────────────────────────────────────────────── */}
       {!collapsed && (
         <View style={[styles.chartWrap, { height: chartH }]} onLayout={onChartLayout}>
@@ -2597,6 +2653,10 @@ export const VerticalProfile = React.memo(function VerticalProfile({
                   yMin={yMin}
                   yOf={yOf}
                 />
+
+                {trafficStore && showTraffic && !logMode && (
+                  <TrafficOverlay store={trafficStore} waypoints={waypoints} totalNm={totalNm} corridorNm={abeamNm} xOf={xOf} yOf={yOf} yMin={yMin} yMax={yMax} />
+                )}
 
               </Svg>
 
@@ -2819,6 +2879,26 @@ function makeStyles(theme: ScaledTheme) {
     fontWeight: '700',
   },
   projBtnTxtOn: { color: '#00dcff' },
+  layersMenu: {
+    position:          'absolute',
+    backgroundColor:   theme.surfaceSheet,
+    borderRadius:      theme.radiusLg,
+    borderWidth:       1,
+    borderColor:       theme.borderDefault,
+    paddingVertical:   theme.space2,
+    minWidth:          220,
+  },
+  layersItem: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    gap:               theme.space3,
+    paddingVertical:   theme.space3,
+    paddingHorizontal: theme.space4,
+    minHeight:         44,
+  },
+  layersBox:   { color: theme.textMuted, fontSize: 18 },
+  layersBoxOn: { color: '#00dcff' },
+  layersTxt:   { color: theme.textPrimary, fontSize: 14 },
   logTitle: {
     color:      theme.textSecondary,
     fontSize:   10,

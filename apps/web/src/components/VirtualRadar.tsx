@@ -62,6 +62,7 @@ import { LANDMARK_ICON_DEFS } from '../utils/landmarkIcons'
 import { loadColoredSvgMarkup } from '../utils/svgIconLoader'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
 import { IconX } from '@tabler/icons-react'
+import { projectTrafficMarks, trafficOpacity, type RadarTrafficTarget } from '@open-vfr/shared/radarTraffic'
 
 // Don't compress a long route down to fit the panel width: below this
 // pixel density (per display unit, NM or km) the chart becomes horizontally
@@ -100,6 +101,8 @@ const LINE_LABEL_INSET = 5
 // Text and guide lines drawn inside the plot: the chart is dark in every theme, so these are
 // fixed light colours, not the theme's (dark in the light theme). Axes outside the plot follow the theme.
 const CHART_TEXT = '#ffffff'
+/** Traffic symbols (aviation traffic-advisory amber, readable on the sky and ground bands). */
+const TRAFFIC_COLOR = '#ffd54a'
 const CHART_LINE = 'rgba(255,255,255,0.45)'
 
 const HALO = { stroke: 'rgba(0,0,0,0.9)', strokeWidth: 4, strokeLinejoin: 'round' as const, paintOrder: 'stroke' }
@@ -147,6 +150,10 @@ interface Props {
    *  arrows and cloud-base layers drawn at each station's projected
    *  along-route position. Omit to hide entirely. */
   weatherStations?: RouteWeatherStation[]
+  /** Live traffic (already through the map's vertical filter). Targets inside the abeam
+   *  corridor are drawn by along-route distance and altitude; the Layers menu gets a
+   *  Traffic entry. Omit when the traffic layer is off. */
+  traffic?: RadarTrafficTarget[]
   /** Enables dragging a leg up/down to change its planned level. `null` clears
    *  the leg's override (route level). Omit while the route is locked. */
   onLegLevelChange?: (legIndex: number, altFt: number | null) => void
@@ -962,7 +969,7 @@ function LegDragLayer({ layout: L, spans, legMsa, totalNm, fallbackAltFt, ceilin
 function VirtualRadar({
   waypoints, legOverrides, units = DEFAULT_UNITS, title, onHoverDistNm, aircraftProfile,
   currentDistNm, currentAltFt, currentSpeedKts, currentVSpeedFpm, trajectoryMode, crosshairDistNm,
-  crossTrackNm, weatherStations, airspaceCeilingFt, onLegLevelChange, levelEditLeg, onLegTap, followAircraft, airborneEnds, headerAction, corridorBand = true,
+  crossTrackNm, weatherStations, traffic, airspaceCeilingFt, onLegLevelChange, levelEditLeg, onLegTap, followAircraft, airborneEnds, headerAction, corridorBand = true,
   flown, onClose, jumpToTs, plannedRoute,
 }: Props) {
   const logMode = flown != null
@@ -999,6 +1006,19 @@ function VirtualRadar({
   const [showObstLabels, setShowObstLabels] = usePersistedFlag('ovfr:vr:obst', true)
   // Flight log: the ground-speed line (own scale; exact values are in the readout either way).
   const [showSpeed, setShowSpeed] = usePersistedFlag('ovfr:vr:gs', true)
+  // Live traffic inside the corridor (only offered when the map's traffic layer is on).
+  const [showTraffic, setShowTraffic] = usePersistedFlag('ovfr:vr:traffic', true)
+  // The Layers menu holds the chart's toggles (there is no room for a button each).
+  const [layersOpen, setLayersOpen] = useState(false)
+  const layersRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!layersOpen) return
+    const close = (e: PointerEvent) => { if (!layersRef.current?.contains(e.target as Node)) setLayersOpen(false) }
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setLayersOpen(false) }
+    document.addEventListener('pointerdown', close)
+    document.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', esc) }
+  }, [layersOpen])
 
   // Extract performance model from selected aircraft profile.
   // Only populated when all critical perf fields are non-zero.
@@ -1205,6 +1225,12 @@ function VirtualRadar({
       return { station: m.station, distNm: m.distNm, offRouteNm: m.offRouteNm, wind: resolved.wind, clouds: resolved.clouds }
     })
   }, [weatherStations, waypoints, profile])
+
+  // Traffic inside the same abeam corridor as terrain, MSA and obstacles.
+  const trafficMarks = useMemo(
+    () => (!traffic || !profile || logMode ? [] : projectTrafficMarks(waypoints, traffic, profile.totalNm, abeamNm)),
+    [traffic, profile, waypoints, abeamNm, logMode],
+  )
 
   // Measure the chart wrap's width: it decides whether the route is wider
   // than the panel (MIN_PX_PER_UNIT) and therefore scrolls. Deps are not []:
@@ -1962,6 +1988,26 @@ function VirtualRadar({
           </g>
         ))}
 
+        {/* Traffic in the corridor: an aircraft symbol at its along-route distance and altitude,
+            pointing with or against the route, an arrow while climbing or descending, its altitude beside it. */}
+        {showTraffic && trafficMarks.map((m) => {
+          const alt = m.target.altFt
+          if (alt < L.yMin || alt > L.yMax) return null
+          const x = L.xOf(m.distNm)
+          const y = L.yOf(alt)
+          const vr = m.target.vertFpm
+          return (
+            <g key={`trf-${m.target.icao24}`} transform={`translate(${x} ${y})`} opacity={trafficOpacity(m.offRouteNm, abeamNm)} pointerEvents="none">
+              <title>{`${m.target.callsign ?? m.target.icao24.toUpperCase()} · ${formatAltitudeFt(alt)}${Math.abs(vr) >= 300 ? ` · ${vr > 0 ? '+' : '−'}${Math.round(Math.abs(vr) / 100) * 100} ft/min` : ''} · ${m.offRouteNm.toFixed(1)} NM off route`}</title>
+              <path d="M-7,3.5 L7,0 L-7,-3.5 L-4,0 Z" transform={m.dir < 0 ? 'scale(-1 1)' : undefined} fill={TRAFFIC_COLOR} stroke="#000" strokeWidth={1} strokeLinejoin="round" />
+              {Math.abs(vr) >= 300 && (
+                <path d={vr > 0 ? 'M0,-6 L0,-13 M-3,-10 L0,-13 L3,-10' : 'M0,6 L0,13 M-3,10 L0,13 L3,10'} fill="none" stroke={TRAFFIC_COLOR} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+              )}
+              <text x={10} y={4} fontSize={10} fontWeight={600} fill={TRAFFIC_COLOR} {...HALO}>{Math.round(alt)}</text>
+            </g>
+          )
+        })}
+
         {/* ── Labels on top of every line (plan, MSA, below-MSA): chips, then obstacle names ── */}
         {renderAirspaceChips(placedChips)}
         {obstacleMarks.filter((m) => m.labelPos && m.leader).map((m) => (
@@ -1989,7 +2035,7 @@ function VirtualRadar({
         </text>
       </>
     )
-  }, [profile, layout, series, yMax, yMin, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, showMsa, windAloft, iconMarkup, visibleWaypointTicks, units.distance, dragging, obstacleMarks, landmarkMarks, poiMarks, unreached, legSpanList, phaseMarks, flownParts, logMode, windOn, flownSpeed, showSpeed, flownPlanned])
+  }, [profile, layout, series, yMax, yMin, yTicks, xTicks, terrainPts, terrainStops, weatherMarks, windRow, showWindAloft, showMsa, windAloft, showTraffic, trafficMarks, abeamNm, iconMarkup, visibleWaypointTicks, units.distance, dragging, obstacleMarks, landmarkMarks, poiMarks, unreached, legSpanList, phaseMarks, flownParts, logMode, windOn, flownSpeed, showSpeed, flownPlanned])
 
   if (!profile || !series || series.distNms.length === 0) {
     // A flight log shows its panel at once: building its profile (map data, terrain) takes a moment.
@@ -2126,7 +2172,7 @@ function VirtualRadar({
             className={css.windStatus}
             title={windAloftStatus === 'retrying'
               ? 'The wind forecast service is busy or unreachable. Some winds aloft are missing or older readings; retrying shortly.'
-              : 'The wind forecast service is busy or unreachable. Some winds aloft are missing or older readings. Change the route or toggle WIND to try again.'}
+              : 'The wind forecast service is busy or unreachable. Some winds aloft are missing or older readings. Change the route or switch Winds aloft off and on in Layers to try again.'}
           >
             {windAloftStatus === 'retrying' ? 'Winds: retrying…' : 'Winds unavailable'}
           </span>
@@ -2137,40 +2183,33 @@ function VirtualRadar({
           <button className={css.projToggleBtn} onClick={() => zoomBy(1.5)} title="Zoom in along the route (Ctrl + wheel, or pinch the chart)" aria-label="Zoom profile in">+</button>
           </>
         )}
-        <button
-          className={`${css.projToggleBtn} ${showMsa ? css.projToggleOn : ''}`}
-          onClick={() => setShowMsa((v) => !v)}
-          title={showMsa ? 'Hide the minimum safe altitude line' : 'Show the minimum safe altitude line'}
-        >
-          MSA
-        </button>
-        <button
-          className={`${css.projToggleBtn} ${showObstLabels ? css.projToggleOn : ''}`}
-          onClick={() => setShowObstLabels((v) => !v)}
-          title={showObstLabels ? 'Hide obstacle height labels' : 'Show height labels on the obstacles near your level'}
-        >
-          OBST
-        </button>
-        {logMode && (
+        <div className={css.layersWrap} ref={layersRef}>
           <button
-            className={`${css.projToggleBtn} ${showSpeed ? css.projToggleOn : ''}`}
-            onClick={() => setShowSpeed((v) => !v)}
-            title={showSpeed
-              ? `Ground-speed line: own scale, 0 kt at the bottom of the chart to ${flownSpeed?.scale.topKts ?? 0} kt at the top. Click to hide.`
-              : 'Show the ground speed along the flight (own scale)'}
+            className={`${css.projToggleBtn} ${layersOpen ? css.projToggleOn : ''}`}
+            onClick={() => setLayersOpen((o) => !o)}
+            aria-haspopup="menu"
+            aria-expanded={layersOpen}
+            title="Choose what the chart shows"
           >
-            {showSpeed && flownSpeed ? `GS 0–${flownSpeed.scale.topKts}` : 'GS'}
+            LAYERS ▾
           </button>
-        )}
-        {!logMode && (
-          <button
-            className={`${css.projToggleBtn} ${showWindAloft ? css.projToggleOn : ''}`}
-            onClick={() => setShowWindAloft((v) => !v)}
-            title={showWindAloft ? 'Hide winds aloft' : 'Show winds aloft at several levels'}
-          >
-            WIND
-          </button>
-        )}
+          {layersOpen && (
+            <div className={css.layersMenu} role="menu" aria-label="Virtual Radar layers">
+              {([
+                { id: 'msa', label: 'Minimum safe altitude', on: showMsa, set: setShowMsa, show: true },
+                { id: 'obst', label: 'Obstacle labels', on: showObstLabels, set: setShowObstLabels, show: true },
+                { id: 'wind', label: 'Winds aloft', on: showWindAloft, set: setShowWindAloft, show: !logMode },
+                { id: 'gs', label: 'Ground speed', on: showSpeed, set: setShowSpeed, show: logMode },
+                { id: 'traffic', label: 'Traffic', on: showTraffic, set: setShowTraffic, show: !logMode && traffic !== undefined },
+              ] as const).filter((it) => it.show).map((it) => (
+                <label key={it.id} className={css.layersItem} role="menuitemcheckbox" aria-checked={it.on}>
+                  <input type="checkbox" checked={it.on} onChange={() => it.set((v: boolean) => !v)} />
+                  {it.label}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
         <button
           className={css.collapseBtn}
           onClick={() => setCollapsed((c) => !c)}
