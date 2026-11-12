@@ -189,7 +189,9 @@ the plan as text:
   at or above the transition altitude (see ENR 1.7 of the national AIP) a
   level is a flight level on the standard pressure setting, so change those
   by hand; the check list reminds you.
-- **Output:** the message `(FPL-…)` and the item 19 lines, each with a Copy
+- **Output:** the message `(FPL-…)`, the same message with item 19 inside it
+  (for a filing form that has an import box where you paste a whole message),
+  and the item 19 lines, each with a Copy
   (web) or Share (mobile) button, and a **Check before you file** list of what
   is missing: for example no registration, a type that is not a valid
   designator (the plan then uses ZZZZ and puts your text after `TYP/`), more

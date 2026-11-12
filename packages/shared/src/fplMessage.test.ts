@@ -136,3 +136,16 @@ describe('item 15 and 18 conventions (ICAO Annex 2, Appendix 2)', () => {
     expect(f.text.split('\n')[3]).not.toMatch(/DCT DCT|\d[EW] DCT \d{4}[NS]/)
   })
 })
+
+describe('importText: item 19 inside the message', () => {
+  it('puts item 19 before the closing bracket, A/ and C/ on their own lines', () => {
+    const f = buildFpl({ nowMs: NOW, waypoints: route, legOverrides: [{}, {}], aircraft, flight: { ...flight, survival: ['M'], dinghies: { count: 1, capacity: 4, covered: true, colour: 'Yellow' } } })
+    const l = f.importText.split('\n')
+    expect(l.slice(0, 6)).toEqual(f.text.split('\n').slice(0, 5).concat(l[5]!))
+    expect(l[6]).toMatch(/^-E\/\d{4} P\/002 S\/M D\/01 004 C YELLOW$/)
+    expect(l[7]).toMatch(/^A\//)
+    expect(l[l.length - 1]).toMatch(/^C\/.+\)$/)
+    expect(f.importText.endsWith(')')).toBe(true)
+    expect(f.importText.match(/\)/g)!.length).toBe(1)
+  })
+})

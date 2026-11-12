@@ -142,6 +142,8 @@ export default function FlightPlanDialog({ waypoints, legOverrides, aircraft, le
           <>
             <div className={css.outHead}><span>Flight plan message</span><button type="button" className={css.btn} onClick={() => void copy('fpl', fpl.text)}>{copied === 'fpl' ? 'Copied' : 'Copy'}</button></div>
             <pre className={css.out}>{fpl.text}</pre>
+            <div className={css.outHead}><span>Message with item 19 inside, to paste into a filing form's import</span><button type="button" className={css.btn} onClick={() => void copy('imp', fpl.importText)}>{copied === 'imp' ? 'Copied' : 'Copy'}</button></div>
+            <pre className={css.out}>{fpl.importText}</pre>
             <div className={css.outHead}><span>Item 19, for the filing form</span><button type="button" className={css.btn} onClick={() => void copy('s19', fpl.supplementary.join('\n'))}>{copied === 's19' ? 'Copied' : 'Copy'}</button></div>
             <pre className={css.out}>{fpl.supplementary.join('\n')}</pre>
           </>

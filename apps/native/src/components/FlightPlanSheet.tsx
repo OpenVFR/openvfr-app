@@ -142,6 +142,9 @@ export function FlightPlanSheet({ visible, onClose, waypoints, legOverrides, air
           <Text style={styles.outTitle}>Flight plan message</Text>
           <Text selectable style={styles.out}>{fpl.text}</Text>
           <TouchableOpacity style={styles.btn} onPress={() => { void Share.share({ message: fpl.text }) }}><Text style={styles.btnTxt}>Share message</Text></TouchableOpacity>
+          <Text style={styles.outTitle}>Message with item 19 inside, to paste into a filing form's import</Text>
+          <Text selectable style={styles.out}>{fpl.importText}</Text>
+          <TouchableOpacity style={styles.btn} onPress={() => { void Share.share({ message: fpl.importText }) }}><Text style={styles.btnTxt}>Share for import</Text></TouchableOpacity>
           <Text style={styles.outTitle}>Item 19, for the filing form</Text>
           <Text selectable style={styles.out}>{fpl.supplementary.join('\n')}</Text>
           <TouchableOpacity style={styles.btn} onPress={() => { void Share.share({ message: fpl.supplementary.join('\n') }) }}><Text style={styles.btnTxt}>Share item 19</Text></TouchableOpacity>

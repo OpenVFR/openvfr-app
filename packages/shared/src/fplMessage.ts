@@ -110,6 +110,8 @@ export function aftnText(v: string): string {
 export interface FplMessage {
   /** The message in parentheses, one line per item group. */
   text: string
+  /** The message with item 19 inside it, for filing forms that take a pasted message. */
+  importText: string
   /** Item 19 as labelled lines for the filing form. */
   supplementary: string[]
   /** What is missing or needs a look before it can be filed. */
@@ -130,7 +132,7 @@ export function buildFpl(input: {
   const ac = fplAircraftItems(aircraft)
   const problems = [...ac.missing]
   if (waypoints.length < 2) {
-    return { text: '', supplementary: [], problems: ['Plan a route first.', ...problems], aircraft: ac }
+    return { text: '', importText: '', supplementary: [], problems: ['Plan a route first.', ...problems], aircraft: ac }
   }
   const first = waypoints[0]!, last = waypoints[waypoints.length - 1]!
   const depName = (first.name ?? '').trim().toUpperCase(), destName = (last.name ?? '').trim().toUpperCase()
@@ -226,5 +228,19 @@ export function buildFpl(input: {
     `Remarks: ${aftnText(flight.remarks) ? `N/${aftnText(flight.remarks)}` : '-'}`,
     `Pilot in command: C/${aftnText(flight.pilotName) || '-'}${flight.pilotPhone.trim() ? `  Tel ${flight.pilotPhone.trim()}` : ''}`,
   ]
-  return { text, supplementary, problems, aircraft: ac }
+
+  // For import forms that take a pasted message with item 19 inside it: the same message, item 19 before the closing bracket.
+  const item19 = [
+    [endurance ? `E/${endurance}` : '', `P/${pad(flight.personsOnBoard, 3)}`,
+      flight.emergencyRadio.length ? `R/${flight.emergencyRadio.join('')}` : '',
+      flight.survival.length ? `S/${flight.survival.join('')}` : '',
+      flight.jackets.length ? `J/${['L', 'F', 'U', 'V'].filter(j => (flight.jackets as readonly string[]).includes(j)).join('')}` : '',
+      d.count > 0 ? `D/${pad(d.count)} ${pad(d.capacity, 3)}${d.covered ? ' C' : ''} ${aftnText(d.colour)}` : '',
+    ].filter(Boolean).join(' '),
+    aftnText(ac.colour) ? `A/${aftnText(ac.colour)}` : '',
+    aftnText(flight.remarks) ? `N/${aftnText(flight.remarks)}` : '',
+    `C/${aftnText(flight.pilotName)}${flight.pilotPhone.trim() ? ` ${flight.pilotPhone.trim()}` : ''}`,
+  ].filter(Boolean)
+  const importText = `${text.slice(0, -1)}\n-${item19[0]}\n${item19.slice(1).join('\n')})`
+  return { text, importText, supplementary, problems, aircraft: ac }
 }
