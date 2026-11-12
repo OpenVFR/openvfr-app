@@ -154,7 +154,15 @@ export function buildFpl(input: {
     return `${fplPoint(w)}${changed ? `/${legSpeed(leg)}${legLevel(leg)}` : ''}`
   })
   const speed = legSpeed(0), level = legLevel(0)
-  const route = mid.length ? `DCT ${mid.join(' DCT ')} DCT`.trim() : 'DCT'
+  // DCT joins the points, except between two points given as coordinates (ICAO Annex 2, Appendix 2, item 15 c).
+  const isCoord = (p: string) => /^\d{4}[NS]\d{5}[EW]/.test(p)
+  const tokens = ['DCT']
+  mid.forEach((p, k) => {
+    if (k > 0 && !(isCoord(p) && isCoord(mid[k - 1]!))) tokens.push('DCT')
+    tokens.push(p)
+  })
+  if (mid.length && !isCoord(mid[mid.length - 1]!)) tokens.push('DCT')
+  const route = tokens.join(' ')
 
   // Estimated elapsed time, with the leg winds when known.
   const plan = computeFuelPlan([...waypoints], [...legOverrides], aircraft, input.legWinds)
@@ -169,12 +177,16 @@ export function buildFpl(input: {
   if (flight.alternate && !alt2) problems.push('the alternate must be an ICAO aerodrome code')
   if (alt2 && destOk && flight.alternate!.toUpperCase() === destName) problems.push('the alternate cannot be the same aerodrome as the destination')
 
+  // Item 18 keywords in the order the standard lists them.
   const other = [...ac.other]
-  if (!depOk) other.unshift(`DEP/${fplCoordinate(first.lat, first.lng)}`)
-  if (!destOk) other.unshift(`DEST/${fplCoordinate(last.lat, last.lng)}`)
+  if (!depOk) other.push(`DEP/${fplCoordinate(first.lat, first.lng)}`)
+  if (!destOk) other.push(`DEST/${fplCoordinate(last.lat, last.lng)}`)
   other.push(`DOF/${dof}`)
+  const ITEM18_ORDER = ['STS', 'PBN', 'NAV', 'COM', 'DAT', 'SUR', 'DEP', 'DEST', 'DOF', 'REG', 'EET', 'SEL', 'TYP', 'CODE', 'DLE', 'OPR', 'ORGN', 'PER', 'ALTN', 'RALT', 'TALT', 'RIF', 'RVR', 'RFP', 'RMK']
+  const rank = (s: string) => { const i = ITEM18_ORDER.indexOf(s.split('/')[0]!); return i < 0 ? 99 : i }
   if (flight.type === 'X' && !flight.remarks.trim()) problems.push('type of flight X needs an explanation in remarks')
   if (aftnText(flight.remarks)) other.push(`RMK/${aftnText(flight.remarks).replace(/[()]/g, ' ')}`)
+  other.sort((a, b) => rank(a) - rank(b))
 
   if (!ac.identification) problems.push('aircraft registration')
   if (!aftnText(flight.pilotName)) problems.push('pilot in command (name)')

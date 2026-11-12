@@ -28,10 +28,9 @@ describe('buildFpl', () => {
     expect(lines[0]).toBe('(FPL-SEABC-VG')
     expect(lines[1]).toBe('-C172/L-GV/C')
     expect(lines[2]).toBe('-ESSB1030')
-    expect(lines[3]).toMatch(/^-N01\d\dVFR DCT 5939N01756E DCT$/)
+    expect(lines[3]).toMatch(/^-N01\d\dVFR DCT 5939N01756E$/)
     expect(lines[4]).toMatch(/^-ESSP\d{4} ESSA$/)
-    expect(lines[5]).toContain('REG/SEABC')
-    expect(lines[5]).toContain('DOF/261112')
+    expect(lines[5]).toBe('-NAV/GPS DOF/261112)')
     expect(lines[5].endsWith(')')).toBe(true)
     expect(f.problems).toEqual([])
   })
@@ -74,7 +73,7 @@ describe('levels', () => {
   it('writes planned levels, with the new speed and level after the point where they change', () => {
     const f = buildFpl({ nowMs: NOW, waypoints: four, legOverrides: [{ altFt: 3500 }, { altFt: 3500 }, { altFt: 4500 }], aircraft, flight: { ...flight, levelMode: 'planned' } })
     const l = f.text.split('\n')[3]!
-    expect(l).toMatch(/^-N01\d\dA035 DCT 5930N01730E DCT 5912N01654E\/N01\d\dA045 DCT$/)
+    expect(l).toMatch(/^-N01\d\dA035 DCT 5930N01730E 5912N01654E\/N01\d\dA045$/)
     expect(f.problems.join(' ')).not.toMatch(/flight levels/)
   })
   it('writes altitudes, never flight levels, and tells the pilot to convert levels above the transition altitude', () => {
@@ -89,9 +88,9 @@ describe('levels', () => {
   })
   it('writes only the word VFR as the level, and a speed change only where the true airspeed changes', () => {
     const same = buildFpl({ nowMs: NOW, waypoints: four, legOverrides: [{ altFt: 3500 }, { altFt: 3500 }, { altFt: 3500 }], aircraft, flight })
-    expect(same.text.split('\n')[3]).toMatch(/^-N01\d\dVFR DCT 5930N01730E DCT 5912N01654E DCT$/)
+    expect(same.text.split('\n')[3]).toMatch(/^-N01\d\dVFR DCT 5930N01730E 5912N01654E$/)
     const higher = buildFpl({ nowMs: NOW, waypoints: four, legOverrides: [{ altFt: 3500 }, { altFt: 3500 }, { altFt: 4500 }], aircraft, flight })
-    expect(higher.text.split('\n')[3]).toMatch(/5912N01654E\/N01\d\dVFR DCT$/)
+    expect(higher.text.split('\n')[3]).toMatch(/5912N01654E\/N01\d\dVFR$/)
   })
 })
 
@@ -120,5 +119,20 @@ describe('checks before filing', () => {
     expect(f.supplementary.join('\n')).toContain('A/ROD VIT')
     expect(f.supplementary.join('\n')).toContain('C/ASA OBERG')
     expect(f.text).toContain('RMK/FLYGER OVER MALAREN')
+  })
+})
+
+describe('item 15 and 18 conventions (ICAO Annex 2, Appendix 2)', () => {
+  it('lists item 18 keywords in the standard order, and no REG/ when it equals the identification', () => {
+    const f = buildFpl({ nowMs: NOW, waypoints: route, legOverrides: [{}, {}], aircraft: { ...aircraft, icaoType: 'ZZZZ', modeSHex: '4A1B2C' }, flight: { ...flight, remarks: 'test' } })
+    const l = f.text.split('\n')[5]!
+    expect(l).not.toContain('REG/')
+    const keys = [...l.matchAll(/(?:^-| )([A-Z]+)\//g)].map(m => m[1])
+    const order = ['NAV', 'DEP', 'DEST', 'DOF', 'TYP', 'CODE', 'RMK']
+    expect(keys.filter(k => order.includes(k!))).toEqual(order.filter(k => keys.includes(k)))
+  })
+  it('puts DCT only where a point is not a coordinate', () => {
+    const f = buildFpl({ nowMs: NOW, waypoints: route, legOverrides: [{}, {}], aircraft, flight })
+    expect(f.text.split('\n')[3]).not.toMatch(/DCT DCT|\d[EW] DCT \d{4}[NS]/)
   })
 })

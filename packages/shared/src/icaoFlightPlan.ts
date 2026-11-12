@@ -132,7 +132,6 @@ export function fplAircraftItems(p: Pick<AircraftProfileDocType, 'registration' 
 
   const other: string[] = []
   if (!typeOk && typed) other.push(`TYP/${typed}`)
-  if (reg) other.push(`REG/${reg}`)
   const hex = (p.modeSHex ?? '').trim().toUpperCase()
   if (/^[0-9A-F]{6}$/.test(hex)) other.push(`CODE/${hex}`)
   // G needs the GNSS type after NAV/ (GPS is what a light aircraft has); Z needs the pilot to say what it is.

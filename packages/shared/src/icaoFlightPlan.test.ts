@@ -29,7 +29,7 @@ describe('fplAircraftItems', () => {
   it('builds items 7, 9, 10 and 19 from a complete profile', () => {
     const i = fplAircraftItems({ ...base, equipment: ['G', 'V', 'Y'], transponder: 'S', adsb: 'B1', wakeCategory: 'L', colour: 'White with blue stripes', modeSHex: '4a1b2c' })
     expect(i).toMatchObject({ identification: 'SEABC', type: 'C172', wake: 'L', equipment: 'GVY', surveillance: 'SB1', colour: 'WHITE WITH BLUE STRIPES' })
-    expect(i.other).toEqual(['REG/SEABC', 'CODE/4A1B2C', 'NAV/GPS'])
+    expect(i.other).toEqual(['CODE/4A1B2C', 'NAV/GPS'])
     expect(i.missing).toEqual([])
   })
   it('uses ZZZZ and TYP/ when the designator is not valid, and says what is missing', () => {
