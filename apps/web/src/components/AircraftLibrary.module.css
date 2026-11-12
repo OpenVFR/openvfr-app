@@ -34,17 +34,18 @@
 
 .itemName {
   display: flex;
+  flex-wrap: wrap;            /* the "Check before use" badge goes to its own line instead of being clipped to a sliver */
   align-items: center;
-  gap: 5px;
+  gap: 2px 5px;
   color: var(--text-primary);
   font-size: 11px;
   font-weight: 500;
-  white-space: nowrap;
   overflow: hidden;
 }
 
 .categoryBadge {
   flex-shrink: 0;
+  white-space: nowrap;
   background: var(--surface-active);
   border: 1px solid var(--border-default);
   border-radius: 3px;
