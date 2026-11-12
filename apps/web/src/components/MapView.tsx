@@ -3578,19 +3578,27 @@ export default function MapView({ auth }: { auth: AuthState }) {
         return
       }
 
-      // ── 1c. Aerodrome local areas: a tap on a drawn edge or circuit line (noise-sensitive area outline, club circuit).
-      // The fill is handled after the airspace step below, so an airspace the area lies in still opens on a tap inside it.
-      const localEdgeLayers = DETAIL_TAP_EDGE_LAYERS.filter((id) => map.getLayer(id))
-      if (localEdgeLayers.length > 0) {
+      // ── 1c. Aerodrome local areas (noise-sensitive area, club circuit): a tap on a drawn edge or line, or inside an area.
+      // The most specific thing wins, so it opens even where an airspace covers it (ESSN lies under a TMA); the airspace over
+      // the point is listed in the same popup.
+      const localLayers = [...DETAIL_TAP_EDGE_LAYERS, ...DETAIL_TAP_FILL_LAYERS].filter((id) => map.getLayer(id))
+      if (localLayers.length > 0) {
         const pad = 7
-        const edgeHits = map.queryRenderedFeatures(
-          [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]], { layers: [...localEdgeLayers] })
-        for (const h of edgeHits) {
+        const edgeIds = DETAIL_TAP_EDGE_LAYERS.filter((id) => map.getLayer(id))
+        const hits = [
+          ...(edgeIds.length ? map.queryRenderedFeatures([[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]], { layers: [...edgeIds] }) : []),
+          ...map.queryRenderedFeatures(e.point, { layers: [...DETAIL_TAP_FILL_LAYERS.filter((id) => map.getLayer(id))] }),
+        ]
+        for (const h of hits) {
           const info = localAreaInfo(h.properties as Record<string, unknown>)
-          if (info) {
-            setActivePopup({ kind: 'point', feature: { ...info, kind: 'localArea' }, x: e.point.x, y: e.point.y })
-            return
-          }
+          if (!info) continue
+          const asp = await queryAirspaceAtPoint(e.lngLat.lng, e.lngLat.lat, countryDatasetSource('airspace'))
+          setActivePopup({
+            kind: 'point',
+            feature: { ...info, kind: 'localArea', airspace: (asp as AirspaceFeature[]).map(a => ({ class: a.class, name: a.name, lower: a.lower, upper: a.upper })) },
+            x: e.point.x, y: e.point.y,
+          })
+          return
         }
       }
 
@@ -3667,18 +3675,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
           y: e.point.y,
         })
         return
-      }
-
-      // ── 2b. A tap inside a local area's fill, with no airspace or NOTAM there to open instead.
-      const localFillLayers = DETAIL_TAP_FILL_LAYERS.filter((id) => map.getLayer(id))
-      if (localFillLayers.length > 0) {
-        for (const h of map.queryRenderedFeatures(e.point, { layers: [...localFillLayers] })) {
-          const info = localAreaInfo(h.properties as Record<string, unknown>)
-          if (info) {
-            setActivePopup({ kind: 'point', feature: { ...info, kind: 'localArea' }, x: e.point.x, y: e.point.y })
-            return
-          }
-        }
       }
 
       // ── 3. Empty click — leave popup open; only × button closes it ────────

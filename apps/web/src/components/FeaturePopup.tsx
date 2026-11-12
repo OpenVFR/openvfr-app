@@ -69,6 +69,8 @@ export interface RegionalNotamFeature {
 /** A noise-sensitive area, circuit line or other local area of an aerodrome (aerodrome-details layers). */
 export interface LocalAreaFeature extends LocalAreaInfo {
   kind: 'localArea'
+  /** Airspace over the tapped point (an area is usually inside a CTR/TMA): shown under the area so it is not lost. */
+  airspace?: { class: string; name: string; lower: string; upper: string }[]
 }
 
 export type PointFeature =
@@ -329,6 +331,12 @@ function LocalAreaBody({ f }: { f: LocalAreaFeature }) {
         </div>
       )}
       {f.pending && <div className={css.row}><span className={css.value}>Unreviewed</span></div>}
+      {f.airspace && f.airspace.length > 0 && (
+        <div className={css.row}>
+          <span className={css.label}>Airspace here</span>
+          <span className={css.value}>{f.airspace.map(a => `${a.class} ${a.name} ${a.lower}–${a.upper}`).join(' · ')}</span>
+        </div>
+      )}
       {f.source && <div className={css.source}>Source: {f.source}</div>}
     </div>
   )
