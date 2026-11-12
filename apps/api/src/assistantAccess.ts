@@ -20,8 +20,15 @@ export type Query = (sql: string, params: unknown[]) => Promise<{ rows: Record<s
 
 export async function revokeAssistantTokens(query: Query, userId: string, clientId?: string): Promise<void> {
   const [where, params] = clientId ? ['"userId" = $1 AND "clientId" = $2', [userId, clientId]] : ['"userId" = $1', [userId]]
-  await query(`DELETE FROM ba_oauth_access_token WHERE ${where}`, params)
-  await query(`DELETE FROM ba_oauth_refresh_token WHERE ${where}`, params)
+  try {
+    await query(`DELETE FROM ba_oauth_access_token WHERE ${where}`, params)
+    await query(`DELETE FROM ba_oauth_refresh_token WHERE ${where}`, params)
+  } catch (err) {
+    // The tables come with the assistant migration: a deployment that has not applied it has no tokens to end
+    // (and a ban must not fail because of that).
+    if ((err as { code?: string }).code === '42P01') return
+    throw err
+  }
 }
 
 /** Deleting a consent also deletes the tokens that came from it (only the signed-in user's own). */
