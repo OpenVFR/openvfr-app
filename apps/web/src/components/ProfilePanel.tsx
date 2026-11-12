@@ -6,9 +6,9 @@
  *   • Passkeys — list with rename + revoke, register new
  */
 
+import { useAccountFlags } from '../hooks/useAssistantMcpUrl'
 import { useState, useEffect, useRef } from 'react'
 import type { AuthState, PasskeyInfo } from '../hooks/useAuth'
-import { API_BASE_URL } from '../utils/env'
 import styles from './ProfilePanel.module.css'
 import { IconX } from '@tabler/icons-react'
 import AssistantSection from './AssistantSection'
@@ -38,19 +38,11 @@ export default function ProfilePanel({ auth, onClose }: Props) {
   const [deleteError,      setDeleteError]      = useState<string | null>(null)
   const [deleteSent,       setDeleteSent]       = useState(false)
 
-  // Shared app-tester account can't have passkeys (server enforces; this hides the UI).
-  const [passkeyAllowed, setPasskeyAllowed] = useState(true)
-  // MCP address for the assistant connection, when the server offers it.
-  const [assistantMcpUrl, setAssistantMcpUrl] = useState<string | null>(null)
-  useEffect(() => {
-    void fetch(`${API_BASE_URL}/api/auth/account-flags`, { credentials: 'include' })
-      .then(r => (r.ok ? r.json() as Promise<{ passkeyAllowed?: boolean; assistantMcpUrl?: string | null }> : null))
-      .then(j => {
-        if (j?.passkeyAllowed === false) setPasskeyAllowed(false)
-        if (typeof j?.assistantMcpUrl === 'string' && j.assistantMcpUrl) setAssistantMcpUrl(j.assistantMcpUrl)
-      })
-      .catch(() => { /* keep default */ })
-  }, [])
+  // Account flags: the connector address for the assistant connection (when the server offers it to this account) and whether passkeys are allowed.
+  const flags = useAccountFlags(true)
+  const assistantMcpUrl = flags.assistantMcpUrl
+  // The shared app-tester account can't have passkeys (the server enforces it; this hides the UI).
+  const passkeyAllowed = flags.passkeyAllowed
 
   // Load passkeys on mount.
   useEffect(() => {
