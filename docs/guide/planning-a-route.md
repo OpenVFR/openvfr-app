@@ -125,7 +125,7 @@ check in the plan):
   aircraft's best glide speed, or 70 % of cruise speed when that is not
   set), so land upwind is reached less far and land downwind further.
   Beyond gliding distance, life jackets are required for everyone on board.
-  Only large lakes (about 50 km² and up) are checked, from a small lakes
+  Only large lakes (about 10 km² and up) are checked, from a small lakes
   file of the country; a country without one is checked over the sea only.
   Land outside the terrain grid of your countries is not seen. Gusts, turns and the time to set up a glide are not modelled.
 

@@ -17,7 +17,7 @@
  * network. Times are UTC ISO strings.
  */
 import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
-import { distanceNm, bearingDeg } from '@open-vfr/shared/routeCalc'
+import { distanceNm, bearingDeg, groundSpeedKts, landingPoints } from '@open-vfr/shared/routeCalc'
 import { iasToTas } from '@open-vfr/shared/airspeed'
 import { resolveStationWeather, tafChangeSoon, parseTaf } from '@open-vfr/shared/parseTaf'
 import { sunriseSunset } from '@open-vfr/shared/sunCalc'
@@ -43,7 +43,7 @@ import { metarSurfaceWind } from '@open-vfr/shared/crosswindCheck'
 import { parseMetarTempC } from '@open-vfr/shared/runwayPerformance'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
 import { notamSummary } from '@open-vfr/shared/preflightNotams'
-import { quote, QUOTE_NOTE } from './untrusted'
+import { quote, pointLabel, QUOTE_NOTE } from './untrusted'
 
 type FC = GeoJSON.FeatureCollection
 
@@ -56,8 +56,7 @@ export interface BriefingDeps {
   mefGrids?: () => Promise<MefGrid[]>
   /** Forecast wind at each point's altitude and time (null where unknown). */
   legWinds?: (points: { lat: number; lng: number; altFt: number; at: Date }[]) => Promise<(WindAloft | null)[]>
-  /** Regional NOTAMs (restricted areas etc.) for the route's regions. */
-  /** NOTAMs in force at some moment from `at.ms - at.windowMs` to `at.ms + at.windowMs` (not only now). */
+  /** Regional NOTAMs (restricted areas etc.) for the route's regions, in force at some moment from `at.ms - at.windowMs` to `at.ms + at.windowMs` (not only now). */
   regionalNotams: (at: { ms: number; windowMs: number }) => readonly NotamItem[]
   /** NOTAMs filed for one aerodrome. */
   aerodromeNotams: (icao: string, at: { ms: number; windowMs: number }) => readonly NotamItem[]
@@ -146,13 +145,6 @@ const EN_ROUTE_MAX = 6
 const EN_ROUTE_NM = 10
 const hhmm = (ms: number) => new Date(ms).toISOString().slice(11, 16)
 const fmtWind = (w: ParsedWind | null) => !w ? 'wind not given' : w.calm ? 'calm' : `${w.variable || w.dirDeg == null ? 'VRB' : String(w.dirDeg).padStart(3, '0')}/${w.speedKt}${w.gustKt ? `G${w.gustKt}` : ''} kt`
-/** Ground speed on a true course with the wind triangle (as the fuel plan). */
-function groundSpeed(tas: number, courseDeg: number, w: { dirDeg: number; speedKts: number } | null): number {
-  if (!w || w.speedKts <= 0) return Math.max(10, tas)
-  const r = ((w.dirDeg - courseDeg) * Math.PI) / 180
-  const wca = Math.asin(Math.max(-1, Math.min(1, (w.speedKts * Math.sin(r)) / Math.max(tas, 1))))
-  return Math.max(10, tas * Math.cos(wca) - w.speedKts * Math.cos(r))
-}
 /** 1-based leg containing a distance along the route. */
 function legAt(spans: readonly { fromNm: number; toNm: number }[], nm: number): number {
   const i = spans.findIndex(s => nm >= s.fromNm - 0.01 && nm <= s.toNm + 0.01)
@@ -161,70 +153,53 @@ function legAt(spans: readonly { fromNm: number; toNm: number }[], nm: number): 
 /** Limit line when the pilot's own MSA margins or alert levels could not be read (checked by the route writes). */
 export const SETTINGS_UNREADABLE = "Your own MSA margins and alert levels could not be read right now: default values were used."
 const isIcao = (s: string | undefined): s is string => !!s && /^[A-Z]{4}$/.test(s)
+type WeatherOf = (icao: string) => Promise<{ metar: string | null; taf: string | null } | null>
 
-export async function buildRouteBriefing(
-  input: {
-    waypoints: RouteWaypoint[]; legOverrides: LegOverride[]; aircraft?: AircraftProfileDocType | null; nowMs: number
-    /** The pilot's MSA margins and airspace alert levels (synced settings); defaults when absent. */
-    msaMargins?: Partial<MsaMargins> | null
-    airspaceLevels?: AirspaceAlertLevels
-    /** Planned off-block time (epoch ms); default now. */
-    departureMs?: number
-    /** The pilot's global wind setting, used before the forecast like in the app. */
-    globalWind?: { dirDeg: number; speedKts: number } | null
-    /** The pilot's own margins or alert levels could not be read: defaults used (said in the limits). */
-    settingsUnreadable?: boolean
-  },
-  deps: BriefingDeps,
-): Promise<RouteBriefing> {
-  const { waypoints, legOverrides, nowMs } = input
-  const aircraft = input.aircraft ?? undefined
-  const limits: string[] = []
-  const margins = resolveMsaMargins(input.msaMargins)
-  if (input.settingsUnreadable) limits.push(SETTINGS_UNREADABLE)
+/** What the briefing steps share: the route, the aircraft, the times and the limits found so far. */
+interface Run {
+  waypoints: RouteWaypoint[]
+  legOverrides: LegOverride[]
+  aircraft: AircraftProfileDocType | undefined
+  nowMs: number
+  /** Planned off-block time. */
+  depMs: number
+  nLegs: number
+  /** What the briefing could not check; every step adds its own. */
+  limits: string[]
+  deps: BriefingDeps
+}
 
-  // Slow loads start at once and are awaited where needed.
-  const demP: Promise<TerrainPoint[]> = (deps.terrain?.(waypoints) ?? Promise.resolve([])).catch(() => [])
-  const gridsP: Promise<MefGrid[]> = (deps.mefGrids?.() ?? Promise.resolve([])).catch(() => [])
-  const wxP = new Map<string, Promise<{ metar: string | null; taf: string | null } | null>>()
-  const weatherOf = (icao: string) => {
-    let p = wxP.get(icao)
-    if (!p) { p = deps.weather(icao).catch(() => null); wxP.set(icao, p) }
-    return p
-  }
-  waypoints.forEach((w, i) => { if (isIcao(w.name?.toUpperCase()) && (i === 0 || i === waypoints.length - 1 || w.fuelStop)) void weatherOf(w.name!.toUpperCase()) })
-
-  // ── Wind per leg and times ──────────────────────────────────────────────
-  // Same order as the app: leg override, the pilot's global wind, forecast
-  // at the leg's midpoint, altitude and the time the aircraft is there.
-  const depMs = input.departureMs ?? nowMs
-  const nLegs = Math.max(0, waypoints.length - 1)
+/**
+ * Wind per leg and the time over each point. Same order as the app: leg
+ * override, the pilot's global wind, forecast at the leg's midpoint, altitude
+ * and the time the aircraft is there. Ground time at fuel stops.
+ */
+async function legWindsAndEtas(run: Run, globalWind: { dirDeg: number; speedKts: number } | null | undefined) {
+  const { waypoints, legOverrides, aircraft, depMs, nLegs, limits, deps } = run
   const legAlt = (i: number) => legOverrides[i]?.altFt ?? (aircraft?.cruiseAltFt || 3500)
   const legTas = (i: number) => {
     const ias = legOverrides[i]?.speedKts ?? aircraft?.cruiseIas
     return ias && ias > 0 ? iasToTas(ias, legAlt(i)) : 100
   }
   const queries: { lat: number; lng: number; altFt: number; at: Date }[] = []
-  {
-    let cum = 0
-    for (let i = 0; i < nLegs; i++) {
-      const a = waypoints[i]!, b = waypoints[i + 1]!
-      const m = (distanceNm(a, b) / legTas(i)) * 60
-      queries.push({ lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2, altFt: legAlt(i), at: new Date(depMs + (cum + m / 2) * 60_000) })
-      cum += m + (b.fuelStop ? STOP_GROUND_MIN : 0)
-    }
+  let cum = 0
+  for (let i = 0; i < nLegs; i++) {
+    const a = waypoints[i]!, b = waypoints[i + 1]!
+    const m = (distanceNm(a, b) / legTas(i)) * 60
+    queries.push({ lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2, altFt: legAlt(i), at: new Date(depMs + (cum + m / 2) * 60_000) })
+    cum += m + (b.fuelStop ? STOP_GROUND_MIN : 0)
   }
   const allOverridden = queries.every((_, i) => legOverrides[i]?.windDir != null && legOverrides[i]?.windSpd != null)
-  const forecast = !allOverridden && !input.globalWind && deps.legWinds
+  const forecast = !allOverridden && !globalWind && deps.legWinds
     ? await deps.legWinds(queries).catch(() => queries.map(() => null))
     : queries.map(() => null)
   const legWinds: ({ dirDeg: number; speedKts: number } | null)[] = queries.map((_, i) => {
     const o = legOverrides[i]
     if (o?.windDir != null && o?.windSpd != null) return { dirDeg: o.windDir, speedKts: o.windSpd }
-    if (input.globalWind) return { dirDeg: input.globalWind.dirDeg, speedKts: input.globalWind.speedKts }
+    if (globalWind) return { dirDeg: globalWind.dirDeg, speedKts: globalWind.speedKts }
     return forecast[i] ?? null
   })
-  const windSource = allOverridden ? 'set on every leg' : input.globalWind ? 'your global wind setting' : legWinds.some(w => w) ? 'forecast at each leg\'s altitude and time' : 'none (still air)'
+  const windSource = allOverridden ? 'set on every leg' : globalWind ? 'your global wind setting' : legWinds.some(w => w) ? 'forecast at each leg\'s altitude and time' : 'none (still air)'
   // No wind at all: the shared "wind data unavailable" prompt says so.
   if (legWinds.some(w => w) && legWinds.some(w => !w)) limits.push(`No wind for ${legWinds.filter(w => !w).length} of ${nLegs} legs: still air there.`)
 
@@ -232,11 +207,15 @@ export async function buildRouteBriefing(
   const etaMs: number[] = [depMs]
   for (let i = 0; i < nLegs; i++) {
     const a = waypoints[i]!, b = waypoints[i + 1]!
-    const gs = groundSpeed(legTas(i), bearingDeg(a, b), legWinds[i] ?? null)
-    etaMs.push(etaMs[i]! + (distanceNm(a, b) / gs) * 3_600_000 + (a.fuelStop && i > 0 ? STOP_GROUND_MIN * 60_000 : 0))
+    const gs = groundSpeedKts(legTas(i), bearingDeg(a, b), legWinds[i] ?? null)
+    etaMs.push(etaMs[i]! + (distanceNm(a, b) / gs) * HOUR_MS + (a.fuelStop && i > 0 ? STOP_GROUND_MIN * 60_000 : 0))
   }
+  return { legWinds, windSource, etaMs }
+}
 
-  // ── Route and hops ─────────────────────────────────────────────────────
+/** Distance, time and fuel per hop (departure -> fuel stop -> ... -> destination). */
+function tripHops(run: Run, legWinds: ({ dirDeg: number; speedKts: number } | null)[], etaMs: number[]) {
+  const { waypoints, legOverrides, aircraft, depMs, limits } = run
   let total = 0
   for (let i = 0; i < waypoints.length - 1; i++) total += distanceNm(waypoints[i]!, waypoints[i + 1]!)
   const hopsRaw = aircraft ? computeTripFuelPlans(waypoints, legOverrides, aircraft, legWinds) : null
@@ -261,36 +240,19 @@ export async function buildRouteBriefing(
   } else {
     limits.push('No aircraft profile on this route: fuel not checked, times assume 100 kt.')
   }
-  const arrivalMs = etaMs[etaMs.length - 1] ?? depMs
+  return { hops, total, arrivalMs: etaMs[etaMs.length - 1] ?? depMs }
+}
 
-  // ── Data ────────────────────────────────────────────────────────────────
-  const [aerodromesFc, airspaceFc, obstaclesFc, landmarksFc, waterFc] = await Promise.all([
-    deps.loadDataset('aerodromes'), deps.loadDataset('airspace'), deps.loadDataset('obstacles'), deps.loadDataset('landmarks'),
-    // Large lakes (small file); a country without it is checked over the sea only.
-    deps.loadDataset('lakes'),
-  ])
-  const gaps = (what: string, fc: { missingCountries?: string[] } | null) => { if (fc?.missingCountries?.length) limits.push(`${what} for ${fc.missingCountries.join(', ')} could not be loaded: not checked there.`) }
-  gaps('Airspace', airspaceFc); gaps('Obstacle data', obstaclesFc); gaps('Aerodrome data', aerodromesFc)
-  if (!obstaclesFc) limits.push('Obstacle data could not be loaded: the minimum safe altitude covers terrain only.')
-  if (!airspaceFc) limits.push('Airspace data could not be loaded: airspace not checked.')
-  if (!aerodromesFc) limits.push('Aerodrome data could not be loaded: runways and crosswind not checked.')
-
+/** The aerodromes where the route takes off or lands: weather at the time the aircraft is there, NOTAMs, daylight. */
+async function briefAerodromes(run: Run, etaMs: number[], aerodromesFc: FC | null, weatherOf: WeatherOf) {
+  const { waypoints, nowMs, depMs, limits, deps } = run
   const adName = new Map<string, string>()
   for (const f of aerodromesFc?.features ?? []) {
     const p = f.properties as Record<string, unknown> | null
     const icao = String(p?.['icao'] ?? '').toUpperCase()
     if (icao) adName.set(icao, String(p?.['name'] ?? '') || icao)
   }
-
-  // ── Aerodromes where the route takes off or lands ──────────────────────
-  const stops: { icao: string; role: BriefingAerodrome['role'] }[] = []
-  waypoints.forEach((w, i) => {
-    const name = w.name?.toUpperCase()
-    if (!isIcao(name)) return
-    if (i === 0) stops.push({ icao: name, role: 'departure' })
-    else if (i === waypoints.length - 1) stops.push({ icao: name, role: 'destination' })
-    else if (w.fuelStop) stops.push({ icao: name, role: 'fuel stop' })
-  })
+  const stops = landingPoints(waypoints).flatMap(p => (isIcao(p.name.toUpperCase()) ? [{ icao: p.name.toUpperCase(), role: p.role, idx: p.index }] : []))
   const notamState = deps.notamStatus?.() ?? { available: true, asOf: null }
   if (!notamState.available) limits.push('NOTAM data is not available right now: no NOTAMs were checked, not even restricted areas.')
   else if (notamState.asOf && nowMs - Date.parse(notamState.asOf) > 30 * 60_000) limits.push(`NOTAM data is from ${notamState.asOf.slice(0, 16).replace('T', ' ')}Z.`)
@@ -300,8 +262,7 @@ export async function buildRouteBriefing(
   const daylight: string[] = []
   const stopWx = await Promise.all(stops.map(s => weatherOf(s.icao)))
   for (const [k, s] of stops.entries()) {
-    const idx = s.role === 'departure' ? 0 : s.role === 'destination' ? waypoints.length - 1 : waypoints.findIndex(w => w.name?.toUpperCase() === s.icao && w.fuelStop)
-    const atMs = idx >= 0 ? etaMs[idx] ?? depMs : depMs
+    const atMs = etaMs[s.idx] ?? depMs
     const wx = stopWx[k] ?? null
     if (wx?.metar) {
       const w = metarSurfaceWind(wx.metar)
@@ -313,20 +274,19 @@ export async function buildRouteBriefing(
     const notams = deps.aerodromeNotams(s.icao, { ms: atMs, windowMs: HOUR_MS })
       .filter(n => (!n.expires || Date.parse(n.expires) > atMs - HOUR_MS) && (!n.effective || Date.parse(n.effective) < atMs + HOUR_MS))
       .map(n => ({ id: n.id, title: notamTitle(n), summary: notamSummary(n, 200), effective: n.effective, expires: n.expires }))
-    const fc = wx?.taf ? resolveStationWeather({ metarWind: null, metarClouds: null, taf: wx.taf, nowMs: atMs }) : null
-    const sun = sunriseSunset(waypoints[Math.max(0, idx)]!.lat, waypoints[Math.max(0, idx)]!.lng, new Date(atMs))
+    // The TAF's day/hour fields are read from now (when it was fetched), the forecast for the time the aircraft is there.
+    const fc = wx?.taf ? resolveStationWeather({ metarWind: null, metarClouds: null, taf: wx.taf, nowMs: atMs, referenceMs: nowMs }) : null
+    const spot = waypoints[s.idx]!
+    const sun = sunriseSunset(spot.lat, spot.lng, new Date(atMs))
+    const tafEnd = Math.max(...(parseTaf(wx?.taf ?? null, nowMs) ?? []).map(p => p.toMs))
     aerodromes.push({
       icao: s.icao, name: adName.get(s.icao) ?? null, role: s.role, metar: wx?.metar ?? null, taf: wx?.taf ?? null, notams, notamsChecked: notamState.available,
       atIso: new Date(atMs).toISOString(),
-      tafEndsBeforeIso: (() => {
-        const end = Math.max(...(parseTaf(wx?.taf ?? null, atMs) ?? []).map(p => p.toMs))
-        return Number.isFinite(end) && end < atMs ? new Date(end).toISOString() : null
-      })(),
+      tafEndsBeforeIso: Number.isFinite(tafEnd) && tafEnd < atMs ? new Date(tafEnd).toISOString() : null,
       tafAtTime: fc && (fc.wind || fc.clouds.length) ? { wind: fmtWind(fc.wind), clouds: fc.clouds.map(c => `${c.cover}${String(Math.round(c.baseFt / 100)).padStart(3, '0')}${c.type ?? ''}`).join(' ') || 'no cloud given', changeSoon: fc.tafChangeSoon } : null,
       sunriseIso: sun.rise?.toISOString() ?? null, sunsetIso: sun.set?.toISOString() ?? null,
     })
     // Take-off or landing outside the hours of sun at the aerodrome (also across 00Z).
-    const spot = waypoints[Math.max(0, idx)]!
     const isDay = [-1, 0, 1].some((d) => {
       const x = sunriseSunset(spot.lat, spot.lng, new Date(atMs + d * 86_400_000))
       return !!x.rise && !!x.set && atMs >= x.rise.getTime() && atMs <= x.set.getTime()
@@ -339,13 +299,18 @@ export async function buildRouteBriefing(
         : `${what} ${hhmm(atMs)}Z is after sunset (${hhmm(sun.set.getTime())}Z): night VFR rules apply.`)
     }
   }
-  // ── Weather along the way ───────────────────────────────────────────────
-  const stopSet = new Set(stops.map(s => s.icao))
+  if (stops.some(s => !winds.has(s.icao))) limits.push('Some aerodromes have no current METAR here: their crosswind and temperature were not checked.')
+  return { aerodromes, daylight, winds, temps, stopIcaos: new Set(stops.map(s => s.icao)) }
+}
+
+/** Weather along the way: the nearest aerodrome with a METAR in each stretch of the route, with the TAF change due when the aircraft passes. */
+async function enRouteStations(run: Run, etaMs: number[], total: number, aerodromesFc: FC | null, stopIcaos: ReadonlySet<string>, weatherOf: WeatherOf): Promise<BriefingEnRouteStation[]> {
+  const { waypoints, nowMs, depMs, nLegs } = run
   const cands = (aerodromesFc?.features ?? []).flatMap(f => {
     const p = f.properties as Record<string, unknown> | null
     const c = (f.geometry as GeoJSON.Point | null)?.coordinates
     const icao = String(p?.['icao'] ?? '').toUpperCase()
-    if (!c || !isIcao(icao) || stopSet.has(icao)) return []
+    if (!c || !isIcao(icao) || stopIcaos.has(icao)) return []
     const pt = { lat: c[1]!, lng: c[0]! }
     const off = distanceToRouteNm(pt, waypoints)
     return off <= EN_ROUTE_NM ? [{ icao, name: String(p?.['name'] ?? '') || null, off, along: distanceAlongRouteNm(waypoints, pt) }] : []
@@ -371,19 +336,25 @@ export async function buildRouteBriefing(
       if (c.along <= acc + d) { at = etaMs[i]! + ((c.along - acc) / Math.max(d, 0.1)) * (etaMs[i + 1]! - etaMs[i]!); break }
       acc += d
     }
-    enRoute.push({ icao: c.icao, name: c.name, alongNm: Math.round(c.along), offNm: Math.round(c.off), metar: wx.metar, tafChangeSoon: tafChangeSoon(wx.taf, at) })
+    enRoute.push({ icao: c.icao, name: c.name, alongNm: Math.round(c.along), offNm: Math.round(c.off), metar: wx.metar, tafChangeSoon: tafChangeSoon(wx.taf, at, nowMs) })
   }
+  return enRoute
+}
 
-  if (stops.some(s => !winds.has(s.icao))) limits.push('Some aerodromes have no current METAR here: their crosswind and temperature were not checked.')
-
-  // ── Shared pre-flight warnings ──────────────────────────────────────────
+/**
+ * Terrain and minimum safe altitude as the app computes them, the airspace
+ * bands on that terrain, and the vertical picture per leg.
+ */
+async function terrainAndLegs(
+  run: Run, margins: MsaMargins, demP: Promise<TerrainPoint[]>, gridsP: Promise<MefGrid[]>,
+  airspaceFc: FC | null, obstaclesFc: FC | null, landmarksFc: FC | null,
+) {
+  const { waypoints, legOverrides, aircraft, limits } = run
   const rawProfile = buildVirtualRadarProfile(
     waypoints, legOverrides, airspaceFc ?? EMPTY_FEATURES, obstaclesFc ?? EMPTY_FEATURES,
     landmarksFc ?? undefined, Infinity, aircraft?.cruiseAltFt || undefined,
     { obstacleNm: margins.abeamNm, landmarkNm: margins.abeamNm },
   )
-
-  // ── Terrain and MSA, as the app computes them ───────────────────────────
   const demPts = await demP
   const grids = await gridsP
   const msaTerrain = terrainForMsa(waypoints, demPts, grids, margins, true)
@@ -411,15 +382,71 @@ export async function buildRouteBriefing(
       return { distNm: t.distNm, tipFt: t.elevationFt, estimated: t.estimated, kind: o?.kind ?? l?.kind ?? 'obstacle', name: o?.name ?? l?.name ?? '', ...(o ? { lateralNm: o.lateralNm } : {}) }
     }),
   })
+  return { profile, msaPts, legs, spans, terrainSource, demPts, grids }
+}
+
+export async function buildRouteBriefing(
+  input: {
+    waypoints: RouteWaypoint[]; legOverrides: LegOverride[]; aircraft?: AircraftProfileDocType | null; nowMs: number
+    /** The pilot's MSA margins and airspace alert levels (synced settings); defaults when absent. */
+    msaMargins?: Partial<MsaMargins> | null
+    airspaceLevels?: AirspaceAlertLevels
+    /** Planned off-block time (epoch ms); default now. */
+    departureMs?: number
+    /** The pilot's global wind setting, used before the forecast like in the app. */
+    globalWind?: { dirDeg: number; speedKts: number } | null
+    /** The pilot's own margins or alert levels could not be read: defaults used (said in the limits). */
+    settingsUnreadable?: boolean
+  },
+  deps: BriefingDeps,
+): Promise<RouteBriefing> {
+  const { waypoints, legOverrides, nowMs } = input
+  const limits: string[] = []
+  const margins = resolveMsaMargins(input.msaMargins)
+  if (input.settingsUnreadable) limits.push(SETTINGS_UNREADABLE)
+  const run: Run = {
+    waypoints, legOverrides, aircraft: input.aircraft ?? undefined, nowMs, depMs: input.departureMs ?? nowMs,
+    nLegs: Math.max(0, waypoints.length - 1), limits, deps,
+  }
+  const { aircraft, depMs } = run
+
+  // Slow loads start at once and are awaited where needed.
+  const demP: Promise<TerrainPoint[]> = (deps.terrain?.(waypoints) ?? Promise.resolve([])).catch(() => [])
+  const gridsP: Promise<MefGrid[]> = (deps.mefGrids?.() ?? Promise.resolve([])).catch(() => [])
+  const wxP = new Map<string, Promise<{ metar: string | null; taf: string | null } | null>>()
+  const weatherOf: WeatherOf = (icao) => {
+    let p = wxP.get(icao)
+    if (!p) { p = deps.weather(icao).catch(() => null); wxP.set(icao, p) }
+    return p
+  }
+  for (const p of landingPoints(waypoints)) if (isIcao(p.name.toUpperCase())) void weatherOf(p.name.toUpperCase())
+
+  const { legWinds, windSource, etaMs } = await legWindsAndEtas(run, input.globalWind)
+  const { hops, total, arrivalMs } = tripHops(run, legWinds, etaMs)
+
+  const [aerodromesFc, airspaceFc, obstaclesFc, landmarksFc, lakesFc] = await Promise.all([
+    deps.loadDataset('aerodromes'), deps.loadDataset('airspace'), deps.loadDataset('obstacles'), deps.loadDataset('landmarks'),
+    // Large lakes (small file); a country without it is checked over the sea only.
+    deps.loadDataset('lakes'),
+  ])
+  const gaps = (what: string, fc: { missingCountries?: string[] } | null) => { if (fc?.missingCountries?.length) limits.push(`${what} for ${fc.missingCountries.join(', ')} could not be loaded: not checked there.`) }
+  gaps('Airspace', airspaceFc); gaps('Obstacle data', obstaclesFc); gaps('Aerodrome data', aerodromesFc)
+  if (!obstaclesFc) limits.push('Obstacle data could not be loaded: the minimum safe altitude covers terrain only.')
+  if (!airspaceFc) limits.push('Airspace data could not be loaded: airspace not checked.')
+  if (!aerodromesFc) limits.push('Aerodrome data could not be loaded: runways and crosswind not checked.')
+
+  const { aerodromes, daylight, winds, temps, stopIcaos } = await briefAerodromes(run, etaMs, aerodromesFc, weatherOf)
+  const enRoute = await enRouteStations(run, etaMs, total, aerodromesFc, stopIcaos, weatherOf)
+  const { profile, msaPts, legs, spans, terrainSource, demPts, grids } = await terrainAndLegs(run, margins, demP, gridsP, airspaceFc, obstaclesFc, landmarksFc)
 
   const warnings = computeWarnings(
     profile, msaPts, aircraft, waypoints, legOverrides, undefined, terrainSource !== 'dem', legWinds, margins,
     {
       terrainPts: demPts, airspaceLevels: input.airspaceLevels,
-      // Restricted areas created by NOTAM: those active at departure time.
+      // Restricted areas created by NOTAM: those in force at some moment of the flight (an hour either side).
       aerodromes: aerodromesFc, notams: deps.regionalNotams({ ms: (depMs + arrivalMs) / 2, windowMs: (arrivalMs - depMs) / 2 + HOUR_MS }), airspace: airspaceFc, nowMs: depMs,
       surfaceWinds: winds, surfaceTempsC: temps,
-      mefGrids: grids, water: waterFc,
+      mefGrids: grids, lakes: lakesFc,
     },
   )
     // The limits above already say what terrain was used.
@@ -501,7 +528,6 @@ export function legLine(l: LegAltitude): string {
   const msa = l.msaFt > 0 ? `MSA ${l.msaFt.toLocaleString('en-US')} ft${l.msaApplies ? '' : ' (near departure/destination)'}` : 'MSA unknown'
   const ctl = l.controlledFloorFt !== null ? `, controlled airspace from ${l.controlledFloorFt.toLocaleString('en-US')} ft` : ''
   const issues = (l.planned.length ? ` Planned: ${l.planned.join('; ')}.` : '') + ` ${l.cruisingRule}.` + (l.notes.length ? ` ${l.notes.join(' ')}` : '')
-  const n = (s: string) => (/^[A-Z0-9]{2,6}(\/[A-Z0-9 ]{2,20})?$|^\d+\.\d+[NS] \d+\.\d+[EW]$/.test(s) ? s : quote(s, 40))
   const cause = l.msaCause ? ` (set by ${l.msaCause})` : ''
-  return `- Leg ${l.leg} ${n(l.from)} → ${n(l.to)}, MT ${String(l.magneticTrackDeg).padStart(3, '0')}°, ${l.lengthNm} NM: planned ${l.plannedFt.toLocaleString('en-US')} ft, ${msa}${cause}${ctl}.${issues} Suggested: ${l.advice.text}`
+  return `- Leg ${l.leg} ${pointLabel(l.from)} → ${pointLabel(l.to)}, MT ${String(l.magneticTrackDeg).padStart(3, '0')}°, ${l.lengthNm} NM: planned ${l.plannedFt.toLocaleString('en-US')} ft, ${msa}${cause}${ctl}.${issues} Suggested: ${l.advice.text}`
 }

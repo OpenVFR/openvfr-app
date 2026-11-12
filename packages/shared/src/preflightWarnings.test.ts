@@ -40,7 +40,7 @@ describe('computeWarnings', () => {
   it('warns about a route an assistant made until the pilot saves it', () => {
     const w = computeWarnings(profile(), [], undefined, [], [], undefined, false, undefined, undefined, { routeReview: { by: 'Claude', at: 1, change: 'created' } })
     expect(codes(w)).toEqual(['route-assistant-review'])
-    expect(w[0]!.detail).toMatch(/Made by Claude/)
+    expect(w[0]!.detail).toMatch(/Added by Claude/)
     expect(computeWarnings(profile(), [], undefined, [], [], undefined, false, undefined, undefined, { routeReview: null })).toEqual([])
   })
 

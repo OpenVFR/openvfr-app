@@ -309,14 +309,17 @@ export function resolveStationWeather(opts: {
   metarWind: string | null
   metarClouds: string | null
   taf: string | null
+  /** The moment to read the forecast for (default now). */
   nowMs?: number
+  /** When the TAF's day/hour fields are read from (default `nowMs`): the time it was fetched, when `nowMs` is later (a briefing for a future departure). */
+  referenceMs?: number
   warningWindowMs?: number
 }): { wind: ParsedWind | null; clouds: ParsedCloudLayer[]; tafChangeSoon: boolean } {
   const nowMs = opts.nowMs ?? Date.now()
   const warningWindowMs = opts.warningWindowMs ?? DEFAULT_WARNING_WINDOW_MS
   const metarWind = parseMetarWind(opts.metarWind)
   const metarClouds = parseMetarClouds(opts.metarClouds)
-  const periods = parseTaf(opts.taf, nowMs)
+  const periods = parseTaf(opts.taf, opts.referenceMs ?? nowMs)
   const active = periods ? getActiveTafConditions(periods, nowMs) : null
   const tafChangeSoon = active?.nextChangeMs != null && active.nextChangeMs - nowMs <= warningWindowMs
   const hasMetar = metarWind != null || metarClouds.length > 0
@@ -339,6 +342,6 @@ export function tafChangeIcaos(
 }
 
 /** True when this TAF has a trend change (FM/BECMG) due within the warning window. */
-export function tafChangeSoon(taf: string | null | undefined, nowMs?: number): boolean {
-  return !!taf && resolveStationWeather({ metarWind: null, metarClouds: null, taf, nowMs }).tafChangeSoon
+export function tafChangeSoon(taf: string | null | undefined, nowMs?: number, referenceMs?: number): boolean {
+  return !!taf && resolveStationWeather({ metarWind: null, metarClouds: null, taf, nowMs, ...(referenceMs !== undefined ? { referenceMs } : {}) }).tafChangeSoon
 }

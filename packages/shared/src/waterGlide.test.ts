@@ -35,7 +35,7 @@ describe('waterStretches', () => {
       type: 'Feature', properties: { name: 'Sjön' },
       geometry: { type: 'Polygon', coordinates: [[[18.6, 59.4], [18.95, 59.4], [18.95, 59.6], [18.6, 59.6], [18.6, 59.4]]] },
     }] }
-    const r = waterStretches({ waypoints: [{ lat: 59.5, lng: 18.55 }, { lat: 59.5, lng: 18.98 }], altAt: () => 1500, grids: [grid()], water: lake, aircraft: { category: 'SEP' } })
+    const r = waterStretches({ waypoints: [{ lat: 59.5, lng: 18.55 }, { lat: 59.5, lng: 18.98 }], altAt: () => 1500, grids: [grid()], lakes: lake, aircraft: { category: 'SEP' } })
     expect(r).toHaveLength(1)
     expect(r[0]!.name).toBe('Sjön')
     expect(r[0]!.sea).toBe(false)
@@ -62,8 +62,8 @@ describe('waterStretches', () => {
     expect(fromWest.driftNm).toBeGreaterThan(3)
     expect(fromWest.driftNm).toBeLessThan(3.5)
     // Needed altitude is higher against the wind than with it.
-    expect(fromWest.neededFt).toBeGreaterThan(still.neededFt)
-    expect(fromEast.neededFt).toBeLessThan(still.neededFt)
+    expect(fromWest.neededFt!).toBeGreaterThan(still.neededFt!)
+    expect(fromEast.neededFt!).toBeLessThan(still.neededFt!)
   })
   it('ignores land routes', () => {
     expect(waterStretches({ waypoints: [{ lat: 59.5, lng: 18.6 }, { lat: 59.7, lng: 18.9 }], altAt: () => 2500, grids: [grid()] })).toEqual([])

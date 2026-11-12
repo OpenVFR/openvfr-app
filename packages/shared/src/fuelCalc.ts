@@ -12,7 +12,7 @@
  * for display as needed.
  */
 
-import { distanceNm, bearingDeg } from './routeCalc'
+import { distanceNm, bearingDeg, groundSpeedKts } from './routeCalc'
 import type { RouteWaypoint } from './routeCalc'
 import type { LegOverride, AircraftProfileDocType } from './types'
 import { iasToTas } from './airspeed'
@@ -254,19 +254,9 @@ export function computeFuelPlan(
     const ias = iasToTas(iasLeg, legAlts[i]!)   // true airspeed at the leg altitude
 
     // Ground speed with wind correction (identical to RoutePlan.tsx ETE logic).
-    let gs = ias
     const wDirDeg = ovr.windDir ?? legWinds?.[i]?.dirDeg
     const wSpdKts = ovr.windSpd ?? legWinds?.[i]?.speedKts
-    if (wDirDeg != null && wSpdKts != null && wSpdKts > 0) {
-      const brg  = bearingDeg(from, to)
-      const wRad = (wDirDeg * Math.PI) / 180
-      const bRad = (brg         * Math.PI) / 180
-      const hw   = wSpdKts * Math.cos(wRad - bRad)
-      const xw   = wSpdKts * Math.sin(wRad - bRad)
-      const wca  = Math.asin(Math.max(-1, Math.min(1, xw / Math.max(ias, 1))))
-      gs = ias * Math.cos(wca) - hw
-    }
-    gs = Math.max(10, gs) // guard against zero/negative GS
+    const gs = groundSpeedKts(ias, bearingDeg(from, to), wDirDeg != null && wSpdKts != null ? { dirDeg: wDirDeg, speedKts: wSpdKts } : null)
 
     totalCruiseOnlyMins += (dist / gs) * 60
     totalDistNm += dist

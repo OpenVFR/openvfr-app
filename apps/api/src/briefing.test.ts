@@ -170,3 +170,15 @@ test('unreadable personal settings are said in the limits', async () => {
   const b = await buildRouteBriefing({ waypoints: route, legOverrides: [{}], aircraft, nowMs: NOW, settingsUnreadable: true }, deps())
   assert.ok(b.limits.includes(SETTINGS_UNREADABLE))
 })
+
+test('says the TAF ends before a departure days ahead (its day/hour fields are read from now, not from the departure)', async () => {
+  // TAF valid 11th 06Z to 11th 15Z (now is the 11th, 09Z); departure on the 16th: five days past its end.
+  const taf = 'TAF ESAA 110500Z 1106/1115 27005KT CAVOK'
+  const dep = NOW + 5 * 86_400_000
+  const b = await buildRouteBriefing(
+    { waypoints: route, legOverrides: [{}], aircraft, nowMs: NOW, departureMs: dep },
+    deps({ weather: async () => ({ metar: null, taf }) }),
+  )
+  assert.equal(b.aerodromes[0]!.tafEndsBeforeIso, '2026-11-11T15:00:00.000Z')
+  assert.match(briefingText(b), /the TAF ends at 15:00Z, before then/)
+})

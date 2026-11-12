@@ -25,6 +25,31 @@ export function bearingDeg(from: RouteWaypoint, to: RouteWaypoint): number {
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
 }
 
+/** The points of a route where the aircraft takes off or lands: departure, points marked as fuel stops, destination. */
+export function landingPoints(waypoints: readonly RouteWaypoint[]): { index: number; name: string; role: 'departure' | 'fuel stop' | 'destination' }[] {
+  const out: { index: number; name: string; role: 'departure' | 'fuel stop' | 'destination' }[] = []
+  waypoints.forEach((w, i) => {
+    if (!w.name) return
+    if (i === 0) out.push({ index: i, name: w.name, role: 'departure' })
+    else if (i === waypoints.length - 1) out.push({ index: i, name: w.name, role: 'destination' })
+    else if (w.fuelStop) out.push({ index: i, name: w.name, role: 'fuel stop' })
+  })
+  return out
+}
+
+/**
+ * Ground speed (kt) flying a true course at true airspeed `tas` in a wind
+ * (`dirDeg` = direction it blows from): the wind triangle with the wind
+ * correction angle, never below 10 kt. The one implementation behind the
+ * fuel plan and the server briefing's times.
+ */
+export function groundSpeedKts(tas: number, courseDeg: number, wind?: { dirDeg: number; speedKts: number } | null): number {
+  if (!wind || !(wind.speedKts > 0)) return Math.max(10, tas)
+  const r = ((wind.dirDeg - courseDeg) * Math.PI) / 180
+  const wca = Math.asin(Math.max(-1, Math.min(1, (wind.speedKts * Math.sin(r)) / Math.max(tas, 1))))
+  return Math.max(10, tas * Math.cos(wca) - wind.speedKts * Math.cos(r))
+}
+
 /** Haversine great-circle distance in nautical miles from `from` to `to`. */
 export function distanceNm(from: RouteWaypoint, to: RouteWaypoint): number {
   const R = 3440.065 // Earth radius in NM

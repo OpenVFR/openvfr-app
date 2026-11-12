@@ -25,7 +25,8 @@ import { notamTitle } from './notamQCode'
 import type { NotamItem } from './fetchNotam'
 import { legSpans, legMsaList, legBelowMsa } from './legLevelDrag'
 import { airspaceCategory, DEFAULT_AIRSPACE_LEVELS, type AirspaceAlertLevels, type AirspaceCategory } from './airspaceAlertLevel'
-import type { RouteWaypoint, LegOverride, AircraftProfileDocType, AssistantReview } from './types'
+import { assistantReviewLabel, type RouteWaypoint, type LegOverride, type AircraftProfileDocType, type AssistantReview } from './types'
+import { landingPoints } from './routeCalc'
 import type { MefGrid } from './mefGrid'
 import { waterStretches } from './waterGlide'
 
@@ -122,9 +123,9 @@ export interface PreflightExtras {
   unavailable?:    PreflightUnavailable
   /** The saved route was written by an AI assistant and not yet saved by the pilot. */
   routeReview?:    AssistantReview | null
-  /** Maximum-elevation grids (sea = cells at sea level) and the large lakes (`water`), for the glide-to-land check over water. */
+  /** Maximum-elevation grids (no-data cells inside a grid = open sea) and the large lakes, for the glide-to-land check over water. */
   mefGrids?:       readonly MefGrid[]
-  water?:          GeoJSON.FeatureCollection | null
+  lakes?:          GeoJSON.FeatureCollection | null
 }
 
 /** Checks that did not run. The first three are flags (the card words them itself); `notams` is the
@@ -190,7 +191,7 @@ export function computeWarnings(
   margins: MsaMargins = DEFAULT_MSA_MARGINS,
   extras: PreflightExtras = {},
 ): PreflightWarning[] {
-  const { terrainPts = [], airspaceLevels = DEFAULT_AIRSPACE_LEVELS, aerodromes, notams, airspace, nowMs, unavailable, surfaceWinds, surfaceTempsC, routeReview, mefGrids, water } = extras
+  const { terrainPts = [], airspaceLevels = DEFAULT_AIRSPACE_LEVELS, aerodromes, notams, airspace, nowMs, unavailable, surfaceWinds, surfaceTempsC, routeReview, mefGrids, lakes } = extras
   const warnings: PreflightWarning[] = []
 
   // ── Terrain unavailable: the MSA check below is silently skipped and AGL
@@ -243,7 +244,7 @@ export function computeWarnings(
       level:  'warn',
       code:   'aircraft-assistant-review',
       title:  'Check the aircraft profile',
-      detail: `${r.change === 'created' ? `Added by ${r.by}` : `Changed by ${r.by} (${r.change.join(', ')})`} through the assistant connection. Fuel, speeds and runway checks use these values: compare them with the POH, then open and save the aircraft.`,
+      detail: `${assistantReviewLabel(r)} (assistant connection). Fuel, speeds and runway checks use these values: compare them with the POH, then open and save the aircraft.`,
     })
   }
 
@@ -253,15 +254,15 @@ export function computeWarnings(
       level:  'warn',
       code:   'route-assistant-review',
       title:  'Check the route',
-      detail: `${routeReview.change === 'created' ? `Made by ${routeReview.by}` : `Changed by ${routeReview.by} (${routeReview.change.join(', ')})`} through the assistant connection. Check every point, level and fuel stop on the map, then save the route.`,
+      detail: `${assistantReviewLabel(routeReview)} (assistant connection). Check every point, level and fuel stop on the map, then save the route.`,
     })
   }
 
   // ── 0d. Over water beyond gliding distance from land (single engine) ───
   // Needs the grid (sea) or the lakes; a multi-engine aircraft is not checked.
-  if ((mefGrids?.length || water) && aircraft?.category !== 'MEP') {
+  if ((mefGrids?.length || lakes) && aircraft?.category !== 'MEP') {
     const stretches = waterStretches({
-      waypoints, altAt: d => plannedAltAt(profile, d), grids: mefGrids ?? [], water,
+      waypoints, altAt: d => plannedAltAt(profile, d), grids: mefGrids ?? [], lakes,
       aircraft: aircraft ? { category: aircraft.category, glideRatio: aircraft.glideRatio, bestGlideKts: aircraft.bestGlideIas || (aircraft.cruiseIas ? aircraft.cruiseIas * 0.7 : undefined) } : null,
       ...(legWinds ? { legWinds } : {}),
     })
@@ -275,8 +276,8 @@ export function computeWarnings(
         detail: `Up to ${st.maxFromLandNm} NM from land (at NM ${Math.round(st.atNm)}); about ${st.beyondGlideNm} NM of the route is beyond gliding distance. `
           + `From ${st.altFt.toLocaleString('en-US')} ft you glide about ${st.glideRangeNm} NM in still air (glide ratio ${st.glideRatio}:1${st.glideAssumed ? ', assumed: set it in the aircraft profile' : ''})`
           + (st.wind ? `; the planned wind (${String(st.wind.fromDeg).padStart(3, '0')}° at ${st.wind.kts} kt) is included and moves the area you can reach about ${st.driftNm} NM downwind. ` : '. ')
-          + `Reaching land from there needs about ${st.neededFt >= 99_999 ? 'more than the aircraft can climb to' : `${st.neededFt.toLocaleString('en-US')} ft`}${st.wind ? ' with that wind' : ''}. `
-          + `${st.neededFt <= (aircraft?.serviceCeilingFt || 12_500) ? `Climb to about ${st.neededFt.toLocaleString('en-US')} ft, route` : 'Route'} closer to the shore, or carry life jackets for everyone on board (required for single-engine aircraft beyond gliding distance from land) and plan for ditching.`,
+          + `Reaching land from there needs ${st.neededFt === null ? 'more than a 60 NM glide' : `about ${st.neededFt.toLocaleString('en-US')} ft`}${st.wind ? ' with that wind' : ''}. `
+          + `${st.neededFt !== null && st.neededFt <= (aircraft?.serviceCeilingFt || 12_500) ? `Climb to about ${st.neededFt.toLocaleString('en-US')} ft, route` : 'Route'} closer to the shore, or carry life jackets for everyone on board (required for single-engine aircraft beyond gliding distance from land) and plan for ditching.`,
         legIndex: st.legIndex,
         focusNm: st.atNm,
       })
@@ -422,13 +423,7 @@ export function computeWarnings(
   // ── 4. Crosswind where the route takes off or lands ───────────────────
   // Current reports only (METAR), against the profile's maximum demonstrated crosswind.
   if (aircraft && (aircraft.maxCrosswindKts ?? 0) > 0 && surfaceWinds && aerodromes && waypoints.length >= 2) {
-    const points: LandingPoint[] = []
-    waypoints.forEach((w, i) => {
-      if (!w.name) return
-      if (i === 0) points.push({ icao: w.name, role: 'departure' })
-      else if (i === waypoints.length - 1) points.push({ icao: w.name, role: 'destination' })
-      else if (w.fuelStop) points.push({ icao: w.name, role: 'fuel stop' })
-    })
+    const points: LandingPoint[] = landingPoints(waypoints).map(p => ({ icao: p.name, role: p.role }))
     for (const x of crosswindExceedances(points, surfaceWinds, thresholdsByIcao(aerodromes), aircraft.maxCrosswindKts!)) {
       warnings.push({
         level:  'warn',
@@ -443,13 +438,9 @@ export function computeWarnings(
   // The profile's distances over 50 ft, scaled for elevation, temperature
   // (current METAR when known), surface and a safety factor.
   if (aircraft && ((aircraft.takeoffDist50ftM ?? 0) > 0 || (aircraft.landingDist50ftM ?? 0) > 0) && aerodromes && waypoints.length >= 2) {
-    const points: RunwayPoint[] = []
-    waypoints.forEach((w, i) => {
-      if (!w.name) return
-      if (i === 0) points.push({ icao: w.name, role: 'departure', ops: ['takeoff'] })
-      else if (i === waypoints.length - 1) points.push({ icao: w.name, role: 'destination', ops: ['landing'] })
-      else if (w.fuelStop) points.push({ icao: w.name, role: 'fuel stop', ops: ['landing', 'takeoff'] })
-    })
+    const points: RunwayPoint[] = landingPoints(waypoints).map(p => ({
+      icao: p.name, role: p.role, ops: p.role === 'departure' ? ['takeoff'] : p.role === 'destination' ? ['landing'] : ['landing', 'takeoff'],
+    }))
     for (const x of runwayShortfalls(aircraft, points, runwaysByIcao(aerodromes), surfaceTempsC)) {
       const what = x.op === 'takeoff' ? 'take-off' : 'landing'
       const safety = x.op === 'takeoff' ? PERF_FACTORS.safetyTakeoff : PERF_FACTORS.safetyLanding

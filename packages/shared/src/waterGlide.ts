@@ -2,8 +2,8 @@
  * waterGlide — where a route is over water, how far it gets from land, and
  * whether the aircraft could glide to land from its planned altitude there.
  *
- * Water: lakes from the country water dataset (polygons, islands as holes)
- * and the sea from the maximum-elevation grid (`mefGrid.ts`): the pipeline
+ * Water: the large lakes from the country lakes file (polygons, islands as
+ * holes; 10 km² and up, a few hundred) and the sea from the maximum-elevation grid (`mefGrid.ts`): the pipeline
  * writes every cell that does not touch land (OSM land polygons, any
  * country) as no-data, so inside a grid's extent no-data is open sea.
  * Distance to land over the sea comes from a distance transform of that grid
@@ -59,8 +59,8 @@ export interface WaterStretch {
   glideAssumed: boolean
   /** Still-air glide distance from the planned altitude, NM. */
   glideRangeNm: number
-  /** Altitude needed to reach land in still air from the furthest point, ft (rounded up to 100). */
-  neededFt: number
+  /** Altitude needed to reach land from the furthest point, ft (rounded up to 100); with the wind when there is one. Null: land is out of reach from any altitude (a glide of 60 NM does not get there). */
+  neededFt: number | null
   /** Length of the stretch beyond gliding distance from land, NM (0 = always within). */
   beyondGlideNm: number
   /** Wind on the leg of the furthest point that was used (from, degrees; knots), null when none. */
@@ -77,7 +77,7 @@ function rings(f: Poly): { lat: number; lng: number }[][] {
   return rs.map(r => r.map(([lng, lat]) => ({ lat: lat!, lng: lng! })))
 }
 
-/** Boxes are kept per feature: the water dataset has tens of thousands of lakes and is reused. */
+/** Boxes are kept per feature: the lakes dataset is reused between calls (every warning pass). */
 const boxCache = new WeakMap<object, [number, number, number, number]>()
 function bboxOf(f: Poly): [number, number, number, number] {
   const hit = boxCache.get(f)
@@ -164,7 +164,8 @@ export function waterStretches(input: {
   /** Planned altitude at a distance along the route, ft. */
   altAt: (distNm: number) => number
   grids: readonly MefGrid[]
-  water?: GeoJSON.FeatureCollection | null
+  /** The large lakes (country lakes file); missing = the sea only. */
+  lakes?: GeoJSON.FeatureCollection | null
   aircraft?: { category?: AircraftCategory; glideRatio?: number; bestGlideKts?: number } | null
   /** Wind per leg (from degrees, knots); null/missing = still air on that leg. */
   legWinds?: readonly ({ dirDeg: number; speedKts: number } | null)[]
@@ -182,7 +183,7 @@ export function waterStretches(input: {
   const box: [number, number, number, number] = [Math.min(...lngs) - padLng, Math.min(...lats) - padLat, Math.max(...lngs) + padLng, Math.max(...lats) + padLat]
   const tight: [number, number, number, number] = [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)]
 
-  const allLakes = (input.water?.features ?? []).filter((f): f is Poly => !!f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon'))
+  const allLakes = (input.lakes?.features ?? []).filter((f): f is Poly => !!f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon'))
     .map(f => ({ f, b: bboxOf(f) }))
   // Near the route (for the stretches) and around it (for where the wind carries the glide).
   const lakes = allLakes.filter(({ b }) => b[0] <= tight[2] && b[2] >= tight[0] && b[1] <= tight[3] && b[3] >= tight[1])
@@ -200,23 +201,37 @@ export function waterStretches(input: {
     return w && w.speedKts > 0 && Number.isFinite(w.dirDeg) ? w : null
   }
 
-  /** Distance (NM) from a point to the nearest land: 0 on land, null where nothing is known. */
-  const landDistAt = (lat: number, lng: number): number | null => {
-    for (const { f, b } of lakesAround) {
+  /** The lake of `list` that contains a point, with the point's distance to its shore (NM). */
+  const lakeAt = (lat: number, lng: number, list: typeof lakes): { f: Poly; shoreNm: number } | null => {
+    for (const { f, b } of list) {
       if (lng < b[0] || lng > b[2] || lat < b[1] || lat > b[3]) continue
       if (!booleanPointInPolygon([lng, lat], f)) continue
       let shore = Infinity
       for (const r of rings(f)) shore = Math.min(shore, nearestRoutePoint({ lat, lng }, r).lateralNm)
-      return shore
+      return { f, shoreNm: shore }
     }
-    let known = false
+    return null
+  }
+  /** The grid's code at a point; null outside the grid. */
+  const gridCodeAt = (g: MefGrid, lat: number, lng: number): number | null => {
+    const col = Math.floor((lng - g.west) / g.cellLon), row = Math.floor((g.north - lat) / g.cellLat)
+    return row >= 0 && col >= 0 && row < g.rows && col < g.cols ? g.codes[row * g.cols + col]! : null
+  }
+
+  /** Distance (NM) from a point to the nearest land: 0 on land, null where nothing is known. */
+  const landDistAt = (lat: number, lng: number): number | null => {
+    const lake = lakeAt(lat, lng, lakesAround)
+    if (lake) return lake.shoreNm
     for (const sd of seas) {
       const v = sd.distAt(lat, lng)
       if (v !== null) return v
     }
+    let known = false
     for (const g of input.grids) {
-      const col = Math.floor((lng - g.west) / g.cellLon), row = Math.floor((g.north - lat) / g.cellLat)
-      if (row >= 0 && col >= 0 && row < g.rows && col < g.cols) { known = true; if (g.codes[row * g.cols + col] !== MEF_NODATA) return 0 }
+      const code = gridCodeAt(g, lat, lng)
+      if (code === null) continue
+      known = true
+      if (code !== MEF_NODATA) return 0
     }
     return known ? 0 : null
   }
@@ -239,19 +254,14 @@ export function waterStretches(input: {
   for (let nm = 0; nm <= total + 1e-6; nm += STEP_NM) {
     const p = coordinateAlongRouteNm([...wps], nm)
     let s: Sample | null = null
-    for (const { f, b } of lakes) {
-      if (p.lng < b[0] || p.lng > b[2] || p.lat < b[1] || p.lat > b[3]) continue
-      if (!booleanPointInPolygon([p.lng, p.lat], f)) continue
-      let shore = Infinity
-      for (const r of rings(f)) shore = Math.min(shore, nearestRoutePoint(p, r).lateralNm)
+    const lake = lakeAt(p.lat, p.lng, lakes)
+    if (lake) {
       let surface = 0
       for (const g of input.grids) {
-        const col = Math.floor((p.lng - g.west) / g.cellLon), row = Math.floor((g.north - p.lat) / g.cellLat)
-        const code = row >= 0 && col >= 0 && row < g.rows && col < g.cols ? g.codes[row * g.cols + col]! : MEF_NODATA
-        if (code !== MEF_NODATA) surface = Math.max(surface, code * g.unitFt)
+        const code = gridCodeAt(g, p.lat, p.lng)
+        if (code !== null && code !== MEF_NODATA) surface = Math.max(surface, code * g.unitFt)
       }
-      s = { nm, dist: shore, sea: false, name: String(f.properties?.['name'] ?? ''), surfaceFt: surface, lat: p.lat, lng: p.lng }
-      break
+      s = { nm, dist: lake.shoreNm, sea: false, name: String(lake.f.properties?.['name'] ?? ''), surfaceFt: surface, lat: p.lat, lng: p.lng }
     }
     if (!s) {
       let best: number | null = null
@@ -275,12 +285,12 @@ export function waterStretches(input: {
       const rangeAt = (x: Sample) => Math.max(0, input.altAt(x.nm) - x.surfaceFt) * ratio / FT_PER_NM
       const beyond = run.filter(x => !reaches(x, x.dist, rangeAt(x), windAt(x.nm))).length * STEP_NM
       const altFt = input.altAt(far.nm)
-      const legIndex = Math.max(0, legEnds.findIndex(e => e >= far.nm - 1e-6) - 1)
+      const legIndex = legOfNm(far.nm)
       const fw = windAt(far.nm)
       // Altitude needed from the furthest point: still air has a formula; with wind scan the range up until land is reached.
-      let neededFt = Math.ceil((far.surfaceFt + (far.dist * FT_PER_NM) / ratio) / 100) * 100
+      let neededFt: number | null = Math.ceil((far.surfaceFt + (far.dist * FT_PER_NM) / ratio) / 100) * 100
       if (fw) {
-        neededFt = 99_999
+        neededFt = null
         for (let r = 0.25; r <= 60; r += 0.25) {
           if (reaches(far, far.dist, r, fw)) { neededFt = Math.ceil((far.surfaceFt + (r * FT_PER_NM) / ratio) / 100) * 100; break }
         }
