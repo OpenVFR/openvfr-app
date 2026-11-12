@@ -189,6 +189,7 @@ text:
   degrees and minutes (aerodromes by their code), the flight time (rounded up)
   with the leg winds, endurance from usable fuel and fuel burn, colour and
   markings.
+- **Off-block time (mobile):** choose the day from the chips (today and the next five days) and type the time in UTC (`1830` or `18:30`), or step it with the −1 h / −15 / +15 / +1 h buttons.
 - **Cruising level:** **VFR (word only)** (the default) writes the word VFR
   (allowed for uncontrolled VFR flights; a flight that needs a level in
   controlled airspace should use the other choice); **Altitudes from the

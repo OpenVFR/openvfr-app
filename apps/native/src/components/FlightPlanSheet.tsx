@@ -24,12 +24,17 @@ function toggle<T extends string>(list: readonly T[], v: T): T[] {
   return list.includes(v) ? list.filter(x => x !== v) : [...list, v]
 }
 
-const utcText = (d: Date) => `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)}`
-function parseUtc(s: string): Date | null {
-  const m = s.trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})$/)
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const hhmmText = (d: Date) => `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`
+const dayKey = (d: Date) => d.toISOString().slice(0, 10)
+const dayLabel = (d: Date) => `${DAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`
+/** The time of day from "HH:MM" or "HHMM" (UTC), or null. */
+function parseHhmm(t: string): { h: number; m: number } | null {
+  const m = t.trim().match(/^(\d{1,2}):?(\d{2})$/)
   if (!m) return null
-  const d = new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!))
-  return Number.isNaN(d.getTime()) ? null : d
+  const h = +m[1]!, mm = +m[2]!
+  return h < 24 && mm < 60 ? { h, m: mm } : null
 }
 
 export function FlightPlanSheet({ visible, onClose, waypoints, legOverrides, aircraft: aircraftProp, legWinds, takeoffTime, alternateIcao, accountName }: {
@@ -57,7 +62,11 @@ export function FlightPlanSheet({ visible, onClose, waypoints, legOverrides, air
   const [flight, setFlight] = useState<FlightAnswers>(() => ({
     ...EMPTY_ANSWERS, eobt: takeoffTime ?? new Date(Math.ceil((Date.now() + 30 * 60_000) / 300_000) * 300_000), alternate: alternateIcao, pilotName: accountName ?? '',
   }))
-  const [eobtText, setEobtText] = useState(() => utcText(flight.eobt))
+  const [timeText, setTimeText] = useState(() => hhmmText(flight.eobt))
+  // The off-block time is set by day chips, a time field and step buttons (all UTC).
+  const setEobt = (d: Date) => { set('eobt', d); setTimeText(hhmmText(d)) }
+  const stepEobt = (mins: number) => setEobt(new Date(flight.eobt.getTime() + mins * 60_000))
+  const days = Array.from({ length: 6 }, (_, i) => new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + i)))
   const set = <K extends keyof FlightAnswers>(k: K, v: FlightAnswers[K]) => setFlight(f => ({ ...f, [k]: v }))
 
   // What stays the same from flight to flight.
@@ -70,7 +79,7 @@ export function FlightPlanSheet({ visible, onClose, waypoints, legOverrides, air
   }, [flight.pilotName, flight.pilotPhone, flight.emergencyRadio, flight.survival, flight.jackets, flight.dinghies])
 
   const fpl = useMemo(() => buildFpl({ waypoints, legOverrides, aircraft, legWinds, flight }), [waypoints, legOverrides, aircraft, legWinds, flight])
-  const bad = parseUtc(eobtText) === null
+  const bad = parseHhmm(timeText) === null
 
   const Chips = <T extends string>({ items, on, onPress }: { items: [string, string][]; on: readonly T[]; onPress: (c: T) => void }) => (
     <View style={styles.row}>
@@ -137,9 +146,28 @@ export function FlightPlanSheet({ visible, onClose, waypoints, legOverrides, air
         ))}
       </View>
 
-      <Text style={styles.label}>Off-block time (UTC, YYYY-MM-DD HH:MM)</Text>
-      <TextInput style={[styles.input, bad && styles.inputBad]} value={eobtText} autoCapitalize="none" autoCorrect={false}
-        onChangeText={t => { setEobtText(t); const d = parseUtc(t); if (d) set('eobt', d) }} />
+      <Text style={styles.label}>Off-block date (UTC)</Text>
+      <View style={styles.row}>
+        {days.map(d => (
+          <TouchableOpacity key={dayKey(d)} style={[styles.chip, dayKey(d) === dayKey(flight.eobt) && styles.chipOn]}
+            onPress={() => setEobt(new Date(d.getTime() + (flight.eobt.getTime() - Date.UTC(flight.eobt.getUTCFullYear(), flight.eobt.getUTCMonth(), flight.eobt.getUTCDate()))))}>
+            <Text style={[styles.chipTxt, dayKey(d) === dayKey(flight.eobt) && styles.chipTxtOn]}>{dayLabel(d)}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <Text style={styles.label}>Off-block time (UTC, HH:MM)</Text>
+      <View style={styles.row}>
+        <TouchableOpacity style={styles.chip} onPress={() => stepEobt(-60)}><Text style={styles.chipTxt}>−1 h</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.chip} onPress={() => stepEobt(-15)}><Text style={styles.chipTxt}>−15</Text></TouchableOpacity>
+        <TextInput style={[styles.input, styles.timeBox, bad && styles.inputBad]} value={timeText} keyboardType="number-pad" maxLength={5} placeholder="HHMM" autoCorrect={false}
+          onChangeText={t => {
+            setTimeText(t)
+            const p = parseHhmm(t)
+            if (p) set('eobt', new Date(Date.UTC(flight.eobt.getUTCFullYear(), flight.eobt.getUTCMonth(), flight.eobt.getUTCDate(), p.h, p.m)))
+          }} />
+        <TouchableOpacity style={styles.chip} onPress={() => stepEobt(15)}><Text style={styles.chipTxt}>+15</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.chip} onPress={() => stepEobt(60)}><Text style={styles.chipTxt}>+1 h</Text></TouchableOpacity>
+      </View>
       <Text style={styles.label}>Alternate (ICAO)</Text>
       <TextInput style={styles.input} value={flight.alternate ?? ''} autoCapitalize="characters" maxLength={4} onChangeText={t => set('alternate', t.toUpperCase() || undefined)} />
       <Text style={styles.label}>Persons on board</Text>
@@ -217,6 +245,7 @@ function makeStyles(theme: ScaledTheme) {
     input: { backgroundColor: theme.surfaceOverlay, borderWidth: 1, borderColor: theme.borderDefault, borderRadius: theme.radiusSm, paddingHorizontal: theme.space2, paddingVertical: 7, color: theme.textPrimary, fontSize: theme.textSm },
     inputBad: { borderColor: theme.statusDanger },
     small: { width: 56 },
+    timeBox: { width: 96, textAlign: 'center' },
     grow: { flexGrow: 1, minWidth: 90 },
     problems: { marginTop: theme.space3, padding: theme.space2, borderLeftWidth: 3, borderLeftColor: theme.statusWarn, gap: 2 },
     problemsTitle: { color: theme.textPrimary, fontSize: theme.textXs, fontWeight: '700' },

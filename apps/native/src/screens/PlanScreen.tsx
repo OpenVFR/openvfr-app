@@ -1196,7 +1196,7 @@ export function PlanScreen() {
         </ScrollView>
       )}
 
-      {profile && (
+      {profile && fplOpen && (
         <FlightPlanSheet
           visible={fplOpen}
           onClose={() => setFplOpen(false)}
