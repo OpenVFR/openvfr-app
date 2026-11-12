@@ -67,12 +67,29 @@ describe('mapAreaLabel', () => {
     expect(mapAreaLabel({ kind: 'noise_sensitive', name: 'Noise-sensitive area Kastberga', floor: null, ceiling: null })).toBe('Kastberga')
     expect(mapAreaLabel({ kind: 'noise_sensitive', name: 'Bullerkänsligt omr Djurgården', floor: null, ceiling: null })).toBe('Djurgården')
   })
-  it('says what an unnamed noise-sensitive area is', () => {
-    expect(mapAreaLabel({ kind: 'noise_sensitive', name: null, floor: null, ceiling: null })).toBe('Noise-sensitive area')
-    expect(mapAreaLabel({ kind: 'noise_sensitive', name: 'Noise-sensitive area', floor: null, ceiling: null })).toBe('Noise-sensitive area')
+  it('gives an unnamed noise-sensitive area no label (the outline and the tap say what it is)', () => {
+    expect(mapAreaLabel({ kind: 'noise_sensitive', name: null, floor: null, ceiling: null })).toBe('')
+    expect(mapAreaLabel({ kind: 'noise_sensitive', name: 'Noise-sensitive area', floor: null, ceiling: null })).toBe('')
   })
   it('keeps the kind in front of the name for other areas', () => {
     expect(mapAreaLabel({ kind: 'glider_area', name: 'Öresjö', floor: null, ceiling: null })).toBe('Glider area: Öresjö')
     expect(mapAreaLabel({ kind: 'avoid_area', name: null, floor: null, ceiling: null })).toBe('Avoid area')
+  })
+})
+
+describe('area labels on the map', () => {
+  const area = (name: string | null, pending: boolean) => ({
+    type: 'Feature' as const, geometry: { type: 'Polygon' as const, coordinates: [[[13, 55], [13.01, 55], [13.01, 55.01], [13, 55]]] },
+    properties: { aerodrome: 'ESXX', kind: 'noise_sensitive' as const, name, remarks: null, floor: null, ceiling: null,
+      approximate: true, accuracy_m: 86, pending },
+  })
+  it('an unnamed area has no label at all, not even "(unreviewed)" on its own', () => {
+    const [f] = buildDetailsMapData([area(null, true)], []).features
+    expect(f!.properties.label).toBe('')
+  })
+  it('a named, unreviewed area says its name and that it is unreviewed', () => {
+    const [f] = buildDetailsMapData([area('Kastberga', true)], []).features
+    expect(f!.properties.label).toBe('Kastberga\n(unreviewed)')
+    expect(buildDetailsMapData([area('Kastberga', false)], []).features[0]!.properties.label).toBe('Kastberga')
   })
 })
