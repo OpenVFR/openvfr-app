@@ -67,9 +67,7 @@ import { nmToDisplay, distLabel, ktsToDisplay, displayToKts, speedLabel } from '
 import { computeTripFuelPlans } from '../utils/fuelCalc'
 import { setFuelStop } from '@open-vfr/shared/fuelStops'
 import { assistantReviewLabel, type AssistantReview } from '@open-vfr/shared/types'
-import type { ParsedWind } from '@open-vfr/shared/fetchWx'
-import { metarSurfaceWind } from '@open-vfr/shared/crosswindCheck'
-import { parseMetarTempC } from '@open-vfr/shared/runwayPerformance'
+import { ownSurfaceConditions } from '@open-vfr/shared/crosswindCheck'
 import { FuelStopSuggest } from '../components/FuelStopSuggest'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
@@ -586,18 +584,7 @@ export function PlanScreen() {
   const fuelShort = !!fuelHops?.some(h => h.plan.availableFuelL > 0 && h.plan.totalMinFuelL > h.plan.availableFuelL)
 
   // Wind each aerodrome on the route reports itself (own METAR), for the pre-flight crosswind check.
-  const { surfaceWinds, surfaceTempsC } = useMemo(() => {
-    const winds = new Map<string, ParsedWind>()
-    const temps = new Map<string, number>()
-    for (const st of routeWx) {
-      if (!st.metar || (st.sourceIcao && st.sourceIcao !== st.icao)) continue
-      const w = metarSurfaceWind(st.metar)
-      if (w) winds.set(st.icao.toUpperCase(), w)
-      const t = parseMetarTempC(st.metar)
-      if (t != null) temps.set(st.icao.toUpperCase(), t)
-    }
-    return { surfaceWinds: winds, surfaceTempsC: temps }
-  }, [routeWx])
+  const { surfaceWinds, surfaceTempsC } = useMemo(() => ownSurfaceConditions(routeWx), [routeWx])
 
   // Pre-flight check: effective wind per leg (leg override > global > forecast), like the route table.
   // One entry per leg, whatever the forecast has loaded (it is empty while a global wind is set).
@@ -1207,6 +1194,7 @@ export function PlanScreen() {
           takeoffTime={takeoffTime}
           alternateIcao={alternate?.icao}
           accountName={authState.status === 'authenticated' ? authState.user.name ?? undefined : undefined}
+          onSaveAircraft={pushAircraft}
         />
       )}
 

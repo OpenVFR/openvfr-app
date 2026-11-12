@@ -159,6 +159,14 @@ function getCacheDir(): Directory {
     } catch (e) {
       console.warn('[offlineCache] legacy basemap rename failed:', e)
     }
+    // One-time: the glide check now reads the small lakes file; an earlier build's ~24 MB water file is never read again.
+    try {
+      for (const item of dir.list()) {
+        if (item instanceof File && /-water\.geojson$/.test(item.name)) item.delete()
+      }
+    } catch (e) {
+      console.warn('[offlineCache] old water file cleanup failed:', e)
+    }
   }
   return dir
 }

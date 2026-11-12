@@ -102,10 +102,11 @@ export function NativeSheet({
   const contentWidth = Platform.OS === 'android' ? Math.min(winW, ANDROID_SHEET_MAX_WIDTH) : undefined
   const kbH = useKeyboardHeight()
   const sheetRef = useRef<BottomSheetMethods>(null)
-  // A long sheet can end up scrolled down while it lays out: keep it at the top during its first moments.
+  // A long sheet can end up scrolled down while it lays out (its content grows after the first layout): until
+  // the user first touches it, every change of the content's size scrolls it back to the top.
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null)
-  const openedAt = useRef(Date.now())
-  useEffect(() => { if (isPresented) openedAt.current = Date.now() }, [isPresented])
+  const touched = useRef(false)
+  useEffect(() => { if (isPresented) touched.current = false }, [isPresented])
   const [chromeH, setChromeH] = React.useState(CHROME_GUESS)
   if (!isPresented) return null
 
@@ -144,7 +145,8 @@ export function NativeSheet({
         {scroll ? (
           <ScrollView
             ref={scrollRef}
-            onContentSizeChange={() => { if (Date.now() - openedAt.current < 1000) scrollRef.current?.scrollTo({ y: 0, animated: false }) }}
+            onContentSizeChange={() => { if (!touched.current) scrollRef.current?.scrollTo({ y: 0, animated: false }) }}
+            onTouchStart={() => { touched.current = true }}
             style={{ maxHeight: maxScrollH }}
             nestedScrollEnabled
             keyboardShouldPersistTaps="handled"
