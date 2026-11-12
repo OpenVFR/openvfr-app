@@ -38,11 +38,11 @@ describe('buildFpl', () => {
     const f = buildFpl({ nowMs: NOW, waypoints: route, legOverrides: [{}, {}], aircraft, flight: { ...flight, emergencyRadio: ['V', 'E'], survival: ['M'], jackets: ['L', 'F'], dinghies: { count: 1, capacity: 4, covered: true, colour: 'Yellow' } } })
     const s = f.supplementary.join('\n')
     expect(s).toContain('E/0357')       // 150 / 38 = 3.95 h = 3 h 57 min
-    expect(s).toContain('P/2')
+    expect(s).toContain('P/002')
     expect(s).toContain('R/VE')
     expect(s).toContain('S/M')
     expect(s).toContain('J/LF')
-    expect(s).toContain('D/01 004 C YELLOW')
+    expect(s).toContain('D/01 004 C Y')
     expect(s).toContain('A/WHITE WITH BLUE STRIPES')
     expect(s).toContain('C/TEST PILOT')
   })
