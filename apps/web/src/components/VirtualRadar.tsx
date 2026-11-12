@@ -1787,9 +1787,13 @@ function VirtualRadar({
           // stray vertical stroke.
           if (topFt == null || x2 - x1 <= 0) return null
           const yTop = L.yOf(topFt)
+          // Opaque: the terrain fill under it is the water surface read as ground,
+          // and must not show through as green. Only the surface line is stroked.
           return (
-            <rect key={`water-${i}`} x={x1} y={yTop} width={x2 - x1} height={L.plotBottom - yTop}
-              fill="rgba(30,100,200,0.35)" stroke="rgba(60,140,230,0.7)" strokeWidth={1} />
+            <g key={`water-${i}`}>
+              <rect x={x1} y={yTop} width={x2 - x1} height={L.plotBottom - yTop} fill="#2a6db5" />
+              <line x1={x1} y1={yTop} x2={x2} y2={yTop} stroke="rgba(120,185,245,0.95)" strokeWidth={1.5} />
+            </g>
           )
         })}
 
