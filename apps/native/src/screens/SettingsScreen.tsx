@@ -43,6 +43,7 @@ import { airacDataStatus, relativeTime, type AiracDataStatus } from '@open-vfr/s
 import { theme, useThemedStyles, useScaledTheme, type ScaledTheme, type ThemeName } from '../styles/theme'
 import { FULL_CREDITS_LINK, OPEN_SOURCE_LICENCES_LINK } from '@open-vfr/shared/attributionSources'
 import { SPONSOR } from '@open-vfr/shared/sponsor'
+import { COUNTRY_TESTER } from '@open-vfr/shared/countryTester'
 import { useOfflineSummary } from './OfflineDataScreen'
 import * as Application from 'expo-application'
 import { listPasskeys, deletePasskey, renamePasskey, type RegisteredPasskey } from '../utils/passkeyNative'
@@ -852,6 +853,14 @@ function CountriesSection() {
         <Text style={styles.dropdownValue}>{current?.name ?? 'Select'}{'  \u25BE'}</Text>
       </TouchableOpacity>
       {inFlight && <Text style={styles.infoValue}>Not available during flight</Text>}
+      <TouchableOpacity
+        style={styles.row}
+        onPress={() => { Linking.openURL(COUNTRY_TESTER.mailto).catch(() => Alert.alert('Become a tester', COUNTRY_TESTER.fallback)) }}
+        accessibilityRole="link"
+        accessibilityLabel={`${COUNTRY_TESTER.question} ${COUNTRY_TESTER.action}`}
+      >
+        <Text style={styles.testerOffer}>{COUNTRY_TESTER.question}{'\n'}<Text style={{ color: scaledTheme.accentBlue }}>{COUNTRY_TESTER.action}</Text>.</Text>
+      </TouchableOpacity>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.dropdownBackdrop} onPress={() => setOpen(false)} accessibilityLabel="Close country list">
           <View style={styles.dropdownMenu}>
@@ -1323,6 +1332,12 @@ function makeStyles(theme: ScaledTheme) {
     color:      SPONSOR.color,
     fontSize:   theme.textSm,
     fontWeight: '600',
+  },
+  // "Become a tester" line under the country picker: full width, left aligned.
+  testerOffer: {
+    color:    theme.textMuted,
+    fontSize: theme.textXs,
+    flex:     1,
   },
   infoValue: {
     color:    theme.textMuted,

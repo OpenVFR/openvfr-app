@@ -30,3 +30,11 @@
   font-size: 12px;
   color: var(--text-secondary);
 }
+
+p.note {
+  margin: 6px 0 0;
+}
+
+.note a {
+  color: var(--accent-purple);
+}

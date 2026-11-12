@@ -74,6 +74,7 @@
     "./terrainDem": "./src/terrainDem.ts",
     "./attributionSources": "./src/attributionSources.ts",
     "./sponsor": "./src/sponsor.ts",
+    "./countryTester": "./src/countryTester.ts",
     "./mapScale": "./src/mapScale.ts",
     "./snapChoice": "./src/snapChoice.ts",
     "./autoCruiseLevel": "./src/autoCruiseLevel.ts",

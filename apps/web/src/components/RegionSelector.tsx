@@ -8,6 +8,7 @@
  */
 
 import type { AvailableCountry } from '@open-vfr/shared/countries'
+import { COUNTRY_TESTER } from '@open-vfr/shared/countryTester'
 import css from './RegionSelector.module.css'
 
 interface Props {
@@ -19,9 +20,16 @@ interface Props {
 }
 
 export default function RegionSelector({ countries, selected, onChange, disabled }: Props) {
+  const testerOffer = (
+    <p className={css.note}>
+      {COUNTRY_TESTER.question}<br />
+      <a href={COUNTRY_TESTER.mailto}>{COUNTRY_TESTER.action}</a>.
+    </p>
+  )
   if (!countries) return <span className={css.note}>Country list not loaded yet</span>
   if (countries.length === 0) return <span className={css.note}>No countries available</span>
   return (
+    <>
     <select
       id="country-select"
       className={css.select}
@@ -35,5 +43,7 @@ export default function RegionSelector({ countries, selected, onChange, disabled
         <option key={c.code} value={c.code}>{c.name}</option>
       ))}
     </select>
+    {testerOffer}
+    </>
   )
 }
