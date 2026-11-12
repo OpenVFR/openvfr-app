@@ -20,6 +20,7 @@ import { AppIcon } from '../components/AppIcon'
 import { SponsorLogo } from '../components/SponsorLogo'
 import { useContentInsets } from '../hooks/useContentInsets'
 import { SPONSOR } from '@open-vfr/shared/sponsor'
+import { WEB_APP, SYNCED_DATA } from '@open-vfr/shared/appAvailability'
 import { shouldAutoSubmitOtp } from '@open-vfr/shared/otpAutoSubmit'
 import { useAuthContext } from '../context/AuthContext'
 import { SITE_BASE } from '../config'
@@ -355,6 +356,9 @@ export function LoginScreen() {
       {/* Hidden while the keyboard is up: the form needs the room, the credit and legal links return with the keyboard closed. */}
       {!keyboardOpen && (
         <View style={styles.footer}>
+          <Text style={styles.webHint} onPress={() => Linking.openURL(WEB_APP.url)} accessibilityRole="link">
+            Also on the web at <Text style={styles.webHintLink}>{WEB_APP.host}</Text>. Your {SYNCED_DATA} are the same everywhere you sign in.
+          </Text>
           <TouchableOpacity style={styles.sponsorRow} onPress={() => Linking.openURL(SPONSOR.url)} accessibilityRole="link" accessibilityLabel={`Supported by ${SPONSOR.name}`}>
             <SponsorLogo size={theme.textXs * 2} />
             <Text style={styles.sponsorText}>
@@ -528,6 +532,12 @@ function makeStyles(theme: ScaledTheme) {
     gap:           theme.space2,
     padding:       theme.space1,
   },
+  webHint: {
+    color:     theme.textFaint,
+    fontSize:  theme.textXs,
+    textAlign: 'center',
+  },
+  webHintLink: { color: theme.accentBlue },
   sponsorText: {
     color:    theme.textSecondary,
     fontSize: theme.textXs,
