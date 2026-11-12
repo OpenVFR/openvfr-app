@@ -356,7 +356,8 @@ function SideDrawer({
                 >
                   {hasRoute ? (
                     <RoutePlan
-                      onExportIcao={hasRoute && selectedAircraftProfile ? () => setFplOpen(true) : undefined}
+                      onExportIcao={() => setFplOpen(true)}
+                      exportIcaoNeedsAircraft={!selectedAircraftProfile}
                       selectedLeg={selectedLeg}
                       onSelectLeg={onSelectLeg}
                       waypoints={waypoints}

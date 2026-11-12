@@ -773,14 +773,15 @@ export function PlanScreen() {
           <AppIcon name="folder" size={16} color={theme.textSecondary} />
           <Text style={styles.moreMenuItemTxt}>Route Library…</Text>
         </TouchableOpacity>
-        {waypoints.length >= 2 && profile && (
+        {waypoints.length >= 2 && (
           <TouchableOpacity
-            style={styles.moreMenuItem}
+            style={[styles.moreMenuItem, !profile && { opacity: 0.5 }]}
+            disabled={!profile}
             onPress={() => { setMoreMenuOpen(false); setFplOpen(true) }}
             testID="plan-open-fpl"
           >
             <AppIcon name="route" size={16} color={theme.textSecondary} />
-            <Text style={styles.moreMenuItemTxt}>Export ICAO flight plan…</Text>
+            <Text style={styles.moreMenuItemTxt}>Export ICAO flight plan…{profile ? '' : ' (select an aircraft)'}</Text>
           </TouchableOpacity>
         )}
         {waypoints.length >= 2 && (
