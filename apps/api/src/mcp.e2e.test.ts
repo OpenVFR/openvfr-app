@@ -349,7 +349,7 @@ test('draft_flight_plan builds the message for a saved route and says what is mi
   assert.match(r, /\(FPL-SETST-VG/)
   assert.match(r, /-ESSB\d{4}/)
   assert.match(r, /-ESSA\d{4} ESKN/)
-  assert.match(r, /P\/2/)
+  assert.match(r, /P\/002/)
   assert.match(r, /not filed and not an official document/)
   // The test aircraft has no equipment, transponder or colour set: the answer says so.
   assert.match(r, /Check before filing:.*equipment.*transponder.*colour/s)
