@@ -145,7 +145,7 @@ The plan can show weather and winds aloft along the route. See
 ## Saving and sharing
 
 See [Saved routes and places](./routes-and-places.md) for saving, loading,
-GPX (web also KML).
+GPX.
 
 ## The Plan screen on native
 

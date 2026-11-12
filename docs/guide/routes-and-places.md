@@ -14,7 +14,7 @@ Route actions (the **⋯** menu in the planning panel):
 
 - **Find a destination** (web menu; on native from the map tools; see [Aerodromes and briefing](./aerodromes-and-briefing.md)).
 - **Reverse** the route.
-- **Export** as GPX (web also KML).
+- **Export** as GPX.
 - **Import** a GPX file.
 - **Close route** takes it off the map. A saved route stays in Saved
   routes, and you are asked first if there are unsaved changes.

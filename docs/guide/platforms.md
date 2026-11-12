@@ -61,7 +61,6 @@ Legend: **Yes** = available, **Partial** = available with differences
 | Weather and winds along the route | Yes | Yes | |
 | Vertical profile (terrain, airspace, cloud) | Yes | Yes | Web: Virtual Radar, resizable. Native: vertical profile. |
 | Export route as GPX, import GPX | Yes | Yes | Web downloads a file; native opens the share sheet. |
-| Export route as KML | Yes | No | |
 | Reverse route | Yes | Yes | |
 
 ## Weather and NOTAMs

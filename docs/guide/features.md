@@ -25,7 +25,7 @@ see [Web app and native app](./platforms.md).
 - Leg properties: level, speed, wind, notes, MSA.
 - Takeoff time, forecast or manual wind, alternate.
 - Automatic cruise level and pre-flight checks.
-- Saved routes, GPX and KML. [Saved routes and places](./routes-and-places.md)
+- Saved routes, GPX. [Saved routes and places](./routes-and-places.md)
 - Places and folders. [Saved routes and places](./routes-and-places.md)
 - Aircraft profiles and POH import. [Aircraft and fuel](./aircraft-and-fuel.md)
 - Fuel plan. [Aircraft and fuel](./aircraft-and-fuel.md)

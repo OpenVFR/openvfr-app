@@ -47,24 +47,6 @@ function exportGpx(waypoints: RouteWaypoint[]) {
   download('route.gpx', 'application/gpx+xml', xml)
 }
 
-// ---------------------------------------------------------------------------
-// KML export
-// ---------------------------------------------------------------------------
-function exportKml(waypoints: RouteWaypoint[]) {
-  const placemarks = waypoints.map((w, i) =>
-    `    <Placemark><name>${w.name ?? `WP${i + 1}`}</name><Point><coordinates>${w.lng.toFixed(6)},${w.lat.toFixed(6)},0</coordinates></Point></Placemark>`
-  ).join('\n')
-  const coords = waypoints.map(w => `${w.lng.toFixed(6)},${w.lat.toFixed(6)},0`).join(' ')
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Document><name>Route</name>
-${placemarks}
-    <Placemark><name>Route</name><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>
-  </Document>
-</kml>`
-  download('route.kml', 'application/vnd.google-earth.kml+xml', xml)
-}
-
 function download(filename: string, mime: string, content: string) {
   const a = document.createElement('a')
   a.href = URL.createObjectURL(new Blob([content], { type: mime }))
@@ -462,7 +444,6 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
                     onClick={() => { onExportIcao(); setShowMenu(false) }} disabled={waypoints.length < 2 || !!exportIcaoNeedsAircraft}>↗ Export ICAO flight plan…{exportIcaoNeedsAircraft ? ' (select an aircraft)' : ''}</button>
                 )}
                 <button className={css.menuItem} onClick={() => { exportGpx(waypoints); setShowMenu(false) }} disabled={waypoints.length < 2}>↓ GPX</button>
-                <button className={css.menuItem} onClick={() => { exportKml(waypoints); setShowMenu(false) }} disabled={waypoints.length < 2}>↓ KML</button>
                 <button className={css.menuItem} onClick={() => { gpxInputRef.current?.click(); setShowMenu(false) }}>↑ Import GPX</button>
                 <hr className={css.menuDivider} />
                 <button className={`${css.menuItem} ${css.menuItemDanger}`} title="Take the route off the map (a saved route stays in Saved routes); asks first when there are unsaved changes"
