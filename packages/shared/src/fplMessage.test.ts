@@ -42,7 +42,7 @@ describe('buildFpl', () => {
     expect(s).toContain('R/VE')
     expect(s).toContain('S/M')
     expect(s).toContain('J/LF')
-    expect(s).toContain('D/01 004 C Y')
+    expect(s).toContain('D/01 004 C YELLOW')
     expect(s).toContain('A/WHITE WITH BLUE STRIPES')
     expect(s).toContain('C/TEST PILOT')
   })
@@ -134,12 +134,5 @@ describe('item 15 and 18 conventions (ICAO Annex 2, Appendix 2)', () => {
   it('puts DCT only where a point is not a coordinate', () => {
     const f = buildFpl({ nowMs: NOW, waypoints: route, legOverrides: [{}, {}], aircraft, flight })
     expect(f.text.split('\n')[3]).not.toMatch(/DCT DCT|\d[EW] DCT \d{4}[NS]/)
-  })
-})
-
-describe('route needs a significant point (LFV item 15)', () => {
-  it('flags a route with only departure and destination', () => {
-    const f = buildFpl({ nowMs: NOW, waypoints: [route[0]!, route[route.length - 1]!], legOverrides: [{}], aircraft, flight })
-    expect(f.problems.join(' ')).toMatch(/at least one point/)
   })
 })

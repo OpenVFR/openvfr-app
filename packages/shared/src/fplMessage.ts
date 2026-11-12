@@ -68,12 +68,6 @@ export const EMPTY_ANSWERS: Omit<FlightAnswers, 'eobt'> = {
 const pad = (n: number, w = 2) => String(Math.floor(n)).padStart(w, '0')
 const ICAO_AD = /^[A-Z]{4}$/
 
-/** Dinghy colours: LFV allows B, G, R, W, Y as abbreviations; other colours in plain text. */
-const COLOUR_LETTER: Record<string, string> = { BLUE: 'B', GREEN: 'G', RED: 'R', WHITE: 'W', YELLOW: 'Y' }
-export function dinghyColour(v: string): string {
-  return v.split(/[\s,/]+/).filter(Boolean).map(w => COLOUR_LETTER[aftnText(w)] ?? aftnText(w)).join(' ')
-}
-
 /** A route point as ICAO degrees and minutes: 5921N01756E. */
 export function fplCoordinate(lat: number, lng: number): string {
   const dm = (v: number, w: number) => {
@@ -162,7 +156,6 @@ export function buildFpl(input: {
   const speed = legSpeed(0), level = legLevel(0)
   // DCT joins the points, except between two points given as coordinates (ICAO Annex 2, Appendix 2, item 15 c).
   const isCoord = (p: string) => /^\d{4}[NS]\d{5}[EW]/.test(p)
-  if (mid.length === 0) problems.push('the route needs at least one point between departure and destination (LFV requires a significant point in item 15)')
   const tokens = ['DCT']
   mid.forEach((p, k) => {
     if (k > 0 && !(isCoord(p) && isCoord(mid[k - 1]!))) tokens.push('DCT')
@@ -227,7 +220,7 @@ export function buildFpl(input: {
     `Emergency radio: ${flight.emergencyRadio.length ? 'R/' + flight.emergencyRadio.join('') : 'none'}`,
     `Survival equipment: ${flight.survival.length ? 'S/' + flight.survival.join('') : 'none'}`,
     `Life jackets: ${flight.jackets.length ? 'J/' + ['L', 'F', 'U', 'V'].filter(j => (flight.jackets as readonly string[]).includes(j)).join('') : 'none'}`,
-    `Dinghies: ${d.count > 0 ? `D/${pad(d.count)} ${pad(d.capacity, 3)} ${d.covered ? 'C' : ''} ${dinghyColour(d.colour)}`.replace(/\s+/g, ' ').trim() : 'none'}`,
+    `Dinghies: ${d.count > 0 ? `D/${pad(d.count)} ${pad(d.capacity, 3)} ${d.covered ? 'C' : ''} ${aftnText(d.colour)}`.replace(/\s+/g, ' ').trim() : 'none'}`,
     `Aircraft colour and markings: ${aftnText(ac.colour) ? `A/${aftnText(ac.colour)}` : '-'}`,
     `Remarks: ${aftnText(flight.remarks) ? `N/${aftnText(flight.remarks)}` : '-'}`,
     `Pilot in command: C/${aftnText(flight.pilotName) || '-'}${flight.pilotPhone.trim() ? `  Tel ${flight.pilotPhone.trim()}` : ''}`,
