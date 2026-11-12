@@ -49,6 +49,10 @@ export function assistantConnectionPlugins(opts: { baseUrl: string; appOrigin: s
       loginPage:   `${opts.appOrigin}/oauth/login`,
       consentPage: `${opts.appOrigin}/oauth/consent`,
       scopes:      MCP_SCOPES,
+      // Nobody manages OAuth clients through the api's own client endpoints (create-client, update-client,
+      // delete-client, ...): assistants register themselves at /oauth2/register (no session involved) or by
+      // metadata document. Without this hook every signed-in user could create and change clients over HTTP.
+      clientPrivileges: () => false,
       allowDynamicClientRegistration:        true,
       allowUnauthenticatedClientRegistration: true,
       clientRegistrationDefaultApplicationType: 'infer',

@@ -39,8 +39,7 @@ import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import type { AirspaceAlertLevels } from '@open-vfr/shared/airspaceAlertLevel'
 import type { MefGrid } from '@open-vfr/shared/mefGrid'
 import type { ParsedWind } from '@open-vfr/shared/fetchWx'
-import { metarSurfaceWind } from '@open-vfr/shared/crosswindCheck'
-import { parseMetarTempC } from '@open-vfr/shared/runwayPerformance'
+import { ownSurfaceConditions } from '@open-vfr/shared/crosswindCheck'
 import { notamTitle } from '@open-vfr/shared/notamQCode'
 import { notamSummary } from '@open-vfr/shared/preflightNotams'
 import { quote, pointLabel, QUOTE_NOTE } from './untrusted'
@@ -265,10 +264,9 @@ async function briefAerodromes(run: Run, etaMs: number[], aerodromesFc: FC | nul
     const atMs = etaMs[s.idx] ?? depMs
     const wx = stopWx[k] ?? null
     if (wx?.metar) {
-      const w = metarSurfaceWind(wx.metar)
-      if (w) winds.set(s.icao, w)
-      const t = parseMetarTempC(wx.metar)
-      if (t != null) temps.set(s.icao, t)
+      const own = ownSurfaceConditions([{ icao: s.icao, metar: wx.metar }])
+      for (const [k2, w] of own.surfaceWinds) winds.set(k2, w)
+      for (const [k2, t] of own.surfaceTempsC) temps.set(k2, t)
     }
     // NOTAMs in force around the time the aircraft is there (an hour either side).
     const notams = deps.aerodromeNotams(s.icao, { ms: atMs, windowMs: HOUR_MS })
@@ -430,10 +428,11 @@ export async function buildRouteBriefing(
     deps.loadDataset('lakes'),
   ])
   const gaps = (what: string, fc: { missingCountries?: string[] } | null) => { if (fc?.missingCountries?.length) limits.push(`${what} for ${fc.missingCountries.join(', ')} could not be loaded: not checked there.`) }
-  gaps('Airspace', airspaceFc); gaps('Obstacle data', obstaclesFc); gaps('Aerodrome data', aerodromesFc)
+  gaps('Airspace', airspaceFc); gaps('Obstacle data', obstaclesFc); gaps('Aerodrome data', aerodromesFc); gaps('Lake data', lakesFc)
   if (!obstaclesFc) limits.push('Obstacle data could not be loaded: the minimum safe altitude covers terrain only.')
   if (!airspaceFc) limits.push('Airspace data could not be loaded: airspace not checked.')
   if (!aerodromesFc) limits.push('Aerodrome data could not be loaded: runways and crosswind not checked.')
+  if (!lakesFc) limits.push('Lake data could not be loaded: the glide check covers the sea only, not lakes.')
 
   const { aerodromes, daylight, winds, temps, stopIcaos } = await briefAerodromes(run, etaMs, aerodromesFc, weatherOf)
   const enRoute = await enRouteStations(run, etaMs, total, aerodromesFc, stopIcaos, weatherOf)

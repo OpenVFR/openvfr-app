@@ -104,7 +104,7 @@ before(async () => {
     clientName: async () => 'Test Assistant',
     // Briefings themselves are covered by briefing.test.ts.
     takeBriefing: () => false,
-    access: createAssistantAccess(query, 0).allowed,
+    access: createAssistantAccess(query, 0).check,
     jwksUrl: `${BASE}/api/auth/jwks`,
   })
   app.post('/mcp', (c) => endpoint(c.req.raw))
@@ -375,4 +375,24 @@ test('the SQL migration matches better-auth\'s schema for the OAuth tables', asy
   const oauth = (t: { table: string }) => t.table === 'ba_jwks' || t.table.startsWith('ba_oauth')
   assert.deepEqual(toBeCreated.filter(oauth).map(t => t.table), [], 'tables missing from the migration')
   assert.deepEqual(toBeAdded.filter(oauth).map(t => `${t.table}: ${Object.keys(t.fields).join(',')}`), [], 'columns missing from the migration')
+})
+
+test('a signed-in user cannot manage OAuth clients over the api (only assistants registering themselves)', async () => {
+  assert.ok(cookie, 'signed in by an earlier test')
+  for (const path of ['/api/auth/oauth2/create-client', '/api/auth/oauth2/update-client', '/api/auth/oauth2/delete-client']) {
+    const r = await fetch(`${BASE}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', cookie, origin: BASE }, body: JSON.stringify({ redirect_uris: [REDIRECT], client_id: 'x', update: {} }) })
+    assert.ok(r.status === 401 || r.status === 403, `${path} refused, got ${r.status}`)
+  }
+})
+
+test('cleanup removes expired tokens and abandoned clients, and keeps what is in use', async () => {
+  const { cleanupAssistantTables } = await import('./assistantAccess.js')
+  const before = Number((await query('SELECT count(*)::int AS n FROM ba_oauth_client', [])).rows[0]!['n'])
+  await query(`UPDATE ba_oauth_client SET "createdAt" = now() - interval '30 days'`, [])
+  await cleanupAssistantTables(query)
+  const after = Number((await query('SELECT count(*)::int AS n FROM ba_oauth_client', [])).rows[0]!['n'])
+  // Clients that still have a consent or a live refresh token stay; the rest are gone.
+  const kept = Number((await query(`SELECT count(*)::int AS n FROM ba_oauth_client c WHERE EXISTS (SELECT 1 FROM ba_oauth_consent k WHERE k."clientId" = c."clientId") OR EXISTS (SELECT 1 FROM ba_oauth_refresh_token r WHERE r."clientId" = c."clientId" AND r."revoked" IS NULL AND r."expiresAt" > now())`, [])).rows[0]!['n'])
+  assert.equal(after, kept)
+  assert.ok(after <= before)
 })

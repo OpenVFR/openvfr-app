@@ -41,7 +41,8 @@ native reads the same files over HTTP from wherever you serve them (see
 | `se-obstacles.geojson` | GeoJSON | Obstacle points (towers, turbines, etc.) |
 | `se-landmarks.geojson` | GeoJSON | Visual landmarks (churches, masts, water towers) |
 | `se-aeroways.geojson` | GeoJSON | Taxiways/aprons/unlabelled runways |
-| `se-water.geojson` | GeoJSON | Water polygons |
+| `se-water.geojson` | GeoJSON | Water polygons (kept for older app versions' offline download; the apps and the API no longer read it) |
+| `se-lakes.geojson` | GeoJSON | Large lakes (surface 10 km² or more), simplified polygons taken from the water polygons; the glide check ("can I land on water") reads this file. Without it, the glide check covers the sea only and the briefing says so |
 | `se-landuse.pmtiles` | PMTiles | Landuse polygons (farmland/residential/etc.), tiled |
 | `se-hillshade.pmtiles` | PMTiles (raster-dem, Terrarium encoding) | Relief shading |
 | `se-contours.pmtiles` | PMTiles (vector) | Elevation isolines |
@@ -94,8 +95,8 @@ the UI then just has no history and requested runs stay queued.
   inserts a `queued` row. Poll for queued rows, set them `running`, run the
   job for that country, finish them as above. Job ids (see
   `apps/api/src/pipeline.ts`): `ofmx` (airspace, aerodromes, navaids,
-  waypoints, runways, runway thresholds), `obstacles`, `landmarks`, `water`,
-  `aeroways`, `landuse`, `basemap` (refreshes of a ready country) and `build`
+  waypoints, runways, runway thresholds), `obstacles`, `landmarks`, `water`
+  (also rebuilds the lakes file), `aeroways`, `landuse`, `basemap` (refreshes of a ready country) and `build`
   (first build of an enabled country without data).
 - At most one `queued`/`running` row per (job, country) is allowed (unique
   index): a scheduled run that cannot insert its row should skip that
@@ -131,7 +132,11 @@ The general shape of a data-prep pipeline for each dataset type:
 2. **Obstacles**: fetch from OpenAIP's REST API, convert to GeoJSON.
 3. **OSM-derived layers (landmarks/landuse/water/aeroways)**: download a
    country `.osm.pbf` extract, filter with `osmium tags-filter` /
-   `osmium export` for the relevant tags, convert to GeoJSON.
+   `osmium export` for the relevant tags, convert to GeoJSON. **Lakes**:
+   from the water polygons keep the lakes of 10 km² or more, simplify the
+   outlines, and write `<cc>-lakes.geojson` (a GeoJSON FeatureCollection of
+   Polygon / MultiPolygon features; write it to a temporary name and rename
+   it, so a half-written file is never served).
 4. **Landuse tiling**: raw landuse GeoJSON is large (hundreds of MB) — tile
    it into PMTiles with [tippecanoe](https://github.com/felt/tippecanoe)
    (source-layer name: `landuse`).
@@ -329,7 +334,13 @@ and, if the pilot allows it, their saved routes, places and aircraft and flight 
   tokens (`assistantAccess.ts`; better-auth's own `delete-consent` removes only
   the consent), and every `/mcp` request checks that the user is not banned and
   still has a consent for that assistant, so both end access at once. An admin
-  ban also deletes the user's assistant tokens.
+  ban also deletes the user's assistant tokens. A token carries only the scopes
+  the consent grants at that moment, so narrowing a consent narrows tokens issued
+  before. Nobody manages OAuth clients over the api's own client endpoints
+  (they are refused for every session); clients register themselves.
+- The api removes expired and revoked tokens (a day after they end) and
+  clients that registered but were never approved or were disconnected (after
+  14 days), once a day.
 - Tables `ba_jwks` and `ba_oauth_*` (migration `20261201000000`), used only by
   the api role.
 - Testing with a real assistant during development: local MCP clients

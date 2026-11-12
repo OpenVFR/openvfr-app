@@ -10,12 +10,33 @@
  */
 import { computeRunwayWind, type RunwayThresholdInput } from './runwayWind'
 import { parseMetarWind, type ParsedWind } from './fetchWx'
+import { parseMetarTempC } from './runwayPerformance'
 
 /** Surface wind from a whole METAR (its wind group, e.g. 24012G22KT), or null. */
 export function metarSurfaceWind(raw: string | null | undefined): ParsedWind | null {
   if (!raw) return null
   const tok = raw.split(/\s+/).find(t => /^(\d{3}|VRB)\d{2,3}(G\d{2,3})?(KT|MPS)$/i.test(t))
   return tok ? parseMetarWind(tok) : null
+}
+
+/**
+ * What the pre-flight checks take from the aerodromes' own METARs, keyed by upper-case ICAO: the surface wind
+ * and the temperature. A station whose METAR comes from a neighbour (`sourceIcao` differs) is left out: its
+ * wind is not that aerodrome's, and a crosswind or density altitude check on it would be wrong.
+ */
+export function ownSurfaceConditions(
+  stations: Iterable<{ icao: string; metar?: string | null; sourceIcao?: string | null }>,
+): { surfaceWinds: Map<string, ParsedWind>; surfaceTempsC: Map<string, number> } {
+  const surfaceWinds = new Map<string, ParsedWind>()
+  const surfaceTempsC = new Map<string, number>()
+  for (const st of stations) {
+    if (!st.metar || (st.sourceIcao && st.sourceIcao !== st.icao)) continue
+    const w = metarSurfaceWind(st.metar)
+    if (w) surfaceWinds.set(st.icao.toUpperCase(), w)
+    const t = parseMetarTempC(st.metar)
+    if (t != null) surfaceTempsC.set(st.icao.toUpperCase(), t)
+  }
+  return { surfaceWinds, surfaceTempsC }
 }
 
 export interface LandingPoint {

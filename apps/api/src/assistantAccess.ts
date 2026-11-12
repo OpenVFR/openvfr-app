@@ -11,6 +11,7 @@
  *  - `createAssistantAccess`: the /mcp handler asks, per request (cached for
  *    a few seconds), whether the user is not banned and still has a consent
  *    for the client, so access tokens (1 h) die with the consent too.
+ *  - `cleanupAssistantTables`: deletes expired tokens and abandoned clients (see there).
  *  - `assistantClientName`: the client's own name, cleaned for use in review
  *    marks and emails (it is chosen by whoever registered the client).
  */
@@ -57,26 +58,34 @@ export function assistantRevokePlugin(query: Query) {
   }
 }
 
-/** Per-request check for /mcp: not banned, and the pilot still has a consent for this client. */
+/**
+ * Per-request check for /mcp: not banned, and the pilot still has a consent for this client.
+ * `check` answers the scopes the consent grants right now (null = no access), so a token
+ * issued before the pilot narrowed the consent cannot keep its wider scopes.
+ */
 export function createAssistantAccess(query: Query, ttlMs = 10_000, now: () => number = Date.now) {
-  const cache = new Map<string, { at: number; ok: boolean }>()
+  const cache = new Map<string, { at: number; scopes: string[] | null }>()
+  async function check(userId: string, clientId: string): Promise<string[] | null> {
+    const key = `${userId}\u0000${clientId}`
+    const hit = cache.get(key)
+    if (hit && now() - hit.at < ttlMs) return hit.scopes
+    const { rows } = await query(
+      `SELECT u.banned, u."banExpires",
+              (SELECT c."scopes" FROM ba_oauth_consent c WHERE c."userId" = u.id AND c."clientId" = $2
+                ORDER BY c."updatedAt" DESC LIMIT 1) AS scopes
+         FROM ba_user u WHERE u.id = $1`, [userId, clientId])
+    const r = rows[0]
+    const expires = r?.['banExpires'] ? new Date(String(r['banExpires'])).getTime() : 0
+    const banned = r?.['banned'] === true && (!expires || expires > now())
+    const granted = Array.isArray(r?.['scopes']) ? (r['scopes'] as unknown[]).filter((x): x is string => typeof x === 'string') : null
+    const scopes = !!r && !banned && granted ? granted : null
+    if (cache.size > 5000) cache.clear()
+    cache.set(key, { at: now(), scopes })
+    return scopes
+  }
   return {
-    async allowed(userId: string, clientId: string): Promise<boolean> {
-      const key = `${userId}\u0000${clientId}`
-      const hit = cache.get(key)
-      if (hit && now() - hit.at < ttlMs) return hit.ok
-      const { rows } = await query(
-        `SELECT u.banned, u."banExpires",
-                EXISTS (SELECT 1 FROM ba_oauth_consent c WHERE c."userId" = u.id AND c."clientId" = $2) AS consent
-           FROM ba_user u WHERE u.id = $1`, [userId, clientId])
-      const r = rows[0]
-      const expires = r?.['banExpires'] ? new Date(String(r['banExpires'])).getTime() : 0
-      const banned = r?.['banned'] === true && (!expires || expires > now())
-      const ok = !!r && !banned && r['consent'] === true
-      if (cache.size > 5000) cache.clear()
-      cache.set(key, { at: now(), ok })
-      return ok
-    },
+    check,
+    async allowed(userId: string, clientId: string): Promise<boolean> { return (await check(userId, clientId)) !== null },
   }
 }
 
@@ -89,4 +98,26 @@ export function cleanClientName(name: string | null | undefined, fallback = 'an 
 export async function assistantClientName(query: Query, clientId: string, fallback?: string): Promise<string> {
   const { rows } = await query('SELECT name FROM ba_oauth_client WHERE "clientId" = $1', [clientId])
   return cleanClientName(rows[0]?.['name'] as string | null | undefined, fallback)
+}
+
+/**
+ * Housekeeping for the assistant tables, run daily. Expired or revoked tokens (about one access token an
+ * hour per connected assistant) and clients that registered themselves openly but were never approved
+ * (or were disconnected) would otherwise stay for ever. A client is kept while it has a consent or a live
+ * refresh token; a new registration gets a grace period to finish the sign-in.
+ */
+export async function cleanupAssistantTables(query: Query): Promise<void> {
+  try {
+    await query(`DELETE FROM ba_oauth_access_token WHERE "expiresAt" < now() - interval '1 day' OR "revoked" < now() - interval '1 day'`, [])
+    await query(`DELETE FROM ba_oauth_refresh_token WHERE "expiresAt" < now() - interval '1 day' OR "revoked" < now() - interval '1 day'`, [])
+    await query(
+      `DELETE FROM ba_oauth_client c
+        WHERE c."createdAt" < now() - interval '14 days'
+          AND NOT EXISTS (SELECT 1 FROM ba_oauth_consent k WHERE k."clientId" = c."clientId")
+          AND NOT EXISTS (SELECT 1 FROM ba_oauth_refresh_token r WHERE r."clientId" = c."clientId" AND r."revoked" IS NULL AND r."expiresAt" > now())`, [])
+  } catch (err) {
+    // A deployment that has not applied the assistant migration has nothing to clean.
+    if ((err as { code?: string }).code === '42P01') return
+    console.error('[assistant] cleanup failed:', err)
+  }
 }

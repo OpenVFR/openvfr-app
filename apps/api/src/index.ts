@@ -41,7 +41,7 @@ import { randomUUID } from 'node:crypto'
 import { auth, isReviewAccountEmail, ASSISTANT_MCP, ASSISTANT_UI_ALL, MCP_RESOURCE, SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, SCOPE_LOGS, APP_ORIGIN } from './auth'
 import { upsertUserAircraft, upsertUserRoute, userPlaces, upsertUserPlace, userFlightSummaries, mintPostgrestJwt } from './briefingData'
 import { createMcpEndpoint } from './mcp'
-import { createAssistantAccess, assistantClientName, type Query } from './assistantAccess'
+import { createAssistantAccess, assistantClientName, cleanupAssistantTables, type Query } from './assistantAccess'
 import { admin } from './admin'
 import { assertAuthenticatedRoleExists } from './pgRoles'
 import { pool as dbPool } from './db'
@@ -252,9 +252,9 @@ app.get('/api/auth/account-flags', async (c) => {
   if (!session?.user) return c.json({ error: 'Unauthenticated' }, 401)
   return c.json({
     passkeyAllowed: !isReviewAccountEmail(session.user.email),
-    // Assistant connection: the MCP endpoint URL to paste into an assistant, when the server offers it.
     // The built-in POH extractor (a cloud model the server is configured with); the endpoint itself needs this same session.
     pohExtract: openai !== null,
+    // Assistant connection: the MCP endpoint URL to paste into an assistant, when the server offers it.
     assistantMcpUrl: ASSISTANT_MCP && (ASSISTANT_UI_ALL || (session.user as { role?: string | null }).role === 'admin') ? MCP_RESOURCE : null,
   })
 })
@@ -789,7 +789,13 @@ setOpenMeteoFetch(async (url) => {
   const userId = currentBriefingUser()
   if (!userId) return new Response(JSON.stringify({ error: true, reason: 'No user' }), { status: 401 })
   const u = new URL(url, 'http://localhost')
-  return proxyForUser('open-meteo', userId, u.pathname, u.search)
+  const res = await proxyForUser('open-meteo', userId, u.pathname, u.search)
+  // The open-meteo client closes one gate for the whole process on a 429/503. A user's own cap is not
+  // an upstream throttle: answer it with a status that fails only this call and leaves the gate open.
+  if (res.status === 429 && /Request limit reached/i.test(await res.clone().text())) {
+    return new Response(res.body, { status: 403, headers: res.headers })
+  }
+  return res
 })
 const weatherFor: WeatherFor = async (userId, icao) => {
   if (!/^[A-Z]{4}$/.test(icao)) return null
@@ -858,6 +864,9 @@ if (ASSISTANT_MCP) {
 
   const assistantQuery: Query = (sql, params) => dbPool.query(sql, params)
   const assistantAccess = createAssistantAccess(assistantQuery)
+  // Expired tokens and never-approved clients: once shortly after start, then daily.
+  setTimeout(() => { void cleanupAssistantTables(assistantQuery) }, 60_000).unref()
+  setInterval(() => { void cleanupAssistantTables(assistantQuery) }, 24 * 60 * 60_000).unref()
   const mcpEndpoint = createMcpEndpoint(auth, {
     briefings,
     weather: weatherFor,
@@ -874,7 +883,7 @@ if (ASSISTANT_MCP) {
     scopeLogs: SCOPE_LOGS,
     flights: userFlightSummaries,
     clientName: (clientId) => assistantClientName(assistantQuery, clientId),
-    access: assistantAccess.allowed,
+    access: assistantAccess.check,
     takeBriefing: (userId) => briefingLimiter.take(userId).waitS <= 0,
     jwksUrl: `http://127.0.0.1:${PORT}/api/auth/jwks`,
   })

@@ -62,7 +62,8 @@ export interface McpDeps {
   /** Counts one briefing against the user's briefing limit; false = over it. */
   takeBriefing: (userId: string) => boolean
   /** Whether the user may still use this assistant: not banned, and the consent is still there. */
-  access: (userId: string, clientId: string) => Promise<boolean>
+  /** The scopes the pilot's consent grants now, or null when the assistant has no access (disconnected, account banned). Throws when the check itself fails. */
+  access: (userId: string, clientId: string) => Promise<string[] | null>
   /**
    * Where token verification reads the signing keys (JWKS). The api's own
    * loopback address: its public URL may not be reachable from inside its

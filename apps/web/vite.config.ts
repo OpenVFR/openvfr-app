@@ -202,7 +202,8 @@ export default defineConfig({
     // the dev stack a public https URL to test the assistant connection with
     // a cloud assistant. Dev server only; unset = Vite's default (localhost).
     ...(process.env.VITE_DEV_ALLOWED_HOSTS
-      ? { allowedHosts: process.env.VITE_DEV_ALLOWED_HOSTS.split(',').map(h => h.trim()).filter(Boolean) }
+      // A bare '.', '*' or 'true' would answer to any Host and switch off Vite's DNS-rebinding protection: left out.
+      ? { allowedHosts: process.env.VITE_DEV_ALLOWED_HOSTS.split(',').map(h => h.trim()).filter(h => h && h !== '.' && h !== '*' && h.toLowerCase() !== 'true') }
       : {}),
     // usePolling must NOT be set when running on the host — it disables
     // native FS events (ReadDirectoryChangesW on Windows) and makes HMR

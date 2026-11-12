@@ -6,10 +6,10 @@ allowBuilds:
   esbuild: true
   workerd: true
 
-# Expo's optional react-dom peer (@expo/router-server, web-only, never bundled
-# into the native app) is pinned to the same line as apps/native's react
-# (19.3.0, RN 0.88's peer), so it cannot pull a react-dom whose own peer
-# mismatches it.
+# The assistant connection's auth packages (better-auth 1.7.20 and its plugins, which must all be the same
+# version) are exempt from the release-age delay, because 1.7.20 was newer than the delay when it was adopted.
+# These are auth packages, where the delay matters most: remove this list as soon as 1.7.20 is older than
+# `minimumReleaseAge`, or on the next better-auth upgrade.
 minimumReleaseAgeExclude:
   - "@better-auth/cimd@1.7.20"
   - "@better-auth/core@1.7.20"
@@ -24,6 +24,10 @@ minimumReleaseAgeExclude:
   - "@better-auth/telemetry@1.7.20"
   - better-auth@1.7.20
 
+# Expo's optional react-dom peer (@expo/router-server, web-only, never bundled
+# into the native app) is pinned to the same line as apps/native's react
+# (19.3.0, RN 0.88's peer), so it cannot pull a react-dom whose own peer
+# mismatches it.
 overrides:
   "@expo/router-server>react-dom": "19.3.0"
   # Optional peer of react-native's CLI plugin: keep it on the same line as

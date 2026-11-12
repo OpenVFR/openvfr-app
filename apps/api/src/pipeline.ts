@@ -59,6 +59,8 @@ const DATASETS: { id: string; file: (cc: string) => string; job: PipelineJob | n
   { id: 'obstacles',         file: cc => countryDatasetFile(cc, 'obstacles'),        job: 'obstacles' },
   { id: 'landmarks',         file: cc => countryDatasetFile(cc, 'landmarks'),        job: 'landmarks' },
   { id: 'water',             file: cc => countryDatasetFile(cc, 'water'),            job: 'water' },
+  // Large lakes taken from the water polygons by the same job; the glide check reads this file, not the water file.
+  { id: 'lakes',             file: cc => countryDatasetFile(cc, 'lakes'),            job: 'water' },
   { id: 'aeroways',          file: cc => countryDatasetFile(cc, 'aeroways'),         job: 'aeroways' },
   { id: 'landuse',           file: cc => countryArchiveFile(cc, 'landuse'),          job: 'landuse' },
   { id: 'basemap',           file: cc => countryArchiveFile(cc, 'basemap'),          job: 'basemap' },

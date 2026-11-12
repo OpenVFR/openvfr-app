@@ -74,9 +74,16 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
     if (!userId) return new Response('Forbidden', { status: 403 })
     const clientId = typeof claims['azp'] === 'string' ? claims['azp'] as string : ''
     // Disconnected, or the account banned: the token itself may still be valid for up to an hour.
-    let allowed = false
-    try { allowed = await deps.access(userId, clientId) } catch (err) { console.error('[mcp] access check failed:', err) }
-    if (!allowed) {
+    let granted: string[] | null = null
+    try { granted = await deps.access(userId, clientId) } catch (err) {
+      // The check itself failed (database down): not the same as "not allowed". A 401 here would make the
+      // assistant drop its tokens and send the pilot to connect again over a passing fault.
+      console.error('[mcp] access check failed:', err)
+      return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code: -32603, message: 'Temporarily unavailable. Try again shortly.' }, id: null }), {
+        status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5' },
+      })
+    }
+    if (!granted) {
       return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code: -32001, message: 'This assistant is no longer connected. Connect it again in OpenVFR.' }, id: null }), {
         status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer error="invalid_token"' },
       })
@@ -87,7 +94,8 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
         status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': String(Math.min(limit.waitS, 3600)) },
       })
     }
-    const scopes = typeof claims['scope'] === 'string' ? (claims['scope'] as string).split(' ').filter(Boolean) : []
+    // The token's scopes, cut down to what the consent grants now (a token from before the pilot narrowed it keeps no more).
+    const scopes = (typeof claims['scope'] === 'string' ? (claims['scope'] as string).split(' ').filter(Boolean) : []).filter(s => granted.includes(s))
     return handler.fetch(request, {
       authInfo: {
         token: '',
