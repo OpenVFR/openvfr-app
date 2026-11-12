@@ -150,8 +150,14 @@
 
 /* ── Waypoint row ────────────────────────────────────────────────── */
 
-
-.wpList { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 4px 0 0; list-style: none; }
+.wpList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 4px 0 0;
+  list-style: none;
+}
 
 /* A place is a card like an aircraft or a saved route: name and detail line on the left, icon buttons on the right. */
 .wpRow {

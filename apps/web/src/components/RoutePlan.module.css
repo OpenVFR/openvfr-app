@@ -77,22 +77,7 @@
 }
 
 .btn {
-  /* Icon buttons: the same 24 px square as the section menu and the assistant sparkle. */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid var(--border-default);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.btn:hover:not(:disabled) {
-  color: var(--text-primary);
+  composes: iconSquareBtn from '../styles/shared.module.css';
 }
 
 /* A button with a text label (Go, Add) instead of an icon. */

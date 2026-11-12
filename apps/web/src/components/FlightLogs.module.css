@@ -95,12 +95,6 @@
 }
 .viewBtn:hover { background: var(--surface-active); color: var(--text-primary); }
 
-.viewBtnActive {
-  border-color: #a78bfa;
-  color: #a78bfa;
-}
-.viewBtnActive:hover { color: #c4b5fd; }
-
 .iconBtn {
   display: inline-flex;
   align-items: center;
@@ -123,12 +117,6 @@
   gap: 4px;
   flex-shrink: 0;
 }
-
-.viewBtnDanger {
-  color: var(--status-danger);
-  border-color: var(--status-danger);
-}
-.viewBtnDanger:hover { color: var(--status-danger); background: color-mix(in srgb, var(--status-danger) 15%, var(--surface-hover)); }
 
 .clearBtn {
   composes: viewBtn;

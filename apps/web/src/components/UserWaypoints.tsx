@@ -71,6 +71,8 @@ export default function UserWaypoints({
   const [query, setQuery] = useState('')
   const [insertingId, setInsertingId] = useState<string | null>(null)
 
+  const formRef = useRef<HTMLDivElement>(null)
+
   // Fill form when "pick on map" coords arrive.
   useEffect(() => {
     if (pendingCoords) {
@@ -80,6 +82,8 @@ export default function UserWaypoints({
         lng: pendingCoords.lng.toFixed(5),
       }))
       setShowForm(true)
+      // The form sits below the list: with a long list a picked position must not arrive off-screen.
+      requestAnimationFrame(() => formRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
       onCoordsConsumed()
     }
   }, [pendingCoords, onCoordsConsumed])
@@ -312,7 +316,7 @@ export default function UserWaypoints({
         ))}
       {/* New waypoint form */}
       {showForm && (
-        <div className={css.form}>
+        <div className={css.form} ref={formRef}>
           <div className={css.formRow}>
             <label htmlFor={`${formId}-name`} className={css.formLabel}>Name</label>
             <input

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState , type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { flightLogToGpx, gpxToFlightLog } from '@open-vfr/shared/gpx'
 import {
   computeLogStats, formatLogDuration, logTotals, logPeriodStart, LOG_PERIODS, LOG_PERIOD_LABEL,
@@ -176,10 +176,15 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
   // server delete (the sync's change capture skips them).
   async function handleDeleteSimulated() {
     if (!window.confirm(`Delete ${simulatedCount} simulated flight log${simulatedCount === 1 ? '' : 's'} from this browser? Real flights are not affected.`)) return
-    const db = await getDb()
-    const sims = await db.flight_logs.find({ selector: { endedAt: { $gt: 0 } } }).exec()
-    await Promise.all(sims.filter(d => d.simulated === true).map(d => d.remove()))
-    if (selectedLogId && logs.some(l => l.doc.id === selectedLogId && l.doc.simulated)) onClear()
+    try {
+      const db = await getDb()
+      const sims = await db.flight_logs.find({ selector: { endedAt: { $gt: 0 } } }).exec()
+      await Promise.all(sims.filter(d => d.simulated === true).map(d => d.remove()))
+      if (selectedLogId && logs.some(l => l.doc.id === selectedLogId && l.doc.simulated)) onClear()
+    } catch (err) {
+      // The menu calls this without awaiting it: say what happened instead of leaving a silent rejection (some logs may be gone).
+      setImportMsg(`Could not delete the simulated flights: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   // The flight this log can be joined with (a recording broken off by a GPS loss), by log id.
@@ -329,12 +334,11 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
       ]}
     />
   )
-  const sectionActions = sectionActionsFor(false)
 
   if (logs.length === 0) {
     return (
       <div className={css.panel}>
-        {sectionActions}
+        {sectionActionsFor(false)}
         <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml" hidden aria-label="Import GPX flight" onChange={handleImport} />
         <p className={css.empty}>No completed flights recorded yet.</p>
         {importConfirm}

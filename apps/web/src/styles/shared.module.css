@@ -108,3 +108,19 @@
   composes: formInput;
   cursor: pointer;
 }
+
+/* Icon button: a 24 px square with a thin border. Used by the AI-assistant sparkle, the section "⋯" menu and the route header buttons, so they stay the same size. */
+.iconSquareBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.iconSquareBtn:hover:not(:disabled) { color: var(--text-primary); }

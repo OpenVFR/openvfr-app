@@ -1,17 +1,6 @@
 .trigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid var(--border-default);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
+  composes: iconSquareBtn from '../styles/shared.module.css';
 }
-.trigger:hover { color: var(--text-primary); }
 
 .backdrop {
   position: fixed;
