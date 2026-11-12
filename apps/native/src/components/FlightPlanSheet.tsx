@@ -155,13 +155,13 @@ export function FlightPlanSheet({ visible, onClose, waypoints, legOverrides, air
       <Chips items={SURVIVAL} on={flight.survival} onPress={c => set('survival', toggle(flight.survival, c as 'P'))} />
       <Text style={styles.label}>Life jackets</Text>
       <Chips items={JACKETS} on={flight.jackets} onPress={c => set('jackets', toggle(flight.jackets, c as 'L'))} />
-      <Text style={styles.label}>Dinghies: number, capacity, colour</Text>
+      <Text style={styles.label}>Life rafts (dinghies): number, total capacity (persons), colour</Text>
       <View style={styles.row}>
         <TextInput style={[styles.input, styles.small]} value={String(flight.dinghies.count)} keyboardType="number-pad" onChangeText={t => set('dinghies', { ...flight.dinghies, count: Math.max(0, parseInt(t, 10) || 0) })} />
         <TextInput style={[styles.input, styles.small]} value={String(flight.dinghies.capacity)} keyboardType="number-pad" onChangeText={t => set('dinghies', { ...flight.dinghies, capacity: Math.max(0, parseInt(t, 10) || 0) })} />
         <TextInput style={[styles.input, styles.grow]} value={flight.dinghies.colour} placeholder="Colour" onChangeText={t => set('dinghies', { ...flight.dinghies, colour: t })} />
         <TouchableOpacity style={[styles.chip, flight.dinghies.covered && styles.chipOn]} onPress={() => set('dinghies', { ...flight.dinghies, covered: !flight.dinghies.covered })}>
-          <Text style={[styles.chipTxt, flight.dinghies.covered && styles.chipTxtOn]}>Covered</Text>
+          <Text style={[styles.chipTxt, flight.dinghies.covered && styles.chipTxtOn]}>With canopy</Text>
         </TouchableOpacity>
       </View>
       <Text style={styles.label}>Remarks</Text>

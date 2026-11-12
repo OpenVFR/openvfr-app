@@ -15,6 +15,7 @@
   font-family: inherit; font-size: 12px; padding: 4px 8px; box-sizing: border-box; width: 100%;
 }
 .num { width: 64px; } .txt { width: 110px; }
+.inp option { background: var(--input-option-bg); color: var(--text-primary); }
 .set { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; border: 1px solid var(--border-default); border-radius: 6px; padding: 4px 10px 8px; margin: 0; }
 .set legend { font-size: 11px; color: var(--text-muted); padding: 0 4px; }
 .chk { display: inline-flex; align-items: center; gap: 4px; }

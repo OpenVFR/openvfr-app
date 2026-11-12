@@ -169,10 +169,10 @@ export default function FlightPlanDialog({ waypoints, legOverrides, aircraft: ai
         <fieldset className={css.set}><legend>Life jackets</legend>
           {JACKETS.map(([c, l]) => <label key={c} className={css.chk}><input type="checkbox" checked={flight.jackets.includes(c as 'L')} onChange={() => set('jackets', toggle(flight.jackets, c as 'L'))} /> {l}</label>)}
         </fieldset>
-        <fieldset className={css.set}><legend>Dinghies</legend>
-          <label className={css.chk}>Number <input className={css.num} type="number" min={0} value={flight.dinghies.count} onChange={e => set('dinghies', { ...flight.dinghies, count: Math.max(0, Number(e.target.value) || 0) })} /></label>
-          <label className={css.chk}>Capacity <input className={css.num} type="number" min={0} value={flight.dinghies.capacity} onChange={e => set('dinghies', { ...flight.dinghies, capacity: Math.max(0, Number(e.target.value) || 0) })} /></label>
-          <label className={css.chk}><input type="checkbox" checked={flight.dinghies.covered} onChange={e => set('dinghies', { ...flight.dinghies, covered: e.target.checked })} /> Covered</label>
+        <fieldset className={css.set}><legend>Life rafts (dinghies)</legend>
+          <label className={css.chk}>Number of rafts <input className={css.num} type="number" min={0} value={flight.dinghies.count} onChange={e => set('dinghies', { ...flight.dinghies, count: Math.max(0, Number(e.target.value) || 0) })} /></label>
+          <label className={css.chk}>Total capacity (persons) <input className={css.num} type="number" min={0} value={flight.dinghies.capacity} onChange={e => set('dinghies', { ...flight.dinghies, capacity: Math.max(0, Number(e.target.value) || 0) })} /></label>
+          <label className={css.chk}><input type="checkbox" checked={flight.dinghies.covered} onChange={e => set('dinghies', { ...flight.dinghies, covered: e.target.checked })} /> With canopy</label>
           <label className={css.chk}>Colour <input className={css.txt} value={flight.dinghies.colour} onChange={e => set('dinghies', { ...flight.dinghies, colour: e.target.value })} /></label>
         </fieldset>
         <label className={css.lbl}>Remarks

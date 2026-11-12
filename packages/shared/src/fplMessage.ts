@@ -56,7 +56,7 @@ export interface FlightAnswers {
   jackets: readonly ('L' | 'F' | 'U' | 'V')[]
   /** Life jackets carried without light, fluorescein or radio: written as the remark JACKETS. */
   jacketsPlain?: boolean
-  /** Item 19 dinghies: number, total capacity, covered, colour. */
+  /** Item 19 dinghies (life rafts): number, total capacity in persons, with canopy, colour. */
   dinghies: { count: number; capacity: number; covered: boolean; colour: string }
   remarks: string
   pilotName: string
@@ -229,7 +229,7 @@ export function buildFpl(input: {
     `Emergency radio: ${flight.emergencyRadio.length ? 'R/' + flight.emergencyRadio.join('') : 'none'}`,
     `Survival equipment: ${flight.survival.length ? 'S/' + flight.survival.join('') : 'none'}`,
     `Life jackets: ${flight.jackets.length ? 'J/' + ['L', 'F', 'U', 'V'].filter(j => (flight.jackets as readonly string[]).includes(j)).join('') : 'none'}`,
-    `Dinghies: ${d.count > 0 ? `D/${pad(d.count)} ${pad(d.capacity, 3)} ${d.covered ? 'C' : ''} ${aftnText(d.colour)}`.replace(/\s+/g, ' ').trim() : 'none'}`,
+    `Life rafts: ${d.count > 0 ? `D/${pad(d.count)} ${pad(d.capacity, 3)} ${d.covered ? 'C' : ''} ${aftnText(d.colour)}`.replace(/\s+/g, ' ').trim() : 'none'}`,
     `Aircraft colour and markings: ${aftnText(ac.colour) ? `A/${aftnText(ac.colour)}` : '-'}`,
     `Remarks: ${remarks19 ? `N/${remarks19}` : '-'}`,
     `Pilot in command: C/${aftnText(flight.pilotName) || '-'}${flight.pilotPhone.trim() ? `  Tel ${flight.pilotPhone.trim()}` : ''}`,

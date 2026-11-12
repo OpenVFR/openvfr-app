@@ -181,7 +181,7 @@ text:
 
 - **Asked per flight:** flight rules (V, I, Y, Z), type of flight (G for
   private flying), off-block time in UTC, alternate, persons on board, your name
-  and phone, emergency radio, survival equipment, life jackets, dinghies and
+  and phone, emergency radio, survival equipment, life jackets, life rafts (dinghies) and
   remarks. The pilot name and phone and the emergency equipment are
   remembered for the next flight.
 - **From the aircraft and route:** registration, type and wake category,
@@ -206,7 +206,7 @@ text:
   type of flight X without an explanation, an off-block time less than 5
   minutes or more than 5 days ahead, a phone number that does not start with
   `+` and the country code, endurance shorter than the flight time, the
-  destination used as the alternate, or dinghies without capacity and
+  destination used as the alternate, or life rafts without capacity and
   colour. Accents and characters the aeronautical network does not carry are
   removed from names, colours and remarks.
 
