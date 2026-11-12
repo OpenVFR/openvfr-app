@@ -188,10 +188,11 @@ export async function loadCountryDataset(kind: 'aerodromes' | 'airspace' | 'obst
     const url = `${TILES_BASE_URL}/${countryDatasetFile(cc, kind)}`
     let hit = datasetCache.get(url)
     if (!hit || now - hit.at > DATASET_TTL_MS) {
-      hit = { at: now, fc: fetchDataset(url) }
-      datasetCache.set(url, hit)
-      // A failed load is not cached for the full TTL.
-      void hit.fc.then(fc => { if (!fc) datasetCache.delete(url) })
+      const entry = { at: now, fc: fetchDataset(url) }
+      hit = entry
+      datasetCache.set(url, entry)
+      // A failed load is not cached for the full TTL (unless a newer entry has replaced it since).
+      void entry.fc.then(fc => { if (!fc && datasetCache.get(url) === entry) datasetCache.delete(url) })
     }
     return hit.fc
   }))
@@ -242,7 +243,11 @@ export async function loadMefGridsFor(countries: readonly string[]): Promise<Mef
 
 // ── The pilot's planning settings (synced) ──────────────────────────────────
 
-/** MSA margins and airspace alert levels from the user's synced settings; {} when unset or unreadable. */
+/**
+ * What the briefing reads from the user's synced settings: MSA margins and airspace alert levels,
+ * the planned departure, the global wind and the aircraft selected in the app. Anything unset is
+ * left out; `unreadable` says the margins or alert levels could not be read.
+ */
 export interface PlanningSettings {
   msaMargins?: Partial<MsaMargins>
   airspaceLevels?: AirspaceAlertLevels

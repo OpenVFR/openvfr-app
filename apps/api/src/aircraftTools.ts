@@ -39,7 +39,7 @@ export interface AircraftInput {
   hardRunwayOnly?: boolean
   transponder?: TransponderMode
   hasRadio?: boolean
-  /** POH page per field, for the answer. */
+  /** POH page per field: shown to the pilot in the answer, so each value can be checked where it came from. */
   pages?: Record<string, string | number>
   values?: Partial<Record<NumericField, number>>
 }
@@ -54,6 +54,8 @@ export interface AircraftBuild {
   warnings: string[]
   /** Defaults the profile got because the input had no value. */
   defaults: string[]
+  /** POH page the assistant gave per field (only for fields that were set), as text. */
+  pages: Record<string, string>
 }
 
 const RESERVE_DEFAULTS: Partial<Record<NumericField, number>> = { holdingMin: 30, diversionMin: 30, contingencyPct: 10 }
@@ -132,11 +134,15 @@ export function buildAircraft(input: AircraftInput, opts: { existing?: AircraftP
 
   // An unreviewed profile stays 'created', and unreviewed changes add up until the pilot saves it in the app.
   const prev = opts.existing?.assistantReview
-  const thisChange = changed.filter(k => k !== 'assistantReview' && k !== 'updatedAt')
+  const thisChange = changed
   doc.assistantReview = {
     by: opts.by, at: opts.now,
     change: creating || prev?.change === 'created' ? 'created' : [...new Set([...(Array.isArray(prev?.change) ? prev.change : []), ...thisChange])],
   }
   doc.updatedAt = opts.now
-  return { doc, changed, warnings, defaults }
+  const pages: Record<string, string> = {}
+  for (const [f, pg] of Object.entries(input.pages ?? {})) {
+    if (changed.includes(f) || f in values) pages[f.slice(0, 40)] = String(pg).slice(0, 20)
+  }
+  return { doc, changed, warnings, defaults, pages }
 }

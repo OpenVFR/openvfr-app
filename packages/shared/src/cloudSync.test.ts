@@ -660,3 +660,14 @@ describe('SyncCoordinator', () => {
     }
   })
 })
+
+describe('aircraft rows from before the new profile fields', () => {
+  it('read back unchanged, with no new field invented, and write back the same data', async () => {
+    const { aircraftRows } = await import('./cloudSyncRows')
+    const data = { id: 'ac-old', name: 'Old 172', registration: 'SE-OLD', icaoType: 'C172', category: 'SEP', cruiseAltFt: 3000, cruiseIas: 100, fuelBurnLhr: 30, maxFuelL: 150, glideRatio: 9 }
+    const doc = aircraftRows.fromServer({ id: 'ac-old', user_id: 'u', data: JSON.stringify(data), updated_at: '2026-01-01T00:00:00Z' })!
+    expect(doc).toMatchObject(data)
+    for (const k of ['fuelTypes', 'maxCrosswindKts', 'takeoffDist50ftM', 'vs0Kts', 'assistantReview']) expect(doc).not.toHaveProperty(k)
+    expect((aircraftRows.toServer(doc, 'u') as { data: Record<string, unknown> }).data).toMatchObject(data)
+  })
+})

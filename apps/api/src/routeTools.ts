@@ -70,14 +70,17 @@ export function buildRoute(input: RouteInput, ctx: { existing?: RouteDocType; id
     if (tokens.length < 2) throw new RouteInputError('A route needs at least 2 points.')
     if (tokens.length > MAX_POINTS) throw new RouteInputError(`At most ${MAX_POINTS} points.`)
     // Points already on the route are kept as they are (with their notes,
-    // fuel-stop flags and positions the pilot may have placed by hand).
+    // fuel-stop flags and positions the pilot may have placed by hand). A point is
+    // the same when it is written as its stored name, or resolves to a point with that
+    // name: PL/<place> and LM/<landmark> are stored under the plain name, a coordinate
+    // under its formatted position.
     const keep = new Map((existing?.waypoints ?? []).filter(w => w.name).map(w => [norm(w.name!), w]))
     const resolved = resolveRoutePoints(tokens, ctx.idx)
     const errors: string[] = []
     const next: RouteWaypoint[] = tokens.map((t, i) => {
-      const kept = keep.get(norm(t))
-      if (kept) return { ...kept }
       const r = resolved[i]!
+      const kept = keep.get(norm(t)) ?? (r.ok && r.point.name ? keep.get(norm(r.point.name)) : undefined)
+      if (kept) return { ...kept }
       if (r.ok) return r.point
       errors.push(`${t}: ${r.reason}`)
       return { lat: 0, lng: 0 }

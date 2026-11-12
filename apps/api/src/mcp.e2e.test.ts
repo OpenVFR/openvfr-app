@@ -138,7 +138,6 @@ async function rpc(token: string, method: string, params: unknown = {}): Promise
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
   })
   const raw = await res.text()
-  if (process.env['DBG']) console.log('RPC', res.status, raw.slice(0, 300))
   return JSON.parse(raw.startsWith('{') ? raw : raw.split('\n').find(l => l.startsWith('data: '))!.slice(6))
 }
 const toolText = (r: { result?: Record<string, unknown> }) => ((r.result?.['content'] as { text: string }[] | undefined) ?? []).map(c => c.text).join('\n')

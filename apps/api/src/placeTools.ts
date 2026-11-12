@@ -23,7 +23,8 @@ export interface PlaceInput {
 export interface PlaceBuild { doc: UserWaypointDocType; changed: string[] }
 
 // Letters, digits, spaces and common punctuation; no slash (PL/<name> is a path) and no control characters.
-const plain = /^[\p{L}\p{N}][\p{L}\p{N} .,'()+&-]*$/u
+/** What a place name may be (and so what `PL/<name>` can be written as in a route). */
+export const PLAIN_PLACE = /^[\p{L}\p{N}][\p{L}\p{N} .,'()+&-]*$/u
 
 export function buildPlace(
   input: PlaceInput,
@@ -35,7 +36,7 @@ export function buildPlace(
 
   if (input.name !== undefined) {
     const n = input.name.trim().replace(/\s+/g, ' ')
-    if (!n || n.length > NAME_MAX || !plain.test(n)) throw new PlaceInputError(`Name: 1-${NAME_MAX} letters, digits, spaces and . , ' ( ) + & - (no slash).`)
+    if (!n || n.length > NAME_MAX || !PLAIN_PLACE.test(n)) throw new PlaceInputError(`Name: 1-${NAME_MAX} letters, digits, spaces and . , ' ( ) + & - (no slash).`)
     if (ctx.others.some(o => o.id !== existing?.id && o.name.trim().toLowerCase() === n.toLowerCase())) throw new PlaceInputError(`A place named "${n}" exists. Use update_place to change it, or choose another name.`)
     if (n !== name) { name = n; changed.push('name') }
   } else if (!existing) {
@@ -53,7 +54,7 @@ export function buildPlace(
 
   if (input.folder !== undefined) {
     const f = input.folder.trim()
-    if (f.length > FOLDER_MAX || (f && !plain.test(f))) throw new PlaceInputError(`Folder: at most ${FOLDER_MAX} letters, digits, spaces and . , ' ( ) + & - (empty = unfiled).`)
+    if (f.length > FOLDER_MAX || (f && !PLAIN_PLACE.test(f))) throw new PlaceInputError(`Folder: at most ${FOLDER_MAX} letters, digits, spaces and . , ' ( ) + & - (empty = unfiled).`)
     if (f !== folder) { folder = f; changed.push('folder') }
   }
 

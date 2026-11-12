@@ -78,15 +78,17 @@ export function registerAircraftTools(c: Ctx): void {
   const saveBuild = async (built: ReturnType<typeof buildAircraft>, verb: 'created' | 'updated', seenUpdatedAt?: number): Promise<Text> => {
     await c.save.aircraft(built.doc, seenUpdatedAt)
     console.log(`[mcp] aircraft ${verb} user=${caller.userId} client=${caller.clientId} id=${built.doc.id} fields=${built.changed.join(',')}`)
-    const lines = [`${verb === 'created' ? 'Added' : 'Updated'} ${aircraftLabel(built.doc)} in OpenVFR${verb === 'updated' ? `: ${built.changed.filter(f => f !== 'updatedAt').join(', ') || 'nothing changed'}` : ''}.`]
+    const lines = [`${verb === 'created' ? 'Added' : 'Updated'} ${aircraftLabel(built.doc)} in OpenVFR${verb === 'updated' ? `: ${built.changed.join(', ') || 'nothing changed'}` : ''}.`]
     if (built.warnings.length) lines.push(`Values that look wrong, check them against the POH: ${built.warnings.join('; ')}.`)
     if (built.defaults.length) lines.push(`Defaults used (no value given): ${built.defaults.join(', ')}.`)
+    const pages = Object.entries(built.pages)
+    if (pages.length) lines.push(`POH pages the assistant gave, to check the values: ${pages.map(([f, pg]) => `${quote(f, 40)} p. ${quote(pg, 20)}`).join('; ')}.`)
     lines.push('The app shows it as "check before use" until the pilot opens and saves it there. It appears on their devices at the next sync.')
     return text(lines.join('\n'))
   }
 
   c.tool('create_aircraft', {
-    description: 'Add an aircraft profile for the pilot, e.g. from an attached POH/AFM. Give only values the document states, converted to the units in each field description, with the POH page per field in `pages`. Needs a registration; powered aircraft need cruiseIas, fuelBurnLhr and maxFuelL (USABLE fuel). The values are checked and the profile is marked for the pilot to review in the app.',
+    description: 'Add an aircraft profile for the pilot, e.g. from an attached POH/AFM. Read its tables, graphs and diagrams carefully (they may be scanned images) before answering. Give only values the document states, converted to the units in each field description, with the POH page per field in `pages`. Needs a registration; powered aircraft need cruiseIas, fuelBurnLhr and maxFuelL (USABLE fuel). The values are checked and the profile is marked for the pilot to review in the app.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
     inputSchema: z.object({ registration: z.string().min(2).max(20).describe('Registration, e.g. SE-ABC'), ...aircraftFields }),
   }, async (args) => {

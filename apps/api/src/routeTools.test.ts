@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildPointIndex } from '@open-vfr/shared/routeIdentifiers'
+import { buildPointIndex, withPlaces } from '@open-vfr/shared/routeIdentifiers'
 import { buildRoute, legLines, legKeys, changedLevelLegs, RouteInputError } from './routeTools.js'
 
 const pt = (lng: number, lat: number, properties: Record<string, unknown>) => ({ geometry: { type: 'Point', coordinates: [lng, lat] }, properties })
@@ -61,4 +61,27 @@ test('legs between unnamed points are told apart (by position and occurrence)', 
   assert.deepEqual(changedLevelLegs(doc([3000, 3000, 4000]), doc([3000, 3000, 3000])), [2])
   assert.deepEqual(legKeys(doc([]).waypoints).length, 3)
   assert.equal(new Set(legKeys(doc([]).waypoints)).size, 3)
+})
+
+test('update keeps a place, a landmark and a coordinate point (and their notes and leg settings) when they are written as identifiers again', () => {
+  const places = withPlaces(buildPointIndex({
+    aerodromes: { features: [pt(17.94, 59.35, { icao: 'ESSB', elevation_ft: 47 }), pt(14.5, 56.3, { icao: 'ESMS', elevation_ft: 236 })] },
+    landmarks: { features: [pt(15.5, 57.5, { name: 'Hassela kyrka', kind: 'church' })] },
+  }), [{ name: 'Cabin', lat: 59.5, lng: 17.93 }])
+  const existing = {
+    id: 'r1', name: 'Mixed', updatedAt: 0,
+    waypoints: [
+      { lat: 59.35, lng: 17.94, name: 'ESSB' },
+      { lat: 59.5, lng: 17.93, name: 'Cabin', note: 'park here' },
+      { lat: 57.5, lng: 15.5, name: 'Hassela kyrka' },
+      { lat: 58.2, lng: 15.1, name: '58.2000N 15.1000E', note: 'bend' },
+      { lat: 56.3, lng: 14.5, name: 'ESMS' },
+    ],
+    legOverrides: [{}, { altFt: 4000 }, {}, { altFt: 3500 }],
+  }
+  const b = buildRoute({ points: ['ESSB', 'PL/Cabin', 'LM/Hassela kyrka', '58.2000N 15.1000E', 'ESMS'], altitudeFt: undefined }, { ...ctx, idx: places, existing: existing as never })
+  assert.equal(b.doc.waypoints[1]!.note, 'park here')
+  assert.equal(b.doc.waypoints[3]!.note, 'bend')
+  assert.deepEqual(b.doc.legOverrides, [{}, { altFt: 4000 }, {}, { altFt: 3500 }])
+  assert.deepEqual(b.changed, [])
 })

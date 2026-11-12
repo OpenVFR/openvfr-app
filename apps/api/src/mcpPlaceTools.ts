@@ -10,10 +10,8 @@ import { distanceNm } from '@open-vfr/shared/routeCalc'
 import { fmtCoord, resolveRoutePoints } from '@open-vfr/shared/routeIdentifiers'
 import { allPoints, pointsNearPosition } from '@open-vfr/shared/pointsNear'
 import { quote, QUOTE_NOTE } from './untrusted'
-import { buildPlace } from './placeTools'
+import { buildPlace, PLAIN_PLACE } from './placeTools'
 import { fail, text, type Ctx, type Text } from './mcpContext'
-
-const PLAIN_PLACE = /^[\p{L}\p{N}][\p{L}\p{N} .,'()+&-]*$/u
 
 export function registerPlaceTools(c: Ctx): void {
   const { caller } = c

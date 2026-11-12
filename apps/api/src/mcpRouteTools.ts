@@ -23,13 +23,13 @@ const routeFields = {
     altitudeFt: z.number().min(ALT_LIMITS[0]).max(ALT_LIMITS[1]).optional().describe('ft AMSL'),
     speedKts: z.number().min(SPEED_LIMITS[0]).max(SPEED_LIMITS[1]).optional().describe('Planned IAS, kt'),
   })).max(MAX_POINTS - 1).optional().describe('Settings for single legs (after altitudeFt)'),
-  fuelStops: z.array(z.string().max(40)).max(10).optional().describe('Points (aerodromes between departure and destination) where the aircraft lands and refuels; replaces the current set'),
+  fuelStops: z.array(z.string().max(64)).max(10).optional().describe('Points (aerodromes between departure and destination) where the aircraft lands and refuels; replaces the current set'),
   aircraft: z.string().max(80).optional().describe('Aircraft registration or name from list_aircraft; "none" for no aircraft. New routes without it use the aircraft selected in the app (or the only one) and say so'),
   departure: departureField,
   belowMsaConfirmed: z.boolean().optional().describe('Set only after you told the pilot a leg\'s MSA and what sets it and the pilot confirmed flying that leg below it. Without it a level below the MSA is not saved. Levels below the legal minimum height are never saved here.'),
   autoFuelStops: z.boolean().optional().describe('With an aircraft: when a hop needs more fuel than the tanks hold, insert the best fuel stop (aircraft fuel types and runway limits) and say which'),
 }
-const pointsField = z.array(z.string().min(2).max(40)).min(2).max(MAX_POINTS)
+const pointsField = z.array(z.string().min(2).max(64)).min(2).max(MAX_POINTS)
   .describe('Points in flight order: ICAO aerodrome codes (ESSB), navaid idents (ARL), reporting points as AERODROME/POINT (ESSB/LAVER), named landmarks as LM/<name> (LM/Hassela kyrka), the pilot\'s saved places as PL/<name> (list_places), or coordinates (5939N01756E). Use points_near to find them. Unknown or ambiguous points are refused, never guessed.')
 
 export function registerRouteTools(c: Ctx): void {

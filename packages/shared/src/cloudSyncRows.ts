@@ -33,15 +33,18 @@ const byId = <L extends { id: string; updatedAt: number }>(l: L) => ({ id: l.id,
 export const routeRows: RowSpec<RouteDocType> = {
   table: 'user_routes',
   version: byId,
-  fromServer: r => ({
-    id:           String(r.id),
-    name:         String(r.name ?? ''),
-    waypoints:    json(r.waypoints, []),
-    legOverrides: json(r.leg_overrides, []),
-    aircraftId:   String(r.aircraft_id ?? ''),
-    ...(reviewMark(r.assistant_review) ? { assistantReview: reviewMark(r.assistant_review)! } : {}),
-    updatedAt:    ts(r.updated_at),
-  }),
+  fromServer: r => {
+    const review = reviewMark(r.assistant_review)
+    return {
+      id:           String(r.id),
+      name:         String(r.name ?? ''),
+      waypoints:    json(r.waypoints, []),
+      legOverrides: json(r.leg_overrides, []),
+      aircraftId:   String(r.aircraft_id ?? ''),
+      ...(review ? { assistantReview: review } : {}),
+      updatedAt:    ts(r.updated_at),
+    }
+  },
   toServer: (r, userId) => ({
     id:            r.id,
     user_id:       userId,
