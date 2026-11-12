@@ -95,7 +95,11 @@ body {
   border-radius: 6px;
   box-shadow: none;
 }
-.maplibregl-ctrl-group.maplibregl-ctrl-group button { background-color: transparent; color: var(--text-primary); }
+.maplibregl-ctrl-group.maplibregl-ctrl-group button {
+  background-color: transparent; color: var(--text-primary);
+  /* 27 px + the group's 1 px border = the 29 px of the other map buttons (map tools, brief). */
+  width: 27px; height: 27px;
+}
 .maplibregl-ctrl-group.maplibregl-ctrl-group button + button { border-top: 1px solid var(--border-default); }
 .maplibregl-ctrl-group.maplibregl-ctrl-group button:not(:disabled):hover { background-color: var(--surface-hover); }
 .maplibregl-ctrl-group .maplibregl-ctrl-icon { filter: var(--ctrl-icon-filter, none); }
