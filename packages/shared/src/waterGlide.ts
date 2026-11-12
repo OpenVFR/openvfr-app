@@ -11,9 +11,13 @@
  * over a lake it is the distance to its shore. Outside every loaded grid
  * nothing is known: no stretch is reported there.
  *
- * Glide: still air, from the planned altitude above the water surface, with
- * the profile's glide ratio (or a typical one for the category, marked as
- * assumed). Wind, turns and the time to set up a glide are not modelled.
+ * Glide: from the planned altitude above the water surface, with the
+ * profile's glide ratio (or a typical one for the category, marked as
+ * assumed). With a wind on the leg the area you can reach is the still-air
+ * circle moved downwind by the drift during the glide (wind x glide time,
+ * glide time = distance / best-glide speed): land upwind is reached less
+ * far, land downwind further. Without one it is a circle. Turns, gusts and
+ * the time to set up a glide are not modelled.
  */
 import booleanPointInPolygon from '@turf/boolean-point-in-polygon'
 import type { RouteWaypoint } from './routeCalc'
@@ -30,6 +34,9 @@ const STEP_NM = 0.5
 const MIN_REPORT_NM = 1
 /** How far around the route the distance transform looks for land, NM. */
 const SEARCH_NM = 40
+
+/** Typical best-glide speeds (kt) when the profile has none, for the drift in the wind. */
+const DEFAULT_GLIDE_KTS: Record<AircraftCategory, number> = { SEP: 70, MEP: 85, MICRO: 50, GYRO: 50, HELI: 60, TMG: 55, GLIDER: 50 }
 
 /** Typical still-air glide ratios when the profile has none. */
 const DEFAULT_GLIDE: Record<AircraftCategory, number> = { SEP: 8, MEP: 8, MICRO: 8, GYRO: 3, HELI: 4, TMG: 20, GLIDER: 30 }
@@ -56,6 +63,10 @@ export interface WaterStretch {
   neededFt: number
   /** Length of the stretch beyond gliding distance from land, NM (0 = always within). */
   beyondGlideNm: number
+  /** Wind on the leg of the furthest point that was used (from, degrees; knots), null when none. */
+  wind: { fromDeg: number; kts: number } | null
+  /** How far the reachable area is moved downwind from the furthest point, NM (0 without wind). */
+  driftNm: number
 }
 
 type Poly = GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>
@@ -154,7 +165,9 @@ export function waterStretches(input: {
   altAt: (distNm: number) => number
   grids: readonly MefGrid[]
   water?: GeoJSON.FeatureCollection | null
-  aircraft?: { category?: AircraftCategory; glideRatio?: number } | null
+  aircraft?: { category?: AircraftCategory; glideRatio?: number; bestGlideKts?: number } | null
+  /** Wind per leg (from degrees, knots); null/missing = still air on that leg. */
+  legWinds?: readonly ({ dirDeg: number; speedKts: number } | null)[]
 }): WaterStretch[] {
   const wps = input.waypoints
   if (wps.length < 2) return []
@@ -169,16 +182,59 @@ export function waterStretches(input: {
   const box: [number, number, number, number] = [Math.min(...lngs) - padLng, Math.min(...lats) - padLat, Math.max(...lngs) + padLng, Math.max(...lats) + padLat]
   const tight: [number, number, number, number] = [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)]
 
-  const lakes = (input.water?.features ?? []).filter((f): f is Poly => !!f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon'))
+  const allLakes = (input.water?.features ?? []).filter((f): f is Poly => !!f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon'))
     .map(f => ({ f, b: bboxOf(f) }))
-    .filter(({ b }) => b[0] <= tight[2] && b[2] >= tight[0] && b[1] <= tight[3] && b[3] >= tight[1])
+  // Near the route (for the stretches) and around it (for where the wind carries the glide).
+  const lakes = allLakes.filter(({ b }) => b[0] <= tight[2] && b[2] >= tight[0] && b[1] <= tight[3] && b[3] >= tight[1])
+  const lakesAround = allLakes.filter(({ b }) => b[0] <= box[2] && b[2] >= box[0] && b[1] <= box[3] && b[3] >= box[1])
   const seas = input.grids.map(g => seaDistance(g, box)).filter((s): s is NonNullable<typeof s> => !!s)
 
   const cat = input.aircraft?.category ?? 'SEP'
   const ratio = input.aircraft?.glideRatio && input.aircraft.glideRatio > 0 ? input.aircraft.glideRatio : DEFAULT_GLIDE[cat]
   const assumed = !(input.aircraft?.glideRatio && input.aircraft.glideRatio > 0)
 
-  type Sample = { nm: number; dist: number; sea: boolean; name: string; surfaceFt: number }
+  const glideKts = input.aircraft?.bestGlideKts && input.aircraft.bestGlideKts > 0 ? input.aircraft.bestGlideKts : DEFAULT_GLIDE_KTS[cat]
+  const legOfNm = (nm: number) => Math.max(0, Math.min(wps.length - 2, legEnds.findIndex(e => e >= nm - 1e-6) - 1))
+  const windAt = (nm: number) => {
+    const w = input.legWinds?.[legOfNm(nm)]
+    return w && w.speedKts > 0 && Number.isFinite(w.dirDeg) ? w : null
+  }
+
+  /** Distance (NM) from a point to the nearest land: 0 on land, null where nothing is known. */
+  const landDistAt = (lat: number, lng: number): number | null => {
+    for (const { f, b } of lakesAround) {
+      if (lng < b[0] || lng > b[2] || lat < b[1] || lat > b[3]) continue
+      if (!booleanPointInPolygon([lng, lat], f)) continue
+      let shore = Infinity
+      for (const r of rings(f)) shore = Math.min(shore, nearestRoutePoint({ lat, lng }, r).lateralNm)
+      return shore
+    }
+    let known = false
+    for (const sd of seas) {
+      const v = sd.distAt(lat, lng)
+      if (v !== null) return v
+    }
+    for (const g of input.grids) {
+      const col = Math.floor((lng - g.west) / g.cellLon), row = Math.floor((g.north - lat) / g.cellLat)
+      if (row >= 0 && col >= 0 && row < g.rows && col < g.cols) { known = true; if (g.codes[row * g.cols + col] !== MEF_NODATA) return 0 }
+    }
+    return known ? 0 : null
+  }
+  /** The point the glide circle is centred on: moved downwind by the drift while gliding `rangeNm`. */
+  const driftedCentre = (p: { lat: number; lng: number }, rangeNm: number, w: { dirDeg: number; speedKts: number }) => {
+    const drift = rangeNm * (w.speedKts / glideKts)
+    const to = ((w.dirDeg + 180) * Math.PI) / 180
+    return { drift, lat: p.lat + (drift * Math.cos(to)) / 60, lng: p.lng + (drift * Math.sin(to)) / (60 * Math.cos((p.lat * Math.PI) / 180)) }
+  }
+  /** Can a glide of `rangeNm` from p reach land? Wind moves the circle; unknown ground near the shifted centre falls back to still air. */
+  const reaches = (p: { lat: number; lng: number }, still: number, rangeNm: number, w: { dirDeg: number; speedKts: number } | null): boolean => {
+    if (!w) return still <= rangeNm
+    const c = driftedCentre(p, rangeNm, w)
+    const d = landDistAt(c.lat, c.lng)
+    return (d === null ? still : d) <= rangeNm
+  }
+
+  type Sample = { nm: number; dist: number; sea: boolean; name: string; surfaceFt: number; lat: number; lng: number }
   const samples: (Sample | null)[] = []
   for (let nm = 0; nm <= total + 1e-6; nm += STEP_NM) {
     const p = coordinateAlongRouteNm([...wps], nm)
@@ -194,13 +250,13 @@ export function waterStretches(input: {
         const code = row >= 0 && col >= 0 && row < g.rows && col < g.cols ? g.codes[row * g.cols + col]! : MEF_NODATA
         if (code !== MEF_NODATA) surface = Math.max(surface, code * g.unitFt)
       }
-      s = { nm, dist: shore, sea: false, name: String(f.properties?.['name'] ?? ''), surfaceFt: surface }
+      s = { nm, dist: shore, sea: false, name: String(f.properties?.['name'] ?? ''), surfaceFt: surface, lat: p.lat, lng: p.lng }
       break
     }
     if (!s) {
       let best: number | null = null
       for (const sd of seas) { const v = sd.distAt(p.lat, p.lng); if (v !== null && (best === null || v < best)) best = v }
-      if (best !== null) s = { nm, dist: best, sea: true, name: '', surfaceFt: 0 }
+      if (best !== null) s = { nm, dist: best, sea: true, name: '', surfaceFt: 0, lat: p.lat, lng: p.lng }
     }
     samples.push(s)
   }
@@ -217,17 +273,28 @@ export function waterStretches(input: {
     const far = run.reduce((a, b) => (b.dist > a.dist ? b : a))
     if (far.dist >= MIN_REPORT_NM) {
       const rangeAt = (x: Sample) => Math.max(0, input.altAt(x.nm) - x.surfaceFt) * ratio / FT_PER_NM
-      const beyond = run.filter(x => x.dist > rangeAt(x)).length * STEP_NM
+      const beyond = run.filter(x => !reaches(x, x.dist, rangeAt(x), windAt(x.nm))).length * STEP_NM
       const altFt = input.altAt(far.nm)
       const legIndex = Math.max(0, legEnds.findIndex(e => e >= far.nm - 1e-6) - 1)
+      const fw = windAt(far.nm)
+      // Altitude needed from the furthest point: still air has a formula; with wind scan the range up until land is reached.
+      let neededFt = Math.ceil((far.surfaceFt + (far.dist * FT_PER_NM) / ratio) / 100) * 100
+      if (fw) {
+        neededFt = 99_999
+        for (let r = 0.25; r <= 60; r += 0.25) {
+          if (reaches(far, far.dist, r, fw)) { neededFt = Math.ceil((far.surfaceFt + (r * FT_PER_NM) / ratio) / 100) * 100; break }
+        }
+      }
       out.push({
         legIndex, fromNm: Math.round(run[0]!.nm * 10) / 10, toNm: Math.round(run[run.length - 1]!.nm * 10) / 10,
         name: first.name, sea: first.sea,
         maxFromLandNm: Math.round(far.dist * 10) / 10, atNm: Math.round(far.nm * 10) / 10,
         altFt, surfaceFt: far.surfaceFt, glideRatio: ratio, glideAssumed: assumed,
         glideRangeNm: Math.round(rangeAt(far) * 10) / 10,
-        neededFt: Math.ceil((far.surfaceFt + (far.dist * FT_PER_NM) / ratio) / 100) * 100,
+        neededFt,
         beyondGlideNm: Math.round(beyond * 10) / 10,
+        wind: fw ? { fromDeg: Math.round(((fw.dirDeg % 360) + 360) % 360), kts: Math.round(fw.speedKts) } : null,
+        driftNm: fw ? Math.round(driftedCentre(far, rangeAt(far), fw).drift * 10) / 10 : 0,
       })
     }
     i = j + 1

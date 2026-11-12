@@ -75,7 +75,7 @@ export function useLegMsa(liveWaypoints: RouteWaypoint[], margins: Partial<MsaMa
   const profile = useMemo(
     () => waypoints.length < 2 || !obstacleGeo
       ? null
-      : buildVirtualRadarProfile(waypoints, [], EMPTY_FC, obstacleGeo, undefined, landmarkGeo ?? undefined, Infinity, undefined, { obstacleNm: resolveMsaMargins(margins).abeamNm, landmarkNm: resolveMsaMargins(margins).abeamNm }),
+      : buildVirtualRadarProfile(waypoints, [], EMPTY_FC, obstacleGeo, landmarkGeo ?? undefined, Infinity, undefined, { obstacleNm: resolveMsaMargins(margins).abeamNm, landmarkNm: resolveMsaMargins(margins).abeamNm }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [routeKey, obstacleGeo, landmarkGeo, margins.abeamNm],
   )

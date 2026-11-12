@@ -16,6 +16,7 @@ import { routeRows, aircraftRows, waypointRows } from '@open-vfr/shared/cloudSyn
 import { countryDatasetFile, countryMefFile, mergeFeatureCollections } from '@open-vfr/shared/countryData'
 import { parseMef, type MefGrid } from '@open-vfr/shared/mefGrid'
 import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
+import { largeLakes } from '@open-vfr/shared/lakeFilter'
 import { resolveAirspaceLevels, type AirspaceAlertLevels } from '@open-vfr/shared/airspaceAlertLevel'
 import { notamRegionsFor } from '@open-vfr/shared/notamRegionScope'
 import { DEFAULT_REGION_CODES } from '@open-vfr/shared/regions'
@@ -163,12 +164,13 @@ const TILES_BASE_URL = (process.env['TILES_BASE_URL'] ?? '').trim().replace(/\/+
 const DATASET_TTL_MS = 6 * 60 * 60 * 1000
 const datasetCache = new Map<string, { at: number; fc: Promise<GeoJSON.FeatureCollection | null> }>()
 
-async function fetchDataset(url: string): Promise<GeoJSON.FeatureCollection | null> {
+async function fetchDataset(url: string, reduce?: (fc: GeoJSON.FeatureCollection) => GeoJSON.FeatureCollection): Promise<GeoJSON.FeatureCollection | null> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(20_000) })
     if (!res.ok) return null
     const fc = await res.json() as GeoJSON.FeatureCollection
-    return Array.isArray(fc?.features) ? fc : null
+    // Only the reduced dataset is kept: the water file is ~100 MB parsed, the large lakes a few MB.
+    return Array.isArray(fc?.features) ? (reduce ? reduce(fc) : fc) : null
   } catch {
     return null
   }
@@ -188,7 +190,7 @@ export async function loadCountryDataset(kind: 'aerodromes' | 'airspace' | 'obst
     const url = `${TILES_BASE_URL}/${countryDatasetFile(cc, kind)}`
     let hit = datasetCache.get(url)
     if (!hit || now - hit.at > DATASET_TTL_MS) {
-      hit = { at: now, fc: fetchDataset(url) }
+      hit = { at: now, fc: fetchDataset(url, kind === 'water' ? fc => largeLakes(fc) : undefined) }
       datasetCache.set(url, hit)
       // A failed load is not cached for the full TTL.
       void hit.fc.then(fc => { if (!fc) datasetCache.delete(url) })

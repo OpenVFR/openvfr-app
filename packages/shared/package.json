@@ -5,6 +5,7 @@
   "license": "MIT",
   "type": "module",
   "exports": {
+    "./lakeFilter": "./src/lakeFilter.ts",
     "./assistantHelp": "./src/assistantHelp.ts",
     "./suggestRouteName": "./src/suggestRouteName.ts",
     "./bearingDistance": "./src/bearingDistance.ts",

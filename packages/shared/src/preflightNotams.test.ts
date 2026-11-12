@@ -17,7 +17,7 @@ function notam(over: Partial<NotamItem>): NotamItem {
 
 const profile = (alt: number) => ({
   totalNm: 60, altitudeProfile: [{ distNm: 0, altFt: alt }, { distNm: 60, altFt: alt }],
-  maxPlannedAltFt: alt, airspaceBands: [], obstacles: [], landmarks: [], waterCrossings: [], waypointTicks: [],
+  maxPlannedAltFt: alt, airspaceBands: [], obstacles: [], landmarks: [], waypointTicks: [],
 }) as unknown as VirtualRadarProfile
 
 describe('routeNotamAreas', () => {

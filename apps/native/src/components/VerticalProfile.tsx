@@ -83,7 +83,6 @@ import { plannedAltitudesAlongTrack, type FlightLogRoute } from '@open-vfr/share
 import { createValueStore, useStoreValue, type ValueStore } from '../utils/valueStore'
 import {
   profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, profileYMin, liveAltitudeWindow, declutterMarks, obstacleOpacity, obstacleShownOnChart, isLimitingObstacle, altitudeTicksFrom, formatAltitudeTick, distanceTicks, belowMsaRuns, polylinePath,
-  waterBandTopFt,
 } from '@open-vfr/shared/profileChart'
 import { getAircraftSilhouette } from '@open-vfr/shared/aircraftSilhouette'
 import { airspaceOutlines, airspaceChips, layoutAirspaceChips } from '@open-vfr/shared/airspaceOutline'
@@ -599,19 +598,6 @@ const RadarBackdrop = React.memo(function RadarBackdrop(P: BackdropProps) {
         })}
 
         {/* ── Terrain relief shadow + fill + outline ─────────── */}
-        {profile.waterCrossings.map((wc, i) => {
-          const spanElevs = terrainPts
-            .filter(p => p.distNm >= wc.entryNm && p.distNm <= wc.exitNm)
-            .map(p => p.elevFt)
-          // Null when the water is below the scale floor (live altitude window).
-          const topFt = waterBandTopFt(spanElevs, yMin, yMax)
-          if (topFt == null) return null
-          const x1 = xOf(wc.entryNm), x2 = xOf(wc.exitNm)
-          const yTop = yOf(topFt), yBot = plotBottom
-          const d = `M${x1},${yTop} L${x2},${yTop} L${x2},${yBot} L${x1},${yBot} Z`
-          return <Path key={`water-${i}`} d={d} fill="rgba(30,100,200,0.35)" stroke="rgba(60,140,230,0.7)" strokeWidth={1} />
-        })}
-
         {corridorFill !== '' && (
           <Path d={corridorFill} fill={CORRIDOR_FILL} stroke={CORRIDOR_OUTLINE} strokeWidth={CORRIDOR_OUTLINE_WIDTH} />
         )}
@@ -1359,18 +1345,6 @@ export const VerticalProfile = React.memo(function VerticalProfile({
   // Load GeoJSON once per app lifetime (module-level cache above) — cheap on
   // every mount after the first, since repeat calls just resolve an
   // already-settled promise instead of re-fetching/re-parsing.
-  // Deliberately NOT loading se-water.geojson here (the lake/reservoir
-  // crossings overlay). It is ~24 MB -- every lake and reservoir in Sweden
-  // -- and React Native's Android fetch() cannot handle a response that
-  // size: the body is held in the Java heap as raw bytes, then as a UTF-16
-  // string (~48 MB), then streamed to JS in JSON-encoded chunks, with every
-  // intermediate copy alive at once. Measured live on a Galaxy S23 Ultra:
-  // the Java heap climbed from ~30 MB to the 512 MB largeHeap ceiling in
-  // ~16 s of constant GC churn and threw OutOfMemoryError on the OkHttp
-  // thread, the moment a route was planned (this component's mount). The
-  // other three files are 0.5-3 MB and fine. buildVirtualRadarProfile
-  // accepts water as undefined, so the chart just omits lake crossings. See
-  // AGENTS.md ("Large GeoJSON must never go through fetch() on native").
   useEffect(() => {
     loadGeoJsonOnce(getTileUrls().airspace).then(setAirspaceGeo).catch(() => setProfileDataFailed(true))
     loadGeoJsonOnce(getTileUrls().obstacles).then(setObstacleGeo).catch(() => setProfileDataFailed(true))
@@ -1435,8 +1409,7 @@ export const VerticalProfile = React.memo(function VerticalProfile({
   const abeamNm = resolveMsaMargins(msaMargins).abeamNm
   const rawProfile = useMemo(() => {
     if (waypoints.length < 2 || !airspaceGeo || !obstacleGeo) return null
-    // water: undefined on native -- see the loader comment above.
-    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, undefined, landmarkGeo ?? undefined, airspaceCeilingFt ?? Infinity, aircraftProfile?.cruiseAltFt || undefined, { obstacleNm: abeamNm })
+    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, landmarkGeo ?? undefined, airspaceCeilingFt ?? Infinity, aircraftProfile?.cruiseAltFt || undefined, { obstacleNm: abeamNm })
   }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, landmarkGeo, airspaceCeilingFt, aircraftProfile?.cruiseAltFt, abeamNm])
   // AGL limits are published as heights: lift them onto the terrain along the
   // crossing once the terrain profile is in, so bands draw at their real altitude.

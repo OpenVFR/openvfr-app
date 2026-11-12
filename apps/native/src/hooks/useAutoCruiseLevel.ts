@@ -85,7 +85,7 @@ export function useAutoCruiseLevel(opts: {
         const now = latest.current.waypoints
         const same = (a?: RouteWaypoint, b?: RouteWaypoint) => !!a && !!b && a.lat === b.lat && a.lng === b.lng
         if (!same(now[legIndex], legWps[0]) || !same(now[legIndex + 1], legWps[1])) return
-        const profile = buildVirtualRadarProfile(legWps, [], EMPTY_FC, obstacles, undefined, landmarks, Infinity, undefined, { obstacleNm: resolveMsaMargins(latest.current.msaMargins).abeamNm, landmarkNm: resolveMsaMargins(latest.current.msaMargins).abeamNm })
+        const profile = buildVirtualRadarProfile(legWps, [], EMPTY_FC, obstacles, landmarks, Infinity, undefined, { obstacleNm: resolveMsaMargins(latest.current.msaMargins).abeamNm, landmarkNm: resolveMsaMargins(latest.current.msaMargins).abeamNm })
         // Fetched terrain, or (fetch failed) route samples from the terrain grid.
         const tt = terrainForMsa(legWps, terrain, latest.current.mefGrids, latest.current.msaMargins, true)
         const tips = obstacleTipsForMsa(profile.obstacles, profile.landmarks, (d) => terrainAt(tt.pts, d)).map((o) => o.elevationFt)

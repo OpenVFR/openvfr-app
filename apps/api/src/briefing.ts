@@ -377,7 +377,7 @@ export async function buildRouteBriefing(
   // ── Shared pre-flight warnings ──────────────────────────────────────────
   const rawProfile = buildVirtualRadarProfile(
     waypoints, legOverrides, airspaceFc ?? EMPTY_FEATURES, obstaclesFc ?? EMPTY_FEATURES,
-    undefined, landmarksFc ?? undefined, Infinity, aircraft?.cruiseAltFt || undefined,
+    landmarksFc ?? undefined, Infinity, aircraft?.cruiseAltFt || undefined,
     { obstacleNm: margins.abeamNm, landmarkNm: margins.abeamNm },
   )
 

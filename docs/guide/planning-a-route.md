@@ -116,12 +116,18 @@ check in the plan):
   the forecast for your arrival time.
 - **Over water beyond gliding distance:** for a single-engine aircraft, the
   part of the route over the sea or a large lake where it could not glide to
-  land from the planned altitude in still air. It shows how far from land
-  the route gets, the glide distance from your altitude (glide ratio from
-  the aircraft profile, or a typical one, marked as assumed), and the
-  altitude needed to reach land. Beyond gliding distance, life jackets are
-  required for everyone on board. The mobile app checks the sea only, not
-  lakes; land outside the terrain grid of your countries is not seen.
+  land from the planned altitude. It shows how far from land the route gets,
+  the glide distance from your altitude in still air (glide ratio from the
+  aircraft profile, or a typical one, marked as assumed), and the altitude
+  needed to reach land. If the leg has a wind (set on the leg, your global
+  wind setting or the forecast), the check includes it: the wind moves the
+  area you can reach downwind during the glide (the time depends on the
+  aircraft's best glide speed, or 70 % of cruise speed when that is not
+  set), so land upwind is reached less far and land downwind further.
+  Beyond gliding distance, life jackets are required for everyone on board.
+  Only large lakes (about 50 km² and up) are checked. The mobile app checks
+  the sea only, not lakes; land outside the terrain grid of your countries
+  is not seen. Gusts, turns and the time to set up a glide are not modelled.
 
 Warnings are advice. They do not replace your own planning.
 

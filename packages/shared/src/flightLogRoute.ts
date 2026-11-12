@@ -60,7 +60,7 @@ export function plannedAltitudesAlongTrack(
   perf: AircraftPerfModel | null | undefined,
   defaultAltFt?: number,
 ): (number | null)[] {
-  const prof = buildVirtualRadarProfile(route.waypoints, route.legOverrides, EMPTY_FEATURES, EMPTY_FEATURES, undefined, undefined, Infinity, defaultAltFt)
+  const prof = buildVirtualRadarProfile(route.waypoints, route.legOverrides, EMPTY_FEATURES, EMPTY_FEATURES, undefined, Infinity, defaultAltFt)
   const line = plannedAltitudeLine(prof.altitudeProfile, prof.totalNm, perf)
   if (line.length < 2) return samples.map(() => null)
   const at = (d: number): number => {

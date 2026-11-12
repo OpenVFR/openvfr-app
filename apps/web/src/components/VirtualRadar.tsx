@@ -24,7 +24,7 @@ import { CLOUD_COLORS } from '@open-vfr/shared/featureColors'
 import type { ParsedCloudLayer } from '@open-vfr/shared/fetchWx'
 import {
   profileChartLayout, clampProfileZoom, scrollAfterZoom, profileYMax, profileYMin, liveAltitudeWindow, altitudeTicksFrom, formatAltitudeTick, formatAltitudeFt, distanceTicks,
-  polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, declutterMarks, obstacleOpacity, obstacleShownOnChart, isLimitingObstacle, waterBandTopFt, type ProfileChartLayout,
+  polylinePath, groundAreaPath, belowMsaRuns, nearestSampleIndex, declutterMarks, obstacleOpacity, obstacleShownOnChart, isLimitingObstacle, type ProfileChartLayout,
 } from '@open-vfr/shared/profileChart'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { useMsaMargins } from '../db/useSettings'
@@ -980,7 +980,6 @@ function VirtualRadar({
   const [iconMarkup, setIconMarkup] = useState<Record<string, string>>({})
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   const [obstacleGeo, setObstacleGeo] = useState<GeoJSON.FeatureCollection | null>(null)
-  const [waterGeo,    setWaterGeo]    = useState<GeoJSON.FeatureCollection | null>(null)
   const [landmarkGeo, setLandmarkGeo] = useState<GeoJSON.FeatureCollection | null>(null)
   // Aerodromes, reporting points and navaids along the route (own distances per kind).
   const [poiSets, setPoiSets] = useState<{ aerodromes: GeoJSON.FeatureCollection | null; reporting: GeoJSON.FeatureCollection | null; navaids: GeoJSON.FeatureCollection | null }>({ aerodromes: null, reporting: null, navaids: null })
@@ -1028,9 +1027,6 @@ function VirtualRadar({
     loadCountryGeojson('obstacles')
       .then(setObstacleGeo)
       .catch(() => { /* offline — no obstacle markers */ })
-    loadCountryGeojson('water')
-      .then(setWaterGeo)
-      .catch(() => { /* offline / not yet generated — no water crossings */ })
     loadCountryGeojson('landmarks')
       .then(setLandmarkGeo)
       .catch(() => { /* offline — no landmark markers */ })
@@ -1092,13 +1088,12 @@ function VirtualRadar({
       legOverrides,
       airspaceGeo,
       obstacleGeo,
-      waterGeo ?? undefined,
       landmarkGeo ?? undefined,
       airspaceCeilingFt ?? Infinity,
       aircraftProfile?.cruiseAltFt || undefined,
       { obstacleNm: abeamNm },
     )
-  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, waterGeo, landmarkGeo, airspaceCeilingFt, aircraftProfile?.cruiseAltFt, abeamNm])
+  }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, landmarkGeo, airspaceCeilingFt, aircraftProfile?.cruiseAltFt, abeamNm])
   // AGL limits are published as heights: lift them onto the terrain along the
   // crossing once the terrain profile is in, so bands draw at their real altitude.
   const profile = useMemo(
@@ -1771,31 +1766,6 @@ function VirtualRadar({
             <path d={groundOutline} fill="none" stroke={GROUND_OUTLINE} strokeWidth={1.5} />
           </>
         )}
-
-        {/* ── Water (lake/reservoir) crossings ──────────────────── */}
-        {/* Thin blue band along the ground baseline wherever the route
-            crosses a lake/reservoir — marks that the terrain reading there
-            is the water SURFACE, not solid ground. */}
-        {profile.waterCrossings.map((wc, i) => {
-          const spanElevs = terrainPts
-            .filter((p) => p.distNm >= wc.entryNm && p.distNm <= wc.exitNm)
-            .map((p) => p.elevFt)
-          // Null when the water is below the scale floor (live altitude window).
-          const topFt = waterBandTopFt(spanElevs, yMin, yMax)
-          const x1 = L.xOf(wc.entryNm), x2 = L.xOf(wc.exitNm)
-          // A zero-width crossing (route touching a shoreline) would draw as a
-          // stray vertical stroke.
-          if (topFt == null || x2 - x1 <= 0) return null
-          const yTop = L.yOf(topFt)
-          // Opaque: the terrain fill under it is the water surface read as ground,
-          // and must not show through as green. Only the surface line is stroked.
-          return (
-            <g key={`water-${i}`}>
-              <rect x={x1} y={yTop} width={x2 - x1} height={L.plotBottom - yTop} fill="#2a6db5" />
-              <line x1={x1} y1={yTop} x2={x2} y2={yTop} stroke="rgba(120,185,245,0.95)" strokeWidth={1.5} />
-            </g>
-          )
-        })}
 
         {/* ── Obstacles at tip elevation, real map pictograms ───── */}
         {obstacleMarks.map((m) => {

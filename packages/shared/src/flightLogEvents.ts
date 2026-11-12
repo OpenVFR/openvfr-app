@@ -39,7 +39,7 @@ export function flightLogEvents(
   const prof = flightLogProfile(track)
   if (!prof) return []
   const bands = airspace
-    ? buildVirtualRadarProfile(prof.path, [], airspace, EMPTY_FEATURES, undefined, undefined, airspaceCeilingFt).airspaceBands
+    ? buildVirtualRadarProfile(prof.path, [], airspace, EMPTY_FEATURES, undefined, airspaceCeilingFt).airspaceBands
     : []
   return flownEvents(prof.points, bands, thr)
 }

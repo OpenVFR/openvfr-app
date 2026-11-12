@@ -8,7 +8,7 @@ describe('fuel stop landing in the planned path', () => {
     { lat: 59.5, lng: 15, name: 'S', fuelStop: true, elevationFt: 300 },
     { lat: 60, lng: 15, name: 'B' },
   ]
-  const prof = buildVirtualRadarProfile(wps, [{ altFt: 4500 }, { altFt: 4500 }], EMPTY_FEATURES, EMPTY_FEATURES, undefined, undefined, Infinity, 4500)
+  const prof = buildVirtualRadarProfile(wps, [{ altFt: 4500 }, { altFt: 4500 }], EMPTY_FEATURES, EMPTY_FEATURES, undefined, Infinity, 4500)
   const stopNm = prof.altitudeProfile[1].distNm
 
   it('marks the landing on the step profile', () => {
@@ -25,7 +25,7 @@ describe('fuel stop landing in the planned path', () => {
     expect(line[line.length - 1].distNm).toBeCloseTo(prof.totalNm, 1)
   })
   it('without the flag the path stays up', () => {
-    const plain = buildVirtualRadarProfile(wps.map(({ fuelStop: _f, ...w }) => w), [{ altFt: 4500 }, { altFt: 4500 }], EMPTY_FEATURES, EMPTY_FEATURES, undefined, undefined, Infinity, 4500)
+    const plain = buildVirtualRadarProfile(wps.map(({ fuelStop: _f, ...w }) => w), [{ altFt: 4500 }, { altFt: 4500 }], EMPTY_FEATURES, EMPTY_FEATURES, undefined, Infinity, 4500)
     expect(projectFlightPath(plain.altitudeProfile, plain.totalNm, DEFAULT_PERF_MODEL, [stopNm])[0]).toBe(4500)
   })
   it('does not shade the descent into a stop as below MSA', () => {

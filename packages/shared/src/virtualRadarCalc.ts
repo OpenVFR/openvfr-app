@@ -104,13 +104,6 @@ export type AirspaceCrossSection = {
   freq?:    string
 }
 
-/** A stretch of the route that crosses a water polygon (lake/reservoir). */
-export type WaterCrossing = {
-  entryNm: number   // distance along route where the water crossing starts
-  exitNm:  number   // distance along route where the water crossing ends
-  name:    string
-}
-
 /** An obstacle marker on the profile floor. */
 export type ObstacleMarker = {
   distNm:      number
@@ -175,7 +168,6 @@ export type VirtualRadarProfile = {
   /** Visual landmark tick marks along the ground (churches, masts…). */
   landmarks: LandmarkMarker[]
   /** Water (lake/reservoir) crossings along the route. */
-  waterCrossings: WaterCrossing[]
   /** Waypoint labels for the X axis. */
   waypointTicks: WaypointTick[]
 }
@@ -371,9 +363,6 @@ interface LandmarkProps {
  * @param legOverrides  Per-leg altitude/speed overrides
  * @param airspaceGeoJson  Raw GeoJSON FeatureCollection loaded from se-airspace.geojson
  * @param obstacleGeoJson  Raw GeoJSON FeatureCollection loaded from se-obstacles.geojson
- * @param waterGeoJson     Raw GeoJSON FeatureCollection loaded from se-water.geojson (optional —
- *                         omitted/undefined simply yields no water crossings, same graceful
- *                         degradation as airspace/obstacles being unavailable offline)
  * @param landmarkGeoJson  Raw GeoJSON FeatureCollection loaded from se-landmarks.geojson
  *                         (optional — omitted/undefined simply yields no landmark markers,
  *                         same graceful degradation as the other optional layers)
@@ -383,7 +372,6 @@ export function buildVirtualRadarProfile(
   legOverrides:    LegOverride[],
   airspaceGeoJson: GeoJSON.FeatureCollection,
   obstacleGeoJson: GeoJSON.FeatureCollection,
-  waterGeoJson?:   GeoJSON.FeatureCollection,
   landmarkGeoJson?: GeoJSON.FeatureCollection,
   /** Same ceiling filter as the map's airspace layers (AviationMap.tsx's
    *  ceilingFilter / MapView.tsx equivalent, both `lower_ft <= ceilingFt`)
@@ -412,7 +400,6 @@ export function buildVirtualRadarProfile(
       airspaceBands: [],
       obstacles: [],
       landmarks: [],
-      waterCrossings: [],
       waypointTicks: [],
     }
   }
@@ -646,48 +633,6 @@ export function buildVirtualRadarProfile(
     })
   }
 
-  // ── 6. Water (lake/reservoir) crossings ──────────────────────────────
-  // Same entry/exit-by-line-crossing technique as airspace bands above, but
-  // no altitude limits to track — just the along-route span so the chart can
-  // paint a blue band on the ground baseline there.
-  const waterCrossings: WaterCrossing[] = []
-
-  for (const feature of waterGeoJson?.features ?? []) {
-    const geom = feature.geometry as Geometry
-    if (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon') continue
-    if (!bboxesOverlap(routeBbox, bboxOfCoords([polygonCoords(geom)]))) continue   // cheap nationwide-dataset reject
-    if (!booleanIntersects(routeLine, feature as Feature)) continue
-
-    const crossingDistsNm: number[] = []
-    const boundaryHit = lineIntersect(routeLine, feature as Feature<Polygon | MultiPolygon>)
-    for (const hit of boundaryHit.features) {
-      const snapped = nearestPointOnLine(routeLine, hit, { units: 'kilometers' })
-      crossingDistsNm.push((snapped.properties.location ?? 0) * 0.539957)
-    }
-
-    const startInside = booleanPointInPolygon(coords[0]!, feature as Feature<Polygon | MultiPolygon>)
-    const endInside   = booleanPointInPolygon(coords[coords.length - 1]!, feature as Feature<Polygon | MultiPolygon>)
-
-    let minDistNm = crossingDistsNm.length > 0 ? Math.min(...crossingDistsNm) : Infinity
-    let maxDistNm = crossingDistsNm.length > 0 ? Math.max(...crossingDistsNm) : -Infinity
-    if (startInside) minDistNm = 0
-    if (endInside)   maxDistNm = totalNm
-    if (!Number.isFinite(minDistNm) || !Number.isFinite(maxDistNm)) continue  // tangent graze, no clear span — skip rather than guess
-
-    minDistNm = Math.max(0, minDistNm)
-    maxDistNm = Math.min(totalNm, maxDistNm)
-    if (maxDistNm <= minDistNm) continue
-
-    const p = feature.properties as { name?: string } | null
-    waterCrossings.push({
-      entryNm: Math.round(minDistNm * 10) / 10,
-      exitNm:  Math.round(maxDistNm * 10) / 10,
-      name:    String(p?.name ?? ''),
-    })
-  }
-
-  waterCrossings.sort((a, b) => a.entryNm - b.entryNm)
-
   return {
     totalNm,
     altitudeProfile,
@@ -695,7 +640,6 @@ export function buildVirtualRadarProfile(
     airspaceBands,
     obstacles: obstacleMarkers,
     landmarks: landmarkMarkers,
-    waterCrossings,
     waypointTicks,
   }
 }

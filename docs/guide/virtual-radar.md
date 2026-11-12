@@ -23,8 +23,9 @@ It works in three situations:
 The horizontal axis is distance along the route. The vertical axis is
 altitude above mean sea level, in feet.
 
-- **Ground.** The terrain under the route, drawn as a filled area. Lakes
-  and the sea are marked where the route crosses water (web).
+- **Ground.** The terrain under the route, drawn as a filled area. Water
+  is not marked on the chart; the pre-flight check warns about stretches
+  over water beyond gliding distance from land.
 - **Your level.** The planned altitude of each leg, as a line stepping
   between legs. The drawn line is what the aircraft can actually reach: it
   climbs from the departure and descends to the destination using the
@@ -116,6 +117,5 @@ airspace. Set your altimeter and follow the published limits.
 
 ## Web and native
 
-The content is the same. On the web the chart is resizable and has the
-lake overlay. On native the lake overlay is left out to save memory, and
+The content is the same. On the web the chart is resizable; on native
 gestures are touch-first. See [Web app and native app](./platforms.md).

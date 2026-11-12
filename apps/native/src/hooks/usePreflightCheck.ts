@@ -101,7 +101,7 @@ export function usePreflightCheck(opts: {
   const rawProfile = useMemo<VirtualRadarProfile | null>(() => {
     if (!active || !airspaceGeo) return null
     return buildVirtualRadarProfile(
-      waypoints, legOverrides, airspaceGeo, EMPTY_FC, undefined, undefined, Infinity,
+      waypoints, legOverrides, airspaceGeo, EMPTY_FC, undefined, Infinity,
       aircraft?.cruiseAltFt || undefined,
     )
   }, [active, waypoints, legOverrides, airspaceGeo, aircraft?.cruiseAltFt])

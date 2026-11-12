@@ -10,7 +10,6 @@ function profile(over: Partial<VirtualRadarProfile> = {}): VirtualRadarProfile {
     airspaceBands: [],
     obstacles: [],
     landmarks: [],
-    waterCrossings: [],
     waypointTicks: [],
     ...over,
   } as VirtualRadarProfile

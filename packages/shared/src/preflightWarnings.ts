@@ -262,7 +262,8 @@ export function computeWarnings(
   if ((mefGrids?.length || water) && aircraft?.category !== 'MEP') {
     const stretches = waterStretches({
       waypoints, altAt: d => plannedAltAt(profile, d), grids: mefGrids ?? [], water,
-      aircraft: aircraft ? { category: aircraft.category, glideRatio: aircraft.glideRatio } : null,
+      aircraft: aircraft ? { category: aircraft.category, glideRatio: aircraft.glideRatio, bestGlideKts: aircraft.bestGlideIas || (aircraft.cruiseIas ? aircraft.cruiseIas * 0.7 : undefined) } : null,
+      ...(legWinds ? { legWinds } : {}),
     })
     for (const st of stretches) {
       if (st.beyondGlideNm <= 0) continue
@@ -272,8 +273,9 @@ export function computeWarnings(
         code:   'water-beyond-glide',
         title:  `Beyond gliding distance from land over ${where}`,
         detail: `Up to ${st.maxFromLandNm} NM from land (at NM ${Math.round(st.atNm)}); about ${st.beyondGlideNm} NM of the route is beyond gliding distance. `
-          + `From ${st.altFt.toLocaleString('en-US')} ft you glide about ${st.glideRangeNm} NM in still air (glide ratio ${st.glideRatio}:1${st.glideAssumed ? ', assumed: set it in the aircraft profile' : ''}); `
-          + `reaching land from there needs about ${st.neededFt.toLocaleString('en-US')} ft. `
+          + `From ${st.altFt.toLocaleString('en-US')} ft you glide about ${st.glideRangeNm} NM in still air (glide ratio ${st.glideRatio}:1${st.glideAssumed ? ', assumed: set it in the aircraft profile' : ''})`
+          + (st.wind ? `; the planned wind (${String(st.wind.fromDeg).padStart(3, '0')}° at ${st.wind.kts} kt) is included and moves the area you can reach about ${st.driftNm} NM downwind. ` : '. ')
+          + `Reaching land from there needs about ${st.neededFt >= 99_999 ? 'more than the aircraft can climb to' : `${st.neededFt.toLocaleString('en-US')} ft`}${st.wind ? ' with that wind' : ''}. `
           + `${st.neededFt <= (aircraft?.serviceCeilingFt || 12_500) ? `Climb to about ${st.neededFt.toLocaleString('en-US')} ft, route` : 'Route'} closer to the shore, or carry life jackets for everyone on board (required for single-engine aircraft beyond gliding distance from land) and plan for ditching.`,
         legIndex: st.legIndex,
         focusNm: st.atNm,

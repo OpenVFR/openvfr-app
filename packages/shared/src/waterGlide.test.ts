@@ -43,6 +43,28 @@ describe('waterStretches', () => {
     expect(r[0]!.glideRatio).toBe(8)
     expect(r[0]!.surfaceFt).toBe(200)
   })
+  it('moves the reachable area downwind: land upwind is reached less far, land downwind further', () => {
+    // Land only west of 19.0E; the route flies east over open water.
+    const g = grid()
+    for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) g.codes[r * g.cols + c] = g.west + (c + 0.5) * 0.01 < 19.0 ? 2 : 255
+    const run = (legWinds?: { dirDeg: number; speedKts: number }[]) => waterStretches({
+      waypoints: across, altAt: () => 5000, grids: [g], aircraft: { category: 'SEP', glideRatio: 9, bestGlideKts: 70 }, ...(legWinds ? { legWinds } : {}),
+    })[0]!
+    const still = run()
+    const fromWest = run([{ dirDeg: 270, speedKts: 30 }])   // blows away from the land
+    const fromEast = run([{ dirDeg: 90, speedKts: 30 }])    // blows towards the land
+    expect(fromWest.beyondGlideNm).toBeGreaterThan(still.beyondGlideNm)
+    expect(fromEast.beyondGlideNm).toBeLessThan(still.beyondGlideNm)
+    expect(still.wind).toBeNull()
+    expect(still.driftNm).toBe(0)
+    expect(fromWest.wind).toEqual({ fromDeg: 270, kts: 30 })
+    // 5000 ft at 9:1 is ~7.4 NM; 30 kt over 70 kt best glide moves the circle ~3.2 NM.
+    expect(fromWest.driftNm).toBeGreaterThan(3)
+    expect(fromWest.driftNm).toBeLessThan(3.5)
+    // Needed altitude is higher against the wind than with it.
+    expect(fromWest.neededFt).toBeGreaterThan(still.neededFt)
+    expect(fromEast.neededFt).toBeLessThan(still.neededFt)
+  })
   it('ignores land routes', () => {
     expect(waterStretches({ waypoints: [{ lat: 59.5, lng: 18.6 }, { lat: 59.7, lng: 18.9 }], altAt: () => 2500, grids: [grid()] })).toEqual([])
   })

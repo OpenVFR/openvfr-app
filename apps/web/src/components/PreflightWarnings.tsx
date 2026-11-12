@@ -4,6 +4,7 @@
  * Renders the warnings from `computeWarnings` (shared with native).
  */
 
+import { largeLakes } from '@open-vfr/shared/lakeFilter'
 import { useMsaMargins, useAlertBanners } from '../db/useSettings'
 import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { computeWarnings, type PreflightUnavailable, type PreflightWarning } from '@open-vfr/shared/preflightWarnings'
@@ -125,6 +126,8 @@ export default function PreflightWarnings(props: Props) {
   const aerodromes = useGeo('aerodromes')
   // Lakes for the glide-to-land check (the sea comes from the terrain grid); missing = sea only.
   const water = useGeo('water')
+  // Only the large lakes can change the glide answer; the rest of the dataset is dropped here.
+  const lakes = useMemo(() => (water.fc ? largeLakes(water.fc) : null), [water.fc])
   const airspaceGeo = airspace.fc ?? (airspace.failed ? EMPTY_FC : null)
   const obstacleGeo = obstacles.fc ?? (obstacles.failed ? EMPTY_FC : null)
   const landmarkGeo = landmarks.fc ?? (landmarks.failed ? EMPTY_FC : null)
@@ -169,7 +172,7 @@ export default function PreflightWarnings(props: Props) {
   const abeamNm = resolveMsaMargins(msaMargins).abeamNm
   const rawProfile = useMemo<VirtualRadarProfile | null>(() => {
     if (waypoints.length < 2 || !airspaceGeo || !obstacleGeo) return null
-    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, undefined, landmarkGeo ?? undefined, Infinity, aircraft?.cruiseAltFt || undefined, { obstacleNm: abeamNm, landmarkNm: abeamNm })
+    return buildVirtualRadarProfile(waypoints, legOverrides, airspaceGeo, obstacleGeo, landmarkGeo ?? undefined, Infinity, aircraft?.cruiseAltFt || undefined, { obstacleNm: abeamNm, landmarkNm: abeamNm })
   }, [waypoints, legOverrides, airspaceGeo, obstacleGeo, landmarkGeo, aircraft?.cruiseAltFt, abeamNm])
   // AGL limits lifted onto the terrain so the penetration check compares altitudes.
   const profile = useMemo(
@@ -224,8 +227,8 @@ export default function PreflightWarnings(props: Props) {
 
   const warnings = useMemo<PreflightWarning[]>(() => {
     if (!profile) return []
-    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, resolveMsaMargins(msaMargins), { terrainPts, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable, surfaceWinds, surfaceTempsC, routeReview: props.routeReview, mefGrids, water: water.fc })
-  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, msaMargins, terrainPts, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, unavailable, surfaceWinds, surfaceTempsC, props.routeReview, mefGrids, water.fc])
+    return computeWarnings(profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, resolveMsaMargins(msaMargins), { terrainPts, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable, surfaceWinds, surfaceTempsC, routeReview: props.routeReview, mefGrids, water: lakes })
+  }, [profile, msaPts, aircraft, waypoints, legOverrides, aircraftId, terrainFailed, legWinds, msaMargins, terrainPts, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, unavailable, surfaceWinds, surfaceTempsC, props.routeReview, mefGrids, lakes])
 
   const prompts = useMemo(
     () => computePrompts({ waypoints, legWinds, windsLoading }),
