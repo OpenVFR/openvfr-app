@@ -1,10 +1,11 @@
-import { useState, useEffect, useId, useRef } from 'react'
+import { useState, useEffect, useId, useRef, type ReactNode } from 'react'
 import type { UserWaypointDocType } from '../db/index'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import { waypointsToGpx, gpxToWaypoints } from '@open-vfr/shared/gpx'
 import { nextPlaceName } from '../utils/places'
 import css from './UserWaypoints.module.css'
-import { IconX } from '@tabler/icons-react'
+import { IconX, IconFocus2, IconPlus, IconPencil, IconCornerDownRight, IconDownload, IconUpload, IconMapPin, IconEye, IconEyeOff } from '@tabler/icons-react'
+import SectionActions from './SectionActions'
 
 // ── GPX helpers ───────────────────────────────────────────────────────────────
 
@@ -50,13 +51,15 @@ interface Props {
   routeWaypoints: RouteWaypoint[]
   onInsertInRoute: (wp: RouteWaypoint, afterIdx: number) => void
   onFolderVisChange: (folder: string, visible: boolean) => void
+  /** The AI-assistant sparkle (shown top right with the section menu), when the account is offered it. */
+  assistant?: ReactNode
 }
 
 export default function UserWaypoints({
   waypoints, pendingCoords, folderVisibility,
   onCoordsConsumed, onStartPlace,
   onSave, onDelete, onRename, onMoveFolder,
-  onAddToRoute, onShowOnMap, routeWaypoints, onInsertInRoute, onFolderVisChange,
+  onAddToRoute, onShowOnMap, routeWaypoints, onInsertInRoute, onFolderVisChange, assistant,
 }: Props) {
   const formId = useId()
   const [showForm, setShowForm] = useState(false)
@@ -136,97 +139,15 @@ export default function UserWaypoints({
 
   return (
     <div className={css.panel}>
-      {/* Toolbar */}
-      <div className={css.toolbar}>
-        <button
-          className={css.addBtn}
-          onClick={() => { setForm(BLANK); setShowForm(s => !s) }}
-        >
-          {showForm ? '✕ Cancel' : '+ New Place'}
-        </button>
-        {waypoints.length > 0 && (
-          <button className={css.exportBtn} onClick={exportGpx} title="Export all as GPX">
-            GPX ↓
-          </button>
-        )}
-        <button className={css.exportBtn} onClick={() => fileInputRef.current?.click()} title="Import places from GPX">
-          GPX ↑
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".gpx"
-          style={{ display: 'none' }}
-          onChange={importGpx}
-        />
-      </div>
-
-      {/* New waypoint form */}
-      {showForm && (
-        <div className={css.form}>
-          <div className={css.formRow}>
-            <label htmlFor={`${formId}-name`} className={css.formLabel}>Name</label>
-            <input
-              id={`${formId}-name`}
-              className={css.input}
-              value={form.name}
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              placeholder={`Place name (e.g. ${nextPlaceName(waypoints.map(w => w.name))})`}
-              // eslint-disable-next-line jsx-a11y/no-autofocus
-              autoFocus
-              onKeyDown={e => { if (e.key === 'Enter') submit() }}
-            />
-          </div>
-          <div className={css.formRow}>
-            <label className={css.formLabel}>Lat / Lon</label>
-            <div className={css.coordRow}>
-              <input
-                className={`${css.inputSmall} ${form.lat && !latValid ? css.inputError : ''}`}
-                value={form.lat}
-                onChange={e => setForm(f => ({ ...f, lat: e.target.value }))}
-                placeholder="59.3293"
-                inputMode="decimal"
-              />
-              <input
-                className={`${css.inputSmall} ${form.lng && !lngValid ? css.inputError : ''}`}
-                value={form.lng}
-                onChange={e => setForm(f => ({ ...f, lng: e.target.value }))}
-                placeholder="18.0686"
-                inputMode="decimal"
-              />
-              <button
-                className={css.pickBtn}
-                onClick={onStartPlace}
-                title="Click on map to pick coordinates"
-                aria-label="Pick on map"
-              >
-                📍
-              </button>
-            </div>
-          </div>
-          <div className={css.formRow}>
-            <label htmlFor={`${formId}-folder`} className={css.formLabel}>Folder</label>
-            <input
-              id={`${formId}-folder`}
-              className={css.input}
-              value={form.folder}
-              onChange={e => setForm(f => ({ ...f, folder: e.target.value }))}
-              placeholder="Unfiled"
-              list={`${formId}-folders`}
-            />
-            {existingFolders.length > 0 && (
-              <datalist id={`${formId}-folders`}>
-                {existingFolders.map(f => <option key={f} value={f} />)}
-              </datalist>
-            )}
-          </div>
-          <div className={css.formActions}>
-            <button className={css.saveBtn} onClick={submit} disabled={!canSave}>
-              Save Place
-            </button>
-          </div>
-        </div>
-      )}
+      <SectionActions
+        label="Places"
+        assistant={assistant}
+        items={[
+          { label: 'Import GPX', icon: <IconUpload size={14} aria-hidden="true" />, onSelect: () => fileInputRef.current?.click(), title: 'Import places from a GPX file' },
+          { label: 'Export GPX', icon: <IconDownload size={14} aria-hidden="true" />, onSelect: exportGpx, disabled: waypoints.length === 0, title: 'Export all places as a GPX file' },
+        ]}
+      />
+      <input ref={fileInputRef} type="file" accept=".gpx" hidden aria-label="Import places from GPX" onChange={importGpx} />
 
       {/* Empty state */}
       {waypoints.length === 0 && !showForm && (
@@ -262,7 +183,7 @@ export default function UserWaypoints({
                 title={`${isFolderVisible(folder) ? 'Hide' : 'Show'} on map`}
                 aria-label={`${isFolderVisible(folder) ? 'Hide' : 'Show'} folder on map`}
               >
-                {isFolderVisible(folder) ? '●' : '○'}
+                {isFolderVisible(folder) ? <IconEye size={14} aria-hidden="true" /> : <IconEyeOff size={14} aria-hidden="true" />}
               </button>
               <span className={css.folderName}>{folder || 'Unfiled'}</span>
               <span className={css.folderCount}>{wpByFolder(folder).length}</span>
@@ -307,18 +228,14 @@ export default function UserWaypoints({
                       </div>
                     </div>
                   ) : (
-                    <>
-                      <span
-                        className={css.wpName}
-                        onDoubleClick={() => { setEditingId(wp.id); setEditingName(wp.name); setEditingFolder(wp.folder) }}
-                        title="Double-click to edit"
-                      >
-                        {wp.name}
-                      </span>
-                      <span className={css.wpCoord}>
-                        {wp.lat.toFixed(3)}, {wp.lng.toFixed(3)}
-                      </span>
-                    </>
+                    <div
+                      className={css.wpInfo}
+                      onDoubleClick={() => { setEditingId(wp.id); setEditingName(wp.name); setEditingFolder(wp.folder) }}
+                      title="Double-click to edit"
+                    >
+                      <span className={css.wpName}>{wp.name}</span>
+                      <span className={css.wpCoord}>{wp.lat.toFixed(3)}, {wp.lng.toFixed(3)}</span>
+                    </div>
                   )}
                   {insertingId === wp.id && (
                     <select
@@ -348,7 +265,7 @@ export default function UserWaypoints({
                         title="Insert into route at a position"
                         aria-label="Insert into route"
                       >
-                        ⤷
+                        <IconCornerDownRight size={14} aria-hidden="true" />
                       </button>
                     )}
                     <button
@@ -357,7 +274,7 @@ export default function UserWaypoints({
                       title="Show on map"
                       aria-label="Show on map"
                     >
-                      ◎
+                      <IconFocus2 size={14} aria-hidden="true" />
                     </button>
                     <button
                       className={css.wpRouteBtn}
@@ -365,7 +282,7 @@ export default function UserWaypoints({
                       title="Add to route"
                       aria-label="Add to route"
                     >
-                      +
+                      <IconPlus size={14} aria-hidden="true" />
                     </button>
                     <button
                       className={css.wpRouteBtn}
@@ -373,7 +290,7 @@ export default function UserWaypoints({
                       title="Edit name and folder"
                       aria-label="Edit place"
                     >
-                      ✎
+                      <IconPencil size={14} aria-hidden="true" />
                     </button>
                     <button
                       className={css.wpDeleteBtn}
@@ -393,6 +310,77 @@ export default function UserWaypoints({
             </ul>
           </div>
         ))}
+      {/* New waypoint form */}
+      {showForm && (
+        <div className={css.form}>
+          <div className={css.formRow}>
+            <label htmlFor={`${formId}-name`} className={css.formLabel}>Name</label>
+            <input
+              id={`${formId}-name`}
+              className={css.input}
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder={`Place name (e.g. ${nextPlaceName(waypoints.map(w => w.name))})`}
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') submit() }}
+            />
+          </div>
+          <div className={css.formRow}>
+            <label className={css.formLabel}>Lat / Lon</label>
+            <div className={css.coordRow}>
+              <input
+                className={`${css.inputSmall} ${form.lat && !latValid ? css.inputError : ''}`}
+                value={form.lat}
+                onChange={e => setForm(f => ({ ...f, lat: e.target.value }))}
+                placeholder="59.3293"
+                inputMode="decimal"
+              />
+              <input
+                className={`${css.inputSmall} ${form.lng && !lngValid ? css.inputError : ''}`}
+                value={form.lng}
+                onChange={e => setForm(f => ({ ...f, lng: e.target.value }))}
+                placeholder="18.0686"
+                inputMode="decimal"
+              />
+              <button
+                className={css.pickBtn}
+                onClick={onStartPlace}
+                title="Click on map to pick coordinates"
+                aria-label="Pick on map"
+              >
+                <IconMapPin size={14} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+          <div className={css.formRow}>
+            <label htmlFor={`${formId}-folder`} className={css.formLabel}>Folder</label>
+            <input
+              id={`${formId}-folder`}
+              className={css.input}
+              value={form.folder}
+              onChange={e => setForm(f => ({ ...f, folder: e.target.value }))}
+              placeholder="Unfiled"
+              list={`${formId}-folders`}
+            />
+            {existingFolders.length > 0 && (
+              <datalist id={`${formId}-folders`}>
+                {existingFolders.map(f => <option key={f} value={f} />)}
+              </datalist>
+            )}
+          </div>
+          <div className={css.formActions}>
+            <button className={css.saveBtn} onClick={submit} disabled={!canSave}>
+              Save Place
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Same dashed add button as "+ Add Aircraft" and "+ New Route" */}
+      <button className={css.newBtn} onClick={() => { setForm(BLANK); setShowForm(sf => !sf) }}>
+        {showForm ? 'Cancel' : '+ New Place'}
+      </button>
     </div>
   )
 }

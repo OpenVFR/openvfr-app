@@ -1,33 +1,9 @@
 .panel {
   font-family: system-ui, sans-serif;
+  font-size: 12px;
   color: var(--text-primary);
-  padding: 0;
+  padding: 8px 10px;   /* the same panel padding as the aircraft and route lists */
 }
-
-/* ── Toolbar ─────────────────────────────────────────────────────── */
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px 5px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.addBtn {
-  flex: 1;
-  background: rgba(250, 204, 21, 0.12);
-  border: 1px solid rgba(250, 204, 21, 0.28);
-  border-radius: 5px;
-  color: var(--accent-yellow);
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 8px;
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.1s;
-}
-.addBtn:hover { background: rgba(250, 204, 21, 0.20); }
 
 .exportBtn {
   background: var(--surface-hover);
@@ -174,30 +150,48 @@
 
 /* ── Waypoint row ────────────────────────────────────────────────── */
 
-.wpList {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 4px;
-}
 
+.wpList { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 4px 0 0; list-style: none; }
+
+/* A place is a card like an aircraft or a saved route: name and detail line on the left, icon buttons on the right. */
 .wpRow {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 12px 3px 20px;
+  gap: 4px;
+  padding: 6px 7px;
+  border-radius: 4px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border-subtle);
   transition: background 0.1s;
 }
-.wpRow:hover { background: var(--surface-hover); }
+.wpRow:hover { background: var(--surface-active); }
+
+.wpInfo { flex: 1; min-width: 0; cursor: default; }
 
 .wpName {
-  flex: 1;
+  display: block;
   font-size: 11px;
-  color: var(--text-secondary);
+  font-weight: 500;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: default;
 }
+
+.newBtn {
+  width: 100%;
+  margin-top: 6px;
+  background: none;
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 5px 10px;
+  transition: color 0.1s, border-color 0.1s;
+}
+.newBtn:hover { color: var(--text-secondary); border-color: var(--text-faint); }
 
 .editInput {
   composes: formInput from '../styles/shared.module.css';
@@ -207,10 +201,11 @@
 }
 
 .wpCoord {
-  font-size: 9px;
+  display: block;
+  margin-top: 1px;
+  font-size: 10px;
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
   white-space: nowrap;
 }
 
@@ -221,25 +216,30 @@
 }
 
 .wpRouteBtn {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent-purple);
-  background: rgba(224, 64, 251, 0.08);
-  border: 1px solid rgba(224, 64, 251, 0.25);
+  /* Same quiet icon buttons as the aircraft and route lists. */
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-faint);
+  background: none;
+  border: none;
   border-radius: 3px;
-  padding: 1px 5px;
+  padding: 2px 5px;
+  line-height: 1;
   cursor: pointer;
-  transition: background 0.1s;
+  transition: color 0.1s, background 0.1s;
 }
-.wpRouteBtn:hover { background: rgba(224, 64, 251, 0.18); }
+.wpRouteBtn:hover { color: var(--text-primary); background: var(--surface-hover); }
 
 .wpDeleteBtn {
+  display: inline-flex;
+  align-items: center;
   font-size: 10px;
   color: var(--text-faint);
   background: none;
-  border: 1px solid var(--border-subtle);
+  border: none;
   border-radius: 3px;
-  padding: 1px 5px;
+  padding: 2px 5px;
+  line-height: 1;
   cursor: pointer;
   transition: color 0.1s, background 0.1s;
 }

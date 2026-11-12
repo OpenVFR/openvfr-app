@@ -478,6 +478,7 @@ function SideDrawer({
             {expanded.userWaypoints && (
               <div className={css.sectionBody}>
                 <UserWaypoints
+                  assistant={assistantUrl ? <AssistantHelp topic="places" mcpUrl={assistantUrl} /> : undefined}
                   waypoints={userWaypoints}
                   pendingCoords={pendingUserWpCoords}
                   folderVisibility={folderVisibility}
@@ -517,7 +518,6 @@ function SideDrawer({
             </button>
             {expanded.aircraft && (
               <div className={css.sectionBody}>
-                {assistantUrl && <div className={css.assistantRow}><AssistantHelp topic="aircraft" mcpUrl={assistantUrl} /></div>}
                 <AircraftLibrary selectedId={selectedAircraftId} onSelect={onSelectAircraft} />
               </div>
             )}
@@ -531,8 +531,8 @@ function SideDrawer({
             </button>
             {expanded.flightLogs && (
               <div className={css.sectionBody}>
-                {assistantUrl && <div className={css.assistantRow}><AssistantHelp topic="logbook" mcpUrl={assistantUrl} /></div>}
                 <FlightLogs
+                  assistant={assistantUrl ? <AssistantHelp topic="logbook" mcpUrl={assistantUrl} /> : undefined}
                   selectedLogId={selectedLogId}
                   onSelect={onSelectLog}
                   onClear={onClearLog}

@@ -1,0 +1,57 @@
+.row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.wrap { position: relative; }
+
+/* Same quiet icon button as the list rows. */
+.btn {
+  /* The same 24 px square as the assistant sparkle next to it. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.btn:hover, .btn[aria-expanded='true'] { color: var(--text-primary); }
+
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  min-width: 150px;
+  padding: 4px 0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 6px 12px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.item:hover:not(:disabled) { background: var(--surface-active); color: var(--text-primary); }
+.item:disabled { opacity: 0.35; cursor: not-allowed; }

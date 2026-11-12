@@ -12,7 +12,7 @@ import { legBelowMsa, legMsaApplies } from '@open-vfr/shared/legLevelDrag'
 import { loadCountryGeojson, activeCountriesKey } from '@open-vfr/shared/countryData'
 import css from './RoutePlan.module.css'
 import { RouteCloseContext } from './routeCloseContext'
-import { IconX } from '@tabler/icons-react'
+import { IconX, IconKeyboard, IconArrowBackUp, IconArrowForwardUp, IconDots, IconSearch, IconArrowsExchange, IconFileExport, IconDownload, IconUpload } from '@tabler/icons-react'
 
 // ---------------------------------------------------------------------------
 // Reorder helper — moves the waypoint at `from` to position `to`.
@@ -428,27 +428,27 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
       <div className={css.header}>
         <span className={css.title}>Waypoints</span>
         <div className={css.actions}>
-          <button className={css.btn} title="Type the whole route, e.g. ESOS ESGG ESSA (to add a single point, use the search at the top)" onClick={() => { setShowKb(s => !s); setTimeout(() => kbRef.current?.focus(), 50) }}>⌨</button>
-          <button className={css.btn} onClick={onUndo} disabled={!canUndo} title="Undo last route change (Ctrl+Z)">↶</button>
-          {onRedo && <button className={css.btn} onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">↷</button>}
+          <button className={css.btn} title="Type the whole route, e.g. ESOS ESGG ESSA (to add a single point, use the search at the top)" onClick={() => { setShowKb(s => !s); setTimeout(() => kbRef.current?.focus(), 50) }} aria-label="Type the route"><IconKeyboard size={14} aria-hidden="true" /></button>
+          <button className={css.btn} onClick={onUndo} disabled={!canUndo} title="Undo last route change (Ctrl+Z)" aria-label="Undo"><IconArrowBackUp size={14} aria-hidden="true" /></button>
+          {onRedo && <button className={css.btn} onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><IconArrowForwardUp size={14} aria-hidden="true" /></button>}
           <div className={css.menuWrap} ref={menuRef}>
-            <button ref={menuBtnRef} className={css.btn} title="More actions" aria-haspopup="menu" aria-expanded={showMenu} onClick={() => setShowMenu(s => !s)}>⋯</button>
+            <button ref={menuBtnRef} className={css.btn} title="More actions" aria-haspopup="menu" aria-expanded={showMenu} onClick={() => setShowMenu(s => !s)}><IconDots size={14} aria-hidden="true" /></button>
             {showMenu && (
               <div className={css.menu}>
                 {onFindDestination && (
                   <button className={css.menuItem} title="Aerodromes by fuel, surface, runway length and distance; + adds one to the route"
-                    onClick={() => { onFindDestination(); setShowMenu(false) }}>◎ Find a destination…</button>
+                    onClick={() => { onFindDestination(); setShowMenu(false) }}><IconSearch size={14} aria-hidden="true" />Find a destination…</button>
                 )}
-                <button className={css.menuItem} onClick={() => { onReplace([...waypoints].reverse()); setShowMenu(false) }} disabled={waypoints.length < 2}>⇄ Reverse</button>
+                <button className={css.menuItem} onClick={() => { onReplace([...waypoints].reverse()); setShowMenu(false) }} disabled={waypoints.length < 2}><IconArrowsExchange size={14} aria-hidden="true" />Reverse</button>
                 {onExportIcao && (
                   <button className={css.menuItem} title={exportIcaoNeedsAircraft ? 'Select an aircraft first: the plan needs its speed, equipment and registration' : 'Build the ICAO flight plan text for this route and aircraft'}
-                    onClick={() => { onExportIcao(menuBtnRef.current); setShowMenu(false) }} disabled={waypoints.length < 2 || !!exportIcaoNeedsAircraft}>↗ Export ICAO flight plan…{exportIcaoNeedsAircraft ? ' (select an aircraft)' : ''}</button>
+                    onClick={() => { onExportIcao(menuBtnRef.current); setShowMenu(false) }} disabled={waypoints.length < 2 || !!exportIcaoNeedsAircraft}><IconFileExport size={14} aria-hidden="true" />Export ICAO flight plan…{exportIcaoNeedsAircraft ? ' (select an aircraft)' : ''}</button>
                 )}
-                <button className={css.menuItem} onClick={() => { exportGpx(waypoints); setShowMenu(false) }} disabled={waypoints.length < 2}>↓ GPX</button>
-                <button className={css.menuItem} onClick={() => { gpxInputRef.current?.click(); setShowMenu(false) }}>↑ Import GPX</button>
+                <button className={css.menuItem} onClick={() => { exportGpx(waypoints); setShowMenu(false) }} disabled={waypoints.length < 2}><IconDownload size={14} aria-hidden="true" />Export GPX</button>
+                <button className={css.menuItem} onClick={() => { gpxInputRef.current?.click(); setShowMenu(false) }}><IconUpload size={14} aria-hidden="true" />Import GPX</button>
                 <hr className={css.menuDivider} />
                 <button className={`${css.menuItem} ${css.menuItemDanger}`} title="Take the route off the map (a saved route stays in Saved routes); asks first when there are unsaved changes"
-                  onClick={() => { setShowMenu(false); (closeRoute ?? onClear)() }}>✕ Close route</button>
+                  onClick={() => { setShowMenu(false); (closeRoute ?? onClear)() }}><IconX size={14} aria-hidden="true" />Close route</button>
               </div>
             )}
           </div>
@@ -466,7 +466,7 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
             onKeyDown={e => { if (e.key === 'Enter') handleKbSubmit(); if (e.key === 'Escape') setShowKb(false) }}
             disabled={kbLoading}
           />
-          <button className={css.btn} onClick={handleKbSubmit} disabled={kbLoading || !kbInput.trim()}>
+          <button className={css.btnText} onClick={handleKbSubmit} disabled={kbLoading || !kbInput.trim()}>
             {kbLoading ? '…' : 'Go'}
           </button>
         </div>
@@ -747,7 +747,7 @@ export default function RoutePlan({ selectedLeg, onSelectLeg, onFindDestination,
                   disabled={altLoading}
                   maxLength={6}
                 />
-                <button className={css.btn} onClick={handleAltSubmit} disabled={altLoading || !altInput.trim()}>
+                <button className={css.btnText} onClick={handleAltSubmit} disabled={altLoading || !altInput.trim()}>
                   {altLoading ? '…' : 'Set'}
                 </button>
               </>

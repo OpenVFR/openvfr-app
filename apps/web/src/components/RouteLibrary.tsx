@@ -11,7 +11,7 @@ import { useSyncRejected } from '../sync/cloudSync'
 import SyncRefusedNote from './SyncRefusedNote'
 import css from './RouteLibrary.module.css'
 import { RouteCloseContext } from './routeCloseContext'
-import { IconCheck, IconChevronDown, IconChevronRight, IconX } from '@tabler/icons-react'
+import { IconCheck, IconChevronDown, IconChevronRight, IconFolderOpen, IconX } from '@tabler/icons-react'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -406,7 +406,7 @@ export default function RouteLibrary({
                   </>
                 ) : (
                   <>
-                    <button className={css.iconBtn} onClick={() => requestLoad(r.id)} title="Load route">↳</button>
+                    <button className={css.iconBtn} onClick={() => requestLoad(r.id)} title="Load route" aria-label="Load route"><IconFolderOpen size={14} aria-hidden="true" /></button>
                     <button className={`${css.iconBtn} ${css.iconBtnDanger}`} onClick={() => setDeleteConfirmId(r.id)} title="Delete route"><IconX size={14} aria-hidden="true" /></button>
                   </>
                 )}

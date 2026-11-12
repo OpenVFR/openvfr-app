@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState , type ReactNode } from 'react'
 import { flightLogToGpx, gpxToFlightLog } from '@open-vfr/shared/gpx'
 import {
   computeLogStats, formatLogDuration, logTotals, logPeriodStart, LOG_PERIODS, LOG_PERIOD_LABEL,
@@ -15,7 +15,8 @@ import { loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { logEndAerodromes, normalizeLogPlace, LOG_PLACE_MAX_CHARS, type LogAerodrome, type LogPlace } from '@open-vfr/shared/flightLogAerodromes'
 import type { AircraftProfileDocType } from '../db'
 import css from './FlightLogs.module.css'
-import { IconCheck, IconX } from '@tabler/icons-react'
+import { IconCheck, IconX, IconChevronDown, IconChevronRight, IconEye, IconEyeOff, IconDownload, IconUpload, IconTrash, IconPencil } from '@tabler/icons-react'
+import SectionActions from './SectionActions'
 
 const EVENT_ICON: Record<FlownEvent['kind'], string> = {
   takeoff: '\u2197', landing: '\u2198', 'touch-and-go': '\u21c4', gap: '\u26a0', airspace: '\u25a3',
@@ -85,6 +86,8 @@ interface Props {
   onClear: () => void
   /** Selected aircraft profile: imported logs are attributed to it (a GPX file carries no aircraft). */
   importAircraft?: { id: string; registration: string }
+  /** The AI-assistant sparkle (shown top right with the section menu), when the account is offered it. */
+  assistant?: ReactNode
 }
 
 function fmt(ms: number): string {
@@ -109,7 +112,7 @@ function landingsLabel(st: LogStats): string {
   return st.touchAndGos > 0 ? `${base} (${st.touchAndGos} T&G)` : base
 }
 
-export default function FlightLogs({ selectedLogId, onSelect, onClear, importAircraft }: Props) {
+export default function FlightLogs({ selectedLogId, onSelect, onClear, importAircraft, assistant }: Props) {
   const [logs, setLogs] = useState<{ doc: FlightLogDocType; stats: LogStats | null }[]>([])
   const refusedLogs = useSyncRejected('user_flight_logs')
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -314,36 +317,38 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
     return () => sub?.unsubscribe()
   }, [])
 
+  const sectionActions = (
+    <SectionActions
+      label="Flight logs"
+      assistant={assistant}
+      items={[
+        { label: 'Import GPX', icon: <IconUpload size={14} aria-hidden="true" />, onSelect: () => fileRef.current?.click(), title: 'Import a flight from a GPX file' },
+        ...(simulatedCount > 0 ? [{ label: `Delete simulated (${simulatedCount})`, icon: <IconTrash size={14} aria-hidden="true" />, onSelect: handleDeleteSimulated }] : []),
+      ]}
+    />
+  )
+
   if (logs.length === 0) {
     return (
       <div className={css.panel}>
-        <p className={css.empty}>No completed flights recorded yet.</p>
-      <div className={css.clearRow}>
-        <button className={css.clearBtn} onClick={() => fileRef.current?.click()}>↑ Import GPX</button>
+        {sectionActions}
         <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml" hidden aria-label="Import GPX flight" onChange={handleImport} />
-      </div>
-      {importConfirm}
-      {importMsg && <p className={css.empty}>{importMsg}</p>}
+        <p className={css.empty}>No completed flights recorded yet.</p>
+        {importConfirm}
+        {importMsg && <p className={css.empty}>{importMsg}</p>}
       </div>
     )
   }
 
   return (
     <div className={css.panel}>
-      <div className={css.clearRow}>
-        <button className={css.clearBtn} onClick={() => fileRef.current?.click()}>↑ Import GPX</button>
-        <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml" hidden aria-label="Import GPX flight" onChange={handleImport} />
-      </div>
+      {sectionActions}
+      <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml" hidden aria-label="Import GPX flight" onChange={handleImport} />
       {importConfirm}
       {importMsg && <p className={css.empty}>{importMsg}</p>}
       {selectedLogId && (
         <div className={css.clearRow}>
           <button className={css.clearBtn} onClick={onClear}>Clear track</button>
-        </div>
-      )}
-      {simulatedCount > 0 && (
-        <div className={css.clearRow}>
-          <button className={css.clearBtn} onClick={handleDeleteSimulated}>Delete simulated ({simulatedCount})</button>
         </div>
       )}
       <div className={css.filters}>
@@ -383,7 +388,7 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
                   {log.maxAltFt > 0 && <span className={css.itemMetaVal}>max {Math.round(log.maxAltFt).toLocaleString()} ft</span>}
                   {stats && stats.gapCount > 0 && <span className={css.itemMetaVal} title="GPS track has gaps">⚠ gaps</span>}
                   <button className={css.eventsToggle} onClick={() => toggleEvents(log.id)} aria-expanded={eventsOpen.has(log.id)}>
-                    {eventsOpen.has(log.id) ? '\u25be' : '\u25b8'} Events
+                    {eventsOpen.has(log.id) ? <IconChevronDown size={11} aria-hidden="true" /> : <IconChevronRight size={11} aria-hidden="true" />}Events
                   </button>
                 </div>
                 {!log.simulated && (
@@ -400,7 +405,7 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
                     </select>
                     <button className={css.eventsToggle} onClick={() => placeEdit?.id === log.id ? setPlaceEdit(null) : openPlaceEdit(log)}
                       title="Correct the departure and arrival" aria-expanded={placeEdit?.id === log.id}>
-                      {'\u270e'} Rename
+                      <IconPencil size={11} aria-hidden="true" /> Rename
                     </button>
                     {mergeNext.has(log.id) && (
                       <button className={css.eventsToggle} onClick={() => void handleMerge(log.id)}
@@ -440,19 +445,21 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
               <div className={css.itemActions}>
                 {deleteId === log.id ? (
                   <>
-                    <button className={`${css.viewBtn} ${css.viewBtnDanger}`} onClick={() => handleDelete(log.id)} title="Confirm delete"><IconCheck size={14} aria-hidden="true" /></button>
-                    <button className={css.viewBtn} onClick={() => setDeleteId(null)} title="Cancel"><IconX size={14} aria-hidden="true" /></button>
+                    <button className={`${css.iconBtn} ${css.iconBtnDanger}`} onClick={() => handleDelete(log.id)} title="Confirm delete"><IconCheck size={14} aria-hidden="true" /></button>
+                    <button className={css.iconBtn} onClick={() => setDeleteId(null)} title="Cancel"><IconX size={14} aria-hidden="true" /></button>
                   </>
                 ) : (
                   <>
                     <button
-                      className={`${css.viewBtn} ${isActive ? css.viewBtnActive : ''}`}
+                      className={`${css.iconBtn} ${isActive ? css.iconBtnActive : ''}`}
+                      title={isActive ? 'Hide the track' : 'View the track'}
+                      aria-label={isActive ? 'Hide the track' : 'View the track'}
                       onClick={() => isActive ? onClear() : onSelect(log.id)}
                     >
-                      {isActive ? 'Hide' : 'View'}
+                      {isActive ? <IconEyeOff size={14} aria-hidden="true" /> : <IconEye size={14} aria-hidden="true" />}
                     </button>
-                    <button className={css.viewBtn} title="Export as GPX" onClick={() => handleExport(log)}>GPX</button>
-                    <button className={`${css.viewBtn} ${css.viewBtnDanger}`} title="Delete" onClick={() => setDeleteId(log.id)}><IconX size={14} aria-hidden="true" /></button>
+                    <button className={css.iconBtn} title="Export as GPX" aria-label="Export as GPX" onClick={() => handleExport(log)}><IconDownload size={14} aria-hidden="true" /></button>
+                    <button className={`${css.iconBtn} ${css.iconBtnDanger}`} title="Delete" aria-label="Delete flight" onClick={() => setDeleteId(log.id)}><IconX size={14} aria-hidden="true" /></button>
                   </>
                 )}
               </div>

@@ -10,7 +10,7 @@ import PohImportChooser from './PohImportChooser'
 import { useSyncRejected } from '../sync/cloudSync'
 import SyncRefusedNote from './SyncRefusedNote'
 import css from './AircraftLibrary.module.css'
-import { IconCheck, IconX } from '@tabler/icons-react'
+import { IconCheck, IconX, IconPlane, IconPencil, IconCopy } from '@tabler/icons-react'
 
 // ---------------------------------------------------------------------------
 // Category metadata
@@ -541,9 +541,9 @@ export default function AircraftLibrary({
                         className={`${css.iconBtn} ${p.id === selectedId ? css.iconBtnActive : ''}`}
                         title={p.id === selectedId ? 'Active aircraft (click to deselect)' : 'Use this aircraft'}
                         onClick={() => onSelect?.(p.id === selectedId ? null : p.id)}
-                      >✈</button>
-                      <button className={css.iconBtn} title="Edit" onClick={() => setMode(p.id)}>✎</button>
-                      <button className={css.iconBtn} title="Duplicate" onClick={() => duplicateProfile(p.id)}>⎘</button>
+                      ><IconPlane size={14} aria-hidden="true" /></button>
+                      <button className={css.iconBtn} title="Edit" aria-label="Edit aircraft" onClick={() => setMode(p.id)}><IconPencil size={14} aria-hidden="true" /></button>
+                      <button className={css.iconBtn} title="Duplicate" aria-label="Duplicate aircraft" onClick={() => duplicateProfile(p.id)}><IconCopy size={14} aria-hidden="true" /></button>
                       <button className={`${css.iconBtn} ${css.iconBtnDanger}`} title="Delete" onClick={() => setDeleteId(p.id)}><IconX size={14} aria-hidden="true" /></button>
                     </>
                   )}
