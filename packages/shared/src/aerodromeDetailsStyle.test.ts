@@ -60,15 +60,19 @@ describe('aerodromeDetailsStyle', () => {
 })
 
 describe('mapAreaLabel', () => {
-  it('says what the area is before a place name from the source', () => {
-    expect(mapAreaLabel({ kind: 'noise_sensitive', name: 'Central Västerås', floor: null, ceiling: null }))
-      .toBe('Noise-sensitive area: Central Västerås')
+  it('labels a noise-sensitive area by its name alone', () => {
+    expect(mapAreaLabel({ kind: 'noise_sensitive', name: 'Central Västerås', floor: null, ceiling: null })).toBe('Central Västerås')
   })
-  it('does not repeat the kind when the name already says it', () => {
-    expect(mapAreaLabel({ kind: 'noise_sensitive', name: 'Noise-sensitive area Kastberga', floor: null, ceiling: null }))
-      .toBe('Noise-sensitive area Kastberga')
+  it('drops the kind words the source put in the name', () => {
+    expect(mapAreaLabel({ kind: 'noise_sensitive', name: 'Noise-sensitive area Kastberga', floor: null, ceiling: null })).toBe('Kastberga')
+    expect(mapAreaLabel({ kind: 'noise_sensitive', name: 'Bullerkänsligt omr Djurgården', floor: null, ceiling: null })).toBe('Djurgården')
   })
-  it('falls back to the kind when there is no name', () => {
+  it('says what an unnamed noise-sensitive area is', () => {
+    expect(mapAreaLabel({ kind: 'noise_sensitive', name: null, floor: null, ceiling: null })).toBe('Noise-sensitive area')
+    expect(mapAreaLabel({ kind: 'noise_sensitive', name: 'Noise-sensitive area', floor: null, ceiling: null })).toBe('Noise-sensitive area')
+  })
+  it('keeps the kind in front of the name for other areas', () => {
+    expect(mapAreaLabel({ kind: 'glider_area', name: 'Öresjö', floor: null, ceiling: null })).toBe('Glider area: Öresjö')
     expect(mapAreaLabel({ kind: 'avoid_area', name: null, floor: null, ceiling: null })).toBe('Avoid area')
   })
 })

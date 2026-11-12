@@ -213,11 +213,20 @@ const AREA_KIND_LABEL: Partial<Record<string, string>> = {
   parachute_area: 'Parachute area', model_area: 'Model aircraft area',
 }
 
-/** Map label of an area or point: its kind in English, then the name and vertical limits. */
+// A source's own words for the kind at the start of a name ("Noise-sensitive area Kastberga", "Bullerkänsligt omr Kastberga").
+const KIND_WORDS_IN_NAME = /^(noise[- ]sensitive( area)?|bullerk[aä]nsligt( omr[aå]de| omr)?)\s*[:\-–]?\s*/i
+
+/**
+ * Map label of an area or point. A noise-sensitive area is labelled by its place name alone ("Kastberga"): the dashed outline
+ * says it is an area and a tap says which kind, so the label need not repeat it. An unnamed one says what it is. Other kinds
+ * keep their kind in front of the name ("Glider area: Öresjö"), since a bare name there could be taken for a place.
+ */
 export function mapAreaLabel(p: Pick<DetailProps, 'kind' | 'name' | 'floor' | 'ceiling'>): string {
   const kind = AREA_KIND_LABEL[p.kind]
-  const name = p.name?.trim() ?? ''
-  const head = kind && name && !name.toLowerCase().includes(kind.toLowerCase().split(' ')[0]!) ? `${kind}: ${name}` : (name || kind || '')
+  let name = p.name?.trim() ?? ''
+  if (p.kind === 'noise_sensitive') name = name.replace(KIND_WORDS_IN_NAME, '').trim()
+  const head = p.kind === 'noise_sensitive' ? (name || kind || '')
+    : kind && name && !name.toLowerCase().includes(kind.toLowerCase().split(' ')[0]!) ? `${kind}: ${name}` : (name || kind || '')
   return [head, formatLimits(p.floor, p.ceiling)].filter(Boolean).join('\n')
 }
 
