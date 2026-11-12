@@ -44,6 +44,7 @@ import { theme, useThemedStyles, useScaledTheme, type ScaledTheme, type ThemeNam
 import { FULL_CREDITS_LINK, OPEN_SOURCE_LICENCES_LINK } from '@open-vfr/shared/attributionSources'
 import { SPONSOR } from '@open-vfr/shared/sponsor'
 import { COUNTRY_TESTER } from '@open-vfr/shared/countryTester'
+import { WEB_APP, SYNC_NOTE } from '@open-vfr/shared/appAvailability'
 import { useOfflineSummary } from './OfflineDataScreen'
 import * as Application from 'expo-application'
 import { listPasskeys, deletePasskey, renamePasskey, type RegisteredPasskey } from '../utils/passkeyNative'
@@ -703,6 +704,13 @@ export function SettingsScreen() {
       {state.status === 'authenticated' && (
         <Section title="Account">
           <InfoRow label="Signed in as" value={state.user.email} />
+          <TouchableOpacity style={[styles.row, styles.pressable]} onPress={() => Linking.openURL(WEB_APP.url)} accessibilityRole="link" accessibilityLabel={`Web app, ${WEB_APP.host}`}>
+            <Text style={styles.rowLabel}>Also on the web</Text>
+            <Text style={styles.infoValue}>{WEB_APP.host}  {'\u203a'}</Text>
+          </TouchableOpacity>
+          <View style={styles.row}>
+            <Text style={styles.noteText}>{SYNC_NOTE}</Text>
+          </View>
           {passkeyAllowed && passkeys.map(pk => (
             <TouchableOpacity key={pk.id} style={[styles.row, styles.pressable]} onPress={() => openPasskey(pk)}
               accessibilityLabel={`Passkey ${pk.name || ''}, tap to rename or remove`}>
@@ -859,7 +867,7 @@ function CountriesSection() {
         accessibilityRole="link"
         accessibilityLabel={`${COUNTRY_TESTER.question} ${COUNTRY_TESTER.action}`}
       >
-        <Text style={styles.testerOffer}>{COUNTRY_TESTER.question}{'\n'}<Text style={{ color: scaledTheme.accentBlue }}>{COUNTRY_TESTER.action}</Text>.</Text>
+        <Text style={styles.noteText}>{COUNTRY_TESTER.question}{'\n'}<Text style={{ color: scaledTheme.accentBlue }}>{COUNTRY_TESTER.action}</Text>.</Text>
       </TouchableOpacity>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.dropdownBackdrop} onPress={() => setOpen(false)} accessibilityLabel="Close country list">
@@ -1333,8 +1341,8 @@ function makeStyles(theme: ScaledTheme) {
     fontSize:   theme.textSm,
     fontWeight: '600',
   },
-  // "Become a tester" line under the country picker: full width, left aligned.
-  testerOffer: {
+  // Small explanatory line inside a card ("Become a tester" under the country picker, the sync note in Account): full width, left aligned.
+  noteText: {
     color:    theme.textMuted,
     fontSize: theme.textXs,
     flex:     1,

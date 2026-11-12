@@ -12,6 +12,7 @@ import type { AuthState, PasskeyInfo } from '../hooks/useAuth'
 import styles from './ProfilePanel.module.css'
 import { IconX } from '@tabler/icons-react'
 import AssistantSection from './AssistantSection'
+import AppsSection from './AppsSection'
 
 interface Props {
   auth:    AuthState
@@ -256,6 +257,9 @@ export default function ProfilePanel({ auth, onClose }: Props) {
             <div className={styles.sectionDivider} />
           </>
         )}
+
+        <AppsSection />
+        <div className={styles.sectionDivider} />
 
         {/* Sign out */}
         <div className={styles.section}>

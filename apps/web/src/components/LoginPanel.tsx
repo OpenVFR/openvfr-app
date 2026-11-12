@@ -294,7 +294,7 @@ export default function LoginPanel({ auth }: Props) {
 
         {step !== 'setup' && (
           <p className={styles.hint}>
-            Sign in once — your routes, aircraft, and settings sync across all your devices.
+            Sign in once — your routes, aircraft, places and flight logs sync between the web, iOS and Android apps.
           </p>
         )}
 
