@@ -162,3 +162,24 @@ describe('insertFuelStops / setFuelStop', () => {
     expect(setFuelStop(wps, 0, true)[0].fuelStop).toBeUndefined()
   })
 })
+
+describe('a route point that is a suitable aerodrome', () => {
+  it('can be the stop: no detour, marked in place', () => {
+    const wps = [{ ...at(0), name: 'DEP' }, { ...at(200), name: 'MIDA' }, { ...at(400), name: 'DST' }]
+    const r = suggestFuelStops(wps, [{}, {}], profile, [ad('MIDA', 200, 0)])
+    expect(r.status).toBe('found')
+    if (r.status !== 'found') return
+    const stop = r.plans[0]!.stops[0]!
+    expect(stop.aerodrome.icao).toBe('MIDA')
+    expect(stop.waypointIndex).toBe(1)
+    expect(stop.detourNm).toBe(0)
+    const next = insertFuelStops(wps, [{}, {}], r.plans[0]!)
+    expect(next.waypoints).toHaveLength(3)
+    expect(next.waypoints[1]!.fuelStop).toBe(true)
+    expect(next.legOverrides).toHaveLength(2)
+  })
+  it('still prefers nothing else when that point is the only suitable field, and leaves marked points alone', () => {
+    const wps = [{ ...at(0), name: 'DEP' }, { ...at(200), name: 'MIDA', fuelStop: true }, { ...at(400), name: 'DST' }]
+    expect(suggestFuelStops(wps, [{}, {}], profile, [ad('MIDA', 200, 0)]).status).toBe('not-needed')
+  })
+})

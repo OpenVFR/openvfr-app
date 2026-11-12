@@ -456,6 +456,7 @@ function SideDrawer({
                     aircraft={selectedAircraftProfile}
                     legWinds={routeWinds.effective}
                     onInsertInRoute={onInsertInRoute}
+                    onSetFuelStop={onSetWaypointFuelStop}
                   />
                 </div>
               )}

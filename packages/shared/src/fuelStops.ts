@@ -18,7 +18,8 @@
  * hop's time (so hops of similar length win over a stop just after take-off)
  * and a minute per litre a hop's spare fuel falls below 15 % of the tanks,
  * with at most `maxStops` new stops. Route points already marked `fuelStop`
- * are kept as stops. Alternatives are found by running it again with one of
+ * are kept as stops; an unmarked route point that is a suitable aerodrome can
+ * be chosen as a stop too (marked, no detour). Alternatives are found by running it again with one of
  * the best plan's stops left out.
  *
  * Pure and deterministic: no network. Weather and NOTAMs at a stop are for
@@ -63,10 +64,12 @@ export interface FuelStop {
   fuels: FuelCode[]
   /** Preference rank of the best grade on offer: 0 = the aircraft's preferred fuel. 0 when no fuel types are set. */
   fuelRank: number
-  /** Index in the original route after which the stop goes. */
+  /** Index in the original route after which the stop goes (for a route point: the one before it). */
   insertAfter: number
   /** Extra distance the stop adds to the leg it splits, NM. */
   detourNm: number
+  /** Set when the aerodrome is already a route point (unmarked): mark that point as a fuel stop instead of inserting one. */
+  waypointIndex?: number
 }
 
 export interface FuelStopHop {
@@ -157,10 +160,17 @@ export function suggestFuelStops(
   // ── Candidates ──────────────────────────────────────────────────────────
   const wanted = profile.fuelTypes ?? []
   const fuelTypesUnset = wanted.length === 0
+  // Route points: the ends and points already marked as stops are never suggested; an unmarked
+  // point in the middle that is an aerodrome is a stop with no detour at all.
+  const midPoint = new Map<string, number>()
+  waypoints.forEach((w, k) => {
+    const name = (w.name ?? '').toUpperCase()
+    if (name && k > 0 && k < waypoints.length - 1 && !w.fuelStop && !midPoint.has(name)) midPoint.set(name, k)
+  })
   const exclude = new Set([
     ...(opts.excludeIcaos ?? []),
-    ...waypoints.map(w => (w.name ?? '').toUpperCase()).filter(Boolean),
-  ].map(s => s.toUpperCase()))
+    ...waypoints.filter((w, k) => midPoint.get((w.name ?? '').toUpperCase()) !== k).map(w => w.name ?? ''),
+  ].map(s => s.toUpperCase()).filter(Boolean))
   const allowHeliports = profile.category === 'HELI'
 
   const candidates: FuelStop[] = []
@@ -172,6 +182,13 @@ export function suggestFuelStops(
     if (!runwayOk(a, profile.minRunwayM ?? 0, profile.hardRunwayOnly === true)) continue
     // With take-off and landing distances in the profile: a runway long enough for both (standard temperature).
     if (a.runways && a.runways.length > 0 && !runwaysAllowStop(profile, a.runways, a.elevationFt)) continue
+
+    // Already a route point: a stop with no detour, marked in place.
+    const atPoint = midPoint.get(a.icao.toUpperCase())
+    if (atPoint !== undefined) {
+      candidates.push({ aerodrome: a, fuels, fuelRank: fuelTypesUnset ? 0 : wanted.indexOf(fuels[0]!), insertAfter: atPoint - 1, detourNm: 0, waypointIndex: atPoint })
+      continue
+    }
 
     // Leg this aerodrome would split with the least detour.
     let best = -1, bestDetour = Infinity
@@ -189,6 +206,7 @@ export function suggestFuelStops(
   // ── Nodes ordered along the route ───────────────────────────────────────
   const nodes: Node[] = waypoints.map((w, k) => ({ leg: k, t: 0, point: w, wp: k }))
   for (const c of candidates) {
+    if (c.waypointIndex !== undefined) { nodes[c.waypointIndex]!.stop = c; continue }
     const a = waypoints[c.insertAfter]!, b = waypoints[c.insertAfter + 1]!
     const da = distanceNm(a, c.aerodrome), db = distanceNm(c.aerodrome, b)
     nodes.push({
@@ -320,8 +338,9 @@ export function suggestFuelStops(
 }
 
 /**
- * The route with a plan's stops inserted as fuel stops, as one new waypoint
- * and leg-override list (one edit, one undo step). The split leg's override
+ * The route with a plan's stops inserted as fuel stops (an aerodrome the route
+ * already passes is marked instead), as one new waypoint and leg-override list
+ * (one edit, one undo step). The split leg's override
  * carries over to both halves, as when a point is inserted by hand.
  */
 export function insertFuelStops(
@@ -333,6 +352,11 @@ export function insertFuelStops(
   const ovr = waypoints.slice(0, -1).map((_, i) => legOverrides[i] ?? {})
   // Last stop first so earlier positions stay valid; stops on one leg end up in route order.
   for (const s of [...plan.stops].reverse()) {
+    if (s.waypointIndex !== undefined) {
+      const w = wps[s.waypointIndex]
+      if (w) wps[s.waypointIndex] = { ...w, fuelStop: true }
+      continue
+    }
     const at = s.insertAfter + 1
     wps.splice(at, 0, { lat: s.aerodrome.lat, lng: s.aerodrome.lng, name: s.aerodrome.icao, fuelStop: true, elevationFt: s.aerodrome.elevationFt })
     ovr.splice(at, 0, { ...(ovr[s.insertAfter] ?? {}) })

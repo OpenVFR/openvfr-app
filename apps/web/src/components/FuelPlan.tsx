@@ -13,6 +13,7 @@ interface Props {
   legWinds?:    ({ dirDeg: number; speedKts: number } | null)[]
   /** Insert a route point after index `afterIdx`; enables fuel-stop suggestions when the fuel is short. */
   onInsertInRoute?: (wp: RouteWaypoint, afterIdx: number) => void
+  onSetFuelStop?: (wpIdx: number, on: boolean) => void
 }
 
 function fmt(l: number): string {
@@ -128,7 +129,7 @@ function PlanTable({ plan }: { plan: FuelPlanData }) {
   )
 }
 
-export default function FuelPlan({ waypoints, legOverrides, aircraft, legWinds, onInsertInRoute }: Props) {
+export default function FuelPlan({ waypoints, legOverrides, aircraft, legWinds, onInsertInRoute, onSetFuelStop }: Props) {
   // One hop per take-off: the route splits at points marked as fuel stops.
   const hops = useMemo(
     () => computeTripFuelPlans(waypoints, legOverrides, aircraft, legWinds),
@@ -162,13 +163,14 @@ export default function FuelPlan({ waypoints, legOverrides, aircraft, legWinds, 
             </section>
           ))}
 
-      {short && onInsertInRoute && (
+      {short && onInsertInRoute && onSetFuelStop && (
         <FuelStopSuggest
           waypoints={waypoints}
           legOverrides={legOverrides}
           aircraft={aircraft}
           legWinds={legWinds}
           onInsertInRoute={onInsertInRoute}
+          onSetFuelStop={onSetFuelStop}
         />
       )}
     </div>

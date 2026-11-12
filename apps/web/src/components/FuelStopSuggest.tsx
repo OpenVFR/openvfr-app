@@ -18,6 +18,8 @@ interface Props {
   aircraft:     AircraftProfileDocType
   legWinds?:    ({ dirDeg: number; speedKts: number } | null)[]
   onInsertInRoute: (wp: RouteWaypoint, afterIdx: number) => void
+  /** Marks an existing route point as a fuel stop (an aerodrome the route already passes). */
+  onSetFuelStop: (wpIdx: number, on: boolean) => void
 }
 
 function fmtTime(mins: number): string {
@@ -26,7 +28,7 @@ function fmtTime(mins: number): string {
   return h > 0 ? `${h}h ${m.toString().padStart(2, '0')}` : `${m} min`
 }
 
-export default function FuelStopSuggest({ waypoints, legOverrides, aircraft, legWinds, onInsertInRoute }: Props) {
+export default function FuelStopSuggest({ waypoints, legOverrides, aircraft, legWinds, onInsertInRoute, onSetFuelStop }: Props) {
   const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle')
   const [result, setResult] = useState<FuelStopResult | null>(null)
 
@@ -50,7 +52,8 @@ export default function FuelStopSuggest({ waypoints, legOverrides, aircraft, leg
     // Last stop first, so earlier insert positions stay valid; stops on the
     // same leg end up in route order. Back-to-back inserts are one undo step.
     for (const s of [...plan.stops].reverse()) {
-      onInsertInRoute({ ...aerodromeToWaypoint(s.aerodrome), fuelStop: true }, s.insertAfter)
+      if (s.waypointIndex !== undefined) onSetFuelStop(s.waypointIndex, true)
+      else onInsertInRoute({ ...aerodromeToWaypoint(s.aerodrome), fuelStop: true }, s.insertAfter)
     }
     setResult(null)
     setState('idle')
@@ -97,7 +100,7 @@ export default function FuelStopSuggest({ waypoints, legOverrides, aircraft, leg
                       {s.fuels.length > 0 && s.fuelRank > 0 && <span className={css.ppr}> ({preferenceLabel(s.fuelRank)} choice)</span>}
                       {' · '}{s.aerodrome.maxRunwayM > 0 ? `${s.aerodrome.maxRunwayM} m` : 'runway ?'}
                       {s.aerodrome.surfaces.length > 0 ? ` ${s.aerodrome.surfaces.join('/')}` : ''}
-                      {' · '}{s.detourNm < 1 ? 'on track' : `+${s.detourNm.toFixed(0)} NM`}
+                      {' · '}{s.waypointIndex !== undefined ? 'on your route' : s.detourNm < 1 ? 'on track' : `+${s.detourNm.toFixed(0)} NM`}
                       {s.aerodrome.ppr && <span className={css.ppr}> · PPR</span>}
                     </span>
                   </div>
