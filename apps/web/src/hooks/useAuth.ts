@@ -15,7 +15,7 @@ import { passkeyClient }    from '@better-auth/passkey/client'
 import { oauthProviderClient } from '@better-auth/oauth-provider/client'
 import { API_BASE_URL } from '../utils/env'
 import { markOtpSignIn, consumeOtpSignIn } from '@open-vfr/shared/passkeyPrompt'
-import { passkeyRequestErrorMessage, type PasskeyRequestError } from '@open-vfr/shared/passkeyErrors'
+import { passkeyRequestErrorMessage, passkeyCeremonyOutcome, type PasskeyRequestError } from '@open-vfr/shared/passkeyErrors'
 import { flagWipeOnSignOut } from '../db/userScope'
 import { flushBeforeSignOut, stopCloudSync } from '../sync/cloudSync'
 
@@ -222,9 +222,17 @@ export function useAuth(): AuthState {
       throw err
     }
     if (result?.error) {
-      const code = (result.error as Record<string, unknown>).code
-      if (code === 'AUTH_CANCELLED') throw new Error('NO_PASSKEY')
-      throw new Error(result.error.message ?? 'Passkey sign-in failed')
+      const err = result.error as Record<string, unknown>
+      // The client words every browser-side failure "Auth cancelled"; the code says what happened.
+      const code = typeof err['code'] === 'string' ? err['code'] : undefined
+      const status = typeof err['status'] === 'number' ? err['status'] : undefined
+      // A server answer (rate limit, disabled passkeys, ...) has its own text; a browser-side failure is told apart by its code.
+      if (code && /^(ERROR_|AUTH_CANCELLED$)/.test(code)) {
+        console.warn('[passkey] sign-in did not complete:', code)
+        const outcome = passkeyCeremonyOutcome({ code })
+        throw new Error(outcome.kind === 'cancelled' ? 'NO_PASSKEY' : outcome.message)
+      }
+      throw new Error(passkeyRequestErrorMessage({ status, code, message: typeof err['message'] === 'string' ? err['message'] : undefined }, 'Passkey sign-in failed'))
     }
     await refreshSession(true)
   }, [refreshSession])
@@ -235,6 +243,12 @@ export function useAuth(): AuthState {
     // not the device label. The label is stored afterwards via rename.
     const result = await authClient.passkey.addPasskey({ name: user?.email ? stagingLabel(user.email) : undefined })
     if (result?.error) {
+      const code = (result.error as PasskeyRequestError).code
+      if (code && /^(ERROR_|AUTH_CANCELLED$)/.test(code)) {
+        console.warn('[passkey] registration did not complete:', code)
+        const outcome = passkeyCeremonyOutcome({ code })
+        throw new Error(outcome.kind === 'cancelled' ? 'The passkey was not added: the prompt was cancelled or blocked.' : outcome.message)
+      }
       throw new Error(passkeyRequestErrorMessage(result.error as PasskeyRequestError, 'Passkey registration failed'))
     }
     const id = (result?.data as { id?: string } | null | undefined)?.id
