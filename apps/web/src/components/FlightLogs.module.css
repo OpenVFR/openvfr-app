@@ -67,13 +67,16 @@
 
 .itemMeta {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;           /* a narrow drawer wraps whole facts onto the next line instead of squeezing each */
+  align-items: center;
+  gap: 1px 8px;
   margin-top: 2px;
 }
 
 .itemMetaVal {
   color: var(--text-faint);
   font-size: 10px;
+  white-space: nowrap;       /* "6 Nov, 15:27" and "68.5 NM" stay in one piece */
 }
 
 /* ── Buttons ──────────────────────────────────────────────────────────────── */
@@ -155,6 +158,21 @@
   font-size: 11px;
   color: var(--text-secondary);
 }
+/* The opened list of a select takes the app's colours (the browser default is a white list). */
+.filterSel,
+.aircraftSel {
+  color-scheme: dark;
+}
+:global(:root[data-theme="light"]) .filterSel,
+:global(:root[data-theme="light"]) .aircraftSel {
+  color-scheme: light;
+}
+.filterSel option,
+.aircraftSel option {
+  background: var(--input-option-bg);
+  color: var(--text-primary);
+}
+
 
 /* A log's events, opened under its entry. */
 .eventsToggle {
