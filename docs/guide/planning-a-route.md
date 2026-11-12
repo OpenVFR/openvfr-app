@@ -175,7 +175,7 @@ text:
 - **Aircraft details for the plan:** registration, ICAO type, colour,
   transponder and radio / nav. Fill in what the list says is missing and save
   it to the aircraft profile, so you only do it once.
-- **Other information** (web, collapsed): persons on board not known yet
+- **Other information:** persons on board not known yet
   (written TBN; tell the ATS before taxiing) and life jackets carried without
   light, fluorescein or radio (written as the remark JACKETS).
 

@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom'
 import { IconX } from '@tabler/icons-react'
 import { getDb } from '../db/index'
 import { buildFpl, EMPTY_ANSWERS, FLIGHT_RULES_LABELS, FLIGHT_TYPE_LABELS, type FlightAnswers, type FlightRules, type FlightType, type LevelMode } from '@open-vfr/shared/fplMessage'
-import { fplAircraftItems, normaliseIcaoType } from '@open-vfr/shared/icaoFlightPlan'
+import { normaliseIcaoType } from '@open-vfr/shared/icaoFlightPlan'
 import type { AircraftProfileDocType, TransponderMode } from '@open-vfr/shared/types'
 import type { RouteWaypoint } from '../utils/routeCalc'
 import type { LegOverride } from '../db/index'
@@ -90,8 +90,8 @@ export default function FlightPlanDialog({ waypoints, legOverrides, aircraft: ai
         </div>
         <p className={css.note}>A draft built from your route and aircraft. Fill in what is asked, check the list, then copy it into the filing service you use. Nothing is sent from OpenVFR.</p>
 
-        <details className={css.more} open={fplAircraftItems(aircraft).missing.length > 0}>
-          <summary>Aircraft details for the plan</summary>
+        <fieldset className={css.set}>
+          <legend>Aircraft details for the plan</legend>
           <div className={css.grid}>
             <label className={css.lbl}>Registration
               <input className={css.inp} value={aircraft.registration} placeholder="SE-ABC" onChange={e => setAc({ registration: e.target.value.toUpperCase() })} />
@@ -121,7 +121,7 @@ export default function FlightPlanDialog({ waypoints, legOverrides, aircraft: ai
             </label>
           </div>
           {!saved && <button type="button" className={css.btn} onClick={() => void saveAircraft()}>Save to the aircraft profile</button>}
-        </details>
+        </fieldset>
 
         <div className={css.grid}>
           <label className={css.lbl}>Flight rules
@@ -178,11 +178,10 @@ export default function FlightPlanDialog({ waypoints, legOverrides, aircraft: ai
         <label className={css.lbl}>Remarks
           <input className={css.inp} value={flight.remarks} onChange={e => set('remarks', e.target.value)} />
         </label>
-        <details className={css.more}>
-          <summary>Other information</summary>
+        <fieldset className={css.set}><legend>Other information</legend>
           <label className={css.chk}><input type="checkbox" checked={!!flight.personsUnknown} onChange={e => set('personsUnknown', e.target.checked)} /> Persons on board not known yet (written TBN: tell the ATS before taxiing)</label>
           <label className={css.chk}><input type="checkbox" checked={!!flight.jacketsPlain} onChange={e => set('jacketsPlain', e.target.checked)} /> Life jackets carried without light, fluorescein or radio (written as the remark JACKETS)</label>
-        </details>
+        </fieldset>
 
         {fpl.problems.length > 0 && (
           <div className={css.problems} role="status">
