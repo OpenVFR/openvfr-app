@@ -323,6 +323,7 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
       assistant={assistant}
       items={[
         { label: 'Import GPX', icon: <IconUpload size={14} aria-hidden="true" />, onSelect: () => fileRef.current?.click(), title: 'Import a flight from a GPX file' },
+        ...(selectedLogId ? [{ label: 'Clear track', icon: <IconEyeOff size={14} aria-hidden="true" />, onSelect: onClear, title: 'Take the shown flight off the map' }] : []),
         ...(simulatedCount > 0 ? [{ label: `Delete simulated (${simulatedCount})`, icon: <IconTrash size={14} aria-hidden="true" />, onSelect: handleDeleteSimulated }] : []),
       ]}
     />
@@ -346,11 +347,6 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
       <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml" hidden aria-label="Import GPX flight" onChange={handleImport} />
       {importConfirm}
       {importMsg && <p className={css.empty}>{importMsg}</p>}
-      {selectedLogId && (
-        <div className={css.clearRow}>
-          <button className={css.clearBtn} onClick={onClear}>Clear track</button>
-        </div>
-      )}
       <div className={css.filters}>
         <select className={css.filterSel} value={period} onChange={e => setPeriod(e.target.value as LogPeriod)} aria-label="Period">
           {LOG_PERIODS.map(p => <option key={p} value={p}>{LOG_PERIOD_LABEL[p]}</option>)}
