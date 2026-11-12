@@ -26,12 +26,17 @@ const FIELD_HELP: Partial<Record<NumericField, string>> = {
 /** Input fields shared by create_aircraft and update_aircraft: units are fixed, convert before calling. */
 const aircraftFields = {
   name: z.string().max(80).optional().describe('Profile name, e.g. "Cessna 182R"'),
-  icaoType: z.string().max(4).optional().describe('ICAO type designator, e.g. C182'),
+  icaoType: z.string().max(4).optional().describe('ICAO type designator from Doc 8643, 2 to 4 characters, e.g. C182 or GYRO'),
   category: z.enum(CATEGORIES as [string, ...string[]]).optional().describe('SEP, MEP, MICRO, GYRO, HELI, TMG or GLIDER'),
   fuelTypes: z.array(z.string().max(30)).max(4).optional().describe('Approved fuels, preferred first: AVGAS100LL, AVGAS_UL91, MOGAS, JETA1'),
   hardRunwayOnly: z.boolean().optional(),
   transponder: z.enum(['none', 'A', 'C', 'S']).optional(),
   hasRadio: z.boolean().optional(),
+  equipment: z.array(z.string().max(2)).max(16).optional().describe('ICAO flight plan item 10a letters: V (VHF), Y (VHF 8.33), O (VOR), F (ADF), D (DME), L (ILS), G (GNSS), B (LPV), R (PBN), U (UHF), H (HF), T (TACAN), Z (other), or ["S"] standard / ["N"] none. Only what the POH or the pilot states'),
+  adsb: z.enum(['B1', 'B2', 'U1', 'U2']).optional().describe('ADS-B capability for item 10b: B1/B2 = 1090 MHz out / out and in, U1/U2 = UAT'),
+  wakeCategory: z.enum(['L', 'M', 'H', 'J']).optional().describe('Wake turbulence category; L for almost every light aircraft'),
+  colour: z.string().max(120).optional().describe('Aircraft colour and markings for the flight plan, as the pilot says'),
+  modeSHex: z.string().max(6).optional().describe('Mode S address, 6 hexadecimal digits'),
   pages: z.record(z.string(), z.union([z.string(), z.number()])).optional().describe('POH page per field name, so the pilot can check'),
   ...Object.fromEntries((Object.keys(NUMERIC_LIMITS) as NumericField[]).map(k => {
     const [lo, hi] = NUMERIC_LIMITS[k]
@@ -47,6 +52,8 @@ function toInput(a: Record<string, unknown>): AircraftInput {
     icaoType: a['icaoType'] as string | undefined, category: a['category'] as AircraftInput['category'],
     fuelTypes: a['fuelTypes'] as string[] | undefined, hardRunwayOnly: a['hardRunwayOnly'] as boolean | undefined,
     transponder: a['transponder'] as AircraftInput['transponder'], hasRadio: a['hasRadio'] as boolean | undefined,
+    equipment: a['equipment'] as string[] | undefined, adsb: a['adsb'] as AircraftInput['adsb'], wakeCategory: a['wakeCategory'] as AircraftInput['wakeCategory'],
+    colour: a['colour'] as string | undefined, modeSHex: a['modeSHex'] as string | undefined,
     pages: a['pages'] as AircraftInput['pages'], values,
   }
 }

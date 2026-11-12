@@ -60,6 +60,19 @@ export type AircraftProfileDocType = {
   transponder?: TransponderMode
   /** VHF radio fitted. Absent = not set. */
   hasRadio?: boolean
+  /**
+   * ICAO flight plan item 10a: radio, navigation and approach equipment as ICAO letters (`icaoFlightPlan.ts`),
+   * e.g. ['V','O','G'], or ['S'] (standard) or ['N'] (none). Absent = not set (VHF is then taken from `hasRadio`).
+   */
+  equipment?: readonly string[]
+  /** ADS-B capability for item 10b: B1/B2 (1090 MHz out / out and in), U1/U2 (UAT). Absent = none. */
+  adsb?: AdsbCode
+  /** Wake turbulence category for item 9, by maximum take-off mass. Absent = L (7,000 kg or less). */
+  wakeCategory?: WakeCategory
+  /** Colour and markings, for item 19 (A/). */
+  colour?: string
+  /** Mode S 24-bit address as 6 hex digits, for item 18 (CODE/). */
+  modeSHex?: string
   /** Maximum demonstrated crosswind, kt. 0/absent = not set. */
   maxCrosswindKts?: number
   /** Climb fuel burn at the service ceiling, L/h; burn scales with altitude from `climbFuelLhr`. 0/absent = same as sea level. */
@@ -103,6 +116,12 @@ export interface AssistantReview {
   /** 'created', or the fields changed. */
   change: 'created' | readonly string[]
 }
+
+/** ICAO wake turbulence category: J super, H heavy, M medium (over 7,000 kg), L light (7,000 kg or less). */
+export type WakeCategory = 'J' | 'H' | 'M' | 'L'
+
+/** ADS-B capability letters of ICAO item 10b. */
+export type AdsbCode = 'B1' | 'B2' | 'U1' | 'U2'
 
 /** Transponder capability: none, mode A (code only), C (with pressure altitude) or S. */
 export type TransponderMode = 'none' | 'A' | 'C' | 'S'

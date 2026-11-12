@@ -12,6 +12,7 @@ import FindFeature, { type FindResult } from './FindFeature'
 import AccountBadge from './AccountBadge'
 import type { AuthState } from '../hooks/useAuth'
 import AssistantHelp from './AssistantHelp'
+import FlightPlanDialog from './FlightPlanDialog'
 import { useAssistantMcpUrl } from '../hooks/useAssistantMcpUrl'
 import type { AvailableCountry } from '@open-vfr/shared/countries'
 import UserWaypoints from './UserWaypoints'
@@ -22,7 +23,7 @@ import type { LegOverride, AircraftProfileDocType, UserWaypointDocType } from '.
 import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
 import type { Theme, TrajectoryMode, AirspaceWarnLookahead, TerrainColoringSettings, TrafficVertFilter, ParkTimeoutOption } from '../db/useSettings'
 import type { DataManifest } from '../hooks/useDataManifest'
-import { useTakeoffTime, useGlobalWind } from '../db/useSettings'
+import { useTakeoffTime, useGlobalWind, useAlternate } from '../db/useSettings'
 import { useRouteWinds } from '../hooks/useRouteWinds'
 import { useSavedRouteReview } from '../db/useRouteDb'
 import css from './SideDrawer.module.css'
@@ -235,6 +236,8 @@ function SideDrawer({
   // (Clicked map features show in FeatureCard beside the map, not here.)
   // Planning inputs + effective per-leg wind, shared by the route table, pre-flight check and fuel plan.
   const [takeoffTime, setTakeoffTime] = useTakeoffTime()
+  const [alternate] = useAlternate()
+  const [fplOpen, setFplOpen] = useState(false)
   const [globalWind, setGlobalWind] = useGlobalWind()
   const routeWinds = useRouteWinds(waypoints, legOverrides, selectedAircraftProfile?.cruiseAltFt || undefined, selectedAircraftProfile?.cruiseIas || undefined, takeoffTime, globalWind)
   useEffect(() => {
@@ -490,6 +493,27 @@ function SideDrawer({
               </div>
             )}
           </div>
+          {/* ── ICAO flight plan: a dialog, not a section ──────────── */}
+          {hasRoute && selectedAircraftProfile && (
+            <div className={css.section}>
+              <button className={css.sectionHeader} onClick={() => setFplOpen(true)} title="Build the ICAO flight plan text for this route and aircraft">
+                <span>Flight Plan (ICAO)</span>
+                <span className={css.chevron}><IconChevronRight size={14} aria-hidden="true" /></span>
+              </button>
+            </div>
+          )}
+          {fplOpen && hasRoute && selectedAircraftProfile && (
+            <FlightPlanDialog
+              waypoints={waypoints}
+              legOverrides={legOverrides}
+              aircraft={selectedAircraftProfile}
+              legWinds={routeWinds.effective}
+              takeoffTime={takeoffTime}
+              alternateIcao={alternate?.icao}
+              accountName={auth.user?.name}
+              onClose={() => setFplOpen(false)}
+            />
+          )}
           {/* ── Aircraft ───────────────────────────────────────── */}
           <div className={css.section}>
             <button ref={aircraftRef} className={css.sectionHeader} onClick={() => toggle('aircraft')}>

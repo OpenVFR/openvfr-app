@@ -5,6 +5,8 @@
   "license": "MIT",
   "type": "module",
   "exports": {
+    "./fplMessage": "./src/fplMessage.ts",
+    "./icaoFlightPlan": "./src/icaoFlightPlan.ts",
     "./assistantHelp": "./src/assistantHelp.ts",
     "./suggestRouteName": "./src/suggestRouteName.ts",
     "./bearingDistance": "./src/bearingDistance.ts",

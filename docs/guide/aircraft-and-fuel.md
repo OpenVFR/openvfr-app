@@ -27,7 +27,7 @@ Open the aircraft list from the planning panel. You can:
   thinking** (extended reasoning) if your assistant offers one: POH tables,
   graphs and diagrams are often scanned images, and a fast model reads them
   less reliably. Copy the whole answer, paste it back into the form and
-  choose **Fill in the form**. The PDF goes only to your assistant, not to
+  choose **Apply to the form**. The PDF goes only to your assistant, not to
   OpenVFR, and no OpenVFR account is needed. The app checks the numbers it
   gets: a field the answer did not contain, or a value that looks wrong
   (out of range, or not consistent with another field, such as a reserve
@@ -39,8 +39,8 @@ Open the aircraft list from the planning panel. You can:
   profile, the app checks it, and the aircraft shows **Check before use**
   until you open and save it. The same advice about a deep-thinking model
   applies.
-- **Import a POH PDF on the server (web only, where the server offers it),
-  the last option:** upload the performance pages as a PDF and the server
+- **Use built-in AI assistant (web only, where the server offers it and you
+  are signed in), the last option:** upload the performance pages as a PDF and the server
   proposes values. This needs an account and sends the document to the cloud
   service the server is configured with. It is less accurate than an AI
   assistant with deep thinking, especially with diagrams and images. Fields
@@ -99,10 +99,15 @@ All speeds are indicated airspeed (IAS) in knots, fuel is in litres.
   app suggests aerodromes.
 
 **Equipment**
-- **Transponder** (none, mode A, C or S) and **Radio** (yes or no). Leave
-  them **Not set** if you prefer; set to none or no, the pre-flight check
-  treats a TMZ (no transponder) or an RMZ or controlled airspace (no radio)
-  on the route as a hard stop.
+- **Transponder** (none, mode A, C or S), **ADS-B** and **Radio / nav**
+  (the ICAO equipment letters, see below). Leave them **Not set** if you
+  prefer: **Not set** means unknown (no pre-flight claim, and the flight plan
+  lists it as missing), while **None** is a statement. ADS-B has only None,
+  which is the default. With no transponder the pre-flight check treats a TMZ on the
+  route as a hard stop; with no VHF radio (no V, Y or S among the letters, or
+  None) it treats an RMZ or controlled airspace the same way. An aircraft
+  saved earlier with only the old Radio yes or no opens with VHF ticked (or
+  None).
 
 **Fuel**
 - **Fuel types:** the grades the engine is approved for (AVGAS 100LL,
@@ -135,10 +140,35 @@ All speeds are indicated airspeed (IAS) in knots, fuel is in litres.
   fuel burn**.
 - Without these the whole trip is treated as cruise.
 
-**Glide**
-- **Best glide IAS** and **glide ratio** (for example 30 for 30:1). Used to
-  show which aerodromes are reachable in a glide (see
-  [Aerodromes and briefing](./aerodromes-and-briefing.md)).
+**ICAO flight plan** (all optional; they feed the ICAO flight plan items that
+come from the aircraft)
+- **ICAO type:** the designator from ICAO Doc 8643 (2 to 4 characters, for
+  example C172 or GYRO). If yours has none, a flight plan uses ZZZZ with your
+  text as the type.
+- **Wake category:** L (light) by default, which is right for almost every
+  aircraft here.
+- **Radio / nav (item 10a):** Standard (S), None (N) or the letters
+  you choose (VHF, 8.33 kHz VHF, VOR, ADF, DME, ILS, GNSS, and so on). S means
+  VHF without 8.33 kHz, ADF, VOR and ILS in Swedish airspace, which most
+  light aircraft do not have, so choosing the real equipment is usually right.
+- **Transponder and ADS-B (item 10b)** are in the Equipment section above;
+  **colour and markings (item 19)** and the **Mode S address (item 18)** are
+  here.
+- A line under the fields shows items 7, 9, 10 and 19 as they would be
+  written, and what is still missing. The per-flight items (flight rules,
+  departure time, persons on board, survival equipment, your contact) are
+  asked when you build the plan: see
+  [Planning a route](./planning-a-route.md#icao-flight-plan).
+
+**Glide** (every category; 0 = not set)
+- **Best glide IAS** and **glide ratio** (for example 30 for 30:1 in a
+  glider, about 9 for a light single, about 3 for a gyroplane). Used to show
+  which aerodromes are reachable in a glide (see
+  [Aerodromes and briefing](./aerodromes-and-briefing.md)) and by the
+  pre-flight check for flying over water: how far you can glide to land, and
+  how far the wind carries you meanwhile. With no value the check assumes a
+  typical one for the category and says so. Choosing glider or touring motor
+  glider fills in typical values if none is set.
 
 ## The fuel plan
 

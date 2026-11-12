@@ -27,6 +27,7 @@ import { legSpans, legMsaList, legBelowMsa } from './legLevelDrag'
 import { airspaceCategory, DEFAULT_AIRSPACE_LEVELS, type AirspaceAlertLevels, type AirspaceCategory } from './airspaceAlertLevel'
 import { assistantReviewLabel, type RouteWaypoint, type LegOverride, type AircraftProfileDocType, type AssistantReview } from './types'
 import { landingPoints } from './routeCalc'
+import { hasVhfRadio } from './icaoFlightPlan'
 import type { MefGrid } from './mefGrid'
 import { waterStretches } from './waterGlide'
 
@@ -314,7 +315,7 @@ export function computeWarnings(
       const zone = band.class === 'TMZ' || band.type === 'TMZ' ? 'TMZ' : band.class === 'RMZ' || band.type === 'RMZ' ? 'RMZ' : null
       const controlled = /^[A-D]$/.test(band.class)
       const noXpdr  = aircraft?.transponder === 'none'
-      const noRadio = aircraft?.hasRadio === false
+      const noRadio = aircraft ? hasVhfRadio(aircraft) === false : false
       const lacks = zone === 'TMZ' && noXpdr ? 'a transponder'
         : (zone === 'RMZ' || controlled) && noRadio ? 'a radio'
         : null

@@ -9,7 +9,8 @@
  * `assistantReview` mark so the app shows "check before use" until the pilot
  * saves it there.
  */
-import type { AircraftCategory, AircraftProfileDocType, TransponderMode } from '@open-vfr/shared/types'
+import type { AircraftCategory, AircraftProfileDocType, TransponderMode, AdsbCode, WakeCategory } from '@open-vfr/shared/types'
+import { normaliseEquipment, normaliseIcaoType, vhfFromEquipment } from '@open-vfr/shared/icaoFlightPlan'
 import { POH_FIELDS, parsePohReply, parseFuelGrades, type PohField } from '@open-vfr/shared/pohImport'
 
 export const CATEGORIES: readonly AircraftCategory[] = ['SEP', 'MEP', 'MICRO', 'GYRO', 'HELI', 'TMG', 'GLIDER']
@@ -39,6 +40,12 @@ export interface AircraftInput {
   hardRunwayOnly?: boolean
   transponder?: TransponderMode
   hasRadio?: boolean
+  /** ICAO flight plan items (see @open-vfr/shared/icaoFlightPlan). */
+  equipment?: string[]
+  adsb?: AdsbCode
+  wakeCategory?: WakeCategory
+  colour?: string
+  modeSHex?: string
   /** POH page per field: shown to the pilot in the answer, so each value can be checked where it came from. */
   pages?: Record<string, string | number>
   values?: Partial<Record<NumericField, number>>
@@ -90,7 +97,7 @@ export function buildAircraft(input: AircraftInput, opts: { existing?: AircraftP
     set('registration', reg)
   }
   if (input.name !== undefined) set('name', input.name.trim().slice(0, 80))
-  if (input.icaoType !== undefined) set('icaoType', input.icaoType.trim().toUpperCase().slice(0, 4))
+  if (input.icaoType !== undefined) set('icaoType', normaliseIcaoType(input.icaoType).slice(0, 4))
   if (input.category !== undefined) set('category', input.category)
   if (creating && !doc.registration) throw new AircraftInputError('A new aircraft needs a registration.')
   if (creating && !doc.name) doc.name = [doc.icaoType, doc.registration].filter(Boolean).join(' ')
@@ -114,6 +121,22 @@ export function buildAircraft(input: AircraftInput, opts: { existing?: AircraftP
   if (input.hardRunwayOnly !== undefined) set('hardRunwayOnly', input.hardRunwayOnly)
   if (input.transponder !== undefined) set('transponder', input.transponder)
   if (input.hasRadio !== undefined) set('hasRadio', input.hasRadio)
+  if (input.equipment !== undefined) {
+    const l = normaliseEquipment(input.equipment)
+    if (input.equipment.length > 0 && l.length === 0) throw new AircraftInputError('equipment: use ICAO letters such as V, Y, O, F, D, L, G, B, R, or S (standard) or N (none).')
+    set('equipment', l.length ? l : undefined)
+    // The radio flag follows the letters (VHF: V, Y or S), so the pre-flight check and the flight plan agree.
+    const vhf = vhfFromEquipment(l)
+    if (vhf !== undefined) set('hasRadio', vhf)
+  }
+  if (input.adsb !== undefined) set('adsb', input.adsb)
+  if (input.wakeCategory !== undefined) set('wakeCategory', input.wakeCategory)
+  if (input.colour !== undefined) set('colour', input.colour.trim().slice(0, 120) || undefined)
+  if (input.modeSHex !== undefined) {
+    const hex = input.modeSHex.trim().toUpperCase()
+    if (hex && !/^[0-9A-F]{6}$/.test(hex)) throw new AircraftInputError('modeSHex must be 6 hexadecimal digits.')
+    set('modeSHex', hex || undefined)
+  }
 
   // A powered aircraft is no use for planning without speed, burn and fuel.
   if (doc.category !== 'GLIDER' && (doc.cruiseIas <= 0 || doc.fuelBurnLhr <= 0 || doc.maxFuelL <= 0)) {

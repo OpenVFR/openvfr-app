@@ -1,0 +1,25 @@
+.backdrop { position: fixed; inset: 0; z-index: 2100; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.6); }
+.card {
+  background: var(--surface-elevated); border: 1px solid var(--border-default); border-radius: 14px; padding: 18px;
+  width: min(640px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px; font-size: 12px; color: var(--text-secondary);
+}
+.head { display: flex; align-items: center; justify-content: space-between; }
+.title { margin: 0; font-size: 16px; color: var(--text-primary); }
+.close { background: none; border: 0; color: var(--text-secondary); cursor: pointer; padding: 4px; }
+.note { margin: 0; line-height: 1.45; color: var(--text-muted); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.lbl { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--text-muted); }
+.inp, .txt, .num {
+  background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 4px; color: var(--text-primary);
+  font-family: inherit; font-size: 12px; padding: 4px 8px; box-sizing: border-box; width: 100%;
+}
+.num { width: 64px; } .txt { width: 110px; }
+.set { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; border: 1px solid var(--border-default); border-radius: 6px; padding: 4px 10px 8px; margin: 0; }
+.set legend { font-size: 11px; color: var(--text-muted); padding: 0 4px; }
+.chk { display: inline-flex; align-items: center; gap: 4px; }
+.problems { border-left: 3px solid var(--accent-yellow, #e0b341); background: rgba(224, 179, 65, 0.08); padding: 6px 10px; border-radius: 0 4px 4px 0; color: var(--text-primary); }
+.problems ul { margin: 4px 0 0; padding-left: 16px; }
+.outHead { display: flex; align-items: center; justify-content: space-between; color: var(--text-primary); font-weight: 600; }
+.out { margin: 0; padding: 8px 10px; background: var(--input-bg); border: 1px solid var(--border-default); border-radius: 6px; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; color: var(--text-primary); }
+.btn { border: 1px solid var(--border-default); background: transparent; color: var(--text-primary); border-radius: 6px; padding: 3px 10px; font: inherit; cursor: pointer; }

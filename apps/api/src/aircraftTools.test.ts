@@ -49,3 +49,15 @@ test('an unreviewed profile stays "created" and unreviewed changes add up', () =
   const c = buildAircraft({ hasRadio: true }, { existing: b.doc, newId: 'n', by: 'B', now: 4 })
   assert.deepEqual(c.doc.assistantReview?.change, ['maxCrosswindKts', 'hasRadio'])
 })
+
+test('flight plan fields: equipment letters are cleaned, the ICAO type normalised, a bad Mode S address refused', () => {
+  const ctx = { newId: 'n', by: 'Claude', now: 1 }
+  const b = buildAircraft({ registration: 'SE-ABC', values: { cruiseIas: 100, fuelBurnLhr: 30, maxFuelL: 100 }, icaoType: 'c-172', equipment: ['g', 'V', 'o', 'v'], adsb: 'B1', wakeCategory: 'L', colour: ' White ', modeSHex: '4a1b2c' }, ctx)
+  assert.equal(b.doc.icaoType, 'C172')
+  assert.deepEqual(b.doc.equipment, ['G', 'O', 'V'])
+  assert.equal(b.doc.adsb, 'B1')
+  assert.equal(b.doc.colour, 'White')
+  assert.equal(b.doc.modeSHex, '4A1B2C')
+  assert.throws(() => buildAircraft({ registration: 'SE-ABC', values: { cruiseIas: 100, fuelBurnLhr: 30, maxFuelL: 100 }, modeSHex: 'xyz' }, ctx), AircraftInputError)
+  assert.throws(() => buildAircraft({ registration: 'SE-ABC', values: { cruiseIas: 100, fuelBurnLhr: 30, maxFuelL: 100 }, equipment: ['Q'] }, ctx), AircraftInputError)
+})

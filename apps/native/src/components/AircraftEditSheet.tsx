@@ -15,7 +15,8 @@ import {
 import { buildPohPrompt, parsePohReply, PohReplyError, POH_FIELDS, POH_MODEL_ADVICE, POH_CONNECT_ADVICE } from '@open-vfr/shared/pohImport'
 import { useAssistantMcpUrl } from '../hooks/useAssistantMcpUrl'
 import { FUEL_CODES, FUEL_LABELS, normalizeFuelCodes, preferenceLabel } from '@open-vfr/shared/fuelTypes'
-import type { FuelCode, TransponderMode } from '@open-vfr/shared/types'
+import type { FuelCode, TransponderMode, AdsbCode, WakeCategory } from '@open-vfr/shared/types'
+import { EQUIPMENT_LETTERS, STANDARD_EQUIPMENT_NOTE, WAKE_LABELS, ADSB_LABELS, fplAircraftItems, isIcaoType, normaliseEquipment, normaliseIcaoType, vhfFromEquipment } from '@open-vfr/shared/icaoFlightPlan'
 import { AppIcon } from './AppIcon'
 import * as Crypto from 'expo-crypto'
 import type { AircraftProfileDocType, AircraftCategory } from '../types/db'
@@ -23,18 +24,22 @@ import { NativeSheet } from './NativeSheet'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 const CATEGORIES: { value: AircraftCategory; label: string }[] = [
-  { value: 'SEP',    label: 'SEP'    },
-  { value: 'MEP',    label: 'MEP'    },
-  { value: 'MICRO',  label: 'Micro'  },
-  { value: 'GYRO',   label: 'Gyro'   },
-  { value: 'HELI',   label: 'Heli'   },
-  { value: 'TMG',    label: 'TMG'    },
+  { value: 'SEP',    label: 'Single-engine' },
+  { value: 'MEP',    label: 'Multi-engine' },
+  { value: 'MICRO',  label: 'Microlight' },
+  { value: 'GYRO',   label: 'Gyroplane' },
+  { value: 'HELI',   label: 'Helicopter' },
+  { value: 'TMG',    label: 'Motor glider' },
   { value: 'GLIDER', label: 'Glider' },
 ]
 
 const HAS_FUEL   = (c: AircraftCategory) => c !== 'GLIDER'
 const HAS_ENGINE = (c: AircraftCategory) => c !== 'GLIDER'
-const HAS_GLIDE  = (c: AircraftCategory) => c === 'GLIDER' || c === 'TMG'
+/** Typical glide when the pilot picks a category that glides well (nothing is assumed for the others: 0 = not set). */
+const TYPICAL_GLIDE: Partial<Record<AircraftCategory, { bestGlideIas: string; glideRatio: string }>> = {
+  GLIDER: { bestGlideIas: '65', glideRatio: '30' },
+  TMG:    { bestGlideIas: '60', glideRatio: '20' },
+}
 
 type FormState = {
   name: string; registration: string; icaoType: string; category: AircraftCategory
@@ -63,7 +68,13 @@ type FormState = {
   hardRunwayOnly: boolean
   fuelTypes: FuelCode[]
   transponder: '' | TransponderMode
-  hasRadio: '' | 'yes' | 'no'
+  // ICAO flight plan items
+  wakeCategory: '' | WakeCategory
+  equipmentMode: 'unset' | 'S' | 'N' | 'custom'
+  equipmentLetters: string[]
+  adsb: '' | AdsbCode
+  colour: string
+  modeSHex: string
 }
 
 const EMPTY: FormState = {
@@ -74,7 +85,7 @@ const EMPTY: FormState = {
   serviceCeilingFt: '14000', rocSlFpm: '700', rocCeilingFpm: '100',
   climbIas: '80', climbFuelLhr: '30',
   descentFpm: '500', descentIas: '100', descentFuelLhr: '15',
-  bestGlideIas: '65', glideRatio: '30',
+  bestGlideIas: '0', glideRatio: '0',
   takeoffSpeedKts: '0',
   maxCrosswindKts: '0',
   climbFuelCeilingLhr: '0',
@@ -93,7 +104,7 @@ const EMPTY: FormState = {
   hardRunwayOnly: false,
   fuelTypes: [],
   transponder: '',
-  hasRadio: '',
+  wakeCategory: '', equipmentMode: 'unset', equipmentLetters: [], adsb: '', colour: '', modeSHex: '',
 }
 
 function toForm(p: AircraftProfileDocType): FormState {
@@ -127,8 +138,28 @@ function toForm(p: AircraftProfileDocType): FormState {
     hardRunwayOnly: p.hardRunwayOnly === true,
     fuelTypes: normalizeFuelCodes(p.fuelTypes),
     transponder: p.transponder ?? '',
-    hasRadio: p.hasRadio === true ? 'yes' : p.hasRadio === false ? 'no' : '',
+    wakeCategory: p.wakeCategory ?? '',
+    equipmentMode: equipmentModeOf(p),
+    equipmentLetters: equipmentModeOf(p) === 'custom' ? (normaliseEquipment(p.equipment).length ? [...normaliseEquipment(p.equipment)] : ['V']) : [],
+    adsb: p.adsb ?? '',
+    colour: p.colour ?? '',
+    modeSHex: p.modeSHex ?? '',
   }
+}
+
+/** A profile that only has the older radio flag opens as VHF (V) or none (N). */
+function equipmentModeOf(p: { equipment?: readonly string[]; hasRadio?: boolean }): FormState['equipmentMode'] {
+  const l = normaliseEquipment(p.equipment)
+  if (l.length === 0) return p.hasRadio === true ? 'custom' : p.hasRadio === false ? 'N' : 'unset'
+  return l[0] === 'S' ? 'S' : l[0] === 'N' ? 'N' : 'custom'
+}
+
+/** The equipment letters the form stands for (undefined = not set). */
+function equipmentOf(f: Pick<FormState, 'equipmentMode' | 'equipmentLetters'>): string[] | undefined {
+  if (f.equipmentMode === 'S') return ['S']
+  if (f.equipmentMode === 'N') return ['N']
+  if (f.equipmentMode === 'custom') { const l = normaliseEquipment(f.equipmentLetters); return l.length ? l : undefined }
+  return undefined
 }
 
 function num(s: string, fallback = 0): number {
@@ -191,6 +222,7 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
         }
       }
       if (r.fuelTypes.length > 0) patch.fuelTypes = r.fuelTypes
+      if (r.category) patch.category = r.category
       setForm(f => ({ ...f, ...patch }))
       setPohNotes(notes)
       setPohError(''); setPohReply(''); setPohOpen(false); setPohDone(true)
@@ -224,7 +256,7 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       id:               profile?.id ?? Crypto.randomUUID(),
       name:             form.name.trim(),
       registration:     form.registration.trim().toUpperCase(),
-      icaoType:         form.icaoType.trim().toUpperCase(),
+      icaoType:         normaliseIcaoType(form.icaoType),
       category:         cat,
       cruiseAltFt:      num(form.cruiseAltFt),
       cruiseIas:        num(form.cruiseIas),
@@ -243,8 +275,8 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       descentFpm:       HAS_ENGINE(cat) ? num(form.descentFpm) : 0,
       descentIas:       HAS_ENGINE(cat) ? num(form.descentIas) : 0,
       descentFuelLhr:   HAS_ENGINE(cat) && HAS_FUEL(cat) ? num(form.descentFuelLhr) : 0,
-      bestGlideIas:     HAS_GLIDE(cat) ? num(form.bestGlideIas) : 0,
-      glideRatio:       HAS_GLIDE(cat) ? num(form.glideRatio)   : 0,
+      bestGlideIas:     num(form.bestGlideIas),
+      glideRatio:       num(form.glideRatio),
       takeoffSpeedKts:  num(form.takeoffSpeedKts),
       maxCrosswindKts:  Math.max(0, num(form.maxCrosswindKts)),
       climbFuelCeilingLhr: HAS_ENGINE(cat) && HAS_FUEL(cat) ? Math.max(0, num(form.climbFuelCeilingLhr)) : 0,
@@ -263,7 +295,12 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       minRunwayM:       Math.max(0, Math.round(num(form.minRunwayM))),
       hardRunwayOnly:   form.hardRunwayOnly,
       transponder:      form.transponder || undefined,
-      hasRadio:         form.hasRadio === '' ? undefined : form.hasRadio === 'yes',
+      hasRadio:         vhfFromEquipment(equipmentOf(form)),
+      wakeCategory:     form.wakeCategory || undefined,
+      equipment:        equipmentOf(form),
+      adsb:             form.adsb || undefined,
+      colour:           form.colour.trim() || undefined,
+      modeSHex:         /^[0-9A-Fa-f]{6}$/.test(form.modeSHex.trim()) ? form.modeSHex.trim().toUpperCase() : undefined,
       updatedAt:        Date.now(),
     }
     onSave(doc)
@@ -313,7 +350,7 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
             disabled={!pohReply.trim()}
             onPress={applyPohReply}
           >
-            <Text style={styles.btnPrimaryTxt}>Fill in the form</Text>
+            <Text style={styles.btnPrimaryTxt}>Apply to the form</Text>
           </TouchableOpacity>
           <Text style={styles.pohHint}>The PDF stays between you and your assistant.</Text>
           {canConnect && <Text style={styles.pohHint}>{POH_CONNECT_ADVICE}</Text>}
@@ -329,14 +366,18 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       <FieldRow label="Name" value={form.name} error={errors.name} note={pohNotes.name} onChange={v => set('name', v)} placeholder="e.g. My Cessna 172" />
       <FieldRow label="Registration" value={form.registration} error={errors.registration} onChange={v => set('registration', v)} placeholder="SE-ABC" autoCap />
       <FieldRow label="ICAO Type" value={form.icaoType} note={pohNotes.icaoType} onChange={v => set('icaoType', v)} placeholder="C172" autoCap />
+      {form.icaoType.trim() !== '' && !isIcaoType(normaliseIcaoType(form.icaoType)) && (
+        <Text style={styles.pohHint}>Not a valid designator (2 to 4 characters, starting with a letter). A flight plan then uses ZZZZ and your text as the type.</Text>
+      )}
 
       <Text style={styles.fieldLabel}>Category</Text>
+      <Text style={styles.pohHint}>Pick the most specific type: a gyroplane is not a single-engine aeroplane.</Text>
       <View style={styles.catRow}>
         {CATEGORIES.map(c => (
           <TouchableOpacity
             key={c.value}
             style={[styles.catChip, form.category === c.value && styles.catChipActive]}
-            onPress={() => set('category', c.value)}
+            onPress={() => setForm(f => ({ ...f, category: c.value, ...((Number(f.glideRatio) || 0) === 0 ? TYPICAL_GLIDE[c.value] ?? {} : {}) }))}
           >
             <Text style={[styles.catChipTxt, form.category === c.value && styles.catChipTxtActive]}>{c.label}</Text>
           </TouchableOpacity>
@@ -376,13 +417,60 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
         options={[{ v: '', label: 'Not set' }, { v: 'none', label: 'None' }, { v: 'A', label: 'A' }, { v: 'C', label: 'C' }, { v: 'S', label: 'S' }]}
         value={form.transponder}
         onChange={v => set('transponder', v as FormState['transponder'])}
+        unsetValue=""
       />
+
       <ChipRow
-        label="Radio"
-        options={[{ v: '', label: 'Not set' }, { v: 'yes', label: 'Yes' }, { v: 'no', label: 'No' }]}
-        value={form.hasRadio}
-        onChange={v => set('hasRadio', v as FormState['hasRadio'])}
+        label="Radio / nav"
+        options={[{ v: 'unset', label: 'Not set' }, { v: 'N', label: 'None (N)' }, { v: 'custom', label: 'Choose' }, { v: 'S', label: 'Standard (S)' }]}
+        value={form.equipmentMode}
+        onChange={v => set('equipmentMode', v as FormState['equipmentMode'])}
+        unsetValue="unset"
       />
+      {form.equipmentMode === 'S' && <Text style={styles.pohHint}>{STANDARD_EQUIPMENT_NOTE}</Text>}
+      {form.equipmentMode === 'custom' && (
+        <View style={styles.catRow} accessibilityLabel="Radio and navigation equipment">
+          {EQUIPMENT_LETTERS.map(e => {
+            const on = form.equipmentLetters.includes(e.code)
+            return (
+              <TouchableOpacity
+                key={e.code}
+                style={[styles.catChip, on && styles.catChipActive]}
+                onPress={() => set('equipmentLetters', on ? form.equipmentLetters.filter(c => c !== e.code) : [...form.equipmentLetters, e.code])}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: on }}
+              >
+                <Text style={[styles.catChipTxt, on && styles.catChipTxtActive]}>{e.code} {e.label}</Text>
+              </TouchableOpacity>
+            )
+          })}
+        </View>
+      )}
+      <ChipRow
+        label="ADS-B"
+        options={[{ v: '', label: 'None' }, ...(Object.keys(ADSB_LABELS) as AdsbCode[]).map(a => ({ v: a, label: a }))]}
+        value={form.adsb}
+        onChange={v => set('adsb', v as FormState['adsb'])}
+      />
+
+      <SectionLabel text="ICAO flight plan" />
+      <ChipRow
+        label="Wake category"
+        options={[{ v: '', label: 'L: Light (default)' }, ...(['M', 'H', 'J'] as WakeCategory[]).map(w => ({ v: w, label: `${w}: ${WAKE_LABELS[w].split(' (')[0]}` }))]}
+        value={form.wakeCategory === 'L' ? '' : form.wakeCategory}
+        onChange={v => set('wakeCategory', v as FormState['wakeCategory'])}
+      />
+      <FieldRow label="Colour" value={form.colour} onChange={v => set('colour', v)} placeholder="White with blue stripes" />
+      <FieldRow label="Mode S address (6 hex digits)" value={form.modeSHex} onChange={v => set('modeSHex', v)} placeholder="4A1B2C" autoCap />
+      {(() => {
+        const it = fplAircraftItems({ registration: form.registration, icaoType: form.icaoType, wakeCategory: form.wakeCategory || undefined, equipment: equipmentOf(form), transponder: form.transponder || undefined, adsb: form.adsb || undefined, colour: form.colour, modeSHex: form.modeSHex })
+        return (
+          <Text style={styles.pohHint}>
+            Flight plan: 7 {it.identification || '-'} · 9 {it.type}/{it.wake} · 10 {it.equipment}/{it.surveillance}{it.colour ? ` · 19 A/${it.colour}` : ''}
+            {it.missing.length > 0 ? ` Missing: ${it.missing.join('; ')}.` : ''}
+          </Text>
+        )
+      })()}
 
       {HAS_FUEL(form.category) && (
         <>
@@ -444,13 +532,9 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
         </>
       )}
 
-      {HAS_GLIDE(form.category) && (
-        <>
-          <SectionLabel text="Glide" />
-          <FieldRow label="Best glide IAS" unit="kts" value={form.bestGlideIas} note={pohNotes.bestGlideIas} numeric onChange={v => set('bestGlideIas', v)} />
-          <FieldRow label="Glide ratio" unit=":1" value={form.glideRatio} note={pohNotes.glideRatio} numeric onChange={v => set('glideRatio', v)} />
-        </>
-      )}
+      <SectionLabel text="Glide" />
+      <FieldRow label="Best glide IAS (0 = not set)" unit="kts" value={form.bestGlideIas} note={pohNotes.bestGlideIas} numeric onChange={v => set('bestGlideIas', v)} />
+      <FieldRow label="Glide ratio (0 = not set)" unit=":1" value={form.glideRatio} note={pohNotes.glideRatio} numeric onChange={v => set('glideRatio', v)} />
 
       <View style={styles.actions}>
         <TouchableOpacity style={styles.btn} onPress={onClose}>
@@ -465,11 +549,13 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
   )
 }
 
-function ChipRow({ label, options, value, onChange }: {
+function ChipRow({ label, options, value, onChange, unsetValue }: {
   label: string
   options: { v: string; label: string }[]
   value: string
   onChange: (v: string) => void
+  /** Tapping the chosen chip again sets this value (the "Not set" one), so a choice can be cleared. */
+  unsetValue?: string
 }) {
   const styles = useThemedStyles(makeStyles)
   return (
@@ -480,7 +566,7 @@ function ChipRow({ label, options, value, onChange }: {
           <TouchableOpacity
             key={o.v}
             style={[styles.catChip, value === o.v && styles.catChipActive]}
-            onPress={() => onChange(o.v)}
+            onPress={() => onChange(unsetValue !== undefined && value === o.v && o.v !== unsetValue ? unsetValue : o.v)}
             accessibilityRole="radio"
             accessibilityState={{ selected: value === o.v }}
           >

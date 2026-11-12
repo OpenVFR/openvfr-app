@@ -342,6 +342,23 @@ test('changes need reading too: routes:write without routes:read is refused', as
   assert.equal(saved.length + savedRoutes.length + places.length, before, 'nothing written')
 })
 
+test('draft_flight_plan builds the message for a saved route and says what is missing', async () => {
+  const t = await connect(`offline_access ${SCOPE_BRIEFING} ${SCOPE_ROUTES}`)
+  const when = new Date(Date.now() + 3 * 3_600_000).toISOString()
+  const r = toolText(await rpc(t.access_token, 'tools/call', { name: 'draft_flight_plan', arguments: { route: 'Home loop', departure: when, pilotName: 'Test Pilot', pilotPhone: '+46701234567', personsOnBoard: 2, alternate: 'ESKN' } }))
+  assert.match(r, /\(FPL-SETST-VG/)
+  assert.match(r, /-ESSB\d{4}/)
+  assert.match(r, /-ESSA\d{4} ESKN/)
+  assert.match(r, /P\/2/)
+  assert.match(r, /not filed and not an official document/)
+  // The test aircraft has no equipment, transponder or colour set: the answer says so.
+  assert.match(r, /Check before filing:.*equipment.*transponder.*colour/s)
+  const bad = await rpc(t.access_token, 'tools/call', { name: 'draft_flight_plan', arguments: { route: 'Home loop', pilotPhone: '0701234567' } })
+  assert.match(toolText(bad), /must start with \+/)
+  const none = await connect(`offline_access ${SCOPE_BRIEFING}`)
+  assert.equal((await rpc(none.access_token, 'tools/call', { name: 'draft_flight_plan', arguments: { route: 'Home loop' } })).result?.['isError'], true)
+})
+
 test('the SQL migration matches better-auth\'s schema for the OAuth tables', async () => {
   const db = new PGlite()
   await db.exec(`CREATE ROLE openvfr_api; CREATE ROLE openvfr_anon; CREATE ROLE openvfr_authenticated;

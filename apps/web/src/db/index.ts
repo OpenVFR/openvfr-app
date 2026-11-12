@@ -3,7 +3,7 @@ import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie'
 import { RxDBMigrationSchemaPlugin } from 'rxdb/plugins/migration-schema'
 import { RxDBQueryBuilderPlugin } from 'rxdb/plugins/query-builder'
 import type { RouteWaypoint } from '../utils/routeCalc'
-import type { FuelCode, TransponderMode, AssistantReview } from '@open-vfr/shared/types'
+import type { FuelCode, TransponderMode, AssistantReview, AdsbCode, WakeCategory } from '@open-vfr/shared/types'
 
 addRxPlugin(RxDBMigrationSchemaPlugin)
 addRxPlugin(RxDBQueryBuilderPlugin)
@@ -53,7 +53,7 @@ export type RouteDocType = {
 
 const routeSchema: RxJsonSchema<RouteDocType> = {
   title: 'route',
-  version: 9,
+  version: 7,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -145,15 +145,15 @@ export type AircraftProfileDocType = {
   fuelTypes?: readonly FuelCode[]
   minRunwayM?: number       // shortest acceptable runway, m. 0/absent = no limit
   hardRunwayOnly?: boolean  // paved runways only
-  // v6: equipment and crosswind limit (absent = not set)
+  // v5 (continued): equipment and crosswind limit (absent = not set)
   transponder?: TransponderMode
   hasRadio?: boolean
   maxCrosswindKts?: number  // max demonstrated crosswind, kt
-  // v7: climb burn at ceiling, final reserve, unusable fuel (absent = not set)
+  // v5 (continued): climb burn at ceiling, final reserve, unusable fuel (absent = not set)
   climbFuelCeilingLhr?: number
   finalReserveMin?: number
   unusableFuelL?: number
-  // v8: runway distances over 50 ft (m) and V-speeds (kt IAS); absent = not set
+  // v5 (continued): runway distances over 50 ft (m) and V-speeds (kt IAS); absent = not set
   takeoffDist50ftM?: number
   landingDist50ftM?: number
   vs0Kts?: number
@@ -163,14 +163,20 @@ export type AircraftProfileDocType = {
   vaKts?: number
   vnoKts?: number
   vneKts?: number
-  // v9: set by the assistant connection, cleared when saved in the app
+  // v5 (continued): set by the assistant connection, cleared when saved in the app
   assistantReview?: AssistantReview
+  // v5 (continued): ICAO flight plan items from the profile (absent = not set)
+  equipment?: readonly string[]   // item 10a letters
+  adsb?: AdsbCode
+  wakeCategory?: WakeCategory
+  colour?: string
+  modeSHex?: string
   updatedAt: number
 }
 
 const aircraftProfileSchema: RxJsonSchema<AircraftProfileDocType> = {
   title: 'aircraft_profile',
-  version: 9,
+  version: 5,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -217,6 +223,11 @@ const aircraftProfileSchema: RxJsonSchema<AircraftProfileDocType> = {
     vaKts: { type: 'number' },
     vnoKts: { type: 'number' },
     vneKts: { type: 'number' },
+    equipment:        { type: 'array', items: { type: 'string', maxLength: 2 }, maxItems: 16 },
+    adsb:             { type: 'string', maxLength: 2 },
+    wakeCategory:     { type: 'string', maxLength: 1 },
+    colour:           { type: 'string', maxLength: 120 },
+    modeSHex:         { type: 'string', maxLength: 6 },
     assistantReview:  { type: 'object' },
     updatedAt:        { type: 'number' },
   },
@@ -408,12 +419,9 @@ export function getDb(): Promise<OpenVfrDb> {
                 return rest
               }),
             }),
-            // v6 → v7: optional waypoint `fuelStop` (absent = fly through)
+            // v6 → v7: optional waypoint `fuelStop` (absent = fly through) and `elevationFt` (aerodrome
+            // field elevation), and optional assistantReview (absent = not written by an assistant)
             7: (oldDoc) => ({ ...oldDoc }),
-            // v7 → v8: optional waypoint `elevationFt` (aerodrome field elevation)
-            8: (oldDoc) => ({ ...oldDoc }),
-            // v8 → v9: optional assistantReview (absent = not written by an assistant)
-            9: (oldDoc) => ({ ...oldDoc }),
           },
         },
         aircraft_profiles: {
@@ -439,16 +447,10 @@ export function getDb(): Promise<OpenVfrDb> {
             3: (oldDoc) => ({ ...oldDoc }),
             // v3 → v4: optional diversionMin (absent = 30 min)
             4: (oldDoc) => ({ ...oldDoc }),
-            // v4 → v5: optional fuelTypes, minRunwayM, hardRunwayOnly (absent = not set)
+            // v4 → v5: optional fuelTypes, runway limits, equipment, crosswind limit, climb burn at ceiling,
+            // final reserve, unusable fuel, runway distances and V-speeds, assistantReview and the ICAO
+            // flight plan fields (absent = not set)
             5: (oldDoc) => ({ ...oldDoc }),
-            // v5 → v6: optional transponder, hasRadio, maxCrosswindKts (absent = not set)
-            6: (oldDoc) => ({ ...oldDoc }),
-            // v6 → v7: optional climbFuelCeilingLhr, finalReserveMin, unusableFuelL (absent = not set)
-            7: (oldDoc) => ({ ...oldDoc }),
-            // v7 → v8: optional runway distances and V-speeds (absent = not set)
-            8: (oldDoc) => ({ ...oldDoc }),
-            // v8 → v9: optional assistantReview (absent = not changed by an assistant)
-            9: (oldDoc) => ({ ...oldDoc }),
           },
         },
         user_waypoints:    { schema: userWaypointSchema },

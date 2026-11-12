@@ -33,6 +33,7 @@ in the route screen's header and under **Use your AI assistant** in Settings.
 - "On my route to Umeå, fly via ESNS and climb to 4,500 ft on the last leg."
 - "Save my cabin at 59.50 17.93 as a place and plan a route there from ESSB."
 - "How many hours have I flown in the last 90 days, and when was my last flight?"
+- "Draft the ICAO flight plan for my route to Visby with SE-ABC, departing 09:30 UTC, two on board." (it drafts the text and lists what is missing; it does not file anything)
 - "Which altitudes should I fly on my route to Visby? I want to stay below the TMAs where terrain allows."
 
 Many assistants also offer OpenVFR's prompts in their prompt or attachment

@@ -164,3 +164,42 @@ On native, planning has its own screen with four segments along the top:
   [Saved routes and places](./routes-and-places.md).
 - **Logs:** your flight logs, with import and export of GPX, a period and
   aircraft filter, and joining. See [Flight logs](./flight-logs.md).
+
+## ICAO flight plan
+
+With a route and an aircraft selected, **Flight Plan (ICAO)** (web, in the
+side panel) or **ICAO flight plan…** in the route actions menu (mobile) builds
+the plan as text:
+
+- **Asked per flight:** flight rules (V, I, Y, Z), type of flight (G for
+  private flying), off-block time in UTC, alternate, persons on board, your name
+  and phone, emergency radio, survival equipment, life jackets, dinghies and
+  remarks. The pilot name and phone and the emergency equipment are
+  remembered for the next flight.
+- **From the aircraft and route:** registration, type and wake category,
+  equipment and surveillance, cruise speed (true airspeed), the route as
+  degrees and minutes (aerodromes by their code), the flight time (rounded up)
+  with the leg winds, endurance from usable fuel and fuel burn, colour and
+  markings.
+- **Level in the plan:** **VFR** (the default) writes the word VFR; **Planned
+  levels** writes the first leg's level and, after each route point where the
+  level or speed changes, the new speed and level (for example
+  `/N0107A045`). Levels are written as altitudes (A, hundreds of feet on
+  QNH) as you planned them. OpenVFR does not convert them to flight levels:
+  at or above the transition altitude (see ENR 1.7 of the national AIP) a
+  level is a flight level on the standard pressure setting, so change those
+  by hand; the check list reminds you.
+- **Output:** the message `(FPL-…)` and the item 19 lines, each with a Copy
+  (web) or Share (mobile) button, and a **Check before you file** list of what
+  is missing: for example no registration, a type that is not a valid
+  designator (the plan then uses ZZZZ and puts your text after `TYP/`), more
+  type of flight X without an explanation, an off-block time less than 5
+  minutes or more than 5 days ahead, a phone number that does not start with
+  `+` and the country code, endurance shorter than the flight time, the
+  destination used as the alternate, or dinghies without capacity and
+  colour. Accents and characters the aeronautical network does not carry are
+  removed from names, colours and remarks.
+
+OpenVFR does not send the plan. Copy it into the filing service you use (the
+ATS provider's form or message window) and check it there; it is a draft, not
+an official document.

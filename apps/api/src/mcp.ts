@@ -39,6 +39,7 @@ import { registerAircraftTools } from './mcpAircraftTools'
 import { registerRouteTools } from './mcpRouteTools'
 import { registerPlaceTools } from './mcpPlaceTools'
 import { registerLogbookTools } from './mcpLogbookTools'
+import { registerFlightPlanTool } from './mcpFlightPlanTool'
 import { registerPrompts } from './mcpPrompts'
 
 export type { McpDeps } from './mcpContext'
@@ -58,6 +59,7 @@ export function createMcpEndpoint(auth: typeof authInstance, deps: McpDeps): (re
     registerAircraftTools(ctx)
     registerPlaceTools(ctx)
     registerLogbookTools(ctx)
+    registerFlightPlanTool(ctx)
     registerRouteTools(ctx)
     return server
   }

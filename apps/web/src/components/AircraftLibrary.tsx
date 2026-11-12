@@ -4,7 +4,8 @@ import type { AircraftProfileDocType, AircraftCategory } from '../db/index'
 import { extractPohViaServer, RateLimitError } from '../utils/pohExtract'
 import { POH_FIELDS, type PohField } from '@open-vfr/shared/pohImport'
 import { FUEL_CODES, FUEL_LABELS, normalizeFuelCodes, preferenceLabel } from '@open-vfr/shared/fuelTypes'
-import { assistantReviewLabel, type FuelCode, type TransponderMode } from '@open-vfr/shared/types'
+import { assistantReviewLabel, type FuelCode, type TransponderMode, type AdsbCode, type WakeCategory } from '@open-vfr/shared/types'
+import { EQUIPMENT_LETTERS, STANDARD_EQUIPMENT_NOTE, WAKE_LABELS, ADSB_LABELS, fplAircraftItems, isIcaoType, normaliseEquipment, normaliseIcaoType, vhfFromEquipment } from '@open-vfr/shared/icaoFlightPlan'
 import PohImportChooser from './PohImportChooser'
 import { useSyncRejected } from '../sync/cloudSync'
 import SyncRefusedNote from './SyncRefusedNote'
@@ -16,8 +17,8 @@ import { IconCheck, IconX } from '@tabler/icons-react'
 // ---------------------------------------------------------------------------
 
 const CATEGORIES: { value: AircraftCategory; label: string; badge: string }[] = [
-  { value: 'SEP',    label: 'Single Engine Piston',   badge: 'SEP'    },
-  { value: 'MEP',    label: 'Multi Engine Piston',    badge: 'MEP'    },
+  { value: 'SEP',    label: 'Single-engine piston aeroplane', badge: 'SEP'    },
+  { value: 'MEP',    label: 'Multi-engine piston aeroplane',  badge: 'MEP'    },
   { value: 'MICRO',  label: 'Microlight / ULM',       badge: 'MICRO'  },
   { value: 'GYRO',   label: 'Gyroplane / Autogyro',   badge: 'GYRO'   },
   { value: 'HELI',   label: 'Helicopter',             badge: 'HELI'   },
@@ -30,7 +31,11 @@ const HAS_FUEL = (cat: AircraftCategory) => cat !== 'GLIDER'
 /** Categories with an engine — show Climb / Descent section. */
 const HAS_ENGINE = (cat: AircraftCategory) => cat !== 'GLIDER'
 /** Categories with meaningful glide performance — show Glide section. */
-const HAS_GLIDE = (cat: AircraftCategory) => cat === 'GLIDER' || cat === 'TMG'
+/** Typical glide when the pilot picks a category that glides well (nothing is assumed for the others: 0 = not set). */
+const TYPICAL_GLIDE: Partial<Record<AircraftCategory, { bestGlideIas: string; glideRatio: string }>> = {
+  GLIDER: { bestGlideIas: '65', glideRatio: '30' },
+  TMG:    { bestGlideIas: '60', glideRatio: '20' },
+}
 
 // ---------------------------------------------------------------------------
 // Form state — all numeric fields as strings for controlled inputs.
@@ -82,7 +87,14 @@ type FormState = {
   vneKts: string
   // Equipment: '' = not set
   transponder:      '' | TransponderMode
-  hasRadio:         '' | 'yes' | 'no'
+  // ICAO flight plan items
+  wakeCategory:     '' | WakeCategory
+  /** Item 10a: not set, S (standard), N (none) or the chosen letters. */
+  equipmentMode:    'unset' | 'S' | 'N' | 'custom'
+  equipmentLetters: string[]
+  adsb:             '' | AdsbCode
+  colour:           string
+  modeSHex:         string
 }
 
 const EMPTY_FORM: FormState = {
@@ -107,8 +119,8 @@ const EMPTY_FORM: FormState = {
   descentFpm:       '500',
   descentIas:       '100',
   descentFuelLhr:   '15',
-  bestGlideIas:     '65',
-  glideRatio:       '30',
+  bestGlideIas:     '0',
+  glideRatio:       '0',
   takeoffSpeedKts:  '0',
   fuelTypes:        [],
   minRunwayM:       '0',
@@ -127,7 +139,12 @@ const EMPTY_FORM: FormState = {
   vnoKts: '0',
   vneKts: '0',
   transponder:      '',
-  hasRadio:         '',
+  wakeCategory:     '',
+  equipmentMode:    'unset',
+  equipmentLetters: [],
+  adsb:             '',
+  colour:           '',
+  modeSHex:         '',
 }
 
 function profileToForm(p: AircraftProfileDocType): FormState {
@@ -173,8 +190,28 @@ function profileToForm(p: AircraftProfileDocType): FormState {
     vnoKts: String(p.vnoKts ?? 0),
     vneKts: String(p.vneKts ?? 0),
     transponder:      p.transponder ?? '',
-    hasRadio:         p.hasRadio === true ? 'yes' : p.hasRadio === false ? 'no' : '',
+    wakeCategory:     p.wakeCategory ?? '',
+    equipmentMode:    equipmentModeOf(p),
+    equipmentLetters: equipmentModeOf(p) === 'custom' ? (normaliseEquipment(p.equipment).length ? [...normaliseEquipment(p.equipment)] : ['V']) : [],
+    adsb:             p.adsb ?? '',
+    colour:           p.colour ?? '',
+    modeSHex:         p.modeSHex ?? '',
   }
+}
+
+/** A profile that only has the older radio flag opens as VHF (V) or none (N). */
+function equipmentModeOf(p: { equipment?: readonly string[]; hasRadio?: boolean }): FormState['equipmentMode'] {
+  const l = normaliseEquipment(p.equipment)
+  if (l.length === 0) return p.hasRadio === true ? 'custom' : p.hasRadio === false ? 'N' : 'unset'
+  return l[0] === 'S' ? 'S' : l[0] === 'N' ? 'N' : 'custom'
+}
+
+/** The equipment letters the form stands for (undefined = not set). */
+function equipmentOf(f: Pick<FormState, 'equipmentMode' | 'equipmentLetters'>): string[] | undefined {
+  if (f.equipmentMode === 'S') return ['S']
+  if (f.equipmentMode === 'N') return ['N']
+  if (f.equipmentMode === 'custom') { const l = normaliseEquipment(f.equipmentLetters); return l.length ? l : undefined }
+  return undefined
 }
 
 function parseNum(s: string, fallback = 0): number {
@@ -277,8 +314,6 @@ export default function AircraftLibrary({
   const [pohNotes, setPohNotes] = useState<Map<keyof FormState, string>>(new Map())
   // POH page per imported value, shown in the field's tooltip.
   const [pohPages, setPohPages] = useState<Map<keyof FormState, string>>(new Map())
-  // The POH chooser is open for a new aircraft; for an existing one it opens from the header.
-  const [chooserOpen, setChooserOpen] = useState(false)
   const [assistantApplied, setAssistantApplied] = useState(false)
   const poh = (key: keyof FormState) => ({ pohNote: pohNotes.get(key), pohPage: pohPages.get(key) })
 
@@ -294,14 +329,17 @@ export default function AircraftLibrary({
       setErrors({})
       setPohNotes(new Map())
       setPohPages(new Map())
-      setChooserOpen(mode === 'new')
       setAssistantApplied(false)
       return
     }
-    setChooserOpen(false)
     const p = profiles.find(x => x.id === mode)
     if (p) { setForm(profileToForm(p)); setErrors({}) }
   }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Changing the category fills in a typical glide for gliders and motor gliders, when none is set yet. */
+  function setCategory(cat: AircraftCategory) {
+    setForm(f => ({ ...f, category: cat, ...((parseNum(f.glideRatio) || 0) === 0 ? TYPICAL_GLIDE[cat] ?? {} : {}) }))
+  }
 
   function set(key: keyof FormState, val: string) {
     setForm(f => ({ ...f, [key]: val }))
@@ -319,6 +357,7 @@ export default function AircraftLibrary({
     warnings: Partial<Record<PohField, string>> = {},
     pages: Partial<Record<PohField, string>> = {},
     fuelTypes: FuelCode[] = [],
+    category: AircraftCategory | null = null,
   ) {
     const notes = new Map<keyof FormState, string>()
     const pageMap = new Map<keyof FormState, string>()
@@ -335,6 +374,7 @@ export default function AircraftLibrary({
     setPohNotes(notes)
     setPohPages(pageMap)
     if (fuelTypes.length > 0) patch.fuelTypes = fuelTypes
+    if (category) patch.category = category
     setForm(f => ({ ...f, ...patch }))
   }
 
@@ -352,7 +392,7 @@ export default function AircraftLibrary({
         if (stage === 'extracting') setPohStage('Extracting performance data…')
       })
       pohFileRef.current = null
-      applyPohValues(result, {}, {}, result.fuelTypes ?? [])
+      applyPohValues(result, {}, {}, result.fuelTypes ?? [], result.category ?? null)
       if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null }
       setPohState('done')
       setTimeout(() => setPohState('idle'), 3000)
@@ -407,7 +447,7 @@ export default function AircraftLibrary({
         id:               mode === 'new' ? undefined : mode,
         name:             form.name.trim(),
         registration:     form.registration.trim().toUpperCase(),
-        icaoType:         form.icaoType.trim().toUpperCase(),
+        icaoType:         normaliseIcaoType(form.icaoType),
         category:         form.category,
         cruiseAltFt:      parseNum(form.cruiseAltFt),
         cruiseIas:        parseNum(form.cruiseIas),
@@ -426,8 +466,8 @@ export default function AircraftLibrary({
         descentFpm:       HAS_ENGINE(form.category) ? parseNum(form.descentFpm)        : 0,
         descentIas:       HAS_ENGINE(form.category) ? parseNum(form.descentIas)        : 0,
         descentFuelLhr:   HAS_ENGINE(form.category) && HAS_FUEL(form.category) ? parseNum(form.descentFuelLhr) : 0,
-        bestGlideIas:     HAS_GLIDE(form.category) ? parseNum(form.bestGlideIas) : 0,
-        glideRatio:       HAS_GLIDE(form.category) ? parseNum(form.glideRatio)   : 0,
+        bestGlideIas:     parseNum(form.bestGlideIas),
+        glideRatio:       parseNum(form.glideRatio),
         takeoffSpeedKts:  parseNum(form.takeoffSpeedKts),
         fuelTypes:        HAS_FUEL(form.category) ? form.fuelTypes : [],
         minRunwayM:       Math.max(0, Math.round(parseNum(form.minRunwayM))),
@@ -446,7 +486,12 @@ export default function AircraftLibrary({
         vnoKts: Math.max(0, parseNum(form.vnoKts)),
         vneKts: Math.max(0, parseNum(form.vneKts)),
         transponder:      form.transponder || undefined,
-        hasRadio:         form.hasRadio === '' ? undefined : form.hasRadio === 'yes',
+        hasRadio:         vhfFromEquipment(equipmentOf(form)),
+        wakeCategory:     form.wakeCategory || undefined,
+        equipment:        equipmentOf(form),
+        adsb:             form.adsb || undefined,
+        colour:           form.colour.trim() || undefined,
+        modeSHex:         /^[0-9A-Fa-f]{6}$/.test(form.modeSHex.trim()) ? form.modeSHex.trim().toUpperCase() : undefined,
       })
       setMode('list')
     } finally {
@@ -529,26 +574,20 @@ export default function AircraftLibrary({
       <div className={css.formHeader}>
         <span className={css.formTitle}>{isNew ? 'New Aircraft' : 'Edit Aircraft'}</span>
         <div className={css.formHeaderActions}>
-          {!chooserOpen && <button className={css.iconBtn} onClick={() => setChooserOpen(true)}>Fill from POH</button>}
           <button className={css.iconBtn} title="Back to list" onClick={() => setMode('list')}><IconX size={14} aria-hidden="true" /></button>
         </div>
       </div>
 
-      {chooserOpen && (
-        <PohImportChooser
-          signedIn
-          busy={pohBusy}
-          onClose={() => setChooserOpen(false)}
-          onPickPdf={() => { if (countdownTimerRef.current) { clearInterval(countdownTimerRef.current); countdownTimerRef.current = null } setPohState('idle'); setPohError(''); setPohCountdown(0); pohInputRef.current?.click() }}
-          onApply={r => {
-            applyPohValues(r.values, r.warnings, r.pages, r.fuelTypes)
-            setChooserOpen(false)
-            setPohError('')
-            setPohState('idle')
-            setAssistantApplied(true)
-          }}
-        />
-      )}
+      <PohImportChooser
+        busy={pohBusy}
+        onPickPdf={() => { if (countdownTimerRef.current) { clearInterval(countdownTimerRef.current); countdownTimerRef.current = null } setPohState('idle'); setPohError(''); setPohCountdown(0); pohInputRef.current?.click() }}
+        onApply={r => {
+          applyPohValues(r.values, r.warnings, r.pages, r.fuelTypes, r.category)
+          setPohError('')
+          setPohState('idle')
+          setAssistantApplied(true)
+        }}
+      />
       {pohState === 'error' && pohError && (
         <p className={css.pohError}>{pohError}</p>
       )}
@@ -572,7 +611,10 @@ export default function AircraftLibrary({
         <div className={css.sectionLabel}>Identity</div>
         <Field label="Name"         value={form.name}         error={errors.name}         placeholder="e.g. My Cessna 172" tooltip="Your name for this aircraft profile" {...poh('name')} onChange={v => set('name', v)} />
         <Field label="Registration" value={form.registration} error={errors.registration} placeholder="SE-ABC"              tooltip="Aircraft registration mark (e.g. SE-ABC)" onChange={v => set('registration', v)} />
-        <Field label="ICAO Type"    value={form.icaoType}     placeholder="C172"                                            tooltip="ICAO type designator (e.g. C172, PA28, EC35). Used for wake turbulence category." {...poh('icaoType')} onChange={v => set('icaoType', v)} />
+        <Field label="ICAO Type"    value={form.icaoType}     placeholder="C172"                                            tooltip="ICAO type designator from Doc 8643 (e.g. C172, PA28, GYRO): 2 to 4 characters. Used in the ICAO flight plan." {...poh('icaoType')} onChange={v => set('icaoType', v)} />
+        {form.icaoType.trim() !== '' && !isIcaoType(normaliseIcaoType(form.icaoType)) && (
+          <span className={css.fieldHint}>Not a valid designator (2 to 4 characters, starting with a letter). A flight plan then uses ZZZZ and your text as the type.</span>
+        )}
 
         {/* Category selector */}
         <div className={css.field}>
@@ -581,12 +623,13 @@ export default function AircraftLibrary({
             className={css.fieldSelect}
             value={form.category}
             title="Aircraft category"
-            onChange={e => set('category', e.target.value as AircraftCategory)}
+            onChange={e => setCategory(e.target.value as AircraftCategory)}
           >
             {CATEGORIES.map(c => (
               <option key={c.value} value={c.value}>{c.label}</option>
             ))}
           </select>
+          <span className={css.fieldHint}>Pick the most specific type: a gyroplane is not a single-engine aeroplane.</span>
         </div>
 
         <div className={css.sectionLabel}>Performance</div>
@@ -622,8 +665,8 @@ export default function AircraftLibrary({
 
         <div className={css.sectionLabel}>Equipment</div>
         <div className={css.field}>
-          <label className={css.fieldLabel} htmlFor="ac-xpdr" title="Transponder fitted. Without one the pre-flight check treats a TMZ on the route as a hard stop.">Transponder</label>
-          <select id="ac-xpdr" className={css.fieldSelect} value={form.transponder}
+          <label className={css.fieldLabel} htmlFor="ac-xpdr" title="Transponder fitted. None makes the pre-flight check treat a TMZ on the route as a hard stop; Not set makes no claim (the flight plan then lists it as missing).">Transponder</label>
+          <select id="ac-xpdr" className={`${css.fieldSelect}${form.transponder === '' ? ` ${css.selectUnset}` : ''}`} value={form.transponder}
             onChange={e => setForm(f => ({ ...f, transponder: e.target.value as FormState['transponder'] }))}>
             <option value="">Not set</option>
             <option value="none">None</option>
@@ -632,15 +675,64 @@ export default function AircraftLibrary({
             <option value="S">Mode S</option>
           </select>
         </div>
+
         <div className={css.field}>
-          <label className={css.fieldLabel} htmlFor="ac-radio" title="VHF radio fitted. Without one the pre-flight check treats an RMZ or controlled airspace (class A to D) on the route as a hard stop.">Radio</label>
-          <select id="ac-radio" className={css.fieldSelect} value={form.hasRadio}
-            onChange={e => setForm(f => ({ ...f, hasRadio: e.target.value as FormState['hasRadio'] }))}>
-            <option value="">Not set</option>
-            <option value="yes">Yes</option>
-            <option value="no">No</option>
+          <label className={css.fieldLabel} htmlFor="ac-adsb" title="ADS-B capability for item 10b, besides the transponder above. None is the default and is the same as not set: nothing is written.">ADS-B</label>
+          <select id="ac-adsb" className={css.fieldSelect} value={form.adsb}
+            onChange={e => setForm(f => ({ ...f, adsb: e.target.value as FormState['adsb'] }))}>
+            <option value="">None</option>
+            {(Object.keys(ADSB_LABELS) as AdsbCode[]).map(a => <option key={a} value={a}>{a}: {ADSB_LABELS[a]}</option>)}
           </select>
         </div>
+        <div className={css.field}>
+          <label className={css.fieldLabel} htmlFor="ac-equip" title="Radio, navigation and approach equipment (ICAO item 10a). A VHF radio (V, Y or standard S) is also what the pre-flight check needs for an RMZ or controlled airspace. None, or letters without V or Y, make that a hard stop; Not set makes no claim.">Radio / nav</label>
+          <select id="ac-equip" className={`${css.fieldSelect}${form.equipmentMode === 'unset' ? ` ${css.selectUnset}` : ''}`} value={form.equipmentMode}
+            onChange={e => setForm(f => ({ ...f, equipmentMode: e.target.value as FormState['equipmentMode'] }))}>
+            <option value="unset">Not set</option>
+            <option value="N">None (N)</option>
+            <option value="custom">Choose the equipment…</option>
+            <option value="S">Standard (S)</option>
+          </select>
+        </div>
+        {form.equipmentMode === 'S' && <span className={css.fieldHint}>{STANDARD_EQUIPMENT_NOTE}</span>}
+        {form.equipmentMode === 'custom' && (
+          <div className={css.chips} role="group" aria-label="Radio and navigation equipment">
+            {EQUIPMENT_LETTERS.map(e => {
+              const on = form.equipmentLetters.includes(e.code)
+              return (
+                <button
+                  key={e.code}
+                  type="button"
+                  className={`${css.chip}${on ? ` ${css.chipActive}` : ''}`}
+                  aria-pressed={on}
+                  title={e.label}
+                  onClick={() => setForm(f => ({ ...f, equipmentLetters: on ? f.equipmentLetters.filter(c => c !== e.code) : [...f.equipmentLetters, e.code] }))}
+                ><strong>{e.code}</strong> {e.label}</button>
+              )
+            })}
+          </div>
+        )}
+
+        <div className={css.sectionLabel}>ICAO flight plan</div>
+        <div className={css.field}>
+          <label className={css.fieldLabel} htmlFor="ac-wake" title="Wake turbulence category by maximum take-off mass. Light (L, 7,000 kg or less) is the default and right for almost every aircraft in this app.">Wake category</label>
+          <select id="ac-wake" className={css.fieldSelect} value={form.wakeCategory}
+            onChange={e => setForm(f => ({ ...f, wakeCategory: e.target.value as FormState['wakeCategory'] }))}>
+            <option value="">L: Light (default)</option>
+            {(Object.keys(WAKE_LABELS) as WakeCategory[]).map(w => <option key={w} value={w}>{w}: {WAKE_LABELS[w]}</option>)}
+          </select>
+        </div>
+        <Field label="Colour" value={form.colour} placeholder="White with blue stripes" tooltip="Aircraft colour and markings for item 19 (A/), e.g. white with blue stripes." onChange={v => set('colour', v)} />
+        <Field label="Mode S address" value={form.modeSHex} placeholder="4A1B2C" tooltip="The aircraft's 24-bit Mode S address as 6 hexadecimal digits, for item 18 (CODE/). Optional." onChange={v => set('modeSHex', v)} />
+        {(() => {
+          const it = fplAircraftItems({ registration: form.registration, icaoType: form.icaoType, wakeCategory: form.wakeCategory || undefined, equipment: equipmentOf(form), transponder: form.transponder || undefined, adsb: form.adsb || undefined, colour: form.colour, modeSHex: form.modeSHex })
+          return (
+            <p className={css.fplPreview}>
+              <strong>Flight plan:</strong> 7 {it.identification || '—'} · 9 {it.type}/{it.wake} · 10 {it.equipment}/{it.surveillance}{it.colour ? ` · 19 A/${it.colour}` : ''}
+              {it.missing.length > 0 && <span className={css.fplMissing}> Missing: {it.missing.join('; ')}.</span>}
+            </p>
+          )
+        })()}
 
         {HAS_FUEL(form.category) && (
           <>
@@ -717,13 +809,9 @@ export default function AircraftLibrary({
           </>
         )}
 
-        {HAS_GLIDE(form.category) && (
-          <>
-            <div className={css.sectionLabel}>Glide</div>
-            <Field label="Best glide IAS" unit="kts" type="number" value={form.bestGlideIas} tooltip="Best glide speed in knots IAS — the speed that maximises glide distance (min sink / max L/D)." {...poh('bestGlideIas')} onChange={v => set('bestGlideIas', v)} />
-            <Field label="Glide ratio"    unit=":1"  type="number" value={form.glideRatio}   tooltip="Best glide ratio, e.g. 30 for 30:1 (30 metres forward per 1 metre of altitude lost)." {...poh('glideRatio')} onChange={v => set('glideRatio', v)} />
-          </>
-        )}
+        <div className={css.sectionLabel}>Glide</div>
+        <Field label="Best glide IAS" unit="kts" type="number" value={form.bestGlideIas} tooltip="Best glide speed in knots IAS: the speed that maximises glide distance. Also sets how far the wind carries a glide over water. 0 = not set." {...poh('bestGlideIas')} onChange={v => set('bestGlideIas', v)} />
+        <Field label="Glide ratio"    unit=":1"  type="number" value={form.glideRatio}   tooltip="Best glide ratio, e.g. 9 for 9:1 (9 metres forward per 1 metre lost). Used for the glide-range ring and the over-water check. 0 = not set (a typical value for the category is assumed over water)." {...poh('glideRatio')} onChange={v => set('glideRatio', v)} />
       </div>
 
       <div className={css.formActions}>

@@ -66,7 +66,7 @@ describe('a browser database from before the assistant work', () => {
     const db = await getDb()
     const ac = (await db.aircraft_profiles.findOne('ac-old').exec())!.toJSON()
     expect(ac).toMatchObject(OLD_PROFILE)
-    for (const k of ['fuelTypes', 'minRunwayM', 'maxCrosswindKts', 'takeoffDist50ftM', 'vs0Kts', 'assistantReview']) expect(ac).not.toHaveProperty(k)
+    for (const k of ['fuelTypes', 'minRunwayM', 'maxCrosswindKts', 'takeoffDist50ftM', 'vs0Kts', 'assistantReview', 'equipment', 'adsb', 'wakeCategory', 'colour', 'modeSHex']) expect(ac).not.toHaveProperty(k)
     const rt = (await db.routes.findOne('rt-old').exec())!.toJSON()
     expect(rt).toMatchObject({ id: 'rt-old', name: 'Old route', aircraftId: 'ac-old', legOverrides: [{ altFt: 3500 }] })
     expect(rt.waypoints[1]).toMatchObject({ name: 'ESKN', note: 'fuel' })
@@ -76,10 +76,12 @@ describe('a browser database from before the assistant work', () => {
     await db.aircraft_profiles.insert({
       ...OLD_PROFILE, id: 'ac-new', registration: 'SE-NEW', fuelTypes: ['AVGAS100LL'], maxCrosswindKts: 15, takeoffDist50ftM: 400, vs0Kts: 45,
       assistantReview: { by: 'Test', at: 1, change: 'created' },
+      equipment: ['V', 'G'], adsb: 'B1', wakeCategory: 'L', colour: 'White', modeSHex: '4A1B2C',
     })
     const fresh = (await db.aircraft_profiles.findOne('ac-new').exec())!.toJSON()
     expect(fresh.fuelTypes).toEqual(['AVGAS100LL'])
     expect(fresh.assistantReview).toEqual({ by: 'Test', at: 1, change: 'created' })
+    expect(fresh).toMatchObject({ equipment: ['V', 'G'], adsb: 'B1', wakeCategory: 'L', colour: 'White', modeSHex: '4A1B2C' })
     await (await db.aircraft_profiles.findOne('ac-old').exec())!.patch({ maxCrosswindKts: 12, updatedAt: 2 })
     expect((await db.aircraft_profiles.findOne('ac-old').exec())!.toJSON()).toMatchObject({ ...OLD_PROFILE, maxCrosswindKts: 12, updatedAt: 2 })
     expect((await db.aircraft_profiles.find().exec()).length).toBe(2)

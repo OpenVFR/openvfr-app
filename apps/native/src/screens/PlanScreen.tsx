@@ -48,6 +48,8 @@ import { useAircraftSync }    from '../hooks/useAircraftSync'
 import type { AircraftProfileDocType } from '../types/db'
 import { useFlightLogSync } from '../hooks/useFlightLogSync'
 import { flightLogs as flightLogsDb, routes as routeDb } from '../db'
+import { FlightPlanSheet } from '../components/FlightPlanSheet'
+import { useAuthContext } from '../context/AuthContext'
 import { isRouteDirty } from '@open-vfr/shared/routeDirty'
 import { useAssistantMcpUrl } from '../hooks/useAssistantMcpUrl'
 import { AssistantHelpModal } from '../components/AssistantHelpModal'
@@ -157,6 +159,8 @@ export function PlanScreen() {
   // crowding the row alongside Active/Inactive, Rev, and Clear.
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+  const [fplOpen, setFplOpen] = useState(false)
+  const { state: authState } = useAuthContext()
 
   // Aircraft profiles — synced with cloud (user_aircraft_profiles) when authenticated
   const { profiles, pull: pullAircraft, pushAircraft, deleteAircraft } = useAircraftSync()
@@ -769,6 +773,16 @@ export function PlanScreen() {
           <AppIcon name="folder" size={16} color={theme.textSecondary} />
           <Text style={styles.moreMenuItemTxt}>Route Library…</Text>
         </TouchableOpacity>
+        {waypoints.length >= 2 && profile && (
+          <TouchableOpacity
+            style={styles.moreMenuItem}
+            onPress={() => { setMoreMenuOpen(false); setFplOpen(true) }}
+            testID="plan-open-fpl"
+          >
+            <AppIcon name="route" size={16} color={theme.textSecondary} />
+            <Text style={styles.moreMenuItemTxt}>ICAO flight plan…</Text>
+          </TouchableOpacity>
+        )}
         {waypoints.length >= 2 && (
           <TouchableOpacity
             style={styles.moreMenuItem}
@@ -1179,6 +1193,20 @@ export function PlanScreen() {
             })
           )}
         </ScrollView>
+      )}
+
+      {profile && (
+        <FlightPlanSheet
+          visible={fplOpen}
+          onClose={() => setFplOpen(false)}
+          waypoints={waypoints}
+          legOverrides={legOverrides}
+          aircraft={profile}
+          legWinds={effectiveLegWinds}
+          takeoffTime={takeoffTime}
+          alternateIcao={alternate?.icao}
+          accountName={authState.status === 'authenticated' ? authState.user.name ?? undefined : undefined}
+        />
       )}
 
       <AircraftEditSheet

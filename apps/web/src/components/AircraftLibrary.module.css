@@ -287,6 +287,8 @@
   background: var(--input-option-bg);
   color: var(--text-primary);
 }
+/* Nothing chosen yet ("Not set"): shown like a placeholder, normal once a value is chosen. */
+.fieldSelect.selectUnset { color: var(--text-faint); }
 
 .fieldErrorMsg {
   grid-column: 2;
@@ -400,3 +402,23 @@
   border-color: var(--status-warn);
   cursor: help;
 }
+
+.fieldHint {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--text-faint);
+}
+
+.fplPreview {
+  margin: 4px 0 8px;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  border: 1px dashed var(--border-default);
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+.fplMissing { color: var(--text-muted); }
