@@ -698,7 +698,13 @@ export function PlanScreen() {
   // route actions live in its right slot.
   React.useLayoutEffect(() => {
     navigation.setOptions({
-      headerRight: segment === 'route' ? () => (
+      headerRight: segment === 'waypoints' && assistantUrl ? () => (
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={() => setAssistantHelpOpen(true)} testID="places-assistant-help" accessibilityLabel="Use your AI assistant" style={styles.moreBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <AppIcon name="sparkles" size={Platform.OS === 'ios' ? 22 : 14} color={Platform.OS === 'ios' ? theme.textPrimary : theme.accentBlue} />
+          </TouchableOpacity>
+        </View>
+      ) : segment === 'route' ? () => (
         <View style={styles.headerActions}>
             {assistantUrl && (
               <TouchableOpacity onPress={() => setAssistantHelpOpen(true)} testID="plan-assistant-help" accessibilityLabel="Use your AI assistant" style={styles.moreBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -719,7 +725,7 @@ export function PlanScreen() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]}>
-      {assistantUrl && <AssistantHelpModal visible={assistantHelpOpen} topic="route" mcpUrl={assistantUrl} onClose={() => setAssistantHelpOpen(false)} />}
+      {assistantUrl && <AssistantHelpModal visible={assistantHelpOpen} topic={segment === 'waypoints' ? 'places' : 'route'} mcpUrl={assistantUrl} onClose={() => setAssistantHelpOpen(false)} />}
       {segment === 'route' && (
         <RouteLibrarySheet
           waypoints={waypoints}

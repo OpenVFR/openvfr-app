@@ -3,7 +3,7 @@
  * show the same): setup steps and example questions per place in the app.
  * Product-neutral on purpose: product-specific steps are in the guide.
  */
-export type AssistantHelpTopic = 'route' | 'aircraft' | 'aerodrome' | 'logbook' | 'general'
+export type AssistantHelpTopic = 'route' | 'aircraft' | 'places' | 'aerodrome' | 'logbook' | 'general'
 
 export const ASSISTANT_STEPS: readonly string[] = [
   'In your AI assistant, add a custom connector (remote MCP server) with the address below.',
@@ -21,6 +21,12 @@ export const ASSISTANT_EXAMPLES: Record<AssistantHelpTopic, readonly string[]> =
   aircraft: [
     'Add a new aircraft SE-ABC, a Cessna 182, from the attached POH.',
     "Set SE-ABC's maximum crosswind to 15 kt.",
+  ],
+  places: [
+    'Save my cabin at 59.50 17.93 as a place called Cabin.',
+    'Which of my saved places is closest to ESSB?',
+    'Move the place Cabin to the folder Summer.',
+    'Plan a route from ESSB to my place Cabin and save it.',
   ],
   aerodrome: [
     "What's the weather and are there NOTAMs at ESKN?",
