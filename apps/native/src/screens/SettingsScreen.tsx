@@ -19,6 +19,7 @@ import { useAuthContext }     from '../context/AuthContext'
 import { authHeaders } from '../utils/authClient'
 import { useAssistantMcpUrl } from '../hooks/useAssistantMcpUrl'
 import { AssistantHelpModal } from '../components/AssistantHelpModal'
+import { ConnectedAssistantsModal } from '../components/ConnectedAssistantsModal'
 import { useSimContext }      from '../context/SimContext'
 import { SimConnectSheet }    from '../components/SimConnectSheet'
 import type { AutoFlyMode } from '@open-vfr/shared/autoFlyDetect'
@@ -87,6 +88,7 @@ export function SettingsScreen() {
   const signedIn = state.status === 'authenticated'
   const assistantUrl = useAssistantMcpUrl(signedIn)
   const [assistantHelpOpen, setAssistantHelpOpen] = useState(false)
+  const [assistantsOpen, setAssistantsOpen] = useState(false)
   useEffect(() => {
     if (!signedIn) return
     let cancelled = false
@@ -756,6 +758,11 @@ export function SettingsScreen() {
                 <Text style={styles.infoValue}>{'\u203a'}</Text>
               </TouchableOpacity>
               <AssistantHelpModal visible={assistantHelpOpen} topic="general" mcpUrl={assistantUrl} onClose={() => setAssistantHelpOpen(false)} />
+              <TouchableOpacity style={[styles.row, styles.pressable]} onPress={() => setAssistantsOpen(true)} accessibilityRole="button">
+                <Text style={styles.rowLabel}>Connected AI assistants</Text>
+                <Text style={styles.infoValue}>{'\u203a'}</Text>
+              </TouchableOpacity>
+              <ConnectedAssistantsModal visible={assistantsOpen} onClose={() => setAssistantsOpen(false)} />
             </>
           )}
           <TouchableOpacity style={[styles.row, styles.pressable]} onPress={handleSignOut} disabled={signingOut}>

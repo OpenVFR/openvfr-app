@@ -2,25 +2,39 @@ import { useEffect, useState } from 'react'
 import { API_BASE } from '../config'
 import { authHeaders } from '../utils/authClient'
 
-/**
- * The assistant connector address for the signed-in account, or null when the
- * server does not offer it to them (feature off, or limited to admins while it
- * is verified). Asked once per sign-in; offline keeps it hidden.
- */
-export function useAssistantMcpUrl(signedIn: boolean): string | null {
-  const [url, setUrl] = useState<string | null>(null)
+export interface AccountFlags {
+  /** The assistant connector address, or null when the server does not offer it to this account (feature off, or limited to admins). */
+  assistantMcpUrl: string | null
+}
+
+const UNKNOWN: AccountFlags = { assistantMcpUrl: null }
+
+/** The account's capability flags, asked once per sign-in; offline keeps everything hidden. */
+export function useAccountFlags(signedIn: boolean): AccountFlags {
+  const [flags, setFlags] = useState<AccountFlags>(UNKNOWN)
   useEffect(() => {
-    if (!signedIn) { setUrl(null); return }
+    if (!signedIn) { setFlags(UNKNOWN); return }
     let live = true
     void (async () => {
       try {
         const res = await fetch(`${API_BASE}/api/auth/account-flags`, { headers: await authHeaders() })
         if (!res.ok) return
         const j = await res.json() as { assistantMcpUrl?: string | null }
-        if (live && typeof j.assistantMcpUrl === 'string' && j.assistantMcpUrl) setUrl(j.assistantMcpUrl)
+        if (live) setFlags({
+          assistantMcpUrl: typeof j.assistantMcpUrl === 'string' && j.assistantMcpUrl ? j.assistantMcpUrl : null,
+        })
       } catch { /* offline: stays hidden */ }
     })()
     return () => { live = false }
   }, [signedIn])
-  return url
+  return flags
+}
+
+/**
+ * The assistant connector address for the signed-in account, or null when the
+ * server does not offer it to them (feature off, or limited to admins while it
+ * is verified).
+ */
+export function useAssistantMcpUrl(signedIn: boolean): string | null {
+  return useAccountFlags(signedIn).assistantMcpUrl
 }

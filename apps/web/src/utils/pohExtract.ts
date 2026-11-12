@@ -9,13 +9,9 @@
  */
 
 import { API_BASE_URL } from './env'
-import { parseFuelGrades, categoryFromIcaoType, POH_CATEGORIES } from '@open-vfr/shared/pohImport'
-import type { AircraftCategory, FuelCode } from '@open-vfr/shared/types'
+import { pohExtractResultFrom, type PohExtractResult } from '@open-vfr/shared/pohImport'
 
-function parseCategory(v: unknown): AircraftCategory | null {
-  const t = typeof v === 'string' ? v.trim().toUpperCase() : ''
-  return t in POH_CATEGORIES ? (t as AircraftCategory) : null
-}
+export type { PohExtractResult }
 
 // ---------------------------------------------------------------------------
 // Error types
@@ -29,46 +25,6 @@ export class RateLimitError extends Error {
     this.name = 'RateLimitError'
     this.retryAfterSeconds = retryAfterSeconds
   }
-}
-
-// ---------------------------------------------------------------------------
-// Result type — subset of AircraftLibrary's FormState (all strings)
-// ---------------------------------------------------------------------------
-export type PohExtractResult = {
-  name?:             string
-  icaoType?:         string
-  /** The aircraft category the model named (or its ICAO type suggests). */
-  category?:         AircraftCategory
-  cruiseAltFt?:      string
-  cruiseIas?:        string
-  fuelBurnLhr?:      string
-  maxFuelL?:         string
-  taxiFuelL?:        string
-  landingFuelL?:     string
-  serviceCeilingFt?: string
-  rocSlFpm?:         string
-  rocCeilingFpm?:    string
-  climbIas?:         string
-  climbFuelLhr?:     string
-  climbFuelCeilingLhr?: string
-  unusableFuelL?:    string
-  descentFpm?:       string
-  descentIas?:       string
-  descentFuelLhr?:   string
-  bestGlideIas?:     string
-  glideRatio?:       string
-  takeoffSpeedKts?:  string
-  maxCrosswindKts?:  string
-  takeoffDist50ftM?: string
-  landingDist50ftM?: string
-  vs0Kts?: string
-  vs1Kts?: string
-  vxKts?: string
-  vfeKts?: string
-  vaKts?: string
-  vnoKts?: string
-  vneKts?: string
-  fuelTypes?:        FuelCode[]
 }
 
 // ---------------------------------------------------------------------------
@@ -143,56 +99,7 @@ export async function extractPohViaServer(
       }
 
       if (msg['result'] != null) {
-        const parsed = msg['result'] as Record<string, unknown>
-
-        const numStr = (key: string): string | undefined => {
-          const v = parsed[key]
-          if (v == null) return undefined
-          const n = parseFloat(String(v))
-          return isNaN(n) ? undefined : String(Math.round(n * 100) / 100)
-        }
-
-        const strVal = (key: string): string | undefined => {
-          const v = parsed[key]
-          if (v == null || v === '') return undefined
-          return String(v)
-        }
-
-        return {
-          name:             strVal('name'),
-          icaoType:         strVal('icaoType'),
-          category:         parseCategory(parsed['category']) ?? categoryFromIcaoType(strVal('icaoType')) ?? undefined,
-          cruiseAltFt:      numStr('cruiseAltFt'),
-          cruiseIas:        numStr('cruiseIas'),
-          fuelBurnLhr:      numStr('fuelBurnLhr'),
-          maxFuelL:         numStr('maxFuelL'),
-          taxiFuelL:        numStr('taxiFuelL'),
-          landingFuelL:     numStr('landingFuelL'),
-          serviceCeilingFt: numStr('serviceCeilingFt'),
-          rocSlFpm:         numStr('rocSlFpm'),
-          rocCeilingFpm:    numStr('rocCeilingFpm'),
-          climbIas:         numStr('climbIas'),
-          climbFuelLhr:     numStr('climbFuelLhr'),
-          climbFuelCeilingLhr: numStr('climbFuelCeilingLhr'),
-          unusableFuelL:    numStr('unusableFuelL'),
-          descentFpm:       numStr('descentFpm'),
-          descentIas:       numStr('descentIas'),
-          descentFuelLhr:   numStr('descentFuelLhr'),
-          bestGlideIas:     numStr('bestGlideIas'),
-          glideRatio:       numStr('glideRatio'),
-          takeoffSpeedKts:  numStr('takeoffSpeedKts'),
-          maxCrosswindKts:  numStr('maxCrosswindKts'),
-          takeoffDist50ftM: numStr('takeoffDist50ftM'),
-          landingDist50ftM: numStr('landingDist50ftM'),
-          vs0Kts: numStr('vs0Kts'),
-          vs1Kts: numStr('vs1Kts'),
-          vxKts: numStr('vxKts'),
-          vfeKts: numStr('vfeKts'),
-          vaKts: numStr('vaKts'),
-          vnoKts: numStr('vnoKts'),
-          vneKts: numStr('vneKts'),
-          fuelTypes:        parseFuelGrades(parsed['fuelTypes']),
-        }
+        return pohExtractResultFrom(msg['result'] as Record<string, unknown>)
       }
     }
   }

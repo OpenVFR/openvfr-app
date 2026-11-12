@@ -18,10 +18,9 @@ Open the aircraft list from the planning panel. You can:
 - **Edit** or **delete** (with a confirmation step).
 - **Select** the aircraft used for the current route. Tap again to deselect.
 - **Fill from a POH with your own AI assistant (web and mobile), the best
-  option:** a new aircraft form opens with **Fill from your POH** (on the
-  web, three choices side by side; for an existing aircraft use **Fill from
-  POH** in its header). Choose **Use your AI assistant** (web) or **Fill
-  from POH with your AI assistant** (mobile). Copy or share the prompt, open
+  option:** a new aircraft form opens with **Fill from your POH**, with the
+  choices side by side (for an existing aircraft on the web use **Fill from
+  POH** in its header). Choose **Use your AI assistant**. Copy or share the prompt, open
   the AI chat assistant you already use (any assistant that reads PDF
   files), attach the POH and send the prompt. Pick a model with **deep
   thinking** (extended reasoning) if your assistant offers one: POH tables,

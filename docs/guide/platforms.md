@@ -53,6 +53,7 @@ Legend: **Yes** = available, **Partial** = available with differences
 | Aircraft profiles | Yes | Yes | |
 | Fill in an aircraft profile from a POH with your own AI assistant | Yes | Yes | Copy or share a prompt, paste the assistant's answer back. |
 | Fill in an aircraft profile from a POH PDF uploaded to the server | Yes | No | Web only, where the server has it configured. |
+| See and disconnect connected AI assistants | Yes | Yes | Where the server offers the assistant connection: web in the account panel, mobile in Settings. |
 | Saved routes, routes sync | Yes | Yes | |
 | Saved places (user waypoints) and folders | Yes | Yes | |
 | Find destination by fuel, surface and runway length | Yes | Yes | |

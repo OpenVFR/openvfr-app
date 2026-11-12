@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildPohPrompt, parsePohReply, parseFuelGrades, PohReplyError, POH_FIELDS } from './pohImport'
+import { buildPohPrompt, parsePohReply, parseFuelGrades, PohReplyError, POH_FIELDS, pohExtractResultFrom } from './pohImport'
 
 describe('buildPohPrompt', () => {
   it('names every field and asks for pages', () => {
@@ -119,5 +119,17 @@ describe('aircraft category in the import', () => {
     expect(parsePohReply('{"name":"MTO","icaoType":"GYRO"}').category).toBe('GYRO')
     expect(parsePohReply('{"name":"Std Cirrus","icaoType":"GLID"}').category).toBe('GLIDER')
     expect(parsePohReply('{"name":"Skyhawk","icaoType":"C172"}').category).toBeNull()
+  })
+})
+
+describe('pohExtractResultFrom', () => {
+  it('cleans the extractor answer to form strings and takes the category from the type when it names none', () => {
+    const r = pohExtractResultFrom({ name: 'Skyhawk', icaoType: 'GYRO', cruiseIas: 108.456, fuelBurnLhr: '38', maxFuelL: 'x', fuelTypes: ['AVGAS100LL'], bogus: 1 })
+    expect(r.name).toBe('Skyhawk')
+    expect(r.cruiseIas).toBe('108.46')
+    expect(r.fuelBurnLhr).toBe('38')
+    expect(r.maxFuelL).toBeUndefined()
+    expect(r.category).toBe('GYRO')
+    expect(r.fuelTypes).toEqual(['AVGAS100LL'])
   })
 })

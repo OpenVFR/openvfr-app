@@ -56,7 +56,7 @@ export default function AssistantSection({ mcpUrl }: { mcpUrl: string }) {
           <li><strong>Gemini</strong> (where available): Settings → Connected apps → Add a custom app.</li>
           <li>Other assistants and coding tools: add a remote MCP server with this address.</li>
         </ul>
-        <p className={own.text}>The assistant can only read. Its answers are a planning aid, not an official briefing.</p>
+        <p className={own.text}>The assistant can change your routes, places or aircraft only if you allow it when you connect it, and never deletes anything. Its answers are a planning aid, not an official briefing.</p>
       </details>
       {error && <p className={styles.errorMsg}>{error}</p>}
       {rows === null ? (

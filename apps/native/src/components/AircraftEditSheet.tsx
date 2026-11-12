@@ -12,7 +12,8 @@ import React, { useEffect, useState } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Share,
 } from 'react-native'
-import { buildPohPrompt, parsePohReply, PohReplyError, POH_FIELDS, POH_MODEL_ADVICE, POH_CONNECT_ADVICE } from '@open-vfr/shared/pohImport'
+import { buildPohPrompt, parsePohReply, PohReplyError, POH_FIELDS, POH_MODEL_ADVICE, type PohField } from '@open-vfr/shared/pohImport'
+import { ASSISTANT_STEPS } from '@open-vfr/shared/assistantHelp'
 import { useAssistantMcpUrl } from '../hooks/useAssistantMcpUrl'
 import { FUEL_CODES, FUEL_LABELS, normalizeFuelCodes, preferenceLabel } from '@open-vfr/shared/fuelTypes'
 import type { FuelCode, TransponderMode, AdsbCode, WakeCategory } from '@open-vfr/shared/types'
@@ -180,9 +181,10 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
   const [form, setForm]     = useState<FormState>(EMPTY)
   const [errors, setErrors] = useState<Record<string, string>>({})
   // POH import through the pilot's AI assistant.
-  const [pohOpen, setPohOpen]       = useState(false)
-  // The connection alternative is mentioned only where the server offers it to this account.
-  const canConnect = useAssistantMcpUrl(true) !== null
+  // Which way is open: paste an assistant's answer, connect the assistant, or none.
+  const [pohMethod, setPohMethod]   = useState<'paste' | 'connect' | null>(null)
+  // The connection is offered only where the server offers it to this account.
+  const mcpUrl = useAssistantMcpUrl(true)
   const [pohReply, setPohReply]     = useState('')
   const [pohError, setPohError]     = useState('')
   const [pohDone, setPohDone]       = useState(false)
@@ -192,7 +194,7 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
   useEffect(() => {
     if (visible) {
       setForm(profile ? toForm(profile) : EMPTY); setErrors({})
-      setPohOpen(false); setPohReply(''); setPohError(''); setPohDone(false); setPohNotes({})
+      setPohMethod(null); setPohReply(''); setPohError(''); setPohDone(false); setPohNotes({})
     }
   }, [visible, profile])
 
@@ -207,25 +209,29 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
     void Share.share({ message: buildPohPrompt() })
   }
 
+  /** Put what the POH import found into the form, and mark what was not found or needs checking. */
+  function applyPohValues(r: { values: Partial<Record<PohField, string>>; pages: Partial<Record<PohField, string>>; warnings: Partial<Record<PohField, string>>; fuelTypes: FuelCode[]; category: AircraftCategory | null }) {
+    const notes: Partial<Record<keyof FormState, string>> = {}
+    const patch: Partial<FormState> = {}
+    for (const key of POH_FIELDS) {
+      const v = r.values[key]
+      const page = r.pages[key] ? ` (POH page ${r.pages[key]})` : ''
+      if (v === undefined) notes[key] = 'Not found in POH, verify'
+      else {
+        patch[key] = v
+        if (r.warnings[key]) notes[key] = `${r.warnings[key]}${page}, check against the POH`
+      }
+    }
+    if (r.fuelTypes.length > 0) patch.fuelTypes = r.fuelTypes
+    if (r.category) patch.category = r.category
+    setForm(f => ({ ...f, ...patch }))
+    setPohNotes(notes)
+    setPohError(''); setPohReply(''); setPohMethod(null); setPohDone(true)
+  }
+
   function applyPohReply() {
     try {
-      const r = parsePohReply(pohReply)
-      const notes: Partial<Record<keyof FormState, string>> = {}
-      const patch: Partial<FormState> = {}
-      for (const key of POH_FIELDS) {
-        const v = r.values[key]
-        const page = r.pages[key] ? ` (POH page ${r.pages[key]})` : ''
-        if (v === undefined) notes[key] = 'Not found in POH, verify'
-        else {
-          patch[key] = v
-          if (r.warnings[key]) notes[key] = `${r.warnings[key]}${page}, check against the POH`
-        }
-      }
-      if (r.fuelTypes.length > 0) patch.fuelTypes = r.fuelTypes
-      if (r.category) patch.category = r.category
-      setForm(f => ({ ...f, ...patch }))
-      setPohNotes(notes)
-      setPohError(''); setPohReply(''); setPohOpen(false); setPohDone(true)
+      applyPohValues(parsePohReply(pohReply))
     } catch (err) {
       setPohError(err instanceof PohReplyError ? err.message : 'Could not read the answer.')
     }
@@ -315,47 +321,68 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       testID="aircraft-edit-sheet"
       contentContainerStyle={styles.body}
     >
-      <TouchableOpacity
-        style={styles.pohToggle}
-        onPress={() => setPohOpen(o => !o)}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: pohOpen }}
-        testID="aircraft-poh-assistant"
-      >
-        <Text style={styles.pohToggleTxt}>{pohOpen ? 'Hide POH import' : 'Fill from POH with your AI assistant'}</Text>
-      </TouchableOpacity>
-      {pohOpen && (
-        <View style={styles.pohBox}>
-          <Text style={styles.pohStep}>{POH_MODEL_ADVICE}</Text>
-          <Text style={styles.pohStep}>1. Share the prompt to your AI assistant app (or copy it).</Text>
-          <TouchableOpacity style={styles.pohBtn} onPress={sharePohPrompt}>
-            <Text style={styles.btnTxt}>Share prompt</Text>
-          </TouchableOpacity>
-          <Text style={styles.pohStep}>2. In the assistant, attach the POH PDF and send the prompt.</Text>
-          <Text style={styles.pohStep}>3. Copy the whole answer and paste it here:</Text>
-          <TextInput
-            style={[styles.input, styles.pohInput]}
-            value={pohReply}
-            onChangeText={t => { setPohReply(t); setPohError('') }}
-            placeholder='{"name": "…", "cruiseIas": …}'
-            placeholderTextColor={theme.textFaint}
-            multiline
-            autoCapitalize="none"
-            autoCorrect={false}
-            accessibilityLabel="Answer from your AI assistant"
-          />
-          {!!pohError && <Text style={styles.fieldErr}>{pohError}</Text>}
-          <TouchableOpacity
-            style={[styles.pohBtn, styles.btnPrimary, !pohReply.trim() && styles.btnDisabled]}
-            disabled={!pohReply.trim()}
-            onPress={applyPohReply}
-          >
-            <Text style={styles.btnPrimaryTxt}>Apply to the form</Text>
-          </TouchableOpacity>
-          <Text style={styles.pohHint}>The PDF stays between you and your assistant.</Text>
-          {canConnect && <Text style={styles.pohHint}>{POH_CONNECT_ADVICE}</Text>}
-        </View>
-      )}
+      <View style={styles.pohChooser} accessibilityRole="none">
+        <Text style={styles.pohTitle}>Fill from your POH</Text>
+
+        <TouchableOpacity style={[styles.pohRow, pohMethod === 'paste' && styles.pohRowOpen]} onPress={() => setPohMethod(m => (m === 'paste' ? null : 'paste'))}
+          accessibilityRole="button" accessibilityState={{ expanded: pohMethod === 'paste' }} testID="aircraft-poh-assistant">
+          <View style={styles.pohRowHead}><Text style={styles.pohRowName}>Use your AI assistant</Text><Text style={styles.pohBadge}>Recommended</Text></View>
+          <Text style={styles.pohHint}>Share a prompt, attach the POH in your assistant, paste its answer back here. Nothing is uploaded to OpenVFR.</Text>
+        </TouchableOpacity>
+        {pohMethod === 'paste' && (
+          <View style={styles.pohBox}>
+            <Text style={styles.pohStep}>{POH_MODEL_ADVICE}</Text>
+            <Text style={styles.pohStep}>1. Share the prompt to your AI assistant app (or copy it).</Text>
+            <TouchableOpacity style={styles.pohBtn} onPress={sharePohPrompt}>
+              <Text style={styles.btnTxt}>Share prompt</Text>
+            </TouchableOpacity>
+            <Text style={styles.pohStep}>2. In the assistant, attach the POH PDF and send the prompt.</Text>
+            <Text style={styles.pohStep}>3. Copy the whole answer and paste it here:</Text>
+            <TextInput
+              style={[styles.input, styles.pohInput]}
+              value={pohReply}
+              onChangeText={t => { setPohReply(t); setPohError('') }}
+              placeholder='{"name": "…", "cruiseIas": …}'
+              placeholderTextColor={theme.textFaint}
+              multiline
+              autoCapitalize="none"
+              autoCorrect={false}
+              accessibilityLabel="Answer from your AI assistant"
+            />
+            <TouchableOpacity
+              style={[styles.pohBtn, styles.btnPrimary, !pohReply.trim() && styles.btnDisabled]}
+              disabled={!pohReply.trim()}
+              onPress={applyPohReply}
+            >
+              <Text style={styles.btnPrimaryTxt}>Apply to the form</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {mcpUrl && (
+          <>
+            <TouchableOpacity style={[styles.pohRow, pohMethod === 'connect' && styles.pohRowOpen]} onPress={() => setPohMethod(m => (m === 'connect' ? null : 'connect'))}
+              accessibilityRole="button" accessibilityState={{ expanded: pohMethod === 'connect' }}>
+              <View style={styles.pohRowHead}><Text style={styles.pohRowName}>Connect your AI assistant</Text></View>
+              <Text style={styles.pohHint}>Your assistant creates the aircraft itself from the POH and you review it here. Connect it once, then ask.</Text>
+            </TouchableOpacity>
+            {pohMethod === 'connect' && (
+              <View style={styles.pohBox}>
+                <Text style={styles.pohStep}>{POH_MODEL_ADVICE}</Text>
+                {ASSISTANT_STEPS.slice(0, 2).map((s, i) => <Text key={s} style={styles.pohStep}>{i + 1}. {s}</Text>)}
+                <Text style={styles.pohStep}>3. Attach the POH and ask: “Add my aircraft from the attached POH.”</Text>
+                <Text selectable style={styles.pohUrl}>{mcpUrl}</Text>
+                <TouchableOpacity style={styles.pohBtn} onPress={() => { void Share.share({ message: mcpUrl }) }}>
+                  <Text style={styles.btnTxt}>Share address</Text>
+                </TouchableOpacity>
+                <Text style={styles.pohHint}>The aircraft shows “Check before use” until you open and save it.</Text>
+              </View>
+            )}
+          </>
+        )}
+
+        {!!pohError && <Text style={styles.fieldErr} accessibilityRole="alert">{pohError}</Text>}
+      </View>
       {pohDone && (
         <Text style={styles.pohDone}>
           Fields filled. {Object.keys(pohNotes).length > 0 ? 'Check the marked fields against the POH, then save.' : 'Check them against the POH, then save.'}
@@ -641,11 +668,15 @@ function makeStyles(theme: ScaledTheme) {
   fieldLabel: { color: theme.textMuted, fontSize: theme.textXs, marginBottom: 3 },
   fieldErr: { color: theme.statusDanger, fontSize: theme.textXs },
   fieldNote: { color: theme.statusWarn, fontSize: theme.textXs, marginTop: 2 },
-  pohToggle: {
-    alignItems: 'center', paddingVertical: 8, marginBottom: theme.space2,
-    borderRadius: theme.radiusMd, borderWidth: 1, borderColor: theme.borderDefault, borderStyle: 'dashed',
-  },
-  pohToggleTxt: { color: theme.accentBlue, fontSize: theme.textSm, fontWeight: '600' },
+  pohChooser: { gap: theme.space2, marginBottom: theme.space2 },
+  pohTitle: { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '700' },
+  pohRow: { gap: 2, padding: theme.space2, borderRadius: theme.radiusMd, borderWidth: 1, borderColor: theme.borderDefault },
+  pohRowOpen: { borderColor: theme.accentBlue },
+  pohRowHead: { flexDirection: 'row', alignItems: 'center', gap: theme.space2 },
+  pohRowName: { color: theme.textPrimary, fontSize: theme.textSm, fontWeight: '600' },
+  pohBadge: { color: theme.statusOk, fontSize: theme.textXs },
+  pohBadgeMuted: { color: theme.textFaint, fontSize: theme.textXs },
+  pohUrl: { color: theme.textPrimary, fontSize: theme.textSm, padding: theme.space2, borderWidth: 1, borderColor: theme.borderDefault, borderRadius: theme.radiusSm },
   pohBox: {
     gap: theme.space2, padding: theme.space2, marginBottom: theme.space2,
     borderRadius: theme.radiusMd, borderWidth: 1, borderColor: theme.borderDefault,

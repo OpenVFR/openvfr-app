@@ -152,7 +152,8 @@ assistants you trust: OpenVFR does not check them.
 
 ## Disconnect
 
-Open your account, **AI assistants**, and select **Disconnect** next to the
+On the web, open your account, **AI assistants**; on the phone, open
+**Settings**, **Connected AI assistants**. Select **Disconnect** next to the
 assistant. It then has to ask again. You can also remove the connector in
 the assistant. A connection that is not used for 90 days ends by itself.
 
