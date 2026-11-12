@@ -122,7 +122,6 @@ export const OFFLINE_ASSETS: OfflineAsset[] = [
   // with the aerodromes (their curated fields are in that file), but may be absent: see `bundledWith`.
   { key: 'aerodromeDetails', label: 'Aerodrome details (circuits, areas)', required: false, bundledWith: 'aerodromes',
     get fileName() { return countryDatasetFile(activeCountry(), 'aerodromeDetails') } },
-  dataset('water',            'water',            'Water (Virtual Radar)', false, undefined, true),
   dataset('lakes',            'lakes',            'Large lakes (glide check)', false, undefined, true),
 ]
 
