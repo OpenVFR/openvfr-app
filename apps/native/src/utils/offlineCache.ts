@@ -48,6 +48,12 @@ export interface OfflineAsset {
    *  flight safety leans on (terrain model, MSA grid) and small layers; false for the
    *  large cosmetic ones (basemap, landuse, contours). Already-cached ones are ticked too. */
   defaultOn?: boolean
+  /**
+   * Travels with another asset (its key): downloaded whenever that one is, never offered or required on its own. Such a file
+   * may be absent on the server (an optional layer, a country without it): that is skipped, not an error, it never counts
+   * against "offline ready", and it is not listed while neither cached nor published.
+   */
+  bundledWith?: string
 }
 
 // BUG FIX: two separate real bugs previously here:
@@ -112,6 +118,10 @@ export const OFFLINE_ASSETS: OfflineAsset[] = [
   dataset('runwayThresholds', 'runwayThresholds', 'Runway thresholds',     true),
   dataset('obstacles',        'obstacles',        'Obstacles',             true),
   dataset('landmarks',        'landmarks',        'Landmarks',             true),
+  // Circuits, noise-sensitive areas, holdings and club-map features: drawn by the aerodrome details layer. Always downloaded
+  // with the aerodromes (their curated fields are in that file), but may be absent: see `bundledWith`.
+  { key: 'aerodromeDetails', label: 'Aerodrome details (circuits, areas)', required: false, bundledWith: 'aerodromes',
+    get fileName() { return countryDatasetFile(activeCountry(), 'aerodromeDetails') } },
   dataset('water',            'water',            'Water (Virtual Radar)', false, undefined, true),
 ]
 
@@ -122,7 +132,7 @@ export function defaultOptionalSelection(): Set<string> {
 }
 
 export const REQUIRED_ASSETS: OfflineAsset[] = OFFLINE_ASSETS.filter(a => a.required)
-export const OPTIONAL_ASSETS: OfflineAsset[] = OFFLINE_ASSETS.filter(a => !a.required)
+export const OPTIONAL_ASSETS: OfflineAsset[] = OFFLINE_ASSETS.filter(a => !a.required && !a.bundledWith)
 
 /** True once every required (flight-safety-critical) asset is cached — the
  *  minimum bar for "Offline mode" to be considered usable. Optional/cosmetic
@@ -194,8 +204,15 @@ export interface CacheStatus {
   stale:    boolean
 }
 
+/** A bundled file the server does not publish (per the loaded manifest) and that is not on disk: nothing to show or fetch. */
+function isAbsentBundled(asset: OfflineAsset): boolean {
+  if (!asset.bundledWith || isCached(asset)) return false
+  const manifest = getCachedTileManifest()
+  return !!manifest?.files && !manifest.files[asset.fileName]
+}
+
 export function getCacheStatus(): CacheStatus[] {
-  return OFFLINE_ASSETS.map(a => {
+  return OFFLINE_ASSETS.filter(a => !isAbsentBundled(a)).map(a => {
     const f = new File(getCacheDir(), a.fileName)
     const cached = f.exists && (f.size ?? 0) > 0
     return {
@@ -235,6 +252,10 @@ export async function downloadAssets(
   onProgress?: (p: DownloadProgress) => void,
 ): Promise<void> {
   const dir = getCacheDir()
+  // Files that travel with a chosen asset (the aerodrome details with the aerodromes) come along.
+  const list = [...assets]
+  for (const b of OFFLINE_ASSETS) if (b.bundledWith && list.some(a => a.key === b.bundledWith) && !list.includes(b)) list.push(b)
+  assets = list.filter(a => !isAbsentBundled(a))
   for (let i = 0; i < assets.length; i++) {
     const asset = assets[i]
     const dest  = new File(dir, asset.fileName)
@@ -286,9 +307,27 @@ export async function downloadAssets(
       }
     } catch (err) {
       if (dest.exists) dest.delete()
+      if (asset.bundledWith) { console.warn(`[offlineCache] ${asset.fileName} not downloaded (optional, skipped):`, err); continue }
       throw err
     }
   }
+}
+
+/**
+ * A cached JSON asset's content (local file first, so it works offline), else fetched from the server; null when neither is
+ * available. For files the map needs parsed in JS (the aerodrome details), not handed to the renderer as a URI.
+ */
+export async function loadAssetJson(key: string): Promise<unknown | null> {
+  const asset = OFFLINE_ASSETS.find(a => a.key === key)
+  if (!asset) return null
+  const f = new File(getCacheDir(), asset.fileName)
+  if (f.exists && (f.size ?? 0) > 0) {
+    try { return JSON.parse(f.textSync()) } catch { /* a damaged copy: fall through to the server */ }
+  }
+  try {
+    const r = await fetch(remoteUrlFor(asset.fileName))
+    return r.ok ? await r.json() : null
+  } catch { return null }
 }
 
 /** Downloads every asset (required + optional) — original all-in behaviour, kept for back-compat call sites. */

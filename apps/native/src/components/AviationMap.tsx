@@ -35,7 +35,7 @@ import { ATTRIBUTION_SOURCES, COPERNICUS_GLO30_NOTICE, FULL_CREDITS_LINK } from 
 import { MapInfoBar, type MapInfoBarHandle } from './MapInfoBar'
 import { fetchAerodromeNotamTexts } from '@open-vfr/shared/fetchNotam'
 import { regionsForIcaos } from '@open-vfr/shared/notamRegionScope'
-import { API_BASE, TILE_BASE, EXPERIMENTAL_AERODROME_DETAILS, aerodromeDetailsUrl } from '../config'
+import { API_BASE, TILE_BASE, EXPERIMENTAL_AERODROME_DETAILS } from '../config'
 import { LIGHT } from '@protomaps/basemaps'
 import { NativeSheet } from './NativeSheet'
 import { waitForTileManifest } from '@open-vfr/shared/tileManifest'
@@ -67,7 +67,7 @@ import type { RouteWaypoint } from '../utils/routeCalc'
 import { advancePosition, bearingDeg, distanceNm, magneticBearingDeg } from '../utils/routeCalc'
 import { legLabelVariants } from '@open-vfr/shared/legLabels'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
-import { OFFLINE_ASSETS, resolveUri } from '../utils/offlineCache'
+import { OFFLINE_ASSETS, resolveUri, loadAssetJson } from '../utils/offlineCache'
 import { buildTerrainColorExpr } from '@open-vfr/shared/terrainColor'
 import { useWindGrid } from '../hooks/useWindGrid'
 import { useResilientTileData } from '../hooks/useResilientTileData'
@@ -1111,10 +1111,10 @@ function useAerodromeDetailsData(aerodromesData: string | GeoJSON.GeoJSON, manif
   useEffect(() => {
     if (!EXPERIMENTAL_AERODROME_DETAILS) return
     let cancelled = false
-    fetch(aerodromeDetailsUrl())
-      .then(r => (r.ok ? r.json() : null))
+    // The cached copy first (downloaded with the aerodromes, so it works offline), else the server. Optional: absence is normal.
+    loadAssetJson('aerodromeDetails')
       .then(j => { if (!cancelled) setDetails(parseAerodromeDetails(j)) })
-      .catch(() => { /* optional file: absence is normal */ })
+      .catch(() => { /* optional file */ })
     return () => { cancelled = true }
   }, [manifestReady])
   return useMemo(() => {

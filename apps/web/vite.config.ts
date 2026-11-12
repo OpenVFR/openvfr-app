@@ -92,7 +92,11 @@ export default defineConfig({
             // renders immediately from cache on repeat visits and offline, while
             // the updated file is fetched in the background for the next load.
             // 35-day expiry covers a full AIRAC cycle with one day of margin.
-            urlPattern: /\/tiles\/.*\.geojson(\?.*)?$/,
+            // Workbox writes this function into sw.js as TEXT: it must not use anything from this file (no imports, no helpers).
+            // Same logic as isTileGeojson() in pwa-rules.ts, which the unit test checks; keep them identical.
+            // Tile data comes from the same-origin /tiles/ path (dev, proxied) or a host such as tiles.openvfr.org (production).
+            urlPattern: ({ url }: { url: URL }) =>
+              url.pathname.endsWith('.geojson') && (url.pathname.startsWith('/tiles/') || url.hostname.startsWith('tiles.')),
             handler: 'StaleWhileRevalidate' as const,
             options: {
               cacheName: 'aviation-data',

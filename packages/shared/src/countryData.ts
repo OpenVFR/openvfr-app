@@ -19,7 +19,7 @@ import { DEFAULT_REGION_CODES } from './regions'
 
 export type CountryDataset =
   | 'airspace' | 'aerodromes' | 'navaids' | 'waypoints' | 'runways'
-  | 'runwayThresholds' | 'obstacles' | 'landmarks' | 'water' | 'aeroways'
+  | 'runwayThresholds' | 'obstacles' | 'landmarks' | 'water' | 'aeroways' | 'aerodromeDetails'
 
 const SUFFIX: Record<CountryDataset, string> = {
   airspace:         'airspace.geojson',
@@ -32,6 +32,8 @@ const SUFFIX: Record<CountryDataset, string> = {
   landmarks:        'landmarks.geojson',
   water:            'water.geojson',
   aeroways:         'aeroways.geojson',
+  // Circuits, noise-sensitive areas, holdings and club-map features (experimental, may be absent): see aerodromeDetails.ts.
+  aerodromeDetails: 'aerodrome-details.geojson',
 }
 
 export type CountryArchive = 'basemap' | 'landuse' | 'hillshade' | 'contours'

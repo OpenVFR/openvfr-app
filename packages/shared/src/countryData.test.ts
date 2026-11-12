@@ -35,6 +35,7 @@ describe('file names', () => {
   it('builds per-country names', () => {
     expect(countryDatasetFile('se', 'runwayThresholds')).toBe('se-runway-thresholds.geojson')
     expect(countryArchiveFile('no', 'basemap')).toBe('no-basemap.pmtiles')
+    expect(countryDatasetFile('se', 'aerodromeDetails')).toBe('se-aerodrome-details.geojson')
   })
 })
 
