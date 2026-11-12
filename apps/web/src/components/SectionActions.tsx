@@ -15,7 +15,7 @@ export interface SectionMenuItem {
   title?: string
 }
 
-export default function SectionActions({ assistant, items = [], label }: { assistant?: ReactNode; items?: SectionMenuItem[]; label: string }) {
+export default function SectionActions({ assistant, items = [], label, inline = false }: { assistant?: ReactNode; items?: SectionMenuItem[]; label: string; /** Sits at the end of another row (no margin of its own). */ inline?: boolean }) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -30,7 +30,7 @@ export default function SectionActions({ assistant, items = [], label }: { assis
 
   if (!assistant && items.length === 0) return null
   return (
-    <div className={css.row}>
+    <div className={`${css.row} ${inline ? css.inline : ''}`}>
       {assistant}
       {items.length > 0 && (
         <div className={css.wrap} ref={wrapRef}>

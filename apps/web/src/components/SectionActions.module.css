@@ -6,6 +6,8 @@
   margin-bottom: 4px;
 }
 
+.inline { margin-bottom: 0; flex-shrink: 0; }
+
 .wrap { position: relative; }
 
 /* Same quiet icon button as the list rows. */

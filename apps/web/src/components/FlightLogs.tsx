@@ -317,9 +317,10 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
     return () => sub?.unsubscribe()
   }, [])
 
-  const sectionActions = (
+  const sectionActionsFor = (inline: boolean) => (
     <SectionActions
       label="Flight logs"
+      inline={inline}
       assistant={assistant}
       items={[
         { label: 'Import GPX', icon: <IconUpload size={14} aria-hidden="true" />, onSelect: () => fileRef.current?.click(), title: 'Import a flight from a GPX file' },
@@ -328,6 +329,7 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
       ]}
     />
   )
+  const sectionActions = sectionActionsFor(false)
 
   if (logs.length === 0) {
     return (
@@ -343,7 +345,6 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
 
   return (
     <div className={css.panel}>
-      {sectionActions}
       <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml" hidden aria-label="Import GPX flight" onChange={handleImport} />
       {importConfirm}
       {importMsg && <p className={css.empty}>{importMsg}</p>}
@@ -357,6 +358,7 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
             {registrations.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         )}
+        {sectionActionsFor(true)}
       </div>
       <div className={css.totals}>
         {totals.logs} flight{totals.logs === 1 ? '' : 's'} · {formatLogDuration(totals.airborneMs)} · {totals.landings} landing{totals.landings === 1 ? '' : 's'} · {Math.round(totals.distanceNm)} NM
