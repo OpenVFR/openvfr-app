@@ -3815,8 +3815,8 @@ export const AviationMap = React.memo(function AviationMap({
               }}
               paint={{
                 'text-color': theme.accentYellow,
-                'text-halo-color': theme.surfaceBase,
-                'text-halo-width': 1.5,
+                'text-halo-color': '#000000',   // dark and wide: yellow text must read on the light basemap too
+                'text-halo-width': 2.5,
               }}
             />
           </GeoJSONSource>

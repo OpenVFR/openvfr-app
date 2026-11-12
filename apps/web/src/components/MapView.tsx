@@ -2785,7 +2785,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
         paint: {
           'text-color': '#facc15',
           'text-halo-color': '#000000',
-          'text-halo-width': 1.5,
+          'text-halo-width': 2.5,
         },
       })
 
@@ -4055,8 +4055,10 @@ export default function MapView({ auth }: { auth: AuthState }) {
       // Boost text-halo width on aviation labels for readability over imagery
       AVIATION_LABEL_LAYERS.forEach((id) => {
         if (!map.getLayer(id)) return
-        map.setPaintProperty(id, 'text-halo-color', '#ffffff')
-        map.setPaintProperty(id, 'text-halo-width', isSat ? 2.5 : 1.5)
+        // The place label is yellow: a white halo would hide it, so it keeps a dark one (wide enough to read on any basemap).
+        const dark = id === 'user-waypoints-label'
+        map.setPaintProperty(id, 'text-halo-color', dark ? '#000000' : '#ffffff')
+        map.setPaintProperty(id, 'text-halo-width', dark ? (isSat ? 3 : 2.5) : isSat ? 2.5 : 1.5)
       })
 
       // Boost / restore airspace border line-widths for legibility over satellite imagery
