@@ -263,7 +263,9 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   endpoint disabled. Limits: `CHART_DOCUMENT_MAX_MB` (20),
   `CHART_DOCUMENT_HOURLY_LIMIT` (120) / `CHART_DOCUMENT_DAILY_LIMIT` (600)
   per user, `CHART_DOCUMENT_CACHE_MB` (100, shared in-memory). The web
-  client shows charts only when built with `VITE_EXPERIMENTAL_CHARTS=true`.
+  client shows charts to everyone when built with `VITE_EXPERIMENTAL_CHARTS=true`, and to accounts with role `admin`
+  whatever the build flag says. `CHART_DOCUMENT_ADMIN_ONLY=1` makes the endpoint itself refuse every other account (403),
+  so the documents are admin-only for real, not just hidden in the UI.
 - `TILES_BASE_URL` — optional, your public tile host (e.g.
   `https://tiles.example.org`); the admin country detail checks
   `manifest.json` and each country file there. Unset = that check is skipped

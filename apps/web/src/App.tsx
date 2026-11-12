@@ -1,10 +1,11 @@
-import { Component, type ReactNode } from 'react'
+import { Component, useEffect, type ReactNode } from 'react'
 import MapView from './components/MapView'
 import LoginPanel from './components/LoginPanel'
 import PasskeyPrompt from './components/PasskeyPrompt'
 import UpdatePrompt from './components/UpdatePrompt'
 import TileUpdatePrompt from './components/TileUpdatePrompt'
 import SystemMessages from './components/SystemMessages'
+import { setAdminSession } from './utils/adminAccess'
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
 import { repairAppFiles } from './utils/repairApp'
@@ -43,6 +44,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 function AppInner() {
   const auth = useAuth()
   useSync(auth)
+  useEffect(() => { setAdminSession(auth.user?.role === 'admin') }, [auth.user?.role])
 
   // While the session check is in flight show nothing (avoids LoginPanel flash).
   if (auth.loading) return null

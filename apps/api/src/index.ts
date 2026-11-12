@@ -280,9 +280,9 @@ app.route('/api/admin', admin)
 // (Authorization bearer header, via the `bearer` better-auth plugin) and web
 // (session cookie).
 // ---------------------------------------------------------------------------
-async function requireSession(c: import('hono').Context): Promise<{ id: string } | null> {
+async function requireSession(c: import('hono').Context): Promise<{ id: string; role?: string | null } | null> {
   const session = await auth.api.getSession({ headers: c.req.raw.headers })
-  return session?.user ?? null
+  return session?.user ?? null     // `role` comes from the admin plugin (ba_user.role)
 }
 
 // Official chart documents (experimental): auth + per-user rate limit +

@@ -43,6 +43,8 @@ export interface AuthUser {
   id:    string
   email: string
   name:  string
+  /** 'admin' for operators (ba_user.role); anything else, or null, is an ordinary account. */
+  role?: string | null
 }
 
 /** Staging (app-staging.<domain>) shares the RP ID with prod, so its passkeys need telling apart in the picker. */
@@ -121,7 +123,7 @@ export function useAuth(): AuthState {
       const session = await authClient.getSession()
       if (session?.data?.user) {
         const u = session.data.user
-        setUser({ id: u.id, email: u.email ?? '', name: u.name ?? '' })
+        setUser({ id: u.id, email: u.email ?? '', name: u.name ?? '', role: (u as { role?: string | null }).role ?? null })
         return true
       }
       setUser(null)

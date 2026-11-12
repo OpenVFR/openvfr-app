@@ -1,7 +1,6 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { isTileGeojson } from '../pwa-rules'
+import config from '../vite.config.ts?raw'
 
 describe('isTileGeojson', () => {
   it('matches geojson from the production tile host (no /tiles/ segment)', () => {
@@ -22,7 +21,6 @@ describe('isTileGeojson', () => {
 
 describe('the service-worker rule in vite.config.ts', () => {
   // Workbox stringifies urlPattern functions into sw.js: they may not call helpers or use imports. Guard both.
-  const config = readFileSync(resolve(__dirname, '../vite.config.ts'), 'utf8')
   const block = config.slice(config.indexOf("cacheName: 'aviation-data'") - 900, config.indexOf("cacheName: 'aviation-data'"))
   const fn = /urlPattern: \(\{ url \}: \{ url: URL \}\) =>\s*([\s\S]*?),\n\s*handler/.exec(block)?.[1]
 

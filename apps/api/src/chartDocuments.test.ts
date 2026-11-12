@@ -154,3 +154,23 @@ test('index resolver: by manifest hash, unknown ids, viewing not allowed, stale 
   const r3 = createChartIndexResolver(cfg, fakeFetch({}), now)
   await assert.rejects(r3.resolve('xx', 'vac1'))                          // nothing cached and the host is down
 })
+
+test('route: adminOnly refuses every account that is not an admin (403), admits admins, and is off by default', async () => {
+  const doc = 'https://aip.example.org/charts/VAC.pdf'
+  const f = fakeFetch(tileHost(chartsIndex([{ id: 'vac1', title: 'VAC', kind: 'VAC', url: doc }]), { [doc]: () => new Response(PDF) }))
+  const open = (role: string | null | undefined, adminOnly?: boolean) =>
+    chartDocumentRoutes({ requireUser: async () => ({ id: 'u1', role }), config: { ...cfg, hourlyLimit: 100, dailyLimit: 100, adminOnly }, fetchImpl: f })
+  assert.equal((await open('user', true).request('/document/xx/vac1')).status, 403)
+  assert.equal((await open(null, true).request('/document/xx/vac1')).status, 403)
+  assert.equal((await open(undefined, true).request('/document/xx/vac1')).status, 403)
+  assert.equal((await open('admin', true).request('/document/xx/vac1')).status, 200)
+  assert.equal((await open('user').request('/document/xx/vac1')).status, 200)         // not restricted unless asked for
+})
+
+test('config: CHART_DOCUMENT_ADMIN_ONLY', async () => {
+  const { chartDocumentConfigFromEnv } = await import('./chartDocuments.js')
+  assert.equal(chartDocumentConfigFromEnv({ CHART_DOCUMENT_ADMIN_ONLY: '1' }).adminOnly, true)
+  assert.equal(chartDocumentConfigFromEnv({ CHART_DOCUMENT_ADMIN_ONLY: 'TRUE' }).adminOnly, true)
+  assert.equal(chartDocumentConfigFromEnv({ CHART_DOCUMENT_ADMIN_ONLY: '0' }).adminOnly, false)
+  assert.equal(chartDocumentConfigFromEnv({}).adminOnly, false)
+})

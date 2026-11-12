@@ -43,6 +43,8 @@
  *   CHART_DOCUMENT_HOURLY_LIMIT  per user (default 120)
  *   CHART_DOCUMENT_DAILY_LIMIT   per user (default 600)
  *   CHART_DOCUMENT_CACHE_MB      shared in-memory cache, 0 = off (default 100)
+ *   CHART_DOCUMENT_ADMIN_ONLY    1/true: only accounts with role 'admin' may fetch documents (403 for others); the app's
+ *                                charts UI shows for admins only. Off by default.
  */
 
 import { Hono, type Context } from 'hono'
@@ -60,6 +62,8 @@ export interface ChartDocumentConfig {
   cacheBytes: number
   cacheTtlMs: number
   timeoutMs: number
+  /** Only role 'admin' may fetch documents. Optional: absent = open to every signed-in user. */
+  adminOnly?: boolean
 }
 
 export function chartDocumentConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ChartDocumentConfig {
@@ -77,6 +81,7 @@ export function chartDocumentConfigFromEnv(env: NodeJS.ProcessEnv = process.env)
     cacheBytes: num('CHART_DOCUMENT_CACHE_MB', 100) * 1024 * 1024,
     cacheTtlMs: 6 * 60 * 60 * 1000,
     timeoutMs: 30_000,
+    adminOnly: /^(1|true)$/i.test((env['CHART_DOCUMENT_ADMIN_ONLY'] ?? '').trim()),
   }
 }
 
@@ -270,7 +275,7 @@ export function createChartIndexResolver(cfg: ChartDocumentConfig, fetchImpl: ty
 }
 
 export function chartDocumentRoutes(opts: {
-  requireUser: (c: Context) => Promise<{ id: string } | null>
+  requireUser: (c: Context) => Promise<{ id: string; role?: string | null } | null>
   config?: ChartDocumentConfig
   fetchImpl?: typeof fetch
 }): Hono {
@@ -286,6 +291,7 @@ export function chartDocumentRoutes(opts: {
     if (cfg.hosts.size === 0 || !cfg.tilesBaseUrl) return c.json({ error: 'Not found' }, 404)
     const user = await opts.requireUser(c)
     if (!user) return c.json({ error: 'Authentication required.' }, 401)
+    if (cfg.adminOnly && user.role !== 'admin') return c.json({ error: 'Not available for this account.' }, 403)
     const cc = c.req.param('country')
     const chartId = c.req.param('chartId')
     if (!/^[a-z]{2}$/.test(cc) || !CHART_ID.test(chartId)) return c.json({ error: 'Document not available.' }, 400)

@@ -61,7 +61,8 @@ import { chooseSnapTarget, sortSnapCandidates, snapHintText, neighbourAtDrop } f
 import { navigatingLeg, routeDirect, samePoint, directActionKind, DIRECT_ACTION_LABELS, presentPositionName, LEG_UNLOCK_MS } from '@open-vfr/shared/routeNavigation'
 import { AERODROME_COLORS } from '@open-vfr/shared/featureColors'
 import { fetchAerodromeNotamTexts, type NotamItem } from '@open-vfr/shared/fetchNotam'
-import { API_BASE_URL, EXPERIMENTAL_CHARTS, EXPERIMENTAL_AERODROME_DETAILS } from '../utils/env'
+import { API_BASE_URL, EXPERIMENTAL_AERODROME_DETAILS } from '../utils/env'
+import { useChartsEnabled } from '../utils/adminAccess'
 import ChartOverlay from './ChartOverlay'
 import AerodromeDetailsLayer from './AerodromeDetailsLayer'
 import ChartViewer from './ChartViewer'
@@ -488,6 +489,7 @@ function parseJsonProp<T>(val: unknown, fallback: T): T {
 const NO_WAYPOINTS: RouteWaypoint[] = []
 
 export default function MapView({ auth }: { auth: AuthState }) {
+  const chartsEnabled = useChartsEnabled()
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   // Active altitude-filter range, shown beside the scale bar so it's always
@@ -5114,10 +5116,10 @@ export default function MapView({ auth }: { auth: AuthState }) {
           <AutoFlyPrompt kind={autoFly.suggestion} onAccept={autoFly.accept} onDismiss={autoFly.dismiss} />
         )}
         <div ref={containerRef} className={css.map} />
-        {EXPERIMENTAL_CHARTS && mapReady && <ChartOverlay map={mapRef.current} />}
+        {chartsEnabled && mapReady && <ChartOverlay map={mapRef.current} />}
         {EXPERIMENTAL_AERODROME_DETAILS && mapReady && <AerodromeDetailsLayer map={mapRef.current} circuitsVisible={visibility['aerodromeCircuits'] ?? true}
           holdingsVisible={visibility['waypointsHold'] ?? true} />}
-        {EXPERIMENTAL_CHARTS && <ChartViewer />}
+        {chartsEnabled && <ChartViewer />}
         {toolbarHost && createPortal((() => {
           const flying = flyingMode !== 'off'
           const findItems: ToolItem[] = [

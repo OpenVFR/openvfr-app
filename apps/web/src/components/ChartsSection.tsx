@@ -9,7 +9,7 @@ import {
   CHART_KIND_LABEL, VFR_CHART_KINDS, type AerodromeCharts, type ChartEntry,
 } from '@open-vfr/shared/chartsIndex'
 import { chartUi, useAerodromeCharts, useChartUi, type ChartSelection } from '../utils/charts'
-import { EXPERIMENTAL_CHARTS } from '../utils/env'
+import { useChartsEnabled } from '../utils/adminAccess'
 import css from './ChartsSection.module.css'
 
 interface Props {
@@ -69,9 +69,10 @@ function ChartRow({ chart, ad, authed }: { chart: ChartEntry; ad: AerodromeChart
 }
 
 export default function ChartsSection({ icao, sectionClass, titleClass, authed }: Props) {
-  const ad = useAerodromeCharts(icao, EXPERIMENTAL_CHARTS)
+  const chartsEnabled = useChartsEnabled()
+  const ad = useAerodromeCharts(icao, chartsEnabled)
   const [showAll, setShowAll] = useState(false)
-  if (!EXPERIMENTAL_CHARTS || !ad || ad.charts.length === 0) return null
+  if (!chartsEnabled || !ad || ad.charts.length === 0) return null
   const vfr = ad.charts.filter(c => VFR_CHART_KINDS.has(c.kind))
   const rest = ad.charts.filter(c => !VFR_CHART_KINDS.has(c.kind))
   const shown = showAll || vfr.length === 0 ? ad.charts : vfr
