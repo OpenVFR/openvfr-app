@@ -5,3 +5,8 @@
 # not a credential. The generic-api-key rule matches its long base64 lines.
 e9f5fe1fdd01b2e1c8cb57c834c22c70636ad171:packages/shared/src/geoidGrid.ts:generic-api-key:30
 e9f5fe1fdd01b2e1c8cb57c834c22c70636ad171:packages/shared/src/geoidGrid.ts:generic-api-key:173
+
+# apps/api/src/mcp.e2e.test.ts: fixed dummy better-auth secret for the in-process
+# PGlite e2e test, not a credential.
+75c70e421e1e7819b544fe8ea308de7046cdf578:apps/api/src/mcp.e2e.test.ts:generic-api-key:42
+75c70e421e1e7819b544fe8ea308de7046cdf578:apps/api/src/mcp.e2e.test.ts:generic-api-key:206
