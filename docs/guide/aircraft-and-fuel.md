@@ -17,22 +17,34 @@ Open the aircraft list from the planning panel. You can:
 - **Create** a new aircraft, or **duplicate** an existing one as a start.
 - **Edit** or **delete** (with a confirmation step).
 - **Select** the aircraft used for the current route. Tap again to deselect.
-- **Fill from a POH with your own AI assistant (web and mobile):** in the
-  aircraft form, choose **AI** (web) or **Fill from POH with your AI
-  assistant** (mobile). Copy or share the prompt, open the AI chat assistant
-  you already use (any assistant that reads PDF files), attach the POH and
-  send the prompt. Copy the whole answer, paste it back into the form and
+- **Fill from a POH with your own AI assistant (web and mobile), the best
+  option:** a new aircraft form opens with **Fill from your POH** (on the
+  web, three choices side by side; for an existing aircraft use **Fill from
+  POH** in its header). Choose **Use your AI assistant** (web) or **Fill
+  from POH with your AI assistant** (mobile). Copy or share the prompt, open
+  the AI chat assistant you already use (any assistant that reads PDF
+  files), attach the POH and send the prompt. Pick a model with **deep
+  thinking** (extended reasoning) if your assistant offers one: POH tables,
+  graphs and diagrams are often scanned images, and a fast model reads them
+  less reliably. Copy the whole answer, paste it back into the form and
   choose **Fill in the form**. The PDF goes only to your assistant, not to
   OpenVFR, and no OpenVFR account is needed. The app checks the numbers it
   gets: a field the answer did not contain, or a value that looks wrong
   (out of range, or not consistent with another field, such as a reserve
   larger than the tank), is marked for you to check. On the web the page
   the assistant read a value from shows when you hover the field.
-- **Import a POH PDF on the server (web only, where the server offers it):**
-  upload the performance pages as a PDF and the server proposes values.
-  This needs an account and sends the document to the cloud service the
-  server is configured with. Fields it could not find are flagged with a
-  `?`.
+- **Let a connected AI assistant create the aircraft** (where the server
+  offers [AI assistants](./ai-assistants.md)): connect your assistant to
+  OpenVFR, attach the POH and ask it to add the aircraft. It fills in the
+  profile, the app checks it, and the aircraft shows **Check before use**
+  until you open and save it. The same advice about a deep-thinking model
+  applies.
+- **Import a POH PDF on the server (web only, where the server offers it),
+  the last option:** upload the performance pages as a PDF and the server
+  proposes values. This needs an account and sends the document to the cloud
+  service the server is configured with. It is less accurate than an AI
+  assistant with deep thinking, especially with diagrams and images. Fields
+  it could not find are flagged with a `?`.
 
   Whichever way you import, check every value against your own
   documentation before you save.

@@ -66,10 +66,20 @@ const FIELD_GUIDE: Record<PohField, string> = {
 }
 
 /** The prompt the pilot sends to their assistant together with the POH PDF. */
+/** Why and how to pick the assistant for a POH: shown next to the prompt in the web and mobile apps. */
+export const POH_MODEL_ADVICE =
+  'For the best result use a model with deep thinking (extended reasoning) that can read PDF files: POH tables, graphs and diagrams are scanned images, and a fast model reads them less reliably. Check every value against the POH.'
+
+/** The alternative to copy and paste: an assistant connected to OpenVFR creates the profile itself. */
+export const POH_CONNECT_ADVICE =
+  'Or connect your AI assistant to OpenVFR (account panel, AI assistants) and ask it to add your aircraft from the attached POH: it fills in and checks the profile directly, and you review it in the app.'
+
 export function buildPohPrompt(): string {
   const lines = POH_FIELDS.map(k => `- "${k}": ${FIELD_GUIDE[k]}`)
   return [
     'I attached the Pilot\'s Operating Handbook (POH / AFM) of my aircraft. Read the whole document, including tables, charts, limitations and appendices, and fill in an aircraft profile for my flight planning app.',
+    '',
+    'Take your time: think through every table, graph and diagram step by step (they may be scanned images), and check the units and conversions before you answer.',
     '',
     'Rules:',
     '- Only give a value that the document states. Never guess or use typical values for the type. Leave a field out if you cannot find it.',
@@ -159,11 +169,14 @@ function extractJsonObject(text: string): string | null {
   return null
 }
 
-/** Parse a number the way a model might write it: 105, "105", "105 kt", "1,5". */
+/** Parse a number the way a model might write it: 105, "105", "105 kt", "1,5" (decimal comma), "13,500" (thousands separator). */
 function toNumber(v: unknown): number | null {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
   if (typeof v !== 'string') return null
-  const m = v.trim().replace(/(\d),(\d)/, '$1.$2').match(/^-?\d+(\.\d+)?/)
+  const t = v.trim()
+  // A comma followed by exactly three digits is a thousands separator ("13,500"), otherwise a decimal comma ("1,5").
+  const plain = /^-?\d{1,3}(,\d{3})+(?!\d)/.test(t) ? t.replace(/,/g, '') : t.replace(/(\d),(\d)/, '$1.$2')
+  const m = plain.match(/^-?\d+(\.\d+)?/)
   if (!m) return null
   const n = Number(m[0])
   return Number.isFinite(n) ? n : null

@@ -12,7 +12,8 @@ import React, { useEffect, useState } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Share,
 } from 'react-native'
-import { buildPohPrompt, parsePohReply, PohReplyError, POH_FIELDS } from '@open-vfr/shared/pohImport'
+import { buildPohPrompt, parsePohReply, PohReplyError, POH_FIELDS, POH_MODEL_ADVICE, POH_CONNECT_ADVICE } from '@open-vfr/shared/pohImport'
+import { useAssistantMcpUrl } from '../hooks/useAssistantMcpUrl'
 import { FUEL_CODES, FUEL_LABELS, normalizeFuelCodes, preferenceLabel } from '@open-vfr/shared/fuelTypes'
 import type { FuelCode, TransponderMode } from '@open-vfr/shared/types'
 import { AppIcon } from './AppIcon'
@@ -149,6 +150,8 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
   const [errors, setErrors] = useState<Record<string, string>>({})
   // POH import through the pilot's AI assistant.
   const [pohOpen, setPohOpen]       = useState(false)
+  // The connection alternative is mentioned only where the server offers it to this account.
+  const canConnect = useAssistantMcpUrl(true) !== null
   const [pohReply, setPohReply]     = useState('')
   const [pohError, setPohError]     = useState('')
   const [pohDone, setPohDone]       = useState(false)
@@ -286,6 +289,7 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
       </TouchableOpacity>
       {pohOpen && (
         <View style={styles.pohBox}>
+          <Text style={styles.pohStep}>{POH_MODEL_ADVICE}</Text>
           <Text style={styles.pohStep}>1. Share the prompt to your AI assistant app (or copy it).</Text>
           <TouchableOpacity style={styles.pohBtn} onPress={sharePohPrompt}>
             <Text style={styles.btnTxt}>Share prompt</Text>
@@ -312,6 +316,7 @@ export function AircraftEditSheet({ profile, visible, onClose, onSave }: Props) 
             <Text style={styles.btnPrimaryTxt}>Fill in the form</Text>
           </TouchableOpacity>
           <Text style={styles.pohHint}>The PDF stays between you and your assistant.</Text>
+          {canConnect && <Text style={styles.pohHint}>{POH_CONNECT_ADVICE}</Text>}
         </View>
       )}
       {pohDone && (

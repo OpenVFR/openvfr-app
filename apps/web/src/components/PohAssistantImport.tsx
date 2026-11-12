@@ -6,7 +6,7 @@
  * back. Parsing and plausibility checks live in @open-vfr/shared/pohImport.
  */
 import { useMemo, useRef, useState } from 'react'
-import { buildPohPrompt, parsePohReply, PohReplyError, type PohReply } from '@open-vfr/shared/pohImport'
+import { buildPohPrompt, parsePohReply, PohReplyError, POH_MODEL_ADVICE, type PohReply } from '@open-vfr/shared/pohImport'
 import css from './PohAssistantImport.module.css'
 
 export default function PohAssistantImport({ onApply }: { onApply: (reply: PohReply) => void }) {
@@ -41,6 +41,7 @@ export default function PohAssistantImport({ onApply }: { onApply: (reply: PohRe
 
   return (
     <div className={css.box} role="region" aria-label="Fill from POH with your AI assistant">
+      <p className={css.advice}>{POH_MODEL_ADVICE}</p>
       <ol className={css.steps}>
         <li>
           <button type="button" className={css.btn} onClick={copyPrompt}>

@@ -5,7 +5,7 @@ import { extractPohViaServer, RateLimitError } from '../utils/pohExtract'
 import { POH_FIELDS, type PohField } from '@open-vfr/shared/pohImport'
 import { FUEL_CODES, FUEL_LABELS, normalizeFuelCodes, preferenceLabel } from '@open-vfr/shared/fuelTypes'
 import { assistantReviewLabel, type FuelCode, type TransponderMode } from '@open-vfr/shared/types'
-import PohAssistantImport from './PohAssistantImport'
+import PohImportChooser from './PohImportChooser'
 import { useSyncRejected } from '../sync/cloudSync'
 import SyncRefusedNote from './SyncRefusedNote'
 import css from './AircraftLibrary.module.css'
@@ -277,7 +277,8 @@ export default function AircraftLibrary({
   const [pohNotes, setPohNotes] = useState<Map<keyof FormState, string>>(new Map())
   // POH page per imported value, shown in the field's tooltip.
   const [pohPages, setPohPages] = useState<Map<keyof FormState, string>>(new Map())
-  const [assistantOpen, setAssistantOpen] = useState(false)
+  // The POH chooser is open for a new aircraft; for an existing one it opens from the header.
+  const [chooserOpen, setChooserOpen] = useState(false)
   const [assistantApplied, setAssistantApplied] = useState(false)
   const poh = (key: keyof FormState) => ({ pohNote: pohNotes.get(key), pohPage: pohPages.get(key) })
 
@@ -293,10 +294,11 @@ export default function AircraftLibrary({
       setErrors({})
       setPohNotes(new Map())
       setPohPages(new Map())
-      setAssistantOpen(false)
+      setChooserOpen(mode === 'new')
       setAssistantApplied(false)
       return
     }
+    setChooserOpen(false)
     const p = profiles.find(x => x.id === mode)
     if (p) { setForm(profileToForm(p)); setErrors({}) }
   }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -527,29 +529,20 @@ export default function AircraftLibrary({
       <div className={css.formHeader}>
         <span className={css.formTitle}>{isNew ? 'New Aircraft' : 'Edit Aircraft'}</span>
         <div className={css.formHeaderActions}>
-          <button
-            className={`${css.iconBtn} ${css.pohBtn}${pohBusy ? ` ${css.pohBtnBusy}` : ''}`}
-            title="Auto-fill from POH PDF on the server"
-            disabled={pohBusy}
-            onClick={() => { if (countdownTimerRef.current) { clearInterval(countdownTimerRef.current); countdownTimerRef.current = null } setPohState('idle'); setPohError(''); setPohCountdown(0); pohInputRef.current?.click() }}
-          >
-          {pohState === 'extracting' || pohState === 'querying' ? <span className={css.pohSpinner} /> : pohState === 'retrying' ? '⏱' : pohState === 'done' ? '✓' : '📄'}
-          </button>
-          <button
-            className={`${css.iconBtn}${assistantOpen ? ` ${css.iconBtnActive}` : ''}`}
-            title="Fill from POH with your own AI assistant"
-            aria-expanded={assistantOpen}
-            onClick={() => setAssistantOpen(o => !o)}
-          >AI</button>
+          {!chooserOpen && <button className={css.iconBtn} onClick={() => setChooserOpen(true)}>Fill from POH</button>}
           <button className={css.iconBtn} title="Back to list" onClick={() => setMode('list')}><IconX size={14} aria-hidden="true" /></button>
         </div>
       </div>
 
-      {assistantOpen && (
-        <PohAssistantImport
+      {chooserOpen && (
+        <PohImportChooser
+          signedIn
+          busy={pohBusy}
+          onClose={() => setChooserOpen(false)}
+          onPickPdf={() => { if (countdownTimerRef.current) { clearInterval(countdownTimerRef.current); countdownTimerRef.current = null } setPohState('idle'); setPohError(''); setPohCountdown(0); pohInputRef.current?.click() }}
           onApply={r => {
             applyPohValues(r.values, r.warnings, r.pages, r.fuelTypes)
-            setAssistantOpen(false)
+            setChooserOpen(false)
             setPohError('')
             setPohState('idle')
             setAssistantApplied(true)

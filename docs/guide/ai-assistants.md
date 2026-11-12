@@ -27,7 +27,7 @@ in the route screen's header and under **Use your AI assistant** in Settings.
 - "What's the weather and are there NOTAMs at ESKN?"
 - "Is the crosswind at ESGG OK for my aircraft right now?"
 - "Where can I refuel on my route to Umeå?"
-- "Add a new aircraft SE-ABC, a Cessna 182, from the attached POH."
+- "Add a new aircraft SE-ABC, a Cessna 182, from the attached POH." (a model with deep thinking reads the POH's tables and diagrams best)
 - "Set SE-ABC's maximum crosswind to 15 kt."
 - "Plan ESSB to ESMS with SE-ABC at 3,500 ft, with a fuel stop at ESKN, and save it."
 - "On my route to Umeå, fly via ESNS and climb to 4,500 ft on the last leg."

@@ -27,8 +27,15 @@ describe('parsePohReply', () => {
   })
 
   it('accepts decimal commas and rounds to two decimals', () => {
-    const r = parsePohReply('{"fuelBurnLhr":"22,456","glideRatio":30}')
-    expect(r.values.fuelBurnLhr).toBe('22.46')
+    expect(parsePohReply('{"fuelBurnLhr":"22,5","glideRatio":30}').values.fuelBurnLhr).toBe('22.5')
+    expect(parsePohReply('{"fuelBurnLhr":22.456}').values.fuelBurnLhr).toBe('22.46')
+  })
+
+  it('reads a comma followed by three digits as a thousands separator', () => {
+    const r = parsePohReply('{"serviceCeilingFt":"13,500","rocSlFpm":"1,000 ft/min","cruiseAltFt":"1,5"}')
+    expect(r.values.serviceCeilingFt).toBe('13500')
+    expect(r.values.rocSlFpm).toBe('1000')
+    expect(r.values.cruiseAltFt).toBe('1.5')
   })
 
   it('makes descent rate positive', () => {
