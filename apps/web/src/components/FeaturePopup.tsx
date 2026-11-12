@@ -314,7 +314,7 @@ function LocalAreaBody({ f }: { f: LocalAreaFeature }) {
     <div className={css.body}>
       {f.name && <div className={css.name}>{f.name}</div>}
       {f.note && <div className={css.row}><span className={css.value}>{f.note}</span></div>}
-      {f.limits && (
+      {f.limits && !f.below && (
         <div className={css.row}>
           <span className={css.label}>Limits</span>
           <span className={css.value}>{f.limits}</span>

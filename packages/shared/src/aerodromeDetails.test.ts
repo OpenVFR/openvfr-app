@@ -176,7 +176,11 @@ describe('localAreaInfo', () => {
   it('says what the area is, how exact it is and where it comes from', () => {
     const i = localAreaInfo({ kind: 'noise_sensitive', aerodrome: 'ESSN', name: 'Lönsvik', remarks: null, approximate: true, accuracy_m: 86.4,
       pending: true, limits: '', source: 'www.rfk.nu' })
-    expect(i).toMatchObject({ areaKind: 'noise_sensitive', kindLabel: 'Noise-sensitive area', name: 'Lönsvik', note: 'Avoid overflying.', accuracyM: 86, approximate: true, pending: true, limits: null, source: 'www.rfk.nu' })
+    expect(i).toMatchObject({ areaKind: 'noise_sensitive', kindLabel: 'Noise-sensitive area', name: 'Lönsvik', note: 'Avoid overflight.', accuracyM: 86, approximate: true, pending: true, limits: null, source: 'www.rfk.nu' })
+  })
+  it('says avoid overflight, below the height when one is stated, and claims nothing when none is', () => {
+    expect(localAreaInfo({ kind: 'noise_sensitive', below: '2500 ft AMSL', remarks: 'avoid below 2500 ft AMSL' })).toMatchObject({ note: 'Avoid overflight below 2500 ft AMSL.', below: '2500 ft AMSL' })
+    expect(localAreaInfo({ kind: 'noise_sensitive', below: '' })).toMatchObject({ note: 'Avoid overflight.', below: null })
   })
   it('prefers the source remark to the kind note', () => {
     expect(localAreaInfo({ kind: 'noise_sensitive', remarks: 'avoid below 2500 ft AMSL', limits: 'GND – 2500 ft AMSL' })).toMatchObject({ note: 'avoid below 2500 ft AMSL', limits: 'GND – 2500 ft AMSL' })

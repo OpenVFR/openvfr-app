@@ -10,7 +10,7 @@
  */
 import type { Feature, FeatureCollection, Geometry } from 'geojson'
 import {
-  AREA_KINDS, CIRCUIT_GROUPS, CIRCUIT_GROUP_COLOR, DETAIL_KIND_COLOR, formatLimits, holdingOrbitFeatures, schematicCircuitFeatures,
+  AREA_KINDS, CIRCUIT_GROUPS, CIRCUIT_GROUP_COLOR, DETAIL_KIND_COLOR, formatLimit, formatLimits, holdingOrbitFeatures, schematicCircuitFeatures,
   type DetailKind, type DetailProps,
 } from './aerodromeDetails'
 
@@ -201,6 +201,7 @@ export function buildDetailsMapData(
         clabel: f.properties.kind === 'circuit_leg' ? circuitLabel(f.properties.name) : '',
         // flat copies for the tap popup (a rendered feature returns nested values as JSON text)
         limits: formatLimits(f.properties.floor, f.properties.ceiling) ?? '',
+        below: belowText(f.properties.floor, f.properties.ceiling) ?? '',
         source: f.properties.provenance?.source_name ?? '',
       },
     })),
@@ -227,7 +228,14 @@ export function mapAreaLabel(p: Pick<DetailProps, 'kind' | 'name' | 'floor' | 'c
   if (p.kind === 'noise_sensitive') name = name.replace(KIND_WORDS_IN_NAME, '').trim()
   const head = p.kind === 'noise_sensitive' ? name
     : kind && name && !name.toLowerCase().includes(kind.toLowerCase().split(' ')[0]!) ? `${kind}: ${name}` : (name || kind || '')
-  return [head, formatLimits(p.floor, p.ceiling)].filter(Boolean).join('\n')
+  const below = p.kind === 'noise_sensitive' ? belowText(p.floor, p.ceiling) : null
+  return [head, below ? `below ${below}` : formatLimits(p.floor, p.ceiling)].filter(Boolean).join('\n')
+}
+
+/** "2500 ft AMSL" when the limit is a ceiling from the ground ("avoid below ..."), else null. */
+export function belowText(floor: DetailProps['floor'], ceiling: DetailProps['ceiling']): string | null {
+  const ground = !floor || (floor.ref === 'AGL' && floor.ft === 0)
+  return ground && ceiling && ceiling.ref !== 'UNL' ? formatLimit(ceiling) : null
 }
 
 /** Map label of a circuit, short so it fits along the line: "RWY 06 RH · RWY 24 LH" -> "06 RH · 24 LH",

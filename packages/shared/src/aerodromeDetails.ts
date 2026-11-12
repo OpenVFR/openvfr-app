@@ -521,7 +521,7 @@ export function areaLabel(p: Pick<DetailProps, 'name' | 'floor' | 'ceiling'>): s
 
 /** A short line per kind for when the source gives no remark of its own. Only what the kind itself means. */
 const KIND_NOTE: Partial<Record<DetailKind, string>> = {
-  noise_sensitive: 'Avoid overflying.',
+  noise_sensitive: 'Avoid overflight.',
   avoid_area: 'Avoid this area.',
   glider_area: 'Glider activity.',
   parachute_area: 'Parachute jumping.',
@@ -539,6 +539,8 @@ export interface LocalAreaInfo {
   /** The source's own remark, else the kind's short note. */
   note: string | null
   limits: string | null
+  /** Noise-sensitive areas: the height the rule applies below ("2500 ft AMSL"), null when no height is stated. */
+  below: string | null
   /** The outline was read off a map or chart: `accuracyM` says how well (null = not stated). */
   approximate: boolean
   accuracyM: number | null
@@ -562,8 +564,11 @@ export function localAreaInfo(p: Record<string, unknown> | null | undefined): Lo
     areaKind: kind,
     kindLabel: DETAIL_KIND_LABEL[kind],
     name: str(p['name']),
-    note: str(p['remarks']) ?? KIND_NOTE[kind] ?? null,
+    // A noise-sensitive area says "Avoid overflight" and, when a height is stated, "below <height>". Nothing else is claimed:
+    // a missing height means no height is known, not that the rule applies at every height.
+    note: kind === 'noise_sensitive' && str(p['below']) ? `Avoid overflight below ${str(p['below'])}.` : str(p['remarks']) ?? KIND_NOTE[kind] ?? null,
     limits: str(p['limits']),
+    below: str(p['below']),
     approximate: p['approximate'] === true || p['approximate'] === 'true',
     accuracyM: Number.isFinite(acc) && acc > 0 ? Math.round(acc) : null,
     pending: p['pending'] === true || p['pending'] === 'true',

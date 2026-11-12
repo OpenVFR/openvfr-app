@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DETAIL_LAYERS, staticColorLayers, layerFilter, buildDetailsMapData, circuitLabel, mapAreaLabel, CIRCUIT_LAYER_IDS } from './aerodromeDetailsStyle'
+import { DETAIL_LAYERS, staticColorLayers, layerFilter, buildDetailsMapData, circuitLabel, mapAreaLabel, belowText, CIRCUIT_LAYER_IDS } from './aerodromeDetailsStyle'
 import { DETAIL_KIND_COLOR, CIRCUIT_GROUP_COLOR, parseAerodromeDetails, schematicCircuitFeatures } from './aerodromeDetails'
 
 describe('aerodromeDetailsStyle', () => {
@@ -70,6 +70,14 @@ describe('mapAreaLabel', () => {
   it('gives an unnamed noise-sensitive area no label (the outline and the tap say what it is)', () => {
     expect(mapAreaLabel({ kind: 'noise_sensitive', name: null, floor: null, ceiling: null })).toBe('')
     expect(mapAreaLabel({ kind: 'noise_sensitive', name: 'Noise-sensitive area', floor: null, ceiling: null })).toBe('')
+  })
+  it('a noise-sensitive area with a height says it below that height', () => {
+    const lim = { floor: { ref: 'AGL' as const, ft: 0 }, ceiling: { ref: 'AMSL' as const, ft: 2500 } }
+    expect(mapAreaLabel({ kind: 'noise_sensitive', name: 'Kil', ...lim })).toBe('Kil\nbelow 2500 ft AMSL')
+    expect(mapAreaLabel({ kind: 'noise_sensitive', name: null, ...lim })).toBe('below 2500 ft AMSL')
+    expect(belowText(lim.floor, lim.ceiling)).toBe('2500 ft AMSL')
+    expect(belowText(null, { ref: 'UNL' })).toBeNull()
+    expect(belowText({ ref: 'AMSL', ft: 1000 }, { ref: 'AMSL', ft: 2500 })).toBeNull()      // a band above the ground is not "below"
   })
   it('keeps the kind in front of the name for other areas', () => {
     expect(mapAreaLabel({ kind: 'glider_area', name: 'Öresjö', floor: null, ceiling: null })).toBe('Glider area: Öresjö')
