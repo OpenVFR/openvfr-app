@@ -96,7 +96,7 @@ export const TRAFFIC_BASE: string = isStaging
  */
 const TILE_DATASETS = [
   'airspace', 'aerodromes', 'navaids', 'waypoints', 'runways',
-  'runwayThresholds', 'obstacles', 'landmarks', 'water',
+  'runwayThresholds', 'obstacles', 'landmarks', 'lakes',
 ] as const satisfies readonly CountryDataset[]
 type TileKey = typeof TILE_DATASETS[number]
 

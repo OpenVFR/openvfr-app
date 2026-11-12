@@ -18,7 +18,7 @@
  *   se-runway-thresholds.geojson
  *   se-obstacles.geojson
  *   se-landmarks.geojson
- *   se-water.geojson (optional — Virtual Radar lake/reservoir crossings)
+ *   se-lakes.geojson (optional — large lakes for the glide-to-land check)
  */
 
 import { File, Directory, Paths } from 'expo-file-system'
@@ -123,6 +123,7 @@ export const OFFLINE_ASSETS: OfflineAsset[] = [
   { key: 'aerodromeDetails', label: 'Aerodrome details (circuits, areas)', required: false, bundledWith: 'aerodromes',
     get fileName() { return countryDatasetFile(activeCountry(), 'aerodromeDetails') } },
   dataset('water',            'water',            'Water (Virtual Radar)', false, undefined, true),
+  dataset('lakes',            'lakes',            'Large lakes (glide check)', false, undefined, true),
 ]
 
 /** Optional assets to tick in the download UI: the defaults plus whatever is already cached

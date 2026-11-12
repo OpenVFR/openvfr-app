@@ -183,7 +183,7 @@ export type CountryDataset = GeoJSON.FeatureCollection & { missingCountries?: st
  * One dataset for some countries (merged); null when TILES_BASE_URL is unset or nothing loaded.
  * When only some countries loaded, `missingCountries` names the others.
  */
-export async function loadCountryDataset(kind: 'aerodromes' | 'airspace' | 'obstacles' | 'landmarks' | 'navaids' | 'waypoints' | 'water', countries: readonly string[]): Promise<CountryDataset | null> {
+export async function loadCountryDataset(kind: 'aerodromes' | 'airspace' | 'obstacles' | 'landmarks' | 'navaids' | 'waypoints' | 'water' | 'lakes', countries: readonly string[]): Promise<CountryDataset | null> {
   if (!TILES_BASE_URL || countries.length === 0) return null
   const now = Date.now()
   const parts = await Promise.all(countries.map(cc => {

@@ -91,9 +91,17 @@ export function usePreflightCheck(opts: {
     return () => { alive = false }
   }, [active, countryTick])
 
-  // Sea for the glide-to-land check. Lakes are not loaded on native: the
-  // water file is too large for fetch() there (see VerticalProfile.tsx).
+  // Sea (grid) and large lakes for the glide-to-land check. The lakes file is small; the full water
+  // file is far too large for fetch() on Android and is never loaded here. A country without the lakes
+  // file yet is checked over the sea only.
   const mefGrids = useMefGrids()
+  const [lakes, setLakes] = useState<GeoJSON.FeatureCollection | null>(null)
+  useEffect(() => {
+    if (!active) return
+    let alive = true
+    loadGeoJsonOnce(getTileUrls().lakes).then((d) => alive && setLakes(d)).catch(() => { if (alive) setLakes(null) })
+    return () => { alive = false }
+  }, [active, countryTick])
   const margins = settings.msaMargins
   const airspaceLevels = useMemo(() => resolveAirspaceLevels(settings.alertAirspaceLevels), [settings.alertAirspaceLevels])
 
@@ -131,9 +139,9 @@ export function usePreflightCheck(opts: {
     return computeWarnings(
       profile, msa.msaPts, aircraft ?? undefined, waypoints, legOverrides, aircraftId ?? undefined,
       msa.terrainFailed, legWinds, resolveMsaMargins(margins),
-      { terrainPts: msa.terrain, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable, surfaceWinds: opts.surfaceWinds, surfaceTempsC: opts.surfaceTempsC, routeReview: opts.routeReview, mefGrids },
+      { terrainPts: msa.terrain, airspaceLevels, aerodromes: aerodromeGeo, notams: vfrNotams, airspace: airspaceGeo, unavailable, surfaceWinds: opts.surfaceWinds, surfaceTempsC: opts.surfaceTempsC, routeReview: opts.routeReview, mefGrids, water: lakes },
     )
-  }, [profile, msa, aircraft, waypoints, legOverrides, aircraftId, legWinds, margins, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, airspaceFailed, aerodromesFailed, signedIn, regional.failed, opts.surfaceWinds, opts.surfaceTempsC, opts.routeReview, mefGrids])
+  }, [profile, msa, aircraft, waypoints, legOverrides, aircraftId, legWinds, margins, airspaceLevels, aerodromeGeo, vfrNotams, airspaceGeo, airspaceFailed, aerodromesFailed, signedIn, regional.failed, opts.surfaceWinds, opts.surfaceTempsC, opts.routeReview, mefGrids, lakes])
 
   const prompts = useMemo(
     () => computePrompts({ waypoints, legWinds, windsLoading }),

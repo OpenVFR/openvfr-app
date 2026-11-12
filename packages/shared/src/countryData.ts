@@ -19,7 +19,7 @@ import { DEFAULT_REGION_CODES } from './regions'
 
 export type CountryDataset =
   | 'airspace' | 'aerodromes' | 'navaids' | 'waypoints' | 'runways'
-  | 'runwayThresholds' | 'obstacles' | 'landmarks' | 'water' | 'aeroways' | 'aerodromeDetails'
+  | 'runwayThresholds' | 'obstacles' | 'landmarks' | 'water' | 'lakes' | 'aeroways' | 'aerodromeDetails'
   | 'aerodromesPreview' | 'aerodromeDetailsPreview' | 'charts'
 
 const SUFFIX: Record<CountryDataset, string> = {
@@ -32,6 +32,8 @@ const SUFFIX: Record<CountryDataset, string> = {
   obstacles:        'obstacles.geojson',
   landmarks:        'landmarks.geojson',
   water:            'water.geojson',
+  // Large lakes only, simplified (a few hundred KB): what the glide check needs, instead of `water`.
+  lakes:            'lakes.geojson',
   aeroways:         'aeroways.geojson',
   // Circuits, noise-sensitive areas, holdings and club-map features (experimental, may be absent): see aerodromeDetails.ts.
   aerodromeDetails: 'aerodrome-details.geojson',
