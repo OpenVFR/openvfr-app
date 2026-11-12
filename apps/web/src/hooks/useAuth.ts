@@ -61,14 +61,17 @@ export async function answerAssistantConsent(accept: boolean, scope?: string): P
   const res = await authClient.$fetch<{ url?: string; redirect_uri?: string }>('/oauth2/consent', { method: 'POST', body: { accept, ...(scope ? { scope } : {}) } })
   if (res.error) throw new Error(res.error.message || 'Could not answer the request')
   const next = res.data?.url ?? res.data?.redirect_uri
-  if (next) window.location.assign(next)
+  // No redirect target: the page would stay on "Connecting…" for good.
+  if (!next) throw new Error('The server did not say where to go next. Try connecting again from the assistant.')
+  window.location.assign(next)
 }
 
 /** On /oauth/login when already signed in: resume the pending authorization request (the server redirects on). */
 export async function continueAssistantLogin(): Promise<void> {
   const res = await authClient.$fetch<{ url?: string }>('/oauth2/continue', { method: 'POST', body: {} })
   if (res.error) throw new Error(res.error.message || 'Could not continue')
-  if (res.data?.url) window.location.assign(res.data.url)
+  if (!res.data?.url) throw new Error('The server did not say where to go next. Try connecting again from the assistant.')
+  window.location.assign(res.data.url)
 }
 
 /** Assistants this account has approved. */

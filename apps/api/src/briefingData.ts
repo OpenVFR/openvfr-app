@@ -64,50 +64,49 @@ async function postgrestGet(userId: string, path: string): Promise<Record<string
 
 /** The user's saved routes, newest first. */
 export async function userRoutes(userId: string): Promise<RouteDocType[]> {
-  const rows = await postgrestGet(userId, '/user_routes?select=*&order=updated_at.desc&limit=200')
+  const rows = await postgrestGet(userId, '/user_routes?select=*&order=updated_at.desc&limit=1000')
   return rows.map(r => routeRows.fromServer(r)).filter((r): r is RouteDocType => !!r)
 }
 
 /**
- * Create or replace one of the user's aircraft profiles through PostgREST as
- * that user (row-level security: only their own rows). Same row shape the
- * apps sync, so the profile reaches web and native on their next sync.
+ * Create or replace one row of a user table through PostgREST as that user
+ * (row-level security: only their own rows). With `seenUpdatedAt` (an update)
+ * the row is only changed if it is still as it was read (no newer write from
+ * the app since): otherwise a conflict error asks for a fresh read instead
+ * of overwriting the pilot's edit.
  */
-export async function upsertUserAircraft(userId: string, doc: AircraftProfileDocType): Promise<void> {
+async function postgrestWrite(userId: string, table: string, row: Record<string, unknown>, seenUpdatedAt?: number): Promise<void> {
   if (!POSTGREST_URL) throw new Error('POSTGREST_INTERNAL_URL is not set')
   const { jwt } = mintPostgrestJwt({ id: userId }, 60)
-  const res = await fetch(`${POSTGREST_URL}/user_aircraft_profiles`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${jwt}`,
-      'Content-Type': 'application/json',
-      Prefer: 'resolution=merge-duplicates,return=minimal',
-    },
-    body: JSON.stringify(aircraftRows.toServer(doc, userId)),
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  const headers = { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }
+  if (seenUpdatedAt !== undefined && seenUpdatedAt > 0) {
+    // Server times have microseconds: "not changed since" = older than the read time plus 1 ms.
+    const { id, user_id: _u, ...changes } = row
+    const res = await fetch(`${POSTGREST_URL}/${table}?id=eq.${encodeURIComponent(String(id))}&updated_at=lt.${encodeURIComponent(new Date(seenUpdatedAt + 1).toISOString())}`, {
+      method: 'PATCH', headers: { ...headers, Prefer: 'return=representation' }, body: JSON.stringify(changes), signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    })
+    if (!res.ok) throw new Error(`PostgREST ${table} update -> ${res.status} ${(await res.text()).slice(0, 200)}`)
+    if (((await res.json().catch(() => [])) as unknown[]).length === 0) throw new WriteConflictError()
+    return
+  }
+  const res = await fetch(`${POSTGREST_URL}/${table}`, {
+    method: 'POST', headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(row), signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   })
-  if (!res.ok) throw new Error(`PostgREST user_aircraft_profiles upsert -> ${res.status} ${(await res.text()).slice(0, 200)}`)
+  if (!res.ok) throw new Error(`PostgREST ${table} upsert -> ${res.status} ${(await res.text()).slice(0, 200)}`)
 }
 
-/**
- * Create or replace one of the user's saved routes as that user. The review
- * mark is written explicitly: the shared row mapping only ever clears it.
- */
-export async function upsertUserRoute(userId: string, doc: RouteDocType): Promise<void> {
-  if (!POSTGREST_URL) throw new Error('POSTGREST_INTERNAL_URL is not set')
-  const { jwt } = mintPostgrestJwt({ id: userId }, 60)
-  const res = await fetch(`${POSTGREST_URL}/user_routes`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${jwt}`,
-      'Content-Type': 'application/json',
-      Prefer: 'resolution=merge-duplicates,return=minimal',
-    },
-    body: JSON.stringify({ ...routeRows.toServer(doc, userId), assistant_review: doc.assistantReview ?? null }),
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  })
-  if (!res.ok) throw new Error(`PostgREST user_routes upsert -> ${res.status} ${(await res.text()).slice(0, 200)}`)
+/** The row changed in the app (or was removed) after it was read: nothing was written. */
+export class WriteConflictError extends Error {
+  constructor() { super('Changed in the app since it was read: nothing was written. Read it again and repeat the change.') }
 }
+
+/** Create or replace one of the user's aircraft profiles. Same row shape the apps sync. */
+export const upsertUserAircraft = (userId: string, doc: AircraftProfileDocType, seenUpdatedAt?: number) =>
+  postgrestWrite(userId, 'user_aircraft_profiles', aircraftRows.toServer(doc, userId), seenUpdatedAt)
+
+/** Create or replace one of the user's saved routes. The review mark is written explicitly: the shared row mapping only ever clears it. */
+export const upsertUserRoute = (userId: string, doc: RouteDocType, seenUpdatedAt?: number) =>
+  postgrestWrite(userId, 'user_routes', { ...routeRows.toServer(doc, userId), assistant_review: doc.assistantReview ?? null }, seenUpdatedAt)
 
 /** The user's saved places (the app's "waypoints"), oldest first. */
 export async function userPlaces(userId: string): Promise<UserWaypointDocType[]> {
@@ -115,22 +114,9 @@ export async function userPlaces(userId: string): Promise<UserWaypointDocType[]>
   return rows.map(r => waypointRows.fromServer(r)).filter((w): w is UserWaypointDocType => !!w)
 }
 
-/** Create or replace one of the user's saved places as that user. */
-export async function upsertUserPlace(userId: string, doc: UserWaypointDocType): Promise<void> {
-  if (!POSTGREST_URL) throw new Error('POSTGREST_INTERNAL_URL is not set')
-  const { jwt } = mintPostgrestJwt({ id: userId }, 60)
-  const res = await fetch(`${POSTGREST_URL}/user_waypoints`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${jwt}`,
-      'Content-Type': 'application/json',
-      Prefer: 'resolution=merge-duplicates,return=minimal',
-    },
-    body: JSON.stringify(waypointRows.toServer(doc, userId)),
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  })
-  if (!res.ok) throw new Error(`PostgREST user_waypoints upsert -> ${res.status} ${(await res.text()).slice(0, 200)}`)
-}
+/** Create or replace one of the user's saved places. */
+export const upsertUserPlace = (userId: string, doc: UserWaypointDocType, seenUpdatedAt?: number) =>
+  postgrestWrite(userId, 'user_waypoints', waypointRows.toServer(doc, userId), seenUpdatedAt)
 
 /** One logged flight without its GPS track. */
 export interface FlightSummary {
@@ -188,8 +174,14 @@ async function fetchDataset(url: string): Promise<GeoJSON.FeatureCollection | nu
   }
 }
 
-/** One dataset for some countries (merged); null when TILES_BASE_URL is unset or nothing loaded. */
-export async function loadCountryDataset(kind: 'aerodromes' | 'airspace' | 'obstacles' | 'landmarks' | 'navaids' | 'waypoints' | 'water', countries: readonly string[]): Promise<GeoJSON.FeatureCollection | null> {
+/** A merged dataset that says which countries' files could not be loaded (callers must not read "not loaded" as "none"). */
+export type CountryDataset = GeoJSON.FeatureCollection & { missingCountries?: string[] }
+
+/**
+ * One dataset for some countries (merged); null when TILES_BASE_URL is unset or nothing loaded.
+ * When only some countries loaded, `missingCountries` names the others.
+ */
+export async function loadCountryDataset(kind: 'aerodromes' | 'airspace' | 'obstacles' | 'landmarks' | 'navaids' | 'waypoints' | 'water', countries: readonly string[]): Promise<CountryDataset | null> {
   if (!TILES_BASE_URL || countries.length === 0) return null
   const now = Date.now()
   const parts = await Promise.all(countries.map(cc => {
@@ -204,7 +196,9 @@ export async function loadCountryDataset(kind: 'aerodromes' | 'airspace' | 'obst
     return hit.fc
   }))
   const ok = parts.filter((p): p is GeoJSON.FeatureCollection => !!p)
-  return ok.length > 0 ? mergeFeatureCollections(ok) : null
+  if (ok.length === 0) return null
+  const missing = countries.filter((_, i) => !parts[i]).map(c => c.toUpperCase())
+  return Object.assign(mergeFeatureCollections(ok), missing.length ? { missingCountries: missing } : {})
 }
 
 /** Countries a route touches, limited to those this deployment serves. */
@@ -257,35 +251,41 @@ export interface PlanningSettings {
   globalWind?: { dirDeg: number; speedKts: number }
   /** Aircraft selected in the app (web syncs it; native keeps it on the device). */
   selectedAircraftId?: string
+  /** The pilot's margins or alert levels could not be read: defaults are used and the briefing says so. */
+  unreadable?: boolean
 }
 
-/** Planning settings from the user's synced settings; {} when unset or unreadable. */
+/** Planning settings from the user's synced settings; {} when POSTGREST is not configured. */
 export async function userPlanningSettings(userId: string): Promise<PlanningSettings> {
   if (!POSTGREST_URL) return {}
+  let rows: Record<string, unknown>[]
   try {
-    const rows = await postgrestGet(userId, '/user_settings?select=key,value&key=in.(msa_margins,alert_banners,takeoff_time,global_wind,%22ovfr:selectedAircraft%22)')
-    const out: PlanningSettings = {}
-    for (const r of rows) {
-      const raw = String(r['value'] ?? '')
-      if (r['key'] === 'ovfr:selectedAircraft') {
-        if (raw) out.selectedAircraftId = raw
-        continue
-      }
-      if (r['key'] === 'takeoff_time') {
-        const t = Date.parse(raw)
-        if (Number.isFinite(t)) out.takeoffMs = t
-        continue
-      }
+    rows = await postgrestGet(userId, '/user_settings?select=key,value&key=in.(msa_margins,alert_banners,takeoff_time,global_wind,%22ovfr:selectedAircraft%22)')
+  } catch (err) {
+    console.error('[briefing] reading the pilot\'s settings failed:', err)
+    return { unreadable: true }
+  }
+  const out: PlanningSettings = {}
+  // One row at a time: a bad row loses only itself. Unreadable margins or alert
+  // levels are flagged (the briefing says so, and a level below the pilot's own MSA
+  // is not saved on defaults).
+  for (const r of rows) {
+    const key = String(r['key'] ?? '')
+    const raw = String(r['value'] ?? '')
+    try {
+      if (key === 'ovfr:selectedAircraft') { if (raw) out.selectedAircraftId = raw; continue }
+      if (key === 'takeoff_time') { const t = Date.parse(raw); if (Number.isFinite(t)) out.takeoffMs = t; continue }
       const v = JSON.parse(raw || 'null') as Record<string, unknown> | null
       if (!v || typeof v !== 'object') continue
-      if (r['key'] === 'msa_margins') out.msaMargins = resolveMsaMargins(v as Partial<MsaMargins>)
-      if (r['key'] === 'alert_banners' && v['airspaceLevels']) out.airspaceLevels = resolveAirspaceLevels(v['airspaceLevels'] as never)
-      if (r['key'] === 'global_wind' && Number.isFinite(Number(v['dirDeg'])) && Number.isFinite(Number(v['speedKts']))) {
+      if (key === 'msa_margins') out.msaMargins = resolveMsaMargins(v as Partial<MsaMargins>)
+      if (key === 'alert_banners' && v['airspaceLevels']) out.airspaceLevels = resolveAirspaceLevels(v['airspaceLevels'] as Partial<Record<string, unknown>>)
+      if (key === 'global_wind' && Number.isFinite(Number(v['dirDeg'])) && Number.isFinite(Number(v['speedKts']))) {
         out.globalWind = { dirDeg: Number(v['dirDeg']), speedKts: Number(v['speedKts']) }
       }
+    } catch (err) {
+      console.error(`[briefing] setting ${key} of user ${userId} is not readable:`, err)
+      if (key === 'msa_margins' || key === 'alert_banners') out.unreadable = true
     }
-    return out
-  } catch {
-    return {}
   }
+  return out
 }

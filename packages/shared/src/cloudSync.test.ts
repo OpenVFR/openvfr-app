@@ -408,6 +408,31 @@ describe('TableSync two-way', () => {
     expect(a.sync.rejected.size).toBe(0)
   })
 
+  it('batches only rows with the same keys (PostgREST refuses a bulk request with mixed keys)', async () => {
+    const server = new FakeServer()
+    const a = new Device(server)
+    const adapter = (a.sync as unknown as { adapter: TableAdapter<Doc> }).adapter
+    const plain = adapter.toServer
+    // One row carries an extra column (like a route whose review mark is cleared).
+    adapter.toServer = (d, u) => ({ ...plain(d, u), ...(d.id === 'r2' ? { assistant_review: null } : {}) })
+    const shapes: string[] = []
+    const orig = server.fetch
+    server.fetch = async (url, init) => {
+      if (init?.method === 'POST' && !String(url).includes('/rpc/')) {
+        const rows = JSON.parse(String(init.body)) as Record<string, unknown>[]
+        const keys = new Set(rows.map(r => Object.keys(r).sort().join(',')))
+        shapes.push(`${rows.length}:${keys.size}`)
+        if (keys.size > 1) return new Response('{"code":"PGRST102"}', { status: 400 })
+      }
+      return orig(url, init)
+    }
+    a.edit('r1', 'one', tick()); a.edit('r2', 'two', tick()); a.edit('r3', 'three', tick())
+    expect((await a.sync.run()).status).toBe('ok')
+    expect(shapes.every(x => x.endsWith(':1'))).toBe(true)
+    expect(shapes).toHaveLength(2)   // [r1, r3] and [r2]: no failed request, no one-by-one fallback
+    expect(server.tables.get('user_routes')!.size).toBe(3)
+  })
+
   it('remembers rows the server refused, with the reason, until they upload or are deleted', async () => {
     const server = new FakeServer()
     const a = new Device(server)

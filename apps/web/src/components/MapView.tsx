@@ -4473,7 +4473,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
   // then, and how to load another (set once drawerProps exists, below).
   const routeStateRef = useRef({ waypoints: routeWaypoints, legOverrides, aircraftId: routeAircraftId, activeRouteId })
   routeStateRef.current = { waypoints: routeWaypoints, legOverrides, aircraftId: routeAircraftId, activeRouteId }
-  const drawerPropsRef = useRef<{ onLoadRoute: (wps: RouteWaypoint[], ovr: LegOverride[], aircraftId: string) => void } | null>(null)
   const loadRouteRef = useRef<(wps: RouteWaypoint[], ovr: LegOverride[], aircraftId: string | undefined, id: string) => void>(() => {})
   useEffect(() => {
     const map = mapRef.current
@@ -4492,6 +4491,8 @@ export default function MapView({ auth }: { auth: AuthState }) {
     if (link.route) {
       const id = link.route
       void waitForSavedRoute(id, 20_000).then(async (doc) => {
+        // Up to 20 s have passed: a flight started meanwhile keeps its route.
+        if (flyingModeRef.current !== 'off') return
         if (!doc) {
           window.alert('That route is not in your saved routes here. Sign in with the account it was saved to, or wait for sync and open the link again.')
           return
@@ -4505,8 +4506,9 @@ export default function MapView({ auth }: { auth: AuthState }) {
           )
           if (dirty && !window.confirm(`Open the saved route "${doc.name}"? The route on the map has unsaved changes and will be replaced.`)) return
         }
+        if (flyingModeRef.current !== 'off') return
         loadRouteRef.current(doc.waypoints, doc.legOverrides ?? [], doc.aircraftId || undefined, id)
-      })
+      }).catch((err) => console.warn('[route link] could not open the saved route:', err))
     }
 
     if (link.center) {
@@ -4937,7 +4939,6 @@ export default function MapView({ auth }: { auth: AuthState }) {
   const tafWarnIcaos = useMemo(() => tafChangeIcaos(routeWeatherStations), [routeWeatherStations])
   // Flying with a fix: route actions on features fly there (Direct to).
   const inFlightRoute = flyingNow && !!gpsPosition
-  loadRouteRef.current = (wps, ovr, aircraftId, id) => { drawerPropsRef.current?.onLoadRoute(wps, ovr, aircraftId ?? ''); setActiveRouteId(id) }
   const drawerProps = useStableProps({
     tafWarnIcaos,
     visibility,
@@ -5077,8 +5078,7 @@ export default function MapView({ auth }: { auth: AuthState }) {
     auth,
     onOpenProfile: () => setProfileOpen(true),
   })
-  drawerPropsRef.current = drawerProps
-
+  loadRouteRef.current = (wps, ovr, aircraftId, id) => { drawerProps.onLoadRoute(wps, ovr, aircraftId ?? ''); setActiveRouteId(id) }
 
   // A feature clicked where the card will cover it: slide the map left so the
   // feature stays in view beside the card (desktop, not while flying).

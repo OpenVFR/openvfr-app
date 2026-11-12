@@ -471,7 +471,15 @@ export class TableSync<L> {
     const prefer = `${resolution},return=representation`
     const timeoutMs = 4 * (this.transport.timeoutMs ?? 30_000)
     let failed = 0
-    for (const batch of chunks(rows, adapter.uploadBatch ?? 50)) {
+    // PostgREST refuses a bulk request whose rows have different keys (a row
+    // that carries an optional column next to rows that do not): batch rows
+    // with the same set of keys together.
+    const byShape = new Map<string, L[]>()
+    for (const r of rows) {
+      const shape = Object.keys(adapter.toServer(r, this.userId)).sort().join(',')
+      byShape.set(shape, [...(byShape.get(shape) ?? []), r])
+    }
+    for (const batch of [...byShape.values()].flatMap(g => chunks(g, adapter.uploadBatch ?? 50))) {
       try {
         const res = await this.request('POST', path, {
           body: batch.map(r => adapter.toServer(r, this.userId)), prefer, timeoutMs,

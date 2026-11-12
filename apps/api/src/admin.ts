@@ -31,6 +31,7 @@ import { Hono, type MiddlewareHandler } from 'hono'
 import { auth, TRUSTED_ORIGINS, ADMIN_APP_ORIGIN } from './auth.js'
 import { ACCESS_CONFIG, createAccessVerifier } from './accessJwt.js'
 import { pool } from './db.js'
+import { revokeAssistantTokens } from './assistantAccess.js'
 import { invalidateCountries } from './countries.js'
 import { EUROPEAN_REGIONS, isSupportedRegion } from '@open-vfr/shared/regions'
 import { currentAiracCycle } from '@open-vfr/shared/airac'
@@ -215,6 +216,8 @@ admin.post('/users/:id/ban', async (c) => {
     headers: c.get('adminHeaders'),
     body: { userId: id, banReason: reason || undefined, banExpiresIn: days ? days * 86400 : undefined },
   })
+  // An assistant's tokens outlive sessions: end them too (the /mcp handler also refuses banned users).
+  await revokeAssistantTokens((sql, params) => pool.query(sql, params), id)
   console.log(`[admin] ${c.get('adminEmail')} banned ${target.rows[0].email}${days ? ` for ${days}d` : ''}`)
   return c.json({ ok: true })
 })

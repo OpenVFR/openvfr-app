@@ -20,12 +20,13 @@ process.env['DATABASE_URL'] ??= 'postgres://unused@127.0.0.1:1/unused'
 const { serve } = await import('@hono/node-server')
 const { Hono } = await import('hono')
 const { betterAuth } = await import('better-auth')
-const { bearer, emailOTP } = await import('better-auth/plugins')
+const { bearer, emailOTP, admin } = await import('better-auth/plugins')
 const { getMigrations } = await import('better-auth/db/migration')
 const { PGlite } = await import('@electric-sql/pglite')
 const { PGliteDialect } = await import('kysely-pglite-dialect')
 const { assistantConnectionPlugins, mcpResource, SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, SCOPE_LOGS } = await import('./assistantAuth.js')
 const { buildPointIndex } = await import('@open-vfr/shared/routeIdentifiers')
+const { createAssistantAccess } = await import('./assistantAccess.js')
 const { buildRouteBriefing } = await import('./briefing.js')
 const { createMcpEndpoint } = await import('./mcp.js')
 
@@ -38,6 +39,8 @@ const RESOURCE = mcpResource(BASE)
 const REDIRECT = 'http://127.0.0.1:9999/callback'
 const m = (n: string) => ({ modelName: n })
 
+const pg = new PGlite()
+const query = (sql: string, params: unknown[]) => pg.query(sql, params) as Promise<{ rows: Record<string, unknown>[] }>
 let lastOtp = ''
 const saved: unknown[] = []
 const savedRoutes: { id: string; name: string; assistantReview?: { by: string } }[] = []
@@ -45,13 +48,14 @@ const auth = betterAuth({
   secret: 'test-secret-0123456789-0123456789-0123456789',
   baseURL: BASE,
   trustedOrigins: [BASE, APP],
-  database: { dialect: new PGliteDialect(new PGlite()), type: 'postgres' } as never,
+  database: { dialect: new PGliteDialect(pg), type: 'postgres' } as never,
   user: m('ba_user'), session: m('ba_session'), account: m('ba_account'), verification: m('ba_verification'),
   disabledPaths: ['/token'],
   plugins: [
     bearer(),
+    admin(),   // as in production: the ban columns the /mcp access check reads
     emailOTP({ sendVerificationOTP: async ({ otp }) => { lastOtp = otp } }),
-    ...assistantConnectionPlugins({ baseUrl: BASE, appOrigin: APP }),
+    ...assistantConnectionPlugins({ baseUrl: BASE, appOrigin: APP, query }),
   ],
 })
 
@@ -100,6 +104,7 @@ before(async () => {
     clientName: async () => 'Test Assistant',
     // Briefings themselves are covered by briefing.test.ts.
     takeBriefing: () => false,
+    access: createAssistantAccess(query, 0).allowed,
     jwksUrl: `${BASE}/api/auth/jwks`,
   })
   app.post('/mcp', (c) => endpoint(c.req.raw))
@@ -133,6 +138,7 @@ async function rpc(token: string, method: string, params: unknown = {}): Promise
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
   })
   const raw = await res.text()
+  if (process.env['DBG']) console.log('RPC', res.status, raw.slice(0, 300))
   return JSON.parse(raw.startsWith('{') ? raw : raw.split('\n').find(l => l.startsWith('data: '))!.slice(6))
 }
 const toolText = (r: { result?: Record<string, unknown> }) => ((r.result?.['content'] as { text: string }[] | undefined) ?? []).map(c => c.text).join('\n')
@@ -214,7 +220,7 @@ test('with aircraft:write the assistant can add an aircraft, marked for review',
   const t = await connect(`offline_access ${SCOPE_BRIEFING} ${SCOPE_ROUTES} ${SCOPE_AIRCRAFT_WRITE}`)
   assert.ok(t.scope.includes(SCOPE_AIRCRAFT_WRITE))
   const r = await rpc(t.access_token, 'tools/call', { name: 'create_aircraft', arguments: { registration: 'SE-NEW', cruiseIas: 100, fuelBurnLhr: 30, maxFuelL: 100 } })
-  assert.match(toolText(r), /Added SE-NEW/)
+  assert.match(toolText(r), /Added «SE-NEW»/)
   assert.equal(saved.length, 1)
   assert.equal((saved[0] as { assistantReview: { by: string } }).assistantReview.by, 'Test Assistant')
 })
@@ -226,7 +232,7 @@ test('with routes:write the assistant can save a route, refused points are not g
   assert.match(toolText(bad), /XXXX: not an aerodrome/)
   const r = await rpc(t.access_token, 'tools/call', { name: 'create_route', arguments: { name: 'Hop', points: ['ESSB', 'ESSA'], altitudeFt: 2500 } })
   assert.match(toolText(r), /Saved new route «Hop»/)
-  assert.match(toolText(r), /Planned with SE-TST «Rotax» \(the only aircraft profile\)/)
+  assert.match(toolText(r), /Planned with «SE-TST» «Rotax» \(the only aircraft profile\)/)
   assert.match(toolText(r), /\?route=[0-9a-f-]{36}/)
   assert.equal(savedRoutes.length, 1)
   assert.equal(savedRoutes[0]!.assistantReview?.by, 'Test Assistant')
@@ -290,14 +296,51 @@ test('logbook summaries need logs:read and carry no track', async () => {
   assert.equal((await rpc(t.access_token, 'tools/call', { name: 'create_place', arguments: { name: 'X', position: '59.6 17.9' } })).result?.['isError'], true)
 })
 
-test('refresh tokens rotate, a replay is refused, disconnect ends access', async () => {
+test('refresh tokens rotate and a replay is refused', async () => {
   const t = await connect(`offline_access ${SCOPE_BRIEFING}`)
   const r1 = await (await fetch(as['token_endpoint']!, form({ grant_type: 'refresh_token', refresh_token: t.refresh_token, client_id: clientId, resource: RESOURCE }))).json() as { refresh_token: string }
   assert.ok(r1.refresh_token && r1.refresh_token !== t.refresh_token)
   assert.equal((await fetch(as['token_endpoint']!, form({ grant_type: 'refresh_token', refresh_token: t.refresh_token, client_id: clientId, resource: RESOURCE }))).ok, false)
+})
+
+const mcpStatus = async (token: string) => (await fetch(RESOURCE, {
+  method: 'POST',
+  headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
+  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+})).status
+
+test('a banned account loses access at once, and gets it back when unbanned', async () => {
+  const t = await connect(`offline_access ${SCOPE_BRIEFING}`)
+  assert.equal(await mcpStatus(t.access_token), 200)
+  await pg.query('UPDATE ba_user SET banned = true')
+  assert.equal(await mcpStatus(t.access_token), 401)
+  await pg.query('UPDATE ba_user SET banned = false')
+  assert.equal(await mcpStatus(t.access_token), 200)
+})
+
+test('disconnect ends access at once: the tokens are deleted, not only the consent', async () => {
+  // No replay first: the consent deletion alone has to do it.
+  const t = await connect(`offline_access ${SCOPE_BRIEFING}`)
+  assert.equal(await mcpStatus(t.access_token), 200)
+  assert.ok(Number(((await pg.query('SELECT count(*)::int AS n FROM ba_oauth_refresh_token')).rows[0] as { n: number }).n) > 0)
   const consents = await (await fetch(`${BASE}/api/auth/oauth2/get-consents`, { headers: { cookie } })).json() as { id: string }[]
+  assert.ok(consents.length > 0)
   for (const c of consents) assert.ok((await fetch(`${BASE}/api/auth/oauth2/delete-consent`, json({ id: c.id }, { cookie }))).ok)
-  assert.equal((await fetch(as['token_endpoint']!, form({ grant_type: 'refresh_token', refresh_token: r1.refresh_token, client_id: clientId, resource: RESOURCE }))).ok, false)
+  assert.equal(Number(((await pg.query('SELECT count(*)::int AS n FROM ba_oauth_refresh_token')).rows[0] as { n: number }).n), 0, 'refresh tokens deleted')
+  assert.equal(Number(((await pg.query('SELECT count(*)::int AS n FROM ba_oauth_access_token')).rows[0] as { n: number }).n), 0, 'access tokens deleted')
+  assert.equal((await fetch(as['token_endpoint']!, form({ grant_type: 'refresh_token', refresh_token: t.refresh_token, client_id: clientId, resource: RESOURCE }))).ok, false)
+  assert.equal(await mcpStatus(t.access_token), 401, 'the access token (still unexpired) is refused')
+})
+
+test('changes need reading too: routes:write without routes:read is refused', async () => {
+  const before = saved.length + savedRoutes.length + places.length
+  const t = await connect(`offline_access ${SCOPE_BRIEFING} ${SCOPE_ROUTES_WRITE} ${SCOPE_AIRCRAFT_WRITE}`)
+  for (const [name, args] of [['create_route', { points: ['ESSB', 'ESSA'] }], ['update_route', { route: 'Home loop', altitudeFt: 2500 }], ['create_place', { name: 'X', position: '59.6 17.9' }], ['update_aircraft', { aircraft: 'SE-TST', hasRadio: true }]] as const) {
+    const r = await rpc(t.access_token, 'tools/call', { name, arguments: args })
+    assert.equal(r.result?.['isError'], true, name)
+    assert.match(toolText(r), /not given access to your saved routes, places and aircraft/, name)
+  }
+  assert.equal(saved.length + savedRoutes.length + places.length, before, 'nothing written')
 })
 
 test('the SQL migration matches better-auth\'s schema for the OAuth tables', async () => {
@@ -310,7 +353,7 @@ test('the SQL migration matches better-auth\'s schema for the OAuth tables', asy
     secret: 'test-secret-0123456789-0123456789-0123456789', baseURL: BASE,
     database: { dialect: new PGliteDialect(db), type: 'postgres' } as never,
     user: m('ba_user'), session: m('ba_session'), account: m('ba_account'), verification: m('ba_verification'),
-    plugins: [...assistantConnectionPlugins({ baseUrl: BASE, appOrigin: APP })],
+    plugins: [...assistantConnectionPlugins({ baseUrl: BASE, appOrigin: APP, query: async () => ({ rows: [] }) })],
   })
   const { toBeCreated, toBeAdded } = await getMigrations((await probe.$context).options)
   const oauth = (t: { table: string }) => t.table === 'ba_jwks' || t.table.startsWith('ba_oauth')

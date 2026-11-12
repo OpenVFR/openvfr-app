@@ -22,3 +22,12 @@ export function quote(text: string | null | undefined, max = 600): string {
     .trim()
   return `«${clean.length > max ? `${clean.slice(0, max - 1)}…` : clean}»`
 }
+
+/** What a code, identifier or coordinate looks like: written as it is, not quoted (everything else is outside text). */
+export const PLAIN_IDENTIFIER = /^[A-Z0-9]{2,6}(\/[A-Z0-9 ]{2,20})?$/
+const PLAIN_COORDINATE = /^\d+\.\d+[NS] \d+\.\d+[EW]$/
+
+/** A route point name: identifiers and coordinates as they are, any other name quoted. */
+export function pointLabel(name: string): string {
+  return PLAIN_IDENTIFIER.test(name) || PLAIN_COORDINATE.test(name) ? name : quote(name, 40)
+}

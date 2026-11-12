@@ -96,7 +96,8 @@ The approval page says whether OpenVFR could check who the assistant is:
 name, so only allow it if you just added it yourself. Every new connection
 is confirmed by email; if you did not make it, disconnect it (below).
 
-The assistant only reads, unless you also tick **create and change your
+Changing anything needs reading your saved routes, places and aircraft too (the
+change tick boxes are greyed out without it). The assistant only reads, unless you also tick **create and change your
 saved routes and places** or **add and change your aircraft profiles** (never
 preselected). Then it can save new routes and change routes (points,
 altitudes, speeds, fuel stops, aircraft, name), save and change places

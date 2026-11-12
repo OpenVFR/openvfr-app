@@ -325,7 +325,11 @@ and, if the pilot allows it, their saved routes, places and aircraft and flight 
   A registered client can only get tokens for the MCP endpoint, and only
   after a user signs in and approves it. Access tokens last an hour; refresh
   tokens rotate, a replayed one is refused, and unused ones expire after 90
-  days. Disconnecting revokes the refresh token.
+  days. Disconnecting an assistant deletes its consent and its refresh and access
+  tokens (`assistantAccess.ts`; better-auth's own `delete-consent` removes only
+  the consent), and every `/mcp` request checks that the user is not banned and
+  still has a consent for that assistant, so both end access at once. An admin
+  ban also deletes the user's assistant tokens.
 - Tables `ba_jwks` and `ba_oauth_*` (migration `20261201000000`), used only by
   the api role.
 - Testing with a real assistant during development: local MCP clients
@@ -337,7 +341,8 @@ and, if the pilot allows it, their saved routes, places and aircraft and flight 
   let Vite answer to the tunnel host with `VITE_DEV_ALLOWED_HOSTS`.
 - Scopes: `briefing:read` (every token), `routes:read` (saved routes, places and
   aircraft), `routes:write` (create and change saved routes and places),
-  `aircraft:write` (create and change aircraft profiles) and `logs:read`
+  `aircraft:write` (create and change aircraft profiles; both writes need
+  `routes:read` too, the consent page links them) and `logs:read`
   (per-flight summaries from `user_flight_logs`, selected without the
   `track_json` column: no GPS tracks; not preselected); writes never
   delete and are not preselected on the consent page. They go through

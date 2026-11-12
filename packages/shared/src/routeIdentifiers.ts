@@ -13,7 +13,7 @@
 import { parseCoordinate } from './coordinateParse'
 import type { RouteWaypoint } from './routeCalc'
 
-type FC = { features: { geometry: { type?: string; coordinates: unknown } | null; properties: Record<string, unknown> | null }[] }
+type FC = { features: { geometry: { type?: string; coordinates?: unknown } | null; properties: Record<string, unknown> | null }[] }
 
 export interface IndexedPoint {
   kind: 'aerodrome' | 'navaid' | 'waypoint' | 'landmark' | 'place'

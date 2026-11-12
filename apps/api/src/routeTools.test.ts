@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { buildPointIndex } from '@open-vfr/shared/routeIdentifiers'
-import { buildRoute, legLines, RouteInputError } from './routeTools.js'
+import { buildRoute, legLines, legKeys, changedLevelLegs, RouteInputError } from './routeTools.js'
 
 const pt = (lng: number, lat: number, properties: Record<string, unknown>) => ({ geometry: { type: 'Point', coordinates: [lng, lat] }, properties })
 const idx = buildPointIndex({
@@ -48,4 +48,17 @@ test('update keeps hand-placed points and leg settings of legs that stay', () =>
   assert.deepEqual(b.doc.assistantReview?.change, ['points'])
   const again = buildRoute({ name: 'Trip 2' }, { ...ctx, existing: b.doc })
   assert.deepEqual(again.doc.assistantReview?.change, ['points', 'name'])
+})
+
+test('legs between unnamed points are told apart (by position and occurrence)', () => {
+  const u = (lat: number, lng: number) => ({ lat, lng })
+  const doc = (alts: (number | undefined)[]) => ({
+    id: 'r', name: 'R', aircraftId: '', updatedAt: 0,
+    waypoints: [u(59, 17), u(59.2, 17), u(59, 17), u(59.2, 17)],   // the same pair flown twice
+    legOverrides: alts.map(altFt => (altFt === undefined ? {} : { altFt })),
+  })
+  // Lowering only the third leg to what the first one has must still count as a change of that leg.
+  assert.deepEqual(changedLevelLegs(doc([3000, 3000, 4000]), doc([3000, 3000, 3000])), [2])
+  assert.deepEqual(legKeys(doc([]).waypoints).length, 3)
+  assert.equal(new Set(legKeys(doc([]).waypoints)).size, 3)
 })

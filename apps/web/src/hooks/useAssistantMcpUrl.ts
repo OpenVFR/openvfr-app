@@ -17,6 +17,9 @@ export function useAssistantMcpUrl(signedIn: boolean): string | null {
       .then(r => (r.ok ? r.json() as Promise<{ assistantMcpUrl?: string | null }> : null))
       .then(j => (typeof j?.assistantMcpUrl === 'string' && j.assistantMcpUrl ? j.assistantMcpUrl : null))
       .catch(() => null)
+    // A failed request is not kept for the whole page load: the next mount asks again.
+    const asked = cached
+    void asked.then(u => { if (u === null && cached === asked) cached = null })
     void cached.then(u => { if (live) setUrl(u) })
     return () => { live = false }
   }, [signedIn])

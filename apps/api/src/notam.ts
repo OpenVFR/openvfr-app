@@ -961,19 +961,26 @@ export function stopNotamPoller(): void {
  * rate limiting needed here — the poller above is the only NMS-API client.
  * Filters to currently-active NOTAMs (not expired, not cancelled).
  */
-function activeNotamsFor(icao: string): NotamItem[] {
+function activeNotamsFor(icao: string, at?: NotamAt): NotamItem[] {
   const byId = _cache.get(icao)
-  return byId ? activeItems(byId.values()) : []
+  return byId ? activeItems(byId.values(), at) : []
 }
 
-/** Raw cache records -> currently-active client NotamItems. */
-function activeItems(raw: Iterable<NmsNotam>): NotamItem[] {
-  const now = Date.now()
+/**
+ * A time to look at instead of now: NOTAMs in force at any moment from `ms - windowMs`
+ * to `ms + windowMs` (a briefing for a departure later on needs the NOTAMs that start before it).
+ */
+export interface NotamAt { ms: number; windowMs?: number }
+
+/** Raw cache records -> client NotamItems in force now (or at `at`). */
+function activeItems(raw: Iterable<NmsNotam>, at?: NotamAt): NotamItem[] {
+  const from = (at?.ms ?? Date.now()) - (at?.windowMs ?? 0)
+  const to = (at?.ms ?? Date.now()) + (at?.windowMs ?? 0)
   const notams: NotamItem[] = []
   for (const n of raw) {
-    if (n.cancelationDate && Date.parse(n.cancelationDate) <= now) continue
-    if (n.effectiveEnd && Date.parse(n.effectiveEnd) < now) continue
-    if (n.effectiveStart && Date.parse(n.effectiveStart) > now) continue
+    if (n.cancelationDate && Date.parse(n.cancelationDate) <= from) continue
+    if (n.effectiveEnd && Date.parse(n.effectiveEnd) < from) continue
+    if (n.effectiveStart && Date.parse(n.effectiveStart) > to) continue
     const radiusNm = n.radius !== undefined ? Number(n.radius) : NaN
     const text = (n.text ?? '').replace(/\r\n/g, '\n').trim()
     const qCode = qCodeFor(n)
@@ -1063,8 +1070,8 @@ export function notamStatus(): { available: boolean; asOf: string | null } {
   return { available: notamConfig.available && _lastPollAt !== null, asOf: _lastPollAt }
 }
 
-export function getNotamsForIcao(icao: string): NotamResponse {
-  return { notams: activeNotamsFor(icao) }
+export function getNotamsForIcao(icao: string, at?: NotamAt): NotamResponse {
+  return { notams: activeNotamsFor(icao, at) }
 }
 
 /**
@@ -1102,7 +1109,7 @@ export function getAerodromeNotamTexts(regions: string[]): Record<string, string
  * reaching into one (cross-border areas). The cache itself covers every
  * supported region; this never returns the whole of it.
  */
-export function getRegionalNotams(regions: string[]): NotamResponse {
+export function getRegionalNotams(regions: string[], at?: NotamAt): NotamResponse {
   const scopes = regions.map((code) => ({ code, scope: scopeFor(code) }))
   const notams: NotamItem[] = []
   // Dedup on nmsId (NMS-API's own globally-unique internal id), NOT the
@@ -1117,7 +1124,7 @@ export function getRegionalNotams(regions: string[]): NotamResponse {
   for (const [key, byId] of _cache) {
     const military = key === MILITARY_EU_KEY
     const raw = [...byId.values()].filter((n) => (military || isRegional(n)) && inAnyRegion(n, scopes))
-    for (const n of activeItems(raw)) {
+    for (const n of activeItems(raw, at)) {
       if (seen.has(n.nmsId)) continue // e.g. the same record in the MILITARY and INTERNATIONAL pulls
       seen.add(n.nmsId)
       notams.push(n)

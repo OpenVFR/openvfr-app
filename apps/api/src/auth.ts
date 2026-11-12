@@ -18,6 +18,7 @@ import { bearer }     from 'better-auth/plugins'
 import { assistantConnectionPlugins, mcpResource, ASSISTANT_RATE_RULES, SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, SCOPE_LOGS } from './assistantAuth.js'
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { sendEmail }  from './mailer.js'
+import { assistantClientName } from './assistantAccess.js'
 import { pool }        from './db.js'
 import { ACCESS_CONFIG } from './accessJwt.js'
 import { RateLimiter, limitFromEnv } from './rateLimiter.js'
@@ -39,7 +40,7 @@ const IS_PROD = process.env['NODE_ENV'] === 'production'
 // ── Assistant connection (MCP) ────────────────────────────────────────────
 // Opt-in (ASSISTANT_MCP=on): turns the api into an OAuth 2.1 authorization
 // server for the pilot's own AI assistant (an MCP client) and protects the
-// read-only MCP endpoint at <BETTER_AUTH_URL>/mcp. Sign-in and consent are
+// MCP endpoint at <BETTER_AUTH_URL>/mcp (reads; changes only with the pilot's consent). Sign-in and consent are
 // pages of the web app (BETTER_AUTH_APP_ORIGIN). Assistants identify
 // themselves with a Client ID Metadata Document (CIMD) or, for clients that
 // still need it, by open Dynamic Client Registration (rate limited; such a
@@ -217,8 +218,8 @@ async function notifyAssistantConnected(ctx: Parameters<Parameters<typeof create
     const query = new URLSearchParams(typeof body.oauth_query === 'string' ? body.oauth_query : '')
     const clientId = query.get('client_id') ?? ''
     const scopes = (typeof body.scope === 'string' ? body.scope : query.get('scope') ?? '').split(' ')
-    const { rows } = await pool.query<{ name: string | null }>('SELECT name FROM ba_oauth_client WHERE "clientId" = $1', [clientId])
-    const name = rows[0]?.name || 'An AI assistant'
+    // The client chose its own name: plain, short text only (also in the email subject).
+    const name = await assistantClientName((sql, params) => pool.query(sql, params), clientId, 'An AI assistant')
     let who = 'not verified: it registered itself and chose its own name'
     if (/^https:\/\//i.test(clientId)) { try { who = `verified: published by ${new URL(clientId).host}` } catch { /* keep */ } }
     const reads = [scopes.includes(SCOPE_ROUTES) ? 'briefings, aerodromes, weather and NOTAMs, and your saved routes, places and aircraft' : 'briefings, aerodromes, weather and NOTAMs', scopes.includes(SCOPE_LOGS) && 'a summary of your logged flights (dates, times, aerodromes, distances; no GPS tracks)'].filter(Boolean).join(', and ')
@@ -281,7 +282,8 @@ export const auth = betterAuth({
     // validated /get-session, push expiresAt back out to 365 days once it has
     // slipped more than a day (also undoes better-auth's own 30-day refresh).
     after: createAuthMiddleware(async (ctx) => {
-      if (ctx.path === '/oauth2/consent') { await notifyAssistantConnected(ctx); return }
+      // Not awaited: a slow mail provider must not hold the consent redirect (it catches its own errors).
+      if (ctx.path === '/oauth2/consent') { void notifyAssistantConnected(ctx); return }
       if (ctx.path !== '/get-session') return
       const returned = ctx.context.returned as { session?: { token: string; client?: string | null; expiresAt: Date | string } } | null | undefined
       const sess = returned?.session
@@ -452,7 +454,7 @@ export const auth = betterAuth({
       otpLength:  6,
       expiresIn:  600,  // 10 minutes
     }),
-    ...(ASSISTANT_MCP ? assistantConnectionPlugins({ baseUrl: BASE_URL, appOrigin: APP_ORIGIN }) : []),
+    ...(ASSISTANT_MCP ? assistantConnectionPlugins({ baseUrl: BASE_URL, appOrigin: APP_ORIGIN, query: (sql, params) => pool.query(sql, params) }) : []),
   ],
 })
 

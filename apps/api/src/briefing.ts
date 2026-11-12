@@ -49,7 +49,7 @@ type FC = GeoJSON.FeatureCollection
 
 export interface BriefingDeps {
   /** Aerodromes, airspace, obstacles and landmarks for the route's regions. A failed load returns null. */
-  loadDataset: (kind: 'aerodromes' | 'airspace' | 'obstacles' | 'landmarks' | 'water') => Promise<FC | null>
+  loadDataset: (kind: 'aerodromes' | 'airspace' | 'obstacles' | 'landmarks' | 'water') => Promise<(FC & { missingCountries?: string[] }) | null>
   /** Terrain samples along the route from a DEM; throws or [] when it does not cover the route. */
   terrain?: (waypoints: RouteWaypoint[]) => Promise<TerrainPoint[]>
   /** Maximum-elevation grids for the route's regions (conservative terrain when the DEM fails). */
@@ -57,9 +57,10 @@ export interface BriefingDeps {
   /** Forecast wind at each point's altitude and time (null where unknown). */
   legWinds?: (points: { lat: number; lng: number; altFt: number; at: Date }[]) => Promise<(WindAloft | null)[]>
   /** Regional NOTAMs (restricted areas etc.) for the route's regions. */
-  regionalNotams: () => readonly NotamItem[]
+  /** NOTAMs in force at some moment from `at.ms - at.windowMs` to `at.ms + at.windowMs` (not only now). */
+  regionalNotams: (at: { ms: number; windowMs: number }) => readonly NotamItem[]
   /** NOTAMs filed for one aerodrome. */
-  aerodromeNotams: (icao: string) => readonly NotamItem[]
+  aerodromeNotams: (icao: string, at: { ms: number; windowMs: number }) => readonly NotamItem[]
   /** Whether NOTAM data is loaded, and as of when (ISO). */
   notamStatus?: () => { available: boolean; asOf: string | null }
   /** METAR/TAF for one aerodrome, null when not available or not allowed now. */
@@ -157,6 +158,8 @@ function legAt(spans: readonly { fromNm: number; toNm: number }[], nm: number): 
   const i = spans.findIndex(s => nm >= s.fromNm - 0.01 && nm <= s.toNm + 0.01)
   return (i < 0 ? spans.length - 1 : i) + 1
 }
+/** Limit line when the pilot's own MSA margins or alert levels could not be read (checked by the route writes). */
+export const SETTINGS_UNREADABLE = "Your own MSA margins and alert levels could not be read right now: default values were used."
 const isIcao = (s: string | undefined): s is string => !!s && /^[A-Z]{4}$/.test(s)
 
 export async function buildRouteBriefing(
@@ -169,6 +172,8 @@ export async function buildRouteBriefing(
     departureMs?: number
     /** The pilot's global wind setting, used before the forecast like in the app. */
     globalWind?: { dirDeg: number; speedKts: number } | null
+    /** The pilot's own margins or alert levels could not be read: defaults used (said in the limits). */
+    settingsUnreadable?: boolean
   },
   deps: BriefingDeps,
 ): Promise<RouteBriefing> {
@@ -176,6 +181,7 @@ export async function buildRouteBriefing(
   const aircraft = input.aircraft ?? undefined
   const limits: string[] = []
   const margins = resolveMsaMargins(input.msaMargins)
+  if (input.settingsUnreadable) limits.push(SETTINGS_UNREADABLE)
 
   // Slow loads start at once and are awaited where needed.
   const demP: Promise<TerrainPoint[]> = (deps.terrain?.(waypoints) ?? Promise.resolve([])).catch(() => [])
@@ -261,6 +267,8 @@ export async function buildRouteBriefing(
   const [aerodromesFc, airspaceFc, obstaclesFc, landmarksFc, waterFc] = await Promise.all([
     deps.loadDataset('aerodromes'), deps.loadDataset('airspace'), deps.loadDataset('obstacles'), deps.loadDataset('landmarks'), deps.loadDataset('water'),
   ])
+  const gaps = (what: string, fc: { missingCountries?: string[] } | null) => { if (fc?.missingCountries?.length) limits.push(`${what} for ${fc.missingCountries.join(', ')} could not be loaded: not checked there.`) }
+  gaps('Airspace', airspaceFc); gaps('Obstacle data', obstaclesFc); gaps('Aerodrome data', aerodromesFc)
   if (!obstaclesFc) limits.push('Obstacle data could not be loaded: the minimum safe altitude covers terrain only.')
   if (!airspaceFc) limits.push('Airspace data could not be loaded: airspace not checked.')
   if (!aerodromesFc) limits.push('Aerodrome data could not be loaded: runways and crosswind not checked.')
@@ -300,7 +308,7 @@ export async function buildRouteBriefing(
       if (t != null) temps.set(s.icao, t)
     }
     // NOTAMs in force around the time the aircraft is there (an hour either side).
-    const notams = deps.aerodromeNotams(s.icao)
+    const notams = deps.aerodromeNotams(s.icao, { ms: atMs, windowMs: HOUR_MS })
       .filter(n => (!n.expires || Date.parse(n.expires) > atMs - HOUR_MS) && (!n.effective || Date.parse(n.effective) < atMs + HOUR_MS))
       .map(n => ({ id: n.id, title: notamTitle(n), summary: notamSummary(n, 200), effective: n.effective, expires: n.expires }))
     const fc = wx?.taf ? resolveStationWeather({ metarWind: null, metarClouds: null, taf: wx.taf, nowMs: atMs }) : null
@@ -315,8 +323,19 @@ export async function buildRouteBriefing(
       tafAtTime: fc && (fc.wind || fc.clouds.length) ? { wind: fmtWind(fc.wind), clouds: fc.clouds.map(c => `${c.cover}${String(Math.round(c.baseFt / 100)).padStart(3, '0')}${c.type ?? ''}`).join(' ') || 'no cloud given', changeSoon: fc.tafChangeSoon } : null,
       sunriseIso: sun.rise?.toISOString() ?? null, sunsetIso: sun.set?.toISOString() ?? null,
     })
-    if (sun.set && s.role !== 'departure' && atMs > sun.set.getTime()) daylight.push(`${s.role === 'destination' ? 'Arrival' : 'Landing'} at ${s.icao} about ${hhmm(atMs)}Z is after sunset (${hhmm(sun.set.getTime())}Z): night VFR rules apply.`)
-    if (sun.rise && s.role === 'departure' && atMs < sun.rise.getTime()) daylight.push(`Departure from ${s.icao} at ${hhmm(atMs)}Z is before sunrise (${hhmm(sun.rise.getTime())}Z): night VFR rules apply.`)
+    // Take-off or landing outside the hours of sun at the aerodrome (also across 00Z).
+    const spot = waypoints[Math.max(0, idx)]!
+    const isDay = [-1, 0, 1].some((d) => {
+      const x = sunriseSunset(spot.lat, spot.lng, new Date(atMs + d * 86_400_000))
+      return !!x.rise && !!x.set && atMs >= x.rise.getTime() && atMs <= x.set.getTime()
+    })
+    // Polar day or night: no rise or set to compare with, nothing to say.
+    if (!isDay && sun.rise && sun.set) {
+      const what = s.role === 'departure' ? `Departure from ${s.icao} at` : `${s.role === 'destination' ? 'Arrival' : 'Landing'} at ${s.icao} about`
+      daylight.push(atMs < sun.rise.getTime()
+        ? `${what} ${hhmm(atMs)}Z is before sunrise (${hhmm(sun.rise.getTime())}Z): night VFR rules apply.`
+        : `${what} ${hhmm(atMs)}Z is after sunset (${hhmm(sun.set.getTime())}Z): night VFR rules apply.`)
+    }
   }
   // ── Weather along the way ───────────────────────────────────────────────
   const stopSet = new Set(stops.map(s => s.icao))
@@ -396,7 +415,7 @@ export async function buildRouteBriefing(
     {
       terrainPts: demPts, airspaceLevels: input.airspaceLevels,
       // Restricted areas created by NOTAM: those active at departure time.
-      aerodromes: aerodromesFc, notams: deps.regionalNotams(), airspace: airspaceFc, nowMs: depMs,
+      aerodromes: aerodromesFc, notams: deps.regionalNotams({ ms: (depMs + arrivalMs) / 2, windowMs: (arrivalMs - depMs) / 2 + HOUR_MS }), airspace: airspaceFc, nowMs: depMs,
       surfaceWinds: winds, surfaceTempsC: temps,
       mefGrids: grids, water: waterFc,
     },

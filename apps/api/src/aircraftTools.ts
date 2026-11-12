@@ -130,7 +130,13 @@ export function buildAircraft(input: AircraftInput, opts: { existing?: AircraftP
     for (const [f, why] of Object.entries(checked.warnings) as [PohField, string][]) warnings.push(`${f}: ${why}`)
   }
 
-  doc.assistantReview = { by: opts.by, at: opts.now, change: creating ? 'created' : changed.filter(k => k !== 'assistantReview') }
+  // An unreviewed profile stays 'created', and unreviewed changes add up until the pilot saves it in the app.
+  const prev = opts.existing?.assistantReview
+  const thisChange = changed.filter(k => k !== 'assistantReview' && k !== 'updatedAt')
+  doc.assistantReview = {
+    by: opts.by, at: opts.now,
+    change: creating || prev?.change === 'created' ? 'created' : [...new Set([...(Array.isArray(prev?.change) ? prev.change : []), ...thisChange])],
+  }
   doc.updatedAt = opts.now
   return { doc, changed, warnings, defaults }
 }

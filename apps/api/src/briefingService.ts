@@ -11,6 +11,8 @@ import { loadCountryDataset, loadMefGridsFor, routeCountries, userAircraft, user
 import type { TerrainPoint } from '@open-vfr/shared/virtualRadarCalc'
 import { fetchWindForecastMany } from '@open-vfr/shared/windForecast'
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { getNotamsForIcao, getRegionalNotams, notamStatus } from './notam'
+import { getAvailableCountries } from './countries'
 
 /**
  * The user a server-side briefing runs for: the in-process Open-Meteo fetch
@@ -19,12 +21,46 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 const briefingUser = new AsyncLocalStorage<string>()
 export function currentBriefingUser(): string | undefined { return briefingUser.getStore() }
 
-/** Latest planned departure still used from the app's setting (older = now). */
-const TAKEOFF_PAST_MS = 60 * 60 * 1000
 /** Furthest ahead a departure can be briefed (forecast horizon). */
 export const MAX_DEPARTURE_AHEAD_MS = 16 * 24 * 60 * 60 * 1000
-import { getNotamsForIcao, getRegionalNotams, notamStatus } from './notam'
-import { getAvailableCountries } from './countries'
+/** Furthest back a departure can be briefed. */
+export const MAX_DEPARTURE_PAST_MS = 60 * 60 * 1000
+
+/**
+ * A planned departure given as an ISO 8601 time, from an hour ago to 16 days
+ * ahead. `requireZone`: a time without a zone is refused (an assistant cannot
+ * know the server's zone).
+ */
+export function parseDepartureTime(value: string, now = Date.now(), requireZone = false): { ok: true; ms: number } | { ok: false; error: string } {
+  const ms = Date.parse(value)
+  if (!Number.isFinite(ms) || (requireZone && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(value))) return { ok: false, error: `departure must be ISO 8601${requireZone ? ' with a time zone' : ''}, e.g. 2026-11-12T09:30:00Z.` }
+  if (ms < now - MAX_DEPARTURE_PAST_MS || ms > now + MAX_DEPARTURE_AHEAD_MS) return { ok: false, error: 'departure must be between an hour ago and 16 days ahead.' }
+  return { ok: true, ms }
+}
+
+/**
+ * The saved route a name or id means: the one place this is decided, for the
+ * briefing and the assistant tools. An exact id or name, else a name that
+ * contains the text once; several matches or none are an error. The working
+ * route ('current') is only ever matched by its id, when `allowCurrent`.
+ */
+export function findSavedRoute(routes: readonly RouteDocType[], key: string, allowCurrent = false): { route: RouteDocType } | { error: 'empty' | 'none' } | { error: 'several'; names: string[] } {
+  const k = key.trim().toLowerCase()
+  if (!k) return { error: 'empty' }
+  const named = routes.filter(r => r.id !== 'current')
+  const exact = routes.find(r => r.id === key.trim() && (allowCurrent || r.id !== 'current')) ?? named.find(r => r.name.trim().toLowerCase() === k)
+  if (exact) return { route: exact }
+  const part = named.filter(r => r.name.toLowerCase().includes(k))
+  if (part.length === 1) return { route: part[0]! }
+  if (part.length > 1) return { error: 'several', names: part.map(r => r.name) }
+  return { error: 'none' }
+}
+
+/** The plain-text message of a failed findSavedRoute (for the REST briefing). */
+export function savedRouteError(e: { error: 'empty' | 'none' } | { error: 'several'; names: string[] }): string {
+  if (e.error === 'several') return `Several routes match: ${e.names.slice(0, 8).join(', ')}. Use the full name.`
+  return e.error === 'empty' ? 'Give the name or id of a saved route.' : 'No saved route with that name.'
+}
 
 export type WeatherFor = (userId: string, icao: string) => Promise<{ metar: string | null; taf: string | null } | null>
 
@@ -59,33 +95,33 @@ export function parseRouteInput(body: unknown): { waypoints: RouteWaypoint[]; le
   return { waypoints, legOverrides }
 }
 
-export function createBriefingService(opts: {
+export function createBriefingService(deps: {
   weather: WeatherFor
   /** Terrain samples along a route from the deployment's DEM (see index.ts); absent = grid only. */
   terrain?: (waypoints: RouteWaypoint[]) => Promise<TerrainPoint[]>
 }) {
   async function briefRoute(
     user: { id: string }, route: { waypoints: RouteWaypoint[]; legOverrides: LegOverride[] }, aircraft: AircraftProfileDocType | null,
-    opts2: { departureMs?: number } = {},
+    opts: { departureMs?: number } = {},
   ): Promise<RouteBriefing> {
     const available = (await getAvailableCountries())?.map(c => c.code) ?? null
     const countries = routeCountries(route.waypoints, available)
-    const { takeoffMs, selectedAircraftId: _sel, ...settings } = userDataConfigured() ? await userPlanningSettings(user.id) : {}
+    const { takeoffMs, selectedAircraftId: _sel, unreadable, ...settings } = userDataConfigured() ? await userPlanningSettings(user.id) : {}
     const now = Date.now()
     // Departure: asked for, else the one set in the app if still ahead, else now.
-    const departureMs = opts2.departureMs ?? (takeoffMs && takeoffMs > now - TAKEOFF_PAST_MS && takeoffMs < now + MAX_DEPARTURE_AHEAD_MS ? takeoffMs : now)
+    const departureMs = opts.departureMs ?? (takeoffMs && takeoffMs > now - MAX_DEPARTURE_PAST_MS && takeoffMs < now + MAX_DEPARTURE_AHEAD_MS ? takeoffMs : now)
     return briefingUser.run(user.id, () => buildRouteBriefing(
-      { waypoints: route.waypoints, legOverrides: route.legOverrides, aircraft, nowMs: now, departureMs, ...settings },
+      { waypoints: route.waypoints, legOverrides: route.legOverrides, aircraft, nowMs: now, departureMs, ...settings, ...(unreadable ? { settingsUnreadable: true } : {}) },
       {
         loadDataset: kind => loadCountryDataset(kind, countries),
-        ...(opts.terrain ? { terrain: opts.terrain } : {}),
+        ...(deps.terrain ? { terrain: deps.terrain } : {}),
         mefGrids: () => loadMefGridsFor(countries),
         legWinds: pts => fetchWindForecastMany(pts, '', AbortSignal.timeout(20_000)),
         // The api's NOTAM records carry the same fields the shared checks read.
-        regionalNotams: () => getRegionalNotams(countries).notams as unknown as NotamItem[],
-        aerodromeNotams: icao => getNotamsForIcao(icao).notams as unknown as NotamItem[],
+        regionalNotams: at => getRegionalNotams(countries, at).notams as unknown as NotamItem[],
+        aerodromeNotams: (icao, at) => getNotamsForIcao(icao, at).notams as unknown as NotamItem[],
         notamStatus,
-        weather: icao => opts.weather(user.id, icao),
+        weather: icao => deps.weather(user.id, icao),
       },
     ))
   }
@@ -100,13 +136,14 @@ export function createBriefingService(opts: {
     return (await userAircraft(user.id)).find(a => a.id === id) ?? null
   }
 
-  /** Brief one of the user's saved routes, by id or (case-insensitive) name. */
-  async function briefSavedRoute(user: { id: string }, idOrName: string, aircraftId?: string, departureMs?: number): Promise<{ route: RouteDocType; briefing: RouteBriefing }> {
-    const routes = await savedRoutes(user)
-    const key = idOrName.trim().toLowerCase()
-    const route = routes.find(r => r.id === idOrName) ?? routes.find(r => r.name.trim().toLowerCase() === key)
-      ?? routes.find(r => r.name.trim().toLowerCase().includes(key))
-    if (!route) throw new BriefingInputError('No saved route with that name.')
+  /** Brief one of the user's saved routes: the route itself, or its id or name (see findSavedRoute). */
+  async function briefSavedRoute(user: { id: string }, idOrName: string | RouteDocType, aircraftId?: string, departureMs?: number): Promise<{ route: RouteDocType; briefing: RouteBriefing }> {
+    let route: RouteDocType
+    if (typeof idOrName === 'string') {
+      const found = findSavedRoute(await savedRoutes(user), idOrName, true)
+      if ('error' in found) throw new BriefingInputError(savedRouteError(found))
+      route = found.route
+    } else route = idOrName
     const aircraft = await aircraftById(user, aircraftId || route.aircraftId)
     const briefing = await briefRoute(user, { waypoints: route.waypoints, legOverrides: route.legOverrides }, aircraft, departureMs !== undefined ? { departureMs } : {})
     return { route, briefing }

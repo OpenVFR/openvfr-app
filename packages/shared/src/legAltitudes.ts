@@ -22,7 +22,10 @@ import type { LegSpan } from './legLevelDrag'
 
 /** Airspace classes that need an ATC clearance for VFR. */
 const CLEARANCE_CLASSES = new Set(['A', 'B', 'C', 'D'])
-const RESTRICTED = new Set(['R', 'TRA', 'P', 'D'])
+/** Restricted classes (the profile bands already carry the display class: danger areas are 'R'). */
+const RESTRICTED_CLASSES = new Set(['R', 'TRA', 'P'])
+/** By type, 'D' is a danger area; as a class 'D' is ICAO class D (controlled), never restricted. */
+const RESTRICTED_TYPES = new Set(['R', 'TRA', 'P', 'D'])
 const ZONES = new Set(['TMZ', 'RMZ'])
 /** Stay this far below a controlled floor. */
 export const FLOOR_BUFFER_FT = 200
@@ -240,7 +243,7 @@ export function legAltitudes(input: {
     const clearance = over.filter(x => CLEARANCE_CLASSES.has(x.cls))
     const fromSurface = clearance.filter(x => x.lowerFt <= 0)
     const controlled = clearance.filter(x => x.lowerFt > 0).sort((p, q) => p.lowerFt - q.lowerFt)
-    const restricted = over.filter(x => RESTRICTED.has(x.cls) || RESTRICTED.has(x.type))
+    const restricted = over.filter(x => RESTRICTED_CLASSES.has(x.cls) || RESTRICTED_TYPES.has(x.type))
     const zones = over.filter(x => ZONES.has(x.cls) || ZONES.has(x.type))
     const floor = controlled.length ? controlled[0]!.lowerFt : null
 

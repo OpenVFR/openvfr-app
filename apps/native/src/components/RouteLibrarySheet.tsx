@@ -160,11 +160,15 @@ export function RouteLibrarySheet({
     // Confirmed live 2026-09-13: repeated Save clicks created multiple
     // synced duplicates visible on both native and web.
     const id = resolveSaveRouteId(undefined, name, routes, 'current') ?? Crypto.randomUUID()
+    // Saving over a route an assistant wrote is the pilot's review of it: clear its mark (null is synced),
+    // or other devices would keep showing "check before use".
+    const matched = routes.find(r => r.id === id)
     const doc: RouteDocType = {
       id, name,
       waypoints:    waypoints,
       legOverrides: legOverrides,
       aircraftId,
+      ...(matched?.assistantReview ? { assistantReview: null } : {}),
       updatedAt:    Date.now(),
     }
     await routeDb.upsert(doc)

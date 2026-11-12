@@ -37,12 +37,12 @@ import { getAvailableCountries } from './countries'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { createHmac } from 'node:crypto'
 import { auth, isReviewAccountEmail, ASSISTANT_MCP, ASSISTANT_UI_ALL, MCP_RESOURCE, SCOPE_BRIEFING, SCOPE_ROUTES, SCOPE_ROUTES_WRITE, SCOPE_AIRCRAFT_WRITE, SCOPE_LOGS, APP_ORIGIN } from './auth'
-import { upsertUserAircraft, upsertUserRoute, userPlaces, upsertUserPlace, userFlightSummaries } from './briefingData'
+import { upsertUserAircraft, upsertUserRoute, userPlaces, upsertUserPlace, userFlightSummaries, mintPostgrestJwt } from './briefingData'
 import { createMcpEndpoint } from './mcp'
+import { createAssistantAccess, assistantClientName, type Query } from './assistantAccess'
 import { admin } from './admin'
-import { AUTHENTICATED_ROLE, assertAuthenticatedRoleExists } from './pgRoles'
+import { assertAuthenticatedRoleExists } from './pgRoles'
 import { pool as dbPool } from './db'
 import { effectiveMinBuilds, isAppPlatform, minBuildRows, MIN_VERSION, parseBuild, recordLaunch } from './appVersion'
 import { mountExternalProxies, proxyForUser } from './externalProxy'
@@ -54,8 +54,7 @@ import { PohGuards, pohGuardConfigFromEnv, countPdfPages } from './pohGuards'
 import { BodyTooLarge, readLimitedFormData, looksLikePdf } from './upload'
 import { createWeatherCache, type WxUpstreamResult } from './weatherCache'
 import { chartDocumentRoutes } from './chartDocuments'
-import { mintPostgrestJwt } from './briefingData'
-import { createBriefingService, parseRouteInput, BriefingInputError, currentBriefingUser, MAX_DEPARTURE_AHEAD_MS } from './briefingService'
+import { createBriefingService, parseRouteInput, parseDepartureTime, BriefingInputError, currentBriefingUser, type WeatherFor } from './briefingService'
 import { setOpenMeteoFetch } from '@open-vfr/shared/openMeteo'
 import { briefingText } from './briefing'
 import { demRouteTerrain } from './routeTerrain'
@@ -788,12 +787,13 @@ setOpenMeteoFetch(async (url) => {
   const u = new URL(url, 'http://localhost')
   return proxyForUser('open-meteo', userId, u.pathname, u.search)
 })
+const weatherFor: WeatherFor = async (userId, icao) => {
+  if (!/^[A-Z]{4}$/.test(icao)) return null
+  const r = await wxCache.get(icao, () => wxMissLimiter.take(userId).waitS <= 0)
+  return r.kind === 'ok' ? r.data : null
+}
 const briefings = createBriefingService({
-  weather: async (userId, icao) => {
-    if (!/^[A-Z]{4}$/.test(icao)) return null
-    const r = await wxCache.get(icao, () => wxMissLimiter.take(userId).waitS <= 0)
-    return r.kind === 'ok' ? r.data : null
-  },
+  weather: weatherFor,
   // Terrain from the deployment's own DEM archives (no third-party budget).
   terrain: demRouteTerrain(demElevation),
 })
@@ -811,11 +811,12 @@ app.post('/api/briefing', async (c) => {
   try {
     const aircraftId = typeof body['aircraftId'] === 'string' ? body['aircraftId'] : undefined
     // Optional planned departure (ISO 8601), an hour ago to 16 days ahead.
-    const depRaw = typeof body['departure'] === 'string' ? Date.parse(body['departure']) : NaN
-    if (body['departure'] !== undefined && !(Number.isFinite(depRaw) && depRaw > Date.now() - 3_600_000 && depRaw < Date.now() + MAX_DEPARTURE_AHEAD_MS)) {
-      return c.json({ error: 'departure: ISO 8601 time from an hour ago to 16 days ahead.' }, 400)
+    let departureMs: number | undefined
+    if (body['departure'] !== undefined) {
+      const dep = typeof body['departure'] === 'string' ? parseDepartureTime(body['departure']) : { ok: false as const, error: 'departure must be an ISO 8601 string.' }
+      if (!dep.ok) return c.json({ error: dep.error }, 400)
+      departureMs = dep.ms
     }
-    const departureMs = Number.isFinite(depRaw) ? depRaw : undefined
     const briefing = typeof body['routeId'] === 'string'
       ? (await briefings.briefSavedRoute(user, body['routeId'], aircraftId, departureMs)).briefing
       : await briefings.briefRoute(user, parseRouteInput(body), await briefings.aircraftById(user, aircraftId), departureMs !== undefined ? { departureMs } : {})
@@ -832,7 +833,7 @@ app.post('/api/briefing', async (c) => {
 // ---------------------------------------------------------------------------
 // Assistant connection (MCP) — opt-in with ASSISTANT_MCP=on (see auth.ts).
 //
-// POST /mcp: read-only MCP tools for the pilot's own AI assistant. Public
+// POST /mcp: MCP tools for the pilot's own AI assistant (read, and change with their consent). Public
 // route by design: the MCP endpoint does its own auth -- a missing or bad
 // token gets 401 with the protected-resource metadata link (RFC 9728) so the
 // assistant can start sign-in; a valid token must be bound to this endpoint
@@ -851,13 +852,11 @@ if (ASSISTANT_MCP) {
     '/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/*',
   ]) app.on(['GET', 'HEAD'], path, (c) => auth.handler(c.req.raw))
 
+  const assistantQuery: Query = (sql, params) => dbPool.query(sql, params)
+  const assistantAccess = createAssistantAccess(assistantQuery)
   const mcpEndpoint = createMcpEndpoint(auth, {
     briefings,
-    weather: async (userId, icao) => {
-      if (!/^[A-Z]{4}$/.test(icao)) return null
-      const r = await wxCache.get(icao, () => wxMissLimiter.take(userId).waitS <= 0)
-      return r.kind === 'ok' ? r.data : null
-    },
+    weather: weatherFor,
     appOrigin: APP_ORIGIN.replace(/\/+$/, ''),
     resource: MCP_RESOURCE,
     scopeBriefing: SCOPE_BRIEFING,
@@ -870,10 +869,8 @@ if (ASSISTANT_MCP) {
     savePlace: upsertUserPlace,
     scopeLogs: SCOPE_LOGS,
     flights: userFlightSummaries,
-    clientName: async (clientId) => {
-      const { rows } = await dbPool.query<{ name: string | null }>('SELECT name FROM ba_oauth_client WHERE "clientId" = $1', [clientId])
-      return rows[0]?.name || 'an AI assistant'
-    },
+    clientName: (clientId) => assistantClientName(assistantQuery, clientId),
+    access: assistantAccess.allowed,
     takeBriefing: (userId) => briefingLimiter.take(userId).waitS <= 0,
     jwksUrl: `http://127.0.0.1:${PORT}/api/auth/jwks`,
   })

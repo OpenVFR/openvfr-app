@@ -9,6 +9,7 @@ import booleanPointInPolygon from '@turf/boolean-point-in-polygon'
 import { distanceNm, bearingDeg, type RouteWaypoint } from './routeCalc'
 import { nearestRoutePoint } from './notamRouteFilter'
 import { routeIdentifier, type IndexedPoint, type PointIndex } from './routeIdentifiers'
+import { airspaceDisplayClass } from './airspaceColors'
 
 type FC = GeoJSON.FeatureCollection
 
@@ -55,7 +56,8 @@ function controlledAbove(p: { lat: number; lng: number }, airspace: FC | null | 
   let best: NearPoint['controlledAbove'] = null
   for (const f of airspace?.features ?? []) {
     const pr = f.properties ?? {}
-    const cls = String(pr['class'] ?? '')
+    // The data's class 'D' bucket also holds danger areas: read it as the display class.
+    const cls = airspaceDisplayClass(String(pr['class'] ?? ''), String(pr['type'] ?? ''))
     if (!CLEARANCE.has(cls) || !f.geometry || (f.geometry.type !== 'Polygon' && f.geometry.type !== 'MultiPolygon')) continue
     const floor = Number(pr['lower_ft'] ?? 0)
     if (best && floor >= best.floorFt) continue

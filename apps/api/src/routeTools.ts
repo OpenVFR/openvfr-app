@@ -41,7 +41,21 @@ export interface RouteBuild {
 }
 
 const norm = (s: string) => s.trim().toUpperCase()
-const legKey = (a: RouteWaypoint, b: RouteWaypoint) => `${norm(a.name ?? '')}>${norm(b.name ?? '')}`
+const at = (w: RouteWaypoint) => `${norm(w.name ?? '')}@${w.lat.toFixed(4)},${w.lng.toFixed(4)}`
+/**
+ * One key per leg: both ends by name and position (points placed on the map
+ * have no name), and the occurrence number when the same pair is flown more
+ * than once, so every leg of a route has its own key.
+ */
+export function legKeys(waypoints: readonly RouteWaypoint[]): string[] {
+  const seen = new Map<string, number>()
+  return waypoints.slice(0, -1).map((w, i) => {
+    const base = `${at(w)}>${at(waypoints[i + 1]!)}`
+    const n = seen.get(base) ?? 0
+    seen.set(base, n + 1)
+    return `${base}#${n}`
+  })
+}
 
 export function buildRoute(input: RouteInput, ctx: { existing?: RouteDocType; idx: PointIndex; newId: string; by: string; now: number }): RouteBuild {
   const { existing } = ctx
@@ -75,9 +89,9 @@ export function buildRoute(input: RouteInput, ctx: { existing?: RouteDocType; id
       if (d > LONG_LEG_NM) warnings.push(`leg ${i} ${next[i - 1]!.name}→${next[i]!.name} is ${Math.round(d)} NM`)
     }
     // Leg settings stay with legs that keep both ends.
-    const oldLegs = new Map<string, LegOverride>()
-    for (let i = 0; i < waypoints.length - 1; i++) oldLegs.set(legKey(waypoints[i]!, waypoints[i + 1]!), legOverrides[i] ?? {})
-    legOverrides = next.slice(0, -1).map((w, i) => ({ ...(oldLegs.get(legKey(w, next[i + 1]!)) ?? {}) }))
+    const oldKeys = legKeys(waypoints)
+    const oldLegs = new Map<string, LegOverride>(oldKeys.map((k, i) => [k, legOverrides[i] ?? {}]))
+    legOverrides = legKeys(next).map(k => ({ ...(oldLegs.get(k) ?? {}) }))
     if (!existing || JSON.stringify(next) !== JSON.stringify(waypoints)) changed.push('points')
     waypoints = next
   }
@@ -156,12 +170,13 @@ export function buildRoute(input: RouteInput, ctx: { existing?: RouteDocType; id
  */
 export function changedLevelLegs(existing: RouteDocType | undefined, doc: RouteDocType): number[] {
   const before = new Map<string, number | undefined>()
-  if (existing) for (let i = 0; i < existing.waypoints.length - 1; i++) before.set(legKey(existing.waypoints[i]!, existing.waypoints[i + 1]!), existing.legOverrides[i]?.altFt)
+  if (existing) legKeys(existing.waypoints).forEach((k, i) => before.set(k, existing.legOverrides[i]?.altFt))
+  const keys = legKeys(doc.waypoints)
   const out: number[] = []
   for (let i = 0; i < doc.waypoints.length - 1; i++) {
     const alt = doc.legOverrides[i]?.altFt
     if (alt === undefined) continue
-    const key = legKey(doc.waypoints[i]!, doc.waypoints[i + 1]!)
+    const key = keys[i]!
     if (!before.has(key) || before.get(key) !== alt) out.push(i)
   }
   return out

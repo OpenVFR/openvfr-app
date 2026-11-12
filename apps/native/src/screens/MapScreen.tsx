@@ -1276,6 +1276,7 @@ function MapScreenForCountry() {
   updateRef.current = update
   useEffect(() => { flyingRef.current = flightModeStatus !== 'off' }, [flightModeStatus])
   useEffect(() => {
+    let unmounted = false
     const handle = (url: string | null | undefined) => {
       if (!url || flyingRef.current) return
       const q = url.indexOf('?')
@@ -1287,13 +1288,16 @@ function MapScreenForCountry() {
         const id = link.route
         void (async () => {
           let doc = await routeDb.get(id)
-          for (let i = 0; !doc && i < 20; i++) { await new Promise(r => setTimeout(r, 1000)); doc = await routeDb.get(id) }
+          for (let i = 0; !doc && i < 20 && !unmounted; i++) { await new Promise(r => setTimeout(r, 1000)); doc = await routeDb.get(id) }
+          // Up to 20 s have passed: a flight started meanwhile keeps its route.
+          if (unmounted || flyingRef.current) return
           if (!doc) {
             Alert.alert('Route not found', 'That route is not in your saved routes on this device. Sign in with the account it was saved to, or wait for sync and open the link again.')
             return
           }
           const route = doc
           const open = () => {
+            if (flyingRef.current) return
             setWaypoints(route.waypoints, route.legOverrides ?? [])
             setActiveRouteId(route.id)
             if (route.aircraftId) void updateRef.current({ selectedAircraftId: route.aircraftId })
@@ -1311,7 +1315,7 @@ function MapScreenForCountry() {
             { text: 'Cancel', style: 'cancel' },
             { text: 'Open', style: 'destructive', onPress: open },
           ])
-        })()
+        })().catch((err) => console.warn('[route link] could not open the saved route:', err))
       }
       if (link.center) setFindDestFlyTarget({ lat: link.center.lat, lng: link.center.lng, zoom: link.zoom, nonce: Date.now() })
       if (link.ad) {
@@ -1330,7 +1334,7 @@ function MapScreenForCountry() {
     }
     Linking.getInitialURL().then(handle).catch(() => {})
     const sub = Linking.addEventListener('url', (e) => handle(e.url))
-    return () => sub.remove()
+    return () => { unmounted = true; sub.remove() }
   }, [])
 
   // Outdated-AIRAC warning (re-checked on app foreground). Session-only

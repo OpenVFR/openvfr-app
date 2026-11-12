@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildRouteBriefing, briefingText, type BriefingDeps } from './briefing.js'
+import { buildRouteBriefing, briefingText, SETTINGS_UNREADABLE, type BriefingDeps } from './briefing.js'
 import type { AircraftProfileDocType } from '@open-vfr/shared/types'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 
@@ -142,4 +142,31 @@ test('departure time, forecast wind, TAF for the arrival time, daylight and prom
 test('a route over a border prompts for the flight plan rules', async () => {
   const b = await buildRouteBriefing({ waypoints: [{ lat: 59.35, lng: 17.94, name: 'ESSB' }, { lat: 60.2, lng: 11.1, name: 'ENGM' }], legOverrides: [{}], aircraft, nowMs: NOW }, deps())
   assert.ok(b.prompts.some(p => /national border/.test(p.title)))
+})
+
+test('NOTAMs are looked up for the time the aircraft is there, not for now', async () => {
+  const asked: { icao: string; ms: number }[] = []
+  const dep = NOW + 3 * 86_400_000
+  await buildRouteBriefing({ waypoints: route, legOverrides: [{}], aircraft, nowMs: NOW, departureMs: dep }, deps({
+    aerodromeNotams: (icao, at) => { asked.push({ icao, ms: at.ms }); return [] },
+  }))
+  assert.ok(asked.length >= 2)
+  for (const a of asked) assert.ok(a.ms >= dep, 'asked for the departure day, not now')
+})
+
+test('a flight in the dark is flagged, also across 00Z, and a country that failed to load is said', async () => {
+  // Departure 03:00Z in November over Sweden: before sunrise; landing at night too.
+  const dep = Date.UTC(2026, 10, 12, 3, 0)
+  const b = await buildRouteBriefing({ waypoints: route, legOverrides: [{}], aircraft, nowMs: NOW, departureMs: dep }, deps())
+  assert.ok(b.daylight.some(l => /Departure from ESAA .* before sunrise/.test(l)), JSON.stringify(b.daylight))
+  assert.ok(b.daylight.some(l => /Arrival at ESBB .* before sunrise/.test(l)), JSON.stringify(b.daylight))
+  const g = await buildRouteBriefing({ waypoints: route, legOverrides: [{}], aircraft, nowMs: NOW }, deps({
+    loadDataset: async (kind) => Object.assign({ type: 'FeatureCollection' as const, features: kind === 'aerodromes' ? aerodromes.features : [] }, { missingCountries: ['NO'] }),
+  }))
+  assert.ok(g.limits.some(l => /Airspace for NO could not be loaded/.test(l)), JSON.stringify(g.limits))
+})
+
+test('unreadable personal settings are said in the limits', async () => {
+  const b = await buildRouteBriefing({ waypoints: route, legOverrides: [{}], aircraft, nowMs: NOW, settingsUnreadable: true }, deps())
+  assert.ok(b.limits.includes(SETTINGS_UNREADABLE))
 })

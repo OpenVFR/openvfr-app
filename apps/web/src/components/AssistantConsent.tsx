@@ -72,6 +72,8 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
     try {
       const dropped = new Set<string>()
       if (wantsRoutes && !allowRoutes) dropped.add(ROUTES_SCOPE)
+      // Changing routes, places and aircraft needs reading them: without that, neither is granted.
+      if (!allowRoutes) { dropped.add(WRITE_SCOPE); dropped.add(ROUTES_WRITE_SCOPE) }
       if (wantsWrite && !allowWrite) dropped.add(WRITE_SCOPE)
       if (wantsRoutesWrite && !allowRoutesWrite) dropped.add(ROUTES_WRITE_SCOPE)
       if (wantsLogs && !allowLogs) dropped.add(LOGS_SCOPE)
@@ -133,12 +135,12 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
         </ul>
         {(wantsWrite || wantsRoutesWrite) && (
           <>
-            <p className={styles.text}>It also asks to <strong>make changes</strong> (never delete; you check each change in the app):</p>
+            <p className={styles.text}>It also asks to <strong>make changes</strong> (never delete; you check each change in the app). This needs it to read your saved routes, places and aircraft:</p>
             <ul className={styles.list}>
               {wantsRoutesWrite && (
                 <li>
                   <label className={styles.check}>
-                    <input type="checkbox" checked={allowRoutesWrite} onChange={e => setAllowRoutesWrite(e.target.checked)} disabled={busy} />
+                    <input type="checkbox" checked={allowRoutesWrite} onChange={e => setAllowRoutesWrite(e.target.checked)} disabled={busy || !allowRoutes} />
                     create and change your saved routes and places
                   </label>
                 </li>
@@ -146,7 +148,7 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
               {wantsWrite && (
                 <li>
                   <label className={styles.check}>
-                    <input type="checkbox" checked={allowWrite} onChange={e => setAllowWrite(e.target.checked)} disabled={busy} />
+                    <input type="checkbox" checked={allowWrite} onChange={e => setAllowWrite(e.target.checked)} disabled={busy || !allowRoutes} />
                     add and change your aircraft profiles
                   </label>
                 </li>
@@ -155,7 +157,7 @@ export default function AssistantConsent({ userEmail }: { userEmail: string }) {
           </>
         )}
         <p className={styles.small}>
-          {changesText(wantsRoutesWrite && allowRoutesWrite, wantsWrite && allowWrite)}, and it never sees your position or GPS tracks{wantsLogs && allowLogs ? '' : ', or your flight logs'}.
+          {changesText(allowRoutes && wantsRoutesWrite && allowRoutesWrite, allowRoutes && wantsWrite && allowWrite)}, and it never sees your position or GPS tracks{wantsLogs && allowLogs ? '' : ', or your flight logs'}.
           We email you when an assistant is connected. Disconnect it any time in your account, under
           AI assistants. Only connect assistants you trust: OpenVFR does not check what they do with your data.
         </p>

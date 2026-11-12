@@ -39,3 +39,13 @@ test('an update changes only the given fields and lists them', () => {
   assert.deepEqual(r.doc.assistantReview?.change, ['maxCrosswindKts', 'hasRadio'])
   assert.equal(r.doc.id, existing.id)
 })
+
+test('an unreviewed profile stays "created" and unreviewed changes add up', () => {
+  const made = buildAircraft({ registration: 'SE-NEW', values: { cruiseIas: 100, fuelBurnLhr: 30, maxFuelL: 100 } }, { newId: 'n', by: 'A', now: 1 })
+  const a = buildAircraft({ values: { maxCrosswindKts: 15 } }, { existing: made.doc, newId: 'n', by: 'B', now: 2 })
+  assert.equal(a.doc.assistantReview?.change, 'created')
+  const reviewed = { ...made.doc, assistantReview: undefined }
+  const b = buildAircraft({ values: { maxCrosswindKts: 15 } }, { existing: reviewed, newId: 'n', by: 'B', now: 3 })
+  const c = buildAircraft({ hasRadio: true }, { existing: b.doc, newId: 'n', by: 'B', now: 4 })
+  assert.deepEqual(c.doc.assistantReview?.change, ['maxCrosswindKts', 'hasRadio'])
+})

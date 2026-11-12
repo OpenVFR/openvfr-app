@@ -6,6 +6,7 @@
 import { jwt } from 'better-auth/plugins'
 import { mcp } from '@better-auth/mcp'
 import { cimd } from '@better-auth/cimd'
+import { assistantRevokePlugin, type Query } from './assistantAccess.js'
 import { fetchClientMetadataResource } from '@better-auth/cimd/node'
 
 /** Read public aviation data and briefings. Every assistant token carries it. */
@@ -37,8 +38,10 @@ export function mcpResource(baseUrl: string): string {
  * either way a client only gets tokens for the MCP endpoint, after a user
  * signs in and approves it.
  */
-export function assistantConnectionPlugins(opts: { baseUrl: string; appOrigin: string }) {
+export function assistantConnectionPlugins(opts: { baseUrl: string; appOrigin: string; query: Query }) {
   return [
+    // Disconnecting an assistant also ends its tokens (see assistantAccess.ts).
+    assistantRevokePlugin(opts.query),
     // Signing keys for the assistant access tokens (JWKS at /api/auth/jwks).
     jwt({ disableSettingJwtHeader: true, schema: { jwks: { modelName: 'ba_jwks' } } }),
     mcp({
