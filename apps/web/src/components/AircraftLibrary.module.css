@@ -406,6 +406,8 @@
 
 .fieldHint {
   display: block;
+  /* The hint is a third item of the label | input grid: without this it fell into the 100 px label column. */
+  grid-column: 1 / -1;
   margin-top: 3px;
   font-size: 10px;
   line-height: 1.35;
