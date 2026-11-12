@@ -148,24 +148,16 @@
 }
 
 .filterSel {
+  /* The same select as the aircraft profile fields: shared input background, border and focus ring. */
+  composes: formSelect from '../styles/shared.module.css';
+}
+/* Doubled so the size beats the shared rule whatever the load order. */
+.filterSel.filterSel {
   flex: 1;
   min-width: 0;
+  width: auto;
   font-size: 11px;
-  padding: 3px 4px;
-  color: var(--text-secondary);
-  background: transparent;
-  border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
-  border-radius: 4px;
-}
-
-/* The opened list of a select takes the app's colours (the browser default is a white list). */
-.filterSel,
-.aircraftSel {
-  color-scheme: dark;
-}
-:global(:root[data-theme="light"]) .filterSel,
-:global(:root[data-theme="light"]) .aircraftSel {
-  color-scheme: light;
+  padding: 3px 7px;
 }
 .filterSel option,
 .aircraftSel option {
@@ -236,13 +228,13 @@
   margin-top: 3px;
 }
 .aircraftSel {
-  font-size: 10px;
-  background: none;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-subtle);
-  border-radius: 3px;
-  padding: 0 2px;
+  composes: formSelect from '../styles/shared.module.css';
+}
+.aircraftSel.aircraftSel {
+  width: auto;
   max-width: 140px;
+  font-size: 10px;
+  padding: 1px 6px;
 }
 .placeEdit {
   display: flex;
