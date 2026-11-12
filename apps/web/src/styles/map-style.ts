@@ -60,8 +60,8 @@ const AIRSPACE_RESTRICTED_LABEL_TEXT_FIELD = [
 // Per-country Protomaps detail basemap (z7-12), <cc>-basemap.pmtiles.
 // Swapped with the active country like landuse/hillshade/contours.
 /**
- * Obstacle visibility by height: at each zoom stop, obstacles lower than the height (metres AGL) are hidden. Roughly SkyDemon's
- * rule (200 ft / 300 ft / 500 ft at 1:100k / 1:250k / 1:500k), converted to metres and to our zoom levels. Unknown height = shown.
+ * Obstacle visibility by height: at each zoom stop, obstacles lower than the height (metres AGL) are hidden: 200 ft / 300 ft /
+ * 500 ft at 1:100k / 1:250k / 1:500k, converted to metres and to our zoom levels. Unknown height = shown.
  */
 export const OBSTACLE_MIN_HEIGHT_BY_ZOOM: ReadonlyArray<{ zoom: number; minHeightM: number; size: number }> = [
   { zoom: 8,    minHeightM: 150, size: 0.35 },
@@ -1834,7 +1834,7 @@ export function getMapStyle(country: string = DEFAULT_REGION): StyleSpecificatio
       // ── Layer 13: Obstacles (wind turbines, towers, chimneys) ─────────────
       // Symbol layer using canvas-drawn icons registered by registerObstacleImages()
       // in MapView's styledata handler. Icons are rendered at 2× for HiDPI.
-      // Visibility by height and zoom (like SkyDemon's scale rule: it hides obstacles under 200 ft at scales below 1:100k, under
+      // Visibility by height and zoom (obstacles under 200 ft are hidden at scales below 1:100k, under
       // 300 ft below 1:250k, under 500 ft below 1:500k): the file has 6 000+ features, most of them turbines, which would form an
       // indistinct mass over Sweden at overview zooms. See OBSTACLE_MIN_HEIGHT_BY_ZOOM. An obstacle with an UNKNOWN height
       // (height_m 0) is never hidden: a pilot must not read "not shown" as "small".

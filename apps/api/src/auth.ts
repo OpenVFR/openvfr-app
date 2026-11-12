@@ -171,7 +171,7 @@ function enforceOtpSendCaps(headers: Headers | undefined, email: string): void {
 }
 
 // Session lifetimes. Web (cookie): 30 days sliding. Native (bearer token): 365
-// days sliding, like SkyDemon, so pilots aren't signed out between seasons.
+// days sliding, so pilots aren't signed out between seasons.
 const WEB_SESSION_S    = 60 * 60 * 24 * 30
 const NATIVE_SESSION_S = 60 * 60 * 24 * 365
 /** Request header the native app sends on every auth call (utils/authClient.ts). */
