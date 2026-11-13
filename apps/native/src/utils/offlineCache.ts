@@ -22,8 +22,8 @@
  */
 
 import { File, Directory, Paths } from 'expo-file-system'
-import { versionedTileUrl, versionedTileUrlReady, getCachedTileManifest } from '@open-vfr/shared/tileManifest'
-import { TILE_BASE, activeCountry } from '../config'
+import { getCachedTileManifest, waitForTileManifest } from '@open-vfr/shared/tileManifest'
+import { tileFileUrl, activeCountry, TILE_BASE } from '../config'
 import { countryDatasetFile, countryArchiveFile, countryMefFile, type CountryDataset, type CountryArchive } from '@open-vfr/shared/countryData'
 
 export interface OfflineAsset {
@@ -68,16 +68,19 @@ export interface OfflineAsset {
 //      now computed on demand (remoteUrlFor()) so it always reflects the
 //      manifest's current content hash at download time, not whatever was
 //      cached (or not yet fetched) at app-startup/module-import time.
-/** Content-hash-busted remote URL for a given tile filename -- see
- *  @open-vfr/shared/tileManifest's own doc comment for why this matters. */
+/** Content-hash-busted (and keyed, see config.ts TILE_KEY) remote URL for a
+ *  given tile filename -- see @open-vfr/shared/tileManifest's own doc
+ *  comment for why the hash matters. Also handed to MapLibre (resolveUri)
+ *  and the native downloader, which bypass the JS fetch wrapper. */
 export function remoteUrlFor(fileName: string): string {
-  return versionedTileUrl(TILE_BASE, fileName)
+  return tileFileUrl(fileName)
 }
 
 /** remoteUrlFor() for code about to fetch the file: waits for the tile manifest first (bounded), so the
  *  first fetches after start are versioned too. Only for the remote path: a local copy never waits. */
 export function remoteUrlForReady(fileName: string): Promise<string> {
-  return versionedTileUrlReady(TILE_BASE, fileName)
+  // Keyed like remoteUrlFor (config.ts tileFileUrl): the native downloader bypasses the JS fetch wrapper.
+  return waitForTileManifest(TILE_BASE).then(() => tileFileUrl(fileName))
 }
 
 /** The cached local file URI when the asset is downloaded (no waiting, works offline), else its versioned

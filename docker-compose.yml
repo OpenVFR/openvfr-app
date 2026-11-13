@@ -76,6 +76,9 @@ services:
       # (apps/api/src/demElevation.ts). Unset TILES_BASE_URL + unset
       # ELEVATION_DEM_SOURCES = off. See docs/self-hosting.md.
       - TILES_BASE_URL=${TILES_BASE_URL:-}
+      # Optional key for a tile host that only serves its own clients: sent as
+      # ?ovk= on every request to TILES_BASE_URL (packages/shared/src/tileKey.ts).
+      - TILES_KEY=${TILES_KEY:-}
       # Route briefings read the user's saved routes/aircraft through PostgREST as that user.
       - POSTGREST_INTERNAL_URL=${POSTGREST_INTERNAL_URL:-http://postgrest:3001}
       - ELEVATION_DEM_SOURCES=${ELEVATION_DEM_SOURCES:-}

@@ -9,6 +9,7 @@ import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 
 import { Platform } from 'react-native'
 import { versionedTileUrl, waitForTileManifest, onTileManifestChanged } from '@open-vfr/shared/tileManifest'
+import { addTileKey, parseTileKey } from '@open-vfr/shared/tileKey'
 import {
   getActiveCountries, countryDatasetFile, countryArchiveFile, onActiveCountriesChange, type CountryDataset,
 } from '@open-vfr/shared/countryData'
@@ -45,9 +46,23 @@ export const TILE_BASE: string =
   (isStaging && STAGING.tileBase) ||
   (process.env.EXPO_PUBLIC_TILE_BASE ?? '') || `${API_BASE}/tiles`
 
+/** Optional tile host access key (EXPO_PUBLIC_TILE_KEY, one key for both
+ *  backends: they share the tile host). Added as `?ovk=` to every tile URL so
+ *  a tile host that only serves its own apps lets this app through; see
+ *  @open-vfr/shared/tileKey. Unset = URLs unchanged. Not a secret (it ships
+ *  in the app); it can be rotated. */
+export const TILE_KEY: string = parseTileKey(process.env.EXPO_PUBLIC_TILE_KEY, (m) => console.warn(`[config] ${m}`))
+
+/** Versioned (?v=) and keyed (?ovk=) URL of a file on the tile host. Every
+ *  tile URL handed to MapLibre must come from here: MapLibre Native fetches
+ *  those itself, so the fetch wrapper (src/tileKeyFetch.ts) never sees them. */
+export function tileFileUrl(fileName: string): string {
+  return addTileKey(versionedTileUrl(TILE_BASE, fileName), TILE_KEY)
+}
+
 /** The active country's aerodrome details file (optional: a 404 just means no details). */
 export function aerodromeDetailsUrl(country: string = activeCountry()): string {
-  return versionedTileUrl(TILE_BASE, `${country}-aerodrome-details.geojson`)
+  return tileFileUrl(`${country}-aerodrome-details.geojson`)
 }
 
 /** Optional URL of the operator notices document (planned maintenance,
@@ -138,7 +153,7 @@ export function tileFilenames(country: string = activeCountry()): Record<TileKey
 export function getTileUrls(): Record<TileKey, string> {
   const names = tileFilenames()
   const out = {} as Record<TileKey, string>
-  for (const k of TILE_DATASETS) out[k] = versionedTileUrl(TILE_BASE, names[k])
+  for (const k of TILE_DATASETS) out[k] = tileFileUrl(names[k])
   return out
 }
 
@@ -190,7 +205,7 @@ export function onTileDataChange(reset: () => void): () => void {
  * requires.
  */
 export function getLandusePmtilesUrl(): string {
-  return `pmtiles://${versionedTileUrl(TILE_BASE, countryArchiveFile(activeCountry(), 'landuse'))}`
+  return `pmtiles://${tileFileUrl(countryArchiveFile(activeCountry(), 'landuse'))}`
 }
 
 /**
@@ -204,7 +219,7 @@ export function getLandusePmtilesUrl(): string {
  * gotchas.
  */
 export function getHillshadePmtilesUrl(): string {
-  return `pmtiles://${versionedTileUrl(TILE_BASE, countryArchiveFile(activeCountry(), 'hillshade'))}`
+  return `pmtiles://${tileFileUrl(countryArchiveFile(activeCountry(), 'hillshade'))}`
 }
 
 /**
@@ -215,7 +230,7 @@ export function getHillshadePmtilesUrl(): string {
  * done — config wired for offline caching only so far.
  */
 export function getContoursPmtilesUrl(): string {
-  return `pmtiles://${versionedTileUrl(TILE_BASE, countryArchiveFile(activeCountry(), 'contours'))}`
+  return `pmtiles://${tileFileUrl(countryArchiveFile(activeCountry(), 'contours'))}`
 }
 
 /** ESRI World Imagery — free XYZ satellite tiles, no API key. */
@@ -244,7 +259,7 @@ export const SATELLITE_STYLE = {
  * URL format: pmtiles://<http(s)-url-of-pmtiles-file>
  */
 export function createProtomapsStyle(pmtilesOverrideUrl?: string, overviewOverrideUrl?: string): StyleSpecification {
-  const pmtilesUrl = `pmtiles://${pmtilesOverrideUrl ?? versionedTileUrl(TILE_BASE, countryArchiveFile(activeCountry(), 'basemap'))}`
+  const pmtilesUrl = `pmtiles://${pmtilesOverrideUrl ?? tileFileUrl(countryArchiveFile(activeCountry(), 'basemap'))}`
   // Shared low-zoom (z0-6) Europe-wide overview -- single file, built once,
   // NOT country-specific (unlike basemap.pmtiles, now country-bbox z7-12
   // detail only -- see docs/self-hosting.md). Never affected by
@@ -253,7 +268,7 @@ export function createProtomapsStyle(pmtilesOverrideUrl?: string, overviewOverri
   // identical split -- see that file's own comment for the full rationale
   // (previously bare gray canvas past the country bbox edge, with regional
   // NOTAM pins still rendering there independent of basemap coverage).
-  const overviewUrl = `pmtiles://${overviewOverrideUrl ?? versionedTileUrl(TILE_BASE, 'europe-overview.pmtiles')}`
+  const overviewUrl = `pmtiles://${overviewOverrideUrl ?? tileFileUrl('europe-overview.pmtiles')}`
   return {
     version: 8,
     // BUG FIX (found live on device): raw protomaps.github.io (GitHub Pages)

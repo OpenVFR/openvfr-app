@@ -22,6 +22,8 @@
  * PORT defaults to 5200.
  */
 
+// First: adds the tile host key to fetches of TILES_BASE_URL (see the file).
+import './tileKeyFetch'
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'

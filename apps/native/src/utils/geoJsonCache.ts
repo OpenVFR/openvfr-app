@@ -3,9 +3,9 @@
  * (airspace, obstacles, landmarks, ...), keyed by URL.
  */
 
-import { onTileManifestChanged, versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { onTileManifestChanged } from '@open-vfr/shared/tileManifest'
 import { fetchWithRetry } from '@open-vfr/shared/fetchWithRetry'
-import { TILE_BASE, tileUrlReady, type TileKey } from '../config'
+import { TILE_BASE, tileFileUrl, tileUrlReady, type TileKey } from '../config'
 
 // ---------------------------------------------------------------------------
 // Module-level GeoJSON cache — fetch + JSON.parse each file exactly once per
@@ -34,7 +34,8 @@ const _geoJsonCache = new Map<string, Promise<GeoJSON.FeatureCollection>>()
 export function isOutdatedTileUrl(url: string): boolean {
   if (!url.startsWith(`${TILE_BASE}/`)) return false
   const fileName = url.slice(TILE_BASE.length + 1).split('?')[0]
-  return versionedTileUrl(TILE_BASE, fileName) !== url
+  // tileFileUrl, not versionedTileUrl: the URLs in this cache carry the tile host key (?ovk=) when one is configured.
+  return tileFileUrl(fileName) !== url
 }
 onTileManifestChanged(() => {
   for (const url of [..._geoJsonCache.keys()]) if (isOutdatedTileUrl(url)) _geoJsonCache.delete(url)

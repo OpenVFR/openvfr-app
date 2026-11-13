@@ -22,9 +22,10 @@ fail=0
 
 check() {
   local label="$1" url="$2" hdr code
+  shift 2   # any further arguments go to curl
   hdr=$(mktemp)
   if ! code=$(curl -sS -o /dev/null -D "$hdr" -w '%{http_code}' \
-      --retry 3 --retry-all-errors --max-time 20 "$url"); then
+      --retry 3 --retry-all-errors --max-time 20 "$@" "$url"); then
     echo "::error::$label unreachable from runner"
     fail=1
   elif grep -qi '^cf-mitigated:' "$hdr" || [[ "$code" =~ ^(403|429|503)$ ]]; then
@@ -45,7 +46,14 @@ require() {
 }
 
 require EXPO_PUBLIC_API_BASE  && check "EXPO_PUBLIC_API_BASE /health" "${EXPO_PUBLIC_API_BASE%/}/health"
-require EXPO_PUBLIC_TILE_BASE && check "EXPO_PUBLIC_TILE_BASE"        "${EXPO_PUBLIC_TILE_BASE%/}/"
+if require EXPO_PUBLIC_TILE_BASE; then
+  check "EXPO_PUBLIC_TILE_BASE manifest" "${EXPO_PUBLIC_TILE_BASE%/}/manifest.json"
+  # A tile host may serve files only with the build's key (?ovk=, packages/shared/src/tileKey.ts):
+  # read 16 bytes of a real file the way the app does, so a missing or wrong key fails here.
+  tile_url="${EXPO_PUBLIC_TILE_BASE%/}/europe-overview.pmtiles"
+  [ -n "${EXPO_PUBLIC_TILE_KEY:-}" ] && tile_url="${tile_url}?ovk=${EXPO_PUBLIC_TILE_KEY}"
+  check "EXPO_PUBLIC_TILE_BASE file read (with EXPO_PUBLIC_TILE_KEY if set)" "$tile_url" -r 0-15
+fi
 if [ -n "${EXPO_PUBLIC_BASEMAP_URL:-}" ]; then
   check "EXPO_PUBLIC_BASEMAP_URL" "$EXPO_PUBLIC_BASEMAP_URL"
 fi

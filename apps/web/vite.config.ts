@@ -40,6 +40,13 @@ const devApiOrigin = DEV_API_ORIGIN
     }
   : {}
 const DEV_TILES_TARGET   = env['VITE_DEV_TILES_TARGET']   || ''
+// Optional key for a tile host that only serves its own clients (sent as
+// ?ovk=, packages/shared/src/tileKey.ts): the proxy below adds it server-side,
+// so it never reaches the browser bundle. Deliberately NOT VITE_-prefixed:
+// VITE_* variables can be exposed to client code through import.meta.env.
+const DEV_TILES_KEY = (env['DEV_TILES_KEY'] || '').trim()
+const withDevTilesKey = (path: string): string =>
+  !DEV_TILES_KEY || /[?&]ovk=/.test(path) ? path : `${path}${path.includes('?') ? '&' : '?'}ovk=${encodeURIComponent(DEV_TILES_KEY)}`
 const DEV_TRAFFIC_TARGET = env['VITE_DEV_TRAFFIC_TARGET'] || DEV_API_TARGET || ''
 
 // Shown under Settings -> App (same number as the native app's About).
@@ -241,7 +248,7 @@ export default defineConfig({
       ...(DEV_TILES_TARGET ? { '/tiles': {
         target: DEV_TILES_TARGET,
         changeOrigin: true,
-        rewrite: (path: string) => path.replace(/^\/tiles/, ''),
+        rewrite: (path: string) => withDevTilesKey(path.replace(/^\/tiles/, '')),
         // Strip If-Range before forwarding. Every tile URL here is content-
         // hashed (?v=<sha256 prefix>, see tileManifest.ts) -- a URL never
         // points at changed content, so conditional Range revalidation is

@@ -1,4 +1,6 @@
 import { registerRootComponent } from 'expo'
+// Before anything fetches from the tile host: adds its key to those fetches.
+import './src/tileKeyFetch'
 import {
   loadTileManifest, refreshTileManifest, enableTileManifestPersistence, isTileManifestFromStorage, getCachedTileManifest,
 } from '@open-vfr/shared/tileManifest'

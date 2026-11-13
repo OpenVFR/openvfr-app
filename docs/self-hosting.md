@@ -570,6 +570,16 @@ api, PostgREST and cron (and re-set their passwords: renaming clears an MD5 pass
   For GeoJSON, make only versioned requests cache-eligible, and add a
   response-header rule for requests without `v=` as described in the
   previous point.
+- Optional tile host key: you can restrict a separate tile host to your own clients by answering
+  only (a) browser requests whose `Origin` is your web app and (b) requests carrying
+  `?ovk=<key>` (a CDN/WAF rule; leave `manifest.json` open so app update checks keep working).
+  Your clients then need the key: the native app (`EXPO_PUBLIC_TILE_KEY`, added to every tile
+  URL and tile fetch), the API server (`TILES_KEY`, added to every fetch under
+  `TILES_BASE_URL`) and the web/admin dev-server `/tiles` proxies (`DEV_TILES_KEY`). The web
+  build never gets a key: it is recognised by its Origin. Keys are 16-128 characters of
+  `A-Z a-z 0-9 _ -`. They are not secrets (the native key ships in the app), only a barrier
+  against other apps reusing your host. Unset = no change. See
+  `packages/shared/src/tileKey.ts`.
 - You can deploy the frontend, API, and tile storage as one origin
   (simplest) or three separate origins (see `apps/web/src/utils/env.ts`'s
   `VITE_API_BASE_URL`/`VITE_TILES_BASE_URL`) — both are supported.
