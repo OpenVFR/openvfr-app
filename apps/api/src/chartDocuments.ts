@@ -43,8 +43,10 @@
  *   CHART_DOCUMENT_HOURLY_LIMIT  per user (default 120)
  *   CHART_DOCUMENT_DAILY_LIMIT   per user (default 600)
  *   CHART_DOCUMENT_CACHE_MB      shared in-memory cache, 0 = off (default 100)
- *   CHART_DOCUMENT_ADMIN_ONLY    1/true: only accounts with role 'admin' may fetch documents (403 for others); the app's
- *                                charts UI shows for admins only. Off by default.
+ *   CHART_DOCUMENT_ADMIN_ONLY    1/true: only accounts with role 'admin' may fetch documents at all (403 for others). Off by
+ *                                default: every signed-in user may fetch the documents of the charts in the PUBLIC index
+ *                                (`<cc>-charts.public.json`, released airfields); a chart that is only in the preview index
+ *                                (`<cc>-charts.preview.json`, every airfield) is served to role 'admin' only (404 otherwise).
  */
 
 import { Hono, type Context } from 'hono'
@@ -224,12 +226,14 @@ async function fetchJson(url: string, maxBytes: number, cfg: ChartDocumentConfig
  * stale edge copy of the bare URL is never used) and reloaded only when the
  * hash changes. A failed reload keeps serving the last good index.
  */
-export function createChartIndexResolver(cfg: ChartDocumentConfig, fetchImpl: typeof fetch = fetch, now: () => number = Date.now) {
+export function createChartIndexResolver(cfg: ChartDocumentConfig, fetchImpl: typeof fetch = fetch, now: () => number = Date.now,
+  /** Which published index: `public` (released airfields) or `preview` (every airfield). */
+  kind: 'public' | 'preview' = 'public') {
   const cache = new Map<string, { index: ChartsIndex | null; sha: string | null; at: number }>()
   const inflight = new Map<string, Promise<ChartsIndex | null>>()
 
   async function reload(cc: string): Promise<ChartsIndex | null> {
-    const name = `${cc}-charts.json`
+    const name = `${cc}-charts.${kind}.json`
     const prev = cache.get(cc)
     try {
       const manifest = await fetchJson(`${cfg.tilesBaseUrl}/manifest.json`, MANIFEST_MAX_BYTES, cfg, fetchImpl) as
@@ -294,6 +298,7 @@ export function chartDocumentRoutes(opts: {
   const app = new Hono()
 
   const indexes = createChartIndexResolver(cfg, opts.fetchImpl)
+  const previewIndexes = createChartIndexResolver(cfg, opts.fetchImpl, Date.now, 'preview')
 
   app.get('/document/:country/:chartId', async (c) => {
     if (cfg.hosts.size === 0 || !cfg.tilesBaseUrl) return c.json({ error: 'Not found' }, 404)
@@ -311,6 +316,8 @@ export function chartDocumentRoutes(opts: {
     let entry: { url: string; document: boolean } | null
     try {
       entry = await indexes.resolve(cc, chartId)
+      // Not in the public index (an airfield that is not released): only an admin may see it, from the preview index.
+      if (!entry && user.role === 'admin') entry = await previewIndexes.resolve(cc, chartId)
     } catch {
       return c.json({ error: 'Charts are unavailable right now.' }, 503)
     }

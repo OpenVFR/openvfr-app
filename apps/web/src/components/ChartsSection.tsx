@@ -1,7 +1,8 @@
 /**
- * Charts section of the aerodrome popup (experimental, admins only):
- * the aerodrome's official published charts from the deployment's charts
- * index. Each chart opens at the publisher, in the in-app viewer, and -- when
+ * Charts section of the aerodrome popup (experimental): the aerodrome's
+ * official published charts from the deployment's charts index (released
+ * airfields for everyone; an admin with "Include unreviewed" on also sees
+ * the unreleased ones). Each chart opens at the publisher, in the in-app viewer, and -- when
  * it is georeferenced -- on the map. Renders nothing when there are no charts.
  */
 import { useState } from 'react'

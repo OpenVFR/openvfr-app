@@ -237,17 +237,17 @@ export default function SettingsPanel({ units, onUnitsChange, countries, selecte
 
       {isAdmin && (
         <div className={css.section}>
-          <span className={css.label}>Curated data (admin)</span>
+          <span className={css.label}>Curated data and charts (admin)</span>
           <div className={css.options}>
             <button
               className={`${css.opt}${!unreviewed ? ` ${css.optActive}` : ''}`}
               onClick={() => setUnreviewed(false)}
-              title="Only values a person has approved: what every other user sees"
+              title="Only values a person has approved and airfields that are released (with their charts): what every other user sees"
             >Approved only</button>
             <button
               className={`${css.opt}${unreviewed ? ` ${css.optActive}` : ''}`}
               onClick={() => setUnreviewed(true)}
-              title="Also the values still waiting for review, marked as unreviewed. Informational layers only"
+              title="Also the values still waiting for review (marked as unreviewed) and the charts of airfields that are not released yet. Informational layers and charts only"
             >Include unreviewed</button>
           </div>
         </div>

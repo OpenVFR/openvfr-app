@@ -274,13 +274,15 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
 - `CHART_DOCUMENT_HOSTS` — optional, experimental. Comma-separated hostnames
   of official chart publishers whose PDFs `/api/charts/document` may pass
   through to the web app (in-app viewer and map overlay of charts listed in
-  `<cc>-charts.json`, which the API reads from `TILES_BASE_URL`; see
+  `<cc>-charts.public.json` / `<cc>-charts.preview.json`, which the API reads from `TILES_BASE_URL`; see
   docs/architecture.md "Charts index"). Empty, or `TILES_BASE_URL` unset =
   endpoint disabled. Limits: `CHART_DOCUMENT_MAX_MB` (20),
   `CHART_DOCUMENT_HOURLY_LIMIT` (120) / `CHART_DOCUMENT_DAILY_LIMIT` (600)
   per user, `CHART_DOCUMENT_CACHE_MB` (100, shared in-memory). The web
-  client shows charts to accounts with role `admin` only (there is no build flag). `CHART_DOCUMENT_ADMIN_ONLY=1` makes the endpoint itself refuse every other account (403),
-  so the documents are admin-only for real, not just hidden in the UI.
+  client shows the charts of the public index to every user and those of the preview index (airfields not released) to
+  accounts with role `admin` who switch on "Include unreviewed" (there is no build flag); the endpoint enforces the same split
+  (a chart only in the preview index: 404 unless the account is an admin). `CHART_DOCUMENT_ADMIN_ONLY=1` makes the endpoint
+  refuse every non-admin account (403), documents of released airfields included.
 - `TILES_BASE_URL` — optional, your public tile host (e.g.
   `https://tiles.example.org`); the admin country detail checks
   `manifest.json` and each country file there, and route briefings read the

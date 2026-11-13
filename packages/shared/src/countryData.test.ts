@@ -38,6 +38,8 @@ describe('file names', () => {
     expect(countryDatasetFile('se', 'aerodromeDetails')).toBe('se-aerodrome-details.geojson')
     expect(countryDatasetFile('se', 'aerodromesPreview')).toBe('se-aerodromes.preview.geojson')
     expect(countryDatasetFile('se', 'aerodromeDetailsPreview')).toBe('se-aerodrome-details.preview.geojson')
+    expect(countryDatasetFile('se', 'charts')).toBe('se-charts.public.json')
+    expect(countryDatasetFile('se', 'chartsPreview')).toBe('se-charts.preview.json')
   })
 })
 

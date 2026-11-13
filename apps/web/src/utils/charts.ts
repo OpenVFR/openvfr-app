@@ -1,8 +1,10 @@
 /**
- * Official charts (experimental, admins only): loads the
- * optional per-country charts index (`<cc>-charts.json`, see
- * @open-vfr/shared/chartsIndex) and renders official chart PDFs with
+ * Official charts: loads the optional per-country charts index and renders official chart PDFs with
  * pdf.js for the in-app viewer and the georeferenced map overlay.
+ *
+ * Two indexes (see @open-vfr/shared/chartsIndex): `<cc>-charts.public.json` = the released airfields' charts, read by every user;
+ * `<cc>-charts.preview.json` = every airfield's, read only by an admin session with "Include unreviewed" on (the same switch as
+ * the curated data), falling back to the public one. The document endpoint enforces the same split on the server.
  *
  * Document bytes come through the API's pass-through endpoint
  * (/api/charts/document), because publishers' hosts send no CORS headers.
@@ -17,31 +19,36 @@ import { countryFileUrl, countryDatasetFile } from '@open-vfr/shared/countryData
 import { loadOptionalJson } from './optionalJson'
 import { API_BASE_URL } from './env'
 import { useActiveCountries } from './countryData'
+import { useUnreviewedShown } from './unreviewedCurated'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 
 // ── Charts index ────────────────────────────────────────────────────────────
 
 const indexCache = new Map<string, Promise<ChartsIndex | null>>()
 
-/** One country's charts index, or null when the deployment has none. */
-export function loadChartsIndex(country: string): Promise<ChartsIndex | null> {
-  return loadOptionalJson(indexCache, countryFileUrl(countryDatasetFile(country, 'charts')), parseChartsIndex)   // optional file: a 404 is normal
+/** One country's charts index, or null when the deployment has none. `preview`: every airfield's charts (admins, unreviewed on),
+ *  falling back to the public index when there is no preview file. */
+export function loadChartsIndex(country: string, preview = false): Promise<ChartsIndex | null> {
+  const load = (kind: 'charts' | 'chartsPreview') =>
+    loadOptionalJson(indexCache, countryFileUrl(countryDatasetFile(country, kind)), parseChartsIndex)   // optional file: a 404 is normal
+  return preview ? load('chartsPreview').then(i => i ?? load('charts')) : load('charts')
 }
 
 /** Charts for one aerodrome across the active countries (null = none). */
 export function useAerodromeCharts(icao: string | undefined, enabled: boolean): AerodromeCharts | null {
   const { countries, key } = useActiveCountries()
+  const preview = useUnreviewedShown()
   const [result, setResult] = useState<AerodromeCharts | null>(null)
   useEffect(() => {
     setResult(null)
     if (!enabled || !icao) return
     let cancelled = false
-    Promise.all(countries.map(loadChartsIndex)).then((idx) => {
+    Promise.all(countries.map(c => loadChartsIndex(c, preview))).then((idx) => {
       if (!cancelled) setResult(chartsForAerodrome(idx.filter((i): i is ChartsIndex => !!i), icao))
     })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [icao, enabled, key])
+  }, [icao, enabled, key, preview])
   return result
 }
 

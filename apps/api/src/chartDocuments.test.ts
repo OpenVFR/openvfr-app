@@ -21,10 +21,10 @@ function chartsIndex(charts: Array<Record<string, unknown>>, display = { documen
 }
 
 /** Tile host serving a manifest + versioned charts index, and the document host. */
-function tileHost(index: unknown, extra: Record<string, () => Response> = {}, sha = SHA) {
+function tileHost(index: unknown, extra: Record<string, () => Response> = {}, sha = SHA, kind: 'public' | 'preview' = 'public') {
   return {
-    [`${TILES}/manifest.json`]: () => Response.json({ files: { 'xx-charts.json': { sha256: sha } } }),
-    [`${TILES}/xx-charts.json?v=${sha.slice(0, 12)}`]: () => Response.json(index),
+    [`${TILES}/manifest.json`]: () => Response.json({ files: { [`xx-charts.${kind}.json`]: { sha256: sha } } }),
+    [`${TILES}/xx-charts.${kind}.json?v=${sha.slice(0, 12)}`]: () => Response.json(index),
     ...extra,
   }
 }
@@ -137,7 +137,7 @@ test('index resolver: by manifest hash, unknown ids, viewing not allowed, stale 
   assert.deepEqual(await r.resolve('xx', 'vac1'), { url: 'https://aip.example.org/v.pdf', document: true })
   assert.equal(await r.resolve('yy', 'vac1'), null)                       // no index published for yy
   assert.equal(await r.resolve('xx', 'nope'), null)                       // fresh index: no extra reload
-  assert.equal(calls.filter(u => u.includes('xx-charts')).length, 1)
+  assert.equal(calls.filter(u => u.includes('xx-charts.public')).length, 1)
 
   t = 61_000                                                              // a miss after a minute looks again
   const sha2 = 'cd'.repeat(32)
@@ -165,6 +165,28 @@ test('route: adminOnly refuses every account that is not an admin (403), admits 
   assert.equal((await open(undefined, true).request('/document/xx/vac1')).status, 403)
   assert.equal((await open('admin', true).request('/document/xx/vac1')).status, 200)
   assert.equal((await open('user').request('/document/xx/vac1')).status, 200)         // not restricted unless asked for
+})
+
+test('route: a chart only in the preview index (airfield not released) is for admins only; released ones are for every user', async () => {
+  const pub = 'https://aip.example.org/charts/PUB.pdf'
+  const hidden = 'https://aip.example.org/charts/HIDDEN.pdf'
+  const publicIdx = chartsIndex([{ id: 'pub1', title: 'VAC', kind: 'VAC', url: pub }])
+  const previewIdx = chartsIndex([{ id: 'pub1', title: 'VAC', kind: 'VAC', url: pub }, { id: 'hid1', title: 'VAC', kind: 'VAC', url: hidden }])
+  // one manifest listing both files, each file under its own versioned URL
+  const sha2 = 'cd'.repeat(32)
+  const f = fakeFetch({
+    [`${TILES}/manifest.json`]: () => Response.json({ files: { 'xx-charts.public.json': { sha256: SHA }, 'xx-charts.preview.json': { sha256: sha2 } } }),
+    [`${TILES}/xx-charts.public.json?v=${SHA.slice(0, 12)}`]: () => Response.json(publicIdx),
+    [`${TILES}/xx-charts.preview.json?v=${sha2.slice(0, 12)}`]: () => Response.json(previewIdx),
+    [pub]: () => new Response(PDF), [hidden]: () => new Response(PDF),
+  })
+  const as = (role: string | null | undefined) =>
+    chartDocumentRoutes({ requireUser: async () => ({ id: `u-${role}`, role }), config: { ...cfg, hourlyLimit: 100, dailyLimit: 100 }, fetchImpl: f })
+  assert.equal((await as('user').request('/document/xx/pub1')).status, 200)        // released: everyone
+  assert.equal((await as('user').request('/document/xx/hid1')).status, 404)        // not released: not for a normal user
+  assert.equal((await as(null).request('/document/xx/hid1')).status, 404)
+  assert.equal((await as('admin').request('/document/xx/hid1')).status, 200)       // admins see it
+  assert.equal((await as('admin').request('/document/xx/pub1')).status, 200)
 })
 
 test('config: CHART_DOCUMENT_ADMIN_ONLY', async () => {
