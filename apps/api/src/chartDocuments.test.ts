@@ -189,6 +189,53 @@ test('route: a chart only in the preview index (airfield not released) is for ad
   assert.equal((await as('admin').request('/document/xx/pub1')).status, 200)
 })
 
+test('route: the preview index failing does not turn a public answer into a 503, and a failing public index is a 503 for everyone', async () => {
+  const pub = 'https://aip.example.org/charts/PUB.pdf'
+  const f = fakeFetch({
+    [`${TILES}/manifest.json`]: () => Response.json({ files: { 'xx-charts.public.json': { sha256: SHA }, 'xx-charts.preview.json': { sha256: 'cd'.repeat(32) } } }),
+    [`${TILES}/xx-charts.public.json?v=${SHA.slice(0, 12)}`]: () => Response.json(chartsIndex([{ id: 'pub1', title: 'VAC', kind: 'VAC', url: pub }])),
+    // the preview index file itself is unreachable (500)
+    [`${TILES}/xx-charts.preview.json?v=${'cd'.repeat(32).slice(0, 12)}`]: () => new Response('boom', { status: 500 }),
+    [pub]: () => new Response(PDF),
+  })
+  const as = (role: string) => chartDocumentRoutes({ requireUser: async () => ({ id: `u-${role}`, role }), config: { ...cfg, hourlyLimit: 100, dailyLimit: 100 }, fetchImpl: f })
+  assert.equal((await as('admin').request('/document/xx/pub1')).status, 200)
+  assert.equal((await as('admin').request('/document/xx/missing1')).status, 404)         // preview unreachable: not found, not 503
+  const down = fakeFetch({ [`${TILES}/manifest.json`]: () => new Response('nope', { status: 500 }) })
+  const broken = (role: string) => chartDocumentRoutes({ requireUser: async () => ({ id: `d-${role}`, role }), config: { ...cfg, hourlyLimit: 100, dailyLimit: 100 }, fetchImpl: down })
+  assert.equal((await broken('user').request('/document/xx/pub1')).status, 503)
+  assert.equal((await broken('admin').request('/document/xx/pub1')).status, 503)         // nothing could answer
+})
+
+test('resolver: one manifest download serves both indexes; the old file name is called out once', async () => {
+  const calls: string[] = []
+  const warn: unknown[][] = []
+  const orig = console.warn
+  console.warn = (...a: unknown[]) => { warn.push(a) }
+  try {
+    const sha2 = 'cd'.repeat(32)
+    const f = fakeFetch({
+      [`${TILES}/manifest.json`]: () => Response.json({ files: { 'xx-charts.public.json': { sha256: SHA }, 'xx-charts.preview.json': { sha256: sha2 }, 'yy-charts.json': { sha256: SHA } } }),
+      [`${TILES}/xx-charts.public.json?v=${SHA.slice(0, 12)}`]: () => Response.json(chartsIndex([{ id: 'pub1', title: 'VAC', kind: 'VAC', url: 'https://aip.example.org/p.pdf' }])),
+      [`${TILES}/xx-charts.preview.json?v=${sha2.slice(0, 12)}`]: () => Response.json(chartsIndex([{ id: 'hid1', title: 'VAC', kind: 'VAC', url: 'https://aip.example.org/h.pdf' }])),
+    }, calls)
+    const r = createChartIndexResolver(cfg, f)
+    assert.equal(await r.resolve('xx', 'hid1'), null)                        // a public miss ...
+    assert.deepEqual(await r.resolve('xx', 'hid1', 'preview'), { url: 'https://aip.example.org/h.pdf', document: true })   // ... then the preview
+    assert.equal(calls.filter(u => u.endsWith('/manifest.json')).length, 1)
+    assert.equal(await r.resolve('yy', 'a1'), null)                          // yy still publishes the old name: no chart, and a warning
+    assert.equal(await r.resolve('yy', 'a2'), null)
+    assert.equal(warn.filter(a => String(a[0]).includes('yy-charts.json')).length, 1)
+  } finally { console.warn = orig }
+})
+
+test('route: GET /config tells the client whether non-admins are refused', async () => {
+  const on = chartDocumentRoutes({ requireUser: async () => null, config: { ...cfg, adminOnly: true }, fetchImpl: fakeFetch({}) })
+  const off = chartDocumentRoutes({ requireUser: async () => null, config: cfg, fetchImpl: fakeFetch({}) })
+  assert.deepEqual(await (await on.request('/config')).json(), { adminOnly: true })
+  assert.deepEqual(await (await off.request('/config')).json(), { adminOnly: false })      // no session needed
+})
+
 test('config: CHART_DOCUMENT_ADMIN_ONLY', async () => {
   const { chartDocumentConfigFromEnv } = await import('./chartDocuments.js')
   assert.equal(chartDocumentConfigFromEnv({ CHART_DOCUMENT_ADMIN_ONLY: '1' }).adminOnly, true)

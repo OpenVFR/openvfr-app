@@ -39,12 +39,15 @@ const SUFFIX: Record<CountryDataset, string> = {
   aerodromeDetails: 'aerodrome-details.geojson',
   // The same two files with every airfield's unreviewed curated values too (marked). Only admins can switch them on (the app's
   // Settings); never the core map behaviour reads them, only the informational layer.
-  // The official-charts indexes (not GeoJSON: read with the charts loader, not loadCountryGeojson). `charts` = the released airfields'
-  // charts, what every user reads; `chartsPreview` = every airfield's, read only by an admin who switched on unreviewed data.
-  charts: 'charts.public.json',
-  chartsPreview: 'charts.preview.json',
   aerodromesPreview: 'aerodromes.preview.geojson',
   aerodromeDetailsPreview: 'aerodrome-details.preview.geojson',
+  // The official-charts indexes (not GeoJSON: read with the charts loader, not loadCountryGeojson). `charts` = the released airfields'
+  // charts, what every user reads; `chartsPreview` = every airfield's, read by an admin session that switched on unreviewed data.
+  // Like the preview GeoJSON files it is published on the tile host, so anyone who knows the URL can read it: the switch is a view
+  // choice and the chart document endpoint only serves unreleased charts to admins; it is not secrecy. (Renamed from `charts.json`:
+  // a deployment still publishing the old name has no charts until it publishes these two.)
+  charts: 'charts.public.json',
+  chartsPreview: 'charts.preview.json',
 }
 
 export type CountryArchive = 'basemap' | 'landuse' | 'hillshade' | 'contours'

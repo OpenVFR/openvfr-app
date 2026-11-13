@@ -299,7 +299,9 @@ Settings (the same switch as the curated data; no build flag). A deployment may
 publish, next to the other per-country files, two indexes:
 `<cc>-charts.public.json` (the released airfields' charts, read by everyone)
 and `<cc>-charts.preview.json` (every airfield's, admins with the switch on,
-falling back to the public one): links to
+falling back to the public one; **it sits on the public tile host like the
+preview GeoJSON files, so anyone who knows the URL can read it**: the switch
+is a view choice and the document endpoint's check, not secrecy): links to
 each aerodrome's **official** published charts (national AIP visual approach,
 aerodrome, ground movement, ... charts) and, where known, a georeference. How
 the file is produced is up to the operator; the app only reads it, and an
@@ -359,7 +361,7 @@ copy until the new one is downloaded.
 **API pass-through:** publishers' document hosts don't send CORS headers, so
 the web app fetches PDF bytes through `GET /api/charts/document/:country/:chartId`
 (`apps/api/src/chartDocuments.ts`). The client names a chart, never a URL:
-the API looks it up in the same published index (`<TILES_BASE_URL>/<cc>-charts.public.json`, or for an admin also `.preview.json`: a chart only the preview index lists is refused with 404 for every other account;
+the API looks it up in the same published index (`<TILES_BASE_URL>/<cc>-charts.public.json`, or for an admin also `.preview.json`: a chart only the preview index lists is refused with 404 for every other account; `GET /api/charts/config` returns `{adminOnly}` so the web client can hide charts on a deployment that refuses every non-admin (`CHART_DOCUMENT_ADMIN_ONLY`);
 found through `manifest.json` by content hash and re-checked every 10 minutes;
 a failed reload keeps the last good index), so only documents the index lists
 can be fetched, and serving a stored copy later would need no client change.

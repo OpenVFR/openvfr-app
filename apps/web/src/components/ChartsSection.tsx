@@ -9,8 +9,7 @@ import { useState } from 'react'
 import {
   CHART_KIND_LABEL, VFR_CHART_KINDS, type AerodromeCharts, type ChartEntry,
 } from '@open-vfr/shared/chartsIndex'
-import { chartUi, useAerodromeCharts, useChartUi, type ChartSelection } from '../utils/charts'
-import { useChartsEnabled } from '../utils/adminAccess'
+import { chartUi, useAerodromeCharts, useChartsEnabled, useChartUi, type ChartSelection } from '../utils/charts'
 import css from './ChartsSection.module.css'
 
 interface Props {
@@ -81,6 +80,8 @@ export default function ChartsSection({ icao, sectionClass, titleClass, authed }
   return (
     <div className={sectionClass}>
       <div className={titleClass}>Charts</div>
+      {ad.unreleased && <div className={css.note} data-testid="charts-unreleased">Not released: only admins with unreviewed data switched on see these charts.</div>}
+      {ad.previewFailed && <div className={css.note}>The unreleased charts could not be loaded: showing the released ones.</div>}
       <ul className={css.list}>
         {shown.map(c => <ChartRow key={c.id} chart={c} ad={ad} authed={authed} />)}
       </ul>

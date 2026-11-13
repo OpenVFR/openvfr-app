@@ -62,7 +62,7 @@ import { navigatingLeg, routeDirect, samePoint, directActionKind, DIRECT_ACTION_
 import { AERODROME_COLORS } from '@open-vfr/shared/featureColors'
 import { fetchAerodromeNotamTexts, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { API_BASE_URL } from '../utils/env'
-import { useChartsEnabled } from '../utils/adminAccess'
+import { useChartAccessGuard, useChartsEnabled } from '../utils/charts'
 import ChartOverlay from './ChartOverlay'
 import AerodromeDetailsLayer from './AerodromeDetailsLayer'
 import ChartViewer from './ChartViewer'
@@ -492,6 +492,7 @@ const NO_WAYPOINTS: RouteWaypoint[] = []
 
 export default function MapView({ auth }: { auth: AuthState }) {
   const chartsEnabled = useChartsEnabled()
+  useChartAccessGuard()
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   // Active altitude-filter range, shown beside the scale bar so it's always

@@ -282,7 +282,14 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   client shows the charts of the public index to every user and those of the preview index (airfields not released) to
   accounts with role `admin` who switch on "Include unreviewed" (there is no build flag); the endpoint enforces the same split
   (a chart only in the preview index: 404 unless the account is an admin). `CHART_DOCUMENT_ADMIN_ONLY=1` makes the endpoint
-  refuse every non-admin account (403), documents of released airfields included.
+  refuse every non-admin account (403), documents of released airfields included; the web client asks `GET /api/charts/config`
+  and then does not offer charts to non-admins at all. **Upgrade note:** the charts index used to be one file, `<cc>-charts.json`
+  (admins only). The app and the api now read `<cc>-charts.public.json` (the released airfields' charts, shown to every signed-in
+  user) and `<cc>-charts.preview.json` (every airfield's, admins who switch on "Include unreviewed"), both listed in
+  `manifest.json`. A deployment that still publishes only the old name has **no charts** until it publishes the new files (the api
+  logs a warning when the manifest lists the old name but not the new one); there is deliberately no fallback to the old name,
+  because it would show everything to everyone. The preview file is on the public tile host and readable by anyone who knows
+  the URL: only the app's switch and the api's document check are gated.
 - `TILES_BASE_URL` — optional, your public tile host (e.g.
   `https://tiles.example.org`); the admin country detail checks
   `manifest.json` and each country file there, and route briefings read the

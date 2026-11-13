@@ -64,6 +64,29 @@ your position to the aerodrome you choose.
 
 Direct to **replaces** your route. Undo restores it.
 
+## Charts
+
+Where an aerodrome has official charts published, its card has a **Charts**
+section. The visual approach, aerodrome, parking and ground charts are
+listed first; **More charts** shows the rest, including the instrument
+ones that a VFR flight does not use.
+
+- The **arrow** icon opens the official document at the publisher. It
+  works for everyone, signed in or not.
+- When you are signed in, tapping a chart's **title** shows the publisher's
+  own document in the app, and the **pin** icon draws a georeferenced chart
+  over the map (with an opacity control).
+- Charts are the publisher's own, unaltered documents. They are shown for
+  the aerodromes the operator has released. An aerodrome without a Charts
+  section has none released yet, so open the official publication instead.
+- **Always check the official publication.** A georeferenced overlay is
+  approximate (a few hundred metres) and is not for navigation.
+- A deployment can restrict in-app viewing to administrators. Then the
+  section is not shown to other users.
+
+Administrators who switch on **Include unreviewed** (Settings) also see the
+charts of aerodromes that are not released yet, marked as not released.
+
 ## Nearby brief
 
 **Brief** gives one panel with three tabs for the aerodromes around you

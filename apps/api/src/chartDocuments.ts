@@ -3,7 +3,8 @@
  *
  * EXPERIMENTAL. Pass-through for official, freely published chart documents
  * (aeronautical information publications) listed in a deployment's charts
- * index (`<cc>-charts.json`, see docs/architecture.md "Charts index").
+ * index (`<cc>-charts.public.json` for released airfields; `<cc>-charts.preview.json` for every airfield, admins only; see
+ * docs/architecture.md "Charts index").
  *
  * Why it exists: the browser app renders a chart page itself (in-app viewer
  * and georeferenced map overlay), which needs the PDF bytes. Publishers'
@@ -11,7 +12,7 @@
  * fetch them directly. Native apps fetch directly and don't use this.
  *
  * The client names a chart, never a URL: the document URL comes from the
- * same published index the app reads (`<TILES_BASE_URL>/<cc>-charts.json`,
+ * same published indexes the app reads (`<TILES_BASE_URL>/<cc>-charts.public.json` and `.preview.json`,
  * located through `manifest.json` by content hash, re-checked every few
  * minutes). So only documents the operator's index lists can be fetched,
  * and serving a stored copy later would need no client change.
@@ -52,10 +53,11 @@
 import { Hono, type Context } from 'hono'
 import { RateLimiter, limitFromEnv } from './rateLimiter.js'
 import { CHART_ID, findChart, parseChartsIndex, type ChartsIndex } from '@open-vfr/shared/chartsIndex'
+import { countryDatasetFile } from '@open-vfr/shared/countryData'
 
 export interface ChartDocumentConfig {
   hosts: Set<string>
-  /** Tile host the `<cc>-charts.json` index is published on ('' = disabled). */
+  /** Tile host the `<cc>-charts.public.json` / `<cc>-charts.preview.json` indexes are published on ('' = disabled). */
   tilesBaseUrl: string
   /** How long a loaded index is trusted before the manifest is checked again. */
   indexTtlMs: number
@@ -220,27 +222,48 @@ async function fetchJson(url: string, maxBytes: number, cfg: ChartDocumentConfig
   return JSON.parse(new TextDecoder().decode(await readCapped(res, maxBytes)))
 }
 
+/** Which published index: `public` (released airfields) or `preview` (every airfield, admins only). */
+export type ChartIndexKind = 'public' | 'preview'
+const INDEX_DATASET = { public: 'charts', preview: 'chartsPreview' } as const
+/** The manifest is fetched once for both indexes when they are looked up together. */
+const MANIFEST_SHARE_MS = 5 * 1000
+
 /**
- * The published charts index per country. Located through the tile host's
+ * The published charts indexes per country. Located through the tile host's
  * manifest (content hash -> versioned URL, the way the apps fetch it, so a
  * stale edge copy of the bare URL is never used) and reloaded only when the
- * hash changes. A failed reload keeps serving the last good index.
+ * hash changes. A failed reload keeps serving the last good index. One
+ * manifest download serves both kinds.
  */
-export function createChartIndexResolver(cfg: ChartDocumentConfig, fetchImpl: typeof fetch = fetch, now: () => number = Date.now,
-  /** Which published index: `public` (released airfields) or `preview` (every airfield). */
-  kind: 'public' | 'preview' = 'public') {
+export function createChartIndexResolver(cfg: ChartDocumentConfig, fetchImpl: typeof fetch = fetch, now: () => number = Date.now) {
+  type Manifest = { files?: Record<string, { sha256?: unknown }> }
   const cache = new Map<string, { index: ChartsIndex | null; sha: string | null; at: number }>()
   const inflight = new Map<string, Promise<ChartsIndex | null>>()
+  const warned = new Set<string>()
+  let manifestShared: { at: number; p: Promise<Manifest> } | null = null
 
-  async function reload(cc: string): Promise<ChartsIndex | null> {
-    const name = `${cc}-charts.${kind}.json`
-    const prev = cache.get(cc)
+  function manifest(): Promise<Manifest> {
+    if (manifestShared && now() - manifestShared.at < MANIFEST_SHARE_MS) return manifestShared.p
+    const p = fetchJson(`${cfg.tilesBaseUrl}/manifest.json`, MANIFEST_MAX_BYTES, cfg, fetchImpl) as Promise<Manifest>
+    const mine = { at: now(), p }
+    manifestShared = mine
+    p.catch(() => { if (manifestShared === mine) manifestShared = null })
+    return p
+  }
+
+  async function reload(cc: string, kind: ChartIndexKind): Promise<ChartsIndex | null> {
+    const name = countryDatasetFile(cc, INDEX_DATASET[kind])
+    const ck = `${kind}:${cc}`
+    const prev = cache.get(ck)
     try {
-      const manifest = await fetchJson(`${cfg.tilesBaseUrl}/manifest.json`, MANIFEST_MAX_BYTES, cfg, fetchImpl) as
-        { files?: Record<string, { sha256?: unknown }> }
-      const sha = manifest?.files?.[name]?.sha256
+      const m = await manifest()
+      const sha = m?.files?.[name]?.sha256
       if (typeof sha !== 'string' || !/^[0-9a-f]{64}$/.test(sha)) {
-        cache.set(cc, { index: null, sha: null, at: now() })      // not published for this country
+        if (kind === 'public' && m?.files?.[`${cc}-charts.json`] && !warned.has(cc)) {
+          warned.add(cc)
+          console.warn(`[charts/document] ${cc}: the manifest lists ${cc}-charts.json but not ${name}: charts are published under the two new names now, no chart is served until they are published`)
+        }
+        cache.set(ck, { index: null, sha: null, at: now() })      // not published for this country
         return null
       }
       if (prev && prev.sha === sha) {
@@ -249,10 +272,10 @@ export function createChartIndexResolver(cfg: ChartDocumentConfig, fetchImpl: ty
       }
       const index = parseChartsIndex(await fetchJson(`${cfg.tilesBaseUrl}/${name}?v=${sha.slice(0, 12)}`, INDEX_MAX_BYTES, cfg, fetchImpl))
       const ok = index && index.country === cc ? index : null
-      cache.set(cc, { index: ok, sha, at: now() })
+      cache.set(ck, { index: ok, sha, at: now() })
       return ok
     } catch (err) {
-      console.error('[charts/document] index reload failed', { country: cc, error: err instanceof Error ? err.message : String(err) })
+      console.error('[charts/document] index reload failed', { country: cc, kind, error: err instanceof Error ? err.message : String(err) })
       if (prev) {                                                  // keep serving the last good one, and do not retry on every request
         prev.at = now()
         return prev.index
@@ -261,24 +284,26 @@ export function createChartIndexResolver(cfg: ChartDocumentConfig, fetchImpl: ty
     }
   }
 
-  function load(cc: string): Promise<ChartsIndex | null> {
-    let p = inflight.get(cc)
+  function load(cc: string, kind: ChartIndexKind): Promise<ChartsIndex | null> {
+    const ck = `${kind}:${cc}`
+    let p = inflight.get(ck)
     if (!p) {
-      p = reload(cc).finally(() => inflight.delete(cc))
-      inflight.set(cc, p)
+      p = reload(cc, kind).finally(() => inflight.delete(ck))
+      inflight.set(ck, p)
     }
     return p
   }
 
   return {
     /** The chart's document URL and display permission, or null when the index doesn't list it. */
-    async resolve(cc: string, chartId: string): Promise<{ url: string; document: boolean } | null> {
-      const hit = cache.get(cc)
-      let index = hit && now() - hit.at < cfg.indexTtlMs ? hit.index : await load(cc)
+    async resolve(cc: string, chartId: string, kind: ChartIndexKind = 'public'): Promise<{ url: string; document: boolean } | null> {
+      const ck = `${kind}:${cc}`
+      const hit = cache.get(ck)
+      let index = hit && now() - hit.at < cfg.indexTtlMs ? hit.index : await load(cc, kind)
       let found = index ? findChart(index, chartId) : null
-      const at = cache.get(cc)?.at ?? 0
+      const at = cache.get(ck)?.at ?? 0
       if (!found && now() - at >= MISS_RELOAD_MS) {               // maybe published since: look once more
-        index = await load(cc)
+        index = await load(cc, kind)
         found = index ? findChart(index, chartId) : null
       }
       return found && index ? { url: found.chart.url, document: index.display.document } : null
@@ -298,7 +323,10 @@ export function chartDocumentRoutes(opts: {
   const app = new Hono()
 
   const indexes = createChartIndexResolver(cfg, opts.fetchImpl)
-  const previewIndexes = createChartIndexResolver(cfg, opts.fetchImpl, Date.now, 'preview')
+
+  /** What the web client needs to know before it offers charts: a deployment may refuse every non-admin (CHART_DOCUMENT_ADMIN_ONLY).
+   *  No secrets, no session needed. */
+  app.get('/config', (c) => c.json({ adminOnly: !!cfg.adminOnly }))
 
   app.get('/document/:country/:chartId', async (c) => {
     if (cfg.hosts.size === 0 || !cfg.tilesBaseUrl) return c.json({ error: 'Not found' }, 404)
@@ -313,14 +341,19 @@ export function chartDocumentRoutes(opts: {
       c.header('Retry-After', String(rate.retryAfterSeconds))
       return c.json({ error: 'Too many document requests. Try again later.', retryAfterSeconds: rate.retryAfterSeconds }, 429)
     }
-    let entry: { url: string; document: boolean } | null
+    let entry: { url: string; document: boolean } | null = null
+    let unavailable = false
     try {
       entry = await indexes.resolve(cc, chartId)
-      // Not in the public index (an airfield that is not released): only an admin may see it, from the preview index.
-      if (!entry && user.role === 'admin') entry = await previewIndexes.resolve(cc, chartId)
     } catch {
-      return c.json({ error: 'Charts are unavailable right now.' }, 503)
+      unavailable = true
     }
+    // Not in the public index (an airfield that is not released): only an admin may see it, from the preview index. A preview index
+    // that cannot be loaded is logged (by the resolver) and counts as "not there": it must not turn an answer into a 503.
+    if (!entry && user.role === 'admin') {
+      try { entry = await indexes.resolve(cc, chartId, 'preview') } catch { /* logged by the resolver */ }
+    }
+    if (!entry && unavailable) return c.json({ error: 'Charts are unavailable right now.' }, 503)
     if (!entry || !entry.document) return c.json({ error: 'Document not found.' }, 404)
     const checked = checkDocumentUrl(entry.url, cfg.hosts)
     if ('error' in checked) {

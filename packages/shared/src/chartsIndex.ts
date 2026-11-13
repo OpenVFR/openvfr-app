@@ -1,6 +1,11 @@
 /**
- * Charts index: optional per-country file `<cc>-charts.json` listing each
- * aerodrome's official published charts (visual approach charts, aerodrome
+ * Charts index: optional per-country files listing each aerodrome's
+ * official published charts: `<cc>-charts.public.json` (the released
+ * airfields' charts, read by everyone) and `<cc>-charts.preview.json` (every
+ * airfield's, for admins who switch on unreviewed data; published on the tile
+ * host like the other files, so readable by anyone who knows the URL: the
+ * split is a view choice plus the document endpoint's check, not secrecy).
+ * Each lists the aerodromes' official published charts (visual approach charts, aerodrome
  * charts, ...) as links to the publisher's own documents, optionally with a
  * georeference so a chart can be drawn on the map.
  *

@@ -12,7 +12,7 @@
  */
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import {
-  parseChartsIndex, chartsForAerodrome, chartDocumentProxyUrl,
+  parseChartsIndex, chartsForAerodrome, chartDocumentProxyUrl, findChart,
   type ChartsIndex, type AerodromeCharts, type ChartEntry,
 } from '@open-vfr/shared/chartsIndex'
 import { countryFileUrl, countryDatasetFile } from '@open-vfr/shared/countryData'
@@ -20,31 +20,88 @@ import { loadOptionalJson } from './optionalJson'
 import { API_BASE_URL } from './env'
 import { useActiveCountries } from './countryData'
 import { useUnreviewedShown } from './unreviewedCurated'
+import { useIsAdmin } from './adminAccess'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
+
+// ── Charts config ───────────────────────────────────────────────────────────
+
+/** The deployment may refuse every non-admin (api CHART_DOCUMENT_ADMIN_ONLY): the api says so, so the UI does not offer charts
+ *  that every document request would refuse with 403. An older api without the route, or a disabled endpoint, counts as "not refused". */
+let configPromise: Promise<boolean> | null = null
+function loadAdminOnly(): Promise<boolean> {
+  if (!configPromise) {
+    const p: Promise<boolean> = fetch(`${API_BASE_URL}/api/charts/config`, { credentials: 'same-origin' })
+      .then(async (r) => (r.ok ? !!((await r.json()) as { adminOnly?: unknown }).adminOnly : false))
+      .catch(() => { if (configPromise === p) configPromise = null; return false })        // transient: ask again next time
+    configPromise = p
+  }
+  return configPromise
+}
+
+/**
+ * Whether the charts section, viewer and map overlay are offered: to everyone (the public index lists released airfields' charts
+ * only; the rest is admin-only, see loadChartsIndex), except on a deployment that refuses every non-admin.
+ */
+export function useChartsEnabled(): boolean {
+  const admin = useIsAdmin()
+  const [adminOnly, setAdminOnly] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (admin) return
+    let cancelled = false
+    void loadAdminOnly().then(v => { if (!cancelled) setAdminOnly(v) })
+    return () => { cancelled = true }
+  }, [admin])
+  return admin || adminOnly === false
+}
 
 // ── Charts index ────────────────────────────────────────────────────────────
 
 const indexCache = new Map<string, Promise<ChartsIndex | null>>()
 
-/** One country's charts index, or null when the deployment has none. `preview`: every airfield's charts (admins, unreviewed on),
- *  falling back to the public index when there is no preview file. */
-export function loadChartsIndex(country: string, preview = false): Promise<ChartsIndex | null> {
-  const load = (kind: 'charts' | 'chartsPreview') =>
-    loadOptionalJson(indexCache, countryFileUrl(countryDatasetFile(country, kind)), parseChartsIndex)   // optional file: a 404 is normal
-  return preview ? load('chartsPreview').then(i => i ?? load('charts')) : load('charts')
+const indexUrl = (country: string, kind: 'charts' | 'chartsPreview') => countryFileUrl(countryDatasetFile(country, kind))
+
+/** One country's public charts index (the released airfields), or null when the deployment has none. */
+export function loadChartsIndex(country: string): Promise<ChartsIndex | null> {
+  return loadOptionalJson(indexCache, indexUrl(country, 'charts'), parseChartsIndex)       // optional file: a 404 is normal
+}
+
+/**
+ * What the charts section reads for one country. `preview` (an admin who switched on unreviewed data): the preview index (every
+ * airfield), with the public one beside it so the section can tell which airfields are not released. A preview index that is
+ * not published (a definite 4xx, remembered) falls back to the public one silently; one that failed to load (network or server
+ * error: not remembered, retried next time) also falls back but is reported, so the admin is not told "all charts" by mistake.
+ */
+export async function loadChartsIndexes(country: string, preview: boolean):
+  Promise<{ index: ChartsIndex | null; publicIndex: ChartsIndex | null; previewFailed: boolean }> {
+  const publicIndex = await loadChartsIndex(country)
+  if (!preview) return { index: publicIndex, publicIndex, previewFailed: false }
+  const url = indexUrl(country, 'chartsPreview')
+  const previewIndex = await loadOptionalJson(indexCache, url, parseChartsIndex)
+  return { index: previewIndex ?? publicIndex, publicIndex, previewFailed: !previewIndex && !indexCache.has(url) }
+}
+
+export interface AerodromeChartsView extends AerodromeCharts {
+  /** Preview only: the airfield is not in the public index (not released): admins see it, nobody else. */
+  unreleased: boolean
+  /** Preview only: the preview index could not be loaded, so the public charts are shown. */
+  previewFailed: boolean
 }
 
 /** Charts for one aerodrome across the active countries (null = none). */
-export function useAerodromeCharts(icao: string | undefined, enabled: boolean): AerodromeCharts | null {
+export function useAerodromeCharts(icao: string | undefined, enabled: boolean): AerodromeChartsView | null {
   const { countries, key } = useActiveCountries()
   const preview = useUnreviewedShown()
-  const [result, setResult] = useState<AerodromeCharts | null>(null)
+  const [result, setResult] = useState<AerodromeChartsView | null>(null)
   useEffect(() => {
     setResult(null)
     if (!enabled || !icao) return
     let cancelled = false
-    Promise.all(countries.map(c => loadChartsIndex(c, preview))).then((idx) => {
-      if (!cancelled) setResult(chartsForAerodrome(idx.filter((i): i is ChartsIndex => !!i), icao))
+    Promise.all(countries.map(c => loadChartsIndexes(c, preview))).then((all) => {
+      if (cancelled) return
+      const ad = chartsForAerodrome(all.map(a => a.index).filter((i): i is ChartsIndex => !!i), icao)
+      if (!ad) { setResult(null); return }
+      const inPublic = chartsForAerodrome(all.map(a => a.publicIndex).filter((i): i is ChartsIndex => !!i), icao) !== null
+      setResult({ ...ad, unreleased: preview && !inPublic, previewFailed: preview && all.some(a => a.previewFailed) })
     })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -93,6 +150,7 @@ export function loadChartDocument(country: string, chartId: string): Promise<PDF
     if (!res.ok) {
       const msg = res.status === 401 ? 'Sign in to view charts in the app.'
         : res.status === 429 ? 'Too many chart requests, try again later.'
+        : res.status === 403 ? 'In-app viewing of charts is not available for this account. Open the chart at the publisher instead.'
         : res.status === 404 ? 'In-app viewing is not available for this chart.'
         : 'The chart could not be loaded.'
       throw new ChartDocumentError(msg, res.status)
@@ -198,9 +256,43 @@ export const chartUi = {
   closeViewer: () => set({ viewer: null }),
 }
 
+/** The current chart UI state outside React (tests, guards). */
+export const getChartUiState = (): ChartUiState => state
+
 export function useChartUi(): ChartUiState {
   return useSyncExternalStore(
     (cb) => { listeners.add(cb); return () => { listeners.delete(cb) } },
     () => state,
   )
+}
+
+/** Drops a chart from the document cache (and releases pdf.js's hold on it). */
+function forgetDocument(country: string, chartId: string) {
+  const k = `${country}/${chartId}`
+  const p = docCache.get(k)
+  if (!p) return
+  docCache.delete(k)
+  p.then(d => d.loadingTask.destroy()).catch(() => {})
+}
+
+/**
+ * Closes the chart overlay and the viewer when what they show is not a released airfield's chart: the admin switched "Include
+ * unreviewed" off or signed out. A chart the public index still lists stays. The documents are forgotten too, so a preview-only
+ * chart is not kept in memory.
+ */
+export async function closeUnreleasedCharts(): Promise<void> {
+  for (const sel of [state.overlay, state.viewer]) {
+    if (!sel) continue
+    const idx = await loadChartsIndex(sel.country)
+    if (idx && findChart(idx, sel.chart.id)) continue
+    forgetDocument(sel.country, sel.chart.id)
+    if (state.overlay?.chart.id === sel.chart.id) chartUi.closeOverlay()
+    if (state.viewer?.chart.id === sel.chart.id) chartUi.closeViewer()
+  }
+}
+
+/** Mount once next to the overlay and viewer: when unreviewed data turns off (switch, sign-out) the unreleased charts close. */
+export function useChartAccessGuard(): void {
+  const preview = useUnreviewedShown()
+  useEffect(() => { if (!preview) void closeUnreleasedCharts() }, [preview])
 }

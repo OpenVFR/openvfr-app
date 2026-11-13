@@ -1,7 +1,8 @@
 /**
- * "Include unreviewed curated data": an admin-only choice. Everyone else, and an admin who has not switched it on, sees approved
- * curated data only. Stored on the device. It only ever selects which file the informational layer reads (circuits, areas and
- * the local-information text); aerodrome symbols, closed flags and routing always use the public data.
+ * "Include unreviewed": an admin-only choice. Everyone else, and an admin who has not switched it on, sees approved curated data
+ * and the charts of released airfields only. Stored on the device. It only ever selects which files the informational layer
+ * reads (circuits, areas, the local-information text) and which charts index the charts section reads (the preview index also
+ * lists the airfields that are not released); aerodrome symbols, closed flags and routing always use the public data.
  */
 import { useSyncExternalStore } from 'react'
 import { isAdminSession, subscribeAdminSession } from './adminAccess'
