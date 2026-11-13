@@ -47,9 +47,13 @@ started and ended.
 
 ## The log list
 
-Filter by period (all, 30 days, 90 days, this year) and by aircraft. A
-totals line sums flights, airborne time, landings and distance for what is
-shown. GPS gaps are marked, and a log broken by a GPS loss can be joined
+Search by airport, aircraft or date (for example `EDDF` or `2025-06`). A
+search looks through all your flights, whatever the period, and the period
+filter is greyed out meanwhile. Without a search, filter by period (30 days
+by default; also 90 days, this year or all) and by aircraft. The totals line
+names the period it covers and sums flights, airborne time, landings and
+distance for what is shown. The list shows 25 flights at a time; use **Show
+more** for the rest. GPS gaps are marked, and a log broken by a GPS loss can be joined
 with the next part.
 
 A flight shows in the list from takeoff, as *Recording…*, and becomes a

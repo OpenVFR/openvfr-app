@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeLogStats, trimParkedTail, thinTrack, formatLogDuration, liveTrailGeoJson, type LogTrackPoint, type LogStats } from './flightLogStats'
+import { computeLogStats, logSearchText, matchesLogSearch, trimParkedTail, thinTrack, formatLogDuration, liveTrailGeoJson, type LogTrackPoint, type LogStats } from './flightLogStats'
 
 const THR = { takeoffKts: 30, landedKts: 20 }
 
@@ -200,5 +200,16 @@ describe('liveTrailGeoJson', () => {
   })
   it('nothing for fewer than two points', () => {
     expect(liveTrailGeoJson([pt(0, 0)]).features).toEqual([])
+  })
+})
+
+describe('flight log search', () => {
+  const log = { departureIcao: 'ESSA', arrivalIcao: 'ESGG', registration: 'SE-ABC', startedAt: new Date(2025, 5, 1, 0, 30).getTime() }
+  it('matches airports, registration and the local date', () => {
+    const t = logSearchText(log)
+    expect(matchesLogSearch(t, 'essa')).toBe(true)
+    expect(matchesLogSearch(t, 'se-abc 2025-06-01')).toBe(true)
+    expect(matchesLogSearch(t, 'ekch')).toBe(false)
+    expect(matchesLogSearch(t, '  ')).toBe(true)
   })
 })

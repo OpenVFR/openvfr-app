@@ -143,6 +143,16 @@
   font-size: 11px;
   padding: 3px 7px;
 }
+.searchInput {
+  composes: formInput from '../styles/shared.module.css';
+}
+.searchInput.searchInput {
+  flex: 2;
+  min-width: 0;
+  width: auto;
+  font-size: 11px;
+  padding: 3px 7px;
+}
 .filterSel option,
 .aircraftSel option {
   background: var(--input-option-bg);

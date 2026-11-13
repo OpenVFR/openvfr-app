@@ -6,7 +6,7 @@
  */
 
 import { suggestRouteName } from '@open-vfr/shared/suggestRouteName'
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, TextInput,
   FlatList, ActivityIndicator, RefreshControl, Alert,
@@ -89,6 +89,7 @@ export function RouteLibrarySheet({
   const open    = controlledOpen ?? internalOpen
   const setOpen = onOpenChange ?? setInternalOpen
   const [routes,   setRoutes]   = useState<RouteDocType[]>([])
+  const [search,   setSearch]   = useState('')
   const [saving,   setSaving]   = useState(false)
   const [saveName, setSaveName] = useState('')
   const [saveAsOpen, setSaveAsOpen] = useState(false)
@@ -130,6 +131,15 @@ export function RouteLibrarySheet({
       .then(all => setRoutes(all.filter(r => r.id !== 'current').sort((a, b) => b.updatedAt - a.updatedAt)))
       .catch(() => {})
   }, [])
+
+  // The search box shows with more than 5 routes; the filter applies only while it shows.
+  const searchVisible = routes.length > 5
+  const shownRoutes = useMemo(() => {
+    const q = searchVisible ? search.trim().toLowerCase() : ''
+    return q ? routes.filter(r => r.name.toLowerCase().includes(q)) : routes
+  }, [routes, search, searchVisible])
+  // A fresh sheet starts unfiltered.
+  useEffect(() => { if (!open) setSearch('') }, [open])
 
   useEffect(() => {
     if (open) loadRoutes()
@@ -416,6 +426,21 @@ export function RouteLibrarySheet({
           </View>
         )}
 
+        {/* Search (a long library) */}
+        {searchVisible && (
+          <TextInput
+            style={styles.searchInput}
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search routes"
+            placeholderTextColor={theme.textFaint}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            accessibilityLabel="Search routes"
+          />
+        )}
+
         {/* Route list */}
         {routes.length === 0 ? (
           <View style={styles.empty}>
@@ -426,7 +451,11 @@ export function RouteLibrarySheet({
         ) : (
           <FlatList
             style={{ maxHeight: sheetMaxH - 260 }}
-            data={routes}
+            data={shownRoutes}
+            initialNumToRender={15}
+            windowSize={7}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={<Text style={styles.emptyTxt}>No matches</Text>}
             keyExtractor={r => r.id}
             renderItem={({ item: route }) => {
               const dist = totalNm(route.waypoints)
@@ -565,6 +594,11 @@ function makeStyles(theme: ScaledTheme) {
     paddingHorizontal: theme.space2, paddingVertical: 5,
   },
   saveConfirmTxt: { color: '#fff', fontSize: theme.textSm, fontWeight: '600' },
+  searchInput: {
+    color: theme.textPrimary, fontSize: theme.textSm,
+    borderWidth: 1, borderColor: theme.borderDefault, borderRadius: theme.radiusSm,
+    paddingHorizontal: theme.space2, paddingVertical: theme.space1, marginBottom: theme.space2,
+  },
   empty: { padding: theme.space5, alignItems: 'center', gap: theme.space2 },
   emptyTxt:  { color: theme.textSecondary, fontSize: theme.textMd, fontWeight: '500' },
   emptyHint: { color: theme.textFaint, fontSize: theme.textXs, textAlign: 'center' },

@@ -218,6 +218,25 @@ export function logPeriodStart(period: LogPeriod, now: number = Date.now()): num
   }
 }
 
+/**
+ * Lower-case text a flight search matches against: departure, arrival, registration and the
+ * start date, as local `YYYY-MM-DD` and as a short month and day ("nov 13"). Built once per log
+ * (the locale formatting is slow), not per keystroke.
+ */
+export function logSearchText(log: { departureIcao: string; arrivalIcao: string; registration: string; startedAt: number }): string {
+  const d = new Date(log.startedAt)
+  const p2 = (n: number) => String(n).padStart(2, '0')
+  const iso = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
+  const short = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return [log.departureIcao, log.arrivalIcao, log.registration, iso, short].join(' ').toLowerCase()
+}
+
+/** True when every whitespace-separated word of `query` is in `text` (an empty query matches all). */
+export function matchesLogSearch(text: string, query: string): boolean {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
+  return terms.every(t => text.includes(t))
+}
+
 export interface LogTotals {
   logs:       number
   airborneMs: number

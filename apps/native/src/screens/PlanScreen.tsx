@@ -60,9 +60,10 @@ import type { UserWaypointDocType } from '../types/db'
 import type { LegOverride } from '../types/db'
 import { distanceNm, magneticBearingDeg, bearingDeg } from '../utils/routeCalc'
 import {
-  computeLogStats, formatLogDuration, logTotals, logPeriodStart, LOG_PERIODS, LOG_PERIOD_LABEL,
+  computeLogStats, logSearchText, matchesLogSearch, formatLogDuration, logTotals, logPeriodStart, LOG_PERIODS, LOG_PERIOD_LABEL,
   type LogStats, type LogPeriod,
 } from '@open-vfr/shared/flightLogStats'
+import { LIST_PAGE_SIZE, showMoreLabel } from '@open-vfr/shared/listPaging'
 import { nmToDisplay, distLabel, ktsToDisplay, displayToKts, speedLabel } from '../utils/units'
 import { computeTripFuelPlans } from '../utils/fuelCalc'
 import { setFuelStop } from '@open-vfr/shared/fuelStops'
@@ -119,6 +120,15 @@ function fmtEta(baseMins: number, offsetMins: number): string {
 
 // ── Component ─────────────────────────────────────────────────────────────
 const LOG_STATS_THR = { takeoffKts: 30, landedKts: 20 }
+const logSearchCache = new Map<string, { updatedAt: number; text: string }>()
+/** Search text of a log (cached per log revision: the date formatting is slow). */
+function logSearchTextOf(log: { id: string; updatedAt: number; departureIcao: string; arrivalIcao: string; registration: string; startedAt: number }): string {
+  const hit = logSearchCache.get(log.id)
+  if (hit && hit.updatedAt === log.updatedAt) return hit.text
+  const text = logSearchText(log)
+  logSearchCache.set(log.id, { updatedAt: log.updatedAt, text })
+  return text
+}
 const logInfoCache = new Map<string, { stats: LogStats | null; summary: string }>()
 
 type LogLike = { id: string; updatedAt: number; trackJson: string; endedAt: number; startedAt: number; maxAltFt: number }
@@ -239,18 +249,25 @@ export function PlanScreen() {
   const { selectedLog, viewLog, clearView } = useFlightLogViewContext()
   const navigation = useNavigation()
   const [logDeleteId, setLogDeleteId] = useState<string | null>(null)
-  const [logPeriod, setLogPeriod] = useState<LogPeriod>('all')
+  const [logPeriod, setLogPeriod] = useState<LogPeriod>('30d')
   const [logReg, setLogReg] = useState('')  // '' = all aircraft
   const logRegistrations = useMemo(
     () => [...new Set(logs.map(l => l.registration).filter(Boolean))].sort(),
     [logs],
   )
+  const [logQuery, setLogQuery] = useState('')
+  // Rows drawn: a long logbook shows a page at a time (the screen itself scrolls).
+  const [logLimit, setLogLimit] = useState(LIST_PAGE_SIZE)
+  useEffect(() => setLogLimit(LIST_PAGE_SIZE), [logPeriod, logReg, logQuery])
   const shownLogs = useMemo(() => {
-    const from = logPeriodStart(logPeriod)
+    // A search looks through every flight, whatever the period says.
+    const from = logQuery.trim() ? 0 : logPeriodStart(logPeriod)
     return [...logs]
-      .filter(l => l.startedAt >= from && (!logReg || l.registration === logReg))
+      .filter(l => l.startedAt >= from && (!logReg || l.registration === logReg) && matchesLogSearch(logSearchTextOf(l), logQuery))
       .sort((a, b) => b.startedAt - a.startedAt)
-  }, [logs, logPeriod, logReg])
+  }, [logs, logPeriod, logReg, logQuery])
+  const logSearching = logQuery.trim() !== ''
+  const visibleLogs = useMemo(() => shownLogs.slice(0, logLimit), [shownLogs, logLimit])
   const logSummaryTotals = useMemo(
     () => logTotals(shownLogs.filter(l => l.endedAt > 0).map(l => ({ ...l, stats: logInfo(l).stats }))),
     [shownLogs],
@@ -281,6 +298,10 @@ export function PlanScreen() {
     const ac = profiles.find(p => p.id === pendingImport.aircraftId)
     const doc = { ...pendingImport.doc, aircraftId: ac?.id ?? '', registration: ac?.registration || pendingImport.doc.registration, updatedAt: Date.now() }
     setPendingImport(null)
+    // The new flight must not land outside what the list shows: widen the filters that would hide it.
+    if (doc.startedAt < logPeriodStart(logPeriod)) setLogPeriod('all')
+    if (logReg && doc.registration !== logReg) setLogReg('')
+    setLogQuery('')
     try {
       await flightLogsDb.upsert(doc)
       await refreshLogs()
@@ -1439,6 +1460,7 @@ export function PlanScreen() {
       {segment === 'logs' && (
         <ScrollView
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ padding: scaledTheme.space3 }}
           refreshControl={<RefreshControl refreshing={logsRefreshing} onRefresh={handleLogsRefresh} tintColor={theme.accentBlue} />}
         >
@@ -1473,21 +1495,26 @@ export function PlanScreen() {
               </View>
             </View>
           )}
-          {logs.length === 0 ? (
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No flight logs</Text>
-              <Text style={styles.emptyBody}>
-                Logs are recorded automatically on the map (GPS-detected takeoff/landing) and
-                synced to the cloud once completed.
-              </Text>
-            </View>
-          ) : (<>
+          {logs.length > 0 && (<>
             <View style={styles.logFilterRow}>
               {LOG_PERIODS.map(p => (
-                <TouchableOpacity key={p} style={[styles.placeChip, logPeriod === p && styles.placeChipOn]} onPress={() => setLogPeriod(p)}>
+                <TouchableOpacity key={p} disabled={logSearching} style={[styles.placeChip, logPeriod === p && styles.placeChipOn, logSearching && { opacity: 0.4 }]} onPress={() => setLogPeriod(p)}>
                   <Text style={[styles.placeChipTxt, logPeriod === p && { color: theme.accentBlue }]}>{LOG_PERIOD_LABEL[p]}</Text>
                 </TouchableOpacity>
               ))}
+            </View>
+            <View style={styles.logFilterRow}>
+              <TextInput
+                style={styles.logSearchInput}
+                value={logQuery}
+                onChangeText={setLogQuery}
+                placeholder="Search airport, aircraft, date"
+                placeholderTextColor={theme.textFaint}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+                accessibilityLabel="Search flights"
+              />
             </View>
             {logRegistrations.length > 1 && (
               <View style={styles.logFilterRow}>
@@ -1499,10 +1526,29 @@ export function PlanScreen() {
               </View>
             )}
             <Text style={styles.aircraftMeta}>
-              {logSummaryTotals.logs} flight{logSummaryTotals.logs === 1 ? '' : 's'} · {formatLogDuration(logSummaryTotals.airborneMs)} · {logSummaryTotals.landings} landing{logSummaryTotals.landings === 1 ? '' : 's'} · {Math.round(logSummaryTotals.distanceNm)} NM
+              {logSearching ? 'Searching all time · ' : logPeriod !== 'all' ? `${LOG_PERIOD_LABEL[logPeriod]}: ` : ''}{logSummaryTotals.logs} flight{logSummaryTotals.logs === 1 ? '' : 's'} · {formatLogDuration(logSummaryTotals.airborneMs)} · {logSummaryTotals.landings} landing{logSummaryTotals.landings === 1 ? '' : 's'} · {Math.round(logSummaryTotals.distanceNm)} NM
             </Text>
-            {shownLogs.length === 0 && <Text style={styles.aircraftMeta}>No flights match this filter.</Text>}
-            {shownLogs.map(log => {
+          </>)}
+          {logs.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>No flight logs</Text>
+              <Text style={styles.emptyBody}>
+                Logs are recorded automatically on the map (GPS-detected takeoff/landing) and
+                synced to the cloud once completed.
+              </Text>
+            </View>
+          ) : (<>
+            {shownLogs.length === 0 && (
+              <View style={styles.logFilterRow}>
+                <Text style={styles.aircraftMeta}>
+                  {logSearching ? `No flights match "${logQuery.trim()}".` : logReg ? `No flights of ${logReg} in this period.` : `No flights in this period (${LOG_PERIOD_LABEL[logPeriod]}).`}
+                </Text>
+                <TouchableOpacity style={styles.placeChip} onPress={() => { setLogQuery(''); setLogReg(''); setLogPeriod('all') }} accessibilityRole="button">
+                  <Text style={styles.placeChipTxt}>Show all flights</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {visibleLogs.map(log => {
               const isActive = selectedLog?.id === log.id
               const isCompleted = log.endedAt > 0
               return (
@@ -1619,6 +1665,14 @@ export function PlanScreen() {
                 </View>
               )
             })}
+            {shownLogs.length > visibleLogs.length && (
+              <TouchableOpacity style={[styles.placeChip, { alignSelf: 'center' }]} onPress={() => setLogLimit(n => n + LIST_PAGE_SIZE)}
+                accessibilityRole="button">
+                <Text style={styles.placeChipTxt}>
+                  {showMoreLabel(shownLogs.length, visibleLogs.length)}
+                </Text>
+              </TouchableOpacity>
+            )}
           </>)}
         </ScrollView>
       )}
@@ -1762,6 +1816,11 @@ function makeStyles(theme: ScaledTheme) {
   placeChip: { paddingHorizontal: theme.space2, paddingVertical: theme.space1, borderRadius: theme.radiusSm, borderWidth: 1, borderColor: theme.borderDefault },
   placeChipOn: { borderColor: theme.accentBlue },
   logFilterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space1, marginBottom: theme.space2 },
+  logSearchInput: {
+    flex: 1, color: theme.textPrimary, fontSize: theme.textSm,
+    borderWidth: 1, borderColor: theme.borderDefault, borderRadius: theme.radiusSm,
+    paddingHorizontal: theme.space2, paddingVertical: theme.space1,
+  },
   logEventsToggle: { color: theme.textSecondary, fontSize: theme.textXs, marginTop: theme.space1 },
   logTools: { flexDirection: 'row', flexWrap: 'wrap', columnGap: theme.space3 },
   logPlaceEdit: { gap: theme.space1, marginTop: theme.space1 },

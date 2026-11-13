@@ -26,7 +26,9 @@ reorder waypoints by dragging them in the route table.
 ## Saved routes
 
 The route library lists routes you have saved. For each you can load,
-rename and delete (with confirmation).
+rename and delete (with confirmation). With more than five routes, a search
+box filters them by name. On the web the list shows 25 at a time; use **Show
+more** for the rest.
 
 - **Save** updates the saved route the working route came from.
 - **Save as** always creates a new route, even if the name matches an

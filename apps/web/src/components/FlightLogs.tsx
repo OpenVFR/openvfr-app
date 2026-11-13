@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { flightLogToGpx, gpxToFlightLog } from '@open-vfr/shared/gpx'
 import {
-  computeLogStats, formatLogDuration, logTotals, logPeriodStart, LOG_PERIODS, LOG_PERIOD_LABEL,
+  computeLogStats, formatLogDuration, logTotals, logPeriodStart, LOG_PERIODS, LOG_PERIOD_LABEL, logSearchText, matchesLogSearch,
   type LogStats, type LogPeriod,
 } from '@open-vfr/shared/flightLogStats'
+import { LIST_PAGE_SIZE, showMoreLabel } from '@open-vfr/shared/listPaging'
 import { getDb, type FlightLogDocType, type TrackPoint } from '../db'
 import { useAircraftProfiles } from '../db/useAircraftProfiles'
 import { useSyncRejected } from '../sync/cloudSync'
@@ -113,7 +114,7 @@ function landingsLabel(st: LogStats): string {
 }
 
 export default function FlightLogs({ selectedLogId, onSelect, onClear, importAircraft, assistant }: Props) {
-  const [logs, setLogs] = useState<{ doc: FlightLogDocType; stats: LogStats | null }[]>([])
+  const [logs, setLogs] = useState<{ doc: FlightLogDocType; stats: LogStats | null; search: string }[]>([])
   const refusedLogs = useSyncRejected('user_flight_logs')
   const [deleteId, setDeleteId] = useState<string | null>(null)
   // Departure / arrival being edited (one log at a time), with the aerodromes
@@ -158,17 +159,26 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
     else next.add(id)
     return next
   })
-  const [period, setPeriod] = useState<LogPeriod>('all')
+  const [period, setPeriod] = useState<LogPeriod>('30d')
   const [reg, setReg] = useState('')  // '' = all aircraft
+  const [query, setQuery] = useState('')
+  const [limit, setLimit] = useState(LIST_PAGE_SIZE)
+  // Back to the first page whenever the filter changes.
+  useEffect(() => setLimit(LIST_PAGE_SIZE), [period, reg, query])
+  // Track stats parse the whole track: kept per log version, so a change to one log (or a sync) does not reparse all.
+  const statsCache = useRef(new Map<string, { updatedAt: number; stats: LogStats | null; search: string }>())
 
   const registrations = useMemo(
     () => [...new Set(logs.map(l => l.doc.registration).filter(Boolean))].sort(),
     [logs],
   )
   const shown = useMemo(() => {
-    const from = logPeriodStart(period)
-    return logs.filter(l => l.doc.startedAt >= from && (!reg || l.doc.registration === reg))
-  }, [logs, period, reg])
+    // A search looks through every flight, whatever the period says.
+    const from = query.trim() ? 0 : logPeriodStart(period)
+    return logs.filter(l => l.doc.startedAt >= from && (!reg || l.doc.registration === reg) && matchesLogSearch(l.search, query))
+  }, [logs, period, reg, query])
+  const searching = query.trim() !== ''
+  const visible = useMemo(() => shown.slice(0, limit), [shown, limit])
   const totals = useMemo(() => logTotals(shown.map(l => ({ ...l.doc, stats: l.stats }))), [shown])
   const simulatedCount = useMemo(() => logs.filter(l => l.doc.simulated === true).length, [logs])
 
@@ -267,6 +277,10 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
     const { doc, aircraftId } = pendingImport
     const ac = aircraftProfiles.find(p => p.id === aircraftId)
     setPendingImport(null)
+    // The new flight must not land outside what the list shows: widen the filters that would hide it.
+    if (doc.startedAt < logPeriodStart(period)) setPeriod('all')
+    if (reg && (ac?.registration || doc.registration) !== reg) setReg('')
+    setQuery('')
     try {
       const db = await getDb()
       await db.flight_logs.insert({ ...doc, aircraftId: ac?.id ?? '', registration: ac?.registration || doc.registration, updatedAt: Date.now() })
@@ -316,7 +330,19 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
         .find({ selector: { endedAt: { $gt: 0 } } })
         .$.subscribe(docs => {
           const sorted = [...docs].sort((a, b) => b.startedAt - a.startedAt)
-          setLogs(sorted.map(d => { const doc = d.toJSON(); return { doc, stats: statsFor(doc) } }))
+          const cache = statsCache.current
+          const live = new Set<string>()
+          setLogs(sorted.map(d => {
+            const doc = d.toJSON()
+            live.add(doc.id)
+            let hit = cache.get(doc.id)
+            if (!hit || hit.updatedAt !== doc.updatedAt) {
+              hit = { updatedAt: doc.updatedAt, stats: statsFor(doc), search: logSearchText(doc) }
+              cache.set(doc.id, hit)
+            }
+            return { doc, stats: hit.stats, search: hit.search }
+          }))
+          for (const id of cache.keys()) if (!live.has(id)) cache.delete(id)
         })
     })
     return () => sub?.unsubscribe()
@@ -353,9 +379,19 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
       {importConfirm}
       {importMsg && <p className={css.empty}>{importMsg}</p>}
       <div className={css.filters}>
-        <select className={css.filterSel} value={period} onChange={e => setPeriod(e.target.value as LogPeriod)} aria-label="Period">
+        <select className={css.filterSel} value={period} onChange={e => setPeriod(e.target.value as LogPeriod)} aria-label="Period"
+          disabled={searching} title={searching ? 'Searching all flights' : undefined}>
           {LOG_PERIODS.map(p => <option key={p} value={p}>{LOG_PERIOD_LABEL[p]}</option>)}
         </select>
+        <input
+          type="search"
+          className={css.searchInput}
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search"
+          title="Search by airport, aircraft or date"
+          aria-label="Search flights"
+        />
         {registrations.length > 1 && (
           <select className={css.filterSel} value={reg} onChange={e => setReg(e.target.value)} aria-label="Aircraft">
             <option value="">All aircraft</option>
@@ -365,11 +401,17 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
         {sectionActionsFor(true)}
       </div>
       <div className={css.totals}>
-        {totals.logs} flight{totals.logs === 1 ? '' : 's'} · {formatLogDuration(totals.airborneMs)} · {totals.landings} landing{totals.landings === 1 ? '' : 's'} · {Math.round(totals.distanceNm)} NM
+        {searching ? 'Searching all time · ' : period !== 'all' ? `${LOG_PERIOD_LABEL[period]}: ` : ''}{totals.logs} flight{totals.logs === 1 ? '' : 's'} · {formatLogDuration(totals.airborneMs)} · {totals.landings} landing{totals.landings === 1 ? '' : 's'} · {Math.round(totals.distanceNm)} NM
       </div>
       <div className={css.list}>
-        {shown.length === 0 && <p className={css.empty}>No flights match this filter.</p>}
-        {shown.map(({ doc: log, stats }) => {
+        {shown.length === 0 && (
+          <p className={css.empty}>
+            {searching ? `No flights match "${query.trim()}".` : reg ? `No flights of ${reg} in this period.` : `No flights in this period (${LOG_PERIOD_LABEL[period]}).`}
+            {' '}
+            <button className={css.clearBtn} onClick={() => { setQuery(''); setReg(''); setPeriod('all') }}>Show all flights</button>
+          </p>
+        )}
+        {visible.map(({ doc: log, stats }) => {
           const isActive = log.id === selectedLogId
           const depArr = [log.departureIcao, log.arrivalIcao]
             .filter(Boolean).join(' → ') || 'Unknown route'
@@ -468,6 +510,11 @@ export default function FlightLogs({ selectedLogId, onSelect, onClear, importAir
             </div>
           )
         })}
+        {shown.length > visible.length && (
+          <button className={css.clearBtn} onClick={() => setLimit(n => n + LIST_PAGE_SIZE)}>
+            {showMoreLabel(shown.length, visible.length)}
+          </button>
+        )}
       </div>
     </div>
   )

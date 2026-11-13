@@ -1,3 +1,4 @@
+import { LIST_PAGE_SIZE, showMoreLabel } from '@open-vfr/shared/listPaging'
 import { useState, useRef, useEffect, type ReactNode } from 'react'
 import { useRouteLibrary } from '../db/useRouteDb'
 import { useAircraftProfiles } from '../db/useAircraftProfiles'
@@ -118,6 +119,9 @@ export default function RouteLibrary({
   // Search / sort (shown when > 5 routes)
   const [search, setSearch]       = useState('')
   const [sortBy, setSortBy]       = useState<'date' | 'name'>('date')
+  // Rows drawn: a long library shows a page at a time.
+  const [limit, setLimit]         = useState(LIST_PAGE_SIZE)
+  useEffect(() => setLimit(LIST_PAGE_SIZE), [search, sortBy])
 
   // Rename state: id of the route being renamed + draft value
   const [renamingId,    setRenamingId]    = useState<string | null>(null)
@@ -150,6 +154,7 @@ export default function RouteLibrary({
     .sort(sortBy === 'date'
       ? (a, b) => b.updatedAt - a.updatedAt
       : (a, b) => a.name.localeCompare(b.name))
+  const visibleRoutes = filtered.slice(0, limit)
 
   // ── Save current route (untitled route — creates or overwrites by name) ──
   async function handleSave() {
@@ -363,7 +368,7 @@ export default function RouteLibrary({
       {/* ── Saved routes list ───────────────────────────────────────── */}
       {filtered.length > 0 ? (
         <div className={css.list}>
-          {filtered.map(r => (
+          {visibleRoutes.map(r => (
             <div key={r.id} className={css.item}>
               {renamingId === r.id ? (
                 <input
@@ -413,6 +418,11 @@ export default function RouteLibrary({
               </div>
             </div>
           ))}
+          {filtered.length > visibleRoutes.length && (
+            <button className={css.sortBtn} onClick={() => setLimit(n => n + LIST_PAGE_SIZE)}>
+              {showMoreLabel(filtered.length, visibleRoutes.length)}
+            </button>
+          )}
         </div>
       ) : routes.length === 0 ? (
         <p className={css.empty}>No saved routes</p>
