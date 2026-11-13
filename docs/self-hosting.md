@@ -516,6 +516,33 @@ api, PostgREST and cron (and re-set their passwords: renaming clears an MD5 pass
   served from cache at all. The native app also guards against this
   (`apps/native/plugins/withMapLibreHttpGuard.js` refuses non-206 answers
   to Range requests), but that only turns a crash into a missing tile.
+- **Tile caching: versioned URLs only.** The apps fetch every tile file
+  as `<file>?v=<first 12 hex digits of its sha256>`, taken from the tile
+  host's `manifest.json` (`packages/shared/src/tileManifest.ts`). A new
+  upload has a new hash and therefore a new URL, so a versioned response
+  can be cached for as long as you like. Before their first tile fetch
+  the apps wait for the manifest (about 3 s at most) and use the bare,
+  unversioned URL only when it can't be loaded; a downloaded offline copy
+  on native is read without waiting. Configure the host and any CDN so
+  that:
+  - `manifest.json` is never cached (`Cache-Control: no-cache` or a CDN
+    bypass); it decides which version every other URL names.
+  - Versioned requests may be cached at the edge and in browsers, e.g.
+    `Cache-Control: public, max-age=31536000, immutable` on the objects.
+    The cache key must include the query string.
+  - Unversioned requests are always revalidated: send clients
+    `Cache-Control: no-cache` (or `max-age=0`) for them and do not let an
+    edge cache keep them without revalidation. They still happen (older
+    app builds, a start without a reachable manifest, scripts), and a
+    long-lived cached copy of an unversioned URL serves outdated airspace
+    and obstacles to everyone who asks for it. With object metadata of
+    `immutable` for a year this needs a rule on the host or CDN that
+    rewrites `Cache-Control` for requests without `v=`.
+  - If you match versioned requests by a query-string test, match the
+    parameter `v` itself, not just the text `v=` (a parameter such as
+    `dev=` contains it too), or don't add parameters whose name ends in
+    `v`. Any other query parameter becomes part of the cache key and
+    splits the cache per value.
 - **Cloudflare (R2 behind a custom domain):** the CDN cache cannot store
   objects over 512 MB on the Free, Pro and Business plans (Enterprise:
   5 GB by default). If a cache rule marks such an archive as cache-eligible
@@ -529,6 +556,15 @@ api, PostgREST and cron (and re-set their passwords: renaming clears an MD5 pass
   `curl -sI https://<tiles>/se-basemap.pmtiles | grep -i cf-cache-status`
   (expect `BYPASS` or `DYNAMIC`, not `HIT`/`MISS`) and repeat the Range
   check above several hundred times, since the failure is intermittent.
+  Archives well under the limit can be served from the cache again by a
+  second, later rule that makes versioned `.pmtiles` requests (query
+  `v=`) cache-eligible and excludes the large ones by name; keep strong
+  ETags on for it (PMTiles readers compare the ETag between range reads)
+  and repeat the Range check through it. Check each archive's size
+  against the limit before uploading, since the archives grow over time.
+  For GeoJSON, make only versioned requests cache-eligible, and add a
+  response-header rule for requests without `v=` as described in the
+  previous point.
 - You can deploy the frontend, API, and tile storage as one origin
   (simplest) or three separate origins (see `apps/web/src/utils/env.ts`'s
   `VITE_API_BASE_URL`/`VITE_TILES_BASE_URL`) — both are supported.

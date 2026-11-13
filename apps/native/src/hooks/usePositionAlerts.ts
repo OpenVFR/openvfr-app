@@ -26,7 +26,7 @@
  * cuts the worst-case commits-per-tick from this group from 4 to 1.
  *
  * Bonus: useAirspaceWarnings and useAirspaceNotifications previously each
- * fetched getTileUrls().airspace independently (two separate GeoJSON
+ * fetched the airspace file independently (two separate GeoJSON
  * parses of the same file, module-scope-cached in one but not the other).
  * Combined into a single fetch+cache here.
  *
@@ -37,7 +37,6 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
-import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
 import { buildObstructionPoints, obstructionTipFt, groupObstructionAlerts, obstructionAlertsSig, obstructionReachNm, obstructionThreatDistNm, obstructionRiskAltFt, OBSTRUCTION_VERTICAL_BUFFER_FT, type ObstructionPoint } from '@open-vfr/shared/obstructionPoints'
 import { filterDismissed } from '@open-vfr/shared/alertDismiss'
 import { airspaceEnded } from '@open-vfr/shared/airspaceInForce'
@@ -50,7 +49,7 @@ import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
 import { lookaheadPath, accuracyRing } from '@open-vfr/shared/lookahead'
 import { dropCoveredSubAreas } from '@open-vfr/shared/subAreas'
 import { airspaceDisplayClass } from '@open-vfr/shared/airspaceColors'
-import { getTileUrls } from '../config'
+import { fetchTile, onTileDataChange } from '../config'
 import { altitudeForLimit, effectiveLimitFt, limitMarginFt, insideBand } from '@open-vfr/shared/airspaceAltitude'
 
 // ── Airspace warnings config (useAirspaceWarnings) ─────────────────────────
@@ -128,15 +127,15 @@ type AerodromeFeature = {
 let _airspaceFeatures: AirspaceFeature[] | null = null
 let _airspaceLoading = false
 const _airspaceListeners: Array<(f: AirspaceFeature[]) => void> = []
-// Per-country data: a new active country starts a fresh load.
-onActiveCountriesChange(() => { _airspaceFeatures = null; _airspaceLoading = false })
+// Per-country, per-version data: another active country or a manifest change starts a fresh load.
+onTileDataChange(() => { _airspaceFeatures = null; _airspaceLoading = false })
 
 function loadAirspaceOnce(cb: (f: AirspaceFeature[]) => void) {
   if (_airspaceFeatures) { cb(_airspaceFeatures); return }
   _airspaceListeners.push(cb)
   if (_airspaceLoading) return
   _airspaceLoading = true
-  fetch(getTileUrls().airspace)
+  fetchTile('airspace')
     .then(r => r.json())
     .then((fc: GeoJSON.FeatureCollection) => {
       const arr: AirspaceFeature[] = []
@@ -233,7 +232,7 @@ export function usePositionAlerts(
   useEffect(() => { loadAirspaceOnce(setAirspaceFeatures) }, [])
 
   useEffect(() => {
-    fetch(getTileUrls().obstacles)
+    fetchTile('obstacles')
       .then(r => r.json())
       .then((fc: GeoJSON.FeatureCollection) => setObstacleFc(fc))
       .catch(() => { /* offline-safe */ })
@@ -242,7 +241,7 @@ export function usePositionAlerts(
   // Landmarks (masts, chimneys, churches...): optional dataset, fetched like the obstacles.
   useEffect(() => {
     let alive = true
-    fetch(getTileUrls().landmarks)
+    fetchTile('landmarks')
       .then(r => r.json())
       .then((fc: GeoJSON.FeatureCollection) => { if (alive) setLandmarkFc(fc) })
       .catch(() => { /* offline-safe / not published for this country */ })
@@ -250,7 +249,7 @@ export function usePositionAlerts(
   }, [])
 
   useEffect(() => {
-    fetch(getTileUrls().aerodromes)
+    fetchTile('aerodromes')
       .then(r => r.json())
       .then((fc: GeoJSON.FeatureCollection) => {
         const arr: AerodromeFeature[] = []

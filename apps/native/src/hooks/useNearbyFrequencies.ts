@@ -12,8 +12,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { distanceNm } from '../utils/routeCalc'
-import { getTileUrls } from '../config'
-import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
+import { fetchTile, onTileDataChange } from '../config'
 
 export interface NearbyFreq {
   service:  string   // TWR, AFIS, APP, GND, ATIS, FIS, INFO, RDO…
@@ -88,8 +87,8 @@ let _cache: CachedAerodrome[] | null = null
 let _lastFetchedAt = 0
 let _loading = false
 const _listeners: Array<(data: CachedAerodrome[]) => void> = []
-// Per-country data: a new active country starts a fresh load.
-onActiveCountriesChange(() => { _cache = null; _lastFetchedAt = 0; _loading = false })
+// Per-country, per-version data: another active country or a manifest change starts a fresh load.
+onTileDataChange(() => { _cache = null; _lastFetchedAt = 0; _loading = false })
 
 // Keep in sync with docker/nginx.conf's `location ~ \.geojson$` max-age (300s) —
 // no point polling faster than the server will actually revalidate content for.
@@ -122,7 +121,7 @@ function loadOnce(onLoad: (data: CachedAerodrome[]) => void) {
   // (adb install -r keeps app data) and would otherwise keep honouring a
   // long max-age from whatever the server sent on the FIRST ever fetch on
   // that device, potentially predating a data fix by days.
-  fetch(getTileUrls().aerodromes, { cache: 'no-store' })
+  fetchTile('aerodromes', { cache: 'no-store' })
     .then(r => r.json())
     .then((fc: GeoJSON.FeatureCollection) => {
       _cache = parseAerodromesFC(fc)
@@ -155,7 +154,7 @@ function refreshIfStale(onUpdate: (data: CachedAerodrome[]) => void) {
   if (_loading) return
   if (_cache && Date.now() - _lastFetchedAt < REFRESH_MS) return
   _loading = true
-  fetch(getTileUrls().aerodromes, { cache: 'no-store' })
+  fetchTile('aerodromes', { cache: 'no-store' })
     .then(r => r.json())
     .then((fc: GeoJSON.FeatureCollection) => {
       _cache = parseAerodromesFC(fc)

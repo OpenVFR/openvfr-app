@@ -1,6 +1,7 @@
 /**
  * Web wiring for @open-vfr/shared/countryData: per-country tile files are
- * fetched from TILES_BASE_URL with manifest-versioned URLs, and the active
+ * fetched from TILES_BASE_URL with manifest-versioned URLs (each load waits
+ * for the manifest first), and the active
  * countries start as the saved Settings selection (so the very first data
  * fetches already use it) and follow useCountries() afterwards.
  *
@@ -8,10 +9,10 @@
  */
 import { useEffect, useState } from 'react'
 import {
-  configureCountryData, setActiveCountries, getActiveCountries, onActiveCountriesChange,
+  configureCountryData, setActiveCountries, getActiveCountries, onActiveCountriesChange, invalidateCountryData,
 } from '@open-vfr/shared/countryData'
 import { resolveSelectedCountries, type AvailableCountry } from '@open-vfr/shared/countries'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { versionedTileUrl, waitForTileManifest, onTileManifestChanged } from '@open-vfr/shared/tileManifest'
 import { TILES_BASE_URL } from './env'
 
 // Same keys as hooks/useCountries.ts.
@@ -25,7 +26,14 @@ function readJson<T>(key: string): T | null {
   } catch { return null }
 }
 
-configureCountryData({ resolveUrl: (fileName) => versionedTileUrl(TILES_BASE_URL, fileName) })
+// Every load waits for the tile manifest (bounded, see waitForTileManifest), so even the first fetches after start use
+// versioned URLs. A manifest change (a data update, or the first manifest after a start that went on without one) empties
+// the dataset cache so nothing loaded from an older or unversioned URL is handed out again.
+configureCountryData({
+  resolveUrl: (fileName) => versionedTileUrl(TILES_BASE_URL, fileName),
+  whenReady: () => waitForTileManifest(TILES_BASE_URL),
+})
+onTileManifestChanged(invalidateCountryData)
 setActiveCountries(resolveSelectedCountries(
   readJson<string[]>(K_COUNTRIES_SELECTED) ?? [],
   readJson<AvailableCountry[]>(K_COUNTRIES_AVAILABLE),

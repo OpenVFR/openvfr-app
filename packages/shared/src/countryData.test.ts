@@ -3,7 +3,7 @@ import type { FeatureCollection } from 'geojson'
 import {
   configureCountryData, setActiveCountries, getActiveCountries, loadCountryGeojson,
   countryDatasetFile, countryArchiveFile, mergeFeatureCollections, countryDatasetSource,
-  onActiveCountriesChange,
+  onActiveCountriesChange, invalidateCountryData, countryFileUrlReady,
 } from './countryData'
 
 const fc = (...features: FeatureCollection['features']): FeatureCollection => ({ type: 'FeatureCollection', features })
@@ -84,5 +84,66 @@ describe('mergeFeatureCollections', () => {
   it('keeps distinct features with the same name but different geometry', () => {
     const m = mergeFeatureCollections([fc(pt('X', 1, 1)), fc(pt('X', 2, 2))])
     expect(m.features).toHaveLength(2)
+  })
+})
+
+describe('waiting for final (versioned) URLs', () => {
+  /** A resolver that is unversioned until the "manifest" is known, like the web wiring. */
+  function setup() {
+    let version: string | null = null
+    let release: () => void = () => {}
+    const ready = new Promise<void>((r) => { release = r })
+    configureCountryData({
+      resolveUrl: (f) => `https://tiles/${f}${version ? `?v=${version}` : ''}`,
+      whenReady: () => ready,
+      fetchJson: async (url) => {
+        fetched.push(url)
+        const name = url.replace('https://tiles/', '').replace(/\?.*$/, '')
+        if (!(name in files)) throw new Error('404')
+        return files[name]
+      },
+    })
+    return { setVersion: (v: string) => { version = v }, release: () => release() }
+  }
+
+  it('does not fetch before the URLs are final, then fetches the versioned URL', async () => {
+    const m = setup()
+    const p = loadCountryGeojson('aerodromes', ['se'])
+    await Promise.resolve()
+    expect(fetched).toEqual([])
+    m.setVersion('abc')
+    m.release()
+    await p
+    expect(fetched).toEqual(['https://tiles/se-aerodromes.geojson?v=abc'])
+    await expect(countryFileUrlReady('se-airspace.geojson')).resolves.toBe('https://tiles/se-airspace.geojson?v=abc')
+  })
+
+  it('uses the unversioned URL when the wait ends without a manifest (timeout / failure)', async () => {
+    const m = setup()
+    m.release()
+    await loadCountryGeojson('aerodromes', ['se'])
+    expect(fetched).toEqual(['https://tiles/se-aerodromes.geojson'])
+  })
+
+  it('keeps no unversioned entry once the manifest is known', async () => {
+    const m = setup()
+    m.release()
+    await loadCountryGeojson('aerodromes', ['se'])
+    m.setVersion('abc')
+    invalidateCountryData() // what the platform wiring does on onTileManifestChanged
+    await loadCountryGeojson('aerodromes', ['se'])
+    expect(fetched).toEqual(['https://tiles/se-aerodromes.geojson', 'https://tiles/se-aerodromes.geojson?v=abc'])
+    // and the versioned result is cached from then on
+    await loadCountryGeojson('aerodromes', ['se'])
+    expect(fetched).toHaveLength(2)
+  })
+
+  it('a rejecting whenReady does not block loading', async () => {
+    configureCountryData({
+      resolveUrl: (f) => `https://tiles/${f}`,
+      whenReady: () => Promise.reject(new Error('boom')),
+      fetchJson: async (url) => { fetched.push(url); return files[url.replace('https://tiles/', '')] },
+    })
+    await expect(loadCountryGeojson('aerodromes', ['se'])).resolves.toBeTruthy()
   })
 })

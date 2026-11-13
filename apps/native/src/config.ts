@@ -8,9 +8,9 @@ import { layers, LIGHT } from '@protomaps/basemaps'
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 
 import { Platform } from 'react-native'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { versionedTileUrl, waitForTileManifest, onTileManifestChanged } from '@open-vfr/shared/tileManifest'
 import {
-  getActiveCountries, countryDatasetFile, countryArchiveFile, type CountryDataset,
+  getActiveCountries, countryDatasetFile, countryArchiveFile, onActiveCountriesChange, type CountryDataset,
 } from '@open-vfr/shared/countryData'
 import { DEFAULT_REGION_CODE } from '@open-vfr/shared/regions'
 import { ACTIVE_ENVIRONMENT, STAGING } from './environment'
@@ -98,7 +98,7 @@ const TILE_DATASETS = [
   'airspace', 'aerodromes', 'navaids', 'waypoints', 'runways',
   'runwayThresholds', 'obstacles', 'landmarks', 'lakes',
 ] as const satisfies readonly CountryDataset[]
-type TileKey = typeof TILE_DATASETS[number]
+export type TileKey = typeof TILE_DATASETS[number]
 
 /** The active country (Settings; one at a time -- see hooks/useCountries.ts). */
 export function activeCountry(): string {
@@ -140,6 +140,38 @@ export function getTileUrls(): Record<TileKey, string> {
   const out = {} as Record<TileKey, string>
   for (const k of TILE_DATASETS) out[k] = versionedTileUrl(TILE_BASE, names[k])
   return out
+}
+
+/**
+ * The remote URL of one of the active country's data files, for code about
+ * to FETCH it. getTileUrls() is synchronous and returns the bare,
+ * unversioned URL until manifest.json has loaded, and most data hooks fetch
+ * right at mount, i.e. before it has: a cache that kept those unversioned
+ * responses served weeks-old data. This waits for the manifest first
+ * (bounded: waitForTileManifest's timeout, so a slow or failed manifest
+ * never blocks) and then returns the versioned URL, or the unversioned one
+ * as the fallback. Use this (or fetchTile) for every tile fetch.
+ */
+export async function tileUrlReady(key: TileKey): Promise<string> {
+  await waitForTileManifest(TILE_BASE)
+  return getTileUrls()[key]
+}
+
+/** fetch() of one of the active country's data files by its versioned URL (see tileUrlReady). */
+export async function fetchTile(key: TileKey, init?: RequestInit): Promise<Response> {
+  return fetch(await tileUrlReady(key), init)
+}
+
+/**
+ * Runs `reset` whenever data loaded earlier may be wrong now: the active
+ * country changed, or the tile manifest changed (new data, or the first
+ * manifest after a start that had to go on with unversioned URLs). Module
+ * caches of tile data reset through this. Returns an unsubscribe function.
+ */
+export function onTileDataChange(reset: () => void): () => void {
+  const offCountry = onActiveCountriesChange(() => reset())
+  const offManifest = onTileManifestChanged(reset)
+  return () => { offCountry(); offManifest() }
 }
 
 /**

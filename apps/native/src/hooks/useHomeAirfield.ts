@@ -4,13 +4,12 @@
  */
 
 import { useState, useEffect } from 'react'
-import { getTileUrls } from '../config'
-import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
+import { fetchTile, onTileDataChange } from '../config'
 
 let _cache: Array<{ icao: string; lat: number; lng: number }> | null = null
 let _loading = false
-// Per-country data: a new active country starts a fresh load.
-onActiveCountriesChange(() => { _cache = null; _loading = false })
+// Per-country, per-version data: another active country or a manifest change starts a fresh load.
+onTileDataChange(() => { _cache = null; _loading = false })
 const _listeners: Array<(d: typeof _cache) => void> = []
 
 function loadOnce(cb: (d: typeof _cache) => void) {
@@ -18,7 +17,7 @@ function loadOnce(cb: (d: typeof _cache) => void) {
   _listeners.push(cb)
   if (_loading) return
   _loading = true
-  fetch(getTileUrls().aerodromes)
+  fetchTile('aerodromes')
     .then(r => r.json())
     .then((fc: GeoJSON.FeatureCollection) => {
       _cache = []

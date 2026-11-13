@@ -18,7 +18,7 @@ import { useMefGrids } from './useMefGrids'
 import { requiredLegAltFt, newLegsAfterChange, autoLevelMessage } from '@open-vfr/shared/autoCruiseLevel'
 import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import { obstacleTipsForMsa } from '@open-vfr/shared/obstacleHeights'
-import { getTileUrls, API_BASE } from '../config'
+import { tileUrlReady, API_BASE } from '../config'
 import { getOfflineDem } from '../utils/terrainDem'
 import type { RouteWaypoint, LegOverride } from '../types/db'
 
@@ -26,9 +26,10 @@ const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', feature
 
 // Obstacles file (0.5-3 MB, fine for fetch() on native -- see AGENTS.md on
 // large GeoJSON). Parsed once per URL, like VerticalProfile's own cache.
+// Versioned URL only (waits for the tile manifest, see tileUrlReady).
 let _obstacles: { url: string; p: Promise<GeoJSON.FeatureCollection> } | null = null
-export function loadObstacles(): Promise<GeoJSON.FeatureCollection> {
-  const url = getTileUrls().obstacles
+export async function loadObstacles(): Promise<GeoJSON.FeatureCollection> {
+  const url = await tileUrlReady('obstacles')
   if (!_obstacles || _obstacles.url !== url) {
     const p = fetch(url).then((r) => r.json() as Promise<GeoJSON.FeatureCollection>)
     p.catch(() => { if (_obstacles?.p === p) _obstacles = null })
@@ -39,8 +40,8 @@ export function loadObstacles(): Promise<GeoJSON.FeatureCollection> {
 
 // Landmarks (masts, chimneys...) count towards the MSA like the chart does.
 let _landmarks: { url: string; p: Promise<GeoJSON.FeatureCollection> } | null = null
-export function loadLandmarks(): Promise<GeoJSON.FeatureCollection> {
-  const url = getTileUrls().landmarks
+export async function loadLandmarks(): Promise<GeoJSON.FeatureCollection> {
+  const url = await tileUrlReady('landmarks')
   if (!_landmarks || _landmarks.url !== url) {
     const p = fetch(url).then((r) => r.json() as Promise<GeoJSON.FeatureCollection>)
     p.catch(() => { if (_landmarks?.p === p) _landmarks = null })

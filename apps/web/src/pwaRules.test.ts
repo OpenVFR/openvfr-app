@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isTileGeojson } from '../pwa-rules'
+import { isTileGeojson, isTileManifest } from '../pwa-rules'
 import config from '../vite.config.ts?raw'
 
 describe('isTileGeojson', () => {
@@ -37,6 +37,30 @@ describe('the service-worker rule in vite.config.ts', () => {
     for (const u of ['https://tiles.openvfr.org/se-aerodromes.geojson?v=1', 'http://localhost:5174/tiles/se-airspace.geojson',
       'https://tiles.openvfr.org/se-basemap.pmtiles', 'https://api.openvfr.org/data.geojson', 'https://app.openvfr.org/assets/x.geojson']) {
       expect(rule(new URL(u))).toBe(isTileGeojson(new URL(u)))
+    }
+  })
+})
+
+describe('isTileManifest', () => {
+  it('matches the tile host manifest, not the web app manifest or other json', () => {
+    expect(isTileManifest(new URL('https://tiles.example.org/manifest.json'))).toBe(true)
+    expect(isTileManifest(new URL('http://localhost:5174/tiles/manifest.json'))).toBe(true)
+    expect(isTileManifest(new URL('https://app.example.org/manifest.webmanifest'))).toBe(false)
+    expect(isTileManifest(new URL('https://app.example.org/manifest.json'))).toBe(false)
+    expect(isTileManifest(new URL('https://tiles.example.org/wx/se/latest.json'))).toBe(false)
+  })
+})
+
+describe('the tile-manifest service-worker rule in vite.config.ts', () => {
+  const block = config.slice(config.indexOf("cacheName: 'tile-manifest'") - 900, config.indexOf("cacheName: 'tile-manifest'"))
+  const fn = /urlPattern: \(\{ url \}: \{ url: URL \}\) =>\s*([\s\S]*?),\n\s*handler/.exec(block)?.[1]
+  it('is self-contained and behaves like isTileManifest', () => {
+    expect(fn).toBeTruthy()
+    expect(fn).not.toMatch(/isTileManifest/)
+    const rule = new Function('url', `return ${fn}`) as (u: URL) => boolean
+    for (const u of ['https://tiles.example.org/manifest.json', 'http://localhost:5174/tiles/manifest.json',
+      'https://app.example.org/manifest.json', 'https://tiles.example.org/se-airspace.geojson']) {
+      expect(rule(new URL(u))).toBe(isTileManifest(new URL(u)))
     }
   })
 })

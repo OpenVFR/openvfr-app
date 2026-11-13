@@ -32,6 +32,23 @@
 // trust for every other file's version) -- it's uploaded with a short/
 // no-cache Cache-Control instead, so this module's own fetch of it always
 // gets a reasonably current view.
+//
+// FETCH ONLY VERSIONED URLS: code that fetches a tile file must build its
+// URL with `versionedTileUrlReady()` (or a helper built on it, such as
+// countryData's loadCountryGeojson / countryFileUrlReady), never with the
+// synchronous `versionedTileUrl()` at a moment the manifest may not have
+// loaded yet. The synchronous form returns the bare, unversioned URL until
+// then, and the apps used to fetch most GeoJSON files that way right after
+// start: a cache in between that keeps unversioned responses (a CDN rule,
+// the browser's HTTP cache under a long `immutable` lifetime, a service
+// worker) then served data weeks old, for the whole session. The async
+// helper waits for the manifest for a bounded time and only then falls back
+// to the unversioned URL (manifest missing, offline, slow). Map styles that
+// are built once wait the same way (`waitForTileManifest`).
+//
+// When such a fallback URL was handed out and the manifest arrives later,
+// the change listeners fire (as for a real data update), so caches keyed by
+// URL can drop what they loaded unversioned (see `onTileManifestChanged`).
 
 export interface TileManifestFileEntry {
   sha256: string
@@ -56,8 +73,19 @@ export interface TileManifest {
 
 let cachedManifest: TileManifest | null = null
 let loadPromise: Promise<void> | null = null
+/** The load promise that has finished (successfully or not), or whose bounded wait has run out once. */
+let settledLoad: Promise<void> | null = null
+let gaveUpOn: Promise<void> | null = null
+/** A waitForTileManifest() caller went on without a manifest, i.e. with unversioned URLs. */
+let unversionedIssued = false
 type ManifestChangeListener = () => void
 const changeListeners = new Set<ManifestChangeListener>()
+
+function notifyListeners(): void {
+  changeListeners.forEach((listener) => {
+    try { listener() } catch (err) { console.warn('[tileManifest] change listener failed:', err) }
+  })
+}
 
 /**
  * Fetches manifest.json from `${tilesBaseUrl}/manifest.json` and caches it
@@ -72,11 +100,23 @@ const changeListeners = new Set<ManifestChangeListener>()
  */
 export function loadTileManifest(tilesBaseUrl: string): Promise<void> {
   if (loadPromise) return loadPromise
-  loadPromise = fetch(`${tilesBaseUrl}/manifest.json`, { cache: 'no-store' })
+  const p: Promise<void> = fetch(`${tilesBaseUrl}/manifest.json`, { cache: 'no-store' })
     .then(res => (res.ok ? (res.json() as Promise<TileManifest>) : null))
-    .then(data => { cachedManifest = data })
-    .catch(() => { cachedManifest = null })
-  return loadPromise
+    .catch(() => null)
+    .then((data) => {
+      // A failed refetch keeps the manifest already known: its versioned URLs
+      // still name consistent content, while dropping it would send every
+      // later fetch to the unversioned URL.
+      if (!data || typeof data !== 'object' || !data.files) return
+      const first = cachedManifest === null
+      cachedManifest = data
+      // Unversioned fallback URLs were handed out before this first manifest:
+      // tell URL-keyed caches to reload (same signal as a data update).
+      if (first && unversionedIssued) { unversionedIssued = false; notifyListeners() }
+    })
+    .finally(() => { settledLoad = p })
+  loadPromise = p
+  return p
 }
 
 /** Force a re-fetch (e.g. a user-triggered "check for updates" action). */
@@ -118,10 +158,32 @@ export function refreshTileManifest(tilesBaseUrl: string): Promise<void> {
  * MapView.tsx's map-init effect) must await this before doing so.
  */
 export function waitForTileManifest(tilesBaseUrl: string, timeoutMs = 3000): Promise<void> {
-  return Promise.race([
-    loadTileManifest(tilesBaseUrl),
-    new Promise<void>(resolve => setTimeout(resolve, timeoutMs)),
-  ])
+  const load = loadTileManifest(tilesBaseUrl)
+  // No wait when a manifest is already known (also during a background
+  // refetch), when this load has already finished, or when an earlier
+  // caller already waited out the timeout for it: a missing or hanging
+  // manifest costs one bounded wait per load, not one per fetch.
+  // Whoever resolves without a manifest goes on with unversioned URLs:
+  // remember it, so the first manifest that arrives later notifies listeners.
+  const done = () => { if (!cachedManifest) unversionedIssued = true }
+  if (cachedManifest || settledLoad === load || gaveUpOn === load) { done(); return Promise.resolve() }
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(() => { gaveUpOn = load; done(); resolve() }, timeoutMs)
+    void load.then(() => { clearTimeout(timer); done(); resolve() })
+  })
+}
+
+/**
+ * The versioned URL of a tile file, for code about to FETCH it: waits for the
+ * manifest first (bounded by `timeoutMs`, see waitForTileManifest), then
+ * returns versionedTileUrl(). Falls back to the unversioned URL when the
+ * manifest cannot be loaded in time or has no entry for the file (an
+ * optional file that is not published: its 404 path stays unversioned).
+ * Never rejects.
+ */
+export async function versionedTileUrlReady(tilesBaseUrl: string, filename: string, timeoutMs = 3000): Promise<string> {
+  await waitForTileManifest(tilesBaseUrl, timeoutMs)
+  return versionedTileUrl(tilesBaseUrl, filename)
 }
 
 /**
@@ -147,6 +209,11 @@ export function waitForTileManifest(tilesBaseUrl: string, timeoutMs = 3000): Pro
  * side regression without knowing this mechanism, which is a real production
  * usability problem regardless of that specific bug's data pipeline outcome.
  *
+ * Also fires once when the FIRST manifest of the session arrives after an
+ * unversioned fallback URL was already handed out (manifest slow or failed
+ * at start): whatever was loaded from such a URL is not tied to a content
+ * version, so listeners treat it like a data update.
+ *
  * This module does not decide WHAT to do about a change (reload immediately,
  * hot-swap sources, prompt the user) -- callers do that (see
  * `TileUpdatePrompt.tsx`'s simple "reload on user tap" choice, the safest
@@ -164,7 +231,7 @@ function notifyIfChanged(previous: TileManifest | null, next: TileManifest | nul
   const prevFiles = previous.files ?? {}
   const nextFiles = next.files ?? {}
   const changed = Object.keys(nextFiles).some(name => prevFiles[name]?.sha256 !== nextFiles[name]?.sha256)
-  if (changed) changeListeners.forEach(listener => listener())
+  if (changed) notifyListeners()
 }
 
 // Default: 15 minutes. Tile data updates on a server-side cron schedule,
@@ -220,9 +287,17 @@ export function getCachedTileManifest(): TileManifest | null {
  * Builds a cache-busted URL for a static tile file. Returns
  * `${tilesBaseUrl}/${filename}?v=<sha256 prefix>` if the manifest has an
  * entry for filename, else the plain unversioned URL as a safe fallback.
+ *
+ * Synchronous: before the manifest has loaded it returns the unversioned
+ * URL. Use versionedTileUrlReady() for anything that fetches.
  */
 export function versionedTileUrl(tilesBaseUrl: string, filename: string): string {
   const entry = cachedManifest?.files?.[filename]
   const base = `${tilesBaseUrl}/${filename}`
   return entry ? `${base}?v=${entry.sha256.slice(0, 12)}` : base
+}
+
+/** True when `url` carries a manifest version (`?v=` / `&v=`). */
+export function isVersionedTileUrl(url: string): boolean {
+  return /[?&]v=/.test(url)
 }

@@ -20,8 +20,7 @@ import { fetchWx, decodeMetar } from '@open-vfr/shared/fetchWx'
 import { interpolateQnh, type QnhReading } from '@open-vfr/shared/qnhInterpolation'
 import { qnhTokenToHpa, isQnhResultStale } from '@open-vfr/shared/qnhResolve'
 import { distanceNm } from '../utils/routeCalc'
-import { getTileUrls, API_BASE } from '../config'
-import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
+import { fetchTile, onTileDataChange, API_BASE } from '../config'
 import { authHeaders } from '../utils/authClient'
 import type { GpsPosition } from '../utils/gpsTypes'
 
@@ -48,8 +47,8 @@ interface CachedAerodrome {
 // useNearbyFrequencies.ts's loadOnce().
 let _cache: CachedAerodrome[] | null = null
 let _loading = false
-// Per-country data: a new active country starts a fresh load.
-onActiveCountriesChange(() => { _cache = null; _loading = false })
+// Per-country, per-version data: another active country or a manifest change starts a fresh load.
+onTileDataChange(() => { _cache = null; _loading = false })
 const _listeners: Array<(data: CachedAerodrome[]) => void> = []
 
 function loadOnce(onLoad: (data: CachedAerodrome[]) => void) {
@@ -57,7 +56,7 @@ function loadOnce(onLoad: (data: CachedAerodrome[]) => void) {
   _listeners.push(onLoad)
   if (_loading) return
   _loading = true
-  fetch(getTileUrls().aerodromes)
+  fetchTile('aerodromes')
     .then(r => r.json())
     .then((fc: GeoJSON.FeatureCollection) => {
       const arr: CachedAerodrome[] = []

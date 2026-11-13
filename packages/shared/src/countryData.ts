@@ -72,6 +72,12 @@ export interface CountryDataConfig {
   resolveUrl: (fileName: string) => string
   /** Optional fetch override (tests, platform quirks). Defaults to global fetch + json(). */
   fetchJson?: (url: string) => Promise<unknown>
+  /**
+   * Resolves once resolveUrl() returns final URLs (web: the tile manifest has loaded, or its bounded wait ran out). Awaited
+   * before every load, so no file is fetched from an unversioned URL just because the manifest was still on its way. Must
+   * never reject or hang without bound.
+   */
+  whenReady?: () => Promise<void>
 }
 
 let _config: CountryDataConfig | null = null
@@ -106,10 +112,31 @@ export function onActiveCountriesChange(listener: (countries: string[]) => void)
   return () => { _listeners.delete(listener) }
 }
 
-/** URL of one country file via the configured resolver. */
+/**
+ * Drops every cached dataset, so the next load fetches again with the URLs that are current now. The platform wiring calls it
+ * when the tile manifest changes (including the first manifest after a start that had to go on without one): nothing loaded
+ * from an unversioned or outdated URL is reused afterwards.
+ */
+export function invalidateCountryData(): void {
+  _cache.clear()
+}
+
+/** URL of one country file via the configured resolver. Synchronous: may not be final yet; fetch with countryFileUrlReady(). */
 export function countryFileUrl(fileName: string): string {
   if (!_config) throw new Error('configureCountryData() has not been called')
   return _config.resolveUrl(fileName)
+}
+
+/** Waits until the configured URLs are final (see CountryDataConfig.whenReady). Never rejects. */
+export function countryDataReady(): Promise<void> {
+  if (!_config) return Promise.reject(new Error('configureCountryData() has not been called'))
+  return _config.whenReady ? _config.whenReady().catch(() => undefined) : Promise.resolve()
+}
+
+/** URL of one country file for fetching it: waits for final URLs first (see CountryDataConfig.whenReady). */
+export async function countryFileUrlReady(fileName: string): Promise<string> {
+  await countryDataReady()
+  return countryFileUrl(fileName)
 }
 
 async function fetchJson(url: string): Promise<unknown> {
@@ -145,15 +172,24 @@ export function mergeFeatureCollections(collections: readonly FeatureCollection[
 
 /**
  * One dataset for the given countries (default: the active ones), merged.
- * Cached per resolved URL set, so a data update (new manifest version) or
- * a different country selection loads fresh data. A country whose file
+ * Waits for final URLs first (CountryDataConfig.whenReady), so the very
+ * first loads after start use the manifest-versioned URLs too. Cached per
+ * resolved URL set, so a data update (new manifest version) or a different
+ * country selection loads fresh data; invalidateCountryData() empties the
+ * cache when the manifest changes. A country whose file
  * fails to load is skipped (logged); only if every country fails does the
  * promise reject.
  */
-export function loadCountryGeojson(
+export async function loadCountryGeojson(
   kind: CountryDataset,
   countries: readonly string[] = _active,
 ): Promise<FeatureCollection> {
+  const snapshot = [...countries]
+  await countryDataReady()
+  return loadResolved(kind, snapshot)
+}
+
+function loadResolved(kind: CountryDataset, countries: readonly string[]): Promise<FeatureCollection> {
   const urls = countries.map(c => countryFileUrl(countryDatasetFile(c, kind)))
   const key = `${kind}|${urls.join('|')}`
   let p = _cache.get(key)
@@ -186,6 +222,8 @@ export interface DatasetSource {
   load: () => Promise<FeatureCollection>
 }
 
+/** The key is built from the URLs known now (it may still be unversioned right after start); load() waits for final URLs, and the
+ *  key changes once they are known, so a derived cache built from an early load is rebuilt then. */
 export function countryDatasetSource(kind: CountryDataset, countries: readonly string[] = _active): DatasetSource {
   const snapshot = [...countries]
   const urls = snapshot.map(c => countryFileUrl(countryDatasetFile(c, kind)))

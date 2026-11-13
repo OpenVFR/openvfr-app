@@ -22,7 +22,7 @@
  */
 
 import { File, Directory, Paths } from 'expo-file-system'
-import { versionedTileUrl, getCachedTileManifest } from '@open-vfr/shared/tileManifest'
+import { versionedTileUrl, versionedTileUrlReady, getCachedTileManifest } from '@open-vfr/shared/tileManifest'
 import { TILE_BASE, activeCountry } from '../config'
 import { countryDatasetFile, countryArchiveFile, countryMefFile, type CountryDataset, type CountryArchive } from '@open-vfr/shared/countryData'
 
@@ -72,6 +72,20 @@ export interface OfflineAsset {
  *  @open-vfr/shared/tileManifest's own doc comment for why this matters. */
 export function remoteUrlFor(fileName: string): string {
   return versionedTileUrl(TILE_BASE, fileName)
+}
+
+/** remoteUrlFor() for code about to fetch the file: waits for the tile manifest first (bounded), so the
+ *  first fetches after start are versioned too. Only for the remote path: a local copy never waits. */
+export function remoteUrlForReady(fileName: string): Promise<string> {
+  return versionedTileUrlReady(TILE_BASE, fileName)
+}
+
+/** The cached local file URI when the asset is downloaded (no waiting, works offline), else its versioned
+ *  remote URL once the tile manifest is known (see remoteUrlForReady). */
+export async function resolveUriReady(asset: OfflineAsset): Promise<string> {
+  const f = new File(getCacheDir(), asset.fileName)
+  if (f.exists && (f.size ?? 0) > 0) return f.uri
+  return remoteUrlForReady(asset.fileName)
 }
 
 // Per-country assets resolve their file name from the ACTIVE country at
@@ -269,7 +283,7 @@ export async function downloadAssets(
     const dest  = new File(dir, asset.fileName)
     if (dest.exists) dest.delete()
     let announcedBytes = 0
-    const task = File.createDownloadTask(remoteUrlFor(asset.fileName), dest, {
+    const task = File.createDownloadTask(await remoteUrlForReady(asset.fileName), dest, {
       onProgress: ({ bytesWritten, totalBytes }) => {
         if (totalBytes > 0) announcedBytes = totalBytes
         onProgress?.({
@@ -336,7 +350,7 @@ export async function loadAssetJson(key: string): Promise<unknown | null> {
     }
   }
   try {
-    const r = await fetch(remoteUrlFor(asset.fileName))
+    const r = await fetch(await remoteUrlForReady(asset.fileName))
     return r.ok ? await r.json() : null
   } catch { return null }
 }

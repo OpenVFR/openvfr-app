@@ -12,18 +12,17 @@ import { FUEL_LABELS, preferenceLabel } from '@open-vfr/shared/fuelTypes'
 import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
 import type { LegOverride } from '@open-vfr/shared/types'
 import type { AircraftProfileDocType } from '../db'
-import { getTileUrls } from '../config'
+import { tileUrlReady, onTileDataChange } from '../config'
 import { fetchWithRetry } from '@open-vfr/shared/fetchWithRetry'
-import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
 // One parse of the aerodrome file per app session, shared by every mount.
 let aerodromesPromise: Promise<AerodromeEntry[]> | null = null
-// The files are per country: another active country starts a fresh load.
-onActiveCountriesChange(() => { aerodromesPromise = null })
+// Per-country, per-version data: another active country or a manifest change starts a fresh load.
+onTileDataChange(() => { aerodromesPromise = null })
 function loadAerodromes(): Promise<AerodromeEntry[]> {
   if (!aerodromesPromise) {
-    const p = fetchWithRetry(getTileUrls().aerodromes)
+    const p = tileUrlReady('aerodromes').then(url => fetchWithRetry(url))
       .then(async (r) => {
         if (!r.ok) throw new Error(`Aerodrome data: HTTP ${r.status}`)
         return parseAerodromesGeoJson(await r.json())

@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react'
 import { loadMefGrids, type MefGrid } from '@open-vfr/shared/mefGrid'
 import { countryMefFile } from '@open-vfr/shared/countryData'
-import { versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { versionedTileUrlReady, onTileManifestChanged } from '@open-vfr/shared/tileManifest'
 import { useActiveCountries } from '../utils/countryData'
 import { TILES_BASE_URL } from '../utils/env'
 
@@ -20,15 +20,19 @@ async function fetchBytes(url: string): Promise<Uint8Array> {
 export function useMefGrids(): MefGrid[] {
   const { countries, key } = useActiveCountries()
   const [grids, setGrids] = useState<MefGrid[]>([])
+  // A manifest change (new data, or the first manifest after an unversioned fallback) reloads with the new URLs.
+  const [manifestTick, setManifestTick] = useState(0)
+  useEffect(() => onTileManifestChanged(() => setManifestTick(t => t + 1)), [])
   useEffect(() => {
     let alive = true
-    const sources = countries.map((c) => {
-      const url = versionedTileUrl(TILES_BASE_URL, countryMefFile(c))
-      return { key: url, load: () => fetchBytes(url) }
+    // Versioned URLs only: wait for the tile manifest (bounded) before building them.
+    void Promise.all(countries.map(c => versionedTileUrlReady(TILES_BASE_URL, countryMefFile(c)))).then((urls) => {
+      if (!alive) return
+      const sources = urls.map(url => ({ key: url, load: () => fetchBytes(url) }))
+      return loadMefGrids(sources).then((g) => { if (alive) setGrids(g) })
     })
-    loadMefGrids(sources).then((g) => { if (alive) setGrids(g) })
     return () => { alive = false }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key])
+  }, [key, manifestTick])
   return grids
 }

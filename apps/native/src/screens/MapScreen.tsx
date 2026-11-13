@@ -48,7 +48,7 @@ import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import { makeCirclePolygon } from '@open-vfr/shared/geoCircle'
 import { NotificationCenter } from '../components/NotificationCenter'
 import { queryAirspaceAtPoint } from '@open-vfr/shared/airspaceQuery'
-import { getTileUrls } from '../config'
+import { tileUrlReady, fetchTile } from '../config'
 import { localInfo } from '@open-vfr/shared/aerodromeDetails'
 import { setCircuitFocus, useCircuitFocus } from '../utils/circuitFocus'
 import { parseMapLink, hasMapLink } from '@open-vfr/shared/deepLink'
@@ -1208,7 +1208,7 @@ function MapScreenForCountry() {
     // Independent of the altitude-ceiling filter and per-class layer toggles —
     // those only control what's drawn on the map, not what's reported here.
     // Always query the full dataset directly.
-    const airspaces = await queryAirspaceAtPoint(tapLng, tapLat, getTileUrls().airspace)
+    const airspaces = await queryAirspaceAtPoint(tapLng, tapLat, await tileUrlReady('airspace'))
     // NOTAMs naming a tapped charted area by designator (their circle is
     // hidden, see notamAirspaceMatches) -- attached as sibling cards, same as
     // web's AirspacePopup shows them inline on the airspace.
@@ -1320,7 +1320,7 @@ function MapScreenForCountry() {
       if (link.center) setFindDestFlyTarget({ lat: link.center.lat, lng: link.center.lng, zoom: link.zoom, nonce: Date.now() })
       if (link.ad) {
         const icao = link.ad
-        fetch(getTileUrls().aerodromes)
+        fetchTile('aerodromes')
           .then(r => (r.ok ? r.json() : null))
           .then((fc: GeoJSON.FeatureCollection | null) => {
             const f = fc?.features.find(x => String((x.properties ?? {}).icao ?? '').toUpperCase() === icao)

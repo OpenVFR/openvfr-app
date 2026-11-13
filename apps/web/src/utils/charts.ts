@@ -15,7 +15,7 @@ import {
   parseChartsIndex, chartsForAerodrome, chartDocumentProxyUrl, findChart,
   type ChartsIndex, type AerodromeCharts, type ChartEntry,
 } from '@open-vfr/shared/chartsIndex'
-import { countryFileUrl, countryDatasetFile } from '@open-vfr/shared/countryData'
+import { countryFileUrlReady, countryDatasetFile } from '@open-vfr/shared/countryData'
 import { loadOptionalJson } from './optionalJson'
 import { API_BASE_URL } from './env'
 import { useActiveCountries } from './countryData'
@@ -58,11 +58,12 @@ export function useChartsEnabled(): boolean {
 
 const indexCache = new Map<string, Promise<ChartsIndex | null>>()
 
-const indexUrl = (country: string, kind: 'charts' | 'chartsPreview') => countryFileUrl(countryDatasetFile(country, kind))
+// Waits for the tile manifest first, so the index is fetched by its versioned URL (see countryFileUrlReady).
+const indexUrl = (country: string, kind: 'charts' | 'chartsPreview') => countryFileUrlReady(countryDatasetFile(country, kind))
 
 /** One country's public charts index (the released airfields), or null when the deployment has none. */
-export function loadChartsIndex(country: string): Promise<ChartsIndex | null> {
-  return loadOptionalJson(indexCache, indexUrl(country, 'charts'), parseChartsIndex)       // optional file: a 404 is normal
+export async function loadChartsIndex(country: string): Promise<ChartsIndex | null> {
+  return loadOptionalJson(indexCache, await indexUrl(country, 'charts'), parseChartsIndex)       // optional file: a 404 is normal
 }
 
 /**
@@ -75,7 +76,7 @@ export async function loadChartsIndexes(country: string, preview: boolean):
   Promise<{ index: ChartsIndex | null; publicIndex: ChartsIndex | null; previewFailed: boolean }> {
   const publicIndex = await loadChartsIndex(country)
   if (!preview) return { index: publicIndex, publicIndex, previewFailed: false }
-  const url = indexUrl(country, 'chartsPreview')
+  const url = await indexUrl(country, 'chartsPreview')
   const previewIndex = await loadOptionalJson(indexCache, url, parseChartsIndex)
   return { index: previewIndex ?? publicIndex, publicIndex, previewFailed: !previewIndex && !indexCache.has(url) }
 }

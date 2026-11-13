@@ -88,9 +88,24 @@ export default defineConfig({
             },
           },
           {
+            // The tile host's manifest.json: NetworkFirst, so it is current online and still there offline (the apps
+            // version every tile URL with it; without it an offline start would ask for unversioned URLs that the
+            // aviation-data cache below never holds). Same logic as isTileManifest() in pwa-rules.ts (inline: see below).
+            urlPattern: ({ url }: { url: URL }) =>
+              url.pathname.endsWith('/manifest.json') && (url.pathname.includes('/tiles/') || url.hostname.startsWith('tiles.')),
+            handler: 'NetworkFirst' as const,
+            options: {
+              cacheName: 'tile-manifest',
+              // No network timeout: a slow network must not swap in an older manifest; the cached copy is for offline only.
+              expiration: { maxEntries: 4 },
+            },
+          },
+          {
             // GeoJSON aviation data files — StaleWhileRevalidate so the map
             // renders immediately from cache on repeat visits and offline, while
             // the updated file is fetched in the background for the next load.
+            // The apps only fetch versioned URLs (?v=<content hash>), so a cached
+            // entry is always the content its URL names.
             // 35-day expiry covers a full AIRAC cycle with one day of margin.
             // Workbox writes this function into sw.js as TEXT: it must not use anything from this file (no imports, no helpers).
             // Same logic as isTileGeojson() in pwa-rules.ts, which the unit test checks; keep them identical.

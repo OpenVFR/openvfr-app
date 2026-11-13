@@ -16,7 +16,7 @@ import { View, Text, TouchableOpacity, FlatList } from 'react-native'
 import Slider from '@react-native-community/slider'
 import { AppIcon } from './AppIcon'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
-import { getTileUrls } from '../config'
+import { fetchTile } from '../config'
 import type { AircraftProfileDocType } from '../db'
 import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
 import { parseBearingDistance, pointFromBearingDistance, describeBearingDistance } from '@open-vfr/shared/bearingDistance'
@@ -132,7 +132,7 @@ export function FindDestinationSheet({ center, homeIcao, aircraftProfile, onFlyT
   // ── Load once, on first open ────────────────────────────────────────────
   React.useEffect(() => {
     if (!open || aerodromes.length > 0) return
-    fetch(getTileUrls().aerodromes)
+    fetchTile('aerodromes')
       .then(r => r.json())
       .then(fc => setAerodromes(parseAerodromesGeoJson(fc)))
       .catch(() => {})

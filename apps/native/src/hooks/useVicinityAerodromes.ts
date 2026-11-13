@@ -34,8 +34,7 @@ import { useEffect, useState } from 'react'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import { nearestRoutePoint } from '@open-vfr/shared/notamRouteFilter'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
-import { getTileUrls } from '../config'
-import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
+import { fetchTile, onTileDataChange } from '../config'
 import { parseFreqs, type NearbyFreq } from './useNearbyFrequencies'
 import type { GpsPosition } from '../utils/gpsTypes'
 
@@ -84,8 +83,8 @@ function parseJson<T>(v: unknown, fallback: T): T {
 
 let _cache: FullVicinityAerodrome[] | null = null
 let _loading = false
-// Per-country data: a new active country starts a fresh load.
-onActiveCountriesChange(() => { _cache = null; _loading = false })
+// Per-country, per-version data: another active country or a manifest change starts a fresh load.
+onTileDataChange(() => { _cache = null; _loading = false })
 const _listeners: Array<(d: FullVicinityAerodrome[]) => void> = []
 
 export function loadFullVicinityAerodromes(cb: (d: FullVicinityAerodrome[]) => void) {
@@ -93,7 +92,7 @@ export function loadFullVicinityAerodromes(cb: (d: FullVicinityAerodrome[]) => v
   _listeners.push(cb)
   if (_loading) return
   _loading = true
-  fetch(getTileUrls().aerodromes)
+  fetchTile('aerodromes')
     .then((r) => r.json())
     .then((fc: GeoJSON.FeatureCollection) => {
       const arr: FullVicinityAerodrome[] = []

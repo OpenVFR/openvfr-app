@@ -13,7 +13,7 @@ import { distanceToRouteNm } from '@open-vfr/shared/notamRouteFilter'
 import { distanceAlongRouteNm } from '@open-vfr/shared/virtualRadarCalc'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import { fetchWxNearest, decodeMetar, type MetarDecoded, type WxStationCandidate } from '@open-vfr/shared/fetchWx'
-import { API_BASE, getTileUrls } from '../config'
+import { API_BASE, tileUrlReady } from '../config'
 import { authHeaders } from '../utils/authClient'
 
 const BUFFER_NM    = 15
@@ -99,7 +99,7 @@ export function useWeatherAlongRoute(waypoints: RouteWaypoint[], enabled = true)
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
-    loadAerodromes(getTileUrls().aerodromes)
+    tileUrlReady('aerodromes').then(loadAerodromes)
       .then((arr) => { if (!cancelled) setAerodromes(arr) })
       .catch(() => { /* offline-safe */ })
     return () => { cancelled = true }

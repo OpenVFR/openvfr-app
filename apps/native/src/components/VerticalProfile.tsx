@@ -97,9 +97,9 @@ import { layoutWindRow, tickLabelsClearOfWindRow, type WindRowItem } from '@open
 import { useWindAloftAlongRoute } from '../hooks/useWindAloftAlongRoute'
 import { usePersistedFlag } from '../utils/usePersistedFlag'
 import { projectTrafficMarks, trafficOpacity, type RadarTrafficTarget } from '@open-vfr/shared/radarTraffic'
-import { getTileUrls, API_BASE } from '../config'
+import { API_BASE } from '../config'
 import { getOfflineDem } from '../utils/terrainDem'
-import { loadGeoJsonOnce } from '../utils/geoJsonCache'
+import { loadTileGeoJson } from '../utils/geoJsonCache'
 import { theme, useScaledTheme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 import { AppIcon } from './AppIcon'
 import type { RouteWeatherStation } from '../hooks/useWeatherAlongRoute'
@@ -1403,15 +1403,15 @@ export const VerticalProfile = React.memo(function VerticalProfile({
   // every mount after the first, since repeat calls just resolve an
   // already-settled promise instead of re-fetching/re-parsing.
   useEffect(() => {
-    loadGeoJsonOnce(getTileUrls().airspace).then(setAirspaceGeo).catch(() => setProfileDataFailed(true))
-    loadGeoJsonOnce(getTileUrls().obstacles).then(setObstacleGeo).catch(() => setProfileDataFailed(true))
-    loadGeoJsonOnce(getTileUrls().landmarks).then(setLandmarkGeo).catch(() => { /* optional layer — offline-safe no-op */ }).finally(() => setLandmarksSettled(true))
+    loadTileGeoJson('airspace').then(setAirspaceGeo).catch(() => setProfileDataFailed(true))
+    loadTileGeoJson('obstacles').then(setObstacleGeo).catch(() => setProfileDataFailed(true))
+    loadTileGeoJson('landmarks').then(setLandmarkGeo).catch(() => { /* optional layer — offline-safe no-op */ }).finally(() => setLandmarksSettled(true))
     {
       const none = () => null
       Promise.all([
-        loadGeoJsonOnce(getTileUrls().aerodromes).catch(none),
-        loadGeoJsonOnce(getTileUrls().waypoints).catch(none),
-        loadGeoJsonOnce(getTileUrls().navaids).catch(none),
+        loadTileGeoJson('aerodromes').catch(none),
+        loadTileGeoJson('waypoints').catch(none),
+        loadTileGeoJson('navaids').catch(none),
       ]).then(([aerodromes, reporting, navaids]) => setPoiSets({ aerodromes, reporting, navaids }))
     }
   }, [])

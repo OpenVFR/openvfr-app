@@ -17,7 +17,7 @@ import {
   buildAirspaceIndex, matchNotamsToAirspace,
   type AirspaceIndexEntry, type MatchedAirspaceNotam,
 } from '@open-vfr/shared/notamMapLayers'
-import { getTileUrls } from '../config'
+import { tileUrlReady, onTileDataChange } from '../config'
 
 export type { MatchedAirspaceNotam }
 
@@ -38,14 +38,16 @@ export function useNotamAirspaceMatch(regionalNotams: NotamItem[], enabled = tru
   matchedNotamIds: Set<string>
 } {
   const [index, setIndex] = useState<AirspaceIndexEntry[]>([])
-  const url = getTileUrls().airspace
+  // Country or manifest change: reload (the versioned URL differs then).
+  const [dataTick, setDataTick] = useState(0)
+  useEffect(() => onTileDataChange(() => setDataTick(t => t + 1)), [])
 
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
-    loadIndex(url).then(i => { if (!cancelled) setIndex(i) }).catch(() => { /* offline: circles stay */ })
+    tileUrlReady('airspace').then(loadIndex).then(i => { if (!cancelled) setIndex(i) }).catch(() => { /* offline: circles stay */ })
     return () => { cancelled = true }
-  }, [url, enabled])
+  }, [dataTick, enabled])
 
   return useMemo(() => matchNotamsToAirspace(index, regionalNotams), [index, regionalNotams])
 }

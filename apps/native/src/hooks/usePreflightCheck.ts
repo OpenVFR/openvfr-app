@@ -20,9 +20,8 @@ import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { resolveAirspaceLevels } from '@open-vfr/shared/airspaceAlertLevel'
 import { notamRegionsFor } from '@open-vfr/shared/notamRegionScope'
 import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
-import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
-import { getTileUrls } from '../config'
-import { loadGeoJsonOnce } from '../utils/geoJsonCache'
+import { onTileDataChange } from '../config'
+import { loadTileGeoJson } from '../utils/geoJsonCache'
 import { useMefGrids } from './useMefGrids'
 import { useAppActive } from './useAppActive'
 import { useCountries } from './useCountries'
@@ -74,7 +73,7 @@ export function usePreflightCheck(opts: {
   const signedIn = authState.status === 'authenticated'
 
   const [countryTick, setCountryTick] = useState(0)
-  useEffect(() => onActiveCountriesChange(() => setCountryTick((t) => t + 1)), [])
+  useEffect(() => onTileDataChange(() => setCountryTick((t) => t + 1)), [])
 
   // Data files. A file that fails to load is recorded, not treated as empty: the card says the check did not run.
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(null)
@@ -84,10 +83,9 @@ export function usePreflightCheck(opts: {
   useEffect(() => {
     if (!active) return
     let alive = true
-    const urls = getTileUrls()
     setAirspaceFailed(false); setAerodromesFailed(false)
-    loadGeoJsonOnce(urls.airspace).then((d) => alive && setAirspaceGeo(d)).catch(() => { if (alive) { setAirspaceGeo(EMPTY_FC); setAirspaceFailed(true) } })
-    loadGeoJsonOnce(urls.aerodromes).then((d) => alive && setAerodromeGeo(d)).catch(() => { if (alive) { setAerodromeGeo(null); setAerodromesFailed(true) } })
+    loadTileGeoJson('airspace').then((d) => alive && setAirspaceGeo(d)).catch(() => { if (alive) { setAirspaceGeo(EMPTY_FC); setAirspaceFailed(true) } })
+    loadTileGeoJson('aerodromes').then((d) => alive && setAerodromeGeo(d)).catch(() => { if (alive) { setAerodromeGeo(null); setAerodromesFailed(true) } })
     return () => { alive = false }
   }, [active, countryTick])
 
@@ -99,7 +97,7 @@ export function usePreflightCheck(opts: {
   useEffect(() => {
     if (!active) return
     let alive = true
-    loadGeoJsonOnce(getTileUrls().lakes).then((d) => alive && setLakes(d)).catch(() => { if (alive) setLakes(null) })
+    loadTileGeoJson('lakes').then((d) => alive && setLakes(d)).catch(() => { if (alive) setLakes(null) })
     return () => { alive = false }
   }, [active, countryTick])
   const margins = settings.msaMargins

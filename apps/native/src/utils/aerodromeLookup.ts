@@ -5,21 +5,20 @@
  * aerodromes only (that's all the Alternate field needs).
  */
 
-import { getTileUrls } from '../config'
-import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
+import { fetchTile, onTileDataChange } from '../config'
 
 export type AerodromeLookupEntry = { name: string; lng: number; lat: number }
 
 let _cache: Map<string, AerodromeLookupEntry> | null = null
 let _inFlight: Promise<Map<string, AerodromeLookupEntry>> | null = null
-// Per-country data: a new active country starts a fresh load.
-onActiveCountriesChange(() => { _cache = null; _inFlight = null })
+// Per-country, per-version data: another active country or a manifest change starts a fresh load.
+onTileDataChange(() => { _cache = null; _inFlight = null })
 
 export function getAerodromeLookup(): Promise<Map<string, AerodromeLookupEntry>> {
   if (_cache) return Promise.resolve(_cache)
   if (_inFlight) return _inFlight
 
-  _inFlight = fetch(getTileUrls().aerodromes)
+  _inFlight = fetchTile('aerodromes')
     .then(r => r.json())
     .then((fc: { features: { geometry: { coordinates: [number, number] }; properties: Record<string, unknown> }[] }) => {
       const map = new Map<string, AerodromeLookupEntry>()

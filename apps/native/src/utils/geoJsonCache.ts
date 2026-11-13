@@ -3,6 +3,9 @@
  * (airspace, obstacles, landmarks, ...), keyed by URL.
  */
 
+import { onTileManifestChanged } from '@open-vfr/shared/tileManifest'
+import { tileUrlReady, type TileKey } from '../config'
+
 // ---------------------------------------------------------------------------
 // Module-level GeoJSON cache — fetch + JSON.parse each file exactly once per
 // app lifetime, not once per component mount (VerticalProfile, the log list's
@@ -23,6 +26,16 @@
 // usePositionAlerts.ts (combined airspace/obstruction/airfield/notification hook).
 // ---------------------------------------------------------------------------
 const _geoJsonCache = new Map<string, Promise<GeoJSON.FeatureCollection>>()
+// Keyed by URL, so a new data version (new ?v=) or another country loads fresh by itself. On a manifest
+// change the cache is emptied as well: an entry loaded from an unversioned fallback URL (manifest slow or
+// missing at start) must not be handed out once the manifest is known.
+onTileManifestChanged(() => { _geoJsonCache.clear() })
+
+/** One of the active country's data files by its versioned URL (waits for the manifest, see tileUrlReady). */
+export async function loadTileGeoJson(key: TileKey): Promise<GeoJSON.FeatureCollection> {
+  return loadGeoJsonOnce(await tileUrlReady(key))
+}
+
 export function loadGeoJsonOnce(url: string): Promise<GeoJSON.FeatureCollection> {
   let p = _geoJsonCache.get(url)
   if (!p) {
@@ -30,7 +43,7 @@ export function loadGeoJsonOnce(url: string): Promise<GeoJSON.FeatureCollection>
       if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`)
       return r.json()
     })
-    p.catch(() => { _geoJsonCache.delete(url) })   // allow retry on next mount if it failed
+    p.catch(() => { if (_geoJsonCache.get(url) === p) _geoJsonCache.delete(url) })   // allow retry on next mount if it failed
     _geoJsonCache.set(url, p)
   }
   return p

@@ -11,3 +11,12 @@
 export function isTileGeojson(url: URL): boolean {
   return url.pathname.endsWith('.geojson') && (url.pathname.includes('/tiles/') || url.hostname.startsWith('tiles.'))
 }
+
+/**
+ * The tile host's manifest.json (content hashes that version every tile URL). NetworkFirst in the service worker: always the
+ * network copy when online, the last one offline. Without it an offline start has no manifest, so the apps would ask for the
+ * unversioned URLs, which the geojson cache above does not hold (it only ever stores the versioned ones).
+ */
+export function isTileManifest(url: URL): boolean {
+  return url.pathname.endsWith('/manifest.json') && (url.pathname.includes('/tiles/') || url.hostname.startsWith('tiles.'))
+}

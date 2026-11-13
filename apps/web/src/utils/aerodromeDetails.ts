@@ -11,7 +11,7 @@ import {
   parseAerodromeDetails, localInfo,
   type DetailProps, type LocalInfo,
 } from '@open-vfr/shared/aerodromeDetails'
-import { countryFileUrl, countryDatasetFile, loadCountryGeojson } from '@open-vfr/shared/countryData'
+import { countryFileUrlReady, countryDatasetFile, loadCountryGeojson } from '@open-vfr/shared/countryData'
 import { useUnreviewedShown } from './unreviewedCurated'
 import { loadOptionalJson } from './optionalJson'
 import { buildDetailsMapData, type CircuitFocus } from '@open-vfr/shared/aerodromeDetailsStyle'
@@ -20,8 +20,9 @@ import { useActiveCountries } from './countryData'
 const cache = new Map<string, Promise<FeatureCollection<Geometry, DetailProps> | null>>()
 
 /** The details file; `preview` = the one with every airfield's unreviewed values (admins only), falling back to the public file. */
-export function loadAerodromeDetails(country: string, preview = false): Promise<FeatureCollection<Geometry, DetailProps> | null> {
-  const url = countryFileUrl(countryDatasetFile(country, preview ? 'aerodromeDetailsPreview' : 'aerodromeDetails'))
+export async function loadAerodromeDetails(country: string, preview = false): Promise<FeatureCollection<Geometry, DetailProps> | null> {
+  // Versioned URL once the manifest is known; a file the manifest does not list (not published) keeps its unversioned 404 path.
+  const url = await countryFileUrlReady(countryDatasetFile(country, preview ? 'aerodromeDetailsPreview' : 'aerodromeDetails'))
   const p = loadOptionalJson(cache, url, parseAerodromeDetails)
   return preview ? p.then(d => d ?? loadAerodromeDetails(country, false)) : p
 }

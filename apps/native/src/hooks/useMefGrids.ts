@@ -8,8 +8,8 @@
  */
 import { useEffect, useState } from 'react'
 import { loadMefGrids, type MefGrid } from '@open-vfr/shared/mefGrid'
-import { onActiveCountriesChange } from '@open-vfr/shared/countryData'
-import { OFFLINE_ASSETS, resolveUri } from '../utils/offlineCache'
+import { onTileDataChange } from '../config'
+import { OFFLINE_ASSETS, resolveUriReady } from '../utils/offlineCache'
 
 async function fetchBytes(uri: string): Promise<Uint8Array> {
   const res = await fetch(uri)
@@ -20,13 +20,16 @@ async function fetchBytes(uri: string): Promise<Uint8Array> {
 export function useMefGrids(): MefGrid[] {
   const [grids, setGrids] = useState<MefGrid[]>([])
   const [tick, setTick] = useState(0)
-  useEffect(() => onActiveCountriesChange(() => setTick((t) => t + 1)), [])
+  useEffect(() => onTileDataChange(() => setTick((t) => t + 1)), [])
   useEffect(() => {
     let alive = true
     const asset = OFFLINE_ASSETS.find((a) => a.key === 'mef')
     if (!asset) return
-    const uri = resolveUri(asset)
-    loadMefGrids([{ key: uri, load: () => fetchBytes(uri) }]).then((g) => { if (alive) setGrids(g) })
+    // Local copy at once; the remote file only by its versioned URL (waits for the manifest, bounded).
+    void resolveUriReady(asset).then((uri) => {
+      if (!alive) return
+      return loadMefGrids([{ key: uri, load: () => fetchBytes(uri) }]).then((g) => { if (alive) setGrids(g) })
+    })
     return () => { alive = false }
   }, [tick])
   return grids

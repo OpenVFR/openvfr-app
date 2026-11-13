@@ -18,7 +18,7 @@ import { fetchAmbientWx, type AmbientWx } from '@open-vfr/shared/fetchWind'
 import { fetchNotams, type NotamItem } from '@open-vfr/shared/fetchNotam'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import { loadStations, type StationRecord } from '@open-vfr/shared/wxStations'
-import { API_BASE, getTileUrls } from '../config'
+import { API_BASE, tileUrlReady } from '../config'
 import { authHeaders } from '../utils/authClient'
 
 // Fallback search radius -- same as AerodromePopup's, wide enough to reach a
@@ -67,9 +67,8 @@ export function useAerodromeBriefing(icao: string | null, lat?: number, lng?: nu
     }
 
     authHeaders().then((headers) => {
-      const aerodromesUrl = getTileUrls().aerodromes
       const wxPromise = lat != null && lng != null
-        ? loadStations(aerodromesUrl)
+        ? tileUrlReady('aerodromes').then(loadStations)
             .catch(() => [] as StationRecord[])
             .then((stations) => {
               const candidates: WxStationCandidate[] = stations
