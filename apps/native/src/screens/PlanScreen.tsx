@@ -167,6 +167,8 @@ export function PlanScreen() {
   // crowding the row alongside Active/Inactive, Rev, and Clear.
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+  // The ⋯ menu of the Places and Logs tabs (the Route tab has its own above).
+  const [sectionMenuOpen, setSectionMenuOpen] = useState(false)
   const [fplOpen, setFplOpen] = useState(false)
   const { state: authState } = useAuthContext()
 
@@ -719,10 +721,15 @@ export function PlanScreen() {
   // route actions live in its right slot.
   React.useLayoutEffect(() => {
     navigation.setOptions({
-      headerRight: segment === 'waypoints' && assistantUrl ? () => (
+      headerRight: segment === 'waypoints' || segment === 'logs' ? () => (
         <View style={styles.headerActions}>
-          <TouchableOpacity onPress={() => setAssistantHelpOpen(true)} testID="places-assistant-help" accessibilityLabel="Use your AI assistant" style={styles.moreBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <AppIcon name="sparkles" size={Platform.OS === 'ios' ? 22 : 14} color={Platform.OS === 'ios' ? theme.textPrimary : theme.accentBlue} />
+          {segment === 'waypoints' && assistantUrl && (
+            <TouchableOpacity onPress={() => setAssistantHelpOpen(true)} testID="places-assistant-help" accessibilityLabel="Use your AI assistant" style={styles.moreBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <AppIcon name="sparkles" size={Platform.OS === 'ios' ? 22 : 14} color={Platform.OS === 'ios' ? theme.textPrimary : theme.accentBlue} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={() => setSectionMenuOpen(true)} testID="section-more-open" accessibilityLabel={segment === 'logs' ? 'Flight log actions' : 'Places actions'} style={styles.moreBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <AppIcon name="more" size={Platform.OS === 'ios' ? 22 : 14} color={Platform.OS === 'ios' ? theme.textPrimary : theme.accentBlue} />
           </TouchableOpacity>
         </View>
       ) : segment === 'route' ? () => (
@@ -830,6 +837,32 @@ export function PlanScreen() {
           >
             <AppIcon name="closeCircle" size={16} color={theme.textSecondary} />
             <Text style={styles.moreMenuItemTxt}>Close route</Text>
+          </TouchableOpacity>
+        )}
+      </NativeSheet>
+
+      <NativeSheet
+        isPresented={sectionMenuOpen && (segment === 'waypoints' || segment === 'logs')}
+        onDismiss={() => setSectionMenuOpen(false)}
+        title={segment === 'logs' ? 'Flight log actions' : 'Places actions'}
+        testID="section-more-sheet"
+      >
+        <TouchableOpacity
+          style={styles.moreMenuItem}
+          onPress={() => { setSectionMenuOpen(false); if (segment === 'logs') void handleImportLog(); else handleImportWaypointsGpx() }}
+          testID="section-import-gpx"
+        >
+          <AppIcon name="cloudUpload" size={16} color={theme.textSecondary} />
+          <Text style={styles.moreMenuItemTxt}>Import GPX</Text>
+        </TouchableOpacity>
+        {segment === 'waypoints' && userWaypoints.length > 0 && (
+          <TouchableOpacity
+            style={styles.moreMenuItem}
+            onPress={() => { setSectionMenuOpen(false); handleExportWaypointsGpx() }}
+            testID="section-export-gpx"
+          >
+            <AppIcon name="download" size={16} color={theme.textSecondary} />
+            <Text style={styles.moreMenuItemTxt}>Export GPX</Text>
           </TouchableOpacity>
         )}
       </NativeSheet>
@@ -1240,16 +1273,6 @@ export function PlanScreen() {
           refreshControl={<RefreshControl refreshing={waypointsRefreshing} onRefresh={handleWaypointsRefresh} tintColor={theme.accentBlue} />}
         >
           <View style={styles.saveSection}>
-            <View style={{ flexDirection: 'row', gap: scaledTheme.space2, marginBottom: scaledTheme.space2 }}>
-              <TouchableOpacity onPress={handleImportWaypointsGpx} style={styles.headerBtn}>
-                <Text style={styles.headerBtnTxt}>GPX ↑ Import</Text>
-              </TouchableOpacity>
-              {userWaypoints.length > 0 && (
-                <TouchableOpacity onPress={handleExportWaypointsGpx} style={styles.headerBtn}>
-                  <Text style={styles.headerBtnTxt}>GPX ↓ Export</Text>
-                </TouchableOpacity>
-              )}
-            </View>
             {!savingWp ? (
               <View style={{ gap: scaledTheme.space2 }}>
                 <Text style={styles.emptyBody}>
@@ -1464,11 +1487,6 @@ export function PlanScreen() {
           contentContainerStyle={{ padding: scaledTheme.space3 }}
           refreshControl={<RefreshControl refreshing={logsRefreshing} onRefresh={handleLogsRefresh} tintColor={theme.accentBlue} />}
         >
-          <View style={styles.logFilterRow}>
-            <TouchableOpacity style={styles.placeChip} onPress={() => void handleImportLog()} accessibilityLabel="Import flight from GPX">
-              <Text style={styles.placeChipTxt}>↑ Import GPX</Text>
-            </TouchableOpacity>
-          </View>
           {pendingImport && (
             <View style={styles.importBox}>
               <Text style={styles.aircraftMeta}>
