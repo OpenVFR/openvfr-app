@@ -452,6 +452,12 @@
   text-decoration: underline;
 }
 
+.contactName {
+  color: var(--text-faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 /* ── Elevation chip in header ───────────────────────────────────────── */
 .elev {
   font-size: 11px;

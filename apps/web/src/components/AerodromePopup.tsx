@@ -91,6 +91,8 @@ interface Runway {
 interface Contact {
   type: string
   address: string
+  /** Curated data only. For a website: the club or organisation it belongs to. (For other types it names the source: not shown.) */
+  label?: string
 }
 
 interface HoursEntry {
@@ -305,6 +307,15 @@ function fmtDeclaredDistances(dd: Runway['declared_distances']): string {
   if (dd.asda != null) parts.push(`ASDA ${dd.asda}`)
   if (dd.lda  != null) parts.push(`LDA ${dd.lda}`)
   return parts.join(' · ')
+}
+
+/** The club a website belongs to, to show beside its address (an airfield can have several clubs). Nothing for other contact
+ *  types, whose `label` only names the source, and nothing when it merely repeats the address. */
+export function contactName(c: Contact): string | null {
+  const name = c.type === 'URL' ? c.label?.trim() : ''
+  if (!name) return null
+  const bare = (t: string) => t.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '')
+  return bare(name) === bare(c.address) ? null : name
 }
 
 // Deduplicate contacts: same type+address may appear twice
@@ -899,6 +910,7 @@ export default function AerodromePopup({
                     <div key={i} className={css.contactRow}>
                       <span className={css.contactType}>{label}</span>
                       <span className={css.contactAddress}>{addressNode}</span>
+                      {contactName(c) && <span className={css.contactName}>{contactName(c)}</span>}
                     </div>
                   )
                 })}
