@@ -7,6 +7,7 @@
  *
  * Read-only except for queueing a run; the pipeline itself does the work.
  */
+import { TILE_FETCH_HEADERS } from './tileFetch.js'
 import { countryArchiveFile, countryDatasetFile, countryMefFile } from '@open-vfr/shared/countryData'
 import { pool } from './db.js'
 
@@ -113,7 +114,7 @@ export async function countrySummaries(): Promise<Map<string, {
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
   const ctl = new AbortController()
   const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS)
-  try { return await fetch(url, { ...init, signal: ctl.signal, cache: 'no-store' }) }
+  try { return await fetch(url, { ...init, headers: { ...TILE_FETCH_HEADERS, ...(init.headers as Record<string, string> | undefined) }, signal: ctl.signal, cache: 'no-store' }) }
   finally { clearTimeout(t) }
 }
 

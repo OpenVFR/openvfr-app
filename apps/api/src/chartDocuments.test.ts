@@ -229,6 +229,17 @@ test('resolver: one manifest download serves both indexes; the old file name is 
   } finally { console.warn = orig }
 })
 
+test('the api names itself when it reads the tile host (the edge may refuse anonymous datacenter requests)', async () => {
+  const seen: Array<Record<string, string>> = []
+  const f = (async (u: string | URL | Request, init?: RequestInit) => {
+    seen.push((init?.headers ?? {}) as Record<string, string>)
+    return Response.json({ files: {} })
+  }) as typeof fetch
+  await createChartIndexResolver(cfg, f).resolve('xx', 'nope')
+  assert.ok(seen.length > 0)
+  assert.match(String(seen[0]?.['User-Agent']), /^open-vfr\//)
+})
+
 test('route: GET /config tells the client whether non-admins are refused', async () => {
   const on = chartDocumentRoutes({ requireUser: async () => null, config: { ...cfg, adminOnly: true }, fetchImpl: fakeFetch({}) })
   const off = chartDocumentRoutes({ requireUser: async () => null, config: cfg, fetchImpl: fakeFetch({}) })

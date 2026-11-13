@@ -54,6 +54,7 @@ import { Hono, type Context } from 'hono'
 import { RateLimiter, limitFromEnv } from './rateLimiter.js'
 import { CHART_ID, findChart, parseChartsIndex, type ChartsIndex } from '@open-vfr/shared/chartsIndex'
 import { countryDatasetFile } from '@open-vfr/shared/countryData'
+import { TILE_FETCH_HEADERS } from './tileFetch.js'
 
 export interface ChartDocumentConfig {
   hosts: Set<string>
@@ -214,7 +215,7 @@ const MANIFEST_MAX_BYTES = 4 * 1024 * 1024
 const MISS_RELOAD_MS = 60 * 1000
 
 async function fetchJson(url: string, maxBytes: number, cfg: ChartDocumentConfig, fetchImpl: typeof fetch): Promise<unknown> {
-  const res = await fetchImpl(url, { signal: AbortSignal.timeout(cfg.timeoutMs), headers: { Accept: 'application/json' } })
+  const res = await fetchImpl(url, { signal: AbortSignal.timeout(cfg.timeoutMs), headers: { ...TILE_FETCH_HEADERS, Accept: 'application/json' } })
   if (res.status !== 200) {
     await res.body?.cancel().catch(() => undefined)
     throw new UpstreamError(`HTTP ${res.status} for ${url}`, 502)

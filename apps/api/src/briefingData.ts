@@ -22,6 +22,7 @@ import { DEFAULT_REGION_CODES } from '@open-vfr/shared/regions'
 import type { RouteDocType, AircraftProfileDocType, UserWaypointDocType } from '@open-vfr/shared/types'
 import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
 import { AUTHENTICATED_ROLE } from './pgRoles'
+import { TILE_FETCH_HEADERS } from './tileFetch.js'
 
 /** A short-lived HS256 JWT that PostgREST accepts as this user (same claims as /api/auth/token). */
 export function mintPostgrestJwt(user: { id: string; email?: string | null }, ttlS = 15 * 60, secret = process.env['BETTER_AUTH_SECRET'] ?? ''): { jwt: string; expiresAt: number } {
@@ -163,13 +164,25 @@ const TILES_BASE_URL = (process.env['TILES_BASE_URL'] ?? '').trim().replace(/\/+
 const DATASET_TTL_MS = 6 * 60 * 60 * 1000
 const datasetCache = new Map<string, { at: number; fc: Promise<GeoJSON.FeatureCollection | null> }>()
 
+const lastDatasetWarn = new Map<string, number>()
+/** A failed dataset load says why, at most once a minute per file (callers only see "not available"). */
+function warnDataset(url: string, reason: string): void {
+  const now = Date.now()
+  if (now - (lastDatasetWarn.get(url) ?? 0) < 60_000) return
+  lastDatasetWarn.set(url, now)
+  console.warn(`[briefing-data] ${url} not loaded: ${reason}`)
+}
+
 async function fetchDataset(url: string): Promise<GeoJSON.FeatureCollection | null> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(20_000) })
-    if (!res.ok) return null
+    const res = await fetch(url, { headers: TILE_FETCH_HEADERS, signal: AbortSignal.timeout(20_000) })
+    if (!res.ok) { warnDataset(url, `HTTP ${res.status}`); await res.body?.cancel().catch(() => undefined); return null }
     const fc = await res.json() as GeoJSON.FeatureCollection
-    return Array.isArray(fc?.features) ? fc : null
-  } catch {
+    if (!Array.isArray(fc?.features)) { warnDataset(url, 'not a FeatureCollection'); return null }
+    return fc
+  } catch (err) {
+    const cause = (err as { cause?: { code?: string; message?: string } } | null)?.cause
+    warnDataset(url, `${err instanceof Error ? err.message : String(err)}${cause ? ` (${cause.code ?? cause.message})` : ''}`)
     return null
   }
 }
@@ -182,7 +195,8 @@ export type CountryDataset = GeoJSON.FeatureCollection & { missingCountries?: st
  * When only some countries loaded, `missingCountries` names the others.
  */
 export async function loadCountryDataset(kind: 'aerodromes' | 'airspace' | 'obstacles' | 'landmarks' | 'navaids' | 'waypoints' | 'lakes', countries: readonly string[]): Promise<CountryDataset | null> {
-  if (!TILES_BASE_URL || countries.length === 0) return null
+  if (!TILES_BASE_URL) { warnDataset('TILES_BASE_URL', 'is not set: no aerodrome, airspace or navaid data for briefings and route tools'); return null }
+  if (countries.length === 0) return null
   const now = Date.now()
   const parts = await Promise.all(countries.map(cc => {
     const url = `${TILES_BASE_URL}/${countryDatasetFile(cc, kind)}`
@@ -228,7 +242,7 @@ export async function loadMefGridsFor(countries: readonly string[]): Promise<Mef
     if (!hit || now - hit.at > MEF_TTL_MS) {
       hit = {
         at: now,
-        grid: fetch(url, { signal: AbortSignal.timeout(30_000) })
+        grid: fetch(url, { headers: TILE_FETCH_HEADERS, signal: AbortSignal.timeout(30_000) })
           .then(async r => (r.ok ? parseMef(new Uint8Array(await r.arrayBuffer())) : null))
           .catch(() => null),
       }
