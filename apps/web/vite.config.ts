@@ -71,6 +71,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'prompt',
+      // Send cookies with the manifest request (crossorigin="use-credentials"). A manifest link is fetched
+      // without credentials by default; behind an access gate (a proxy that signs users in, as on a protected
+      // staging host) that request is redirected to the login page, which `manifest-src 'self'` then blocks.
+      // Same origin, so no change for an open deployment.
+      useCredentials: true,
       // Disable the service worker in dev mode — it can intercept Range requests
       // for large binary assets (PMTiles) and return cached error responses that
       // cause "Wrong magic number" errors on subsequent loads.
