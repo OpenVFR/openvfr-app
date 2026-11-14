@@ -50,9 +50,12 @@ import { fetchWithRetry } from '@open-vfr/shared/fetchWithRetry'
 const cache = new Map<string, GeoJSON>()
 const inFlight = new Map<string, Promise<GeoJSON>>()
 
-function isRemote(url: string): boolean {
+export function isRemote(url: string): boolean {
   return url.startsWith('http://') || url.startsWith('https://')
 }
+
+/** What a source shows while its remote URL may not be versioned yet. Stable reference (memoized consumers). */
+const EMPTY_FC: GeoJSON = { type: 'FeatureCollection', features: [] }
 
 function loadOnce(url: string): Promise<GeoJSON> {
   const existing = inFlight.get(url)
@@ -80,13 +83,19 @@ function loadOnce(url: string): Promise<GeoJSON> {
  * after the first successful fetch of that URL, thanks to the module-scope
  * cache) return the already-parsed GeoJSON object instead.
  */
-export function useResilientTileData(url: string): string | GeoJSON {
+/**
+ * `remoteReady` false: a remote URL is not used at all yet (no fetch, and the
+ * source gets an empty collection instead of the URL, so MapLibre does not
+ * fetch it either). Pass false until the tile manifest has been waited for:
+ * before that the URL is unversioned. A local file:// URI is used at once.
+ */
+export function useResilientTileData(url: string, remoteReady = true): string | GeoJSON {
   const [resolved, setResolved] = useState<GeoJSON | undefined>(
     () => cache.get(url),
   )
 
   useEffect(() => {
-    if (!isRemote(url)) return
+    if (!isRemote(url) || !remoteReady) return
     const cached = cache.get(url)
     if (cached) {
       setResolved(cached)
@@ -98,8 +107,9 @@ export function useResilientTileData(url: string): string | GeoJSON {
       .catch(() => { /* leave the raw URL in place — MapLibre's own (possibly
                          already-successful) load is the only fallback left */ })
     return () => { cancelled = true }
-  }, [url])
+  }, [url, remoteReady])
 
   if (!isRemote(url)) return url
-  return resolved ?? url
+  if (!remoteReady) return EMPTY_FC
+  return cache.get(url) ?? resolved ?? url
 }
