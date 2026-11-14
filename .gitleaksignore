@@ -10,3 +10,7 @@ e9f5fe1fdd01b2e1c8cb57c834c22c70636ad171:packages/shared/src/geoidGrid.ts:generi
 # PGlite e2e test, not a credential.
 75c70e421e1e7819b544fe8ea308de7046cdf578:apps/api/src/mcp.e2e.test.ts:generic-api-key:42
 75c70e421e1e7819b544fe8ea308de7046cdf578:apps/api/src/mcp.e2e.test.ts:generic-api-key:206
+
+# packages/shared/src/tileKey.test.ts: fixed dummy tile host key used as a test
+# fixture, not a credential.
+9235ae7c94a4f5fefe21376e3787597200948af6:packages/shared/src/tileKey.test.ts:generic-api-key:6
