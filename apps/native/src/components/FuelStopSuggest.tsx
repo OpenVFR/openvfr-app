@@ -12,26 +12,11 @@ import { FUEL_LABELS, preferenceLabel } from '@open-vfr/shared/fuelTypes'
 import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
 import type { LegOverride } from '@open-vfr/shared/types'
 import type { AircraftProfileDocType } from '../db'
-import { tileUrlReady, onTileDataChange } from '../config'
-import { fetchWithRetry } from '@open-vfr/shared/fetchWithRetry'
+import { createTileDerived } from '../utils/tileDerived'
 import { theme, useThemedStyles, type ScaledTheme } from '../styles/theme'
 
-// One parse of the aerodrome file per app session, shared by every mount.
-let aerodromesPromise: Promise<AerodromeEntry[]> | null = null
-// Per-country, per-version data: another active country or a manifest change starts a fresh load.
-onTileDataChange(() => { aerodromesPromise = null })
-function loadAerodromes(): Promise<AerodromeEntry[]> {
-  if (!aerodromesPromise) {
-    const p = tileUrlReady('aerodromes').then(url => fetchWithRetry(url))
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`Aerodrome data: HTTP ${r.status}`)
-        return parseAerodromesGeoJson(await r.json())
-      })
-    aerodromesPromise = p
-    p.catch(() => { if (aerodromesPromise === p) aerodromesPromise = null })
-  }
-  return aerodromesPromise
-}
+// One parse of the aerodrome file per file version, shared by every mount (utils/tileDerived).
+const loadAerodromes: () => Promise<AerodromeEntry[]> = createTileDerived('aerodromes', fc => parseAerodromesGeoJson(fc as unknown as Parameters<typeof parseAerodromesGeoJson>[0]))
 
 function fmtTime(mins: number): string {
   const h = Math.floor(mins / 60)

@@ -5,36 +5,25 @@
  * aerodromes only (that's all the Alternate field needs).
  */
 
-import { fetchTile, onTileDataChange } from '../config'
+import { createTileDerived } from './tileDerived'
 
 export type AerodromeLookupEntry = { name: string; lng: number; lat: number }
 
-let _cache: Map<string, AerodromeLookupEntry> | null = null
-let _inFlight: Promise<Map<string, AerodromeLookupEntry>> | null = null
-// Per-country, per-version data: another active country or a manifest change starts a fresh load.
-onTileDataChange(() => { _cache = null; _inFlight = null })
+// Derived per versioned URL (./tileDerived): a new file version or another country loads again; a late result of an
+// older URL is never returned for the current one.
+const loadLookup = createTileDerived('aerodromes', (fc) => {
+  const map = new Map<string, AerodromeLookupEntry>()
+  for (const f of fc.features) {
+    if (f.geometry.type !== 'Point') continue
+    const p = (f.properties ?? {}) as Record<string, unknown>
+    const icao = String(p.icao ?? '').toUpperCase()
+    if (!icao) continue
+    const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
+    map.set(icao, { name: String(p.name ?? icao), lng, lat })
+  }
+  return map
+})
 
 export function getAerodromeLookup(): Promise<Map<string, AerodromeLookupEntry>> {
-  if (_cache) return Promise.resolve(_cache)
-  if (_inFlight) return _inFlight
-
-  _inFlight = fetchTile('aerodromes')
-    .then(r => r.json())
-    .then((fc: { features: { geometry: { coordinates: [number, number] }; properties: Record<string, unknown> }[] }) => {
-      const map = new Map<string, AerodromeLookupEntry>()
-      for (const f of fc.features) {
-        const icao = String(f.properties.icao ?? '').toUpperCase()
-        if (!icao) continue
-        map.set(icao, {
-          name: String(f.properties.name ?? icao),
-          lng:  f.geometry.coordinates[0],
-          lat:  f.geometry.coordinates[1],
-        })
-      }
-      _cache = map
-      return map
-    })
-    .finally(() => { _inFlight = null })
-
-  return _inFlight
+  return loadLookup()
 }

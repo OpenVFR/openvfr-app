@@ -1,6 +1,6 @@
 import { registerRootComponent } from 'expo'
 import {
-  loadTileManifest, refreshTileManifest, enableTileManifestPersistence, isTileManifestFromStorage,
+  loadTileManifest, refreshTileManifest, enableTileManifestPersistence, isTileManifestFromStorage, getCachedTileManifest,
 } from '@open-vfr/shared/tileManifest'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 // Imported for their side effect first: they register the caches restored below.
@@ -35,10 +35,11 @@ import './src/tasks/locationTask'
 // ones it never fetched (blank map after a restart in flight).
 enableTileManifestPersistence(AsyncStorage)
 void loadTileManifest(TILE_BASE)
-// Started on the stored copy (offline): fetch a fresh one each time the app
-// comes to the foreground until one arrives. No timer, no background work.
+// No fresh manifest yet (started offline on the stored copy, or with none at
+// all, e.g. a first start offline): fetch one each time the app comes to the
+// foreground until one arrives. No timer, no background work.
 AppState.addEventListener('change', (state) => {
-  if (state === 'active' && isTileManifestFromStorage()) void refreshTileManifest(TILE_BASE)
+  if (state === 'active' && (!getCachedTileManifest() || isTileManifestFromStorage())) void refreshTileManifest(TILE_BASE)
 })
 // Wind readings survive an app restart, so a restart doesn't refetch them
 // from the rate-limited Open-Meteo API (see @open-vfr/shared/persistedCache).

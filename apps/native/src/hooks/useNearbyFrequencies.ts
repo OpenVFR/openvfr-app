@@ -2,9 +2,9 @@
  * useNearbyFrequencies — scans loaded aerodromes and returns those within
  * RADIUS_NM sorted by distance, each with their full frequency list.
  *
- * Loads se-aerodromes.geojson once, then refreshes it every REFRESH_MS in the
- * background so server-side data fixes (e.g. openaip_fill_aerodrome_gaps.py
- * backfills) show up without a full app restart. Updates on every position
+ * Loads the active country's aerodromes by their versioned URL (cached per
+ * file version, utils/tileDerived): a data fix is a new version and so a new
+ * load once the manifest names it, no periodic refetch needed. Updates on every position
  * change. Frequency priority order matches web useAirfieldProximity /
  * useNearestFeature.
  */
@@ -12,7 +12,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { GpsPosition } from '../utils/gpsTypes'
 import { distanceNm } from '../utils/routeCalc'
-import { fetchTile, onTileDataChange } from '../config'
+import { createTileDerived, useTileDerived } from '../utils/tileDerived'
 
 export interface NearbyFreq {
   service:  string   // TWR, AFIS, APP, GND, ATIS, FIS, INFO, RDO…
@@ -79,21 +79,6 @@ interface CachedAerodrome {
   freqs: NearbyFreq[]
 }
 
-// Module-level cache — shared across all hook instances. Refetched on a TTL
-// (see REFRESH_MS below) rather than only once per app process, so backfilled
-// aviation data (e.g. openaip_fill_aerodrome_gaps.py) shows up without a full
-// app restart — matches the server's /tiles/*.geojson Cache-Control max-age.
-let _cache: CachedAerodrome[] | null = null
-let _lastFetchedAt = 0
-let _loading = false
-const _listeners: Array<(data: CachedAerodrome[]) => void> = []
-// Per-country, per-version data: another active country or a manifest change starts a fresh load.
-onTileDataChange(() => { _cache = null; _lastFetchedAt = 0; _loading = false })
-
-// Keep in sync with docker/nginx.conf's `location ~ \.geojson$` max-age (300s) —
-// no point polling faster than the server will actually revalidate content for.
-const REFRESH_MS = 5 * 60 * 1000
-
 function parseAerodromesFC(fc: GeoJSON.FeatureCollection): CachedAerodrome[] {
   const arr: CachedAerodrome[] = []
   for (const f of fc.features) {
@@ -109,66 +94,24 @@ function parseAerodromesFC(fc: GeoJSON.FeatureCollection): CachedAerodrome[] {
   return arr
 }
 
-function loadOnce(onLoad: (data: CachedAerodrome[]) => void) {
-  if (_cache) { onLoad(_cache); return }
-  _listeners.push(onLoad)
-  if (_loading) return
-  _loading = true
-  // no-store: aviation data (frequencies/fuel/PPR/etc.) is periodically
-  // backfilled/corrected server-side outside the AIRAC cycle (e.g.
-  // openaip_fill_aerodrome_gaps.py) and must not be served from Android's
-  // on-disk OkHttp HTTP cache, which persists across app updates/reinstalls
-  // (adb install -r keeps app data) and would otherwise keep honouring a
-  // long max-age from whatever the server sent on the FIRST ever fetch on
-  // that device, potentially predating a data fix by days.
-  fetchTile('aerodromes', { cache: 'no-store' })
-    .then(r => r.json())
-    .then((fc: GeoJSON.FeatureCollection) => {
-      _cache = parseAerodromesFC(fc)
-      _lastFetchedAt = Date.now()
-      _loading = false
-      _listeners.forEach(cb => cb(_cache!))
-      _listeners.length = 0
-    })
-    .catch(() => { _loading = false })
-}
+const loadAerodromes = createTileDerived('aerodromes', parseAerodromesFC)
+const NO_AERODROMES: CachedAerodrome[] = []
 
 /**
  * The loaded aerodromes (icao, name, position), loading them if needed. Null
  * when they could not be loaded within `timeoutMs` (offline, no data).
  */
 export function getAerodromes(timeoutMs = 20_000): Promise<{ icao: string; name: string; lat: number; lng: number }[] | null> {
-  if (_cache) return Promise.resolve(_cache)
   return new Promise(resolve => {
     const t = setTimeout(() => resolve(null), timeoutMs)
-    loadOnce(data => { clearTimeout(t); resolve(data) })
+    loadAerodromes().then(data => { clearTimeout(t); resolve(data) }, () => { clearTimeout(t); resolve(null) })
   })
-}
-
-/**
- * Re-fetch in the background if the cache is older than REFRESH_MS, notifying
- * `onUpdate` only if the fetch succeeds. Safe to call repeatedly (e.g. from a
- * setInterval) — no-ops while a fetch is already in flight or cache is fresh.
- */
-function refreshIfStale(onUpdate: (data: CachedAerodrome[]) => void) {
-  if (_loading) return
-  if (_cache && Date.now() - _lastFetchedAt < REFRESH_MS) return
-  _loading = true
-  fetchTile('aerodromes', { cache: 'no-store' })
-    .then(r => r.json())
-    .then((fc: GeoJSON.FeatureCollection) => {
-      _cache = parseAerodromesFC(fc)
-      _lastFetchedAt = Date.now()
-      _loading = false
-      onUpdate(_cache)
-    })
-    .catch(() => { _loading = false })
 }
 
 const RECOMPUTE_MIN_MS = 1000
 
 export function useNearbyFrequencies(position: GpsPosition | null): NearbyAerodrome[] {
-  const [aerodromes, setAerodromes] = useState<CachedAerodrome[]>([])
+  const aerodromes = useTileDerived(loadAerodromes) ?? NO_AERODROMES
   const [nearby,     setNearby]     = useState<NearbyAerodrome[]>([])
   const posRef = useRef(position)
   posRef.current = position
@@ -189,12 +132,6 @@ export function useNearbyFrequencies(position: GpsPosition | null): NearbyAerodr
   // Skipped ticks let that counter reset. A second of movement (~0.025 NM per
   // tick at 90 kt) is far below what the distance readout can show.
   const lastRunRef = useRef(0)
-
-  useEffect(() => {
-    loadOnce(setAerodromes)
-    const id = setInterval(() => refreshIfStale(setAerodromes), REFRESH_MS)
-    return () => clearInterval(id)
-  }, [])
 
   useEffect(() => {
     if (!position || aerodromes.length === 0) {

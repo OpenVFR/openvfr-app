@@ -7,7 +7,7 @@
  * one step further than a simple nearest-station lookup.
  *
  * Reuses the existing aerodrome proximity + METAR fetch machinery
- * (useNearbyFrequencies.ts's loadOnce cache pattern, fetchWx/decodeMetar
+ * (utils/tileDerived's per-URL cache, fetchWx/decodeMetar
  * from @open-vfr/shared) rather than duplicating either.
  *
  * Throttled the same way useTerrainElevation is — no need to re-fetch on
@@ -20,7 +20,8 @@ import { fetchWx, decodeMetar } from '@open-vfr/shared/fetchWx'
 import { interpolateQnh, type QnhReading } from '@open-vfr/shared/qnhInterpolation'
 import { qnhTokenToHpa, isQnhResultStale } from '@open-vfr/shared/qnhResolve'
 import { distanceNm } from '../utils/routeCalc'
-import { fetchTile, onTileDataChange, API_BASE } from '../config'
+import { API_BASE } from '../config'
+import { createTileDerived, useTileDerived } from '../utils/tileDerived'
 import { authHeaders } from '../utils/authClient'
 import type { GpsPosition } from '../utils/gpsTypes'
 
@@ -43,51 +44,30 @@ interface CachedAerodrome {
   lng:  number
 }
 
-// Module-level cache — shared across all hook instances, same pattern as
-// useNearbyFrequencies.ts's loadOnce().
-let _cache: CachedAerodrome[] | null = null
-let _loading = false
-// Per-country, per-version data: another active country or a manifest change starts a fresh load.
-onTileDataChange(() => { _cache = null; _loading = false })
-const _listeners: Array<(data: CachedAerodrome[]) => void> = []
-
-function loadOnce(onLoad: (data: CachedAerodrome[]) => void) {
-  if (_cache) { onLoad(_cache); return }
-  _listeners.push(onLoad)
-  if (_loading) return
-  _loading = true
-  fetchTile('aerodromes')
-    .then(r => r.json())
-    .then((fc: GeoJSON.FeatureCollection) => {
-      const arr: CachedAerodrome[] = []
-      for (const f of fc.features) {
-        if (f.geometry.type !== 'Point') continue
-        const p    = f.properties as Record<string, unknown>
-        const icao = String(p.icao ?? '')
-        if (!icao) continue
-        const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
-        arr.push({ icao, lat, lng })
-      }
-      _cache = arr
-      _listeners.forEach(cb => cb(arr))
-      _listeners.length = 0
-    })
-    .catch(() => { _loading = false })
-}
+// Derived per versioned URL (utils/tileDerived): a new file version or another country loads again.
+const loadAerodromes = createTileDerived('aerodromes', (fc): CachedAerodrome[] => {
+  const arr: CachedAerodrome[] = []
+  for (const f of fc.features) {
+    if (f.geometry.type !== 'Point') continue
+    const p    = f.properties as Record<string, unknown>
+    const icao = String(p.icao ?? '')
+    if (!icao) continue
+    const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
+    arr.push({ icao, lat, lng })
+  }
+  return arr
+})
+const NO_AERODROMES: CachedAerodrome[] = []
 
 const EMPTY_RESULT: NearestQnhResult = { qnhHpa: null, stationIcao: null, stations: [] }
 
 export function useNearestQnh(position: GpsPosition | null, enabled: boolean): NearestQnhResult {
-  const [aerodromes, setAerodromes] = useState<CachedAerodrome[]>([])
+  const aerodromes = useTileDerived(loadAerodromes, enabled) ?? NO_AERODROMES
   const [result, setResult] = useState<NearestQnhResult>(EMPTY_RESULT)
   const lastFetchRef = useRef<{ lat: number; lng: number; at: number } | null>(null)
   const inFlightRef  = useRef(false)
   const resultMetaRef = useRef<{ lat: number; lng: number; at: number } | null>(null)
 
-  useEffect(() => {
-    if (!enabled) return
-    loadOnce(setAerodromes)
-  }, [enabled])
 
   useEffect(() => {
     if (!enabled || !position || aerodromes.length === 0) return

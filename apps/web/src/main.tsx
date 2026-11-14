@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import * as maplibregl from 'maplibre-gl'
 import { Protocol } from 'pmtiles'
-import { loadTileManifest } from '@open-vfr/shared/tileManifest'
+import { loadTileManifest, enableTileManifestPersistence } from '@open-vfr/shared/tileManifest'
 // Imported for their side effect first: they register the caches restored below.
 import '@open-vfr/shared/fetchWind'
 import '@open-vfr/shared/windForecast'
@@ -14,9 +14,14 @@ import './utils/countryData'
 import './index.css'
 import App from './App.tsx'
 
-// Fire-and-forget -- fast (a few KB), and every consumer of
-// versionedTileUrl() degrades gracefully to an unversioned URL if called
-// before this resolves, so there's no need to block first render on it.
+// The last manifest is kept in localStorage (a few KB): on a weak or hanging
+// connection, or offline, the app goes on with the stored versions after a
+// short grace instead of unversioned URLs, which the service worker's
+// aviation-data cache (versioned URLs only) does not hold. A fresh manifest
+// replaces it on arrival. localStorage can throw on access: then no fallback.
+try { enableTileManifestPersistence(window.localStorage) } catch { /* no stored fallback */ }
+// Fire-and-forget -- fast (a few KB). Fetches that need versioned URLs wait
+// for it (bounded) through versionedTileUrlReady / loadCountryGeojson.
 void loadTileManifest(TILES_BASE_URL)
 // Wind readings survive a reload, so a reload doesn't refetch them from the
 // rate-limited Open-Meteo API (see @open-vfr/shared/persistedCache).

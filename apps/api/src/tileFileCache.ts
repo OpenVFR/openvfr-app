@@ -6,20 +6,22 @@
  *
  * Cost, by design:
  * - No timer: the manifest is checked lazily, at most once per `manifestCheckMs`, and only when a file is asked for.
- *   One check is a few KB of JSON for all files together (shared by concurrent callers).
- * - One parsed copy per file. A file is downloaded and parsed again only when its hash changes, which is less often
- *   than the old fixed TTL refetch.
- * - A failed reload keeps the last good copy (and is retried after `retryMs`, not on every request).
- * - Without a usable manifest (unreachable, or the file is not listed) it falls back to the bare URL with the
- *   fixed `fallbackTtlMs`, the behaviour before this module.
+ *   A cached file is returned at once and the manifest is revalidated in the background (stale-while-revalidate): a
+ *   request waits for the manifest only when the file is not cached yet. One check is a few KB for all files together,
+ *   size-capped, shared by concurrent callers (tileFetch.fetchTileManifestHashes, the api's one manifest reader).
+ * - One parsed copy per file. A file is downloaded and parsed again only when its hash changes.
+ * - A failed load keeps the last good copy, which every caller gets (also concurrent ones); the load is retried after
+ *   `retryMs`, not on every request. Without a good copy, callers get null quickly until then.
+ * - A file without a manifest entry (manifest unreachable, file not listed, or no longer listed) is loaded by its bare
+ *   URL and reloaded after `fallbackTtlMs`, keeping the old copy if that reload fails.
  */
-import { TILE_FETCH_HEADERS } from './tileFetch.js'
+import { fetchTileManifestHashes } from './tileFetch.js'
 
 export interface TileFileCacheOptions<T> {
   baseUrl: string
   /** Fetch + parse one file; null = not available (logged by the caller). Must not throw. */
   load: (url: string) => Promise<T | null>
-  /** Fixed lifetime of a copy loaded by its bare URL (no manifest entry). */
+  /** Lifetime of a copy loaded by its bare URL (no manifest entry). */
   fallbackTtlMs: number
   manifestCheckMs?: number
   retryMs?: number
@@ -33,14 +35,11 @@ type Hashes = Map<string, string>
 interface Entry<T> {
   /** Content hash the value belongs to; null = loaded by the bare URL. */
   sha: string | null
+  /** When this version was loaded (lifetime of bare-URL copies). */
   at: number
+  /** Resolves to the loaded value, or to the previous good copy if this load failed. */
   value: Promise<T | null>
-  /** The hash whose load failed last, and when (retry after retryMs). */
-  failedSha?: string
-  failedAt?: number
 }
-
-const SHA_RE = /^[0-9a-f]{64}$/
 
 export function createTileFileCache<T>(opts: TileFileCacheOptions<T>) {
   const fetchImpl = opts.fetchImpl ?? fetch
@@ -49,60 +48,49 @@ export function createTileFileCache<T>(opts: TileFileCacheOptions<T>) {
   const retryMs = opts.retryMs ?? 60 * 1000
   const manifestTimeoutMs = opts.manifestTimeoutMs ?? 10_000
   const cache = new Map<string, Entry<T>>()
+  /** The last load that failed per file: which version (sha or null) and when. */
+  const failures = new Map<string, { sha: string | null; at: number }>()
   let lastGood: Hashes | null = null
   let check: { at: number; p: Promise<Hashes | null> } | null = null
 
-  async function fetchManifest(): Promise<Hashes | null> {
-    try {
-      const res = await fetchImpl(`${opts.baseUrl}/manifest.json`, {
-        headers: { ...TILE_FETCH_HEADERS, Accept: 'application/json' },
-        signal: AbortSignal.timeout(manifestTimeoutMs),
-      })
-      if (!res.ok) { await res.body?.cancel().catch(() => undefined); return lastGood }
-      const m = await res.json() as { files?: Record<string, { sha256?: unknown }> }
-      const out: Hashes = new Map()
-      for (const [name, e] of Object.entries(m?.files ?? {})) {
-        if (typeof e?.sha256 === 'string' && SHA_RE.test(e.sha256)) out.set(name, e.sha256)
-      }
-      lastGood = out
-      return out
-    } catch {
-      return lastGood                                                     // unreachable: keep the last known versions
-    }
-  }
-
   function hashes(): Promise<Hashes | null> {
     if (check && now() - check.at < manifestCheckMs) return check.p
-    check = { at: now(), p: fetchManifest() }
-    return check.p
+    const p = fetchTileManifestHashes(opts.baseUrl, { fetchImpl, timeoutMs: manifestTimeoutMs })
+      .then((h) => { lastGood = h; return h })
+      .catch(() => lastGood)                                         // unreachable: keep the last known versions
+    check = { at: now(), p }
+    return p
   }
 
   async function get(name: string): Promise<T | null> {
-    const sha = (await hashes())?.get(name) ?? null
-    const cur = cache.get(name)
-
-    if (!sha) {
-      // Not versioned: the bare URL with a fixed lifetime (and keep a good copy if a refetch fails).
-      if (cur && cur.sha === null && now() - cur.at < opts.fallbackTtlMs) return cur.value
-      if (cur && cur.sha !== null) return cur.value                      // listed before, missing now: keep what we have
-      const value = opts.load(`${opts.baseUrl}/${name}`)
-      const entry: Entry<T> = { sha: null, at: now(), value }
-      cache.set(name, entry)
-      void value.then((v) => { if (v === null && cache.get(name) === entry) { if (cur) cache.set(name, cur); else cache.delete(name) } })
-      return cur ? value.then(v => v ?? cur.value) : value
+    let h: Hashes | null
+    if (cache.has(name)) {
+      h = lastGood                                                   // null = no manifest known: bare-URL rules below
+      void hashes()                                                  // revalidate in the background when due
+    } else {
+      h = await hashes()
     }
+    // Read after the await: a concurrent caller may have started this load meanwhile (it is then shared).
+    const cur = cache.get(name)
+    const sha = h?.get(name) ?? null
 
-    if (cur && cur.sha === sha) return cur.value
-    if (cur && cur.failedSha === sha && now() - (cur.failedAt ?? 0) < retryMs) return cur.value
+    // Fresh: the same version, or a bare-URL copy (also one whose manifest entry disappeared) within its lifetime.
+    if (cur && (sha !== null ? cur.sha === sha : now() - cur.at < opts.fallbackTtlMs)) return cur.value
 
-    const loading = opts.load(`${opts.baseUrl}/${name}?v=${sha.slice(0, 12)}`)
-    // While the new version loads, concurrent callers share this load (the entry already carries the new hash).
-    const entry: Entry<T> = { sha, at: now(), value: cur ? loading.then(v => v ?? cur.value) : loading }
+    const failed = failures.get(name)
+    if (failed && failed.sha === sha && now() - failed.at < retryMs) return cur ? cur.value : null
+
+    const url = sha !== null ? `${opts.baseUrl}/${name}?v=${sha.slice(0, 12)}` : `${opts.baseUrl}/${name}`
+    const loading = opts.load(url)
+    // Concurrent callers share this load and, if it fails, get the previous good copy like the first caller.
+    const entry: Entry<T> = { sha, at: now(), value: loading.then(v => (v !== null ? v : cur ? cur.value : null)) }
     cache.set(name, entry)
     void loading.then((v) => {
-      if (v !== null || cache.get(name) !== entry) return
-      if (cur) cache.set(name, { ...cur, failedSha: sha, failedAt: now() })   // keep the last good copy
-      else cache.delete(name)                                                // nothing to keep: next call retries
+      if (cache.get(name) !== entry) return
+      if (v !== null) { failures.delete(name); return }
+      failures.set(name, { sha, at: now() })
+      if (cur) cache.set(name, cur)                                  // keep the last good copy (its own version and age)
+      else cache.delete(name)
     })
     return entry.value
   }

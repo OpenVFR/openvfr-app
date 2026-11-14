@@ -49,7 +49,8 @@ import { pointInPolygon } from '@open-vfr/shared/airspaceGeometry'
 import { lookaheadPath, accuracyRing } from '@open-vfr/shared/lookahead'
 import { dropCoveredSubAreas } from '@open-vfr/shared/subAreas'
 import { airspaceDisplayClass } from '@open-vfr/shared/airspaceColors'
-import { fetchTile, onTileDataChange } from '../config'
+import { createTileDerived, useTileDerived } from '../utils/tileDerived'
+import { loadTileGeoJson } from '../utils/geoJsonCache'
 import { altitudeForLimit, effectiveLimitFt, limitMarginFt, insideBand } from '@open-vfr/shared/airspaceAltitude'
 
 // ── Airspace warnings config (useAirspaceWarnings) ─────────────────────────
@@ -122,49 +123,76 @@ type AerodromeFeature = {
   elevationFt: number; primaryFreq: string | null
 }
 
-// ── Module-level airspace cache (shared across renders/hot-reload; also
-// shared between the two consumers that used to fetch it separately) ──────
-let _airspaceFeatures: AirspaceFeature[] | null = null
-let _airspaceLoading = false
-const _airspaceListeners: Array<(f: AirspaceFeature[]) => void> = []
-// Per-country, per-version data: another active country or a manifest change starts a fresh load.
-onTileDataChange(() => { _airspaceFeatures = null; _airspaceLoading = false })
-
-function loadAirspaceOnce(cb: (f: AirspaceFeature[]) => void) {
-  if (_airspaceFeatures) { cb(_airspaceFeatures); return }
-  _airspaceListeners.push(cb)
-  if (_airspaceLoading) return
-  _airspaceLoading = true
-  fetchTile('airspace')
-    .then(r => r.json())
-    .then((fc: GeoJSON.FeatureCollection) => {
-      const arr: AirspaceFeature[] = []
-      for (const f of fc.features) {
-        const g = f.geometry
-        if (g.type !== 'Polygon' && g.type !== 'MultiPolygon') continue
-        const p = f.properties as Record<string, unknown>
-        if (airspaceEnded(p)) continue   // judged at load time, see airspaceInForce
-        const type = String(p.type ?? ''); const cls = airspaceDisplayClass(String(p.class ?? ''), type)
-        if (!cls && !type) continue
-        const name = String(p.name ?? '')
-        const lower = String(p.lower ?? ''), upper = String(p.upper ?? '')
-        const lower_ft = Number(p.lower_ft ?? 0), upper_ft = Number(p.upper_ft ?? 99900)
-        arr.push({
-          // Limits are part of the key: same-named sectors (TMA/CTA sectors with
-          // different bands) must alert and dismiss independently.
-          key: `${name}::${cls}::${lower_ft}-${upper_ft}`, name, cls, type,
-          lower, upper, lower_ft, upper_ft,
-          geometry: g as AirspaceFeature['geometry'],
-        })
-      }
-      // Parent + lettered sub-areas (ESR121 / ESR121B) are one hazard: warn once.
-      const deduped = dropCoveredSubAreas(arr)
-      _airspaceFeatures = deduped
-      _airspaceListeners.forEach(l => l(deduped))
-      _airspaceListeners.length = 0
+// ── Data files, each cached per versioned URL (utils/tileDerived) and shared
+// with the other screens that read them. A new file version or another country
+// is a new URL and so a new load; the hook re-runs its loads on a data tick. ──
+const loadAirspace = createTileDerived('airspace', (fc): AirspaceFeature[] => {
+  const arr: AirspaceFeature[] = []
+  for (const f of fc.features) {
+    const g = f.geometry
+    if (g.type !== 'Polygon' && g.type !== 'MultiPolygon') continue
+    const p = f.properties as Record<string, unknown>
+    if (airspaceEnded(p)) continue   // judged at load time, see airspaceInForce
+    const type = String(p.type ?? ''); const cls = airspaceDisplayClass(String(p.class ?? ''), type)
+    if (!cls && !type) continue
+    const name = String(p.name ?? '')
+    const lower = String(p.lower ?? ''), upper = String(p.upper ?? '')
+    const lower_ft = Number(p.lower_ft ?? 0), upper_ft = Number(p.upper_ft ?? 99900)
+    arr.push({
+      // Limits are part of the key: same-named sectors (TMA/CTA sectors with
+      // different bands) must alert and dismiss independently.
+      key: `${name}::${cls}::${lower_ft}-${upper_ft}`, name, cls, type,
+      lower, upper, lower_ft, upper_ft,
+      geometry: g as AirspaceFeature['geometry'],
     })
-    .catch(() => { _airspaceLoading = false })
-}
+  }
+  // Parent + lettered sub-areas (ESR121 / ESR121B) are one hazard: warn once.
+  const deduped = dropCoveredSubAreas(arr)
+  return deduped
+})
+
+const loadAerodromeFeatures = createTileDerived('aerodromes', (fc): AerodromeFeature[] => {
+  const arr: AerodromeFeature[] = []
+  for (const f of fc.features) {
+    if (f.geometry.type !== 'Point') continue
+    const p        = f.properties as Record<string, unknown>
+    const icao     = String(p['icao'] ?? '')
+    const name     = String(p['name'] ?? '')
+    const elevFt   = Number(p['elevation_ft'] ?? 0)
+    const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
+    const key = icao || name
+    if (!key) continue
+    const rawFreqs = p['frequencies']
+    const freqs: Array<{ service?: string; freq_mhz?: number }> =
+      Array.isArray(rawFreqs) ? rawFreqs
+      : typeof rawFreqs === 'string' ? JSON.parse(rawFreqs)
+      : []
+    const rawContacts = p['contacts']
+    const contacts: Array<{ type?: string; address?: string }> =
+      Array.isArray(rawContacts) ? rawContacts
+      : typeof rawContacts === 'string' ? JSON.parse(rawContacts)
+      : []
+    const PRIMARY_ORDER = ['TWR', 'AFIS', 'INFO', 'APP', 'GROUND', 'CTAF', 'UNICOM', 'RDO', 'RADIO']
+    let primaryFreq: string | null = null
+    for (const svc of PRIMARY_ORDER) {
+      const match = freqs.find(fq => fq.service === svc && fq.freq_mhz != null)
+      if (match) { primaryFreq = match.freq_mhz!.toFixed(3); break }
+    }
+    if (!primaryFreq && freqs.length > 0 && freqs[0].freq_mhz != null) {
+      primaryFreq = freqs[0].freq_mhz!.toFixed(3)
+    }
+    if (!primaryFreq) {
+      const rc = contacts.find(c => c.type === 'RADIO' && c.address)
+      if (rc) { const mhz = parseFloat(rc.address!); if (!isNaN(mhz)) primaryFreq = mhz.toFixed(3) }
+    }
+    arr.push({ key, icao, name, lat, lng, elevationFt: elevFt, primaryFreq })
+  }
+  return arr
+})
+const loadObstacleFc = () => loadTileGeoJson('obstacles')
+const loadLandmarkFc = () => loadTileGeoJson('landmarks')   // optional dataset: absent = no landmarks
+const NO_AIRSPACE: AirspaceFeature[] = []
+const NO_AERODROMES: AerodromeFeature[] = []
 
 function approxDistNm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const dLat = (lat2 - lat1) * NM_PER_DEG_LAT
@@ -203,13 +231,13 @@ export function usePositionAlerts(
   /** Per-category alert level (alert / info chip / ignore). */
   airspaceLevels: AirspaceAlertLevels = DEFAULT_AIRSPACE_LEVELS,
 ): PositionAlerts {
-  const [airspaceFeatures, setAirspaceFeatures]   = useState<AirspaceFeature[]>([])
+  const airspaceFeatures  = useTileDerived(loadAirspace) ?? NO_AIRSPACE
   // Obstacles + landmarks; unknown heights use the per-kind estimate.
-  const [obstacleFc, setObstacleFc]               = useState<GeoJSON.FeatureCollection | null>(null)
-  const [landmarkFc, setLandmarkFc]               = useState<GeoJSON.FeatureCollection | null>(null)
+  const obstacleFc        = useTileDerived(loadObstacleFc)
+  const landmarkFc        = useTileDerived(loadLandmarkFc)
   const mefGrids                                  = useMefGrids()
   const obstacleFeatures = useMemo<ObstaclePoint[]>(() => buildObstructionPoints(obstacleFc, landmarkFc, mefGrids), [obstacleFc, landmarkFc, mefGrids])
-  const [aerodromeFeatures, setAerodromeFeatures] = useState<AerodromeFeature[]>([])
+  const aerodromeFeatures = useTileDerived(loadAerodromeFeatures) ?? NO_AERODROMES
 
   const [airspaceAlerts, setAirspaceAlerts]               = useState<AirspaceAlert[]>([])
   const [obstructionAlerts, setObstructionAlerts]         = useState<ObstructionAlert[]>([])
@@ -228,69 +256,8 @@ export function usePositionAlerts(
   const obstructionSigRef = useRef('')
   const airfieldSigRef    = useRef('')
 
-  // ── Load each feature set once ──────────────────────────────────────────
-  useEffect(() => { loadAirspaceOnce(setAirspaceFeatures) }, [])
+  // Feature sets: loaded above through useTileDerived (per versioned URL, reloaded on a data tick).
 
-  useEffect(() => {
-    fetchTile('obstacles')
-      .then(r => r.json())
-      .then((fc: GeoJSON.FeatureCollection) => setObstacleFc(fc))
-      .catch(() => { /* offline-safe */ })
-  }, [])
-
-  // Landmarks (masts, chimneys, churches...): optional dataset, fetched like the obstacles.
-  useEffect(() => {
-    let alive = true
-    fetchTile('landmarks')
-      .then(r => r.json())
-      .then((fc: GeoJSON.FeatureCollection) => { if (alive) setLandmarkFc(fc) })
-      .catch(() => { /* offline-safe / not published for this country */ })
-    return () => { alive = false }
-  }, [])
-
-  useEffect(() => {
-    fetchTile('aerodromes')
-      .then(r => r.json())
-      .then((fc: GeoJSON.FeatureCollection) => {
-        const arr: AerodromeFeature[] = []
-        for (const f of fc.features) {
-          if (f.geometry.type !== 'Point') continue
-          const p        = f.properties as Record<string, unknown>
-          const icao     = String(p['icao'] ?? '')
-          const name     = String(p['name'] ?? '')
-          const elevFt   = Number(p['elevation_ft'] ?? 0)
-          const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
-          const key = icao || name
-          if (!key) continue
-          const rawFreqs = p['frequencies']
-          const freqs: Array<{ service?: string; freq_mhz?: number }> =
-            Array.isArray(rawFreqs) ? rawFreqs
-            : typeof rawFreqs === 'string' ? JSON.parse(rawFreqs)
-            : []
-          const rawContacts = p['contacts']
-          const contacts: Array<{ type?: string; address?: string }> =
-            Array.isArray(rawContacts) ? rawContacts
-            : typeof rawContacts === 'string' ? JSON.parse(rawContacts)
-            : []
-          const PRIMARY_ORDER = ['TWR', 'AFIS', 'INFO', 'APP', 'GROUND', 'CTAF', 'UNICOM', 'RDO', 'RADIO']
-          let primaryFreq: string | null = null
-          for (const svc of PRIMARY_ORDER) {
-            const match = freqs.find(fq => fq.service === svc && fq.freq_mhz != null)
-            if (match) { primaryFreq = match.freq_mhz!.toFixed(3); break }
-          }
-          if (!primaryFreq && freqs.length > 0 && freqs[0].freq_mhz != null) {
-            primaryFreq = freqs[0].freq_mhz!.toFixed(3)
-          }
-          if (!primaryFreq) {
-            const rc = contacts.find(c => c.type === 'RADIO' && c.address)
-            if (rc) { const mhz = parseFloat(rc.address!); if (!isNaN(mhz)) primaryFreq = mhz.toFixed(3) }
-          }
-          arr.push({ key, icao, name, lat, lng, elevationFt: elevFt, primaryFreq })
-        }
-        setAerodromeFeatures(arr)
-      })
-      .catch(() => { /* offline-safe */ })
-  }, [])
 
   // ── Prune expired notifications every second (unrelated to position ticks,
   // kept as its own interval — see useAirspaceNotifications.ts original) ───

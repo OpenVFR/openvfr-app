@@ -11,6 +11,7 @@
  */
 import type { AssistantReview } from '@open-vfr/shared/types'
 import type { ParsedWind } from '@open-vfr/shared/fetchWx'
+import { useTileDataTick } from '../utils/tileDerived'
 import { useEffect, useMemo, useState } from 'react'
 import { useIsFocused } from '@react-navigation/native'
 import { buildVirtualRadarProfile, applyTerrainToBands, type VirtualRadarProfile } from '@open-vfr/shared/virtualRadarCalc'
@@ -20,7 +21,6 @@ import { resolveMsaMargins } from '@open-vfr/shared/msaMargins'
 import { resolveAirspaceLevels } from '@open-vfr/shared/airspaceAlertLevel'
 import { notamRegionsFor } from '@open-vfr/shared/notamRegionScope'
 import { isIfrOnly } from '@open-vfr/shared/notamRelevance'
-import { onTileDataChange } from '../config'
 import { loadTileGeoJson } from '../utils/geoJsonCache'
 import { useMefGrids } from './useMefGrids'
 import { useAppActive } from './useAppActive'
@@ -72,8 +72,7 @@ export function usePreflightCheck(opts: {
   const active = opts.enabled && waypoints.length >= 2
   const signedIn = authState.status === 'authenticated'
 
-  const [countryTick, setCountryTick] = useState(0)
-  useEffect(() => onTileDataChange(() => setCountryTick((t) => t + 1)), [])
+  const dataTick = useTileDataTick()
 
   // Data files. A file that fails to load is recorded, not treated as empty: the card says the check did not run.
   const [airspaceGeo, setAirspaceGeo] = useState<GeoJSON.FeatureCollection | null>(null)
@@ -87,7 +86,7 @@ export function usePreflightCheck(opts: {
     loadTileGeoJson('airspace').then((d) => alive && setAirspaceGeo(d)).catch(() => { if (alive) { setAirspaceGeo(EMPTY_FC); setAirspaceFailed(true) } })
     loadTileGeoJson('aerodromes').then((d) => alive && setAerodromeGeo(d)).catch(() => { if (alive) { setAerodromeGeo(null); setAerodromesFailed(true) } })
     return () => { alive = false }
-  }, [active, countryTick])
+  }, [active, dataTick])
 
   // Sea (grid) and large lakes for the glide-to-land check. The lakes file is small; the full water
   // file is far too large for fetch() on Android and is never loaded here. A country without the lakes
@@ -99,7 +98,7 @@ export function usePreflightCheck(opts: {
     let alive = true
     loadTileGeoJson('lakes').then((d) => alive && setLakes(d)).catch(() => { if (alive) setLakes(null) })
     return () => { alive = false }
-  }, [active, countryTick])
+  }, [active, dataTick])
   const margins = settings.msaMargins
   const airspaceLevels = useMemo(() => resolveAirspaceLevels(settings.alertAirspaceLevels), [settings.alertAirspaceLevels])
 

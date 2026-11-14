@@ -11,13 +11,14 @@
  * the popup queries, cached per URL here. Offline-safe: a failed load just
  * means no matches, i.e. the circles stay.
  */
+import { useTileDataTick } from '../utils/tileDerived'
 import { useEffect, useMemo, useState } from 'react'
 import type { NotamItem } from '@open-vfr/shared/fetchNotam'
 import {
   buildAirspaceIndex, matchNotamsToAirspace,
   type AirspaceIndexEntry, type MatchedAirspaceNotam,
 } from '@open-vfr/shared/notamMapLayers'
-import { tileUrlReady, onTileDataChange } from '../config'
+import { tileUrlReady } from '../config'
 
 export type { MatchedAirspaceNotam }
 
@@ -39,8 +40,7 @@ export function useNotamAirspaceMatch(regionalNotams: NotamItem[], enabled = tru
 } {
   const [index, setIndex] = useState<AirspaceIndexEntry[]>([])
   // Country or manifest change: reload (the versioned URL differs then).
-  const [dataTick, setDataTick] = useState(0)
-  useEffect(() => onTileDataChange(() => setDataTick(t => t + 1)), [])
+  const dataTick = useTileDataTick()
 
   useEffect(() => {
     if (!enabled) return

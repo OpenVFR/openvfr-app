@@ -2,7 +2,7 @@
  * useLivePlog — live pilot log state for the in-flight PLOG panel.
  *
  * Ported from src/hooks/useLivePlog.ts (web) — identical logic, only the
- * GeoJSON fetch URLs differ (fetchTile() instead of same-origin /tiles/*).
+ * GeoJSON loads differ (utils/tileDerived instead of same-origin /tiles/*).
  *
  * Tracks actual times of arrival (ATAs) as waypoints are passed, computes
  * live ETAs for upcoming waypoints from current ground speed, calculates
@@ -14,7 +14,7 @@ import { useState, useEffect, useRef } from 'react'
 import type { GpsPosition, FlyingMode } from '../utils/gpsTypes'
 import type { RouteWaypoint } from '../types/db'
 import { distanceNm } from '../utils/routeCalc'
-import { fetchTile, onTileDataChange } from '../config'
+import { createTileDerived } from '../utils/tileDerived'
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -54,19 +54,13 @@ type CachedNavaid = {
   id: string; name: string; type: string; freq: string
 }
 
-let _aeroCache: CachedAerodrome[] | null = null
-let _navCache:  CachedNavaid[]    | null = null
-// Per-country, per-version data: another active country or a manifest change starts a fresh load.
-onTileDataChange(() => { _aeroCache = null; _navCache = null })
 
 const COMM_SERVICES = ['TWR', 'AFIS', 'APP', 'DEP', 'GND', 'INFO', 'FIS', 'UNICOM', 'ATIS']
 const COMM_PRIORITY = COMM_SERVICES
 
-async function loadAerodromes(): Promise<CachedAerodrome[]> {
-  if (_aeroCache) return _aeroCache
-  try {
-    const fc = await fetchTile('aerodromes').then(r => r.json()) as GeoJSON.FeatureCollection
-    _aeroCache = fc.features
+// Derived per versioned URL (utils/tileDerived): a new file version or another country loads again. A failed
+// load gives an empty list this time and is retried on the next call.
+const aerodromesDerived = createTileDerived('aerodromes', (fc): CachedAerodrome[] => fc.features
       .filter(f => f.geometry.type === 'Point')
       .map(f => {
         const g = f.geometry as GeoJSON.Point
@@ -81,18 +75,10 @@ async function loadAerodromes(): Promise<CachedAerodrome[]> {
           .filter(x => x.freq)
         return { lat: g.coordinates[1], lng: g.coordinates[0], icao: String(p.icao ?? ''), name: String(p.name ?? ''), freqs }
       })
-      .filter(a => a.freqs.length > 0)
-  } catch {
-    _aeroCache = []
-  }
-  return _aeroCache
-}
+      .filter(a => a.freqs.length > 0))
+const loadAerodromes = (): Promise<CachedAerodrome[]> => aerodromesDerived().catch(() => [])
 
-async function loadNavaids(): Promise<CachedNavaid[]> {
-  if (_navCache) return _navCache
-  try {
-    const fc = await fetchTile('navaids').then(r => r.json()) as GeoJSON.FeatureCollection
-    _navCache = fc.features
+const navaidsDerived = createTileDerived('navaids', (fc): CachedNavaid[] => fc.features
       .filter(f => f.geometry.type === 'Point')
       .map(f => {
         const g = f.geometry as GeoJSON.Point
@@ -105,12 +91,8 @@ async function loadNavaids(): Promise<CachedNavaid[]> {
           freq: String(p.freq_str ?? ''),
         }
       })
-      .filter(n => n.freq && n.type !== 'MARKER')
-  } catch {
-    _navCache = []
-  }
-  return _navCache
-}
+      .filter(n => n.freq && n.type !== 'MARKER'))
+const loadNavaids = (): Promise<CachedNavaid[]> => navaidsDerived().catch(() => [])
 
 // ── Distance helper ────────────────────────────────────────────────────────
 

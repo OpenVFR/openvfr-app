@@ -163,10 +163,12 @@ export async function fetchTile(key: TileKey, init?: RequestInit): Promise<Respo
 }
 
 /**
- * Runs `reset` whenever data loaded earlier may be wrong now: the active
+ * Runs `reset` whenever data loaded earlier may be outdated: the active
  * country changed, or the tile manifest changed (new data, or the first
- * manifest after a start that had to go on with unversioned URLs). Module
- * caches of tile data reset through this. Returns an unsubscribe function.
+ * manifest after a start that had to go on with unversioned URLs). Hooks use
+ * it as a reload trigger (utils/tileDerived useTileDataTick); caches keyed by
+ * versioned URL then reload only the files whose URL changed. Returns an
+ * unsubscribe function.
  */
 export function onTileDataChange(reset: () => void): () => void {
   const offCountry = onActiveCountriesChange(() => reset())

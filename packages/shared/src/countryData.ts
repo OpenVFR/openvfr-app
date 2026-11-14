@@ -113,12 +113,17 @@ export function onActiveCountriesChange(listener: (countries: string[]) => void)
 }
 
 /**
- * Drops every cached dataset, so the next load fetches again with the URLs that are current now. The platform wiring calls it
- * when the tile manifest changes (including the first manifest after a start that had to go on without one): nothing loaded
- * from an unversioned or outdated URL is reused afterwards.
+ * Drops the cached datasets loaded from a URL that is no longer the current one for its file (an older version, or an
+ * unversioned fallback from a start without the manifest), so the next load fetches them again; unchanged files stay
+ * cached. The platform wiring calls it when the tile manifest changes.
  */
 export function invalidateCountryData(): void {
-  _cache.clear()
+  if (!_config) { _cache.clear(); return }
+  for (const key of [..._cache.keys()]) {
+    const urls = key.split('|').slice(1)
+    const fileOf = (u: string) => (u.split('?')[0] ?? '').split('/').pop() ?? ''
+    if (urls.some(u => countryFileUrl(fileOf(u)) !== u)) _cache.delete(key)
+  }
 }
 
 /** URL of one country file via the configured resolver. Synchronous: may not be final yet; fetch with countryFileUrlReady(). */
@@ -127,7 +132,8 @@ export function countryFileUrl(fileName: string): string {
   return _config.resolveUrl(fileName)
 }
 
-/** Waits until the configured URLs are final (see CountryDataConfig.whenReady). Never rejects. */
+/** Waits until the configured URLs are final (see CountryDataConfig.whenReady). Rejects only when configureCountryData()
+ *  has not been called (a setup error, like countryFileUrl's throw); a whenReady failure never rejects. */
 export function countryDataReady(): Promise<void> {
   if (!_config) return Promise.reject(new Error('configureCountryData() has not been called'))
   return _config.whenReady ? _config.whenReady().catch(() => undefined) : Promise.resolve()

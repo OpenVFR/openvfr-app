@@ -30,11 +30,10 @@
  * adding a fifth.
  */
 
-import { useEffect, useState } from 'react'
 import type { RouteWaypoint } from '@open-vfr/shared/types'
 import { nearestRoutePoint } from '@open-vfr/shared/notamRouteFilter'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
-import { fetchTile, onTileDataChange } from '../config'
+import { createTileDerived, useTileDerived } from '../utils/tileDerived'
 import { parseFreqs, type NearbyFreq } from './useNearbyFrequencies'
 import type { GpsPosition } from '../utils/gpsTypes'
 
@@ -81,43 +80,33 @@ function parseJson<T>(v: unknown, fallback: T): T {
   return v as T
 }
 
-let _cache: FullVicinityAerodrome[] | null = null
-let _loading = false
-// Per-country, per-version data: another active country or a manifest change starts a fresh load.
-onTileDataChange(() => { _cache = null; _loading = false })
-const _listeners: Array<(d: FullVicinityAerodrome[]) => void> = []
-
-export function loadFullVicinityAerodromes(cb: (d: FullVicinityAerodrome[]) => void) {
-  if (_cache) { cb(_cache); return }
-  _listeners.push(cb)
-  if (_loading) return
-  _loading = true
-  fetchTile('aerodromes')
-    .then((r) => r.json())
-    .then((fc: GeoJSON.FeatureCollection) => {
-      const arr: FullVicinityAerodrome[] = []
-      for (const f of fc.features) {
-        if (f.geometry.type !== 'Point') continue
-        const p = f.properties as Record<string, unknown>
-        const icao = String(p.icao ?? '').trim()
-        if (!icao) continue
-        const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
-        arr.push({
-          icao,
-          name:        String(p.name ?? ''),
-          lat, lng,
-          elevationFt: typeof p.elevation_ft === 'number' ? p.elevation_ft : Number(p.elevation_ft) || undefined,
-          runways:     parseJson<VicinityRunway[]>(p.runways, []),
-          frequencies: parseFreqs(p.frequencies),
-        })
-      }
-      _cache = arr
-      _loading = false
-      _listeners.forEach((l) => l(arr))
-      _listeners.length = 0
+// Derived per versioned URL (utils/tileDerived): a new file version or another country loads again.
+const loadVicinity = createTileDerived('aerodromes', (fc): FullVicinityAerodrome[] => {
+  const arr: FullVicinityAerodrome[] = []
+  for (const f of fc.features) {
+    if (f.geometry.type !== 'Point') continue
+    const p = f.properties as Record<string, unknown>
+    const icao = String(p.icao ?? '').trim()
+    if (!icao) continue
+    const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
+    arr.push({
+      icao,
+      name:        String(p.name ?? ''),
+      lat, lng,
+      elevationFt: typeof p.elevation_ft === 'number' ? p.elevation_ft : Number(p.elevation_ft) || undefined,
+      runways:     parseJson<VicinityRunway[]>(p.runways, []),
+      frequencies: parseFreqs(p.frequencies),
     })
-    .catch(() => { _loading = false })
+  }
+  return arr
+})
+
+/** Every aerodrome with runways and frequencies (versioned data, cached per file version). */
+export function loadFullVicinityAerodromes(cb: (d: FullVicinityAerodrome[]) => void) {
+  loadVicinity().then(cb).catch(() => { /* offline-safe */ })
 }
+
+const NO_AERODROMES: FullVicinityAerodrome[] = []
 
 interface Opts {
   waypoints:     RouteWaypoint[]
@@ -127,9 +116,7 @@ interface Opts {
 }
 
 export function useVicinityAerodromes({ waypoints, position, homeIcao }: Opts): VicinityAerodrome[] {
-  const [all, setAll] = useState<FullVicinityAerodrome[]>([])
-
-  useEffect(() => { loadFullVicinityAerodromes(setAll) }, [])
+  const all = useTileDerived(loadVicinity) ?? NO_AERODROMES
 
   const useRoute = waypoints.length > 0
 

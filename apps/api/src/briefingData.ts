@@ -222,11 +222,24 @@ export function routeCountries(waypoints: readonly RouteWaypoint[], available: r
 
 // ── Terrain grid (conservative MSA) ─────────────────────────────────────────
 
+/** One terrain grid; null when unavailable, with the reason logged like the datasets (a missing grid only makes the MSA
+ *  less conservative, so it must be diagnosable). */
+async function fetchMef(url: string): Promise<MefGrid | null> {
+  try {
+    const res = await fetch(url, { headers: TILE_FETCH_HEADERS, signal: AbortSignal.timeout(30_000) })
+    if (!res.ok) { warnDataset(url, `HTTP ${res.status}`); await res.body?.cancel().catch(() => undefined); return null }
+    const grid = parseMef(new Uint8Array(await res.arrayBuffer()))
+    if (!grid) warnDataset(url, 'not a valid terrain grid')
+    return grid
+  } catch (err) {
+    warnDataset(url, err instanceof Error ? err.message : String(err))
+    return null
+  }
+}
+
 const mefFiles = createTileFileCache<MefGrid>({
   baseUrl: TILES_BASE_URL,
-  load: url => fetch(url, { headers: TILE_FETCH_HEADERS, signal: AbortSignal.timeout(30_000) })
-    .then(async r => (r.ok ? parseMef(new Uint8Array(await r.arrayBuffer())) : null))
-    .catch(() => null),
+  load: fetchMef,
   fallbackTtlMs: 24 * 60 * 60 * 1000,
 })
 

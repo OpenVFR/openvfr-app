@@ -11,45 +11,31 @@
  */
 
 import { useEffect, useState, useRef } from 'react'
-import { fetchTile, onTileDataChange } from '../config'
+import { createTileDerived, useTileDerived } from '../utils/tileDerived'
 import { distanceNm } from '../utils/routeCalc'
 import type { GpsPosition } from '../utils/gpsTypes'
 
 type CachedAerodrome = { icao: string; lat: number; lng: number; elevationFt: number }
 
-let _cache: CachedAerodrome[] | null = null
-let _loading = false
-// Per-country, per-version data: another active country or a manifest change starts a fresh load.
-onTileDataChange(() => { _cache = null; _loading = false })
-const _listeners: Array<(d: CachedAerodrome[]) => void> = []
+// Derived per versioned URL (utils/tileDerived): a new file version or another country loads again.
+const loadAerodromes = createTileDerived('aerodromes', (fc): CachedAerodrome[] => {
+  const arr: CachedAerodrome[] = []
+  for (const f of fc.features) {
+    if (f.geometry.type !== 'Point') continue
+    const p = f.properties as Record<string, unknown>
+    const icao = String(p.icao ?? '').trim()
+    // A missing elevation must not become 0 (Number(null) === 0): the QNH
+    // self-calibration would then treat the field as sea level.
+    if (p.elevation_ft == null || p.elevation_ft === '') continue
+    const elevationFt = Number(p.elevation_ft)
+    if (!icao || !Number.isFinite(elevationFt)) continue
+    const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
+    arr.push({ icao, lat, lng, elevationFt })
+  }
+  return arr
+})
 
-function loadOnce(cb: (d: CachedAerodrome[]) => void) {
-  if (_cache) { cb(_cache); return }
-  _listeners.push(cb)
-  if (_loading) return
-  _loading = true
-  fetchTile('aerodromes')
-    .then(r => r.json())
-    .then((fc: GeoJSON.FeatureCollection) => {
-      const arr: CachedAerodrome[] = []
-      for (const f of fc.features) {
-        if (f.geometry.type !== 'Point') continue
-        const p = f.properties as Record<string, unknown>
-        const icao = String(p.icao ?? '').trim()
-        // A missing elevation must not become 0 (Number(null) === 0): the QNH
-        // self-calibration would then treat the field as sea level.
-        if (p.elevation_ft == null || p.elevation_ft === '') continue
-        const elevationFt = Number(p.elevation_ft)
-        if (!icao || !Number.isFinite(elevationFt)) continue
-        const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
-        arr.push({ icao, lat, lng, elevationFt })
-      }
-      _cache = arr
-      _listeners.forEach(l => l(arr))
-      _listeners.length = 0
-    })
-    .catch(() => { _loading = false })
-}
+const NO_AERODROMES: CachedAerodrome[] = []
 
 export type NearestAerodromeResult = {
   icao:        string
@@ -58,11 +44,9 @@ export type NearestAerodromeResult = {
 } | null
 
 export function useNearestAerodrome(position: GpsPosition | null): NearestAerodromeResult {
-  const [aerodromes, setAerodromes] = useState<CachedAerodrome[]>([])
+  const aerodromes = useTileDerived(loadAerodromes) ?? NO_AERODROMES
   const [result, setResult] = useState<NearestAerodromeResult>(null)
   const resultRef = useRef<NearestAerodromeResult>(null)
-
-  useEffect(() => { loadOnce(setAerodromes) }, [])
 
   useEffect(() => {
     if (!position || aerodromes.length === 0) {

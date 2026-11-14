@@ -90,7 +90,9 @@ export default defineConfig({
           {
             // The tile host's manifest.json: NetworkFirst, so it is current online and still there offline (the apps
             // version every tile URL with it; without it an offline start would ask for unversioned URLs that the
-            // aviation-data cache below never holds). Same logic as isTileManifest() in pwa-rules.ts (inline: see below).
+            // aviation-data cache below never holds). A request that hangs instead of failing is covered in the app:
+            // after a short grace it uses the manifest stored in localStorage (main.tsx). Same logic as
+            // isTileManifest() in pwa-rules.ts (inline: see below).
             urlPattern: ({ url }: { url: URL }) =>
               url.pathname.endsWith('/manifest.json') && (url.pathname.includes('/tiles/') || url.hostname.startsWith('tiles.')),
             handler: 'NetworkFirst' as const,

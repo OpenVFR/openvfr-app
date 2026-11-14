@@ -13,7 +13,8 @@ import { distanceToRouteNm } from '@open-vfr/shared/notamRouteFilter'
 import { distanceAlongRouteNm } from '@open-vfr/shared/virtualRadarCalc'
 import { distanceNm } from '@open-vfr/shared/routeCalc'
 import { fetchWxNearest, decodeMetar, type MetarDecoded, type WxStationCandidate } from '@open-vfr/shared/fetchWx'
-import { API_BASE, tileUrlReady } from '../config'
+import { API_BASE } from '../config'
+import { createTileDerived, useTileDerived } from '../utils/tileDerived'
 import { authHeaders } from '../utils/authClient'
 
 const BUFFER_NM    = 15
@@ -58,33 +59,22 @@ export interface RouteWeatherStation {
 
 interface AerodromeRecord { icao: string; name: string; lat: number; lng: number }
 
-// Module-level cache of the parsed aerodrome list, keyed by URL, shared by
-// every hook instance -- MapScreen runs this hook twice (planned route +
-// Map Ruler line), and the nationwide aerodromes GeoJSON shouldn't be
-// fetched and parsed once per instance on a memory-constrained device.
-// Cleared on failure so a later mount can retry after a connectivity gap.
-let aerodromesCache: { url: string; promise: Promise<AerodromeRecord[]> } | null = null
-
-function loadAerodromes(url: string): Promise<AerodromeRecord[]> {
-  if (aerodromesCache?.url === url) return aerodromesCache.promise
-  const promise = fetch(url)
-    .then((r) => r.json())
-    .then((fc: GeoJSON.FeatureCollection) => {
-      const arr: AerodromeRecord[] = []
-      for (const f of fc.features) {
-        if (f.geometry.type !== 'Point') continue
-        const p = f.properties as Record<string, unknown>
-        const icao = String(p['icao'] ?? '')
-        if (!icao) continue
-        const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
-        arr.push({ icao, name: String(p['name'] ?? ''), lat, lng })
-      }
-      return arr
-    })
-  promise.catch(() => { if (aerodromesCache?.promise === promise) aerodromesCache = null })
-  aerodromesCache = { url, promise }
-  return promise
-}
+// The parsed aerodrome list, cached per versioned URL and shared by every hook instance (utils/tileDerived) --
+// MapScreen runs this hook twice (planned route + Map Ruler line), and the nationwide aerodromes GeoJSON shouldn't be
+// fetched and parsed once per instance on a memory-constrained device. A failed load is retried next time.
+const loadAerodromes = createTileDerived('aerodromes', (fc): AerodromeRecord[] => {
+  const arr: AerodromeRecord[] = []
+  for (const f of fc.features) {
+    if (f.geometry.type !== 'Point') continue
+    const p = f.properties as Record<string, unknown>
+    const icao = String(p['icao'] ?? '')
+    if (!icao) continue
+    const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
+    arr.push({ icao, name: String(p['name'] ?? ''), lat, lng })
+  }
+  return arr
+})
+const NO_AERODROMES: AerodromeRecord[] = []
 
 // `enabled` defaults true (matches every existing call site) -- MapScreen
 // passes mapReady here so this hook's own aerodromes.json fetch doesn't fire
@@ -93,17 +83,8 @@ function loadAerodromes(url: string): Promise<AerodromeRecord[]> {
 // below are already naturally gated behind `waypoints.length > 0`, which is
 // rarely true at cold start, but the top-level aerodromes fetch was not.
 export function useWeatherAlongRoute(waypoints: RouteWaypoint[], enabled = true): RouteWeatherStation[] {
-  const [aerodromes, setAerodromes] = useState<AerodromeRecord[]>([])
+  const aerodromes = useTileDerived(loadAerodromes, enabled) ?? NO_AERODROMES
   const [stations, setStations] = useState<RouteWeatherStation[]>([])
-
-  useEffect(() => {
-    if (!enabled) return
-    let cancelled = false
-    tileUrlReady('aerodromes').then(loadAerodromes)
-      .then((arr) => { if (!cancelled) setAerodromes(arr) })
-      .catch(() => { /* offline-safe */ })
-    return () => { cancelled = true }
-  }, [enabled])
 
   useEffect(() => {
     if (!enabled || waypoints.length === 0 || aerodromes.length === 0) { setStations((prev) => (prev.length ? [] : prev)); return }

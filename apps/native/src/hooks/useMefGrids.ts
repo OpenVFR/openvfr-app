@@ -6,9 +6,9 @@
  * pmtiles archives it is never read in ranges. A missing file yields no grid,
  * so MSA falls back to the centreline samples only.
  */
+import { useTileDataTick } from '../utils/tileDerived'
 import { useEffect, useState } from 'react'
 import { loadMefGrids, type MefGrid } from '@open-vfr/shared/mefGrid'
-import { onTileDataChange } from '../config'
 import { OFFLINE_ASSETS, resolveUriReady } from '../utils/offlineCache'
 
 async function fetchBytes(uri: string): Promise<Uint8Array> {
@@ -19,8 +19,7 @@ async function fetchBytes(uri: string): Promise<Uint8Array> {
 
 export function useMefGrids(): MefGrid[] {
   const [grids, setGrids] = useState<MefGrid[]>([])
-  const [tick, setTick] = useState(0)
-  useEffect(() => onTileDataChange(() => setTick((t) => t + 1)), [])
+  const tick = useTileDataTick()
   useEffect(() => {
     let alive = true
     const asset = OFFLINE_ASSETS.find((a) => a.key === 'mef')

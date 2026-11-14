@@ -44,7 +44,6 @@ describe('versionedTileUrlReady', () => {
     const p = mod.versionedTileUrlReady(BASE, 'se-airspace.geojson')
     f.respond(manifest('ab'))
     expect(await p).toBe(`${BASE}/se-airspace.geojson?v=${'ab'.repeat(6)}`)
-    expect(mod.isVersionedTileUrl(await p)).toBe(true)
     expect(f.calls).toEqual([`${BASE}/manifest.json`])
   })
 
@@ -115,6 +114,7 @@ describe('change listeners and the unversioned fallback', () => {
     f.respond(manifest('ab'))
     await vi.advanceTimersByTimeAsync(0)
     expect(seen).toHaveBeenCalledTimes(1)
+    expect(seen).toHaveBeenCalledWith('versioned')
   })
 
   it('do not fire on a normal start where every caller got the manifest', async () => {
@@ -175,10 +175,72 @@ describe('stored manifest (offline start)', () => {
     expect(mod.versionedTileUrl(BASE, 'se-airspace.geojson')).toBe(`${BASE}/se-airspace.geojson?v=${'cd'.repeat(6)}`)
     expect(mod.isTileManifestFromStorage()).toBe(false)
     expect(seen).toHaveBeenCalledTimes(1)
+    expect(seen).toHaveBeenCalledWith('update')
   })
 
   it('ignores a stored manifest of another tile host', async () => {
     const store = memStore(JSON.stringify({ base: 'https://other.example.org', manifest: manifest('ab') }))
+    const f = deferredFetch()
+    vi.stubGlobal('fetch', f.fetchMock)
+    mod.enableTileManifestPersistence(store)
+    const url = mod.versionedTileUrlReady(BASE, 'se-airspace.geojson')
+    f.fail()
+    expect(await url).toBe(`${BASE}/se-airspace.geojson`)
+  })
+})
+
+describe('robustness', () => {
+  it('ignores an older load that finishes after a refresh started a newer one', async () => {
+    const responders: Array<(b: unknown) => void> = []
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => {
+      responders.push((b) => resolve({ ok: true, json: async () => b } as Response))
+    })))
+    const first = mod.loadTileManifest(BASE)
+    const second = mod.refreshTileManifest(BASE)
+    responders[1]!(manifest('cd'))
+    await second
+    responders[0]!(manifest('ab'))
+    await first
+    expect(mod.versionedTileUrl(BASE, 'se-airspace.geojson')).toBe(`${BASE}/se-airspace.geojson?v=${'cd'.repeat(6)}`)
+  })
+
+  it('drops entries without a valid sha256 instead of failing in every URL builder', async () => {
+    const f = deferredFetch()
+    vi.stubGlobal('fetch', f.fetchMock)
+    const p = mod.loadTileManifest(BASE)
+    f.respond({ files: { 'a.geojson': { sha256: 42 }, 'b.geojson': { sha256: 'x&y=1' }, 'se-airspace.geojson': { sha256: 'ab'.repeat(32), bytes: 1 } } })
+    await p
+    expect(mod.versionedTileUrl(BASE, 'a.geojson')).toBe(`${BASE}/a.geojson`)
+    expect(mod.versionedTileUrl(BASE, 'b.geojson')).toBe(`${BASE}/b.geojson`)
+    expect(mod.versionedTileUrl(BASE, 'se-airspace.geojson')).toBe(`${BASE}/se-airspace.geojson?v=${'ab'.repeat(6)}`)
+  })
+
+  it('a refresh that names other content notifies `update`, an identical one does not', async () => {
+    let f = deferredFetch()
+    vi.stubGlobal('fetch', f.fetchMock)
+    const seen = vi.fn()
+    mod.onTileManifestChanged(seen)
+    let p = mod.loadTileManifest(BASE); f.respond(manifest('ab')); await p
+    f = deferredFetch(); vi.stubGlobal('fetch', f.fetchMock)
+    p = mod.refreshTileManifest(BASE); f.respond(manifest('ab')); await p
+    expect(seen).not.toHaveBeenCalled()
+    f = deferredFetch(); vi.stubGlobal('fetch', f.fetchMock)
+    p = mod.refreshTileManifest(BASE); f.respond(manifest('cd')); await p
+    expect(seen).toHaveBeenCalledWith('update')
+  })
+
+  it('shares one wait (and one storage read) between concurrent callers, and uses a stored copy after the short grace', async () => {
+    const getItem = vi.fn(() => JSON.stringify({ base: BASE, manifest: manifest('ab') }))
+    vi.stubGlobal('fetch', deferredFetch().fetchMock)            // never answers
+    mod.enableTileManifestPersistence({ getItem, setItem: () => {} })
+    const urls = Promise.all(Array.from({ length: 20 }, () => mod.versionedTileUrlReady(BASE, 'se-airspace.geojson')))
+    await vi.advanceTimersByTimeAsync(1000)                      // grace, well before the 3 s timeout
+    expect(new Set(await urls)).toEqual(new Set([`${BASE}/se-airspace.geojson?v=${'ab'.repeat(6)}`]))
+    expect(getItem).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects a stored manifest with invalid entries', async () => {
+    const store = { getItem: () => JSON.stringify({ base: BASE, manifest: { files: { 'se-airspace.geojson': { sha256: null } } } }), setItem: () => {} }
     const f = deferredFetch()
     vi.stubGlobal('fetch', f.fetchMock)
     mod.enableTileManifestPersistence(store)

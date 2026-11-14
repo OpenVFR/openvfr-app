@@ -3,8 +3,9 @@
  * (airspace, obstacles, landmarks, ...), keyed by URL.
  */
 
-import { onTileManifestChanged } from '@open-vfr/shared/tileManifest'
-import { tileUrlReady, type TileKey } from '../config'
+import { onTileManifestChanged, versionedTileUrl } from '@open-vfr/shared/tileManifest'
+import { fetchWithRetry } from '@open-vfr/shared/fetchWithRetry'
+import { TILE_BASE, tileUrlReady, type TileKey } from '../config'
 
 // ---------------------------------------------------------------------------
 // Module-level GeoJSON cache — fetch + JSON.parse each file exactly once per
@@ -27,9 +28,17 @@ import { tileUrlReady, type TileKey } from '../config'
 // ---------------------------------------------------------------------------
 const _geoJsonCache = new Map<string, Promise<GeoJSON.FeatureCollection>>()
 // Keyed by URL, so a new data version (new ?v=) or another country loads fresh by itself. On a manifest
-// change the cache is emptied as well: an entry loaded from an unversioned fallback URL (manifest slow or
-// missing at start) must not be handed out once the manifest is known.
-onTileManifestChanged(() => { _geoJsonCache.clear() })
+// change only the entries whose URL is no longer the current one for their file are dropped (an older
+// version, or an unversioned fallback URL from a start without the manifest); unchanged files stay parsed.
+/** A tile-host URL that is not the current one for its file (an older version, or an unversioned fallback). */
+export function isOutdatedTileUrl(url: string): boolean {
+  if (!url.startsWith(`${TILE_BASE}/`)) return false
+  const fileName = url.slice(TILE_BASE.length + 1).split('?')[0]
+  return versionedTileUrl(TILE_BASE, fileName) !== url
+}
+onTileManifestChanged(() => {
+  for (const url of [..._geoJsonCache.keys()]) if (isOutdatedTileUrl(url)) _geoJsonCache.delete(url)
+})
 
 /** One of the active country's data files by its versioned URL (waits for the manifest, see tileUrlReady). */
 export async function loadTileGeoJson(key: TileKey): Promise<GeoJSON.FeatureCollection> {
@@ -39,7 +48,7 @@ export async function loadTileGeoJson(key: TileKey): Promise<GeoJSON.FeatureColl
 export function loadGeoJsonOnce(url: string): Promise<GeoJSON.FeatureCollection> {
   let p = _geoJsonCache.get(url)
   if (!p) {
-    p = fetch(url).then(r => {
+    p = fetchWithRetry(url).then(r => {
       if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`)
       return r.json()
     })

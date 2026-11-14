@@ -46,8 +46,12 @@
 import { useEffect, useState } from 'react'
 import type { GeoJSON } from 'geojson'
 import { fetchWithRetry } from '@open-vfr/shared/fetchWithRetry'
+import { onTileManifestChanged } from '@open-vfr/shared/tileManifest'
+import { isOutdatedTileUrl } from '../utils/geoJsonCache'
 
 const cache = new Map<string, GeoJSON>()
+// Keyed by URL: on a manifest change drop the entries of outdated versions (memory), like ../utils/geoJsonCache.
+onTileManifestChanged(() => { for (const url of [...cache.keys()]) if (isOutdatedTileUrl(url)) cache.delete(url) })
 const inFlight = new Map<string, Promise<GeoJSON>>()
 
 export function isRemote(url: string): boolean {
@@ -78,34 +82,25 @@ function loadOnce(url: string): Promise<GeoJSON> {
 /**
  * Resolves a tile URL for <GeoJSONSource data={...}>.
  *
- * Returns the raw URL immediately for local file:// assets, or (on first
- * call for a given remote URL) while our own retried fetch is still in
- * flight — same "MapLibre loads it directly" behavior as before this hook
- * existed. Once our fetch resolves, subsequent renders (and all renders
- * after the first successful fetch of that URL, thanks to the module-scope
- * cache) return the already-parsed GeoJSON object instead.
- */
-/**
+ * A local file:// URI is returned as is (the renderer reads it). A remote URL
+ * is returned as is while our own retried fetch is in flight (MapLibre loads
+ * it directly meanwhile), then as the parsed GeoJSON from the module cache.
  * `remoteReady` false: a remote URL is not used at all yet (no fetch, and the
  * source gets an empty collection instead of the URL, so MapLibre does not
  * fetch it either). Pass false until the tile manifest has been waited for:
- * before that the URL is unversioned. A local file:// URI is used at once.
+ * before that the URL is unversioned.
  */
 export function useResilientTileData(url: string, remoteReady = true): string | GeoJSON {
-  const [resolved, setResolved] = useState<GeoJSON | undefined>(
-    () => cache.get(url),
-  )
+  // Re-render trigger only: the data itself is read from the module cache below.
+  const [, setLoaded] = useState(0)
 
   useEffect(() => {
     if (!isRemote(url) || !remoteReady) return
     const cached = cache.get(url)
-    if (cached) {
-      setResolved(cached)
-      return
-    }
+    if (cached) return
     let cancelled = false
     loadOnce(url)
-      .then(json => { if (!cancelled) setResolved(json) })
+      .then(() => { if (!cancelled) setLoaded(n => n + 1) })
       .catch(() => { /* leave the raw URL in place — MapLibre's own (possibly
                          already-successful) load is the only fallback left */ })
     return () => { cancelled = true }
@@ -113,5 +108,5 @@ export function useResilientTileData(url: string, remoteReady = true): string | 
 
   if (!isRemote(url)) return url
   if (!remoteReady) return EMPTY_FC
-  return cache.get(url) ?? resolved ?? url
+  return cache.get(url) ?? url
 }

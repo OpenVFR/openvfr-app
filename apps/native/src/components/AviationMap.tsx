@@ -71,6 +71,7 @@ import { OFFLINE_ASSETS, resolveUri, loadAssetJson } from '../utils/offlineCache
 import { buildTerrainColorExpr } from '@open-vfr/shared/terrainColor'
 import { useWindGrid } from '../hooks/useWindGrid'
 import { useResilientTileData, isRemote } from '../hooks/useResilientTileData'
+import { useTileDataTick } from '../utils/tileDerived'
 import { parseAerodromeDetails } from '@open-vfr/shared/aerodromeDetails'
 import { buildDetailsMapData, staticColorLayers, layerFilter } from '@open-vfr/shared/aerodromeDetailsStyle'
 import { useCircuitFocus } from '../utils/circuitFocus'
@@ -1107,7 +1108,7 @@ const AUTO_ZOOM_RESET_KTS = 15
 const DETAIL_LAYERS_STATIC = staticColorLayers()
 
 /** The details file of the active country plus turn arrows and holding orbits built from the aerodromes data. */
-function useAerodromeDetailsData(aerodromesData: string | GeoJSON.GeoJSON): GeoJSON.FeatureCollection | null {
+function useAerodromeDetailsData(aerodromesData: string | GeoJSON.GeoJSON, dataTick: number): GeoJSON.FeatureCollection | null {
   const [details, setDetails] = useState<ReturnType<typeof parseAerodromeDetails>>(null)
   const [loadedAerodromes, setLoadedAerodromes] = useState<GeoJSON.FeatureCollection | null>(null)
   // A downloaded copy reaches the map as a file:// URI string (the renderer reads it itself); the details are built in JS, so
@@ -1126,7 +1127,7 @@ function useAerodromeDetailsData(aerodromesData: string | GeoJSON.GeoJSON): GeoJ
         .catch(() => { /* the details then have no aerodromes to attach turn arrows to: nothing is drawn */ })
     }
     return () => { cancelled = true }
-  }, [aerodromesIsUri])
+  }, [aerodromesIsUri, dataTick])
   return useMemo(() => {
     const fc = typeof aerodromesData === 'object' && aerodromesData.type === 'FeatureCollection' ? aerodromesData : loadedAerodromes
     if (!fc) return null
@@ -2088,10 +2089,14 @@ export const AviationMap = React.memo(function AviationMap({
     waitForTileManifest(TILE_BASE).then(() => setManifestReady(true))
   }, [])
 
-  const tileUrls = useMemo(() => getResolvedTileUrls(), [manifestReady])
+  // Recomputed when the manifest changes too (a stored copy replaced by a fresh one, new data): the GeoJSON sources then
+  // follow the new versioned URLs like every other cache does (their data can change without a style reload). The PMTiles
+  // URLs below stay as mounted: a mounted source keeps its URL.
+  const dataTick = useTileDataTick()
+  const tileUrls = useMemo(() => getResolvedTileUrls(), [manifestReady, dataTick])
   // Before manifestReady a remote URL is still the bare, unversioned one: nothing remote is fetched until then (the
   // sources show empty data meanwhile). Downloaded local copies are used at once, so an offline start never waits.
-  const urlUsable = (url: string) => manifestReady || !isRemote(url)
+  const aerodromesUsable = manifestReady || !isRemote(tileUrls.aerodromes)
   // The basemap style is built once (getProtomapsStyle singleton; changing it later reloads the whole style), so the map
   // itself mounts only when the style's archives are local or the manifest has been waited for.
   const [basemapLocal] = useState(() => ['basemap', 'basemapOverview'].every((key) => {
@@ -2113,7 +2118,7 @@ export const AviationMap = React.memo(function AviationMap({
   const runwayThresholdsData = useResilientTileData(tileUrls.runwayThresholds, manifestReady)
   const obstaclesData        = useResilientTileData(tileUrls.obstacles, manifestReady)
   const landmarksData        = useResilientTileData(tileUrls.landmarks, manifestReady)
-  const detailsData          = useAerodromeDetailsData(aerodromesData)
+  const detailsData          = useAerodromeDetailsData(aerodromesData, dataTick)
 
   // ── Towered-airport ATC status ring (aerodromes-atc-ring layer) ─────────
   // Cached once from tileUrls.aerodromes, independent of GeoJSONSource's own
@@ -2138,7 +2143,7 @@ export const AviationMap = React.memo(function AviationMap({
   const [notamHintTextExpr, setNotamHintTextExpr] = useState<unknown>('')
 
   useEffect(() => {
-    if (!urlUsable(tileUrls.aerodromes)) return
+    if (!aerodromesUsable) return
     let cancelled = false
     fetch(tileUrls.aerodromes)
       .then((r) => r.json())
@@ -2174,8 +2179,7 @@ export const AviationMap = React.memo(function AviationMap({
 
     const interval = setInterval(recomputeAtcRing, 60_000)
     return () => { cancelled = true; clearInterval(interval) }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- urlUsable only reads manifestReady
-  }, [tileUrls.aerodromes, manifestReady])
+  }, [tileUrls.aerodromes, aerodromesUsable])
 
   // Same NOTAM-keyword hint fetch as web's MapView -- one bulk request for
   // every towered airport's active NOTAM texts (GET /api/notam/aerodrome-

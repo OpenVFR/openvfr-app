@@ -18,37 +18,17 @@ import { useMefGrids } from './useMefGrids'
 import { requiredLegAltFt, newLegsAfterChange, autoLevelMessage } from '@open-vfr/shared/autoCruiseLevel'
 import { resolveMsaMargins, type MsaMargins } from '@open-vfr/shared/msaMargins'
 import { obstacleTipsForMsa } from '@open-vfr/shared/obstacleHeights'
-import { tileUrlReady, API_BASE } from '../config'
+import { API_BASE } from '../config'
+import { loadTileGeoJson } from '../utils/geoJsonCache'
 import { getOfflineDem } from '../utils/terrainDem'
 import type { RouteWaypoint, LegOverride } from '../types/db'
 
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 
-// Obstacles file (0.5-3 MB, fine for fetch() on native -- see AGENTS.md on
-// large GeoJSON). Parsed once per URL, like VerticalProfile's own cache.
-// Versioned URL only (waits for the tile manifest, see tileUrlReady).
-let _obstacles: { url: string; p: Promise<GeoJSON.FeatureCollection> } | null = null
-export async function loadObstacles(): Promise<GeoJSON.FeatureCollection> {
-  const url = await tileUrlReady('obstacles')
-  if (!_obstacles || _obstacles.url !== url) {
-    const p = fetch(url).then((r) => r.json() as Promise<GeoJSON.FeatureCollection>)
-    p.catch(() => { if (_obstacles?.p === p) _obstacles = null })
-    _obstacles = { url, p }
-  }
-  return _obstacles.p
-}
-
-// Landmarks (masts, chimneys...) count towards the MSA like the chart does.
-let _landmarks: { url: string; p: Promise<GeoJSON.FeatureCollection> } | null = null
-export async function loadLandmarks(): Promise<GeoJSON.FeatureCollection> {
-  const url = await tileUrlReady('landmarks')
-  if (!_landmarks || _landmarks.url !== url) {
-    const p = fetch(url).then((r) => r.json() as Promise<GeoJSON.FeatureCollection>)
-    p.catch(() => { if (_landmarks?.p === p) _landmarks = null })
-    _landmarks = { url, p }
-  }
-  return _landmarks.p
-}
+// Obstacles file (0.5-3 MB, fine for fetch() on native -- see AGENTS.md on large GeoJSON) and landmarks (masts,
+// chimneys... count towards the MSA like the chart does): the shared per-URL cache, the same parse VerticalProfile uses.
+export const loadObstacles = () => loadTileGeoJson('obstacles')
+export const loadLandmarks = () => loadTileGeoJson('landmarks')
 
 export function useAutoCruiseLevel(opts: {
   waypoints: RouteWaypoint[]

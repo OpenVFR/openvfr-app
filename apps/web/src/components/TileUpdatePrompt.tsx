@@ -26,7 +26,8 @@ export default function TileUpdatePrompt() {
 
   useEffect(() => {
     const stopPolling = startTileManifestPolling(TILES_BASE_URL)
-    const unsubscribe = onTileManifestChanged(() => setAvailable(true))
+    // `versioned` (first manifest after a slow start) is no data change: the dataset caches reload silently.
+    const unsubscribe = onTileManifestChanged((reason) => { if (reason === 'update') setAvailable(true) })
     return () => {
       stopPolling()
       unsubscribe()

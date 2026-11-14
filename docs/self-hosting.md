@@ -288,7 +288,9 @@ root `.env.example` to `.env` (and `apps/native/.env.example` /
   user) and `<cc>-charts.preview.json` (every airfield's, admins who switch on "Include unreviewed"), both listed in
   `manifest.json`. A deployment that still publishes only the old name has **no charts** until it publishes the new files (the api
   logs a warning when the manifest lists the old name but not the new one); there is deliberately no fallback to the old name,
-  because it would show everything to everyone. The preview file is on the public tile host and readable by anyone who knows
+  because it would show everything to everyone. Upgrade in this order: publish the two new files (keep the old one until the
+  end), then deploy the api, then the web app; a web app newer than the api treats the missing `/api/charts/config` route as
+  admin-only and offers charts to admins only until the api is updated. The preview file is on the public tile host and readable by anyone who knows
   the URL: only the app's switch and the api's document check are gated.
 - `TILES_BASE_URL` — optional, your public tile host (e.g.
   `https://tiles.example.org`); the admin country detail checks
@@ -522,8 +524,11 @@ api, PostgREST and cron (and re-set their passwords: renaming clears an MD5 pass
   upload has a new hash and therefore a new URL, so a versioned response
   can be cached for as long as you like. Before their first tile fetch
   the apps wait for the manifest (about 3 s at most) and use the bare,
-  unversioned URL only when it can't be loaded; a downloaded offline copy
-  on native is read without waiting. Configure the host and any CDN so
+  unversioned URL only when it can't be loaded. Both apps keep the last
+  manifest on the device and use it when the network copy is not there
+  within about a second (offline, weak signal), so they keep asking for the
+  versioned URLs their caches hold; a downloaded offline copy on native is
+  read without waiting. Configure the host and any CDN so
   that:
   - `manifest.json` is never cached (`Cache-Control: no-cache` or a CDN
     bypass); it decides which version every other URL names.

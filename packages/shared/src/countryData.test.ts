@@ -147,3 +147,20 @@ describe('waiting for final (versioned) URLs', () => {
     await expect(loadCountryGeojson('aerodromes', ['se'])).resolves.toBeTruthy()
   })
 })
+
+describe('invalidateCountryData', () => {
+  it('drops only entries whose URL changed', async () => {
+    let versions: Record<string, string> = { 'se-aerodromes.geojson': 'a1', 'dk-aerodromes.geojson': 'b1' }
+    configureCountryData({
+      resolveUrl: (f) => `https://tiles/${f}?v=${versions[f] ?? 'x'}`,
+      fetchJson: async (url) => { fetched.push(url); return files[url.replace('https://tiles/', '').replace(/\?.*$/, '')] },
+    })
+    await loadCountryGeojson('aerodromes', ['se'])
+    await loadCountryGeojson('aerodromes', ['dk'])
+    versions = { ...versions, 'se-aerodromes.geojson': 'a2' }
+    invalidateCountryData()
+    await loadCountryGeojson('aerodromes', ['dk'])               // unchanged: still cached
+    await loadCountryGeojson('aerodromes', ['se'])               // changed: fetched again
+    expect(fetched).toEqual(['https://tiles/se-aerodromes.geojson?v=a1', 'https://tiles/dk-aerodromes.geojson?v=b1', 'https://tiles/se-aerodromes.geojson?v=a2'])
+  })
+})

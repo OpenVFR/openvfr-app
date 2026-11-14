@@ -54,7 +54,7 @@ import { Hono, type Context } from 'hono'
 import { RateLimiter, limitFromEnv } from './rateLimiter.js'
 import { CHART_ID, findChart, parseChartsIndex, type ChartsIndex } from '@open-vfr/shared/chartsIndex'
 import { countryDatasetFile } from '@open-vfr/shared/countryData'
-import { TILE_FETCH_HEADERS } from './tileFetch.js'
+import { TILE_FETCH_HEADERS, readCapped, fetchTileManifestHashes } from './tileFetch.js'
 
 export interface ChartDocumentConfig {
   hosts: Set<string>
@@ -157,28 +157,8 @@ class UpstreamError extends Error {
   constructor(message: string, readonly status: number) { super(message) }
 }
 
-async function readCapped(res: Response, maxBytes: number): Promise<Uint8Array> {
-  const len = Number(res.headers.get('content-length') ?? 'NaN')
-  if (Number.isFinite(len) && len > maxBytes) throw new UpstreamError(`content-length ${len} over cap`, 413)
-  if (!res.body) throw new UpstreamError('empty body', 502)
-  const reader = res.body.getReader()
-  const chunks: Uint8Array[] = []
-  let size = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    size += value.byteLength
-    if (size > maxBytes) {
-      await reader.cancel()
-      throw new UpstreamError(`body over cap (${size} bytes read)`, 413)
-    }
-    chunks.push(value)
-  }
-  const out = new Uint8Array(new ArrayBuffer(size))
-  let off = 0
-  for (const c of chunks) { out.set(c, off); off += c.byteLength }
-  return out
-}
+const upstreamError = (message: string, status: number) => new UpstreamError(message, status)
+const readCappedUpstream = (res: Response, maxBytes: number) => readCapped(res, maxBytes, upstreamError)
 
 /** Fetch with at most one redirect, and only to another allowed URL. */
 export async function fetchDocument(url: URL, cfg: ChartDocumentConfig, fetchImpl: typeof fetch = fetch): Promise<Uint8Array> {
@@ -201,7 +181,7 @@ export async function fetchDocument(url: URL, cfg: ChartDocumentConfig, fetchImp
       await res.body?.cancel().catch(() => undefined)
       throw new UpstreamError(`upstream HTTP ${res.status}`, res.status === 404 ? 404 : 502)
     }
-    const body = await readCapped(res, cfg.maxBytes)
+    const body = await readCappedUpstream(res, cfg.maxBytes)
     const magic = new TextDecoder().decode(body.subarray(0, 5))
     if (magic !== '%PDF-') throw new UpstreamError('upstream body is not a PDF', 502)
     return body
@@ -210,7 +190,6 @@ export async function fetchDocument(url: URL, cfg: ChartDocumentConfig, fetchImp
 }
 
 const INDEX_MAX_BYTES = 16 * 1024 * 1024
-const MANIFEST_MAX_BYTES = 4 * 1024 * 1024
 /** A chart id missing from a fresh-enough index triggers at most one reload per this interval. */
 const MISS_RELOAD_MS = 60 * 1000
 
@@ -220,7 +199,7 @@ async function fetchJson(url: string, maxBytes: number, cfg: ChartDocumentConfig
     await res.body?.cancel().catch(() => undefined)
     throw new UpstreamError(`HTTP ${res.status} for ${url}`, 502)
   }
-  return JSON.parse(new TextDecoder().decode(await readCapped(res, maxBytes)))
+  return JSON.parse(new TextDecoder().decode(await readCappedUpstream(res, maxBytes)))
 }
 
 /** Which published index: `public` (released airfields) or `preview` (every airfield, admins only). */
@@ -237,15 +216,15 @@ const MANIFEST_SHARE_MS = 5 * 1000
  * manifest download serves both kinds.
  */
 export function createChartIndexResolver(cfg: ChartDocumentConfig, fetchImpl: typeof fetch = fetch, now: () => number = Date.now) {
-  type Manifest = { files?: Record<string, { sha256?: unknown }> }
+  type Hashes = Map<string, string>
   const cache = new Map<string, { index: ChartsIndex | null; sha: string | null; at: number }>()
   const inflight = new Map<string, Promise<ChartsIndex | null>>()
   const warned = new Set<string>()
-  let manifestShared: { at: number; p: Promise<Manifest> } | null = null
+  let manifestShared: { at: number; p: Promise<Hashes> } | null = null
 
-  function manifest(): Promise<Manifest> {
+  function manifest(): Promise<Hashes> {
     if (manifestShared && now() - manifestShared.at < MANIFEST_SHARE_MS) return manifestShared.p
-    const p = fetchJson(`${cfg.tilesBaseUrl}/manifest.json`, MANIFEST_MAX_BYTES, cfg, fetchImpl) as Promise<Manifest>
+    const p = fetchTileManifestHashes(cfg.tilesBaseUrl, { fetchImpl, timeoutMs: cfg.timeoutMs, makeError: upstreamError })
     const mine = { at: now(), p }
     manifestShared = mine
     p.catch(() => { if (manifestShared === mine) manifestShared = null })
@@ -258,9 +237,9 @@ export function createChartIndexResolver(cfg: ChartDocumentConfig, fetchImpl: ty
     const prev = cache.get(ck)
     try {
       const m = await manifest()
-      const sha = m?.files?.[name]?.sha256
-      if (typeof sha !== 'string' || !/^[0-9a-f]{64}$/.test(sha)) {
-        if (kind === 'public' && m?.files?.[`${cc}-charts.json`] && !warned.has(cc)) {
+      const sha = m.get(name)
+      if (!sha) {
+        if (kind === 'public' && m.has(`${cc}-charts.json`) && !warned.has(cc)) {
           warned.add(cc)
           console.warn(`[charts/document] ${cc}: the manifest lists ${cc}-charts.json but not ${name}: charts are published under the two new names now, no chart is served until they are published`)
         }
