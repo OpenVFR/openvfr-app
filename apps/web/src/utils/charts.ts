@@ -25,14 +25,22 @@ import type { PDFDocumentProxy } from 'pdfjs-dist'
 
 // ── Charts config ───────────────────────────────────────────────────────────
 
-/** The deployment may refuse every non-admin (api CHART_DOCUMENT_ADMIN_ONLY): the api says so, so the UI does not offer charts
- *  that every document request would refuse with 403. An older api without the route, or a disabled endpoint, counts as "not refused". */
+/**
+ * The deployment may refuse every non-admin (api CHART_DOCUMENT_ADMIN_ONLY): the api says so, so the UI does not offer charts
+ * that every document request would refuse with 403. When in doubt, charts stay admin-only (the behaviour before the route
+ * existed): a 404 (an older api without the route, or the document endpoint not mounted) is remembered as admin-only; any other
+ * failure (5xx during a deploy, network) hides them this time and is asked again next time, never cached as "open".
+ */
 let configPromise: Promise<boolean> | null = null
 function loadAdminOnly(): Promise<boolean> {
   if (!configPromise) {
     const p: Promise<boolean> = fetch(`${API_BASE_URL}/api/charts/config`, { credentials: 'same-origin' })
-      .then(async (r) => (r.ok ? !!((await r.json()) as { adminOnly?: unknown }).adminOnly : false))
-      .catch(() => { if (configPromise === p) configPromise = null; return false })        // transient: ask again next time
+      .then(async (r) => {
+        if (r.ok) return !!((await r.json()) as { adminOnly?: unknown }).adminOnly
+        if (r.status === 404) return true
+        throw new Error(`HTTP ${r.status}`)
+      })
+      .catch(() => { if (configPromise === p) configPromise = null; return true })          // transient: ask again next time
     configPromise = p
   }
   return configPromise
@@ -74,10 +82,12 @@ export async function loadChartsIndex(country: string): Promise<ChartsIndex | nu
  */
 export async function loadChartsIndexes(country: string, preview: boolean):
   Promise<{ index: ChartsIndex | null; publicIndex: ChartsIndex | null; previewFailed: boolean }> {
-  const publicIndex = await loadChartsIndex(country)
-  if (!preview) return { index: publicIndex, publicIndex, previewFailed: false }
+  if (!preview) {
+    const publicIndex = await loadChartsIndex(country)
+    return { index: publicIndex, publicIndex, previewFailed: false }
+  }
   const url = await indexUrl(country, 'chartsPreview')
-  const previewIndex = await loadOptionalJson(indexCache, url, parseChartsIndex)
+  const [publicIndex, previewIndex] = await Promise.all([loadChartsIndex(country), loadOptionalJson(indexCache, url, parseChartsIndex)])
   return { index: previewIndex ?? publicIndex, publicIndex, previewFailed: !previewIndex && !indexCache.has(url) }
 }
 
