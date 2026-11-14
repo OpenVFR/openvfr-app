@@ -81,6 +81,70 @@ let unversionedIssued = false
 type ManifestChangeListener = () => void
 const changeListeners = new Set<ManifestChangeListener>()
 
+// ── Last manifest on the device (optional, native) ──────────────────────────
+// Offline at start, the manifest cannot be fetched, so every URL would be the
+// unversioned one, and the map renderer's own cache only holds the versioned
+// URLs it fetched before: a restart in flight showed a blank map over areas
+// viewed earlier. With a store enabled, the last manifest fetched is kept and
+// used when the network copy cannot be had (fetch failed, or the bounded wait
+// ran out). Its versions name content the device may still have cached; it is
+// replaced as soon as a fresh manifest arrives (listeners fire if it differs).
+export interface TileManifestStore {
+  getItem(key: string): string | null | Promise<string | null>
+  setItem(key: string, value: string): void | Promise<void>
+}
+const STORE_KEY = 'ovfr:tile-manifest:v1'
+let manifestStore: TileManifestStore | null = null
+let manifestFromStorage = false
+
+export function enableTileManifestPersistence(store: TileManifestStore): void {
+  manifestStore = store
+}
+
+/** True while the manifest in use is the stored copy (no fresh one fetched this session yet). */
+export function isTileManifestFromStorage(): boolean {
+  return manifestFromStorage
+}
+
+async function readStoredManifest(tilesBaseUrl: string): Promise<TileManifest | null> {
+  if (!manifestStore) return null
+  try {
+    const raw = await manifestStore.getItem(STORE_KEY)
+    if (!raw) return null
+    const v = JSON.parse(raw) as { base?: string; manifest?: TileManifest }
+    // Per tile host: a stored manifest of another host (staging / production) names other content.
+    return v.base === tilesBaseUrl && v.manifest?.files ? v.manifest : null
+  } catch { return null }
+}
+
+function writeStoredManifest(tilesBaseUrl: string, manifest: TileManifest): void {
+  if (!manifestStore) return
+  try { void Promise.resolve(manifestStore.setItem(STORE_KEY, JSON.stringify({ base: tilesBaseUrl, manifest }))).catch(() => undefined) }
+  catch { /* storage unavailable: nothing to keep */ }
+}
+
+function filesDiffer(a: TileManifest, b: TileManifest): boolean {
+  const an = a.files ?? {}, bn = b.files ?? {}
+  const names = new Set([...Object.keys(an), ...Object.keys(bn)])
+  for (const n of names) if (an[n]?.sha256 !== bn[n]?.sha256) return true
+  return false
+}
+
+/** Makes `data` the manifest in use and tells listeners when URLs handed out earlier may name other content now. */
+function adoptManifest(data: TileManifest, fromStorage: boolean): void {
+  const prev = cachedManifest
+  const prevFromStorage = manifestFromStorage
+  cachedManifest = data
+  manifestFromStorage = fromStorage
+  if (prev === null) {
+    // Unversioned fallback URLs were handed out before this first manifest:
+    // tell URL-keyed caches to reload (same signal as a data update).
+    if (unversionedIssued) { unversionedIssued = false; notifyListeners() }
+  } else if (prevFromStorage && !fromStorage && filesDiffer(prev, data)) {
+    notifyListeners()                                       // the stored copy was out of date
+  }
+}
+
 function notifyListeners(): void {
   changeListeners.forEach((listener) => {
     try { listener() } catch (err) { console.warn('[tileManifest] change listener failed:', err) }
@@ -107,12 +171,14 @@ export function loadTileManifest(tilesBaseUrl: string): Promise<void> {
       // A failed refetch keeps the manifest already known: its versioned URLs
       // still name consistent content, while dropping it would send every
       // later fetch to the unversioned URL.
-      if (!data || typeof data !== 'object' || !data.files) return
-      const first = cachedManifest === null
-      cachedManifest = data
-      // Unversioned fallback URLs were handed out before this first manifest:
-      // tell URL-keyed caches to reload (same signal as a data update).
-      if (first && unversionedIssued) { unversionedIssued = false; notifyListeners() }
+      if (data && typeof data === 'object' && data.files) {
+        adoptManifest(data, false)
+        writeStoredManifest(tilesBaseUrl, data)
+        return
+      }
+      if (cachedManifest) return
+      // No manifest at all (offline start): the last one stored on the device, if any.
+      return readStoredManifest(tilesBaseUrl).then((stored) => { if (stored && !cachedManifest) adoptManifest(stored, true) })
     })
     .finally(() => { settledLoad = p })
   loadPromise = p
@@ -168,7 +234,14 @@ export function waitForTileManifest(tilesBaseUrl: string, timeoutMs = 3000): Pro
   const done = () => { if (!cachedManifest) unversionedIssued = true }
   if (cachedManifest || settledLoad === load || gaveUpOn === load) { done(); return Promise.resolve() }
   return new Promise<void>((resolve) => {
-    const timer = setTimeout(() => { gaveUpOn = load; done(); resolve() }, timeoutMs)
+    const timer = setTimeout(() => {
+      gaveUpOn = load
+      // The network is slow: go on with the stored manifest when there is one (the fresh one replaces it on arrival).
+      void readStoredManifest(tilesBaseUrl).then((stored) => {
+        if (stored && !cachedManifest) adoptManifest(stored, true)
+        done(); resolve()
+      })
+    }, timeoutMs)
     void load.then(() => { clearTimeout(timer); done(); resolve() })
   })
 }

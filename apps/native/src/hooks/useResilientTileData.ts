@@ -69,7 +69,9 @@ function loadOnce(url: string): Promise<GeoJSON> {
     return json
   })()
   inFlight.set(url, promise)
-  promise.finally(() => inFlight.delete(url))
+  // Both outcomes clear the entry; the caller handles the rejection (a bare .finally() left an unhandled one).
+  const clear = () => { inFlight.delete(url) }
+  promise.then(clear, clear)
   return promise
 }
 

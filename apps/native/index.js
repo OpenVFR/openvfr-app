@@ -1,5 +1,7 @@
 import { registerRootComponent } from 'expo'
-import { loadTileManifest } from '@open-vfr/shared/tileManifest'
+import {
+  loadTileManifest, refreshTileManifest, enableTileManifestPersistence, isTileManifestFromStorage,
+} from '@open-vfr/shared/tileManifest'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 // Imported for their side effect first: they register the caches restored below.
 import '@open-vfr/shared/fetchWind'
@@ -7,7 +9,7 @@ import '@open-vfr/shared/windForecast'
 import { enableCachePersistence } from '@open-vfr/shared/persistedCache'
 import { setApiAuthHeaders } from '@open-vfr/shared/apiAuth'
 import { authHeaders } from './src/utils/authClient'
-import { Platform } from 'react-native'
+import { Platform, AppState } from 'react-native'
 import * as Application from 'expo-application'
 import { initGpsAltitudeReference } from '@open-vfr/shared/gpsAltitudeReference'
 import { TILE_BASE } from './src/config'
@@ -28,7 +30,16 @@ import './src/tasks/locationTask'
 // get*PmtilesUrl() helpers read the resulting cached manifest lazily at
 // first use, same graceful-degrade-to-unversioned-URL behavior as web when
 // this hasn't resolved yet (offline first launch, etc.).
+// The last manifest is kept on the device: an offline start uses it, so the
+// map asks for the same versioned URLs its cache holds instead of unversioned
+// ones it never fetched (blank map after a restart in flight).
+enableTileManifestPersistence(AsyncStorage)
 void loadTileManifest(TILE_BASE)
+// Started on the stored copy (offline): fetch a fresh one each time the app
+// comes to the foreground until one arrives. No timer, no background work.
+AppState.addEventListener('change', (state) => {
+  if (state === 'active' && isTileManifestFromStorage()) void refreshTileManifest(TILE_BASE)
+})
 // Wind readings survive an app restart, so a restart doesn't refetch them
 // from the rate-limited Open-Meteo API (see @open-vfr/shared/persistedCache).
 void enableCachePersistence(AsyncStorage)

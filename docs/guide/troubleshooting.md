@@ -46,7 +46,10 @@ offline, still air is used. Enter a wind by hand if you need one.
 
 ## GPS does not start, or the position jumps
 
-- Allow location access for the app or site, and turn location on.
+- Allow location access for the app or site, and turn location on. If the
+  native app was refused location once, the phone does not ask again: the
+  app reminds you at every start, and its **Open settings** button leads
+  straight to the page where you allow it.
 - On the web app, a browser tab can be suspended with the screen off. For
   reliable tracking use the native app, which runs a background service.
 - Indoors or with poor accuracy the position can wander. Alerts use the

@@ -1027,7 +1027,12 @@ function MapScreenForCountry() {
 
   React.useEffect(() => {
     if (status === 'denied') {
-      Alert.alert('Location Permission', 'Enable location access in Settings to see your position on the map.')
+      // Shown at every start while denied (the app needs location), with a direct way to fix it: once the system prompt was
+      // refused, Android does not show it again, so the app's settings page is the only place to allow it.
+      Alert.alert('Location Permission', 'Enable location access in Settings to see your position on the map.', [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Open settings', onPress: () => { void Linking.openSettings().catch(() => {}) } },
+      ])
     }
   }, [status])
 

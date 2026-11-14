@@ -131,3 +131,59 @@ describe('change listeners and the unversioned fallback', () => {
     expect(seen).not.toHaveBeenCalled()
   })
 })
+
+describe('stored manifest (offline start)', () => {
+  const memStore = (init?: string) => {
+    const m = new Map<string, string>()
+    if (init) m.set('ovfr:tile-manifest:v1', init)
+    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => { m.set(k, v) }, m }
+  }
+
+  it('keeps a fetched manifest and uses it when the next start is offline', async () => {
+    const store = memStore()
+    let f = deferredFetch()
+    vi.stubGlobal('fetch', f.fetchMock)
+    mod.enableTileManifestPersistence(store)
+    const p = mod.loadTileManifest(BASE)
+    f.respond(manifest('ab'))
+    await p
+    expect(store.m.size).toBe(1)
+
+    vi.resetModules()
+    mod = await import('./tileManifest')
+    f = deferredFetch()
+    vi.stubGlobal('fetch', f.fetchMock)
+    mod.enableTileManifestPersistence(store)
+    const url = mod.versionedTileUrlReady(BASE, 'se-airspace.geojson')
+    f.fail()
+    expect(await url).toBe(`${BASE}/se-airspace.geojson?v=${'ab'.repeat(6)}`)
+    expect(mod.isTileManifestFromStorage()).toBe(true)
+  })
+
+  it('uses the stored copy when the network wait times out, and fires listeners when the fresh one differs', async () => {
+    const store = memStore(JSON.stringify({ base: BASE, manifest: manifest('ab') }))
+    const f = deferredFetch()
+    vi.stubGlobal('fetch', f.fetchMock)
+    mod.enableTileManifestPersistence(store)
+    const seen = vi.fn()
+    mod.onTileManifestChanged(seen)
+    const url = mod.versionedTileUrlReady(BASE, 'se-airspace.geojson', 1000)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(await url).toBe(`${BASE}/se-airspace.geojson?v=${'ab'.repeat(6)}`)
+    f.respond(manifest('cd'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mod.versionedTileUrl(BASE, 'se-airspace.geojson')).toBe(`${BASE}/se-airspace.geojson?v=${'cd'.repeat(6)}`)
+    expect(mod.isTileManifestFromStorage()).toBe(false)
+    expect(seen).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores a stored manifest of another tile host', async () => {
+    const store = memStore(JSON.stringify({ base: 'https://other.example.org', manifest: manifest('ab') }))
+    const f = deferredFetch()
+    vi.stubGlobal('fetch', f.fetchMock)
+    mod.enableTileManifestPersistence(store)
+    const url = mod.versionedTileUrlReady(BASE, 'se-airspace.geojson')
+    f.fail()
+    expect(await url).toBe(`${BASE}/se-airspace.geojson`)
+  })
+})
