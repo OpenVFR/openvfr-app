@@ -9,7 +9,8 @@
  *    POSTGREST_INTERNAL_URL (the api's address for PostgREST); unset =
  *    saved routes and aircraft are unavailable to the briefing.
  *  - Aerodromes, airspace and obstacles from the tile host
- *    (TILES_BASE_URL), per country, cached in memory for a few hours.
+ *    (TILES_BASE_URL), per country, cached in memory and reloaded when the
+ *    tile manifest names a new version (tileFileCache.ts).
  */
 import { createHmac } from 'node:crypto'
 import { routeRows, aircraftRows, waypointRows } from '@open-vfr/shared/cloudSyncRows'
@@ -23,6 +24,7 @@ import type { RouteDocType, AircraftProfileDocType, UserWaypointDocType } from '
 import type { RouteWaypoint } from '@open-vfr/shared/routeCalc'
 import { AUTHENTICATED_ROLE } from './pgRoles'
 import { TILE_FETCH_HEADERS } from './tileFetch.js'
+import { createTileFileCache } from './tileFileCache.js'
 
 /** A short-lived HS256 JWT that PostgREST accepts as this user (same claims as /api/auth/token). */
 export function mintPostgrestJwt(user: { id: string; email?: string | null }, ttlS = 15 * 60, secret = process.env['BETTER_AUTH_SECRET'] ?? ''): { jwt: string; expiresAt: number } {
@@ -161,8 +163,8 @@ export async function userAircraft(userId: string): Promise<AircraftProfileDocTy
 // ── Tile-host datasets ─────────────────────────────────────────────────────
 
 const TILES_BASE_URL = (process.env['TILES_BASE_URL'] ?? '').trim().replace(/\/+$/, '')
-const DATASET_TTL_MS = 6 * 60 * 60 * 1000
-const datasetCache = new Map<string, { at: number; fc: Promise<GeoJSON.FeatureCollection | null> }>()
+/** Lifetime of a copy loaded by its bare URL, only when the manifest is unreachable or does not list the file. */
+const DATASET_FALLBACK_TTL_MS = 6 * 60 * 60 * 1000
 
 const lastDatasetWarn = new Map<string, number>()
 /** A failed dataset load says why, at most once a minute per file (callers only see "not available"). */
@@ -187,6 +189,12 @@ async function fetchDataset(url: string): Promise<GeoJSON.FeatureCollection | nu
   }
 }
 
+// Versioned through the tile manifest (checked at most every 5 min, only while briefings are asked for): a data update
+// reaches the briefing within minutes, and a file is downloaded and parsed again only when its content changed.
+const datasetFiles = createTileFileCache<GeoJSON.FeatureCollection>({
+  baseUrl: TILES_BASE_URL, load: fetchDataset, fallbackTtlMs: DATASET_FALLBACK_TTL_MS,
+})
+
 /** A merged dataset that says which countries' files could not be loaded (callers must not read "not loaded" as "none"). */
 export type CountryDataset = GeoJSON.FeatureCollection & { missingCountries?: string[] }
 
@@ -197,19 +205,7 @@ export type CountryDataset = GeoJSON.FeatureCollection & { missingCountries?: st
 export async function loadCountryDataset(kind: 'aerodromes' | 'airspace' | 'obstacles' | 'landmarks' | 'navaids' | 'waypoints' | 'lakes', countries: readonly string[]): Promise<CountryDataset | null> {
   if (!TILES_BASE_URL) { warnDataset('TILES_BASE_URL', 'is not set: no aerodrome, airspace or navaid data for briefings and route tools'); return null }
   if (countries.length === 0) return null
-  const now = Date.now()
-  const parts = await Promise.all(countries.map(cc => {
-    const url = `${TILES_BASE_URL}/${countryDatasetFile(cc, kind)}`
-    let hit = datasetCache.get(url)
-    if (!hit || now - hit.at > DATASET_TTL_MS) {
-      const entry = { at: now, fc: fetchDataset(url) }
-      hit = entry
-      datasetCache.set(url, entry)
-      // A failed load is not cached for the full TTL (unless a newer entry has replaced it since).
-      void entry.fc.then(fc => { if (!fc && datasetCache.get(url) === entry) datasetCache.delete(url) })
-    }
-    return hit.fc
-  }))
+  const parts = await Promise.all(countries.map(cc => datasetFiles.get(countryDatasetFile(cc, kind))))
   const ok = parts.filter((p): p is GeoJSON.FeatureCollection => !!p)
   if (ok.length === 0) return null
   const missing = countries.filter((_, i) => !parts[i]).map(c => c.toUpperCase())
@@ -226,32 +222,21 @@ export function routeCountries(waypoints: readonly RouteWaypoint[], available: r
 
 // ── Terrain grid (conservative MSA) ─────────────────────────────────────────
 
-const MEF_TTL_MS = 24 * 60 * 60 * 1000
-const mefCache = new Map<string, { at: number; grid: Promise<MefGrid | null> }>()
+const mefFiles = createTileFileCache<MefGrid>({
+  baseUrl: TILES_BASE_URL,
+  load: url => fetch(url, { headers: TILE_FETCH_HEADERS, signal: AbortSignal.timeout(30_000) })
+    .then(async r => (r.ok ? parseMef(new Uint8Array(await r.arrayBuffer())) : null))
+    .catch(() => null),
+  fallbackTtlMs: 24 * 60 * 60 * 1000,
+})
 
 /**
- * Maximum-elevation grids (`<cc>-mef.mef`) for some countries, refreshed
- * daily; a missing or broken file is skipped and retried on the next call.
+ * Maximum-elevation grids (`<cc>-mef.mef`) for some countries, versioned through the tile manifest like the datasets
+ * (reloaded when the file changes); a missing or broken file is skipped and retried later.
  */
 export async function loadMefGridsFor(countries: readonly string[]): Promise<MefGrid[]> {
   if (!TILES_BASE_URL) return []
-  const now = Date.now()
-  const grids = await Promise.all(countries.map((cc) => {
-    const url = `${TILES_BASE_URL}/${countryMefFile(cc)}`
-    let hit = mefCache.get(url)
-    if (!hit || now - hit.at > MEF_TTL_MS) {
-      hit = {
-        at: now,
-        grid: fetch(url, { headers: TILE_FETCH_HEADERS, signal: AbortSignal.timeout(30_000) })
-          .then(async r => (r.ok ? parseMef(new Uint8Array(await r.arrayBuffer())) : null))
-          .catch(() => null),
-      }
-      mefCache.set(url, hit)
-      const entry = hit
-      void entry.grid.then(g => { if (!g && mefCache.get(url) === entry) mefCache.delete(url) })
-    }
-    return hit.grid
-  }))
+  const grids = await Promise.all(countries.map(cc => mefFiles.get(countryMefFile(cc))))
   return grids.filter((g): g is MefGrid => g !== null)
 }
 
