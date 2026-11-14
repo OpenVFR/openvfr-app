@@ -20,9 +20,12 @@ set +a
 
 fail=0
 
+# check <label> <url> [<expected-status-regex>] [curl args...]
+# Without an expected status: fails on connection errors, cf-mitigated and 403/429/503.
+# With one (e.g. '^(200|206)$'): the status must match it, so a 401/404 or an error page fails too.
 check() {
-  local label="$1" url="$2" hdr code
-  shift 2   # any further arguments go to curl
+  local label="$1" url="$2" expect="${3:-}" hdr code
+  shift 3 2>/dev/null || shift $#
   hdr=$(mktemp)
   if ! code=$(curl -sS -o /dev/null -D "$hdr" -w '%{http_code}' \
       --retry 3 --retry-all-errors --max-time 20 "$@" "$url"); then
@@ -30,6 +33,9 @@ check() {
     fail=1
   elif grep -qi '^cf-mitigated:' "$hdr" || [[ "$code" =~ ^(403|429|503)$ ]]; then
     echo "::error::$label blocked or challenged from runner (HTTP $code)"
+    fail=1
+  elif [ -n "$expect" ] && ! [[ "$code" =~ $expect ]]; then
+    echo "::error::$label answered HTTP $code (expected $expect)"
     fail=1
   else
     echo "ok: $label (HTTP $code)"
@@ -47,12 +53,22 @@ require() {
 
 require EXPO_PUBLIC_API_BASE  && check "EXPO_PUBLIC_API_BASE /health" "${EXPO_PUBLIC_API_BASE%/}/health"
 if require EXPO_PUBLIC_TILE_BASE; then
-  check "EXPO_PUBLIC_TILE_BASE manifest" "${EXPO_PUBLIC_TILE_BASE%/}/manifest.json"
-  # A tile host may serve files only with the build's key (?ovk=, packages/shared/src/tileKey.ts):
-  # read 16 bytes of a real file the way the app does, so a missing or wrong key fails here.
-  tile_url="${EXPO_PUBLIC_TILE_BASE%/}/europe-overview.pmtiles"
-  [ -n "${EXPO_PUBLIC_TILE_KEY:-}" ] && tile_url="${tile_url}?ovk=${EXPO_PUBLIC_TILE_KEY}"
-  check "EXPO_PUBLIC_TILE_BASE file read (with EXPO_PUBLIC_TILE_KEY if set)" "$tile_url" -r 0-15
+  # Optional tile host key (?ovk=): the app trims it and drops it unless it is 16-128 characters of A-Z a-z 0-9 _ -
+  # (packages/shared/src/tileKey.ts parseTileKey), and then runs keyless and gets 403s. Fail here instead.
+  tile_key="$(printf '%s' "${EXPO_PUBLIC_TILE_KEY:-}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  if [ -n "$tile_key" ] && ! [[ "$tile_key" =~ ^[A-Za-z0-9_-]{16,128}$ ]]; then
+    echo "::error::EXPO_PUBLIC_TILE_KEY is set but malformed (16-128 characters of A-Z a-z 0-9 _ -): the app would ignore it and send no key"
+    fail=1
+    tile_key=""
+  fi
+  tile_q=""
+  [ -n "$tile_key" ] && tile_q="?ovk=${tile_key}"
+  # The app sends the key on every tile host request, the manifest included.
+  check "EXPO_PUBLIC_TILE_BASE manifest" "${EXPO_PUBLIC_TILE_BASE%/}/manifest.json${tile_q}"
+  # A tile host may serve files only with the build's key: read 16 bytes of a real file the way the app does.
+  # Only 200/206 passes, so a missing or wrong key (403, or 401/404 from another host) fails here.
+  check "EXPO_PUBLIC_TILE_BASE file read (with EXPO_PUBLIC_TILE_KEY if set)" \
+    "${EXPO_PUBLIC_TILE_BASE%/}/europe-overview.pmtiles${tile_q}" '^(200|206)$' -r 0-15
 fi
 if [ -n "${EXPO_PUBLIC_BASEMAP_URL:-}" ]; then
   check "EXPO_PUBLIC_BASEMAP_URL" "$EXPO_PUBLIC_BASEMAP_URL"

@@ -22,6 +22,14 @@
 
 const appJson = require('./app.json')
 
+// Optional tile host key (EXPO_PUBLIC_TILE_KEY, src/config.ts). The app ignores a malformed one with only a console warning,
+// i.e. a release build would run keyless and every tile request would get 403: fail the build instead. Same pattern as
+// parseTileKey in packages/shared/src/tileKey.ts (16-128 characters of A-Z a-z 0-9 _ -; the app trims the value first).
+const tileKey = (process.env.EXPO_PUBLIC_TILE_KEY || '').trim()
+if (tileKey && !/^[A-Za-z0-9_-]{16,128}$/.test(tileKey)) {
+  throw new Error(`EXPO_PUBLIC_TILE_KEY is malformed (${tileKey.length} characters): it must be 16-128 characters of A-Z a-z 0-9 _ -`)
+}
+
 module.exports = ({ config }) => {
   const base = { ...appJson.expo, ...config }
   const projectId = process.env.EAS_PROJECT_ID

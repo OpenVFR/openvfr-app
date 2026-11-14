@@ -575,11 +575,18 @@ api, PostgREST and cron (and re-set their passwords: renaming clears an MD5 pass
   `?ovk=<key>` (a CDN/WAF rule; leave `manifest.json` open so app update checks keep working).
   Your clients then need the key: the native app (`EXPO_PUBLIC_TILE_KEY`, added to every tile
   URL and tile fetch), the API server (`TILES_KEY`, added to every fetch under
-  `TILES_BASE_URL`) and the web/admin dev-server `/tiles` proxies (`DEV_TILES_KEY`). The web
+  `TILES_BASE_URL`) and the web dev-server `/tiles` proxy (`DEV_TILES_KEY`). The web
   build never gets a key: it is recognised by its Origin. Keys are 16-128 characters of
-  `A-Z a-z 0-9 _ -`. They are not secrets (the native key ships in the app), only a barrier
-  against other apps reusing your host. Unset = no change. See
-  `packages/shared/src/tileKey.ts`.
+  `A-Z a-z 0-9 _ -`; a malformed native key fails the build (`app.config.js`). They are not
+  secrets (the native key ships in the app), only a barrier against other apps reusing your
+  host. Unset = no change. See `packages/shared/src/tileKey.ts`.
+  **Rollout and rolling a key:** native builds that are already installed send no key, and each
+  build carries exactly one, so (1) switch the host rule to blocking only once the oldest build
+  you still support carries a key (run it in log-only mode first and watch the keyless native
+  traffic, then raise your minimum build), and (2) to roll a key, make the host accept the old
+  and the new key together, move the clients to the new one, and remove the old one only after
+  the last build holding it is gone. Replacing a key in place blocks every client that still has
+  the old one.
 - You can deploy the frontend, API, and tile storage as one origin
   (simplest) or three separate origins (see `apps/web/src/utils/env.ts`'s
   `VITE_API_BASE_URL`/`VITE_TILES_BASE_URL`) — both are supported.

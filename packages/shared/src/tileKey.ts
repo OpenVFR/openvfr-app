@@ -47,14 +47,30 @@ function normaliseBase(base: string): string | null {
   return /^https?:\/\/[^/?#]+/i.test(b) ? b : null
 }
 
-/** True when `url` points at a file under `base` (prefix match on whole path segments, case-insensitive host). */
+const ORIGIN_RE = /^(https?:\/\/[^/?#]+)([\s\S]*)$/i
+
+/** `https://host[:port]` (scheme and host lower-cased: they are case-insensitive) and the rest of the URL. */
+function splitOrigin(url: string): { origin: string; rest: string } | null {
+  const m = ORIGIN_RE.exec(url)
+  return m ? { origin: m[1]!.toLowerCase(), rest: m[2]! } : null
+}
+
+/**
+ * True when `url` points at a file under `base`: same scheme and host (case-insensitive), the base's path as a prefix of
+ * whole path segments (case-SENSITIVE: paths are), and no dot segments (`/../`, `/./`, `%2e`), which could resolve
+ * outside the tile path.
+ */
 export function isUnderTileBase(url: string, base: string): boolean {
   const b = normaliseBase(base)
   if (!b) return false
-  const u = url.slice(0, b.length).toLowerCase()
-  if (u !== b.toLowerCase()) return false
-  const next = url.charAt(b.length)
-  return next === '' || next === '/' || next === '?' || next === '#'
+  const bu = splitOrigin(b)
+  const uu = splitOrigin(url)
+  if (!bu || !uu || bu.origin !== uu.origin) return false
+  const path = uu.rest.split(/[?#]/, 1)[0]!
+  if (/(^|\/)\.\.?(\/|$)|%2e/i.test(path)) return false
+  if (!path.startsWith(bu.rest)) return false
+  const next = path.charAt(bu.rest.length)
+  return next === '' || next === '/'
 }
 
 /** `url` with `ovk=<key>` added (before any #fragment). Unchanged when the key is empty or the URL already has the parameter. */
@@ -86,7 +102,9 @@ type FetchFn = typeof fetch
 export function withTileKey(fetchImpl: FetchFn, key: string, bases: readonly string[]): FetchFn {
   const abs = bases.map(normaliseBase).filter((b): b is string => b !== null)
   if (!key || abs.length === 0) return fetchImpl
-  const wrapped = (input: Parameters<FetchFn>[0], init?: Parameters<FetchFn>[1]) => {
+  // async: a throw while rebuilding a Request (e.g. its body is already used) must reach the caller as a rejected
+  // promise, like any fetch() failure, not as a synchronous exception.
+  const wrapped = async (input: Parameters<FetchFn>[0], init?: Parameters<FetchFn>[1]) => {
     if (typeof input === 'string') return fetchImpl(addTileKeyIfTileUrl(input, key, abs), init)
     if (typeof URL !== 'undefined' && input instanceof URL) return fetchImpl(addTileKeyIfTileUrl(input.href, key, abs), init)
     // Request object: rebuild it only when the URL changes (keeps method, headers, body, signal).

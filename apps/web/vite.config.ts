@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { addTileKey, parseTileKey } from '../../packages/shared/src/tileKey'
 
 // Vite only exposes .env.local as import.meta.env (client-side) — it does NOT
 // populate process.env for this config file itself. Without loadEnv() here,
@@ -40,13 +41,13 @@ const devApiOrigin = DEV_API_ORIGIN
     }
   : {}
 const DEV_TILES_TARGET   = env['VITE_DEV_TILES_TARGET']   || ''
-// Optional key for a tile host that only serves its own clients (sent as
-// ?ovk=, packages/shared/src/tileKey.ts): the proxy below adds it server-side,
-// so it never reaches the browser bundle. Deliberately NOT VITE_-prefixed:
-// VITE_* variables can be exposed to client code through import.meta.env.
-const DEV_TILES_KEY = (env['DEV_TILES_KEY'] || '').trim()
+// Optional key for a tile host that only serves its own clients (sent as ?ovk=, packages/shared/src/tileKey.ts, the same
+// parsing and URL rules as native and the api): the proxy below adds it server-side, so it never reaches the browser bundle.
+// Deliberately NOT VITE_-prefixed: VITE_* variables can be exposed to client code through import.meta.env.
+const DEV_TILES_KEY = parseTileKey(env['DEV_TILES_KEY'], (m) => console.warn(`[vite] DEV_TILES_KEY: ${m}`))
+// A path with its own ovk (a client-sent one) is replaced: the key of this dev server wins.
 const withDevTilesKey = (path: string): string =>
-  !DEV_TILES_KEY || /[?&]ovk=/.test(path) ? path : `${path}${path.includes('?') ? '&' : '?'}ovk=${encodeURIComponent(DEV_TILES_KEY)}`
+  DEV_TILES_KEY ? addTileKey(path.replace(/([?&])ovk=[^&#]*&?/, '$1').replace(/[?&]$/, ''), DEV_TILES_KEY) : path
 const DEV_TRAFFIC_TARGET = env['VITE_DEV_TRAFFIC_TARGET'] || DEV_API_TARGET || ''
 
 // Shown under Settings -> App (same number as the native app's About).

@@ -35,6 +35,15 @@ describe('isUnderTileBase', () => {
     expect(isUnderTileBase('https://api.example.org/tiles/a', BASE)).toBe(false)
     expect(isUnderTileBase('http://localhost:5200/tilesx/a', 'http://localhost:5200/tiles')).toBe(false)
   })
+  it('compares the path case-sensitively and refuses dot segments', () => {
+    const base = 'https://api.example.org/tiles'
+    expect(isUnderTileBase('https://API.example.org/tiles/a.json', base)).toBe(true)
+    expect(isUnderTileBase('https://api.example.org/TILES/a.json', base)).toBe(false)
+    expect(isUnderTileBase('https://api.example.org/tiles/../x', base)).toBe(false)
+    expect(isUnderTileBase('https://api.example.org/tiles/./a.json', base)).toBe(false)
+    expect(isUnderTileBase('https://api.example.org/tiles/%2e%2e/x', base)).toBe(false)
+    expect(isUnderTileBase('https://api.example.org/tiles/a.json?next=../x', base)).toBe(true)
+  })
   it('never matches a relative base', () => {
     expect(isUnderTileBase('/tiles/a.geojson', '/tiles')).toBe(false)
   })
@@ -100,6 +109,19 @@ describe('withTileKey', () => {
     const init = { headers: { Range: 'bytes=0-15' } }
     await withTileKey(f, KEY, [BASE])(`${BASE}/a.pmtiles`, init)
     expect(f).toHaveBeenCalledWith(`${BASE}/a.pmtiles?ovk=${KEY}`, init)
+  })
+})
+
+describe('withTileKey errors', () => {
+  it('rejects instead of throwing synchronously when a Request cannot be rebuilt', async () => {
+    const f = vi.fn(async () => new Response('ok')) as unknown as typeof fetch
+    const req = new Request(`${BASE}/a.json`, { method: 'POST', body: 'x' })
+    await req.text()   // body used: new Request(url, req) throws
+    let thrown: unknown
+    let promise: Promise<Response> | undefined
+    try { promise = withTileKey(f, KEY, [BASE])(req) } catch (e) { thrown = e }
+    expect(thrown).toBeUndefined()
+    await expect(promise).rejects.toBeInstanceOf(TypeError)
   })
 })
 

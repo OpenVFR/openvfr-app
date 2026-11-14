@@ -22,8 +22,8 @@
  */
 
 import { File, Directory, Paths } from 'expo-file-system'
-import { getCachedTileManifest, waitForTileManifest } from '@open-vfr/shared/tileManifest'
-import { tileFileUrl, activeCountry, TILE_BASE } from '../config'
+import { getCachedTileManifest } from '@open-vfr/shared/tileManifest'
+import { tileFileUrl, tileFileUrlReady, activeCountry } from '../config'
 import { countryDatasetFile, countryArchiveFile, countryMefFile, type CountryDataset, type CountryArchive } from '@open-vfr/shared/countryData'
 
 export interface OfflineAsset {
@@ -79,8 +79,8 @@ export function remoteUrlFor(fileName: string): string {
 /** remoteUrlFor() for code about to fetch the file: waits for the tile manifest first (bounded), so the
  *  first fetches after start are versioned too. Only for the remote path: a local copy never waits. */
 export function remoteUrlForReady(fileName: string): Promise<string> {
-  // Keyed like remoteUrlFor (config.ts tileFileUrl): the native downloader bypasses the JS fetch wrapper.
-  return waitForTileManifest(TILE_BASE).then(() => tileFileUrl(fileName))
+  // Keyed like remoteUrlFor: the native downloader bypasses the JS fetch wrapper.
+  return tileFileUrlReady(fileName)
 }
 
 /** The cached local file URI when the asset is downloaded (no waiting, works offline), else its versioned

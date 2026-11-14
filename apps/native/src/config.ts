@@ -46,11 +46,15 @@ export const TILE_BASE: string =
   (isStaging && STAGING.tileBase) ||
   (process.env.EXPO_PUBLIC_TILE_BASE ?? '') || `${API_BASE}/tiles`
 
-/** Optional tile host access key (EXPO_PUBLIC_TILE_KEY, one key for both
- *  backends: they share the tile host). Added as `?ovk=` to every tile URL so
- *  a tile host that only serves its own apps lets this app through; see
- *  @open-vfr/shared/tileKey. Unset = URLs unchanged. Not a secret (it ships
- *  in the app); it can be rotated. */
+/** Optional tile host access key (EXPO_PUBLIC_TILE_KEY). One key, added as `?ovk=`
+ *  to the URLs of whichever tile host is active (TILE_BASE: the default one, or
+ *  the staging backend's own EXPO_PUBLIC_STAGING_TILE_BASE, which then has to
+ *  accept the same key). A tile host that only serves its own apps lets this
+ *  app through with it; see @open-vfr/shared/tileKey. Unset = URLs unchanged.
+ *  Not a secret (it ships in the app); it can be rolled. A malformed value is
+ *  ignored with a warning here, so it is also checked where nobody can miss it:
+ *  at build time (app.config.js) and in the screenshot pre-check
+ *  (.maestro/check-data-hosts.sh). */
 export const TILE_KEY: string = parseTileKey(process.env.EXPO_PUBLIC_TILE_KEY, (m) => console.warn(`[config] ${m}`))
 
 /** Versioned (?v=) and keyed (?ovk=) URL of a file on the tile host. Every
@@ -58,6 +62,13 @@ export const TILE_KEY: string = parseTileKey(process.env.EXPO_PUBLIC_TILE_KEY, (
  *  those itself, so the fetch wrapper (src/tileKeyFetch.ts) never sees them. */
 export function tileFileUrl(fileName: string): string {
   return addTileKey(versionedTileUrl(TILE_BASE, fileName), TILE_KEY)
+}
+
+/** tileFileUrl() for code about to FETCH the file: waits for the tile manifest first
+ *  (bounded, see waitForTileManifest), so the URL is versioned. */
+export async function tileFileUrlReady(fileName: string): Promise<string> {
+  await waitForTileManifest(TILE_BASE)
+  return tileFileUrl(fileName)
 }
 
 /** The active country's aerodrome details file (optional: a 404 just means no details). */
